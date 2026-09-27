@@ -5489,8 +5489,25 @@ case PH7_OP_YIELD_FROM: {
 			rcm = (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 			goto yf_propagate;
 		}
-		if( pCtxFrom->iDelegateState >= 2 ){
-			/* rewind() the delegate (also starts a fresh generator) */
+		if( pCtxFrom->iDelegateState == 3 ){
+			/* A GENERATOR delegate is not rewound: php links it as a child node and
+			 * only INITIALIZES it, so `yield from $g` over a half-consumed generator
+			 * continues from where it stands. One state it refuses outright, with
+			 * its own Error rather than the traverse/rewind wording the other entry
+			 * points use — a generator that has already run to its end, which PHL
+			 * delegated to in silence and yielded NOTHING from. */
+			ph7_class_instance *pDel = (ph7_class_instance *)pCtxFrom->sDelegate.x.pOther;
+			if( PH7_VmGeneratorIsClosed(&(*pVm),pDel) ){
+				rc = VmThrowFromVm(&(*pVm),"Error",
+					"Generator passed to yield from was aborted without proper return and is unable to continue",
+					sizeof("Generator passed to yield from was aborted without proper return and is unable to continue")-1);
+				rcm = (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+				goto yf_propagate;
+			}
+			rcm = PH7_VmGeneratorPrime(&(*pVm),pDel);
+			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+		}else if( pCtxFrom->iDelegateState >= 2 ){
+			/* rewind() a plain Iterator delegate */
 			rcm = VmIterCallMethod(pVm,(ph7_class_instance *)pCtxFrom->sDelegate.x.pOther,
 				"rewind",sizeof("rewind")-1,0);
 			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }

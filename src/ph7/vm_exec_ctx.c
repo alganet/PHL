@@ -2549,6 +2549,77 @@ PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenOb
 	return (ph7_generator *)pAttr->x.pOther;
 }
 /*
+ * php's zend_generator_ensure_initialized, which EVERY accessor on the class runs
+ * first: a generator that has never executed is run to its first yield before it
+ * is asked anything. `current()`/`key()`/`rewind()` did that here and the rest did
+ * not, so `valid()` answered FALSE for a generator sitting at its first yield —
+ * `while ($g->valid())` never entered the loop — and `next()`/`send()` did the
+ * PRIMING run and called it the advance, which delivers the first element twice
+ * and drops what `send()` was given.
+ */
+static sxi32 VmGeneratorEnsureInit(ph7_vm *pVm, ph7_generator *pGen)
+{
+	sxi32 rc;
+	if( pGen->pCtx->iState != PH7_CTX_STATE_CREATED ){
+		return PH7_OK;
+	}
+	rc = VmStartCtx(pVm, pGen->pCtx, 0);
+	if( rc == PH7_OK ){
+		/* php sets the flag on the INITIALIZING run itself, whatever it settled
+		 * on — so a generator whose body never yields is still rewindable, and
+		 * only a later resume takes the flag away. */
+		pGen->bAtFirstYield = 1;
+	}
+	return rc;
+}
+/*
+ * Fetch the ph7_generator behind a Generator INSTANCE (the ph7_value-taking
+ * VmGeneratorExtractCtx is the same lookup from the other side).
+ */
+static ph7_generator * VmGeneratorFromInstance(ph7_vm *pVm, ph7_class_instance *pThis)
+{
+	SyString sAttr;
+	ph7_value *pAttr;
+	if( pThis == 0 || pVm->pGeneratorClass == 0 || pThis->pClass != pVm->pGeneratorClass ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, "__ctx", 5);
+	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+	if( pAttr == 0 || (pAttr->iFlags & MEMOBJ_RES) == 0 ){
+		return 0;
+	}
+	return (ph7_generator *)pAttr->x.pOther;
+}
+/*
+ * Run a generator to its first yield if it has never executed. `yield from`
+ * needs this and NOT a rewind: php links the delegate as a child node and only
+ * initializes it, so delegating to a generator that is already suspended
+ * half-way CONTINUES from where it stands.
+ */
+PH7_PRIVATE sxi32 PH7_VmGeneratorPrime(ph7_vm *pVm, ph7_class_instance *pThis)
+{
+	ph7_generator *pGen = VmGeneratorFromInstance(pVm, pThis);
+	if( pGen == 0 || pGen->pCtx == 0 ){
+		return PH7_OK;
+	}
+	return VmGeneratorEnsureInit(pVm, pGen);
+}
+/*
+ * Whether a generator instance has already run to its end. php's
+ * zend_generator_get_iterator refuses to start a foreach over one
+ * ("Cannot traverse an already closed generator") BEFORE the rewind that would
+ * otherwise report the coarser "already run" message.
+ */
+PH7_PRIVATE int PH7_VmGeneratorIsClosed(ph7_vm *pVm, ph7_class_instance *pThis)
+{
+	ph7_generator *pGen = VmGeneratorFromInstance(pVm, pThis);
+	if( pGen == 0 || pGen->pCtx == 0 ){
+		return 0;
+	}
+	return pGen->pCtx->iState == PH7_CTX_STATE_COMPLETED
+		|| pGen->pCtx->iState == PH7_CTX_STATE_CLOSED;
+}
+/*
  * Generator::rewind() — start if CREATED, no-op otherwise.
  */
 PH7_PRIVATE int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -2561,10 +2632,17 @@ PH7_PRIVATE int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_val
 	if( pRecv == 0 ) return PH7_OK;
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ) return PH7_OK;
-	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
-		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
-		if( rc == PH7_ABORT ) return PH7_ABORT;
-		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
+	if( rc == PH7_ABORT ) return PH7_ABORT;
+	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	if( !pGen->bAtFirstYield ){
+		/* php: a generator is not rewindable, so rewind() is only allowed to mean
+		 * "initialize". Once the body has moved past its first yield — or run to
+		 * the end — php refuses, and PHL accepted in silence, so a foreach over a
+		 * partly consumed generator carried on from where it stood while php
+		 * stopped the program. */
+		return PH7_VmThrowException(pCtx, "Exception",
+			"Cannot rewind a generator that was already run");
 	}
 	return PH7_OK;
 }
@@ -2579,6 +2657,11 @@ PH7_PRIVATE int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_valu
 	SXUNUSED(nArg);
 	if( pRecv == 0 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
+	if( pGen ){
+		sxi32 rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
+		if( rc == PH7_ABORT ) return PH7_ABORT;
+		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	}
 	ph7_result_bool(pCtx, pGen && pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED);
 	return PH7_OK;
 }
@@ -2596,11 +2679,9 @@ PH7_PRIVATE int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_va
 	if( pRecv == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
-	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
-		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
-		if( rc == PH7_ABORT ) return PH7_ABORT;
-		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
-	}
+	rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
+	if( rc == PH7_ABORT ) return PH7_ABORT;
+	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
 	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
 		ph7_result_value(pCtx, &pGen->sYieldValue);
 	}else{
@@ -2622,11 +2703,9 @@ PH7_PRIVATE int vm_builtin_Generator_key(ph7_context *pCtx, int nArg, ph7_value 
 	if( pRecv == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
-	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
-		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
-		if( rc == PH7_ABORT ) return PH7_ABORT;
-		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
-	}
+	rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
+	if( rc == PH7_ABORT ) return PH7_ABORT;
+	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
 	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
 		ph7_result_value(pCtx, &pGen->sYieldKey);
 	}else{
@@ -2647,13 +2726,18 @@ PH7_PRIVATE int vm_builtin_Generator_next(ph7_context *pCtx, int nArg, ph7_value
 	if( pRecv == 0 ) return PH7_OK;
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ) return PH7_OK;
-	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
-		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
-	}else if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
-		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, 0, 0);
-	}else{
+	/* PRIMING is not the advance: php runs a never-executed body to its first
+	 * yield and then still resumes past it, so `$g->next()` on a fresh generator
+	 * lands on the SECOND element. Treating the start as the advance handed the
+	 * first one out twice. */
+	rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
+	if( rc == PH7_ABORT ) return PH7_ABORT;
+	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	if( pGen->pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
 		return PH7_OK;
 	}
+	pGen->bAtFirstYield = 0;
+	rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, 0, 0);
 	if( rc == PH7_ABORT ) return PH7_ABORT;
 	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
 	return PH7_OK;
@@ -2671,15 +2755,19 @@ PH7_PRIVATE int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
 	pSendVal = (nArg > 0) ? apArg[0] : 0;
-	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
-		/* First send starts the generator; sent value is ignored per PHP semantics */
-		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
-	}else if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
-		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, pSendVal, 0);
-	}else{
+	/* php PRIMES a never-executed generator and THEN resumes it with the value, so
+	 * a first `send('S')` reaches the first `yield`'s left-hand side and answers the
+	 * SECOND yielded value. Stopping at the priming run dropped the value entirely
+	 * and answered the first — the whole point of a coroutine's first send. */
+	rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
+	if( rc == PH7_ABORT ) return PH7_ABORT;
+	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	if( pGen->pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
+	pGen->bAtFirstYield = 0;
+	rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, pSendVal, 0);
 	if( rc == PH7_ABORT ) return PH7_ABORT;
 	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
 	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
@@ -2742,8 +2830,8 @@ PH7_PRIVATE int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_valu
 	/* A never-started generator runs to its first yield, then the exception is injected
 	 * there (PHP). Start it first; if it suspended at a yield, fall through to inject; if
 	 * it ran to completion without yielding, drop through to the propagate path below. */
-	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
-		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
+	{
+		rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
 		if( rc == PH7_ABORT ){ PH7_ClassInstanceUnref(pInj); return PH7_ABORT; }
 		if( rc == PH7_EXCEPTION ){ PH7_ClassInstanceUnref(pInj); return PH7_EXCEPTION; }
 	}
@@ -2751,6 +2839,7 @@ PH7_PRIVATE int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_valu
 		/* Inject at the suspended yield: the resume loop raises it in the body's own
 		 * frame so the generator's try/catch can catch it and resume (path 2). */
 		pGen->pCtx->pInjected = pInj;   /* borrowed; ref held here across the resume */
+		pGen->bAtFirstYield = 0;
 		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, 0, 0);
 		/* Normally the inject was consumed (cleared) at VmByteCodeExec entry; clear it
 		 * here too for the path where VmResumeCtx bails BEFORE entering the loop (e.g. the
@@ -2796,8 +2885,17 @@ PH7_PRIVATE int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_
 	if( pRecv == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	{
+		/* php initializes here too, so a generator asked for its return value
+		 * before anything else has RUN its body up to the first yield — the side
+		 * effects before that yield happen either way. */
+		sxi32 rc = VmGeneratorEnsureInit(pCtx->pVm, pGen);
+		if( rc == PH7_ABORT ) return PH7_ABORT;
+		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	}
 	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED ){
-		return PH7_VmThrowException(pCtx, "Error",
+		/* php's class here is Exception, not Error. */
+		return PH7_VmThrowException(pCtx, "Exception",
 			"Cannot get return value of a generator that hasn't returned");
 	}
 	ph7_result_value(pCtx, &pGen->pCtx->sRetValue);

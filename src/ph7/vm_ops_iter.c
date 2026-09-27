@@ -449,7 +449,18 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				ph7_class *pIteratorClass;
 				/* Check if the object implements Iterator */
 				pIteratorClass = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,FALSE,0);
-				if( pIteratorClass && PH7_VmInstanceOf(pThis->pClass,pIteratorClass) ){
+				if( PH7_VmGeneratorIsClosed(&(*pVm),pThis) ){
+					/* php refuses to START a foreach over a generator that has already
+					 * run to its end, and says so BEFORE the rewind that would report
+					 * the coarser "already run". PHL walked an EMPTY loop instead, so a
+					 * second foreach over the same generator silently did nothing. */
+					SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+					pStep = 0;
+					rc = VmThrowFromVm(&(*pVm),"Exception",
+						"Cannot traverse an already closed generator",
+						(sxu32)sizeof("Cannot traverse an already closed generator")-1);
+					PH7_DISPATCH_ITER_RC(rc,1)
+				}else if( pIteratorClass && PH7_VmInstanceOf(pThis->pClass,pIteratorClass) ){
 					/* Iterator-based iteration: call rewind() */
 					ph7_class_method *pRewind;
 					pStep->iFlags |= PH7_4EACH_STEP_ITERATOR|PH7_4EACH_STEP_FIRST;

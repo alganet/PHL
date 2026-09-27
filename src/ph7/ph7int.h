@@ -976,6 +976,11 @@ struct ph7_generator
 	ph7_value sYieldValue;    /* Last yielded value (for current()) */
 	ph7_value sYieldKey;      /* Last yielded key (for key()) */
 	sxi64 iImplicitKey;       /* Auto-increment key counter */
+	sxu8 bAtFirstYield;       /* php's ZEND_GENERATOR_AT_FIRST_YIELD: set when the
+	                           * PRIMING run suspends, cleared by every resume after
+	                           * it. It is the whole of php's rewind rule — a
+	                           * generator that has moved past its first yield, or
+	                           * finished, cannot be rewound. */
 };
 /*
  * Output control buffer entry.
@@ -5023,6 +5028,8 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue);
 PH7_PRIVATE void PH7_VmByRefArgWriteBack(ph7_vm *pVm,ph7_value *pArg,sxi32 iPreFlags);
 PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx, ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg, int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef);
 PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
+PH7_PRIVATE int PH7_VmGeneratorIsClosed(ph7_vm *pVm, ph7_class_instance *pThis);
+PH7_PRIVATE sxi32 PH7_VmGeneratorPrime(ph7_vm *pVm, ph7_class_instance *pThis);
 PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc);
 PH7_PRIVATE ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);

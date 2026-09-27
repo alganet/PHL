@@ -1593,6 +1593,17 @@ PH7_PRIVATE sxi32 PH7_VmIteratorWalk(ph7_vm *pVm,ph7_value *pObj,ProcIterStep xS
 			return SXERR_NOTIMPLEMENTED;
 		}
 	}
+	if( PH7_VmGeneratorIsClosed(&(*pVm),pThis) ){
+		/* Same refusal the foreach opcode makes: php will not START a walk over a
+		 * generator that has already run to its end, and names that rather than
+		 * the rewind. iterator_to_array() over a consumed generator answered an
+		 * EMPTY array here, and so did every `...$gen` spread. */
+		rc = VmThrowFromVm(&(*pVm),"Exception",
+			"Cannot traverse an already closed generator",
+			(sxu32)sizeof("Cannot traverse an already closed generator")-1);
+		rc = (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		goto done;
+	}
 	/* Drive rewind / valid / current / key / step / next */
 	rc = VmIterCallMethod(pVm,pThis,"rewind",sizeof("rewind")-1,0);
 	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ goto done; }
