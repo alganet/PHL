@@ -1,0 +1,816 @@
+/**
+ * SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * The four serial-day-number conversions below follow the algorithms of Scott
+ * E. Lee's calendar package -- Copyright 1993-1995, Scott E. Lee, all rights
+ * reserved; permission granted to use, copy, modify, distribute and sell so
+ * long as the above copyright and this permission statement are retained in
+ * all copies. THERE IS NO WARRANTY - USE AT YOUR OWN RISK. php's ext/calendar
+ * carries the same package, which is why the arithmetic here is reproduced
+ * step for step rather than re-derived: the overflow guards, the truncating
+ * divisions and the "some invalid dates return a positive value" contract are
+ * all observable through the PHP surface.
+ */
+#include "ph7int.h"
+/*
+ * Section:
+ *    ext/calendar: the serial day number (SDN) and the four calendars php
+ *    converts to and from it.
+ * Status:
+ *    Stable.
+ *
+ * An SDN is a plain day counter: SDN 1 is 25 November 4714 B.C. in the
+ * Gregorian calendar and SDN 2447893 is 1 January 1990. Every function in this
+ * extension is that counter with a calendar on one side of it, so the whole
+ * surface is integer arithmetic with no clock, no locale and no timezone --
+ * a Windows build answers what a POSIX one does by construction.
+ *
+ * Five rules of the package are visible from PHP and are easy to get wrong by
+ * re-deriving instead of porting:
+ *
+ *   - ZERO is the failure answer in BOTH directions. There is no year 0 in any
+ *     of these calendars, so an SDN of 0 means "no such date" and a converter
+ *     handed one answers the string "0/0/0" rather than raising anything.
+ *   - a positive SDN does not mean the input was valid. `GregorianToSdn` only
+ *     screens month 1-12 and day 1-31, so 31 February converts happily; the
+ *     package's own documented validity test is to convert back and compare.
+ *   - the year jumps from -1 to 1. The internal arithmetic adds 4801 to a
+ *     negative year and 4800 to a positive one, which is what closes that gap.
+ *   - php reads every argument as a `zend_long` and then passes it to a
+ *     routine taking `int`, so a value past 32 bits is TRUNCATED rather than
+ *     refused: `gregoriantojd(1, 1, PHP_INT_MAX)` is the year -1. CalTruncInt()
+ *     below reproduces that wrap in a defined way on every platform.
+ *   - the day-of-week is `(sdn % 7 + 8) % 7`, which is why a NEGATIVE SDN --
+ *     one every converter here rejects -- still has a weekday.
+ */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+/*
+ * php's argument path is `zend_long` -> `int` parameter, i.e. an
+ * implementation-defined narrowing that every platform it builds on
+ * implements as a two's-complement wrap. Spelled out so the answer is the
+ * same one everywhere and so no build's overflow sanitizer has an opinion.
+ */
+static int CalTruncInt(sxi64 iVal)
+{
+	sxu64 uVal = (sxu64)iVal & (sxu64)0xFFFFFFFFu;
+	if( uVal >= (sxu64)0x80000000u ){
+		return (int)(sxi32)(uVal - (sxu64)0x100000000u);
+	}
+	return (int)(sxi32)uVal;
+}
+/* The three jdtojewish() flags, spelled here as well as in the constant table
+ * (constant.c) because the Hebrew numeral builder reads them directly. */
+#define CAL_JEWISH_ADD_ALAFIM_GERESH 0x2
+#define CAL_JEWISH_ADD_ALAFIM        0x4
+#define CAL_JEWISH_ADD_GERESHAYIM    0x8
+/* The largest/smallest values the C arithmetic below is guarded against. */
+#define CAL_INT_MAX  2147483647
+#define CAL_INT_MIN  (-2147483647 - 1)
+#define CAL_I64_MAX  SXI64_HIGH
+
+/* ------------------------------------------------------------------ *
+ *  Gregorian                                                          *
+ * ------------------------------------------------------------------ */
+#define GREGOR_SDN_OFFSET  32045
+#define DAYS_PER_5_MONTHS  153
+#define DAYS_PER_4_YEARS   1461
+#define DAYS_PER_400_YEARS 146097
+
+static void CalSdnToGregorian(sxi64 sdn,int *pYear,int *pMonth,int *pDay)
+{
+	int century,year,month,day,dayOfYear;
+	sxi64 temp;
+	if( sdn <= 0 || sdn > (CAL_I64_MAX - 4 * GREGOR_SDN_OFFSET) / 4 ){
+		goto fail;
+	}
+	temp = (sdn + GREGOR_SDN_OFFSET) * 4 - 1;
+	if( temp < 0 || (temp / DAYS_PER_400_YEARS) > CAL_INT_MAX ){
+		goto fail;
+	}
+	/* Calculate the century (year/100). */
+	century = (int)(temp / DAYS_PER_400_YEARS);
+	/* Calculate the year and day of year (1 <= dayOfYear <= 366). */
+	temp = ((temp % DAYS_PER_400_YEARS) / 4) * 4 + 3;
+	if( century > ((CAL_INT_MAX / 100) - (int)(temp / DAYS_PER_4_YEARS)) ){
+		goto fail;
+	}
+	year = (century * 100) + (int)(temp / DAYS_PER_4_YEARS);
+	dayOfYear = (int)((temp % DAYS_PER_4_YEARS) / 4) + 1;
+	/* Calculate the month and day of month. */
+	temp = dayOfYear * 5 - 3;
+	month = (int)(temp / DAYS_PER_5_MONTHS);
+	day = (int)((temp % DAYS_PER_5_MONTHS) / 5) + 1;
+	/* Convert to the normal beginning of the year. */
+	if( month < 10 ){
+		month += 3;
+	}else{
+		year += 1;
+		month -= 9;
+	}
+	/* Adjust to the B.C./A.D. type numbering: there is no year 0. */
+	year -= 4800;
+	if( year <= 0 ){
+		year--;
+	}
+	*pYear = year; *pMonth = month; *pDay = day;
+	return;
+fail:
+	*pYear = 0; *pMonth = 0; *pDay = 0;
+}
+static sxi64 CalGregorianToSdn(int inputYear,int inputMonth,int inputDay)
+{
+	sxi64 year;
+	int month;
+	/* check for invalid dates */
+	if( inputYear == 0 || inputYear < -4714
+	 || inputYear > CAL_INT_MAX - 4800
+	 || inputMonth <= 0 || inputMonth > 12
+	 || inputDay <= 0 || inputDay > 31 ){
+		return 0;
+	}
+	/* check for dates before SDN 1 (Nov 25, 4714 B.C.) */
+	if( inputYear == -4714 ){
+		if( inputMonth < 11 ){
+			return 0;
+		}
+		if( inputMonth == 11 && inputDay < 25 ){
+			return 0;
+		}
+	}
+	/* Make year always a positive number. */
+	year = inputYear < 0 ? (sxi64)inputYear + 4801 : (sxi64)inputYear + 4800;
+	/* Adjust the start of the year. */
+	if( inputMonth > 2 ){
+		month = inputMonth - 3;
+	}else{
+		month = inputMonth + 9;
+		year--;
+	}
+	return (((year / 100) * DAYS_PER_400_YEARS) / 4
+			+ ((year % 100) * DAYS_PER_4_YEARS) / 4
+			+ (month * DAYS_PER_5_MONTHS + 2) / 5
+			+ inputDay
+			- GREGOR_SDN_OFFSET);
+}
+/* ------------------------------------------------------------------ *
+ *  Julian                                                             *
+ * ------------------------------------------------------------------ */
+#define JULIAN_SDN_OFFSET 32083
+
+static void CalSdnToJulian(sxi64 sdn,int *pYear,int *pMonth,int *pDay)
+{
+	int year,month,day,dayOfYear;
+	sxi64 temp,yearl;
+	if( sdn <= 0 ){
+		goto fail;
+	}
+	/* Check for overflow */
+	if( sdn > (CAL_I64_MAX - JULIAN_SDN_OFFSET * 4 + 1) / 4 ){
+		goto fail;
+	}
+	temp = sdn * 4 + (JULIAN_SDN_OFFSET * 4 - 1);
+	/* Calculate the year and day of year (1 <= dayOfYear <= 366). */
+	yearl = temp / DAYS_PER_4_YEARS;
+	if( yearl > CAL_INT_MAX || yearl < CAL_INT_MIN ){
+		goto fail;
+	}
+	year = (int)yearl;
+	dayOfYear = (int)((temp % DAYS_PER_4_YEARS) / 4) + 1;
+	/* Calculate the month and day of month. */
+	temp = dayOfYear * 5 - 3;
+	month = (int)(temp / DAYS_PER_5_MONTHS);
+	day = (int)((temp % DAYS_PER_5_MONTHS) / 5) + 1;
+	/* Convert to the normal beginning of the year. */
+	if( month < 10 ){
+		month += 3;
+	}else{
+		year += 1;
+		month -= 9;
+	}
+	/* Adjust to the B.C./A.D. type numbering. */
+	year -= 4800;
+	if( year <= 0 ){
+		year--;
+	}
+	*pYear = year; *pMonth = month; *pDay = day;
+	return;
+fail:
+	*pYear = 0; *pMonth = 0; *pDay = 0;
+}
+static sxi64 CalJulianToSdn(int inputYear,int inputMonth,int inputDay)
+{
+	sxi64 year;
+	int month;
+	/* check for invalid dates */
+	if( inputYear == 0 || inputYear < -4713
+	 || inputYear > CAL_INT_MAX - 4800
+	 || inputMonth <= 0 || inputMonth > 12
+	 || inputDay <= 0 || inputDay > 31 ){
+		return 0;
+	}
+	/* check for dates before SDN 1 (Jan 2, 4713 B.C.) */
+	if( inputYear == -4713 ){
+		if( inputMonth == 1 && inputDay == 1 ){
+			return 0;
+		}
+	}
+	/* Make year always a positive number. */
+	year = inputYear < 0 ? (sxi64)inputYear + 4801 : (sxi64)inputYear + 4800;
+	/* Adjust the start of the year. */
+	if( inputMonth > 2 ){
+		month = inputMonth - 3;
+	}else{
+		month = inputMonth + 9;
+		year--;
+	}
+	return ((year * DAYS_PER_4_YEARS) / 4
+			+ (month * DAYS_PER_5_MONTHS + 2) / 5
+			+ inputDay
+			- JULIAN_SDN_OFFSET);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Jewish                                                             *
+ * ------------------------------------------------------------------ */
+#define HALAKIM_PER_HOUR 1080
+#define HALAKIM_PER_DAY 25920
+#define HALAKIM_PER_LUNAR_CYCLE ((29 * HALAKIM_PER_DAY) + 13753)
+#define HALAKIM_PER_METONIC_CYCLE (HALAKIM_PER_LUNAR_CYCLE * (12 * 19 + 7))
+
+#define JEWISH_SDN_OFFSET 347997
+/* 12/13/887605; a greater value overflows the molad arithmetic below. */
+#define JEWISH_SDN_MAX 324542846L
+#define NEW_MOON_OF_CREATION 31524
+
+#define CAL_SUNDAY    0
+#define CAL_MONDAY    1
+#define CAL_TUESDAY   2
+#define CAL_WEDNESDAY 3
+#define CAL_FRIDAY    5
+
+#define CAL_NOON      (18 * HALAKIM_PER_HOUR)
+#define CAL_AM3_11_20 ((9 * HALAKIM_PER_HOUR) + 204)
+#define CAL_AM9_32_43 ((15 * HALAKIM_PER_HOUR) + 589)
+
+static const int aMonthsPerYear[19] = {
+	12,12,13,12,12,13,12,13,12,12,13,12,12,13,12,12,13,12,13
+};
+static const int aYearOffset[19] = {
+	0,12,24,37,49,61,74,86,99,111,123,136,148,160,173,185,197,210,222
+};
+/* The month names in Hebrew, ISO-8859-8 -- php's own bytes. A leap year has
+ * an Adar I and an Adar II; a regular one has neither, only "Adar" in slot 7. */
+static const char * const azJewishHebMonthLeap[14] = {
+	"","\xFA\xF9\xF8\xE9","\xE7\xF9\xE5\xEF","\xEB\xF1\xEC\xE5","\xE8\xE1\xFA",
+	"\xF9\xE1\xE8","\xE0\xE3\xF8 \xE0'","\xE0\xE3\xF8 \xE1'","\xF0\xE9\xF1\xEF",
+	"\xE0\xE9\xE9\xF8","\xF1\xE9\xE5\xEF","\xFA\xEE\xE5\xE6","\xE0\xE1",
+	"\xE0\xEC\xE5\xEC"
+};
+static const char * const azJewishHebMonth[14] = {
+	"","\xFA\xF9\xF8\xE9","\xE7\xF9\xE5\xEF","\xEB\xF1\xEC\xE5","\xE8\xE1\xFA",
+	"\xF9\xE1\xE8","","\xE0\xE3\xF8","\xF0\xE9\xF1\xEF","\xE0\xE9\xE9\xF8",
+	"\xF1\xE9\xE5\xEF","\xFA\xEE\xE5\xE6","\xE0\xE1","\xE0\xEC\xE5\xEC"
+};
+/* Which of the two name tables a Jewish year takes. */
+#define CAL_JEWISH_HEB_MONTH_NAME(y) \
+	((aMonthsPerYear[((y)-1) % 19] == 13) ? azJewishHebMonthLeap : azJewishHebMonth)
+/*
+ * Given the year within the 19-year metonic cycle and the time of the molad
+ * (new moon) that starts it, find the day Tishri 1 (Rosh Ha-Shanah) actually
+ * falls on. Four rules (the dehiyyot) can push it up to two days later.
+ */
+static sxi64 CalTishri1(int metonicYear,sxi64 moladDay,sxi64 moladHalakim)
+{
+	sxi64 tishri1 = moladDay;
+	int dow = (int)(tishri1 % 7);
+	int leapYear = metonicYear == 2 || metonicYear == 5 || metonicYear == 7
+		|| metonicYear == 10 || metonicYear == 13 || metonicYear == 16
+		|| metonicYear == 18;
+	int lastWasLeapYear = metonicYear == 3 || metonicYear == 6
+		|| metonicYear == 8 || metonicYear == 11 || metonicYear == 14
+		|| metonicYear == 17 || metonicYear == 0;
+	/* Apply rules 2, 3 and 4. */
+	if( (moladHalakim >= CAL_NOON)
+	 || ((!leapYear) && dow == CAL_TUESDAY && moladHalakim >= CAL_AM3_11_20)
+	 || (lastWasLeapYear && dow == CAL_MONDAY && moladHalakim >= CAL_AM9_32_43) ){
+		tishri1++;
+		dow++;
+		if( dow == 7 ){
+			dow = 0;
+		}
+	}
+	/* Rule 1 comes last because it can add a second day on top. */
+	if( dow == CAL_WEDNESDAY || dow == CAL_FRIDAY || dow == CAL_SUNDAY ){
+		tishri1++;
+	}
+	return tishri1;
+}
+/*
+ * The molad that starts a metonic cycle. The intermediate product needs more
+ * than 32 bits, so it is carried in two halves exactly as the package does.
+ */
+static void CalMoladOfMetonicCycle(int metonicCycle,sxi64 *pMoladDay,sxi64 *pMoladHalakim)
+{
+	sxu64 r1,r2,d1,d2;
+	sxi64 chk;
+	/* Start with the time of the first molad after creation. */
+	r1 = NEW_MOON_OF_CREATION;
+	chk = (sxi64)metonicCycle;
+	if( chk > (CAL_I64_MAX - NEW_MOON_OF_CREATION) / (HALAKIM_PER_METONIC_CYCLE & 0xFFFF) ){
+		*pMoladDay = 0; *pMoladHalakim = 0;
+		return;
+	}
+	/* metonicCycle * HALAKIM_PER_METONIC_CYCLE, upper 32 bits in r2 and lower
+	 * 16 in r1. */
+	r1 += (sxu64)chk * (HALAKIM_PER_METONIC_CYCLE & 0xFFFF);
+	if( chk > (sxi64)((CAL_I64_MAX - (sxi64)(r1 >> 16)) / ((HALAKIM_PER_METONIC_CYCLE >> 16) & 0xFFFF)) ){
+		*pMoladDay = 0; *pMoladHalakim = 0;
+		return;
+	}
+	r2 = r1 >> 16;
+	r2 += (sxu64)chk * ((HALAKIM_PER_METONIC_CYCLE >> 16) & 0xFFFF);
+	/* r2r1 / HALAKIM_PER_DAY: remainder in r1, quotient halves in d2/d1. */
+	d2 = r2 / HALAKIM_PER_DAY;
+	r2 -= d2 * HALAKIM_PER_DAY;
+	r1 = (r2 << 16) | (r1 & 0xFFFF);
+	d1 = r1 / HALAKIM_PER_DAY;
+	r1 -= d1 * HALAKIM_PER_DAY;
+	*pMoladDay = (sxi64)((d2 << 16) | d1);
+	*pMoladHalakim = (sxi64)r1;
+}
+/*
+ * Find the molad of Tishri nearest a day number -- "nearest" in the package's
+ * own biased sense: for a day in the first two months it answers the molad at
+ * the START of the year, from the fourth month on the one at the END, and in
+ * the third month either, because both are needed there anyway.
+ */
+static void CalFindTishriMolad(sxi64 inputDay,int *pMetonicCycle,int *pMetonicYear,
+	sxi64 *pMoladDay,sxi64 *pMoladHalakim)
+{
+	sxi64 moladDay,moladHalakim;
+	int metonicCycle,metonicYear;
+	/* Estimate the metonic cycle number. A metonic cycle is 6939.6896 days,
+	 * not 6940, so this can only ever UNDERestimate; the loop corrects it. */
+	metonicCycle = (int)((inputDay + 310) / 6940);
+	CalMoladOfMetonicCycle(metonicCycle,&moladDay,&moladHalakim);
+	while( moladDay < inputDay - 6940 + 310 ){
+		metonicCycle++;
+		moladHalakim += HALAKIM_PER_METONIC_CYCLE;
+		moladDay += moladHalakim / HALAKIM_PER_DAY;
+		moladHalakim = moladHalakim % HALAKIM_PER_DAY;
+	}
+	/* Walk forward year by year to the molad of Tishri closest to the date. */
+	for( metonicYear = 0 ; metonicYear < 18 ; metonicYear++ ){
+		if( moladDay > inputDay - 74 ){
+			break;
+		}
+		moladHalakim += HALAKIM_PER_LUNAR_CYCLE * aMonthsPerYear[metonicYear];
+		moladDay += moladHalakim / HALAKIM_PER_DAY;
+		moladHalakim = moladHalakim % HALAKIM_PER_DAY;
+	}
+	*pMetonicCycle = metonicCycle;
+	*pMetonicYear = metonicYear;
+	*pMoladDay = moladDay;
+	*pMoladHalakim = moladHalakim;
+}
+/*
+ * The first day of a Jewish year, and the molad that starts it.
+ *
+ * pTishri1 is an `int` on purpose: php's own FindStartOfYear declares it that
+ * way, so a year large enough to push the day count past 32 bits comes back
+ * TRUNCATED and every date built on it inherits the wrap. It is reachable --
+ * `jewishtojd(1, 1, 2147483645)` answers a negative serial day number in php
+ * -- so the narrowing is part of the contract rather than a bug to fix here.
+ */
+static void CalFindStartOfYear(int year,int *pMetonicCycle,int *pMetonicYear,
+	sxi64 *pMoladDay,sxi64 *pMoladHalakim,int *pTishri1)
+{
+	*pMetonicCycle = (year - 1) / 19;
+	*pMetonicYear = (year - 1) % 19;
+	CalMoladOfMetonicCycle(*pMetonicCycle,pMoladDay,pMoladHalakim);
+	*pMoladHalakim += (sxi64)HALAKIM_PER_LUNAR_CYCLE * aYearOffset[*pMetonicYear];
+	*pMoladDay += *pMoladHalakim / HALAKIM_PER_DAY;
+	*pMoladHalakim = *pMoladHalakim % HALAKIM_PER_DAY;
+	*pTishri1 = CalTruncInt(CalTishri1(*pMetonicYear,*pMoladDay,*pMoladHalakim));
+}
+static void CalSdnToJewish(sxi64 sdn,int *pYear,int *pMonth,int *pDay)
+{
+	sxi64 inputDay,day,halakim;
+	int tishri1,tishri1After;
+	int metonicCycle,metonicYear,yearLength;
+	if( sdn <= JEWISH_SDN_OFFSET || sdn > JEWISH_SDN_MAX ){
+		*pYear = 0; *pMonth = 0; *pDay = 0;
+		return;
+	}
+	inputDay = sdn - JEWISH_SDN_OFFSET;
+	CalFindTishriMolad(inputDay,&metonicCycle,&metonicYear,&day,&halakim);
+	tishri1 = CalTruncInt(CalTishri1(metonicYear,day,halakim));
+	if( inputDay >= tishri1 ){
+		/* It found Tishri 1 at the start of the year. */
+		*pYear = metonicCycle * 19 + metonicYear + 1;
+		if( inputDay < tishri1 + 59 ){
+			/* The first 59 days are the same whatever the year's length is. */
+			if( inputDay < tishri1 + 30 ){
+				*pMonth = 1;
+				*pDay = (int)(inputDay - tishri1 + 1);
+			}else{
+				*pMonth = 2;
+				*pDay = (int)(inputDay - tishri1 - 29);
+			}
+			return;
+		}
+		/* Past that the year's length decides, so find the next Tishri 1. */
+		halakim += (sxi64)HALAKIM_PER_LUNAR_CYCLE * aMonthsPerYear[metonicYear];
+		day += halakim / HALAKIM_PER_DAY;
+		halakim = halakim % HALAKIM_PER_DAY;
+		tishri1After = CalTruncInt(CalTishri1((metonicYear + 1) % 19,day,halakim));
+	}else{
+		/* It found Tishri 1 at the end of the year. */
+		*pYear = metonicCycle * 19 + metonicYear;
+		if( inputDay >= tishri1 - 177 ){
+			/* One of the last 6 months, whose lengths never vary. */
+			if( inputDay > tishri1 - 30 ){
+				*pMonth = 13; *pDay = (int)(inputDay - tishri1 + 30);
+			}else if( inputDay > tishri1 - 60 ){
+				*pMonth = 12; *pDay = (int)(inputDay - tishri1 + 60);
+			}else if( inputDay > tishri1 - 89 ){
+				*pMonth = 11; *pDay = (int)(inputDay - tishri1 + 89);
+			}else if( inputDay > tishri1 - 119 ){
+				*pMonth = 10; *pDay = (int)(inputDay - tishri1 + 119);
+			}else if( inputDay > tishri1 - 148 ){
+				*pMonth = 9;  *pDay = (int)(inputDay - tishri1 + 148);
+			}else{
+				*pMonth = 8;  *pDay = (int)(inputDay - tishri1 + 178);
+			}
+			return;
+		}else{
+			if( aMonthsPerYear[(*pYear - 1) % 19] == 13 ){
+				*pMonth = 7;
+				*pDay = (int)(inputDay - tishri1 + 207);
+				if( *pDay > 0 ) return;
+				(*pMonth)--; (*pDay) += 30;
+				if( *pDay > 0 ) return;
+				(*pMonth)--; (*pDay) += 30;
+			}else{
+				*pMonth = 7;
+				*pDay = (int)(inputDay - tishri1 + 207);
+				if( *pDay > 0 ) return;
+				(*pMonth) -= 2; (*pDay) += 30;
+			}
+			if( *pDay > 0 ) return;
+			(*pMonth)--; (*pDay) += 29;
+			if( *pDay > 0 ) return;
+			/* Kislev or Heshvan: the year's length is needed after all. */
+			tishri1After = tishri1;
+			CalFindTishriMolad(day - 365,&metonicCycle,&metonicYear,&day,&halakim);
+			tishri1 = CalTruncInt(CalTishri1(metonicYear,day,halakim));
+		}
+	}
+	yearLength = CalTruncInt((sxi64)tishri1After - tishri1);
+	day = inputDay - tishri1 - 29;
+	if( yearLength == 355 || yearLength == 385 ){
+		/* Heshvan has 30 days */
+		if( day <= 30 ){
+			*pMonth = 2; *pDay = (int)day;
+			return;
+		}
+		day -= 30;
+	}else{
+		/* Heshvan has 29 days */
+		if( day <= 29 ){
+			*pMonth = 2; *pDay = (int)day;
+			return;
+		}
+		day -= 29;
+	}
+	/* It has to be Kislev. */
+	*pMonth = 3;
+	*pDay = (int)day;
+}
+static sxi64 CalJewishToSdn(int year,int month,int day)
+{
+	sxi64 sdn,moladDay,moladHalakim;
+	int tishri1,tishri1After;
+	int metonicCycle,metonicYear,yearLength,lengthOfAdarIAndII;
+	if( year <= 0 || year >= CAL_INT_MAX - 1 || day <= 0 || day > 30 ){
+		return 0;
+	}
+	switch( month ){
+		case 1:
+		case 2:
+			/* Tishri or Heshvan -- the year's length is not needed. */
+			CalFindStartOfYear(year,&metonicCycle,&metonicYear,
+				&moladDay,&moladHalakim,&tishri1);
+			sdn = CalTruncInt(month == 1
+				? (sxi64)tishri1 + day - 1 : (sxi64)tishri1 + day + 29);
+			break;
+		case 3:
+			/* Kislev -- the one month whose start needs the year's length. */
+			CalFindStartOfYear(year,&metonicCycle,&metonicYear,
+				&moladDay,&moladHalakim,&tishri1);
+			moladHalakim += (sxi64)HALAKIM_PER_LUNAR_CYCLE * aMonthsPerYear[metonicYear];
+			moladDay += moladHalakim / HALAKIM_PER_DAY;
+			moladHalakim = moladHalakim % HALAKIM_PER_DAY;
+			tishri1After = CalTruncInt(CalTishri1((metonicYear + 1) % 19,moladDay,moladHalakim));
+			yearLength = CalTruncInt((sxi64)tishri1After - tishri1);
+			sdn = CalTruncInt((yearLength == 355 || yearLength == 385)
+				? (sxi64)tishri1 + day + 59 : (sxi64)tishri1 + day + 58);
+			break;
+		case 4:
+		case 5:
+		case 6:
+			/* Tevet, Shevat or Adar I -- counted back from the next year. */
+			CalFindStartOfYear(year + 1,&metonicCycle,&metonicYear,
+				&moladDay,&moladHalakim,&tishri1After);
+			lengthOfAdarIAndII = aMonthsPerYear[(year - 1) % 19] == 12 ? 29 : 59;
+			if( month == 4 ){
+				sdn = CalTruncInt((sxi64)tishri1After + day - lengthOfAdarIAndII - 237);
+			}else if( month == 5 ){
+				sdn = CalTruncInt((sxi64)tishri1After + day - lengthOfAdarIAndII - 208);
+			}else{
+				sdn = CalTruncInt((sxi64)tishri1After + day - lengthOfAdarIAndII - 178);
+			}
+			break;
+		default:
+			/* Adar II or later -- also counted back from the next year. */
+			CalFindStartOfYear(year + 1,&metonicCycle,&metonicYear,
+				&moladDay,&moladHalakim,&tishri1After);
+			switch( month ){
+				case 7:  sdn = CalTruncInt((sxi64)tishri1After + day - 207); break;
+				case 8:  sdn = CalTruncInt((sxi64)tishri1After + day - 178); break;
+				case 9:  sdn = CalTruncInt((sxi64)tishri1After + day - 148); break;
+				case 10: sdn = CalTruncInt((sxi64)tishri1After + day - 119); break;
+				case 11: sdn = CalTruncInt((sxi64)tishri1After + day - 89);  break;
+				case 12: sdn = CalTruncInt((sxi64)tishri1After + day - 60);  break;
+				case 13: sdn = CalTruncInt((sxi64)tishri1After + day - 30);  break;
+				default: return 0;
+			}
+	}
+	return sdn + JEWISH_SDN_OFFSET;
+}
+
+/* ------------------------------------------------------------------ *
+ *  French republican                                                  *
+ * ------------------------------------------------------------------ */
+#define FRENCH_SDN_OFFSET  2375474
+#define FRENCH_DAYS_PER_MONTH 30
+#define FRENCH_FIRST_VALID 2375840
+#define FRENCH_LAST_VALID  2380952
+
+static void CalSdnToFrench(sxi64 sdn,int *pYear,int *pMonth,int *pDay)
+{
+	sxi64 temp;
+	int dayOfYear;
+	if( sdn < FRENCH_FIRST_VALID || sdn > FRENCH_LAST_VALID ){
+		*pYear = 0; *pMonth = 0; *pDay = 0;
+		return;
+	}
+	temp = (sdn - FRENCH_SDN_OFFSET) * 4 - 1;
+	*pYear = (int)(temp / DAYS_PER_4_YEARS);
+	dayOfYear = (int)((temp % DAYS_PER_4_YEARS) / 4);
+	*pMonth = dayOfYear / FRENCH_DAYS_PER_MONTH + 1;
+	*pDay = dayOfYear % FRENCH_DAYS_PER_MONTH + 1;
+}
+static sxi64 CalFrenchToSdn(int year,int month,int day)
+{
+	/* The calendar only ever ran 14 years, and the package refuses the rest. */
+	if( year < 1 || year > 14 || month < 1 || month > 13 || day < 1 || day > 30 ){
+		return 0;
+	}
+	return (((sxi64)year * DAYS_PER_4_YEARS) / 4
+			+ (month - 1) * FRENCH_DAYS_PER_MONTH
+			+ day
+			+ FRENCH_SDN_OFFSET);
+}
+/* ------------------------------------------------------------------ *
+ *  The PHP surface                                                    *
+ * ------------------------------------------------------------------ */
+/*
+ * Every `<calendar>tojd` builtin has the same shape: three int arguments read
+ * in php's (month, day, year) ORDER and handed to the converter in the
+ * package's (year, month, day) one, each narrowed to an int on the way.
+ */
+static int CalToJdCommon(ph7_context *pCtx,ph7_value **apArg,
+	sxi64 (*xToSdn)(int,int,int))
+{
+	int month = CalTruncInt(ph7_value_to_int64(apArg[0]));
+	int day   = CalTruncInt(ph7_value_to_int64(apArg[1]));
+	int year  = CalTruncInt(ph7_value_to_int64(apArg[2]));
+	ph7_result_int64(pCtx,xToSdn(year,month,day));
+	return PH7_OK;
+}
+/* And every `jdto<calendar>` the same "month/day/year" string, "0/0/0" when
+ * the SDN falls outside the calendar. */
+static int CalFromJdCommon(ph7_context *pCtx,ph7_value **apArg,
+	void (*xFromSdn)(sxi64,int *,int *,int *))
+{
+	int year,month,day;
+	xFromSdn(ph7_value_to_int64(apArg[0]),&year,&month,&day);
+	ph7_result_string_format(pCtx,"%d/%d/%d",month,day,year);
+	return PH7_OK;
+}
+/*
+ * int gregoriantojd(int $month, int $day, int $year)
+ */
+PH7_PRIVATE int PH7_builtin_gregoriantojd(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 3 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	return CalToJdCommon(pCtx,apArg,CalGregorianToSdn);
+}
+/*
+ * string jdtogregorian(int $julian_day)
+ */
+PH7_PRIVATE int PH7_builtin_jdtogregorian(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"0/0/0",(int)sizeof("0/0/0") - 1);
+		return PH7_OK;
+	}
+	return CalFromJdCommon(pCtx,apArg,CalSdnToGregorian);
+}
+/*
+ * int juliantojd(int $month, int $day, int $year)
+ */
+PH7_PRIVATE int PH7_builtin_juliantojd(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 3 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	return CalToJdCommon(pCtx,apArg,CalJulianToSdn);
+}
+/*
+ * string jdtojulian(int $julian_day)
+ */
+PH7_PRIVATE int PH7_builtin_jdtojulian(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"0/0/0",(int)sizeof("0/0/0") - 1);
+		return PH7_OK;
+	}
+	return CalFromJdCommon(pCtx,apArg,CalSdnToJulian);
+}
+/*
+ * int frenchtojd(int $month, int $day, int $year)
+ */
+PH7_PRIVATE int PH7_builtin_frenchtojd(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 3 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	return CalToJdCommon(pCtx,apArg,CalFrenchToSdn);
+}
+/*
+ * string jdtofrench(int $julian_day)
+ */
+PH7_PRIVATE int PH7_builtin_jdtofrench(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"0/0/0",(int)sizeof("0/0/0") - 1);
+		return PH7_OK;
+	}
+	return CalFromJdCommon(pCtx,apArg,CalSdnToFrench);
+}
+/*
+ * int jewishtojd(int $month, int $day, int $year)
+ *  The one converter with a range check of its own: php screens the YEAR
+ *  against the int range instead of truncating it, so the diagnostic here
+ *  exists where the other three silently wrap.
+ */
+PH7_PRIVATE int PH7_builtin_jewishtojd(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iYear;
+	if( nArg < 3 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	iYear = ph7_value_to_int64(apArg[2]);
+	if( iYear > CAL_INT_MAX || iYear < CAL_INT_MIN ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"jewishtojd(): Argument #3 ($year) must be between %d and %d",
+			CAL_INT_MIN,CAL_INT_MAX);
+	}
+	return CalToJdCommon(pCtx,apArg,CalJewishToSdn);
+}
+/*
+ * The Hebrew numeral spelling of a number 1..9999, in ISO-8859-8 -- php's own
+ * `heb_number_to_chars`. The result is NOT unique: 5 and 5000 both spell to a
+ * single he, which is why php's own comment says to use the numeric form for
+ * calculations. Answers 0 (and writes nothing) for a number outside the range.
+ *
+ * zBuf must hold at least 18 bytes plus the terminator, which is what the
+ * widest spelling (four alafim characters, the " alafim " word, tav-tav-...)
+ * can reach.
+ */
+#define CAL_HEB_BUF 24
+static int CalHebNumberToChars(int n,int fl,char *zBuf)
+{
+	/* "0" then the 22 letters of the alphabet, ISO-8859-8. */
+	static const char zAlefBet[24] =
+		"0\xE0\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEB\xEC\xEE\xF0\xF1\xF2\xF4\xF6\xF7\xF8\xF9\xFA";
+	char *p,*zEndOfAlafim;
+	p = zEndOfAlafim = zBuf;
+	/* Prevents the option breaking the jewish beliefs, php says. */
+	if( n > 9999 || n < 1 ){
+		zBuf[0] = 0;
+		return 0;
+	}
+	/* alafim (thousands) case */
+	if( n / 1000 ){
+		*p++ = zAlefBet[n / 1000];
+		if( CAL_JEWISH_ADD_ALAFIM_GERESH & fl ){
+			*p++ = '\'';
+		}
+		if( CAL_JEWISH_ADD_ALAFIM & fl ){
+			/* The word "alafim" itself, spaced on both sides. */
+			SyMemcpy(" \xE0\xEC\xF4\xE9\xED ",p,7);
+			p += 7;
+		}
+		zEndOfAlafim = p;
+		n = n % 1000;
+	}
+	/* tav-tav (tav=400) case */
+	while( n >= 400 ){
+		*p++ = zAlefBet[22];
+		n -= 400;
+	}
+	/* meot (hundreds) case */
+	if( n >= 100 ){
+		*p++ = zAlefBet[18 + n / 100];
+		n = n % 100;
+	}
+	if( n == 15 || n == 16 ){
+		/* tet-vav and tet-zayin: 15 and 16 are never spelled with the divine
+		 * name's two letters. */
+		*p++ = zAlefBet[9];
+		*p++ = zAlefBet[n - 9];
+	}else{
+		/* asarot (tens) case */
+		if( n >= 10 ){
+			*p++ = zAlefBet[9 + n / 10];
+			n = n % 10;
+		}
+		/* yehidot (ones) case */
+		if( n > 0 ){
+			*p++ = zAlefBet[n];
+		}
+	}
+	if( CAL_JEWISH_ADD_GERESHAYIM & fl ){
+		switch( p - zEndOfAlafim ){
+			case 0:
+				break;
+			case 1:
+				*p++ = '\'';
+				break;
+			default:
+				/* The gershayim goes BEFORE the last letter, so that letter
+				 * moves one place along. */
+				*p = *(p - 1);
+				*(p - 1) = '"';
+				p++;
+				break;
+		}
+	}
+	*p = 0;
+	return (int)(p - zBuf);
+}
+/*
+ * string jdtojewish(int $julian_day, bool $hebrew = false, int $flags = 0)
+ */
+PH7_PRIVATE int PH7_builtin_jdtojewish(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	char zDay[CAL_HEB_BUF],zYear[CAL_HEB_BUF];
+	int year,month,day,fl = 0,bHeb = 0;
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"0/0/0",(int)sizeof("0/0/0") - 1);
+		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		bHeb = ph7_value_to_bool(apArg[1]);
+		if( nArg > 2 ){
+			fl = (int)ph7_value_to_int64(apArg[2]);
+		}
+	}
+	CalSdnToJewish(ph7_value_to_int64(apArg[0]),&year,&month,&day);
+	if( !bHeb ){
+		ph7_result_string_format(pCtx,"%d/%d/%d",month,day,year);
+		return PH7_OK;
+	}
+	if( year <= 0 || year > 9999 ){
+		/* The Hebrew spelling has no numeral for a year outside this range,
+		 * and php refuses rather than answering an ambiguous one. */
+		return PH7_VmThrowException(pCtx,"ValueError","Year out of range (0-9999)");
+	}
+	CalHebNumberToChars(day,fl,zDay);
+	CalHebNumberToChars(year,fl,zYear);
+	ph7_result_string_format(pCtx,"%s %s %s",
+		zDay,CAL_JEWISH_HEB_MONTH_NAME(year)[month],zYear);
+	return PH7_OK;
+}
+#endif /* PH7_DISABLE_BUILTIN_FUNC */

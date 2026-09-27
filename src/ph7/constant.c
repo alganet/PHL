@@ -156,6 +156,25 @@ static void PH7_CAL_GREGORIAN_Const(ph7_value *pVal,void *pUnused)
 	ph7_value_int(pVal,0);
 }
 /*
+ * ext/calendar: the three flags jdtojewish()'s Hebrew spelling reads. They are
+ * a bit set, so a caller may ask for any combination of them.
+ */
+static void PH7_CAL_JEWISH_ADD_ALAFIM_GERESH_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,2);
+}
+static void PH7_CAL_JEWISH_ADD_ALAFIM_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,4);
+}
+static void PH7_CAL_JEWISH_ADD_GERESHAYIM_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,8);
+}
+/*
  * PHP_INT_MIN (php 7.0)
  * Expand the smallest integer supported.
  */
@@ -2497,6 +2516,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"INPUT_ENV",                   PH7_INPUT_ENV_Const },
 	{"INPUT_SERVER",                PH7_INPUT_SERVER_Const },
 	{"CAL_GREGORIAN",        PH7_CAL_GREGORIAN_Const },
+	{"CAL_JEWISH_ADD_ALAFIM_GERESH", PH7_CAL_JEWISH_ADD_ALAFIM_GERESH_Const },
+	{"CAL_JEWISH_ADD_ALAFIM",        PH7_CAL_JEWISH_ADD_ALAFIM_Const },
+	{"CAL_JEWISH_ADD_GERESHAYIM",    PH7_CAL_JEWISH_ADD_GERESHAYIM_Const },
 	{"PHP_INT_MAX",          PH7_INTMAX_Const   },
 	{"MAXINT",               PH7_INTMAX_Const   },
 	{"PHP_INT_MIN",          PH7_INTMIN_Const   },
