@@ -853,7 +853,7 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,dt_parsed *p)
 {
 	const char *z = *pz;
-	if( z < zEnd && (z[0]=='T' || z[0]==' ') && z+1 < zEnd && SyisDigit(z[1]) ){
+	if( z < zEnd && (z[0]=='T' || z[0]==' ' || z[0]=='.') && z+1 < zEnd && SyisDigit(z[1]) ){
 		const char *zTime = &z[1];
 		int rc;
 		{
@@ -1286,13 +1286,40 @@ static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)
 }
 /*
  * php's SEPARATOR bytes -- the run between two tokens, and it is wider than a
- * space: NUL, tab, newline, space, comma and the full stop are all skipped
- * there, which is what lets a date string keep the newline of the file it was
- * read from and what makes `12:00.UTC` a time with a zone behind it.
+ * space: NUL, tab, newline, space and comma are all skipped there, which is
+ * what lets a date string keep the newline of the file it was read from. The
+ * full stop is one too but only in places (DtIsSepAt below).
  */
 static int DtIsSep(int c)
 {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\0' || c == ',' || c == '.';
+	return c == ' ' || c == '\t' || c == '\n' || c == '\0' || c == ',';
+}
+/*
+ * php's `space` -- the run allowed INSIDE one token, between a count and its
+ * unit, a sign and its digits, or `day` and the `of` behind it. It is narrower
+ * than the run between two tokens: `2 days` and `2\tdays` are php's, while
+ * `2,days`, `2.days` and `2\ndays` are not a relative token at all there.
+ */
+static int DtIsSpace(int c)
+{
+	return c == ' ' || c == '\t';
+}
+/*
+ * ...and the full stop, which is one only where a DIGIT does not follow it. A
+ * dot BETWEEN two digit runs binds them into a single token attempt -- php reads
+ * `5218.1268` as a dotted date, fails on its field widths and refuses the whole
+ * of it, where the same two runs with a space between them are a year and a year
+ * -- so stepping over it there would answer a string php declines.
+ */
+static int DtIsSepAt(const char *z,const char *zEnd)
+{
+	if( z >= zEnd ){
+		return 0;
+	}
+	if( z[0] == '.' ){
+		return &z[1] >= zEnd || !SyisDigit(z[1]);
+	}
+	return DtIsSep((unsigned char)z[0]);
 }
 /*
  * ...and the wider set php tolerates at the ENDS of the string, where a
@@ -1376,7 +1403,13 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
 	sxi64 y = 0;
 	int rcT;
-#define MDSKIPWS() while( z < zEnd && DtIsSep((unsigned char)z[0]) ){ z++; }
+/* php's textual-date rule spells its run with the full stop in it (`5.january`
+ * and `january.5.2020` are dates there) and without the comma -- except between
+ * the DAY and the YEAR, which is where the comma everyone writes goes
+ * (`January 15, 2020`, and `January, 15 2020` is no date at all). */
+#define MDSKIPWS() while( z < zEnd && (DtIsSpace((unsigned char)z[0]) || z[0]=='.') ){ z++; }
+#define MDSKIPYR() while( z < zEnd && (DtIsSpace((unsigned char)z[0]) || z[0]=='.' \
+	|| z[0]==',') ){ z++; }
 	if( (mo = DtMatchMonth(z,zEnd,&adv)) != 0 ){
 		/* MonthName [Day] [Year]. A 4-digit number here is the YEAR, not the day
 		 * ("January 2020" is month+year, day defaults); a 1-2 digit number is the day. */
@@ -1390,7 +1423,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 				d = DtRead1or2(z,zEnd,&adv); z += adv;
 				if( DtIsOrdinal(z,zEnd) ){ z += 2; }
 				haveDay = 1;
-				MDSKIPWS();
+				MDSKIPYR();
 			}
 		}
 	}else if( SyisDigit(z[0]) ){
@@ -1555,9 +1588,11 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 	/* php's whitespace at the two ENDS is wider than the run between tokens
 	 * (DtIsEdgeSep); the positions a refusal reports stay the original string's,
 	 * since only the walk moves. */
-	while( z < zEnd && DtIsEdgeSep((unsigned char)z[0]) ){ z++; }
+	while( z < zEnd && (DtIsEdgeSep((unsigned char)z[0]) || z[0] == '.') ){ z++; }
 	while( zEnd > z && DtIsEdgeSep((unsigned char)zEnd[-1]) ){ zEnd--; }
-#define DT_SKIP_WS() while( z < zEnd && DtIsSep((unsigned char)z[0]) ){ z++; }
+#define DT_SKIP_WS() while( DtIsSepAt(z,zEnd) ){ z++; }
+/* ...and the run INSIDE one token, which is php's narrower `space`. */
+#define DT_SPACE() while( z < zEnd && DtIsSpace((unsigned char)z[0]) ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
 	DT_SKIP_WS();
@@ -1695,10 +1730,10 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			const char *zSave = z;
 			int bFirst = (SyToLower((unsigned char)z[0]) == 'f');
 			z += bFirst ? 5 : 4;
-			DT_SKIP_WS();
+			DT_SPACE();
 			if( DT_LOWEQ("day",3) ){
 				z += 3;
-				DT_SKIP_WS();
+				DT_SPACE();
 				if( DT_LOWEQ("of",2) ){
 					z += 2;
 					p->iFirstLast = bFirst ? 1 : 2;
@@ -1720,7 +1755,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			int adv,dow;
 			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){
 				z += nWord;
-				DT_SKIP_WS();
+				DT_SPACE();
 				bHavePrefix = 1;
 			}
 			dow = DtMatchWeekdayEx(z,zEnd,&adv,bHavePrefix);
@@ -1733,7 +1768,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				 * MONTH. The digit spelling does not reach it -- `1 monday of` is
 				 * a refusal there -- and neither does a bare name. */
 				const char *zOf = &z[adv];
-				while( zOf < zEnd && DtIsSep((unsigned char)zOf[0]) ){ zOf++; }
+				while( zOf < zEnd && DtIsSpace((unsigned char)zOf[0]) ){ zOf++; }
 				if( zEnd - zOf >= 2 && SyStrnicmp(zOf,"of",2) == 0
 				 && (zEnd - zOf == 2 || !SyisAlpha(zOf[2])) ){
 					DtUnhaveTime(p);
@@ -1791,7 +1826,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			int bNav = 0,nWord;
 			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){
 				z += nWord;
-				DT_SKIP_WS();
+				DT_SPACE();
 				if( bNav && DT_LOWEQ("week",4) ){
 					z += 4;
 					p->rd = DtWAdd(p->rd,DtWMul(iCnt,7));
@@ -1890,8 +1925,9 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				z++;
 				/* php's lexer takes the sign as its own token, so whitespace may
 				 * follow it: "1 year + 3 months" is a relative sequence there and
-				 * was a parse FAILURE here. */
-				DT_SKIP_WS();
+				 * was a parse FAILURE here. Its `space` alone, though: `+,3 days`
+				 * and `+.3 days` are refusals there. */
+				DT_SPACE();
 			}
 			if( z >= zEnd || !SyisDigit(z[0]) ){ return (int)(zNumStart - zIn) + 1; }
 			zDig = z;
@@ -1901,7 +1937,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				z++;
 			}
 			if( neg ){ v = -v; }
-			DT_SKIP_WS();
+			DT_SPACE();
 			/* php's unit words, sub-second ones first: they are all one rule (see
 			 * DtRelUnit), and the microseconds accumulate apart from the seconds
 			 * so `-500 microseconds` from midnight borrows a whole second. */
