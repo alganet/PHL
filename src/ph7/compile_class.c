@@ -1266,12 +1266,34 @@ loop:
 			 * compiler would otherwise run into the hook tokens. */
 			SyToken *pScan = pGen->pIn;
 			sxi32 iNest = 0;
+			int bFuncSeen = 0; /* a `function` keyword stands at depth 0 */
 			while( pScan < pGen->pEnd ){
-				if( pScan->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
+				if( (pScan->nType & PH7_TK_KEYWORD) && iNest <= 0
+					&& SX_PTR_TO_INT(pScan->pUserData) == PH7_TKWRD_FUNCTION ){
+					/* The next depth-0 '{' is this CLOSURE's body, not a hook list:
+					 * `public $p = static function(){ … };` is php-legal (a static
+					 * closure is a constant expression) and its brace was read as
+					 * the hook-list opener, so the default was truncated at
+					 * `static function()` and the declaration died three errors
+					 * deep. A class CONSTANT never showed it — only the property
+					 * path carries a hook list at all. */
+					bFuncSeen = 1;
+				}else if( pScan->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
 					iNest++;
 				}else if( pScan->nType & (PH7_TK_RPAREN|PH7_TK_CSB) ){
 					iNest--;
-				}else if( iNest <= 0 && (pScan->nType & (PH7_TK_SEMI|PH7_TK_COMMA|PH7_TK_OCB)) ){
+				}else if( iNest <= 0 && (pScan->nType & PH7_TK_OCB) ){
+					if( !bFuncSeen ){
+						break; /* the hook list */
+					}
+					bFuncSeen = 0;
+					pScan++;
+					PH7_DelimitNestedTokens(pScan,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pScan);
+					if( pScan >= pGen->pEnd ){
+						break;
+					}
+					/* land on the closing '}', the loop's pScan++ steps past it */
+				}else if( iNest <= 0 && (pScan->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
 					break;
 				}
 				pScan++;
