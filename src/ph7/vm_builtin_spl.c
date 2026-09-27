@@ -2499,11 +2499,18 @@ static int RegitBadMode(ph7_context *pCtx,const char *zWhere)
 		"RegexIterator::ALL_MATCHES, RegexIterator::SPLIT, or RegexIterator::REPLACE",
 		zWhere);
 }
-static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * The constructor both regex iterators run. Every diagnostic it raises names the
+ * class that was CONSTRUCTED (php's are its own method's scope), so the owner is a
+ * parameter rather than a literal -- and the ValueError still names the mode
+ * constants on RegexIterator, which is where php declares them.
+ */
+static int RegitConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	const char *zPat;
+	char zWhere[128];
 	int nPat;
 	sxi64 iMode = PH7_REGIT_MATCH;
 	char zErr[288];
@@ -2514,7 +2521,7 @@ static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_val
 	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){
 		/* php makes the "already built" refusal before it reads any argument, so
 		 * hand this straight to the shared constructor, which words it. */
-		return DualConstruct(pCtx,"RegexIterator",nArg,apArg);
+		return DualConstruct(pCtx,zOwner,nArg,apArg);
 	}
 	if( nArg < 2 ){
 		return PH7_OK;   /* the arity screen already refused */
@@ -2523,7 +2530,8 @@ static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_val
 		iMode = ph7_value_to_int(apArg[2]);
 	}
 	if( iMode < PH7_REGIT_MATCH || iMode > PH7_REGIT_REPLACE ){
-		return RegitBadMode(pCtx,"RegexIterator::__construct(): Argument #3 ($mode)");
+		SyBufferFormat(zWhere,sizeof(zWhere),"%s::__construct(): Argument #3 ($mode)",zOwner);
+		return RegitBadMode(pCtx,zWhere);
 	}
 	/* php compiles the pattern HERE and promotes pcre's warning to an
 	 * InvalidArgumentException, so a bad pattern is refused by `new` rather than
@@ -2531,9 +2539,9 @@ static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_val
 	zPat = ph7_value_to_string(apArg[1],&nPat);
 	if( !PH7_PcrePatternCheck(pVm,zPat,nPat,zErr,sizeof(zErr)) ){
 		return PH7_VmThrowException(pCtx,"InvalidArgumentException",
-			"RegexIterator::__construct(): %s",zErr);
+			"%s::__construct(): %s",zOwner,zErr);
 	}
-	rc = DualConstruct(pCtx,"RegexIterator",nArg,apArg);
+	rc = DualConstruct(pCtx,zOwner,nArg,apArg);
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -2542,6 +2550,10 @@ static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_val
 	PH7_NativeSetAttrInt(pVm,pThis,IT_RF,nArg > 3 ? ph7_value_to_int(apArg[3]) : 0);
 	PH7_NativeSetAttrInt(pVm,pThis,IT_RP,nArg > 4 ? ph7_value_to_int(apArg[4]) : 0);
 	return PH7_OK;
+}
+static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return RegitConstruct(pCtx,"RegexIterator",nArg,apArg);
 }
 static int vm_builtin_RegexIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3096,18 +3108,28 @@ static int vm_builtin_RecursiveFilterIterator_hasChildren(ph7_context *pCtx,int 
 	PH7_MemObjRelease(&sRes);
 	return rc == SXRET_OK ? PH7_OK : rc;
 }
-static int vm_builtin_RecursiveFilterIterator_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * php's spl_instantiate_arg_ex1/2/3 for the recursive filters: fetch the INNER
+ * iterator's children and hand them to a fresh instance of the CALLED class
+ * (`Z_OBJCE_P(ZEND_THIS)`, so a user subclass answers its own type), followed by
+ * whatever the subclass's constructor needs after the iterator -- the callback for
+ * RecursiveCallbackFilterIterator, the four regex arguments for
+ * RecursiveRegexIterator, nothing for the other two.
+ */
+static int RfiBuildChild(ph7_context *pCtx,ph7_value **apExtra,int nExtra)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class_instance *pChild;
 	ph7_class_method *pCons;
-	ph7_value sInner,*apCtor[1];
+	ph7_value sInner,*apCtor[5];
+	int i;
 	sxi32 rc;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
 	if( !DualReady(pThis) ){
 		return DualNotReady(pCtx);
+	}
+	if( nExtra > (int)SX_ARRAYSIZE(apCtor) - 1 ){
+		nExtra = (int)SX_ARRAYSIZE(apCtor) - 1;
 	}
 	PH7_MemObjInit(pVm,&sInner);
 	rc = RfiCallInner(pCtx,"getChildren",sizeof("getChildren")-1,&sInner);
@@ -3122,8 +3144,11 @@ static int vm_builtin_RecursiveFilterIterator_getChildren(ph7_context *pCtx,int 
 	}
 	pChild->iRef++;
 	apCtor[0] = &sInner;
+	for( i = 0 ; i < nExtra ; ++i ){
+		apCtor[i+1] = apExtra[i];
+	}
 	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);
-	rc = pCons ? PH7_VmCallClassMethod(pVm,pChild,pCons,0,1,apCtor) : SXRET_OK;
+	rc = pCons ? PH7_VmCallClassMethod(pVm,pChild,pCons,0,nExtra+1,apCtor) : SXRET_OK;
 	PH7_MemObjRelease(&sInner);
 	if( rc != SXRET_OK ){
 		PH7_ClassInstanceUnref(pChild);
@@ -3132,6 +3157,151 @@ static int vm_builtin_RecursiveFilterIterator_getChildren(ph7_context *pCtx,int 
 	PH7_NativeResultObject(pCtx,pChild);
 	PH7_ClassInstanceUnref(pChild);
 	return PH7_OK;
+}
+static int vm_builtin_RecursiveFilterIterator_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RfiBuildChild(pCtx,0,0);
+}
+/*
+ * ParentIterator: the RecursiveFilterIterator whose accept() IS the question
+ * "does the current element have children?". php asks the INNER iterator
+ * (`inner.zobject`), not `$this`, so overriding hasChildren() on the
+ * ParentIterator subclass changes nothing and overriding it on the inner
+ * RecursiveIterator changes everything -- and the answer is cast to a bool.
+ */
+static int vm_builtin_ParentIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DualConstruct(pCtx,"ParentIterator",nArg,apArg);
+}
+static int vm_builtin_ParentIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sRes;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sRes);
+	rc = RfiCallInner(pCtx,"hasChildren",sizeof("hasChildren")-1,&sRes);
+	if( rc == SXRET_OK ){
+		PH7_MemObjToBool(&sRes);          /* a STATUS, not the answer */
+		ph7_result_bool(pCtx,sRes.x.iVal != 0);
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+/*
+ * RecursiveCallbackFilterIterator: the callback filter's recursive twin. Both
+ * halves are inherited behaviour -- accept() is CallbackFilterIterator's and
+ * hasChildren() is RecursiveFilterIterator's -- but php DECLARES all four names on
+ * the class, and getChildren() has to carry the callback down to the child.
+ */
+static int vm_builtin_RecursiveCallbackFilterIterator_construct(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	sxi32 rc;
+	if( nArg > 1 ){
+		rc = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	rc = DualConstruct(pCtx,"RecursiveCallbackFilterIterator",nArg,apArg);
+	pThis = PH7_ContextThis(pCtx);
+	if( rc == PH7_OK && pThis && nArg > 1 ){
+		DualSetSlot(pCtx->pVm,pThis,IT_CB,apArg[1]);
+	}
+	return rc;
+}
+static int vm_builtin_RecursiveCallbackFilterIterator_getChildren(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sCb,*apExtra[1];
+	int rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	/* Take the callback as a VALUE: the child's constructor runs user code, and a
+	 * pointer into pVm->aMemObj does not survive that. */
+	PH7_MemObjInit(pCtx->pVm,&sCb);
+	{
+		ph7_value *pCb = PH7_NativeAttr(pThis,IT_CB);
+		if( pCb ){
+			PH7_MemObjStore(pCb,&sCb);
+		}
+	}
+	apExtra[0] = &sCb;
+	rc = RfiBuildChild(pCtx,apExtra,1);
+	PH7_MemObjRelease(&sCb);
+	return rc;
+}
+/*
+ * RecursiveRegexIterator: the regex filter's recursive twin. Its accept() has one
+ * rule of its own, and it comes BEFORE everything RegexIterator does: a current()
+ * that is an ARRAY is accepted when it is non-empty, whatever the mode, the
+ * pattern, USE_KEY or INVERT_MATCH say -- a container is kept so the walk can
+ * descend into it, and only its LEAVES are matched. (RegexIterator itself refuses
+ * an array outright, which is what makes the plain class useless recursively.)
+ * getChildren() carries the four regex arguments down; php passes `replacement`
+ * to nothing, so a child starts with the declared NULL.
+ */
+static int vm_builtin_RecursiveRegexIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return RegitConstruct(pCtx,"RecursiveRegexIterator",nArg,apArg);
+}
+static int vm_builtin_RecursiveRegexIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	if( DualFilled(pThis) ){
+		ph7_value *pCur = PH7_NativeAttr(pThis,IT_CD);
+		if( pCur && (pCur->iFlags & MEMOBJ_HASHMAP) && pCur->x.pOther ){
+			ph7_result_bool(pCtx,((ph7_hashmap *)pCur->x.pOther)->nEntry > 0);
+			return PH7_OK;
+		}
+	}
+	return vm_builtin_RegexIterator_accept(pCtx,nArg,apArg);
+}
+static int vm_builtin_RecursiveRegexIterator_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sRe,sMode,sFlags,sPreg,*apExtra[4];
+	ph7_value *pRe;
+	int rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	PH7_MemObjInit(pVm,&sRe);
+	pRe = PH7_NativeAttr(pThis,IT_RE);
+	if( pRe ){
+		PH7_MemObjStore(pRe,&sRe);
+	}
+	PH7_MemObjInitFromInt(pVm,&sMode,PH7_NativeAttrInt(pThis,IT_RM));
+	PH7_MemObjInitFromInt(pVm,&sFlags,PH7_NativeAttrInt(pThis,IT_RF));
+	PH7_MemObjInitFromInt(pVm,&sPreg,PH7_NativeAttrInt(pThis,IT_RP));
+	apExtra[0] = &sRe;
+	apExtra[1] = &sMode;
+	apExtra[2] = &sFlags;
+	apExtra[3] = &sPreg;
+	rc = RfiBuildChild(pCtx,apExtra,4);
+	PH7_MemObjRelease(&sRe);
+	PH7_MemObjRelease(&sMode);
+	PH7_MemObjRelease(&sFlags);
+	PH7_MemObjRelease(&sPreg);
+	return rc;
 }
 static int vm_builtin_AppendIterator_getArrayIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3286,6 +3456,30 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "getChildren", PH7_MOD_PUBLIC, "", "@?RecursiveFilterIterator",
 		  vm_builtin_RecursiveFilterIterator_getChildren },
 	};
+	static const PH7_NativeMethodDef aParentMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "RecursiveIterator $iterator", 0,
+		  vm_builtin_ParentIterator_construct },
+		{ "accept",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ParentIterator_accept },
+	};
+	static const PH7_NativeMethodDef aRcbfMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "RecursiveIterator $iterator, callable $callback", 0,
+		  vm_builtin_RecursiveCallbackFilterIterator_construct },
+		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_RecursiveFilterIterator_hasChildren },
+		{ "getChildren", PH7_MOD_PUBLIC, "", "@?RecursiveCallbackFilterIterator",
+		  vm_builtin_RecursiveCallbackFilterIterator_getChildren },
+	};
+	static const PH7_NativeMethodDef aRregexMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "RecursiveIterator $iterator, string $pattern, int $mode = 0, int $flags = 0, "
+		  "int $pregFlags = 0", 0,
+		  vm_builtin_RecursiveRegexIterator_construct },
+		{ "accept",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_RecursiveRegexIterator_accept },
+		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_RecursiveFilterIterator_hasChildren },
+		{ "getChildren", PH7_MOD_PUBLIC, "", "@?RecursiveRegexIterator",
+		  vm_builtin_RecursiveRegexIterator_getChildren },
+	};
 	static const PH7_NativePropDef aAppendProp[] = {
 		{ AP_LIST, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
@@ -3350,6 +3544,16 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "RecursiveFilterIterator", "FilterIterator", "RecursiveIterator",
 		  PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
 		  aRfiMethod, SX_ARRAYSIZE(aRfiMethod), 0, 0, 0, 0, 0, 0, 0 },
+		/* The three recursive twins. The two whose parent is a PLAIN filter name
+		 * RecursiveIterator themselves; ParentIterator inherits it from
+		 * RecursiveFilterIterator, which is where php has it too. */
+		{ "ParentIterator", "RecursiveFilterIterator", 0, PH7_CLASS_NOCLONE,
+		  aParentMethod, SX_ARRAYSIZE(aParentMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "RecursiveCallbackFilterIterator", "CallbackFilterIterator", "RecursiveIterator",
+		  PH7_CLASS_NOCLONE,
+		  aRcbfMethod, SX_ARRAYSIZE(aRcbfMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "RecursiveRegexIterator", "RegexIterator", "RecursiveIterator", PH7_CLASS_NOCLONE,
+		  aRregexMethod, SX_ARRAYSIZE(aRregexMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "EmptyIterator", 0, "Iterator", 0,
 		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0, 0 },
 	};
