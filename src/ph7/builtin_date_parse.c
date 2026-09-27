@@ -108,22 +108,198 @@ static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)
 	t += (sxu64)((sxi64)h*3600 + (sxi64)mi*60 + s - iOff);
 	return (sxi64)t;
 }
-/* Month-arithmetic with php's overflow semantics (Jan 31 +1 month -> Mar 2/3):
- * normalize the month, keep the day — the civil day-count formula is linear in
- * d, so an out-of-range day simply lands in the following month. */
-static sxi64 DtAddMonths(sxi64 iTs,sxi32 iOff,sxi64 nMonths)
+/*
+ * php's date string parse is a FIELD parse. timelib fills a civil y/m/d/h/i/s/us
+ * vector plus a SEPARATE relative one and applies NOTHING until the whole string
+ * has been read, which is what makes the written ORDER of a relative string
+ * irrelevant there -- `+1 day +1 month` and `+1 month +1 day` are one answer --
+ * and what puts the months on the day before the days move it. PHL applied every
+ * unit to the clock as it scanned, so `+30 days +1 month` was a day or two off.
+ *
+ * A field the string never mentions stays DT_UNSET and is filled from the BASE
+ * moment afterwards (php's timelib_fill_holes), which is what lets a bare month
+ * name keep the base day and a bare date keep the base time of day.
+ */
+#define DT_UNSET ((sxi64)-99999)
+typedef struct dt_parsed dt_parsed;
+struct dt_parsed
 {
-	sxi64 t = iTs + iOff;
-	sxi64 days = DtFloorDiv(t,86400);
-	sxi64 secs = t - days * 86400;
-	sxi64 y;
-	int mo,d;
-	sxi64 m0;
-	DtCivilFromDays(days,&y,&mo,&d);
-	m0 = (y * 12 + (mo - 1)) + nMonths;
-	y  = DtFloorDiv(m0,12);
-	mo = (int)(m0 - y * 12) + 1;
-	return DtDaysFromCivil(y,mo,d) * 86400 + secs - iOff;
+	sxi64 y,m,d;                    /* absolute date fields, or DT_UNSET */
+	sxi64 h,i,s,us;                 /* absolute time fields, or DT_UNSET */
+	sxi64 ry,rm,rd,rh,ri,rs,rus;    /* the relative vector */
+	int bHaveDate;                  /* the string set an absolute date element */
+	int bHaveTime;                  /* ... an absolute time element */
+	int iWday;                      /* weekday target 0=Sunday..6, or -1 for none */
+	int iWdayBehavior;              /* php's 0 (next/last), 1 (bare name), 2 (... this week) */
+	int iFirstLast;                 /* php's first_last_day_of: 0 none, 1 first, 2 last */
+	sxi32 iOff;                     /* the offset in force */
+	int bOffSet;                    /* 0 = the string named no zone, 1 = an offset,
+	                                 * 2 = a NAME the string spelled (zZone below) */
+	const char *zZone;              /* that name, a literal: "Z", "UTC", "GMT" */
+	int nZone;
+	int bZoneIdent;                 /* php's timezone_type 3 rather than 2 -- only
+	                                 * "UTC" spelled in that exact case */
+};
+/* Wrapping add: a relative vector holds whatever the string spelled, and php's
+ * own answer past the int64 ceiling is garbage of its own -- but the OVERFLOW
+ * would be undefined here, and this build gates on UBSan. */
+static sxi64 DtWAdd(sxi64 a,sxi64 b)
+{
+	return (sxi64)((sxu64)a + (sxu64)b);
+}
+static sxi64 DtWMul(sxi64 a,sxi64 b)
+{
+	return (sxi64)((sxu64)a * (sxu64)b);
+}
+static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)
+{
+	p->y = p->m = p->d = DT_UNSET;
+	p->h = p->i = p->s = p->us = DT_UNSET;
+	p->ry = p->rm = p->rd = p->rh = p->ri = p->rs = p->rus = 0;
+	p->bHaveDate = p->bHaveTime = 0;
+	p->iWday = -1;
+	p->iWdayBehavior = 0;
+	p->iFirstLast = 0;
+	p->iOff = iBaseOff;
+	p->bOffSet = 0;
+	p->zZone = 0;
+	p->nZone = 0;
+	p->bZoneIdent = 0;
+}
+/* php's TIMELIB_UNHAVE_TIME: the clock is ZEROED rather than unset, and the
+ * string still counts as carrying no time of its own -- which is why `tomorrow`
+ * lands on midnight even through modify(), whose other fields keep the
+ * receiver's. */
+static void DtUnhaveTime(dt_parsed *p)
+{
+	p->h = p->i = p->s = p->us = 0;
+	p->bHaveTime = 0;
+}
+static void DtCarry(sxi64 *pLo,sxi64 *pHi,sxi64 iUnit)
+{
+	sxi64 c = DtFloorDiv(*pLo,iUnit);
+	*pLo -= c * iUnit;
+	*pHi = DtWAdd(*pHi,c);
+}
+/*
+ * php's timelib_do_normalize: carry the clock up into the days, fold the months
+ * into the years, then let the civil day count absorb whatever the day field
+ * holds. That formula is linear in d, so an out-of-range day simply lands in the
+ * month after -- which is php's `2020-01-31 +1 month` == 2020-03-02.
+ */
+static sxi64 DtDayCountOf(sxi64 y,sxi64 m,sxi64 d)
+{
+	sxi64 c = DtFloorDiv(m - 1,12);
+	sxi64 mm = (m - 1) - c*12 + 1;
+	return DtWAdd(DtDaysFromCivil(DtWAdd(y,c),(int)mm,1),d - 1);
+}
+static void DtNormalize(dt_parsed *p)
+{
+	sxi64 days,yy;
+	int mm,dd;
+	DtCarry(&p->us,&p->s,1000000);
+	DtCarry(&p->s,&p->i,60);
+	DtCarry(&p->i,&p->h,60);
+	DtCarry(&p->h,&p->d,24);
+	days = DtDayCountOf(p->y,p->m,p->d);
+	DtCivilFromDays(days,&yy,&mm,&dd);
+	p->y = yy;
+	p->m = mm;
+	p->d = dd;
+}
+/* php's day of week, 0 = Sunday, from a day count (1970-01-01 was a Thursday). */
+static int DtDowOf(sxi64 days)
+{
+	return (int)(((days + 4) % 7 + 7) % 7);
+}
+/*
+ * php's do_adjust_for_weekday, which runs BEFORE the relative vector is applied
+ * -- so `+30 days next monday` moves to the Monday and then adds the days, in
+ * either written order. The three behaviours are php's own: 0 for `next`/`last`
+ * (a matching base day is skipped), 1 for a bare name or `this monday` (a
+ * matching base day is kept), and 2 for the `... this week` spellings, which
+ * count from the WEEK rather than from the day.
+ */
+static void DtAdjustWeekday(dt_parsed *p)
+{
+	sxi64 dow = DtDowOf(DtDayCountOf(p->y,p->m,p->d));
+	sxi64 wd = p->iWday,diff;
+	if( p->iWdayBehavior == 2 ){
+		/* php's two corrections: a Sunday base counts as the week's END, and a
+		 * Sunday target asked for from any other day is the week's end too. */
+		if( dow == 0 && wd != 0 ){ wd -= 7; }
+		if( wd == 0 && dow != 0 ){ wd = 7; }
+		p->d = p->d - dow + wd;
+		return;
+	}
+	diff = wd - dow;
+	if( (p->rd < 0 && diff < 0) || (p->rd >= 0 && diff <= -p->iWdayBehavior) ){
+		diff += 7;
+	}
+	p->d = DtWAdd(p->d,diff);
+}
+/* php's `first|last day of`: the first is the day 1, the last is day 0 of the
+ * month AFTER -- which the normalizer then reads back as the month's own last. */
+static void DtFirstLastDay(dt_parsed *p)
+{
+	if( p->iFirstLast == 1 ){
+		p->d = 1;
+	}else if( p->iFirstLast == 2 ){
+		p->d = 0;
+		p->m = DtWAdd(p->m,1);
+	}
+}
+/*
+ * php's timelib_fill_holes + timelib_update_ts over a parsed vector: fill what
+ * the string left unset from the base moment, then apply in php's ORDER --
+ * weekday first, the whole relative vector next, and the `first|last day of`
+ * flag LAST, which is why that flag swallows any relative DAYS beside it
+ * (`first day of next month +40 days` is the 1st) while the hours still count.
+ *
+ * DT_PARSE_OVERRIDE_TIME is php's flag of the same name: modify() writes only
+ * the fields the string really set, so a bare date there keeps the receiver's
+ * time of day, where a fresh parse zeroes it.
+ */
+#define DT_PARSE_OVERRIDE_TIME 0x01
+static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
+	int iFlags,int *pUs)
+{
+	sxi64 days = DtFloorDiv(iBaseTs + iBaseOff,86400);
+	sxi64 tod  = (iBaseTs + iBaseOff) - days*86400;
+	sxi64 by;
+	int bm,bd;
+	DtCivilFromDays(days,&by,&bm,&bd);
+	if( !(iFlags & DT_PARSE_OVERRIDE_TIME) && p->bHaveDate && !p->bHaveTime ){
+		p->h = p->i = p->s = p->us = 0;
+	}
+	if( p->y  == DT_UNSET ){ p->y  = by; }
+	if( p->m  == DT_UNSET ){ p->m  = bm; }
+	if( p->d  == DT_UNSET ){ p->d  = bd; }
+	if( p->h  == DT_UNSET ){ p->h  = tod / 3600; }
+	if( p->i  == DT_UNSET ){ p->i  = (tod / 60) % 60; }
+	if( p->s  == DT_UNSET ){ p->s  = tod % 60; }
+	if( p->us == DT_UNSET ){ p->us = iBaseUs; }
+	/* php applies the flag TWICE, and both are visible: once here, so a weekday
+	 * hunt and a relative month start from the month's edge (`last monday first
+	 * day of this month` never leaves January), and once at the end, which is what
+	 * makes it swallow the relative DAYS beside it. */
+	DtFirstLastDay(p);
+	DtNormalize(p);
+	if( p->iWday >= 0 ){
+		DtAdjustWeekday(p);
+		DtNormalize(p);
+	}
+	p->us = DtWAdd(p->us,p->rus);
+	p->s  = DtWAdd(p->s,p->rs);
+	p->i  = DtWAdd(p->i,p->ri);
+	p->h  = DtWAdd(p->h,p->rh);
+	p->d  = DtWAdd(p->d,p->rd);
+	p->m  = DtWAdd(p->m,p->rm);
+	p->y  = DtWAdd(p->y,p->ry);
+	DtFirstLastDay(p);
+	DtNormalize(p);
+	*pUs = (int)p->us;
+	return DtMakeTs(p->y,(int)p->m,(int)p->d,(int)p->h,(int)p->i,(int)p->s,p->iOff);
 }
 /*
  * Read a fractional-seconds part at z (which points at the '.'): up to 6 digits
@@ -144,38 +320,45 @@ static int DtReadFraction(const char **pz,const char *zEnd)
 }
 /*
  * Parse an OPTIONAL time-of-day suffix after a date component:
- * "[( |T)]HH:MM[:SS][.frac][Z|±hh[:mm]]". On entry *pz points just past the date;
- * the h/mi/s outs must be pre-zeroed and the offset outs pre-seeded with the current
- * offset; *pUs receives the microseconds from a fractional part (unchanged when
- * absent). Advances *pz over whatever it consumes. Returns 0 on success (whether or
- * not a time was present), or a 1-based error position into zIn (negative encodes
- * php's "Double time specification"). Shared by every absolute-date branch.
+ * "[( |T)]HH:MM[:SS][.frac][Z|±hh[:mm]]". On entry *pz points just past the date.
+ * What it finds lands on the parsed vector's TIME fields (and its offset), which is
+ * also what marks the string as carrying a time of its own. Advances *pz over
+ * whatever it consumes. Returns 0 on success (whether or not a time was present),
+ * or a 1-based error position into zIn (negative encodes php's "Double time
+ * specification"). Shared by every absolute-date branch.
  */
-static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,
-	int *ph,int *pmi,int *ps,sxi32 *piOff,int *pbOffSet,int *pUs)
+static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,dt_parsed *p)
 {
 	const char *z = *pz;
 	if( z < zEnd && (z[0]=='T' || z[0]==' ') && zEnd-z >= 6
 	 && SyisDigit(z[1]) && SyisDigit(z[2]) && z[3]==':' ){
+		int h,mi,s = 0;
 		z++;
-		*ph  = (z[0]-'0')*10 + (z[1]-'0');
-		*pmi = (z[3]-'0')*10 + (z[4]-'0');
+		h  = (z[0]-'0')*10 + (z[1]-'0');
+		mi = (z[3]-'0')*10 + (z[4]-'0');
 		/* a 25+ hour kills php's whole time token: error at its start */
-		if( *ph > 24 ){ return (int)(z - zIn) + 1; }
+		if( h > 24 ){ return (int)(z - zIn) + 1; }
 		/* php lexes HH:M, then the minute's second digit starts a SECOND time
 		 * token: "Double time specification" (negative encoding) */
-		if( *pmi > 59 ){ return -((int)(&z[4] - zIn) + 1); }
+		if( mi > 59 ){ return -((int)(&z[4] - zIn) + 1); }
 		z += 5;
 		if( z < zEnd && z[0]==':' && zEnd-z >= 3 && SyisDigit(z[1]) && SyisDigit(z[2]) ){
-			*ps = (z[1]-'0')*10 + (z[2]-'0');
-			if( *ps > 59 ){ return (int)(&z[2] - zIn) + 1; }
+			s = (z[1]-'0')*10 + (z[2]-'0');
+			if( s > 59 ){ return (int)(&z[2] - zIn) + 1; }
 			z += 3;
 		}
+		/* A time of day sets the whole clock, sub-second included: php writes the
+		 * microseconds of a time WITHOUT a fraction as zero. */
+		p->h = h;
+		p->i = mi;
+		p->s = s;
+		p->us = 0;
+		p->bHaveTime = 1;
 		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){ /* fractional seconds */
-			*pUs = DtReadFraction(&z,zEnd);
+			p->us = DtReadFraction(&z,zEnd);
 		}
 		if( z < zEnd && (z[0]=='Z' || z[0]=='z') ){
-			*piOff = 0; *pbOffSet = 2; z++;
+			p->iOff = 0; p->bOffSet = 2; p->zZone = "Z"; p->nZone = 1; z++;
 		}else if( z < zEnd && (z[0]=='+' || z[0]=='-') ){
 			int sign = (z[0]=='-') ? -1 : 1;
 			int oh,om = 0;
@@ -188,8 +371,8 @@ static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,
 				om = (z[0]-'0')*10 + (z[1]-'0');
 				z += 2;
 			}
-			*piOff = sign * (oh*3600 + om*60);
-			*pbOffSet = 1;
+			p->iOff = sign * (oh*3600 + om*60);
+			p->bOffSet = 1;
 		}
 	}
 	*pz = z;
@@ -206,21 +389,6 @@ static int DtRead1or2(const char *z,const char *zEnd,int *pn)
 	else { *pn = 1; }
 	return v;
 }
-/*
- * Try to read a non-ISO numeric date at z: three integer components joined by ONE
- * consistent separator, plus an optional time suffix. php's field order depends on
- * the separator:
- *   '/'      -> YYYY/MM/DD when the first field is 4 digits, else MM/DD/YYYY
- *   '-','.'  -> DD-MM-YYYY (day first); a 4-digit-first '.' date (YYYY.MM.DD) is
- *               NOT a php format and is rejected. (ISO YYYY-MM-DD is matched by the
- *               dedicated branch BEFORE this one, so a 4-digit-first '-' never
- *               reaches here.)
- * A 1-2 digit year maps php-style (00-69 -> 2000s, 70-99 -> 1900s). Returns 0 when
- * the text is not such a date (caller falls through), 1 on success (the ts/off outs
- * set and *pzOut advanced past the whole token), or an error code in DtParse's own
- * convention (positive 1-based position into zIn, negative = "double time") when the
- * shape matched but a component is out of range.
- */
 /*
  * The YEAR of php's ISO date, at the head of a string: four digits, or php's
  * EXPANDED form -- a sign in front of AT LEAST four digits, with no upper width
@@ -255,13 +423,65 @@ static int DtTryIsoYear(const char *z,const char *zEnd,sxi64 *pY)
 	*pY = (nSign && z[0] == '-') ? -(sxi64)y : (sxi64)y;
 	return (int)(zScan - z);
 }
+/*
+ * Try to read php's ISO date at z: [+-]YYYY-MM-DD plus an optional time suffix.
+ * Returns 0 when the text is not one (caller falls through), 1 on success, or an
+ * error code in DtParse's own convention.
+ */
+static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
+	dt_parsed *p,const char *zIn)
+{
+	const char *zRest;
+	sxi64 y = 0;
+	int nYr,mo,d,rcT;
+	if( (nYr = DtTryIsoYear(z,zEnd,&y)) == 0 || zEnd-z < nYr + 6 ){
+		return 0;
+	}
+	zRest = &z[nYr];   /* the '-' that closed the year */
+	if( !SyisDigit(zRest[1])||!SyisDigit(zRest[2])||zRest[3] != '-'
+	 ||!SyisDigit(zRest[4])||!SyisDigit(zRest[5]) ){
+		return (int)(z - zIn) + 1;
+	}
+	mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
+	d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
+	/* php's lexer dies on the SECOND digit of an out-of-range month/day (either
+	 * the two-digit pattern fails there, or a one-digit component matched and the
+	 * separator check fails there); "00" lexes fine and normalizes (month 0 ==
+	 * December of the previous year, which the field normalizer does on its own). */
+	if( mo > 12 ){ return (int)(&zRest[2] - zIn) + 1; }
+	if( d > 31 ){ return (int)(&zRest[5] - zIn) + 1; }
+	z = &zRest[6];
+	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
+		return rcT;
+	}
+	p->y = y;
+	p->m = mo;
+	p->d = d;
+	p->bHaveDate = 1;
+	*pzOut = z;
+	return 1;
+}
+/*
+ * Try to read a non-ISO numeric date at z: three integer components joined by ONE
+ * consistent separator, plus an optional time suffix. php's field order depends on
+ * the separator:
+ *   '/'      -> YYYY/MM/DD when the first field is 4 digits, else MM/DD/YYYY
+ *   '-','.'  -> DD-MM-YYYY (day first); a 4-digit-first '.' date (YYYY.MM.DD) is
+ *               NOT a php format and is rejected. (ISO YYYY-MM-DD is matched by the
+ *               dedicated branch BEFORE this one, so a 4-digit-first '-' never
+ *               reaches here.)
+ * A 1-2 digit year maps php-style (00-69 -> 2000s, 70-99 -> 1900s). Returns 0 when
+ * the text is not such a date (caller falls through), 1 on success (the vector's
+ * date fields set and *pzOut advanced past the whole token), or an error code in
+ * DtParse's own convention (positive 1-based position into zIn, negative = "double
+ * time") when the shape matched but a component is out of range.
+ */
 static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
-	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,int *pUs)
+	dt_parsed *p,const char *zIn)
 {
 	int a,b,c,na,nb,nc;
 	char sep;
-	int y,mo,d,h = 0,mi = 0,s = 0,us = 0;
-	sxi32 iOff = *pOff;
+	int y,mo,d;
 	int rcT;
 	/* first field: 1-4 digits */
 	if( !SyisDigit(z[0]) ){ return 0; }
@@ -304,18 +524,18 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 			else if( y >= 70 && y <= 99 ){ y += 1900; }
 		}
 	}
-	/* php normalizes month 0 to December of the previous year (like the ISO branch)
-	 * but fails a month past 12; a day past 31 fails, while day 0 normalizes in
-	 * DtMakeTs. Errors point at the field end. */
+	/* php normalizes month 0 to December of the previous year (the field
+	 * normalizer's own answer) but fails a month past 12; a day past 31 fails,
+	 * while day 0 normalizes too. Errors point at the field end. */
 	if( mo > 12 ){ return (int)(z - zIn) + 1; }
-	if( mo == 0 ){ mo = 12; y--; }
 	if( d > 31 ){ return (int)(z - zIn) + 1; }
 	/* optional time-of-day suffix, then commit */
-	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff,&us);
+	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	if( rcT != 0 ){ return rcT; }
-	*pTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
-	*pOff = iOff;
-	*pUs = us;
+	p->y = y;
+	p->m = mo;
+	p->d = d;
+	p->bHaveDate = 1;
 	*pzOut = z;
 	return 1;
 }
@@ -378,19 +598,19 @@ static int DtIsOrdinal(const char *z,const char *zEnd)
  * Try to read a textual-month date at z, in either order:
  *   MonthName [Day] [Year]   ("Jan 15 2020", "January", "January 2020")
  *   Day MonthName [Year]     ("15 January 2020", "15th Jan")
- * A missing day defaults to 1, a missing year to the base timestamp's year (php).
- * Day may carry an ordinal suffix, fields may be comma-separated, month names are
- * case-insensitive, and an optional time-of-day suffix + trailing UTC/GMT is
- * consumed. Returns 0 (not a month date — caller falls through, *pzOut untouched),
- * 1 on success, or a DtParse error code (out-of-range day).
+ * Only what the string SPELLS is written: a missing day stays unset (so a bare
+ * month name keeps the base day, php's answer) except when a year was given,
+ * which is php's own "January 2020" -> the 1st. Day may carry an ordinal suffix,
+ * fields may be comma-separated, month names are case-insensitive, and an
+ * optional time-of-day suffix + trailing UTC/GMT is consumed. Returns 0 (not a
+ * month date — caller falls through, *pzOut untouched), 1 on success, or a
+ * DtParse error code (out-of-range day).
  */
 static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
-	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,sxi64 iBaseTs,int *pUs)
+	dt_parsed *p,const char *zIn)
 {
 	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
 	sxi64 y = 0;
-	int h = 0,mi = 0,s = 0,us = 0;
-	sxi32 iOff = *pOff;
 	int rcT;
 #define MDSKIPWS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
 	if( (mo = DtMatchMonth(z,zEnd,&adv)) != 0 ){
@@ -432,41 +652,33 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 		}
 		haveYear = 1;
 	}
-	/* Default the unspecified fields from the base timestamp. php overlays: a
-	 * missing year takes the base year; a missing day is 1 when a year WAS given
-	 * ("January 2020" -> the 1st) but the base day when only the month was named
-	 * ("January" -> the base day). */
-	{
-		sxi64 by; int bm,bd;
-		DtCivilFromDays(DtFloorDiv(iBaseTs + *pOff,86400),&by,&bm,&bd);
-		if( !haveYear ){ y = by; }
-		if( !haveDay ){ d = haveYear ? 1 : bd; }
-	}
 	if( d > 31 ){ return (int)(z - zIn) + 1; }
 	/* optional time-of-day suffix */
-	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff,&us);
+	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	if( rcT != 0 ){ return rcT; }
-	/* optional trailing UTC/GMT zone name (PHL's default zone is already UTC) */
+	/* An optional trailing UTC/GMT: php's own zone NAME, which beats the
+	 * $timezone argument beside it. Only the exact spelling "UTC" is php's
+	 * identifier; every other casing, and GMT in any casing, is an abbreviation. */
 	MDSKIPWS();
-	if( (zEnd-z >= 3 && SyStrnicmp(z,"utc",3) == 0 && (zEnd-z==3 || !SyisAlpha(z[3])))
-	 || (zEnd-z >= 3 && SyStrnicmp(z,"gmt",3) == 0 && (zEnd-z==3 || !SyisAlpha(z[3]))) ){
-		iOff = 0; z += 3;
+	if( zEnd-z >= 3 && (zEnd-z==3 || !SyisAlpha(z[3]))
+	 && (SyStrnicmp(z,"utc",3) == 0 || SyStrnicmp(z,"gmt",3) == 0) ){
+		int bUtc = (SyStrnicmp(z,"utc",3) == 0);
+		p->iOff = 0;
+		p->bOffSet = 2;
+		p->zZone = bUtc ? "UTC" : "GMT";
+		p->nZone = 3;
+		p->bZoneIdent = (bUtc && SyMemcmp(z,"UTC",3) == 0);
+		z += 3;
 	}
-	*pTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
-	*pOff = iOff;
-	*pUs = us;
+	p->m = mo;
+	if( haveDay ){ p->d = d; }
+	else if( haveYear ){ p->d = 1; }
+	if( haveYear ){ p->y = y; }
+	p->bHaveDate = 1;
 	*pzOut = z;
 	return 1;
 #undef MDSKIPWS
 }
-/*
- * Minimal php-datetime-string parser (slice 1): absolute forms
- * "now" | "@<ts>" | "YYYY-MM-DD[( |T)HH:MM[:SS]][Z|±HH[:MM]]" | "HH:MM[:SS]",
- * keywords today/midnight/noon/tomorrow/yesterday, and relative sequences
- * "[+|-]N (sec|min|hour|day|week|fortnight|month|year)[s]". Returns 0 on
- * success (ts/off/bOffSet out), or the byte position of the first
- * unparseable character +1 (for php's "at position N" message).
- */
 /*
  * How WIDE a run of digits may be, which php bounds per grammar and PHL did not
  * bound at all -- so a long run silently wrapped the int64 it was accumulated
@@ -489,34 +701,31 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 /* One whole band below the position encoding, so a range refusal cannot be
  * mistaken for a "double time specification" one. */
 #define DT_ERR_RANGE    1000000
-static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
-	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)
+/*
+ * php's date-string parse, onto the field vector: absolute forms
+ * "now" | "@<ts>" | "YYYY-MM-DD[( |T)HH:MM[:SS]][Z|±HH[:MM]]" | "HH:MM[:SS]" |
+ * a textual month date, the keywords today/midnight/noon/tomorrow/yesterday, the
+ * weekday and month navigation words, and relative sequences
+ * "[+|-]N (sec|min|hour|day|week|fortnight|month|year)[s]". NOTHING is applied
+ * here -- DtApplyFields does that, in php's order, once the whole string is read.
+ * Returns 0 on success, or the byte position of the first unparseable character
+ * +1 (for php's "at position N" message).
+ */
+static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 {
 	const char *z = zIn, *zEnd = &zIn[nLen];
-	sxi64 iTs = iBaseTs;
-	sxi32 iOff = iBaseOff;
-	int bOffSet = 0;
 	int bAny = 0;
-	int iNumRc,iMonRc,nYr;
-	sxi64 iYr = 0;
-	/* The microseconds this parse STARTS from -- what modify() must add its
-	 * relative `+1 microsecond` to, and what an absolute time in the string
-	 * replaces. Zero for a fresh parse. */
-	int uSec = iBaseUs;
-	sxi64 iRelUs = 0;   /* sub-second relative units, carried into iTs at the end */
-	*pUs = iBaseUs;
+	int iRc;
 #define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
 	DT_SKIP_WS();
 	if( z >= zEnd ){
 		/* php: the empty string is "now" */
-		*pTs = iTs;
-		*pOff = iOff;
-		*pbOffSet = bOffSet;
 		return 0;
 	}
-	/* "@<seconds>" absolute epoch */
+	/* "@<seconds>" absolute epoch. php spells it as the 1970 epoch plus a RELATIVE
+	 * second count, which is why `@0 +1 day` is a day past it there. */
 	if( z[0] == '@' ){
 		int neg = 0;
 		sxi64 v = 0;
@@ -537,84 +746,44 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 				return -((int)(zAt - zIn) + 1) - DT_ERR_RANGE;
 			}
 		}
-		/* php accepts a fractional epoch ("@1600000000.5" -> .5s = 500000us) */
+		p->y = 1970; p->m = 1; p->d = 1;
+		p->h = p->i = p->s = p->us = 0;
+		if( neg ){ v = -v; }
+		/* php accepts a fractional epoch ("@1600000000.5" -> .5s = 500000us). The
+		 * fraction is a count FORWARD, so a negative epoch borrows a second for it
+		 * (`@-1.5` is two seconds before the epoch plus half of one); and it lands
+		 * on the RELATIVE microseconds, which is why a later `tomorrow` -- whose
+		 * whole job is to zero the clock -- leaves it standing. */
 		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
-			*pUs = DtReadFraction(&z,zEnd);
+			sxi64 us = DtReadFraction(&z,zEnd);
+			if( v < 0 && us > 0 ){
+				v--;
+				us = 1000000 - us;
+			}
+			p->rus = us;
 		}
-		*pTs = neg ? -v : v;
-		*pOff = 0;
-		*pbOffSet = 1;
-		DT_SKIP_WS();
-		return (z < zEnd) ? (int)(z - zIn) + 1 : 0;
-	}
-	/* Absolute date: [+-]YYYY-MM-DD[...] (the sign, and any year width past four,
-	 * are php's EXPANDED form -- see DtTryIsoYear) */
-	if( (nYr = DtTryIsoYear(z,zEnd,&iYr)) != 0 && zEnd-z >= nYr + 6 ){
-		const char *zRest = &z[nYr];   /* the '-' that closed the year */
-		sxi64 y = iYr;
-		int mo,d,h=0,mi=0,s=0;
-		if( !SyisDigit(zRest[1])||!SyisDigit(zRest[2])||zRest[3] != '-'
-		 ||!SyisDigit(zRest[4])||!SyisDigit(zRest[5]) ){
-			return (int)(z - zIn) + 1;
-		}
-		mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
-		d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
-		/* php's lexer dies on the SECOND digit of an out-of-range month/day
-		 * (either the two-digit pattern fails there, or a one-digit component
-		 * matched and the separator check fails there); "00" lexes fine and
-		 * normalizes (month 0 == December of the previous year). */
-		if( mo > 12 ){ return (int)(&zRest[2] - zIn) + 1; }
-		if( d > 31 ){ return (int)(&zRest[5] - zIn) + 1; }
-		if( mo == 0 ){ mo = 12; y--; }
-		z = &zRest[6];
-		{
-			int rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,&bOffSet,&uSec);
-			if( rcT != 0 ){ return rcT; }
-		}
-		iTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
+		p->rs = DtWAdd(p->rs,v);
+		p->iOff = 0;
+		p->bOffSet = 1;
+		bAny = 1;
+	}else if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){
+		/* [+-]YYYY-MM-DD[...] -- the sign, and any year width past four, are php's
+		 * EXPANDED form (see DtTryIsoYear). Anything other than 1 is an error code
+		 * in DtParse's own convention; propagate it verbatim. */
+		if( iRc != 1 ){ return iRc; }
 		bAny = 1;
 	}else if( SyisDigit(z[0])
-	 && (iNumRc = DtTryNumericDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,&uSec)) != 0 ){
+	 && (iRc = DtTryNumericDate(z,zEnd,&z,p,zIn)) != 0 ){
 		/* DD-MM-YYYY / DD.MM.YYYY (day first), MM/DD/YYYY (slash, American), and
-		 * YYYY/MM/DD (slash, year first) — see DtTryNumericDate. Anything other than
-		 * 1 is an error code in DtParse's own convention (positive position / negative
-		 * "double time"); propagate it verbatim. */
-		if( iNumRc != 1 ){ return iNumRc; }
+		 * YYYY/MM/DD (slash, year first) — see DtTryNumericDate. */
+		if( iRc != 1 ){ return iRc; }
 		bAny = 1;
-	}else if( (SyisAlpha(z[0]) || SyisDigit(z[0]))
-	 && (iMonRc = DtTryMonthDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,iBaseTs,&uSec)) != 0 ){
-		/* MonthName Day Year / Day MonthName Year, in any of php's spellings. As with
-		 * DtTryNumericDate, anything other than 1 is an error code to propagate. */
-		if( iMonRc != 1 ){ return iMonRc; }
-		bAny = 1;
-	}else if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'
-	 && SyisDigit(z[3]) && SyisDigit(z[4]) ){
-		/* Time-only: HH:MM[:SS] on the base date */
-		sxi64 t = iTs + iOff;
-		sxi64 days = DtFloorDiv(t,86400);
-		int h  = (z[0]-'0')*10 + (z[1]-'0');
-		int mi = (z[3]-'0')*10 + (z[4]-'0');
-		int s = 0;
-		/* php: bad hour kills the token (error at its start); bad minute /
-		 * second dies on the component's second digit */
-		if( h > 24 ){ return (int)(z - zIn) + 1; }
-		if( mi > 59 ){ return (int)(&z[4] - zIn) + 1; }
-		z += 5;
-		if( z < zEnd && z[0]==':' && zEnd-z >= 3 && SyisDigit(z[1]) && SyisDigit(z[2]) ){
-			s = (z[1]-'0')*10 + (z[2]-'0');
-			if( s > 59 ){ return (int)(&z[2] - zIn) + 1; }
-			z += 3;
-		}
-		/* A time of day REPLACES the sub-second clock, fraction or not (see the
-		 * trailing-time branch below, which does the same). */
-		uSec = 0;
-		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
-			uSec = DtReadFraction(&z,zEnd);
-		}
-		iTs = days*86400 + (sxi64)h*3600 + (sxi64)mi*60 + s - iOff;
-		bAny = 1;
-	}else if( DT_LOWEQ("now",3) ){
-		z += 3;
+	}else if( SyisDigit(z[0])
+	 && (iRc = DtTryMonthDate(z,zEnd,&z,p,zIn)) != 0 ){
+		/* "15 January 2020" — the day-first textual spelling. The month-first one
+		 * is an ordinary token of the loop below, since php takes a month name
+		 * anywhere in the string. */
+		if( iRc != 1 ){ return iRc; }
 		bAny = 1;
 	}
 	/* Relative / keyword sequence */
@@ -623,70 +792,46 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 		if( z >= zEnd ){
 			break;
 		}
+		if( DT_LOWEQ("now",3) ){
+			z += 3;
+			bAny = 1;
+			continue;
+		}
 		if( DT_LOWEQ("today",5) || DT_LOWEQ("midnight",8) ){
-			sxi64 days = DtFloorDiv(iTs + iOff,86400);
-			iTs = days*86400 - iOff;
+			DtUnhaveTime(p);
 			z += (SyToLower(z[0])=='t') ? 5 : 8;
 			bAny = 1;
 			continue;
 		}
 		if( DT_LOWEQ("noon",4) ){
-			sxi64 days = DtFloorDiv(iTs + iOff,86400);
-			iTs = days*86400 + 12*3600 - iOff;
+			DtUnhaveTime(p);
+			p->h = 12;
+			p->bHaveTime = 1;
 			z += 4;
 			bAny = 1;
 			continue;
 		}
+		/* php SETS the relative day for these two rather than adding to it, so
+		 * either one wipes whatever days came before it: `+3 days tomorrow` is one
+		 * day on, and `tomorrow yesterday` is yesterday. */
 		if( DT_LOWEQ("tomorrow",8) ){
-			sxi64 days = DtFloorDiv(iTs + iOff,86400) + 1;
-			iTs = days*86400 - iOff;
+			DtUnhaveTime(p);
+			p->rd = 1;
 			z += 8;
 			bAny = 1;
 			continue;
 		}
 		if( DT_LOWEQ("yesterday",9) ){
-			sxi64 days = DtFloorDiv(iTs + iOff,86400) - 1;
-			iTs = days*86400 - iOff;
+			DtUnhaveTime(p);
+			p->rd = -1;
 			z += 9;
 			bAny = 1;
 			continue;
 		}
-		/* Weekday navigation: "[next|last|previous|this] <weekday>" moves to the
-		 * midnight of the target weekday. Bare/"this" = the this-week occurrence on
-		 * or after the base day; "next"/"last"/"previous" skip a matching base day. */
-		{
-			const char *zSave = z;
-			int dir = 0;         /* 0 = this-week occurrence, 1 = next, -1 = last */
-			int adv,dow;
-			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; DT_SKIP_WS(); }
-			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; DT_SKIP_WS(); }
-			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; DT_SKIP_WS(); }
-			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; DT_SKIP_WS(); }
-			dow = DtMatchWeekday(z,zEnd,&adv);
-			if( dow >= 0 ){
-				sxi64 days = DtFloorDiv(iTs + iOff,86400);
-				int bdow = (int)(((days + 4) % 7 + 7) % 7); /* 1970-01-01 was Thursday */
-				sxi64 delta;
-				if( dir == 1 ){
-					delta = ((dow - bdow) % 7 + 7) % 7;
-					if( delta == 0 ){ delta = 7; }
-				}else if( dir == -1 ){
-					delta = -(((bdow - dow) % 7 + 7) % 7);
-					if( delta == 0 ){ delta = -7; }
-				}else{
-					delta = ((dow - bdow) % 7 + 7) % 7;
-				}
-				iTs = (days + delta)*86400 - iOff; /* midnight of the target day */
-				z += adv;
-				bAny = 1;
-				continue;
-			}
-			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */
-		}
-		/* "first|last day of (this|next|last month | MonthName [Year])": jump to the
-		 * first or last day of a target month. A this/next/last-month target keeps the
-		 * base time-of-day; an absolute MonthName [Year] target resets it to midnight
-		 * (php). */
+		/* "first|last day of": php's own standalone token. It records the flag and
+		 * nothing else — whatever names the target month ("next month", "January
+		 * 2021", or nothing at all) is an ordinary token after it, and the flag is
+		 * applied LAST, which is what makes it swallow any relative days beside it. */
 		if( DT_LOWEQ("first",5) || DT_LOWEQ("last",4) ){
 			const char *zSave = z;
 			int bFirst = (SyToLower((unsigned char)z[0]) == 'f');
@@ -696,48 +841,46 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 				z += 3;
 				DT_SKIP_WS();
 				if( DT_LOWEQ("of",2) ){
-					sxi64 days0 = DtFloorDiv(iTs + iOff,86400);
-					sxi64 yy,tod;
-					int mm,dd0,keepTime = 1,ok = 1;
 					z += 2;
-					DT_SKIP_WS();
-					DtCivilFromDays(days0,&yy,&mm,&dd0);
-					tod = (iTs + iOff) - days0*86400;
-					if( DT_LOWEQ("this",4) ){ z += 4; DT_SKIP_WS();
-						if( DT_LOWEQ("month",5) ){ z += 5; }else{ ok = 0; } }
-					else if( DT_LOWEQ("next",4) ){ z += 4; DT_SKIP_WS();
-						if( DT_LOWEQ("month",5) ){ z += 5; mm++; if(mm>12){ mm=1; yy++; } }else{ ok = 0; } }
-					else if( DT_LOWEQ("last",4) ){ z += 4; DT_SKIP_WS();
-						if( DT_LOWEQ("month",5) ){ z += 5; mm--; if(mm<1){ mm=12; yy--; } }else{ ok = 0; } }
-					else if( z < zEnd ){
-						int mo,adv;
-						mo = DtMatchMonth(z,zEnd,&adv);
-						if( mo == 0 ){ return (int)(z - zIn) + 1; }
-						z += adv; DT_SKIP_WS();
-						mm = mo; keepTime = 0; tod = 0;
-						if( z < zEnd && SyisDigit(z[0]) ){
-							int ny = 0; sxi64 yv = 0;
-							while( z < zEnd && SyisDigit(z[0]) && ny < 4 ){ yv = yv*10 + (z[0]-'0'); z++; ny++; }
-							if( ny <= 2 ){ if( yv <= 69 ){ yv += 2000; } else if( yv <= 99 ){ yv += 1900; } }
-							yy = yv;
-						}
-					}
-					/* else: "... day of" with nothing after — php defaults to this
-					 * month (mm/yy/tod stay the base, keepTime stays 1). */
-					if( ok ){
-						int dim = (int)(DtDaysFromCivil(yy,mm+1,1) - DtDaysFromCivil(yy,mm,1));
-						int day = bFirst ? 1 : dim;
-						iTs = DtDaysFromCivil(yy,mm,day)*86400 + (keepTime ? tod : 0) - iOff;
-						bAny = 1;
-						continue;
-					}
+					p->iFirstLast = bFirst ? 1 : 2;
+					bAny = 1;
+					continue;
 				}
 			}
-			z = zSave; /* not the "first|last day of ..." shape: rewind */
+			z = zSave; /* not the "first|last day of" shape: rewind */
 		}
-		/* Standalone "this|next|last (month|week)": month shifts by ±1 keeping the
-		 * day/time; week moves to the Monday of this/next/last ISO week keeping the
-		 * time-of-day (php: weeks start on Monday). */
+		/* Weekday navigation: "[next|last|previous|this] <weekday>" moves to the
+		 * target weekday's midnight. php's behaviour code decides whether a base
+		 * day that already matches counts: "next"/"last" skip it, a bare name or
+		 * "this" keeps it. The move itself happens in DtAdjustWeekday, BEFORE the
+		 * relative vector, which is php's order. */
+		{
+			const char *zSave = z;
+			int dir = 0,bHavePrefix = 0;
+			int adv,dow;
+			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; DT_SKIP_WS(); bHavePrefix = 1; }
+			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; DT_SKIP_WS(); bHavePrefix = 1; }
+			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; DT_SKIP_WS(); bHavePrefix = 1; }
+			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; DT_SKIP_WS(); bHavePrefix = 1; }
+			dow = DtMatchWeekday(z,zEnd,&adv);
+			if( dow >= 0 ){
+				DtUnhaveTime(p);
+				p->iWday = dow;
+				/* php: "next"/"last" carry behaviour 0 and shift whole weeks
+				 * (`last monday` is -7 days from the matching one); a bare name
+				 * and "this" carry behaviour 1 and shift nothing. */
+				p->iWdayBehavior = (bHavePrefix && dir != 0) ? 0 : 1;
+				if( dir < 0 ){ p->rd = DtWAdd(p->rd,-7); }
+				z += adv;
+				bAny = 1;
+				continue;
+			}
+			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */
+		}
+		/* Standalone "this|next|last (month|week)". php's month is an ordinary
+		 * relative month; its WEEK is a weekday-relative move to the Monday of the
+		 * week (behaviour 2) plus the whole weeks, which is why "next week" is that
+		 * Monday and not seven days from the base day. */
 		{
 			const char *zSave = z;
 			int dir = 2; /* 2 = no prefix */
@@ -748,33 +891,43 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 				DT_SKIP_WS();
 				if( DT_LOWEQ("month",5) ){
 					z += 5;
-					iTs = DtAddMonths(iTs,iOff,dir);
+					p->rm = DtWAdd(p->rm,dir);
 					bAny = 1;
 					continue;
 				}
 				if( DT_LOWEQ("week",4) ){
-					sxi64 days0 = DtFloorDiv(iTs + iOff,86400);
-					sxi64 tod = (iTs + iOff) - days0*86400;
-					int bdow = (int)(((days0 + 4) % 7 + 7) % 7);
-					sxi64 monday = days0 - ((bdow + 6) % 7); /* Monday of the base week */
 					z += 4;
-					monday += (sxi64)dir * 7;
-					iTs = monday*86400 + tod - iOff;
+					p->rd = DtWAdd(p->rd,(sxi64)dir * 7);
+					if( p->iWday < 0 ){ p->iWday = 1; }   /* php: Monday, unless a
+						* weekday was already named ("monday this week") */
+					p->iWdayBehavior = 2;
 					bAny = 1;
 					continue;
 				}
 			}
 			z = zSave;
 		}
-		/* Trailing time-of-day in a relative sequence ("next thursday 15:00"): set
-		 * the clock on the current day. The leading absolute HH:MM branch handles a
-		 * time at the START; this handles one AFTER a date/relative token. */
+		/* A month NAME anywhere in the string is an absolute month, php's own rule:
+		 * "first day of january", "+1 day january" and "march 3" all reach here. */
+		if( SyisAlpha(z[0]) ){
+			int adv;
+			if( DtMatchMonth(z,zEnd,&adv) != 0 ){
+				iRc = DtTryMonthDate(z,zEnd,&z,p,zIn);
+				if( iRc != 0 ){
+					if( iRc != 1 ){ return iRc; }
+					bAny = 1;
+					continue;
+				}
+			}
+		}
+		/* Trailing time-of-day ("next thursday 15:00"): sets the clock outright. */
 		if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'
 		 && SyisDigit(z[3]) && SyisDigit(z[4]) ){
-			sxi64 days = DtFloorDiv(iTs + iOff,86400);
 			int hh = (z[0]-'0')*10 + (z[1]-'0');
 			int mm = (z[3]-'0')*10 + (z[4]-'0');
 			int ss = 0;
+			/* php: a bad hour kills the token (error at its start); a bad minute or
+			 * second dies on the component's second digit */
 			if( hh > 24 ){ return (int)(z - zIn) + 1; }
 			if( mm > 59 ){ return (int)(&z[4] - zIn) + 1; }
 			z += 5;
@@ -785,13 +938,15 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 			}
 			/* A time of day REPLACES the sub-second clock, fraction or not:
 			 * `modify('08:09:10')` zeroes the microseconds php's way, and
-			 * `modify('05:06:07.000009')` -- which did not parse here at all --
-			 * sets them. */
-			uSec = 0;
+			 * `modify('05:06:07.000009')` sets them. */
+			p->h = hh;
+			p->i = mm;
+			p->s = ss;
+			p->us = 0;
+			p->bHaveTime = 1;
 			if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
-				uSec = DtReadFraction(&z,zEnd);
+				p->us = DtReadFraction(&z,zEnd);
 			}
-			iTs = days*86400 + (sxi64)hh*3600 + (sxi64)mm*60 + ss - iOff;
 			bAny = 1;
 			continue;
 		}
@@ -826,38 +981,38 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 			 * prefixes of ("ms" would otherwise swallow "msec"). `us` is NOT one of
 			 * them there, and neither is the Greek mu -- only U+00B5, the MICRO
 			 * SIGN, which is the two bytes 0xC2 0xB5 here. They accumulate apart
-			 * from the seconds and CARRY into them once, below, so `-500
+			 * from the seconds and carry into them in DtApplyFields, so `-500
 			 * microseconds` from midnight is the previous day's 23:59:59.999500. */
-			if( DT_LOWEQ("microseconds",12) ){ iRelUs += v;        z += 12; }
-			else if( DT_LOWEQ("microsecond",11) ){ iRelUs += v;    z += 11; }
-			else if( DT_LOWEQ("milliseconds",12) ){ iRelUs += v*1000; z += 12; }
-			else if( DT_LOWEQ("millisecond",11) ){ iRelUs += v*1000; z += 11; }
-			else if( DT_LOWEQ("usecs",5) )  { iRelUs += v;         z += 5; }
-			else if( DT_LOWEQ("usec",4) )   { iRelUs += v;         z += 4; }
-			else if( DT_LOWEQ("msecs",5) )  { iRelUs += v*1000;    z += 5; }
-			else if( DT_LOWEQ("msec",4) )   { iRelUs += v*1000;    z += 4; }
-			else if( DT_LOWEQ("\xc2\xb5s",3) ){ iRelUs += v;       z += 3; }
-			else if( DT_LOWEQ("ms",2) )     { iRelUs += v*1000;    z += 2; }
-			else if( DT_LOWEQ("seconds",7) ){ iTs += v;            z += 7; }
-			else if( DT_LOWEQ("second",6) ) { iTs += v;            z += 6; }
-			else if( DT_LOWEQ("secs",4) )   { iTs += v;            z += 4; }
-			else if( DT_LOWEQ("sec",3) )    { iTs += v;            z += 3; }
-			else if( DT_LOWEQ("minutes",7) ){ iTs += v*60;         z += 7; }
-			else if( DT_LOWEQ("minute",6) ) { iTs += v*60;         z += 6; }
-			else if( DT_LOWEQ("mins",4) )   { iTs += v*60;         z += 4; }
-			else if( DT_LOWEQ("min",3) )    { iTs += v*60;         z += 3; }
-			else if( DT_LOWEQ("hours",5) )  { iTs += v*3600;       z += 5; }
-			else if( DT_LOWEQ("hour",4) )   { iTs += v*3600;       z += 4; }
-			else if( DT_LOWEQ("days",4) )   { iTs += v*86400;      z += 4; }
-			else if( DT_LOWEQ("day",3) )    { iTs += v*86400;      z += 3; }
-			else if( DT_LOWEQ("weeks",5) )  { iTs += v*7*86400;    z += 5; }
-			else if( DT_LOWEQ("week",4) )   { iTs += v*7*86400;    z += 4; }
-			else if( DT_LOWEQ("fortnights",10) ){ iTs += v*14*86400; z += 10; }
-			else if( DT_LOWEQ("fortnight",9) )  { iTs += v*14*86400; z += 9; }
-			else if( DT_LOWEQ("months",6) ) { iTs = DtAddMonths(iTs,iOff,v); z += 6; }
-			else if( DT_LOWEQ("month",5) )  { iTs = DtAddMonths(iTs,iOff,v); z += 5; }
-			else if( DT_LOWEQ("years",5) )  { iTs = DtAddMonths(iTs,iOff,v*12); z += 5; }
-			else if( DT_LOWEQ("year",4) )   { iTs = DtAddMonths(iTs,iOff,v*12); z += 4; }
+			if( DT_LOWEQ("microseconds",12) ){ p->rus = DtWAdd(p->rus,v);        z += 12; }
+			else if( DT_LOWEQ("microsecond",11) ){ p->rus = DtWAdd(p->rus,v);    z += 11; }
+			else if( DT_LOWEQ("milliseconds",12) ){ p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 12; }
+			else if( DT_LOWEQ("millisecond",11) ){ p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 11; }
+			else if( DT_LOWEQ("usecs",5) )  { p->rus = DtWAdd(p->rus,v);         z += 5; }
+			else if( DT_LOWEQ("usec",4) )   { p->rus = DtWAdd(p->rus,v);         z += 4; }
+			else if( DT_LOWEQ("msecs",5) )  { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 5; }
+			else if( DT_LOWEQ("msec",4) )   { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 4; }
+			else if( DT_LOWEQ("\xc2\xb5s",3) ){ p->rus = DtWAdd(p->rus,v);       z += 3; }
+			else if( DT_LOWEQ("ms",2) )     { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 2; }
+			else if( DT_LOWEQ("seconds",7) ){ p->rs = DtWAdd(p->rs,v);           z += 7; }
+			else if( DT_LOWEQ("second",6) ) { p->rs = DtWAdd(p->rs,v);           z += 6; }
+			else if( DT_LOWEQ("secs",4) )   { p->rs = DtWAdd(p->rs,v);           z += 4; }
+			else if( DT_LOWEQ("sec",3) )    { p->rs = DtWAdd(p->rs,v);           z += 3; }
+			else if( DT_LOWEQ("minutes",7) ){ p->ri = DtWAdd(p->ri,v);           z += 7; }
+			else if( DT_LOWEQ("minute",6) ) { p->ri = DtWAdd(p->ri,v);           z += 6; }
+			else if( DT_LOWEQ("mins",4) )   { p->ri = DtWAdd(p->ri,v);           z += 4; }
+			else if( DT_LOWEQ("min",3) )    { p->ri = DtWAdd(p->ri,v);           z += 3; }
+			else if( DT_LOWEQ("hours",5) )  { p->rh = DtWAdd(p->rh,v);           z += 5; }
+			else if( DT_LOWEQ("hour",4) )   { p->rh = DtWAdd(p->rh,v);           z += 4; }
+			else if( DT_LOWEQ("days",4) )   { p->rd = DtWAdd(p->rd,v);           z += 4; }
+			else if( DT_LOWEQ("day",3) )    { p->rd = DtWAdd(p->rd,v);           z += 3; }
+			else if( DT_LOWEQ("weeks",5) )  { p->rd = DtWAdd(p->rd,DtWMul(v,7)); z += 5; }
+			else if( DT_LOWEQ("week",4) )   { p->rd = DtWAdd(p->rd,DtWMul(v,7)); z += 4; }
+			else if( DT_LOWEQ("fortnights",10) ){ p->rd = DtWAdd(p->rd,DtWMul(v,14)); z += 10; }
+			else if( DT_LOWEQ("fortnight",9) )  { p->rd = DtWAdd(p->rd,DtWMul(v,14)); z += 9; }
+			else if( DT_LOWEQ("months",6) ) { p->rm = DtWAdd(p->rm,v);           z += 6; }
+			else if( DT_LOWEQ("month",5) )  { p->rm = DtWAdd(p->rm,v);           z += 5; }
+			else if( DT_LOWEQ("years",5) )  { p->ry = DtWAdd(p->ry,v);           z += 5; }
+			else if( DT_LOWEQ("year",4) )   { p->ry = DtWAdd(p->ry,v);           z += 4; }
 			else{
 				return (int)(z - zIn) + 1;
 			}
@@ -869,21 +1024,38 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 	if( !bAny ){
 		return 1;
 	}
-	if( iRelUs != 0 ){
-		/* One carry, floored, so a NEGATIVE run borrows a whole second: php's
-		 * `-500 microseconds` from midnight is 23:59:59.999500 the day before. */
-		sxi64 iTot = (sxi64)uSec + iRelUs;
-		sxi64 iCarry = DtFloorDiv(iTot,1000000);
-		iTs += iCarry;
-		uSec = (int)(iTot - iCarry * 1000000);
-	}
-	*pTs = iTs;
-	*pOff = iOff;
-	*pbOffSet = bOffSet;
-	*pUs = uSec;
 	return 0;
 #undef DT_SKIP_WS
 #undef DT_LOWEQ
+}
+/*
+ * Parse zIn against the base moment and answer the timestamp it names. The
+ * vector the string filled is applied here (DtApplyFields), so nothing about the
+ * order the string spelled its units in reaches the clock.
+ */
+static int DtParseEx(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
+	int iFlags,sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs,dt_parsed *pVec)
+{
+	dt_parsed sP;
+	int iErr;
+	DtFieldsInit(&sP,iBaseOff);
+	*pUs = iBaseUs;
+	iErr = DtParseFields(zIn,nLen,&sP);
+	if( pVec ){
+		*pVec = sP;
+	}
+	if( iErr != 0 ){
+		return iErr;
+	}
+	*pTs = DtApplyFields(&sP,iBaseTs,iBaseOff,iBaseUs,iFlags,pUs);
+	*pOff = sP.iOff;
+	*pbOffSet = sP.bOffSet;
+	return 0;
+}
+static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
+	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)
+{
+	return DtParseEx(zIn,nLen,iBaseTs,iBaseOff,iBaseUs,0,pTs,pOff,pbOffSet,pUs,0);
 }
 /*
  * php's parse-failure reason, from DtParse's error code.
@@ -1990,7 +2162,8 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 	sxi64 iTs = 0;
 	sxi32 iOff = 0;
 	int bOffSet = 0,uSec = 0,iErrPos;
-	iErrPos = DtParse(zIn,nIn,(sxi64)time(0),iZoneOff,0,&iTs,&iOff,&bOffSet,&uSec);
+	dt_parsed sVec;
+	iErrPos = DtParseEx(zIn,nIn,(sxi64)time(0),iZoneOff,0,0,&iTs,&iOff,&bOffSet,&uSec,&sVec);
 	if( iErrPos != 0 ){
 		*pzErr = DtParseErr(zIn,nIn,iErrPos,piPos,pcAt);
 		return -1;
@@ -2000,9 +2173,10 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 	if( bOffSet ){
 		pOut->iOff = iOff;
 		if( bOffSet == 2 ){
-			pOut->zName = "Z";
-			pOut->nName = 1;
-			pOut->iZoneKind = DT_ZONE_ABBR;   /* php's `Z` is an abbreviation */
+			/* a zone the STRING named -- php's `Z`, or a trailing UTC/GMT */
+			pOut->zName = sVec.zZone;
+			pOut->nName = sVec.nZone;
+			pOut->iZoneKind = sVec.bZoneIdent ? DT_ZONE_ID : DT_ZONE_ABBR;
 		}else{
 			pOut->nName = DtOffName(zNameBuf,nNameBuf,iOff);
 			pOut->zName = zNameBuf;
