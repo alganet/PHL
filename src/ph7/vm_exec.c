@@ -7900,6 +7900,24 @@ NativeCall:
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
 			pVm->pCalleeName = pSavedCallee;
+			if( PH7_CmpRefusalPending(pVm) ){
+				/* A native compare handler refused a pair this builtin compared
+				 * (in_array, sort, max and switch all drive the same comparator,
+				 * which has no throw boundary of its own and only recorded it).
+				 * php raises out of the comparison and the builtin never finishes;
+				 * this one finishes first and then throws, the way every builtin
+				 * whose failure is predicted rather than raised in flight does.
+				 * Reported on the call context, so VmHostFuncThrowRc below lands
+				 * it exactly as the builtin's own throws are landed -- unless the
+				 * builtin ALREADY raised, in which case the first throw wins and
+				 * the record is only dropped. */
+				if( rc == PH7_ABORT || rc == PH7_EXCEPTION || rc == PH7_SUSPEND
+				 || sCtx.nThrowRc != 0 ){
+					PH7_CmpRefusalClear(&(*pVm));
+				}else{
+					PH7_CmpRefusalRaiseCtx(&sCtx);
+				}
+			}
 			/* A host function that RAISED a catchable throw (PH7_VmThrowException)
 			 * and still returned PH7_OK reports it here — the throw's catch has
 			 * already run in place, so treating the call as a normal return would

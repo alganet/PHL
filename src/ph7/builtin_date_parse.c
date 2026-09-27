@@ -3718,6 +3718,114 @@ static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
  * ---------------------------------------------------------------------------
  */
 /*
+ * ---------------------------------------------------------------------------
+ * How the date classes COMPARE (ph7_class::xCmp -- php's compare handlers).
+ *
+ * php compares a date object by what it MEANS, not by what it stores, and the
+ * property walk PHL fell back to disagreed with every one of them: a DateTime
+ * and a DateTimeImmutable of the same instant were unequal here because the
+ * classes differ, two dates one second apart in different zones were unequal
+ * because the zone NAME is a property, two `P1D` intervals were equal where php
+ * refuses to compare intervals at all, and two DateTimeZones ordered by name
+ * where php refuses to compare different KINDS of zone.
+ *
+ * All three handlers screen their partner by INSTANCE OF, not by class
+ * identity: a subclass of DateTime still compares as an instant (and its extra
+ * properties are invisible to the comparison, since php's date handler never
+ * looks at properties), while anything that is not a date at all is php's
+ * ZEND_UNCOMPARABLE -- the 1-from-both-sides the caller defaults to.
+ * ---------------------------------------------------------------------------
+ */
+/* Is this instance an instance of the named date class? */
+static int DtCmpIsA(ph7_vm *pVm,ph7_class_instance *pObj,const char *zClass)
+{
+	ph7_class *pClass;
+	if( pObj == 0 ){
+		return 0;
+	}
+	pClass = DtClass(&(*pVm),zClass);
+	return pClass != 0 && PH7_VmInstanceOf(pObj->pClass,pClass);
+}
+/*
+ * DateTime / DateTimeImmutable: php's date_object_compare_date, which is
+ * timelib_time_compare on the two INSTANTS -- the epoch second first, the
+ * microseconds to break a tie. The zone is not part of it (php compares the
+ * instant the two name, so 00:00 UTC equals 01:00+01:00), and neither is any
+ * property, declared or dynamic.
+ */
+static void DtCmpDateTime(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
+{
+	dt_state sL,sR;
+	if( !DtCmpIsA(&(*pVm),pThis,"DateTimeInterface")
+	 || !DtCmpIsA(&(*pVm),pCtx->pOther,"DateTimeInterface") ){
+		return;   /* uncomparable, which is what the caller pre-loaded */
+	}
+	DtLoad(pThis,&sL);
+	DtLoad(pCtx->pOther,&sR);
+	if( sL.iTs != sR.iTs ){
+		pCtx->iResult = sL.iTs < sR.iTs ? -1 : 1;
+	}else if( sL.uSec != sR.uSec ){
+		pCtx->iResult = sL.uSec < sR.uSec ? -1 : 1;
+	}else{
+		pCtx->iResult = 0;
+	}
+}
+/*
+ * DateInterval: php refuses. Two intervals carry no common unit -- a month is
+ * not a fixed number of days -- so php's handler answers ZEND_UNCOMPARABLE
+ * behind an E_WARNING for every pair, `P1D` against `P1D` included. The one
+ * comparison that succeeds is `$i == $i`, and that never reaches a handler:
+ * zend's identity shortcut answers it first (and PH7_ClassInstanceCmp's does
+ * too, above this call).
+ *
+ * The warning is emitted from inside the comparator on purpose -- php emits it
+ * from inside the handler, so a sort() over intervals warns once per COMPARISON
+ * there as it does here.
+ */
+static void DtCmpInterval(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
+{
+	if( !DtCmpIsA(&(*pVm),pThis,"DateInterval")
+	 || !DtCmpIsA(&(*pVm),pCtx->pOther,"DateInterval") ){
+		return;   /* an interval against something else: uncomparable, and silent */
+	}
+	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"Cannot compare DateInterval objects");
+	pCtx->iResult = 1;
+}
+/*
+ * DateTimeZone: php compares two zones of the SAME kind and refuses two of
+ * different kinds outright (a DateException raised from inside the comparison).
+ * Same-kind zones answer 0 or php's uncomparable 1 and never an ordering, so
+ * `+01:00 < +02:00` is false there: an OFFSET zone is compared by its offset
+ * (`+0100` and `+01:00` are one zone), an abbreviation and an identifier by
+ * their normalized names.
+ */
+static void DtCmpTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
+{
+	const char *zL = 0,*zR = 0;
+	int nL = 0,nR = 0;
+	int iKindL,iKindR;
+	if( !DtCmpIsA(&(*pVm),pThis,"DateTimeZone")
+	 || !DtCmpIsA(&(*pVm),pCtx->pOther,"DateTimeZone") ){
+		return;
+	}
+	PH7_NativeAttrStr(pThis,DTZ_NAME,&zL,&nL);
+	PH7_NativeAttrStr(pCtx->pOther,DTZ_NAME,&zR,&nR);
+	iKindL = DtZoneTypeOf(zL ? zL : "",nL);
+	iKindR = DtZoneTypeOf(zR ? zR : "",nR);
+	if( iKindL != iKindR ){
+		pCtx->zThrowClass = "DateException";
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot compare two different kinds of DateTimeZone objects");
+		return;   /* the uncomparable 1 stands in until the refusal is raised */
+	}
+	if( iKindL == 1 ){
+		pCtx->iResult = PH7_NativeAttrInt(pThis,DTZ_OFF)
+		              == PH7_NativeAttrInt(pCtx->pOther,DTZ_OFF) ? 0 : 1;
+		return;
+	}
+	pCtx->iResult = (nL == nR && (nL == 0 || SyMemcmp(zL,zR,(sxu32)nL) == 0)) ? 0 : 1;
+}
+/*
  * php's add_common_properties(): after the presented shape, the instance's own
  * php-visible slots -- a SUBCLASS's declared properties, which php serializes
  * alongside the internal state. A key the presented shape already wrote WINS
@@ -4301,6 +4409,32 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	 * carries no field for a hook. It also flags the class's properties, which is
 	 * what makes `new` register their slots with the store filter. */
 	rc = PH7_NativeClassInstallSetHook(&(*pVm),"DateInterval",DtIntervalSet);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* php's compare handlers (ph7_class::xCmp), assigned here for the same reason
+	 * the write handler is. DatePeriod gets none: php has no handler for it, its
+	 * real property table is EMPTY (the seven it shows are fabricated), and the
+	 * ordinary walk over nothing is what makes any two of them equal -- which is
+	 * what marking those seven virtual reproduces. */
+	{
+		static const struct {
+			const char *zClass;
+			void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *);
+		} aCmp[] = {
+			{ "DateTime",          DtCmpDateTime },
+			{ "DateTimeImmutable", DtCmpDateTime },
+			{ "DateInterval",      DtCmpInterval },
+			{ "DateTimeZone",      DtCmpTimeZone },
+		};
+		for( n = 0 ; n < SX_ARRAYSIZE(aCmp) ; n++ ){
+			rc = PH7_NativeClassInstallCmpHook(&(*pVm),aCmp[n].zClass,aCmp[n].xCmp);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+	}
+	rc = PH7_NativeClassMarkVirtualProps(&(*pVm),"DatePeriod");
 	if( rc != SXRET_OK ){
 		return rc;
 	}

@@ -1339,6 +1339,13 @@ int ph7_value_compare(ph7_value *pLeft,ph7_value *pRight,int bStrict)
 	}
 	/* Perform the comparison */
 	rc = PH7_MemObjCmp(&(*pLeft),&(*pRight),bStrict,0);
+	/* A native compare handler may have REFUSED the pair (php throws comparing
+	 * two different KINDS of DateTimeZone). The record is deliberately LEFT
+	 * standing: array_keys() reaches the comparator through this entry point, and
+	 * the host-call boundary raises what it recorded exactly as it does for the
+	 * builtins that call PH7_MemObjCmp directly. A host application driving this
+	 * outside any execution never sees the throw, and PH7_VmInit/PH7_VmReset
+	 * clear the record before the next one begins. */
 	/* Comparison result */
 	return rc;
 }

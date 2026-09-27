@@ -692,6 +692,89 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 	return SXRET_OK;
 }
 /*
+ * The nearest ph7_class::xCmp in a class's base chain -- the same handler
+ * inheritance xDim and xSet get, and php's own: a subclass of DateTime still
+ * compares as an instant, whatever properties it adds.
+ */
+static ph7_class * NativeCmpClass(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->xCmp ){
+			return pClass;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
+/*
+ * Ask the LEFT operand's compare handler, php-style. Answers 0 when no class in
+ * its chain has one (the caller falls back to the property walk); 1 when the
+ * handler decided, and *pResult is then the ordering -- which includes a
+ * REFUSAL, recorded on the VM for the nearest throw boundary to raise, with the
+ * uncomparable 1 standing in as the answer meanwhile.
+ */
+PH7_PRIVATE int PH7_ClassNativeCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,sxi32 *pResult)
+{
+	ph7_class *pClass = pLeft ? NativeCmpClass(pLeft->pClass) : 0;
+	PH7_NativeCmpCtx sCtx;
+	ph7_vm *pVm;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pVm = pLeft->pVm;
+	SyZero(&sCtx,sizeof(sCtx));
+	sCtx.pOther = pRight;
+	sCtx.iResult = 1;   /* php's ZEND_UNCOMPARABLE: what a hook that recognizes nothing answers */
+	pClass->xCmp(pVm,pLeft,&sCtx);
+	if( sCtx.zThrowClass && pVm->zCmpRefusalClass == 0 ){
+		/* First refusal wins: a driver that keeps comparing after one (sort() does)
+		 * must not overwrite the message the script will actually see. */
+		pVm->zCmpRefusalClass = sCtx.zThrowClass;
+		SyMemcpy(sCtx.zThrowMsg,pVm->zCmpRefusalMsg,sizeof(pVm->zCmpRefusalMsg));
+		pVm->zCmpRefusalMsg[sizeof(pVm->zCmpRefusalMsg)-1] = 0;
+	}
+	*pResult = sCtx.iResult;
+	return 1;
+}
+/*
+ * Install a compare handler on a mounted native class. Called by the owning
+ * installer right after PH7_InstallNativeClasses, for the reason xClone, xDim
+ * and xSet are: the spec table has no field for a hook.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
+	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *))
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pClass->xCmp = xCmp;
+	return SXRET_OK;
+}
+/*
+ * Mark every INSTANCE property a mounted native class declares as one php
+ * FABRICATES rather than stores (PH7_CLASS_ATTR_NATIVE_VIRTUAL), which is what
+ * keeps the object comparator from seeing it. DatePeriod is the whole caller
+ * list: php's object has an EMPTY real property table, so two of them are equal
+ * whatever they contain, while a subclass's own property still decides.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass)
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	SyHashEntry *pEntry;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			pAttr->iFlags |= PH7_CLASS_ATTR_NATIVE_VIRTUAL;
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Create and install ONE class from its spec: constants and properties, but
  * neither methods nor its base chain.
  *

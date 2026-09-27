@@ -1540,9 +1540,14 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 		PH7_VmThrowError(pLeft->pVm,0,PH7_CTX_ERR,"Nesting limit reached: Infinite recursion?");
 		return 1;
 	}
-	/* Comparison is performed only if the objects are instance of the same class */
-	if( pLeft->pClass != pRight->pClass ){
-		return 1;
+	/*
+	 * php's identity shortcut, and it comes FIRST -- before the same-class screen
+	 * and before any handler: `$i == $i` is 0 for a DateInterval, the one pair of
+	 * intervals php will compare at all.
+	 */
+	if( pLeft == pRight ){
+		/* Same instance,don't bother processing,object are equals */
+		return 0;
 	}
 	if( bStrict ){
 		/*
@@ -1550,8 +1555,25 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 		 *  when using the identity operator (===), object variables
 		 *  are identical if and only if they refer to the same instance
 		 *  of the same class.
+		 * Two DISTINCT instances, so this is never identical -- and no compare
+		 * handler is asked, because php's `===` is pointer identity and never
+		 * reaches one.
 		 */
-		return !(pLeft == pRight);
+		return 1;
+	}
+	/*
+	 * php's compare handler (ph7_class::xCmp), asked of the LEFT operand and
+	 * ABOVE the same-class screen: a DateTime and a DateTimeImmutable of the same
+	 * instant are equal there, which no property walk between two different
+	 * classes could ever answer. A class with no handler falls through to the
+	 * walk, which is php's zend_std_compare_objects.
+	 */
+	if( PH7_ClassNativeCmp(pLeft,pRight,&rc) ){
+		return rc;
+	}
+	/* Comparison is performed only if the objects are instance of the same class */
+	if( pLeft->pClass != pRight->pClass ){
+		return 1;
 	}
 	/*
 	 * Attribute comparison.
@@ -1560,10 +1582,6 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 	 *  in a simple manner, namely: Two object instances are equal if they have
 	 *  the same attributes and values, and are instances of the same class.
 	 */
-	if( pLeft == pRight ){
-		/* Same instance,don't bother processing,object are equals */
-		return 0;
-	}
 	/* Closures compare by IDENTITY under == as well (not by attributes): two distinct
 	 * Closure instances are never equal, even when they wrap the same underlying function
 	 * (PHP semantics). pLeft != pRight here, so a Closure pair is unequal. Without this,
@@ -1589,8 +1607,13 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 		VmClassAttr *p1 = (VmClassAttr *)pEntry->pUserData;
 		VmClassAttr *p2;
 		ph7_value *pL,*pR;
-		/* Compare only non-static attribute */
-		if( p1->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC) ){
+		/* Compare only non-static attribute. A native class's VIRTUAL property is
+		 * skipped too: php fabricates DatePeriod's seven on demand and its real
+		 * property table is empty, so any two DatePeriods are equal there whatever
+		 * they contain -- while a subclass's own property, which IS in the table,
+		 * still decides. */
+		if( p1->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC
+		                        |PH7_CLASS_ATTR_NATIVE_VIRTUAL) ){
 			continue;
 		}
 		pEntry2 = SyHashGet(&pRight->hAttr,SyStringData(&p1->pAttr->sName),SyStringLength(&p1->pAttr->sName));

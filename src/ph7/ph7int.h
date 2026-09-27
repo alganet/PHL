@@ -1346,6 +1346,42 @@ struct PH7_NativeSetCtx
 	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
 };
 /*
+ * One COMPARISON asked of a native class through ph7_class::xCmp -- php's
+ * compare handler.
+ *
+ * php asks the LEFT operand's handler and takes whatever it answers, so the
+ * handler decides for the pair: what the two objects are compared BY (a
+ * DateTime is its instant, and neither its zone nor any property), whether the
+ * right operand is even a partner it recognizes, and whether the pair is
+ * comparable at all. Asked only for `==`/`<`/`<=>` and friends -- `===` is
+ * identity in php and never reaches a handler.
+ *
+ * The answer is an ordering in iResult. php's ZEND_UNCOMPARABLE is the value 1,
+ * which the comparator already uses for every unordered pair (a NaN, two arrays
+ * neither containing the other): the operator arms ask `<` from the other side
+ * rather than reading one side's sign, so 1 from BOTH directions leaves every
+ * relational spelling false and `==` false, which is exactly what php answers
+ * for an uncomparable pair.
+ *
+ * A REFUSAL (php throws DateException out of the DateTimeZone handler) is
+ * carried back in zThrowClass/zThrowMsg rather than raised here, the way the
+ * dimension hook's is: PH7_MemObjCmp runs under `sort()` and `in_array()` as
+ * well as under an operator, and none of those has a throw boundary of its own.
+ * The comparator records it on the VM (PH7_CmpRefusalRaise) and the sites that
+ * CAN route a throw -- the comparison opcodes, the switch arm and the host-call
+ * boundary -- raise it.
+ */
+typedef struct PH7_NativeCmpCtx PH7_NativeCmpCtx;
+struct PH7_NativeCmpCtx
+{
+	ph7_class_instance *pOther; /* The RIGHT operand (pThis is the left one) */
+	sxi32 iResult;              /* -1 / 0 / 1; 1 is also php's ZEND_UNCOMPARABLE.
+	                             * The caller inits it to 1, so a hook that
+	                             * recognizes nothing may simply return. */
+	const char *zThrowClass;    /* Set by the hook to refuse; 0 (the caller's init) means answered */
+	char zThrowMsg[160];        /* ...and its message, formatted by the hook */
+};
+/*
  * Each class is parsed out and stored in an instance of the following structure.
  * PH7 introduced powerfull extensions to the PHP 5 OO subsystems.
  * Please refer to the official documentation for more information.
@@ -1439,6 +1475,19 @@ struct ph7_class
 	                       * which also flags the class's properties PH7_CLASS_ATTR_NATIVE_SET
 	                       * so their slots get registered; inherited by user subclasses the
 	                       * way php inherits a handler. 0 everywhere else. */
+	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *); /* php's compare handler:
+	                       * what `==`, `<` and `<=>` MEAN for an instance of this class,
+	                       * asked instead of the property-by-property walk. php gives one
+	                       * to the three date classes whose state is not their properties --
+	                       * a DateTime compares as an INSTANT across DateTime and
+	                       * DateTimeImmutable alike, two DateIntervals are never comparable,
+	                       * two DateTimeZones of different kinds are a refusal. Asked of the
+	                       * LEFT operand only, before the same-class screen and after the
+	                       * identity shortcut, and never for `===`. Assigned on the mounted
+	                       * class by the owning installer, like xClone/xDim/xSet, and
+	                       * inherited by user subclasses (php's handler inheritance: a
+	                       * subclass of DateTime still compares as an instant, extra
+	                       * properties and all). 0 everywhere else. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -1615,7 +1664,18 @@ struct ph7_class_attr
                                             * both engines, and a re-run that now succeeds (the constant
                                             * it names was define()d after the declaration) answers the
                                             * value, as php's does. */
-/* next free bit: 0x200000 */
+#define PH7_CLASS_ATTR_NATIVE_VIRTUAL 0x200000 /* A NATIVE class's property that php FABRICATES on
+                                            * demand (its get_properties handler) instead of keeping
+                                            * in the object's real property table. DatePeriod's seven
+                                            * are php's case: they read and write like ordinary
+                                            * properties, so PHL declares real slots for them, but
+                                            * php's COMPARISON walks the real table and finds nothing
+                                            * there -- which is why any two DatePeriods are equal in
+                                            * php whatever they contain, while a subclass's own
+                                            * property still decides. Read only by the object
+                                            * comparator; presentation is the HIDDEN bit's business,
+                                            * and these are shown. */
+/* next free bit: 0x400000 */
 /*
  * Does a store into this property's slot have to be FILTERED? Two unrelated
  * reasons say yes -- a declared TYPE to enforce and a native class's own write
@@ -1740,6 +1800,21 @@ PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *p
 PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *));
+PH7_PRIVATE int PH7_ClassNativeCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,sxi32 *pResult);
+PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
+	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *));
+PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass);
+/*
+ * The refusal a native compare handler carried back (ph7_vm::zCmpRefusalClass):
+ * pending? raise it here, where a throw can be routed; raise it on a host CALL
+ * CONTEXT, so a builtin that compared reports it the way its own throws are
+ * reported; or drop it, for the two comparison doors that are not PHP execution
+ * at all (the public ph7_value_compare, a VM reset).
+ */
+PH7_PRIVATE int PH7_CmpRefusalPending(ph7_vm *pVm);
+PH7_PRIVATE sxi32 PH7_CmpRefusalRaise(ph7_vm *pVm);
+PH7_PRIVATE sxi32 PH7_CmpRefusalRaiseCtx(ph7_context *pCtx);
+PH7_PRIVATE void PH7_CmpRefusalClear(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
 	const PH7_NativeEnumCase *aCase,sxu32 nCase,
@@ -2673,6 +2748,17 @@ struct ph7_vm
 	SySet aSpreadKey;          /* VmSpreadKey: one (off,len) per expanded element, in order */
 	SyBlob sSpreadKeyBlob;     /* Backing bytes for the string keys referenced by aSpreadKey */
 	SySet aEffArgName;         /* SyString: effective per-actual-slot arg names built at CALL */
+	const char *zCmpRefusalClass; /* A native compare handler (ph7_class::xCmp) REFUSED the pair,
+	                            * and this is the exception class it named -- php throws
+	                            * DateException out of the DateTimeZone handler. Recorded rather
+	                            * than raised because PH7_MemObjCmp has no throw boundary: it runs
+	                            * under sort(), in_array() and max() as often as under an operator.
+	                            * The sites that DO have one (the comparison opcodes, the switch
+	                            * arm, the host-call boundary) raise it through
+	                            * PH7_CmpRefusalRaise. FIRST refusal wins, like nBoundaryRc: a
+	                            * driver that keeps comparing after one must not overwrite the
+	                            * message the script will see. 0 when none is pending. */
+	char zCmpRefusalMsg[160];  /* ...and its wording, copied out of the hook's context */
 	sxi32 iCmpCallbackExc;     /* The dispatch STATUS a comparison callback did not return with
 								* (PH7_EXCEPTION, or PH7_ABORT for an UNCAUGHT throw), so the
 								* driver (usort/uasort/uksort and the array_udiff/

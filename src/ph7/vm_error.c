@@ -4190,6 +4190,50 @@ PH7_PRIVATE sxi32 VmThrowFromVm(
 	return rc;
 }
 /*
+ * A native compare handler REFUSED the pair (ph7_class::xCmp wrote a class name
+ * into its context, which PH7_ClassNativeCmp parked on the VM). php raises that
+ * exception out of the comparison itself; PH7_MemObjCmp cannot, because it is
+ * also the comparator sort(), in_array(), max() and switch drive, none of which
+ * is a throw boundary. So the refusal waits here until a site that CAN route a
+ * throw asks for it — the comparison opcodes and the switch arm raise it where
+ * the expression's value would have landed, and the host-call boundary raises it
+ * on the builtin's own context, which is where every other builtin throw is
+ * reported from. Both doors clear it first: a raise that itself unwinds must not
+ * leave the record standing for the next comparison to fire again.
+ */
+PH7_PRIVATE int PH7_CmpRefusalPending(ph7_vm *pVm)
+{
+	return pVm->zCmpRefusalClass != 0;
+}
+PH7_PRIVATE void PH7_CmpRefusalClear(ph7_vm *pVm)
+{
+	pVm->zCmpRefusalClass = 0;
+	pVm->zCmpRefusalMsg[0] = 0;
+}
+PH7_PRIVATE sxi32 PH7_CmpRefusalRaise(ph7_vm *pVm)
+{
+	const char *zClass = pVm->zCmpRefusalClass;
+	char zMsg[sizeof(pVm->zCmpRefusalMsg)];
+	if( zClass == 0 ){
+		return SXRET_OK;
+	}
+	SyMemcpy(pVm->zCmpRefusalMsg,zMsg,sizeof(zMsg));
+	PH7_CmpRefusalClear(&(*pVm));
+	return VmThrowFromVm(&(*pVm),zClass,zMsg,(sxu32)SyStrlen(zMsg));
+}
+PH7_PRIVATE sxi32 PH7_CmpRefusalRaiseCtx(ph7_context *pCtx)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zClass = pVm->zCmpRefusalClass;
+	char zMsg[sizeof(pVm->zCmpRefusalMsg)];
+	if( zClass == 0 ){
+		return SXRET_OK;
+	}
+	SyMemcpy(pVm->zCmpRefusalMsg,zMsg,sizeof(zMsg));
+	PH7_CmpRefusalClear(&(*pVm));
+	return PH7_VmThrowException(pCtx,zClass,"%s",zMsg);
+}
+/*
  * php's arithmetic operand contract, which PH7 never enforced — every case below was a
  * SILENT WRONG ANSWER: `5 + "abc"` evaluated to int(5), `1 * "x"` to int(0), `[1] + 1`
  * returned the array, and `5 / "x"` raised DivisionByZero instead of a TypeError.

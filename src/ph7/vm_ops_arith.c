@@ -23,6 +23,27 @@
 #define sState (*pState)
 
 /*
+ * A native compare handler REFUSED the pair the operator just asked about
+ * (php throws DateException comparing two different KINDS of DateTimeZone).
+ * PH7_MemObjCmp only recorded it -- it has no throw boundary of its own -- so
+ * the operator raises it here, where the expression's value would have landed:
+ * both operands go, a null stands in for the result the way every other
+ * mid-expression throw leaves one, and the status routes to the catching try.
+ * Used by the four LOOSE comparison arms; the strict pair never asks a handler.
+ */
+#define VM_CMP_REFUSAL_ROUTE() \
+	if( PH7_CmpRefusalPending(pVm) ){ \
+		sxi32 _rcCmp; \
+		VmPopOperand(&pTos,1); \
+		PH7_MemObjRelease(pTos); \
+		MemObjSetType(pTos,MEMOBJ_NULL); \
+		pTos->nIdx = SXU32_HIGH; \
+		_rcCmp = PH7_CmpRefusalRaise(pVm); \
+		if( _rcCmp == SXERR_ABORT ){ VM_EXIT_ABORT; } \
+		PH7_THROW_ROUTE_MIDEXPR(_rcCmp) \
+	}
+
+/*
  * OP_NULLC_STORE: body moved verbatim from the OP_NULLC_STORE arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -824,6 +845,7 @@ PH7_PRIVATE VmOpRc VmExecOpSpaceship(ph7_vm *pVm,VmExecState *pState,VmInstr *pI
 	 * which contains the other -- with 1 whichever way round it is asked, and
 	 * PH7_MemObjCmp does the same, so the spaceship needs no case of its own. */
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	VM_CMP_REFUSAL_ROUTE()
 	rc = (rc > 0) - (rc < 0);   /* normalize to exactly -1, 0 or 1 */
 	VmPopOperand(&pTos,1);
 	PH7_MemObjRelease(pTos);
@@ -860,6 +882,7 @@ PH7_PRIVATE VmOpRc VmExecOpGe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	 * asking `$b < $a` and getting 1 again -- calls them false, as it does
 	 * every other relational operator on such a pair. */
 	rc = PH7_MemObjCmp(pTos,pNos,FALSE,0);
+	VM_CMP_REFUSAL_ROUTE()
 	if( pInstr->iOp == PH7_OP_GE ){
 		rc = rc <= 0;
 	}else{
@@ -905,6 +928,7 @@ PH7_PRIVATE VmOpRc VmExecOpLe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	/* An unordered pair answers 1 here too, so both spellings are false for it
 	 * without a case of their own (see OP_GT/OP_GE above). */
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	VM_CMP_REFUSAL_ROUTE()
 	if( pInstr->iOp == PH7_OP_LE ){
 		rc = rc < 1;
 	}else{
@@ -1028,6 +1052,7 @@ PH7_PRIVATE VmOpRc VmExecOpNeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	}
 #endif
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	VM_CMP_REFUSAL_ROUTE()
 	if( pInstr->iOp == PH7_OP_EQ ){
 		rc = rc == 0;
 	}else{

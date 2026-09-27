@@ -401,6 +401,18 @@ PH7_PRIVATE VmOpRc VmExecOpSwitch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 		rc = PH7_MemObjCmp(&sValue,&sCaseValue,FALSE,0);
 		PH7_MemObjRelease(&sValue);
 		PH7_MemObjRelease(&sCaseValue);
+		if( PH7_CmpRefusalPending(pVm) ){
+			/* A native compare handler refused this pair (two different kinds of
+			 * DateTimeZone). php raises it out of the comparison, so the switch
+			 * never reaches a branch -- not even `default:`. */
+			sxi32 rcRef;
+			VmPopOperand(&pTos,1); /* the switch subject */
+			rcRef = PH7_CmpRefusalRaise(pVm);
+			if( rcRef == SXERR_ABORT ){
+				VM_EXIT_ABORT;
+			}
+			PH7_THROW_ROUTE_MIDEXPR(rcRef)
+		}
 		if( rc == 0 ){
 			/* Value match,jump to this block */
 			pc = pCase->nStart - 1;

@@ -2201,6 +2201,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
+	PH7_CmpRefusalClear(&(*pVm));
 	pVm->pConstEvalClass = 0;
 	pVm->nConstEvalDepth = 0;
 	pVm->pConstCycleAttr = 0;
@@ -3169,6 +3170,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
+	PH7_CmpRefusalClear(&(*pVm));
 	pVm->pConstEvalClass = 0;
 	pVm->nConstEvalDepth = 0;
 	pVm->pConstCycleAttr = 0;
