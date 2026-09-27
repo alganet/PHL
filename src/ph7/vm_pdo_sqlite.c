@@ -209,6 +209,105 @@ PH7_PRIVATE int PH7_PdoSqliteLoadExtension(phl_pdo *pConn,const char *zName)
 	}
 	return rc == SQLITE_OK;
 }
+/*
+ * sqlite3_blob_open, with php's own argument order behind it. The failure is
+ * left on the connection: php reports it as `Unable to open blob: <sqlite's
+ * message>` -- a WARNING whatever the error mode, since a blob is a stream and
+ * not a statement.
+ */
+PH7_PRIVATE phl_pdo_blob * PH7_PdoSqliteBlobOpen(phl_pdo *pConn,const char *zDb,
+	const char *zTable,const char *zColumn,ph7_int64 iRow,int bWrite)
+{
+	sqlite3_blob *pBlob = 0;
+	phl_pdo_blob *pBl;
+	if( pConn->pDb == 0 ){
+		return 0;
+	}
+	if( sqlite3_blob_open(pConn->pDb,zDb,zTable,zColumn,(sqlite3_int64)iRow,
+			bWrite ? 1 : 0,&pBlob) != SQLITE_OK || pBlob == 0 ){
+		PH7_PdoSqliteTakeError(pConn);
+		return 0;
+	}
+	pBl = (phl_pdo_blob *)SyMemBackendAlloc(&pConn->pVm->sAllocator,sizeof(phl_pdo_blob));
+	if( pBl == 0 ){
+		sqlite3_blob_close(pBlob);
+		return 0;
+	}
+	SyZero(pBl,sizeof(phl_pdo_blob));
+	pBl->pBlob = pBlob;
+	pBl->pVm = pConn->pVm;
+	pBl->pConn = pConn;
+	pBl->bWrite = bWrite;
+	pBl->nSize = (ph7_int64)sqlite3_blob_bytes(pBlob);
+	pBl->pNext = pConn->pBlobs;
+	pConn->pBlobs = pBl;
+	return pBl;
+}
+/* One read or write at the handle's own cursor. Answers the byte count, or -1. */
+PH7_PRIVATE int PH7_PdoSqliteBlobIo(phl_pdo_blob *pBl,void *pBuf,int nByte,int bWrite)
+{
+	int rc;
+	if( pBl->pBlob == 0 || nByte < 1 || pBl->bBadPos ){
+		return 0;
+	}
+	if( pBl->iOfft >= pBl->nSize ){
+		return 0;
+	}
+	if( pBl->iOfft + nByte > pBl->nSize ){
+		nByte = (int)(pBl->nSize - pBl->iOfft);
+	}
+	rc = bWrite
+		? sqlite3_blob_write(pBl->pBlob,pBuf,nByte,(int)pBl->iOfft)
+		: sqlite3_blob_read(pBl->pBlob,pBuf,nByte,(int)pBl->iOfft);
+	if( rc != SQLITE_OK ){
+		if( pBl->pConn ){
+			PH7_PdoSqliteTakeError(pBl->pConn);
+		}
+		return -1;
+	}
+	pBl->iOfft += nByte;
+	return nByte;
+}
+/* Close one handle and take it off its connection's chain. */
+PH7_PRIVATE void PH7_PdoSqliteBlobClose(phl_pdo_blob *pBl)
+{
+	ph7_vm *pVm = pBl->pVm;
+	if( pBl->pBlob ){
+		sqlite3_blob_close(pBl->pBlob);
+		pBl->pBlob = 0;
+	}
+	if( pBl->pConn ){
+		phl_pdo_blob **ppSlot;
+		for( ppSlot = &pBl->pConn->pBlobs ; *ppSlot ; ppSlot = &(*ppSlot)->pNext ){
+			if( *ppSlot == pBl ){
+				*ppSlot = pBl->pNext;
+				break;
+			}
+		}
+	}
+	SyMemBackendFree(&pVm->sAllocator,pBl);
+}
+/*
+ * The connection is going: sqlite will not close a database while a blob
+ * handle is open, so every handle a script left behind is closed here and cut
+ * loose. The STREAMS over them survive -- their own close frees the record --
+ * and answer empty from now on.
+ */
+PH7_PRIVATE void PH7_PdoSqliteBlobSweep(phl_pdo *pConn)
+{
+	phl_pdo_blob *pBl = pConn->pBlobs;
+	while( pBl ){
+		phl_pdo_blob *pNext = pBl->pNext;
+		if( pBl->pBlob ){
+			sqlite3_blob_close(pBl->pBlob);
+			pBl->pBlob = 0;
+		}
+		pBl->pConn = 0;
+		pBl->pNext = 0;
+		pBl = pNext;
+	}
+	pConn->pBlobs = 0;
+}
 PH7_PRIVATE void PH7_PdoSqliteExtendedCodes(phl_pdo *pConn,int bOn)
 {
 	if( pConn->pDb ){
@@ -976,18 +1075,6 @@ static int vm_builtin_PdoSqlite_loadExtension(ph7_context *pCtx,int nArg,ph7_val
 	}
 	return PH7_OK;
 }
-static int vm_builtin_pdo_sqlite_stub(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	SyBlob sFn;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	SyBlobInit(&sFn,&pCtx->pVm->sAllocator);
-	PH7_VmActiveFuncName(pCtx->pVm,&sFn);
-	PH7_VmThrowException(pCtx,"Error","%.*s is not implemented yet",
-		(int)SyBlobLength(&sFn),(const char *)SyBlobData(&sFn));
-	SyBlobRelease(&sFn);
-	return PH7_OK;
-}
 
 /*
  * Install the sqlite driver's class surface.  Called from PH7_VmInit right
@@ -1041,7 +1128,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm)
 		  vm_builtin_PdoSqlite_loadExtension },
 		{ "openBlob",        PH7_MOD_PUBLIC,
 		  "string $table, string $column, int $rowid, ?string $dbname = 'main', "
-		  "int $flags = Pdo\\Sqlite::OPEN_READONLY", 0, vm_builtin_pdo_sqlite_stub },
+		  "int $flags = Pdo\\Sqlite::OPEN_READONLY", 0, PH7_PdoSqliteOpenBlobMethod },
 		{ "setAuthorizer",   PH7_MOD_PUBLIC, "?callable $callback", "void",
 		  vm_builtin_PdoSqlite_setAuthorizer },
 	};

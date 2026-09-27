@@ -407,6 +407,13 @@ PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * less the unconsumed remainder — ftell() after fgets("abcdefghij\nrest")
 	 * is php's 11, not the 15 the device already read. */
 	iOfft = PH7_StreamLogicalTell(pDev);
+	if( iOfft < 0 ){
+		/* The device does not know where it is -- php's answer for a stream
+		 * whose last seek FAILED (PDO's blob handle refuses one past its own
+		 * end and leaves the position unknown until a seek succeeds). */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* IO result */
 	ph7_result_int64(pCtx,iOfft);
 	return PH7_OK;
@@ -3865,8 +3872,17 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 	}
 	if( SyBlobLength(&pDev->sUri) < 1 ){
 		/* Opened from a DESCRIPTOR rather than through a wrapper — a popen()
-		 * or proc_open() pipe end — which is precisely when php reports
-		 * neither a `wrapper_type` nor a `uri`. */
+		 * or proc_open() pipe end, or a device an extension built by hand like
+		 * PDO's blob handle — which is precisely when php reports neither a
+		 * `wrapper_type` nor a `uri`. Such a device names its OWN ops: php's
+		 * blob stream reports `PDOSQLite`, not the `STDIO` a descriptor gets. */
+		if( pS->zName && pS->xOpen == 0 && pS->xOpenDir == 0 && pS->xSeek != 0 ){
+			/* No opener, no descriptor under it, and it can SEEK: an extension
+			 * built this handle itself (PDO's blob and LOB streams), and php
+			 * names such a device's own ops. A pipe or a socket end has no seek
+			 * and stays php's descriptor label. */
+			*pzStream = pS->zName;
+		}
 		return;
 	}
 	*pzWrapper = "plainfile";
@@ -4037,7 +4053,12 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 			int rcSeek = PH7_StreamHandleCanSeek(pDev);
 			if( rcSeek >= 0 ){
 				bSeekable = rcSeek;
-			}else if( pDev->pStream->xTell != 0 ){
+			}else if( pDev->pStream->xOpen != 0 && pDev->pStream->xTell != 0 ){
+				/* Ask the HANDLE where it is, which is how a descriptor-backed
+				 * device says it cannot seek. A device an extension built by
+				 * hand (PDO's blob handle) has no opener and answers for itself
+				 * -- its xSeek IS the answer, and a position it reports as
+				 * unknown after a failed seek must not read as "not seekable". */
 				bSeekable = pDev->pStream->xTell(pDev->pHandle) >= 0;
 			}
 		}

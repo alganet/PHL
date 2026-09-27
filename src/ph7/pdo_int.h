@@ -79,6 +79,8 @@ struct phl_pdo {
 	                               * finalized before its handle can close */
 	struct phl_pdo_udf *pUdfs;    /* createFunction/createCollation callbacks, kept alive
 	                               * for as long as sqlite may call them */
+	struct phl_pdo_blob *pBlobs;  /* openBlob() handles a script has not closed: sqlite
+	                               * will not close a database while one is open */
 	sxi32 iCallbackExc;           /* the status a callback threw with, PARKED: sqlite has to
 	                               * finish unwinding before the engine may raise it, and
 	                               * the verb that started the step answers exactly this */
@@ -173,6 +175,25 @@ struct phl_pdo_stmt {
 };
 
 /*
+ * One OPEN blob: what `Pdo\Sqlite::openBlob()` answers, behind a php stream
+ * resource. sqlite refuses to close a database with a blob handle still open,
+ * so the connection keeps them on a chain of its own and closes what a script
+ * left behind -- the statement bookkeeping one level down.
+ */
+typedef struct phl_pdo_blob phl_pdo_blob;
+struct phl_pdo_blob {
+	sqlite3_blob *pBlob;          /* 0 once closed */
+	ph7_vm *pVm;                  /* the allocator: a handle ORPHANED by its connection
+	                               * still has to give its own memory back */
+	phl_pdo *pConn;               /* 0 once the connection closed underneath it */
+	ph7_int64 iOfft;              /* the stream cursor: sqlite reads at an offset */
+	ph7_int64 nSize;              /* the blob's length, fixed for its lifetime */
+	int bWrite;                   /* opened with OPEN_READWRITE */
+	int bBadPos;                  /* a seek OUT of the blob left the position unknown */
+	phl_pdo_blob *pNext;
+};
+
+/*
  * One userland callback registered on a connection: a scalar function, an
  * aggregate's step/finalize pair, or a collation.  The connection owns the
  * ph7_value holding the callable, because sqlite will call it long after the
@@ -240,6 +261,18 @@ PH7_PRIVATE void PH7_PdoSqliteSetAuthorizer(phl_pdo *pConn,phl_pdo_udf *pUdf);
 PH7_PRIVATE int PH7_PdoSqliteStmtReadonly(phl_pdo_stmt *pSt);
 PH7_PRIVATE int PH7_PdoSqliteStmtBusy(phl_pdo_stmt *pSt);
 PH7_PRIVATE int PH7_PdoSqliteLoadExtension(phl_pdo *pConn,const char *zName);
+/* openBlob's three library calls. The open answers 0 with the connection's
+ * error set (php reports it as a warning naming sqlite's own message). */
+PH7_PRIVATE phl_pdo_blob * PH7_PdoSqliteBlobOpen(phl_pdo *pConn,const char *zDb,
+	const char *zTable,const char *zColumn,ph7_int64 iRow,int bWrite);
+PH7_PRIVATE int PH7_PdoSqliteBlobIo(phl_pdo_blob *pBl,void *pBuf,int nByte,int bWrite);
+PH7_PRIVATE void PH7_PdoSqliteBlobClose(phl_pdo_blob *pBl);
+/* Close every blob handle a connection still carries and cut them loose: the
+ * streams over them stay valid and answer empty. */
+PH7_PRIVATE void PH7_PdoSqliteBlobSweep(phl_pdo *pConn);
+/* vm_pdo.c owns the STREAM the method answers, so the driver unit's method
+ * table reaches it by name. */
+PH7_PRIVATE int PH7_PdoSqliteOpenBlobMethod(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE void PH7_PdoSqliteExtendedCodes(phl_pdo *pConn,int bOn);
 /* Statement plumbing. Prepare answers 0 on failure with the connection's error
  * set; step answers 1 (a row), 0 (finished) or -1 (failed). */

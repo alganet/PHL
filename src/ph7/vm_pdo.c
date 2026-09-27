@@ -29,6 +29,7 @@ static void PdoBlankSlot(ph7_class_instance *pOwner);
 static phl_pdo * PdoOfInstance(ph7_class_instance *pThis);
 static void PdoStmtClearFetchState(phl_pdo_stmt *pSt);
 static void PdoStmtLazyClear(phl_pdo_stmt *pSt);
+static io_private * PdoLobStreamNew(ph7_vm *pVm,const char *zData,int nData);
 static sxi32 PdoStatementCtor(ph7_context *pCtx,phl_pdo *pConn,ph7_class *pClass,
 	ph7_class_instance *pObj);
 static void PdoBoundColumnsForRow(ph7_vm *pVm,phl_pdo_stmt *pSt);
@@ -67,9 +68,10 @@ PH7_PRIVATE phl_pdo * PH7_PdoNewConn(ph7_vm *pVm)
 }
 PH7_PRIVATE void PH7_PdoFreeConn(phl_pdo *pConn)
 {
-	/* sqlite refuses to close a database that still has a live statement, so
-	 * the cursors go first. */
+	/* sqlite refuses to close a database that still has a live statement or an
+	 * open blob handle, so the cursors go first and the blobs beside them. */
 	PdoStmtSweep(pConn);
+	PH7_PdoSqliteBlobSweep(pConn);
 	{
 		/* the callbacks sqlite still points at; the close is what makes them
 		 * unreachable, so they are released after it below */
@@ -206,6 +208,7 @@ static void PdoInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
 		return;
 	}
 	PdoStmtSweep(pConn);
+	PH7_PdoSqliteBlobSweep(pConn);
 	PH7_PdoSqliteClose(pConn);
 	pConn->pOwner = 0;
 }
@@ -1901,6 +1904,20 @@ static int PdoWriteBoundColumns(ph7_vm *pVm,phl_pdo_stmt *pSt)
 				case PDO_PARAM_INT:  PH7_MemObjToInteger(&sVal); break;
 				case PDO_PARAM_BOOL: PH7_MemObjToBool(&sVal); break;
 				case PDO_PARAM_STR:  PH7_MemObjToString(&sVal); break;
+				case PDO_PARAM_LOB:
+					/* php wraps a STRING column in a memory stream here and
+					 * leaves every other type as the driver typed it. */
+					if( sVal.iFlags & MEMOBJ_STRING ){
+						io_private *pLobDev = PdoLobStreamNew(pVm,
+							(const char *)SyBlobData(&sVal.sBlob),
+							(int)SyBlobLength(&sVal.sBlob));
+						if( pLobDev ){
+							PH7_MemObjRelease(&sVal);
+							sVal.x.pOther = pLobDev;
+							MemObjSetType(&sVal,MEMOBJ_RES);
+						}
+					}
+					break;
 				default:             break;   /* the value as the driver typed it */
 			}
 		}
@@ -1990,6 +2007,271 @@ static int PdoBoundColumnsForIterRow(ph7_vm *pVm,phl_pdo_stmt *pSt)
 	VmThrowFromVm(pVm,"ValueError","Invalid column index",
 		sizeof("Invalid column index")-1);
 	return 0;
+}
+/* ------------------------------------------------------------------------
+ * The blob STREAM: what Pdo\Sqlite::openBlob() answers
+ * ------------------------------------------------------------------------ */
+/*
+ * php answers openBlob() with a php STREAM over one column of one row --
+ * `stream_get_meta_data()` names its type `PDOSQLite` -- so the handle behind
+ * it is a device of its own here, the shape vfs_stream.c already carries for
+ * php://, data:// and the userland wrappers. It reads and writes through
+ * sqlite3_blob_read/_write at an offset it keeps itself, and its LENGTH is
+ * fixed: a blob handle addresses the bytes that are already there, so a write
+ * past the end is short and `ftruncate()` has nothing to do.
+ */
+static ph7_int64 PdoBlobStream_Read(void *pHandle,void *pBuf,ph7_int64 nDatatoRead)
+{
+	phl_pdo_blob *pBl = (phl_pdo_blob *)pHandle;
+	int nRead = PH7_PdoSqliteBlobIo(pBl,pBuf,(int)nDatatoRead,0);
+	return nRead < 0 ? -1 : (ph7_int64)nRead;
+}
+static ph7_int64 PdoBlobStream_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)
+{
+	phl_pdo_blob *pBl = (phl_pdo_blob *)pHandle;
+	int nDone;
+	if( !pBl->bWrite ){
+		/* php's own sentence, from the device rather than from fwrite(): a
+		 * handle opened READONLY refuses and the write answers false. */
+		PH7_VmThrowError(pBl->pConn->pVm,0,PH7_CTX_WARNING,
+			"fwrite(): Can't write to blob stream: is open as read only");
+		return -1;
+	}
+	if( nWrite > 0 && pBl->iOfft + nWrite > pBl->nSize ){
+		/* A blob handle addresses the bytes that are already there: php refuses
+		 * a write that would need more of them rather than writing what fits. */
+		PH7_VmThrowError(pBl->pConn->pVm,0,PH7_CTX_WARNING,
+			"fwrite(): It is not possible to increase the size of a BLOB");
+		return -1;
+	}
+	nDone = PH7_PdoSqliteBlobIo(pBl,(void *)pBuf,(int)nWrite,1);
+	return nDone < 0 ? -1 : (ph7_int64)nDone;
+}
+static int PdoBlobStream_Seek(void *pHandle,ph7_int64 iOfft,int whence)
+{
+	phl_pdo_blob *pBl = (phl_pdo_blob *)pHandle;
+	ph7_int64 iNew = iOfft;
+	if( whence == 1 ){          /* SEEK_CUR */
+		iNew = pBl->iOfft + iOfft;
+	}else if( whence == 2 ){    /* SEEK_END */
+		iNew = pBl->nSize + iOfft;
+	}
+	if( iNew < 0 || iNew > pBl->nSize ){
+		/* A blob handle addresses bytes that already exist, so there is nowhere
+		 * past the end to seek TO. php's failed seek leaves the position
+		 * UNKNOWN -- ftell() answers false and a read answers nothing until a
+		 * seek succeeds again -- which is what the flag carries. */
+		pBl->bBadPos = 1;
+		return -1;
+	}
+	pBl->bBadPos = 0;
+	pBl->iOfft = iNew;
+	return PH7_OK;
+}
+static ph7_int64 PdoBlobStream_Tell(void *pHandle)
+{
+	phl_pdo_blob *pBl = (phl_pdo_blob *)pHandle;
+	return pBl->bBadPos ? -1 : pBl->iOfft;
+}
+static int PdoBlobStream_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker)
+{
+	phl_pdo_blob *pBl = (phl_pdo_blob *)pHandle;
+	ph7_value_int64(pWorker,pBl->nSize);
+	ph7_array_add_strkey_elem(pArray,"size",pWorker);
+	return PH7_OK;
+}
+static void PdoBlobStream_Close(void *pHandle)
+{
+	PH7_PdoSqliteBlobClose((phl_pdo_blob *)pHandle);
+}
+static const ph7_io_stream sPdoBlobStream = {
+	"PDOSQLite",                /* what stream_get_meta_data() reports */
+	PH7_IO_STREAM_VERSION,
+	0,                          /* xOpen: openBlob() builds the handle itself */
+	0,                          /* xOpenDir */
+	PdoBlobStream_Close,
+	0,                          /* xCloseDir */
+	PdoBlobStream_Read,
+	0,                          /* xReadDir */
+	PdoBlobStream_Write,
+	PdoBlobStream_Seek,
+	0,                          /* xLock */
+	0,                          /* xRewindDir */
+	PdoBlobStream_Tell,
+	0,                          /* xTrunc: a blob is the length it was created with */
+	0,                          /* xSync */
+	PdoBlobStream_Stat
+};
+/*
+ * The other stream this driver hands out: what a PARAM_LOB bound column reads
+ * as. php converts a STRING column into a php memory stream there --
+ * `stream_get_meta_data()` calls it `MEMORY`, read-only and seekable, with the
+ * value's own length behind it -- so the bytes are copied once when the row is
+ * written and the handle owns them. Nothing else is a stream: an int, a float
+ * and a null bound as LOB stay what the driver typed them.
+ */
+typedef struct phl_pdo_lob phl_pdo_lob;
+struct phl_pdo_lob {
+	ph7_vm *pVm;
+	SyBlob sData;
+	ph7_int64 iOfft;
+};
+static ph7_int64 PdoLobStream_Read(void *pHandle,void *pBuf,ph7_int64 nDatatoRead)
+{
+	phl_pdo_lob *pLob = (phl_pdo_lob *)pHandle;
+	ph7_int64 nLeft = (ph7_int64)SyBlobLength(&pLob->sData) - pLob->iOfft;
+	if( nLeft < 1 || nDatatoRead < 1 ){
+		return 0;
+	}
+	if( nDatatoRead > nLeft ){
+		nDatatoRead = nLeft;
+	}
+	SyMemcpy((const char *)SyBlobData(&pLob->sData) + pLob->iOfft,pBuf,(sxu32)nDatatoRead);
+	pLob->iOfft += nDatatoRead;
+	return nDatatoRead;
+}
+static ph7_int64 PdoLobStream_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)
+{
+	SXUNUSED(pHandle);
+	SXUNUSED(pBuf);
+	SXUNUSED(nWrite);
+	return -1;   /* php's is read-only: fwrite() answers false and says nothing */
+}
+static int PdoLobStream_Seek(void *pHandle,ph7_int64 iOfft,int whence)
+{
+	phl_pdo_lob *pLob = (phl_pdo_lob *)pHandle;
+	ph7_int64 iNew = iOfft;
+	if( whence == 1 ){
+		iNew = pLob->iOfft + iOfft;
+	}else if( whence == 2 ){
+		iNew = (ph7_int64)SyBlobLength(&pLob->sData) + iOfft;
+	}
+	if( iNew < 0 ){
+		return -1;
+	}
+	pLob->iOfft = iNew;
+	return PH7_OK;
+}
+static ph7_int64 PdoLobStream_Tell(void *pHandle)
+{
+	return ((phl_pdo_lob *)pHandle)->iOfft;
+}
+static int PdoLobStream_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker)
+{
+	phl_pdo_lob *pLob = (phl_pdo_lob *)pHandle;
+	ph7_value_int64(pWorker,(ph7_int64)SyBlobLength(&pLob->sData));
+	ph7_array_add_strkey_elem(pArray,"size",pWorker);
+	return PH7_OK;
+}
+static void PdoLobStream_Close(void *pHandle)
+{
+	phl_pdo_lob *pLob = (phl_pdo_lob *)pHandle;
+	ph7_vm *pVm = pLob->pVm;
+	SyBlobRelease(&pLob->sData);
+	SyMemBackendFree(&pVm->sAllocator,pLob);
+}
+static const ph7_io_stream sPdoLobStream = {
+	"MEMORY",                   /* what php's own conversion reports */
+	PH7_IO_STREAM_VERSION,
+	0, 0,
+	PdoLobStream_Close,
+	0,
+	PdoLobStream_Read,
+	0,
+	PdoLobStream_Write,
+	PdoLobStream_Seek,
+	0, 0,
+	PdoLobStream_Tell,
+	0, 0,
+	PdoLobStream_Stat
+};
+/*
+ * Wrap one value's bytes in that stream. Answers 0 when the memory could not
+ * be had, which leaves the caller's value as the driver typed it.
+ */
+static io_private * PdoLobStreamNew(ph7_vm *pVm,const char *zData,int nData)
+{
+	phl_pdo_lob *pLob;
+	io_private *pDev;
+	pLob = (phl_pdo_lob *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_pdo_lob));
+	if( pLob == 0 ){
+		return 0;
+	}
+	SyZero(pLob,sizeof(phl_pdo_lob));
+	pLob->pVm = pVm;
+	SyBlobInit(&pLob->sData,&pVm->sAllocator);
+	if( nData > 0 ){
+		SyBlobAppend(&pLob->sData,zData,(sxu32)nData);
+	}
+	/* The io_private goes back through ph7_context_free_chunk, which is a plain
+	 * VM-allocator free for a chunk nothing registered -- so a handle built
+	 * where there is no call context (the foreach iterator's row) is released
+	 * exactly like one built where there is. */
+	pDev = (io_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(io_private));
+	if( pDev == 0 ){
+		PdoLobStream_Close(pLob);
+		return 0;
+	}
+	SyZero(pDev,sizeof(io_private));
+	InitIOPrivate(pVm,&sPdoLobStream,pDev);
+	pDev->pHandle = pLob;
+	SetIOPrivateOpenedAs(pDev,"",0,"rb",2);
+	return pDev;
+}
+/*
+ * Pdo\Sqlite::openBlob(string $table, string $column, int $rowid,
+ *                       ?string $dbname = "main", int $flags = OPEN_READONLY)
+ *
+ * php reports every failure as a WARNING carrying sqlite's own message and
+ * answers false -- the error mode has no say, because this is a stream opener
+ * and not a statement. The `$dbname` is passed to sqlite as it stands, which is
+ * why a null one produces `no such table: .b`, and only OPEN_READWRITE among
+ * the flags means anything: sqlite's blob handle is readable either way.
+ */
+PH7_PRIVATE int PH7_PdoSqliteOpenBlobMethod(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PH7_PdoConnOfInstance(PH7_ContextThis(pCtx));
+	phl_pdo_blob *pBl;
+	io_private *pDev;
+	const char *zTable,*zColumn,*zDb = "main";
+	int nTable = 0,nColumn = 0,nDb = (int)sizeof("main")-1;
+	ph7_int64 iRow;
+	int iFlags;
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	zTable  = nArg > 0 ? ph7_value_to_string(apArg[0],&nTable) : "";
+	zColumn = nArg > 1 ? ph7_value_to_string(apArg[1],&nColumn) : "";
+	iRow    = nArg > 2 ? ph7_value_to_int64(apArg[2]) : 0;
+	if( nArg > 3 && (apArg[3]->iFlags & MEMOBJ_NULL) == 0 ){
+		zDb = ph7_value_to_string(apArg[3],&nDb);
+	}else if( nArg > 3 ){
+		zDb = "";           /* php hands sqlite the empty name a null becomes */
+		nDb = 0;
+	}
+	iFlags = nArg > 4 ? (int)ph7_value_to_int64(apArg[4]) : SQLITE_OPEN_READONLY;
+	SXUNUSED(nDb);
+	SXUNUSED(nTable);
+	SXUNUSED(nColumn);
+	pBl = PH7_PdoSqliteBlobOpen(pConn,zDb,zTable,zColumn,iRow,
+		(iFlags & SQLITE_OPEN_READWRITE) != 0);
+	if( pBl == 0 ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,"Unable to open blob: %s",
+			pConn->zDrvMsg ? pConn->zDrvMsg : "unknown error");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
+	if( pDev == 0 ){
+		PH7_PdoSqliteBlobClose(pBl);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	InitIOPrivate(pCtx->pVm,&sPdoBlobStream,pDev);
+	pDev->pHandle = pBl;
+	/* php's meta reports no uri for this stream and the mode it opened with. */
+	SetIOPrivateOpenedAs(pDev,"",0,pBl->bWrite ? "r+b" : "rb",pBl->bWrite ? 3 : 2);
+	ph7_result_resource(pCtx,pDev);
+	return PH7_OK;
 }
 /* ------------------------------------------------------------------------
  * PDORow: what PDO::FETCH_LAZY answers
