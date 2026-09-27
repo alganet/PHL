@@ -1256,6 +1256,19 @@ PH7_PRIVATE sxi32 VmThrowNativeNoUnset(ph7_vm *pVm,ph7_class *pClass,ph7_class_a
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
+ * And php's THIRD refusal for a property its handler will not have written:
+ * `Property p is read only`, which names neither the class nor the `$`.
+ * PDOStatement's `queryString` is php's case, and the shapes it applies to are
+ * the plain store and the unset alone -- see PH7_CLASS_ATTR_NATIVE_RDONLY.
+ */
+PH7_PRIVATE sxi32 VmThrowNativeReadOnly(ph7_vm *pVm,ph7_class_attr *pAttr)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Property %z is read only",&pAttr->sName);
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
  * php's answer to `unset($o->p)` where p is READONLY. Two of the three cases
  * refuse, and the sentences are not the write ones:
  *

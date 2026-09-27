@@ -321,6 +321,10 @@ static int PdoStmtAttach(ph7_class_instance *pThis,phl_pdo_stmt *pSt)
 	pRes->x.pOther = pSt;
 	MemObjSetType(pRes,MEMOBJ_RES);
 	pSt->pOwner = pThis;
+	/* php's write_property refuses a store to `queryString` on a statement a
+	 * driver built -- and takes one on a `new PDOStatement()`, which has no
+	 * cursor for it to describe. */
+	PH7_NativeMarkAttrReadOnly(pThis,"queryString");
 	return 0;
 }
 /* The statement object is going away: release its cursor now, as php does. */

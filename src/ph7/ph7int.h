@@ -2278,6 +2278,14 @@ struct VmClassAttr
 #define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+); also the
                                     * write-once latch for readonly properties (cleared on
                                     * the first successful write — see VmEnforcePropertyTypeOnStore) */
+#define VM_CLASS_ATTR_RDONLY  0x08 /* php's read-only handler property, marked on the INSTANCE:
+                                    * a plain store and an unset() refuse with `Property p is
+                                    * read only` while every path that takes a POINTER to it
+                                    * goes through (a compound assign, `++`, `??=`, a
+                                    * reference bind). It is per-OBJECT rather than per-class
+                                    * because php's own handler is: a PDOStatement nobody
+                                    * built a cursor for takes the write, and only one
+                                    * carrying a statement refuses. */
 #define VM_CLASS_ATTR_TYPE_DEFER 0x04 /* Typed STATIC property whose eagerly-evaluated DEFAULT failed
                                        * its type check at class mount. php evaluates static defaults
                                        * lazily, so the failure is deferred: any static-property access
@@ -5203,6 +5211,8 @@ PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmCheckSetVisibility(ph7_vm *pVm,ph7_class *pOwner,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 VmThrowNativeNoWrite(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 VmThrowNativeNoUnset(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
+PH7_PRIVATE sxi32 VmThrowNativeReadOnly(ph7_vm *pVm,ph7_class_attr *pAttr);
+PH7_PRIVATE void PH7_NativeMarkAttrReadOnly(ph7_class_instance *pThis,const char *zProp);
 PH7_PRIVATE sxi32 VmCheckReadonlyUnset(ph7_vm *pVm,ph7_class *pClass,VmClassAttr *pVmAttr);
 PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone, const char *zName,sxu32 nName,ph7_value *pValue);

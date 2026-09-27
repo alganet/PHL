@@ -1040,6 +1040,21 @@ PH7_PRIVATE sxi32 PH7_NativeClassMarkNoWriteProps(ph7_vm *pVm,const char *zClass
 	}
 	return SXRET_OK;
 }
+/*
+ * Mark ONE property of ONE instance as php's read-only kind: a plain store and
+ * an unset() refuse with `Property p is read only`, everything that takes a
+ * pointer to it goes through. It is marked per OBJECT because php's handler is
+ * -- a PDOStatement with no cursor behind it takes the write, and only the one
+ * a driver built refuses.
+ */
+PH7_PRIVATE void PH7_NativeMarkAttrReadOnly(ph7_class_instance *pThis,const char *zProp)
+{
+	SyHashEntry *pEntry = pThis
+		? SyHashGet(&pThis->hAttr,(const void *)zProp,(sxu32)SyStrlen(zProp)) : 0;
+	if( pEntry ){
+		((VmClassAttr *)pEntry->pUserData)->iState |= VM_CLASS_ATTR_RDONLY;
+	}
+}
 PH7_PRIVATE sxi32 PH7_NativeClassMarkLazyProps(ph7_vm *pVm,const char *zClass,int bDefaultRead)
 {
 	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);

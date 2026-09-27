@@ -1071,7 +1071,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					ph7_class_attr *pUnsNoWrite = pEntry ? pObjAttr->pAttr
 						: PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
 					sxi32 rcUnsRo = SXRET_OK;
-					if( pUnsNoWrite && (pUnsNoWrite->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) != 0 ){
+					if( pEntry && (pObjAttr->iState & VM_CLASS_ATTR_RDONLY) != 0 ){
+						/* php's read-only handler answers an unset with the same sentence
+						 * it answers a store: `Property p is read only`. */
+						VmBoundaryPark(&(*pVm),VmThrowNativeReadOnly(&(*pVm),pObjAttr->pAttr));
+					}else if( pUnsNoWrite && (pUnsNoWrite->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) != 0 ){
 						/* php's own unset handler for this class refuses, and words it
 						 * without either "readonly" or "property": `Cannot unset C::$p`.
 						 * It runs whether the object has a struct or not, so an
@@ -1576,6 +1580,20 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								&pClass->sName,&sName);
 						}
 					}
+				}
+				if( pObjAttr && (pObjAttr->iState & VM_CLASS_ATTR_RDONLY)
+				 && (pInstr->iP2 == PH7_MEMBER_LIST_TARGET
+				  || ((pInstr + 1)->iOp == PH7_OP_STORE && (pInstr + 1)->iP2 != 0)) ){
+					/* php's write_property handler refuses the plain store and the
+					 * destructuring one that goes through it; everything that takes a
+					 * POINTER to the property instead -- a compound assign, `++`, `??=`,
+					 * a reference bind -- bypasses the handler in php and is left alone
+					 * here too. */
+					VmBoundaryPark(&(*pVm),VmThrowNativeReadOnly(&(*pVm),pObjAttr->pAttr));
+					VmPopOperand(&pTos,1);
+					PH7_MemObjRelease(pTos);
+					pTos->nIdx = SXU32_HIGH;
+					VM_EXIT_BREAK;
 				}
 				VmPopOperand(&pTos,1);
 				/* TICKET 1433-49: Deffer garbage collection until attribute loading.

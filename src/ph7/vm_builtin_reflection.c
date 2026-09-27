@@ -7665,6 +7665,11 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 		PH7_MemObjRelease(&sNatVal);
 		return PH7_OK;
 	}
+	if( pVmAttr->pAttr && (pVmAttr->iState & VM_CLASS_ATTR_RDONLY) ){
+		/* php's read-only handler refuses Reflection's write with the sentence
+		 * `$stmt->queryString = 'x'` takes. */
+		return VmThrowNativeReadOnly(pCtx->pVm, pVmAttr->pAttr);
+	}
 	{
 		ph7_value *pVal = nArg > 1 ? apArg[1] : 0;
 		ph7_value sNull;
