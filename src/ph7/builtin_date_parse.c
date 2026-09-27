@@ -3575,6 +3575,10 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 			}
 			PH7_NativeSetAttrObj(pVm,pThis,"end",pEnd);
 			PH7_ClassInstanceUnref(pEnd);
+			/* php's own answer for a period bounded by a DATE rather than a count,
+			 * and it has to be written rather than defaulted now that an
+			 * unconstructed period reads 0. */
+			PH7_NativeSetAttrInt(pVm,pThis,"recurrences",1);
 		}
 	}
 	PH7_NativeSetAttrBool(pVm,pThis,"include_start_date",(iOptions & 1) == 0);
@@ -4226,6 +4230,45 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 	{ "getLastErrors",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "@array|false", \
 	  vm_builtin_DateTime_getLastErrors }
 /*
+ * php's add_common_properties(): after the presented shape, the instance's own
+ * php-visible slots -- a SUBCLASS's declared properties, which php serializes
+ * alongside the internal state. A key the presented shape already wrote WINS
+ * (zend_hash_add, not update), and a hidden engine slot is never a candidate:
+ * this is the one walk in the date family that must skip them.
+ */
+static void DtAddCommonProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	SyHashEntry *pEntry;
+	SyHashResetLoopCursor(&pThis->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		SyString *pName = &pVmAttr->pAttr->sName;
+		ph7_value *pVal;
+		ph7_value sKey;
+		if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
+			|PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_HOOK_VIRTUAL
+			|PH7_CLASS_ATTR_NATIVE_SET|PH7_CLASS_ATTR_NATIVE_VIRTUAL) ){
+			/* The last two are the STATE of a native class whose state happens to
+			 * be public (DateInterval's ten, DatePeriod's seven): they are the
+			 * shape being built, not the object's own additions, so a walk that
+			 * runs beside that shape must skip them the way it skips the hidden
+			 * slots of the classes that keep their state private. */
+			continue;
+		}
+		if( ph7_array_fetch(pOut,pName->zString,(int)pName->nByte) != 0 ){
+			continue;
+		}
+		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+		if( pVal == 0 ){
+			continue;
+		}
+		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+		PH7_MemObjStringAppend(&sKey,pName->zString,pName->nByte);
+		ph7_array_add_elem(pOut,&sKey,pVal);
+		PH7_MemObjRelease(&sKey);
+	}
+}
+/*
  * php's presentation for the date classes (ph7_class::xPresent).
  *
  * php keeps a timelib struct and SHOWS date/timezone_type/timezone; PHL keeps a
@@ -4268,10 +4311,11 @@ static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	SXUNUSED(bDebug); /* php shows the same three keys to both handlers */
 	if( !DtIsInit(pThis) ){
 		/* php builds this shape FROM the struct the constructor allocates, so an
-		 * object that has none shows nothing at all -- var_dump, print_r,
+		 * object that has none shows nothing of it -- var_dump, print_r,
 		 * var_export, the (array) cast and json_encode all answer an empty shape
 		 * where PHL published a 1970 date nothing had asked for. A SUBCLASS's own
 		 * properties still show: they are the object's, not the struct's. */
+		DtAddCommonProps(&(*pVm),pThis,pOut);
 		return SXRET_OK;
 	}
 	DtLoad(pThis,&sState);
@@ -4295,13 +4339,33 @@ static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	DtPresentZone(&(*pVm),pOut,zZone,nName,sState.iZoneKind);
 	return SXRET_OK;
 }
+/*
+ * DateInterval and DatePeriod present their OWN property table -- php's state for
+ * these two is the visible properties themselves -- so the hook exists for one
+ * reason: an object that was never constructed has no table at all there, and
+ * showed ten (or seven) default fields here. The initialized case is the slot walk
+ * the cast already fell back to, so nothing else about them changes.
+ */
+static sxi32 DtPresentProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	SXUNUSED(bDebug);
+	if( DtIsInit(pThis) ){
+		PH7_ClassInstanceToHashmapRaw(pThis,(ph7_hashmap *)pOut->x.pOther);
+	}else{
+		/* No table there at all -- but a subclass's own properties are the
+		 * object's, and php still shows those. */
+		DtAddCommonProps(&(*pVm),pThis,pOut);
+	}
+	return SXRET_OK;
+}
 static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
 {
 	const char *zName = 0;
 	int nName = 0;
 	SXUNUSED(bDebug);
 	if( !DtIsInit(pThis) ){
-		return SXRET_OK;   /* no struct, nothing to show -- see DtPresentDateTime */
+		DtAddCommonProps(&(*pVm),pThis,pOut);   /* see DtPresentDateTime */
+		return SXRET_OK;
 	}
 	PH7_NativeAttrStr(pThis,DTZ_NAME,&zName,&nName);
 	DtPresentZone(&(*pVm),pOut,zName ? zName : "",nName,
@@ -4444,39 +4508,6 @@ static void DtCmpTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx
 		return;
 	}
 	pCtx->iResult = (nL == nR && (nL == 0 || SyMemcmp(zL,zR,(sxu32)nL) == 0)) ? 0 : 1;
-}
-/*
- * php's add_common_properties(): after the presented shape, the instance's own
- * php-visible slots -- a SUBCLASS's declared properties, which php serializes
- * alongside the internal state. A key the presented shape already wrote WINS
- * (zend_hash_add, not update), and a hidden engine slot is never a candidate:
- * this is the one walk in the date family that must skip them.
- */
-static void DtAddCommonProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
-{
-	SyHashEntry *pEntry;
-	SyHashResetLoopCursor(&pThis->hAttr);
-	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
-		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		SyString *pName = &pVmAttr->pAttr->sName;
-		ph7_value *pVal;
-		ph7_value sKey;
-		if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
-			|PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
-			continue;
-		}
-		if( ph7_array_fetch(pOut,pName->zString,(int)pName->nByte) != 0 ){
-			continue;
-		}
-		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
-		if( pVal == 0 ){
-			continue;
-		}
-		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
-		PH7_MemObjStringAppend(&sKey,pName->zString,pName->nByte);
-		ph7_array_add_elem(pOut,&sKey,pVal);
-		PH7_MemObjRelease(&sKey);
-	}
 }
 /* Build a payload array: the class's presented shape, then its own visible slots. */
 static int DtSerializePayload(ph7_context *pCtx,ph7_class_instance *pThis,int bZoneOnly,
@@ -5256,8 +5287,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "current",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },
 		{ "end",                PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },
 		{ "interval",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateInterval" },
-		{ "recurrences",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,  1, 0, 0.0 }, "int" },
-		{ "include_start_date", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },
+		/* php FABRICATES these from its struct, so an object with no struct reads
+		 * them as the zeroed one: 0 and false, not the 1 and true a constructed
+		 * period ends up with. Every constructor path writes all three. */
+		{ "recurrences",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, "int" },
+		{ "include_start_date", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
 		{ "include_end_date",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
 		{ DT_INIT,              PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
 		  { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
@@ -5315,10 +5349,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),
 		  0, 0, DtPresentDateTime },
 		{ "DateInterval", 0, 0, 0,
-		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp), 0, 0, 0 },
+		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp),
+		  0, 0, DtPresentProps },
 		{ "DatePeriod", 0, 0, 0,
 		  aDpMethod, SX_ARRAYSIZE(aDpMethod), aDpConst, SX_ARRAYSIZE(aDpConst),
-		  aDpProp, SX_ARRAYSIZE(aDpProp), 0, &sDpIterVtab, 0 },
+		  aDpProp, SX_ARRAYSIZE(aDpProp), 0, &sDpIterVtab, DtPresentProps },
 	};
 	/* php's procedural aliases. Each is a function in its own right, not a forward,
 	 * and each owes aBuiltinSig[] a row (vm_arg_check.c). */
