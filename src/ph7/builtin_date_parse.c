@@ -124,7 +124,10 @@ static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)
  * moment afterwards (php's timelib_fill_holes), which is what lets a bare month
  * name keep the base day and a bare date keep the base time of day.
  */
-#define DT_UNSET ((sxi64)-99999)
+/* php's TIMELIB_UNSET, and the NUMBER matters as well as the marking: its
+ * normalizer carries an unset field into the one above it like any other, so
+ * the date a half-read clock ends up publishing is a function of this value. */
+#define DT_UNSET ((sxi64)-9999999)
 typedef struct dt_parsed dt_parsed;
 struct dt_parsed
 {
@@ -3066,6 +3069,78 @@ static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
 	}
 	pVm->sDtLastErr.nErr = pDiag->nErr;   /* php counts what it dropped too */
 }
+/*
+ * php's do_range_limit: carry *pa into *pb until *pa sits inside [iStart,iEnd).
+ * Spelled the way php spells it, the arithmetic on a field nothing ever set
+ * included -- an unset minute is just a very negative number to this code, and
+ * what it carries into the hour is what a `z` beside a half-read clock shows.
+ */
+static void DtFfRangeLimit(sxi64 iStart,sxi64 iEnd,sxi64 iAdj,sxi64 *pa,sxi64 *pb)
+{
+	if( *pa < iStart ){
+		sxi64 a1 = *pa + 1;
+		*pb -= (iStart - a1) / iAdj + 1;
+		*pa += iAdj * ((iStart - a1) / iAdj);
+		*pa += iAdj;
+	}
+	if( *pa >= iEnd ){
+		*pb += *pa / iAdj;
+		*pa -= iAdj * (*pa / iAdj);
+	}
+}
+/* ...and its day half, which walks whole months rather than dividing: one call
+ * takes the day inside the current month or gives up at the end of a year, and
+ * the caller runs it until it has nothing left to move. */
+static int DtFfRangeLimitDays(sxi64 *py,sxi64 *pm,sxi64 *pd)
+{
+	int rc = 0;
+	if( *pd >= 146097 || *pd <= -146097 ){
+		/* a whole 400-year era at a time */
+		*py += 400 * (*pd / 146097);
+		*pd -= 146097 * (*pd / 146097);
+	}
+	DtFfRangeLimit(1,13,12,pm,py);
+	while( *pd <= 0 && *pm > 0 ){
+		sxi64 iPrevM = *pm - 1,iPrevY = *py;
+		if( iPrevM < 1 ){
+			iPrevM += 12;
+			iPrevY = *py - 1;
+		}
+		*pd += DtDaysInMonth(iPrevY,(int)iPrevM);
+		(*pm)--;
+		rc = 1;
+	}
+	while( *pd > 0 && *pm >= 1 && *pm <= 12 && *pd > DtDaysInMonth(*py,(int)*pm) ){
+		*pd -= DtDaysInMonth(*py,(int)*pm);
+		(*pm)++;
+		rc = 1;
+	}
+	return rc;
+}
+/* php's timelib_do_normalize, asked of the whole vector wherever a format's
+ * day-of-year stands. The clock is only carried when the SECOND was read --
+ * php's own guard, and not the one anybody would write. */
+static void DtFfNormalize(sxi64 *py,sxi64 *pm,sxi64 *pd,sxi64 *ph,sxi64 *pi,
+	sxi64 *ps,sxi64 *pus)
+{
+	if( *pus != DT_UNSET ){ DtFfRangeLimit(0,1000000,1000000,pus,ps); }
+	if( *ps != DT_UNSET ){
+		DtFfRangeLimit(0,60,60,ps,pi);
+		DtFfRangeLimit(0,60,60,pi,ph);
+		DtFfRangeLimit(0,24,24,ph,pd);
+	}
+	DtFfRangeLimit(1,13,12,pm,py);
+	if( *py == 1970 && *pm == 1 ){
+		/* php's short cut past the walk, straight off the epoch */
+		sxi64 iY;
+		int iM,iD;
+		DtCivilFromDays(*pd - 1,&iY,&iM,&iD);
+		*py = iY; *pm = iM; *pd = iD;
+		return;
+	}
+	while( DtFfRangeLimitDays(py,pm,pd) ){}
+	DtFfRangeLimit(1,13,12,pm,py);
+}
 /* strtol over a bounded run: it reads the digits it finds and stops at the
  * first byte that is not one, which is how php's offset arithmetic reads each
  * group of a colon spelling out of the middle of the run. */
@@ -3543,6 +3618,35 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				zErr = "A textual day could not be found";
 			}
 			break;
+		case 'z':
+			/* php's DAY OF YEAR is a whole date rather than a field: it needs a
+			 * year already read, puts the month back at January and the day at
+			 * the count, and normalizes the vector where it stands. */
+			DT_FF_CHECKNUM;
+			if( y == DT_UNSET ){
+				DT_FF_LOGERR(iBegin,"A 'day of year' can only come after a year has been found");
+			}
+			if( DtFfGetNr(&z,zInEnd,3,&v) < 0 ){
+				DT_FF_LOGERR(iBegin,"A three digit day-of-year could not be found");
+				break;
+			}
+			if( y != DT_UNSET ){
+				mo = 1;
+				d = v + 1;
+				DtFfNormalize(&y,&mo,&d,&h,&mi,&s,&us);
+			}
+			break;
+		case 'x': case 'X':{
+			/* the EXPANDED year: a sign and up to nineteen digits, and the year
+			 * php takes from a run it could not read is zero rather than none. */
+			const char *zNrErr = 0;
+			DT_FF_CHECKSIGNED;
+			DtFfGetSignedNr(&z,zInEnd,19,&y,&zNrErr);
+			if( zNrErr ){
+				DT_FF_LOGERR(0,zNrErr);
+			}
+			break;
+				 }
 		case 'S':
 			/* the ordinal suffix, which php declines to look at when the cursor
 			 * is on a blank and otherwise takes in either case */
@@ -3849,6 +3953,10 @@ static sxi64 DtFfResolve(const dt_ff_res *pRes,sxi64 iNow,int iNowUs,
 	if( h == DT_UNSET ){ h = secs / 3600; }
 	if( mi == DT_UNSET ){ mi = (secs / 60) % 60; }
 	if( s == DT_UNSET ){ s = secs % 60; }
+	/* php normalizes the filled vector BEFORE it hunts for a weekday and again
+	 * afterwards, and its month carry is a CALENDAR one -- the fortieth month
+	 * of 1970 is April 1973, not forty thirty-day steps from January. */
+	DtFfNormalize(&y,&mo,&d,&h,&mi,&s,&us);
 	if( pRes->bWday ){
 		/* php's forward hunt, and it is a DIFFERENCE rather than a remainder:
 		 * a weekday the relative-unit table answers past six -- `week` is 7 --
@@ -3857,6 +3965,7 @@ static sxi64 DtFfResolve(const dt_ff_res *pRes,sxi64 iNow,int iNowUs,
 		sxi64 iDiff = pRes->iWday - DtDowOf(iDays);
 		if( iDiff < 0 ){ iDiff += 7; }
 		d += iDiff;
+		DtFfNormalize(&y,&mo,&d,&h,&mi,&s,&us);
 	}
 	*piUs = (int)us;
 	return DtMakeTs(y,(int)mo,(int)d,(int)h,(int)mi,(int)s,
