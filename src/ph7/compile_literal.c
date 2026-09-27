@@ -1431,8 +1431,26 @@ PH7_PRIVATE SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd)
 {
 	SyToken *pCur = pStart;
 	sxi32 iNest = 0;
+	/* An entry that STARTS with a bare `yield` owns the FIRST '=>' after it:
+	 * php's grammar gives `yield expr => expr` to the yield, so `[yield 1 => 2]`
+	 * is ONE element (the yield's own result) keyed by nothing, and the generator
+	 * yields key 1 value 2. Reading that '=>' as the entry separator instead built
+	 * `[(yield 1) => 2]` — a different array AND a different yielded pair, in
+	 * silence. A SECOND top-level '=>' is the entry separator again, which is what
+	 * makes `[yield 1 => 2 => 3]` parse. `yield from` takes an iterable and never a
+	 * pair, so its entry keeps the ordinary rule. */
+	int bYieldOwnsArrow = (pStart < pEnd) && (pStart->nType & PH7_TK_KEYWORD)
+		&& (sxu32)SX_PTR_TO_INT(pStart->pUserData) == PH7_TKWRD_YIELD
+		&& !(&pStart[1] < pEnd && (pStart[1].nType & PH7_TK_ID)
+			&& pStart[1].sData.nByte == 4
+			&& SyStrnicmp(pStart[1].sData.zString, "from", 4) == 0);
 	while( pCur < pEnd ){
 		if( (pCur->nType & PH7_TK_ARRAY_OP) && iNest <= 0 ){
+			if( bYieldOwnsArrow ){
+				bYieldOwnsArrow = 0;
+				pCur++;
+				continue;
+			}
 			return pCur;
 		}
 		/* Arrow function (PHP 7.4): 'fn(...) =>' or 'static fn(...) =>'.

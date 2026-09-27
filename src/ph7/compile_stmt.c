@@ -2262,22 +2262,14 @@ PH7_PRIVATE sxi32 PH7_CompileYield(ph7_gen_state *pGen, sxi32 iCompileFlag)
 		PH7_VmEmitInstr(pGen->pVm, PH7_OP_YIELD, 0, 0, 0, 0);
 		return SXRET_OK;
 	}
-	/* Scan for '=>' at nesting level 0 to detect key => value syntax */
-	pSplit = 0;
-	{
-		SyToken *pCur = pGen->pIn;
-		sxi32 nNest = 0;
-		while( pCur < pGen->pEnd ){
-			if( pCur->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
-				nNest++;
-			}else if( pCur->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-				nNest--;
-			}else if( nNest == 0 && (pCur->nType & PH7_TK_ARRAY_OP) ){
-				pSplit = pCur;
-				break;
-			}
-			pCur++;
-		}
+	/* Scan for '=>' at nesting level 0 to detect key => value syntax. The shared
+	 * array-entry scanner is the one that already knows which '=>' are NOT
+	 * separators — an arrow function's body and a match arm's — so `yield fn($x)
+	 * => $x` and `yield match($k){ 1 => 2 }` stop being read as `key => value`
+	 * pairs (the first was a parse error, the second yielded the wrong pair). */
+	pSplit = GenStateFindTopLevelArrow(pGen->pIn,pGen->pEnd);
+	if( pSplit >= pGen->pEnd ){
+		pSplit = 0;
 	}
 	pTmp = pGen->pEnd;
 	if( pSplit ){
