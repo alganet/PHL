@@ -1695,6 +1695,13 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 		VmClassAttr *pVmAttr;
 		/* Extract the current attribute */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY ){
+			/* A property php's own object does not HOLD until its constructor
+			 * fills it: no slot, no hAttr entry, nothing for a read, an isset()
+			 * or a property walk to find. PH7_NativeMaterializeLazy installs the
+			 * whole set the first time a C body writes one. */
+			continue;
+		}
 		pVmAttr = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));
 		if( pVmAttr == 0 ){
 			return SXERR_MEM;

@@ -5433,6 +5433,24 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
+	/* php's state for these two IS their properties, and the table is written FROM
+	 * the C struct its constructor allocates -- so an object nobody constructed has
+	 * no such property at all. PHL declared them from `new`, so an unconstructed
+	 * interval answered ten defaults to a read, ten to isset(), ten to
+	 * get_object_vars() and ten to a property foreach, beside the empty shape the
+	 * presentation hook was already showing. The two classes differ in what a read
+	 * of a still-absent slot answers, which is php's split between its two
+	 * handlers: DatePeriod reads its seven from the zeroed struct (null/0/false, in
+	 * silence), DateInterval has no such fallback and its ten really are undefined
+	 * until the constructor runs. */
+	rc = PH7_NativeClassMarkLazyProps(&(*pVm),"DateInterval",0);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = PH7_NativeClassMarkLazyProps(&(*pVm),"DatePeriod",1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	/* IteratorAggregate declares a METHOD, so it is attached now that DatePeriod has
 	 * its own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would have
 	 * made the class uninstantiable. */

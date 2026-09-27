@@ -857,6 +857,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				/* Attribute access. iP2: 0 = read, 2 = unset, 3 = isset, 4 = empty. */
 				VmClassAttr *pObjAttr = 0;
 				SyHashEntry *pEntry = 0;
+				/* A LAZY native property read before anything installed it, whose
+				 * class answers such a read from its zeroed struct rather than
+				 * calling the name undefined (PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT).
+				 * Set by the miss handling below and answered after the pop. */
+				ph7_class_attr *pLazyDefault = 0;
 				if( sName.nByte > 0 && sName.zString[0] == 0
 				 && !PH7_VmIsIncompleteClass(&(*pVm),pClass) ){
 					/* php refuses a property name beginning with a NUL outright:
@@ -1031,6 +1036,15 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					if( pInstr->iP2 == PH7_MEMBER_WRITE || pInstr->iP2 == PH7_MEMBER_LIST_TARGET
 					 || VmMemberNextIsWrite(pNext) ){
 						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);
+						if( pDecl && PH7_ATTR_LAZY_ABSENT(pDecl,pThis) ){
+							/* The object has never held this name: php's own write goes
+							 * to the standard handler and CREATES a dynamic property
+							 * beside the struct, which PHL refuses (§10). Fall through
+							 * to the dynamic branch so it does. Once the constructor has
+							 * installed the set, an `unset()` and a re-write are the
+							 * ordinary declared-property path again. */
+							pDecl = 0;
+						}
 						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 							VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pObjAttr);
 						}else{
@@ -1226,6 +1240,21 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					}
 					/* fall through to the normal miss handling on allocation failure */
 				}
+				if( pObjAttr == 0
+				 && (pInstr->iP2 == PH7_MEMBER_READ || pInstr->iP2 == PH7_MEMBER_COALESCE) ){
+					/* A LAZY native property whose class answers a read from its ZEROED
+					 * struct (DatePeriod), asked before anything installed the set. php
+					 * consults that read handler in the plain read AND in `??` -- its third
+					 * accessor level takes the property's VALUE, so `$p->recurrences ?? 'd'`
+					 * is 0 there -- while isset()/empty() go to the has_property handler,
+					 * which answers false for an object that has no struct at all. */
+					ph7_class_attr *pLz = PH7_ClassExtractAttribute(pClass,
+						SyStringData(&sName),SyStringLength(&sName));
+					if( pLz && (pLz->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT)
+					 && PH7_ATTR_LAZY_ABSENT(pLz,pThis) ){
+						pLazyDefault = pLz;
+					}
+				}
 				if( pObjAttr == 0 ){
 					/* Missing property. On a plain READ, php dispatches __get($name) and the
 					 * expression takes its RETURN VALUE (band A #3a — pre-fix the result was
@@ -1371,7 +1400,22 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						                          |PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_DYNAMIC)) ){
 							pDeclAttr = 0;
 						}
-						if( pDeclAttr
+						if( pDeclAttr && PH7_ATTR_LAZY_ABSENT(pDeclAttr,pThis) ){
+							/* The object has never held this name. php has two answers and
+							 * the class says which: a read handler over the ZEROED struct
+							 * (DatePeriod -- null/0/false, in silence), or nothing at all
+							 * (DateInterval), which is the ordinary "Undefined property"
+							 * warning. Either way the DECLARATION is not what answers, so
+							 * the typed-slot Error below must not fire on a name php keeps
+							 * no slot for. */
+							if( pDeclAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT ){
+								pLazyDefault = pDeclAttr;
+							}
+							pDeclAttr = 0;
+						}
+						if( pLazyDefault ){
+							/* php's read handler answered: say nothing. */
+						}else if( pDeclAttr
 						 && !PH7_VmClassMemberAccess(&(*pVm),pClass,&pDeclAttr->sName,
 							pDeclAttr->iProtection,FALSE) ){
 							SyBlob sErrMsg;
@@ -1436,6 +1480,15 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						PH7_ClassInstanceUnref(pThis);
 					}
 					VM_EXIT_BREAK;
+				}
+				if( pLazyDefault && pLazyDefault->pNativeValue ){
+					/* A LAZY native property read before its class installed the set,
+					 * on a class that answers such a read from its ZEROED struct. The
+					 * declared literal IS that struct's field (the 76th session moved
+					 * DatePeriod's seven defaults onto it), and the answer is a
+					 * TEMPORARY: nothing was installed, so there is no slot to address
+					 * and nIdx stays the constant sentinel the pop left. */
+					PH7_NativeLiteralValue(&(*pVm),pLazyDefault->pNativeValue,pTos);
 				}
 				if( pObjAttr ){
 					ph7_value *pValue = 0; /* cc warning */

@@ -4032,6 +4032,16 @@ static int ReflectMemberList(ph7_context *pCtx, int iKind, const char *zClass,
 		if( pM->iKind != iKind ){
 			continue;
 		}
+		if( iKind == REFLECT_MEMBER_PROP && pObj != 0 && pM->pAttr != 0
+		 && (pM->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT) == 0
+		 && PH7_ATTR_LAZY_ABSENT(pM->pAttr,pObj) ){
+			/* A ReflectionObject reflects the OBJECT, and a LAZY property php does
+			 * not DECLARE (DateInterval's ten) is not on one that was never
+			 * constructed -- php reports none there either. The declared-and-virtual
+			 * kind (DatePeriod's seven, PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT) is
+			 * reported whatever the object holds, because php declares it. */
+			continue;
+		}
 		if( bFilter ){
 			sxi64 iMods = iKind == REFLECT_MEMBER_METHOD ? ReflectMethodModifiers(pM->pMeth)
 				: (iKind == REFLECT_MEMBER_CONST ? ReflectConstModifiers(pM->pAttr)

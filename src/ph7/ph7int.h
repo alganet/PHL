@@ -1548,6 +1548,10 @@ struct ph7_class
                                        * only while the native offsetGet is still the one that
                                        * answers: an override takes the class off the fast handler
                                        * in php too. See PH7_VmDimFetchWritable. */
+#define PH7_CLASS_LAZY_ATTR    0x8000 /* This class declares at least one PH7_CLASS_ATTR_NATIVE_LAZY
+                                       * property. The O(1) gate in front of the materialization walk:
+                                       * every native class writes its slots through the same setters,
+                                       * and only these two classes have anything to install. */
 #define PH7_CLASS_NOINSTANTIATE 0x1000 /* `new C` is refused by the OBJECT-CREATION step, before the
                                      * constructor's visibility is ever consulted — php's
                                      * "Instantiation of class %s is not allowed", which its
@@ -1675,7 +1679,29 @@ struct ph7_class_attr
                                             * property still decides. Read only by the object
                                             * comparator; presentation is the HIDDEN bit's business,
                                             * and these are shown. */
-/* next free bit: 0x400000 */
+#define PH7_CLASS_ATTR_NATIVE_LAZY  0x400000 /* A NATIVE class's property the OBJECT does not hold until
+                                            * its constructor fills it. php's DateInterval and
+                                            * DatePeriod are the case: the state lives in a C struct the
+                                            * constructor allocates, and the property table is written
+                                            * FROM that struct -- so an object nobody constructed has
+                                            * no such property at all, and `$i->y` there is an
+                                            * `Undefined property` warning, `isset()` is false and
+                                            * get_object_vars()/foreach see nothing. The instance frame
+                                            * skips these at `new`; the whole set is installed, in
+                                            * declared order, the first time a C body writes one
+                                            * (PH7_NativeMaterializeLazy), which is every constructor
+                                            * and every C factory. */
+#define PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT 0x800000 /* A LAZY property php really does DECLARE -- so
+                                            * Reflection lists it whatever the object holds -- and whose
+                                            * READ, while the slot is still absent, answers the declared
+                                            * literal in SILENCE. php's split between its two handlers:
+                                            * DatePeriod declares its seven and reads them through a
+                                            * read_property that answers the ZEROED struct
+                                            * (null/0/false), while DateInterval declares nothing at all
+                                            * and its ten are undefined until the constructor runs. The
+                                            * literal IS that zeroed field, which is why one bit says
+                                            * both things. */
+/* next free bit: 0x1000000 */
 /*
  * Does a store into this property's slot have to be FILTERED? Two unrelated
  * reasons say yes -- a declared TYPE to enforce and a native class's own write
@@ -1804,6 +1830,8 @@ PH7_PRIVATE int PH7_ClassNativeCmp(ph7_class_instance *pLeft,ph7_class_instance 
 PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *));
 PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass);
+PH7_PRIVATE sxi32 PH7_NativeClassMarkLazyProps(ph7_vm *pVm,const char *zClass,int bDefaultRead);
+PH7_PRIVATE void PH7_NativeMaterializeLazy(ph7_vm *pVm,ph7_class_instance *pObj);
 /*
  * The refusal a native compare handler carried back (ph7_vm::zCmpRefusalClass):
  * pending? raise it here, where a throw can be routed; raise it on a host CALL
@@ -1928,6 +1956,23 @@ struct ph7_class_instance
  * 0x001 destroyed, 0x002 dumping, 0x004 fcc-bound.)
  */
 #define VM_INSTANCE_CLONING 0x008
+/*
+ * ph7_class_instance::iFlags bit set once this object's LAZY native properties
+ * (PH7_CLASS_ATTR_NATIVE_LAZY) have been installed. It is the difference between
+ * "the constructor has never run, so the name is not a property of this object at
+ * all" and "the table exists and this one name was unset()" -- the first is php's
+ * dynamic-property creation on a write and an undefined-property warning on a
+ * read, the second re-creates the declared slot the ordinary way.
+ */
+#define VM_INSTANCE_LAZY_DONE 0x010
+/*
+ * Is this DECLARED attribute absent from the object because its class declares it
+ * LAZILY and nothing has installed the set yet? The two miss paths -- a property
+ * write and a by-reference bind -- ask before they re-create a declared slot.
+ */
+#define PH7_ATTR_LAZY_ABSENT(pAttr,pInst) \
+	((((pAttr)->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY) != 0) \
+	 && (((pInst)->iFlags & VM_INSTANCE_LAZY_DONE) == 0))
 /*
  * A single instruction of the virtual machine has an opcode
  * and as many as three operands.

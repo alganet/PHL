@@ -828,6 +828,9 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 	}
 	{
 		ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte);
+		if( pDecl && PH7_ATTR_LAZY_ABSENT(pDecl,pThis) ){
+			pDecl = 0;   /* never held: php creates a dynamic property, PHL refuses (§10) */
+		}
 		if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 			VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pAttr);
 		}else if( VmClassAllowsDynamicProps(&(*pVm),pClass) ){

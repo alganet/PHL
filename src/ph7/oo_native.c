@@ -91,9 +91,11 @@ PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_val
 PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,
 	const char *zProp,sxu32 nProp,ph7_value *pSrcVal)
 {
-	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zProp,nProp);
+	SyHashEntry *pEntry;
 	VmClassAttr *pVmAttr;
 	ph7_value *pSlot;
+	PH7_NativeMaterializeLazy(&(*pVm),pObj);
+	pEntry = SyHashGet(&pObj->hAttr,(const void *)zProp,nProp);
 	if( pEntry == 0 ){
 		return;
 	}
@@ -195,9 +197,21 @@ static void NativeAttrMarkInit(ph7_class_instance *pObj,const char *zName)
 		((VmClassAttr *)pEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;
 	}
 }
+/*
+ * The slot fetch on the WRITE side. A class whose php-visible properties are LAZY
+ * has none of them on the object until a C body fills one, and that first write is
+ * what installs the set -- which is php's constructor writing its struct into the
+ * property table. Every native writer goes through here so the bookkeeping lives
+ * with the write rather than with one of the ways of writing.
+ */
+static ph7_value * NativeAttrForWrite(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName)
+{
+	PH7_NativeMaterializeLazy(&(*pVm),pObj);
+	return PH7_NativeAttr(pObj,zName);
+}
 PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal)
 {
-	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value *pSlot = NativeAttrForWrite(&(*pVm),pObj,zName);
 	ph7_value sVal;
 	if( pSlot == 0 ){
 		return;
@@ -210,7 +224,7 @@ PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const
 #ifndef PH7_OMIT_FLOATING_POINT
 PH7_PRIVATE void PH7_NativeSetAttrReal(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,ph7_real rVal)
 {
-	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value *pSlot = NativeAttrForWrite(&(*pVm),pObj,zName);
 	ph7_value sVal;
 	if( pSlot == 0 ){
 		return;
@@ -224,7 +238,7 @@ PH7_PRIVATE void PH7_NativeSetAttrReal(ph7_vm *pVm,ph7_class_instance *pObj,cons
 PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
 	const char *zVal,int nVal)
 {
-	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value *pSlot = NativeAttrForWrite(&(*pVm),pObj,zName);
 	ph7_value sVal;
 	SyString sStr;
 	if( pSlot == 0 ){
@@ -237,7 +251,7 @@ PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const
 }
 PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,int bVal)
 {
-	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value *pSlot = NativeAttrForWrite(&(*pVm),pObj,zName);
 	ph7_value sVal;
 	if( pSlot == 0 ){
 		return;
@@ -251,7 +265,7 @@ PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,cons
 PH7_PRIVATE void PH7_NativeSetAttrObj(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
 	ph7_class_instance *pVal)
 {
-	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value *pSlot = NativeAttrForWrite(&(*pVm),pObj,zName);
 	ph7_value sVal;
 	if( pSlot == 0 ){
 		return;
@@ -773,6 +787,90 @@ PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass
 		}
 	}
 	return SXRET_OK;
+}
+/*
+ * Mark every php-VISIBLE instance property a mounted native class declares as one
+ * the OBJECT does not hold until its constructor fills it
+ * (PH7_CLASS_ATTR_NATIVE_LAZY). php's DateInterval and DatePeriod are the caller
+ * list: the state is a C struct the constructor allocates and the property table
+ * is written FROM it, so an object nobody constructed has no such property at all.
+ *
+ * The HIDDEN slots are left alone -- they are PHL's own storage, they have to
+ * exist from `new` (the initialized FLAG lives in one of them), and php shows
+ * nothing for them either way.
+ *
+ * bDefaultRead selects which of php's two handlers the class has: with it, a read
+ * of a still-absent slot answers the DECLARED literal in silence (DatePeriod's
+ * read_property over the zeroed struct); without it, the name really is undefined
+ * until the constructor runs (DateInterval).
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassMarkLazyProps(ph7_vm *pVm,const char *zClass,int bDefaultRead)
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	SyHashEntry *pEntry;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+			continue;
+		}
+		pAttr->iFlags |= PH7_CLASS_ATTR_NATIVE_LAZY;
+		if( bDefaultRead ){
+			pAttr->iFlags |= PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT;
+		}
+		pClass->iFlags |= PH7_CLASS_LAZY_ATTR;
+	}
+	return SXRET_OK;
+}
+/*
+ * Install this object's LAZY properties -- the whole set, in the order the class
+ * declares them, skipping any the object already carries.
+ *
+ * The ORDER is php's: its constructor writes the struct's fields into the property
+ * table one after another, so a name the object already has keeps its POSITION and
+ * only takes the new value, and the rest are appended in declared order behind it.
+ * VmRecreateDeclaredAttr tail-inserts exactly that way.
+ *
+ * The declared literal goes in as the slot's starting value (php's zeroed struct),
+ * and the not-yet-initialized mark a TYPED slot would carry is cleared with it:
+ * these are filled by the C body that is about to write them, and a read between
+ * the two is php's default, not its Error.
+ */
+PH7_PRIVATE void PH7_NativeMaterializeLazy(ph7_vm *pVm,ph7_class_instance *pObj)
+{
+	SyHashEntry *pEntry;
+	if( pObj == 0 || (pObj->pClass->iFlags & PH7_CLASS_LAZY_ATTR) == 0
+	 || (pObj->iFlags & VM_INSTANCE_LAZY_DONE) ){
+		return;
+	}
+	pObj->iFlags |= VM_INSTANCE_LAZY_DONE;
+	SyHashResetLoopCursor(&pObj->pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pObj->pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		VmClassAttr *pVmAttr = 0;
+		ph7_value *pSlot;
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY) == 0 ){
+			continue;
+		}
+		if( SyHashGet(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName)) != 0 ){
+			continue;
+		}
+		VmRecreateDeclaredAttr(&(*pVm),pObj,pAttr,&pVmAttr);
+		if( pVmAttr == 0 ){
+			continue;   /* OOM: the caller's write lands nowhere, as it would have anyway */
+		}
+		pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+		if( pAttr->pNativeValue == 0 ){
+			continue;
+		}
+		pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+		if( pSlot ){
+			PH7_NativeLiteralValue(&(*pVm),pAttr->pNativeValue,pSlot);
+		}
+	}
 }
 /*
  * Create and install ONE class from its spec: constants and properties, but

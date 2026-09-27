@@ -517,6 +517,13 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			return SXERR_ABORT;
 		}
 	}
+	/* A native class whose php-visible properties are LAZY passes that on: the
+	 * attributes copied below keep their flags, so a subclass of DateInterval has
+	 * the same ten to install, and the O(1) gate in front of the materialization
+	 * walk has to see it on the SUBCLASS or the constructor's writes land nowhere. */
+	if( pBase->iFlags & PH7_CLASS_LAZY_ATTR ){
+		pSub->iFlags |= PH7_CLASS_LAZY_ATTR;
+	}
 	/* Copy public/protected attributes from the base class */
 	SyHashResetLoopCursor(&pBase->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pBase->hAttr)) != 0 ){
@@ -1221,6 +1228,13 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 	if( rc != SXRET_OK ){
 		SyMemBackendPoolFree(&pVm->sAllocator,pClone);
 		return 0;
+	}
+	/* A clone of an object whose LAZY native properties are installed has them
+	 * too: php clones the C struct the table is written from, so the copy shows
+	 * what the original shows. The frame above skipped them (as it does at `new`),
+	 * so install them before the value copy below looks for the same-named slots. */
+	if( pSrc->iFlags & VM_INSTANCE_LAZY_DONE ){
+		PH7_NativeMaterializeLazy(pVm,pClone);
 	}
 	/* Duplicate object values. Iterate the SOURCE attributes and copy each into
 	 * the clone's same-named slot (looked up by name, so order/count differences
