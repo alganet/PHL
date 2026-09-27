@@ -3564,7 +3564,9 @@ static sxi32 ReflectCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
 		 * ReflectionClass::newInstance() on a Closure is the same Error, not a
 		 * visibility one about its private constructor. */
 		if( pClass->zNewRefusal ){
-			return PH7_VmThrowException(pCtx, "Error", "%s", pClass->zNewRefusal);
+			return PH7_VmThrowException(pCtx,
+				pClass->zNewRefusalClass ? pClass->zNewRefusalClass : "Error",
+				"%s", pClass->zNewRefusal);
 		}
 		return PH7_VmThrowException(pCtx, "Error",
 			"Instantiation of class %z is not allowed", &pClass->sName);
@@ -7576,6 +7578,24 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 	}
 	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
 	if( pVmAttr == 0 ){
+		/* No slot: a class whose properties are its own handlers answers here,
+		 * as php's does -- Reflection reads a PDORow's `queryString` through
+		 * read_property exactly as `$row->queryString` does. */
+		PH7_NativePropCtx sNat;
+		SyString sNatName;
+		ph7_value sNatVal;
+		SyStringInitFromBuf(&sNatName, sRef.zName, (sxu32)sRef.nName);
+		PH7_MemObjInit(pCtx->pVm, &sNatVal);
+		if( PH7_ClassNativePropAsk(pObj, &sNat, PH7_NATIVE_PROP_READ, &sNatName, &sNatVal) ){
+			if( sNat.zThrowClass ){
+				PH7_MemObjRelease(&sNatVal);
+				return PH7_VmThrowException(pCtx, sNat.zThrowClass, "%s", sNat.zThrowMsg);
+			}
+			ph7_result_value(pCtx, &sNatVal);
+			PH7_MemObjRelease(&sNatVal);
+			return PH7_OK;
+		}
+		PH7_MemObjRelease(&sNatVal);
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -7622,6 +7642,20 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 	}
 	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
 	if( pVmAttr == 0 ){
+		/* No slot: the write handler answers, and for a class that has one the
+		 * answer is its own refusal (php's PDORow refuses Reflection's write
+		 * with the same sentence `$row->p = 1` takes). */
+		PH7_NativePropCtx sNat;
+		SyString sNatName;
+		ph7_value sNatVal;
+		SyStringInitFromBuf(&sNatName, sRef.zName, (sxu32)sRef.nName);
+		PH7_MemObjInit(pCtx->pVm, &sNatVal);
+		if( PH7_ClassNativePropAsk(pObj, &sNat, PH7_NATIVE_PROP_WRITE, &sNatName, &sNatVal)
+		 && sNat.zThrowClass ){
+			PH7_MemObjRelease(&sNatVal);
+			return PH7_VmThrowException(pCtx, sNat.zThrowClass, "%s", sNat.zThrowMsg);
+		}
+		PH7_MemObjRelease(&sNatVal);
 		return PH7_OK;
 	}
 	{

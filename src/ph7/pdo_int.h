@@ -140,6 +140,28 @@ struct phl_pdo_stmt {
 	ph7_class_instance *pConnObj; /* the PDO object, retained: a statement outliving
 	                               * its connection's last reference must not lose
 	                               * the database under it */
+	/* PDO::FETCH_LAZY's one row object, and the row it reads.
+	 *
+	 * php's lazy row is a VIEW of the statement's current cursor position: one
+	 * object per statement, handed back by every lazy fetch, whose columns are
+	 * read when the SCRIPT asks for them and therefore move with the walk.  This
+	 * driver steps AHEAD (a row is stepped at execute() so columnCount() can
+	 * answer, and again after each fetch), so the cursor is already past the row
+	 * the script is holding -- the values are captured instead, RAW, at every
+	 * fetch that hands a row out, and php's presentation rules (ATTR_CASE is
+	 * already in the names, STRINGIFY_FETCHES and ORACLE_NULLS are not) are
+	 * applied when the property is read.  That is what keeps an attribute
+	 * changed between two reads visible in the second, as php's is.
+	 */
+	ph7_class_instance *pLazyRow;  /* the object, NOT retained: it retains the STATEMENT,
+	                                * and its own release clears this pointer */
+	ph7_value *pLazyVals;          /* the captured row, positionally; 0 when the cursor
+	                                * has produced none (every column then reads null).
+	                                * The NAMES are not captured beside it: they belong
+	                                * to the prepared statement, which the row keeps
+	                                * alive, and php answers them for as long as it
+	                                * exists -- a walk that has run out still prints
+	                                * every column, each holding null. */
 	phl_pdo_bind *pBinds;         /* what bindValue()/bindParam() recorded */
 	phl_pdo_bind *pColBinds;      /* what bindColumn() recorded: the same record, read the
 	                               * other way -- a COLUMN and the variable it writes to */

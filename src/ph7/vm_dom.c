@@ -6646,6 +6646,13 @@ static void DomListDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *p
 	ph7_value sKey;
 	sxi64 iIndex;
 	int bNamed;
+	if( pCtx->iMode != PH7_NATIVE_DIM_READ && pCtx->iMode != PH7_NATIVE_DIM_ISSET ){
+		/* The WRITE modes only ask for a refusal WORDING, and these two classes
+		 * have none of their own: php answers `Cannot use object of type C as
+		 * array` for a store, an append and an unset, which is what the caller
+		 * formats when the hook declines. */
+		return;
+	}
 	if( pCtx->pOffset == 0 ){
 		DomDimNoOffset(pThis,pCtx);
 		return;
@@ -6662,6 +6669,9 @@ static void DomMapDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pC
 	ph7_value sKey;
 	sxi64 iIndex;
 	int bNamed;
+	if( pCtx->iMode != PH7_NATIVE_DIM_READ && pCtx->iMode != PH7_NATIVE_DIM_ISSET ){
+		return;   /* see DomListDim: the write side is php's generic sentence */
+	}
 	if( pCtx->pOffset == 0 ){
 		DomDimNoOffset(pThis,pCtx);
 		return;

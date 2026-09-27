@@ -177,7 +177,11 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		}else{
 			SyBlobFormat(&sErrMsg,"Instantiation of class %z is not allowed",&pClass->sName);
 		}
-		VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+		{
+			const char *zRefCls = pClass->zNewRefusalClass ? pClass->zNewRefusalClass : "Error";
+			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),zRefCls,
+				(sxu32)SyStrlen(zRefCls),&sErrMsg));
+		}
 		if( nCtorArgs > 0 ){
 			VmPopOperand(&pTos,nCtorArgs);
 		}
@@ -964,6 +968,95 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					}
 					pEntry = 0;
 					pObjAttr = 0;
+				}
+				if( pObjAttr == 0 && PH7_ClassHasNativeProp(pClass) ){
+					/* php's read_property / has_property / write_property /
+					 * unset_property handlers, for a class whose properties are not
+					 * storage at all: PDORow answers every read from the statement's
+					 * current ROW, holds no slot for any of them, and refuses every
+					 * write. It comes first among the miss paths, and before the
+					 * declared-but-absent one: a name this class owns is neither a
+					 * dynamic property to create, nor an "Undefined property" to warn
+					 * about, nor a __get to dispatch.
+					 *
+					 * Which handler php asks is what the CONTEXT says: a plain store,
+					 * a destructuring target and a read-modify-write all end in a
+					 * write; `??=` reads first and writes only when the read answered
+					 * null; a subscript-write base (`$o->p[0] = 1`) is a READ whose
+					 * value the subscript then refuses; and isset() stops at the
+					 * truth while empty() and `??` take the value. */
+					VmInstr *pPropNext = pInstr + 1;
+					int bPropStore = (pPropNext->iOp == PH7_OP_STORE && pPropNext->iP2 != 0);
+					int bPropCoal = (pInstr->iP2 == PH7_MEMBER_WRITE
+						&& pPropNext->iOp == PH7_OP_NULLC_JMP);
+					PH7_NativePropCtx sProp;
+					ph7_value sPropVal;
+					PH7_MemObjInit(&(*pVm),&sPropVal);
+					if( pInstr->iP2 == PH7_MEMBER_UNSET ){
+						sProp.iMode = PH7_NATIVE_PROP_UNSET;
+					}else if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET || bPropStore
+					       || VmMemberNextIsRmw(pPropNext) ){
+						sProp.iMode = PH7_NATIVE_PROP_WRITE;
+					}else if( pInstr->iP2 == PH7_MEMBER_ISSET ){
+						sProp.iMode = PH7_NATIVE_PROP_ISSET;
+					}else if( pInstr->iP2 == PH7_MEMBER_EMPTY ){
+						/* php's empty() asks has_property with a non-zero
+						 * check_empty and takes THAT for the answer -- it never
+						 * reads the value. The two are not the same question:
+						 * `empty($row->queryString)` is TRUE on a name the
+						 * handler does not know, while reading it works. */
+						sProp.iMode = PH7_NATIVE_PROP_EXISTS;
+					}else{
+						sProp.iMode = PH7_NATIVE_PROP_READ;
+					}
+					sProp.pName = &sName;
+					sProp.pResult = &sPropVal;
+					sProp.bAnswered = 0;
+					sProp.zThrowClass = 0;
+					sProp.zThrowMsg[0] = 0;
+					if( PH7_ClassNativeProp(pThis,&sProp) ){
+						if( sProp.zThrowClass == 0 && bPropCoal
+						 && sProp.iMode == PH7_NATIVE_PROP_READ
+						 && (sPropVal.iFlags & MEMOBJ_NULL) ){
+							/* `$o->p ??= v` on a name that reads null: the store php
+							 * skips for a non-null one is the one it now makes, so the
+							 * refusal is the WRITE handler's. */
+							sProp.iMode = PH7_NATIVE_PROP_WRITE;
+							sProp.bAnswered = 0;
+							PH7_ClassNativeProp(pThis,&sProp);
+						}
+						if( sProp.zThrowClass ){
+							/* Parked, like every other refusal this op makes: the
+							 * fetch-point router lands it and abandons this slot. */
+							VmBoundaryPark(&(*pVm),
+								VmThrowFixedError(&(*pVm),sProp.zThrowClass,sProp.zThrowMsg));
+							PH7_MemObjRelease(&sPropVal);
+							VmPopOperand(&pTos,1);      /* the property name */
+							PH7_MemObjRelease(pTos);    /* the object slot is the answer */
+							pTos->nIdx = SXU32_HIGH;
+							VM_EXIT_BREAK;
+						}
+						VmPopOperand(&pTos,1);          /* the property name */
+						pThis->iRef++;
+						PH7_MemObjRelease(pTos);
+						if( sProp.iMode == PH7_NATIVE_PROP_ISSET ){
+							/* isset() only tests null-ness: a non-null marker for
+							 * true, NULL for false — what the __isset arm pushes. */
+							if( ph7_value_to_bool(&sPropVal) ){
+								pTos->x.iVal = 1;
+								MemObjSetType(pTos,MEMOBJ_BOOL);
+							}
+						}else if( sProp.iMode != PH7_NATIVE_PROP_UNSET ){
+							/* EMPTY pushes the handler's BOOL, which the op then
+							 * judges for emptiness -- the same answer php takes. */
+							PH7_MemObjStore(&sPropVal,pTos);
+						}
+						pTos->nIdx = SXU32_HIGH;   /* a value, never an lvalue */
+						PH7_MemObjRelease(&sPropVal);
+						PH7_ClassInstanceUnref(pThis);
+						VM_EXIT_BREAK;
+					}
+					PH7_MemObjRelease(&sPropVal);
 				}
 				if( pInstr->iP2 == PH7_MEMBER_UNSET ){
 					/* unset($o->prop): remove the property entirely so it disappears from

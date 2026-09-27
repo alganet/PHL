@@ -1322,9 +1322,23 @@ typedef struct ph7_class_attr   ph7_class_attr;
 typedef struct PH7_NativeDimCtx PH7_NativeDimCtx;
 #define PH7_NATIVE_DIM_READ  0 /* php's read_dimension: the value, or NULL for a miss */
 #define PH7_NATIVE_DIM_ISSET 1 /* php's has_dimension: presence only, and never a refusal */
+/*
+ * The WRITE side, which a hook may only REFUSE: php's write_dimension and
+ * unset_dimension for a container that answers reads and stores nothing.
+ * The engine's own sentence for such a class is
+ * `Cannot use object of type C as array`, and a class states its own here --
+ * PDORow's three are `Cannot write to PDORow offset`, `Cannot append to
+ * PDORow offset` and `Cannot unset PDORow offset`. Neither pOffset nor
+ * pResult is passed (none of php's wordings names the offset, and there is no
+ * answer to write): a hook that does not word one of these must return without
+ * touching either.
+ */
+#define PH7_NATIVE_DIM_WRITE  2 /* php's write_dimension with a key */
+#define PH7_NATIVE_DIM_APPEND 3 /* ...and its keyless `$o[] = v` spelling */
+#define PH7_NATIVE_DIM_UNSET  4 /* php's unset_dimension */
 struct PH7_NativeDimCtx
 {
-	int iMode;               /* PH7_NATIVE_DIM_READ / PH7_NATIVE_DIM_ISSET */
+	int iMode;               /* PH7_NATIVE_DIM_* */
 	ph7_value *pOffset;      /* The subscript. 0 for the keyless `$o[]` spelling. */
 	ph7_value *pResult;      /* READ: where the answer goes (the caller inits it NULL).
 	                          * ISSET: set to a bool by the hook. */
@@ -1355,6 +1369,53 @@ struct PH7_NativeSetCtx
 	const SyString *pName;   /* The property being written */
 	ph7_value *pValue;       /* The incoming value; the hook rewrites it in place */
 	const char *zThrowClass; /* Set by the hook to refuse; 0 (the caller's init) means stored */
+	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
+};
+/*
+ * One PROPERTY access asked of a native class through ph7_class::xProp --
+ * php's read_property / has_property / write_property / unset_property
+ * handlers, as one call told which is asking.
+ *
+ * This is the hook for a class whose properties are not storage at all: php's
+ * PDORow answers every read from the statement's CURRENT row, so the object
+ * holds no slot for any of them, `get_object_vars()` is EMPTY beside a read
+ * that works, and a write is a refusal rather than a store. It is asked only
+ * where the instance has NO slot of that name, which for such a class is
+ * everywhere -- a native class that keeps real slots and only CONVERTS what
+ * lands in them wants ph7_class::xSet instead.
+ *
+ * READ answers by writing pResult (left NULL for a name the class does not
+ * know, which is php's own answer -- not an `Undefined property` warning);
+ * ISSET and EXISTS answer by setting pResult to a bool. Either may DECLINE by leaving
+ * bAnswered at 0, which puts the name back on the ordinary path. WRITE and
+ * UNSET exist only to refuse, the way the dimension hook's write modes do.
+ *
+ * A refusal is carried back in zThrowClass/zThrowMsg rather than raised here,
+ * exactly as PH7_NativeDimCtx's is: only the opcode knows how to route a throw
+ * out of a mid-expression access.
+ */
+#define PH7_NATIVE_PROP_READ  0
+#define PH7_NATIVE_PROP_ISSET 1
+#define PH7_NATIVE_PROP_WRITE 2
+#define PH7_NATIVE_PROP_UNSET 3
+/*
+ * php's has_property asked the way property_exists() asks it: with a non-zero
+ * `check_empty`, which its handlers read as the EMPTINESS question rather than
+ * the null one. It is the same handler and a different answer -- a PDORow
+ * column holding 0 or "" is `isset()` but does NOT `property_exists()` -- so
+ * the two questions are two modes here.
+ */
+#define PH7_NATIVE_PROP_EXISTS 4
+typedef struct PH7_NativePropCtx PH7_NativePropCtx;
+struct PH7_NativePropCtx
+{
+	int iMode;               /* PH7_NATIVE_PROP_* */
+	const SyString *pName;   /* The property being asked about */
+	ph7_value *pResult;      /* READ: where the answer goes (the caller inits it NULL).
+	                          * ISSET/EXISTS: set to a bool by the hook. */
+	int bAnswered;           /* Set by the hook when it OWNS this name; 0 (the caller's
+	                          * init) leaves the access to the ordinary path */
+	const char *zThrowClass; /* Set by the hook to refuse; 0 (the caller's init) means answered */
 	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
 };
 /*
@@ -1482,6 +1543,9 @@ struct ph7_class
 	                       * keys to both. Never consulted by get_object_vars()/foreach, which php
 	                       * answers from the real (scoped) properties, nor yet by serialize(),
 	                       * where php's answer is an __serialize/__unserialize pair. */
+	const char *zNewRefusalClass; /* ...and the exception CLASS that refusal is, when it is
+	                       * not the usual `Error`: php's PDORow refuses `new` with a
+	                       * PDOException. 0 selects Error. */
 	const char *zNewRefusal; /* php's create_object refusal TEXT for a PH7_CLASS_NOINSTANTIATE
 	                       * class, when it is not the usual "Instantiation of class %s is not
 	                       * allowed". php words Directory's as "Cannot directly construct
@@ -1523,6 +1587,14 @@ struct ph7_class
 	                       * which also flags the class's properties PH7_CLASS_ATTR_NATIVE_SET
 	                       * so their slots get registered; inherited by user subclasses the
 	                       * way php inherits a handler. 0 everywhere else. */
+	void (*xProp)(ph7_vm *,ph7_class_instance *,PH7_NativePropCtx *); /* php's
+	                       * read_property / has_property / write_property /
+	                       * unset_property handlers, as one callback told which is
+	                       * asking; see PH7_NativePropCtx. Consulted only where the
+	                       * instance has no slot of that name. Assigned on the mounted
+	                       * class by the owning installer, like xClone/xDim/xSet, and
+	                       * inherited by user subclasses -- php's handler inheritance.
+	                       * 0 everywhere else. */
 	int (*xBool)(ph7_vm *,ph7_class_instance *); /* php's cast_object for _IS_BOOL: an
 	                       * object is ALWAYS truthy unless its class says otherwise, and
 	                       * BcMath\Number is the one that does -- a zero Number is falsy. */
@@ -1887,6 +1959,17 @@ PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec
 PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug);
 PH7_PRIVATE int PH7_ClassHasNativeDim(ph7_class *pClass);
 PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx);
+/* The refusal a native container gives a dimension WRITE/APPEND/UNSET: its own
+ * sentence when its hook words one, and php's `Cannot use object of type C as
+ * array` for every class that does not. Answers the message length. */
+PH7_PRIVATE sxu32 PH7_ClassNativeDimRefusal(ph7_class_instance *pThis,int iMode,
+	char *zMsg,sxu32 nMsg);
+PH7_PRIVATE int PH7_ClassHasNativeProp(ph7_class *pClass);
+PH7_PRIVATE int PH7_ClassNativeProp(ph7_class_instance *pThis,PH7_NativePropCtx *pCtx);
+PH7_PRIVATE int PH7_ClassNativePropAsk(ph7_class_instance *pThis,PH7_NativePropCtx *pCtx,
+	int iMode,const SyString *pName,ph7_value *pResult);
+PH7_PRIVATE sxi32 PH7_NativeClassInstallPropHook(ph7_vm *pVm,const char *zClass,
+	void (*xProp)(ph7_vm *,ph7_class_instance *,PH7_NativePropCtx *));
 PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *));

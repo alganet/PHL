@@ -209,6 +209,24 @@ PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value 
 					 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC) ){
 						res = 1;
 					}
+					if( res == 0 && pThis ){
+						/* php asks the class's has_property handler here too, which
+						 * is what reports a PDORow's COLUMNS -- a name no table
+						 * carries and every read answers. Its verdict is the value's
+						 * (a column holding SQL NULL reports false), which is what
+						 * php's own handler answers to this question. */
+						PH7_NativePropCtx sNat;
+						SyString sNatName;
+						ph7_value sNatVal;
+						SyStringInitFromBuf(&sNatName,zName,(sxu32)nLen);
+						PH7_MemObjInit(pCtx->pVm,&sNatVal);
+						if( PH7_ClassNativePropAsk(pThis,&sNat,PH7_NATIVE_PROP_EXISTS,
+								&sNatName,&sNatVal)
+						 && sNat.zThrowClass == 0 && ph7_value_to_bool(&sNatVal) ){
+							res = 1;
+						}
+						PH7_MemObjRelease(&sNatVal);
+					}
 				}
 			}
 		}

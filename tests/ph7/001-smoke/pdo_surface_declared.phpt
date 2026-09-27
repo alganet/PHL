@@ -10,10 +10,9 @@ class_exists() can see before a connection exists. php's own surface is the
 source (band E), and the whole table is diffed against the 8.5
 oracle rather than written from the manual.
 
-Two rows here are deliberately NOT php's. §10's non-deprecated rule removes the
+One row here is deliberately NOT php's: §10's non-deprecated rule removes the
 seven PDO::SQLITE_* constants php 8.5 still declares and marks deprecated —
-their unprefixed successors live on Pdo\Sqlite — and PDORow, whose only purpose
-is PDO::FETCH_LAZY, arrives with that fetch mode. Both are twinned in
+their unprefixed successors live on Pdo\Sqlite. It is twinned in
 002-integration/class/PDO/.
 --FILE--
 <?php

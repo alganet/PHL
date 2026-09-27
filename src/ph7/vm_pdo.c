@@ -28,6 +28,7 @@ static void PdoStmtSweep(phl_pdo *pConn);
 static void PdoBlankSlot(ph7_class_instance *pOwner);
 static phl_pdo * PdoOfInstance(ph7_class_instance *pThis);
 static void PdoStmtClearFetchState(phl_pdo_stmt *pSt);
+static void PdoStmtLazyClear(phl_pdo_stmt *pSt);
 
 /* ------------------------------------------------------------------------
  * Connection lifetime
@@ -256,6 +257,14 @@ static void PdoBindsClear(phl_pdo_stmt *pSt)
 PH7_PRIVATE void PH7_PdoFreeStmt(phl_pdo_stmt *pSt)
 {
 	PdoBindsClear(pSt);
+	PdoStmtLazyClear(pSt);
+	if( pSt->pLazyRow ){
+		/* A lazy row RETAINS its statement object, so this cannot run while one
+		 * is alive -- except at VM teardown, which releases in no order. Cut the
+		 * link from both ends rather than leave the row reading freed memory. */
+		PdoBlankSlot(pSt->pLazyRow);
+		pSt->pLazyRow = 0;
+	}
 	PdoStmtClearFetchState(pSt);
 	PH7_PdoSqliteFinalize(pSt);
 	if( pSt->pConnObj ){
@@ -1188,6 +1197,72 @@ static void PdoApplyValueMods(phl_pdo *pConn,ph7_value *pVal)
 }
 
 /*
+ * Drop the captured row a PDO::FETCH_LAZY object reads through. Every column
+ * then answers null, which is what php's row does once the walk runs out.
+ */
+static void PdoStmtLazyClear(phl_pdo_stmt *pSt)
+{
+	ph7_vm *pVm = pSt->pConn->pVm;
+	if( pSt->pLazyVals ){
+		ph7_release_value(pVm,pSt->pLazyVals);
+		pSt->pLazyVals = 0;
+	}
+}
+/*
+ * Capture the row under the cursor for the lazy object: the RAW column values,
+ * positionally. The value modifiers are NOT applied -- php's row reads them at
+ * property-access time, so a STRINGIFY_FETCHES turned on between two reads
+ * shows in the second -- and the NAMES are not captured at all, because they
+ * are the statement's and outlive any one row.
+ */
+static void PdoStmtLazyCapture(phl_pdo_stmt *pSt)
+{
+	ph7_vm *pVm = pSt->pConn->pVm;
+	int nCol,iCol;
+	ph7_value *pCell;
+	PdoStmtLazyClear(pSt);
+	pSt->pLazyVals = ph7_new_array(pVm);
+	pCell = ph7_new_scalar(pVm);
+	if( pSt->pLazyVals == 0 || pCell == 0 ){
+		if( pCell ){ ph7_release_value(pVm,pCell); }
+		PdoStmtLazyClear(pSt);
+		return;
+	}
+	nCol = PH7_PdoSqliteColumnCount(pSt);
+	for( iCol = 0 ; iCol < nCol ; ++iCol ){
+		PH7_PdoSqliteColumnValue(pSt,iCol,pCell);
+		ph7_array_add_elem(pSt->pLazyVals,0,pCell);
+	}
+	ph7_release_value(pVm,pCell);
+}
+/*
+ * Keep the lazy object in step with the cursor: the row about to be handed out
+ * becomes what it reads, and a cursor with nothing left clears it. Called from
+ * every verb that consumes a row, and only while such an object exists.
+ */
+static void PdoStmtLazySync(phl_pdo_stmt *pSt)
+{
+	if( pSt->pLazyRow == 0 ){
+		return;
+	}
+	if( pSt->bRowPending ){
+		PdoStmtLazyCapture(pSt);
+	}else{
+		PdoStmtLazyClear(pSt);
+	}
+}
+/*
+ * Does the cursor have a row for the verb about to ask? Answering that is also
+ * the moment a lazy object has to be brought in step, because a verb that
+ * finds NOTHING is what empties php's row -- every column of it reads null
+ * from there on, names and all.
+ */
+static int PdoStmtHasRow(phl_pdo_stmt *pSt)
+{
+	PdoStmtLazySync(pSt);
+	return pSt->bRowPending;
+}
+/*
  * Step the cursor once and remember what happened. php's driver does this at
  * execute() so columnCount() has an answer before anything is fetched, and the
  * row it lands on is the one the FIRST fetch() hands back.
@@ -1219,6 +1294,9 @@ static int PdoStmtRowFrom(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOu
 	int nCol,iCol;
 	ph7_value *pCell;
 	SyBlob sName;
+	/* Whatever shape this row is asked for, it is also the row a lazy object
+	 * handed out earlier now reads -- php's is a view of the same cursor. */
+	PdoStmtLazySync(pSt);
 	if( !pSt->bRowPending ){
 		return 0;
 	}
@@ -1457,7 +1535,7 @@ static int vm_builtin_PDOStatement_fetchObject(ph7_context *pCtx,int nArg,ph7_va
 	if( pClass == 0 ){
 		return rc;
 	}
-	if( !pSt->bRowPending ){
+	if( !PdoStmtHasRow(pSt) ){
 		PdoStmtOk(pSt);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1493,7 +1571,7 @@ static int PdoFetchObjectRow(ph7_context *pCtx,phl_pdo_stmt *pSt,int iMode,
 	ph7_value sRes;
 	sxi32 rc;
 	SXUNUSED(zFn);
-	if( !pSt->bRowPending ){
+	if( !PdoStmtHasRow(pSt) ){
 		PdoStmtOk(pSt);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1692,6 +1770,421 @@ static sxi32 PdoWriteBoundColumns(ph7_context *pCtx,phl_pdo_stmt *pSt)
 	}
 	return PH7_OK;
 }
+/* ------------------------------------------------------------------------
+ * PDORow: what PDO::FETCH_LAZY answers
+ * ------------------------------------------------------------------------ */
+/*
+ * php's PDORow is a fully VIRTUAL object over a statement's CURRENT row: it
+ * declares one property (`queryString`) and holds NONE, every column is read
+ * through its property and dimension handlers, and every write is refused.
+ * That split is what makes `get_object_vars()` empty beside a `$row->id` that
+ * works, `var_dump()` show the columns anyway (its get_debug_info handler) and
+ * `(array)`/`var_export()`/`json_encode()` show nothing at all.
+ *
+ * One object per statement, handed back by every lazy fetch, so two fetches
+ * answer the same object and the FIRST one moves on to the second row. It
+ * RETAINS the statement object -- a row outliving the variable that fetched it
+ * still reads (and still keeps the database open under it) -- and the statement
+ * points back at it without a reference, which the row's own release clears.
+ */
+/* The row's hidden slots: the statement it reads, and the object that owns it. */
+#define PDOROW_RES  "__res"
+#define PDOROW_STMT "__stmt"
+
+static phl_pdo_stmt * PdoRowStmt(ph7_class_instance *pThis)
+{
+	SyString sAttr;
+	ph7_value *pRes;
+	if( pThis == 0 ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr,PDOROW_RES,sizeof(PDOROW_RES)-1);
+	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+	if( pRes == 0 || !ph7_value_is_resource(pRes) ){
+		return 0;
+	}
+	return (phl_pdo_stmt *)ph7_value_to_resource(pRes);
+}
+/*
+ * php reads a property or offset NAME as a column NUMBER when it is an integer
+ * string -- `$row->{'0'}` and `$row['1']` are columns, not names -- and as a
+ * column NAME otherwise. The grammar is php's is_numeric_string answering
+ * IS_LONG: whitespace, a sign, digits, whitespace, and a value an int64 holds
+ * (an overflow reads as a double there, so it falls through to the name lookup
+ * and misses).
+ */
+static int PdoRowIntName(const char *z,int n,ph7_int64 *pOut)
+{
+	const char *zEnd = z + n;
+	int bNeg = 0, nDigit = 0;
+	ph7_int64 iVal = 0;
+	while( z < zEnd && SyisSpace(z[0]) ){ z++; }
+	if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+		bNeg = (z[0] == '-');
+		z++;
+	}
+	while( z < zEnd && SyisDigit(z[0]) ){
+		int iDigit = z[0] - '0';
+		if( iVal > (SXI64_HIGH - iDigit) / 10 ){
+			return 0;
+		}
+		iVal = iVal * 10 + iDigit;
+		z++;
+		nDigit++;
+	}
+	while( z < zEnd && SyisSpace(z[0]) ){ z++; }
+	if( nDigit == 0 || z != zEnd ){
+		return 0;
+	}
+	*pOut = bNeg ? -iVal : iVal;
+	return 1;
+}
+/* php's read handlers answer `queryString` from the STATEMENT before they look
+ * at any column, so a query selecting a column of that name cannot shadow it --
+ * while has_property/has_dimension do not know the name at all. */
+static int PdoRowIsQueryString(const char *zName,int nName)
+{
+	return nName == sizeof("queryString")-1
+		&& SyMemcmp(zName,"queryString",sizeof("queryString")-1) == 0;
+}
+static void PdoRowQueryString(phl_pdo_stmt *pSt,ph7_value *pOut)
+{
+	ph7_value *pQs = pSt->pOwner ? PH7_NativeAttr(pSt->pOwner,"queryString") : 0;
+	if( pQs ){
+		PH7_MemObjStore(pQs,pOut);
+	}
+}
+/*
+ * How many columns the row HAS, which is the statement's own count and not the
+ * capture's: php describes a statement once and answers for those columns for
+ * as long as the cursor exists, so a walk that has run out still knows every
+ * name and reads each as a null the connection's modifiers may still reshape.
+ */
+static int PdoRowColumnCount(phl_pdo_stmt *pSt)
+{
+	return pSt ? PH7_PdoSqliteColumnCount(pSt) : 0;
+}
+/*
+ * The column a name selects, or -1. php looks a NUMBER up positionally and
+ * misses outright when it is out of range -- it never falls back to a name of
+ * the same spelling -- and matches a NAME byte for byte, first occurrence
+ * winning when a query selects one twice.
+ */
+static int PdoRowColumnOf(phl_pdo_stmt *pSt,const char *zName,int nName)
+{
+	int nCol = PdoRowColumnCount(pSt);
+	ph7_int64 iPos;
+	int iCol;
+	if( nCol < 1 ){
+		return -1;
+	}
+	if( PdoRowIntName(zName,nName,&iPos) ){
+		return (iPos >= 0 && iPos < (ph7_int64)nCol) ? (int)iPos : -1;
+	}
+	for( iCol = 0 ; iCol < nCol ; ++iCol ){
+		SyBlob sHave;
+		int nHave, bHit;
+		SyBlobInit(&sHave,&pSt->pConn->pVm->sAllocator);
+		PdoColumnName(pSt->pConn,PH7_PdoSqliteColumnName(pSt,iCol),&sHave);
+		nHave = (int)SyBlobLength(&sHave) - 1;   /* less the terminator */
+		bHit = nHave == nName
+			&& SyMemcmp((const char *)SyBlobData(&sHave),zName,(sxu32)nName) == 0;
+		SyBlobRelease(&sHave);
+		if( bHit ){
+			return iCol;
+		}
+	}
+	return -1;
+}
+/*
+ * One column's value as the SCRIPT sees it: the captured raw value with the
+ * connection's presentation modifiers applied now rather than at capture, so a
+ * STRINGIFY_FETCHES or ORACLE_NULLS changed between two reads shows in the
+ * second -- which is what php's read-through row does.
+ */
+static void PdoRowColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut)
+{
+	ph7_value *pRaw = pSt->pLazyVals
+		? PdoArrayAtInt(pSt->pConn->pVm,pSt->pLazyVals,(sxi64)iCol) : 0;
+	if( pRaw ){
+		PH7_MemObjStore(pRaw,pOut);
+	}
+	/* A column with no captured value is php's null -- and ORACLE_NULLS still
+	 * has its say over that null, which is why an exhausted row under
+	 * NULL_TO_STRING reads the empty string rather than null. */
+	PdoApplyValueMods(pSt->pConn,pOut);
+}
+/*
+ * php's read_property / has_property / write_property / unset_property for the
+ * row. A name that is no column at all is NULL to a read and false to an
+ * isset(), never a warning -- and `queryString` is answered from the STATEMENT
+ * BEFORE any column is looked at, so a query selecting a column of that name
+ * cannot shadow it. The has side does NOT know the name at all, which is why
+ * `isset($row->queryString)` is false while reading it works.
+ */
+static void PdoRowProp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *pCtx)
+{
+	phl_pdo_stmt *pSt = PdoRowStmt(pThis);
+	const char *zName = SyStringData(pCtx->pName);
+	int nName = (int)SyStringLength(pCtx->pName);
+	int iCol;
+	SXUNUSED(pVm);
+	if( pCtx->iMode == PH7_NATIVE_PROP_WRITE ){
+		pCtx->zThrowClass = "Error";
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot write to PDORow property");
+		return;
+	}
+	if( pCtx->iMode == PH7_NATIVE_PROP_UNSET ){
+		pCtx->zThrowClass = "Error";
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot unset PDORow property");
+		return;
+	}
+	pCtx->bAnswered = 1;
+	if( pSt == 0 ){
+		return;   /* the statement is gone: every name reads null */
+	}
+	if( (pCtx->iMode == PH7_NATIVE_PROP_READ) && PdoRowIsQueryString(zName,nName) ){
+		PdoRowQueryString(pSt,pCtx->pResult);
+		return;
+	}
+	iCol = PdoRowColumnOf(pSt,zName,nName);
+	if( iCol >= 0 ){
+		PdoRowColumnValue(pSt,iCol,pCtx->pResult);
+	}
+	if( pCtx->iMode != PH7_NATIVE_PROP_READ ){
+		/* php's has_property fetches the value and judges it -- by NULL-ness for
+		 * isset() and by TRUTH for property_exists(), which asks the same handler
+		 * with a non-zero check_empty. Either way it does NOT know the name
+		 * `queryString`, which is why reading one works where isset() on it is
+		 * false. */
+		int bSet;
+		if( pCtx->iMode == PH7_NATIVE_PROP_EXISTS ){
+			bSet = iCol >= 0 && ph7_value_to_bool(pCtx->pResult);
+		}else{
+			bSet = iCol >= 0 && (pCtx->pResult->iFlags & MEMOBJ_NULL) == 0;
+		}
+		PH7_MemObjRelease(pCtx->pResult);
+		ph7_value_bool(pCtx->pResult,bSet);
+	}
+}
+/*
+ * php's read_dimension / has_dimension for the row, and the three refusals its
+ * write side gives. The offset is the property NAME spelled as a value: an
+ * integer is a column number outright, and everything else is converted to a
+ * string first -- which is where an object offset raises php's
+ * "could not be converted to string" Error and an array warns.
+ */
+static void PdoRowDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	phl_pdo_stmt *pSt = PdoRowStmt(pThis);
+	ph7_value sKey;
+	const char *zName;
+	int nName, iCol;
+	if( pCtx->iMode == PH7_NATIVE_DIM_WRITE || pCtx->iMode == PH7_NATIVE_DIM_APPEND
+	 || pCtx->iMode == PH7_NATIVE_DIM_UNSET ){
+		pCtx->zThrowClass = "Error";
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),"Cannot %s PDORow offset",
+			pCtx->iMode == PH7_NATIVE_DIM_WRITE ? "write to"
+			: (pCtx->iMode == PH7_NATIVE_DIM_APPEND ? "append to" : "unset"));
+		return;
+	}
+	if( pCtx->pOffset == 0 || pSt == 0 ){
+		return;   /* `$row[]` read, or a statement that is gone: null */
+	}
+	if( pCtx->pOffset->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pCtx->pOffset->x.pOther;
+		pCtx->zThrowClass = "Error";
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Object of class %.*s could not be converted to string",
+			(int)pObj->pClass->sName.nByte,pObj->pClass->sName.zString);
+		return;
+	}
+	PH7_MemObjInit(pVm,&sKey);
+	PH7_MemObjStore(pCtx->pOffset,&sKey);
+	if( sKey.iFlags & MEMOBJ_HASHMAP ){
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+	}
+	PH7_MemObjToString(&sKey);
+	zName = (const char *)SyBlobData(&sKey.sBlob);
+	nName = (int)SyBlobLength(&sKey.sBlob);
+	if( pCtx->iMode == PH7_NATIVE_DIM_READ && zName && PdoRowIsQueryString(zName,nName) ){
+		PdoRowQueryString(pSt,pCtx->pResult);
+		PH7_MemObjRelease(&sKey);
+		return;
+	}
+	iCol = PdoRowColumnOf(pSt,zName ? zName : "",zName ? nName : 0);
+	if( iCol >= 0 ){
+		PdoRowColumnValue(pSt,iCol,pCtx->pResult);
+	}
+	if( pCtx->iMode == PH7_NATIVE_DIM_ISSET ){
+		int bSet = iCol >= 0 && (pCtx->pResult->iFlags & MEMOBJ_NULL) == 0;
+		PH7_MemObjRelease(pCtx->pResult);
+		ph7_value_bool(pCtx->pResult,bSet);
+	}
+	PH7_MemObjRelease(&sKey);
+}
+/*
+ * php's get_debug_info for the row: `queryString` and then every column of the
+ * row it is sitting on, which is why var_dump() shows what get_object_vars()
+ * does not. The get_properties half shows nothing at all, so (array), var_export
+ * and json_encode answer empty.
+ */
+static sxi32 PdoRowPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	phl_pdo_stmt *pSt = PdoRowStmt(pThis);
+	ph7_value sKey,sVal;
+	int nCol,iCol;
+	if( !bDebug || pSt == 0 ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjInit(pVm,&sVal);
+	PH7_MemObjStringAppend(&sKey,"queryString",sizeof("queryString")-1);
+	if( pSt->pOwner ){
+		ph7_value *pQs = PH7_NativeAttr(pSt->pOwner,"queryString");
+		if( pQs ){
+			PH7_MemObjStore(pQs,&sVal);
+		}
+	}
+	ph7_array_add_elem(pOut,&sKey,&sVal);
+	/* The COLUMNS come from the statement rather than from the capture: php
+	 * describes them once and shows them for as long as the cursor exists, so a
+	 * row whose walk has run out (or whose cursor was closed) still prints every
+	 * name, each holding null. */
+	nCol = PdoRowColumnCount(pSt);
+	for( iCol = 0 ; iCol < nCol ; ++iCol ){
+		SyBlob sColName;
+		int nName;
+		const char *zName;
+		SyBlobInit(&sColName,&pVm->sAllocator);
+		PdoColumnName(pSt->pConn,PH7_PdoSqliteColumnName(pSt,iCol),&sColName);
+		zName = (const char *)SyBlobData(&sColName);
+		nName = (int)SyBlobLength(&sColName) - 1;   /* less the terminator */
+		if( zName == 0 || nName < 0 || PdoRowIsQueryString(zName,nName) ){
+			/* php builds the columns as a table of their own and merges it
+			 * BEHIND the queryString entry, so a column of that name is the one
+			 * that loses -- while two columns sharing any other name collapse
+			 * to the LAST of them, which the update below does. */
+			SyBlobRelease(&sColName);
+			continue;
+		}
+		PH7_MemObjRelease(&sKey);
+		PH7_MemObjInitFromString(pVm,&sKey,0);
+		PH7_MemObjStringAppend(&sKey,zName,(sxu32)nName);
+		PH7_MemObjRelease(&sVal);
+		PH7_MemObjInit(pVm,&sVal);
+		PdoRowColumnValue(pSt,iCol,&sVal);
+		ph7_array_add_elem(pOut,&sKey,&sVal);
+		SyBlobRelease(&sColName);
+	}
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	return SXRET_OK;
+}
+/*
+ * php gives the row `zend_objects_not_comparable`: no two PDORows are ever
+ * equal, `<=>` answers the uncomparable 1 from either side, and every
+ * relational spelling is false -- `$row == $row` alone is true, and that is the
+ * engine's identity shortcut answering before any handler. A BOOL partner is
+ * not this handler's business in php either: that comparison converts both
+ * sides, which is why `$row == true` is true.
+ */
+static void PdoRowCmp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
+{
+	SXUNUSED(pVm);
+	SXUNUSED(pThis);
+	if( pCtx->pOtherValue && (pCtx->pOtherValue->iFlags & MEMOBJ_BOOL) ){
+		return;   /* declined: php's cast rule decides an object against a bool */
+	}
+	pCtx->bAnswered = 1;
+	pCtx->iResult = 1;   /* php's ZEND_UNCOMPARABLE, the same from both directions */
+}
+/* The row is going away: the statement must stop pointing at it. */
+static void PdoRowInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	phl_pdo_stmt *pSt = PdoRowStmt(pThis);
+	SXUNUSED(pVm);
+	if( pSt && pSt->pLazyRow == pThis ){
+		pSt->pLazyRow = 0;
+		PdoStmtLazyClear(pSt);
+	}
+}
+/*
+ * The statement's row object, built on first use and CAPTURING the row under
+ * the cursor, which it also marks as spent. Answers the object with a
+ * reference of the caller's own, or 0 when it could not be made. Shared by
+ * fetch() and the foreach iterator: php answers both from one lazy row.
+ */
+static ph7_class_instance * PdoLazyRowFor(ph7_vm *pVm,phl_pdo_stmt *pSt)
+{
+	ph7_class_instance *pRow = pSt->pLazyRow;
+	PdoStmtLazyCapture(pSt);
+	if( pRow == 0 ){
+		ph7_class *pClass = PH7_VmExtractClass(pVm,"PDORow",sizeof("PDORow")-1,FALSE,0);
+		SyString sAttr;
+		ph7_value *pSlot;
+		pRow = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+		if( pRow == 0 ){
+			return 0;
+		}
+		SyStringInitFromBuf(&sAttr,PDOROW_RES,sizeof(PDOROW_RES)-1);
+		pSlot = PH7_ClassInstanceFetchAttr(pRow,&sAttr);
+		if( pSlot == 0 ){
+			PH7_ClassInstanceUnref(pRow);
+			return 0;
+		}
+		PH7_MemObjRelease(pSlot);
+		pSlot->x.pOther = pSt;
+		MemObjSetType(pSlot,MEMOBJ_RES);
+		/* Retain the STATEMENT object through a slot of the row's own: php's
+		 * row keeps its statement alive, so `unset($stmt)` leaves the row
+		 * reading and the database open. The statement's pointer back here is
+		 * deliberately NOT a reference -- that pair would be a cycle no
+		 * refcount can break. */
+		SyStringInitFromBuf(&sAttr,PDOROW_STMT,sizeof(PDOROW_STMT)-1);
+		pSlot = PH7_ClassInstanceFetchAttr(pRow,&sAttr);
+		if( pSlot && pSt->pOwner ){
+			PH7_MemObjRelease(pSlot);
+			pSt->pOwner->iRef++;
+			pSlot->x.pOther = pSt->pOwner;
+			MemObjSetType(pSlot,MEMOBJ_OBJ);
+		}
+		pSt->pLazyRow = pRow;
+	}else{
+		pRow->iRef++;   /* the caller's own reference */
+	}
+	pSt->bRowPending = 0;
+	return pRow;
+}
+/*
+ * PDO::FETCH_LAZY: hand the row object back and move the cursor on. The row
+ * carries no values of its own -- the capture on the statement is what it
+ * reads -- so a second lazy fetch answers the SAME object showing the next
+ * row, which is php.
+ */
+static int PdoFetchLazyRow(ph7_context *pCtx,phl_pdo_stmt *pSt)
+{
+	ph7_class_instance *pRow;
+	if( !PdoStmtHasRow(pSt) ){
+		PdoStmtOk(pSt);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pRow = PdoLazyRowFor(pCtx->pVm,pSt);
+	if( pRow == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( PdoStmtStep(pSt) < 0 ){
+		PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+		PH7_ClassInstanceUnref(pRow);
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
+	}
+	PdoStmtOk(pSt);
+	PH7_NativeResultObject(pCtx,pRow);
+	return PH7_OK;
+}
 /*
  * PDOStatement::fetch(int $mode = PDO::FETCH_DEFAULT, ...): mixed
  *
@@ -1716,11 +2209,14 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 	if( iMode == PDO_FETCH_DEFAULT ){
 		iMode = pSt->iFetchMode;
 	}
+	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_LAZY ){
+		return PdoFetchLazyRow(pCtx,pSt);
+	}
 	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_COLUMN ){
 		/* a statement told to fetch one COLUMN answers that column from here
 		 * on, whichever verb asks for the row */
 		ph7_value *pOneRow,*pOne;
-		if( !pSt->bRowPending ){
+		if( !PdoStmtHasRow(pSt) ){
 			PdoStmtOk(pSt);
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
@@ -1748,7 +2244,7 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_BOUND ){
 		sxi32 rcBound;
-		if( !pSt->bRowPending ){
+		if( !PdoStmtHasRow(pSt) ){
 			PdoStmtOk(pSt);
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
@@ -1770,7 +2266,7 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 	 || (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_INTO ){
 		return PdoFetchObjectRow(pCtx,pSt,iMode,0,0,"PDOStatement::fetch");
 	}
-	if( !pSt->bRowPending ){
+	if( !PdoStmtHasRow(pSt) ){
 		PdoStmtOk(pSt);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1927,7 +2423,7 @@ static int vm_builtin_PDOStatement_fetchColumn(ph7_context *pCtx,int nArg,ph7_va
 	if( iCol >= (ph7_int64)PH7_PdoSqliteColumnCount(pSt) ){
 		return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
 	}
-	if( !pSt->bRowPending ){
+	if( !PdoStmtHasRow(pSt) ){
 		PdoStmtOk(pSt);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2137,7 +2633,7 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 	if( pOut == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	while( pSt->bRowPending ){
+	while( PdoStmtHasRow(pSt) ){
 		int iRowMode = iBase;
 		int iFirst = (bGroup || bUnique) ? 1 : 0;
 		if( iBase == PDO_FETCH_COLUMN || iBase == PDO_FETCH_KEY_PAIR
@@ -2422,6 +2918,9 @@ static int vm_builtin_PDOStatement_closeCursor(ph7_context *pCtx,int nArg,ph7_va
 	}
 	pSt->bRowPending = 0;
 	pSt->bDone = 1;
+	/* php frees the row's columns with the cursor, so a lazy object still in a
+	 * variable answers null from here on. */
+	PdoStmtLazyClear(pSt);
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -2463,8 +2962,28 @@ static void PdoStmtIterSettle(ph7_vm *pVm,ph7_class_instance *pIt)
 	ph7_class_instance *pSrc = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
 	phl_pdo_stmt *pSt = PdoStmtOfInstance(pSrc);
 	ph7_value *pRow;
-	if( pSt == 0 || !pSt->bRowPending ){
+	if( pSt == 0 || !PdoStmtHasRow(pSt) ){
 		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
+		return;
+	}
+	if( (pSt->iFetchMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_LAZY ){
+		/* php walks a LAZY statement with its one row object: every step
+		 * answers the same PDORow, showing the row the cursor is on. */
+		ph7_class_instance *pLazy = PdoLazyRowFor(pVm,pSt);
+		ph7_value sRowVal;
+		if( pLazy == 0 ){
+			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
+			return;
+		}
+		PH7_MemObjInit(pVm,&sRowVal);
+		sRowVal.x.pOther = pLazy;
+		MemObjSetType(&sRowVal,MEMOBJ_OBJ);
+		PH7_NativeSetProp(&(*pVm),pIt,PH7_NATIVE_IT_CUR,(int)SyStrlen(PH7_NATIVE_IT_CUR),&sRowVal);
+		PH7_MemObjRelease(&sRowVal);   /* gives the reference PdoLazyRowFor took back */
+		PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,
+			PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS));
+		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);
+		PdoStmtStep(pSt);
 		return;
 	}
 	pRow = ph7_new_array(pVm);
@@ -3434,6 +3953,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		/* the cursor, hidden the way the connection's handle is */
 		{ "__res", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
+	/*
+	 * PDORow declares `public string $queryString;` and holds NO property at
+	 * all: the object's whole surface is its handlers (PdoRowProp/PdoRowDim),
+	 * so the declaration is marked LAZY below and nothing ever materializes it.
+	 * The two engine slots beside it are hidden the way every other handle is.
+	 */
+	static const PH7_NativePropDef aRowProp[] = {
+		{ "queryString", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ PDOROW_RES,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ PDOROW_STMT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }
+	};
 	/* php redeclares Exception::$code UNTYPED here so a SQLSTATE -- a string
 	 * like 'HY000' -- can live in it, and adds the driver's raw error triple. */
 	static const PH7_NativePropDef aExcProp[] = {
@@ -3464,12 +3994,35 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  0, 0, 0, 0,
 		  aExcProp, SX_ARRAYSIZE(aExcProp),
 		  0, 0, 0 },
+		/* FINAL, uncloneable, unserializable, and refusing `new` with php's own
+		 * sentence -- which is a PDOException here and an Error everywhere else,
+		 * so the class carries the exception name beside the text. */
+		{ "PDORow", 0, 0,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  0, 0, 0, 0,
+		  aRowProp, SX_ARRAYSIZE(aRowProp),
+		  PdoRowInstanceRelease, 0, PdoRowPresent }
 	};
 #undef PDO_INT_CONST
+	sxi32 rc;
 	pVm->pPdoConns = 0;
 	/* ext/pdo declares exactly one function beside its classes. */
 	ph7_create_function(&(*pVm),"pdo_drivers",vm_builtin_pdo_drivers,0);
-	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc == SXRET_OK ){
+		ph7_class *pRow = PH7_VmExtractClass(&(*pVm),"PDORow",sizeof("PDORow")-1,FALSE,0);
+		if( pRow ){
+			pRow->zNewRefusal = "You may not create a PDORow manually";
+			pRow->zNewRefusalClass = "PDOException";
+			pRow->xDim = PdoRowDim;
+			pRow->xCmp = PdoRowCmp;
+		}
+		/* The declaration php makes and the object never holds: marked LAZY, and
+		 * nothing materializes it -- every write to this class is refused. */
+		PH7_NativeClassMarkLazyProps(&(*pVm),"PDORow",0);
+		PH7_NativeClassInstallPropHook(&(*pVm),"PDORow",PdoRowProp);
+	}
+	return rc;
 }
 
 #else

@@ -698,6 +698,102 @@ PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *p
 	return 1;
 }
 /*
+ * The refusal a dimension WRITE, APPEND or UNSET takes on an object. php's own
+ * sentence for a class that is not an ArrayAccess is
+ * `Cannot use object of type C as array`; a class whose read handler answers
+ * something words its own (php's PDORow names the operation and the class),
+ * which the hook supplies through the same refusal fields a read uses.
+ */
+PH7_PRIVATE sxu32 PH7_ClassNativeDimRefusal(ph7_class_instance *pThis,int iMode,
+	char *zMsg,sxu32 nMsg)
+{
+	ph7_class *pClass = pThis ? NativeDimClass(pThis->pClass) : 0;
+	if( pClass ){
+		PH7_NativeDimCtx sDim;
+		sDim.iMode = iMode;
+		sDim.pOffset = 0;
+		sDim.pResult = 0;
+		sDim.zThrowClass = 0;
+		sDim.zThrowMsg[0] = 0;
+		pClass->xDim(pThis->pVm,pThis,&sDim);
+		if( sDim.zThrowClass ){
+			return SyBufferFormat(zMsg,nMsg,"%s",sDim.zThrowMsg);
+		}
+	}
+	return SyBufferFormat(zMsg,nMsg,"Cannot use object of type %.*s as array",
+		pThis ? (int)pThis->pClass->sName.nByte : 0,
+		pThis ? pThis->pClass->sName.zString : "");
+}
+/*
+ * The nearest ph7_class::xProp in a class's base chain -- the same handler
+ * inheritance xDim and xSet get, and php's own: a subclass of a class whose
+ * properties are not storage reads them through the parent's handler.
+ */
+static ph7_class * NativePropClass(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->xProp ){
+			return pClass;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
+/*
+ * Does `$o->p` MEAN something this class answers for itself? Asked before the
+ * miss path commits to creating a property, warning about an undefined one or
+ * dispatching __get.
+ */
+PH7_PRIVATE int PH7_ClassHasNativeProp(ph7_class *pClass)
+{
+	return NativePropClass(pClass) != 0;
+}
+/*
+ * Run the hook. Answers 0 when the class has none, or when the hook DECLINED
+ * the name (bAnswered left at 0); 1 when it answered, which includes a
+ * REFUSAL -- the caller reads zThrowClass to tell the two apart.
+ */
+PH7_PRIVATE int PH7_ClassNativeProp(ph7_class_instance *pThis,PH7_NativePropCtx *pCtx)
+{
+	ph7_class *pClass = pThis ? NativePropClass(pThis->pClass) : 0;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pClass->xProp(pThis->pVm,pThis,pCtx);
+	return pCtx->bAnswered || pCtx->zThrowClass != 0;
+}
+/*
+ * Fill a caller-owned context and run the hook, for the callers that ask
+ * OUTSIDE the member opcode: Reflection's getValue()/setValue() and
+ * property_exists(), each of which reaches php's handlers by its own door.
+ */
+PH7_PRIVATE int PH7_ClassNativePropAsk(ph7_class_instance *pThis,PH7_NativePropCtx *pCtx,
+	int iMode,const SyString *pName,ph7_value *pResult)
+{
+	pCtx->iMode = iMode;
+	pCtx->pName = pName;
+	pCtx->pResult = pResult;
+	pCtx->bAnswered = 0;
+	pCtx->zThrowClass = 0;
+	pCtx->zThrowMsg[0] = 0;
+	return PH7_ClassNativeProp(pThis,pCtx);
+}
+/*
+ * Install a property handler on a mounted native class. Called by the owning
+ * installer right after PH7_InstallNativeClasses, for the same reason xClone,
+ * xDim and xSet are: the spec table has no field for a hook.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassInstallPropHook(ph7_vm *pVm,const char *zClass,
+	void (*xProp)(ph7_vm *,ph7_class_instance *,PH7_NativePropCtx *))
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pClass->xProp = xProp;
+	return SXRET_OK;
+}
+/*
  * The nearest ph7_class::xSet in a class's base chain -- the same handler
  * inheritance the dimension hook gets, so a user subclass of DateInterval
  * converts its writes the way its parent does.

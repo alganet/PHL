@@ -5270,10 +5270,8 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 				 * what `$list[9] = 'x'` says. Parked: this runs at an arithmetic
 				 * op's tail, not at a throw boundary. */
 				char zMsg[256];
-				SyString *pName = &sEnt.pThis->pClass->sName;
-				sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
-					"Cannot use object of type %.*s as array",
-					(int)pName->nByte,pName->zString);
+				sxu32 nMsg = PH7_ClassNativeDimRefusal(sEnt.pThis,PH7_NATIVE_DIM_WRITE,
+					zMsg,sizeof(zMsg));
 				VmBoundaryPark(&(*pVm),VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg));
 			}
 		}else{

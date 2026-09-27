@@ -113,10 +113,8 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 			 * ArrayAccess, which is php's DOMNodeList. The store is the same one
 			 * `$list[9] = 'x'` performs, so it takes the same Error. */
 			char zMsg[256];
-			SyString *pName = &pInst->pClass->sName;
-			sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
-				"Cannot use object of type %.*s as array",
-				(int)pName->nByte,pName->zString);
+			sxu32 nMsg = PH7_ClassNativeDimRefusal(pInst,PH7_NATIVE_DIM_WRITE,
+				zMsg,sizeof(zMsg));
 			rc = VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg);
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);

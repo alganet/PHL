@@ -689,13 +689,15 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			/* Object without ArrayAccess: PHP throws a fatal Error rather
 			 * than silently coercing the object into a hashmap (which is
 			 * what the legacy PH7 fall-through would do via MemObjToHashmap
-			 * a few lines below). Match PHP. */
+			 * a few lines below). Match PHP -- and let a class whose READ
+			 * handler answers word its own refusal, which is how php's
+			 * PDORow says `Cannot write to PDORow offset` and, for the
+			 * keyless spelling, `Cannot append to PDORow offset`. */
 			{
 				char zMsg[256];
-				SyString *pName = &pInst->pClass->sName;
-				sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
-					"Cannot use object of type %.*s as array",
-					(int)pName->nByte,pName->zString);
+				sxu32 nMsg = PH7_ClassNativeDimRefusal(pInst,
+					pKey == 0 ? PH7_NATIVE_DIM_APPEND : PH7_NATIVE_DIM_WRITE,
+					zMsg,sizeof(zMsg));
 				rc = VmThrowFromVm(pVm,"Error",zMsg,nMsg);
 				if( pKey ){ PH7_MemObjRelease(pKey); }
 				VmPopOperand(&pTos,2); /* container + value */
@@ -2156,13 +2158,14 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			VM_EXIT_BREAK;
 		}
 		/* Object without ArrayAccess: PHP throws fatal Error in all subscript
-		 * contexts (read, isset, unset, empty). Match it. */
+		 * contexts (read, isset, unset, empty). Match it. A class carrying a
+		 * READ handler reaches here only for the unset (iP2 5), which the hook
+		 * branch above skips, and words that refusal itself. */
 		if( pInst ){
 			char zMsg[256];
-			SyString *pName = &pInst->pClass->sName;
-			sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
-				"Cannot use object of type %.*s as array",
-				(int)pName->nByte,pName->zString);
+			sxu32 nMsg = PH7_ClassNativeDimRefusal(pInst,
+				iP2 == 5 ? PH7_NATIVE_DIM_UNSET : PH7_NATIVE_DIM_WRITE,
+				zMsg,sizeof(zMsg));
 			rc = VmThrowFromVm(pVm,"Error",zMsg,nMsg);
 			if( pIdx ){ PH7_MemObjRelease(pIdx); }
 			PH7_MemObjRelease(pTos);
