@@ -37,6 +37,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/sx/sxargon2$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/api$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/builtin_bcmath$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_calendar$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_date$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_date_parse$(OBJ_SUFFIX) \

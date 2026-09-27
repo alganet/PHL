@@ -938,6 +938,12 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "pack",         PH7_builtin_pack       },
 	{ "unpack",       PH7_builtin_unpack     },
 	{ "sscanf",       PH7_builtin_sscanf     },
+	     /* ext/bcmath: arbitrary-precision decimal arithmetic over strings */
+	{ "bcadd",        PH7_builtin_bcadd      },
+	{ "bcsub",        PH7_builtin_bcsub      },
+	{ "bcmul",        PH7_builtin_bcmul      },
+	{ "bccomp",       PH7_builtin_bccomp     },
+	{ "bcscale",      PH7_builtin_bcscale    },
 	     /* ext/calendar: the serial day number and its four calendars */
 	{ "gregoriantojd",PH7_builtin_gregoriantojd },
 	{ "jdtogregorian",PH7_builtin_jdtogregorian },

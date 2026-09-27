@@ -49,6 +49,9 @@ static const struct {
 	{ "arg_separator.input",      "&",          VM_INI_ALL },
 	{ "arg_separator.output",     "&",          VM_INI_ALL },
 	{ "auto_detect_line_endings", "",           VM_INI_ALL },
+	/* ext/bcmath's only directive: the scale every bc* function defaults its
+	 * $scale argument from, and the one slot bcscale() reads and writes. */
+	{ "bcmath.scale",             "0",          VM_INI_ALL },
 	{ "date.timezone",            "UTC",        VM_INI_ALL },
 	{ "default_charset",          "UTF-8",      VM_INI_ALL },
 	/* php bounds a socket wait by this rather than waiting forever, and it is
@@ -378,6 +381,18 @@ static int IniValueAccepted(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 
 		 * is refused in silence and the directive keeps what it had. */
 		return 0;
 	}
+	if( IniNameIs(pSlot,"bcmath.scale") ){
+		/* php registers it with a 0..INT_MAX bound and refuses anything outside in
+		 * silence, keeping what the directive had -- `ini_set('bcmath.scale','-1')`
+		 * is false there. A NON-numeric value is a different matter and is
+		 * ACCEPTED (stored verbatim, read back as 0), which falls out of the parse
+		 * below without a rule of its own. */
+		sxi64 iVal = 0;
+		SyStrToInt64(zVal,nVal,(void *)&iVal,0);
+		if( iVal < 0 || iVal > 2147483647 ){
+			return 0;
+		}
+	}
 	if( IniNameIs(pSlot,"session.serialize_handler")
 	 && !(nVal == 3 && SyMemcmp(zVal,"php",3) == 0)
 	 && !(nVal == 10 && SyMemcmp(zVal,"php_binary",10) == 0)
@@ -567,7 +582,8 @@ static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	if( zExt ){
 		/* php reports the extensions it knows; anything else is a warning + false. */
-		static const char *azKnown[] = { "Core", "session", "date", "standard" };
+		static const char *azKnown[] = { "Core", "session", "date", "standard",
+			"bcmath" };
 		int bKnown = 0;
 		sxu32 k;
 		for( k = 0 ; k < SX_ARRAYSIZE(azKnown) ; k++ ){
@@ -609,7 +625,9 @@ static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				if( (pSlot->sName.nByte > sizeof("session.")-1
 				  && SyMemcmp(pSlot->sName.zString,"session.",sizeof("session.")-1) == 0)
 				 || (pSlot->sName.nByte > sizeof("date.")-1
-				  && SyMemcmp(pSlot->sName.zString,"date.",sizeof("date.")-1) == 0) ){
+				  && SyMemcmp(pSlot->sName.zString,"date.",sizeof("date.")-1) == 0)
+				 || (pSlot->sName.nByte > sizeof("bcmath.")-1
+				  && SyMemcmp(pSlot->sName.zString,"bcmath.",sizeof("bcmath.")-1) == 0) ){
 					continue;
 				}
 			}
