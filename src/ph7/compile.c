@@ -890,6 +890,175 @@ PH7_PRIVATE int PH7_ExprNodeIsThis(ph7_expr_node *pNode)
 		&& SyMemcmp((const void *)pTok[1].sData.zString,(const void *)"this",sizeof("this")-1) == 0;
 }
 /*
+ * TRUE when codegen is inside a real FUNCTION body — php's
+ * `CG(active_op_array)->function_name`. A synthetic block (a match() arm's
+ * throw-fixup) carries no ph7_vm_func and is not a scope.
+ */
+static int GenStateInFunction(ph7_gen_state *pGen)
+{
+	GenBlock *pBlock = pGen->pCurrent;
+	while( pBlock ){
+		if( (pBlock->iFlags & GEN_BLOCK_FUNC) && pBlock->pUserData ){
+			return 1;
+		}
+		pBlock = pBlock->pParent;
+	}
+	return 0;
+}
+/*
+ * php's SPECIALIZED builtins — the list behind `Cannot use result of built-in
+ * function in write context`.
+ *
+ * The wording says "built-in function" but the rule is not about builtins: php
+ * refuses the write when the call was compiled to an OPCODE of its own rather
+ * than a real call, because a specialized opcode leaves a TMP where a call
+ * leaves a VAR (`zend_separate_if_call_and_write`). So `strlen("x")[0] = 1` and
+ * `count([1])[0] = 1` are compile fatals while `array_values([1])[0] = 2`,
+ * `str_split("ab")[0] = "z"` and `get_object_vars($o)["k"] = 2` all RUN — the
+ * difference being php's `zend_try_compile_special_func_ex` table, reproduced
+ * here name for name with the ARITY each entry demands.
+ *
+ * Six of php's names are deliberately absent, and only the last pair is a
+ * simplification — the other four are not refusals of php's at all:
+ *   `chr`/`ord` gate on BP_VAR_R, so they are never special in a WRITE context;
+ *   `call_user_func`/`call_user_func_array` emit a REAL call, so their result is
+ *     a VAR and php does not refuse a write through it either;
+ *   `in_array` and `array_slice` gate on the CONTENTS of a literal array
+ *     argument and on a `func_get_args()`-shaped first argument — value-dependent
+ *     shapes no program writes through, left out under §10. Leaving them out
+ *     ACCEPTS where php refuses, which is the direction that keeps running a
+ *     program php runs.
+ * Verified by sweeping every internal function of both engines at arities 0-3:
+ * the two specialized sets are identical, 27 names at the same arities.
+ */
+#define SPECFN_LITERAL_ARG0 0x01 /* php gives up unless argument #1 is a literal */
+#define SPECFN_ANY_ARGS     0x02 /* …and `assert` is decided BEFORE php's unpack/named
+                                  * bail, so it stays special even for `assert(...$a)` */
+#define SPECFN_IN_FUNC      0x04 /* php's gate reads CG(active_op_array)->function_name:
+                                  * at GLOBAL scope it emits a real call, whose runtime
+                                  * Error ("cannot be called from the global scope") is
+                                  * what the program actually gets */
+#define SPECFN_FORMAT_ARG0  0x08 /* …and `sprintf` also needs php's format arithmetic
+                                  * (implies SPECFN_LITERAL_ARG0) */
+static const struct {
+	const char *zName;
+	int nMinArg;   /* inclusive */
+	int nMaxArg;   /* inclusive; -1 = variadic */
+	int iFlags;
+} aSpecialFunc[] = {
+	{ "strlen",           1,  1, 0 },
+	{ "is_null",          1,  1, 0 },  { "is_bool",          1,  1, 0 },
+	{ "is_long",          1,  1, 0 },  { "is_int",           1,  1, 0 },
+	{ "is_integer",       1,  1, 0 },  { "is_float",         1,  1, 0 },
+	{ "is_double",        1,  1, 0 },  { "is_string",        1,  1, 0 },
+	{ "is_array",         1,  1, 0 },  { "is_object",        1,  1, 0 },
+	{ "is_resource",      1,  1, 0 },  { "is_scalar",        1,  1, 0 },
+	{ "boolval",          1,  1, 0 },  { "intval",           1,  1, 0 },
+	{ "floatval",         1,  1, 0 },  { "doubleval",        1,  1, 0 },
+	{ "strval",           1,  1, 0 },
+	{ "count",            1,  1, 0 },  { "sizeof",           1,  1, 0 },
+	{ "get_class",        0,  1, 0 },  { "get_called_class", 0,  0, 0 },
+	{ "gettype",          1,  1, 0 },
+	{ "func_num_args",    0,  0, SPECFN_IN_FUNC },
+	{ "func_get_args",    0,  0, SPECFN_IN_FUNC },
+	{ "array_key_exists", 2,  2, 0 },
+	{ "defined",          1,  1, SPECFN_LITERAL_ARG0 },
+	{ "sprintf",          1, -1, SPECFN_LITERAL_ARG0|SPECFN_FORMAT_ARG0 },
+	/* php compiles assert() to its own opcode pair "independently of compiler
+	 * flags", in zend_compile_call BEFORE the special-func table is consulted —
+	 * so every arity counts and an unpacked argument does not exempt it. */
+	{ "assert",           0, -1, SPECFN_ANY_ARGS },
+};
+/*
+ * TRUE when this call node is one php compiles to an opcode of its own, so a
+ * write THROUGH its result is php's built-in-function refusal. pName is the
+ * callee's bare global name, already resolved by GenStateCallBuiltinName.
+ */
+static int GenStateCallIsSpecialized(ph7_gen_state *pGen,ph7_expr_node *pCall,SyString *pName)
+{
+	ph7_expr_node **apArg;
+	sxu32 nArg, n;
+	sxu32 i;
+	if( pName->nByte < 1 ){
+		return 0;
+	}
+	apArg = (ph7_expr_node **)SySetBasePtr(&pCall->aNodeArgs);
+	nArg = SySetUsed(&pCall->aNodeArgs);
+	for( i = 0 ; i < SX_ARRAYSIZE(aSpecialFunc) ; ++i ){
+		SyString sEntry;
+		SyStringInitFromBuf(&sEntry,aSpecialFunc[i].zName,SyStrlen(aSpecialFunc[i].zName));
+		if( sEntry.nByte != pName->nByte
+		 || SyStrnicmp(sEntry.zString,pName->zString,pName->nByte) != 0 ){
+			continue;
+		}
+		if( (int)nArg < aSpecialFunc[i].nMinArg
+		 || (aSpecialFunc[i].nMaxArg >= 0 && (int)nArg > aSpecialFunc[i].nMaxArg) ){
+			return 0;
+		}
+		/* php bails out of the whole table when any argument unpacks or is named
+		 * (`zend_args_contain_unpack_or_named`), so `strlen(...$a)[0] = 1` RUNS. */
+		if( (aSpecialFunc[i].iFlags & SPECFN_ANY_ARGS) == 0 ){
+			for( n = 0 ; n < nArg ; ++n ){
+				if( apArg[n] && (apArg[n]->iFlags & (EXPR_NODE_SPREAD|EXPR_NODE_NAMED_ARG)) ){
+					return 0;
+				}
+			}
+		}
+		if( (aSpecialFunc[i].iFlags & SPECFN_IN_FUNC) && !GenStateInFunction(pGen) ){
+			return 0;
+		}
+		/* `defined` and `sprintf` specialize only over a LITERAL first argument;
+		 * php gives up on a computed one and emits an ordinary call. */
+		if( aSpecialFunc[i].iFlags & SPECFN_LITERAL_ARG0 ){
+			if( nArg < 1 || apArg[0] == 0 || apArg[0]->pOp != 0
+			 || apArg[0]->pStart == 0
+			 || (apArg[0]->pStart->nType & (PH7_TK_SSTR|PH7_TK_DSTR)) == 0 ){
+				return 0;
+			}
+		}
+		if( (aSpecialFunc[i].iFlags & SPECFN_FORMAT_ARG0) && nArg >= 1 && apArg[0] ){
+			/* php's own sprintf gate, and it is arithmetic: a format under 256
+			 * bytes carrying nothing but `%s`, `%d` and `%%`, with exactly one
+			 * VALUE per placeholder. `sprintf("a","b")` fails it (no placeholder,
+			 * one value) and compiles to an ordinary call, which is why the write
+			 * through it RUNS. */
+			const SyString *pFmt = &apArg[0]->pStart->sData;
+			sxu32 nPlace = 0, k;
+			if( pFmt->nByte >= 256 ){
+				return 0;
+			}
+			/* An escape or an interpolation makes php's argument something other
+			 * than a plain literal; leave those to the ordinary call. */
+			for( k = 0 ; k < pFmt->nByte ; ++k ){
+				if( pFmt->zString[k] == '\\'
+				 || ((apArg[0]->pStart->nType & PH7_TK_DSTR)
+				  && (pFmt->zString[k] == '$' || pFmt->zString[k] == '{')) ){
+					return 0;
+				}
+			}
+			for( k = 0 ; k < pFmt->nByte ; ++k ){
+				if( pFmt->zString[k] != '%' ){
+					continue;
+				}
+				if( k + 1 >= pFmt->nByte ){
+					return 0; /* a trailing '%' */
+				}
+				k++;
+				if( pFmt->zString[k] == 's' || pFmt->zString[k] == 'd' ){
+					nPlace++;
+				}else if( pFmt->zString[k] != '%' ){
+					return 0; /* any other conversion */
+				}
+			}
+			if( nPlace != nArg - 1 ){
+				return 0;
+			}
+		}
+		return 1;
+	}
+	return 0;
+}
+/*
  * The two write-target rules php decides at COMPILE time, in one place because
  * every write site has to make both of them.
  *
@@ -982,12 +1151,20 @@ PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pT
 				zMsg = "Cannot use temporary expression in write context";
 			}
 		}else if( pBase->pOp->iOp == EXPR_OP_FUNC_CALL ){
-			/* php: the result of an INTERNAL function is not writable through,
-			 * a userland one is. */
+			/* php refuses a write through the result of a call it SPECIALIZED into
+			 * an opcode — see aSpecialFunc above. The old test asked whether the
+			 * name was a host function AT ALL, which would have refused every
+			 * builtin (php specializes 28 of them), and asked it of the CALL node
+			 * where GenStateCallBuiltinName wants the CALLEE node — so it never
+			 * matched anything and `clone` below was the only arm that ever fired.
+			 * The name table IS the resolution here: php looks the callee up in a
+			 * function table that is fully populated at compile time, and PHL's is
+			 * not — the ~650 core builtins register in PH7_VmMakeReady, which runs
+			 * AFTER compilation (see the redeclaration guard near the top of this
+			 * file), so hHostFunction has no `strlen` to find. */
 			SyString sName;
-			GenStateCallBuiltinName(pBase,&sName);
-			if( sName.nByte > 0 && pGen->pVm
-			 && SyHashGet(&pGen->pVm->hHostFunction,(const void *)sName.zString,sName.nByte) ){
+			GenStateCallBuiltinName(pBase->pLeft,&sName);
+			if( GenStateCallIsSpecialized(&(*pGen),pBase,&sName) ){
 				zMsg = "Cannot use result of built-in function in write context";
 			}
 		}else if( pBase->pOp->iOp == EXPR_OP_CLONE ){
@@ -1078,13 +1255,6 @@ static sxi32 GenStateEmitExprCode(
 		sxu32 nJmp = 0;
 		sxu32 nNcNsBase;
 		VmInstr *pInstrFix;
-		/* `??=` compiles its own way and so never reached the prec-18 write-target
-		 * check below: `(new A)->p ??= 3` and `"lit"->p->q ??= 3` ran here where
-		 * php refuses them. */
-		rc = GenStateWriteTargetCheck(&(*pGen),pNode->pRight,0);
-		if( rc != SXRET_OK ){
-			return rc;
-		}
 		/* Null coalescing assignment requires a custom compile order: the LHS
 		 * target (pRight for prec-18 right-assoc ops) must be evaluated first
 		 * so we can short-circuit the RHS when LHS is non-null. Pass
@@ -1110,6 +1280,14 @@ static sxi32 GenStateEmitExprCode(
 					pNode->pRight->pStart ? pNode->pRight->pStart->nLine : 0,
 					"Cannot use [] for reading");
 				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+			}
+			/* …and only THEN the write-target rules, php's order: `strval(1)[] ??= 3`
+			 * is the append refusal, not the specialized-builtin one. `??=` compiles
+			 * its own way and so never reached this check at all, which is why
+			 * `(new A)->p ??= 3` and `"lit"->p->q ??= 3` used to run. */
+			rc = GenStateWriteTargetCheck(&(*pGen),pNode->pRight,0);
+			if( rc != SXRET_OK ){
+				return rc;
 			}
 			nNcNsBase = SySetUsed(&pGen->aNullsafeJmp);
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE);

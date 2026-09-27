@@ -1402,7 +1402,17 @@ static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot
 	 * reference-returning-function exemption `$r =& f()` gets. A nullsafe chain
 	 * here takes the WRITE wording too, not the reference one — php never asks
 	 * `zend_assert_not_short_circuited` on an array entry. */
-	sxi32 rc = GenStateWriteTargetCheck(&(*pGen),pRoot,0);
+	sxi32 rc;
+	if( pRoot && pRoot->pOp && pRoot->pOp->iOp == EXPR_OP_SUBSCRIPT
+	 && SySetUsed(&pRoot->aNodeArgs) < 1 ){
+		/* `[&$a[]]`: an APPEND has nothing to take a reference OF, and php asks
+		 * that before anything else about the base — so `[&f()[]]` is this and not
+		 * the call refusal. PHL ran the whole thing. */
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,
+			pRoot->pStart ? pRoot->pStart->nLine : 0,"Cannot use [] for reading");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+	}
+	rc = GenStateWriteTargetCheck(&(*pGen),pRoot,0);
 	if( rc != SXRET_OK ){
 		return rc;
 	}
