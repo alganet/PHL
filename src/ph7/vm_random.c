@@ -1584,6 +1584,336 @@ static int vm_builtin_Randomizer_getFloat(ph7_context *pCtx,int nArg,ph7_value *
 }
 #endif /* PH7_OMIT_FLOATING_POINT */
 /*
+ * Random\Randomizer::getBytesFromString(string $string, int $length): string
+ *
+ * Draw $length bytes out of a caller's alphabet, and php has TWO ways of doing
+ * it because the cheap one stops working past 256 characters. Up to 256 it
+ * takes the draw APART: every byte of it is masked to the smallest power of two
+ * that covers the alphabet and used as an offset, and one that overshoots is
+ * dropped -- so an eight-byte draw usually yields several characters and
+ * sometimes none. Past 256 an offset no longer fits in a byte and php falls
+ * back to a full ranged draw per character.
+ *
+ * Either way the rejections are counted: an engine that answers the same bits
+ * every time would spin here forever, and php stops it after fifty.
+ */
+static int vm_builtin_Randomizer_getBytesFromString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	const char *zSrc;
+	int nSrc = 0;
+	sxi64 iLen, i;
+	sxu64 uMask;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	zSrc = ph7_value_to_string(apArg[0],&nSrc);
+	if( nSrc < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::getBytesFromString(): Argument #1 ($string) must not be empty",
+			RAND_RANDOMIZER);
+	}
+	iLen = ph7_value_to_int64(apArg[1]);
+	if( iLen < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::getBytesFromString(): Argument #2 ($length) must be greater than 0",
+			RAND_RANDOMIZER);
+	}
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		return PH7_OK;
+	}
+	/* The smallest 2^k-1 that covers the last offset -- ZERO for a one-character
+	 * alphabet, whose every draw is that character. */
+	for( uMask = 0 ; uMask < (sxu64)(nSrc - 1) ; uMask = (uMask << 1) | 1 ){}
+	if( nSrc <= 256 ){
+		sxu64 rBits = 0;
+		int nHave = 0, nFail = 0;
+		for( i = 0 ; i < iLen ; ){
+			int nOff;
+			if( nHave == 0 ){
+				nHave = RandSourceNext(&sSrc,&rBits);
+				if( nHave <= 0 ){
+					return RandizerDone(&sSrc);
+				}
+			}
+			nOff = (int)(rBits & uMask);
+			rBits >>= 8;
+			nHave--;
+			if( nOff < nSrc ){
+				ph7_result_string(pCtx,&zSrc[nOff],1);
+				++i;
+				nFail = 0;
+				continue;
+			}
+			if( ++nFail > RAND_ATTEMPTS ){
+				RandBroken(&sSrc);
+				return RandizerDone(&sSrc);
+			}
+		}
+	}else{
+		for( i = 0 ; i < iLen ; ++i ){
+			sxi64 iOff;
+			if( !RandRangeInt(&sSrc,0,(sxi64)nSrc - 1,&iOff) ){
+				return RandizerDone(&sSrc);
+			}
+			ph7_result_string(pCtx,&zSrc[iOff],1);
+		}
+	}
+	return RandizerDone(&sSrc);
+}
+/*
+ * php's Fisher-Yates, walked from the TOP: for every position but the first,
+ * swap it with a uniformly chosen position at or below it. The draw range
+ * SHRINKS by one at each step, which is what makes the permutation uniform --
+ * and what makes the sequence of draws impossible to reproduce with a fixed
+ * range.
+ *
+ * It permutes an INDEX vector rather than the array itself, and it does so
+ * BEFORE anything of the array is held. A draw may run a userland engine, and
+ * userland code allocating so much as one value moves the whole value pool
+ * (VmReserveMemObj reallocates it), which leaves any ph7_value* taken
+ * beforehand pointing at freed memory. Nothing of the caller's array survives a
+ * draw here because nothing of it is taken until every draw is done.
+ */
+static int RandShuffleIndex(RandSource *pSrc,sxu32 *aIdx,sxu32 nVal)
+{
+	sxu32 n;
+	for( n = 0 ; n < nVal ; ++n ){
+		aIdx[n] = n;
+	}
+	for( n = nVal ; n > 1 ; --n ){
+		sxi64 iPick;
+		if( !RandRangeInt(pSrc,0,(sxi64)(n - 1),&iPick) ){
+			return 0;
+		}
+		if( (sxu32)iPick != n - 1 ){
+			sxu32 nTmp = aIdx[n - 1];
+			aIdx[n - 1] = aIdx[iPick];
+			aIdx[iPick] = nTmp;
+		}
+	}
+	return 1;
+}
+/*
+ * Random\Randomizer::shuffleArray(array $array): array
+ *
+ * php shuffles the VALUES and hands back a list: the keys are gone, not
+ * permuted with them.
+ */
+static int vm_builtin_Randomizer_shuffleArray(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	ph7_hashmap *pMap, *pNow;
+	ph7_hashmap_node *pNode, **apNode;
+	ph7_value *pOut;
+	sxu32 *aIdx;
+	sxu32 nVal, nNow, n;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return PH7_OK;
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	pOut = ph7_context_new_array(pCtx);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	nVal = pMap->nEntry;
+	if( nVal < 1 ){
+		ph7_result_value(pCtx,pOut);
+		ph7_context_release_value(pCtx,pOut);
+		return PH7_OK;
+	}
+	aIdx = (sxu32 *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,nVal * (sxu32)sizeof(sxu32));
+	apNode = (ph7_hashmap_node **)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+		nVal * (sxu32)sizeof(ph7_hashmap_node *));
+	if( aIdx == 0 || apNode == 0 ){
+		if( aIdx ){
+			SyMemBackendFree(&pCtx->pVm->sAllocator,aIdx);
+		}
+		if( apNode ){
+			SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
+		}
+		ph7_context_release_value(pCtx,pOut);
+		return PH7_VmMemoryError(pCtx->pVm);
+	}
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator,aIdx);
+		SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
+		ph7_context_release_value(pCtx,pOut);
+		return PH7_OK;
+	}
+	if( RandShuffleIndex(&sSrc,aIdx,nVal) ){
+		/* Every draw is done, so the array may be read now -- and it is read
+		 * FRESH, because a userland engine may have changed it meanwhile. php
+		 * cannot see such a change (it shuffles its own copy); this walk simply
+		 * must not read past what is actually there. */
+		pNow = (apArg[0]->iFlags & MEMOBJ_HASHMAP) != 0
+			? (ph7_hashmap *)apArg[0]->x.pOther : 0;
+		nNow = 0;
+		for( pNode = pNow ? pNow->pFirst : 0 ; pNode && nNow < nVal ; pNode = pNode->pPrev ){
+			apNode[nNow++] = pNode;
+		}
+		if( nNow == nVal ){
+			ph7_hashmap *pDest = (ph7_hashmap *)pOut->x.pOther;
+			for( n = 0 ; n < nVal ; ++n ){
+				PH7_HashmapInsert(pDest,0,HashmapExtractNodeValue(apNode[aIdx[n]]));
+			}
+		}
+		ph7_result_value(pCtx,pOut);
+	}
+	SyMemBackendFree(&pCtx->pVm->sAllocator,aIdx);
+	SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
+	ph7_context_release_value(pCtx,pOut);
+	return RandizerDone(&sSrc);
+}
+/*
+ * Random\Randomizer::shuffleBytes(string $bytes): string -- the same walk over
+ * a string's bytes.
+ */
+static int vm_builtin_Randomizer_shuffleBytes(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	const char *zIn;
+	char *zOut;
+	int nIn = 0;
+	sxu32 n;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nIn);
+	if( nIn < 2 ){
+		ph7_result_string(pCtx,zIn,nIn);
+		return PH7_OK;
+	}
+	zOut = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nIn);
+	if( zOut == 0 ){
+		return PH7_VmMemoryError(pCtx->pVm);
+	}
+	SyMemcpy(zIn,zOut,(sxu32)nIn);
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+		return PH7_OK;
+	}
+	for( n = (sxu32)nIn ; n > 1 ; --n ){
+		sxi64 iPick;
+		if( !RandRangeInt(&sSrc,0,(sxi64)(n - 1),&iPick) ){
+			SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+			return RandizerDone(&sSrc);
+		}
+		if( (sxu32)iPick != n - 1 ){
+			char c = zOut[n - 1];
+			zOut[n - 1] = zOut[iPick];
+			zOut[iPick] = c;
+		}
+	}
+	ph7_result_string(pCtx,zOut,nIn);
+	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+	return RandizerDone(&sSrc);
+}
+/*
+ * Random\Randomizer::pickArrayKeys(array $array, int $num): array
+ *
+ * array_rand()'s algorithm with an engine behind it, and the two properties
+ * that follow from it: the keys come back in the ARRAY's own order rather than
+ * the order they were drawn in (so this is a sample, not a shuffle), and asking
+ * for more than half of them draws the ones to LEAVE OUT instead -- fewer
+ * rejections for the same answer.
+ */
+static int vm_builtin_Randomizer_pickArrayKeys(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	ph7_hashmap *pMap, *pDest;
+	ph7_hashmap_node *pNode;
+	ph7_value *pOut, sKey;
+	unsigned char *aPick;
+	sxu32 nAvail, nWant, n;
+	sxi64 iNum;
+	int bNegate = 0, nFail;
+	if( nArg < 2 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return PH7_OK;
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	nAvail = pMap->nEntry;
+	if( nAvail < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::pickArrayKeys(): Argument #1 ($array) must not be empty",
+			RAND_RANDOMIZER);
+	}
+	iNum = ph7_value_to_int64(apArg[1]);
+	if( iNum < 1 || iNum > (sxi64)nAvail ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::pickArrayKeys(): Argument #2 ($num) must be between 1 and the "
+			"number of elements in argument #1 ($array)",RAND_RANDOMIZER);
+	}
+	pOut = ph7_context_new_array(pCtx);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	nWant = (sxu32)iNum;
+	aPick = (unsigned char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,nAvail);
+	if( aPick == 0 ){
+		ph7_context_release_value(pCtx,pOut);
+		return PH7_VmMemoryError(pCtx->pVm);
+	}
+	SyZero(aPick,nAvail);
+	/* php's three paths, in php's order -- and the order is what decides how many
+	 * draws the call costs, which is visible to everything that draws after it.
+	 * ONE key is array_rand's single-key path and is asked FIRST, so picking the
+	 * only key of a one-element array still costs a draw; every key needs no draw
+	 * at all; and more than half of them is cheaper drawn the other way round,
+	 * as the ones to leave OUT. */
+	if( nWant == 1 ){
+		/* one draw, one key */
+	}else if( nWant == nAvail ){
+		bNegate = 1;
+		nWant = 0;
+	}else if( nWant > (nAvail >> 1) ){
+		bNegate = 1;
+		nWant = nAvail - nWant;
+	}
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator,aPick);
+		ph7_context_release_value(pCtx,pOut);
+		return PH7_OK;
+	}
+	/* A SECOND rejection budget, php's own and separate from the range's: a
+	 * position already taken is a wasted draw, and an engine that keeps naming
+	 * the same one would spin here forever even though every draw it makes is
+	 * inside the range. php counts the repeats and gives up after fifty. */
+	nFail = 0;
+	for( n = nWant ; n > 0 ; ){
+		sxi64 iPick;
+		if( !RandRangeInt(&sSrc,0,(sxi64)nAvail - 1,&iPick) ){
+			SyMemBackendFree(&pCtx->pVm->sAllocator,aPick);
+			ph7_context_release_value(pCtx,pOut);
+			return RandizerDone(&sSrc);
+		}
+		if( !aPick[iPick] ){
+			aPick[iPick] = 1;
+			nFail = 0;
+			--n;
+		}else if( ++nFail > RAND_ATTEMPTS ){
+			RandBroken(&sSrc);
+			SyMemBackendFree(&pCtx->pVm->sAllocator,aPick);
+			ph7_context_release_value(pCtx,pOut);
+			return RandizerDone(&sSrc);
+		}
+	}
+	pDest = (ph7_hashmap *)pOut->x.pOther;
+	PH7_MemObjInit(pCtx->pVm,&sKey);
+	n = 0;
+	for( pNode = pMap->pFirst ; pNode && n < nAvail ; pNode = pNode->pPrev, ++n ){
+		if( (aPick[n] != 0) == !bNegate ){
+			PH7_HashmapExtractNodeKey(pNode,&sKey);
+			PH7_HashmapInsert(pDest,0,&sKey);
+			PH7_MemObjRelease(&sKey);
+		}
+	}
+	SyMemBackendFree(&pCtx->pVm->sAllocator,aPick);
+	ph7_result_value(pCtx,pOut);
+	ph7_context_release_value(pCtx,pOut);
+	return RandizerDone(&sSrc);
+}
+/*
  * Random\Randomizer::__serialize() -- one element, the property table, with
  * the ENGINE in it. The engine serializes itself, so a Randomizer round-trips
  * exactly when its engine does (and not at all when the engine is Secure).
@@ -1689,6 +2019,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm)
 		  "float $min, float $max, Random\\IntervalBoundary $boundary = ?", "float",
 		  vm_builtin_Randomizer_getFloat },
 #endif
+		{ "getBytesFromString", PH7_MOD_PUBLIC, "string $string, int $length", "string",
+		  vm_builtin_Randomizer_getBytesFromString },
+		{ "shuffleArray", PH7_MOD_PUBLIC, "array $array", "array",
+		  vm_builtin_Randomizer_shuffleArray },
+		{ "shuffleBytes", PH7_MOD_PUBLIC, "string $bytes", "string",
+		  vm_builtin_Randomizer_shuffleBytes },
+		{ "pickArrayKeys", PH7_MOD_PUBLIC, "array $array, int $num", "array",
+		  vm_builtin_Randomizer_pickArrayKeys },
 		{ "__serialize", PH7_MOD_PUBLIC, "", "array", vm_builtin_Randomizer_serialize },
 		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",
 		  vm_builtin_Randomizer_unserialize },

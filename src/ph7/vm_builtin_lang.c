@@ -1397,7 +1397,11 @@ PH7_PRIVATE int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apA
  */
 static const char * const azExtension[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar",
-	"ctype", "filter", "hash", "Reflection", "session", "mbstring", "iconv"
+	"ctype", "filter", "hash", "Reflection", "session", "mbstring", "iconv",
+	/* php 8.2 moved rand/mt_rand/random_int/random_bytes into ext/random and
+	 * gave them the Randomizer surface; this build has both halves now, and
+	 * the name was missing while eight of its functions were already here. */
+	"random"
 #ifdef PH7_ENABLE_LIBXML
 	, "libxml", "xml", "dom", "xmlwriter"
 #endif
