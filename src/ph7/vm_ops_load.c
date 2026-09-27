@@ -525,18 +525,23 @@ PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int iLevel,sxi
 			/* int-then-garbage. This is the one diagnostic a `??` fetch keeps:
 			 * `$s["1x"] ?? "d"` warns and answers $s[1] (PHL called it "not set"
 			 * and answered the default — a wrong VALUE, not just a missing
-			 * warning). Only isset()/empty() stay silent about it. */
-			SyString sKey;
-			SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
-			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset \"%z\"",&sKey);
+			 * warning). Only isset()/empty() — and the intermediate step of an
+			 * unset chain, which php keeps quiet about the shape — stay silent. */
+			if( iLevel != VM_STROFF_UNSETBASE ){
+				SyString sKey;
+				SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
+				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset \"%z\"",&sKey);
+			}
 			return VM_STROFF_OK;
 		}
-		if( iLevel != VM_STROFF_LOUD ){
+		if( iLevel != VM_STROFF_LOUD && iLevel != VM_STROFF_UNSETBASE ){
 			return VM_STROFF_MISS;
 		}
 	}else if( (pIdx->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0 ){
-		/* null / bool / float: php casts, but says so in a real read or write. */
-		if( iLevel == VM_STROFF_LOUD ){
+		/* null / bool / float: php casts, but says so in a real read or write —
+		 * and in the intermediate step of an unset chain, which reads the offset
+		 * to hand it on (`unset($s[1.5][0])` warns about the cast). */
+		if( iLevel == VM_STROFF_LOUD || iLevel == VM_STROFF_UNSETBASE ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"String offset cast occurred");
 		}
 		PH7_MemObjToInteger(pIdx);
@@ -612,6 +617,25 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 		}
+	if( pTos->iFlags & MEMOBJ_AUX_STROFFSET ){
+		/* The CONTAINER is a string offset: `$s[0][1] = 'x'`, `$s[0][] = 'x'`,
+		 * `$a['k'][0][1] = 'x'`. php refuses to reach inside one — `Cannot use string
+		 * offset as an array`, the same refusal the fetch path raises — and this is
+		 * where the outermost level of an ordinary assignment arrives, its LOAD_IDX
+		 * folded into the store. The character read out of the string still carries
+		 * the BASE STRING's slot, so the write landed ON the base: `$s = 'ab';
+		 * $s[0][1] = 'x';` left `$s === 'ax'`, in silence. */
+		sxi32 rcSo;
+		if( pKey ){
+			PH7_MemObjRelease(pKey);
+		}
+		VmPopOperand(&pTos,1);
+		rcSo = VmThrowFromVm(&(*pVm),"Error","Cannot use string offset as an array",
+			sizeof("Cannot use string offset as an array")-1);
+		if( rcSo == SXERR_ABORT ){ VM_EXIT_ABORT; }
+		rc = rcSo;
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
 	nIdx = pTos->nIdx;
 	{
 		/* ArrayAccess::offsetSet dispatch.
@@ -1270,6 +1294,24 @@ static int VmDimFastFetchCtx(const VmInstr *pInstr,sxi32 iP2)
 	return iP2 == 0 || VmIdxFetchForWrite(pInstr,iP2);
 }
 /*
+ * Is this fetch asking the base to BE a container — the question php answers with
+ * `Cannot use string offset as an array` when the base is a string offset?
+ *
+ * Every context that reaches INTO the base to write, vivify or remove: the write
+ * contexts (1, the read-modify-write among them) and both halves of an unset chain.
+ * The LOOKUPS — a plain read, isset()/empty()/`??`, a destructure, a deferred
+ * argument — are php's own silence (`$x = $s[0][1]` reads a character out of a
+ * character) and are not this. Neither is the `??=` PEEK (3): it reads, and
+ * `$s[0][0] ??= 7` finds a character and never stores at all, so only the peek that
+ * comes back EMPTY is a write — that one is refused where the read lands.
+ *
+ * iP2 is the NORMALIZED context, so VM_IDX_CTX_RMW has already become 1.
+ */
+static int VmIdxCtxIsContainerWrite(sxi32 iP2)
+{
+	return iP2 == 1 || VM_IDX_IS_UNSET(iP2);
+}
+/*
  * php's `Indirect modification of overloaded element of C has no effect`: the
  * write-context fetch above landed on a container that answers with a COPY, so
  * whatever the rest of the expression writes is thrown away. php says so and
@@ -1323,6 +1365,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	 * that was not there to read WARNS before it is created. */
 	int bRmwFetch = (pInstr->iP2 == VM_IDX_CTX_RMW);
 	int bRmwMiss = 0;
+	int bBaseStrOff = 0;
 	sxi32 iP2 = (pInstr->iP2 == 9) ? 0 : (bRmwFetch ? 1 : pInstr->iP2);
 	pIdx = 0;
 	if( pInstr->iP1 == 0 ){
@@ -1519,15 +1562,58 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		MemObjSetType(pTos,MEMOBJ_NULL);
 		VM_EXIT_BREAK;
 	}
+	bBaseStrOff = (pTos->iFlags & MEMOBJ_AUX_STROFFSET) != 0;
+	if( bBaseStrOff && VmIdxCtxIsContainerWrite(iP2) ){
+		/* A string OFFSET used as a CONTAINER. php reaches a string offset through a
+		 * marker zval and lets whichever opcode CONSUMES it name the refusal
+		 * (`zend_wrong_string_offset_error`); a fetch that wants to reach INSIDE it —
+		 * `$s[0][1] = 'x'`, `$s[0][1] += 1`, `unset($s[0][1])`,
+		 * `$s[0][] = 'x'`, a by-reference argument — is `Cannot use string offset as
+		 * an array`. PHL read the character and handed back a value still carrying the
+		 * BASE STRING's slot, so the write landed on the base: `$s = 'ab';
+		 * $s[0][1] = 'x';` left `$s === 'ax'` and `$a['k'][0][1] = 'x'` rewrote the
+		 * ELEMENT. A READ (`$x = $s[0][1]`) and the lookup contexts are php's own
+		 * silence and stay out of this. */
+		if( pIdx ){
+			PH7_MemObjRelease(pIdx);
+		}
+		rc = VmThrowFromVm(&(*pVm),"Error","Cannot use string offset as an array",
+			sizeof("Cannot use string offset as an array")-1);
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
 	if( pTos->iFlags & MEMOBJ_STRING ){
 		/* String access */
-		if( VM_IDX_IS_UNSET(iP2) ){
+		if( pIdx == 0 && VmIdxCtxIsContainerWrite(iP2) ){
+			/* `$s[] op= v` / `$s[]++`: php refuses an APPEND to a string wherever it
+			 * lands — `[] operator not supported for strings` — and the plain
+			 * `$s[] = 'x'` store already raises it (OP_STORE_IDX). The
+			 * read-modify-write spellings fell through to "load NULL" here and then
+			 * wrote the computed value back through the BASE's slot, so `$s[] .= 'x'`
+			 * APPENDED to the string and `$s[]++` incremented the whole of it. */
+			rc = VmThrowFromVm(&(*pVm),"Error","[] operator not supported for strings",
+				sizeof("[] operator not supported for strings")-1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		if( iP2 == VM_IDX_CTX_UNSET ){
 			/* php: a string offset cannot be unset AT ALL — `unset($s[0])` is the
 			 * catchable `Error: Cannot unset string offsets`, whatever the offset is
 			 * and whether or not it is in range. PHL read the character but left the
 			 * BASE VARIABLE's slot index on the result, so the trailing unset()
 			 * builtin freed the base itself: `$s = "abc"; unset($s[1]);` left $s
-			 * UNDEFINED, and `unset($a["k"][0])` deleted the whole element. */
+			 * UNDEFINED, and `unset($a["k"][0])` deleted the whole element.
+			 * An INTERMEDIATE level of the chain (`unset($s[0][1])`,
+			 * `unset($s[0]->p)`) is NOT this: that fetch hands the offset on to
+			 * something that reaches INSIDE it, and php words the refusal from
+			 * whatever that is — so it falls through to the offset resolution below
+			 * (a write-shaped fetch) and the consumer raises. */
 			rc = VmThrowFromVm(&(*pVm),"Error","Cannot unset string offsets",
 				sizeof("Cannot unset string offsets")-1);
 			if( pIdx ){
@@ -1549,9 +1635,10 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			 * `??`/`??=` fetch still warns about the offset SHAPE and reads it
 			 * (VM_STROFF_COALESCE). The ??= peek is recognised by the NULLC_JMP
 			 * that follows it, since its iP2 does not distinguish the base type. */
-			int iOfftLevel = (iP2 == 4 || VM_IDX_IS_UNSET(iP2) || iP2 == 6) ? VM_STROFF_ISSET
+			int iOfftLevel = (iP2 == 4 || iP2 == VM_IDX_CTX_UNSET || iP2 == 6) ? VM_STROFF_ISSET
+				: (iP2 == VM_IDX_CTX_UNSET_BASE ? VM_STROFF_UNSETBASE
 				: ((iP2 == 8 || VmIdxFeedsCoalesce(pInstr)) ? VM_STROFF_COALESCE
-				: VM_STROFF_LOUD);
+				: VM_STROFF_LOUD));
 			int bQuiet = iOfftLevel != VM_STROFF_LOUD;
 			SyBlob sTypeMsg;
 			int eOfft;
@@ -1572,6 +1659,17 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				PH7_MemObjRelease(pIdx);
 				PH7_MemObjRelease(pTos);
 				MemObjSetType(pTos,MEMOBJ_NULL);
+				if( pCoalOff && bBaseStrOff ){
+					/* The store this peek is arming would land INSIDE a string offset:
+					 * refused, like every other reach-inside (the same answer the
+					 * out-of-range peek below gets). */
+					VmFreeCoalStrOff(pCoalOff);
+					rc = VmThrowFromVm(&(*pVm),"Error","Cannot use string offset as an array",
+						sizeof("Cannot use string offset as an array")-1);
+					pTos->nIdx = SXU32_HIGH;
+					if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+					PH7_THROW_ROUTE_MIDEXPR(rc)
+				}
 				if( pCoalOff ){
 					/* A `??=` whose offset the READ refuses: php raises at the
 					 * STORE instead, so keep the base slot reachable and hand the
@@ -1582,6 +1680,21 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					pTos->nIdx = SXU32_HIGH;
 				}
 				VM_EXIT_BREAK;
+			}
+			if( eOfft == VM_STROFF_REJECT && iOfftLevel == VM_STROFF_UNSETBASE ){
+				/* The intermediate step of an unset chain over an offset php cannot
+				 * use at all (`unset($s["k"][0])`, `unset($s[""]->p)`): the refusal
+				 * is the UNSET's, not the read's TypeError. */
+				VmFreeCoalStrOff(pCoalOff);
+				SyBlobRelease(&sTypeMsg);
+				rc = VmThrowFromVm(&(*pVm),"Error","Cannot unset string offsets",
+					sizeof("Cannot unset string offsets")-1);
+				PH7_MemObjRelease(pIdx);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 			if( eOfft == VM_STROFF_REJECT ){
 				/* php's TypeError for an offset type a string refuses. PHL cast
@@ -1614,8 +1727,17 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					MemObjSetType(pTos,MEMOBJ_NULL);
 				}else{
 					MemObjSetType(pTos,MEMOBJ_STRING);
-					VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Uninitialized string offset %qd",
-						iRaw);
+					if( iP2 != 1 && iP2 != VM_IDX_CTX_UNSET_BASE ){
+						/* A WRITE-context fetch never READS the character in php: it
+						 * resolves the offset (loudly — the SHAPE diagnostics above are
+						 * php's there too) and hands back its offset marker, and the
+						 * opcode that consumes it refuses. So `$s[5] .= 'x'` and
+						 * `$s[5]++` are the assign-op / incr-decr Error with nothing
+						 * said about offset 5, where PHL announced an `Uninitialized
+						 * string offset 5` it never had to look at. */
+						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Uninitialized string offset %qd",
+							iRaw);
+					}
 				}
 			}else{
 				const char *zData = (const char *)SyBlobData(&pTos->sBlob);
@@ -1625,6 +1747,22 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				SyBlobAppend(&pTos->sBlob,(const void *)&c,sizeof(char));
 			}
 			if( pCoalOff ){
+				if( (pTos->iFlags & MEMOBJ_NULL) && bBaseStrOff ){
+					/* `$s[0][9] ??= v`: the peek came back empty, so the `??=` WILL
+					 * store — and the thing it would store into is a character inside a
+					 * string offset, which php refuses like every other reach-inside.
+					 * The refusal belongs to the store, which is why the peek that finds
+					 * a character (`$s[0][0] ??= 7`) short-circuits and says nothing at
+					 * all in php. */
+					VmFreeCoalStrOff(pCoalOff);
+					rc = VmThrowFromVm(&(*pVm),"Error","Cannot use string offset as an array",
+						sizeof("Cannot use string offset as an array")-1);
+					PH7_MemObjRelease(pTos);
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					pTos->nIdx = SXU32_HIGH;
+					if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+					PH7_THROW_ROUTE_MIDEXPR(rc)
+				}
 				if( pTos->iFlags & MEMOBJ_NULL ){
 					/* Out of range: the `??=` will store, so hand the offset over. */
 					pTos->x.pOther = (void *)pCoalOff;

@@ -358,6 +358,18 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		}
 		VmPopOperand(&pTos,1);
 	}
+	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && (pTos->iFlags & MEMOBJ_AUX_STROFFSET) ){
+		/* `foreach ($s[0] as &$v)`: the subject is a string OFFSET and the loop wants
+		 * to ALIAS its elements. php screens that before it asks whether the subject is
+		 * iterable at all, and a string offset is never a reference — same Error the
+		 * `=&` and by-ref-argument paths raise, not the not-iterable warning PHL
+		 * answered (whose slot index is the BASE STRING's, so binding would have
+		 * aliased the whole string). */
+		sxi32 rcSo = VmThrowFromVm(&(*pVm),"Error","Cannot create references to/from string offsets",
+			sizeof("Cannot create references to/from string offsets")-1);
+		if( rcSo == SXERR_ABORT ){ VM_EXIT_ABORT; }
+		PH7_THROW_ROUTE_MIDEXPR(rcSo)
+	}
 	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && SyStringLength(&pInfo->sValue) > 0 ){
 		/* `foreach ($o->p as &$v)` on a property no write may reach: the loop hands
 		 * out an ALIAS of every element, so php screens the property where it

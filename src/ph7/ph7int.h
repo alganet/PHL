@@ -5433,10 +5433,19 @@ PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
  *                       `$s["1x"] ?? "d"` warns `Illegal string offset "1x"`
  *                       and answers `$s[1]`.
  *   VM_STROFF_ISSET     isset()/empty()/unset(): fully quiet, every shape.
+ *   VM_STROFF_UNSETBASE an INTERMEDIATE subscript of an unset chain
+ *                       (`unset($s[k][0])`, `unset($s[k]->p)`): php reads the
+ *                       offset to hand it on, so the CAST notice fires as in a
+ *                       real write, but the int-then-garbage warning does not
+ *                       (`unset($s["1x"][0])` says nothing about "1x") and an
+ *                       offset TYPE php refuses is not the read's TypeError —
+ *                       it is the unset's own `Cannot unset string offsets`,
+ *                       which the caller raises on REJECT at this level.
  */
-#define VM_STROFF_LOUD     0
-#define VM_STROFF_COALESCE 1
-#define VM_STROFF_ISSET    2
+#define VM_STROFF_LOUD      0
+#define VM_STROFF_COALESCE  1
+#define VM_STROFF_ISSET     2
+#define VM_STROFF_UNSETBASE 3
 PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int iLevel,sxi64 *piOfft,SyBlob *pMsg);
 PH7_PRIVATE sxi32 VmStringOffsetWrite(ph7_vm *pVm,ph7_value *pStr,sxi64 iRawOfft,ph7_value *pVal);
 /* Numeric-string classifier — php's is_numeric_string() grammar — shared from

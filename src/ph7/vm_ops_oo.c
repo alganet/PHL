@@ -2047,6 +2047,36 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				PH7_ClassInstanceUnref(pThis);
 			}
 		}else{
+			if( (pNos->iFlags & MEMOBJ_AUX_STROFFSET)
+			 && (pInstr->iP2 == PH7_MEMBER_WRITE || pInstr->iP2 == PH7_MEMBER_UNSET
+			  || pInstr->iP2 == PH7_MEMBER_LIST_TARGET || pInstr->iP2 == PH7_MEMBER_REF_TARGET
+			  /* A reference SOURCE (`$r =& $s[0]->p`) is compiled as a READ here on
+			   * purpose — php hands back a copy for a handler-backed property — so the
+			   * bind that follows is what makes it a reach-inside, exactly as it does
+			   * for a subscript. */
+			  || (pInstr->iP2 == PH7_MEMBER_READ
+			      && ((pInstr + 1)->iOp == PH7_OP_STORE_REF
+			       || (pInstr + 1)->iOp == PH7_OP_LOAD_REF
+			       || (pInstr + 1)->iOp == PH7_OP_STORE_IDX_REF))) ){
+				/* The base is a string OFFSET and this reaches INSIDE it. php refuses every
+				 * such reach and words the refusal from what is doing the reaching, so a
+				 * PROPERTY is `Cannot use string offset as an object` where a subscript is
+				 * `... as an array` — `$s[0]->p = 1`, `$s[0]->p += 1`, `$s[0]->p ??= 1` and
+				 * `unset($s[0]->p)` alike. PHL reported the generic non-object write
+				 * (`Attempt to assign property "p" on string`) and said nothing at all for
+				 * the unset. A METHOD CALL is not one of these: php keeps `Call to a member
+				 * function p() on string` there, and so does the path below. */
+				sxi32 rcSo;
+				VmPopOperand(&pTos,1);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				rcSo = VmThrowFromVm(&(*pVm),"Error","Cannot use string offset as an object",
+					sizeof("Cannot use string offset as an object")-1);
+				if( rcSo == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcSo;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
 			/* `->` on a non-object (e.g. a null intermediate). Silent in isset()/empty()/unset()
 			 * context (iP2 2/3/4) so `isset($o->missing->x)` / `unset($o->missing->x)` match PHP. */
 			if( pInstr->iP2 != PH7_MEMBER_UNSET && !VmMemberCtxIsLookup(pInstr->iP2) ){

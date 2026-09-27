@@ -1054,9 +1054,20 @@ static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSl
 				return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 			}
 		}
-		rcT = VmThrowFromVm(&(*pVm),"Error",
-			"Cannot create references to/from string offsets",
-			sizeof("Cannot create references to/from string offsets")-1);
+		{
+			/* WHICH refusal is php's depends on what the argument fetch was reaching
+			 * for: the offset ITSELF (`f($s[1])`, one step) cannot be referenced, while
+			 * a step INTO it is the same reach-inside every other consumer gets, named
+			 * for the STEP — `f($s[0][1])` is `... as an array` and `f($s[0]->p)` is
+			 * `... as an object`. php derives all three from the opcode that consumes
+			 * the fetch; here the step count and the last step's kind are that. */
+			const char *zSoMsg = (pPath->nStep > 1)
+				? (pPath->aStep[pPath->nStep-1].isProp
+					? "Cannot use string offset as an object"
+					: "Cannot use string offset as an array")
+				: "Cannot create references to/from string offsets";
+			rcT = VmThrowFromVm(&(*pVm),"Error",zSoMsg,SyStrlen(zSoMsg));
+		}
 		return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 	}
 	if( pPath->eRoot == 1 ){
