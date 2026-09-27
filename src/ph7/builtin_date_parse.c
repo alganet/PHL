@@ -1221,6 +1221,29 @@ static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)
 	return 0;
 }
 /*
+ * php's SEPARATOR bytes -- the run between two tokens, and it is wider than a
+ * space: NUL, tab, newline, space, comma and the full stop are all skipped
+ * there, which is what lets a date string keep the newline of the file it was
+ * read from and what makes `12:00.UTC` a time with a zone behind it.
+ */
+static int DtIsSep(int c)
+{
+	return c == ' ' || c == '\t' || c == '\n' || c == '\0' || c == ',' || c == '.';
+}
+/*
+ * ...and the wider set php tolerates at the ENDS of the string, where a
+ * carriage return, a vertical tab and a form feed are allowed as well: a string
+ * read from a file keeps its `\r\n` and still parses, while the same bytes
+ * BETWEEN two tokens are an unexpected character in both engines. The comma and
+ * the full stop go the other way -- they separate tokens but do not close the
+ * string, so `12:00,` parses and `3pm,` is not a meridian at all.
+ */
+static int DtIsEdgeSep(int c)
+{
+	return c == ' ' || c == '\t' || c == '\n' || c == '\0'
+	    || c == '\r' || c == '\v' || c == '\f';
+}
+/*
  * Match a weekday name at z (full or 3-letter, case-insensitive). Returns the
  * day-of-week 0=Sunday..6=Saturday and sets *pAdv, or -1.
  *
@@ -1289,7 +1312,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
 	sxi64 y = 0;
 	int rcT;
-#define MDSKIPWS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
+#define MDSKIPWS() while( z < zEnd && DtIsSep((unsigned char)z[0]) ){ z++; }
 	if( (mo = DtMatchMonth(z,zEnd,&adv)) != 0 ){
 		/* MonthName [Day] [Year]. A 4-digit number here is the YEAR, not the day
 		 * ("January 2020" is month+year, day defaults); a 1-2 digit number is the day. */
@@ -1465,7 +1488,12 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 	const char *zPrev = 0;
 	int bAny = 0;
 	int iRc;
-#define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
+	/* php's whitespace at the two ENDS is wider than the run between tokens
+	 * (DtIsEdgeSep); the positions a refusal reports stay the original string's,
+	 * since only the walk moves. */
+	while( z < zEnd && DtIsEdgeSep((unsigned char)z[0]) ){ z++; }
+	while( zEnd > z && DtIsEdgeSep((unsigned char)zEnd[-1]) ){ zEnd--; }
+#define DT_SKIP_WS() while( z < zEnd && DtIsSep((unsigned char)z[0]) ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
 	DT_SKIP_WS();
