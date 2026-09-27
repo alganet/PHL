@@ -3105,6 +3105,42 @@ static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
 	pVm->sDtLastErr.nErr = pDiag->nErr;   /* php counts what it dropped too */
 }
 /*
+ * The eight bytes php's format map calls SEPARATORS: what `#` accepts, and what
+ * each of them demands of the input when it stands in a format itself.
+ */
+static int DtFfIsSep(int c)
+{
+	return c==';' || c==':' || c=='/' || c=='.' || c==',' || c=='-'
+		|| c=='(' || c==')';
+}
+/*
+ * php's run of blanks -- the two ASCII ones and the two Unicode spaces its
+ * scanner spells out. A format space eats the whole run and never refuses, so a
+ * space beside an input that has none is simply nothing.
+ */
+static void DtFfEatSpaces(const char **pz,const char *zEnd)
+{
+	const char *z = *pz;
+	for(;;){
+		if( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+			z++;
+			continue;
+		}
+		if( zEnd - z >= 3 && (unsigned char)z[0] == 0xE2
+		 && (unsigned char)z[1] == 0x80 && (unsigned char)z[2] == 0xAF ){
+			z += 3;    /* NARROW NO-BREAK SPACE */
+			continue;
+		}
+		if( zEnd - z >= 2 && (unsigned char)z[0] == 0xC2
+		 && (unsigned char)z[1] == 0xA0 ){
+			z += 2;    /* NO-BREAK SPACE */
+			continue;
+		}
+		break;
+	}
+	*pz = z;
+}
+/*
  * What one run of the FORMAT scanner read, field by field.
  *
  * php's format parser starts every field UNSET and never consults the clock: the
@@ -3149,13 +3185,15 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 	const char *zErr = 0;
 	const char *aWarnMsg[PH7_DT_MAX_WARN];
 	int aWarnPos[PH7_DT_MAX_WARN];
-	int nWarn = 0,bAborted = 0;
+	int nWarn = 0;
 	const char *aErrMsg[PH7_DT_MAX_ERR];
 	int aErrPos[PH7_DT_MAX_ERR];
 	int nErr = 0,nErrKept = 0;
 	SyZero(pOut,sizeof(*pOut));
-	zEnd = &zFmt[nFmt];
-	zInEnd = &zIn[nIn];
+	/* Both strings end where php's C string ends: a NUL inside a format simply
+	 * truncates it, and one inside the input ends the scan there. */
+	zEnd = &zFmt[DtCStrLen(zFmt,nFmt)];
+	zInEnd = &zIn[DtCStrLen(zIn,nIn)];
 	z = zIn;
 	zName[0] = 0;
 #define DT_FF_LOGERR(iPos,zMsg) \
@@ -3164,34 +3202,38 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 	  for( _k = 0 ; _k < nErrKept ; _k++ ){ if( aErrPos[_k] == _p ){ _f = _k; break; } } \
 	  if( _f >= 0 ){ aErrMsg[_f] = (zMsg); } \
 	  else if( nErrKept < PH7_DT_MAX_ERR ){ aErrPos[nErrKept] = _p; aErrMsg[nErrKept] = (zMsg); nErrKept++; } }
-	while( zFmt < zEnd ){
+/* php's two RESET specifiers act where they stand rather than at the end of the
+ * scan: `!` puts every field at its 1970 default whatever the format already
+ * read, `|` only fills what nothing has read yet, and a specifier after either
+ * one overwrites what it left. */
+#define DT_FF_RESET(bUnsetOnly) \
+	{ int _u = (bUnsetOnly); \
+	  if( !_u || y  == DT_UNSET ){ y  = 1970; } \
+	  if( !_u || mo == DT_UNSET ){ mo = 1; } \
+	  if( !_u || d  == DT_UNSET ){ d  = 1; } \
+	  if( !_u || h  == DT_UNSET ){ h  = 0; } \
+	  if( !_u || mi == DT_UNSET ){ mi = 0; } \
+	  if( !_u || s  == DT_UNSET ){ s  = 0; } \
+	  if( !_u || us == DT_UNSET ){ us = 0; } }
+	/* The scan runs while BOTH strings still have something in them: php's
+	 * format loop ends the moment the input does, and what is left of the
+	 * format is judged afterwards rather than refused here. */
+	while( zFmt < zEnd && z < zInEnd ){
 		char c = zFmt[0];
+		/* every refusal below reports the byte the specifier STARTED on, not
+		 * wherever the reading of it gave up */
+		int iBegin = (int)(z - zIn);
 		zFmt++;
 		zErr = 0;
-		/* php's two RESET specifiers act where they stand rather than at the end
-		 * of the scan: `!` puts every field at its 1970 default whatever the
-		 * format already read, `|` only fills what nothing has read yet, and a
-		 * specifier after either one overwrites what it left. */
 		if( c == '!' ){
-			y = 1970; mo = 1; d = 1; h = 0; mi = 0; s = 0; us = 0;
+			DT_FF_RESET(0);
 			continue;
 		}
 		if( c == '|' ){
-			if( y == DT_UNSET ){ y = 1970; }
-			if( mo == DT_UNSET ){ mo = 1; }
-			if( d == DT_UNSET ){ d = 1; }
-			if( h == DT_UNSET ){ h = 0; }
-			if( mi == DT_UNSET ){ mi = 0; }
-			if( s == DT_UNSET ){ s = 0; }
-			if( us == DT_UNSET ){ us = 0; }
+			DT_FF_RESET(1);
 			continue;
 		}
 		if( c == '+' ){ bPlus = 1; continue; }
-		if( z >= zInEnd ){
-			/* timelib aborts the scan once input is exhausted */
-			DT_FF_LOGERR(nIn,"Not enough data available to satisfy format");
-			break;
-		}
 		switch( c ){
 		case 'd': case 'j':
 			if( !DtEatDigits(&z,zInEnd,1,2,&d) ){
@@ -3419,76 +3461,70 @@ parse_num_off:	{
 			break;
 				 }
 		case '?':
-			if( z < zInEnd ){ z++; }
+			z++;
 			break;
 		case '*':
-			/* skip input until the next separator byte */
-			while( z < zInEnd && !SyisDigit(z[0]) && z[0] != ';' && z[0] != ':'
-			 && z[0] != '/' && z[0] != '.' && z[0] != ',' && z[0] != '-'
-			 && z[0] != '(' && z[0] != ')' && z[0] != ' ' ){
+			/* php's "skip to a separator": one byte goes whatever it is, and the
+			 * run after it stops at a blank, a digit or one of `.,:;/-`. The
+			 * parens are NOT in that set, though every other rule here treats
+			 * them as separators. */
+			z++;
+			while( z < zInEnd && z[0] != ' ' && z[0] != '\t' && z[0] != '.'
+			 && z[0] != ',' && z[0] != ':' && z[0] != ';' && z[0] != '/'
+			 && z[0] != '-' && !SyisDigit(z[0]) ){
 				z++;
 			}
 			break;
 		case '#':
-			if( z < zInEnd && (z[0]==';'||z[0]==':'||z[0]=='/'||z[0]=='.'
-			 ||z[0]==','||z[0]=='-'||z[0]=='('||z[0]==')') ){
+			if( DtFfIsSep((unsigned char)z[0]) ){
+				z++;
+			}else{
+				zErr = "The separation symbol ([;:/.,-]) could not be found";
+			}
+			break;
+		case '\\':
+			/* the escape takes the NEXT format byte literally, and refuses on
+			 * its own account when the format ends before there is one */
+			if( zFmt >= zEnd ){
+				zErr = "Escaped character expected";
+				break;
+			}
+			if( z[0] == zFmt[0] ){
+				z++;
+			}else{
+				zErr = "The escaped character could not be found";
+			}
+			zFmt++;
+			break;
+		case ';': case ':': case '/': case '.': case ',': case '-':
+		case '(' : case ')':
+			/* a separator in the format wants exactly that byte; a mismatch is
+			 * ONE refusal, and the input byte stays where it is */
+			if( z[0] == c ){
 				z++;
 			}else{
 				zErr = "The separation symbol could not be found";
 			}
 			break;
-		case '\\':
-			if( zFmt < zEnd ){
-				if( z < zInEnd && z[0] == zFmt[0] ){
-					z++;
-					zFmt++;
-				}else{
-					/* a literal mismatch aborts timelib's scan */
-					DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");
-					zFmt = zEnd;
-					bAborted = 1;
-				}
-			}
-			break;
-		case ';': case ':': case '/': case '.': case ',': case '-':
-		case '(' : case ')':
-			if( z < zInEnd && z[0] == c ){
-				z++;
-			}else{
-				/* timelib logs BOTH messages (count +2, last-wins on the
-				 * position), consumes the offending byte, and keeps going */
-				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");
-				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");
-				z++;
-			}
-			break;
 		case ' ':
-			if( z < zInEnd && (z[0] == ' ' || z[0] == '\t') ){
-				z++;
-			}else{
-				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");
-				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");
-				z++;
-			}
+			DtFfEatSpaces(&z,zInEnd);
 			break;
 		default:
-			/* any other format byte must match the input verbatim; a mismatch
-			 * aborts timelib's scan */
-			if( z < zInEnd && z[0] == c ){
-				z++;
-			}else{
-				DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");
-				zFmt = zEnd;
-				bAborted = 1;
+			/* any other format byte must match the input verbatim -- and php
+			 * steps over the input byte either way, so a mismatch costs one
+			 * refusal and the two strings carry on in step */
+			if( z[0] != c ){
+				DT_FF_LOGERR(iBegin,"The format separator does not match");
 			}
+			z++;
 			break;
 		}
 		if( zErr ){
 			/* name/zone/separator mismatch: log and keep scanning (timelib) */
-			DT_FF_LOGERR((int)(z - zIn),zErr);
+			DT_FF_LOGERR(iBegin,zErr);
 		}
 	}
-	if( z < zInEnd && !bAborted ){
+	if( z < zInEnd ){
 		if( bPlus ){
 			/* '+' downgrades trailing data to a warning */
 			aWarnPos[nWarn] = (int)(z - zIn);
@@ -3496,6 +3532,22 @@ parse_num_off:	{
 			nWarn++;
 		}else{
 			DT_FF_LOGERR((int)(z - zIn),"Trailing data");
+		}
+	}
+	/* ...and what is left of a FORMAT the input ran out under. The two reset
+	 * specifiers and `+` need no input and are allowed to stand there; the
+	 * first specifier that does want input is one refusal, and the rest of the
+	 * format is never looked at. */
+	while( zFmt < zEnd ){
+		char c = zFmt[0];
+		zFmt++;
+		if( c == '!' ){
+			DT_FF_RESET(0);
+		}else if( c == '|' ){
+			DT_FF_RESET(1);
+		}else if( c != '+' ){
+			DT_FF_LOGERR((int)(z - zIn),"Not enough data available to satisfy format");
+			break;
 		}
 	}
 	if( bHasU ){
@@ -3546,6 +3598,8 @@ parse_num_off:	{
 	pOut->zName[sizeof(pOut->zName)-1] = 0;
 	DtFfDiag(&pOut->sDiag,nErr,nErrKept,aErrPos,aErrMsg,nWarn,aWarnPos,aWarnMsg);
 	return nErr > 0 ? -1 : 0;
+#undef DT_FF_RESET
+#undef DT_FF_LOGERR
 }
 /*
  * php's timelib_fill_holes and timelib_update_ts, the step between the scan
