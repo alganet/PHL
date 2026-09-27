@@ -821,7 +821,13 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	zRest = &z[nYr];   /* the '-' that closed the year */
 	if( !SyisDigit(zRest[1])||!SyisDigit(zRest[2])||zRest[3] != '-'
 	 ||!SyisDigit(zRest[4])||!SyisDigit(zRest[5]) ){
-		return (int)(z - zIn) + 1;
+		/* Not this spelling: `2020-1-1` and `2020-1-1 12:00` are the DAY-FIRST
+		 * numeric rule's, php's own separate one, so hand the text on instead of
+		 * refusing it here. (Refusing was also unsound: the position this reports
+		 * is the TOKEN's, and a token at position 0 encodes as the 1 that means
+		 * "matched" -- which left the caller's cursor where it was and spun the
+		 * parse loop forever. The loop guards itself now as well.) */
+		return 0;
 	}
 	mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
 	d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
@@ -1121,6 +1127,7 @@ static int DtRelUnit(const char *z,const char *zEnd,sxi64 v,dt_parsed *p,int *pb
 static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 {
 	const char *z = zIn, *zEnd = &zIn[nLen];
+	const char *zPrev = 0;
 	int bAny = 0;
 	int iRc;
 #define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
@@ -1198,6 +1205,16 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 	}
 	/* Relative / keyword sequence */
 	for(;;){
+		/* Every pass must CONSUME something. A shape rule that claims a token
+		 * without advancing the cursor would spin here forever -- and one did:
+		 * the ISO rule's refusal encodes the token's POSITION, and a token at
+		 * position 0 encodes as the same 1 that means "matched", so
+		 * `new DateTime('2020-1-1 12:00')` hung the engine outright. The rule is
+		 * fixed above; this makes the whole class of it a refusal instead. */
+		if( z == zPrev ){
+			return (int)(z - zIn) + 1;
+		}
+		zPrev = z;
 		DT_SKIP_WS();
 		if( z >= zEnd ){
 			break;
