@@ -29,6 +29,8 @@ static void PdoBlankSlot(ph7_class_instance *pOwner);
 static phl_pdo * PdoOfInstance(ph7_class_instance *pThis);
 static void PdoStmtClearFetchState(phl_pdo_stmt *pSt);
 static void PdoStmtLazyClear(phl_pdo_stmt *pSt);
+static sxi32 PdoStatementCtor(ph7_context *pCtx,phl_pdo *pConn,ph7_class *pClass,
+	ph7_class_instance *pObj);
 static void PdoBoundColumnsForRow(ph7_vm *pVm,phl_pdo_stmt *pSt);
 static int PdoBoundColumnsForIterRow(ph7_vm *pVm,phl_pdo_stmt *pSt);
 static sxi32 PdoBoundColumnsRefuse(ph7_context *pCtx,phl_pdo_stmt *pSt,int bWholeSet);
@@ -92,6 +94,10 @@ PH7_PRIVATE void PH7_PdoFreeConn(phl_pdo *pConn)
 	if( pConn->zDrvMsg ){
 		SyMemBackendFree(&pConn->pVm->sAllocator,pConn->zDrvMsg);
 		pConn->zDrvMsg = 0;
+	}
+	if( pConn->pStmtArgs ){
+		ph7_release_value(pConn->pVm,pConn->pStmtArgs);
+		pConn->pStmtArgs = 0;
 	}
 	if( pConn->zStmtClass ){
 		SyMemBackendFree(&pConn->pVm->sAllocator,pConn->zStmtClass);
@@ -722,23 +728,49 @@ static sxi32 PdoSetStatementClass(ph7_context *pCtx,phl_pdo *pConn,ph7_value *pV
 			"PDO::setAttribute(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS class "
 			"must be derived from PDOStatement");
 	}
-	pArgs = PdoArrayAtInt(pCtx->pVm,pVal,1);
-	if( pArgs != 0 && (pArgs->iFlags & MEMOBJ_HASHMAP) == 0 ){
-		return PH7_VmThrowException(pCtx,"TypeError",
-			"PDO::setAttribute(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS "
-			"constructor_args must be of type ?array, array given");
+	{
+		/* php builds the statement OBJECT itself and then calls the class's own
+		 * constructor, so that constructor may not be one a script could call:
+		 * a PUBLIC one is refused here, and a protected or private one is what
+		 * the documented subclass declares. */
+		ph7_class_method *pCons = PH7_ClassExtractMethod(pClass,"__construct",
+			sizeof("__construct")-1);
+		if( pCons && pCons->iProtection == PH7_CLASS_PROT_PUBLIC ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"PDO::setAttribute(): Argument #2 ($value) User-supplied statement "
+				"class cannot have a public constructor");
+		}
 	}
-	/* remember it: every later query()/prepare() builds THIS class */
+	/* Remember it: every later query()/prepare() builds THIS class. The CLASS is
+	 * stored before the constructor arguments are judged, because php stores it
+	 * there too -- a bad `constructor_args` refuses with the new class already
+	 * standing and the old arguments already dropped (php acts, then throws). */
 	if( pConn->zStmtClass ){
 		SyMemBackendFree(&pCtx->pVm->sAllocator,pConn->zStmtClass);
 		pConn->zStmtClass = 0;
 		pConn->nStmtClass = 0;
+	}
+	if( pConn->pStmtArgs ){
+		ph7_release_value(pCtx->pVm,pConn->pStmtArgs);
+		pConn->pStmtArgs = 0;
 	}
 	pConn->zStmtClass = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nName + 1);
 	if( pConn->zStmtClass ){
 		SyMemcpy(zName,pConn->zStmtClass,(sxu32)nName);
 		pConn->zStmtClass[nName] = 0;
 		pConn->nStmtClass = nName;
+	}
+	pArgs = PdoArrayAtInt(pCtx->pVm,pVal,1);
+	if( pArgs != 0 && (pArgs->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"PDO::setAttribute(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS "
+			"constructor_args must be of type ?array, array given");
+	}
+	if( pArgs ){
+		pConn->pStmtArgs = ph7_new_array(pCtx->pVm);
+		if( pConn->pStmtArgs ){
+			PH7_MemObjStore(pArgs,pConn->pStmtArgs);
+		}
 	}
 	return PH7_OK;
 }
@@ -798,6 +830,9 @@ static int vm_builtin_PDO_getAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 				ph7_value_string(pName,"PDOStatement",sizeof("PDOStatement")-1);
 			}
 			ph7_array_add_elem(pArray,0,pName);
+			if( pConn->pStmtArgs ){
+				ph7_array_add_elem(pArray,0,pConn->pStmtArgs);
+			}
 			ph7_result_value(pCtx,pArray);
 			break;
 		}
@@ -1146,7 +1181,12 @@ static void PdoCallCtor(ph7_vm *pVm,ph7_class_instance *pObj,ph7_class_method *p
 			}
 		}
 	}
-	PH7_VmCallClassMethod(pVm,pObj,pCons,0,nArg,nArg ? apArg : 0);
+	/* php's ENGINE builds the object and then calls its constructor, so the
+	 * scope check a script's `new` would take does not apply: a FETCH_CLASS
+	 * class and a statement class alike may declare a private or protected
+	 * constructor -- the statement one MUST (a public one is refused where the
+	 * attribute is set). */
+	PH7_VmCallMethodUnchecked(pVm,pObj,pCons,0,nArg,nArg ? apArg : 0);
 }
 /*
  * A column NAME as the connection presents it: ATTR_CASE folds it, and php
@@ -3681,6 +3721,26 @@ static int vm_builtin_PDOStatement_execute(ph7_context *pCtx,int nArg,ph7_value 
  * PDOStatement with a subclass of the script's own, and php builds THAT for
  * every statement the connection makes from then on.
  */
+/*
+ * php builds the statement OBJECT itself and then calls the class's own
+ * constructor with the arguments ATTR_STATEMENT_CLASS was given -- and refuses
+ * outright when there are arguments and no constructor to take them.
+ */
+static sxi32 PdoStatementCtor(ph7_context *pCtx,phl_pdo *pConn,ph7_class *pClass,
+	ph7_class_instance *pObj)
+{
+	ph7_class_method *pCons = PH7_ClassExtractMethod(pClass,"__construct",
+		sizeof("__construct")-1);
+	if( pCons == 0 ){
+		if( pConn->pStmtArgs ){
+			return PH7_VmThrowException(pCtx,"Error",
+				"User-supplied statement does not accept constructor arguments");
+		}
+		return PH7_OK;
+	}
+	PdoCallCtor(pCtx->pVm,pObj,pCons,pConn->pStmtArgs);
+	return PH7_OK;
+}
 static ph7_class * PdoStatementClass(ph7_context *pCtx,phl_pdo *pConn)
 {
 	if( pConn->zStmtClass ){
@@ -3734,6 +3794,13 @@ static int vm_builtin_PDO_prepare(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_ContextMemoryError(pCtx);
 	}
 	PH7_NativeSetAttrStr(pCtx->pVm,pObj,"queryString",zSql,nSql);
+	{
+		sxi32 rcCtor = PdoStatementCtor(pCtx,pConn,pClass,pObj);
+		if( rcCtor != PH7_OK ){
+			PH7_ClassInstanceUnref(pObj);
+			return rcCtor;
+		}
+	}
 	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
@@ -3825,6 +3892,13 @@ static int vm_builtin_PDO_query(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_ContextMemoryError(pCtx);
 	}
 	PH7_NativeSetAttrStr(pCtx->pVm,pObj,"queryString",zSql,nSql);
+	{
+		sxi32 rcCtor = PdoStatementCtor(pCtx,pConn,pClass,pObj);
+		if( rcCtor != PH7_OK ){
+			PH7_ClassInstanceUnref(pObj);
+			return rcCtor;
+		}
+	}
 	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
 		/* php's second argument IS setFetchMode(), run on the statement this
 		 * call just built -- same screen, same per-mode arity, and diagnostics

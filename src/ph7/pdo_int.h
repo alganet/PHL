@@ -65,6 +65,10 @@ struct phl_pdo {
 	int iOpenFlags;               /* Pdo\Sqlite::ATTR_OPEN_FLAGS, read at open time */
 	char *zStmtClass;             /* ATTR_STATEMENT_CLASS: what query()/prepare() build */
 	int nStmtClass;
+	ph7_value *pStmtArgs;         /* ...and the CONSTRUCTOR arguments it builds them with,
+	                               * which php passes to the class's own (non-public)
+	                               * constructor at every query()/prepare(). 0 when the
+	                               * attribute was set without them. */
 	int iErrState;                /* PDO_ERR_* */
 	char zSqlState[6];            /* "HY000" and friends; always NUL-terminated */
 	int iDrvCode;                 /* sqlite's own result code */
