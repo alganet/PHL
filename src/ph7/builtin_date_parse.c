@@ -145,6 +145,8 @@ struct dt_parsed
 	int nZone;
 	int bZoneIdent;                 /* php's timezone_type 3 rather than 2 -- only
 	                                 * "UTC" spelled in that exact case */
+	int nZoneTok;                   /* how many zone TOKENS the string spelled: the
+	                                 * second is ignored and the third refused */
 };
 /* Wrapping add: a relative vector holds whatever the string spelled, and php's
  * own answer past the int64 ceiling is garbage of its own -- but the OVERFLOW
@@ -174,6 +176,7 @@ static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)
 	p->zZone = 0;
 	p->nZone = 0;
 	p->bZoneIdent = 0;
+	p->nZoneTok = 0;
 }
 /* php's TIMELIB_UNHAVE_TIME: the clock is ZEROED rather than unset, and the
  * string still counts as carrying no time of its own -- which is why `tomorrow`
@@ -390,9 +393,11 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 #define DT_DIGITS_SAFE  18
 /* Whole bands below the position encoding, so one refusal cannot be mistaken for
  * another: the bare negative is php's "Double time specification", a band lower
- * is "Number out of range", and one lower still "Double date specification". */
+ * is "Number out of range", one lower still "Double date specification", and the
+ * lowest "Double timezone specification". */
 #define DT_ERR_RANGE    1000000
 #define DT_ERR_DDATE    2000000
+#define DT_ERR_DZONE    3000000
 /*
  * php refuses a SECOND absolute date outright -- `2020-01-01 january` and
  * `20240102 20240102` are both "Double date specification" there, reported at the
@@ -481,6 +486,191 @@ static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_p
 	*pz = z;
 	return 1;
 }
+/*
+ * The zone a string NAMED, recorded once: php reads a timezone token wherever it
+ * stands and the FIRST one wins outright, silently -- `+0200 +0300` is +02:00,
+ * `UTC GMT` is UTC and `2020-01-01T12:00:00Z +0300` keeps its `Z`. Every door
+ * that reads a zone (the attached ISO offset, a trailing name, `@epoch`'s UTC and
+ * the standalone token below) goes through here, so the rule is one line.
+ *
+ * A THIRD one is php's refusal, though: it counts the tokens and raises "Double
+ * timezone specification" on the one past the ignored second, which is what makes
+ * `-123-03-04` -- three offsets to php's scanner, and no date at all -- an error
+ * at its last `-`. Answers 1 for that, 0 otherwise.
+ *
+ * zName NULL means a fixed OFFSET, whose name php builds from the offset itself.
+ */
+static int DtSetZone(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int bIdent)
+{
+	if( p->nZoneTok >= 2 ){
+		return 1;
+	}
+	p->nZoneTok++;
+	if( p->bOffSet ){
+		return 0;
+	}
+	p->iOff = iOff;
+	p->bOffSet = zName ? 2 : 1;
+	p->zZone = zName;
+	p->nZone = nName;
+	p->bZoneIdent = bIdent;
+	return 0;
+}
+/* Exactly two digits whose value is <= iMax -- php's `minutelz`/`secondlz`, and
+ * the hour of its two-colon spelling. */
+static int DtZoneLz(const char *z,const char *zEnd,int iMax)
+{
+	return zEnd-z >= 2 && SyisDigit(z[0]) && SyisDigit(z[1])
+		&& (z[0]-'0')*10 + (z[1]-'0') <= iMax;
+}
+/* php's `hour24` (<= 24) and `minute` (<= 59) fields: one digit, or two when the
+ * two-digit reading is in range -- so `96` is the hour 9 with a `6` left over and
+ * `24` is the hour 24. Answers the digits taken. */
+static int DtZoneField(const char *z,const char *zEnd,int iMax)
+{
+	if( z >= zEnd || !SyisDigit(z[0]) ){
+		return 0;
+	}
+	if( z+1 < zEnd && SyisDigit(z[1]) && (z[0]-'0')*10 + (z[1]-'0') <= iMax ){
+		return 2;
+	}
+	return 1;
+}
+/*
+ * How many bytes of digits and colons after the sign belong to php's UTC-offset
+ * token. php's scanner takes the LONGEST of three spellings and leaves the rest
+ * of the run to the string, which is why `+2460` is +02:46 with a `0` left over
+ * and `+9999` is +99:00 with `99`:
+ *
+ *   HH:MM:SS   two colons, two digits everywhere, hours <= 24 and seconds <= 60
+ *   HHMMSS     six digits, the same three bounds
+ *   H[H] [:] M[M]    the hour alone (0-99 when nothing follows it), or an hour
+ *                    <= 24 and a minute <= 59, the colon optional
+ *
+ * The VALUE is not read here: php computes it from the byte COUNT afterwards
+ * (DtZoneOffsetDigits), and the two disagree on purpose -- `+099` matches as the
+ * hour `09` and the minute `9`, then counts as three digits and answers 0h99m.
+ */
+static int DtZoneCorrLen(const char *z,const char *zEnd)
+{
+	int nH,nM;
+	const char *zm;
+	if( zEnd-z >= 8 && z[2] == ':' && z[5] == ':'
+	 && DtZoneLz(z,zEnd,24) && DtZoneLz(&z[3],zEnd,59) && DtZoneLz(&z[6],zEnd,60) ){
+		return 8;
+	}
+	if( DtZoneLz(z,zEnd,24) && DtZoneLz(&z[2],zEnd,59) && DtZoneLz(&z[4],zEnd,60) ){
+		return 6;
+	}
+	if( (nH = DtZoneField(z,zEnd,24)) == 0 ){
+		return 0;
+	}
+	zm = &z[nH];
+	if( zm < zEnd && zm[0] == ':' ){ zm++; }
+	if( (nM = DtZoneField(zm,zEnd,59)) != 0 ){
+		return (int)(zm - z) + nM;
+	}
+	return nH;
+}
+/*
+ * php's timezone NAME token, the spellings this engine has without a tz database:
+ * `UTC` (an IDENTIFIER when spelled in that exact case, an abbreviation in any
+ * other), `GMT` and `Z`, each in any case. Answers the bytes taken, or 0. An
+ * ALPHABETIC byte may not follow: `UTC1` is the zone with a stray `1` after it
+ * where `UTCX` is a name php looks up and does not find.
+ */
+static int DtZoneWord(const char *z,const char *zEnd,sxi32 *piOff,const char **pzName,
+	int *pnName,int *pbIdent)
+{
+	int n = 0;
+	if( zEnd-z >= 3 && (SyStrnicmp(z,"utc",3) == 0 || SyStrnicmp(z,"gmt",3) == 0) ){
+		int bUtc = (z[0] == 'u' || z[0] == 'U');
+		*pzName = bUtc ? "UTC" : "GMT";
+		*pnName = 3;
+		*pbIdent = (bUtc && SyMemcmp(z,"UTC",3) == 0);
+		n = 3;
+	}else if( z < zEnd && (z[0] == 'Z' || z[0] == 'z') ){
+		*pzName = "Z";
+		*pnName = 1;
+		*pbIdent = 0;
+		n = 1;
+	}
+	if( n == 0 || (zEnd-z > n && SyisAlpha(z[n])) ){
+		return 0;
+	}
+	*piOff = 0;
+	return n;
+}
+/* Forward: the offset's VALUE is the one DateTimeZone reads too (the door that
+ * takes a whole string rather than a token), so both spellings share it. */
+static int DtZoneOffsetDigits(const char *z,int n,sxi32 *piOff,int *pnUsed);
+/*
+ * A SIGNED offset at z, the whole token: the sign, then the digits and colons
+ * DtZoneCorrLen claims. Answers the bytes taken (0 when this is not one).
+ */
+static int DtZoneCorr(const char *z,const char *zEnd,sxi32 *piOff)
+{
+	int n,nUsed = 0;
+	if( zEnd-z < 2 || (z[0] != '+' && z[0] != '-') ){
+		return 0;
+	}
+	if( (n = DtZoneCorrLen(&z[1],zEnd)) == 0
+	 || DtZoneOffsetDigits(&z[1],n,piOff,&nUsed) != 0 ){
+		return 0;
+	}
+	if( z[0] == '-' ){
+		*piOff = -*piOff;
+	}
+	return n + 1;
+}
+/*
+ * php's standalone TIMEZONE token, which its scanner takes anywhere in a date
+ * string: a name, a name inside PARENTHESES (`2020-01-01 (UTC)`), or a UTC
+ * offset with an optional uppercase `GMT` in front of it (`GMT+02:00`; the
+ * lowercase spelling is the ABBREVIATION `gmt` with a relative number after it).
+ * Advances *pz over what it took and answers 1, answers 0 leaving *pz alone, or
+ * answers php's "Double timezone specification" in DtParse's own convention.
+ */
+static int DtZoneTok(const char **pz,const char *zEnd,dt_parsed *p,const char *zIn)
+{
+	const char *z = *pz;
+	const char *zName = 0;
+	int nName = 0,bIdent = 0,n = 0,nTok = 0;
+	sxi32 iOff = 0;
+	if( z < zEnd && z[0] == '(' ){
+		/* php's parenthesized zone is one token: no blanks inside it, and the
+		 * closing paren is part of the match. */
+		if( (n = DtZoneWord(&z[1],zEnd,&iOff,&zName,&nName,&bIdent)) != 0
+		 && &z[1+n] < zEnd && z[1+n] == ')' ){
+			nTok = n + 2;
+		}
+	}
+	/* The `GMT` in front of an offset is read before the NAME of the same three
+	 * bytes, because php's scanner takes the longer token -- and only when a whole
+	 * offset follows it, which is what makes `GMT+02:00` the offset, `gmt+2` the
+	 * zone GMT with a stray relative number after it, and `GMT+` the zone GMT with
+	 * a refusal ON the sign. */
+	else if( zEnd-z > 3 && SyMemcmp(z,"GMT",3) == 0
+	 && (n = DtZoneCorr(&z[3],zEnd,&iOff)) != 0 ){
+		zName = 0;
+		nTok = n + 3;
+	}
+	else if( (n = DtZoneWord(z,zEnd,&iOff,&zName,&nName,&bIdent)) != 0 ){
+		nTok = n;
+	}
+	else if( (n = DtZoneCorr(z,zEnd,&iOff)) != 0 ){
+		zName = 0;
+		nTok = n;
+	}
+	if( nTok == 0 ){
+		return 0;
+	}
+	if( DtSetZone(p,iOff,zName,nName,bIdent) ){
+		return -((int)(z - zIn) + 1) - DT_ERR_DZONE;
+	}
+	*pz = &z[nTok];
+	return 1;
+}
 /* Forward: the time SUFFIX has to know whether a DATE would read longer at the
  * same position, and the date rules read a time suffix of their own. */
 static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
@@ -520,23 +710,9 @@ static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,dt_pars
 			return 0;
 		}
 		z = zTime;
-		if( z < zEnd && (z[0]=='Z' || z[0]=='z') ){
-			p->iOff = 0; p->bOffSet = 2; p->zZone = "Z"; p->nZone = 1; z++;
-		}else if( z < zEnd && (z[0]=='+' || z[0]=='-') ){
-			int sign = (z[0]=='-') ? -1 : 1;
-			int oh,om = 0;
-			z++;
-			if( zEnd-z < 2 || !SyisDigit(z[0]) || !SyisDigit(z[1]) ){ return (int)(z - zIn) + 1; }
-			oh = (z[0]-'0')*10 + (z[1]-'0');
-			z += 2;
-			if( z < zEnd && z[0]==':' ){ z++; }
-			if( zEnd-z >= 2 && SyisDigit(z[0]) && SyisDigit(z[1]) ){
-				om = (z[0]-'0')*10 + (z[1]-'0');
-				z += 2;
-			}
-			p->iOff = sign * (oh*3600 + om*60);
-			p->bOffSet = 1;
-		}
+		/* The zone ATTACHED to the time is the same token the string may spell
+		 * anywhere else, so `...T12:00:00+02:00:30` reads its seconds too. */
+		if( (rc = DtZoneTok(&z,zEnd,p,zIn)) < 0 ){ return rc; }
 	}
 	*pz = z;
 	return 0;
@@ -826,20 +1002,6 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	/* optional time-of-day suffix */
 	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	if( rcT != 0 ){ return rcT; }
-	/* An optional trailing UTC/GMT: php's own zone NAME, which beats the
-	 * $timezone argument beside it. Only the exact spelling "UTC" is php's
-	 * identifier; every other casing, and GMT in any casing, is an abbreviation. */
-	MDSKIPWS();
-	if( zEnd-z >= 3 && (zEnd-z==3 || !SyisAlpha(z[3]))
-	 && (SyStrnicmp(z,"utc",3) == 0 || SyStrnicmp(z,"gmt",3) == 0) ){
-		int bUtc = (SyStrnicmp(z,"utc",3) == 0);
-		p->iOff = 0;
-		p->bOffSet = 2;
-		p->zZone = bUtc ? "UTC" : "GMT";
-		p->nZone = 3;
-		p->bZoneIdent = (bUtc && SyMemcmp(z,"UTC",3) == 0);
-		z += 3;
-	}
 	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	p->m = mo;
 	if( haveDay ){ p->d = d; }
@@ -967,8 +1129,10 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			p->rus = us;
 		}
 		p->rs = DtWAdd(p->rs,v);
-		p->iOff = 0;
-		p->bOffSet = 1;
+		/* php's `@` names UTC, and it is a zone TOKEN like any other. */
+		if( DtSetZone(p,0,0,0,0) ){
+			return -((int)(zAt - zIn) + 1) - DT_ERR_DZONE;
+		}
 		bAny = 1;
 	}else if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){
 		/* [+-]YYYY-MM-DD[...] -- the sign, and any year width past four, are php's
@@ -1328,6 +1492,17 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			}
 #undef DTNUM2
 		}
+		/* php's TIMEZONE token stands anywhere in a string and is a token in its
+		 * own right: `2020-01-01 12:00 +0200` (its own serialization spelling, and
+		 * every RFC-2822 date there is), `12:00 UTC`, `1234z`, and `UTC` alone --
+		 * none of which parsed here at all. It goes LAST because php's scanner
+		 * takes the longest reading: `+1 day` is a relative and `t9` a clock, and
+		 * both would otherwise be read as a zone. */
+		if( (iRc = DtZoneTok(&z,zEnd,p,zIn)) != 0 ){
+			if( iRc != 1 ){ return iRc; }
+			bAny = 1;
+			continue;
+		}
 		return (int)(z - zIn) + 1;
 	}
 	if( !bAny ){
@@ -1377,18 +1552,22 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 {
 	/* Negative encodings: php's "Double time specification" reason, and -- one
 	 * whole DT_ERR_RANGE band lower -- its "Number out of range", which is what a
-	 * digit run too wide for the clock reports. */
-	int bRange = 0,bDDate = 0;
+	 * digit run too wide for the clock reports; then "Double date specification"
+	 * and, lowest, "Double timezone specification". */
+	int bRange = 0,bDDate = 0,bDZone = 0;
 	int bDouble;
 	int iPos;
-	if( iErrPos < -DT_ERR_DDATE ){
+	if( iErrPos < -DT_ERR_DZONE ){
+		bDZone = 1;
+		iErrPos += DT_ERR_DZONE;
+	}else if( iErrPos < -DT_ERR_DDATE ){
 		bDDate = 1;
 		iErrPos += DT_ERR_DDATE;
 	}else if( iErrPos < -DT_ERR_RANGE ){
 		bRange = 1;
 		iErrPos += DT_ERR_RANGE;
 	}
-	bDouble = !bRange && !bDDate && iErrPos < 0;
+	bDouble = !bRange && !bDDate && !bDZone && iErrPos < 0;
 	iPos = (iErrPos < 0 ? -iErrPos : iErrPos) - 1;
 	char cAt = (iPos < nLen) ? zIn[iPos] : ' ';
 	*piPos = iPos;
@@ -1400,6 +1579,14 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	}
 	if( bDDate ){
 		return "Double date specification";
+	}
+	if( bDZone ){
+		return "Double timezone specification";
+	}
+	/* php's own parenthesized-zone token starts at the `(`, so a name it cannot
+	 * find there is reported at the paren with the zone reason, not the byte. */
+	if( cAt == '(' && iPos + 1 < nLen && SyisAlpha(zIn[iPos+1]) ){
+		return "The timezone could not be found in the database";
 	}
 	return bDouble ? "Double time specification"
 		: ((cAt >= 'a' && cAt <= 'z') || (cAt >= 'A' && cAt <= 'Z'))
@@ -2493,7 +2680,9 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 			pOut->nName = sVec.nZone;
 			pOut->iZoneKind = sVec.bZoneIdent ? DT_ZONE_ID : DT_ZONE_ABBR;
 		}else{
-			pOut->nName = DtOffName(zNameBuf,nNameBuf,iOff);
+			/* ...Sec: an offset the string spelled with SECONDS is named with
+			 * them (`+02:00:30`), which is the same name DateTimeZone gives it. */
+			pOut->nName = DtOffNameSec(zNameBuf,nNameBuf,iOff);
 			pOut->zName = zNameBuf;
 			pOut->iZoneKind = DT_ZONE_OFFSET;
 		}
