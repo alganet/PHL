@@ -975,7 +975,17 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * outside the class); without __unset, an inaccessible unset is php's
 					 * catchable "Cannot access ..." Error and a missing one stays a no-op. */
 					int bUnsAccessible = pEntry ? PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) : 0;
-					if( pEntry && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) != 0 ){
+					ph7_class_attr *pUnsNoWrite = pEntry ? pObjAttr->pAttr
+						: PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
+					if( pUnsNoWrite && (pUnsNoWrite->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) != 0 ){
+						/* php's own unset handler for this class refuses, and words it
+						 * without either "readonly" or "property": `Cannot unset C::$p`.
+						 * It runs whether the object has a struct or not, so an
+						 * unconstructed one -- which holds no slot at all -- refuses too
+						 * rather than falling through to the missing-property no-op. */
+						VmBoundaryPark(&(*pVm),
+							VmThrowNativeNoUnset(&(*pVm),pThis->pClass,pUnsNoWrite));
+					}else if( pEntry && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) != 0 ){
 						/* A native class's property is php's own C struct field, and
 						 * unset() is a std handler that looks for a REAL property and
 						 * finds none: nothing happens, nothing is said, and the next
@@ -1037,12 +1047,22 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 || VmMemberNextIsWrite(pNext) ){
 						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);
 						if( pDecl && PH7_ATTR_LAZY_ABSENT(pDecl,pThis) ){
-							/* The object has never held this name: php's own write goes
-							 * to the standard handler and CREATES a dynamic property
-							 * beside the struct, which PHL refuses (§10). Fall through
-							 * to the dynamic branch so it does. Once the constructor has
-							 * installed the set, an `unset()` and a re-write are the
-							 * ordinary declared-property path again. */
+							/* The object has never held this name. A class whose handler
+							 * REFUSES every write answers the same sentence with or
+							 * without a struct, and nothing is created; otherwise php's
+							 * own write goes to the standard handler and CREATES a
+							 * dynamic property beside the struct, which PHL refuses
+							 * (§10) -- so fall through to the dynamic branch and let it.
+							 * Once the constructor has installed the set, an `unset()`
+							 * and a re-write are the ordinary declared path again. */
+							if( pDecl->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE ){
+								VmBoundaryPark(&(*pVm),
+									VmThrowNativeNoWrite(&(*pVm),pThis->pClass,pDecl));
+								VmPopOperand(&pTos,1);    /* pop the attribute name */
+								PH7_MemObjRelease(pTos);  /* the object slot becomes the answer */
+								pTos->nIdx = SXU32_HIGH;
+								VM_EXIT_BREAK;
+							}
 							pDecl = 0;
 						}
 						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
@@ -1450,7 +1470,16 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * below — a reference bind neither reads the value nor triggers
 					 * get/set hooks or an uninitialized-typed Error. pThis stays retained
 					 * (the iRef++ above); OP_STORE_REF releases it. */
-					if( pObjAttr && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) ){
+					if( pObjAttr && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) ){
+						/* A reference bind is a WRITE, and php's refusing handler answers
+						 * it with the same sentence a plain store gets. */
+						VmBoundaryPark(&(*pVm),
+							VmThrowNativeNoWrite(&(*pVm),pObjAttr->pOwner,pObjAttr->pAttr));
+						pVm->pRefTargetAttr = 0;
+						pVm->pRefTargetThis = 0;
+						pVm->pRefTargetStaticAttr = 0;
+						PH7_ClassInstanceUnref(pThis);
+					}else if( pObjAttr && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) ){
 						/* `$i->f =& $x`: php REFUSES to make a handler-backed property
 						 * the target of a reference — there is no slot to rebind, and
 						 * every write through the alias would skip the conversion the

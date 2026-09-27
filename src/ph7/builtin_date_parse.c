@@ -5451,6 +5451,15 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
+	/* php's write_property handler for DatePeriod refuses OUTRIGHT: the seven are
+	 * a view of its struct and a script may only read them. PHL kept real slots a
+	 * script could write, so `$p->recurrences = 99` and `$p->start = 5` landed and
+	 * the period then iterated to a shape no constructor would have built --
+	 * `unset($p->interval)` left one with no interval at all. */
+	rc = PH7_NativeClassMarkNoWriteProps(&(*pVm),"DatePeriod");
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	/* IteratorAggregate declares a METHOD, so it is attached now that DatePeriod has
 	 * its own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would have
 	 * made the class uninstantiable. */

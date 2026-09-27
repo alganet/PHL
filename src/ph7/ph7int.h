@@ -1701,7 +1701,16 @@ struct ph7_class_attr
                                             * and its ten are undefined until the constructor runs. The
                                             * literal IS that zeroed field, which is why one bit says
                                             * both things. */
-/* next free bit: 0x1000000 */
+#define PH7_CLASS_ATTR_NATIVE_NOWRITE 0x1000000 /* A NATIVE class's property whose write_property
+                                            * handler REFUSES every write. DatePeriod's seven are
+                                            * php's case: its handler answers `Cannot modify readonly
+                                            * property C::$p` -- the readonly WORDING without the
+                                            * readonly flag, so Reflection still reports isReadOnly()
+                                            * false -- and its unset handler answers `Cannot unset
+                                            * C::$p`. Every write form is refused, not just `=`:
+                                            * `++`, a by-reference bind, a destructuring target, and
+                                            * a write to an object that was never constructed. */
+/* next free bit: 0x2000000 */
 /*
  * Does a store into this property's slot have to be FILTERED? Two unrelated
  * reasons say yes -- a declared TYPE to enforce and a native class's own write
@@ -1711,7 +1720,8 @@ struct ph7_class_attr
  * disagree.
  */
 #define PH7_ATTR_STORE_FILTERED(pAttr) \
-	(((pAttr)->iFlags & (PH7_CLASS_ATTR_TYPED|PH7_CLASS_ATTR_NATIVE_SET)) != 0)
+	(((pAttr)->iFlags & (PH7_CLASS_ATTR_TYPED|PH7_CLASS_ATTR_NATIVE_SET \
+	                     |PH7_CLASS_ATTR_NATIVE_NOWRITE)) != 0)
 /*
  * Declaring a class from C (oo_native.c).
  *
@@ -1831,6 +1841,7 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *));
 PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass);
 PH7_PRIVATE sxi32 PH7_NativeClassMarkLazyProps(ph7_vm *pVm,const char *zClass,int bDefaultRead);
+PH7_PRIVATE sxi32 PH7_NativeClassMarkNoWriteProps(ph7_vm *pVm,const char *zClass);
 PH7_PRIVATE void PH7_NativeMaterializeLazy(ph7_vm *pVm,ph7_class_instance *pObj);
 /*
  * The refusal a native compare handler carried back (ph7_vm::zCmpRefusalClass):
@@ -4863,6 +4874,9 @@ PH7_PRIVATE void VmBitNotTypeErrorMsg(ph7_value *pVal,SyBlob *pMsgOut);
 PH7_PRIVATE void VmStringBitwise(ph7_value *pLeft,ph7_value *pRight,int cOp,SyBlob *pOut);
 PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmCheckSetVisibility(ph7_vm *pVm,ph7_class *pOwner,ph7_class_attr *pAttr);
+PH7_PRIVATE sxi32 VmThrowNativeNoWrite(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
+PH7_PRIVATE sxi32 VmThrowNativeNoUnset(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
+PH7_PRIVATE sxi32 VmCheckNativeNoWriteSlot(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone, const char *zName,sxu32 nName,ph7_value *pValue);
 PH7_PRIVATE void VmCoalesceDisarm(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmConstCycleThrow(ph7_vm *pVm);

@@ -804,6 +804,32 @@ PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass
  * read_property over the zeroed struct); without it, the name really is undefined
  * until the constructor runs (DateInterval).
  */
+/*
+ * Mark every php-VISIBLE instance property a mounted native class declares as one
+ * whose WRITE php's handler refuses (PH7_CLASS_ATTR_NATIVE_NOWRITE). DatePeriod is
+ * the caller list: php answers `Cannot modify readonly property DatePeriod::$p` to
+ * every write form and `Cannot unset DatePeriod::$p` to an unset, while Reflection
+ * still reports isReadOnly() false -- the wording is the handler's, not the
+ * readonly flag's. The C bodies that fill the seven write their slots directly and
+ * never pass the store filter, so the refusal costs the class nothing.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassMarkNoWriteProps(ph7_vm *pVm,const char *zClass)
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	SyHashEntry *pEntry;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+			continue;
+		}
+		pAttr->iFlags |= PH7_CLASS_ATTR_NATIVE_NOWRITE;
+	}
+	return SXRET_OK;
+}
 PH7_PRIVATE sxi32 PH7_NativeClassMarkLazyProps(ph7_vm *pVm,const char *zClass,int bDefaultRead)
 {
 	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);

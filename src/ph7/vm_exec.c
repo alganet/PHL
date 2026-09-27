@@ -777,6 +777,13 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 	if( pEntry ){
 		pAttr = (VmClassAttr *)pEntry->pUserData;
 		if( (pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE ){
+				/* A by-reference argument asks for something to MODIFY, and this
+				 * class's handler refuses every write: php's catchable Error, the
+				 * same sentence a plain store gets. */
+				*pbNoBind = 1;
+				return VmThrowNativeNoWrite(&(*pVm),pAttr->pOwner,pAttr->pAttr);
+			}
 			if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
 				/* A native class's property is a field of php's own C struct, not
 				 * storage a script may alias: php has no ptr_ptr handler for one, so
@@ -829,6 +836,11 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 	{
 		ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte);
 		if( pDecl && PH7_ATTR_LAZY_ABSENT(pDecl,pThis) ){
+			if( pDecl->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE ){
+				/* Refused with or without a struct behind it. */
+				*pbNoBind = 1;
+				return VmThrowNativeNoWrite(&(*pVm),pClass,pDecl);
+			}
 			pDecl = 0;   /* never held: php creates a dynamic property, PHL refuses (§10) */
 		}
 		if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){

@@ -1223,6 +1223,38 @@ PH7_PRIVATE sxi32 VmCheckSetVisibility(ph7_vm *pVm,ph7_class *pOwner,ph7_class_a
 	}
 	return SXRET_OK;
 }
+/*
+ * php's write refusal for a native property whose handler takes NO write
+ * (PH7_CLASS_ATTR_NATIVE_NOWRITE). The sentence is the readonly one -- php's
+ * date_period_write_property says exactly that -- but the property carries no
+ * readonly FLAG, so this is spelled apart from VmThrowReadonlyError rather than
+ * reached through it: Reflection reports isReadOnly() false for DatePeriod's
+ * seven in both engines, and the readonly rules (write-once, set-scope, the
+ * __clone re-initialization window) do not apply to a handler that never
+ * accepts one.
+ */
+PH7_PRIVATE sxi32 VmThrowNativeNoWrite(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Cannot modify readonly property %z::$%z",&pOwner->sName,&pAttr->sName);
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
+ * And its unset half, which php words differently: `Cannot unset C::$p`, with
+ * neither "readonly" nor "property" in it.
+ */
+PH7_PRIVATE sxi32 VmThrowNativeNoUnset(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	/* The OBJECT's class, not the declaring one -- php's two refusals disagree
+	 * about which to print, and a subclass of DatePeriod shows it: the write says
+	 * `DatePeriod::$interval` and the unset says `SubDp::$interval`. */
+	SyBlobFormat(&sMsg,"Cannot unset %z::$%z",&pClass->sName,&pAttr->sName);
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
 static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,int bModify)
 {
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
@@ -1241,6 +1273,31 @@ static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *
 		}
 	}
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
+ * Is this SLOT a native property whose handler refuses every write? Asked by the
+ * sites that reach a property through its memobj index rather than its
+ * declaration -- a `=&` bind of the property as the reference SOURCE, which is
+ * where the alias would let a later write reach the struct behind php's back.
+ * Answers SXRET_OK to proceed, or the throw status.
+ */
+PH7_PRIVATE sxi32 VmCheckNativeNoWriteSlot(ph7_vm *pVm,sxu32 nIdx)
+{
+	SyHashEntry *pSlot;
+	VmClassAttr *pVmAttr;
+	if( nIdx == SXU32_HIGH || SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
+		return SXRET_OK;
+	}
+	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
+	if( pSlot == 0 ){
+		return SXRET_OK;
+	}
+	pVmAttr = (VmClassAttr *)pSlot->pUserData;
+	if( pVmAttr->pAttr == 0
+	 || (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) == 0 ){
+		return SXRET_OK;
+	}
+	return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pVmAttr->pAttr);
 }
 /*
  * Reject an in-place mutation (`++`/`--`) of a readonly property. The increment
@@ -1263,6 +1320,9 @@ PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)
 		return SXRET_OK; /* Not a typed slot */
 	}
 	pVmAttr = (VmClassAttr *)pSlot->pUserData;
+	if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) ){
+		return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pVmAttr->pAttr);
+	}
 	if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_READONLY) ){
 		return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pVmAttr->pAttr,1);
 	}
@@ -2072,6 +2132,13 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	pAttr = pVmAttr->pAttr;
 	if( pAttr == 0 ){
 		return SXRET_OK;
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE ){
+		/* php's write_property handler for this class refuses outright, and its
+		 * sentence is the readonly one -- without the readonly FLAG, which is why
+		 * Reflection still reports isReadOnly() false for DatePeriod's seven. The
+		 * C bodies that fill them write the slot directly and never come here. */
+		return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pAttr);
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
 		sxi32 rcNat = VmRunNativeSet(pVm,pVmAttr,pValue);

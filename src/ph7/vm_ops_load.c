@@ -159,6 +159,23 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		PH7_THROW_ROUTE_MIDEXPR(rc)
 	}
 	nIdx = pTos->nIdx;
+	{
+		/* `$r = &$o->p` where php's handler refuses every write to $p: the bind
+		 * itself is the refusal there, because the alias would let a later write
+		 * through $r reach the struct the handler is guarding. PHL bound it, so
+		 * `$r = 99` afterwards rewrote a DatePeriod's recurrence count. */
+		sxi32 rcNw = VmCheckNativeNoWriteSlot(&(*pVm),nIdx);
+		if( rcNw != SXRET_OK ){
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			if( pInstr->p3 == 0 && sName.zString ){
+				SyMemBackendFree(&pVm->sAllocator,(void *)sName.zString);
+			}
+			if( rcNw == PH7_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rcNw)
+		}
+	}
 	if(nIdx == SXU32_HIGH ){
 		if( (pTos->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES|MEMOBJ_AUX_NATIVEPROP)) == 0 ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
