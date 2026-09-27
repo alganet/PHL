@@ -1429,6 +1429,189 @@ done:
 	BcNumRelease(&sR);
 	return rc;
 }
+/* ------------------------------------------------------------------ *
+ *  Rounding                                                           *
+ * ------------------------------------------------------------------ */
+/*
+ * Round a to iPrec places under one of php's eight RoundingMode rules.
+ *
+ * The whole decision is made from the DROPPED digits: with nDrop of them, the
+ * kept part T is the magnitude divided by 10^nDrop and the question is only
+ * whether |T| gains one unit. The four HALF_* rules compare the dropped tail
+ * against half of 10^nDrop, which over digits is "is the first dropped digit
+ * above 5, below 5, or exactly 5 with nothing but zeros behind it"; the other
+ * four never look at the tail's size at all, only at whether it is empty and
+ * which way the sign points.
+ *
+ * The precision may be NEGATIVE (rounding to the left of the point), and then
+ * the answer is the kept part with that many zeros put back -- which is why
+ * `bcround('1', -3, AwayFromZero)` is '1000' and grows without bound as the
+ * precision falls, in php exactly as here.
+ */
+static int BcNumRound(BcNum *pOut,const BcNum *a,sxi64 iPrec,int iMode)
+{
+	BcNum sT, sOne, sSum;
+	sxi64 n = (sxi64)(a->nInt + a->nFrac);
+	sxi64 nDrop, iFirst;
+	int dFirst = 0, bRest = 0, bInc = 0;
+	int rc = -1;
+	/* php's $precision reaches PHP_INT_MIN, and `nFrac - iPrec` would overflow
+	 * there. Every decision below reads the same answer from any nDrop past n,
+	 * so the count is CLAMPED -- the true precision is still what the final
+	 * left-shift uses, which is where a precision that far out really is felt. */
+	nDrop = (iPrec < -(n + 1)) ? (n + 1) : ((sxi64)a->nFrac - iPrec);
+	if( nDrop <= 0 ){
+		/* Nothing below the target place: this is a PAD, not a rounding. */
+		if( BcNumCopy(pOut,a) || BcNumSetScale(pOut,(sxu32)iPrec) ){
+			return -1;
+		}
+		return 0;
+	}
+	BcNumInit(&sT,a->pAlloc);
+	BcNumInit(&sOne,a->pAlloc);
+	BcNumInit(&sSum,a->pAlloc);
+	if( BcNumShiftRight(&sT,a,nDrop >= n ? (sxu32)n : (sxu32)nDrop) ){
+		goto out;
+	}
+	/* The first dropped digit, and whether anything nonzero follows it. Places
+	 * above the number's own digits are zeros, so an index off the left end is a
+	 * zero digit with the WHOLE magnitude behind it. */
+	iFirst = n - nDrop;
+	if( iFirst >= 0 && iFirst < n ){
+		dFirst = a->aDig[iFirst];
+	}
+	{
+		sxi64 j;
+		for( j = (iFirst < 0 ? 0 : iFirst + 1) ; j < n ; ++j ){
+			if( a->aDig[j] != 0 ){
+				bRest = 1;
+				break;
+			}
+		}
+	}
+	switch( iMode ){
+		case PH7_ROUND_TOWARD_ZERO:
+			bInc = 0;
+			break;
+		case PH7_ROUND_AWAY_FROM_ZERO:
+			bInc = (dFirst != 0 || bRest);
+			break;
+		case PH7_ROUND_CEILING:      /* RoundingMode::PositiveInfinity */
+			bInc = (dFirst != 0 || bRest) && !a->bNeg;
+			break;
+		case PH7_ROUND_FLOOR:        /* RoundingMode::NegativeInfinity */
+			bInc = (dFirst != 0 || bRest) && a->bNeg;
+			break;
+		default: {
+			/* The HALF_* family: above half, below half, or exactly half. */
+			if( dFirst > 5 || (dFirst == 5 && bRest) ){
+				bInc = 1;
+			}else if( dFirst < 5 ){
+				bInc = 0;
+			}else{
+				/* Exactly half. The last KEPT digit decides for the two parity
+				 * rules; the other two decide from the direction alone. */
+				int dLast = sT.aDig[sT.nInt + sT.nFrac - 1];
+				switch( iMode ){
+					case PH7_ROUND_HALF_UP:   bInc = 1; break;
+					case PH7_ROUND_HALF_DOWN: bInc = 0; break;
+					case PH7_ROUND_HALF_EVEN: bInc = (dLast & 1); break;
+					default:                  bInc = !(dLast & 1); break; /* HALF_ODD */
+				}
+			}
+			break;
+		}
+	}
+	if( bInc ){
+		if( BcNumSmall(&sOne,1) || BcMagAdd(&sSum,&sT,&sOne) ){
+			goto out;
+		}
+		BcNumSwap(&sT,&sSum);
+	}
+	if( iPrec >= 0 ){
+		BcNumSwap(pOut,&sT);
+		if( BcNumSetPoint(pOut,(sxu32)iPrec) ){
+			goto out;
+		}
+	}else if( BcNumIsZero(&sT) ){
+		/* Zero stays zero however far left the precision reaches -- and it is the
+		 * only value that can, since a nonzero kept part means the precision is
+		 * inside the number. */
+		if( BcNumSmall(pOut,0) ){
+			goto out;
+		}
+	}else{
+		if( -iPrec > (sxi64)BC_MAX_DIGITS || BcNumShiftLeft(pOut,&sT,(sxu32)(-iPrec)) ){
+			goto out;
+		}
+	}
+	pOut->bNeg = a->bNeg;
+	BcNumNormalize(pOut);
+	rc = 0;
+out:
+	BcNumRelease(&sT);
+	BcNumRelease(&sOne);
+	BcNumRelease(&sSum);
+	return rc;
+}
+/*
+ * string bcround(string $num, int $precision = 0, RoundingMode $mode = RoundingMode::HalfAwayFromZero)
+ * string bcfloor(string $num)
+ * string bcceil(string $num)
+ *
+ * The last two ARE bcround at precision 0 under the two infinity modes, which is
+ * what php's own three answers show; only the argument list differs.
+ */
+static int BcRoundOp(ph7_context *pCtx,int nArg,ph7_value **apArg,int iMode,
+	const char *zFunc)
+{
+	BcNum sA, sR;
+	sxi64 iPrec = 0;
+	int rc = PH7_OK;
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	if( nArg > 1 && iMode < 0 ){
+		iPrec = ph7_value_to_int64(apArg[1]);
+		if( iPrec > BC_MAX_SCALE ){
+			PH7_VmThrowException(pCtx,"ValueError",
+				"bcround(): Argument #2 ($precision) must be between %qd and %d",
+				(sxi64)(-SXI64_HIGH - 1),BC_MAX_SCALE);
+			goto done;
+		}
+	}
+	if( iMode < 0 ){
+		/* The default is php's own `RoundingMode::HalfAwayFromZero`; anything the
+		 * caller passes is a CASE (the signature refuses every other type). */
+		iMode = PH7_ROUND_HALF_UP;
+		if( nArg > 2 ){
+			PH7_RoundingModeCase(apArg[2],&iMode);
+		}
+	}
+	if( !BcArgNum(pCtx,apArg[0],0,"num",zFunc,&sA) ){
+		goto done;
+	}
+	if( BcNumRound(&sR,&sA,iPrec,iMode) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	rc = BcResultNum(pCtx,&sR);
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sR);
+	return rc;
+}
+PH7_PRIVATE int PH7_builtin_bcround(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return BcRoundOp(pCtx,nArg,apArg,-1,"bcround");
+}
+PH7_PRIVATE int PH7_builtin_bcfloor(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return BcRoundOp(pCtx,nArg,apArg,PH7_ROUND_FLOOR,"bcfloor");
+}
+PH7_PRIVATE int PH7_builtin_bcceil(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return BcRoundOp(pCtx,nArg,apArg,PH7_ROUND_CEILING,"bcceil");
+}
 /*
  * int bcscale(?int $scale = null)
  *

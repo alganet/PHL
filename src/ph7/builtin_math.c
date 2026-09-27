@@ -731,22 +731,8 @@ PH7_PRIVATE int PH7_builtin_hypot(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 #endif /* PH7_ENABLE_MATH_FUNC */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
-/*
- * PHP rounding modes (mirror ext/standard/php_math_round_mode.h).
- * Only the four HALF_* integer constants are exposed to userland
- * (PHP_ROUND_HALF_UP..HALF_ODD, see constant.c); the CEILING/FLOOR/
- * TOWARD_ZERO/AWAY_FROM_ZERO modes (5..8) have no userland constant but
- * are reachable by passing the raw integer to round()'s 3rd argument,
- * which PHP 8.5 still accepts, so all eight are honored here.
- */
-#define PH7_ROUND_HALF_UP        1
-#define PH7_ROUND_HALF_DOWN      2
-#define PH7_ROUND_HALF_EVEN      3
-#define PH7_ROUND_HALF_ODD       4
-#define PH7_ROUND_CEILING        5
-#define PH7_ROUND_FLOOR          6
-#define PH7_ROUND_TOWARD_ZERO    7
-#define PH7_ROUND_AWAY_FROM_ZERO 8
+/* The PH7_ROUND_* mode numbering lives in ph7int.h: bcround() rounds by the
+ * same eight rules and reads the same RoundingMode cases. */
 /*
  * php 8.4's `enum RoundingMode`, in php's own DECLARATION order -- which is the
  * order cases() reports and is NOT the order of the integer modes above. The two

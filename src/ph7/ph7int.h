@@ -4132,8 +4132,25 @@ PH7_PRIVATE int PH7_builtin_fmod(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_hypot(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif /* PH7_ENABLE_MATH_FUNC */
 PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg);
-/* php 8.4's `enum RoundingMode`, declared beside round() -- its only consumer in
- * core -- and read by bcround()/BcMath\Number::round() as well. */
+/*
+ * PHP's rounding modes (mirror ext/standard/php_math_round_mode.h). Only the
+ * four HALF_* integers are exposed to userland (PHP_ROUND_HALF_UP..HALF_ODD,
+ * see constant.c); the CEILING/FLOOR/TOWARD_ZERO/AWAY_FROM_ZERO modes (5..8)
+ * have no userland constant but are reachable by passing the raw integer to
+ * round()'s 3rd argument, which PHP 8.5 still accepts, so all eight are
+ * honored. `enum RoundingMode` names all eight and numbers them DIFFERENTLY --
+ * PH7_RoundingModeCase() is the translation.
+ */
+#define PH7_ROUND_HALF_UP        1
+#define PH7_ROUND_HALF_DOWN      2
+#define PH7_ROUND_HALF_EVEN      3
+#define PH7_ROUND_HALF_ODD       4
+#define PH7_ROUND_CEILING        5
+#define PH7_ROUND_FLOOR          6
+#define PH7_ROUND_TOWARD_ZERO    7
+#define PH7_ROUND_AWAY_FROM_ZERO 8
+/* php 8.4's `enum RoundingMode`, declared beside round() -- round() and
+ * bcround() are its two consumers. */
 PH7_PRIVATE sxi32 PH7_VmInstallRoundingMode(ph7_vm *pVm);
 PH7_PRIVATE int PH7_RoundingModeCase(ph7_value *pVal,int *pMode);
 PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -5247,6 +5264,9 @@ PH7_PRIVATE int PH7_builtin_bcdivmod(ph7_context *pCtx,int nArg,ph7_value **apAr
 PH7_PRIVATE int PH7_builtin_bcpow(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_bcpowmod(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_bcsqrt(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_bcround(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_bcfloor(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_bcceil(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_bcscale(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin_calendar.c -- ext/calendar: the serial day number and its calendars */
 PH7_PRIVATE int PH7_builtin_gregoriantojd(ph7_context *pCtx,int nArg,ph7_value **apArg);

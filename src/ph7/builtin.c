@@ -949,6 +949,9 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "bcpow",        PH7_builtin_bcpow      },
 	{ "bcpowmod",     PH7_builtin_bcpowmod   },
 	{ "bcsqrt",       PH7_builtin_bcsqrt     },
+	{ "bcround",      PH7_builtin_bcround    },
+	{ "bcfloor",      PH7_builtin_bcfloor    },
+	{ "bcceil",       PH7_builtin_bcceil     },
 	{ "bcscale",      PH7_builtin_bcscale    },
 	     /* ext/calendar: the serial day number and its four calendars */
 	{ "gregoriantojd",PH7_builtin_gregoriantojd },
