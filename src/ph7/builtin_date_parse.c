@@ -2975,18 +2975,6 @@ static int DtEatDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 
 	*pVal = v;
 	return n;
 }
-/* timelib_get_nr's recovery: skip non-digits hunting for the field.
- * Returns 1 = found+read, 0 = digits present but short, -1 = exhausted. */
-static int DtHuntDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)
-{
-	const char *z = *pz;
-	while( z < zEnd && !SyisDigit(z[0]) ){ z++; }
-	*pz = z;
-	if( z >= zEnd ){
-		return -1;
-	}
-	return DtEatDigits(pz,zEnd,nMin,nMax,pVal) ? 1 : 0;
-}
 /* Case-insensitive name-table lookup; returns 1-based index or 0 */
 static int DtEatName(const char **pz,const char *zEnd,const char **azNames,int nNames)
 {
@@ -3105,6 +3093,211 @@ static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
 	pVm->sDtLastErr.nErr = pDiag->nErr;   /* php counts what it dropped too */
 }
 /*
+ * php's timelib_get_nr, the reader behind every plain digit field of a format:
+ * it steps over whatever is NOT a digit -- to the end of the input if it has
+ * to -- and then takes at most nMax of them. Answers how many digits it took,
+ * or -1 when the input ran out before it found one; the cursor moves either way.
+ */
+static int DtFfGetNr(const char **pz,const char *zEnd,int nMax,sxi64 *pVal)
+{
+	const char *z = *pz;
+	sxi64 v = 0;
+	int n = 0;
+	while( z < zEnd && !SyisDigit(z[0]) ){ z++; }
+	if( z >= zEnd ){
+		*pz = z;
+		return -1;
+	}
+	while( z < zEnd && n < nMax && SyisDigit(z[0]) ){
+		v = v*10 + (z[0] - '0');
+		z++;
+		n++;
+	}
+	*pz = z;
+	*pVal = v;
+	return n;
+}
+/*
+ * php's timelib_get_signed_nr, which `U` reads through: it steps over anything
+ * that is neither a digit nor a sign, takes a RUN of signs (each minus flipping
+ * it), steps over non-digits again, and reads at most nMax digits. Its two ways
+ * of giving up -- an input that ends before a digit, and a value no int64 can
+ * hold -- are refusals php raises through its STRING scanner's door rather than
+ * the format one's, so both are reported at position 0 whatever the format was
+ * doing, and both answer zero.
+ */
+static int DtFfGetSignedNr(const char **pz,const char *zEnd,int nMax,sxi64 *pVal,
+	const char **pzErr)
+{
+	const char *z = *pz;
+	sxu64 u = 0,uLimit;
+	int bNeg = 0,n = 0,bOver = 0;
+	*pzErr = 0;
+	*pVal = 0;
+	while( z < zEnd && !SyisDigit(z[0]) && z[0] != '+' && z[0] != '-' ){ z++; }
+	if( z >= zEnd ){
+		*pz = z;
+		*pzErr = "Found unexpected data";
+		return 0;
+	}
+	while( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+		if( z[0] == '-' ){ bNeg = !bNeg; }
+		z++;
+	}
+	while( z < zEnd && !SyisDigit(z[0]) ){ z++; }
+	if( z >= zEnd ){
+		*pz = z;
+		*pzErr = "Found unexpected data";
+		return 0;
+	}
+	/* php's ceiling is strtoll's, so the negative side reaches one further */
+	uLimit = bNeg ? ((sxu64)SXI64_HIGH + 1) : (sxu64)SXI64_HIGH;
+	while( z < zEnd && n < nMax && SyisDigit(z[0]) ){
+		sxu64 dg = (sxu64)(z[0] - '0');
+		if( u > (uLimit - dg) / 10 ){
+			bOver = 1;
+		}
+		if( !bOver ){
+			u = u*10 + dg;
+		}
+		z++;
+		n++;
+	}
+	*pz = z;
+	if( bOver ){
+		*pzErr = "Number out of range";
+		return 0;
+	}
+	/* the negation is spelled unsigned: the floor has no positive twin */
+	*pVal = bNeg ? (sxi64)(0 - u) : (sxi64)u;
+	return 1;
+}
+/*
+ * php's MONTH table, which a format matches as a whole WORD: the letters are
+ * taken to the end of their run and the run has to spell one of the names
+ * exactly, so `janx` is no month at all where the string parser reads January
+ * out of it. The names are php's own -- three letters, `sept`, the full months,
+ * and the ROMAN numerals `i` through `xii`, which is why a format's `F` reads
+ * `x` as October. Advances *pz over the run whether or not it spelled one.
+ */
+static int DtFfMonth(const char **pz,const char *zEnd)
+{
+	static const struct { const char *z; int n; int mo; } aM[] = {
+		{ "jan",3,1 },{ "feb",3,2 },{ "mar",3,3 },{ "apr",3,4 },{ "may",3,5 },
+		{ "jun",3,6 },{ "jul",3,7 },{ "aug",3,8 },{ "sep",3,9 },{ "sept",4,9 },
+		{ "oct",3,10 },{ "nov",3,11 },{ "dec",3,12 },
+		{ "i",1,1 },{ "ii",2,2 },{ "iii",3,3 },{ "iv",2,4 },{ "v",1,5 },
+		{ "vi",2,6 },{ "vii",3,7 },{ "viii",4,8 },{ "ix",2,9 },{ "x",1,10 },
+		{ "xi",2,11 },{ "xii",3,12 },
+		{ "january",7,1 },{ "february",8,2 },{ "march",5,3 },{ "april",5,4 },
+		{ "june",4,6 },{ "july",4,7 },{ "august",6,8 },{ "september",9,9 },
+		{ "october",7,10 },{ "november",8,11 },{ "december",8,12 }
+	};
+	const char *z = *pz,*zWord = *pz;
+	sxu32 i;
+	int n;
+	while( z < zEnd && SyisAlpha((unsigned char)z[0]) ){ z++; }
+	n = (int)(z - zWord);
+	*pz = z;
+	for( i = 0 ; i < SX_ARRAYSIZE(aM) ; ++i ){
+		if( aM[i].n == n && SyStrnicmp(zWord,aM[i].z,(sxu32)n) == 0 ){
+			return aM[i].mo;
+		}
+	}
+	return 0;
+}
+/*
+ * ...and php's RELATIVE-UNIT table, which is where a format's textual DAY is
+ * looked up. `D` and `l` do not read a weekday name at all there: they read a
+ * word up to the next separator and ask the relative-unit table what it is, so
+ * every unit spelling answers one -- `week` is the weekday 7 and `ms` the
+ * weekday 1000, neither of which is a day of any week. Advances *pz over the
+ * word whether or not it spelled one; answers 1 and fills *piWday when it did.
+ */
+static int DtFfRelunit(const char **pz,const char *zEnd,sxi64 *piWday)
+{
+	static const struct { const char *z; int n; int mul; } aU[] = {
+		{ "ms",2,1000 },{ "msec",4,1000 },{ "msecs",5,1000 },
+		{ "millisecond",11,1000 },{ "milliseconds",12,1000 },
+		{ "\xc2\xb5s",3,1 },{ "usec",4,1 },{ "usecs",5,1 },
+		{ "\xc2\xb5sec",5,1 },{ "\xc2\xb5secs",6,1 },
+		{ "microsecond",11,1 },{ "microseconds",12,1 },
+		{ "sec",3,1 },{ "secs",4,1 },{ "second",6,1 },{ "seconds",7,1 },
+		{ "min",3,1 },{ "mins",4,1 },{ "minute",6,1 },{ "minutes",7,1 },
+		{ "hour",4,1 },{ "hours",5,1 },
+		{ "day",3,1 },{ "days",4,1 },
+		{ "week",4,7 },{ "weeks",5,7 },
+		{ "fortnight",9,14 },{ "fortnights",10,14 },
+		{ "forthnight",10,14 },{ "forthnights",11,14 },
+		{ "month",5,1 },{ "months",6,1 },
+		{ "year",4,1 },{ "years",5,1 },
+		{ "mondays",7,1 },{ "monday",6,1 },{ "mon",3,1 },
+		{ "tuesdays",8,2 },{ "tuesday",7,2 },{ "tue",3,2 },
+		{ "wednesdays",10,3 },{ "wednesday",9,3 },{ "wed",3,3 },
+		{ "thursdays",9,4 },{ "thursday",8,4 },{ "thu",3,4 },
+		{ "fridays",7,5 },{ "friday",6,5 },{ "fri",3,5 },
+		{ "saturdays",9,6 },{ "saturday",8,6 },{ "sat",3,6 },
+		{ "sundays",7,0 },{ "sunday",6,0 },{ "sun",3,0 },
+		{ "weekday",7,1 },{ "weekdays",8,1 }
+	};
+	const char *z = *pz,*zWord = *pz;
+	sxu32 i;
+	int n;
+	while( z < zEnd && z[0] != ' ' && z[0] != ',' && z[0] != '\t' && z[0] != ';'
+	 && z[0] != ':' && z[0] != '/' && z[0] != '.' && z[0] != '-'
+	 && z[0] != '(' && z[0] != ')' ){
+		z++;
+	}
+	n = (int)(z - zWord);
+	*pz = z;
+	for( i = 0 ; i < SX_ARRAYSIZE(aU) ; ++i ){
+		if( aU[i].n == n && SyStrnicmp(zWord,aU[i].z,(sxu32)n) == 0 ){
+			*piWday = aU[i].mul;
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * php's meridian, which is an ADJUSTMENT to whatever hour was already read
+ * rather than a reading of its own: `am` takes noon back to midnight and leaves
+ * every other hour standing, `pm` adds twelve to all but twelve itself.
+ *
+ * It hunts for its own letter -- anything that is not one of `AaPp` is stepped
+ * over, so `1 xx pm` is one in the afternoon -- and then wants either a bare
+ * `m` or the whole `.m.`; the cursor stays wherever the spelling ran out when
+ * it turns out to be neither. Answers 1 and fills *piAdj, or 0.
+ */
+static int DtFfMeridian(const char **pz,const char *zEnd,sxi64 h,sxi64 *piAdj)
+{
+	const char *z = *pz;
+	int bAm;
+	while( z < zEnd && z[0] != 'A' && z[0] != 'a' && z[0] != 'P' && z[0] != 'p' ){
+		z++;
+	}
+	if( z >= zEnd ){
+		*pz = z;
+		return 0;
+	}
+	bAm = (z[0] == 'a' || z[0] == 'A');
+	*piAdj = bAm ? ((h == 12) ? -12 : 0) : ((h != 12) ? 12 : 0);
+	z++;
+	if( z < zEnd && z[0] == '.' ){
+		z++;
+		if( z >= zEnd || (z[0] != 'm' && z[0] != 'M') ){ *pz = z; return 0; }
+		z++;
+		if( z >= zEnd || z[0] != '.' ){ *pz = z; return 0; }
+		z++;
+	}else if( z < zEnd && (z[0] == 'm' || z[0] == 'M') ){
+		z++;
+	}else{
+		*pz = z;
+		return 0;
+	}
+	*pz = z;
+	return 1;
+}
+/*
  * The eight bytes php's format map calls SEPARATORS: what `#` accepts, and what
  * each of them demands of the input when it stands in a format itself.
  */
@@ -3164,19 +3357,12 @@ struct dt_ff_res
 static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 	dt_ff_res *pOut)
 {
-	static const char *azDay3[] = {"sun","mon","tue","wed","thu","fri","sat"};
-	static const char *azDayFull[] = {"sunday","monday","tuesday","wednesday",
-		"thursday","friday","saturday"};
-	static const char *azMon3[] = {"jan","feb","mar","apr","may","jun","jul",
-		"aug","sep","oct","nov","dec"};
-	static const char *azMonFull[] = {"january","february","march","april",
-		"may","june","july","august","september","october","november","december"};
 	const char *zEnd,*zInEnd,*z;
 	sxi64 v;
 	sxi64 y = DT_UNSET,mo = DT_UNSET,d = DT_UNSET;
 	sxi64 h = DT_UNSET,mi = DT_UNSET,s = DT_UNSET,us = DT_UNSET;
 	sxi64 uVal = 0;
-	int bHasU = 0,bPlus = 0;
+	int bPlus = 0;
 	int bWday = 0;
 	sxi64 iWday = 0;
 	int iOffKind = 0;
@@ -3234,194 +3420,158 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 			continue;
 		}
 		if( c == '+' ){ bPlus = 1; continue; }
+/* php asks of every digit field, BEFORE reading it, whether the cursor is on a
+ * digit at all -- and merely says so: the reader that follows hunts for its
+ * digits regardless, so `x5` is the day 5 with one refusal behind it. */
+#define DT_FF_CHECKNUM \
+	if( !SyisDigit(z[0]) ){ DT_FF_LOGERR(iBegin,"Unexpected data found."); }
+#define DT_FF_CHECKSIGNED \
+	if( !SyisDigit(z[0]) && z[0] != '+' && z[0] != '-' ){ \
+		DT_FF_LOGERR(iBegin,"Unexpected data found."); }
 		switch( c ){
 		case 'd': case 'j':
-			if( !DtEatDigits(&z,zInEnd,1,2,&d) ){
-				DT_FF_LOGERR((int)(z - zIn),"A two digit day could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,2,&d) < 0 ){
-					DT_FF_LOGERR(nIn,"A two digit day could not be found");
-					d = DT_UNSET;
-				}
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,2,&d) < 0 ){
+				DT_FF_LOGERR(iBegin,"A two digit day could not be found");
+				d = DT_UNSET;
 			}
 			break;
-		case 'D':
+		case 'D': case 'l':
 			/* php's textual day is a RELATIVE weekday, not decoration: it moves
 			 * the date it was read beside, forward to that weekday and keeping a
-			 * day that already matches. */
-			if( (iWday = DtEatName(&z,zInEnd,azDay3,7)) == 0 ){
-				zErr = "A textual day could not be found";
-			}else{
-				iWday--;
+			 * day that already matches. Both spellings read the same table --
+			 * the three-letter and the full name are one rule there. */
+			if( DtFfRelunit(&z,zInEnd,&iWday) ){
 				bWday = 1;
-			}
-			break;
-		case 'l':
-			if( (iWday = DtEatName(&z,zInEnd,azDayFull,7)) == 0 ){
-				zErr = "A textual day could not be found";
 			}else{
-				iWday--;
-				bWday = 1;
+				zErr = "A textual day could not be found";
 			}
 			break;
 		case 'S':
-			/* ordinal suffix: st nd rd th */
-			if( zInEnd-z >= 2 && ((z[0]=='s'&&z[1]=='t')||(z[0]=='n'&&z[1]=='d')
-			 ||(z[0]=='r'&&z[1]=='d')||(z[0]=='t'&&z[1]=='h')) ){
+			/* the ordinal suffix, which php declines to look at when the cursor
+			 * is on a blank and otherwise takes in either case */
+			if( !SyisSpace((unsigned char)z[0]) && zInEnd-z >= 2
+			 && (SyStrnicmp(z,"st",2) == 0 || SyStrnicmp(z,"nd",2) == 0
+			  || SyStrnicmp(z,"rd",2) == 0 || SyStrnicmp(z,"th",2) == 0) ){
 				z += 2;
 			}
 			break;
 		case 'm': case 'n':
-			if( !DtEatDigits(&z,zInEnd,1,2,&mo) ){
-				DT_FF_LOGERR((int)(z - zIn),"A two digit month could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,2,&mo) < 0 ){
-					DT_FF_LOGERR(nIn,"A two digit month could not be found");
-					mo = DT_UNSET;
-				}
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,2,&mo) < 0 ){
+				DT_FF_LOGERR(iBegin,"A two digit month could not be found");
+				mo = DT_UNSET;
 			}
 			break;
-		case 'M':{
-			int k = DtEatName(&z,zInEnd,azMon3,12);
-			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }
-			break;
-				 }
-		case 'F':{
-			int k = DtEatName(&z,zInEnd,azMonFull,12);
+		case 'M': case 'F':{
+			int k;
+			k = DtFfMonth(&z,zInEnd);
 			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }
 			break;
 				 }
 		case 'y':
-			if( DtEatDigits(&z,zInEnd,2,2,&y) ){
-				y += (y <= 69) ? 2000 : 1900;
-			}else{
-				DT_FF_LOGERR((int)(z - zIn),"A two digit year could not be found");
-				if( DtHuntDigits(&z,zInEnd,2,2,&y) < 0 ){
-					DT_FF_LOGERR(nIn,"A two digit year could not be found");
-					y = DT_UNSET;
-				}else if( y >= 0 ){
-					y += (y <= 69) ? 2000 : 1900;
-				}
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,2,&y) < 0 ){
+				DT_FF_LOGERR(iBegin,"A two digit year could not be found");
+				y = DT_UNSET;
+			}else if( y < 100 ){
+				/* php's two-digit century, which cuts at seventy */
+				y += (y < 70) ? 2000 : 1900;
 			}
 			break;
-		case 'Y':{
-			int neg = 0;
-			if( z < zInEnd && (z[0]=='-'||z[0]=='+') ){ neg = (z[0]=='-'); z++; }
-			if( DtEatDigits(&z,zInEnd,1,4,&y) ){
-				if( neg ){ y = -y; }
-			}else{
-				DT_FF_LOGERR((int)(z - zIn),"A four digit year could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,4,&y) < 0 ){
-					DT_FF_LOGERR(nIn,"A four digit year could not be found");
-					y = DT_UNSET;
-				}
+		case 'Y':
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,4,&y) < 0 ){
+				DT_FF_LOGERR(iBegin,"A four digit year could not be found");
+				y = DT_UNSET;
 			}
 			break;
-				 }
 		case 'H': case 'G':
-			if( !DtEatDigits(&z,zInEnd,1,2,&h) ){
-				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,2,&h) < 0 ){
-					DT_FF_LOGERR(nIn,"A two digit hour could not be found");
-					h = DT_UNSET;
-				}
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,2,&h) < 0 ){
+				DT_FF_LOGERR(iBegin,"A two digit hour could not be found");
+				h = DT_UNSET;
 			}
 			break;
 		case 'h': case 'g':
-			if( !DtEatDigits(&z,zInEnd,1,2,&h) ){
-				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,2,&h) < 0 ){
-					DT_FF_LOGERR(nIn,"A two digit hour could not be found");
-					h = DT_UNSET;
-				}
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,2,&h) < 0 ){
+				DT_FF_LOGERR(iBegin,"A two digit hour could not be found");
+				h = DT_UNSET;
+			}else if( h > 12 ){
+				/* the twelve-hour spellings refuse a bigger one -- and keep it */
+				DT_FF_LOGERR(iBegin,"Hour cannot be higher than 12");
 			}
 			break;
-		case 'i':
-			if( !DtEatDigits(&z,zInEnd,1,2,&mi) ){
-				DT_FF_LOGERR((int)(z - zIn),"A two digit minute could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,2,&mi) < 0 ){
-					DT_FF_LOGERR(nIn,"A two digit minute could not be found");
-					mi = DT_UNSET;
-				}
-			}
-			break;
-		case 's':
-			if( !DtEatDigits(&z,zInEnd,1,2,&s) ){
-				DT_FF_LOGERR((int)(z - zIn),"A two digit second could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,2,&s) < 0 ){
-					DT_FF_LOGERR(nIn,"A two digit second could not be found");
-					s = DT_UNSET;
-				}
-			}
-			break;
-		case 'u':{
-			/* Microseconds: the digits parsed are right-padded to 6 (".5" -> 500000). */
-			const char *zStart = z;
-			if( !DtEatDigits(&z,zInEnd,1,6,&v) ){
-				DT_FF_LOGERR((int)(z - zIn),"A six digit microsecond could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,6,&v) < 0 ){
-					DT_FF_LOGERR(nIn,"A six digit microsecond could not be found");
-					break;
-				}
-				zStart = z; /* HuntDigits repositioned; treat as freshly read */
-			}
-			{
-				int nd = (int)(z - zStart);
-				while( nd > 0 && nd < 6 ){ v *= 10; nd++; }
-				us = v;
+		case 'i': case 's':{
+			/* the minute and the second are php's only EXACTLY two-digit
+			 * fields: a lone digit is no minute there, however many follow
+			 * it -- and a reading that fails leaves whatever was read before */
+			sxi64 t = 0;
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,2,&t) != 2 ){
+				DT_FF_LOGERR(iBegin,c == 'i'
+					? "A two digit minute could not be found"
+					: "A two digit second could not be found");
+			}else if( c == 'i' ){
+				mi = t;
+			}else{
+				s = t;
 			}
 			break;
 				 }
-		case 'v':{
+		case 'u': case 'v':{
+			/* the fraction is scaled by what the READER walked, not by the
+			 * digits it found: the bytes it stepped over hunting for them count
+			 * against the width too, so `x1` under `u` is a hundredth */
 			const char *zStart = z;
-			if( !DtEatDigits(&z,zInEnd,1,3,&v) ){
-				DT_FF_LOGERR((int)(z - zIn),"A three digit millisecond could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,3,&v) < 0 ){
-					DT_FF_LOGERR(nIn,"A three digit millisecond could not be found");
-					break;
-				}
-				zStart = z;
+			int nMax = (c == 'u') ? 6 : 3;
+			DT_FF_CHECKNUM;
+			if( DtFfGetNr(&z,zInEnd,nMax,&v) < 0 ){
+				DT_FF_LOGERR(iBegin,c == 'u'
+					? "A six digit microsecond could not be found"
+					: "A three digit millisecond could not be found");
+				break;
 			}
 			{
 				int nd = (int)(z - zStart);
-				while( nd > 0 && nd < 3 ){ v *= 10; nd++; }
-				us = v * 1000;   /* ms -> us */
+				while( nd < nMax ){ v *= 10; nd++; }
+				while( nd > nMax ){ v /= 10; nd--; }
+				us = (c == 'u') ? v : v * 1000;
 			}
 			break;
 				 }
 		case 'a': case 'A':{
-			/* php's meridian is an ADJUSTMENT to whatever hour was already read,
-			 * not a 12-hour reading of its own: `am` takes noon back to midnight
-			 * and leaves every other hour standing, `pm` adds twelve to all but
-			 * twelve itself, and an hour the format never read is left unset. */
-			static const char *azMer[] = {"am","pm","a.m.","p.m."};
-			int k = DtEatName(&z,zInEnd,azMer,4);
-			if( k ){
-				sxi64 iAdj;
-				if( ((k - 1) & 1) == 0 ){
-					iAdj = (h == 12) ? -12 : 0;
-				}else{
-					iAdj = (h != 12) ? 12 : 0;
-				}
-				if( h != DT_UNSET ){ h += iAdj; }
-			}else{
+			sxi64 iAdj = 0;
+			if( h == DT_UNSET ){
+				DT_FF_LOGERR(iBegin,"Meridian can only come after an hour has been found");
+			}
+			if( !DtFfMeridian(&z,zInEnd,h,&iAdj) ){
 				zErr = "A meridian could not be found";
+			}else if( h != DT_UNSET ){
+				h += iAdj;
 			}
 			break;
 				 }
 		case 'U':{
-			int neg = 0;
-			if( z < zInEnd && z[0]=='-' ){ neg = 1; z++; }
-			if( DtEatDigits(&z,zInEnd,1,19,&uVal) ){
-				if( neg ){ uVal = -uVal; }
-				bHasU = 1;
-			}else{
-				DT_FF_LOGERR((int)(z - zIn),"A unix timestamp could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,19,&uVal) < 0 ){
-					DT_FF_LOGERR(nIn,"A unix timestamp could not be found");
-				}else{
-					if( neg ){ uVal = -uVal; }
-					bHasU = 1;
-				}
+			/* php's epoch seconds are not a field but a whole MOMENT: it spreads
+			 * the timestamp back over y/m/d/h/i/s at UTC right here, so a
+			 * meridian behind one has an hour to move and a `Y` behind one
+			 * overwrites the year it just wrote. The microseconds are the one
+			 * part it does not touch. */
+			const char *zNrErr = 0;
+			Sytm sTm;
+			DT_FF_CHECKSIGNED;
+			DtFfGetSignedNr(&z,zInEnd,24,&uVal,&zNrErr);
+			if( zNrErr ){
+				/* php reports these at position 0 and takes the zero anyway */
+				DT_FF_LOGERR(0,zNrErr);
 			}
+			DtFillSytm(uVal,0,0,&sTm);
+			y = sTm.tm_year; mo = sTm.tm_mon + 1; d = sTm.tm_mday;
+			h = sTm.tm_hour; mi = sTm.tm_min; s = sTm.tm_sec;
+			iOffKind = 1;
+			iOffVal = 0;
 			break;
 				 }
 		case 'e': case 'T':{
@@ -3550,17 +3700,6 @@ parse_num_off:	{
 			break;
 		}
 	}
-	if( bHasU ){
-		/* php's `U` publishes the moment through the whole field set: the
-		 * timestamp is spread back over y/m/d/h/i/s at UTC, which is what the
-		 * component reader shows and what the clock is rebuilt from. */
-		Sytm sTm;
-		DtFillSytm(uVal,0,0,&sTm);
-		y = sTm.tm_year; mo = sTm.tm_mon + 1; d = sTm.tm_mday;
-		h = sTm.tm_hour; mi = sTm.tm_min; s = sTm.tm_sec;
-		iOffKind = 1;
-		iOffVal = 0;
-	}
 	/* php's own clean-up: naming ANY part of the clock puts the rest of it at
 	 * zero, so a format that read only the minute is that minute past midnight
 	 * rather than past the current hour. */
@@ -3598,6 +3737,8 @@ parse_num_off:	{
 	pOut->zName[sizeof(pOut->zName)-1] = 0;
 	DtFfDiag(&pOut->sDiag,nErr,nErrKept,aErrPos,aErrMsg,nWarn,aWarnPos,aWarnMsg);
 	return nErr > 0 ? -1 : 0;
+#undef DT_FF_CHECKSIGNED
+#undef DT_FF_CHECKNUM
 #undef DT_FF_RESET
 #undef DT_FF_LOGERR
 }
@@ -3634,9 +3775,13 @@ static sxi64 DtFfResolve(const dt_ff_res *pRes,sxi64 iNow,int iNowUs,
 	if( mi == DT_UNSET ){ mi = (secs / 60) % 60; }
 	if( s == DT_UNSET ){ s = secs % 60; }
 	if( pRes->bWday ){
+		/* php's forward hunt, and it is a DIFFERENCE rather than a remainder:
+		 * a weekday the relative-unit table answers past six -- `week` is 7 --
+		 * moves the date by that much more. */
 		sxi64 iDays = DtDaysFromCivil(y,(int)mo,1) + (d - 1);
-		int iDow = DtDowOf(iDays);
-		d += (pRes->iWday - iDow + 7) % 7;
+		sxi64 iDiff = pRes->iWday - DtDowOf(iDays);
+		if( iDiff < 0 ){ iDiff += 7; }
+		d += iDiff;
 	}
 	*piUs = (int)us;
 	return DtMakeTs(y,(int)mo,(int)d,(int)h,(int)mi,(int)s,
