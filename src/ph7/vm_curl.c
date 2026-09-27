@@ -126,7 +126,7 @@ static void CurlFreeSlists(phl_curl *pCurl)
 }
 static void CurlDropCallbacks(phl_curl *pCurl)
 {
-	ph7_value **apCb[8];
+	ph7_value **apCb[9];
 	int i;
 	apCb[0] = &pCurl->pWriteCb;
 	apCb[1] = &pCurl->pHeaderCb;
@@ -138,7 +138,8 @@ static void CurlDropCallbacks(phl_curl *pCurl)
 	apCb[5] = &pCurl->pWriteStream;
 	apCb[6] = &pCurl->pHeaderStream;
 	apCb[7] = &pCurl->pStderrStream;
-	for( i = 0 ; i < 8 ; ++i ){
+	apCb[8] = &pCurl->pPreReqCb;
+	for( i = 0 ; i < 9 ; ++i ){
 		if( *apCb[i] ){
 			ph7_release_value(pCurl->pVm,*apCb[i]);
 			*apCb[i] = 0;
@@ -366,6 +367,7 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	CurlCopyValue(pVm,&pNew->pPrivate,pFrom->pPrivate);
 	CurlCopyValue(pVm,&pNew->pReadCb,pFrom->pReadCb);
 	CurlCopyValue(pVm,&pNew->pDebugCb,pFrom->pDebugCb);
+	CurlCopyValue(pVm,&pNew->pPreReqCb,pFrom->pPreReqCb);
 	CurlCopyValue(pVm,&pNew->pWriteStream,pFrom->pWriteStream);
 	CurlCopyValue(pVm,&pNew->pHeaderStream,pFrom->pHeaderStream);
 	CurlCopyValue(pVm,&pNew->pStderrStream,pFrom->pStderrStream);
@@ -2814,6 +2816,9 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		case CURLOPT_DEBUGFUNCTION:
 			return CurlSetCallback(pCtx,pCurl,&pCurl->pDebugCb,pVal,zFunc,
 				CurlOptName(iOpt),pRc);
+		case CURLOPT_PREREQFUNCTION:
+			return CurlSetCallback(pCtx,pCurl,&pCurl->pPreReqCb,pVal,zFunc,
+				CurlOptName(iOpt),pRc);
 		case CURLOPT_WRITEFUNCTION: {
 			/* The one option that moves the destination as well as the slot:
 			 * a callback claims the body, and a null hands it back to the
@@ -3644,6 +3649,54 @@ static int CurlDebugThunk(CURL *pEasy,curl_infotype eType,char *zData,size_t nSi
 	return 0;
 }
 
+/*
+ * CURLOPT_PREREQFUNCTION: the one hook that runs BEFORE the request goes out,
+ * once the connection is up. php hands it the handle and the four addresses
+ * libcurl has by then -- the peer's IP and port, and this end's -- and reads
+ * CURL_PREREQFUNC_OK or CURL_PREREQFUNC_ABORT back; the abort is the
+ * CURLE_ABORTED_BY_CALLBACK every other refusing callback answers with.
+ *
+ * A throw parks on the same rail as the rest and aborts here, so the handle
+ * ends at errno 0 with the exception, not at 42.
+ */
+static int CurlPreReqThunk(void *pUser,char *zConnIp,char *zLocalIp,int nConnPort,int nLocalPort)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
+	ph7_vm *pVm = pCurl->pVm;
+	ph7_value sArgs[5],sRes,*apArg[5];
+	sxi32 rc;
+	int i,iOut;
+	if( CurlCbParked(pCurl) || pCurl->pPreReqCb == 0 ){
+		return CURL_PREREQFUNC_ABORT;
+	}
+	for( i = 0 ; i < 5 ; ++i ){
+		PH7_MemObjInit(pVm,&sArgs[i]);
+		apArg[i] = &sArgs[i];
+	}
+	if( pCurl->pOwner ){
+		sArgs[0].x.pOther = pCurl->pOwner;
+		sArgs[0].iFlags = MEMOBJ_OBJ;
+		pCurl->pOwner->iRef++;
+	}
+	ph7_value_string(&sArgs[1],zConnIp ? zConnIp : "",-1);
+	ph7_value_string(&sArgs[2],zLocalIp ? zLocalIp : "",-1);
+	ph7_value_int64(&sArgs[3],(sxi64)nConnPort);
+	ph7_value_int64(&sArgs[4],(sxi64)nLocalPort);
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pCurl->pPreReqCb,5,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		CurlCbPark(pCurl,rc);
+		iOut = CURL_PREREQFUNC_ABORT;
+	}else{
+		iOut = (int)ph7_value_to_int64(&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	for( i = 0 ; i < 5 ; ++i ){
+		PH7_MemObjRelease(&sArgs[i]);
+	}
+	return iOut;
+}
+
 /* ===== curl_exec() ===== */
 
 /*
@@ -3723,6 +3776,10 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( pCurl->pDebugCb || pCurl->pStderrStream ){
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_DEBUGFUNCTION,CurlDebugThunk);
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_DEBUGDATA,(void *)pCurl);
+	}
+	if( pCurl->pPreReqCb ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_PREREQFUNCTION,CurlPreReqThunk);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_PREREQDATA,(void *)pCurl);
 	}
 	if( pCurl->pXferCb ){
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_XFERINFOFUNCTION,CurlXferThunk);

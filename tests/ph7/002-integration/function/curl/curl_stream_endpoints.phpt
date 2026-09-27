@@ -157,6 +157,28 @@ $raw = curl_test_request(curl_exec($h));
 printf("readfn alone: stream=%s body=%s\n", var_export($sent, true),
     var_export(substr(strstr($raw, "\r\n\r\n"), 4), true));
 
+/* CURLOPT_PREREQFUNCTION runs once the connection is up and before the request
+ * goes out, and it is the only hook handed the addresses of both ends */
+$h = curl_init($base . '/headers');
+curl_setopt($h, CURLOPT_TIMEOUT, 10);
+curl_setopt($h, CURLOPT_RETURNTRANSFER, true);
+$pre = array();
+curl_setopt($h, CURLOPT_PREREQFUNCTION, function ($handle, $connIp, $localIp, $connPort, $localPort) use (&$pre, $port) {
+    $pre = array(get_class($handle), $connIp, $localIp, $connPort === $port, is_int($localPort));
+    return CURL_PREREQFUNC_OK;
+});
+printf("prereq: exec=%s args=%s\n", var_export(curl_exec($h), true), implode(',', array_map(static function ($v) {
+    return var_export($v, true);
+}, $pre)));
+
+$h = curl_init($base . '/headers');
+curl_setopt($h, CURLOPT_TIMEOUT, 10);
+curl_setopt($h, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($h, CURLOPT_PREREQFUNCTION, function () {
+    return CURL_PREREQFUNC_ABORT;
+});
+printf("prereq abort: exec=%s errno=%d\n", var_export(curl_exec($h), true), curl_errno($h));
+
 curl_test_server_stop($proc, $port);
 @unlink($bodyFile);
 @unlink($hdrFile);
@@ -186,8 +208,10 @@ UPLOADED BODY
 readfn args: CurlHandle/resource
 readfn body: 'uploaded body'
 readfn alone: stream='NULL' body='FROM A CB'
+prereq: exec='headed' args='CurlHandle','127.0.0.1','127.0.0.1',true,true
+prereq abort: exec=false errno=42
 --CLEAN--
 <?php
 unset($dir, $port, $base, $proc, $h, $f, $g, $e, $in, $raw, $trace, $kinds, $called, $seen, $sent,
-    $bodyFile, $hdrFile, $errFile, $up);
+    $bodyFile, $hdrFile, $errFile, $up, $pre);
 ?>

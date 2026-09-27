@@ -179,6 +179,7 @@ struct phl_curl {
 	ph7_value *pReadStream;         /* CURLOPT_INFILE / CURLOPT_READDATA */
 	ph7_value *pReadCb;             /* CURLOPT_READFUNCTION */
 	ph7_value *pDebugCb;            /* CURLOPT_DEBUGFUNCTION */
+	ph7_value *pPreReqCb;           /* CURLOPT_PREREQFUNCTION */
 	int iHeaderDest;                /* where the headers go: PHL_CURL_HDR_* */
 	ph7_context *pExecCtx;          /* the running curl_exec, for a diagnostic an
 	                                 * upload read raises from inside libcurl */
