@@ -3884,6 +3884,7 @@ PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d);
 PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd);
 PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b);
 PH7_PRIVATE void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm);
+PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal);

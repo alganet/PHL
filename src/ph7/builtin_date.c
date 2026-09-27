@@ -108,6 +108,29 @@ static void DateNow(ph7_vm *pVm,sytime *pOut)
 #endif /* __UNIXES__ */
 }
 /*
+ * The current moment as the DateTime layer wants it: epoch seconds plus the
+ * MICROSECONDS beside them.
+ *
+ * php's date classes take their base moment from the same clock microtime()
+ * reads, sub-second part included -- `new DateTime()` carries the microseconds
+ * of the instant it was built, which is what makes `$a->diff($b)->f` mean
+ * anything for two moments a program measured. The parse layer used to read
+ * `time(0)` directly, so every one of them was born on a whole second and every
+ * such diff answered 0.0. Routing them through DateNow() also hands the date
+ * classes the PH7_CONFIG_CLOCK hook the procedural half already had.
+ */
+PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec)
+{
+	sytime sNow;
+	DateNow(pVm,&sNow);
+	if( piSec ){
+		*piSec = (sxi64)sNow.tm_sec;
+	}
+	if( puSec ){
+		*puSec = (int)sNow.tm_usec;
+	}
+}
+/*
  * Break a Unix timestamp (or the current time) down into a Sytm the way the
  * DateTime layer does: PHL's own civil arithmetic, not the platform's gmtime().
  *

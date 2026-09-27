@@ -2832,11 +2832,15 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 	const char *zZoneName,int nZoneName,int iZoneKind,dt_state *pOut,char *zNameBuf,
 	sxu32 nNameBuf,const char **pzErr,int *piPos,char *pcAt)
 {
-	sxi64 iTs = 0;
+	sxi64 iTs = 0,iNow = 0;
 	sxi32 iOff = 0;
-	int bOffSet = 0,uSec = 0,iErrPos;
+	int bOffSet = 0,uSec = 0,iErrPos,uNow = 0;
 	dt_parsed sVec;
-	iErrPos = DtParseEx(zIn,nIn,(sxi64)time(0),iZoneOff,0,0,&iTs,&iOff,&bOffSet,&uSec,&sVec);
+	/* php's base moment is the whole clock, microseconds included: a string that
+	 * names no time of day keeps them (`new DateTime()`, `+1 day`), and one that
+	 * does zeroes them along with the rest of the clock. */
+	DtNowUs(pCtx->pVm,&iNow,&uNow);
+	iErrPos = DtParseEx(zIn,nIn,iNow,iZoneOff,uNow,0,&iTs,&iOff,&bOffSet,&uSec,&sVec);
 	if( iErrPos != 0 ){
 		*pzErr = DtParseErr(zIn,nIn,iErrPos,piPos,pcAt);
 		return -1;
@@ -2863,7 +2867,6 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 		pOut->nName = nZoneName;
 		pOut->iZoneKind = iZoneKind;
 	}
-	SXUNUSED(pCtx);
 	return 0;
 }
 /*
@@ -3574,6 +3577,7 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	sxi32 iZoneOff = 0;
 	const char *zFmt,*zIn;
 	int nFmt,nIn;
+	sxi64 iNowFf = 0;
 	if( pClass == 0 || nArg < 2 ){
 		return PH7_OK;
 	}
@@ -3588,7 +3592,8 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 		}
 		DtZoneOf(apArg[2],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
-	if( DtFromFormat(zFmt,nFmt,zIn,nIn,(sxi64)time(0),iZoneOff,&sRes) != 0 ){
+	DtNowUs(pCtx->pVm,&iNowFf,0);
+	if( DtFromFormat(zFmt,nFmt,zIn,nIn,iNowFf,iZoneOff,&sRes) != 0 ){
 		pVm->sDtLastErr = sRes.sDiag;
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -3812,8 +3817,11 @@ static int vm_builtin_strtotime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	iBase = (nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0)
-		? ph7_value_to_int64(apArg[1]) : (sxi64)time(0);
+	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
+		iBase = ph7_value_to_int64(apArg[1]);
+	}else{
+		DtNowUs(pCtx->pVm,&iBase,0);
+	}
 	if( DtParse(zIn,nIn,iBase,0,0,&iTs,&iOff,&bOffSet,&uSec) != 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
