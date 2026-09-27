@@ -1125,6 +1125,23 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		}else{
 			pNode->xCode = PH7_CompileShortArray;
 		}
+	}else if( !bAfterMemberOp && (pCur->nType & (PH7_TK_KEYWORD|PH7_TK_ID))
+		&& &pCur[1] < pGen->pEnd && (pCur[1].nType & PH7_TK_COLON) ){
+		/* A RESERVED WORD immediately followed by a single ':' is a named-argument
+		 * LABEL — php accepts all 73 of them there, since a parameter may be called
+		 * anything (`function f($new, $print, $and)`). Sixteen of them were claimed
+		 * by their own construct branch below instead, so `f(new: 1)`, `f(print: 2)`,
+		 * `f(match: $m)` and thirteen more were a compile fatal on source php runs.
+		 * The lexer gives `::` its own operator token, so the only other shape this
+		 * can see — a bare word before a colon — is already a literal on the
+		 * fallthrough path; a `?:` cannot reach here at all, its '?' being neither
+		 * an identifier nor a keyword. The argument list is re-parsed from each
+		 * argument's own first token, so there is no '(' to look back at and no way
+		 * to scope this to call context; ExprProcessFuncArguments makes the
+		 * POSITIONAL test that decides whether the label is really one. */
+		pNode->pStart->nType &= ~PH7_TK_OP;
+		ExprAssembleLiteral(&pCur,pGen->pEnd);
+		pNode->xCode = PH7_CompileLiteral;
 	}else if( bAfterMemberOp && (pCur->nType & PH7_TK_OP) && (pCur->nType & PH7_TK_ID) ){
 		/* An alpha-stream operator-keyword (clone/new/and/or/xor/instanceof) used
 		 * as a member NAME right after -> / ?-> / :: — e.g. $o->clone(), C::new(),
