@@ -517,7 +517,7 @@ PH7_PRIVATE int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * set wherever a read here comes back with nothing and cleared by every seek.
  */
 static int IoPrivateUwrapEof(io_private *pDev,int *pAnswer);
-static int IoPrivateAtEof(io_private *pDev)
+PH7_PRIVATE int PH7_StreamAtEof(io_private *pDev)
 {
 	int bEof;
 	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
@@ -570,7 +570,7 @@ PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
-	rc = IoPrivateAtEof(pDev);
+	rc = PH7_StreamAtEof(pDev);
 	/* EOF or not */
 	ph7_result_bool(pCtx,rc != 0);
 	return PH7_OK;
@@ -698,6 +698,14 @@ static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 	}
 	errno = 0;
 	n = IoPrivateRawRead(pDev,pBuf,nLen);
+	if( n > 0 && is_php_stream(pDev->pStream)
+	 && PH7_PhpStreamTempDrained(pDev->pHandle) ){
+		/* php's php://temp raises its end flag as soon as a read has consumed
+		 * the buffer, one read before php://memory does. feof() still answers
+		 * false while the line readers hold bytes -- PH7_StreamAtEof() asks the
+		 * buffer first, which is php's own rule. */
+		pDev->bEof = 1;
+	}
 	if( n < 0 ){
 		/* LATCH the failure for the reader to report. php's notice comes from
 		 * the stream op, which knows the errno but not which builtin is asking;
@@ -716,7 +724,7 @@ static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
  * CHUNK size (8192 by default, whatever stream_set_chunk_size() left
  * otherwise) at every reader. Silent for every other device, as php's is.
  */
-static void StreamReportReadFailure(ph7_context *pCtx,io_private *pDev)
+PH7_PRIVATE void StreamReportReadFailure(ph7_context *pCtx,io_private *pDev)
 {
 	int iErr;
 	if( pDev == 0 || pDev->iLastReadErr == 0 ){
@@ -3917,7 +3925,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 		ph7_array_add_strkey_elem(pArr,"blocked",pV);
 		/* The read-ahead this performs is feof()'s own, so a script that asks
 		 * for the metadata and then reads sees every byte. */
-		ph7_value_bool(pV,IoPrivateAtEof(pDev) != 0);
+		ph7_value_bool(pV,PH7_StreamAtEof(pDev) != 0);
 		ph7_array_add_strkey_elem(pArr,"eof",pV);
 	}
 	{

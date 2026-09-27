@@ -64,6 +64,11 @@ struct ph7_stream_data
 	SyBlob sMem;     /* MEMORY type: backing buffer */
 	sxu32 nCur;      /* MEMORY type: read/write cursor */
 	int bReadOnly;   /* MEMORY type: TRUE for data:// payloads */
+	int bTemp;       /* MEMORY type: opened as php://temp rather than php://memory.
+	                  * php's temp stream is a WRAPPER whose read copies the inner
+	                  * memory stream's eof flag, so it reports the end one read
+	                  * EARLIER than a bare php://memory does -- the two devices
+	                  * are one here, and this is the difference between them. */
 	/* FILTER type: php://filter/…/resource=… is not a stream of its own — it is
 	 * the stream named by `resource=` with a chain wrapped around it. The chain
 	 * lives on this io_private, so every read and write below goes through
@@ -214,6 +219,7 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 {
 	ph7_stream_data *pData;
 	SyString sStream;
+	int bTemp = 0;
 	if( SyStrnicmp(zName,"filter",sizeof("filter")-1) == 0
 	 && (zName[6] == '/' || zName[6] == 0) ){
 		int rc;
@@ -252,6 +258,7 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 		/* php://memory and php://temp (PHL keeps temp fully in memory —
 		 * php's 2MB disk spill is a memory-pressure detail, recorded) */
 		iMode = PH7_IO_STREAM_MEMORY;
+		bTemp = SyStrnicmp(sStream.zString,"temp",sizeof("temp")-1) == 0;
 	}else{
 		/* unknown stream name */
 		return -1;
@@ -261,6 +268,7 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 	if( pData == 0 ){
 		return -1;
 	}
+	pData->bTemp = bTemp;
 	/* Make the handle public */
 	*ppHandle = (void *)pData;
 	return PH7_OK;
@@ -2253,6 +2261,25 @@ PH7_PRIVATE int PH7_PhpStreamKind(void *pHandle)
 #ifndef PH7_DISABLE_DISK_IO
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
 	return pData ? pData->iType : 0;
+#else
+	SXUNUSED(pHandle); /* cc warning */
+	return 0;
+#endif /* PH7_DISABLE_DISK_IO */
+}
+/*
+ * Has a php://temp handle just handed out its LAST byte? php's temp stream sits
+ * over a memory one and copies that one's eof after every read, and the inner
+ * stream raises it as soon as a fill has consumed the buffer -- so a temp
+ * handle answers feof() true one read before a bare php://memory does, and
+ * `foreach` over an SplTempFileObject stops one row earlier. Answers 0 for
+ * every other device, php://memory included.
+ */
+PH7_PRIVATE int PH7_PhpStreamTempDrained(void *pHandle)
+{
+#ifndef PH7_DISABLE_DISK_IO
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	return pData && pData->bTemp && pData->iType == PH7_IO_STREAM_MEMORY
+		&& pData->nCur >= SyBlobLength(&pData->sMem);
 #else
 	SXUNUSED(pHandle); /* cc warning */
 	return 0;

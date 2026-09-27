@@ -9505,14 +9505,16 @@ static sxi32 VmInstallSplMultipleIterator(ph7_vm *pVm)
  * `var_dump` shows `pathName`/`fileName` under their mangled private keys, and
  * `__debugInfo()` hands back that same array. The class is `@not-serializable`.
  *
- * NOT converted, because they need a class PHL does not have: `openFile()` and
- * `setFileClass()` answer an `SplFileObject`. `setInfoClass()` and the `?string
- * $class` argument of `getFileInfo()`/`getPathInfo()` are here in full -- they
- * only ever name a class derived from this one.
+ * `openFile()` and `setFileClass()` are the doors into SplFileObject and answer
+ * one; `setInfoClass()` and the `?string $class` argument of
+ * `getFileInfo()`/`getPathInfo()` name a class derived from THIS one. The two
+ * class names live in slots of their own, which is what makes them survive a
+ * clone and travel to a directory iterator's children.
  */
 #define SFI_N  "__n"   /* php's file_name: the pathname, trailing slashes stripped */
 #define SFI_P  "__p"   /* php's path: everything before its last slash */
 #define SFI_IC "__ic"  /* php's info_class */
+#define SFI_FC "__fc"  /* php's file_class, what openFile() builds */
 /* The directory-iterator half of php's struct, on the same instance: its `u.dir`
  * arm minus the handle, which cannot live in a php-visible slot (see VmDirHandle).
  * Declared by DirectoryIterator, so `SplDirIs()` is what tells the two apart. */
@@ -9635,6 +9637,11 @@ static sxi32 SfiPathBuf(ph7_vm *pVm,ph7_class_instance *pThis,char *zBuf,int nBu
 }
 /* The two refusals an accessor may owe before it reads anything (below). */
 static int SfoChecked(ph7_context *pCtx,sxi32 *pRc);
+/* The open the SplFileObject constructor and openFile() share (below). iCtxArg
+ * is the php POSITION of the context argument, which differs between the two
+ * spellings and is what a refused context is blamed on. */
+static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPath,
+	const char *zMode,int nMode,int bUseInclude,ph7_value *pCtxArg,int iCtxArg);
 /*
  * php's get_file_name() ahead of an accessor that needs a path: an object whose
  * parent constructor never ran has no name AT ALL and raises Error rather than
@@ -10168,6 +10175,136 @@ static int vm_builtin_SplFileInfo_setInfoClass(ph7_context *pCtx,int nArg,ph7_va
 	PH7_NativeSetAttrStr(pVm,pThis,SFI_IC,zName,nName);
 	return PH7_OK;
 }
+/*
+ * php's setFileClass(): the class openFile() will build. Worded WITHOUT the
+ * "or null" half getFileInfo() has, like its info_class twin -- the parameter
+ * is not nullable, and a null coerces to the empty name the refusal prints.
+ */
+static int vm_builtin_SplFileInfo_setFileClass(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pBase = PH7_VmExtractClass(pVm,"SplFileObject",sizeof("SplFileObject")-1,FALSE,0);
+	ph7_class *pClass;
+	const char *zName = "SplFileObject";
+	int nName = (int)sizeof("SplFileObject")-1;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	if( nArg > 0 ){
+		zName = ph7_value_to_string(apArg[0],&nName);
+	}
+	pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);
+	if( pClass == 0 || pBase == 0 || !PH7_VmInstanceOf(pClass,pBase) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"SplFileInfo::setFileClass(): Argument #1 ($class) must be a class name "
+			"derived from SplFileObject, %.*s given",nName,zName);
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_FC,zName,nName);
+	return PH7_OK;
+}
+/*
+ * php's openFile(): spl_filesystem_object_create_type for SPL_FS_FILE. The
+ * class is this instance's file_class, and php CALLS its constructor when the
+ * class declares one of its own -- with the pathname and the MODE, two
+ * arguments, which is how a subclass gets to see what it was opened as. When it
+ * does not, php fills the slots and opens directly, which is what SfoOpen()
+ * does here; the warning that open would print is promoted to a
+ * RuntimeException worded from THIS method's name.
+ */
+static int vm_builtin_SplFileInfo_openFile(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk,rc;
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pNew;
+	ph7_class_method *pCons;
+	ph7_class *pClass;
+	ph7_value sPath;
+	SyBlob sCls,sDir;
+	const char *zMode = "r",*zName,*zDir,*zCls;
+	int nMode = 1,nName = 0,nDir = 0,nCls = 0;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	if( SplDirIs(pVm,pThis) ){
+		if( SplDirState(pVm,pThis) == 0 ){
+			return PH7_VmThrowException(pCtx,"Error","Object not initialized");
+		}
+		/* php's create_type refuses to describe an entry that is not there. */
+		if( SplDirAtEnd(pThis) ){
+			return PH7_VmThrowException(pCtx,"RuntimeException","Could not open file");
+		}
+	}
+	/* Both strings are copied OUT before anything allocates or runs user code:
+	 * they are slots of the object being read, and a subclass constructor below
+	 * can rewrite or unset either one (rule 22). */
+	zCls = SfiStr(pThis,SFI_FC,&nCls);
+	SyBlobInit(&sCls,&pVm->sAllocator);
+	SyBlobAppend(&sCls,zCls,(sxu32)nCls);
+	zDir = SfiStr(pThis,SFI_P,&nDir);
+	SyBlobInit(&sDir,&pVm->sAllocator);
+	SyBlobAppend(&sDir,zDir,(sxu32)nDir);
+	pClass = PH7_VmExtractClass(pVm,(const char *)SyBlobData(&sCls),
+		SyBlobLength(&sCls),TRUE,0);
+	if( pClass == 0 ){
+		pClass = PH7_VmExtractClass(pVm,"SplFileObject",sizeof("SplFileObject")-1,FALSE,0);
+	}
+	if( pClass == 0 ){
+		SyBlobRelease(&sCls);
+		SyBlobRelease(&sDir);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( nArg > 0 ){
+		zMode = ph7_value_to_string(apArg[0],&nMode);
+	}
+	/* The path is handed on as a VALUE: the opener needs one, and the slot it
+	 * would otherwise borrow belongs to an object about to be written to. */
+	zName = SfiName(pVm,pThis,&nName);
+	PH7_MemObjInitFromString(pVm,&sPath,0);
+	PH7_MemObjStringAppend(&sPath,zName,(sxu32)nName);
+	pNew = PH7_NewClassInstance(pVm,pClass);
+	if( pNew == 0 ){
+		PH7_MemObjRelease(&sPath);
+		SyBlobRelease(&sCls);
+		SyBlobRelease(&sDir);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pNew->iRef++;
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons && (pCons->sFunc.iFlags & VM_FUNC_NATIVE) == 0 ){
+		ph7_value sMode,*apCtor[2];
+		PH7_MemObjInitFromString(pVm,&sMode,0);
+		PH7_MemObjStringAppend(&sMode,zMode,(sxu32)nMode);
+		apCtor[0] = &sPath;
+		apCtor[1] = &sMode;
+		rc = PH7_VmCallClassMethod(pVm,pNew,pCons,0,2,apCtor);
+		PH7_MemObjRelease(&sMode);
+	}else{
+		rc = SfoOpen(pCtx,pNew,&sPath,zMode,nMode,
+			nArg > 1 ? ph7_value_to_bool(apArg[1]) : FALSE,
+			nArg > 2 && (apArg[2]->iFlags & MEMOBJ_NULL) == 0 ? apArg[2] : 0,3);
+		if( rc == PH7_OK ){
+			/* php hands the child the SOURCE's path rather than re-deriving one
+			 * from the name: a directory entry's getPath() keeps pointing at the
+			 * directory being walked, and a `php://temp` source keeps the EMPTY
+			 * path a URI's last slash would otherwise cut to `php:/`. */
+			PH7_NativeSetAttrStr(pVm,pNew,SFI_P,
+				(const char *)SyBlobData(&sDir),(int)SyBlobLength(&sDir));
+		}
+	}
+	PH7_MemObjRelease(&sPath);
+	SyBlobRelease(&sCls);
+	SyBlobRelease(&sDir);
+	if( rc != PH7_OK ){
+		PH7_ClassInstanceUnref(pNew);
+		return rc;
+	}
+	PH7_NativeResultObject(pCtx,pNew);
+	PH7_ClassInstanceUnref(pNew);
+	return PH7_OK;
+}
 /* One `"\0Class\0member" => <string>` entry of a debug array. */
 static void SfiDebugStr(ph7_vm *pVm,ph7_value *pOut,const char *zKey,int nKey,
 	const char *zVal,int nVal)
@@ -10299,6 +10436,8 @@ static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
 		{ SFI_P,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
 		{ SFI_IC, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
 		  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "SplFileInfo", 0.0 }, 0 },
+		{ SFI_FC, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "SplFileObject", 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aSfiMethod[] = {
 		{ "__construct",   PH7_MOD_PUBLIC, "string $filename", 0,
@@ -10332,8 +10471,13 @@ static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
 		  vm_builtin_SplFileInfo_getFileInfo },
 		{ "getPathInfo",   PH7_MOD_PUBLIC, "?string $class = null", "@?SplFileInfo",
 		  vm_builtin_SplFileInfo_getPathInfo },
-		{ "setInfoClass",  PH7_MOD_PUBLIC, "string $class = SplFileInfo::class", "@void",
+		{ "setInfoClass",  PH7_MOD_PUBLIC, "~string $class = SplFileInfo::class", "@void",
 		  vm_builtin_SplFileInfo_setInfoClass },
+		{ "openFile",      PH7_MOD_PUBLIC,
+		  "string $mode = \"r\", bool $useIncludePath = false, $context = null",
+		  "@SplFileObject", vm_builtin_SplFileInfo_openFile },
+		{ "setFileClass",  PH7_MOD_PUBLIC, "~string $class = SplFileObject::class", "@void",
+		  vm_builtin_SplFileInfo_setFileClass },
 		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileInfo_getPathname },
 		{ "__debugInfo",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFileInfo_debugInfo },
 		/* php does NOT mark this one tentative -- it is the only method here that
@@ -11381,7 +11525,7 @@ static int SfoReadEx(ph7_context *pCtx,int bSilent,int iLineAdd,int bCsv,sxi32 *
 	ph7_int64 n;
 	*pRc = PH7_OK;
 	SfoFreeLine(pVm,pThis);
-	if( pDev == 0 || pDev->bEof ){
+	if( pDev == 0 || PH7_StreamAtEof(pDev) ){
 		if( !bSilent ){
 			int nName = 0;
 			const char *zName = SfiName(pVm,pThis,&nName);
@@ -11393,6 +11537,9 @@ static int SfoReadEx(ph7_context *pCtx,int bSilent,int iLineAdd,int bCsv,sxi32 *
 	}
 	n = StreamReadLine(pDev,&zLine,iMax > 0 ? (ph7_int64)iMax : 0);
 	if( n < 1 ){
+		/* The device's own notice, worded from THIS method: a read on a handle
+		 * opened write-only says so here as it does from fgets(). */
+		StreamReportReadFailure(pCtx,pDev);
 		/* php's buf == NULL: the line is the EMPTY string, not an absence. */
 		PH7_NativeSetAttrStr(pVm,pThis,SFO_L,"",0);
 	}else{
@@ -11534,7 +11681,7 @@ static int SfoReadLineEx(ph7_context *pCtx,int bSilent,sxi32 *pRc)
 		sxi32 rc;
 		SfoFreeLine(pVm,pThis);
 		pDev = SfoDev(pThis);
-		if( pDev == 0 || pDev->bEof ){
+		if( pDev == 0 || PH7_StreamAtEof(pDev) ){
 			if( !bSilent ){
 				int nName = 0;
 				const char *zName = SfiName(pVm,pThis,&nName);
@@ -11618,7 +11765,7 @@ static sxi32 SfoRewind(ph7_context *pCtx)
  * this context's own qualified name, which is what the caller reports.
  */
 static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPath,
-	const char *zMode,int nMode,int bUseInclude,ph7_value *pCtxArg)
+	const char *zMode,int nMode,int bUseInclude,ph7_value *pCtxArg,int iCtxArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	const ph7_vfs *pVfs = pVm->pEngine->pVfs;
@@ -11626,8 +11773,17 @@ static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPat
 	io_private *pDev;
 	ph7_value *pSlot;
 	const char *zErrUri,*zPath;
-	int nPath = 0,iErr = 0,bThrew = 0;
+	ph7_value *apCtx[4];
+	int nPath = 0,iErr = 0,bThrew = 0,i;
 	zPath = ph7_value_to_string(pPath,&nPath);
+	/* PH7_StreamCtxFromArg words its refusal from an argument VECTOR position,
+	 * so the context is presented at the index php blames. */
+	for( i = 0 ; i < (int)SX_ARRAYSIZE(apCtx) ; ++i ){
+		apCtx[i] = pPath;
+	}
+	if( iCtxArg >= 1 && iCtxArg <= (int)SX_ARRAYSIZE(apCtx) ){
+		apCtx[iCtxArg - 1] = pCtxArg;
+	}
 	/* php's order, and each step is observable from the one before it: the NUL
 	 * is ZPP's and comes first, then the already-open refusal, then the
 	 * directory stat, and only then the EMPTY path -- which is the stream
@@ -11652,8 +11808,9 @@ static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPat
 	if( nPath < 1 ){
 		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
 	}
-	pCtxRes = pCtxArg ? PH7_StreamCtxFromArg(pCtx,1,&pCtxArg,0,"$context",0,&bThrew)
-	                  : PH7_StreamCtxDefault(pVm);
+	pCtxRes = pCtxArg
+		? PH7_StreamCtxFromArg(pCtx,iCtxArg,apCtx,iCtxArg - 1,"$context",0,&bThrew)
+		: PH7_StreamCtxDefault(pVm);
 	if( bThrew ){
 		return PH7_OK;
 	}
@@ -11726,7 +11883,44 @@ static int vm_builtin_SplFileObject_construct(ph7_context *pCtx,int nArg,ph7_val
 	}
 	return SfoOpen(pCtx,pThis,apArg[0],zMode,nMode,
 		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,
-		nArg > 3 && (apArg[3]->iFlags & MEMOBJ_NULL) == 0 ? apArg[3] : 0);
+		nArg > 3 && (apArg[3]->iFlags & MEMOBJ_NULL) == 0 ? apArg[3] : 0,4);
+}
+/*
+ * SplTempFileObject::__construct(int $maxMemory = 2097152)
+ *
+ * php builds a php:// URI from the argument and opens it `wb`, and the three
+ * arms are visible from outside because getPathname() answers the URI: a
+ * NEGATIVE budget is `php://memory` (never spilled to disk), a budget NAMED is
+ * `php://temp/maxmemory:N` -- including 0, which spills immediately -- and no
+ * argument at all is a plain `php://temp` carrying php's own default. The path
+ * is the EMPTY string rather than the `php:/` a URI's last slash would cut.
+ */
+static int vm_builtin_SplTempFileObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iMax = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	ph7_value sUri;
+	sxi32 rc;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInitFromString(pVm,&sUri,0);
+	if( iMax < 0 ){
+		PH7_MemObjStringAppend(&sUri,"php://memory",sizeof("php://memory")-1);
+	}else if( nArg > 0 ){
+		char zBuf[64];
+		int n = SyBufferFormat(zBuf,sizeof(zBuf),"php://temp/maxmemory:%qd",iMax);
+		PH7_MemObjStringAppend(&sUri,zBuf,(sxu32)n);
+	}else{
+		PH7_MemObjStringAppend(&sUri,"php://temp",sizeof("php://temp")-1);
+	}
+	rc = SfoOpen(pCtx,pThis,&sUri,"wb",2,FALSE,0,0);
+	PH7_MemObjRelease(&sUri);
+	if( rc == PH7_OK ){
+		PH7_NativeSetAttrStr(pVm,pThis,SFI_P,"",0);
+	}
+	return rc;
 }
 /* The guard every method below opens with: the handle, or the refusal. */
 static io_private * SfoNeed(ph7_context *pCtx,sxi32 *pRc)
@@ -11757,7 +11951,7 @@ static int vm_builtin_SplFileObject_eof(ph7_context *pCtx,int nArg,ph7_value **a
 	if( pDev == 0 ){
 		return rc;
 	}
-	ph7_result_bool(pCtx,pDev->bEof != 0);
+	ph7_result_bool(pCtx,PH7_StreamAtEof(pDev) != 0);
 	return PH7_OK;
 }
 /* php's valid(): the LINE decides under READ_AHEAD, the stream otherwise. */
@@ -11779,7 +11973,7 @@ static int vm_builtin_SplFileObject_valid(ph7_context *pCtx,int nArg,ph7_value *
 	if( pDev == 0 ){
 		return rc;
 	}
-	ph7_result_bool(pCtx,pDev->bEof == 0);
+	ph7_result_bool(pCtx,PH7_StreamAtEof(pDev) == 0);
 	return PH7_OK;
 }
 /* php's fgets(), which is also this class's getCurrentLine(): a LOUD read that
@@ -12409,11 +12603,23 @@ static sxi32 VmInstallSplFileObject(ph7_vm *pVm)
 		{ "getCurrentLine",PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileObject_fgets },
 		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileObject_toString },
 	};
+	static const PH7_NativeMethodDef aTempMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "int $maxMemory = 2097152", 0,
+		  vm_builtin_SplTempFileObject_construct },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "SplFileObject", "SplFileInfo", "RecursiveIterator,SeekableIterator",
 		  PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aFileMethod, SX_ARRAYSIZE(aFileMethod), aFileConst, SX_ARRAYSIZE(aFileConst),
 		  aFileProp, SX_ARRAYSIZE(aFileProp), SfoRelease, 0, SfiPresent },
+		/* php gives SplTempFileObject no handlers of its own, so it INHERITS the
+		 * check pair -- uncloneable, and every method refused on an instance
+		 * whose parent constructor never ran. A native class here inherits
+		 * neither the refusals nor the hooks (rule 29), so both are restated. */
+		{ "SplTempFileObject", "SplFileObject", 0,
+		  PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
+		  aTempMethod, SX_ARRAYSIZE(aTempMethod), 0, 0,
+		  0, 0, SfoRelease, 0, SfiPresent },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }

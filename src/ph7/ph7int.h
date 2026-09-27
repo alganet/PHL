@@ -4541,6 +4541,13 @@ PH7_PRIVATE void PH7_StreamReleaseUnopened(ph7_context *pCtx,io_private *pDev);
  * stays buffered. The pointer is into the handle's own working buffer and the
  * next read invalidates it. */
 PH7_PRIVATE ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 nMaxLen);
+/* php's feof(): the end flag, but only once the line readers' look-ahead buffer
+ * has been drained -- buffered bytes are not an end, and a userland wrapper is
+ * asked the question itself. */
+PH7_PRIVATE int PH7_StreamAtEof(io_private *pDev);
+/* php's `Read of N bytes failed with errno=...` notice, raised from whichever
+ * builtin or METHOD is asking. A no-op unless the last device read failed. */
+PH7_PRIVATE void StreamReportReadFailure(ph7_context *pCtx,io_private *pDev);
 /* Why PH7_StreamOpenPath() answered 0. It reports nothing itself: fopen() warns
  * and SplFileObject's constructor throws, which is php's own split. */
 #define PH7_STREAM_OPEN_OK       0
@@ -4564,6 +4571,10 @@ PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream);
  * stream_get_meta_data() names MEMORY, TEMP and STDIO apart, and the device
  * itself is the only place that knows. */
 PH7_PRIVATE int PH7_PhpStreamKind(void *pHandle);
+/* Has a php://temp handle handed out its last byte? php's temp stream copies its
+ * inner memory stream's eof, so it reports the end one read EARLIER than a bare
+ * php://memory; 0 for every other device. */
+PH7_PRIVATE int PH7_PhpStreamTempDrained(void *pHandle);
 /* The handle a php://filter proxy wraps, or 0 for any other php:// stream. */
 PH7_PRIVATE io_private * PH7_PhpStreamInner(void *pHandle);
 /* That handle, or pDev itself when it is not a proxy. */
