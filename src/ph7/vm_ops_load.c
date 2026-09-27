@@ -70,10 +70,29 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		if( nSrcIdx == SXU32_HIGH ){
-			/* php: the RHS of `=&` must be a variable, not a constant expression.
-			 * (The compiler already rejects the obvious literal forms.) */
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-				"Reference operator require a variable not a constant as it's right operand");
+			/* No slot behind the SOURCE (`$o->p =& f()`, `C::$s =& f()`). php makes a
+			 * fresh reference holding the value and binds the property to THAT; PHL
+			 * refused the bind with `Reference operator require a variable not a
+			 * constant as it's right operand` and left the property untouched. A
+			 * source WRITTEN as a call takes php's notice with it. */
+			ph7_value *pFresh;
+			if( pVmAttr || pStAttr ){
+				/* …only when there IS a property to bind it to: with no resolved
+				 * target the bind is a no-op and the slot would never be pinned. */
+				if( pInstr->iP1 & PH7_STOREREF_CALLSRC ){
+					PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
+						"Only variables should be assigned by reference");
+				}
+				pFresh = PH7_ReserveMemObj(&(*pVm));
+				if( pFresh ){
+					nSrcIdx = pFresh->nIdx;
+					PH7_MemObjStore(pSrc,pFresh);
+					pSrc->nIdx = nSrcIdx;
+				}
+			}
+		}
+		if( nSrcIdx == SXU32_HIGH ){
+			/* Reservation failed: nothing to bind to. */
 		}else if( pVmAttr ){
 			sxu32 nOldIdx = pVmAttr->nIdx;
 			if( nOldIdx != nSrcIdx ){
@@ -177,14 +196,23 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		}
 	}
 	if(nIdx == SXU32_HIGH ){
-		if( (pTos->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES|MEMOBJ_AUX_NATIVEPROP)) == 0 ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-				"Reference operator require a variable not a constant as it's right operand");
-		}else{
-			/* An object/array/resource value, or a NATIVE class's handler-backed
-			 * property (`$r = &$i->f`), which php binds to a fresh variable in
-			 * silence because there is no slot behind it to alias. */
+		{
+			/* No slot behind the source. php binds a FRESH variable holding the value
+			 * — whatever its type — and the only thing it ever says about it is the
+			 * notice below, so PHL's `Reference operator require a variable not a
+			 * constant as it's right operand` fired on every scalar: `$r =& f()`,
+			 * `$r =& f()[0]` and `$r =& mk()->p` all refused the bind and left $r
+			 * undefined too. (Object/array/resource sources already took this path.)
+			 * A source WRITTEN as a call is php's `Only variables should be assigned
+			 * by reference`, raised when the callee did not return by reference —
+			 * the compiler marked it, since a temporary the call was only the BASE of
+			 * (`f()[0]`) is silent. */
 			ph7_value *pObj;
+			if( (pInstr->iP1 & PH7_STOREREF_CALLSRC)
+			 && (pTos->iFlags & MEMOBJ_AUX_NATIVEPROP) == 0 ){
+				PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
+					"Only variables should be assigned by reference");
+			}
 			/* Extract the desired variable and if not available dynamically create it */
 			pObj = VmExtractMemObj(&(*pVm),&sName,FALSE,TRUE);
 			if( pObj == 0 ){
@@ -543,8 +571,8 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 	ph7_hashmap *pMap = 0; /* cc  warning */
 	ph7_value *pKey;
 	sxu32 nIdx;
-	if( pInstr->iP1 ){
-		/* Key is next on stack */
+	if( pInstr->iP1 & 1 ){
+		/* Key is next on stack (bit 1 is PH7_STOREREF_CALLSRC, not a key) */
 		pKey = pTos;
 		pTos--;
 	}else{
@@ -812,6 +840,16 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 	 * HashmapInsertByRef both then cast NULL->"". A null pKey==0 (an append, no key)
 	 * is not a null OFFSET and is left alone. */
 	VmNullOffsetDeprecate(&(*pVm),pKey);
+	if( pInstr->iOp == PH7_OP_STORE_IDX_REF
+	 && (pInstr->iP1 & PH7_STOREREF_CALLSRC)
+	 && (pTos->iFlags & MEMOBJ_AUX_STROFFSET) == 0
+	 && pTos->nIdx == SXU32_HIGH ){
+		/* `$a[] =& f()` / `$a[$k] =& f()`: the source was written as a CALL and the
+		 * callee did not return by reference, so php binds the value it answered and
+		 * says so. Same notice the plain `$r =& f()` bind raises. */
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
+			"Only variables should be assigned by reference");
+	}
 	if( pInstr->iOp == PH7_OP_STORE_IDX_REF && (pTos->iFlags & MEMOBJ_AUX_STROFFSET) ){
 		/* `$a[] = &$s[1]`: the source is a string OFFSET, which php refuses to
 		 * reference — and whose slot index is the BASE STRING's, so binding it

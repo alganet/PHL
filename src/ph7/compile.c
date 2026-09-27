@@ -1356,6 +1356,19 @@ static sxi32 GenStateEmitExprCode(
 				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE
 					| EXPR_FLAG_RMW_LOAD /* php warns before seeding `$undef++` */;
 			}
+			/* The SOURCE of a `=&` (pLeft, the operands having been swapped in
+			 * parse.c) is compiled in WRITE context by php too —
+			 * `zend_compile_var(source, BP_VAR_W, 1)` — which is what makes
+			 * `$r =& $undef` and `$r =& $a[5]` CREATE the thing they bind to,
+			 * silently. PHL READ it, so both warned about what was missing and then
+			 * refused the bind outright, leaving $r undefined as well. No
+			 * RMW_LOAD: a bind does not read the source's value, and no
+			 * MEMBER_WRITE: a handler-backed native property has no pointer for
+			 * php to hand out either, so `$r =& $iv->s` must keep taking the
+			 * read COPY it takes in php. */
+			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_REF ){
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE;
+			}
 			/* `??` reads its LEFT operand in isset-context: an undefined or
 			 * UNINITIALIZED typed PROPERTY must yield the default rather than a
 			 * warning/Error (php). Tag a member-access LHS so its OP_MEMBER takes
@@ -1786,6 +1799,16 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 		}else if( iVmOp == PH7_OP_STORE_REF ){
+			/* php records at COMPILE time whether the reference SOURCE was written
+			 * as a CALL (ZEND_RETURNS_FUNCTION), so the bind can raise `Only
+			 * variables should be assigned by reference` when the callee turns out
+			 * not to return by reference. It is the direct call only: `$r =& f()`
+			 * warns where `$r =& f()[0]` and `$r =& f()->p` are silent. The operands
+			 * were swapped in parse.c, so the source is pLeft. */
+			if( pNode->pLeft && pNode->pLeft->pOp
+			 && pNode->pLeft->pOp->iOp == EXPR_OP_FUNC_CALL ){
+				iP1 |= PH7_STOREREF_CALLSRC;
+			}
 			/* Peek first: a member LHS ($o->p =& $x, C::$s =& $x) keeps its
 			 * OP_MEMBER in place (it resolves + stashes the target slot at
 			 * runtime), unlike the variable/array shapes which fold their load
@@ -1804,7 +1827,7 @@ static sxi32 GenStateEmitExprCode(
 						 * We have to convert the STORE_REF instruction into STORE_IDX_REF
 						 */
 						iVmOp = PH7_OP_STORE_IDX_REF;
-						iP1 = pInstr->iP1;
+						iP1 = pInstr->iP1 | (iP1 & PH7_STOREREF_CALLSRC);
 						iP2 = pInstr->iP2;
 						p3  = pInstr->p3;
 					}else{

@@ -4495,6 +4495,11 @@ PH7_PRIVATE int PH7_ExprNodeIsClassConst(ph7_expr_node *pNode);
 PH7_PRIVATE int PH7_ExprIsModifiableValue(ph7_expr_node *pNode);
 PH7_PRIVATE SyToken * PH7_ExprTokenInStream(ph7_gen_state *pGen,SyToken *pTok);
 PH7_PRIVATE sxi32 PH7_ExprOperandNotAVariable(ph7_gen_state *pGen,ph7_expr_node *pOperand);
+/* OP_STORE_REF / OP_STORE_IDX_REF iP1 bit 1: the reference SOURCE was written as a
+ * CALL. php's compiler records the same thing (ZEND_RETURNS_FUNCTION) so the bind
+ * can raise `Only variables should be assigned by reference` when the callee did
+ * not return by reference. Bit 0 stays STORE_IDX_REF's "a key is on the stack". */
+#define PH7_STOREREF_CALLSRC 0x02
 /* Context bits for GenStateWriteTargetCheck — php's write-target rules are the
  * same everywhere except for these two distinctions. */
 #define PH7_WTC_UNSET   0x01 /* `unset()`: the $this refusal takes its own wording */
