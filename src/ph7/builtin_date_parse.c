@@ -31,9 +31,13 @@ PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)
 {
 	sxi64 era;
 	unsigned yoe,doy,doe;
-	y -= (m <= 2);
-	era = (y >= 0 ? y : y - 399) / 400;
-	yoe = (unsigned)(y - era * 400);
+	/* Every step is spelled in UNSIGNED arithmetic: the year reaching here is
+	 * whatever the string held, php's own answer for one past the clock is the
+	 * WRAP below, and a signed overflow on the way to it is undefined (this
+	 * build gates on UBSan). The bits are the same either way. */
+	y = (sxi64)((sxu64)y - (sxu64)(m <= 2));
+	era = (y >= 0 ? y : (sxi64)((sxu64)y - 399u)) / 400;
+	yoe = (unsigned)((sxu64)y - (sxu64)era * 400u);
 	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);
 	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
 	/* Unsigned tail: php's expanded ISO year has no width limit, and php's own
@@ -47,17 +51,17 @@ PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)
 {
 	sxi64 era;
 	unsigned doe,yoe,doy,mp;
-	z += 719468;
-	era = (z >= 0 ? z : z - 146096) / 146097;
-	doe = (unsigned)(z - era * 146097);
+	z = (sxi64)((sxu64)z + 719468u);
+	era = (z >= 0 ? z : (sxi64)((sxu64)z - 146096u)) / 146097;
+	doe = (unsigned)((sxu64)z - (sxu64)era * 146097u);
 	yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
-	*py = (sxi64)yoe + era * 400;
+	*py = (sxi64)((sxu64)yoe + (sxu64)era * 400u);
 	doy = doe - (365 * yoe + yoe/4 - yoe/100);
 	mp = (5 * doy + 2) / 153;
 	*pd = (int)(doy - (153 * mp + 2) / 5 + 1);
 	*pm = (int)(mp < 10 ? mp + 3 : mp - 9);
 	if( *pm <= 2 ){
-		*py += 1;
+		*py = (sxi64)((sxu64)*py + 1u);
 	}
 }
 PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b)
@@ -871,16 +875,25 @@ static int DtRead1or2(const char *z,const char *zEnd,int *pn)
  * point is garbage of its own (a 20-digit year reads back as 1999 there), so
  * nothing pins that corner -- only the absence of undefined behaviour.
  */
-static int DtTryIsoYear(const char *z,const char *zEnd,sxi64 *pY)
+static int DtTryIsoYear(const char *z,const char *zEnd,sxi64 *pY,int *pbRange)
 {
 	static const sxu64 iCeil = (sxu64)0x7FFFFFFFFFFFFFFF;
 	int nSign = (z < zEnd && (z[0] == '+' || z[0] == '-')) ? 1 : 0;
 	const char *zDig = &z[nSign];
 	const char *zScan = zDig;
 	sxu64 y = 0;
+	int bOver = 0;
+	/* php's own ceiling for the field: the magnitude an int64 holds, which is one
+	 * larger on the negative side. */
+	sxu64 iMax = (nSign && z[0] == '-') ? iCeil + 1 : iCeil;
 	while( zScan < zEnd && SyisDigit(zScan[0]) ){
 		sxu64 dig = (sxu64)(zScan[0] - '0');
-		y = (y > (iCeil - dig) / 10) ? iCeil : y * 10 + dig;
+		if( bOver || y > (iMax - dig) / 10 ){
+			bOver = 1;
+			y = iMax;
+		}else{
+			y = y * 10 + dig;
+		}
 		zScan++;
 	}
 	if( zScan - zDig < 4 || (nSign == 0 && zScan - zDig != 4) ){
@@ -889,7 +902,20 @@ static int DtTryIsoYear(const char *z,const char *zEnd,sxi64 *pY)
 	if( zScan >= zEnd || zScan[0] != '-' ){
 		return 0;
 	}
-	*pY = (nSign && z[0] == '-') ? -(sxi64)y : (sxi64)y;
+	if( nSign && zScan - zDig > 19 ){
+		/* php's EXPANDED year is at most nineteen digits; a wider run is not this
+		 * token at all and the string re-reads it with whatever else fits. */
+		return 0;
+	}
+	/* ...and one that no int64 holds is php's own refusal -- but only once the
+	 * REST of the token has matched too, so the caller is told rather than
+	 * answered: `+9296228446195592075-1-1` is no expanded date at all there and
+	 * reports the byte its re-reading trips on instead. */
+	*pbRange = bOver;
+	/* the negative bound IS the int64's own, so the sign is applied in UNSIGNED
+	 * arithmetic: negating -9223372036854775808 as a signed value is undefined
+	 * and this build gates on UBSan. */
+	*pY = (nSign && z[0] == '-') ? (sxi64)((sxu64)0 - y) : (sxi64)y;
 	return (int)(zScan - z);
 }
 /*
@@ -983,8 +1009,8 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	const char *zRest;
 	const char *zTok = z;
 	sxi64 y = 0;
-	int nYr,mo,d,rcT;
-	if( (nYr = DtTryIsoYear(z,zEnd,&y)) == 0 ){
+	int nYr,mo,d,rcT,bRange = 0;
+	if( (nYr = DtTryIsoYear(z,zEnd,&y,&bRange)) == 0 ){
 		return 0;
 	}
 	zRest = &z[nYr];   /* the '-' that closed the year */
@@ -1058,6 +1084,11 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 		p->d = d;
 		*pzOut = z;
 		return 1;
+	}
+	if( bRange ){
+		/* the whole `[+-]YYYY-MM-DD` matched and its year is past the int64 the
+		 * field is kept in: php's "Number out of range", at the sign */
+		return -((int)(zTok - zIn) + 1) - DT_ERR_RANGE;
 	}
 	mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
 	d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
