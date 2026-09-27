@@ -651,6 +651,10 @@ struct VmExportCtx
 	SyBlob *pOut;
 	int nIndent;  /* indentation of the container emitting this entry */
 	int depth;    /* recursion guard */
+	int bPresented; /* the entries are a native class's PRESENTED shape, which
+	                 * carries the object's own table MANGLED. var_export prints a
+	                 * non-public property under its PLAIN name (the attribute loop
+	                 * below already does), so the key is unmangled here too. */
 };
 static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth);
 /* Append nIndent spaces. */
@@ -712,7 +716,14 @@ static int VmExportArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData
 	if( ph7_value_is_string(pKey) ){
 		int n;
 		const char *z = ph7_value_to_string(pKey,&n);
-		VmExportQuoted(pC->pOut,z,n);
+		if( pC->bPresented && n > 0 && z[0] == 0 ){
+			SyString sUnmCls, sUnmName;
+			SyStringInitFromBuf(&sUnmName,z,n);
+			PH7_UnmangleAttrName(z,(sxu32)n,&sUnmCls,&sUnmName);
+			VmExportQuoted(pC->pOut,sUnmName.zString,(int)sUnmName.nByte);
+		}else{
+			VmExportQuoted(pC->pOut,z,n);
+		}
 	}else{
 		SyBlobFormat(pC->pOut,"%qd",ph7_value_to_int64(pKey));
 	}
@@ -758,6 +769,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 			SyBlobAppend(pOut,"NULL",4); /* circular reference -> NULL, like PHP */
 		}else{
 			VmExportCtx ctx;
+			ctx.bPresented = 0;
 			pMap->iFlags |= HASHMAP_DUMPING;
 			SyBlobAppend(pOut,"array (\n",8);
 			ctx.pOut = pOut; ctx.nIndent = nIndent; ctx.depth = depth;
@@ -817,6 +829,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 						sCtx.pOut = pOut;
 						sCtx.nIndent = nIndent + 1;
 						sCtx.depth = depth;
+						sCtx.bPresented = 1;
 						ph7_array_walk(&sPresent,VmExportArrayWalk,&sCtx);
 						PH7_MemObjRelease(&sPresent);
 						VmExportIndent(pOut,nIndent);

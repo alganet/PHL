@@ -4275,32 +4275,45 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
  */
 static void DtAddCommonProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 {
+	SXUNUSED(pVm);
+	if( (pOut->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return;
+	}
+	/* MANGLED, the way php mangles a non-public property everywhere it hands an
+	 * object's own table out: a subclass's `protected $p` serializes as
+	 * "\0*\0p" and casts to that key, and only the mangling keeps two same-named
+	 * members from different visibility levels apart. */
+	PH7_ClassInstanceOwnPropsToHashmap(pThis,(ph7_hashmap *)pOut->x.pOther);
+}
+/*
+ * The INTERNAL shape of a class whose state is its own public properties -- the
+ * ones the named class declares, in declared order, read off the instance.
+ *
+ * Not a walk of the instance's TABLE: a subclass that redeclares one of the names
+ * takes over its slot and its POSITION, and php still shows the value where its
+ * own shape puts it.
+ */
+static void DtAddNativeProps(ph7_vm *pVm,ph7_class_instance *pThis,const char *zBase,ph7_value *pOut)
+{
+	ph7_class *pClass = DtClass(&(*pVm),zBase);
 	SyHashEntry *pEntry;
-	SyHashResetLoopCursor(&pThis->hAttr);
-	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
-		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		SyString *pName = &pVmAttr->pAttr->sName;
+	if( pClass == 0 ){
+		return;
+	}
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
 		ph7_value *pVal;
 		ph7_value sKey;
-		if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
-			|PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_HOOK_VIRTUAL
-			|PH7_CLASS_ATTR_NATIVE_SET|PH7_CLASS_ATTR_NATIVE_VIRTUAL) ){
-			/* The last two are the STATE of a native class whose state happens to
-			 * be public (DateInterval's ten, DatePeriod's seven): they are the
-			 * shape being built, not the object's own additions, so a walk that
-			 * runs beside that shape must skip them the way it skips the hidden
-			 * slots of the classes that keep their state private. */
+		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
 			continue;
 		}
-		if( ph7_array_fetch(pOut,pName->zString,(int)pName->nByte) != 0 ){
-			continue;
-		}
-		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+		pVal = PH7_ClassInstanceFetchAttr(pThis,&pAttr->sName);
 		if( pVal == 0 ){
 			continue;
 		}
 		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
-		PH7_MemObjStringAppend(&sKey,pName->zString,pName->nByte);
+		PH7_MemObjStringAppend(&sKey,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName));
 		ph7_array_add_elem(pOut,&sKey,pVal);
 		PH7_MemObjRelease(&sKey);
 	}
@@ -4337,7 +4350,13 @@ static void DtPresentZone(ph7_vm *pVm,ph7_value *pOut,const char *zName,int nNam
 	DtPresentPut(&(*pVm),pOut,"timezone",&sVal);
 	PH7_MemObjRelease(&sVal);
 }
-static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+/*
+ * php builds this shape FROM the struct the constructor allocates, so an object
+ * that has none contributes nothing to it -- var_dump, print_r, var_export, the
+ * (array) cast and json_encode all answer an empty shape where PHL published a
+ * 1970 date nothing had asked for.
+ */
+static void DtDateTimeShape(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 {
 	dt_state sState;
 	Sytm sTm;
@@ -4345,15 +4364,8 @@ static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	char zDate[64];
 	ph7_value sVal;
 	int nName;
-	SXUNUSED(bDebug); /* php shows the same three keys to both handlers */
 	if( !DtIsInit(pThis) ){
-		/* php builds this shape FROM the struct the constructor allocates, so an
-		 * object that has none shows nothing of it -- var_dump, print_r,
-		 * var_export, the (array) cast and json_encode all answer an empty shape
-		 * where PHL published a 1970 date nothing had asked for. A SUBCLASS's own
-		 * properties still show: they are the object's, not the struct's. */
-		DtAddCommonProps(&(*pVm),pThis,pOut);
-		return SXRET_OK;
+		return;
 	}
 	DtLoad(pThis,&sState);
 	nName = sState.nName;
@@ -4374,6 +4386,19 @@ static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	DtPresentPut(&(*pVm),pOut,"date",&sVal);
 	PH7_MemObjRelease(&sVal);
 	DtPresentZone(&(*pVm),pOut,zZone,nName,sState.iZoneKind);
+}
+/*
+ * The hook itself: php's get_properties starts from the object's OWN table and
+ * writes the struct's keys into it, so a subclass's properties come FIRST and a
+ * subclass property named `date` keeps its position while taking the internal
+ * value. PHL built the three keys alone, so every property a subclass declared was
+ * missing from var_dump, var_export, the (array) cast and json_encode.
+ */
+static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	SXUNUSED(bDebug); /* php shows the same three keys to both handlers */
+	DtAddCommonProps(&(*pVm),pThis,pOut);
+	DtDateTimeShape(&(*pVm),pThis,pOut);
 	return SXRET_OK;
 }
 /*
@@ -4395,18 +4420,22 @@ static sxi32 DtPresentProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOu
 	}
 	return SXRET_OK;
 }
-static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+static void DtTimeZoneShape(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 {
 	const char *zName = 0;
 	int nName = 0;
-	SXUNUSED(bDebug);
 	if( !DtIsInit(pThis) ){
-		DtAddCommonProps(&(*pVm),pThis,pOut);   /* see DtPresentDateTime */
-		return SXRET_OK;
+		return;
 	}
 	PH7_NativeAttrStr(pThis,DTZ_NAME,&zName,&nName);
 	DtPresentZone(&(*pVm),pOut,zName ? zName : "",nName,
 		DtZoneKindOf(pThis,DTZ_KIND,zName,nName));
+}
+static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	SXUNUSED(bDebug);
+	DtAddCommonProps(&(*pVm),pThis,pOut);   /* see DtPresentDateTime */
+	DtTimeZoneShape(&(*pVm),pThis,pOut);
 	return SXRET_OK;
 }
 /*
@@ -4555,10 +4584,16 @@ static int DtSerializePayload(ph7_context *pCtx,ph7_class_instance *pThis,int bZ
 		PH7_MemObjRelease(pOut);
 		return -1;
 	}
+	/* The SHAPE first here, the object's own properties behind it: php's
+	 * __serialize builds a fresh array from the struct and calls
+	 * add_common_properties on the END of it, which is the opposite order from the
+	 * presentation above (where the object's table is what the struct writes
+	 * into). serialize() and var_dump therefore disagree about where a subclass's
+	 * property sits, in both engines. */
 	if( bZoneOnly ){
-		DtPresentTimeZone(pCtx->pVm,pThis,pOut,0);
+		DtTimeZoneShape(pCtx->pVm,pThis,pOut);
 	}else{
-		DtPresentDateTime(pCtx->pVm,pThis,pOut,0);
+		DtDateTimeShape(pCtx->pVm,pThis,pOut);
 	}
 	DtAddCommonProps(pCtx->pVm,pThis,pOut);
 	return 0;
@@ -4931,7 +4966,12 @@ static int DtSerializeProps(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		PH7_MemObjRelease(&sOut);
 		return PH7_ContextMemoryError(pCtx);
 	}
-	PH7_ClassInstanceToHashmapRaw(pThis,(ph7_hashmap *)sOut.x.pOther);
+	/* The class's own shape first and the object's additions behind it, which is
+	 * php's order here and the opposite of the presentation's (where the struct
+	 * writes into the object's table). */
+	DtAddNativeProps(pCtx->pVm,pThis,
+		DtIsA(pCtx->pVm,pThis,"DateInterval") ? "DateInterval" : "DatePeriod",&sOut);
+	DtAddCommonProps(pCtx->pVm,pThis,&sOut);
 	ph7_result_value(pCtx,&sOut);
 	PH7_MemObjRelease(&sOut);
 	return PH7_OK;

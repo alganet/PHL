@@ -2203,7 +2203,7 @@ PH7_PRIVATE int PH7_ClassAttrUninitializedForRead(VmClassAttr *pVmAttr)
  * Since PHL's engine slots are hidden (and php's equivalents live outside the property
  * table entirely), dropping the handler is the whole difference.
  */
-PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pMap)
+static sxi32 ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pMap,int bOwnOnly)
 {
 	SyHashEntry *pEntry;
 	SyString *pAttrName;
@@ -2229,6 +2229,13 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_ha
 			 * (array) cast excludes it (raw surface, get is NOT dispatched) */
 			continue;
 		}
+		if( bOwnOnly && (pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_NATIVE_SET
+			|PH7_CLASS_ATTR_NATIVE_VIRTUAL|PH7_CLASS_ATTR_NATIVE_LAZY)) ){
+			/* The STATE of a native class whose state happens to be public
+			 * (DateInterval's ten, DatePeriod's seven): the caller is building the
+			 * shape those belong to, and wants only what the OBJECT added to it. */
+			continue;
+		}
 		/* Extract attribute value */
 		pValue = ExtractClassAttrValue(pThis->pVm,pAttr);
 		if( pValue ){
@@ -2250,7 +2257,19 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_ha
 				PH7_MemObjStringAppend(&sName,"\0*\0",3);
 			}
 			PH7_MemObjStringAppend(&sName,pAttrName->zString,pAttrName->nByte);
-			/* Perform the insertion */
+			/* Perform the insertion. An OWN-props walk laid beside a shape the
+			 * caller already built ADDS rather than updates: php's
+			 * add_common_properties is a zend_hash_add, so a subclass property
+			 * named like one of the internal keys loses to the internal value
+			 * there (`class S extends DateTime { public $date; }` serializes the
+			 * DATE). */
+			if( bOwnOnly ){
+				ph7_hashmap_node *pDup = 0;
+				if( PH7_HashmapLookup(pMap,&sName,&pDup) == SXRET_OK ){
+					SyBlobReset(&sName.sBlob);
+					continue;
+				}
+			}
 			PH7_HashmapInsert(pMap,&sName,pValue);
 			/* Reset the string cursor */
 			SyBlobReset(&sName.sBlob);
@@ -2258,6 +2277,19 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_ha
 	}
 	PH7_MemObjRelease(&sName);
 	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pMap)
+{
+	return ClassInstanceToHashmapRaw(pThis,pMap,0);
+}
+/*
+ * The same walk, restricted to what the OBJECT added: a native class's own public
+ * STATE is left out, so a subclass's properties can be laid beside the shape that
+ * state builds rather than inside it. php's add_common_properties.
+ */
+PH7_PRIVATE sxi32 PH7_ClassInstanceOwnPropsToHashmap(ph7_class_instance *pThis,ph7_hashmap *pMap)
+{
+	return ClassInstanceToHashmapRaw(pThis,pMap,1);
 }
 /*
  * Iterate throw class attributes and invoke the given callback [i.e: xWalk()] for each

@@ -39,6 +39,14 @@ struct json_private_data
 	                    * ph7_class_instance*), pushed on entry and popped on exit:
 	                    * meeting one again below itself is php's
 	                    * JSON_ERROR_RECURSION, not an infinite descent. */
+	int bPresented;    /* The entries being walked are a native class's PRESENTED
+	                    * shape (php's get_properties), which carries the object's
+	                    * own table MANGLED. json_encode emits public properties
+	                    * only, and the mangling is exactly what says which those
+	                    * are -- without it a subclass's `protected $p` reached the
+	                    * output as the key "\u0000*\u0000p". Not set for a plain
+	                    * ARRAY, where php really does emit such a key
+	                    * (json_encode((array)$o) shows the mangled names). */
 };
 /*
  * Stack-safety ceiling on the EFFECTIVE json depth, both directions. php honors
@@ -389,7 +397,7 @@ static int VmJsonPresent(ph7_class_instance *pThis,json_private_data *pData)
 {
 	ph7_context *pCtx = pData->pCtx;
 	ph7_value sPresent;
-	int savedObject;
+	int savedObject,savedPresented;
 	PH7_MemObjInit(pThis->pVm,&sPresent);
 	if( PH7_MemObjToHashmap(&sPresent) != SXRET_OK ){
 		PH7_MemObjRelease(&sPresent);
@@ -400,7 +408,9 @@ static int VmJsonPresent(ph7_class_instance *pThis,json_private_data *pData)
 		return 0;
 	}
 	savedObject = pData->isObject;
+	savedPresented = pData->bPresented;
 	pData->isObject = 1;
+	pData->bPresented = 1;
 	pData->isFirst = 1;
 	JSON_EMIT(pData,ph7_result_string(pCtx,"{",(int)sizeof(char)));
 	ph7_array_walk(&sPresent,VmJsonArrayEncode,pData);
@@ -411,6 +421,7 @@ static int VmJsonPresent(ph7_class_instance *pThis,json_private_data *pData)
 		JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));
 	}
 	pData->isObject = savedObject;
+	pData->bPresented = savedPresented;
 	PH7_MemObjRelease(&sPresent);
 	return 1;
 }
@@ -782,6 +793,11 @@ static sxi32 VmJsonEncode(
 static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
+	if( pJson->bPresented && pJson->isObject && pKey
+	 && (pKey->iFlags & MEMOBJ_STRING) && SyBlobLength(&pKey->sBlob) > 0
+	 && ((const char *)SyBlobData(&pKey->sBlob))[0] == 0 ){
+		return PH7_OK;   /* a non-public property of the object behind the shape */
+	}
 	if( pJson->exc || pJson->oom || pJson->fail ){
 		/* A callback threw, OOM, or the value is unencodable (the result is
 		 * discarded) — return immediately. Depth is no longer decided here:
