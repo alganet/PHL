@@ -661,6 +661,7 @@ static const struct VmBuiltinSig {
 	{ "date_date_set", "DateTime $object, int $year, int $month, int $day", "DateTime" },
 	{ "date_diff", "DateTimeInterface $baseObject, DateTimeInterface $targetObject, bool $absolute = false", "DateInterval" },
 	{ "date_format", "DateTimeInterface $object, string $format", "string" },
+	{ "date_parse", "string $datetime", "array" },
 	{ "date_get_last_errors", "", "array|false" },
 	{ "date_interval_create_from_date_string", "string $datetime", "DateInterval|false" },
 	{ "date_interval_format", "DateInterval $object, string $format", "string" },
