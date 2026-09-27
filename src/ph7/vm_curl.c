@@ -1775,9 +1775,16 @@ static int CurlSetString(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value 
 	 * skips. */
 	rcSv = PH7_ValueToStringUV(pCtx,pVal,&zVal,&nVal);
 	if( rcSv != SXRET_OK ){
-		/* The coercion threw. Its status is the BUILTIN's status: swallowing it
-		 * and answering PH7_OK leaves the engine with a half-installed throw,
-		 * and the next script run in the same interpreter prints nothing. */
+		/* The cast threw -- and php's cast has ALREADY HAPPENED: it answers an
+		 * empty string beside the throw, and the option is set from that
+		 * before anything unwinds. So `curl_setopt($h, CURLOPT_URL, $obj)`
+		 * really does leave the handle with no URL at all, where reporting the
+		 * throw and skipping the write would leave the old one standing.
+		 *
+		 * Its status is the BUILTIN's status: swallowing it and answering
+		 * PH7_OK leaves the engine with a half-installed throw, and the next
+		 * script run in the same interpreter prints nothing. */
+		curl_easy_setopt(pCurl->pEasy,(CURLoption)iOpt,"");
 		*pRc = rcSv;
 		return -1;
 	}
@@ -1834,10 +1841,17 @@ static int CurlSlistWalk(ph7_value *pKey,ph7_value *pVal,void *pUser)
 	{
 		sxi32 rcSv = PH7_ValueToStringUV(pB->pCtx,pVal,&zVal,&nVal);
 		if( rcSv != SXRET_OK ){
-			pB->bFailed = 1;
-			pB->bThrew = 1;
-			pB->rcThrow = rcSv;
-			return PH7_ABORT;
+			/* php's cast of an object with no __toString() throws AND answers
+			 * an empty string, and the loop that asked keeps walking: the
+			 * element becomes "", the elements after it are still appended and
+			 * the finished list still REPLACES whatever the option held. Only
+			 * the throw is remembered here. */
+			if( !pB->bThrew ){
+				pB->bThrew = 1;
+				pB->rcThrow = rcSv;
+			}
+			zVal = "";
+			nVal = 0;
 		}
 	}
 	/* The value is a TEMPORARY the walker owns for this call only, and
@@ -1895,6 +1909,13 @@ static int CurlSetSlist(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *
 		curl_slist_free_all(pSlot->pList);
 	}
 	pSlot->pList = sB.pList;
+	if( sB.bThrew ){
+		/* An element threw, and the list php built from the rest is still the
+		 * one the handle keeps -- installed above, and only now does the throw
+		 * travel. */
+		*pRc = sB.rcThrow;
+		return -1;
+	}
 	return 1;
 }
 /*
