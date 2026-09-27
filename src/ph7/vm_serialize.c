@@ -728,9 +728,7 @@ static sxi32 VmUnserializeDynamicProp(unserialize_data *ud,ph7_class_instance *p
 	ph7_class *pClass = pThis->pClass;
 	ph7_value *pSlot;
 	if( (pClass->iFlags & PH7_CLASS_READONLY) != 0
-	 || (!VmClassAllowsDynamicProps(pVm,pClass)
-	  && !VmClassHasAttributeNamed(pClass,"AllowDynamicProperties",
-			sizeof("AllowDynamicProperties")-1)) ){
+	 || !VmClassAllowsDynamicProps(pVm,pClass) ){
 		PH7_VmThrowException(ud->pCtx,"Error",
 			"Cannot create dynamic property %z::$%.*s",&pClass->sName,(int)nName,zName);
 		ud->exc = 1;

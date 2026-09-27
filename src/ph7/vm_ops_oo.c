@@ -1237,8 +1237,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								SyBlobFormat(&sErrMsg,"Cannot create dynamic property %z::$%z",
 									&pThis->pClass->sName,&sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
-							}else if( !VmClassAllowsDynamicProps(pVm,pThis->pClass)
-							       && !VmClassHasAttributeNamed(pThis->pClass,"AllowDynamicProperties",sizeof("AllowDynamicProperties")-1) ){
+							}else if( !VmClassAllowsDynamicProps(pVm,pThis->pClass) ){
 								/* php 8.2 only DEPRECATES creating a dynamic property on a
 								 * class without #[AllowDynamicProperties]; PHL rejects it.
 								 * stdClass / __set / declared props are unaffected. */

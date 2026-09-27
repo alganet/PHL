@@ -814,13 +814,18 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 		}
 		pAttr = 0;
 	}
-	if( PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
-	 || PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1) ){
+	if( PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) ){
 		/* Overloaded (magic) property: php passes it by-value with a Notice and drops the
 		 * write-back — "has no effect". The value it passes is __get's, which the caller
 		 * takes through pValOut; leaving the argument NULL instead turned
 		 * `sort($o->magic)` — a statement php performs on a temporary — into
-		 * `sort(): Argument #1 ($array) must be of type array, null given`. */
+		 * `sort(): Argument #1 ($array) must be of type array, null given`.
+		 *
+		 * `__get` ALONE decides it, which is php's own test
+		 * (zend_std_get_property_ptr_ptr consults `ce->__get` and nothing else): a
+		 * class carrying only `__set` has no way to ANSWER the fetch, so php falls
+		 * through and creates an ordinary dynamic property instead — which is §10's
+		 * refusal here, not this notice. */
 		VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
 			"Indirect modification of overloaded property %z::$%z has no effect",
 			&pClass->sName,pName);

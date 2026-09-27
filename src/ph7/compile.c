@@ -724,6 +724,28 @@ static void GenStatePatchNullsafeJumps(ph7_gen_state *pGen, sxu32 nBaseline)
 }
 
 /*
+ * Does this call-argument node reach its target THROUGH a property? `$o->p`,
+ * `$this->m['k']`, `$o->a->b` all do; `$a['k']`, `$a[$i][$j]` and a plain `$var`
+ * do not.
+ *
+ * Only the SUBSCRIPT spine is walked, because that is the only operator whose
+ * base is still part of the same lvalue: everything else (a call, a cast, `::`,
+ * `?->`) either ends the path or is not writable through at all.
+ */
+static int GenStateArgHasPropertyStep(ph7_expr_node *pNode)
+{
+	while( pNode && pNode->pOp ){
+		if( pNode->pOp->iOp == EXPR_OP_ARROW ){
+			return 1;
+		}
+		if( pNode->pOp->iOp != EXPR_OP_SUBSCRIPT ){
+			return 0;
+		}
+		pNode = pNode->pLeft;
+	}
+	return 0;
+}
+/*
  * By-reference out-parameters of builtin functions.
  *
  * PH7 foreign/builtin functions carry no parameter signature, so the call
@@ -2366,8 +2388,20 @@ static sxi32 GenStateEmitCallArgs(
 		 * set write-context so a subscript target (preg_match($p,$s,$a['k']))
 		 * auto-vivifies its element and exposes a writable memobj slot for the
 		 * builtin to write back through. A plain $var target is unaffected
-		 * (iP1=0 either way). */
-		if( n < 31 && (byRefMask & (1u<<n)) ){
+		 * (iP1=0 either way).
+		 *
+		 * A PROPERTY target is the one shape this eager path cannot express, so it
+		 * is left to the deferred one below: what php's `FETCH_OBJ_W` does to
+		 * `$o->p` is not what an ASSIGNMENT does to it — a missing property is
+		 * CREATED, an overloaded one takes `Indirect modification of overloaded
+		 * property` and is passed by VALUE (rather than reaching `__set`), and a
+		 * non-object base is the catchable `Attempt to modify property`. The
+		 * deferred resolver already encodes all of that (VmBindPropByRef) and
+		 * already reads a host function's by-ref mask, so routing the property
+		 * shapes through it is what makes `preg_match($p, $s, $this->matches)` —
+		 * the ordinary spelling — write anything at all. */
+		if( n < 31 && (byRefMask & (1u<<n))
+		 && !GenStateArgHasPropertyStep(apNode[n]) ){
 			iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
 			iArgFlags |= EXPR_FLAG_LOAD_IDX_STORE;
 		}

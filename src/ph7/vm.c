@@ -1814,13 +1814,23 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 	return SXRET_OK;
 }
 /*
- * Whether [pClass] permits runtime-created (dynamic) properties. Scoped to
- * stdClass for now; the future general-dynamic-props work turns
- * this into a class-flag / #[AllowDynamicProperties] check at this one site.
+ * Whether [pClass] permits runtime-created (dynamic) properties: stdClass, and
+ * any class php's own `#[AllowDynamicProperties]` opts in (the attribute is
+ * inherited, so the ancestry is walked -- VmClassHasAttributeNamed does that).
+ *
+ * The attribute half used to be spelled out at each caller, and one of the three
+ * did not have it: the by-REFERENCE binder (VmBindPropByRef) asked this alone, so
+ * an opted-in class refused `f($o->undeclared)` with §10's `Cannot create dynamic
+ * property` on a write php performs -- while `$o->undeclared = 1` next to it
+ * worked. One decision, one site.
  */
 PH7_PRIVATE int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass)
 {
-	return pVm->pStdClass != 0 && pClass == pVm->pStdClass;
+	if( pVm->pStdClass != 0 && pClass == pVm->pStdClass ){
+		return TRUE;
+	}
+	return VmClassHasAttributeNamed(pClass,"AllowDynamicProperties",
+		sizeof("AllowDynamicProperties")-1);
 }
 /*
  * Whether pClass carries a #[...] attribute of the given (resolved) name —
