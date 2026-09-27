@@ -1255,6 +1255,60 @@ PH7_PRIVATE sxi32 VmThrowNativeNoUnset(ph7_vm *pVm,ph7_class *pClass,ph7_class_a
 	SyBlobFormat(&sMsg,"Cannot unset %z::$%z",&pClass->sName,&pAttr->sName);
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
+/*
+ * php's answer to `unset($o->p)` where p is READONLY. Two of the three cases
+ * refuse, and the sentences are not the write ones:
+ *
+ *   * an INITIALIZED one refuses from every scope, its own included --
+ *     `Cannot unset readonly property C::$p`. Destroying it would re-arm the
+ *     write-once latch, which is exactly what readonly exists to prevent;
+ *
+ *   * an UNINITIALIZED one is a WRITE-shaped act, so it takes the set-visibility
+ *     rules: allowed from the declaring class or a subclass (php lets a lazy
+ *     proxy re-arm one that way), and otherwise the asymmetric-visibility
+ *     refusal. php words that one two ways -- an EXPLICIT `private(set)` gets the
+ *     ordinary asymmetric sentence with no "readonly" in it, and everything else
+ *     gets readonly's own implicit `protected(set) readonly`.
+ *
+ * Answers SXRET_OK when the unset may proceed, else the throw status.
+ */
+PH7_PRIVATE sxi32 VmCheckReadonlyUnset(ph7_vm *pVm,ph7_class *pClass,VmClassAttr *pVmAttr)
+{
+	ph7_class_attr *pAttr = pVmAttr->pAttr;
+	ph7_class *pOwner;
+	ph7_class *pActive;
+	SyBlob sMsg;
+	int bInit,bScope;
+	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) == 0 ){
+		return SXRET_OK;
+	}
+	pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	pActive = VmCurrentSelf(pVm);
+	bInit = (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0;
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
+		bScope = (pActive != 0 && pActive == pOwner);
+	}else{
+		bScope = (pActive != 0 && pOwner != 0 && PH7_VmInstanceOf(pActive,pOwner));
+	}
+	if( !bInit && bScope ){
+		return SXRET_OK;
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( bInit ){
+		SyBlobFormat(&sMsg,"Cannot unset readonly property %z::$%z",&pOwner->sName,&pAttr->sName);
+	}else{
+		const char *zWhat = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET)
+			? "private(set)" : "protected(set) readonly";
+		if( pActive ){
+			SyBlobFormat(&sMsg,"Cannot unset %s property %z::$%z from scope %z",
+				zWhat,&pOwner->sName,&pAttr->sName,&pActive->sName);
+		}else{
+			SyBlobFormat(&sMsg,"Cannot unset %s property %z::$%z from global scope",
+				zWhat,&pOwner->sName,&pAttr->sName);
+		}
+	}
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
 static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,int bModify)
 {
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;

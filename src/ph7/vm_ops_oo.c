@@ -977,6 +977,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					int bUnsAccessible = pEntry ? PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) : 0;
 					ph7_class_attr *pUnsNoWrite = pEntry ? pObjAttr->pAttr
 						: PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
+					sxi32 rcUnsRo = SXRET_OK;
 					if( pUnsNoWrite && (pUnsNoWrite->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) != 0 ){
 						/* php's own unset handler for this class refuses, and words it
 						 * without either "readonly" or "property": `Cannot unset C::$p`.
@@ -1001,9 +1002,38 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						SyBlobFormat(&sErrMsg,"Cannot unset hooked property %z::$%z",
 							&pThis->pClass->sName,&pObjAttr->pAttr->sName);
 						VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+					}else if( pEntry && bUnsAccessible
+					       && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0
+					       && (rcUnsRo = VmCheckReadonlyUnset(&(*pVm),pThis->pClass,pObjAttr)) != SXRET_OK ){
+						/* php refuses to destroy a readonly property: an initialized
+						 * one from every scope, and an uninitialized one from a scope
+						 * that may not write it. Deleting it here re-armed the
+						 * write-once latch, so a `readonly` value could be replaced by
+						 * anything in two statements. The refusal is thrown inside the
+						 * check; parking it is what routes it like every other one
+						 * raised from this opcode. */
+						VmBoundaryPark(&(*pVm),rcUnsRo);
 					}else if( pEntry && bUnsAccessible ){
-						PH7_VmReleaseInstanceAttr(&(*pVm),pObjAttr);
-						SyHashDeleteEntry2(pEntry);
+						if( (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0
+						 && (pObjAttr->iState & VM_CLASS_ATTR_REFBOUND) == 0 ){
+							/* A TYPED property keeps its DECLARATION: php's unset makes
+							 * it uninitialized, so var_dump still names it
+							 * `uninitialized(T)`, a read is "must not be accessed before
+							 * initialization" rather than an Undefined property, and a
+							 * later write lands back in its declared position instead of
+							 * appending a dynamic one at the end. The seven other
+							 * presentation surfaces leave an uninitialized property out,
+							 * which is what made the delete look right. */
+							ph7_value *pUnsSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);
+							if( pUnsSlot ){
+								PH7_MemObjRelease(pUnsSlot);
+								MemObjSetType(pUnsSlot,MEMOBJ_NULL);
+							}
+							pObjAttr->iState |= VM_CLASS_ATTR_UNINIT;
+						}else{
+							PH7_VmReleaseInstanceAttr(&(*pVm),pObjAttr);
+							SyHashDeleteEntry2(pEntry);
+						}
 					}else{
 						ph7_class_method *pUnsetMagic = PH7_ClassExtractMethod(pClass,"__unset",sizeof("__unset")-1);
 						if( pUnsetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'u') ){
