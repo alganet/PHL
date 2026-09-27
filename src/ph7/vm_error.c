@@ -1275,16 +1275,28 @@ static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
- * Is this SLOT a native property whose handler refuses every write? Asked by the
- * sites that reach a property through its memobj index rather than its
- * declaration -- a `=&` bind of the property as the reference SOURCE, which is
- * where the alias would let a later write reach the struct behind php's back.
- * Answers SXRET_OK to proceed, or the throw status.
+ * INDIRECT modification: this SLOT is about to be reached as something other than
+ * a plain store -- aliased by `=&`, handed to a by-reference parameter, walked by
+ * a by-reference foreach, or used as the BASE of a subscript write. php screens
+ * every one of them where it screens a store, because the alias outlives the
+ * statement and the next write through it would reach the property with no
+ * handler and no readonly latch in the way.
+ *
+ * Two sentences. A php-readonly property gets its own: `Cannot indirectly modify
+ * readonly property C::$p`, raised whatever the scope and whether or not the
+ * property has been initialized -- the reference is refused before the
+ * uninitialized read is. A NATIVE class whose handler refuses every write
+ * (PH7_CLASS_ATTR_NATIVE_NOWRITE) gets that handler's own sentence, the one a
+ * plain store to it gets.
+ *
+ * Answers SXRET_OK to proceed, or the throw status. Asked by the sites that reach
+ * a property through its memobj index rather than through its declaration.
  */
-PH7_PRIVATE sxi32 VmCheckNativeNoWriteSlot(ph7_vm *pVm,sxu32 nIdx)
+PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx)
 {
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
+	ph7_class_attr *pAttr;
 	if( nIdx == SXU32_HIGH || SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
 		return SXRET_OK;
 	}
@@ -1293,11 +1305,22 @@ PH7_PRIVATE sxi32 VmCheckNativeNoWriteSlot(ph7_vm *pVm,sxu32 nIdx)
 		return SXRET_OK;
 	}
 	pVmAttr = (VmClassAttr *)pSlot->pUserData;
-	if( pVmAttr->pAttr == 0
-	 || (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) == 0 ){
+	pAttr = pVmAttr->pAttr;
+	if( pAttr == 0 ){
 		return SXRET_OK;
 	}
-	return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pVmAttr->pAttr);
+	if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE ){
+		return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pAttr);
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
+		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Cannot indirectly modify readonly property %z::$%z",
+			&pOwner->sName,&pAttr->sName);
+		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+	}
+	return SXRET_OK;
 }
 /*
  * Reject an in-place mutation (`++`/`--`) of a readonly property. The increment

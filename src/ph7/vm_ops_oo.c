@@ -1731,6 +1731,33 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								}
 							}
 						}
+						/* `$o->p[$k] = v`, `$o->p[] = v` and `unset($o->p[$k])`: the
+						 * property is the BASE of a subscript write, so the write lands
+						 * inside whatever it holds. php screens that where it screens a
+						 * store -- `Cannot indirectly modify readonly property C::$p` --
+						 * and it screens it BEFORE the uninitialized-typed read below,
+						 * which is why this sits in front. PHL wrote through to the
+						 * array a readonly property held. */
+						{
+							VmInstr *pNextI = pInstr + 1;
+							int bStoreI = (pNextI->iOp == PH7_OP_STORE && pNextI->iP2 != 0);
+							int bCoalI = pNextI->iOp == PH7_OP_NULLC_JMP;
+							int bUnsetBase = pInstr->iP2 == PH7_MEMBER_READ
+								&& pNextI->iOp == PH7_OP_LOAD_IDX && VM_IDX_IS_UNSET(pNextI->iP2);
+							int bBaseW = bUnsetBase
+								|| (pInstr->iP2 == PH7_MEMBER_WRITE
+								    && !bStoreI && !bCoalI && !VmMemberNextIsWrite(pNextI));
+							if( bBaseW ){
+								sxi32 rcInd = PH7_VmCheckIndirectModify(&(*pVm),pObjAttr->nIdx);
+								if( rcInd != SXRET_OK ){
+									VmBoundaryPark(&(*pVm),rcInd);
+									PH7_MemObjRelease(pTos);
+									pTos->nIdx = SXU32_HIGH;
+									PH7_ClassInstanceUnref(pThis);
+									VM_EXIT_BREAK;
+								}
+							}
+						}
 						/* PHP 7.4+: reading an uninitialized typed property is an Error.
 						 * We can only raise it on a real read, not when the slot is the
 						 * LHS of an assignment — peek at the next instruction to decide.

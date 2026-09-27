@@ -358,6 +358,19 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		}
 		VmPopOperand(&pTos,1);
 	}
+	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && SyStringLength(&pInfo->sValue) > 0 ){
+		/* `foreach ($o->p as &$v)` on a property no write may reach: the loop hands
+		 * out an ALIAS of every element, so php screens the property where it
+		 * screens a store -- and it screens it BEFORE deciding the subject is
+		 * iterable at all, which is why an int or a string property is this Error
+		 * there and a "must be of type array|object" warning here. PHL walked an
+		 * array one and let the body rewrite it. */
+		sxi32 rcInd = PH7_VmCheckIndirectModify(&(*pVm),pTos->nIdx);
+		if( rcInd != SXRET_OK ){
+			if( rcInd == PH7_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rcInd)
+		}
+	}
 	/* Make sure we are dealing with a hashmap aka 'array' or an object */
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 || SyStringLength(&pInfo->sValue) < 1 ){
 		/* Jump out of the loop */

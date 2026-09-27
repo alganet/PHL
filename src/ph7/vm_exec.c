@@ -1257,8 +1257,12 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 	sxu32 n = 0;
 	for( p = pArg ; p < pTos ; ++p, ++n ){
 		int bByRef = 0;
+		int bDeferred = (p->iFlags & (MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH)) != 0;
 		SyString sName;
-		if( (p->iFlags & (MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH)) == 0 ){
+		if( !bDeferred
+		 && (bAllByValue || SyHashTotalEntry(&pVm->hTypedSlot) == 0) ){
+			/* Nothing deferred in this position, and no slot in the VM could refuse
+			 * being aliased -- the ordinary case, out through one test. */
 			continue;
 		}
 		if( bAllByValue ){
@@ -1305,6 +1309,22 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 			}
 		}else{
 			bByRef = (n < 31 && (nByRefMask & (1u << n))) ? 1 : 0;
+		}
+		if( !bDeferred ){
+			/* An argument that ALREADY resolved to a slot, in a by-reference
+			 * position: php screens the property behind it here, because binding
+			 * the callee's parameter to it is an INDIRECT modification -- the
+			 * callee's write would reach a readonly property, or a native one whose
+			 * handler refuses every write, with nothing in the way. This is the one
+			 * place both kinds of callee agree on: a user function's formals and a
+			 * builtin's signature-derived mask both arrive here. */
+			if( bByRef ){
+				sxi32 rcInd = PH7_VmCheckIndirectModify(&(*pVm),p->nIdx);
+				if( rcInd != SXRET_OK ){
+					return rcInd;
+				}
+			}
+			continue;
 		}
 		if( p->iFlags & MEMOBJ_AUX_DEFPATH ){
 			/* D1 commit 2: a deferred array-element/property lvalue. Detach the descriptor

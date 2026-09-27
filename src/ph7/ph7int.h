@@ -3153,6 +3153,17 @@ enum ph7_vm_op {
                              * the handler detects rather than guessing. */
 /* MEMBER.iP2 — member-access context. 0=read is the default; the unset/isset/empty modes mirror the
  * array LOAD_IDX context modes so unset()/isset()/empty() on a property behave like on an array elem. */
+/* Two of PH7_OP_LOAD_IDX's own iP2 context codes (they do NOT line up with the
+ * PH7_MEMBER_* set below). Shared because the PROPERTY opcode has to recognize the
+ * base of an unset-subscript: `unset($o->p[$k])` reaches into what $p holds, which
+ * is an indirect modification of $p. */
+#define VM_IDX_CTX_UNSET 5
+/* An INTERMEDIATE subscript of an unset chain (`unset($a['k']['n'])`): every unset
+ * rule applies to it — COW-separate the parent, never vivify a missing key, unset's
+ * own wording for a bad base — except the removal itself, which belongs to the
+ * OUTERMOST subscript alone. */
+#define VM_IDX_CTX_UNSET_BASE 10
+#define VM_IDX_IS_UNSET(iP2) ((iP2) == VM_IDX_CTX_UNSET || (iP2) == VM_IDX_CTX_UNSET_BASE)
 #define PH7_MEMBER_READ   0 /* attribute read */
 #define PH7_MEMBER_METHOD 1 /* method-call preparation */
 #define PH7_MEMBER_UNSET  2 /* unset($o->p): remove the property */
@@ -4876,7 +4887,7 @@ PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmCheckSetVisibility(ph7_vm *pVm,ph7_class *pOwner,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 VmThrowNativeNoWrite(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 VmThrowNativeNoUnset(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
-PH7_PRIVATE sxi32 VmCheckNativeNoWriteSlot(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone, const char *zName,sxu32 nName,ph7_value *pValue);
 PH7_PRIVATE void VmCoalesceDisarm(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmConstCycleThrow(ph7_vm *pVm);

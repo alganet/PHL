@@ -160,11 +160,11 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	}
 	nIdx = pTos->nIdx;
 	{
-		/* `$r = &$o->p` where php's handler refuses every write to $p: the bind
-		 * itself is the refusal there, because the alias would let a later write
-		 * through $r reach the struct the handler is guarding. PHL bound it, so
-		 * `$r = 99` afterwards rewrote a DatePeriod's recurrence count. */
-		sxi32 rcNw = VmCheckNativeNoWriteSlot(&(*pVm),nIdx);
+		/* `$r = &$o->p` on a property no write may reach: php refuses the BIND,
+		 * because the alias would let a later write through $r reach the property
+		 * with nothing in the way. PHL bound it, so `$r = 99` afterwards rewrote a
+		 * readonly property and a DatePeriod's recurrence count alike. */
+		sxi32 rcNw = PH7_VmCheckIndirectModify(&(*pVm),nIdx);
 		if( rcNw != SXRET_OK ){
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
@@ -234,15 +234,10 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	VM_EXIT_BREAK;
 }
 
-/* LOAD_IDX's own iP2 context codes (they do NOT line up with PH7_MEMBER_*). */
+/* LOAD_IDX's own iP2 context codes (they do NOT line up with PH7_MEMBER_*).
+ * The two UNSET codes live in ph7int.h: the property opcode has to recognize an
+ * unset-subscript BASE, which is an indirect modification of what the base holds. */
 #define VM_IDX_CTX_ISSET 4
-#define VM_IDX_CTX_UNSET 5
-/* An INTERMEDIATE subscript of an unset chain (`unset($a['k']['n'])`): every unset
- * rule below applies to it — COW-separate the parent, never vivify a missing key,
- * unset's own wording for a bad base — except the removal itself, which belongs to
- * the OUTERMOST subscript alone. */
-#define VM_IDX_CTX_UNSET_BASE 10
-#define VM_IDX_IS_UNSET(iP2) ((iP2) == VM_IDX_CTX_UNSET || (iP2) == VM_IDX_CTX_UNSET_BASE)
 #define VM_IDX_CTX_EMPTY 6
 /*
  * php rejects an OBJECT or an ARRAY used as an array offset, naming the offending
@@ -1324,6 +1319,25 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	}else{
 		pIdx = pTos;
 		pTos--;
+	}
+	if( VM_IDX_IS_UNSET(iP2) ){
+		/* `unset($o->p[$k])` reaches INTO what the property holds, which is php's
+		 * indirect modification of the property itself -- refused for a readonly
+		 * one, and for a native property whose handler takes no write. The write
+		 * shapes (`$o->p[$k] = v`, `$o->p[] = v`) are screened at OP_MEMBER, which
+		 * knows them from its own context tag; an unset BASE is tagged as an
+		 * ordinary read there and is only recognizable here. */
+		sxi32 rcInd = PH7_VmCheckIndirectModify(&(*pVm),pTos->nIdx);
+		if( rcInd != SXRET_OK ){
+			if( pIdx ){
+				PH7_MemObjRelease(pIdx);
+			}
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			if( rcInd == PH7_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rcInd)
+		}
 	}
 	if( pInstr->iP2 == 9 && pIdx ){
 		/* D1 commit 2 record mode. Decide whether to CAPTURE this subscript as a deferred
