@@ -730,7 +730,16 @@ PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_v
 		return SXU32_HIGH;
 	}
 	if( PH7_NativeAttr(pThis,SPL_D) != 0 ){
-		ph7_value *pSlot = SplStoreSlot(pVm,pThis);
+		ph7_value *pSlot;
+		if( pKey->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP) ){
+			/* Neither shape HAS an array key here: the lookup would fold both to the
+			 * words "Object"/"Array" and hand back a slot nobody can name again. php
+			 * refuses them, so stand down and let the accessor -- which words that
+			 * refusal -- see the key as it was written. (A WeakMap's key IS an object
+			 * and takes the branch below.) */
+			return SXU32_HIGH;
+		}
+		pSlot = SplStoreSlot(pVm,pThis);
 		ph7_hashmap *pMap = pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
 		if( pMap == 0 ){
 			return SXU32_HIGH;
@@ -843,11 +852,62 @@ static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pEx
 	apCall[1] = pExtra;
 	return xFunc(pCtx,pExtra ? 2 : 1,apCall);
 }
+/*
+ * php's `Cannot access offset of type X on <class>` for the store's four
+ * offsets. An array offset here goes through the ordinary array-key rules, and
+ * php refuses the two shapes that have no key at all — an OBJECT (named by its
+ * CLASS, as get_debug_type() names it) and an ARRAY — rather than folding them:
+ * PHL used to fold both to the string "Object"/"Array", so `$ao[$obj] = 1` wrote
+ * under a key no reader could ever ask for and `$ao[$obj]` warned about a key the
+ * caller never wrote.
+ *
+ * The wording is the ENGINE's own three-way split (vm_ops_load.c): a read or a
+ * write names the receiver's class, isset/empty names none, and unset says
+ * "Cannot unset". offsetExists() reached by hand is php's isset arm too.
+ */
+#define SPL_OFF_ACCESS 0
+#define SPL_OFF_ISSET  1
+#define SPL_OFF_UNSET  2
+static int SplOffsetKeyRefused(ph7_context *pCtx,ph7_value *pKey,int iKind,int *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SyString *pOwner = pThis ? &pThis->pClass->sName : 0;
+	SyString *pClass = 0;
+	const char *zType = "array";
+	*pRc = PH7_OK;
+	if( pKey->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pKey->x.pOther;
+		if( pInst && pInst->pClass ){
+			pClass = &pInst->pClass->sName;
+		}
+		zType = "object";
+	}else if( (pKey->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	if( iKind == SPL_OFF_ISSET ){
+		*pRc = pClass
+			? PH7_VmThrowException(pCtx,"TypeError",
+				"Cannot access offset of type %z in isset or empty",pClass)
+			: PH7_VmThrowException(pCtx,"TypeError",
+				"Cannot access offset of type %s in isset or empty",zType);
+	}else{
+		const char *zVerb = iKind == SPL_OFF_UNSET ? "Cannot unset" : "Cannot access";
+		*pRc = pClass
+			? PH7_VmThrowException(pCtx,"TypeError",
+				"%s offset of type %z on %z",zVerb,pClass,pOwner)
+			: PH7_VmThrowException(pCtx,"TypeError",
+				"%s offset of type %s on %z",zVerb,zType,pOwner);
+	}
+	return 1;
+}
 static int vm_builtin_SplStore_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
 	ph7_hashmap_node *pNode = 0;
-	int bFound = 0;
+	int bFound = 0, rc;
+	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_ISSET,&rc) ){
+		return rc;
+	}
 	if( pMap && nArg > 0 ){
 		/* array_key_exists(), not isset(): php's offsetExists() answers true for a key
 		 * holding NULL (the PHP said array_key_exists too). */
@@ -861,6 +921,10 @@ static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_hashmap *pMap = SplStore(pVm,PH7_ContextThis(pCtx));
 	ph7_hashmap_node *pNode = 0;
+	int rcKey;
+	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_ACCESS,&rcKey) ){
+		return rcKey;
+	}
 	if( pMap == 0 || nArg < 1 || PH7_HashmapLookup(pMap,apArg[0],&pNode) != SXRET_OK ){
 		/* php warns "Undefined array key" for a missing offset, with the key rendered
 		 * the way the LOOKUP folded it (an integer bare, a string quoted) — the same
@@ -913,6 +977,10 @@ static void SplStoreInsert(ph7_hashmap *pMap,ph7_value *pKey,ph7_value *pVal)
 static int vm_builtin_SplStore_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	int rcKey;
+	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_ACCESS,&rcKey) ){
+		return rcKey;
+	}
 	if( pMap && nArg > 1 ){
 		/* A NULL key is `$o[] = $v` — the append form, which is how php's offsetSet()
 		 * receives it. */
@@ -924,6 +992,10 @@ static int vm_builtin_SplStore_offsetUnset(ph7_context *pCtx,int nArg,ph7_value 
 {
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
 	ph7_hashmap_node *pNode = 0;
+	int rcKey;
+	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_UNSET,&rcKey) ){
+		return rcKey;
+	}
 	if( pMap && nArg > 0 && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
 		PH7_HashmapUnlinkNode(pNode,TRUE);
 	}
@@ -7417,6 +7489,15 @@ static int FaOffset(ph7_context *pCtx,ph7_value *pArg,sxi64 *piOut,sxi32 *pRc)
 		return 1;
 	}
 	*piOut = 0;
+	if( pArg->iFlags & MEMOBJ_OBJ ){
+		/* php names the CLASS here, as get_debug_type() does, not the word
+		 * "object" — the same rule the store's offsets follow. */
+		ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
+		SyString *pName = pInst && pInst->pClass ? &pInst->pClass->sName : 0;
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"Cannot access offset of type %z on SplFixedArray",pName);
+		return 0;
+	}
 	*pRc = PH7_VmThrowException(pCtx,"TypeError",
 		"Cannot access offset of type %s on SplFixedArray",ph7_type_name(pArg));
 	return 0;
