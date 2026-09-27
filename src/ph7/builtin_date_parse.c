@@ -1335,6 +1335,43 @@ static int DtIsEdgeSep(int c)
 	    || c == '\r' || c == '\v' || c == '\f';
 }
 /*
+ * php's own first act on a date string is a TRIM -- timelib_strtotime walks
+ * isspace() off both ends and hands its scanner what is left -- so every
+ * position it reports afterwards is the TRIMMED string's, while the message
+ * still prints the string the caller wrote: `new DateTime('  xyz')` blames
+ * position 0 and shows `(x)`, where PHL blamed position 2. The trim is isspace
+ * and NOTHING else, which is what keeps a leading NUL or full stop counting --
+ * those are separators the scanner steps over, and stepping over one is a byte
+ * gone by (`.xyz` refuses at 1).
+ */
+static int DtIsCSpace(int c)
+{
+	return c == ' ' || c == '\t' || c == '\n'
+	    || c == '\v' || c == '\f' || c == '\r';
+}
+static void DtTrimEnds(const char **pz,int *pn)
+{
+	const char *z = *pz;
+	int n = *pn;
+	while( n > 0 && DtIsCSpace((unsigned char)z[0]) ){ z++; n--; }
+	while( n > 0 && DtIsCSpace((unsigned char)z[n-1]) ){ n--; }
+	*pz = z;
+	*pn = n;
+}
+/*
+ * ...and what the SENTENCE shows of it stops at the first NUL, because php
+ * hands the string to a C `%s`. A date string may well carry one -- the scanner
+ * reads a NUL as an ordinary separator, so `"15 january 2020\0),/"` is a real
+ * parse that fails at byte 16 -- and php names that byte while printing only
+ * the sixteen before it.
+ */
+static int DtCStrLen(const char *z,int n)
+{
+	int k = 0;
+	while( k < n && z[k] != 0 ){ k++; }
+	return k;
+}
+/*
  * Match a weekday name at z (full or 3-letter, case-insensitive). Returns the
  * day-of-week 0=Sunday..6=Saturday and sets *pAdv, or -1.
  *
@@ -1581,13 +1618,18 @@ static int DtRelUnitLen(const char *z,const char *zEnd,const dt_parsed *p)
  */
 static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 {
-	const char *z = zIn, *zEnd = &zIn[nLen];
+	const char *z,*zEnd;
 	const char *zPrev = 0;
 	int bAny = 0;
 	int iRc;
-	/* php's whitespace at the two ENDS is wider than the run between tokens
-	 * (DtIsEdgeSep); the positions a refusal reports stay the original string's,
-	 * since only the walk moves. */
+	/* php's trim comes FIRST and the positions below are all measured from what
+	 * it leaves, so rebase on it here and every rule inherits the answer. */
+	DtTrimEnds(&zIn,&nLen);
+	z = zIn;
+	zEnd = &zIn[nLen];
+	/* Whatever the trim left of php's leading separator run -- a NUL, a full
+	 * stop -- the scanner steps over, and the wider set it tolerates at the
+	 * trailing end goes with it. */
 	while( z < zEnd && (DtIsEdgeSep((unsigned char)z[0]) || z[0] == '.') ){ z++; }
 	while( zEnd > z && DtIsEdgeSep((unsigned char)zEnd[-1]) ){ zEnd--; }
 #define DT_SKIP_WS() while( DtIsSepAt(z,zEnd) ){ z++; }
@@ -2150,6 +2192,7 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	int bRange = 0,bDDate = 0,bDZone = 0;
 	int bDouble;
 	int iPos;
+	DtTrimEnds(&zIn,&nLen);   /* the position is php's, i.e. the trimmed string's */
 	if( iErrPos < -DT_ERR_DZONE ){
 		bDZone = 1;
 		iErrPos += DT_ERR_DZONE;
@@ -3553,7 +3596,7 @@ static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **
 		DtLastErrOne(pVm,iPos,zErr);
 		return PH7_VmThrowException(pCtx,"DateMalformedStringException",
 			"Failed to parse time string (%.*s) at position %d (%c): %s",
-			nIn,zIn,iPos,cAt,zErr);
+			DtCStrLen(zIn,nIn),zIn,iPos,cAt,zErr);
 	}
 	DtLastErrClear(pVm);
 	DtStore(pVm,pThis,&sState);
@@ -3744,7 +3787,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
 		return PH7_VmThrowException(pCtx,"DateMalformedStringException",
 			"%s::modify(): Failed to parse time string (%.*s) at position %d (%c): %s",
-			bImm ? "DateTimeImmutable" : "DateTime",nMod,zMod,iPos,cAt,zErr);
+			bImm ? "DateTimeImmutable" : "DateTime",DtCStrLen(zMod,nMod),zMod,iPos,cAt,zErr);
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
 	PH7_NativeSetAttrInt(pVm,pTarget,DT_TS,iTs);
@@ -4526,7 +4569,7 @@ static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_valu
 	zDur = ph7_value_to_string(apArg[0],&nDur);
 	if( DtIvParseIso(zDur,nDur,aVal) != 0 ){
 		return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
-			"Unknown or bad format (%.*s)",nDur,zDur);
+			"Unknown or bad format (%.*s)",DtCStrLen(zDur,nDur),zDur);
 	}
 	DtIvStore(pCtx->pVm,pThis,aVal);
 	DtSetInit(pCtx->pVm,pThis);
@@ -4575,10 +4618,11 @@ static int vm_builtin_DateInterval_createFromDateString(ph7_context *pCtx,int nA
 	if( pObj == 0 ){
 		if( bNonRel ){
 			return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
-				"String '%.*s' contains non-relative elements",nIn,zIn);
+				"String '%.*s' contains non-relative elements",DtCStrLen(zIn,nIn),zIn);
 		}
 		return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
-			"Unknown or bad format (%.*s) at position %d (%c): %s",nIn,zIn,iPos,cAt,zReason);
+			"Unknown or bad format (%.*s) at position %d (%c): %s",
+			DtCStrLen(zIn,nIn),zIn,iPos,cAt,zReason);
 	}
 	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
@@ -4734,13 +4778,13 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		}
 		if( nSpec < 2 || zSpec[0] != 'R' ){
 			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
-				"Unknown or bad format (%.*s)",nSpec,zSpec);
+				"Unknown or bad format (%.*s)",DtCStrLen(zSpec,nSpec),zSpec);
 		}
 		nDigits = DtIvDigits(&zSpec[1],&zSpec[nSpec],&nRec);
 		k = 1 + nDigits;
 		if( nDigits == 0 || k >= nSpec || zSpec[k] != '/' ){
 			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
-				"Unknown or bad format (%.*s)",nSpec,zSpec);
+				"Unknown or bad format (%.*s)",DtCStrLen(zSpec,nSpec),zSpec);
 		}
 		if( nDigits > 9 ){
 			/* php's ISO scanner reads at most NINE digits of the count and drops
@@ -4764,7 +4808,7 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		}
 		if( &zStart[nStart] >= &zSpec[nSpec] ){
 			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
-				"Unknown or bad format (%.*s)",nSpec,zSpec);
+				"Unknown or bad format (%.*s)",DtCStrLen(zSpec,nSpec),zSpec);
 		}
 		zDur = &zStart[nStart+1];
 		nDur = (int)(&zSpec[nSpec] - zDur);
@@ -4773,7 +4817,7 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 			zNameBuf,sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0
 		 || DtIvParseIso(zDur,nDur,aIv) != 0 ){
 			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
-				"Unknown or bad format (%.*s)",nSpec,zSpec);
+				"Unknown or bad format (%.*s)",DtCStrLen(zSpec,nSpec),zSpec);
 		}
 		/* php's two ISO entry points disagree on the class they build, and both
 		 * answers are load-bearing: `new DatePeriod("R2/...")` yields DateTime
@@ -5273,7 +5317,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
 		PH7_VmThrowWarningFmt(pCtx->pVm,
 			"date_modify(): Failed to parse time string (%.*s) at position %d (%c): %s",
-			nMod,zMod,iPos,cAt,zErr);
+			DtCStrLen(zMod,nMod),zMod,iPos,cAt,zErr);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -5421,13 +5465,13 @@ static int vm_builtin_date_interval_create_from_date_string(ph7_context *pCtx,in
 		if( bNonRel ){
 			PH7_VmThrowWarningFmt(pCtx->pVm,
 				"date_interval_create_from_date_string(): String '%.*s' contains "
-				"non-relative elements",nIn,zIn);
+				"non-relative elements",DtCStrLen(zIn,nIn),zIn);
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
 		PH7_VmThrowWarningFmt(pCtx->pVm,
 			"date_interval_create_from_date_string(): Unknown or bad format (%.*s) "
-			"at position %d (%c): %s",nIn,zIn,iPos,cAt,zReason);
+			"at position %d (%c): %s",DtCStrLen(zIn,nIn),zIn,iPos,cAt,zReason);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
