@@ -99,6 +99,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_ops_misc$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_ops_oo$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_pcre$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_random$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_serialize$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_libxml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \

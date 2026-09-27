@@ -2401,6 +2401,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallRoundingMode(&(*pVm));
 	/* BcMath\Number: after RoundingMode, whose cases its round() reads. */
 	PH7_VmInstallBcMath(&(*pVm));
+	/* php's ext/random object surface. It rides the builtin guard for the same
+	 * reason bcmath does: the tiny build ships no consumer for it. */
+	PH7_VmInstallRandom(&(*pVm));
 #endif
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));

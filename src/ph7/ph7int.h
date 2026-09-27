@@ -4157,6 +4157,10 @@ PH7_PRIVATE int vm_builtin_ob_implicit_flush(ph7_context *pCtx,int nArg,ph7_valu
 PH7_PRIVATE int vm_builtin_ob_list_handlers(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm_builtin_getopt.c function prototypes */
 PH7_PRIVATE int vm_builtin_getopt(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* vm_random.c function prototypes */
+/* php's ext/random object surface: the Random\Engine contract, its errors,
+ * the seeded engines and the Randomizer that consumes them. */
+PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm);
 /* builtin_math.c function prototypes */
 #ifdef PH7_ENABLE_MATH_FUNC
 PH7_PRIVATE int PH7_builtin_sqrt(ph7_context *pCtx,int nArg,ph7_value **apArg);
