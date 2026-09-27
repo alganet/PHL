@@ -467,6 +467,28 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
  * success (ts/off/bOffSet out), or the byte position of the first
  * unparseable character +1 (for php's "at position N" message).
  */
+/*
+ * How WIDE a run of digits may be, which php bounds per grammar and PHL did not
+ * bound at all -- so a long run silently wrapped the int64 it was accumulated
+ * into (`@99999999999999999999` answered 7766279631452241919 here; UBSan called
+ * the overflow what it is). Each limit is php's, measured:
+ *
+ *   an `@epoch`          18 digits, then "Number out of range"
+ *   a RELATIVE number    13 digits (php's scanner answers gibberish past that --
+ *                        a 14-digit run comes back as ten digits' worth -- so
+ *                        PHL refuses instead of guessing, recorded in §7.4)
+ *   an ISO duration      12 digits, then "Unknown or bad format"
+ *
+ * The accumulators themselves stop adding past DT_DIGITS_SAFE so that COUNTING a
+ * run that will be refused cannot overflow on the way.
+ */
+#define DT_DIGITS_EPOCH 18
+#define DT_DIGITS_REL   13
+#define DT_DIGITS_ISO   12
+#define DT_DIGITS_SAFE  18
+/* One whole band below the position encoding, so a range refusal cannot be
+ * mistaken for a "double time specification" one. */
+#define DT_ERR_RANGE    1000000
 static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
 	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)
 {
@@ -503,7 +525,18 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 		if( z < zEnd && (z[0]=='-'||z[0]=='+') ){ neg = (z[0]=='-'); z++; }
 		/* php's lexer rejects the whole token: the error points at the '@' */
 		if( z >= zEnd || !SyisDigit(z[0]) ){ return (int)(zAt - zIn) + 1; }
-		while( z < zEnd && SyisDigit(z[0]) ){ v = v*10 + (z[0]-'0'); z++; }
+		{
+			int nDig = 0;
+			while( z < zEnd && SyisDigit(z[0]) ){
+				if( nDig < DT_DIGITS_SAFE ){ v = v*10 + (z[0]-'0'); }
+				nDig++;
+				z++;
+			}
+			if( nDig > DT_DIGITS_EPOCH ){
+				/* php reports it at the '@', with its own reason. */
+				return -((int)(zAt - zIn) + 1) - DT_ERR_RANGE;
+			}
+		}
 		/* php accepts a fractional epoch ("@1600000000.5" -> .5s = 500000us) */
 		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
 			*pUs = DtReadFraction(&z,zEnd);
@@ -775,7 +808,18 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
 				DT_SKIP_WS();
 			}
 			if( z >= zEnd || !SyisDigit(z[0]) ){ return (int)(zNumStart - zIn) + 1; }
-			while( z < zEnd && SyisDigit(z[0]) ){ v = v*10 + (z[0]-'0'); z++; }
+			{
+				const char *zDig = z;
+				int nDig = 0;
+				while( z < zEnd && SyisDigit(z[0]) ){
+					if( nDig < DT_DIGITS_SAFE ){ v = v*10 + (z[0]-'0'); }
+					nDig++;
+					z++;
+				}
+				if( nDig > DT_DIGITS_REL ){
+					return -((int)(zDig - zIn) + 1) - DT_ERR_RANGE;
+				}
+			}
 			if( neg ){ v = -v; }
 			DT_SKIP_WS();
 			/* php's SUB-SECOND relative units, checked before the words they are
@@ -850,14 +894,26 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBa
  */
 static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,char *pcAt)
 {
-	/* Negative encoding: php's "Double time specification" reason */
-	int bDouble = iErrPos < 0;
-	int iPos = (bDouble ? -iErrPos : iErrPos) - 1;
+	/* Negative encodings: php's "Double time specification" reason, and -- one
+	 * whole DT_ERR_RANGE band lower -- its "Number out of range", which is what a
+	 * digit run too wide for the clock reports. */
+	int bRange = 0;
+	int bDouble;
+	int iPos;
+	if( iErrPos < -DT_ERR_RANGE ){
+		bRange = 1;
+		iErrPos += DT_ERR_RANGE;
+	}
+	bDouble = !bRange && iErrPos < 0;
+	iPos = (iErrPos < 0 ? -iErrPos : iErrPos) - 1;
 	char cAt = (iPos < nLen) ? zIn[iPos] : ' ';
 	*piPos = iPos;
 	*pcAt = cAt;
 	/* php appends a reason: an alphabetic token is assumed to be a timezone
 	 * lookup miss, anything else an unexpected character. */
+	if( bRange ){
+		return "Number out of range";
+	}
 	return bDouble ? "Double time specification"
 		: ((cAt >= 'a' && cAt <= 'z') || (cAt >= 'A' && cAt <= 'Z'))
 			? "The timezone could not be found in the database"
@@ -2775,13 +2831,17 @@ static const dt_unit aDtUnit[] = {
 	{ "years", 0, 1 },   { "year", 0, 1 },
 };
 static const char * const azDtIvField[] = { "y", "m", "d", "h", "i", "s" };
-/* Read an unsigned run of digits; returns the count consumed. */
+/* Read an unsigned run of digits; returns the count consumed. Stops ACCUMULATING
+ * past DT_DIGITS_SAFE while still counting, so a caller that is about to refuse
+ * an over-wide run does not overflow measuring it (see DT_DIGITS_ISO). */
 static int DtIvDigits(const char *z,const char *zEnd,sxi64 *pVal)
 {
 	int n = 0;
 	sxi64 v = 0;
 	while( &z[n] < zEnd && SyisDigit(z[n]) ){
-		v = v*10 + (z[n] - '0');
+		if( n < DT_DIGITS_SAFE ){
+			v = v*10 + (z[n] - '0');
+		}
 		n++;
 	}
 	*pVal = v;
@@ -2816,7 +2876,9 @@ static int DtIvParseIso(const char *zIn,int nIn,sxi64 *aOut)
 			continue;
 		}
 		n = DtIvDigits(z,zEnd,&v);
-		if( n == 0 || z + n >= zEnd ){
+		if( n == 0 || n > DT_DIGITS_ISO || z + n >= zEnd ){
+			/* php's duration fields stop at twelve digits: `P999999999999D` is an
+			 * interval there and `P9999999999999D` is "Unknown or bad format". */
 			return -1;
 		}
 		z += n;
@@ -2879,6 +2941,11 @@ static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 			z++;
 		}
 		n = DtIvDigits(z,zEnd,&v);
+		if( n > DT_DIGITS_REL ){
+			/* The same ceiling DtParse enforces; it has already refused the string
+			 * by the time we get here, so this only keeps the two in step. */
+			return -1;
+		}
 		if( n == 0 ){
 			/* Not a number: skip the token (php's parser already accepted the
 			 * string, so this is a relative form with no interval field). */
