@@ -3224,15 +3224,13 @@ static int vm_builtin_PDO_connect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * PDO::getAvailableDrivers(): the one name this build carries.  php answers
- * the list of drivers its ext/pdo actually loaded, which is why an engine
+ * The loaded-driver list, the one answer php's two spellings share.  php
+ * answers the drivers its ext/pdo actually loaded, which is why an engine
  * with no driver at all answers [] -- here it is always ["sqlite"].
  */
-static int vm_builtin_PDO_getAvailableDrivers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static int PdoDriverList(ph7_context *pCtx)
 {
 	ph7_value *pArray, *pName;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
 	pArray = ph7_context_new_array(pCtx);
 	pName  = ph7_context_new_scalar(pCtx);
 	if( pArray == 0 || pName == 0 ){
@@ -3244,6 +3242,24 @@ static int vm_builtin_PDO_getAvailableDrivers(ph7_context *pCtx,int nArg,ph7_val
 	ph7_array_add_elem(pArray,0,pName);
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
+}
+/* PDO::getAvailableDrivers(): the static method spelling. */
+static int vm_builtin_PDO_getAvailableDrivers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PdoDriverList(pCtx);
+}
+/*
+ * pdo_drivers(): the PROCEDURAL spelling of the same list, and the only
+ * FUNCTION ext/pdo declares.  php's two answers are the same array built by
+ * the same C routine, so they are `===` to each other.
+ */
+static int vm_builtin_pdo_drivers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PdoDriverList(pCtx);
 }
 
 /*
@@ -3451,6 +3467,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 	};
 #undef PDO_INT_CONST
 	pVm->pPdoConns = 0;
+	/* ext/pdo declares exactly one function beside its classes. */
+	ph7_create_function(&(*pVm),"pdo_drivers",vm_builtin_pdo_drivers,0);
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
 

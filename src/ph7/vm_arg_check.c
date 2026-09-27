@@ -429,6 +429,9 @@ static const struct VmBuiltinSig {
 	{ "libxml_set_external_entity_loader", "?callable $resolver_function", "true" },
 	{ "libxml_set_streams_context", "$context", "void" },
 	{ "libxml_use_internal_errors", "?bool $use_errors = null", "bool" },
+	/* ext/pdo's one function: the procedural spelling of
+	 * PDO::getAvailableDrivers(). */
+	{ "pdo_drivers", "", "array" },
 	{ "xml_error_string", "int $error_code", "?string" },
 	{ "xml_get_current_byte_index", "XMLParser $parser", "int" },
 	{ "xml_get_current_column_number", "XMLParser $parser", "int" },

@@ -29,6 +29,14 @@ var_dump(extension_loaded('PDO'), extension_loaded('pdo_sqlite'));
 $ours = static fn (array $d): array => array_values(array_intersect($d, ['sqlite']));
 var_dump($ours(PDO::getAvailableDrivers()));
 
+/* the driver list has a PROCEDURAL spelling too — ext/pdo's only function —
+ * and both spellings build the same array from the same routine (compared
+ * UNFILTERED: that they agree is true whatever the set happens to hold) */
+var_dump($ours(pdo_drivers()), pdo_drivers() === PDO::getAvailableDrivers());
+$drv = new ReflectionFunction('pdo_drivers');
+var_dump($drv->getNumberOfParameters(), (string)$drv->getReturnType());
+try { pdo_drivers(1); } catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
+
 $r = new ReflectionClass('Pdo\Sqlite');
 var_dump($r->getParentClass()->getName());
 
@@ -65,6 +73,14 @@ array(1) {
   [0]=>
   string(6) "sqlite"
 }
+array(1) {
+  [0]=>
+  string(6) "sqlite"
+}
+bool(true)
+int(0)
+string(5) "array"
+ArgumentCountError: pdo_drivers() expects exactly 0 arguments, 1 given
 string(3) "PDO"
 bool(false)
 string(9) "int|false"
