@@ -3126,7 +3126,7 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 	sxi64 v;
 	/* -1 == unset */
 	sxi64 y = -1,mo = -1,d = -1,h = -1,mi = -1,s = -1,h12 = -1,uVal = 0;
-	int iMeridiem = -1,bHasU = 0,bPipe = 0,bPlus = 0;
+	int iMeridiem = -1,bHasU = 0,bPipe = 0,bPlus = 0,iWdayFf = -1;
 	int uSecFF = 0,bHasUs = 0;
 	int iOffKind = 0;
 	sxi32 iOffVal = 0;
@@ -3175,14 +3175,19 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 			}
 			break;
 		case 'D':
-			if( !DtEatName(&z,zInEnd,azDay3,7) ){
+			/* php's textual day is a RELATIVE weekday, not decoration: it moves
+			 * the date it was read beside, forward to that weekday and keeping a
+			 * day that already matches. */
+			if( (iWdayFf = DtEatName(&z,zInEnd,azDay3,7)) == 0 ){
 				zErr = "A textual day could not be found";
 			}
+			iWdayFf--;
 			break;
 		case 'l':
-			if( !DtEatName(&z,zInEnd,azDayFull,7) ){
+			if( (iWdayFf = DtEatName(&z,zInEnd,azDayFull,7)) == 0 ){
 				zErr = "A textual day could not be found";
 			}
+			iWdayFf--;
 			break;
 		case 'S':
 			/* ordinal suffix: st nd rd th */
@@ -3483,6 +3488,14 @@ parse_num_off:	{
 		if( h < 0 ){ h = secs / 3600; }
 		if( mi < 0 ){ mi = (secs / 60) % 60; }
 		if( s < 0 ){ s = secs % 60; }
+	}
+	if( iWdayFf >= 0 ){
+		/* php's weekday hunt for this parser is the bare NAME's: forward to that
+		 * weekday, and a day that already matches counts. The clock is left
+		 * standing, unlike the string parser's. */
+		sxi64 iDays = DtDaysFromCivil(y,(int)mo,1) + (d - 1);
+		int iDow = DtDowOf(iDays);
+		d += (iWdayFf - iDow + 7) % 7;
 	}
 	/* php validates the RESOLVED fields and warns (parse still succeeds,
 	 * values roll over via civil arithmetic) */
@@ -6102,50 +6115,45 @@ static int vm_builtin_date_isodate_set(ph7_context *pCtx,int nArg,ph7_value **ap
 	return PH7_OK;
 }
 /*
- * date_parse(): php's COMPONENT view of a date string. It runs the same scanner
- * every constructor runs and then SHOWS what it read rather than applying it, so
- * nothing about the clock reaches the answer -- a field the string never
- * mentioned is `false`, not the base moment's.
+ * The COMPONENT view php's two parse readers answer with: what the scanner READ,
+ * field by field, rather than what a constructor would make of it. Nothing about
+ * the clock reaches it -- a field the string never mentioned is `false`, not the
+ * base moment's -- and three parts of the shape are conditional.
  *
- * The shape is php's own, and three parts of it are conditional. `is_localtime`
- * is whether a TIMEZONE token was seen at all, which is not the same as one
- * having been understood: an unknown name sets it and leaves `zone_type` 0, and
- * nothing else is shown. A fixed OFFSET shows `zone` and `is_dst`, an
- * ABBREVIATION shows those and its `tz_abbr`, and an IDENTIFIER shows only its
- * name, twice. And the `relative` block appears when the string spelled a
- * relative element -- `now` and `today` do not -- carrying the weekday when one
- * was hunted, the business-day count when that special was named, and the
- * `first|last day of` flag as `true`.
- *
- * The diagnostics are the scan's own (see DtParseFields): every error it met and
- * the warnings it raised, keyed by the byte each names. They are NOT published
- * as getLastErrors() -- php leaves that record to the constructors -- so the
- * scan writes into one of this call's own.
+ * `is_localtime` is whether a TIMEZONE token was seen at all, which is not the
+ * same as one having been understood: an unknown name sets it and leaves
+ * `zone_type` 0, with nothing else shown. A fixed OFFSET shows `zone` and
+ * `is_dst`, an ABBREVIATION shows those and its `tz_abbr`, and an IDENTIFIER
+ * shows only its name, twice. And the `relative` block appears when the parse
+ * spelled a relative element -- `now` and `today` do not -- carrying the weekday
+ * when one was hunted, the business-day count when that special was named, and
+ * the `first|last day of` flag as `true`.
  */
-static int vm_builtin_date_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
+typedef struct dt_comp dt_comp;
+struct dt_comp
 {
-	ph7_vm *pVm = pCtx->pVm;
-	phl_dt_lasterr sRec;
-	dt_parsed sVec;
+	sxi64 y,mo,d,h,mi,s,us;   /* DT_UNSET is php's own, and `false` on show */
+	int iZoneSeen;            /* php's is_localtime */
+	int iZoneKind;            /* php's timezone_type, 0 when nothing resolved */
+	sxi32 iOff;
+	const char *zName;
+	int nName;
+	int bHaveRel;
+	sxi64 ry,rm,rd,rh,ri,rs;
+	int bWday,iWday;
+	int bWeekdays;
+	sxi64 iWeekdays;
+	int iFirstLast;
+};
+static int DtCompResult(ph7_context *pCtx,const dt_comp *pC,const phl_dt_lasterr *pRec)
+{
 	ph7_value *pArr,*pRel,*pWarn,*pErrs,*pVal;
-	const char *zIn = "";
-	sxi64 iTs = 0;
-	sxi32 iOff = 0;
-	int nIn = 0,bOffSet = 0,uSec = 0,k,iKind;
-	if( nArg < 1 ){
-		return PH7_OK;
-	}
-	zIn = ph7_value_to_string(apArg[0],&nIn);
-	SyZero(&sRec,sizeof(sRec));
-	SyBlobInit(&sRec.sErr,&pVm->sAllocator);
-	DtFieldsInit(&sVec,0);
-	DtParseEx(zIn,nIn,0,0,0,0,&iTs,&iOff,&bOffSet,&uSec,&sVec,&sRec);
+	int k;
 	pArr = ph7_context_new_array(pCtx);
 	pWarn = ph7_context_new_array(pCtx);
 	pErrs = ph7_context_new_array(pCtx);
 	pVal = ph7_context_new_scalar(pCtx);
 	if( pArr == 0 || pWarn == 0 || pErrs == 0 || pVal == 0 ){
-		SyBlobRelease(&sRec.sErr);
 		return PH7_ContextMemoryError(pCtx);
 	}
 #define DT_PUT(zKey) ph7_array_add_strkey_elem(pArr,zKey,pVal)
@@ -6154,64 +6162,60 @@ static int vm_builtin_date_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		else { ph7_value_int64(pVal,(iVal)); } \
 		DT_PUT(zKey); \
 	}while(0)
-	DT_PUTFIELD("year",sVec.y);
-	DT_PUTFIELD("month",sVec.m);
-	DT_PUTFIELD("day",sVec.d);
-	DT_PUTFIELD("hour",sVec.h);
-	DT_PUTFIELD("minute",sVec.i);
-	DT_PUTFIELD("second",sVec.s);
-	if( sVec.us == DT_UNSET || sVec.bUsUnset ){
+	DT_PUTFIELD("year",pC->y);
+	DT_PUTFIELD("month",pC->mo);
+	DT_PUTFIELD("day",pC->d);
+	DT_PUTFIELD("hour",pC->h);
+	DT_PUTFIELD("minute",pC->mi);
+	DT_PUTFIELD("second",pC->s);
+	if( pC->us == DT_UNSET ){
 		ph7_value_bool(pVal,0);
 	}else{
-		ph7_value_double(pVal,(ph7_real)((double)sVec.us / 1000000.0));
+		ph7_value_double(pVal,(ph7_real)((double)pC->us / 1000000.0));
 	}
 	DT_PUT("fraction");
-	for( k = 0 ; k < sRec.nWarnKept ; k++ ){
-		ph7_value_string(pVal,sRec.azWarn[k],-1);
-		ph7_array_add_intkey_elem(pWarn,sRec.aWarnPos[k],pVal);
+	for( k = 0 ; k < pRec->nWarnKept ; k++ ){
+		ph7_value_string(pVal,pRec->azWarn[k],-1);
+		ph7_array_add_intkey_elem(pWarn,pRec->aWarnPos[k],pVal);
 		ph7_value_reset_string_cursor(pVal);
 	}
 	{
-		const phl_dt_diag_row *aRow = (const phl_dt_diag_row *)SyBlobData(&sRec.sErr);
-		for( k = 0 ; k < sRec.nErrKept ; k++ ){
+		const phl_dt_diag_row *aRow = (const phl_dt_diag_row *)SyBlobData(&pRec->sErr);
+		for( k = 0 ; k < pRec->nErrKept ; k++ ){
 			ph7_value_string(pVal,aRow[k].zMsg,-1);
 			ph7_array_add_intkey_elem(pErrs,aRow[k].iPos,pVal);
 			ph7_value_reset_string_cursor(pVal);
 		}
 	}
-	ph7_value_int(pVal,sRec.nWarn);
+	ph7_value_int(pVal,pRec->nWarn);
 	DT_PUT("warning_count");
 	ph7_array_add_strkey_elem(pArr,"warnings",pWarn);
-	ph7_value_int(pVal,sRec.nErr);
+	ph7_value_int(pVal,pRec->nErr);
 	DT_PUT("error_count");
 	ph7_array_add_strkey_elem(pArr,"errors",pErrs);
-	SyBlobRelease(&sRec.sErr);
-	ph7_value_bool(pVal,sVec.nZoneTok > 0);
+	ph7_value_bool(pVal,pC->iZoneSeen != 0);
 	DT_PUT("is_localtime");
-	if( sVec.nZoneTok > 0 ){
-		iKind = sVec.bOffSet == 0 ? 0
-			: (sVec.bOffSet == 1 ? DT_ZONE_OFFSET
-			   : (sVec.bZoneIdent ? DT_ZONE_ID : DT_ZONE_ABBR));
-		ph7_value_int(pVal,iKind);
+	if( pC->iZoneSeen ){
+		ph7_value_int(pVal,pC->iZoneKind);
 		DT_PUT("zone_type");
-		if( iKind == DT_ZONE_OFFSET || iKind == DT_ZONE_ABBR ){
-			ph7_value_int64(pVal,(sxi64)sVec.iOff);
+		if( pC->iZoneKind == DT_ZONE_OFFSET || pC->iZoneKind == DT_ZONE_ABBR ){
+			ph7_value_int64(pVal,(sxi64)pC->iOff);
 			DT_PUT("zone");
 			ph7_value_bool(pVal,0);   /* no tz database, so nothing is ever DST */
 			DT_PUT("is_dst");
 		}
-		if( iKind == DT_ZONE_ABBR || iKind == DT_ZONE_ID ){
-			ph7_value_string(pVal,sVec.zZone,sVec.nZone);
+		if( pC->iZoneKind == DT_ZONE_ABBR || pC->iZoneKind == DT_ZONE_ID ){
+			ph7_value_string(pVal,pC->zName,pC->nName);
 			DT_PUT("tz_abbr");
 			ph7_value_reset_string_cursor(pVal);
 		}
-		if( iKind == DT_ZONE_ID ){
-			ph7_value_string(pVal,sVec.zZone,sVec.nZone);
+		if( pC->iZoneKind == DT_ZONE_ID ){
+			ph7_value_string(pVal,pC->zName,pC->nName);
 			DT_PUT("tz_id");
 			ph7_value_reset_string_cursor(pVal);
 		}
 	}
-	if( sVec.bHaveRel ){
+	if( pC->bHaveRel ){
 		pRel = ph7_context_new_array(pCtx);
 		if( pRel == 0 ){
 			return PH7_ContextMemoryError(pCtx);
@@ -6220,22 +6224,22 @@ static int vm_builtin_date_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_value_int64(pVal,(iVal)); \
 			ph7_array_add_strkey_elem(pRel,zKey,pVal); \
 		}while(0)
-		DT_PUTREL("year",sVec.ry);
-		DT_PUTREL("month",sVec.rm);
-		DT_PUTREL("day",sVec.rd);
-		DT_PUTREL("hour",sVec.rh);
-		DT_PUTREL("minute",sVec.ri);
-		DT_PUTREL("second",sVec.rs);
-		if( sVec.bWday ){
-			DT_PUTREL("weekday",(sxi64)sVec.iWday);
+		DT_PUTREL("year",pC->ry);
+		DT_PUTREL("month",pC->rm);
+		DT_PUTREL("day",pC->rd);
+		DT_PUTREL("hour",pC->rh);
+		DT_PUTREL("minute",pC->ri);
+		DT_PUTREL("second",pC->rs);
+		if( pC->bWday ){
+			DT_PUTREL("weekday",(sxi64)pC->iWday);
 		}
-		if( sVec.bWeekdays ){
-			DT_PUTREL("weekdays",sVec.iWeekdays);
+		if( pC->bWeekdays ){
+			DT_PUTREL("weekdays",pC->iWeekdays);
 		}
-		if( sVec.iFirstLast ){
+		if( pC->iFirstLast ){
 			ph7_value_bool(pVal,1);
 			ph7_array_add_strkey_elem(pRel,
-				sVec.iFirstLast == 1 ? "first_day_of_month" : "last_day_of_month",pVal);
+				pC->iFirstLast == 1 ? "first_day_of_month" : "last_day_of_month",pVal);
 		}
 #undef DT_PUTREL
 		ph7_array_add_strkey_elem(pArr,"relative",pRel);
@@ -6244,6 +6248,51 @@ static int vm_builtin_date_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #undef DT_PUT
 	ph7_result_value(pCtx,pArr);
 	return PH7_OK;
+}
+/*
+ * date_parse(): the same scanner every constructor runs, showing what it read.
+ * The diagnostics are the scan's own (see DtParseFields) and are NOT published
+ * as getLastErrors() -- php leaves that record to the constructors -- so the
+ * scan writes into one of this call's own.
+ */
+static int vm_builtin_date_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_dt_lasterr sRec;
+	dt_parsed sVec;
+	dt_comp sC;
+	const char *zIn = "";
+	sxi64 iTs = 0;
+	sxi32 iOff = 0;
+	int nIn = 0,bOffSet = 0,uSec = 0,rc;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nIn);
+	SyZero(&sRec,sizeof(sRec));
+	SyBlobInit(&sRec.sErr,&pVm->sAllocator);
+	DtFieldsInit(&sVec,0);
+	DtParseEx(zIn,nIn,0,0,0,0,&iTs,&iOff,&bOffSet,&uSec,&sVec,&sRec);
+	SyZero(&sC,sizeof(sC));
+	sC.y = sVec.y; sC.mo = sVec.m; sC.d = sVec.d;
+	sC.h = sVec.h; sC.mi = sVec.i; sC.s = sVec.s;
+	sC.us = sVec.bUsUnset ? DT_UNSET : sVec.us;
+	sC.iZoneSeen = sVec.nZoneTok > 0;
+	sC.iZoneKind = sVec.bOffSet == 0 ? 0
+		: (sVec.bOffSet == 1 ? DT_ZONE_OFFSET
+		   : (sVec.bZoneIdent ? DT_ZONE_ID : DT_ZONE_ABBR));
+	sC.iOff = sVec.iOff;
+	sC.zName = sVec.zZone;
+	sC.nName = sVec.nZone;
+	sC.bHaveRel = sVec.bHaveRel;
+	sC.ry = sVec.ry; sC.rm = sVec.rm; sC.rd = sVec.rd;
+	sC.rh = sVec.rh; sC.ri = sVec.ri; sC.rs = sVec.rs;
+	sC.bWday = sVec.bWday; sC.iWday = sVec.iWday;
+	sC.bWeekdays = sVec.bWeekdays; sC.iWeekdays = sVec.iWeekdays;
+	sC.iFirstLast = sVec.iFirstLast;
+	rc = DtCompResult(pCtx,&sC,&sRec);
+	SyBlobRelease(&sRec.sErr);
+	return rc;
 }
 /* date_interval_create_from_date_string(): warns and answers false where the
  * method throws. */
