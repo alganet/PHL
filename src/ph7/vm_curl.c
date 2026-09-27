@@ -139,11 +139,12 @@ static void CurlDropCallbacks(phl_curl *pCurl)
 	}
 }
 /*
- * Give a record its OWN copy of a callable. The two handles must not share one
- * ph7_value: whichever released it first would leave the other calling freed
- * memory from inside libcurl.
+ * Give a record its OWN copy of a stored value -- a retained callable, or the
+ * one CURLOPT_PRIVATE keeps. The two handles must not share one ph7_value:
+ * whichever released it first would leave the other reading freed memory, and
+ * for a callable that read happens from inside libcurl.
  */
-static void CurlCopyCallable(ph7_vm *pVm,ph7_value **ppSlot,ph7_value *pFrom)
+static void CurlCopyValue(ph7_vm *pVm,ph7_value **ppSlot,ph7_value *pFrom)
 {
 	if( pFrom == 0 ){
 		return;
@@ -164,6 +165,10 @@ static void CurlFreeHandle(phl_curl *pCurl)
 	CurlFreeSlists(pCurl);
 	CurlDropCallbacks(pCurl);
 	CurlFreeMime(pCurl);
+	if( pCurl->pPrivate ){
+		ph7_release_value(pCurl->pVm,pCurl->pPrivate);
+		pCurl->pPrivate = 0;
+	}
 }
 /*
  * Free every registered handle. Called from PH7_CurlVmReset (a reused VM --
@@ -343,9 +348,10 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	 */
 	pNew->iWriteDest = pFrom->iWriteDest;
 	pNew->bXferIsProgress = pFrom->bXferIsProgress;
-	CurlCopyCallable(pVm,&pNew->pWriteCb,pFrom->pWriteCb);
-	CurlCopyCallable(pVm,&pNew->pHeaderCb,pFrom->pHeaderCb);
-	CurlCopyCallable(pVm,&pNew->pXferCb,pFrom->pXferCb);
+	CurlCopyValue(pVm,&pNew->pWriteCb,pFrom->pWriteCb);
+	CurlCopyValue(pVm,&pNew->pHeaderCb,pFrom->pHeaderCb);
+	CurlCopyValue(pVm,&pNew->pXferCb,pFrom->pXferCb);
+	CurlCopyValue(pVm,&pNew->pPrivate,pFrom->pPrivate);
 	pNew->pNext = (phl_curl *)pVm->pCurlHandles;
 	pVm->pCurlHandles = pNew;
 	/*
@@ -2711,6 +2717,19 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		pCurl->iWriteDest = ph7_value_to_bool(pVal) ? PHL_CURL_DEST_RETURN
 		                                            : PHL_CURL_DEST_STDOUT;
 		return 1;
+	case CURL_OPT_PRIVATE:
+		/* php keeps the value ITSELF -- any type, an object by reference and
+		 * an array by copy, exactly as an ordinary assignment would. Nothing
+		 * reaches libcurl, so it always answers true. */
+		if( pCurl->pPrivate ){
+			ph7_release_value(pCurl->pVm,pCurl->pPrivate);
+		}
+		pCurl->pPrivate = ph7_new_scalar(pCurl->pVm);
+		if( pCurl->pPrivate == 0 ){
+			return 0;
+		}
+		PH7_MemObjStore(pVal,pCurl->pPrivate);
+		return 1;
 	case CURL_OPT_POSTFIELDS:
 		if( ph7_value_is_array(pVal) ){
 			return CurlSetPostFieldsArray(pCtx,pCurl,pVal,pRc);
@@ -2882,6 +2901,16 @@ static int vm_builtin_curl_error(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int CurlInfoOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iInfo)
 {
 	CURL *pE = pCurl->pEasy;
+	if( iInfo == CURLINFO_PRIVATE ){
+		/* Not libcurl's private pointer, which php never sets: the php VALUE
+		 * CURLOPT_PRIVATE stored, and FALSE when there was none. */
+		if( pCurl->pPrivate ){
+			ph7_result_value(pCtx,pCurl->pPrivate);
+		}else{
+			ph7_result_bool(pCtx,0);
+		}
+		return PH7_OK;
+	}
 	switch( (int)(iInfo & CURLINFO_TYPEMASK) ){
 	case CURLINFO_STRING: {
 		char *zVal = 0;

@@ -143,6 +143,14 @@ struct phl_curl {
 	curl_mime *pMime;
 	phl_curl_part *pParts;
 	ph7_value *pPostArray;
+	/*
+	 * CURLOPT_PRIVATE. php's own option, and the only one that stores a php
+	 * VALUE rather than something libcurl understands: libcurl's own private
+	 * pointer is never set, and curl_getinfo(CURLINFO_PRIVATE) reads this back
+	 * -- FALSE when nothing was ever stored, which is how "unset" is told from
+	 * a stored null.
+	 */
+	ph7_value *pPrivate;
 	ph7_context *pExecCtx;          /* the running curl_exec, for a diagnostic an
 	                                 * upload read raises from inside libcurl */
 	int bNoPathRead;                /* an upload part with no source was read: the
