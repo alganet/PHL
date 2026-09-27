@@ -521,7 +521,11 @@ static int DtMeridian(const char *z,const char *zEnd,int *pbPm)
 	}
 	n++;
 	if( &z[n] < zEnd && z[n] == '.' ){ n++; }
-	if( &z[n] < zEnd && z[n] != ' ' && z[n] != '\t' && z[n] != '\n' && z[n] != '\r' ){
+	/* php spells a trailing byte INTO the rule -- `meridian = [AaPp] "."? [Mm]
+	 * "."? [\000\t ]` -- and its buffer is NUL-padded, so the end of the string
+	 * satisfies it too. Nothing else does: `3pm,`, `3pm\nx` and `3pm.x` are no
+	 * meridian at all, and the `am` of `11:30am\nx` is read as a zone. */
+	if( &z[n] < zEnd && z[n] != ' ' && z[n] != '\t' && z[n] != 0 ){
 		return 0;
 	}
 	*pbPm = (c == 'p');
@@ -1667,7 +1671,9 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	dt_parsed *p,const char *zIn)
 {
 	const char *zTok = z;
+	const char *zAfterMon = 0;
 	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
+	int bMonthFirst = 0,nSuf = 0;
 	sxi64 y = 0;
 	int rcT;
 /* php's textual-date rule spells its run with the full stop in it (`5.january`
@@ -1675,12 +1681,18 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
  * the DAY and the YEAR, which is where the comma everyone writes goes
  * (`January 15, 2020`, and `January, 15 2020` is no date at all). */
 #define MDSKIPWS() while( z < zEnd && (DtIsSpace((unsigned char)z[0]) || z[0]=='.') ){ z++; }
-#define MDSKIPYR() while( z < zEnd && (DtIsSpace((unsigned char)z[0]) || z[0]=='.' \
-	|| z[0]==',') ){ z++; }
+/* ...and the run BEHIND the day, which is php's `[,.stndrh\t ]+` -- the ordinal
+ * suffix and the comma before a year are the same set, greedy, and it is
+ * REQUIRED (or a NUL, or the end of the string) when no year follows: that is
+ * what makes `january 12x` no date at all while `january 12sd2020` is one, and
+ * what leaves `january 12 sat` reading `at` as a zone. */
+#define MDISSUF(c) ((c)==','||(c)=='.'||(c)=='s'||(c)=='t'||(c)=='n'||(c)=='d' \
+	||(c)=='r'||(c)=='h'||(c)=='\t'||(c)==' ')
 	if( (mo = DtMatchMonth(z,zEnd,&adv)) != 0 ){
 		/* MonthName [Day] [Year]. A 4-digit number here is the YEAR, not the day
 		 * ("January 2020" is month+year, day defaults); a 1-2 digit number is the day. */
 		z += adv;
+		zAfterMon = z;
 		MDSKIPWS();
 		if( z < zEnd && SyisDigit(z[0]) ){
 			int nrun = 0;
@@ -1688,9 +1700,9 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 			while( zp < zEnd && SyisDigit(zp[0]) && nrun < 4 ){ zp++; nrun++; }
 			if( nrun < 4 ){
 				d = DtRead1or2(z,zEnd,&adv); z += adv;
-				if( DtIsOrdinal(z,zEnd) ){ z += 2; }
 				haveDay = 1;
-				MDSKIPYR();
+				bMonthFirst = 1;
+				while( z < zEnd && MDISSUF((unsigned char)z[0]) ){ z++; nSuf++; }
 			}
 		}
 	}else if( SyisDigit(z[0]) ){
@@ -1719,7 +1731,21 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	/* php spells the day's range inside the pattern too, so a day past 31 is not
 	 * this rule at all and the token is refused where it STARTS (`87 january` is
 	 * php's position 0), not where the month name ends. */
-	if( d > 31 ){ return 0; }
+	/* php's `datenoyear` ends in that run, and spells the day's range inside the
+	 * pattern as well -- so with a day past 31, or with nothing behind the day
+	 * and no year to close the rule, this text is not that token. The MONTH NAME
+	 * still is one of its own, though, and only the month-FIRST spelling can fall
+	 * back to it: `january 12x` is January with the digits left to the string,
+	 * while `87 january` is php's refusal at position 0. */
+	if( d > 31 || (bMonthFirst && !haveYear && nSuf == 0 && z < zEnd && z[0] != 0) ){
+		if( !bMonthFirst ){
+			return 0;
+		}
+		z = zAfterMon;
+		haveDay = 0;
+		haveYear = 0;
+		d = 1;
+	}
 	/* optional time-of-day suffix */
 	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	if( rcT != 0 ){ return rcT; }
@@ -1731,6 +1757,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	*pzOut = z;
 	return 1;
 #undef MDSKIPWS
+#undef MDISSUF
 }
 /*
  * php's reltextnumber -- the ORDINAL WORDS that stand where a relative COUNT
