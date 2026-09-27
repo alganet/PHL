@@ -776,13 +776,23 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	sxi32 rc;
 	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
+	int bStore = (pInstr->iOp == PH7_OP_POW_STORE);
+	/* Operand order convention (matches DIV/SUB_STORE):
+	 *   POW:       base = pNos (evaluated first),   exp = pTos
+	 *   POW_STORE: base = pTos (lvalue, last),       exp = pNos
+	 */
+	ph7_value *pBase = bStore ? pTos : pNos;
+	ph7_value *pExp  = bStore ? pNos : pTos;
 	{
 		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
 		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
-		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		 * BEFORE throwing, so the catch does not run over the abandoned operands.
+		 * The message names the operands in SOURCE order, so it takes the same
+		 * base/exponent convention as the operation: `$x **= "abc"` is
+		 * `int ** string`, the way `$x ** "abc"` is. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"**",&sArMsg) != SXRET_OK ){
+		if( VmArithOperandCheck(&(*pVm),pBase,pExp,"**",&sArMsg) != SXRET_OK ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
@@ -797,13 +807,6 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		}
 		SyBlobRelease(&sArMsg);
 	}
-	int bStore = (pInstr->iOp == PH7_OP_POW_STORE);
-	/* Operand order convention (matches DIV/SUB_STORE):
-	 *   POW:       base = pNos (evaluated first),   exp = pTos
-	 *   POW_STORE: base = pTos (lvalue, last),       exp = pNos
-	 */
-	ph7_value *pBase = bStore ? pTos : pNos;
-	ph7_value *pExp  = bStore ? pNos : pTos;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		VM_EXIT_ABORT;
@@ -1233,10 +1236,16 @@ PH7_PRIVATE VmOpRc VmExecOpMulStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	{
 		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
 		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
-		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		 * BEFORE throwing, so the catch does not run over the abandoned operands.
+		 * MULTIPLICATION is commutative and the RESULT does not care which operand is
+		 * which, but the MESSAGE does: it names them in SOURCE order, and a compound
+		 * assign puts its lvalue on the TOP of the stack (`$x *= [1]` is `int * array`,
+		 * the way `$x * [1]` is). */
+		ph7_value *pMulL = (pInstr->iOp == PH7_OP_MUL_STORE) ? pTos : pNos;
+		ph7_value *pMulR = (pInstr->iOp == PH7_OP_MUL_STORE) ? pNos : pTos;
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"*",&sArMsg) != SXRET_OK ){
+		if( VmArithOperandCheck(&(*pVm),pMulL,pMulR,"*",&sArMsg) != SXRET_OK ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);

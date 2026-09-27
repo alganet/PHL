@@ -3990,28 +3990,68 @@ case PH7_OP_DIV_STORE:{
 		}
 		SyBlobRelease(&sArMsg);
 	}
-	/* Force the operands to be real */
-	if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pTos);
-	}
-	if( (pNos->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pNos);
-	}
-	/* Perform the requested operation */
-	a = pTos->rVal;
-	b = pNos->rVal;
-	if( b == 0 ){
-		/* Division by zero: php throws a catchable DivisionByZeroError (8.0),
-		 * not the old non-catchable warning that continued with a 0 result. */
-		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
-		PH7_DISPATCH_ENFORCE_RC(rc)
-	}else{
-		r = a/b;
-		/* Push the result */
-		pNos->rVal = r;
-		MemObjSetType(pNos,MEMOBJ_REAL);
-		/* Try to get an integer representation */
-		PH7_MemObjTryInteger(pNos);
+	{
+		/* php's `/` answers an INT when both operands are ints and the division is
+		 * exact (`6/3 === 2`, not `2.0`), and `$x /= $y` is that same operator: php
+		 * has one division and the compound form only decides where the answer goes.
+		 * OP_DIV grew the rule (§2's int-boundary work) and this arm, a separate copy
+		 * of it, did not — so `$x = 6; $x /= 3;` left a FLOAT where `$x = $x / 3` left
+		 * an int, visible through `===`, `var_dump`, `json_encode` and `is_int`.
+		 * The divisor is screened BEFORE `ia % ib`: x86 computes the overflowing
+		 * PHP_INT_MIN/-1 quotient alongside the remainder and traps (OP_DIV and OP_MOD
+		 * guard the same hazard the same way). */
+		int bExactDiv = 0;
+		PH7_MemObjToNumeric(pTos);
+		PH7_MemObjToNumeric(pNos);
+		if( ((pTos->iFlags|pNos->iFlags) & MEMOBJ_REAL) == 0 ){
+			sxi64 ia = pTos->x.iVal;   /* the lvalue: php's dividend */
+			sxi64 ib = pNos->x.iVal;   /* the right operand: the divisor */
+			sxi64 iQuot = 0;
+			if( ib == 0 ){
+				rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
+				PH7_DISPATCH_ENFORCE_RC(rc)
+			}else if( ib == -1 ){
+#ifdef PH7_OMIT_FLOATING_POINT
+				iQuot = ( ia != SMALLEST_INT64 ) ? -ia : SMALLEST_INT64;
+				bExactDiv = 1;
+#else
+				if( ia != SMALLEST_INT64 ){
+					iQuot = -ia;
+					bExactDiv = 1;
+				}
+#endif
+			}else if( ia % ib == 0 ){
+				iQuot = ia / ib;
+				bExactDiv = 1;
+			}
+			if( bExactDiv ){
+				pNos->x.iVal = iQuot;
+				MemObjSetType(pNos,MEMOBJ_INT);
+			}
+		}
+		if( !bExactDiv ){
+			/* Force the operands to be real */
+			if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
+				PH7_MemObjToReal(pTos);
+			}
+			if( (pNos->iFlags & MEMOBJ_REAL) == 0 ){
+				PH7_MemObjToReal(pNos);
+			}
+			/* Perform the requested operation */
+			a = pTos->rVal;
+			b = pNos->rVal;
+			if( b == 0 ){
+				/* Division by zero: php throws a catchable DivisionByZeroError (8.0),
+				 * not the old non-catchable warning that continued with a 0 result. */
+				rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
+				PH7_DISPATCH_ENFORCE_RC(rc)
+			}else{
+				r = a/b;
+				/* Push the result */
+				pNos->rVal = r;
+				MemObjSetType(pNos,MEMOBJ_REAL);
+			}
+		}
 	}
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
