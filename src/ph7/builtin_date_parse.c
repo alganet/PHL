@@ -304,6 +304,44 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 	return DtMakeTs(p->y,(int)p->m,(int)p->d,(int)p->h,(int)p->i,(int)p->s,p->iOff);
 }
 /*
+ * How WIDE a run of digits may be, which php bounds per grammar and PHL did not
+ * bound at all -- so a long run silently wrapped the int64 it was accumulated
+ * into (`@99999999999999999999` answered 7766279631452241919 here; UBSan called
+ * the overflow what it is). Each limit is php's, measured:
+ *
+ *   an `@epoch`          18 digits, then "Number out of range"
+ *   a RELATIVE number    13 digits (php's scanner answers gibberish past that --
+ *                        a 14-digit run comes back as ten digits' worth -- so
+ *                        PHL refuses instead of guessing, recorded in §7.4)
+ *   an ISO duration      12 digits, then "Unknown or bad format"
+ *
+ * The accumulators themselves stop adding past DT_DIGITS_SAFE so that COUNTING a
+ * run that will be refused cannot overflow on the way.
+ */
+#define DT_DIGITS_EPOCH 18
+#define DT_DIGITS_REL   13
+#define DT_DIGITS_ISO   12
+#define DT_DIGITS_SAFE  18
+/* Whole bands below the position encoding, so one refusal cannot be mistaken for
+ * another: the bare negative is php's "Double time specification", a band lower
+ * is "Number out of range", and one lower still "Double date specification". */
+#define DT_ERR_RANGE    1000000
+#define DT_ERR_DDATE    2000000
+/*
+ * php refuses a SECOND absolute date outright -- `2020-01-01 january` and
+ * `20240102 20240102` are both "Double date specification" there, reported at the
+ * offending token's start. Every date rule marks its answer through this; the bare
+ * four-digit YEAR does not, which is why `1234 5678` is a year beside a clock.
+ */
+static int DtMarkDate(dt_parsed *p,const char *zTok,const char *zIn)
+{
+	if( p->bHaveDate ){
+		return -((int)(zTok - zIn) + 1) - DT_ERR_DDATE;
+	}
+	p->bHaveDate = 1;
+	return 0;
+}
+/*
  * Read a fractional-seconds part at z (which points at the '.'): up to 6 digits
  * become microseconds (right-padded to 6, extra digits ignored). Advances *pz.
  */
@@ -377,6 +415,10 @@ static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_p
 	*pz = z;
 	return 1;
 }
+/* Forward: the time SUFFIX has to know whether a DATE would read longer at the
+ * same position, and the date rules read a time suffix of their own. */
+static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
+	dt_parsed *p,const char *zIn);
 /*
  * Parse an OPTIONAL time-of-day suffix after a date component: a space or `T`,
  * then php's time of day, then a `Z` or a UTC offset. On entry *pz points just
@@ -390,7 +432,22 @@ static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,dt_pars
 	const char *z = *pz;
 	if( z < zEnd && (z[0]=='T' || z[0]==' ') && z+1 < zEnd && SyisDigit(z[1]) ){
 		const char *zTime = &z[1];
-		int rc = DtReadTimeOfDay(&zTime,zEnd,zIn,p);
+		int rc;
+		{
+			/* php reads whichever token is LONGER at this position, and a dotted
+			 * DATE is longer than the clock hiding in its head: the tail of
+			 * `01/02/2020 03.04.2021` is a second date (its refusal), not 03:04:20.
+			 * The probe runs on a copy, and with the date flag cleared so that the
+			 * refusal this call would raise cannot answer the question. */
+			dt_parsed sTry = *p;
+			const char *zProbe = zTime;
+			sTry.bHaveDate = 0;
+			if( DtTryNumericDate(zTime,zEnd,&zProbe,&sTry,zIn) == 1 ){
+				*pz = z;
+				return 0;
+			}
+		}
+		rc = DtReadTimeOfDay(&zTime,zEnd,zIn,p);
 		if( rc < 0 ){ return rc; }
 		if( rc == 0 ){
 			*pz = z;
@@ -472,6 +529,7 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	dt_parsed *p,const char *zIn)
 {
 	const char *zRest;
+	const char *zTok = z;
 	sxi64 y = 0;
 	int nYr,mo,d,rcT;
 	if( (nYr = DtTryIsoYear(z,zEnd,&y)) == 0 || zEnd-z < nYr + 6 ){
@@ -494,10 +552,10 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
 		return rcT;
 	}
+	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	p->y = y;
 	p->m = mo;
 	p->d = d;
-	p->bHaveDate = 1;
 	*pzOut = z;
 	return 1;
 }
@@ -519,6 +577,7 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	dt_parsed *p,const char *zIn)
 {
+	const char *zTok = z;
 	int a,b,c,na,nb,nc;
 	char sep;
 	int y,mo,d;
@@ -573,10 +632,10 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	/* optional time-of-day suffix, then commit */
 	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	if( rcT != 0 ){ return rcT; }
+	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	p->y = y;
 	p->m = mo;
 	p->d = d;
-	p->bHaveDate = 1;
 	*pzOut = z;
 	return 1;
 }
@@ -650,6 +709,7 @@ static int DtIsOrdinal(const char *z,const char *zEnd)
 static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	dt_parsed *p,const char *zIn)
 {
+	const char *zTok = z;
 	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
 	sxi64 y = 0;
 	int rcT;
@@ -714,37 +774,15 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 		p->bZoneIdent = (bUtc && SyMemcmp(z,"UTC",3) == 0);
 		z += 3;
 	}
+	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	p->m = mo;
 	if( haveDay ){ p->d = d; }
 	else if( haveYear ){ p->d = 1; }
 	if( haveYear ){ p->y = y; }
-	p->bHaveDate = 1;
 	*pzOut = z;
 	return 1;
 #undef MDSKIPWS
 }
-/*
- * How WIDE a run of digits may be, which php bounds per grammar and PHL did not
- * bound at all -- so a long run silently wrapped the int64 it was accumulated
- * into (`@99999999999999999999` answered 7766279631452241919 here; UBSan called
- * the overflow what it is). Each limit is php's, measured:
- *
- *   an `@epoch`          18 digits, then "Number out of range"
- *   a RELATIVE number    13 digits (php's scanner answers gibberish past that --
- *                        a 14-digit run comes back as ten digits' worth -- so
- *                        PHL refuses instead of guessing, recorded in §7.4)
- *   an ISO duration      12 digits, then "Unknown or bad format"
- *
- * The accumulators themselves stop adding past DT_DIGITS_SAFE so that COUNTING a
- * run that will be refused cannot overflow on the way.
- */
-#define DT_DIGITS_EPOCH 18
-#define DT_DIGITS_REL   13
-#define DT_DIGITS_ISO   12
-#define DT_DIGITS_SAFE  18
-/* One whole band below the position encoding, so a range refusal cannot be
- * mistaken for a "double time specification" one. */
-#define DT_ERR_RANGE    1000000
 /*
  * php's date-string parse, onto the field vector: absolute forms
  * "now" | "@<ts>" | "YYYY-MM-DD[( |T)HH:MM[:SS]][Z|±HH[:MM]]" | "HH:MM[:SS]" |
@@ -1083,28 +1121,31 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				int adv,mo2;
 				while( zm < zEnd && (zm[0]==' '||zm[0]=='\t'||zm[0]=='.'||zm[0]=='-') ){ zm++; }
 				if( (mo2 = DtMatchMonth(zm,zEnd,&adv)) != 0 ){
+					int rcD = DtMarkDate(p,z,zIn);
+					if( rcD != 0 ){ return rcD; }
 					p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
 					p->m = mo2;
 					p->d = 1;
-					p->bHaveDate = 1;
 					z = &zm[adv];
 					bAny = 1;
 					continue;
 				}
 			}
 			if( !bT && n >= 8 && mo <= 12 && d <= 31 ){
+				int rcD = DtMarkDate(p,z,zIn);
+				if( rcD != 0 ){ return rcD; }
 				p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
 				p->m = mo;
 				p->d = d;
-				p->bHaveDate = 1;
 				z = &zd[8];
 			}else if( !bT && n >= 7 && doy >= 1 && doy <= 366 ){
 				/* php's ISO ORDINAL date, YYYYDDD: the day of the year, which the
 				 * field normalizer resolves out of January. */
+				int rcD = DtMarkDate(p,z,zIn);
+				if( rcD != 0 ){ return rcD; }
 				p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
 				p->m = 1;
 				p->d = doy;
-				p->bHaveDate = 1;
 				z = &zd[7];
 			}else if( n >= 6 && h <= 24 && mi <= 59 && se <= 60 ){
 				/* six digits are php's whole clock, and a SECOND clock is its
@@ -1198,14 +1239,17 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	/* Negative encodings: php's "Double time specification" reason, and -- one
 	 * whole DT_ERR_RANGE band lower -- its "Number out of range", which is what a
 	 * digit run too wide for the clock reports. */
-	int bRange = 0;
+	int bRange = 0,bDDate = 0;
 	int bDouble;
 	int iPos;
-	if( iErrPos < -DT_ERR_RANGE ){
+	if( iErrPos < -DT_ERR_DDATE ){
+		bDDate = 1;
+		iErrPos += DT_ERR_DDATE;
+	}else if( iErrPos < -DT_ERR_RANGE ){
 		bRange = 1;
 		iErrPos += DT_ERR_RANGE;
 	}
-	bDouble = !bRange && iErrPos < 0;
+	bDouble = !bRange && !bDDate && iErrPos < 0;
 	iPos = (iErrPos < 0 ? -iErrPos : iErrPos) - 1;
 	char cAt = (iPos < nLen) ? zIn[iPos] : ' ';
 	*piPos = iPos;
@@ -1214,6 +1258,9 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	 * lookup miss, anything else an unexpected character. */
 	if( bRange ){
 		return "Number out of range";
+	}
+	if( bDDate ){
+		return "Double date specification";
 	}
 	return bDouble ? "Double time specification"
 		: ((cAt >= 'a' && cAt <= 'z') || (cAt >= 'A' && cAt <= 'Z'))
