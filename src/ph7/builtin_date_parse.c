@@ -458,6 +458,46 @@ static int DtReadField(const char *z,const char *zEnd,int iMax,int *pVal)
 	return 1;
 }
 /*
+ * php's MERIDIAN token, the twelve-hour clock's half: `am` or `pm` in any case,
+ * with an optional dot after either letter, and nothing but whitespace or the
+ * end of the string behind it -- so `3pm.` is three in the afternoon while
+ * `3pm..`, `3pm,` and `3pmx` are not a time at all.
+ *
+ * Answers the bytes it takes (0 for anything else) and sets *pbPm.
+ */
+static int DtMeridian(const char *z,const char *zEnd,int *pbPm)
+{
+	int n,c;
+	if( z >= zEnd ){
+		return 0;
+	}
+	c = SyToLower(z[0]);
+	if( c != 'a' && c != 'p' ){
+		return 0;
+	}
+	n = 1;
+	if( &z[n] < zEnd && z[n] == '.' ){ n++; }
+	if( &z[n] >= zEnd || SyToLower(z[n]) != 'm' ){
+		return 0;
+	}
+	n++;
+	if( &z[n] < zEnd && z[n] == '.' ){ n++; }
+	if( &z[n] < zEnd && z[n] != ' ' && z[n] != '\t' && z[n] != '\n' && z[n] != '\r' ){
+		return 0;
+	}
+	*pbPm = (c == 'p');
+	return n;
+}
+/* The hour a twelve-hour clock means: php's noon is 12 and its midnight is 0,
+ * and every other hour is itself or itself plus twelve. */
+static int DtHour12(int h,int bPm)
+{
+	if( h == 12 ){
+		return bPm ? 12 : 0;
+	}
+	return bPm ? h + 12 : h;
+}
+/*
  * php's time of day: `[t] H[H] (:|.) M[M] [(:|.) S[S] [.frac]]`. Either separator
  * is php's, and only the SECONDS take a fraction -- which is why `12:34.5` is
  * php's 12:34:05 and not a half second. Answers 1 when a time was read (the
@@ -467,25 +507,74 @@ static int DtReadField(const char *z,const char *zEnd,int iMax,int *pVal)
 static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_parsed *p)
 {
 	const char *z = *pz;
-	int h,mi,s = 0,n;
-	if( z < zEnd && (z[0]=='t' || z[0]=='T') ){ z++; }
+	int h,mi,s = 0,n,bT = 0,bPm = 0,nMer,nMin = 0,nSec = 0,bFrac = 0;
+	char cSep1 = 0,cSep2 = 0;
+	if( z < zEnd && (z[0]=='t' || z[0]=='T') ){ z++; bT = 1; }
 	if( (n = DtReadField(z,zEnd,24,&h)) == 0 ){ return 0; }
-	if( z+n >= zEnd || (z[n] != ':' && z[n] != '.') ){ return 0; }
+	if( z+n >= zEnd || (z[n] != ':' && z[n] != '.') ){
+		/* php's twelve-hour clock with no fields under it: `3pm`, `12 a.m.`.
+		 * The hour has to be one a twelve-hour clock can name -- `0am`, `00am`
+		 * and `13pm` are refusals, not times -- and the `t` prefix belongs to
+		 * the ISO spelling alone, so `t3pm` is the hour 03 with `pm` left over. */
+		const char *zMer = &z[n];
+		if( bT || h < 1 || h > 12 ){
+			return 0;
+		}
+		while( zMer < zEnd && (zMer[0]==' ' || zMer[0]=='\t') ){ zMer++; }
+		if( (nMer = DtMeridian(zMer,zEnd,&bPm)) == 0 ){
+			return 0;
+		}
+		if( p->nTimeTok ){ return -((int)(*pz - zIn) + 1); }
+		p->h = DtHour12(h,bPm);
+		p->i = p->s = p->us = 0;
+		p->nTimeTok = 1;
+		*pz = &zMer[nMer];
+		return 1;
+	}
+	cSep1 = z[n];
 	z += n + 1;
 	if( (n = DtReadField(z,zEnd,59,&mi)) == 0 ){ return 0; }
+	nMin = n;
 	z += n;
 	/* php's "Double time specification", reported at this token's start */
 	if( p->nTimeTok ){ return -((int)(*pz - zIn) + 1); }
 	if( z < zEnd && (z[0]==':' || z[0]=='.') && z+1 < zEnd && SyisDigit(z[1]) ){
+		cSep2 = z[0];
 		n = DtReadField(&z[1],zEnd,60,&s);
+		nSec = n;
 		z += n + 1;
 		if( z < zEnd && z[0]=='.' && z+1 < zEnd && SyisDigit(z[1]) ){
+			bFrac = 1;
 			p->us = DtReadFraction(&z,zEnd);
 		}else{
 			p->us = 0;
 		}
 	}else{
 		p->us = 0;
+	}
+	/* ...and the twelve-hour half of the same clock, which php spells behind the
+	 * fields: `3:04pm`, `3:04:05 a.m.`. It is only a meridian when the hour is
+	 * one a twelve-hour clock names, so `13:00pm` keeps its 13 and leaves the
+	 * `pm` to the string, which then reads it as an unknown zone. */
+	/* ...and php spells the LAST field of a twelve-hour clock with both its
+	 * digits: `3:04pm` and `3:4:05pm` are times where `3:4pm` and `3:04:5pm`
+	 * are not, and the `pm` those two leave behind is an unknown zone.
+	 *
+	 * A FRACTION narrows the shape to php's one spelling of it: both separators
+	 * are colons, both fields carry both digits, and the meridian follows the
+	 * fraction with nothing between them -- `3:04:05.5pm` is a time and
+	 * `3:04:05.5 pm` is not. */
+	if( h >= 1 && h <= 12 && !bT
+	 && (bFrac ? (nMin == 2 && nSec == 2 && cSep1 == ':' && cSep2 == ':')
+	           : ((nSec > 0 ? nSec : nMin) == 2)) ){
+		const char *zMer = z;
+		if( !bFrac ){
+			while( zMer < zEnd && (zMer[0]==' ' || zMer[0]=='\t') ){ zMer++; }
+		}
+		if( (nMer = DtMeridian(zMer,zEnd,&bPm)) > 0 ){
+			h = DtHour12(h,bPm);
+			z = &zMer[nMer];
+		}
 	}
 	/* A time of day sets the whole clock, sub-second included: php writes the
 	 * microseconds of a time WITHOUT a fraction as zero. */
@@ -1062,7 +1151,10 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 				dt_parsed sTry = *p;
 				const char *zProbe = zTok;
 				sTry.nTimeTok = 0;
-				if( DtReadTimeOfDay(&zProbe,zEnd,zIn,&sTry) == 1 && zProbe == z ){
+				/* php takes the LONGER token, and a twelve-hour clock reads past
+				 * where the date would end: `3.04.05` is a date and `3.04.05pm`
+				 * the time under it. */
+				if( DtReadTimeOfDay(&zProbe,zEnd,zIn,&sTry) == 1 && zProbe >= z ){
 					return 0;
 				}
 			}
