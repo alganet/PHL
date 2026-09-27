@@ -2830,6 +2830,500 @@ static int PH7_builtin_strglob(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_bool(pCtx,rc);
 	return PH7_OK;
 }
+#ifndef PH7_DISABLE_DISK_IO
+/* Every buffer below is one path, and php's own limit for one is PATH_MAX; the
+ * SPL directory opener already refuses a longer one, and a pattern past it can
+ * name nothing that exists. It also bounds the recursion: each level of the
+ * walk consumes at least one slash of the pattern. */
+#define PH7_GLOB_PATH_MAX 4096
+/*
+ * ---------------------------------------------------------------------------
+ * The glob:// stream device.
+ *
+ * php's glob wrapper is a DIRECTORY whose entries are a pattern's matches:
+ * `opendir('glob://src/' . '*.php')` hands out one BASENAME per match, and
+ * GlobIterator is that stream behind the whole DirectoryIterator machinery. It
+ * is a dir_opener and NOTHING else -- php gives it no stream opener (so
+ * `fopen('glob://…')` is "wrapper does not support stream open") and no
+ * url_stat (so `file_exists()` and `is_dir()` answer false for one).
+ *
+ * The expansion is glob(3) with NO flags, which is what php's opener asks for,
+ * so it has to agree name for name AND order for order with the prelude
+ * glob(). Two rules are the whole of it -- a pattern is matched one SEGMENT at
+ * a time, and the answer is sorted by BYTES rather than by value -- and both
+ * are spelled here the way that function spells them, because the two
+ * implementations must not drift: 001-smoke/glob_stream_device.phpt walks a
+ * table of patterns through both and compares, which is what pins them.
+ *
+ * php's `pglob->path` is the directory of the match a read just handed OUT,
+ * never the pattern's: `glob://a/` + `*` + `/` + `*.txt` reports `a/sub1`, then
+ * `a/sub2`; a match with no slash in it reports the EMPTY string; and running
+ * out clears it, which is why GlobIterator::getPathname() answers "" past the
+ * end.
+ * ---------------------------------------------------------------------------
+ */
+/* One matched path. The blob it points into grows as the walk does, so an
+ * OFFSET is what may be kept -- a pointer would not survive the next append. */
+typedef struct glob_hit glob_hit;
+struct glob_hit
+{
+	sxu32 nOfs;   /* where this path starts in glob_stream.sHit */
+	sxu32 nLen;
+};
+typedef struct glob_stream glob_stream;
+struct glob_stream
+{
+	ph7_vm *pVm;
+	SyBlob sHit;   /* every matched path, back to back */
+	SySet aHit;    /* one glob_hit per match, in php's order */
+	sxu32 nCur;    /* php's pglob->index -- it counts PAST the end too */
+	SyBlob sDir;   /* php's pglob->path: the directory of the CURRENT match */
+};
+/* php's glob_pattern_p: is there anything here for glob(3) to expand? */
+static int GlobHasMeta(const char *zPat,int nPat)
+{
+	int i;
+	for( i = 0 ; i < nPat ; ++i ){
+		if( zPat[i] == '*' || zPat[i] == '?' || zPat[i] == '[' ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* strcoll() in the C locale php runs in: unsigned bytes, then the shorter one
+ * first. The same comparison the prelude glob() gets out of SORT_STRING. */
+static int GlobCmp(const char *zA,sxu32 nA,const char *zB,sxu32 nB)
+{
+	sxu32 nMin = nA < nB ? nA : nB;
+	sxu32 i;
+	for( i = 0 ; i < nMin ; ++i ){
+		int ca = (unsigned char)zA[i];
+		int cb = (unsigned char)zB[i];
+		if( ca != cb ){
+			return ca < cb ? -1 : 1;
+		}
+	}
+	if( nA == nB ){
+		return 0;
+	}
+	return nA < nB ? -1 : 1;
+}
+/*
+ * Order one call's own answers. glob(3) sorts the whole list it is about to
+ * return rather than each directory it walked, and so does the prelude glob(),
+ * so every branch below sorts the range IT produced.
+ *
+ * A shell sort: filenames within one answer are unique, so nothing here needs
+ * to be stable, and a directory of ten thousand entries must not cost the
+ * hundred million comparisons an insertion sort would.
+ */
+static void GlobSort(SyBlob *pHit,SySet *pSet,sxu32 nStart)
+{
+	glob_hit *aHit = (glob_hit *)SySetBasePtr(pSet);
+	const char *zBase = (const char *)SyBlobData(pHit);
+	sxu32 nEnd = SySetUsed(pSet);
+	sxu32 nSpan,nGap;
+	if( nEnd - nStart < 2 ){
+		return;
+	}
+	nSpan = nEnd - nStart;
+	for( nGap = nSpan / 2 ; nGap > 0 ; nGap /= 2 ){
+		sxu32 i;
+		for( i = nStart + nGap ; i < nEnd ; ++i ){
+			glob_hit sTmp = aHit[i];
+			sxu32 j = i;
+			while( j >= nStart + nGap
+			 && GlobCmp(&zBase[aHit[j-nGap].nOfs],aHit[j-nGap].nLen,
+			            &zBase[sTmp.nOfs],sTmp.nLen) > 0 ){
+				aHit[j] = aHit[j-nGap];
+				j -= nGap;
+			}
+			aHit[j] = sTmp;
+		}
+	}
+}
+/* Record one match, spelled as a head and a tail so that the trailing-slash
+ * branch can put its slash back without a second buffer. */
+static sxi32 GlobAdd(SyBlob *pHit,SySet *pSet,const char *zHead,sxu32 nHead,
+	const char *zTail,sxu32 nTail)
+{
+	glob_hit sHit;
+	sHit.nOfs = SyBlobLength(pHit);
+	sHit.nLen = nHead + nTail;
+	if( nHead > 0 && SyBlobAppend(pHit,zHead,nHead) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	if( nTail > 0 && SyBlobAppend(pHit,zTail,nTail) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	return SySetPut(pSet,(const void *)&sHit);
+}
+/* Forward: the two halves of the walk call each other. */
+static sxi32 GlobExpand(ph7_vm *pVm,const char *zPat,int nPat,int bOnlyDir,
+	SyBlob *pHit,SySet *pSet);
+/*
+ * php's leaf: read the directory the pattern's last slash names and keep every
+ * entry the segment after it matches, with that literal prefix back in front.
+ * A directory that cannot be opened is zero matches in SILENCE, which is what
+ * glob(3) answers for a path that is not there.
+ */
+static sxi32 GlobLeaf(ph7_vm *pVm,const char *zPat,int nPat,int bOnlyDir,
+	SyBlob *pHit,SySet *pSet)
+{
+	const ph7_vfs *pVfs = pVm->pEngine->pVfs;
+	const ph7_io_stream *pStream;
+	const char *zDev,*zSeg;
+	void *pHandle = 0;
+	ph7_context sCtx;
+	ph7_value sEntry;
+	char zDir[PH7_GLOB_PATH_MAX],zSegBuf[PH7_GLOB_PATH_MAX],zEnt[PH7_GLOB_PATH_MAX];
+	int nDir,nPrefix,nSeg,i,iSlash = -1;
+	sxi32 rc = SXRET_OK;
+	for( i = nPat - 1 ; i >= 0 ; --i ){
+		if( zPat[i] == '/' ){
+			iSlash = i;
+			break;
+		}
+	}
+	if( iSlash < 0 ){
+		/* no directory part at all: php's own `.` */
+		zDir[0] = '.';
+		nDir = 1;
+		nPrefix = 0;
+	}else if( iSlash == 0 ){
+		/* the pattern is rooted: the directory is `/` itself */
+		zDir[0] = '/';
+		nDir = 1;
+		nPrefix = 1;
+	}else{
+		nDir = iSlash;
+		SyMemcpy(zPat,zDir,(sxu32)nDir);
+		nPrefix = iSlash + 1;
+	}
+	zDir[nDir] = 0;
+	zSeg = &zPat[iSlash + 1];
+	nSeg = nPat - (iSlash + 1);
+	if( nSeg >= (int)sizeof(zSegBuf) ){
+		return SXRET_OK;
+	}
+	SyMemcpy(zSeg,zSegBuf,(sxu32)nSeg);
+	zSegBuf[nSeg] = 0;
+	/* The directory is opened through the SAME lookup opendir() uses, so the
+	 * two implementations see one filesystem: the prelude glob() reaches it by
+	 * calling opendir() itself. */
+	zDev = zDir;
+	pStream = PH7_VmGetStreamDevice(pVm,&zDev,nDir);
+	if( pStream == 0 || pStream->xOpenDir == 0 || pStream->xReadDir == 0 ){
+		return SXRET_OK;
+	}
+	/* The VFS reports a name by writing a RESULT, so the read needs a call
+	 * context of its own, and the cursor is reset between entries because a
+	 * result APPENDS (rule 54). The same value carries the VM into the open:
+	 * a device reaches it through that argument and nothing else. */
+	PH7_MemObjInit(pVm,&sEntry);
+	if( pStream->xOpenDir(zDev,&sEntry,&pHandle) != PH7_OK ){
+		PH7_MemObjRelease(&sEntry);
+		return SXRET_OK;
+	}
+	VmInitCallContext(&sCtx,pVm,0,&sEntry,0);
+	for(;;){
+		const char *zName;
+		int nName = 0;
+		ph7_value_reset_string_cursor(&sEntry);
+		if( pStream->xReadDir(pHandle,&sCtx) != PH7_OK ){
+			break;
+		}
+		zName = ph7_value_to_string(&sEntry,&nName);
+		if( nName < 1 || nName >= (int)sizeof(zEnt)
+		 || nPrefix + nName >= (int)sizeof(zEnt) ){
+			continue;
+		}
+		SyMemcpy(zName,zEnt,(sxu32)nName);
+		zEnt[nName] = 0;
+		/* php's FNM_PERIOD: a leading dot is matched only by a pattern that
+		 * spells one, which is what keeps `.`, `..` and every hidden name out
+		 * of an ordinary `*`. */
+		if( zEnt[0] == '.' && (nSeg < 1 || zSegBuf[0] != '.') ){
+			continue;
+		}
+		if( !Glob((const unsigned char *)zSegBuf,(const unsigned char *)zEnt,'\\',0,FALSE) ){
+			continue;
+		}
+		if( bOnlyDir ){
+			/* GLOB_ONLYDIR, which only the trailing-slash branch below asks
+			 * for -- the device itself always globs with no flags at all. */
+			char zProbe[PH7_GLOB_PATH_MAX * 2];
+			SyMemcpy(zDir,zProbe,(sxu32)nDir);
+			zProbe[nDir] = '/';
+			SyMemcpy(zEnt,&zProbe[nDir+1],(sxu32)nName);
+			zProbe[nDir + 1 + nName] = 0;
+			if( pVfs == 0 || pVfs->xIsdir == 0 || pVfs->xIsdir(zProbe) != PH7_OK ){
+				continue;
+			}
+		}
+		rc = GlobAdd(pHit,pSet,zPat,(sxu32)nPrefix,zEnt,(sxu32)nName);
+		if( rc != SXRET_OK ){
+			break;
+		}
+	}
+	VmReleaseCallContext(&sCtx);
+	PH7_MemObjRelease(&sEntry);
+	if( pStream->xCloseDir ){
+		pStream->xCloseDir(pHandle);
+	}
+	return rc;
+}
+/*
+ * One pattern, every segment of it. php's three branches, in php's order: a
+ * pattern that ENDS in a slash names directories and KEEPS the slash; a
+ * wildcard in the directory part is walked level by level; anything else is
+ * one directory read. Each branch sorts the range it produced.
+ */
+static sxi32 GlobExpand(ph7_vm *pVm,const char *zPat,int nPat,int bOnlyDir,
+	SyBlob *pHit,SySet *pSet)
+{
+	sxu32 nStart = SySetUsed(pSet);
+	SyBlob sSub;
+	SySet aSub;
+	glob_hit *aRec;
+	sxu32 n,nRec;
+	int i,iSlash = -1;
+	sxi32 rc;
+	if( nPat < 1 || nPat >= PH7_GLOB_PATH_MAX ){
+		return SXRET_OK;
+	}
+	if( zPat[nPat-1] == '/' ){
+		/* `d/` is ['d/'] and `d/` + `*` + `/` is ['d/a/','d/b/']: answer the base as
+		 * DIRECTORIES and put ONE slash back, so a pattern ending in two keeps
+		 * both. php sorts the names it ANSWERS, slash included. */
+		const ph7_vfs *pVfs = pVm->pEngine->pVfs;
+		if( nPat == 1 ){
+			if( pVfs && pVfs->xIsdir && pVfs->xIsdir("/") == PH7_OK ){
+				return GlobAdd(pHit,pSet,"/",1,0,0);
+			}
+			return SXRET_OK;
+		}
+		SyBlobInit(&sSub,&pVm->sAllocator);
+		SySetInit(&aSub,&pVm->sAllocator,sizeof(glob_hit));
+		rc = GlobExpand(pVm,zPat,nPat-1,TRUE,&sSub,&aSub);
+		if( rc == SXRET_OK ){
+			aRec = (glob_hit *)SySetBasePtr(&aSub);
+			nRec = SySetUsed(&aSub);
+			for( n = 0 ; n < nRec ; ++n ){
+				rc = GlobAdd(pHit,pSet,
+					&((const char *)SyBlobData(&sSub))[aRec[n].nOfs],aRec[n].nLen,"/",1);
+				if( rc != SXRET_OK ){
+					break;
+				}
+			}
+		}
+		SyBlobRelease(&sSub);
+		SySetRelease(&aSub);
+		if( rc == SXRET_OK ){
+			GlobSort(pHit,pSet,nStart);
+		}
+		return rc;
+	}
+	for( i = nPat - 1 ; i >= 0 ; --i ){
+		if( zPat[i] == '/' ){
+			iSlash = i;
+			break;
+		}
+	}
+	if( iSlash > 0 && GlobHasMeta(zPat,iSlash) ){
+		/* A wildcard in the DIRECTORY part is matched level by level, which is
+		 * what glob(3) does: list the directories that part names, then glob
+		 * the last component inside each. Reading only the last component
+		 * answers [] for `src/` + `*` + `/` + `*.php`, the everyday two-level
+		 * spelling, and for every deeper one. */
+		SyBlobInit(&sSub,&pVm->sAllocator);
+		SySetInit(&aSub,&pVm->sAllocator,sizeof(glob_hit));
+		rc = GlobExpand(pVm,zPat,iSlash+1,FALSE,&sSub,&aSub);
+		if( rc == SXRET_OK ){
+			SyBlob sJoin;
+			SyBlobInit(&sJoin,&pVm->sAllocator);
+			aRec = (glob_hit *)SySetBasePtr(&aSub);
+			nRec = SySetUsed(&aSub);
+			for( n = 0 ; n < nRec ; ++n ){
+				SyBlobReset(&sJoin);
+				if( SyBlobAppend(&sJoin,
+					&((const char *)SyBlobData(&sSub))[aRec[n].nOfs],aRec[n].nLen) != SXRET_OK
+				 || SyBlobAppend(&sJoin,&zPat[iSlash+1],(sxu32)(nPat - iSlash - 1)) != SXRET_OK ){
+					rc = SXERR_MEM;
+					break;
+				}
+				rc = GlobExpand(pVm,(const char *)SyBlobData(&sJoin),
+					(int)SyBlobLength(&sJoin),bOnlyDir,pHit,pSet);
+				if( rc != SXRET_OK ){
+					break;
+				}
+			}
+			SyBlobRelease(&sJoin);
+		}
+		SyBlobRelease(&sSub);
+		SySetRelease(&aSub);
+		if( rc == SXRET_OK ){
+			GlobSort(pHit,pSet,nStart);
+		}
+		return rc;
+	}
+	rc = GlobLeaf(pVm,zPat,nPat,bOnlyDir,pHit,pSet);
+	if( rc == SXRET_OK ){
+		GlobSort(pHit,pSet,nStart);
+	}
+	return rc;
+}
+/* void (*xCloseDir)(void *) */
+static void GlobStream_CloseDir(void *pHandle)
+{
+	glob_stream *pGlob = (glob_stream *)pHandle;
+	ph7_vm *pVm;
+	if( pGlob == 0 ){
+		return;
+	}
+	pVm = pGlob->pVm;
+	SyBlobRelease(&pGlob->sHit);
+	SyBlobRelease(&pGlob->sDir);
+	SySetRelease(&pGlob->aHit);
+	SyMemBackendFree(&pVm->sAllocator,pGlob);
+}
+/*
+ * int (*xOpenDir)(const char *,ph7_value *,void **)
+ *
+ * php's opener fails only on a glob(3) ERROR: no matches at all is an OPEN
+ * stream with nothing in it, which is why `new GlobIterator('nope/' . '*')` is a
+ * working object whose count() is 0 rather than a constructor that throws.
+ *
+ * The VM comes in through the context argument, the way data:// takes it: the
+ * walk allocates, and reads a directory through a call context of its own.
+ */
+static int GlobStream_OpenDir(const char *zPattern,ph7_value *pResource,void **ppHandle)
+{
+	ph7_vm *pVm = pResource ? pResource->pVm : 0;
+	glob_stream *pGlob;
+	if( pVm == 0 ){
+		return -1;
+	}
+	pGlob = (glob_stream *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(glob_stream));
+	if( pGlob == 0 ){
+		return -1;
+	}
+	pGlob->pVm = pVm;
+	pGlob->nCur = 0;
+	SyBlobInit(&pGlob->sHit,&pVm->sAllocator);
+	SyBlobInit(&pGlob->sDir,&pVm->sAllocator);
+	SySetInit(&pGlob->aHit,&pVm->sAllocator,sizeof(glob_hit));
+	/* A pattern longer than one path is zero matches rather than a refusal (it
+	 * can name nothing that exists), which is glob(3)'s GLOB_NOMATCH and an
+	 * open stream either way. */
+	if( GlobExpand(pVm,zPattern,(int)SyStrlen(zPattern),FALSE,
+		&pGlob->sHit,&pGlob->aHit) != SXRET_OK ){
+		GlobStream_CloseDir(pGlob);
+		return -1;
+	}
+	*ppHandle = (void *)pGlob;
+	return PH7_OK;
+}
+/*
+ * int (*xReadDir)(void *,ph7_context *)
+ *
+ * php's php_glob_stream_path_split, which runs on every read: the directory is
+ * everything before the LAST slash and the ENTRY is what follows it. So a
+ * match with no slash in it reports an empty directory and itself, `a/`
+ * reports `a` and an EMPTY entry -- and an empty entry is what the SPL walk
+ * reads as the end, which is why GlobIterator over a trailing-slash pattern
+ * counts its matches and yields none of them.
+ */
+static int GlobStream_ReadDir(void *pHandle,ph7_context *pCtx)
+{
+	glob_stream *pGlob = (glob_stream *)pHandle;
+	glob_hit *aHit;
+	const char *zPath;
+	sxu32 nPath;
+	int i,iSlash = -1;
+	if( pGlob == 0 ){
+		return -1;
+	}
+	if( pGlob->nCur >= SySetUsed(&pGlob->aHit) ){
+		/* php drops the path when the walk runs out, and counts on past it. */
+		pGlob->nCur++;
+		SyBlobReset(&pGlob->sDir);
+		return -1;
+	}
+	aHit = (glob_hit *)SySetBasePtr(&pGlob->aHit);
+	zPath = &((const char *)SyBlobData(&pGlob->sHit))[aHit[pGlob->nCur].nOfs];
+	nPath = aHit[pGlob->nCur].nLen;
+	pGlob->nCur++;
+	for( i = (int)nPath - 1 ; i >= 0 ; --i ){
+		if( zPath[i] == '/' ){
+			iSlash = i;
+			break;
+		}
+	}
+	SyBlobReset(&pGlob->sDir);
+	if( iSlash >= 0 ){
+		if( iSlash > 0 && SyBlobAppend(&pGlob->sDir,zPath,(sxu32)iSlash) != SXRET_OK ){
+			return -1;
+		}
+		ph7_result_string(pCtx,&zPath[iSlash+1],(int)nPath - iSlash - 1);
+	}else{
+		ph7_result_string(pCtx,zPath,(int)nPath);
+	}
+	return PH7_OK;
+}
+/* void (*xRewindDir)(void *): php's rewind moves the INDEX and leaves the path
+ * where the last read put it -- every caller reads straight afterwards. */
+static void GlobStream_RewindDir(void *pHandle)
+{
+	glob_stream *pGlob = (glob_stream *)pHandle;
+	if( pGlob ){
+		pGlob->nCur = 0;
+	}
+}
+PH7_PRIVATE const ph7_io_stream sGLOB_Stream = {
+	"glob",
+	PH7_IO_STREAM_VERSION,
+	0,                    /* xOpen: php's wrapper has no stream opener at all */
+	GlobStream_OpenDir,   /* xOpenDir */
+	0,                    /* xClose */
+	GlobStream_CloseDir,  /* xCloseDir */
+	0,                    /* xRead */
+	GlobStream_ReadDir,   /* xReadDir */
+	0,                    /* xWrite */
+	0,                    /* xSeek */
+	0,                    /* xLock */
+	GlobStream_RewindDir, /* xRewindDir */
+	0,                    /* xTell */
+	0,                    /* xTrunc */
+	0,                    /* xSync */
+	0                     /* xStat */
+};
+/* Is this the glob device? php's php_stream_is(), which is how SPL tells a
+ * GlobIterator's directory handle from an ordinary one. */
+PH7_PRIVATE int PH7_GlobStreamIs(const ph7_io_stream *pStream)
+{
+	return pStream == &sGLOB_Stream;
+}
+/* php's php_glob_stream_get_path: the directory of the CURRENT match, empty
+ * both before the first read and after the last. */
+PH7_PRIVATE const char * PH7_GlobStreamPath(void *pHandle,int *pnLen)
+{
+	glob_stream *pGlob = (glob_stream *)pHandle;
+	if( pGlob == 0 ){
+		*pnLen = 0;
+		return "";
+	}
+	*pnLen = (int)SyBlobLength(&pGlob->sDir);
+	return *pnLen > 0 ? (const char *)SyBlobData(&pGlob->sDir) : "";
+}
+/* php's php_glob_stream_get_count: what GlobIterator::count() answers, and it
+ * does not move with the walk. */
+PH7_PRIVATE sxi64 PH7_GlobStreamCount(void *pHandle)
+{
+	glob_stream *pGlob = (glob_stream *)pHandle;
+	return pGlob ? (sxi64)SySetUsed(&pGlob->aHit) : 0;
+}
+#endif /* PH7_DISABLE_DISK_IO */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 /*
  * bool link(string $target,string $link)
@@ -3601,6 +4095,11 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 	/* Install the php:// stream */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	/* glob:// lives beside the pattern matcher it drives, so it is only in the
+	 * build when that is. */
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sGLOB_Stream);
+#endif
 #ifdef PH7_ENABLE_NET
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sTCP_Stream);
 #endif

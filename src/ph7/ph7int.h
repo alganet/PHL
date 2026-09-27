@@ -4330,6 +4330,16 @@ extern const ph7_io_stream sUnixFileStream;
 extern const ph7_io_stream sTCP_Stream;
 extern const ph7_io_stream sDATA_Stream;
 extern const ph7_io_stream sPHP_Stream;
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+/* glob:// (vfs.c): a directory whose entries are a pattern's matches. It has no
+ * xOpen at all, which is php's wrapper too. The three accessors are what SPL
+ * asks of a directory handle that turns out to be this one: php's
+ * php_stream_is(), php_glob_stream_get_path() and php_glob_stream_get_count(). */
+extern const ph7_io_stream sGLOB_Stream;
+PH7_PRIVATE int PH7_GlobStreamIs(const ph7_io_stream *pStream);
+PH7_PRIVATE const char * PH7_GlobStreamPath(void *pHandle,int *pnLen);
+PH7_PRIVATE sxi64 PH7_GlobStreamCount(void *pHandle);
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
 /* IO private state carried by every open stream handle (fopen/opendir/popen
  * resources and the exported std streams). Shared between vfs.c,
  * vfs_stream.c and vfs_io_driver.c. */

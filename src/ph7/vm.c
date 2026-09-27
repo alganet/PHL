@@ -4255,9 +4255,13 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 	case PH7_VM_CONFIG_IO_STREAM: {
 		/* Register an IO stream device */
 		const ph7_io_stream *pStream = va_arg(ap,const ph7_io_stream *);
-		/* Make sure we are dealing with a valid IO stream */
+		/* Make sure we are dealing with a valid IO stream. A wrapper has to be
+		 * able to do ONE of the two things a wrapper does -- open a byte stream
+		 * or open a directory. php's glob:// is a dir_opener and nothing else,
+		 * and demanding xOpen here would leave `opendir('glob://…')` with no
+		 * device to reach. */
 		if( pStream == 0 || pStream->zName == 0 || pStream->zName[0] == 0 ||
-			pStream->xOpen == 0 || pStream->xRead == 0 ){
+			((pStream->xOpen == 0 || pStream->xRead == 0) && pStream->xOpenDir == 0) ){
 				/* Invalid stream */
 				rc = SXERR_INVALID;
 				break;

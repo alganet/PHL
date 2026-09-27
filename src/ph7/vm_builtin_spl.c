@@ -10694,9 +10694,19 @@ static VmDirHandle * SplDirOpen(ph7_vm *pVm,ph7_class_instance *pThis,
 	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);
 	PH7_NativeSetAttrStr(pVm,pThis,SDI_E,"",0);
 	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,"",0);
-	if( pStream == 0 || pStream->xOpenDir == 0
-	 || pStream->xOpenDir(zDevice,0,&pHandle) != PH7_OK ){
+	if( pStream == 0 || pStream->xOpenDir == 0 ){
 		return 0;
+	}
+	{
+		/* The device takes the VM through this argument (see opendir). */
+		ph7_value sDummy;
+		int rc;
+		PH7_MemObjInit(pVm,&sDummy);
+		rc = pStream->xOpenDir(zDevice,&sDummy,&pHandle);
+		PH7_MemObjRelease(&sDummy);
+		if( rc != PH7_OK ){
+			return 0;
+		}
 	}
 	pH = (VmDirHandle *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmDirHandle));
 	if( pH == 0 ){

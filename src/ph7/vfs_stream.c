@@ -1983,8 +1983,23 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	/* Initialize the structure */
 	InitIOPrivate(pCtx->pVm,pStream,pDev);
-	/* Open the target directory */
-	rc = pStream->xOpenDir(zPath,nArg > 1 ? apArg[1] : 0,&pDev->pHandle);
+	/* Open the target directory. A device reaches the VM only through this
+	 * argument -- its xOpenDir has no vm parameter -- and glob:// needs one to
+	 * walk the filesystem and hold what it finds, so a caller that passed no
+	 * context hands over a synthesized stack value carrying the VM, exactly as
+	 * PH7_StreamOpenHandle() does for the byte-stream openers. */
+	{
+		ph7_value sDummy;
+		ph7_value *pRes = nArg > 1 ? apArg[1] : 0;
+		if( pRes == 0 ){
+			PH7_MemObjInit(pCtx->pVm,&sDummy);
+			pRes = &sDummy;
+		}
+		rc = pStream->xOpenDir(zPath,pRes,&pDev->pHandle);
+		if( pRes == &sDummy ){
+			PH7_MemObjRelease(&sDummy);
+		}
+	}
 	if( rc != PH7_OK ){
 		/* IO error: php WARNS here — `opendir(/nope): Failed to open directory: No
 		 * such file or directory` — and PHL returned FALSE in silence. The message
