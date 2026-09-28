@@ -484,6 +484,35 @@ int main(int argc,char **argv)
 				}
 				zRunCode = zReflCode;
 				run_code = 1;
+			}else if( strcmp(argv[n], "--rz") == 0 ){
+				/* php CLI parity: `--rz <name>` reflects a ZEND extension. PHL
+				 * loads none, so every name is the refusal php prints for one
+				 * it does not have -- which is ReflectionZendExtension's own
+				 * constructor, reached the way --rf/--rc reach theirs. */
+				static char zZendCode[768];
+				const char *zName;
+				const char *zChk;
+				if( n + 1 >= argc ){
+					FatalCode("Missing name argument for --rz",1);
+				}
+				zName = argv[++n];
+				for( zChk = zName ; *zChk ; zChk++ ){
+					char ch = *zChk;
+					if( !(ch == '_' || ch == ' ' || ch == '.' || ch == '-'
+					   || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+					   || (ch >= '0' && ch <= '9')) ){
+						FatalCode("Invalid name for --rz",1);
+					}
+				}
+				if( strlen(zName) > 250 ){
+					FatalCode("Name too long for --rz",1);
+				}
+				snprintf(zZendCode,sizeof(zZendCode),
+					"try { echo new ReflectionZendExtension(\"%s\"), \"\n\"; }"
+					" catch (Throwable $e) { echo \"Exception: \", $e->getMessage(), \"\n\"; exit(1); }",
+					zName);
+				zRunCode = zZendCode;
+				run_code = 1;
 			}else{
 				/* Unknown long option */
 				Help();
@@ -500,6 +529,21 @@ int main(int argc,char **argv)
 		}else if( c == 'i' ){
 			/* Display interpreter information and exit */
 			Info();
+		}else if( c == 'm' ){
+			/* php CLI parity: `-m` lists the loaded modules, php's two sections
+			 * and its case-insensitive order. PHL loads no Zend extension, so
+			 * that section is always the header and nothing under it -- which
+			 * is php's own shape for a build with none. Rides the -r code path
+			 * the way --rf/--rc do. */
+			zRunCode =
+				"$m = get_loaded_extensions();"
+				"usort($m, 'strcasecmp');"
+				"echo \"[PHP Modules]\n\";"
+				"foreach ($m as $x) { echo $x, \"\n\"; }"
+				"echo \"\n[Zend Modules]\n\";"
+				"foreach (get_loaded_extensions(true) as $x) { echo $x, \"\n\"; }"
+				"echo \"\n\";";
+			run_code = 1;
 		}else if( c == 'f' ){
 			/* php CLI parity: `-f <file>` explicitly names the script to run.
 			 * The path follows as the next argument, which the positional
