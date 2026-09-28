@@ -1279,7 +1279,10 @@ struct ReflectParamDesc
 	SyString sName;
 	int iPos;
 	int bByRef, bVariadic, bHasDef, bOptional, bNullable, bPromoted;
-	SyString sType;            /* nByte == 0 -> untyped */
+	SyString sType;            /* nByte == 0 -> untyped. For a COMPILED parameter this
+	                            * points into zTypeBuf below, php's stored text with
+	                            * `self`/`parent` resolved (see ReflectDeclScope). */
+	char zTypeBuf[192];
 	SyString sDefText;         /* signature-declared default TEXT (nByte == 0 -> none) */
 	ph7_vm_func_arg *pArg;     /* compiled parameter, or NULL for a declared one */
 	int bInternal;             /* owner is INTERNAL to php -- which for a COMPILED
@@ -5639,6 +5642,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 typedef struct ReflectFuncRef ReflectFuncRef;
 struct ReflectFuncRef
 {
+	ph7_vm *pVm;                  /* the VM, for the declared-type text rewrite */
 	ph7_vm_func *pFunc;           /* compiled body (NULL for a pure C builtin) */
 	ph7_user_func *pHost;         /* C builtin (NULL otherwise) */
 	ph7_class *pClass;            /* class a METHOD was reached through */
@@ -5658,6 +5662,7 @@ static int ReflectFuncFill(ph7_vm *pVm, ph7_value *pTarget, ph7_value *pMethodAr
 	ReflectFuncRef *pOut)
 {
 	SyZero(pOut, sizeof(*pOut));
+	pOut->pVm = pVm;
 	pOut->pFunc = ReflectResolveCallable(pVm, pTarget, pMethodArg,
 		&pOut->pClass, &pOut->pMeth, &pOut->pHost, &pOut->pClosure);
 	if( pOut->pFunc == 0 && pOut->pHost == 0 ){
@@ -5762,6 +5767,30 @@ static int ReflectParamCount(const ReflectFuncRef *pRef)
 	}
 	return pRef->pFunc ? (int)SySetUsed(&pRef->pFunc->aArgs) : 0;
 }
+/*
+ * The class a `self`/`parent` in this function's declared types resolves to for
+ * DISPLAY: php substitutes the declaring class into the stored text at compile
+ * time, and has nothing to substitute for a TRAIT method (whose text keeps the
+ * keyword however many classes composed it) or for a plain function.
+ * `static` and `iterable` are printed as written -- PH7_HINT_TEXT_* off.
+ */
+static ph7_class * ReflectDeclScope(const ReflectFuncRef *pRef)
+{
+	if( pRef->pFunc == 0 || (pRef->pFunc->iFlags & VM_FUNC_CLASS_METHOD) == 0 ){
+		return 0; /* pUserData is a class only for a METHOD */
+	}
+	return VmHintScopeDeclared((ph7_class *)pRef->pFunc->pUserData);
+}
+/*
+ * A MEMBER's declared type as php prints it: the same rewrite ReflectDeclScope
+ * describes, keyed on the class that declared the member rather than the one it
+ * was reached through -- so a trait's `?self` stays `?self`.
+ */
+static const char * ReflectMemberTypeText(ph7_vm *pVm,ph7_class_attr *pAttr,char *zBuf,sxu32 nBuf)
+{
+	return VmHintTextResolvedEx(pVm,&pAttr->sTypeName,
+		VmHintScopeDeclared(pAttr->pDeclClass),0,zBuf,nBuf);
+}
 /* Describe the iPos-th parameter. Answers 0 when there is none. */
 static int ReflectParamAt(const ReflectFuncRef *pRef, int iPos, ReflectParamDesc *pOut)
 {
@@ -5797,7 +5826,11 @@ static int ReflectParamAt(const ReflectFuncRef *pRef, int iPos, ReflectParamDesc
 		pOut->bNullable = (pArg->iFlags & VM_FUNC_ARG_NULLABLE) != 0;
 		pOut->bPromoted = (pArg->iFlags & VM_FUNC_ARG_PROMOTED) != 0;
 		pOut->bOptional = pOut->bVariadic || pOut->bHasDef;
-		pOut->sType = pArg->sTypeName;
+		{
+			const char *zT = VmHintTextResolvedEx(pRef->pVm,&pArg->sTypeName,
+				ReflectDeclScope(pRef),0,pOut->zTypeBuf,sizeof(pOut->zTypeBuf));
+			SyStringInitFromBuf(&pOut->sType,zT,(sxu32)SyStrlen(zT));
+		}
 		pOut->pArg = pArg;
 		pOut->bInternal = (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
 		return 1;
@@ -5826,7 +5859,7 @@ static ph7_class * ReflectFuncDeclClass(const ReflectFuncRef *pRef)
  * nothing downstream of this function ever sees it.
  */
 static int ReflectFuncRetTextEx(const ReflectFuncRef *pRef, const char **pz, int *pn,
-	int *pbTentative)
+	int *pbTentative, char *zBuf, sxu32 nBuf)
 {
 	if( pbTentative ){
 		*pbTentative = 0;
@@ -5847,18 +5880,20 @@ static int ReflectFuncRetTextEx(const ReflectFuncRef *pRef, const char **pz, int
 		return 0;
 	}
 	if( SyStringLength(&pRef->pFunc->sReturnTypeName) > 0 ){
-		*pz = SyStringData(&pRef->pFunc->sReturnTypeName);
-		*pn = (int)SyStringLength(&pRef->pFunc->sReturnTypeName);
+		*pz = VmHintTextResolvedEx(pRef->pVm,&pRef->pFunc->sReturnTypeName,
+			ReflectDeclScope(pRef),0,zBuf,nBuf);
+		*pn = (int)SyStrlen(*pz);
 		return 1;
 	}
 	return 0;
 }
 /* The declared return type php would report from getReturnType(): a TENTATIVE one
  * is not reported there at all, which is the whole distinction. */
-static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *pn)
+static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *pn,
+	char *zBuf, sxu32 nBuf)
 {
 	int bTentative = 0;
-	if( !ReflectFuncRetTextEx(pRef, pz, pn, &bTentative) ){
+	if( !ReflectFuncRetTextEx(pRef, pz, pn, &bTentative, zBuf, nBuf) ){
 		return 0;
 	}
 	return bTentative ? 0 : 1;
@@ -6216,22 +6251,24 @@ static int vm_builtin_ReflectionFunc_hasReturnType(ph7_context *pCtx, int nArg, 
 {
 	ReflectFuncRef sRef;
 	const char *z;
+	char zRetBuf[192];
 	int n;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
-	ph7_result_bool(pCtx, ReflectFuncRetText(&sRef, &z, &n));
+	ph7_result_bool(pCtx, ReflectFuncRetText(&sRef, &z, &n, zRetBuf, sizeof(zRetBuf)));
 	return PH7_OK;
 }
 static int vm_builtin_ReflectionFunc_getReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
 	const char *z;
+	char zRetBuf[192];
 	int n;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
-	if( !ReflectFuncRetText(&sRef, &z, &n) ){
+	if( !ReflectFuncRetText(&sRef, &z, &n, zRetBuf, sizeof(zRetBuf)) ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -6243,22 +6280,24 @@ static int vm_builtin_ReflectionFunc_hasTentativeReturnType(ph7_context *pCtx, i
 {
 	ReflectFuncRef sRef;
 	const char *z;
+	char zRetBuf[192];
 	int n, bTentative = 0;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
-	ph7_result_bool(pCtx, ReflectFuncRetTextEx(&sRef, &z, &n, &bTentative) && bTentative);
+	ph7_result_bool(pCtx, ReflectFuncRetTextEx(&sRef, &z, &n, &bTentative, zRetBuf, sizeof(zRetBuf)) && bTentative);
 	return PH7_OK;
 }
 static int vm_builtin_ReflectionFunc_getTentativeReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
 	const char *z;
+	char zRetBuf[192];
 	int n, bTentative = 0;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
-	if( !ReflectFuncRetTextEx(&sRef, &z, &n, &bTentative) || !bTentative ){
+	if( !ReflectFuncRetTextEx(&sRef, &z, &n, &bTentative, zRetBuf, sizeof(zRetBuf)) || !bTentative ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -8582,8 +8621,11 @@ static int vm_builtin_ReflectionProperty_getType(ph7_context *pCtx, int nArg, ph
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,
-		SyStringData(&sRef.pAttr->sTypeName), (int)SyStringLength(&sRef.pAttr->sTypeName)));
+	{
+		char zType[192];
+		const char *zT = ReflectMemberTypeText(pCtx->pVm,sRef.pAttr,zType,sizeof(zType));
+		return ReflectResultObject(pCtx, ReflectMakeType(pCtx, zT, (int)SyStrlen(zT)));
+	}
 }
 static int vm_builtin_ReflectionProperty_hasDefaultValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -9146,8 +9188,11 @@ static int vm_builtin_ReflectionClassConstant_getType(ph7_context *pCtx, int nAr
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,
-		SyStringData(&sRef.pAttr->sTypeName), (int)SyStringLength(&sRef.pAttr->sTypeName)));
+	{
+		char zType[192];
+		const char *zT = ReflectMemberTypeText(pCtx->pVm,sRef.pAttr,zType,sizeof(zType));
+		return ReflectResultObject(pCtx, ReflectMakeType(pCtx, zT, (int)SyStrlen(zT)));
+	}
 }
 static int vm_builtin_ReflectionClassConstant_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -9656,9 +9701,31 @@ static void ReflectExportKind(SyBlob *pOut, int iExt, int bDeprecated)
 		SyBlobFormat(pOut, ":%s", PH7_VmExtensionName(iExt));
 	}
 }
-/* A declared type followed by a space, or nothing at all. */
+/*
+ * A declared type followed by a space, or nothing at all.
+ *
+ * php's EXPORT spells a standalone `iterable` as the two types it stands for
+ * where getType() prints `iterable` -- the one place the two renderings of a
+ * declared type differ (ReflectExportIterable is that difference, named once).
+ */
+static const SyString * ReflectExportIterable(const SyString *pType, SyString *pOut)
+{
+	const char *z = pType ? SyStringData(pType) : 0;
+	sxu32 n = z ? SyStringLength(pType) : 0;
+	if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
+		SyStringInitFromBuf(pOut,"Traversable|array",sizeof("Traversable|array")-1);
+		return pOut;
+	}
+	if( n == 9 && z[0] == '?' && SyStrnicmp(&z[1],"iterable",8) == 0 ){
+		SyStringInitFromBuf(pOut,"Traversable|array|null",sizeof("Traversable|array|null")-1);
+		return pOut;
+	}
+	return pType;
+}
 static void ReflectExportTypeSp(SyBlob *pOut, const SyString *pType)
 {
+	SyString sIter;
+	pType = ReflectExportIterable(pType,&sIter);
 	if( pType && SyStringLength(pType) > 0 ){
 		SyBlobAppend(pOut, SyStringData(pType), SyStringLength(pType));
 		SyBlobAppend(pOut, " ", sizeof(char));
@@ -9838,7 +9905,11 @@ static void ReflectExportPropLine(ph7_context *pCtx, SyBlob *pOut, ph7_class_att
 		SyBlobAppend(pOut, "readonly ", sizeof("readonly ")-1);
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
-		ReflectExportTypeSp(pOut, &pAttr->sTypeName);
+		char zType[192];
+		SyString sType;
+		const char *zT = ReflectMemberTypeText(pCtx->pVm,pAttr,zType,sizeof(zType));
+		SyStringInitFromBuf(&sType,zT,(sxu32)SyStrlen(zT));
+		ReflectExportTypeSp(pOut, &sType);
 	}
 	SyBlobAppend(pOut, "$", sizeof(char));
 	SyBlobAppend(pOut, SyStringData(pKey), SyStringLength(pKey));
@@ -9887,11 +9958,22 @@ static sxi32 ReflectExportConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_class *
 		SyBlobAppend(pOut, "final ", sizeof("final ")-1);
 	}
 	SyBlobFormat(pOut, "%s ", ReflectExportVis(pAttr->iProtection));
-	zType = ReflectExportTypeWord(pVal);
-	if( zType ){
-		SyBlobFormat(pOut, "%s ", zType);
+	if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED)
+	 && SyStringLength(&pAttr->sTypeName) > 0 ){
+		/* php 8.3's typed class constant prints what it DECLARED; the word below
+		 * is what an untyped one's VALUE happens to be. */
+		char zDecl[192];
+		SyString sDecl;
+		const char *zT = ReflectMemberTypeText(pCtx->pVm,pAttr,zDecl,sizeof(zDecl));
+		SyStringInitFromBuf(&sDecl,zT,(sxu32)SyStrlen(zT));
+		ReflectExportTypeSp(pOut, &sDecl);
 	}else{
-		SyBlobFormat(pOut, "%z ", &((ph7_class_instance *)pVal->x.pOther)->pClass->sName);
+		zType = ReflectExportTypeWord(pVal);
+		if( zType ){
+			SyBlobFormat(pOut, "%s ", zType);
+		}else{
+			SyBlobFormat(pOut, "%z ", &((ph7_class_instance *)pVal->x.pOther)->pClass->sName);
+		}
 	}
 	SyBlobAppend(pOut, SyStringData(pKey), SyStringLength(pKey));
 	SyBlobAppend(pOut, " ] { ", sizeof(" ] { ")-1);
@@ -9901,10 +9983,11 @@ static sxi32 ReflectExportConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_class *
 }
 /* A native class METHOD as a function reference (ReflectFuncFill's tail, for a
  * method the member walk handed over rather than one a receiver names). */
-static void ReflectFuncFromMethod(ph7_class *pClass, ph7_class_method *pMeth,
+static void ReflectFuncFromMethod(ph7_vm *pVm, ph7_class *pClass, ph7_class_method *pMeth,
 	ReflectFuncRef *pOut)
 {
 	SyZero(pOut, sizeof(*pOut));
+	pOut->pVm = pVm;
 	pOut->pClass = pClass;
 	pOut->pMeth = pMeth;
 	pOut->pFunc = &pMeth->sFunc;
@@ -9933,10 +10016,11 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		|| (pRef->pFunc != 0 && ReflectHasDeprecated(&pRef->pFunc->aAttrs));
 	int nParam = ReflectParamCount(pRef);
 	const char *zRet = 0;
+	char zRetBuf[192];
 	int nRet = 0, bHasRet, bTentRet = 0;
 	sxi32 rc = SXRET_OK;
 	SyBlobInit(&sBody, &pCtx->pVm->sAllocator);
-	bHasRet = ReflectFuncRetTextEx(pRef, &zRet, &nRet, &bTentRet);
+	bHasRet = ReflectFuncRetTextEx(pRef, &zRet, &nRet, &bTentRet, zRetBuf, sizeof(zRetBuf));
 	if( pRef->pMeth ){
 		ph7_class *pDecl = ReflectFuncDeclClass(pRef);
 		ph7_class *pProto;
@@ -10031,7 +10115,14 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		}else{
 			SyBlobAppend(&sBody, "  - Return [ ", sizeof("  - Return [ ")-1);
 		}
-		SyBlobAppend(&sBody, zRet, (sxu32)nRet);
+		{
+			/* ...and the export's own spelling of a standalone `iterable`. */
+			SyString sRet, sIter;
+			const SyString *pRet;
+			SyStringInitFromBuf(&sRet,zRet,(sxu32)nRet);
+			pRet = ReflectExportIterable(&sRet,&sIter);
+			SyBlobAppend(&sBody, SyStringData(pRet), SyStringLength(pRet));
+		}
 		SyBlobAppend(&sBody, " ]\n", sizeof(" ]\n")-1);
 	}
 	SyBlobAppend(&sBody, "}\n", sizeof("}\n")-1);
@@ -10250,7 +10341,7 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 					SyBlobAppend(pOut, "\n", sizeof(char));
 				}
 				bFirst = 0;
-				ReflectFuncFromMethod(pClass, pM->pMeth, &sRef);
+				ReflectFuncFromMethod(pCtx->pVm, pClass, pM->pMeth, &sRef);
 				rc = ReflectExportFuncBlock(pCtx, pOut, &sRef, "    ", pClass);
 				if( rc != SXRET_OK ){
 					goto done;

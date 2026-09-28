@@ -5464,6 +5464,11 @@ PH7_PRIVATE int VmClassHintMatches(ph7_vm *pVm,const SyString *pName,ph7_class *
 	ph7_value *pVal,ph7_class **ppResolved);
 PH7_PRIVATE const char *VmHintTextResolved(ph7_vm *pVm,const SyString *pDeclared,ph7_class *pScope,
 	char *zBuf,sxu32 nBuf);
+#define PH7_HINT_TEXT_ITERABLE 0x1 /* expand a standalone `iterable` to Traversable|array */
+#define PH7_HINT_TEXT_STATIC   0x2 /* resolve `static` beside `self`/`parent` */
+PH7_PRIVATE const char *VmHintTextResolvedEx(ph7_vm *pVm,const SyString *pDeclared,ph7_class *pScope,
+	int iFlags,char *zBuf,sxu32 nBuf);
+PH7_PRIVATE ph7_class *VmHintScopeDeclared(ph7_class *pDecl);
 PH7_PRIVATE ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class *pSelf);
 PH7_PRIVATE const char *VmScalarTypeName(sxu32 nType, SyString *pDeclared, char *zBuf, sxu32 nBuf);
 PH7_PRIVATE const char *VmClassHintTypeName(const SyString *pAsWritten,ph7_class *pResolved,

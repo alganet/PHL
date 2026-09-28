@@ -1166,7 +1166,7 @@ static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const cha
 	ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
 	char zType[192];
 	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
-		VmHintScopeClass(pVm,pAttr->pDeclClass,pVmAttr->pOwner),zType,sizeof(zType));
+		VmHintScopeDeclared(pAttr->pDeclClass),zType,sizeof(zType));
 	/* php words a write that arrived through a REFERENCE differently: the slot
 	 * is the property's, but the assignment names no property, so the sentence
 	 * says which property is HOLDING the reference. */
@@ -1239,7 +1239,7 @@ PH7_PRIVATE sxi32 VmThrowAutoInitArrayError(ph7_vm *pVm,VmClassAttr *pVmAttr)
 	ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
 	char zType[256];
 	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
-		VmHintScopeClass(pVm,pAttr->pDeclClass,pVmAttr->pOwner),zType,sizeof(zType));
+		VmHintScopeDeclared(pAttr->pDeclClass),zType,sizeof(zType));
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pOwner ){
@@ -1665,6 +1665,23 @@ PH7_PRIVATE ph7_class *VmHintScopeClass(ph7_vm *pVm, ph7_class *pDecl, ph7_class
 	return pUsing ? pUsing : VmCurrentSelf(pVm);
 }
 /*
+ * The scope a member's declared type is PRINTED against, which is not the scope
+ * it is CHECKED against.
+ *
+ * php resolves `self`/`parent` in a member's stored type TEXT at compile time,
+ * and a TRAIT has no class to resolve them to -- so what it stores for a trait
+ * member keeps the keyword, and every display of that text says `self` however
+ * many classes composed the trait: `uninitialized(self)` in var_dump,
+ * `of type ?parent` in the assign TypeError, `self` from
+ * ReflectionProperty::getType(). The CHECK still resolves against the composing
+ * class, which is what VmHintScopeClass answers; this is its display twin, and
+ * telling the two apart is what PLAN §7.1's R7 was waiting for.
+ */
+PH7_PRIVATE ph7_class *VmHintScopeDeclared(ph7_class *pDecl)
+{
+	return ( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ) ? pDecl : 0;
+}
+/*
  * Try to coerce *pValue* to fit one of the alternatives in *pAlts*. When
  * *bStrict* is zero this applies PHP 8 weak-mode union semantics (permissive
  * scalar coercion). When bStrict is non-zero, only exact type matches are
@@ -1807,6 +1824,21 @@ static int VmHintNameChar(int c)
 PH7_PRIVATE const char *VmHintTextResolved(ph7_vm *pVm,const SyString *pDeclared,ph7_class *pScope,
 	char *zBuf,sxu32 nBuf)
 {
+	return VmHintTextResolvedEx(&(*pVm),pDeclared,pScope,
+		PH7_HINT_TEXT_ITERABLE|PH7_HINT_TEXT_STATIC,zBuf,nBuf);
+}
+/*
+ * The two halves of the rewrite above, asked for separately.
+ *
+ * PH7_HINT_TEXT_ITERABLE expands a standalone `iterable`; every DIAGNOSTIC wants
+ * that and Reflection wants none of it (php prints `iterable` there).
+ * PH7_HINT_TEXT_STATIC resolves `static` beside `self`/`parent`; a diagnostic
+ * names the class it stands for, while Reflection and the declaration renderer
+ * both print the keyword, php having no class to name until the call.
+ */
+PH7_PRIVATE const char *VmHintTextResolvedEx(ph7_vm *pVm,const SyString *pDeclared,ph7_class *pScope,
+	int iFlags,char *zBuf,sxu32 nBuf)
+{
 	const char *z;
 	sxu32 n, i = 0, nAt = 0;
 	if( nBuf == 0 ){
@@ -1814,7 +1846,7 @@ PH7_PRIVATE const char *VmHintTextResolved(ph7_vm *pVm,const SyString *pDeclared
 	}
 	z = pDeclared ? pDeclared->zString : 0;
 	n = z ? pDeclared->nByte : 0;
-	if( z ){
+	if( z && (iFlags & PH7_HINT_TEXT_ITERABLE) ){
 		const char *zIter = 0;
 		if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
 			zIter = "Traversable|array";
@@ -1845,7 +1877,10 @@ PH7_PRIVATE const char *VmHintTextResolved(ph7_vm *pVm,const SyString *pDeclared
 		}
 		SyStringInitFromBuf(&sTok,&z[nStart],i - nStart);
 		pOut = &sTok;
-		if( VmHintIsScopeKeyword(&sTok) ){
+		if( VmHintIsScopeKeyword(&sTok)
+		 && ( (iFlags & PH7_HINT_TEXT_STATIC)
+		   || sTok.nByte != sizeof("static")-1
+		   || SyStrnicmp(sTok.zString,"static",sizeof("static")-1) != 0 ) ){
 			ph7_class *pRes = VmResolveTypeClass(pVm,&sTok,pScope);
 			if( pRes ){
 				pOut = &pRes->sName;
@@ -2672,7 +2707,7 @@ static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *p
 	char zBuf[128],zType[192];
 	const char *zGiven;
 	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
-		VmHintScopeClass(pVm,pAttr->pDeclClass,pClass),zType,sizeof(zType));
+		VmHintScopeDeclared(pAttr->pDeclClass),zType,sizeof(zType));
 	if( pValue->iFlags & MEMOBJ_OBJ ){
 		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
 	}else{
@@ -2810,7 +2845,7 @@ static sxi32 VmDefaultPropertyTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 	const char *zGiven;
 	char zBuf[128],zType[192];
 	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
-		VmHintScopeClass(pVm,pAttr->pDeclClass,pClass),zType,sizeof(zType));
+		VmHintScopeDeclared(pAttr->pDeclClass),zType,sizeof(zType));
 	SyBlob sMsg;
 	if( pValue->iFlags & MEMOBJ_OBJ ){
 		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));

@@ -444,6 +444,12 @@ static int OoDeclNameChar(int c)
  *                  spellings reach here (a COMPOUND type stored it expanded
  *                  already), so `?iterable` is `Traversable|array|null` rather
  *                  than `?Traversable|array` -- the whole text, not a token.
+ *
+ * VmHintTextResolvedEx answers the same question for a DIAGNOSTIC and for
+ * Reflection, and is not reused here for one reason: it writes into a fixed
+ * caller buffer and truncates. A diagnostic naming a type can afford that; a
+ * declaration this sentence is asking the reader to COMPARE with another cannot,
+ * so this one appends to the blob and has no length to run out of.
  */
 static void OoDeclType(ph7_class *pScope,const SyString *pDeclared,SyBlob *pOut)
 {
@@ -3247,7 +3253,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 				if( ShowType ){
 					char zType[192];
 					const char *zText = VmHintTextResolved(pThis->pVm,&pVmAttr->pAttr->sTypeName,
-						VmHintScopeClass(pThis->pVm,pVmAttr->pAttr->pDeclClass,pVmAttr->pOwner),
+						VmHintScopeDeclared(pVmAttr->pAttr->pDeclClass),
 						zType,sizeof(zType));
 					for( i = 0 ; i < nTab + 2 ; i++ ){
 						SyBlobAppend(&(*pOut)," ",sizeof(char));
