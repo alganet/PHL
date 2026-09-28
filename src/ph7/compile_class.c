@@ -593,6 +593,31 @@ static void GenStateCopyTypeToAttr(ph7_class_attr *pAttr,sxu32 nType,
 		}
 	}
 }
+/*
+ * Consume a run of `static` / `abstract` / visibility modifiers in ANY order, which is how
+ * php's parser takes them -- they are a SET, so `abstract static public function f();`,
+ * `static abstract public function f();` and `abstract public static function f();` are one
+ * declaration. Both member loops used a fixed ladder (visibility, then static, then the
+ * member) and refused every other spelling with "Expecting method declaration".
+ * Stops at the first token that is not one of these; never consumes the member itself.
+ */
+static void GenStateConsumeMemberModifiers(ph7_gen_state *pGen,sxi32 *piProtection,sxi32 *piFlags)
+{
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
+		sxi32 nKw = SX_PTR_TO_INT(pGen->pIn->pUserData);
+		if( nKw == PH7_TKWRD_STATIC ){
+			*piFlags |= PH7_CLASS_ATTR_STATIC;
+		}else if( nKw == PH7_TKWRD_ABSTRACT ){
+			*piFlags |= PH7_CLASS_ATTR_ABSTRACT;
+		}else if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PRIVATE
+			|| nKw == PH7_TKWRD_PROTECTED ){
+			*piProtection = nKw;
+		}else{
+			break;
+		}
+		pGen->pIn++;
+	}
+}
 static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -4902,6 +4927,9 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 						iAttrflags |= PH7_CLASS_ATTR_READONLY;
 						pGen->pIn++; /* Jump the 'readonly' modifier */
 					}
+					/* ...and `abstract` on either side of it: the modifiers are a SET
+					 * (`static abstract public function f();` is php's declaration too). */
+					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
 					if( pGen->pIn >= pGen->pEnd
 						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -4949,19 +4977,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					iAttrflags |= PH7_CLASS_ATTR_ABSTRACT;
 					/* Advance the stream cursor */
 					pGen->pIn++;
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-							iProtection = nKwrd;
-							pGen->pIn++; /* Jump the visibility token */
-						}
-					}
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
-						SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
-							/* Static method */
-							iAttrflags |= PH7_CLASS_ATTR_STATIC;
-							pGen->pIn++; /* Jump the static keyword */
-					}
+					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
 						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
 							/* PHP 8.4: `abstract public [T] $x { get; set; }` — an abstract
@@ -5821,13 +5837,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				if( nKwrd == PH7_TKWRD_STATIC ){
 					iAttrflags |= PH7_CLASS_ATTR_STATIC;
 					pGen->pIn++;
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-							iProtection = nKwrd;
-							pGen->pIn++;
-						}
-					}
+					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
 					if( pGen->pIn >= pGen->pEnd
 						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -5862,13 +5872,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				}else if( nKwrd == PH7_TKWRD_ABSTRACT ){
 					iAttrflags |= PH7_CLASS_ATTR_ABSTRACT;
 					pGen->pIn++;
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-							iProtection = nKwrd;
-							pGen->pIn++;
-						}
-					}
+					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
 						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,

@@ -661,6 +661,27 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		SyStringInitFromBuf(&sKey,(const char *)pEntry->pKey,pEntry->nKeyLen);
 		pName = &sKey;
 		if( (pOwn = SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte)) != 0 ){
+			ph7_class_method *pOwnMeth = (ph7_class_method *)pOwn->pUserData;
+			ph7_class *pOwnDecl = (ph7_class *)pOwnMeth->sFunc.pUserData;
+			if( (pOwnMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0
+			 && (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0
+			 && pOwnDecl && (pOwnDecl->iFlags & PH7_CLASS_TRAIT) != 0 ){
+				/* A trait's `abstract` is a REQUIREMENT, not a member, and php lets an
+				 * INHERITED method satisfy it: `trait T { abstract function need(); }
+				 * class P { function need(){} } class C extends P { use T; }` composes
+				 * there and was "Class C contains 1 abstract method" here, because the
+				 * trait is applied before the base is inherited and the requirement then
+				 * shadowed the very method that answers it. The satisfying declaration
+				 * still has to be COMPATIBLE with the requirement -- and php words that
+				 * one the other way round, naming the class that PROVIDES the method and
+				 * the trait that asked for it. */
+				rc = OoCheckOverrideCompat(&(*pGen),pOwnDecl,pBase,pOwnMeth,pMeth);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				pOwn->pUserData = (void *)pMeth;
+				continue;
+			}
 			if( pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
 				/* php: a base's PRIVATE method is never overridden — the child's
 				 * declaration is an independent member of the same name, so neither
@@ -805,6 +826,31 @@ static int VmTraitConstDefsMatch(ph7_vm *pVm,ph7_class_attr *pLeft,ph7_class_att
 	return VmTraitDefaultsMatch(pVm,&pLeft->aByteCode,&pRight->aByteCode);
 }
 /*
+ * A private copy of a trait member's record for one composing class. php composes a trait
+ * into each using class SEPARATELY, so a trait's STATIC property is one slot per class --
+ * `trait T { public static $c = 0; } class A { use T; } class B { use T; }` gives A and B a
+ * counter each -- and a trait CONSTANT is evaluated per class, so `const K = self::J` reads
+ * the J of whichever class composed it. Copying the record by POINTER gave every using class
+ * the same storage slot and the same memoized value.
+ *
+ * The copy shares its source's compiled byte-code and attribute sets, which are read-only
+ * once compilation is past; what it does NOT share is nIdx, the storage slot, and the
+ * per-evaluation flags. pDeclClass stays the TRAIT, so every scope and naming rule still
+ * finds the composing class through it.
+ */
+static ph7_class_attr * VmCloneTraitAttr(ph7_vm *pVm,ph7_class_attr *pSrc)
+{
+	ph7_class_attr *pNew = (ph7_class_attr *)SyMemBackendPoolAlloc(&pVm->sAllocator,
+		sizeof(ph7_class_attr));
+	if( pNew == 0 ){
+		return 0;
+	}
+	SyMemcpy((const void *)pSrc,(void *)pNew,sizeof(ph7_class_attr));
+	pNew->nIdx = SXU32_HIGH; /* its own storage slot, reserved at this class's mount */
+	pNew->iFlags &= ~(PH7_CLASS_ATTR_EVALING|PH7_CLASS_ATTR_STATIC_DEFER);
+	return pNew;
+}
+/*
  * Apply a trait to a class: copy all methods and attributes from the trait
  * into the target class. Unlike inheritance, traits copy ALL members including
  * private ones. Members already defined in the class take precedence.
@@ -873,6 +919,15 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 			}
 			continue;
 		}
+		if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){
+			/* One slot per composing class (see VmCloneTraitAttr). */
+			ph7_class_attr *pOwnCopy = VmCloneTraitAttr(pGen->pVm,pAttr);
+			if( pOwnCopy == 0 ){
+				rc = SXERR_MEM;
+				goto cleanup;
+			}
+			pAttr = pOwnCopy;
+		}
 		rc = SyHashInsertTail(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
 		if( rc != SXRET_OK ){
 			goto cleanup;
@@ -898,8 +953,13 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 			 && (pHolder->iFlags & PH7_CLASS_TRAIT) == 0
 			 && PH7_VmInstanceOf(pClass,pHolder) ){
 				/* Inherited from a base class: the trait's definition replaces it. */
+				ph7_class_attr *pOwnCopy = VmCloneTraitAttr(pGen->pVm,pAttr);
+				if( pOwnCopy == 0 ){
+					rc = SXERR_MEM;
+					goto cleanup;
+				}
 				SyHashDeleteEntry2(pExisting);
-				rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pAttr);
+				rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pOwnCopy);
 				if( rc != SXRET_OK ){
 					goto cleanup;
 				}
@@ -930,7 +990,15 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 			}
 			continue;
 		}
-		rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pAttr);
+		{
+			/* Evaluated per composing class (`const K = self::J`), so one record each. */
+			ph7_class_attr *pOwnCopy = VmCloneTraitAttr(pGen->pVm,pAttr);
+			if( pOwnCopy == 0 ){
+				rc = SXERR_MEM;
+				goto cleanup;
+			}
+			rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pOwnCopy);
+		}
 		if( rc != SXRET_OK ){
 			goto cleanup;
 		}
