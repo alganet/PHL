@@ -3325,6 +3325,36 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
 	return rc;
 }
 /*
+ * The CALL SITE php names in an argument diagnostic: the `called in FILE on line
+ * N` tail of a TypeError, and the `in FILE on line N` of an ArgumentCountError.
+ * It is the CALLER's position -- which the callee's frame recorded for itself when
+ * it was entered (VmEnterFrame). PHL read the top of the INCLUDE stack, and the
+ * count error had a hard-coded line 1, so every one of these raised inside a
+ * vendor package named the entry script and an arbitrary line.
+ *
+ * The top frame is only the callee's when the raise happens AFTER VmEnterFrame; a
+ * generator/fiber argument install runs before one is pushed, so the identity is
+ * checked rather than assumed. With no frame of the callee's to read, the position
+ * running right now IS the call site, which is what the fallback names.
+ */
+static void VmArgCallSite(ph7_vm *pVm,ph7_vm_func *pCallee,SyString **ppFile,sxu32 *pnLine)
+{
+	VmFrame *pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+	*ppFile = 0;
+	*pnLine = pVm->nCurLine;
+	if( pCallee && pFrame && pFrame->pUserData == (void *)pCallee ){
+		if( SyStringLength(&pFrame->sCallFile) > 0 ){
+			*ppFile = &pFrame->sCallFile;
+		}
+		if( pFrame->nCallLine ){
+			*pnLine = pFrame->nCallLine;
+		}
+	}
+	if( *ppFile == 0 ){
+		*ppFile = PH7_VmExecutingUnitFile(pVm);
+	}
+}
+/*
  * Throw a TypeError exception from within the VM execution loop.
  * Used for user-defined function type hint violations (e.g. object type hint).
  */
@@ -3397,9 +3427,11 @@ ArgMsgBuilt:
 	 * (hosted C) functions get the bare message. nCurLine is the line of the
 	 * call instruction being bound, which is exactly php's "called in". */
 	if( (pCallee->iFlags & VM_FUNC_INTERNAL) == 0 ){
-		SyString *pCallFile = (SyString *)SySetPeek(&pVm->aFiles);
+		SyString *pCallFile;
+		sxu32 nCallLine;
+		VmArgCallSite(pVm,pCallee,&pCallFile,&nCallLine);
 		if( pCallFile && pCallFile->nByte > 0 ){
-			SyBlobFormat(&sMsg,", called in %z on line %u",pCallFile,pVm->nCurLine);
+			SyBlobFormat(&sMsg,", called in %z on line %u",pCallFile,nCallLine);
 		}
 	}
 	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
@@ -3558,7 +3590,7 @@ PH7_PRIVATE sxu32 VmFuncRequiredArgCount(ph7_vm_func *pFunc,sxu32 *pnNonVariadic
  * matching php for Fiber::start() (no userland call site in the message).
  */
 PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
-	sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite)
+	ph7_vm_func *pCallee,sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite)
 {
 	static const SyString sUnknown = { "unknown", sizeof("unknown") - 1 };
 	SyBlob sMsg;
@@ -3570,8 +3602,11 @@ PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
 		SyBlobFormat(&sMsg,"Too few arguments to function %z(), %u passed",pFuncName,nPassed);
 	}
 	if( bCallSite ){
-		const SyString *pFile = (const SyString *)SySetPeek(&pVm->aFiles);
-		SyBlobFormat(&sMsg," in %z on line %d",pFile ? pFile : &sUnknown,1);
+		SyString *pFile;
+		sxu32 nCallLine;
+		VmArgCallSite(pVm,pCallee,&pFile,&nCallLine);
+		SyBlobFormat(&sMsg," in %z on line %u",
+			(pFile && pFile->nByte > 0) ? (const SyString *)pFile : &sUnknown,nCallLine);
 	}
 	SyBlobFormat(&sMsg," and %s %u expected",
 		nRequired >= nNonVariadic ? "exactly" : "at least",nRequired);
@@ -4332,9 +4367,11 @@ static void VmRenderUncaughtEntry(
 	const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,
 	const char *zFuncName,int nFuncLen,int bFirst,int bLast,
 	sxu32 nThrowLine,  /* line the exception was raised at (0 -> the line running now) */
-	sxu32 nCallLine)   /* line of the call that entered the throwing frame (0 -> same) */
+	sxu32 nCallLine,   /* line of the call that entered the throwing frame (0 -> same) */
+	SyString *pThrowFile) /* file the exception was raised IN (0/empty -> derive it) */
 {
 	SyString *pFile;
+	SyString *pCallFile;
 	int bParseErr,bCompileErr;
 	if( nThrowLine == 0 ){
 		nThrowLine = pVm->nCurLine ? pVm->nCurLine : 1;
@@ -4350,7 +4387,31 @@ static void VmRenderUncaughtEntry(
 	if( zFuncName == 0 || nFuncLen <= 0 ){
 		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
 	}
-	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	/* WHERE php says the exception was raised. php's `zend_exception_error` reads the
+	 * throwable's OWN `file`/`line` properties, which are stamped where it was
+	 * constructed -- so an exception that escapes a vendor package names that
+	 * package's file, however many frames it unwound through on the way out. PHL read
+	 * the top of the INCLUDE stack instead, which is the entry script once anything
+	 * defined elsewhere is running: every uncaught report in a composer tree -- a
+	 * `throw`, an undefined function or method, a TypeError, a DivisionByZeroError,
+	 * each link of a `$previous` chain -- named the wrong file, in the one message a
+	 * user reads when a program dies. (`getFile()` was already right; only the report
+	 * was not.) A caller with no instance to ask -- the internal Error reports -- has
+	 * a live frame instead, so it takes the file the RUNNING code is in, the same
+	 * source every other diagnostic uses (see VmDiagnosticWhere).
+	 *
+	 * pCallFile stays the include-stack top: the synthesized trace frame below names a
+	 * CALL SITE, which is the caller's file, not the throw's. */
+	pCallFile = (SyString *)SySetPeek(&pVm->aFiles);
+	pFile = pCallFile;
+	if( pThrowFile && pThrowFile->nByte > 0 ){
+		pFile = pThrowFile;
+	}else{
+		SyString *pUnit = PH7_VmExecutingUnitFile(&(*pVm));
+		if( pUnit && pUnit->nByte > 0 ){
+			pFile = pUnit;
+		}
+	}
 	bParseErr = (nClass == sizeof("ParseError")-1
 	          && SyMemcmp(zClass,"ParseError",nClass) == 0);
 	bCompileErr = (nClass == sizeof("CompileError")-1
@@ -4395,11 +4456,11 @@ static void VmRenderUncaughtEntry(
 	if( pVm->bRenderingUncaught || !VmAppendExceptionTrace(pVm,pExc,pOut) ){
 		int bFrame = 0;
 		if( zFuncName && nFuncLen > 0 ){
-			if( pFile ){
+			if( pCallFile ){
 				/* php reports a trace frame at its CALL SITE, not at the line
 				 * running inside it. */
 				SyBlobFormat(pOut,"#0 %.*s(%u): %.*s()\n",
-					(int)pFile->nByte,pFile->zString,nCallLine,nFuncLen,zFuncName);
+					(int)pCallFile->nByte,pCallFile->zString,nCallLine,nFuncLen,zFuncName);
 			}else{
 				SyBlobFormat(pOut,"#0 [internal function]: %.*s()\n",nFuncLen,zFuncName);
 			}
@@ -4429,7 +4490,7 @@ PH7_PRIVATE sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32
 		return PH7_OK;
 	}
 	SyBlobInit(&sOut,&pVm->sAllocator);
-	VmRenderUncaughtEntry(pVm,&sOut,0,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE,0,0);
+	VmRenderUncaughtEntry(pVm,&sOut,0,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE,0,0,0);
 	VmCallErrorHandler(pVm,&sOut);
 	SyBlobRelease(&sOut);
 	return PH7_ABORT;
@@ -4514,6 +4575,30 @@ static sxu32 VmExtractExceptionLine(ph7_vm *pVm,ph7_class_instance *pThis)
 	PH7_MemObjRelease(&sLine);
 	return nLine;
 }
+/*
+ * The throwable's own `file` -- what php's uncaught report names. Read through
+ * `getFile()`, the way the message and the line beside it are read: the accessor is
+ * `final` in php (and refused here too), so it can only ever answer the property.
+ */
+static void VmExtractExceptionFile(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *pOut)
+{
+	ph7_class_method *pGetFile;
+	ph7_value sFile;
+	const char *zTmp;
+	int nTmp;
+	pGetFile = PH7_ClassExtractMethod(pThis->pClass,"getFile",sizeof("getFile")-1);
+	if( pGetFile == 0 ){
+		return;
+	}
+	PH7_MemObjInit(pVm,&sFile);
+	if( PH7_VmCallClassMethod(&(*pVm),pThis,pGetFile,&sFile,0,0) == SXRET_OK ){
+		zTmp = ph7_value_to_string(&sFile,&nTmp);
+		if( zTmp && nTmp > 0 ){
+			SyBlobAppend(pOut,zTmp,(sxu32)nTmp);
+		}
+	}
+	PH7_MemObjRelease(&sFile);
+}
 static void VmExtractExceptionMessage(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *pOut)
 {
 	ph7_class_method *pGetMessage;
@@ -4579,15 +4664,27 @@ static sxi32 VmReportUncaughtChain(ph7_vm *pVm,ph7_class_instance *pThis,const c
 	for( i = nChain - 1 ; i >= 0 ; --i ){
 		ph7_class_instance *pEnt = apChain[i];
 		SyBlob sMsg;
+		SyBlob sFile;
+		SyString sThrowFile;
+		sxu32 nEntLine;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobInit(&sFile,&pVm->sAllocator);
 		VmExtractExceptionMessage(pVm,pEnt,&sMsg);
+		/* Each link of the chain reports its OWN file and line: php prints the
+		 * deepest as "Uncaught", every outer one as "Next ...", and they routinely
+		 * come from different packages. Both accessors run PHP code, so read them
+		 * before the render rather than inside its argument list. */
+		VmExtractExceptionFile(pVm,pEnt,&sFile);
+		nEntLine = VmExtractExceptionLine(pVm,pEnt);
+		SyStringInitFromBuf(&sThrowFile,SyBlobData(&sFile),SyBlobLength(&sFile));
 		VmRenderUncaughtEntry(pVm,&sOut,pEnt,
 			pEnt->pClass->sName.zString,pEnt->pClass->sName.nByte,
 			(const char *)SyBlobData(&sMsg),(sxu32)SyBlobLength(&sMsg),
 			zFuncName,nFuncLen,
 			(i == nChain - 1) ? TRUE : FALSE,   /* bFirst: deepest entry */
 			(i == 0) ? TRUE : FALSE,            /* bLast: outermost entry */
-			VmExtractExceptionLine(pVm,pEnt),0);
+			nEntLine,0,&sThrowFile);
+		SyBlobRelease(&sFile);
 		SyBlobRelease(&sMsg);
 	}
 	VmCallErrorHandler(pVm,&sOut);

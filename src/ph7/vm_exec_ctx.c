@@ -2076,7 +2076,7 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				(pFunc->iFlags & VM_FUNC_INTERNAL)
 					? VmThrowBuiltinTooFewArgs(pVm,pSelfHint,&pFunc->sName,
 						(sxu32)nArg,nReqGF,SySetUsed(&pFunc->aArgs))
-					: VmThrowTooFewArgs(pVm,pSelfHint,&pFunc->sName,
+					: VmThrowTooFewArgs(pVm,pSelfHint,&pFunc->sName,pFunc,
 						(sxu32)nArg,nReqGF,nNonVarGF,bCallSiteInMsg));
 		}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
 			/* Default value */

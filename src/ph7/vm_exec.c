@@ -7382,7 +7382,7 @@ case PH7_OP_CALL: {
 							rc = (pVmFunc->iFlags & VM_FUNC_INTERNAL)
 								? VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
 									nMaxFilled,nReqNamed,SySetUsed(&pVmFunc->aArgs))
-								: VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
+								: VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
 									nMaxFilled,nReqNamed,nNVNamed,TRUE);
 						}else{
 							rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,&aFormalArg[n].sName);
@@ -7811,7 +7811,7 @@ case PH7_OP_CALL: {
 					rc = VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
 						nPassed,nReq,SySetUsed(&pVmFunc->aArgs));
 				}else{
-					rc = VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
+					rc = VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
 						nPassed,nReq,nNonVar,TRUE);
 				}
 				if( rc == PH7_ABORT ){
