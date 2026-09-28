@@ -510,6 +510,9 @@ PH7_PRIVATE sxi32 PH7_VmEmitInstr(
 	 * (GenStateMarkDiscardedCall, after the fact) — but the field must not be
 	 * this stack frame's leftovers in the meantime. */
 	sInstr.bDiscard = 0;
+	/* ...and neither must the reference-source marker: the codegen stamps it on the
+	 * one OP_MEMBER it belongs to, AFTER this returns. */
+	sInstr.bRefSrc = 0;
 	sInstr.nLine = 0;
 	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){
 		sInstr.nLine = pGen->pIn->nLine;
@@ -1963,8 +1966,19 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
  */
 PH7_PRIVATE int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass)
 {
-	if( pVm->pStdClass != 0 && pClass == pVm->pStdClass ){
-		return TRUE;
+	if( pVm->pStdClass != 0 ){
+		/* ...and stdClass's own permission is INHERITED, exactly as the attribute
+		 * is: php deprecates nothing for `class C extends stdClass`, so §10 must
+		 * refuse nothing there either. Only the class ITSELF was recognized, so a
+		 * subclass of the one class php lets a script build freely could not take a
+		 * property at all. */
+		ph7_class *pAncestor = pClass;
+		while( pAncestor ){
+			if( pAncestor == pVm->pStdClass ){
+				return TRUE;
+			}
+			pAncestor = pAncestor->pBase;
+		}
 	}
 	return VmClassHasAttributeNamed(pClass,"AllowDynamicProperties",
 		sizeof("AllowDynamicProperties")-1);
@@ -7113,6 +7127,56 @@ PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
 		}
 	}
 	return nLive;
+}
+/*
+ * Does this slot's holder count include the OWNER's own hold?
+ *
+ * A property's slot is installed in the reference table with a permanent pin
+ * (VM_REF_IDX_KEEP) when the property was created dynamically or re-created after
+ * unset(), with a COUNTED pin when the property was BOUND to somebody else's slot
+ * (`$o->p =& $x`), and with nothing at all when it came straight from the class
+ * declaration. PH7_VmSlotHolderCount counts those pins as holders, so a renderer
+ * asking "is this value a REFERENCE" has to subtract the one hold that is the
+ * property itself -- an array ELEMENT, which is its own first holder in the table,
+ * asks the same question with a threshold of two.
+ */
+PH7_PRIVATE int PH7_VmSlotSelfPinned(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	return pRef != 0 && (pRef->nPin > 0 || (pRef->iFlags & VM_REF_IDX_KEEP) != 0);
+}
+/*
+ * Give up the OWNER's own hold on a slot, and say whether anybody else still has one.
+ *
+ * A property that is released -- with its object, or by `unset($o->p)` -- used to
+ * take its VALUE SLOT with it unconditionally, which is right only while the
+ * property is the one thing naming it. php's refcount keeps the value alive for
+ * whoever else holds a reference to it (`$r =& $o->p; unset($o->p);` leaves $r
+ * holding the value, and `$a[] =& $o->p` leaves the element), where unlinking the
+ * slot here dropped the array element and left the VARIABLE undefined.
+ *
+ * Returns TRUE when the caller must NOT free the slot. The owner's own hold is the
+ * permanent pin a dynamically created / re-created property carries; a declared one
+ * holds nothing at all, so there is nothing to give back for it.
+ */
+PH7_PRIVATE int PH7_VmSlotDropOwnerHold(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef == 0 ){
+		return 0;
+	}
+	if( pRef->nPin == 0 ){
+		pRef->iFlags &= ~VM_REF_IDX_KEEP;
+	}
+	return PH7_VmSlotHolderCount(&(*pVm),nIdx) > 0;
 }
 /*
  * Release a slot whose last holder just went away. A no-op while anything still

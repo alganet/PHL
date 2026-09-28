@@ -1323,6 +1323,57 @@ PH7_PRIVATE sxi32 VmAutoInitArrayProperty(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_v
 	return SXRET_OK;
 }
 /*
+ * TRUE when a property's declared type admits NULL, which is what decides whether a
+ * REFERENCE fetch of an uninitialized one may bind at all. `?T` and a `T|null` union
+ * both carry the nullable flag; `mixed` is the one type that admits null without it.
+ */
+static int VmAttrTypeAcceptsNull(ph7_class_attr *pAttr)
+{
+	if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+		return 1; /* untyped: the slot already holds NULL */
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE ){
+		return 1;
+	}
+	if( pAttr->nType == SXU32_HIGH && pAttr->sClass.nByte == 5
+	 && SyStrnicmp(pAttr->sClass.zString,"mixed",5) == 0 ){
+		return 1;
+	}
+	return 0;
+}
+/*
+ * Decide what a REFERENCE fetch of an uninitialized typed property does, which is
+ * php's `zend_handle_fetch_obj_flags` under BP_VAR_W: the slot becomes NULL and the
+ * bind reaches it when the declared type admits null, and the fetch is refused
+ * otherwise -- php's `Cannot access uninitialized non-nullable property C::$p by
+ * reference`. It is NOT the auto-initialize-array rule: that one belongs to a
+ * DIMENSION write, and running it here made `?int $t` an array and `int $t` the
+ * wrong TypeError.
+ */
+PH7_PRIVATE sxi32 VmRefUninitTypedProperty(ph7_vm *pVm,ph7_class *pClass,VmClassAttr *pVmAttr,ph7_value *pSlot)
+{
+	ph7_class_attr *pAttr;
+	ph7_class *pOwner;
+	SyBlob sMsg;
+	if( pVmAttr == 0 || pVmAttr->pAttr == 0 ){
+		return SXRET_OK;
+	}
+	pAttr = pVmAttr->pAttr;
+	if( VmAttrTypeAcceptsNull(pAttr) ){
+		if( pSlot ){
+			PH7_MemObjRelease(pSlot);
+			MemObjSetType(pSlot,MEMOBJ_NULL);
+		}
+		pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
+		return SXRET_OK;
+	}
+	pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Cannot access uninitialized non-nullable property %z::$%z by reference",
+		pOwner ? &pOwner->sName : &pClass->sName,&pAttr->sName);
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
  * Throw a PHP-compatible Error for reading an uninitialized typed property.
  */
 PH7_PRIVATE sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)

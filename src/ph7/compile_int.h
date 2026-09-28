@@ -182,6 +182,13 @@ struct LangConstruct
                                            * OP_CALL and re-reading the literal behind it. Set for the
                                            * DIRECT operand only: GenStateEmitExprCode strips it on
                                            * entry so it cannot reach a nested expression. */
+#define EXPR_FLAG_MEMBER_REFSRC   0x2000 /* Sub-tree is the SOURCE of a reference bind (`$r =& $o->p`,
+                                           * `$a[] =& $o->p`, `[&$o->p]`): php compiles it in WRITE
+                                           * context, so a missing property is created instead of
+                                           * warned about. Marks the OUTERMOST member of the source
+                                           * (VmInstr::bRefSrc); every container UNDER it is an
+                                           * ordinary write base, so the flag decays to
+                                           * EXPR_FLAG_MEMBER_WRITE on the way down. */
 /* compile.c GenState substrate — shared with the other compile*.c units */
 PH7_PRIVATE sxi32 GenStateEnterBlock(ph7_gen_state *pGen,sxi32 iType,sxu32 nFirstInstr,void *pUserData,GenBlock **ppBlock);
 PH7_PRIVATE sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock);

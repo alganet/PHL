@@ -2643,7 +2643,13 @@ PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm, VmClassAttr *pVmAttr)
 		/* Drop any typed-property enforcement slot registered for this memobj, before the memobj
 		 * is returned to the free list, so a future recycled slot does not inherit the stale entry. */
 		PH7_VmStoreFilterDrop(pVm,pVmAttr->pAttr,pVmAttr->nIdx);
-		PH7_VmUnsetMemObj(pVm,pVmAttr->nIdx,TRUE);
+		if( !PH7_VmSlotDropOwnerHold(pVm,pVmAttr->nIdx) ){
+			/* Nobody else names the slot. When somebody does -- `$r =& $o->p`,
+			 * `$a[] =& $o->p` -- the value is theirs to keep and theirs to release,
+			 * exactly as php's refcount makes it: unlinking it here took the array
+			 * element with it and left the variable UNDEFINED. */
+			PH7_VmUnsetMemObj(pVm,pVmAttr->nIdx,TRUE);
+		}
 	}
 	/* A dynamic property owns its synthesized ph7_class_attr (struct + inline name in one block) —
 	 * free it here (the only place a per-instance pAttr is freed; declared attrs are class-owned). */
@@ -3190,6 +3196,21 @@ static void OoDumpPropKey(SyBlob *pOut,ph7_class_instance *pThis,ph7_class_attr 
 	}
 	SyBlobAppend(&(*pOut),ShowType ? "]=>" : "] => ",ShowType ? 3 : 5);
 }
+/*
+ * Does var_dump's `&` belong on this property? php prints it for a property whose
+ * value IS a reference -- either end of the bind, `$o->p =& $x` and `$r =& $o->p`
+ * alike -- and the array renderer asks exactly the same question of an element
+ * (PH7_HashmapNodeIsRef). A property differs only in the threshold: the property
+ * itself is not always one of the holders the reference table names -- a DECLARED
+ * property holds nothing, a dynamic or re-created one holds a permanent pin, and a
+ * bound one holds a counted pin -- so the threshold is that one hold rather than
+ * the element renderer's flat two. print_r never marks one, in either container.
+ */
+static int OoAttrIsRef(ph7_class_instance *pThis,VmClassAttr *pVmAttr)
+{
+	sxu32 nSelf = PH7_VmSlotSelfPinned(pThis->pVm,pVmAttr->nIdx) ? 1 : 0;
+	return PH7_VmSlotHolderCount(pThis->pVm,pVmAttr->nIdx) > nSelf;
+}
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth)
 {
 	SyHashEntry *pEntry;
@@ -3350,7 +3371,8 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 				}
 				OoDumpPropKey(&(*pOut),pThis,pVmAttr->pAttr,TRUE);
 				SyBlobAppend(&(*pOut),"\n",sizeof(char));
-				rc = PH7_MemObjDump(&(*pOut),pValue,TRUE,nTab+2,nDepth,0);
+				rc = PH7_MemObjDump(&(*pOut),pValue,TRUE,nTab+2,nDepth,
+					OoAttrIsRef(pThis,pVmAttr));
 				if( rc == SXERR_LIMIT ){
 					break;
 				}

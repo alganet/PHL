@@ -428,14 +428,27 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 }
 
 /*
+ * Is this OP_MEMBER the SOURCE of a reference bind — `$r =& $o->p`, `$a[] =& $o->p`,
+ * `[&$o->p]`, a by-reference `foreach ($o->p as &$v)`, a by-reference destructuring
+ * source? php compiles all of them with `zend_compile_var(source, BP_VAR_W)`, so the
+ * fetch is a WRITE context: a missing property is CREATED, not warned about. PHL
+ * leaves the instruction a PH7_MEMBER_READ on purpose -- a handler-backed property
+ * still hands back a copy there, and an overloaded one still dispatches __get -- and
+ * carries the context in a flag the compiler stamps beside it.
+ */
+static int VmMemberFetchIsRefSource(const VmInstr *pInstr)
+{
+	return pInstr->iP2 == PH7_MEMBER_READ && pInstr->bRefSrc != 0;
+}
+/*
  * Is this OP_MEMBER fetching the property for WRITING — php's BP_VAR_W / BP_VAR_RW
  * fetch, the one that asks the object for something to MODIFY? The compiler tags
  * the base of a subscript-write / `??=` PH7_MEMBER_WRITE, so that answers most of
  * it once the shapes that share the tag are excluded: a plain store and a `??=`
  * write through their own paths, and a direct read-modify-write is the accessor
- * pair (VmMagicRmwArm), not a write fetch. The two php compiles as plain READS —
- * binding a reference (`$r = &$o->p`) and iterating by reference — are told apart
- * by the instruction that follows. `$o->p =& $x` is NOT one of them: the member is
+ * pair (VmMagicRmwArm), not a write fetch. The shapes php compiles as plain READS —
+ * a reference SOURCE, in all its spellings — carry the compiler's own marker
+ * (VmMemberFetchIsRefSource). `$o->p =& $x` is NOT one of them: the member is
  * the reference TARGET there and carries its own iP2.
  */
 static int VmMemberFetchForWrite(const VmInstr *pInstr)
@@ -446,15 +459,7 @@ static int VmMemberFetchForWrite(const VmInstr *pInstr)
 		int bCoalesceW = (pNext->iOp == PH7_OP_NULLC_JMP);
 		return !bPlainStore && !bCoalesceW && !VmMemberNextIsRmw(pNext);
 	}
-	if( pInstr->iP2 == PH7_MEMBER_READ ){
-		if( pNext->iOp == PH7_OP_STORE_REF ){
-			return 1;
-		}
-		if( pNext->iOp == PH7_OP_FOREACH_INIT && pNext->p3 ){
-			return (((ph7_foreach_info *)pNext->p3)->iFlags & PH7_4EACH_STEP_REF) != 0;
-		}
-	}
-	return 0;
+	return VmMemberFetchIsRefSource(pInstr);
 }
 /*
  * A native class's property is a field of php's own C struct, and the only writes
@@ -1013,6 +1018,13 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				 * calling the name undefined (PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT).
 				 * Set by the miss handling below and answered after the pop. */
 				ph7_class_attr *pLazyDefault = 0;
+				/* An UNINITIALIZED typed slot handed to the deferred call-argument rail
+				 * below, which records it whether or not the class declares __get: php
+				 * consults no magic accessor for a typed property that was never written
+				 * (only an unset() one reaches __get there), and the two diagnostics it
+				 * DOES have -- one for a by-value binding, one for a by-reference one --
+				 * are exactly what the rail exists to tell apart. */
+				int bDeferUninit = 0;
 				if( sName.nByte > 0 && sName.zString[0] == 0
 				 && !PH7_VmIsIncompleteClass(&(*pVm),pClass) ){
 					/* php refuses a property name beginning with a NUL outright:
@@ -1178,8 +1190,12 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					/* ...and a fetch in WRITE context is php's get_property_ptr_ptr,
 					 * which a handler whose property is a real element answers with
 					 * the element itself -- so `$ao->list[] = 1` lands in the store
-					 * rather than in a temporary, and creates the key it is missing. */
-					sProp.bWriteCtx = VmMemberNativeSetKeepsSlot(pInstr);
+					 * rather than in a temporary, and creates the key it is missing.
+					 * A reference SOURCE asks the same handler: `$r =& $ao->z` creates
+					 * the key and binds to it, where a VIRTUAL property (no slot to
+					 * give) ignores the flag and hands back its value copy. */
+					sProp.bWriteCtx = VmMemberNativeSetKeepsSlot(pInstr)
+						|| VmMemberFetchIsRefSource(pInstr);
 					sProp.nSlot = SXU32_HIGH;
 					if( PH7_ClassNativeProp(pThis,&sProp) ){
 						if( sProp.zThrowClass == 0 && bPropCoal
@@ -1349,8 +1365,15 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * instruction there), and for ++/--/compound-assign/store the next opcode is the
 					 * modify-op directly (VmMemberNextIsWrite). */
 					VmInstr *pNext = pInstr + 1;
+					/* A reference SOURCE is php's write-context fetch too (`$r =& $o->p`,
+					 * `[&$o->p]`, `foreach ($o->p as &$v)`): the name it does not find is
+					 * CREATED, silently, and the bind reaches the created slot. PHL read
+					 * it, so every such source warned about what php was on the point of
+					 * creating and then bound a fresh variable of its own -- a write
+					 * through the reference never reached the object. */
+					int bRefSrcMiss = VmMemberFetchIsRefSource(pInstr);
 					if( pInstr->iP2 == PH7_MEMBER_WRITE || pInstr->iP2 == PH7_MEMBER_LIST_TARGET
-					 || VmMemberNextIsWrite(pNext) ){
+					 || VmMemberNextIsWrite(pNext) || bRefSrcMiss ){
 						ph7_class_attr *pDecl = PH7_ClassScopedAttribute(&(*pVm),pThis->pClass,sName.zString,sName.nByte);
 						if( pDecl && PH7_ATTR_LAZY_ABSENT(pDecl,pThis) ){
 							/* The object has never held this name. A class whose handler
@@ -1531,6 +1554,16 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								PH7_MemObjRelease(&sRmwVal);
 								PH7_ClassInstanceUnref(pThis);
 								VM_EXIT_BREAK;
+							}else if( bRefSrcMiss
+							 && (bOwnedSet
+							  || PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)) ){
+								/* An OVERLOADED name is php's exception to the rule above:
+								 * get_property_ptr_ptr has nothing to hand out for one, so
+								 * php falls back to read_property in write mode -- __get
+								 * (or the class's own read handler) answers, and the
+								 * `Indirect modification of overloaded property` notice
+								 * comes with it. Leave the miss: the read gate below is
+								 * where both of those live. */
 							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE
 							 && !VmMemberNextIsWrite(pNext)
 							 && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) ){
@@ -1573,9 +1606,29 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						}
 					}
 				}
+				/* An UNINITIALIZED typed property is deferred for the same reason a missing
+				 * one is: which diagnostic php raises depends on the parameter. A by-VALUE
+				 * binding is the ordinary read Error (`Typed property ... must not be
+				 * accessed before initialization`), a by-REFERENCE one is php's other
+				 * sentence (`Cannot access uninitialized non-nullable property ... by
+				 * reference`) -- or a NULL bind when the type admits null. A HOOKED
+				 * property is not one of these: its backing store is never what answers,
+				 * and the hook rail below has php's own refusal for it -- and neither is an
+				 * INACCESSIBLE one: php screens visibility first, so `f($o->privateSlot)`
+				 * is `Cannot access private property` whether the slot was written or not. */
+				if( pObjAttr && (pObjAttr->iState & VM_CLASS_ATTR_UNINIT)
+				 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED)
+				 && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET
+				                                |PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0
+				 && PH7_VmClassAttrAccess(&(*pVm),pClass,pObjAttr->pAttr,FALSE)
+				 && pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH ){
+					pObjAttr = 0;
+					bDeferUninit = 1;
+				}
 				if( pObjAttr == 0 && pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH
-				 && !(PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
-				   && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g')) ){
+				 && (bDeferUninit
+				  || !(PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
+				    && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g'))) ){
 					/* D1 commit 2: deferred property arg, property absent on a REACHABLE object
 					 * base ($o is a real slot). Record a property step rooted at $o so OP_CALL can
 					 * vivify+bind (by-ref) or read via __get / warn (by-value). A magic __get/__set
@@ -2151,6 +2204,21 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * `public array $table;` is filled exactly that way. */
 							if( (pInstr + 1)->iOp == PH7_OP_NULLC_JMP ){
 								bIsLhs = 1;   /* `$o->p ??= v` assigns over the unset slot */
+							}else if( VmMemberFetchIsRefSource(pInstr) ){
+								/* A REFERENCE fetch has a rule of its own: php seeds NULL
+								 * and binds when the declared type admits one, and refuses
+								 * with `Cannot access uninitialized non-nullable property
+								 * ... by reference` when it does not. The auto-initialize
+								 * rule below belongs to a DIMENSION write, and running it
+								 * here turned `?int $t` into an ARRAY. */
+								sxi32 rcRs = VmRefUninitTypedProperty(&(*pVm),pClass,pObjAttr,
+									(ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx));
+								if( rcRs != SXRET_OK ){
+									VmBoundaryPark(&(*pVm),rcRs);
+									PH7_ClassInstanceUnref(pThis);
+									VM_EXIT_BREAK;
+								}
+								bIsLhs = 1;
 							}else if( VmMemberFetchForWrite(pInstr) ){
 								sxi32 rcAI = VmAutoInitArrayProperty(&(*pVm),pObjAttr,
 									(ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx));
@@ -2469,6 +2537,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				}else if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
 					zVerb = "assign";
 				}else if( pInstr->iP2 == PH7_MEMBER_REF_TARGET ){
+					zVerb = "modify";
+				}else if( VmMemberFetchIsRefSource(pInstr) ){
+					/* `$r =& $o->missing->p`: the intermediate is null and php asks it
+					 * for something to bind to, which is its `modify` sentence -- not
+					 * the read warning this used to fall through to. */
 					zVerb = "modify";
 				}
 				if( pInstr->iP2 == PH7_MEMBER_METHOD || zVerb ){
@@ -3119,6 +3192,20 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 												 * of these -- it reads the property first, so
 												 * php's Error stands. */
 												if( (pInstr + 1)->iOp == PH7_OP_NULLC_JMP ){
+													bIsLhs = 1;
+												}else if( VmMemberFetchIsRefSource(pInstr) ){
+													/* A reference fetch has the instance path's own
+													 * rule: NULL and bind when the type admits it,
+													 * php's by-reference refusal when it does not. */
+													sxi32 rcRs = VmRefUninitTypedProperty(&(*pVm),pClass,pV,
+														(ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx));
+													if( rcRs != SXRET_OK ){
+														VmBoundaryPark(&(*pVm),rcRs);
+														if( pThis ){
+															PH7_ClassInstanceUnref(pThis);
+														}
+														VM_EXIT_BREAK;
+													}
 													bIsLhs = 1;
 												}else if( VmMemberFetchForWrite(pInstr) ){
 													sxi32 rcAI = VmAutoInitArrayProperty(&(*pVm),pV,

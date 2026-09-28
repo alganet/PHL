@@ -1354,6 +1354,7 @@ static sxi32 GenStateEmitExprCode(
 	int bIsChainOp = 0; /* Set below once we know pNode->pOp */
 	int bFcc = 0;       /* First-class callable `f(...)`: emit OP_LOAD_FCC, not OP_CALL */
 	sxu32 nRhsNsBase = 0;
+	sxi32 iRhsFlags = 0; /* control flags the RIGHT operand is compiled under */
 	sxu32 nLhsFirst = 0; /* instruction index the LEFT operand starts at */
 	/* Consumed here so it describes THIS node only — the direct operand of a `new` —
 	 * and never travels down into the operand's own sub-expressions. */
@@ -1544,7 +1545,8 @@ static sxi32 GenStateEmitExprCode(
 		 * an FCC `f(...)` (an OP_LOAD_FCC Closure), a closure variable, an
 		 * `[obj,method]` pair, or a callable string. */
 		sxu32 nPipeNsBase;
-		sxi32 iOperandFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE|EXPR_FLAG_RDONLY_LOAD);
+		sxi32 iOperandFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE
+			|EXPR_FLAG_MEMBER_REFSRC|EXPR_FLAG_RDONLY_LOAD);
 		if( pNode->pLeft == 0 || pNode->pRight == 0 ){
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pNode->pStart->nLine,
 				"'|>': Missing operand");
@@ -1649,6 +1651,15 @@ static sxi32 GenStateEmitExprCode(
 				iLeftFlags &= ~EXPR_FLAG_LOAD_IDX_UNSET;
 				iLeftFlags |= EXPR_FLAG_LOAD_IDX_UNSET_BASE;
 			}
+			/* Only the OUTERMOST access of a reference SOURCE is the reference fetch;
+			 * every container under it is php's ordinary write base (`$r =& $o->arr['k']`
+			 * creates `arr` the way `$o->arr['k'] = v` does). So the flag never travels
+			 * down as itself -- it decays to the write-lvalue flag, which the strip just
+			 * below then applies its own `->`-intermediate rule to. */
+			if( iLeftFlags & EXPR_FLAG_MEMBER_REFSRC ){
+				iLeftFlags &= ~EXPR_FLAG_MEMBER_REFSRC;
+				iLeftFlags |= EXPR_FLAG_MEMBER_WRITE;
+			}
 			/* Write-lvalue propagation (mirrors the UNSET strip): EXPR_FLAG_MEMBER_WRITE marks the
 			 * write target of an assignment and flows through a SUBSCRIPT to its base member
 			 * ($o->arr[$k]=v → create arr). But when THIS node is itself a `->`/`::` member access, its
@@ -1690,7 +1701,7 @@ static sxi32 GenStateEmitExprCode(
 			 * php to hand out either, so `$r =& $iv->s` must keep taking the
 			 * read COPY it takes in php. */
 			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_REF ){
-				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE;
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_REFSRC;
 			}
 			/* A destructuring target list that binds BY REFERENCE reads its SOURCE
 			 * in write context for the same reason: the bind must reach the thing
@@ -1700,7 +1711,7 @@ static sxi32 GenStateEmitExprCode(
 			 && (pNode->pRight->xCode == PH7_CompileList
 			  || pNode->pRight->xCode == PH7_CompileShortList)
 			 && PH7_GenStateListSpanHasRef(pNode->pRight->pStart,pNode->pRight->pEnd) ){
-				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE;
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_REFSRC;
 			}
 			/* `??` reads its LEFT operand in isset-context: an undefined or
 			 * UNINITIALIZED typed PROPERTY must yield the default rather than a
@@ -2134,6 +2145,11 @@ static sxi32 GenStateEmitExprCode(
 			}
 		}
 		nRhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
+		/* The RIGHT operand is never the reference source: for an assignment it is the
+		 * TARGET (the operands were swapped), and for a member access it is the property
+		 * NAME -- and a name written as an expression (`$r =& $o->{$a->b}`) would
+		 * otherwise be compiled as a write-context fetch of its own. */
+		iRhsFlags = iFlags & ~EXPR_FLAG_MEMBER_REFSRC;
 		if( iVmOp == PH7_OP_STORE && pNode->pRight
 		 && (pNode->pRight->xCode == PH7_CompileList
 		  || pNode->pRight->xCode == PH7_CompileShortList) ){
@@ -2146,10 +2162,10 @@ static sxi32 GenStateEmitExprCode(
 			 * anonymous value on the stack. Carry the answer to it. */
 			sxi8 bSavedSrcRef = pGen->bListSrcNotRef;
 			pGen->bListSrcNotRef = (sxi8)!GenStateNodeIsRefSource(pNode->pLeft);
-			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_RDONLY_LOAD);
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iRhsFlags|EXPR_FLAG_RDONLY_LOAD);
 			pGen->bListSrcNotRef = bSavedSrcRef;
 		}else{
-			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_RDONLY_LOAD);
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iRhsFlags|EXPR_FLAG_RDONLY_LOAD);
 		}
 		if( !bIsChainOp ){
 			/* Non-chain parent: RHS nullsafe chain ends here, before the
@@ -2429,6 +2445,16 @@ static sxi32 GenStateEmitExprCode(
 		}
 		/* Finally,emit the VM instruction associated with this operator */
 		PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
+		if( iVmOp == PH7_OP_MEMBER && iP2 == PH7_MEMBER_READ
+		 && (iFlags & EXPR_FLAG_MEMBER_REFSRC) ){
+			/* The reference SOURCE keeps its READ mode -- php hands back a copy for a
+			 * handler-backed property, and dispatches __get for an overloaded one -- and
+			 * carries the write-context marker beside it (see VmInstr::bRefSrc). */
+			VmInstr *pRefSrc = PH7_VmPeekInstr(pGen->pVm);
+			if( pRefSrc ){
+				pRefSrc->bRefSrc = 1;
+			}
+		}
 		if( (iVmOp == PH7_OP_CALL || iVmOp == PH7_OP_NEW) && pNode->pStart ){
 			/* A call's own line is where it BEGINS, not where its argument list
 			 * closes. The emitter stamps every instruction with the token the
@@ -2578,7 +2604,8 @@ static sxi32 GenStateEmitCallArgs(
 	}
 	for( n = 0 ; n < nArgs ; ++n ){
 		sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
-		sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE);
+		sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE
+			|EXPR_FLAG_MEMBER_REFSRC);
 		/* For a by-ref argument position, drop the read-only flag so the
 		 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate), and
 		 * set write-context so a subscript target (preg_match($p,$s,$a['k']))

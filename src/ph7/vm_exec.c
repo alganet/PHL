@@ -795,6 +795,20 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 				}
 				return SXRET_OK;
 			}
+			if( (pAttr->iState & VM_CLASS_ATTR_UNINIT)
+			 && (pAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
+				/* php's rule for a REFERENCE fetch of an uninitialized typed property:
+				 * seed NULL and bind when the declared type admits one, refuse with
+				 * `Cannot access uninitialized non-nullable property ... by reference`
+				 * when it does not. A by-VALUE argument takes the ordinary read Error,
+				 * which the value re-drive next door produces. */
+				sxi32 rcRs = VmRefUninitTypedProperty(&(*pVm),pClass,pAttr,
+					(ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx));
+				if( rcRs != SXRET_OK ){
+					*pbNoBind = 1;
+					return (rcRs == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+				}
+			}
 			*pnOut = pAttr->nIdx;
 			return SXRET_OK;
 		}

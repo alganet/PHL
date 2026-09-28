@@ -1558,6 +1558,7 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	GenBlock *pForeachBlock = 0;
 	ph7_foreach_info *pInfo;
 	sxu32 nFalseJump;
+	sxu32 nContainerEnd = 0; /* instruction count just after the iterated expression */
 	VmInstr *pInstr;
 	sxu32 nLine;
 	sxi32 rc;
@@ -1641,6 +1642,11 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		/* Expression handler request an operation abort [i.e: Out-of-memory] */
 		return SXERR_ABORT;
 	}
+	/* Remember where the iterated expression ends: whether it was fetched for
+	 * WRITING is only known once the `&` after `as` has been read, and a
+	 * by-reference walk fetches its container the way a reference bind does
+	 * (php's BP_VAR_W) -- so a missing property is created, not warned about. */
+	nContainerEnd = PH7_VmInstrLength(pGen->pVm);
 	/* Update token stream */
 	while(pGen->pIn < pCur ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"foreach: Unexpected token '%z'",&pGen->pIn->sData);
@@ -1819,6 +1825,13 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		/* The list binds by reference, so this step's value has to BE the array
 		 * element rather than a copy of it. */
 		pInfo->iFlags |= PH7_4EACH_STEP_REF;
+	}
+	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && nContainerEnd > 0 ){
+		VmInstr *pContainer = PH7_VmGetInstr(pGen->pVm,nContainerEnd - 1);
+		if( pContainer && pContainer->iOp == PH7_OP_MEMBER
+		 && pContainer->iP2 == PH7_MEMBER_READ ){
+			pContainer->bRefSrc = 1;
+		}
 	}
 	/* Emit the 'FOREACH_INIT' instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_FOREACH_INIT,0,0,pInfo,&nFalseJump);

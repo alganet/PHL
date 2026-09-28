@@ -2461,6 +2461,12 @@ struct VmInstr
 	                * about. Set by the codegen at the statement-discard site and cleared
 	                * by a `(void)` cast in front of it, which is php's way of saying the
 	                * drop is deliberate. Padding after bStrict, like bStrict itself. */
+	sxu8  bRefSrc; /* PH7_OP_MEMBER only: this property fetch is a reference SOURCE --
+	                * php's `zend_compile_var(source, BP_VAR_W)`, the fetch a `=&` bind, a
+	                * `[&$o->p]` element and a by-reference `foreach` make. It stays a
+	                * PH7_MEMBER_READ (a handler-backed property still hands back a COPY),
+	                * but a MISSING name is CREATED rather than warned about, exactly as a
+	                * write would create it. Padding after bDiscard, like bStrict itself. */
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	void *p3;  /* Third operand (Often Upper layer private data) */
@@ -5338,6 +5344,8 @@ PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);
 PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry);
 PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE int PH7_VmSlotSelfPinned(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE int PH7_VmSlotDropOwnerHold(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE void PH7_VmReleaseUnheldSlot(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE void PH7_VmRebindVarSlot(ph7_vm *pVm,VmFrame *pFrame,SyHashEntry *pEntry,
 	const char *zName,sxu32 nByte,sxu32 nIdx);
@@ -5816,6 +5824,7 @@ PH7_PRIVATE sxi32 VmThrowSpreadError(ph7_vm *pVm,ph7_value *pBad,int bArgUnpack)
 PH7_PRIVATE sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 VmThrowAutoInitArrayError(ph7_vm *pVm,VmClassAttr *pVmAttr);
 PH7_PRIVATE sxi32 VmAutoInitArrayProperty(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_value *pSlot);
+PH7_PRIVATE sxi32 VmRefUninitTypedProperty(ph7_vm *pVm,ph7_class *pClass,VmClassAttr *pVmAttr,ph7_value *pSlot);
 PH7_PRIVATE sxi32 VmUncaughtException(ph7_vm *pVm, ph7_class_instance *pThis);
 /* vm_arg_check.c — builtin arity/signature enforcement, called from vm.c */
 PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm);
