@@ -1194,16 +1194,22 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 	static const PH7_NativePropDef aProp[] = {
 		{ "__ctx", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
-	static const PH7_NativeClassSpec sSpec = {
-		"Generator", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE,
-		aMethod, SX_ARRAYSIZE(aMethod),
-		0, 0,
-		aProp, SX_ARRAYSIZE(aProp),
-		0, 0, 0
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "Generator", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE,
+		  aMethod, SX_ARRAYSIZE(aMethod),
+		  0, 0,
+		  aProp, SX_ARRAYSIZE(aProp),
+		  0, 0, 0 },
+		/* php declares this one beside Generator and throws it from nowhere a
+		 * script can reach: it is the exception a RESUME of a generator that has
+		 * been closed would carry, and php's own paths answer null there. A
+		 * program may still name it, catch it and throw it, so it is declared. */
+		{ "ClosedGeneratorException", "Exception", 0, 0,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	};
 	ph7_class *pClass;
 	ph7_class *pIterator;
-	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 	if( rc != SXRET_OK ){
 		return rc;
 	}

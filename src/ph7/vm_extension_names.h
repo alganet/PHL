@@ -491,10 +491,12 @@ static const VmExtName aExtClass[] = {
 	{"ArgumentCountError",PH7_EXT_CORE}, {"ValueError",PH7_EXT_CORE},
 	{"ArithmeticError",PH7_EXT_CORE}, {"DivisionByZeroError",PH7_EXT_CORE},
 	{"UnhandledMatchError",PH7_EXT_CORE}, {"Closure",PH7_EXT_CORE}, {"Generator",PH7_EXT_CORE},
+	{"ClosedGeneratorException",PH7_EXT_CORE},
 	{"WeakReference",PH7_EXT_CORE}, {"WeakMap",PH7_EXT_CORE}, {"Attribute",PH7_EXT_CORE},
 	{"ReturnTypeWillChange",PH7_EXT_CORE}, {"AllowDynamicProperties",PH7_EXT_CORE},
 	{"SensitiveParameter",PH7_EXT_CORE}, {"SensitiveParameterValue",PH7_EXT_CORE},
 	{"Override",PH7_EXT_CORE}, {"Deprecated",PH7_EXT_CORE}, {"NoDiscard",PH7_EXT_CORE},
+	{"DelayedTargetValidation",PH7_EXT_CORE},
 	{"UnitEnum",PH7_EXT_CORE}, {"BackedEnum",PH7_EXT_CORE}, {"Fiber",PH7_EXT_CORE},
 	{"FiberError",PH7_EXT_CORE}, {"stdClass",PH7_EXT_CORE},
 	/* date */
