@@ -4980,6 +4980,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
  * ---------------------------------------------------------------------------
  */
 #define RF_CL "__cl"     /* ReflectionFunctionAbstract: the reflected Closure  */
+/*
+ * ReflectionMethod: the class the reflector was BUILT FOR, which is not the
+ * one `$class` reports. php keeps both — `intern->ce` is the class the
+ * constructor (or the ReflectionClass that handed the method out) named, while
+ * the public `$class` is the method's DECLARING class — and its export tags are
+ * relative to the first: a method whose declaring class is not the reflector's
+ * own class prints `inherits <declaring>`. PHL had only the declaring one, so
+ * every directly-built reflector lost the tag.
+ */
+#define RM_CE "__ce"
 #define RP_T  "__t"      /* ReflectionParameter: the function/class it belongs to */
 #define RP_M  "__m"      /* ReflectionParameter: the method name, or null      */
 #define RP_P  "__p"      /* ReflectionParameter: the position                  */
@@ -5084,6 +5094,24 @@ static int ReflectFuncOfThis(ph7_context *pCtx, ReflectFuncRef *pOut)
 	}
 	PH7_MemObjRelease(&sMethod);
 	return rc;
+}
+/*
+ * The class `$this` was BUILT FOR (php's `intern->ce`), or NULL — a
+ * ReflectionFunction has none, and so does a reflector whose class went away.
+ */
+static ph7_class * ReflectOwnerOfThis(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = 0;
+	int nName = 0;
+	if( pThis == 0 ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pThis, RM_CE, &zName, &nName);
+	if( zName == 0 || nName < 1 ){
+		return 0;
+	}
+	return PH7_VmExtractClass(pCtx->pVm, zName, (sxu32)nName, FALSE, 0);
 }
 /* How many parameters the target declares. */
 static int ReflectParamCount(const ReflectFuncRef *pRef)
@@ -6297,6 +6325,11 @@ static int vm_builtin_ReflectionMethod_construct(ph7_context *pCtx, int nArg, ph
 		PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pDecl->sName),
 			(int)SyStringLength(&pDecl->sName));
 	}
+	/* The class the reflector was built FOR, which the export tags read. Every
+	 * ReflectionClass door that hands a method out passes its OWN name as the
+	 * first constructor argument, so they all land here too. */
+	PH7_NativeSetAttrStr(pVm, pThis, RM_CE, SyStringData(&pClass->sName),
+		(int)SyStringLength(&pClass->sName));
 	/* The DECLARED spelling, whatever case was asked for. */
 	PH7_NativeSetAttrStr(pVm, pThis, "name", (const char *)pEntry->pKey, (int)pEntry->nKeyLen);
 Done:
@@ -7221,6 +7254,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 	};
 	static const PH7_NativePropDef aMethodProp[] = {
 		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		/* PHL-only: php's `intern->ce`, which no property publishes. */
+		{ RM_CE,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeConstDef aMethodConst[] = {
 		{ "IS_STATIC",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16, 0, 0.0 },
@@ -9399,7 +9434,7 @@ static int ReflectExportFuncSelf(ph7_context *pCtx)
 		return PH7_OK;
 	}
 	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
-	rc = ReflectExportFuncBlock(pCtx, &sOut, &sRef, "", 0);
+	rc = ReflectExportFuncBlock(pCtx, &sOut, &sRef, "", ReflectOwnerOfThis(pCtx));
 	if( rc == SXRET_OK ){
 		ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
 	}
