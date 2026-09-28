@@ -1333,7 +1333,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		  vm_builtin_xw_to_uri },
 		{ "openMemory",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_open_memory },
 		{ "toMemory",        PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "static", vm_builtin_xw_to_memory },
-		{ "toStream",        PH7_MOD_PUBLIC|PH7_MOD_STATIC, "mixed $stream", "static",
+		/* `$stream` carries no declared type: php's stub writes one, but its arginfo
+		 * is the legacy untyped form and ReflectionParameter reports none. */
+		{ "toStream",        PH7_MOD_PUBLIC|PH7_MOD_STATIC, "$stream", "static",
 		  vm_builtin_xw_to_stream },
 		{ "setIndent",       PH7_MOD_PUBLIC, "bool $enable", "@bool", vm_builtin_xw_set_indent },
 		{ "setIndentString", PH7_MOD_PUBLIC, "string $indentation", "@bool", vm_builtin_xw_set_indent_string },

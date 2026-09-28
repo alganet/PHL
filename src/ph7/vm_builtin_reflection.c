@@ -1282,6 +1282,9 @@ struct ReflectParamDesc
 	SyString sType;            /* nByte == 0 -> untyped */
 	SyString sDefText;         /* signature-declared default TEXT (nByte == 0 -> none) */
 	ph7_vm_func_arg *pArg;     /* compiled parameter, or NULL for a declared one */
+	int bInternal;             /* owner is INTERNAL to php -- which for a COMPILED
+	                            * parameter is the prelude's builtins, and decides
+	                            * how php spells its default (see ReflectExportDefault) */
 };
 /*
  * Split a signature string on its top-level commas (a quoted default may hold
@@ -5792,6 +5795,7 @@ static int ReflectParamAt(const ReflectFuncRef *pRef, int iPos, ReflectParamDesc
 		pOut->bOptional = pOut->bVariadic || pOut->bHasDef;
 		pOut->sType = pArg->sTypeName;
 		pOut->pArg = pArg;
+		pOut->bInternal = (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
 		return 1;
 	}
 }
@@ -9587,7 +9591,21 @@ static void ReflectExportDefault(ph7_context *pCtx, SyBlob *pOut, ReflectParamDe
 		ph7_value sValue;
 		PH7_MemObjInit(pCtx->pVm, &sValue);
 		VmLocalExec(pCtx->pVm, &pDesc->pArg->aByteCode, &sValue, FALSE);
-		ReflectExportValue(pCtx, pOut, &sValue, 0);
+		/* php has two spellings for the same default and picks by whether the
+		 * function is INTERNAL: `null` and double quotes there, `NULL` and single
+		 * quotes for a userland one. A builtin written as prelude PHP is internal
+		 * to php however this engine chose to implement it, so scandir()'s
+		 * `$context = NULL` and clearstatcache()'s `$filename = ''` were both
+		 * printed in the wrong one. */
+		if( pDesc->bInternal
+		 && (sValue.iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING ){
+			ReflectExportStrQ(pOut, (const char *)SyBlobData(&sValue.sBlob),
+				SyBlobLength(&sValue.sBlob), '"');
+		}else if( pDesc->bInternal && (sValue.iFlags & MEMOBJ_NULL) ){
+			SyBlobAppend(pOut, "null", sizeof("null")-1);
+		}else{
+			ReflectExportValue(pCtx, pOut, &sValue, 0);
+		}
 		PH7_MemObjRelease(&sValue);
 		return;
 	}
