@@ -4609,6 +4609,15 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 		if( pAttrValue == 0 ){
 			continue;
 		}
+		/* The stamp IS this slot's initialization. `Error` declares
+		 * `protected int $line` with no default (php's stub, and php's own
+		 * Reflection agrees), so its slot starts UNINITIALIZED -- and writing
+		 * it here without clearing that flag left every Error, TypeError and
+		 * ValueError reporting `uninitialized(int)` in var_dump, one property
+		 * short in the (array) cast, get_object_vars(), get_mangled_object_vars(),
+		 * json_encode(), serialize() and array_walk(), while getLine() answered
+		 * the real number. Exception hid it by declaring a default. */
+		pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
 		if( n == 0 ){
 			if( pSiteFile ){
 				PH7_MemObjRelease(pAttrValue);
