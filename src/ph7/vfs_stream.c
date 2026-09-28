@@ -1999,6 +1999,12 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	/* Extract the target path */
 	zPath  = ph7_value_to_string(apArg[0],&iLen);
+	if( iLen < 1 ){
+		/* php answers FALSE for an empty directory name and says nothing about
+		 * it -- the ValueError its file openers raise is not this door's. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* Try to extract a stream */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zPath,iLen);
 	if( pStream == 0 ){
@@ -2153,6 +2159,9 @@ PH7_PRIVATE int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apAr
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
@@ -2240,6 +2249,9 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
 	/* PHP 8 validates $length (arg #5) up front, before the wrapper is resolved
 	 * or the file opened, so a negative length raises its catchable ValueError
 	 * even for a bad wrapper or a missing file; a NULL (the ?int default) reads
@@ -2442,6 +2454,9 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
@@ -2649,6 +2664,9 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
@@ -2768,6 +2786,9 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the source name */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
 	/* Point to the target IO stream device */
 	pSin = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pSin == 0 ){
@@ -2792,6 +2813,14 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the destination name */
 	zFile = ph7_value_to_string(apArg[1],&nLen);
+	if( nLen < 1 ){
+		/* php's stream layer refuses this end of the copy the same way it
+		 * refused the other -- with the source already open, which is what the
+		 * close here is for. */
+		PH7_StreamCloseHandle(pSin,pIn);
+		PH7_VfsEmptyPathRefused(pCtx,nLen);
+		return PH7_OK;
+	}
 	/* Point to the target IO stream device */
 	pSout = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pSout == 0 ){
@@ -7861,6 +7890,13 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	{
+		int nPath = 0;
+		ph7_value_to_string(apArg[0],&nPath);
+		if( PH7_VfsEmptyPathRefused(pCtx,nPath) ){
+			return PH7_OK;
+		}
+	}
 	/* Extract the desired access mode */
 	if( nArg > 1 ){
 		zMode = ph7_value_to_string(apArg[1],&imLen);
@@ -8000,6 +8036,9 @@ PH7_PRIVATE int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apAr
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
@@ -8071,6 +8110,9 @@ PH7_PRIVATE int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
@@ -8158,6 +8200,12 @@ PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value 
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( nLen < 1 ){
+		/* One of php's three doors that names its own argument instead of
+		 * raising the stream layer's `Path must not be empty`. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"parse_ini_file(): Argument #1 ($filename) must not be empty");
+	}
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){

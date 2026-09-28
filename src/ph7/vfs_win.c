@@ -695,13 +695,18 @@ static int WinVfs_iswritable(const char *zPath)
 	if( dwAttr == INVALID_FILE_ATTRIBUTES ){
 		return -1;
 	}
-	if( (dwAttr & (FILE_ATTRIBUTE_ARCHIVE|FILE_ATTRIBUTE_NORMAL)) == 0 ){
-		/* Not a regular file */
+	if( (dwAttr & (FILE_ATTRIBUTE_ARCHIVE|FILE_ATTRIBUTE_NORMAL|FILE_ATTRIBUTE_DIRECTORY)) == 0 ){
+		/* Not a regular file and not a directory. A DIRECTORY is the one this
+		 * used to refuse and php answers TRUE for: php asks _waccess(W_OK),
+		 * which on Windows is the read-only attribute and nothing else, so
+		 * `is_writable(sys_get_temp_dir())` was false here and true there. */
 		return -1;
 	}
 	if( dwAttr & FILE_ATTRIBUTE_READONLY ){
-		/* Read-only file */
-		return -1;
+		/* Read-only file. Windows keeps the bit on directories too and ignores
+		 * it there, which is why php's answer for one is effectively "yes";
+		 * this follows _waccess rather than second-guessing it. */
+		return (dwAttr & FILE_ATTRIBUTE_DIRECTORY) ? PH7_OK : -1;
 	}
 	/* File is writable */
 	return PH7_OK;

@@ -109,6 +109,27 @@ PH7_PRIVATE const char * PH7_ExtractBaseName(const char *zPath,int nByte,int *pL
 #undef DIR_IS_SEP
 }
 /*
+ * php's `ValueError: Path must not be empty`, raised by its STREAM LAYER before
+ * anything is looked up -- so every door that opens one gets it, unqualified by
+ * a function name, and a program that hands `''` to file_get_contents() catches
+ * an exception rather than reading a warning and a false.
+ *
+ * Three doors say it in their own words instead, naming the argument
+ * (parse_ini_file, scandir, and the DirectoryIterator/DOM constructors that
+ * already did), and the STAT family says nothing at all: an empty path there is
+ * a silent false, where a missing one is php's `stat failed for` warning.
+ *
+ * Answers 1 once the exception is raised, which is the caller's cue to return.
+ */
+PH7_PRIVATE int PH7_VfsEmptyPathRefused(ph7_context *pCtx,int nPath)
+{
+	if( nPath > 0 ){
+		return 0;
+	}
+	PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
+	return 1;
+}
+/*
  * Compile the VFS implementations when builtins are enabled OR when disk I/O
  * is explicitly enabled (i.e. PH7_DISABLE_DISK_IO is NOT defined).
  */
@@ -247,8 +268,15 @@ PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int 
  */
 static void VfsThrowStatWarning(ph7_context *pCtx,const char *zPath,int bLstat)
 {
+	if( zPath == 0 || zPath[0] == 0 ){
+		/* php's stat family says NOTHING about an empty path -- it answers the
+		 * same FALSE a missing one gets and skips the warning, which is the one
+		 * place in the family where the empty path is not the opener's
+		 * ValueError but a silence of its own. */
+		return;
+	}
 	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s failed for %s",
-		ph7_function_name(pCtx),bLstat ? "Lstat" : "stat",zPath ? zPath : "");
+		ph7_function_name(pCtx),bLstat ? "Lstat" : "stat",zPath);
 }
 /*
  * php's stat() answer is TWENTY-SIX entries, not thirteen: the same thirteen
@@ -801,8 +829,12 @@ static int PH7_vfs_realpath(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Set an empty string untnil the underlying OS interface change that */
 	ph7_result_string(pCtx,"",0);
-	/* Perform the requested operation */
+	/* Perform the requested operation. php resolves an EMPTY path as `.` and so
+	 * answers the working directory, where this answered false. */
 	zPath = ph7_value_to_string(apArg[0],0);
+	if( zPath == 0 || zPath[0] == 0 ){
+		zPath = ".";
+	}
 	rc = pVfs->xRealpath(zPath,pCtx);
 	if( rc != PH7_OK ){
 	 ph7_result_bool(pCtx,0);
@@ -1258,6 +1290,12 @@ static int PH7_vfs_disk_free_space(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to the desired directory */
 	zPath = ph7_value_to_string(apArg[0],0);
+	if( zPath == 0 || zPath[0] == 0 ){
+		/* php answers FALSE for an empty one and says nothing, as the stat
+		 * family does. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* Perform the requested operation */
 	errno = 0;
 	iSize = pVfs->xFreeSpace(zPath);
@@ -1402,9 +1440,9 @@ static int PH7_vfs_file_size(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	iSize = pVfs->xFileSize(zPath);
 	if( iSize < 0 ){
 		/* php: a stat failure warns and returns FALSE -- PH7 returned int(-1), which is
-		 * truthy and compares equal to nothing a caller would test for. */
-		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): stat failed for %s",
-			ph7_function_name(pCtx),zPath);
+		 * truthy and compares equal to nothing a caller would test for. An EMPTY
+		 * path is the family's silence (VfsThrowStatWarning). */
+		VfsThrowStatWarning(pCtx,zPath,0);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}

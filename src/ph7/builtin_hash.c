@@ -1216,6 +1216,9 @@ static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
 	const ph7_io_stream *pStream;
 	void *pHandle;
 	*ppStream = 0;
+	if( PH7_VfsEmptyPathRefused(pCtx,nFile) ){
+		return 0;
+	}
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nFile);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);

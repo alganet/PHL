@@ -4870,6 +4870,7 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
  * fopen/opendir/file_* family in vfs_stream.c. */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
 PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri);
+PH7_PRIVATE int PH7_VfsEmptyPathRefused(ph7_context *pCtx,int nPath);
 /* A wrapper's own reason for refusing the open in flight, which is what php
  * prints after "Failed to open stream:" instead of an errno. Set from an xOpen
  * body; PH7_StreamOpenHandle() re-arms the default before every open. */

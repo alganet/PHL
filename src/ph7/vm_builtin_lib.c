@@ -38,6 +38,11 @@
 	"  if( strpos($directory, chr(0)) !== false ){"\
 	"    throw new ValueError('scandir(): Argument #1 ($directory) must not contain any null bytes');"\
 	"  }"\
+	"  /* ... and its own for an EMPTY one: the stream layer's `Path must not be"\
+	"     empty` is what the file openers raise, not this. */"\
+	"  if( $directory === '' ){"\
+	"    throw new ValueError('scandir(): Argument #1 ($directory) must not be empty');"\
+	"  }"\
 	"  /* php's `?resource $context` refusal, spelled here for the same reason the"\
 	"     NUL check above is: forwarding an invalid one to opendir() would name"\
 	"     opendir() in a message php raises against scandir(). */"\
@@ -441,15 +446,32 @@
    "   if( strpos($prefix, chr(0)) !== false ){"\
    "     throw new ValueError('tempnam(): Argument #2 ($prefix) must not contain any null bytes');"\
    "   }"\
-   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\
-   "    * returning a bare name left the caller with a path that does not exist, so"\
-   "    * file_exists() was false and unlink() failed on it. */"\
-   "   $directory = rtrim($directory, DIRECTORY_SEPARATOR);"\
+   "   /* php falls back to the system temporary directory when the one it was"\
+   "    * given cannot HOLD the file, and says so -- except for the empty"\
+   "    * directory, which it reads as `use the temp dir` and answers silently."\
+   "    * PHL took '' literally and spent 64 tries failing at the filesystem"\
+   "    * ROOT. Whether a directory can hold it is settled by TRYING, not by"\
+   "    * asking is_writable(): the two disagree on Windows. */"\
+   "   $zTmp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR);"\
+   "   $zDir = $directory === '' ? $zTmp : rtrim($directory, DIRECTORY_SEPARATOR);"\
+   "   if( is_dir($zDir) && is_writable($zDir) ){"\
+   "     $zOut = __tempnam_in($zDir, $prefix);"\
+   "     if( $zOut !== false ){ return $zOut; }"\
+   "   }"\
+   "   if( $zDir === $zTmp ){ return false; }"\
+   "   trigger_error(\"tempnam(): file created in the system's temporary directory\", E_USER_NOTICE);"\
+   "   return __tempnam_in($zTmp, $prefix);"\
+   "}"\
+   "function __tempnam_in(string $zDir, string $prefix)"\
+   "{"\
+   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is"\
+   "    * unique -- returning a bare name left the caller with a path that does"\
+   "    * not exist, so file_exists() was false and unlink() failed on it. */"\
    "   for( $i = 0 ; $i < 64 ; ++$i ){"\
-   "     $zPath = $directory.DIRECTORY_SEPARATOR.$prefix.rand_str(12);"\
+   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$prefix.rand_str(12);"\
    "     if( file_exists($zPath) ){ continue; }"\
    "     $pHandle = @fopen($zPath,'x');"\
-   "     if( $pHandle === false ){ continue; }"\
+   "     if( $pHandle === false ){ return false; }"\
    "     fclose($pHandle);"\
    "     @chmod($zPath, 0600);"\
    "     return $zPath;"\

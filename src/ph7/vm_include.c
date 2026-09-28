@@ -701,10 +701,11 @@ PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return rcSv;
 		}
 	}
-	if( sFile.nByte < 1 ){
-		/* Empty string,return NULL */
-		ph7_result_null(pCtx);
-		return SXRET_OK;
+	if( PH7_VfsEmptyPathRefused(pCtx,(int)sFile.nByte) ){
+		/* php's stream layer refuses an empty path wherever it is opened, and
+		 * an include is an open: the ValueError is what a script catches, where
+		 * this used to answer NULL and carry on. */
+		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
 	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE);
@@ -753,10 +754,11 @@ PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **a
 			return rcSv;
 		}
 	}
-	if( sFile.nByte < 1 ){
-		/* Empty string,return NULL */
-		ph7_result_null(pCtx);
-		return SXRET_OK;
+	if( PH7_VfsEmptyPathRefused(pCtx,(int)sFile.nByte) ){
+		/* php's stream layer refuses an empty path wherever it is opened, and
+		 * an include is an open: the ValueError is what a script catches, where
+		 * this used to answer NULL and carry on. */
+		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
 	rc = VmExecIncludedFile(&(*pCtx),&sFile,TRUE);
@@ -809,10 +811,11 @@ PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return rcSv;
 		}
 	}
-	if( sFile.nByte < 1 ){
-		/* Empty string,return NULL */
-		ph7_result_null(pCtx);
-		return SXRET_OK;
+	if( PH7_VfsEmptyPathRefused(pCtx,(int)sFile.nByte) ){
+		/* php's stream layer refuses an empty path wherever it is opened, and
+		 * an include is an open: the ValueError is what a script catches, where
+		 * this used to answer NULL and carry on. */
+		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
 	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE);
@@ -861,10 +864,11 @@ PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **a
 			return rcSv;
 		}
 	}
-	if( sFile.nByte < 1 ){
-		/* Empty string,return NULL */
-		ph7_result_null(pCtx);
-		return SXRET_OK;
+	if( PH7_VfsEmptyPathRefused(pCtx,(int)sFile.nByte) ){
+		/* php's stream layer refuses an empty path wherever it is opened, and
+		 * an include is an open: the ValueError is what a script catches, where
+		 * this used to answer NULL and carry on. */
+		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
 	rc = VmExecIncludedFile(&(*pCtx),&sFile,TRUE);
