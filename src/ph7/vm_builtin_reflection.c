@@ -8745,11 +8745,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm)
  * ---------------------------------------------------------------------------
  */
 
-/* "internal:Core" / "user" — the first tag of every function and class head. */
-static void ReflectExportKind(SyBlob *pOut, int bInternal)
+/*
+ * "internal:<extension>" / "user" — the first tag of every function and class
+ * head. php NAMES the extension there (`<internal:json>`), and this printed
+ * `internal:Core` for all 878 functions and 197 classes because the engine had
+ * no partition to name one from. iExt < 0 is a userland target.
+ */
+static void ReflectExportKind(SyBlob *pOut, int iExt)
 {
-	if( bInternal ){
-		SyBlobAppend(pOut, "internal:Core", sizeof("internal:Core")-1);
+	if( iExt >= 0 ){
+		SyBlobFormat(pOut, "internal:%s", PH7_VmExtensionName(iExt));
 	}else{
 		SyBlobAppend(pOut, "user", sizeof("user")-1);
 	}
@@ -9038,7 +9043,10 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		SyString *pName = &pRef->pMeth->sFunc.sName;
 		int bInherits, bCtor;
 		SyBlobAppend(&sBody, "Method [ <", sizeof("Method [ <")-1);
-		ReflectExportKind(&sBody, bInternal);
+		/* A method names its DECLARING class's extension, which is why php's
+		 * `JsonException::__construct` prints `<internal:Core, inherits
+		 * Exception, ctor>` rather than json's own name. */
+		ReflectExportKind(&sBody, ReflectFuncExtId(pRef));
 		bInherits = (pOwner != 0 && pDecl != 0 && pDecl != pOwner);
 		if( bInherits ){
 			SyBlobFormat(&sBody, ", inherits %z", &pDecl->sName);
@@ -9084,7 +9092,7 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 	}else{
 		SyBlobAppend(&sBody, pRef->pClosure ? "Closure [ <" : "Function [ <",
 			pRef->pClosure ? sizeof("Closure [ <")-1 : sizeof("Function [ <")-1);
-		ReflectExportKind(&sBody, bInternal);
+		ReflectExportKind(&sBody, ReflectFuncExtId(pRef));
 		SyBlobAppend(&sBody, "> function ", sizeof("> function ")-1);
 		if( pRef->pFunc ){
 			SyBlobFormat(&sBody, "%z", &pRef->pFunc->sName);
@@ -9215,7 +9223,7 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 	}else{
 		SyBlobAppend(pOut, "Class [ <", sizeof("Class [ <")-1);
 	}
-	ReflectExportKind(pOut, bInternal);
+	ReflectExportKind(pOut, ReflectClassExtId(pClass));
 	SyBlobAppend(pOut, "> ", sizeof("> ")-1);
 	/* php tags a class that has an iteration handler, which its Traversable
 	 * implementers have — and so does anything with a HOOKED property, because
