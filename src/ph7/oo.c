@@ -740,145 +740,416 @@ PH7_PRIVATE void PH7_ClassRenderDecl(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func *
 	}
 }
 /*
- * Method-override compatibility (variance) checking.
+ * ---------------------------------------------------------------------------
+ * Method-override compatibility: php's declared-type LATTICE.
  *
- * PHP rejects an override whose signature is incompatible with the parent's:
- * return types are covariant (child may only narrow), parameter types are
- * contravariant (child may only widen), and a child may not add a required
- * parameter. We add the diagnostic — but conservatively: PHL must keep running
- * valid PHP, so the comparator below is SKIP-BY-DEFAULT. It flags only cases that
- * are unambiguously invalid and silently accepts anything subtle (unions,
- * intersections, pseudo-types, self/parent/static, object, unresolved classes,
- * or a missing type), so it can never reject valid code.
+ * php rejects an override whose signature is incompatible with the parent's --
+ * a return type is COVARIANT (the child may only narrow), a parameter type is
+ * CONTRAVARIANT (the child may only widen), and the arity/by-reference shape
+ * must let every call the parent accepts reach the child. This used to be a
+ * deliberately SKIP-BY-DEFAULT approximation: it decided a bare scalar against a
+ * bare scalar and a loaded class against a loaded class, and accepted everything
+ * subtle -- a union, an intersection, `mixed`, `object`, `iterable`, `void`,
+ * `never`, `self`/`static`, or a variadic signature. Fourteen shapes php refuses
+ * compiled here in silence.
+ *
+ * The lattice below is php's, derived from the oracle: a declared type is a
+ * DISJUNCTION of intersection GROUPS, each group a conjunction of ATOMS, and
+ *
+ *     child ⊆ parent   iff   every child group is a subtype of SOME parent group
+ *     Gc ⊆ Gp          iff   every atom of Gp has SOME atom of Gc under it
+ *
+ * which is all a plain union, an intersection and a DNF type need between them.
+ * `bUnknown` is what is left of the old skip: a shape this cannot model (a type
+ * naming a class no autoload-free lookup finds, `parent` with no base, more
+ * atoms than the bound) is still ACCEPTED, because refusing valid php is the
+ * one failure mode that matters here.
+ * ---------------------------------------------------------------------------
  */
-#define OVT_NONE   0  /* no declared type */
-#define OVT_SCALAR 1  /* a concrete invariant scalar: int/float/string/bool/array */
-#define OVT_CLASS  2  /* a real, already-loaded class/interface */
-#define OVT_SKIP   3  /* union/intersection/pseudo/self/object/unresolved — never flag */
+#define OVB_INT      0x0001
+#define OVB_FLOAT    0x0002
+#define OVB_STRING   0x0004
+#define OVB_BOOL     0x0008
+#define OVB_FALSE    0x0010
+#define OVB_TRUE     0x0020
+#define OVB_ARRAY    0x0040
+#define OVB_OBJECT   0x0080  /* the `object` pseudo-type: every class at once */
+#define OVB_CALLABLE 0x0100
+#define OVB_NULL     0x0200
+#define OVB_VOID     0x0400
+#define OVB_STATIC   0x0800  /* `static`: the CALLED class of the declaring one */
+#define OVB_CLS      0x1000  /* a named class/interface, resolved into pCls */
+#define OV_MAX_ATOM  16      /* bounds the on-stack atom array; over it, bUnknown */
 
-/*
- * Classify one declared type (nType + class name + union flag) for override
- * comparison. On OVT_CLASS, *ppClass receives the resolved class. Class names are
- * resolved by a direct, autoload-free hClass lookup: a miss (forward reference,
- * namespaced, or not-yet-loaded) yields OVT_SKIP, which the caller accepts.
- */
-static int OoClassifyOverrideType(ph7_vm *pVm, sxu32 nType, const SyString *pClass,
-	int bUnion, ph7_class **ppClass)
-{
-	*ppClass = 0;
-	if( bUnion ){
-		return OVT_SKIP; /* union/intersection — full lattice, skip */
-	}
-	if( nType == 0 ){
-		return OVT_NONE; /* no declared type */
-	}
-	if( nType == SXU32_HIGH ){
-		/* A class name OR a pseudo-type stored as a name atom. Skip every pseudo
-		 * (incl. self/parent/static, which are context-relative). */
-		static const struct { const char *z; sxu32 n; } aPseudo[] = {
-			{"mixed",5}, {"never",5}, {"iterable",8}, {"callable",8}, {"true",4},
-			{"false",5}, {"self",4}, {"parent",6}, {"static",6}
-		};
-		const char *z = pClass->zString;
-		sxu32 n = pClass->nByte;
-		SyHashEntry *pE;
-		sxu32 i;
-		for( i = 0; i < SX_ARRAYSIZE(aPseudo); i++ ){
-			if( n == aPseudo[i].n && SyStrnmicmp(z,aPseudo[i].z,n) == 0 ){
-				return OVT_SKIP;
-			}
-		}
-		pE = SyHashGet(&pVm->hClass,(const void *)z,n);
-		if( pE == 0 ){
-			return OVT_SKIP; /* not loaded / forward ref / namespaced — accept */
-		}
-		*ppClass = (ph7_class *)pE->pUserData;
-		return OVT_CLASS;
-	}
-	if( nType == MEMOBJ_STRING || nType == MEMOBJ_INT || nType == MEMOBJ_REAL
-	 || nType == MEMOBJ_BOOL || nType == MEMOBJ_HASHMAP ){
-		return OVT_SCALAR;
-	}
-	/* MEMOBJ_OBJ (object — subtypes against classes), MEMOBJ_VOID/NULL/RES,
-	 * or anything unexpected: skip. */
-	return OVT_SKIP;
-}
-
-/*
- * A declared type normalized for override comparison: the raw type code, the
- * class-name string (when a class), and the union/nullable flags. Extracted once
- * from each side so the comparator takes two of these instead of eight scalars.
- */
+typedef struct OvAtom OvAtom;
+struct OvAtom {
+	sxu32 nBit;      /* OVB_* */
+	ph7_class *pCls; /* the class, when nBit == OVB_CLS */
+	sxu32 nGroup;    /* intersection group: atoms sharing one are ANDed */
+};
 typedef struct OvType OvType;
 struct OvType {
-	sxu32 nType;
-	const SyString *pClass;
-	int bUnion;
-	int bNullable;
+	int bAbsent;  /* no declared type at all -- not a type, an ABSENCE (see below) */
+	int bMixed;   /* `mixed`: the top type */
+	int bNever;   /* `never`: the bottom type, a subtype of everything */
+	int bUnknown; /* a shape this lattice does not model -- accept whatever it meets */
+	int nAtom;
+	sxu32 nNextGroup;
+	OvAtom a[OV_MAX_ATOM];
 };
-static OvType OoTypeFromReturn(ph7_vm_func *pF)
+static void OvInit(OvType *pT)
 {
-	OvType t;
-	t.nType = pF->nReturnType;
-	t.pClass = &pF->sReturnClass;
-	t.bUnion = SySetUsed(&pF->aReturnUnion) > 0;
-	t.bNullable = (pF->iFlags & VM_FUNC_RETURN_NULLABLE) != 0;
-	return t;
+	SyZero(pT,sizeof(*pT));
 }
-static OvType OoTypeFromArg(ph7_vm_func_arg *pA)
+static void OvAddAtom(OvType *pT,sxu32 nBit,ph7_class *pCls,sxu32 nGroup)
 {
-	OvType t;
-	t.nType = pA->nType;
-	t.pClass = &pA->sClass;
-	t.bUnion = (pA->iFlags & VM_FUNC_ARG_UNION) != 0;
-	t.bNullable = (pA->iFlags & VM_FUNC_ARG_NULLABLE) != 0;
-	return t;
+	if( pT->nAtom >= OV_MAX_ATOM ){
+		pT->bUnknown = 1;
+		return;
+	}
+	pT->a[pT->nAtom].nBit = nBit;
+	pT->a[pT->nAtom].pCls = pCls;
+	pT->a[pT->nAtom].nGroup = nGroup;
+	pT->nAtom++;
+	if( nGroup >= pT->nNextGroup ){
+		pT->nNextGroup = nGroup + 1;
+	}
+}
+/* One atom written as a NAME: a class, or one of the pseudo-types php parses as
+ * a class-name atom. `iterable` is TWO types, so it contributes two atoms in two
+ * groups -- it is a union, never an intersection member (php forbids the latter). */
+static void OvAddName(ph7_vm *pVm,ph7_class *pScope,OvType *pT,const SyString *pName,sxu32 nGroup)
+{
+	static const struct { const char *z; sxu32 n; sxu32 nBit; } aWord[] = {
+		{ "callable",8, OVB_CALLABLE }, { "false",5, OVB_FALSE }, { "true",4, OVB_TRUE },
+		{ "object",6, OVB_OBJECT },     { "null",4,  OVB_NULL },  { "void",4,  OVB_VOID },
+		{ "static",6, OVB_STATIC },     { "int",3,   OVB_INT },   { "float",5, OVB_FLOAT },
+		{ "string",6, OVB_STRING },     { "bool",4,  OVB_BOOL },  { "array",5, OVB_ARRAY }
+	};
+	const char *z = SyStringData(pName);
+	sxu32 n = SyStringLength(pName), i;
+	SyHashEntry *pE;
+	if( n < 1 ){
+		pT->bUnknown = 1;
+		return;
+	}
+	if( n == sizeof("mixed")-1 && SyStrnicmp(z,"mixed",n) == 0 ){
+		pT->bMixed = 1;
+		return;
+	}
+	if( n == sizeof("never")-1 && SyStrnicmp(z,"never",n) == 0 ){
+		pT->bNever = 1;
+		return;
+	}
+	if( n == sizeof("iterable")-1 && SyStrnicmp(z,"iterable",n) == 0 ){
+		ph7_class *pTrav = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);
+		if( pTrav == 0 ){
+			pT->bUnknown = 1;
+			return;
+		}
+		OvAddAtom(pT,OVB_ARRAY,0,pT->nNextGroup);
+		OvAddAtom(pT,OVB_CLS,pTrav,pT->nNextGroup);
+		return;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(aWord) ; ++i ){
+		if( n == aWord[i].n && SyStrnicmp(z,aWord[i].z,n) == 0 ){
+			OvAddAtom(pT,aWord[i].nBit,0,nGroup);
+			return;
+		}
+	}
+	if( n == sizeof("self")-1 && SyStrnicmp(z,"self",n) == 0 ){
+		if( pScope == 0 ){
+			pT->bUnknown = 1;
+			return;
+		}
+		OvAddAtom(pT,OVB_CLS,pScope,nGroup);
+		return;
+	}
+	if( n == sizeof("parent")-1 && SyStrnicmp(z,"parent",n) == 0 ){
+		if( pScope == 0 || pScope->pBase == 0 ){
+			pT->bUnknown = 1;
+			return;
+		}
+		OvAddAtom(pT,OVB_CLS,pScope->pBase,nGroup);
+		return;
+	}
+	/* A real class name, resolved WITHOUT autoloading: a miss is a forward
+	 * reference or a class no lookup can produce, and the whole type becomes
+	 * undecidable rather than wrong. */
+	pE = SyHashGet(&pVm->hClass,(const void *)z,n);
+	if( pE == 0 ){
+		pT->bUnknown = 1;
+		return;
+	}
+	OvAddAtom(pT,OVB_CLS,(ph7_class *)pE->pUserData,nGroup);
+}
+/* One atom given as a MEMOBJ_* code plus, for SXU32_HIGH, its name. */
+static void OvAddCode(ph7_vm *pVm,ph7_class *pScope,OvType *pT,sxu32 nType,
+	const SyString *pName,sxu32 nGroup)
+{
+	switch( nType ){
+	case MEMOBJ_INT:     OvAddAtom(pT,OVB_INT,0,nGroup);    return;
+	case MEMOBJ_REAL:    OvAddAtom(pT,OVB_FLOAT,0,nGroup);  return;
+	case MEMOBJ_STRING:  OvAddAtom(pT,OVB_STRING,0,nGroup); return;
+	case MEMOBJ_BOOL:    OvAddAtom(pT,OVB_BOOL,0,nGroup);   return;
+	case MEMOBJ_HASHMAP: OvAddAtom(pT,OVB_ARRAY,0,nGroup);  return;
+	case MEMOBJ_OBJ:     OvAddAtom(pT,OVB_OBJECT,0,nGroup); return;
+	case MEMOBJ_VOID:    OvAddAtom(pT,OVB_VOID,0,nGroup);   return;
+	case MEMOBJ_NEVER:   pT->bNever = 1;                    return;
+	/* php 8.2's standalone `null`, which the parser records BOTH as this code and
+	 * as the nullable flag; the second atom the flag adds is the same type. */
+	case MEMOBJ_NULL:    OvAddAtom(pT,OVB_NULL,0,nGroup);   return;
+	default: break;
+	}
+	if( nType == SXU32_HIGH ){
+		OvAddName(pVm,pScope,pT,pName,nGroup);
+		return;
+	}
+	pT->bUnknown = 1;
 }
 /*
- * Return TRUE if the child type is an unambiguously-invalid override of the
- * parent type. bCovariant=1 for a return type (child must be ⊆ parent),
- * 0 for a parameter (child must be ⊇ parent). Returns FALSE (accept) on any
- * skipped/ambiguous shape.
+ * The union alternatives, or the single type, of one declaration.
+ *
+ * The stored intersection-group ids are RE-MAPPED rather than used as they come:
+ * `iterable` is an alternative that expands into TWO groups of its own, so a
+ * later alternative's stored id would otherwise land in the group Traversable
+ * had just been given and read as `Traversable&int`. A group with more than one
+ * member is an intersection, which `iterable` may not appear in at all (php
+ * refuses `iterable&X`) -- if one ever did, the whole type is undecidable.
  */
-static int OoOverrideTypeBad(ph7_vm *pVm, OvType parent, OvType child, int bCovariant)
+static void OvFromDecl(ph7_vm *pVm,ph7_class *pScope,OvType *pT,sxu32 nType,
+	const SyString *pClass,SySet *pAlts,int bNullable)
 {
-	ph7_class *pParentCls, *pChildCls;
-	int kP = OoClassifyOverrideType(pVm, parent.nType, parent.pClass, parent.bUnion, &pParentCls);
-	int kC = OoClassifyOverrideType(pVm, child.nType, child.pClass, child.bUnion, &pChildCls);
-	if( kP == OVT_SKIP || kC == OVT_SKIP ){
-		return 0; /* ambiguous shape — conservatively accept */
+	OvInit(pT);
+	if( SySetUsed(pAlts) > 0 ){
+		ph7_type_alt *aAlt = (ph7_type_alt *)SySetBasePtr(pAlts);
+		sxu32 aMap[PHL_UNION_MAX_ALTS];
+		sxu32 aCount[PHL_UNION_MAX_ALTS];
+		sxu32 i, n = SySetUsed(pAlts);
+		for( i = 0 ; i < PHL_UNION_MAX_ALTS ; ++i ){
+			aMap[i] = SXU32_HIGH;
+			aCount[i] = 0;
+		}
+		for( i = 0 ; i < n ; ++i ){
+			if( aAlt[i].nGroup >= PHL_UNION_MAX_ALTS ){
+				pT->bUnknown = 1;
+				return;
+			}
+			aCount[aAlt[i].nGroup]++;
+		}
+		for( i = 0 ; i < n ; ++i ){
+			sxu32 g = aAlt[i].nGroup;
+			int bIter = ( aAlt[i].nType == SXU32_HIGH
+				&& SyStringLength(&aAlt[i].sClass) == sizeof("iterable")-1
+				&& SyStrnicmp(SyStringData(&aAlt[i].sClass),"iterable",sizeof("iterable")-1) == 0 );
+			if( bIter && aCount[g] > 1 ){
+				pT->bUnknown = 1;
+				return;
+			}
+			if( aMap[g] == SXU32_HIGH ){
+				aMap[g] = pT->nNextGroup;
+				pT->nNextGroup++;
+			}
+			OvAddCode(pVm,pScope,pT,aAlt[i].nType,&aAlt[i].sClass,aMap[g]);
+		}
+	}else if( nType != 0 ){
+		OvAddCode(pVm,pScope,pT,nType,pClass,pT->nNextGroup);
 	}
-	/* A missing type is the TOP type. covariant (return): a concrete child is a
-	 * subtype of top, fine; a top child over a concrete parent WIDENS → bad.
-	 * contravariant (param): a top child is a supertype of anything, fine; a
-	 * concrete child over a top parent NARROWS → bad. (A union/intersection child
-	 * already fell into OVT_SKIP above, so a flagged child here is scalar/class.) */
-	if( kP == OVT_NONE || kC == OVT_NONE ){
-		if( bCovariant && kC == OVT_NONE && kP != OVT_NONE ) return 1;
-		if( !bCovariant && kP == OVT_NONE && kC != OVT_NONE ) return 1;
+	if( bNullable ){
+		OvAddAtom(pT,OVB_NULL,0,pT->nNextGroup);
+	}
+	/* Nothing written at all: an ABSENCE, which is not the same as `mixed` --
+	 * php skips the check on the side that has none, so a missing PARAMETER type
+	 * accepts any parent and a missing RETURN type is refused under a declared
+	 * one (`f(): int` overridden by `f()` is a fatal, `f(): mixed` is not). */
+	if( pT->nAtom == 0 && !pT->bMixed && !pT->bNever && !pT->bUnknown ){
+		pT->bAbsent = 1;
+	}
+}
+static void OvFromArg(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func_arg *pA,OvType *pT)
+{
+	OvFromDecl(pVm,pScope,pT,pA->nType,&pA->sClass,&pA->aUnionAlts,
+		(pA->iFlags & VM_FUNC_ARG_NULLABLE) != 0);
+}
+static void OvFromReturn(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func *pF,OvType *pT)
+{
+	OvFromDecl(pVm,pScope,pT,pF->nReturnType,&pF->sReturnClass,&pF->aReturnUnion,
+		(pF->iFlags & VM_FUNC_RETURN_NULLABLE) != 0);
+}
+/*
+ * Is the single atom *pC under the single atom *pP? `object` is over every class
+ * (and over `static`, which IS one), `bool` is over `false` and `true`, and
+ * `static` is under any class the declaring class is an instance of -- but
+ * nothing except another `static` is under IT, since the called class may be a
+ * subclass nobody has written yet.
+ */
+static int OvAtomLE(const OvAtom *pC,const OvAtom *pP,ph7_class *pSubScope)
+{
+	if( pP->nBit == OVB_OBJECT ){
+		return pC->nBit == OVB_OBJECT || pC->nBit == OVB_CLS || pC->nBit == OVB_STATIC;
+	}
+	if( pP->nBit == OVB_BOOL ){
+		return pC->nBit == OVB_BOOL || pC->nBit == OVB_FALSE || pC->nBit == OVB_TRUE;
+	}
+	if( pP->nBit == OVB_STATIC ){
+		return pC->nBit == OVB_STATIC;
+	}
+	if( pP->nBit == OVB_CLS ){
+		if( pC->nBit == OVB_CLS ){
+			return PH7_VmInstanceOf(pC->pCls,pP->pCls) ? 1 : 0;
+		}
+		if( pC->nBit == OVB_STATIC ){
+			return (pSubScope && PH7_VmInstanceOf(pSubScope,pP->pCls)) ? 1 : 0;
+		}
 		return 0;
 	}
-	/* Nullability: a covariant return may not ADD null; a contravariant param may
-	 * not REMOVE null. */
-	if( bCovariant ){
-		if( child.bNullable && !parent.bNullable ) return 1;
-	}else{
-		if( parent.bNullable && !child.bNullable ) return 1;
-	}
-	if( kP == OVT_SCALAR && kC == OVT_SCALAR ){
-		/* Scalars are invariant — they must match exactly. */
-		return (parent.nType != child.nType) ? 1 : 0;
-	}
-	if( kP == OVT_CLASS && kC == OVT_CLASS ){
-		if( bCovariant ){
-			return PH7_VmInstanceOf(pChildCls, pParentCls) ? 0 : 1;  /* child ⊆ parent */
+	return pC->nBit == pP->nBit;
+}
+/* Gc ⊆ Gp: every atom of the parent group has some atom of the child group under
+ * it (an intersection is under X as soon as ONE of its members is). */
+static int OvGroupLE(const OvType *pC,sxu32 gC,const OvType *pP,sxu32 gP,ph7_class *pSubScope)
+{
+	int i, j;
+	for( j = 0 ; j < pP->nAtom ; ++j ){
+		int bCovered = 0;
+		if( pP->a[j].nGroup != gP ){
+			continue;
 		}
-		return PH7_VmInstanceOf(pParentCls, pChildCls) ? 0 : 1;      /* child ⊇ parent */
+		for( i = 0 ; i < pC->nAtom && !bCovered ; ++i ){
+			if( pC->a[i].nGroup == gC && OvAtomLE(&pC->a[i],&pP->a[j],pSubScope) ){
+				bCovered = 1;
+			}
+		}
+		if( !bCovered ){
+			return 0;
+		}
 	}
-	/* One scalar and one class — disjoint. */
 	return 1;
 }
-
+/* child ⊆ parent (pSubScope is the SUBTYPE side's declaring class, which is what
+ * a `static` atom there stands for). Both are normalized and neither is
+ * absent/mixed/never/unknown -- OvCheck settled those. */
+static int OvSubtype(const OvType *pC,const OvType *pP,ph7_class *pSubScope)
+{
+	sxu32 gC, gP;
+	int bAnyC = 0;
+	for( gC = 0 ; gC < pC->nNextGroup ; ++gC ){
+		int i, bHasC = 0, bCovered = 0;
+		for( i = 0 ; i < pC->nAtom ; ++i ){
+			if( pC->a[i].nGroup == gC ){ bHasC = 1; break; }
+		}
+		if( !bHasC ){
+			continue;
+		}
+		bAnyC = 1;
+		for( gP = 0 ; gP < pP->nNextGroup && !bCovered ; ++gP ){
+			int j, bHasP = 0;
+			for( j = 0 ; j < pP->nAtom ; ++j ){
+				if( pP->a[j].nGroup == gP ){ bHasP = 1; break; }
+			}
+			if( bHasP && OvGroupLE(pC,gC,pP,gP,pSubScope) ){
+				bCovered = 1;
+			}
+		}
+		if( !bCovered ){
+			return 0;
+		}
+	}
+	return bAnyC;
+}
+#define OV_OK   0 /* the pair is compatible */
+#define OV_BAD  1 /* php refuses it */
+/*
+ * One declared-type pair, in one variance direction. bCovariant = 1 for a return
+ * type (the child must be UNDER the parent), 0 for a parameter (over it).
+ *
+ * The two ABSENCES are asymmetric and that asymmetry is php's: the side with no
+ * declared type is simply not checked, so a parameter the CHILD left untyped is
+ * always fine and a return the child left untyped is a fatal under any declared
+ * parent -- `mixed` included, even though `mixed` is the top type.
+ */
+static int OvCheck(const OvType *pP,const OvType *pC,int bCovariant,
+	ph7_class *pParentScope,ph7_class *pChildScope)
+{
+	const OvType *pSub = bCovariant ? pC : pP;   /* must be the subtype */
+	const OvType *pSup = bCovariant ? pP : pC;
+	/* `static` is decided against the scope of whichever side is the SUBTYPE --
+	 * the class whose called-class it stands for. */
+	ph7_class *pSubScope = bCovariant ? pChildScope : pParentScope;
+	int bSubVoid, bSupVoid, i;
+	if( bCovariant && pP->bAbsent ){
+		return OV_OK;   /* nothing to be under */
+	}
+	if( bCovariant && pC->bAbsent ){
+		/* The ONE place an absent type is not simply the top type: a child that
+		 * declares no RETURN type is refused under any parent that declares one,
+		 * `mixed` included. Everywhere else absence reads as `mixed` below. */
+		return OV_BAD;
+	}
+	if( !bCovariant && pC->bAbsent ){
+		return OV_OK;   /* an untyped parameter accepts whatever the parent's did */
+	}
+	if( pP->bUnknown || pC->bUnknown ){
+		return OV_OK;   /* a shape this lattice does not model -- accept */
+	}
+	/* `void` pairs with `void` and with nothing else -- not even with `mixed`,
+	 * which is over every other type. Decided before the top/bottom shortcuts. */
+	bSubVoid = bSupVoid = 0;
+	for( i = 0 ; i < pSub->nAtom ; ++i ){ if( pSub->a[i].nBit == OVB_VOID ) bSubVoid = 1; }
+	for( i = 0 ; i < pSup->nAtom ; ++i ){ if( pSup->a[i].nBit == OVB_VOID ) bSupVoid = 1; }
+	if( bSubVoid != bSupVoid && !pSub->bNever ){
+		return OV_BAD;
+	}
+	if( pSub->bNever ){
+		return OV_OK;   /* the bottom type is under everything */
+	}
+	if( pSup->bMixed || pSup->bAbsent ){
+		return OV_OK;   /* ...and the top type is over everything */
+	}
+	if( pSub->bMixed || pSub->bAbsent || pSup->bNever ){
+		return OV_BAD;
+	}
+	return OvSubtype(pSub,pSup,pSubScope) ? OV_OK : OV_BAD;
+}
+/*
+ * ---------------------------------------------------------------------------
+ * The ARITY half, which is not the type lattice's: php asks whether every call
+ * the parent's declaration accepts can reach the child.
+ * ---------------------------------------------------------------------------
+ */
+/* php's required_num_args: how many arguments a caller MUST supply. */
+static sxu32 OvReqArgs(ph7_vm_func *pF)
+{
+	ph7_vm_func_arg *a = (ph7_vm_func_arg *)SySetBasePtr(&pF->aArgs);
+	sxu32 n = SySetUsed(&pF->aArgs), i, nReq = 0;
+	for( i = 0 ; i < n ; ++i ){
+		if( (a[i].iFlags & VM_FUNC_ARG_VARIADIC) || SySetUsed(&a[i].aByteCode) > 0 ){
+			continue; /* a variadic tail and a defaulted parameter are both optional */
+		}
+		nReq = i + 1;
+	}
+	return nReq;
+}
+static int OvIsVariadic(ph7_vm_func *pF)
+{
+	ph7_vm_func_arg *a = (ph7_vm_func_arg *)SySetBasePtr(&pF->aArgs);
+	sxu32 n = SySetUsed(&pF->aArgs);
+	return n > 0 && (a[n-1].iFlags & VM_FUNC_ARG_VARIADIC) != 0;
+}
+/* The parameter that ANSWERS position i: the one declared there, or the variadic
+ * tail, which keeps answering for every position past its own. */
+static ph7_vm_func_arg * OvArgAt(ph7_vm_func *pF,sxu32 i)
+{
+	ph7_vm_func_arg *a = (ph7_vm_func_arg *)SySetBasePtr(&pF->aArgs);
+	sxu32 n = SySetUsed(&pF->aArgs);
+	if( i < n ){
+		return &a[i];
+	}
+	if( n > 0 && (a[n-1].iFlags & VM_FUNC_ARG_VARIADIC) ){
+		return &a[n-1];
+	}
+	return 0;
+}
 /*
  * Check a child method's signature against the parent method it overrides.
  * Emits a PHP-style "Declaration of … must be compatible …" fatal on a clear
@@ -897,9 +1168,23 @@ PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *p
 	ph7_vm_func *pPF = &pParent->sFunc;
 	ph7_vm_func *pCF = &pChild->sFunc;
 	SyString *pMName = &pCF->sName;
-	ph7_vm_func_arg *aP, *aC;
-	sxu32 nPArg, nCArg, k;
+	/* php names the class that DECLARED each side, not the one the walk reached it
+	 * through: `class A { f() } class B extends A {} class C extends B { f() }` is
+	 * `C::f() must be compatible with A::f()`, and a trait method belongs to the
+	 * class that composed it. That owner is also what `self`, `parent` and `static`
+	 * in either declaration resolve against, so the two questions are one. */
+	ph7_class *pChildOwner = PH7_VmMemberOwnerClass((ph7_class *)pCF->pUserData,pSub);
+	ph7_class *pParentOwner = PH7_VmMemberOwnerClass((ph7_class *)pPF->pUserData,pBase);
+	sxu32 nPArg, nCArg, nPos, k;
+	int bPVar, bCVar;
 	int bBad = 0;
+	OvType sP, sC;
+	if( pChildOwner == 0 ){
+		pChildOwner = pSub;
+	}
+	if( pParentOwner == 0 ){
+		pParentOwner = pBase;
+	}
 	if( bCtorExempt
 	 && pMName->nByte == sizeof("__construct")-1
 	 && SyStrnmicmp(pMName->zString,"__construct",pMName->nByte) == 0 ){
@@ -916,50 +1201,51 @@ PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *p
 	if( ((pPF->iFlags | pCF->iFlags) & VM_FUNC_NATIVE) != 0 ){
 		return SXRET_OK;
 	}
-	/* Return type — covariant. */
-	bBad = OoOverrideTypeBad(pVm, OoTypeFromReturn(pPF), OoTypeFromReturn(pCF), /* bCovariant */ 1);
-	/* Each overlapping parameter — contravariant. */
+	/* Return type -- covariant. */
+	OvFromReturn(pVm,pParentOwner,pPF,&sP);
+	OvFromReturn(pVm,pChildOwner,pCF,&sC);
+	bBad = OvCheck(&sP,&sC,/* bCovariant */ 1,pParentOwner,pChildOwner) == OV_BAD;
+	/*
+	 * Arity, php's three rules -- every call the parent's declaration accepts must
+	 * reach the child. A VARIADIC signature is not the exception this used to make
+	 * of it (the whole rule stood aside, so `f(string ...$b)` overridden by `f()`
+	 * compiled): it is the tail that keeps ANSWERING past its own position.
+	 */
 	nPArg = SySetUsed(&pPF->aArgs);
 	nCArg = SySetUsed(&pCF->aArgs);
-	aP = (ph7_vm_func_arg *)SySetBasePtr(&pPF->aArgs);
-	aC = (ph7_vm_func_arg *)SySetBasePtr(&pCF->aArgs);
-	for( k = 0; !bBad && k < nPArg && k < nCArg; k++ ){
-		bBad = OoOverrideTypeBad(pVm, OoTypeFromArg(&aP[k]), OoTypeFromArg(&aC[k]), /* bCovariant */ 0);
+	bPVar = OvIsVariadic(pPF);
+	bCVar = OvIsVariadic(pCF);
+	if( !bBad && bPVar && !bCVar ){
+		bBad = 1;  /* the parent takes any number; the child must too */
 	}
-	/* Parameter arity: the child must declare at least the parent's parameters and
-	 * may add only OPTIONAL ones — PHP rejects dropping any param (even an optional
-	 * one) or adding a required one. Skip the rule if either signature is variadic
-	 * (arity semantics differ). */
-	if( !bBad ){
-		int bVariadic = 0;
-		for( k = 0; k < nPArg; k++ ){ if( aP[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }
-		for( k = 0; k < nCArg; k++ ){ if( aC[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }
-		if( !bVariadic ){
-			if( nCArg < nPArg ){
-				bBad = 1; /* dropped a parent parameter */
-			}else{
-				for( k = nPArg; k < nCArg; k++ ){
-					if( SySetUsed(&aC[k].aByteCode) == 0 ){ bBad = 1; break; } /* new required */
-				}
-			}
+	if( !bBad && OvReqArgs(pCF) > OvReqArgs(pPF) ){
+		bBad = 1;  /* the child DEMANDS an argument the parent's callers do not pass */
+	}
+	if( !bBad && !bCVar && nCArg < nPArg ){
+		bBad = 1;  /* ...and it must still ACCEPT every one they do */
+	}
+	/* Every position both signatures answer: the type contravariantly, and the
+	 * by-reference-ness php requires to MATCH exactly (nothing checked it here). A
+	 * position only the CHILD declares is unconstrained -- the arity rules above
+	 * already made it optional. */
+	nPos = nPArg > nCArg ? nPArg : nCArg;
+	for( k = 0 ; !bBad && k < nPos ; ++k ){
+		ph7_vm_func_arg *pPa = OvArgAt(pPF,k);
+		ph7_vm_func_arg *pCa = OvArgAt(pCF,k);
+		if( pPa == 0 || pCa == 0 ){
+			continue;
 		}
+		if( ((pPa->iFlags ^ pCa->iFlags) & VM_FUNC_ARG_BY_REF) != 0 ){
+			bBad = 1;
+			break;
+		}
+		OvFromArg(pVm,pParentOwner,pPa,&sP);
+		OvFromArg(pVm,pChildOwner,pCa,&sC);
+		bBad = OvCheck(&sP,&sC,/* bCovariant */ 0,pParentOwner,pChildOwner) == OV_BAD;
 	}
 	if( bBad ){
-		/* php names the class that DECLARED each side, not the one the walk reached
-		 * it through: `class A { f() } class B extends A {} class C extends B { f() }`
-		 * is `C::f() must be compatible with A::f()`, and a trait method belongs to
-		 * the class that composed it. That owner is also what `self` in either
-		 * declaration resolves to. */
-		ph7_class *pChildOwner = PH7_VmMemberOwnerClass((ph7_class *)pCF->pUserData,pSub);
-		ph7_class *pParentOwner = PH7_VmMemberOwnerClass((ph7_class *)pPF->pUserData,pBase);
 		SyBlob sChild, sParent;
 		sxi32 rc;
-		if( pChildOwner == 0 ){
-			pChildOwner = pSub;
-		}
-		if( pParentOwner == 0 ){
-			pParentOwner = pBase;
-		}
 		SyBlobInit(&sChild,&pVm->sAllocator);
 		SyBlobInit(&sParent,&pVm->sAllocator);
 		PH7_ClassRenderDecl(pVm,pChildOwner,pCF,&sChild);
