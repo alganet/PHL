@@ -142,6 +142,25 @@ static ph7_class * ReflectMethodDeclClass(ph7_class *pClass, ph7_class_method *p
 		pBase = pBase->pBase;
 		iDepth++;
 	}
+	/* A record the class only got from an INTERFACE belongs to the interface:
+	 * php's scope for `ReflectionMethod('AbstractImpl','ifaceMethod')` is the
+	 * interface that declared it, and the base walk above cannot see one
+	 * (an interface is not on the pBase chain of the class implementing it). */
+	if( pDecl->iFlags & PH7_CLASS_INTERFACE ){
+		return pDecl;
+	}
+	{
+		ph7_class **apIface = (ph7_class **)SySetBasePtr(&pDecl->aInterface);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pDecl->aInterface) ; n++ ){
+			SyHashEntry *pEntry = SyHashGet(&apIface[n]->hMethod,
+				(const void *)SyStringData(&pMeth->sFunc.sName),
+				SyStringLength(&pMeth->sFunc.sName));
+			if( pEntry && (ph7_class_method *)pEntry->pUserData == pMeth ){
+				return ReflectMethodDeclClass(apIface[n], pMeth);
+			}
+		}
+	}
 	return pDecl;
 }
 /*
@@ -6578,11 +6597,13 @@ static int vm_builtin_ReflectionMethod_setAccessible(ph7_context *pCtx, int nArg
 	return PH7_OK;
 }
 /*
- * The class this method OVERRIDES it from: the nearest base declaring a
- * same-named non-private method, else the first interface that declares one.
+ * php's `overwrites`: the class the entry found in the PARENT's method table
+ * belongs to — which is an interface when the parent only inherited it from
+ * one, so `ReflectionFunction::__toString` overwrites Stringable. A method
+ * that first appears in an interface the class itself implements is a
+ * `prototype` instead, never an overwrite.
  */
-static ph7_class * ReflectPrototypeIn(ph7_context *pCtx, ph7_class *pClass,
-	const char *zName, int nName, int bIfaceToo)
+static ph7_class * ReflectOverwritesIn(ph7_class *pClass, const char *zName, int nName)
 {
 	ph7_class *pWalk;
 	int iDepth = 0;
@@ -6599,41 +6620,119 @@ static ph7_class * ReflectPrototypeIn(ph7_context *pCtx, ph7_class *pClass,
 		}
 		iDepth++;
 	}
-	if( !bIfaceToo ){
-		/* php's `overwrites` tag asks only about the PARENT CHAIN: a method that
-		 * first appears in an interface is a `prototype`, never an overwrite. */
+	return 0;
+}
+/*
+ * php's `prototype`: the ROOT-most declaration the entry in pClass's method
+ * table answers to, or NULL.
+ *
+ * zend assigns it once, at link time, as `child->prototype = parent->prototype
+ * ? parent->prototype : parent` — so it CHAINS past every intermediate
+ * override and names the class where the contract began, not the nearest one
+ * (`AppendIterator::current` is `prototype Iterator`, three classes up, where
+ * this engine answered its immediate parent). Two rules ride on it, both
+ * measured against php 8.5.9:
+ *
+ *   - An INTERFACE wins over the parent chain. zend inherits from the parent
+ *     class first and implements the interfaces after, and each implementation
+ *     re-assigns the prototype — so `class C extends B implements I`, with both
+ *     declaring f(), reports I and not B.
+ *   - A CONSTRUCTOR takes one only where the contract is really a contract:
+ *     the chain link that would have STARTED it is dropped unless it is
+ *     abstract (an interface's ctor is abstract too). An inherited prototype
+ *     still rides through, so a ctor three deep from an abstract one keeps it.
+ */
+static ph7_class * ReflectPrototypeOf(ph7_context *pCtx, ph7_class *pClass,
+	const char *zName, int nName, int iDepth)
+{
+	ph7_class *pWalk, *pDecl, *pRes = 0;
+	SyHashEntry *pOwn;
+	int bCtor;
+	if( pClass == 0 || nName < 1 || iDepth > REFLECT_WALK_MAX_DEPTH ){
 		return 0;
 	}
-	{
-		SySet aSet;
-		ph7_class **apIface;
-		ph7_class *pFound = 0;
-		sxu32 n;
-		SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
-		ReflectInterfacesOf(pClass, &aSet);
-		apIface = (ph7_class **)SySetBasePtr(&aSet);
-		for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
-			if( ReflectFindMethodEntry(apIface[n], zName, nName) ){
-				pFound = apIface[n];
+	pOwn = ReflectFindMethodEntry(pClass, zName, nName);
+	if( pOwn == 0 ){
+		return 0;
+	}
+	bCtor = nName == sizeof("__construct")-1
+		&& SyStrnicmp(zName, "__construct", sizeof("__construct")-1) == 0;
+	pDecl = ReflectMethodDeclClass(pClass, (ph7_class_method *)pOwn->pUserData);
+	if( pDecl != pClass ){
+		/* The class did not declare this one: zend copies the record in and
+		 * assigns NOTHING, so whatever prototype the record already carries is
+		 * what a reflector reads here. `DOMAttr::C14N` therefore has none at
+		 * all, where this engine named the nearest declaring base. */
+		pRes = ReflectPrototypeOf(pCtx, pDecl, zName, nName, iDepth + 1);
+	}else if( (pClass->iFlags & PH7_CLASS_INTERFACE) == 0 ){
+		/* Its own declaration, checked against the parent's at link time. An
+		 * interface has no such link — its parents are declared parents, and
+		 * are walked with the interface list below. */
+		for( pWalk = pClass->pBase ; pWalk ; pWalk = pWalk->pBase ){
+			SyHashEntry *pEntry = ReflectFindMethodEntry(pWalk, zName, nName);
+			ph7_class_method *pMeth;
+			if( pEntry == 0 ){
+				continue;
+			}
+			pMeth = (ph7_class_method *)pEntry->pUserData;
+			if( pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
 				break;
 			}
+			pRes = ReflectPrototypeOf(pCtx, pWalk, zName, nName, iDepth + 1);
+			if( pRes == 0 && !(bCtor && (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0) ){
+				pRes = ReflectMethodDeclClass(pWalk, pMeth);
+			}
+			break;
 		}
-		SySetRelease(&aSet);
-		return pFound;
 	}
+	/* Each interface this class DECLARES re-assigns it, the last one winning —
+	 * which is why an interface beats the parent chain. PHL keeps the first
+	 * parent of an INTERFACE on the base chain, so it joins the list here. */
+	{
+		ph7_class **apIface = (ph7_class **)SySetBasePtr(&pClass->aInterface);
+		sxu32 n, nIface = SySetUsed(&pClass->aInterface);
+		for( n = 0 ; n <= nIface ; n++ ){
+			ph7_class *pIface;
+			SyHashEntry *pEntry;
+			if( n == nIface ){
+				pIface = (pClass->iFlags & PH7_CLASS_INTERFACE) ? pClass->pBase : 0;
+			}else{
+				pIface = apIface[n];
+			}
+			if( pIface == 0 ){
+				continue;
+			}
+			pEntry = ReflectFindMethodEntry(pIface, zName, nName);
+			/* Nothing to check against when the class holds the interface's
+			 * very own record: an interface that merely EXTENDS another copies
+			 * the method in and stops, so `interface B extends A` prints
+			 * `inherits A` and no prototype at all. */
+			if( pEntry == 0 || pOwn->pUserData == pEntry->pUserData ){
+				continue;
+			}
+			pRes = ReflectPrototypeOf(pCtx, pIface, zName, nName, iDepth + 1);
+			if( pRes == 0 ){
+				pRes = ReflectMethodDeclClass(pIface,
+					(ph7_class_method *)pEntry->pUserData);
+			}
+		}
+	}
+	return pRes;
 }
 /* The same question asked by a ReflectionMethod receiver, which carries the
- * method name on `$this`. */
+ * method name on `$this`. The prototype belongs to the entry in the class the
+ * reflector was BUILT FOR, which is php's anchor for it too. */
 static ph7_class * ReflectMethodPrototype(ph7_context *pCtx, ReflectFuncRef *pRef)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pOwner = ReflectOwnerOfThis(pCtx);
 	const char *zName = "";
 	int nName = 0;
 	if( pThis == 0 ){
 		return 0;
 	}
 	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
-	return ReflectPrototypeIn(pCtx, pRef->pClass, zName, nName, 1);
+	return ReflectPrototypeOf(pCtx, pOwner ? pOwner : pRef->pClass, zName, nName, 0);
 }
 static int vm_builtin_ReflectionMethod_hasPrototype(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -9086,32 +9185,30 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		if( bInherits ){
 			SyBlobFormat(&sBody, ", inherits %z", &pDecl->sName);
 		}else if( pDecl ){
-			ph7_class *pOver = ReflectPrototypeIn(pCtx, pDecl,
-				SyStringData(pName), (int)SyStringLength(pName), 0);
+			ph7_class *pOver = ReflectOverwritesIn(pDecl,
+				SyStringData(pName), (int)SyStringLength(pName));
 			if( pOver ){
 				SyBlobFormat(&sBody, ", overwrites %z", &pOver->sName);
 			}
 		}
 		bCtor = SyStringLength(pName) == sizeof("__construct")-1
 			&& SyStrnicmp(SyStringData(pName), "__construct", sizeof("__construct")-1) == 0;
+		/* The prototype belongs to the entry in the class the export was
+		 * reached THROUGH, which is php's anchor for it: a class that only
+		 * inherits a method still re-assigns its prototype when it implements
+		 * an interface declaring the same one. */
+		pProto = ReflectPrototypeOf(pCtx, pOwner ? pOwner : pRef->pClass,
+			SyStringData(pName), (int)SyStringLength(pName), 0);
+		if( pProto ){
+			SyBlobFormat(&sBody, ", prototype %z", &pProto->sName);
+		}
+		/* php closes the bracket with the ctor/dtor word, AFTER the prototype:
+		 * an interface's constructor prints `prototype F1, ctor`. */
 		if( bCtor ){
 			SyBlobAppend(&sBody, ", ctor", sizeof(", ctor")-1);
 		}else if( SyStringLength(pName) == sizeof("__destruct")-1
 		 && SyStrnicmp(SyStringData(pName), "__destruct", sizeof("__destruct")-1) == 0 ){
 			SyBlobAppend(&sBody, ", dtor", sizeof(", dtor")-1);
-		}
-		/* The prototype belongs to the DECLARING class's own method — the
-		 * abstract or interface declaration IT satisfies. Asked from the
-		 * exported class instead, a plainly INHERITED method would claim its
-		 * parent as a prototype, which php does not (it prints `inherits`
-		 * alone there, and both tags when the declarer really has one). */
-		/* A CONSTRUCTOR never has one: zend excludes it from prototype
-		 * inheritance (there is nothing to satisfy — a parent's ctor is not a
-		 * contract), so php prints `overwrites A, ctor` and stops. */
-		pProto = bCtor ? 0 : ReflectPrototypeIn(pCtx, pDecl ? pDecl : pRef->pClass,
-			SyStringData(pName), (int)SyStringLength(pName), 1);
-		if( pProto ){
-			SyBlobFormat(&sBody, ", prototype %z", &pProto->sName);
 		}
 		SyBlobAppend(&sBody, "> ", sizeof("> ")-1);
 		if( pRef->pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
