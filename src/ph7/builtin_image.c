@@ -1116,6 +1116,853 @@ static int ImgHandleWebp(ImgReader *p,ImgInfo *pOut)
 }
 /*
  * ---------------------------------------------------------------------------
+ * AVIF and HEIF: an ISO base media file, walked for its primary item.
+ * ---------------------------------------------------------------------------
+ * Neither format states a size in a header. Both are ISO/IEC 14496-12 BOX
+ * files whose pictures are ITEMS, and the size of the one that matters lives
+ * in a PROPERTY that a separate table associates with it -- so answering
+ * "how big is this image" means walking `meta`, remembering every `ispe`
+ * (extent), `pixi`/`av1C` (depth and channel count) and `auxC` (is this an
+ * alpha plane) in the order they appear inside `ipco`, and only then reading
+ * `ipma` to learn which of them belong to the item `pitm` named.
+ *
+ * php gets this from libavifinfo (AOMedia, BSD-2-Clause), and the rules below
+ * are that reader's rather than the standard's wherever the two differ -- they
+ * are what a php program sees:
+ *   - a property is addressed by its ONE-BASED position inside `ipco`, so the
+ *     association table is an index into a list nothing names;
+ *   - every id and index is capped at 255 and every list at a small bound (16
+ *     tiles, 32 associations, 8 of each property kind); what does not fit is
+ *     DROPPED, and dropping is remembered because it changes a failure's kind
+ *     rather than its answer;
+ *   - a tiled image carries no depth of its own, so the walk follows `dimg`
+ *     references into its tiles, at most three levels deep;
+ *   - an alpha plane is not a channel of the item: `auxC` is parsed first and
+ *     its presence ADDS one to whatever channel count the properties gave;
+ *   - the walk stops the moment the primary item's four numbers are all known,
+ *     which is why a well-formed file is read in ~450 bytes and a malformed
+ *     one is bounded at 4096 boxes instead of running to the end.
+ * HEIF is the same walk: php identifies it by its ftyp brand and then hands
+ * the file to the very same reader from the beginning.
+ */
+#define IMG_AVIF_MAX_READ      64
+#define IMG_AVIF_MAX_NUM_BOXES 4096
+#define IMG_AVIF_MAX_VALUE     255
+#define IMG_AVIF_MAX_TILES     16
+#define IMG_AVIF_MAX_PROPS     32
+#define IMG_AVIF_MAX_FEATURES  8
+/* The reader's own status space. Only kFound is an answer; kNotFound and
+ * kTruncated mean "not enough data", kAborted "too complex", kInvalid "bad
+ * file" -- and php treats all four alike, so only kFound matters here. */
+#define IMG_AVIF_FOUND     0
+#define IMG_AVIF_NOTFOUND  1
+#define IMG_AVIF_TRUNCATED 2
+#define IMG_AVIF_ABORTED   3
+#define IMG_AVIF_INVALID   4
+
+typedef struct ImgAvifTile ImgAvifTile;
+struct ImgAvifTile { sxu8 nTile; sxu8 nParent; sxu8 nDimgIdx; };
+typedef struct ImgAvifProp ImgAvifProp;
+struct ImgAvifProp { sxu8 nIndex; sxu8 nItem; };
+typedef struct ImgAvifDim ImgAvifDim;
+struct ImgAvifDim { sxu8 nIndex; sxu32 nWidth; sxu32 nHeight; };
+typedef struct ImgAvifChan ImgAvifChan;
+struct ImgAvifChan { sxu8 nIndex; sxu8 nDepth; sxu8 nChannels; };
+
+typedef struct ImgAvifFeat ImgAvifFeat;
+struct ImgAvifFeat {
+	sxu8 bHasPrimary;      /* "pitm" was parsed */
+	sxu8 bHasAlpha;        /* an alpha "auxC" was parsed */
+	sxu8 nGainmapIndex;    /* the gain map's auxC property index */
+	sxu8 nPrimaryItem;
+	sxu32 nWidth,nHeight,nDepth,nChannels;  /* the primary item's own */
+	sxu8 bHasGainmap;
+	sxu8 bSkipped;         /* a loop or an index was dropped */
+	sxu8 nToneMappedItem;  /* the "tmap" item, > 0 when present */
+	sxu8 bIinfParsed;
+	sxu8 bIrefParsed;
+	sxu8 nTiles;   ImgAvifTile aTile[IMG_AVIF_MAX_TILES];
+	sxu8 nProps;   ImgAvifProp aProp[IMG_AVIF_MAX_PROPS];
+	sxu8 nDimProps; ImgAvifDim  aDim[IMG_AVIF_MAX_FEATURES];
+	sxu8 nChanProps; ImgAvifChan aChan[IMG_AVIF_MAX_FEATURES];
+};
+/* One box header, with the four-byte type and the FULL-box version/flags for
+ * the nine types that carry them. */
+typedef struct ImgAvifBox ImgAvifBox;
+struct ImgAvifBox {
+	sxu32 nSize;
+	unsigned char zType[4];
+	sxu32 nVersion;
+	sxu32 nFlags;
+	sxu32 nContent;   /* nSize minus the header */
+};
+/* The stream this walk reads through: one shared 64-byte window, exactly as
+ * php's is, so a read invalidates the previous one. */
+typedef struct ImgAvifStream ImgAvifStream;
+struct ImgAvifStream {
+	ImgReader *p;
+	int bDead;                          /* a read or a skip already failed */
+	unsigned char zBuf[IMG_AVIF_MAX_READ];
+};
+static sxu32 ImgAvifBE(const unsigned char *z,sxu32 nByte)
+{
+	sxu32 v = 0,i;
+	for( i = 0 ; i < nByte ; ++i ){
+		v = (v << 8) | z[i];
+	}
+	return v;
+}
+static int ImgAvifRead(ImgAvifStream *s,sxu32 nByte,const unsigned char **ppData)
+{
+	if( s->bDead || nByte > IMG_AVIF_MAX_READ
+	 || ImgRead(s->p,s->zBuf,(ph7_int64)nByte) != (ph7_int64)nByte ){
+		s->bDead = TRUE;
+		return IMG_AVIF_TRUNCATED;
+	}
+	*ppData = s->zBuf;
+	return IMG_AVIF_FOUND;
+}
+static int ImgAvifSkip(ImgAvifStream *s,sxu32 nByte)
+{
+	if( nByte > 0 ){
+		if( s->bDead ){
+			return IMG_AVIF_TRUNCATED;
+		}
+		ImgSeekCur(s->p,(ph7_int64)nByte);
+	}
+	return IMG_AVIF_FOUND;
+}
+/*
+ * The features of one item, gathered from the associations already read.
+ * Recurses into a tiled item's parts for the depth and channel count the
+ * parent does not carry.
+ */
+static int ImgAvifItemFeatures(ImgAvifFeat *f,sxu32 nTarget,sxu32 nDepth)
+{
+	sxu32 i,j;
+	for( i = 0 ; i < f->nProps ; ++i ){
+		sxu32 nIndex;
+		if( f->aProp[i].nItem != nTarget ){
+			continue;
+		}
+		nIndex = f->aProp[i].nIndex;
+		if( nTarget == f->nPrimaryItem && (f->nWidth == 0 || f->nHeight == 0) ){
+			for( j = 0 ; j < f->nDimProps ; ++j ){
+				if( f->aDim[j].nIndex != nIndex ){
+					continue;
+				}
+				f->nWidth  = f->aDim[j].nWidth;
+				f->nHeight = f->aDim[j].nHeight;
+				if( f->nDepth != 0 && f->nChannels != 0 ){
+					return IMG_AVIF_FOUND;
+				}
+				break;
+			}
+		}
+		if( f->nDepth == 0 || f->nChannels == 0 ){
+			for( j = 0 ; j < f->nChanProps ; ++j ){
+				if( f->aChan[j].nIndex != nIndex ){
+					continue;
+				}
+				f->nDepth    = f->aChan[j].nDepth;
+				f->nChannels = f->aChan[j].nChannels;
+				if( f->nWidth != 0 && f->nHeight != 0 ){
+					return IMG_AVIF_FOUND;
+				}
+				break;
+			}
+		}
+	}
+	for( i = 0 ; i < f->nTiles && nDepth < 3 ; ++i ){
+		int rc;
+		if( f->aTile[i].nParent != nTarget ){
+			continue;
+		}
+		rc = ImgAvifItemFeatures(f,f->aTile[i].nTile,nDepth + 1);
+		if( rc != IMG_AVIF_NOTFOUND ){
+			return rc;
+		}
+	}
+	return IMG_AVIF_NOTFOUND;
+}
+static int ImgAvifPrimaryFeatures(ImgAvifFeat *f)
+{
+	sxu32 i;
+	int rc;
+	if( !f->bHasPrimary ){
+		return IMG_AVIF_NOTFOUND;
+	}
+	if( f->nDimProps == 0 || f->nChanProps == 0 ){
+		return IMG_AVIF_NOTFOUND;
+	}
+	/* A gain map is either a hidden input of a derived item (the HEIF scheme)
+	 * or an auxiliary item of its own (Adobe's). */
+	if( f->nToneMappedItem ){
+		for( i = 0 ; i < f->nTiles ; ++i ){
+			if( f->aTile[i].nParent == f->nToneMappedItem && f->aTile[i].nDimgIdx == 1 ){
+				f->bHasGainmap = 1;
+				break;
+			}
+		}
+	}
+	if( !f->bHasGainmap && f->nGainmapIndex > 0 ){
+		for( i = 0 ; i < f->nProps ; ++i ){
+			if( f->aProp[i].nIndex == f->nGainmapIndex ){
+				f->bHasGainmap = 1;
+				break;
+			}
+		}
+	}
+	/* Not finding one is only final once the tables that could still name one
+	 * have been read. */
+	if( !f->bHasGainmap && (!f->bIinfParsed || (f->nToneMappedItem && !f->bIrefParsed)) ){
+		return IMG_AVIF_NOTFOUND;
+	}
+	rc = ImgAvifItemFeatures(f,f->nPrimaryItem,0);
+	if( rc != IMG_AVIF_FOUND ){
+		return rc;
+	}
+	/* "auxC" is read before the associations, so alpha is known by now. */
+	if( f->bHasAlpha ){
+		++f->nChannels;
+	}
+	return IMG_AVIF_FOUND;
+}
+/*
+ * One box header. A size of 1 means a 64-bit size follows the type and a size
+ * of 0 means "to the end of the file", which is legal only at the top level.
+ * The nine FULL boxes carry a version and flags, and a version this reader
+ * does not know turns the box into a `skip` rather than a refusal.
+ */
+static int ImgAvifParseBox(int iNest,ImgAvifStream *s,sxu32 nRemaining,
+	sxu32 *pnBoxes,ImgAvifBox *pBox)
+{
+	const unsigned char *zData;
+	sxu32 nHeader = 8; /* 32-bit size + 32-bit type, at least */
+	int rc,bFull;
+	if( nHeader > nRemaining ){
+		return IMG_AVIF_INVALID;
+	}
+	rc = ImgAvifRead(s,8,&zData);
+	if( rc != IMG_AVIF_FOUND ){
+		return rc;
+	}
+	pBox->nSize = ImgAvifBE(zData,4);
+	SyMemcpy(&zData[4],pBox->zType,4);
+	if( pBox->nSize == 1 ){
+		nHeader += 8;
+		if( nHeader > nRemaining ){
+			return IMG_AVIF_INVALID;
+		}
+		rc = ImgAvifRead(s,8,&zData);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( ImgAvifBE(zData,4) != 0 ){
+			return IMG_AVIF_ABORTED; /* no box past 4 GB */
+		}
+		pBox->nSize = ImgAvifBE(&zData[4],4);
+	}else if( pBox->nSize == 0 ){
+		if( iNest != 0 ){
+			return IMG_AVIF_INVALID;
+		}
+		pBox->nSize = nRemaining;
+	}
+	if( pBox->nSize < nHeader || pBox->nSize > nRemaining ){
+		return IMG_AVIF_INVALID;
+	}
+	bFull = SyMemcmp(pBox->zType,"meta",4) == 0 || SyMemcmp(pBox->zType,"pitm",4) == 0
+	     || SyMemcmp(pBox->zType,"ipma",4) == 0 || SyMemcmp(pBox->zType,"ispe",4) == 0
+	     || SyMemcmp(pBox->zType,"pixi",4) == 0 || SyMemcmp(pBox->zType,"iref",4) == 0
+	     || SyMemcmp(pBox->zType,"auxC",4) == 0 || SyMemcmp(pBox->zType,"iinf",4) == 0
+	     || SyMemcmp(pBox->zType,"infe",4) == 0;
+	if( bFull ){
+		nHeader += 4;
+	}
+	if( pBox->nSize < nHeader ){
+		return IMG_AVIF_INVALID;
+	}
+	pBox->nContent = pBox->nSize - nHeader;
+	/* A top-level "ftyp" is not counted, so this walk answers the same whether
+	 * or not the identify pass already read one. */
+	if( iNest != 0 || SyMemcmp(pBox->zType,"ftyp",4) != 0 ){
+		++*pnBoxes;
+		if( *pnBoxes >= IMG_AVIF_MAX_NUM_BOXES ){
+			return IMG_AVIF_ABORTED;
+		}
+	}
+	pBox->nVersion = 0;
+	pBox->nFlags = 0;
+	if( bFull ){
+		int bKnown;
+		rc = ImgAvifRead(s,4,&zData);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		pBox->nVersion = ImgAvifBE(zData,1);
+		pBox->nFlags = ImgAvifBE(&zData[1],3);
+		bKnown = (SyMemcmp(pBox->zType,"meta",4) == 0 && pBox->nVersion <= 0)
+		      || (SyMemcmp(pBox->zType,"pitm",4) == 0 && pBox->nVersion <= 1)
+		      || (SyMemcmp(pBox->zType,"ipma",4) == 0 && pBox->nVersion <= 1)
+		      || (SyMemcmp(pBox->zType,"ispe",4) == 0 && pBox->nVersion <= 0)
+		      || (SyMemcmp(pBox->zType,"pixi",4) == 0 && pBox->nVersion <= 0)
+		      || (SyMemcmp(pBox->zType,"iref",4) == 0 && pBox->nVersion <= 1)
+		      || (SyMemcmp(pBox->zType,"auxC",4) == 0 && pBox->nVersion <= 0)
+		      || (SyMemcmp(pBox->zType,"iinf",4) == 0 && pBox->nVersion <= 1)
+		      || (SyMemcmp(pBox->zType,"infe",4) == 0 && pBox->nVersion >= 2 && pBox->nVersion <= 3);
+		if( !bKnown ){
+			SyMemcpy("skip",pBox->zType,4); /* an unparsable box is free space */
+		}
+	}
+	return IMG_AVIF_FOUND;
+}
+/*
+ * "ipco": the property list itself. Its boxes are numbered from one in the
+ * order they appear, and that number is what "ipma" associates with an item.
+ */
+static int ImgAvifParseIpco(int iNest,ImgAvifStream *s,sxu32 nRemaining,
+	sxu32 *pnBoxes,ImgAvifFeat *f)
+{
+	sxu32 nIndex = 1; /* one-based, and the walk's whole addressing scheme */
+	do {
+		ImgAvifBox sBox;
+		const unsigned char *zData;
+		int rc = ImgAvifParseBox(iNest,s,nRemaining,pnBoxes,&sBox);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( SyMemcmp(sBox.zType,"ispe",4) == 0 ){
+			sxu32 nWidth,nHeight;
+			if( sBox.nContent < 8 ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,8,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			nWidth  = ImgAvifBE(zData,4);
+			nHeight = ImgAvifBE(&zData[4],4);
+			if( nWidth == 0 || nHeight == 0 ){
+				return IMG_AVIF_INVALID;
+			}
+			if( f->nDimProps < IMG_AVIF_MAX_FEATURES && nIndex <= IMG_AVIF_MAX_VALUE ){
+				f->aDim[f->nDimProps].nIndex  = (sxu8)nIndex;
+				f->aDim[f->nDimProps].nWidth  = nWidth;
+				f->aDim[f->nDimProps].nHeight = nHeight;
+				++f->nDimProps;
+			}else{
+				f->bSkipped = 1;
+			}
+			rc = ImgAvifSkip(s,sBox.nContent - 8);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else if( SyMemcmp(sBox.zType,"pixi",4) == 0 ){
+			sxu32 nChan,nDepth,i;
+			if( sBox.nContent < 1 ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,1,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			nChan = ImgAvifBE(zData,1);
+			if( nChan < 1 || sBox.nContent < 1 + nChan ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,1,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			nDepth = ImgAvifBE(zData,1);
+			if( nDepth < 1 ){
+				return IMG_AVIF_INVALID;
+			}
+			for( i = 1 ; i < nChan ; ++i ){
+				rc = ImgAvifRead(s,1,&zData);
+				if( rc != IMG_AVIF_FOUND ){
+					return rc;
+				}
+				/* every channel must state the same depth */
+				if( ImgAvifBE(zData,1) != nDepth ){
+					return IMG_AVIF_INVALID;
+				}
+				if( i > 32 ){
+					return IMG_AVIF_ABORTED;
+				}
+			}
+			if( f->nChanProps < IMG_AVIF_MAX_FEATURES && nIndex <= IMG_AVIF_MAX_VALUE
+			 && nDepth <= IMG_AVIF_MAX_VALUE && nChan <= IMG_AVIF_MAX_VALUE ){
+				f->aChan[f->nChanProps].nIndex    = (sxu8)nIndex;
+				f->aChan[f->nChanProps].nDepth    = (sxu8)nDepth;
+				f->aChan[f->nChanProps].nChannels = (sxu8)nChan;
+				++f->nChanProps;
+			}else{
+				f->bSkipped = 1;
+			}
+			rc = ImgAvifSkip(s,sBox.nContent - (1 + nChan));
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else if( SyMemcmp(sBox.zType,"av1C",4) == 0 ){
+			int bHigh,bTwelve,bMono;
+			if( sBox.nContent < 3 ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,3,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			/* Only the third byte matters: two depth bits and a monochrome one. */
+			bHigh   = (zData[2] & 0x40) != 0;
+			bTwelve = (zData[2] & 0x20) != 0;
+			bMono   = (zData[2] & 0x10) != 0;
+			if( bTwelve && !bHigh ){
+				return IMG_AVIF_INVALID;
+			}
+			if( f->nChanProps < IMG_AVIF_MAX_FEATURES && nIndex <= IMG_AVIF_MAX_VALUE ){
+				f->aChan[f->nChanProps].nIndex    = (sxu8)nIndex;
+				f->aChan[f->nChanProps].nDepth    = (sxu8)(bHigh ? (bTwelve ? 12 : 10) : 8);
+				f->aChan[f->nChanProps].nChannels = (sxu8)(bMono ? 1 : 3);
+				++f->nChanProps;
+			}else{
+				f->bSkipped = 1;
+			}
+			rc = ImgAvifSkip(s,sBox.nContent - 3);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else if( SyMemcmp(sBox.zType,"auxC",4) == 0 ){
+			/* Two auxiliary kinds are recognized by their URN. The gain map's is
+			 * the shorter, so it is read first and the alpha one continues from
+			 * where it stopped. */
+			static const char zGainmap[] = "urn:com:photo:aux:hdrgainmap";
+			static const char zAlpha[]   = "urn:mpeg:mpegB:cicp:systems:auxiliary:alpha";
+			const sxu32 nGainmap = 29; /* both lengths include the terminator */
+			const sxu32 nAlpha   = 44;
+			sxu32 nRead = 0;
+			if( sBox.nContent >= nGainmap ){
+				rc = ImgAvifRead(s,nGainmap,&zData);
+				if( rc != IMG_AVIF_FOUND ){
+					return rc;
+				}
+				nRead = nGainmap;
+				if( SyMemcmp(zData,zGainmap,nGainmap) == 0 ){
+					if( nIndex <= IMG_AVIF_MAX_VALUE ){
+						f->nGainmapIndex = (sxu8)nIndex;
+					}else{
+						f->bSkipped = 1;
+					}
+				}else if( sBox.nContent >= nAlpha && SyMemcmp(zData,zAlpha,nGainmap) == 0 ){
+					const unsigned char *zTail;
+					rc = ImgAvifRead(s,nAlpha - nGainmap,&zTail);
+					if( rc != IMG_AVIF_FOUND ){
+						return rc;
+					}
+					nRead = nAlpha;
+					if( SyMemcmp(zTail,&zAlpha[nGainmap],nAlpha - nGainmap) == 0 ){
+						f->bHasAlpha = 1;
+					}
+				}
+			}
+			rc = ImgAvifSkip(s,sBox.nContent - nRead);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else{
+			rc = ImgAvifSkip(s,sBox.nContent);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}
+		++nIndex;
+		nRemaining -= sBox.nSize;
+	}while( nRemaining > 0 );
+	return IMG_AVIF_NOTFOUND;
+}
+/*
+ * "iprp": the property container. "ipco" holds the properties and "ipma"
+ * links them to items -- and the link table is where the walk can finish,
+ * because the moment the primary item's four numbers are known there is
+ * nothing left to read.
+ */
+static int ImgAvifParseIprp(int iNest,ImgAvifStream *s,sxu32 nRemaining,
+	sxu32 *pnBoxes,ImgAvifFeat *f)
+{
+	do {
+		ImgAvifBox sBox;
+		const unsigned char *zData;
+		int rc = ImgAvifParseBox(iNest,s,nRemaining,pnBoxes,&sBox);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( SyMemcmp(sBox.zType,"ipco",4) == 0 ){
+			rc = ImgAvifParseIpco(iNest + 1,s,sBox.nContent,pnBoxes,f);
+			if( rc != IMG_AVIF_NOTFOUND ){
+				return rc;
+			}
+		}else if( SyMemcmp(sBox.zType,"ipma",4) == 0 ){
+			sxu32 nRead = 4,nCount,nIdBytes,nIdxBytes,nEssential,e;
+			if( sBox.nContent < nRead ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,4,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			nCount     = ImgAvifBE(zData,4);
+			nIdBytes   = (sBox.nVersion < 1) ? 2 : 4;
+			nIdxBytes  = (sBox.nFlags & 1) ? 2 : 1;
+			nEssential = (sBox.nFlags & 1) ? 0x8000 : 0x80;
+			for( e = 0 ; e < nCount ; ++e ){
+				sxu32 nItem,nAssoc,a;
+				if( e >= IMG_AVIF_MAX_PROPS || f->nProps >= IMG_AVIF_MAX_PROPS ){
+					f->bSkipped = 1;
+					break;
+				}
+				nRead += nIdBytes + 1;
+				if( sBox.nContent < nRead ){
+					return IMG_AVIF_INVALID;
+				}
+				rc = ImgAvifRead(s,nIdBytes + 1,&zData);
+				if( rc != IMG_AVIF_FOUND ){
+					return rc;
+				}
+				nItem  = ImgAvifBE(zData,nIdBytes);
+				nAssoc = ImgAvifBE(&zData[nIdBytes],1);
+				for( a = 0 ; a < nAssoc ; ++a ){
+					sxu32 nValue,nPropIdx;
+					if( a >= IMG_AVIF_MAX_PROPS || f->nProps >= IMG_AVIF_MAX_PROPS ){
+						f->bSkipped = 1;
+						break;
+					}
+					nRead += nIdxBytes;
+					if( sBox.nContent < nRead ){
+						return IMG_AVIF_INVALID;
+					}
+					rc = ImgAvifRead(s,nIdxBytes,&zData);
+					if( rc != IMG_AVIF_FOUND ){
+						return rc;
+					}
+					nValue = ImgAvifBE(zData,nIdxBytes);
+					/* the top bit marks an ESSENTIAL property; the rest is the index */
+					nPropIdx = nValue & ~nEssential;
+					if( nPropIdx <= IMG_AVIF_MAX_VALUE && nItem <= IMG_AVIF_MAX_VALUE ){
+						f->aProp[f->nProps].nIndex = (sxu8)nPropIdx;
+						f->aProp[f->nProps].nItem  = (sxu8)nItem;
+						++f->nProps;
+					}else{
+						f->bSkipped = 1;
+					}
+				}
+				if( a < nAssoc ){
+					break; /* do not read garbage */
+				}
+			}
+			rc = ImgAvifPrimaryFeatures(f);
+			if( rc != IMG_AVIF_NOTFOUND ){
+				return rc;
+			}
+			rc = ImgAvifSkip(s,sBox.nContent - nRead);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else{
+			rc = ImgAvifSkip(s,sBox.nContent);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}
+		nRemaining -= sBox.nSize;
+	}while( nRemaining != 0 );
+	return IMG_AVIF_NOTFOUND;
+}
+/*
+ * "iref": the reference table. Its "dimg" entries say which items a derived
+ * one is made of, which is how a TILED image's depth and channel count are
+ * found -- the parent carries neither.
+ */
+static int ImgAvifParseIref(int iNest,ImgAvifStream *s,sxu32 nRemaining,
+	sxu32 *pnBoxes,ImgAvifFeat *f)
+{
+	f->bIrefParsed = 1;
+	while( nRemaining > 0 ){
+		ImgAvifBox sBox;
+		const unsigned char *zData;
+		int rc = ImgAvifParseBox(iNest,s,nRemaining,pnBoxes,&sBox);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( SyMemcmp(sBox.zType,"dimg",4) == 0 ){
+			sxu32 nIdBytes = (sBox.nVersion == 0) ? 2 : 4;
+			sxu32 nRead = nIdBytes + 2,nFrom,nCount,i;
+			if( sBox.nContent < nRead ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,nIdBytes + 2,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			nFrom  = ImgAvifBE(zData,nIdBytes);
+			nCount = ImgAvifBE(&zData[nIdBytes],2);
+			for( i = 0 ; i < nCount ; ++i ){
+				sxu32 nTo;
+				if( i >= IMG_AVIF_MAX_TILES ){
+					f->bSkipped = 1;
+					break;
+				}
+				nRead += nIdBytes;
+				if( sBox.nContent < nRead ){
+					return IMG_AVIF_INVALID;
+				}
+				rc = ImgAvifRead(s,nIdBytes,&zData);
+				if( rc != IMG_AVIF_FOUND ){
+					return rc;
+				}
+				nTo = ImgAvifBE(zData,nIdBytes);
+				if( nFrom <= IMG_AVIF_MAX_VALUE && nTo <= IMG_AVIF_MAX_VALUE
+				 && f->nTiles < IMG_AVIF_MAX_TILES ){
+					f->aTile[f->nTiles].nTile    = (sxu8)nTo;
+					f->aTile[f->nTiles].nParent  = (sxu8)nFrom;
+					f->aTile[f->nTiles].nDimgIdx = (sxu8)i;
+					++f->nTiles;
+				}else{
+					f->bSkipped = 1;
+				}
+			}
+			rc = ImgAvifPrimaryFeatures(f);
+			if( rc != IMG_AVIF_NOTFOUND ){
+				return rc;
+			}
+			rc = ImgAvifSkip(s,sBox.nContent - nRead);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else{
+			rc = ImgAvifSkip(s,sBox.nContent);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}
+		nRemaining -= sBox.nSize;
+	}
+	return IMG_AVIF_NOTFOUND;
+}
+/*
+ * "iinf": the item list. Only one entry kind matters -- a "tmap" item says
+ * the file carries a tone-mapped picture, and therefore a gain map.
+ */
+static int ImgAvifParseIinf(int iNest,ImgAvifStream *s,sxu32 nRemaining,
+	sxu32 nVersion,sxu32 *pnBoxes,ImgAvifFeat *f)
+{
+	const unsigned char *zData;
+	sxu32 nCountBytes = (nVersion == 0) ? 2 : 4;
+	sxu32 nCount,i;
+	int rc;
+	f->bIinfParsed = 1;
+	if( nCountBytes > nRemaining ){
+		return IMG_AVIF_INVALID;
+	}
+	rc = ImgAvifRead(s,nCountBytes,&zData);
+	if( rc != IMG_AVIF_FOUND ){
+		return rc;
+	}
+	nRemaining -= nCountBytes;
+	nCount = ImgAvifBE(zData,nCountBytes);
+	for( i = 0 ; i < nCount ; ++i ){
+		ImgAvifBox sBox;
+		rc = ImgAvifParseBox(iNest,s,nRemaining,pnBoxes,&sBox);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( SyMemcmp(sBox.zType,"infe",4) == 0 ){
+			sxu32 nIdBytes = (sBox.nVersion == 2) ? 2 : 4;
+			sxu32 nItem;
+			const unsigned char *zItemType;
+			/* item_ID (16 or 32) + item_protection_index (16) + item_type (32) */
+			if( nIdBytes + 2 + 4 > sBox.nContent ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,nIdBytes,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			nItem = ImgAvifBE(zData,nIdBytes);
+			rc = ImgAvifSkip(s,2); /* item_protection_index */
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			rc = ImgAvifRead(s,4,&zItemType);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			if( SyMemcmp(zItemType,"tmap",4) == 0 ){
+				if( nItem <= IMG_AVIF_MAX_VALUE ){
+					f->nToneMappedItem = (sxu8)nItem;
+				}else{
+					f->bSkipped = 1;
+				}
+			}
+			rc = ImgAvifSkip(s,sBox.nContent - (nIdBytes + 2 + 4));
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else{
+			rc = ImgAvifSkip(s,sBox.nContent);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}
+		nRemaining -= sBox.nSize;
+		if( nRemaining == 0 ){
+			break; /* an entry count bigger than the box says nothing more */
+		}
+	}
+	return IMG_AVIF_NOTFOUND;
+}
+/*
+ * "meta": where every table lives. There is at most one, so running out of it
+ * without an answer is the end of the walk -- INVALID normally, and "too
+ * complex" when something along the way had to be dropped.
+ */
+static int ImgAvifParseMeta(int iNest,ImgAvifStream *s,sxu32 nRemaining,
+	sxu32 *pnBoxes,ImgAvifFeat *f)
+{
+	do {
+		ImgAvifBox sBox;
+		const unsigned char *zData;
+		int rc = ImgAvifParseBox(iNest,s,nRemaining,pnBoxes,&sBox);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( SyMemcmp(sBox.zType,"pitm",4) == 0 ){
+			sxu32 nIdBytes = (sBox.nVersion == 0) ? 2 : 4;
+			sxu32 nPrimary;
+			if( nIdBytes > nRemaining ){
+				return IMG_AVIF_INVALID;
+			}
+			rc = ImgAvifRead(s,nIdBytes,&zData);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+			nPrimary = ImgAvifBE(zData,nIdBytes);
+			if( nPrimary > IMG_AVIF_MAX_VALUE ){
+				return IMG_AVIF_ABORTED;
+			}
+			f->bHasPrimary = 1;
+			f->nPrimaryItem = (sxu8)nPrimary;
+			rc = ImgAvifSkip(s,sBox.nContent - nIdBytes);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}else if( SyMemcmp(sBox.zType,"iprp",4) == 0 ){
+			rc = ImgAvifParseIprp(iNest + 1,s,sBox.nContent,pnBoxes,f);
+			if( rc != IMG_AVIF_NOTFOUND ){
+				return rc;
+			}
+		}else if( SyMemcmp(sBox.zType,"iref",4) == 0 ){
+			rc = ImgAvifParseIref(iNest + 1,s,sBox.nContent,pnBoxes,f);
+			if( rc != IMG_AVIF_NOTFOUND ){
+				return rc;
+			}
+		}else if( SyMemcmp(sBox.zType,"iinf",4) == 0 ){
+			rc = ImgAvifParseIinf(iNest + 1,s,sBox.nContent,sBox.nVersion,pnBoxes,f);
+			if( rc != IMG_AVIF_NOTFOUND ){
+				return rc;
+			}
+		}else{
+			rc = ImgAvifSkip(s,sBox.nContent);
+			if( rc != IMG_AVIF_FOUND ){
+				return rc;
+			}
+		}
+		nRemaining -= sBox.nSize;
+	}while( nRemaining != 0 );
+	return f->bSkipped ? IMG_AVIF_ABORTED : IMG_AVIF_INVALID;
+}
+/*
+ * The file's own brands. An AVIF says so in "ftyp", in the major brand or any
+ * compatible one -- with the minor VERSION, which sits in the same four-byte
+ * grid, skipped rather than tested.
+ */
+static int ImgAvifParseFtyp(ImgAvifStream *s)
+{
+	ImgAvifBox sBox;
+	sxu32 nBoxes = 0,i;
+	int rc = ImgAvifParseBox(0,s,SXU32_HIGH,&nBoxes,&sBox);
+	if( rc != IMG_AVIF_FOUND ){
+		return rc;
+	}
+	if( SyMemcmp(sBox.zType,"ftyp",4) != 0 ){
+		return IMG_AVIF_INVALID;
+	}
+	if( sBox.nContent < 8 ){ /* major_brand and minor_version, at least */
+		return IMG_AVIF_INVALID;
+	}
+	for( i = 0 ; i + 4 <= sBox.nContent ; i += 4 ){
+		const unsigned char *zData;
+		rc = ImgAvifRead(s,4,&zData);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( i == 4 ){
+			continue; /* the minor version is not a brand */
+		}
+		if( SyMemcmp(zData,"avif",4) == 0 || SyMemcmp(zData,"avis",4) == 0 ){
+			return ImgAvifSkip(s,sBox.nContent - (i + 4));
+		}
+		if( i > 32 * 4 ){
+			return IMG_AVIF_ABORTED; /* be reasonable */
+		}
+	}
+	return IMG_AVIF_INVALID; /* no AVIF brand, no good */
+}
+/* Skip top-level boxes until "meta", then walk it. */
+static int ImgAvifParseFile(ImgAvifStream *s,sxu32 *pnBoxes,ImgAvifFeat *f)
+{
+	for(;;){
+		ImgAvifBox sBox;
+		int rc = ImgAvifParseBox(0,s,SXU32_HIGH,pnBoxes,&sBox);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+		if( SyMemcmp(sBox.zType,"meta",4) == 0 ){
+			return ImgAvifParseMeta(1,s,sBox.nContent,pnBoxes,f);
+		}
+		rc = ImgAvifSkip(s,sBox.nContent);
+		if( rc != IMG_AVIF_FOUND ){
+			return rc;
+		}
+	}
+}
+/* Is the file an AVIF? Reads only the first "ftyp" box, leaving the stream
+ * just past it -- which is where the feature walk expects to start. */
+static int ImgAvifIdentify(ImgReader *p)
+{
+	ImgAvifStream sStream;
+	SyZero(&sStream,sizeof(sStream));
+	sStream.p = p;
+	return ImgAvifParseFtyp(&sStream) == IMG_AVIF_FOUND;
+}
+static int ImgHandleAvif(ImgReader *p,ImgInfo *pOut)
+{
+	ImgAvifStream sStream;
+	ImgAvifFeat sFeat;
+	sxu32 nBoxes = 0;
+	SyZero(&sStream,sizeof(sStream));
+	SyZero(&sFeat,sizeof(sFeat));
+	sStream.p = p;
+	if( ImgAvifParseFile(&sStream,&nBoxes,&sFeat) != IMG_AVIF_FOUND ){
+		return 0;
+	}
+	pOut->nWidth    = sFeat.nWidth;
+	pOut->nHeight   = sFeat.nHeight;
+	pOut->nBits     = sFeat.nDepth;
+	pOut->nChannels = sFeat.nChannels;
+	return 1;
+}
+/*
+ * ---------------------------------------------------------------------------
  * The detection ladder.
  * ---------------------------------------------------------------------------
  * php reads THREE bytes, then four, then twelve, testing after each widening
@@ -1210,6 +2057,20 @@ static int ImgDetectType(ph7_context *pCtx,ImgReader *p,const char *zInput,int n
 	/* BYTES READ: 12 */
 	if( bTwelve && SyMemcmp(zSig,"\000\000\000\014jP  \r\n\207\n",12) == 0 ){
 		return PH7_IMG_JP2;
+	}
+	/* Neither of the next two has a signature to test: both are ISO base media
+	 * files, told apart by the BRANDS inside their first box. The AVIF question
+	 * is asked first on purpose (php's GH-20201) -- an AVIF also carries the
+	 * `mif1` compatible brand, so asking HEIF first would answer HEIF for every
+	 * AVIF there is. */
+	ImgRewind(p);
+	if( ImgAvifIdentify(p) ){
+		return PH7_IMG_AVIF;
+	}
+	if( bTwelve && SyMemcmp(&zSig[4],"ftyp",4) == 0
+	 && (SyMemcmp(&zSig[8],"mif1",4) == 0 || SyMemcmp(&zSig[8],"heic",4) == 0
+	  || SyMemcmp(&zSig[8],"heix",4) == 0) ){
+		return PH7_IMG_HEIF;
 	}
 	if( ImgGetWbmp(p,0) ){
 		return PH7_IMG_WBMP;
@@ -1321,6 +2182,17 @@ static int ImgReadAny(ph7_context *pCtx,ImgReader *p,const char *zInput,int nInp
 	case PH7_IMG_XBM:     bHave = ImgGetXbm(pCtx,p,&sInfo);         break;
 	case PH7_IMG_ICO:     bHave = ImgHandleIco(p,&sInfo);           break;
 	case PH7_IMG_WEBP:    bHave = ImgHandleWebp(p,&sInfo);          break;
+	case PH7_IMG_AVIF:
+		/* The identify pass stopped just past the "ftyp" box, which is exactly
+		 * where the feature walk wants to start. */
+		bHave = ImgHandleAvif(p,&sInfo);
+		break;
+	case PH7_IMG_HEIF:
+		/* Told apart by its brand alone, so the same walk runs -- from the
+		 * beginning, skipping the "ftyp" on its way to "meta". */
+		ImgRewind(p);
+		bHave = ImgHandleAvif(p,&sInfo);
+		break;
 	default:
 		break;
 	}
