@@ -1135,10 +1135,10 @@ Coverage: 1090/1185 lines (91.98%)
 |     41 | 1125 | `	}` |
 |     85 | 1126 | `}` |
 |      - | 1127 | `/* Registry sweep, called from PH7_LibxmlVmReset (VM reset AND release). */` |
-|   4672 | 1128 | `PH7_PRIVATE void PH7_XmlParserVmSweep(ph7_vm *pVm)` |
+|   4974 | 1128 | `PH7_PRIVATE void PH7_XmlParserVmSweep(ph7_vm *pVm)` |
 |      5 | 1129 | `{` |
-|   4677 | 1130 | `	phl_xmlparser *p = (phl_xmlparser *)pVm->pXmlParsers;` |
-|   4759 | 1131 | `	while( p ){` |
+|   4979 | 1130 | `	phl_xmlparser *p = (phl_xmlparser *)pVm->pXmlParsers;` |
+|   5061 | 1131 | `	while( p ){` |
 |     85 | 1132 | `		phl_xmlparser *pNext = p->pNext;` |
 |      - | 1133 | `		int i;` |
 |    905 | 1134 | `		for( i = 0 ; i < PHL_XML_H_COUNT ; ++i ){` |
@@ -1149,8 +1149,8 @@ Coverage: 1090/1185 lines (91.98%)
 |     85 | 1139 | `		SyMemBackendFree(&pVm->sAllocator,p);` |
 |     85 | 1140 | `		p = pNext;` |
 |      3 | 1141 | `	}` |
-|   4677 | 1142 | `	pVm->pXmlParsers = 0;` |
-|   4677 | 1143 | `}` |
+|   4979 | 1142 | `	pVm->pXmlParsers = 0;` |
+|   4979 | 1143 | `}` |
 |      - | 1144 | `/* The struct behind an XMLParser argument's hidden slot. The declared` |
 |      - | 1145 | `` * `XMLParser $parser` type has already refused everything else. */`` |
 |    270 | 1146 | `static phl_xmlparser * XmlParserOf(ph7_value *pArg,ph7_class_instance **ppObj)` |
@@ -1765,7 +1765,7 @@ Coverage: 1090/1185 lines (91.98%)
 |      - | 1755 | ` * its NON-deprecated half, and the XML_* constants. Called from PH7_VmInit` |
 |      - | 1756 | ` * inside the bCompilingBuiltin window, after PH7_VmInstallLibxml.` |
 |      - | 1757 | ` */` |
-|   5254 | 1758 | `PH7_PRIVATE sxi32 PH7_VmInstallXml(ph7_vm *pVm)` |
+|   5740 | 1758 | `PH7_PRIVATE sxi32 PH7_VmInstallXml(ph7_vm *pVm)` |
 |      5 | 1759 | `{` |
 |      - | 1760 | `	static const struct {` |
 |      - | 1761 | `		const char *zName;` |
@@ -1838,22 +1838,22 @@ Coverage: 1090/1185 lines (91.98%)
 |      - | 1828 | `	};` |
 |      - | 1829 | `	sxu32 n;` |
 |      - | 1830 | `	sxi32 rc;` |
-|   5259 | 1831 | `	pVm->pXmlParsers = 0;` |
-| 110339 | 1832 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-| 105085 | 1833 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|  52545 | 1834 | `	}` |
-| 152371 | 1835 | `	for( n = 0 ; n < SX_ARRAYSIZE(aConst) ; n++ ){` |
-| 147117 | 1836 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
-|  73561 | 1837 | `	}` |
-|   5259 | 1838 | `	rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
-|   5259 | 1839 | `	if( rc == SXRET_OK ){` |
-|   5259 | 1840 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"XMLParser",sizeof("XMLParser")-1,FALSE,0);` |
-|   5259 | 1841 | `		if( pClass ){` |
-|   5259 | 1842 | `			pClass->zNewRefusal =` |
+|   5745 | 1831 | `	pVm->pXmlParsers = 0;` |
+| 120545 | 1832 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+| 114805 | 1833 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  57405 | 1834 | `	}` |
+| 166465 | 1835 | `	for( n = 0 ; n < SX_ARRAYSIZE(aConst) ; n++ ){` |
+| 160725 | 1836 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
+|  80365 | 1837 | `	}` |
+|   5745 | 1838 | `	rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|   5745 | 1839 | `	if( rc == SXRET_OK ){` |
+|   5745 | 1840 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"XMLParser",sizeof("XMLParser")-1,FALSE,0);` |
+|   5745 | 1841 | `		if( pClass ){` |
+|   5745 | 1842 | `			pClass->zNewRefusal =` |
 |      - | 1843 | `				"Cannot directly construct XMLParser, use xml_parser_create() or xml_parser_create_ns() instead";` |
-|   2627 | 1844 | `		}` |
-|   2627 | 1845 | `	}` |
-|   5259 | 1846 | `	return rc;` |
+|   2870 | 1844 | `		}` |
+|   2870 | 1845 | `	}` |
+|   5745 | 1846 | `	return rc;` |
 |      5 | 1847 | `}` |
 |      - | 1848 |  |
 |      - | 1849 | `#else` |

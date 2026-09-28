@@ -83,17 +83,17 @@ Coverage: 718/802 lines (89.53%)
 |      - |   73 | ` * PH7_LibxmlVmRelease before the allocator that holds the shells is torn` |
 |      - |   74 | ` * down.` |
 |      - |   75 | ` */` |
-|   4672 |   76 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
+|   4974 |   76 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
 |      5 |   77 | `{` |
-|   4677 |   78 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
-|   4809 |   79 | `	while( pXw ){` |
+|   4979 |   78 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
+|   5111 |   79 | `	while( pXw ){` |
 |    133 |   80 | `		phl_xmlwriter *pNext = pXw->pNext;` |
 |    133 |   81 | `		XmlWriterFree(pXw);` |
 |    133 |   82 | `		SyMemBackendFree(&pVm->sAllocator,pXw);` |
 |    133 |   83 | `		pXw = pNext;` |
 |      1 |   84 | `	}` |
-|   4677 |   85 | `	pVm->pXmlWriters = 0;` |
-|   4677 |   86 | `}` |
+|   4979 |   85 | `	pVm->pXmlWriters = 0;` |
+|   4979 |   86 | `}` |
 |      - |   87 |  |
 |      - |   88 | `/*` |
 |      - |   89 | ` * A writer's bytes on their way to a stream. libxml calls this from its own` |
@@ -475,11 +475,11 @@ Coverage: 718/802 lines (89.53%)
 |      7 |  465 | `	if( pVfs == 0 \|\| pVfs->xIsdir == 0 ){` |
 |    ! 0 |  466 | `		return 1;` |
 |      - |  467 | `	}` |
-|    221 |  468 | `	for( i = 0 ; i < nUri ; ++i ){` |
-|    215 |  469 | `		if( zUri[i] == '/' \|\| zUri[i] == '\\' ){` |
+|    219 |  468 | `	for( i = 0 ; i < nUri ; ++i ){` |
+|    213 |  469 | `		if( zUri[i] == '/' \|\| zUri[i] == '\\' ){` |
 |     23 |  470 | `			iCut = i;` |
 |     15 |  471 | `		}` |
-|    153 |  472 | `	}` |
+|    151 |  472 | `	}` |
 |      7 |  473 | `	if( iCut < 0 ){` |
 |    ! 0 |  474 | `		return 1;   /* a bare name: the working directory */` |
 |      - |  475 | `	}` |
@@ -1330,7 +1330,7 @@ Coverage: 718/802 lines (89.53%)
 |      - | 1320 | ` * Install the XMLWriter library.  Called from PH7_VmInit inside the` |
 |      - | 1321 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml.` |
 |      - | 1322 | ` */` |
-|   5254 | 1323 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
+|   5740 | 1323 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
 |      5 | 1324 | `{` |
 |      - | 1325 | `	/* php's own signatures. Declaring them is what gives these methods argument` |
 |      - | 1326 | `	 * coercion and a too-few/too-many ArgumentCountError; the prelude hand-cast` |
@@ -1470,10 +1470,10 @@ Coverage: 718/802 lines (89.53%)
 |      - | 1460 | `		aProp, SX_ARRAYSIZE(aProp),` |
 |      - | 1461 | `		XmlWriterInstanceRelease, 0, 0` |
 |      - | 1462 | `	};` |
-| 225927 | 1463 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-| 220673 | 1464 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 110339 | 1465 | `	}` |
-|   5259 | 1466 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+| 246825 | 1463 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+| 241085 | 1464 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 120545 | 1465 | `	}` |
+|   5745 | 1466 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |      5 | 1467 | `}` |
 |      - | 1468 |  |
 |      - | 1469 | `#else` |

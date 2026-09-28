@@ -1084,13 +1084,13 @@ Coverage: 1191/1336 lines (89.15%)
 |     - | 1074 | ` * Attaching, removing and releasing.` |
 |     - | 1075 | ` * -------------------------------------------------------------------------- */` |
 |     - | 1076 | `/* The chain head slot of a handle for one direction. */` |
-| 31452 | 1077 | `static phl_stream_filter ** FilterChainSlot(io_private *pDev,int iChain)` |
+| 36144 | 1077 | `static phl_stream_filter ** FilterChainSlot(io_private *pDev,int iChain)` |
 |     5 | 1078 | `{` |
-| 31457 | 1079 | `	if( iChain == PHL_STREAM_FILTER_WRITE ){` |
-| 15665 | 1080 | `		return (phl_stream_filter **)&pDev->pWriteFilters;` |
+| 36149 | 1079 | `	if( iChain == PHL_STREAM_FILTER_WRITE ){` |
+| 18011 | 1080 | `		return (phl_stream_filter **)&pDev->pWriteFilters;` |
 |     - | 1081 | `	}` |
-| 15797 | 1082 | `	return (phl_stream_filter **)&pDev->pReadFilters;` |
-| 15727 | 1083 | `}` |
+| 18143 | 1082 | `	return (phl_stream_filter **)&pDev->pReadFilters;` |
+| 18077 | 1083 | `}` |
 |     - | 1084 | `/* Unlink a filter from the chain it sits on. */` |
 |     6 | 1085 | `static void FilterUnlink(phl_stream_filter *pFilter)` |
 |     1 | 1086 | `{` |
@@ -1147,42 +1147,42 @@ Coverage: 1191/1336 lines (89.15%)
 |     3 | 1137 | `	}` |
 |    34 | 1138 | `	SyBlobRelease(&sOut);` |
 |    19 | 1139 | `}` |
-| 15234 | 1140 | `PH7_PRIVATE void PH7_StreamFilterReleaseChains(io_private *pDev)` |
+| 17490 | 1140 | `PH7_PRIVATE void PH7_StreamFilterReleaseChains(io_private *pDev)` |
 |     5 | 1141 | `{` |
 |     - | 1142 | `	int i;` |
-| 45707 | 1143 | `	for( i = 0 ; i < 2 ; i++ ){` |
-| 30473 | 1144 | `		int iChain = i == 0 ? PHL_STREAM_FILTER_WRITE : PHL_STREAM_FILTER_READ;` |
-| 30473 | 1145 | `		phl_stream_filter **ppSlot = FilterChainSlot(pDev,iChain);` |
-| 30473 | 1146 | `		phl_stream_filter *pFilter = *ppSlot;` |
+| 52475 | 1143 | `	for( i = 0 ; i < 2 ; i++ ){` |
+| 34985 | 1144 | `		int iChain = i == 0 ? PHL_STREAM_FILTER_WRITE : PHL_STREAM_FILTER_READ;` |
+| 34985 | 1145 | `		phl_stream_filter **ppSlot = FilterChainSlot(pDev,iChain);` |
+| 34985 | 1146 | `		phl_stream_filter *pFilter = *ppSlot;` |
 |     - | 1147 | `		/* The WRITE chain is flushed first and as a whole: the head's tail has` |
 |     - | 1148 | `		 * to travel through the filters below it before anything reaches the` |
 |     - | 1149 | `		 * device. */` |
-| 30473 | 1150 | `		if( iChain == PHL_STREAM_FILTER_WRITE && pFilter ){` |
+| 34985 | 1150 | `		if( iChain == PHL_STREAM_FILTER_WRITE && pFilter ){` |
 |    30 | 1151 | `			FilterFlushTail(pFilter,PHL_PSFS_FLAG_FLUSH_CLOSE);` |
 |    14 | 1152 | `		}` |
-| 30665 | 1153 | `		while( pFilter ){` |
+| 35177 | 1153 | `		while( pFilter ){` |
 |   195 | 1154 | `			phl_stream_filter *pNext = pFilter->pNext;` |
 |   195 | 1155 | `			FilterDispose(pFilter);` |
 |   195 | 1156 | `			pFilter = pNext;` |
 |     3 | 1157 | `		}` |
-| 30473 | 1158 | `		*ppSlot = 0;` |
-| 15235 | 1159 | `	}` |
-| 15239 | 1160 | `}` |
-|   390 | 1161 | `PH7_PRIVATE void PH7_StreamFilterRewound(io_private *pDev)` |
-|     3 | 1162 | `{` |
+| 34985 | 1158 | `		*ppSlot = 0;` |
+| 17495 | 1159 | `	}` |
+| 17495 | 1160 | `}` |
+|   480 | 1161 | `PH7_PRIVATE void PH7_StreamFilterRewound(io_private *pDev)` |
+|     4 | 1162 | `{` |
 |     - | 1163 | `	int i;` |
-|  1173 | 1164 | `	for( i = 0 ; i < 2 ; i++ ){` |
-|  1173 | 1165 | `		phl_stream_filter *pFilter = *FilterChainSlot(pDev,` |
-|   390 | 1166 | `			i == 0 ? PHL_STREAM_FILTER_READ : PHL_STREAM_FILTER_WRITE);` |
-|   811 | 1167 | `		while( pFilter ){` |
+|  1444 | 1164 | `	for( i = 0 ; i < 2 ; i++ ){` |
+|  1444 | 1165 | `		phl_stream_filter *pFilter = *FilterChainSlot(pDev,` |
+|   480 | 1166 | `			i == 0 ? PHL_STREAM_FILTER_READ : PHL_STREAM_FILTER_WRITE);` |
+|   992 | 1167 | `		while( pFilter ){` |
 |     - | 1168 | `			/* The stream moved, so the end it had reached is not the end any` |
 |     - | 1169 | `			 * more: a chain closed at the old one must be able to run — and to` |
 |     - | 1170 | `			 * emit its tail — again. */` |
 |    29 | 1171 | `			pFilter->bClosed = 0;` |
 |    29 | 1172 | `			pFilter = pFilter->pNext;` |
 |     1 | 1173 | `		}` |
-|   393 | 1174 | `	}` |
-|   393 | 1175 | `}` |
+|   484 | 1174 | `	}` |
+|   484 | 1175 | `}` |
 |    16 | 1176 | `PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm)` |
 |   ! 0 | 1177 | `{` |
 |     - | 1178 | `	phl_stream_filter *pFilter;` |
@@ -2026,7 +2026,7 @@ Coverage: 1191/1336 lines (89.15%)
 |    19 | 2016 | `	ph7_result_null(pCtx);` |
 |    19 | 2017 | `	return PH7_OK;` |
 |     1 | 2018 | `}` |
-|  5254 | 2019 | `PH7_PRIVATE sxi32 PH7_VmInstallStreamFilter(ph7_vm *pVm)` |
+|  5740 | 2019 | `PH7_PRIVATE sxi32 PH7_VmInstallStreamFilter(ph7_vm *pVm)` |
 |     5 | 2020 | `{` |
 |     - | 2021 | `	static const PH7_NativeMethodDef aFilterMethod[] = {` |
 |     - | 2022 | `		{ "filter", PH7_MOD_PUBLIC, "$in, $out, &$consumed, bool $closing", "int",` |
@@ -2053,7 +2053,7 @@ Coverage: 1191/1336 lines (89.15%)
 |     - | 2043 | `		  0, 0, 0, 0,` |
 |     - | 2044 | `		  aBucketProp, SX_ARRAYSIZE(aBucketProp), UserBucketRelease, 0, 0 },` |
 |     - | 2045 | `	};` |
-|  5259 | 2046 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5745 | 2046 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 2047 | `}` |
 |     - | 2048 | `#endif /* PH7_DISABLE_DISK_IO */` |
 |     - | 2049 |  |

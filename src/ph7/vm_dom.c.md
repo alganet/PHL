@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 5487/5935 lines (92.45%)
+Coverage: 5491/5939 lines (92.46%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -6396,11 +6396,11 @@ Coverage: 5487/5935 lines (92.45%)
 |   ! 0 |  6386 | `		return 0;` |
 |     - |  6387 | `	}` |
 |    36 |  6388 | `	apHave = (xmlEntityPtr *)SySetBasePtr(&pShell->aNotations);` |
-|    48 |  6389 | `	for( n = 0 ; n < SySetUsed(&pShell->aNotations) ; ++n ){` |
-|    38 |  6390 | `		if( apHave[n]->_private == (void *)pNot ){` |
+|    54 |  6389 | `	for( n = 0 ; n < SySetUsed(&pShell->aNotations) ; ++n ){` |
+|    44 |  6390 | `		if( apHave[n]->_private == (void *)pNot ){` |
 |    26 |  6391 | `			return (xmlNodePtr)apHave[n];` |
 |     - |  6392 | `		}` |
-|     7 |  6393 | `	}` |
+|    11 |  6393 | `	}` |
 |    12 |  6394 | `	pNode = (xmlEntityPtr)xmlMalloc(sizeof(xmlEntity));` |
 |    12 |  6395 | `	if( pNode == 0 ){` |
 |   ! 0 |  6396 | `		return 0;` |
@@ -6651,3654 +6651,3664 @@ Coverage: 5487/5935 lines (92.45%)
 |     7 |  6641 | `	SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),` |
 |     4 |  6642 | `		"Cannot access %.*s without offset",(int)pName->nByte,pName->zString);` |
 |     5 |  6643 | `}` |
-|   166 |  6644 | `static void DomListDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
+|   178 |  6644 | `static void DomListDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
 |     2 |  6645 | `{` |
 |     - |  6646 | `	ph7_value sKey;` |
 |     - |  6647 | `	sxi64 iIndex;` |
 |     - |  6648 | `	int bNamed;` |
-|   168 |  6649 | `	if( pCtx->pOffset == 0 ){` |
-|     5 |  6650 | `		DomDimNoOffset(pThis,pCtx);` |
-|    33 |  6651 | `		return;` |
-|     - |  6652 | `	}` |
-|   164 |  6653 | `	bNamed = DomDimClassify(&(*pVm),pCtx->pOffset,&sKey,&iIndex);` |
-|   164 |  6654 | `	PH7_MemObjRelease(&sKey);` |
-|   164 |  6655 | `	if( bNamed \|\| iIndex < 0 \|\| iIndex > DOM_INDEX_MAX ){` |
-|    58 |  6656 | `		return; /* a name the list cannot answer, or an index it answers null to */` |
-|     - |  6657 | `	}` |
-|   108 |  6658 | `	DomDimAnswer(&(*pVm),pCtx,DomListItem(&(*pVm),pThis,(int)iIndex));` |
-|    85 |  6659 | `}` |
-|   146 |  6660 | `static void DomMapDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
-|     2 |  6661 | `{` |
-|     - |  6662 | `	ph7_value sKey;` |
-|     - |  6663 | `	sxi64 iIndex;` |
-|     - |  6664 | `	int bNamed;` |
-|   148 |  6665 | `	if( pCtx->pOffset == 0 ){` |
-|   ! 0 |  6666 | `		DomDimNoOffset(pThis,pCtx);` |
-|   ! 0 |  6667 | `		return;` |
-|     - |  6668 | `	}` |
-|   148 |  6669 | `	bNamed = DomDimClassify(&(*pVm),pCtx->pOffset,&sKey,&iIndex);` |
-|   148 |  6670 | `	if( bNamed ){` |
-|    41 |  6671 | `		DomDimAnswer(&(*pVm),pCtx,DomMapNamed(&(*pVm),pThis,ph7_value_to_string(&sKey,0)));` |
-|    41 |  6672 | `		PH7_MemObjRelease(&sKey);` |
-|    41 |  6673 | `		return;` |
+|   180 |  6649 | `	if( pCtx->iMode != PH7_NATIVE_DIM_READ && pCtx->iMode != PH7_NATIVE_DIM_ISSET ){` |
+|     - |  6650 | `		/* The WRITE modes only ask for a refusal WORDING, and these two classes` |
+|     - |  6651 | ``		 * have none of their own: php answers `Cannot use object of type C as`` |
+|     - |  6652 | ``		 * array` for a store, an append and an unset, which is what the caller`` |
+|     - |  6653 | `		 * formats when the hook declines. */` |
+|    43 |  6654 | `		return;` |
+|     - |  6655 | `	}` |
+|   168 |  6656 | `	if( pCtx->pOffset == 0 ){` |
+|     5 |  6657 | `		DomDimNoOffset(pThis,pCtx);` |
+|     5 |  6658 | `		return;` |
+|     - |  6659 | `	}` |
+|   164 |  6660 | `	bNamed = DomDimClassify(&(*pVm),pCtx->pOffset,&sKey,&iIndex);` |
+|   164 |  6661 | `	PH7_MemObjRelease(&sKey);` |
+|   164 |  6662 | `	if( bNamed \|\| iIndex < 0 \|\| iIndex > DOM_INDEX_MAX ){` |
+|    58 |  6663 | `		return; /* a name the list cannot answer, or an index it answers null to */` |
+|     - |  6664 | `	}` |
+|   108 |  6665 | `	DomDimAnswer(&(*pVm),pCtx,DomListItem(&(*pVm),pThis,(int)iIndex));` |
+|    91 |  6666 | `}` |
+|   150 |  6667 | `static void DomMapDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)` |
+|     2 |  6668 | `{` |
+|     - |  6669 | `	ph7_value sKey;` |
+|     - |  6670 | `	sxi64 iIndex;` |
+|     - |  6671 | `	int bNamed;` |
+|   152 |  6672 | `	if( pCtx->iMode != PH7_NATIVE_DIM_READ && pCtx->iMode != PH7_NATIVE_DIM_ISSET ){` |
+|    42 |  6673 | `		return;   /* see DomListDim: the write side is php's generic sentence */` |
 |     - |  6674 | `	}` |
-|   108 |  6675 | `	PH7_MemObjRelease(&sKey);` |
-|   108 |  6676 | `	if( iIndex < 0 \|\| iIndex > DOM_INDEX_MAX ){` |
-|     - |  6677 | `		/* The range is screened BEFORE the map is looked at, so a map with no` |
-|     - |  6678 | ``		 * owner at all -- `(new DOMNamedNodeMap())[-1]` -- refuses too. */`` |
-|    36 |  6679 | `		if( pCtx->iMode == PH7_NATIVE_DIM_READ ){` |
-|    28 |  6680 | `			pCtx->zThrowClass = "ValueError";` |
-|    28 |  6681 | `			SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),` |
-|     - |  6682 | `				"must be between 0 and %d",DOM_INDEX_MAX);` |
-|    13 |  6683 | `		}` |
-|    36 |  6684 | `		return;` |
-|     - |  6685 | `	}` |
-|    74 |  6686 | `	DomDimAnswer(&(*pVm),pCtx,DomMapItem(&(*pVm),pThis,(int)iIndex));` |
-|    75 |  6687 | `}` |
-|     - |  6688 | `/*` |
-|     - |  6689 | ` * Both collections are IteratorAggregates, as php's are -- the chunk made` |
-|     - |  6690 | ``  * DOMNodeList an `Iterator` with its own cursor (so `$list instanceof Iterator` `` |
-|     - |  6691 | ` * was true where php says false) and gave DOMNamedNodeMap no iteration at all,` |
-|     - |  6692 | `` * which meant `foreach ($el->attributes as $a)` walked the map's own private`` |
-|     - |  6693 | ` * slots instead of the attributes.` |
-|     - |  6694 | ` *` |
-|     - |  6695 | ` * The cursor lives in the shared InternalIterator (oo_native.c); a vtable states` |
-|     - |  6696 | ` * only how to REACH a position. DOMNodeList keys by index, DOMNamedNodeMap by` |
-|     - |  6697 | ` * attribute name, which is what php answers for each.` |
-|     - |  6698 | ` */` |
-|   416 |  6699 | `static void DomIterSettle(ph7_vm *pVm,ph7_class_instance *pIt,int bNamed)` |
-|     1 |  6700 | `{` |
-|   417 |  6701 | `	ph7_class_instance *pSrc = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);` |
-|   417 |  6702 | `	sxi64 iPos = PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS);` |
-|     - |  6703 | `	ph7_class_instance *pCur;` |
-|   417 |  6704 | `	pCur = bNamed ? DomMapItem(&(*pVm),pSrc,(int)iPos) : DomListItem(&(*pVm),pSrc,(int)iPos);` |
-|   417 |  6705 | `	if( pCur == 0 ){` |
-|   111 |  6706 | `		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);` |
-|   111 |  6707 | `		return;` |
-|     - |  6708 | `	}` |
-|   307 |  6709 | `	PH7_NativeSetAttrObj(&(*pVm),pIt,PH7_NATIVE_IT_CUR,pCur);  /* borrowed: no unref */` |
-|   307 |  6710 | `	if( bNamed ){` |
-|    77 |  6711 | `		phl_domnode *pNd = DomResOf(pCur);` |
-|    77 |  6712 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|    77 |  6713 | `		const char *zKey = (pNode && pNode->name) ? (const char *)pNode->name : "";` |
-|    77 |  6714 | `		PH7_NativeSetAttrStr(&(*pVm),pIt,PH7_NATIVE_IT_KEY,zKey,(int)SyStrlen(zKey));` |
-|    39 |  6715 | `	}else{` |
-|   231 |  6716 | `		PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,iPos);` |
-|     - |  6717 | `	}` |
-|   307 |  6718 | `	PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);` |
-|   209 |  6719 | `}` |
-|   146 |  6720 | `static void DomListRewind(ph7_vm *pVm,ph7_class_instance *pIt)` |
-|     1 |  6721 | `{` |
-|   147 |  6722 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,0);` |
-|   147 |  6723 | `	DomIterSettle(&(*pVm),pIt,0);` |
-|   147 |  6724 | `}` |
-|   166 |  6725 | `static void DomListNext(ph7_vm *pVm,ph7_class_instance *pIt)` |
-|     1 |  6726 | `{` |
-|   250 |  6727 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,` |
-|   166 |  6728 | `		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);` |
-|   167 |  6729 | `	DomIterSettle(&(*pVm),pIt,0);` |
-|   167 |  6730 | `}` |
-|    58 |  6731 | `static void DomMapRewind(ph7_vm *pVm,ph7_class_instance *pIt)` |
-|     1 |  6732 | `{` |
-|    59 |  6733 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,0);` |
-|    59 |  6734 | `	DomIterSettle(&(*pVm),pIt,1);` |
-|    59 |  6735 | `}` |
-|    46 |  6736 | `static void DomMapNext(ph7_vm *pVm,ph7_class_instance *pIt)` |
-|     1 |  6737 | `{` |
-|    70 |  6738 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,` |
-|    46 |  6739 | `		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);` |
-|    47 |  6740 | `	DomIterSettle(&(*pVm),pIt,1);` |
-|    47 |  6741 | `}` |
-|     - |  6742 | `static const PH7_NativeIterVtab sDomListIterVtab = { DomListRewind, DomListNext };` |
-|     - |  6743 | `static const PH7_NativeIterVtab sDomMapIterVtab  = { DomMapRewind,  DomMapNext };` |
-|     - |  6744 | `/* Both getIterator()s: a fresh InternalIterator per call, as php's are. */` |
-|   106 |  6745 | `DOM_METHOD(vm_builtin_Dom_getIterator)` |
-|     1 |  6746 | `{` |
-|   107 |  6747 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - |  6748 | `	ph7_class_instance *pIt;` |
-|    53 |  6749 | `	SXUNUSED(nArg);` |
-|    53 |  6750 | `	SXUNUSED(apArg);` |
-|   107 |  6751 | `	if( pThis == 0 ){` |
-|   ! 0 |  6752 | `		return PH7_OK;` |
-|     - |  6753 | `	}` |
-|   107 |  6754 | `	pIt = PH7_NativeIteratorNew(pCtx->pVm,pThis);` |
-|   107 |  6755 | `	if( pIt == 0 ){` |
-|   ! 0 |  6756 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  6757 | `	}` |
-|   107 |  6758 | `	PH7_NativeResultObject(pCtx,pIt);` |
-|   107 |  6759 | `	return PH7_OK;` |
-|    54 |  6760 | `}` |
-|     - |  6761 |  |
-|     - |  6762 | `/* ===== DOMXPath ===== */` |
-|     - |  6763 |  |
-|     - |  6764 | `/* The prefix => URI table registerNamespace() feeds, replayed onto the fresh` |
-|     - |  6765 | ` * evaluation context each query. Hidden slot, materialized by DomXPathSlotMap` |
-|     - |  6766 | ` * below with the same three moves the document's identity cache needs. */` |
-|     - |  6767 | `#define XP_NSREG "__nsreg"` |
-|     - |  6768 | `/*` |
-|     - |  6769 | ` * DOMXPath::quote(string $str): string  (static, php 8.4)` |
-|     - |  6770 | ` *` |
-|     - |  6771 | ` * XPath 1.0 has no escape inside a string literal, so a value is quotable` |
-|     - |  6772 | `` * only with the quote character it does not contain: no `'` and it goes in`` |
-|     - |  6773 | `` * single quotes, no `"` in double ones, and a value carrying BOTH becomes a`` |
-|     - |  6774 | `` * `concat()` of runs, split by the rule stated at the loop below. php's`` |
-|     - |  6775 | ` * algorithm exactly, and its output byte for byte.` |
-|     - |  6776 | ` */` |
-|    38 |  6777 | `DOM_METHOD(vm_builtin_DOMXPath_quote)` |
-|     1 |  6778 | `{` |
-|    39 |  6779 | `	int nStr = 0;` |
-|    39 |  6780 | `	const char *zStr = nArg > 0 ? ph7_value_to_string(apArg[0],&nStr) : "";` |
-|    39 |  6781 | `	int bSq = 0,bDq = 0,i;` |
-|     - |  6782 | `	SyBlob sOut;` |
-|   225 |  6783 | `	for( i = 0 ; i < nStr ; ++i ){` |
-|   187 |  6784 | `		if( zStr[i] == '\'' ){` |
-|    29 |  6785 | `			bSq = 1;` |
-|   173 |  6786 | `		}else if( zStr[i] == '"' ){` |
-|    27 |  6787 | `			bDq = 1;` |
-|    13 |  6788 | `		}` |
-|    94 |  6789 | `	}` |
-|    39 |  6790 | `	if( !bSq ){` |
-|    17 |  6791 | `		ph7_result_string_format(pCtx,"'%.*s'",nStr,zStr);` |
-|    17 |  6792 | `		return PH7_OK;` |
-|     - |  6793 | `	}` |
-|    23 |  6794 | `	if( !bDq ){` |
-|     9 |  6795 | `		ph7_result_string_format(pCtx,"\"%.*s\"",nStr,zStr);` |
-|     9 |  6796 | `		return PH7_OK;` |
-|     - |  6797 | `	}` |
-|    15 |  6798 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|    15 |  6799 | `	SyBlobAppend(&sOut,"concat(",sizeof("concat(")-1);` |
-|    15 |  6800 | `	i = 0;` |
-|    49 |  6801 | `	while( i < nStr ){` |
-|     - |  6802 | `		/* Whichever quote kind appears FIRST in what is left decides the run:` |
-|     - |  6803 | `		 * the run is wrapped in the OTHER kind and reaches to that first` |
-|     - |  6804 | `		 * occurrence, so it swallows every quote of the kind it is not wrapped` |
-|     - |  6805 | ``		 * in. `a'b"c'd"e` is four runs that way, and `0"&'<` is two -- the`` |
-|     - |  6806 | `		 * first single-quoted, because its first quote character is the double` |
-|     - |  6807 | `		 * one. */` |
-|    35 |  6808 | `		int iStart = i,j;` |
-|    35 |  6809 | `		char cQuote = '"';` |
-|    57 |  6810 | `		for( j = i ; j < nStr ; ++j ){` |
-|    57 |  6811 | `			if( zStr[j] == '\'' \|\| zStr[j] == '"' ){` |
-|    35 |  6812 | `				cQuote = zStr[j] == '"' ? '\'' : '"';` |
-|    35 |  6813 | `				break;` |
-|     - |  6814 | `			}` |
-|    12 |  6815 | `		}` |
-|   123 |  6816 | `		while( i < nStr && zStr[i] != cQuote ){` |
-|    89 |  6817 | `			i++;` |
-|     1 |  6818 | `		}` |
-|    35 |  6819 | `		if( iStart > 0 ){` |
-|    21 |  6820 | `			SyBlobAppend(&sOut,",",1);` |
-|    10 |  6821 | `		}` |
-|    35 |  6822 | `		SyBlobAppend(&sOut,&cQuote,1);` |
-|    35 |  6823 | `		SyBlobAppend(&sOut,zStr + iStart,(sxu32)(i - iStart));` |
-|    35 |  6824 | `		SyBlobAppend(&sOut,&cQuote,1);` |
-|     1 |  6825 | `	}` |
-|    15 |  6826 | `	SyBlobAppend(&sOut,")",1);` |
-|    15 |  6827 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|    15 |  6828 | `	SyBlobRelease(&sOut);` |
-|    15 |  6829 | `	return PH7_OK;` |
-|    20 |  6830 | `}` |
-|     - |  6831 |  |
-|     - |  6832 | `/* ===== The PHP-function bridge (php:function / php:functionString / own-URI) ===== */` |
-|     - |  6833 |  |
-|     - |  6834 | ``/* php's reserved URI: `php:function()` is reached through whatever PREFIX the`` |
-|     - |  6835 | ` * caller bound to it, so every lookup here is by URI. */` |
-|     - |  6836 | `#define XP_PHPNS "http://php.net/xpath"` |
-|     - |  6837 | `/* Which callables an evaluation may reach: php's register_phpfunctions. */` |
-|     - |  6838 | `#define XP_MODE_NONE   0   /* registerPhpFunctions() never called -- nothing runs */` |
-|     - |  6839 | `#define XP_MODE_ALL    1   /* called bare -- any callable name runs */` |
-|     - |  6840 | `#define XP_MODE_LIST   2   /* called with a restriction -- the table below decides */` |
-|     - |  6841 | `#define XP_FNMODE "__fnmode"` |
-|     - |  6842 | `#define XP_FNREG  "__fnreg"    /* restricted: xpath name => the callable to run */` |
-|     - |  6843 | `#define XP_NSFN   "__nsfn"     /* own-URI: "<uri>\x01<name>" => callable */` |
-|   108 |  6844 | `static ph7_hashmap * DomXPathSlotMap(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)` |
-|     1 |  6845 | `{` |
-|   109 |  6846 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;` |
-|   109 |  6847 | `	if( pSlot == 0 ){` |
-|   ! 0 |  6848 | `		return 0;` |
-|     - |  6849 | `	}` |
-|   109 |  6850 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
-|    43 |  6851 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
-|   ! 0 |  6852 | `			return 0;` |
-|     - |  6853 | `		}` |
-|    21 |  6854 | `	}` |
-|   109 |  6855 | `	return PH7_HashmapCowSeparate(&(*pVm),pSlot);` |
-|    55 |  6856 | `}` |
-|     - |  6857 | `/* Insert (or replace) one string-keyed entry. */` |
-|    26 |  6858 | `static void DomXPathMapPut(ph7_vm *pVm,ph7_hashmap *pMap,const char *zKey,int nKey,ph7_value *pVal)` |
-|     1 |  6859 | `{` |
-|     - |  6860 | `	ph7_value sKey;` |
-|    27 |  6861 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
-|    27 |  6862 | `	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);` |
-|    27 |  6863 | `	PH7_HashmapInsert(pMap,&sKey,pVal);` |
-|    27 |  6864 | `	PH7_MemObjRelease(&sKey);` |
-|    27 |  6865 | `}` |
-|     - |  6866 | `/* ...and the matching read, or NULL. The value BELONGS to the map. */` |
-|    42 |  6867 | `static ph7_value * DomXPathMapGet(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,` |
-|     - |  6868 | `	const char *zKey,int nKey)` |
+|   148 |  6675 | `	if( pCtx->pOffset == 0 ){` |
+|   ! 0 |  6676 | `		DomDimNoOffset(pThis,pCtx);` |
+|   ! 0 |  6677 | `		return;` |
+|     - |  6678 | `	}` |
+|   148 |  6679 | `	bNamed = DomDimClassify(&(*pVm),pCtx->pOffset,&sKey,&iIndex);` |
+|   148 |  6680 | `	if( bNamed ){` |
+|    41 |  6681 | `		DomDimAnswer(&(*pVm),pCtx,DomMapNamed(&(*pVm),pThis,ph7_value_to_string(&sKey,0)));` |
+|    41 |  6682 | `		PH7_MemObjRelease(&sKey);` |
+|    41 |  6683 | `		return;` |
+|     - |  6684 | `	}` |
+|   108 |  6685 | `	PH7_MemObjRelease(&sKey);` |
+|   108 |  6686 | `	if( iIndex < 0 \|\| iIndex > DOM_INDEX_MAX ){` |
+|     - |  6687 | `		/* The range is screened BEFORE the map is looked at, so a map with no` |
+|     - |  6688 | ``		 * owner at all -- `(new DOMNamedNodeMap())[-1]` -- refuses too. */`` |
+|    36 |  6689 | `		if( pCtx->iMode == PH7_NATIVE_DIM_READ ){` |
+|    28 |  6690 | `			pCtx->zThrowClass = "ValueError";` |
+|    28 |  6691 | `			SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),` |
+|     - |  6692 | `				"must be between 0 and %d",DOM_INDEX_MAX);` |
+|    13 |  6693 | `		}` |
+|    36 |  6694 | `		return;` |
+|     - |  6695 | `	}` |
+|    74 |  6696 | `	DomDimAnswer(&(*pVm),pCtx,DomMapItem(&(*pVm),pThis,(int)iIndex));` |
+|    77 |  6697 | `}` |
+|     - |  6698 | `/*` |
+|     - |  6699 | ` * Both collections are IteratorAggregates, as php's are -- the chunk made` |
+|     - |  6700 | ``  * DOMNodeList an `Iterator` with its own cursor (so `$list instanceof Iterator` `` |
+|     - |  6701 | ` * was true where php says false) and gave DOMNamedNodeMap no iteration at all,` |
+|     - |  6702 | `` * which meant `foreach ($el->attributes as $a)` walked the map's own private`` |
+|     - |  6703 | ` * slots instead of the attributes.` |
+|     - |  6704 | ` *` |
+|     - |  6705 | ` * The cursor lives in the shared InternalIterator (oo_native.c); a vtable states` |
+|     - |  6706 | ` * only how to REACH a position. DOMNodeList keys by index, DOMNamedNodeMap by` |
+|     - |  6707 | ` * attribute name, which is what php answers for each.` |
+|     - |  6708 | ` */` |
+|   416 |  6709 | `static void DomIterSettle(ph7_vm *pVm,ph7_class_instance *pIt,int bNamed)` |
+|     1 |  6710 | `{` |
+|   417 |  6711 | `	ph7_class_instance *pSrc = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);` |
+|   417 |  6712 | `	sxi64 iPos = PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS);` |
+|     - |  6713 | `	ph7_class_instance *pCur;` |
+|   417 |  6714 | `	pCur = bNamed ? DomMapItem(&(*pVm),pSrc,(int)iPos) : DomListItem(&(*pVm),pSrc,(int)iPos);` |
+|   417 |  6715 | `	if( pCur == 0 ){` |
+|   111 |  6716 | `		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);` |
+|   111 |  6717 | `		return;` |
+|     - |  6718 | `	}` |
+|   307 |  6719 | `	PH7_NativeSetAttrObj(&(*pVm),pIt,PH7_NATIVE_IT_CUR,pCur);  /* borrowed: no unref */` |
+|   307 |  6720 | `	if( bNamed ){` |
+|    77 |  6721 | `		phl_domnode *pNd = DomResOf(pCur);` |
+|    77 |  6722 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    77 |  6723 | `		const char *zKey = (pNode && pNode->name) ? (const char *)pNode->name : "";` |
+|    77 |  6724 | `		PH7_NativeSetAttrStr(&(*pVm),pIt,PH7_NATIVE_IT_KEY,zKey,(int)SyStrlen(zKey));` |
+|    39 |  6725 | `	}else{` |
+|   231 |  6726 | `		PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,iPos);` |
+|     - |  6727 | `	}` |
+|   307 |  6728 | `	PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);` |
+|   209 |  6729 | `}` |
+|   146 |  6730 | `static void DomListRewind(ph7_vm *pVm,ph7_class_instance *pIt)` |
+|     1 |  6731 | `{` |
+|   147 |  6732 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,0);` |
+|   147 |  6733 | `	DomIterSettle(&(*pVm),pIt,0);` |
+|   147 |  6734 | `}` |
+|   166 |  6735 | `static void DomListNext(ph7_vm *pVm,ph7_class_instance *pIt)` |
+|     1 |  6736 | `{` |
+|   250 |  6737 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,` |
+|   166 |  6738 | `		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);` |
+|   167 |  6739 | `	DomIterSettle(&(*pVm),pIt,0);` |
+|   167 |  6740 | `}` |
+|    58 |  6741 | `static void DomMapRewind(ph7_vm *pVm,ph7_class_instance *pIt)` |
+|     1 |  6742 | `{` |
+|    59 |  6743 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,0);` |
+|    59 |  6744 | `	DomIterSettle(&(*pVm),pIt,1);` |
+|    59 |  6745 | `}` |
+|    46 |  6746 | `static void DomMapNext(ph7_vm *pVm,ph7_class_instance *pIt)` |
+|     1 |  6747 | `{` |
+|    70 |  6748 | `	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,` |
+|    46 |  6749 | `		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);` |
+|    47 |  6750 | `	DomIterSettle(&(*pVm),pIt,1);` |
+|    47 |  6751 | `}` |
+|     - |  6752 | `static const PH7_NativeIterVtab sDomListIterVtab = { DomListRewind, DomListNext, 0, 0 };` |
+|     - |  6753 | `static const PH7_NativeIterVtab sDomMapIterVtab  = { DomMapRewind,  DomMapNext, 0, 0 };` |
+|     - |  6754 | `/* Both getIterator()s: a fresh InternalIterator per call, as php's are. */` |
+|   106 |  6755 | `DOM_METHOD(vm_builtin_Dom_getIterator)` |
+|     1 |  6756 | `{` |
+|   107 |  6757 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - |  6758 | `	ph7_class_instance *pIt;` |
+|    53 |  6759 | `	SXUNUSED(nArg);` |
+|    53 |  6760 | `	SXUNUSED(apArg);` |
+|   107 |  6761 | `	if( pThis == 0 ){` |
+|   ! 0 |  6762 | `		return PH7_OK;` |
+|     - |  6763 | `	}` |
+|   107 |  6764 | `	pIt = PH7_NativeIteratorNew(pCtx->pVm,pThis);` |
+|   107 |  6765 | `	if( pIt == 0 ){` |
+|   ! 0 |  6766 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  6767 | `	}` |
+|   107 |  6768 | `	PH7_NativeResultObject(pCtx,pIt);` |
+|   107 |  6769 | `	return PH7_OK;` |
+|    54 |  6770 | `}` |
+|     - |  6771 |  |
+|     - |  6772 | `/* ===== DOMXPath ===== */` |
+|     - |  6773 |  |
+|     - |  6774 | `/* The prefix => URI table registerNamespace() feeds, replayed onto the fresh` |
+|     - |  6775 | ` * evaluation context each query. Hidden slot, materialized by DomXPathSlotMap` |
+|     - |  6776 | ` * below with the same three moves the document's identity cache needs. */` |
+|     - |  6777 | `#define XP_NSREG "__nsreg"` |
+|     - |  6778 | `/*` |
+|     - |  6779 | ` * DOMXPath::quote(string $str): string  (static, php 8.4)` |
+|     - |  6780 | ` *` |
+|     - |  6781 | ` * XPath 1.0 has no escape inside a string literal, so a value is quotable` |
+|     - |  6782 | `` * only with the quote character it does not contain: no `'` and it goes in`` |
+|     - |  6783 | `` * single quotes, no `"` in double ones, and a value carrying BOTH becomes a`` |
+|     - |  6784 | `` * `concat()` of runs, split by the rule stated at the loop below. php's`` |
+|     - |  6785 | ` * algorithm exactly, and its output byte for byte.` |
+|     - |  6786 | ` */` |
+|    38 |  6787 | `DOM_METHOD(vm_builtin_DOMXPath_quote)` |
+|     1 |  6788 | `{` |
+|    39 |  6789 | `	int nStr = 0;` |
+|    39 |  6790 | `	const char *zStr = nArg > 0 ? ph7_value_to_string(apArg[0],&nStr) : "";` |
+|    39 |  6791 | `	int bSq = 0,bDq = 0,i;` |
+|     - |  6792 | `	SyBlob sOut;` |
+|   225 |  6793 | `	for( i = 0 ; i < nStr ; ++i ){` |
+|   187 |  6794 | `		if( zStr[i] == '\'' ){` |
+|    29 |  6795 | `			bSq = 1;` |
+|   173 |  6796 | `		}else if( zStr[i] == '"' ){` |
+|    27 |  6797 | `			bDq = 1;` |
+|    13 |  6798 | `		}` |
+|    94 |  6799 | `	}` |
+|    39 |  6800 | `	if( !bSq ){` |
+|    17 |  6801 | `		ph7_result_string_format(pCtx,"'%.*s'",nStr,zStr);` |
+|    17 |  6802 | `		return PH7_OK;` |
+|     - |  6803 | `	}` |
+|    23 |  6804 | `	if( !bDq ){` |
+|     9 |  6805 | `		ph7_result_string_format(pCtx,"\"%.*s\"",nStr,zStr);` |
+|     9 |  6806 | `		return PH7_OK;` |
+|     - |  6807 | `	}` |
+|    15 |  6808 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|    15 |  6809 | `	SyBlobAppend(&sOut,"concat(",sizeof("concat(")-1);` |
+|    15 |  6810 | `	i = 0;` |
+|    49 |  6811 | `	while( i < nStr ){` |
+|     - |  6812 | `		/* Whichever quote kind appears FIRST in what is left decides the run:` |
+|     - |  6813 | `		 * the run is wrapped in the OTHER kind and reaches to that first` |
+|     - |  6814 | `		 * occurrence, so it swallows every quote of the kind it is not wrapped` |
+|     - |  6815 | ``		 * in. `a'b"c'd"e` is four runs that way, and `0"&'<` is two -- the`` |
+|     - |  6816 | `		 * first single-quoted, because its first quote character is the double` |
+|     - |  6817 | `		 * one. */` |
+|    35 |  6818 | `		int iStart = i,j;` |
+|    35 |  6819 | `		char cQuote = '"';` |
+|    57 |  6820 | `		for( j = i ; j < nStr ; ++j ){` |
+|    57 |  6821 | `			if( zStr[j] == '\'' \|\| zStr[j] == '"' ){` |
+|    35 |  6822 | `				cQuote = zStr[j] == '"' ? '\'' : '"';` |
+|    35 |  6823 | `				break;` |
+|     - |  6824 | `			}` |
+|    12 |  6825 | `		}` |
+|   123 |  6826 | `		while( i < nStr && zStr[i] != cQuote ){` |
+|    89 |  6827 | `			i++;` |
+|     1 |  6828 | `		}` |
+|    35 |  6829 | `		if( iStart > 0 ){` |
+|    21 |  6830 | `			SyBlobAppend(&sOut,",",1);` |
+|    10 |  6831 | `		}` |
+|    35 |  6832 | `		SyBlobAppend(&sOut,&cQuote,1);` |
+|    35 |  6833 | `		SyBlobAppend(&sOut,zStr + iStart,(sxu32)(i - iStart));` |
+|    35 |  6834 | `		SyBlobAppend(&sOut,&cQuote,1);` |
+|     1 |  6835 | `	}` |
+|    15 |  6836 | `	SyBlobAppend(&sOut,")",1);` |
+|    15 |  6837 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|    15 |  6838 | `	SyBlobRelease(&sOut);` |
+|    15 |  6839 | `	return PH7_OK;` |
+|    20 |  6840 | `}` |
+|     - |  6841 |  |
+|     - |  6842 | `/* ===== The PHP-function bridge (php:function / php:functionString / own-URI) ===== */` |
+|     - |  6843 |  |
+|     - |  6844 | ``/* php's reserved URI: `php:function()` is reached through whatever PREFIX the`` |
+|     - |  6845 | ` * caller bound to it, so every lookup here is by URI. */` |
+|     - |  6846 | `#define XP_PHPNS "http://php.net/xpath"` |
+|     - |  6847 | `/* Which callables an evaluation may reach: php's register_phpfunctions. */` |
+|     - |  6848 | `#define XP_MODE_NONE   0   /* registerPhpFunctions() never called -- nothing runs */` |
+|     - |  6849 | `#define XP_MODE_ALL    1   /* called bare -- any callable name runs */` |
+|     - |  6850 | `#define XP_MODE_LIST   2   /* called with a restriction -- the table below decides */` |
+|     - |  6851 | `#define XP_FNMODE "__fnmode"` |
+|     - |  6852 | `#define XP_FNREG  "__fnreg"    /* restricted: xpath name => the callable to run */` |
+|     - |  6853 | `#define XP_NSFN   "__nsfn"     /* own-URI: "<uri>\x01<name>" => callable */` |
+|   108 |  6854 | `static ph7_hashmap * DomXPathSlotMap(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)` |
+|     1 |  6855 | `{` |
+|   109 |  6856 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;` |
+|   109 |  6857 | `	if( pSlot == 0 ){` |
+|   ! 0 |  6858 | `		return 0;` |
+|     - |  6859 | `	}` |
+|   109 |  6860 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|    43 |  6861 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
+|   ! 0 |  6862 | `			return 0;` |
+|     - |  6863 | `		}` |
+|    21 |  6864 | `	}` |
+|   109 |  6865 | `	return PH7_HashmapCowSeparate(&(*pVm),pSlot);` |
+|    55 |  6866 | `}` |
+|     - |  6867 | `/* Insert (or replace) one string-keyed entry. */` |
+|    26 |  6868 | `static void DomXPathMapPut(ph7_vm *pVm,ph7_hashmap *pMap,const char *zKey,int nKey,ph7_value *pVal)` |
 |     1 |  6869 | `{` |
-|    43 |  6870 | `	ph7_hashmap *pMap = DomXPathSlotMap(&(*pVm),pThis,zSlot);` |
-|    43 |  6871 | `	ph7_hashmap_node *pEntry = 0;` |
-|     - |  6872 | `	ph7_value sKey,*pHit;` |
-|    43 |  6873 | `	if( pMap == 0 ){` |
-|   ! 0 |  6874 | `		return 0;` |
-|     - |  6875 | `	}` |
-|    43 |  6876 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
-|    43 |  6877 | `	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);` |
-|    43 |  6878 | `	if( PH7_HashmapLookup(pMap,&sKey,&pEntry) != SXRET_OK ){` |
-|     9 |  6879 | `		pEntry = 0;` |
-|     4 |  6880 | `	}` |
-|    43 |  6881 | `	PH7_MemObjRelease(&sKey);` |
-|    43 |  6882 | `	pHit = pEntry ? HashmapExtractNodeValue(pEntry) : 0;` |
-|    43 |  6883 | `	return pHit;` |
-|    22 |  6884 | `}` |
-|     - |  6885 | `/*` |
-|     - |  6886 | ` * What one evaluation needs to reach PHP from inside libxml, and what it` |
-|     - |  6887 | ` * brings BACK.` |
-|     - |  6888 | ` *` |
-|     - |  6889 | ` * The bringing back is the whole design problem: a refusal raised from the` |
-|     - |  6890 | ` * callback would run the enclosing catch RIGHT THERE, in the middle of` |
-|     - |  6891 | ` * libxml's own recursion (the builtin-throw rail), so nothing is raised here.` |
-|     - |  6892 | ` * The reason is PARKED -- a code and the name it quotes -- the evaluation is` |
-|     - |  6893 | ` * stopped by setting the parser's error field (not xmlXPathErr, which would` |
-|     - |  6894 | ` * queue a libxml diagnostic php does not print), and DomXPathEvalRun raises` |
-|     - |  6895 | ` * once libxml has unwound. A throw from the CALLBACK ITSELF is the same` |
-|     - |  6896 | ` * story one level up: its dispatch status is parked in rcUnwound and returned` |
-|     - |  6897 | `` * from the method verbatim, which is what makes `php:function("boom") or`` |
-|     - |  6898 | `` * php:function("after")` run neither the `or` arm nor anything past it --`` |
-|     - |  6899 | ` * php's answer.` |
-|     - |  6900 | ` */` |
-|     - |  6901 | `#define XP_FN_OK        0` |
-|     - |  6902 | `#define XP_FN_NOREG     1   /* registerPhpFunctions() was never called */` |
-|     - |  6903 | `#define XP_FN_NOHANDLER 2   /* restricted, and this name is not in the table */` |
-|     - |  6904 | `#define XP_FN_NOTSTR    3   /* the handler name argument is not a string */` |
-|     - |  6905 | `#define XP_FN_NONAME    4   /* php:function() with no arguments at all */` |
-|     - |  6906 | `#define XP_FN_BADCB     5   /* the name is not callable */` |
-|     - |  6907 | `#define XP_FN_NOTNODE   6   /* the callback answered an object that is not a node */` |
-|     - |  6908 | `typedef struct DomXPathFnCtx DomXPathFnCtx;` |
-|     - |  6909 | `struct DomXPathFnCtx {` |
-|     - |  6910 | `	ph7_context *pCtx;            /* the method's own call context */` |
-|     - |  6911 | `	ph7_class_instance *pThis;    /* the DOMXPath */` |
-|     - |  6912 | `	ph7_class_instance *pDoc;     /* its document object (where wrappers cache) */` |
-|     - |  6913 | `	phl_domnode *pDocNd;` |
-|     - |  6914 | `	int iErr;                     /* XP_FN_* -- raised after libxml unwinds */` |
-|     - |  6915 | `	SyBlob sErrName;              /* the name that refusal quotes */` |
-|     - |  6916 | `	sxi32 rcUnwound;              /* a callback that did not return */` |
-|     - |  6917 | `};` |
-|     - |  6918 | `/* Stop the evaluation without emitting a libxml diagnostic. */` |
-|    22 |  6919 | `static void DomXPathFnStop(xmlXPathParserContextPtr pPCtx,DomXPathFnCtx *pFn,int iErr,` |
-|     - |  6920 | `	const char *zName,int nName)` |
-|     1 |  6921 | `{` |
-|    23 |  6922 | `	if( pFn->iErr == XP_FN_OK ){` |
-|    23 |  6923 | `		pFn->iErr = iErr;` |
-|    23 |  6924 | `		SyBlobReset(&pFn->sErrName);` |
-|    23 |  6925 | `		if( zName && nName > 0 ){` |
-|    11 |  6926 | `			SyBlobAppend(&pFn->sErrName,zName,(sxu32)nName);` |
-|     5 |  6927 | `		}` |
-|    11 |  6928 | `	}` |
-|    23 |  6929 | `	pPCtx->error = XPATH_EXPR_ERROR;` |
-|    23 |  6930 | `}` |
-|     - |  6931 | `/*` |
-|     - |  6932 | ` * What a callback that did not RETURN leaves behind, which php's two` |
-|     - |  6933 | ` * dispatchers do differently and both visibly.` |
-|     - |  6934 | ` *` |
-|     - |  6935 | ` * The one that looks a callable up in a REGISTERED table -- restricted` |
-|     - |  6936 | ` * php:function, and every own-URI name -- returns without pushing, and libxml,` |
-|     - |  6937 | ` * finding its value stack one short, queues its own "Stack usage error" before` |
-|     - |  6938 | ` * unwinding; that entry is then on the list libxml_get_errors() answers. The` |
-|     - |  6939 | ` * UNRESTRICTED php:function path pushes a value first, so its queue stays` |
-|     - |  6940 | ` * clean. Either way the exception is the answer, and nothing further of the` |
-|     - |  6941 | ` * expression runs.` |
-|     - |  6942 | ` */` |
-|     2 |  6943 | `static void DomXPathFnUnwound(xmlXPathParserContextPtr pPCtx,int bRegistered)` |
-|     1 |  6944 | `{` |
-|     3 |  6945 | `	if( !bRegistered ){` |
-|     3 |  6946 | `		valuePush(pPCtx,xmlXPathNewCString(""));` |
-|     3 |  6947 | `		pPCtx->error = XPATH_EXPR_ERROR;` |
-|     1 |  6948 | `	}` |
-|     3 |  6949 | `}` |
-|     - |  6950 | `/* One XPath argument as php sees it: a nodeset becomes an ARRAY of wrappers` |
-|     - |  6951 | ` * (php's own conversion), the three scalars their php types. bAsString is` |
-|     - |  6952 | ` * php:functionString's flag, under which a nodeset arrives as its string` |
-|     - |  6953 | ` * value instead. */` |
-|    58 |  6954 | `static void DomXPathArgToValue(DomXPathFnCtx *pFn,xmlXPathObjectPtr pArg,int bAsString,` |
-|     - |  6955 | `	ph7_value *pOut)` |
-|     1 |  6956 | `{` |
-|    59 |  6957 | `	ph7_vm *pVm = pFn->pCtx->pVm;` |
-|    59 |  6958 | `	if( pArg == 0 ){` |
-|   ! 0 |  6959 | `		PH7_MemObjInit(pVm,pOut);` |
-|   ! 0 |  6960 | `		return;` |
-|     - |  6961 | `	}` |
-|    59 |  6962 | `	if( pArg->type == XPATH_NODESET && !bAsString ){` |
-|     - |  6963 | `		/* The array is built on its OWN reference rather than the method's call` |
-|     - |  6964 | `		 * context: a predicate calls this once per node, and a context-owned` |
-|     - |  6965 | `		 * one would live until the whole evaluation ended. */` |
-|     9 |  6966 | `		ph7_hashmap *pMap = PH7_NewHashmap(pVm,0,0);` |
-|     - |  6967 | `		int i;` |
-|     9 |  6968 | `		PH7_MemObjInit(pVm,pOut);` |
-|     9 |  6969 | `		if( pMap == 0 ){` |
-|   ! 0 |  6970 | `			return;` |
-|     - |  6971 | `		}` |
-|     - |  6972 | `		/* pOut CARRIES the map's only reference, and the caller's release of` |
-|     - |  6973 | `		 * it after the call is what frees it. */` |
-|     9 |  6974 | `		pOut->x.pOther = pMap;` |
-|     9 |  6975 | `		pOut->iFlags = MEMOBJ_HASHMAP;` |
-|    21 |  6976 | `		for( i = 0 ; pArg->nodesetval && i < pArg->nodesetval->nodeNr ; ++i ){` |
-|    13 |  6977 | `			xmlNodePtr pNode = pArg->nodesetval->nodeTab[i];` |
-|     - |  6978 | `			ph7_value sElem;` |
-|     - |  6979 | `			ph7_class_instance *pObj;` |
-|    13 |  6980 | `			if( pNode == 0 ){` |
-|   ! 0 |  6981 | `				continue;` |
-|     - |  6982 | `			}` |
-|    13 |  6983 | `			if( pNode->type == XML_NAMESPACE_DECL ){` |
-|   ! 0 |  6984 | `				xmlNsPtr pNs = (xmlNsPtr)pNode;` |
-|   ! 0 |  6985 | `				xmlNodePtr pElem = (xmlNodePtr)pNs->next;` |
-|   ! 0 |  6986 | `				xmlNsPtr pOrig = (pElem && pElem->type == XML_ELEMENT_NODE)` |
-|   ! 0 |  6987 | `					? xmlSearchNs((xmlDocPtr)pFn->pDocNd->pNode,pElem,pNs->prefix) : 0;` |
-|   ! 0 |  6988 | `				if( pOrig == 0 ){` |
-|   ! 0 |  6989 | `					continue;` |
-|     - |  6990 | `				}` |
-|   ! 0 |  6991 | `				pObj = DomNewNsNode(pVm,pFn->pDoc,pFn->pDocNd->pShell,pOrig,pElem);` |
-|   ! 0 |  6992 | `				if( pObj == 0 ){` |
-|   ! 0 |  6993 | `					continue;` |
-|     - |  6994 | `				}` |
-|   ! 0 |  6995 | `				PH7_MemObjInit(pVm,&sElem);` |
-|   ! 0 |  6996 | `				sElem.x.pOther = pObj;` |
-|   ! 0 |  6997 | `				sElem.iFlags = MEMOBJ_OBJ;` |
-|   ! 0 |  6998 | `				ph7_array_add_elem(pOut,0,&sElem);   /* takes its own reference */` |
-|   ! 0 |  6999 | `				PH7_ClassInstanceUnref(pObj);        /* ...and ours goes back */` |
-|   ! 0 |  7000 | `				continue;` |
-|     - |  7001 | `			}` |
-|    13 |  7002 | `			pObj = DomWrap(pVm,pFn->pDoc,pFn->pDocNd->pShell,pNode);` |
-|    13 |  7003 | `			if( pObj == 0 ){` |
-|   ! 0 |  7004 | `				continue;` |
-|     - |  7005 | `			}` |
-|    13 |  7006 | `			PH7_MemObjInit(pVm,&sElem);` |
-|    13 |  7007 | `			sElem.x.pOther = pObj;   /* BORROWED from the cache; the insert refs it */` |
-|    13 |  7008 | `			sElem.iFlags = MEMOBJ_OBJ;` |
-|    13 |  7009 | `			ph7_array_add_elem(pOut,0,&sElem);` |
-|     7 |  7010 | `		}` |
-|     9 |  7011 | `		return;` |
-|     - |  7012 | `	}` |
-|    51 |  7013 | `	switch( pArg->type ){` |
-|     3 |  7014 | `	case XPATH_BOOLEAN:` |
-|     7 |  7015 | `		PH7_MemObjInitFromBool(pVm,pOut,pArg->boolval);` |
-|     7 |  7016 | `		break;` |
-|     2 |  7017 | `	case XPATH_NUMBER:` |
-|     5 |  7018 | `		PH7_MemObjInitFromReal(pVm,pOut,pArg->floatval);` |
-|     5 |  7019 | `		break;` |
-|    20 |  7020 | `	default: {` |
-|    41 |  7021 | `		xmlChar *zStr = xmlXPathCastToString(pArg);` |
-|    41 |  7022 | `		PH7_MemObjInitFromString(pVm,pOut,0);` |
-|    41 |  7023 | `		if( zStr ){` |
-|    41 |  7024 | `			PH7_MemObjStringAppend(pOut,(const char *)zStr,(sxu32)SyStrlen((const char *)zStr));` |
-|    41 |  7025 | `			xmlFree(zStr);` |
-|    20 |  7026 | `		}` |
-|    40 |  7027 | `		break;` |
-|     - |  7028 | `	}` |
-|     - |  7029 | `	}` |
-|    30 |  7030 | `}` |
-|     - |  7031 | `/* The callback's ANSWER, pushed back on the XPath stack: a bool stays a` |
-|     - |  7032 | ` * boolean, a DOM node becomes a one-node set, and everything else is php's` |
-|     - |  7033 | ` * string conversion -- the SAME three for both spellings, since` |
-|     - |  7034 | ` * functionString's flag is about the ARGUMENTS. The conversion is the` |
-|     - |  7035 | ` * user-visible one (an array draws php's "Array to string conversion" notice` |
-|     - |  7036 | ` * and reads "Array"); a non-node object is the TypeError parked above. */` |
-|    58 |  7037 | `static void DomXPathPushResult(xmlXPathParserContextPtr pPCtx,DomXPathFnCtx *pFn,` |
-|     - |  7038 | `	ph7_value *pRes)` |
-|     1 |  7039 | `{` |
-|    59 |  7040 | `	if( (pRes->iFlags & MEMOBJ_BOOL) && (pRes->iFlags & MEMOBJ_STRING) == 0 ){` |
-|     3 |  7041 | `		valuePush(pPCtx,xmlXPathNewBoolean(pRes->x.iVal != 0));` |
-|     3 |  7042 | `		return;` |
-|     - |  7043 | `	}` |
-|    57 |  7044 | `	if( pRes->iFlags & MEMOBJ_OBJ ){` |
-|     7 |  7045 | `		ph7_class_instance *pObj = (ph7_class_instance *)pRes->x.pOther;` |
-|     7 |  7046 | `		phl_domnode *pNd = DomResOf(pObj);` |
-|     7 |  7047 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|     7 |  7048 | `		if( pNode == 0 \|\| pNode->type == XML_NAMESPACE_DECL ){` |
-|     5 |  7049 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NOTNODE,0,0);` |
-|     5 |  7050 | `			return;` |
-|     - |  7051 | `		}` |
-|     3 |  7052 | `		valuePush(pPCtx,xmlXPathNewNodeSet(pNode));` |
-|     3 |  7053 | `		return;` |
-|     - |  7054 | `	}` |
-|     - |  7055 | `	{` |
-|    51 |  7056 | `		int nStr = 0;` |
-|     - |  7057 | `		const char *zStr;` |
-|     - |  7058 | `		xmlChar *zDup;` |
-|    51 |  7059 | `		if( (pRes->iFlags & MEMOBJ_STRING) == 0 ){` |
-|    17 |  7060 | `			sxi32 rcStr = PH7_MemObjToStringUV(pRes);` |
-|    17 |  7061 | `			if( PH7_CALLBACK_UNWOUND(rcStr) ){` |
-|     - |  7062 | `				/* A __toString() that threw: the same rail as the callback's` |
-|     - |  7063 | `				 * own throw, one conversion later. */` |
-|   ! 0 |  7064 | `				pFn->rcUnwound = rcStr;` |
-|   ! 0 |  7065 | `				return;` |
-|     - |  7066 | `			}` |
-|     8 |  7067 | `		}` |
-|    51 |  7068 | `		zStr = ph7_value_to_string(pRes,&nStr);` |
-|    51 |  7069 | `		zDup = xmlStrndup((const xmlChar *)zStr,nStr);` |
-|    51 |  7070 | `		valuePush(pPCtx,xmlXPathWrapString(zDup));` |
-|     - |  7071 | `	}` |
-|    30 |  7072 | `}` |
-|     - |  7073 | `/*` |
-|     - |  7074 | ` * The one C function behind every PHP-backed XPath name. libxml reaches it` |
-|     - |  7075 | ` * through the lookup below, with the called name and URI on the context.` |
-|     - |  7076 | ` */` |
-|    78 |  7077 | `static void DomXPathPhpFn(xmlXPathParserContextPtr pPCtx,int nArgs)` |
-|     1 |  7078 | `{` |
-|    79 |  7079 | `	xmlXPathContextPtr pXCtx = pPCtx ? pPCtx->context : 0;` |
-|    79 |  7080 | `	DomXPathFnCtx *pFn = pXCtx ? (DomXPathFnCtx *)pXCtx->funcLookupData : 0;` |
-|    79 |  7081 | `	const xmlChar *zFn = pXCtx ? pXCtx->function : 0;` |
-|    79 |  7082 | `	const xmlChar *zUri = pXCtx ? pXCtx->functionURI : 0;` |
-|    79 |  7083 | `	int bPhpNs = zUri && xmlStrEqual(zUri,(const xmlChar *)XP_PHPNS);` |
-|    79 |  7084 | `	int bAsString = bPhpNs && zFn && xmlStrEqual(zFn,(const xmlChar *)"functionString");` |
-|    79 |  7085 | `	int bRegistered = !bPhpNs;   /* a table lookup rather than the name itself */` |
-|     - |  7086 | `	xmlXPathObjectPtr *apArg;` |
-|    79 |  7087 | `	ph7_value *apVal = 0,sResult,sName;` |
-|    79 |  7088 | `	ph7_value *pCallable = 0;` |
-|    79 |  7089 | `	int bNameOwned = 0;` |
-|     - |  7090 | `	ph7_vm *pVm;` |
-|    79 |  7091 | `	int nSkip = bPhpNs ? 1 : 0;   /* php:function's first argument NAMES the callback */` |
-|     - |  7092 | `	int i,nCall;` |
-|     - |  7093 | `	sxi32 rc;` |
-|    79 |  7094 | `	if( pFn == 0 ){` |
-|   ! 0 |  7095 | `		return;` |
-|     - |  7096 | `	}` |
-|    79 |  7097 | `	pVm = pFn->pCtx->pVm;` |
-|     - |  7098 | `	/* Take the arguments off the stack FIRST (valuePop answers them last-first),` |
-|     - |  7099 | `	 * so every exit below leaves libxml's stack where it found it. */` |
-|    79 |  7100 | `	apArg = nArgs > 0` |
-|   114 |  7101 | `		? (xmlXPathObjectPtr *)SyMemBackendAlloc(&pVm->sAllocator,` |
-|    76 |  7102 | `			sizeof(xmlXPathObjectPtr) * (sxu32)nArgs)` |
-|    39 |  7103 | `		: 0;` |
-|    79 |  7104 | `	if( nArgs > 0 && apArg == 0 ){` |
-|   ! 0 |  7105 | `		pPCtx->error = XPATH_MEMORY_ERROR;` |
-|   ! 0 |  7106 | `		return;` |
-|     - |  7107 | `	}` |
-|   215 |  7108 | `	for( i = nArgs - 1 ; i >= 0 ; --i ){` |
-|   137 |  7109 | `		apArg[i] = valuePop(pPCtx);` |
-|    69 |  7110 | `	}` |
-|    79 |  7111 | `	if( pFn->iErr != XP_FN_OK \|\| pFn->rcUnwound != 0 ){` |
-|   ! 0 |  7112 | `		goto done;   /* a previous call already stopped this evaluation */` |
-|     - |  7113 | `	}` |
-|    79 |  7114 | `	if( bPhpNs ){` |
-|    69 |  7115 | `		int nName = 0;` |
-|     - |  7116 | `		const char *zName;` |
-|    69 |  7117 | `		sxi64 iMode = PH7_NativeAttrInt(pFn->pThis,XP_FNMODE);` |
-|    69 |  7118 | `		if( nArgs < 1 ){` |
-|     3 |  7119 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NONAME,0,0);` |
-|     3 |  7120 | `			goto done;` |
-|     - |  7121 | `		}` |
-|    67 |  7122 | `		if( apArg[0] == 0 \|\| apArg[0]->type != XPATH_STRING ){` |
-|     3 |  7123 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NOTSTR,0,0);` |
-|     3 |  7124 | `			goto done;` |
-|     - |  7125 | `		}` |
-|    65 |  7126 | `		zName = apArg[0]->stringval ? (const char *)apArg[0]->stringval : "";` |
-|    65 |  7127 | `		nName = (int)SyStrlen(zName);` |
-|    65 |  7128 | `		if( iMode == XP_MODE_NONE ){` |
-|     5 |  7129 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NOREG,0,0);` |
-|     5 |  7130 | `			goto done;` |
+|     - |  6870 | `	ph7_value sKey;` |
+|    27 |  6871 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
+|    27 |  6872 | `	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);` |
+|    27 |  6873 | `	PH7_HashmapInsert(pMap,&sKey,pVal);` |
+|    27 |  6874 | `	PH7_MemObjRelease(&sKey);` |
+|    27 |  6875 | `}` |
+|     - |  6876 | `/* ...and the matching read, or NULL. The value BELONGS to the map. */` |
+|    42 |  6877 | `static ph7_value * DomXPathMapGet(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,` |
+|     - |  6878 | `	const char *zKey,int nKey)` |
+|     1 |  6879 | `{` |
+|    43 |  6880 | `	ph7_hashmap *pMap = DomXPathSlotMap(&(*pVm),pThis,zSlot);` |
+|    43 |  6881 | `	ph7_hashmap_node *pEntry = 0;` |
+|     - |  6882 | `	ph7_value sKey,*pHit;` |
+|    43 |  6883 | `	if( pMap == 0 ){` |
+|   ! 0 |  6884 | `		return 0;` |
+|     - |  6885 | `	}` |
+|    43 |  6886 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
+|    43 |  6887 | `	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);` |
+|    43 |  6888 | `	if( PH7_HashmapLookup(pMap,&sKey,&pEntry) != SXRET_OK ){` |
+|     9 |  6889 | `		pEntry = 0;` |
+|     4 |  6890 | `	}` |
+|    43 |  6891 | `	PH7_MemObjRelease(&sKey);` |
+|    43 |  6892 | `	pHit = pEntry ? HashmapExtractNodeValue(pEntry) : 0;` |
+|    43 |  6893 | `	return pHit;` |
+|    22 |  6894 | `}` |
+|     - |  6895 | `/*` |
+|     - |  6896 | ` * What one evaluation needs to reach PHP from inside libxml, and what it` |
+|     - |  6897 | ` * brings BACK.` |
+|     - |  6898 | ` *` |
+|     - |  6899 | ` * The bringing back is the whole design problem: a refusal raised from the` |
+|     - |  6900 | ` * callback would run the enclosing catch RIGHT THERE, in the middle of` |
+|     - |  6901 | ` * libxml's own recursion (the builtin-throw rail), so nothing is raised here.` |
+|     - |  6902 | ` * The reason is PARKED -- a code and the name it quotes -- the evaluation is` |
+|     - |  6903 | ` * stopped by setting the parser's error field (not xmlXPathErr, which would` |
+|     - |  6904 | ` * queue a libxml diagnostic php does not print), and DomXPathEvalRun raises` |
+|     - |  6905 | ` * once libxml has unwound. A throw from the CALLBACK ITSELF is the same` |
+|     - |  6906 | ` * story one level up: its dispatch status is parked in rcUnwound and returned` |
+|     - |  6907 | `` * from the method verbatim, which is what makes `php:function("boom") or`` |
+|     - |  6908 | `` * php:function("after")` run neither the `or` arm nor anything past it --`` |
+|     - |  6909 | ` * php's answer.` |
+|     - |  6910 | ` */` |
+|     - |  6911 | `#define XP_FN_OK        0` |
+|     - |  6912 | `#define XP_FN_NOREG     1   /* registerPhpFunctions() was never called */` |
+|     - |  6913 | `#define XP_FN_NOHANDLER 2   /* restricted, and this name is not in the table */` |
+|     - |  6914 | `#define XP_FN_NOTSTR    3   /* the handler name argument is not a string */` |
+|     - |  6915 | `#define XP_FN_NONAME    4   /* php:function() with no arguments at all */` |
+|     - |  6916 | `#define XP_FN_BADCB     5   /* the name is not callable */` |
+|     - |  6917 | `#define XP_FN_NOTNODE   6   /* the callback answered an object that is not a node */` |
+|     - |  6918 | `typedef struct DomXPathFnCtx DomXPathFnCtx;` |
+|     - |  6919 | `struct DomXPathFnCtx {` |
+|     - |  6920 | `	ph7_context *pCtx;            /* the method's own call context */` |
+|     - |  6921 | `	ph7_class_instance *pThis;    /* the DOMXPath */` |
+|     - |  6922 | `	ph7_class_instance *pDoc;     /* its document object (where wrappers cache) */` |
+|     - |  6923 | `	phl_domnode *pDocNd;` |
+|     - |  6924 | `	int iErr;                     /* XP_FN_* -- raised after libxml unwinds */` |
+|     - |  6925 | `	SyBlob sErrName;              /* the name that refusal quotes */` |
+|     - |  6926 | `	sxi32 rcUnwound;              /* a callback that did not return */` |
+|     - |  6927 | `};` |
+|     - |  6928 | `/* Stop the evaluation without emitting a libxml diagnostic. */` |
+|    22 |  6929 | `static void DomXPathFnStop(xmlXPathParserContextPtr pPCtx,DomXPathFnCtx *pFn,int iErr,` |
+|     - |  6930 | `	const char *zName,int nName)` |
+|     1 |  6931 | `{` |
+|    23 |  6932 | `	if( pFn->iErr == XP_FN_OK ){` |
+|    23 |  6933 | `		pFn->iErr = iErr;` |
+|    23 |  6934 | `		SyBlobReset(&pFn->sErrName);` |
+|    23 |  6935 | `		if( zName && nName > 0 ){` |
+|    11 |  6936 | `			SyBlobAppend(&pFn->sErrName,zName,(sxu32)nName);` |
+|     5 |  6937 | `		}` |
+|    11 |  6938 | `	}` |
+|    23 |  6939 | `	pPCtx->error = XPATH_EXPR_ERROR;` |
+|    23 |  6940 | `}` |
+|     - |  6941 | `/*` |
+|     - |  6942 | ` * What a callback that did not RETURN leaves behind, which php's two` |
+|     - |  6943 | ` * dispatchers do differently and both visibly.` |
+|     - |  6944 | ` *` |
+|     - |  6945 | ` * The one that looks a callable up in a REGISTERED table -- restricted` |
+|     - |  6946 | ` * php:function, and every own-URI name -- returns without pushing, and libxml,` |
+|     - |  6947 | ` * finding its value stack one short, queues its own "Stack usage error" before` |
+|     - |  6948 | ` * unwinding; that entry is then on the list libxml_get_errors() answers. The` |
+|     - |  6949 | ` * UNRESTRICTED php:function path pushes a value first, so its queue stays` |
+|     - |  6950 | ` * clean. Either way the exception is the answer, and nothing further of the` |
+|     - |  6951 | ` * expression runs.` |
+|     - |  6952 | ` */` |
+|     2 |  6953 | `static void DomXPathFnUnwound(xmlXPathParserContextPtr pPCtx,int bRegistered)` |
+|     1 |  6954 | `{` |
+|     3 |  6955 | `	if( !bRegistered ){` |
+|     3 |  6956 | `		valuePush(pPCtx,xmlXPathNewCString(""));` |
+|     3 |  6957 | `		pPCtx->error = XPATH_EXPR_ERROR;` |
+|     1 |  6958 | `	}` |
+|     3 |  6959 | `}` |
+|     - |  6960 | `/* One XPath argument as php sees it: a nodeset becomes an ARRAY of wrappers` |
+|     - |  6961 | ` * (php's own conversion), the three scalars their php types. bAsString is` |
+|     - |  6962 | ` * php:functionString's flag, under which a nodeset arrives as its string` |
+|     - |  6963 | ` * value instead. */` |
+|    58 |  6964 | `static void DomXPathArgToValue(DomXPathFnCtx *pFn,xmlXPathObjectPtr pArg,int bAsString,` |
+|     - |  6965 | `	ph7_value *pOut)` |
+|     1 |  6966 | `{` |
+|    59 |  6967 | `	ph7_vm *pVm = pFn->pCtx->pVm;` |
+|    59 |  6968 | `	if( pArg == 0 ){` |
+|   ! 0 |  6969 | `		PH7_MemObjInit(pVm,pOut);` |
+|   ! 0 |  6970 | `		return;` |
+|     - |  6971 | `	}` |
+|    59 |  6972 | `	if( pArg->type == XPATH_NODESET && !bAsString ){` |
+|     - |  6973 | `		/* The array is built on its OWN reference rather than the method's call` |
+|     - |  6974 | `		 * context: a predicate calls this once per node, and a context-owned` |
+|     - |  6975 | `		 * one would live until the whole evaluation ended. */` |
+|     9 |  6976 | `		ph7_hashmap *pMap = PH7_NewHashmap(pVm,0,0);` |
+|     - |  6977 | `		int i;` |
+|     9 |  6978 | `		PH7_MemObjInit(pVm,pOut);` |
+|     9 |  6979 | `		if( pMap == 0 ){` |
+|   ! 0 |  6980 | `			return;` |
+|     - |  6981 | `		}` |
+|     - |  6982 | `		/* pOut CARRIES the map's only reference, and the caller's release of` |
+|     - |  6983 | `		 * it after the call is what frees it. */` |
+|     9 |  6984 | `		pOut->x.pOther = pMap;` |
+|     9 |  6985 | `		pOut->iFlags = MEMOBJ_HASHMAP;` |
+|    21 |  6986 | `		for( i = 0 ; pArg->nodesetval && i < pArg->nodesetval->nodeNr ; ++i ){` |
+|    13 |  6987 | `			xmlNodePtr pNode = pArg->nodesetval->nodeTab[i];` |
+|     - |  6988 | `			ph7_value sElem;` |
+|     - |  6989 | `			ph7_class_instance *pObj;` |
+|    13 |  6990 | `			if( pNode == 0 ){` |
+|   ! 0 |  6991 | `				continue;` |
+|     - |  6992 | `			}` |
+|    13 |  6993 | `			if( pNode->type == XML_NAMESPACE_DECL ){` |
+|   ! 0 |  6994 | `				xmlNsPtr pNs = (xmlNsPtr)pNode;` |
+|   ! 0 |  6995 | `				xmlNodePtr pElem = (xmlNodePtr)pNs->next;` |
+|   ! 0 |  6996 | `				xmlNsPtr pOrig = (pElem && pElem->type == XML_ELEMENT_NODE)` |
+|   ! 0 |  6997 | `					? xmlSearchNs((xmlDocPtr)pFn->pDocNd->pNode,pElem,pNs->prefix) : 0;` |
+|   ! 0 |  6998 | `				if( pOrig == 0 ){` |
+|   ! 0 |  6999 | `					continue;` |
+|     - |  7000 | `				}` |
+|   ! 0 |  7001 | `				pObj = DomNewNsNode(pVm,pFn->pDoc,pFn->pDocNd->pShell,pOrig,pElem);` |
+|   ! 0 |  7002 | `				if( pObj == 0 ){` |
+|   ! 0 |  7003 | `					continue;` |
+|     - |  7004 | `				}` |
+|   ! 0 |  7005 | `				PH7_MemObjInit(pVm,&sElem);` |
+|   ! 0 |  7006 | `				sElem.x.pOther = pObj;` |
+|   ! 0 |  7007 | `				sElem.iFlags = MEMOBJ_OBJ;` |
+|   ! 0 |  7008 | `				ph7_array_add_elem(pOut,0,&sElem);   /* takes its own reference */` |
+|   ! 0 |  7009 | `				PH7_ClassInstanceUnref(pObj);        /* ...and ours goes back */` |
+|   ! 0 |  7010 | `				continue;` |
+|     - |  7011 | `			}` |
+|    13 |  7012 | `			pObj = DomWrap(pVm,pFn->pDoc,pFn->pDocNd->pShell,pNode);` |
+|    13 |  7013 | `			if( pObj == 0 ){` |
+|   ! 0 |  7014 | `				continue;` |
+|     - |  7015 | `			}` |
+|    13 |  7016 | `			PH7_MemObjInit(pVm,&sElem);` |
+|    13 |  7017 | `			sElem.x.pOther = pObj;   /* BORROWED from the cache; the insert refs it */` |
+|    13 |  7018 | `			sElem.iFlags = MEMOBJ_OBJ;` |
+|    13 |  7019 | `			ph7_array_add_elem(pOut,0,&sElem);` |
+|     7 |  7020 | `		}` |
+|     9 |  7021 | `		return;` |
+|     - |  7022 | `	}` |
+|    51 |  7023 | `	switch( pArg->type ){` |
+|     3 |  7024 | `	case XPATH_BOOLEAN:` |
+|     7 |  7025 | `		PH7_MemObjInitFromBool(pVm,pOut,pArg->boolval);` |
+|     7 |  7026 | `		break;` |
+|     2 |  7027 | `	case XPATH_NUMBER:` |
+|     5 |  7028 | `		PH7_MemObjInitFromReal(pVm,pOut,pArg->floatval);` |
+|     5 |  7029 | `		break;` |
+|    20 |  7030 | `	default: {` |
+|    41 |  7031 | `		xmlChar *zStr = xmlXPathCastToString(pArg);` |
+|    41 |  7032 | `		PH7_MemObjInitFromString(pVm,pOut,0);` |
+|    41 |  7033 | `		if( zStr ){` |
+|    41 |  7034 | `			PH7_MemObjStringAppend(pOut,(const char *)zStr,(sxu32)SyStrlen((const char *)zStr));` |
+|    41 |  7035 | `			xmlFree(zStr);` |
+|    20 |  7036 | `		}` |
+|    40 |  7037 | `		break;` |
+|     - |  7038 | `	}` |
+|     - |  7039 | `	}` |
+|    30 |  7040 | `}` |
+|     - |  7041 | `/* The callback's ANSWER, pushed back on the XPath stack: a bool stays a` |
+|     - |  7042 | ` * boolean, a DOM node becomes a one-node set, and everything else is php's` |
+|     - |  7043 | ` * string conversion -- the SAME three for both spellings, since` |
+|     - |  7044 | ` * functionString's flag is about the ARGUMENTS. The conversion is the` |
+|     - |  7045 | ` * user-visible one (an array draws php's "Array to string conversion" notice` |
+|     - |  7046 | ` * and reads "Array"); a non-node object is the TypeError parked above. */` |
+|    58 |  7047 | `static void DomXPathPushResult(xmlXPathParserContextPtr pPCtx,DomXPathFnCtx *pFn,` |
+|     - |  7048 | `	ph7_value *pRes)` |
+|     1 |  7049 | `{` |
+|    59 |  7050 | `	if( (pRes->iFlags & MEMOBJ_BOOL) && (pRes->iFlags & MEMOBJ_STRING) == 0 ){` |
+|     3 |  7051 | `		valuePush(pPCtx,xmlXPathNewBoolean(pRes->x.iVal != 0));` |
+|     3 |  7052 | `		return;` |
+|     - |  7053 | `	}` |
+|    57 |  7054 | `	if( pRes->iFlags & MEMOBJ_OBJ ){` |
+|     7 |  7055 | `		ph7_class_instance *pObj = (ph7_class_instance *)pRes->x.pOther;` |
+|     7 |  7056 | `		phl_domnode *pNd = DomResOf(pObj);` |
+|     7 |  7057 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|     7 |  7058 | `		if( pNode == 0 \|\| pNode->type == XML_NAMESPACE_DECL ){` |
+|     5 |  7059 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NOTNODE,0,0);` |
+|     5 |  7060 | `			return;` |
+|     - |  7061 | `		}` |
+|     3 |  7062 | `		valuePush(pPCtx,xmlXPathNewNodeSet(pNode));` |
+|     3 |  7063 | `		return;` |
+|     - |  7064 | `	}` |
+|     - |  7065 | `	{` |
+|    51 |  7066 | `		int nStr = 0;` |
+|     - |  7067 | `		const char *zStr;` |
+|     - |  7068 | `		xmlChar *zDup;` |
+|    51 |  7069 | `		if( (pRes->iFlags & MEMOBJ_STRING) == 0 ){` |
+|    17 |  7070 | `			sxi32 rcStr = PH7_MemObjToStringUV(pRes);` |
+|    17 |  7071 | `			if( PH7_CALLBACK_UNWOUND(rcStr) ){` |
+|     - |  7072 | `				/* A __toString() that threw: the same rail as the callback's` |
+|     - |  7073 | `				 * own throw, one conversion later. */` |
+|   ! 0 |  7074 | `				pFn->rcUnwound = rcStr;` |
+|   ! 0 |  7075 | `				return;` |
+|     - |  7076 | `			}` |
+|     8 |  7077 | `		}` |
+|    51 |  7078 | `		zStr = ph7_value_to_string(pRes,&nStr);` |
+|    51 |  7079 | `		zDup = xmlStrndup((const xmlChar *)zStr,nStr);` |
+|    51 |  7080 | `		valuePush(pPCtx,xmlXPathWrapString(zDup));` |
+|     - |  7081 | `	}` |
+|    30 |  7082 | `}` |
+|     - |  7083 | `/*` |
+|     - |  7084 | ` * The one C function behind every PHP-backed XPath name. libxml reaches it` |
+|     - |  7085 | ` * through the lookup below, with the called name and URI on the context.` |
+|     - |  7086 | ` */` |
+|    78 |  7087 | `static void DomXPathPhpFn(xmlXPathParserContextPtr pPCtx,int nArgs)` |
+|     1 |  7088 | `{` |
+|    79 |  7089 | `	xmlXPathContextPtr pXCtx = pPCtx ? pPCtx->context : 0;` |
+|    79 |  7090 | `	DomXPathFnCtx *pFn = pXCtx ? (DomXPathFnCtx *)pXCtx->funcLookupData : 0;` |
+|    79 |  7091 | `	const xmlChar *zFn = pXCtx ? pXCtx->function : 0;` |
+|    79 |  7092 | `	const xmlChar *zUri = pXCtx ? pXCtx->functionURI : 0;` |
+|    79 |  7093 | `	int bPhpNs = zUri && xmlStrEqual(zUri,(const xmlChar *)XP_PHPNS);` |
+|    79 |  7094 | `	int bAsString = bPhpNs && zFn && xmlStrEqual(zFn,(const xmlChar *)"functionString");` |
+|    79 |  7095 | `	int bRegistered = !bPhpNs;   /* a table lookup rather than the name itself */` |
+|     - |  7096 | `	xmlXPathObjectPtr *apArg;` |
+|    79 |  7097 | `	ph7_value *apVal = 0,sResult,sName;` |
+|    79 |  7098 | `	ph7_value *pCallable = 0;` |
+|    79 |  7099 | `	int bNameOwned = 0;` |
+|     - |  7100 | `	ph7_vm *pVm;` |
+|    79 |  7101 | `	int nSkip = bPhpNs ? 1 : 0;   /* php:function's first argument NAMES the callback */` |
+|     - |  7102 | `	int i,nCall;` |
+|     - |  7103 | `	sxi32 rc;` |
+|    79 |  7104 | `	if( pFn == 0 ){` |
+|   ! 0 |  7105 | `		return;` |
+|     - |  7106 | `	}` |
+|    79 |  7107 | `	pVm = pFn->pCtx->pVm;` |
+|     - |  7108 | `	/* Take the arguments off the stack FIRST (valuePop answers them last-first),` |
+|     - |  7109 | `	 * so every exit below leaves libxml's stack where it found it. */` |
+|    79 |  7110 | `	apArg = nArgs > 0` |
+|   114 |  7111 | `		? (xmlXPathObjectPtr *)SyMemBackendAlloc(&pVm->sAllocator,` |
+|    76 |  7112 | `			sizeof(xmlXPathObjectPtr) * (sxu32)nArgs)` |
+|    39 |  7113 | `		: 0;` |
+|    79 |  7114 | `	if( nArgs > 0 && apArg == 0 ){` |
+|   ! 0 |  7115 | `		pPCtx->error = XPATH_MEMORY_ERROR;` |
+|   ! 0 |  7116 | `		return;` |
+|     - |  7117 | `	}` |
+|   215 |  7118 | `	for( i = nArgs - 1 ; i >= 0 ; --i ){` |
+|   137 |  7119 | `		apArg[i] = valuePop(pPCtx);` |
+|    69 |  7120 | `	}` |
+|    79 |  7121 | `	if( pFn->iErr != XP_FN_OK \|\| pFn->rcUnwound != 0 ){` |
+|   ! 0 |  7122 | `		goto done;   /* a previous call already stopped this evaluation */` |
+|     - |  7123 | `	}` |
+|    79 |  7124 | `	if( bPhpNs ){` |
+|    69 |  7125 | `		int nName = 0;` |
+|     - |  7126 | `		const char *zName;` |
+|    69 |  7127 | `		sxi64 iMode = PH7_NativeAttrInt(pFn->pThis,XP_FNMODE);` |
+|    69 |  7128 | `		if( nArgs < 1 ){` |
+|     3 |  7129 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NONAME,0,0);` |
+|     3 |  7130 | `			goto done;` |
 |     - |  7131 | `		}` |
-|    61 |  7132 | `		if( iMode == XP_MODE_LIST ){` |
-|    23 |  7133 | `			bRegistered = 1;` |
-|    23 |  7134 | `			pCallable = DomXPathMapGet(pVm,pFn->pThis,XP_FNREG,zName,nName);` |
-|    23 |  7135 | `			if( pCallable == 0 ){` |
-|     9 |  7136 | `				DomXPathFnStop(pPCtx,pFn,XP_FN_NOHANDLER,zName,nName);` |
-|     9 |  7137 | `				goto done;` |
-|     - |  7138 | `			}` |
-|     8 |  7139 | `		}else{` |
-|     - |  7140 | `			/* Unrestricted: the NAME ITSELF is the callable, screened here` |
-|     - |  7141 | `			 * because no registration screened it. */` |
-|    39 |  7142 | `			PH7_MemObjInitFromString(pVm,&sName,0);` |
-|    39 |  7143 | `			PH7_MemObjStringAppend(&sName,zName,(sxu32)nName);` |
-|    39 |  7144 | `			bNameOwned = 1;` |
-|    39 |  7145 | `			if( !PH7_VmIsCallable(pVm,&sName,TRUE) ){` |
-|     3 |  7146 | `				DomXPathFnStop(pPCtx,pFn,XP_FN_BADCB,zName,nName);` |
-|     3 |  7147 | `				goto done;` |
+|    67 |  7132 | `		if( apArg[0] == 0 \|\| apArg[0]->type != XPATH_STRING ){` |
+|     3 |  7133 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NOTSTR,0,0);` |
+|     3 |  7134 | `			goto done;` |
+|     - |  7135 | `		}` |
+|    65 |  7136 | `		zName = apArg[0]->stringval ? (const char *)apArg[0]->stringval : "";` |
+|    65 |  7137 | `		nName = (int)SyStrlen(zName);` |
+|    65 |  7138 | `		if( iMode == XP_MODE_NONE ){` |
+|     5 |  7139 | `			DomXPathFnStop(pPCtx,pFn,XP_FN_NOREG,0,0);` |
+|     5 |  7140 | `			goto done;` |
+|     - |  7141 | `		}` |
+|    61 |  7142 | `		if( iMode == XP_MODE_LIST ){` |
+|    23 |  7143 | `			bRegistered = 1;` |
+|    23 |  7144 | `			pCallable = DomXPathMapGet(pVm,pFn->pThis,XP_FNREG,zName,nName);` |
+|    23 |  7145 | `			if( pCallable == 0 ){` |
+|     9 |  7146 | `				DomXPathFnStop(pPCtx,pFn,XP_FN_NOHANDLER,zName,nName);` |
+|     9 |  7147 | `				goto done;` |
 |     - |  7148 | `			}` |
-|    37 |  7149 | `			pCallable = &sName;` |
-|     - |  7150 | `		}` |
-|    26 |  7151 | `	}else{` |
-|     - |  7152 | `		SyBlob sKey;` |
-|    11 |  7153 | `		SyBlobInit(&sKey,&pVm->sAllocator);` |
-|    11 |  7154 | `		SyBlobAppend(&sKey,(const char *)zUri,zUri ? (sxu32)SyStrlen((const char *)zUri) : 0);` |
-|    11 |  7155 | `		SyBlobAppend(&sKey,"\1",1);` |
-|    11 |  7156 | `		SyBlobAppend(&sKey,(const char *)zFn,zFn ? (sxu32)SyStrlen((const char *)zFn) : 0);` |
-|    16 |  7157 | `		pCallable = DomXPathMapGet(pVm,pFn->pThis,XP_NSFN,` |
-|    10 |  7158 | `			(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey));` |
-|    11 |  7159 | `		SyBlobRelease(&sKey);` |
-|    11 |  7160 | `		if( pCallable == 0 ){` |
-|   ! 0 |  7161 | `			goto done;   /* not ours after all: libxml reports the unknown function */` |
-|     - |  7162 | `		}` |
-|     - |  7163 | `	}` |
-|    61 |  7164 | `	nCall = nArgs - nSkip;` |
-|    61 |  7165 | `	if( nCall > 0 ){` |
-|    67 |  7166 | `		apVal = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,` |
-|    44 |  7167 | `			sizeof(ph7_value) * (sxu32)nCall);` |
-|    45 |  7168 | `		if( apVal == 0 ){` |
-|   ! 0 |  7169 | `			pPCtx->error = XPATH_MEMORY_ERROR;` |
-|   ! 0 |  7170 | `			goto done;` |
-|     - |  7171 | `		}` |
-|   103 |  7172 | `		for( i = 0 ; i < nCall ; ++i ){` |
-|    59 |  7173 | `			DomXPathArgToValue(pFn,apArg[i + nSkip],bAsString,&apVal[i]);` |
-|    30 |  7174 | `		}` |
-|    22 |  7175 | `	}` |
-|    61 |  7176 | `	PH7_MemObjInit(pVm,&sResult);` |
-|     - |  7177 | `	{` |
-|    61 |  7178 | `		ph7_value **apPtr = nCall > 0` |
-|    66 |  7179 | `			? (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,` |
-|    44 |  7180 | `				sizeof(ph7_value *) * (sxu32)nCall)` |
-|    30 |  7181 | `			: 0;` |
-|    61 |  7182 | `		if( nCall > 0 && apPtr == 0 ){` |
-|   ! 0 |  7183 | `			pPCtx->error = XPATH_MEMORY_ERROR;` |
-|   ! 0 |  7184 | `			PH7_MemObjRelease(&sResult);` |
-|   ! 0 |  7185 | `			goto done;` |
-|     - |  7186 | `		}` |
-|     - |  7187 | `		/* Dispatch off a COPY: pCallable points into a registration map this` |
-|     - |  7188 | `		 * very callback can rewrite (a callback calling registerPhpFunctions` |
-|     - |  7189 | `		 * on its own DOMXPath), and the map's value would go out from under` |
-|     - |  7190 | `		 * the dispatch. */` |
-|     - |  7191 | `		ph7_value sCall;` |
-|    61 |  7192 | `		PH7_MemObjInit(pVm,&sCall);` |
-|    61 |  7193 | `		PH7_MemObjStore(pCallable,&sCall);` |
-|   119 |  7194 | `		for( i = 0 ; i < nCall ; ++i ){` |
-|    59 |  7195 | `			apPtr[i] = &apVal[i];` |
-|    30 |  7196 | `		}` |
-|    61 |  7197 | `		rc = PH7_VmCallCallbackByValue(pVm,&sCall,nCall,apPtr,&sResult,0);` |
-|    61 |  7198 | `		PH7_MemObjRelease(&sCall);` |
-|    61 |  7199 | `		if( apPtr ){` |
-|    45 |  7200 | `			SyMemBackendFree(&pVm->sAllocator,apPtr);` |
-|    22 |  7201 | `		}` |
-|     - |  7202 | `	}` |
-|    61 |  7203 | `	if( PH7_CALLBACK_UNWOUND(rc) ){` |
-|     3 |  7204 | `		pFn->rcUnwound = rc;` |
-|     3 |  7205 | `		DomXPathFnUnwound(pPCtx,bRegistered);` |
-|     2 |  7206 | `	}else{` |
-|    59 |  7207 | `		DomXPathPushResult(pPCtx,pFn,&sResult);` |
-|     - |  7208 | `	}` |
-|    61 |  7209 | `	PH7_MemObjRelease(&sResult);` |
-|    39 |  7210 | `done:` |
-|    79 |  7211 | `	if( bNameOwned ){` |
-|    39 |  7212 | `		PH7_MemObjRelease(&sName);` |
-|    19 |  7213 | `	}` |
-|    79 |  7214 | `	if( apVal ){` |
-|   103 |  7215 | `		for( i = 0 ; i < nArgs - nSkip ; ++i ){` |
-|    59 |  7216 | `			PH7_MemObjRelease(&apVal[i]);` |
-|    30 |  7217 | `		}` |
-|    45 |  7218 | `		SyMemBackendFree(&pVm->sAllocator,apVal);` |
-|    22 |  7219 | `	}` |
-|   215 |  7220 | `	for( i = 0 ; i < nArgs ; ++i ){` |
-|   137 |  7221 | `		if( apArg[i] ){` |
-|   137 |  7222 | `			xmlXPathFreeObject(apArg[i]);` |
-|    68 |  7223 | `		}` |
-|    69 |  7224 | `	}` |
-|    79 |  7225 | `	if( apArg ){` |
-|    77 |  7226 | `		SyMemBackendFree(&pVm->sAllocator,apArg);` |
-|    38 |  7227 | `	}` |
-|    40 |  7228 | `}` |
-|     - |  7229 | `/*` |
-|     - |  7230 | ` * libxml's function-resolution hook: answer the bridge for php's two reserved` |
-|     - |  7231 | ` * names and for any (URI, name) this object registered, and NULL for` |
-|     - |  7232 | ` * everything else -- which is what makes libxml fall through to its own table` |
-|     - |  7233 | `` * (so `count()` and friends still resolve).`` |
-|     - |  7234 | ` */` |
-|   143 |  7235 | `static xmlXPathFunction DomXPathFnLookup(void *pUserData,const xmlChar *zName,const xmlChar *zUri)` |
-|     1 |  7236 | `{` |
-|   144 |  7237 | `	DomXPathFnCtx *pFn = (DomXPathFnCtx *)pUserData;` |
-|     - |  7238 | `	SyBlob sKey;` |
-|     - |  7239 | `	ph7_value *pHit;` |
-|   144 |  7240 | `	if( pFn == 0 \|\| zUri == 0 \|\| zName == 0 ){` |
-|    70 |  7241 | `		return 0;` |
-|     - |  7242 | `	}` |
-|    75 |  7243 | `	if( xmlStrEqual(zUri,(const xmlChar *)XP_PHPNS) ){` |
-|    64 |  7244 | `		if( xmlStrEqual(zName,(const xmlChar *)"function")` |
-|    38 |  7245 | `		 \|\| xmlStrEqual(zName,(const xmlChar *)"functionString") ){` |
-|    65 |  7246 | `			return DomXPathPhpFn;` |
-|     - |  7247 | `		}` |
-|   ! 0 |  7248 | `		return 0;` |
-|     - |  7249 | `	}` |
-|    11 |  7250 | `	SyBlobInit(&sKey,&pFn->pCtx->pVm->sAllocator);` |
-|    11 |  7251 | `	SyBlobAppend(&sKey,(const char *)zUri,(sxu32)SyStrlen((const char *)zUri));` |
-|    11 |  7252 | `	SyBlobAppend(&sKey,"\1",1);` |
-|    11 |  7253 | `	SyBlobAppend(&sKey,(const char *)zName,(sxu32)SyStrlen((const char *)zName));` |
-|    16 |  7254 | `	pHit = DomXPathMapGet(pFn->pCtx->pVm,pFn->pThis,XP_NSFN,` |
-|    10 |  7255 | `		(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey));` |
-|    11 |  7256 | `	SyBlobRelease(&sKey);` |
-|    11 |  7257 | `	return pHit ? DomXPathPhpFn : 0;` |
-|    39 |  7258 | `}` |
-|     - |  7259 | `/* The parked refusal, raised once libxml has unwound. */` |
-|    22 |  7260 | `static int DomXPathFnRaise(ph7_context *pCtx,DomXPathFnCtx *pFn)` |
-|     1 |  7261 | `{` |
-|    23 |  7262 | `	const char *zName = (const char *)SyBlobData(&pFn->sErrName);` |
-|    23 |  7263 | `	int nName = (int)SyBlobLength(&pFn->sErrName);` |
-|    23 |  7264 | `	switch( pFn->iErr ){` |
-|     2 |  7265 | `	case XP_FN_NOREG:` |
-|     5 |  7266 | `		return PH7_VmThrowException(pCtx,"Error","No callbacks were registered");` |
-|     4 |  7267 | `	case XP_FN_NOHANDLER:` |
-|    13 |  7268 | `		return PH7_VmThrowException(pCtx,"Error",` |
-|     4 |  7269 | `			"No callback handler \"%.*s\" registered",nName,zName);` |
-|     1 |  7270 | `	case XP_FN_NOTSTR:` |
-|     3 |  7271 | `		return PH7_VmThrowException(pCtx,"TypeError","Handler name must be a string");` |
-|     1 |  7272 | `	case XP_FN_NONAME:` |
-|     3 |  7273 | `		return PH7_VmThrowException(pCtx,"Error",` |
-|     - |  7274 | `			"Function name must be passed as the first argument");` |
-|     1 |  7275 | `	case XP_FN_BADCB:` |
-|     4 |  7276 | `		return PH7_VmThrowException(pCtx,"Error",` |
-|     - |  7277 | `			"Invalid callback %.*s, function \"%.*s\" not found or invalid function name",` |
-|     1 |  7278 | `			nName,zName,nName,zName);` |
-|     2 |  7279 | `	case XP_FN_NOTNODE:` |
-|     5 |  7280 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|     - |  7281 | `			"Only objects that are instances of DOM nodes can be converted to an XPath expression");` |
-|   ! 0 |  7282 | `	default:` |
-|   ! 0 |  7283 | `		break;` |
-|     - |  7284 | `	}` |
-|   ! 0 |  7285 | `	return PH7_OK;` |
-|    12 |  7286 | `}` |
-|     - |  7287 | `/*` |
-|     - |  7288 | ` * Build the evaluation context for one query()/evaluate() call: a FRESH` |
-|     - |  7289 | ` * xmlXPathContext (php keeps a persistent one; replaying the registration` |
-|     - |  7290 | ` * table onto a fresh one answers the same), anchored at the explicit context` |
-|     - |  7291 | ` * node -- or, with none, at the document ELEMENT, php's own substitution (so` |
-|     - |  7292 | ` * query('file') matches a child of the root; an explicitly PASSED document` |
-|     - |  7293 | ` * node is NOT substituted and carries no namespaces).` |
-|     - |  7294 | ` *` |
-|     - |  7295 | ` * bRegNodeNs is php's $registerNodeNS: the context NODE's in-scope` |
-|     - |  7296 | ` * declarations go into pXCtx->namespaces, the array xmlXPathNsLookup consults` |
-|     - |  7297 | ` * BEFORE the registered table -- which is why a document prefix beats a` |
-|     - |  7298 | ` * registerNamespace() one only for that call. The caller frees the returned` |
-|     - |  7299 | ` * list with xmlFree AFTER evaluating (the xmlNs entries belong to the tree;` |
-|     - |  7300 | ` * only the array is owned).` |
-|     - |  7301 | ` */` |
-|   228 |  7302 | `static xmlNsPtr * DomXPathCtxOpen(ph7_context *pCtx,phl_domnode *pDocNd,` |
-|     - |  7303 | `	phl_domnode *pCtxNd,int bRegNodeNs,xmlXPathContextPtr *ppXCtx)` |
-|     1 |  7304 | `{` |
-|   229 |  7305 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - |  7306 | `	xmlXPathContextPtr pXCtx;` |
-|     - |  7307 | `	ph7_value *pNsReg;` |
-|   229 |  7308 | `	xmlNsPtr *aNs = 0;` |
-|   229 |  7309 | `	*ppXCtx = 0;` |
-|   229 |  7310 | `	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);` |
-|   229 |  7311 | `	if( pXCtx == 0 ){` |
-|   ! 0 |  7312 | `		return 0;` |
-|     - |  7313 | `	}` |
-|   229 |  7314 | `	if( pCtxNd ){` |
-|    25 |  7315 | `		pXCtx->node = (xmlNodePtr)pCtxNd->pNode;` |
-|    13 |  7316 | `	}else{` |
-|   205 |  7317 | `		pXCtx->node = xmlDocGetRootElement((xmlDocPtr)pDocNd->pNode);` |
-|     - |  7318 | `	}` |
-|   229 |  7319 | `	pNsReg = pThis ? PH7_NativeAttr(pThis,XP_NSREG) : 0;` |
-|   229 |  7320 | `	if( pNsReg && (pNsReg->iFlags & MEMOBJ_HASHMAP) ){` |
-|    95 |  7321 | `		ph7_array_walk(pNsReg,DomC14NRegisterNs,pXCtx);` |
-|    47 |  7322 | `	}` |
-|   229 |  7323 | `	if( bRegNodeNs && pXCtx->node ){` |
-|   223 |  7324 | `		aNs = xmlGetNsList((xmlDocPtr)pDocNd->pNode,pXCtx->node);` |
-|   223 |  7325 | `		if( aNs ){` |
-|    45 |  7326 | `			int nNs = 0;` |
-|   105 |  7327 | `			while( aNs[nNs] ){` |
-|    61 |  7328 | `				nNs++;` |
-|     1 |  7329 | `			}` |
-|    45 |  7330 | `			pXCtx->namespaces = aNs;` |
-|    45 |  7331 | `			pXCtx->nsNr = nNs;` |
-|    22 |  7332 | `		}` |
-|   111 |  7333 | `	}` |
-|   229 |  7334 | `	*ppXCtx = pXCtx;` |
-|   229 |  7335 | `	return aNs;` |
-|   115 |  7336 | `}` |
-|     - |  7337 | `/*` |
-|     - |  7338 | ` * Freeze a nodeset result into the document-order snapshot a DNL_SNAP` |
-|     - |  7339 | ` * DOMNodeList serves (php's query() is not live), and answer the list. A` |
-|     - |  7340 | ` * non-nodeset pObj answers the EMPTY list: php's query() gives that for a` |
-|     - |  7341 | `` * scalar-typed expression (`count(//x)`), not false.`` |
-|     - |  7342 | ` */` |
-|    94 |  7343 | `static int DomXPathResultList(ph7_context *pCtx,ph7_class_instance *pDoc,` |
-|     - |  7344 | `	phl_domnode *pDocNd,xmlXPathObjectPtr pObj)` |
-|     1 |  7345 | `{` |
-|    95 |  7346 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - |  7347 | `	ph7_class_instance *pList;` |
-|    95 |  7348 | `	ph7_value *pSnap = ph7_context_new_array(pCtx);` |
-|    95 |  7349 | `	if( pSnap == 0 ){` |
-|   ! 0 |  7350 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  7351 | `	}` |
-|    95 |  7352 | `	if( pObj && pObj->type == XPATH_NODESET && pObj->nodesetval ){` |
-|     - |  7353 | `		int i;` |
-|   229 |  7354 | `		for( i = 0 ; i < pObj->nodesetval->nodeNr ; i++ ){` |
-|   139 |  7355 | `			xmlNodePtr pNode = pObj->nodesetval->nodeTab[i];` |
-|     - |  7356 | `			phl_domnode *pWrap;` |
-|     - |  7357 | `			ph7_value *pRes;` |
-|   139 |  7358 | `			if( pNode == 0 ){` |
-|   ! 0 |  7359 | `				continue;` |
-|     - |  7360 | `			}` |
-|   139 |  7361 | `			if( pNode->type == XML_NAMESPACE_DECL ){` |
-|     - |  7362 | `				/*` |
-|     - |  7363 | `				 * A namespace:: axis result. libxml hands the set a COPY that` |
-|     - |  7364 | `` 				 * dies with the XPath object (xmlXPathNodeSetDupNs, its `next` `` |
-|     - |  7365 | `				 * pointing at the element the axis ran ON), so the snapshot` |
-|     - |  7366 | `				 * wraps the ORIGINAL in-scope declaration found back through` |
-|     - |  7367 | `				 * that element -- as php answers it: a DOMNameSpaceNode whose` |
-|     - |  7368 | `				 * parentNode is the axis element even for a declaration an` |
-|     - |  7369 | `				 * ANCESTOR made, fresh per query, stored as the OBJECT itself` |
-|     - |  7370 | `				 * (item() twice on one list is one object, php's answer too).` |
-|     - |  7371 | `				 */` |
-|    43 |  7372 | `				xmlNsPtr pNs = (xmlNsPtr)pNode;` |
-|    43 |  7373 | `				xmlNodePtr pElem = (xmlNodePtr)pNs->next;` |
-|     - |  7374 | `				xmlNsPtr pOrig;` |
-|     - |  7375 | `				ph7_class_instance *pNsObj;` |
-|    43 |  7376 | `				if( pElem == 0 \|\| pElem->type != XML_ELEMENT_NODE ){` |
-|   ! 0 |  7377 | `					continue; /* not derivable: no element behind the copy */` |
-|     - |  7378 | `				}` |
-|    43 |  7379 | `				pOrig = xmlSearchNs((xmlDocPtr)pDocNd->pNode,pElem,pNs->prefix);` |
-|    43 |  7380 | `				if( pOrig == 0 ){` |
-|   ! 0 |  7381 | `					continue;` |
-|     - |  7382 | `				}` |
-|    43 |  7383 | `				pNsObj = DomNewNsNode(pVm,pDoc,pDocNd->pShell,pOrig,pElem);` |
-|    43 |  7384 | `				pRes = ph7_context_new_scalar(pCtx);` |
-|    43 |  7385 | `				if( pNsObj == 0 \|\| pRes == 0 ){` |
-|   ! 0 |  7386 | `					if( pNsObj ){` |
-|   ! 0 |  7387 | `						PH7_ClassInstanceUnref(pNsObj);` |
-|   ! 0 |  7388 | `					}` |
-|   ! 0 |  7389 | `					break;` |
-|     - |  7390 | `				}` |
-|     - |  7391 | `				/* pRes CARRIES the constructor's reference (no bump here): the` |
-|     - |  7392 | `				 * array's insert takes its own, and the call context's release` |
-|     - |  7393 | `				 * of pRes at method end consumes ours -- ending at exactly the` |
-|     - |  7394 | `				 * array's one. */` |
-|    43 |  7395 | `				pRes->x.pOther = pNsObj;` |
-|    43 |  7396 | `				pRes->iFlags = MEMOBJ_OBJ;` |
-|    43 |  7397 | `				ph7_array_add_elem(pSnap,0,pRes);` |
-|    43 |  7398 | `				continue;` |
-|     - |  7399 | `			}` |
-|    97 |  7400 | `			pWrap = DomNewRes(pVm,pDocNd->pShell,pNode);` |
-|    97 |  7401 | `			pRes = ph7_context_new_scalar(pCtx);` |
-|    97 |  7402 | `			if( pWrap == 0 \|\| pRes == 0 ){` |
-|   ! 0 |  7403 | `				break;` |
-|     - |  7404 | `			}` |
-|    97 |  7405 | `			ph7_value_resource(pRes,pWrap);` |
-|    97 |  7406 | `			ph7_array_add_elem(pSnap,0,pRes);` |
-|    49 |  7407 | `		}` |
-|    45 |  7408 | `	}` |
-|    95 |  7409 | `	pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_SNAP,0,0,0,pSnap);` |
-|    95 |  7410 | `	if( pList == 0 ){` |
-|   ! 0 |  7411 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  7412 | `	}` |
-|    95 |  7413 | `	PH7_NativeResultObject(pCtx,pList);` |
-|    95 |  7414 | `	return PH7_OK;` |
-|    48 |  7415 | `}` |
-|     - |  7416 | `/*` |
-|     - |  7417 | ` * The one evaluation body under DOMXPath::query and DOMXPath::evaluate. The` |
-|     - |  7418 | ` * two differ only in what they make of the RESULT: query wants a node list` |
-|     - |  7419 | ` * (a scalar gets the empty one), evaluate answers the XPath TYPE as php's` |
-|     - |  7420 | ` * value -- boolean as bool, number as float, string as string, nodeset as` |
-|     - |  7421 | ` * the same snapshot list. An expression that does not evaluate (bad grammar,` |
-|     - |  7422 | ` * unknown function, unresolved prefix) answers false from both, with the` |
-|     - |  7423 | ` * libxml diagnostics on the shared queue.` |
-|     - |  7424 | ` */` |
-|   232 |  7425 | `static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,` |
-|     - |  7426 | `	const char *zMethod,int bTyped)` |
-|     1 |  7427 | `{` |
-|   233 |  7428 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   233 |  7429 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   233 |  7430 | `	ph7_class_instance *pDoc = pThis ? PH7_NativeAttrObj(pThis,"document") : 0;` |
-|   233 |  7431 | `	phl_domnode *pDocNd = DomResOf(pDoc);` |
-|   233 |  7432 | `	const char *zExpr = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
-|   233 |  7433 | `	phl_domnode *pCtxNd = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;` |
-|     - |  7434 | ``	/* php's stub says `= true`, but the live default of the third argument is`` |
-|     - |  7435 | `	 * the registerNodeNamespaces PROPERTY (the constructor's second argument` |
-|     - |  7436 | `	 * lands there, and a later property write moves the default with it). */` |
-|   233 |  7437 | `	int bRegNodeNs = nArg > 2 ? ph7_value_to_bool(apArg[2])` |
-|   227 |  7438 | `		: (pThis ? PH7_NativeAttrTruthy(pThis,"registerNodeNamespaces") : 1);` |
-|     - |  7439 | `	xmlXPathContextPtr pXCtx;` |
-|     - |  7440 | `	xmlXPathObjectPtr pObj;` |
-|     - |  7441 | `	xmlNsPtr *aNodeNs;` |
-|     - |  7442 | `	DomXPathFnCtx sFn;` |
-|     - |  7443 | `	sxu32 nMark;` |
-|     - |  7444 | `	sxi32 rc;` |
-|   233 |  7445 | `	if( pDocNd == 0 ){` |
-|   ! 0 |  7446 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7447 | `		return PH7_OK;` |
-|     - |  7448 | `	}` |
-|   232 |  7449 | `	if( pCtxNd && pCtxNd->pNode` |
-|    29 |  7450 | `	 && ((xmlNodePtr)pCtxNd->pNode)->doc != (xmlDocPtr)pDocNd->pNode ){` |
-|     - |  7451 | `		/* php's plain Error, no DOM code -- a context node of another document` |
-|     - |  7452 | `		 * (or of none, a constructed node) cannot anchor this evaluation. */` |
-|     5 |  7453 | `		return PH7_VmThrowException(pCtx,"Error","Node from wrong document");` |
-|     - |  7454 | `	}` |
-|   229 |  7455 | `	aNodeNs = DomXPathCtxOpen(pCtx,pDocNd,pCtxNd,bRegNodeNs,&pXCtx);` |
-|   229 |  7456 | `	if( pXCtx == 0 ){` |
-|   ! 0 |  7457 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7458 | `		return PH7_OK;` |
-|     - |  7459 | `	}` |
-|     - |  7460 | `	/* The PHP-function bridge rides this one evaluation: the record lives on` |
-|     - |  7461 | `	 * THIS stack frame, and libxml carries a pointer to it as its lookup data. */` |
-|   229 |  7462 | `	sFn.pCtx = pCtx;` |
-|   229 |  7463 | `	sFn.pThis = pThis;` |
-|   229 |  7464 | `	sFn.pDoc = pDoc;` |
-|   229 |  7465 | `	sFn.pDocNd = pDocNd;` |
-|   229 |  7466 | `	sFn.iErr = XP_FN_OK;` |
-|   229 |  7467 | `	sFn.rcUnwound = 0;` |
-|   229 |  7468 | `	SyBlobInit(&sFn.sErrName,&pVm->sAllocator);` |
-|   229 |  7469 | `	xmlXPathRegisterFuncLookup(pXCtx,DomXPathFnLookup,&sFn);` |
-|   229 |  7470 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
-|   229 |  7471 | `	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);` |
-|   229 |  7472 | `	PH7_LibxmlCaptureEnd(pVm,nMark,zMethod);` |
-|   229 |  7473 | `	if( aNodeNs ){` |
-|    45 |  7474 | `		pXCtx->namespaces = 0;` |
-|    45 |  7475 | `		pXCtx->nsNr = 0;` |
-|    45 |  7476 | `		xmlFree(aNodeNs);` |
-|    22 |  7477 | `	}` |
-|   229 |  7478 | `	if( sFn.rcUnwound != 0 \|\| sFn.iErr != XP_FN_OK ){` |
-|     - |  7479 | `		/* A callback did not return, or the bridge parked a refusal it could` |
-|     - |  7480 | `		 * not raise from inside libxml's recursion. Either way the evaluation` |
-|     - |  7481 | `		 * is over and this is its answer -- raised HERE, where the enclosing` |
-|     - |  7482 | `		 * catch runs with libxml already unwound. */` |
-|    25 |  7483 | `		sxi32 rcFn = sFn.rcUnwound;` |
-|    25 |  7484 | `		if( pObj ){` |
-|   ! 0 |  7485 | `			xmlXPathFreeObject(pObj);` |
-|   ! 0 |  7486 | `		}` |
-|    25 |  7487 | `		xmlXPathFreeContext(pXCtx);` |
-|    25 |  7488 | `		if( rcFn == 0 ){` |
-|    23 |  7489 | `			rcFn = DomXPathFnRaise(pCtx,&sFn);` |
-|    12 |  7490 | `		}else{` |
-|     3 |  7491 | `			pCtx->nThrowRc = rcFn;` |
-|     - |  7492 | `		}` |
-|    25 |  7493 | `		SyBlobRelease(&sFn.sErrName);` |
-|    25 |  7494 | `		return rcFn;` |
-|     - |  7495 | `	}` |
-|   205 |  7496 | `	SyBlobRelease(&sFn.sErrName);` |
-|   205 |  7497 | `	if( pObj == 0 ){` |
-|    27 |  7498 | `		xmlXPathFreeContext(pXCtx);` |
-|    27 |  7499 | `		ph7_result_bool(pCtx,0);` |
-|    27 |  7500 | `		return PH7_OK;` |
-|     - |  7501 | `	}` |
-|   179 |  7502 | `	if( !bTyped ){` |
-|    85 |  7503 | `		rc = DomXPathResultList(pCtx,pDoc,pDocNd,pObj);` |
-|    43 |  7504 | `	}else{` |
-|    95 |  7505 | `		switch( pObj->type ){` |
-|     2 |  7506 | `		case XPATH_BOOLEAN:` |
-|     5 |  7507 | `			ph7_result_bool(pCtx,pObj->boolval);` |
-|     5 |  7508 | `			rc = PH7_OK;` |
-|     5 |  7509 | `			break;` |
-|    15 |  7510 | `		case XPATH_NUMBER:` |
-|    31 |  7511 | `			ph7_result_double(pCtx,pObj->floatval);` |
-|    31 |  7512 | `			rc = PH7_OK;` |
-|    31 |  7513 | `			break;` |
-|    25 |  7514 | `		case XPATH_STRING:` |
-|    51 |  7515 | `			ph7_result_string(pCtx,pObj->stringval ? (const char *)pObj->stringval : "",-1);` |
-|    51 |  7516 | `			rc = PH7_OK;` |
-|    51 |  7517 | `			break;` |
-|     5 |  7518 | `		case XPATH_NODESET:` |
-|    11 |  7519 | `			rc = DomXPathResultList(pCtx,pDoc,pDocNd,pObj);` |
-|    11 |  7520 | `			break;` |
-|   ! 0 |  7521 | `		default:` |
-|   ! 0 |  7522 | `			ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7523 | `			rc = PH7_OK;` |
-|   ! 0 |  7524 | `			break;` |
-|     - |  7525 | `		}` |
-|     - |  7526 | `	}` |
-|   179 |  7527 | `	xmlXPathFreeObject(pObj);` |
-|   179 |  7528 | `	xmlXPathFreeContext(pXCtx);` |
-|   179 |  7529 | `	return rc;` |
-|   117 |  7530 | `}` |
-|     - |  7531 | `/*` |
-|     - |  7532 | ` * DOMXPath::query(string $expression, ?DOMNode $contextNode = null,` |
-|     - |  7533 | ` *                 bool $registerNodeNS = true): DOMNodeList\|false` |
-|     - |  7534 | ` */` |
-|   100 |  7535 | `DOM_METHOD(vm_builtin_DOMXPath_query)` |
-|     1 |  7536 | `{` |
-|   101 |  7537 | `	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::query",0);` |
-|     1 |  7538 | `}` |
-|     - |  7539 | `/*` |
-|     - |  7540 | ` * DOMXPath::evaluate(string $expression, ?DOMNode $contextNode = null,` |
-|     - |  7541 | ` *                    bool $registerNodeNS = true): mixed` |
-|     - |  7542 | ` */` |
-|   132 |  7543 | `DOM_METHOD(vm_builtin_DOMXPath_evaluate)` |
-|     1 |  7544 | `{` |
-|   133 |  7545 | `	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::evaluate",1);` |
-|     1 |  7546 | `}` |
-|     - |  7547 | `/* DOMXPath::__construct(DOMDocument $document, bool $registerNodeNS = true) */` |
-|    72 |  7548 | `DOM_METHOD(vm_builtin_DOMXPath_construct)` |
-|     1 |  7549 | `{` |
-|    73 |  7550 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    73 |  7551 | `	if( pThis && nArg > 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) ){` |
-|   109 |  7552 | `		PH7_NativeSetAttrObj(pCtx->pVm,pThis,"document",` |
-|    72 |  7553 | `			(ph7_class_instance *)apArg[0]->x.pOther);` |
-|    36 |  7554 | `	}` |
-|    73 |  7555 | `	if( pThis && nArg > 1 ){` |
-|     7 |  7556 | `		PH7_NativeSetAttrBool(pCtx->pVm,pThis,"registerNodeNamespaces",` |
-|     4 |  7557 | `			ph7_value_to_bool(apArg[1]));` |
-|     2 |  7558 | `	}` |
-|    73 |  7559 | `	return PH7_OK;` |
-|     1 |  7560 | `}` |
-|     - |  7561 | `/*` |
-|     - |  7562 | ` * DOMXPath::registerNamespace(string $prefix, string $namespace): bool` |
-|     - |  7563 | ` *` |
-|     - |  7564 | ` * php hands the pair to xmlXPathRegisterNs on its persistent context and` |
-|     - |  7565 | ` * answers its status: only the EMPTY prefix refuses (an invalid NCName one is` |
-|     - |  7566 | ` * taken, and an empty URI is a registration too -- the prefix then resolves,` |
-|     - |  7567 | ` * to a namespace nothing is in). Here the pair goes into the per-object table` |
-|     - |  7568 | ` * the next evaluation replays.` |
-|     - |  7569 | ` */` |
-|    40 |  7570 | `DOM_METHOD(vm_builtin_DOMXPath_registerNamespace)` |
-|     1 |  7571 | `{` |
-|    41 |  7572 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    41 |  7573 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    41 |  7574 | `	int nPfx = 0;` |
-|    41 |  7575 | `	const char *zPfx = nArg > 0 ? ph7_value_to_string(apArg[0],&nPfx) : "";` |
-|     - |  7576 | `	ph7_hashmap *pMap;` |
-|     - |  7577 | `	ph7_value sKey,sVal;` |
-|    41 |  7578 | `	if( nPfx < 1 \|\| nArg < 2 ){` |
-|     3 |  7579 | `		ph7_result_bool(pCtx,0);` |
-|     3 |  7580 | `		return PH7_OK;` |
-|     - |  7581 | `	}` |
-|    39 |  7582 | `	pMap = DomXPathSlotMap(pVm,pThis,XP_NSREG);` |
-|    39 |  7583 | `	if( pMap == 0 ){` |
-|   ! 0 |  7584 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7585 | `		return PH7_OK;` |
-|     - |  7586 | `	}` |
-|    39 |  7587 | `	PH7_MemObjInitFromString(pVm,&sKey,0);` |
-|    39 |  7588 | `	PH7_MemObjStringAppend(&sKey,zPfx,(sxu32)nPfx);` |
-|    39 |  7589 | `	PH7_MemObjInitFromString(pVm,&sVal,0);` |
-|     - |  7590 | `	{` |
-|    39 |  7591 | `		int nUri = 0;` |
-|    39 |  7592 | `		const char *zUri = ph7_value_to_string(apArg[1],&nUri);` |
-|    39 |  7593 | `		PH7_MemObjStringAppend(&sVal,zUri,(sxu32)nUri);` |
-|     - |  7594 | `	}` |
-|    39 |  7595 | `	PH7_HashmapInsert(pMap,&sKey,&sVal);` |
-|    39 |  7596 | `	PH7_MemObjRelease(&sKey);` |
-|    39 |  7597 | `	PH7_MemObjRelease(&sVal);` |
-|    39 |  7598 | `	ph7_result_bool(pCtx,1);` |
-|    39 |  7599 | `	return PH7_OK;` |
-|    21 |  7600 | `}` |
-|     - |  7601 |  |
-|     - |  7602 | `/* One row of the $restrict ARRAY: the value must be callable, and the NAME an` |
-|     - |  7603 | ` * expression calls it by is the string key when there is one -- php's alias --` |
-|     - |  7604 | ` * and otherwise the value coerced to a string (an array callable therefore` |
-|     - |  7605 | ` * registers under "Array", with php's own conversion notice). */` |
-|     - |  7606 | `struct DomXPathRestrict {` |
-|     - |  7607 | `	ph7_context *pCtx;` |
-|     - |  7608 | `	ph7_hashmap *pMap;` |
-|     - |  7609 | `	sxi32 rc;` |
-|     - |  7610 | `};` |
-|    16 |  7611 | `static int DomXPathRestrictRow(ph7_value *pKey,ph7_value *pVal,void *pUserData)` |
-|     1 |  7612 | `{` |
-|    17 |  7613 | `	struct DomXPathRestrict *pWalk = (struct DomXPathRestrict *)pUserData;` |
-|    17 |  7614 | `	ph7_vm *pVm = pWalk->pCtx->pVm;` |
-|     - |  7615 | `	char zBuf[128];` |
-|     - |  7616 | `	const char *zWhy;` |
-|    17 |  7617 | `	if( pWalk->rc != PH7_OK ){` |
-|   ! 0 |  7618 | `		return PH7_OK;` |
-|     - |  7619 | `	}` |
-|    17 |  7620 | `	zWhy = PH7_VmCallableReason(pVm,pVal,zBuf,(int)sizeof(zBuf));` |
-|    17 |  7621 | `	if( zWhy ){` |
-|     7 |  7622 | `		pWalk->rc = PH7_VmThrowException(pWalk->pCtx,"TypeError",` |
-|     - |  7623 | `			"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be an array "` |
-|     2 |  7624 | `			"with valid callbacks as values, %s",zWhy);` |
-|     5 |  7625 | `		return PH7_ABORT;` |
-|     - |  7626 | `	}` |
-|    15 |  7627 | `	if( pKey && ph7_value_is_string(pKey) ){` |
-|     5 |  7628 | `		int nKey = 0;` |
-|     5 |  7629 | `		const char *zKey = ph7_value_to_string(pKey,&nKey);` |
-|     5 |  7630 | `		DomXPathMapPut(pVm,pWalk->pMap,zKey,nKey,pVal);` |
-|     3 |  7631 | `	}else{` |
-|     - |  7632 | `		/* ph7_value_to_string COERCES in place, which would rewrite the map's` |
-|     - |  7633 | `		 * own value; name off a copy. */` |
-|     - |  7634 | `		ph7_value sName;` |
-|     9 |  7635 | `		int nName = 0;` |
-|     - |  7636 | `		const char *zName;` |
-|     9 |  7637 | `		PH7_MemObjInit(pVm,&sName);` |
-|     9 |  7638 | `		PH7_MemObjStore(pVal,&sName);` |
-|     9 |  7639 | `		zName = ph7_value_to_string(&sName,&nName);` |
-|     9 |  7640 | `		DomXPathMapPut(pVm,pWalk->pMap,zName,nName,pVal);` |
-|     9 |  7641 | `		PH7_MemObjRelease(&sName);` |
-|     - |  7642 | `	}` |
-|    13 |  7643 | `	return PH7_OK;` |
-|     9 |  7644 | `}` |
-|     - |  7645 | `/*` |
-|     - |  7646 | ` * DOMXPath::registerPhpFunctions(array\|string\|null $restrict = null): void` |
-|     - |  7647 | ` *` |
-|     - |  7648 | ` * Bare (or null) opens the door to ANY callable name; a string or an array` |
-|     - |  7649 | ` * restricts it to the named ones, accumulating across calls -- a later bare` |
-|     - |  7650 | ` * call re-opens without forgetting the table, and a later restriction closes` |
-|     - |  7651 | ` * it again with everything registered so far still reachable. Each name is` |
-|     - |  7652 | ` * screened for callability HERE, so an evaluation never has to.` |
-|     - |  7653 | ` */` |
-|    32 |  7654 | `DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctions)` |
-|     1 |  7655 | `{` |
-|    33 |  7656 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    33 |  7657 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - |  7658 | `	ph7_hashmap *pMap;` |
-|    33 |  7659 | `	if( pThis == 0 ){` |
-|   ! 0 |  7660 | `		return PH7_OK;` |
-|     - |  7661 | `	}` |
-|    33 |  7662 | `	if( nArg < 1 \|\| ph7_value_is_null(apArg[0]) ){` |
-|    15 |  7663 | `		PH7_NativeSetAttrInt(pVm,pThis,XP_FNMODE,XP_MODE_ALL);` |
-|    15 |  7664 | `		return PH7_OK;` |
-|     - |  7665 | `	}` |
-|    19 |  7666 | `	pMap = DomXPathSlotMap(pVm,pThis,XP_FNREG);` |
-|    19 |  7667 | `	if( pMap == 0 ){` |
-|   ! 0 |  7668 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  7669 | `	}` |
-|     - |  7670 | `	/* The mode moves FIRST, and each row is taken as it is screened: php's` |
-|     - |  7671 | `	 * refusal leaves the object restricted with everything registered up to` |
-|     - |  7672 | `` 	 * the bad row -- `registerPhpFunctions(['strrev','nope','strtolower'])` `` |
-|     - |  7673 | `	 * throws, and afterwards strrev runs while strtolower does not. */` |
-|    19 |  7674 | `	PH7_NativeSetAttrInt(pVm,pThis,XP_FNMODE,XP_MODE_LIST);` |
-|    19 |  7675 | `	if( ph7_value_is_array(apArg[0]) ){` |
-|     - |  7676 | `		struct DomXPathRestrict sWalk;` |
-|    13 |  7677 | `		sWalk.pCtx = pCtx;` |
-|    13 |  7678 | `		sWalk.pMap = pMap;` |
-|    13 |  7679 | `		sWalk.rc = PH7_OK;` |
-|    13 |  7680 | `		ph7_array_walk(apArg[0],DomXPathRestrictRow,&sWalk);` |
-|    13 |  7681 | `		if( sWalk.rc != PH7_OK ){` |
-|     5 |  7682 | `			return sWalk.rc;` |
-|     - |  7683 | `		}` |
-|     5 |  7684 | `	}else{` |
-|     - |  7685 | `		char zBuf[128];` |
-|     7 |  7686 | `		const char *zWhy = PH7_VmCallableReason(pVm,apArg[0],zBuf,(int)sizeof(zBuf));` |
-|     7 |  7687 | `		int nName = 0;` |
-|     - |  7688 | `		const char *zName;` |
-|     7 |  7689 | `		if( zWhy ){` |
-|     4 |  7690 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
-|     - |  7691 | `				"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be a callable, %s",` |
-|     1 |  7692 | `				zWhy);` |
+|     8 |  7149 | `		}else{` |
+|     - |  7150 | `			/* Unrestricted: the NAME ITSELF is the callable, screened here` |
+|     - |  7151 | `			 * because no registration screened it. */` |
+|    39 |  7152 | `			PH7_MemObjInitFromString(pVm,&sName,0);` |
+|    39 |  7153 | `			PH7_MemObjStringAppend(&sName,zName,(sxu32)nName);` |
+|    39 |  7154 | `			bNameOwned = 1;` |
+|    39 |  7155 | `			if( !PH7_VmIsCallable(pVm,&sName,TRUE) ){` |
+|     3 |  7156 | `				DomXPathFnStop(pPCtx,pFn,XP_FN_BADCB,zName,nName);` |
+|     3 |  7157 | `				goto done;` |
+|     - |  7158 | `			}` |
+|    37 |  7159 | `			pCallable = &sName;` |
+|     - |  7160 | `		}` |
+|    26 |  7161 | `	}else{` |
+|     - |  7162 | `		SyBlob sKey;` |
+|    11 |  7163 | `		SyBlobInit(&sKey,&pVm->sAllocator);` |
+|    11 |  7164 | `		SyBlobAppend(&sKey,(const char *)zUri,zUri ? (sxu32)SyStrlen((const char *)zUri) : 0);` |
+|    11 |  7165 | `		SyBlobAppend(&sKey,"\1",1);` |
+|    11 |  7166 | `		SyBlobAppend(&sKey,(const char *)zFn,zFn ? (sxu32)SyStrlen((const char *)zFn) : 0);` |
+|    16 |  7167 | `		pCallable = DomXPathMapGet(pVm,pFn->pThis,XP_NSFN,` |
+|    10 |  7168 | `			(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey));` |
+|    11 |  7169 | `		SyBlobRelease(&sKey);` |
+|    11 |  7170 | `		if( pCallable == 0 ){` |
+|   ! 0 |  7171 | `			goto done;   /* not ours after all: libxml reports the unknown function */` |
+|     - |  7172 | `		}` |
+|     - |  7173 | `	}` |
+|    61 |  7174 | `	nCall = nArgs - nSkip;` |
+|    61 |  7175 | `	if( nCall > 0 ){` |
+|    67 |  7176 | `		apVal = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,` |
+|    44 |  7177 | `			sizeof(ph7_value) * (sxu32)nCall);` |
+|    45 |  7178 | `		if( apVal == 0 ){` |
+|   ! 0 |  7179 | `			pPCtx->error = XPATH_MEMORY_ERROR;` |
+|   ! 0 |  7180 | `			goto done;` |
+|     - |  7181 | `		}` |
+|   103 |  7182 | `		for( i = 0 ; i < nCall ; ++i ){` |
+|    59 |  7183 | `			DomXPathArgToValue(pFn,apArg[i + nSkip],bAsString,&apVal[i]);` |
+|    30 |  7184 | `		}` |
+|    22 |  7185 | `	}` |
+|    61 |  7186 | `	PH7_MemObjInit(pVm,&sResult);` |
+|     - |  7187 | `	{` |
+|    61 |  7188 | `		ph7_value **apPtr = nCall > 0` |
+|    66 |  7189 | `			? (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,` |
+|    44 |  7190 | `				sizeof(ph7_value *) * (sxu32)nCall)` |
+|    30 |  7191 | `			: 0;` |
+|    61 |  7192 | `		if( nCall > 0 && apPtr == 0 ){` |
+|   ! 0 |  7193 | `			pPCtx->error = XPATH_MEMORY_ERROR;` |
+|   ! 0 |  7194 | `			PH7_MemObjRelease(&sResult);` |
+|   ! 0 |  7195 | `			goto done;` |
+|     - |  7196 | `		}` |
+|     - |  7197 | `		/* Dispatch off a COPY: pCallable points into a registration map this` |
+|     - |  7198 | `		 * very callback can rewrite (a callback calling registerPhpFunctions` |
+|     - |  7199 | `		 * on its own DOMXPath), and the map's value would go out from under` |
+|     - |  7200 | `		 * the dispatch. */` |
+|     - |  7201 | `		ph7_value sCall;` |
+|    61 |  7202 | `		PH7_MemObjInit(pVm,&sCall);` |
+|    61 |  7203 | `		PH7_MemObjStore(pCallable,&sCall);` |
+|   119 |  7204 | `		for( i = 0 ; i < nCall ; ++i ){` |
+|    59 |  7205 | `			apPtr[i] = &apVal[i];` |
+|    30 |  7206 | `		}` |
+|    61 |  7207 | `		rc = PH7_VmCallCallbackByValue(pVm,&sCall,nCall,apPtr,&sResult,0);` |
+|    61 |  7208 | `		PH7_MemObjRelease(&sCall);` |
+|    61 |  7209 | `		if( apPtr ){` |
+|    45 |  7210 | `			SyMemBackendFree(&pVm->sAllocator,apPtr);` |
+|    22 |  7211 | `		}` |
+|     - |  7212 | `	}` |
+|    61 |  7213 | `	if( PH7_CALLBACK_UNWOUND(rc) ){` |
+|     3 |  7214 | `		pFn->rcUnwound = rc;` |
+|     3 |  7215 | `		DomXPathFnUnwound(pPCtx,bRegistered);` |
+|     2 |  7216 | `	}else{` |
+|    59 |  7217 | `		DomXPathPushResult(pPCtx,pFn,&sResult);` |
+|     - |  7218 | `	}` |
+|    61 |  7219 | `	PH7_MemObjRelease(&sResult);` |
+|    39 |  7220 | `done:` |
+|    79 |  7221 | `	if( bNameOwned ){` |
+|    39 |  7222 | `		PH7_MemObjRelease(&sName);` |
+|    19 |  7223 | `	}` |
+|    79 |  7224 | `	if( apVal ){` |
+|   103 |  7225 | `		for( i = 0 ; i < nArgs - nSkip ; ++i ){` |
+|    59 |  7226 | `			PH7_MemObjRelease(&apVal[i]);` |
+|    30 |  7227 | `		}` |
+|    45 |  7228 | `		SyMemBackendFree(&pVm->sAllocator,apVal);` |
+|    22 |  7229 | `	}` |
+|   215 |  7230 | `	for( i = 0 ; i < nArgs ; ++i ){` |
+|   137 |  7231 | `		if( apArg[i] ){` |
+|   137 |  7232 | `			xmlXPathFreeObject(apArg[i]);` |
+|    68 |  7233 | `		}` |
+|    69 |  7234 | `	}` |
+|    79 |  7235 | `	if( apArg ){` |
+|    77 |  7236 | `		SyMemBackendFree(&pVm->sAllocator,apArg);` |
+|    38 |  7237 | `	}` |
+|    40 |  7238 | `}` |
+|     - |  7239 | `/*` |
+|     - |  7240 | ` * libxml's function-resolution hook: answer the bridge for php's two reserved` |
+|     - |  7241 | ` * names and for any (URI, name) this object registered, and NULL for` |
+|     - |  7242 | ` * everything else -- which is what makes libxml fall through to its own table` |
+|     - |  7243 | `` * (so `count()` and friends still resolve).`` |
+|     - |  7244 | ` */` |
+|   143 |  7245 | `static xmlXPathFunction DomXPathFnLookup(void *pUserData,const xmlChar *zName,const xmlChar *zUri)` |
+|     1 |  7246 | `{` |
+|   144 |  7247 | `	DomXPathFnCtx *pFn = (DomXPathFnCtx *)pUserData;` |
+|     - |  7248 | `	SyBlob sKey;` |
+|     - |  7249 | `	ph7_value *pHit;` |
+|   144 |  7250 | `	if( pFn == 0 \|\| zUri == 0 \|\| zName == 0 ){` |
+|    70 |  7251 | `		return 0;` |
+|     - |  7252 | `	}` |
+|    75 |  7253 | `	if( xmlStrEqual(zUri,(const xmlChar *)XP_PHPNS) ){` |
+|    64 |  7254 | `		if( xmlStrEqual(zName,(const xmlChar *)"function")` |
+|    38 |  7255 | `		 \|\| xmlStrEqual(zName,(const xmlChar *)"functionString") ){` |
+|    65 |  7256 | `			return DomXPathPhpFn;` |
+|     - |  7257 | `		}` |
+|   ! 0 |  7258 | `		return 0;` |
+|     - |  7259 | `	}` |
+|    11 |  7260 | `	SyBlobInit(&sKey,&pFn->pCtx->pVm->sAllocator);` |
+|    11 |  7261 | `	SyBlobAppend(&sKey,(const char *)zUri,(sxu32)SyStrlen((const char *)zUri));` |
+|    11 |  7262 | `	SyBlobAppend(&sKey,"\1",1);` |
+|    11 |  7263 | `	SyBlobAppend(&sKey,(const char *)zName,(sxu32)SyStrlen((const char *)zName));` |
+|    16 |  7264 | `	pHit = DomXPathMapGet(pFn->pCtx->pVm,pFn->pThis,XP_NSFN,` |
+|    10 |  7265 | `		(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey));` |
+|    11 |  7266 | `	SyBlobRelease(&sKey);` |
+|    11 |  7267 | `	return pHit ? DomXPathPhpFn : 0;` |
+|    39 |  7268 | `}` |
+|     - |  7269 | `/* The parked refusal, raised once libxml has unwound. */` |
+|    22 |  7270 | `static int DomXPathFnRaise(ph7_context *pCtx,DomXPathFnCtx *pFn)` |
+|     1 |  7271 | `{` |
+|    23 |  7272 | `	const char *zName = (const char *)SyBlobData(&pFn->sErrName);` |
+|    23 |  7273 | `	int nName = (int)SyBlobLength(&pFn->sErrName);` |
+|    23 |  7274 | `	switch( pFn->iErr ){` |
+|     2 |  7275 | `	case XP_FN_NOREG:` |
+|     5 |  7276 | `		return PH7_VmThrowException(pCtx,"Error","No callbacks were registered");` |
+|     4 |  7277 | `	case XP_FN_NOHANDLER:` |
+|    13 |  7278 | `		return PH7_VmThrowException(pCtx,"Error",` |
+|     4 |  7279 | `			"No callback handler \"%.*s\" registered",nName,zName);` |
+|     1 |  7280 | `	case XP_FN_NOTSTR:` |
+|     3 |  7281 | `		return PH7_VmThrowException(pCtx,"TypeError","Handler name must be a string");` |
+|     1 |  7282 | `	case XP_FN_NONAME:` |
+|     3 |  7283 | `		return PH7_VmThrowException(pCtx,"Error",` |
+|     - |  7284 | `			"Function name must be passed as the first argument");` |
+|     1 |  7285 | `	case XP_FN_BADCB:` |
+|     4 |  7286 | `		return PH7_VmThrowException(pCtx,"Error",` |
+|     - |  7287 | `			"Invalid callback %.*s, function \"%.*s\" not found or invalid function name",` |
+|     1 |  7288 | `			nName,zName,nName,zName);` |
+|     2 |  7289 | `	case XP_FN_NOTNODE:` |
+|     5 |  7290 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|     - |  7291 | `			"Only objects that are instances of DOM nodes can be converted to an XPath expression");` |
+|   ! 0 |  7292 | `	default:` |
+|   ! 0 |  7293 | `		break;` |
+|     - |  7294 | `	}` |
+|   ! 0 |  7295 | `	return PH7_OK;` |
+|    12 |  7296 | `}` |
+|     - |  7297 | `/*` |
+|     - |  7298 | ` * Build the evaluation context for one query()/evaluate() call: a FRESH` |
+|     - |  7299 | ` * xmlXPathContext (php keeps a persistent one; replaying the registration` |
+|     - |  7300 | ` * table onto a fresh one answers the same), anchored at the explicit context` |
+|     - |  7301 | ` * node -- or, with none, at the document ELEMENT, php's own substitution (so` |
+|     - |  7302 | ` * query('file') matches a child of the root; an explicitly PASSED document` |
+|     - |  7303 | ` * node is NOT substituted and carries no namespaces).` |
+|     - |  7304 | ` *` |
+|     - |  7305 | ` * bRegNodeNs is php's $registerNodeNS: the context NODE's in-scope` |
+|     - |  7306 | ` * declarations go into pXCtx->namespaces, the array xmlXPathNsLookup consults` |
+|     - |  7307 | ` * BEFORE the registered table -- which is why a document prefix beats a` |
+|     - |  7308 | ` * registerNamespace() one only for that call. The caller frees the returned` |
+|     - |  7309 | ` * list with xmlFree AFTER evaluating (the xmlNs entries belong to the tree;` |
+|     - |  7310 | ` * only the array is owned).` |
+|     - |  7311 | ` */` |
+|   228 |  7312 | `static xmlNsPtr * DomXPathCtxOpen(ph7_context *pCtx,phl_domnode *pDocNd,` |
+|     - |  7313 | `	phl_domnode *pCtxNd,int bRegNodeNs,xmlXPathContextPtr *ppXCtx)` |
+|     1 |  7314 | `{` |
+|   229 |  7315 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - |  7316 | `	xmlXPathContextPtr pXCtx;` |
+|     - |  7317 | `	ph7_value *pNsReg;` |
+|   229 |  7318 | `	xmlNsPtr *aNs = 0;` |
+|   229 |  7319 | `	*ppXCtx = 0;` |
+|   229 |  7320 | `	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);` |
+|   229 |  7321 | `	if( pXCtx == 0 ){` |
+|   ! 0 |  7322 | `		return 0;` |
+|     - |  7323 | `	}` |
+|   229 |  7324 | `	if( pCtxNd ){` |
+|    25 |  7325 | `		pXCtx->node = (xmlNodePtr)pCtxNd->pNode;` |
+|    13 |  7326 | `	}else{` |
+|   205 |  7327 | `		pXCtx->node = xmlDocGetRootElement((xmlDocPtr)pDocNd->pNode);` |
+|     - |  7328 | `	}` |
+|   229 |  7329 | `	pNsReg = pThis ? PH7_NativeAttr(pThis,XP_NSREG) : 0;` |
+|   229 |  7330 | `	if( pNsReg && (pNsReg->iFlags & MEMOBJ_HASHMAP) ){` |
+|    95 |  7331 | `		ph7_array_walk(pNsReg,DomC14NRegisterNs,pXCtx);` |
+|    47 |  7332 | `	}` |
+|   229 |  7333 | `	if( bRegNodeNs && pXCtx->node ){` |
+|   223 |  7334 | `		aNs = xmlGetNsList((xmlDocPtr)pDocNd->pNode,pXCtx->node);` |
+|   223 |  7335 | `		if( aNs ){` |
+|    45 |  7336 | `			int nNs = 0;` |
+|   105 |  7337 | `			while( aNs[nNs] ){` |
+|    61 |  7338 | `				nNs++;` |
+|     1 |  7339 | `			}` |
+|    45 |  7340 | `			pXCtx->namespaces = aNs;` |
+|    45 |  7341 | `			pXCtx->nsNr = nNs;` |
+|    22 |  7342 | `		}` |
+|   111 |  7343 | `	}` |
+|   229 |  7344 | `	*ppXCtx = pXCtx;` |
+|   229 |  7345 | `	return aNs;` |
+|   115 |  7346 | `}` |
+|     - |  7347 | `/*` |
+|     - |  7348 | ` * Freeze a nodeset result into the document-order snapshot a DNL_SNAP` |
+|     - |  7349 | ` * DOMNodeList serves (php's query() is not live), and answer the list. A` |
+|     - |  7350 | ` * non-nodeset pObj answers the EMPTY list: php's query() gives that for a` |
+|     - |  7351 | `` * scalar-typed expression (`count(//x)`), not false.`` |
+|     - |  7352 | ` */` |
+|    94 |  7353 | `static int DomXPathResultList(ph7_context *pCtx,ph7_class_instance *pDoc,` |
+|     - |  7354 | `	phl_domnode *pDocNd,xmlXPathObjectPtr pObj)` |
+|     1 |  7355 | `{` |
+|    95 |  7356 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - |  7357 | `	ph7_class_instance *pList;` |
+|    95 |  7358 | `	ph7_value *pSnap = ph7_context_new_array(pCtx);` |
+|    95 |  7359 | `	if( pSnap == 0 ){` |
+|   ! 0 |  7360 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  7361 | `	}` |
+|    95 |  7362 | `	if( pObj && pObj->type == XPATH_NODESET && pObj->nodesetval ){` |
+|     - |  7363 | `		int i;` |
+|   229 |  7364 | `		for( i = 0 ; i < pObj->nodesetval->nodeNr ; i++ ){` |
+|   139 |  7365 | `			xmlNodePtr pNode = pObj->nodesetval->nodeTab[i];` |
+|     - |  7366 | `			phl_domnode *pWrap;` |
+|     - |  7367 | `			ph7_value *pRes;` |
+|   139 |  7368 | `			if( pNode == 0 ){` |
+|   ! 0 |  7369 | `				continue;` |
+|     - |  7370 | `			}` |
+|   139 |  7371 | `			if( pNode->type == XML_NAMESPACE_DECL ){` |
+|     - |  7372 | `				/*` |
+|     - |  7373 | `				 * A namespace:: axis result. libxml hands the set a COPY that` |
+|     - |  7374 | `` 				 * dies with the XPath object (xmlXPathNodeSetDupNs, its `next` `` |
+|     - |  7375 | `				 * pointing at the element the axis ran ON), so the snapshot` |
+|     - |  7376 | `				 * wraps the ORIGINAL in-scope declaration found back through` |
+|     - |  7377 | `				 * that element -- as php answers it: a DOMNameSpaceNode whose` |
+|     - |  7378 | `				 * parentNode is the axis element even for a declaration an` |
+|     - |  7379 | `				 * ANCESTOR made, fresh per query, stored as the OBJECT itself` |
+|     - |  7380 | `				 * (item() twice on one list is one object, php's answer too).` |
+|     - |  7381 | `				 */` |
+|    43 |  7382 | `				xmlNsPtr pNs = (xmlNsPtr)pNode;` |
+|    43 |  7383 | `				xmlNodePtr pElem = (xmlNodePtr)pNs->next;` |
+|     - |  7384 | `				xmlNsPtr pOrig;` |
+|     - |  7385 | `				ph7_class_instance *pNsObj;` |
+|    43 |  7386 | `				if( pElem == 0 \|\| pElem->type != XML_ELEMENT_NODE ){` |
+|   ! 0 |  7387 | `					continue; /* not derivable: no element behind the copy */` |
+|     - |  7388 | `				}` |
+|    43 |  7389 | `				pOrig = xmlSearchNs((xmlDocPtr)pDocNd->pNode,pElem,pNs->prefix);` |
+|    43 |  7390 | `				if( pOrig == 0 ){` |
+|   ! 0 |  7391 | `					continue;` |
+|     - |  7392 | `				}` |
+|    43 |  7393 | `				pNsObj = DomNewNsNode(pVm,pDoc,pDocNd->pShell,pOrig,pElem);` |
+|    43 |  7394 | `				pRes = ph7_context_new_scalar(pCtx);` |
+|    43 |  7395 | `				if( pNsObj == 0 \|\| pRes == 0 ){` |
+|   ! 0 |  7396 | `					if( pNsObj ){` |
+|   ! 0 |  7397 | `						PH7_ClassInstanceUnref(pNsObj);` |
+|   ! 0 |  7398 | `					}` |
+|   ! 0 |  7399 | `					break;` |
+|     - |  7400 | `				}` |
+|     - |  7401 | `				/* pRes CARRIES the constructor's reference (no bump here): the` |
+|     - |  7402 | `				 * array's insert takes its own, and the call context's release` |
+|     - |  7403 | `				 * of pRes at method end consumes ours -- ending at exactly the` |
+|     - |  7404 | `				 * array's one. */` |
+|    43 |  7405 | `				pRes->x.pOther = pNsObj;` |
+|    43 |  7406 | `				pRes->iFlags = MEMOBJ_OBJ;` |
+|    43 |  7407 | `				ph7_array_add_elem(pSnap,0,pRes);` |
+|    43 |  7408 | `				continue;` |
+|     - |  7409 | `			}` |
+|    97 |  7410 | `			pWrap = DomNewRes(pVm,pDocNd->pShell,pNode);` |
+|    97 |  7411 | `			pRes = ph7_context_new_scalar(pCtx);` |
+|    97 |  7412 | `			if( pWrap == 0 \|\| pRes == 0 ){` |
+|   ! 0 |  7413 | `				break;` |
+|     - |  7414 | `			}` |
+|    97 |  7415 | `			ph7_value_resource(pRes,pWrap);` |
+|    97 |  7416 | `			ph7_array_add_elem(pSnap,0,pRes);` |
+|    49 |  7417 | `		}` |
+|    45 |  7418 | `	}` |
+|    95 |  7419 | `	pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_SNAP,0,0,0,pSnap);` |
+|    95 |  7420 | `	if( pList == 0 ){` |
+|   ! 0 |  7421 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  7422 | `	}` |
+|    95 |  7423 | `	PH7_NativeResultObject(pCtx,pList);` |
+|    95 |  7424 | `	return PH7_OK;` |
+|    48 |  7425 | `}` |
+|     - |  7426 | `/*` |
+|     - |  7427 | ` * The one evaluation body under DOMXPath::query and DOMXPath::evaluate. The` |
+|     - |  7428 | ` * two differ only in what they make of the RESULT: query wants a node list` |
+|     - |  7429 | ` * (a scalar gets the empty one), evaluate answers the XPath TYPE as php's` |
+|     - |  7430 | ` * value -- boolean as bool, number as float, string as string, nodeset as` |
+|     - |  7431 | ` * the same snapshot list. An expression that does not evaluate (bad grammar,` |
+|     - |  7432 | ` * unknown function, unresolved prefix) answers false from both, with the` |
+|     - |  7433 | ` * libxml diagnostics on the shared queue.` |
+|     - |  7434 | ` */` |
+|   232 |  7435 | `static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,` |
+|     - |  7436 | `	const char *zMethod,int bTyped)` |
+|     1 |  7437 | `{` |
+|   233 |  7438 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   233 |  7439 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   233 |  7440 | `	ph7_class_instance *pDoc = pThis ? PH7_NativeAttrObj(pThis,"document") : 0;` |
+|   233 |  7441 | `	phl_domnode *pDocNd = DomResOf(pDoc);` |
+|   233 |  7442 | `	const char *zExpr = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
+|   233 |  7443 | `	phl_domnode *pCtxNd = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;` |
+|     - |  7444 | ``	/* php's stub says `= true`, but the live default of the third argument is`` |
+|     - |  7445 | `	 * the registerNodeNamespaces PROPERTY (the constructor's second argument` |
+|     - |  7446 | `	 * lands there, and a later property write moves the default with it). */` |
+|   233 |  7447 | `	int bRegNodeNs = nArg > 2 ? ph7_value_to_bool(apArg[2])` |
+|   227 |  7448 | `		: (pThis ? PH7_NativeAttrTruthy(pThis,"registerNodeNamespaces") : 1);` |
+|     - |  7449 | `	xmlXPathContextPtr pXCtx;` |
+|     - |  7450 | `	xmlXPathObjectPtr pObj;` |
+|     - |  7451 | `	xmlNsPtr *aNodeNs;` |
+|     - |  7452 | `	DomXPathFnCtx sFn;` |
+|     - |  7453 | `	sxu32 nMark;` |
+|     - |  7454 | `	sxi32 rc;` |
+|   233 |  7455 | `	if( pDocNd == 0 ){` |
+|   ! 0 |  7456 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7457 | `		return PH7_OK;` |
+|     - |  7458 | `	}` |
+|   232 |  7459 | `	if( pCtxNd && pCtxNd->pNode` |
+|    29 |  7460 | `	 && ((xmlNodePtr)pCtxNd->pNode)->doc != (xmlDocPtr)pDocNd->pNode ){` |
+|     - |  7461 | `		/* php's plain Error, no DOM code -- a context node of another document` |
+|     - |  7462 | `		 * (or of none, a constructed node) cannot anchor this evaluation. */` |
+|     5 |  7463 | `		return PH7_VmThrowException(pCtx,"Error","Node from wrong document");` |
+|     - |  7464 | `	}` |
+|   229 |  7465 | `	aNodeNs = DomXPathCtxOpen(pCtx,pDocNd,pCtxNd,bRegNodeNs,&pXCtx);` |
+|   229 |  7466 | `	if( pXCtx == 0 ){` |
+|   ! 0 |  7467 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7468 | `		return PH7_OK;` |
+|     - |  7469 | `	}` |
+|     - |  7470 | `	/* The PHP-function bridge rides this one evaluation: the record lives on` |
+|     - |  7471 | `	 * THIS stack frame, and libxml carries a pointer to it as its lookup data. */` |
+|   229 |  7472 | `	sFn.pCtx = pCtx;` |
+|   229 |  7473 | `	sFn.pThis = pThis;` |
+|   229 |  7474 | `	sFn.pDoc = pDoc;` |
+|   229 |  7475 | `	sFn.pDocNd = pDocNd;` |
+|   229 |  7476 | `	sFn.iErr = XP_FN_OK;` |
+|   229 |  7477 | `	sFn.rcUnwound = 0;` |
+|   229 |  7478 | `	SyBlobInit(&sFn.sErrName,&pVm->sAllocator);` |
+|   229 |  7479 | `	xmlXPathRegisterFuncLookup(pXCtx,DomXPathFnLookup,&sFn);` |
+|   229 |  7480 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
+|   229 |  7481 | `	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);` |
+|   229 |  7482 | `	PH7_LibxmlCaptureEnd(pVm,nMark,zMethod);` |
+|   229 |  7483 | `	if( aNodeNs ){` |
+|    45 |  7484 | `		pXCtx->namespaces = 0;` |
+|    45 |  7485 | `		pXCtx->nsNr = 0;` |
+|    45 |  7486 | `		xmlFree(aNodeNs);` |
+|    22 |  7487 | `	}` |
+|   229 |  7488 | `	if( sFn.rcUnwound != 0 \|\| sFn.iErr != XP_FN_OK ){` |
+|     - |  7489 | `		/* A callback did not return, or the bridge parked a refusal it could` |
+|     - |  7490 | `		 * not raise from inside libxml's recursion. Either way the evaluation` |
+|     - |  7491 | `		 * is over and this is its answer -- raised HERE, where the enclosing` |
+|     - |  7492 | `		 * catch runs with libxml already unwound. */` |
+|    25 |  7493 | `		sxi32 rcFn = sFn.rcUnwound;` |
+|    25 |  7494 | `		if( pObj ){` |
+|   ! 0 |  7495 | `			xmlXPathFreeObject(pObj);` |
+|   ! 0 |  7496 | `		}` |
+|    25 |  7497 | `		xmlXPathFreeContext(pXCtx);` |
+|    25 |  7498 | `		if( rcFn == 0 ){` |
+|    23 |  7499 | `			rcFn = DomXPathFnRaise(pCtx,&sFn);` |
+|    12 |  7500 | `		}else{` |
+|     3 |  7501 | `			pCtx->nThrowRc = rcFn;` |
+|     - |  7502 | `		}` |
+|    25 |  7503 | `		SyBlobRelease(&sFn.sErrName);` |
+|    25 |  7504 | `		return rcFn;` |
+|     - |  7505 | `	}` |
+|   205 |  7506 | `	SyBlobRelease(&sFn.sErrName);` |
+|   205 |  7507 | `	if( pObj == 0 ){` |
+|    27 |  7508 | `		xmlXPathFreeContext(pXCtx);` |
+|    27 |  7509 | `		ph7_result_bool(pCtx,0);` |
+|    27 |  7510 | `		return PH7_OK;` |
+|     - |  7511 | `	}` |
+|   179 |  7512 | `	if( !bTyped ){` |
+|    85 |  7513 | `		rc = DomXPathResultList(pCtx,pDoc,pDocNd,pObj);` |
+|    43 |  7514 | `	}else{` |
+|    95 |  7515 | `		switch( pObj->type ){` |
+|     2 |  7516 | `		case XPATH_BOOLEAN:` |
+|     5 |  7517 | `			ph7_result_bool(pCtx,pObj->boolval);` |
+|     5 |  7518 | `			rc = PH7_OK;` |
+|     5 |  7519 | `			break;` |
+|    15 |  7520 | `		case XPATH_NUMBER:` |
+|    31 |  7521 | `			ph7_result_double(pCtx,pObj->floatval);` |
+|    31 |  7522 | `			rc = PH7_OK;` |
+|    31 |  7523 | `			break;` |
+|    25 |  7524 | `		case XPATH_STRING:` |
+|    51 |  7525 | `			ph7_result_string(pCtx,pObj->stringval ? (const char *)pObj->stringval : "",-1);` |
+|    51 |  7526 | `			rc = PH7_OK;` |
+|    51 |  7527 | `			break;` |
+|     5 |  7528 | `		case XPATH_NODESET:` |
+|    11 |  7529 | `			rc = DomXPathResultList(pCtx,pDoc,pDocNd,pObj);` |
+|    11 |  7530 | `			break;` |
+|   ! 0 |  7531 | `		default:` |
+|   ! 0 |  7532 | `			ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7533 | `			rc = PH7_OK;` |
+|   ! 0 |  7534 | `			break;` |
+|     - |  7535 | `		}` |
+|     - |  7536 | `	}` |
+|   179 |  7537 | `	xmlXPathFreeObject(pObj);` |
+|   179 |  7538 | `	xmlXPathFreeContext(pXCtx);` |
+|   179 |  7539 | `	return rc;` |
+|   117 |  7540 | `}` |
+|     - |  7541 | `/*` |
+|     - |  7542 | ` * DOMXPath::query(string $expression, ?DOMNode $contextNode = null,` |
+|     - |  7543 | ` *                 bool $registerNodeNS = true): DOMNodeList\|false` |
+|     - |  7544 | ` */` |
+|   100 |  7545 | `DOM_METHOD(vm_builtin_DOMXPath_query)` |
+|     1 |  7546 | `{` |
+|   101 |  7547 | `	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::query",0);` |
+|     1 |  7548 | `}` |
+|     - |  7549 | `/*` |
+|     - |  7550 | ` * DOMXPath::evaluate(string $expression, ?DOMNode $contextNode = null,` |
+|     - |  7551 | ` *                    bool $registerNodeNS = true): mixed` |
+|     - |  7552 | ` */` |
+|   132 |  7553 | `DOM_METHOD(vm_builtin_DOMXPath_evaluate)` |
+|     1 |  7554 | `{` |
+|   133 |  7555 | `	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::evaluate",1);` |
+|     1 |  7556 | `}` |
+|     - |  7557 | `/* DOMXPath::__construct(DOMDocument $document, bool $registerNodeNS = true) */` |
+|    72 |  7558 | `DOM_METHOD(vm_builtin_DOMXPath_construct)` |
+|     1 |  7559 | `{` |
+|    73 |  7560 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    73 |  7561 | `	if( pThis && nArg > 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) ){` |
+|   109 |  7562 | `		PH7_NativeSetAttrObj(pCtx->pVm,pThis,"document",` |
+|    72 |  7563 | `			(ph7_class_instance *)apArg[0]->x.pOther);` |
+|    36 |  7564 | `	}` |
+|    73 |  7565 | `	if( pThis && nArg > 1 ){` |
+|     7 |  7566 | `		PH7_NativeSetAttrBool(pCtx->pVm,pThis,"registerNodeNamespaces",` |
+|     4 |  7567 | `			ph7_value_to_bool(apArg[1]));` |
+|     2 |  7568 | `	}` |
+|    73 |  7569 | `	return PH7_OK;` |
+|     1 |  7570 | `}` |
+|     - |  7571 | `/*` |
+|     - |  7572 | ` * DOMXPath::registerNamespace(string $prefix, string $namespace): bool` |
+|     - |  7573 | ` *` |
+|     - |  7574 | ` * php hands the pair to xmlXPathRegisterNs on its persistent context and` |
+|     - |  7575 | ` * answers its status: only the EMPTY prefix refuses (an invalid NCName one is` |
+|     - |  7576 | ` * taken, and an empty URI is a registration too -- the prefix then resolves,` |
+|     - |  7577 | ` * to a namespace nothing is in). Here the pair goes into the per-object table` |
+|     - |  7578 | ` * the next evaluation replays.` |
+|     - |  7579 | ` */` |
+|    40 |  7580 | `DOM_METHOD(vm_builtin_DOMXPath_registerNamespace)` |
+|     1 |  7581 | `{` |
+|    41 |  7582 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    41 |  7583 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    41 |  7584 | `	int nPfx = 0;` |
+|    41 |  7585 | `	const char *zPfx = nArg > 0 ? ph7_value_to_string(apArg[0],&nPfx) : "";` |
+|     - |  7586 | `	ph7_hashmap *pMap;` |
+|     - |  7587 | `	ph7_value sKey,sVal;` |
+|    41 |  7588 | `	if( nPfx < 1 \|\| nArg < 2 ){` |
+|     3 |  7589 | `		ph7_result_bool(pCtx,0);` |
+|     3 |  7590 | `		return PH7_OK;` |
+|     - |  7591 | `	}` |
+|    39 |  7592 | `	pMap = DomXPathSlotMap(pVm,pThis,XP_NSREG);` |
+|    39 |  7593 | `	if( pMap == 0 ){` |
+|   ! 0 |  7594 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7595 | `		return PH7_OK;` |
+|     - |  7596 | `	}` |
+|    39 |  7597 | `	PH7_MemObjInitFromString(pVm,&sKey,0);` |
+|    39 |  7598 | `	PH7_MemObjStringAppend(&sKey,zPfx,(sxu32)nPfx);` |
+|    39 |  7599 | `	PH7_MemObjInitFromString(pVm,&sVal,0);` |
+|     - |  7600 | `	{` |
+|    39 |  7601 | `		int nUri = 0;` |
+|    39 |  7602 | `		const char *zUri = ph7_value_to_string(apArg[1],&nUri);` |
+|    39 |  7603 | `		PH7_MemObjStringAppend(&sVal,zUri,(sxu32)nUri);` |
+|     - |  7604 | `	}` |
+|    39 |  7605 | `	PH7_HashmapInsert(pMap,&sKey,&sVal);` |
+|    39 |  7606 | `	PH7_MemObjRelease(&sKey);` |
+|    39 |  7607 | `	PH7_MemObjRelease(&sVal);` |
+|    39 |  7608 | `	ph7_result_bool(pCtx,1);` |
+|    39 |  7609 | `	return PH7_OK;` |
+|    21 |  7610 | `}` |
+|     - |  7611 |  |
+|     - |  7612 | `/* One row of the $restrict ARRAY: the value must be callable, and the NAME an` |
+|     - |  7613 | ` * expression calls it by is the string key when there is one -- php's alias --` |
+|     - |  7614 | ` * and otherwise the value coerced to a string (an array callable therefore` |
+|     - |  7615 | ` * registers under "Array", with php's own conversion notice). */` |
+|     - |  7616 | `struct DomXPathRestrict {` |
+|     - |  7617 | `	ph7_context *pCtx;` |
+|     - |  7618 | `	ph7_hashmap *pMap;` |
+|     - |  7619 | `	sxi32 rc;` |
+|     - |  7620 | `};` |
+|    16 |  7621 | `static int DomXPathRestrictRow(ph7_value *pKey,ph7_value *pVal,void *pUserData)` |
+|     1 |  7622 | `{` |
+|    17 |  7623 | `	struct DomXPathRestrict *pWalk = (struct DomXPathRestrict *)pUserData;` |
+|    17 |  7624 | `	ph7_vm *pVm = pWalk->pCtx->pVm;` |
+|     - |  7625 | `	char zBuf[128];` |
+|     - |  7626 | `	const char *zWhy;` |
+|    17 |  7627 | `	if( pWalk->rc != PH7_OK ){` |
+|   ! 0 |  7628 | `		return PH7_OK;` |
+|     - |  7629 | `	}` |
+|    17 |  7630 | `	zWhy = PH7_VmCallableReason(pVm,pVal,zBuf,(int)sizeof(zBuf));` |
+|    17 |  7631 | `	if( zWhy ){` |
+|     7 |  7632 | `		pWalk->rc = PH7_VmThrowException(pWalk->pCtx,"TypeError",` |
+|     - |  7633 | `			"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be an array "` |
+|     2 |  7634 | `			"with valid callbacks as values, %s",zWhy);` |
+|     5 |  7635 | `		return PH7_ABORT;` |
+|     - |  7636 | `	}` |
+|    15 |  7637 | `	if( pKey && ph7_value_is_string(pKey) ){` |
+|     5 |  7638 | `		int nKey = 0;` |
+|     5 |  7639 | `		const char *zKey = ph7_value_to_string(pKey,&nKey);` |
+|     5 |  7640 | `		DomXPathMapPut(pVm,pWalk->pMap,zKey,nKey,pVal);` |
+|     3 |  7641 | `	}else{` |
+|     - |  7642 | `		/* ph7_value_to_string COERCES in place, which would rewrite the map's` |
+|     - |  7643 | `		 * own value; name off a copy. */` |
+|     - |  7644 | `		ph7_value sName;` |
+|     9 |  7645 | `		int nName = 0;` |
+|     - |  7646 | `		const char *zName;` |
+|     9 |  7647 | `		PH7_MemObjInit(pVm,&sName);` |
+|     9 |  7648 | `		PH7_MemObjStore(pVal,&sName);` |
+|     9 |  7649 | `		zName = ph7_value_to_string(&sName,&nName);` |
+|     9 |  7650 | `		DomXPathMapPut(pVm,pWalk->pMap,zName,nName,pVal);` |
+|     9 |  7651 | `		PH7_MemObjRelease(&sName);` |
+|     - |  7652 | `	}` |
+|    13 |  7653 | `	return PH7_OK;` |
+|     9 |  7654 | `}` |
+|     - |  7655 | `/*` |
+|     - |  7656 | ` * DOMXPath::registerPhpFunctions(array\|string\|null $restrict = null): void` |
+|     - |  7657 | ` *` |
+|     - |  7658 | ` * Bare (or null) opens the door to ANY callable name; a string or an array` |
+|     - |  7659 | ` * restricts it to the named ones, accumulating across calls -- a later bare` |
+|     - |  7660 | ` * call re-opens without forgetting the table, and a later restriction closes` |
+|     - |  7661 | ` * it again with everything registered so far still reachable. Each name is` |
+|     - |  7662 | ` * screened for callability HERE, so an evaluation never has to.` |
+|     - |  7663 | ` */` |
+|    32 |  7664 | `DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctions)` |
+|     1 |  7665 | `{` |
+|    33 |  7666 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    33 |  7667 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - |  7668 | `	ph7_hashmap *pMap;` |
+|    33 |  7669 | `	if( pThis == 0 ){` |
+|   ! 0 |  7670 | `		return PH7_OK;` |
+|     - |  7671 | `	}` |
+|    33 |  7672 | `	if( nArg < 1 \|\| ph7_value_is_null(apArg[0]) ){` |
+|    15 |  7673 | `		PH7_NativeSetAttrInt(pVm,pThis,XP_FNMODE,XP_MODE_ALL);` |
+|    15 |  7674 | `		return PH7_OK;` |
+|     - |  7675 | `	}` |
+|    19 |  7676 | `	pMap = DomXPathSlotMap(pVm,pThis,XP_FNREG);` |
+|    19 |  7677 | `	if( pMap == 0 ){` |
+|   ! 0 |  7678 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  7679 | `	}` |
+|     - |  7680 | `	/* The mode moves FIRST, and each row is taken as it is screened: php's` |
+|     - |  7681 | `	 * refusal leaves the object restricted with everything registered up to` |
+|     - |  7682 | `` 	 * the bad row -- `registerPhpFunctions(['strrev','nope','strtolower'])` `` |
+|     - |  7683 | `	 * throws, and afterwards strrev runs while strtolower does not. */` |
+|    19 |  7684 | `	PH7_NativeSetAttrInt(pVm,pThis,XP_FNMODE,XP_MODE_LIST);` |
+|    19 |  7685 | `	if( ph7_value_is_array(apArg[0]) ){` |
+|     - |  7686 | `		struct DomXPathRestrict sWalk;` |
+|    13 |  7687 | `		sWalk.pCtx = pCtx;` |
+|    13 |  7688 | `		sWalk.pMap = pMap;` |
+|    13 |  7689 | `		sWalk.rc = PH7_OK;` |
+|    13 |  7690 | `		ph7_array_walk(apArg[0],DomXPathRestrictRow,&sWalk);` |
+|    13 |  7691 | `		if( sWalk.rc != PH7_OK ){` |
+|     5 |  7692 | `			return sWalk.rc;` |
 |     - |  7693 | `		}` |
-|     5 |  7694 | `		zName = ph7_value_to_string(apArg[0],&nName);` |
-|     5 |  7695 | `		DomXPathMapPut(pVm,pMap,zName,nName,apArg[0]);` |
-|     - |  7696 | `	}` |
-|    13 |  7697 | `	return PH7_OK;` |
-|    17 |  7698 | `}` |
-|     - |  7699 | `/* php's callback NAME grammar for registerPhpFunctionNS: an XML NCName, which` |
-|     - |  7700 | ` * is what an expression can spell as a function name. */` |
-|    18 |  7701 | `static int DomXPathIsCallbackName(const char *zName,int nName)` |
-|     1 |  7702 | `{` |
-|     - |  7703 | `	int i;` |
-|    19 |  7704 | `	if( nName < 1 ){` |
-|     3 |  7705 | `		return 0;` |
+|     5 |  7694 | `	}else{` |
+|     - |  7695 | `		char zBuf[128];` |
+|     7 |  7696 | `		const char *zWhy = PH7_VmCallableReason(pVm,apArg[0],zBuf,(int)sizeof(zBuf));` |
+|     7 |  7697 | `		int nName = 0;` |
+|     - |  7698 | `		const char *zName;` |
+|     7 |  7699 | `		if( zWhy ){` |
+|     4 |  7700 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
+|     - |  7701 | `				"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be a callable, %s",` |
+|     1 |  7702 | `				zWhy);` |
+|     - |  7703 | `		}` |
+|     5 |  7704 | `		zName = ph7_value_to_string(apArg[0],&nName);` |
+|     5 |  7705 | `		DomXPathMapPut(pVm,pMap,zName,nName,apArg[0]);` |
 |     - |  7706 | `	}` |
-|    17 |  7707 | `	if( xmlValidateNCName((const xmlChar *)zName,0) != 0 ){` |
-|     5 |  7708 | `		return 0;` |
-|     - |  7709 | `	}` |
-|     - |  7710 | `	/* xmlValidateNCName reads to the NUL, and a name may not carry one. */` |
-|    67 |  7711 | `	for( i = 0 ; i < nName ; ++i ){` |
-|    55 |  7712 | `		if( zName[i] == 0 ){` |
-|   ! 0 |  7713 | `			return 0;` |
-|     - |  7714 | `		}` |
-|    28 |  7715 | `	}` |
-|    13 |  7716 | `	return (int)SyStrlen(zName) == nName;` |
-|    10 |  7717 | `}` |
-|     - |  7718 | `/*` |
-|     - |  7719 | ` * DOMXPath::registerPhpFunctionNS(string $namespaceURI, string $name,` |
-|     - |  7720 | ` *                                 callable $callable): void` |
-|     - |  7721 | ` *` |
-|     - |  7722 | ` * php 8.4's narrow door: one callable under one name in the caller's OWN` |
-|     - |  7723 | `` * namespace -- no `php:function("name")` indirection, and independent of`` |
-|     - |  7724 | ` * registerPhpFunctions' mode (it neither needs it nor opens it). php's own` |
-|     - |  7725 | ` * URI is refused, the name must be an NCName, and the callable is screened` |
-|     - |  7726 | ` * here.` |
-|     - |  7727 | ` */` |
-|    20 |  7728 | `DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctionNS)` |
-|     1 |  7729 | `{` |
-|    21 |  7730 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    21 |  7731 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    21 |  7732 | `	int nUri = 0,nName = 0;` |
-|    21 |  7733 | `	const char *zUri = nArg > 0 ? ph7_value_to_string(apArg[0],&nUri) : "";` |
-|    21 |  7734 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],&nName) : "";` |
-|     - |  7735 | `	char zBuf[128];` |
-|     - |  7736 | `	const char *zWhy;` |
-|     - |  7737 | `	ph7_hashmap *pMap;` |
-|     - |  7738 | `	SyBlob sKey;` |
-|    21 |  7739 | `	if( pThis == 0 \|\| nArg < 3 ){` |
-|   ! 0 |  7740 | `		return PH7_OK;` |
-|     - |  7741 | `	}` |
-|    21 |  7742 | `	if( nUri == (int)sizeof(XP_PHPNS)-1 && SyMemcmp(zUri,XP_PHPNS,(sxu32)nUri) == 0 ){` |
-|     3 |  7743 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - |  7744 | `			"DOMXPath::registerPhpFunctionNS(): Argument #1 ($namespaceURI) must not be "` |
-|     - |  7745 | `			"\"%s\" because it is reserved by PHP",XP_PHPNS);` |
-|     - |  7746 | `	}` |
-|    19 |  7747 | `	if( !DomXPathIsCallbackName(zName,nName) ){` |
-|     7 |  7748 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - |  7749 | `			"DOMXPath::registerPhpFunctionNS(): Argument #2 ($name) must be a valid callback name");` |
-|     - |  7750 | `	}` |
-|    13 |  7751 | `	zWhy = PH7_VmCallableReason(pVm,apArg[2],zBuf,(int)sizeof(zBuf));` |
-|    13 |  7752 | `	if( zWhy ){` |
-|     4 |  7753 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|     - |  7754 | `			"DOMXPath::registerPhpFunctionNS(): Argument #3 ($callable) must be a valid callback, %s",` |
-|     1 |  7755 | `			zWhy);` |
+|    13 |  7707 | `	return PH7_OK;` |
+|    17 |  7708 | `}` |
+|     - |  7709 | `/* php's callback NAME grammar for registerPhpFunctionNS: an XML NCName, which` |
+|     - |  7710 | ` * is what an expression can spell as a function name. */` |
+|    18 |  7711 | `static int DomXPathIsCallbackName(const char *zName,int nName)` |
+|     1 |  7712 | `{` |
+|     - |  7713 | `	int i;` |
+|    19 |  7714 | `	if( nName < 1 ){` |
+|     3 |  7715 | `		return 0;` |
+|     - |  7716 | `	}` |
+|    17 |  7717 | `	if( xmlValidateNCName((const xmlChar *)zName,0) != 0 ){` |
+|     5 |  7718 | `		return 0;` |
+|     - |  7719 | `	}` |
+|     - |  7720 | `	/* xmlValidateNCName reads to the NUL, and a name may not carry one. */` |
+|    67 |  7721 | `	for( i = 0 ; i < nName ; ++i ){` |
+|    55 |  7722 | `		if( zName[i] == 0 ){` |
+|   ! 0 |  7723 | `			return 0;` |
+|     - |  7724 | `		}` |
+|    28 |  7725 | `	}` |
+|    13 |  7726 | `	return (int)SyStrlen(zName) == nName;` |
+|    10 |  7727 | `}` |
+|     - |  7728 | `/*` |
+|     - |  7729 | ` * DOMXPath::registerPhpFunctionNS(string $namespaceURI, string $name,` |
+|     - |  7730 | ` *                                 callable $callable): void` |
+|     - |  7731 | ` *` |
+|     - |  7732 | ` * php 8.4's narrow door: one callable under one name in the caller's OWN` |
+|     - |  7733 | `` * namespace -- no `php:function("name")` indirection, and independent of`` |
+|     - |  7734 | ` * registerPhpFunctions' mode (it neither needs it nor opens it). php's own` |
+|     - |  7735 | ` * URI is refused, the name must be an NCName, and the callable is screened` |
+|     - |  7736 | ` * here.` |
+|     - |  7737 | ` */` |
+|    20 |  7738 | `DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctionNS)` |
+|     1 |  7739 | `{` |
+|    21 |  7740 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    21 |  7741 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    21 |  7742 | `	int nUri = 0,nName = 0;` |
+|    21 |  7743 | `	const char *zUri = nArg > 0 ? ph7_value_to_string(apArg[0],&nUri) : "";` |
+|    21 |  7744 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],&nName) : "";` |
+|     - |  7745 | `	char zBuf[128];` |
+|     - |  7746 | `	const char *zWhy;` |
+|     - |  7747 | `	ph7_hashmap *pMap;` |
+|     - |  7748 | `	SyBlob sKey;` |
+|    21 |  7749 | `	if( pThis == 0 \|\| nArg < 3 ){` |
+|   ! 0 |  7750 | `		return PH7_OK;` |
+|     - |  7751 | `	}` |
+|    21 |  7752 | `	if( nUri == (int)sizeof(XP_PHPNS)-1 && SyMemcmp(zUri,XP_PHPNS,(sxu32)nUri) == 0 ){` |
+|     3 |  7753 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - |  7754 | `			"DOMXPath::registerPhpFunctionNS(): Argument #1 ($namespaceURI) must not be "` |
+|     - |  7755 | `			"\"%s\" because it is reserved by PHP",XP_PHPNS);` |
 |     - |  7756 | `	}` |
-|    11 |  7757 | `	pMap = DomXPathSlotMap(pVm,pThis,XP_NSFN);` |
-|    11 |  7758 | `	if( pMap == 0 ){` |
-|   ! 0 |  7759 | `		return PH7_ContextMemoryError(pCtx);` |
+|    19 |  7757 | `	if( !DomXPathIsCallbackName(zName,nName) ){` |
+|     7 |  7758 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - |  7759 | `			"DOMXPath::registerPhpFunctionNS(): Argument #2 ($name) must be a valid callback name");` |
 |     - |  7760 | `	}` |
-|     - |  7761 | `	/* One key from the pair: a URI cannot carry \x01, so the join is` |
-|     - |  7762 | `	 * unambiguous without escaping. */` |
-|    11 |  7763 | `	SyBlobInit(&sKey,&pVm->sAllocator);` |
-|    11 |  7764 | `	SyBlobAppend(&sKey,zUri,(sxu32)nUri);` |
-|    11 |  7765 | `	SyBlobAppend(&sKey,"\1",1);` |
-|    11 |  7766 | `	SyBlobAppend(&sKey,zName,(sxu32)nName);` |
-|    11 |  7767 | `	DomXPathMapPut(pVm,pMap,(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey),apArg[2]);` |
-|    11 |  7768 | `	SyBlobRelease(&sKey);` |
-|    11 |  7769 | `	return PH7_OK;` |
-|    11 |  7770 | `}` |
-|     - |  7771 |  |
-|     - |  7772 | `/* ===== Schema validation ===== */` |
-|     - |  7773 |  |
-|     - |  7774 | `/*` |
-|     - |  7775 | ` * The four schema doors -- {XML Schema, RelaxNG} x {a FILE, a STRING} -- and` |
-|     - |  7776 | `` * php's `validate()` beside them, all one shape:`` |
-|     - |  7777 | ` *` |
-|     - |  7778 | ` *   parse the schema (loudly: every libxml complaint reaches the caller's` |
-|     - |  7779 | ` *   error handler), and if that fails say "Invalid Schema" / "Invalid RelaxNG"` |
-|     - |  7780 | ` *   and answer false; otherwise validate the document and answer whether it` |
-|     - |  7781 | ` *   came back clean.` |
-|     - |  7782 | ` *` |
-|     - |  7783 | ` * Only the pair of libxml families differs, so the switch is four calls wide` |
-|     - |  7784 | ` * and the plumbing -- the argument screens, the diagnostic capture, the` |
-|     - |  7785 | ` * refusals -- is written once.  The names a caller sees are php's: a filename` |
-|     - |  7786 | ` * that is empty or carries a NUL is a ValueError naming the argument, raised` |
-|     - |  7787 | ` * before anything is opened.` |
-|     - |  7788 | ` */` |
-|     - |  7789 | `#define DOM_VAL_SCHEMA 0` |
-|     - |  7790 | `#define DOM_VAL_RELAX  1` |
-|     - |  7791 |  |
-|     - |  7792 | `/*` |
-|     - |  7793 | ` * Schema, RelaxNG and DTD-validity diagnostics: onto the shared per-VM queue` |
-|     - |  7794 | ` * through PH7_LibxmlQueueError, exactly like the global structured handler.` |
-|     - |  7795 | ` *` |
-|     - |  7796 | ` * php installs libxml's printf-style pair here instead, which is why its` |
-|     - |  7797 | ` * validation diagnostics read as libxml writes them -- "I/O warning : failed` |
-|     - |  7798 | ` * to load external entity ...", a parse error over three lines with the` |
-|     - |  7799 | ` * offending source and a caret under it -- while every message this engine` |
-|     - |  7800 | ` * drains is one structured record with its location appended.  The structured` |
-|     - |  7801 | ` * handler is the one this file must keep: it is also what feeds` |
-|     - |  7802 | `` * `libxml_get_errors()`, and php's own switches to exactly this shape once`` |
-|     - |  7803 | `` * `libxml_use_internal_errors(true)` is on.  The ANSWERS agree; the wording of`` |
-|     - |  7804 | ` * a failure does not (the error-format class).` |
-|     - |  7805 | ` */` |
-|     - |  7806 | `#if LIBXML_VERSION >= 21200` |
-|    12 |  7807 | `static void DomSchemaErr(void *pUserData,const xmlError *pErr)` |
-|     - |  7808 | `#else` |
-|     8 |  7809 | `static void DomSchemaErr(void *pUserData,xmlErrorPtr pErr)` |
-|     - |  7810 | `#endif` |
-|     1 |  7811 | `{` |
-|    21 |  7812 | `	if( pErr == 0 ){` |
-|   ! 0 |  7813 | `		return;` |
-|     - |  7814 | `	}` |
-|    33 |  7815 | `	PH7_LibxmlQueueError((ph7_vm *)pUserData,(int)pErr->level,pErr->code,pErr->line,` |
-|    20 |  7816 | `		pErr->int2,pErr->message,pErr->file);` |
-|    13 |  7817 | `}` |
-|     - |  7818 | `/* php's own last word when a schema will not parse, under the method's name. */` |
-|     8 |  7819 | `static void DomValidateSaySo(ph7_vm *pVm,const char *zFn,const char *zWhat)` |
-|     1 |  7820 | `{` |
-|     - |  7821 | `	SyBlob sMsg;` |
-|     9 |  7822 | `	SyBlobInit(&sMsg,&pVm->sAllocator);` |
-|     9 |  7823 | `	SyBlobFormat(&sMsg,"%s(): %s",zFn,zWhat);` |
-|     9 |  7824 | `	SyBlobNullAppend(&sMsg);` |
-|     9 |  7825 | `	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));` |
-|     9 |  7826 | `	SyBlobRelease(&sMsg);` |
-|     9 |  7827 | `}` |
-|     - |  7828 | `/*` |
-|     - |  7829 | ` * The argument every schema door takes: a filename or the schema itself. The` |
-|     - |  7830 | ` * two refusals are php's own and answer before any parse.` |
-|     - |  7831 | ` */` |
-|    36 |  7832 | `static int DomValidateArg(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile,` |
-|     - |  7833 | `	const char *zFn,const char **pzSrc,int *pnSrc,int *pRc)` |
-|     1 |  7834 | `{` |
-|    37 |  7835 | `	int nSrc = 0;` |
-|    37 |  7836 | `	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";` |
-|    37 |  7837 | `	const char *zParam = bFile ? "filename" : "source";` |
-|    37 |  7838 | `	if( bFile && nSrc != (int)SyStrlen(zSrc) ){` |
-|     4 |  7839 | `		*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
-|     1 |  7840 | `			"%s(): Argument #1 ($%s) must not contain any null bytes",zFn,zParam);` |
-|     3 |  7841 | `		return 0;` |
-|     - |  7842 | `	}` |
-|    35 |  7843 | `	if( nSrc < 1 ){` |
-|    13 |  7844 | `		*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
-|     4 |  7845 | `			"%s(): Argument #1 ($%s) must not be empty",zFn,zParam);` |
-|     9 |  7846 | `		return 0;` |
-|     - |  7847 | `	}` |
-|    27 |  7848 | `	*pzSrc = zSrc;` |
-|    27 |  7849 | `	*pnSrc = nSrc;` |
-|    27 |  7850 | `	return 1;` |
-|    19 |  7851 | `}` |
-|    36 |  7852 | `static int DomValidateRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iKind,` |
-|     - |  7853 | `	int bFile,const char *zFn)` |
-|     1 |  7854 | `{` |
-|    37 |  7855 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    37 |  7856 | `	phl_domnode *pDocNd = DomThisNode(pCtx);` |
-|    37 |  7857 | `	int nSrc = 0,rc = PH7_OK,iRc;` |
-|    37 |  7858 | `	const char *zSrc = "";` |
-|     - |  7859 | `	sxu32 nMark;` |
-|     - |  7860 | `	/* php reads the option word from the SCHEMA pair only; RelaxNG's two` |
-|     - |  7861 | `	 * declare no second parameter at all. LIBXML_SCHEMA_CREATE is the one bit` |
-|     - |  7862 | `	 * it acts on -- "write the schema's default values into the document". */` |
-|    31 |  7863 | `	int bCreate = iKind == DOM_VAL_SCHEMA && nArg > 1` |
-|    47 |  7864 | `		&& (ph7_value_to_int(apArg[1]) & XML_SCHEMA_VAL_VC_I_CREATE) != 0;` |
-|    37 |  7865 | `	if( !DomValidateArg(pCtx,nArg,apArg,bFile,zFn,&zSrc,&nSrc,&rc) ){` |
-|    11 |  7866 | `		return rc;` |
-|     - |  7867 | `	}` |
-|    27 |  7868 | `	if( pDocNd == 0 ){` |
-|   ! 0 |  7869 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7870 | `		return PH7_OK;` |
-|     - |  7871 | `	}` |
-|    27 |  7872 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
-|    27 |  7873 | `	if( iKind == DOM_VAL_SCHEMA ){` |
-|    14 |  7874 | `		xmlSchemaParserCtxtPtr pParser = bFile ? xmlSchemaNewParserCtxt(zSrc)` |
-|    11 |  7875 | `		                                       : xmlSchemaNewMemParserCtxt(zSrc,nSrc);` |
-|     - |  7876 | `		xmlSchemaPtr pSchema;` |
-|     - |  7877 | `		xmlSchemaValidCtxtPtr pValid;` |
-|    17 |  7878 | `		if( pParser == 0 ){` |
-|   ! 0 |  7879 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
-|   ! 0 |  7880 | `			ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7881 | `			return PH7_OK;` |
-|     - |  7882 | `		}` |
-|    17 |  7883 | `		xmlSchemaSetParserStructuredErrors(pParser,DomSchemaErr,pVm);` |
-|    17 |  7884 | `		pSchema = xmlSchemaParse(pParser);` |
-|    17 |  7885 | `		xmlSchemaFreeParserCtxt(pParser);` |
-|    17 |  7886 | `		if( pSchema == 0 ){` |
-|     5 |  7887 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
-|     5 |  7888 | `			DomValidateSaySo(pVm,zFn,"Invalid Schema");` |
-|     5 |  7889 | `			ph7_result_bool(pCtx,0);` |
-|     5 |  7890 | `			return PH7_OK;` |
-|     - |  7891 | `		}` |
-|    13 |  7892 | `		pValid = xmlSchemaNewValidCtxt(pSchema);` |
-|    13 |  7893 | `		if( pValid == 0 ){` |
-|   ! 0 |  7894 | `			xmlSchemaFree(pSchema);` |
-|   ! 0 |  7895 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
-|   ! 0 |  7896 | `			ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7897 | `			return PH7_OK;` |
-|     - |  7898 | `		}` |
-|    13 |  7899 | `		if( bCreate ){` |
-|     3 |  7900 | `			xmlSchemaSetValidOptions(pValid,XML_SCHEMA_VAL_VC_I_CREATE);` |
-|     1 |  7901 | `		}` |
-|    13 |  7902 | `		xmlSchemaSetValidStructuredErrors(pValid,DomSchemaErr,pVm);` |
-|    13 |  7903 | `		iRc = xmlSchemaValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);` |
-|    13 |  7904 | `		xmlSchemaFreeValidCtxt(pValid);` |
-|    13 |  7905 | `		xmlSchemaFree(pSchema);` |
-|     7 |  7906 | `	}else{` |
-|     9 |  7907 | `		xmlRelaxNGParserCtxtPtr pParser = bFile ? xmlRelaxNGNewParserCtxt(zSrc)` |
-|     7 |  7908 | `		                                        : xmlRelaxNGNewMemParserCtxt(zSrc,nSrc);` |
-|     - |  7909 | `		xmlRelaxNGPtr pSchema;` |
-|     - |  7910 | `		xmlRelaxNGValidCtxtPtr pValid;` |
-|    11 |  7911 | `		if( pParser == 0 ){` |
-|   ! 0 |  7912 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
-|   ! 0 |  7913 | `			ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7914 | `			return PH7_OK;` |
-|     - |  7915 | `		}` |
-|    11 |  7916 | `		xmlRelaxNGSetParserStructuredErrors(pParser,DomSchemaErr,pVm);` |
-|    11 |  7917 | `		pSchema = xmlRelaxNGParse(pParser);` |
-|    11 |  7918 | `		xmlRelaxNGFreeParserCtxt(pParser);` |
-|    11 |  7919 | `		if( pSchema == 0 ){` |
-|     5 |  7920 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
-|     5 |  7921 | `			DomValidateSaySo(pVm,zFn,"Invalid RelaxNG");` |
-|     5 |  7922 | `			ph7_result_bool(pCtx,0);` |
-|     5 |  7923 | `			return PH7_OK;` |
-|     - |  7924 | `		}` |
-|     7 |  7925 | `		pValid = xmlRelaxNGNewValidCtxt(pSchema);` |
-|     7 |  7926 | `		if( pValid == 0 ){` |
-|   ! 0 |  7927 | `			xmlRelaxNGFree(pSchema);` |
-|   ! 0 |  7928 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
-|   ! 0 |  7929 | `			ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7930 | `			return PH7_OK;` |
-|     - |  7931 | `		}` |
-|     7 |  7932 | `		xmlRelaxNGSetValidStructuredErrors(pValid,DomSchemaErr,pVm);` |
-|     7 |  7933 | `		iRc = xmlRelaxNGValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);` |
-|     7 |  7934 | `		xmlRelaxNGFreeValidCtxt(pValid);` |
-|     7 |  7935 | `		xmlRelaxNGFree(pSchema);` |
-|     - |  7936 | `	}` |
-|    19 |  7937 | `	PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
-|    19 |  7938 | `	ph7_result_bool(pCtx,iRc == 0);` |
-|    19 |  7939 | `	return PH7_OK;` |
-|    19 |  7940 | `}` |
-|     - |  7941 | `/* DOMDocument::schemaValidate(string $filename, int $flags = 0): bool */` |
-|    14 |  7942 | `DOM_METHOD(vm_builtin_DOMDocument_schemaValidate)` |
-|     1 |  7943 | `{` |
-|    15 |  7944 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,TRUE,"DOMDocument::schemaValidate");` |
-|     1 |  7945 | `}` |
-|     - |  7946 | `/* DOMDocument::schemaValidateSource(string $source, int $flags = 0): bool */` |
-|     8 |  7947 | `DOM_METHOD(vm_builtin_DOMDocument_schemaValidateSource)` |
-|     1 |  7948 | `{` |
-|     9 |  7949 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,FALSE,"DOMDocument::schemaValidateSource");` |
-|     1 |  7950 | `}` |
-|     - |  7951 | `/* DOMDocument::relaxNGValidate(string $filename): bool */` |
-|     8 |  7952 | `DOM_METHOD(vm_builtin_DOMDocument_relaxNGValidate)` |
+|    13 |  7761 | `	zWhy = PH7_VmCallableReason(pVm,apArg[2],zBuf,(int)sizeof(zBuf));` |
+|    13 |  7762 | `	if( zWhy ){` |
+|     4 |  7763 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|     - |  7764 | `			"DOMXPath::registerPhpFunctionNS(): Argument #3 ($callable) must be a valid callback, %s",` |
+|     1 |  7765 | `			zWhy);` |
+|     - |  7766 | `	}` |
+|    11 |  7767 | `	pMap = DomXPathSlotMap(pVm,pThis,XP_NSFN);` |
+|    11 |  7768 | `	if( pMap == 0 ){` |
+|   ! 0 |  7769 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  7770 | `	}` |
+|     - |  7771 | `	/* One key from the pair: a URI cannot carry \x01, so the join is` |
+|     - |  7772 | `	 * unambiguous without escaping. */` |
+|    11 |  7773 | `	SyBlobInit(&sKey,&pVm->sAllocator);` |
+|    11 |  7774 | `	SyBlobAppend(&sKey,zUri,(sxu32)nUri);` |
+|    11 |  7775 | `	SyBlobAppend(&sKey,"\1",1);` |
+|    11 |  7776 | `	SyBlobAppend(&sKey,zName,(sxu32)nName);` |
+|    11 |  7777 | `	DomXPathMapPut(pVm,pMap,(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey),apArg[2]);` |
+|    11 |  7778 | `	SyBlobRelease(&sKey);` |
+|    11 |  7779 | `	return PH7_OK;` |
+|    11 |  7780 | `}` |
+|     - |  7781 |  |
+|     - |  7782 | `/* ===== Schema validation ===== */` |
+|     - |  7783 |  |
+|     - |  7784 | `/*` |
+|     - |  7785 | ` * The four schema doors -- {XML Schema, RelaxNG} x {a FILE, a STRING} -- and` |
+|     - |  7786 | `` * php's `validate()` beside them, all one shape:`` |
+|     - |  7787 | ` *` |
+|     - |  7788 | ` *   parse the schema (loudly: every libxml complaint reaches the caller's` |
+|     - |  7789 | ` *   error handler), and if that fails say "Invalid Schema" / "Invalid RelaxNG"` |
+|     - |  7790 | ` *   and answer false; otherwise validate the document and answer whether it` |
+|     - |  7791 | ` *   came back clean.` |
+|     - |  7792 | ` *` |
+|     - |  7793 | ` * Only the pair of libxml families differs, so the switch is four calls wide` |
+|     - |  7794 | ` * and the plumbing -- the argument screens, the diagnostic capture, the` |
+|     - |  7795 | ` * refusals -- is written once.  The names a caller sees are php's: a filename` |
+|     - |  7796 | ` * that is empty or carries a NUL is a ValueError naming the argument, raised` |
+|     - |  7797 | ` * before anything is opened.` |
+|     - |  7798 | ` */` |
+|     - |  7799 | `#define DOM_VAL_SCHEMA 0` |
+|     - |  7800 | `#define DOM_VAL_RELAX  1` |
+|     - |  7801 |  |
+|     - |  7802 | `/*` |
+|     - |  7803 | ` * Schema, RelaxNG and DTD-validity diagnostics: onto the shared per-VM queue` |
+|     - |  7804 | ` * through PH7_LibxmlQueueError, exactly like the global structured handler.` |
+|     - |  7805 | ` *` |
+|     - |  7806 | ` * php installs libxml's printf-style pair here instead, which is why its` |
+|     - |  7807 | ` * validation diagnostics read as libxml writes them -- "I/O warning : failed` |
+|     - |  7808 | ` * to load external entity ...", a parse error over three lines with the` |
+|     - |  7809 | ` * offending source and a caret under it -- while every message this engine` |
+|     - |  7810 | ` * drains is one structured record with its location appended.  The structured` |
+|     - |  7811 | ` * handler is the one this file must keep: it is also what feeds` |
+|     - |  7812 | `` * `libxml_get_errors()`, and php's own switches to exactly this shape once`` |
+|     - |  7813 | `` * `libxml_use_internal_errors(true)` is on.  The ANSWERS agree; the wording of`` |
+|     - |  7814 | ` * a failure does not (the error-format class).` |
+|     - |  7815 | ` */` |
+|     - |  7816 | `#if LIBXML_VERSION >= 21200` |
+|    12 |  7817 | `static void DomSchemaErr(void *pUserData,const xmlError *pErr)` |
+|     - |  7818 | `#else` |
+|     8 |  7819 | `static void DomSchemaErr(void *pUserData,xmlErrorPtr pErr)` |
+|     - |  7820 | `#endif` |
+|     1 |  7821 | `{` |
+|    21 |  7822 | `	if( pErr == 0 ){` |
+|   ! 0 |  7823 | `		return;` |
+|     - |  7824 | `	}` |
+|    33 |  7825 | `	PH7_LibxmlQueueError((ph7_vm *)pUserData,(int)pErr->level,pErr->code,pErr->line,` |
+|    20 |  7826 | `		pErr->int2,pErr->message,pErr->file);` |
+|    13 |  7827 | `}` |
+|     - |  7828 | `/* php's own last word when a schema will not parse, under the method's name. */` |
+|     8 |  7829 | `static void DomValidateSaySo(ph7_vm *pVm,const char *zFn,const char *zWhat)` |
+|     1 |  7830 | `{` |
+|     - |  7831 | `	SyBlob sMsg;` |
+|     9 |  7832 | `	SyBlobInit(&sMsg,&pVm->sAllocator);` |
+|     9 |  7833 | `	SyBlobFormat(&sMsg,"%s(): %s",zFn,zWhat);` |
+|     9 |  7834 | `	SyBlobNullAppend(&sMsg);` |
+|     9 |  7835 | `	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));` |
+|     9 |  7836 | `	SyBlobRelease(&sMsg);` |
+|     9 |  7837 | `}` |
+|     - |  7838 | `/*` |
+|     - |  7839 | ` * The argument every schema door takes: a filename or the schema itself. The` |
+|     - |  7840 | ` * two refusals are php's own and answer before any parse.` |
+|     - |  7841 | ` */` |
+|    36 |  7842 | `static int DomValidateArg(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile,` |
+|     - |  7843 | `	const char *zFn,const char **pzSrc,int *pnSrc,int *pRc)` |
+|     1 |  7844 | `{` |
+|    37 |  7845 | `	int nSrc = 0;` |
+|    37 |  7846 | `	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";` |
+|    37 |  7847 | `	const char *zParam = bFile ? "filename" : "source";` |
+|    37 |  7848 | `	if( bFile && nSrc != (int)SyStrlen(zSrc) ){` |
+|     4 |  7849 | `		*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
+|     1 |  7850 | `			"%s(): Argument #1 ($%s) must not contain any null bytes",zFn,zParam);` |
+|     3 |  7851 | `		return 0;` |
+|     - |  7852 | `	}` |
+|    35 |  7853 | `	if( nSrc < 1 ){` |
+|    13 |  7854 | `		*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
+|     4 |  7855 | `			"%s(): Argument #1 ($%s) must not be empty",zFn,zParam);` |
+|     9 |  7856 | `		return 0;` |
+|     - |  7857 | `	}` |
+|    27 |  7858 | `	*pzSrc = zSrc;` |
+|    27 |  7859 | `	*pnSrc = nSrc;` |
+|    27 |  7860 | `	return 1;` |
+|    19 |  7861 | `}` |
+|    36 |  7862 | `static int DomValidateRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iKind,` |
+|     - |  7863 | `	int bFile,const char *zFn)` |
+|     1 |  7864 | `{` |
+|    37 |  7865 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    37 |  7866 | `	phl_domnode *pDocNd = DomThisNode(pCtx);` |
+|    37 |  7867 | `	int nSrc = 0,rc = PH7_OK,iRc;` |
+|    37 |  7868 | `	const char *zSrc = "";` |
+|     - |  7869 | `	sxu32 nMark;` |
+|     - |  7870 | `	/* php reads the option word from the SCHEMA pair only; RelaxNG's two` |
+|     - |  7871 | `	 * declare no second parameter at all. LIBXML_SCHEMA_CREATE is the one bit` |
+|     - |  7872 | `	 * it acts on -- "write the schema's default values into the document". */` |
+|    31 |  7873 | `	int bCreate = iKind == DOM_VAL_SCHEMA && nArg > 1` |
+|    47 |  7874 | `		&& (ph7_value_to_int(apArg[1]) & XML_SCHEMA_VAL_VC_I_CREATE) != 0;` |
+|    37 |  7875 | `	if( !DomValidateArg(pCtx,nArg,apArg,bFile,zFn,&zSrc,&nSrc,&rc) ){` |
+|    11 |  7876 | `		return rc;` |
+|     - |  7877 | `	}` |
+|    27 |  7878 | `	if( pDocNd == 0 ){` |
+|   ! 0 |  7879 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7880 | `		return PH7_OK;` |
+|     - |  7881 | `	}` |
+|    27 |  7882 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
+|    27 |  7883 | `	if( iKind == DOM_VAL_SCHEMA ){` |
+|    14 |  7884 | `		xmlSchemaParserCtxtPtr pParser = bFile ? xmlSchemaNewParserCtxt(zSrc)` |
+|    11 |  7885 | `		                                       : xmlSchemaNewMemParserCtxt(zSrc,nSrc);` |
+|     - |  7886 | `		xmlSchemaPtr pSchema;` |
+|     - |  7887 | `		xmlSchemaValidCtxtPtr pValid;` |
+|    17 |  7888 | `		if( pParser == 0 ){` |
+|   ! 0 |  7889 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
+|   ! 0 |  7890 | `			ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7891 | `			return PH7_OK;` |
+|     - |  7892 | `		}` |
+|    17 |  7893 | `		xmlSchemaSetParserStructuredErrors(pParser,DomSchemaErr,pVm);` |
+|    17 |  7894 | `		pSchema = xmlSchemaParse(pParser);` |
+|    17 |  7895 | `		xmlSchemaFreeParserCtxt(pParser);` |
+|    17 |  7896 | `		if( pSchema == 0 ){` |
+|     5 |  7897 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
+|     5 |  7898 | `			DomValidateSaySo(pVm,zFn,"Invalid Schema");` |
+|     5 |  7899 | `			ph7_result_bool(pCtx,0);` |
+|     5 |  7900 | `			return PH7_OK;` |
+|     - |  7901 | `		}` |
+|    13 |  7902 | `		pValid = xmlSchemaNewValidCtxt(pSchema);` |
+|    13 |  7903 | `		if( pValid == 0 ){` |
+|   ! 0 |  7904 | `			xmlSchemaFree(pSchema);` |
+|   ! 0 |  7905 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
+|   ! 0 |  7906 | `			ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7907 | `			return PH7_OK;` |
+|     - |  7908 | `		}` |
+|    13 |  7909 | `		if( bCreate ){` |
+|     3 |  7910 | `			xmlSchemaSetValidOptions(pValid,XML_SCHEMA_VAL_VC_I_CREATE);` |
+|     1 |  7911 | `		}` |
+|    13 |  7912 | `		xmlSchemaSetValidStructuredErrors(pValid,DomSchemaErr,pVm);` |
+|    13 |  7913 | `		iRc = xmlSchemaValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);` |
+|    13 |  7914 | `		xmlSchemaFreeValidCtxt(pValid);` |
+|    13 |  7915 | `		xmlSchemaFree(pSchema);` |
+|     7 |  7916 | `	}else{` |
+|     9 |  7917 | `		xmlRelaxNGParserCtxtPtr pParser = bFile ? xmlRelaxNGNewParserCtxt(zSrc)` |
+|     7 |  7918 | `		                                        : xmlRelaxNGNewMemParserCtxt(zSrc,nSrc);` |
+|     - |  7919 | `		xmlRelaxNGPtr pSchema;` |
+|     - |  7920 | `		xmlRelaxNGValidCtxtPtr pValid;` |
+|    11 |  7921 | `		if( pParser == 0 ){` |
+|   ! 0 |  7922 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
+|   ! 0 |  7923 | `			ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7924 | `			return PH7_OK;` |
+|     - |  7925 | `		}` |
+|    11 |  7926 | `		xmlRelaxNGSetParserStructuredErrors(pParser,DomSchemaErr,pVm);` |
+|    11 |  7927 | `		pSchema = xmlRelaxNGParse(pParser);` |
+|    11 |  7928 | `		xmlRelaxNGFreeParserCtxt(pParser);` |
+|    11 |  7929 | `		if( pSchema == 0 ){` |
+|     5 |  7930 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
+|     5 |  7931 | `			DomValidateSaySo(pVm,zFn,"Invalid RelaxNG");` |
+|     5 |  7932 | `			ph7_result_bool(pCtx,0);` |
+|     5 |  7933 | `			return PH7_OK;` |
+|     - |  7934 | `		}` |
+|     7 |  7935 | `		pValid = xmlRelaxNGNewValidCtxt(pSchema);` |
+|     7 |  7936 | `		if( pValid == 0 ){` |
+|   ! 0 |  7937 | `			xmlRelaxNGFree(pSchema);` |
+|   ! 0 |  7938 | `			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
+|   ! 0 |  7939 | `			ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7940 | `			return PH7_OK;` |
+|     - |  7941 | `		}` |
+|     7 |  7942 | `		xmlRelaxNGSetValidStructuredErrors(pValid,DomSchemaErr,pVm);` |
+|     7 |  7943 | `		iRc = xmlRelaxNGValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);` |
+|     7 |  7944 | `		xmlRelaxNGFreeValidCtxt(pValid);` |
+|     7 |  7945 | `		xmlRelaxNGFree(pSchema);` |
+|     - |  7946 | `	}` |
+|    19 |  7947 | `	PH7_LibxmlCaptureEnd(pVm,nMark,zFn);` |
+|    19 |  7948 | `	ph7_result_bool(pCtx,iRc == 0);` |
+|    19 |  7949 | `	return PH7_OK;` |
+|    19 |  7950 | `}` |
+|     - |  7951 | `/* DOMDocument::schemaValidate(string $filename, int $flags = 0): bool */` |
+|    14 |  7952 | `DOM_METHOD(vm_builtin_DOMDocument_schemaValidate)` |
 |     1 |  7953 | `{` |
-|     9 |  7954 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,TRUE,"DOMDocument::relaxNGValidate");` |
+|    15 |  7954 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,TRUE,"DOMDocument::schemaValidate");` |
 |     1 |  7955 | `}` |
-|     - |  7956 | `/* DOMDocument::relaxNGValidateSource(string $source): bool */` |
-|     6 |  7957 | `DOM_METHOD(vm_builtin_DOMDocument_relaxNGValidateSource)` |
+|     - |  7956 | `/* DOMDocument::schemaValidateSource(string $source, int $flags = 0): bool */` |
+|     8 |  7957 | `DOM_METHOD(vm_builtin_DOMDocument_schemaValidateSource)` |
 |     1 |  7958 | `{` |
-|     7 |  7959 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,FALSE,"DOMDocument::relaxNGValidateSource");` |
+|     9 |  7959 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,FALSE,"DOMDocument::schemaValidateSource");` |
 |     1 |  7960 | `}` |
-|     - |  7961 | `/*` |
-|     - |  7962 | ` * DOMDocument::validate(): bool -- against the document's OWN DTD, which is` |
-|     - |  7963 | ` * the one question of the five that takes no argument. libxml's validity` |
-|     - |  7964 | ` * complaints ("no DTD found!", "root and DTD name do not match") reach the` |
-|     - |  7965 | ` * caller through the same per-VM queue every other diagnostic here does.` |
-|     - |  7966 | ` */` |
-|     8 |  7967 | `DOM_METHOD(vm_builtin_DOMDocument_validate)` |
+|     - |  7961 | `/* DOMDocument::relaxNGValidate(string $filename): bool */` |
+|     8 |  7962 | `DOM_METHOD(vm_builtin_DOMDocument_relaxNGValidate)` |
+|     1 |  7963 | `{` |
+|     9 |  7964 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,TRUE,"DOMDocument::relaxNGValidate");` |
+|     1 |  7965 | `}` |
+|     - |  7966 | `/* DOMDocument::relaxNGValidateSource(string $source): bool */` |
+|     6 |  7967 | `DOM_METHOD(vm_builtin_DOMDocument_relaxNGValidateSource)` |
 |     1 |  7968 | `{` |
-|     9 |  7969 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     9 |  7970 | `	phl_domnode *pDocNd = DomThisNode(pCtx);` |
-|     - |  7971 | `	xmlValidCtxtPtr pValid;` |
-|     - |  7972 | `	sxu32 nMark;` |
-|     - |  7973 | `	int iRc;` |
-|     4 |  7974 | `	SXUNUSED(nArg);` |
-|     4 |  7975 | `	SXUNUSED(apArg);` |
-|     9 |  7976 | `	if( pDocNd == 0 ){` |
-|   ! 0 |  7977 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7978 | `		return PH7_OK;` |
-|     - |  7979 | `	}` |
-|     9 |  7980 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
-|     9 |  7981 | `	pValid = xmlNewValidCtxt();` |
-|     9 |  7982 | `	if( pValid == 0 ){` |
-|   ! 0 |  7983 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");` |
-|   ! 0 |  7984 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  7985 | `		return PH7_OK;` |
-|     - |  7986 | `	}` |
-|     9 |  7987 | `	iRc = xmlValidateDocument(pValid,(xmlDocPtr)pDocNd->pNode);` |
-|     9 |  7988 | `	xmlFreeValidCtxt(pValid);` |
-|     9 |  7989 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");` |
-|     9 |  7990 | `	ph7_result_bool(pCtx,iRc != 0);` |
-|     9 |  7991 | `	return PH7_OK;` |
-|     5 |  7992 | `}` |
-|     - |  7993 | `/*` |
-|     - |  7994 | ` * The MARKERS libxml leaves around everything it substituted.` |
-|     - |  7995 | ` *` |
-|     - |  7996 | ` * An XInclude pass wraps each replacement in an XML_XINCLUDE_START /` |
-|     - |  7997 | ` * XML_XINCLUDE_END pair, which are nodes in the tree like any other: they` |
-|     - |  7998 | `` * answer from `childNodes`, they shift every index after them, and the first`` |
-|     - |  7999 | `` * child of an element whose only content was an `<xi:include>` is one of them`` |
-|     - |  8000 | ` * rather than what was included.  php takes them out before answering, so the` |
-|     - |  8001 | ` * document a caller gets back is the substituted one and nothing else.  They` |
-|     - |  8002 | ` * are parked on the orphan set rather than freed, like every other node this` |
-|     - |  8003 | ` * file unlinks.` |
-|     - |  8004 | ` */` |
-|    14 |  8005 | `static void DomDropXIncludeMarks(phl_xmldoc *pShell,xmlNodePtr pNode)` |
-|     1 |  8006 | `{` |
-|     - |  8007 | `	xmlNodePtr pNext;` |
-|    29 |  8008 | `	while( pNode ){` |
-|    15 |  8009 | `		pNext = pNode->next;` |
-|    15 |  8010 | `		if( pNode->type == XML_XINCLUDE_START \|\| pNode->type == XML_XINCLUDE_END ){` |
-|     5 |  8011 | `			xmlUnlinkNode(pNode);` |
-|     5 |  8012 | `			DomOrphanAdd(pShell,pNode);` |
-|     3 |  8013 | `		}else{` |
-|    11 |  8014 | `			DomDropXIncludeMarks(pShell,pNode->children);` |
-|     - |  8015 | `		}` |
-|    15 |  8016 | `		pNode = pNext;` |
-|     1 |  8017 | `	}` |
-|    15 |  8018 | `}` |
-|     - |  8019 | `/*` |
-|     - |  8020 | ` * DOMDocument::xinclude(int $options = 0): int\|false` |
-|     - |  8021 | ` *` |
-|     - |  8022 | ` * php answers the COUNT of substitutions libxml made, -1 when one of them` |
-|     - |  8023 | ` * failed -- and FALSE when there were none at all, which is not an error and` |
-|     - |  8024 | ` * is the one answer a caller has to screen for separately.` |
-|     - |  8025 | ` */` |
-|     6 |  8026 | `DOM_METHOD(vm_builtin_DOMDocument_xinclude)` |
-|     1 |  8027 | `{` |
-|     7 |  8028 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     7 |  8029 | `	phl_domnode *pDocNd = DomThisNode(pCtx);` |
-|     7 |  8030 | `	int iOpts = nArg > 0 ? ph7_value_to_int(apArg[0]) : 0;` |
-|     - |  8031 | `	sxu32 nMark;` |
-|     - |  8032 | `	int nDone;` |
-|     7 |  8033 | `	if( pDocNd == 0 ){` |
-|   ! 0 |  8034 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  8035 | `		return PH7_OK;` |
-|     - |  8036 | `	}` |
-|     7 |  8037 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
-|     7 |  8038 | `	nDone = xmlXIncludeProcessFlags((xmlDocPtr)pDocNd->pNode,iOpts);` |
-|     7 |  8039 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::xinclude");` |
-|     7 |  8040 | `	if( nDone >= 0 ){` |
-|     7 |  8041 | `		DomDropXIncludeMarks(pDocNd->pShell,` |
-|     4 |  8042 | `			((xmlDocPtr)pDocNd->pNode)->children);` |
-|     2 |  8043 | `	}` |
-|     7 |  8044 | `	if( nDone == 0 ){` |
-|     3 |  8045 | `		ph7_result_bool(pCtx,0);` |
-|     2 |  8046 | `	}else{` |
-|     5 |  8047 | `		ph7_result_int(pCtx,nDone);` |
-|     - |  8048 | `	}` |
-|     7 |  8049 | `	return PH7_OK;` |
-|     4 |  8050 | `}` |
-|     - |  8051 |  |
-|     - |  8052 | `/*` |
-|     - |  8053 | ` * DOMDocument::registerNodeClass(string $baseClass, ?string $extendedClass): true` |
-|     - |  8054 | ` *` |
-|     - |  8055 | ` * php lets a program say which class a node should be WRAPPED in, per` |
-|     - |  8056 | `` * document: register `MyElement` against `DOMElement` and every element of`` |
-|     - |  8057 | ` * that document -- read from the tree or made by a factory -- comes back a` |
-|     - |  8058 | ` * MyElement, so a walk can call the program's own methods on what it finds` |
-|     - |  8059 | ` * instead of carrying a parallel table of its own.` |
-|     - |  8060 | ` *` |
-|     - |  8061 | ` * The lookup is by the class the extension would have used and by nothing` |
-|     - |  8062 | `` * else: registering against `DOMNode` or `DOMCharacterData` changes NO`` |
-|     - |  8063 | ` * wrapping, because an element is wrapped as a DOMElement and a text node as a` |
-|     - |  8064 | ` * DOMText, and neither name is the one registered.` |
-|     - |  8065 | ` *` |
-|     - |  8066 | ` * The map is the document's, stored in a hidden slot beside its identity cache` |
-|     - |  8067 | ` * and carried by a document CLONE the way the parser directives are.` |
-|     - |  8068 | ` */` |
-|     - |  8069 | `/* The map, materialized on the document the way its identity cache is. */` |
-|  2732 |  8070 | `static ph7_hashmap * DomNodeClassMap(ph7_vm *pVm,ph7_class_instance *pDoc,int bMake)` |
-|     5 |  8071 | `{` |
-|  2737 |  8072 | `	ph7_value *pSlot = pDoc ? PH7_NativeAttr(pDoc,DOM_NCLS) : 0;` |
-|  2737 |  8073 | `	if( pSlot == 0 \|\| (!bMake && (pSlot->iFlags & MEMOBJ_HASHMAP) == 0) ){` |
-|  2699 |  8074 | `		return 0;` |
-|     - |  8075 | `	}` |
-|    40 |  8076 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
-|     8 |  8077 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
-|   ! 0 |  8078 | `			return 0;` |
-|     - |  8079 | `		}` |
-|     3 |  8080 | `	}` |
-|    40 |  8081 | `	return PH7_HashmapCowSeparate(&(*pVm),pSlot);` |
-|  1371 |  8082 | `}` |
-|     - |  8083 | `/* The class a node of pDoc's tree is wrapped in: the registered one when the` |
-|     - |  8084 | ` * document names it, php's own otherwise. */` |
-|  2718 |  8085 | `static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,` |
-|     - |  8086 | `	SyBlob *pOut)` |
-|     5 |  8087 | `{` |
-|  2723 |  8088 | `	const char *zBase = DomClassOfKind(iKind);` |
-|  2723 |  8089 | `	ph7_hashmap *pMap = DomNodeClassMap(&(*pVm),pDoc,FALSE);` |
-|  2723 |  8090 | `	ph7_hashmap_node *pEntry = 0;` |
-|     - |  8091 | `	ph7_value sKey,*pHit;` |
-|  2723 |  8092 | `	if( pMap == 0 ){` |
-|  2699 |  8093 | `		return zBase;` |
-|     - |  8094 | `	}` |
-|    26 |  8095 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
-|    26 |  8096 | `	PH7_MemObjStringAppend(&sKey,zBase,(sxu32)SyStrlen(zBase));` |
-|    26 |  8097 | `	if( PH7_HashmapLookup(pMap,&sKey,&pEntry) == SXRET_OK && pEntry ){` |
-|    16 |  8098 | `		pHit = HashmapExtractNodeValue(pEntry);` |
-|    16 |  8099 | `		if( pHit && (pHit->iFlags & MEMOBJ_STRING) ){` |
-|    16 |  8100 | `			SyBlobAppend(pOut,SyBlobData(&pHit->sBlob),SyBlobLength(&pHit->sBlob));` |
-|    16 |  8101 | `			SyBlobNullAppend(pOut);` |
-|    16 |  8102 | `			zBase = (const char *)SyBlobData(pOut);` |
-|     7 |  8103 | `		}` |
-|     7 |  8104 | `	}` |
-|    26 |  8105 | `	PH7_MemObjRelease(&sKey);` |
-|    26 |  8106 | `	return zBase;` |
-|  1364 |  8107 | `}` |
-|    24 |  8108 | `DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)` |
-|     2 |  8109 | `{` |
-|    26 |  8110 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    26 |  8111 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    26 |  8112 | `	int nBase = 0,nExt = 0;` |
-|    26 |  8113 | `	const char *zBase = nArg > 0 ? ph7_value_to_string(apArg[0],&nBase) : "";` |
-|    26 |  8114 | `	const char *zExt = (nArg > 1 && !ph7_value_is_null(apArg[1]))` |
-|    35 |  8115 | `		? ph7_value_to_string(apArg[1],&nExt) : 0;` |
-|    26 |  8116 | `	ph7_class *pBase,*pExt = 0,*pNode;` |
-|     - |  8117 | `	ph7_hashmap *pMap;` |
-|     - |  8118 | `	ph7_value sKey,sVal;` |
-|    26 |  8119 | `	pBase = PH7_VmExtractClass(pVm,zBase,(sxu32)nBase,FALSE,0);` |
-|    26 |  8120 | `	pNode = PH7_VmExtractClass(pVm,"DOMNode",sizeof("DOMNode")-1,FALSE,0);` |
-|    26 |  8121 | `	if( pBase == 0 \|\| pNode == 0 \|\| !PH7_VmInstanceOf(pBase,pNode) ){` |
-|     7 |  8122 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|     - |  8123 | `			"DOMDocument::registerNodeClass(): Argument #1 ($baseClass) must be a "` |
-|     2 |  8124 | `			"class name derived from DOMNode, %.*s given",nBase,zBase);` |
-|     - |  8125 | `	}` |
-|    22 |  8126 | `	if( zExt ){` |
-|    20 |  8127 | `		pExt = PH7_VmExtractClass(pVm,zExt,(sxu32)nExt,FALSE,0);` |
-|    20 |  8128 | `		if( pExt == 0 ){` |
-|     4 |  8129 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
-|     - |  8130 | `				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "` |
-|     1 |  8131 | `				"a valid class name or null, %.*s given",nExt,zExt);` |
-|     - |  8132 | `		}` |
-|    18 |  8133 | `		if( !PH7_VmInstanceOf(pExt,pBase) ){` |
-|     - |  8134 | `			/* php's plain Error here, not a TypeError: the name IS a class, it` |
-|     - |  8135 | `			 * is simply the wrong one. */` |
-|     4 |  8136 | `			return PH7_VmThrowException(pCtx,"Error",` |
-|     - |  8137 | `				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "` |
-|     - |  8138 | `				"a class name derived from %z or null, %.*s given",` |
-|     1 |  8139 | `				&pBase->sName,nExt,zExt);` |
-|     - |  8140 | `		}` |
-|    16 |  8141 | `		if( pExt->iFlags & PH7_CLASS_ABSTRACT ){` |
-|     3 |  8142 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - |  8143 | `				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must "` |
-|     - |  8144 | `				"not be an abstract class");` |
-|     - |  8145 | `		}` |
-|     6 |  8146 | `	}` |
-|    16 |  8147 | `	pMap = DomNodeClassMap(pVm,pThis,TRUE);` |
-|    16 |  8148 | `	if( pMap == 0 ){` |
-|   ! 0 |  8149 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  8150 | `	}` |
-|     - |  8151 | `	/* Keyed by the base's OWN spelling, which is the one the wrap looks up. */` |
-|    16 |  8152 | `	PH7_MemObjInitFromString(pVm,&sKey,&pBase->sName);` |
-|    16 |  8153 | `	if( pExt ){` |
-|    14 |  8154 | `		PH7_MemObjInitFromString(pVm,&sVal,&pExt->sName);` |
-|    14 |  8155 | `		PH7_HashmapInsert(pMap,&sKey,&sVal);` |
-|    14 |  8156 | `		PH7_MemObjRelease(&sVal);` |
-|     8 |  8157 | `	}else{` |
-|     3 |  8158 | `		ph7_hashmap_node *pEntry = 0;` |
-|     3 |  8159 | `		if( PH7_HashmapLookup(pMap,&sKey,&pEntry) == SXRET_OK && pEntry ){` |
-|     3 |  8160 | `			PH7_HashmapUnlinkNode(pEntry,TRUE);` |
-|     1 |  8161 | `		}` |
-|     - |  8162 | `	}` |
-|    16 |  8163 | `	PH7_MemObjRelease(&sKey);` |
-|    16 |  8164 | `	ph7_result_bool(pCtx,1);` |
-|    16 |  8165 | `	return PH7_OK;` |
-|    14 |  8166 | `}` |
-|     - |  8167 |  |
-|     - |  8168 | `/* ===== DOMImplementation ===== */` |
-|     - |  8169 |  |
-|     - |  8170 | `/*` |
-|     - |  8171 | ` * php's factory for the two things that cannot be made from a document that` |
-|     - |  8172 | ` * does not exist yet: a DOCTYPE, and a document with a namespaced root.` |
-|     - |  8173 | ` *` |
-|     - |  8174 | `` * It carries no state at all -- `new DOMImplementation` is enough, its three`` |
-|     - |  8175 | `` * methods are ordinary instance methods, and `$doc->implementation` answers a`` |
-|     - |  8176 | ` * FRESH one on every read.` |
-|     - |  8177 | ` */` |
-|     - |  8178 |  |
-|     - |  8179 | `/* A node that belongs to NO document, wrapped and owned the way a constructed` |
-|     - |  8180 | ` * one is: parked on the per-VM limbo shell, its own identity-cache holder. The` |
-|     - |  8181 | ` * caller owns the reference. */` |
-|    20 |  8182 | `static ph7_class_instance * DomLimboWrap(ph7_vm *pVm,xmlNodePtr pNode)` |
-|     1 |  8183 | `{` |
-|    21 |  8184 | `	const char *zClass = DomClassOfKind((int)pNode->type);` |
-|    21 |  8185 | `	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);` |
-|    21 |  8186 | `	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;` |
-|    21 |  8187 | `	phl_xmldoc *pShell = pObj ? DomLimboShell(&(*pVm)) : 0;` |
-|    21 |  8188 | `	phl_domnode *pRes = pShell ? DomNewRes(&(*pVm),pShell,pNode) : 0;` |
-|    21 |  8189 | `	if( pRes == 0 ){` |
-|   ! 0 |  8190 | `		if( pObj ){` |
-|   ! 0 |  8191 | `			PH7_ClassInstanceUnref(pObj);` |
-|   ! 0 |  8192 | `		}` |
-|   ! 0 |  8193 | `		return 0;` |
-|     - |  8194 | `	}` |
-|    21 |  8195 | `	DomOrphanAdd(pShell,pNode);` |
-|    21 |  8196 | `	DomSetRes(&(*pVm),pObj,pRes);` |
-|    21 |  8197 | `	PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_DOC,pObj);` |
-|    21 |  8198 | `	DomCacheStore(&(*pVm),pObj,pNode,pObj);` |
-|    21 |  8199 | `	return pObj;` |
-|    11 |  8200 | `}` |
-|     - |  8201 | `/*` |
-|     - |  8202 | ` * DOMImplementation::hasFeature(string $feature, string $version): bool` |
-|     - |  8203 | ` *` |
-|     - |  8204 | ` * php's table is two rows wide and the version is compared as a STRING: only` |
-|     - |  8205 | ` * "1.0", "2.0" and "" are versions at all, and of those "Core" answers for` |
-|     - |  8206 | ``  * "1.0" alone where "XML" answers for every one. So `hasFeature('Core','2.0')` `` |
-|     - |  8207 | ``  * is false while `hasFeature('XML','2.0')` is true, and `hasFeature('Core','1')` `` |
-|     - |  8208 | ` * -- a version that is not spelled the way the table spells it -- is false.` |
-|     - |  8209 | ` */` |
-|    22 |  8210 | `DOM_METHOD(vm_builtin_DOMImplementation_hasFeature)` |
-|     1 |  8211 | `{` |
-|    23 |  8212 | `	const char *zFeature = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
-|    23 |  8213 | `	const char *zVersion = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
-|    31 |  8214 | `	int bKnown = DomNameIs(zVersion,"1.0") \|\| DomNameIs(zVersion,"2.0")` |
-|    27 |  8215 | `		\|\| zVersion[0] == 0;` |
-|    49 |  8216 | `	ph7_result_bool(pCtx,bKnown` |
-|    31 |  8217 | `		&& (DomNameIsCi(zFeature,"XML")` |
-|    16 |  8218 | `			\|\| (DomNameIsCi(zFeature,"Core") && DomNameIs(zVersion,"1.0"))));` |
-|    23 |  8219 | `	return PH7_OK;` |
-|     1 |  8220 | `}` |
-|     - |  8221 | `/*` |
-|     - |  8222 | ` * DOMImplementation::createDocumentType(string $qualifiedName,` |
-|     - |  8223 | ` *     string $publicId = '', string $systemId = ''): DOMDocumentType` |
-|     - |  8224 | ` *` |
-|     - |  8225 | `` * The name is not checked at ALL beyond being non-empty -- `1bad`, `a b` and`` |
-|     - |  8226 | `` * `p:q:r` are each a doctype php builds without a word -- because nothing has`` |
-|     - |  8227 | `` * parsed it: the name is the bytes the `<!DOCTYPE ...>` line will carry.`` |
-|     - |  8228 | ` */` |
-|    22 |  8229 | `DOM_METHOD(vm_builtin_DOMImplementation_createDocumentType)` |
-|     1 |  8230 | `{` |
-|    23 |  8231 | `	int nName = 0;` |
-|    23 |  8232 | `	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
-|    23 |  8233 | `	const char *zPub = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
-|    23 |  8234 | `	const char *zSys = nArg > 2 ? ph7_value_to_string(apArg[2],0) : "";` |
-|     - |  8235 | `	ph7_class_instance *pObj;` |
-|     - |  8236 | `	xmlDtdPtr pDtd;` |
-|    23 |  8237 | `	if( nName < 1 ){` |
-|     3 |  8238 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - |  8239 | `			"DOMImplementation::createDocumentType(): Argument #1 ($qualifiedName) "` |
-|     - |  8240 | `			"must not be empty");` |
-|     - |  8241 | `	}` |
-|    41 |  8242 | `	pDtd = xmlNewDtd(0,(const xmlChar *)zName,` |
-|    20 |  8243 | `		zPub[0] ? (const xmlChar *)zPub : 0,` |
-|    20 |  8244 | `		zSys[0] ? (const xmlChar *)zSys : 0);` |
-|    21 |  8245 | `	if( pDtd == 0 ){` |
-|   ! 0 |  8246 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  8247 | `	}` |
-|    21 |  8248 | `	pObj = DomLimboWrap(pCtx->pVm,(xmlNodePtr)pDtd);` |
-|    21 |  8249 | `	if( pObj == 0 ){` |
-|   ! 0 |  8250 | `		xmlFreeDtd(pDtd);` |
-|   ! 0 |  8251 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  8252 | `	}` |
-|    21 |  8253 | `	PH7_NativeResultObject(pCtx,pObj);` |
-|    21 |  8254 | `	return PH7_OK;` |
-|    12 |  8255 | `}` |
-|     - |  8256 | `/*` |
-|     - |  8257 | ` * DOMImplementation::createDocument(?string $namespace = null,` |
-|     - |  8258 | ` *     string $qualifiedName = '', ?DOMDocumentType $doctype = null): DOMDocument` |
-|     - |  8259 | ` *` |
-|     - |  8260 | ` * An empty qualified name is a document with no root at all, which is what` |
-|     - |  8261 | ` * makes the three-argument call with only a doctype meaningful.  The name is a` |
-|     - |  8262 | `` * QName or nothing (`1bad` and `a:b:c` are the Namespace Error), and the`` |
-|     - |  8263 | ` * namespace decides what becomes of its PREFIX: with a URI the element is` |
-|     - |  8264 | ` * declared under it, and WITHOUT one the prefix is simply dropped -- php` |
-|     - |  8265 | ` * builds the element from the local name and hangs the declaration on it` |
-|     - |  8266 | `` * afterwards, so `createDocument('', 'p:root')` is `<root/>`.`` |
-|     - |  8267 | ` *` |
-|     - |  8268 | ` * A doctype that already belongs to a document is the Wrong Document Error,` |
-|     - |  8269 | ` * so the same DOMDocumentType cannot seed two documents.` |
-|     - |  8270 | ` */` |
-|    26 |  8271 | `DOM_METHOD(vm_builtin_DOMImplementation_createDocument)` |
-|     1 |  8272 | `{` |
-|    27 |  8273 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    27 |  8274 | `	const xmlChar *zUri = DomArgUri(nArg,apArg,0);` |
-|    27 |  8275 | `	int nName = 0;` |
-|    27 |  8276 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],&nName) : "";` |
-|    27 |  8277 | `	phl_domnode *pDtdNd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? DomObjArg(apArg[2]) : 0;` |
-|    27 |  8278 | `	xmlDtdPtr pDtd = pDtdNd ? (xmlDtdPtr)pDtdNd->pNode : 0;` |
-|     - |  8279 | `	ph7_class *pClass;` |
-|     - |  8280 | `	ph7_class_instance *pObj;` |
-|     - |  8281 | `	phl_xmldoc *pShell;` |
-|     - |  8282 | `	phl_domnode *pRes;` |
-|     - |  8283 | `	xmlDocPtr pDoc;` |
-|    27 |  8284 | `	xmlNodePtr pRoot = 0;` |
-|    27 |  8285 | `	xmlNsPtr pNs = 0;` |
-|    27 |  8286 | `	xmlChar *zPrefix = 0,*zLocal = 0;` |
-|    27 |  8287 | `	if( pDtd && pDtd->doc ){` |
-|     - |  8288 | `		/* php's own screen, and the reason a doctype seeds ONE document. */` |
-|     3 |  8289 | `		return DomThrowAlways(pCtx,DOM_ERR_WRONG_DOC);` |
-|     - |  8290 | `	}` |
-|    25 |  8291 | `	if( nName > 0 ){` |
-|    19 |  8292 | `		if( xmlValidateQName((const xmlChar *)zName,0) != 0 ){` |
-|     9 |  8293 | `			return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);` |
-|     - |  8294 | `		}` |
-|    11 |  8295 | `		zLocal = xmlSplitQName2((const xmlChar *)zName,&zPrefix);` |
-|    11 |  8296 | `		if( zLocal == 0 ){` |
-|     7 |  8297 | `			zLocal = xmlStrdup((const xmlChar *)zName);` |
-|     3 |  8298 | `		}` |
-|    11 |  8299 | `		if( zUri && zUri[0] ){` |
-|     - |  8300 | `			/* php asks libxml for the declaration BEFORE it has a node to hang` |
-|     - |  8301 | ``			 * it on, and takes a refusal (the `xml` prefix over its own URI is`` |
-|     - |  8302 | `			 * one) as the Namespace Error. */` |
-|     5 |  8303 | `			pNs = xmlNewNs(0,zUri,zPrefix);` |
-|     5 |  8304 | `			if( pNs == 0 ){` |
-|   ! 0 |  8305 | `				if( zLocal ){` |
-|   ! 0 |  8306 | `					xmlFree(zLocal);` |
-|   ! 0 |  8307 | `				}` |
-|   ! 0 |  8308 | `				if( zPrefix ){` |
-|   ! 0 |  8309 | `					xmlFree(zPrefix);` |
-|   ! 0 |  8310 | `				}` |
-|   ! 0 |  8311 | `				return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);` |
-|     - |  8312 | `			}` |
-|     2 |  8313 | `		}` |
-|     5 |  8314 | `	}` |
-|    17 |  8315 | `	pDoc = xmlNewDoc((const xmlChar *)"1.0");` |
-|    17 |  8316 | `	pClass = pDoc ? PH7_VmExtractClass(pVm,"DOMDocument",sizeof("DOMDocument")-1,FALSE,0) : 0;` |
-|    17 |  8317 | `	pObj = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;` |
-|    17 |  8318 | `	pShell = pObj ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;` |
-|    17 |  8319 | `	pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;` |
-|    17 |  8320 | `	if( pRes == 0 ){` |
-|   ! 0 |  8321 | `		if( pDoc && pShell == 0 ){` |
-|   ! 0 |  8322 | `			xmlFreeDoc(pDoc);` |
-|   ! 0 |  8323 | `		}` |
-|   ! 0 |  8324 | `		if( pObj ){` |
-|   ! 0 |  8325 | `			PH7_ClassInstanceUnref(pObj);` |
-|   ! 0 |  8326 | `		}` |
-|   ! 0 |  8327 | `		if( pNs ){` |
-|   ! 0 |  8328 | `			xmlFreeNs(pNs);` |
-|   ! 0 |  8329 | `		}` |
-|   ! 0 |  8330 | `		if( zLocal ){` |
-|   ! 0 |  8331 | `			xmlFree(zLocal);` |
-|   ! 0 |  8332 | `		}` |
-|   ! 0 |  8333 | `		if( zPrefix ){` |
-|   ! 0 |  8334 | `			xmlFree(zPrefix);` |
-|   ! 0 |  8335 | `		}` |
-|   ! 0 |  8336 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  8337 | `	}` |
-|    17 |  8338 | `	DomSetRes(pVm,pObj,pRes);` |
-|    17 |  8339 | `	PH7_NativeSetAttrObj(pVm,pObj,DOM_DOC,pObj);` |
-|    17 |  8340 | `	if( pDtd ){` |
-|     - |  8341 | `		/* The doctype MOVES: it leaves the limbo shell for this document's` |
-|     - |  8342 | `		 * tree, and every wrapper of it -- its own and its declarations' --` |
-|     - |  8343 | `		 * re-homes on adoptNode's machinery, which is what makes the doctype` |
-|     - |  8344 | ``		 * answer this document as its `ownerDocument` afterwards rather than`` |
-|     - |  8345 | `		 * the holder it was its own. */` |
-|     5 |  8346 | `		ph7_class_instance *pDtdObj = (ph7_class_instance *)apArg[2]->x.pOther;` |
-|     5 |  8347 | `		DomOrphanRemove(pDtdNd->pShell,(xmlNodePtr)pDtd);` |
-|     5 |  8348 | `		pDtd->doc = pDoc;` |
-|     5 |  8349 | `		pDoc->intSubset = pDtd;` |
-|     5 |  8350 | `		DomLinkLast((xmlNodePtr)pDoc,(xmlNodePtr)pDtd);` |
-|     5 |  8351 | `		DomAdoptWrappers(pVm,pDtdObj,pObj,pShell,(xmlNodePtr)pDtd);` |
-|     2 |  8352 | `	}` |
-|    17 |  8353 | `	if( nName > 0 ){` |
-|    11 |  8354 | `		pRoot = xmlNewDocNode(pDoc,0,zLocal,0);` |
-|    11 |  8355 | `		if( pRoot ){` |
-|    11 |  8356 | `			xmlDocSetRootElement(pDoc,pRoot);` |
-|    11 |  8357 | `			if( pNs ){` |
-|     5 |  8358 | `				pNs->next = pRoot->nsDef;` |
-|     5 |  8359 | `				pRoot->nsDef = pNs;` |
-|     5 |  8360 | `				xmlSetNs(pRoot,pNs);` |
-|     5 |  8361 | `				pNs = 0;` |
-|     2 |  8362 | `			}` |
-|     5 |  8363 | `		}` |
-|     5 |  8364 | `	}` |
-|    17 |  8365 | `	if( pNs ){` |
-|   ! 0 |  8366 | `		xmlFreeNs(pNs);` |
-|   ! 0 |  8367 | `	}` |
-|    17 |  8368 | `	if( zLocal ){` |
-|    11 |  8369 | `		xmlFree(zLocal);` |
-|     5 |  8370 | `	}` |
-|    17 |  8371 | `	if( zPrefix ){` |
-|     5 |  8372 | `		xmlFree(zPrefix);` |
-|     2 |  8373 | `	}` |
-|    17 |  8374 | `	PH7_NativeResultObject(pCtx,pObj);` |
-|    17 |  8375 | `	return PH7_OK;` |
-|    14 |  8376 | `}` |
-|     - |  8377 |  |
-|     - |  8378 | `/* ===== The shared __get dispatch ===== */` |
-|     - |  8379 |  |
-|     - |  8380 | `/*` |
-|     - |  8381 | ` * DOMNode's virtual properties.` |
-|     - |  8382 | ` *` |
-|     - |  8383 | ` * php exposes these through property handlers on the class; PHL answers them` |
-|     - |  8384 | ` * from __get, as the chunk did. Returns 1 when it recognised the name, so a` |
-|     - |  8385 | ` * subclass's own __get can state its extras and then defer here -- which is` |
-|     - |  8386 | `` * what `parent::__get($name)` did.`` |
-|     - |  8387 | ` */` |
-|  2942 |  8388 | `static int DomNodeProp(ph7_context *pCtx,const char *zName)` |
-|     5 |  8389 | `{` |
-|  2947 |  8390 | `	ph7_vm *pVm = pCtx->pVm;` |
-|  2947 |  8391 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|  2947 |  8392 | `	ph7_class_instance *pDoc = DomThisDoc(pCtx);` |
-|  2947 |  8393 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|  2947 |  8394 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|  4418 |  8395 | `	int bIsDoc = pNode && (pNode->type == XML_DOCUMENT_NODE \|\| pNode->type == XML_HTML_DOCUMENT_NODE);` |
-|  2947 |  8396 | `	if( DomNameIs(zName,"nodeName") ){` |
-|   595 |  8397 | `		DomNodeName(pCtx,pNode);` |
-|  2651 |  8398 | `	}else if( DomNameIs(zName,"nodeValue") ){` |
-|    89 |  8399 | `		DomNodeValue(pCtx,pNode);` |
-|  2311 |  8400 | `	}else if( DomNameIs(zName,"nodeType") ){` |
-|   101 |  8401 | `		ph7_result_int(pCtx,DomNodeTypeOf(pNode));` |
-|  2217 |  8402 | `	}else if( DomNameIs(zName,"textContent") ){` |
-|    51 |  8403 | `		DomTextContent(pCtx,pNode);` |
-|  2142 |  8404 | `	}else if( DomNameIs(zName,"parentNode") ){` |
-|   119 |  8405 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);` |
-|  2059 |  8406 | `	}else if( DomNameIs(zName,"firstChild") ){` |
-|     - |  8407 | `		/* Through the entity-reference resolver: an ADOPTED constructed` |
-|     - |  8408 | `		 * reference's raw children are cleared, and php's reader answers the` |
-|     - |  8409 | `		 * document's declaration anyway.` |
-|     - |  8410 | `		 *` |
-|     - |  8411 | `		 * Both ends are gated on php's dom_node_children_valid, which the` |
-|     - |  8412 | `		 * DOCTYPE is not: libxml links a DTD's declarations as its children` |
-|     - |  8413 | ``		 * and php's `firstChild`/`lastChild`/`hasChildNodes()` answer null,`` |
-|     - |  8414 | ``		 * null and false there all the same -- while `childNodes` (which does`` |
-|     - |  8415 | `		 * NOT consult it) lists them. */` |
-|   585 |  8416 | `		DomResultNodeOf(pCtx,pNd,DomNodeChildFirst(pNode));` |
-|  1709 |  8417 | `	}else if( DomNameIs(zName,"lastChild") ){` |
-|    81 |  8418 | `		DomResultNodeOf(pCtx,pNd,DomNodeChildLast(pNode));` |
-|  1378 |  8419 | `	}else if( DomNameIs(zName,"nextSibling") ){` |
-|    63 |  8420 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->next : 0);` |
-|  1307 |  8421 | `	}else if( DomNameIs(zName,"previousSibling") ){` |
-|     9 |  8422 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->prev : 0);` |
-|  1272 |  8423 | `	}else if( DomNameIs(zName,"ownerDocument") ){` |
-|     - |  8424 | `		/* A document has no owner document, which is also why DomWrap answers` |
-|     - |  8425 | `		 * the document itself rather than a second wrapper for it. The NODE's` |
-|     - |  8426 | `		 * document is the source of truth, not the $__doc slot: a constructed` |
-|     - |  8427 | `		 * ownerless node's slot points at its own holder, and php answers` |
-|     - |  8428 | `		 * null there until an insertion adopts it. */` |
-|   126 |  8429 | `		DomResultWrap(pCtx,(bIsDoc \|\| pNode == 0 \|\| pNode->doc == 0) ? 0 : pDoc);` |
-|  1205 |  8430 | `	}else if( DomNameIs(zName,"parentElement") ){` |
-|     - |  8431 | ``		/* php's `?DOMElement`: the parent when it IS an element, so a root`` |
-|     - |  8432 | `		 * element (whose parent is the document) answers null. An ATTRIBUTE` |
-|     - |  8433 | `		 * answers its element -- libxml parents an attribute, and php reports` |
-|     - |  8434 | ``		 * that parent from both this property and `parentNode`. */`` |
-|    43 |  8435 | `		xmlNodePtr pPar = pNode ? pNode->parent : 0;` |
-|    43 |  8436 | `		DomResultNodeOf(pCtx,pNd,(pPar && pPar->type == XML_ELEMENT_NODE) ? pPar : 0);` |
-|  1122 |  8437 | `	}else if( DomNameIs(zName,"namespaceURI") ){` |
-|   371 |  8438 | `		DomNamespaceUri(pCtx,pNode);` |
-|   916 |  8439 | `	}else if( DomNameIs(zName,"prefix") ){` |
-|   121 |  8440 | `		DomPrefix(pCtx,pNode);` |
-|   671 |  8441 | `	}else if( DomNameIs(zName,"localName") ){` |
-|   119 |  8442 | `		DomLocalName(pCtx,pNode);` |
-|   552 |  8443 | `	}else if( DomNameIs(zName,"isConnected") ){` |
-|    71 |  8444 | `		ph7_result_bool(pCtx,DomIsConnected(pNode));` |
-|   458 |  8445 | `	}else if( DomNameIs(zName,"baseURI") ){` |
-|     - |  8446 | ``		/* php's is libxml's own xmlNodeGetBase(): the nearest `xml:base` on the`` |
-|     - |  8447 | `		 * way up, resolved against the DOCUMENT's URI, and that URI itself when` |
-|     - |  8448 | `		 * no ancestor declares one. So it answers null exactly when the document` |
-|     - |  8449 | ``		 * was never given a URI -- a `new DOMDocument()` that was not loaded --`` |
-|     - |  8450 | `		 * and a node created and never appended still answers its document's. */` |
-|    33 |  8451 | `		xmlChar *zBase = pNode ? xmlNodeGetBase(pNode->doc,pNode) : 0;` |
-|    33 |  8452 | `		if( zBase ){` |
-|    23 |  8453 | `			ph7_result_string(pCtx,(const char *)zBase,-1);` |
-|    23 |  8454 | `			xmlFree(zBase);` |
-|    12 |  8455 | `		}else{` |
-|    11 |  8456 | `			ph7_result_null(pCtx);` |
-|     1 |  8457 | `		}` |
-|   407 |  8458 | `	}else if( DomNameIs(zName,"childNodes") ){` |
-|   241 |  8459 | `		ph7_class_instance *pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_CHILD,pThis,0,0,0);` |
-|   241 |  8460 | `		if( pList == 0 ){` |
-|   ! 0 |  8461 | `			return -1;` |
-|     - |  8462 | `		}` |
-|   241 |  8463 | `		PH7_NativeResultObject(pCtx,pList);` |
-|   271 |  8464 | `	}else if( DomNameIs(zName,"attributes") ){` |
-|     - |  8465 | `		/* php: NULL for anything that is not an element. */` |
-|   128 |  8466 | `		if( pNode == 0 \|\| pNode->type != XML_ELEMENT_NODE ){` |
-|     5 |  8467 | `			ph7_result_null(pCtx);` |
-|     3 |  8468 | `		}else{` |
-|   124 |  8469 | `			ph7_class_instance *pMap = DomNewCollection(pVm,"DOMNamedNodeMap",pDoc,DNL_CHILD,pThis,0,0,0);` |
-|   124 |  8470 | `			if( pMap == 0 ){` |
-|   ! 0 |  8471 | `				return -1;` |
-|     - |  8472 | `			}` |
-|   124 |  8473 | `			PH7_NativeResultObject(pCtx,pMap);` |
-|     - |  8474 | `		}` |
-|    65 |  8475 | `	}else{` |
-|    25 |  8476 | `		return 0;` |
-|     - |  8477 | `	}` |
-|  2923 |  8478 | `	return 1;` |
-|  1476 |  8479 | `}` |
-|     - |  8480 | `/* The argument every __get body reads. */` |
-|  6243 |  8481 | `static const char * DomGetName(int nArg,ph7_value **apArg)` |
-|     5 |  8482 | `{` |
-|  6248 |  8483 | `	return nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
-|     5 |  8484 | `}` |
-|     - |  8485 | `/*` |
-|     - |  8486 | ` * The __get/__isset/__set trio every DOM class carries.` |
-|     - |  8487 | ` *` |
-|     - |  8488 | ` * Both ride ONE recognizer per class -- the DomProp_X readers below, which` |
-|     - |  8489 | ` * answer 1 when the name is a property of that class and have written its` |
-|     - |  8490 | ` * value, and 0 when it is not.  php models these as real (virtual) properties,` |
-|     - |  8491 | `` * so the 0 case is its `Undefined property` WARNING rather than a silent null,`` |
-|     - |  8492 | `` * and `isset()` is php's own has_property: the name has to exist AND read back`` |
-|     - |  8493 | `` * non-null (which is what makes `isset($n->nextSibling)` false on a last child`` |
-|     - |  8494 | `` * while `isset($n->nodeName)` is true).  Without the __isset half every`` |
-|     - |  8495 | `` * `isset($doc->documentElement)` and every `$node->attributes ?? []` answered`` |
-|     - |  8496 | ` * as though the whole surface were absent.` |
-|     - |  8497 | ` */` |
-|    24 |  8498 | `static int DomUndefProp(ph7_context *pCtx,const char *zName)` |
-|     1 |  8499 | `{` |
-|    25 |  8500 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    25 |  8501 | `	ph7_result_null(pCtx);` |
-|    25 |  8502 | `	if( pThis ){` |
-|     - |  8503 | `		/* php names the INSTANCE's class, so a userland subclass of DOMElement` |
-|     - |  8504 | `		 * is reported under its own name. */` |
-|     - |  8505 | `		SyBlob sMsg;` |
-|     - |  8506 | `		SyString sName;` |
-|    25 |  8507 | `		SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
-|    25 |  8508 | `		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);` |
-|    25 |  8509 | `		SyBlobFormat(&sMsg,"Undefined property: %z::$%z",&pThis->pClass->sName,&sName);` |
-|    25 |  8510 | `		SyBlobNullAppend(&sMsg);` |
-|    25 |  8511 | `		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));` |
-|    25 |  8512 | `		SyBlobRelease(&sMsg);` |
-|    12 |  8513 | `	}` |
-|    25 |  8514 | `	return PH7_OK;` |
-|     1 |  8515 | `}` |
-|     - |  8516 | `/*` |
-|     - |  8517 | ` * The write half. A per-class WRITER answers one of these; the name it does` |
-|     - |  8518 | ` * not write is looked up in the class's READER, which decides between php's` |
-|     - |  8519 | ` * two refusals -- a property that exists is read-only, one that does not is a` |
-|     - |  8520 | ` * dynamic property (deprecated in php 8.2, so §10 rejects it here, which is` |
-|     - |  8521 | ` * what the engine's own store path would have said had the class carried no` |
-|     - |  8522 | ` * __set at all).` |
-|     - |  8523 | ` */` |
-|     - |  8524 | `#define DOM_SET_UNKNOWN  0   /* not a property of this class */` |
-|     - |  8525 | `#define DOM_SET_DONE     1   /* written, or a refusal already raised into *pRc */` |
-|    88 |  8526 | `static int DomRefuseWrite(ph7_context *pCtx,const char *zName,int bKnown)` |
-|     1 |  8527 | `{` |
-|    89 |  8528 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - |  8529 | `	SyString sName;` |
-|    89 |  8530 | `	if( pThis == 0 ){` |
-|   ! 0 |  8531 | `		return PH7_OK;` |
-|     - |  8532 | `	}` |
-|    89 |  8533 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
-|    89 |  8534 | `	return PH7_VmThrowException(pCtx,"Error",` |
-|    44 |  8535 | `		bKnown ? "Cannot modify readonly property %z::$%z"` |
-|     - |  8536 | `		       : "Cannot create dynamic property %z::$%z",` |
-|    88 |  8537 | `		&pThis->pClass->sName,&sName);` |
-|    45 |  8538 | `}` |
-|     - |  8539 | `#define DOM_PROP_ACCESSORS(CLS,READER,WRITER)                                   \` |
-|     - |  8540 | `	DOM_METHOD(vm_builtin_##CLS##_get)                                          \` |
-|     - |  8541 | `	{                                                                           \` |
-|     - |  8542 | `		const char *zName = DomGetName(nArg,apArg);                             \` |
-|     - |  8543 | `		if( READER(pCtx,zName) == 0 ){                                          \` |
-|     - |  8544 | `			return DomUndefProp(pCtx,zName);                                    \` |
-|     - |  8545 | `		}                                                                       \` |
-|     - |  8546 | `		return PH7_OK;                                                          \` |
-|     - |  8547 | `	}                                                                           \` |
-|     - |  8548 | `	DOM_METHOD(vm_builtin_##CLS##_isset)                                        \` |
-|     - |  8549 | `	{                                                                           \` |
-|     - |  8550 | `		int bKnown = READER(pCtx,DomGetName(nArg,apArg)) != 0;                  \` |
-|     - |  8551 | `		int bNull = (pCtx->pRet->iFlags & MEMOBJ_NULL) != 0;                    \` |
-|     - |  8552 | `		ph7_result_bool(pCtx,bKnown && !bNull);                                 \` |
-|     - |  8553 | `		return PH7_OK;                                                          \` |
-|     - |  8554 | `	}                                                                           \` |
-|     - |  8555 | `	DOM_METHOD(vm_builtin_##CLS##_set)                                          \` |
-|     - |  8556 | `	{                                                                           \` |
-|     - |  8557 | `		const char *zName = DomGetName(nArg,apArg);                             \` |
-|     - |  8558 | `		int rc = PH7_OK;                                                        \` |
-|     - |  8559 | `		if( WRITER(pCtx,zName,nArg > 1 ? apArg[1] : 0,&rc) == DOM_SET_DONE ){   \` |
-|     - |  8560 | `			return rc;                                                          \` |
-|     - |  8561 | `		}                                                                       \` |
-|     - |  8562 | `		return DomRefuseWrite(pCtx,zName,READER(pCtx,zName) != 0);              \` |
-|     - |  8563 | `	}` |
-|     - |  8564 | `/* A libxml string slot answered as php answers it: the bytes, or null when the` |
-|     - |  8565 | `` * document never carried one (`encoding` on a declaration-less document). */`` |
-|   165 |  8566 | `static void DomResultXmlStr(ph7_context *pCtx,const xmlChar *zVal)` |
-|     1 |  8567 | `{` |
-|   166 |  8568 | `	if( zVal ){` |
-|   114 |  8569 | `		ph7_result_string(pCtx,(const char *)zVal,-1);` |
-|    58 |  8570 | `	}else{` |
-|    53 |  8571 | `		ph7_result_null(pCtx);` |
-|     - |  8572 | `	}` |
-|   166 |  8573 | `}` |
-|     - |  8574 | `/*` |
-|     - |  8575 | ` * The DOCUMENT's own state block.` |
-|     - |  8576 | ` *` |
-|     - |  8577 | ` * Nine of php's twenty-two DOMDocument properties are the XML DECLARATION and` |
-|     - |  8578 | ` * the document's URI, read straight off libxml's xmlDoc -- and php spells most` |
-|     - |  8579 | ` * of them twice, once under the DOM level-3 name and once under the level-1 one` |
-|     - |  8580 | `` * it kept for compatibility (`version`/`xmlVersion`, `encoding`/`xmlEncoding`,`` |
-|     - |  8581 | `` * `standalone`/`xmlStandalone`).  The pairs are not synonyms in every`` |
-|     - |  8582 | ``  * direction: `xmlEncoding` and `actualEncoding` READ the same slot `encoding` `` |
-|     - |  8583 | `` * writes and are themselves read-only, which is what makes `$d->xmlEncoding =`` |
-|     - |  8584 | `` * 'UTF-8'` php's readonly Error and `$d->encoding = 'UTF-8'` the write that`` |
-|     - |  8585 | `` * changes the bytes `saveXML()` emits.`` |
+|     7 |  7969 | `	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,FALSE,"DOMDocument::relaxNGValidateSource");` |
+|     1 |  7970 | `}` |
+|     - |  7971 | `/*` |
+|     - |  7972 | ` * DOMDocument::validate(): bool -- against the document's OWN DTD, which is` |
+|     - |  7973 | ` * the one question of the five that takes no argument. libxml's validity` |
+|     - |  7974 | ` * complaints ("no DTD found!", "root and DTD name do not match") reach the` |
+|     - |  7975 | ` * caller through the same per-VM queue every other diagnostic here does.` |
+|     - |  7976 | ` */` |
+|     8 |  7977 | `DOM_METHOD(vm_builtin_DOMDocument_validate)` |
+|     1 |  7978 | `{` |
+|     9 |  7979 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     9 |  7980 | `	phl_domnode *pDocNd = DomThisNode(pCtx);` |
+|     - |  7981 | `	xmlValidCtxtPtr pValid;` |
+|     - |  7982 | `	sxu32 nMark;` |
+|     - |  7983 | `	int iRc;` |
+|     4 |  7984 | `	SXUNUSED(nArg);` |
+|     4 |  7985 | `	SXUNUSED(apArg);` |
+|     9 |  7986 | `	if( pDocNd == 0 ){` |
+|   ! 0 |  7987 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7988 | `		return PH7_OK;` |
+|     - |  7989 | `	}` |
+|     9 |  7990 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
+|     9 |  7991 | `	pValid = xmlNewValidCtxt();` |
+|     9 |  7992 | `	if( pValid == 0 ){` |
+|   ! 0 |  7993 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");` |
+|   ! 0 |  7994 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  7995 | `		return PH7_OK;` |
+|     - |  7996 | `	}` |
+|     9 |  7997 | `	iRc = xmlValidateDocument(pValid,(xmlDocPtr)pDocNd->pNode);` |
+|     9 |  7998 | `	xmlFreeValidCtxt(pValid);` |
+|     9 |  7999 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");` |
+|     9 |  8000 | `	ph7_result_bool(pCtx,iRc != 0);` |
+|     9 |  8001 | `	return PH7_OK;` |
+|     5 |  8002 | `}` |
+|     - |  8003 | `/*` |
+|     - |  8004 | ` * The MARKERS libxml leaves around everything it substituted.` |
+|     - |  8005 | ` *` |
+|     - |  8006 | ` * An XInclude pass wraps each replacement in an XML_XINCLUDE_START /` |
+|     - |  8007 | ` * XML_XINCLUDE_END pair, which are nodes in the tree like any other: they` |
+|     - |  8008 | `` * answer from `childNodes`, they shift every index after them, and the first`` |
+|     - |  8009 | `` * child of an element whose only content was an `<xi:include>` is one of them`` |
+|     - |  8010 | ` * rather than what was included.  php takes them out before answering, so the` |
+|     - |  8011 | ` * document a caller gets back is the substituted one and nothing else.  They` |
+|     - |  8012 | ` * are parked on the orphan set rather than freed, like every other node this` |
+|     - |  8013 | ` * file unlinks.` |
+|     - |  8014 | ` */` |
+|    14 |  8015 | `static void DomDropXIncludeMarks(phl_xmldoc *pShell,xmlNodePtr pNode)` |
+|     1 |  8016 | `{` |
+|     - |  8017 | `	xmlNodePtr pNext;` |
+|    29 |  8018 | `	while( pNode ){` |
+|    15 |  8019 | `		pNext = pNode->next;` |
+|    15 |  8020 | `		if( pNode->type == XML_XINCLUDE_START \|\| pNode->type == XML_XINCLUDE_END ){` |
+|     5 |  8021 | `			xmlUnlinkNode(pNode);` |
+|     5 |  8022 | `			DomOrphanAdd(pShell,pNode);` |
+|     3 |  8023 | `		}else{` |
+|    11 |  8024 | `			DomDropXIncludeMarks(pShell,pNode->children);` |
+|     - |  8025 | `		}` |
+|    15 |  8026 | `		pNode = pNext;` |
+|     1 |  8027 | `	}` |
+|    15 |  8028 | `}` |
+|     - |  8029 | `/*` |
+|     - |  8030 | ` * DOMDocument::xinclude(int $options = 0): int\|false` |
+|     - |  8031 | ` *` |
+|     - |  8032 | ` * php answers the COUNT of substitutions libxml made, -1 when one of them` |
+|     - |  8033 | ` * failed -- and FALSE when there were none at all, which is not an error and` |
+|     - |  8034 | ` * is the one answer a caller has to screen for separately.` |
+|     - |  8035 | ` */` |
+|     6 |  8036 | `DOM_METHOD(vm_builtin_DOMDocument_xinclude)` |
+|     1 |  8037 | `{` |
+|     7 |  8038 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     7 |  8039 | `	phl_domnode *pDocNd = DomThisNode(pCtx);` |
+|     7 |  8040 | `	int iOpts = nArg > 0 ? ph7_value_to_int(apArg[0]) : 0;` |
+|     - |  8041 | `	sxu32 nMark;` |
+|     - |  8042 | `	int nDone;` |
+|     7 |  8043 | `	if( pDocNd == 0 ){` |
+|   ! 0 |  8044 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  8045 | `		return PH7_OK;` |
+|     - |  8046 | `	}` |
+|     7 |  8047 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
+|     7 |  8048 | `	nDone = xmlXIncludeProcessFlags((xmlDocPtr)pDocNd->pNode,iOpts);` |
+|     7 |  8049 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::xinclude");` |
+|     7 |  8050 | `	if( nDone >= 0 ){` |
+|     7 |  8051 | `		DomDropXIncludeMarks(pDocNd->pShell,` |
+|     4 |  8052 | `			((xmlDocPtr)pDocNd->pNode)->children);` |
+|     2 |  8053 | `	}` |
+|     7 |  8054 | `	if( nDone == 0 ){` |
+|     3 |  8055 | `		ph7_result_bool(pCtx,0);` |
+|     2 |  8056 | `	}else{` |
+|     5 |  8057 | `		ph7_result_int(pCtx,nDone);` |
+|     - |  8058 | `	}` |
+|     7 |  8059 | `	return PH7_OK;` |
+|     4 |  8060 | `}` |
+|     - |  8061 |  |
+|     - |  8062 | `/*` |
+|     - |  8063 | ` * DOMDocument::registerNodeClass(string $baseClass, ?string $extendedClass): true` |
+|     - |  8064 | ` *` |
+|     - |  8065 | ` * php lets a program say which class a node should be WRAPPED in, per` |
+|     - |  8066 | `` * document: register `MyElement` against `DOMElement` and every element of`` |
+|     - |  8067 | ` * that document -- read from the tree or made by a factory -- comes back a` |
+|     - |  8068 | ` * MyElement, so a walk can call the program's own methods on what it finds` |
+|     - |  8069 | ` * instead of carrying a parallel table of its own.` |
+|     - |  8070 | ` *` |
+|     - |  8071 | ` * The lookup is by the class the extension would have used and by nothing` |
+|     - |  8072 | `` * else: registering against `DOMNode` or `DOMCharacterData` changes NO`` |
+|     - |  8073 | ` * wrapping, because an element is wrapped as a DOMElement and a text node as a` |
+|     - |  8074 | ` * DOMText, and neither name is the one registered.` |
+|     - |  8075 | ` *` |
+|     - |  8076 | ` * The map is the document's, stored in a hidden slot beside its identity cache` |
+|     - |  8077 | ` * and carried by a document CLONE the way the parser directives are.` |
+|     - |  8078 | ` */` |
+|     - |  8079 | `/* The map, materialized on the document the way its identity cache is. */` |
+|  2732 |  8080 | `static ph7_hashmap * DomNodeClassMap(ph7_vm *pVm,ph7_class_instance *pDoc,int bMake)` |
+|     5 |  8081 | `{` |
+|  2737 |  8082 | `	ph7_value *pSlot = pDoc ? PH7_NativeAttr(pDoc,DOM_NCLS) : 0;` |
+|  2737 |  8083 | `	if( pSlot == 0 \|\| (!bMake && (pSlot->iFlags & MEMOBJ_HASHMAP) == 0) ){` |
+|  2699 |  8084 | `		return 0;` |
+|     - |  8085 | `	}` |
+|    40 |  8086 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|     8 |  8087 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
+|   ! 0 |  8088 | `			return 0;` |
+|     - |  8089 | `		}` |
+|     3 |  8090 | `	}` |
+|    40 |  8091 | `	return PH7_HashmapCowSeparate(&(*pVm),pSlot);` |
+|  1371 |  8092 | `}` |
+|     - |  8093 | `/* The class a node of pDoc's tree is wrapped in: the registered one when the` |
+|     - |  8094 | ` * document names it, php's own otherwise. */` |
+|  2718 |  8095 | `static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,` |
+|     - |  8096 | `	SyBlob *pOut)` |
+|     5 |  8097 | `{` |
+|  2723 |  8098 | `	const char *zBase = DomClassOfKind(iKind);` |
+|  2723 |  8099 | `	ph7_hashmap *pMap = DomNodeClassMap(&(*pVm),pDoc,FALSE);` |
+|  2723 |  8100 | `	ph7_hashmap_node *pEntry = 0;` |
+|     - |  8101 | `	ph7_value sKey,*pHit;` |
+|  2723 |  8102 | `	if( pMap == 0 ){` |
+|  2699 |  8103 | `		return zBase;` |
+|     - |  8104 | `	}` |
+|    26 |  8105 | `	PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
+|    26 |  8106 | `	PH7_MemObjStringAppend(&sKey,zBase,(sxu32)SyStrlen(zBase));` |
+|    26 |  8107 | `	if( PH7_HashmapLookup(pMap,&sKey,&pEntry) == SXRET_OK && pEntry ){` |
+|    16 |  8108 | `		pHit = HashmapExtractNodeValue(pEntry);` |
+|    16 |  8109 | `		if( pHit && (pHit->iFlags & MEMOBJ_STRING) ){` |
+|    16 |  8110 | `			SyBlobAppend(pOut,SyBlobData(&pHit->sBlob),SyBlobLength(&pHit->sBlob));` |
+|    16 |  8111 | `			SyBlobNullAppend(pOut);` |
+|    16 |  8112 | `			zBase = (const char *)SyBlobData(pOut);` |
+|     7 |  8113 | `		}` |
+|     7 |  8114 | `	}` |
+|    26 |  8115 | `	PH7_MemObjRelease(&sKey);` |
+|    26 |  8116 | `	return zBase;` |
+|  1364 |  8117 | `}` |
+|    24 |  8118 | `DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)` |
+|     2 |  8119 | `{` |
+|    26 |  8120 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    26 |  8121 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    26 |  8122 | `	int nBase = 0,nExt = 0;` |
+|    26 |  8123 | `	const char *zBase = nArg > 0 ? ph7_value_to_string(apArg[0],&nBase) : "";` |
+|    26 |  8124 | `	const char *zExt = (nArg > 1 && !ph7_value_is_null(apArg[1]))` |
+|    35 |  8125 | `		? ph7_value_to_string(apArg[1],&nExt) : 0;` |
+|    26 |  8126 | `	ph7_class *pBase,*pExt = 0,*pNode;` |
+|     - |  8127 | `	ph7_hashmap *pMap;` |
+|     - |  8128 | `	ph7_value sKey,sVal;` |
+|    26 |  8129 | `	pBase = PH7_VmExtractClass(pVm,zBase,(sxu32)nBase,FALSE,0);` |
+|    26 |  8130 | `	pNode = PH7_VmExtractClass(pVm,"DOMNode",sizeof("DOMNode")-1,FALSE,0);` |
+|    26 |  8131 | `	if( pBase == 0 \|\| pNode == 0 \|\| !PH7_VmInstanceOf(pBase,pNode) ){` |
+|     7 |  8132 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|     - |  8133 | `			"DOMDocument::registerNodeClass(): Argument #1 ($baseClass) must be a "` |
+|     2 |  8134 | `			"class name derived from DOMNode, %.*s given",nBase,zBase);` |
+|     - |  8135 | `	}` |
+|    22 |  8136 | `	if( zExt ){` |
+|    20 |  8137 | `		pExt = PH7_VmExtractClass(pVm,zExt,(sxu32)nExt,FALSE,0);` |
+|    20 |  8138 | `		if( pExt == 0 ){` |
+|     4 |  8139 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
+|     - |  8140 | `				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "` |
+|     1 |  8141 | `				"a valid class name or null, %.*s given",nExt,zExt);` |
+|     - |  8142 | `		}` |
+|    18 |  8143 | `		if( !PH7_VmInstanceOf(pExt,pBase) ){` |
+|     - |  8144 | `			/* php's plain Error here, not a TypeError: the name IS a class, it` |
+|     - |  8145 | `			 * is simply the wrong one. */` |
+|     4 |  8146 | `			return PH7_VmThrowException(pCtx,"Error",` |
+|     - |  8147 | `				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "` |
+|     - |  8148 | `				"a class name derived from %z or null, %.*s given",` |
+|     1 |  8149 | `				&pBase->sName,nExt,zExt);` |
+|     - |  8150 | `		}` |
+|    16 |  8151 | `		if( pExt->iFlags & PH7_CLASS_ABSTRACT ){` |
+|     3 |  8152 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - |  8153 | `				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must "` |
+|     - |  8154 | `				"not be an abstract class");` |
+|     - |  8155 | `		}` |
+|     6 |  8156 | `	}` |
+|    16 |  8157 | `	pMap = DomNodeClassMap(pVm,pThis,TRUE);` |
+|    16 |  8158 | `	if( pMap == 0 ){` |
+|   ! 0 |  8159 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  8160 | `	}` |
+|     - |  8161 | `	/* Keyed by the base's OWN spelling, which is the one the wrap looks up. */` |
+|    16 |  8162 | `	PH7_MemObjInitFromString(pVm,&sKey,&pBase->sName);` |
+|    16 |  8163 | `	if( pExt ){` |
+|    14 |  8164 | `		PH7_MemObjInitFromString(pVm,&sVal,&pExt->sName);` |
+|    14 |  8165 | `		PH7_HashmapInsert(pMap,&sKey,&sVal);` |
+|    14 |  8166 | `		PH7_MemObjRelease(&sVal);` |
+|     8 |  8167 | `	}else{` |
+|     3 |  8168 | `		ph7_hashmap_node *pEntry = 0;` |
+|     3 |  8169 | `		if( PH7_HashmapLookup(pMap,&sKey,&pEntry) == SXRET_OK && pEntry ){` |
+|     3 |  8170 | `			PH7_HashmapUnlinkNode(pEntry,TRUE);` |
+|     1 |  8171 | `		}` |
+|     - |  8172 | `	}` |
+|    16 |  8173 | `	PH7_MemObjRelease(&sKey);` |
+|    16 |  8174 | `	ph7_result_bool(pCtx,1);` |
+|    16 |  8175 | `	return PH7_OK;` |
+|    14 |  8176 | `}` |
+|     - |  8177 |  |
+|     - |  8178 | `/* ===== DOMImplementation ===== */` |
+|     - |  8179 |  |
+|     - |  8180 | `/*` |
+|     - |  8181 | ` * php's factory for the two things that cannot be made from a document that` |
+|     - |  8182 | ` * does not exist yet: a DOCTYPE, and a document with a namespaced root.` |
+|     - |  8183 | ` *` |
+|     - |  8184 | `` * It carries no state at all -- `new DOMImplementation` is enough, its three`` |
+|     - |  8185 | `` * methods are ordinary instance methods, and `$doc->implementation` answers a`` |
+|     - |  8186 | ` * FRESH one on every read.` |
+|     - |  8187 | ` */` |
+|     - |  8188 |  |
+|     - |  8189 | `/* A node that belongs to NO document, wrapped and owned the way a constructed` |
+|     - |  8190 | ` * one is: parked on the per-VM limbo shell, its own identity-cache holder. The` |
+|     - |  8191 | ` * caller owns the reference. */` |
+|    20 |  8192 | `static ph7_class_instance * DomLimboWrap(ph7_vm *pVm,xmlNodePtr pNode)` |
+|     1 |  8193 | `{` |
+|    21 |  8194 | `	const char *zClass = DomClassOfKind((int)pNode->type);` |
+|    21 |  8195 | `	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);` |
+|    21 |  8196 | `	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;` |
+|    21 |  8197 | `	phl_xmldoc *pShell = pObj ? DomLimboShell(&(*pVm)) : 0;` |
+|    21 |  8198 | `	phl_domnode *pRes = pShell ? DomNewRes(&(*pVm),pShell,pNode) : 0;` |
+|    21 |  8199 | `	if( pRes == 0 ){` |
+|   ! 0 |  8200 | `		if( pObj ){` |
+|   ! 0 |  8201 | `			PH7_ClassInstanceUnref(pObj);` |
+|   ! 0 |  8202 | `		}` |
+|   ! 0 |  8203 | `		return 0;` |
+|     - |  8204 | `	}` |
+|    21 |  8205 | `	DomOrphanAdd(pShell,pNode);` |
+|    21 |  8206 | `	DomSetRes(&(*pVm),pObj,pRes);` |
+|    21 |  8207 | `	PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_DOC,pObj);` |
+|    21 |  8208 | `	DomCacheStore(&(*pVm),pObj,pNode,pObj);` |
+|    21 |  8209 | `	return pObj;` |
+|    11 |  8210 | `}` |
+|     - |  8211 | `/*` |
+|     - |  8212 | ` * DOMImplementation::hasFeature(string $feature, string $version): bool` |
+|     - |  8213 | ` *` |
+|     - |  8214 | ` * php's table is two rows wide and the version is compared as a STRING: only` |
+|     - |  8215 | ` * "1.0", "2.0" and "" are versions at all, and of those "Core" answers for` |
+|     - |  8216 | ``  * "1.0" alone where "XML" answers for every one. So `hasFeature('Core','2.0')` `` |
+|     - |  8217 | ``  * is false while `hasFeature('XML','2.0')` is true, and `hasFeature('Core','1')` `` |
+|     - |  8218 | ` * -- a version that is not spelled the way the table spells it -- is false.` |
+|     - |  8219 | ` */` |
+|    22 |  8220 | `DOM_METHOD(vm_builtin_DOMImplementation_hasFeature)` |
+|     1 |  8221 | `{` |
+|    23 |  8222 | `	const char *zFeature = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
+|    23 |  8223 | `	const char *zVersion = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
+|    31 |  8224 | `	int bKnown = DomNameIs(zVersion,"1.0") \|\| DomNameIs(zVersion,"2.0")` |
+|    27 |  8225 | `		\|\| zVersion[0] == 0;` |
+|    49 |  8226 | `	ph7_result_bool(pCtx,bKnown` |
+|    31 |  8227 | `		&& (DomNameIsCi(zFeature,"XML")` |
+|    16 |  8228 | `			\|\| (DomNameIsCi(zFeature,"Core") && DomNameIs(zVersion,"1.0"))));` |
+|    23 |  8229 | `	return PH7_OK;` |
+|     1 |  8230 | `}` |
+|     - |  8231 | `/*` |
+|     - |  8232 | ` * DOMImplementation::createDocumentType(string $qualifiedName,` |
+|     - |  8233 | ` *     string $publicId = '', string $systemId = ''): DOMDocumentType` |
+|     - |  8234 | ` *` |
+|     - |  8235 | `` * The name is not checked at ALL beyond being non-empty -- `1bad`, `a b` and`` |
+|     - |  8236 | `` * `p:q:r` are each a doctype php builds without a word -- because nothing has`` |
+|     - |  8237 | `` * parsed it: the name is the bytes the `<!DOCTYPE ...>` line will carry.`` |
+|     - |  8238 | ` */` |
+|    22 |  8239 | `DOM_METHOD(vm_builtin_DOMImplementation_createDocumentType)` |
+|     1 |  8240 | `{` |
+|    23 |  8241 | `	int nName = 0;` |
+|    23 |  8242 | `	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
+|    23 |  8243 | `	const char *zPub = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
+|    23 |  8244 | `	const char *zSys = nArg > 2 ? ph7_value_to_string(apArg[2],0) : "";` |
+|     - |  8245 | `	ph7_class_instance *pObj;` |
+|     - |  8246 | `	xmlDtdPtr pDtd;` |
+|    23 |  8247 | `	if( nName < 1 ){` |
+|     3 |  8248 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - |  8249 | `			"DOMImplementation::createDocumentType(): Argument #1 ($qualifiedName) "` |
+|     - |  8250 | `			"must not be empty");` |
+|     - |  8251 | `	}` |
+|    41 |  8252 | `	pDtd = xmlNewDtd(0,(const xmlChar *)zName,` |
+|    20 |  8253 | `		zPub[0] ? (const xmlChar *)zPub : 0,` |
+|    20 |  8254 | `		zSys[0] ? (const xmlChar *)zSys : 0);` |
+|    21 |  8255 | `	if( pDtd == 0 ){` |
+|   ! 0 |  8256 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  8257 | `	}` |
+|    21 |  8258 | `	pObj = DomLimboWrap(pCtx->pVm,(xmlNodePtr)pDtd);` |
+|    21 |  8259 | `	if( pObj == 0 ){` |
+|   ! 0 |  8260 | `		xmlFreeDtd(pDtd);` |
+|   ! 0 |  8261 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  8262 | `	}` |
+|    21 |  8263 | `	PH7_NativeResultObject(pCtx,pObj);` |
+|    21 |  8264 | `	return PH7_OK;` |
+|    12 |  8265 | `}` |
+|     - |  8266 | `/*` |
+|     - |  8267 | ` * DOMImplementation::createDocument(?string $namespace = null,` |
+|     - |  8268 | ` *     string $qualifiedName = '', ?DOMDocumentType $doctype = null): DOMDocument` |
+|     - |  8269 | ` *` |
+|     - |  8270 | ` * An empty qualified name is a document with no root at all, which is what` |
+|     - |  8271 | ` * makes the three-argument call with only a doctype meaningful.  The name is a` |
+|     - |  8272 | `` * QName or nothing (`1bad` and `a:b:c` are the Namespace Error), and the`` |
+|     - |  8273 | ` * namespace decides what becomes of its PREFIX: with a URI the element is` |
+|     - |  8274 | ` * declared under it, and WITHOUT one the prefix is simply dropped -- php` |
+|     - |  8275 | ` * builds the element from the local name and hangs the declaration on it` |
+|     - |  8276 | `` * afterwards, so `createDocument('', 'p:root')` is `<root/>`.`` |
+|     - |  8277 | ` *` |
+|     - |  8278 | ` * A doctype that already belongs to a document is the Wrong Document Error,` |
+|     - |  8279 | ` * so the same DOMDocumentType cannot seed two documents.` |
+|     - |  8280 | ` */` |
+|    26 |  8281 | `DOM_METHOD(vm_builtin_DOMImplementation_createDocument)` |
+|     1 |  8282 | `{` |
+|    27 |  8283 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    27 |  8284 | `	const xmlChar *zUri = DomArgUri(nArg,apArg,0);` |
+|    27 |  8285 | `	int nName = 0;` |
+|    27 |  8286 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],&nName) : "";` |
+|    27 |  8287 | `	phl_domnode *pDtdNd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? DomObjArg(apArg[2]) : 0;` |
+|    27 |  8288 | `	xmlDtdPtr pDtd = pDtdNd ? (xmlDtdPtr)pDtdNd->pNode : 0;` |
+|     - |  8289 | `	ph7_class *pClass;` |
+|     - |  8290 | `	ph7_class_instance *pObj;` |
+|     - |  8291 | `	phl_xmldoc *pShell;` |
+|     - |  8292 | `	phl_domnode *pRes;` |
+|     - |  8293 | `	xmlDocPtr pDoc;` |
+|    27 |  8294 | `	xmlNodePtr pRoot = 0;` |
+|    27 |  8295 | `	xmlNsPtr pNs = 0;` |
+|    27 |  8296 | `	xmlChar *zPrefix = 0,*zLocal = 0;` |
+|    27 |  8297 | `	if( pDtd && pDtd->doc ){` |
+|     - |  8298 | `		/* php's own screen, and the reason a doctype seeds ONE document. */` |
+|     3 |  8299 | `		return DomThrowAlways(pCtx,DOM_ERR_WRONG_DOC);` |
+|     - |  8300 | `	}` |
+|    25 |  8301 | `	if( nName > 0 ){` |
+|    19 |  8302 | `		if( xmlValidateQName((const xmlChar *)zName,0) != 0 ){` |
+|     9 |  8303 | `			return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);` |
+|     - |  8304 | `		}` |
+|    11 |  8305 | `		zLocal = xmlSplitQName2((const xmlChar *)zName,&zPrefix);` |
+|    11 |  8306 | `		if( zLocal == 0 ){` |
+|     7 |  8307 | `			zLocal = xmlStrdup((const xmlChar *)zName);` |
+|     3 |  8308 | `		}` |
+|    11 |  8309 | `		if( zUri && zUri[0] ){` |
+|     - |  8310 | `			/* php asks libxml for the declaration BEFORE it has a node to hang` |
+|     - |  8311 | ``			 * it on, and takes a refusal (the `xml` prefix over its own URI is`` |
+|     - |  8312 | `			 * one) as the Namespace Error. */` |
+|     5 |  8313 | `			pNs = xmlNewNs(0,zUri,zPrefix);` |
+|     5 |  8314 | `			if( pNs == 0 ){` |
+|   ! 0 |  8315 | `				if( zLocal ){` |
+|   ! 0 |  8316 | `					xmlFree(zLocal);` |
+|   ! 0 |  8317 | `				}` |
+|   ! 0 |  8318 | `				if( zPrefix ){` |
+|   ! 0 |  8319 | `					xmlFree(zPrefix);` |
+|   ! 0 |  8320 | `				}` |
+|   ! 0 |  8321 | `				return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);` |
+|     - |  8322 | `			}` |
+|     2 |  8323 | `		}` |
+|     5 |  8324 | `	}` |
+|    17 |  8325 | `	pDoc = xmlNewDoc((const xmlChar *)"1.0");` |
+|    17 |  8326 | `	pClass = pDoc ? PH7_VmExtractClass(pVm,"DOMDocument",sizeof("DOMDocument")-1,FALSE,0) : 0;` |
+|    17 |  8327 | `	pObj = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;` |
+|    17 |  8328 | `	pShell = pObj ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;` |
+|    17 |  8329 | `	pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;` |
+|    17 |  8330 | `	if( pRes == 0 ){` |
+|   ! 0 |  8331 | `		if( pDoc && pShell == 0 ){` |
+|   ! 0 |  8332 | `			xmlFreeDoc(pDoc);` |
+|   ! 0 |  8333 | `		}` |
+|   ! 0 |  8334 | `		if( pObj ){` |
+|   ! 0 |  8335 | `			PH7_ClassInstanceUnref(pObj);` |
+|   ! 0 |  8336 | `		}` |
+|   ! 0 |  8337 | `		if( pNs ){` |
+|   ! 0 |  8338 | `			xmlFreeNs(pNs);` |
+|   ! 0 |  8339 | `		}` |
+|   ! 0 |  8340 | `		if( zLocal ){` |
+|   ! 0 |  8341 | `			xmlFree(zLocal);` |
+|   ! 0 |  8342 | `		}` |
+|   ! 0 |  8343 | `		if( zPrefix ){` |
+|   ! 0 |  8344 | `			xmlFree(zPrefix);` |
+|   ! 0 |  8345 | `		}` |
+|   ! 0 |  8346 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  8347 | `	}` |
+|    17 |  8348 | `	DomSetRes(pVm,pObj,pRes);` |
+|    17 |  8349 | `	PH7_NativeSetAttrObj(pVm,pObj,DOM_DOC,pObj);` |
+|    17 |  8350 | `	if( pDtd ){` |
+|     - |  8351 | `		/* The doctype MOVES: it leaves the limbo shell for this document's` |
+|     - |  8352 | `		 * tree, and every wrapper of it -- its own and its declarations' --` |
+|     - |  8353 | `		 * re-homes on adoptNode's machinery, which is what makes the doctype` |
+|     - |  8354 | ``		 * answer this document as its `ownerDocument` afterwards rather than`` |
+|     - |  8355 | `		 * the holder it was its own. */` |
+|     5 |  8356 | `		ph7_class_instance *pDtdObj = (ph7_class_instance *)apArg[2]->x.pOther;` |
+|     5 |  8357 | `		DomOrphanRemove(pDtdNd->pShell,(xmlNodePtr)pDtd);` |
+|     5 |  8358 | `		pDtd->doc = pDoc;` |
+|     5 |  8359 | `		pDoc->intSubset = pDtd;` |
+|     5 |  8360 | `		DomLinkLast((xmlNodePtr)pDoc,(xmlNodePtr)pDtd);` |
+|     5 |  8361 | `		DomAdoptWrappers(pVm,pDtdObj,pObj,pShell,(xmlNodePtr)pDtd);` |
+|     2 |  8362 | `	}` |
+|    17 |  8363 | `	if( nName > 0 ){` |
+|    11 |  8364 | `		pRoot = xmlNewDocNode(pDoc,0,zLocal,0);` |
+|    11 |  8365 | `		if( pRoot ){` |
+|    11 |  8366 | `			xmlDocSetRootElement(pDoc,pRoot);` |
+|    11 |  8367 | `			if( pNs ){` |
+|     5 |  8368 | `				pNs->next = pRoot->nsDef;` |
+|     5 |  8369 | `				pRoot->nsDef = pNs;` |
+|     5 |  8370 | `				xmlSetNs(pRoot,pNs);` |
+|     5 |  8371 | `				pNs = 0;` |
+|     2 |  8372 | `			}` |
+|     5 |  8373 | `		}` |
+|     5 |  8374 | `	}` |
+|    17 |  8375 | `	if( pNs ){` |
+|   ! 0 |  8376 | `		xmlFreeNs(pNs);` |
+|   ! 0 |  8377 | `	}` |
+|    17 |  8378 | `	if( zLocal ){` |
+|    11 |  8379 | `		xmlFree(zLocal);` |
+|     5 |  8380 | `	}` |
+|    17 |  8381 | `	if( zPrefix ){` |
+|     5 |  8382 | `		xmlFree(zPrefix);` |
+|     2 |  8383 | `	}` |
+|    17 |  8384 | `	PH7_NativeResultObject(pCtx,pObj);` |
+|    17 |  8385 | `	return PH7_OK;` |
+|    14 |  8386 | `}` |
+|     - |  8387 |  |
+|     - |  8388 | `/* ===== The shared __get dispatch ===== */` |
+|     - |  8389 |  |
+|     - |  8390 | `/*` |
+|     - |  8391 | ` * DOMNode's virtual properties.` |
+|     - |  8392 | ` *` |
+|     - |  8393 | ` * php exposes these through property handlers on the class; PHL answers them` |
+|     - |  8394 | ` * from __get, as the chunk did. Returns 1 when it recognised the name, so a` |
+|     - |  8395 | ` * subclass's own __get can state its extras and then defer here -- which is` |
+|     - |  8396 | `` * what `parent::__get($name)` did.`` |
+|     - |  8397 | ` */` |
+|  2942 |  8398 | `static int DomNodeProp(ph7_context *pCtx,const char *zName)` |
+|     5 |  8399 | `{` |
+|  2947 |  8400 | `	ph7_vm *pVm = pCtx->pVm;` |
+|  2947 |  8401 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|  2947 |  8402 | `	ph7_class_instance *pDoc = DomThisDoc(pCtx);` |
+|  2947 |  8403 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|  2947 |  8404 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|  4418 |  8405 | `	int bIsDoc = pNode && (pNode->type == XML_DOCUMENT_NODE \|\| pNode->type == XML_HTML_DOCUMENT_NODE);` |
+|  2947 |  8406 | `	if( DomNameIs(zName,"nodeName") ){` |
+|   595 |  8407 | `		DomNodeName(pCtx,pNode);` |
+|  2651 |  8408 | `	}else if( DomNameIs(zName,"nodeValue") ){` |
+|    89 |  8409 | `		DomNodeValue(pCtx,pNode);` |
+|  2311 |  8410 | `	}else if( DomNameIs(zName,"nodeType") ){` |
+|   101 |  8411 | `		ph7_result_int(pCtx,DomNodeTypeOf(pNode));` |
+|  2217 |  8412 | `	}else if( DomNameIs(zName,"textContent") ){` |
+|    51 |  8413 | `		DomTextContent(pCtx,pNode);` |
+|  2142 |  8414 | `	}else if( DomNameIs(zName,"parentNode") ){` |
+|   119 |  8415 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);` |
+|  2059 |  8416 | `	}else if( DomNameIs(zName,"firstChild") ){` |
+|     - |  8417 | `		/* Through the entity-reference resolver: an ADOPTED constructed` |
+|     - |  8418 | `		 * reference's raw children are cleared, and php's reader answers the` |
+|     - |  8419 | `		 * document's declaration anyway.` |
+|     - |  8420 | `		 *` |
+|     - |  8421 | `		 * Both ends are gated on php's dom_node_children_valid, which the` |
+|     - |  8422 | `		 * DOCTYPE is not: libxml links a DTD's declarations as its children` |
+|     - |  8423 | ``		 * and php's `firstChild`/`lastChild`/`hasChildNodes()` answer null,`` |
+|     - |  8424 | ``		 * null and false there all the same -- while `childNodes` (which does`` |
+|     - |  8425 | `		 * NOT consult it) lists them. */` |
+|   585 |  8426 | `		DomResultNodeOf(pCtx,pNd,DomNodeChildFirst(pNode));` |
+|  1709 |  8427 | `	}else if( DomNameIs(zName,"lastChild") ){` |
+|    81 |  8428 | `		DomResultNodeOf(pCtx,pNd,DomNodeChildLast(pNode));` |
+|  1378 |  8429 | `	}else if( DomNameIs(zName,"nextSibling") ){` |
+|    63 |  8430 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->next : 0);` |
+|  1307 |  8431 | `	}else if( DomNameIs(zName,"previousSibling") ){` |
+|     9 |  8432 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->prev : 0);` |
+|  1272 |  8433 | `	}else if( DomNameIs(zName,"ownerDocument") ){` |
+|     - |  8434 | `		/* A document has no owner document, which is also why DomWrap answers` |
+|     - |  8435 | `		 * the document itself rather than a second wrapper for it. The NODE's` |
+|     - |  8436 | `		 * document is the source of truth, not the $__doc slot: a constructed` |
+|     - |  8437 | `		 * ownerless node's slot points at its own holder, and php answers` |
+|     - |  8438 | `		 * null there until an insertion adopts it. */` |
+|   126 |  8439 | `		DomResultWrap(pCtx,(bIsDoc \|\| pNode == 0 \|\| pNode->doc == 0) ? 0 : pDoc);` |
+|  1205 |  8440 | `	}else if( DomNameIs(zName,"parentElement") ){` |
+|     - |  8441 | ``		/* php's `?DOMElement`: the parent when it IS an element, so a root`` |
+|     - |  8442 | `		 * element (whose parent is the document) answers null. An ATTRIBUTE` |
+|     - |  8443 | `		 * answers its element -- libxml parents an attribute, and php reports` |
+|     - |  8444 | ``		 * that parent from both this property and `parentNode`. */`` |
+|    43 |  8445 | `		xmlNodePtr pPar = pNode ? pNode->parent : 0;` |
+|    43 |  8446 | `		DomResultNodeOf(pCtx,pNd,(pPar && pPar->type == XML_ELEMENT_NODE) ? pPar : 0);` |
+|  1122 |  8447 | `	}else if( DomNameIs(zName,"namespaceURI") ){` |
+|   371 |  8448 | `		DomNamespaceUri(pCtx,pNode);` |
+|   916 |  8449 | `	}else if( DomNameIs(zName,"prefix") ){` |
+|   121 |  8450 | `		DomPrefix(pCtx,pNode);` |
+|   671 |  8451 | `	}else if( DomNameIs(zName,"localName") ){` |
+|   119 |  8452 | `		DomLocalName(pCtx,pNode);` |
+|   552 |  8453 | `	}else if( DomNameIs(zName,"isConnected") ){` |
+|    71 |  8454 | `		ph7_result_bool(pCtx,DomIsConnected(pNode));` |
+|   458 |  8455 | `	}else if( DomNameIs(zName,"baseURI") ){` |
+|     - |  8456 | ``		/* php's is libxml's own xmlNodeGetBase(): the nearest `xml:base` on the`` |
+|     - |  8457 | `		 * way up, resolved against the DOCUMENT's URI, and that URI itself when` |
+|     - |  8458 | `		 * no ancestor declares one. So it answers null exactly when the document` |
+|     - |  8459 | ``		 * was never given a URI -- a `new DOMDocument()` that was not loaded --`` |
+|     - |  8460 | `		 * and a node created and never appended still answers its document's. */` |
+|    33 |  8461 | `		xmlChar *zBase = pNode ? xmlNodeGetBase(pNode->doc,pNode) : 0;` |
+|    33 |  8462 | `		if( zBase ){` |
+|    23 |  8463 | `			ph7_result_string(pCtx,(const char *)zBase,-1);` |
+|    23 |  8464 | `			xmlFree(zBase);` |
+|    12 |  8465 | `		}else{` |
+|    11 |  8466 | `			ph7_result_null(pCtx);` |
+|     1 |  8467 | `		}` |
+|   407 |  8468 | `	}else if( DomNameIs(zName,"childNodes") ){` |
+|   241 |  8469 | `		ph7_class_instance *pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_CHILD,pThis,0,0,0);` |
+|   241 |  8470 | `		if( pList == 0 ){` |
+|   ! 0 |  8471 | `			return -1;` |
+|     - |  8472 | `		}` |
+|   241 |  8473 | `		PH7_NativeResultObject(pCtx,pList);` |
+|   271 |  8474 | `	}else if( DomNameIs(zName,"attributes") ){` |
+|     - |  8475 | `		/* php: NULL for anything that is not an element. */` |
+|   128 |  8476 | `		if( pNode == 0 \|\| pNode->type != XML_ELEMENT_NODE ){` |
+|     5 |  8477 | `			ph7_result_null(pCtx);` |
+|     3 |  8478 | `		}else{` |
+|   124 |  8479 | `			ph7_class_instance *pMap = DomNewCollection(pVm,"DOMNamedNodeMap",pDoc,DNL_CHILD,pThis,0,0,0);` |
+|   124 |  8480 | `			if( pMap == 0 ){` |
+|   ! 0 |  8481 | `				return -1;` |
+|     - |  8482 | `			}` |
+|   124 |  8483 | `			PH7_NativeResultObject(pCtx,pMap);` |
+|     - |  8484 | `		}` |
+|    65 |  8485 | `	}else{` |
+|    25 |  8486 | `		return 0;` |
+|     - |  8487 | `	}` |
+|  2923 |  8488 | `	return 1;` |
+|  1476 |  8489 | `}` |
+|     - |  8490 | `/* The argument every __get body reads. */` |
+|  6243 |  8491 | `static const char * DomGetName(int nArg,ph7_value **apArg)` |
+|     5 |  8492 | `{` |
+|  6248 |  8493 | `	return nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
+|     5 |  8494 | `}` |
+|     - |  8495 | `/*` |
+|     - |  8496 | ` * The __get/__isset/__set trio every DOM class carries.` |
+|     - |  8497 | ` *` |
+|     - |  8498 | ` * Both ride ONE recognizer per class -- the DomProp_X readers below, which` |
+|     - |  8499 | ` * answer 1 when the name is a property of that class and have written its` |
+|     - |  8500 | ` * value, and 0 when it is not.  php models these as real (virtual) properties,` |
+|     - |  8501 | `` * so the 0 case is its `Undefined property` WARNING rather than a silent null,`` |
+|     - |  8502 | `` * and `isset()` is php's own has_property: the name has to exist AND read back`` |
+|     - |  8503 | `` * non-null (which is what makes `isset($n->nextSibling)` false on a last child`` |
+|     - |  8504 | `` * while `isset($n->nodeName)` is true).  Without the __isset half every`` |
+|     - |  8505 | `` * `isset($doc->documentElement)` and every `$node->attributes ?? []` answered`` |
+|     - |  8506 | ` * as though the whole surface were absent.` |
+|     - |  8507 | ` */` |
+|    24 |  8508 | `static int DomUndefProp(ph7_context *pCtx,const char *zName)` |
+|     1 |  8509 | `{` |
+|    25 |  8510 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    25 |  8511 | `	ph7_result_null(pCtx);` |
+|    25 |  8512 | `	if( pThis ){` |
+|     - |  8513 | `		/* php names the INSTANCE's class, so a userland subclass of DOMElement` |
+|     - |  8514 | `		 * is reported under its own name. */` |
+|     - |  8515 | `		SyBlob sMsg;` |
+|     - |  8516 | `		SyString sName;` |
+|    25 |  8517 | `		SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
+|    25 |  8518 | `		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);` |
+|    25 |  8519 | `		SyBlobFormat(&sMsg,"Undefined property: %z::$%z",&pThis->pClass->sName,&sName);` |
+|    25 |  8520 | `		SyBlobNullAppend(&sMsg);` |
+|    25 |  8521 | `		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));` |
+|    25 |  8522 | `		SyBlobRelease(&sMsg);` |
+|    12 |  8523 | `	}` |
+|    25 |  8524 | `	return PH7_OK;` |
+|     1 |  8525 | `}` |
+|     - |  8526 | `/*` |
+|     - |  8527 | ` * The write half. A per-class WRITER answers one of these; the name it does` |
+|     - |  8528 | ` * not write is looked up in the class's READER, which decides between php's` |
+|     - |  8529 | ` * two refusals -- a property that exists is read-only, one that does not is a` |
+|     - |  8530 | ` * dynamic property (deprecated in php 8.2, so §10 rejects it here, which is` |
+|     - |  8531 | ` * what the engine's own store path would have said had the class carried no` |
+|     - |  8532 | ` * __set at all).` |
+|     - |  8533 | ` */` |
+|     - |  8534 | `#define DOM_SET_UNKNOWN  0   /* not a property of this class */` |
+|     - |  8535 | `#define DOM_SET_DONE     1   /* written, or a refusal already raised into *pRc */` |
+|    88 |  8536 | `static int DomRefuseWrite(ph7_context *pCtx,const char *zName,int bKnown)` |
+|     1 |  8537 | `{` |
+|    89 |  8538 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - |  8539 | `	SyString sName;` |
+|    89 |  8540 | `	if( pThis == 0 ){` |
+|   ! 0 |  8541 | `		return PH7_OK;` |
+|     - |  8542 | `	}` |
+|    89 |  8543 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
+|    89 |  8544 | `	return PH7_VmThrowException(pCtx,"Error",` |
+|    44 |  8545 | `		bKnown ? "Cannot modify readonly property %z::$%z"` |
+|     - |  8546 | `		       : "Cannot create dynamic property %z::$%z",` |
+|    88 |  8547 | `		&pThis->pClass->sName,&sName);` |
+|    45 |  8548 | `}` |
+|     - |  8549 | `#define DOM_PROP_ACCESSORS(CLS,READER,WRITER)                                   \` |
+|     - |  8550 | `	DOM_METHOD(vm_builtin_##CLS##_get)                                          \` |
+|     - |  8551 | `	{                                                                           \` |
+|     - |  8552 | `		const char *zName = DomGetName(nArg,apArg);                             \` |
+|     - |  8553 | `		if( READER(pCtx,zName) == 0 ){                                          \` |
+|     - |  8554 | `			return DomUndefProp(pCtx,zName);                                    \` |
+|     - |  8555 | `		}                                                                       \` |
+|     - |  8556 | `		return PH7_OK;                                                          \` |
+|     - |  8557 | `	}                                                                           \` |
+|     - |  8558 | `	DOM_METHOD(vm_builtin_##CLS##_isset)                                        \` |
+|     - |  8559 | `	{                                                                           \` |
+|     - |  8560 | `		int bKnown = READER(pCtx,DomGetName(nArg,apArg)) != 0;                  \` |
+|     - |  8561 | `		int bNull = (pCtx->pRet->iFlags & MEMOBJ_NULL) != 0;                    \` |
+|     - |  8562 | `		ph7_result_bool(pCtx,bKnown && !bNull);                                 \` |
+|     - |  8563 | `		return PH7_OK;                                                          \` |
+|     - |  8564 | `	}                                                                           \` |
+|     - |  8565 | `	DOM_METHOD(vm_builtin_##CLS##_set)                                          \` |
+|     - |  8566 | `	{                                                                           \` |
+|     - |  8567 | `		const char *zName = DomGetName(nArg,apArg);                             \` |
+|     - |  8568 | `		int rc = PH7_OK;                                                        \` |
+|     - |  8569 | `		if( WRITER(pCtx,zName,nArg > 1 ? apArg[1] : 0,&rc) == DOM_SET_DONE ){   \` |
+|     - |  8570 | `			return rc;                                                          \` |
+|     - |  8571 | `		}                                                                       \` |
+|     - |  8572 | `		return DomRefuseWrite(pCtx,zName,READER(pCtx,zName) != 0);              \` |
+|     - |  8573 | `	}` |
+|     - |  8574 | `/* A libxml string slot answered as php answers it: the bytes, or null when the` |
+|     - |  8575 | `` * document never carried one (`encoding` on a declaration-less document). */`` |
+|   165 |  8576 | `static void DomResultXmlStr(ph7_context *pCtx,const xmlChar *zVal)` |
+|     1 |  8577 | `{` |
+|   166 |  8578 | `	if( zVal ){` |
+|   114 |  8579 | `		ph7_result_string(pCtx,(const char *)zVal,-1);` |
+|    58 |  8580 | `	}else{` |
+|    53 |  8581 | `		ph7_result_null(pCtx);` |
+|     - |  8582 | `	}` |
+|   166 |  8583 | `}` |
+|     - |  8584 | `/*` |
+|     - |  8585 | ` * The DOCUMENT's own state block.` |
 |     - |  8586 | ` *` |
-|     - |  8587 | `` * `actualEncoding` and `config` carry php 8.4's #[\Deprecated]: the notice`` |
-|     - |  8588 | `` * fires on a READ and on an `isset()` alike (both go through php's property`` |
-|     - |  8589 | ` * handler), which is why it is raised HERE rather than in __get -- and NOT on a` |
-|     - |  8590 | ` * write, where the readonly refusal comes first and is raised by the writer` |
-|     - |  8591 | ` * below without consulting this reader.` |
-|     - |  8592 | ` */` |
-|   275 |  8593 | `static int DomDocStateProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)` |
-|     1 |  8594 | `{` |
-|   276 |  8595 | `	int bDeprAe = DomNameIs(zName,"actualEncoding");` |
-|   276 |  8596 | `	if( bDeprAe \|\| DomNameIs(zName,"config") ){` |
-|    46 |  8597 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
-|    15 |  8598 | `			bDeprAe ? "Property DOMDocument::$actualEncoding is deprecated"` |
-|     - |  8599 | `			        : "Property DOMDocument::$config is deprecated");` |
-|     - |  8600 | ``		/* `config` is php's DOM level-3 configuration slot and has never been`` |
-|     - |  8601 | `		 * filled in there: the handler answers null and nothing else. */` |
-|    31 |  8602 | `		if( bDeprAe ){` |
-|    15 |  8603 | `			DomResultXmlStr(pCtx,pDoc ? pDoc->encoding : 0);` |
-|     8 |  8604 | `		}else{` |
-|    17 |  8605 | `			ph7_result_null(pCtx);` |
-|     - |  8606 | `		}` |
-|    31 |  8607 | `		return 1;` |
-|     - |  8608 | `	}` |
-|   246 |  8609 | `	if( DomNameIs(zName,"encoding") \|\| DomNameIs(zName,"xmlEncoding") ){` |
-|    44 |  8610 | `		DomResultXmlStr(pCtx,pDoc ? pDoc->encoding : 0);` |
-|    44 |  8611 | `		return 1;` |
-|     - |  8612 | `	}` |
-|   203 |  8613 | `	if( DomNameIs(zName,"version") \|\| DomNameIs(zName,"xmlVersion") ){` |
-|    57 |  8614 | `		DomResultXmlStr(pCtx,pDoc ? pDoc->version : 0);` |
-|    57 |  8615 | `		return 1;` |
-|     - |  8616 | `	}` |
-|   147 |  8617 | `	if( DomNameIs(zName,"documentURI") ){` |
-|    27 |  8618 | `		DomResultXmlStr(pCtx,pDoc ? pDoc->URL : 0);` |
-|    27 |  8619 | `		return 1;` |
-|     - |  8620 | `	}` |
-|   121 |  8621 | `	if( DomNameIs(zName,"standalone") \|\| DomNameIs(zName,"xmlStandalone") ){` |
-|     - |  8622 | `		/* libxml records four states in one int -- no declaration (-1), a` |
-|     - |  8623 | ``		 * declaration without the attribute (-2), `no` (0) and `yes` (1) -- and`` |
-|     - |  8624 | `		 * php's bool is true for the last one only. */` |
-|    59 |  8625 | `		ph7_result_bool(pCtx,pDoc != 0 && pDoc->standalone == 1);` |
-|    59 |  8626 | `		return 1;` |
-|     - |  8627 | `	}` |
-|    63 |  8628 | `	return 0;` |
-|   139 |  8629 | `}` |
-|     - |  8630 | `/*` |
-|     - |  8631 | ` * The three DOMParentNode properties.  php declares them on the three` |
-|     - |  8632 | ` * implementers ONLY -- DOMDocument, DOMElement and DOMDocumentFragment -- so` |
-|     - |  8633 | `` * `$text->childElementCount` is the Undefined property warning there, which`` |
-|     - |  8634 | ` * is why childElementCount cannot live in DomNodeProp (it did, and every node` |
-|     - |  8635 | ` * kind answered 0 in silence where php warns and answers null).` |
-|     - |  8636 | ` */` |
-|  2122 |  8637 | `static int DomParentNodeProp(ph7_context *pCtx,const char *zName)` |
-|     5 |  8638 | `{` |
-|  2127 |  8639 | `	int bLast = DomNameIs(zName,"lastElementChild");` |
-|  2127 |  8640 | `	if( bLast \|\| DomNameIs(zName,"firstElementChild") ){` |
-|    25 |  8641 | `		phl_domnode *pNd = DomThisNode(pCtx);` |
-|    25 |  8642 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|    25 |  8643 | `		xmlNodePtr pChild = pNode ? (bLast ? pNode->last : pNode->children) : 0;` |
-|    39 |  8644 | `		while( pChild && pChild->type != XML_ELEMENT_NODE ){` |
-|    15 |  8645 | `			pChild = bLast ? pChild->prev : pChild->next;` |
-|     1 |  8646 | `		}` |
-|    25 |  8647 | `		DomResultNodeOf(pCtx,pNd,pChild);` |
-|    25 |  8648 | `		return 1;` |
-|     - |  8649 | `	}` |
-|  2103 |  8650 | `	if( DomNameIs(zName,"childElementCount") ){` |
-|    17 |  8651 | `		phl_domnode *pNd = DomThisNode(pCtx);` |
-|    17 |  8652 | `		ph7_result_int(pCtx,DomChildCount(pNd ? (xmlNodePtr)pNd->pNode : 0,1));` |
-|    17 |  8653 | `		return 1;` |
-|     - |  8654 | `	}` |
-|  2087 |  8655 | `	return 0;` |
-|  1066 |  8656 | `}` |
-|     - |  8657 | `/*` |
-|     - |  8658 | ` * The two DOMChildNode-side properties.  php declares them on DOMElement and` |
-|     - |  8659 | ` * DOMCharacterData only -- an attribute, a PI or the document warns Undefined` |
-|     - |  8660 | ` * property -- and they skip every node kind that is not an element.` |
-|     - |  8661 | ` */` |
-|  2200 |  8662 | `static int DomChildNodeProp(ph7_context *pCtx,const char *zName)` |
-|     5 |  8663 | `{` |
-|  2205 |  8664 | `	int bNext = DomNameIs(zName,"nextElementSibling");` |
-|  2205 |  8665 | `	if( bNext \|\| DomNameIs(zName,"previousElementSibling") ){` |
-|    27 |  8666 | `		phl_domnode *pNd = DomThisNode(pCtx);` |
-|    27 |  8667 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|    27 |  8668 | `		xmlNodePtr pSib = pNode ? (bNext ? pNode->next : pNode->prev) : 0;` |
-|    51 |  8669 | `		while( pSib && pSib->type != XML_ELEMENT_NODE ){` |
-|    25 |  8670 | `			pSib = bNext ? pSib->next : pSib->prev;` |
-|     1 |  8671 | `		}` |
-|    27 |  8672 | `		DomResultNodeOf(pCtx,pNd,pSib);` |
-|    27 |  8673 | `		return 1;` |
-|     - |  8674 | `	}` |
-|  2179 |  8675 | `	return 0;` |
-|  1105 |  8676 | `}` |
-|     - |  8677 | `/* DOMDocument adds documentElement and the state block above. */` |
-|  2055 |  8678 | `static int DomDocProp(ph7_context *pCtx,const char *zName)` |
-|     4 |  8679 | `{` |
-|  2059 |  8680 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|  2059 |  8681 | `	if( DomNameIs(zName,"documentElement") ){` |
-|  1736 |  8682 | `		DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);` |
-|  1736 |  8683 | `		return 1;` |
+|     - |  8587 | ` * Nine of php's twenty-two DOMDocument properties are the XML DECLARATION and` |
+|     - |  8588 | ` * the document's URI, read straight off libxml's xmlDoc -- and php spells most` |
+|     - |  8589 | ` * of them twice, once under the DOM level-3 name and once under the level-1 one` |
+|     - |  8590 | `` * it kept for compatibility (`version`/`xmlVersion`, `encoding`/`xmlEncoding`,`` |
+|     - |  8591 | `` * `standalone`/`xmlStandalone`).  The pairs are not synonyms in every`` |
+|     - |  8592 | ``  * direction: `xmlEncoding` and `actualEncoding` READ the same slot `encoding` `` |
+|     - |  8593 | `` * writes and are themselves read-only, which is what makes `$d->xmlEncoding =`` |
+|     - |  8594 | `` * 'UTF-8'` php's readonly Error and `$d->encoding = 'UTF-8'` the write that`` |
+|     - |  8595 | `` * changes the bytes `saveXML()` emits.`` |
+|     - |  8596 | ` *` |
+|     - |  8597 | `` * `actualEncoding` and `config` carry php 8.4's #[\Deprecated]: the notice`` |
+|     - |  8598 | `` * fires on a READ and on an `isset()` alike (both go through php's property`` |
+|     - |  8599 | ` * handler), which is why it is raised HERE rather than in __get -- and NOT on a` |
+|     - |  8600 | ` * write, where the readonly refusal comes first and is raised by the writer` |
+|     - |  8601 | ` * below without consulting this reader.` |
+|     - |  8602 | ` */` |
+|   275 |  8603 | `static int DomDocStateProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)` |
+|     1 |  8604 | `{` |
+|   276 |  8605 | `	int bDeprAe = DomNameIs(zName,"actualEncoding");` |
+|   276 |  8606 | `	if( bDeprAe \|\| DomNameIs(zName,"config") ){` |
+|    46 |  8607 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
+|    15 |  8608 | `			bDeprAe ? "Property DOMDocument::$actualEncoding is deprecated"` |
+|     - |  8609 | `			        : "Property DOMDocument::$config is deprecated");` |
+|     - |  8610 | ``		/* `config` is php's DOM level-3 configuration slot and has never been`` |
+|     - |  8611 | `		 * filled in there: the handler answers null and nothing else. */` |
+|    31 |  8612 | `		if( bDeprAe ){` |
+|    15 |  8613 | `			DomResultXmlStr(pCtx,pDoc ? pDoc->encoding : 0);` |
+|     8 |  8614 | `		}else{` |
+|    17 |  8615 | `			ph7_result_null(pCtx);` |
+|     - |  8616 | `		}` |
+|    31 |  8617 | `		return 1;` |
+|     - |  8618 | `	}` |
+|   246 |  8619 | `	if( DomNameIs(zName,"encoding") \|\| DomNameIs(zName,"xmlEncoding") ){` |
+|    44 |  8620 | `		DomResultXmlStr(pCtx,pDoc ? pDoc->encoding : 0);` |
+|    44 |  8621 | `		return 1;` |
+|     - |  8622 | `	}` |
+|   203 |  8623 | `	if( DomNameIs(zName,"version") \|\| DomNameIs(zName,"xmlVersion") ){` |
+|    57 |  8624 | `		DomResultXmlStr(pCtx,pDoc ? pDoc->version : 0);` |
+|    57 |  8625 | `		return 1;` |
+|     - |  8626 | `	}` |
+|   147 |  8627 | `	if( DomNameIs(zName,"documentURI") ){` |
+|    27 |  8628 | `		DomResultXmlStr(pCtx,pDoc ? pDoc->URL : 0);` |
+|    27 |  8629 | `		return 1;` |
+|     - |  8630 | `	}` |
+|   121 |  8631 | `	if( DomNameIs(zName,"standalone") \|\| DomNameIs(zName,"xmlStandalone") ){` |
+|     - |  8632 | `		/* libxml records four states in one int -- no declaration (-1), a` |
+|     - |  8633 | ``		 * declaration without the attribute (-2), `no` (0) and `yes` (1) -- and`` |
+|     - |  8634 | `		 * php's bool is true for the last one only. */` |
+|    59 |  8635 | `		ph7_result_bool(pCtx,pDoc != 0 && pDoc->standalone == 1);` |
+|    59 |  8636 | `		return 1;` |
+|     - |  8637 | `	}` |
+|    63 |  8638 | `	return 0;` |
+|   139 |  8639 | `}` |
+|     - |  8640 | `/*` |
+|     - |  8641 | ` * The three DOMParentNode properties.  php declares them on the three` |
+|     - |  8642 | ` * implementers ONLY -- DOMDocument, DOMElement and DOMDocumentFragment -- so` |
+|     - |  8643 | `` * `$text->childElementCount` is the Undefined property warning there, which`` |
+|     - |  8644 | ` * is why childElementCount cannot live in DomNodeProp (it did, and every node` |
+|     - |  8645 | ` * kind answered 0 in silence where php warns and answers null).` |
+|     - |  8646 | ` */` |
+|  2122 |  8647 | `static int DomParentNodeProp(ph7_context *pCtx,const char *zName)` |
+|     5 |  8648 | `{` |
+|  2127 |  8649 | `	int bLast = DomNameIs(zName,"lastElementChild");` |
+|  2127 |  8650 | `	if( bLast \|\| DomNameIs(zName,"firstElementChild") ){` |
+|    25 |  8651 | `		phl_domnode *pNd = DomThisNode(pCtx);` |
+|    25 |  8652 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    25 |  8653 | `		xmlNodePtr pChild = pNode ? (bLast ? pNode->last : pNode->children) : 0;` |
+|    39 |  8654 | `		while( pChild && pChild->type != XML_ELEMENT_NODE ){` |
+|    15 |  8655 | `			pChild = bLast ? pChild->prev : pChild->next;` |
+|     1 |  8656 | `		}` |
+|    25 |  8657 | `		DomResultNodeOf(pCtx,pNd,pChild);` |
+|    25 |  8658 | `		return 1;` |
+|     - |  8659 | `	}` |
+|  2103 |  8660 | `	if( DomNameIs(zName,"childElementCount") ){` |
+|    17 |  8661 | `		phl_domnode *pNd = DomThisNode(pCtx);` |
+|    17 |  8662 | `		ph7_result_int(pCtx,DomChildCount(pNd ? (xmlNodePtr)pNd->pNode : 0,1));` |
+|    17 |  8663 | `		return 1;` |
+|     - |  8664 | `	}` |
+|  2087 |  8665 | `	return 0;` |
+|  1066 |  8666 | `}` |
+|     - |  8667 | `/*` |
+|     - |  8668 | ` * The two DOMChildNode-side properties.  php declares them on DOMElement and` |
+|     - |  8669 | ` * DOMCharacterData only -- an attribute, a PI or the document warns Undefined` |
+|     - |  8670 | ` * property -- and they skip every node kind that is not an element.` |
+|     - |  8671 | ` */` |
+|  2200 |  8672 | `static int DomChildNodeProp(ph7_context *pCtx,const char *zName)` |
+|     5 |  8673 | `{` |
+|  2205 |  8674 | `	int bNext = DomNameIs(zName,"nextElementSibling");` |
+|  2205 |  8675 | `	if( bNext \|\| DomNameIs(zName,"previousElementSibling") ){` |
+|    27 |  8676 | `		phl_domnode *pNd = DomThisNode(pCtx);` |
+|    27 |  8677 | `		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    27 |  8678 | `		xmlNodePtr pSib = pNode ? (bNext ? pNode->next : pNode->prev) : 0;` |
+|    51 |  8679 | `		while( pSib && pSib->type != XML_ELEMENT_NODE ){` |
+|    25 |  8680 | `			pSib = bNext ? pSib->next : pSib->prev;` |
+|     1 |  8681 | `		}` |
+|    27 |  8682 | `		DomResultNodeOf(pCtx,pNd,pSib);` |
+|    27 |  8683 | `		return 1;` |
 |     - |  8684 | `	}` |
-|   325 |  8685 | `	if( DomNameIs(zName,"implementation") ){` |
-|     - |  8686 | `		/* A FRESH object on every read, which is php's: the class has no state` |
-|     - |  8687 | `		 * and nothing ties one to a document. */` |
-|    11 |  8688 | `		ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,"DOMImplementation",` |
-|     - |  8689 | `			sizeof("DOMImplementation")-1,FALSE,0);` |
-|    11 |  8690 | `		ph7_class_instance *pImpl = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;` |
-|    11 |  8691 | `		if( pImpl ){` |
-|    11 |  8692 | `			PH7_NativeResultObject(pCtx,pImpl);` |
-|     6 |  8693 | `		}else{` |
-|   ! 0 |  8694 | `			ph7_result_null(pCtx);` |
-|     - |  8695 | `		}` |
-|    11 |  8696 | `		return 1;` |
-|     - |  8697 | `	}` |
-|   315 |  8698 | `	if( DomNameIs(zName,"doctype") ){` |
-|     - |  8699 | `		/* The INTERNAL subset alone, which is php's: a DTD pulled in from the` |
-|     - |  8700 | `` 		 * SYSTEM identifier lands in `extSubset` and is not what `doctype` `` |
-|     - |  8701 | `		 * answers. Null for a document that declares none. */` |
-|    78 |  8702 | `		DomResultNodeOf(pCtx,pNd,` |
-|    38 |  8703 | `			pNd ? (xmlNodePtr)xmlGetIntSubset((xmlDocPtr)pNd->pNode) : 0);` |
-|    40 |  8704 | `		return 1;` |
-|     - |  8705 | `	}` |
-|   276 |  8706 | `	if( DomDocStateProp(pCtx,zName,pNd ? (xmlDocPtr)pNd->pNode : 0) ){` |
-|   214 |  8707 | `		return 1;` |
-|     - |  8708 | `	}` |
-|    63 |  8709 | `	if( DomParentNodeProp(pCtx,zName) ){` |
-|    11 |  8710 | `		return 1;` |
-|     - |  8711 | `	}` |
-|    53 |  8712 | `	return DomNodeProp(pCtx,zName);` |
-|  1032 |  8713 | `}` |
-|     - |  8714 | `/*` |
-|     - |  8715 | `` * DOMDocumentType: what the `<!DOCTYPE ...>` line SAYS.`` |
-|     - |  8716 | ` *` |
-|     - |  8717 | `` * The DTD node has been reachable all along (`$doc->firstChild` on any document`` |
-|     - |  8718 | ` * carrying a doctype), so what was missing was not the node but every question` |
-|     - |  8719 | ``  * about it: the class, so `instanceof DOMDocumentType` and `get_class()` `` |
-|     - |  8720 | ` * answer, and the four identifiers a program reads off one.` |
-|     - |  8721 | ` *` |
-|     - |  8722 | `` * php's `publicId`/`systemId` here are plain strings that answer "" when the`` |
-|     - |  8723 | `` * declaration carries none -- unlike DOMEntity's, which are `?string` and null`` |
-|     - |  8724 | ` * for the same absence -- so the two classes cannot share a reader.` |
-|     - |  8725 | ` */` |
-|   172 |  8726 | `static xmlDtdPtr DomThisDtd(ph7_context *pCtx)` |
-|     2 |  8727 | `{` |
-|   174 |  8728 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|   174 |  8729 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|   172 |  8730 | `	if( pNode == 0` |
-|   174 |  8731 | `	 \|\| (pNode->type != XML_DTD_NODE && pNode->type != XML_DOCUMENT_TYPE_NODE) ){` |
-|   ! 0 |  8732 | `		return 0;` |
-|     - |  8733 | `	}` |
-|   174 |  8734 | `	return (xmlDtdPtr)pNode;` |
-|    88 |  8735 | `}` |
-|     - |  8736 | `/*` |
-|     - |  8737 | `` * `internalSubset`: the bytes BETWEEN the brackets, rebuilt by dumping each`` |
-|     - |  8738 | ` * declaration the subset holds.  php reads them off the DOCUMENT's internal` |
-|     - |  8739 | ` * subset rather than the receiver's own children -- so a doctype cloned out of` |
-|     - |  8740 | ` * a document that has none answers null -- and answers null, not "", when` |
-|     - |  8741 | ` * there is no subset to dump at all.` |
-|     - |  8742 | ` */` |
-|    18 |  8743 | `static void DomInternalSubset(ph7_context *pCtx,xmlDtdPtr pDtd)` |
-|     1 |  8744 | `{` |
-|    19 |  8745 | `	xmlDtdPtr pSub = (pDtd && pDtd->doc) ? xmlGetIntSubset(pDtd->doc) : 0;` |
-|    19 |  8746 | `	xmlNodePtr pChild = pSub ? pSub->children : 0;` |
-|     - |  8747 | `	xmlBufferPtr pBuf;` |
-|     - |  8748 | `	xmlOutputBufferPtr pOut;` |
-|    19 |  8749 | `	if( pChild == 0 ){` |
-|    11 |  8750 | `		ph7_result_null(pCtx);` |
-|    11 |  8751 | `		return;` |
-|     - |  8752 | `	}` |
-|     9 |  8753 | `	pBuf = xmlBufferCreate();` |
-|     9 |  8754 | `	pOut = pBuf ? xmlOutputBufferCreateBuffer(pBuf,0) : 0;` |
-|     9 |  8755 | `	if( pOut == 0 ){` |
-|   ! 0 |  8756 | `		if( pBuf ){` |
-|   ! 0 |  8757 | `			xmlBufferFree(pBuf);` |
-|   ! 0 |  8758 | `		}` |
-|   ! 0 |  8759 | `		ph7_result_null(pCtx);` |
-|   ! 0 |  8760 | `		return;` |
-|     - |  8761 | `	}` |
-|    17 |  8762 | `	for( ; pChild ; pChild = pChild->next ){` |
-|     9 |  8763 | `		xmlNodeDumpOutput(pOut,pSub->doc,pChild,0,0,0);` |
-|     5 |  8764 | `	}` |
-|     9 |  8765 | `	xmlOutputBufferFlush(pOut);` |
-|     9 |  8766 | `	ph7_result_string(pCtx,(const char *)xmlBufferContent(pBuf),(int)xmlBufferLength(pBuf));` |
-|     9 |  8767 | `	xmlOutputBufferClose(pOut);` |
-|     9 |  8768 | `	xmlBufferFree(pBuf);` |
-|    10 |  8769 | `}` |
-|   172 |  8770 | `static int DomDocTypeProp(ph7_context *pCtx,const char *zName)` |
-|     2 |  8771 | `{` |
-|   174 |  8772 | `	xmlDtdPtr pDtd = DomThisDtd(pCtx);` |
-|   174 |  8773 | `	if( DomNameIs(zName,"name") ){` |
-|     - |  8774 | `		/* The name the DOCTYPE declares, which is also its nodeName. */` |
-|    33 |  8775 | `		ph7_result_string(pCtx,(pDtd && pDtd->name) ? (const char *)pDtd->name : "",-1);` |
-|    33 |  8776 | `		return 1;` |
-|     - |  8777 | `	}` |
-|   142 |  8778 | `	if( DomNameIs(zName,"publicId") ){` |
-|    15 |  8779 | `		ph7_result_string(pCtx,(pDtd && pDtd->ExternalID) ? (const char *)pDtd->ExternalID : "",-1);` |
-|    15 |  8780 | `		return 1;` |
-|     - |  8781 | `	}` |
-|   128 |  8782 | `	if( DomNameIs(zName,"systemId") ){` |
-|    15 |  8783 | `		ph7_result_string(pCtx,(pDtd && pDtd->SystemID) ? (const char *)pDtd->SystemID : "",-1);` |
-|    15 |  8784 | `		return 1;` |
-|     - |  8785 | `	}` |
-|   114 |  8786 | `	if( DomNameIs(zName,"internalSubset") ){` |
-|    19 |  8787 | `		DomInternalSubset(pCtx,pDtd);` |
-|    19 |  8788 | `		return 1;` |
-|     - |  8789 | `	}` |
-|    96 |  8790 | `	if( DomNameIs(zName,"entities") \|\| DomNameIs(zName,"notations") ){` |
-|    54 |  8791 | `		ph7_class_instance *pMap = DomNewCollection(pCtx->pVm,"DOMNamedNodeMap",` |
-|    26 |  8792 | `			DomThisDoc(pCtx),DomNameIs(zName,"notations") ? DNL_NOTS : DNL_ENTS,` |
-|    13 |  8793 | `			PH7_ContextThis(pCtx),0,0,0);` |
-|    28 |  8794 | `		if( pMap ){` |
-|    28 |  8795 | `			PH7_NativeResultObject(pCtx,pMap);` |
-|    15 |  8796 | `		}else{` |
-|   ! 0 |  8797 | `			ph7_result_null(pCtx);` |
-|     - |  8798 | `		}` |
-|    28 |  8799 | `		return 1;` |
-|     - |  8800 | `	}` |
-|    69 |  8801 | `	return DomNodeProp(pCtx,zName);` |
-|    88 |  8802 | `}` |
-|     - |  8803 | `/*` |
-|     - |  8804 | `` * DOMEntity: an `<!ENTITY ...>` declaration of the internal subset.`` |
-|     - |  8805 | ` *` |
-|     - |  8806 | ` * Its three identifiers are the DOM's "for an UNPARSED entity" rule, which php` |
-|     - |  8807 | `` * follows to the letter: `publicId`, `systemId` and `notationName` answer null`` |
-|     - |  8808 | `` * for every entity that is not `NDATA`-declared, so the external-but-parsed`` |
-|     - |  8809 | `` * `<!ENTITY e SYSTEM "e.xml">` reads null from all three while`` |
-|     - |  8810 | `` * `<!ENTITY g SYSTEM "g.gif" NDATA gif>` reads its own two and the notation's`` |
-|     - |  8811 | `` * name.  (`baseURI`, which DOMNode answers, is where the resolved system`` |
-|     - |  8812 | ` * identifier does show for both.)` |
-|     - |  8813 | ` *` |
-|     - |  8814 | ` * The other three are php 8.4's deprecated block, and like DOMDocument's the` |
-|     - |  8815 | `` * notice fires on a READ and on an `isset()` alike -- both go through php's`` |
-|     - |  8816 | ` * property handler -- and not on a write, where the readonly refusal comes` |
-|     - |  8817 | ` * first and never consults this reader.` |
-|     - |  8818 | ` */` |
-|    86 |  8819 | `static xmlEntityPtr DomThisEntity(ph7_context *pCtx)` |
-|     1 |  8820 | `{` |
-|    87 |  8821 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|    87 |  8822 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|     - |  8823 | `	/* Only a real entity DECLARATION is xmlEntity-shaped. An ELEMENT` |
-|     - |  8824 | `	 * declaration wears this class in php and is an xmlElement underneath,` |
-|     - |  8825 | `	 * whose fields past the node header are another struct's. */` |
-|    87 |  8826 | `	if( pNode == 0 \|\| pNode->type != XML_ENTITY_DECL ){` |
-|   ! 0 |  8827 | `		return 0;` |
-|     - |  8828 | `	}` |
-|    87 |  8829 | `	return (xmlEntityPtr)pNode;` |
-|    44 |  8830 | `}` |
-|    86 |  8831 | `static int DomEntityProp(ph7_context *pCtx,const char *zName)` |
-|     1 |  8832 | `{` |
-|    87 |  8833 | `	xmlEntityPtr pEnt = DomThisEntity(pCtx);` |
-|    87 |  8834 | `	int bUnparsed = pEnt && pEnt->etype == XML_EXTERNAL_GENERAL_UNPARSED_ENTITY;` |
-|    87 |  8835 | `	if( DomNameIs(zName,"publicId") ){` |
-|     9 |  8836 | `		DomResultXmlStr(pCtx,bUnparsed ? pEnt->ExternalID : 0);` |
-|     9 |  8837 | `		return 1;` |
+|  2179 |  8685 | `	return 0;` |
+|  1105 |  8686 | `}` |
+|     - |  8687 | `/* DOMDocument adds documentElement and the state block above. */` |
+|  2055 |  8688 | `static int DomDocProp(ph7_context *pCtx,const char *zName)` |
+|     4 |  8689 | `{` |
+|  2059 |  8690 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|  2059 |  8691 | `	if( DomNameIs(zName,"documentElement") ){` |
+|  1736 |  8692 | `		DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);` |
+|  1736 |  8693 | `		return 1;` |
+|     - |  8694 | `	}` |
+|   325 |  8695 | `	if( DomNameIs(zName,"implementation") ){` |
+|     - |  8696 | `		/* A FRESH object on every read, which is php's: the class has no state` |
+|     - |  8697 | `		 * and nothing ties one to a document. */` |
+|    11 |  8698 | `		ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,"DOMImplementation",` |
+|     - |  8699 | `			sizeof("DOMImplementation")-1,FALSE,0);` |
+|    11 |  8700 | `		ph7_class_instance *pImpl = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;` |
+|    11 |  8701 | `		if( pImpl ){` |
+|    11 |  8702 | `			PH7_NativeResultObject(pCtx,pImpl);` |
+|     6 |  8703 | `		}else{` |
+|   ! 0 |  8704 | `			ph7_result_null(pCtx);` |
+|     - |  8705 | `		}` |
+|    11 |  8706 | `		return 1;` |
+|     - |  8707 | `	}` |
+|   315 |  8708 | `	if( DomNameIs(zName,"doctype") ){` |
+|     - |  8709 | `		/* The INTERNAL subset alone, which is php's: a DTD pulled in from the` |
+|     - |  8710 | `` 		 * SYSTEM identifier lands in `extSubset` and is not what `doctype` `` |
+|     - |  8711 | `		 * answers. Null for a document that declares none. */` |
+|    78 |  8712 | `		DomResultNodeOf(pCtx,pNd,` |
+|    38 |  8713 | `			pNd ? (xmlNodePtr)xmlGetIntSubset((xmlDocPtr)pNd->pNode) : 0);` |
+|    40 |  8714 | `		return 1;` |
+|     - |  8715 | `	}` |
+|   276 |  8716 | `	if( DomDocStateProp(pCtx,zName,pNd ? (xmlDocPtr)pNd->pNode : 0) ){` |
+|   214 |  8717 | `		return 1;` |
+|     - |  8718 | `	}` |
+|    63 |  8719 | `	if( DomParentNodeProp(pCtx,zName) ){` |
+|    11 |  8720 | `		return 1;` |
+|     - |  8721 | `	}` |
+|    53 |  8722 | `	return DomNodeProp(pCtx,zName);` |
+|  1032 |  8723 | `}` |
+|     - |  8724 | `/*` |
+|     - |  8725 | `` * DOMDocumentType: what the `<!DOCTYPE ...>` line SAYS.`` |
+|     - |  8726 | ` *` |
+|     - |  8727 | `` * The DTD node has been reachable all along (`$doc->firstChild` on any document`` |
+|     - |  8728 | ` * carrying a doctype), so what was missing was not the node but every question` |
+|     - |  8729 | ``  * about it: the class, so `instanceof DOMDocumentType` and `get_class()` `` |
+|     - |  8730 | ` * answer, and the four identifiers a program reads off one.` |
+|     - |  8731 | ` *` |
+|     - |  8732 | `` * php's `publicId`/`systemId` here are plain strings that answer "" when the`` |
+|     - |  8733 | `` * declaration carries none -- unlike DOMEntity's, which are `?string` and null`` |
+|     - |  8734 | ` * for the same absence -- so the two classes cannot share a reader.` |
+|     - |  8735 | ` */` |
+|   172 |  8736 | `static xmlDtdPtr DomThisDtd(ph7_context *pCtx)` |
+|     2 |  8737 | `{` |
+|   174 |  8738 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|   174 |  8739 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|   172 |  8740 | `	if( pNode == 0` |
+|   174 |  8741 | `	 \|\| (pNode->type != XML_DTD_NODE && pNode->type != XML_DOCUMENT_TYPE_NODE) ){` |
+|   ! 0 |  8742 | `		return 0;` |
+|     - |  8743 | `	}` |
+|   174 |  8744 | `	return (xmlDtdPtr)pNode;` |
+|    88 |  8745 | `}` |
+|     - |  8746 | `/*` |
+|     - |  8747 | `` * `internalSubset`: the bytes BETWEEN the brackets, rebuilt by dumping each`` |
+|     - |  8748 | ` * declaration the subset holds.  php reads them off the DOCUMENT's internal` |
+|     - |  8749 | ` * subset rather than the receiver's own children -- so a doctype cloned out of` |
+|     - |  8750 | ` * a document that has none answers null -- and answers null, not "", when` |
+|     - |  8751 | ` * there is no subset to dump at all.` |
+|     - |  8752 | ` */` |
+|    18 |  8753 | `static void DomInternalSubset(ph7_context *pCtx,xmlDtdPtr pDtd)` |
+|     1 |  8754 | `{` |
+|    19 |  8755 | `	xmlDtdPtr pSub = (pDtd && pDtd->doc) ? xmlGetIntSubset(pDtd->doc) : 0;` |
+|    19 |  8756 | `	xmlNodePtr pChild = pSub ? pSub->children : 0;` |
+|     - |  8757 | `	xmlBufferPtr pBuf;` |
+|     - |  8758 | `	xmlOutputBufferPtr pOut;` |
+|    19 |  8759 | `	if( pChild == 0 ){` |
+|    11 |  8760 | `		ph7_result_null(pCtx);` |
+|    11 |  8761 | `		return;` |
+|     - |  8762 | `	}` |
+|     9 |  8763 | `	pBuf = xmlBufferCreate();` |
+|     9 |  8764 | `	pOut = pBuf ? xmlOutputBufferCreateBuffer(pBuf,0) : 0;` |
+|     9 |  8765 | `	if( pOut == 0 ){` |
+|   ! 0 |  8766 | `		if( pBuf ){` |
+|   ! 0 |  8767 | `			xmlBufferFree(pBuf);` |
+|   ! 0 |  8768 | `		}` |
+|   ! 0 |  8769 | `		ph7_result_null(pCtx);` |
+|   ! 0 |  8770 | `		return;` |
+|     - |  8771 | `	}` |
+|    17 |  8772 | `	for( ; pChild ; pChild = pChild->next ){` |
+|     9 |  8773 | `		xmlNodeDumpOutput(pOut,pSub->doc,pChild,0,0,0);` |
+|     5 |  8774 | `	}` |
+|     9 |  8775 | `	xmlOutputBufferFlush(pOut);` |
+|     9 |  8776 | `	ph7_result_string(pCtx,(const char *)xmlBufferContent(pBuf),(int)xmlBufferLength(pBuf));` |
+|     9 |  8777 | `	xmlOutputBufferClose(pOut);` |
+|     9 |  8778 | `	xmlBufferFree(pBuf);` |
+|    10 |  8779 | `}` |
+|   172 |  8780 | `static int DomDocTypeProp(ph7_context *pCtx,const char *zName)` |
+|     2 |  8781 | `{` |
+|   174 |  8782 | `	xmlDtdPtr pDtd = DomThisDtd(pCtx);` |
+|   174 |  8783 | `	if( DomNameIs(zName,"name") ){` |
+|     - |  8784 | `		/* The name the DOCTYPE declares, which is also its nodeName. */` |
+|    33 |  8785 | `		ph7_result_string(pCtx,(pDtd && pDtd->name) ? (const char *)pDtd->name : "",-1);` |
+|    33 |  8786 | `		return 1;` |
+|     - |  8787 | `	}` |
+|   142 |  8788 | `	if( DomNameIs(zName,"publicId") ){` |
+|    15 |  8789 | `		ph7_result_string(pCtx,(pDtd && pDtd->ExternalID) ? (const char *)pDtd->ExternalID : "",-1);` |
+|    15 |  8790 | `		return 1;` |
+|     - |  8791 | `	}` |
+|   128 |  8792 | `	if( DomNameIs(zName,"systemId") ){` |
+|    15 |  8793 | `		ph7_result_string(pCtx,(pDtd && pDtd->SystemID) ? (const char *)pDtd->SystemID : "",-1);` |
+|    15 |  8794 | `		return 1;` |
+|     - |  8795 | `	}` |
+|   114 |  8796 | `	if( DomNameIs(zName,"internalSubset") ){` |
+|    19 |  8797 | `		DomInternalSubset(pCtx,pDtd);` |
+|    19 |  8798 | `		return 1;` |
+|     - |  8799 | `	}` |
+|    96 |  8800 | `	if( DomNameIs(zName,"entities") \|\| DomNameIs(zName,"notations") ){` |
+|    54 |  8801 | `		ph7_class_instance *pMap = DomNewCollection(pCtx->pVm,"DOMNamedNodeMap",` |
+|    26 |  8802 | `			DomThisDoc(pCtx),DomNameIs(zName,"notations") ? DNL_NOTS : DNL_ENTS,` |
+|    13 |  8803 | `			PH7_ContextThis(pCtx),0,0,0);` |
+|    28 |  8804 | `		if( pMap ){` |
+|    28 |  8805 | `			PH7_NativeResultObject(pCtx,pMap);` |
+|    15 |  8806 | `		}else{` |
+|   ! 0 |  8807 | `			ph7_result_null(pCtx);` |
+|     - |  8808 | `		}` |
+|    28 |  8809 | `		return 1;` |
+|     - |  8810 | `	}` |
+|    69 |  8811 | `	return DomNodeProp(pCtx,zName);` |
+|    88 |  8812 | `}` |
+|     - |  8813 | `/*` |
+|     - |  8814 | `` * DOMEntity: an `<!ENTITY ...>` declaration of the internal subset.`` |
+|     - |  8815 | ` *` |
+|     - |  8816 | ` * Its three identifiers are the DOM's "for an UNPARSED entity" rule, which php` |
+|     - |  8817 | `` * follows to the letter: `publicId`, `systemId` and `notationName` answer null`` |
+|     - |  8818 | `` * for every entity that is not `NDATA`-declared, so the external-but-parsed`` |
+|     - |  8819 | `` * `<!ENTITY e SYSTEM "e.xml">` reads null from all three while`` |
+|     - |  8820 | `` * `<!ENTITY g SYSTEM "g.gif" NDATA gif>` reads its own two and the notation's`` |
+|     - |  8821 | `` * name.  (`baseURI`, which DOMNode answers, is where the resolved system`` |
+|     - |  8822 | ` * identifier does show for both.)` |
+|     - |  8823 | ` *` |
+|     - |  8824 | ` * The other three are php 8.4's deprecated block, and like DOMDocument's the` |
+|     - |  8825 | `` * notice fires on a READ and on an `isset()` alike -- both go through php's`` |
+|     - |  8826 | ` * property handler -- and not on a write, where the readonly refusal comes` |
+|     - |  8827 | ` * first and never consults this reader.` |
+|     - |  8828 | ` */` |
+|    86 |  8829 | `static xmlEntityPtr DomThisEntity(ph7_context *pCtx)` |
+|     1 |  8830 | `{` |
+|    87 |  8831 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|    87 |  8832 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|     - |  8833 | `	/* Only a real entity DECLARATION is xmlEntity-shaped. An ELEMENT` |
+|     - |  8834 | `	 * declaration wears this class in php and is an xmlElement underneath,` |
+|     - |  8835 | `	 * whose fields past the node header are another struct's. */` |
+|    87 |  8836 | `	if( pNode == 0 \|\| pNode->type != XML_ENTITY_DECL ){` |
+|   ! 0 |  8837 | `		return 0;` |
 |     - |  8838 | `	}` |
-|    79 |  8839 | `	if( DomNameIs(zName,"systemId") ){` |
-|     9 |  8840 | `		DomResultXmlStr(pCtx,bUnparsed ? pEnt->SystemID : 0);` |
-|     9 |  8841 | `		return 1;` |
-|     - |  8842 | `	}` |
-|    71 |  8843 | `	if( DomNameIs(zName,"notationName") ){` |
-|     - |  8844 | ``		/* libxml keeps an unparsed entity's notation name in `content`. */`` |
-|    11 |  8845 | `		DomResultXmlStr(pCtx,bUnparsed ? pEnt->content : 0);` |
-|    11 |  8846 | `		return 1;` |
-|     - |  8847 | `	}` |
-|    61 |  8848 | `	if( DomNameIs(zName,"actualEncoding") ){` |
-|     3 |  8849 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
-|     - |  8850 | `			"Property DOMEntity::$actualEncoding is deprecated");` |
-|     3 |  8851 | `		ph7_result_null(pCtx);` |
-|     3 |  8852 | `		return 1;` |
-|     - |  8853 | `	}` |
-|    59 |  8854 | `	if( DomNameIs(zName,"encoding") ){` |
-|     5 |  8855 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
-|     - |  8856 | `			"Property DOMEntity::$encoding is deprecated");` |
-|     5 |  8857 | `		ph7_result_null(pCtx);` |
-|     5 |  8858 | `		return 1;` |
-|     - |  8859 | `	}` |
-|    55 |  8860 | `	if( DomNameIs(zName,"version") ){` |
-|     - |  8861 | `		/* php has never filled any of the three in: the handler answers NULL` |
-|     - |  8862 | `		 * and does nothing else. */` |
-|     3 |  8863 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
-|     - |  8864 | `			"Property DOMEntity::$version is deprecated");` |
-|     3 |  8865 | `		ph7_result_null(pCtx);` |
-|     3 |  8866 | `		return 1;` |
-|     - |  8867 | `	}` |
-|    53 |  8868 | `	return DomNodeProp(pCtx,zName);` |
-|    44 |  8869 | `}` |
-|     - |  8870 | `/*` |
-|     - |  8871 | `` * php declares `schemaTypeInfo` on both DOMElement and DOMAttr and has never`` |
-|     - |  8872 | ` * filled it in: ext/dom answers NULL from a handler that does nothing else.` |
-|     - |  8873 | ` * It is a declared property all the same, so a read is NOT the undefined-property` |
-|     - |  8874 | ` * warning -- which is the whole difference this row buys.` |
-|     - |  8875 | ` */` |
-|     2 |  8876 | `static int DomSchemaTypeInfo(ph7_context *pCtx)` |
-|     1 |  8877 | `{` |
-|     3 |  8878 | `	ph7_result_null(pCtx);` |
-|     3 |  8879 | `	return 1;` |
-|     1 |  8880 | `}` |
-|     - |  8881 | `/* DOMElement adds tagName, and the two attribute-backed names php exposes as` |
-|     - |  8882 | `` * properties: `className` IS the class attribute and `id` IS the id one, both`` |
-|     - |  8883 | ` * answering "" when the attribute is absent. */` |
-|  2036 |  8884 | `static int DomElemProp(ph7_context *pCtx,const char *zName)` |
-|     5 |  8885 | `{` |
-|     - |  8886 | `	phl_domnode *pNd;` |
-|  2041 |  8887 | `	int bClass = DomNameIs(zName,"className");` |
-|  2041 |  8888 | `	if( DomNameIs(zName,"tagName") ){` |
-|    49 |  8889 | `		pNd = DomThisNode(pCtx);` |
-|    49 |  8890 | `		DomNodeName(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);` |
-|    49 |  8891 | `		return 1;` |
-|     - |  8892 | `	}` |
-|  1993 |  8893 | `	if( bClass \|\| DomNameIs(zName,"id") ){` |
-|     - |  8894 | `		xmlChar *zVal;` |
-|     9 |  8895 | `		pNd = DomThisNode(pCtx);` |
-|     9 |  8896 | `		zVal = pNd ? xmlGetNoNsProp((xmlNodePtr)pNd->pNode,` |
-|     8 |  8897 | `			(const xmlChar *)(bClass ? "class" : "id")) : 0;` |
-|     9 |  8898 | `		ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);` |
-|     9 |  8899 | `		if( zVal ){` |
-|     5 |  8900 | `			xmlFree(zVal);` |
-|     2 |  8901 | `		}` |
-|     9 |  8902 | `		return 1;` |
-|     - |  8903 | `	}` |
-|  1985 |  8904 | `	if( DomNameIs(zName,"schemaTypeInfo") ){` |
-|   ! 0 |  8905 | `		return DomSchemaTypeInfo(pCtx);` |
-|     - |  8906 | `	}` |
-|  1985 |  8907 | `	if( DomParentNodeProp(pCtx,zName) \|\| DomChildNodeProp(pCtx,zName) ){` |
-|    43 |  8908 | `		return 1;` |
-|     - |  8909 | `	}` |
-|  1943 |  8910 | `	return DomNodeProp(pCtx,zName);` |
-|  1023 |  8911 | `}` |
-|     - |  8912 | `/* DOMDocumentFragment: the three DOMParentNode properties over DOMNode's. */` |
-|    80 |  8913 | `static int DomFragProp(ph7_context *pCtx,const char *zName)` |
-|     1 |  8914 | `{` |
-|    81 |  8915 | `	if( DomParentNodeProp(pCtx,zName) ){` |
-|     9 |  8916 | `		return 1;` |
-|     - |  8917 | `	}` |
-|    73 |  8918 | `	return DomNodeProp(pCtx,zName);` |
-|    41 |  8919 | `}` |
-|     - |  8920 | `/* DOMAttr adds name/value/ownerElement/specified/schemaTypeInfo. */` |
-|   484 |  8921 | `static int DomAttrProp(ph7_context *pCtx,const char *zName)` |
-|     3 |  8922 | `{` |
-|   487 |  8923 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|   487 |  8924 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|   487 |  8925 | `	if( DomNameIs(zName,"name") ){` |
-|     9 |  8926 | `		DomNodeName(pCtx,pNode);` |
-|     9 |  8927 | `		return 1;` |
-|     - |  8928 | `	}` |
-|   479 |  8929 | `	if( DomNameIs(zName,"value") ){` |
-|    54 |  8930 | `		DomNodeValue(pCtx,pNode);` |
-|    54 |  8931 | `		return 1;` |
-|     - |  8932 | `	}` |
-|   427 |  8933 | `	if( DomNameIs(zName,"ownerElement") ){` |
-|    52 |  8934 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);` |
-|    52 |  8935 | `		return 1;` |
-|     - |  8936 | `	}` |
-|     - |  8937 | ``	/* php's `specified` is a DOM level-1 remnant: ext/dom answers TRUE for every`` |
-|     - |  8938 | `	 * attribute a program can reach, including one it just created. */` |
-|   376 |  8939 | `	if( DomNameIs(zName,"specified") ){` |
-|     3 |  8940 | `		ph7_result_bool(pCtx,1);` |
-|     3 |  8941 | `		return 1;` |
+|    87 |  8839 | `	return (xmlEntityPtr)pNode;` |
+|    44 |  8840 | `}` |
+|    86 |  8841 | `static int DomEntityProp(ph7_context *pCtx,const char *zName)` |
+|     1 |  8842 | `{` |
+|    87 |  8843 | `	xmlEntityPtr pEnt = DomThisEntity(pCtx);` |
+|    87 |  8844 | `	int bUnparsed = pEnt && pEnt->etype == XML_EXTERNAL_GENERAL_UNPARSED_ENTITY;` |
+|    87 |  8845 | `	if( DomNameIs(zName,"publicId") ){` |
+|     9 |  8846 | `		DomResultXmlStr(pCtx,bUnparsed ? pEnt->ExternalID : 0);` |
+|     9 |  8847 | `		return 1;` |
+|     - |  8848 | `	}` |
+|    79 |  8849 | `	if( DomNameIs(zName,"systemId") ){` |
+|     9 |  8850 | `		DomResultXmlStr(pCtx,bUnparsed ? pEnt->SystemID : 0);` |
+|     9 |  8851 | `		return 1;` |
+|     - |  8852 | `	}` |
+|    71 |  8853 | `	if( DomNameIs(zName,"notationName") ){` |
+|     - |  8854 | ``		/* libxml keeps an unparsed entity's notation name in `content`. */`` |
+|    11 |  8855 | `		DomResultXmlStr(pCtx,bUnparsed ? pEnt->content : 0);` |
+|    11 |  8856 | `		return 1;` |
+|     - |  8857 | `	}` |
+|    61 |  8858 | `	if( DomNameIs(zName,"actualEncoding") ){` |
+|     3 |  8859 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
+|     - |  8860 | `			"Property DOMEntity::$actualEncoding is deprecated");` |
+|     3 |  8861 | `		ph7_result_null(pCtx);` |
+|     3 |  8862 | `		return 1;` |
+|     - |  8863 | `	}` |
+|    59 |  8864 | `	if( DomNameIs(zName,"encoding") ){` |
+|     5 |  8865 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
+|     - |  8866 | `			"Property DOMEntity::$encoding is deprecated");` |
+|     5 |  8867 | `		ph7_result_null(pCtx);` |
+|     5 |  8868 | `		return 1;` |
+|     - |  8869 | `	}` |
+|    55 |  8870 | `	if( DomNameIs(zName,"version") ){` |
+|     - |  8871 | `		/* php has never filled any of the three in: the handler answers NULL` |
+|     - |  8872 | `		 * and does nothing else. */` |
+|     3 |  8873 | `		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,` |
+|     - |  8874 | `			"Property DOMEntity::$version is deprecated");` |
+|     3 |  8875 | `		ph7_result_null(pCtx);` |
+|     3 |  8876 | `		return 1;` |
+|     - |  8877 | `	}` |
+|    53 |  8878 | `	return DomNodeProp(pCtx,zName);` |
+|    44 |  8879 | `}` |
+|     - |  8880 | `/*` |
+|     - |  8881 | `` * php declares `schemaTypeInfo` on both DOMElement and DOMAttr and has never`` |
+|     - |  8882 | ` * filled it in: ext/dom answers NULL from a handler that does nothing else.` |
+|     - |  8883 | ` * It is a declared property all the same, so a read is NOT the undefined-property` |
+|     - |  8884 | ` * warning -- which is the whole difference this row buys.` |
+|     - |  8885 | ` */` |
+|     2 |  8886 | `static int DomSchemaTypeInfo(ph7_context *pCtx)` |
+|     1 |  8887 | `{` |
+|     3 |  8888 | `	ph7_result_null(pCtx);` |
+|     3 |  8889 | `	return 1;` |
+|     1 |  8890 | `}` |
+|     - |  8891 | `/* DOMElement adds tagName, and the two attribute-backed names php exposes as` |
+|     - |  8892 | `` * properties: `className` IS the class attribute and `id` IS the id one, both`` |
+|     - |  8893 | ` * answering "" when the attribute is absent. */` |
+|  2036 |  8894 | `static int DomElemProp(ph7_context *pCtx,const char *zName)` |
+|     5 |  8895 | `{` |
+|     - |  8896 | `	phl_domnode *pNd;` |
+|  2041 |  8897 | `	int bClass = DomNameIs(zName,"className");` |
+|  2041 |  8898 | `	if( DomNameIs(zName,"tagName") ){` |
+|    49 |  8899 | `		pNd = DomThisNode(pCtx);` |
+|    49 |  8900 | `		DomNodeName(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);` |
+|    49 |  8901 | `		return 1;` |
+|     - |  8902 | `	}` |
+|  1993 |  8903 | `	if( bClass \|\| DomNameIs(zName,"id") ){` |
+|     - |  8904 | `		xmlChar *zVal;` |
+|     9 |  8905 | `		pNd = DomThisNode(pCtx);` |
+|     9 |  8906 | `		zVal = pNd ? xmlGetNoNsProp((xmlNodePtr)pNd->pNode,` |
+|     8 |  8907 | `			(const xmlChar *)(bClass ? "class" : "id")) : 0;` |
+|     9 |  8908 | `		ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);` |
+|     9 |  8909 | `		if( zVal ){` |
+|     5 |  8910 | `			xmlFree(zVal);` |
+|     2 |  8911 | `		}` |
+|     9 |  8912 | `		return 1;` |
+|     - |  8913 | `	}` |
+|  1985 |  8914 | `	if( DomNameIs(zName,"schemaTypeInfo") ){` |
+|   ! 0 |  8915 | `		return DomSchemaTypeInfo(pCtx);` |
+|     - |  8916 | `	}` |
+|  1985 |  8917 | `	if( DomParentNodeProp(pCtx,zName) \|\| DomChildNodeProp(pCtx,zName) ){` |
+|    43 |  8918 | `		return 1;` |
+|     - |  8919 | `	}` |
+|  1943 |  8920 | `	return DomNodeProp(pCtx,zName);` |
+|  1023 |  8921 | `}` |
+|     - |  8922 | `/* DOMDocumentFragment: the three DOMParentNode properties over DOMNode's. */` |
+|    80 |  8923 | `static int DomFragProp(ph7_context *pCtx,const char *zName)` |
+|     1 |  8924 | `{` |
+|    81 |  8925 | `	if( DomParentNodeProp(pCtx,zName) ){` |
+|     9 |  8926 | `		return 1;` |
+|     - |  8927 | `	}` |
+|    73 |  8928 | `	return DomNodeProp(pCtx,zName);` |
+|    41 |  8929 | `}` |
+|     - |  8930 | `/* DOMAttr adds name/value/ownerElement/specified/schemaTypeInfo. */` |
+|   484 |  8931 | `static int DomAttrProp(ph7_context *pCtx,const char *zName)` |
+|     3 |  8932 | `{` |
+|   487 |  8933 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|   487 |  8934 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|   487 |  8935 | `	if( DomNameIs(zName,"name") ){` |
+|     9 |  8936 | `		DomNodeName(pCtx,pNode);` |
+|     9 |  8937 | `		return 1;` |
+|     - |  8938 | `	}` |
+|   479 |  8939 | `	if( DomNameIs(zName,"value") ){` |
+|    54 |  8940 | `		DomNodeValue(pCtx,pNode);` |
+|    54 |  8941 | `		return 1;` |
 |     - |  8942 | `	}` |
-|   374 |  8943 | `	if( DomNameIs(zName,"schemaTypeInfo") ){` |
-|     3 |  8944 | `		return DomSchemaTypeInfo(pCtx);` |
-|     - |  8945 | `	}` |
-|   372 |  8946 | `	return DomNodeProp(pCtx,zName);` |
-|   245 |  8947 | `}` |
-|     - |  8948 | `/* DOMCharacterData adds data/length; DOMText adds wholeText on top of those. */` |
-|   368 |  8949 | `static int DomCharDataProp(ph7_context *pCtx,const char *zName)` |
-|     2 |  8950 | `{` |
-|   370 |  8951 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|   370 |  8952 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|   370 |  8953 | `	if( DomNameIs(zName,"data") ){` |
-|   116 |  8954 | `		DomDataValue(pCtx,pNode);` |
-|   116 |  8955 | `		return 1;` |
-|     - |  8956 | `	}` |
-|   256 |  8957 | `	if( DomNameIs(zName,"length") ){` |
-|     - |  8958 | `		/* php counts UTF-8 CHARACTERS here (xmlUTF8Strlen over the node's own` |
-|     - |  8959 | `		 * content), which is the same unit every offset on this class uses. */` |
-|    13 |  8960 | `		ph7_result_int(pCtx,DomCharLength(pNode));` |
-|    13 |  8961 | `		return 1;` |
-|     - |  8962 | `	}` |
-|   244 |  8963 | `	return 0;` |
-|   186 |  8964 | `}` |
-|   368 |  8965 | `static int DomCharProp(ph7_context *pCtx,const char *zName)` |
-|     2 |  8966 | `{` |
-|   370 |  8967 | `	if( DomCharDataProp(pCtx,zName) \|\| DomChildNodeProp(pCtx,zName) ){` |
-|   134 |  8968 | `		return 1;` |
-|     - |  8969 | `	}` |
-|   238 |  8970 | `	return DomNodeProp(pCtx,zName);` |
-|   186 |  8971 | `}` |
-|     - |  8972 | `/*` |
-|     - |  8973 | ` * DOMText::wholeText is the whole RUN, not the node: php walks back to the` |
-|     - |  8974 | ` * first adjacent text-or-CDATA sibling and forward to the last, concatenating` |
-|     - |  8975 | ` * all of them, which is what makes it the answer to "what does this element` |
-|     - |  8976 | ` * actually say" after an edit has left the text in pieces. Answering the node's` |
-|     - |  8977 | ` * own data (what PHL did) is the same string only when the run is one node` |
-|     - |  8978 | ` * long, and silently short otherwise.` |
-|     - |  8979 | ` */` |
-|    54 |  8980 | `static int DomIsTextRun(xmlNodePtr pNode)` |
-|     1 |  8981 | `{` |
-|    48 |  8982 | `	return pNode != 0` |
-|    74 |  8983 | `		&& (pNode->type == XML_TEXT_NODE \|\| pNode->type == XML_CDATA_SECTION_NODE);` |
-|     1 |  8984 | `}` |
-|   314 |  8985 | `static int DomTextProp(ph7_context *pCtx,const char *zName)` |
-|     2 |  8986 | `{` |
-|     - |  8987 | `	phl_domnode *pNd;` |
-|     - |  8988 | `	xmlNodePtr pNode,pCur;` |
-|     - |  8989 | `	SyBlob sOut;` |
-|   316 |  8990 | `	if( DomNameIs(zName,"wholeText") ){` |
-|    13 |  8991 | `		pNd = DomThisNode(pCtx);` |
-|    13 |  8992 | `		pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|    13 |  8993 | `		if( !DomIsTextRun(pNode) ){` |
-|   ! 0 |  8994 | `			DomNodeValue(pCtx,pNode);` |
-|   ! 0 |  8995 | `			return 1;` |
-|     - |  8996 | `		}` |
-|    15 |  8997 | `		while( DomIsTextRun(pNode->prev) ){` |
-|     3 |  8998 | `			pNode = pNode->prev;` |
-|     1 |  8999 | `		}` |
-|    13 |  9000 | `		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|    29 |  9001 | `		for( pCur = pNode ; DomIsTextRun(pCur) ; pCur = pCur->next ){` |
-|    17 |  9002 | `			xmlChar *zPart = xmlNodeGetContent(pCur);` |
-|    17 |  9003 | `			if( zPart ){` |
-|    17 |  9004 | `				SyBlobAppend(&sOut,(const void *)zPart,(sxu32)SyStrlen((const char *)zPart));` |
-|    17 |  9005 | `				xmlFree(zPart);` |
-|     8 |  9006 | `			}` |
-|     9 |  9007 | `		}` |
-|    13 |  9008 | `		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|    13 |  9009 | `		SyBlobRelease(&sOut);` |
-|    13 |  9010 | `		return 1;` |
-|     - |  9011 | `	}` |
-|   304 |  9012 | `	return DomCharProp(pCtx,zName);` |
-|   159 |  9013 | `}` |
-|     - |  9014 | `/*` |
-|     - |  9015 | ` * php's typed-property store for the DOM's own string-shaped properties: a` |
-|     - |  9016 | ` * scalar coerces, null is accepted only where the declared type is nullable` |
-|     - |  9017 | ` * (and means the empty string), and an array or an object is a TypeError` |
-|     - |  9018 | ` * naming the class that DECLARES the property rather than the one the write` |
-|     - |  9019 | ` * went through. The value is coerced through a COPY -- ph7_value_to_string()` |
-|     - |  9020 | ` * converts the object it is handed, and that object is the caller's own` |
-|     - |  9021 | `` * `$v` in `$node->nodeValue = $v`.`` |
-|     - |  9022 | ` */` |
-|   224 |  9023 | `static int DomWriteText(ph7_context *pCtx,const char *zOwner,const char *zProp,` |
-|     - |  9024 | `	const char *zType,ph7_value *pVal,SyBlob *pOut,int *pRc)` |
-|     2 |  9025 | `{` |
-|   226 |  9026 | `	int bNullable = zType[0] == '?';` |
-|     - |  9027 | `	ph7_value sTmp;` |
-|   224 |  9028 | `	if( pVal == 0` |
-|   224 |  9029 | `	 \|\| (pVal->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ)) != 0` |
-|   213 |  9030 | `	 \|\| ((pVal->iFlags & MEMOBJ_NULL) != 0 && !bNullable) ){` |
-|     - |  9031 | `		char zBuf[128];` |
-|    33 |  9032 | `		const char *zGiven = "null";` |
-|    33 |  9033 | `		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){` |
-|    11 |  9034 | `			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;` |
-|    11 |  9035 | `			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);` |
-|    11 |  9036 | `			zGiven = zBuf;` |
-|    28 |  9037 | `		}else if( pVal ){` |
-|    23 |  9038 | `			zGiven = ph7_type_name(pVal);` |
-|    11 |  9039 | `		}` |
-|    49 |  9040 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
-|    16 |  9041 | `			"Cannot assign %s to property %s::$%s of type %s",zGiven,zOwner,zProp,zType);` |
-|    33 |  9042 | `		return 0;` |
-|     - |  9043 | `	}` |
-|   194 |  9044 | `	SyBlobInit(pOut,&pCtx->pVm->sAllocator);` |
-|   194 |  9045 | `	if( (pVal->iFlags & MEMOBJ_NULL) == 0 ){` |
-|   182 |  9046 | `		PH7_MemObjInit(pCtx->pVm,&sTmp);` |
-|   182 |  9047 | `		PH7_MemObjLoad(pVal,&sTmp);` |
-|   182 |  9048 | `		PH7_MemObjToString(&sTmp);` |
-|   182 |  9049 | `		SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));` |
-|   182 |  9050 | `		PH7_MemObjRelease(&sTmp);` |
-|    90 |  9051 | `	}` |
-|   194 |  9052 | `	SyBlobNullAppend(pOut);` |
-|   194 |  9053 | `	return 1;` |
-|   114 |  9054 | `}` |
-|     - |  9055 | `/*` |
-|     - |  9056 | `` * The same screen for a `bool` property. php's weak mode takes an int, a float`` |
-|     - |  9057 | `` * or a string and answers its truthiness (`"0"` and `""` are false), and refuses`` |
-|     - |  9058 | `` * null, an array and an object -- the one difference from the `?string` block`` |
-|     - |  9059 | `` * above being that a bool property is NOT nullable, so `= null` is the TypeError`` |
-|     - |  9060 | ` * rather than the empty write. Answers 1 when the caller may go on and use` |
-|     - |  9061 | ` * ph7_value_to_bool(), 0 when the refusal has been raised into *pRc.` |
-|     - |  9062 | ` */` |
-|    34 |  9063 | `static int DomWriteBool(ph7_context *pCtx,const char *zOwner,const char *zProp,` |
-|     - |  9064 | `	ph7_value *pVal,int *pRc)` |
-|     1 |  9065 | `{` |
-|    35 |  9066 | `	if( pVal == 0 \|\| (pVal->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_NULL)) != 0 ){` |
-|     - |  9067 | `		char zBuf[128];` |
-|     9 |  9068 | `		const char *zGiven = "null";` |
-|     9 |  9069 | `		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){` |
-|   ! 0 |  9070 | `			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;` |
-|   ! 0 |  9071 | `			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);` |
-|   ! 0 |  9072 | `			zGiven = zBuf;` |
-|     9 |  9073 | `		}else if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 ){` |
-|     5 |  9074 | `			zGiven = ph7_type_name(pVal);` |
-|     2 |  9075 | `		}` |
-|    13 |  9076 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
-|     4 |  9077 | `			"Cannot assign %s to property %s::$%s of type bool",zGiven,zOwner,zProp);` |
-|     9 |  9078 | `		return 0;` |
-|     - |  9079 | `	}` |
-|    27 |  9080 | `	return 1;` |
-|    18 |  9081 | `}` |
-|     - |  9082 | `/* Has this node ever been handed to PHP? The identity cache is the record. */` |
-|   156 |  9083 | `static int DomIsWrapped(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode)` |
-|     1 |  9084 | `{` |
-|   157 |  9085 | `	ph7_hashmap *pCache = DomCache(&(*pVm),pDoc);` |
-|   157 |  9086 | `	ph7_hashmap_node *pEntry = 0;` |
-|     - |  9087 | `	ph7_value sKey;` |
-|     - |  9088 | `	int bHit;` |
-|   157 |  9089 | `	if( pCache == 0 ){` |
-|   ! 0 |  9090 | `		return 0;` |
-|     - |  9091 | `	}` |
-|   157 |  9092 | `	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);` |
-|   157 |  9093 | `	bHit = PH7_HashmapLookup(pCache,&sKey,&pEntry) == SXRET_OK && pEntry != 0;` |
-|   157 |  9094 | `	PH7_MemObjRelease(&sKey);` |
-|   157 |  9095 | `	return bHit;` |
-|    79 |  9096 | `}` |
-|     - |  9097 | `/*` |
-|     - |  9098 | ` * php FREES the subtree a content write replaces -- except the nodes a PHP` |
-|     - |  9099 | ` * variable still holds a wrapper for, which it unlinks and keeps as roots of` |
-|     - |  9100 | ` * their own detached fragments. That is observable: after` |
-|     - |  9101 | `` * `$el->textContent = 'flat'`, a variable holding a grandchild still reads its`` |
-|     - |  9102 | `` * text and answers NULL for `parentNode`. Parking the subtree whole (which is`` |
-|     - |  9103 | ` * what this engine must do -- a wrapper's handle is a raw pointer, so nothing` |
-|     - |  9104 | ` * here is ever freed before the document is) left every such parent attached,` |
-|     - |  9105 | ` * so the same variable answered its old parent's name. Detach exactly the nodes` |
-|     - |  9106 | ` * php would have kept: the OUTERMOST wrapped ones, php's own rule, since it` |
-|     - |  9107 | ` * stops recursing at a node it is keeping.` |
-|     - |  9108 | ` */` |
-|   144 |  9109 | `static void DomPartWrapped(ph7_vm *pVm,ph7_class_instance *pDoc,phl_xmldoc *pShell,xmlNodePtr pNode)` |
-|     1 |  9110 | `{` |
-|   145 |  9111 | `	xmlNodePtr pChild = pNode ? pNode->children : 0;` |
-|   147 |  9112 | `	while( pChild ){` |
-|     3 |  9113 | `		xmlNodePtr pNext = pChild->next;` |
-|     3 |  9114 | `		if( DomIsWrapped(&(*pVm),pDoc,pChild) ){` |
-|   ! 0 |  9115 | `			xmlUnlinkNode(pChild);` |
-|   ! 0 |  9116 | `			DomOrphanAdd(pShell,pChild);` |
-|   ! 0 |  9117 | `		}else{` |
-|     3 |  9118 | `			DomPartWrapped(&(*pVm),pDoc,pShell,pChild);` |
-|     - |  9119 | `		}` |
-|     3 |  9120 | `		pChild = pNext;` |
-|     1 |  9121 | `	}` |
-|   145 |  9122 | `}` |
-|     - |  9123 | `/*` |
-|     - |  9124 | ` * Everything a content write has to do before libxml sees it: the node's` |
-|     - |  9125 | ` * children go to the document's ORPHAN set rather than being freed, because a` |
-|     - |  9126 | ` * PHP variable may still hold a wrapper for one of them and the wrapper's` |
-|     - |  9127 | ` * handle is a raw pointer. (php keeps such a node alive through its own` |
-|     - |  9128 | ` * wrapper refcount; this engine parks it, exactly as removeChild does.)` |
-|     - |  9129 | ` */` |
-|   108 |  9130 | `static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode)` |
-|     2 |  9131 | `{` |
-|   110 |  9132 | `	ph7_class_instance *pDoc = DomThisDoc(pCtx);` |
-|   110 |  9133 | `	xmlNodePtr pChild = pNode ? pNode->children : 0;` |
-|   264 |  9134 | `	while( pChild ){` |
-|   155 |  9135 | `		xmlNodePtr pNext = pChild->next;` |
-|   155 |  9136 | `		if( !DomIsWrapped(pCtx->pVm,pDoc,pChild) ){` |
-|   143 |  9137 | `			DomPartWrapped(pCtx->pVm,pDoc,pShell,pChild);` |
-|    71 |  9138 | `		}` |
-|   155 |  9139 | `		xmlUnlinkNode(pChild);` |
-|   155 |  9140 | `		DomOrphanAdd(pShell,pChild);` |
-|   155 |  9141 | `		pChild = pNext;` |
-|     1 |  9142 | `	}` |
-|   110 |  9143 | `}` |
-|     - |  9144 | `/*` |
-|     - |  9145 | ` * php's two content writes, which are NOT the same write.` |
-|     - |  9146 | ` *` |
-|     - |  9147 | `` * `nodeValue` is libxml's xmlNodeSetContent, and on an element or an attribute`` |
-|     - |  9148 | `` * that PARSES entity references: `$el->nodeValue = 'a&b'` is libxml's`` |
-|     - |  9149 | ` * "unterminated entity reference" and leaves the node EMPTY, while` |
-|     - |  9150 | `` * `'a&amp;b'` stores the one character. `textContent` sets one raw text child`` |
-|     - |  9151 | ` * instead, so the same two strings store what they say. Every other node kind` |
-|     - |  9152 | ` * takes its content literally either way.` |
-|     - |  9153 | ` */` |
-|    98 |  9154 | `static void DomSetContent(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode,` |
-|     - |  9155 | `	const char *zText,int bParseEntities)` |
-|     2 |  9156 | `{` |
-|   100 |  9157 | `	int bTree = pNode->type == XML_ELEMENT_NODE \|\| pNode->type == XML_ATTRIBUTE_NODE;` |
-|     - |  9158 | `	xmlNodePtr pText;` |
-|   100 |  9159 | `	DomDropChildren(pCtx,pShell,pNode);` |
-|   100 |  9160 | `	if( !bTree \|\| (bParseEntities && zText[0]) ){` |
-|     - |  9161 | `		/* The parsing write is the one that can FAIL -- an unterminated entity` |
-|     - |  9162 | `		 * reference leaves the node empty and libxml says so. Route that through` |
-|     - |  9163 | `		 * the per-VM queue like every other libxml diagnostic here, or it prints` |
-|     - |  9164 | ``		 * itself on stderr past error_reporting(), past `@`, and past`` |
-|     - |  9165 | `		 * libxml_get_errors(). */` |
-|     - |  9166 | `		SyBlob sFn;` |
-|    74 |  9167 | `		sxu32 nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);` |
-|    74 |  9168 | `		xmlNodeSetContent(pNode,(const xmlChar *)zText);` |
-|     - |  9169 | `		/* php attributes the warning to the CALLER's scope -- a property write` |
-|     - |  9170 | `		 * is not a call, so there is no accessor name to print. */` |
-|    74 |  9171 | `		SyBlobInit(&sFn,&pCtx->pVm->sAllocator);` |
-|    74 |  9172 | `		PH7_VmActiveFuncName(pCtx->pVm,&sFn);` |
-|    74 |  9173 | `		PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,(const char *)SyBlobData(&sFn));` |
-|    74 |  9174 | `		SyBlobRelease(&sFn);` |
-|    74 |  9175 | `		return;` |
-|     - |  9176 | `	}` |
-|     - |  9177 | `	/* One raw text child -- and php leaves one even for the EMPTY string, which` |
-|     - |  9178 | ``	 * is why `$el->nodeValue = ''` serializes as <r></r> rather than <r/>.`` |
-|     - |  9179 | `	 * (The entity-parsing write is the exception: a string libxml refuses, like` |
-|     - |  9180 | ``	 * `'a&b'`, leaves the element with no children at all.) */`` |
-|    27 |  9181 | `	pText = xmlNewDocText(pNode->doc,(const xmlChar *)zText);` |
-|    27 |  9182 | `	if( pText ){` |
-|    27 |  9183 | `		DomLinkLast(pNode,pText);` |
-|    13 |  9184 | `	}` |
-|    51 |  9185 | `}` |
-|     - |  9186 | `/*` |
-|     - |  9187 | ` * The same refusal, raised from a property WRITE.` |
-|     - |  9188 | ` *` |
-|     - |  9189 | ` * A write is not a call, so php has no accessor name to print in front of the` |
-|     - |  9190 | `` * warning and attributes it to the CALLER's scope instead (`f(): Namespace`` |
-|     - |  9191 | `` * Error`, `Unknown: ...` at file scope) -- the shape DomSetContent already uses`` |
-|     - |  9192 | ` * for the libxml diagnostic a content write can produce. Nothing is answered` |
-|     - |  9193 | ` * either way: a property write has no return value.` |
-|     - |  9194 | ` */` |
-|    10 |  9195 | `static int DomThrowWrite(ph7_context *pCtx,int iCode)` |
-|     1 |  9196 | `{` |
-|    11 |  9197 | `	ph7_class_instance *pDoc = DomThisDoc(pCtx);` |
-|     - |  9198 | `	SyBlob sFn;` |
-|     - |  9199 | `	SyString sName;` |
-|     - |  9200 | `	int rc;` |
-|    11 |  9201 | `	if( pDoc == 0 \|\| PH7_NativeAttrTruthy(pDoc,"strictErrorChecking") ){` |
-|     7 |  9202 | `		return DomThrowAlways(pCtx,iCode);` |
-|     - |  9203 | `	}` |
-|     5 |  9204 | `	SyBlobInit(&sFn,&pCtx->pVm->sAllocator);` |
-|     5 |  9205 | `	PH7_VmActiveFuncName(pCtx->pVm,&sFn);` |
-|     5 |  9206 | `	SyStringInitFromBuf(&sName,SyBlobData(&sFn),SyBlobLength(&sFn));` |
-|     5 |  9207 | `	rc = PH7_VmThrowError(pCtx->pVm,&sName,PH7_CTX_WARNING,DomErrText(iCode));` |
-|     5 |  9208 | `	SyBlobRelease(&sFn);` |
-|     5 |  9209 | `	return rc;` |
-|     6 |  9210 | `}` |
-|     - |  9211 | `/*` |
-|     - |  9212 | ` * The node kinds a value write REACHES.` |
-|     - |  9213 | ` *` |
-|     - |  9214 | ` * php's two writers do not accept the same list, and everything off it is a` |
-|     - |  9215 | ` * silent NO-OP -- the write is accepted and the node is left exactly as it was.` |
-|     - |  9216 | ` * PHL had one exclusion, the document, and wrote to everything else, which cost` |
-|     - |  9217 | ` * three answers and one crash:` |
-|     - |  9218 | ` *` |
-|     - |  9219 | ` *   - an ENTITY REFERENCE's children are the entity DECLARATION's, shared by` |
-|     - |  9220 | ` *     every reference to it and owned by the DTD; dropping them freed nodes the` |
-|     - |  9221 | `` *     document frees again at teardown -- `$ref->nodeValue = 'x'` aborted the`` |
-|     - |  9222 | ` *     process on a double free;` |
-|     - |  9223 | ` *   - a DOCTYPE's children are the declarations of the internal SUBSET, so` |
-|     - |  9224 | ``  *     `$doc->doctype->nodeValue = 'x'` silently emptied `<!DOCTYPE r [ ... ]>` `` |
-|     - |  9225 | ` *     of every entity, element and attribute declaration in it;` |
-|     - |  9226 | `` *   - a FRAGMENT is emptied by `textContent` and left alone by `nodeValue`,`` |
-|     - |  9227 | ` *     which is the one kind where the two writers really do disagree.` |
-|     - |  9228 | ` */` |
-|    74 |  9229 | `static int DomValueWritable(xmlNodePtr pNode,int bValue)` |
-|     1 |  9230 | `{` |
-|    75 |  9231 | `	if( pNode == 0 ){` |
-|   ! 0 |  9232 | `		return 0;` |
-|     - |  9233 | `	}` |
-|    75 |  9234 | `	switch( pNode->type ){` |
-|    29 |  9235 | `	case XML_ELEMENT_NODE:` |
-|     - |  9236 | `	case XML_ATTRIBUTE_NODE:` |
-|     - |  9237 | `	case XML_TEXT_NODE:` |
-|     - |  9238 | `	case XML_COMMENT_NODE:` |
-|     - |  9239 | `	case XML_CDATA_SECTION_NODE:` |
-|     - |  9240 | `	case XML_PI_NODE:` |
-|    59 |  9241 | `		return 1;` |
-|     2 |  9242 | `	case XML_DOCUMENT_FRAG_NODE:` |
-|     5 |  9243 | `		return !bValue;` |
-|     6 |  9244 | `	default:` |
-|    13 |  9245 | `		return 0;` |
-|     - |  9246 | `	}` |
-|    38 |  9247 | `}` |
-|     - |  9248 | `/* DOMNode's three writable properties. */` |
-|   170 |  9249 | `static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9250 | `{` |
-|   171 |  9251 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|   171 |  9252 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|   171 |  9253 | `	int bValue = DomNameIs(zName,"nodeValue");` |
-|     - |  9254 | `	SyBlob sVal;` |
-|   171 |  9255 | `	if( bValue \|\| DomNameIs(zName,"textContent") ){` |
-|     - |  9256 | `		/* php's one REFUSAL among the no-ops, and it answers before the type` |
-|     - |  9257 | ``		 * check does: `$ref->textContent = []` is the readonly Error where`` |
-|     - |  9258 | ``		 * `$ref->nodeValue = []` is the TypeError. Left unwritten here, the`` |
-|     - |  9259 | `		 * accessor macro falls through to it. */` |
-|    87 |  9260 | `		if( !bValue && pNode && pNode->type == XML_ENTITY_REF_NODE ){` |
-|     5 |  9261 | `			return DOM_SET_UNKNOWN;` |
-|     - |  9262 | `		}` |
-|   123 |  9263 | `		if( DomWriteText(pCtx,"DOMNode",bValue ? "nodeValue" : "textContent",` |
-|    83 |  9264 | `			bValue ? "?string" : "string",pVal,&sVal,pRc) == 0 ){` |
-|     9 |  9265 | `			return DOM_SET_DONE;` |
-|     - |  9266 | `		}` |
-|    75 |  9267 | `		if( DomValueWritable(pNode,bValue) ){` |
-|    61 |  9268 | `			DomSetContent(pCtx,pNd->pShell,pNode,(const char *)SyBlobData(&sVal),bValue);` |
-|    30 |  9269 | `		}` |
-|    75 |  9270 | `		SyBlobRelease(&sVal);` |
-|    75 |  9271 | `		return DOM_SET_DONE;` |
-|     - |  9272 | `	}` |
-|    85 |  9273 | `	if( DomNameIs(zName,"prefix") ){` |
-|     - |  9274 | `		xmlNsPtr pNs;` |
-|     - |  9275 | `		xmlNodePtr pDecl;` |
-|    29 |  9276 | `		if( DomWriteText(pCtx,"DOMNode","prefix","string",pVal,&sVal,pRc) == 0 ){` |
-|     5 |  9277 | `			return DOM_SET_DONE;` |
-|     - |  9278 | `		}` |
-|     - |  9279 | `		/* Only a node that HAS a namespace can be re-prefixed; php ignores the` |
-|     - |  9280 | `		 * write for anything else, including an element in no namespace. */` |
-|    25 |  9281 | `		if( DomHasNsSlot(pNode) && pNode->ns && pNode->ns->href ){` |
-|    21 |  9282 | `			const char *zPrefix = (const char *)SyBlobData(&sVal);` |
-|     - |  9283 | `			/* An attribute's declaration goes on its ELEMENT. */` |
-|    21 |  9284 | `			pDecl = pNode->type == XML_ATTRIBUTE_NODE ? pNode->parent : pNode;` |
-|    20 |  9285 | `			if( DomNameIs(zPrefix,"xml")` |
-|    15 |  9286 | `			 && !DomNameIs((const char *)pNode->ns->href,` |
-|     - |  9287 | `				"http://www.w3.org/XML/1998/namespace") ){` |
-|     - |  9288 | ``				/* php's reserved-prefix refusal: `xml` may only name ITS namespace. */`` |
-|     9 |  9289 | `				SyBlobRelease(&sVal);` |
-|     9 |  9290 | `				*pRc = DomThrowWrite(pCtx,DOM_ERR_NAMESPACE);` |
-|     9 |  9291 | `				return DOM_SET_DONE;` |
-|     - |  9292 | `			}` |
-|     - |  9293 | `			/* php looks only at the declarations THIS node carries -- an` |
-|     - |  9294 | `			 * ancestor's is not reused, which is why re-prefixing a child grows` |
-|     - |  9295 | ``			 * a second `xmlns:q` beside the one its parent already has. */`` |
-|    29 |  9296 | `			for( pNs = pDecl ? pDecl->nsDef : 0 ; pNs ; pNs = pNs->next ){` |
-|    19 |  9297 | `				const char *zHave = pNs->prefix ? (const char *)pNs->prefix : "";` |
-|    18 |  9298 | `				if( DomNameIs(zHave,zPrefix) && pNs->href` |
-|     5 |  9299 | `				 && xmlStrEqual(pNs->href,pNode->ns->href) ){` |
-|     3 |  9300 | `					break;` |
-|     - |  9301 | `				}` |
-|     9 |  9302 | `			}` |
-|    13 |  9303 | `			if( pNs == 0 ){` |
-|     - |  9304 | `				/* None binds this prefix to the node's own URI: php declares one,` |
-|     - |  9305 | ``				 * which is how `$el->prefix = ''` grows an `xmlns="..."` on the`` |
-|     - |  9306 | `				 * element itself -- and how a prefix already bound HERE to another` |
-|     - |  9307 | `				 * URI becomes libxml's refusal and php's Namespace Error. */` |
-|    16 |  9308 | `				pNs = pDecl ? xmlNewNs(pDecl,pNode->ns->href,` |
-|    10 |  9309 | `					zPrefix[0] ? (const xmlChar *)zPrefix : 0) : 0;` |
-|     5 |  9310 | `			}` |
-|    13 |  9311 | `			if( pNs == 0 ){` |
-|     3 |  9312 | `				SyBlobRelease(&sVal);` |
-|     3 |  9313 | `				*pRc = DomThrowWrite(pCtx,DOM_ERR_NAMESPACE);` |
-|     3 |  9314 | `				return DOM_SET_DONE;` |
-|     - |  9315 | `			}` |
-|    11 |  9316 | `			xmlSetNs(pNode,pNs);` |
-|     5 |  9317 | `		}` |
-|    15 |  9318 | `		SyBlobRelease(&sVal);` |
-|    15 |  9319 | `		return DOM_SET_DONE;` |
-|     - |  9320 | `	}` |
-|    57 |  9321 | `	return DOM_SET_UNKNOWN;` |
-|    86 |  9322 | `}` |
-|     - |  9323 | `/* DOMElement adds className and id, both of them ATTRIBUTES under the name. */` |
-|   102 |  9324 | `static int DomSetElemProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9325 | `{` |
-|   103 |  9326 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|   103 |  9327 | `	int bClass = DomNameIs(zName,"className");` |
-|     - |  9328 | `	SyBlob sVal;` |
-|   103 |  9329 | `	if( bClass \|\| DomNameIs(zName,"id") ){` |
-|     9 |  9330 | `		if( DomWriteText(pCtx,"DOMElement",bClass ? "className" : "id","string",` |
-|     7 |  9331 | `			pVal,&sVal,pRc) == 0 ){` |
-|     3 |  9332 | `			return DOM_SET_DONE;` |
-|     - |  9333 | `		}` |
-|     5 |  9334 | `		if( pNd ){` |
-|     7 |  9335 | `			xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)(bClass ? "class" : "id"),` |
-|     4 |  9336 | `				(const xmlChar *)SyBlobData(&sVal));` |
-|     2 |  9337 | `		}` |
-|     5 |  9338 | `		SyBlobRelease(&sVal);` |
-|     5 |  9339 | `		return DOM_SET_DONE;` |
-|     - |  9340 | `	}` |
-|    97 |  9341 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
-|    52 |  9342 | `}` |
-|     - |  9343 | `/* DOMAttr::value and DOMCharacterData::data are the node's own content. The` |
-|     - |  9344 | `` * attribute's parses entity references, as its `nodeValue` does -- only`` |
-|     - |  9345 | `` * `textContent` takes an attribute's bytes literally; character data has no`` |
-|     - |  9346 | ` * parsing write at all, whichever name it is written under. */` |
-|    80 |  9347 | `static int DomSetContentProp(ph7_context *pCtx,const char *zOwner,const char *zProp,` |
-|     - |  9348 | `	const char *zName,ph7_value *pVal,int bParseEntities,int *pRc)` |
-|     2 |  9349 | `{` |
-|    82 |  9350 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|     - |  9351 | `	SyBlob sVal;` |
-|    82 |  9352 | `	if( !DomNameIs(zName,zProp) ){` |
-|    39 |  9353 | `		return DOM_SET_UNKNOWN;` |
-|     - |  9354 | `	}` |
-|    44 |  9355 | `	if( DomWriteText(pCtx,zOwner,zProp,"string",pVal,&sVal,pRc) == 0 ){` |
-|     5 |  9356 | `		return DOM_SET_DONE;` |
-|     - |  9357 | `	}` |
-|    40 |  9358 | `	if( pNd ){` |
-|    59 |  9359 | `		DomSetContent(pCtx,pNd->pShell,(xmlNodePtr)pNd->pNode,` |
-|    38 |  9360 | `			(const char *)SyBlobData(&sVal),bParseEntities);` |
-|    19 |  9361 | `	}` |
-|    40 |  9362 | `	SyBlobRelease(&sVal);` |
-|    40 |  9363 | `	return DOM_SET_DONE;` |
-|    42 |  9364 | `}` |
-|    40 |  9365 | `static int DomSetAttrProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     2 |  9366 | `{` |
-|    42 |  9367 | `	int rc = DomSetContentProp(pCtx,"DOMAttr","value",zName,pVal,TRUE,pRc);` |
-|    42 |  9368 | `	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);` |
-|     2 |  9369 | `}` |
-|    30 |  9370 | `static int DomSetCharProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9371 | `{` |
-|    31 |  9372 | `	int rc = DomSetContentProp(pCtx,"DOMCharacterData","data",zName,pVal,FALSE,pRc);` |
-|    31 |  9373 | `	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);` |
-|     1 |  9374 | `}` |
-|    10 |  9375 | `static int DomSetPiProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9376 | `{` |
-|    11 |  9377 | `	int rc = DomSetContentProp(pCtx,"DOMProcessingInstruction","data",zName,pVal,FALSE,pRc);` |
-|    11 |  9378 | `	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);` |
-|     1 |  9379 | `}` |
-|     - |  9380 | `/*` |
-|     - |  9381 | ` * The DOCUMENT's writable state: the three declaration slots php lets a program` |
-|     - |  9382 | `` * change, plus `documentURI`.`` |
-|     - |  9383 | ` *` |
-|     - |  9384 | `` * php declares them `?string`/`bool`, so a null goes through the string three as`` |
-|     - |  9385 | `` * the EMPTY string (`$d->version = null` writes `<?xml version=""?>`) and is a`` |
-|     - |  9386 | ` * TypeError on the bool pair; an array or an object is a TypeError on all of` |
-|     - |  9387 | ` * them.  The read-only four are refused HERE rather than through the reader,` |
-|     - |  9388 | ` * because two of them are deprecated and php's readonly Error comes without the` |
-|     - |  9389 | ` * deprecation notice a read would have raised.` |
-|     - |  9390 | ` */` |
-|   116 |  9391 | `static int DomSetDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9392 | `{` |
-|   117 |  9393 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|   117 |  9394 | `	xmlDocPtr pDoc = pNd ? (xmlDocPtr)pNd->pNode : 0;` |
-|   117 |  9395 | `	int bVersion = DomNameIs(zName,"version") \|\| DomNameIs(zName,"xmlVersion");` |
-|   117 |  9396 | `	int bUri = DomNameIs(zName,"documentURI");` |
-|     - |  9397 | `	SyBlob sVal;` |
-|   116 |  9398 | `	if( DomNameIs(zName,"actualEncoding") \|\| DomNameIs(zName,"config")` |
-|   114 |  9399 | `	 \|\| DomNameIs(zName,"xmlEncoding") ){` |
-|     7 |  9400 | `		*pRc = DomRefuseWrite(pCtx,zName,1);` |
-|     7 |  9401 | `		return DOM_SET_DONE;` |
-|     - |  9402 | `	}` |
-|   111 |  9403 | `	if( bVersion \|\| bUri \|\| DomNameIs(zName,"encoding") ){` |
-|     - |  9404 | `		const char *zNew;` |
-|    67 |  9405 | `		if( DomWriteText(pCtx,"DOMDocument",zName,"?string",pVal,&sVal,pRc) == 0 ){` |
-|    15 |  9406 | `			return DOM_SET_DONE;` |
-|     - |  9407 | `		}` |
-|    53 |  9408 | `		zNew = (const char *)SyBlobData(&sVal);` |
-|    53 |  9409 | `		if( pDoc == 0 ){` |
-|   ! 0 |  9410 | `			SyBlobRelease(&sVal);` |
-|   ! 0 |  9411 | `			return DOM_SET_DONE;` |
-|     - |  9412 | `		}` |
-|    53 |  9413 | `		if( bVersion ){` |
-|    23 |  9414 | `			if( pDoc->version ){` |
-|    23 |  9415 | `				xmlFree((xmlChar *)pDoc->version);` |
-|    11 |  9416 | `			}` |
-|    23 |  9417 | `			pDoc->version = xmlStrdup((const xmlChar *)zNew);` |
-|    42 |  9418 | `		}else if( bUri ){` |
-|    15 |  9419 | `			if( pDoc->URL ){` |
-|    15 |  9420 | `				xmlFree((xmlChar *)pDoc->URL);` |
-|     7 |  9421 | `			}` |
-|    15 |  9422 | `			pDoc->URL = xmlStrdup((const xmlChar *)zNew);` |
-|     8 |  9423 | `		}else{` |
-|     - |  9424 | `			/* php asks libxml for a converter and refuses the name outright when` |
-|     - |  9425 | ``			 * there is none -- so `$d->encoding = 'x'` (and the empty string a`` |
-|     - |  9426 | `			 * null coerces to) is a ValueError BEFORE anything is written,` |
-|     - |  9427 | `			 * rather than a document that cannot be serialized later. */` |
-|     - |  9428 | `			/* A null is refused before libxml is asked anything, as php does: the` |
-|     - |  9429 | `			 * empty string it coerces to is a name a current libxml (2.15) answers` |
-|     - |  9430 | `			 * WITH a converter, so asking would let the null through. */` |
-|    17 |  9431 | `			xmlCharEncodingHandlerPtr pEnc = ph7_value_is_null(pVal) ? 0` |
-|    15 |  9432 | `				: xmlFindCharEncodingHandler(zNew);` |
-|    17 |  9433 | `			if( pEnc == 0 ){` |
-|     8 |  9434 | `				SyBlobRelease(&sVal);` |
-|     8 |  9435 | `				*pRc = PH7_VmThrowException(pCtx,"ValueError","Invalid document encoding");` |
-|     8 |  9436 | `				return DOM_SET_DONE;` |
-|     - |  9437 | `			}` |
-|    10 |  9438 | `			xmlCharEncCloseFunc(pEnc);` |
-|    10 |  9439 | `			if( pDoc->encoding ){` |
-|   ! 0 |  9440 | `				xmlFree((xmlChar *)pDoc->encoding);` |
-|   ! 0 |  9441 | `			}` |
-|    10 |  9442 | `			pDoc->encoding = xmlStrdup((const xmlChar *)zNew);` |
-|     - |  9443 | `		}` |
-|    46 |  9444 | `		SyBlobRelease(&sVal);` |
-|    46 |  9445 | `		return DOM_SET_DONE;` |
-|     - |  9446 | `	}` |
-|    45 |  9447 | `	if( DomNameIs(zName,"standalone") \|\| DomNameIs(zName,"xmlStandalone") ){` |
-|    35 |  9448 | `		if( DomWriteBool(pCtx,"DOMDocument",zName,pVal,pRc) == 0 ){` |
-|     9 |  9449 | `			return DOM_SET_DONE;` |
-|     - |  9450 | `		}` |
-|    27 |  9451 | `		if( pDoc ){` |
-|     - |  9452 | `			/* Either way it becomes a DECLARED answer: writing false is` |
-|     - |  9453 | ``			 * `standalone="no"` in the output, not the absent attribute. */`` |
-|    27 |  9454 | `			pDoc->standalone = ph7_value_to_bool(pVal) ? 1 : 0;` |
-|    13 |  9455 | `		}` |
-|    27 |  9456 | `		return DOM_SET_DONE;` |
-|     - |  9457 | `	}` |
-|    11 |  9458 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
-|    59 |  9459 | `}` |
-|     - |  9460 | ``/* The two collections have nothing writable of their own; `length` is read-only. */`` |
-|     6 |  9461 | `static int DomSetNothing(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9462 | `{` |
-|     3 |  9463 | `	SXUNUSED(pCtx); SXUNUSED(zName); SXUNUSED(pVal); SXUNUSED(pRc);` |
-|     7 |  9464 | `	return DOM_SET_UNKNOWN;` |
-|     1 |  9465 | `}` |
-|     - |  9466 | `/* DOMProcessingInstruction adds target (its name) and data (its content) --` |
-|     - |  9467 | ` * php declares it under DOMNode, not DOMCharacterData, so the character-data` |
-|     - |  9468 | ` * methods are deliberately absent from it. */` |
-|    80 |  9469 | `static int DomPiProp(ph7_context *pCtx,const char *zName)` |
-|     1 |  9470 | `{` |
-|    81 |  9471 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|    81 |  9472 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|    81 |  9473 | `	if( DomNameIs(zName,"target") ){` |
-|    15 |  9474 | `		ph7_result_string(pCtx,(pNode && pNode->name) ? (const char *)pNode->name : "",-1);` |
-|    15 |  9475 | `		return 1;` |
-|     - |  9476 | `	}` |
-|    67 |  9477 | `	if( DomNameIs(zName,"data") ){` |
-|    13 |  9478 | `		DomDataValue(pCtx,pNode);` |
-|    13 |  9479 | `		return 1;` |
-|     - |  9480 | `	}` |
-|    55 |  9481 | `	return DomNodeProp(pCtx,zName);` |
-|    41 |  9482 | `}` |
-|     - |  9483 | `/*` |
-|     - |  9484 | ` * DOMNameSpaceNode's ten properties. It is not a DOMNode -- php gives it its` |
-|     - |  9485 | ` * own class with no parent -- so it shares none of the readers above: what it` |
-|     - |  9486 | ` * carries is the DECLARATION (an xmlNs) and the element that makes it.` |
-|     - |  9487 | ` */` |
-|   182 |  9488 | `static int DomNsNodeProp(ph7_context *pCtx,const char *zName)` |
-|     1 |  9489 | `{` |
-|   183 |  9490 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   183 |  9491 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|   183 |  9492 | `	xmlNsPtr pNs = pNd ? (xmlNsPtr)pNd->pNode : 0;` |
-|   183 |  9493 | `	ph7_class_instance *pOwner = pThis ? PH7_NativeAttrObj(pThis,DOM_NS_OWNER) : 0;` |
-|   183 |  9494 | `	phl_domnode *pOwnerNd = DomResOf(pOwner);` |
-|   183 |  9495 | `	const char *zPrefix = (pNs && pNs->prefix) ? (const char *)pNs->prefix : 0;` |
-|   183 |  9496 | `	if( pNs == 0 ){` |
-|   ! 0 |  9497 | `		return 0;` |
-|     - |  9498 | `	}` |
-|   183 |  9499 | `	if( DomNameIs(zName,"nodeName") ){` |
-|    31 |  9500 | `		if( zPrefix ){` |
-|    27 |  9501 | `			ph7_result_string_format(pCtx,"%s:%s",DOM_XMLNS_NAME,zPrefix);` |
-|    14 |  9502 | `		}else{` |
-|     5 |  9503 | `			ph7_result_string(pCtx,DOM_XMLNS_NAME,-1);` |
-|     - |  9504 | `		}` |
-|    31 |  9505 | `		return 1;` |
-|     - |  9506 | `	}` |
-|   153 |  9507 | `	if( DomNameIs(zName,"nodeValue") ){` |
-|     - |  9508 | `		/* php builds its wrapper as a fake node whose text CHILD carries the` |
-|     - |  9509 | `		 * URI, and an EMPTY href writes no child at all -- so the xmlns=""` |
-|     - |  9510 | `		 * UNDECLARATION answers null here while namespaceURI below answers` |
-|     - |  9511 | `		 * the empty string off the href itself. Both doors (the attribute` |
-|     - |  9512 | `		 * lookups and the namespace:: axis) share this recognizer. */` |
-|    35 |  9513 | `		if( pNs->href && pNs->href[0] ){` |
-|    33 |  9514 | `			ph7_result_string(pCtx,(const char *)pNs->href,-1);` |
-|    17 |  9515 | `		}else{` |
-|     3 |  9516 | `			ph7_result_null(pCtx);` |
-|     - |  9517 | `		}` |
-|    35 |  9518 | `		return 1;` |
-|     - |  9519 | `	}` |
-|   119 |  9520 | `	if( DomNameIs(zName,"namespaceURI") ){` |
-|    21 |  9521 | `		ph7_result_string(pCtx,pNs->href ? (const char *)pNs->href : "",-1);` |
-|    21 |  9522 | `		return 1;` |
-|     - |  9523 | `	}` |
-|    99 |  9524 | `	if( DomNameIs(zName,"nodeType") ){` |
-|    17 |  9525 | `		ph7_result_int(pCtx,XML_NAMESPACE_DECL);` |
-|    17 |  9526 | `		return 1;` |
-|     - |  9527 | `	}` |
-|     - |  9528 | ``	/* php answers the EMPTY prefix for the default declaration, and `xmlns` as`` |
-|     - |  9529 | `	 * its local name -- the two halves of the name it is spelled with. */` |
-|    83 |  9530 | `	if( DomNameIs(zName,"prefix") ){` |
-|    21 |  9531 | `		ph7_result_string(pCtx,zPrefix ? zPrefix : "",-1);` |
+|   427 |  8943 | `	if( DomNameIs(zName,"ownerElement") ){` |
+|    52 |  8944 | `		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);` |
+|    52 |  8945 | `		return 1;` |
+|     - |  8946 | `	}` |
+|     - |  8947 | ``	/* php's `specified` is a DOM level-1 remnant: ext/dom answers TRUE for every`` |
+|     - |  8948 | `	 * attribute a program can reach, including one it just created. */` |
+|   376 |  8949 | `	if( DomNameIs(zName,"specified") ){` |
+|     3 |  8950 | `		ph7_result_bool(pCtx,1);` |
+|     3 |  8951 | `		return 1;` |
+|     - |  8952 | `	}` |
+|   374 |  8953 | `	if( DomNameIs(zName,"schemaTypeInfo") ){` |
+|     3 |  8954 | `		return DomSchemaTypeInfo(pCtx);` |
+|     - |  8955 | `	}` |
+|   372 |  8956 | `	return DomNodeProp(pCtx,zName);` |
+|   245 |  8957 | `}` |
+|     - |  8958 | `/* DOMCharacterData adds data/length; DOMText adds wholeText on top of those. */` |
+|   368 |  8959 | `static int DomCharDataProp(ph7_context *pCtx,const char *zName)` |
+|     2 |  8960 | `{` |
+|   370 |  8961 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|   370 |  8962 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|   370 |  8963 | `	if( DomNameIs(zName,"data") ){` |
+|   116 |  8964 | `		DomDataValue(pCtx,pNode);` |
+|   116 |  8965 | `		return 1;` |
+|     - |  8966 | `	}` |
+|   256 |  8967 | `	if( DomNameIs(zName,"length") ){` |
+|     - |  8968 | `		/* php counts UTF-8 CHARACTERS here (xmlUTF8Strlen over the node's own` |
+|     - |  8969 | `		 * content), which is the same unit every offset on this class uses. */` |
+|    13 |  8970 | `		ph7_result_int(pCtx,DomCharLength(pNode));` |
+|    13 |  8971 | `		return 1;` |
+|     - |  8972 | `	}` |
+|   244 |  8973 | `	return 0;` |
+|   186 |  8974 | `}` |
+|   368 |  8975 | `static int DomCharProp(ph7_context *pCtx,const char *zName)` |
+|     2 |  8976 | `{` |
+|   370 |  8977 | `	if( DomCharDataProp(pCtx,zName) \|\| DomChildNodeProp(pCtx,zName) ){` |
+|   134 |  8978 | `		return 1;` |
+|     - |  8979 | `	}` |
+|   238 |  8980 | `	return DomNodeProp(pCtx,zName);` |
+|   186 |  8981 | `}` |
+|     - |  8982 | `/*` |
+|     - |  8983 | ` * DOMText::wholeText is the whole RUN, not the node: php walks back to the` |
+|     - |  8984 | ` * first adjacent text-or-CDATA sibling and forward to the last, concatenating` |
+|     - |  8985 | ` * all of them, which is what makes it the answer to "what does this element` |
+|     - |  8986 | ` * actually say" after an edit has left the text in pieces. Answering the node's` |
+|     - |  8987 | ` * own data (what PHL did) is the same string only when the run is one node` |
+|     - |  8988 | ` * long, and silently short otherwise.` |
+|     - |  8989 | ` */` |
+|    54 |  8990 | `static int DomIsTextRun(xmlNodePtr pNode)` |
+|     1 |  8991 | `{` |
+|    48 |  8992 | `	return pNode != 0` |
+|    74 |  8993 | `		&& (pNode->type == XML_TEXT_NODE \|\| pNode->type == XML_CDATA_SECTION_NODE);` |
+|     1 |  8994 | `}` |
+|   314 |  8995 | `static int DomTextProp(ph7_context *pCtx,const char *zName)` |
+|     2 |  8996 | `{` |
+|     - |  8997 | `	phl_domnode *pNd;` |
+|     - |  8998 | `	xmlNodePtr pNode,pCur;` |
+|     - |  8999 | `	SyBlob sOut;` |
+|   316 |  9000 | `	if( DomNameIs(zName,"wholeText") ){` |
+|    13 |  9001 | `		pNd = DomThisNode(pCtx);` |
+|    13 |  9002 | `		pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    13 |  9003 | `		if( !DomIsTextRun(pNode) ){` |
+|   ! 0 |  9004 | `			DomNodeValue(pCtx,pNode);` |
+|   ! 0 |  9005 | `			return 1;` |
+|     - |  9006 | `		}` |
+|    15 |  9007 | `		while( DomIsTextRun(pNode->prev) ){` |
+|     3 |  9008 | `			pNode = pNode->prev;` |
+|     1 |  9009 | `		}` |
+|    13 |  9010 | `		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|    29 |  9011 | `		for( pCur = pNode ; DomIsTextRun(pCur) ; pCur = pCur->next ){` |
+|    17 |  9012 | `			xmlChar *zPart = xmlNodeGetContent(pCur);` |
+|    17 |  9013 | `			if( zPart ){` |
+|    17 |  9014 | `				SyBlobAppend(&sOut,(const void *)zPart,(sxu32)SyStrlen((const char *)zPart));` |
+|    17 |  9015 | `				xmlFree(zPart);` |
+|     8 |  9016 | `			}` |
+|     9 |  9017 | `		}` |
+|    13 |  9018 | `		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|    13 |  9019 | `		SyBlobRelease(&sOut);` |
+|    13 |  9020 | `		return 1;` |
+|     - |  9021 | `	}` |
+|   304 |  9022 | `	return DomCharProp(pCtx,zName);` |
+|   159 |  9023 | `}` |
+|     - |  9024 | `/*` |
+|     - |  9025 | ` * php's typed-property store for the DOM's own string-shaped properties: a` |
+|     - |  9026 | ` * scalar coerces, null is accepted only where the declared type is nullable` |
+|     - |  9027 | ` * (and means the empty string), and an array or an object is a TypeError` |
+|     - |  9028 | ` * naming the class that DECLARES the property rather than the one the write` |
+|     - |  9029 | ` * went through. The value is coerced through a COPY -- ph7_value_to_string()` |
+|     - |  9030 | ` * converts the object it is handed, and that object is the caller's own` |
+|     - |  9031 | `` * `$v` in `$node->nodeValue = $v`.`` |
+|     - |  9032 | ` */` |
+|   224 |  9033 | `static int DomWriteText(ph7_context *pCtx,const char *zOwner,const char *zProp,` |
+|     - |  9034 | `	const char *zType,ph7_value *pVal,SyBlob *pOut,int *pRc)` |
+|     2 |  9035 | `{` |
+|   226 |  9036 | `	int bNullable = zType[0] == '?';` |
+|     - |  9037 | `	ph7_value sTmp;` |
+|   224 |  9038 | `	if( pVal == 0` |
+|   224 |  9039 | `	 \|\| (pVal->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ)) != 0` |
+|   213 |  9040 | `	 \|\| ((pVal->iFlags & MEMOBJ_NULL) != 0 && !bNullable) ){` |
+|     - |  9041 | `		char zBuf[128];` |
+|    33 |  9042 | `		const char *zGiven = "null";` |
+|    33 |  9043 | `		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){` |
+|    11 |  9044 | `			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;` |
+|    11 |  9045 | `			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);` |
+|    11 |  9046 | `			zGiven = zBuf;` |
+|    28 |  9047 | `		}else if( pVal ){` |
+|    23 |  9048 | `			zGiven = ph7_type_name(pVal);` |
+|    11 |  9049 | `		}` |
+|    49 |  9050 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
+|    16 |  9051 | `			"Cannot assign %s to property %s::$%s of type %s",zGiven,zOwner,zProp,zType);` |
+|    33 |  9052 | `		return 0;` |
+|     - |  9053 | `	}` |
+|   194 |  9054 | `	SyBlobInit(pOut,&pCtx->pVm->sAllocator);` |
+|   194 |  9055 | `	if( (pVal->iFlags & MEMOBJ_NULL) == 0 ){` |
+|   182 |  9056 | `		PH7_MemObjInit(pCtx->pVm,&sTmp);` |
+|   182 |  9057 | `		PH7_MemObjLoad(pVal,&sTmp);` |
+|   182 |  9058 | `		PH7_MemObjToString(&sTmp);` |
+|   182 |  9059 | `		SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));` |
+|   182 |  9060 | `		PH7_MemObjRelease(&sTmp);` |
+|    90 |  9061 | `	}` |
+|   194 |  9062 | `	SyBlobNullAppend(pOut);` |
+|   194 |  9063 | `	return 1;` |
+|   114 |  9064 | `}` |
+|     - |  9065 | `/*` |
+|     - |  9066 | `` * The same screen for a `bool` property. php's weak mode takes an int, a float`` |
+|     - |  9067 | `` * or a string and answers its truthiness (`"0"` and `""` are false), and refuses`` |
+|     - |  9068 | `` * null, an array and an object -- the one difference from the `?string` block`` |
+|     - |  9069 | `` * above being that a bool property is NOT nullable, so `= null` is the TypeError`` |
+|     - |  9070 | ` * rather than the empty write. Answers 1 when the caller may go on and use` |
+|     - |  9071 | ` * ph7_value_to_bool(), 0 when the refusal has been raised into *pRc.` |
+|     - |  9072 | ` */` |
+|    34 |  9073 | `static int DomWriteBool(ph7_context *pCtx,const char *zOwner,const char *zProp,` |
+|     - |  9074 | `	ph7_value *pVal,int *pRc)` |
+|     1 |  9075 | `{` |
+|    35 |  9076 | `	if( pVal == 0 \|\| (pVal->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_NULL)) != 0 ){` |
+|     - |  9077 | `		char zBuf[128];` |
+|     9 |  9078 | `		const char *zGiven = "null";` |
+|     9 |  9079 | `		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){` |
+|   ! 0 |  9080 | `			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;` |
+|   ! 0 |  9081 | `			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);` |
+|   ! 0 |  9082 | `			zGiven = zBuf;` |
+|     9 |  9083 | `		}else if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 ){` |
+|     5 |  9084 | `			zGiven = ph7_type_name(pVal);` |
+|     2 |  9085 | `		}` |
+|    13 |  9086 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
+|     4 |  9087 | `			"Cannot assign %s to property %s::$%s of type bool",zGiven,zOwner,zProp);` |
+|     9 |  9088 | `		return 0;` |
+|     - |  9089 | `	}` |
+|    27 |  9090 | `	return 1;` |
+|    18 |  9091 | `}` |
+|     - |  9092 | `/* Has this node ever been handed to PHP? The identity cache is the record. */` |
+|   156 |  9093 | `static int DomIsWrapped(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode)` |
+|     1 |  9094 | `{` |
+|   157 |  9095 | `	ph7_hashmap *pCache = DomCache(&(*pVm),pDoc);` |
+|   157 |  9096 | `	ph7_hashmap_node *pEntry = 0;` |
+|     - |  9097 | `	ph7_value sKey;` |
+|     - |  9098 | `	int bHit;` |
+|   157 |  9099 | `	if( pCache == 0 ){` |
+|   ! 0 |  9100 | `		return 0;` |
+|     - |  9101 | `	}` |
+|   157 |  9102 | `	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);` |
+|   157 |  9103 | `	bHit = PH7_HashmapLookup(pCache,&sKey,&pEntry) == SXRET_OK && pEntry != 0;` |
+|   157 |  9104 | `	PH7_MemObjRelease(&sKey);` |
+|   157 |  9105 | `	return bHit;` |
+|    79 |  9106 | `}` |
+|     - |  9107 | `/*` |
+|     - |  9108 | ` * php FREES the subtree a content write replaces -- except the nodes a PHP` |
+|     - |  9109 | ` * variable still holds a wrapper for, which it unlinks and keeps as roots of` |
+|     - |  9110 | ` * their own detached fragments. That is observable: after` |
+|     - |  9111 | `` * `$el->textContent = 'flat'`, a variable holding a grandchild still reads its`` |
+|     - |  9112 | `` * text and answers NULL for `parentNode`. Parking the subtree whole (which is`` |
+|     - |  9113 | ` * what this engine must do -- a wrapper's handle is a raw pointer, so nothing` |
+|     - |  9114 | ` * here is ever freed before the document is) left every such parent attached,` |
+|     - |  9115 | ` * so the same variable answered its old parent's name. Detach exactly the nodes` |
+|     - |  9116 | ` * php would have kept: the OUTERMOST wrapped ones, php's own rule, since it` |
+|     - |  9117 | ` * stops recursing at a node it is keeping.` |
+|     - |  9118 | ` */` |
+|   144 |  9119 | `static void DomPartWrapped(ph7_vm *pVm,ph7_class_instance *pDoc,phl_xmldoc *pShell,xmlNodePtr pNode)` |
+|     1 |  9120 | `{` |
+|   145 |  9121 | `	xmlNodePtr pChild = pNode ? pNode->children : 0;` |
+|   147 |  9122 | `	while( pChild ){` |
+|     3 |  9123 | `		xmlNodePtr pNext = pChild->next;` |
+|     3 |  9124 | `		if( DomIsWrapped(&(*pVm),pDoc,pChild) ){` |
+|   ! 0 |  9125 | `			xmlUnlinkNode(pChild);` |
+|   ! 0 |  9126 | `			DomOrphanAdd(pShell,pChild);` |
+|   ! 0 |  9127 | `		}else{` |
+|     3 |  9128 | `			DomPartWrapped(&(*pVm),pDoc,pShell,pChild);` |
+|     - |  9129 | `		}` |
+|     3 |  9130 | `		pChild = pNext;` |
+|     1 |  9131 | `	}` |
+|   145 |  9132 | `}` |
+|     - |  9133 | `/*` |
+|     - |  9134 | ` * Everything a content write has to do before libxml sees it: the node's` |
+|     - |  9135 | ` * children go to the document's ORPHAN set rather than being freed, because a` |
+|     - |  9136 | ` * PHP variable may still hold a wrapper for one of them and the wrapper's` |
+|     - |  9137 | ` * handle is a raw pointer. (php keeps such a node alive through its own` |
+|     - |  9138 | ` * wrapper refcount; this engine parks it, exactly as removeChild does.)` |
+|     - |  9139 | ` */` |
+|   108 |  9140 | `static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode)` |
+|     2 |  9141 | `{` |
+|   110 |  9142 | `	ph7_class_instance *pDoc = DomThisDoc(pCtx);` |
+|   110 |  9143 | `	xmlNodePtr pChild = pNode ? pNode->children : 0;` |
+|   264 |  9144 | `	while( pChild ){` |
+|   155 |  9145 | `		xmlNodePtr pNext = pChild->next;` |
+|   155 |  9146 | `		if( !DomIsWrapped(pCtx->pVm,pDoc,pChild) ){` |
+|   143 |  9147 | `			DomPartWrapped(pCtx->pVm,pDoc,pShell,pChild);` |
+|    71 |  9148 | `		}` |
+|   155 |  9149 | `		xmlUnlinkNode(pChild);` |
+|   155 |  9150 | `		DomOrphanAdd(pShell,pChild);` |
+|   155 |  9151 | `		pChild = pNext;` |
+|     1 |  9152 | `	}` |
+|   110 |  9153 | `}` |
+|     - |  9154 | `/*` |
+|     - |  9155 | ` * php's two content writes, which are NOT the same write.` |
+|     - |  9156 | ` *` |
+|     - |  9157 | `` * `nodeValue` is libxml's xmlNodeSetContent, and on an element or an attribute`` |
+|     - |  9158 | `` * that PARSES entity references: `$el->nodeValue = 'a&b'` is libxml's`` |
+|     - |  9159 | ` * "unterminated entity reference" and leaves the node EMPTY, while` |
+|     - |  9160 | `` * `'a&amp;b'` stores the one character. `textContent` sets one raw text child`` |
+|     - |  9161 | ` * instead, so the same two strings store what they say. Every other node kind` |
+|     - |  9162 | ` * takes its content literally either way.` |
+|     - |  9163 | ` */` |
+|    98 |  9164 | `static void DomSetContent(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode,` |
+|     - |  9165 | `	const char *zText,int bParseEntities)` |
+|     2 |  9166 | `{` |
+|   100 |  9167 | `	int bTree = pNode->type == XML_ELEMENT_NODE \|\| pNode->type == XML_ATTRIBUTE_NODE;` |
+|     - |  9168 | `	xmlNodePtr pText;` |
+|   100 |  9169 | `	DomDropChildren(pCtx,pShell,pNode);` |
+|   100 |  9170 | `	if( !bTree \|\| (bParseEntities && zText[0]) ){` |
+|     - |  9171 | `		/* The parsing write is the one that can FAIL -- an unterminated entity` |
+|     - |  9172 | `		 * reference leaves the node empty and libxml says so. Route that through` |
+|     - |  9173 | `		 * the per-VM queue like every other libxml diagnostic here, or it prints` |
+|     - |  9174 | ``		 * itself on stderr past error_reporting(), past `@`, and past`` |
+|     - |  9175 | `		 * libxml_get_errors(). */` |
+|     - |  9176 | `		SyBlob sFn;` |
+|    74 |  9177 | `		sxu32 nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);` |
+|    74 |  9178 | `		xmlNodeSetContent(pNode,(const xmlChar *)zText);` |
+|     - |  9179 | `		/* php attributes the warning to the CALLER's scope -- a property write` |
+|     - |  9180 | `		 * is not a call, so there is no accessor name to print. */` |
+|    74 |  9181 | `		SyBlobInit(&sFn,&pCtx->pVm->sAllocator);` |
+|    74 |  9182 | `		PH7_VmActiveFuncName(pCtx->pVm,&sFn);` |
+|    74 |  9183 | `		PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,(const char *)SyBlobData(&sFn));` |
+|    74 |  9184 | `		SyBlobRelease(&sFn);` |
+|    74 |  9185 | `		return;` |
+|     - |  9186 | `	}` |
+|     - |  9187 | `	/* One raw text child -- and php leaves one even for the EMPTY string, which` |
+|     - |  9188 | ``	 * is why `$el->nodeValue = ''` serializes as <r></r> rather than <r/>.`` |
+|     - |  9189 | `	 * (The entity-parsing write is the exception: a string libxml refuses, like` |
+|     - |  9190 | ``	 * `'a&b'`, leaves the element with no children at all.) */`` |
+|    27 |  9191 | `	pText = xmlNewDocText(pNode->doc,(const xmlChar *)zText);` |
+|    27 |  9192 | `	if( pText ){` |
+|    27 |  9193 | `		DomLinkLast(pNode,pText);` |
+|    13 |  9194 | `	}` |
+|    51 |  9195 | `}` |
+|     - |  9196 | `/*` |
+|     - |  9197 | ` * The same refusal, raised from a property WRITE.` |
+|     - |  9198 | ` *` |
+|     - |  9199 | ` * A write is not a call, so php has no accessor name to print in front of the` |
+|     - |  9200 | `` * warning and attributes it to the CALLER's scope instead (`f(): Namespace`` |
+|     - |  9201 | `` * Error`, `Unknown: ...` at file scope) -- the shape DomSetContent already uses`` |
+|     - |  9202 | ` * for the libxml diagnostic a content write can produce. Nothing is answered` |
+|     - |  9203 | ` * either way: a property write has no return value.` |
+|     - |  9204 | ` */` |
+|    10 |  9205 | `static int DomThrowWrite(ph7_context *pCtx,int iCode)` |
+|     1 |  9206 | `{` |
+|    11 |  9207 | `	ph7_class_instance *pDoc = DomThisDoc(pCtx);` |
+|     - |  9208 | `	SyBlob sFn;` |
+|     - |  9209 | `	SyString sName;` |
+|     - |  9210 | `	int rc;` |
+|    11 |  9211 | `	if( pDoc == 0 \|\| PH7_NativeAttrTruthy(pDoc,"strictErrorChecking") ){` |
+|     7 |  9212 | `		return DomThrowAlways(pCtx,iCode);` |
+|     - |  9213 | `	}` |
+|     5 |  9214 | `	SyBlobInit(&sFn,&pCtx->pVm->sAllocator);` |
+|     5 |  9215 | `	PH7_VmActiveFuncName(pCtx->pVm,&sFn);` |
+|     5 |  9216 | `	SyStringInitFromBuf(&sName,SyBlobData(&sFn),SyBlobLength(&sFn));` |
+|     5 |  9217 | `	rc = PH7_VmThrowError(pCtx->pVm,&sName,PH7_CTX_WARNING,DomErrText(iCode));` |
+|     5 |  9218 | `	SyBlobRelease(&sFn);` |
+|     5 |  9219 | `	return rc;` |
+|     6 |  9220 | `}` |
+|     - |  9221 | `/*` |
+|     - |  9222 | ` * The node kinds a value write REACHES.` |
+|     - |  9223 | ` *` |
+|     - |  9224 | ` * php's two writers do not accept the same list, and everything off it is a` |
+|     - |  9225 | ` * silent NO-OP -- the write is accepted and the node is left exactly as it was.` |
+|     - |  9226 | ` * PHL had one exclusion, the document, and wrote to everything else, which cost` |
+|     - |  9227 | ` * three answers and one crash:` |
+|     - |  9228 | ` *` |
+|     - |  9229 | ` *   - an ENTITY REFERENCE's children are the entity DECLARATION's, shared by` |
+|     - |  9230 | ` *     every reference to it and owned by the DTD; dropping them freed nodes the` |
+|     - |  9231 | `` *     document frees again at teardown -- `$ref->nodeValue = 'x'` aborted the`` |
+|     - |  9232 | ` *     process on a double free;` |
+|     - |  9233 | ` *   - a DOCTYPE's children are the declarations of the internal SUBSET, so` |
+|     - |  9234 | ``  *     `$doc->doctype->nodeValue = 'x'` silently emptied `<!DOCTYPE r [ ... ]>` `` |
+|     - |  9235 | ` *     of every entity, element and attribute declaration in it;` |
+|     - |  9236 | `` *   - a FRAGMENT is emptied by `textContent` and left alone by `nodeValue`,`` |
+|     - |  9237 | ` *     which is the one kind where the two writers really do disagree.` |
+|     - |  9238 | ` */` |
+|    74 |  9239 | `static int DomValueWritable(xmlNodePtr pNode,int bValue)` |
+|     1 |  9240 | `{` |
+|    75 |  9241 | `	if( pNode == 0 ){` |
+|   ! 0 |  9242 | `		return 0;` |
+|     - |  9243 | `	}` |
+|    75 |  9244 | `	switch( pNode->type ){` |
+|    29 |  9245 | `	case XML_ELEMENT_NODE:` |
+|     - |  9246 | `	case XML_ATTRIBUTE_NODE:` |
+|     - |  9247 | `	case XML_TEXT_NODE:` |
+|     - |  9248 | `	case XML_COMMENT_NODE:` |
+|     - |  9249 | `	case XML_CDATA_SECTION_NODE:` |
+|     - |  9250 | `	case XML_PI_NODE:` |
+|    59 |  9251 | `		return 1;` |
+|     2 |  9252 | `	case XML_DOCUMENT_FRAG_NODE:` |
+|     5 |  9253 | `		return !bValue;` |
+|     6 |  9254 | `	default:` |
+|    13 |  9255 | `		return 0;` |
+|     - |  9256 | `	}` |
+|    38 |  9257 | `}` |
+|     - |  9258 | `/* DOMNode's three writable properties. */` |
+|   170 |  9259 | `static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9260 | `{` |
+|   171 |  9261 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|   171 |  9262 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|   171 |  9263 | `	int bValue = DomNameIs(zName,"nodeValue");` |
+|     - |  9264 | `	SyBlob sVal;` |
+|   171 |  9265 | `	if( bValue \|\| DomNameIs(zName,"textContent") ){` |
+|     - |  9266 | `		/* php's one REFUSAL among the no-ops, and it answers before the type` |
+|     - |  9267 | ``		 * check does: `$ref->textContent = []` is the readonly Error where`` |
+|     - |  9268 | ``		 * `$ref->nodeValue = []` is the TypeError. Left unwritten here, the`` |
+|     - |  9269 | `		 * accessor macro falls through to it. */` |
+|    87 |  9270 | `		if( !bValue && pNode && pNode->type == XML_ENTITY_REF_NODE ){` |
+|     5 |  9271 | `			return DOM_SET_UNKNOWN;` |
+|     - |  9272 | `		}` |
+|   123 |  9273 | `		if( DomWriteText(pCtx,"DOMNode",bValue ? "nodeValue" : "textContent",` |
+|    83 |  9274 | `			bValue ? "?string" : "string",pVal,&sVal,pRc) == 0 ){` |
+|     9 |  9275 | `			return DOM_SET_DONE;` |
+|     - |  9276 | `		}` |
+|    75 |  9277 | `		if( DomValueWritable(pNode,bValue) ){` |
+|    61 |  9278 | `			DomSetContent(pCtx,pNd->pShell,pNode,(const char *)SyBlobData(&sVal),bValue);` |
+|    30 |  9279 | `		}` |
+|    75 |  9280 | `		SyBlobRelease(&sVal);` |
+|    75 |  9281 | `		return DOM_SET_DONE;` |
+|     - |  9282 | `	}` |
+|    85 |  9283 | `	if( DomNameIs(zName,"prefix") ){` |
+|     - |  9284 | `		xmlNsPtr pNs;` |
+|     - |  9285 | `		xmlNodePtr pDecl;` |
+|    29 |  9286 | `		if( DomWriteText(pCtx,"DOMNode","prefix","string",pVal,&sVal,pRc) == 0 ){` |
+|     5 |  9287 | `			return DOM_SET_DONE;` |
+|     - |  9288 | `		}` |
+|     - |  9289 | `		/* Only a node that HAS a namespace can be re-prefixed; php ignores the` |
+|     - |  9290 | `		 * write for anything else, including an element in no namespace. */` |
+|    25 |  9291 | `		if( DomHasNsSlot(pNode) && pNode->ns && pNode->ns->href ){` |
+|    21 |  9292 | `			const char *zPrefix = (const char *)SyBlobData(&sVal);` |
+|     - |  9293 | `			/* An attribute's declaration goes on its ELEMENT. */` |
+|    21 |  9294 | `			pDecl = pNode->type == XML_ATTRIBUTE_NODE ? pNode->parent : pNode;` |
+|    20 |  9295 | `			if( DomNameIs(zPrefix,"xml")` |
+|    15 |  9296 | `			 && !DomNameIs((const char *)pNode->ns->href,` |
+|     - |  9297 | `				"http://www.w3.org/XML/1998/namespace") ){` |
+|     - |  9298 | ``				/* php's reserved-prefix refusal: `xml` may only name ITS namespace. */`` |
+|     9 |  9299 | `				SyBlobRelease(&sVal);` |
+|     9 |  9300 | `				*pRc = DomThrowWrite(pCtx,DOM_ERR_NAMESPACE);` |
+|     9 |  9301 | `				return DOM_SET_DONE;` |
+|     - |  9302 | `			}` |
+|     - |  9303 | `			/* php looks only at the declarations THIS node carries -- an` |
+|     - |  9304 | `			 * ancestor's is not reused, which is why re-prefixing a child grows` |
+|     - |  9305 | ``			 * a second `xmlns:q` beside the one its parent already has. */`` |
+|    29 |  9306 | `			for( pNs = pDecl ? pDecl->nsDef : 0 ; pNs ; pNs = pNs->next ){` |
+|    19 |  9307 | `				const char *zHave = pNs->prefix ? (const char *)pNs->prefix : "";` |
+|    18 |  9308 | `				if( DomNameIs(zHave,zPrefix) && pNs->href` |
+|     5 |  9309 | `				 && xmlStrEqual(pNs->href,pNode->ns->href) ){` |
+|     3 |  9310 | `					break;` |
+|     - |  9311 | `				}` |
+|     9 |  9312 | `			}` |
+|    13 |  9313 | `			if( pNs == 0 ){` |
+|     - |  9314 | `				/* None binds this prefix to the node's own URI: php declares one,` |
+|     - |  9315 | ``				 * which is how `$el->prefix = ''` grows an `xmlns="..."` on the`` |
+|     - |  9316 | `				 * element itself -- and how a prefix already bound HERE to another` |
+|     - |  9317 | `				 * URI becomes libxml's refusal and php's Namespace Error. */` |
+|    16 |  9318 | `				pNs = pDecl ? xmlNewNs(pDecl,pNode->ns->href,` |
+|    10 |  9319 | `					zPrefix[0] ? (const xmlChar *)zPrefix : 0) : 0;` |
+|     5 |  9320 | `			}` |
+|    13 |  9321 | `			if( pNs == 0 ){` |
+|     3 |  9322 | `				SyBlobRelease(&sVal);` |
+|     3 |  9323 | `				*pRc = DomThrowWrite(pCtx,DOM_ERR_NAMESPACE);` |
+|     3 |  9324 | `				return DOM_SET_DONE;` |
+|     - |  9325 | `			}` |
+|    11 |  9326 | `			xmlSetNs(pNode,pNs);` |
+|     5 |  9327 | `		}` |
+|    15 |  9328 | `		SyBlobRelease(&sVal);` |
+|    15 |  9329 | `		return DOM_SET_DONE;` |
+|     - |  9330 | `	}` |
+|    57 |  9331 | `	return DOM_SET_UNKNOWN;` |
+|    86 |  9332 | `}` |
+|     - |  9333 | `/* DOMElement adds className and id, both of them ATTRIBUTES under the name. */` |
+|   102 |  9334 | `static int DomSetElemProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9335 | `{` |
+|   103 |  9336 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|   103 |  9337 | `	int bClass = DomNameIs(zName,"className");` |
+|     - |  9338 | `	SyBlob sVal;` |
+|   103 |  9339 | `	if( bClass \|\| DomNameIs(zName,"id") ){` |
+|     9 |  9340 | `		if( DomWriteText(pCtx,"DOMElement",bClass ? "className" : "id","string",` |
+|     7 |  9341 | `			pVal,&sVal,pRc) == 0 ){` |
+|     3 |  9342 | `			return DOM_SET_DONE;` |
+|     - |  9343 | `		}` |
+|     5 |  9344 | `		if( pNd ){` |
+|     7 |  9345 | `			xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)(bClass ? "class" : "id"),` |
+|     4 |  9346 | `				(const xmlChar *)SyBlobData(&sVal));` |
+|     2 |  9347 | `		}` |
+|     5 |  9348 | `		SyBlobRelease(&sVal);` |
+|     5 |  9349 | `		return DOM_SET_DONE;` |
+|     - |  9350 | `	}` |
+|    97 |  9351 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
+|    52 |  9352 | `}` |
+|     - |  9353 | `/* DOMAttr::value and DOMCharacterData::data are the node's own content. The` |
+|     - |  9354 | `` * attribute's parses entity references, as its `nodeValue` does -- only`` |
+|     - |  9355 | `` * `textContent` takes an attribute's bytes literally; character data has no`` |
+|     - |  9356 | ` * parsing write at all, whichever name it is written under. */` |
+|    80 |  9357 | `static int DomSetContentProp(ph7_context *pCtx,const char *zOwner,const char *zProp,` |
+|     - |  9358 | `	const char *zName,ph7_value *pVal,int bParseEntities,int *pRc)` |
+|     2 |  9359 | `{` |
+|    82 |  9360 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|     - |  9361 | `	SyBlob sVal;` |
+|    82 |  9362 | `	if( !DomNameIs(zName,zProp) ){` |
+|    39 |  9363 | `		return DOM_SET_UNKNOWN;` |
+|     - |  9364 | `	}` |
+|    44 |  9365 | `	if( DomWriteText(pCtx,zOwner,zProp,"string",pVal,&sVal,pRc) == 0 ){` |
+|     5 |  9366 | `		return DOM_SET_DONE;` |
+|     - |  9367 | `	}` |
+|    40 |  9368 | `	if( pNd ){` |
+|    59 |  9369 | `		DomSetContent(pCtx,pNd->pShell,(xmlNodePtr)pNd->pNode,` |
+|    38 |  9370 | `			(const char *)SyBlobData(&sVal),bParseEntities);` |
+|    19 |  9371 | `	}` |
+|    40 |  9372 | `	SyBlobRelease(&sVal);` |
+|    40 |  9373 | `	return DOM_SET_DONE;` |
+|    42 |  9374 | `}` |
+|    40 |  9375 | `static int DomSetAttrProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     2 |  9376 | `{` |
+|    42 |  9377 | `	int rc = DomSetContentProp(pCtx,"DOMAttr","value",zName,pVal,TRUE,pRc);` |
+|    42 |  9378 | `	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);` |
+|     2 |  9379 | `}` |
+|    30 |  9380 | `static int DomSetCharProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9381 | `{` |
+|    31 |  9382 | `	int rc = DomSetContentProp(pCtx,"DOMCharacterData","data",zName,pVal,FALSE,pRc);` |
+|    31 |  9383 | `	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);` |
+|     1 |  9384 | `}` |
+|    10 |  9385 | `static int DomSetPiProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9386 | `{` |
+|    11 |  9387 | `	int rc = DomSetContentProp(pCtx,"DOMProcessingInstruction","data",zName,pVal,FALSE,pRc);` |
+|    11 |  9388 | `	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);` |
+|     1 |  9389 | `}` |
+|     - |  9390 | `/*` |
+|     - |  9391 | ` * The DOCUMENT's writable state: the three declaration slots php lets a program` |
+|     - |  9392 | `` * change, plus `documentURI`.`` |
+|     - |  9393 | ` *` |
+|     - |  9394 | `` * php declares them `?string`/`bool`, so a null goes through the string three as`` |
+|     - |  9395 | `` * the EMPTY string (`$d->version = null` writes `<?xml version=""?>`) and is a`` |
+|     - |  9396 | ` * TypeError on the bool pair; an array or an object is a TypeError on all of` |
+|     - |  9397 | ` * them.  The read-only four are refused HERE rather than through the reader,` |
+|     - |  9398 | ` * because two of them are deprecated and php's readonly Error comes without the` |
+|     - |  9399 | ` * deprecation notice a read would have raised.` |
+|     - |  9400 | ` */` |
+|   116 |  9401 | `static int DomSetDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9402 | `{` |
+|   117 |  9403 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|   117 |  9404 | `	xmlDocPtr pDoc = pNd ? (xmlDocPtr)pNd->pNode : 0;` |
+|   117 |  9405 | `	int bVersion = DomNameIs(zName,"version") \|\| DomNameIs(zName,"xmlVersion");` |
+|   117 |  9406 | `	int bUri = DomNameIs(zName,"documentURI");` |
+|     - |  9407 | `	SyBlob sVal;` |
+|   116 |  9408 | `	if( DomNameIs(zName,"actualEncoding") \|\| DomNameIs(zName,"config")` |
+|   114 |  9409 | `	 \|\| DomNameIs(zName,"xmlEncoding") ){` |
+|     7 |  9410 | `		*pRc = DomRefuseWrite(pCtx,zName,1);` |
+|     7 |  9411 | `		return DOM_SET_DONE;` |
+|     - |  9412 | `	}` |
+|   111 |  9413 | `	if( bVersion \|\| bUri \|\| DomNameIs(zName,"encoding") ){` |
+|     - |  9414 | `		const char *zNew;` |
+|    67 |  9415 | `		if( DomWriteText(pCtx,"DOMDocument",zName,"?string",pVal,&sVal,pRc) == 0 ){` |
+|    15 |  9416 | `			return DOM_SET_DONE;` |
+|     - |  9417 | `		}` |
+|    53 |  9418 | `		zNew = (const char *)SyBlobData(&sVal);` |
+|    53 |  9419 | `		if( pDoc == 0 ){` |
+|   ! 0 |  9420 | `			SyBlobRelease(&sVal);` |
+|   ! 0 |  9421 | `			return DOM_SET_DONE;` |
+|     - |  9422 | `		}` |
+|    53 |  9423 | `		if( bVersion ){` |
+|    23 |  9424 | `			if( pDoc->version ){` |
+|    23 |  9425 | `				xmlFree((xmlChar *)pDoc->version);` |
+|    11 |  9426 | `			}` |
+|    23 |  9427 | `			pDoc->version = xmlStrdup((const xmlChar *)zNew);` |
+|    42 |  9428 | `		}else if( bUri ){` |
+|    15 |  9429 | `			if( pDoc->URL ){` |
+|    15 |  9430 | `				xmlFree((xmlChar *)pDoc->URL);` |
+|     7 |  9431 | `			}` |
+|    15 |  9432 | `			pDoc->URL = xmlStrdup((const xmlChar *)zNew);` |
+|     8 |  9433 | `		}else{` |
+|     - |  9434 | `			/* php asks libxml for a converter and refuses the name outright when` |
+|     - |  9435 | ``			 * there is none -- so `$d->encoding = 'x'` (and the empty string a`` |
+|     - |  9436 | `			 * null coerces to) is a ValueError BEFORE anything is written,` |
+|     - |  9437 | `			 * rather than a document that cannot be serialized later. */` |
+|     - |  9438 | `			/* A null is refused before libxml is asked anything, as php does: the` |
+|     - |  9439 | `			 * empty string it coerces to is a name a current libxml (2.15) answers` |
+|     - |  9440 | `			 * WITH a converter, so asking would let the null through. */` |
+|    17 |  9441 | `			xmlCharEncodingHandlerPtr pEnc = ph7_value_is_null(pVal) ? 0` |
+|    15 |  9442 | `				: xmlFindCharEncodingHandler(zNew);` |
+|    17 |  9443 | `			if( pEnc == 0 ){` |
+|     8 |  9444 | `				SyBlobRelease(&sVal);` |
+|     8 |  9445 | `				*pRc = PH7_VmThrowException(pCtx,"ValueError","Invalid document encoding");` |
+|     8 |  9446 | `				return DOM_SET_DONE;` |
+|     - |  9447 | `			}` |
+|    10 |  9448 | `			xmlCharEncCloseFunc(pEnc);` |
+|    10 |  9449 | `			if( pDoc->encoding ){` |
+|   ! 0 |  9450 | `				xmlFree((xmlChar *)pDoc->encoding);` |
+|   ! 0 |  9451 | `			}` |
+|    10 |  9452 | `			pDoc->encoding = xmlStrdup((const xmlChar *)zNew);` |
+|     - |  9453 | `		}` |
+|    46 |  9454 | `		SyBlobRelease(&sVal);` |
+|    46 |  9455 | `		return DOM_SET_DONE;` |
+|     - |  9456 | `	}` |
+|    45 |  9457 | `	if( DomNameIs(zName,"standalone") \|\| DomNameIs(zName,"xmlStandalone") ){` |
+|    35 |  9458 | `		if( DomWriteBool(pCtx,"DOMDocument",zName,pVal,pRc) == 0 ){` |
+|     9 |  9459 | `			return DOM_SET_DONE;` |
+|     - |  9460 | `		}` |
+|    27 |  9461 | `		if( pDoc ){` |
+|     - |  9462 | `			/* Either way it becomes a DECLARED answer: writing false is` |
+|     - |  9463 | ``			 * `standalone="no"` in the output, not the absent attribute. */`` |
+|    27 |  9464 | `			pDoc->standalone = ph7_value_to_bool(pVal) ? 1 : 0;` |
+|    13 |  9465 | `		}` |
+|    27 |  9466 | `		return DOM_SET_DONE;` |
+|     - |  9467 | `	}` |
+|    11 |  9468 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
+|    59 |  9469 | `}` |
+|     - |  9470 | ``/* The two collections have nothing writable of their own; `length` is read-only. */`` |
+|     6 |  9471 | `static int DomSetNothing(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9472 | `{` |
+|     3 |  9473 | `	SXUNUSED(pCtx); SXUNUSED(zName); SXUNUSED(pVal); SXUNUSED(pRc);` |
+|     7 |  9474 | `	return DOM_SET_UNKNOWN;` |
+|     1 |  9475 | `}` |
+|     - |  9476 | `/* DOMProcessingInstruction adds target (its name) and data (its content) --` |
+|     - |  9477 | ` * php declares it under DOMNode, not DOMCharacterData, so the character-data` |
+|     - |  9478 | ` * methods are deliberately absent from it. */` |
+|    80 |  9479 | `static int DomPiProp(ph7_context *pCtx,const char *zName)` |
+|     1 |  9480 | `{` |
+|    81 |  9481 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|    81 |  9482 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    81 |  9483 | `	if( DomNameIs(zName,"target") ){` |
+|    15 |  9484 | `		ph7_result_string(pCtx,(pNode && pNode->name) ? (const char *)pNode->name : "",-1);` |
+|    15 |  9485 | `		return 1;` |
+|     - |  9486 | `	}` |
+|    67 |  9487 | `	if( DomNameIs(zName,"data") ){` |
+|    13 |  9488 | `		DomDataValue(pCtx,pNode);` |
+|    13 |  9489 | `		return 1;` |
+|     - |  9490 | `	}` |
+|    55 |  9491 | `	return DomNodeProp(pCtx,zName);` |
+|    41 |  9492 | `}` |
+|     - |  9493 | `/*` |
+|     - |  9494 | ` * DOMNameSpaceNode's ten properties. It is not a DOMNode -- php gives it its` |
+|     - |  9495 | ` * own class with no parent -- so it shares none of the readers above: what it` |
+|     - |  9496 | ` * carries is the DECLARATION (an xmlNs) and the element that makes it.` |
+|     - |  9497 | ` */` |
+|   182 |  9498 | `static int DomNsNodeProp(ph7_context *pCtx,const char *zName)` |
+|     1 |  9499 | `{` |
+|   183 |  9500 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   183 |  9501 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|   183 |  9502 | `	xmlNsPtr pNs = pNd ? (xmlNsPtr)pNd->pNode : 0;` |
+|   183 |  9503 | `	ph7_class_instance *pOwner = pThis ? PH7_NativeAttrObj(pThis,DOM_NS_OWNER) : 0;` |
+|   183 |  9504 | `	phl_domnode *pOwnerNd = DomResOf(pOwner);` |
+|   183 |  9505 | `	const char *zPrefix = (pNs && pNs->prefix) ? (const char *)pNs->prefix : 0;` |
+|   183 |  9506 | `	if( pNs == 0 ){` |
+|   ! 0 |  9507 | `		return 0;` |
+|     - |  9508 | `	}` |
+|   183 |  9509 | `	if( DomNameIs(zName,"nodeName") ){` |
+|    31 |  9510 | `		if( zPrefix ){` |
+|    27 |  9511 | `			ph7_result_string_format(pCtx,"%s:%s",DOM_XMLNS_NAME,zPrefix);` |
+|    14 |  9512 | `		}else{` |
+|     5 |  9513 | `			ph7_result_string(pCtx,DOM_XMLNS_NAME,-1);` |
+|     - |  9514 | `		}` |
+|    31 |  9515 | `		return 1;` |
+|     - |  9516 | `	}` |
+|   153 |  9517 | `	if( DomNameIs(zName,"nodeValue") ){` |
+|     - |  9518 | `		/* php builds its wrapper as a fake node whose text CHILD carries the` |
+|     - |  9519 | `		 * URI, and an EMPTY href writes no child at all -- so the xmlns=""` |
+|     - |  9520 | `		 * UNDECLARATION answers null here while namespaceURI below answers` |
+|     - |  9521 | `		 * the empty string off the href itself. Both doors (the attribute` |
+|     - |  9522 | `		 * lookups and the namespace:: axis) share this recognizer. */` |
+|    35 |  9523 | `		if( pNs->href && pNs->href[0] ){` |
+|    33 |  9524 | `			ph7_result_string(pCtx,(const char *)pNs->href,-1);` |
+|    17 |  9525 | `		}else{` |
+|     3 |  9526 | `			ph7_result_null(pCtx);` |
+|     - |  9527 | `		}` |
+|    35 |  9528 | `		return 1;` |
+|     - |  9529 | `	}` |
+|   119 |  9530 | `	if( DomNameIs(zName,"namespaceURI") ){` |
+|    21 |  9531 | `		ph7_result_string(pCtx,pNs->href ? (const char *)pNs->href : "",-1);` |
 |    21 |  9532 | `		return 1;` |
 |     - |  9533 | `	}` |
-|    63 |  9534 | `	if( DomNameIs(zName,"localName") ){` |
-|    19 |  9535 | `		ph7_result_string(pCtx,zPrefix ? zPrefix : DOM_XMLNS_NAME,-1);` |
-|    19 |  9536 | `		return 1;` |
+|    99 |  9534 | `	if( DomNameIs(zName,"nodeType") ){` |
+|    17 |  9535 | `		ph7_result_int(pCtx,XML_NAMESPACE_DECL);` |
+|    17 |  9536 | `		return 1;` |
 |     - |  9537 | `	}` |
-|    45 |  9538 | `	if( DomNameIs(zName,"isConnected") ){` |
-|     5 |  9539 | `		ph7_result_bool(pCtx,pOwnerNd != 0` |
-|     2 |  9540 | `			&& DomIsConnected((xmlNodePtr)pOwnerNd->pNode));` |
-|     3 |  9541 | `		return 1;` |
-|     - |  9542 | `	}` |
-|    43 |  9543 | `	if( DomNameIs(zName,"ownerDocument") ){` |
-|    11 |  9544 | `		DomResultWrap(pCtx,DomThisDoc(pCtx));` |
-|    11 |  9545 | `		return 1;` |
-|     - |  9546 | `	}` |
-|    33 |  9547 | `	if( DomNameIs(zName,"parentNode") \|\| DomNameIs(zName,"parentElement") ){` |
-|    29 |  9548 | `		DomResultWrap(pCtx,pOwner);` |
-|    29 |  9549 | `		return 1;` |
-|     - |  9550 | `	}` |
-|     5 |  9551 | `	return 0;` |
-|    92 |  9552 | `}` |
-|   183 |  9553 | `DOM_PROP_ACCESSORS(DOMNameSpaceNode,DomNsNodeProp,DomSetNothing)` |
-|   268 |  9554 | `DOM_PROP_ACCESSORS(DOMNodeList,DomListProp,DomSetNothing)` |
-|    27 |  9555 | `DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp,DomSetNothing)` |
-|    49 |  9556 | `DOM_PROP_ACCESSORS(DOMNode,DomNodeProp,DomSetNodeProp)` |
-|  2169 |  9557 | `DOM_PROP_ACCESSORS(DOMDocument,DomDocProp,DomSetDocProp)` |
-|  2113 |  9558 | `DOM_PROP_ACCESSORS(DOMElement,DomElemProp,DomSetElemProp)` |
-|   523 |  9559 | `DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)` |
-|    73 |  9560 | `DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)` |
-|   334 |  9561 | `DOM_PROP_ACCESSORS(DOMText,DomTextProp,DomSetCharProp)` |
-|    89 |  9562 | `DOM_PROP_ACCESSORS(DOMProcessingInstruction,DomPiProp,DomSetPiProp)` |
-|     - |  9563 | `/* The DTD half's OWN properties are all read-only, so the writer states none of` |
-|     - |  9564 | ` * them and each lands on DomRefuseWrite's readonly Error. DOMNode's three still` |
-|     - |  9565 | `` * write here -- `nodeValue` and `textContent` are accepted and ignored on a`` |
-|     - |  9566 | ` * doctype, which is not the same answer as refusing them. */` |
-|   178 |  9567 | `DOM_PROP_ACCESSORS(DOMDocumentType,DomDocTypeProp,DomSetNodeProp)` |
-|     - |  9568 | `/*` |
-|     - |  9569 | ` * Every property DOMEntity adds is read-only, and the refusal is raised HERE` |
-|     - |  9570 | ` * rather than by falling through to the reader: the reader is where the three` |
-|     - |  9571 | ` * deprecated names raise their notice, and php's write never reaches it -- the` |
-|     - |  9572 | ` * readonly Error comes first and says nothing about deprecation.` |
-|     - |  9573 | ` */` |
-|    12 |  9574 | `static int DomSetEntityProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9575 | `{` |
-|    12 |  9576 | `	if( DomNameIs(zName,"publicId") \|\| DomNameIs(zName,"systemId")` |
-|     9 |  9577 | `	 \|\| DomNameIs(zName,"notationName") \|\| DomNameIs(zName,"actualEncoding")` |
-|     6 |  9578 | `	 \|\| DomNameIs(zName,"encoding") \|\| DomNameIs(zName,"version") ){` |
-|    13 |  9579 | `		*pRc = DomRefuseWrite(pCtx,zName,1);` |
-|    13 |  9580 | `		return DOM_SET_DONE;` |
-|     - |  9581 | `	}` |
-|   ! 0 |  9582 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
-|     7 |  9583 | `}` |
-|    99 |  9584 | `DOM_PROP_ACCESSORS(DOMEntity,DomEntityProp,DomSetEntityProp)` |
-|     - |  9585 | `/*` |
-|     - |  9586 | `` * DOMNotation: the two identifiers a `<!NOTATION ...>` declares.`` |
-|     - |  9587 | ` *` |
-|     - |  9588 | ` * Both are plain strings that answer "" for the half that is absent -- a` |
-|     - |  9589 | `` * SYSTEM-only notation reads "" from `publicId` -- where DOMEntity's same-named`` |
-|     - |  9590 | `` * pair are `?string`. The node under them is the stand-in DomNotationNode`` |
-|     - |  9591 | ` * built, which shares the entity's layout, so both identifiers are read from` |
-|     - |  9592 | ` * the same two fields.` |
-|     - |  9593 | ` */` |
-|    74 |  9594 | `static int DomNotationProp(ph7_context *pCtx,const char *zName)` |
-|     2 |  9595 | `{` |
-|    76 |  9596 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|    76 |  9597 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|    76 |  9598 | `	xmlEntityPtr pNot = (pNode && pNode->type == XML_NOTATION_NODE)` |
-|   111 |  9599 | `		? (xmlEntityPtr)pNode : 0;` |
-|    76 |  9600 | `	if( DomNameIs(zName,"publicId") ){` |
-|     9 |  9601 | `		ph7_result_string(pCtx,(pNot && pNot->ExternalID) ? (const char *)pNot->ExternalID : "",-1);` |
-|     9 |  9602 | `		return 1;` |
-|     - |  9603 | `	}` |
-|    68 |  9604 | `	if( DomNameIs(zName,"systemId") ){` |
-|    10 |  9605 | `		ph7_result_string(pCtx,(pNot && pNot->SystemID) ? (const char *)pNot->SystemID : "",-1);` |
-|    10 |  9606 | `		return 1;` |
-|     - |  9607 | `	}` |
-|    59 |  9608 | `	return DomNodeProp(pCtx,zName);` |
-|    39 |  9609 | `}` |
-|     4 |  9610 | `static int DomSetNotationProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
-|     1 |  9611 | `{` |
-|     5 |  9612 | `	if( DomNameIs(zName,"publicId") \|\| DomNameIs(zName,"systemId") ){` |
-|     5 |  9613 | `		*pRc = DomRefuseWrite(pCtx,zName,1);` |
-|     5 |  9614 | `		return DOM_SET_DONE;` |
-|     - |  9615 | `	}` |
-|   ! 0 |  9616 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
-|     3 |  9617 | `}` |
-|    80 |  9618 | `DOM_PROP_ACCESSORS(DOMNotation,DomNotationProp,DomSetNotationProp)` |
-|     - |  9619 | `/* The fragment writes what DOMNode writes; only its READ set is wider. */` |
-|    85 |  9620 | `DOM_PROP_ACCESSORS(DOMDocumentFragment,DomFragProp,DomSetNodeProp)` |
-|     - |  9621 | `/*` |
-|     - |  9622 | ` * DOMDocumentFragment::appendXML(string $data): bool` |
-|     - |  9623 | ` *` |
-|     - |  9624 | ` * php parses the chunk as a well-balanced FRAGMENT (no single root required,` |
-|     - |  9625 | ` * bare text allowed) and appends what it produced; anything libxml refuses is` |
-|     - |  9626 | `` * `false` with nothing appended.`` |
-|     - |  9627 | ` */` |
-|    44 |  9628 | `DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)` |
-|     1 |  9629 | `{` |
-|    45 |  9630 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
-|    45 |  9631 | `	const char *zXml = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
-|    45 |  9632 | `	xmlNodePtr pFrag,pList = 0;` |
-|     - |  9633 | `	sxu32 nMark;` |
-|     - |  9634 | `	int rc;` |
-|    45 |  9635 | `	if( pNd == 0 ){` |
-|   ! 0 |  9636 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  9637 | `		return PH7_OK;` |
-|     - |  9638 | `	}` |
-|    45 |  9639 | `	pFrag = (xmlNodePtr)pNd->pNode;` |
-|    45 |  9640 | `	if( DomNodeReadOnly(pFrag) ){` |
-|     - |  9641 | ``		/* A CONSTRUCTED fragment -- `new DOMDocumentFragment()` -- refuses`` |
-|     - |  9642 | `		 * this door the way every child-list door refuses an ownerless` |
-|     - |  9643 | `		 * receiver, where its append() takes the same chunk's nodes. */` |
-|     3 |  9644 | `		return DomThrow(pCtx,DOM_ERR_NO_MOD);` |
-|     - |  9645 | `	}` |
-|    43 |  9646 | `	nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);` |
-|    43 |  9647 | `	rc = xmlParseBalancedChunkMemory(pFrag->doc,0,0,0,(const xmlChar *)zXml,&pList);` |
-|    43 |  9648 | `	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,"DOMDocumentFragment::appendXML");` |
-|    43 |  9649 | `	if( rc != 0 ){` |
-|     3 |  9650 | `		if( pList ){` |
-|   ! 0 |  9651 | `			xmlFreeNodeList(pList);` |
-|   ! 0 |  9652 | `		}` |
-|     3 |  9653 | `		ph7_result_bool(pCtx,0);` |
-|     3 |  9654 | `		return PH7_OK;` |
+|     - |  9538 | ``	/* php answers the EMPTY prefix for the default declaration, and `xmlns` as`` |
+|     - |  9539 | `	 * its local name -- the two halves of the name it is spelled with. */` |
+|    83 |  9540 | `	if( DomNameIs(zName,"prefix") ){` |
+|    21 |  9541 | `		ph7_result_string(pCtx,zPrefix ? zPrefix : "",-1);` |
+|    21 |  9542 | `		return 1;` |
+|     - |  9543 | `	}` |
+|    63 |  9544 | `	if( DomNameIs(zName,"localName") ){` |
+|    19 |  9545 | `		ph7_result_string(pCtx,zPrefix ? zPrefix : DOM_XMLNS_NAME,-1);` |
+|    19 |  9546 | `		return 1;` |
+|     - |  9547 | `	}` |
+|    45 |  9548 | `	if( DomNameIs(zName,"isConnected") ){` |
+|     5 |  9549 | `		ph7_result_bool(pCtx,pOwnerNd != 0` |
+|     2 |  9550 | `			&& DomIsConnected((xmlNodePtr)pOwnerNd->pNode));` |
+|     3 |  9551 | `		return 1;` |
+|     - |  9552 | `	}` |
+|    43 |  9553 | `	if( DomNameIs(zName,"ownerDocument") ){` |
+|    11 |  9554 | `		DomResultWrap(pCtx,DomThisDoc(pCtx));` |
+|    11 |  9555 | `		return 1;` |
+|     - |  9556 | `	}` |
+|    33 |  9557 | `	if( DomNameIs(zName,"parentNode") \|\| DomNameIs(zName,"parentElement") ){` |
+|    29 |  9558 | `		DomResultWrap(pCtx,pOwner);` |
+|    29 |  9559 | `		return 1;` |
+|     - |  9560 | `	}` |
+|     5 |  9561 | `	return 0;` |
+|    92 |  9562 | `}` |
+|   183 |  9563 | `DOM_PROP_ACCESSORS(DOMNameSpaceNode,DomNsNodeProp,DomSetNothing)` |
+|   268 |  9564 | `DOM_PROP_ACCESSORS(DOMNodeList,DomListProp,DomSetNothing)` |
+|    27 |  9565 | `DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp,DomSetNothing)` |
+|    49 |  9566 | `DOM_PROP_ACCESSORS(DOMNode,DomNodeProp,DomSetNodeProp)` |
+|  2169 |  9567 | `DOM_PROP_ACCESSORS(DOMDocument,DomDocProp,DomSetDocProp)` |
+|  2113 |  9568 | `DOM_PROP_ACCESSORS(DOMElement,DomElemProp,DomSetElemProp)` |
+|   523 |  9569 | `DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)` |
+|    73 |  9570 | `DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)` |
+|   334 |  9571 | `DOM_PROP_ACCESSORS(DOMText,DomTextProp,DomSetCharProp)` |
+|    89 |  9572 | `DOM_PROP_ACCESSORS(DOMProcessingInstruction,DomPiProp,DomSetPiProp)` |
+|     - |  9573 | `/* The DTD half's OWN properties are all read-only, so the writer states none of` |
+|     - |  9574 | ` * them and each lands on DomRefuseWrite's readonly Error. DOMNode's three still` |
+|     - |  9575 | `` * write here -- `nodeValue` and `textContent` are accepted and ignored on a`` |
+|     - |  9576 | ` * doctype, which is not the same answer as refusing them. */` |
+|   178 |  9577 | `DOM_PROP_ACCESSORS(DOMDocumentType,DomDocTypeProp,DomSetNodeProp)` |
+|     - |  9578 | `/*` |
+|     - |  9579 | ` * Every property DOMEntity adds is read-only, and the refusal is raised HERE` |
+|     - |  9580 | ` * rather than by falling through to the reader: the reader is where the three` |
+|     - |  9581 | ` * deprecated names raise their notice, and php's write never reaches it -- the` |
+|     - |  9582 | ` * readonly Error comes first and says nothing about deprecation.` |
+|     - |  9583 | ` */` |
+|    12 |  9584 | `static int DomSetEntityProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9585 | `{` |
+|    12 |  9586 | `	if( DomNameIs(zName,"publicId") \|\| DomNameIs(zName,"systemId")` |
+|     9 |  9587 | `	 \|\| DomNameIs(zName,"notationName") \|\| DomNameIs(zName,"actualEncoding")` |
+|     6 |  9588 | `	 \|\| DomNameIs(zName,"encoding") \|\| DomNameIs(zName,"version") ){` |
+|    13 |  9589 | `		*pRc = DomRefuseWrite(pCtx,zName,1);` |
+|    13 |  9590 | `		return DOM_SET_DONE;` |
+|     - |  9591 | `	}` |
+|   ! 0 |  9592 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
+|     7 |  9593 | `}` |
+|    99 |  9594 | `DOM_PROP_ACCESSORS(DOMEntity,DomEntityProp,DomSetEntityProp)` |
+|     - |  9595 | `/*` |
+|     - |  9596 | `` * DOMNotation: the two identifiers a `<!NOTATION ...>` declares.`` |
+|     - |  9597 | ` *` |
+|     - |  9598 | ` * Both are plain strings that answer "" for the half that is absent -- a` |
+|     - |  9599 | `` * SYSTEM-only notation reads "" from `publicId` -- where DOMEntity's same-named`` |
+|     - |  9600 | `` * pair are `?string`. The node under them is the stand-in DomNotationNode`` |
+|     - |  9601 | ` * built, which shares the entity's layout, so both identifiers are read from` |
+|     - |  9602 | ` * the same two fields.` |
+|     - |  9603 | ` */` |
+|    74 |  9604 | `static int DomNotationProp(ph7_context *pCtx,const char *zName)` |
+|     2 |  9605 | `{` |
+|    76 |  9606 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|    76 |  9607 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    76 |  9608 | `	xmlEntityPtr pNot = (pNode && pNode->type == XML_NOTATION_NODE)` |
+|   111 |  9609 | `		? (xmlEntityPtr)pNode : 0;` |
+|    76 |  9610 | `	if( DomNameIs(zName,"publicId") ){` |
+|     9 |  9611 | `		ph7_result_string(pCtx,(pNot && pNot->ExternalID) ? (const char *)pNot->ExternalID : "",-1);` |
+|     9 |  9612 | `		return 1;` |
+|     - |  9613 | `	}` |
+|    68 |  9614 | `	if( DomNameIs(zName,"systemId") ){` |
+|    10 |  9615 | `		ph7_result_string(pCtx,(pNot && pNot->SystemID) ? (const char *)pNot->SystemID : "",-1);` |
+|    10 |  9616 | `		return 1;` |
+|     - |  9617 | `	}` |
+|    59 |  9618 | `	return DomNodeProp(pCtx,zName);` |
+|    39 |  9619 | `}` |
+|     4 |  9620 | `static int DomSetNotationProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)` |
+|     1 |  9621 | `{` |
+|     5 |  9622 | `	if( DomNameIs(zName,"publicId") \|\| DomNameIs(zName,"systemId") ){` |
+|     5 |  9623 | `		*pRc = DomRefuseWrite(pCtx,zName,1);` |
+|     5 |  9624 | `		return DOM_SET_DONE;` |
+|     - |  9625 | `	}` |
+|   ! 0 |  9626 | `	return DomSetNodeProp(pCtx,zName,pVal,pRc);` |
+|     3 |  9627 | `}` |
+|    80 |  9628 | `DOM_PROP_ACCESSORS(DOMNotation,DomNotationProp,DomSetNotationProp)` |
+|     - |  9629 | `/* The fragment writes what DOMNode writes; only its READ set is wider. */` |
+|    85 |  9630 | `DOM_PROP_ACCESSORS(DOMDocumentFragment,DomFragProp,DomSetNodeProp)` |
+|     - |  9631 | `/*` |
+|     - |  9632 | ` * DOMDocumentFragment::appendXML(string $data): bool` |
+|     - |  9633 | ` *` |
+|     - |  9634 | ` * php parses the chunk as a well-balanced FRAGMENT (no single root required,` |
+|     - |  9635 | ` * bare text allowed) and appends what it produced; anything libxml refuses is` |
+|     - |  9636 | `` * `false` with nothing appended.`` |
+|     - |  9637 | ` */` |
+|    44 |  9638 | `DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)` |
+|     1 |  9639 | `{` |
+|    45 |  9640 | `	phl_domnode *pNd = DomThisNode(pCtx);` |
+|    45 |  9641 | `	const char *zXml = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
+|    45 |  9642 | `	xmlNodePtr pFrag,pList = 0;` |
+|     - |  9643 | `	sxu32 nMark;` |
+|     - |  9644 | `	int rc;` |
+|    45 |  9645 | `	if( pNd == 0 ){` |
+|   ! 0 |  9646 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  9647 | `		return PH7_OK;` |
+|     - |  9648 | `	}` |
+|    45 |  9649 | `	pFrag = (xmlNodePtr)pNd->pNode;` |
+|    45 |  9650 | `	if( DomNodeReadOnly(pFrag) ){` |
+|     - |  9651 | ``		/* A CONSTRUCTED fragment -- `new DOMDocumentFragment()` -- refuses`` |
+|     - |  9652 | `		 * this door the way every child-list door refuses an ownerless` |
+|     - |  9653 | `		 * receiver, where its append() takes the same chunk's nodes. */` |
+|     3 |  9654 | `		return DomThrow(pCtx,DOM_ERR_NO_MOD);` |
 |     - |  9655 | `	}` |
-|   101 |  9656 | `	while( pList ){` |
-|    61 |  9657 | `		xmlNodePtr pNext = pList->next;` |
-|    61 |  9658 | `		pList->next = pList->prev = 0;` |
-|    61 |  9659 | `		DomLinkLast(pFrag,pList);` |
-|    61 |  9660 | `		pList = pNext;` |
-|     1 |  9661 | `	}` |
-|    41 |  9662 | `	ph7_result_bool(pCtx,1);` |
-|    41 |  9663 | `	return PH7_OK;` |
-|    23 |  9664 | `}` |
-|     - |  9665 | `/* DOMDocument::getElementsByTagName / DOMElement::getElementsByTagName --` |
-|     - |  9666 | ` * php declares it on those two, not on DOMNode, so both specs name it. */` |
-|   102 |  9667 | `DOM_METHOD(vm_builtin_Dom_getElementsByTagName)` |
-|     1 |  9668 | `{` |
-|   103 |  9669 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   103 |  9670 | `	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
-|     - |  9671 | `	ph7_class_instance *pList;` |
-|   103 |  9672 | `	if( pThis == 0 ){` |
-|   ! 0 |  9673 | `		return PH7_OK;` |
-|     - |  9674 | `	}` |
-|   103 |  9675 | `	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTN,pThis,zName,0,0);` |
-|   103 |  9676 | `	if( pList == 0 ){` |
-|   ! 0 |  9677 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  9678 | `	}` |
-|   103 |  9679 | `	PH7_NativeResultObject(pCtx,pList);` |
-|   103 |  9680 | `	return PH7_OK;` |
-|    52 |  9681 | `}` |
-|     - |  9682 | `/*` |
-|     - |  9683 | ` * DOMDocument::getElementsByTagNameNS / DOMElement::getElementsByTagNameNS` |
-|     - |  9684 | ` * (?string $namespace, string $localName): DOMNodeList` |
-|     - |  9685 | ` *` |
-|     - |  9686 | ` * The namespace-aware half of the only two lookups the DOM has, and the one` |
-|     - |  9687 | ` * every namespaced format is read with -- an XSLT stylesheet, a SOAP envelope, a` |
-|     - |  9688 | ` * sitemap. Undefined here, so the URI could be answered for a node already found` |
-|     - |  9689 | ` * and never searched FOR.` |
-|     - |  9690 | ` *` |
-|     - |  9691 | ` * The list is live and the receiver is never in it, exactly as the name-only` |
-|     - |  9692 | ` * one; DomGebtnMatch carries php's asymmetric wildcard rules.` |
-|     - |  9693 | ` */` |
-|    44 |  9694 | `DOM_METHOD(vm_builtin_Dom_getElementsByTagNameNS)` |
-|     1 |  9695 | `{` |
-|    45 |  9696 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    45 |  9697 | `	const char *zUri = DomArgStrOrNull(nArg,apArg,0);` |
-|    45 |  9698 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
-|     - |  9699 | `	ph7_class_instance *pList;` |
-|    45 |  9700 | `	if( pThis == 0 ){` |
-|   ! 0 |  9701 | `		return PH7_OK;` |
-|     - |  9702 | `	}` |
-|    67 |  9703 | `	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTNNS,pThis,` |
-|    22 |  9704 | `		zName,zUri ? zUri : "",0);` |
-|    45 |  9705 | `	if( pList == 0 ){` |
-|   ! 0 |  9706 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - |  9707 | `	}` |
-|    45 |  9708 | `	PH7_NativeResultObject(pCtx,pList);` |
-|    45 |  9709 | `	return PH7_OK;` |
-|    23 |  9710 | `}` |
-|     - |  9711 |  |
-|     - |  9712 | `/*` |
-|     - |  9713 | ` * Install the DOM library: every class declared from C, no embedded chunk and` |
-|     - |  9714 | ` * no globally visible thunk left.  Called from PH7_VmInit inside the` |
-|     - |  9715 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml (the capture plumbing must` |
-|     - |  9716 | ` * exist) and after the Reflection install (DOMException needs Exception).` |
-|     - |  9717 | ` */` |
-|  5254 |  9718 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
-|     5 |  9719 | `{` |
-|     - |  9720 | `	/* The two slots every wrapper carries. They were public in the chunk and stay` |
-|     - |  9721 | `	 * public: hiding them is the per-class debug-info hook's job (§7.4 (e)), which` |
-|     - |  9722 | `	 * DateTime, XMLWriter, Fiber, Generator and WeakReference all wait on too. */` |
-|     - |  9723 | `	static const PH7_NativePropDef aNodeProp[] = {` |
-|     - |  9724 | `		{ DOM_RES, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - |  9725 | `		{ DOM_DOC, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - |  9726 | `		/* The identity cache. Only a DOCUMENT'S is a document's; a CONSTRUCTED` |
-|     - |  9727 | `		 * ownerless node is its own holder (its $__doc points at itself) and` |
-|     - |  9728 | `		 * caches its tree's wrappers HERE until an insertion adopts them into` |
-|     - |  9729 | `		 * a real document's cache. Empty and unread on every owned node. */` |
-|     - |  9730 | `		{ DOM_NODES, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - |  9731 | `	};` |
-|     - |  9732 | ``	/* php's own signatures. Declaring `DOMNode $node` is what makes`` |
-|     - |  9733 | ``	 * `$n->appendChild(1)` the TypeError php raises instead of a warning from`` |
-|     - |  9734 | `	 * reading ->__res off an int. */` |
-|     - |  9735 | `	static const PH7_NativeMethodDef aNodeMethod[] = {` |
-|     - |  9736 | `		{ "appendChild",    PH7_MOD_PUBLIC, "DOMNode $node", "", vm_builtin_DOMNode_appendChild },` |
-|     - |  9737 | `		{ "insertBefore",   PH7_MOD_PUBLIC, "DOMNode $node, ?DOMNode $child = null", "",` |
-|     - |  9738 | `		  vm_builtin_DOMNode_insertBefore },` |
-|     - |  9739 | `		{ "removeChild",    PH7_MOD_PUBLIC, "DOMNode $child", "", vm_builtin_DOMNode_removeChild },` |
-|     - |  9740 | `		{ "replaceChild",   PH7_MOD_PUBLIC, "DOMNode $node, DOMNode $child", "",` |
-|     - |  9741 | `		  vm_builtin_DOMNode_replaceChild },` |
-|     - |  9742 | `		{ "hasChildNodes",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMNode_hasChildNodes },` |
-|     - |  9743 | `		{ "hasAttributes",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMNode_hasAttributes },` |
-|     - |  9744 | `		{ "isSameNode",     PH7_MOD_PUBLIC, "DOMNode $otherNode", "@bool", vm_builtin_DOMNode_isSameNode },` |
-|     - |  9745 | `		/* php declares no return type at all on this one, not even a tentative` |
-|     - |  9746 | `		 * one, so the row states none either. */` |
-|     - |  9747 | `		{ "cloneNode",      PH7_MOD_PUBLIC, "bool $deep = false", "", vm_builtin_DOMNode_cloneNode },` |
-|     - |  9748 | `		/* php runs the same walk normalizeDocument() does, from the receiver. */` |
-|     - |  9749 | `		{ "normalize",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },` |
-|     - |  9750 | `		{ "getNodePath",    PH7_MOD_PUBLIC, "", "@?string", vm_builtin_DOMNode_getNodePath },` |
-|     - |  9751 | `		{ "isEqualNode",    PH7_MOD_PUBLIC, "?DOMNode $otherNode", "bool",` |
-|     - |  9752 | `		  vm_builtin_DOMNode_isEqualNode },` |
-|     - |  9753 | `		{ "isSupported",    PH7_MOD_PUBLIC, "string $feature, string $version", "@bool",` |
-|     - |  9754 | `		  vm_builtin_DOMNode_isSupported },` |
-|     - |  9755 | `		/* php's declared type names DOMNameSpaceNode, a class PHL does not have;` |
-|     - |  9756 | `		 * the row states it anyway so Reflection reports php's, and nothing can` |
-|     - |  9757 | `		 * be handed one. (php's own zpp rejects a NON-object here with a` |
-|     - |  9758 | `		 * "?object" message instead -- PLAN §7.4, the error-format class.) */` |
-|     - |  9759 | `		{ "contains",       PH7_MOD_PUBLIC, "DOMNode\|DOMNameSpaceNode\|null $other", "bool",` |
-|     - |  9760 | `		  vm_builtin_DOMNode_contains },` |
-|     - |  9761 | `		{ "getRootNode",    PH7_MOD_PUBLIC, "?array $options = null", "DOMNode",` |
-|     - |  9762 | `		  vm_builtin_DOMNode_getRootNode },` |
-|     - |  9763 | `		{ "compareDocumentPosition", PH7_MOD_PUBLIC, "DOMNode $other", "int",` |
-|     - |  9764 | `		  vm_builtin_DOMNode_compareDocumentPosition },` |
-|     - |  9765 | `		{ "getLineNo",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNode_getLineNo },` |
-|     - |  9766 | `		{ "C14N",           PH7_MOD_PUBLIC,` |
-|     - |  9767 | `		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "` |
-|     - |  9768 | `		  "?array $nsPrefixes = null", "@string\|false", vm_builtin_DOMNode_C14N },` |
-|     - |  9769 | `		{ "C14NFile",       PH7_MOD_PUBLIC,` |
-|     - |  9770 | `		  "string $uri, bool $exclusive = false, bool $withComments = false, "` |
-|     - |  9771 | `		  "?array $xpath = null, ?array $nsPrefixes = null", "@int\|false",` |
-|     - |  9772 | `		  vm_builtin_DOMNode_C14NFile },` |
-|     - |  9773 | `		/* The refusal MACHINERY, not decoration: serialize() finds __sleep and` |
-|     - |  9774 | `		 * unserialize() calls __wakeup, so a subclass declaring either escapes. */` |
-|     - |  9775 | `		{ "__sleep",        PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },` |
-|     - |  9776 | `		{ "__wakeup",       PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },` |
-|     - |  9777 | `		{ "lookupNamespaceURI", PH7_MOD_PUBLIC, "?string $prefix", "@?string",` |
-|     - |  9778 | `		  vm_builtin_DOMNode_lookupNamespaceURI },` |
-|     - |  9779 | `		{ "lookupPrefix",   PH7_MOD_PUBLIC, "string $namespace", "@?string",` |
-|     - |  9780 | `		  vm_builtin_DOMNode_lookupPrefix },` |
-|     - |  9781 | `		{ "isDefaultNamespace", PH7_MOD_PUBLIC, "string $namespace", "@bool",` |
-|     - |  9782 | `		  vm_builtin_DOMNode_isDefaultNamespace },` |
-|     - |  9783 | `		{ "__get",          PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNode_get },` |
-|     - |  9784 | `		{ "__isset",        PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNode_isset },` |
-|     - |  9785 | `		{ "__set",          PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNode_set },` |
-|     - |  9786 | `	};` |
-|     - |  9787 | `	/* php declares the six on DOMNode; every node class inherits them. */` |
-|     - |  9788 | `	static const PH7_NativeConstDef aNodeConst[] = {` |
-|     - |  9789 | `		{ "DOCUMENT_POSITION_DISCONNECTED", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
-|     - |  9790 | `		  DOM_POS_DISCONNECTED, 0, 0.0 },` |
-|     - |  9791 | `		{ "DOCUMENT_POSITION_PRECEDING", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
-|     - |  9792 | `		  DOM_POS_PRECEDING, 0, 0.0 },` |
-|     - |  9793 | `		{ "DOCUMENT_POSITION_FOLLOWING", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
-|     - |  9794 | `		  DOM_POS_FOLLOWING, 0, 0.0 },` |
-|     - |  9795 | `		{ "DOCUMENT_POSITION_CONTAINS", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
-|     - |  9796 | `		  DOM_POS_CONTAINS, 0, 0.0 },` |
-|     - |  9797 | `		{ "DOCUMENT_POSITION_CONTAINED_BY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
-|     - |  9798 | `		  DOM_POS_CONTAINED_BY, 0, 0.0 },` |
-|     - |  9799 | `		{ "DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
-|     - |  9800 | `		  DOM_POS_IMPL_SPEC, 0, 0.0 },` |
-|     - |  9801 | `	};` |
-|     - |  9802 | `	static const PH7_NativePropDef aDocProp[] = {` |
-|     - |  9803 | `		/* php models both as VIRTUAL hooked properties reading libxml state, so it` |
-|     - |  9804 | `		 * reports no default; PHL's are real slots and keep theirs, or a read before` |
-|     - |  9805 | `		 * the first write would raise where php answers the parser's current value.` |
-|     - |  9806 | `		 * The TYPE is what the row can state exactly (PLAN §7.4 for the virtual half). */` |
-|     - |  9807 | `		{ "preserveWhiteSpace", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },` |
-|     - |  9808 | `		{ "formatOutput",       PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
-|     - |  9809 | `		/* The four the parse reads (DomParseOptions). php's defaults are all` |
-|     - |  9810 | `		 * false: nothing is validated, expanded, defaulted or recovered unless` |
-|     - |  9811 | `		 * the program asks. */` |
-|     - |  9812 | `		{ "validateOnParse",    PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
-|     - |  9813 | `		{ "resolveExternals",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
-|     - |  9814 | `		{ "substituteEntities", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
-|     - |  9815 | `		{ "recover",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
-|     - |  9816 | `		/* The only one php defaults to TRUE: refusals are exceptions until a` |
-|     - |  9817 | `		 * program asks for warnings (DomThrowAs). */` |
-|     - |  9818 | `		{ "strictErrorChecking", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },` |
-|     - |  9819 | `		/* The identity cache DomWrap keys by node pointer. */` |
-|     - |  9820 | `		{ DOM_NODES,            PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - |  9821 | `		/* ...and the base-class => user-class table registerNodeClass writes. */` |
-|     - |  9822 | `		{ DOM_NCLS,             PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - |  9823 | `	};` |
-|     - |  9824 | `	static const PH7_NativeMethodDef aDocMethod[] = {` |
-|     - |  9825 | `		{ "__construct",          PH7_MOD_PUBLIC, "string $version = '1.0', string $encoding = ''", "",` |
-|     - |  9826 | `		  vm_builtin_DOMDocument_construct },` |
-|     - |  9827 | `		{ "loadXML",              PH7_MOD_PUBLIC, "string $source, int $options = 0", "@bool",` |
-|     - |  9828 | `		  vm_builtin_DOMDocument_loadXML },` |
-|     - |  9829 | `		{ "load",                 PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@bool",` |
-|     - |  9830 | `		  vm_builtin_DOMDocument_load },` |
-|     - |  9831 | `		{ "save",                 PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@int\|false",` |
-|     - |  9832 | `		  vm_builtin_DOMDocument_save },` |
-|     - |  9833 | `		{ "loadHTML",             PH7_MOD_PUBLIC, "string $source, int $options = 0", "@bool",` |
-|     - |  9834 | `		  vm_builtin_DOMDocument_loadHTML },` |
-|     - |  9835 | `		{ "loadHTMLFile",         PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@bool",` |
-|     - |  9836 | `		  vm_builtin_DOMDocument_loadHTMLFile },` |
-|     - |  9837 | `		{ "saveHTML",             PH7_MOD_PUBLIC, "?DOMNode $node = null", "@string\|false",` |
-|     - |  9838 | `		  vm_builtin_DOMDocument_saveHTML },` |
-|     - |  9839 | `		{ "saveHTMLFile",         PH7_MOD_PUBLIC, "string $filename", "@int\|false",` |
-|     - |  9840 | `		  vm_builtin_DOMDocument_saveHTMLFile },` |
-|     - |  9841 | `		{ "saveXML",              PH7_MOD_PUBLIC, "?DOMNode $node = null, int $options = 0", "@string\|false",` |
-|     - |  9842 | `		  vm_builtin_DOMDocument_saveXML },` |
-|     - |  9843 | `		{ "createElement",        PH7_MOD_PUBLIC, "string $localName, string $value = ''", "",` |
-|     - |  9844 | `		  vm_builtin_DOMDocument_createElement },` |
-|     - |  9845 | `		/* php declares no return type at all on this one either -- its answer is` |
-|     - |  9846 | ``		 * `DOMElement\|false` and it never wrote that down. */`` |
-|     - |  9847 | `		{ "createElementNS",      PH7_MOD_PUBLIC,` |
-|     - |  9848 | `		  "?string $namespace, string $qualifiedName, string $value = ''", "",` |
-|     - |  9849 | `		  vm_builtin_DOMDocument_createElementNS },` |
-|     - |  9850 | ``		/* php declares no return type on this one either: `DOMNode\|false`. */`` |
-|     - |  9851 | `		{ "importNode",           PH7_MOD_PUBLIC, "DOMNode $node, bool $deep = false", "",` |
-|     - |  9852 | `		  vm_builtin_DOMDocument_importNode },` |
-|     - |  9853 | `		{ "adoptNode",            PH7_MOD_PUBLIC, "DOMNode $node", "@DOMNode\|false",` |
-|     - |  9854 | `		  vm_builtin_DOMDocument_adoptNode },` |
-|     - |  9855 | `		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "@?DOMElement",` |
-|     - |  9856 | `		  vm_builtin_DOMDocument_getElementById },` |
-|     - |  9857 | `		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",` |
-|     - |  9858 | `		  vm_builtin_DOMDocument_createAttribute },` |
-|     - |  9859 | `		{ "createAttributeNS",    PH7_MOD_PUBLIC, "?string $namespace, string $qualifiedName", "",` |
-|     - |  9860 | `		  vm_builtin_DOMDocument_createAttributeNS },` |
-|     - |  9861 | `		{ "createTextNode",       PH7_MOD_PUBLIC, "string $data", "@DOMText",` |
-|     - |  9862 | `		  vm_builtin_DOMDocument_createTextNode },` |
-|     - |  9863 | `		{ "createComment",        PH7_MOD_PUBLIC, "string $data", "@DOMComment",` |
-|     - |  9864 | `		  vm_builtin_DOMDocument_createComment },` |
-|     - |  9865 | `		{ "createCDATASection",   PH7_MOD_PUBLIC, "string $data", "",` |
-|     - |  9866 | `		  vm_builtin_DOMDocument_createCDATASection },` |
-|     - |  9867 | `		{ "createProcessingInstruction", PH7_MOD_PUBLIC, "string $target, string $data = ''", "",` |
-|     - |  9868 | `		  vm_builtin_DOMDocument_createPI },` |
-|     - |  9869 | `		{ "createEntityReference", PH7_MOD_PUBLIC, "string $name", "",` |
-|     - |  9870 | `		  vm_builtin_DOMDocument_createEntityRef },` |
-|     - |  9871 | `		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "",` |
-|     - |  9872 | `		  vm_builtin_DOMDocument_createFragment },` |
-|     - |  9873 | `		{ "normalizeDocument",    PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },` |
-|     - |  9874 | `		{ "registerNodeClass",    PH7_MOD_PUBLIC, "string $baseClass, ?string $extendedClass",` |
-|     - |  9875 | `		  "true", vm_builtin_DOMDocument_registerNodeClass },` |
-|     - |  9876 | `		{ "schemaValidate",       PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "@bool",` |
-|     - |  9877 | `		  vm_builtin_DOMDocument_schemaValidate },` |
-|     - |  9878 | `		{ "schemaValidateSource", PH7_MOD_PUBLIC, "string $source, int $flags = 0", "@bool",` |
-|     - |  9879 | `		  vm_builtin_DOMDocument_schemaValidateSource },` |
-|     - |  9880 | `		/* php declares no option word on the RelaxNG pair at all. */` |
-|     - |  9881 | `		{ "relaxNGValidate",       PH7_MOD_PUBLIC, "string $filename", "@bool",` |
-|     - |  9882 | `		  vm_builtin_DOMDocument_relaxNGValidate },` |
-|     - |  9883 | `		{ "relaxNGValidateSource", PH7_MOD_PUBLIC, "string $source", "@bool",` |
-|     - |  9884 | `		  vm_builtin_DOMDocument_relaxNGValidateSource },` |
-|     - |  9885 | `		{ "validate",             PH7_MOD_PUBLIC, "", "@bool",` |
-|     - |  9886 | `		  vm_builtin_DOMDocument_validate },` |
-|     - |  9887 | `		{ "xinclude",             PH7_MOD_PUBLIC, "int $options = 0", "@int\|false",` |
-|     - |  9888 | `		  vm_builtin_DOMDocument_xinclude },` |
-|     - |  9889 | `		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",` |
-|     - |  9890 | `		  vm_builtin_Dom_getElementsByTagName },` |
-|     - |  9891 | `		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",` |
-|     - |  9892 | `		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },` |
-|     - |  9893 | `		/* The DOMParentNode three: real (non-tentative) void, one untyped` |
-|     - |  9894 | `		 * variadic -- php's own rows, screened inside the body. */` |
-|     - |  9895 | `		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },` |
-|     - |  9896 | `		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },` |
-|     - |  9897 | `		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },` |
-|     - |  9898 | `		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocument_get },` |
-|     - |  9899 | `		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocument_isset },` |
-|     - |  9900 | `		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMDocument_set },` |
-|     - |  9901 | `	};` |
-|     - |  9902 | `	static const PH7_NativeMethodDef aElemMethod[] = {` |
-|     - |  9903 | `		{ "__construct", PH7_MOD_PUBLIC,` |
-|     - |  9904 | `		  "string $qualifiedName, ?string $value = null, string $namespace = ''", "",` |
-|     - |  9905 | `		  vm_builtin_DOMElement_construct },` |
-|     - |  9906 | `		{ "getAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@string",` |
-|     - |  9907 | `		  vm_builtin_DOMElement_getAttribute },` |
-|     - |  9908 | `		{ "hasAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@bool",` |
-|     - |  9909 | `		  vm_builtin_DOMElement_hasAttribute },` |
-|     - |  9910 | `		{ "setAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName, string $value", "",` |
-|     - |  9911 | `		  vm_builtin_DOMElement_setAttribute },` |
-|     - |  9912 | `		{ "removeAttribute",      PH7_MOD_PUBLIC, "string $qualifiedName", "@bool",` |
-|     - |  9913 | `		  vm_builtin_DOMElement_removeAttribute },` |
-|     - |  9914 | `		{ "getAttributeNS",       PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@string",` |
-|     - |  9915 | `		  vm_builtin_DOMElement_getAttributeNS },` |
-|     - |  9916 | `		/* php declares no return type at all on the five that hand out a NODE --` |
-|     - |  9917 | `		 * not even a tentative one -- because their answer is a union it never` |
-|     - |  9918 | `		 * wrote down. The rows state none either. */` |
-|     - |  9919 | `		{ "getAttributeNode",     PH7_MOD_PUBLIC, "string $qualifiedName", "",` |
-|     - |  9920 | `		  vm_builtin_DOMElement_getAttributeNode },` |
-|     - |  9921 | `		{ "getAttributeNodeNS",   PH7_MOD_PUBLIC, "?string $namespace, string $localName", "",` |
-|     - |  9922 | `		  vm_builtin_DOMElement_getAttributeNodeNS },` |
-|     - |  9923 | `		{ "setAttributeNode",     PH7_MOD_PUBLIC, "DOMAttr $attr", "",` |
-|     - |  9924 | `		  vm_builtin_DOMElement_setAttributeNode },` |
-|     - |  9925 | `		{ "setAttributeNodeNS",   PH7_MOD_PUBLIC, "DOMAttr $attr", "",` |
-|     - |  9926 | `		  vm_builtin_DOMElement_setAttributeNodeNS },` |
-|     - |  9927 | `		{ "removeAttributeNode",  PH7_MOD_PUBLIC, "DOMAttr $attr", "",` |
-|     - |  9928 | `		  vm_builtin_DOMElement_removeAttributeNode },` |
-|     - |  9929 | `		{ "getAttributeNames",    PH7_MOD_PUBLIC, "", "array",` |
-|     - |  9930 | `		  vm_builtin_DOMElement_getAttributeNames },` |
-|     - |  9931 | `		{ "hasAttributeNS",       PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@bool",` |
-|     - |  9932 | `		  vm_builtin_DOMElement_hasAttributeNS },` |
-|     - |  9933 | `		{ "removeAttributeNS",    PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@void",` |
-|     - |  9934 | `		  vm_builtin_DOMElement_removeAttributeNS },` |
-|     - |  9935 | `		{ "toggleAttribute",      PH7_MOD_PUBLIC, "string $qualifiedName, ?bool $force = null", "bool",` |
-|     - |  9936 | `		  vm_builtin_DOMElement_toggleAttribute },` |
-|     - |  9937 | `		{ "setIdAttribute",       PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "@void",` |
-|     - |  9938 | `		  vm_builtin_DOMElement_setIdAttribute },` |
-|     - |  9939 | `		{ "setIdAttributeNS",     PH7_MOD_PUBLIC,` |
-|     - |  9940 | `		  "string $namespace, string $qualifiedName, bool $isId", "@void",` |
-|     - |  9941 | `		  vm_builtin_DOMElement_setIdAttributeNS },` |
-|     - |  9942 | `		{ "setIdAttributeNode",   PH7_MOD_PUBLIC, "DOMAttr $attr, bool $isId", "@void",` |
-|     - |  9943 | `		  vm_builtin_DOMElement_setIdAttributeNode },` |
-|     - |  9944 | `		{ "setAttributeNS",       PH7_MOD_PUBLIC,` |
-|     - |  9945 | `		  "?string $namespace, string $qualifiedName, string $value", "@void",` |
-|     - |  9946 | `		  vm_builtin_DOMElement_setAttributeNS },` |
-|     - |  9947 | `		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",` |
-|     - |  9948 | `		  vm_builtin_Dom_getElementsByTagName },` |
-|     - |  9949 | `		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",` |
-|     - |  9950 | `		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },` |
-|     - |  9951 | `		/* The DOMChildNode four, php's order on this class. */` |
-|     - |  9952 | `		{ "remove",          PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf },` |
-|     - |  9953 | `		{ "before",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_before },` |
-|     - |  9954 | `		{ "after",           PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_after },` |
-|     - |  9955 | `		{ "replaceWith",     PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceWith },` |
-|     - |  9956 | `		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },` |
-|     - |  9957 | `		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },` |
-|     - |  9958 | `		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },` |
-|     - |  9959 | `		/* The 8.3 pair. php declares the first's return as a plain ?DOMElement` |
-|     - |  9960 | `		 * and the second's as a real void. */` |
-|     - |  9961 | `		{ "insertAdjacentElement", PH7_MOD_PUBLIC, "string $where, DOMElement $element",` |
-|     - |  9962 | `		  "?DOMElement", vm_builtin_DOMElement_insertAdjacentElement },` |
-|     - |  9963 | `		{ "insertAdjacentText",    PH7_MOD_PUBLIC, "string $where, string $data", "void",` |
-|     - |  9964 | `		  vm_builtin_DOMElement_insertAdjacentText },` |
-|     - |  9965 | `		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },` |
-|     - |  9966 | `		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },` |
-|     - |  9967 | `		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },` |
-|     - |  9968 | `	};` |
-|     - |  9969 | `	static const PH7_NativeMethodDef aAttrMethod[] = {` |
-|     - |  9970 | `		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",` |
-|     - |  9971 | `		  vm_builtin_DOMAttr_construct },` |
-|     - |  9972 | `		{ "isId",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMAttr_isId },` |
-|     - |  9973 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },` |
-|     - |  9974 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMAttr_isset },` |
-|     - |  9975 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMAttr_set },` |
-|     - |  9976 | `	};` |
-|     - |  9977 | `	static const PH7_NativeMethodDef aCharMethod[] = {` |
-|     - |  9978 | `		/* Every offset and count here is in UTF-8 CHARACTERS, php's unit. */` |
-|     - |  9979 | `		{ "appendData",    PH7_MOD_PUBLIC, "string $data", "@true",` |
-|     - |  9980 | `		  vm_builtin_DOMCharacterData_appendData },` |
-|     - |  9981 | `		{ "substringData", PH7_MOD_PUBLIC, "int $offset, int $count", "",` |
-|     - |  9982 | `		  vm_builtin_DOMCharacterData_substringData },` |
-|     - |  9983 | `		{ "insertData",    PH7_MOD_PUBLIC, "int $offset, string $data", "@bool",` |
-|     - |  9984 | `		  vm_builtin_DOMCharacterData_insertData },` |
-|     - |  9985 | `		{ "deleteData",    PH7_MOD_PUBLIC, "int $offset, int $count", "@bool",` |
-|     - |  9986 | `		  vm_builtin_DOMCharacterData_deleteData },` |
-|     - |  9987 | `		{ "replaceData",   PH7_MOD_PUBLIC, "int $offset, int $count, string $data", "@bool",` |
-|     - |  9988 | `		  vm_builtin_DOMCharacterData_replaceData },` |
-|     - |  9989 | `		/* The DOMChildNode four, php's order on THIS class -- replaceWith` |
-|     - |  9990 | `		 * leads here where DOMElement's list starts at remove. */` |
-|     - |  9991 | `		{ "replaceWith", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceWith },` |
-|     - |  9992 | `		{ "remove",      PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf },` |
-|     - |  9993 | `		{ "before",      PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_before },` |
-|     - |  9994 | `		{ "after",       PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_after },` |
-|     - |  9995 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },` |
-|     - |  9996 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },` |
-|     - |  9997 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },` |
-|     - |  9998 | `	};` |
-|     - |  9999 | `	static const PH7_NativeMethodDef aPiMethod[] = {` |
-|     - | 10000 | `		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",` |
-|     - | 10001 | `		  vm_builtin_DOMProcessingInstruction_construct },` |
-|     - | 10002 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMProcessingInstruction_get },` |
-|     - | 10003 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMProcessingInstruction_isset },` |
-|     - | 10004 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
-|     - | 10005 | `		  vm_builtin_DOMProcessingInstruction_set },` |
-|     - | 10006 | `	};` |
-|     - | 10007 | `	static const PH7_NativeMethodDef aFragMethod[] = {` |
-|     - | 10008 | `		{ "__construct", PH7_MOD_PUBLIC, "", "",` |
-|     - | 10009 | `		  vm_builtin_DOMDocumentFragment_construct },` |
-|     - | 10010 | `		{ "appendXML", PH7_MOD_PUBLIC, "string $data", "@bool",` |
-|     - | 10011 | `		  vm_builtin_DOMDocumentFragment_appendXML },` |
-|     - | 10012 | `		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },` |
-|     - | 10013 | `		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },` |
-|     - | 10014 | `		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },` |
-|     - | 10015 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentFragment_get },` |
-|     - | 10016 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentFragment_isset },` |
-|     - | 10017 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
-|     - | 10018 | `		  vm_builtin_DOMDocumentFragment_set },` |
-|     - | 10019 | `	};` |
-|     - | 10020 | `	static const PH7_NativeMethodDef aTextMethod[] = {` |
-|     - | 10021 | `		{ "__construct", PH7_MOD_PUBLIC, "string $data = ''", "",` |
-|     - | 10022 | `		  vm_builtin_DOMText_construct },` |
-|     - | 10023 | `		{ "splitText", PH7_MOD_PUBLIC, "int $offset", "", vm_builtin_DOMText_splitText },` |
-|     - | 10024 | `		/* php's 8.x rename and the name it renamed, one body. */` |
-|     - | 10025 | `		{ "isWhitespaceInElementContent", PH7_MOD_PUBLIC, "", "@bool",` |
-|     - | 10026 | `		  vm_builtin_DOMText_isWhitespace },` |
-|     - | 10027 | `		{ "isElementContentWhitespace",   PH7_MOD_PUBLIC, "", "@bool",` |
-|     - | 10028 | `		  vm_builtin_DOMText_isWhitespace },` |
-|     - | 10029 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },` |
-|     - | 10030 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },` |
-|     - | 10031 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMText_set },` |
-|     - | 10032 | `	};` |
-|     - | 10033 | `	static const PH7_NativeMethodDef aEntRefMethod[] = {` |
-|     - | 10034 | `		{ "__construct", PH7_MOD_PUBLIC, "string $name", "",` |
-|     - | 10035 | `		  vm_builtin_DOMEntityReference_construct },` |
-|     - | 10036 | `	};` |
-|     - | 10037 | `	/* The DTD half declares no method of its own at all -- php's whole` |
-|     - | 10038 | `	 * DOMDocumentType surface is properties over DOMNode's method list. */` |
-|     - | 10039 | `	static const PH7_NativeMethodDef aDocTypeMethod[] = {` |
-|     - | 10040 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentType_get },` |
-|     - | 10041 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentType_isset },` |
-|     - | 10042 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
-|     - | 10043 | `		  vm_builtin_DOMDocumentType_set },` |
-|     - | 10044 | `	};` |
-|     - | 10045 | `	static const PH7_NativeMethodDef aEntityMethod[] = {` |
-|     - | 10046 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMEntity_get },` |
-|     - | 10047 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMEntity_isset },` |
-|     - | 10048 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
-|     - | 10049 | `		  vm_builtin_DOMEntity_set },` |
-|     - | 10050 | `	};` |
-|     - | 10051 | `	/* php's factory class: three ordinary instance methods and no state. */` |
-|     - | 10052 | `	static const PH7_NativeMethodDef aImplMethod[] = {` |
-|     - | 10053 | `		{ "createDocumentType", PH7_MOD_PUBLIC,` |
-|     - | 10054 | `		  "string $qualifiedName, string $publicId = '', string $systemId = ''", "",` |
-|     - | 10055 | `		  vm_builtin_DOMImplementation_createDocumentType },` |
-|     - | 10056 | `		{ "createDocument", PH7_MOD_PUBLIC,` |
-|     - | 10057 | `		  "?string $namespace = null, string $qualifiedName = '', "` |
-|     - | 10058 | `		  "?DOMDocumentType $doctype = null", "DOMDocument",` |
-|     - | 10059 | `		  vm_builtin_DOMImplementation_createDocument },` |
-|     - | 10060 | `		{ "hasFeature", PH7_MOD_PUBLIC, "string $feature, string $version", "bool",` |
-|     - | 10061 | `		  vm_builtin_DOMImplementation_hasFeature },` |
-|     - | 10062 | `	};` |
-|     - | 10063 | `	static const PH7_NativeMethodDef aNotationMethod[] = {` |
-|     - | 10064 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNotation_get },` |
-|     - | 10065 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNotation_isset },` |
-|     - | 10066 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
-|     - | 10067 | `		  vm_builtin_DOMNotation_set },` |
-|     - | 10068 | `	};` |
-|     - | 10069 | `	/* The comment and CDATA constructors -- the only method either class` |
-|     - | 10070 | `	 * declares of its own; php's CDATA data is REQUIRED where the other two` |
-|     - | 10071 | `	 * default. */` |
-|     - | 10072 | `	static const PH7_NativeMethodDef aCommentMethod[] = {` |
-|     - | 10073 | `		{ "__construct", PH7_MOD_PUBLIC, "string $data = ''", "",` |
-|     - | 10074 | `		  vm_builtin_DOMComment_construct },` |
-|     - | 10075 | `	};` |
-|     - | 10076 | `	static const PH7_NativeMethodDef aCdataMethod[] = {` |
-|     - | 10077 | `		{ "__construct", PH7_MOD_PUBLIC, "string $data", "",` |
-|     - | 10078 | `		  vm_builtin_DOMCdataSection_construct },` |
-|     - | 10079 | `	};` |
-|     - | 10080 | `	/* DOMNodeList and DOMNamedNodeMap share a slot layout: what a live view is OF` |
-|     - | 10081 | `	 * ($__owner), the document to wrap results against ($__doc), and -- for the` |
-|     - | 10082 | `	 * two node-list kinds -- the tag name or the frozen snapshot. */` |
-|     - | 10083 | `	static const PH7_NativePropDef aListProp[] = {` |
-|     - | 10084 | `		{ DNL_KIND,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|     - | 10085 | `		{ DOM_DOC,       PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },` |
-|     - | 10086 | `		{ DNL_OWNER,     PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },` |
-|     - | 10087 | `		{ DNL_NAME,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
-|     - | 10088 | `		/* ...and, for the namespace-aware lookup, the URI beside the name. */` |
-|     - | 10089 | `		{ DNL_URI,       PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
-|     - | 10090 | `		/* The cached node snapshot, missed by the 2 Aug hidden-slot sweep exactly as` |
-|     - | 10091 | `		 * Closure's three were: php presents no property on either class this table` |
-|     - | 10092 | ``		 * declares (DOMNodeList, DOMNamedNodeMap), and `__snap` was on var_dump,`` |
-|     - | 10093 | `		 * (array), get_object_vars, foreach, json_encode and Reflection. */` |
-|     - | 10094 | `		{ DNL_SNAP_SLOT, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },` |
-|     - | 10095 | `	};` |
-|     - | 10096 | `	static const PH7_NativeMethodDef aListMethod[] = {` |
-|     - | 10097 | `		{ "count",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNodeList_count },` |
-|     - | 10098 | `		{ "item",        PH7_MOD_PUBLIC, "int $index", "", vm_builtin_DOMNodeList_item },` |
-|     - | 10099 | `		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },` |
-|     - | 10100 | `		{ "__get",       PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNodeList_get },` |
-|     - | 10101 | `		{ "__isset",     PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNodeList_isset },` |
-|     - | 10102 | `		{ "__set",       PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNodeList_set },` |
-|     - | 10103 | `	};` |
-|     - | 10104 | `	static const PH7_NativeMethodDef aMapMethod[] = {` |
-|     - | 10105 | `		{ "count",        PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNamedNodeMap_count },` |
-|     - | 10106 | `		{ "item",         PH7_MOD_PUBLIC, "int $index", "@?DOMNode", vm_builtin_DOMNamedNodeMap_item },` |
-|     - | 10107 | `		{ "getNamedItem", PH7_MOD_PUBLIC, "string $qualifiedName", "@?DOMNode",` |
-|     - | 10108 | `		  vm_builtin_DOMNamedNodeMap_getNamedItem },` |
-|     - | 10109 | `		{ "getNamedItemNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@?DOMNode",` |
-|     - | 10110 | `		  vm_builtin_DOMNamedNodeMap_getNamedItemNS },` |
-|     - | 10111 | `		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },` |
-|     - | 10112 | `		{ "__get",        PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNamedNodeMap_get },` |
-|     - | 10113 | `		{ "__isset",      PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNamedNodeMap_isset },` |
-|     - | 10114 | `		{ "__set",        PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNamedNodeMap_set },` |
-|     - | 10115 | `	};` |
-|     - | 10116 | `	/* The declaration itself, the document it belongs to, and the element that` |
-|     - | 10117 | `	 * MAKES it -- php's parentNode/parentElement. */` |
-|     - | 10118 | `	static const PH7_NativePropDef aNsNodeProp[] = {` |
-|     - | 10119 | `		{ DOM_RES,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 10120 | `		{ DOM_DOC,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 10121 | `		{ DOM_NS_OWNER, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 10122 | `	};` |
-|     - | 10123 | `	static const PH7_NativeMethodDef aNsNodeMethod[] = {` |
-|     - | 10124 | `		{ "__sleep",  PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },` |
-|     - | 10125 | `		{ "__wakeup", PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },` |
-|     - | 10126 | `		{ "__get",    PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNameSpaceNode_get },` |
-|     - | 10127 | `		{ "__isset",  PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNameSpaceNode_isset },` |
-|     - | 10128 | `		{ "__set",    PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
-|     - | 10129 | `		  vm_builtin_DOMNameSpaceNode_set },` |
-|     - | 10130 | `	};` |
-|     - | 10131 | `	static const PH7_NativePropDef aXPathProp[] = {` |
-|     - | 10132 | `		/* Written by the constructor, which is why the slot can carry php's` |
-|     - | 10133 | `		 * non-nullable type with no default at all. php models both declared` |
-|     - | 10134 | `		 * slots as VIRTUAL (the §7.4 residual); the readonly flag here is what` |
-|     - | 10135 | `		 * answers php's write refusal ("Cannot modify readonly property"),` |
-|     - | 10136 | `		 * at the price of isReadOnly() reading true where php reads false. */` |
-|     - | 10137 | `		{ "document", PH7_MOD_PUBLIC\|PH7_MOD_READONLY,` |
-|     - | 10138 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "DOMDocument" },` |
-|     - | 10139 | `		{ "registerNodeNamespaces", PH7_MOD_PUBLIC,` |
-|     - | 10140 | `		  { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },` |
-|     - | 10141 | `		{ XP_NSREG,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 10142 | `		{ XP_FNMODE, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN,` |
-|     - | 10143 | `		  { 0, 0, PH7_NATIVE_VAL_INT, XP_MODE_NONE, 0, 0.0 }, 0 },` |
-|     - | 10144 | `		{ XP_FNREG,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 10145 | `		{ XP_NSFN,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 10146 | `	};` |
-|     - | 10147 | `	static const PH7_NativeMethodDef aXPathMethod[] = {` |
-|     - | 10148 | `		{ "__construct", PH7_MOD_PUBLIC, "DOMDocument $document, bool $registerNodeNS = true", "",` |
-|     - | 10149 | `		  vm_builtin_DOMXPath_construct },` |
-|     - | 10150 | `		{ "query",       PH7_MOD_PUBLIC,` |
-|     - | 10151 | `		  "string $expression, ?DOMNode $contextNode = null, bool $registerNodeNS = true", "@mixed",` |
-|     - | 10152 | `		  vm_builtin_DOMXPath_query },` |
-|     - | 10153 | `		{ "evaluate",    PH7_MOD_PUBLIC,` |
-|     - | 10154 | `		  "string $expression, ?DOMNode $contextNode = null, bool $registerNodeNS = true", "@mixed",` |
-|     - | 10155 | `		  vm_builtin_DOMXPath_evaluate },` |
-|     - | 10156 | `		{ "registerNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace", "@bool",` |
-|     - | 10157 | `		  vm_builtin_DOMXPath_registerNamespace },` |
-|     - | 10158 | `		{ "registerPhpFunctions", PH7_MOD_PUBLIC, "array\|string\|null $restrict = null", "@void",` |
-|     - | 10159 | `		  vm_builtin_DOMXPath_registerPhpFunctions },` |
-|     - | 10160 | `		{ "registerPhpFunctionNS", PH7_MOD_PUBLIC,` |
-|     - | 10161 | `		  "string $namespaceURI, string $name, callable $callable", "void",` |
-|     - | 10162 | `		  vm_builtin_DOMXPath_registerPhpFunctionNS },` |
-|     - | 10163 | `		{ "quote", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "string $str", "string",` |
-|     - | 10164 | `		  vm_builtin_DOMXPath_quote },` |
-|     - | 10165 | `	};` |
-|     - | 10166 | `	/* Bases before subclasses: PH7_InstallNativeClasses declares the whole table` |
-|     - | 10167 | `	 * before touching a method, but PH7_ClassInherit still needs the parent to` |
-|     - | 10168 | `	 * exist when the child's row is declared. */` |
-|     - | 10169 | `	/* php refuses to serialize a NODE class, and its refusal is the soft kind: the` |
-|     - | 10170 | `	 * deny handler sits behind the __serialize()/__sleep() lookup, so a subclass that` |
-|     - | 10171 | `	 * declares either one is serialized normally and the sentence says so. DOMXPath's` |
-|     - | 10172 | `	 * is the HARD kind — a subclass declaring __serialize() is refused there too — and` |
-|     - | 10173 | ``	 * DOMNodeList/DOMNamedNodeMap are not refused at all (`0:{}`), which is what they`` |
-|     - | 10174 | `	 * became once serialize() stopped emitting the hidden slot. Restating the flag on` |
-|     - | 10175 | `	 * every row is rule 29: a native subclass does not inherit its parent's. */` |
-|     - | 10176 | `	/* php's 8.0 insertion interfaces: three untyped-variadic void methods on` |
-|     - | 10177 | `	 * the parent side (the child side is DOMChildNode below).  A class row` |
-|     - | 10178 | `	 * declares its methods before the implement phase runs, so nothing is` |
-|     - | 10179 | `	 * stubbed abstract. */` |
-|     - | 10180 | `	static const PH7_NativeMethodDef aParentNodeIf[] = {` |
-|     - | 10181 | `		{ "append",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
-|     - | 10182 | `		{ "prepend",         PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
-|     - | 10183 | `		{ "replaceChildren", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
-|     - | 10184 | `	};` |
-|     - | 10185 | `	static const PH7_NativeMethodDef aChildNodeIf[] = {` |
-|     - | 10186 | `		{ "remove",      PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "void", 0 },` |
-|     - | 10187 | `		{ "before",      PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
-|     - | 10188 | `		{ "after",       PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
-|     - | 10189 | `		{ "replaceWith", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
-|     - | 10190 | `	};` |
-|     - | 10191 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|     - | 10192 | `		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10193 | `		{ "DOMParentNode", 0, 0, PH7_CLASS_INTERFACE,` |
-|     - | 10194 | `		  aParentNodeIf, SX_ARRAYSIZE(aParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10195 | `		{ "DOMChildNode", 0, 0, PH7_CLASS_INTERFACE,` |
-|     - | 10196 | `		  aChildNodeIf, SX_ARRAYSIZE(aChildNodeIf), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10197 | `		{ "DOMNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10198 | `		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),` |
-|     - | 10199 | `		  aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, 0 },` |
-|     - | 10200 | `		{ "DOMDocument", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10201 | `		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0, 0 },` |
-|     - | 10202 | `		{ "DOMElement", "DOMNode", "DOMParentNode,DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10203 | `		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10204 | `		{ "DOMAttr", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10205 | `		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10206 | `		{ "DOMCharacterData", "DOMNode", "DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10207 | `		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10208 | `		{ "DOMText", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10209 | `		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10210 | `		{ "DOMComment", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10211 | `		  aCommentMethod, SX_ARRAYSIZE(aCommentMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10212 | `		{ "DOMCdataSection", "DOMText", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10213 | `		  aCdataMethod, SX_ARRAYSIZE(aCdataMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10214 | ``		/* php declares the PI under DOMNode (its `data` is its own property, not`` |
-|     - | 10215 | `		 * DOMCharacterData's), the fragment and the entity reference plainly. */` |
-|     - | 10216 | `		{ "DOMProcessingInstruction", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10217 | `		  aPiMethod, SX_ARRAYSIZE(aPiMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10218 | `		{ "DOMDocumentFragment", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10219 | `		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10220 | `		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10221 | `		  aEntRefMethod, SX_ARRAYSIZE(aEntRefMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10222 | `		{ "DOMDocumentType", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10223 | `		  aDocTypeMethod, SX_ARRAYSIZE(aDocTypeMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10224 | `		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10225 | `		  aEntityMethod, SX_ARRAYSIZE(aEntityMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10226 | `		{ "DOMImplementation", 0, 0, 0,` |
-|     - | 10227 | `		  aImplMethod, SX_ARRAYSIZE(aImplMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10228 | `		{ "DOMNotation", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10229 | `		  aNotationMethod, SX_ARRAYSIZE(aNotationMethod), 0, 0, 0, 0, 0, 0, 0 },` |
-|     - | 10230 | `		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the` |
-|     - | 10231 | `		 * list carry its own cursor) and Countable. */` |
-|     - | 10232 | `		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,` |
-|     - | 10233 | `		  aListMethod, SX_ARRAYSIZE(aListMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),` |
-|     - | 10234 | `		  0, &sDomListIterVtab, 0 },` |
-|     - | 10235 | `		{ "DOMNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,` |
-|     - | 10236 | `		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),` |
-|     - | 10237 | `		  0, &sDomMapIterVtab, 0 },` |
-|     - | 10238 | `		/* php's own: a class of its OWN, with no parent at all -- a namespace` |
-|     - | 10239 | ``		 * declaration is not a DOMNode there, and `$ns instanceof DOMNode` is`` |
-|     - | 10240 | `		 * false. Its refusal to serialize is the same soft kind the node` |
-|     - | 10241 | `		 * classes carry. */` |
-|     - | 10242 | `		{ "DOMNameSpaceNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
-|     - | 10243 | `		  aNsNodeMethod, SX_ARRAYSIZE(aNsNodeMethod), 0, 0,` |
-|     - | 10244 | `		  aNsNodeProp, SX_ARRAYSIZE(aNsNodeProp), 0, 0, 0 },` |
-|     - | 10245 | `		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NOCLONE,` |
-|     - | 10246 | `		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp), 0, 0, 0 },` |
-|     - | 10247 | `	};` |
-|  5259 | 10248 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|  5259 | 10249 | `	if( rc == SXRET_OK ){` |
-|     - | 10250 | `		/* The clone hook (ph7_class::xClone, php's clone_obj): stated on every` |
-|     - | 10251 | `		 * node class -- rule 29, a hook is per-row and never inherited between` |
-|     - | 10252 | `		 * native rows -- and assigned HERE because PH7_NativeClassSpec carries` |
-|     - | 10253 | `		 * no field for it. The document's copies the whole document; a user` |
-|     - | 10254 | `		 * subclass reaches the nearest ancestor's hook through the engine's` |
-|     - | 10255 | `		 * chain walk, php's handler inheritance. */` |
-|     - | 10256 | `		static const char * const azNodeClone[] = {` |
-|     - | 10257 | `			"DOMNode", "DOMElement", "DOMAttr", "DOMCharacterData", "DOMText",` |
-|     - | 10258 | `			"DOMComment", "DOMCdataSection", "DOMProcessingInstruction",` |
-|     - | 10259 | `			"DOMDocumentFragment", "DOMEntityReference", "DOMDocumentType"` |
-|     - | 10260 | `		};` |
-|     - | 10261 | `		sxu32 n;` |
-|     - | 10262 | `		ph7_class *pClass;` |
-| 63053 | 10263 | `		for( n = 0 ; n < SX_ARRAYSIZE(azNodeClone) ; ++n ){` |
-| 86696 | 10264 | `			pClass = PH7_VmExtractClass(&(*pVm),azNodeClone[n],` |
-| 57794 | 10265 | `				(sxu32)SyStrlen(azNodeClone[n]),FALSE,0);` |
-| 57799 | 10266 | `			if( pClass ){` |
-| 57799 | 10267 | `				pClass->xClone = DomInstanceClone;` |
-| 28897 | 10268 | `			}` |
-| 28902 | 10269 | `		}` |
-|  5259 | 10270 | `		pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",sizeof("DOMDocument")-1,FALSE,0);` |
-|  5259 | 10271 | `		if( pClass ){` |
-|  5259 | 10272 | `			pClass->xClone = DomInstanceCloneDoc;` |
-|  2627 | 10273 | `		}` |
-|     - | 10274 | `		/* The dimension handlers (ph7_class::xDim, php's read_dimension /` |
-|     - | 10275 | `		 * has_dimension), assigned here for the same reason the clone hook is:` |
-|     - | 10276 | `		 * PH7_NativeClassSpec carries no field for them, and php's own two` |
-|     - | 10277 | `		 * classes wear them without declaring ArrayAccess. */` |
-|  5259 | 10278 | `		pClass = PH7_VmExtractClass(&(*pVm),"DOMNodeList",sizeof("DOMNodeList")-1,FALSE,0);` |
-|  5259 | 10279 | `		if( pClass ){` |
-|  5259 | 10280 | `			pClass->xDim = DomListDim;` |
-|  2627 | 10281 | `		}` |
-|  5259 | 10282 | `		pClass = PH7_VmExtractClass(&(*pVm),"DOMNamedNodeMap",sizeof("DOMNamedNodeMap")-1,FALSE,0);` |
-|  5259 | 10283 | `		if( pClass ){` |
-|  5259 | 10284 | `			pClass->xDim = DomMapDim;` |
-|  2627 | 10285 | `		}` |
-|  2627 | 10286 | `	}` |
-|  5259 | 10287 | `	return rc;` |
-|     5 | 10288 | `}` |
-|     - | 10289 |  |
-|     - | 10290 | `#else` |
-|     - | 10291 | `/* Ensure non-empty translation unit when libxml is disabled (MSVC C4206) */` |
-|     - | 10292 | `typedef int vm_dom_unused;` |
-|     - | 10293 | `#endif /* PH7_ENABLE_LIBXML */` |
-|     - | 10294 |  |
+|    43 |  9656 | `	nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);` |
+|    43 |  9657 | `	rc = xmlParseBalancedChunkMemory(pFrag->doc,0,0,0,(const xmlChar *)zXml,&pList);` |
+|    43 |  9658 | `	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,"DOMDocumentFragment::appendXML");` |
+|    43 |  9659 | `	if( rc != 0 ){` |
+|     3 |  9660 | `		if( pList ){` |
+|   ! 0 |  9661 | `			xmlFreeNodeList(pList);` |
+|   ! 0 |  9662 | `		}` |
+|     3 |  9663 | `		ph7_result_bool(pCtx,0);` |
+|     3 |  9664 | `		return PH7_OK;` |
+|     - |  9665 | `	}` |
+|   101 |  9666 | `	while( pList ){` |
+|    61 |  9667 | `		xmlNodePtr pNext = pList->next;` |
+|    61 |  9668 | `		pList->next = pList->prev = 0;` |
+|    61 |  9669 | `		DomLinkLast(pFrag,pList);` |
+|    61 |  9670 | `		pList = pNext;` |
+|     1 |  9671 | `	}` |
+|    41 |  9672 | `	ph7_result_bool(pCtx,1);` |
+|    41 |  9673 | `	return PH7_OK;` |
+|    23 |  9674 | `}` |
+|     - |  9675 | `/* DOMDocument::getElementsByTagName / DOMElement::getElementsByTagName --` |
+|     - |  9676 | ` * php declares it on those two, not on DOMNode, so both specs name it. */` |
+|   102 |  9677 | `DOM_METHOD(vm_builtin_Dom_getElementsByTagName)` |
+|     1 |  9678 | `{` |
+|   103 |  9679 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   103 |  9680 | `	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";` |
+|     - |  9681 | `	ph7_class_instance *pList;` |
+|   103 |  9682 | `	if( pThis == 0 ){` |
+|   ! 0 |  9683 | `		return PH7_OK;` |
+|     - |  9684 | `	}` |
+|   103 |  9685 | `	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTN,pThis,zName,0,0);` |
+|   103 |  9686 | `	if( pList == 0 ){` |
+|   ! 0 |  9687 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  9688 | `	}` |
+|   103 |  9689 | `	PH7_NativeResultObject(pCtx,pList);` |
+|   103 |  9690 | `	return PH7_OK;` |
+|    52 |  9691 | `}` |
+|     - |  9692 | `/*` |
+|     - |  9693 | ` * DOMDocument::getElementsByTagNameNS / DOMElement::getElementsByTagNameNS` |
+|     - |  9694 | ` * (?string $namespace, string $localName): DOMNodeList` |
+|     - |  9695 | ` *` |
+|     - |  9696 | ` * The namespace-aware half of the only two lookups the DOM has, and the one` |
+|     - |  9697 | ` * every namespaced format is read with -- an XSLT stylesheet, a SOAP envelope, a` |
+|     - |  9698 | ` * sitemap. Undefined here, so the URI could be answered for a node already found` |
+|     - |  9699 | ` * and never searched FOR.` |
+|     - |  9700 | ` *` |
+|     - |  9701 | ` * The list is live and the receiver is never in it, exactly as the name-only` |
+|     - |  9702 | ` * one; DomGebtnMatch carries php's asymmetric wildcard rules.` |
+|     - |  9703 | ` */` |
+|    44 |  9704 | `DOM_METHOD(vm_builtin_Dom_getElementsByTagNameNS)` |
+|     1 |  9705 | `{` |
+|    45 |  9706 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    45 |  9707 | `	const char *zUri = DomArgStrOrNull(nArg,apArg,0);` |
+|    45 |  9708 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
+|     - |  9709 | `	ph7_class_instance *pList;` |
+|    45 |  9710 | `	if( pThis == 0 ){` |
+|   ! 0 |  9711 | `		return PH7_OK;` |
+|     - |  9712 | `	}` |
+|    67 |  9713 | `	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTNNS,pThis,` |
+|    22 |  9714 | `		zName,zUri ? zUri : "",0);` |
+|    45 |  9715 | `	if( pList == 0 ){` |
+|   ! 0 |  9716 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - |  9717 | `	}` |
+|    45 |  9718 | `	PH7_NativeResultObject(pCtx,pList);` |
+|    45 |  9719 | `	return PH7_OK;` |
+|    23 |  9720 | `}` |
+|     - |  9721 |  |
+|     - |  9722 | `/*` |
+|     - |  9723 | ` * Install the DOM library: every class declared from C, no embedded chunk and` |
+|     - |  9724 | ` * no globally visible thunk left.  Called from PH7_VmInit inside the` |
+|     - |  9725 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml (the capture plumbing must` |
+|     - |  9726 | ` * exist) and after the Reflection install (DOMException needs Exception).` |
+|     - |  9727 | ` */` |
+|  5740 |  9728 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
+|     5 |  9729 | `{` |
+|     - |  9730 | `	/* The two slots every wrapper carries. They were public in the chunk and stay` |
+|     - |  9731 | `	 * public: hiding them is the per-class debug-info hook's job (§7.4 (e)), which` |
+|     - |  9732 | `	 * DateTime, XMLWriter, Fiber, Generator and WeakReference all wait on too. */` |
+|     - |  9733 | `	static const PH7_NativePropDef aNodeProp[] = {` |
+|     - |  9734 | `		{ DOM_RES, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - |  9735 | `		{ DOM_DOC, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - |  9736 | `		/* The identity cache. Only a DOCUMENT'S is a document's; a CONSTRUCTED` |
+|     - |  9737 | `		 * ownerless node is its own holder (its $__doc points at itself) and` |
+|     - |  9738 | `		 * caches its tree's wrappers HERE until an insertion adopts them into` |
+|     - |  9739 | `		 * a real document's cache. Empty and unread on every owned node. */` |
+|     - |  9740 | `		{ DOM_NODES, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - |  9741 | `	};` |
+|     - |  9742 | ``	/* php's own signatures. Declaring `DOMNode $node` is what makes`` |
+|     - |  9743 | ``	 * `$n->appendChild(1)` the TypeError php raises instead of a warning from`` |
+|     - |  9744 | `	 * reading ->__res off an int. */` |
+|     - |  9745 | `	static const PH7_NativeMethodDef aNodeMethod[] = {` |
+|     - |  9746 | `		{ "appendChild",    PH7_MOD_PUBLIC, "DOMNode $node", "", vm_builtin_DOMNode_appendChild },` |
+|     - |  9747 | `		{ "insertBefore",   PH7_MOD_PUBLIC, "DOMNode $node, ?DOMNode $child = null", "",` |
+|     - |  9748 | `		  vm_builtin_DOMNode_insertBefore },` |
+|     - |  9749 | `		{ "removeChild",    PH7_MOD_PUBLIC, "DOMNode $child", "", vm_builtin_DOMNode_removeChild },` |
+|     - |  9750 | `		{ "replaceChild",   PH7_MOD_PUBLIC, "DOMNode $node, DOMNode $child", "",` |
+|     - |  9751 | `		  vm_builtin_DOMNode_replaceChild },` |
+|     - |  9752 | `		{ "hasChildNodes",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMNode_hasChildNodes },` |
+|     - |  9753 | `		{ "hasAttributes",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMNode_hasAttributes },` |
+|     - |  9754 | `		{ "isSameNode",     PH7_MOD_PUBLIC, "DOMNode $otherNode", "@bool", vm_builtin_DOMNode_isSameNode },` |
+|     - |  9755 | `		/* php declares no return type at all on this one, not even a tentative` |
+|     - |  9756 | `		 * one, so the row states none either. */` |
+|     - |  9757 | `		{ "cloneNode",      PH7_MOD_PUBLIC, "bool $deep = false", "", vm_builtin_DOMNode_cloneNode },` |
+|     - |  9758 | `		/* php runs the same walk normalizeDocument() does, from the receiver. */` |
+|     - |  9759 | `		{ "normalize",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },` |
+|     - |  9760 | `		{ "getNodePath",    PH7_MOD_PUBLIC, "", "@?string", vm_builtin_DOMNode_getNodePath },` |
+|     - |  9761 | `		{ "isEqualNode",    PH7_MOD_PUBLIC, "?DOMNode $otherNode", "bool",` |
+|     - |  9762 | `		  vm_builtin_DOMNode_isEqualNode },` |
+|     - |  9763 | `		{ "isSupported",    PH7_MOD_PUBLIC, "string $feature, string $version", "@bool",` |
+|     - |  9764 | `		  vm_builtin_DOMNode_isSupported },` |
+|     - |  9765 | `		/* php's declared type names DOMNameSpaceNode, a class PHL does not have;` |
+|     - |  9766 | `		 * the row states it anyway so Reflection reports php's, and nothing can` |
+|     - |  9767 | `		 * be handed one. (php's own zpp rejects a NON-object here with a` |
+|     - |  9768 | `		 * "?object" message instead -- PLAN §7.4, the error-format class.) */` |
+|     - |  9769 | `		{ "contains",       PH7_MOD_PUBLIC, "DOMNode\|DOMNameSpaceNode\|null $other", "bool",` |
+|     - |  9770 | `		  vm_builtin_DOMNode_contains },` |
+|     - |  9771 | `		{ "getRootNode",    PH7_MOD_PUBLIC, "?array $options = null", "DOMNode",` |
+|     - |  9772 | `		  vm_builtin_DOMNode_getRootNode },` |
+|     - |  9773 | `		{ "compareDocumentPosition", PH7_MOD_PUBLIC, "DOMNode $other", "int",` |
+|     - |  9774 | `		  vm_builtin_DOMNode_compareDocumentPosition },` |
+|     - |  9775 | `		{ "getLineNo",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNode_getLineNo },` |
+|     - |  9776 | `		{ "C14N",           PH7_MOD_PUBLIC,` |
+|     - |  9777 | `		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "` |
+|     - |  9778 | `		  "?array $nsPrefixes = null", "@string\|false", vm_builtin_DOMNode_C14N },` |
+|     - |  9779 | `		{ "C14NFile",       PH7_MOD_PUBLIC,` |
+|     - |  9780 | `		  "string $uri, bool $exclusive = false, bool $withComments = false, "` |
+|     - |  9781 | `		  "?array $xpath = null, ?array $nsPrefixes = null", "@int\|false",` |
+|     - |  9782 | `		  vm_builtin_DOMNode_C14NFile },` |
+|     - |  9783 | `		/* The refusal MACHINERY, not decoration: serialize() finds __sleep and` |
+|     - |  9784 | `		 * unserialize() calls __wakeup, so a subclass declaring either escapes. */` |
+|     - |  9785 | `		{ "__sleep",        PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },` |
+|     - |  9786 | `		{ "__wakeup",       PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },` |
+|     - |  9787 | `		{ "lookupNamespaceURI", PH7_MOD_PUBLIC, "?string $prefix", "@?string",` |
+|     - |  9788 | `		  vm_builtin_DOMNode_lookupNamespaceURI },` |
+|     - |  9789 | `		{ "lookupPrefix",   PH7_MOD_PUBLIC, "string $namespace", "@?string",` |
+|     - |  9790 | `		  vm_builtin_DOMNode_lookupPrefix },` |
+|     - |  9791 | `		{ "isDefaultNamespace", PH7_MOD_PUBLIC, "string $namespace", "@bool",` |
+|     - |  9792 | `		  vm_builtin_DOMNode_isDefaultNamespace },` |
+|     - |  9793 | `		{ "__get",          PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNode_get },` |
+|     - |  9794 | `		{ "__isset",        PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNode_isset },` |
+|     - |  9795 | `		{ "__set",          PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNode_set },` |
+|     - |  9796 | `	};` |
+|     - |  9797 | `	/* php declares the six on DOMNode; every node class inherits them. */` |
+|     - |  9798 | `	static const PH7_NativeConstDef aNodeConst[] = {` |
+|     - |  9799 | `		{ "DOCUMENT_POSITION_DISCONNECTED", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
+|     - |  9800 | `		  DOM_POS_DISCONNECTED, 0, 0.0 },` |
+|     - |  9801 | `		{ "DOCUMENT_POSITION_PRECEDING", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
+|     - |  9802 | `		  DOM_POS_PRECEDING, 0, 0.0 },` |
+|     - |  9803 | `		{ "DOCUMENT_POSITION_FOLLOWING", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
+|     - |  9804 | `		  DOM_POS_FOLLOWING, 0, 0.0 },` |
+|     - |  9805 | `		{ "DOCUMENT_POSITION_CONTAINS", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
+|     - |  9806 | `		  DOM_POS_CONTAINS, 0, 0.0 },` |
+|     - |  9807 | `		{ "DOCUMENT_POSITION_CONTAINED_BY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
+|     - |  9808 | `		  DOM_POS_CONTAINED_BY, 0, 0.0 },` |
+|     - |  9809 | `		{ "DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,` |
+|     - |  9810 | `		  DOM_POS_IMPL_SPEC, 0, 0.0 },` |
+|     - |  9811 | `	};` |
+|     - |  9812 | `	static const PH7_NativePropDef aDocProp[] = {` |
+|     - |  9813 | `		/* php models both as VIRTUAL hooked properties reading libxml state, so it` |
+|     - |  9814 | `		 * reports no default; PHL's are real slots and keep theirs, or a read before` |
+|     - |  9815 | `		 * the first write would raise where php answers the parser's current value.` |
+|     - |  9816 | `		 * The TYPE is what the row can state exactly (PLAN §7.4 for the virtual half). */` |
+|     - |  9817 | `		{ "preserveWhiteSpace", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },` |
+|     - |  9818 | `		{ "formatOutput",       PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
+|     - |  9819 | `		/* The four the parse reads (DomParseOptions). php's defaults are all` |
+|     - |  9820 | `		 * false: nothing is validated, expanded, defaulted or recovered unless` |
+|     - |  9821 | `		 * the program asks. */` |
+|     - |  9822 | `		{ "validateOnParse",    PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
+|     - |  9823 | `		{ "resolveExternals",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
+|     - |  9824 | `		{ "substituteEntities", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
+|     - |  9825 | `		{ "recover",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
+|     - |  9826 | `		/* The only one php defaults to TRUE: refusals are exceptions until a` |
+|     - |  9827 | `		 * program asks for warnings (DomThrowAs). */` |
+|     - |  9828 | `		{ "strictErrorChecking", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },` |
+|     - |  9829 | `		/* The identity cache DomWrap keys by node pointer. */` |
+|     - |  9830 | `		{ DOM_NODES,            PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - |  9831 | `		/* ...and the base-class => user-class table registerNodeClass writes. */` |
+|     - |  9832 | `		{ DOM_NCLS,             PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - |  9833 | `	};` |
+|     - |  9834 | `	static const PH7_NativeMethodDef aDocMethod[] = {` |
+|     - |  9835 | `		{ "__construct",          PH7_MOD_PUBLIC, "string $version = '1.0', string $encoding = ''", "",` |
+|     - |  9836 | `		  vm_builtin_DOMDocument_construct },` |
+|     - |  9837 | `		{ "loadXML",              PH7_MOD_PUBLIC, "string $source, int $options = 0", "@bool",` |
+|     - |  9838 | `		  vm_builtin_DOMDocument_loadXML },` |
+|     - |  9839 | `		{ "load",                 PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@bool",` |
+|     - |  9840 | `		  vm_builtin_DOMDocument_load },` |
+|     - |  9841 | `		{ "save",                 PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@int\|false",` |
+|     - |  9842 | `		  vm_builtin_DOMDocument_save },` |
+|     - |  9843 | `		{ "loadHTML",             PH7_MOD_PUBLIC, "string $source, int $options = 0", "@bool",` |
+|     - |  9844 | `		  vm_builtin_DOMDocument_loadHTML },` |
+|     - |  9845 | `		{ "loadHTMLFile",         PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@bool",` |
+|     - |  9846 | `		  vm_builtin_DOMDocument_loadHTMLFile },` |
+|     - |  9847 | `		{ "saveHTML",             PH7_MOD_PUBLIC, "?DOMNode $node = null", "@string\|false",` |
+|     - |  9848 | `		  vm_builtin_DOMDocument_saveHTML },` |
+|     - |  9849 | `		{ "saveHTMLFile",         PH7_MOD_PUBLIC, "string $filename", "@int\|false",` |
+|     - |  9850 | `		  vm_builtin_DOMDocument_saveHTMLFile },` |
+|     - |  9851 | `		{ "saveXML",              PH7_MOD_PUBLIC, "?DOMNode $node = null, int $options = 0", "@string\|false",` |
+|     - |  9852 | `		  vm_builtin_DOMDocument_saveXML },` |
+|     - |  9853 | `		{ "createElement",        PH7_MOD_PUBLIC, "string $localName, string $value = ''", "",` |
+|     - |  9854 | `		  vm_builtin_DOMDocument_createElement },` |
+|     - |  9855 | `		/* php declares no return type at all on this one either -- its answer is` |
+|     - |  9856 | ``		 * `DOMElement\|false` and it never wrote that down. */`` |
+|     - |  9857 | `		{ "createElementNS",      PH7_MOD_PUBLIC,` |
+|     - |  9858 | `		  "?string $namespace, string $qualifiedName, string $value = ''", "",` |
+|     - |  9859 | `		  vm_builtin_DOMDocument_createElementNS },` |
+|     - |  9860 | ``		/* php declares no return type on this one either: `DOMNode\|false`. */`` |
+|     - |  9861 | `		{ "importNode",           PH7_MOD_PUBLIC, "DOMNode $node, bool $deep = false", "",` |
+|     - |  9862 | `		  vm_builtin_DOMDocument_importNode },` |
+|     - |  9863 | `		{ "adoptNode",            PH7_MOD_PUBLIC, "DOMNode $node", "@DOMNode\|false",` |
+|     - |  9864 | `		  vm_builtin_DOMDocument_adoptNode },` |
+|     - |  9865 | `		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "@?DOMElement",` |
+|     - |  9866 | `		  vm_builtin_DOMDocument_getElementById },` |
+|     - |  9867 | `		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",` |
+|     - |  9868 | `		  vm_builtin_DOMDocument_createAttribute },` |
+|     - |  9869 | `		{ "createAttributeNS",    PH7_MOD_PUBLIC, "?string $namespace, string $qualifiedName", "",` |
+|     - |  9870 | `		  vm_builtin_DOMDocument_createAttributeNS },` |
+|     - |  9871 | `		{ "createTextNode",       PH7_MOD_PUBLIC, "string $data", "@DOMText",` |
+|     - |  9872 | `		  vm_builtin_DOMDocument_createTextNode },` |
+|     - |  9873 | `		{ "createComment",        PH7_MOD_PUBLIC, "string $data", "@DOMComment",` |
+|     - |  9874 | `		  vm_builtin_DOMDocument_createComment },` |
+|     - |  9875 | `		{ "createCDATASection",   PH7_MOD_PUBLIC, "string $data", "",` |
+|     - |  9876 | `		  vm_builtin_DOMDocument_createCDATASection },` |
+|     - |  9877 | `		{ "createProcessingInstruction", PH7_MOD_PUBLIC, "string $target, string $data = ''", "",` |
+|     - |  9878 | `		  vm_builtin_DOMDocument_createPI },` |
+|     - |  9879 | `		{ "createEntityReference", PH7_MOD_PUBLIC, "string $name", "",` |
+|     - |  9880 | `		  vm_builtin_DOMDocument_createEntityRef },` |
+|     - |  9881 | `		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "",` |
+|     - |  9882 | `		  vm_builtin_DOMDocument_createFragment },` |
+|     - |  9883 | `		{ "normalizeDocument",    PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },` |
+|     - |  9884 | `		{ "registerNodeClass",    PH7_MOD_PUBLIC, "string $baseClass, ?string $extendedClass",` |
+|     - |  9885 | `		  "true", vm_builtin_DOMDocument_registerNodeClass },` |
+|     - |  9886 | `		{ "schemaValidate",       PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "@bool",` |
+|     - |  9887 | `		  vm_builtin_DOMDocument_schemaValidate },` |
+|     - |  9888 | `		{ "schemaValidateSource", PH7_MOD_PUBLIC, "string $source, int $flags = 0", "@bool",` |
+|     - |  9889 | `		  vm_builtin_DOMDocument_schemaValidateSource },` |
+|     - |  9890 | `		/* php declares no option word on the RelaxNG pair at all. */` |
+|     - |  9891 | `		{ "relaxNGValidate",       PH7_MOD_PUBLIC, "string $filename", "@bool",` |
+|     - |  9892 | `		  vm_builtin_DOMDocument_relaxNGValidate },` |
+|     - |  9893 | `		{ "relaxNGValidateSource", PH7_MOD_PUBLIC, "string $source", "@bool",` |
+|     - |  9894 | `		  vm_builtin_DOMDocument_relaxNGValidateSource },` |
+|     - |  9895 | `		{ "validate",             PH7_MOD_PUBLIC, "", "@bool",` |
+|     - |  9896 | `		  vm_builtin_DOMDocument_validate },` |
+|     - |  9897 | `		{ "xinclude",             PH7_MOD_PUBLIC, "int $options = 0", "@int\|false",` |
+|     - |  9898 | `		  vm_builtin_DOMDocument_xinclude },` |
+|     - |  9899 | `		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",` |
+|     - |  9900 | `		  vm_builtin_Dom_getElementsByTagName },` |
+|     - |  9901 | `		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",` |
+|     - |  9902 | `		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },` |
+|     - |  9903 | `		/* The DOMParentNode three: real (non-tentative) void, one untyped` |
+|     - |  9904 | `		 * variadic -- php's own rows, screened inside the body. */` |
+|     - |  9905 | `		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },` |
+|     - |  9906 | `		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },` |
+|     - |  9907 | `		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },` |
+|     - |  9908 | `		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocument_get },` |
+|     - |  9909 | `		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocument_isset },` |
+|     - |  9910 | `		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMDocument_set },` |
+|     - |  9911 | `	};` |
+|     - |  9912 | `	static const PH7_NativeMethodDef aElemMethod[] = {` |
+|     - |  9913 | `		{ "__construct", PH7_MOD_PUBLIC,` |
+|     - |  9914 | `		  "string $qualifiedName, ?string $value = null, string $namespace = ''", "",` |
+|     - |  9915 | `		  vm_builtin_DOMElement_construct },` |
+|     - |  9916 | `		{ "getAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@string",` |
+|     - |  9917 | `		  vm_builtin_DOMElement_getAttribute },` |
+|     - |  9918 | `		{ "hasAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@bool",` |
+|     - |  9919 | `		  vm_builtin_DOMElement_hasAttribute },` |
+|     - |  9920 | `		{ "setAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName, string $value", "",` |
+|     - |  9921 | `		  vm_builtin_DOMElement_setAttribute },` |
+|     - |  9922 | `		{ "removeAttribute",      PH7_MOD_PUBLIC, "string $qualifiedName", "@bool",` |
+|     - |  9923 | `		  vm_builtin_DOMElement_removeAttribute },` |
+|     - |  9924 | `		{ "getAttributeNS",       PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@string",` |
+|     - |  9925 | `		  vm_builtin_DOMElement_getAttributeNS },` |
+|     - |  9926 | `		/* php declares no return type at all on the five that hand out a NODE --` |
+|     - |  9927 | `		 * not even a tentative one -- because their answer is a union it never` |
+|     - |  9928 | `		 * wrote down. The rows state none either. */` |
+|     - |  9929 | `		{ "getAttributeNode",     PH7_MOD_PUBLIC, "string $qualifiedName", "",` |
+|     - |  9930 | `		  vm_builtin_DOMElement_getAttributeNode },` |
+|     - |  9931 | `		{ "getAttributeNodeNS",   PH7_MOD_PUBLIC, "?string $namespace, string $localName", "",` |
+|     - |  9932 | `		  vm_builtin_DOMElement_getAttributeNodeNS },` |
+|     - |  9933 | `		{ "setAttributeNode",     PH7_MOD_PUBLIC, "DOMAttr $attr", "",` |
+|     - |  9934 | `		  vm_builtin_DOMElement_setAttributeNode },` |
+|     - |  9935 | `		{ "setAttributeNodeNS",   PH7_MOD_PUBLIC, "DOMAttr $attr", "",` |
+|     - |  9936 | `		  vm_builtin_DOMElement_setAttributeNodeNS },` |
+|     - |  9937 | `		{ "removeAttributeNode",  PH7_MOD_PUBLIC, "DOMAttr $attr", "",` |
+|     - |  9938 | `		  vm_builtin_DOMElement_removeAttributeNode },` |
+|     - |  9939 | `		{ "getAttributeNames",    PH7_MOD_PUBLIC, "", "array",` |
+|     - |  9940 | `		  vm_builtin_DOMElement_getAttributeNames },` |
+|     - |  9941 | `		{ "hasAttributeNS",       PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@bool",` |
+|     - |  9942 | `		  vm_builtin_DOMElement_hasAttributeNS },` |
+|     - |  9943 | `		{ "removeAttributeNS",    PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@void",` |
+|     - |  9944 | `		  vm_builtin_DOMElement_removeAttributeNS },` |
+|     - |  9945 | `		{ "toggleAttribute",      PH7_MOD_PUBLIC, "string $qualifiedName, ?bool $force = null", "bool",` |
+|     - |  9946 | `		  vm_builtin_DOMElement_toggleAttribute },` |
+|     - |  9947 | `		{ "setIdAttribute",       PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "@void",` |
+|     - |  9948 | `		  vm_builtin_DOMElement_setIdAttribute },` |
+|     - |  9949 | `		{ "setIdAttributeNS",     PH7_MOD_PUBLIC,` |
+|     - |  9950 | `		  "string $namespace, string $qualifiedName, bool $isId", "@void",` |
+|     - |  9951 | `		  vm_builtin_DOMElement_setIdAttributeNS },` |
+|     - |  9952 | `		{ "setIdAttributeNode",   PH7_MOD_PUBLIC, "DOMAttr $attr, bool $isId", "@void",` |
+|     - |  9953 | `		  vm_builtin_DOMElement_setIdAttributeNode },` |
+|     - |  9954 | `		{ "setAttributeNS",       PH7_MOD_PUBLIC,` |
+|     - |  9955 | `		  "?string $namespace, string $qualifiedName, string $value", "@void",` |
+|     - |  9956 | `		  vm_builtin_DOMElement_setAttributeNS },` |
+|     - |  9957 | `		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",` |
+|     - |  9958 | `		  vm_builtin_Dom_getElementsByTagName },` |
+|     - |  9959 | `		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",` |
+|     - |  9960 | `		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },` |
+|     - |  9961 | `		/* The DOMChildNode four, php's order on this class. */` |
+|     - |  9962 | `		{ "remove",          PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf },` |
+|     - |  9963 | `		{ "before",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_before },` |
+|     - |  9964 | `		{ "after",           PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_after },` |
+|     - |  9965 | `		{ "replaceWith",     PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceWith },` |
+|     - |  9966 | `		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },` |
+|     - |  9967 | `		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },` |
+|     - |  9968 | `		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },` |
+|     - |  9969 | `		/* The 8.3 pair. php declares the first's return as a plain ?DOMElement` |
+|     - |  9970 | `		 * and the second's as a real void. */` |
+|     - |  9971 | `		{ "insertAdjacentElement", PH7_MOD_PUBLIC, "string $where, DOMElement $element",` |
+|     - |  9972 | `		  "?DOMElement", vm_builtin_DOMElement_insertAdjacentElement },` |
+|     - |  9973 | `		{ "insertAdjacentText",    PH7_MOD_PUBLIC, "string $where, string $data", "void",` |
+|     - |  9974 | `		  vm_builtin_DOMElement_insertAdjacentText },` |
+|     - |  9975 | `		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },` |
+|     - |  9976 | `		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },` |
+|     - |  9977 | `		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },` |
+|     - |  9978 | `	};` |
+|     - |  9979 | `	static const PH7_NativeMethodDef aAttrMethod[] = {` |
+|     - |  9980 | `		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",` |
+|     - |  9981 | `		  vm_builtin_DOMAttr_construct },` |
+|     - |  9982 | `		{ "isId",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMAttr_isId },` |
+|     - |  9983 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },` |
+|     - |  9984 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMAttr_isset },` |
+|     - |  9985 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMAttr_set },` |
+|     - |  9986 | `	};` |
+|     - |  9987 | `	static const PH7_NativeMethodDef aCharMethod[] = {` |
+|     - |  9988 | `		/* Every offset and count here is in UTF-8 CHARACTERS, php's unit. */` |
+|     - |  9989 | `		{ "appendData",    PH7_MOD_PUBLIC, "string $data", "@true",` |
+|     - |  9990 | `		  vm_builtin_DOMCharacterData_appendData },` |
+|     - |  9991 | `		{ "substringData", PH7_MOD_PUBLIC, "int $offset, int $count", "",` |
+|     - |  9992 | `		  vm_builtin_DOMCharacterData_substringData },` |
+|     - |  9993 | `		{ "insertData",    PH7_MOD_PUBLIC, "int $offset, string $data", "@bool",` |
+|     - |  9994 | `		  vm_builtin_DOMCharacterData_insertData },` |
+|     - |  9995 | `		{ "deleteData",    PH7_MOD_PUBLIC, "int $offset, int $count", "@bool",` |
+|     - |  9996 | `		  vm_builtin_DOMCharacterData_deleteData },` |
+|     - |  9997 | `		{ "replaceData",   PH7_MOD_PUBLIC, "int $offset, int $count, string $data", "@bool",` |
+|     - |  9998 | `		  vm_builtin_DOMCharacterData_replaceData },` |
+|     - |  9999 | `		/* The DOMChildNode four, php's order on THIS class -- replaceWith` |
+|     - | 10000 | `		 * leads here where DOMElement's list starts at remove. */` |
+|     - | 10001 | `		{ "replaceWith", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceWith },` |
+|     - | 10002 | `		{ "remove",      PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf },` |
+|     - | 10003 | `		{ "before",      PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_before },` |
+|     - | 10004 | `		{ "after",       PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_after },` |
+|     - | 10005 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },` |
+|     - | 10006 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },` |
+|     - | 10007 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },` |
+|     - | 10008 | `	};` |
+|     - | 10009 | `	static const PH7_NativeMethodDef aPiMethod[] = {` |
+|     - | 10010 | `		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",` |
+|     - | 10011 | `		  vm_builtin_DOMProcessingInstruction_construct },` |
+|     - | 10012 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMProcessingInstruction_get },` |
+|     - | 10013 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMProcessingInstruction_isset },` |
+|     - | 10014 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
+|     - | 10015 | `		  vm_builtin_DOMProcessingInstruction_set },` |
+|     - | 10016 | `	};` |
+|     - | 10017 | `	static const PH7_NativeMethodDef aFragMethod[] = {` |
+|     - | 10018 | `		{ "__construct", PH7_MOD_PUBLIC, "", "",` |
+|     - | 10019 | `		  vm_builtin_DOMDocumentFragment_construct },` |
+|     - | 10020 | `		{ "appendXML", PH7_MOD_PUBLIC, "string $data", "@bool",` |
+|     - | 10021 | `		  vm_builtin_DOMDocumentFragment_appendXML },` |
+|     - | 10022 | `		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },` |
+|     - | 10023 | `		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },` |
+|     - | 10024 | `		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },` |
+|     - | 10025 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentFragment_get },` |
+|     - | 10026 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentFragment_isset },` |
+|     - | 10027 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
+|     - | 10028 | `		  vm_builtin_DOMDocumentFragment_set },` |
+|     - | 10029 | `	};` |
+|     - | 10030 | `	static const PH7_NativeMethodDef aTextMethod[] = {` |
+|     - | 10031 | `		{ "__construct", PH7_MOD_PUBLIC, "string $data = ''", "",` |
+|     - | 10032 | `		  vm_builtin_DOMText_construct },` |
+|     - | 10033 | `		{ "splitText", PH7_MOD_PUBLIC, "int $offset", "", vm_builtin_DOMText_splitText },` |
+|     - | 10034 | `		/* php's 8.x rename and the name it renamed, one body. */` |
+|     - | 10035 | `		{ "isWhitespaceInElementContent", PH7_MOD_PUBLIC, "", "@bool",` |
+|     - | 10036 | `		  vm_builtin_DOMText_isWhitespace },` |
+|     - | 10037 | `		{ "isElementContentWhitespace",   PH7_MOD_PUBLIC, "", "@bool",` |
+|     - | 10038 | `		  vm_builtin_DOMText_isWhitespace },` |
+|     - | 10039 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },` |
+|     - | 10040 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },` |
+|     - | 10041 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMText_set },` |
+|     - | 10042 | `	};` |
+|     - | 10043 | `	static const PH7_NativeMethodDef aEntRefMethod[] = {` |
+|     - | 10044 | `		{ "__construct", PH7_MOD_PUBLIC, "string $name", "",` |
+|     - | 10045 | `		  vm_builtin_DOMEntityReference_construct },` |
+|     - | 10046 | `	};` |
+|     - | 10047 | `	/* The DTD half declares no method of its own at all -- php's whole` |
+|     - | 10048 | `	 * DOMDocumentType surface is properties over DOMNode's method list. */` |
+|     - | 10049 | `	static const PH7_NativeMethodDef aDocTypeMethod[] = {` |
+|     - | 10050 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentType_get },` |
+|     - | 10051 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentType_isset },` |
+|     - | 10052 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
+|     - | 10053 | `		  vm_builtin_DOMDocumentType_set },` |
+|     - | 10054 | `	};` |
+|     - | 10055 | `	static const PH7_NativeMethodDef aEntityMethod[] = {` |
+|     - | 10056 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMEntity_get },` |
+|     - | 10057 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMEntity_isset },` |
+|     - | 10058 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
+|     - | 10059 | `		  vm_builtin_DOMEntity_set },` |
+|     - | 10060 | `	};` |
+|     - | 10061 | `	/* php's factory class: three ordinary instance methods and no state. */` |
+|     - | 10062 | `	static const PH7_NativeMethodDef aImplMethod[] = {` |
+|     - | 10063 | `		{ "createDocumentType", PH7_MOD_PUBLIC,` |
+|     - | 10064 | `		  "string $qualifiedName, string $publicId = '', string $systemId = ''", "",` |
+|     - | 10065 | `		  vm_builtin_DOMImplementation_createDocumentType },` |
+|     - | 10066 | `		{ "createDocument", PH7_MOD_PUBLIC,` |
+|     - | 10067 | `		  "?string $namespace = null, string $qualifiedName = '', "` |
+|     - | 10068 | `		  "?DOMDocumentType $doctype = null", "DOMDocument",` |
+|     - | 10069 | `		  vm_builtin_DOMImplementation_createDocument },` |
+|     - | 10070 | `		{ "hasFeature", PH7_MOD_PUBLIC, "string $feature, string $version", "bool",` |
+|     - | 10071 | `		  vm_builtin_DOMImplementation_hasFeature },` |
+|     - | 10072 | `	};` |
+|     - | 10073 | `	static const PH7_NativeMethodDef aNotationMethod[] = {` |
+|     - | 10074 | `		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNotation_get },` |
+|     - | 10075 | `		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNotation_isset },` |
+|     - | 10076 | `		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
+|     - | 10077 | `		  vm_builtin_DOMNotation_set },` |
+|     - | 10078 | `	};` |
+|     - | 10079 | `	/* The comment and CDATA constructors -- the only method either class` |
+|     - | 10080 | `	 * declares of its own; php's CDATA data is REQUIRED where the other two` |
+|     - | 10081 | `	 * default. */` |
+|     - | 10082 | `	static const PH7_NativeMethodDef aCommentMethod[] = {` |
+|     - | 10083 | `		{ "__construct", PH7_MOD_PUBLIC, "string $data = ''", "",` |
+|     - | 10084 | `		  vm_builtin_DOMComment_construct },` |
+|     - | 10085 | `	};` |
+|     - | 10086 | `	static const PH7_NativeMethodDef aCdataMethod[] = {` |
+|     - | 10087 | `		{ "__construct", PH7_MOD_PUBLIC, "string $data", "",` |
+|     - | 10088 | `		  vm_builtin_DOMCdataSection_construct },` |
+|     - | 10089 | `	};` |
+|     - | 10090 | `	/* DOMNodeList and DOMNamedNodeMap share a slot layout: what a live view is OF` |
+|     - | 10091 | `	 * ($__owner), the document to wrap results against ($__doc), and -- for the` |
+|     - | 10092 | `	 * two node-list kinds -- the tag name or the frozen snapshot. */` |
+|     - | 10093 | `	static const PH7_NativePropDef aListProp[] = {` |
+|     - | 10094 | `		{ DNL_KIND,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|     - | 10095 | `		{ DOM_DOC,       PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },` |
+|     - | 10096 | `		{ DNL_OWNER,     PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },` |
+|     - | 10097 | `		{ DNL_NAME,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
+|     - | 10098 | `		/* ...and, for the namespace-aware lookup, the URI beside the name. */` |
+|     - | 10099 | `		{ DNL_URI,       PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
+|     - | 10100 | `		/* The cached node snapshot, missed by the 2 Aug hidden-slot sweep exactly as` |
+|     - | 10101 | `		 * Closure's three were: php presents no property on either class this table` |
+|     - | 10102 | ``		 * declares (DOMNodeList, DOMNamedNodeMap), and `__snap` was on var_dump,`` |
+|     - | 10103 | `		 * (array), get_object_vars, foreach, json_encode and Reflection. */` |
+|     - | 10104 | `		{ DNL_SNAP_SLOT, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },` |
+|     - | 10105 | `	};` |
+|     - | 10106 | `	static const PH7_NativeMethodDef aListMethod[] = {` |
+|     - | 10107 | `		{ "count",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNodeList_count },` |
+|     - | 10108 | `		{ "item",        PH7_MOD_PUBLIC, "int $index", "", vm_builtin_DOMNodeList_item },` |
+|     - | 10109 | `		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },` |
+|     - | 10110 | `		{ "__get",       PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNodeList_get },` |
+|     - | 10111 | `		{ "__isset",     PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNodeList_isset },` |
+|     - | 10112 | `		{ "__set",       PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNodeList_set },` |
+|     - | 10113 | `	};` |
+|     - | 10114 | `	static const PH7_NativeMethodDef aMapMethod[] = {` |
+|     - | 10115 | `		{ "count",        PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNamedNodeMap_count },` |
+|     - | 10116 | `		{ "item",         PH7_MOD_PUBLIC, "int $index", "@?DOMNode", vm_builtin_DOMNamedNodeMap_item },` |
+|     - | 10117 | `		{ "getNamedItem", PH7_MOD_PUBLIC, "string $qualifiedName", "@?DOMNode",` |
+|     - | 10118 | `		  vm_builtin_DOMNamedNodeMap_getNamedItem },` |
+|     - | 10119 | `		{ "getNamedItemNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@?DOMNode",` |
+|     - | 10120 | `		  vm_builtin_DOMNamedNodeMap_getNamedItemNS },` |
+|     - | 10121 | `		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },` |
+|     - | 10122 | `		{ "__get",        PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNamedNodeMap_get },` |
+|     - | 10123 | `		{ "__isset",      PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNamedNodeMap_isset },` |
+|     - | 10124 | `		{ "__set",        PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNamedNodeMap_set },` |
+|     - | 10125 | `	};` |
+|     - | 10126 | `	/* The declaration itself, the document it belongs to, and the element that` |
+|     - | 10127 | `	 * MAKES it -- php's parentNode/parentElement. */` |
+|     - | 10128 | `	static const PH7_NativePropDef aNsNodeProp[] = {` |
+|     - | 10129 | `		{ DOM_RES,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 10130 | `		{ DOM_DOC,      PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 10131 | `		{ DOM_NS_OWNER, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 10132 | `	};` |
+|     - | 10133 | `	static const PH7_NativeMethodDef aNsNodeMethod[] = {` |
+|     - | 10134 | `		{ "__sleep",  PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },` |
+|     - | 10135 | `		{ "__wakeup", PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },` |
+|     - | 10136 | `		{ "__get",    PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNameSpaceNode_get },` |
+|     - | 10137 | `		{ "__isset",  PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNameSpaceNode_isset },` |
+|     - | 10138 | `		{ "__set",    PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",` |
+|     - | 10139 | `		  vm_builtin_DOMNameSpaceNode_set },` |
+|     - | 10140 | `	};` |
+|     - | 10141 | `	static const PH7_NativePropDef aXPathProp[] = {` |
+|     - | 10142 | `		/* Written by the constructor, which is why the slot can carry php's` |
+|     - | 10143 | `		 * non-nullable type with no default at all. php models both declared` |
+|     - | 10144 | `		 * slots as VIRTUAL (the §7.4 residual); the readonly flag here is what` |
+|     - | 10145 | `		 * answers php's write refusal ("Cannot modify readonly property"),` |
+|     - | 10146 | `		 * at the price of isReadOnly() reading true where php reads false. */` |
+|     - | 10147 | `		{ "document", PH7_MOD_PUBLIC\|PH7_MOD_READONLY,` |
+|     - | 10148 | `		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "DOMDocument" },` |
+|     - | 10149 | `		{ "registerNodeNamespaces", PH7_MOD_PUBLIC,` |
+|     - | 10150 | `		  { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },` |
+|     - | 10151 | `		{ XP_NSREG,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 10152 | `		{ XP_FNMODE, PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN,` |
+|     - | 10153 | `		  { 0, 0, PH7_NATIVE_VAL_INT, XP_MODE_NONE, 0, 0.0 }, 0 },` |
+|     - | 10154 | `		{ XP_FNREG,  PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 10155 | `		{ XP_NSFN,   PH7_MOD_PUBLIC\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 10156 | `	};` |
+|     - | 10157 | `	static const PH7_NativeMethodDef aXPathMethod[] = {` |
+|     - | 10158 | `		{ "__construct", PH7_MOD_PUBLIC, "DOMDocument $document, bool $registerNodeNS = true", "",` |
+|     - | 10159 | `		  vm_builtin_DOMXPath_construct },` |
+|     - | 10160 | `		{ "query",       PH7_MOD_PUBLIC,` |
+|     - | 10161 | `		  "string $expression, ?DOMNode $contextNode = null, bool $registerNodeNS = true", "@mixed",` |
+|     - | 10162 | `		  vm_builtin_DOMXPath_query },` |
+|     - | 10163 | `		{ "evaluate",    PH7_MOD_PUBLIC,` |
+|     - | 10164 | `		  "string $expression, ?DOMNode $contextNode = null, bool $registerNodeNS = true", "@mixed",` |
+|     - | 10165 | `		  vm_builtin_DOMXPath_evaluate },` |
+|     - | 10166 | `		{ "registerNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace", "@bool",` |
+|     - | 10167 | `		  vm_builtin_DOMXPath_registerNamespace },` |
+|     - | 10168 | `		{ "registerPhpFunctions", PH7_MOD_PUBLIC, "array\|string\|null $restrict = null", "@void",` |
+|     - | 10169 | `		  vm_builtin_DOMXPath_registerPhpFunctions },` |
+|     - | 10170 | `		{ "registerPhpFunctionNS", PH7_MOD_PUBLIC,` |
+|     - | 10171 | `		  "string $namespaceURI, string $name, callable $callable", "void",` |
+|     - | 10172 | `		  vm_builtin_DOMXPath_registerPhpFunctionNS },` |
+|     - | 10173 | `		{ "quote", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "string $str", "string",` |
+|     - | 10174 | `		  vm_builtin_DOMXPath_quote },` |
+|     - | 10175 | `	};` |
+|     - | 10176 | `	/* Bases before subclasses: PH7_InstallNativeClasses declares the whole table` |
+|     - | 10177 | `	 * before touching a method, but PH7_ClassInherit still needs the parent to` |
+|     - | 10178 | `	 * exist when the child's row is declared. */` |
+|     - | 10179 | `	/* php refuses to serialize a NODE class, and its refusal is the soft kind: the` |
+|     - | 10180 | `	 * deny handler sits behind the __serialize()/__sleep() lookup, so a subclass that` |
+|     - | 10181 | `	 * declares either one is serialized normally and the sentence says so. DOMXPath's` |
+|     - | 10182 | `	 * is the HARD kind — a subclass declaring __serialize() is refused there too — and` |
+|     - | 10183 | ``	 * DOMNodeList/DOMNamedNodeMap are not refused at all (`0:{}`), which is what they`` |
+|     - | 10184 | `	 * became once serialize() stopped emitting the hidden slot. Restating the flag on` |
+|     - | 10185 | `	 * every row is rule 29: a native subclass does not inherit its parent's. */` |
+|     - | 10186 | `	/* php's 8.0 insertion interfaces: three untyped-variadic void methods on` |
+|     - | 10187 | `	 * the parent side (the child side is DOMChildNode below).  A class row` |
+|     - | 10188 | `	 * declares its methods before the implement phase runs, so nothing is` |
+|     - | 10189 | `	 * stubbed abstract. */` |
+|     - | 10190 | `	static const PH7_NativeMethodDef aParentNodeIf[] = {` |
+|     - | 10191 | `		{ "append",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
+|     - | 10192 | `		{ "prepend",         PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
+|     - | 10193 | `		{ "replaceChildren", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
+|     - | 10194 | `	};` |
+|     - | 10195 | `	static const PH7_NativeMethodDef aChildNodeIf[] = {` |
+|     - | 10196 | `		{ "remove",      PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "void", 0 },` |
+|     - | 10197 | `		{ "before",      PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
+|     - | 10198 | `		{ "after",       PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
+|     - | 10199 | `		{ "replaceWith", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },` |
+|     - | 10200 | `	};` |
+|     - | 10201 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|     - | 10202 | `		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10203 | `		{ "DOMParentNode", 0, 0, PH7_CLASS_INTERFACE,` |
+|     - | 10204 | `		  aParentNodeIf, SX_ARRAYSIZE(aParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10205 | `		{ "DOMChildNode", 0, 0, PH7_CLASS_INTERFACE,` |
+|     - | 10206 | `		  aChildNodeIf, SX_ARRAYSIZE(aChildNodeIf), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10207 | `		{ "DOMNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10208 | `		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),` |
+|     - | 10209 | `		  aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, 0 },` |
+|     - | 10210 | `		{ "DOMDocument", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10211 | `		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0, 0 },` |
+|     - | 10212 | `		{ "DOMElement", "DOMNode", "DOMParentNode,DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10213 | `		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10214 | `		{ "DOMAttr", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10215 | `		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10216 | `		{ "DOMCharacterData", "DOMNode", "DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10217 | `		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10218 | `		{ "DOMText", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10219 | `		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10220 | `		{ "DOMComment", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10221 | `		  aCommentMethod, SX_ARRAYSIZE(aCommentMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10222 | `		{ "DOMCdataSection", "DOMText", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10223 | `		  aCdataMethod, SX_ARRAYSIZE(aCdataMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10224 | ``		/* php declares the PI under DOMNode (its `data` is its own property, not`` |
+|     - | 10225 | `		 * DOMCharacterData's), the fragment and the entity reference plainly. */` |
+|     - | 10226 | `		{ "DOMProcessingInstruction", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10227 | `		  aPiMethod, SX_ARRAYSIZE(aPiMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10228 | `		{ "DOMDocumentFragment", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10229 | `		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10230 | `		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10231 | `		  aEntRefMethod, SX_ARRAYSIZE(aEntRefMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10232 | `		{ "DOMDocumentType", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10233 | `		  aDocTypeMethod, SX_ARRAYSIZE(aDocTypeMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10234 | `		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10235 | `		  aEntityMethod, SX_ARRAYSIZE(aEntityMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10236 | `		{ "DOMImplementation", 0, 0, 0,` |
+|     - | 10237 | `		  aImplMethod, SX_ARRAYSIZE(aImplMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10238 | `		{ "DOMNotation", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10239 | `		  aNotationMethod, SX_ARRAYSIZE(aNotationMethod), 0, 0, 0, 0, 0, 0, 0 },` |
+|     - | 10240 | `		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the` |
+|     - | 10241 | `		 * list carry its own cursor) and Countable. */` |
+|     - | 10242 | `		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,` |
+|     - | 10243 | `		  aListMethod, SX_ARRAYSIZE(aListMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),` |
+|     - | 10244 | `		  0, &sDomListIterVtab, 0 },` |
+|     - | 10245 | `		{ "DOMNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,` |
+|     - | 10246 | `		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),` |
+|     - | 10247 | `		  0, &sDomMapIterVtab, 0 },` |
+|     - | 10248 | `		/* php's own: a class of its OWN, with no parent at all -- a namespace` |
+|     - | 10249 | ``		 * declaration is not a DOMNode there, and `$ns instanceof DOMNode` is`` |
+|     - | 10250 | `		 * false. Its refusal to serialize is the same soft kind the node` |
+|     - | 10251 | `		 * classes carry. */` |
+|     - | 10252 | `		{ "DOMNameSpaceNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,` |
+|     - | 10253 | `		  aNsNodeMethod, SX_ARRAYSIZE(aNsNodeMethod), 0, 0,` |
+|     - | 10254 | `		  aNsNodeProp, SX_ARRAYSIZE(aNsNodeProp), 0, 0, 0 },` |
+|     - | 10255 | `		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NOCLONE,` |
+|     - | 10256 | `		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp), 0, 0, 0 },` |
+|     - | 10257 | `	};` |
+|  5745 | 10258 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5745 | 10259 | `	if( rc == SXRET_OK ){` |
+|     - | 10260 | `		/* The clone hook (ph7_class::xClone, php's clone_obj): stated on every` |
+|     - | 10261 | `		 * node class -- rule 29, a hook is per-row and never inherited between` |
+|     - | 10262 | `		 * native rows -- and assigned HERE because PH7_NativeClassSpec carries` |
+|     - | 10263 | `		 * no field for it. The document's copies the whole document; a user` |
+|     - | 10264 | `		 * subclass reaches the nearest ancestor's hook through the engine's` |
+|     - | 10265 | `		 * chain walk, php's handler inheritance. */` |
+|     - | 10266 | `		static const char * const azNodeClone[] = {` |
+|     - | 10267 | `			"DOMNode", "DOMElement", "DOMAttr", "DOMCharacterData", "DOMText",` |
+|     - | 10268 | `			"DOMComment", "DOMCdataSection", "DOMProcessingInstruction",` |
+|     - | 10269 | `			"DOMDocumentFragment", "DOMEntityReference", "DOMDocumentType"` |
+|     - | 10270 | `		};` |
+|     - | 10271 | `		sxu32 n;` |
+|     - | 10272 | `		ph7_class *pClass;` |
+| 68885 | 10273 | `		for( n = 0 ; n < SX_ARRAYSIZE(azNodeClone) ; ++n ){` |
+| 94715 | 10274 | `			pClass = PH7_VmExtractClass(&(*pVm),azNodeClone[n],` |
+| 63140 | 10275 | `				(sxu32)SyStrlen(azNodeClone[n]),FALSE,0);` |
+| 63145 | 10276 | `			if( pClass ){` |
+| 63145 | 10277 | `				pClass->xClone = DomInstanceClone;` |
+| 31570 | 10278 | `			}` |
+| 31575 | 10279 | `		}` |
+|  5745 | 10280 | `		pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",sizeof("DOMDocument")-1,FALSE,0);` |
+|  5745 | 10281 | `		if( pClass ){` |
+|  5745 | 10282 | `			pClass->xClone = DomInstanceCloneDoc;` |
+|  2870 | 10283 | `		}` |
+|     - | 10284 | `		/* The dimension handlers (ph7_class::xDim, php's read_dimension /` |
+|     - | 10285 | `		 * has_dimension), assigned here for the same reason the clone hook is:` |
+|     - | 10286 | `		 * PH7_NativeClassSpec carries no field for them, and php's own two` |
+|     - | 10287 | `		 * classes wear them without declaring ArrayAccess. */` |
+|  5745 | 10288 | `		pClass = PH7_VmExtractClass(&(*pVm),"DOMNodeList",sizeof("DOMNodeList")-1,FALSE,0);` |
+|  5745 | 10289 | `		if( pClass ){` |
+|  5745 | 10290 | `			pClass->xDim = DomListDim;` |
+|  2870 | 10291 | `		}` |
+|  5745 | 10292 | `		pClass = PH7_VmExtractClass(&(*pVm),"DOMNamedNodeMap",sizeof("DOMNamedNodeMap")-1,FALSE,0);` |
+|  5745 | 10293 | `		if( pClass ){` |
+|  5745 | 10294 | `			pClass->xDim = DomMapDim;` |
+|  2870 | 10295 | `		}` |
+|  2870 | 10296 | `	}` |
+|  5745 | 10297 | `	return rc;` |
+|     5 | 10298 | `}` |
+|     - | 10299 |  |
+|     - | 10300 | `#else` |
+|     - | 10301 | `/* Ensure non-empty translation unit when libxml is disabled (MSVC C4206) */` |
+|     - | 10302 | `typedef int vm_dom_unused;` |
+|     - | 10303 | `#endif /* PH7_ENABLE_LIBXML */` |
+|     - | 10304 |  |

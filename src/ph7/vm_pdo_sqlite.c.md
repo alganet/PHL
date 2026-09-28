@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 559/650 lines (86.00%)
+Coverage: 625/713 lines (87.66%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -37,34 +37,34 @@ Coverage: 559/650 lines (86.00%)
 |    - |   27 | ` * leaves everything else at HY000 ("general error"), which is what nearly` |
 |    - |   28 | ` * every sqlite failure reports.` |
 |    - |   29 | ` */` |
-|   36 |   30 | `PH7_PRIVATE void PH7_PdoSqliteTakeError(phl_pdo *pConn)` |
+|   46 |   30 | `PH7_PRIVATE void PH7_PdoSqliteTakeError(phl_pdo *pConn)` |
 |    1 |   31 | `{` |
-|   37 |   32 | `	const char *zSqlState = "HY000";` |
+|   47 |   32 | `	const char *zSqlState = "HY000";` |
 |    - |   33 | `	/* The PRIMARY result code, not the extended one: a UNIQUE violation is 19` |
 |    - |   34 | `	 * (SQLITE_CONSTRAINT) and not 2067 (SQLITE_CONSTRAINT_UNIQUE) unless the` |
 |    - |   35 | `	 * script asked for extended codes, which is what that driver attribute is` |
 |    - |   36 | `	 * for. sqlite reports the extended code from both accessors once they are` |
 |    - |   37 | `	 * enabled on the connection, so the choice is made here. */` |
-|   73 |   38 | `	int iCode = pConn->pDb` |
-|   19 |   39 | `		? (pConn->bExtendedCodes ? sqlite3_extended_errcode(pConn->pDb)` |
-|   35 |   40 | `		                         : sqlite3_errcode(pConn->pDb))` |
-|   36 |   41 | `		: SQLITE_ERROR;` |
-|   37 |   42 | `	const char *zMsg = pConn->pDb ? sqlite3_errmsg(pConn->pDb) : "unknown error";` |
+|   93 |   38 | `	int iCode = pConn->pDb` |
+|   24 |   39 | `		? (pConn->bExtendedCodes ? sqlite3_extended_errcode(pConn->pDb)` |
+|   45 |   40 | `		                         : sqlite3_errcode(pConn->pDb))` |
+|   46 |   41 | `		: SQLITE_ERROR;` |
+|   47 |   42 | `	const char *zMsg = pConn->pDb ? sqlite3_errmsg(pConn->pDb) : "unknown error";` |
 |    - |   43 | `	/* the RAW code, not its low byte: with extended result codes on, a UNIQUE` |
 |    - |   44 | `	 * violation reports 1555, which matches none of these and lands on HY000 --` |
 |    - |   45 | `	 * php's own answer, and the reason turning extended codes on changes the` |
 |    - |   46 | `	 * SQLSTATE and not just the number beside it. */` |
-|   37 |   47 | `	switch( iCode ){` |
+|   47 |   47 | `	switch( iCode ){` |
 |  ! 0 |   48 | `		case SQLITE_NOTFOUND:   zSqlState = "42S02"; break;` |
 |  ! 0 |   49 | `		case SQLITE_INTERRUPT:  zSqlState = "57014"; break;` |
 |  ! 0 |   50 | `		case SQLITE_NOLFS:      zSqlState = "HYC00"; break;` |
 |  ! 0 |   51 | `		case SQLITE_TOOBIG:     zSqlState = "22001"; break;` |
 |    7 |   52 | `		case SQLITE_CONSTRAINT: zSqlState = "23000"; break;` |
-|   24 |   53 | `		case SQLITE_ERROR:` |
-|   31 |   54 | `		default:                zSqlState = "HY000"; break;` |
+|   34 |   53 | `		case SQLITE_ERROR:` |
+|   41 |   54 | `		default:                zSqlState = "HY000"; break;` |
 |    - |   55 | `	}` |
-|   37 |   56 | `	PH7_PdoSetError(pConn,zSqlState,iCode,zMsg);` |
-|   37 |   57 | `}` |
+|   47 |   56 | `	PH7_PdoSetError(pConn,zSqlState,iCode,zMsg);` |
+|   47 |   57 | `}` |
 |    - |   58 | `/*` |
 |    - |   59 | ` * The library version both ATTR_SERVER_VERSION and ATTR_CLIENT_VERSION answer.` |
 |    - |   60 | ` * It is the LINKED library's, so it differs between this engine's platforms` |
@@ -86,23 +86,23 @@ Coverage: 559/650 lines (86.00%)
 |    - |   76 | ` * the exception carries sqlite's own code as its $code (an int, unlike the` |
 |    - |   77 | ` * SQLSTATE string a later failure reports).` |
 |    - |   78 | ` */` |
-|  128 |   79 | `PH7_PRIVATE sxi32 PH7_PdoSqliteOpen(ph7_context *pCtx,phl_pdo *pConn,const char *zPath,` |
+|  158 |   79 | `PH7_PRIVATE sxi32 PH7_PdoSqliteOpen(ph7_context *pCtx,phl_pdo *pConn,const char *zPath,` |
 |    - |   80 | `	int nPath,int iFlags)` |
-|    3 |   81 | `{` |
+|    4 |   81 | `{` |
 |    - |   82 | `	char *zTerm;` |
 |    - |   83 | `	int rc;` |
 |    - |   84 | `	/* sqlite3_open_v2 wants a C string and the DSN slice is not one. */` |
-|  131 |   85 | `	zTerm = (char *)SyMemBackendAlloc(&pConn->pVm->sAllocator,(sxu32)nPath + 1);` |
-|  131 |   86 | `	if( zTerm == 0 ){` |
+|  162 |   85 | `	zTerm = (char *)SyMemBackendAlloc(&pConn->pVm->sAllocator,(sxu32)nPath + 1);` |
+|  162 |   86 | `	if( zTerm == 0 ){` |
 |  ! 0 |   87 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - |   88 | `	}` |
-|  131 |   89 | `	if( nPath > 0 ){` |
-|  129 |   90 | `		SyMemcpy(zPath,zTerm,(sxu32)nPath);` |
-|   63 |   91 | `	}` |
-|  131 |   92 | `	zTerm[nPath] = 0;` |
-|  131 |   93 | `	rc = sqlite3_open_v2(zTerm,&pConn->pDb,iFlags,0);` |
-|  131 |   94 | `	SyMemBackendFree(&pConn->pVm->sAllocator,zTerm);` |
-|  131 |   95 | `	if( rc != SQLITE_OK ){` |
+|  162 |   89 | `	if( nPath > 0 ){` |
+|  160 |   90 | `		SyMemcpy(zPath,zTerm,(sxu32)nPath);` |
+|   78 |   91 | `	}` |
+|  162 |   92 | `	zTerm[nPath] = 0;` |
+|  162 |   93 | `	rc = sqlite3_open_v2(zTerm,&pConn->pDb,iFlags,0);` |
+|  162 |   94 | `	SyMemBackendFree(&pConn->pVm->sAllocator,zTerm);` |
+|  162 |   95 | `	if( rc != SQLITE_OK ){` |
 |    - |   96 | `		/* sqlite3_open_v2 hands back a handle even on failure so the message can` |
 |    - |   97 | `		 * be read off it; take the message first, then close. */` |
 |    9 |   98 | `		const char *zMsg = pConn->pDb ? sqlite3_errmsg(pConn->pDb) : sqlite3_errstr(rc);` |
@@ -116,20 +116,20 @@ Coverage: 559/650 lines (86.00%)
 |    9 |  106 | `		PH7_PdoSqliteClose(pConn);` |
 |    9 |  107 | `		return rcThrow;` |
 |    - |  108 | `	}` |
-|  123 |  109 | `	return PH7_OK;` |
-|   67 |  110 | `}` |
+|  154 |  109 | `	return PH7_OK;` |
+|   83 |  110 | `}` |
 |    - |  111 | `/*` |
 |    - |  112 | ` * Close one database.  Every statement this connection prepared must already` |
 |    - |  113 | ` * be finalized (later slices own that); sqlite3_close_v2 is used so a leaked` |
 |    - |  114 | ` * one defers the close rather than leaking the handle itself.` |
 |    - |  115 | ` */` |
-|  246 |  116 | `PH7_PRIVATE void PH7_PdoSqliteClose(phl_pdo *pConn)` |
-|    3 |  117 | `{` |
-|  249 |  118 | `	if( pConn->pDb ){` |
-|  131 |  119 | `		sqlite3_close_v2(pConn->pDb);` |
-|  131 |  120 | `		pConn->pDb = 0;` |
-|   64 |  121 | `	}` |
-|  249 |  122 | `}` |
+|  276 |  116 | `PH7_PRIVATE void PH7_PdoSqliteClose(phl_pdo *pConn)` |
+|    4 |  117 | `{` |
+|  280 |  118 | `	if( pConn->pDb ){` |
+|  162 |  119 | `		sqlite3_close_v2(pConn->pDb);` |
+|  162 |  120 | `		pConn->pDb = 0;` |
+|   79 |  121 | `	}` |
+|  280 |  122 | `}` |
 |    - |  123 |  |
 |    - |  124 | `/*` |
 |    - |  125 | ` * PDO::exec()'s work: prepare, step and finalize every statement the string` |
@@ -139,22 +139,22 @@ Coverage: 559/650 lines (86.00%)
 |    - |  129 | ` * statement that changes nothing. That is why exec() over a SELECT answers` |
 |    - |  130 | ` * whatever the previous write answered rather than 0.` |
 |    - |  131 | ` */` |
-|  196 |  132 | `PH7_PRIVATE ph7_int64 PH7_PdoSqliteExec(phl_pdo *pConn,const char *zSql,int nSql)` |
-|    3 |  133 | `{` |
-|  199 |  134 | `	const char *zTail = zSql;` |
-|  199 |  135 | `	const char *zEnd = zSql + nSql;` |
-|  199 |  136 | `	if( pConn->pDb == 0 ){` |
+|  264 |  132 | `PH7_PRIVATE ph7_int64 PH7_PdoSqliteExec(phl_pdo *pConn,const char *zSql,int nSql)` |
+|    4 |  133 | `{` |
+|  268 |  134 | `	const char *zTail = zSql;` |
+|  268 |  135 | `	const char *zEnd = zSql + nSql;` |
+|  268 |  136 | `	if( pConn->pDb == 0 ){` |
 |  ! 0 |  137 | `		return -1;` |
 |    - |  138 | `	}` |
-|  381 |  139 | `	while( zTail < zEnd ){` |
-|  201 |  140 | `		sqlite3_stmt *pStmt = 0;` |
-|  201 |  141 | `		const char *zNext = 0;` |
-|  201 |  142 | `		int rc = sqlite3_prepare_v2(pConn->pDb,zTail,(int)(zEnd - zTail),&pStmt,&zNext);` |
-|  201 |  143 | `		if( rc != SQLITE_OK ){` |
+|  518 |  139 | `	while( zTail < zEnd ){` |
+|  270 |  140 | `		sqlite3_stmt *pStmt = 0;` |
+|  270 |  141 | `		const char *zNext = 0;` |
+|  270 |  142 | `		int rc = sqlite3_prepare_v2(pConn->pDb,zTail,(int)(zEnd - zTail),&pStmt,&zNext);` |
+|  270 |  143 | `		if( rc != SQLITE_OK ){` |
 |   11 |  144 | `			PH7_PdoSqliteTakeError(pConn);` |
 |   14 |  145 | `			return -1;` |
 |    - |  146 | `		}` |
-|  191 |  147 | `		if( pStmt == 0 ){` |
+|  260 |  147 | `		if( pStmt == 0 ){` |
 |    - |  148 | `			/* whitespace or a comment: nothing to run, and php answers the` |
 |    - |  149 | `			 * change count it already had rather than an error */` |
 |    5 |  150 | `			if( zNext == 0 \|\| zNext <= zTail ){` |
@@ -163,26 +163,26 @@ Coverage: 559/650 lines (86.00%)
 |    5 |  153 | `			zTail = zNext;` |
 |    5 |  154 | `			continue;` |
 |    - |  155 | `		}` |
-|   92 |  156 | `		do{` |
-|  193 |  157 | `			rc = sqlite3_step(pStmt);` |
-|  193 |  158 | `		}while( rc == SQLITE_ROW );` |
-|  187 |  159 | `		if( rc != SQLITE_DONE ){` |
+|  126 |  156 | `		do{` |
+|  262 |  157 | `			rc = sqlite3_step(pStmt);` |
+|  262 |  158 | `		}while( rc == SQLITE_ROW );` |
+|  256 |  159 | `		if( rc != SQLITE_DONE ){` |
 |    7 |  160 | `			PH7_PdoSqliteTakeError(pConn);` |
 |    7 |  161 | `			sqlite3_finalize(pStmt);` |
 |    7 |  162 | `			return -1;` |
 |    - |  163 | `		}` |
-|  181 |  164 | `		sqlite3_finalize(pStmt);` |
-|  181 |  165 | `		zTail = zNext ? zNext : zEnd;` |
-|    3 |  166 | `	}` |
-|  183 |  167 | `	return (ph7_int64)sqlite3_changes(pConn->pDb);` |
-|  101 |  168 | `}` |
+|  250 |  164 | `		sqlite3_finalize(pStmt);` |
+|  250 |  165 | `		zTail = zNext ? zNext : zEnd;` |
+|    4 |  166 | `	}` |
+|  252 |  167 | `	return (ph7_int64)sqlite3_changes(pConn->pDb);` |
+|  136 |  168 | `}` |
 |   10 |  169 | `PH7_PRIVATE ph7_int64 PH7_PdoSqliteLastInsertId(phl_pdo *pConn)` |
 |    1 |  170 | `{` |
 |   11 |  171 | `	return pConn->pDb ? (ph7_int64)sqlite3_last_insert_rowid(pConn->pDb) : 0;` |
 |    1 |  172 | `}` |
-|    8 |  173 | `PH7_PRIVATE ph7_int64 PH7_PdoSqliteChanges(phl_pdo *pConn)` |
+|   10 |  173 | `PH7_PRIVATE ph7_int64 PH7_PdoSqliteChanges(phl_pdo *pConn)` |
 |    1 |  174 | `{` |
-|    9 |  175 | `	return pConn->pDb ? (ph7_int64)sqlite3_changes(pConn->pDb) : 0;` |
+|   11 |  175 | `	return pConn->pDb ? (ph7_int64)sqlite3_changes(pConn->pDb) : 0;` |
 |    1 |  176 | `}` |
 |    - |  177 | `/*` |
 |    - |  178 | ` * sqlite's own autocommit flag rather than a counter of our own: php reads it` |
@@ -219,855 +219,942 @@ Coverage: 559/650 lines (86.00%)
 |    1 |  209 | `	}` |
 |    3 |  210 | `	return rc == SQLITE_OK;` |
 |    2 |  211 | `}` |
-|    2 |  212 | `PH7_PRIVATE void PH7_PdoSqliteExtendedCodes(phl_pdo *pConn,int bOn)` |
-|    1 |  213 | `{` |
-|    3 |  214 | `	if( pConn->pDb ){` |
-|    3 |  215 | `		sqlite3_extended_result_codes(pConn->pDb,bOn ? 1 : 0);` |
-|    1 |  216 | `	}` |
-|    3 |  217 | `}` |
-|   44 |  218 | `PH7_PRIVATE int PH7_PdoSqliteInTransaction(phl_pdo *pConn)` |
-|    1 |  219 | `{` |
-|   45 |  220 | `	return pConn->pDb ? (sqlite3_get_autocommit(pConn->pDb) == 0) : 0;` |
-|    1 |  221 | `}` |
-|    - |  222 | `/*` |
-|    - |  223 | ` * Prepare ONE statement.  php compiles only the first statement of the string` |
-|    - |  224 | ` * here -- unlike exec(), which runs them all -- and what follows it is simply` |
-|    - |  225 | ` * not executed.` |
-|    - |  226 | ` */` |
-|  282 |  227 | `PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql)` |
-|    2 |  228 | `{` |
-|    - |  229 | `	int rc;` |
-|  284 |  230 | `	if( pSt->pConn->pDb == 0 ){` |
-|  ! 0 |  231 | `		return 0;` |
-|    - |  232 | `	}` |
-|  284 |  233 | `	rc = sqlite3_prepare_v2(pSt->pConn->pDb,zSql,nSql,&pSt->pStmt,0);` |
-|  284 |  234 | `	if( rc != SQLITE_OK \|\| pSt->pStmt == 0 ){` |
-|    9 |  235 | `		PH7_PdoSqliteTakeError(pSt->pConn);` |
-|    9 |  236 | `		if( pSt->pStmt ){` |
-|  ! 0 |  237 | `			sqlite3_finalize(pSt->pStmt);` |
-|  ! 0 |  238 | `			pSt->pStmt = 0;` |
-|  ! 0 |  239 | `		}` |
-|    9 |  240 | `		return 0;` |
-|    - |  241 | `	}` |
-|  276 |  242 | `	return 1;` |
-|  143 |  243 | `}` |
-|    - |  244 | `/*` |
-|    - |  245 | ` * One step of the cursor: 1 when a row is available, 0 when the walk is over,` |
-|    - |  246 | ` * -1 on failure (with the connection's error set).` |
-|    - |  247 | ` */` |
-|  564 |  248 | `PH7_PRIVATE int PH7_PdoSqliteStep(phl_pdo_stmt *pSt)` |
-|    2 |  249 | `{` |
-|    - |  250 | `	int rc;` |
-|  566 |  251 | `	if( pSt->pStmt == 0 ){` |
-|  ! 0 |  252 | `		return 0;` |
-|    - |  253 | `	}` |
-|  566 |  254 | `	rc = sqlite3_step(pSt->pStmt);` |
-|  566 |  255 | `	if( rc == SQLITE_ROW ){` |
-|  386 |  256 | `		return 1;` |
-|    - |  257 | `	}` |
-|  181 |  258 | `	if( rc == SQLITE_DONE ){` |
-|  177 |  259 | `		return 0;` |
-|    - |  260 | `	}` |
-|    5 |  261 | `	PH7_PdoSqliteTakeError(pSt->pConn);` |
-|    5 |  262 | `	return -1;` |
-|  284 |  263 | `}` |
-|  526 |  264 | `PH7_PRIVATE void PH7_PdoSqliteFinalize(phl_pdo_stmt *pSt)` |
-|    2 |  265 | `{` |
-|  528 |  266 | `	if( pSt->pStmt ){` |
-|  276 |  267 | `		sqlite3_finalize(pSt->pStmt);` |
-|  276 |  268 | `		pSt->pStmt = 0;` |
-|  137 |  269 | `	}` |
-|  528 |  270 | `}` |
-|  652 |  271 | `PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt)` |
-|    2 |  272 | `{` |
-|  654 |  273 | `	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;` |
-|    2 |  274 | `}` |
-|    - |  275 | `/*` |
-|    - |  276 | ` * Rewind a statement so it can run again.  The bindings go too: php re-binds` |
-|    - |  277 | ` * everything on every execute(), so a value bound for the previous run must` |
-|    - |  278 | ` * not survive into the next one.` |
-|    - |  279 | ` */` |
-|   50 |  280 | `PH7_PRIVATE void PH7_PdoSqliteReset(phl_pdo_stmt *pSt)` |
-|    2 |  281 | `{` |
-|   52 |  282 | `	if( pSt->pStmt ){` |
-|   52 |  283 | `		sqlite3_reset(pSt->pStmt);` |
-|   52 |  284 | `		sqlite3_clear_bindings(pSt->pStmt);` |
-|   25 |  285 | `	}` |
-|   52 |  286 | `}` |
-|    - |  287 | `/*` |
-|    - |  288 | ` * Where a NAMED parameter sits.  sqlite answers 0 for a name the statement` |
-|    - |  289 | ` * does not have, and binding at 0 is SQLITE_RANGE -- which is exactly how php` |
-|    - |  290 | ` * ends up reporting "column index out of range" for a misspelled placeholder` |
-|    - |  291 | ` * rather than something that names it.` |
-|    - |  292 | ` */` |
-|   16 |  293 | `PH7_PRIVATE int PH7_PdoSqliteBindIndexOf(phl_pdo_stmt *pSt,const char *zName,int nName)` |
-|    1 |  294 | `{` |
-|    - |  295 | `	char zBuf[128];` |
-|   17 |  296 | `	int n = 0;` |
-|   17 |  297 | `	if( pSt->pStmt == 0 \|\| nName < 1 ){` |
-|  ! 0 |  298 | `		return 0;` |
-|    - |  299 | `	}` |
-|    - |  300 | `	/* php accepts a name with or without its colon and sqlite wants it WITH,` |
-|    - |  301 | `	 * so the missing one is supplied here. */` |
-|   17 |  302 | `	if( zName[0] != ':' ){` |
-|    5 |  303 | `		zBuf[n++] = ':';` |
-|    2 |  304 | `	}` |
-|   59 |  305 | `	while( n < (int)sizeof(zBuf) - 1 && n - (zName[0] != ':' ? 1 : 0) < nName ){` |
-|   43 |  306 | `		zBuf[n] = zName[n - (zName[0] != ':' ? 1 : 0)];` |
-|   43 |  307 | `		++n;` |
+|    - |  212 | `/*` |
+|    - |  213 | ` * sqlite3_blob_open, with php's own argument order behind it. The failure is` |
+|    - |  214 | `` * left on the connection: php reports it as `Unable to open blob: <sqlite's`` |
+|    - |  215 | `` * message>` -- a WARNING whatever the error mode, since a blob is a stream and`` |
+|    - |  216 | ` * not a statement.` |
+|    - |  217 | ` */` |
+|   16 |  218 | `PH7_PRIVATE phl_pdo_blob * PH7_PdoSqliteBlobOpen(phl_pdo *pConn,const char *zDb,` |
+|    - |  219 | `	const char *zTable,const char *zColumn,ph7_int64 iRow,int bWrite)` |
+|    1 |  220 | `{` |
+|   17 |  221 | `	sqlite3_blob *pBlob = 0;` |
+|    - |  222 | `	phl_pdo_blob *pBl;` |
+|   17 |  223 | `	if( pConn->pDb == 0 ){` |
+|  ! 0 |  224 | `		return 0;` |
+|    - |  225 | `	}` |
+|   24 |  226 | `	if( sqlite3_blob_open(pConn->pDb,zDb,zTable,zColumn,(sqlite3_int64)iRow,` |
+|   20 |  227 | `			bWrite ? 1 : 0,&pBlob) != SQLITE_OK \|\| pBlob == 0 ){` |
+|   11 |  228 | `		PH7_PdoSqliteTakeError(pConn);` |
+|   11 |  229 | `		return 0;` |
+|    - |  230 | `	}` |
+|    7 |  231 | `	pBl = (phl_pdo_blob *)SyMemBackendAlloc(&pConn->pVm->sAllocator,sizeof(phl_pdo_blob));` |
+|    7 |  232 | `	if( pBl == 0 ){` |
+|  ! 0 |  233 | `		sqlite3_blob_close(pBlob);` |
+|  ! 0 |  234 | `		return 0;` |
+|    - |  235 | `	}` |
+|    7 |  236 | `	SyZero(pBl,sizeof(phl_pdo_blob));` |
+|    7 |  237 | `	pBl->pBlob = pBlob;` |
+|    7 |  238 | `	pBl->pVm = pConn->pVm;` |
+|    7 |  239 | `	pBl->pConn = pConn;` |
+|    7 |  240 | `	pBl->bWrite = bWrite;` |
+|    7 |  241 | `	pBl->nSize = (ph7_int64)sqlite3_blob_bytes(pBlob);` |
+|    7 |  242 | `	pBl->pNext = pConn->pBlobs;` |
+|    7 |  243 | `	pConn->pBlobs = pBl;` |
+|    7 |  244 | `	return pBl;` |
+|    9 |  245 | `}` |
+|    - |  246 | `/* One read or write at the handle's own cursor. Answers the byte count, or -1. */` |
+|   18 |  247 | `PH7_PRIVATE int PH7_PdoSqliteBlobIo(phl_pdo_blob *pBl,void *pBuf,int nByte,int bWrite)` |
+|    1 |  248 | `{` |
+|    - |  249 | `	int rc;` |
+|   19 |  250 | `	if( pBl->pBlob == 0 \|\| nByte < 1 \|\| pBl->bBadPos ){` |
+|    3 |  251 | `		return 0;` |
+|    - |  252 | `	}` |
+|   17 |  253 | `	if( pBl->iOfft >= pBl->nSize ){` |
+|    5 |  254 | `		return 0;` |
+|    - |  255 | `	}` |
+|   13 |  256 | `	if( pBl->iOfft + nByte > pBl->nSize ){` |
+|    5 |  257 | `		nByte = (int)(pBl->nSize - pBl->iOfft);` |
+|    2 |  258 | `	}` |
+|   13 |  259 | `	rc = bWrite` |
+|    2 |  260 | `		? sqlite3_blob_write(pBl->pBlob,pBuf,nByte,(int)pBl->iOfft)` |
+|   11 |  261 | `		: sqlite3_blob_read(pBl->pBlob,pBuf,nByte,(int)pBl->iOfft);` |
+|   13 |  262 | `	if( rc != SQLITE_OK ){` |
+|  ! 0 |  263 | `		if( pBl->pConn ){` |
+|  ! 0 |  264 | `			PH7_PdoSqliteTakeError(pBl->pConn);` |
+|  ! 0 |  265 | `		}` |
+|  ! 0 |  266 | `		return -1;` |
+|    - |  267 | `	}` |
+|   13 |  268 | `	pBl->iOfft += nByte;` |
+|   13 |  269 | `	return nByte;` |
+|   10 |  270 | `}` |
+|    - |  271 | `/* Close one handle and take it off its connection's chain. */` |
+|    4 |  272 | `PH7_PRIVATE void PH7_PdoSqliteBlobClose(phl_pdo_blob *pBl)` |
+|    1 |  273 | `{` |
+|    5 |  274 | `	ph7_vm *pVm = pBl->pVm;` |
+|    5 |  275 | `	if( pBl->pBlob ){` |
+|    5 |  276 | `		sqlite3_blob_close(pBl->pBlob);` |
+|    5 |  277 | `		pBl->pBlob = 0;` |
+|    2 |  278 | `	}` |
+|    5 |  279 | `	if( pBl->pConn ){` |
+|    - |  280 | `		phl_pdo_blob **ppSlot;` |
+|    5 |  281 | `		for( ppSlot = &pBl->pConn->pBlobs ; *ppSlot ; ppSlot = &(*ppSlot)->pNext ){` |
+|    5 |  282 | `			if( *ppSlot == pBl ){` |
+|    5 |  283 | `				*ppSlot = pBl->pNext;` |
+|    5 |  284 | `				break;` |
+|    - |  285 | `			}` |
+|  ! 0 |  286 | `		}` |
+|    2 |  287 | `	}` |
+|    5 |  288 | `	SyMemBackendFree(&pVm->sAllocator,pBl);` |
+|    5 |  289 | `}` |
+|    - |  290 | `/*` |
+|    - |  291 | ` * The connection is going: sqlite will not close a database while a blob` |
+|    - |  292 | ` * handle is open, so every handle a script left behind is closed here and cut` |
+|    - |  293 | ` * loose. The STREAMS over them survive -- their own close frees the record --` |
+|    - |  294 | ` * and answer empty from now on.` |
+|    - |  295 | ` */` |
+|  268 |  296 | `PH7_PRIVATE void PH7_PdoSqliteBlobSweep(phl_pdo *pConn)` |
+|    4 |  297 | `{` |
+|  272 |  298 | `	phl_pdo_blob *pBl = pConn->pBlobs;` |
+|  274 |  299 | `	while( pBl ){` |
+|    3 |  300 | `		phl_pdo_blob *pNext = pBl->pNext;` |
+|    3 |  301 | `		if( pBl->pBlob ){` |
+|    3 |  302 | `			sqlite3_blob_close(pBl->pBlob);` |
+|    3 |  303 | `			pBl->pBlob = 0;` |
+|    1 |  304 | `		}` |
+|    3 |  305 | `		pBl->pConn = 0;` |
+|    3 |  306 | `		pBl->pNext = 0;` |
+|    3 |  307 | `		pBl = pNext;` |
 |    1 |  308 | `	}` |
-|   17 |  309 | `	zBuf[n] = 0;` |
-|   17 |  310 | `	return sqlite3_bind_parameter_index(pSt->pStmt,zBuf);` |
-|    9 |  311 | `}` |
-|    - |  312 | `/*` |
-|    - |  313 | ` * Bind one value at a 1-based position.  php's PARAM_* decides the CAST, not` |
-|    - |  314 | ` * the value's own type: PARAM_INT over the float 1.9 binds 1, PARAM_STR over` |
-|    - |  315 | ` * the same binds "1.5", and PARAM_NULL binds null whatever it was handed. The` |
-|    - |  316 | ` * one type that outranks the declaration is php's own null, which binds as` |
-|    - |  317 | ` * NULL through any of them.` |
-|    - |  318 | ` */` |
-|   62 |  319 | `PH7_PRIVATE int PH7_PdoSqliteBindAt(phl_pdo_stmt *pSt,int iPos,int iType,ph7_value *pVal)` |
-|    1 |  320 | `{` |
-|    - |  321 | `	int rc;` |
-|   63 |  322 | `	if( pSt->pStmt == 0 ){` |
-|  ! 0 |  323 | `		return 0;` |
-|    - |  324 | `	}` |
-|   63 |  325 | `	iType &= ~PDO_PARAM_FLAGS;` |
-|   63 |  326 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_NULL) \|\| iType == PDO_PARAM_NULL ){` |
-|    7 |  327 | `		rc = sqlite3_bind_null(pSt->pStmt,iPos);` |
-|    4 |  328 | `	}else{` |
-|   57 |  329 | `		switch( iType ){` |
-|    3 |  330 | `			case PDO_PARAM_INT:` |
-|    7 |  331 | `				rc = sqlite3_bind_int64(pSt->pStmt,iPos,(sqlite3_int64)ph7_value_to_int64(pVal));` |
-|    7 |  332 | `				break;` |
-|    2 |  333 | `			case PDO_PARAM_BOOL:` |
-|    5 |  334 | `				rc = sqlite3_bind_int(pSt->pStmt,iPos,ph7_value_to_bool(pVal) ? 1 : 0);` |
-|    5 |  335 | `				break;` |
-|    1 |  336 | `			case PDO_PARAM_LOB: {` |
-|    3 |  337 | `				int nByte = 0;` |
-|    3 |  338 | `				const char *zVal = ph7_value_to_string(pVal,&nByte);` |
-|    3 |  339 | `				rc = sqlite3_bind_blob(pSt->pStmt,iPos,zVal,nByte,SQLITE_TRANSIENT);` |
-|    3 |  340 | `				break;` |
-|    - |  341 | `			}` |
-|   22 |  342 | `			default: {` |
-|   45 |  343 | `				int nByte = 0;` |
-|   45 |  344 | `				const char *zVal = ph7_value_to_string(pVal,&nByte);` |
-|   45 |  345 | `				rc = sqlite3_bind_text(pSt->pStmt,iPos,zVal,nByte,SQLITE_TRANSIENT);` |
-|   44 |  346 | `				break;` |
-|    - |  347 | `			}` |
-|    - |  348 | `		}` |
-|    - |  349 | `	}` |
-|   63 |  350 | `	if( rc != SQLITE_OK ){` |
-|    9 |  351 | `		PH7_PdoSqliteTakeError(pSt->pConn);` |
-|    9 |  352 | `		return 0;` |
-|    - |  353 | `	}` |
-|   55 |  354 | `	return 1;` |
-|   32 |  355 | `}` |
-|  596 |  356 | `PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol)` |
-|    1 |  357 | `{` |
-|  597 |  358 | `	const char *zName = pSt->pStmt ? sqlite3_column_name(pSt->pStmt,iCol) : 0;` |
-|  597 |  359 | `	return zName ? zName : "";` |
-|    1 |  360 | `}` |
-|    - |  361 | `/*` |
-|    - |  362 | ` * The type the SCHEMA declares for a column, which is not the type of the` |
-|    - |  363 | ` * value in it: a column declared TEXT holding NULL reports decl_type "TEXT"` |
-|    - |  364 | ` * and native_type "null". An expression has no declared type at all.` |
-|    - |  365 | ` */` |
-|    4 |  366 | `PH7_PRIVATE const char * PH7_PdoSqliteColumnDecl(phl_pdo_stmt *pSt,int iCol)` |
-|    1 |  367 | `{` |
-|    5 |  368 | `	return pSt->pStmt ? sqlite3_column_decltype(pSt->pStmt,iCol) : 0;` |
-|    1 |  369 | `}` |
-|    - |  370 | `/*` |
-|    - |  371 | ` * The table a column came from.  sqlite compiles this one only under` |
-|    - |  372 | ` * SQLITE_ENABLE_COLUMN_METADATA, so the SYMBOL's presence is the feature's:` |
-|    - |  373 | ` * verified present in the Debian and vcpkg libraries this engine links, and` |
-|    - |  374 | ` * php reports the same key from the same call. A platform whose sqlite lacks` |
-|    - |  375 | ` * it would fail to LINK rather than answer differently -- and its php would be` |
-|    - |  376 | ` * missing the key too.` |
-|    - |  377 | ` */` |
-|    4 |  378 | `PH7_PRIVATE const char * PH7_PdoSqliteColumnTable(phl_pdo_stmt *pSt,int iCol)` |
-|    1 |  379 | `{` |
-|    5 |  380 | `	return pSt->pStmt ? sqlite3_column_table_name(pSt->pStmt,iCol) : 0;` |
-|    1 |  381 | `}` |
-|    4 |  382 | `PH7_PRIVATE int PH7_PdoSqliteColumnType(phl_pdo_stmt *pSt,int iCol)` |
-|    1 |  383 | `{` |
-|    5 |  384 | `	return pSt->pStmt ? sqlite3_column_type(pSt->pStmt,iCol) : SQLITE_NULL;` |
-|    1 |  385 | `}` |
+|  272 |  309 | `	pConn->pBlobs = 0;` |
+|  272 |  310 | `}` |
+|    2 |  311 | `PH7_PRIVATE void PH7_PdoSqliteExtendedCodes(phl_pdo *pConn,int bOn)` |
+|    1 |  312 | `{` |
+|    3 |  313 | `	if( pConn->pDb ){` |
+|    3 |  314 | `		sqlite3_extended_result_codes(pConn->pDb,bOn ? 1 : 0);` |
+|    1 |  315 | `	}` |
+|    3 |  316 | `}` |
+|   44 |  317 | `PH7_PRIVATE int PH7_PdoSqliteInTransaction(phl_pdo *pConn)` |
+|    1 |  318 | `{` |
+|   45 |  319 | `	return pConn->pDb ? (sqlite3_get_autocommit(pConn->pDb) == 0) : 0;` |
+|    1 |  320 | `}` |
+|    - |  321 | `/*` |
+|    - |  322 | ` * Prepare ONE statement.  php compiles only the first statement of the string` |
+|    - |  323 | ` * here -- unlike exec(), which runs them all -- and what follows it is simply` |
+|    - |  324 | ` * not executed.` |
+|    - |  325 | ` */` |
+|  928 |  326 | `PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql)` |
+|    3 |  327 | `{` |
+|    - |  328 | `	int rc;` |
+|  931 |  329 | `	if( pSt->pConn->pDb == 0 ){` |
+|  ! 0 |  330 | `		return 0;` |
+|    - |  331 | `	}` |
+|  931 |  332 | `	rc = sqlite3_prepare_v2(pSt->pConn->pDb,zSql,nSql,&pSt->pStmt,0);` |
+|  931 |  333 | `	if( rc != SQLITE_OK \|\| pSt->pStmt == 0 ){` |
+|    9 |  334 | `		PH7_PdoSqliteTakeError(pSt->pConn);` |
+|    9 |  335 | `		if( pSt->pStmt ){` |
+|  ! 0 |  336 | `			sqlite3_finalize(pSt->pStmt);` |
+|  ! 0 |  337 | `			pSt->pStmt = 0;` |
+|  ! 0 |  338 | `		}` |
+|    9 |  339 | `		return 0;` |
+|    - |  340 | `	}` |
+|  923 |  341 | `	return 1;` |
+|  467 |  342 | `}` |
+|    - |  343 | `/*` |
+|    - |  344 | ` * One step of the cursor: 1 when a row is available, 0 when the walk is over,` |
+|    - |  345 | ` * -1 on failure (with the connection's error set).` |
+|    - |  346 | ` */` |
+| 1476 |  347 | `PH7_PRIVATE int PH7_PdoSqliteStep(phl_pdo_stmt *pSt)` |
+|    3 |  348 | `{` |
+|    - |  349 | `	int rc;` |
+| 1479 |  350 | `	if( pSt->pStmt == 0 ){` |
+|  ! 0 |  351 | `		return 0;` |
+|    - |  352 | `	}` |
+| 1479 |  353 | `	rc = sqlite3_step(pSt->pStmt);` |
+| 1479 |  354 | `	if( rc == SQLITE_ROW ){` |
+| 1207 |  355 | `		return 1;` |
+|    - |  356 | `	}` |
+|  274 |  357 | `	if( rc == SQLITE_DONE ){` |
+|  270 |  358 | `		return 0;` |
+|    - |  359 | `	}` |
+|    5 |  360 | `	PH7_PdoSqliteTakeError(pSt->pConn);` |
+|    5 |  361 | `	return -1;` |
+|  741 |  362 | `}` |
+| 1766 |  363 | `PH7_PRIVATE void PH7_PdoSqliteFinalize(phl_pdo_stmt *pSt)` |
+|    3 |  364 | `{` |
+| 1769 |  365 | `	if( pSt->pStmt ){` |
+|  923 |  366 | `		sqlite3_finalize(pSt->pStmt);` |
+|  923 |  367 | `		pSt->pStmt = 0;` |
+|  460 |  368 | `	}` |
+| 1769 |  369 | `}` |
+| 2046 |  370 | `PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt)` |
+|    3 |  371 | `{` |
+| 2049 |  372 | `	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;` |
+|    3 |  373 | `}` |
+|    - |  374 | `/*` |
+|    - |  375 | ` * Rewind a statement so it can run again.  The bindings go too: php re-binds` |
+|    - |  376 | ` * everything on every execute(), so a value bound for the previous run must` |
+|    - |  377 | ` * not survive into the next one.` |
+|    - |  378 | ` */` |
+|   52 |  379 | `PH7_PRIVATE void PH7_PdoSqliteReset(phl_pdo_stmt *pSt)` |
+|    2 |  380 | `{` |
+|   54 |  381 | `	if( pSt->pStmt ){` |
+|   54 |  382 | `		sqlite3_reset(pSt->pStmt);` |
+|   54 |  383 | `		sqlite3_clear_bindings(pSt->pStmt);` |
+|   26 |  384 | `	}` |
+|   54 |  385 | `}` |
 |    - |  386 | `/*` |
-|    - |  387 | ` * What the statement's last step answered.  php reports THIS as the driver` |
-|    - |  388 | ` * code when getColumnMeta() is asked for a column that does not exist, which` |
-|    - |  389 | ` * is how a plain out-of-range index comes back as "100 another row available".` |
-|    - |  390 | ` */` |
-|    2 |  391 | `PH7_PRIVATE int PH7_PdoSqliteLastStepCode(phl_pdo_stmt *pSt)` |
-|    1 |  392 | `{` |
-|    3 |  393 | `	return pSt->bRowPending ? SQLITE_ROW : SQLITE_DONE;` |
-|    1 |  394 | `}` |
-|    - |  395 | `/*` |
-|    - |  396 | ` * One column of the row at the cursor, in sqlite's OWN type: an INTEGER comes` |
-|    - |  397 | ` * back as an int and a REAL as a float, which is why a fetch from this driver` |
-|    - |  398 | ` * is not all-strings the way a stringifying one is. A BLOB is a php string of` |
-|    - |  399 | ` * those bytes, NUL bytes included, so the length has to come from sqlite` |
-|    - |  400 | ` * rather than from the pointer.` |
-|    - |  401 | ` */` |
-|  598 |  402 | `PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut)` |
-|    1 |  403 | `{` |
-|  599 |  404 | `	if( pSt->pStmt == 0 ){` |
-|  ! 0 |  405 | `		ph7_value_null(pOut);` |
-|  ! 0 |  406 | `		return;` |
-|    - |  407 | `	}` |
-|  599 |  408 | `	switch( sqlite3_column_type(pSt->pStmt,iCol) ){` |
-|  120 |  409 | `		case SQLITE_INTEGER:` |
-|  241 |  410 | `			ph7_value_int64(pOut,(ph7_int64)sqlite3_column_int64(pSt->pStmt,iCol));` |
-|  241 |  411 | `			break;` |
-|    - |  412 | `#ifndef PH7_OMIT_FLOATING_POINT` |
-|   13 |  413 | `		case SQLITE_FLOAT:` |
-|   27 |  414 | `			ph7_value_double(pOut,(ph7_real)sqlite3_column_double(pSt->pStmt,iCol));` |
-|   27 |  415 | `			break;` |
-|    - |  416 | `#endif` |
-|    2 |  417 | `		case SQLITE_BLOB: {` |
-|    5 |  418 | `			const void *pBlob = sqlite3_column_blob(pSt->pStmt,iCol);` |
-|    5 |  419 | `			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);` |
-|    - |  420 | `			/* the release is what CLEARS it: ph7_value_string APPENDS to a value` |
-|    - |  421 | `			 * that is already a string, so writing into a reused cell without` |
-|    - |  422 | `			 * this carries the previous column's bytes along */` |
-|    5 |  423 | `			PH7_MemObjRelease(pOut);` |
-|    5 |  424 | `			ph7_value_string(pOut,(const char *)pBlob,pBlob ? nByte : 0);` |
-|    5 |  425 | `			break;` |
-|    - |  426 | `		}` |
-|   18 |  427 | `		case SQLITE_NULL:` |
-|   37 |  428 | `			ph7_value_null(pOut);` |
-|   37 |  429 | `			break;` |
-|  146 |  430 | `		default: {` |
-|  293 |  431 | `			const char *zText = (const char *)sqlite3_column_text(pSt->pStmt,iCol);` |
-|  293 |  432 | `			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);` |
-|  293 |  433 | `			PH7_MemObjRelease(pOut);` |
-|  293 |  434 | `			ph7_value_string(pOut,zText,zText ? nByte : 0);` |
-|  292 |  435 | `			break;` |
-|    - |  436 | `		}` |
-|    - |  437 | `	}` |
-|  300 |  438 | `}` |
-|    - |  439 |  |
-|    - |  440 |  |
-|    - |  441 | `/* ------------------------------------------------------------------------` |
-|    - |  442 | ` * Userland callbacks, called from inside sqlite's own loop` |
-|    - |  443 | ` * ------------------------------------------------------------------------ */` |
-|    - |  444 | `/*` |
-|    - |  445 | ` * The rule for every callback here (and the reason they share one shape):` |
-|    - |  446 | ` * sqlite is in the middle of a step when the engine re-enters PHP, and a throw` |
-|    - |  447 | ` * out of that PHP cannot travel through sqlite's C frames. So the status is` |
-|    - |  448 | ` * PARKED on the connection, sqlite is told to stop with an error, and the verb` |
-|    - |  449 | ` * that started the step raises exactly the parked status once the library has` |
-|    - |  450 | ` * unwound. A second callback while one is parked does not re-enter PHP at all.` |
-|    - |  451 | ` */` |
-|   52 |  452 | `static int PdoUdfParked(phl_pdo_udf *pUdf)` |
-|    1 |  453 | `{` |
-|   53 |  454 | `	return pUdf->pConn->iCallbackExc != 0;` |
-|    1 |  455 | `}` |
-|    2 |  456 | `static void PdoUdfPark(phl_pdo_udf *pUdf,sxi32 rc,sqlite3_context *pCtx)` |
-|    1 |  457 | `{` |
-|    3 |  458 | `	pUdf->pConn->iCallbackExc = PH7_CALLBACK_UNWOUND(rc) ? rc : PH7_EXCEPTION;` |
-|    3 |  459 | `	if( pCtx ){` |
-|    3 |  460 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
-|    1 |  461 | `	}` |
-|    3 |  462 | `}` |
-|    - |  463 | `/* One sqlite value as a php value, in sqlite's own types. */` |
-|   30 |  464 | `static void PdoUdfArgValue(ph7_vm *pVm,sqlite3_value *pIn,ph7_value *pOut)` |
-|    1 |  465 | `{` |
-|   31 |  466 | `	PH7_MemObjInit(pVm,pOut);` |
-|   31 |  467 | `	switch( sqlite3_value_type(pIn) ){` |
-|   12 |  468 | `		case SQLITE_INTEGER:` |
-|   25 |  469 | `			ph7_value_int64(pOut,(ph7_int64)sqlite3_value_int64(pIn));` |
-|   25 |  470 | `			break;` |
-|    - |  471 | `#ifndef PH7_OMIT_FLOATING_POINT` |
-|  ! 0 |  472 | `		case SQLITE_FLOAT:` |
-|  ! 0 |  473 | `			ph7_value_double(pOut,(ph7_real)sqlite3_value_double(pIn));` |
-|  ! 0 |  474 | `			break;` |
-|    - |  475 | `#endif` |
-|  ! 0 |  476 | `		case SQLITE_NULL:` |
-|  ! 0 |  477 | `			ph7_value_null(pOut);` |
-|  ! 0 |  478 | `			break;` |
-|  ! 0 |  479 | `		case SQLITE_BLOB:` |
-|  ! 0 |  480 | `			ph7_value_string(pOut,(const char *)sqlite3_value_blob(pIn),` |
-|  ! 0 |  481 | `				sqlite3_value_bytes(pIn));` |
-|  ! 0 |  482 | `			break;` |
-|    3 |  483 | `		default:` |
-|   10 |  484 | `			ph7_value_string(pOut,(const char *)sqlite3_value_text(pIn),` |
-|    3 |  485 | `				sqlite3_value_bytes(pIn));` |
-|    6 |  486 | `			break;` |
-|    - |  487 | `	}` |
-|   31 |  488 | `}` |
-|    - |  489 | `/*` |
-|    - |  490 | ` * What a callback RETURNED, as a sqlite result.  php maps null, int and float` |
-|    - |  491 | ` * straight through and puts everything else through a STRING cast -- which is` |
-|    - |  492 | ` * why a bool comes back as "1" and "" and an array comes back as "Array" with` |
-|    - |  493 | ` * php's own conversion warning behind it.` |
-|    - |  494 | ` */` |
-|   28 |  495 | `static void PdoUdfResult(sqlite3_context *pCtx,ph7_value *pVal)` |
-|    1 |  496 | `{` |
-|   29 |  497 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_NULL) ){` |
-|    3 |  498 | `		sqlite3_result_null(pCtx);` |
-|   28 |  499 | `	}else if( pVal->iFlags & MEMOBJ_INT ){` |
-|   13 |  500 | `		sqlite3_result_int64(pCtx,(sqlite3_int64)ph7_value_to_int64(pVal));` |
-|    - |  501 | `#ifndef PH7_OMIT_FLOATING_POINT` |
-|   21 |  502 | `	}else if( pVal->iFlags & MEMOBJ_REAL ){` |
-|    3 |  503 | `		sqlite3_result_double(pCtx,(double)ph7_value_to_double(pVal));` |
-|    - |  504 | `#endif` |
-|    2 |  505 | `	}else{` |
-|    - |  506 | `		/* php's string CAST, not a quiet stringification: an array coming back` |
-|    - |  507 | `		 * from a callback is "Array" with php's own conversion warning behind` |
-|    - |  508 | `		 * it, and a __toString() that throws travels the callback rail. */` |
-|   13 |  509 | `		int nByte = 0;` |
-|    - |  510 | `		const char *zStr;` |
-|   13 |  511 | `		PH7_MemObjToStringUV(pVal);` |
-|   13 |  512 | `		zStr = ph7_value_to_string(pVal,&nByte);` |
-|   13 |  513 | `		sqlite3_result_text(pCtx,zStr,nByte,SQLITE_TRANSIENT);` |
-|    - |  514 | `	}` |
-|   29 |  515 | `}` |
-|    - |  516 | `/* A scalar function's body: build the arguments, call, convert the answer. */` |
-|   26 |  517 | `static void PdoUdfScalar(sqlite3_context *pCtx,int nArg,sqlite3_value **apVal)` |
-|    1 |  518 | `{` |
-|   27 |  519 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)sqlite3_user_data(pCtx);` |
-|   27 |  520 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
-|    - |  521 | `	ph7_value *apArg[16];` |
-|    - |  522 | `	ph7_value sArgs[16];` |
-|    - |  523 | `	ph7_value sRes;` |
-|   27 |  524 | `	int n,nCall = nArg;` |
-|    - |  525 | `	sxi32 rc;` |
-|   27 |  526 | `	if( PdoUdfParked(pUdf) ){` |
-|  ! 0 |  527 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
-|  ! 0 |  528 | `		return;` |
-|    - |  529 | `	}` |
-|   27 |  530 | `	if( nCall > (int)SX_ARRAYSIZE(sArgs) ){` |
-|  ! 0 |  531 | `		nCall = (int)SX_ARRAYSIZE(sArgs);` |
-|  ! 0 |  532 | `	}` |
-|   51 |  533 | `	for( n = 0 ; n < nCall ; ++n ){` |
-|   25 |  534 | `		PdoUdfArgValue(pVm,apVal[n],&sArgs[n]);` |
-|   25 |  535 | `		apArg[n] = &sArgs[n];` |
-|   13 |  536 | `	}` |
-|   27 |  537 | `	PH7_MemObjInit(pVm,&sRes);` |
-|   27 |  538 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,nCall,nCall ? apArg : 0,&sRes);` |
-|   27 |  539 | `	if( rc != SXRET_OK ){` |
-|    3 |  540 | `		PdoUdfPark(pUdf,rc,pCtx);` |
-|    2 |  541 | `	}else{` |
-|   25 |  542 | `		PdoUdfResult(pCtx,&sRes);` |
-|    - |  543 | `	}` |
-|   27 |  544 | `	PH7_MemObjRelease(&sRes);` |
-|   51 |  545 | `	for( n = 0 ; n < nCall ; ++n ){` |
-|   25 |  546 | `		PH7_MemObjRelease(&sArgs[n]);` |
-|   13 |  547 | `	}` |
-|   14 |  548 | `}` |
-|    - |  549 | `/* A collation: two strings in, an ordering out. */` |
-|    6 |  550 | `static int PdoUdfCollate(void *pUser,int nLeft,const void *pLeft,int nRight,const void *pRight)` |
-|    1 |  551 | `{` |
-|    7 |  552 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)pUser;` |
-|    7 |  553 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
-|    - |  554 | `	ph7_value sL,sR,sRes;` |
-|    - |  555 | `	ph7_value *apArg[2];` |
-|    - |  556 | `	sxi32 rc;` |
-|    7 |  557 | `	int iCmp = 0;` |
-|    7 |  558 | `	if( PdoUdfParked(pUdf) ){` |
-|  ! 0 |  559 | `		return 0;` |
-|    - |  560 | `	}` |
-|    7 |  561 | `	PH7_MemObjInit(pVm,&sL);` |
-|    7 |  562 | `	PH7_MemObjInit(pVm,&sR);` |
-|    7 |  563 | `	ph7_value_string(&sL,(const char *)pLeft,nLeft);` |
-|    7 |  564 | `	ph7_value_string(&sR,(const char *)pRight,nRight);` |
-|    7 |  565 | `	apArg[0] = &sL;` |
-|    7 |  566 | `	apArg[1] = &sR;` |
-|    7 |  567 | `	PH7_MemObjInit(pVm,&sRes);` |
-|    7 |  568 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,2,apArg,&sRes);` |
-|    7 |  569 | `	if( rc != SXRET_OK ){` |
-|    - |  570 | `		/* no sqlite3_context here to fail through: park it and order the pair` |
-|    - |  571 | `		 * as equal, which leaves the walk to end on the parked status */` |
-|  ! 0 |  572 | `		PdoUdfPark(pUdf,rc,0);` |
-|  ! 0 |  573 | `	}else{` |
-|    7 |  574 | `		ph7_int64 iVal = ph7_value_to_int64(&sRes);` |
-|    7 |  575 | `		iCmp = iVal < 0 ? -1 : (iVal > 0 ? 1 : 0);` |
-|    - |  576 | `	}` |
-|    7 |  577 | `	PH7_MemObjRelease(&sRes);` |
-|    7 |  578 | `	PH7_MemObjRelease(&sL);` |
-|    7 |  579 | `	PH7_MemObjRelease(&sR);` |
-|    7 |  580 | `	return iCmp;` |
-|    4 |  581 | `}` |
-|    - |  582 | `/*` |
-|    - |  583 | ` * An aggregate's step and finalize halves.  php gives both callbacks the` |
-|    - |  584 | ` * running CONTEXT and the ROW COUNT as their first two arguments, and whatever` |
-|    - |  585 | ` * step returns becomes the context of the next one. The count php reports to` |
-|    - |  586 | ` * the finalizer is one past the rows it stepped over -- including for an empty` |
-|    - |  587 | ` * group, where step never runs at all and the finalizer still sees 1.` |
-|    - |  588 | ` */` |
-|    6 |  589 | `static void PdoUdfStep(sqlite3_context *pCtx,int nArg,sqlite3_value **apVal)` |
-|    1 |  590 | `{` |
-|    7 |  591 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)sqlite3_user_data(pCtx);` |
-|    7 |  592 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
-|    - |  593 | `	phl_pdo_agg *pAgg;` |
-|    - |  594 | `	ph7_value sArgs[16];` |
-|    - |  595 | `	ph7_value *apArg[18];` |
-|    - |  596 | `	ph7_value sCount,sRes;` |
-|    7 |  597 | `	int n,nCall = nArg;` |
-|    - |  598 | `	sxi32 rc;` |
-|    7 |  599 | `	if( PdoUdfParked(pUdf) ){` |
-|  ! 0 |  600 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
-|  ! 0 |  601 | `		return;` |
-|    - |  602 | `	}` |
-|    7 |  603 | `	pAgg = (phl_pdo_agg *)sqlite3_aggregate_context(pCtx,(int)sizeof(phl_pdo_agg));` |
-|    7 |  604 | `	if( pAgg == 0 ){` |
-|  ! 0 |  605 | `		return;` |
-|    - |  606 | `	}` |
-|    7 |  607 | `	if( pAgg->pCtx == 0 ){` |
-|    3 |  608 | `		pAgg->pCtx = ph7_new_scalar(pVm);` |
-|    3 |  609 | `		pAgg->nRow = 0;` |
-|    1 |  610 | `	}` |
-|    7 |  611 | `	pAgg->nRow++;` |
-|    7 |  612 | `	if( nCall > (int)SX_ARRAYSIZE(sArgs) ){` |
-|  ! 0 |  613 | `		nCall = (int)SX_ARRAYSIZE(sArgs);` |
-|  ! 0 |  614 | `	}` |
-|    7 |  615 | `	PH7_MemObjInit(pVm,&sCount);` |
-|    7 |  616 | `	ph7_value_int(&sCount,pAgg->nRow);` |
-|    7 |  617 | `	apArg[0] = pAgg->pCtx;` |
-|    7 |  618 | `	apArg[1] = &sCount;` |
-|   13 |  619 | `	for( n = 0 ; n < nCall ; ++n ){` |
-|    7 |  620 | `		PdoUdfArgValue(pVm,apVal[n],&sArgs[n]);` |
-|    7 |  621 | `		apArg[n + 2] = &sArgs[n];` |
-|    4 |  622 | `	}` |
-|    7 |  623 | `	PH7_MemObjInit(pVm,&sRes);` |
-|    7 |  624 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,nCall + 2,apArg,&sRes);` |
-|    7 |  625 | `	if( rc != SXRET_OK ){` |
-|  ! 0 |  626 | `		PdoUdfPark(pUdf,rc,pCtx);` |
-|    7 |  627 | `	}else if( pAgg->pCtx ){` |
-|    7 |  628 | `		PH7_MemObjStore(&sRes,pAgg->pCtx);` |
-|    3 |  629 | `	}` |
-|    7 |  630 | `	PH7_MemObjRelease(&sRes);` |
-|    7 |  631 | `	PH7_MemObjRelease(&sCount);` |
-|   13 |  632 | `	for( n = 0 ; n < nCall ; ++n ){` |
-|    7 |  633 | `		PH7_MemObjRelease(&sArgs[n]);` |
-|    4 |  634 | `	}` |
-|    4 |  635 | `}` |
-|    4 |  636 | `static void PdoUdfFinal(sqlite3_context *pCtx)` |
-|    1 |  637 | `{` |
-|    5 |  638 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)sqlite3_user_data(pCtx);` |
-|    5 |  639 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
-|    5 |  640 | `	phl_pdo_agg *pAgg = (phl_pdo_agg *)sqlite3_aggregate_context(pCtx,0);` |
-|    - |  641 | `	ph7_value sCtx,sCount,sRes;` |
-|    - |  642 | `	ph7_value *apArg[2];` |
-|    - |  643 | `	sxi32 rc;` |
-|    5 |  644 | `	if( PdoUdfParked(pUdf) ){` |
-|  ! 0 |  645 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
-|  ! 0 |  646 | `		return;` |
-|    - |  647 | `	}` |
-|    5 |  648 | `	PH7_MemObjInit(pVm,&sCtx);` |
-|    5 |  649 | `	PH7_MemObjInit(pVm,&sCount);` |
-|    5 |  650 | `	if( pAgg && pAgg->pCtx ){` |
-|    3 |  651 | `		PH7_MemObjStore(pAgg->pCtx,&sCtx);` |
-|    1 |  652 | `	}` |
-|    5 |  653 | `	ph7_value_int(&sCount,(pAgg ? pAgg->nRow : 0) + 1);` |
-|    5 |  654 | `	apArg[0] = &sCtx;` |
-|    5 |  655 | `	apArg[1] = &sCount;` |
-|    5 |  656 | `	PH7_MemObjInit(pVm,&sRes);` |
-|    5 |  657 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pFinalize ? pUdf->pFinalize : pUdf->pCallback,` |
-|    2 |  658 | `		2,apArg,&sRes);` |
-|    5 |  659 | `	if( rc != SXRET_OK ){` |
-|  ! 0 |  660 | `		PdoUdfPark(pUdf,rc,pCtx);` |
-|  ! 0 |  661 | `	}else{` |
-|    5 |  662 | `		PdoUdfResult(pCtx,&sRes);` |
-|    - |  663 | `	}` |
-|    5 |  664 | `	if( pAgg && pAgg->pCtx ){` |
-|    3 |  665 | `		ph7_release_value(pVm,pAgg->pCtx);` |
-|    3 |  666 | `		pAgg->pCtx = 0;` |
-|    1 |  667 | `	}` |
-|    5 |  668 | `	PH7_MemObjRelease(&sRes);` |
-|    5 |  669 | `	PH7_MemObjRelease(&sCtx);` |
-|    5 |  670 | `	PH7_MemObjRelease(&sCount);` |
-|    3 |  671 | `}` |
-|    2 |  672 | `PH7_PRIVATE int PH7_PdoSqliteAddAggregate(phl_pdo_udf *pUdf,const char *zName,int nArg)` |
-|    1 |  673 | `{` |
-|    - |  674 | `	int rc;` |
-|    3 |  675 | `	if( pUdf->pConn->pDb == 0 ){` |
-|  ! 0 |  676 | `		return 0;` |
-|    - |  677 | `	}` |
-|    3 |  678 | `	rc = sqlite3_create_function_v2(pUdf->pConn->pDb,zName,nArg,SQLITE_UTF8,pUdf,` |
-|    - |  679 | `		0,PdoUdfStep,PdoUdfFinal,0);` |
-|    3 |  680 | `	if( rc != SQLITE_OK ){` |
-|  ! 0 |  681 | `		PH7_PdoSqliteTakeError(pUdf->pConn);` |
-|  ! 0 |  682 | `		return 0;` |
-|    - |  683 | `	}` |
-|    3 |  684 | `	return 1;` |
-|    2 |  685 | `}` |
-|    - |  686 | `/*` |
-|    - |  687 | ` * The authorizer: sqlite asks before it COMPILES each action, so a refusal` |
-|    - |  688 | ` * here stops a prepare rather than a step. Its verdict is one of three ints,` |
-|    - |  689 | ` * and anything else (including a callback that throws, whose status is parked` |
-|    - |  690 | ` * the usual way) denies.` |
-|    - |  691 | ` */` |
-|   10 |  692 | `static int PdoUdfAuthorize(void *pUser,int iAction,const char *z1,const char *z2,` |
-|    - |  693 | `	const char *z3,const char *z4)` |
-|    1 |  694 | `{` |
-|   11 |  695 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)pUser;` |
-|    - |  696 | `	ph7_vm *pVm;` |
-|    - |  697 | `	ph7_value sArgs[6],sRes;` |
-|    - |  698 | `	ph7_value *apArg[6];` |
-|    - |  699 | `	const char *azIn[4];` |
-|   11 |  700 | `	int n,iVerdict = SQLITE_OK;` |
-|    - |  701 | `	sxi32 rc;` |
-|   11 |  702 | `	if( pUdf == 0 \|\| PdoUdfParked(pUdf) ){` |
-|  ! 0 |  703 | `		return SQLITE_DENY;` |
-|    - |  704 | `	}` |
-|   11 |  705 | `	pVm = pUdf->pConn->pVm;` |
-|   11 |  706 | `	azIn[0] = z1; azIn[1] = z2; azIn[2] = z3; azIn[3] = z4;` |
-|   11 |  707 | `	PH7_MemObjInit(pVm,&sArgs[0]);` |
-|   11 |  708 | `	ph7_value_int(&sArgs[0],iAction);` |
-|   11 |  709 | `	apArg[0] = &sArgs[0];` |
-|   51 |  710 | `	for( n = 0 ; n < 4 ; ++n ){` |
-|   41 |  711 | `		PH7_MemObjInit(pVm,&sArgs[n + 1]);` |
-|   41 |  712 | `		if( azIn[n] ){` |
-|    7 |  713 | `			ph7_value_string(&sArgs[n + 1],azIn[n],(int)SyStrlen(azIn[n]));` |
-|    4 |  714 | `		}else{` |
-|   35 |  715 | `			ph7_value_null(&sArgs[n + 1]);` |
-|    - |  716 | `		}` |
-|   41 |  717 | `		apArg[n + 1] = &sArgs[n + 1];` |
-|   21 |  718 | `	}` |
-|   11 |  719 | `	PH7_MemObjInit(pVm,&sRes);` |
-|   11 |  720 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,5,apArg,&sRes);` |
-|   11 |  721 | `	if( rc != SXRET_OK ){` |
-|  ! 0 |  722 | `		PdoUdfPark(pUdf,rc,0);` |
-|  ! 0 |  723 | `		iVerdict = SQLITE_DENY;` |
-|  ! 0 |  724 | `	}else{` |
-|   11 |  725 | `		ph7_int64 iVal = ph7_value_to_int64(&sRes);` |
-|   11 |  726 | `		iVerdict = (iVal == SQLITE_IGNORE) ? SQLITE_IGNORE` |
-|    9 |  727 | `			: ((iVal == SQLITE_OK) ? SQLITE_OK : SQLITE_DENY);` |
-|    - |  728 | `	}` |
-|   11 |  729 | `	PH7_MemObjRelease(&sRes);` |
-|   61 |  730 | `	for( n = 0 ; n < 5 ; ++n ){` |
-|   51 |  731 | `		PH7_MemObjRelease(&sArgs[n]);` |
-|   26 |  732 | `	}` |
-|   11 |  733 | `	return iVerdict;` |
-|    6 |  734 | `}` |
-|    8 |  735 | `PH7_PRIVATE void PH7_PdoSqliteSetAuthorizer(phl_pdo *pConn,phl_pdo_udf *pUdf)` |
+|    - |  387 | ` * Where a NAMED parameter sits.  sqlite answers 0 for a name the statement` |
+|    - |  388 | ` * does not have, and binding at 0 is SQLITE_RANGE -- which is exactly how php` |
+|    - |  389 | ` * ends up reporting "column index out of range" for a misspelled placeholder` |
+|    - |  390 | ` * rather than something that names it.` |
+|    - |  391 | ` */` |
+|   16 |  392 | `PH7_PRIVATE int PH7_PdoSqliteBindIndexOf(phl_pdo_stmt *pSt,const char *zName,int nName)` |
+|    1 |  393 | `{` |
+|    - |  394 | `	char zBuf[128];` |
+|   17 |  395 | `	int n = 0;` |
+|   17 |  396 | `	if( pSt->pStmt == 0 \|\| nName < 1 ){` |
+|  ! 0 |  397 | `		return 0;` |
+|    - |  398 | `	}` |
+|    - |  399 | `	/* php accepts a name with or without its colon and sqlite wants it WITH,` |
+|    - |  400 | `	 * so the missing one is supplied here. */` |
+|   17 |  401 | `	if( zName[0] != ':' ){` |
+|    5 |  402 | `		zBuf[n++] = ':';` |
+|    2 |  403 | `	}` |
+|   59 |  404 | `	while( n < (int)sizeof(zBuf) - 1 && n - (zName[0] != ':' ? 1 : 0) < nName ){` |
+|   43 |  405 | `		zBuf[n] = zName[n - (zName[0] != ':' ? 1 : 0)];` |
+|   43 |  406 | `		++n;` |
+|    1 |  407 | `	}` |
+|   17 |  408 | `	zBuf[n] = 0;` |
+|   17 |  409 | `	return sqlite3_bind_parameter_index(pSt->pStmt,zBuf);` |
+|    9 |  410 | `}` |
+|    - |  411 | `/*` |
+|    - |  412 | ` * Bind one value at a 1-based position.  php's PARAM_* decides the CAST, not` |
+|    - |  413 | ` * the value's own type: PARAM_INT over the float 1.9 binds 1, PARAM_STR over` |
+|    - |  414 | ` * the same binds "1.5", and PARAM_NULL binds null whatever it was handed. The` |
+|    - |  415 | ` * one type that outranks the declaration is php's own null, which binds as` |
+|    - |  416 | ` * NULL through any of them.` |
+|    - |  417 | ` */` |
+|   62 |  418 | `PH7_PRIVATE int PH7_PdoSqliteBindAt(phl_pdo_stmt *pSt,int iPos,int iType,ph7_value *pVal)` |
+|    1 |  419 | `{` |
+|    - |  420 | `	int rc;` |
+|   63 |  421 | `	if( pSt->pStmt == 0 ){` |
+|  ! 0 |  422 | `		return 0;` |
+|    - |  423 | `	}` |
+|   63 |  424 | `	iType &= ~PDO_PARAM_FLAGS;` |
+|   63 |  425 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_NULL) \|\| iType == PDO_PARAM_NULL ){` |
+|    7 |  426 | `		rc = sqlite3_bind_null(pSt->pStmt,iPos);` |
+|    4 |  427 | `	}else{` |
+|   57 |  428 | `		switch( iType ){` |
+|    3 |  429 | `			case PDO_PARAM_INT:` |
+|    7 |  430 | `				rc = sqlite3_bind_int64(pSt->pStmt,iPos,(sqlite3_int64)ph7_value_to_int64(pVal));` |
+|    7 |  431 | `				break;` |
+|    2 |  432 | `			case PDO_PARAM_BOOL:` |
+|    5 |  433 | `				rc = sqlite3_bind_int(pSt->pStmt,iPos,ph7_value_to_bool(pVal) ? 1 : 0);` |
+|    5 |  434 | `				break;` |
+|    1 |  435 | `			case PDO_PARAM_LOB: {` |
+|    3 |  436 | `				int nByte = 0;` |
+|    3 |  437 | `				const char *zVal = ph7_value_to_string(pVal,&nByte);` |
+|    3 |  438 | `				rc = sqlite3_bind_blob(pSt->pStmt,iPos,zVal,nByte,SQLITE_TRANSIENT);` |
+|    3 |  439 | `				break;` |
+|    - |  440 | `			}` |
+|   22 |  441 | `			default: {` |
+|   45 |  442 | `				int nByte = 0;` |
+|   45 |  443 | `				const char *zVal = ph7_value_to_string(pVal,&nByte);` |
+|   45 |  444 | `				rc = sqlite3_bind_text(pSt->pStmt,iPos,zVal,nByte,SQLITE_TRANSIENT);` |
+|   44 |  445 | `				break;` |
+|    - |  446 | `			}` |
+|    - |  447 | `		}` |
+|    - |  448 | `	}` |
+|   63 |  449 | `	if( rc != SQLITE_OK ){` |
+|    9 |  450 | `		PH7_PdoSqliteTakeError(pSt->pConn);` |
+|    9 |  451 | `		return 0;` |
+|    - |  452 | `	}` |
+|   55 |  453 | `	return 1;` |
+|   32 |  454 | `}` |
+| 1374 |  455 | `PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol)` |
+|    2 |  456 | `{` |
+| 1376 |  457 | `	const char *zName = pSt->pStmt ? sqlite3_column_name(pSt->pStmt,iCol) : 0;` |
+| 1376 |  458 | `	return zName ? zName : "";` |
+|    2 |  459 | `}` |
+|    - |  460 | `/*` |
+|    - |  461 | ` * The type the SCHEMA declares for a column, which is not the type of the` |
+|    - |  462 | ` * value in it: a column declared TEXT holding NULL reports decl_type "TEXT"` |
+|    - |  463 | ` * and native_type "null". An expression has no declared type at all.` |
+|    - |  464 | ` */` |
+|    4 |  465 | `PH7_PRIVATE const char * PH7_PdoSqliteColumnDecl(phl_pdo_stmt *pSt,int iCol)` |
+|    1 |  466 | `{` |
+|    5 |  467 | `	return pSt->pStmt ? sqlite3_column_decltype(pSt->pStmt,iCol) : 0;` |
+|    1 |  468 | `}` |
+|    - |  469 | `/*` |
+|    - |  470 | ` * The table a column came from.  sqlite compiles this one only under` |
+|    - |  471 | ` * SQLITE_ENABLE_COLUMN_METADATA, so the SYMBOL's presence is the feature's:` |
+|    - |  472 | ` * verified present in the Debian and vcpkg libraries this engine links, and` |
+|    - |  473 | ` * php reports the same key from the same call. A platform whose sqlite lacks` |
+|    - |  474 | ` * it would fail to LINK rather than answer differently -- and its php would be` |
+|    - |  475 | ` * missing the key too.` |
+|    - |  476 | ` */` |
+|    4 |  477 | `PH7_PRIVATE const char * PH7_PdoSqliteColumnTable(phl_pdo_stmt *pSt,int iCol)` |
+|    1 |  478 | `{` |
+|    5 |  479 | `	return pSt->pStmt ? sqlite3_column_table_name(pSt->pStmt,iCol) : 0;` |
+|    1 |  480 | `}` |
+|    4 |  481 | `PH7_PRIVATE int PH7_PdoSqliteColumnType(phl_pdo_stmt *pSt,int iCol)` |
+|    1 |  482 | `{` |
+|    5 |  483 | `	return pSt->pStmt ? sqlite3_column_type(pSt->pStmt,iCol) : SQLITE_NULL;` |
+|    1 |  484 | `}` |
+|    - |  485 | `/*` |
+|    - |  486 | ` * What the statement's last step answered.  php reports THIS as the driver` |
+|    - |  487 | ` * code when getColumnMeta() is asked for a column that does not exist, which` |
+|    - |  488 | ` * is how a plain out-of-range index comes back as "100 another row available".` |
+|    - |  489 | ` */` |
+|    2 |  490 | `PH7_PRIVATE int PH7_PdoSqliteLastStepCode(phl_pdo_stmt *pSt)` |
+|    1 |  491 | `{` |
+|    3 |  492 | `	return pSt->bRowPending ? SQLITE_ROW : SQLITE_DONE;` |
+|    1 |  493 | `}` |
+|    - |  494 | `/*` |
+|    - |  495 | ` * One column of the row at the cursor, in sqlite's OWN type: an INTEGER comes` |
+|    - |  496 | ` * back as an int and a REAL as a float, which is why a fetch from this driver` |
+|    - |  497 | ` * is not all-strings the way a stringifying one is. A BLOB is a php string of` |
+|    - |  498 | ` * those bytes, NUL bytes included, so the length has to come from sqlite` |
+|    - |  499 | ` * rather than from the pointer.` |
+|    - |  500 | ` */` |
+| 1244 |  501 | `PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut)` |
+|    2 |  502 | `{` |
+| 1246 |  503 | `	if( pSt->pStmt == 0 ){` |
+|  ! 0 |  504 | `		ph7_value_null(pOut);` |
+|  ! 0 |  505 | `		return;` |
+|    - |  506 | `	}` |
+| 1246 |  507 | `	switch( sqlite3_column_type(pSt->pStmt,iCol) ){` |
+|  144 |  508 | `		case SQLITE_INTEGER:` |
+|  289 |  509 | `			ph7_value_int64(pOut,(ph7_int64)sqlite3_column_int64(pSt->pStmt,iCol));` |
+|  289 |  510 | `			break;` |
+|    - |  511 | `#ifndef PH7_OMIT_FLOATING_POINT` |
+|   27 |  512 | `		case SQLITE_FLOAT:` |
+|   55 |  513 | `			ph7_value_double(pOut,(ph7_real)sqlite3_column_double(pSt->pStmt,iCol));` |
+|   55 |  514 | `			break;` |
+|    - |  515 | `#endif` |
+|    3 |  516 | `		case SQLITE_BLOB: {` |
+|    7 |  517 | `			const void *pBlob = sqlite3_column_blob(pSt->pStmt,iCol);` |
+|    7 |  518 | `			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);` |
+|    - |  519 | `			/* the release is what CLEARS it: ph7_value_string APPENDS to a value` |
+|    - |  520 | `			 * that is already a string, so writing into a reused cell without` |
+|    - |  521 | `			 * this carries the previous column's bytes along */` |
+|    7 |  522 | `			PH7_MemObjRelease(pOut);` |
+|    7 |  523 | `			ph7_value_string(pOut,(const char *)pBlob,pBlob ? nByte : 0);` |
+|    7 |  524 | `			break;` |
+|    - |  525 | `		}` |
+|   51 |  526 | `		case SQLITE_NULL:` |
+|  103 |  527 | `			ph7_value_null(pOut);` |
+|  103 |  528 | `			break;` |
+|  397 |  529 | `		default: {` |
+|  796 |  530 | `			const char *zText = (const char *)sqlite3_column_text(pSt->pStmt,iCol);` |
+|  796 |  531 | `			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);` |
+|  796 |  532 | `			PH7_MemObjRelease(pOut);` |
+|  796 |  533 | `			ph7_value_string(pOut,zText,zText ? nByte : 0);` |
+|  794 |  534 | `			break;` |
+|    - |  535 | `		}` |
+|    - |  536 | `	}` |
+|  624 |  537 | `}` |
+|    - |  538 |  |
+|    - |  539 |  |
+|    - |  540 | `/* ------------------------------------------------------------------------` |
+|    - |  541 | ` * Userland callbacks, called from inside sqlite's own loop` |
+|    - |  542 | ` * ------------------------------------------------------------------------ */` |
+|    - |  543 | `/*` |
+|    - |  544 | ` * The rule for every callback here (and the reason they share one shape):` |
+|    - |  545 | ` * sqlite is in the middle of a step when the engine re-enters PHP, and a throw` |
+|    - |  546 | ` * out of that PHP cannot travel through sqlite's C frames. So the status is` |
+|    - |  547 | ` * PARKED on the connection, sqlite is told to stop with an error, and the verb` |
+|    - |  548 | ` * that started the step raises exactly the parked status once the library has` |
+|    - |  549 | ` * unwound. A second callback while one is parked does not re-enter PHP at all.` |
+|    - |  550 | ` */` |
+|   52 |  551 | `static int PdoUdfParked(phl_pdo_udf *pUdf)` |
+|    1 |  552 | `{` |
+|   53 |  553 | `	return pUdf->pConn->iCallbackExc != 0;` |
+|    1 |  554 | `}` |
+|    2 |  555 | `static void PdoUdfPark(phl_pdo_udf *pUdf,sxi32 rc,sqlite3_context *pCtx)` |
+|    1 |  556 | `{` |
+|    3 |  557 | `	pUdf->pConn->iCallbackExc = PH7_CALLBACK_UNWOUND(rc) ? rc : PH7_EXCEPTION;` |
+|    3 |  558 | `	if( pCtx ){` |
+|    3 |  559 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
+|    1 |  560 | `	}` |
+|    3 |  561 | `}` |
+|    - |  562 | `/* One sqlite value as a php value, in sqlite's own types. */` |
+|   30 |  563 | `static void PdoUdfArgValue(ph7_vm *pVm,sqlite3_value *pIn,ph7_value *pOut)` |
+|    1 |  564 | `{` |
+|   31 |  565 | `	PH7_MemObjInit(pVm,pOut);` |
+|   31 |  566 | `	switch( sqlite3_value_type(pIn) ){` |
+|   12 |  567 | `		case SQLITE_INTEGER:` |
+|   25 |  568 | `			ph7_value_int64(pOut,(ph7_int64)sqlite3_value_int64(pIn));` |
+|   25 |  569 | `			break;` |
+|    - |  570 | `#ifndef PH7_OMIT_FLOATING_POINT` |
+|  ! 0 |  571 | `		case SQLITE_FLOAT:` |
+|  ! 0 |  572 | `			ph7_value_double(pOut,(ph7_real)sqlite3_value_double(pIn));` |
+|  ! 0 |  573 | `			break;` |
+|    - |  574 | `#endif` |
+|  ! 0 |  575 | `		case SQLITE_NULL:` |
+|  ! 0 |  576 | `			ph7_value_null(pOut);` |
+|  ! 0 |  577 | `			break;` |
+|  ! 0 |  578 | `		case SQLITE_BLOB:` |
+|  ! 0 |  579 | `			ph7_value_string(pOut,(const char *)sqlite3_value_blob(pIn),` |
+|  ! 0 |  580 | `				sqlite3_value_bytes(pIn));` |
+|  ! 0 |  581 | `			break;` |
+|    3 |  582 | `		default:` |
+|   10 |  583 | `			ph7_value_string(pOut,(const char *)sqlite3_value_text(pIn),` |
+|    3 |  584 | `				sqlite3_value_bytes(pIn));` |
+|    6 |  585 | `			break;` |
+|    - |  586 | `	}` |
+|   31 |  587 | `}` |
+|    - |  588 | `/*` |
+|    - |  589 | ` * What a callback RETURNED, as a sqlite result.  php maps null, int and float` |
+|    - |  590 | ` * straight through and puts everything else through a STRING cast -- which is` |
+|    - |  591 | ` * why a bool comes back as "1" and "" and an array comes back as "Array" with` |
+|    - |  592 | ` * php's own conversion warning behind it.` |
+|    - |  593 | ` */` |
+|   28 |  594 | `static void PdoUdfResult(sqlite3_context *pCtx,ph7_value *pVal)` |
+|    1 |  595 | `{` |
+|   29 |  596 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_NULL) ){` |
+|    3 |  597 | `		sqlite3_result_null(pCtx);` |
+|   28 |  598 | `	}else if( pVal->iFlags & MEMOBJ_INT ){` |
+|   13 |  599 | `		sqlite3_result_int64(pCtx,(sqlite3_int64)ph7_value_to_int64(pVal));` |
+|    - |  600 | `#ifndef PH7_OMIT_FLOATING_POINT` |
+|   21 |  601 | `	}else if( pVal->iFlags & MEMOBJ_REAL ){` |
+|    3 |  602 | `		sqlite3_result_double(pCtx,(double)ph7_value_to_double(pVal));` |
+|    - |  603 | `#endif` |
+|    2 |  604 | `	}else{` |
+|    - |  605 | `		/* php's string CAST, not a quiet stringification: an array coming back` |
+|    - |  606 | `		 * from a callback is "Array" with php's own conversion warning behind` |
+|    - |  607 | `		 * it, and a __toString() that throws travels the callback rail. */` |
+|   13 |  608 | `		int nByte = 0;` |
+|    - |  609 | `		const char *zStr;` |
+|   13 |  610 | `		PH7_MemObjToStringUV(pVal);` |
+|   13 |  611 | `		zStr = ph7_value_to_string(pVal,&nByte);` |
+|   13 |  612 | `		sqlite3_result_text(pCtx,zStr,nByte,SQLITE_TRANSIENT);` |
+|    - |  613 | `	}` |
+|   29 |  614 | `}` |
+|    - |  615 | `/* A scalar function's body: build the arguments, call, convert the answer. */` |
+|   26 |  616 | `static void PdoUdfScalar(sqlite3_context *pCtx,int nArg,sqlite3_value **apVal)` |
+|    1 |  617 | `{` |
+|   27 |  618 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)sqlite3_user_data(pCtx);` |
+|   27 |  619 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
+|    - |  620 | `	ph7_value *apArg[16];` |
+|    - |  621 | `	ph7_value sArgs[16];` |
+|    - |  622 | `	ph7_value sRes;` |
+|   27 |  623 | `	int n,nCall = nArg;` |
+|    - |  624 | `	sxi32 rc;` |
+|   27 |  625 | `	if( PdoUdfParked(pUdf) ){` |
+|  ! 0 |  626 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
+|  ! 0 |  627 | `		return;` |
+|    - |  628 | `	}` |
+|   27 |  629 | `	if( nCall > (int)SX_ARRAYSIZE(sArgs) ){` |
+|  ! 0 |  630 | `		nCall = (int)SX_ARRAYSIZE(sArgs);` |
+|  ! 0 |  631 | `	}` |
+|   51 |  632 | `	for( n = 0 ; n < nCall ; ++n ){` |
+|   25 |  633 | `		PdoUdfArgValue(pVm,apVal[n],&sArgs[n]);` |
+|   25 |  634 | `		apArg[n] = &sArgs[n];` |
+|   13 |  635 | `	}` |
+|   27 |  636 | `	PH7_MemObjInit(pVm,&sRes);` |
+|   27 |  637 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,nCall,nCall ? apArg : 0,&sRes);` |
+|   27 |  638 | `	if( rc != SXRET_OK ){` |
+|    3 |  639 | `		PdoUdfPark(pUdf,rc,pCtx);` |
+|    2 |  640 | `	}else{` |
+|   25 |  641 | `		PdoUdfResult(pCtx,&sRes);` |
+|    - |  642 | `	}` |
+|   27 |  643 | `	PH7_MemObjRelease(&sRes);` |
+|   51 |  644 | `	for( n = 0 ; n < nCall ; ++n ){` |
+|   25 |  645 | `		PH7_MemObjRelease(&sArgs[n]);` |
+|   13 |  646 | `	}` |
+|   14 |  647 | `}` |
+|    - |  648 | `/* A collation: two strings in, an ordering out. */` |
+|    6 |  649 | `static int PdoUdfCollate(void *pUser,int nLeft,const void *pLeft,int nRight,const void *pRight)` |
+|    1 |  650 | `{` |
+|    7 |  651 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)pUser;` |
+|    7 |  652 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
+|    - |  653 | `	ph7_value sL,sR,sRes;` |
+|    - |  654 | `	ph7_value *apArg[2];` |
+|    - |  655 | `	sxi32 rc;` |
+|    7 |  656 | `	int iCmp = 0;` |
+|    7 |  657 | `	if( PdoUdfParked(pUdf) ){` |
+|  ! 0 |  658 | `		return 0;` |
+|    - |  659 | `	}` |
+|    7 |  660 | `	PH7_MemObjInit(pVm,&sL);` |
+|    7 |  661 | `	PH7_MemObjInit(pVm,&sR);` |
+|    7 |  662 | `	ph7_value_string(&sL,(const char *)pLeft,nLeft);` |
+|    7 |  663 | `	ph7_value_string(&sR,(const char *)pRight,nRight);` |
+|    7 |  664 | `	apArg[0] = &sL;` |
+|    7 |  665 | `	apArg[1] = &sR;` |
+|    7 |  666 | `	PH7_MemObjInit(pVm,&sRes);` |
+|    7 |  667 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,2,apArg,&sRes);` |
+|    7 |  668 | `	if( rc != SXRET_OK ){` |
+|    - |  669 | `		/* no sqlite3_context here to fail through: park it and order the pair` |
+|    - |  670 | `		 * as equal, which leaves the walk to end on the parked status */` |
+|  ! 0 |  671 | `		PdoUdfPark(pUdf,rc,0);` |
+|  ! 0 |  672 | `	}else{` |
+|    7 |  673 | `		ph7_int64 iVal = ph7_value_to_int64(&sRes);` |
+|    7 |  674 | `		iCmp = iVal < 0 ? -1 : (iVal > 0 ? 1 : 0);` |
+|    - |  675 | `	}` |
+|    7 |  676 | `	PH7_MemObjRelease(&sRes);` |
+|    7 |  677 | `	PH7_MemObjRelease(&sL);` |
+|    7 |  678 | `	PH7_MemObjRelease(&sR);` |
+|    7 |  679 | `	return iCmp;` |
+|    4 |  680 | `}` |
+|    - |  681 | `/*` |
+|    - |  682 | ` * An aggregate's step and finalize halves.  php gives both callbacks the` |
+|    - |  683 | ` * running CONTEXT and the ROW COUNT as their first two arguments, and whatever` |
+|    - |  684 | ` * step returns becomes the context of the next one. The count php reports to` |
+|    - |  685 | ` * the finalizer is one past the rows it stepped over -- including for an empty` |
+|    - |  686 | ` * group, where step never runs at all and the finalizer still sees 1.` |
+|    - |  687 | ` */` |
+|    6 |  688 | `static void PdoUdfStep(sqlite3_context *pCtx,int nArg,sqlite3_value **apVal)` |
+|    1 |  689 | `{` |
+|    7 |  690 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)sqlite3_user_data(pCtx);` |
+|    7 |  691 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
+|    - |  692 | `	phl_pdo_agg *pAgg;` |
+|    - |  693 | `	ph7_value sArgs[16];` |
+|    - |  694 | `	ph7_value *apArg[18];` |
+|    - |  695 | `	ph7_value sCount,sRes;` |
+|    7 |  696 | `	int n,nCall = nArg;` |
+|    - |  697 | `	sxi32 rc;` |
+|    7 |  698 | `	if( PdoUdfParked(pUdf) ){` |
+|  ! 0 |  699 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
+|  ! 0 |  700 | `		return;` |
+|    - |  701 | `	}` |
+|    7 |  702 | `	pAgg = (phl_pdo_agg *)sqlite3_aggregate_context(pCtx,(int)sizeof(phl_pdo_agg));` |
+|    7 |  703 | `	if( pAgg == 0 ){` |
+|  ! 0 |  704 | `		return;` |
+|    - |  705 | `	}` |
+|    7 |  706 | `	if( pAgg->pCtx == 0 ){` |
+|    3 |  707 | `		pAgg->pCtx = ph7_new_scalar(pVm);` |
+|    3 |  708 | `		pAgg->nRow = 0;` |
+|    1 |  709 | `	}` |
+|    7 |  710 | `	pAgg->nRow++;` |
+|    7 |  711 | `	if( nCall > (int)SX_ARRAYSIZE(sArgs) ){` |
+|  ! 0 |  712 | `		nCall = (int)SX_ARRAYSIZE(sArgs);` |
+|  ! 0 |  713 | `	}` |
+|    7 |  714 | `	PH7_MemObjInit(pVm,&sCount);` |
+|    7 |  715 | `	ph7_value_int(&sCount,pAgg->nRow);` |
+|    7 |  716 | `	apArg[0] = pAgg->pCtx;` |
+|    7 |  717 | `	apArg[1] = &sCount;` |
+|   13 |  718 | `	for( n = 0 ; n < nCall ; ++n ){` |
+|    7 |  719 | `		PdoUdfArgValue(pVm,apVal[n],&sArgs[n]);` |
+|    7 |  720 | `		apArg[n + 2] = &sArgs[n];` |
+|    4 |  721 | `	}` |
+|    7 |  722 | `	PH7_MemObjInit(pVm,&sRes);` |
+|    7 |  723 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,nCall + 2,apArg,&sRes);` |
+|    7 |  724 | `	if( rc != SXRET_OK ){` |
+|  ! 0 |  725 | `		PdoUdfPark(pUdf,rc,pCtx);` |
+|    7 |  726 | `	}else if( pAgg->pCtx ){` |
+|    7 |  727 | `		PH7_MemObjStore(&sRes,pAgg->pCtx);` |
+|    3 |  728 | `	}` |
+|    7 |  729 | `	PH7_MemObjRelease(&sRes);` |
+|    7 |  730 | `	PH7_MemObjRelease(&sCount);` |
+|   13 |  731 | `	for( n = 0 ; n < nCall ; ++n ){` |
+|    7 |  732 | `		PH7_MemObjRelease(&sArgs[n]);` |
+|    4 |  733 | `	}` |
+|    4 |  734 | `}` |
+|    4 |  735 | `static void PdoUdfFinal(sqlite3_context *pCtx)` |
 |    1 |  736 | `{` |
-|    9 |  737 | `	if( pConn->pDb == 0 ){` |
-|  ! 0 |  738 | `		return;` |
-|    - |  739 | `	}` |
-|    9 |  740 | `	if( pUdf ){` |
-|    7 |  741 | `		sqlite3_set_authorizer(pConn->pDb,PdoUdfAuthorize,pUdf);` |
-|    4 |  742 | `	}else{` |
-|    3 |  743 | `		sqlite3_set_authorizer(pConn->pDb,0,0);` |
-|    - |  744 | `	}` |
-|    5 |  745 | `}` |
-|   16 |  746 | `PH7_PRIVATE int PH7_PdoSqliteAddFunction(phl_pdo_udf *pUdf,const char *zName,int nArg,int iFlags)` |
-|    1 |  747 | `{` |
-|    - |  748 | `	int rc;` |
-|   17 |  749 | `	if( pUdf->pConn->pDb == 0 ){` |
-|  ! 0 |  750 | `		return 0;` |
-|    - |  751 | `	}` |
-|   25 |  752 | `	rc = sqlite3_create_function_v2(pUdf->pConn->pDb,zName,nArg,` |
-|   16 |  753 | `		SQLITE_UTF8 \| (iFlags & SQLITE_DETERMINISTIC),pUdf,PdoUdfScalar,0,0,0);` |
-|   17 |  754 | `	if( rc != SQLITE_OK ){` |
-|  ! 0 |  755 | `		PH7_PdoSqliteTakeError(pUdf->pConn);` |
-|  ! 0 |  756 | `		return 0;` |
-|    - |  757 | `	}` |
-|   17 |  758 | `	return 1;` |
-|    9 |  759 | `}` |
-|    2 |  760 | `PH7_PRIVATE int PH7_PdoSqliteAddCollation(phl_pdo_udf *pUdf,const char *zName)` |
-|    1 |  761 | `{` |
-|    - |  762 | `	int rc;` |
-|    3 |  763 | `	if( pUdf->pConn->pDb == 0 ){` |
-|  ! 0 |  764 | `		return 0;` |
-|    - |  765 | `	}` |
-|    3 |  766 | `	rc = sqlite3_create_collation_v2(pUdf->pConn->pDb,zName,SQLITE_UTF8,pUdf,` |
-|    - |  767 | `		PdoUdfCollate,0);` |
-|    3 |  768 | `	if( rc != SQLITE_OK ){` |
-|  ! 0 |  769 | `		PH7_PdoSqliteTakeError(pUdf->pConn);` |
-|  ! 0 |  770 | `		return 0;` |
-|    - |  771 | `	}` |
-|    3 |  772 | `	return 1;` |
-|    2 |  773 | `}` |
-|    - |  774 |  |
-|    - |  775 | `/*` |
-|    - |  776 | ` * The connection a Pdo\Sqlite verb was called on.  These methods are declared` |
-|    - |  777 | ` * on the subclass, so the receiver always carries one.` |
-|    - |  778 | ` */` |
-|   34 |  779 | `static phl_pdo * PdoSqliteThis(ph7_context *pCtx)` |
-|    1 |  780 | `{` |
-|   35 |  781 | `	return PH7_PdoConnOfInstance(PH7_ContextThis(pCtx));` |
-|    1 |  782 | `}` |
-|    - |  783 | `/* Record one callback on the connection, so it outlives the registering call. */` |
-|   26 |  784 | `static phl_pdo_udf * PdoUdfNew(phl_pdo *pConn,const char *zName,int nName,` |
-|    - |  785 | `	ph7_value *pCallback,ph7_value *pFinalize)` |
-|    1 |  786 | `{` |
-|   27 |  787 | `	ph7_vm *pVm = pConn->pVm;` |
-|   27 |  788 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_pdo_udf));` |
-|   27 |  789 | `	if( pUdf == 0 ){` |
-|  ! 0 |  790 | `		return 0;` |
-|    - |  791 | `	}` |
-|   27 |  792 | `	SyZero(pUdf,sizeof(phl_pdo_udf));` |
-|   27 |  793 | `	pUdf->pConn = pConn;` |
-|   27 |  794 | `	pUdf->zName = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)nName + 1);` |
-|   27 |  795 | `	if( pUdf->zName ){` |
-|   27 |  796 | `		SyMemcpy(zName,pUdf->zName,(sxu32)nName);` |
-|   27 |  797 | `		pUdf->zName[nName] = 0;` |
-|   13 |  798 | `	}` |
-|   27 |  799 | `	pUdf->pCallback = ph7_new_scalar(pVm);` |
-|   27 |  800 | `	if( pUdf->pCallback ){` |
-|   27 |  801 | `		PH7_MemObjStore(pCallback,pUdf->pCallback);` |
-|   13 |  802 | `	}` |
-|   27 |  803 | `	if( pFinalize ){` |
-|    3 |  804 | `		pUdf->pFinalize = ph7_new_scalar(pVm);` |
-|    3 |  805 | `		if( pUdf->pFinalize ){` |
-|    3 |  806 | `			PH7_MemObjStore(pFinalize,pUdf->pFinalize);` |
-|    1 |  807 | `		}` |
-|    1 |  808 | `	}` |
-|   27 |  809 | `	pUdf->pNext = pConn->pUdfs;` |
-|   27 |  810 | `	pConn->pUdfs = pUdf;` |
-|   27 |  811 | `	return pUdf;` |
-|   14 |  812 | `}` |
-|    - |  813 | `/* php's refusal for a callback it cannot call, worded per verb. */` |
-|    4 |  814 | `static sxi32 PdoUdfBadCallable(ph7_context *pCtx,const char *zFn,int iArg,const char *zParam,` |
-|    - |  815 | `	ph7_value *pVal)` |
-|    1 |  816 | `{` |
-|    5 |  817 | `	int nName = 0;` |
-|    5 |  818 | `	const char *zName = pVal ? ph7_value_to_string(pVal,&nName) : "";` |
-|    7 |  819 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
-|    - |  820 | `		"%s(): Argument #%d ($%s) must be a valid callback, function \"%.*s\" not found "` |
-|    2 |  821 | `		"or invalid function name",zFn,iArg,zParam,nName,zName);` |
-|    1 |  822 | `}` |
-|    - |  823 | `/*` |
-|    - |  824 | ` * Pdo\Sqlite::createFunction(string $name, callable $callback,` |
-|    - |  825 | ` *                            int $numArgs = -1, int $flags = 0): bool` |
-|    - |  826 | ` *` |
-|    - |  827 | ` * A SQL function whose body is PHP. -1 arguments means "any arity", which is` |
-|    - |  828 | ` * sqlite's own convention, and DETERMINISTIC is the one flag sqlite takes here.` |
-|    - |  829 | ` * Registering the same name twice REPLACES the previous body.` |
-|    - |  830 | ` */` |
-|   18 |  831 | `static int vm_builtin_PdoSqlite_createFunction(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  832 | `{` |
-|   19 |  833 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
-|    - |  834 | `	phl_pdo_udf *pUdf;` |
-|    - |  835 | `	const char *zName;` |
-|   19 |  836 | `	int nName = 0,nWant,iFlags;` |
-|   19 |  837 | `	if( pConn == 0 ){` |
-|  ! 0 |  838 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
-|    - |  839 | `	}` |
-|   19 |  840 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
-|   19 |  841 | `	if( nArg < 2 \|\| !ph7_value_is_callable(apArg[1]) ){` |
-|    4 |  842 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createFunction",2,"callback",` |
-|    1 |  843 | `			nArg > 1 ? apArg[1] : 0);` |
-|    - |  844 | `	}` |
-|   17 |  845 | `	nWant = nArg > 2 ? (int)ph7_value_to_int64(apArg[2]) : -1;` |
-|   17 |  846 | `	iFlags = nArg > 3 ? (int)ph7_value_to_int64(apArg[3]) : 0;` |
-|   17 |  847 | `	pUdf = PdoUdfNew(pConn,zName,nName,apArg[1],0);` |
-|   17 |  848 | `	if( pUdf == 0 ){` |
-|  ! 0 |  849 | `		return PH7_ContextMemoryError(pCtx);` |
+|    5 |  737 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)sqlite3_user_data(pCtx);` |
+|    5 |  738 | `	ph7_vm *pVm = pUdf->pConn->pVm;` |
+|    5 |  739 | `	phl_pdo_agg *pAgg = (phl_pdo_agg *)sqlite3_aggregate_context(pCtx,0);` |
+|    - |  740 | `	ph7_value sCtx,sCount,sRes;` |
+|    - |  741 | `	ph7_value *apArg[2];` |
+|    - |  742 | `	sxi32 rc;` |
+|    5 |  743 | `	if( PdoUdfParked(pUdf) ){` |
+|  ! 0 |  744 | `		sqlite3_result_error(pCtx,"PHL: callback raised",-1);` |
+|  ! 0 |  745 | `		return;` |
+|    - |  746 | `	}` |
+|    5 |  747 | `	PH7_MemObjInit(pVm,&sCtx);` |
+|    5 |  748 | `	PH7_MemObjInit(pVm,&sCount);` |
+|    5 |  749 | `	if( pAgg && pAgg->pCtx ){` |
+|    3 |  750 | `		PH7_MemObjStore(pAgg->pCtx,&sCtx);` |
+|    1 |  751 | `	}` |
+|    5 |  752 | `	ph7_value_int(&sCount,(pAgg ? pAgg->nRow : 0) + 1);` |
+|    5 |  753 | `	apArg[0] = &sCtx;` |
+|    5 |  754 | `	apArg[1] = &sCount;` |
+|    5 |  755 | `	PH7_MemObjInit(pVm,&sRes);` |
+|    5 |  756 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pFinalize ? pUdf->pFinalize : pUdf->pCallback,` |
+|    2 |  757 | `		2,apArg,&sRes);` |
+|    5 |  758 | `	if( rc != SXRET_OK ){` |
+|  ! 0 |  759 | `		PdoUdfPark(pUdf,rc,pCtx);` |
+|  ! 0 |  760 | `	}else{` |
+|    5 |  761 | `		PdoUdfResult(pCtx,&sRes);` |
+|    - |  762 | `	}` |
+|    5 |  763 | `	if( pAgg && pAgg->pCtx ){` |
+|    3 |  764 | `		ph7_release_value(pVm,pAgg->pCtx);` |
+|    3 |  765 | `		pAgg->pCtx = 0;` |
+|    1 |  766 | `	}` |
+|    5 |  767 | `	PH7_MemObjRelease(&sRes);` |
+|    5 |  768 | `	PH7_MemObjRelease(&sCtx);` |
+|    5 |  769 | `	PH7_MemObjRelease(&sCount);` |
+|    3 |  770 | `}` |
+|    2 |  771 | `PH7_PRIVATE int PH7_PdoSqliteAddAggregate(phl_pdo_udf *pUdf,const char *zName,int nArg)` |
+|    1 |  772 | `{` |
+|    - |  773 | `	int rc;` |
+|    3 |  774 | `	if( pUdf->pConn->pDb == 0 ){` |
+|  ! 0 |  775 | `		return 0;` |
+|    - |  776 | `	}` |
+|    3 |  777 | `	rc = sqlite3_create_function_v2(pUdf->pConn->pDb,zName,nArg,SQLITE_UTF8,pUdf,` |
+|    - |  778 | `		0,PdoUdfStep,PdoUdfFinal,0);` |
+|    3 |  779 | `	if( rc != SQLITE_OK ){` |
+|  ! 0 |  780 | `		PH7_PdoSqliteTakeError(pUdf->pConn);` |
+|  ! 0 |  781 | `		return 0;` |
+|    - |  782 | `	}` |
+|    3 |  783 | `	return 1;` |
+|    2 |  784 | `}` |
+|    - |  785 | `/*` |
+|    - |  786 | ` * The authorizer: sqlite asks before it COMPILES each action, so a refusal` |
+|    - |  787 | ` * here stops a prepare rather than a step. Its verdict is one of three ints,` |
+|    - |  788 | ` * and anything else (including a callback that throws, whose status is parked` |
+|    - |  789 | ` * the usual way) denies.` |
+|    - |  790 | ` */` |
+|   10 |  791 | `static int PdoUdfAuthorize(void *pUser,int iAction,const char *z1,const char *z2,` |
+|    - |  792 | `	const char *z3,const char *z4)` |
+|    1 |  793 | `{` |
+|   11 |  794 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)pUser;` |
+|    - |  795 | `	ph7_vm *pVm;` |
+|    - |  796 | `	ph7_value sArgs[6],sRes;` |
+|    - |  797 | `	ph7_value *apArg[6];` |
+|    - |  798 | `	const char *azIn[4];` |
+|   11 |  799 | `	int n,iVerdict = SQLITE_OK;` |
+|    - |  800 | `	sxi32 rc;` |
+|   11 |  801 | `	if( pUdf == 0 \|\| PdoUdfParked(pUdf) ){` |
+|  ! 0 |  802 | `		return SQLITE_DENY;` |
+|    - |  803 | `	}` |
+|   11 |  804 | `	pVm = pUdf->pConn->pVm;` |
+|   11 |  805 | `	azIn[0] = z1; azIn[1] = z2; azIn[2] = z3; azIn[3] = z4;` |
+|   11 |  806 | `	PH7_MemObjInit(pVm,&sArgs[0]);` |
+|   11 |  807 | `	ph7_value_int(&sArgs[0],iAction);` |
+|   11 |  808 | `	apArg[0] = &sArgs[0];` |
+|   51 |  809 | `	for( n = 0 ; n < 4 ; ++n ){` |
+|   41 |  810 | `		PH7_MemObjInit(pVm,&sArgs[n + 1]);` |
+|   41 |  811 | `		if( azIn[n] ){` |
+|    7 |  812 | `			ph7_value_string(&sArgs[n + 1],azIn[n],(int)SyStrlen(azIn[n]));` |
+|    4 |  813 | `		}else{` |
+|   35 |  814 | `			ph7_value_null(&sArgs[n + 1]);` |
+|    - |  815 | `		}` |
+|   41 |  816 | `		apArg[n + 1] = &sArgs[n + 1];` |
+|   21 |  817 | `	}` |
+|   11 |  818 | `	PH7_MemObjInit(pVm,&sRes);` |
+|   11 |  819 | `	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,5,apArg,&sRes);` |
+|   11 |  820 | `	if( rc != SXRET_OK ){` |
+|  ! 0 |  821 | `		PdoUdfPark(pUdf,rc,0);` |
+|  ! 0 |  822 | `		iVerdict = SQLITE_DENY;` |
+|  ! 0 |  823 | `	}else{` |
+|   11 |  824 | `		ph7_int64 iVal = ph7_value_to_int64(&sRes);` |
+|   11 |  825 | `		iVerdict = (iVal == SQLITE_IGNORE) ? SQLITE_IGNORE` |
+|    9 |  826 | `			: ((iVal == SQLITE_OK) ? SQLITE_OK : SQLITE_DENY);` |
+|    - |  827 | `	}` |
+|   11 |  828 | `	PH7_MemObjRelease(&sRes);` |
+|   61 |  829 | `	for( n = 0 ; n < 5 ; ++n ){` |
+|   51 |  830 | `		PH7_MemObjRelease(&sArgs[n]);` |
+|   26 |  831 | `	}` |
+|   11 |  832 | `	return iVerdict;` |
+|    6 |  833 | `}` |
+|    8 |  834 | `PH7_PRIVATE void PH7_PdoSqliteSetAuthorizer(phl_pdo *pConn,phl_pdo_udf *pUdf)` |
+|    1 |  835 | `{` |
+|    9 |  836 | `	if( pConn->pDb == 0 ){` |
+|  ! 0 |  837 | `		return;` |
+|    - |  838 | `	}` |
+|    9 |  839 | `	if( pUdf ){` |
+|    7 |  840 | `		sqlite3_set_authorizer(pConn->pDb,PdoUdfAuthorize,pUdf);` |
+|    4 |  841 | `	}else{` |
+|    3 |  842 | `		sqlite3_set_authorizer(pConn->pDb,0,0);` |
+|    - |  843 | `	}` |
+|    5 |  844 | `}` |
+|   16 |  845 | `PH7_PRIVATE int PH7_PdoSqliteAddFunction(phl_pdo_udf *pUdf,const char *zName,int nArg,int iFlags)` |
+|    1 |  846 | `{` |
+|    - |  847 | `	int rc;` |
+|   17 |  848 | `	if( pUdf->pConn->pDb == 0 ){` |
+|  ! 0 |  849 | `		return 0;` |
 |    - |  850 | `	}` |
-|   17 |  851 | `	if( !PH7_PdoSqliteAddFunction(pUdf,pUdf->zName ? pUdf->zName : "",nWant,iFlags) ){` |
-|  ! 0 |  852 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 |  853 | `		return PH7_PdoRaise(pCtx,pConn,"Pdo\\Sqlite::createFunction");` |
-|    - |  854 | `	}` |
-|   17 |  855 | `	ph7_result_bool(pCtx,1);` |
-|   17 |  856 | `	return PH7_OK;` |
-|   10 |  857 | `}` |
-|    - |  858 | `/*` |
-|    - |  859 | ` * Pdo\Sqlite::createCollation(string $name, callable $callback): bool` |
-|    - |  860 | ` *` |
-|    - |  861 | ` * An ORDER BY ... COLLATE whose comparison is PHP. The callback answers the` |
-|    - |  862 | ` * usual negative/zero/positive.` |
-|    - |  863 | ` */` |
-|    4 |  864 | `static int vm_builtin_PdoSqlite_createCollation(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  865 | `{` |
-|    5 |  866 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
-|    - |  867 | `	phl_pdo_udf *pUdf;` |
-|    - |  868 | `	const char *zName;` |
-|    5 |  869 | `	int nName = 0;` |
-|    5 |  870 | `	if( pConn == 0 ){` |
-|  ! 0 |  871 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
-|    - |  872 | `	}` |
-|    5 |  873 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
-|    5 |  874 | `	if( nArg < 2 \|\| !ph7_value_is_callable(apArg[1]) ){` |
-|    4 |  875 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createCollation",2,"callback",` |
-|    1 |  876 | `			nArg > 1 ? apArg[1] : 0);` |
-|    - |  877 | `	}` |
-|    3 |  878 | `	pUdf = PdoUdfNew(pConn,zName,nName,apArg[1],0);` |
-|    3 |  879 | `	if( pUdf == 0 ){` |
-|  ! 0 |  880 | `		return PH7_ContextMemoryError(pCtx);` |
-|    - |  881 | `	}` |
-|    3 |  882 | `	if( !PH7_PdoSqliteAddCollation(pUdf,pUdf->zName ? pUdf->zName : "") ){` |
-|  ! 0 |  883 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 |  884 | `		return PH7_PdoRaise(pCtx,pConn,"Pdo\\Sqlite::createCollation");` |
-|    - |  885 | `	}` |
-|    3 |  886 | `	ph7_result_bool(pCtx,1);` |
-|    3 |  887 | `	return PH7_OK;` |
-|    3 |  888 | `}` |
-|    - |  889 | `/*` |
-|    - |  890 | ` * Pdo\Sqlite::createAggregate(string $name, callable $step, callable $finalize,` |
-|    - |  891 | ` *                             int $numArgs = -1): bool` |
-|    - |  892 | ` */` |
-|    2 |  893 | `static int vm_builtin_PdoSqlite_createAggregate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  894 | `{` |
-|    3 |  895 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
-|    - |  896 | `	phl_pdo_udf *pUdf;` |
-|    - |  897 | `	const char *zName;` |
-|    3 |  898 | `	int nName = 0,nWant;` |
-|    3 |  899 | `	if( pConn == 0 ){` |
-|  ! 0 |  900 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
-|    - |  901 | `	}` |
-|    3 |  902 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
-|    3 |  903 | `	if( nArg < 2 \|\| !ph7_value_is_callable(apArg[1]) ){` |
-|  ! 0 |  904 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createAggregate",2,"step",` |
-|  ! 0 |  905 | `			nArg > 1 ? apArg[1] : 0);` |
-|    - |  906 | `	}` |
-|    3 |  907 | `	if( nArg < 3 \|\| !ph7_value_is_callable(apArg[2]) ){` |
-|  ! 0 |  908 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createAggregate",3,"finalize",` |
-|  ! 0 |  909 | `			nArg > 2 ? apArg[2] : 0);` |
-|    - |  910 | `	}` |
-|    3 |  911 | `	nWant = nArg > 3 ? (int)ph7_value_to_int64(apArg[3]) : -1;` |
-|    3 |  912 | `	pUdf = PdoUdfNew(pConn,zName,nName,apArg[1],apArg[2]);` |
-|    3 |  913 | `	if( pUdf == 0 ){` |
-|  ! 0 |  914 | `		return PH7_ContextMemoryError(pCtx);` |
-|    - |  915 | `	}` |
-|    3 |  916 | `	if( !PH7_PdoSqliteAddAggregate(pUdf,pUdf->zName ? pUdf->zName : "",nWant) ){` |
-|  ! 0 |  917 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 |  918 | `		return PH7_PdoRaise(pCtx,pConn,"Pdo\\Sqlite::createAggregate");` |
-|    - |  919 | `	}` |
-|    3 |  920 | `	ph7_result_bool(pCtx,1);` |
-|    3 |  921 | `	return PH7_OK;` |
-|    2 |  922 | `}` |
-|    - |  923 | `/*` |
-|    - |  924 | ` * Pdo\Sqlite::setAuthorizer(?callable $callback): void` |
+|   25 |  851 | `	rc = sqlite3_create_function_v2(pUdf->pConn->pDb,zName,nArg,` |
+|   16 |  852 | `		SQLITE_UTF8 \| (iFlags & SQLITE_DETERMINISTIC),pUdf,PdoUdfScalar,0,0,0);` |
+|   17 |  853 | `	if( rc != SQLITE_OK ){` |
+|  ! 0 |  854 | `		PH7_PdoSqliteTakeError(pUdf->pConn);` |
+|  ! 0 |  855 | `		return 0;` |
+|    - |  856 | `	}` |
+|   17 |  857 | `	return 1;` |
+|    9 |  858 | `}` |
+|    2 |  859 | `PH7_PRIVATE int PH7_PdoSqliteAddCollation(phl_pdo_udf *pUdf,const char *zName)` |
+|    1 |  860 | `{` |
+|    - |  861 | `	int rc;` |
+|    3 |  862 | `	if( pUdf->pConn->pDb == 0 ){` |
+|  ! 0 |  863 | `		return 0;` |
+|    - |  864 | `	}` |
+|    3 |  865 | `	rc = sqlite3_create_collation_v2(pUdf->pConn->pDb,zName,SQLITE_UTF8,pUdf,` |
+|    - |  866 | `		PdoUdfCollate,0);` |
+|    3 |  867 | `	if( rc != SQLITE_OK ){` |
+|  ! 0 |  868 | `		PH7_PdoSqliteTakeError(pUdf->pConn);` |
+|  ! 0 |  869 | `		return 0;` |
+|    - |  870 | `	}` |
+|    3 |  871 | `	return 1;` |
+|    2 |  872 | `}` |
+|    - |  873 |  |
+|    - |  874 | `/*` |
+|    - |  875 | ` * The connection a Pdo\Sqlite verb was called on.  These methods are declared` |
+|    - |  876 | ` * on the subclass, so the receiver always carries one.` |
+|    - |  877 | ` */` |
+|   34 |  878 | `static phl_pdo * PdoSqliteThis(ph7_context *pCtx)` |
+|    1 |  879 | `{` |
+|   35 |  880 | `	return PH7_PdoConnOfInstance(PH7_ContextThis(pCtx));` |
+|    1 |  881 | `}` |
+|    - |  882 | `/* Record one callback on the connection, so it outlives the registering call. */` |
+|   26 |  883 | `static phl_pdo_udf * PdoUdfNew(phl_pdo *pConn,const char *zName,int nName,` |
+|    - |  884 | `	ph7_value *pCallback,ph7_value *pFinalize)` |
+|    1 |  885 | `{` |
+|   27 |  886 | `	ph7_vm *pVm = pConn->pVm;` |
+|   27 |  887 | `	phl_pdo_udf *pUdf = (phl_pdo_udf *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_pdo_udf));` |
+|   27 |  888 | `	if( pUdf == 0 ){` |
+|  ! 0 |  889 | `		return 0;` |
+|    - |  890 | `	}` |
+|   27 |  891 | `	SyZero(pUdf,sizeof(phl_pdo_udf));` |
+|   27 |  892 | `	pUdf->pConn = pConn;` |
+|   27 |  893 | `	pUdf->zName = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)nName + 1);` |
+|   27 |  894 | `	if( pUdf->zName ){` |
+|   27 |  895 | `		SyMemcpy(zName,pUdf->zName,(sxu32)nName);` |
+|   27 |  896 | `		pUdf->zName[nName] = 0;` |
+|   13 |  897 | `	}` |
+|   27 |  898 | `	pUdf->pCallback = ph7_new_scalar(pVm);` |
+|   27 |  899 | `	if( pUdf->pCallback ){` |
+|   27 |  900 | `		PH7_MemObjStore(pCallback,pUdf->pCallback);` |
+|   13 |  901 | `	}` |
+|   27 |  902 | `	if( pFinalize ){` |
+|    3 |  903 | `		pUdf->pFinalize = ph7_new_scalar(pVm);` |
+|    3 |  904 | `		if( pUdf->pFinalize ){` |
+|    3 |  905 | `			PH7_MemObjStore(pFinalize,pUdf->pFinalize);` |
+|    1 |  906 | `		}` |
+|    1 |  907 | `	}` |
+|   27 |  908 | `	pUdf->pNext = pConn->pUdfs;` |
+|   27 |  909 | `	pConn->pUdfs = pUdf;` |
+|   27 |  910 | `	return pUdf;` |
+|   14 |  911 | `}` |
+|    - |  912 | `/* php's refusal for a callback it cannot call, worded per verb. */` |
+|    4 |  913 | `static sxi32 PdoUdfBadCallable(ph7_context *pCtx,const char *zFn,int iArg,const char *zParam,` |
+|    - |  914 | `	ph7_value *pVal)` |
+|    1 |  915 | `{` |
+|    5 |  916 | `	int nName = 0;` |
+|    5 |  917 | `	const char *zName = pVal ? ph7_value_to_string(pVal,&nName) : "";` |
+|    7 |  918 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
+|    - |  919 | `		"%s(): Argument #%d ($%s) must be a valid callback, function \"%.*s\" not found "` |
+|    2 |  920 | `		"or invalid function name",zFn,iArg,zParam,nName,zName);` |
+|    1 |  921 | `}` |
+|    - |  922 | `/*` |
+|    - |  923 | ` * Pdo\Sqlite::createFunction(string $name, callable $callback,` |
+|    - |  924 | ` *                            int $numArgs = -1, int $flags = 0): bool` |
 |    - |  925 | ` *` |
-|    - |  926 | ` * sqlite asks the authorizer while it COMPILES, so a refusal stops a prepare` |
-|    - |  927 | ` * rather than a step -- which is why a denied SELECT fails with "not` |
-|    - |  928 | ` * authorized" from query() and never reaches a fetch. null removes it.` |
+|    - |  926 | ` * A SQL function whose body is PHP. -1 arguments means "any arity", which is` |
+|    - |  927 | ` * sqlite's own convention, and DETERMINISTIC is the one flag sqlite takes here.` |
+|    - |  928 | ` * Registering the same name twice REPLACES the previous body.` |
 |    - |  929 | ` */` |
-|    8 |  930 | `static int vm_builtin_PdoSqlite_setAuthorizer(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   18 |  930 | `static int vm_builtin_PdoSqlite_createFunction(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  931 | `{` |
-|    9 |  932 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
+|   19 |  932 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
 |    - |  933 | `	phl_pdo_udf *pUdf;` |
-|    9 |  934 | `	if( pConn == 0 ){` |
-|  ! 0 |  935 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
-|    - |  936 | `	}` |
-|    9 |  937 | `	if( nArg < 1 \|\| apArg[0] == 0 \|\| (apArg[0]->iFlags & MEMOBJ_NULL) ){` |
-|    3 |  938 | `		PH7_PdoSqliteSetAuthorizer(pConn,0);` |
-|    3 |  939 | `		return PH7_OK;` |
-|    - |  940 | `	}` |
-|    7 |  941 | `	if( !ph7_value_is_callable(apArg[0]) ){` |
-|  ! 0 |  942 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::setAuthorizer",1,"callback",apArg[0]);` |
+|    - |  934 | `	const char *zName;` |
+|   19 |  935 | `	int nName = 0,nWant,iFlags;` |
+|   19 |  936 | `	if( pConn == 0 ){` |
+|  ! 0 |  937 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
+|    - |  938 | `	}` |
+|   19 |  939 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
+|   19 |  940 | `	if( nArg < 2 \|\| !ph7_value_is_callable(apArg[1]) ){` |
+|    4 |  941 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createFunction",2,"callback",` |
+|    1 |  942 | `			nArg > 1 ? apArg[1] : 0);` |
 |    - |  943 | `	}` |
-|    7 |  944 | `	pUdf = PdoUdfNew(pConn,"",0,apArg[0],0);` |
-|    7 |  945 | `	if( pUdf == 0 ){` |
-|  ! 0 |  946 | `		return PH7_ContextMemoryError(pCtx);` |
-|    - |  947 | `	}` |
-|    7 |  948 | `	PH7_PdoSqliteSetAuthorizer(pConn,pUdf);` |
-|    7 |  949 | `	return PH7_OK;` |
-|    5 |  950 | `}` |
-|    - |  951 | `/*` |
-|    - |  952 | ` * Pdo\Sqlite::loadExtension(string $name): void` |
-|    - |  953 | ` *` |
-|    - |  954 | ` * A refusal here is a bare PDOException naming the extension, with no SQLSTATE` |
-|    - |  955 | ` * in front of it -- the same shape the transaction refusals use.` |
-|    - |  956 | ` */` |
-|    2 |  957 | `static int vm_builtin_PdoSqlite_loadExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  958 | `{` |
-|    3 |  959 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
-|    - |  960 | `	const char *zName;` |
-|    3 |  961 | `	int nName = 0;` |
-|    - |  962 | `	SyBlob sName;` |
-|    - |  963 | `	int bOk;` |
-|    3 |  964 | `	if( pConn == 0 ){` |
-|  ! 0 |  965 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
-|    - |  966 | `	}` |
-|    3 |  967 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
-|    3 |  968 | `	SyBlobInit(&sName,&pCtx->pVm->sAllocator);` |
-|    3 |  969 | `	SyBlobAppend(&sName,zName,(sxu32)nName);` |
-|    3 |  970 | `	SyBlobAppend(&sName,"",1);` |
-|    3 |  971 | `	bOk = PH7_PdoSqliteLoadExtension(pConn,(const char *)SyBlobData(&sName));` |
-|    3 |  972 | `	SyBlobRelease(&sName);` |
-|    3 |  973 | `	if( !bOk ){` |
-|    4 |  974 | `		return PH7_VmThrowException(pCtx,"PDOException",` |
-|    1 |  975 | `			"Unable to load extension \"%.*s\"",nName,zName);` |
+|   17 |  944 | `	nWant = nArg > 2 ? (int)ph7_value_to_int64(apArg[2]) : -1;` |
+|   17 |  945 | `	iFlags = nArg > 3 ? (int)ph7_value_to_int64(apArg[3]) : 0;` |
+|   17 |  946 | `	pUdf = PdoUdfNew(pConn,zName,nName,apArg[1],0);` |
+|   17 |  947 | `	if( pUdf == 0 ){` |
+|  ! 0 |  948 | `		return PH7_ContextMemoryError(pCtx);` |
+|    - |  949 | `	}` |
+|   17 |  950 | `	if( !PH7_PdoSqliteAddFunction(pUdf,pUdf->zName ? pUdf->zName : "",nWant,iFlags) ){` |
+|  ! 0 |  951 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  952 | `		return PH7_PdoRaise(pCtx,pConn,"Pdo\\Sqlite::createFunction");` |
+|    - |  953 | `	}` |
+|   17 |  954 | `	ph7_result_bool(pCtx,1);` |
+|   17 |  955 | `	return PH7_OK;` |
+|   10 |  956 | `}` |
+|    - |  957 | `/*` |
+|    - |  958 | ` * Pdo\Sqlite::createCollation(string $name, callable $callback): bool` |
+|    - |  959 | ` *` |
+|    - |  960 | ` * An ORDER BY ... COLLATE whose comparison is PHP. The callback answers the` |
+|    - |  961 | ` * usual negative/zero/positive.` |
+|    - |  962 | ` */` |
+|    4 |  963 | `static int vm_builtin_PdoSqlite_createCollation(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |  964 | `{` |
+|    5 |  965 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
+|    - |  966 | `	phl_pdo_udf *pUdf;` |
+|    - |  967 | `	const char *zName;` |
+|    5 |  968 | `	int nName = 0;` |
+|    5 |  969 | `	if( pConn == 0 ){` |
+|  ! 0 |  970 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
+|    - |  971 | `	}` |
+|    5 |  972 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
+|    5 |  973 | `	if( nArg < 2 \|\| !ph7_value_is_callable(apArg[1]) ){` |
+|    4 |  974 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createCollation",2,"callback",` |
+|    1 |  975 | `			nArg > 1 ? apArg[1] : 0);` |
 |    - |  976 | `	}` |
-|  ! 0 |  977 | `	return PH7_OK;` |
-|    2 |  978 | `}` |
-|  ! 0 |  979 | `static int vm_builtin_pdo_sqlite_stub(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|  ! 0 |  980 | `{` |
-|    - |  981 | `	SyBlob sFn;` |
-|  ! 0 |  982 | `	SXUNUSED(nArg);` |
-|  ! 0 |  983 | `	SXUNUSED(apArg);` |
-|  ! 0 |  984 | `	SyBlobInit(&sFn,&pCtx->pVm->sAllocator);` |
-|  ! 0 |  985 | `	PH7_VmActiveFuncName(pCtx->pVm,&sFn);` |
-|  ! 0 |  986 | `	PH7_VmThrowException(pCtx,"Error","%.*s is not implemented yet",` |
-|  ! 0 |  987 | `		(int)SyBlobLength(&sFn),(const char *)SyBlobData(&sFn));` |
-|  ! 0 |  988 | `	SyBlobRelease(&sFn);` |
-|  ! 0 |  989 | `	return PH7_OK;` |
-|  ! 0 |  990 | `}` |
-|    - |  991 |  |
-|    - |  992 | `/*` |
-|    - |  993 | ` * Install the sqlite driver's class surface.  Called from PH7_VmInit right` |
-|    - |  994 | `` * after PH7_VmInstallPdo -- `Pdo\Sqlite` extends PDO, so the parent must`` |
-|    - |  995 | ` * already be mounted.` |
-|    - |  996 | ` */` |
-| 5254 |  997 | `PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm)` |
-|    5 |  998 | `{` |
-|    - |  999 | `#define PDO_SQLITE_INT_CONST(NAME,VALUE) \` |
-|    - | 1000 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (ph7_int64)(VALUE), 0, 0.0 }` |
-|    - | 1001 | `	static const PH7_NativeConstDef aConst[] = {` |
-|    - | 1002 | `		/* php's own PDO_SQLITE_ATTR_* numbering, which starts past the generic` |
-|    - | 1003 | `		 * PDO::ATTR_* block so a driver attribute can never collide with one. */` |
-|    - | 1004 | `		PDO_SQLITE_INT_CONST("ATTR_OPEN_FLAGS",            1000),` |
-|    - | 1005 | `		PDO_SQLITE_INT_CONST("ATTR_READONLY_STATEMENT",    1001),` |
-|    - | 1006 | `		PDO_SQLITE_INT_CONST("ATTR_EXTENDED_RESULT_CODES", 1002),` |
-|    - | 1007 | `		PDO_SQLITE_INT_CONST("ATTR_BUSY_STATEMENT",        1003),` |
-|    - | 1008 | `		PDO_SQLITE_INT_CONST("ATTR_EXPLAIN_STATEMENT",     1004),` |
-|    - | 1009 | `		PDO_SQLITE_INT_CONST("ATTR_TRANSACTION_MODE",      1005),` |
-|    - | 1010 | `		/* sqlite's own flags, read from its header rather than copied. */` |
-|    - | 1011 | `		PDO_SQLITE_INT_CONST("DETERMINISTIC",   SQLITE_DETERMINISTIC),` |
-|    - | 1012 | `		PDO_SQLITE_INT_CONST("OPEN_READONLY",   SQLITE_OPEN_READONLY),` |
-|    - | 1013 | `		PDO_SQLITE_INT_CONST("OPEN_READWRITE",  SQLITE_OPEN_READWRITE),` |
-|    - | 1014 | `		PDO_SQLITE_INT_CONST("OPEN_CREATE",     SQLITE_OPEN_CREATE),` |
-|    - | 1015 | `		/* An authorizer callback's three verdicts. */` |
-|    - | 1016 | `		PDO_SQLITE_INT_CONST("OK",     SQLITE_OK),` |
-|    - | 1017 | `		PDO_SQLITE_INT_CONST("DENY",   SQLITE_DENY),` |
-|    - | 1018 | `		PDO_SQLITE_INT_CONST("IGNORE", SQLITE_IGNORE),` |
-|    - | 1019 | `		/* php's own: which BEGIN a beginTransaction() emits, and what an` |
-|    - | 1020 | `		 * ATTR_EXPLAIN_STATEMENT prepare explains. */` |
-|    - | 1021 | `		PDO_SQLITE_INT_CONST("TRANSACTION_MODE_DEFERRED",  0),` |
-|    - | 1022 | `		PDO_SQLITE_INT_CONST("TRANSACTION_MODE_IMMEDIATE", 1),` |
-|    - | 1023 | `		PDO_SQLITE_INT_CONST("TRANSACTION_MODE_EXCLUSIVE", 2),` |
-|    - | 1024 | `		PDO_SQLITE_INT_CONST("EXPLAIN_MODE_PREPARED",            0),` |
-|    - | 1025 | `		PDO_SQLITE_INT_CONST("EXPLAIN_MODE_EXPLAIN",             1),` |
-|    - | 1026 | `		PDO_SQLITE_INT_CONST("EXPLAIN_MODE_EXPLAIN_QUERY_PLAN",  2),` |
-|    - | 1027 | `	};` |
-|    - | 1028 | `	/* Unlike the base class's, these return types are DECLARED, not tentative` |
-|    - | 1029 | `	 * -- php wrote this stub after tentative types existed. openBlob is the one` |
-|    - | 1030 | `	 * exception: it answers a stream resource, which php's stubs cannot spell. */` |
-|    - | 1031 | `	static const PH7_NativeMethodDef aMethod[] = {` |
-|    - | 1032 | `		{ "createAggregate", PH7_MOD_PUBLIC,` |
-|    - | 1033 | `		  "string $name, callable $step, callable $finalize, int $numArgs = -1", "bool",` |
-|    - | 1034 | `		  vm_builtin_PdoSqlite_createAggregate },` |
-|    - | 1035 | `		{ "createCollation", PH7_MOD_PUBLIC, "string $name, callable $callback", "bool",` |
-|    - | 1036 | `		  vm_builtin_PdoSqlite_createCollation },` |
-|    - | 1037 | `		{ "createFunction",  PH7_MOD_PUBLIC,` |
-|    - | 1038 | `		  "string $function_name, callable $callback, int $num_args = -1, int $flags = 0", "bool",` |
-|    - | 1039 | `		  vm_builtin_PdoSqlite_createFunction },` |
-|    - | 1040 | `		{ "loadExtension",   PH7_MOD_PUBLIC, "string $name", "void",` |
-|    - | 1041 | `		  vm_builtin_PdoSqlite_loadExtension },` |
-|    - | 1042 | `		{ "openBlob",        PH7_MOD_PUBLIC,` |
-|    - | 1043 | `		  "string $table, string $column, int $rowid, ?string $dbname = 'main', "` |
-|    - | 1044 | `		  "int $flags = Pdo\\Sqlite::OPEN_READONLY", 0, vm_builtin_pdo_sqlite_stub },` |
-|    - | 1045 | `		{ "setAuthorizer",   PH7_MOD_PUBLIC, "?callable $callback", "void",` |
-|    - | 1046 | `		  vm_builtin_PdoSqlite_setAuthorizer },` |
-|    - | 1047 | `	};` |
-|    - | 1048 | `	static const PH7_NativeClassSpec sSpec = {` |
-|    - | 1049 | `		"Pdo\\Sqlite", "PDO", 0, 0,` |
-|    - | 1050 | `		aMethod, SX_ARRAYSIZE(aMethod),` |
-|    - | 1051 | `		aConst, SX_ARRAYSIZE(aConst),` |
-|    - | 1052 | `		0, 0,` |
-|    - | 1053 | `		0, 0, 0` |
-|    - | 1054 | `	};` |
-|    - | 1055 | `#undef PDO_SQLITE_INT_CONST` |
-| 5259 | 1056 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
-|    5 | 1057 | `}` |
-|    - | 1058 |  |
-|    - | 1059 | `#else` |
-|    - | 1060 | `/* Ensure non-empty translation unit when sqlite is disabled (MSVC C4206) */` |
-|    - | 1061 | `typedef int vm_pdo_sqlite_unused;` |
-|    - | 1062 | `#endif /* PH7_ENABLE_SQLITE */` |
-|    - | 1063 |  |
+|    3 |  977 | `	pUdf = PdoUdfNew(pConn,zName,nName,apArg[1],0);` |
+|    3 |  978 | `	if( pUdf == 0 ){` |
+|  ! 0 |  979 | `		return PH7_ContextMemoryError(pCtx);` |
+|    - |  980 | `	}` |
+|    3 |  981 | `	if( !PH7_PdoSqliteAddCollation(pUdf,pUdf->zName ? pUdf->zName : "") ){` |
+|  ! 0 |  982 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  983 | `		return PH7_PdoRaise(pCtx,pConn,"Pdo\\Sqlite::createCollation");` |
+|    - |  984 | `	}` |
+|    3 |  985 | `	ph7_result_bool(pCtx,1);` |
+|    3 |  986 | `	return PH7_OK;` |
+|    3 |  987 | `}` |
+|    - |  988 | `/*` |
+|    - |  989 | ` * Pdo\Sqlite::createAggregate(string $name, callable $step, callable $finalize,` |
+|    - |  990 | ` *                             int $numArgs = -1): bool` |
+|    - |  991 | ` */` |
+|    2 |  992 | `static int vm_builtin_PdoSqlite_createAggregate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |  993 | `{` |
+|    3 |  994 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
+|    - |  995 | `	phl_pdo_udf *pUdf;` |
+|    - |  996 | `	const char *zName;` |
+|    3 |  997 | `	int nName = 0,nWant;` |
+|    3 |  998 | `	if( pConn == 0 ){` |
+|  ! 0 |  999 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
+|    - | 1000 | `	}` |
+|    3 | 1001 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
+|    3 | 1002 | `	if( nArg < 2 \|\| !ph7_value_is_callable(apArg[1]) ){` |
+|  ! 0 | 1003 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createAggregate",2,"step",` |
+|  ! 0 | 1004 | `			nArg > 1 ? apArg[1] : 0);` |
+|    - | 1005 | `	}` |
+|    3 | 1006 | `	if( nArg < 3 \|\| !ph7_value_is_callable(apArg[2]) ){` |
+|  ! 0 | 1007 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::createAggregate",3,"finalize",` |
+|  ! 0 | 1008 | `			nArg > 2 ? apArg[2] : 0);` |
+|    - | 1009 | `	}` |
+|    3 | 1010 | `	nWant = nArg > 3 ? (int)ph7_value_to_int64(apArg[3]) : -1;` |
+|    3 | 1011 | `	pUdf = PdoUdfNew(pConn,zName,nName,apArg[1],apArg[2]);` |
+|    3 | 1012 | `	if( pUdf == 0 ){` |
+|  ! 0 | 1013 | `		return PH7_ContextMemoryError(pCtx);` |
+|    - | 1014 | `	}` |
+|    3 | 1015 | `	if( !PH7_PdoSqliteAddAggregate(pUdf,pUdf->zName ? pUdf->zName : "",nWant) ){` |
+|  ! 0 | 1016 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 | 1017 | `		return PH7_PdoRaise(pCtx,pConn,"Pdo\\Sqlite::createAggregate");` |
+|    - | 1018 | `	}` |
+|    3 | 1019 | `	ph7_result_bool(pCtx,1);` |
+|    3 | 1020 | `	return PH7_OK;` |
+|    2 | 1021 | `}` |
+|    - | 1022 | `/*` |
+|    - | 1023 | ` * Pdo\Sqlite::setAuthorizer(?callable $callback): void` |
+|    - | 1024 | ` *` |
+|    - | 1025 | ` * sqlite asks the authorizer while it COMPILES, so a refusal stops a prepare` |
+|    - | 1026 | ` * rather than a step -- which is why a denied SELECT fails with "not` |
+|    - | 1027 | ` * authorized" from query() and never reaches a fetch. null removes it.` |
+|    - | 1028 | ` */` |
+|    8 | 1029 | `static int vm_builtin_PdoSqlite_setAuthorizer(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1030 | `{` |
+|    9 | 1031 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
+|    - | 1032 | `	phl_pdo_udf *pUdf;` |
+|    9 | 1033 | `	if( pConn == 0 ){` |
+|  ! 0 | 1034 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
+|    - | 1035 | `	}` |
+|    9 | 1036 | `	if( nArg < 1 \|\| apArg[0] == 0 \|\| (apArg[0]->iFlags & MEMOBJ_NULL) ){` |
+|    3 | 1037 | `		PH7_PdoSqliteSetAuthorizer(pConn,0);` |
+|    3 | 1038 | `		return PH7_OK;` |
+|    - | 1039 | `	}` |
+|    7 | 1040 | `	if( !ph7_value_is_callable(apArg[0]) ){` |
+|  ! 0 | 1041 | `		return PdoUdfBadCallable(pCtx,"Pdo\\Sqlite::setAuthorizer",1,"callback",apArg[0]);` |
+|    - | 1042 | `	}` |
+|    7 | 1043 | `	pUdf = PdoUdfNew(pConn,"",0,apArg[0],0);` |
+|    7 | 1044 | `	if( pUdf == 0 ){` |
+|  ! 0 | 1045 | `		return PH7_ContextMemoryError(pCtx);` |
+|    - | 1046 | `	}` |
+|    7 | 1047 | `	PH7_PdoSqliteSetAuthorizer(pConn,pUdf);` |
+|    7 | 1048 | `	return PH7_OK;` |
+|    5 | 1049 | `}` |
+|    - | 1050 | `/*` |
+|    - | 1051 | ` * Pdo\Sqlite::loadExtension(string $name): void` |
+|    - | 1052 | ` *` |
+|    - | 1053 | ` * A refusal here is a bare PDOException naming the extension, with no SQLSTATE` |
+|    - | 1054 | ` * in front of it -- the same shape the transaction refusals use.` |
+|    - | 1055 | ` */` |
+|    2 | 1056 | `static int vm_builtin_PdoSqlite_loadExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1057 | `{` |
+|    3 | 1058 | `	phl_pdo *pConn = PdoSqliteThis(pCtx);` |
+|    - | 1059 | `	const char *zName;` |
+|    3 | 1060 | `	int nName = 0;` |
+|    - | 1061 | `	SyBlob sName;` |
+|    - | 1062 | `	int bOk;` |
+|    3 | 1063 | `	if( pConn == 0 ){` |
+|  ! 0 | 1064 | `		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");` |
+|    - | 1065 | `	}` |
+|    3 | 1066 | `	zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";` |
+|    3 | 1067 | `	SyBlobInit(&sName,&pCtx->pVm->sAllocator);` |
+|    3 | 1068 | `	SyBlobAppend(&sName,zName,(sxu32)nName);` |
+|    3 | 1069 | `	SyBlobAppend(&sName,"",1);` |
+|    3 | 1070 | `	bOk = PH7_PdoSqliteLoadExtension(pConn,(const char *)SyBlobData(&sName));` |
+|    3 | 1071 | `	SyBlobRelease(&sName);` |
+|    3 | 1072 | `	if( !bOk ){` |
+|    4 | 1073 | `		return PH7_VmThrowException(pCtx,"PDOException",` |
+|    1 | 1074 | `			"Unable to load extension \"%.*s\"",nName,zName);` |
+|    - | 1075 | `	}` |
+|  ! 0 | 1076 | `	return PH7_OK;` |
+|    2 | 1077 | `}` |
+|    - | 1078 |  |
+|    - | 1079 | `/*` |
+|    - | 1080 | ` * Install the sqlite driver's class surface.  Called from PH7_VmInit right` |
+|    - | 1081 | `` * after PH7_VmInstallPdo -- `Pdo\Sqlite` extends PDO, so the parent must`` |
+|    - | 1082 | ` * already be mounted.` |
+|    - | 1083 | ` */` |
+| 5740 | 1084 | `PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm)` |
+|    5 | 1085 | `{` |
+|    - | 1086 | `#define PDO_SQLITE_INT_CONST(NAME,VALUE) \` |
+|    - | 1087 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (ph7_int64)(VALUE), 0, 0.0 }` |
+|    - | 1088 | `	static const PH7_NativeConstDef aConst[] = {` |
+|    - | 1089 | `		/* php's own PDO_SQLITE_ATTR_* numbering, which starts past the generic` |
+|    - | 1090 | `		 * PDO::ATTR_* block so a driver attribute can never collide with one. */` |
+|    - | 1091 | `		PDO_SQLITE_INT_CONST("ATTR_OPEN_FLAGS",            1000),` |
+|    - | 1092 | `		PDO_SQLITE_INT_CONST("ATTR_READONLY_STATEMENT",    1001),` |
+|    - | 1093 | `		PDO_SQLITE_INT_CONST("ATTR_EXTENDED_RESULT_CODES", 1002),` |
+|    - | 1094 | `		PDO_SQLITE_INT_CONST("ATTR_BUSY_STATEMENT",        1003),` |
+|    - | 1095 | `		PDO_SQLITE_INT_CONST("ATTR_EXPLAIN_STATEMENT",     1004),` |
+|    - | 1096 | `		PDO_SQLITE_INT_CONST("ATTR_TRANSACTION_MODE",      1005),` |
+|    - | 1097 | `		/* sqlite's own flags, read from its header rather than copied. */` |
+|    - | 1098 | `		PDO_SQLITE_INT_CONST("DETERMINISTIC",   SQLITE_DETERMINISTIC),` |
+|    - | 1099 | `		PDO_SQLITE_INT_CONST("OPEN_READONLY",   SQLITE_OPEN_READONLY),` |
+|    - | 1100 | `		PDO_SQLITE_INT_CONST("OPEN_READWRITE",  SQLITE_OPEN_READWRITE),` |
+|    - | 1101 | `		PDO_SQLITE_INT_CONST("OPEN_CREATE",     SQLITE_OPEN_CREATE),` |
+|    - | 1102 | `		/* An authorizer callback's three verdicts. */` |
+|    - | 1103 | `		PDO_SQLITE_INT_CONST("OK",     SQLITE_OK),` |
+|    - | 1104 | `		PDO_SQLITE_INT_CONST("DENY",   SQLITE_DENY),` |
+|    - | 1105 | `		PDO_SQLITE_INT_CONST("IGNORE", SQLITE_IGNORE),` |
+|    - | 1106 | `		/* php's own: which BEGIN a beginTransaction() emits, and what an` |
+|    - | 1107 | `		 * ATTR_EXPLAIN_STATEMENT prepare explains. */` |
+|    - | 1108 | `		PDO_SQLITE_INT_CONST("TRANSACTION_MODE_DEFERRED",  0),` |
+|    - | 1109 | `		PDO_SQLITE_INT_CONST("TRANSACTION_MODE_IMMEDIATE", 1),` |
+|    - | 1110 | `		PDO_SQLITE_INT_CONST("TRANSACTION_MODE_EXCLUSIVE", 2),` |
+|    - | 1111 | `		PDO_SQLITE_INT_CONST("EXPLAIN_MODE_PREPARED",            0),` |
+|    - | 1112 | `		PDO_SQLITE_INT_CONST("EXPLAIN_MODE_EXPLAIN",             1),` |
+|    - | 1113 | `		PDO_SQLITE_INT_CONST("EXPLAIN_MODE_EXPLAIN_QUERY_PLAN",  2),` |
+|    - | 1114 | `	};` |
+|    - | 1115 | `	/* Unlike the base class's, these return types are DECLARED, not tentative` |
+|    - | 1116 | `	 * -- php wrote this stub after tentative types existed. openBlob is the one` |
+|    - | 1117 | `	 * exception: it answers a stream resource, which php's stubs cannot spell. */` |
+|    - | 1118 | `	static const PH7_NativeMethodDef aMethod[] = {` |
+|    - | 1119 | `		{ "createAggregate", PH7_MOD_PUBLIC,` |
+|    - | 1120 | `		  "string $name, callable $step, callable $finalize, int $numArgs = -1", "bool",` |
+|    - | 1121 | `		  vm_builtin_PdoSqlite_createAggregate },` |
+|    - | 1122 | `		{ "createCollation", PH7_MOD_PUBLIC, "string $name, callable $callback", "bool",` |
+|    - | 1123 | `		  vm_builtin_PdoSqlite_createCollation },` |
+|    - | 1124 | `		{ "createFunction",  PH7_MOD_PUBLIC,` |
+|    - | 1125 | `		  "string $function_name, callable $callback, int $num_args = -1, int $flags = 0", "bool",` |
+|    - | 1126 | `		  vm_builtin_PdoSqlite_createFunction },` |
+|    - | 1127 | `		{ "loadExtension",   PH7_MOD_PUBLIC, "string $name", "void",` |
+|    - | 1128 | `		  vm_builtin_PdoSqlite_loadExtension },` |
+|    - | 1129 | `		{ "openBlob",        PH7_MOD_PUBLIC,` |
+|    - | 1130 | `		  "string $table, string $column, int $rowid, ?string $dbname = 'main', "` |
+|    - | 1131 | `		  "int $flags = Pdo\\Sqlite::OPEN_READONLY", 0, PH7_PdoSqliteOpenBlobMethod },` |
+|    - | 1132 | `		{ "setAuthorizer",   PH7_MOD_PUBLIC, "?callable $callback", "void",` |
+|    - | 1133 | `		  vm_builtin_PdoSqlite_setAuthorizer },` |
+|    - | 1134 | `	};` |
+|    - | 1135 | `	static const PH7_NativeClassSpec sSpec = {` |
+|    - | 1136 | `		"Pdo\\Sqlite", "PDO", 0, 0,` |
+|    - | 1137 | `		aMethod, SX_ARRAYSIZE(aMethod),` |
+|    - | 1138 | `		aConst, SX_ARRAYSIZE(aConst),` |
+|    - | 1139 | `		0, 0,` |
+|    - | 1140 | `		0, 0, 0` |
+|    - | 1141 | `	};` |
+|    - | 1142 | `#undef PDO_SQLITE_INT_CONST` |
+| 5745 | 1143 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|    5 | 1144 | `}` |
+|    - | 1145 |  |
+|    - | 1146 | `#else` |
+|    - | 1147 | `/* Ensure non-empty translation unit when sqlite is disabled (MSVC C4206) */` |
+|    - | 1148 | `typedef int vm_pdo_sqlite_unused;` |
+|    - | 1149 | `#endif /* PH7_ENABLE_SQLITE */` |
+|    - | 1150 |  |

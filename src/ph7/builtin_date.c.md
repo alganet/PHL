@@ -2,1415 +2,1390 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 643/723 lines (88.93%)
+Coverage: 618/683 lines (90.48%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
-| Hits | Line | Source |
-| ---: | ---: | :--- |
-|    - |    1 | `/**` |
-|    - |    2 | ` * SPDX-FileCopyrightText: 2011, 2012, 2013, 2014 Symisc Systems <licensing@symisc.net>` |
-|    - |    3 | ` * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>` |
-|    - |    4 | ` * SPDX-License-Identifier: BSD-3-Clause` |
-|    - |    5 | ` */` |
-|    - |    6 | `#include "ph7int.h"` |
-|    - |    7 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
-|    - |    8 | `/*` |
-|    - |    9 | ` * Date/Time functions` |
-|    - |   10 | ` * Status:` |
-|    - |   11 | ` *    Devel.` |
-|    - |   12 | ` */` |
-|    - |   13 | `#include <time.h>` |
-|    - |   14 | `/* Civil-date helpers (defined with the DateTime layer below) */` |
-|    - |   15 | `/*` |
-|    - |   16 | ` * STRUCT_TM_TO_SYTM zeroes tm_gmtoff (struct tm carries it only as a BSD/glibc` |
-|    - |   17 | ` * extension, absent on newlib/ESP32). Derive the zone offset portably from the` |
-|    - |   18 | ` * broken-down civil fields and the timestamp they came from: for localtime()` |
-|    - |   19 | ` * fills this yields the local UTC offset, for gmtime() fills it yields 0.` |
-|    - |   20 | ` */` |
-|  426 |   21 | `static void DtSytmFillOffset(Sytm *pSTm,time_t t)` |
-|    1 |   22 | `{` |
-|  640 |   23 | `	sxi64 iCivil = DtDaysFromCivil((sxi64)pSTm->tm_year,pSTm->tm_mon+1,pSTm->tm_mday) * 86400` |
-|  426 |   24 | `		+ (sxi64)pSTm->tm_hour*3600 + (sxi64)pSTm->tm_min*60 + (sxi64)pSTm->tm_sec;` |
-|  427 |   25 | `	pSTm->tm_gmtoff = (long)(iCivil - (sxi64)t);` |
-|  427 |   26 | `}` |
-|    - |   27 | `#ifdef __WINNT__` |
-|    - |   28 | `#ifdef _MSC_VER` |
-|    - |   29 | `#if _MSC_VER >= 1400 /* Visual Studio 2005 and up */` |
-|    - |   30 | `#pragma warning(disable:4996) /* _CRT_SECURE_NO_WARNINGS */` |
-|    - |   31 | `#endif` |
-|    - |   32 | `#endif` |
-|    - |   33 | `#endif` |
-|    - |   34 | `#ifdef __WINNT__` |
-|    - |   35 | `/* GetSystemTime() */` |
-|    - |   36 | `#include <Windows.h>` |
-|    - |   37 | `#ifdef _WIN32_WCE` |
-|    - |   38 | `/* SPDX-SnippetBegin */` |
-|    - |   39 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
-|    - |   40 | `/* SPDX-License-Identifier: blessing */` |
-|    - |   41 | `/*` |
-|    - |   42 | `** WindowsCE does not have a localtime() function.  So create a` |
-|    - |   43 | `** substitute.` |
-|    - |   44 | `** Taken from the SQLite3 source tree.` |
-|    - |   45 | `** Status: Public domain` |
-|    - |   46 | `*/` |
-|    - |   47 | `struct tm *__cdecl localtime(const time_t *t)` |
-|    - |   48 | `{` |
-|    - |   49 | `  static struct tm y;` |
-|    - |   50 | `  FILETIME uTm, lTm;` |
-|    - |   51 | `  SYSTEMTIME pTm;` |
-|    - |   52 | `  ph7_int64 t64;` |
-|    - |   53 | `  t64 = *t;` |
-|    - |   54 | `  t64 = (t64 + 11644473600)*10000000;` |
-|    - |   55 | `  uTm.dwLowDateTime = (DWORD)(t64 & 0xFFFFFFFF);` |
-|    - |   56 | `  uTm.dwHighDateTime= (DWORD)(t64 >> 32);` |
-|    - |   57 | `  FileTimeToLocalFileTime(&uTm,&lTm);` |
-|    - |   58 | `  FileTimeToSystemTime(&lTm,&pTm);` |
-|    - |   59 | `  y.tm_year = pTm.wYear - 1900;` |
-|    - |   60 | `  y.tm_mon = pTm.wMonth - 1;` |
-|    - |   61 | `  y.tm_wday = pTm.wDayOfWeek;` |
-|    - |   62 | `  y.tm_mday = pTm.wDay;` |
-|    - |   63 | `  y.tm_hour = pTm.wHour;` |
-|    - |   64 | `  y.tm_min = pTm.wMinute;` |
-|    - |   65 | `  y.tm_sec = pTm.wSecond;` |
-|    - |   66 | `  return &y;` |
-|    - |   67 | `}` |
-|    - |   68 | `/* SPDX-SnippetEnd */` |
-|    - |   69 | `#endif /*_WIN32_WCE */` |
-|    - |   70 | `#elif defined(__UNIXES__)` |
-|    - |   71 | `#include <sys/time.h>` |
-|    - |   72 | `#endif /* __WINNT__*/` |
-|    - |   73 | `/*` |
-|    - |   74 | ` * Resolve the current wall-clock time (epoch seconds + sub-second microseconds).` |
-|    - |   75 | ` *` |
-|    - |   76 | ` * An embedder may override the platform clock via PH7_CONFIG_CLOCK (e.g. the` |
-|    - |   77 | ` * ESP32 port routes this through esp_timer); when no hook is registered we use` |
-|    - |   78 | ` * gettimeofday() on Unix and fall back to a second-resolution time() elsewhere.` |
-|    - |   79 | ` * Centralising this here gives microtime()/gettimeofday() a single sub-second` |
-|    - |   80 | `` * source instead of the old nonsensical `tt % SX_USEC_PER_SEC` off-Unix path.`` |
-|    - |   81 | ` */` |
-|   70 |   82 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
-|    2 |   83 | `{` |
-|   72 |   84 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
-|  ! 0 |   85 | `		ph7_int64 sec = 0,usec = 0;` |
-|  ! 0 |   86 | `		if( pVm->pEngine->xConf.xClock(pVm->pEngine->xConf.pClockData,&sec,&usec) == PH7_OK ){` |
-|  ! 0 |   87 | `			pOut->tm_sec  = (long)sec;` |
-|  ! 0 |   88 | `			pOut->tm_usec = (long)usec;` |
-|  ! 0 |   89 | `			return;` |
-|    - |   90 | `		}` |
-|  ! 0 |   91 | `	}` |
-|    - |   92 | `#if defined(__UNIXES__)` |
-|    - |   93 | `	{` |
-|    - |   94 | `		struct timeval tv;` |
-|   70 |   95 | `		gettimeofday(&tv,0);` |
-|   70 |   96 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
-|   70 |   97 | `		pOut->tm_usec = (long)tv.tv_usec;` |
-|    - |   98 | `	}` |
-|    - |   99 | `#elif defined(__WINNT__)` |
-|    - |  100 | `	{` |
-|    - |  101 | `		/* FILETIME is 100-ns ticks since 1601-01-01 UTC; convert to the Unix` |
-|    - |  102 | `		 * epoch with microsecond resolution (GetSystemTime() only carries` |
-|    - |  103 | `		 * milliseconds, and time() has no sub-second part at all). */` |
-|    - |  104 | `		FILETIME ft;` |
-|    - |  105 | `		ph7_int64 t;` |
-|    2 |  106 | `		GetSystemTimeAsFileTime(&ft);` |
-|    2 |  107 | `		t  = (ph7_int64)ft.dwHighDateTime << 32;` |
-|    2 |  108 | `		t += ft.dwLowDateTime;` |
-|    2 |  109 | `		t -= 116444736000000000LL; /* 100-ns ticks between 1601 and 1970 */` |
-|    2 |  110 | `		pOut->tm_sec  = (long)(t / 10000000);` |
-|    2 |  111 | `		pOut->tm_usec = (long)((t % 10000000) / 10);` |
-|    - |  112 | `	}` |
-|    - |  113 | `#else` |
-|    - |  114 | `	{` |
-|    - |  115 | `		time_t tt;` |
-|    - |  116 | `		time(&tt);` |
-|    - |  117 | `		pOut->tm_sec  = (long)tt;` |
-|    - |  118 | `		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */` |
-|    - |  119 | `	}` |
-|    - |  120 | `#endif /* __UNIXES__ */` |
-|   37 |  121 | `}` |
-|    - |  122 | ` /*` |
-|    - |  123 | `  * int64 time(void)` |
-|    - |  124 | `  *  Current Unix timestamp` |
-|    - |  125 | `  * Parameters` |
-|    - |  126 | `  *  None.` |
-|    - |  127 | `  * Return` |
-|    - |  128 | `  *  Returns the current time measured in the number of seconds` |
-|    - |  129 | `  *  since the Unix Epoch (January 1 1970 00:00:00 GMT).` |
-|    - |  130 | `  */` |
-|   16 |  131 | `PH7_PRIVATE int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |  132 | `{` |
-|    - |  133 | `	time_t tt;` |
-|    8 |  134 | `	SXUNUSED(nArg); /* cc warning */` |
-|    8 |  135 | `	SXUNUSED(apArg);` |
-|    - |  136 | `	/* Extract the current time */` |
-|   19 |  137 | `	time(&tt);` |
-|    - |  138 | `	/* Return as 64-bit integer */` |
-|   19 |  139 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
-|   19 |  140 | `	return  PH7_OK;` |
-|    3 |  141 | `}` |
-|    - |  142 | `/*` |
-|    - |  143 | `  * string/float microtime([ bool $get_as_float = false ])` |
-|    - |  144 | `  *  microtime() returns the current Unix timestamp with microseconds.` |
-|    - |  145 | `  * Parameters` |
-|    - |  146 | `  *  $get_as_float` |
-|    - |  147 | `  *   If used and set to TRUE, microtime() will return a float instead of a string` |
-|    - |  148 | `  *   as described in the return values section below.` |
-|    - |  149 | `  * Return` |
-|    - |  150 | `  *  By default, microtime() returns a string in the form "msec sec", where sec` |
-|    - |  151 | `  *  is the current time measured in the number of seconds since the Unix` |
-|    - |  152 | `  *  epoch (0:00:00 January 1, 1970 GMT), and msec is the number of microseconds` |
-|    - |  153 | `  *  that have elapsed since sec expressed in seconds.` |
-|    - |  154 | `  *  If get_as_float is set to TRUE, then microtime() returns a float, which represents` |
-|    - |  155 | `  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond.` |
-|    - |  156 | `  */` |
-|   62 |  157 | `PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  158 | `{` |
-|   64 |  159 | `	int bFloat = 0;` |
-|    - |  160 | `	sytime sTime;` |
-|   64 |  161 | `	DateNow(pCtx->pVm,&sTime);` |
-|   64 |  162 | `	if( nArg > 0 ){` |
-|   58 |  163 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
-|   28 |  164 | `	}` |
-|   64 |  165 | `	if( bFloat ){` |
-|    - |  166 | `		/* Return as float: seconds accurate to the nearest microsecond */` |
-|   58 |  167 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
-|   30 |  168 | `	}else{` |
-|    - |  169 | `		/* Return PHP's "msec sec" form: the sub-second part as fractional` |
-|    - |  170 | `		 * seconds to 8 decimals, e.g. "0.50667100 1700000000". tm_usec is in` |
-|    - |  171 | `		 * microseconds (0..999999), so scaling by 100 yields the 8-digit` |
-|    - |  172 | `		 * fraction — matching PHP's "%.8F" output exactly. */` |
-|    7 |  173 | `		ph7_result_string_format(pCtx,"0.%08ld %ld",sTime.tm_usec*100,sTime.tm_sec);` |
-|    - |  174 | `	}` |
-|   64 |  175 | `	return PH7_OK;` |
-|    2 |  176 | `}` |
-|    - |  177 | `/*` |
-|    - |  178 | ` * array\|int hrtime(bool $as_number = false)` |
-|    - |  179 | ` *  The system's high-resolution time, counted from an arbitrary monotonic` |
-|    - |  180 | ` *  point in nanoseconds. Returns [seconds, nanoseconds] by default, or the` |
-|    - |  181 | ` *  total nanoseconds as an int when $as_number is true.` |
-|    - |  182 | ` */` |
-|    8 |  183 | `PH7_PRIVATE int PH7_builtin_hrtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  184 | `{` |
-|    9 |  185 | `	ph7_int64 sec = 0,nsec = 0;` |
-|    9 |  186 | `	int bAsNumber = 0;` |
-|    9 |  187 | `	if( nArg > 0 ){` |
-|    7 |  188 | `		bAsNumber = ph7_value_to_bool(apArg[0]);` |
-|    3 |  189 | `	}` |
-|    - |  190 | `#if defined(CLOCK_MONOTONIC)` |
-|    - |  191 | `	{` |
-|    - |  192 | `		struct timespec ts;` |
-|    8 |  193 | `		if( clock_gettime(CLOCK_MONOTONIC,&ts) == 0 ){` |
-|    8 |  194 | `			sec  = (ph7_int64)ts.tv_sec;` |
-|    8 |  195 | `			nsec = (ph7_int64)ts.tv_nsec;` |
-|    4 |  196 | `		}` |
-|    - |  197 | `	}` |
-|    - |  198 | `#else` |
-|    - |  199 | `	{` |
-|    - |  200 | `		/* No monotonic clock available: fall back to the wall-clock microsecond` |
-|    - |  201 | `		 * source (embedder clock / gettimeofday). Coarser and not strictly` |
-|    - |  202 | `		 * monotonic, but keeps hrtime() usable off-Unix. */` |
-|    - |  203 | `		sytime sTime;` |
-|    1 |  204 | `		DateNow(pCtx->pVm,&sTime);` |
-|    1 |  205 | `		sec  = (ph7_int64)sTime.tm_sec;` |
-|    1 |  206 | `		nsec = (ph7_int64)sTime.tm_usec * 1000;` |
-|    - |  207 | `	}` |
-|    - |  208 | `#endif` |
-|    9 |  209 | `	if( bAsNumber ){` |
-|    7 |  210 | `		ph7_result_int64(pCtx,sec * 1000000000LL + nsec);` |
-|    4 |  211 | `	}else{` |
-|    - |  212 | `		ph7_value *pValue,*pArray;` |
-|    3 |  213 | `		pArray = ph7_context_new_array(pCtx);` |
-|    3 |  214 | `		pValue = ph7_context_new_scalar(pCtx);` |
-|    3 |  215 | `		if( pArray == 0 \|\| pValue == 0 ){` |
-|  ! 0 |  216 | `			ph7_result_null(pCtx);` |
-|  ! 0 |  217 | `			return PH7_OK;` |
-|    - |  218 | `		}` |
-|    3 |  219 | `		ph7_value_int64(pValue,sec);` |
-|    3 |  220 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    3 |  221 | `		ph7_value_int64(pValue,nsec);` |
-|    3 |  222 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    3 |  223 | `		ph7_result_value(pCtx,pArray);` |
-|    3 |  224 | `		ph7_context_release_value(pCtx,pValue);` |
-|    3 |  225 | `		ph7_context_release_value(pCtx,pArray);` |
-|    - |  226 | `	}` |
-|    9 |  227 | `	return PH7_OK;` |
-|    5 |  228 | `}` |
-|    - |  229 | `/*` |
-|    - |  230 | ` * array getdate ([ int $timestamp = time() ])` |
-|    - |  231 | ` *  Returns an associative array containing the date information` |
-|    - |  232 | ` *  of the timestamp, or the current local time if no timestamp is given.` |
-|    - |  233 | ` * Parameter` |
-|    - |  234 | ` *  $timestamp: The optional timestamp parameter is an integer Unix timestamp` |
-|    - |  235 | ` *     that defaults to the current local time if a timestamp is not given.` |
-|    - |  236 | ` *     In other words, it defaults to the value of time().` |
-|    - |  237 | ` * Returns` |
-|    - |  238 | ` *  Returns an associative array of information related to the timestamp.` |
-|    - |  239 | ` */` |
-|    8 |  240 | `PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  241 | `{` |
-|    - |  242 | `	ph7_value *pValue,*pArray;` |
-|    - |  243 | `	Sytm sTm;` |
-|    9 |  244 | `	if( nArg < 1 ){` |
-|    - |  245 | `#ifdef __WINNT__` |
-|    - |  246 | `		SYSTEMTIME sOS;` |
-|    1 |  247 | `		GetSystemTime(&sOS);` |
-|    1 |  248 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|    - |  249 | `#else` |
-|    - |  250 | `		struct tm *pTm;` |
-|    - |  251 | `		time_t t;` |
-|    4 |  252 | `		time(&t);` |
-|    4 |  253 | `		pTm = gmtime(&t);` |
-|    4 |  254 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|    4 |  255 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  256 | `#endif` |
-|    3 |  257 | `	}else{` |
-|    - |  258 | `		/* Use the given timestamp */` |
-|    - |  259 | `		time_t t;` |
-|    - |  260 | `		struct tm *pTm;` |
-|    5 |  261 | `		if( ph7_value_is_int(apArg[0]) ){` |
-|    5 |  262 | `			t = (time_t)ph7_value_to_int64(apArg[0]);` |
-|    5 |  263 | `			pTm = gmtime(&t);` |
-|    5 |  264 | `			if( pTm == 0 ){` |
-|  ! 0 |  265 | `				time(&t);` |
-|  ! 0 |  266 | `			}` |
-|    3 |  267 | `		}else{` |
-|  ! 0 |  268 | `			time(&t);` |
-|    - |  269 | `		}` |
-|    5 |  270 | `		pTm = gmtime(&t);` |
-|    5 |  271 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|    5 |  272 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  273 | `	}` |
-|    - |  274 | `	/* Element value */` |
-|    9 |  275 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|    9 |  276 | `	if( pValue == 0 ){` |
-|    - |  277 | `		/* Return NULL */` |
-|  ! 0 |  278 | `		ph7_result_null(pCtx);` |
-|  ! 0 |  279 | `		return PH7_OK;` |
-|    - |  280 | `	}` |
-|    - |  281 | `	/* Create a new array */` |
-|    9 |  282 | `	pArray = ph7_context_new_array(pCtx);` |
-|    9 |  283 | `	if( pArray == 0 ){` |
-|    - |  284 | `		/* Return NULL */` |
-|  ! 0 |  285 | `		ph7_result_null(pCtx);` |
-|  ! 0 |  286 | `		return PH7_OK;` |
-|    - |  287 | `	}` |
-|    - |  288 | `	/* Fill the array */` |
-|    - |  289 | `	/* Seconds */` |
-|    9 |  290 | `	ph7_value_int(pValue,sTm.tm_sec);` |
-|    9 |  291 | `	ph7_array_add_strkey_elem(pArray,"seconds",pValue);` |
-|    - |  292 | `	/* Minutes */` |
-|    9 |  293 | `	ph7_value_int(pValue,sTm.tm_min);` |
-|    9 |  294 | `	ph7_array_add_strkey_elem(pArray,"minutes",pValue);` |
-|    - |  295 | `	/* Hours */` |
-|    9 |  296 | `	ph7_value_int(pValue,sTm.tm_hour);` |
-|    9 |  297 | `	ph7_array_add_strkey_elem(pArray,"hours",pValue);` |
-|    - |  298 | `	/* mday */` |
-|    9 |  299 | `	ph7_value_int(pValue,sTm.tm_mday);` |
-|    9 |  300 | `	ph7_array_add_strkey_elem(pArray,"mday",pValue);` |
-|    - |  301 | `	/* wday */` |
-|    9 |  302 | `	ph7_value_int(pValue,sTm.tm_wday);` |
-|    9 |  303 | `	ph7_array_add_strkey_elem(pArray,"wday",pValue);` |
-|    - |  304 | `	/* mon */` |
-|    9 |  305 | `	ph7_value_int(pValue,sTm.tm_mon+1);` |
-|    9 |  306 | `	ph7_array_add_strkey_elem(pArray,"mon",pValue);` |
-|    - |  307 | `	/* year */` |
-|    9 |  308 | `	ph7_value_int(pValue,sTm.tm_year);` |
-|    9 |  309 | `	ph7_array_add_strkey_elem(pArray,"year",pValue);` |
-|    - |  310 | `	/* yday */` |
-|    9 |  311 | `	ph7_value_int(pValue,sTm.tm_yday);` |
-|    9 |  312 | `	ph7_array_add_strkey_elem(pArray,"yday",pValue);` |
-|    - |  313 | `	/* Weekday [i.e: Monday,Tuesday,...] */` |
-|    9 |  314 | `	ph7_value_string(pValue,SyTimeGetDay(sTm.tm_wday),-1);` |
-|    9 |  315 | `	ph7_array_add_strkey_elem(pArray,"weekday",pValue);` |
-|    - |  316 | `	/* Reset the string cursor */` |
-|    9 |  317 | `	ph7_value_reset_string_cursor(pValue);` |
-|    - |  318 | `	/* Month [i.e: January,February,...] */` |
-|    9 |  319 | `	ph7_value_string(pValue,SyTimeGetMonth(sTm.tm_mon),-1);` |
-|    9 |  320 | `	ph7_array_add_strkey_elem(pArray,"month",pValue);` |
-|    - |  321 | `	/* Return the freshly created array */` |
-|    9 |  322 | `	ph7_result_value(pCtx,pArray);` |
-|    9 |  323 | `	return PH7_OK;` |
-|    5 |  324 | `}` |
-|    - |  325 | `/*` |
-|    - |  326 | ` * mixed gettimeofday([ bool $return_float = false ] )` |
-|    - |  327 | ` *  Returns an associative array containing the data returned from the system call.` |
-|    - |  328 | ` * Parameters` |
-|    - |  329 | ` *  $return_float` |
-|    - |  330 | ` *   When set to TRUE, a float instead of an array is returned.` |
-|    - |  331 | ` * Return` |
-|    - |  332 | ` *  By default an array is returned. If return_float is set, then` |
-|    - |  333 | ` *  a float is returned.` |
-|    - |  334 | ` */` |
-|    8 |  335 | `PH7_PRIVATE int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  336 | `{` |
-|    9 |  337 | `	int bFloat = 0;` |
-|    - |  338 | `	sytime sTime;` |
-|    9 |  339 | `	DateNow(pCtx->pVm,&sTime);` |
-|    9 |  340 | `	if( nArg > 0 ){` |
-|    7 |  341 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
-|    3 |  342 | `	}` |
-|    9 |  343 | `	if( bFloat ){` |
-|    - |  344 | `		/* Return as float: seconds accurate to the nearest microsecond */` |
-|    5 |  345 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
-|    3 |  346 | `	}else{` |
-|    - |  347 | `		/* Return an associative array */` |
-|    - |  348 | `		ph7_value *pValue,*pArray;` |
-|    - |  349 | `		/* Create a new array */` |
-|    5 |  350 | `		pArray = ph7_context_new_array(pCtx);` |
-|    - |  351 | `		/* Element value */` |
-|    5 |  352 | `		pValue = ph7_context_new_scalar(pCtx);` |
-|    5 |  353 | `		if( pArray == 0 \|\| pValue == 0 ){` |
-|    - |  354 | `			/* Return NULL */` |
-|  ! 0 |  355 | `			ph7_result_null(pCtx);` |
-|  ! 0 |  356 | `			return PH7_OK;` |
-|    - |  357 | `		}` |
-|    - |  358 | `		/* Fill the array */` |
-|    - |  359 | `		/* sec */` |
-|    5 |  360 | `		ph7_value_int64(pValue,sTime.tm_sec);` |
-|    5 |  361 | `		ph7_array_add_strkey_elem(pArray,"sec",pValue);` |
-|    - |  362 | `		/* usec */` |
-|    5 |  363 | `		ph7_value_int64(pValue,sTime.tm_usec);` |
-|    5 |  364 | `		ph7_array_add_strkey_elem(pArray,"usec",pValue);` |
-|    - |  365 | `		/* Return the array */` |
-|    5 |  366 | `		ph7_result_value(pCtx,pArray);` |
-|    - |  367 | `	}` |
-|    9 |  368 | `	return PH7_OK;` |
-|    5 |  369 | `}` |
-|    - |  370 | `/* Check if the given year is leap or not */` |
-|    - |  371 | `#define IS_LEAP_YEAR(YEAR)	(YEAR % 400 ? ( YEAR % 100 ? ( YEAR % 4 ? 0 : 1 ) : 0 ) : 1)` |
-|    - |  372 | `/* ISO-8601 numeric representation of the day of the week */` |
-|    - |  373 | `static const int aISO8601[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };` |
-|    - |  374 | `/*` |
-|    - |  375 | ` * Format a given date string.` |
-|    - |  376 | ` * Supported format: (Taken from PHP online docs)` |
-|    - |  377 | ` * character 	Description` |
-|    - |  378 | ` * d          Day of the month, 2 digits with leading zeros` |
-|    - |  379 | ` * D          A textual representation of a day, three letters` |
-|    - |  380 | ` * j          Day of the month without leading zeros` |
-|    - |  381 | ` * l          A full textual representation of the day of the week` |
-|    - |  382 | ` * N          ISO-8601 numeric representation of the day of the week` |
-|    - |  383 | ` * w          Numeric representation of the day of the week` |
-|    - |  384 | ` * z          The day of the year (starting from 0)` |
-|    - |  385 | ` * F          A full textual representation of a month, such as January or March` |
-|    - |  386 | ` * m          Numeric representation of a month, with leading zeros 	01 through 12` |
-|    - |  387 | ` * M          A short textual representation of a month, three letters` |
-|    - |  388 | ` * n          Numeric representation of a month, without leading zeros` |
-|    - |  389 | ` * t          Number of days in the given month` |
-|    - |  390 | ` * L          Whether it's a leap year` |
-|    - |  391 | ` * o          ISO-8601 year number. This has the same value as Y` |
-|    - |  392 | ` * Y          A full numeric representation of a year, 4 digits` |
-|    - |  393 | ` * y          A two digit representation of a year` |
-|    - |  394 | ` * a          Lowercase Ante meridiem and Post meridiem 	am or pm` |
-|    - |  395 | ` * A          Uppercase Ante meridiem and Post meridiem` |
-|    - |  396 | ` * g          12-hour format of an hour without leading zeros` |
-|    - |  397 | ` * G          24-hour format of an hour without leading zeros 	0 through 23` |
-|    - |  398 | ` * h          12-hour format of an hour with leading zeros` |
-|    - |  399 | ` * H          24-hour format of an hour with leading zeros` |
-|    - |  400 | ` * i          Minutes with leading zeros` |
-|    - |  401 | ` * s          Seconds, with leading zeros` |
-|    - |  402 | ` * u          Microseconds` |
-|    - |  403 | ` * e          Timezone identifier` |
-|    - |  404 | ` * I          Whether or not the date is in daylight saving time 	1 if Daylight Saving Time, 0 otherwise.` |
-|    - |  405 | ` * r          RFC 2822 formatted date` |
-|    - |  406 | ` * U          Seconds since the Unix Epoch (January 1 1970 00:00:00 GMT)` |
-|    - |  407 | ` * S          English ordinal suffix for the day of the month, 2 characters` |
-|    - |  408 | ` * O          Difference to Greenwich time (GMT) in hours` |
-|    - |  409 | ` * Z          Timezone offset in seconds. The offset for timezones west of UTC is always negative, and for those` |
-|    - |  410 | ` *            east of UTC is always positive.` |
-|    - |  411 | ` * c         ISO 8601 date` |
-|    - |  412 | ` */` |
-|  636 |  413 | `PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int uSec)` |
-|    1 |  414 | `{` |
-|  637 |  415 | `	const char *zEnd = &zIn[nLen];` |
-|    - |  416 | `	const char *zCur;` |
-|    - |  417 | `	/* Start the format process */` |
-| 2295 |  418 | `	for(;;){` |
-| 4591 |  419 | `		if( zIn >= zEnd ){` |
-|    - |  420 | `			/* No more input to process */` |
-|  637 |  421 | `			break;` |
-|    - |  422 | `		}` |
-| 3955 |  423 | `		switch(zIn[0]){` |
-|  180 |  424 | `		case 'd':` |
-|    - |  425 | `			/* Day of the month, 2 digits with leading zeros */` |
-|  361 |  426 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mday);` |
-|  361 |  427 | `			break;` |
-|   32 |  428 | `		case 'D':` |
-|    - |  429 | `			/*A textual representation of a day, three letters*/` |
-|   65 |  430 | `			zCur = SyTimeGetDay(pTm->tm_wday);` |
-|   65 |  431 | `			ph7_result_string(pCtx,zCur,3);` |
-|   65 |  432 | `			break;` |
-|    1 |  433 | `		case 'j':` |
-|    - |  434 | `			/*	Day of the month without leading zeros */` |
-|    3 |  435 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_mday);` |
-|    3 |  436 | `			break;` |
-|    3 |  437 | `		case 'l':` |
-|    - |  438 | `			/* A full textual representation of the day of the week */` |
-|    7 |  439 | `			zCur = SyTimeGetDay(pTm->tm_wday);` |
-|    7 |  440 | `			ph7_result_string(pCtx,zCur,-1/*Compute length automatically*/);` |
-|    7 |  441 | `			break;` |
-|    1 |  442 | `		case 'N':{` |
-|    - |  443 | `			/* ISO-8601 numeric representation of the day of the week */` |
-|    3 |  444 | `			ph7_result_string_format(pCtx,"%d",aISO8601[pTm->tm_wday % 7 ]);` |
-|    3 |  445 | `			break;` |
-|    - |  446 | `				 }` |
-|    1 |  447 | `		case 'w':` |
-|    - |  448 | `			/*Numeric representation of the day of the week*/` |
-|    3 |  449 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_wday);` |
-|    3 |  450 | `			break;` |
-|    1 |  451 | `		case 'z':` |
-|    - |  452 | `			/*The day of the year*/` |
-|    3 |  453 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_yday);` |
-|    3 |  454 | `			break;` |
-|    3 |  455 | `		case 'F':` |
-|    - |  456 | `			/*A full textual representation of a month, such as January or March*/` |
-|    7 |  457 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
-|    7 |  458 | `			ph7_result_string(pCtx,zCur,-1/*Compute length automatically*/);` |
-|    7 |  459 | `			break;` |
-|  180 |  460 | `		case 'm':` |
-|    - |  461 | `			/*Numeric representation of a month, with leading zeros*/` |
-|  361 |  462 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mon + 1);` |
-|  361 |  463 | `			break;` |
-|    1 |  464 | `		case 'M':` |
-|    - |  465 | `			/*A short textual representation of a month, three letters*/` |
-|    3 |  466 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
-|    3 |  467 | `			ph7_result_string(pCtx,zCur,3);` |
-|    3 |  468 | `			break;` |
-|    1 |  469 | `		case 'n':` |
-|    - |  470 | `			/*Numeric representation of a month, without leading zeros*/` |
-|    3 |  471 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_mon + 1);` |
-|    3 |  472 | `			break;` |
-|    1 |  473 | `		case 't':{` |
-|    - |  474 | `			static const int aMonDays[] = {31,29,31,30,31,30,31,31,30,31,30,31 };` |
-|    3 |  475 | `			int nDays = aMonDays[pTm->tm_mon % 12 ];` |
-|    3 |  476 | `			if( pTm->tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(pTm->tm_year) ){` |
-|  ! 0 |  477 | `				nDays = 28;` |
-|  ! 0 |  478 | `			}` |
-|    - |  479 | `			/*Number of days in the given month*/` |
-|    3 |  480 | `			ph7_result_string_format(pCtx,"%d",nDays);` |
-|    3 |  481 | `			break;` |
-|    - |  482 | `				 }` |
-|    1 |  483 | `		case 'L':{` |
-|    3 |  484 | `			int isLeap = IS_LEAP_YEAR(pTm->tm_year);` |
-|    - |  485 | `			/* Whether it's a leap year */` |
-|    3 |  486 | `			ph7_result_string_format(pCtx,"%d",isLeap);` |
-|    3 |  487 | `			break;` |
-|    - |  488 | `				 }` |
-|    7 |  489 | `		case 'o': case 'W': {` |
-|    - |  490 | `			/* ISO-8601 week-numbering year / week number: both belong to the` |
-|    - |  491 | `			 * year owning the Thursday of the civil week (php: 2024-12-31 is` |
-|    - |  492 | `			 * 2025-W01, 2027-01-01 is 2026-W53). php pads W but not o. */` |
-|   15 |  493 | `			sxi64 days = DtDaysFromCivil((sxi64)pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday);` |
-|   15 |  494 | `			int isoDow = (int)(((days + 3) % 7 + 7) % 7) + 1; /* Mon=1..Sun=7 */` |
-|   15 |  495 | `			sxi64 thu = days + (4 - isoDow);` |
-|    - |  496 | `			sxi64 wy;` |
-|    - |  497 | `			int wm,wd;` |
-|   15 |  498 | `			DtCivilFromDays(thu,&wy,&wm,&wd);` |
-|   15 |  499 | `			if( zIn[0] == 'o' ){` |
-|    9 |  500 | `				ph7_result_string_format(pCtx,"%d",(int)wy);` |
-|    5 |  501 | `			}else{` |
-|   10 |  502 | `				ph7_result_string_format(pCtx,"%02d",` |
-|    6 |  503 | `					(int)((thu - DtDaysFromCivil(wy,1,1)) / 7) + 1);` |
-|    - |  504 | `			}` |
-|   15 |  505 | `			break;` |
-|    - |  506 | `				 }` |
-|  149 |  507 | `		case 'Y':` |
-|    - |  508 | `			/*	A full numeric representation of a year, 4 digits */` |
-|  299 |  509 | `			ph7_result_string_format(pCtx,"%04d",pTm->tm_year);` |
-|  299 |  510 | `			break;` |
-|    2 |  511 | `		case 'X':` |
-|    - |  512 | `			/* Expanded full year, always signed (php 8.2+): +2024 */` |
-|    5 |  513 | `			ph7_result_string_format(pCtx,"%c%04d",` |
-|    4 |  514 | `				pTm->tm_year < 0 ? '-' : '+',` |
-|    4 |  515 | `				pTm->tm_year < 0 ? -pTm->tm_year : pTm->tm_year);` |
-|    5 |  516 | `			break;` |
-|    2 |  517 | `		case 'x':` |
-|    - |  518 | `			/* Expanded year, signed only past 4 digits (php 8.2+) */` |
-|    5 |  519 | `			if( pTm->tm_year > 9999 ){` |
-|  ! 0 |  520 | `				ph7_result_string_format(pCtx,"+%d",pTm->tm_year);` |
-|  ! 0 |  521 | `			}else{` |
-|    5 |  522 | `				ph7_result_string_format(pCtx,"%04d",pTm->tm_year);` |
-|    - |  523 | `			}` |
-|    5 |  524 | `			break;` |
-|    2 |  525 | `		case 'y':` |
-|    - |  526 | `			/*A two digit representation of a year*/` |
-|    5 |  527 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_year%100);` |
-|    5 |  528 | `			break;` |
-|    3 |  529 | `		case 'a':` |
-|    - |  530 | `			/*	Lowercase Ante meridiem and Post meridiem */` |
-|    7 |  531 | `			ph7_result_string(pCtx,pTm->tm_hour >= 12 ? "pm" : "am",2);` |
-|    7 |  532 | `			break;` |
-|    3 |  533 | `		case 'A':` |
-|    - |  534 | `			/*	Uppercase Ante meridiem and Post meridiem */` |
-|    7 |  535 | `			ph7_result_string(pCtx,pTm->tm_hour >= 12 ? "PM" : "AM",2);` |
-|    7 |  536 | `			break;` |
-|    1 |  537 | `		case 'B':{` |
-|    - |  538 | `			/* Swatch Internet time: thousandths of the UTC+1 day */` |
-|    4 |  539 | `			sxi64 iUtc = DtDaysFromCivil((sxi64)pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday) * 86400` |
-|    2 |  540 | `				+ (sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60 + (sxi64)pTm->tm_sec` |
-|    2 |  541 | `				- (sxi64)pTm->tm_gmtoff;` |
-|    3 |  542 | `			sxi64 iBie = (iUtc + 3600) % 86400;` |
-|    3 |  543 | `			if( iBie < 0 ){` |
-|  ! 0 |  544 | `				iBie += 86400;` |
-|  ! 0 |  545 | `			}` |
-|    3 |  546 | `			ph7_result_string_format(pCtx,"%03d",(int)(iBie * 1000 / 86400));` |
-|    3 |  547 | `			break;` |
-|    - |  548 | `				 }` |
-|    3 |  549 | `		case 'g':` |
-|    - |  550 | `			/*	12-hour format of an hour without leading zeros*/` |
-|   10 |  551 | `			ph7_result_string_format(pCtx,"%d",` |
-|    6 |  552 | `				(pTm->tm_hour % 12) == 0 ? 12 : pTm->tm_hour % 12);` |
-|    7 |  553 | `			break;` |
-|    1 |  554 | `		case 'G':` |
-|    - |  555 | `			/* 24-hour format of an hour without leading zeros */` |
-|    3 |  556 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_hour);` |
-|    3 |  557 | `			break;` |
-|    3 |  558 | `		case 'h':` |
-|    - |  559 | `			/* 12-hour format of an hour with leading zeros */` |
-|   10 |  560 | `			ph7_result_string_format(pCtx,"%02d",` |
-|    6 |  561 | `				(pTm->tm_hour % 12) == 0 ? 12 : pTm->tm_hour % 12);` |
-|    7 |  562 | `			break;` |
-|  140 |  563 | `		case 'H':` |
-|    - |  564 | `			/*	24-hour format of an hour with leading zeros */` |
-|  281 |  565 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_hour);` |
-|  281 |  566 | `			break;` |
-|  140 |  567 | `		case 'i':` |
-|    - |  568 | `			/* 	Minutes with leading zeros */` |
-|  281 |  569 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_min);` |
-|  281 |  570 | `			break;` |
-|  142 |  571 | `		case 's':` |
-|    - |  572 | `			/* 	second with leading zeros */` |
-|  285 |  573 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_sec);` |
-|  285 |  574 | `			break;` |
-|   83 |  575 | `		case 'u':` |
-|    - |  576 | `			/* 	Microseconds. date()/gmdate() have no sub-second part (uSec == 0);` |
-|    - |  577 | `			 * 	DateTime::format passes its stored microseconds. */` |
-|  167 |  578 | `			ph7_result_string_format(pCtx,"%06d",uSec);` |
-|  167 |  579 | `			break;` |
-|    4 |  580 | `		case 'v':` |
-|    - |  581 | `			/* 	Milliseconds */` |
-|    9 |  582 | `			ph7_result_string_format(pCtx,"%03d",uSec/1000);` |
-|    9 |  583 | `			break;` |
-|    1 |  584 | `		case 'S':{` |
-|    - |  585 | `			/* English ordinal suffix for the day of the month, 2 characters */` |
-|    - |  586 | `			static const char zSuffix[] = "thstndrdthththththth";` |
-|    3 |  587 | `			int v = pTm->tm_mday;` |
-|    3 |  588 | `			ph7_result_string(pCtx,&zSuffix[2 * (int)(v / 10 % 10 != 1 ? v % 10 : 0)],(int)sizeof(char) * 2);` |
-|    3 |  589 | `			break;` |
-|    - |  590 | `				 }` |
-|   12 |  591 | `		case 'e':` |
-|    - |  592 | `			/* 	Timezone identifier */` |
-|   25 |  593 | `			zCur = pTm->tm_zone;` |
-|   25 |  594 | `			if( zCur == 0 ){` |
-|    - |  595 | `				/* date()-family fills: the script default timezone */` |
-|    7 |  596 | `				zCur = pCtx->pVm->zDefTz;` |
-|    3 |  597 | `			}` |
-|   25 |  598 | `			ph7_result_string(pCtx,zCur,-1);` |
-|   25 |  599 | `			break;` |
-|    7 |  600 | `		case 'T':{` |
-|    - |  601 | `			/* Timezone abbreviation: "GMT+0530" for a fixed offset, the name` |
-|    - |  602 | `			 * itself (uppercased) for a named zone. php decides on the zone's` |
-|    - |  603 | `			 * TYPE, not on the offset's value, so a zone whose name is an offset` |
-|    - |  604 | ``			 * spelling — `new DateTime('@0')`, `new DateTimeZone('+00:00')` —`` |
-|    - |  605 | `			 * prints "GMT+0000" where PHL printed the name "+00:00". PHL has no` |
-|    - |  606 | `			 * tz database, so the name path only ever sees UTC/GMT/Z. */` |
-|    - |  607 | `			const char *z;` |
-|   14 |  608 | `			if( pTm->tm_gmtoff != 0` |
-|   14 |  609 | `			 \|\| (pTm->tm_zone && (pTm->tm_zone[0] == '+' \|\| pTm->tm_zone[0] == '-')) ){` |
-|    7 |  610 | `				long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
-|    7 |  611 | `				ph7_result_string_format(pCtx,"GMT%c%02d%02d",` |
-|    6 |  612 | `					pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
-|    7 |  613 | `				break;` |
-|    - |  614 | `			}` |
-|    9 |  615 | `			z = pTm->tm_zone ? pTm->tm_zone : pCtx->pVm->zDefTz;` |
-|   33 |  616 | `			while( *z ){` |
-|   25 |  617 | `				int c = (unsigned char)*z;` |
-|   25 |  618 | `				if( c >= 'a' && c <= 'z' ){` |
-|  ! 0 |  619 | `					c -= 'a' - 'A';` |
-|  ! 0 |  620 | `				}` |
-|   25 |  621 | `				ph7_result_string_format(pCtx,"%c",c);` |
-|   25 |  622 | `				z++;` |
-|    1 |  623 | `			}` |
-|    9 |  624 | `			break;` |
-|    - |  625 | `				 }` |
-|    1 |  626 | `		case 'I':` |
-|    - |  627 | `			/* Whether or not the date is in daylight saving time. Use the` |
-|    - |  628 | `			 * broken-down time's own tm_isdst (as every other platform does):` |
-|    - |  629 | `			 * the old Windows _get_daylight() override reported whether the` |
-|    - |  630 | `			 * timezone observes DST at all, not whether THIS date is in it. */` |
-|    3 |  631 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_isdst == 1);` |
-|    3 |  632 | `			break;` |
-|    2 |  633 | `		case 'r':{` |
-|    - |  634 | `			/* RFC 2822 formatted date 	Example: Thu, 21 Dec 2000 16:01:07 +0200 */` |
-|    5 |  635 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
-|    5 |  636 | `			ph7_result_string_format(pCtx,"%.3s, %02d %.3s %4d %02d:%02d:%02d %c%02d%02d",` |
-|    2 |  637 | `				SyTimeGetDay(pTm->tm_wday),` |
-|    2 |  638 | `				pTm->tm_mday,` |
-|    2 |  639 | `				SyTimeGetMonth(pTm->tm_mon),` |
-|    2 |  640 | `				pTm->tm_year,` |
-|    2 |  641 | `				pTm->tm_hour,` |
-|    2 |  642 | `				pTm->tm_min,` |
-|    2 |  643 | `				pTm->tm_sec,` |
-|    4 |  644 | `				pTm->tm_gmtoff < 0 ? '-' : '+',` |
-|    4 |  645 | `				(int)(a / 3600),(int)((a % 3600) / 60)` |
-|    - |  646 | `				);` |
-|    5 |  647 | `			break;` |
-|    - |  648 | `				 }` |
-|    4 |  649 | `		case 'U':` |
-|    - |  650 | `			/* Seconds since the Unix Epoch FOR THIS Sytm (php: the timestamp` |
-|    - |  651 | `			 * being formatted — pre-fix this printed time(0) regardless of the` |
-|    - |  652 | `			 * date under format). */` |
-|   13 |  653 | `			ph7_result_string_format(pCtx,"%qd",` |
-|    8 |  654 | `				DtDaysFromCivil((sxi64)pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday) * 86400` |
-|    8 |  655 | `				+ (sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60 + (sxi64)pTm->tm_sec` |
-|    8 |  656 | `				- (sxi64)pTm->tm_gmtoff);` |
-|    9 |  657 | `			break;` |
-|    3 |  658 | `		case 'O':{` |
-|    - |  659 | `			/* Difference to GMT without colon: +0530 (php) */` |
-|    7 |  660 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
-|    7 |  661 | `			ph7_result_string_format(pCtx,"%c%02d%02d",` |
-|    6 |  662 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
-|    7 |  663 | `			break;` |
-|    - |  664 | `				 }` |
-|    5 |  665 | `		case 'P':{` |
-|    - |  666 | `			/* Difference to GMT with colon: +05:30 (php) */` |
-|   11 |  667 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
-|   11 |  668 | `			ph7_result_string_format(pCtx,"%c%02d:%02d",` |
-|   10 |  669 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
-|   11 |  670 | `			break;` |
-|    - |  671 | `				 }` |
-|    2 |  672 | `		case 'p':{` |
-|    - |  673 | `			/* Like P, but "Z" for UTC (php 8.0+) */` |
-|    - |  674 | `			long a;` |
-|    5 |  675 | `			if( pTm->tm_gmtoff == 0 ){` |
-|    3 |  676 | `				ph7_result_string(pCtx,"Z",1);` |
-|    3 |  677 | `				break;` |
-|    - |  678 | `			}` |
-|    3 |  679 | `			a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
-|    3 |  680 | `			ph7_result_string_format(pCtx,"%c%02d:%02d",` |
-|    2 |  681 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
-|    3 |  682 | `			break;` |
-|    - |  683 | `				 }` |
-|    2 |  684 | `		case 'Z':` |
-|    - |  685 | `			/* Timezone offset in seconds, plain integer (php) */` |
-|    5 |  686 | `			ph7_result_string_format(pCtx,"%d",(int)pTm->tm_gmtoff);` |
-|    5 |  687 | `			break;` |
-|   15 |  688 | `		case 'c':{` |
-|    - |  689 | `			/* 	ISO 8601 date: 2004-02-12T15:19:21+00:00 (php) */` |
-|   31 |  690 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
-|   46 |  691 | `			ph7_result_string_format(pCtx,"%4d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",` |
-|   15 |  692 | `				pTm->tm_year,` |
-|   30 |  693 | `				pTm->tm_mon+1,` |
-|   15 |  694 | `				pTm->tm_mday,` |
-|   15 |  695 | `				pTm->tm_hour,` |
-|   15 |  696 | `				pTm->tm_min,` |
-|   15 |  697 | `				pTm->tm_sec,` |
-|   30 |  698 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60)` |
-|    - |  699 | `				);` |
-|   31 |  700 | `			break;` |
-|    - |  701 | `				 }` |
-|    4 |  702 | `		case '\\':` |
-|    9 |  703 | `			zIn++;` |
-|    - |  704 | `			/* Expand verbatim */` |
-|    9 |  705 | `			if( zIn < zEnd ){` |
-|    9 |  706 | `				ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
-|    4 |  707 | `			}` |
-|    9 |  708 | `			break;` |
-|  828 |  709 | `		default:` |
-|    - |  710 | `			/* Unknown format specifer,expand verbatim */` |
-| 1657 |  711 | `			ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
-| 1656 |  712 | `			break;` |
-|    - |  713 | `		}` |
-|    - |  714 | `		/* Point to the next character */` |
-| 3955 |  715 | `		zIn++;` |
-|    1 |  716 | `	}` |
-|  637 |  717 | `	return SXRET_OK;` |
-|    1 |  718 | `}` |
-|    - |  719 | `/*` |
-|    - |  720 | ` * Resolve a date()/gmdate() $timestamp argument under php 8's ?int weak ZPP:` |
-|    - |  721 | ` *   - null            -> *pbUseNow = 1 (caller uses the current time)` |
-|    - |  722 | ` *   - int/bool/float  -> coerce to a Unix timestamp (float truncates; php's` |
-|    - |  723 | ` *                        float->int precision E_DEPRECATED is not emitted, §3.7)` |
-|    - |  724 | ` *   - numeric string  -> coerce via php's is_numeric_string grammar` |
-|    - |  725 | ` *                        (RangeStrToNumber: " 100 "/"1e3"/".5"/"+5" ok)` |
-|    - |  726 | ` *   - anything else (non-numeric string, array, object, resource)` |
-|    - |  727 | ` *                     -> catchable TypeError, byte-exact with php.` |
-|    - |  728 | ` * Returns PH7_OK with *pbUseNow / *pT set, or the PH7_VmThrowException status.` |
-|    - |  729 | ` */` |
-|  188 |  730 | `static int DateResolveTimestamp(ph7_context *pCtx,ph7_value *pArg,int *pbUseNow,time_t *pT)` |
-|    1 |  731 | `{` |
-|    - |  732 | `	char zBuf[64];` |
-|  189 |  733 | `	*pbUseNow = 0;` |
-|  189 |  734 | `	if( ph7_value_is_null(pArg) ){` |
-|    3 |  735 | `		*pbUseNow = 1;` |
-|    3 |  736 | `		return PH7_OK;` |
-|    - |  737 | `	}` |
-|  187 |  738 | `	if( ph7_value_is_int(pArg) \|\| ph7_value_is_bool(pArg) \|\| ph7_value_is_float(pArg) ){` |
-|  179 |  739 | `		*pT = (time_t)ph7_value_to_int64(pArg);` |
-|  179 |  740 | `		return PH7_OK;` |
-|    - |  741 | `	}` |
-|    9 |  742 | `	if( ph7_value_is_string(pArg) ){` |
-|    - |  743 | `		int nStr;` |
-|    9 |  744 | `		const char *zStr = ph7_value_to_string(pArg,&nStr);` |
-|    - |  745 | `		sxi64 iLong; double dReal;` |
-|    9 |  746 | `		sxu8 iKind = RangeStrToNumber(zStr,(sxu32)nStr,&iLong,&dReal);` |
-|    9 |  747 | `		if( iKind == RANGE_IN_DOUBLE ){` |
-|    3 |  748 | `			*pT = (time_t)dReal;` |
-|    6 |  749 | `			return PH7_OK;` |
-|    - |  750 | `		}` |
-|    7 |  751 | `		if( iKind == RANGE_IN_LONG ){` |
-|    7 |  752 | `			*pT = (time_t)iLong;` |
-|    7 |  753 | `			return PH7_OK;` |
-|    - |  754 | `		}` |
-|    - |  755 | `		/* Not a numeric string: fall through to the TypeError. */` |
-|  ! 0 |  756 | `	}` |
-|  ! 0 |  757 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
-|    - |  758 | `		"%s(): Argument #2 ($timestamp) must be of type ?int, %s given",` |
-|  ! 0 |  759 | `		ph7_function_name(pCtx),VmValueGivenName(pArg,zBuf,sizeof(zBuf)));` |
-|   95 |  760 | `}` |
-|    - |  761 | `/*` |
-|    - |  762 | ` * string date(string $format [, int $timestamp = time() ] )` |
-|    - |  763 | ` *  Returns a string formatted according to the given format string using` |
-|    - |  764 | ` *  the given integer timestamp or the current time if no timestamp is given.` |
-|    - |  765 | ` *  In other words, timestamp is optional and defaults to the value of time().` |
-|    - |  766 | ` * Parameters` |
-|    - |  767 | ` *  $format` |
-|    - |  768 | ` *   The format of the outputted date string (See code above)` |
-|    - |  769 | ` * $timestamp` |
-|    - |  770 | ` *   The optional timestamp parameter is an integer Unix timestamp` |
-|    - |  771 | ` *   that defaults to the current local time if a timestamp is not given.` |
-|    - |  772 | ` *   In other words, it defaults to the value of time().` |
-|    - |  773 | ` * Return` |
-|    - |  774 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
-|    - |  775 | ` */` |
-|  132 |  776 | `PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  777 | `{` |
-|    - |  778 | `	const char *zFormat;` |
-|    - |  779 | `	int nLen;` |
-|    - |  780 | `	Sytm sTm;` |
-|  133 |  781 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|    - |  782 | `		/* Missing/Invalid argument,return FALSE */` |
-|  ! 0 |  783 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 |  784 | `		return PH7_OK;` |
-|    - |  785 | `	}` |
-|  133 |  786 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|  133 |  787 | `	if( nLen < 1 ){` |
-|    - |  788 | `		/* Don't bother processing return the empty string */` |
-|  ! 0 |  789 | `		ph7_result_string(pCtx,"",0);` |
-|  ! 0 |  790 | `	}` |
-|  133 |  791 | `	if( nArg < 2 ){` |
-|    - |  792 | `#ifdef __WINNT__` |
-|    - |  793 | `		SYSTEMTIME sOS;` |
-|    1 |  794 | `		GetSystemTime(&sOS);` |
-|    1 |  795 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|    - |  796 | `#else` |
-|    - |  797 | `		struct tm *pTm;` |
-|    - |  798 | `		time_t t;` |
-|   30 |  799 | `		time(&t);` |
-|   30 |  800 | `		pTm = gmtime(&t);` |
-|   30 |  801 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|   30 |  802 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  803 | `#endif` |
-|   16 |  804 | `	}else{` |
-|    - |  805 | `		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */` |
-|  103 |  806 | `		time_t t = 0;` |
-|    - |  807 | `		struct tm *pTm;` |
-|    - |  808 | `		int bUseNow;` |
-|  103 |  809 | `		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);` |
-|  103 |  810 | `		if( rc != PH7_OK ){` |
-|  ! 0 |  811 | `			return rc;` |
-|    - |  812 | `		}` |
-|  103 |  813 | `		if( bUseNow ){` |
-|  ! 0 |  814 | `			time(&t);` |
-|  ! 0 |  815 | `		}` |
-|  103 |  816 | `		pTm = gmtime(&t);` |
-|  103 |  817 | `		if( pTm == 0 ){` |
-|  ! 0 |  818 | `			time(&t);` |
-|  ! 0 |  819 | `			pTm = gmtime(&t);` |
-|  ! 0 |  820 | `		}` |
-|  103 |  821 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|  103 |  822 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  823 | `	}` |
-|    - |  824 | `	/* Format the given string */` |
-|  133 |  825 | `	DateFormat(pCtx,zFormat,nLen,&sTm,0);` |
-|  133 |  826 | `	return PH7_OK;` |
-|   67 |  827 | `}` |
-|    - |  828 | `/*` |
-|    - |  829 | ` * string gmdate(string $format [, int $timestamp = time() ] )` |
-|    - |  830 | ` *  Identical to the date() function except that the time returned` |
-|    - |  831 | ` *  is Greenwich Mean Time (GMT).` |
-|    - |  832 | ` * Parameters` |
-|    - |  833 | ` *  $format` |
-|    - |  834 | ` *  The format of the outputted date string (See code above)` |
-|    - |  835 | ` *  $timestamp` |
-|    - |  836 | ` *   The optional timestamp parameter is an integer Unix timestamp` |
-|    - |  837 | ` *   that defaults to the current local time if a timestamp is not given.` |
-|    - |  838 | ` *   In other words, it defaults to the value of time().` |
-|    - |  839 | ` * Return` |
-|    - |  840 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
-|    - |  841 | ` */` |
-|  100 |  842 | `PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  843 | `{` |
-|    - |  844 | `	const char *zFormat;` |
-|    - |  845 | `	int nLen;` |
-|    - |  846 | `	Sytm sTm;` |
-|  101 |  847 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|    - |  848 | `		/* Missing/Invalid argument,return FALSE */` |
-|  ! 0 |  849 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 |  850 | `		return PH7_OK;` |
-|    - |  851 | `	}` |
-|  101 |  852 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|  101 |  853 | `	if( nLen < 1 ){` |
-|    - |  854 | `		/* Don't bother processing return the empty string */` |
-|  ! 0 |  855 | `		ph7_result_string(pCtx,"",0);` |
-|  ! 0 |  856 | `	}` |
-|  101 |  857 | `	if( nArg < 2 ){` |
-|    - |  858 | `#ifdef __WINNT__` |
-|    - |  859 | `		SYSTEMTIME sOS;` |
-|    1 |  860 | `		GetSystemTime(&sOS);` |
-|    1 |  861 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|    - |  862 | `#else` |
-|    - |  863 | `		struct tm *pTm;` |
-|    - |  864 | `		time_t t;` |
-|   14 |  865 | `		time(&t);` |
-|   14 |  866 | `		pTm = gmtime(&t);` |
-|   14 |  867 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|   14 |  868 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  869 | `#endif` |
-|    8 |  870 | `	}else{` |
-|    - |  871 | `		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */` |
-|   87 |  872 | `		time_t t = 0;` |
-|    - |  873 | `		struct tm *pTm;` |
-|    - |  874 | `		int bUseNow;` |
-|   87 |  875 | `		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);` |
-|   87 |  876 | `		if( rc != PH7_OK ){` |
-|  ! 0 |  877 | `			return rc;` |
-|    - |  878 | `		}` |
-|   87 |  879 | `		if( bUseNow ){` |
-|    3 |  880 | `			time(&t);` |
-|    1 |  881 | `		}` |
-|   87 |  882 | `		pTm = gmtime(&t);` |
-|   87 |  883 | `		if( pTm == 0 ){` |
-|  ! 0 |  884 | `			time(&t);` |
-|  ! 0 |  885 | `			pTm = gmtime(&t);` |
-|  ! 0 |  886 | `		}` |
-|   87 |  887 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|   87 |  888 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  889 | `	}` |
-|    - |  890 | `	/* Format the given string */` |
-|  101 |  891 | `	DateFormat(pCtx,zFormat,nLen,&sTm,0);` |
-|  101 |  892 | `	return PH7_OK;` |
-|   51 |  893 | `}` |
-|    - |  894 | `/*` |
-|    - |  895 | ` * array localtime([ int $timestamp = time() [, bool $is_associative = false ]])` |
-|    - |  896 | ` *  Return the local time.` |
-|    - |  897 | ` * Parameter` |
-|    - |  898 | ` *  $timestamp: The optional timestamp parameter is an integer Unix timestamp` |
-|    - |  899 | ` *     that defaults to the current local time if a timestamp is not given.` |
-|    - |  900 | ` *     In other words, it defaults to the value of time().` |
-|    - |  901 | ` * $is_associative` |
-|    - |  902 | ` *   If set to FALSE or not supplied then the array is returned as a regular, numerically` |
-|    - |  903 | ` *   indexed array. If the argument is set to TRUE then localtime() returns an associative` |
-|    - |  904 | ` *   array containing all the different elements of the structure returned by the C function` |
-|    - |  905 | ` *   call to localtime. The names of the different keys of the associative array are as follows:` |
-|    - |  906 | ` *      "tm_sec" - seconds, 0 to 59` |
-|    - |  907 | ` *      "tm_min" - minutes, 0 to 59` |
-|    - |  908 | ` *      "tm_hour" - hours, 0 to 23` |
-|    - |  909 | ` *      "tm_mday" - day of the month, 1 to 31` |
-|    - |  910 | ` *      "tm_mon" - month of the year, 0 (Jan) to 11 (Dec)` |
-|    - |  911 | ` *      "tm_year" - years since 1900` |
-|    - |  912 | ` *      "tm_wday" - day of the week, 0 (Sun) to 6 (Sat)` |
-|    - |  913 | ` *      "tm_yday" - day of the year, 0 to 365` |
-|    - |  914 | ` *      "tm_isdst" - is daylight savings time in effect? Positive if yes, 0 if not, negative if unknown.` |
-|    - |  915 | ` * Returns` |
-|    - |  916 | ` *  An associative array of information related to the timestamp.` |
-|    - |  917 | ` */` |
-|    8 |  918 | `PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  919 | `{` |
-|    - |  920 | `	ph7_value *pValue,*pArray;` |
-|    9 |  921 | `	int isAssoc = 0;` |
-|    - |  922 | `	Sytm sTm;` |
-|    9 |  923 | `	if( nArg < 1 ){` |
-|    - |  924 | `#ifdef __WINNT__` |
-|    - |  925 | `		SYSTEMTIME sOS;` |
-|    1 |  926 | `		GetSystemTime(&sOS); /* TODO(chems): GMT not local */` |
-|    1 |  927 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|    - |  928 | `#else` |
-|    - |  929 | `		struct tm *pTm;` |
-|    - |  930 | `		time_t t;` |
-|    4 |  931 | `		time(&t);` |
-|    4 |  932 | `		pTm = gmtime(&t);` |
-|    4 |  933 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|    4 |  934 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  935 | `#endif` |
-|    3 |  936 | `	}else{` |
-|    - |  937 | `		/* Use the given timestamp */` |
-|    - |  938 | `		time_t t;` |
-|    - |  939 | `		struct tm *pTm;` |
-|    5 |  940 | `		if( ph7_value_is_int(apArg[0]) ){` |
-|    5 |  941 | `			t = (time_t)ph7_value_to_int64(apArg[0]);` |
-|    5 |  942 | `			pTm = gmtime(&t);` |
-|    5 |  943 | `			if( pTm == 0 ){` |
-|  ! 0 |  944 | `				time(&t);` |
-|  ! 0 |  945 | `			}` |
-|    3 |  946 | `		}else{` |
-|  ! 0 |  947 | `			time(&t);` |
-|    - |  948 | `		}` |
-|    5 |  949 | `		pTm = gmtime(&t);` |
-|    5 |  950 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|    5 |  951 | `		DtSytmFillOffset(&sTm,t);` |
-|    - |  952 | `	}` |
-|    - |  953 | `	/* Element value */` |
-|    9 |  954 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|    9 |  955 | `	if( pValue == 0 ){` |
-|    - |  956 | `		/* Return NULL */` |
-|  ! 0 |  957 | `		ph7_result_null(pCtx);` |
-|  ! 0 |  958 | `		return PH7_OK;` |
-|    - |  959 | `	}` |
-|    - |  960 | `	/* Create a new array */` |
-|    9 |  961 | `	pArray = ph7_context_new_array(pCtx);` |
-|    9 |  962 | `	if( pArray == 0 ){` |
-|    - |  963 | `		/* Return NULL */` |
-|  ! 0 |  964 | `		ph7_result_null(pCtx);` |
-|  ! 0 |  965 | `		return PH7_OK;` |
-|    - |  966 | `	}` |
-|    9 |  967 | `	if( nArg > 1 ){` |
-|    3 |  968 | `		isAssoc = ph7_value_to_bool(apArg[1]);` |
-|    1 |  969 | `	}` |
-|    - |  970 | `	/* Fill the array */` |
-|    - |  971 | `	/* Seconds */` |
-|    9 |  972 | `	ph7_value_int(pValue,sTm.tm_sec);` |
-|    9 |  973 | `	if( isAssoc ){` |
-|    3 |  974 | `		ph7_array_add_strkey_elem(pArray,"tm_sec",pValue);` |
-|    2 |  975 | `	}else{` |
-|    7 |  976 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - |  977 | `	}` |
-|    - |  978 | `	/* Minutes */` |
-|    9 |  979 | `	ph7_value_int(pValue,sTm.tm_min);` |
-|    9 |  980 | `	if( isAssoc ){` |
-|    3 |  981 | `		ph7_array_add_strkey_elem(pArray,"tm_min",pValue);` |
-|    2 |  982 | `	}else{` |
-|    7 |  983 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - |  984 | `	}` |
-|    - |  985 | `	/* Hours */` |
-|    9 |  986 | `	ph7_value_int(pValue,sTm.tm_hour);` |
-|    9 |  987 | `	if( isAssoc ){` |
-|    3 |  988 | `		ph7_array_add_strkey_elem(pArray,"tm_hour",pValue);` |
-|    2 |  989 | `	}else{` |
-|    7 |  990 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - |  991 | `	}` |
-|    - |  992 | `	/* mday */` |
-|    9 |  993 | `	ph7_value_int(pValue,sTm.tm_mday);` |
-|    9 |  994 | `	if( isAssoc ){` |
-|    3 |  995 | `		ph7_array_add_strkey_elem(pArray,"tm_mday",pValue);` |
-|    2 |  996 | `	}else{` |
-|    7 |  997 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - |  998 | `	}` |
-|    - |  999 | `	/* mon */` |
-|    9 | 1000 | `	ph7_value_int(pValue,sTm.tm_mon);` |
-|    9 | 1001 | `	if( isAssoc ){` |
-|    3 | 1002 | `		ph7_array_add_strkey_elem(pArray,"tm_mon",pValue);` |
-|    2 | 1003 | `	}else{` |
-|    7 | 1004 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - | 1005 | `	}` |
-|    - | 1006 | `	/* year since 1900 */` |
-|    9 | 1007 | `	ph7_value_int(pValue,sTm.tm_year-1900);` |
-|    9 | 1008 | `	if( isAssoc ){` |
-|    3 | 1009 | `		ph7_array_add_strkey_elem(pArray,"tm_year",pValue);` |
-|    2 | 1010 | `	}else{` |
-|    7 | 1011 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - | 1012 | `	}` |
-|    - | 1013 | `	/* wday */` |
-|    9 | 1014 | `	ph7_value_int(pValue,sTm.tm_wday);` |
-|    9 | 1015 | `	if( isAssoc ){` |
-|    3 | 1016 | `		ph7_array_add_strkey_elem(pArray,"tm_wday",pValue);` |
-|    2 | 1017 | `	}else{` |
-|    7 | 1018 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - | 1019 | `	}` |
-|    - | 1020 | `	/* yday */` |
-|    9 | 1021 | `	ph7_value_int(pValue,sTm.tm_yday);` |
-|    9 | 1022 | `	if( isAssoc ){` |
-|    3 | 1023 | `		ph7_array_add_strkey_elem(pArray,"tm_yday",pValue);` |
-|    2 | 1024 | `	}else{` |
-|    7 | 1025 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - | 1026 | `	}` |
-|    - | 1027 | `	/* isdst */` |
-|    - | 1028 | `#ifdef __WINNT__` |
-|    - | 1029 | `#ifdef _MSC_VER` |
-|    - | 1030 | `#ifndef _WIN32_WCE` |
-|    1 | 1031 | `			_get_daylight(&sTm.tm_isdst);` |
-|    - | 1032 | `#endif` |
-|    - | 1033 | `#endif` |
-|    - | 1034 | `#endif` |
-|    9 | 1035 | `	ph7_value_int(pValue,sTm.tm_isdst);` |
-|    9 | 1036 | `	if( isAssoc ){` |
-|    3 | 1037 | `		ph7_array_add_strkey_elem(pArray,"tm_isdst",pValue);` |
-|    2 | 1038 | `	}else{` |
-|    7 | 1039 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|    - | 1040 | `	}` |
-|    - | 1041 | `	/* Return the array */` |
-|    9 | 1042 | `	ph7_result_value(pCtx,pArray);` |
-|    9 | 1043 | `	return PH7_OK;` |
-|    5 | 1044 | `}` |
-|    - | 1045 | `/*` |
-|    - | 1046 | ` * int idate(string $format [, int $timestamp = time() ])` |
-|    - | 1047 | ` *  Returns a number formatted according to the given format string` |
-|    - | 1048 | ` *  using the given integer timestamp or the current local time if` |
-|    - | 1049 | ` *  no timestamp is given. In other words, timestamp is optional and defaults` |
-|    - | 1050 | ` *  to the value of time().` |
-|    - | 1051 | ` *  Unlike the function date(), idate() accepts just one char in the format` |
-|    - | 1052 | ` *  parameter.` |
-|    - | 1053 | ` * $Parameters` |
-|    - | 1054 | ` *  Supported format` |
-|    - | 1055 | ` *   d 	Day of the month` |
-|    - | 1056 | ` *   h 	Hour (12 hour format)` |
-|    - | 1057 | ` *   H 	Hour (24 hour format)` |
-|    - | 1058 | ` *   i 	Minutes` |
-|    - | 1059 | ` *   I (uppercase i)1 if DST is activated, 0 otherwise` |
-|    - | 1060 | ` *   L (uppercase l) returns 1 for leap year, 0 otherwise` |
-|    - | 1061 | ` *   m 	Month number` |
-|    - | 1062 | ` *   s 	Seconds` |
-|    - | 1063 | ` *   t 	Days in current month` |
-|    - | 1064 | ` *   U 	Seconds since the Unix Epoch - January 1 1970 00:00:00 UTC - this is the same as time()` |
-|    - | 1065 | ` *   w 	Day of the week (0 on Sunday)` |
-|    - | 1066 | ` *   W 	ISO-8601 week number of year, weeks starting on Monday` |
-|    - | 1067 | ` *   y 	Year (1 or 2 digits - check note below)` |
-|    - | 1068 | ` *   Y 	Year (4 digits)` |
-|    - | 1069 | ` *   z 	Day of the year` |
-|    - | 1070 | ` *   Z 	Timezone offset in seconds` |
-|    - | 1071 | ` * $timestamp` |
-|    - | 1072 | ` *  The optional timestamp parameter is an integer Unix timestamp that defaults` |
-|    - | 1073 | ` *  to the current local time if a timestamp is not given. In other words, it defaults` |
-|    - | 1074 | ` *  to the value of time().` |
-|    - | 1075 | ` * Return` |
-|    - | 1076 | ` *  An integer.` |
-|    - | 1077 | ` */` |
-|  178 | 1078 | `PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 | 1079 | `{` |
-|    - | 1080 | `	const char *zFormat;` |
-|  180 | 1081 | `	ph7_int64 iVal = 0;` |
-|    - | 1082 | `	int nLen;` |
-|    - | 1083 | `	Sytm sTm;` |
-|  180 | 1084 | `	time_t t = 0; /* The resolved timestamp; 'U' must report THIS, not time(0) */` |
-|  180 | 1085 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|    - | 1086 | `		/* Missing/Invalid argument,return -1 */` |
-|  ! 0 | 1087 | `		ph7_result_int(pCtx,-1);` |
-|  ! 0 | 1088 | `		return PH7_OK;` |
-|    - | 1089 | `	}` |
-|  180 | 1090 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|  180 | 1091 | `	if( nLen < 1 ){` |
-|    - | 1092 | `		/* Don't bother processing return -1*/` |
-|  ! 0 | 1093 | `		ph7_result_int(pCtx,-1);` |
-|  ! 0 | 1094 | `	}` |
-|  180 | 1095 | `	if( nArg < 2 ){` |
-|    - | 1096 | `#ifdef __WINNT__` |
-|    - | 1097 | `		SYSTEMTIME sOS;` |
-|    2 | 1098 | `		GetSystemTime(&sOS);` |
-|    2 | 1099 | `		time(&t);` |
-|    2 | 1100 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|    - | 1101 | `#else` |
-|    - | 1102 | `		struct tm *pTm;` |
-|   14 | 1103 | `		time(&t);` |
-|   14 | 1104 | `		pTm = gmtime(&t);` |
-|   14 | 1105 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|   14 | 1106 | `		DtSytmFillOffset(&sTm,t);` |
-|    - | 1107 | `#endif` |
-|    9 | 1108 | `	}else{` |
-|    - | 1109 | `		/* Use the given timestamp */` |
-|    - | 1110 | `		struct tm *pTm;` |
-|  165 | 1111 | `		if( ph7_value_is_int(apArg[1]) ){` |
-|  165 | 1112 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
-|  165 | 1113 | `			pTm = gmtime(&t);` |
-|  165 | 1114 | `			if( pTm == 0 ){` |
-|  ! 0 | 1115 | `				time(&t);` |
-|  ! 0 | 1116 | `			}` |
-|   83 | 1117 | `		}else{` |
-|  ! 0 | 1118 | `			time(&t);` |
-|    - | 1119 | `		}` |
-|  165 | 1120 | `		pTm = gmtime(&t);` |
-|  165 | 1121 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|  165 | 1122 | `		DtSytmFillOffset(&sTm,t);` |
-|    - | 1123 | `	}` |
-|    - | 1124 | `	/* Perform the requested operation */` |
-|  180 | 1125 | `	switch(zFormat[0]){` |
-|    9 | 1126 | `	case 'd':` |
-|    - | 1127 | `	case 'j':` |
-|    - | 1128 | `		/* Day of the month ('j' differs from 'd' only in zero padding, which an` |
-|    - | 1129 | `		 * integer result cannot carry) */` |
-|   19 | 1130 | `		iVal = sTm.tm_mday;` |
-|   19 | 1131 | `		break;` |
-|    8 | 1132 | `	case 'h':` |
-|    - | 1133 | `	case 'g':` |
-|    - | 1134 | `		/* Hour (12 hour format): php reports midnight and noon as 12, not 0 —` |
-|    - | 1135 | ``		 * `1 + hour % 12` answered 1 for both. */`` |
-|   17 | 1136 | `		iVal = sTm.tm_hour % 12;` |
-|   17 | 1137 | `		if( iVal == 0 ){` |
-|   17 | 1138 | `			iVal = 12;` |
-|    8 | 1139 | `		}` |
-|   17 | 1140 | `		break;` |
-|    9 | 1141 | `	case 'H':` |
-|    - | 1142 | `	case 'G':` |
-|    - | 1143 | `		/* Hour (24 hour format) */` |
-|   19 | 1144 | `		iVal = sTm.tm_hour;` |
-|   19 | 1145 | `		break;` |
-|    4 | 1146 | `	case 'B': {` |
-|    - | 1147 | `		/* Swatch Internet time: 1000 "beats" per day in UTC+1, no fractions.` |
-|    - | 1148 | `		 * Integer math throughout so the tiny build (no floating point) agrees. */` |
-|    9 | 1149 | `		ph7_int64 iSec = ((ph7_int64)t + 3600) % 86400;` |
-|    9 | 1150 | `		if( iSec < 0 ){` |
-|  ! 0 | 1151 | `			iSec += 86400;` |
-|  ! 0 | 1152 | `		}` |
-|    9 | 1153 | `		iVal = iSec * 1000 / 86400;` |
-|    9 | 1154 | `		break;` |
-|    - | 1155 | `			  }` |
-|    5 | 1156 | `	case 'i':` |
-|    - | 1157 | `		/*Minutes*/` |
-|   11 | 1158 | `		iVal = sTm.tm_min;` |
-|   11 | 1159 | `		break;` |
-|  ! 0 | 1160 | `	case 'I':` |
-|    - | 1161 | `		/*	returns 1 if DST is activated, 0 otherwise */` |
-|    - | 1162 | `#ifdef __WINNT__` |
-|    - | 1163 | `#ifdef _MSC_VER` |
-|    - | 1164 | `#ifndef _WIN32_WCE` |
-|  ! 0 | 1165 | `			_get_daylight(&sTm.tm_isdst);` |
-|    - | 1166 | `#endif` |
-|    - | 1167 | `#endif` |
-|    - | 1168 | `#endif` |
-|  ! 0 | 1169 | `		iVal = sTm.tm_isdst;` |
-|  ! 0 | 1170 | `		break;` |
-|    4 | 1171 | `	case 'L':` |
-|    - | 1172 | `		/* 	returns 1 for leap year, 0 otherwise */` |
-|    9 | 1173 | `		iVal = IS_LEAP_YEAR(sTm.tm_year);` |
-|    9 | 1174 | `		break;` |
-|    9 | 1175 | `	case 'm':` |
-|    - | 1176 | `	case 'n':` |
-|    - | 1177 | `		/* Month number. Sytm keeps tm_mon 0-based (see 't' below, which tests` |
-|    - | 1178 | ``		 * `tm_mon == 1` for February), so July used to answer 6. */`` |
-|   19 | 1179 | `		iVal = sTm.tm_mon + 1;` |
-|   19 | 1180 | `		break;` |
-|    5 | 1181 | `	case 's':` |
-|    - | 1182 | `		/*Seconds*/` |
-|   11 | 1183 | `		iVal = sTm.tm_sec;` |
-|   11 | 1184 | `		break;` |
-|    4 | 1185 | `	case 't':{` |
-|    - | 1186 | `		/*Days in current month*/` |
-|    - | 1187 | `		static const int aMonDays[] = {31,29,31,30,31,30,31,31,30,31,30,31 };` |
-|    9 | 1188 | `		int nDays = aMonDays[sTm.tm_mon % 12 ];` |
-|    9 | 1189 | `		if( sTm.tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(sTm.tm_year) ){` |
-|  ! 0 | 1190 | `			nDays = 28;` |
-|  ! 0 | 1191 | `		}` |
-|    9 | 1192 | `		iVal = nDays;` |
-|    9 | 1193 | `		break;` |
-|    - | 1194 | `			 }` |
-|    4 | 1195 | `	case 'U':` |
-|    - | 1196 | `		/* Seconds since the Unix Epoch. This used to call time(0), ignoring the` |
-|    - | 1197 | `		 * $timestamp argument entirely and always answering "now". */` |
-|    9 | 1198 | `		iVal = (ph7_int64)t;` |
-|    9 | 1199 | `		break;` |
-|    4 | 1200 | `	case 'w':` |
-|    - | 1201 | `		/*	Day of the week (0 on Sunday) */` |
-|    9 | 1202 | `		iVal = sTm.tm_wday;` |
-|    9 | 1203 | `		break;` |
-|    8 | 1204 | `	case 'W':` |
-|    - | 1205 | `	case 'o': {` |
-|    - | 1206 | `		/* ISO-8601 week number / week-numbering year: both belong to the year` |
-|    - | 1207 | `		 * owning the Thursday of the civil week, so 2021-01-01 is 2020-W53.` |
-|    - | 1208 | `		 * The old code indexed a weekday table and returned a DAY number` |
-|    - | 1209 | `		 * (1..7) as if it were a week number — idate("W") answered 4 in the` |
-|    - | 1210 | `		 * middle of July. Same derivation as date()'s 'o'/'W' above. */` |
-|   17 | 1211 | `		sxi64 days = DtDaysFromCivil((sxi64)sTm.tm_year,sTm.tm_mon+1,sTm.tm_mday);` |
-|   17 | 1212 | `		int isoDow = (int)(((days + 3) % 7 + 7) % 7) + 1; /* Mon=1..Sun=7 */` |
-|   17 | 1213 | `		sxi64 thu = days + (4 - isoDow);` |
-|    - | 1214 | `		sxi64 wy;` |
-|    - | 1215 | `		int wm,wd;` |
-|   17 | 1216 | `		DtCivilFromDays(thu,&wy,&wm,&wd);` |
-|   17 | 1217 | `		if( zFormat[0] == 'o' ){` |
-|    9 | 1218 | `			iVal = (ph7_int64)wy;` |
-|    5 | 1219 | `		}else{` |
-|    9 | 1220 | `			iVal = (ph7_int64)((thu - DtDaysFromCivil(wy,1,1)) / 7) + 1;` |
-|    - | 1221 | `		}` |
-|   17 | 1222 | `		break;` |
-|    - | 1223 | `			  }` |
-|    4 | 1224 | `	case 'y':` |
-|    - | 1225 | `		/* Year (2 digits) */` |
-|    9 | 1226 | `		iVal = sTm.tm_year % 100;` |
-|    9 | 1227 | `		break;` |
-|    6 | 1228 | `	case 'Y':` |
-|    - | 1229 | `		/* Year (4 digits) */` |
-|   13 | 1230 | `		iVal = sTm.tm_year;` |
-|   13 | 1231 | `		break;` |
-|    4 | 1232 | `	case 'z':` |
-|    - | 1233 | `		/* Day of the year */` |
-|    9 | 1234 | `		iVal = sTm.tm_yday;` |
-|    9 | 1235 | `		break;` |
-|  ! 0 | 1236 | `	case 'Z':` |
-|    - | 1237 | `		/*Timezone offset in seconds*/` |
-|  ! 0 | 1238 | `		iVal = sTm.tm_gmtoff;` |
-|  ! 0 | 1239 | `		break;` |
-|    2 | 1240 | `	default:` |
-|    - | 1241 | `		/* unknown format,throw a warning */` |
-|    6 | 1242 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");` |
-|    - | 1243 | `		/* php returns FALSE for an unrecognized token, not 0 — the two are` |
-|    - | 1244 | ``		 * distinguishable (`idate($t) === false` is the documented check) and`` |
-|    - | 1245 | `		 * 0 is a legitimate result for several real tokens. */` |
-|    6 | 1246 | `		ph7_result_bool(pCtx,0);` |
-|    6 | 1247 | `		return PH7_OK;` |
-|    - | 1248 | `	}` |
-|    - | 1249 | `	/* Return the time value */` |
-|  175 | 1250 | `	ph7_result_int64(pCtx,iVal);` |
-|  175 | 1251 | `	return PH7_OK;` |
-|   91 | 1252 | `}` |
-|    - | 1253 | `/*` |
-|    - | 1254 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
-|    - | 1255 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |
-|    - | 1256 | ` *  Returns the Unix timestamp corresponding to the arguments given. This timestamp is a 64bit integer` |
-|    - | 1257 | ` *  containing the number of seconds between the Unix Epoch (January 1 1970 00:00:00 GMT) and the time` |
-|    - | 1258 | ` *  specified.` |
-|    - | 1259 | ` *  Arguments may be left out in order from right to left; any arguments thus omitted will be set to` |
-|    - | 1260 | ` *  the current value according to the local date and time.` |
-|    - | 1261 | ` * Parameters` |
-|    - | 1262 | ` * $hour` |
-|    - | 1263 | ` *  The number of the hour relevant to the start of the day determined by month, day and year.` |
-|    - | 1264 | ` *  Negative values reference the hour before midnight of the day in question. Values greater` |
-|    - | 1265 | ` *  than 23 reference the appropriate hour in the following day(s).` |
-|    - | 1266 | ` * $minute` |
-|    - | 1267 | ` *  The number of the minute relevant to the start of the hour. Negative values reference` |
-|    - | 1268 | ` *  the minute in the previous hour. Values greater than 59 reference the appropriate minute` |
-|    - | 1269 | ` *  in the following hour(s).` |
-|    - | 1270 | ` * $second` |
-|    - | 1271 | ` *  The number of seconds relevant to the start of the minute. Negative values reference` |
-|    - | 1272 | ` *  the second in the previous minute. Values greater than 59 reference the appropriate` |
-|    - | 1273 | ` * second in the following minute(s).` |
-|    - | 1274 | ` * $month` |
-|    - | 1275 | ` *  The number of the month relevant to the end of the previous year. Values 1 to 12 reference` |
-|    - | 1276 | ` *  the normal calendar months of the year in question. Values less than 1 (including negative values)` |
-|    - | 1277 | ` *  reference the months in the previous year in reverse order, so 0 is December, -1 is November)...` |
-|    - | 1278 | ` * $day` |
-|    - | 1279 | ` *  The number of the day relevant to the end of the previous month. Values 1 to 28, 29, 30 or 31` |
-|    - | 1280 | ` *  (depending upon the month) reference the normal days in the relevant month. Values less than 1` |
-|    - | 1281 | ` *  (including negative values) reference the days in the previous month, so 0 is the last day` |
-|    - | 1282 | ` *  of the previous month, -1 is the day before that, etc. Values greater than the number of days` |
-|    - | 1283 | ` *  in the relevant month reference the appropriate day in the following month(s).` |
-|    - | 1284 | ` * $year` |
-|    - | 1285 | ` *  The number of the year, may be a two or four digit value, with values between 0-69 mapping` |
-|    - | 1286 | ` *  to 2000-2069 and 70-100 to 1970-2000. On systems where time_t is a 32bit signed integer, as` |
-|    - | 1287 | ` *  most common today, the valid range for year is somewhere between 1901 and 2038.` |
-|    - | 1288 | ` * $is_dst` |
-|    - | 1289 | ` *  This parameter can be set to 1 if the time is during daylight savings time (DST), 0 if it is not,` |
-|    - | 1290 | ` *  or -1 (the default) if it is unknown whether the time is within daylight savings time or not.` |
-|    - | 1291 | ` * Return` |
-|    - | 1292 | ` *   mktime() returns the Unix timestamp of the arguments given.` |
-|    - | 1293 | ` *   If the arguments are invalid, the function returns FALSE` |
-|    - | 1294 | ` */` |
-|   38 | 1295 | `PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1296 | `{` |
-|    - | 1297 | `	const char *zFunction;` |
-|    - | 1298 | `	ph7_int64 iVal;` |
-|    - | 1299 | `	sxi64 h,mi,s,mo,d,y,yAdj;` |
-|    - | 1300 | `	int moN;` |
-|    - | 1301 | `	struct tm *pTm;` |
-|    - | 1302 | `	time_t t;` |
-|    - | 1303 | `	/* Extract function name */` |
-|   39 | 1304 | `	zFunction = ph7_function_name(pCtx);` |
-|    - | 1305 | `	/* PHP 8 dropped the legacy $is_dst 7th parameter: mktime()/gmmktime() now` |
-|    - | 1306 | `	 * accept at most 6 arguments and throw a catchable ArgumentCountError` |
-|    - | 1307 | `	 * otherwise (the central aBuiltinArity table only enforces the minimum, so` |
-|    - | 1308 | `	 * this maximum is checked here). */` |
-|   39 | 1309 | `	if( nArg > 6 ){` |
-|  ! 0 | 1310 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
-|  ! 0 | 1311 | `			"%s() expects at most 6 arguments, %d given",zFunction,nArg);` |
-|    - | 1312 | `	}` |
-|   39 | 1313 | `	if( nArg < 1 ){` |
-|  ! 0 | 1314 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
-|  ! 0 | 1315 | `			"%s() expects at least 1 argument, 0 given",zFunction);` |
-|    - | 1316 | `	}` |
-|    - | 1317 | `	/* Missing components default from the current time in php's default` |
-|    - | 1318 | `	 * timezone. PHL's date_default_timezone_set() only accepts UTC/GMT (no tz` |
-|    - | 1319 | `	 * database), so mktime() and gmmktime() agree and both read gmtime(). */` |
-|   39 | 1320 | `	time(&t);` |
-|   39 | 1321 | `	pTm = gmtime(&t);` |
-|   19 | 1322 | `	SXUNUSED(zFunction);` |
-|   39 | 1323 | `	h  = pTm->tm_hour;` |
-|   39 | 1324 | `	mi = pTm->tm_min;` |
-|   39 | 1325 | `	s  = pTm->tm_sec;` |
-|   39 | 1326 | `	mo = pTm->tm_mon + 1;` |
-|   39 | 1327 | `	d  = pTm->tm_mday;` |
-|   39 | 1328 | `	y  = pTm->tm_year + 1900;` |
-|   39 | 1329 | `	h = ph7_value_to_int64(apArg[0]);` |
-|   39 | 1330 | `	if( nArg > 1 ){` |
-|   39 | 1331 | `		mi = ph7_value_to_int64(apArg[1]);` |
-|   39 | 1332 | `		if( nArg > 2 ){` |
-|   39 | 1333 | `			s = ph7_value_to_int64(apArg[2]);` |
-|   39 | 1334 | `			if( nArg > 3 ){` |
-|   39 | 1335 | `				mo = ph7_value_to_int64(apArg[3]);` |
-|   39 | 1336 | `				if( nArg > 4 ){` |
-|   39 | 1337 | `					d = ph7_value_to_int64(apArg[4]);` |
-|   39 | 1338 | `					if( nArg > 5 ){` |
-|    - | 1339 | `						/* php's legacy two-digit mapping: 0-69 -> 2000-2069,` |
-|    - | 1340 | `						 * 70-100 -> 1970-2000; anything else is verbatim */` |
-|   39 | 1341 | `						y = ph7_value_to_int64(apArg[5]);` |
-|   39 | 1342 | `						if( y >= 0 && y <= 69 ){` |
-|    7 | 1343 | `							y += 2000;` |
-|   36 | 1344 | `						}else if( y >= 70 && y <= 100 ){` |
-|    5 | 1345 | `							y += 1900;` |
-|    2 | 1346 | `						}` |
-|   19 | 1347 | `					}` |
-|   19 | 1348 | `				}` |
-|   19 | 1349 | `			}` |
-|   19 | 1350 | `		}` |
-|   19 | 1351 | `	}` |
-|    - | 1352 | `	/* Normalize the month with floor semantics, then let day/time components` |
-|    - | 1353 | `	 * overflow linearly (php: mktime(25,-30,0,1,1,2024) == Jan 2 00:30). */` |
-|   39 | 1354 | `	yAdj = y + DtFloorDiv(mo - 1,12);` |
-|   39 | 1355 | `	moN  = (int)(mo - 1 - DtFloorDiv(mo - 1,12) * 12) + 1;` |
-|   39 | 1356 | `	iVal = (DtDaysFromCivil(yAdj,moN,1) + (d - 1)) * 86400 + h*3600 + mi*60 + s;` |
-|    - | 1357 | `	/* Return the timestamp as a 64bit integer */` |
-|   39 | 1358 | `	ph7_result_int64(pCtx,iVal);` |
-|   39 | 1359 | `	return PH7_OK;` |
-|   20 | 1360 | `}` |
-|    - | 1361 | `/*` |
-|    - | 1362 | ` * string date_default_timezone_get(void)` |
-|    - | 1363 | ` *  Gets the default timezone used by all date/time functions in a script.` |
-|    - | 1364 | ` */` |
-|    4 | 1365 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1366 | `{` |
-|    5 | 1367 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    2 | 1368 | `	SXUNUSED(nArg);` |
-|    2 | 1369 | `	SXUNUSED(apArg);` |
-|    5 | 1370 | `	ph7_result_string(pCtx,pVm->zDefTz,(int)pVm->nDefTz);` |
-|    5 | 1371 | `	return PH7_OK;` |
-|    1 | 1372 | `}` |
-|    - | 1373 | `/*` |
-|    - | 1374 | ` * bool date_default_timezone_set(string $timezoneId)` |
-|    - | 1375 | ` *  Sets the default timezone used by all date/time functions in a script.` |
-|    - | 1376 | ` *  php validates against the tz database and stores the id verbatim (get()` |
-|    - | 1377 | ` *  echoes back "utc" if that's what was set). PHL ships no tz database, so` |
-|    - | 1378 | ` *  only UTC and GMT are accepted; every other id — including region names php` |
-|    - | 1379 | ` *  would accept — is rejected with php's invalid-id notice (recorded scope cut).` |
-|    - | 1380 | ` */` |
-|   34 | 1381 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1382 | `{` |
-|   35 | 1383 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    - | 1384 | `	const char *zId;` |
-|    - | 1385 | `	int nId;` |
-|   35 | 1386 | `	if( nArg < 1 ){` |
-|  ! 0 | 1387 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 | 1388 | `		return PH7_OK;` |
-|    - | 1389 | `	}` |
-|   35 | 1390 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
-|   35 | 1391 | `	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 \|\| SyStrnicmp(zId,"GMT",3) == 0) ){` |
-|   35 | 1392 | `		SyMemcpy(zId,pVm->zDefTz,3);` |
-|   35 | 1393 | `		pVm->zDefTz[3] = 0;` |
-|   35 | 1394 | `		pVm->nDefTz = 3;` |
-|   35 | 1395 | `		ph7_result_bool(pCtx,1);` |
-|   35 | 1396 | `		return PH7_OK;` |
-|    - | 1397 | `	}` |
-|    - | 1398 | `	/* ph7_context_throw_error_format prepends "date_default_timezone_set(): "` |
-|    - | 1399 | `	 * — exactly php's notice shape here */` |
-|  ! 0 | 1400 | `	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Timezone ID '%.*s' is invalid",nId,zId);` |
-|  ! 0 | 1401 | `	ph7_result_bool(pCtx,0);` |
-|  ! 0 | 1402 | `	return PH7_OK;` |
-|   18 | 1403 | `}` |
-|    - | 1404 |  |
-|    - | 1405 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - | 1406 |  |
+|  Hits | Line | Source |
+| ----: | ---: | :--- |
+|     - |    1 | `/**` |
+|     - |    2 | ` * SPDX-FileCopyrightText: 2011, 2012, 2013, 2014 Symisc Systems <licensing@symisc.net>` |
+|     - |    3 | ` * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>` |
+|     - |    4 | ` * SPDX-License-Identifier: BSD-3-Clause` |
+|     - |    5 | ` */` |
+|     - |    6 | `#include "ph7int.h"` |
+|     - |    7 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
+|     - |    8 | `/*` |
+|     - |    9 | ` * Date/Time functions` |
+|     - |   10 | ` * Status:` |
+|     - |   11 | ` *    Devel.` |
+|     - |   12 | ` */` |
+|     - |   13 | `#include <time.h>` |
+|     - |   14 | `/* Civil-date helpers (defined with the DateTime layer below) */` |
+|     - |   15 | `#ifdef __WINNT__` |
+|     - |   16 | `#ifdef _MSC_VER` |
+|     - |   17 | `#if _MSC_VER >= 1400 /* Visual Studio 2005 and up */` |
+|     - |   18 | `#pragma warning(disable:4996) /* _CRT_SECURE_NO_WARNINGS */` |
+|     - |   19 | `#endif` |
+|     - |   20 | `#endif` |
+|     - |   21 | `#endif` |
+|     - |   22 | `#ifdef __WINNT__` |
+|     - |   23 | `/* GetSystemTime() */` |
+|     - |   24 | `#include <Windows.h>` |
+|     - |   25 | `#ifdef _WIN32_WCE` |
+|     - |   26 | `/* SPDX-SnippetBegin */` |
+|     - |   27 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
+|     - |   28 | `/* SPDX-License-Identifier: blessing */` |
+|     - |   29 | `/*` |
+|     - |   30 | `** WindowsCE does not have a localtime() function.  So create a` |
+|     - |   31 | `** substitute.` |
+|     - |   32 | `** Taken from the SQLite3 source tree.` |
+|     - |   33 | `** Status: Public domain` |
+|     - |   34 | `*/` |
+|     - |   35 | `struct tm *__cdecl localtime(const time_t *t)` |
+|     - |   36 | `{` |
+|     - |   37 | `  static struct tm y;` |
+|     - |   38 | `  FILETIME uTm, lTm;` |
+|     - |   39 | `  SYSTEMTIME pTm;` |
+|     - |   40 | `  ph7_int64 t64;` |
+|     - |   41 | `  t64 = *t;` |
+|     - |   42 | `  t64 = (t64 + 11644473600)*10000000;` |
+|     - |   43 | `  uTm.dwLowDateTime = (DWORD)(t64 & 0xFFFFFFFF);` |
+|     - |   44 | `  uTm.dwHighDateTime= (DWORD)(t64 >> 32);` |
+|     - |   45 | `  FileTimeToLocalFileTime(&uTm,&lTm);` |
+|     - |   46 | `  FileTimeToSystemTime(&lTm,&pTm);` |
+|     - |   47 | `  y.tm_year = pTm.wYear - 1900;` |
+|     - |   48 | `  y.tm_mon = pTm.wMonth - 1;` |
+|     - |   49 | `  y.tm_wday = pTm.wDayOfWeek;` |
+|     - |   50 | `  y.tm_mday = pTm.wDay;` |
+|     - |   51 | `  y.tm_hour = pTm.wHour;` |
+|     - |   52 | `  y.tm_min = pTm.wMinute;` |
+|     - |   53 | `  y.tm_sec = pTm.wSecond;` |
+|     - |   54 | `  return &y;` |
+|     - |   55 | `}` |
+|     - |   56 | `/* SPDX-SnippetEnd */` |
+|     - |   57 | `#endif /*_WIN32_WCE */` |
+|     - |   58 | `#elif defined(__UNIXES__)` |
+|     - |   59 | `#include <sys/time.h>` |
+|     - |   60 | `#endif /* __WINNT__*/` |
+|     - |   61 | `/*` |
+|     - |   62 | ` * Resolve the current wall-clock time (epoch seconds + sub-second microseconds).` |
+|     - |   63 | ` *` |
+|     - |   64 | ` * An embedder may override the platform clock via PH7_CONFIG_CLOCK (e.g. the` |
+|     - |   65 | ` * ESP32 port routes this through esp_timer); when no hook is registered we use` |
+|     - |   66 | ` * gettimeofday() on Unix and fall back to a second-resolution time() elsewhere.` |
+|     - |   67 | ` * Centralising this here gives microtime()/gettimeofday() a single sub-second` |
+|     - |   68 | `` * source instead of the old nonsensical `tt % SX_USEC_PER_SEC` off-Unix path.`` |
+|     - |   69 | ` */` |
+|  3476 |   70 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
+|     4 |   71 | `{` |
+|  3480 |   72 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
+|   ! 0 |   73 | `		ph7_int64 sec = 0,usec = 0;` |
+|   ! 0 |   74 | `		if( pVm->pEngine->xConf.xClock(pVm->pEngine->xConf.pClockData,&sec,&usec) == PH7_OK ){` |
+|   ! 0 |   75 | `			pOut->tm_sec  = (long)sec;` |
+|   ! 0 |   76 | `			pOut->tm_usec = (long)usec;` |
+|   ! 0 |   77 | `			return;` |
+|     - |   78 | `		}` |
+|   ! 0 |   79 | `	}` |
+|     - |   80 | `#if defined(__UNIXES__)` |
+|     - |   81 | `	{` |
+|     - |   82 | `		struct timeval tv;` |
+|  3476 |   83 | `		gettimeofday(&tv,0);` |
+|  3476 |   84 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
+|  3476 |   85 | `		pOut->tm_usec = (long)tv.tv_usec;` |
+|     - |   86 | `	}` |
+|     - |   87 | `#elif defined(__WINNT__)` |
+|     - |   88 | `	{` |
+|     - |   89 | `		/* FILETIME is 100-ns ticks since 1601-01-01 UTC; convert to the Unix` |
+|     - |   90 | `		 * epoch with microsecond resolution (GetSystemTime() only carries` |
+|     - |   91 | `		 * milliseconds, and time() has no sub-second part at all). */` |
+|     - |   92 | `		FILETIME ft;` |
+|     - |   93 | `		ph7_int64 t;` |
+|     4 |   94 | `		GetSystemTimeAsFileTime(&ft);` |
+|     4 |   95 | `		t  = (ph7_int64)ft.dwHighDateTime << 32;` |
+|     4 |   96 | `		t += ft.dwLowDateTime;` |
+|     4 |   97 | `		t -= 116444736000000000LL; /* 100-ns ticks between 1601 and 1970 */` |
+|     4 |   98 | `		pOut->tm_sec  = (long)(t / 10000000);` |
+|     4 |   99 | `		pOut->tm_usec = (long)((t % 10000000) / 10);` |
+|     - |  100 | `	}` |
+|     - |  101 | `#else` |
+|     - |  102 | `	{` |
+|     - |  103 | `		time_t tt;` |
+|     - |  104 | `		time(&tt);` |
+|     - |  105 | `		pOut->tm_sec  = (long)tt;` |
+|     - |  106 | `		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */` |
+|     - |  107 | `	}` |
+|     - |  108 | `#endif /* __UNIXES__ */` |
+|  1742 |  109 | `}` |
+|     - |  110 | `/*` |
+|     - |  111 | ` * The current moment as the DateTime layer wants it: epoch seconds plus the` |
+|     - |  112 | ` * MICROSECONDS beside them.` |
+|     - |  113 | ` *` |
+|     - |  114 | ` * php's date classes take their base moment from the same clock microtime()` |
+|     - |  115 | `` * reads, sub-second part included -- `new DateTime()` carries the microseconds`` |
+|     - |  116 | `` * of the instant it was built, which is what makes `$a->diff($b)->f` mean`` |
+|     - |  117 | ` * anything for two moments a program measured. The parse layer used to read` |
+|     - |  118 | `` * `time(0)` directly, so every one of them was born on a whole second and every`` |
+|     - |  119 | ` * such diff answered 0.0. Routing them through DateNow() also hands the date` |
+|     - |  120 | ` * classes the PH7_CONFIG_CLOCK hook the procedural half already had.` |
+|     - |  121 | ` */` |
+|  3398 |  122 | `PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec)` |
+|     4 |  123 | `{` |
+|     - |  124 | `	sytime sNow;` |
+|  3402 |  125 | `	DateNow(pVm,&sNow);` |
+|  3402 |  126 | `	if( piSec ){` |
+|  3402 |  127 | `		*piSec = (sxi64)sNow.tm_sec;` |
+|  1699 |  128 | `	}` |
+|  3402 |  129 | `	if( puSec ){` |
+|  3322 |  130 | `		*puSec = (int)sNow.tm_usec;` |
+|  1659 |  131 | `	}` |
+|  3402 |  132 | `}` |
+|     - |  133 | `/*` |
+|     - |  134 | ` * Break a Unix timestamp (or the current time) down into a Sytm the way the` |
+|     - |  135 | ` * DateTime layer does: PHL's own civil arithmetic, not the platform's gmtime().` |
+|     - |  136 | ` *` |
+|     - |  137 | `` * gmtime() keeps its year in an `int` and simply FAILS past it, and the five`` |
+|     - |  138 | ` * procedural doors below then formatted the CURRENT time instead -- so` |
+|     - |  139 | `` * `date('Y', PHP_INT_MAX)` read today's year here where php reads`` |
+|     - |  140 | ` * 292277026596. The engine has no tz database (date_default_timezone_set()` |
+|     - |  141 | ` * takes UTC/GMT only), so date() and gmdate() share this UTC breakdown exactly` |
+|     - |  142 | ` * as they already did through gmtime().` |
+|     - |  143 | ` */` |
+|   750 |  144 | `static void DtSytmOfTimestamp(sxi64 iTs,Sytm *pOut)` |
+|     2 |  145 | `{` |
+|     - |  146 | `	/* A NULL tm_zone is what the date()-family fills mean by "the script's` |
+|     - |  147 | `	 * default timezone" -- DateFormat's 'e'/'T' read pVm->zDefTz through it,` |
+|     - |  148 | `	 * so naming the zone here would pin every one of them to UTC. */` |
+|   752 |  149 | `	DtFillSytm(iTs,0,0,pOut);` |
+|   752 |  150 | `}` |
+|     - |  151 | ` /*` |
+|     - |  152 | `  * int64 time(void)` |
+|     - |  153 | `  *  Current Unix timestamp` |
+|     - |  154 | `  * Parameters` |
+|     - |  155 | `  *  None.` |
+|     - |  156 | `  * Return` |
+|     - |  157 | `  *  Returns the current time measured in the number of seconds` |
+|     - |  158 | `  *  since the Unix Epoch (January 1 1970 00:00:00 GMT).` |
+|     - |  159 | `  */` |
+|    18 |  160 | `PH7_PRIVATE int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 |  161 | `{` |
+|     - |  162 | `	time_t tt;` |
+|     9 |  163 | `	SXUNUSED(nArg); /* cc warning */` |
+|     9 |  164 | `	SXUNUSED(apArg);` |
+|     - |  165 | `	/* Extract the current time */` |
+|    21 |  166 | `	time(&tt);` |
+|     - |  167 | `	/* Return as 64-bit integer */` |
+|    21 |  168 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
+|    21 |  169 | `	return  PH7_OK;` |
+|     3 |  170 | `}` |
+|     - |  171 | `/*` |
+|     - |  172 | `  * string/float microtime([ bool $get_as_float = false ])` |
+|     - |  173 | `  *  microtime() returns the current Unix timestamp with microseconds.` |
+|     - |  174 | `  * Parameters` |
+|     - |  175 | `  *  $get_as_float` |
+|     - |  176 | `  *   If used and set to TRUE, microtime() will return a float instead of a string` |
+|     - |  177 | `  *   as described in the return values section below.` |
+|     - |  178 | `  * Return` |
+|     - |  179 | `  *  By default, microtime() returns a string in the form "msec sec", where sec` |
+|     - |  180 | `  *  is the current time measured in the number of seconds since the Unix` |
+|     - |  181 | `  *  epoch (0:00:00 January 1, 1970 GMT), and msec is the number of microseconds` |
+|     - |  182 | `  *  that have elapsed since sec expressed in seconds.` |
+|     - |  183 | `  *  If get_as_float is set to TRUE, then microtime() returns a float, which represents` |
+|     - |  184 | `  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond.` |
+|     - |  185 | `  */` |
+|    70 |  186 | `PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  187 | `{` |
+|    72 |  188 | `	int bFloat = 0;` |
+|     - |  189 | `	sytime sTime;` |
+|    72 |  190 | `	DateNow(pCtx->pVm,&sTime);` |
+|    72 |  191 | `	if( nArg > 0 ){` |
+|    66 |  192 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
+|    32 |  193 | `	}` |
+|    72 |  194 | `	if( bFloat ){` |
+|     - |  195 | `		/* Return as float: seconds accurate to the nearest microsecond */` |
+|    66 |  196 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
+|    34 |  197 | `	}else{` |
+|     - |  198 | `		/* Return PHP's "msec sec" form: the sub-second part as fractional` |
+|     - |  199 | `		 * seconds to 8 decimals, e.g. "0.50667100 1700000000". tm_usec is in` |
+|     - |  200 | `		 * microseconds (0..999999), so scaling by 100 yields the 8-digit` |
+|     - |  201 | `		 * fraction — matching PHP's "%.8F" output exactly. */` |
+|     7 |  202 | `		ph7_result_string_format(pCtx,"0.%08ld %ld",sTime.tm_usec*100,sTime.tm_sec);` |
+|     - |  203 | `	}` |
+|    72 |  204 | `	return PH7_OK;` |
+|     2 |  205 | `}` |
+|     - |  206 | `/*` |
+|     - |  207 | ` * array\|int hrtime(bool $as_number = false)` |
+|     - |  208 | ` *  The system's high-resolution time, counted from an arbitrary monotonic` |
+|     - |  209 | ` *  point in nanoseconds. Returns [seconds, nanoseconds] by default, or the` |
+|     - |  210 | ` *  total nanoseconds as an int when $as_number is true.` |
+|     - |  211 | ` */` |
+|     8 |  212 | `PH7_PRIVATE int PH7_builtin_hrtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  213 | `{` |
+|     9 |  214 | `	ph7_int64 sec = 0,nsec = 0;` |
+|     9 |  215 | `	int bAsNumber = 0;` |
+|     9 |  216 | `	if( nArg > 0 ){` |
+|     7 |  217 | `		bAsNumber = ph7_value_to_bool(apArg[0]);` |
+|     3 |  218 | `	}` |
+|     - |  219 | `#if defined(CLOCK_MONOTONIC)` |
+|     - |  220 | `	{` |
+|     - |  221 | `		struct timespec ts;` |
+|     8 |  222 | `		if( clock_gettime(CLOCK_MONOTONIC,&ts) == 0 ){` |
+|     8 |  223 | `			sec  = (ph7_int64)ts.tv_sec;` |
+|     8 |  224 | `			nsec = (ph7_int64)ts.tv_nsec;` |
+|     4 |  225 | `		}` |
+|     - |  226 | `	}` |
+|     - |  227 | `#else` |
+|     - |  228 | `	{` |
+|     - |  229 | `		/* No monotonic clock available: fall back to the wall-clock microsecond` |
+|     - |  230 | `		 * source (embedder clock / gettimeofday). Coarser and not strictly` |
+|     - |  231 | `		 * monotonic, but keeps hrtime() usable off-Unix. */` |
+|     - |  232 | `		sytime sTime;` |
+|     1 |  233 | `		DateNow(pCtx->pVm,&sTime);` |
+|     1 |  234 | `		sec  = (ph7_int64)sTime.tm_sec;` |
+|     1 |  235 | `		nsec = (ph7_int64)sTime.tm_usec * 1000;` |
+|     - |  236 | `	}` |
+|     - |  237 | `#endif` |
+|     9 |  238 | `	if( bAsNumber ){` |
+|     7 |  239 | `		ph7_result_int64(pCtx,sec * 1000000000LL + nsec);` |
+|     4 |  240 | `	}else{` |
+|     - |  241 | `		ph7_value *pValue,*pArray;` |
+|     3 |  242 | `		pArray = ph7_context_new_array(pCtx);` |
+|     3 |  243 | `		pValue = ph7_context_new_scalar(pCtx);` |
+|     3 |  244 | `		if( pArray == 0 \|\| pValue == 0 ){` |
+|   ! 0 |  245 | `			ph7_result_null(pCtx);` |
+|   ! 0 |  246 | `			return PH7_OK;` |
+|     - |  247 | `		}` |
+|     3 |  248 | `		ph7_value_int64(pValue,sec);` |
+|     3 |  249 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     3 |  250 | `		ph7_value_int64(pValue,nsec);` |
+|     3 |  251 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     3 |  252 | `		ph7_result_value(pCtx,pArray);` |
+|     3 |  253 | `		ph7_context_release_value(pCtx,pValue);` |
+|     3 |  254 | `		ph7_context_release_value(pCtx,pArray);` |
+|     - |  255 | `	}` |
+|     9 |  256 | `	return PH7_OK;` |
+|     5 |  257 | `}` |
+|     - |  258 | `/*` |
+|     - |  259 | ` * array getdate ([ int $timestamp = time() ])` |
+|     - |  260 | ` *  Returns an associative array containing the date information` |
+|     - |  261 | ` *  of the timestamp, or the current local time if no timestamp is given.` |
+|     - |  262 | ` * Parameter` |
+|     - |  263 | ` *  $timestamp: The optional timestamp parameter is an integer Unix timestamp` |
+|     - |  264 | ` *     that defaults to the current local time if a timestamp is not given.` |
+|     - |  265 | ` *     In other words, it defaults to the value of time().` |
+|     - |  266 | ` * Returns` |
+|     - |  267 | ` *  Returns an associative array of information related to the timestamp.` |
+|     - |  268 | ` */` |
+|    16 |  269 | `PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  270 | `{` |
+|     - |  271 | `	ph7_value *pValue,*pArray;` |
+|     - |  272 | `	Sytm sTm;` |
+|     - |  273 | `	time_t t;` |
+|    17 |  274 | `	if( nArg < 1 \|\| !ph7_value_is_int(apArg[0]) ){` |
+|     5 |  275 | `		time(&t);` |
+|     3 |  276 | `	}else{` |
+|     - |  277 | `		/* Use the given timestamp */` |
+|    13 |  278 | `		t = (time_t)ph7_value_to_int64(apArg[0]);` |
+|     - |  279 | `	}` |
+|    17 |  280 | `	DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     - |  281 | `	/* Element value */` |
+|    17 |  282 | `	pValue = ph7_context_new_scalar(pCtx);` |
+|    17 |  283 | `	if( pValue == 0 ){` |
+|     - |  284 | `		/* Return NULL */` |
+|   ! 0 |  285 | `		ph7_result_null(pCtx);` |
+|   ! 0 |  286 | `		return PH7_OK;` |
+|     - |  287 | `	}` |
+|     - |  288 | `	/* Create a new array */` |
+|    17 |  289 | `	pArray = ph7_context_new_array(pCtx);` |
+|    17 |  290 | `	if( pArray == 0 ){` |
+|     - |  291 | `		/* Return NULL */` |
+|   ! 0 |  292 | `		ph7_result_null(pCtx);` |
+|   ! 0 |  293 | `		return PH7_OK;` |
+|     - |  294 | `	}` |
+|     - |  295 | `	/* Fill the array */` |
+|     - |  296 | `	/* Seconds */` |
+|    17 |  297 | `	ph7_value_int(pValue,sTm.tm_sec);` |
+|    17 |  298 | `	ph7_array_add_strkey_elem(pArray,"seconds",pValue);` |
+|     - |  299 | `	/* Minutes */` |
+|    17 |  300 | `	ph7_value_int(pValue,sTm.tm_min);` |
+|    17 |  301 | `	ph7_array_add_strkey_elem(pArray,"minutes",pValue);` |
+|     - |  302 | `	/* Hours */` |
+|    17 |  303 | `	ph7_value_int(pValue,sTm.tm_hour);` |
+|    17 |  304 | `	ph7_array_add_strkey_elem(pArray,"hours",pValue);` |
+|     - |  305 | `	/* mday */` |
+|    17 |  306 | `	ph7_value_int(pValue,sTm.tm_mday);` |
+|    17 |  307 | `	ph7_array_add_strkey_elem(pArray,"mday",pValue);` |
+|     - |  308 | `	/* wday */` |
+|    17 |  309 | `	ph7_value_int(pValue,sTm.tm_wday);` |
+|    17 |  310 | `	ph7_array_add_strkey_elem(pArray,"wday",pValue);` |
+|     - |  311 | `	/* mon */` |
+|    17 |  312 | `	ph7_value_int(pValue,sTm.tm_mon+1);` |
+|    17 |  313 | `	ph7_array_add_strkey_elem(pArray,"mon",pValue);` |
+|     - |  314 | `	/* year */` |
+|    17 |  315 | `	ph7_value_int64(pValue,sTm.tm_year);` |
+|    17 |  316 | `	ph7_array_add_strkey_elem(pArray,"year",pValue);` |
+|     - |  317 | `	/* yday */` |
+|    17 |  318 | `	ph7_value_int(pValue,sTm.tm_yday);` |
+|    17 |  319 | `	ph7_array_add_strkey_elem(pArray,"yday",pValue);` |
+|     - |  320 | `	/* Weekday [i.e: Monday,Tuesday,...] */` |
+|    17 |  321 | `	ph7_value_string(pValue,SyTimeGetDay(sTm.tm_wday),-1);` |
+|    17 |  322 | `	ph7_array_add_strkey_elem(pArray,"weekday",pValue);` |
+|     - |  323 | `	/* Reset the string cursor */` |
+|    17 |  324 | `	ph7_value_reset_string_cursor(pValue);` |
+|     - |  325 | `	/* Month [i.e: January,February,...] */` |
+|    17 |  326 | `	ph7_value_string(pValue,SyTimeGetMonth(sTm.tm_mon),-1);` |
+|    17 |  327 | `	ph7_array_add_strkey_elem(pArray,"month",pValue);` |
+|     - |  328 | `	/* php's eleventh entry, keyed by the INTEGER 0 and written last: the` |
+|     - |  329 | `	 * timestamp the other ten were derived from. It was missing, so the` |
+|     - |  330 | ``	 * documented `$g[0]` read as an Undefined array key. */`` |
+|    17 |  331 | `	ph7_value_int64(pValue,(ph7_int64)t);` |
+|    17 |  332 | `	ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - |  333 | `	/* Return the freshly created array */` |
+|    17 |  334 | `	ph7_result_value(pCtx,pArray);` |
+|    17 |  335 | `	return PH7_OK;` |
+|     9 |  336 | `}` |
+|     - |  337 | `/*` |
+|     - |  338 | ` * mixed gettimeofday([ bool $return_float = false ] )` |
+|     - |  339 | ` *  Returns an associative array containing the data returned from the system call.` |
+|     - |  340 | ` * Parameters` |
+|     - |  341 | ` *  $return_float` |
+|     - |  342 | ` *   When set to TRUE, a float instead of an array is returned.` |
+|     - |  343 | ` * Return` |
+|     - |  344 | ` *  By default an array is returned. If return_float is set, then` |
+|     - |  345 | ` *  a float is returned.` |
+|     - |  346 | ` */` |
+|     8 |  347 | `PH7_PRIVATE int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  348 | `{` |
+|     9 |  349 | `	int bFloat = 0;` |
+|     - |  350 | `	sytime sTime;` |
+|     9 |  351 | `	DateNow(pCtx->pVm,&sTime);` |
+|     9 |  352 | `	if( nArg > 0 ){` |
+|     7 |  353 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
+|     3 |  354 | `	}` |
+|     9 |  355 | `	if( bFloat ){` |
+|     - |  356 | `		/* Return as float: seconds accurate to the nearest microsecond */` |
+|     5 |  357 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
+|     3 |  358 | `	}else{` |
+|     - |  359 | `		/* Return an associative array */` |
+|     - |  360 | `		ph7_value *pValue,*pArray;` |
+|     - |  361 | `		/* Create a new array */` |
+|     5 |  362 | `		pArray = ph7_context_new_array(pCtx);` |
+|     - |  363 | `		/* Element value */` |
+|     5 |  364 | `		pValue = ph7_context_new_scalar(pCtx);` |
+|     5 |  365 | `		if( pArray == 0 \|\| pValue == 0 ){` |
+|     - |  366 | `			/* Return NULL */` |
+|   ! 0 |  367 | `			ph7_result_null(pCtx);` |
+|   ! 0 |  368 | `			return PH7_OK;` |
+|     - |  369 | `		}` |
+|     - |  370 | `		/* Fill the array */` |
+|     - |  371 | `		/* sec */` |
+|     5 |  372 | `		ph7_value_int64(pValue,sTime.tm_sec);` |
+|     5 |  373 | `		ph7_array_add_strkey_elem(pArray,"sec",pValue);` |
+|     - |  374 | `		/* usec */` |
+|     5 |  375 | `		ph7_value_int64(pValue,sTime.tm_usec);` |
+|     5 |  376 | `		ph7_array_add_strkey_elem(pArray,"usec",pValue);` |
+|     - |  377 | `		/* Return the array */` |
+|     5 |  378 | `		ph7_result_value(pCtx,pArray);` |
+|     - |  379 | `	}` |
+|     9 |  380 | `	return PH7_OK;` |
+|     5 |  381 | `}` |
+|     - |  382 | `/* Check if the given year is leap or not */` |
+|     - |  383 | `#define IS_LEAP_YEAR(YEAR)	(YEAR % 400 ? ( YEAR % 100 ? ( YEAR % 4 ? 0 : 1 ) : 0 ) : 1)` |
+|     - |  384 | `/* A year's magnitude, for the tokens php pads BEHIND the sign. Negating through` |
+|     - |  385 | ` * sxu64 keeps the arithmetic defined even at the 64-bit floor. */` |
+|     - |  386 | `#define DT_ABSYEAR(Y) ((sxi64)((Y) < 0 ? (sxu64)0 - (sxu64)(Y) : (sxu64)(Y)))` |
+|     - |  387 | `/* ISO-8601 numeric representation of the day of the week */` |
+|     - |  388 | `static const int aISO8601[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };` |
+|     - |  389 | `/*` |
+|     - |  390 | ` * Format a given date string.` |
+|     - |  391 | ` * Supported format: (Taken from PHP online docs)` |
+|     - |  392 | ` * character 	Description` |
+|     - |  393 | ` * d          Day of the month, 2 digits with leading zeros` |
+|     - |  394 | ` * D          A textual representation of a day, three letters` |
+|     - |  395 | ` * j          Day of the month without leading zeros` |
+|     - |  396 | ` * l          A full textual representation of the day of the week` |
+|     - |  397 | ` * N          ISO-8601 numeric representation of the day of the week` |
+|     - |  398 | ` * w          Numeric representation of the day of the week` |
+|     - |  399 | ` * z          The day of the year (starting from 0)` |
+|     - |  400 | ` * F          A full textual representation of a month, such as January or March` |
+|     - |  401 | ` * m          Numeric representation of a month, with leading zeros 	01 through 12` |
+|     - |  402 | ` * M          A short textual representation of a month, three letters` |
+|     - |  403 | ` * n          Numeric representation of a month, without leading zeros` |
+|     - |  404 | ` * t          Number of days in the given month` |
+|     - |  405 | ` * L          Whether it's a leap year` |
+|     - |  406 | ` * o          ISO-8601 year number. This has the same value as Y` |
+|     - |  407 | ` * Y          A full numeric representation of a year, 4 digits` |
+|     - |  408 | ` * y          A two digit representation of a year` |
+|     - |  409 | ` * a          Lowercase Ante meridiem and Post meridiem 	am or pm` |
+|     - |  410 | ` * A          Uppercase Ante meridiem and Post meridiem` |
+|     - |  411 | ` * g          12-hour format of an hour without leading zeros` |
+|     - |  412 | ` * G          24-hour format of an hour without leading zeros 	0 through 23` |
+|     - |  413 | ` * h          12-hour format of an hour with leading zeros` |
+|     - |  414 | ` * H          24-hour format of an hour with leading zeros` |
+|     - |  415 | ` * i          Minutes with leading zeros` |
+|     - |  416 | ` * s          Seconds, with leading zeros` |
+|     - |  417 | ` * u          Microseconds` |
+|     - |  418 | ` * e          Timezone identifier` |
+|     - |  419 | ` * I          Whether or not the date is in daylight saving time 	1 if Daylight Saving Time, 0 otherwise.` |
+|     - |  420 | ` * r          RFC 2822 formatted date` |
+|     - |  421 | ` * U          Seconds since the Unix Epoch (January 1 1970 00:00:00 GMT)` |
+|     - |  422 | ` * S          English ordinal suffix for the day of the month, 2 characters` |
+|     - |  423 | ` * O          Difference to Greenwich time (GMT) in hours` |
+|     - |  424 | ` * Z          Timezone offset in seconds. The offset for timezones west of UTC is always negative, and for those` |
+|     - |  425 | ` *            east of UTC is always positive.` |
+|     - |  426 | ` * c         ISO 8601 date` |
+|     - |  427 | ` */` |
+|  3608 |  428 | `PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int uSec)` |
+|     3 |  429 | `{` |
+|  3611 |  430 | `	const char *zEnd = &zIn[nLen];` |
+|     - |  431 | `	const char *zCur;` |
+|     - |  432 | `	/* Start the format process */` |
+| 15783 |  433 | `	for(;;){` |
+| 31569 |  434 | `		if( zIn >= zEnd ){` |
+|     - |  435 | `			/* No more input to process */` |
+|  3611 |  436 | `			break;` |
+|     - |  437 | `		}` |
+| 27961 |  438 | `		switch(zIn[0]){` |
+|  1187 |  439 | `		case 'd':` |
+|     - |  440 | `			/* Day of the month, 2 digits with leading zeros */` |
+|  2376 |  441 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mday);` |
+|  2376 |  442 | `			break;` |
+|    84 |  443 | `		case 'D':` |
+|     - |  444 | `			/*A textual representation of a day, three letters*/` |
+|   169 |  445 | `			zCur = SyTimeGetDay(pTm->tm_wday);` |
+|   169 |  446 | `			ph7_result_string(pCtx,zCur,3);` |
+|   169 |  447 | `			break;` |
+|     1 |  448 | `		case 'j':` |
+|     - |  449 | `			/*	Day of the month without leading zeros */` |
+|     3 |  450 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_mday);` |
+|     3 |  451 | `			break;` |
+|     3 |  452 | `		case 'l':` |
+|     - |  453 | `			/* A full textual representation of the day of the week */` |
+|     7 |  454 | `			zCur = SyTimeGetDay(pTm->tm_wday);` |
+|     7 |  455 | `			ph7_result_string(pCtx,zCur,-1/*Compute length automatically*/);` |
+|     7 |  456 | `			break;` |
+|     1 |  457 | `		case 'N':{` |
+|     - |  458 | `			/* ISO-8601 numeric representation of the day of the week */` |
+|     3 |  459 | `			ph7_result_string_format(pCtx,"%d",aISO8601[pTm->tm_wday % 7 ]);` |
+|     3 |  460 | `			break;` |
+|     - |  461 | `				 }` |
+|     1 |  462 | `		case 'w':` |
+|     - |  463 | `			/*Numeric representation of the day of the week*/` |
+|     3 |  464 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_wday);` |
+|     3 |  465 | `			break;` |
+|     1 |  466 | `		case 'z':` |
+|     - |  467 | `			/*The day of the year*/` |
+|     3 |  468 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_yday);` |
+|     3 |  469 | `			break;` |
+|     3 |  470 | `		case 'F':` |
+|     - |  471 | `			/*A full textual representation of a month, such as January or March*/` |
+|     7 |  472 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
+|     7 |  473 | `			ph7_result_string(pCtx,zCur,-1/*Compute length automatically*/);` |
+|     7 |  474 | `			break;` |
+|  1187 |  475 | `		case 'm':` |
+|     - |  476 | `			/*Numeric representation of a month, with leading zeros*/` |
+|  2376 |  477 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mon + 1);` |
+|  2376 |  478 | `			break;` |
+|     1 |  479 | `		case 'M':` |
+|     - |  480 | `			/*A short textual representation of a month, three letters*/` |
+|     3 |  481 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
+|     3 |  482 | `			ph7_result_string(pCtx,zCur,3);` |
+|     3 |  483 | `			break;` |
+|     1 |  484 | `		case 'n':` |
+|     - |  485 | `			/*Numeric representation of a month, without leading zeros*/` |
+|     3 |  486 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_mon + 1);` |
+|     3 |  487 | `			break;` |
+|     1 |  488 | `		case 't':{` |
+|     - |  489 | `			static const int aMonDays[] = {31,29,31,30,31,30,31,31,30,31,30,31 };` |
+|     3 |  490 | `			int nDays = aMonDays[pTm->tm_mon % 12 ];` |
+|     3 |  491 | `			if( pTm->tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(pTm->tm_year) ){` |
+|   ! 0 |  492 | `				nDays = 28;` |
+|   ! 0 |  493 | `			}` |
+|     - |  494 | `			/*Number of days in the given month*/` |
+|     3 |  495 | `			ph7_result_string_format(pCtx,"%d",nDays);` |
+|     3 |  496 | `			break;` |
+|     - |  497 | `				 }` |
+|     1 |  498 | `		case 'L':{` |
+|     3 |  499 | `			int isLeap = IS_LEAP_YEAR(pTm->tm_year);` |
+|     - |  500 | `			/* Whether it's a leap year */` |
+|     3 |  501 | `			ph7_result_string_format(pCtx,"%d",isLeap);` |
+|     3 |  502 | `			break;` |
+|     - |  503 | `				 }` |
+|    27 |  504 | `		case 'o': case 'W': {` |
+|     - |  505 | `			/* ISO-8601 week-numbering year / week number: both belong to the` |
+|     - |  506 | `			 * year owning the Thursday of the civil week (php: 2024-12-31 is` |
+|     - |  507 | `			 * 2025-W01, 2027-01-01 is 2026-W53). php pads W but not o. */` |
+|    55 |  508 | `			sxi64 days = DtDaysFromCivil(pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday);` |
+|    55 |  509 | `			int isoDow = (int)(((days + 3) % 7 + 7) % 7) + 1; /* Mon=1..Sun=7 */` |
+|    55 |  510 | `			sxi64 thu = days + (4 - isoDow);` |
+|     - |  511 | `			sxi64 wy;` |
+|     - |  512 | `			int wm,wd;` |
+|    55 |  513 | `			DtCivilFromDays(thu,&wy,&wm,&wd);` |
+|    55 |  514 | `			if( zIn[0] == 'o' ){` |
+|    49 |  515 | `				ph7_result_string_format(pCtx,"%qd",wy);` |
+|    25 |  516 | `			}else{` |
+|    10 |  517 | `				ph7_result_string_format(pCtx,"%02d",` |
+|     6 |  518 | `					(int)((thu - DtDaysFromCivil(wy,1,1)) / 7) + 1);` |
+|     - |  519 | `			}` |
+|    55 |  520 | `			break;` |
+|     - |  521 | `				 }` |
+|  1098 |  522 | `		case 'Y':` |
+|     - |  523 | `			/* A full numeric representation of a year, at least 4 digits. php pads` |
+|     - |  524 | `			 * the ABSOLUTE value behind the sign (-495 prints "-0495"); a plain` |
+|     - |  525 | `			 * "%04qd" spends one of the four columns on the '-' and printed "-495". */` |
+|  4360 |  526 | `			ph7_result_string_format(pCtx,"%s%04qd",` |
+|  3260 |  527 | `				pTm->tm_year < 0 ? "-" : "",DT_ABSYEAR(pTm->tm_year));` |
+|  2198 |  528 | `			break;` |
+|    22 |  529 | `		case 'X':` |
+|     - |  530 | `			/* Expanded full year, always signed (php 8.2+): +2024 */` |
+|    80 |  531 | `			ph7_result_string_format(pCtx,"%c%04qd",` |
+|    57 |  532 | `				pTm->tm_year < 0 ? '-' : '+',DT_ABSYEAR(pTm->tm_year));` |
+|    45 |  533 | `			break;` |
+|    22 |  534 | `		case 'x':` |
+|     - |  535 | `			/* Expanded year, signed only past 4 digits (php 8.2+) — otherwise 'Y'. */` |
+|    45 |  536 | `			if( pTm->tm_year > 9999 ){` |
+|     5 |  537 | `				ph7_result_string_format(pCtx,"+%qd",pTm->tm_year);` |
+|     3 |  538 | `			}else{` |
+|    72 |  539 | `				ph7_result_string_format(pCtx,"%s%04qd",` |
+|    51 |  540 | `					pTm->tm_year < 0 ? "-" : "",DT_ABSYEAR(pTm->tm_year));` |
+|     - |  541 | `			}` |
+|    45 |  542 | `			break;` |
+|    22 |  543 | `		case 'y':` |
+|     - |  544 | `			/*A two digit representation of a year*/` |
+|    45 |  545 | `			ph7_result_string_format(pCtx,"%02qd",pTm->tm_year%100);` |
+|    45 |  546 | `			break;` |
+|     3 |  547 | `		case 'a':` |
+|     - |  548 | `			/*	Lowercase Ante meridiem and Post meridiem */` |
+|     7 |  549 | `			ph7_result_string(pCtx,pTm->tm_hour >= 12 ? "pm" : "am",2);` |
+|     7 |  550 | `			break;` |
+|     3 |  551 | `		case 'A':` |
+|     - |  552 | `			/*	Uppercase Ante meridiem and Post meridiem */` |
+|     7 |  553 | `			ph7_result_string(pCtx,pTm->tm_hour >= 12 ? "PM" : "AM",2);` |
+|     7 |  554 | `			break;` |
+|     1 |  555 | `		case 'B':{` |
+|     - |  556 | `			/* Swatch Internet time: thousandths of the UTC+1 day. Only the time` |
+|     - |  557 | `			 * OF DAY decides it, so take it from the clock fields rather than` |
+|     - |  558 | `			 * rebuilding the absolute timestamp -- that product overflows an` |
+|     - |  559 | `			 * int64 near the extremes of php's own clock. */` |
+|     4 |  560 | `			sxi64 iBie = ((sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60 + pTm->tm_sec` |
+|     2 |  561 | `				- (sxi64)pTm->tm_gmtoff + 3600) % 86400;` |
+|     3 |  562 | `			if( iBie < 0 ){` |
+|   ! 0 |  563 | `				iBie += 86400;` |
+|   ! 0 |  564 | `			}` |
+|     3 |  565 | `			ph7_result_string_format(pCtx,"%03d",(int)(iBie * 1000 / 86400));` |
+|     3 |  566 | `			break;` |
+|     - |  567 | `				 }` |
+|     3 |  568 | `		case 'g':` |
+|     - |  569 | `			/*	12-hour format of an hour without leading zeros*/` |
+|    10 |  570 | `			ph7_result_string_format(pCtx,"%d",` |
+|     6 |  571 | `				(pTm->tm_hour % 12) == 0 ? 12 : pTm->tm_hour % 12);` |
+|     7 |  572 | `			break;` |
+|     1 |  573 | `		case 'G':` |
+|     - |  574 | `			/* 24-hour format of an hour without leading zeros */` |
+|     3 |  575 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_hour);` |
+|     3 |  576 | `			break;` |
+|     3 |  577 | `		case 'h':` |
+|     - |  578 | `			/* 12-hour format of an hour with leading zeros */` |
+|    10 |  579 | `			ph7_result_string_format(pCtx,"%02d",` |
+|     6 |  580 | `				(pTm->tm_hour % 12) == 0 ? 12 : pTm->tm_hour % 12);` |
+|     7 |  581 | `			break;` |
+|  1064 |  582 | `		case 'H':` |
+|     - |  583 | `			/*	24-hour format of an hour with leading zeros */` |
+|  2129 |  584 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_hour);` |
+|  2129 |  585 | `			break;` |
+|  1064 |  586 | `		case 'i':` |
+|     - |  587 | `			/* 	Minutes with leading zeros */` |
+|  2129 |  588 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_min);` |
+|  2129 |  589 | `			break;` |
+|  1030 |  590 | `		case 's':` |
+|     - |  591 | `			/* 	second with leading zeros */` |
+|  2061 |  592 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_sec);` |
+|  2061 |  593 | `			break;` |
+|   359 |  594 | `		case 'u':` |
+|     - |  595 | `			/* 	Microseconds. date()/gmdate() have no sub-second part (uSec == 0);` |
+|     - |  596 | `			 * 	DateTime::format passes its stored microseconds. */` |
+|   719 |  597 | `			ph7_result_string_format(pCtx,"%06d",uSec);` |
+|   719 |  598 | `			break;` |
+|     4 |  599 | `		case 'v':` |
+|     - |  600 | `			/* 	Milliseconds */` |
+|     9 |  601 | `			ph7_result_string_format(pCtx,"%03d",uSec/1000);` |
+|     9 |  602 | `			break;` |
+|     1 |  603 | `		case 'S':{` |
+|     - |  604 | `			/* English ordinal suffix for the day of the month, 2 characters */` |
+|     - |  605 | `			static const char zSuffix[] = "thstndrdthththththth";` |
+|     3 |  606 | `			int v = pTm->tm_mday;` |
+|     3 |  607 | `			ph7_result_string(pCtx,&zSuffix[2 * (int)(v / 10 % 10 != 1 ? v % 10 : 0)],(int)sizeof(char) * 2);` |
+|     3 |  608 | `			break;` |
+|     - |  609 | `				 }` |
+|    82 |  610 | `		case 'e':` |
+|     - |  611 | `			/* 	Timezone identifier */` |
+|   165 |  612 | `			zCur = pTm->tm_zone;` |
+|   165 |  613 | `			if( zCur == 0 ){` |
+|     - |  614 | `				/* date()-family fills: the script default timezone */` |
+|     7 |  615 | `				zCur = pCtx->pVm->zDefTz;` |
+|     3 |  616 | `			}` |
+|   165 |  617 | `			ph7_result_string(pCtx,zCur,-1);` |
+|   165 |  618 | `			break;` |
+|    53 |  619 | `		case 'T':{` |
+|     - |  620 | `			/* Timezone abbreviation: "GMT+0530" for a fixed offset, the name` |
+|     - |  621 | `			 * itself (uppercased) for a named zone. php decides on the zone's` |
+|     - |  622 | `			 * TYPE, not on the offset's value, so a zone whose name is an offset` |
+|     - |  623 | ``			 * spelling — `new DateTime('@0')`, `new DateTimeZone('+00:00')` —`` |
+|     - |  624 | `			 * prints "GMT+0000" where PHL printed the name "+00:00". PHL has no` |
+|     - |  625 | `			 * tz database, so the name path only ever sees UTC/GMT/Z. */` |
+|     - |  626 | `			const char *z;` |
+|   106 |  627 | `			if( pTm->tm_gmtoff != 0` |
+|    73 |  628 | `			 \|\| (pTm->tm_zone && (pTm->tm_zone[0] == '+' \|\| pTm->tm_zone[0] == '-')) ){` |
+|    87 |  629 | `				long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
+|   130 |  630 | `				ph7_result_string_format(pCtx,"GMT%c%02d%02d",` |
+|    86 |  631 | `					pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
+|    87 |  632 | `				break;` |
+|     - |  633 | `			}` |
+|    21 |  634 | `			z = pTm->tm_zone ? pTm->tm_zone : pCtx->pVm->zDefTz;` |
+|    73 |  635 | `			while( *z ){` |
+|    53 |  636 | `				int c = (unsigned char)*z;` |
+|    53 |  637 | `				if( c >= 'a' && c <= 'z' ){` |
+|   ! 0 |  638 | `					c -= 'a' - 'A';` |
+|   ! 0 |  639 | `				}` |
+|    53 |  640 | `				ph7_result_string_format(pCtx,"%c",c);` |
+|    53 |  641 | `				z++;` |
+|     1 |  642 | `			}` |
+|    21 |  643 | `			break;` |
+|     - |  644 | `				 }` |
+|     1 |  645 | `		case 'I':` |
+|     - |  646 | `			/* Whether or not the date is in daylight saving time. Use the` |
+|     - |  647 | `			 * broken-down time's own tm_isdst (as every other platform does):` |
+|     - |  648 | `			 * the old Windows _get_daylight() override reported whether the` |
+|     - |  649 | `			 * timezone observes DST at all, not whether THIS date is in it. */` |
+|     3 |  650 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_isdst == 1);` |
+|     3 |  651 | `			break;` |
+|    22 |  652 | `		case 'r':{` |
+|     - |  653 | `			/* RFC 2822 formatted date 	Example: Thu, 21 Dec 2000 16:01:07 +0200 */` |
+|    45 |  654 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
+|     - |  655 | `			/* php zero-pads this year to four columns INCLUDING the sign` |
+|     - |  656 | `			 * ("0050", "-001"), where a plain "%4d" space-padded every year` |
+|     - |  657 | `			 * below 1000 — an ordinary date, not just a BCE one. */` |
+|    45 |  658 | `			ph7_result_string_format(pCtx,"%.3s, %02d %.3s %04qd %02d:%02d:%02d %c%02d%02d",` |
+|    22 |  659 | `				SyTimeGetDay(pTm->tm_wday),` |
+|    22 |  660 | `				pTm->tm_mday,` |
+|    22 |  661 | `				SyTimeGetMonth(pTm->tm_mon),` |
+|    22 |  662 | `				pTm->tm_year,` |
+|    22 |  663 | `				pTm->tm_hour,` |
+|    22 |  664 | `				pTm->tm_min,` |
+|    22 |  665 | `				pTm->tm_sec,` |
+|    44 |  666 | `				pTm->tm_gmtoff < 0 ? '-' : '+',` |
+|    44 |  667 | `				(int)(a / 3600),(int)((a % 3600) / 60)` |
+|     - |  668 | `				);` |
+|    45 |  669 | `			break;` |
+|     - |  670 | `				 }` |
+|    19 |  671 | `		case 'U':` |
+|     - |  672 | `			/* Seconds since the Unix Epoch FOR THIS Sytm (php: the timestamp` |
+|     - |  673 | `			 * being formatted — pre-fix this printed time(0) regardless of the` |
+|     - |  674 | `			 * date under format). */` |
+|    59 |  675 | `			ph7_result_string_format(pCtx,"%qd",(sxi64)(` |
+|    38 |  676 | `				(sxu64)DtDaysFromCivil(pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday) * 86400u` |
+|    57 |  677 | `				+ (sxu64)((sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60` |
+|    38 |  678 | `				          + (sxi64)pTm->tm_sec - (sxi64)pTm->tm_gmtoff)));` |
+|    40 |  679 | `			break;` |
+|    48 |  680 | `		case 'O':{` |
+|     - |  681 | `			/* Difference to GMT without colon: +0530 (php) */` |
+|    97 |  682 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
+|   145 |  683 | `			ph7_result_string_format(pCtx,"%c%02d%02d",` |
+|    96 |  684 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
+|    97 |  685 | `			break;` |
+|     - |  686 | `				 }` |
+|   378 |  687 | `		case 'P':{` |
+|     - |  688 | `			/* Difference to GMT with colon: +05:30 (php) */` |
+|   757 |  689 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
+|  1135 |  690 | `			ph7_result_string_format(pCtx,"%c%02d:%02d",` |
+|   756 |  691 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
+|   757 |  692 | `			break;` |
+|     - |  693 | `				 }` |
+|    47 |  694 | `		case 'p':{` |
+|     - |  695 | `			/* Like P, but "Z" for UTC (php 8.0+). Two rules PHL had wrong, both` |
+|     - |  696 | `			 * visible only once a zone can carry SECONDS or be an abbreviation:` |
+|     - |  697 | `			 * php decides on what P would have PRINTED rather than on the raw` |
+|     - |  698 | `			 * offset, so "+00:00:59" prints Z and "-00:00:59" prints "-00:00";` |
+|     - |  699 | `			 * and the GMT abbreviation is php's one exception -- it prints` |
+|     - |  700 | `			 * "+00:00" where the UTC and Z spellings of the same instant print Z. */` |
+|     - |  701 | `			long a;` |
+|    94 |  702 | `			if( pTm->tm_gmtoff >= 0 && pTm->tm_gmtoff < 60` |
+|    59 |  703 | `			 && !(pTm->tm_zone && SyStrncmp(pTm->tm_zone,"GMT",3) == 0` |
+|    14 |  704 | `			      && pTm->tm_zone[3] == 0) ){` |
+|    23 |  705 | `				ph7_result_string(pCtx,"Z",1);` |
+|    23 |  706 | `				break;` |
+|     - |  707 | `			}` |
+|    73 |  708 | `			a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
+|   109 |  709 | `			ph7_result_string_format(pCtx,"%c%02d:%02d",` |
+|    72 |  710 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
+|    73 |  711 | `			break;` |
+|     - |  712 | `				 }` |
+|     2 |  713 | `		case 'Z':` |
+|     - |  714 | `			/* Timezone offset in seconds, plain integer (php) */` |
+|     5 |  715 | `			ph7_result_string_format(pCtx,"%d",(int)pTm->tm_gmtoff);` |
+|     5 |  716 | `			break;` |
+|    38 |  717 | `		case 'c':{` |
+|     - |  718 | `			/* 	ISO 8601 date: 2004-02-12T15:19:21+00:00 (php) */` |
+|    77 |  719 | `			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;` |
+|     - |  720 | `			/* Same four-column zero pad as 'r' (php: "0050-…", "-001-…"). */` |
+|   115 |  721 | `			ph7_result_string_format(pCtx,"%04qd-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",` |
+|    38 |  722 | `				pTm->tm_year,` |
+|    76 |  723 | `				pTm->tm_mon+1,` |
+|    38 |  724 | `				pTm->tm_mday,` |
+|    38 |  725 | `				pTm->tm_hour,` |
+|    38 |  726 | `				pTm->tm_min,` |
+|    38 |  727 | `				pTm->tm_sec,` |
+|    76 |  728 | `				pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60)` |
+|     - |  729 | `				);` |
+|    77 |  730 | `			break;` |
+|     - |  731 | `				 }` |
+|     4 |  732 | `		case '\\':` |
+|     9 |  733 | `			zIn++;` |
+|     - |  734 | `			/* Expand verbatim */` |
+|     9 |  735 | `			if( zIn < zEnd ){` |
+|     9 |  736 | `				ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
+|     4 |  737 | `			}` |
+|     9 |  738 | `			break;` |
+|  6086 |  739 | `		default:` |
+|     - |  740 | `			/* Unknown format specifer,expand verbatim */` |
+| 12174 |  741 | `			ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
+| 12172 |  742 | `			break;` |
+|     - |  743 | `		}` |
+|     - |  744 | `		/* Point to the next character */` |
+| 27961 |  745 | `		zIn++;` |
+|     3 |  746 | `	}` |
+|  3611 |  747 | `	return SXRET_OK;` |
+|     3 |  748 | `}` |
+|     - |  749 | `/*` |
+|     - |  750 | ` * Resolve a date()/gmdate() $timestamp argument under php 8's ?int weak ZPP:` |
+|     - |  751 | ` *   - null            -> *pbUseNow = 1 (caller uses the current time)` |
+|     - |  752 | ` *   - int/bool/float  -> coerce to a Unix timestamp (float truncates; php's` |
+|     - |  753 | ` *                        float->int precision E_DEPRECATED is not emitted, §3.7)` |
+|     - |  754 | ` *   - numeric string  -> coerce via php's is_numeric_string grammar` |
+|     - |  755 | ` *                        (RangeStrToNumber: " 100 "/"1e3"/".5"/"+5" ok)` |
+|     - |  756 | ` *   - anything else (non-numeric string, array, object, resource)` |
+|     - |  757 | ` *                     -> catchable TypeError, byte-exact with php.` |
+|     - |  758 | ` * Returns PH7_OK with *pbUseNow / *pT set, or the PH7_VmThrowException status.` |
+|     - |  759 | ` */` |
+|   474 |  760 | `static int DateResolveTimestamp(ph7_context *pCtx,ph7_value *pArg,int *pbUseNow,time_t *pT)` |
+|     1 |  761 | `{` |
+|     - |  762 | `	char zBuf[64];` |
+|   475 |  763 | `	*pbUseNow = 0;` |
+|   475 |  764 | `	if( ph7_value_is_null(pArg) ){` |
+|     3 |  765 | `		*pbUseNow = 1;` |
+|     3 |  766 | `		return PH7_OK;` |
+|     - |  767 | `	}` |
+|   473 |  768 | `	if( ph7_value_is_int(pArg) \|\| ph7_value_is_bool(pArg) \|\| ph7_value_is_float(pArg) ){` |
+|   465 |  769 | `		*pT = (time_t)ph7_value_to_int64(pArg);` |
+|   465 |  770 | `		return PH7_OK;` |
+|     - |  771 | `	}` |
+|     9 |  772 | `	if( ph7_value_is_string(pArg) ){` |
+|     - |  773 | `		int nStr;` |
+|     9 |  774 | `		const char *zStr = ph7_value_to_string(pArg,&nStr);` |
+|     - |  775 | `		sxi64 iLong; double dReal;` |
+|     9 |  776 | `		sxu8 iKind = RangeStrToNumber(zStr,(sxu32)nStr,&iLong,&dReal);` |
+|     9 |  777 | `		if( iKind == RANGE_IN_DOUBLE ){` |
+|     3 |  778 | `			*pT = (time_t)dReal;` |
+|     6 |  779 | `			return PH7_OK;` |
+|     - |  780 | `		}` |
+|     7 |  781 | `		if( iKind == RANGE_IN_LONG ){` |
+|     7 |  782 | `			*pT = (time_t)iLong;` |
+|     7 |  783 | `			return PH7_OK;` |
+|     - |  784 | `		}` |
+|     - |  785 | `		/* Not a numeric string: fall through to the TypeError. */` |
+|   ! 0 |  786 | `	}` |
+|   ! 0 |  787 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
+|     - |  788 | `		"%s(): Argument #2 ($timestamp) must be of type ?int, %s given",` |
+|   ! 0 |  789 | `		ph7_function_name(pCtx),VmValueGivenName(pArg,zBuf,sizeof(zBuf)));` |
+|   238 |  790 | `}` |
+|     - |  791 | `/*` |
+|     - |  792 | ` * string date(string $format [, int $timestamp = time() ] )` |
+|     - |  793 | ` *  Returns a string formatted according to the given format string using` |
+|     - |  794 | ` *  the given integer timestamp or the current time if no timestamp is given.` |
+|     - |  795 | ` *  In other words, timestamp is optional and defaults to the value of time().` |
+|     - |  796 | ` * Parameters` |
+|     - |  797 | ` *  $format` |
+|     - |  798 | ` *   The format of the outputted date string (See code above)` |
+|     - |  799 | ` * $timestamp` |
+|     - |  800 | ` *   The optional timestamp parameter is an integer Unix timestamp` |
+|     - |  801 | ` *   that defaults to the current local time if a timestamp is not given.` |
+|     - |  802 | ` *   In other words, it defaults to the value of time().` |
+|     - |  803 | ` * Return` |
+|     - |  804 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
+|     - |  805 | ` */` |
+|   414 |  806 | `PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  807 | `{` |
+|     - |  808 | `	const char *zFormat;` |
+|     - |  809 | `	int nLen;` |
+|     - |  810 | `	Sytm sTm;` |
+|   415 |  811 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|     - |  812 | `		/* Missing/Invalid argument,return FALSE */` |
+|   ! 0 |  813 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  814 | `		return PH7_OK;` |
+|     - |  815 | `	}` |
+|   415 |  816 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|   415 |  817 | `	if( nLen < 1 ){` |
+|     - |  818 | `		/* Don't bother processing return the empty string */` |
+|   ! 0 |  819 | `		ph7_result_string(pCtx,"",0);` |
+|   ! 0 |  820 | `	}` |
+|   415 |  821 | `	if( nArg < 2 ){` |
+|     - |  822 | `		time_t t;` |
+|    35 |  823 | `		time(&t);` |
+|    35 |  824 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|    18 |  825 | `	}else{` |
+|     - |  826 | `		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */` |
+|   381 |  827 | `		time_t t = 0;` |
+|     - |  828 | `		int bUseNow;` |
+|   381 |  829 | `		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);` |
+|   381 |  830 | `		if( rc != PH7_OK ){` |
+|   ! 0 |  831 | `			return rc;` |
+|     - |  832 | `		}` |
+|   381 |  833 | `		if( bUseNow ){` |
+|   ! 0 |  834 | `			time(&t);` |
+|   ! 0 |  835 | `		}` |
+|   381 |  836 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     - |  837 | `	}` |
+|     - |  838 | `	/* Format the given string */` |
+|   415 |  839 | `	DateFormat(pCtx,zFormat,nLen,&sTm,0);` |
+|   415 |  840 | `	return PH7_OK;` |
+|   208 |  841 | `}` |
+|     - |  842 | `/*` |
+|     - |  843 | ` * string gmdate(string $format [, int $timestamp = time() ] )` |
+|     - |  844 | ` *  Identical to the date() function except that the time returned` |
+|     - |  845 | ` *  is Greenwich Mean Time (GMT).` |
+|     - |  846 | ` * Parameters` |
+|     - |  847 | ` *  $format` |
+|     - |  848 | ` *  The format of the outputted date string (See code above)` |
+|     - |  849 | ` *  $timestamp` |
+|     - |  850 | ` *   The optional timestamp parameter is an integer Unix timestamp` |
+|     - |  851 | ` *   that defaults to the current local time if a timestamp is not given.` |
+|     - |  852 | ` *   In other words, it defaults to the value of time().` |
+|     - |  853 | ` * Return` |
+|     - |  854 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
+|     - |  855 | ` */` |
+|   108 |  856 | `PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  857 | `{` |
+|     - |  858 | `	const char *zFormat;` |
+|     - |  859 | `	int nLen;` |
+|     - |  860 | `	Sytm sTm;` |
+|   109 |  861 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|     - |  862 | `		/* Missing/Invalid argument,return FALSE */` |
+|   ! 0 |  863 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  864 | `		return PH7_OK;` |
+|     - |  865 | `	}` |
+|   109 |  866 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|   109 |  867 | `	if( nLen < 1 ){` |
+|     - |  868 | `		/* Don't bother processing return the empty string */` |
+|   ! 0 |  869 | `		ph7_result_string(pCtx,"",0);` |
+|   ! 0 |  870 | `	}` |
+|   109 |  871 | `	if( nArg < 2 ){` |
+|     - |  872 | `		time_t t;` |
+|    15 |  873 | `		time(&t);` |
+|    15 |  874 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     8 |  875 | `	}else{` |
+|     - |  876 | `		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */` |
+|    95 |  877 | `		time_t t = 0;` |
+|     - |  878 | `		int bUseNow;` |
+|    95 |  879 | `		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);` |
+|    95 |  880 | `		if( rc != PH7_OK ){` |
+|   ! 0 |  881 | `			return rc;` |
+|     - |  882 | `		}` |
+|    95 |  883 | `		if( bUseNow ){` |
+|     3 |  884 | `			time(&t);` |
+|     1 |  885 | `		}` |
+|    95 |  886 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     - |  887 | `	}` |
+|     - |  888 | `	/* Format the given string */` |
+|   109 |  889 | `	DateFormat(pCtx,zFormat,nLen,&sTm,0);` |
+|   109 |  890 | `	return PH7_OK;` |
+|    55 |  891 | `}` |
+|     - |  892 | `/*` |
+|     - |  893 | ` * array localtime([ int $timestamp = time() [, bool $is_associative = false ]])` |
+|     - |  894 | ` *  Return the local time.` |
+|     - |  895 | ` * Parameter` |
+|     - |  896 | ` *  $timestamp: The optional timestamp parameter is an integer Unix timestamp` |
+|     - |  897 | ` *     that defaults to the current local time if a timestamp is not given.` |
+|     - |  898 | ` *     In other words, it defaults to the value of time().` |
+|     - |  899 | ` * $is_associative` |
+|     - |  900 | ` *   If set to FALSE or not supplied then the array is returned as a regular, numerically` |
+|     - |  901 | ` *   indexed array. If the argument is set to TRUE then localtime() returns an associative` |
+|     - |  902 | ` *   array containing all the different elements of the structure returned by the C function` |
+|     - |  903 | ` *   call to localtime. The names of the different keys of the associative array are as follows:` |
+|     - |  904 | ` *      "tm_sec" - seconds, 0 to 59` |
+|     - |  905 | ` *      "tm_min" - minutes, 0 to 59` |
+|     - |  906 | ` *      "tm_hour" - hours, 0 to 23` |
+|     - |  907 | ` *      "tm_mday" - day of the month, 1 to 31` |
+|     - |  908 | ` *      "tm_mon" - month of the year, 0 (Jan) to 11 (Dec)` |
+|     - |  909 | ` *      "tm_year" - years since 1900` |
+|     - |  910 | ` *      "tm_wday" - day of the week, 0 (Sun) to 6 (Sat)` |
+|     - |  911 | ` *      "tm_yday" - day of the year, 0 to 365` |
+|     - |  912 | ` *      "tm_isdst" - is daylight savings time in effect? Positive if yes, 0 if not, negative if unknown.` |
+|     - |  913 | ` * Returns` |
+|     - |  914 | ` *  An associative array of information related to the timestamp.` |
+|     - |  915 | ` */` |
+|    16 |  916 | `PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  917 | `{` |
+|     - |  918 | `	ph7_value *pValue,*pArray;` |
+|    17 |  919 | `	int isAssoc = 0;` |
+|     - |  920 | `	Sytm sTm;` |
+|    17 |  921 | `	if( nArg < 1 ){` |
+|     - |  922 | `		time_t t;` |
+|     5 |  923 | `		time(&t);` |
+|     5 |  924 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     3 |  925 | `	}else{` |
+|     - |  926 | `		/* Use the given timestamp */` |
+|     - |  927 | `		time_t t;` |
+|    13 |  928 | `		if( ph7_value_is_int(apArg[0]) ){` |
+|    13 |  929 | `			t = (time_t)ph7_value_to_int64(apArg[0]);` |
+|     7 |  930 | `		}else{` |
+|   ! 0 |  931 | `			time(&t);` |
+|     - |  932 | `		}` |
+|    13 |  933 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     - |  934 | `	}` |
+|     - |  935 | `	/* Element value */` |
+|    17 |  936 | `	pValue = ph7_context_new_scalar(pCtx);` |
+|    17 |  937 | `	if( pValue == 0 ){` |
+|     - |  938 | `		/* Return NULL */` |
+|   ! 0 |  939 | `		ph7_result_null(pCtx);` |
+|   ! 0 |  940 | `		return PH7_OK;` |
+|     - |  941 | `	}` |
+|     - |  942 | `	/* Create a new array */` |
+|    17 |  943 | `	pArray = ph7_context_new_array(pCtx);` |
+|    17 |  944 | `	if( pArray == 0 ){` |
+|     - |  945 | `		/* Return NULL */` |
+|   ! 0 |  946 | `		ph7_result_null(pCtx);` |
+|   ! 0 |  947 | `		return PH7_OK;` |
+|     - |  948 | `	}` |
+|    17 |  949 | `	if( nArg > 1 ){` |
+|    11 |  950 | `		isAssoc = ph7_value_to_bool(apArg[1]);` |
+|     5 |  951 | `	}` |
+|     - |  952 | `	/* Fill the array */` |
+|     - |  953 | `	/* Seconds */` |
+|    17 |  954 | `	ph7_value_int(pValue,sTm.tm_sec);` |
+|    17 |  955 | `	if( isAssoc ){` |
+|    11 |  956 | `		ph7_array_add_strkey_elem(pArray,"tm_sec",pValue);` |
+|     6 |  957 | `	}else{` |
+|     7 |  958 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - |  959 | `	}` |
+|     - |  960 | `	/* Minutes */` |
+|    17 |  961 | `	ph7_value_int(pValue,sTm.tm_min);` |
+|    17 |  962 | `	if( isAssoc ){` |
+|    11 |  963 | `		ph7_array_add_strkey_elem(pArray,"tm_min",pValue);` |
+|     6 |  964 | `	}else{` |
+|     7 |  965 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - |  966 | `	}` |
+|     - |  967 | `	/* Hours */` |
+|    17 |  968 | `	ph7_value_int(pValue,sTm.tm_hour);` |
+|    17 |  969 | `	if( isAssoc ){` |
+|    11 |  970 | `		ph7_array_add_strkey_elem(pArray,"tm_hour",pValue);` |
+|     6 |  971 | `	}else{` |
+|     7 |  972 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - |  973 | `	}` |
+|     - |  974 | `	/* mday */` |
+|    17 |  975 | `	ph7_value_int(pValue,sTm.tm_mday);` |
+|    17 |  976 | `	if( isAssoc ){` |
+|    11 |  977 | `		ph7_array_add_strkey_elem(pArray,"tm_mday",pValue);` |
+|     6 |  978 | `	}else{` |
+|     7 |  979 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - |  980 | `	}` |
+|     - |  981 | `	/* mon */` |
+|    17 |  982 | `	ph7_value_int(pValue,sTm.tm_mon);` |
+|    17 |  983 | `	if( isAssoc ){` |
+|    11 |  984 | `		ph7_array_add_strkey_elem(pArray,"tm_mon",pValue);` |
+|     6 |  985 | `	}else{` |
+|     7 |  986 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - |  987 | `	}` |
+|     - |  988 | `	/* year since 1900 */` |
+|    17 |  989 | `	ph7_value_int64(pValue,sTm.tm_year-1900);` |
+|    17 |  990 | `	if( isAssoc ){` |
+|    11 |  991 | `		ph7_array_add_strkey_elem(pArray,"tm_year",pValue);` |
+|     6 |  992 | `	}else{` |
+|     7 |  993 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - |  994 | `	}` |
+|     - |  995 | `	/* wday */` |
+|    17 |  996 | `	ph7_value_int(pValue,sTm.tm_wday);` |
+|    17 |  997 | `	if( isAssoc ){` |
+|    11 |  998 | `		ph7_array_add_strkey_elem(pArray,"tm_wday",pValue);` |
+|     6 |  999 | `	}else{` |
+|     7 | 1000 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - | 1001 | `	}` |
+|     - | 1002 | `	/* yday */` |
+|    17 | 1003 | `	ph7_value_int(pValue,sTm.tm_yday);` |
+|    17 | 1004 | `	if( isAssoc ){` |
+|    11 | 1005 | `		ph7_array_add_strkey_elem(pArray,"tm_yday",pValue);` |
+|     6 | 1006 | `	}else{` |
+|     7 | 1007 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - | 1008 | `	}` |
+|     - | 1009 | `	/* isdst */` |
+|     - | 1010 | `#ifdef __WINNT__` |
+|     - | 1011 | `#ifdef _MSC_VER` |
+|     - | 1012 | `#ifndef _WIN32_WCE` |
+|     1 | 1013 | `			_get_daylight(&sTm.tm_isdst);` |
+|     - | 1014 | `#endif` |
+|     - | 1015 | `#endif` |
+|     - | 1016 | `#endif` |
+|    17 | 1017 | `	ph7_value_int(pValue,sTm.tm_isdst);` |
+|    17 | 1018 | `	if( isAssoc ){` |
+|    11 | 1019 | `		ph7_array_add_strkey_elem(pArray,"tm_isdst",pValue);` |
+|     6 | 1020 | `	}else{` |
+|     7 | 1021 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
+|     - | 1022 | `	}` |
+|     - | 1023 | `	/* Return the array */` |
+|    17 | 1024 | `	ph7_result_value(pCtx,pArray);` |
+|    17 | 1025 | `	return PH7_OK;` |
+|     9 | 1026 | `}` |
+|     - | 1027 | `/*` |
+|     - | 1028 | ` * int idate(string $format [, int $timestamp = time() ])` |
+|     - | 1029 | ` *  Returns a number formatted according to the given format string` |
+|     - | 1030 | ` *  using the given integer timestamp or the current local time if` |
+|     - | 1031 | ` *  no timestamp is given. In other words, timestamp is optional and defaults` |
+|     - | 1032 | ` *  to the value of time().` |
+|     - | 1033 | ` *  Unlike the function date(), idate() accepts just one char in the format` |
+|     - | 1034 | ` *  parameter.` |
+|     - | 1035 | ` * $Parameters` |
+|     - | 1036 | ` *  Supported format` |
+|     - | 1037 | ` *   d 	Day of the month` |
+|     - | 1038 | ` *   h 	Hour (12 hour format)` |
+|     - | 1039 | ` *   H 	Hour (24 hour format)` |
+|     - | 1040 | ` *   i 	Minutes` |
+|     - | 1041 | ` *   I (uppercase i)1 if DST is activated, 0 otherwise` |
+|     - | 1042 | ` *   L (uppercase l) returns 1 for leap year, 0 otherwise` |
+|     - | 1043 | ` *   m 	Month number` |
+|     - | 1044 | ` *   s 	Seconds` |
+|     - | 1045 | ` *   t 	Days in current month` |
+|     - | 1046 | ` *   U 	Seconds since the Unix Epoch - January 1 1970 00:00:00 UTC - this is the same as time()` |
+|     - | 1047 | ` *   w 	Day of the week (0 on Sunday)` |
+|     - | 1048 | ` *   W 	ISO-8601 week number of year, weeks starting on Monday` |
+|     - | 1049 | ` *   y 	Year (1 or 2 digits - check note below)` |
+|     - | 1050 | ` *   Y 	Year (4 digits)` |
+|     - | 1051 | ` *   z 	Day of the year` |
+|     - | 1052 | ` *   Z 	Timezone offset in seconds` |
+|     - | 1053 | ` * $timestamp` |
+|     - | 1054 | ` *  The optional timestamp parameter is an integer Unix timestamp that defaults` |
+|     - | 1055 | ` *  to the current local time if a timestamp is not given. In other words, it defaults` |
+|     - | 1056 | ` *  to the value of time().` |
+|     - | 1057 | ` * Return` |
+|     - | 1058 | ` *  An integer.` |
+|     - | 1059 | ` */` |
+|   196 | 1060 | `PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 1061 | `{` |
+|     - | 1062 | `	const char *zFormat;` |
+|   198 | 1063 | `	ph7_int64 iVal = 0;` |
+|     - | 1064 | `	int nLen;` |
+|     - | 1065 | `	Sytm sTm;` |
+|   198 | 1066 | `	time_t t = 0; /* The resolved timestamp; 'U' must report THIS, not time(0) */` |
+|   198 | 1067 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|     - | 1068 | `		/* Missing/Invalid argument,return -1 */` |
+|   ! 0 | 1069 | `		ph7_result_int(pCtx,-1);` |
+|   ! 0 | 1070 | `		return PH7_OK;` |
+|     - | 1071 | `	}` |
+|   198 | 1072 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|   198 | 1073 | `	if( nLen < 1 ){` |
+|     - | 1074 | `		/* Don't bother processing return -1*/` |
+|   ! 0 | 1075 | `		ph7_result_int(pCtx,-1);` |
+|   ! 0 | 1076 | `	}` |
+|   198 | 1077 | `	if( nArg < 2 ){` |
+|    16 | 1078 | `		time(&t);` |
+|    16 | 1079 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     9 | 1080 | `	}else{` |
+|     - | 1081 | `		/* Use the given timestamp */` |
+|   183 | 1082 | `		if( ph7_value_is_int(apArg[1]) ){` |
+|   183 | 1083 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
+|    92 | 1084 | `		}else{` |
+|   ! 0 | 1085 | `			time(&t);` |
+|     - | 1086 | `		}` |
+|   183 | 1087 | `		DtSytmOfTimestamp((sxi64)t,&sTm);` |
+|     - | 1088 | `	}` |
+|     - | 1089 | `	/* Perform the requested operation */` |
+|   198 | 1090 | `	switch(zFormat[0]){` |
+|     9 | 1091 | `	case 'd':` |
+|     - | 1092 | `	case 'j':` |
+|     - | 1093 | `		/* Day of the month ('j' differs from 'd' only in zero padding, which an` |
+|     - | 1094 | `		 * integer result cannot carry) */` |
+|    19 | 1095 | `		iVal = sTm.tm_mday;` |
+|    19 | 1096 | `		break;` |
+|     8 | 1097 | `	case 'h':` |
+|     - | 1098 | `	case 'g':` |
+|     - | 1099 | `		/* Hour (12 hour format): php reports midnight and noon as 12, not 0 —` |
+|     - | 1100 | ``		 * `1 + hour % 12` answered 1 for both. */`` |
+|    17 | 1101 | `		iVal = sTm.tm_hour % 12;` |
+|    17 | 1102 | `		if( iVal == 0 ){` |
+|    17 | 1103 | `			iVal = 12;` |
+|     8 | 1104 | `		}` |
+|    17 | 1105 | `		break;` |
+|     9 | 1106 | `	case 'H':` |
+|     - | 1107 | `	case 'G':` |
+|     - | 1108 | `		/* Hour (24 hour format) */` |
+|    19 | 1109 | `		iVal = sTm.tm_hour;` |
+|    19 | 1110 | `		break;` |
+|     5 | 1111 | `	case 'B': {` |
+|     - | 1112 | `		/* Swatch Internet time: 1000 "beats" per day in UTC+1, no fractions.` |
+|     - | 1113 | `		 * Integer math throughout so the tiny build (no floating point) agrees.` |
+|     - | 1114 | ``		 * Read the time OF DAY off the broken-down clock: `t + 3600` overflows`` |
+|     - | 1115 | `		 * at the top of php's timestamp range, which is undefined and answered` |
+|     - | 1116 | `		 * the wrong beat. */` |
+|    16 | 1117 | `		ph7_int64 iSec = ((ph7_int64)sTm.tm_hour*3600 + sTm.tm_min*60 + sTm.tm_sec` |
+|    10 | 1118 | `			- sTm.tm_gmtoff + 3600) % 86400;` |
+|    11 | 1119 | `		if( iSec < 0 ){` |
+|   ! 0 | 1120 | `			iSec += 86400;` |
+|   ! 0 | 1121 | `		}` |
+|    11 | 1122 | `		iVal = iSec * 1000 / 86400;` |
+|    11 | 1123 | `		break;` |
+|     - | 1124 | `			  }` |
+|     5 | 1125 | `	case 'i':` |
+|     - | 1126 | `		/*Minutes*/` |
+|    11 | 1127 | `		iVal = sTm.tm_min;` |
+|    11 | 1128 | `		break;` |
+|   ! 0 | 1129 | `	case 'I':` |
+|     - | 1130 | `		/*	returns 1 if DST is activated, 0 otherwise */` |
+|     - | 1131 | `#ifdef __WINNT__` |
+|     - | 1132 | `#ifdef _MSC_VER` |
+|     - | 1133 | `#ifndef _WIN32_WCE` |
+|   ! 0 | 1134 | `			_get_daylight(&sTm.tm_isdst);` |
+|     - | 1135 | `#endif` |
+|     - | 1136 | `#endif` |
+|     - | 1137 | `#endif` |
+|   ! 0 | 1138 | `		iVal = sTm.tm_isdst;` |
+|   ! 0 | 1139 | `		break;` |
+|     4 | 1140 | `	case 'L':` |
+|     - | 1141 | `		/* 	returns 1 for leap year, 0 otherwise */` |
+|     9 | 1142 | `		iVal = IS_LEAP_YEAR(sTm.tm_year);` |
+|     9 | 1143 | `		break;` |
+|     9 | 1144 | `	case 'm':` |
+|     - | 1145 | `	case 'n':` |
+|     - | 1146 | `		/* Month number. Sytm keeps tm_mon 0-based (see 't' below, which tests` |
+|     - | 1147 | ``		 * `tm_mon == 1` for February), so July used to answer 6. */`` |
+|    19 | 1148 | `		iVal = sTm.tm_mon + 1;` |
+|    19 | 1149 | `		break;` |
+|     5 | 1150 | `	case 's':` |
+|     - | 1151 | `		/*Seconds*/` |
+|    11 | 1152 | `		iVal = sTm.tm_sec;` |
+|    11 | 1153 | `		break;` |
+|     4 | 1154 | `	case 't':{` |
+|     - | 1155 | `		/*Days in current month*/` |
+|     - | 1156 | `		static const int aMonDays[] = {31,29,31,30,31,30,31,31,30,31,30,31 };` |
+|     9 | 1157 | `		int nDays = aMonDays[sTm.tm_mon % 12 ];` |
+|     9 | 1158 | `		if( sTm.tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(sTm.tm_year) ){` |
+|   ! 0 | 1159 | `			nDays = 28;` |
+|   ! 0 | 1160 | `		}` |
+|     9 | 1161 | `		iVal = nDays;` |
+|     9 | 1162 | `		break;` |
+|     - | 1163 | `			 }` |
+|     8 | 1164 | `	case 'U':` |
+|     - | 1165 | `		/* Seconds since the Unix Epoch. This used to call time(0), ignoring the` |
+|     - | 1166 | `		 * $timestamp argument entirely and always answering "now". */` |
+|    17 | 1167 | `		iVal = (ph7_int64)t;` |
+|    17 | 1168 | `		break;` |
+|     4 | 1169 | `	case 'w':` |
+|     - | 1170 | `		/*	Day of the week (0 on Sunday) */` |
+|     9 | 1171 | `		iVal = sTm.tm_wday;` |
+|     9 | 1172 | `		break;` |
+|     8 | 1173 | `	case 'W':` |
+|     - | 1174 | `	case 'o': {` |
+|     - | 1175 | `		/* ISO-8601 week number / week-numbering year: both belong to the year` |
+|     - | 1176 | `		 * owning the Thursday of the civil week, so 2021-01-01 is 2020-W53.` |
+|     - | 1177 | `		 * The old code indexed a weekday table and returned a DAY number` |
+|     - | 1178 | `		 * (1..7) as if it were a week number — idate("W") answered 4 in the` |
+|     - | 1179 | `		 * middle of July. Same derivation as date()'s 'o'/'W' above. */` |
+|    17 | 1180 | `		sxi64 days = DtDaysFromCivil(sTm.tm_year,sTm.tm_mon+1,sTm.tm_mday);` |
+|    17 | 1181 | `		int isoDow = (int)(((days + 3) % 7 + 7) % 7) + 1; /* Mon=1..Sun=7 */` |
+|    17 | 1182 | `		sxi64 thu = days + (4 - isoDow);` |
+|     - | 1183 | `		sxi64 wy;` |
+|     - | 1184 | `		int wm,wd;` |
+|    17 | 1185 | `		DtCivilFromDays(thu,&wy,&wm,&wd);` |
+|    17 | 1186 | `		if( zFormat[0] == 'o' ){` |
+|     9 | 1187 | `			iVal = (ph7_int64)wy;` |
+|     5 | 1188 | `		}else{` |
+|     9 | 1189 | `			iVal = (ph7_int64)((thu - DtDaysFromCivil(wy,1,1)) / 7) + 1;` |
+|     - | 1190 | `		}` |
+|    17 | 1191 | `		break;` |
+|     - | 1192 | `			  }` |
+|     4 | 1193 | `	case 'y':` |
+|     - | 1194 | `		/* Year (2 digits) */` |
+|     9 | 1195 | `		iVal = sTm.tm_year % 100;` |
+|     9 | 1196 | `		break;` |
+|    10 | 1197 | `	case 'Y':` |
+|     - | 1198 | `		/* Year (4 digits) */` |
+|    21 | 1199 | `		iVal = sTm.tm_year;` |
+|    21 | 1200 | `		break;` |
+|     4 | 1201 | `	case 'z':` |
+|     - | 1202 | `		/* Day of the year */` |
+|     9 | 1203 | `		iVal = sTm.tm_yday;` |
+|     9 | 1204 | `		break;` |
+|   ! 0 | 1205 | `	case 'Z':` |
+|     - | 1206 | `		/*Timezone offset in seconds*/` |
+|   ! 0 | 1207 | `		iVal = sTm.tm_gmtoff;` |
+|   ! 0 | 1208 | `		break;` |
+|     2 | 1209 | `	default:` |
+|     - | 1210 | `		/* Unknown token: php's own -1, which the shared tail below reports. */` |
+|     6 | 1211 | `		iVal = -1;` |
+|     4 | 1212 | `		break;` |
+|     - | 1213 | `	}` |
+|     - | 1214 | ``	/* php's idate answers a C `int`, so every token is narrowed to one -- and`` |
+|     - | 1215 | `	 * -1 is the single value it uses for "no answer": it warns about the TOKEN` |
+|     - | 1216 | `	 * and answers FALSE, whatever produced the -1. That is why` |
+|     - | 1217 | ``	 * `idate('U', PHP_INT_MAX)` is a false with an "Unrecognized date format`` |
+|     - | 1218 | `` 	 * token" warning in front of it rather than the timestamp. `idate() === false` `` |
+|     - | 1219 | `	 * is the documented check, and 0 is a legitimate answer for several tokens. */` |
+|   198 | 1220 | `	if( (int)iVal == -1 ){` |
+|     8 | 1221 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");` |
+|     8 | 1222 | `		ph7_result_bool(pCtx,0);` |
+|     5 | 1223 | `	}else{` |
+|   191 | 1224 | `		ph7_result_int64(pCtx,(int)iVal);` |
+|     - | 1225 | `	}` |
+|   198 | 1226 | `	return PH7_OK;` |
+|   100 | 1227 | `}` |
+|     - | 1228 | `/*` |
+|     - | 1229 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
+|     - | 1230 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |
+|     - | 1231 | ` *  Returns the Unix timestamp corresponding to the arguments given. This timestamp is a 64bit integer` |
+|     - | 1232 | ` *  containing the number of seconds between the Unix Epoch (January 1 1970 00:00:00 GMT) and the time` |
+|     - | 1233 | ` *  specified.` |
+|     - | 1234 | ` *  Arguments may be left out in order from right to left; any arguments thus omitted will be set to` |
+|     - | 1235 | ` *  the current value according to the local date and time.` |
+|     - | 1236 | ` * Parameters` |
+|     - | 1237 | ` * $hour` |
+|     - | 1238 | ` *  The number of the hour relevant to the start of the day determined by month, day and year.` |
+|     - | 1239 | ` *  Negative values reference the hour before midnight of the day in question. Values greater` |
+|     - | 1240 | ` *  than 23 reference the appropriate hour in the following day(s).` |
+|     - | 1241 | ` * $minute` |
+|     - | 1242 | ` *  The number of the minute relevant to the start of the hour. Negative values reference` |
+|     - | 1243 | ` *  the minute in the previous hour. Values greater than 59 reference the appropriate minute` |
+|     - | 1244 | ` *  in the following hour(s).` |
+|     - | 1245 | ` * $second` |
+|     - | 1246 | ` *  The number of seconds relevant to the start of the minute. Negative values reference` |
+|     - | 1247 | ` *  the second in the previous minute. Values greater than 59 reference the appropriate` |
+|     - | 1248 | ` * second in the following minute(s).` |
+|     - | 1249 | ` * $month` |
+|     - | 1250 | ` *  The number of the month relevant to the end of the previous year. Values 1 to 12 reference` |
+|     - | 1251 | ` *  the normal calendar months of the year in question. Values less than 1 (including negative values)` |
+|     - | 1252 | ` *  reference the months in the previous year in reverse order, so 0 is December, -1 is November)...` |
+|     - | 1253 | ` * $day` |
+|     - | 1254 | ` *  The number of the day relevant to the end of the previous month. Values 1 to 28, 29, 30 or 31` |
+|     - | 1255 | ` *  (depending upon the month) reference the normal days in the relevant month. Values less than 1` |
+|     - | 1256 | ` *  (including negative values) reference the days in the previous month, so 0 is the last day` |
+|     - | 1257 | ` *  of the previous month, -1 is the day before that, etc. Values greater than the number of days` |
+|     - | 1258 | ` *  in the relevant month reference the appropriate day in the following month(s).` |
+|     - | 1259 | ` * $year` |
+|     - | 1260 | ` *  The number of the year, may be a two or four digit value, with values between 0-69 mapping` |
+|     - | 1261 | ` *  to 2000-2069 and 70-100 to 1970-2000. On systems where time_t is a 32bit signed integer, as` |
+|     - | 1262 | ` *  most common today, the valid range for year is somewhere between 1901 and 2038.` |
+|     - | 1263 | ` * $is_dst` |
+|     - | 1264 | ` *  This parameter can be set to 1 if the time is during daylight savings time (DST), 0 if it is not,` |
+|     - | 1265 | ` *  or -1 (the default) if it is unknown whether the time is within daylight savings time or not.` |
+|     - | 1266 | ` * Return` |
+|     - | 1267 | ` *   mktime() returns the Unix timestamp of the arguments given.` |
+|     - | 1268 | ` *   If the arguments are invalid, the function returns FALSE` |
+|     - | 1269 | ` */` |
+|  4564 | 1270 | `PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 1271 | `{` |
+|     - | 1272 | `	const char *zFunction;` |
+|     - | 1273 | `	ph7_int64 iVal;` |
+|     - | 1274 | `	sxi64 h,mi,s,mo,d,y,yAdj;` |
+|     - | 1275 | `	int moN;` |
+|     - | 1276 | `	struct tm *pTm;` |
+|     - | 1277 | `	time_t t;` |
+|     - | 1278 | `	/* Extract function name */` |
+|  4565 | 1279 | `	zFunction = ph7_function_name(pCtx);` |
+|     - | 1280 | `	/* PHP 8 dropped the legacy $is_dst 7th parameter: mktime()/gmmktime() now` |
+|     - | 1281 | `	 * accept at most 6 arguments and throw a catchable ArgumentCountError` |
+|     - | 1282 | `	 * otherwise (the central aBuiltinArity table only enforces the minimum, so` |
+|     - | 1283 | `	 * this maximum is checked here). */` |
+|  4565 | 1284 | `	if( nArg > 6 ){` |
+|   ! 0 | 1285 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
+|   ! 0 | 1286 | `			"%s() expects at most 6 arguments, %d given",zFunction,nArg);` |
+|     - | 1287 | `	}` |
+|  4565 | 1288 | `	if( nArg < 1 ){` |
+|   ! 0 | 1289 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
+|   ! 0 | 1290 | `			"%s() expects at least 1 argument, 0 given",zFunction);` |
+|     - | 1291 | `	}` |
+|     - | 1292 | `	/* Missing components default from the current time in php's default` |
+|     - | 1293 | `	 * timezone. PHL's date_default_timezone_set() only accepts UTC/GMT (no tz` |
+|     - | 1294 | `	 * database), so mktime() and gmmktime() agree and both read gmtime(). */` |
+|  4565 | 1295 | `	time(&t);` |
+|  4565 | 1296 | `	pTm = gmtime(&t);` |
+|  2282 | 1297 | `	SXUNUSED(zFunction);` |
+|  4565 | 1298 | `	h  = pTm->tm_hour;` |
+|  4565 | 1299 | `	mi = pTm->tm_min;` |
+|  4565 | 1300 | `	s  = pTm->tm_sec;` |
+|  4565 | 1301 | `	mo = pTm->tm_mon + 1;` |
+|  4565 | 1302 | `	d  = pTm->tm_mday;` |
+|  4565 | 1303 | `	y  = pTm->tm_year + 1900;` |
+|  4565 | 1304 | `	h = ph7_value_to_int64(apArg[0]);` |
+|  4565 | 1305 | `	if( nArg > 1 ){` |
+|  4565 | 1306 | `		mi = ph7_value_to_int64(apArg[1]);` |
+|  4565 | 1307 | `		if( nArg > 2 ){` |
+|  4565 | 1308 | `			s = ph7_value_to_int64(apArg[2]);` |
+|  4565 | 1309 | `			if( nArg > 3 ){` |
+|  4565 | 1310 | `				mo = ph7_value_to_int64(apArg[3]);` |
+|  4565 | 1311 | `				if( nArg > 4 ){` |
+|  4565 | 1312 | `					d = ph7_value_to_int64(apArg[4]);` |
+|  4565 | 1313 | `					if( nArg > 5 ){` |
+|     - | 1314 | `						/* php's legacy two-digit mapping: 0-69 -> 2000-2069,` |
+|     - | 1315 | `						 * 70-100 -> 1970-2000; anything else is verbatim */` |
+|  4565 | 1316 | `						y = ph7_value_to_int64(apArg[5]);` |
+|  4565 | 1317 | `						if( y >= 0 && y <= 69 ){` |
+|     7 | 1318 | `							y += 2000;` |
+|  4562 | 1319 | `						}else if( y >= 70 && y <= 100 ){` |
+|     5 | 1320 | `							y += 1900;` |
+|     2 | 1321 | `						}` |
+|  2282 | 1322 | `					}` |
+|  2282 | 1323 | `				}` |
+|  2282 | 1324 | `			}` |
+|  2282 | 1325 | `		}` |
+|  2282 | 1326 | `	}` |
+|     - | 1327 | `	/* Normalize the month with floor semantics, then let day/time components` |
+|     - | 1328 | `	 * overflow linearly (php: mktime(25,-30,0,1,1,2024) == Jan 2 00:30). */` |
+|  4565 | 1329 | `	yAdj = y + DtFloorDiv(mo - 1,12);` |
+|  4565 | 1330 | `	moN  = (int)(mo - 1 - DtFloorDiv(mo - 1,12) * 12) + 1;` |
+|  4565 | 1331 | `	iVal = (DtDaysFromCivil(yAdj,moN,1) + (d - 1)) * 86400 + h*3600 + mi*60 + s;` |
+|     - | 1332 | `	/* Return the timestamp as a 64bit integer */` |
+|  4565 | 1333 | `	ph7_result_int64(pCtx,iVal);` |
+|  4565 | 1334 | `	return PH7_OK;` |
+|  2283 | 1335 | `}` |
+|     - | 1336 | `/*` |
+|     - | 1337 | ` * string date_default_timezone_get(void)` |
+|     - | 1338 | ` *  Gets the default timezone used by all date/time functions in a script.` |
+|     - | 1339 | ` */` |
+|     6 | 1340 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 1341 | `{` |
+|     7 | 1342 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     3 | 1343 | `	SXUNUSED(nArg);` |
+|     3 | 1344 | `	SXUNUSED(apArg);` |
+|     7 | 1345 | `	ph7_result_string(pCtx,pVm->zDefTz,(int)pVm->nDefTz);` |
+|     7 | 1346 | `	return PH7_OK;` |
+|     1 | 1347 | `}` |
+|     - | 1348 | `/*` |
+|     - | 1349 | ` * bool date_default_timezone_set(string $timezoneId)` |
+|     - | 1350 | ` *  Sets the default timezone used by all date/time functions in a script.` |
+|     - | 1351 | ` *  php validates against the tz database and stores the id verbatim (get()` |
+|     - | 1352 | ` *  echoes back "utc" if that's what was set). PHL ships no tz database, so` |
+|     - | 1353 | ` *  only UTC and GMT are accepted; every other id — including region names php` |
+|     - | 1354 | ` *  would accept — is rejected with php's invalid-id notice (recorded scope cut).` |
+|     - | 1355 | ` */` |
+|   146 | 1356 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 | 1357 | `{` |
+|   149 | 1358 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - | 1359 | `	const char *zId;` |
+|     - | 1360 | `	int nId;` |
+|   149 | 1361 | `	if( nArg < 1 ){` |
+|   ! 0 | 1362 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 1363 | `		return PH7_OK;` |
+|     - | 1364 | `	}` |
+|   149 | 1365 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
+|   149 | 1366 | `	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 \|\| SyStrnicmp(zId,"GMT",3) == 0) ){` |
+|   149 | 1367 | `		SyMemcpy(zId,pVm->zDefTz,3);` |
+|   149 | 1368 | `		pVm->zDefTz[3] = 0;` |
+|   149 | 1369 | `		pVm->nDefTz = 3;` |
+|   149 | 1370 | `		ph7_result_bool(pCtx,1);` |
+|   149 | 1371 | `		return PH7_OK;` |
+|     - | 1372 | `	}` |
+|     - | 1373 | `	/* ph7_context_throw_error_format prepends "date_default_timezone_set(): "` |
+|     - | 1374 | `	 * — exactly php's notice shape here */` |
+|   ! 0 | 1375 | `	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Timezone ID '%.*s' is invalid",nId,zId);` |
+|   ! 0 | 1376 | `	ph7_result_bool(pCtx,0);` |
+|   ! 0 | 1377 | `	return PH7_OK;` |
+|    76 | 1378 | `}` |
+|     - | 1379 |  |
+|     - | 1380 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|     - | 1381 |  |

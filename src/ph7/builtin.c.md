@@ -25,7 +25,7 @@ Coverage: 312/400 lines (78.00%)
 |       - |   15 | ``/* Shared ZPP helper for `int` parameters — defined OUTSIDE the`` |
 |       - |   16 | ` * PH7_DISABLE_BUILTIN_FUNC guard because hashmap.c (array_slice) and` |
 |       - |   17 | ` * builtin_math.c (intdiv) call it and both compile in the tiny build. */` |
-|  836087 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
+|  979228 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
 |       - |   19 | `	ph7_context *pCtx,` |
 |       - |   20 | `	ph7_value *pArg,` |
 |       - |   21 | `	const char *zFunc,` |
@@ -34,7 +34,7 @@ Coverage: 312/400 lines (78.00%)
 |       - |   24 | `	const char *zTypeStr,` |
 |       - |   25 | `	sxi64 *pOut` |
 |       5 |   26 | `){` |
-|  836092 |   27 | `	if( ph7_value_is_null(pArg) ){` |
+|  979233 |   27 | `	if( ph7_value_is_null(pArg) ){` |
 |       - |   28 | `		/* php only DEPRECATES passing null to a non-nullable internal param; PHL` |
 |       - |   29 | `		 * targets php's non-deprecated surface and rejects it with the TypeError` |
 |       - |   30 | `		 * php will eventually raise. */` |
@@ -44,7 +44,7 @@ Coverage: 312/400 lines (78.00%)
 |     ! 0 |   34 | `			zFunc,iArgNum,zParamName,zTypeStr` |
 |       - |   35 | `			);` |
 |       - |   36 | `	}` |
-|  836092 |   37 | `	if( ph7_value_is_float(pArg) ){` |
+|  979233 |   37 | `	if( ph7_value_is_float(pArg) ){` |
 |      27 |   38 | `		double dVal = ph7_value_to_double(pArg);` |
 |       - |   39 | `		sxi64 iVal;` |
 |       - |   40 | `		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */` |
@@ -68,7 +68,7 @@ Coverage: 312/400 lines (78.00%)
 |      27 |   58 | `		*pOut = iVal;` |
 |      27 |   59 | `		return PH7_OK;` |
 |       - |   60 | `	}` |
-|  836068 |   61 | `	if( ph7_value_is_string(pArg) ){` |
+|  979209 |   61 | `	if( ph7_value_is_string(pArg) ){` |
 |       - |   62 | `		const char *zNum;` |
 |       - |   63 | `		int nSlen;` |
 |      58 |   64 | `		int i,bFloat = 0;` |
@@ -112,7 +112,7 @@ Coverage: 312/400 lines (78.00%)
 |      34 |  102 | `		*pOut = ph7_value_to_int64(pArg);` |
 |      34 |  103 | `		return PH7_OK;` |
 |       - |  104 | `	}` |
-|  836012 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
+|  979153 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
 |       - |  106 | `		/* Arrays, resources and objects: php names the class for objects */` |
 |     ! 0 |  107 | `		const char *zType = ph7_type_name(pArg);` |
 |     ! 0 |  108 | `		if( ph7_value_is_object(pArg) ){` |
@@ -127,9 +127,9 @@ Coverage: 312/400 lines (78.00%)
 |     ! 0 |  117 | `			zFunc,iArgNum,zParamName,zTypeStr,zType` |
 |       - |  118 | `			);` |
 |       - |  119 | `	}` |
-|  836012 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
-|  836012 |  121 | `	return PH7_OK;` |
-|  418271 |  122 | `}` |
+|  979153 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
+|  979153 |  121 | `	return PH7_OK;` |
+|  490199 |  122 | `}` |
 |       - |  123 |  |
 |       - |  124 | `/* This file implement built-in 'foreign' functions for the PH7 engine */` |
 |       - |  125 | `/*` |
@@ -165,15 +165,15 @@ Coverage: 312/400 lines (78.00%)
 |       - |  155 | ` * Return` |
 |       - |  156 | ` *  TRUE if var is a float. False otherwise.` |
 |       - |  157 | ` */` |
-|     414 |  158 | `static int PH7_builtin_is_float(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    6316 |  158 | `static int PH7_builtin_is_float(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       1 |  159 | `{` |
-|     415 |  160 | `	int res = 0; /* Assume false by default */` |
-|     415 |  161 | `	if( nArg > 0 ){` |
-|     415 |  162 | `		res = ph7_value_is_float(apArg[0]);` |
-|     207 |  163 | `	}` |
+|    6317 |  160 | `	int res = 0; /* Assume false by default */` |
+|    6317 |  161 | `	if( nArg > 0 ){` |
+|    6317 |  162 | `		res = ph7_value_is_float(apArg[0]);` |
+|    3158 |  163 | `	}` |
 |       - |  164 | `	/* Query result */` |
-|     415 |  165 | `	ph7_result_bool(pCtx,res);` |
-|     415 |  166 | `	return PH7_OK;` |
+|    6317 |  165 | `	ph7_result_bool(pCtx,res);` |
+|    6317 |  166 | `	return PH7_OK;` |
 |       1 |  167 | `}` |
 |       - |  168 | `/*` |
 |       - |  169 | ` * bool is_int($var)` |
@@ -185,18 +185,18 @@ Coverage: 312/400 lines (78.00%)
 |       - |  175 | ` * Return` |
 |       - |  176 | ` *  TRUE if var is an integer. False otherwise.` |
 |       - |  177 | ` */` |
-|     759 |  178 | `static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     765 |  178 | `static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       3 |  179 | `{` |
-|     762 |  180 | `	int res = 0; /* Assume false by default */` |
-|     762 |  181 | `	if( nArg > 0 ){` |
+|     768 |  180 | `	int res = 0; /* Assume false by default */` |
+|     768 |  181 | `	if( nArg > 0 ){` |
 |       - |  182 | `		/* Strict PHP identity: a float is never an int, even when it holds an` |
 |       - |  183 | `		 * integer value (1.0). An integer-valued real carries both MEMOBJ_INT` |
 |       - |  184 | `		 * (cached) and MEMOBJ_REAL, so REAL must be excluded here. */` |
-|     762 |  185 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
-|     376 |  186 | `	}` |
+|     768 |  185 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
+|     379 |  186 | `	}` |
 |       - |  187 | `	/* Query result */` |
-|     762 |  188 | `	ph7_result_bool(pCtx,res);` |
-|     762 |  189 | `	return PH7_OK;` |
+|     768 |  188 | `	ph7_result_bool(pCtx,res);` |
+|     768 |  189 | `	return PH7_OK;` |
 |       3 |  190 | `}` |
 |       - |  191 | `/*` |
 |       - |  192 | ` * bool is_string($var)` |
@@ -206,16 +206,16 @@ Coverage: 312/400 lines (78.00%)
 |       - |  196 | ` * Return` |
 |       - |  197 | ` *  TRUE if var is string. False otherwise.` |
 |       - |  198 | ` */` |
-|     558 |  199 | `static int PH7_builtin_is_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       4 |  200 | `{` |
-|     562 |  201 | `	int res = 0; /* Assume false by default */` |
-|     562 |  202 | `	if( nArg > 0 ){` |
-|     562 |  203 | `		res = ph7_value_is_string(apArg[0]);` |
-|     279 |  204 | `	}` |
+|     846 |  199 | `static int PH7_builtin_is_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       3 |  200 | `{` |
+|     849 |  201 | `	int res = 0; /* Assume false by default */` |
+|     849 |  202 | `	if( nArg > 0 ){` |
+|     849 |  203 | `		res = ph7_value_is_string(apArg[0]);` |
+|     423 |  204 | `	}` |
 |       - |  205 | `	/* Query result */` |
-|     562 |  206 | `	ph7_result_bool(pCtx,res);` |
-|     562 |  207 | `	return PH7_OK;` |
-|       4 |  208 | `}` |
+|     849 |  206 | `	ph7_result_bool(pCtx,res);` |
+|     849 |  207 | `	return PH7_OK;` |
+|       3 |  208 | `}` |
 |       - |  209 | `/*` |
 |       - |  210 | ` * bool is_null($var)` |
 |       - |  211 | ` *  Finds out whether a variable is NULL.` |
@@ -285,16 +285,16 @@ Coverage: 312/400 lines (78.00%)
 |       - |  275 | ` * Return` |
 |       - |  276 | ` *  True if var is an array. False otherwise.` |
 |       - |  277 | ` */` |
-|     668 |  278 | `static int PH7_builtin_is_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 |  279 | `{` |
-|     673 |  280 | `	int res = 0; /* Assume false by default */` |
-|     673 |  281 | `	if( nArg > 0 ){` |
-|     673 |  282 | `		res = ph7_value_is_array(apArg[0]);` |
-|     334 |  283 | `	}` |
+|    6652 |  278 | `static int PH7_builtin_is_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       4 |  279 | `{` |
+|    6656 |  280 | `	int res = 0; /* Assume false by default */` |
+|    6656 |  281 | `	if( nArg > 0 ){` |
+|    6656 |  282 | `		res = ph7_value_is_array(apArg[0]);` |
+|    3326 |  283 | `	}` |
 |       - |  284 | `	/* Query result */` |
-|     673 |  285 | `	ph7_result_bool(pCtx,res);` |
-|     673 |  286 | `	return PH7_OK;` |
-|       5 |  287 | `}` |
+|    6656 |  285 | `	ph7_result_bool(pCtx,res);` |
+|    6656 |  286 | `	return PH7_OK;` |
+|       4 |  287 | `}` |
 |       - |  288 | `/*` |
 |       - |  289 | ` * bool is_object($var)` |
 |       - |  290 | ` *  Find out whether a variable is an object.` |
@@ -303,15 +303,15 @@ Coverage: 312/400 lines (78.00%)
 |       - |  293 | ` * Return` |
 |       - |  294 | ` *  True if var is an object. False otherwise.` |
 |       - |  295 | ` */` |
-|     668 |  296 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     856 |  296 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  297 | `{` |
-|     673 |  298 | `	int res = 0; /* Assume false by default */` |
-|     673 |  299 | `	if( nArg > 0 ){` |
-|     673 |  300 | `		res = ph7_value_is_object(apArg[0]);` |
-|     334 |  301 | `	}` |
+|     861 |  298 | `	int res = 0; /* Assume false by default */` |
+|     861 |  299 | `	if( nArg > 0 ){` |
+|     861 |  300 | `		res = ph7_value_is_object(apArg[0]);` |
+|     428 |  301 | `	}` |
 |       - |  302 | `	/* Query result */` |
-|     673 |  303 | `	ph7_result_bool(pCtx,res);` |
-|     673 |  304 | `	return PH7_OK;` |
+|     861 |  303 | `	ph7_result_bool(pCtx,res);` |
+|     861 |  304 | `	return PH7_OK;` |
 |       5 |  305 | `}` |
 |       - |  306 | `/*` |
 |       - |  307 | ` * bool is_resource($var)` |
@@ -321,16 +321,16 @@ Coverage: 312/400 lines (78.00%)
 |       - |  311 | ` * Return` |
 |       - |  312 | ` *  True if a resource. False otherwise.` |
 |       - |  313 | ` */` |
-|     204 |  314 | `static int PH7_builtin_is_resource(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     300 |  314 | `static int PH7_builtin_is_resource(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  315 | `{` |
-|     209 |  316 | `	int res = 0; /* Assume false by default */` |
-|     209 |  317 | `	if( nArg > 0 && ph7_value_is_resource(apArg[0]) ){` |
+|     305 |  316 | `	int res = 0; /* Assume false by default */` |
+|     305 |  317 | `	if( nArg > 0 && ph7_value_is_resource(apArg[0]) ){` |
 |       - |  318 | `		/* A handle closed via fclose()/closedir()/pclose() is no longer a` |
 |       - |  319 | `		 * live resource — php's is_resource() returns false for it. */` |
-|     159 |  320 | `		res = !PH7_VfsResourceIsClosed(apArg[0]->x.pOther);` |
-|      77 |  321 | `	}` |
-|     209 |  322 | `	ph7_result_bool(pCtx,res);` |
-|     209 |  323 | `	return PH7_OK;` |
+|     253 |  320 | `		res = !PH7_VfsResourceIsClosed(apArg[0]->x.pOther);` |
+|     124 |  321 | `	}` |
+|     305 |  322 | `	ph7_result_bool(pCtx,res);` |
+|     305 |  323 | `	return PH7_OK;` |
 |       5 |  324 | `}` |
 |       - |  325 | `/*` |
 |       - |  326 | ` * float floatval($var)` |
@@ -490,18 +490,18 @@ Coverage: 312/400 lines (78.00%)
 |       - |  480 | ` * Return` |
 |       - |  481 | ` *  the int value of a variable.` |
 |       - |  482 | ` */` |
-|     390 |  483 | `static int PH7_builtin_intval(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 1170942 |  483 | `static int PH7_builtin_intval(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       2 |  484 | `{` |
-|     392 |  485 | `	if( nArg < 1 ){` |
+| 1170944 |  485 | `	if( nArg < 1 ){` |
 |       - |  486 | `		/* return 0 */` |
 |     ! 0 |  487 | `		ph7_result_int(pCtx,0);` |
 |     ! 0 |  488 | `	}else{` |
 |       - |  489 | `		sxi64 iVal;` |
-|     392 |  490 | `		sxi64 iBase = 10;` |
-|     392 |  491 | `		if( nArg > 1 ){` |
+| 1170944 |  490 | `		sxi64 iBase = 10;` |
+| 1170944 |  491 | `		if( nArg > 1 ){` |
 |     203 |  492 | `			iBase = ph7_value_to_int64(apArg[1]);` |
 |     101 |  493 | `		}` |
-|     481 |  494 | `		if( iBase != 10 && ph7_value_is_string(apArg[0]) ){` |
+| 1171033 |  494 | `		if( iBase != 10 && ph7_value_is_string(apArg[0]) ){` |
 |       - |  495 | `			/* The only path php reads $base on -- and the "is it 10?" test above is` |
 |       - |  496 | `			 * the LAST thing to see the argument at full width. Everything past it` |
 |       - |  497 | ``			 * is strtol's `int base` parameter, which php reaches through a plain`` |
@@ -518,12 +518,12 @@ Coverage: 312/400 lines (78.00%)
 |      90 |  508 | `		}else{` |
 |       - |  509 | ``			/* Perform the cast -- the same one the `(int)` operator performs, so`` |
 |       - |  510 | `			 * a float no int can hold warns here too. */` |
-|     214 |  511 | `			PH7_MemObjWarnIntCast(apArg[0]);` |
-|     214 |  512 | `			iVal = ph7_value_to_int64(apArg[0]);` |
+| 1170766 |  511 | `			PH7_MemObjWarnIntCast(apArg[0]);` |
+| 1170766 |  512 | `			iVal = ph7_value_to_int64(apArg[0]);` |
 |       - |  513 | `		}` |
-|     392 |  514 | `		ph7_result_int64(pCtx,iVal);` |
+| 1170944 |  514 | `		ph7_result_int64(pCtx,iVal);` |
 |       - |  515 | `	}` |
-|     392 |  516 | `	return PH7_OK;` |
+| 1170944 |  516 | `	return PH7_OK;` |
 |       2 |  517 | `}` |
 |       - |  518 | `/*` |
 |       - |  519 | ` * string strval($var)` |
@@ -583,14 +583,14 @@ Coverage: 312/400 lines (78.00%)
 |       - |  573 | ` * Return` |
 |       - |  574 | ` *  0 if var has a non-empty and non-zero value.1 otherwise.` |
 |       - |  575 | ` */` |
-|   49396 |  576 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   51600 |  576 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  577 | `{` |
-|   49401 |  578 | `	int res = 1; /* Assume empty by default */` |
-|   49401 |  579 | `	if( nArg > 0 ){` |
-|   49401 |  580 | `		res = ph7_value_is_empty(apArg[0]);` |
-|   24698 |  581 | `	}` |
-|   49401 |  582 | `	ph7_result_bool(pCtx,res);` |
-|   49401 |  583 | `	return PH7_OK;` |
+|   51605 |  578 | `	int res = 1; /* Assume empty by default */` |
+|   51605 |  579 | `	if( nArg > 0 ){` |
+|   51605 |  580 | `		res = ph7_value_is_empty(apArg[0]);` |
+|   25800 |  581 | `	}` |
+|   51605 |  582 | `	ph7_result_bool(pCtx,res);` |
+|   51605 |  583 | `	return PH7_OK;` |
 |       - |  584 |  |
 |       5 |  585 | `}` |
 |       - |  586 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
@@ -947,209 +947,244 @@ Coverage: 312/400 lines (78.00%)
 |       - |  937 | `	{ "metaphone",    PH7_builtin_metaphone  },` |
 |       - |  938 | `	{ "pack",         PH7_builtin_pack       },` |
 |       - |  939 | `	{ "unpack",       PH7_builtin_unpack     },` |
-|       - |  940 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
-|       - |  941 | `	{ "strtok",       PH7_builtin_strtok     },` |
-|       - |  942 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
-|       - |  943 | `	{ "str_replace",  PH7_builtin_str_replace},` |
-|       - |  944 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
-|       - |  945 | `	{ "strtr",        PH7_builtin_strtr      },` |
-|       - |  946 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|       - |  947 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|       - |  948 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
-|       - |  949 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|       - |  950 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|       - |  951 |  |
-|       - |  952 | `	         /* Ctype functions */` |
-|       - |  953 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
-|       - |  954 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
-|       - |  955 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
-|       - |  956 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
-|       - |  957 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
-|       - |  958 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
-|       - |  959 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
-|       - |  960 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
-|       - |  961 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
-|       - |  962 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
-|       - |  963 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
-|       - |  964 | `	         /* Time functions */` |
-|       - |  965 | `	{ "time"    ,    PH7_builtin_time         },` |
-|       - |  966 | `	{ "microtime",   PH7_builtin_microtime    },` |
-|       - |  967 | `	{ "hrtime",      PH7_builtin_hrtime       },` |
-|       - |  968 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
-|       - |  969 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
-|       - |  970 | `	{ "date",        PH7_builtin_date         },` |
-|       - |  971 | `	{ "idate",       PH7_builtin_idate        },` |
-|       - |  972 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
-|       - |  973 | `	{ "localtime",   PH7_builtin_localtime    },` |
-|       - |  974 | `	{ "mktime",      PH7_builtin_mktime       },` |
-|       - |  975 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
-|       - |  976 | `	{ "date_default_timezone_get", PH7_builtin_date_default_timezone_get },` |
-|       - |  977 | `	{ "date_default_timezone_set", PH7_builtin_date_default_timezone_set },` |
-|       - |  978 | `	        /* URL functions */` |
-|       - |  979 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
-|       - |  980 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
-|       - |  981 | `	{ "convert_uuencode",PH7_builtin_convert_uuencode },` |
-|       - |  982 | `	{ "convert_uudecode",PH7_builtin_convert_uudecode },` |
-|       - |  983 | `	{ "urlencode",    PH7_builtin_urlencode },` |
-|       - |  984 | `	{ "urldecode",    PH7_builtin_urldecode },` |
-|       - |  985 | `	{ "rawurlencode", PH7_builtin_rawurlencode },` |
-|       - |  986 | `	{ "http_build_query", PH7_builtin_http_build_query },` |
-|       - |  987 | `	{ "parse_str",    PH7_builtin_parse_str  },` |
-|       - |  988 | `	{ "rawurldecode", PH7_builtin_rawurldecode },` |
-|       - |  989 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|       - |  990 | `};` |
-|       - |  991 | `/*` |
-|       - |  992 | ` * Register the built-in functions defined above,the array functions` |
-|       - |  993 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
-|       - |  994 | ` */` |
-|    4660 |  995 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
-|       5 |  996 | `{` |
-|       - |  997 | `	sxu32 n;` |
-| 1178985 |  998 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
-| 1174325 |  999 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
-|  587165 | 1000 | `	}` |
-|       - | 1001 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
-|    4665 | 1002 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
-|       - | 1003 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
-|    4665 | 1004 | `	PH7_RegisterIORoutine(&(*pVm));` |
-|    4665 | 1005 | `}` |
-|       - | 1006 |  |
-|       - | 1007 | `/*` |
-|       - | 1008 | ` * UTF-8 codepoint reader shared by the glob/fnmatch matcher in vfs.c.` |
-|       - | 1009 | ` * Relocated here from the removed vm_xml.c when the legacy xml_* API was` |
-|       - | 1010 | ` * dropped; the utf8_encode()/utf8_decode() builtins it once served were` |
-|       - | 1011 | ` * removed in turn (superseded by mb_convert_encoding()),` |
-|       - | 1012 | ` * leaving only this public-domain SQLite reader.` |
-|       - | 1013 | ` */` |
-|       - | 1014 | `/* SPDX-SnippetBegin */` |
-|       - | 1015 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
-|       - | 1016 | `/* SPDX-License-Identifier: blessing */` |
-|       - | 1017 | `/*` |
-|       - | 1018 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
-|       - | 1019 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
-|       - | 1020 | ` * Status: Public Domain` |
-|       - | 1021 | ` */` |
-|       - | 1022 | `/*` |
-|       - | 1023 | `** This lookup table is used to help decode the first byte of` |
-|       - | 1024 | `** a multi-byte UTF8 character.` |
-|       - | 1025 | `*/` |
-|       - | 1026 | `static const unsigned char UtfTrans1[] = {` |
-|       - | 1027 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|       - | 1028 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
-|       - | 1029 | `  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
-|       - | 1030 | `  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
-|       - | 1031 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|       - | 1032 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
-|       - | 1033 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|       - | 1034 | `  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,` |
-|       - | 1035 | `};` |
-|       - | 1036 | `/*` |
-|       - | 1037 | `** Translate a single UTF-8 character.  Return the unicode value.` |
-|       - | 1038 | `**` |
-|       - | 1039 | `** During translation, assume that the byte that zTerm points` |
-|       - | 1040 | `** is a 0x00.` |
-|       - | 1041 | `**` |
-|       - | 1042 | `** Write a pointer to the next unread byte back into *pzNext.` |
-|       - | 1043 | `**` |
-|       - | 1044 | `** Notes On Invalid UTF-8:` |
-|       - | 1045 | `**` |
-|       - | 1046 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
-|       - | 1047 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
-|       - | 1048 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
-|       - | 1049 | `**` |
-|       - | 1050 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
-|       - | 1051 | `**     If a multi-byte character attempts to encode a value between` |
-|       - | 1052 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
-|       - | 1053 | `**` |
-|       - | 1054 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
-|       - | 1055 | `**     byte of a character are interpreted as single-byte characters` |
-|       - | 1056 | `**     and rendered as themselves even though they are technically` |
-|       - | 1057 | `**     invalid characters.` |
-|       - | 1058 | `**` |
-|       - | 1059 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
-|       - | 1060 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
-|       - | 1061 | `**     encodings to 0xfffd as some systems recommend.` |
-|       - | 1062 | `*/` |
-|       - | 1063 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
-|       - | 1064 | `  c = *(zIn++);                                            \` |
-|       - | 1065 | `  if( c>=0xc0 ){                                           \` |
-|       - | 1066 | `    c = UtfTrans1[c-0xc0];                                 \` |
-|       - | 1067 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
-|       - | 1068 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
-|       - | 1069 | `    }                                                      \` |
-|       - | 1070 | `    if( c<0x80                                             \` |
-|       - | 1071 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
-|       - | 1072 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
-|       - | 1073 | `  }` |
-|     714 | 1074 | `PH7_PRIVATE int PH7_Utf8Read(` |
-|       - | 1075 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
-|       - | 1076 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
-|       - | 1077 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
-|       3 | 1078 | `){` |
-|       - | 1079 | `  int c;` |
-|     717 | 1080 | `  READ_UTF8(z, zTerm, c);` |
-|     717 | 1081 | `  *pzNext = z;` |
-|     717 | 1082 | `  return c;` |
-|       3 | 1083 | `}` |
-|       - | 1084 | `/* SPDX-SnippetEnd */` |
-|       - | 1085 | `/*` |
-|       - | 1086 | ` * Read one STRICTLY well-formed UTF-8 sequence from z[0..n-1].` |
-|       - | 1087 | ` *` |
-|       - | 1088 | ` * Unlike PH7_Utf8Read above (the lenient SQLite reader, which renders anything` |
-|       - | 1089 | ` * dubious as U+FFFD and happily accepts over-long forms), this one implements` |
-|       - | 1090 | ` * the RFC 3629 / Unicode "Table 3-7 well-formed byte sequences" rule php uses` |
-|       - | 1091 | ` * wherever it has to decide whether a php string really is UTF-8:` |
-|       - | 1092 | ` *` |
-|       - | 1093 | ` *   00..7F                          one byte` |
-|       - | 1094 | ` *   C2..DF  80..BF                  (C0/C1 are over-long two-byte forms)` |
-|       - | 1095 | ` *   E0      A0..BF  80..BF          (E0 80..9F is over-long)` |
-|       - | 1096 | ` *   E1..EC  80..BF  80..BF` |
-|       - | 1097 | ` *   ED      80..9F  80..BF          (ED A0..BF is a UTF-16 surrogate)` |
-|       - | 1098 | ` *   EE..EF  80..BF  80..BF` |
-|       - | 1099 | ` *   F0      90..BF  80..BF  80..BF  (F0 80..8F is over-long)` |
-|       - | 1100 | ` *   F1..F3  80..BF  80..BF  80..BF` |
-|       - | 1101 | ` *   F4      80..8F  80..BF  80..BF  (past U+10FFFF)` |
-|       - | 1102 | ` *` |
-|       - | 1103 | ` * Returns the code point and writes the sequence length to *pLen. On an` |
-|       - | 1104 | ` * ill-formed sequence it returns -1 and writes 1, so a caller can apply its own` |
-|       - | 1105 | ` * php policy to the single offending byte (json_encode: JSON_ERROR_UTF8 or the` |
-|       - | 1106 | ` * JSON_INVALID_UTF8_* substitution; mb_strtolower: '?') and resume at the next` |
-|       - | 1107 | ` * byte exactly like php does. n must be >= 1.` |
-|       - | 1108 | ` */` |
-|   13114 | 1109 | `PH7_PRIVATE sxi32 PH7_Utf8ReadStrict(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
-|       2 | 1110 | `{` |
-|   13116 | 1111 | `	sxu32 c = z[0];` |
-|   13116 | 1112 | `	*pLen = 1;` |
-|   13116 | 1113 | `	if( c < 0x80 ){` |
-|   11043 | 1114 | `		return (sxi32)c;` |
-|       - | 1115 | `	}` |
-|    2074 | 1116 | `	if( c >= 0xC2 && c <= 0xDF ){` |
-|    1104 | 1117 | `		if( n < 2 \|\| (z[1] & 0xC0) != 0x80 ){` |
-|      63 | 1118 | `			return -1;` |
-|       - | 1119 | `		}` |
-|    1042 | 1120 | `		*pLen = 2;` |
-|    1042 | 1121 | `		return (sxi32)(((c & 0x1F) << 6) \| (z[1] & 0x3F));` |
-|       - | 1122 | `	}` |
-|     971 | 1123 | `	if( c >= 0xE0 && c <= 0xEF ){` |
-|     381 | 1124 | `		sxu32 iLow = (c == 0xE0) ? 0xA0 : 0x80;` |
-|     381 | 1125 | `		sxu32 iHigh = (c == 0xED) ? 0x9F : 0xBF;` |
-|     381 | 1126 | `		if( n < 3 \|\| z[1] < iLow \|\| z[1] > iHigh \|\| (z[2] & 0xC0) != 0x80 ){` |
-|      99 | 1127 | `			return -1;` |
-|       - | 1128 | `		}` |
-|     283 | 1129 | `		*pLen = 3;` |
-|     283 | 1130 | `		return (sxi32)(((c & 0x0F) << 12) \| ((z[1] & 0x3F) << 6) \| (z[2] & 0x3F));` |
-|       - | 1131 | `	}` |
-|     591 | 1132 | `	if( c >= 0xF0 && c <= 0xF4 ){` |
-|     103 | 1133 | `		sxu32 iLow = (c == 0xF0) ? 0x90 : 0x80;` |
-|     103 | 1134 | `		sxu32 iHigh = (c == 0xF4) ? 0x8F : 0xBF;` |
-|     102 | 1135 | `		if( n < 4 \|\| z[1] < iLow \|\| z[1] > iHigh` |
-|      79 | 1136 | `		 \|\| (z[2] & 0xC0) != 0x80 \|\| (z[3] & 0xC0) != 0x80 ){` |
-|      31 | 1137 | `			return -1;` |
-|       - | 1138 | `		}` |
-|      73 | 1139 | `		*pLen = 4;` |
-|     109 | 1140 | `		return (sxi32)(((c & 0x07) << 18) \| ((z[1] & 0x3F) << 12)` |
-|      72 | 1141 | `			\| ((z[2] & 0x3F) << 6) \| (z[3] & 0x3F));` |
-|       - | 1142 | `	}` |
-|     489 | 1143 | `	return -1; /* 80..C1 as a lead byte, or F5..FF */` |
-|    7518 | 1144 | `}` |
-|       - | 1145 |  |
+|       - |  940 | `	{ "sscanf",       PH7_builtin_sscanf     },` |
+|       - |  941 | `	     /* ext/bcmath: arbitrary-precision decimal arithmetic over strings */` |
+|       - |  942 | `	{ "bcadd",        PH7_builtin_bcadd      },` |
+|       - |  943 | `	{ "bcsub",        PH7_builtin_bcsub      },` |
+|       - |  944 | `	{ "bcmul",        PH7_builtin_bcmul      },` |
+|       - |  945 | `	{ "bccomp",       PH7_builtin_bccomp     },` |
+|       - |  946 | `	{ "bcdiv",        PH7_builtin_bcdiv      },` |
+|       - |  947 | `	{ "bcmod",        PH7_builtin_bcmod      },` |
+|       - |  948 | `	{ "bcdivmod",     PH7_builtin_bcdivmod   },` |
+|       - |  949 | `	{ "bcpow",        PH7_builtin_bcpow      },` |
+|       - |  950 | `	{ "bcpowmod",     PH7_builtin_bcpowmod   },` |
+|       - |  951 | `	{ "bcsqrt",       PH7_builtin_bcsqrt     },` |
+|       - |  952 | `	{ "bcround",      PH7_builtin_bcround    },` |
+|       - |  953 | `	{ "bcfloor",      PH7_builtin_bcfloor    },` |
+|       - |  954 | `	{ "bcceil",       PH7_builtin_bcceil     },` |
+|       - |  955 | `	{ "bcscale",      PH7_builtin_bcscale    },` |
+|       - |  956 | `	     /* ext/calendar: the serial day number and its four calendars */` |
+|       - |  957 | `	{ "gregoriantojd",PH7_builtin_gregoriantojd },` |
+|       - |  958 | `	{ "jdtogregorian",PH7_builtin_jdtogregorian },` |
+|       - |  959 | `	{ "juliantojd",   PH7_builtin_juliantojd    },` |
+|       - |  960 | `	{ "jdtojulian",   PH7_builtin_jdtojulian    },` |
+|       - |  961 | `	{ "frenchtojd",   PH7_builtin_frenchtojd    },` |
+|       - |  962 | `	{ "jdtofrench",   PH7_builtin_jdtofrench    },` |
+|       - |  963 | `	{ "jewishtojd",   PH7_builtin_jewishtojd    },` |
+|       - |  964 | `	{ "jdtojewish",   PH7_builtin_jdtojewish    },` |
+|       - |  965 | `	{ "cal_info",     PH7_builtin_cal_info      },` |
+|       - |  966 | `	{ "cal_days_in_month", PH7_builtin_cal_days_in_month },` |
+|       - |  967 | `	{ "cal_to_jd",    PH7_builtin_cal_to_jd     },` |
+|       - |  968 | `	{ "cal_from_jd",  PH7_builtin_cal_from_jd   },` |
+|       - |  969 | `	{ "jddayofweek",  PH7_builtin_jddayofweek   },` |
+|       - |  970 | `	{ "jdmonthname",  PH7_builtin_jdmonthname   },` |
+|       - |  971 | `	{ "unixtojd",     PH7_builtin_unixtojd      },` |
+|       - |  972 | `	{ "jdtounix",     PH7_builtin_jdtounix      },` |
+|       - |  973 | `	{ "easter_days",  PH7_builtin_easter_days   },` |
+|       - |  974 | `	{ "easter_date",  PH7_builtin_easter_date   },` |
+|       - |  975 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
+|       - |  976 | `	{ "strtok",       PH7_builtin_strtok     },` |
+|       - |  977 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
+|       - |  978 | `	{ "str_replace",  PH7_builtin_str_replace},` |
+|       - |  979 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
+|       - |  980 | `	{ "strtr",        PH7_builtin_strtr      },` |
+|       - |  981 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|       - |  982 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|       - |  983 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
+|       - |  984 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|       - |  985 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|       - |  986 |  |
+|       - |  987 | `	         /* Ctype functions */` |
+|       - |  988 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
+|       - |  989 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
+|       - |  990 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
+|       - |  991 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
+|       - |  992 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
+|       - |  993 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
+|       - |  994 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
+|       - |  995 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
+|       - |  996 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
+|       - |  997 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
+|       - |  998 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
+|       - |  999 | `	         /* Time functions */` |
+|       - | 1000 | `	{ "time"    ,    PH7_builtin_time         },` |
+|       - | 1001 | `	{ "microtime",   PH7_builtin_microtime    },` |
+|       - | 1002 | `	{ "hrtime",      PH7_builtin_hrtime       },` |
+|       - | 1003 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
+|       - | 1004 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
+|       - | 1005 | `	{ "date",        PH7_builtin_date         },` |
+|       - | 1006 | `	{ "idate",       PH7_builtin_idate        },` |
+|       - | 1007 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
+|       - | 1008 | `	{ "localtime",   PH7_builtin_localtime    },` |
+|       - | 1009 | `	{ "mktime",      PH7_builtin_mktime       },` |
+|       - | 1010 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
+|       - | 1011 | `	{ "date_default_timezone_get", PH7_builtin_date_default_timezone_get },` |
+|       - | 1012 | `	{ "date_default_timezone_set", PH7_builtin_date_default_timezone_set },` |
+|       - | 1013 | `	        /* URL functions */` |
+|       - | 1014 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
+|       - | 1015 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
+|       - | 1016 | `	{ "convert_uuencode",PH7_builtin_convert_uuencode },` |
+|       - | 1017 | `	{ "convert_uudecode",PH7_builtin_convert_uudecode },` |
+|       - | 1018 | `	{ "urlencode",    PH7_builtin_urlencode },` |
+|       - | 1019 | `	{ "urldecode",    PH7_builtin_urldecode },` |
+|       - | 1020 | `	{ "rawurlencode", PH7_builtin_rawurlencode },` |
+|       - | 1021 | `	{ "http_build_query", PH7_builtin_http_build_query },` |
+|       - | 1022 | `	{ "parse_str",    PH7_builtin_parse_str  },` |
+|       - | 1023 | `	{ "rawurldecode", PH7_builtin_rawurldecode },` |
+|       - | 1024 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|       - | 1025 | `};` |
+|       - | 1026 | `/*` |
+|       - | 1027 | ` * Register the built-in functions defined above,the array functions` |
+|       - | 1028 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
+|       - | 1029 | ` */` |
+|    4964 | 1030 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
+|       5 | 1031 | `{` |
+|       - | 1032 | `	sxu32 n;` |
+| 1419709 | 1033 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
+| 1414745 | 1034 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
+|  707660 | 1035 | `	}` |
+|       - | 1036 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
+|    4969 | 1037 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
+|       - | 1038 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
+|    4969 | 1039 | `	PH7_RegisterIORoutine(&(*pVm));` |
+|    4969 | 1040 | `}` |
+|       - | 1041 |  |
+|       - | 1042 | `/*` |
+|       - | 1043 | ` * UTF-8 codepoint reader shared by the glob/fnmatch matcher in vfs.c.` |
+|       - | 1044 | ` * Relocated here from the removed vm_xml.c when the legacy xml_* API was` |
+|       - | 1045 | ` * dropped; the utf8_encode()/utf8_decode() builtins it once served were` |
+|       - | 1046 | ` * removed in turn (superseded by mb_convert_encoding()),` |
+|       - | 1047 | ` * leaving only this public-domain SQLite reader.` |
+|       - | 1048 | ` */` |
+|       - | 1049 | `/* SPDX-SnippetBegin */` |
+|       - | 1050 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
+|       - | 1051 | `/* SPDX-License-Identifier: blessing */` |
+|       - | 1052 | `/*` |
+|       - | 1053 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
+|       - | 1054 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
+|       - | 1055 | ` * Status: Public Domain` |
+|       - | 1056 | ` */` |
+|       - | 1057 | `/*` |
+|       - | 1058 | `** This lookup table is used to help decode the first byte of` |
+|       - | 1059 | `** a multi-byte UTF8 character.` |
+|       - | 1060 | `*/` |
+|       - | 1061 | `static const unsigned char UtfTrans1[] = {` |
+|       - | 1062 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|       - | 1063 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|       - | 1064 | `  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
+|       - | 1065 | `  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
+|       - | 1066 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|       - | 1067 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|       - | 1068 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|       - | 1069 | `  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,` |
+|       - | 1070 | `};` |
+|       - | 1071 | `/*` |
+|       - | 1072 | `** Translate a single UTF-8 character.  Return the unicode value.` |
+|       - | 1073 | `**` |
+|       - | 1074 | `** During translation, assume that the byte that zTerm points` |
+|       - | 1075 | `** is a 0x00.` |
+|       - | 1076 | `**` |
+|       - | 1077 | `** Write a pointer to the next unread byte back into *pzNext.` |
+|       - | 1078 | `**` |
+|       - | 1079 | `** Notes On Invalid UTF-8:` |
+|       - | 1080 | `**` |
+|       - | 1081 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
+|       - | 1082 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
+|       - | 1083 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
+|       - | 1084 | `**` |
+|       - | 1085 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
+|       - | 1086 | `**     If a multi-byte character attempts to encode a value between` |
+|       - | 1087 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
+|       - | 1088 | `**` |
+|       - | 1089 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
+|       - | 1090 | `**     byte of a character are interpreted as single-byte characters` |
+|       - | 1091 | `**     and rendered as themselves even though they are technically` |
+|       - | 1092 | `**     invalid characters.` |
+|       - | 1093 | `**` |
+|       - | 1094 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
+|       - | 1095 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
+|       - | 1096 | `**     encodings to 0xfffd as some systems recommend.` |
+|       - | 1097 | `*/` |
+|       - | 1098 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
+|       - | 1099 | `  c = *(zIn++);                                            \` |
+|       - | 1100 | `  if( c>=0xc0 ){                                           \` |
+|       - | 1101 | `    c = UtfTrans1[c-0xc0];                                 \` |
+|       - | 1102 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
+|       - | 1103 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
+|       - | 1104 | `    }                                                      \` |
+|       - | 1105 | `    if( c<0x80                                             \` |
+|       - | 1106 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
+|       - | 1107 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
+|       - | 1108 | `  }` |
+|    9402 | 1109 | `PH7_PRIVATE int PH7_Utf8Read(` |
+|       - | 1110 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
+|       - | 1111 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
+|       - | 1112 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
+|       3 | 1113 | `){` |
+|       - | 1114 | `  int c;` |
+|    9405 | 1115 | `  READ_UTF8(z, zTerm, c);` |
+|    9405 | 1116 | `  *pzNext = z;` |
+|    9405 | 1117 | `  return c;` |
+|       3 | 1118 | `}` |
+|       - | 1119 | `/* SPDX-SnippetEnd */` |
+|       - | 1120 | `/*` |
+|       - | 1121 | ` * Read one STRICTLY well-formed UTF-8 sequence from z[0..n-1].` |
+|       - | 1122 | ` *` |
+|       - | 1123 | ` * Unlike PH7_Utf8Read above (the lenient SQLite reader, which renders anything` |
+|       - | 1124 | ` * dubious as U+FFFD and happily accepts over-long forms), this one implements` |
+|       - | 1125 | ` * the RFC 3629 / Unicode "Table 3-7 well-formed byte sequences" rule php uses` |
+|       - | 1126 | ` * wherever it has to decide whether a php string really is UTF-8:` |
+|       - | 1127 | ` *` |
+|       - | 1128 | ` *   00..7F                          one byte` |
+|       - | 1129 | ` *   C2..DF  80..BF                  (C0/C1 are over-long two-byte forms)` |
+|       - | 1130 | ` *   E0      A0..BF  80..BF          (E0 80..9F is over-long)` |
+|       - | 1131 | ` *   E1..EC  80..BF  80..BF` |
+|       - | 1132 | ` *   ED      80..9F  80..BF          (ED A0..BF is a UTF-16 surrogate)` |
+|       - | 1133 | ` *   EE..EF  80..BF  80..BF` |
+|       - | 1134 | ` *   F0      90..BF  80..BF  80..BF  (F0 80..8F is over-long)` |
+|       - | 1135 | ` *   F1..F3  80..BF  80..BF  80..BF` |
+|       - | 1136 | ` *   F4      80..8F  80..BF  80..BF  (past U+10FFFF)` |
+|       - | 1137 | ` *` |
+|       - | 1138 | ` * Returns the code point and writes the sequence length to *pLen. On an` |
+|       - | 1139 | ` * ill-formed sequence it returns -1 and writes 1, so a caller can apply its own` |
+|       - | 1140 | ` * php policy to the single offending byte (json_encode: JSON_ERROR_UTF8 or the` |
+|       - | 1141 | ` * JSON_INVALID_UTF8_* substitution; mb_strtolower: '?') and resume at the next` |
+|       - | 1142 | ` * byte exactly like php does. n must be >= 1.` |
+|       - | 1143 | ` */` |
+|   46555 | 1144 | `PH7_PRIVATE sxi32 PH7_Utf8ReadStrict(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
+|       2 | 1145 | `{` |
+|   46557 | 1146 | `	sxu32 c = z[0];` |
+|   46557 | 1147 | `	*pLen = 1;` |
+|   46557 | 1148 | `	if( c < 0x80 ){` |
+|   44484 | 1149 | `		return (sxi32)c;` |
+|       - | 1150 | `	}` |
+|    2074 | 1151 | `	if( c >= 0xC2 && c <= 0xDF ){` |
+|    1104 | 1152 | `		if( n < 2 \|\| (z[1] & 0xC0) != 0x80 ){` |
+|      63 | 1153 | `			return -1;` |
+|       - | 1154 | `		}` |
+|    1042 | 1155 | `		*pLen = 2;` |
+|    1042 | 1156 | `		return (sxi32)(((c & 0x1F) << 6) \| (z[1] & 0x3F));` |
+|       - | 1157 | `	}` |
+|     971 | 1158 | `	if( c >= 0xE0 && c <= 0xEF ){` |
+|     381 | 1159 | `		sxu32 iLow = (c == 0xE0) ? 0xA0 : 0x80;` |
+|     381 | 1160 | `		sxu32 iHigh = (c == 0xED) ? 0x9F : 0xBF;` |
+|     381 | 1161 | `		if( n < 3 \|\| z[1] < iLow \|\| z[1] > iHigh \|\| (z[2] & 0xC0) != 0x80 ){` |
+|      99 | 1162 | `			return -1;` |
+|       - | 1163 | `		}` |
+|     283 | 1164 | `		*pLen = 3;` |
+|     283 | 1165 | `		return (sxi32)(((c & 0x0F) << 12) \| ((z[1] & 0x3F) << 6) \| (z[2] & 0x3F));` |
+|       - | 1166 | `	}` |
+|     591 | 1167 | `	if( c >= 0xF0 && c <= 0xF4 ){` |
+|     103 | 1168 | `		sxu32 iLow = (c == 0xF0) ? 0x90 : 0x80;` |
+|     103 | 1169 | `		sxu32 iHigh = (c == 0xF4) ? 0x8F : 0xBF;` |
+|     102 | 1170 | `		if( n < 4 \|\| z[1] < iLow \|\| z[1] > iHigh` |
+|      79 | 1171 | `		 \|\| (z[2] & 0xC0) != 0x80 \|\| (z[3] & 0xC0) != 0x80 ){` |
+|      31 | 1172 | `			return -1;` |
+|       - | 1173 | `		}` |
+|      73 | 1174 | `		*pLen = 4;` |
+|     109 | 1175 | `		return (sxi32)(((c & 0x07) << 18) \| ((z[1] & 0x3F) << 12)` |
+|      72 | 1176 | `			\| ((z[2] & 0x3F) << 6) \| (z[3] & 0x3F));` |
+|       - | 1177 | `	}` |
+|     489 | 1178 | `	return -1; /* 80..C1 as a lead byte, or F5..FF */` |
+|   27928 | 1179 | `}` |
+|       - | 1180 |  |
