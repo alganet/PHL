@@ -5164,7 +5164,13 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 	ph7_class *pSelf);
 PH7_PRIVATE void VmMaterializeIntTyped(ph7_value *pVal, sxu32 nType);
 PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame);
-PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit);
+/* Flags for VmEnforcePropertyTypeOnStore(). CLONE_INIT is php 8.5's
+ * clone-with re-initialization of a readonly property; VIA_REF says the write
+ * arrived through a REFERENCE to the slot rather than through the property
+ * itself, which is a sentence of its own in php. */
+#define VM_TYPED_STORE_CLONE_INIT 0x01
+#define VM_TYPED_STORE_VIA_REF    0x02
+PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int iStoreFlags);
 PH7_PRIVATE sxi32 PH7_VmNativeSetSlot(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue);
 PH7_PRIVATE sxi32 PH7_VmStoreFilterRegister(ph7_vm *pVm,VmClassAttr *pVmAttr);
 PH7_PRIVATE void PH7_VmStoreFilterDrop(ph7_vm *pVm,ph7_class_attr *pAttr,sxu32 nIdx);

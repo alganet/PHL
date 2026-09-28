@@ -3211,6 +3211,34 @@ case PH7_OP_STORE: {
 	if( !pInstr->p3 ){
 		PH7_MemObjRelease(&pTos[1]);
 	}
+	/* A plain VARIABLE can BE a typed property's slot: `$r = &$o->n` aliases it,
+	 * and so does a by-ref parameter bound to one. php enforces the declared type
+	 * on this store exactly as on `$o->n = v` -- with a sentence of its own, which
+	 * names the property HOLDING the reference -- and PHL wrote through it
+	 * unchecked, leaving a string in an `int` property and an array in a `string`
+	 * one. The store filter's table answers in one lookup and is skipped outright
+	 * when nothing has registered a slot; measured at noise level on an
+	 * object-and-array workload (a loop of nothing but plain stores is where the
+	 * lookup shows at all). */
+	if( SyHashTotalEntry(&pVm->hTypedSlot) > 0 && pObj->nIdx != SXU32_HIGH ){
+		sxi32 rcRef = VmEnforcePropertyTypeOnStore(&(*pVm),pObj->nIdx,pTos,
+			VM_TYPED_STORE_VIA_REF);
+		if( rcRef == PH7_ABORT ){
+			goto Abort;
+		}
+		if( rcRef == PH7_EXCEPTION ){
+			VmPopOperand(&pTos,1);
+			{
+				sxi32 iRp;
+				if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
+					PH7_RESUME_DRAIN()
+					pc = iRp;
+					break;
+				}
+			}
+			goto Exception;
+		}
+	}
 	/* Perform the store operation */
 	PH7_MemObjStore(pTos,pObj);
 	break;

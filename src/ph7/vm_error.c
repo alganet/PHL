@@ -1141,23 +1141,28 @@ PH7_PRIVATE sxi32 PH7_VmThrowGlobalsAppendError(ph7_vm *pVm)
  * property assignment. Called from the STORE path when coercion is not
  * possible.
  */
-static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const char *zGiven)
+static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const char *zGiven,
+	int bViaRef)
 {
 	ph7_class_attr *pAttr = pVmAttr->pAttr;
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
 	char zType[192];
 	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
 		VmHintScopeClass(pVm,pAttr->pDeclClass,pVmAttr->pOwner),zType,sizeof(zType));
+	/* php words a write that arrived through a REFERENCE differently: the slot
+	 * is the property's, but the assignment names no property, so the sentence
+	 * says which property is HOLDING the reference. */
+	const char *zWhat = bViaRef ? "reference held by property" : "property";
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	/* Prefer the declaring class over the runtime instance class so that an
 	 * inherited typed property reports its original owner, matching PHP. */
 	if( pOwner ){
-		SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %s",
-			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
+		SyBlobFormat(&sMsg,"Cannot assign %s to %s %z::$%z of type %s",
+			zGiven,zWhat,&pOwner->sName,&pAttr->sName,zTypeText);
 	}else{
-		SyBlobFormat(&sMsg,"Cannot assign %s to property $%z of type %s",
-			zGiven,&pAttr->sName,zTypeText);
+		SyBlobFormat(&sMsg,"Cannot assign %s to %s $%z of type %s",
+			zGiven,zWhat,&pAttr->sName,zTypeText);
 	}
 	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 }
@@ -2202,8 +2207,10 @@ PH7_PRIVATE sxi32 PH7_VmNativeSetSlot(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue)
 	}
 	return VmRunNativeSet(pVm,pVmAttr,pValue);
 }
-PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit)
+PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int iStoreFlags)
 {
+	int bViaRef = (iStoreFlags & VM_TYPED_STORE_VIA_REF) != 0;
+	int bCloneInit = (iStoreFlags & VM_TYPED_STORE_CLONE_INIT) != 0;
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
 	ph7_class_attr *pAttr;
@@ -2302,9 +2309,10 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		if( pValue->iFlags & MEMOBJ_OBJ ){
 			char zBuf[128];
 			return VmThrowPropertyTypeError(pVm,pVmAttr,
-				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
+				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)),bViaRef);
 		}
-		return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+		return VmThrowPropertyTypeError(pVm,pVmAttr,
+			VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 	}
 	/* NULL handling: allowed if the type is nullable, or is `mixed` (which
 	 * includes null). */
@@ -2315,13 +2323,14 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
 		}
-		return VmThrowPropertyTypeError(pVm,pVmAttr,"null");
+		return VmThrowPropertyTypeError(pVm,pVmAttr,"null",bViaRef);
 	}
 	/* standalone `null` property type (PHP 8.2): a null value was already
 	 * accepted by the nullable check above, so any non-null value here is a
 	 * type error. */
 	if( pAttr->nType == MEMOBJ_NULL ){
-		return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+		return VmThrowPropertyTypeError(pVm,pVmAttr,
+			VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 	}
 	/* Bare 'object' type hint: accept any class instance, reject non-objects.
 	 * Must be checked before the generic scalar branch since MEMOBJ_OBJ is
@@ -2331,7 +2340,8 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
 		}
-		return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+		return VmThrowPropertyTypeError(pVm,pVmAttr,
+			VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 	}
 	/* Pseudo-types stored as class-name atoms: `iterable` (array|Traversable),
 	 * `true`/`false` (matching bool), `mixed` (any value — its null case is
@@ -2345,7 +2355,8 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			return SXRET_OK;
 		}
 		if( rcPseudo == 0 ){
-			return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+			return VmThrowPropertyTypeError(pVm,pVmAttr,
+				VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 		}
 		/* rcPseudo == -1: real class — fall through to the instanceof branch. */
 	}
@@ -2358,7 +2369,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			return VmThrowPropertyTypeError(pVm,pVmAttr,
 				(pValue->iFlags & MEMOBJ_OBJ)
 					? VmFormatValueClassName(pValue,zBuf,sizeof(zBuf))
-					: VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+					: VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 		}
 		pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 		return SXRET_OK;
@@ -2390,7 +2401,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			return VmThrowPropertyTypeError(pVm,pVmAttr,
 				(pValue->iFlags & MEMOBJ_OBJ)
 					? VmFormatValueClassName(pValue,zObjBuf,sizeof(zObjBuf))
-					: VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+					: VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 		}
 		if( pAttr->nType == MEMOBJ_REAL && !ph7_value_is_float(pValue) ){
 			PH7_MemObjToReal(pValue); /* the int -> float widening */
@@ -2410,7 +2421,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		      && PH7_ClassExtractMethod(pInst->pClass,"__toString",sizeof("__toString")-1)) ){
 			char zBuf[128];
 			return VmThrowPropertyTypeError(pVm,pVmAttr,
-				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
+				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)),bViaRef);
 		}
 	}
 	/* An `int` slot takes the same lossy refusal a typed PARAMETER and a return
@@ -2424,17 +2435,19 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	 * that arrives carrying a cached int representation is asked too. */
 	if( pAttr->nType == MEMOBJ_INT && VmValueIsLossyToInt(pValue) ){
 		return VmThrowPropertyTypeError(pVm,pVmAttr,
-			VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+			VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 	}
 	if( (pValue->iFlags & pAttr->nType) == 0 ){
 		ProcMemObjCast xCast = PH7_MemObjCastMethod(pAttr->nType);
 		if( xCast ){
 			/* Reject array<->scalar coercion to match PHP strictness */
 			if( pAttr->nType == MEMOBJ_HASHMAP && (pValue->iFlags & MEMOBJ_HASHMAP) == 0 ){
-				return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+				return VmThrowPropertyTypeError(pVm,pVmAttr,
+					VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 			}
 			if( pAttr->nType != MEMOBJ_HASHMAP && (pValue->iFlags & MEMOBJ_HASHMAP) ){
-				return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+				return VmThrowPropertyTypeError(pVm,pVmAttr,
+					VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)),bViaRef);
 			}
 			/* PHP weak mode: reject string->int/float unless the string is
 			 * strictly numeric. Silent coercion of "abc" or "43x" to 0/43
@@ -2442,7 +2455,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			if( (pAttr->nType == MEMOBJ_INT || pAttr->nType == MEMOBJ_REAL)
 			 && (pValue->iFlags & MEMOBJ_STRING)
 			 && !PH7_MemObjStringIsNumeric(pValue) ){
-				return VmThrowPropertyTypeError(pVm,pVmAttr,"string");
+				return VmThrowPropertyTypeError(pVm,pVmAttr,"string",bViaRef);
 			}
 			xCast(pValue);
 		}
@@ -2509,7 +2522,7 @@ PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
 		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 	}
 	/* Typed + readonly (clone re-init) enforcement — may coerce pValue in place. */
-	rc = VmEnforcePropertyTypeOnStore(pVm,pVmAttr->nIdx,pValue,1 /* bCloneInit */);
+	rc = VmEnforcePropertyTypeOnStore(pVm,pVmAttr->nIdx,pValue,VM_TYPED_STORE_CLONE_INIT);
 	if( rc != SXRET_OK ){
 		return rc;
 	}
