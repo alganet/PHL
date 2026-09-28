@@ -1541,24 +1541,19 @@ PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBac
 	}
 	/* php 8.1: every enum satisfies `instanceof UnitEnum`, a backed one
 	 * `BackedEnum` too. Attached AFTER the methods, so PH7_ClassImplement's
-	 * abstract stubbing finds cases()/from()/tryFrom() already declared. */
-	pIface = NativeLookupClass(&(*pVm),"UnitEnum");
+	 * abstract stubbing finds cases()/from()/tryFrom() already declared.
+	 * A backed one names only BackedEnum, which BRINGS UnitEnum: php's own
+	 * internal enums list `BackedEnum, UnitEnum` in that order, and naming
+	 * both here would answer them the other way round. A compiled enum is a
+	 * different registration and really does name both (`Ct, UnitEnum,
+	 * BackedEnum`), which is what compile_class.c spells. */
+	pIface = NativeLookupClass(&(*pVm),nBacking != 0 ? "BackedEnum" : "UnitEnum");
 	if( pIface == 0 ){
 		return SXERR_NOTFOUND;
 	}
 	rc = PH7_ClassImplement(pClass,pIface);
 	if( rc != SXRET_OK ){
 		return rc;
-	}
-	if( nBacking != 0 ){
-		pIface = NativeLookupClass(&(*pVm),"BackedEnum");
-		if( pIface == 0 ){
-			return SXERR_NOTFOUND;
-		}
-		rc = PH7_ClassImplement(pClass,pIface);
-		if( rc != SXRET_OK ){
-			return rc;
-		}
 	}
 	return VmMountUserClass(&(*pVm),pClass);
 }
