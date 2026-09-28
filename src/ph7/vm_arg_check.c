@@ -836,6 +836,8 @@ static const struct VmBuiltinSig {
 	{ "hypot", "float $x, float $y", "float" },
 	{ "idate", "string $format, ?int $timestamp = NULL", "int|false" },
 	{ "ignore_user_abort", "?bool $enable = NULL", "int" },
+	{ "image_type_to_mime_type", "int $image_type", "string" },
+	{ "image_type_to_extension", "int $image_type, bool $include_dot = true", "string|false" },
 	{ "implode", "array|string $separator, ?array $array = NULL", "string" },
 	{ "in_array", "mixed $needle, array $haystack, bool $strict = false", "bool" },
 	{ "inet_ntop", "string $ip", "string|false" },

@@ -975,6 +975,9 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "jdtounix",     PH7_builtin_jdtounix      },
 	{ "easter_days",  PH7_builtin_easter_days   },
 	{ "easter_date",  PH7_builtin_easter_date   },
+	     /* ext/standard: the image container surface */
+	{ "image_type_to_mime_type", PH7_builtin_image_type_to_mime_type },
+	{ "image_type_to_extension", PH7_builtin_image_type_to_extension },
 	{ "wordwrap",     PH7_builtin_wordwrap   },
 	{ "strtok",       PH7_builtin_strtok     },
 	{ "str_pad",      PH7_builtin_str_pad    },

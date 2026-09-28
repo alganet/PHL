@@ -274,6 +274,48 @@ static void PH7_CAL_JEWISH_ADD_GERESHAYIM_Const(ph7_value *pVal,void *pUnused)
 	ph7_value_int(pVal,8);
 }
 /*
+ * ext/standard's IMAGETYPE_* space (php's image_filetype enum), in php's own
+ * numbering. Three of the names are not enum members at all:
+ * IMAGETYPE_JPEG2000 is a userland ALIAS for IMAGETYPE_JPC (9, the raw
+ * codestream) rather than a type of its own, IMAGETYPE_UNKNOWN is the zero
+ * every detection ladder falls out at, and IMAGETYPE_COUNT is the number of
+ * types -- which is the FIXED count plus one for every handler a build
+ * registers, so the SVG reader ext/libxml installs makes it 22 instead of 21.
+ */
+#define PH7_IMAGETYPE_CONST(fn,v)                     \
+	static void fn(ph7_value *pVal,void *pUnused)     \
+	{                                                 \
+		SXUNUSED(pUnused);                            \
+		ph7_value_int(pVal,v);                        \
+	}
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_UNKNOWN_Const,   0)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_GIF_Const,       1)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_JPEG_Const,      2)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_PNG_Const,       3)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_SWF_Const,       4)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_PSD_Const,       5)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_BMP_Const,       6)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_TIFF_II_Const,   7)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_TIFF_MM_Const,   8)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_JPC_Const,       9)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_JP2_Const,      10)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_JPX_Const,      11)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_JB2_Const,      12)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_SWC_Const,      13)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_IFF_Const,      14)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_WBMP_Const,     15)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_XBM_Const,      16)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_ICO_Const,      17)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_WEBP_Const,     18)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_AVIF_Const,     19)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_HEIF_Const,     20)
+#ifdef PH7_ENABLE_LIBXML
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_SVG_Const,      21)
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_COUNT_Const,    22)
+#else
+PH7_IMAGETYPE_CONST(PH7_IMAGETYPE_COUNT_Const,    21)
+#endif
+/*
  * PHP_INT_MIN (php 7.0)
  * Expand the smallest integer supported.
  */
@@ -2653,6 +2695,33 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"CAL_JEWISH_ADD_ALAFIM_GERESH", PH7_CAL_JEWISH_ADD_ALAFIM_GERESH_Const },
 	{"CAL_JEWISH_ADD_ALAFIM",        PH7_CAL_JEWISH_ADD_ALAFIM_Const },
 	{"CAL_JEWISH_ADD_GERESHAYIM",    PH7_CAL_JEWISH_ADD_GERESHAYIM_Const },
+	{"IMAGETYPE_GIF",        PH7_IMAGETYPE_GIF_Const     },
+	{"IMAGETYPE_JPEG",       PH7_IMAGETYPE_JPEG_Const    },
+	{"IMAGETYPE_PNG",        PH7_IMAGETYPE_PNG_Const     },
+	{"IMAGETYPE_SWF",        PH7_IMAGETYPE_SWF_Const     },
+	{"IMAGETYPE_PSD",        PH7_IMAGETYPE_PSD_Const     },
+	{"IMAGETYPE_BMP",        PH7_IMAGETYPE_BMP_Const     },
+	{"IMAGETYPE_TIFF_II",    PH7_IMAGETYPE_TIFF_II_Const },
+	{"IMAGETYPE_TIFF_MM",    PH7_IMAGETYPE_TIFF_MM_Const },
+	{"IMAGETYPE_JPC",        PH7_IMAGETYPE_JPC_Const     },
+	{"IMAGETYPE_JP2",        PH7_IMAGETYPE_JP2_Const     },
+	{"IMAGETYPE_JPX",        PH7_IMAGETYPE_JPX_Const     },
+	{"IMAGETYPE_JB2",        PH7_IMAGETYPE_JB2_Const     },
+	{"IMAGETYPE_SWC",        PH7_IMAGETYPE_SWC_Const     },
+	{"IMAGETYPE_IFF",        PH7_IMAGETYPE_IFF_Const     },
+	{"IMAGETYPE_WBMP",       PH7_IMAGETYPE_WBMP_Const    },
+	/* php's own alias row: the same 9 the JPC name expands to. */
+	{"IMAGETYPE_JPEG2000",   PH7_IMAGETYPE_JPC_Const     },
+	{"IMAGETYPE_XBM",        PH7_IMAGETYPE_XBM_Const     },
+	{"IMAGETYPE_ICO",        PH7_IMAGETYPE_ICO_Const     },
+	{"IMAGETYPE_WEBP",       PH7_IMAGETYPE_WEBP_Const    },
+	{"IMAGETYPE_AVIF",       PH7_IMAGETYPE_AVIF_Const    },
+	{"IMAGETYPE_HEIF",       PH7_IMAGETYPE_HEIF_Const    },
+	{"IMAGETYPE_UNKNOWN",    PH7_IMAGETYPE_UNKNOWN_Const },
+	{"IMAGETYPE_COUNT",      PH7_IMAGETYPE_COUNT_Const   },
+#ifdef PH7_ENABLE_LIBXML
+	{"IMAGETYPE_SVG",        PH7_IMAGETYPE_SVG_Const     },
+#endif
 	{"PHP_INT_MAX",          PH7_INTMAX_Const   },
 	{"MAXINT",               PH7_INTMAX_Const   },
 	{"PHP_INT_MIN",          PH7_INTMIN_Const   },
