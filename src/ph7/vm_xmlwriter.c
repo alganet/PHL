@@ -1365,7 +1365,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		{ "text",            PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_text },
 		{ "writeRaw",        PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_raw },
 		{ "startDocument",   PH7_MOD_PUBLIC,
-		  "?string $version = null, ?string $encoding = null, ?string $standalone = null",
+		  "?string $version = '1.0', ?string $encoding = null, ?string $standalone = null",
 		  "@bool", vm_builtin_xw_start_document },
 		{ "endDocument",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_document },
 		{ "writeComment",    PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_comment },

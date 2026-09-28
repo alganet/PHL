@@ -997,22 +997,26 @@ static int ReflectSigGlobalConst(ph7_context *pCtx, const char *z, int n, ph7_va
 	return 1;
 }
 /*
- * A class-constant EXPRESSION: one term, or the `|` fold php's own stubs write
- * for a flags default (`KEY_AS_PATHNAME | CURRENT_AS_FILEINFO | SKIP_DOTS`).
+ * A constant EXPRESSION: one term, or the `|` fold php's own stubs write for a
+ * flags default (`KEY_AS_PATHNAME | CURRENT_AS_FILEINFO | SKIP_DOTS`, and
+ * `SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE`). Either kind of name may
+ * stand in it -- a class constant or a global one -- because php's stubs write
+ * both, and a term is looked up as whichever it turns out to be.
  */
 static int ReflectSigConstExpr(ph7_context *pCtx, const char *z, int n, ph7_value *pOut)
 {
 	sxi64 iAcc = 0;
 	int iStart = 0;
 	int k, nTerm = 0;
-	if( !ReflectSigHas(z, n, "::", 2) ){
+	if( !ReflectSigHas(z, n, "::", 2) && !ReflectSigHas(z, n, "|", 1) ){
 		return 0;
 	}
 	for( k = 0 ; k <= n ; ++k ){
 		if( k < n && z[k] != '|' ){
 			continue;
 		}
-		if( !ReflectSigClassConst(pCtx, &z[iStart], k - iStart, pOut) ){
+		if( !ReflectSigClassConst(pCtx, &z[iStart], k - iStart, pOut)
+		 && !ReflectSigGlobalConst(pCtx, &z[iStart], k - iStart, pOut) ){
 			return 0;
 		}
 		nTerm++;
@@ -1087,9 +1091,15 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 		if( bReal || ReflectSigHas(z,n,".",1)
 		 || ReflectSigHasNoCase(z,n,"e",1) || ReflectSigHasNoCase(z,n,"x",1) ){
 #ifndef PH7_OMIT_FLOATING_POINT
-			ph7_value_double(pOut,SyStrToReal(z,(sxu32)n,0,0));
+			/* the VALUE is an out-parameter here; the return is a status, and
+			 * reading it as the number made every float default 0.0 */
+			sxreal rVal = 0.0;
+			SyStrToReal(z,(sxu32)n,(void *)&rVal,0);
+			ph7_value_double(pOut,rVal);
 #else
-			ph7_value_int64(pOut,SyStrToInt64(z,(sxu32)n,0,0));
+			sxi64 iRaw = 0;
+			SyStrToInt64(z,(sxu32)n,(void *)&iRaw,0);
+			ph7_value_int64(pOut,iRaw);
 #endif
 		}else{
 			sxi64 iVal = 0;
@@ -3523,7 +3533,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 		{ "isClosed",              PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionGenerator_isClosed },
 		{ "getExecutingLine",      PH7_MOD_PUBLIC, "", "int", vm_builtin_ReflectionGenerator_execLine },
 		{ "getExecutingFile",      PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionGenerator_execFile },
-		{ "getTrace",              PH7_MOD_PUBLIC, "int $options = 1", "array",
+		{ "getTrace",              PH7_MOD_PUBLIC,
+		  "int $options = DEBUG_BACKTRACE_PROVIDE_OBJECT", "array",
 		  vm_builtin_ReflectionGenerator_trace },
 	};
 	static const PH7_NativePropDef aFiberProp[] = {
@@ -3535,7 +3546,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 		{ "getCallable",      PH7_MOD_PUBLIC, "", "callable", vm_builtin_ReflectionFiber_getCallable },
 		{ "getExecutingLine", PH7_MOD_PUBLIC, "", "?int",     vm_builtin_ReflectionFiber_execLine },
 		{ "getExecutingFile", PH7_MOD_PUBLIC, "", "?string",  vm_builtin_ReflectionFiber_execFile },
-		{ "getTrace",         PH7_MOD_PUBLIC, "int $options = 1", "array", vm_builtin_ReflectionFiber_trace },
+		{ "getTrace",         PH7_MOD_PUBLIC, "int $options = DEBUG_BACKTRACE_PROVIDE_OBJECT",
+		  "array", vm_builtin_ReflectionFiber_trace },
 	};
 	static const PH7_NativePropDef aNameProp[] = {
 		{ "name", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
@@ -7592,14 +7604,46 @@ static int vm_builtin_ReflectionParameter_getDefaultValue(ph7_context *pCtx, int
 }
 /*
  * A default that is a plain global-constant reference compiles to exactly
- * [ OP_LOADC (EXPAND), OP_DONE ] with the name in the literal table; a
- * DECLARED default is text and never a constant.
+ * [ OP_LOADC (EXPAND), OP_DONE ] with the name in the literal table.
+ *
+ * A DECLARED default is TEXT, and php answers the same two questions about one:
+ * `int $type = PDO::PARAM_STR` is a constant default and its name is what the
+ * stub wrote. Only a SINGLE reference counts -- the `|` fold beside it
+ * evaluates to a number that no constant carries, and php answers false and
+ * null for it while still printing the source in the export.
  */
 static int ReflectParamDefConst(ph7_context *pCtx, ReflectParamDesc *pDesc,
 	const char **pz, int *pn)
 {
 	VmInstr *aInstr;
 	ph7_value *pLit;
+	if( pDesc->pArg == 0 && pDesc->bHasDef ){
+		const char *zDef = SyStringData(&pDesc->sDefText);
+		int nDef = (int)SyStringLength(&pDesc->sDefText);
+		ph7_value *pVal;
+		ReflectSigTrim(&zDef, &nDef);
+		if( nDef < 1 || ReflectSigHas(zDef, nDef, "|", 1) ){
+			return 0;
+		}
+		pVal = ph7_context_new_scalar(pCtx);
+		if( pVal == 0 ){
+			return 0;
+		}
+		if( nDef > (int)sizeof("::class")-1
+		 && SyMemcmp(&zDef[nDef - (sizeof("::class")-1)], "::class",
+		             sizeof("::class")-1) == 0 ){
+			/* `C::class` reads a class NAME rather than a constant, and php
+			 * answers false for it while still printing it in the export. */
+			return 0;
+		}
+		if( !ReflectSigGlobalConst(pCtx, zDef, nDef, pVal)
+		 && !ReflectSigClassConst(pCtx, zDef, nDef, pVal) ){
+			return 0;
+		}
+		*pz = zDef;
+		*pn = nDef;
+		return 1;
+	}
 	if( pDesc->pArg == 0 || SySetUsed(&pDesc->pArg->aByteCode) != 2 ){
 		return 0;
 	}
@@ -9413,6 +9457,14 @@ static void ReflectExportDefault(ph7_context *pCtx, SyBlob *pOut, ReflectParamDe
 		}
 		if( pVal && ReflectSigGlobalConst(pCtx, zDef, nDef, pVal) ){
 			/* Same split for a GLOBAL constant: `= E_ERROR`, never `= 1`. */
+			SyBlobAppend(pOut, zDef, (sxu32)nDef);
+			return;
+		}
+		if( pVal && ReflectSigHas(zDef, nDef, "|", 1)
+		 && ReflectSigConstExpr(pCtx, zDef, nDef, pVal) ){
+			/* And for the `|` fold of them, which is the one shape whose VALUE
+			 * names no constant at all: `SQLITE3_OPEN_READWRITE |
+			 * SQLITE3_OPEN_CREATE` prints as itself and answers 6. */
 			SyBlobAppend(pOut, zDef, (sxu32)nDef);
 			return;
 		}

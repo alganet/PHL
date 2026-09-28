@@ -1970,7 +1970,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm)
 		{ "generate", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "string", 0 },
 	};
 	static const PH7_NativeMethodDef aMt[] = {
-		{ "__construct", PH7_MOD_PUBLIC, "?int $seed = NULL, int $mode = 0", 0,
+		{ "__construct", PH7_MOD_PUBLIC, "?int $seed = NULL, int $mode = MT_RAND_MT19937", 0,
 		  vm_builtin_RandMt_construct },
 		{ "generate", PH7_MOD_PUBLIC, "", "string", vm_builtin_RandMt_generate },
 		{ "__serialize", PH7_MOD_PUBLIC, "", "array", vm_builtin_RandMt_serialize },

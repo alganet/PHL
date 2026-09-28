@@ -1765,8 +1765,8 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "count",        PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplStore_count },
 		{ "getFlags",     PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplStore_getFlags },
 		{ "setFlags",     PH7_MOD_PUBLIC, "int $flags", "@void", vm_builtin_SplStore_setFlags },
-		{ "asort",        PH7_MOD_PUBLIC, "int $flags = 0", "@true", vm_builtin_SplStore_asort },
-		{ "ksort",        PH7_MOD_PUBLIC, "int $flags = 0", "@true", vm_builtin_SplStore_ksort },
+		{ "asort",        PH7_MOD_PUBLIC, "int $flags = SORT_REGULAR", "@true", vm_builtin_SplStore_asort },
+		{ "ksort",        PH7_MOD_PUBLIC, "int $flags = SORT_REGULAR", "@true", vm_builtin_SplStore_ksort },
 		{ "uasort",       PH7_MOD_PUBLIC, "callable $callback", "@true", vm_builtin_SplStore_uasort },
 		{ "uksort",       PH7_MOD_PUBLIC, "callable $callback", "@true", vm_builtin_SplStore_uksort },
 		{ "natsort",      PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplStore_natsort },
@@ -1796,8 +1796,8 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "count",            PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplStore_count },
 		{ "getFlags",         PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplStore_getFlags },
 		{ "setFlags",         PH7_MOD_PUBLIC, "int $flags", "@void", vm_builtin_SplStore_setFlags },
-		{ "asort",            PH7_MOD_PUBLIC, "int $flags = 0", "@true", vm_builtin_SplStore_asort },
-		{ "ksort",            PH7_MOD_PUBLIC, "int $flags = 0", "@true", vm_builtin_SplStore_ksort },
+		{ "asort",            PH7_MOD_PUBLIC, "int $flags = SORT_REGULAR", "@true", vm_builtin_SplStore_asort },
+		{ "ksort",            PH7_MOD_PUBLIC, "int $flags = SORT_REGULAR", "@true", vm_builtin_SplStore_ksort },
 		{ "uasort",           PH7_MOD_PUBLIC, "callable $callback", "@true", vm_builtin_SplStore_uasort },
 		{ "uksort",           PH7_MOD_PUBLIC, "callable $callback", "@true", vm_builtin_SplStore_uksort },
 		{ "natsort",          PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplStore_natsort },
@@ -4367,7 +4367,8 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		   * cannot say both the TEXT and the VALUE: the constant spelling prints php's
 		   * export line but makes getDefaultValue() a "Failed to retrieve" throw, so the
 		   * VALUE wins here, as it does in the aBuiltinSig rows with the same shape. */
-		  "Iterator $iterator, string $pattern, int $mode = 0, int $flags = 0, int $pregFlags = 0", 0,
+		  "Iterator $iterator, string $pattern, int $mode = RegexIterator::MATCH, "
+		  "int $flags = 0, int $pregFlags = 0", 0,
 		  vm_builtin_RegexIterator_construct },
 		{ "accept",       PH7_MOD_PUBLIC, "", "@bool", vm_builtin_RegexIterator_accept },
 		{ "getMode",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_RegexIterator_getMode },
@@ -4414,7 +4415,8 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 	};
 	static const PH7_NativeMethodDef aRregexMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC,
-		  "RecursiveIterator $iterator, string $pattern, int $mode = 0, int $flags = 0, "
+		  "RecursiveIterator $iterator, string $pattern, "
+		  "int $mode = RecursiveRegexIterator::MATCH, int $flags = 0, "
 		  "int $pregFlags = 0", 0,
 		  vm_builtin_RecursiveRegexIterator_construct },
 		{ "accept",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_RecursiveRegexIterator_accept },
@@ -4438,7 +4440,8 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ CIT_KIDS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aCitMethod[] = {
-		{ "__construct", PH7_MOD_PUBLIC, "Iterator $iterator, int $flags = 1", 0,
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "Iterator $iterator, int $flags = CachingIterator::CALL_TOSTRING", 0,
 		  vm_builtin_CachingIterator_construct },
 		{ "rewind",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_CachingIterator_rewind },
 		{ "valid",       PH7_MOD_PUBLIC, "", "@bool", vm_builtin_CachingIterator_valid },
@@ -4459,7 +4462,8 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		/* `~Iterator`: php DECLARES Iterator here and its body asks for a
 		 * RecursiveIterator, so the screen stands aside and the constructor below
 		 * raises php's own refusal. */
-		{ "__construct", PH7_MOD_PUBLIC, "~Iterator $iterator, int $flags = 1", 0,
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "~Iterator $iterator, int $flags = RecursiveCachingIterator::CALL_TOSTRING", 0,
 		  vm_builtin_RecursiveCachingIterator_construct },
 		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_RecursiveCachingIterator_hasChildren },
@@ -5818,7 +5822,8 @@ static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)
 		  /* php's stub spells the default `RecursiveIteratorIterator::LEAVES_ONLY`;
 		   * one zSig field cannot carry both the TEXT and the VALUE, and the value
 		   * wins here for the same reason it does on RegexIterator's row. */
-		  "Traversable $iterator, int $mode = 0, int $flags = 0", 0,
+		  "Traversable $iterator, int $mode = RecursiveIteratorIterator::LEAVES_ONLY, "
+		  "int $flags = 0", 0,
 		  vm_builtin_RecursiveIteratorIterator_construct },
 		{ "rewind",           PH7_MOD_PUBLIC, "", "@void",
 		  vm_builtin_RecursiveIteratorIterator_rewind },
@@ -5876,8 +5881,10 @@ static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)
 	};
 	static const PH7_NativeMethodDef aRtiMethod[] = {
 		{ "__construct",   PH7_MOD_PUBLIC,
-		  "~RecursiveIterator|IteratorAggregate $iterator, int $flags = 8, "
-		  "int $cachingIteratorFlags = 16, int $mode = 1", 0,
+		  "~RecursiveIterator|IteratorAggregate $iterator, "
+		  "int $flags = RecursiveTreeIterator::BYPASS_KEY, "
+		  "int $cachingIteratorFlags = CachingIterator::CATCH_GET_CHILD, "
+		  "int $mode = RecursiveTreeIterator::SELF_FIRST", 0,
 		  vm_builtin_RecursiveTreeIterator_construct },
 		{ "key",           PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_RecursiveTreeIterator_key },
 		{ "current",       PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_RecursiveTreeIterator_current },
@@ -9151,7 +9158,7 @@ static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)
 		{ "getInfo",         PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplObjectStorage_getInfo },
 		{ "setInfo",         PH7_MOD_PUBLIC, "mixed $info", "@void",
 		  vm_builtin_SplObjectStorage_setInfo },
-		{ "count",           PH7_MOD_PUBLIC, "int $mode = 0", "@int",
+		{ "count",           PH7_MOD_PUBLIC, "int $mode = COUNT_NORMAL", "@int",
 		  vm_builtin_SplObjectStorage_count },
 		{ "rewind",          PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplObjectStorage_rewind },
 		{ "valid",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplObjectStorage_valid },
@@ -12967,7 +12974,7 @@ static sxi32 VmInstallSplFileObject(ph7_vm *pVm)
 		  "@array|false", vm_builtin_SplFileObject_fgetcsv },
 		{ "fputcsv",       PH7_MOD_PUBLIC,
 		  "array $fields, string $separator = \",\", string $enclosure = \"\\\"\", "
-		  "string $escape = \"\\\\\", string $eol = \"\\n\"", "@int|false",
+		  "string $escape = \"\\\\\", string $eol = \"\n\"", "@int|false",
 		  vm_builtin_SplFileObject_fputcsv },
 		{ "setCsvControl", PH7_MOD_PUBLIC,
 		  "string $separator = \",\", string $enclosure = \"\\\"\", string $escape = \"\\\\\"",
