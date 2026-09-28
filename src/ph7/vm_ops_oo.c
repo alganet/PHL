@@ -2788,6 +2788,21 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								? PH7_ClassExtractConstant(pClass,sName.zString,sName.nByte)
 								: PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
 						}
+						if( pAttr && bConstForm && (pClass->iFlags & PH7_CLASS_TRAIT) != 0
+						 && !VmMemberCtxIsLookup(pInstr->iP2) ){
+							/* A trait constant belongs to the classes that COMPOSE the trait
+							 * and to no one else: php refuses `T::K` outright, from inside a
+							 * trait method as readily as from outside. (PHP 8.2 introduced
+							 * trait constants; this refusal came with them.) */
+							SyBlob sErrTr;
+							SyBlobInit(&sErrTr,&pVm->sAllocator);
+							SyBlobFormat(&sErrTr,"Cannot access trait constant %z::%z directly",
+								&pClass->sName,&pAttr->sName);
+							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
+								sizeof("Error")-1,&sErrTr));
+							pAttr = 0;
+							bStaticHidden = 1;
+						}
 						if( pAttr && !bConstForm
 						 && (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT))
 						     != PH7_CLASS_ATTR_STATIC ){

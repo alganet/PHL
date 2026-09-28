@@ -26,6 +26,7 @@
 #define VM_CCONST_NOCONST   4 /* the class exists but declares no such constant */
 #define VM_CCONST_NOACCESS  5 /* it exists but is private/protected out of scope */
 #define VM_CCONST_NOPARENT  6 /* `parent` named from a class that has none */
+#define VM_CCONST_TRAIT     7 /* a TRAIT constant, which php refuses to hand out through the trait */
 /*
  * Split "C::K" and resolve both halves. The class half goes through
  * PH7_VmResolveScopeName, so `self`/`parent`/`static` answer against the live class
@@ -80,6 +81,12 @@ static int VmClassConstLookup(
 	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
 		return VM_CCONST_NOCONST;
 	}
+	if( (pClass->iFlags & PH7_CLASS_TRAIT) != 0 ){
+		/* A trait constant belongs to the classes that COMPOSE the trait: php refuses
+		 * `constant("T::K")` outright, and answers `defined("T::K")` with false. */
+		*ppAttr = pAttr;
+		return VM_CCONST_TRAIT;
+	}
 	if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
 	 && pAttr->pDeclClass && pAttr->pDeclClass != pClass ){
 		/* php does not put a private constant in a SUBCLASS's table at all, so naming it
@@ -132,6 +139,9 @@ static int VmClassConstError(
 			return PH7_VmThrowException(pCtx,"Error","Cannot access %s constant %.*s",
 				(pAttr && pAttr->iProtection == PH7_CLASS_PROT_PRIVATE) ? "private" : "protected",
 				nLen,zName);
+		case VM_CCONST_TRAIT:
+			return PH7_VmThrowException(pCtx,"Error",
+				"Cannot access trait constant %.*s directly",nLen,zName);
 		default:
 			break;
 	}

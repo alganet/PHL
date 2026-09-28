@@ -5745,8 +5745,26 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				continue;
 			}
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-				iProtection = nKwrd;
-				pGen->pIn++;
+				int nSetTok;
+				sxi32 nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
+				if( nSetVis ){
+					/* Leading `private(set)`/`protected(set)` with no read visibility:
+					 * the read side defaults to public (php 8.4). Same rule as a class
+					 * body -- a trait declares properties, so it declares them the same
+					 * way, and php makes no exception for either modifier. */
+					iAttrflags |= GenStateSetVisFlag(nSetVis);
+					pGen->pIn += nSetTok;
+				}else{
+					iProtection = nKwrd;
+					pGen->pIn++;
+					/* Optional asymmetric set-visibility after the read visibility:
+					 * `public private(set) int $x`. */
+					nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
+					if( nSetVis ){
+						iAttrflags |= GenStateSetVisFlag(nSetVis);
+						pGen->pIn += nSetTok;
+					}
+				}
 				/* Optional `readonly` after the visibility (PHP 8.1): `private readonly T
 				 * $x` — the generated PHPUnit runtime traits (StubApi, …) declare their
 				 * readonly state this way. Mirrors the class-body attribute parser. */
@@ -5787,12 +5805,18 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 			}
 			if( nKwrd == PH7_TKWRD_CONST ){
-				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-					"Traits cannot have constants");
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
+				/* PHP 8.2: a trait may declare constants, and they are composed into the
+				 * using class exactly as its properties are (PH7_ClassInheritTrait
+				 * already copies hConst). Reaching them THROUGH the trait is the one
+				 * thing php refuses, at the access. */
+				rc = GenStateCompileClassConstant(&(*pGen),iProtection,iAttrflags,pClass);
+				if( rc != SXRET_OK ){
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto done;
 				}
-				goto done;
+				continue;
 			}else{
 				if( nKwrd == PH7_TKWRD_STATIC ){
 					iAttrflags |= PH7_CLASS_ATTR_STATIC;
@@ -5849,6 +5873,46 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 							"Unexpected token '%z',Expecting method declaration after 'abstract' keyword inside trait '%z'",
+							&pGen->pIn->sData,pName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					nKwrd = PH7_TKWRD_FUNCTION;
+				}else if( nKwrd == PH7_TKWRD_FINAL ){
+					/* A trait's member may be `final` -- the method is final in every class
+					 * that composes it, and a `final const` (PHP 8.1) is one no using
+					 * class's child may override. Mirrors the class-body branch. */
+					iAttrflags |= PH7_CLASS_ATTR_FINAL;
+					pGen->pIn++; /* Jump the 'final' keyword */
+					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
+						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
+							iProtection = nKwrd;
+							pGen->pIn++;
+						}
+					}
+					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
+						&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CONST ){
+						rc = GenStateCompileClassConstant(&(*pGen),iProtection,iAttrflags,pClass);
+						if( rc != SXRET_OK ){
+							if( rc == SXERR_ABORT ){
+								return SXERR_ABORT;
+							}
+							goto done;
+						}
+						continue;
+					}
+					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
+						&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
+						iAttrflags |= PH7_CLASS_ATTR_STATIC;
+						pGen->pIn++; /* Jump the 'static' keyword */
+					}
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
+						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"Unexpected token '%z',Expecting method declaration after 'final' keyword inside trait '%z'",
 							&pGen->pIn->sData,pName);
 						if( rc == SXERR_ABORT ){
 							return SXERR_ABORT;

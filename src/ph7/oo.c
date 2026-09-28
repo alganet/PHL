@@ -540,8 +540,9 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				== (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_FINAL) ){
 				/* Cannot override a final class constant (PHP 8.1). Report the
 				 * class that originally declared it (pDeclClass) rather than the
-				 * immediate base, so a multi-level chain matches PHP. */
-				ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pBase;
+				 * immediate base, so a multi-level chain matches PHP -- and a
+				 * TRAIT-declared one belongs to the class that composed it. */
+				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_attr *)pEntry->pUserData)->nLine,
 					"%z::%z cannot override final constant %z::%z",
 					&pSub->sName,pName,&pOwner->sName,pName);
@@ -622,8 +623,9 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		if( (pOwn = SyHashGet(&pSub->hConst,(const void *)pName->zString,pName->nByte)) != 0 ){
 			if( (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) ){
 				/* Cannot override a final class constant. Report the class that
-				 * originally declared it (pDeclClass) for a multi-level chain. */
-				ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pBase;
+				 * originally declared it (pDeclClass) for a multi-level chain -- and a
+				 * TRAIT-declared one belongs to the class that composed it. */
+				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_attr *)pOwn->pUserData)->nLine,
 					"%z::%z cannot override final constant %z::%z",
 					&pSub->sName,pName,&pOwner->sName,pName);
@@ -782,6 +784,27 @@ static int VmTraitDefaultsMatch(ph7_vm *pVm,SySet *pLeft,SySet *pRight)
 	return 1;
 }
 /*
+ * Two constant declarations php considers the SAME declaration. Composing a trait over a
+ * name that is already taken is only a conflict when the definition differs, and php's
+ * notion of "differs" covers the whole declaration, not just the value: `final const K='x'`
+ * against `const K='x'` conflicts, and so does `public const K` against `private const K`
+ * and `const int K=1` against `const K=1`.
+ */
+static int VmTraitConstDefsMatch(ph7_vm *pVm,ph7_class_attr *pLeft,ph7_class_attr *pRight)
+{
+	sxi32 iMask = PH7_CLASS_ATTR_FINAL|PH7_CLASS_ATTR_TYPED|PH7_CLASS_ATTR_ABSTRACT;
+	if( pLeft->iProtection != pRight->iProtection ){
+		return 0;
+	}
+	if( (pLeft->iFlags & iMask) != (pRight->iFlags & iMask) ){
+		return 0;
+	}
+	if( SyStringCmp(&pLeft->sTypeName,&pRight->sTypeName,SyMemcmp) != 0 ){
+		return 0;
+	}
+	return VmTraitDefaultsMatch(pVm,&pLeft->aByteCode,&pRight->aByteCode);
+}
+/*
  * Apply a trait to a class: copy all methods and attributes from the trait
  * into the target class. Unlike inheritance, traits copy ALL members including
  * private ones. Members already defined in the class take precedence.
@@ -856,12 +879,55 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 		}
 	}
 	/* Copy constants from the trait (PHP 8.2 trait constants; separate hConst
-	 * namespace). A constant already present in the class wins silently. */
+	 * namespace). The name being taken is only a conflict when the DEFINITION differs,
+	 * exactly as for a property above -- php compares the value, the visibility, the
+	 * `final` flag and the declared type, and lets two identical declarations through
+	 * (`trait A { const K='x'; } trait B { const K='x'; }` composes fine). A definition
+	 * inherited from a BASE class is not part of the comparison: a trait constant
+	 * overrides one, silently, the way a class-body constant does. */
 	SyHashResetLoopCursor(&pTrait->hConst);
 	while((pEntry = SyHashGetNextEntry(&pTrait->hConst)) != 0 ){
+		SyHashEntry *pExisting;
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
-		if( SyHashGet(&pClass->hConst,(const void *)pName->zString,pName->nByte) != 0 ){
+		pExisting = SyHashGet(&pClass->hConst,(const void *)pName->zString,pName->nByte);
+		if( pExisting != 0 ){
+			ph7_class_attr *pHave = (ph7_class_attr *)pExisting->pUserData;
+			ph7_class *pHolder = pHave->pDeclClass;
+			if( pHolder && pHolder != pClass
+			 && (pHolder->iFlags & PH7_CLASS_TRAIT) == 0
+			 && PH7_VmInstanceOf(pClass,pHolder) ){
+				/* Inherited from a base class: the trait's definition replaces it. */
+				SyHashDeleteEntry2(pExisting);
+				rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pAttr);
+				if( rc != SXRET_OK ){
+					goto cleanup;
+				}
+				continue;
+			}
+			if( !VmTraitConstDefsMatch(pGen->pVm,pAttr,pHave) ){
+				/* php names the FIRST definition, as the property path does. */
+				if( pHolder == 0 || pHolder == pClass ){
+					ph7_class **apUsedTraits = (ph7_class **)SySetBasePtr(&pClass->aTrait);
+					sxu32 nUsed = SySetUsed(&pClass->aTrait);
+					sxu32 k;
+					pHolder = pClass;
+					for(k = 0; k < nUsed; k++){
+						if( PH7_ClassExtractConstant(apUsedTraits[k],pName->zString,pName->nByte) ){
+							pHolder = apUsedTraits[k];
+							break;
+						}
+					}
+				}
+				rc = PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+					"%z and %z define the same constant (%z) in the composition of %z. "
+					"However, the definition differs and is considered incompatible. "
+					"Class was composed",
+					&pHolder->sName,&pTrait->sName,pName,&pClass->sName);
+				if( rc == SXERR_ABORT ){
+					goto cleanup;
+				}
+			}
 			continue;
 		}
 		rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pAttr);
