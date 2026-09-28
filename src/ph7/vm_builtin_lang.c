@@ -742,13 +742,18 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 	SySetRelease(&aSnap);
 	if( bCategorize ){
 		for( iExt = 0 ; iExt < nExt ; ++iExt ){
-			if( apBucket[iExt] && ph7_array_count(apBucket[iExt]) > 0 ){
+			if( apBucket[iExt] == 0 ){
+				continue;
+			}
+			if( ph7_array_count(apBucket[iExt]) > 0 ){
 				ph7_array_add_strkey_elem(pArray,PH7_VmExtensionName(iExt),apBucket[iExt]);
 			}
+			ph7_context_release_value(pCtx,apBucket[iExt]);
 		}
 		if( ph7_array_count(pUser) > 0 ){
 			ph7_array_add_strkey_elem(pArray,"user",pUser);
 		}
+		ph7_context_release_value(pCtx,pUser);
 	}
 	/* Return the created array */
 	ph7_result_value(pCtx,pArray);
