@@ -2994,6 +2994,9 @@ static const ph7_deprecated_name aDeprecatedFunc[] = {
 	{ "DateTime::__wakeup",
 	  "8.5, this method is obsolete, as serialization hooks are provided by "
 	  "__unserialize() and __serialize()" },
+	{ "DateTimeInterface::__wakeup",
+	  "8.5, this method is obsolete, as serialization hooks are provided by "
+	  "__unserialize() and __serialize()" },
 	{ "DateTimeImmutable::__wakeup",
 	  "8.5, this method is obsolete, as serialization hooks are provided by "
 	  "__unserialize() and __serialize()" },

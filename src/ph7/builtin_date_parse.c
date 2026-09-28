@@ -7931,10 +7931,7 @@ static int vm_builtin_DatePeriod_setState(ph7_context *pCtx,int nArg,ph7_value *
 	{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_##CLS##_wakeup }, \
 	{ "__set_state",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "array $array", "@" #CLS, \
 	  vm_builtin_##CLS##_setState }
-/* php's DateTimeInterface constants, the whole of that interface's surface here
- * (its abstract METHODS are deliberately not declared: PH7_ClassImplement installs
- * a stub for every interface method an implementor lacks, so declaring them would
- * make every implementor abstract before its native methods are attached). */
+/* php's DateTimeInterface constants. */
 #define DT_IFACE_CONST(NAME,VALUE) \
 	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_STRING, 0, VALUE, 0.0 }
 /*
@@ -7966,6 +7963,31 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		DT_IFACE_CONST("RFC3339_EXTENDED","Y-m-d\\TH:i:s.vP"),
 		DT_IFACE_CONST("RSS","D, d M Y H:i:s O"),
 		DT_IFACE_CONST("W3C","Y-m-d\\TH:i:sP"),
+	};
+	/*
+	 * php's DateTimeInterface METHODS, which this engine did not declare at
+	 * all -- so the nine it contracts for reported no `prototype` in the
+	 * export (18 rows across DateTime and DateTimeImmutable), and the
+	 * interface itself answered isAbstract() false for want of a member.
+	 * Declared in php's own order, which is the order its export lists them.
+	 *
+	 * Safe on the spec table because PH7_InstallNativeClasses fills every
+	 * class's METHODS before it wires any interface: PH7_ClassImplement's
+	 * abstract stubbing then finds DateTime's own nine already there and
+	 * skips them, which is the same reason DatePeriod's IteratorAggregate is
+	 * attached by hand AFTER its methods (it is not in this table).
+	 */
+	static const PH7_NativeMethodDef aIfaceMethod[] = {
+		{ "format",        PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $format", "@string", 0 },
+		{ "getTimezone",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@DateTimeZone|false", 0 },
+		{ "getOffset",     PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@int", 0 },
+		{ "getTimestamp",  PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@int", 0 },
+		{ "getMicrosecond",PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "int", 0 },
+		{ "diff",          PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT,
+		  "DateTimeInterface $targetObject, bool $absolute = false", "@DateInterval", 0 },
+		{ "__wakeup",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@void", 0 },
+		{ "__serialize",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "array", 0 },
+		{ "__unserialize", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "array $data", "void", 0 },
 	};
 	static const PH7_NativePropDef aZoneProp[] = {
 		{ DTZ_OFF,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },
@@ -8107,7 +8129,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "DateRangeError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DateObjectError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DateTimeInterface", 0, 0, PH7_CLASS_INTERFACE,
-		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0, 0 },
+		  aIfaceMethod, SX_ARRAYSIZE(aIfaceMethod),
+		  aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0, 0 },
 		{ "DateTimeZone", 0, 0, 0,
 		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp),
 		  0, 0, DtPresentTimeZone },
