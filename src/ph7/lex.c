@@ -263,6 +263,18 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 				}
 				pStream->zText++;
 			}
+			if( pStream->zText >= pStream->zEnd
+			 || !(pStream->zText[0] == '*' && &pStream->zText[1] < pStream->zEnd
+			   && pStream->zText[1] == '/') ){
+				/* The comment never closed before the end of the input. php refuses
+				 * the file (`Unterminated comment starting line N`) where this
+				 * swallowed the rest of it in silence; hand the compile phase a
+				 * token to report it with. */
+				pToken->nType = PH7_TK_OTHER|PH7_TK_UNTERM;
+				SyStringInitFromBuf(&pToken->sData,"/*",sizeof("/*")-1);
+				pStream->zText = pStream->zEnd;
+				return SXRET_OK;
+			}
 			pStream->zText += 2;
 			if( bDoc && pUserData && pStream->pSet ){
 				ph7_trivia sTrivia;
@@ -546,9 +558,14 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 				}
 				pStream->zText++;
 			}
-			/* Record token length and type */
+			/* Record token length and type. Running into the END OF THE INPUT
+			 * instead of the closing quote is marked: php refuses the file, where
+			 * this consumed the rest of it and ran the program. */
 			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
 			pToken->nType = PH7_TK_SSTR;
+			if( pStream->zText >= pStream->zEnd ){
+				pToken->nType |= PH7_TK_UNTERM;
+			}
 			/* Jump the trailing single quote */
 			pStream->zText++;
 			return SXRET_OK;
@@ -600,9 +617,13 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 				}
 				pStream->zText++;
 			}
-			/* Record token length and type */
+			/* Record token length and type (see the single-quoted branch above for
+			 * the unterminated mark). */
 			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
 			pToken->nType = PH7_TK_DSTR;
+			if( pStream->zText >= pStream->zEnd ){
+				pToken->nType |= PH7_TK_UNTERM;
+			}
 			/* Jump the trailing quote */
 			pStream->zText++;
 			return SXRET_OK;
@@ -1154,6 +1175,7 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 	const unsigned char *zEnd = pStream->zEnd;
 	const unsigned char *zPtr;
 	sxu8 bNowDoc = FALSE;
+	sxu8 bUnterm = FALSE;
 	SyString sDelim;
 	SyString sStr;
 	/* Jump leading white spaces */
@@ -1189,6 +1211,18 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 	/* Jump trailing white spaces */
 	while( zIn < zEnd && zIn[0] < 0xc0 && SyisSpace(zIn[0]) && zIn[0] != '\n' ){
 		zIn++;
+	}
+	if( sDelim.nByte > 0 && zIn >= zEnd ){
+		/* `<<<EOT` and then the end of the input: php has a heredoc with nothing in
+		 * it and no closing marker, and refuses the file for that. Form the token so
+		 * the compile phase can say so; without this the `<<<` fell through to the
+		 * operator table and named itself instead. */
+		SyStringInitFromBuf(&sStr,(const char *)zIn,0);
+		pStream->zText = zEnd;
+		pToken->nType = (bNowDoc ? PH7_TK_NOWDOC : PH7_TK_HEREDOC)|PH7_TK_UNTERM;
+		SyStringDupPtr(&pToken->sData,&sStr);
+		pToken->pUserData = SX_INT_TO_PTR(0);
+		return SXRET_OK;
 	}
 	if( sDelim.nByte <= 0 || zIn >= zEnd || zIn[0] != '\n' ){
 		/* Invalid syntax */
@@ -1231,9 +1265,11 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 				zIn++;
 			}
 			if( zIn >= zEnd ){
-				/* End of input without finding the closing marker */
+				/* End of input without finding the closing marker: php refuses the
+				 * file, where this took the rest of it as the body. */
 				pStream->zText = pStream->zEnd;
 				zMarkerLine = zIn;
+				bUnterm = TRUE;
 				break;
 			}
 			pStream->nLine++;
@@ -1242,6 +1278,9 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 		/* Body runs from sStr.zString up to just before the marker line */
 		sStr.nByte = (sxu32)((const char *)zMarkerLine - sStr.zString);
 		pToken->nType = bNowDoc ? PH7_TK_NOWDOC : PH7_TK_HEREDOC;
+		if( bUnterm ){
+			pToken->nType |= PH7_TK_UNTERM;
+		}
 		SyStringDupPtr(&pToken->sData,&sStr);
 		/* Strip exactly one line terminator that precedes the marker's line. */
 		if( pToken->sData.nByte > 0
@@ -1508,8 +1547,12 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut,
 			zIn = zEnd;
 		}
 		if( zCur < zIn ){
-			/* Save the PHP chunk for later processing */
+			/* Save the PHP chunk for later processing. pUserData records whether the
+			 * chunk was CLOSED by a `?>`: php reads that tag as the terminator of
+			 * whatever statement was open (`<?php echo 1 ?>` is legal), and only a
+			 * chunk that ran into the end of the FILE leaves one unfinished. */
 			sToken.nType = PH7_TOKEN_PHP;
+			sToken.pUserData = SX_INT_TO_PTR(zIn < zEnd ? 1 : 0);
 			SyStringInitFromBuf(&sToken.sData,zCur,zIn-zCur);
 			SyStringRightTrim(&sToken.sData); /* Trim trailing white spaces */
 			rc = SySetPut(&(*pOut),(const void *)&sToken);

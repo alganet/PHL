@@ -3622,6 +3622,64 @@ PH7_PRIVATE void GenStateMarkDiscardedCall(ph7_gen_state *pGen)
 		pInstr->bDiscard = 1;
 	}
 }
+/* TRUE when the cursor has run past the LAST token of a chunk that met the end of
+ * the file. A statement slice can end early (a single statement inside a `for`
+ * header), so `pIn >= pEnd` alone is not the question. */
+static int GenStateAtChunkEof(ph7_gen_state *pGen)
+{
+	SyToken *pBase;
+	if( !pGen->bChunkAtEof || pGen->pTokenSet == 0 ){
+		return 0;
+	}
+	pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+	return pGen->pIn >= &pBase[SySetUsed(pGen->pTokenSet)];
+}
+/*
+ * php's grammar wants a TERMINATOR after a statement, and the end of the file is
+ * not one: `<?php echo "a"` is `syntax error, unexpected end of file, expecting
+ * "," or ";"` there, while PHL ran it and exited 0. (A `?>` IS a terminator, which
+ * is why `<?php echo "a" ?>` is legal in both engines and why the check only
+ * applies to a chunk that met the end of the FILE.)
+ *
+ * A statement that ends in `}` -- a block, a declaration, a braced control
+ * structure -- needs nothing, and neither does one whose `;` the loop just
+ * stepped over; everything else was left unfinished.
+ *
+ * Answers the "expecting" clause php names for the statement that ran out, or 0
+ * when php names none. php reports the set its parser was in, which for a
+ * statement is decided by the KEYWORD it opened with -- the comma-list statements
+ * may take another element, `return`/`break`/`continue`/`goto`/`unset` and a
+ * do-while may not, `namespace` still wants its block -- except when the last
+ * token consumed was an alternative-syntax `end*`, whose own `;` is what is
+ * missing.
+ */
+static const char * GenStateEofExpecting(SyToken *pStmt,SyToken *pLast)
+{
+	sxu32 nKw;
+	if( pLast && (pLast->nType & PH7_TK_KEYWORD) ){
+		nKw = (sxu32)SX_PTR_TO_INT(pLast->pUserData);
+		if( nKw == PH7_TKWRD_ENDIF || nKw == PH7_TKWRD_ENDWHILE || nKw == PH7_TKWRD_ENDFOR
+		 || nKw == PH7_TKWRD_END4EACH || nKw == PH7_TKWRD_ENDSWITCH ){
+			return "\";\"";
+		}
+	}
+	if( pStmt == 0 || (pStmt->nType & PH7_TK_KEYWORD) == 0 ){
+		return 0;
+	}
+	nKw = (sxu32)SX_PTR_TO_INT(pStmt->pUserData);
+	if( nKw == PH7_TKWRD_ECHO || nKw == PH7_TKWRD_GLOBAL || nKw == PH7_TKWRD_STATIC
+	 || nKw == PH7_TKWRD_CONST || nKw == PH7_TKWRD_USE ){
+		return "\",\" or \";\"";
+	}
+	if( nKw == PH7_TKWRD_RETURN || nKw == PH7_TKWRD_BREAK || nKw == PH7_TKWRD_CONTINUE
+	 || nKw == PH7_TKWRD_GOTO || nKw == PH7_TKWRD_UNSET || nKw == PH7_TKWRD_DO ){
+		return "\";\"";
+	}
+	if( nKw == PH7_TKWRD_NAMESPACE ){
+		return "\"{\"";
+	}
+	return 0;
+}
 PH7_PRIVATE sxi32 GenStateCompileChunk(
 	ph7_gen_state *pGen, /* Code generator state */
 	sxi32 iFlags         /* Compile flags */
@@ -3632,10 +3690,18 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 	rc = SXRET_OK; /* Prevent compiler warning */
 	for(;;){
 		int bStmtIsDeclare = 0;
+		/* Whether php's grammar wants a TERMINATOR after this statement: a block, a
+		 * declaration and a LABEL end themselves, everything else -- an expression
+		 * statement included, even one that ends in the `}` of a closure or a match
+		 * -- has to be closed. */
+		int bStmtWantsSemi = 1;
+		SyToken *pStmtStart;
 		if( pGen->pIn >= pGen->pEnd ){
 			/* No more input to process */
 			break;
 		}
+		pStmtStart = pGen->pIn; /* The keyword this statement opened with, for the
+		                         * end-of-input check below */
 		/* Bind a directly-preceding docblock to this statement */
 		GenStateSetPendingDoc(&(*pGen));
 		if( SySetUsed(&pGen->aPendingAttrs) > 0 ){
@@ -3683,6 +3749,7 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 		}
 		if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){
 			/* Compile block */
+			bStmtWantsSemi = 0;
 			rc = PH7_CompileBlock(&(*pGen),0);
 			if( rc == SXERR_ABORT ){
 				break;
@@ -3748,6 +3815,16 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 			}else{
 				/* Go compile the sucker */
 				rc = xCons(&(*pGen));
+				if( xCons == PH7_CompileLabel
+				 || ( pGen->pTokenSet
+				   && pGen->pIn > (SyToken *)SySetBasePtr(pGen->pTokenSet)
+				   && (pGen->pIn[-1].nType & PH7_TK_CCB/*'}'*/) ) ){
+					/* A label, and any construct that ends with its own block, close
+					 * themselves. (An EXPRESSION statement never does, which is why
+					 * this asks the construct and not just the last token: the `}` of
+					 * `$f = function () {}` is not a terminator.) */
+					bStmtWantsSemi = 0;
+				}
 			}
 			if( rc == SXERR_ABORT ){
 				/* Request to abort compilation */
@@ -3755,8 +3832,28 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 			}
 		}
 		/* Ignore trailing semi-colons ';' */
-		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
-			pGen->pIn++;
+		{
+			/* Terminated when a `;` is sitting there for the loop to step over, or
+			 * when the construct consumed its own (the alternative-syntax bodies
+			 * take the `;` after their `endif`/`endwhile`/… themselves). */
+			int bTerminated = (pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI)) != 0;
+			if( !bTerminated && pGen->pTokenSet
+			 && pGen->pIn > (SyToken *)SySetBasePtr(pGen->pTokenSet)
+			 && (pGen->pIn[-1].nType & PH7_TK_SEMI) ){
+				bTerminated = 1;
+			}
+			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
+				pGen->pIn++;
+			}
+			if( !bTerminated && bStmtWantsSemi && pGen->nErr < 1 && GenStateAtChunkEof(&(*pGen))
+			 && pGen->pIn > (SyToken *)SySetBasePtr(pGen->pTokenSet) ){
+				/* (GenStateAtChunkEof already answered no for a NULL token set.) */
+				/* Ran out of input with the statement still open. */
+				rc = PH7_GenSyntaxError(&(*pGen),0,GenStateEofExpecting(pStmtStart,&pGen->pIn[-1]));
+				if( rc == SXERR_ABORT ){
+					break;
+				}
+			}
 		}
 		if( iFlags & PH7_COMPILE_SINGLE_STMT ){
 			/* Compile a single statement and return */
@@ -3769,6 +3866,32 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 	}
 	/* Return compilation status */
 	return rc;
+}
+/*
+ * TRUE when the SOURCE bytes of a double-quoted string interpolate -- `$name`,
+ * `${`, or `{$` -- which is what decides whether php's scanner produced ONE
+ * string token for it or an opening quote followed by parts. A backslash escapes
+ * whatever follows it, so `"\\$b"` does not interpolate.
+ */
+static int GenStateDqInterpolates(SyString *pStr)
+{
+	const unsigned char *z = (const unsigned char *)pStr->zString;
+	const unsigned char *zEnd = &z[pStr->nByte];
+	while( z < zEnd ){
+		if( z[0] == '\\' ){
+			z += 2;
+			continue;
+		}
+		if( z[0] == '$' && &z[1] < zEnd
+		 && (z[1] == '{' || z[1] >= 0x80 || SyisAlpha(z[1]) || z[1] == '_') ){
+			return 1;
+		}
+		if( z[0] == '{' && &z[1] < zEnd && z[1] == '$' ){
+			return 1;
+		}
+		z++;
+	}
+	return 0;
 }
 /*
  * Compile a Raw PHP chunk.
@@ -3792,6 +3915,9 @@ static sxi32 PH7_CompilePHP(
 	pGen->pRawIn++;
 	/* Tokenize the PHP chunk first */
 	PH7_TokenizePHP(SyStringData(&pScript->sData),SyStringLength(&pScript->sData),pScript->nLine,&(*pTokenSet),&pGen->aTrivia);
+	/* The raw tokenizer marked whether this chunk was closed by a `?>`; only one
+	 * that met the end of the FILE can leave a statement unterminated. */
+	pGen->bChunkAtEof = (sxi8)(SX_PTR_TO_INT(pScript->pUserData) == 0);
 	/* Point to the head and tail of the token stream. */
 	pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);
 	pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];
@@ -3801,11 +3927,75 @@ static sxi32 PH7_CompilePHP(
 	 * PARSE error rather than the fatal `(unset)` gets from the compiler. */
 	{
 		SyToken *pTok;
+		sxi32 nBraceOpen = 0;
+		for( pTok = pGen->pIn ; pTok < pGen->pEnd ; pTok++ ){
+			if( pTok->nType & PH7_TK_OCB ){
+				nBraceOpen++;
+			}else if( pTok->nType & PH7_TK_CCB ){
+				nBraceOpen--;
+			}
+		}
+		if( nBraceOpen > 0 ){
+			/* A `{` this chunk never closes: php's parser reports THAT at the end of
+			 * the file, ahead of any statement it left open and ahead of a string or
+			 * heredoc the scanner was still inside. Stand the end-of-input questions
+			 * down and let the block compiler say its own `Unclosed '{'`. */
+			pGen->bChunkAtEof = 0;
+		}
 		for( pTok = pGen->pIn ; pTok < pGen->pEnd ; pTok++ ){
 			if( (pTok->nType & PH7_TK_OP) && pTok->sData.nByte == sizeof("(real)")-1
 			 && SyMemcmp((const void *)pTok->sData.zString,(const void *)"(real)",sizeof("(real)")-1) == 0 ){
 				return PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
 					"The (real) cast has been removed, use (float) instead");
+			}
+			if( (pTok->nType & PH7_TK_UNTERM)
+			 && (pTok->nType & (PH7_TK_DSTR|PH7_TK_HEREDOC|PH7_TK_NOWDOC))
+			 && pGen->bChunkAtEof == 0 ){
+				/* php's parser reaches the end of file with the string still open and
+				 * reports the UNCLOSED BRACE first -- the scanner is mid-interpolation
+				 * there and has nothing of its own to say. (A single-quoted string and
+				 * a block comment do: their sentences win over the brace, which is why
+				 * only these three yield.) Leave it to the compile below. */
+				continue;
+			}
+			if( pTok->nType & PH7_TK_UNTERM ){
+				/* A quote, heredoc or block comment the input ran out under. php
+				 * refuses the file for each; this used to take the rest of it as the
+				 * lexeme's body and RUN the program (`<?php echo 'a` printed `a`).
+				 * The wording is php's own per shape -- its scanner reports what it
+				 * was still waiting for. */
+				if( pTok->nType & PH7_TK_SSTR ){
+					/* php's single-quoted scanner hands the parser the CONTENT it
+					 * had read, and the parser names that. */
+					return PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
+						"syntax error, unexpected string content \"%z\"",&pTok->sData);
+				}
+				if( pTok->nType & PH7_TK_DSTR ){
+					const char *zExp = pTok->sData.nByte < 1
+						? "variable or string content or \"${\" or \"{$\""
+						: (GenStateDqInterpolates(&pTok->sData) ? 0
+						                                       : "variable or \"${\" or \"{$\"");
+					return zExp
+						? PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
+							"syntax error, unexpected end of file, expecting %s",zExp)
+						: PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
+							"syntax error, unexpected end of file");
+				}
+				if( pTok->nType & (PH7_TK_HEREDOC|PH7_TK_NOWDOC) ){
+					/* An EMPTY body, or one that interpolates, leaves php's parser
+					 * with nothing to expect but the end it just met. */
+					int bSet = pTok->sData.nByte > 0
+						&& !((pTok->nType & PH7_TK_HEREDOC) && GenStateDqInterpolates(&pTok->sData));
+					return bSet
+						? PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
+							"syntax error, unexpected end of file, "
+							"expecting variable or heredoc end or \"${\" or \"{$\"")
+						: PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
+							"syntax error, unexpected end of file");
+				}
+				/* A block comment, whose sentence names where it began. */
+				return PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
+					"Unterminated comment starting line %u",pTok->nLine);
 			}
 		}
 	}
@@ -4213,32 +4403,6 @@ PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved)
  * a site can only claim an "expecting" clause it genuinely knows; every clause
  * emitted here was verified against php 8.5.7 for the construct in question.
  */
-/*
- * TRUE when the SOURCE bytes of a double-quoted string interpolate -- `$name`,
- * `${`, or `{$` -- which is what decides whether php's scanner produced ONE
- * string token for it or an opening quote followed by parts. A backslash escapes
- * whatever follows it, so `"\\$b"` does not interpolate.
- */
-static int GenStateDqInterpolates(SyString *pStr)
-{
-	const unsigned char *z = (const unsigned char *)pStr->zString;
-	const unsigned char *zEnd = &z[pStr->nByte];
-	while( z < zEnd ){
-		if( z[0] == '\\' ){
-			z += 2;
-			continue;
-		}
-		if( z[0] == '$' && &z[1] < zEnd
-		 && (z[1] == '{' || z[1] >= 0x80 || SyisAlpha(z[1]) || z[1] == '_') ){
-			return 1;
-		}
-		if( z[0] == '{' && &z[1] < zEnd && z[1] == '$' ){
-			return 1;
-		}
-		z++;
-	}
-	return 0;
-}
 /*
  * Rebuild the `<<<LABEL` marker of a heredoc/nowdoc token from the source the
  * token's BODY points into: the header always sits immediately above it. Answers

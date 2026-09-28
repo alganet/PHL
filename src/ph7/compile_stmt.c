@@ -297,6 +297,18 @@ static sxi32 GenStateLoopJumpOp(ph7_gen_state *pGen,GenBlock *pLoop,sxi32 *piP1,
  * php compile-rejects a `break`/`continue`/`goto` that leaves a `finally` body (a
  * `return` is fine). One wording, one place, for all three statements.
  */
+/* Whether the cursor has run past the LAST token of a chunk that met the end of
+ * the FILE -- the shared end-of-input question, asked here by the three statements
+ * that would otherwise report a complaint of their own first. */
+static int GenStateAtChunkEofStmt(ph7_gen_state *pGen)
+{
+	SyToken *pBase;
+	if( !pGen->bChunkAtEof || pGen->pTokenSet == 0 ){
+		return 0;
+	}
+	pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+	return pGen->pIn >= &pBase[SySetUsed(pGen->pTokenSet)];
+}
 PH7_PRIVATE sxi32 GenStateJumpOutOfFinally(ph7_gen_state *pGen,sxu32 nLine)
 {
 	return PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
@@ -432,6 +444,13 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 	}else if( rc != SXRET_OK ){
 		return SXRET_OK; /* Refused and reported */
 	}
+	if( pGen->pIn >= pGen->pEnd && GenStateAtChunkEofStmt(pGen) ){
+		/* php's parser wants the semicolon before it ever asks where the jump
+		 * lands, so a `continue` that ends the FILE is its parse error and not a
+		 * sentence about the loop this one is not in. */
+		rc = PH7_GenSyntaxError(&(*pGen),0,"\";\"");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+	}
 	iLevel = iRawLevel < 2 ? 0 : iRawLevel;
 	/* Point to the target loop */
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
@@ -516,6 +535,12 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}else if( rc != SXRET_OK ){
 		return SXRET_OK; /* Refused and reported */
+	}
+	if( pGen->pIn >= pGen->pEnd && GenStateAtChunkEofStmt(pGen) ){
+		/* As for `continue` above: the missing semicolon is what php's parser meets
+		 * first, before it can ask which loop this breaks out of. */
+		rc = PH7_GenSyntaxError(&(*pGen),0,"\";\"");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
 	}
 	iLevel = iRawLevel < 2 ? 0 : iRawLevel;
 	/* Extract the target loop */
@@ -3341,7 +3366,14 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 	 * now delimits the comma-separated directive list. */
 	pGen->pIn = &pBodyEnd[1];
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_OCB/*'{'*/)) == 0 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"declare: Expecting ';' or '{' after directive");
+		if( pGen->pIn >= pGen->pEnd && GenStateAtChunkEofStmt(pGen) ){
+			/* Ran out of input: php's parser has an unfinished statement and names
+			 * that, not a sentence about `declare` (the shared end-of-input check
+			 * in compile.c words every other statement the same way). */
+			rc = PH7_GenSyntaxError(&(*pGen),0,0);
+		}else{
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"declare: Expecting ';' or '{' after directive");
+		}
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}

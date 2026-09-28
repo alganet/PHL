@@ -857,6 +857,10 @@ struct ph7_gen_state
 	SySet   *pTokenSet;  /* Token containers */
 	sxi8 bStrictTypes;       /* Current file's strict_types mode (0 = weak/unset, 1 = strict) */
 	sxi8 bStrictTypesLocked; /* 1 once the current file has emitted any non-declare top-level statement */
+	sxi8 bChunkAtEof;        /* 1 when the PHP chunk being compiled ran into the end of the
+	                          * FILE rather than being closed by a `?>`. php reads the closing
+	                          * tag as a statement terminator, so only this chunk can leave one
+	                          * unfinished -- and that is a parse error there. */
 	sxi8 bListSrcNotRef;     /* 1 while compiling the TARGET list of an assignment whose SOURCE
 	                          * cannot hold a reference (`[&$r] = [7];`). php checks this at
 	                          * compile time, where it still knows what the right-hand side was
@@ -3672,6 +3676,10 @@ enum ph7_expr_id {
                                       * of an expression STATEMENT or of a `for` clause, so anywhere
                                       * else it stays an unrecognized token and the parser reports
                                       * php's `unexpected token "(void)"`. */
+#define PH7_TK_UNTERM    0x10000000 /* The lexeme ran into the END OF THE INPUT without its closing
+                                     * delimiter: an unterminated quote, heredoc or block comment.
+                                     * php refuses each of those; this engine used to consume them
+                                     * up to EOF and run the program. */
 #define PH7_TK_MEMBER_NAME 0x4000000 /* Reserved word used as a member NAME right after -> / ?-> / ::
                                       * (Enum::Null, C::Array, $o->list()): a plain identifier, never
                                       * the literal value — GenStateLoadLiteral skips its value conversion. */
