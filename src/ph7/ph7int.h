@@ -4950,6 +4950,11 @@ PH7_PRIVATE int PH7_VmExtOfIni(const char *zName,int nName);
 PH7_PRIVATE int PH7_VmExtWalk(int iExt,int iKind,int (*xVisit)(const char *,int,void *),void *pData);
 PH7_PRIVATE int PH7_VmInternalNameExists(ph7_vm *pVm,int iKind,const char *zName,int nName);
 PH7_PRIVATE int PH7_VmExtWalkDep(int iExt,int (*xVisit)(const char *,const char *,void *),void *pData);
+#define PH7_EXT_CORE 0        /* the engine itself; every other id is vm_extension_names.h's */
+#define PH7_EXT_MAX  64        /* a caller's per-extension scratch bound; the table is far under it */
+PH7_PRIVATE int PH7_VmExtHasName(int iKind,const char *zName,int nName);
+PH7_PRIVATE int PH7_VmExtensionCount(void);
+PH7_PRIVATE int PH7_VmExtensionAvailable(int iExt);
 PH7_PRIVATE int vm_builtin_get_extension_funcs(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_print(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg);

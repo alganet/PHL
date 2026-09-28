@@ -625,13 +625,44 @@ static sxi32 VmConstDumpEntry(ph7_value *pTarget,SyHashEntry *pEntry)
  * Returns
  *  The constants currently defined, name => value.
  */
+/*
+ * One category of get_defined_constants(true): the constants ONE extension
+ * registers that this build actually has, expanded in php's own registration
+ * order. Answers 0 while it is filling; a raising initializer stops the walk
+ * the way the flat pass does.
+ */
+typedef struct VmConstBucket VmConstBucket;
+struct VmConstBucket {
+	ph7_vm *pVm;
+	ph7_value *pOut;
+	sxi32 rc;
+};
+static int VmConstBucketStep(const char *zName,int nName,void *pData)
+{
+	VmConstBucket *p = (VmConstBucket *)pData;
+	SyHashEntry *pEntry;
+	if( !PH7_VmInternalNameExists(p->pVm,PH7_EXT_KIND_CONST,zName,nName) ){
+		return 0;
+	}
+	pEntry = SyHashGet(&p->pVm->hConstant,(const void *)zName,(sxu32)nName);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	p->rc = VmConstDumpEntry(p->pOut,pEntry);
+	return p->rc == SXRET_OK ? 0 : 1;
+}
 PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value *pArray,*pAll,*pUser = 0;
+	ph7_value *apBucket[PH7_EXT_MAX];   /* one per extension; filled below when categorizing */
 	SySet aSnap;
 	SyHashEntry **apEntry;
 	sxu32 n,nSnap;
+	int iExt,nExt = 0;
 	int bCategorize = nArg > 0 && ph7_value_to_bool(apArg[0]);
+	for( iExt = 0 ; iExt < PH7_EXT_MAX ; ++iExt ){
+		apBucket[iExt] = 0;
+	}
 	/* Create the array first*/
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
@@ -641,11 +672,41 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 	}
 	pAll = pArray;
 	if( bCategorize ){
-		pAll = ph7_context_new_array(pCtx);
+		/* php's categories are the extensions, in the order get_loaded_extensions()
+		 * lists them and each in its OWN registration order, with `user` last --
+		 * and php OMITS a category with nothing in it. Before this engine had an
+		 * extension partition all 1314 answers sat under a single `Core`.
+		 *
+		 * The per-extension pass runs first so that each bucket is in php's
+		 * order; the table walk that follows only has to place what the
+		 * partition has no row for, which rides with Core. */
+		nExt = PH7_VmExtensionCount();
+		if( nExt > PH7_EXT_MAX ){
+			nExt = PH7_EXT_MAX;
+		}
+		for( iExt = 0 ; iExt < nExt ; ++iExt ){
+			apBucket[iExt] = PH7_VmExtensionAvailable(iExt) ? ph7_context_new_array(pCtx) : 0;
+		}
 		pUser = ph7_context_new_array(pCtx);
+		pAll = apBucket[PH7_EXT_CORE];
 		if( pAll == 0 || pUser == 0 ){
 			ph7_result_null(pCtx);
 			return SXRET_OK;
+		}
+		for( iExt = 0 ; iExt < nExt ; ++iExt ){
+			VmConstBucket sBucket;
+			if( apBucket[iExt] == 0 ){
+				continue;
+			}
+			sBucket.pVm = pCtx->pVm;
+			sBucket.pOut = apBucket[iExt];
+			sBucket.rc = SXRET_OK;
+			pCtx->pVm->bConstEnum++;
+			PH7_VmExtWalk(iExt,PH7_EXT_KIND_CONST,VmConstBucketStep,&sBucket);
+			pCtx->pVm->bConstEnum--;
+			if( sBucket.rc != SXRET_OK ){
+				return sBucket.rc;
+			}
 		}
 	}
 	/* Snapshot the table, then expand: expanding runs user code, which may
@@ -660,7 +721,13 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 	pCtx->pVm->bConstEnum++;
 	for( n = 0 ; n < nSnap ; ++n ){
 		ph7_constant *pCons = (ph7_constant *)apEntry[n]->pUserData;
-		sxi32 rcExp = VmConstDumpEntry(pUser && pCons->bUserDefined ? pUser : pAll,apEntry[n]);
+		sxi32 rcExp;
+		if( bCategorize && !pCons->bUserDefined
+		 && PH7_VmExtHasName(PH7_EXT_KIND_CONST,(const char *)apEntry[n]->pKey,
+				(int)apEntry[n]->nKeyLen) ){
+			continue;   /* the per-extension pass already placed it */
+		}
+		rcExp = VmConstDumpEntry(pUser && pCons->bUserDefined ? pUser : pAll,apEntry[n]);
 		if( rcExp != SXRET_OK ){
 			/* An initializer raised while being described: stop, exactly as any
 			 * other builtin does when the php it invoked did not return.
@@ -668,25 +735,20 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 			 * already been landed. */
 			pCtx->pVm->bConstEnum--;
 			SySetRelease(&aSnap);
-			if( bCategorize ){
-				ph7_context_release_value(pCtx,pAll);
-				ph7_context_release_value(pCtx,pUser);
-			}
 			return rcExp;
 		}
 	}
 	pCtx->pVm->bConstEnum--;
 	SySetRelease(&aSnap);
 	if( bCategorize ){
-		/* php's own order: the engine's buckets first, `user` last -- and php
-		 * omits a category with nothing in it, so a script that defined no
-		 * constant of its own has no `user` key at all rather than an empty one. */
-		ph7_array_add_strkey_elem(pArray,"Core",pAll);
+		for( iExt = 0 ; iExt < nExt ; ++iExt ){
+			if( apBucket[iExt] && ph7_array_count(apBucket[iExt]) > 0 ){
+				ph7_array_add_strkey_elem(pArray,PH7_VmExtensionName(iExt),apBucket[iExt]);
+			}
+		}
 		if( ph7_array_count(pUser) > 0 ){
 			ph7_array_add_strkey_elem(pArray,"user",pUser);
 		}
-		ph7_context_release_value(pCtx,pAll);
-		ph7_context_release_value(pCtx,pUser);
 	}
 	/* Return the created array */
 	ph7_result_value(pCtx,pArray);

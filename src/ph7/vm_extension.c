@@ -83,6 +83,50 @@ PH7_PRIVATE int PH7_VmExtOfIni(const char *zName,int nName)
 	return VmExtOfName(aExtIni,SX_ARRAYSIZE(aExtIni),zName,nName,0);
 }
 /*
+ * Does the partition carry a ROW for this name? A caller that walks the engine's
+ * own table rather than this one needs to tell "belongs to Core" from "the
+ * partition has never heard of it", so that a name added to the engine after the
+ * table was derived is still reported somewhere instead of silently vanishing.
+ */
+PH7_PRIVATE int PH7_VmExtHasName(int iKind,const char *zName,int nName)
+{
+	const VmExtName *aRow;
+	sxu32 n,nRow;
+	int bFold;
+	switch( iKind ){
+		case PH7_EXT_KIND_CLASS: aRow = aExtClass; nRow = SX_ARRAYSIZE(aExtClass); bFold = 1; break;
+		case PH7_EXT_KIND_CONST: aRow = aExtConst; nRow = SX_ARRAYSIZE(aExtConst); bFold = 0; break;
+		case PH7_EXT_KIND_INI:   aRow = aExtIni;   nRow = SX_ARRAYSIZE(aExtIni);   bFold = 0; break;
+		default:                 aRow = aExtFunc;  nRow = SX_ARRAYSIZE(aExtFunc);  bFold = 1; break;
+	}
+	if( nName < 1 ){
+		return 0;
+	}
+	for( n = 0 ; n < nRow ; ++n ){
+		const char *z = aRow[n].zName;
+		if( (int)SyStrlen(z) != nName ){
+			continue;
+		}
+		if( bFold ? (SyStrnicmp(z,zName,(sxu32)nName) == 0)
+		          : (SyMemcmp(z,zName,(sxu32)nName) == 0) ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * The number of extensions this build reports, so a caller can walk them in the
+ * order get_loaded_extensions() lists them.
+ */
+PH7_PRIVATE int PH7_VmExtensionCount(void)
+{
+	return (int)SX_ARRAYSIZE(azExtName);
+}
+PH7_PRIVATE int PH7_VmExtensionAvailable(int iExt)
+{
+	return iExt >= 0 && iExt < (int)SX_ARRAYSIZE(azExtName) && VmExtAvailable(iExt);
+}
+/*
  * Walk the names ONE extension carries, in php's own registration order --
  * which is the order `get_extension_funcs()` and every ReflectionExtension
  * listing answer in, and is not alphabetical. xVisit stops the walk when it

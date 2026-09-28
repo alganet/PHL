@@ -576,6 +576,33 @@ static int vm_builtin_ini_restore(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	IniLiveSet(pVm,pSlot,(const char *)SyBlobData(&pSlot->sGlobal),SyBlobLength(&pSlot->sGlobal));
 	return PH7_OK;
 }
+/*
+ * The extension id php's module registry would find for this name: the key it
+ * stores is the extension name FOLDED, and the lookup against it is exact.
+ */
+static int VmIniExtensionId(const char *zName,int nName)
+{
+	int iExt,n;
+	for( iExt = 0 ; iExt < PH7_VmExtensionCount() ; ++iExt ){
+		const char *zCanon;
+		if( !PH7_VmExtensionAvailable(iExt) ){
+			continue;
+		}
+		zCanon = PH7_VmExtensionName(iExt);
+		if( (int)SyStrlen(zCanon) != nName ){
+			continue;
+		}
+		for( n = 0 ; n < nName ; ++n ){
+			if( (char)SyToLower(zCanon[n]) != zName[n] ){
+				break;
+			}
+		}
+		if( n == nName ){
+			return iExt;
+		}
+	}
+	return -1;
+}
 /* array|false ini_get_all(?string $extension = null, bool $details = true) */
 static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -583,7 +610,7 @@ static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	VmIniSlot *aSlot;
 	ph7_value *pOut,*pCur;
 	const char *zExt = 0;
-	int nExt = 0, bDetails = 1;
+	int nExt = 0, bDetails = 1, iExtSel = -1;
 	sxu32 n;
 	SyBlob sVal;
 	if( IniSeed(pVm) != SXRET_OK ){
@@ -597,18 +624,15 @@ static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		bDetails = ph7_value_to_bool(apArg[1]);
 	}
 	if( zExt ){
-		/* php reports the extensions it knows; anything else is a warning + false. */
-		static const char *azKnown[] = { "Core", "session", "date", "standard",
-			"bcmath" };
-		int bKnown = 0;
-		sxu32 k;
-		for( k = 0 ; k < SX_ARRAYSIZE(azKnown) ; k++ ){
-			if( (int)SyStrlen(azKnown[k]) == nExt && SyMemcmp(azKnown[k],zExt,(sxu32)nExt) == 0 ){
-				bKnown = 1;
-				break;
-			}
-		}
-		if( !bKnown ){
+		/* php looks the name up in the MODULE REGISTRY, whose key is the extension
+		 * name folded down -- so the match is case-SENSITIVE against that key:
+		 * `core` and `spl` are found, `Core` and `SPL` are not, and every other
+		 * name is a warning and false. An extension that owns no directive is
+		 * still found and answers the EMPTY array; a `phl.stub_extensions` name
+		 * is no module and is not found. This engine used to accept five names
+		 * spelled its own way and refuse the rest. */
+		iExtSel = VmIniExtensionId(zExt,nExt);
+		if( iExtSel < 0 ){
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 				"Extension \"%.*s\" cannot be found",nExt,zExt);
 			ph7_result_bool(pCtx,0);
@@ -626,27 +650,13 @@ static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	for( n = 0 ; n < SySetUsed(&pVm->aIniTab) ; n++ ){
 		VmIniSlot *pSlot = &aSlot[n];
 		char zKey[128];
-		if( zExt ){
-			int bCore = (nExt == 4 && SyMemcmp(zExt,"Core",4) == 0)
-				|| (nExt == 8 && SyMemcmp(zExt,"standard",8) == 0);
-			if( !bCore ){
-				/* A named extension keeps only its own "<ext>." prefix. */
-				if( pSlot->sName.nByte <= (sxu32)nExt
-				 || SyMemcmp(pSlot->sName.zString,zExt,(sxu32)nExt) != 0
-				 || pSlot->sName.zString[nExt] != '.' ){
-					continue;
-				}
-			}else{
-				/* Core/standard exclude the directives owned by a named extension. */
-				if( (pSlot->sName.nByte > sizeof("session.")-1
-				  && SyMemcmp(pSlot->sName.zString,"session.",sizeof("session.")-1) == 0)
-				 || (pSlot->sName.nByte > sizeof("date.")-1
-				  && SyMemcmp(pSlot->sName.zString,"date.",sizeof("date.")-1) == 0)
-				 || (pSlot->sName.nByte > sizeof("bcmath.")-1
-				  && SyMemcmp(pSlot->sName.zString,"bcmath.",sizeof("bcmath.")-1) == 0) ){
-					continue;
-				}
-			}
+		/* A directive belongs where the extension partition puts it rather than
+		 * where its NAME points -- php's `standard` owns `session.trans_sid_tags`
+		 * and its `Core` owns none of the `session.*` ones. `core` is php's own
+		 * exception and answers EVERY directive whatever module registered it. */
+		if( iExtSel >= 0 && iExtSel != PH7_EXT_CORE
+		 && PH7_VmExtOfIni(pSlot->sName.zString,(int)pSlot->sName.nByte) != iExtSel ){
+			continue;
 		}
 		if( pSlot->sName.nByte >= sizeof(zKey) ){
 			continue;
