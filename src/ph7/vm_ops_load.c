@@ -2559,7 +2559,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					}
 				}else{
 					/* Throw a catchable Error matching PHP semantics. */
-					rcSpread = VmThrowSpreadError(&(*pVm),&pEntry[1]);
+					rcSpread = VmThrowSpreadError(&(*pVm),&pEntry[1],0);
 					break;
 				}
 			}else if( pEntry[1].iFlags & MEMOBJ_REFERENCE ){

@@ -2411,6 +2411,16 @@ static sxi32 GenStateEmitCallArgs(
 						"syntax error, unexpected token \"...\"");
 					return SXERR_SYNTAX;
 				}
+				if( seenNamed ){
+					/* The mirror of the positional-after-named rule: php refuses the
+					 * UNPACK too, and at compile time. Without it `f(x: 1, ...$a)` ran
+					 * and reported whatever the runtime binder made of the flattened
+					 * list -- a different sentence, raised too late, on a program php
+					 * never starts. */
+					rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+						"Cannot use argument unpacking after named arguments");
+					return SXERR_SYNTAX;
+				}
 			}else if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
 				seenNamed = 1;
 				hasNamed = 1;

@@ -4650,9 +4650,16 @@ case PH7_OP_SPREAD: {
 		if( pTmpMap == 0 ){ goto Abort; }
 		rcW = PH7_VmIteratorWalk(&(*pVm),pTos,VmSpreadValuesStep,pTmpMap);
 		if( rcW == PH7_EXCEPTION || rcW == PH7_ABORT ){
+			sxi32 rcRoute = SXRET_OK; /* the throw already happened; route, do not re-raise */
 			PH7_HashmapRelease(pTmpMap,TRUE);
 			if( rcW == PH7_ABORT ){ goto Abort; }
-			goto Exception;
+			/* A bare `goto Exception` unwinds the whole invocation, which is right at a
+			 * CALL boundary and wrong here: an argument list is mid-expression, so a
+			 * try/catch around the call catches this and execution must RESUME after
+			 * the catch. It did not — the catch ran and every statement after it was
+			 * dropped, exit 0 (a throwing rewind()/key() in `f(...$it)` showed it long
+			 * before the key screen made the path ordinary). */
+			PH7_THROW_ROUTE_MIDEXPR(rcRoute)
 		}
 		/* Grow the operand stack if this expansion would overflow it (no longer a
 		 * VM_STACK_GUARD cap). On OOM keep the old buffer and leave the source as a
@@ -4679,9 +4686,22 @@ case PH7_OP_SPREAD: {
 			break;
 		}
 		VmSpreadExpandMap(pVm, &pTos, pMap, pInstr->iP1 != 0);
+		break;
 	}
-	/* else: not an array — leave as-is (single arg) */
-	break;
+	/* Neither an array nor a Traversable: php refuses the unpack rather than
+	 * passing the value as one ordinary argument, which is what this used to do —
+	 * `f(...'str')` bound "str" to the first parameter and `new C(...null)` bound
+	 * null, silently, on source php will not run. The argument site's class is
+	 * TypeError for every type (the array-literal site keeps php's plain Error for
+	 * a scalar). */
+	{
+		sxi32 rcBad = VmThrowSpreadError(&(*pVm),pTos,1);
+		sxi32 rcRoute = SXRET_OK;
+		if( rcBad == PH7_ABORT || rcBad == SXERR_ABORT ){
+			goto Abort;
+		}
+		PH7_THROW_ROUTE_MIDEXPR(rcRoute)
+	}
 }
 /*
  * OP_FLAG_SPREAD: * * *

@@ -5296,22 +5296,99 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		}
 	}
 	/* Emit the instantiation. OP_NEW expects the class name on the stack top
-	 * with the constructor arguments beneath it, so push the args first. */
+	 * with the constructor arguments beneath it, so push the args first.
+	 *
+	 * This argument list is compiled from RAW TOKENS rather than through the
+	 * expression parser's argument machinery (the class body sits between the
+	 * parentheses and the rest of the expression), so the two forms that machinery
+	 * recognizes have to be recognized here too — `...$args` and `name: $v`. They
+	 * were not: a spread was compiled as one ordinary argument, so
+	 * `new class(...$a) {}` passed the ARRAY where php passes its elements, and a
+	 * named argument was a `Syntax error: Unexpected token ':'` on source php
+	 * compiles. */
 	nArg = 0;
+	{
+	SySet aArgName;              /* one SyString per argument; {0,0} == positional */
+	int hasNamed = 0, hasSpread = 0;
+	void *p3;
+	SySetInit(&aArgName,&pGen->pVm->sAllocator,sizeof(SyString));
 	if( pArgStart < pArgEnd ){
 		SyToken *pSavedIn = pGen->pIn;
 		SyToken *pSavedEnd = pGen->pEnd;
 		SyToken *pArgNext;
+		const char *zOrder = 0;   /* set when this argument's POSITION or shape is refused */
+		SyString sOrderName;      /* nByte > 0: zOrder is a `'%z:'` format, E_PARSE */
+		SyZero(&sOrderName,sizeof(sOrderName));
 		pGen->pIn = pArgStart;
 		pGen->pEnd = pArgEnd;
 		while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pArgNext) ){
-			if( pGen->pIn < pArgNext ){
-				rc = GenStateCompileArrayEntry(pGen,pGen->pIn,pArgNext,EXPR_FLAG_RDONLY_LOAD,0);
+			SyToken *pArgIn = pGen->pIn;
+			SyString sArgName;
+			int bSpread = 0;
+			SyZero(&sArgName,sizeof(sArgName));
+			if( pArgIn < pArgNext && (pArgIn->nType & PH7_TK_ELLIPSIS) ){
+				bSpread = 1;
+				pArgIn++;
+				if( hasNamed ){
+					zOrder = "Cannot use argument unpacking after named arguments";
+				}
+			}else if( &pArgIn[1] < pArgNext
+			 && (pArgIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD))
+			 && (pArgIn[1].nType & PH7_TK_COLON) ){
+				/* `name: value`. php accepts a reserved word as a parameter name, and
+				 * `::` lexes as its own operator, so an ID/KEYWORD followed by a SINGLE
+				 * colon at the head of an argument can only be this. */
+				sArgName = pArgIn->sData;
+				hasNamed = 1;
+				pArgIn += 2;
+				if( pArgIn >= pArgNext ){
+					/* `new class(a:) {}` — a name with no value. Spelled exactly as the
+					 * ordinary argument path spells it (php names the token that stopped
+					 * it instead; that wording gap belongs to the parse-error family and
+					 * is now one gap in both places rather than silence in this one). */
+					zOrder = "syntax error, expected expression after named argument '%z:'";
+					sOrderName = sArgName;
+				}else if( pArgIn->nType & PH7_TK_ELLIPSIS ){
+					zOrder = "syntax error, unexpected token \"...\"";
+				}
+			}else if( hasNamed ){
+				zOrder = "Cannot use positional argument after named argument";
+			}else if( hasSpread ){
+				zOrder = "Cannot use positional argument after argument unpacking";
+			}
+			if( zOrder ){
+				/* The same four rules the ordinary call path enforces at COMPILE time
+				 * (GenStateEmitCallArgs); an anonymous class's list is parsed here and
+				 * so had none of them. */
+				sxu32 nErrLine = pArgNext > pArgStart ? pArgNext[-1].nLine : nLine;
+				pGen->pIn = pSavedIn;
+				pGen->pEnd = pSavedEnd;
+				SySetRelease(&aArgName);
+				if( sOrderName.nByte > 0 ){
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,nErrLine,zOrder,&sOrderName);
+				}else{
+					rc = PH7_GenCompileError(&(*pGen),E_ERROR,nErrLine,"%s",zOrder);
+				}
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+			}
+			if( pArgIn < pArgNext ){
+				rc = GenStateCompileArrayEntry(pGen,pArgIn,pArgNext,EXPR_FLAG_RDONLY_LOAD,0);
 				if( rc == SXERR_ABORT ){
 					pGen->pIn = pSavedIn;
 					pGen->pEnd = pSavedEnd;
+					SySetRelease(&aArgName);
 					return SXERR_ABORT;
 				}
+				if( bSpread ){
+					/* iP1 marks a source php unpacks BY REFERENCE: only a plain
+					 * `$var`, which is exactly two tokens here. */
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_SPREAD,
+						(&pArgIn[2] == pArgNext && (pArgIn->nType & PH7_TK_DOLLAR)
+						 && (pArgIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD))) ? 1 : 0,
+						0,0,0);
+					hasSpread = 1;
+				}
+				SySetPut(&aArgName,(const void *)&sArgName);
 				nArg++;
 			}
 			pGen->pIn = &pArgNext[1];
@@ -5323,12 +5400,48 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
 	if( pObj == 0 ){
 		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+		SySetRelease(&aArgName);
 		return SXERR_ABORT;
 	}
 	PH7_MemObjInitFromString(pGen->pVm,pObj,&sName);
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-	/* Instantiate: pops the name + nArg arguments, runs __construct */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_NEW,nArg,0,GenStateAttachStrictFlag(pGen,0),0);
+	/* The names ride on the instruction as a VmCallArgMap, deep-copied out of the
+	 * token stream (which is freed before the code runs) exactly as the ordinary
+	 * call path copies them. */
+	p3 = 0;
+	if( hasNamed ){
+		SyString *aName = (SyString *)SySetBasePtr(&aArgName);
+		sxu32 n, nStrBytes = 0;
+		for( n = 0 ; n < (sxu32)nArg ; ++n ){
+			nStrBytes += aName[n].nByte;
+		}
+		{
+		sxu32 mapSize = sizeof(VmCallArgMap) + (sxu32)nArg * sizeof(SyString) + nStrBytes;
+		VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(&pGen->pVm->sAllocator,mapSize);
+		if( pMap ){
+			char *zBuf;
+			SyZero(pMap,mapSize);
+			pMap->bHasNamed = 1;
+			pMap->nTotal = (sxu32)nArg;
+			pMap->aNames = (SyString *)&pMap[1];
+			zBuf = (char *)&pMap->aNames[nArg];
+			for( n = 0 ; n < (sxu32)nArg ; ++n ){
+				if( aName[n].nByte > 0 ){
+					SyMemcpy(aName[n].zString,zBuf,aName[n].nByte);
+					SyStringInitFromBuf(&pMap->aNames[n],zBuf,aName[n].nByte);
+					zBuf += aName[n].nByte;
+				}
+			}
+			p3 = (void *)pMap;
+		}
+		}
+	}
+	SySetRelease(&aArgName);
+	/* Instantiate: pops the name + nArg arguments, runs __construct. iP2 is the
+	 * spread flag the effective-argument-map builder keys on. */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_NEW,nArg,hasSpread ? 1 : 0,
+		GenStateAttachStrictFlag(pGen,p3),0);
+	}
 	return SXRET_OK;
 }
 /*

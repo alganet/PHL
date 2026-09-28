@@ -3607,12 +3607,16 @@ PH7_PRIVATE const char * VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
 	return ph7_type_name(pVal);
 }
 /*
- * Throw a PHP-compatible Error when array unpacking ('...$expr') receives a
- * non-array value at runtime. Matches the message and class PHP raises
- * ("Only arrays and Traversables can be unpacked, X given"). The class is
- * \TypeError for objects, \Error otherwise — matching PHP's distinction.
+ * Throw a PHP-compatible Error when unpacking ('...$expr') receives something
+ * that is neither an array nor a Traversable. Matches the message and class PHP
+ * raises ("Only arrays and Traversables can be unpacked, X given").
+ *
+ * php picks the class from BOTH the value and the site: an ARRAY-literal unpack
+ * (`[...$x]`) is \TypeError for an object and plain \Error for every scalar,
+ * while an ARGUMENT unpack (`f(...$x)`, `new C(...$x)`) is \TypeError for all of
+ * them — bArgUnpack says which site is asking.
  */
-PH7_PRIVATE sxi32 VmThrowSpreadError(ph7_vm *pVm,ph7_value *pBad)
+PH7_PRIVATE sxi32 VmThrowSpreadError(ph7_vm *pVm,ph7_value *pBad,int bArgUnpack)
 {
 	ph7_class *pClass;
 	ph7_class_instance *pThis;
@@ -3623,7 +3627,7 @@ PH7_PRIVATE sxi32 VmThrowSpreadError(ph7_vm *pVm,ph7_value *pBad)
 	SyString sMsgStr;
 	VmFrame *pFrame;
 	sxi32 rc;
-	const char *zErrClass = (pBad->iFlags & MEMOBJ_OBJ) ? "TypeError" : "Error";
+	const char *zErrClass = (bArgUnpack || (pBad->iFlags & MEMOBJ_OBJ)) ? "TypeError" : "Error";
 	char zNameBuf[64];
 	const char *zGiven = VmValueGivenName(pBad,zNameBuf,sizeof(zNameBuf));
 	pClass = PH7_VmExtractClass(&(*pVm),zErrClass,SyStrlen(zErrClass),TRUE,0);
