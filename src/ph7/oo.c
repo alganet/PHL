@@ -3197,18 +3197,30 @@ static void OoDumpPropKey(SyBlob *pOut,ph7_class_instance *pThis,ph7_class_attr 
 	SyBlobAppend(&(*pOut),ShowType ? "]=>" : "] => ",ShowType ? 3 : 5);
 }
 /*
- * Does var_dump's `&` belong on this property? php prints it for a property whose
- * value IS a reference -- either end of the bind, `$o->p =& $x` and `$r =& $o->p`
- * alike -- and the array renderer asks exactly the same question of an element
- * (PH7_HashmapNodeIsRef). A property differs only in the threshold: the property
- * itself is not always one of the holders the reference table names -- a DECLARED
- * property holds nothing, a dynamic or re-created one holds a permanent pin, and a
- * bound one holds a counted pin -- so the threshold is that one hold rather than
- * the element renderer's flat two. print_r never marks one, in either container.
+ * Is this property's value a REFERENCE? -- php's `Z_ISREF_P`, asked of a property.
+ *
+ * Two things turn on it. var_dump prints `&` for a property that IS one -- either end
+ * of the bind, `$o->p =& $x` and `$r =& $o->p` alike -- exactly as the array renderer
+ * marks an element something else holds (PH7_HashmapNodeIsRef). A property differs
+ * only in the THRESHOLD: the property itself is not always one of the holders the
+ * reference table names -- a DECLARED property holds nothing, a dynamic or re-created
+ * one holds a permanent pin, and a bound one holds a counted pin -- so the threshold
+ * is that one hold rather than the element renderer's flat two. print_r marks nothing,
+ * in either container.
+ *
+ * The second is what an ARRAY built out of the property table carries:
+ * `get_object_vars()`, the `(array)` cast, `get_mangled_object_vars()` and the SPL
+ * storage built from an object hand out the property's own SLOT for a property that
+ * is a reference, so a write through the element reaches the object. Everything else
+ * stays the copy it has always been.
  */
-static int OoAttrIsRef(ph7_class_instance *pThis,VmClassAttr *pVmAttr)
+PH7_PRIVATE int PH7_ClassAttrIsRef(ph7_class_instance *pThis,VmClassAttr *pVmAttr)
 {
-	sxu32 nSelf = PH7_VmSlotSelfPinned(pThis->pVm,pVmAttr->nIdx) ? 1 : 0;
+	sxu32 nSelf;
+	if( pVmAttr == 0 || pVmAttr->nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	nSelf = PH7_VmSlotSelfPinned(pThis->pVm,pVmAttr->nIdx) ? 1 : 0;
 	return PH7_VmSlotHolderCount(pThis->pVm,pVmAttr->nIdx) > nSelf;
 }
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth)
@@ -3372,7 +3384,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 				OoDumpPropKey(&(*pOut),pThis,pVmAttr->pAttr,TRUE);
 				SyBlobAppend(&(*pOut),"\n",sizeof(char));
 				rc = PH7_MemObjDump(&(*pOut),pValue,TRUE,nTab+2,nDepth,
-					OoAttrIsRef(pThis,pVmAttr));
+					PH7_ClassAttrIsRef(pThis,pVmAttr));
 				if( rc == SXERR_LIMIT ){
 					break;
 				}
@@ -3666,7 +3678,16 @@ static sxi32 ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pM
 					continue;
 				}
 			}
-			PH7_HashmapInsert(pMap,&sName,pValue);
+			if( PH7_ClassAttrIsRef(pThis,pAttr) ){
+				/* php hands out the property's own REFERENCE, not a copy of what it
+				 * holds: `$v = (array)$o; $v['p'] = 9;` reaches the object when `p` is
+				 * a reference, and `var_dump()` marks the element `&` in both places.
+				 * Only a property that IS one -- something else names its slot -- and
+				 * never the ordinary copy every other element still takes. */
+				PH7_HashmapInsertByRef(pMap,&sName,pAttr->nIdx);
+			}else{
+				PH7_HashmapInsert(pMap,&sName,pValue);
+			}
 			/* Reset the string cursor */
 			SyBlobReset(&sName.sBlob);
 		}

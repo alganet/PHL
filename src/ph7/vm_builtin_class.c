@@ -1615,7 +1615,17 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 					/* Insert attribute name in the array -- php unmangles it. */
 					ph7_value_string(pName,SyStringData(&pVmAttr->pAttr->sName),
 						(int)SyStringLength(&pVmAttr->pAttr->sName));
-					ph7_array_add_elem(pArray,pName,pValue); /* Will make it's own copy */
+					if( rcHk == SXERR_NOTFOUND
+					 && PH7_ClassAttrIsRef(pThis,pVmAttr) ){
+						/* php hands out the property's own REFERENCE for a property that
+						 * IS one, so a write through the returned element reaches the
+						 * object. A HOOK's answer is a computed value with no slot behind
+						 * it and stays a copy. */
+						PH7_HashmapInsertByRef((ph7_hashmap *)pArray->x.pOther,
+							pName,pVmAttr->nIdx);
+					}else{
+						ph7_array_add_elem(pArray,pName,pValue); /* Will make it's own copy */
+					}
 				}
 				PH7_MemObjRelease(&sHookVal);
 				/* Reset the cursor */

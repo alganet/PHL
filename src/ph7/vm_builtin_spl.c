@@ -859,7 +859,13 @@ static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,
 				continue;
 			}
 			PH7_MemObjInitFromString(pVm,&sKey,&pVmAttr->pAttr->sName);
-			PH7_HashmapInsert(pMap,&sKey,pVal);
+			if( PH7_ClassAttrIsRef(pObj,pVmAttr) ){
+				/* A property that IS a reference is handed out AS one, the way every
+				 * other array built out of a property table hands it out. */
+				PH7_HashmapInsertByRef(pMap,&sKey,pVmAttr->nIdx);
+			}else{
+				PH7_HashmapInsert(pMap,&sKey,pVal);
+			}
 			PH7_MemObjRelease(&sKey);
 		}
 		pSlot->x.pOther = pMap;
