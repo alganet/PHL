@@ -144,6 +144,12 @@ typedef struct http_private http_private;
 struct http_private
 {
 	ph7_vm *pVm;
+	phl_stream_ctx *pCtx; /* the context this exchange runs under, for its
+	                       * `notification` callback; owned by the VM, so it
+	                       * outlives the handle */
+	sxu8 bBody;           /* the headers are done: reads now carry the BODY */
+	sxu8 bNoFill;         /* the DRAIN below: decode what is in hand, read nothing */
+	sxi64 iFileSize;      /* the `Content-Length` this response announced, or 0 */
 	ph7_socket sock;      /* the connection the response is still arriving on */
 	SyBlob sRaw;          /* bytes read off the socket and not yet consumed */
 	sxu32 nRawOfft;       /* read cursor inside sRaw */
@@ -199,6 +205,11 @@ static int HttpFill(http_private *pH)
 	n = PH7_NetRecv(pH->sock,zBuf,(int)sizeof(zBuf),0);
 	if( n == 0 ){
 		pH->bEof = 1;
+		/* php's notify_completed is not gated on the progress counter: a read
+		 * that comes back with nothing ENDS the transfer whether or not a
+		 * wrapper ever announced a size, which is why a connection that closes
+		 * where a status line was due reports it before the failure. */
+		PH7_StreamCtxCompleted(pH->pCtx);
 		return 0;
 	}
 	if( n < 0 ){
@@ -210,6 +221,13 @@ static int HttpFill(http_private *pH)
 	HttpCompact(&pH->sRaw,&pH->nRawOfft);
 	if( SyBlobAppend(&pH->sRaw,zBuf,(sxu32)n) != SXRET_OK ){
 		return -1;
+	}
+	if( !(pH->bBody && pH->bChunked) ){
+		/* php counts what the STREAM moved, and for a chunked body that is
+		 * what came out of the dechunk filter rather than what went in -- so
+		 * the framing bytes are counted here while the headers are being read
+		 * and by the decoder itself once the body starts. */
+		PH7_StreamCtxProgressAdd(pH->pCtx,(sxi64)n);
 	}
 	return 1;
 }
@@ -252,6 +270,12 @@ static int HttpReadLine(http_private *pH,SyBlob *pLine,int *pnTerm)
 				return 1;
 			}
 		}
+		if( pH->bNoFill ){
+			/* Mid-DRAIN: only what is already in hand may be read, and a line
+			 * with no terminator yet is not a line -- it stays where it is for
+			 * the read that will have the rest of it. */
+			return 0;
+		}
 		if( HttpFill(pH) < 1 ){
 			/* No terminator will ever arrive. Whatever is buffered is the last
 			 * line, which is what makes php report a bodiless reply's first
@@ -267,15 +291,21 @@ static int HttpReadLine(http_private *pH,SyBlob *pLine,int *pnTerm)
 	}
 }
 /*
- * Pump the chunk decoder until sOut can serve nWant bytes or the body ends.
- * php applies its `dechunk` filter for this, so a chunk EXTENSION (`3;ext=1`)
- * and the trailer headers after the final chunk are consumed and never seen.
+ * Decode as much of the chunked body as the bytes ALREADY READ allow, never
+ * touching the socket, and answer how many bytes came out. This is php's
+ * `dechunk` FILTER: it runs over whatever the buffer holds, all of it, and
+ * what it produced is one batch -- which is why the progress counter moves
+ * once per socket read rather than once per chunk. A chunk EXTENSION
+ * (`3;ext=1`) and the trailer headers after the final chunk are consumed here
+ * and never seen.
  */
-static void HttpPumpChunks(http_private *pH,sxu32 nWant)
+static sxu32 HttpDecodeBuffered(http_private *pH)
 {
 	SyBlob sLine;
+	sxu32 nDone = 0;
 	SyBlobInit(&sLine,&pH->pVm->sAllocator);
-	while( !pH->bChunkDone && SyBlobLength(&pH->sOut) - pH->nOutOfft < nWant ){
+	pH->bNoFill = 1;
+	while( !pH->bChunkDone ){
 		if( pH->iChunkLeft < 0 ){
 			/* UNSIGNED on purpose: a size line is whatever bytes arrived, and a
 			 * hundred hex digits of it must wrap rather than overflow a signed
@@ -286,7 +316,8 @@ static void HttpPumpChunks(http_private *pH,sxu32 nWant)
 			const char *zLine;
 			sxu32 nLine,i;
 			if( HttpReadLine(pH,&sLine,0) == 0 ){
-				pH->bChunkDone = 1;
+				/* Only a partial size line, and nothing may be read to finish
+				 * it: this batch is over, but the BODY is not. */
 				break;
 			}
 			zLine = (const char *)SyBlobData(&sLine);
@@ -321,9 +352,8 @@ static void HttpPumpChunks(http_private *pH,sxu32 nWant)
 			}
 			pH->iChunkLeft = (sxi64)iSize;
 		}
-		if( HttpRawLeft(pH) == 0 && HttpFill(pH) < 1 ){
-			pH->bChunkDone = 1;
-			break;
+		if( HttpRawLeft(pH) == 0 ){
+			break; /* the chunk is owed bytes that have not arrived yet */
 		}
 		{
 			sxu32 nHave = HttpRawLeft(pH);
@@ -333,12 +363,50 @@ static void HttpPumpChunks(http_private *pH,sxu32 nWant)
 				&((const char *)SyBlobData(&pH->sRaw))[pH->nRawOfft],nTake);
 			pH->nRawOfft += nTake;
 			pH->iChunkLeft -= nTake;
+			nDone += nTake;
 			if( pH->iChunkLeft == 0 ){
 				pH->iChunkLeft = -1;
 			}
 		}
 	}
+	pH->bNoFill = 0;
 	SyBlobRelease(&sLine);
+	return nDone;
+}
+/*
+ * Pump the decoder until sOut can serve nWant bytes or the body ends, reading
+ * the socket when it must -- and reporting each read's decoded output as php's
+ * stream layer does, once per read.
+ */
+static void HttpPumpChunks(http_private *pH,sxu32 nWant)
+{
+	for(;;){
+		sxu32 nDec = HttpDecodeBuffered(pH);
+		if( nDec > 0 ){
+			PH7_StreamCtxProgressAdd(pH->pCtx,(sxi64)nDec);
+		}
+		if( pH->bChunkDone || SyBlobLength(&pH->sOut) - pH->nOutOfft >= nWant ){
+			break;
+		}
+		if( HttpFill(pH) < 1 ){
+			pH->bChunkDone = 1;
+			break;
+		}
+	}
+}
+/*
+ * What a reader could take right now -- php's `writepos - readpos`, the bytes
+ * its stream buffer is holding. A wrapper frame CREDITS this to the progress
+ * counter the moment it arms one, which is why a body that arrived in the same
+ * recv() as its headers is reported before anything has read a byte.
+ */
+static sxi64 HttpBuffered(http_private *pH)
+{
+	if( pH->bChunked ){
+		return (sxi64)(SyBlobLength(&pH->sOut) > pH->nOutOfft
+			? SyBlobLength(&pH->sOut) - pH->nOutOfft : 0);
+	}
+	return (sxi64)HttpRawLeft(pH);
 }
 /* ------------------------------------------------------------------------- */
 /* The request                                                                 */
@@ -708,6 +776,64 @@ static void HttpResolveLocation(SyhttpUri *pUri,const char *zLoc,sxu32 nLoc,SyBl
 		SyBlobAppend(pOut,zLoc,nLoc);
 	}
 }
+/* Is this header line the named one? The name carries its own colon. */
+static int HttpHeaderIs(const char *zLine,sxu32 nLine,const char *zName,sxu32 nName)
+{
+	return nLine >= nName && SyStrnicmp(zLine,zName,nName) == 0;
+}
+/*
+ * The two headers php reports to a context's `notification` callback, told
+ * apart by what each one SENDS: `Content-Type` sends its VALUE with the blanks
+ * after the colon skipped, and `Content-Length` sends the whole LINE with the
+ * size beside it. The size is announced only when the value is a plain run of
+ * DIGITS -- `+5`, `2x` and an empty one are no announcement at all, where `007`
+ * is seven -- and a run too wide for the clock saturates rather than wrapping.
+ */
+static void HttpNotifyHeader(http_private *pH,const char *zLine,sxu32 nLine)
+{
+	sxu32 i;
+	if( HttpHeaderIs(zLine,nLine,"Content-Type:",sizeof("Content-Type:")-1) ){
+		i = sizeof("Content-Type:")-1;
+		while( i < nLine && (zLine[i] == ' ' || zLine[i] == '\t') ){
+			i++;
+		}
+		PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_MIME_TYPE_IS,
+			PHL_STREAM_NOTIFY_SEVERITY_INFO,&zLine[i],(int)(nLine - i),0,0,0);
+		return;
+	}
+	if( HttpHeaderIs(zLine,nLine,"Content-Length:",sizeof("Content-Length:")-1) ){
+		sxu64 iSize = 0;
+		sxu32 nDigit = 0;
+		int bOver = 0;
+		i = sizeof("Content-Length:")-1;
+		while( i < nLine && (zLine[i] == ' ' || zLine[i] == '\t') ){
+			i++;
+		}
+		for( ; i < nLine ; ++i ){
+			if( zLine[i] < '0' || zLine[i] > '9' ){
+				return; /* not a size php would announce */
+			}
+			if( !bOver && iSize <= ((sxu64)SXI64_HIGH - (sxu64)(zLine[i] - '0')) / 10 ){
+				iSize = iSize * 10 + (sxu64)(zLine[i] - '0');
+			}else{
+				/* php reads this one with strtol, which SATURATES: a run too
+				 * wide for the clock is the ceiling itself, not a wrap and not
+				 * a refusal. */
+				bOver = 1;
+			}
+			nDigit++;
+		}
+		if( nDigit < 1 ){
+			return;
+		}
+		if( bOver ){
+			iSize = (sxu64)SXI64_HIGH;
+		}
+		pH->iFileSize = (sxi64)iSize;
+		PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_FILE_SIZE_IS,
+			PHL_STREAM_NOTIFY_SEVERITY_INFO,zLine,(int)nLine,0,0,(sxi64)iSize);
+	}
+}
 /*
  * Read one whole response: its status line, its header block, and whatever of
  * the body arrived with them.
@@ -722,13 +848,14 @@ static int HttpReadResponse(http_private *pH,SyBlob *pHdrs,SyBlob *pStatus,
 	SyBlob *pLocation,int *pbHasLocation,int *pbAnyLine)
 {
 	SyBlob sLine,sNext;
-	int iCode = 0,nTerm = 0,nNextTerm = 0,bStale;
+	int iCode = 0,nTerm = 0,nNextTerm = 0,bStale,bDiscard = 0;
 	SyBlobInit(&sLine,&pH->pVm->sAllocator);
 	SyBlobInit(&sNext,&pH->pVm->sAllocator);
 	*pbHasLocation = 0;
 	for(;;){
 		sxu32 nHdrStart = SyBlobLength(pHdrs);
 		bStale = 0;
+		pH->iFileSize = 0;
 		/* php reads every line into ONE buffer and does not clear it when the
 		 * read fails, so a connection that ends where a status line was due
 		 * reports the LAST line it did read -- which after an informational
@@ -773,6 +900,20 @@ static int HttpReadResponse(http_private *pH,SyBlob *pHdrs,SyBlob *pStatus,
 		}
 		SyBlobAppend(pHdrs,SyBlobData(&sLine),SyBlobLength(&sLine));
 		SyBlobAppend(pHdrs,"\n",1);
+		bDiscard = iCode >= 100 && iCode < 200 && iCode != 101;
+		if( !bDiscard && (iCode < 200 || iCode >= 400) ){
+			/* php tells the notifier about a status it will not open for as
+			 * soon as it has READ it -- before the header block, and whatever
+			 * `ignore_errors` says, so the callback hears about a 404 the
+			 * caller went on to read anyway. The text is the status line as it
+			 * arrived, terminator and all, and the code is beside it: 0 for a
+			 * line whose digits are not where php looks. An informational
+			 * response php DISCARDS is not one of these; the line it fails on
+			 * after one is the blank line it kept. */
+			PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_FAILURE,
+				PHL_STREAM_NOTIFY_SEVERITY_ERR,(const char *)SyBlobData(pStatus),
+				(int)SyBlobLength(pStatus),iCode,0,0);
+		}
 		if( bStale ){
 			break;
 		}
@@ -859,10 +1000,16 @@ static int HttpReadResponse(http_private *pH,SyBlob *pHdrs,SyBlob *pStatus,
 				SyBlobAppend(pLocation,&zLine[i],nStop - i);
 				*pbHasLocation = 1;
 			}
+			if( !bDiscard ){
+				/* php drops an informational response WHOLE -- the headers it
+				 * carried are never looked at, so a `Content-Type` on a 100 is
+				 * not a mime type anybody is told about. */
+				HttpNotifyHeader(pH,zLine,nLine);
+			}
 			SyBlobAppend(pHdrs,zLine,nLine);
 			SyBlobAppend(pHdrs,"\n",1);
 		}
-		if( iCode >= 100 && iCode < 200 && iCode != 101 ){
+		if( bDiscard ){
 			/* An informational response is not the answer: php drops it, drops
 			 * the headers it collected for it, and reads the next one. 101 is
 			 * php's one exception -- a protocol SWITCH is the last thing that
@@ -944,6 +1091,11 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx)
 		pH->sock = sock;
 		pH->bEof = 0;
 		rc = PH7_OK;
+		/* php reports the connection itself, per HOP -- and only for one that
+		 * was MADE: a refused dial and a name that does not resolve notify
+		 * nothing at all. */
+		PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_CONNECT,
+			PHL_STREAM_NOTIFY_SEVERITY_INFO,0,0,0,0,0);
 	}
 	SyBlobRelease(&sHost);
 	return rc;
@@ -955,7 +1107,12 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx)
  */
 static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pCtx)
 {
-	SyBlob sUrl,sReq,sStatus,sLoc,sTarget,sMethod;
+	SyBlob sUrl,sReq,sStatus,sLoc,sTarget,sMethod,sBody;
+	/* php's wrapper follows a redirect by CALLING ITSELF, and each frame arms
+	 * the progress counter with its OWN announced size once the inner one has
+	 * come back -- so a script watching a two-hop exchange is told the size
+	 * twice, innermost first. This is that stack of frames. */
+	SySet sHopSize;
 	ph7_value *pOptV;
 	int iRedirLeft = HTTP_MAX_REDIRECTS,bFollow = 1,bIgnoreErr = 0,rc = -1;
 	int bAnyLine = 0,bAnswered = 0;
@@ -968,6 +1125,8 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 	SyBlobInit(&sLoc,&pVm->sAllocator);
 	SyBlobInit(&sTarget,&pVm->sAllocator);
 	SyBlobInit(&sMethod,&pVm->sAllocator);
+	SyBlobInit(&sBody,&pVm->sAllocator);
+	SySetInit(&sHopSize,&pVm->sAllocator,sizeof(sxi64));
 	SyBlobAppend(&sUrl,zUrl,(sxu32)nUrl);
 	/* php drops the previous exchange's headers before this one starts, so an
 	 * open that never reaches a response leaves http_get_last_response_headers()
@@ -1001,8 +1160,12 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 	}
 	pOptV = HttpOpt(pCtx,"content");
 	if( pOptV && (pOptV->iFlags & MEMOBJ_STRING) && SyBlobLength(&pOptV->sBlob) > 0 ){
-		zBody = (const char *)SyBlobData(&pOptV->sBlob);
-		nBody = (int)SyBlobLength(&pOptV->sBlob);
+		/* COPIED, not pointed at: the exchange now runs userland code between
+		 * here and the request it builds, and a `notification` callback that
+		 * sets this very option would free the bytes under us. */
+		SyBlobAppend(&sBody,SyBlobData(&pOptV->sBlob),SyBlobLength(&pOptV->sBlob));
+		zBody = (const char *)SyBlobData(&sBody);
+		nBody = (int)SyBlobLength(&sBody);
 	}
 	for(;;){
 		SyhttpUri sUri;
@@ -1044,13 +1207,29 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 			HttpFail(pVm,"Connection refused",-1);
 			goto done;
 		}
+		/* php counts what the STREAM moved, and a write moves as much as a
+		 * read: the request is on the counter too. It shows only for a context
+		 * whose counter a previous exchange already armed, since this one's
+		 * has not been armed yet. */
+		PH7_StreamCtxProgressAdd(pH->pCtx,(sxi64)SyBlobLength(&sReq));
 		bAnswered = 1;
 		iCode = HttpReadResponse(pH,&pH->sHdrs,&sStatus,&sLoc,&bHasLoc,&bAnyLine);
 		if( iCode < 0 ){
 			goto done; /* the malformed-header refusal named itself */
 		}
+		if( iCode >= 300 && iCode < 400 && bHasLoc && bFollow ){
+			/* Announced BEFORE the count is spent, so the last hop a limit
+			 * allows still reports where it was being sent -- and the address
+			 * reported is the one the server WROTE, not the one it resolves
+			 * to. */
+			PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_REDIRECTED,
+				PHL_STREAM_NOTIFY_SEVERITY_INFO,(const char *)SyBlobData(&sLoc),
+				(int)SyBlobLength(&sLoc),0,0,0);
+		}
 		if( iCode >= 300 && iCode < 400 && bHasLoc && bFollow && --iRedirLeft >= 1 ){
 			SyBlob sNext;
+			sxi64 iHop = pH->iFileSize;
+			SySetPut(&sHopSize,(const void *)&iHop);
 			SyBlobInit(&sNext,&pVm->sAllocator);
 			HttpResolveLocation(&sUri,(const char *)SyBlobData(&sLoc),
 				SyBlobLength(&sLoc),&sNext);
@@ -1103,6 +1282,27 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 		rc = PH7_OK;
 		break;
 	}
+	if( rc == PH7_OK ){
+		/* The innermost frame arms the counter and CREDITS what came in with
+		 * the headers; then every frame the redirects opened does the same on
+		 * its way out, with the size IT announced. A chunked body is credited
+		 * by the decoder, which is what makes the number the bytes a script
+		 * will read rather than the framing they arrived in. */
+		sxi64 *aHop = (sxi64 *)SySetBasePtr(&sHopSize);
+		sxu32 i = SySetUsed(&sHopSize);
+		pH->bBody = 1;
+		PH7_StreamCtxProgressInit(pH->pCtx,pH->iFileSize);
+		if( pH->bChunked ){
+			PH7_StreamCtxProgressAdd(pH->pCtx,(sxi64)HttpDecodeBuffered(pH));
+		}else{
+			PH7_StreamCtxProgressAdd(pH->pCtx,HttpBuffered(pH));
+		}
+		while( i > 0 ){
+			i--;
+			PH7_StreamCtxProgressInit(pH->pCtx,aHop[i]);
+			PH7_StreamCtxProgressAdd(pH->pCtx,HttpBuffered(pH));
+		}
+	}
 done:
 	/* The headers belong to the SCRIPT whether the open worked or not: php
 	 * fills $http_response_header for a 404 exactly as it does for a 200, and
@@ -1116,6 +1316,8 @@ done:
 	SyBlobRelease(&sLoc);
 	SyBlobRelease(&sTarget);
 	SyBlobRelease(&sMethod);
+	SyBlobRelease(&sBody);
+	SySetRelease(&sHopSize);
 	return rc;
 }
 /* ------------------------------------------------------------------------- */
@@ -1151,6 +1353,11 @@ static int HttpStream_Open(const char *zName,int iMode,ph7_value *pResource,void
 	SyBlobInit(&pH->sRaw,&pVm->sAllocator);
 	SyBlobInit(&pH->sOut,&pVm->sAllocator);
 	SyBlobInit(&pH->sHdrs,&pVm->sAllocator);
+	/* The context this open was armed with, kept for the whole life of the
+	 * handle: the progress notifications belong to the READS, which happen
+	 * long after PH7_StreamOpenHandle has disarmed pVm->pOpenCtx. The VM owns
+	 * every context it hands out, so the pointer outlives us. */
+	pH->pCtx = (phl_stream_ctx *)pVm->pOpenCtx;
 	/* PH7_VmGetStreamDevice() hands the wrapper what is left after the scheme;
 	 * every redirect below is resolved against a WHOLE url, so it goes back on. */
 	SyBlobInit(&sUrl,&pVm->sAllocator);

@@ -4696,6 +4696,26 @@ struct io_private
  * and drops it at reset, so a reused VM does not carry one request's default
  * context into the next.
  */
+/*
+ * php's STREAM_NOTIFY_* -- WHICH event a context's `notification` callback is
+ * being told about -- and the three severities beside them. RESOLVE, the two
+ * AUTH codes and AUTH_RESULT are php's own numbers for events no wrapper here
+ * raises; they are defined because a script SWITCHES on them, and a name that
+ * is missing is a fatal where an unreachable one is simply never matched.
+ */
+#define PHL_STREAM_NOTIFY_RESOLVE       1
+#define PHL_STREAM_NOTIFY_CONNECT       2
+#define PHL_STREAM_NOTIFY_AUTH_REQUIRED 3
+#define PHL_STREAM_NOTIFY_MIME_TYPE_IS  4
+#define PHL_STREAM_NOTIFY_FILE_SIZE_IS  5
+#define PHL_STREAM_NOTIFY_REDIRECTED    6
+#define PHL_STREAM_NOTIFY_PROGRESS      7
+#define PHL_STREAM_NOTIFY_COMPLETED     8
+#define PHL_STREAM_NOTIFY_FAILURE       9
+#define PHL_STREAM_NOTIFY_AUTH_RESULT   10
+#define PHL_STREAM_NOTIFY_SEVERITY_INFO 0
+#define PHL_STREAM_NOTIFY_SEVERITY_WARN 1
+#define PHL_STREAM_NOTIFY_SEVERITY_ERR  2
 typedef struct phl_stream_ctx phl_stream_ctx;
 struct phl_stream_ctx
 {
@@ -4703,6 +4723,15 @@ struct phl_stream_ctx
 	ph7_vm *pVm;            /* owning VM */
 	ph7_value *pOptions;    /* the wrapper => (option => value) map; never 0 */
 	ph7_value *pNotify;     /* the `notification` param, or 0 when none was set */
+	/* php's notifier carries the PROGRESS counter on the CONTEXT rather than on
+	 * the stream, and never disarms it: a context reused for a second exchange
+	 * reports that exchange's request write and header read under the FIRST
+	 * one's running total, until the wrapper's own progress_init resets it.
+	 * That is visible from a script, so it is modelled rather than approximated. */
+	sxi64 iProgress;        /* bytes counted since the last init */
+	sxi64 iProgressMax;     /* what the wrapper announced, or 0 for "unknown" */
+	int bProgress;          /* has an init armed the counter yet? */
+	int bNotifyDead;        /* the callback threw: php stops calling it */
 	phl_stream_ctx *pNext;  /* registry chain (pVm->pStreamCtx) */
 };
 /* The context behind a ph7_value, or 0 when the value is not one. */
@@ -4718,6 +4747,15 @@ PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromArg(ph7_context *pCtx,int nArg,ph7
 	int iArg,const char *zArgName,int bNoDefault,int *pbThrew);
 /* Arm the context PH7_StreamOpenHandle's next open runs under. */
 PH7_PRIVATE void PH7_StreamCtxArm(ph7_vm *pVm,phl_stream_ctx *pRes);
+/* Tell the context's `notification` callback about one event. A NULL zMsg is
+ * php's null third argument; nMsg < 0 means "NUL-terminated". */
+PH7_PRIVATE void PH7_StreamCtxNotify(phl_stream_ctx *pCtxRes,int iCode,int iSeverity,
+	const char *zMsg,int nMsg,int iMsgCode,sxi64 iBytes,sxi64 iBytesMax);
+/* php's progress notifier: arm the counter at 0 with a known maximum (and say
+ * so), add to it, or report the end of the transfer. */
+PH7_PRIVATE void PH7_StreamCtxProgressInit(phl_stream_ctx *pCtxRes,sxi64 iMax);
+PH7_PRIVATE void PH7_StreamCtxProgressAdd(phl_stream_ctx *pCtxRes,sxi64 nDelta);
+PH7_PRIVATE void PH7_StreamCtxCompleted(phl_stream_ctx *pCtxRes);
 /*
  * ---------------------------------------------------------------------------
  * Stream filters.

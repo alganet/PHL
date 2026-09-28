@@ -4670,6 +4670,107 @@ PH7_PRIVATE void PH7_StreamCtxArm(ph7_vm *pVm,phl_stream_ctx *pRes)
 	}
 }
 /*
+ * php's notification callback, called with the six arguments its documentation
+ * names: `(int $code, int $severity, ?string $message, int $message_code,
+ * int $bytes_transferred, int $bytes_max)`. The message is NULL for every
+ * event that carries no text, which is most of them.
+ *
+ * The six arguments are STACK values, so the call allocates nothing of its own
+ * -- the shape ext/curl's callbacks already use, and the one that matters here
+ * because the callers are mid-exchange holding pointers into the handle. A
+ * refusal raised by the callback unwinds on its own, the way a throwing
+ * userland WRAPPER method's does; what this has to do is stop ASKING.
+ */
+PH7_PRIVATE void PH7_StreamCtxNotify(phl_stream_ctx *pCtxRes,int iCode,int iSeverity,
+	const char *zMsg,int nMsg,int iMsgCode,sxi64 iBytes,sxi64 iBytesMax)
+{
+	ph7_value sArgs[6],sRes,*apArg[6];
+	ph7_vm *pVm;
+	sxi32 rc;
+	int i;
+	if( pCtxRes == 0 || pCtxRes->pNotify == 0 || pCtxRes->pVm == 0
+	 || pCtxRes->bNotifyDead ){
+		return;
+	}
+	pVm = pCtxRes->pVm;
+	for( i = 0 ; i < 6 ; ++i ){
+		PH7_MemObjInit(pVm,&sArgs[i]);
+		apArg[i] = &sArgs[i];
+	}
+	ph7_value_int(&sArgs[0],iCode);
+	ph7_value_int(&sArgs[1],iSeverity);
+	if( zMsg ){
+		ph7_value_string(&sArgs[2],zMsg,nMsg);
+	}else{
+		ph7_value_null(&sArgs[2]);
+	}
+	ph7_value_int(&sArgs[3],iMsgCode);
+	ph7_value_int64(&sArgs[4],iBytes);
+	ph7_value_int64(&sArgs[5],iBytesMax);
+	PH7_MemObjInit(pVm,&sRes);
+	/* The status in a VARIABLE: PH7_CALLBACK_UNWOUND is a macro that reads its
+	 * argument twice, so a call written inside it is MADE twice. */
+	rc = PH7_VmCallUserFunction(pVm,pCtxRes->pNotify,6,apArg,&sRes);
+	if( PH7_CALLBACK_UNWOUND(rc) ){
+		/* php stops asking once the callback has refused: every notification
+		 * after the throw is a userland call that would bail on the pending
+		 * exception before it ran, so none of them is ever seen. The refusal
+		 * itself unwinds on its own, the way a throwing userland WRAPPER
+		 * method's already does. */
+		pCtxRes->bNotifyDead = 1;
+	}
+	PH7_MemObjRelease(&sRes);
+	for( i = 0 ; i < 6 ; ++i ){
+		PH7_MemObjRelease(&sArgs[i]);
+	}
+}
+/*
+ * php's php_stream_notify_progress_init: the counter starts again at zero with
+ * a new maximum, the notifier is ARMED (it never disarms), and the zero itself
+ * is reported. A wrapper calls this once it knows how big the body claims to
+ * be -- which is why every PROGRESS before it belongs to the exchange BEFORE it.
+ */
+PH7_PRIVATE void PH7_StreamCtxProgressInit(phl_stream_ctx *pCtxRes,sxi64 iMax)
+{
+	if( pCtxRes == 0 || pCtxRes->pNotify == 0 || pCtxRes->bNotifyDead ){
+		return;
+	}
+	pCtxRes->iProgress = 0;
+	pCtxRes->iProgressMax = iMax;
+	pCtxRes->bProgress = 1;
+	PH7_StreamCtxNotify(pCtxRes,PHL_STREAM_NOTIFY_PROGRESS,PHL_STREAM_NOTIFY_SEVERITY_INFO,
+		0,0,0,0,iMax);
+}
+/*
+ * One transfer step: php counts every byte the underlying stream moves, in
+ * EITHER direction, and reports the running total each time. Nothing is
+ * reported (and nothing counted) before an init has armed the notifier.
+ */
+PH7_PRIVATE void PH7_StreamCtxProgressAdd(phl_stream_ctx *pCtxRes,sxi64 nDelta)
+{
+	if( pCtxRes == 0 || pCtxRes->pNotify == 0 || pCtxRes->bNotifyDead
+	 || !pCtxRes->bProgress || nDelta <= 0 ){
+		return;
+	}
+	pCtxRes->iProgress += nDelta;
+	PH7_StreamCtxNotify(pCtxRes,PHL_STREAM_NOTIFY_PROGRESS,PHL_STREAM_NOTIFY_SEVERITY_INFO,
+		0,0,0,pCtxRes->iProgress,pCtxRes->iProgressMax);
+}
+/*
+ * php's php_stream_notify_completed, which is NOT gated on the progress mask:
+ * a read that comes back with nothing is the end of the transfer whether or
+ * not anything armed the counter, so a context reused for an exchange that
+ * ends where a status line was due reports it before the failure.
+ */
+PH7_PRIVATE void PH7_StreamCtxCompleted(phl_stream_ctx *pCtxRes)
+{
+	if( pCtxRes == 0 || pCtxRes->pNotify == 0 ){
+		return;
+	}
+	PH7_StreamCtxNotify(pCtxRes,PHL_STREAM_NOTIFY_COMPLETED,PHL_STREAM_NOTIFY_SEVERITY_INFO,
+		0,0,0,pCtxRes->iProgress,pCtxRes->iProgressMax);
+}
+/*
  * resource stream_context_create(?array $options = null, ?array $params = null)
  */
 PH7_PRIVATE int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_value **apArg)

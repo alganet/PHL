@@ -733,6 +733,78 @@ static void PH7_PSFS_FLAG_FLUSH_CLOSE_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * The `notification` callback's first argument: WHICH event the stream layer is
+ * reporting. php defines all ten whatever its build registered, so a script may
+ * name one no wrapper here raises -- an unmatched `case` is silent where a
+ * missing constant is a fatal.
+ */
+static void PH7_STREAM_NOTIFY_RESOLVE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_RESOLVE);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_CONNECT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_CONNECT);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_AUTH_REQUIRED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_AUTH_REQUIRED);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_MIME_TYPE_IS_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_MIME_TYPE_IS);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_FILE_SIZE_IS_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_FILE_SIZE_IS);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_REDIRECTED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_REDIRECTED);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_PROGRESS_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_PROGRESS);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_COMPLETED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_COMPLETED);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_FAILURE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_FAILURE);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_AUTH_RESULT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_AUTH_RESULT);
+	SXUNUSED(pUserData);
+}
+/* And the callback's second argument: how bad the event is. */
+static void PH7_STREAM_NOTIFY_SEVERITY_INFO_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_SEVERITY_INFO);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_SEVERITY_WARN_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_SEVERITY_WARN);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_NOTIFY_SEVERITY_ERR_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_NOTIFY_SEVERITY_ERR);
+	SXUNUSED(pUserData);
+}
+/*
  * stream_filter_append()'s $mode — WHICH chain the filter joins. php's 0 is not
  * "neither": it means "whichever chains the handle's own mode makes sense for".
  */
@@ -2770,6 +2842,19 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PSFS_FLAG_NORMAL",             PH7_PSFS_FLAG_NORMAL_Const },
 	{"PSFS_FLAG_FLUSH_INC",          PH7_PSFS_FLAG_FLUSH_INC_Const },
 	{"PSFS_FLAG_FLUSH_CLOSE",        PH7_PSFS_FLAG_FLUSH_CLOSE_Const },
+	{"STREAM_NOTIFY_RESOLVE",        PH7_STREAM_NOTIFY_RESOLVE_Const },
+	{"STREAM_NOTIFY_CONNECT",        PH7_STREAM_NOTIFY_CONNECT_Const },
+	{"STREAM_NOTIFY_AUTH_REQUIRED",  PH7_STREAM_NOTIFY_AUTH_REQUIRED_Const },
+	{"STREAM_NOTIFY_MIME_TYPE_IS",   PH7_STREAM_NOTIFY_MIME_TYPE_IS_Const },
+	{"STREAM_NOTIFY_FILE_SIZE_IS",   PH7_STREAM_NOTIFY_FILE_SIZE_IS_Const },
+	{"STREAM_NOTIFY_REDIRECTED",     PH7_STREAM_NOTIFY_REDIRECTED_Const },
+	{"STREAM_NOTIFY_PROGRESS",       PH7_STREAM_NOTIFY_PROGRESS_Const },
+	{"STREAM_NOTIFY_COMPLETED",      PH7_STREAM_NOTIFY_COMPLETED_Const },
+	{"STREAM_NOTIFY_FAILURE",        PH7_STREAM_NOTIFY_FAILURE_Const },
+	{"STREAM_NOTIFY_AUTH_RESULT",    PH7_STREAM_NOTIFY_AUTH_RESULT_Const },
+	{"STREAM_NOTIFY_SEVERITY_INFO",  PH7_STREAM_NOTIFY_SEVERITY_INFO_Const },
+	{"STREAM_NOTIFY_SEVERITY_WARN",  PH7_STREAM_NOTIFY_SEVERITY_WARN_Const },
+	{"STREAM_NOTIFY_SEVERITY_ERR",   PH7_STREAM_NOTIFY_SEVERITY_ERR_Const },
 	{"STREAM_FILTER_READ",           PH7_STREAM_FILTER_READ_Const },
 	{"STREAM_FILTER_WRITE",          PH7_STREAM_FILTER_WRITE_Const },
 	{"STREAM_FILTER_ALL",            PH7_STREAM_FILTER_ALL_Const },
