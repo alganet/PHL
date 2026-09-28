@@ -682,15 +682,6 @@ PH7_PRIVATE sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm
 		if( sGiven.nByte < 1 ){
 			sGiven = pFunc->sReturnClass;
 		}
-		if( sGiven.nByte < 1 ){
-			/* `void`/`never`: GenBuildUnionTypeText omits their atoms from the
-			 * rendered type text, so sReturnTypeName arrives empty for them —
-			 * name them here (the root fix belongs to that renderer, §3.7). */
-			const char *zScalar =
-				pFunc->nReturnType == MEMOBJ_VOID  ? "void"  :
-				pFunc->nReturnType == MEMOBJ_NEVER ? "never" : "?";
-			SyStringInitFromBuf(&sGiven,zScalar,SyStrlen(zScalar));
-		}
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
 			"Generator return type must be a supertype of Generator, %z given",&sGiven);
 	}
@@ -1367,7 +1358,15 @@ static void GenBuildUnionTypeText(SyBlob *pBlob, PhlTypeAtom *aAtoms, int nAtoms
 				{ MEMOBJ_REAL,     GEN_ATOM_PLAIN,    "float",    sizeof("float")-1 },
 				{ MEMOBJ_BOOL,     GEN_ATOM_PLAIN,    "bool",     sizeof("bool")-1 },
 				{ 0,               GEN_ATOM_FALSE,    "false",    sizeof("false")-1 },
-				{ 0,               GEN_ATOM_TRUE,     "true",     sizeof("true")-1 }
+				{ 0,               GEN_ATOM_TRUE,     "true",     sizeof("true")-1 },
+				/* `void` and `never` are RETURN-only and may not share a type with
+				 * anything, so their place in the order is never observable -- what
+				 * matters is that they have one. Missing here, the canonical text of
+				 * `: void` came out EMPTY, and every reader of it had to name the two
+				 * back from nReturnType (Reflection's getReturnType did, the generator
+				 * fatal did, and the declaration renderer would have had to). */
+				{ UTA_VOID_FLAG,   GEN_ATOM_PLAIN,    "void",     sizeof("void")-1 },
+				{ UTA_NEVER_FLAG,  GEN_ATOM_PLAIN,    "never",    sizeof("never")-1 }
 			};
 			int k;
 			for( k = 0; k < (int)(sizeof(aOrder)/sizeof(aOrder[0])); k++ ){

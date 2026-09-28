@@ -3273,66 +3273,18 @@ static sxi32 GenStateCheckInterfaceSignatures(ph7_gen_state *pGen,ph7_class *pCl
 					return SXERR_ABORT;
 				}
 			}
-			/* Check parameter compatibility: implementation must accept at least as many
-			 * required parameters. Extra parameters are allowed only if they have defaults.
-			 */
-			{
-				sxu32 nIfaceArgs = SySetUsed(&pIfaceMeth->sFunc.aArgs);
-				sxu32 nImplArgs = SySetUsed(&pImplMeth->sFunc.aArgs);
-				int sigError = 0;
-				if( ((pIfaceMeth->sFunc.iFlags | pImplMeth->sFunc.iFlags) & VM_FUNC_NATIVE) != 0 ){
-					/* A NATIVE method's parameters live in its zSig string, not in
-					 * compiled aArgs records, so there is nothing to count here --
-					 * and an engine-declared signature is compatible by
-					 * construction. Counting its empty aArgs as "no parameters" is
-					 * what made an enum's own from()/tryFrom() incompatible with
-					 * BackedEnum the moment they became native. */
-					sigError = 0;
-				}else if( nImplArgs < nIfaceArgs ){
-					sigError = 1;
-				}else if( nImplArgs > nIfaceArgs ){
-					/* Extra parameters must all have default values */
-					ph7_vm_func_arg *aImplArgs = (ph7_vm_func_arg *)SySetBasePtr(&pImplMeth->sFunc.aArgs);
-					sxu32 k;
-					for(k = nIfaceArgs; k < nImplArgs; k++){
-						if( SySetUsed(&aImplArgs[k].aByteCode) == 0 ){
-							sigError = 1;
-							break;
-						}
-					}
-				}
-				if( sigError ){
-					SyBlob sImplSig, sIfaceSig;
-					ph7_vm_func_arg *aArgs;
-					sxu32 j;
-					SyBlobInit(&sImplSig,&pGen->pVm->sAllocator);
-					SyBlobInit(&sIfaceSig,&pGen->pVm->sAllocator);
-					/* Build implementing method signature */
-					aArgs = (ph7_vm_func_arg *)SySetBasePtr(&pImplMeth->sFunc.aArgs);
-					for(j = 0; j < nImplArgs; j++){
-						if( j > 0 ) SyBlobAppend(&sImplSig,", ",2);
-						SyBlobAppend(&sImplSig,"$",1);
-						SyBlobAppend(&sImplSig,aArgs[j].sName.zString,aArgs[j].sName.nByte);
-					}
-					/* Build interface method signature */
-					aArgs = (ph7_vm_func_arg *)SySetBasePtr(&pIfaceMeth->sFunc.aArgs);
-					for(j = 0; j < nIfaceArgs; j++){
-						if( j > 0 ) SyBlobAppend(&sIfaceSig,", ",2);
-						SyBlobAppend(&sIfaceSig,"$",1);
-						SyBlobAppend(&sIfaceSig,aArgs[j].sName.zString,aArgs[j].sName.nByte);
-					}
-					rc = PH7_GenCompileError(pGen,E_ERROR,pImplMeth->nLine,
-						"Declaration of %z::%z(%.*s) must be compatible with %z::%z(%.*s)",
-						&pClass->sName,pMName,
-						(int)SyBlobLength(&sImplSig),(const char *)SyBlobData(&sImplSig),
-						&pIface->sName,pMName,
-						(int)SyBlobLength(&sIfaceSig),(const char *)SyBlobData(&sIfaceSig));
-					SyBlobRelease(&sImplSig);
-					SyBlobRelease(&sIfaceSig);
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-				}
+			/* Signature compatibility. php checks an implementation against the
+			 * interface's declaration with the very rule it checks an override by --
+			 * one shared body, so the variance half is not the class hierarchy's
+			 * alone and the fatal reads the same. This site used to count PARAMETERS
+			 * only, and word the two declarations as bare `$name` lists.
+			 *
+			 * A CONSTRUCTOR is not exempt here: php exempts an INHERITED one from
+			 * variance, but an interface that declares `__construct` constrains every
+			 * implementor's. */
+			if( PH7_ClassCheckOverrideCompat(&(*pGen),pIface,pClass,pIfaceMeth,pImplMeth,0)
+				== SXERR_ABORT ){
+				return SXERR_ABORT;
 			}
 		}
 	}

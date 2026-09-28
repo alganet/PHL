@@ -1479,6 +1479,62 @@ static sxi32 VmEvalDefaultMuted(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemOb
 	return rc;
 }
 /*
+ * Run a compiled constant expression only to LOOK at the value it produces, and
+ * report whether php's own compiler would have FOLDED it.
+ *
+ * php folds a parameter default at compile time and keeps the folded zval; what
+ * it cannot reduce stays an AST and prints as `<expression>` in the declaration
+ * php renders for an incompatible-override fatal (see PH7_ClassRenderDecl).
+ * "Cannot reduce" is not a syntactic property -- `2 * 1024` folds and `1 / 0`
+ * does not -- so the question is asked by RUNNING the program and watching for
+ * anything php's folder would have refused on.
+ *
+ * The window is doubly sealed, because this runs at CLASS-LINK time: a program
+ * php has not reached, in the middle of compiling one it has. VmMuteEnter hides
+ * the live try activations and swallows a throw (`1/0`, `"a"+1`), and
+ * nSpeculative drops every diagnostic without running a user error handler or
+ * touching error_get_last() (`[1,2][5]`). Either one having happened is exactly
+ * php's "did not fold".
+ *
+ * Returns TRUE with *pOut holding the value, or FALSE (caller prints
+ * `<expression>`). The caller must have SCREENED the program first: only a run
+ * built from literal loads and pure value operators belongs here -- a constant
+ * NAME, a class constant and a `new` are all things php keeps unfolded and this
+ * would happily evaluate (or construct).
+ */
+PH7_PRIVATE int PH7_VmEvalConstExpr(ph7_vm *pVm,SySet *pByteCode,ph7_value *pOut)
+{
+	VmMuteState sSave;
+	sxu32 nDiag;
+	sxi32 rc;
+	int bFolded;
+	int bFramePushed = 0;
+	if( pVm->pFrame == 0 ){
+		/* CLASS-LINK time: the script has not started, so there is no frame at all --
+		 * and the reference table, the array builder and the throw path all read one.
+		 * Stand a global-shaped frame up for the duration (pParent == 0, so its
+		 * teardown is the global frame's: nothing of the caller's is torn down with
+		 * it). Without this an array default segfaulted the compiler. */
+		if( VmEnterFrame(&(*pVm),0,0,0) != SXRET_OK ){
+			return 0;
+		}
+		bFramePushed = 1;
+	}
+	VmMuteEnter(&(*pVm),&sSave);
+	pVm->nSpeculative++;
+	nDiag = pVm->nSpecDiag;
+	rc = VmLocalExec(&(*pVm),pByteCode,pOut,FALSE);
+	pVm->nSpeculative--;
+	bFolded = ( rc == SXRET_OK && pVm->nSpecDiag == nDiag );
+	if( VmMuteLeave(&(*pVm),&sSave,rc) ){
+		bFolded = 0; /* a throw was swallowed */
+	}
+	if( bFramePushed ){
+		VmLeaveFrame(&(*pVm));
+	}
+	return bFolded;
+}
+/*
  * Mount a compiled class into the freshly created vitual machine so that
  * it can be instanciated from the executed PHP script.
  */
@@ -2416,6 +2472,21 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 		goto Err;
 	}
 	PH7_MemObjInitFromString(pVm,pObj,0);
+	/* Allocate the reference table. It belongs to VM INIT rather than to
+	 * PH7_VmMakeReady because the COMPILER now runs bytecode of its own: the
+	 * constant-expression evaluation behind a declaration message
+	 * (PH7_VmEvalConstExpr) builds the array a parameter defaults to, and every
+	 * hashmap insert installs a reference-table entry. With the table still
+	 * unallocated that lookup indexed `apRefObj[hash & (0 - 1)]` and segfaulted
+	 * the compiler. */
+	pVm->nRefSize = 0x10; /* Must be a power of two for fast arithemtic */
+	pVm->apRefObj = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * pVm->nRefSize);
+	if( pVm->apRefObj == 0 ){
+		rc = SXERR_MEM;
+		goto Err;
+	}
+	/* Zero the reference table */
+	SyZero(pVm->apRefObj,sizeof(VmRefObj *) * pVm->nRefSize);
 	/* Create the global frame */
 	rc = VmEnterFrame(&(*pVm),0,0,0);
 	if( rc != SXRET_OK ){
@@ -3001,15 +3072,6 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	 * private data. */
 	pVm->sVmConsumer.xConsumer = PH7_VmBlobConsumer;
 	pVm->sVmConsumer.pUserData = &pVm->sConsumer;
-	/* Allocate the reference table */
-	pVm->nRefSize = 0x10; /* Must be a power of two for fast arithemtic */
-	pVm->apRefObj = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * pVm->nRefSize);
-	if( pVm->apRefObj == 0 ){
-		/* Don't worry about freeing memory, everything will be released shortly */
-		return SXERR_MEM;
-	}
-	/* Zero the reference table */
-	SyZero(pVm->apRefObj,sizeof(VmRefObj *) * pVm->nRefSize);
 	/* Register special functions first [i.e: print, json_encode(), func_get_args(), die, etc.] */
 	rc = VmRegisterSpecialFunction(&(*pVm));
 	if( rc != SXRET_OK ){

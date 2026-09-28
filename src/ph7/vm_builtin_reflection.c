@@ -5851,18 +5851,6 @@ static int ReflectFuncRetTextEx(const ReflectFuncRef *pRef, const char **pz, int
 		*pn = (int)SyStringLength(&pRef->pFunc->sReturnTypeName);
 		return 1;
 	}
-	/* The type-text renderer omits void/never atoms (compile.c notes the root fix
-	 * belongs there); name them here for getReturnType(). */
-	if( pRef->pFunc->nReturnType == MEMOBJ_VOID ){
-		*pz = "void";
-		*pn = sizeof("void")-1;
-		return 1;
-	}
-	if( pRef->pFunc->nReturnType == MEMOBJ_NEVER ){
-		*pz = "never";
-		*pn = sizeof("never")-1;
-		return 1;
-	}
 	return 0;
 }
 /* The declared return type php would report from getReturnType(): a TENTATIVE one

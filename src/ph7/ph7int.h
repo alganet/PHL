@@ -3160,6 +3160,17 @@ struct ph7_vm
 	                            * uncaught throw runs no exception handler, prints no report and
 	                            * leaves iExitStatus alone, because php has not reached that code
 	                            * yet. Depth-counted (an initializer can mount another class). */
+	int nSpeculative;          /* > 0 while a program is run only to LOOK at the value it would
+	                            * produce (PH7_VmEvalConstExpr, which renders a parameter default
+	                            * for a declaration message). php's own compiler folds such an
+	                            * expression and gives up the moment evaluating it raises
+	                            * ANYTHING, so nothing raised here may be observable: no user
+	                            * error handler runs, no error_get_last() record is written and
+	                            * nothing is printed. Depth-counted like nMuteThrow, which mutes
+	                            * the THROW half of the same window. */
+	sxu32 nSpecDiag;           /* Diagnostics dropped by nSpeculative, monotonic. A speculative
+	                            * evaluation that moved this counter is one php would not have
+	                            * folded, so its caller renders php's `<expression>` instead. */
 	int closure_cnt;           /* Loaded closures counter */
 	int json_rc;               /* JSON return status [refer to json_encode()/json_decode()]*/
 	sxu32 unique_id;           /* Random number used to generate unique ID [refer to uniqid() for more info]*/
@@ -4208,6 +4219,10 @@ PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmPeekSelfClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmTraitUsingClass(ph7_vm *pVm,ph7_class *pTrait,ph7_class *pFrom);
 PH7_PRIVATE ph7_class * PH7_VmMemberOwnerClass(ph7_class *pDeclClass,ph7_class *pFrom);
+PH7_PRIVATE int PH7_VmEvalConstExpr(ph7_vm *pVm,SySet *pByteCode,ph7_value *pOut);
+PH7_PRIVATE void PH7_ClassRenderDecl(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func *pFunc,SyBlob *pOut);
+PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen,ph7_class *pBase,ph7_class *pSub,
+	ph7_class_method *pParent,ph7_class_method *pChild,int bCtorExempt);
 PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm);
 PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke);
 PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value **ppTarget,ph7_value **ppMethod);

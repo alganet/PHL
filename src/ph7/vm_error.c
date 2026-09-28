@@ -340,6 +340,13 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	SyString *pFile;
 	sxu32 nMsg = (sxu32)SyStrlen(zMessage);
 	sxi32 rc = SXRET_OK;
+	if( pVm->nSpeculative > 0 ){
+		/* Speculative evaluation (PH7_VmEvalConstExpr): the value is being LOOKED at,
+		 * not produced, so this diagnostic never happened. Count it -- the caller reads
+		 * the counter as "php's compiler would not have folded this". */
+		pVm->nSpecDiag++;
+		return SXRET_OK;
+	}
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
 	SyBlobInit(&sMsg,&pVm->sAllocator);
@@ -570,6 +577,11 @@ static sxi32 VmThrowErrorAp(
 	SyBlob sMsg;
 	SyString *pFile;
 	sxi32 rc = SXRET_OK;
+	if( pVm->nSpeculative > 0 ){
+		/* See PH7_VmThrowError: nothing a speculative evaluation raises is observable. */
+		pVm->nSpecDiag++;
+		return SXRET_OK;
+	}
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
 	/* Format the raw message behind php's `func(): ` qualifier */

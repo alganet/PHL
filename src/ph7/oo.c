@@ -408,6 +408,338 @@ PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMe
 	return rc;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * php's rendering of a USER function's DECLARATION.
+ *
+ * The text an incompatible-override fatal prints on either side of "must be
+ * compatible with": `B::f(int $a, ?string $b = null): string`. It is php's
+ * zend_get_function_declaration, and until this shipped both sides of that
+ * sentence were bare names -- `B::f() must be compatible with A::f()` -- which
+ * says the declarations disagree without saying how.
+ *
+ * A parameter is `[type ][&][...]$name[ = default]`; the return type follows as
+ * `: T` and is omitted entirely when the declaration has none.
+ * ---------------------------------------------------------------------------
+ */
+/* A character that belongs to a type NAME, as opposed to the punctuation that
+ * separates the parts of a declared type (`?A`, `A|B`, `(A&B)|null`). */
+static int OoDeclNameChar(int c)
+{
+	return !(c == '|' || c == '&' || c == '?' || c == '(' || c == ')'
+		|| c == ' ' || c == '\t');
+}
+/*
+ * A declared type as php prints it in a declaration.
+ *
+ * The stored text is already php's canonical order (`string|int` for both
+ * spellings of it, `?A` for `A|null`, an intersection as written), so only the
+ * names that are relative to WHERE the declaration was written move:
+ *
+ *   self / parent  resolved against the DECLARING class -- so the same trait
+ *                  method reads `A $a` in one composing class and `B $a` in the
+ *                  next, which is what php prints.
+ *   static         left as written; php has no class to resolve it to at link
+ *                  time either.
+ *   iterable       expanded to the two types it stands for. Only the standalone
+ *                  spellings reach here (a COMPOUND type stored it expanded
+ *                  already), so `?iterable` is `Traversable|array|null` rather
+ *                  than `?Traversable|array` -- the whole text, not a token.
+ */
+static void OoDeclType(ph7_class *pScope,const SyString *pDeclared,SyBlob *pOut)
+{
+	const char *z = pDeclared ? SyStringData(pDeclared) : 0;
+	sxu32 n = z ? SyStringLength(pDeclared) : 0;
+	sxu32 i = 0;
+	if( n < 1 ){
+		return;
+	}
+	if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
+		SyBlobAppend(pOut,"Traversable|array",sizeof("Traversable|array")-1);
+		return;
+	}
+	if( n == 9 && z[0] == '?' && SyStrnicmp(&z[1],"iterable",8) == 0 ){
+		SyBlobAppend(pOut,"Traversable|array|null",sizeof("Traversable|array|null")-1);
+		return;
+	}
+	while( i < n ){
+		sxu32 nStart;
+		const SyString *pWrite;
+		SyString sTok;
+		if( !OoDeclNameChar(z[i]) ){
+			SyBlobAppend(pOut,&z[i],sizeof(char));
+			i++;
+			continue;
+		}
+		nStart = i;
+		while( i < n && OoDeclNameChar(z[i]) ){
+			i++;
+		}
+		SyStringInitFromBuf(&sTok,&z[nStart],i - nStart);
+		pWrite = &sTok;
+		if( pScope ){
+			if( sTok.nByte == sizeof("self")-1
+			 && SyStrnicmp(sTok.zString,"self",sizeof("self")-1) == 0 ){
+				pWrite = &pScope->sName;
+			}else if( sTok.nByte == sizeof("parent")-1
+			 && SyStrnicmp(sTok.zString,"parent",sizeof("parent")-1) == 0
+			 && pScope->pBase ){
+				pWrite = &pScope->pBase->sName;
+			}
+		}
+		SyBlobAppend(pOut,SyStringData(pWrite),SyStringLength(pWrite));
+	}
+}
+/* The instructions of a compiled default, without the OP_DONE the compiler
+ * terminates every one of them with. */
+static sxu32 OoDeclDefLength(SySet *pByteCode)
+{
+	sxu32 n = SySetUsed(pByteCode);
+	while( n > 0 ){
+		VmInstr *pIn = (VmInstr *)SySetAt(pByteCode,n - 1);
+		if( pIn == 0 || (pIn->iOp != PH7_OP_DONE && pIn->iOp != PH7_OP_NOOP) ){
+			break;
+		}
+		n--;
+	}
+	return n;
+}
+/*
+ * TRUE when every instruction of a compiled default is a LITERAL load or a pure
+ * value operator -- the run php's constant folder would try to reduce. A LOADC
+ * still carrying PH7_LOADC_EXPAND is a constant NAME, which php deliberately
+ * does NOT fold (it prints the name); anything that reads a variable, calls
+ * something or builds an object is not a constant expression at all.
+ *
+ * This is the screen PH7_VmEvalConstExpr's block comment requires. It is the
+ * SySet twin of the instanceof folder's GenStateInstanceofFoldsLhs, which asks
+ * the same question of the generator's live stream.
+ */
+static int OoDeclDefFoldable(SySet *pByteCode,sxu32 nLen)
+{
+	sxu32 n;
+	for( n = 0 ; n < nLen ; ++n ){
+		VmInstr *pIn = (VmInstr *)SySetAt(pByteCode,n);
+		if( pIn == 0 ){
+			return 0;
+		}
+		switch( pIn->iOp ){
+		case PH7_OP_LOADC:
+			if( pIn->iP1 & PH7_LOADC_EXPAND ){
+				return 0; /* a constant NAME -- php keeps it unfolded */
+			}
+			break;
+		case PH7_OP_LOAD_MAP: case PH7_OP_LOAD_IDX:
+		case PH7_OP_CAT:
+		case PH7_OP_CVT_INT: case PH7_OP_CVT_STR: case PH7_OP_CVT_REAL:
+		case PH7_OP_CVT_BOOL: case PH7_OP_CVT_NUMC: case PH7_OP_CVT_NULL:
+		case PH7_OP_UMINUS: case PH7_OP_UPLUS: case PH7_OP_BITNOT: case PH7_OP_LNOT:
+		case PH7_OP_MUL: case PH7_OP_DIV: case PH7_OP_MOD: case PH7_OP_POW:
+		case PH7_OP_ADD: case PH7_OP_SUB: case PH7_OP_SHL: case PH7_OP_SHR:
+		case PH7_OP_LT: case PH7_OP_LE: case PH7_OP_GT: case PH7_OP_GE:
+		case PH7_OP_SPACESHIP: case PH7_OP_EQ: case PH7_OP_NEQ:
+		case PH7_OP_TEQ: case PH7_OP_TNE:
+		case PH7_OP_BAND: case PH7_OP_BXOR: case PH7_OP_BOR:
+		case PH7_OP_LAND: case PH7_OP_LOR: case PH7_OP_LXOR:
+		case PH7_OP_JMP: case PH7_OP_JZ: case PH7_OP_JNZ:
+		case PH7_OP_POP: case PH7_OP_DUP: case PH7_OP_NOOP:
+			break;
+		default:
+			return 0;
+		}
+	}
+	return nLen > 0;
+}
+/* The literal a LOADC pushes, or 0 when the operand is not a string one. */
+static const SyString * OoDeclLiteral(ph7_vm *pVm,VmInstr *pIn,SyString *pOut)
+{
+	ph7_value *pLit;
+	if( pIn == 0 || pIn->iOp != PH7_OP_LOADC ){
+		return 0;
+	}
+	pLit = (ph7_value *)SySetAt(&pVm->aLitObj,(sxu32)pIn->iP2);
+	if( pLit == 0 || (pLit->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	SyStringInitFromBuf(pOut,SyBlobData(&pLit->sBlob),SyBlobLength(&pLit->sBlob));
+	return pOut;
+}
+/*
+ * A FOLDED default value, spelled php's way.
+ *
+ * php's own spellings, and they are not the export's: a string is SINGLE-quoted,
+ * printed RAW (no escaping at all) and TRUNCATED to ten bytes with `...` inside
+ * the quotes; `null` is lower-case; an array shows only whether it is empty.
+ */
+static void OoDeclValue(SyBlob *pOut,ph7_value *pVal)
+{
+	if( pVal->iFlags & MEMOBJ_NULL ){
+		SyBlobAppend(pOut,"null",sizeof("null")-1);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_BOOL ){
+		SyBlobAppend(pOut,pVal->x.iVal ? "true" : "false",pVal->x.iVal ? 4 : 5);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_STRING ){
+		sxu32 nStr = SyBlobLength(&pVal->sBlob);
+		SyBlobAppend(pOut,"'",sizeof(char));
+		if( nStr > 0 ){
+			SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),(nStr > 10 ? (sxu32)10 : nStr));
+		}
+		if( nStr > 10 ){
+			SyBlobAppend(pOut,"...",sizeof("...")-1);
+		}
+		SyBlobAppend(pOut,"'",sizeof(char));
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pVal->x.pOther;
+		SyBlobAppend(pOut,
+			(pMap && pMap->nEntry > 0) ? "[...]" : "[]",
+			(pMap && pMap->nEntry > 0) ? sizeof("[...]")-1 : sizeof("[]")-1);
+		return;
+	}
+	if( pVal->iFlags & (MEMOBJ_INT|MEMOBJ_REAL) ){
+		/* php prints the value's own string cast, which is where `1.0` reads `1`,
+		 * `1e100` reads `1.0E+100` and INF reads `INF`. */
+		PH7_MemObjToString(pVal);
+		SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
+		return;
+	}
+	SyBlobAppend(pOut,"<expression>",sizeof("<expression>")-1);
+}
+/*
+ * The text after `= ` in a parameter default.
+ *
+ * php prints what its compiler FOLDED the expression to, with two deliberate
+ * exceptions it leaves unfolded and prints as source: a lone constant reference
+ * keeps its NAME (`= M_PI`, `= PHP_INT_MAX`) and a class constant keeps
+ * `Class::NAME` as written (`= self::K`, `= MyEnum::Foo`). `X::class` is not
+ * one of those -- it folds to the class-name STRING, so it prints `'X'`.
+ * Everything it could not reduce is php's `<expression>`.
+ */
+static void OoDeclDefault(ph7_vm *pVm,ph7_class *pScope,SySet *pByteCode,SyBlob *pOut)
+{
+	sxu32 nLen = OoDeclDefLength(pByteCode);
+	SyString sOne, sTwo;
+	if( nLen == 1 ){
+		VmInstr *pIn = (VmInstr *)SySetAt(pByteCode,0);
+		if( pIn && pIn->iOp == PH7_OP_LOADC && (pIn->iP1 & PH7_LOADC_EXPAND)
+		 && OoDeclLiteral(pVm,pIn,&sOne) ){
+			/* A constant NAME, exactly as the source wrote it. */
+			SyBlobAppend(pOut,SyStringData(&sOne),SyStringLength(&sOne));
+			return;
+		}
+	}
+	if( nLen == 3 ){
+		VmInstr *pCls = (VmInstr *)SySetAt(pByteCode,0);
+		VmInstr *pMem = (VmInstr *)SySetAt(pByteCode,1);
+		VmInstr *pOp  = (VmInstr *)SySetAt(pByteCode,2);
+		if( pOp && pOp->iOp == PH7_OP_MEMBER && pOp->iP1 == 1
+		 && pOp->iP2 == PH7_MEMBER_READ
+		 && OoDeclLiteral(pVm,pCls,&sOne) && OoDeclLiteral(pVm,pMem,&sTwo) ){
+			if( sTwo.nByte == sizeof("class")-1
+			 && SyStrnicmp(sTwo.zString,"class",sizeof("class")-1) == 0 ){
+				/* `self::class` -- the only ::class spelling the compiler leaves for
+				 * the runtime (a named class folds to its own literal, and lands on
+				 * the value path below). php folded it too, to the STRING. */
+				SyBlob sName;
+				ph7_class *pCurr = 0;
+				if( pScope ){
+					pCurr = (sOne.nByte == sizeof("parent")-1
+						&& SyStrnicmp(sOne.zString,"parent",sizeof("parent")-1) == 0)
+						? pScope->pBase : pScope;
+				}
+				if( pCurr ){
+					SyBlobInit(&sName,&pVm->sAllocator);
+					SyBlobAppend(&sName,"'",sizeof(char));
+					SyBlobAppend(&sName,SyStringData(&pCurr->sName),SyStringLength(&pCurr->sName));
+					SyBlobAppend(&sName,"'",sizeof(char));
+					SyBlobAppend(pOut,SyBlobData(&sName),SyBlobLength(&sName));
+					SyBlobRelease(&sName);
+					return;
+				}
+			}else{
+				SyBlobAppend(pOut,SyStringData(&sOne),SyStringLength(&sOne));
+				SyBlobAppend(pOut,"::",sizeof("::")-1);
+				SyBlobAppend(pOut,SyStringData(&sTwo),SyStringLength(&sTwo));
+				return;
+			}
+		}
+	}
+	if( OoDeclDefFoldable(pByteCode,nLen) ){
+		ph7_value sVal;
+		int bFolded;
+		PH7_MemObjInit(pVm,&sVal);
+		bFolded = PH7_VmEvalConstExpr(pVm,pByteCode,&sVal);
+		if( bFolded ){
+			OoDeclValue(pOut,&sVal);
+		}
+		PH7_MemObjRelease(&sVal);
+		if( bFolded ){
+			return;
+		}
+	}
+	SyBlobAppend(pOut,"<expression>",sizeof("<expression>")-1);
+}
+/*
+ * php hands each rendered declaration to its error formatter as a C STRING, so a
+ * declaration carrying a NUL byte -- `function f($a = "\0")` -- is cut there and
+ * the sentence carries on with what follows it (`A::f($a = '` and then ` in ... on
+ * line N`). Reproduced rather than left as a whole-blob write, which is the one
+ * shape where the two engines would disagree byte for byte.
+ */
+static int OoDeclCLen(SyBlob *pDecl)
+{
+	const char *z = (const char *)SyBlobData(pDecl);
+	sxu32 n = SyBlobLength(pDecl), i;
+	for( i = 0 ; i < n ; ++i ){
+		if( z[i] == 0 ){
+			return (int)i;
+		}
+	}
+	return (int)n;
+}
+/*
+ * `(int $a, ?string $b = null): string` -- everything php prints after the
+ * method's name. pScope is the class the declaration was written FOR (a trait
+ * method's composing class, not the trait), which is what `self` and `parent`
+ * resolve against.
+ */
+PH7_PRIVATE void PH7_ClassRenderDecl(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func *pFunc,SyBlob *pOut)
+{
+	ph7_vm_func_arg *aArgs = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	sxu32 nArg = SySetUsed(&pFunc->aArgs);
+	sxu32 i;
+	SyBlobAppend(pOut,"(",sizeof(char));
+	for( i = 0 ; i < nArg ; ++i ){
+		if( i > 0 ){
+			SyBlobAppend(pOut,", ",sizeof(", ")-1);
+		}
+		if( SyStringLength(&aArgs[i].sTypeName) > 0 ){
+			OoDeclType(pScope,&aArgs[i].sTypeName,pOut);
+			SyBlobAppend(pOut," ",sizeof(char));
+		}
+		if( aArgs[i].iFlags & VM_FUNC_ARG_BY_REF ){
+			SyBlobAppend(pOut,"&",sizeof(char));
+		}
+		if( aArgs[i].iFlags & VM_FUNC_ARG_VARIADIC ){
+			SyBlobAppend(pOut,"...",sizeof("...")-1);
+		}
+		SyBlobAppend(pOut,"$",sizeof(char));
+		SyBlobAppend(pOut,SyStringData(&aArgs[i].sName),SyStringLength(&aArgs[i].sName));
+		if( SySetUsed(&aArgs[i].aByteCode) > 0 ){
+			SyBlobAppend(pOut," = ",sizeof(" = ")-1);
+			OoDeclDefault(pVm,pScope,&aArgs[i].aByteCode,pOut);
+		}
+	}
+	SyBlobAppend(pOut,")",sizeof(char));
+	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
+		SyBlobAppend(pOut,": ",sizeof(": ")-1);
+		OoDeclType(pScope,&pFunc->sReturnTypeName,pOut);
+	}
+}
+/*
  * Method-override compatibility (variance) checking.
  *
  * PHP rejects an override whose signature is incompatible with the parent's:
@@ -550,10 +882,16 @@ static int OoOverrideTypeBad(ph7_vm *pVm, OvType parent, OvType child, int bCova
 /*
  * Check a child method's signature against the parent method it overrides.
  * Emits a PHP-style "Declaration of … must be compatible …" fatal on a clear
- * incompatibility. `__construct` is exempt (PHP does not apply variance to it).
+ * incompatibility.
+ *
+ * bCtorExempt tells the two regimes php has for `__construct` apart: an
+ * INHERITED constructor is exempt from variance entirely (a child may declare
+ * whatever it likes), while one an INTERFACE declares is checked like any other
+ * method -- `interface I { __construct(int $a); }` really does constrain every
+ * implementor's constructor.
  */
-static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_class *pSub,
-	ph7_class_method *pParent, ph7_class_method *pChild)
+PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_class *pSub,
+	ph7_class_method *pParent, ph7_class_method *pChild, int bCtorExempt)
 {
 	ph7_vm *pVm = pGen->pVm;
 	ph7_vm_func *pPF = &pParent->sFunc;
@@ -562,7 +900,8 @@ static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_cl
 	ph7_vm_func_arg *aP, *aC;
 	sxu32 nPArg, nCArg, k;
 	int bBad = 0;
-	if( pMName->nByte == sizeof("__construct")-1
+	if( bCtorExempt
+	 && pMName->nByte == sizeof("__construct")-1
 	 && SyStrnmicmp(pMName->zString,"__construct",pMName->nByte) == 0 ){
 		return SXRET_OK;
 	}
@@ -606,9 +945,33 @@ static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_cl
 		}
 	}
 	if( bBad ){
-		sxi32 rc = PH7_GenCompileError(&(*pGen),E_ERROR,pChild->nLine,
-			"Declaration of %z::%z() must be compatible with %z::%z()",
-			&pSub->sName,pMName,&pBase->sName,&pParent->sFunc.sName);
+		/* php names the class that DECLARED each side, not the one the walk reached
+		 * it through: `class A { f() } class B extends A {} class C extends B { f() }`
+		 * is `C::f() must be compatible with A::f()`, and a trait method belongs to
+		 * the class that composed it. That owner is also what `self` in either
+		 * declaration resolves to. */
+		ph7_class *pChildOwner = PH7_VmMemberOwnerClass((ph7_class *)pCF->pUserData,pSub);
+		ph7_class *pParentOwner = PH7_VmMemberOwnerClass((ph7_class *)pPF->pUserData,pBase);
+		SyBlob sChild, sParent;
+		sxi32 rc;
+		if( pChildOwner == 0 ){
+			pChildOwner = pSub;
+		}
+		if( pParentOwner == 0 ){
+			pParentOwner = pBase;
+		}
+		SyBlobInit(&sChild,&pVm->sAllocator);
+		SyBlobInit(&sParent,&pVm->sAllocator);
+		PH7_ClassRenderDecl(pVm,pChildOwner,pCF,&sChild);
+		PH7_ClassRenderDecl(pVm,pParentOwner,pPF,&sParent);
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pChild->nLine,
+			"Declaration of %z::%z%.*s must be compatible with %z::%z%.*s",
+			&pChildOwner->sName,pMName,
+			OoDeclCLen(&sChild),(const char *)SyBlobData(&sChild),
+			&pParentOwner->sName,&pParent->sFunc.sName,
+			OoDeclCLen(&sParent),(const char *)SyBlobData(&sParent));
+		SyBlobRelease(&sChild);
+		SyBlobRelease(&sParent);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -636,8 +999,8 @@ PH7_PRIVATE sxi32 PH7_ClassInterfaceCheckRedeclare(ph7_gen_state *pGen,ph7_class
 		SyString *pName = &pOwn->sFunc.sName;
 		SyHashEntry *pUp = SyHashGet(&pParent->hMethod,
 			(const void *)pName->zString,pName->nByte);
-		if( pUp && OoCheckOverrideCompat(&(*pGen),pParent,pSub,
-			(ph7_class_method *)pUp->pUserData,pOwn) == SXERR_ABORT ){
+		if( pUp && PH7_ClassCheckOverrideCompat(&(*pGen),pParent,pSub,
+			(ph7_class_method *)pUp->pUserData,pOwn,0) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 	}
@@ -927,7 +1290,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				 * still has to be COMPATIBLE with the requirement -- and php words that
 				 * one the other way round, naming the class that PROVIDES the method and
 				 * the trait that asked for it. */
-				rc = OoCheckOverrideCompat(&(*pGen),pOwnDecl,pBase,pOwnMeth,pMeth);
+				rc = PH7_ClassCheckOverrideCompat(&(*pGen),pOwnDecl,pBase,pOwnMeth,pMeth,1);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -955,8 +1318,8 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				}
 			}else{
 				/* Check the override's signature is compatible with the parent's. */
-				rc = OoCheckOverrideCompat(&(*pGen),pBase,pSub,pMeth,
-					(ph7_class_method *)pOwn->pUserData);
+				rc = PH7_ClassCheckOverrideCompat(&(*pGen),pBase,pSub,pMeth,
+					(ph7_class_method *)pOwn->pUserData,1);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
