@@ -161,13 +161,19 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 			int bReadonly = 0, bVisSeen = 0;
 			sxi32 iVis = PH7_CLASS_PROT_PUBLIC;
 			sxi32 iSetVisFlag = 0;
-			int nSetTok;
+			int nSetTok = 0;   /* left unset when bNameHead skips the peek below */
 			sxi32 nSetVis;
-			if( pIn < pEnd && GenStateIsReadonly(pIn) ){
+			/* php lexes `private\Q` as one T_NAME_QUALIFIED, so a modifier word a
+			 * `\` follows is the head of a TYPE name and no modifier at all:
+			 * `function f(private\Q $x)` is an ordinary parameter, not a promoted
+			 * property outside a constructor. */
+			int bNameHead = ( pIn + 1 < pEnd && (pIn[1].nType & PH7_TK_NSSEP)
+				&& GenStateTokensGlued(pIn,&pIn[1]) );
+			if( !bNameHead && pIn < pEnd && GenStateIsReadonly(pIn) ){
 				bReadonly = 1;
 				pIn++;
 			}
-			nSetVis = GenStatePeekSetVisibility(pIn,pEnd,&nSetTok);
+			nSetVis = bNameHead ? 0 : GenStatePeekSetVisibility(pIn,pEnd,&nSetTok);
 			if( nSetVis ){
 				/* Leading `private(set)` etc: promoted with a public read side */
 				iSetVisFlag = GenStateSetVisFlag(nSetVis);
@@ -177,7 +183,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 					bReadonly = 1;
 					pIn++;
 				}
-			}else if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
+			}else if( !bNameHead && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
 				sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
 				if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PROTECTED || nKw == PH7_TKWRD_PRIVATE ){
 					bVisSeen = 1;
@@ -826,18 +832,110 @@ static int GenStateIsReservedTypeWord(const SyString *pName)
 	}
 	return 0;
 }
+/*
+ * php's builtin type words as looked up BY NAME (zend_lookup_builtin_type_by_name):
+ * every type a declaration can spell with a plain label. `array` and `callable`
+ * are deliberately absent — php's parser hands those two their own tokens — which
+ * is why a qualified `\array` takes the "reserved" wording below while `\int`
+ * takes "must be unqualified".
+ */
+static int GenStateIsBuiltinTypeWord(const SyString *pName)
+{
+	static const char *azWords[] = {
+		"int","float","string","bool","void","iterable","object","mixed",
+		"never","null","false","true"
+	};
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(azWords) ; i++ ){
+		sxu32 n = (sxu32)SyStrlen(azWords[i]);
+		if( pName->nByte == n && SyStrnicmp(pName->zString,azWords[i],n) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* The three class keywords that name a class RELATIVE to the current one. php
+ * refuses to see them behind a qualifier at all, with its own wording. */
+static int GenStateIsRelativeClassWord(const SyString *pName)
+{
+	return (pName->nByte == 4 && SyStrnicmp(pName->zString,"self",4) == 0)
+	    || (pName->nByte == 6 && SyStrnicmp(pName->zString,"parent",6) == 0)
+	    || (pName->nByte == 6 && SyStrnicmp(pName->zString,"static",6) == 0);
+}
+/*
+ * php's reserved-name screens on a class-like type atom, in php's own order.
+ * A name is screened only once a qualifier is present — a BARE reserved word is
+ * a type, and the keyword / null-void-never branches above have already claimed
+ * every one of them.
+ *
+ *   \int, namespace\false   -> "Type declaration 'int' must be unqualified"
+ *   \self, \parent, \static -> "'\self' is an invalid class name"
+ *   \array, \callable, A\int, A\self
+ *                           -> "Cannot use \"NAME\" as a type name as it is
+ *                              reserved", NAME being the name after resolution
+ *
+ * pLastSeg is the atom's trailing segment AS WRITTEN (php's screen looks only at
+ * that), pResolved the whole atom after namespace resolution.
+ */
+static sxi32 GenStateScreenTypeName(
+	ph7_gen_state *pGen,
+	const SyString *pLastSeg,  /* trailing segment, as written */
+	const SyString *pResolved, /* whole atom, after resolution */
+	int bMulti,                /* the written name had more than one segment */
+	int bFQ,                   /* written absolute (`\X`) or `namespace\X` */
+	sxu32 nLine
+){
+	sxi32 rc;
+	if( !bMulti && !bFQ ){
+		return SXRET_OK;
+	}
+	if( !bMulti ){
+		if( GenStateIsBuiltinTypeWord(pLastSeg) ){
+			char zLower[16];
+			sxu32 i;
+			for( i = 0 ; i < pLastSeg->nByte && i < sizeof(zLower) ; i++ ){
+				unsigned char c = (unsigned char)pLastSeg->zString[i];
+				zLower[i] = (char)((c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c);
+			}
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Type declaration '%.*s' must be unqualified",(int)i,zLower);
+			return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		if( GenStateIsRelativeClassWord(pLastSeg) ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"'\\%z' is an invalid class name",pLastSeg);
+			return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+	}
+	if( GenStateIsBuiltinTypeWord(pLastSeg) || GenStateIsRelativeClassWord(pLastSeg)
+	 || (pLastSeg->nByte == 5 && SyStrnicmp(pLastSeg->zString,"array",5) == 0)
+	 || (pLastSeg->nByte == 8 && SyStrnicmp(pLastSeg->zString,"callable",8) == 0) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Cannot use \"%z\" as a type name as it is reserved",pResolved);
+		return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXERR_SYNTAX;
+	}
+	return SXRET_OK;
+}
 static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 {
 	SyToken *pIn = pGen->pIn;
+	SyString sLastSeg;      /* trailing segment of the atom, as written */
+	sxu32 nLine;
 	int bAbsolute = 0;
+	int bQualified;
+	int bMulti = 0;         /* the written name had more than one segment */
+	int bFQ = 0;            /* written absolute or `namespace\`-relative */
+	sxi32 rcScreen;
+	SyStringInitFromBuf(&sLastSeg, 0, 0);
 	SyZero(pOut, sizeof(*pOut));
 	SyStringInitFromBuf(&pOut->sClass, 0, 0);
 	if( pIn >= pGen->pEnd ){
 		return SXERR_SYNTAX;
 	}
+	nLine = pIn->nLine;
 	/* Optional leading namespace separator '\' on FQN class types */
 	if( pIn->nType & PH7_TK_NSSEP ){
-		bAbsolute = 1; /* fully-qualified: never prefix the current namespace */
+		bAbsolute = bFQ = 1; /* fully-qualified: never prefix the current namespace */
 		pIn++;
 		if( pIn >= pGen->pEnd ){
 			return SXERR_SYNTAX;
@@ -851,12 +949,16 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 		SyBlobInit(&sRel,&pGen->pVm->sAllocator);
 		if( GenStateNsRelPrefix(pGen,&pIn,pGen->pEnd,&sRel) ){
 			char *zDup;
+			bFQ = 1;
 			SyBlobAppend(&sRel,pIn->sData.zString,pIn->sData.nByte);
+			sLastSeg = pIn->sData;
 			pIn++;
 			while( pIn + 1 < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP)
-				&& (pIn[1].nType & PH7_TK_ID) ){
+				&& (pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
 				SyBlobAppend(&sRel,"\\",1);
 				SyBlobAppend(&sRel,pIn[1].sData.zString,pIn[1].sData.nByte);
+				sLastSeg = pIn[1].sData;
+				bMulti = 1;
 				pIn += 2;
 			}
 			zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
@@ -868,6 +970,10 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 			pOut->nType = SXU32_HIGH;
 			SyStringInitFromBuf(&pOut->sClass,zDup,SyBlobLength(&sRel));
 			SyBlobRelease(&sRel);
+			rcScreen = GenStateScreenTypeName(pGen,&sLastSeg,&pOut->sClass,bMulti,bFQ,nLine);
+			if( rcScreen != SXRET_OK ){
+				return rcScreen;
+			}
 			pGen->pIn = pIn;
 			return SXRET_OK;
 		}
@@ -876,7 +982,22 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 	if( (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		return SXERR_SYNTAX;
 	}
-	if( pIn->nType & PH7_TK_KEYWORD ){
+	/* php's lexer matches `{LABEL}("\\"{LABEL})+` as ONE T_NAME_QUALIFIED token
+	 * BEFORE it ever looks a label up in the keyword table, so every reserved word
+	 * is a legal SEGMENT of a qualified name: `Default\Q`, `A\Default`, even
+	 * `static\Q` and `array\Q` are names, and only a BARE reserved word is a
+	 * keyword. A `\` on either side is therefore what decides, so a keyword the
+	 * separator follows takes the class-name path below rather than the scalar
+	 * keyword branch (`Default\Q $x` used to be a syntax error). The `\` has to be
+	 * GLUED, exactly as php's lexer requires: `private \Q $x` is still a modifier
+	 * and a type, and reading it as a name broke every promoted property. The
+	 * TRAILING segments below stay loose about spacing, as every other name
+	 * collector in the compiler is — there a stray space only widens what invalid
+	 * source is accepted, it never re-reads valid source as something else. */
+	bQualified = ( pIn + 1 < pGen->pEnd && (pIn[1].nType & PH7_TK_NSSEP)
+		&& GenStateTokensGlued(pIn,&pIn[1]) );
+	sLastSeg = pIn->sData;
+	if( (pIn->nType & PH7_TK_KEYWORD) && !bQualified ){
 		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pIn->pUserData));
 		if( nKey & PH7_TKWRD_ARRAY ){
 			pOut->nType = MEMOBJ_HASHMAP; pOut->zCanon = "array"; pOut->nCanon = 5;
@@ -902,13 +1023,13 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 		/* Identifier — `null`, `void`, `never`, or class name (possibly
 		 * namespaced as a\b\c). Match the well-known names case-insensitively. */
 		SyString *pT = &pIn->sData;
-		if( pT->nByte == 4 && SyMemcmpNoCase(pT->zString, "null", 4) == 0 ){
+		if( !bQualified && pT->nByte == 4 && SyMemcmpNoCase(pT->zString, "null", 4) == 0 ){
 			pOut->nType = UTA_NULL_FLAG; pOut->zCanon = "null"; pOut->nCanon = 4;
 			pIn++;
-		}else if( pT->nByte == 4 && SyMemcmpNoCase(pT->zString, "void", 4) == 0 ){
+		}else if( !bQualified && pT->nByte == 4 && SyMemcmpNoCase(pT->zString, "void", 4) == 0 ){
 			pOut->nType = UTA_VOID_FLAG; pOut->zCanon = "void"; pOut->nCanon = 4;
 			pIn++;
-		}else if( pT->nByte == 5 && SyMemcmpNoCase(pT->zString, "never", 5) == 0 ){
+		}else if( !bQualified && pT->nByte == 5 && SyMemcmpNoCase(pT->zString, "never", 5) == 0 ){
 			pOut->nType = UTA_NEVER_FLAG; pOut->zCanon = "never"; pOut->nCanon = 5;
 			pIn++;
 		}else{
@@ -919,7 +1040,7 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 			pOut->sClass = pIn->sData;
 			pIn++;
 			while( pIn + 1 < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP)
-				&& (pIn[1].nType & PH7_TK_ID) ){
+				&& (pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
 				pLast = &pIn[1];
 				pIn += 2;
 			}
@@ -928,16 +1049,26 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 				const char *zEnd = pLast->sData.zString + pLast->sData.nByte;
 				pOut->sClass.zString = zFirst;
 				pOut->sClass.nByte = (sxu32)(zEnd - zFirst);
+				sLastSeg = pLast->sData;
+				bMulti = 1;
 			}
-			/* Namespace-qualify a bare (single-segment, non-absolute) class type so
-			 * a `: Base` / `Base $x` hint in namespace N resolves to N\Base (or a
-			 * `use` alias) at type-check time instead of the global \Base — mirrors
-			 * the NEW/CALL/instanceof qualification. Absolute (\Base) and already-
-			 * qualified (A\B) names are left as written, matching GenStateNsQualifyName. */
+			/* Namespace-qualify a non-absolute class type so a `: Base` / `Base $x`
+			 * hint in namespace N resolves to N\Base (or a `use` alias) at
+			 * type-check time instead of the global \Base — mirrors the
+			 * NEW/CALL/instanceof qualification. A QUALIFIED `A\B` hint resolves
+			 * exactly the way `new A\B` does: GenStateResolveName maps the LEADING
+			 * segment through the imports and keeps the tail, else prepends the
+			 * current namespace. Only absolute (\Base) names stay as written.
+			 * Qualified hints used to be stored AS WRITTEN, so `: Sub\Thing` inside
+			 * `namespace App;` compared against the literal `Sub\Thing` while the
+			 * value's class was `App\Sub\Thing` — every qualified type face in a
+			 * namespaced tree raised a TypeError. */
 			/* Reserved type words that reach this identifier branch (false, true,
 			 * mixed, iterable, callable) are NOT classes and must not be qualified
-			 * (else `false|string` becomes `Ns\false|string`). */
-			if( !bAbsolute && pLast == pFirst && !GenStateIsReservedTypeWord(&pOut->sClass) ){
+			 * (else `false|string` becomes `Ns\false|string`); they are always
+			 * single-segment, so a qualified name never consults the list. */
+			if( !bAbsolute
+			 && !(pLast == pFirst && GenStateIsReservedTypeWord(&pOut->sClass)) ){
 				SyBlob sFqn;
 				SyBlobInit(&sFqn,&pGen->pVm->sAllocator);
 				GenStateResolveName(pGen,&pOut->sClass,&sFqn);
@@ -952,6 +1083,14 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 				SyBlobRelease(&sFqn);
 			}
 		}
+	}
+	/* php screens the name only once a qualifier is in play; a scalar atom that
+	 * got here bare (`int`, `array`) carries no sClass, so the written word is
+	 * both the segment and the resolved name. */
+	rcScreen = GenStateScreenTypeName(pGen,&sLastSeg,
+		pOut->nType == SXU32_HIGH ? &pOut->sClass : &sLastSeg,bMulti,bFQ,nLine);
+	if( rcScreen != SXRET_OK ){
+		return rcScreen;
 	}
 	pGen->pIn = pIn;
 	return SXRET_OK;

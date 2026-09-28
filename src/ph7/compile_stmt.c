@@ -2782,6 +2782,17 @@ PH7_PRIVATE void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBl
 	SyBlobAppend(pOut,pName->zString,pName->nByte);
 }
 /*
+ * TRUE when pB starts exactly where pA ends. The tokenizer drops whitespace, so
+ * source offsets are the only record of it — and php's qualified-name token
+ * (`{LABEL}("\\"{LABEL})+`) is matched by its LEXER, which means the `\` has to
+ * be glued: `private\Q` is one name, `private \Q` is a modifier and a type, and
+ * only this test tells the two apart.
+ */
+PH7_PRIVATE int GenStateTokensGlued(SyToken *pA,SyToken *pB)
+{
+	return pA->sData.zString + pA->sData.nByte == pB->sData.zString;
+}
+/*
  * php's `namespace\X` NAME OPERATOR (5.3): a leading `namespace` keyword glued to
  * a `\` names the CURRENT namespace, and the whole name is then FULLY QUALIFIED —
  * `namespace\X` inside `namespace B;` is `\B\X`, and plain `\X` at global scope.
@@ -2805,8 +2816,7 @@ PH7_PRIVATE int GenStateIsNsRelName(SyToken *pIn,SyToken *pEnd)
 	if( &pIn[2] >= pEnd || (pIn[2].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		return 0; /* php's T_NAME_RELATIVE needs at least one segment after the `\` */
 	}
-	/* Glued? The tokenizer drops whitespace, so adjacency is the source offsets. */
-	return pIn->sData.zString + pIn->sData.nByte == pIn[1].sData.zString;
+	return GenStateTokensGlued(pIn,&pIn[1]);
 }
 /*
  * Consume a leading `namespace\` (see GenStateIsNsRelName) at *ppIn and seed pOut
@@ -2869,7 +2879,9 @@ PH7_PRIVATE const char * TokenTypeName(sxu32 nType)
 	if( nType & PH7_TK_INTEGER ){ return "integer"; }
 	if( nType & PH7_TK_REAL ){ return "float"; }
 	if( nType & (PH7_TK_DSTR|PH7_TK_SSTR|PH7_TK_HEREDOC|PH7_TK_NOWDOC) ){ return "string"; }
-	if( nType & PH7_TK_KEYWORD ){ return "keyword"; }
+	/* php's parse errors call a reserved word a "token", never a "keyword" — the
+	 * word only ever appears in ITS vocabulary as `unexpected token "while"`. */
+	if( nType & PH7_TK_KEYWORD ){ return "token"; }
 	if( nType & PH7_TK_ID ){ return "identifier"; }
 	if( nType & PH7_TK_DOLLAR ){ return "variable"; }
 	return "token";
@@ -3032,6 +3044,47 @@ PH7_PRIVATE sxi32 GenStateGuardImportRedeclare(ph7_gen_state *pGen,int iKind,
 		           : "Cannot redeclare class %z (previously declared as local import)",pFqn);
 }
 /*
+ * TRUE when pTok is a PHL KEYWORD token that php's lexer nevertheless hands back
+ * as a plain T_STRING. php reserves fewer words than PHL's table does, and the
+ * `as` clause of a `use` accepts a T_STRING and nothing else — so `use A\Q as
+ * integer;` is a legal (if odd) php import while `use A\Q as echo;` is a parse
+ * error. These are exactly the type-NAME keywords: php spells its scalar types
+ * with ordinary labels, and `self`/`parent` too (only `static` is a real token).
+ */
+static int GenStateKeywordIsPhpLabel(SyToken *pTok)
+{
+	sxu32 nKey;
+	if( (pTok->nType & PH7_TK_KEYWORD) == 0 ){
+		return 0;
+	}
+	nKey = (sxu32)(SX_PTR_TO_INT(pTok->pUserData));
+	return nKey == PH7_TKWRD_BOOL || nKey == PH7_TKWRD_INT || nKey == PH7_TKWRD_FLOAT
+		|| nKey == PH7_TKWRD_STRING || nKey == PH7_TKWRD_OBJECT
+		|| nKey == PH7_TKWRD_SELF || nKey == PH7_TKWRD_PARENT;
+}
+/*
+ * TRUE for the names php refuses to let a CLASS import occupy — zend's reserved
+ * class names. Distinct from compile_func.c's GenStateIsReservedTypeWord, which
+ * answers "is this word a built-in TYPE rather than a class name": that one also
+ * covers the `boolean`/`integer`/`double` aliases, and php imports those happily
+ * (`use A\boolean;` is accepted). Matched case-insensitively, like php.
+ */
+static int GenStateIsReservedClassName(const SyString *pName)
+{
+	static const char *azWords[] = {
+		"self","parent","static","int","float","string","bool","array","object",
+		"null","false","true","void","iterable","mixed","never","callable"
+	};
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(azWords) ; i++ ){
+		sxu32 n = (sxu32)SyStrlen(azWords[i]);
+		if( pName->nByte == n && SyStrnicmp(pName->zString,azWords[i],n) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
  * Register one resolved `use` import: alias -> FQN, in the table its KIND owns
  * (iUseType: 0 = class, 1 = function, 2 = const).  Shared by the plain form
  * (`use A\Cee;`) and by each member of a group (`use A\{Cee, Dee};`).
@@ -3057,6 +3110,15 @@ static sxi32 GenStateAddImport(
 	/* php names the KIND of a non-class import in this message: "Cannot use
 	 * function A\eff as eff …" / "Cannot use const A\KAY as KAY …". */
 	zKind = iUseType == 1 ? "function " : iUseType == 2 ? "const " : "";
+	/* A CLASS import may not take a reserved class name, however it got there:
+	 * as the trailing segment (`use A\self;`) or as an explicit alias
+	 * (`use A\Q as self;`). Only classes — `use function A\self;` and
+	 * `use const A\self;` are both accepted by php. */
+	if( iUseType == 0 && GenStateIsReservedClassName(pAlias) ){
+		return PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Cannot use %.*s as %z because '%z' is a special class name",
+			(int)SyBlobLength(pPath),(const char *)SyBlobData(pPath),pAlias,pAlias);
+	}
 	/* Check for duplicate import alias (per-type) */
 	if( SyHashGet(pGenHash,pAlias->zString,pAlias->nByte) != 0 ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
@@ -3112,30 +3174,170 @@ static sxi32 GenStateAddImport(
 static SyToken * GenStateCollectNsPath(ph7_gen_state *pGen,SyBlob *pOut)
 {
 	SyToken *pLast = 0;
-	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID)) ){
-		if( pGen->pIn->nType & PH7_TK_ID ){
-			pLast = pGen->pIn;
-			if( SyBlobLength(pOut) > 0 ){
-				SyBlobAppend(pOut,"\\",1);
-			}
-			SyBlobAppend(pOut,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+	int bAfterSep = 0;   /* the token just consumed was a `\` */
+	while( pGen->pIn < pGen->pEnd ){
+		if( pGen->pIn->nType & PH7_TK_NSSEP ){
+			bAfterSep = ( pGen->pIn + 1 < pGen->pEnd
+				&& GenStateTokensGlued(pGen->pIn,&pGen->pIn[1]) );
+			pGen->pIn++;
+			continue;
 		}
+		if( (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+			/* php lexes a QUALIFIED name as one T_NAME_QUALIFIED token before it
+			 * consults the keyword table, so every reserved word is a legal SEGMENT
+			 * of it — `use A\Default\Q;`, `use Default\Q;`, `use A\as;` are all
+			 * accepted — while a BARE reserved word is not a name at all
+			 * (`use Default;` is a php parse error, and so is `use A\{Default};`).
+			 * A `\` on one side or the other is exactly what separates the two, and
+			 * it must be the IMMEDIATE neighbour: the `as` of `use A\Cee as Baz;`
+			 * carries no separator and must still end the path. */
+			if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
+				break;
+			}
+			if( !bAfterSep
+			 && !(pGen->pIn + 1 < pGen->pEnd && (pGen->pIn[1].nType & PH7_TK_NSSEP)
+				&& GenStateTokensGlued(pGen->pIn,&pGen->pIn[1])) ){
+				break;
+			}
+		}
+		pLast = pGen->pIn;
+		if( SyBlobLength(pOut) > 0 ){
+			SyBlobAppend(pOut,"\\",1);
+		}
+		SyBlobAppend(pOut,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+		bAfterSep = 0;
 		pGen->pIn++;
 	}
 	return pLast;
 }
 /*
- * Consume the optional `as Alias` clause, leaving *pAlias untouched when absent.
+ * Park the cursor on the `;` that ends this declaration so a refused `use` does
+ * not leave its remaining tokens for the statement dispatcher to read as an
+ * expression, which would pile a second diagnostic on the first.
  */
-static void GenStateCollectImportAlias(ph7_gen_state *pGen,SyString *pAlias)
+static void GenStateSkipToStatementEnd(ph7_gen_state *pGen)
+{
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
+		pGen->pIn++;
+	}
+}
+/*
+ * `namespace\X` lexes as php's T_NAME_RELATIVE, and a `use` statement takes a
+ * plain or fully-qualified name only. php refuses it and NAMES the token kind in
+ * the message, a wording TokenTypeName cannot spell. Consumes the name, reports,
+ * and answers TRUE when it fired; zExpecting is php's trailing clause (empty for
+ * the plain form, the member list for a group).
+ */
+static int GenStateUseRejectNsRelName(ph7_gen_state *pGen,sxu32 nLine,const char *zExpecting,sxi32 *pRc)
+{
+	SyBlob sName;
+	if( !GenStateIsNsRelName(pGen->pIn,pGen->pEnd) ){
+		return 0;
+	}
+	SyBlobInit(&sName,&pGen->pVm->sAllocator);
+	SyBlobAppend(&sName,"namespace",sizeof("namespace")-1);
+	pGen->pIn++; /* the `namespace` keyword; the `\` and its segments follow */
+	while( pGen->pIn + 1 < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP)
+		&& (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+		SyBlobAppend(&sName,"\\",1);
+		SyBlobAppend(&sName,pGen->pIn[1].sData.zString,pGen->pIn[1].sData.nByte);
+		pGen->pIn += 2;
+	}
+	*pRc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+		"syntax error, unexpected namespace-relative name \"%.*s\"%s",
+		(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName),zExpecting);
+	SyBlobRelease(&sName);
+	return 1;
+}
+/*
+ * TRUE when pTok is a PHL IDENTIFIER that php's lexer nevertheless reserves. The
+ * alpha operators (`and`, `or`, `xor`, `new`, `clone`, `instanceof`) reach the
+ * parser here as PH7_TK_ID|PH7_TK_OP, and `readonly`/`callable` are
+ * context-sensitive identifiers — php has a real token for every one of them, so
+ * none may stand where its grammar asks for a T_STRING.
+ */
+static int GenStateIdIsPhpKeyword(SyToken *pTok)
+{
+	static const char *azWords[] = {
+		"and","or","xor","new","clone","instanceof","readonly","callable"
+	};
+	sxu32 i;
+	if( (pTok->nType & PH7_TK_ID) == 0 ){
+		return 0;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(azWords) ; i++ ){
+		sxu32 n = (sxu32)SyStrlen(azWords[i]);
+		if( pTok->sData.nByte == n && SyStrnicmp(pTok->sData.zString,azWords[i],n) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * Consume the optional `as Alias` clause, leaving *pAlias untouched when absent.
+ * php's grammar takes a T_STRING there and nothing else, so a reserved word is a
+ * parse error however PHL's lexer happens to have classified it. Returns TRUE
+ * when it reported one, and the caller must then abandon the declaration.
+ */
+static int GenStateCollectImportAlias(ph7_gen_state *pGen,SyString *pAlias,sxi32 *pRc)
 {
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
 		&& PH7_TKWRD_AS == SX_PTR_TO_INT(pGen->pIn->pUserData) ){
 		pGen->pIn++; /* Jump 'as' */
-		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID) ){
+		if( pGen->pIn >= pGen->pEnd ){
+			return 0;
+		}
+		if( (pGen->pIn->nType & PH7_TK_ID) && !GenStateIdIsPhpKeyword(pGen->pIn) ){
 			*pAlias = pGen->pIn->sData;
 			pGen->pIn++;
+			return 0;
 		}
+		if( GenStateKeywordIsPhpLabel(pGen->pIn) ){
+			/* php spells its scalar types and `self`/`parent` with plain labels,
+			 * so those ARE legal aliases — `use A\Q as integer;` compiles, and
+			 * `use A\Q as self;` reaches the special-class-name check instead. */
+			*pAlias = pGen->pIn->sData;
+			pGen->pIn++;
+			return 0;
+		}
+		{
+			/* php prints a reserved word LOWER-CASED in this message, whatever the
+			 * source spelled: `use A\Q as Default;` reads `unexpected token
+			 * "default"`. Longest reserved word here is `include_once` (12). */
+			char zLower[16];
+			SyString sTok = pGen->pIn->sData;
+			sxu32 i;
+			int bKeyword = ( (pGen->pIn->nType & PH7_TK_KEYWORD) != 0
+				|| GenStateIdIsPhpKeyword(pGen->pIn) );
+			int bWord = ( (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+				&& sTok.nByte <= sizeof(zLower) );
+			for( i = 0 ; bWord && i < sTok.nByte ; i++ ){
+				unsigned char c = (unsigned char)sTok.zString[i];
+				zLower[i] = (char)((c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c);
+			}
+			if( bWord ){
+				SyStringInitFromBuf(&sTok,zLower,sTok.nByte);
+			}
+			/* `die` and `exit` are the same token to php, and it names it `exit`. */
+			if( bWord && sTok.nByte == 3 && SyMemcmp(sTok.zString,"die",3) == 0 ){
+				SyStringInitFromBuf(&sTok,"exit",sizeof("exit")-1);
+			}
+			*pRc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,
+				"syntax error, unexpected %s \"%z\", expecting identifier",
+				bKeyword ? "token" : TokenTypeName(pGen->pIn->nType),&sTok);
+		}
+		return 1;
+	}
+	return 0;
+}
+/*
+ * Park the cursor on whichever of `}` / `;` ends the group, so a refused member
+ * does not cascade into the ones after it.
+ */
+static void GenStateSkipToGroupEnd(ph7_gen_state *pGen)
+{
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_CCB|PH7_TK_SEMI)) == 0 ){
+		pGen->pIn++;
 	}
 }
 /*
@@ -3173,6 +3375,11 @@ static sxi32 GenStateCompileGroupUse(ph7_gen_state *pGen,SyBlob *pPrefix,int iUs
 		}
 		SyBlobReset(&sPath);
 		SyBlobAppend(&sPath,SyBlobData(pPrefix),SyBlobLength(pPrefix));
+		if( GenStateUseRejectNsRelName(&(*pGen),nLine,
+				", expecting identifier or namespaced name or \"function\" or \"const\"",&rc) ){
+			GenStateSkipToGroupEnd(&(*pGen));
+			break;
+		}
 		pLast = GenStateCollectNsPath(pGen,&sPath);
 		if( pLast == 0 ){
 			/* No member name: `use A\{};` or a stray token.  Report once, then
@@ -3181,13 +3388,14 @@ static sxi32 GenStateCompileGroupUse(ph7_gen_state *pGen,SyBlob *pPrefix,int iUs
 				"syntax error, unexpected %s \"%z\", expecting identifier",
 				TokenTypeName(pGen->pIn < pGen->pEnd ? pGen->pIn->nType : 0),
 				pGen->pIn < pGen->pEnd ? &pGen->pIn->sData : 0);
-			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_CCB|PH7_TK_SEMI)) == 0 ){
-				pGen->pIn++;
-			}
+			GenStateSkipToGroupEnd(&(*pGen));
 			break;
 		}
 		sAlias = pLast->sData; /* Default alias is the member's last component */
-		GenStateCollectImportAlias(pGen,&sAlias);
+		if( GenStateCollectImportAlias(pGen,&sAlias,&rc) ){
+			GenStateSkipToGroupEnd(&(*pGen));
+			break;
+		}
 		rc = GenStateAddImport(&(*pGen),iMemberType,&sPath,&sAlias,nLine);
 		if( rc == SXERR_ABORT ){
 			break;
@@ -3254,6 +3462,11 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 			break;
 		}
 		SyBlobReset(&sPath);
+		if( GenStateUseRejectNsRelName(&(*pGen),nLine,"",&rc) ){
+			SyBlobRelease(&sPath);
+			GenStateSkipToStatementEnd(&(*pGen));
+			return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXRET_OK;
+		}
 		/* Collect the full namespace path */
 		pLast = GenStateCollectNsPath(pGen,&sPath);
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) && SyBlobLength(&sPath) > 0 ){
@@ -3274,7 +3487,11 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 		/* Default alias is the last component of the path */
 		sAlias = pLast->sData;
 		/* Check for explicit alias: use Foo\Bar as Baz */
-		GenStateCollectImportAlias(pGen,&sAlias);
+		if( GenStateCollectImportAlias(pGen,&sAlias,&rc) ){
+			SyBlobRelease(&sPath);
+			GenStateSkipToStatementEnd(&(*pGen));
+			return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXRET_OK;
+		}
 		rc = GenStateAddImport(&(*pGen),iUseType,&sPath,&sAlias,nLine);
 		if( rc == SXERR_ABORT ){
 			SyBlobRelease(&sPath);
