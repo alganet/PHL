@@ -1369,7 +1369,6 @@ PH7_PRIVATE int vm_builtin_ph7_version(ph7_context *pCtx,int nArg,ph7_value **ap
  *  and for a loaded extension, whose version IS the engine's since every one of
  *  them is part of it — or FALSE for a name it does not report.
  */
-static int VmExtensionIsLoaded(ph7_context *pCtx,ph7_value *pName);
 PH7_PRIVATE int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	/* $extension was declared in the signature and answered NULL for everything:
@@ -1382,154 +1381,14 @@ PH7_PRIVATE int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apA
 	 * version IS the engine's — which is also what php answers for its own
 	 * bundled ones — and a name it does not report is php's false. */
 	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
-		if( !VmExtensionIsLoaded(pCtx,apArg[0]) ){
+		int nName;
+		const char *zName = ph7_value_to_string(apArg[0],&nName);
+		if( !PH7_VmExtensionIsLoaded(pCtx->pVm,zName,nName) ){
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
 	}
 	ph7_result_string(pCtx,PHP_COMPAT_VERSION,(int)sizeof(PHP_COMPAT_VERSION) - 1);
-	return PH7_OK;
-}
-/*
- * The extensions PHL reports as loaded, in the order get_loaded_extensions()
- * lists them and with the CASE php uses for each. `extension_loaded()` matches
- * case-INSENSITIVELY, which is why one table serves both.
- */
-static const char * const azExtension[] = {
-	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar",
-	"ctype", "filter", "hash", "Reflection", "session", "mbstring", "iconv",
-	/* php 8.2 moved rand/mt_rand/random_int/random_bytes into ext/random and
-	 * gave them the Randomizer surface; this build has both halves now, and
-	 * the name was missing while eight of its functions were already here. */
-	"random"
-#ifdef PH7_ENABLE_LIBXML
-	, "libxml", "xml", "dom", "xmlwriter"
-#endif
-#ifdef PH7_ENABLE_SQLITE
-	/* ext/sqlite3 (the SQLite3 class family) is NOT one of these: §10 scopes
-	 * this build to PDO's sqlite DRIVER, so only the two pdo names load. */
-	, "PDO", "pdo_sqlite"
-#endif
-#ifdef PH7_ENABLE_CURL
-	, "curl"
-#endif
-};
-/*
- * `phl.stub_extensions` is a PHL-only directive: a comma-separated list of
- * extensions PHL does NOT implement but reports as LOADED, so software that
- * only GATES on extension_loaded() (PHPUnit's dom/xmlwriter check) runs
- * unmodified. It synthesizes nothing -- no class, no function.
- *
- * Walk it, handing each trimmed name to xVisit until one answers non-zero.
- */
-static int VmStubExtWalk(ph7_vm *pVm,int (*xVisit)(const char *,int,void *),void *pData)
-{
-	SyBlob sList;
-	const char *z;
-	int nByte,i = 0,rc = 0;
-	SyBlobInit(&sList,&pVm->sAllocator);
-	PH7_VmIniGetStr(pVm,"phl.stub_extensions",&sList);
-	z = (const char *)SyBlobData(&sList);
-	nByte = (int)SyBlobLength(&sList);
-	while( rc == 0 && i < nByte ){
-		int iStart,iEnd;
-		while( i < nByte && z[i] == ',' ){ i++; }
-		iStart = i;
-		while( i < nByte && z[i] != ',' ){ i++; }
-		iEnd = i;
-		while( iStart < iEnd && (z[iStart] == ' ' || z[iStart] == '\t') ){ iStart++; }
-		while( iEnd > iStart && (z[iEnd-1] == ' ' || z[iEnd-1] == '\t') ){ iEnd--; }
-		if( iEnd > iStart ){
-			rc = xVisit(&z[iStart],iEnd - iStart,pData);
-		}
-	}
-	SyBlobRelease(&sList);
-	return rc;
-}
-typedef struct vm_ext_match vm_ext_match;
-struct vm_ext_match {
-	const char *zName;
-	int nName;
-};
-static int VmStubExtMatch(const char *zName,int nName,void *pData)
-{
-	vm_ext_match *p = (vm_ext_match *)pData;
-	return nName == p->nName && SyStrnicmp(zName,p->zName,(sxu32)nName) == 0;
-}
-/*
- * Is this name one of the extensions this engine reports as loaded? Shared by
- * extension_loaded() and phpversion(), which php answers from the same list.
- */
-static int VmExtensionIsLoaded(ph7_context *pCtx,ph7_value *pName)
-{
-	vm_ext_match sMatch;
-	const char *zName;
-	int nName;
-	sxu32 n;
-	zName = ph7_value_to_string(pName,&nName);
-	for( n = 0 ; n < SX_ARRAYSIZE(azExtension) ; ++n ){
-		if( nName == (int)SyStrlen(azExtension[n])
-		 && SyStrnicmp(zName,azExtension[n],(sxu32)nName) == 0 ){
-			return 1;
-		}
-	}
-	sMatch.zName = zName;
-	sMatch.nName = nName;
-	return VmStubExtWalk(pCtx->pVm,VmStubExtMatch,&sMatch);
-}
-/*
- * bool extension_loaded(string $extension)
- *  php matches the name case-insensitively.
- */
-PH7_PRIVATE int vm_builtin_extension_loaded(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	if( nArg < 1 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	ph7_result_bool(pCtx,VmExtensionIsLoaded(pCtx,apArg[0]));
-	return PH7_OK;
-}
-static int VmStubExtCollect(const char *zName,int nName,void *pData)
-{
-	ph7_context *pCtx = (ph7_context *)((void **)pData)[0];
-	ph7_value *pArray = (ph7_value *)((void **)pData)[1];
-	ph7_value *pVal = ph7_context_new_scalar(pCtx);
-	if( pVal ){
-		ph7_value_string(pVal,zName,nName);
-		ph7_array_add_elem(pArray,0,pVal);
-		ph7_context_release_value(pCtx,pVal);
-	}
-	return 0;
-}
-/*
- * array get_loaded_extensions(bool $zend_extensions = false)
- *  PHL loads no Zend extension, so the zend list is always empty.
- */
-PH7_PRIVATE int vm_builtin_get_loaded_extensions(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_value *pArray = ph7_context_new_array(pCtx);
-	void *apData[2];
-	sxu32 n;
-	if( pArray == 0 ){
-		return PH7_ContextMemoryError(pCtx);
-	}
-	if( nArg > 0 && ph7_value_to_bool(apArg[0]) ){
-		ph7_result_value(pCtx,pArray);
-		return PH7_OK;
-	}
-	for( n = 0 ; n < SX_ARRAYSIZE(azExtension) ; ++n ){
-		ph7_value *pVal = ph7_context_new_scalar(pCtx);
-		if( pVal ){
-			ph7_value_string(pVal,azExtension[n],-1);
-			ph7_array_add_elem(pArray,0,pVal);
-			ph7_context_release_value(pCtx,pVal);
-		}
-	}
-	apData[0] = pCtx;
-	apData[1] = pArray;
-	VmStubExtWalk(pCtx->pVm,VmStubExtCollect,apData);
-	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
 }
 /*

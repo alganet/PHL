@@ -4935,6 +4935,14 @@ PH7_PRIVATE int vm_builtin_php_sapi_name(ph7_context *pCtx,int nArg,ph7_value **
 PH7_PRIVATE int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_extension_loaded(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_loaded_extensions(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* vm_extension.c -- the extension partition every internal name is placed in */
+PH7_PRIVATE const char * PH7_VmExtensionName(int iExt);
+PH7_PRIVATE int PH7_VmExtensionLookup(const char *zName,int nName);
+PH7_PRIVATE int PH7_VmExtensionIsLoaded(ph7_vm *pVm,const char *zName,int nName);
+PH7_PRIVATE int PH7_VmExtOfFunc(const char *zName,int nName);
+PH7_PRIVATE int PH7_VmExtOfClass(const char *zName,int nName);
+PH7_PRIVATE int PH7_VmExtOfConstant(const char *zName,int nName);
+PH7_PRIVATE int PH7_VmExtOfIni(const char *zName,int nName);
 PH7_PRIVATE int vm_builtin_print(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_random_bytes(ph7_context *pCtx,int nArg,ph7_value **apArg);

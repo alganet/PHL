@@ -2624,43 +2624,40 @@ static int vm_builtin_ReflectionConstant_getFileName(ph7_context *pCtx, int nArg
 	}
 	return PH7_OK;
 }
-/* An engine constant belongs to the synthetic "Core" extension; a userland
- * define() belongs to none, which php reports as null / false. */
-static int vm_builtin_ReflectionConstant_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
+/* The ReflectionExtension builder every reflector's getExtension() answers with
+ * -- defined further down, beside the class partition it reads. */
+static int ReflectExtensionOf(ph7_context *pCtx, int iExt);
+/* An engine constant belongs to the extension the partition places its name in;
+ * a userland define() belongs to none, which php reports as null / false. */
+static int ReflectConstExtId(ph7_context *pCtx)
 {
 	ph7_constant *pCons = ReflectConstOf(pCtx);
-	ph7_class_instance *pExt;
-	ph7_value sName, *apArgs[1];
-	sxi32 rc;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	if( pCons == 0 || pCons->bUserDefined ){
+		return -1;
+	}
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	return PH7_VmExtOfConstant(zName, nName);
+}
+static int vm_builtin_ReflectionConstant_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pCons == 0 || pCons->bUserDefined ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	PH7_MemObjInit(pCtx->pVm, &sName);
-	ph7_value_string(&sName, "Core", 4);
-	apArgs[0] = &sName;
-	pExt = ReflectConstruct(pCtx, "ReflectionExtension", 1, apArgs, &rc);
-	PH7_MemObjRelease(&sName);
-	if( pExt == 0 ){
-		if( rc != PH7_OK ){
-			return rc;
-		}
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	return ReflectResultObject(pCtx, pExt);
+	return ReflectExtensionOf(pCtx, ReflectConstExtId(pCtx));
 }
 static int vm_builtin_ReflectionConstant_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	ph7_constant *pCons = ReflectConstOf(pCtx);
+	int iExt = ReflectConstExtId(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pCons && pCons->bUserDefined == 0 ){
-		ph7_result_string(pCtx, "Core", 4);
-	}else{
+	if( iExt < 0 ){
 		ph7_result_bool(pCtx, 0);
+	}else{
+		ph7_result_string(pCtx, PH7_VmExtensionName(iExt), -1);
 	}
 	return PH7_OK;
 }
@@ -2702,22 +2699,33 @@ static int vm_builtin_ReflectionConstant_toString(ph7_context *pCtx, int nArg, p
 	ph7_result_string_format(pCtx, "Constant [ %.*s ]\n", nName, zName);
 	return PH7_OK;
 }
-/* ---- ReflectionExtension: PHL has exactly one, the synthetic "Core" ---- */
+/* ---- ReflectionExtension: one per name this build reports as loaded ---- */
+/*
+ * php matches the name case-insensitively and then KEEPS its own spelling, so
+ * `new ReflectionExtension('DATE')` reports `date` and `spl` reports `SPL`.
+ * A `phl.stub_extensions` name is loaded too and has no canonical spelling of
+ * its own, so it keeps the caller's.
+ */
 static int vm_builtin_ReflectionExtension_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	int nName = 0;
+	int nName = 0, iExt;
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0], &nName) : "";
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	if( !(nName == 4 && SyToLower(zName[0]) == 'c' && SyToLower(zName[1]) == 'o'
-	   && SyToLower(zName[2]) == 'r' && SyToLower(zName[3]) == 'e') ){
-		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Extension \"%.*s\" does not exist", nName, zName);
+	iExt = PH7_VmExtensionLookup(zName, nName);
+	if( iExt >= 0 ){
+		const char *zCanon = PH7_VmExtensionName(iExt);
+		PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", zCanon, (int)SyStrlen(zCanon));
+		return PH7_OK;
 	}
-	PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", "Core", 4);
-	return PH7_OK;
+	if( PH7_VmExtensionIsLoaded(pCtx->pVm, zName, nName) ){
+		PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", zName, nName);
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx, "ReflectionException",
+		"Extension \"%.*s\" does not exist", nName, zName);
 }
 static int vm_builtin_ReflectionExtension_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -4482,29 +4490,25 @@ static int vm_builtin_ReflectionClass_getAttributes(ph7_context *pCtx, int nArg,
 		return rc;
 	}
 }
-static int vm_builtin_ReflectionClass_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( ReflectClassFlag(pCtx, PH7_CLASS_INTERNAL) ){
-		ph7_result_string(pCtx, "Core", sizeof("Core")-1);
-	}else{
-		ph7_result_bool(pCtx, 0);
-	}
-	return PH7_OK;
-}
 /*
- * The synthetic "Core" extension, which is the only one PHL has. Answered by
- * every reflector's getExtension() for an INTERNAL target.
+ * The ReflectionExtension for one extension id, which is what every reflector's
+ * getExtension() answers for an INTERNAL target. A target the partition has no
+ * row for (iExt < 0) belongs to no extension, which is php's null.
  */
-static int ReflectCoreExtension(ph7_context *pCtx)
+static int ReflectExtensionOf(ph7_context *pCtx, int iExt)
 {
 	ph7_value sName;
 	ph7_value *apCtor[1];
 	ph7_class_instance *pExt;
+	const char *zName;
 	sxi32 rc;
+	if( iExt < 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zName = PH7_VmExtensionName(iExt);
 	PH7_MemObjInit(pCtx->pVm, &sName);
-	ph7_value_string(&sName, "Core", sizeof("Core")-1);
+	ph7_value_string(&sName, zName, -1);
 	apCtor[0] = &sName;
 	pExt = ReflectConstruct(pCtx, "ReflectionExtension", 1, apCtor, &rc);
 	PH7_MemObjRelease(&sName);
@@ -4516,6 +4520,31 @@ static int ReflectCoreExtension(ph7_context *pCtx)
 		return PH7_OK;
 	}
 	return ReflectResultObject(pCtx, pExt);
+}
+/*
+ * The extension a reflected CLASS belongs to, or -1 for a userland one. A class
+ * php has no row for keeps php's answer for an internal name it cannot place --
+ * Core, the engine's own.
+ */
+static int ReflectClassExtId(ph7_class *pClass)
+{
+	if( pClass == 0 || (pClass->iFlags & PH7_CLASS_INTERNAL) == 0 ){
+		return -1;
+	}
+	return PH7_VmExtOfClass(SyStringData(&pClass->sName),
+		(int)SyStringLength(&pClass->sName));
+}
+static int vm_builtin_ReflectionClass_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	int iExt = ReflectClassExtId(ReflectClassOf(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( iExt < 0 ){
+		ph7_result_bool(pCtx, 0);
+	}else{
+		ph7_result_string(pCtx, PH7_VmExtensionName(iExt), -1);
+	}
+	return PH7_OK;
 }
 /* php's export format (chunk 9) — defined at the END of this file, where the
  * member walk, the function reference and the parameter description it reads
@@ -4534,11 +4563,7 @@ static int vm_builtin_ReflectionClass_getExtension(ph7_context *pCtx, int nArg, 
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( !ReflectClassFlag(pCtx, PH7_CLASS_INTERNAL) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	return ReflectCoreExtension(pCtx);
+	return ReflectExtensionOf(pCtx, ReflectClassExtId(ReflectClassOf(pCtx)));
 }
 static int vm_builtin_ReflectionClass_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -5793,16 +5818,35 @@ PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 	}
 	return SXRET_OK;
 }
+/*
+ * A METHOD belongs to the extension its DECLARING class does -- php reports SPL
+ * for a method a userland subclass inherited from ArrayObject -- and a plain
+ * function to the one the partition places its own name in.
+ */
+static int ReflectFuncExtId(const ReflectFuncRef *pRef)
+{
+	const SyString *pName;
+	if( !ReflectFuncIsInternal(pRef) ){
+		return -1;
+	}
+	if( pRef->pMeth ){
+		return ReflectClassExtId(ReflectFuncDeclClass(pRef));
+	}
+	pName = pRef->pHost ? &pRef->pHost->sName : &pRef->pFunc->sName;
+	return PH7_VmExtOfFunc(SyStringData(pName), (int)SyStringLength(pName));
+}
 static int vm_builtin_ReflectionFunc_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
+	int iExt;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
-	if( ReflectFuncIsInternal(&sRef) ){
-		ph7_result_string(pCtx, "Core", sizeof("Core")-1);
-	}else{
+	iExt = ReflectFuncExtId(&sRef);
+	if( iExt < 0 ){
 		ph7_result_bool(pCtx, 0);
+	}else{
+		ph7_result_string(pCtx, PH7_VmExtensionName(iExt), -1);
 	}
 	return PH7_OK;
 }
@@ -5812,11 +5856,7 @@ static int vm_builtin_ReflectionFunc_getExtension(ph7_context *pCtx, int nArg, p
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
-	if( !ReflectFuncIsInternal(&sRef) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	return ReflectCoreExtension(pCtx);
+	return ReflectExtensionOf(pCtx, ReflectFuncExtId(&sRef));
 }
 static int vm_builtin_ReflectionFunc_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
