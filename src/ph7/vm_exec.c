@@ -2447,6 +2447,34 @@ case PH7_OP_DUP:
 	PH7_MemObjStore(pTos - 1,pTos);
 	break;
 /*
+ * OP_FUNC_DECL * * P3
+ *
+ * Bind the function p3 names, here, where the declaration STATEMENT sits. Only a
+ * conditional declaration takes this route: a top-level one is bound while its unit
+ * compiles, exactly as php early-binds it.
+ */
+case PH7_OP_FUNC_DECL: {
+	ph7_vm_func *pDeclFunc = (ph7_vm_func *)pInstr->p3;
+	if( pDeclFunc ){
+		SyHashEntry *pDeclEntry = SyHashGet(&pVm->hFunction,
+			SyStringData(&pDeclFunc->sName),SyStringLength(&pDeclFunc->sName));
+		if( pDeclEntry && pDeclEntry->pUserData != (void *)pDeclFunc ){
+			/* php's runtime redeclaration fatal -- the same sentence the compiler
+			 * raises for two top-level declarations of one name. A BUILTIN of that
+			 * name is not in this table, so a polyfill body that reaches here beside
+			 * one is the `function_exists()` guard having answered false. */
+			VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot redeclare %z()",&pDeclFunc->sName);
+			pVm->iExitStatus = 255;
+			pVm->bHaltRequested = 1;
+			goto Abort;
+		}
+		if( pDeclEntry == 0 ){
+			PH7_VmInstallUserFunction(&(*pVm),pDeclFunc,0);
+		}
+	}
+	break;
+				}
+/*
  * CLASS_DEFER: * * P3
  *
  * Execute a class declaration whose parent/interface/trait could not be

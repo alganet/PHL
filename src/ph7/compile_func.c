@@ -2219,6 +2219,18 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 	}
 	rc = SXRET_OK;
 	if( (pFunc->iFlags & VM_FUNC_CLOSURE) == 0 ){
+		if( GenStateDeclIsConditional(&(*pGen)) ){
+			/* php binds this one when execution REACHES it, not now: a declaration
+			 * inside an `if`, a loop, a `try` or another function's body is not
+			 * early-bound. Binding it here made every
+			 * `if (!function_exists('x')) { function x(){} }` -- the shape every
+			 * symfony/polyfill-* package is written in -- REPLACE the engine's own
+			 * builtin, and declared the body of an `if (false)` besides. The
+			 * redeclaration screen moves to the opcode with it: two branches may
+			 * each declare the name, and only the one that RUNS binds. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_FUNC_DECL,0,0,(void *)pFunc,0);
+			return SXRET_OK;
+		}
 		/* Reject a php-fatal redeclaration before hoisting the function */
 		if( GenStateGuardFuncRedeclaration(pGen,pFunc) == SXERR_ABORT ){
 			return SXERR_ABORT;

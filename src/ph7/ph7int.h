@@ -3377,6 +3377,14 @@ struct ph7_vm
 	int iMbEncoding;           /* mbstring's internal encoding, an MB_ENC_* id from
 								* builtin_mb.c; 0 is UTF-8, which is why zeroing the
 								* VM leaves php's default in place. */
+	sxu8 aMbDetectOrder[8];    /* mbstring's DETECT ORDER, as builtin_mb.c detect ids. It is
+	                            * what `mb_detect_encoding($s)` walks with no list of its
+	                            * own, and what `mb_detect_order()` reads and writes. NOT
+	                            * what the name `auto` means: that one is the LANGUAGE's
+	                            * default order (ASCII, UTF-8) whatever this holds --
+	                            * probed, because the two read alike in the default state
+	                            * and only diverge once a script has set an order. */
+	sxu8 nMbDetectOrder;       /* how many of them; 0 at VM init means the default pair. */
 	sxi32 iMbSubstitute;       /* mbstring's substitute code point ('?' at VM init;
 								* 0 is a code point a script may really ask for). */
 	sxu8 iMbSubstMode;         /* how it is written: builtin_mb.c's MB_SUBST_* — the
@@ -3733,6 +3741,13 @@ enum ph7_vm_op {
                          * count, iP2 = PH7_ROT_* flags (SPREAD: re-derive the runtime count
                          * from this call's unpack runs; TWOSLOT: the callee is an OP_MEMBER
                          * method pair [receiver][name], not a single value). */
+  PH7_OP_FUNC_DECL,     /* Bind a CONDITIONAL function declaration: p3 = ph7_vm_func. php binds
+                         * a function written at a unit's top level when the unit compiles and
+                         * one written anywhere else (inside an `if`, a loop, another function's
+                         * body) when execution REACHES it -- which is what makes
+                         * `if (!function_exists('f')) { function f(){} }` a no-op when `f`
+                         * exists, and every symfony/polyfill-* package harmless beside a real
+                         * mbstring. Redeclaring is php's runtime fatal, raised here. */
   PH7_OP_CLASS_DEFER    /* Deferred class declaration: p3 = VmDeferredClass. Compile-time
                          * resolution of a parent/interface/trait failed (autoloader not yet
                          * REGISTERED — the declaring file's own statements had not run), so the
@@ -4775,6 +4790,10 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 PH7_PRIVATE int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_hrtime(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_getrusage(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#ifdef PH7_ENABLE_PCRE
+PH7_PRIVATE void PH7_PcreVersionInfo(char *zBuf,int nBuf,int *pMajor,int *pMinor,int *pJit);
+#endif
 PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -4812,6 +4831,8 @@ PH7_PRIVATE int PH7_builtin_mb_str_pad_f(ph7_context *pCtx,int nArg,ph7_value **
 PH7_PRIVATE int PH7_builtin_mb_strcut_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_strimwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_detect_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_mb_detect_order_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_mb_list_encodings_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_convert_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* iconv (builtin_iconv.c) */
 PH7_PRIVATE int PH7_builtin_iconv_f(ph7_context *pCtx,int nArg,ph7_value **apArg);

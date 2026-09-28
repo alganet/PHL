@@ -272,6 +272,7 @@ PH7_PRIVATE sxi32 PH7_CompileFunction(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func *pFunc);
 /* compile_stmt.c — cross-unit prototypes */
 PH7_PRIVATE GenBlock * GenStateFetchBlock(GenBlock *pCurrent,sxi32 iBlockType,sxi32 iCount);
+PH7_PRIVATE int GenStateDeclIsConditional(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 GenStateNewJumpFixup(GenBlock *pBlock,sxi32 nJumpType,sxu32 nInstrIdx);
 PH7_PRIVATE VmInstr * GenStateFixupInstr(const JumpFixup *pFix);
 PH7_PRIVATE int GenStateInlineTryCatch(ph7_gen_state *pGen);

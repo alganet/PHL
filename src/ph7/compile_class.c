@@ -519,17 +519,31 @@ static const char * GenStateConstExprSpan(SyToken *pStart,SyToken *pStop,int bAl
 					&& ((const ph7_expr_op *)p[-1].pUserData)->iOp == EXPR_OP_NEW) ){
 				int bNewCtor = 0;
 				SyToken *q = &p[-1];
-				/* Walk back over a qualified name (A\B, A::b, $o->m) to a `new`. */
-				while( q > pStart && (q[-1].nType & (PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) ){
-					if( (q[-1].nType & PH7_TK_OP) && q[-1].pUserData
-						&& ((const ph7_expr_op *)q[-1].pUserData)->iOp == EXPR_OP_NEW ){
+				/* Walk back over a qualified name (A\B, A::b, $o->m) to a `new`. The name
+				 * ALTERNATES -- segment, separator, segment -- so both steps have to be
+				 * taken: stepping over the separator alone stopped on the segment before
+				 * it, and every `new` whose class name carries a `\` then read as a CALL.
+				 * `new Rule\A()` is the ordinary spelling in namespaced code, so an
+				 * attribute argument, a global `const` and a parameter default all
+				 * refused what php compiles (Respect\Validation's whole attribute
+				 * suite is written that way). */
+				while( q > pStart ){
+					SyToken *pPrev = &q[-1];
+					if( (pPrev->nType & PH7_TK_OP) && pPrev->pUserData
+						&& ((const ph7_expr_op *)pPrev->pUserData)->iOp == EXPR_OP_NEW ){
 						bNewCtor = 1;
 						break;
 					}
-					if( !GenStateTokenIsMemberOp(&q[-1]) && (q[-1].nType & PH7_TK_NSSEP) == 0 ){
-						break;
+					if( GenStateTokenIsMemberOp(pPrev) || (pPrev->nType & PH7_TK_NSSEP) ){
+						q--;   /* a separator: whatever precedes it continues the name */
+						continue;
 					}
-					q--;
+					if( (pPrev->nType & PH7_TK_ID)
+						&& (GenStateTokenIsMemberOp(q) || (q->nType & PH7_TK_NSSEP)) ){
+						q--;   /* ...and a SEGMENT, but only across a separator */
+						continue;
+					}
+					break;
 				}
 				if( !bNewCtor && !(&p[1] < pStop && (p[1].nType & PH7_TK_ELLIPSIS)) ){
 					return "Constant expression contains invalid operations";
@@ -4405,7 +4419,14 @@ static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKin
 	SySetInit(&aMissing,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
 	SyBlobInit(&sSelfFqn,&pGen->pVm->sAllocator);
 	if( GenStateScanDeferDeps(pGen,0,iSelfKind,&aMissing,&pBody,&pBodyEnd,&sSelfFqn) == SXRET_OK
-	 && SySetUsed(&aMissing) > 0 ){
+	 && (SySetUsed(&aMissing) > 0 || GenStateDeclIsConditional(&(*pGen))) ){
+		/* Two reasons to compile this declaration where it RUNS rather than here.
+		 * The first is a missing dependency (the autoloader that resolves it has
+		 * not been registered yet). The second is php's binding rule: a class
+		 * written inside an `if`, a loop or a function body is declared when
+		 * execution reaches it, so `if (!class_exists('DateTime')) { class
+		 * DateTime {} }` -- how symfony/polyfill-php8x ships its back-ports -- must
+		 * not REPLACE the engine's own class in a tree that has one. */
 		*pRc = GenStateEmitDeferredClass(pGen,iFlags,0,&aMissing,pBodyEnd,&sSelfFqn,0);
 		bDefer = 1;
 	}

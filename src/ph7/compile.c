@@ -52,6 +52,25 @@ PH7_PRIVATE sxi32 GenStateGetLabel(ph7_gen_state *pGen,SyString *pName,ph7_vm_fu
  * compiled blocks.
  * Return a pointer to that block on success. NULL otherwise.
  */
+/*
+ * Is the declaration the generator is standing on CONDITIONAL -- php's "not early
+ * bound"? A `function` or `class` written at the top level of a unit is bound when
+ * the unit compiles, and one written anywhere else -- inside an `if`, a loop, a
+ * `try`, another function's body -- is bound when execution REACHES it, and not
+ * before.
+ *
+ * The difference is not academic: `if (!function_exists('mb_convert_encoding')) {
+ * function mb_convert_encoding(...) {...} }` is how every symfony/polyfill-* package
+ * is written, and binding that body unconditionally REPLACED the engine's own
+ * builtin with the polyfill -- in a tree that has one, which is nearly every real
+ * project. `if (false) { function f(){} }` declared `f` too.
+ */
+PH7_PRIVATE int GenStateDeclIsConditional(ph7_gen_state *pGen)
+{
+	GenBlock *pBlock = pGen->pCurrent;
+	return pBlock != 0 && (pBlock->iFlags & GEN_BLOCK_GLOBAL) == 0;
+}
+
 PH7_PRIVATE GenBlock * GenStateFetchBlock(GenBlock *pCurrent,sxi32 iBlockType,sxi32 iCount)
 {
 	GenBlock *pBlock = pCurrent;
@@ -3368,26 +3387,28 @@ static sxi32 GenStateCompileAttrSpan(ph7_gen_state *pGen,ph7_trivia *pTrivia,SyS
 			sxu32 nName = SyBlobLength(&sFQN);
 			char *zDup = 0;
 			if( !bAbsolute ){
-				SyHashEntry *pImp = SyHashGet(&pGen->hUseImports,(const void *)zName,nName);
-				if( pImp ){
-					const char *zFqn = (const char *)pImp->pUserData;
-					zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zFqn,SyStrlen(zFqn));
-					if( zDup ){
-						SyStringInitFromBuf(&sAttr.sName,zDup,SyStrlen(zDup));
-					}
-				}else if( SyBlobLength(&pGen->sNamespace) > 0 ){
-					SyBlob sTmp;
-					SyBlobInit(&sTmp,&pGen->pVm->sAllocator);
-					SyBlobAppend(&sTmp,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
-					SyBlobAppend(&sTmp,"\\",1);
-					SyBlobAppend(&sTmp,zName,nName);
+				/* An attribute name resolves exactly the way every other class name
+				 * does -- the LEADING segment through the use imports, else the
+				 * current-namespace prefix. This looked the WHOLE qualified string up
+				 * in the import table, which can never match a single-segment alias,
+				 * and then prefixed the namespace anyway: `use Vv as Rule;` with
+				 * `#[Rule\\A]` asked for `App\\Rule\\A` and got
+				 * `Attribute class ... not found`. It is the same mistake
+				 * GenStateResolveName was written to fix for the other name positions,
+				 * so it is that function's job here too. */
+				SyBlob sTmp;
+				SyString sRaw;
+				SyStringInitFromBuf(&sRaw,zName,nName);
+				SyBlobInit(&sTmp,&pGen->pVm->sAllocator);
+				GenStateResolveName(&(*pGen),&sRaw,&sTmp);
+				if( SyBlobLength(&sTmp) > 0 ){
 					zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
 						(const char *)SyBlobData(&sTmp),SyBlobLength(&sTmp));
 					if( zDup ){
 						SyStringInitFromBuf(&sAttr.sName,zDup,SyBlobLength(&sTmp));
 					}
-					SyBlobRelease(&sTmp);
 				}
+				SyBlobRelease(&sTmp);
 			}
 			if( SyStringLength(&sAttr.sName) < 1 ){
 				zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zName,nName);
