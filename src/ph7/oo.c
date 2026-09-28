@@ -1275,6 +1275,41 @@ PH7_PRIVATE void PH7_ClassInstanceAttrAppended(ph7_class_instance *pThis,SyHashE
 	}
 }
 /*
+ * Spell ONE attribute the way php names it wherever an object's property table is
+ * handed out as keys: a private property is "\0DeclaringClass\0name", a protected
+ * one "\0*\0name", a public one its bare name. The NULs are real bytes (these
+ * appends are length-based), which is what keeps two same-named members from
+ * different visibility levels distinct. `pKey` must already be a STRING value; its
+ * buffer is reset first, so one carrier serves a whole walk.
+ */
+PH7_PRIVATE void PH7_ClassInstanceAttrKey(ph7_class_instance *pThis,VmClassAttr *pAttr,ph7_value *pKey)
+{
+	SyString *pAttrName = &pAttr->pAttr->sName;
+	SyBlobReset(&pKey->sBlob);
+	if( pAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
+		ph7_class *pDecl = pAttr->pAttr->pDeclClass
+			? pAttr->pAttr->pDeclClass : pThis->pClass;
+		PH7_MemObjStringAppend(pKey,"\0",1);
+		PH7_MemObjStringAppend(pKey,SyStringData(&pDecl->sName),SyStringLength(&pDecl->sName));
+		PH7_MemObjStringAppend(pKey,"\0",1);
+	}else if( pAttr->pAttr->iProtection == PH7_CLASS_PROT_PROTECTED ){
+		PH7_MemObjStringAppend(pKey,"\0*\0",3);
+	}
+	PH7_MemObjStringAppend(pKey,pAttrName->zString,pAttrName->nByte);
+}
+/*
+ * Is this slot part of the RAW property table php hands a walker -- the (array)
+ * cast's slot walk, get_mangled_object_vars(), array_walk() over an object? A
+ * class-level member is not the object's, a typed property never written is not
+ * there yet, and a php 8.4 VIRTUAL hooked property has no backing store at all.
+ */
+PH7_PRIVATE int PH7_ClassInstanceAttrPresented(VmClassAttr *pAttr)
+{
+	return !PH7_ATTR_UNPRESENTED(pAttr)
+		&& !PH7_ClassAttrUninitialized(pAttr)
+		&& (pAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) == 0;
+}
+/*
  * Extract the value of a class instance [i.e: Object in the PHP jargon] attribute.
  * This function never fail.
  */
@@ -2395,7 +2430,6 @@ PH7_PRIVATE int PH7_ClassAttrUninitializedForRead(VmClassAttr *pVmAttr)
 static sxi32 ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pMap,int bOwnOnly)
 {
 	SyHashEntry *pEntry;
-	SyString *pAttrName;
 	VmClassAttr *pAttr;
 	ph7_value *pValue;
 	ph7_value sName;
@@ -2405,17 +2439,9 @@ static sxi32 ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pM
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		/* Point to the current attribute */
 		pAttr = (VmClassAttr *)pEntry->pUserData;
-		if( PH7_ATTR_UNPRESENTED(pAttr) ){
-			/* A static property is the CLASS's, not the object's: php's cast
-			 * yields only the instance's own properties. */
-			continue;
-		}
-		if( PH7_ClassAttrUninitialized(pAttr) ){
-			continue; /* typed, never written: not there yet (php) */
-		}
-		if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
-			/* php 8.4: a VIRTUAL hooked property has no backing store — the
-			 * (array) cast excludes it (raw surface, get is NOT dispatched) */
+		if( !PH7_ClassInstanceAttrPresented(pAttr) ){
+			/* Not part of the raw table: a class-level member, a typed property
+			 * never written, or a php 8.4 VIRTUAL hooked one. */
 			continue;
 		}
 		if( bOwnOnly && (pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_NATIVE_SET
@@ -2428,24 +2454,7 @@ static sxi32 ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pM
 		/* Extract attribute value */
 		pValue = ExtractClassAttrValue(pThis->pVm,pAttr);
 		if( pValue ){
-			/* Build attribute name. php MANGLES the key of a non-public property
-			 * when it casts an object to an array: a private one becomes
-			 * "\0DeclaringClass\0name" and a protected one "\0*\0name", so two
-			 * same-named members from different visibility levels stay distinct
-			 * and `isset($arr['priv'])` is FALSE — PHL emitted the bare name,
-			 * which collided them and answered TRUE. The NULs are real bytes in
-			 * the key (this append is length-based, not NUL-terminated). */
-			pAttrName = &pAttr->pAttr->sName;
-			if( pAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
-				ph7_class *pDecl = pAttr->pAttr->pDeclClass
-					? pAttr->pAttr->pDeclClass : pThis->pClass;
-				PH7_MemObjStringAppend(&sName,"\0",1);
-				PH7_MemObjStringAppend(&sName,SyStringData(&pDecl->sName),SyStringLength(&pDecl->sName));
-				PH7_MemObjStringAppend(&sName,"\0",1);
-			}else if( pAttr->pAttr->iProtection == PH7_CLASS_PROT_PROTECTED ){
-				PH7_MemObjStringAppend(&sName,"\0*\0",3);
-			}
-			PH7_MemObjStringAppend(&sName,pAttrName->zString,pAttrName->nByte);
+			PH7_ClassInstanceAttrKey(pThis,pAttr,&sName);
 			/* Perform the insertion. An OWN-props walk laid beside a shape the
 			 * caller already built ADDS rather than updates: php's
 			 * add_common_properties is a zend_hash_add, so a subclass property

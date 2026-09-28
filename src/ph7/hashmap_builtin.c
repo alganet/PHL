@@ -5357,6 +5357,80 @@ PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Returns TRUE on success or FALSE on failure.
  */
+/* Defined below, beside array_walk_recursive() itself. */
+static sxi32 HashmapWalkRecursive(ph7_hashmap *pMap,ph7_value *pCallback,ph7_value *pUserData,int iNest);
+/*
+ * The OBJECT half of array_walk()/array_walk_recursive().
+ *
+ * php declares both `array_walk(object|array &$array, ...)` and means it: an object
+ * is walked as its own property table, LIVE. What the callback sees is the RAW
+ * table -- php's get_properties, not the (array) cast -- so a non-public property
+ * arrives under the key php mangles it with ("\0*\0b", "\0C\0c"), a typed property
+ * never written is absent, and an internal class whose state lives outside the
+ * table (ArrayObject, DateTime, Closure) walks nothing at all. The value is handed
+ * over BY REFERENCE through the property's own slot, so a `&$v` callback writes the
+ * property -- and a typed one enforces its type on that write, with php's
+ * `reference held by property C::$p of type int` sentence, because the binding
+ * aliases the slot the store filter knows.
+ *
+ * The walk owns a registered cursor (PH7_AttrIter), which is what lets the callback
+ * unset() or create properties the way php's does.
+ */
+static sxi32 HashmapWalkObject(
+	ph7_context *pCtx,          /* Call context */
+	ph7_class_instance *pThis,  /* Object to walk */
+	ph7_value *pCallback,       /* User callback */
+	ph7_value *pUserData,       /* Callback private data, or NULL */
+	int bRecursive              /* array_walk_recursive(): descend into ARRAY values */
+	)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	PH7_AttrIter sIter;
+	SyHashEntry *pEntry;
+	ph7_value sKey;
+	sxi32 rc = PH7_OK;
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	sKey.nIdx = SXU32_HIGH; /* Mark as constant */
+	PH7_ClassInstanceIterOpen(pThis,&sIter);
+	while((pEntry = PH7_ClassInstanceIterNext(&sIter)) != 0 ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		ph7_value *apCbArg[3];
+		ph7_value *pValue;
+		if( !PH7_ClassInstanceAttrPresented(pVmAttr) ){
+			continue;
+		}
+		pValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+		if( pValue == 0 ){
+			continue;
+		}
+		if( bRecursive && (pValue->iFlags & MEMOBJ_HASHMAP) ){
+			/* php descends into ARRAY values only: a property holding an OBJECT
+			 * reaches the callback as a leaf. */
+			rc = HashmapWalkRecursive((ph7_hashmap *)pValue->x.pOther,pCallback,pUserData,1);
+			if( PH7_CALLBACK_UNWOUND(rc) ){
+				break;
+			}
+			rc = PH7_OK;
+			continue;
+		}
+		PH7_ClassInstanceAttrKey(pThis,pVmAttr,&sKey);
+		apCbArg[0] = pValue;
+		apCbArg[1] = &sKey;
+		apCbArg[2] = pUserData;
+		rc = PH7_VmCallCallbackByValue(pVm,pCallback,pUserData ? 3 : 2,
+			apCbArg,0,1u /* the PROPERTY really is by reference */);
+		if( PH7_CALLBACK_UNWOUND(rc) ){
+			/* The callback did not return -- a throw of its own, or the TypeError
+			 * a typed property raised on the write-back. php stops there too:
+			 * the properties after it are not visited. */
+			break;
+		}
+		rc = PH7_OK;
+	}
+	PH7_ClassInstanceIterClose(pThis,&sIter);
+	PH7_MemObjRelease(&sKey);
+	return rc;
+}
 PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	char zGiven[64];
@@ -5379,7 +5453,9 @@ PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	if( !ph7_value_is_array(apArg[0]) ){
+	if( !ph7_value_is_array(apArg[0]) && !ph7_value_is_object(apArg[0]) ){
+		/* php's declared type is `object|array` and its refusal names only the
+		 * array half -- the sentence an ordinary caller meets. */
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_walk(): Argument #1 ($array) must be of type array, %s given",
@@ -5391,6 +5467,15 @@ PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	pUserData = nArg > 2 ? apArg[2] : 0;
+	if( ph7_value_is_object(apArg[0]) ){
+		sxi32 rcObj = HashmapWalkObject(pCtx,(ph7_class_instance *)apArg[0]->x.pOther,
+			apArg[1],pUserData,0);
+		if( PH7_CALLBACK_UNWOUND(rcObj) ){
+			return rcObj;
+		}
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
 	/* Point to the internal representation of the input hashmap */
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -5516,7 +5601,7 @@ PH7_PRIVATE int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value 
 			nArg
 			);
 	}
-	if( !ph7_value_is_array(apArg[0]) ){
+	if( !ph7_value_is_array(apArg[0]) && !ph7_value_is_object(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_walk_recursive(): Argument #1 ($array) must be of type array, %s given",
@@ -5526,6 +5611,15 @@ PH7_PRIVATE int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value 
 	{
 		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
 		if( rcCb != PH7_OK ){ return rcCb; }
+	}
+	if( ph7_value_is_object(apArg[0]) ){
+		sxi32 rcObj = HashmapWalkObject(pCtx,(ph7_class_instance *)apArg[0]->x.pOther,
+			apArg[1],nArg > 2 ? apArg[2] : 0,1);
+		if( PH7_CALLBACK_UNWOUND(rcObj) ){
+			return rcObj;
+		}
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
