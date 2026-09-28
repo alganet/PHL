@@ -124,31 +124,18 @@ Loop:
 		goto Synchronize;
 	}
 	pGen->pIn++; /*Jump the equal sign */
-	/* php: a closure in a constant expression must be `static function`; a
-	 * non-static closure and any arrow fn are compile-time fatals with distinct
-	 * messages. Checked ahead of the call scan (it skips closure bodies). */
+	/* php's constant-expression rules, first offender wins (see
+	 * PH7_GenStateConstExprError). A global `const` DOES take `new` (PHP 8.1's
+	 * "new in initializers"), so the `new` rule is off here. */
 	{
-		int iClo = PH7_GenStateInitClosureError(pGen);
-		if( iClo ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
-				iClo == 2 ? "Closures in constant expressions must be static"
-				          : "Constant expression contains invalid operations");
+		const char *zCErr = PH7_GenStateConstExprError(pGen,1);
+		if( zCErr ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"%s",zCErr);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			goto Synchronize;
 		}
-	}
-	/* php: a constant expression may not CALL anything --
-	 * "Constant expression contains invalid operations". PHL used to evaluate the
-	 * call happily, so `const X = strlen("ab");` defined X as 2. */
-	if( PH7_GenStateInitHasCallExpr(pGen) ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
-			"Constant expression contains invalid operations");
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto Synchronize;
 	}
 	/* Allocate a new constant value container */
 	pConsCode = (SySet *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(SySet));

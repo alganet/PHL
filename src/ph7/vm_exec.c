@@ -7017,8 +7017,23 @@ case PH7_OP_CALL: {
 						/* Assume a NULL initialization value */
 						PH7_MemObjInit(&(*pVm),pObj);
 						if( SySetUsed(&pStatic->aByteCode) > 0 ){
-							/* Evaluate initialization expression (Any complex expression) */
+							/* Evaluate initialization expression (Any complex expression).
+							 * A static's initializer is the one initializer php does NOT
+							 * treat as a compile-time constant: it runs inside the call,
+							 * so `static $x = static::class;` is LATE-bound to the runtime
+							 * class. The aSelf push that PH7_VmPeekTopClass answers from
+							 * happens further down (this frame is still being built), so
+							 * stand it up for the eval and take it straight back --
+							 * without it `static::` found no class at all. */
+							int bSelfPushed = 0;
+							if( pSelf ){
+								SySetPut(&pVm->aSelf,(const void *)&pSelf);
+								bSelfPushed = 1;
+							}
 							VmLocalExec(&(*pVm),&pStatic->aByteCode,pObj,FALSE);
+							if( bSelfPushed ){
+								(void)SySetPop(&pVm->aSelf);
+							}
 						}
 						pObj->nIdx = pStatic->nIdx;
 						/* Permanent pin: the storage outlives every call */

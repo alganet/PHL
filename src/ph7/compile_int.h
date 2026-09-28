@@ -278,8 +278,7 @@ PH7_PRIVATE int GenStateNsRelPrefix(ph7_gen_state *pGen,SyToken **ppIn,SyToken *
 PH7_PRIVATE int GenStateIsNsRelName(SyToken *pIn,SyToken *pEnd);
 PH7_PRIVATE int GenStateTokensGlued(SyToken *pA,SyToken *pB);
 PH7_PRIVATE sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc);
-PH7_PRIVATE int PH7_GenStateInitHasCallExpr(ph7_gen_state *pGen);
-PH7_PRIVATE int PH7_GenStateInitClosureError(ph7_gen_state *pGen);
+PH7_PRIVATE const char * PH7_GenStateConstExprError(ph7_gen_state *pGen,int bAllowNew);
 PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen);

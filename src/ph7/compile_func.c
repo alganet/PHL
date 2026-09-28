@@ -72,6 +72,17 @@ static sxi32 GenStateProcessArgValue(ph7_gen_state *pGen,ph7_vm_func_arg *pArg,S
 	sxi32 rc;
 	/* Swap token stream */
 	SWAP_DELIMITER(pGen,pIn,pEnd);
+	/* A parameter default is a constant expression: php applies the same rules here
+	 * as to a class constant, minus `new` (PHP 8.1 allows `new` in an initializer).
+	 * The swap above has left pGen->pIn/pEnd spanning exactly this default. */
+	{
+		const char *zCErr = PH7_GenStateConstExprError(pGen,1);
+		if( zCErr ){
+			sxi32 rcErr = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"%s",zCErr);
+			RE_SWAP_DELIMITER(pGen);
+			return rcErr == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+		}
+	}
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 	PH7_VmSetByteCodeContainer(pGen->pVm,&pArg->aByteCode);
 	/* Compile the expression holding the argument value. A parameter default is a

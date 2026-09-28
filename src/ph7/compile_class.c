@@ -158,119 +158,404 @@ static int GenStateTokenIsMemberOp(const SyToken *p)
 	return ( iOp == EXPR_OP_DC || iOp == EXPR_OP_ARROW || iOp == EXPR_OP_NULLSAFE_ARROW );
 }
 /*
- * Return TRUE if the initializer starting at the current token contains a `new`
- * expression anywhere before it ends. PHP 8.5 forbids `new` in class-constant,
- * interface-constant and (instance/static) property-default initializers
- * ("New expressions are not supported in this context") while still allowing it
- * in global constants, parameter defaults and static-local initializers (which
- * are compiled by different functions and left untouched). The scan is
- * bracket-depth aware so a nested `new` (e.g. `[new X()]`, `cond ? new X() : y`)
- * is still caught and an inner comma does not end the scan prematurely; only a
- * `,` / `;` at depth 0 terminates the initializer.
- *
- * A `new` inside a nested closure / arrow-function is NOT part of this constant
- * expression (it runs when the closure is later invoked), so PHP permits it — a
- * `static function(){ return new X(); }` is a valid constant expression. The scan
- * therefore skips over any `function`/`fn` construct rather than descending into
- * it. A `new` used as a member name (`A::new`) is likewise ignored.
+ * Skip the whole closure / arrow-function construct beginning at *pp, which is
+ * positioned on the `function` / `fn` keyword. Its body is ordinary runtime code,
+ * so none of the constant-expression rules below reach into it. *piDepth is the
+ * caller's bracket depth: an arrow function has no braces of its own and ends at
+ * a `,`/`;` or at a bracket closing an ENCLOSING group, so it shares that depth,
+ * while a `function(){...}` body is brace-balanced and walks its own.
  */
-static int GenStateInitHasNewExpr(ph7_gen_state *pGen)
+static void GenStateInitSkipFuncConstruct(SyToken **pp,SyToken *pEnd,int *piDepth)
 {
-	SyToken *p = pGen->pIn;
-	int iDepth = 0;
-	while( p < pGen->pEnd ){
-		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
-			break; /* end of this initializer */
-		}
-		if( (p->nType & PH7_TK_KEYWORD)
-			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
-				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
-			/* Skip the whole closure/arrow-fn (signature defaults + body): any
-			 * `new` in there is deferred to call time, not part of this const
-			 * expression. */
-			int bArrow = ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN );
-			p++;
-			if( bArrow ){
-				/* fn(params) => expr : skip to the end of the current element (a
-				 * `,`/`;` or a bracket closing an enclosing group, at base depth). */
-				int iBase = iDepth;
-				while( p < pGen->pEnd ){
-					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
-						iDepth++;
-					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-						if( iDepth <= iBase ){
-							break; /* closes an enclosing group, not the fn's own */
-						}
-						iDepth--;
-					}else if( iDepth <= iBase && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
-						break;
-					}
-					p++;
+	SyToken *p = *pp;
+	int bArrow = ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN );
+	int iBase = *piDepth;
+	p++;
+	if( bArrow ){
+		/* fn(params) => expr : skip to the end of the current element. */
+		while( p < pEnd ){
+			if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+				(*piDepth)++;
+			}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+				if( *piDepth <= iBase ){
+					break; /* closes an enclosing group, not the fn's own */
 				}
-			}else{
-				/* function(params)[use(...)][: type] { body } : skip the signature
-				 * up to the body '{' (a '{' at closure-local depth 0, so a
-				 * `new class{}` default inside the parens is not mistaken for it),
-				 * then skip the balanced brace block. */
-				int iLocal = 0;
-				while( p < pGen->pEnd ){
-					if( iLocal == 0 && (p->nType & PH7_TK_OCB) ){
-						break; /* body brace */
-					}
-					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
-						iLocal++;
-					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-						if( iLocal > 0 ){
-							iLocal--;
-						}
-					}
-					p++;
-				}
-				if( p < pGen->pEnd ){
-					int iBrace = 0; /* p is on the body '{' */
-					while( p < pGen->pEnd ){
-						if( p->nType & PH7_TK_OCB ){
-							iBrace++;
-						}else if( p->nType & PH7_TK_CCB ){
-							iBrace--;
-							if( iBrace == 0 ){
-								p++;
-								break;
-							}
-						}
-						p++;
-					}
-				}
-			}
-			continue;
-		}
-		if( p->nType & PH7_TK_OCB ){
-			if( iDepth == 0 ){
-				/* A depth-0 '{' can only open a PHP 8.4 property-hook list
-				 * (`public T $x = default { get …; }`): the default expression
-				 * ends here. A `new` inside a hook BODY runs at access time and
-				 * is legal — don't scan into it. */
+				(*piDepth)--;
+			}else if( *piDepth <= iBase && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
 				break;
 			}
-			iDepth++;
-		}else if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
+			p++;
+		}
+	}else{
+		/* function(params)[use(...)][: type] { body } : skip the signature up to the
+		 * body '{' (a '{' at closure-local depth 0, so a `new class{}` default inside
+		 * the parens is not mistaken for it), then the balanced brace block. */
+		int iLocal = 0;
+		while( p < pEnd ){
+			if( iLocal == 0 && (p->nType & PH7_TK_OCB) ){
+				break; /* body brace */
+			}
+			if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+				iLocal++;
+			}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+				if( iLocal > 0 ){
+					iLocal--;
+				}
+			}
+			p++;
+		}
+		if( p < pEnd ){
+			int iBrace = 0; /* p is on the body '{' */
+			while( p < pEnd ){
+				if( p->nType & PH7_TK_OCB ){
+					iBrace++;
+				}else if( p->nType & PH7_TK_CCB ){
+					iBrace--;
+					if( iBrace == 0 ){
+						p++;
+						break;
+					}
+				}
+				p++;
+			}
+		}
+	}
+	*pp = p;
+}
+/*
+ * TRUE if *p is the `::` operator.
+ */
+static int GenStateTokenIsDoubleColon(const SyToken *p)
+{
+	return ( (p->nType & PH7_TK_OP) && p->pUserData
+		&& ((const ph7_expr_op *)p->pUserData)->iOp == EXPR_OP_DC );
+}
+/*
+ * Where the constant expression starting at *pStart ends: the first `,` or `;` at
+ * bracket depth 0, or the first depth-0 `{`, which in a property declaration can
+ * only open a PHP 8.4 hook list (`public T $x = default { get …; }`) and never
+ * belongs to the default itself.
+ */
+static SyToken * GenStateConstExprEnd(SyToken *pStart,SyToken *pEnd)
+{
+	SyToken *p = pStart;
+	int iDepth = 0;
+	while( p < pEnd ){
+		if( (p->nType & PH7_TK_KEYWORD) && (p->nType & PH7_TK_MEMBER_NAME) == 0
+			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
+				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
+			/* A closure's BODY brace is not a hook list: skip the construct whole,
+			 * or `$c = static function(){}` would end the expression at that brace
+			 * and hide everything after it from the rules. */
+			GenStateInitSkipFuncConstruct(&p,pEnd,&iDepth);
+			continue;
+		}
+		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA|PH7_TK_OCB)) ){
+			break;
+		}
+		if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
 			iDepth++;
 		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
 			if( iDepth > 0 ){
 				iDepth--;
 			}
-		}else if( (p->nType & PH7_TK_OP) && p->pUserData
-			&& ((const ph7_expr_op *)p->pUserData)->iOp == EXPR_OP_NEW ){
-			/* `new` is lexed as an alpha-stream operator (PH7_TK_ID|PH7_TK_OP)
-			 * whose pUserData is the operator instance, not a keyword id. Ignore a
-			 * `new` used as a member name (`A::new`/`$o->new`). */
-			if( p == pGen->pIn || !GenStateTokenIsMemberOp(&p[-1]) ){
+		}
+		p++;
+	}
+	return p;
+}
+/*
+ * Decide a ternary CONDITION php would have folded: 1 truthy, 0 falsy, -1 "cannot
+ * tell". Only a lone literal (with any number of redundant parens around it) is
+ * decided here. php's own folder reaches much further -- it evaluates `1 === 1`,
+ * `PHP_INT_SIZE === 8`, even `[1,2][0]` -- and everything it cannot fold at compile
+ * time, a user constant among them, it leaves for the rule walk to refuse. The
+ * caller answers -1 by leaving the whole expression alone, which is the safe
+ * direction: an offender php would have refused stays accepted, and no valid
+ * program is refused on a branch php would have dropped.
+ */
+static int GenStateConstExprTruth(SyToken *pStart,SyToken *pStop)
+{
+	SyToken *p = pStart, *q = pStop;
+	while( p < q && (p->nType & PH7_TK_LPAREN) && (q[-1].nType & PH7_TK_RPAREN) ){
+		p++;
+		q--;
+	}
+	if( &p[1] != q ){
+		return -1; /* not a lone token */
+	}
+	if( p->nType & PH7_TK_ID ){
+		/* `true`/`false`/`null` are not lexer keywords here -- they arrive as plain
+		 * identifiers and are recognised by name (php reserves all three, so no user
+		 * constant can shadow one). Any OTHER name is a constant whose value this
+		 * stage does not know, which is exactly where php stops folding too. */
+		if( p->sData.nByte == 4 && SyStrnicmp(p->sData.zString,"true",4) == 0 ){
+			return 1;
+		}
+		if( (p->sData.nByte == 5 && SyStrnicmp(p->sData.zString,"false",5) == 0)
+			|| (p->sData.nByte == 4 && SyStrnicmp(p->sData.zString,"null",4) == 0) ){
+			return 0;
+		}
+		return -1;
+	}
+	if( p->nType & (PH7_TK_INTEGER|PH7_TK_REAL) ){
+		/* php's truthiness: 0 and 0.0 are false, everything else true. */
+		const char *z = p->sData.zString;
+		sxu32 n = p->sData.nByte, i;
+		for( i = 0 ; i < n ; ++i ){
+			if( z[i] != '0' && z[i] != '.' && z[i] != '+' && z[i] != '-' ){
 				return 1;
+			}
+		}
+		return 0;
+	}
+	if( p->nType & PH7_TK_DSTR ){
+		/* A double-quoted literal may interpolate; only a single-quoted one is
+		 * certainly its own text. Leave the rest undecided. */
+		return -1;
+	}
+	if( p->nType & PH7_TK_SSTR ){
+		return ( p->sData.nByte == 0
+			|| (p->sData.nByte == 1 && p->sData.zString[0] == '0') ) ? 0 : 1;
+	}
+	return -1;
+}
+static const char * GenStateConstExprSpan(SyToken *pStart,SyToken *pStop,int bAllowNew,int nDepth);
+/*
+ * TRUE if a `?` appears anywhere in the span outside a closure body. Used only
+ * after the top-level ternary has been ruled out: a ternary NESTED in a bracket
+ * (`[true ? 1 : new X]`, `(true ? 1 : strlen('a')) + 1`) is folded by php just the
+ * same, but the split below cannot say where its condition begins, so the span is
+ * left alone rather than have a dropped branch refuse a valid program. A `?` in a
+ * closure body is runtime code and does not count; `?->` and `??` are their own
+ * operators and never land here.
+ */
+static int GenStateSpanHasNestedTernary(SyToken *pStart,SyToken *pStop)
+{
+	SyToken *p = pStart;
+	int iDepth = 0;
+	while( p < pStop ){
+		if( (p->nType & PH7_TK_KEYWORD) && (p->nType & PH7_TK_MEMBER_NAME) == 0
+			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
+				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
+			GenStateInitSkipFuncConstruct(&p,pStop,&iDepth);
+			continue;
+		}
+		if( (p->nType & PH7_TK_OP) && p->pUserData
+			&& ((const ph7_expr_op *)p->pUserData)->iOp == EXPR_OP_QUESTY ){
+			return 1;
+		}
+		p++;
+	}
+	return 0;
+}
+/*
+ * Split a constant expression at its top-level ternary, the way php's constant
+ * folder does: the condition decides which branch survives, and only the surviving
+ * one is subject to the rules. `true ? 1 : new X` and `false ? new X : 1` are both
+ * legal php for exactly this reason, and scanning the dropped branch refused valid
+ * programs. Answers 1 when it handled the span (writing the verdict to *pzErr).
+ */
+static int GenStateConstExprTernary(SyToken *pStart,SyToken *pStop,int bAllowNew,
+	int nDepth,const char **pzErr)
+{
+	SyToken *p = pStart, *pQ = 0, *pColon = 0;
+	int iDepth = 0, iNest = 0, iTruth;
+	while( p < pStop ){
+		if( (p->nType & PH7_TK_KEYWORD) && (p->nType & PH7_TK_MEMBER_NAME) == 0
+			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
+				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
+			/* A ternary inside a closure body -- or an ARROW function's whole body,
+			 * which carries no braces to raise the depth -- is runtime code, not this
+			 * expression's ternary. Reading `fn() => true ? 1 : 2` as one folded away
+			 * the arrow that the rules exist to refuse. */
+			GenStateInitSkipFuncConstruct(&p,pStop,&iDepth);
+			continue;
+		}
+		if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+			iDepth++;
+		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			if( iDepth > 0 ){
+				iDepth--;
+			}
+		}else if( iDepth == 0 && (p->nType & PH7_TK_OP) && p->pUserData
+			&& ((const ph7_expr_op *)p->pUserData)->iOp == EXPR_OP_QUESTY ){
+			if( pQ == 0 ){
+				pQ = p;
+			}
+			iNest++;
+		}else if( iDepth == 0 && pQ != 0 && (p->nType & PH7_TK_COLON) ){
+			/* `::` is one DC operator token, not two colons, so it never lands here;
+			 * a nested ternary's own colon is matched against its own `?`. */
+			iNest--;
+			if( iNest == 0 ){
+				pColon = p;
+				break;
+			}
+		}
+		p++;
+	}
+	if( pQ == 0 ){
+		return 0; /* no top-level ternary: the linear walk owns this span */
+	}
+	if( pColon == 0 ){
+		*pzErr = 0; /* unbalanced (the parser will say so); nothing to rule on here */
+		return 1;
+	}
+	iTruth = GenStateConstExprTruth(pStart,pQ);
+	if( iTruth < 0 ){
+		*pzErr = 0; /* php would fold what this cannot: leave the whole span alone */
+		return 1;
+	}
+	*pzErr = GenStateConstExprSpan(pStart,pQ,bAllowNew,nDepth + 1);
+	if( *pzErr == 0 ){
+		/* `c ?: e` keeps the condition when it is truthy, so the then-span is empty. */
+		*pzErr = iTruth
+			? GenStateConstExprSpan(&pQ[1],pColon,bAllowNew,nDepth + 1)
+			: GenStateConstExprSpan(&pColon[1],pStop,bAllowNew,nDepth + 1);
+	}
+	return 1;
+}
+/*
+ * Every compile-time rule php applies to a CONSTANT EXPRESSION, over one token span,
+ * as a single left-to-right walk that answers with the FIRST offender's sentence --
+ * which is exactly the one php prints, because php walks the same expression in the
+ * same order and stops at the first node it refuses to compile. Run as separate
+ * passes, the rules got that order wrong whenever two kinds appeared together:
+ * `[strlen('a'), function(){}]` said "Closures in constant expressions must be
+ * static" where php says "Constant expression contains invalid operations".
+ *
+ * The rules, in the order a token can trigger them:
+ *   - an ARROW function -- "Constant expression contains invalid operations". There
+ *     is no static-`fn` escape: `static fn()=>1` is refused too;
+ *   - an IMMEDIATELY INVOKED closure -- a call is what php names it, so it takes the
+ *     call sentence and not the closure one;
+ *   - a NON-STATIC closure -- "Closures in constant expressions must be static".
+ *     `static function(){...}` is accepted and its body skipped, being runtime code;
+ *   - a STATIC PROPERTY fetch (`C::$p`, `self::$p`, `static::$p`) -- php has no
+ *     constant-expression node for one, so it is "invalid operations";
+ *   - `static::` -- "\"static::\" is not allowed in compile-time constants", with the
+ *     `static::class` face carrying php's own separate sentence. `self::`/`parent::`
+ *     are fine: they name the DECLARING class, which is known where it is written;
+ *   - a CALL -- "Constant expression contains invalid operations". A first-class
+ *     callable (`strlen(...)`) is only an ellipsis in parens, and a constructor's
+ *     argument list belongs to its `new`, so neither of those counts;
+ *   - `new`, unless bAllowNew -- "New expressions are not supported in this context".
+ */
+static const char * GenStateConstExprSpan(SyToken *pStart,SyToken *pStop,int bAllowNew,int nDepth)
+{
+	SyToken *p = pStart;
+	int iDepth = 0;
+	const char *zTern = 0;
+	if( nDepth > 32 ){
+		return 0; /* pathological nesting: stop rather than recurse */
+	}
+	if( GenStateConstExprTernary(pStart,pStop,bAllowNew,nDepth,&zTern) ){
+		return zTern;
+	}
+	if( GenStateSpanHasNestedTernary(pStart,pStop) ){
+		return 0; /* php folds it and this cannot: leave the span alone */
+	}
+	while( p < pStop ){
+		if( (p->nType & PH7_TK_KEYWORD) && (p->nType & PH7_TK_MEMBER_NAME) == 0 ){
+			sxu32 nKw = (sxu32)SX_PTR_TO_INT(p->pUserData);
+			if( nKw == PH7_TKWRD_FN ){
+				return "Constant expression contains invalid operations";
+			}
+			if( nKw == PH7_TKWRD_FUNCTION ){
+				int iScan = iDepth;
+				SyToken *q = p;
+				/* `(function(){...})()` is a CALL to php, and a call is what it names --
+				 * the closure rule never gets a say. Look past the construct and the
+				 * parens wrapping it for the argument list. */
+				GenStateInitSkipFuncConstruct(&q,pStop,&iScan);
+				while( q < pStop && (q->nType & PH7_TK_RPAREN) ){
+					q++;
+				}
+				if( q < pStop && (q->nType & PH7_TK_LPAREN) ){
+					return "Constant expression contains invalid operations";
+				}
+				/* The `static` modifier sits in the token immediately before. */
+				if( !(p > pStart && (p[-1].nType & PH7_TK_KEYWORD)
+					&& SX_PTR_TO_INT(p[-1].pUserData) == PH7_TKWRD_STATIC) ){
+					return "Closures in constant expressions must be static";
+				}
+				GenStateInitSkipFuncConstruct(&p,pStop,&iDepth);
+				continue;
+			}
+			if( nKw == PH7_TKWRD_STATIC && &p[1] < pStop
+				&& GenStateTokenIsDoubleColon(&p[1])
+				&& !(&p[2] < pStop && (p[2].nType & PH7_TK_DOLLAR)) ){
+				/* `static::$p` is excluded above: it is a property fetch, which the
+				 * `::` rule below words php's way. */
+				if( &p[2] < pStop && (p[2].nType & PH7_TK_KEYWORD)
+					&& SX_PTR_TO_INT(p[2].pUserData) == PH7_TKWRD_CLASS ){
+					return "static::class cannot be used for compile-time class name resolution";
+				}
+				return "\"static::\" is not allowed in compile-time constants";
+			}
+		}
+		if( GenStateTokenIsDoubleColon(p) && &p[1] < pStop && (p[1].nType & PH7_TK_DOLLAR) ){
+			return "Constant expression contains invalid operations";
+		}
+		if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+			/* A '(' directly after a NAME is a call. A name here is an identifier
+			 * token; `new X(` is excluded by walking back to the `new` operator, and
+			 * `f(...)` (first-class callable) by peeking for a lone ellipsis. */
+			if( (p->nType & PH7_TK_LPAREN) && p > pStart
+				&& (p[-1].nType & PH7_TK_ID)
+				&& !((p[-1].nType & PH7_TK_OP) && p[-1].pUserData
+					&& ((const ph7_expr_op *)p[-1].pUserData)->iOp == EXPR_OP_NEW) ){
+				int bNewCtor = 0;
+				SyToken *q = &p[-1];
+				/* Walk back over a qualified name (A\B, A::b, $o->m) to a `new`. */
+				while( q > pStart && (q[-1].nType & (PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) ){
+					if( (q[-1].nType & PH7_TK_OP) && q[-1].pUserData
+						&& ((const ph7_expr_op *)q[-1].pUserData)->iOp == EXPR_OP_NEW ){
+						bNewCtor = 1;
+						break;
+					}
+					if( !GenStateTokenIsMemberOp(&q[-1]) && (q[-1].nType & PH7_TK_NSSEP) == 0 ){
+						break;
+					}
+					q--;
+				}
+				if( !bNewCtor && !(&p[1] < pStop && (p[1].nType & PH7_TK_ELLIPSIS)) ){
+					return "Constant expression contains invalid operations";
+				}
+			}
+			iDepth++;
+		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			if( iDepth > 0 ){
+				iDepth--;
+			}
+		}else if( !bAllowNew && (p->nType & PH7_TK_OP) && p->pUserData
+			&& ((const ph7_expr_op *)p->pUserData)->iOp == EXPR_OP_NEW ){
+			/* `new` is lexed as an alpha-stream operator (PH7_TK_ID|PH7_TK_OP) whose
+			 * pUserData is the operator instance, not a keyword id. Ignore a `new`
+			 * used as a member name (`A::new` / `$o->new`). */
+			if( p == pStart || !GenStateTokenIsMemberOp(&p[-1]) ){
+				return "New expressions are not supported in this context";
 			}
 		}
 		p++;
 	}
 	return 0;
+}
+/*
+ * The constant-expression screen as the compiler's call sites use it: the rules of
+ * GenStateConstExprSpan over the initializer that begins at the current token.
+ *
+ * bAllowNew states PHP 8.1's split: a global `const`, a parameter default and an
+ * attribute argument take `new`; a class/interface constant, an enum case value and
+ * a property default do not.
+ *
+ * Returns the sentence, or 0 when the expression is clean. Never consumes tokens.
+ */
+PH7_PRIVATE const char * PH7_GenStateConstExprError(ph7_gen_state *pGen,int bAllowNew)
+{
+	return GenStateConstExprSpan(pGen->pIn,
+		GenStateConstExprEnd(pGen->pIn,pGen->pEnd),bAllowNew,0);
 }
 /*
  * php keeps class CONSTANTS and PROPERTIES in separate namespaces: a class may
@@ -285,240 +570,6 @@ static ph7_class_attr * GenStateExtractConstant(ph7_class *pClass,SyString *pNam
 static ph7_class_attr * GenStateExtractProperty(ph7_class *pClass,const char *zName,sxu32 nByte)
 {
 	return PH7_ClassExtractAttribute(pClass,zName,nByte);
-}
-/*
- * Return TRUE if the constant expression starting at the current token performs a
- * FUNCTION CALL, which php rejects with "Constant expression contains invalid
- * operations" in every constant-expression context (global `const`, class/interface
- * constants, property defaults, parameter defaults, attribute arguments).
- *
- * Shares GenStateInitHasNewExpr's walk: depth-aware so a nested call is caught
- * (`[1, f()]`) and an inner comma does not end the scan, and skipping any
- * `function`/`fn` construct outright — a call inside a closure body runs when the
- * closure is invoked, so php allows it.
- *
- * Deliberately NOT rejected, because php accepts them:
- *   - first-class callables, `strlen(...)` — the parens hold only the ellipsis;
- *   - `new X(...)` — constructor calls are legal in the contexts that allow `new`
- *     at all, and GenStateInitHasNewExpr owns the contexts that do not;
- *   - anything inside a ternary. php FOLDS a constant condition and only rejects a
- *     call that survives, so `true ? 1 : f()` is legal while `false ? 1 : f()` is
- *     not. PHL does not constant-fold here, so rather than risk rejecting valid
- *     code this scan skips an initializer containing a depth-0 `?` entirely. The
- *     residual is a call hiding in a TAKEN ternary branch, which stays accepted.
- */
-PH7_PRIVATE int PH7_GenStateInitHasCallExpr(ph7_gen_state *pGen)
-{
-	SyToken *p = pGen->pIn;
-	int iDepth = 0;
-	/* Conservative ternary bail-out (see the note above). */
-	{
-		SyToken *q = pGen->pIn;
-		int iQd = 0;
-		while( q < pGen->pEnd ){
-			if( iQd == 0 && (q->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
-				break;
-			}
-			if( q->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
-				iQd++;
-			}else if( q->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-				if( iQd > 0 ){ iQd--; }
-			}else if( (q->nType & PH7_TK_OP) && q->pUserData
-				&& ((const ph7_expr_op *)q->pUserData)->iOp == EXPR_OP_QUESTY ){
-				return 0;
-			}
-			q++;
-		}
-	}
-	while( p < pGen->pEnd ){
-		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
-			break; /* end of this initializer */
-		}
-		if( (p->nType & PH7_TK_KEYWORD)
-			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
-				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
-			/* A call inside a closure/arrow-fn is deferred to call time: skip the
-			 * whole construct. Delegating to the sibling scanner is not possible
-			 * (it reports `new`), so mirror its bracket walk. */
-			int bArrow = ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN );
-			int iBase = iDepth;
-			p++;
-			if( bArrow ){
-				while( p < pGen->pEnd ){
-					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
-						iDepth++;
-					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-						if( iDepth <= iBase ){
-							break;
-						}
-						iDepth--;
-					}else if( iDepth <= iBase && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
-						break;
-					}
-					p++;
-				}
-			}else{
-				int iLocal = 0;
-				while( p < pGen->pEnd ){
-					if( iLocal == 0 && (p->nType & PH7_TK_OCB) ){
-						break;
-					}
-					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
-						iLocal++;
-					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-						if( iLocal > 0 ){ iLocal--; }
-					}
-					p++;
-				}
-				if( p < pGen->pEnd ){
-					int iBrace = 0;
-					while( p < pGen->pEnd ){
-						if( p->nType & PH7_TK_OCB ){
-							iBrace++;
-						}else if( p->nType & PH7_TK_CCB ){
-							iBrace--;
-							if( iBrace == 0 ){
-								p++;
-								break;
-							}
-						}
-						p++;
-					}
-				}
-			}
-			continue;
-		}
-		if( p->nType & PH7_TK_OCB ){
-			if( iDepth == 0 ){
-				break; /* property-hook list: the default expression ends here */
-			}
-			iDepth++;
-		}else if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
-			/* A '(' directly after a NAME is a call. A name here is an identifier
-			 * token; `new X(` is excluded by looking for the `new` operator, and
-			 * `f(...)` (first-class callable) by peeking for a lone ellipsis. */
-			if( (p->nType & PH7_TK_LPAREN) && p > pGen->pIn
-				&& (p[-1].nType & PH7_TK_ID)
-				&& !((p[-1].nType & PH7_TK_OP) && p[-1].pUserData
-					&& ((const ph7_expr_op *)p[-1].pUserData)->iOp == EXPR_OP_NEW) ){
-				int bNewCtor = 0;
-				SyToken *q = &p[-1];
-				/* Walk back over a qualified name (A\B, A::b, $o->m) to a `new`. */
-				while( q > pGen->pIn && (q[-1].nType & (PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) ){
-					if( (q[-1].nType & PH7_TK_OP) && q[-1].pUserData
-						&& ((const ph7_expr_op *)q[-1].pUserData)->iOp == EXPR_OP_NEW ){
-						bNewCtor = 1;
-						break;
-					}
-					if( !GenStateTokenIsMemberOp(&q[-1]) && (q[-1].nType & PH7_TK_NSSEP) == 0 ){
-						break;
-					}
-					q--;
-				}
-				if( !bNewCtor
-					&& !(&p[1] < pGen->pEnd && (p[1].nType & PH7_TK_ELLIPSIS)) ){
-					return 1;
-				}
-			}
-			iDepth++;
-		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-			if( iDepth > 0 ){
-				iDepth--;
-			}
-		}
-		p++;
-	}
-	return 0;
-}
-/*
- * Scan a constant-expression initializer for a closure / arrow-function literal
- * and report php's two compile-time rules the call scanner above does NOT: a
- * NON-STATIC closure is `Fatal error: Closures in constant expressions must be
- * static`, and ANY arrow function is `Constant expression contains invalid
- * operations` (there is no static-`fn` escape -- `static fn()=>1` is rejected
- * too). Only `static function(){...}` is accepted; its body is regular runtime
- * code, so a closure NESTED inside it is skipped, not rejected.
- *
- * Returns 0 (clean), 1 (arrow fn -> "invalid operations") or 2 (non-static
- * closure -> "must be static"). Mirrors PH7_GenStateInitHasCallExpr's construct
- * skip and initializer-terminator tracking, but WITHOUT its conservative ternary
- * bail-out: php rejects the closure even inside a branch it would fold away
- * (`true ? function(){} : 1` still fatals), because nothing is constant-folded at
- * this stage. Wired beside every call-scanner site (global `const`, class /
- * interface constants, property defaults).
- */
-PH7_PRIVATE int PH7_GenStateInitClosureError(ph7_gen_state *pGen)
-{
-	SyToken *p = pGen->pIn;
-	int iDepth = 0;
-	while( p < pGen->pEnd ){
-		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
-			break; /* end of this initializer */
-		}
-		if( (p->nType & PH7_TK_KEYWORD)
-			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
-				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
-			if( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ){
-				/* An arrow function is never a valid constant expression. */
-				return 1;
-			}
-			/* A closure literal must be `static function`: the modifier sits in the
-			 * token immediately before `function`. `static::X` never reaches here
-			 * (its next token is `::`, not the keyword). */
-			if( !(p > pGen->pIn && (p[-1].nType & PH7_TK_KEYWORD)
-				&& SX_PTR_TO_INT(p[-1].pUserData) == PH7_TKWRD_STATIC) ){
-				return 2;
-			}
-			/* `static function(){...}`: accepted -- skip the whole construct
-			 * (parameter parens then the brace-balanced body) exactly like the call
-			 * scanner, then keep looking for a sibling closure in the initializer. */
-			p++;
-			{
-				int iLocal = 0;
-				while( p < pGen->pEnd ){
-					if( iLocal == 0 && (p->nType & PH7_TK_OCB) ){
-						break;
-					}
-					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
-						iLocal++;
-					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-						if( iLocal > 0 ){ iLocal--; }
-					}
-					p++;
-				}
-				if( p < pGen->pEnd ){
-					int iBrace = 0;
-					while( p < pGen->pEnd ){
-						if( p->nType & PH7_TK_OCB ){
-							iBrace++;
-						}else if( p->nType & PH7_TK_CCB ){
-							iBrace--;
-							if( iBrace == 0 ){
-								p++;
-								break;
-							}
-						}
-						p++;
-					}
-				}
-			}
-			continue;
-		}
-		if( p->nType & PH7_TK_OCB ){
-			if( iDepth == 0 ){
-				break; /* property-hook list: the default expression ends here */
-			}
-			iDepth++;
-		}else if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
-			iDepth++;
-		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
-			if( iDepth > 0 ){
-				iDepth--;
-			}
-		}
-		p++;
-	}
-	return 0;
 }
 /*
  * Copy a parsed declared type onto a freshly created class attribute (property,
@@ -657,40 +708,17 @@ loop:
 		}
 		goto Synchronize;
 	}
-	/* php: a closure in a class/interface constant must be `static function`;
-	 * same rule (and messages) as the global `const` path in compile_stmt.c. */
+	/* php's constant-expression rules, first offender wins (see
+	 * PH7_GenStateConstExprError). A class/interface constant takes no `new`. */
 	{
-		int iClo = PH7_GenStateInitClosureError(pGen);
-		if( iClo ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				iClo == 2 ? "Closures in constant expressions must be static"
-				          : "Constant expression contains invalid operations");
+		const char *zCErr = PH7_GenStateConstExprError(pGen,0);
+		if( zCErr ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"%s",zCErr);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			goto Synchronize;
 		}
-	}
-	/* php: a constant expression may not CALL anything. Same rule as the global
-	 * `const` path in compile_stmt.c. */
-	if( PH7_GenStateInitHasCallExpr(pGen) ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Constant expression contains invalid operations");
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto Synchronize;
-	}
-	/* PHP 8.5: a `new` expression is not allowed anywhere in a class/interface
-	 * constant initializer ("New expressions are not supported in this context").
-	 * Reject it at definition time, matching PHP's compile-time fatal. */
-	if( GenStateInitHasNewExpr(pGen) ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"New expressions are not supported in this context");
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto Synchronize;
 	}
 	/* php: a class constant may not be redefined in the same class body. The
 	 * property path already guarded this; the constant path did not, so
@@ -1201,41 +1229,19 @@ loop:
 		}
 		goto Synchronize;
 	}
-	/* PHP 8.5: a `new` expression is not allowed anywhere in a property default
-	 * initializer ("New expressions are not supported in this context"). Reject it
-	 * here, before allocating the attribute, matching PHP's compile-time fatal and
-	 * the class-constant path above. pGen->pIn is still on the '=' (the scan skips
-	 * it and reads the initializer non-destructively); no '=' means no default, so
-	 * the helper stops at the ';'/',' and returns 0. */
-	/* php: a property default holding a closure must use `static function` too. */
+	/* php's constant-expression rules, first offender wins. A property default takes
+	 * no `new`. pGen->pIn is still on the '=' (the scan skips it and reads the
+	 * initializer non-destructively); no '=' means no default at all, and the scan
+	 * then stops at the ';'/',' with nothing to report. */
 	if( pGen->pIn->nType & PH7_TK_EQUAL /*'='*/ ){
-		int iClo = PH7_GenStateInitClosureError(pGen);
-		if( iClo ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				iClo == 2 ? "Closures in constant expressions must be static"
-				          : "Constant expression contains invalid operations");
+		const char *zCErr = PH7_GenStateConstExprError(pGen,0);
+		if( zCErr ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"%s",zCErr);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			goto Synchronize;
 		}
-	}
-	/* php: a property default may not CALL anything either. */
-	if( (pGen->pIn->nType & PH7_TK_EQUAL /*'='*/) && PH7_GenStateInitHasCallExpr(pGen) ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Constant expression contains invalid operations");
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto Synchronize;
-	}
-	if( (pGen->pIn->nType & PH7_TK_EQUAL /*'='*/) && GenStateInitHasNewExpr(pGen) ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"New expressions are not supported in this context");
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto Synchronize;
 	}
 	/* Allocate a new class attribute */
 	pAttr = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
@@ -3542,6 +3548,18 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 			goto Synchronize;
 		}
 		pGen->pIn++; /* Jump the equal sign */
+		/* A backing value is a constant expression like any other: same rules, same
+		 * first-offender sentence, and no `new` (it is stored as a class constant). */
+		{
+			const char *zCErr = PH7_GenStateConstExprError(pGen,0);
+			if( zCErr ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"%s",zCErr);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto Synchronize;
+			}
+		}
 		/* Compile the backing value expression into the case's own container
 		 * (same technique as class constants). */
 		pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);

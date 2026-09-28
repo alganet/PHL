@@ -3339,8 +3339,20 @@ static sxi32 GenStateCompileAttrSpan(ph7_gen_state *pGen,ph7_trivia *pTrivia,SyS
 				}
 				if( pArgStart < pArgStop ){
 					SySet *pInstrContainer;
+					const char *zCErr;
 					pGen->pIn = pArgStart;
 					pGen->pEnd = pArgStop;
+					/* An attribute argument is a constant expression -- php applies the
+					 * same rules it applies to a class constant, `new` excepted (an
+					 * attribute argument takes one). This is the argument's own rule,
+					 * not the malformed-group case a few lines up, so it IS a fatal. */
+					zCErr = PH7_GenStateConstExprError(pGen,1);
+					if( zCErr ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pArgStart->nLine,"%s",zCErr);
+						pGen->pIn = pSavedIn;
+						pGen->pEnd = pSavedEnd;
+						return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+					}
 					pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 					PH7_VmSetByteCodeContainer(pGen->pVm,&sArgRec.aByteCode);
 					rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
