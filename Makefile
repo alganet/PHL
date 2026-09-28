@@ -109,6 +109,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_xmlwriter$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_pdo$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_pdo_sqlite$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_sqlite3$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_curl$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_curl_multi$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/net$(OBJ_SUFFIX) \

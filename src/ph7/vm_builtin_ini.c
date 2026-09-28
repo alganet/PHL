@@ -115,6 +115,16 @@ static const struct {
 	{ "session.use_only_cookies", "1",          VM_INI_ALL },
 	{ "session.use_strict_mode",  "0",          VM_INI_ALL },
 	{ "short_open_tag",           "",           VM_INI_PERDIR|VM_INI_SYSTEM },
+#ifdef PH7_ENABLE_SQLITE
+	/* ext/sqlite3's two directives, in this sorted list's own place. `defensive`
+	 * is applied to every connection SQLite3 opens (it is what makes an UPDATE of
+	 * sqlite_master refuse, even behind `PRAGMA writable_schema=ON`), and
+	 * `extension_dir` is the door loadExtension() is shut behind: empty means
+	 * "SQLite Extensions are disabled", and php ships it empty. The access masks
+	 * are php's own, which do not agree with each other. */
+	{ "sqlite3.defensive",        "1",          VM_INI_USER },
+	{ "sqlite3.extension_dir",    "",           VM_INI_SYSTEM },
+#endif
 	{ "unserialize_callback_func","",           VM_INI_ALL },
 	{ "unserialize_max_depth",    "4096",       VM_INI_ALL },
 	{ "upload_max_filesize",      "2M",         VM_INI_PERDIR|VM_INI_SYSTEM },

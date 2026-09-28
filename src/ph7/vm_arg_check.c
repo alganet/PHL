@@ -1643,6 +1643,11 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "date_create_immutable_from_format",     33, 1u<<1 },
 		{ "DateTime::createFromFormat",            26, 1u<<1 },
 		{ "DateTimeImmutable::createFromFormat",   35, 1u<<1 },
+		/* ext/sqlite3's two doors onto a database FILE. ext/pdo's `sqlite:` DSN is
+		 * not one of them: php parses a DSN before any of it becomes a path, and
+		 * reads it up to the NUL. */
+		{ "SQLite3::__construct",                  20, 1u<<0 },
+		{ "SQLite3::open",                         13, 1u<<0 },
 		/* Path-shaped settings and the pattern matcher */
 		{ "fnmatch",           7, (1u<<0)|(1u<<1) },
 		{ "set_include_path", 16, 1u<<0 },

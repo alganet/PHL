@@ -40,11 +40,12 @@
 #define PH7_EXT_PDO          21
 #define PH7_EXT_PDO_SQLITE   22
 #define PH7_EXT_CURL         23
+#define PH7_EXT_SQLITE3      24
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "iconv", "random", "tokenizer",
-	"libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
+	"libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl", "sqlite3",
 };
 
 typedef struct VmExtName VmExtName;
@@ -596,6 +597,9 @@ static const VmExtName aExtClass[] = {
 	{"CurlHandle",PH7_EXT_CURL}, {"CurlMultiHandle",PH7_EXT_CURL},
 	{"CurlShareHandle",PH7_EXT_CURL}, {"CurlSharePersistentHandle",PH7_EXT_CURL},
 	{"CURLFile",PH7_EXT_CURL}, {"CURLStringFile",PH7_EXT_CURL},
+	/* sqlite3 -- php registers the exception first, and the listing answers so */
+	{"SQLite3Exception",PH7_EXT_SQLITE3}, {"SQLite3",PH7_EXT_SQLITE3},
+	{"SQLite3Stmt",PH7_EXT_SQLITE3}, {"SQLite3Result",PH7_EXT_SQLITE3},
 };
 
 static const VmExtName aExtConst[] = {
@@ -1292,6 +1296,13 @@ static const VmExtName aExtConst[] = {
 	{"CURLWS_RAW_MODE",PH7_EXT_CURL}, {"CURLOPT_CA_CACHE_TIMEOUT",PH7_EXT_CURL},
 	{"CURLOPT_QUICK_EXIT",PH7_EXT_CURL}, {"CURL_HTTP_VERSION_3ONLY",PH7_EXT_CURL},
 	{"CURLOPT_SAFE_UPLOAD",PH7_EXT_CURL},
+	/* sqlite3 */
+	{"SQLITE3_ASSOC",PH7_EXT_SQLITE3}, {"SQLITE3_NUM",PH7_EXT_SQLITE3},
+	{"SQLITE3_BOTH",PH7_EXT_SQLITE3}, {"SQLITE3_INTEGER",PH7_EXT_SQLITE3},
+	{"SQLITE3_FLOAT",PH7_EXT_SQLITE3}, {"SQLITE3_TEXT",PH7_EXT_SQLITE3},
+	{"SQLITE3_BLOB",PH7_EXT_SQLITE3}, {"SQLITE3_NULL",PH7_EXT_SQLITE3},
+	{"SQLITE3_OPEN_READONLY",PH7_EXT_SQLITE3}, {"SQLITE3_OPEN_READWRITE",PH7_EXT_SQLITE3},
+	{"SQLITE3_OPEN_CREATE",PH7_EXT_SQLITE3}, {"SQLITE3_DETERMINISTIC",PH7_EXT_SQLITE3},
 };
 
 static const VmExtName aExtIni[] = {
@@ -1328,5 +1339,7 @@ static const VmExtName aExtIni[] = {
 	{"session.use_only_cookies",PH7_EXT_SESSION}, {"session.use_strict_mode",PH7_EXT_SESSION},
 	{"session.cache_limiter",PH7_EXT_SESSION}, {"session.cache_expire",PH7_EXT_SESSION},
 	{"session.lazy_write",PH7_EXT_SESSION},
+	/* sqlite3 */
+	{"sqlite3.extension_dir",PH7_EXT_SQLITE3}, {"sqlite3.defensive",PH7_EXT_SQLITE3},
 };
 

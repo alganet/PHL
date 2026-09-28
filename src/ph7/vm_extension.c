@@ -27,9 +27,7 @@ static int VmExtAvailable(int iExt)
 	}
 #endif
 #ifndef PH7_ENABLE_SQLITE
-	/* ext/sqlite3 (the SQLite3 class family) is NOT one of these: §10 scopes
-	 * this build to PDO's sqlite DRIVER, so only the two pdo names load. */
-	if( iExt == PH7_EXT_PDO || iExt == PH7_EXT_PDO_SQLITE ){
+	if( iExt == PH7_EXT_PDO || iExt == PH7_EXT_PDO_SQLITE || iExt == PH7_EXT_SQLITE3 ){
 		return 0;
 	}
 #endif

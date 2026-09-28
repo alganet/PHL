@@ -3181,6 +3181,10 @@ struct ph7_vm
 	void *pPdoConns;           /* phl_pdo registry chain (ext/pdo); freed on reset/release --
 	                            * a sqlite3 handle lives outside SyMemBackend, so the
 	                            * wholesale release would leak both it and the file lock */
+	void *pSq3Conns;           /* phl_sq3 registry chain (ext/sqlite3); freed on reset/release.
+	                            * A SEPARATE chain from pPdoConns: the two extensions share
+	                            * libsqlite3 and nothing else -- different error model, different
+	                            * open flags, different object -- so they own their handles apart */
 	void *pCurlHandles;        /* phl_curl registry chain (ext/curl); freed on reset/release --
 	                            * a CURL* lives outside SyMemBackend too, and holds a socket
 	                            * and a connection cache with it */
@@ -4180,6 +4184,11 @@ PH7_PRIVATE void PH7_PdoVmReset(ph7_vm *pVm);
 PH7_PRIVATE void PH7_PdoVmRelease(ph7_vm *pVm);
 /* vm_pdo_sqlite.c (ext/pdo_sqlite: the driver and its Pdo\Sqlite subclass) */
 PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm);
+/* vm_sqlite3.c (ext/sqlite3: php's other sqlite surface, the SQLite3 class family) */
+PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm);
+PH7_PRIVATE void PH7_RegisterSqlite3Constants(ph7_vm *pVm);
+PH7_PRIVATE void PH7_Sqlite3VmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_Sqlite3VmRelease(ph7_vm *pVm);
 #endif /* PH7_ENABLE_SQLITE */
 #ifdef PH7_ENABLE_CURL
 /* vm_curl.c (ext/curl: php's libcurl binding) */

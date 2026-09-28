@@ -2432,6 +2432,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * installer needs the parent already mounted. */
 	PH7_VmInstallPdo(&(*pVm));
 	PH7_VmInstallPdoSqlite(&(*pVm));
+	/* ext/sqlite3: php's other sqlite surface, independent of both. */
+	PH7_VmInstallSqlite3(&(*pVm));
 #endif
 #ifdef PH7_ENABLE_CURL
 	/* ext/curl: the libcurl binding. */
@@ -3449,6 +3451,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* Close the previous request's databases: a reused VM (the -S server's)
 	 * must not answer the next request through a handle that request opened. */
 	PH7_PdoVmReset(&(*pVm));
+	PH7_Sqlite3VmReset(&(*pVm));
 #endif
 #ifdef PH7_ENABLE_CURL
 	/* Same rule for the previous request's curl handles, which hold sockets
@@ -3497,6 +3500,7 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 #ifdef PH7_ENABLE_SQLITE
 	/* Same rule for the sqlite3 handles behind still-open PDO objects. */
 	PH7_PdoVmRelease(pVm);
+	PH7_Sqlite3VmRelease(pVm);
 #endif
 #ifdef PH7_ENABLE_CURL
 	/* Same rule for the libcurl handles behind still-open CurlHandle objects. */
