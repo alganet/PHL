@@ -1357,6 +1357,29 @@ static int GenStateNodeIsRefSource(ph7_expr_node *pNode)
 	}
 	return pNode->xCode == PH7_CompileVariable;
 }
+/*
+ * Is this call node's callee the `isset` KEYWORD itself?
+ *
+ * isset() is a language construct, not a name: it reaches the call path as a
+ * keyword token whose literal the compiler canonicalizes to "isset" (see
+ * compile_node.c). A keyword used as a MEMBER name is excluded here for the same
+ * reason it is excluded there — `$o->isset(...)` names a method — and so is any
+ * callee that is an operator node rather than a bare literal.
+ */
+static int GenStateCalleeIsIsset(ph7_expr_node *pCallee)
+{
+	SyString *pName;
+	if( pCallee == 0 || pCallee->pOp != 0 || pCallee->pStart == 0 ){
+		return 0;
+	}
+	if( (pCallee->pStart->nType & PH7_TK_KEYWORD) == 0
+	 || (pCallee->pStart->nType & PH7_TK_MEMBER_NAME) ){
+		return 0;
+	}
+	pName = &pCallee->pStart->sData;
+	return pName->nByte == sizeof("isset")-1
+		&& SyStrnicmp(pName->zString,"isset",sizeof("isset")-1) == 0;
+}
 static sxi32 GenStateEmitExprCode(
 	ph7_gen_state *pGen,  /* Code generator state */
 	ph7_expr_node *pNode, /* Root of the expression tree */
@@ -1588,6 +1611,76 @@ static sxi32 GenStateEmitExprCode(
 		/* Invoke the callable with the single piped argument. */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,GenStateAttachStrictFlag(pGen,0),0);
 		return SXRET_OK;
+	}
+	/*
+	 * php compiles the multi-operand `isset($a, $b, ...)` as a short-circuit CHAIN --
+	 * `isset($a) && isset($b) && ...` -- so nothing after the first operand that is not
+	 * set is ever evaluated. isset() is a host function here, and a call evaluates every
+	 * argument before dispatching, so the later operands ran for real: the ordinary
+	 * `isset($info['k'], $data[$info['k']])` answered false through an `Undefined array
+	 * key` warning and a null-offset deprecation php never raises, and
+	 * `isset($a['no'], $b[side()])` CALLED side(). Doctrine's hydrator guards its
+	 * discriminator lookup in exactly that shape, so every hydrated row of every query
+	 * carried two diagnostics php does not.
+	 *
+	 * Emit the chain the compiler owes: one SINGLE-operand isset() per argument, joined
+	 * by a keep-the-value JZ to the end (the false it left IS the answer) and a POP on
+	 * the fall-through. Each link is the ordinary call path below, re-entered with the
+	 * argument set narrowed to one node, so every operand keeps the exact isset context
+	 * it already had -- LOAD_IDX iP2=4, the quiet intermediates of an access chain,
+	 * ArrayAccess::offsetExists -- and only the ORDER changes. A spread or named operand
+	 * opts out: php refuses both in this position, and neither maps to one link.
+	 */
+	if( iVmOp == PH7_OP_CALL && SySetUsed(&pNode->aNodeArgs) > 1
+	 && GenStateCalleeIsIsset(pNode->pLeft) ){
+		ph7_expr_node **apIsset = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
+		sxu32 nIsset = SySetUsed(&pNode->aNodeArgs);
+		SySet sSaved = pNode->aNodeArgs;
+		SySet sJz;
+		sxu32 n;
+		int bPlain = 1;
+		for( n = 0 ; n < nIsset ; ++n ){
+			if( apIsset[n] == 0
+			 || (apIsset[n]->iFlags & (EXPR_NODE_SPREAD|EXPR_NODE_NAMED_ARG)) ){
+				bPlain = 0;
+				break;
+			}
+		}
+		if( bPlain ){
+			SySetInit(&sJz,&pGen->pVm->sAllocator,sizeof(sxu32));
+			rc = SXRET_OK;
+			for( n = 0 ; n < nIsset ; ++n ){
+				pNode->aNodeArgs.pBase = (void *)&apIsset[n];
+				pNode->aNodeArgs.nUsed = 1;
+				pNode->aNodeArgs.nSize = 1;
+				pNode->aNodeArgs.nCursor = 0;
+				rc = GenStateEmitExprCode(&(*pGen),pNode,iFlags);
+				pNode->aNodeArgs = sSaved;
+				if( rc != SXRET_OK ){
+					break;
+				}
+				if( n + 1 < nIsset ){
+					sxu32 nJz = 0;
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_JZ,
+						1 /* keep the false on the stack: it is the answer */,0,0,&nJz);
+					SySetPut(&sJz,(const void *)&nJz);
+					/* Truthy link: drop it and ask the next operand. */
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+				}
+			}
+			if( rc == SXRET_OK ){
+				sxu32 *aJz = (sxu32 *)SySetBasePtr(&sJz);
+				sxu32 nEnd = PH7_VmInstrLength(pGen->pVm);
+				for( n = 0 ; n < SySetUsed(&sJz) ; ++n ){
+					VmInstr *pFix = PH7_VmGetInstr(pGen->pVm,aJz[n]);
+					if( pFix ){
+						pFix->iP2 = nEnd;
+					}
+				}
+			}
+			SySetRelease(&sJz);
+			return rc;
+		}
 	}
 	bIsChainOp = GEN_IS_CHAIN_OP(pNode->pOp->iOp);
 	nLhsFirst = PH7_VmInstrLength(pGen->pVm);
