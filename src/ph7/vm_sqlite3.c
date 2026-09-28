@@ -11,7 +11,8 @@
  *    ext/sqlite3 -- php's OTHER sqlite surface, the one beside the PDO driver:
  *    `SQLite3`, `SQLite3Stmt`, `SQLite3Result` and `SQLite3Exception`.
  * Status:
- *    Growing by slice. This unit owns the connection.
+ *    Complete: all 24 methods php declares on SQLite3, all 13 on SQLite3Stmt,
+ *    all 8 on SQLite3Result, and the twelve global constants.
  *
  * Nothing here goes through ext/pdo. The two extensions share a LIBRARY and
  * not a model, and every difference between them is deliberate on php's side:
