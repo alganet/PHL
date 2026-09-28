@@ -320,7 +320,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 			sArg.iFlags |= iTFlags;
 		}
 		if( pIn >= pEnd ){
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Missing argument name");
+			rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,"Missing argument name");
 			return rc;
 		}
 		if( pIn->nType & PH7_TK_AMPER ){
@@ -368,7 +368,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 					pDefend++;
 				}
 				if( pIn >= pDefend ){
-					rc = PH7_GenCompileError(&(*pGen),E_ERROR,pIn->nLine,"Missing argument default value");
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pIn->nLine,"Missing argument default value");
 					return rc;
 				}
 				/* Process default value */
@@ -412,7 +412,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 				pIn = pDefend;
 			}
 			if( pIn < pEnd && (pIn->nType & PH7_TK_COMMA) == 0 ){
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pIn->nLine,"Unexpected token '%z'",&pIn->sData);
+				rc = PH7_GenCompileError(&(*pGen),E_PARSE,pIn->nLine,"Unexpected token '%z'",&pIn->sData);
 				return rc;
 			}
 			pIn++; /* Jump the trailing comma */
@@ -2001,7 +2001,7 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 				/* Closure,record environment variable */
 				pGen->pIn++;
 				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Closure: Unexpected token. Expecting a left parenthesis '('");
+					rc = PH7_GenCompileError(pGen,E_PARSE,nLineLocal,"Closure: Unexpected token. Expecting a left parenthesis '('");
 					if( rc == SXERR_ABORT ){
 						return SXERR_ABORT;
 					}
@@ -2023,7 +2023,7 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 					}
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 || &pGen->pIn[1] >= pGen->pEnd
 						|| (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-							rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+							rc = PH7_GenCompileError(pGen,E_PARSE,nLineLocal,
 								"Closure: Unexpected token. Expecting a variable name");
 							if( rc == SXERR_ABORT ){
 								return SXERR_ABORT;

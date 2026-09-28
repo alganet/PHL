@@ -533,7 +533,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	/* 'fn' keyword (guaranteed by ExprExtractNode's dispatch) */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
 		|| SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FN ){
-		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+		PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
 			"Arrow function: expected 'fn' keyword");
 		return SXERR_SYNTAX;
 	}

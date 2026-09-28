@@ -2491,7 +2491,7 @@ static sxi32 GenStateEmitCallArgs(
 				bAnySpread = 1;
 				seenSpread = 1;
 				if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
-					rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[n]->pStart->nLine,
 						"syntax error, unexpected token \"...\"");
 					return SXERR_SYNTAX;
 				}
@@ -3794,7 +3794,7 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 				}
 			}
 			if( !bAttrTarget ){
-				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+				rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 					"syntax error, unexpected token \"%z\" after attribute group; expecting a declaration",
 					&pGen->pIn->sData);
 				if( rc == SXERR_ABORT ){
@@ -3844,7 +3844,7 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 				/* Try to extract a language construct handler */
 				xCons = GenStateGetStatementHandler(nKeyword,(&pGen->pIn[1] < pGen->pEnd) ? &pGen->pIn[1] : 0);
 				if( xCons == 0 && GenStateisLangConstruct(nKeyword) == FALSE ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+					rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 						"Syntax error: Unexpected keyword '%z'",
 						&pGen->pIn->sData);
 					if( rc == SXERR_ABORT ){
@@ -4299,6 +4299,7 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	SyHashInit(&pGen->hVar,&pVm->sAllocator,0,0);
 	/* Error log buffer */
 	SyBlobInit(&pGen->sErrBuf,&pVm->sAllocator);
+	SyBlobInit(&pGen->sFirstErr,&pVm->sAllocator);
 	/* General purpose working buffer */
 	SyBlobInit(&pGen->sWorker,&pVm->sAllocator);
 	/* Namespace state */
@@ -4330,6 +4331,7 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	SySetReset(&pGen->aPendingAttrs);
 	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
 	SyBlobRelease(&pGen->sErrBuf);
+	SyBlobRelease(&pGen->sFirstErr);
 	SyBlobRelease(&pGen->sWorker);
 	SyBlobRelease(&pGen->sNamespace);
 	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
@@ -4355,6 +4357,9 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	pGen->pRawIn = pGen->pRawEnd = 0;
 	pGen->pIn = pGen->pEnd = 0;
 	pGen->nErr = 0;
+	pGen->nFatal = 0;
+	pGen->nFirstErrLine = 0;
+	pGen->bParseThrows = 0;
 	/* Clear the class-body context (a prior compile aborted mid-class-body would
 	 * otherwise leave these live for the next eval/include on this VM). */
 	pGen->pCurClass = 0;
@@ -4398,6 +4403,7 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	SySetInit(&pGen->aPendingAttrs,&pVm->sAllocator,sizeof(ph7_trivia));
 	SyBlobInit(&pGen->sWorker,&pVm->sAllocator);
 	SyBlobInit(&pGen->sErrBuf,&pVm->sAllocator);
+	SyBlobInit(&pGen->sFirstErr,&pVm->sAllocator);
 	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
 	GenStateInitUseImports(&(*pGen),&(*pVm));
 	GenStateInitSeenSymbols(&(*pGen),&(*pVm));
@@ -4409,6 +4415,9 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->pRawIn = pGen->pRawEnd = 0;
 	pGen->pTokenSet = 0;
 	pGen->nErr = 0;
+	pGen->nFatal = 0;
+	pGen->nFirstErrLine = 0;
+	pGen->bParseThrows = 0;
 	pGen->nLoopId = pGen->nCurLoopId = 0;
 	pGen->nCommaExprOk = 0;
 	pGen->zClauseCloser = 0;
@@ -4455,6 +4464,7 @@ PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved)
 	SySetRelease(&pGen->aPendingAttrs);
 	SyBlobRelease(&pGen->sWorker);
 	SyBlobRelease(&pGen->sErrBuf);
+	SyBlobRelease(&pGen->sFirstErr);
 	SyBlobRelease(&pGen->sNamespace);
 	SyHashRelease(&pGen->hUseImports);
 	SyHashRelease(&pGen->hUseFuncImports);
@@ -4676,6 +4686,28 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		 * only E_ERROR let a parse error print its diagnostic and then fall through
 		 * into execution with a 0 exit status. */
 		pGen->nErr++;
+		if( nErrType == E_ERROR ){
+			/* php's E_COMPILE_ERROR: an uncatchable fatal, where a parse error is a
+			 * catchable ParseError. The include path reads this to tell them apart. */
+			pGen->nFatal++;
+		}
+		if( pGen->nErr == 1 ){
+			/* Keep the FIRST refusal's bare text and line: it is the one php reports,
+			 * and it is the message an include's ParseError carries. */
+			va_list apF;
+			SyBlobReset(&pGen->sFirstErr);
+			va_start(apF,zFormat);
+			SyBlobFormatAp(&pGen->sFirstErr,zFormat,apF);
+			va_end(apF);
+			pGen->nFirstErrLine = nLine;
+		}else if( nErrType == E_ERROR || nErrType == E_PARSE ){
+			/* php stops at the first one. This generator recovers and carries on so
+			 * that the rest of the unit is still walked (a later pass needs the
+			 * symbols), but everything it says after the first refusal is its own
+			 * recovery talking -- and printing it put diagnostics on the user's
+			 * screen that php, having stopped, never reaches. */
+			return SXRET_OK;
+		}
 		if( pGen->nErr > 15 ){
 			/* Error count limit reached */
 			if( pGen->xErr ){
@@ -4692,6 +4724,12 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 			/* Abort immediately */
 			return SXERR_ABORT;
 		}
+	}
+	if( nErrType == E_PARSE && pGen->bParseThrows ){
+		/* An include/require unit: php's parser throws a ParseError rather than
+		 * printing, and the text only reaches the screen if nobody catches it.
+		 * The caller (VmEvalChunk) raises it from sFirstErr. */
+		return SXRET_OK;
 	}
 	if( pGen->xErr == 0 ){
 		/* No consumer — but keep the BARE message in the error buffer so a caller

@@ -471,7 +471,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 				/* Colon outside parentheses with no matching '?' — syntax error.
 				 * Colons inside parentheses may be named arguments (name: value)
 				 * and are validated later by ExprProcessFuncArguments. */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ':'");
+				rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ':'");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -794,7 +794,7 @@ static sxi32 ExprAssembleAnnonClass(ph7_gen_state *pGen,SyToken **ppCur,SyToken 
 	}
 	if( pIn >= pEnd || (pIn->nType & PH7_TK_OCB) == 0 ){
 		/* Syntax error: missing class body */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
 			"Syntax error while declaring anonymous class, missing '{'");
 		if( rc != SXERR_ABORT ){
 			rc = SXERR_SYNTAX;
@@ -2040,7 +2040,7 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 }
 				 if( nFuncTok + iCur >= nToken ){
 					 /* Syntax error */
-					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Missing right parenthesis ')'");
+					 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,"Missing right parenthesis ')'");
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }

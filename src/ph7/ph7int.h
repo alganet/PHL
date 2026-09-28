@@ -849,6 +849,16 @@ struct ph7_gen_state
 	                      * its OP_LOAD_EXCEPTION, or landing in another bytecode array. */
 	SyBlob sWorker;      /* General purpose working buffer */
 	SyBlob sErrBuf;      /* Error buffer */
+	SyBlob sFirstErr;    /* The BARE text of the FIRST refusal in this unit -- php reports one
+	                      * compile-time refusal and stops, and an include's parse error is
+	                      * handed to the caller as the message of php's ParseError. */
+	sxu32 nFirstErrLine; /* ...and the line it was raised on. */
+	sxi32 nFatal;        /* Refusals of E_ERROR severity in this unit. php's E_COMPILE_ERROR:
+	                      * uncatchable, where a PARSE error is a catchable ParseError -- so
+	                      * nErr says the unit failed and this says WHICH WAY. */
+	int bParseThrows;    /* This unit's parse errors are the CALLER's to raise (include/require:
+	                      * php throws a ParseError there and prints nothing until it goes
+	                      * uncaught). A refusal of E_ERROR severity still prints at once. */
 	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
 	SyHash hUseImports;      /* use imports: short alias -> FQN (classes) */
 	SyHash hUseFuncImports;  /* use function imports: short alias -> FQN */

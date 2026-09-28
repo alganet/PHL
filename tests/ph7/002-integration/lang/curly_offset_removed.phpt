@@ -16,6 +16,6 @@ $a = [1, 2];
 echo $a{0};
 ?>
 --EXPECTF--
-%AParse error:%Asyntax error, unexpected token "{"%AParse error:%Asyntax error, unexpected token ";"%A
+%AParse error:%Asyntax error, unexpected token "{"%A
 --CLEAN--
 <?php

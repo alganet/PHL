@@ -15,6 +15,31 @@
  *    Stable.
  */
 /*
+ * php prints a compile-time FATAL where it is raised, and it is not catchable.
+ * eval() compiles with the generator's logging OFF -- its PARSE errors are a
+ * ParseError the caller may catch, and printing them there would double the
+ * diagnostic -- so a refusal of E_ERROR severity has to reach the screen from
+ * here instead. Formatted exactly as PH7_GenCompileError would have: the bare
+ * text, then the file and line of the offence.
+ */
+static void VmReportCompileFatal(ph7_vm *pVm,SyBlob *pMsg,sxu32 nLine)
+{
+	SyBlob sOut;
+	SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	if( pVm->pEngine->xConf.xErr == 0 || SyBlobLength(pMsg) < 1 ){
+		return;
+	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	SyBlobAppend(&sOut,"PHP Fatal error:  ",sizeof("PHP Fatal error:  ")-1);
+	SyBlobAppend(&sOut,SyBlobData(pMsg),SyBlobLength(pMsg));
+	if( pFile ){
+		SyBlobFormat(&sOut," in %.*s on line %u",(int)pFile->nByte,pFile->zString,nLine);
+	}
+	SyBlobAppend(&sOut,"\n",sizeof(char));
+	pVm->pEngine->xConf.xErr(SyBlobData(&sOut),SyBlobLength(&sOut),pVm->pEngine->xConf.pErrData);
+	SyBlobRelease(&sOut);
+}
+/*
  * Compile and evaluate a PHP chunk at run-time.
  * Refer to the eval() language construct implementation for more
  * information.
@@ -53,6 +78,11 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	}else{
 		PH7_ResetCodeGenerator(pVm,xErr,pErrData);
 	}
+	/* An include/require's PARSE error is php's catchable ParseError, thrown from
+	 * the include and printed only if it goes uncaught -- so the generator must not
+	 * print it. A refusal of E_ERROR severity is php's uncatchable compile fatal and
+	 * still prints where it is raised. */
+	pVm->sCodeGen.bParseThrows = (bTrueReturn && pCtx) ? 1 : 0;
 	/* Swap bytecode container */
 	pByteCode = pVm->pByteContainer;
 	pVm->pByteContainer = &aByteCode;
@@ -62,22 +92,47 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	 * wipe it — VmExecDeferredClass reads it to detect a failed re-compile. */
 	pVm->nLastEvalErr = pVm->sCodeGen.nErr;
 	if( pVm->sCodeGen.nErr > 0 ){
-		/* Compilation error. php makes this a CATCHABLE ParseError for eval()
-		 * ("syntax error, unexpected ..."), where PHL merely returned false —
-		 * so `eval('bad syntax')` silently produced a value instead of throwing.
-		 * include/require keep the false return: their parse error is a printed
-		 * fatal, not an exception. */
-		if( pCtx && !bTrueReturn ){
-			SyBlob *pErr = &pVm->sCodeGen.sErrBuf;
+		/* Compilation error. php makes this a CATCHABLE ParseError -- for eval()
+		 * and for include/require alike -- where PHL merely returned false, so
+		 * `eval('bad syntax')` silently produced a value and a broken include
+		 * printed its diagnostic and then CARRIED ON, leaving a half-compiled unit
+		 * behind for later code to trip over. A refusal of E_ERROR severity is
+		 * php's uncatchable compile fatal instead: it has already printed itself,
+		 * and the program stops here. */
+		SyBlob *pErr = &pVm->sCodeGen.sErrBuf;
+		sxu32 nErrLine = pVm->sCodeGen.nFirstErrLine;
+		if( SyBlobLength(&pVm->sCodeGen.sFirstErr) > 0 ){
+			pErr = &pVm->sCodeGen.sFirstErr;
+		}
+		if( pVm->sCodeGen.nFatal > 0 ){
+			if( pCtx ){
+				ph7_result_bool(pCtx,0);
+			}
+			if( !bTrueReturn ){
+				/* eval(): the generator had no consumer, so say it here. */
+				VmReportCompileFatal(pVm,&pVm->sCodeGen.sFirstErr,nErrLine);
+			}
+			/* php exits 255 and runs nothing else. The include builtins cascade a
+			 * requested halt exactly as they do for an exit() inside the file. */
+			pVm->iExitStatus = 255;
+			pVm->bHaltRequested = 1;
+			rcThrow = PH7_ABORT;
+		}else if( pCtx ){
+			/* php's ParseError names the OFFENDING file and line, not the line the
+			 * include was written on -- the throw is stamped from nCurLine, so aim
+			 * it at the refusal and put the caller's line back afterwards. */
+			sxu32 nSaveLine = pVm->nCurLine;
 			ph7_result_bool(pCtx,0);
+			if( nErrLine > 0 ){
+				pVm->nCurLine = nErrLine;
+			}
 			if( SyBlobLength(pErr) > 0 ){
 				rcThrow = PH7_VmThrowException(pCtx,"ParseError","%.*s",
 					(int)SyBlobLength(pErr),(const char *)SyBlobData(pErr));
 			}else{
 				rcThrow = PH7_VmThrowException(pCtx,"ParseError","syntax error");
 			}
-		}else if( pCtx ){
-			ph7_result_bool(pCtx,0);
+			pVm->nCurLine = nSaveLine;
 		}
 	}else{
 		/* Mount any newly defined classes. Skipped while the VM is still

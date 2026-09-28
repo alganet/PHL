@@ -7,26 +7,24 @@ A FINAL readonly base is refused for being final, not for the readonly mismatch
 BcMath\Number is the engine's first `final readonly` class, and both refusals
 applied to it: php reports only the FINAL one, and PHL reported the readonly
 mismatch instead -- the right answer for the wrong reason, and the wrong reason
-for a class nothing may extend either way. Run here rather than in 001-smoke
-because php's eval() fatal is uncatchable there and this one is a ParseError --
-which is also why php skips it: the first refusal ends the process rather than
-reaching the next three.
+for a class nothing may extend either way.
+
+It used to run four cases through eval() and CATCH each refusal, which php does
+not allow: a compile-time fatal is uncatchable there and ends the process. Now
+that this engine agrees, one refusal is all a process can show; the readonly
+mismatch rows moved to oo/readonly_class_extend_nonreadonly.phpt and
+oo/readonly_class_readonly_extend_plain.phpt, which already pinned them.
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo "skip php's eval() fatal is uncatchable"; ?>
+<?php
+// Both engines stop here and word it identically; php prints a `Stack trace:`
+// block under a compile-time FATAL that this engine does not (ECOSYSTEM.md F30,
+// behind F6's frame attribution).
+if (function_exists('zend_version')) { echo 'skip php prints a Stack trace under a compile-time fatal'; }
+?>
 --FILE--
 <?php
-foreach (['class BcNumSubA extends BcMath\Number {}',
-          'class BcNumSubB extends BcNumFinalRo {}',
-          'class BcNumSubC extends BcNumPlainRo {}',
-          'readonly class BcNumSubD extends BcNumPlain {}'] as $src) {
-    try { eval($src); } catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
-}
-final readonly class BcNumFinalRo {}
-readonly class BcNumPlainRo {}
-class BcNumPlain {}
+class BcNumSubA extends BcMath\Number {}
+echo "unreached\n";
 ?>
---EXPECT--
-ParseError: Class BcNumSubA cannot extend final class BcMath\Number
-ParseError: Class BcNumSubB cannot extend final class BcNumFinalRo
-ParseError: Non-readonly class BcNumSubC cannot extend readonly class BcNumPlainRo
-ParseError: Readonly class BcNumSubD cannot extend non-readonly class BcNumPlain
+--EXPECTF--
+%AFatal error:%AClass BcNumSubA cannot extend final class BcMath\Number%A

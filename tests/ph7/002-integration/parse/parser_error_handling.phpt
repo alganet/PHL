@@ -1,15 +1,5 @@
 --TEST--
 Test parser error handling to cover uncovered lines in compile.c PH7_GenCompileError function
---SKIPIF--
-<?php
-// php ABORTS at the first compile error; PHL keeps compiling and reports every one
-// it finds (then "Error count limit reached" past 15). That is a deliberate engine
-// difference, not a fidelity gap -- reporting the whole batch is more useful for an
-// embedded engine -- so the two can never agree on this output. The FIRST error's
-// text is what has to match php, and that is asserted by the single-error tests in
-// this directory; this test exists to pin PHL's continuation behavior.
-if (function_exists('zend_version')) { echo 'skip php aborts at the first compile error; PHL reports all (engine design)'; }
-?>
 --FILE--
 <?php
 // Test cases that trigger lines 436, 445 in compile.c (PH7_GenCompileError function)
@@ -66,7 +56,7 @@ try {
 
 ?>
 --EXPECTF--
-%AParse error:%Asyntax error, unexpected token ";", expecting identifier%AParse error:%Asyntax error, unexpected token ":", expecting ";"%AFatal error:%ASyntax error: Unexpected token ':'%AFatal error:%ASyntax error: Unexpected keyword 'interface'%AFatal error:%ASyntax error: Unexpected keyword 'trait'%AFatal error:%ASyntax error: Unexpected keyword 'abstract'%AFatal error:%ASyntax error: Unexpected keyword 'final'%AFatal error:%AMissing argument default value%AFatal error:%AEmpty constant 'CONSTANT' value%AFatal error:%AMissing ')' after method 'method' declaration%A
+%AParse error:%Asyntax error, unexpected token ";", expecting identifier%A
 --CLEAN--
 <?php
 

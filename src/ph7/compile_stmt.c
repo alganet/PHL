@@ -925,7 +925,7 @@ PH7_PRIVATE sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'while' keyword");
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'while' keyword");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1068,7 +1068,7 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'while' keyword");
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'while' keyword");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1173,7 +1173,7 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'for' keyword");
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'for' keyword");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3576,7 +3576,7 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 			 * in compile.c words every other statement the same way). */
 			rc = PH7_GenSyntaxError(&(*pGen),0,0);
 		}else{
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"declare: Expecting ';' or '{' after directive");
+			rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"declare: Expecting ';' or '{' after directive");
 		}
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
@@ -3621,21 +3621,21 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 		int iStrictValue;
 		pNameTok = pCursor;
 		if( (pNameTok->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,nLine,
 				"declare: Expecting a directive name");
 			if( rc == SXERR_ABORT ) return SXERR_ABORT;
 			return SXRET_OK;
 		}
 		pEqTok = pNameTok + 1;
 		if( pEqTok >= pBodyEnd || (pEqTok->nType & PH7_TK_EQUAL) == 0 ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,nLine,
 				"declare: Expecting '=' after directive name");
 			if( rc == SXERR_ABORT ) return SXERR_ABORT;
 			return SXRET_OK;
 		}
 		pValTok = pEqTok + 1;
 		if( pValTok >= pBodyEnd ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,nLine,
 				"declare: Expecting value after '='");
 			if( rc == SXERR_ABORT ) return SXERR_ABORT;
 			return SXRET_OK;
@@ -3682,7 +3682,7 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 		/* Consume separating comma (or end). */
 		if( pCursor < pBodyEnd ){
 			if( (pCursor->nType & PH7_TK_COMMA) == 0 ){
-				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				rc = PH7_GenCompileError(pGen,E_PARSE,nLine,
 					"declare: Expecting ',' or ')' after directive value");
 				if( rc == SXERR_ABORT ) return SXERR_ABORT;
 				return SXRET_OK;
@@ -4349,7 +4349,7 @@ static sxi32 GenStateCompileSwitchBlock(ph7_gen_state *pGen,sxu32 iTokenDelim,sx
 			if( pGen->pIn->nType & PH7_TK_CCB /*'}' */ ){
 				if( iTokenDelim != PH7_TK_CCB ){
 					/* Unexpected token */
-					rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Unexpected token '%z'",
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,"Unexpected token '%z'",
 						&pGen->pIn->sData);
 					if( rc == SXERR_ABORT ){
 						return SXERR_ABORT;
@@ -4369,7 +4369,7 @@ static sxi32 GenStateCompileSwitchBlock(ph7_gen_state *pGen,sxu32 iTokenDelim,sx
 			if( nKwrd == PH7_TKWRD_ENDSWITCH /* endswitch; */){
 				if( iTokenDelim != PH7_TK_KEYWORD ){
 					/* Unexpected token */
-					rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Unexpected token '%z'",
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,"Unexpected token '%z'",
 						&pGen->pIn->sData);
 					if( rc == SXERR_ABORT ){
 						return SXERR_ABORT;
@@ -4474,7 +4474,7 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'switch' keyword");
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'switch' keyword");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -4494,7 +4494,7 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
 		/* Empty expression */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected expression after 'switch' keyword");
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected expression after 'switch' keyword");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;

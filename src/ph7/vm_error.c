@@ -4172,6 +4172,7 @@ static void VmRenderUncaughtEntry(
 	sxu32 nCallLine)   /* line of the call that entered the throwing frame (0 -> same) */
 {
 	SyString *pFile;
+	int bParseErr,bCompileErr;
 	if( nThrowLine == 0 ){
 		nThrowLine = pVm->nCurLine ? pVm->nCurLine : 1;
 	}
@@ -4187,6 +4188,26 @@ static void VmRenderUncaughtEntry(
 		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
 	}
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	bParseErr = (nClass == sizeof("ParseError")-1
+	          && SyMemcmp(zClass,"ParseError",nClass) == 0);
+	bCompileErr = (nClass == sizeof("CompileError")-1
+	            && SyMemcmp(zClass,"CompileError",nClass) == 0);
+	if( bFirst && bLast && (bParseErr || bCompileErr) ){
+		/* php's zend_exception_error asks for the class by IDENTITY: an uncaught
+		 * ParseError is reported as the E_PARSE it stands for and an uncaught
+		 * CompileError as an E_COMPILE_ERROR -- one plain line naming the file and
+		 * the line, with no "Uncaught", no stack trace and no "thrown in" trailer.
+		 * (A user SUBCLASS of either is an ordinary uncaught exception, which is why
+		 * this is a name match and not an instanceof.) */
+		SyBlobFormat(pOut,"PHP %s:  ",bParseErr ? "Parse error" : "Fatal error");
+		if( zMsg && nMsg > 0 ){
+			SyBlobAppend(pOut,zMsg,nMsg);
+		}
+		if( pFile ){
+			SyBlobFormat(pOut," in %.*s on line %u",(int)pFile->nByte,pFile->zString,nThrowLine);
+		}
+		return;
+	}
 	if( bFirst ){
 		SyBlobAppend(pOut,"PHP Fatal error:  Uncaught ",sizeof("PHP Fatal error:  Uncaught ")-1);
 	}else{

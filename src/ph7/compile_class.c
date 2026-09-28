@@ -700,7 +700,7 @@ loop:
 	pGen->pIn++;
 	if(pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_EQUAL /* '=' */) == 0 ){
 		/* Invalid declaration */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '=' after class constant %z'",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '=' after class constant %z'",pName);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -801,7 +801,7 @@ loop:
 			if( pTok >= pGen->pEnd ){
 				pTok--;
 			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z',expecting constant declaration inside class '%z'",
 				&pTok->sData,&pClass->sName);
 			if( rc == SXERR_ABORT ){
@@ -1149,7 +1149,7 @@ static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi3
 	}
 loop:
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '$' at start of property name");
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '$' at start of property name");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -1391,7 +1391,7 @@ loop:
 			if( pTok >= pGen->pEnd ){
 				pTok--;
 			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z',expecting attribute declaration inside class '%z'",
 				&pTok->sData,&pClass->sName);
 			if( rc == SXERR_ABORT ){
@@ -1696,7 +1696,7 @@ static sxi32 GenStateCompileClassMethod(
 	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after method name '%z'",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after method name '%z'",pName);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1724,7 +1724,7 @@ static sxi32 GenStateCompileClassMethod(
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pEnd >= pGen->pEnd ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Missing ')' after method '%z' declaration",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Missing ')' after method '%z' declaration",pName);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -2016,7 +2016,7 @@ SkipToStringType:
 				}
 				return SXERR_CORRUPT;
 			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Expected ';' after method signature '%z'",pName);
 				if( rc == SXERR_ABORT ){
 					/* Error count limit reached,abort immediately */
@@ -2311,7 +2311,7 @@ static sxi32 GenStateCompileMember(ph7_gen_state *pGen,ph7_class *pClass,const c
 		return rc;
 	}
 	if( pGen->pIn >= pGen->pEnd ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,sMods.nLine,
+		rc = PH7_GenCompileError(pGen,E_PARSE,sMods.nLine,
 			"Expecting member declaration inside %s '%z'",zBody,pName);
 		return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
 	}
@@ -2321,7 +2321,7 @@ static sxi32 GenStateCompileMember(ph7_gen_state *pGen,ph7_class *pClass,const c
 	 || GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
 		iKind = GEN_MEMBER_PROP;
 	}else if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+		rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 			"Unexpected token '%z'. Expecting member declaration inside %s '%z'",
 			&pGen->pIn->sData,zBody,pName);
 		return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
@@ -2334,7 +2334,7 @@ static sxi32 GenStateCompileMember(ph7_gen_state *pGen,ph7_class *pClass,const c
 		}else if( nKw == PH7_TKWRD_VAR ){
 			iKind = GEN_MEMBER_VAR;
 		}else{
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z'. Expecting member declaration inside %s '%z'",
 				&pGen->pIn->sData,zBody,pName);
 			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
@@ -3019,7 +3019,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
 				if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
 					SyBlobRelease(&sResolved);
-					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					rc = PH7_GenCompileError(pGen,E_PARSE,nLine,
 						"Expected 'interface_name' after 'extends' keyword inside interface '%z'",
 						pName);
 					SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
@@ -3068,7 +3068,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	}
 	if( pGen->pIn >= pGen->pEnd  || (pGen->pIn->nType & PH7_TK_OCB /*'{'*/) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '{' after interface '%z' definition",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '{' after interface '%z' definition",pName);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
@@ -3082,7 +3082,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB/*'{'*/,PH7_TK_CCB/*'}'*/,&pEnd);
 	if( pEnd >= pGen->pEnd ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Missing '}' after interface '%z' definition",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Missing '}' after interface '%z' definition",pName);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
@@ -3116,7 +3116,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		GenStateSetPendingDoc(&(*pGen));
 		if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
 			&& !GenStateIsReadonly(pGen->pIn) ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z'.Expecting method signature or constant declaration inside interface '%z'",
 				&pGen->pIn->sData,pName);
 			if( rc == SXERR_ABORT ){
@@ -4827,7 +4827,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
 			if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
 				SyBlobRelease(&sResolved);
-				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				rc = PH7_GenCompileError(pGen,E_PARSE,nLine,
 					"Expected 'class_name' after 'extends' keyword inside class '%z'",
 					pName);
 				SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
@@ -4887,7 +4887,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
 				if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
 					SyBlobRelease(&sResolved);
-					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					rc = PH7_GenCompileError(pGen,E_PARSE,nLine,
 						"Expected 'interface_name' after 'implements' keyword inside class '%z' declaration",
 						pName);
 					if( rc == SXERR_ABORT ){
@@ -4949,7 +4949,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	}
 	if( pGen->pIn >= pGen->pEnd  || (pGen->pIn->nType & PH7_TK_OCB /*'{'*/) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '{' after class '%z' declaration",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '{' after class '%z' declaration",pName);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
@@ -4963,7 +4963,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB/*'{'*/,PH7_TK_CCB/*'}'*/,&pEnd);
 	if( pEnd >= pGen->pEnd ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Missing closing braces'}' after class '%z' definition",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Missing closing braces'}' after class '%z' definition",pName);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
@@ -5000,7 +5000,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		GenStateSetPendingDoc(&(*pGen));
 		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0
 			&& !GenStateIsReadonly(pGen->pIn) /* allow a leading `readonly` modifier */ ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z'. Expecting attribute declaration inside class '%z'",
 				&pGen->pIn->sData,pName);
 			if( rc == SXERR_ABORT ){
@@ -5043,7 +5043,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
 					if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
 						SyBlobRelease(&sResolved);
-						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
+						rc = PH7_GenCompileError(pGen,E_PARSE,nUseLine,
 							"Expected trait name after 'use' inside class '%z'",pName);
 						if( rc == SXERR_ABORT ){
 							return SXERR_ABORT;
@@ -5644,7 +5644,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	}
 	/* Traits cannot extend or implement; expect opening brace directly */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_OCB) == 0 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '{' after trait '%z' declaration",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '{' after trait '%z' declaration",pName);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
@@ -5655,7 +5655,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	pEnd = 0;
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pEnd);
 	if( pEnd >= pGen->pEnd ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Missing closing braces '}' after trait '%z' definition",pName);
+		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Missing closing braces '}' after trait '%z' definition",pName);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
@@ -5688,7 +5688,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		GenStateSetPendingDoc(&(*pGen));
 		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0
 			&& !GenStateIsReadonly(pGen->pIn) /* allow a leading `readonly` modifier */ ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
 				&pGen->pIn->sData,pName);
 			if( rc == SXERR_ABORT ){
@@ -5718,7 +5718,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 					SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
 					if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
 						SyBlobRelease(&sResolved);
-						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
+						rc = PH7_GenCompileError(pGen,E_PARSE,nUseLine,
 							"Expected trait name after 'use' inside trait '%z'",pName);
 						if( rc == SXERR_ABORT ){
 							return SXERR_ABORT;
