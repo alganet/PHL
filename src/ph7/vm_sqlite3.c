@@ -50,6 +50,17 @@ struct phl_sq3 {
 	phl_sq3_stmt *pStmts;         /* statements prepared on it: sqlite will not close a
 	                               * database while one of them is alive */
 	phl_sq3_res *pResults;        /* the result objects walking those statements */
+	struct phl_sq3_udf *pUdfs;    /* createFunction/createAggregate/createCollation and the
+	                               * authorizer: kept alive for as long as sqlite may call
+	                               * them, which is until the connection closes */
+	ph7_context *pVerbCtx;        /* the call a diagnostic raised from INSIDE sqlite belongs
+	                               * to. php prints the method that was running -- the
+	                               * `SQLite3Result::fetchAll(): ` in front of a collation's
+	                               * complaint -- and only the verb knows which one it is */
+	const char *zVerbFn;
+	sxi32 iCallbackExc;           /* the status a callback threw with, PARKED: sqlite has to
+	                               * finish unwinding before the engine may raise it, and the
+	                               * verb that started the step answers exactly this */
 	phl_sq3 *pNext;
 };
 /*
@@ -102,6 +113,15 @@ struct phl_sq3_res {
  * Lifetime
  * ------------------------------------------------------------------------ */
 /*
+ * Blank one object's hidden slot: the record behind it is going away and the
+ * object may well outlive it.
+ */
+static void Sq3BlankSlot(ph7_class_instance *pOwner);
+/* Drop what bindValue()/bindParam() recorded (defined with the statement). */
+static void Sq3BindsClear(phl_sq3_stmt *pSt);
+/* Let go of every callback a script registered (defined with them, below). */
+static void Sq3UdfSweep(phl_sq3 *pConn);
+/*
  * Close the database, and every statement standing on it with it.
  *
  * The statements go FIRST and they are not merely released: php keeps a list of
@@ -132,6 +152,10 @@ static void Sq3Close(phl_sq3 *pConn)
 		sqlite3_close_v2(pConn->pDb);
 		pConn->pDb = 0;
 	}
+	/* the callbacks go last: nothing can reach them once the database that
+	 * would have called them is closed */
+	Sq3UdfSweep(pConn);
+	pConn->iCallbackExc = 0;
 }
 static phl_sq3 * Sq3NewConn(ph7_vm *pVm)
 {
@@ -145,13 +169,6 @@ static phl_sq3 * Sq3NewConn(ph7_vm *pVm)
 	pVm->pSq3Conns = pConn;
 	return pConn;
 }
-/*
- * Blank one object's hidden slot: the record behind it is going away and the
- * object may well outlive it.
- */
-static void Sq3BlankSlot(ph7_class_instance *pOwner);
-/* Drop what bindValue()/bindParam() recorded (defined with the statement). */
-static void Sq3BindsClear(phl_sq3_stmt *pSt);
 /*
  * Let go of one hold on a statement. The LAST holder finalizes it -- which is
  * how a result over an anonymous statement destroys it while a result over a
@@ -422,11 +439,52 @@ static sxi32 Sq3Uninitialised(ph7_context *pCtx,const char *zClass)
 static sxi32 Sq3Error(ph7_context *pCtx,phl_sq3 *pConn,const char *zFn,int iCode,
 	const char *zMsg)
 {
+	if( pConn && pConn->iCallbackExc != 0 ){
+		/* A callback has already thrown and the library is only reporting that
+		 * it was told to stop. php raises the script's own exception and says
+		 * nothing about the statement sqlite abandoned. */
+		return PH7_OK;
+	}
 	if( pConn && pConn->bExceptions ){
 		return PH7_VmThrowExceptionCode(pCtx,"SQLite3Exception",(sxi32)iCode,"%s",zMsg);
 	}
 	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",zFn,zMsg);
 	return PH7_OK;
+}
+/*
+ * A verb that can re-enter PHP -- anything that steps the library, since a
+ * callback may fire from inside it -- announces itself on the connection for
+ * the length of the call. Two things read that: a diagnostic raised from inside
+ * a callback, which php prints under the METHOD's name, and the parked status a
+ * callback threw with, which this verb is the one to raise.
+ *
+ * The frame is saved and restored rather than assigned, because a callback may
+ * perfectly well run a query of its own on the same connection.
+ */
+typedef struct Sq3Verb Sq3Verb;
+struct Sq3Verb {
+	ph7_context *pCtx;
+	const char *zFn;
+};
+static void Sq3VerbEnter(phl_sq3 *pConn,ph7_context *pCtx,const char *zFn,Sq3Verb *pSave)
+{
+	pSave->pCtx = pConn->pVerbCtx;
+	pSave->zFn = pConn->zVerbFn;
+	pConn->pVerbCtx = pCtx;
+	pConn->zVerbFn = zFn;
+}
+/*
+ * Leave the frame and answer the status a callback parked, if any -- taking it
+ * OFF the connection as it goes, so the next verb starts clean whatever this
+ * one's caller does with it.
+ */
+static sxi32 Sq3VerbLeave(phl_sq3 *pConn,Sq3Verb *pSave)
+{
+	sxi32 rc = pConn->iCallbackExc;
+	pConn->iCallbackExc = 0;
+	pConn->pVerbCtx = pSave->pCtx;
+	pConn->zVerbFn = pSave->zFn;
+	return rc;
 }
 /* The same, worded from the library's own view of the last failure. */
 static sxi32 Sq3ErrorFromDb(ph7_context *pCtx,phl_sq3 *pConn,const char *zFn)
@@ -804,6 +862,7 @@ static int vm_builtin_SQLite3_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zSql;
 	int nSql = 0;
 	SyBlob sSql;
+	Sq3Verb sVerb;
 	int rcSql;
 	SXUNUSED(nArg);
 	if( pConn == 0 ){
@@ -815,8 +874,14 @@ static int vm_builtin_SQLite3_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		SyBlobAppend(&sSql,zSql,(sxu32)nSql);
 	}
 	SyBlobAppend(&sSql,"",1);
+	Sq3VerbEnter(pConn,pCtx,"SQLite3::exec",&sVerb);
 	rcSql = sqlite3_exec(pConn->pDb,(const char *)SyBlobData(&sSql),0,0,0);
 	SyBlobRelease(&sSql);
+	rc = Sq3VerbLeave(pConn,&sVerb);
+	if( rc != PH7_OK ){
+		ph7_result_bool(pCtx,0);
+		return rc;   /* a callback threw: that is the answer, not sqlite's */
+	}
 	if( rcSql != SQLITE_OK ){
 		ph7_result_bool(pCtx,0);
 		return Sq3ErrorFromDb(pCtx,pConn,"SQLite3::exec");
@@ -1049,18 +1114,29 @@ static int vm_builtin_SQLite3_query(ph7_context *pCtx,int nArg,ph7_value **apArg
 	int nSql = 0;
 	phl_sq3_stmt *pSt;
 	ph7_class_instance *pObj;
+	Sq3Verb sVerb;
 	SXUNUSED(nArg);
 	if( pConn == 0 ){
 		return rc;
 	}
 	zSql = ph7_value_to_string(apArg[0],&nSql);
+	Sq3VerbEnter(pConn,pCtx,"SQLite3::query",&sVerb);
 	pSt = Sq3Prepare(pCtx,pConn,zSql,nSql,"SQLite3::query",&rc);
-	if( pSt == 0 ){
-		ph7_result_bool(pCtx,0);
-		return rc;
-	}
-	if( !Sq3StepOnce(pCtx,pSt,"SQLite3::query",&rc) ){
+	if( pSt != 0 && !Sq3StepOnce(pCtx,pSt,"SQLite3::query",&rc) ){
 		Sq3StmtUnref(pSt);
+		pSt = 0;
+	}
+	{
+		sxi32 rcCb = Sq3VerbLeave(pConn,&sVerb);
+		if( rcCb != PH7_OK ){
+			if( pSt ){
+				Sq3StmtUnref(pSt);
+			}
+			ph7_result_bool(pCtx,0);
+			return rcCb;
+		}
+	}
+	if( pSt == 0 ){
 		ph7_result_bool(pCtx,0);
 		return rc;
 	}
@@ -1089,17 +1165,29 @@ static int vm_builtin_SQLite3_querySingle(ph7_context *pCtx,int nArg,ph7_value *
 	int nSql = 0;
 	int bWhole = nArg > 1 ? ph7_value_to_bool(apArg[1]) : 0;
 	phl_sq3_stmt *pSt;
+	Sq3Verb sVerb;
 	int iStep;
 	if( pConn == 0 ){
 		return rc;
 	}
 	zSql = ph7_value_to_string(apArg[0],&nSql);
+	Sq3VerbEnter(pConn,pCtx,"SQLite3::querySingle",&sVerb);
 	pSt = Sq3Prepare(pCtx,pConn,zSql,nSql,"SQLite3::querySingle",&rc);
+	iStep = (pSt && pSt->pStmt) ? sqlite3_step(pSt->pStmt) : SQLITE_MISUSE;
+	{
+		sxi32 rcCb = Sq3VerbLeave(pConn,&sVerb);
+		if( rcCb != PH7_OK ){
+			if( pSt ){
+				Sq3StmtUnref(pSt);
+			}
+			ph7_result_bool(pCtx,0);
+			return rcCb;
+		}
+	}
 	if( pSt == 0 ){
 		ph7_result_bool(pCtx,0);
 		return rc;
 	}
-	iStep = pSt->pStmt ? sqlite3_step(pSt->pStmt) : SQLITE_MISUSE;
 	if( iStep != SQLITE_ROW && iStep != SQLITE_DONE ){
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
@@ -1137,6 +1225,558 @@ static int vm_builtin_SQLite3_querySingle(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_result_null(pCtx);
 	}
 	Sq3StmtUnref(pSt);
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
+ * Userland callbacks, called from inside sqlite's own loop
+ * ------------------------------------------------------------------------ */
+/*
+ * One callback a script registered: a scalar function, an aggregate's step and
+ * finalize pair, a collation, or the authorizer. The connection owns the
+ * callable, because sqlite will call it long after the registering verb has
+ * returned, and lets go of all of them only when it closes.
+ */
+typedef struct phl_sq3_udf phl_sq3_udf;
+struct phl_sq3_udf {
+	phl_sq3 *pConn;
+	ph7_value *pCallback;
+	ph7_value *pFinalize;         /* an aggregate's second half, or 0 */
+	phl_sq3_udf *pNext;
+};
+/*
+ * One aggregate in progress. sqlite hands the same scratch buffer to every step
+ * of one group and then to the finalizer, which is where the running context
+ * and the row count live -- both visible to the callbacks as their first two
+ * arguments.
+ */
+typedef struct phl_sq3_agg phl_sq3_agg;
+struct phl_sq3_agg {
+	ph7_value *pCtx;              /* whatever the last step returned */
+	int nRow;                     /* steps taken so far */
+};
+/* Register one callable on the connection, kept for the connection's lifetime. */
+static phl_sq3_udf * Sq3NewUdf(phl_sq3 *pConn,ph7_value *pCallback,ph7_value *pFinalize)
+{
+	phl_sq3_udf *pUdf = (phl_sq3_udf *)SyMemBackendAlloc(&pConn->pVm->sAllocator,
+		sizeof(phl_sq3_udf));
+	if( pUdf == 0 ){
+		return 0;
+	}
+	SyZero(pUdf,sizeof(phl_sq3_udf));
+	pUdf->pConn = pConn;
+	pUdf->pCallback = ph7_new_scalar(pConn->pVm);
+	if( pUdf->pCallback == 0 ){
+		SyMemBackendFree(&pConn->pVm->sAllocator,pUdf);
+		return 0;
+	}
+	PH7_MemObjStore(pCallback,pUdf->pCallback);
+	if( pFinalize ){
+		pUdf->pFinalize = ph7_new_scalar(pConn->pVm);
+		if( pUdf->pFinalize ){
+			PH7_MemObjStore(pFinalize,pUdf->pFinalize);
+		}
+	}
+	pUdf->pNext = pConn->pUdfs;
+	pConn->pUdfs = pUdf;
+	return pUdf;
+}
+static void Sq3UdfSweep(phl_sq3 *pConn)
+{
+	phl_sq3_udf *pUdf = pConn->pUdfs;
+	while( pUdf ){
+		phl_sq3_udf *pNext = pUdf->pNext;
+		if( pUdf->pCallback ){
+			ph7_release_value(pConn->pVm,pUdf->pCallback);
+		}
+		if( pUdf->pFinalize ){
+			ph7_release_value(pConn->pVm,pUdf->pFinalize);
+		}
+		SyMemBackendFree(&pConn->pVm->sAllocator,pUdf);
+		pUdf = pNext;
+	}
+	pConn->pUdfs = 0;
+}
+/*
+ * The rule every trampoline here shares: sqlite is in the middle of a step when
+ * the engine re-enters PHP, and a throw out of that PHP cannot travel back
+ * through sqlite's C frames. So the status is PARKED on the connection, sqlite
+ * is told to stop, and the verb that started the step raises exactly the parked
+ * status once the library has unwound. A second callback while one is parked
+ * does not re-enter PHP at all.
+ */
+static int Sq3UdfParked(phl_sq3_udf *pUdf)
+{
+	return pUdf->pConn->iCallbackExc != 0;
+}
+static void Sq3UdfPark(phl_sq3_udf *pUdf,sxi32 rc,sqlite3_context *pCtx)
+{
+	pUdf->pConn->iCallbackExc = PH7_CALLBACK_UNWOUND(rc) ? rc : PH7_EXCEPTION;
+	if( pCtx ){
+		sqlite3_result_error(pCtx,"PHL: callback raised",-1);
+	}
+}
+/*
+ * A diagnostic raised from INSIDE the library, in the name of the verb that is
+ * running -- which is the only thing that knows it. php prints the method, so a
+ * collation's complaint is `SQLite3::query(): ...` under one caller and
+ * `SQLite3Result::fetchAll(): ...` under another.
+ */
+static void Sq3UdfWarn(phl_sq3 *pConn,const char *zMsg)
+{
+	if( pConn->pVerbCtx == 0 || pConn->zVerbFn == 0 ){
+		return;
+	}
+	Sq3Error(pConn->pVerbCtx,pConn,pConn->zVerbFn,0,zMsg);
+}
+/* One sqlite value as a php value, in sqlite's own types. */
+static void Sq3UdfArgValue(ph7_vm *pVm,sqlite3_value *pIn,ph7_value *pOut)
+{
+	PH7_MemObjInit(pVm,pOut);
+	switch( sqlite3_value_type(pIn) ){
+		case SQLITE_INTEGER:
+			ph7_value_int64(pOut,(ph7_int64)sqlite3_value_int64(pIn));
+			break;
+#ifndef PH7_OMIT_FLOATING_POINT
+		case SQLITE_FLOAT:
+			ph7_value_double(pOut,(ph7_real)sqlite3_value_double(pIn));
+			break;
+#endif
+		case SQLITE_NULL:
+			ph7_value_null(pOut);
+			break;
+		case SQLITE_BLOB:
+			ph7_value_string(pOut,(const char *)sqlite3_value_blob(pIn),
+				sqlite3_value_bytes(pIn));
+			break;
+		default:
+			ph7_value_string(pOut,(const char *)sqlite3_value_text(pIn),
+				sqlite3_value_bytes(pIn));
+			break;
+	}
+}
+/*
+ * What a callback RETURNED, as a sqlite result. null, int and float pass
+ * straight through and everything else takes a string CAST -- so a bool comes
+ * back as "1" and an array as "Array", with php's own conversion warning behind
+ * it.
+ *
+ * The string is handed to sqlite as a C STRING, so it stops at the first NUL:
+ * a function returning "a\0b" produces a one-byte value and one returning
+ * "\0x" produces an empty one. php has the same cut.
+ */
+static void Sq3UdfResult(sqlite3_context *pCtx,ph7_value *pVal)
+{
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
+		sqlite3_result_null(pCtx);
+#ifndef PH7_OMIT_FLOATING_POINT
+	}else if( pVal->iFlags & MEMOBJ_REAL ){
+		sqlite3_result_double(pCtx,(double)ph7_value_to_double(pVal));
+#endif
+	}else if( pVal->iFlags & MEMOBJ_INT ){
+		sqlite3_result_int64(pCtx,(sqlite3_int64)ph7_value_to_int64(pVal));
+	}else{
+		int nByte = 0,n;
+		const char *zStr;
+		PH7_MemObjToStringUV(pVal);
+		zStr = ph7_value_to_string(pVal,&nByte);
+		for( n = 0 ; n < nByte && zStr[n] ; ++n ){}
+		sqlite3_result_text(pCtx,zStr ? zStr : "",n,SQLITE_TRANSIENT);
+	}
+}
+/* A scalar function's body: build the arguments, call, convert the answer. */
+static void Sq3UdfScalar(sqlite3_context *pCtx,int nArg,sqlite3_value **apVal)
+{
+	phl_sq3_udf *pUdf = (phl_sq3_udf *)sqlite3_user_data(pCtx);
+	ph7_vm *pVm = pUdf->pConn->pVm;
+	ph7_value *apArg[16];
+	ph7_value sArgs[16];
+	ph7_value sRes;
+	int n,nCall = nArg;
+	sxi32 rc;
+	if( Sq3UdfParked(pUdf) ){
+		sqlite3_result_error(pCtx,"PHL: callback raised",-1);
+		return;
+	}
+	if( nCall > (int)SX_ARRAYSIZE(sArgs) ){
+		nCall = (int)SX_ARRAYSIZE(sArgs);
+	}
+	for( n = 0 ; n < nCall ; ++n ){
+		Sq3UdfArgValue(pVm,apVal[n],&sArgs[n]);
+		apArg[n] = &sArgs[n];
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,nCall,nCall ? apArg : 0,&sRes);
+	if( rc != SXRET_OK ){
+		Sq3UdfPark(pUdf,rc,pCtx);
+	}else{
+		Sq3UdfResult(pCtx,&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	for( n = 0 ; n < nCall ; ++n ){
+		PH7_MemObjRelease(&sArgs[n]);
+	}
+}
+/*
+ * A collation: two strings in, an ordering out. Only an INT is an ordering --
+ * a float, a numeric string, a bool, null and an array are each the same
+ * complaint and a verdict of EQUAL, which leaves sqlite sorting by nothing.
+ */
+static int Sq3UdfCollate(void *pUser,int nLeft,const void *pLeft,int nRight,const void *pRight)
+{
+	phl_sq3_udf *pUdf = (phl_sq3_udf *)pUser;
+	ph7_vm *pVm;
+	ph7_value sL,sR,sRes;
+	ph7_value *apArg[2];
+	sxi32 rc;
+	int iCmp = 0;
+	if( pUdf == 0 || Sq3UdfParked(pUdf) ){
+		return 0;
+	}
+	pVm = pUdf->pConn->pVm;
+	PH7_MemObjInit(pVm,&sL);
+	PH7_MemObjInit(pVm,&sR);
+	ph7_value_string(&sL,(const char *)pLeft,nLeft);
+	ph7_value_string(&sR,(const char *)pRight,nRight);
+	apArg[0] = &sL;
+	apArg[1] = &sR;
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,2,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		/* no sqlite3_context here to fail through: park it and order the pair
+		 * as equal, which leaves the walk to end on the parked status */
+		Sq3UdfPark(pUdf,rc,0);
+	}else if( (sRes.iFlags & MEMOBJ_INT) == 0 || (sRes.iFlags & MEMOBJ_REAL) != 0 ){
+		Sq3UdfWarn(pUdf->pConn,
+			"An error occurred while invoking the compare callback (invalid return type)."
+			"  Collation behaviour is undefined.");
+	}else{
+		ph7_int64 iVal = ph7_value_to_int64(&sRes);
+		iCmp = iVal < 0 ? -1 : (iVal > 0 ? 1 : 0);
+	}
+	PH7_MemObjRelease(&sRes);
+	PH7_MemObjRelease(&sL);
+	PH7_MemObjRelease(&sR);
+	return iCmp;
+}
+/*
+ * An aggregate's two halves. Both are given the running CONTEXT and a ROW
+ * COUNT as their first two arguments, and whatever step returns becomes the
+ * context of the next one. The count the STEP sees is 1-based; the one the
+ * finalizer sees is always 0, which is php's own answer and not a count of
+ * anything.
+ */
+static void Sq3UdfStep(sqlite3_context *pCtx,int nArg,sqlite3_value **apVal)
+{
+	phl_sq3_udf *pUdf = (phl_sq3_udf *)sqlite3_user_data(pCtx);
+	ph7_vm *pVm = pUdf->pConn->pVm;
+	phl_sq3_agg *pAgg;
+	ph7_value sArgs[16];
+	ph7_value *apArg[18];
+	ph7_value sCount,sRes;
+	int n,nCall = nArg;
+	sxi32 rc;
+	if( Sq3UdfParked(pUdf) ){
+		sqlite3_result_error(pCtx,"PHL: callback raised",-1);
+		return;
+	}
+	pAgg = (phl_sq3_agg *)sqlite3_aggregate_context(pCtx,(int)sizeof(phl_sq3_agg));
+	if( pAgg == 0 ){
+		return;
+	}
+	if( pAgg->pCtx == 0 ){
+		pAgg->pCtx = ph7_new_scalar(pVm);
+		pAgg->nRow = 0;
+	}
+	pAgg->nRow++;
+	if( nCall > (int)SX_ARRAYSIZE(sArgs) ){
+		nCall = (int)SX_ARRAYSIZE(sArgs);
+	}
+	PH7_MemObjInit(pVm,&sCount);
+	ph7_value_int(&sCount,pAgg->nRow);
+	apArg[0] = pAgg->pCtx;
+	apArg[1] = &sCount;
+	for( n = 0 ; n < nCall ; ++n ){
+		Sq3UdfArgValue(pVm,apVal[n],&sArgs[n]);
+		apArg[n + 2] = &sArgs[n];
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,nCall + 2,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		Sq3UdfPark(pUdf,rc,pCtx);
+	}else if( pAgg->pCtx ){
+		PH7_MemObjStore(&sRes,pAgg->pCtx);
+	}
+	PH7_MemObjRelease(&sRes);
+	PH7_MemObjRelease(&sCount);
+	for( n = 0 ; n < nCall ; ++n ){
+		PH7_MemObjRelease(&sArgs[n]);
+	}
+}
+static void Sq3UdfFinal(sqlite3_context *pCtx)
+{
+	phl_sq3_udf *pUdf = (phl_sq3_udf *)sqlite3_user_data(pCtx);
+	ph7_vm *pVm = pUdf->pConn->pVm;
+	phl_sq3_agg *pAgg = (phl_sq3_agg *)sqlite3_aggregate_context(pCtx,0);
+	ph7_value sCtx,sCount,sRes;
+	ph7_value *apArg[2];
+	sxi32 rc;
+	if( Sq3UdfParked(pUdf) ){
+		sqlite3_result_error(pCtx,"PHL: callback raised",-1);
+		return;
+	}
+	PH7_MemObjInit(pVm,&sCtx);
+	PH7_MemObjInit(pVm,&sCount);
+	if( pAgg && pAgg->pCtx ){
+		PH7_MemObjStore(pAgg->pCtx,&sCtx);
+	}
+	ph7_value_int(&sCount,0);
+	apArg[0] = &sCtx;
+	apArg[1] = &sCount;
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pUdf->pFinalize ? pUdf->pFinalize : pUdf->pCallback,
+		2,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		Sq3UdfPark(pUdf,rc,pCtx);
+	}else{
+		Sq3UdfResult(pCtx,&sRes);
+	}
+	if( pAgg && pAgg->pCtx ){
+		ph7_release_value(pVm,pAgg->pCtx);
+		pAgg->pCtx = 0;
+	}
+	PH7_MemObjRelease(&sRes);
+	PH7_MemObjRelease(&sCtx);
+	PH7_MemObjRelease(&sCount);
+}
+/*
+ * The authorizer: sqlite asks before it COMPILES each action, so a refusal here
+ * stops a PREPARE rather than a step -- which is why a denied SELECT fails at
+ * query() and never reaches a fetch. Its verdict is one of three ints and
+ * nothing else will do: any other type is the complaint below and a denial,
+ * as is a callback that threw.
+ */
+static int Sq3UdfAuthorize(void *pUser,int iAction,const char *z1,const char *z2,
+	const char *z3,const char *z4)
+{
+	phl_sq3_udf *pUdf = (phl_sq3_udf *)pUser;
+	ph7_vm *pVm;
+	ph7_value sArgs[5],sRes;
+	ph7_value *apArg[5];
+	const char *azIn[4];
+	int n,iVerdict = SQLITE_OK;
+	sxi32 rc;
+	if( pUdf == 0 || Sq3UdfParked(pUdf) ){
+		return SQLITE_DENY;
+	}
+	pVm = pUdf->pConn->pVm;
+	azIn[0] = z1; azIn[1] = z2; azIn[2] = z3; azIn[3] = z4;
+	PH7_MemObjInit(pVm,&sArgs[0]);
+	ph7_value_int(&sArgs[0],iAction);
+	apArg[0] = &sArgs[0];
+	for( n = 0 ; n < 4 ; ++n ){
+		PH7_MemObjInit(pVm,&sArgs[n + 1]);
+		if( azIn[n] ){
+			ph7_value_string(&sArgs[n + 1],azIn[n],(int)SyStrlen(azIn[n]));
+		}else{
+			ph7_value_null(&sArgs[n + 1]);
+		}
+		apArg[n + 1] = &sArgs[n + 1];
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pUdf->pCallback,5,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		Sq3UdfPark(pUdf,rc,0);
+		iVerdict = SQLITE_DENY;
+	}else if( (sRes.iFlags & MEMOBJ_INT) == 0 || (sRes.iFlags & MEMOBJ_REAL) != 0 ){
+		Sq3UdfWarn(pUdf->pConn,
+			"The authorizer callback returned an invalid type: expected int");
+		iVerdict = SQLITE_DENY;
+	}else{
+		ph7_int64 iVal = ph7_value_to_int64(&sRes);
+		iVerdict = (iVal == SQLITE_IGNORE) ? SQLITE_IGNORE
+			: ((iVal == SQLITE_OK) ? SQLITE_OK : SQLITE_DENY);
+	}
+	PH7_MemObjRelease(&sRes);
+	for( n = 0 ; n < 5 ; ++n ){
+		PH7_MemObjRelease(&sArgs[n]);
+	}
+	return iVerdict;
+}
+/*
+ * The name every registering verb screens the same way: php refuses an EMPTY
+ * name outright, and takes it as a C string, so one carrying a NUL registers
+ * the part in front of it. The ARITY is not screened: php hands it straight to
+ * sqlite, whose ceiling is the linked library's own (127 for years, higher in
+ * newer builds), so the answer is the library's.
+ */
+static int Sq3UdfNameOk(ph7_context *pCtx,ph7_value *pName,SyBlob *pOut)
+{
+	const char *zName;
+	int nName = 0;
+	zName = ph7_value_to_string(pName,&nName);
+	SyBlobInit(pOut,&pCtx->pVm->sAllocator);
+	if( nName < 1 ){
+		return 0;
+	}
+	SyBlobAppend(pOut,zName,(sxu32)nName);
+	SyBlobNullAppend(pOut);
+	return 1;
+}
+/*
+ * SQLite3::createFunction(string $name, callable $callback, int $argCount = -1,
+ *   int $flags = 0): bool
+ */
+static int vm_builtin_SQLite3_createFunction(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn;
+	/* php screens the callable at ZPP time, so it is refused ahead of every
+	 * question about the connection -- a closed one included. */
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
+	}
+	pConn = Sq3LiveDb(pCtx,&rc);
+	int nFuncArg = nArg > 2 ? (int)ph7_value_to_int64(apArg[2]) : -1;
+	int iFlags = nArg > 3 ? (int)ph7_value_to_int64(apArg[3]) : 0;
+	phl_sq3_udf *pUdf;
+	SyBlob sName;
+	if( pConn == 0 ){
+		return rc;
+	}
+	if( !Sq3UdfNameOk(pCtx,apArg[0],&sName) ){
+		SyBlobRelease(&sName);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pUdf = Sq3NewUdf(pConn,apArg[1],0);
+	if( pUdf == 0 ){
+		SyBlobRelease(&sName);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_bool(pCtx,
+		sqlite3_create_function_v2(pConn->pDb,(const char *)SyBlobData(&sName),nFuncArg,
+			SQLITE_UTF8 | (iFlags & SQLITE_DETERMINISTIC),pUdf,
+			Sq3UdfScalar,0,0,0) == SQLITE_OK);
+	SyBlobRelease(&sName);
+	return PH7_OK;
+}
+/*
+ * SQLite3::createAggregate(string $name, callable $stepCallback,
+ *   callable $finalCallback, int $argCount = -1): bool
+ */
+static int vm_builtin_SQLite3_createAggregate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn;
+	/* php screens the callable at ZPP time, so it is refused ahead of every
+	 * question about the connection -- a closed one included. */
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"stepCallback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
+	}
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[2],3,"finalCallback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
+	}
+	pConn = Sq3LiveDb(pCtx,&rc);
+	int nFuncArg = nArg > 3 ? (int)ph7_value_to_int64(apArg[3]) : -1;
+	phl_sq3_udf *pUdf;
+	SyBlob sName;
+	if( pConn == 0 ){
+		return rc;
+	}
+	if( !Sq3UdfNameOk(pCtx,apArg[0],&sName) ){
+		SyBlobRelease(&sName);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pUdf = Sq3NewUdf(pConn,apArg[1],apArg[2]);
+	if( pUdf == 0 ){
+		SyBlobRelease(&sName);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_bool(pCtx,
+		sqlite3_create_function_v2(pConn->pDb,(const char *)SyBlobData(&sName),nFuncArg,
+			SQLITE_UTF8,pUdf,0,Sq3UdfStep,Sq3UdfFinal,0) == SQLITE_OK);
+	SyBlobRelease(&sName);
+	return PH7_OK;
+}
+/* SQLite3::createCollation(string $name, callable $callback): bool */
+static int vm_builtin_SQLite3_createCollation(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn;
+	/* php screens the callable at ZPP time, so it is refused ahead of every
+	 * question about the connection -- a closed one included. */
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
+	}
+	pConn = Sq3LiveDb(pCtx,&rc);
+	phl_sq3_udf *pUdf;
+	SyBlob sName;
+	SXUNUSED(nArg);
+	if( pConn == 0 ){
+		return rc;
+	}
+	if( !Sq3UdfNameOk(pCtx,apArg[0],&sName) ){
+		SyBlobRelease(&sName);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pUdf = Sq3NewUdf(pConn,apArg[1],0);
+	if( pUdf == 0 ){
+		SyBlobRelease(&sName);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_bool(pCtx,
+		sqlite3_create_collation_v2(pConn->pDb,(const char *)SyBlobData(&sName),SQLITE_UTF8,
+			pUdf,Sq3UdfCollate,0) == SQLITE_OK);
+	SyBlobRelease(&sName);
+	return PH7_OK;
+}
+/*
+ * SQLite3::setAuthorizer(?callable $callback): bool
+ *
+ * One at a time: a second call replaces the first, and NULL takes it off.
+ */
+static int vm_builtin_SQLite3_setAuthorizer(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn;
+	phl_sq3_udf *pUdf;
+	SXUNUSED(nArg);
+	if( !ph7_value_is_null(apArg[0]) ){
+		rc = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	pConn = Sq3LiveDb(pCtx,&rc);
+	if( pConn == 0 ){
+		return rc;
+	}
+	if( ph7_value_is_null(apArg[0]) ){
+		sqlite3_set_authorizer(pConn->pDb,0,0);
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	pUdf = Sq3NewUdf(pConn,apArg[0],0);
+	if( pUdf == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_bool(pCtx,
+		sqlite3_set_authorizer(pConn->pDb,Sq3UdfAuthorize,pUdf) == SQLITE_OK);
 	return PH7_OK;
 }
 
@@ -1472,12 +2112,26 @@ static int vm_builtin_SQLite3_prepare(ph7_context *pCtx,int nArg,ph7_value **apA
 	phl_sq3_stmt *pSt;
 	ph7_class *pClass;
 	ph7_class_instance *pObj;
+	Sq3Verb sVerb;
 	SXUNUSED(nArg);
 	if( pConn == 0 ){
 		return rc;
 	}
 	zSql = ph7_value_to_string(apArg[0],&nSql);
+	Sq3VerbEnter(pConn,pCtx,"SQLite3::prepare",&sVerb);
 	pSt = Sq3Prepare(pCtx,pConn,zSql,nSql,"SQLite3::prepare",&rc);
+	{
+		/* the AUTHORIZER runs while sqlite compiles, so even a prepare can be
+		 * the call a callback threw out of */
+		sxi32 rcCb = Sq3VerbLeave(pConn,&sVerb);
+		if( rcCb != PH7_OK ){
+			if( pSt ){
+				Sq3StmtUnref(pSt);
+			}
+			ph7_result_bool(pCtx,0);
+			return rcCb;
+		}
+	}
 	if( pSt == 0 ){
 		ph7_result_bool(pCtx,0);
 		return rc;
@@ -1511,6 +2165,7 @@ static int vm_builtin_SQLite3Stmt_execute(ph7_context *pCtx,int nArg,ph7_value *
 	sxi32 rc;
 	phl_sq3_stmt *pSt = Sq3LiveStmtNull(pCtx,&rc);
 	ph7_class_instance *pObj;
+	Sq3Verb sVerb;
 	int iStep;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
@@ -1523,12 +2178,20 @@ static int vm_builtin_SQLite3Stmt_execute(ph7_context *pCtx,int nArg,ph7_value *
 			"Unable to execute statement: out of memory");
 	}
 	sqlite3_reset(pSt->pStmt);
+	Sq3VerbEnter(pSt->pConn,pCtx,"SQLite3Stmt::execute",&sVerb);
 	rc = Sq3BindsApply(pCtx,pSt,"SQLite3Stmt::execute");
+	iStep = rc == PH7_OK ? sqlite3_step(pSt->pStmt) : SQLITE_OK;
+	{
+		sxi32 rcCb = Sq3VerbLeave(pSt->pConn,&sVerb);
+		if( rcCb != PH7_OK ){
+			ph7_result_bool(pCtx,0);
+			return rcCb;
+		}
+	}
 	if( rc != PH7_OK ){
 		ph7_result_bool(pCtx,0);
 		return rc;
 	}
-	iStep = sqlite3_step(pSt->pStmt);
 	if( iStep != SQLITE_ROW && iStep != SQLITE_DONE ){
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
@@ -1922,11 +2585,20 @@ static int vm_builtin_SQLite3Result_fetchArray(ph7_context *pCtx,int nArg,ph7_va
 	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
 	int iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : 3;
 	ph7_value *pRow,*pCell;
+	Sq3Verb sVerb;
 	int iStep;
 	if( pRes == 0 ){
 		return rc;
 	}
+	Sq3VerbEnter(pRes->pSt->pConn,pCtx,"SQLite3Result::fetchArray",&sVerb);
 	iStep = Sq3StepFetch(pCtx,pRes,"SQLite3Result::fetchArray",&rc);
+	{
+		sxi32 rcCb = Sq3VerbLeave(pRes->pSt->pConn,&sVerb);
+		if( rcCb != PH7_OK ){
+			ph7_result_bool(pCtx,0);
+			return rcCb;
+		}
+	}
 	if( iStep != 1 ){
 		ph7_result_bool(pCtx,0);
 		return rc;
@@ -1953,6 +2625,7 @@ static int vm_builtin_SQLite3Result_fetchAll(ph7_context *pCtx,int nArg,ph7_valu
 	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
 	int iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : 3;
 	ph7_value *pAll,*pRow,*pCell;
+	Sq3Verb sVerb;
 	int iStep;
 	if( pRes == 0 ){
 		return rc;
@@ -1962,9 +2635,10 @@ static int vm_builtin_SQLite3Result_fetchAll(ph7_context *pCtx,int nArg,ph7_valu
 	if( pAll == 0 || pCell == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
+	Sq3VerbEnter(pRes->pSt->pConn,pCtx,"SQLite3Result::fetchAll",&sVerb);
 	for(;;){
 		iStep = Sq3StepFetch(pCtx,pRes,"SQLite3Result::fetchAll",&rc);
-		if( iStep != 1 ){
+		if( iStep != 1 || pRes->pSt->pConn->iCallbackExc != 0 ){
 			break;
 		}
 		pRow = ph7_context_new_array(pCtx);
@@ -1974,6 +2648,13 @@ static int vm_builtin_SQLite3Result_fetchAll(ph7_context *pCtx,int nArg,ph7_valu
 		Sq3RowInto(pRes->pSt->pStmt,iMode,pRow,pCell);
 		ph7_array_add_elem(pAll,0,pRow);
 		ph7_context_release_value(pCtx,pRow);
+	}
+	{
+		sxi32 rcCb = Sq3VerbLeave(pRes->pSt->pConn,&sVerb);
+		if( rcCb != PH7_OK ){
+			ph7_result_bool(pCtx,0);
+			return rcCb;
+		}
 	}
 	if( iStep < 0 ){
 		ph7_result_bool(pCtx,0);
@@ -2310,6 +2991,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		  vm_builtin_SQLite3_query },
 		{ "querySingle", PH7_MOD_PUBLIC, "string $query, bool $entireRow = false", "@mixed",
 		  vm_builtin_SQLite3_querySingle },
+		{ "createFunction", PH7_MOD_PUBLIC,
+		  "string $name, callable $callback, int $argCount = -1, int $flags = 0", "@bool",
+		  vm_builtin_SQLite3_createFunction },
+		{ "createAggregate", PH7_MOD_PUBLIC,
+		  "string $name, callable $stepCallback, callable $finalCallback, "
+		  "int $argCount = -1", "@bool", vm_builtin_SQLite3_createAggregate },
+		{ "createCollation", PH7_MOD_PUBLIC, "string $name, callable $callback", "@bool",
+		  vm_builtin_SQLite3_createCollation },
+		{ "setAuthorizer", PH7_MOD_PUBLIC, "?callable $callback", "@bool",
+		  vm_builtin_SQLite3_setAuthorizer },
 		{ "enableExceptions", PH7_MOD_PUBLIC, "bool $enable = false", "@bool",
 		  vm_builtin_SQLite3_enableExceptions },
 		{ "enableExtendedResultCodes", PH7_MOD_PUBLIC, "bool $enable = true", "@bool",
