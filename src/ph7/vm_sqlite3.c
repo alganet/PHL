@@ -50,6 +50,10 @@ struct phl_sq3 {
 	phl_sq3_stmt *pStmts;         /* statements prepared on it: sqlite will not close a
 	                               * database while one of them is alive */
 	phl_sq3_res *pResults;        /* the result objects walking those statements */
+	struct phl_sq3_blob *pBlobs;  /* openBlob() handles a script has not closed. sqlite
+	                               * REFUSES to close a database while one is open, which is
+	                               * a failure php reports rather than forces past -- only
+	                               * the teardown paths close them behind a script's back */
 	struct phl_sq3_udf *pUdfs;    /* createFunction/createAggregate/createCollation and the
 	                               * authorizer: kept alive for as long as sqlite may call
 	                               * them, which is until the connection closes */
@@ -121,6 +125,8 @@ static void Sq3BlankSlot(ph7_class_instance *pOwner);
 static void Sq3BindsClear(phl_sq3_stmt *pSt);
 /* Let go of every callback a script registered (defined with them, below). */
 static void Sq3UdfSweep(phl_sq3 *pConn);
+/* Close every blob handle a script left open (defined with them, below). */
+static void Sq3BlobSweep(phl_sq3 *pConn);
 /*
  * Close the database, and every statement standing on it with it.
  *
@@ -136,7 +142,7 @@ static void Sq3UdfSweep(phl_sq3 *pConn);
  * drop while one exists, and a result outlives the variable its connection was
  * in.
  */
-static void Sq3Close(phl_sq3 *pConn)
+static void Sq3FinalizeStmts(phl_sq3 *pConn)
 {
 	phl_sq3_stmt *pSt;
 	for( pSt = pConn->pStmts ; pSt ; pSt = pSt->pNext ){
@@ -146,16 +152,30 @@ static void Sq3Close(phl_sq3 *pConn)
 		}
 		pSt->bInitialised = 0;
 	}
-	if( pConn->pDb ){
-		/* _v2 anyway, so a handle something else still owns defers the close
-		 * rather than leaking. */
-		sqlite3_close_v2(pConn->pDb);
-		pConn->pDb = 0;
-	}
+}
+/* What is left to let go of once the handle itself is gone. */
+static void Sq3CloseDone(phl_sq3 *pConn)
+{
+	pConn->pDb = 0;
 	/* the callbacks go last: nothing can reach them once the database that
 	 * would have called them is closed */
 	Sq3UdfSweep(pConn);
 	pConn->iCallbackExc = 0;
+}
+/*
+ * The close a script cannot refuse: every blob handle goes too and the handle
+ * is dropped with _v2, so the connection really is gone. This is the TEARDOWN
+ * path -- the object dying, or the VM being reset -- where nothing is left to
+ * report a failure to.
+ */
+static void Sq3Close(phl_sq3 *pConn)
+{
+	Sq3FinalizeStmts(pConn);
+	Sq3BlobSweep(pConn);
+	if( pConn->pDb ){
+		sqlite3_close_v2(pConn->pDb);
+	}
+	Sq3CloseDone(pConn);
 }
 static phl_sq3 * Sq3NewConn(ph7_vm *pVm)
 {
@@ -700,11 +720,32 @@ static int vm_builtin_SQLite3_open(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int vm_builtin_SQLite3_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	phl_sq3 *pConn = Sq3OfInstance(PH7_ContextThis(pCtx));
+	int rcClose;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pConn ){
-		Sq3Close(pConn);
+	if( pConn == 0 || pConn->pDb == 0 ){
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
 	}
+	/* the statements go first and unconditionally: a script's own statement is
+	 * finalized even when the close that follows FAILS */
+	Sq3FinalizeStmts(pConn);
+	/* and the close itself is the one that can fail -- not _v2, so an open blob
+	 * handle is a refusal a script is told about rather than something closed
+	 * behind its back */
+	rcClose = sqlite3_close(pConn->pDb);
+	if( rcClose != SQLITE_OK ){
+		SyBlob sMsg;
+		sxi32 rc;
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Unable to close database: %s",sqlite3_errmsg(pConn->pDb));
+		SyBlobNullAppend(&sMsg);
+		ph7_result_bool(pCtx,0);
+		rc = Sq3Error(pCtx,pConn,"SQLite3::close",rcClose,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+		return rc;   /* the connection is still open, and still usable */
+	}
+	Sq3CloseDone(pConn);
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -1225,6 +1266,346 @@ static int vm_builtin_SQLite3_querySingle(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_result_null(pCtx);
 	}
 	Sq3StmtUnref(pSt);
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
+ * Copying a database, and reading one value as a stream
+ * ------------------------------------------------------------------------ */
+/*
+ * SQLite3::backup(SQLite3 $destination, string $sourceDatabase = 'main',
+ *   string $destinationDatabase = 'main'): bool
+ *
+ * sqlite's own online backup, run to completion in one call. What php does NOT
+ * do is check the two names: `sqlite3_backup_init` answers nothing for a
+ * database neither connection carries, and php reads that as having no work to
+ * do rather than as a failure -- so a misspelt source is a quiet true and an
+ * empty destination. The one refusal it words itself is the pair being the SAME
+ * connection, which sqlite would deadlock on.
+ */
+static int vm_builtin_SQLite3_backup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn = Sq3LiveDb(pCtx,&rc);
+	phl_sq3 *pDest;
+	const char *zSrc = "main",*zDest = "main";
+	int nSrc = (int)sizeof("main")-1,nDest = (int)sizeof("main")-1;
+	SyBlob sSrc,sDest;
+	sqlite3_backup *pBackup;
+	if( pConn == 0 ){
+		return rc;
+	}
+	pDest = (apArg[0]->iFlags & MEMOBJ_OBJ) != 0
+		? Sq3OfInstance((ph7_class_instance *)apArg[0]->x.pOther) : 0;
+	if( pDest == 0 || pDest->pDb == 0 ){
+		/* the destination is asked the same question the receiver was */
+		return Sq3Uninitialised(pCtx,"SQLite3");
+	}
+	if( pDest == pConn ){
+		ph7_result_bool(pCtx,0);
+		return Sq3Error(pCtx,pConn,"SQLite3::backup",0,
+			"Backup failed: source and destination must be distinct");
+	}
+	if( nArg > 1 ){
+		zSrc = ph7_value_to_string(apArg[1],&nSrc);
+	}
+	if( nArg > 2 ){
+		zDest = ph7_value_to_string(apArg[2],&nDest);
+	}
+	SyBlobInit(&sSrc,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sSrc,zSrc,(sxu32)nSrc);
+	SyBlobNullAppend(&sSrc);
+	SyBlobInit(&sDest,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sDest,zDest,(sxu32)nDest);
+	SyBlobNullAppend(&sDest);
+	pBackup = sqlite3_backup_init(pDest->pDb,(const char *)SyBlobData(&sDest),
+		pConn->pDb,(const char *)SyBlobData(&sSrc));
+	SyBlobRelease(&sSrc);
+	SyBlobRelease(&sDest);
+	if( pBackup == 0 ){
+		/* nothing to copy, and php calls that done */
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	/* -1 pages is "all of it": one step, no progress callback to report to */
+	sqlite3_backup_step(pBackup,-1);
+	ph7_result_bool(pCtx,sqlite3_backup_finish(pBackup) == SQLITE_OK);
+	return PH7_OK;
+}
+/*
+ * One open blob: a HANDLE on the bytes of one value, which php hands back as a
+ * stream. It addresses bytes that already exist -- there is no growing one and
+ * nowhere past the end to seek to -- and sqlite refuses to close a database
+ * while one is open, which is the one thing that makes SQLite3::close() fail.
+ */
+typedef struct phl_sq3_blob phl_sq3_blob;
+struct phl_sq3_blob {
+	sqlite3_blob *pBlob;          /* 0 once closed */
+	ph7_vm *pVm;                  /* the allocator: a handle ORPHANED by its connection
+	                               * still has to give its own memory back */
+	phl_sq3 *pConn;               /* 0 once the connection closed underneath it */
+	ph7_int64 iOfft;              /* the stream cursor: sqlite reads at an offset */
+	ph7_int64 nSize;              /* the blob's length, fixed for its lifetime */
+	int bWrite;                   /* the HANDLE sqlite opened is writable: flags & READWRITE */
+	int iFlags;                   /* and the flags themselves, which the stream reads
+	                               * separately -- php refuses a write for the READONLY bit
+	                               * being SET rather than for READWRITE being absent, so the
+	                               * two are different questions and 0 answers neither */
+	int bBadPos;                  /* a seek OUT of the blob left the position unknown */
+	io_private *pDev;             /* the stream the script holds: the read below marks its
+	                               * end-of-file itself, since reaching the last byte is
+	                               * what php calls eof here and a SEEK to the end is not */
+	phl_sq3_blob *pNext;
+};
+static void Sq3BlobClose(phl_sq3_blob *pBl)
+{
+	phl_sq3 *pConn = pBl->pConn;
+	if( pBl->pBlob ){
+		sqlite3_blob_close(pBl->pBlob);
+		pBl->pBlob = 0;
+	}
+	if( pConn ){
+		phl_sq3_blob *pCur,*pPrev = 0;
+		for( pCur = pConn->pBlobs ; pCur ; pPrev = pCur, pCur = pCur->pNext ){
+			if( pCur == pBl ){
+				if( pPrev ){
+					pPrev->pNext = pCur->pNext;
+				}else{
+					pConn->pBlobs = pCur->pNext;
+				}
+				break;
+			}
+		}
+	}
+	SyMemBackendFree(&pBl->pVm->sAllocator,pBl);
+}
+/*
+ * Close every handle a script left open and CUT them loose. Only the teardown
+ * paths do this: a script's own close() is refused while one is open rather
+ * than taking it away.
+ */
+static void Sq3BlobSweep(phl_sq3 *pConn)
+{
+	while( pConn->pBlobs ){
+		phl_sq3_blob *pBl = pConn->pBlobs;
+		pConn->pBlobs = pBl->pNext;
+		pBl->pNext = 0;
+		pBl->pConn = 0;
+		if( pBl->pBlob ){
+			sqlite3_blob_close(pBl->pBlob);
+			pBl->pBlob = 0;
+		}
+	}
+}
+static ph7_int64 Sq3BlobStream_Read(void *pHandle,void *pBuf,ph7_int64 nDatatoRead)
+{
+	phl_sq3_blob *pBl = (phl_sq3_blob *)pHandle;
+	ph7_int64 nLeft;
+	if( pBl->pBlob == 0 || pBl->bBadPos ){
+		return -1;
+	}
+	nLeft = pBl->nSize - pBl->iOfft;
+	if( pBl->pDev && pBl->iOfft + nDatatoRead >= pBl->nSize ){
+		/* php marks the end when a read REACHES the last byte, not when one
+		 * comes back empty -- so reading a blob whole leaves feof() true, while
+		 * seeking to the end leaves it false. */
+		pBl->pDev->bEof = 1;
+	}
+	if( nLeft < 1 || nDatatoRead < 1 ){
+		return 0;
+	}
+	if( nDatatoRead > nLeft ){
+		nDatatoRead = nLeft;
+	}
+	if( sqlite3_blob_read(pBl->pBlob,pBuf,(int)nDatatoRead,(int)pBl->iOfft) != SQLITE_OK ){
+		return -1;
+	}
+	pBl->iOfft += nDatatoRead;
+	return nDatatoRead;
+}
+static ph7_int64 Sq3BlobStream_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)
+{
+	phl_sq3_blob *pBl = (phl_sq3_blob *)pHandle;
+	if( pBl->pBlob == 0 || pBl->bBadPos ){
+		return -1;
+	}
+	if( nWrite < 1 ){
+		return 0;   /* php asks nothing at all of a write of nothing */
+	}
+	if( pBl->iFlags & SQLITE_OPEN_READONLY ){
+		/* php's own sentence, from the device rather than from fwrite(), and it
+		 * is asked FIRST. Note what it tests: the READONLY bit being SET, not
+		 * READWRITE being absent -- so a handle opened with neither (0, or
+		 * CREATE, which means nothing here) reaches the checks below and then
+		 * fails SILENTLY in sqlite, which php reports as a plain false. */
+		PH7_VmThrowError(pBl->pVm,0,PH7_CTX_WARNING,
+			"fwrite(): Can't write to blob stream: is open as read only");
+		return -1;
+	}
+	if( pBl->iOfft + nWrite > pBl->nSize ){
+		/* the handle addresses the bytes that are already there: php refuses a
+		 * write needing more of them rather than writing what fits */
+		PH7_VmThrowError(pBl->pVm,0,PH7_CTX_WARNING,
+			"fwrite(): It is not possible to increase the size of a BLOB");
+		return -1;
+	}
+	if( sqlite3_blob_write(pBl->pBlob,pBuf,(int)nWrite,(int)pBl->iOfft) != SQLITE_OK ){
+		return -1;
+	}
+	pBl->iOfft += nWrite;
+	return nWrite;
+}
+static int Sq3BlobStream_Seek(void *pHandle,ph7_int64 iOfft,int whence)
+{
+	phl_sq3_blob *pBl = (phl_sq3_blob *)pHandle;
+	ph7_int64 iNew = iOfft;
+	if( whence == 1 ){          /* SEEK_CUR */
+		iNew = pBl->iOfft + iOfft;
+	}else if( whence == 2 ){    /* SEEK_END */
+		iNew = pBl->nSize + iOfft;
+	}
+	if( iNew < 0 || iNew > pBl->nSize ){
+		/* nowhere past the end to seek TO, and a failed seek leaves the position
+		 * UNKNOWN -- ftell() answers false until a seek succeeds again */
+		pBl->bBadPos = 1;
+		return -1;
+	}
+	pBl->bBadPos = 0;
+	pBl->iOfft = iNew;
+	return PH7_OK;
+}
+static ph7_int64 Sq3BlobStream_Tell(void *pHandle)
+{
+	phl_sq3_blob *pBl = (phl_sq3_blob *)pHandle;
+	return pBl->bBadPos ? -1 : pBl->iOfft;
+}
+/*
+ * php's stat for a blob handle: the whole thirteen-field shape with a SIZE and
+ * nothing else -- every other field is a zero rather than absent, which is what
+ * makes fstat() answer the 26 entries (numeric and named) it answers for a
+ * file.
+ */
+static int Sq3BlobStream_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker)
+{
+	static const char *const azField[] = {
+		"dev","ino","mode","nlink","uid","gid","rdev","size",
+		"atime","mtime","ctime","blksize","blocks"
+	};
+	phl_sq3_blob *pBl = (phl_sq3_blob *)pHandle;
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){
+		ph7_value_int64(pWorker,n == 7 /* size */ ? pBl->nSize : 0);
+		ph7_array_add_strkey_elem(pArray,azField[n],pWorker);
+	}
+	return PH7_OK;
+}
+static void Sq3BlobStream_Close(void *pHandle)
+{
+	Sq3BlobClose((phl_sq3_blob *)pHandle);
+}
+static const ph7_io_stream sSq3BlobStream = {
+	"SQLite3",                  /* what stream_get_meta_data() reports */
+	PH7_IO_STREAM_VERSION,
+	0,                          /* xOpen: openBlob() builds the handle itself */
+	0,                          /* xOpenDir */
+	Sq3BlobStream_Close,
+	0,                          /* xCloseDir */
+	Sq3BlobStream_Read,
+	0,                          /* xReadDir */
+	Sq3BlobStream_Write,
+	Sq3BlobStream_Seek,
+	0,                          /* xLock */
+	0,                          /* xRewindDir */
+	Sq3BlobStream_Tell,
+	0,                          /* xTrunc: a blob is the length it was created with */
+	0,                          /* xSync */
+	Sq3BlobStream_Stat
+};
+/*
+ * SQLite3::openBlob(string $table, string $column, int $rowid,
+ *   string $database = 'main', int $flags = SQLITE3_OPEN_READONLY)
+ *
+ * The only flag read is READWRITE; everything else opens a read-only handle,
+ * so SQLITE3_OPEN_CREATE is accepted and means nothing here. Every failure is
+ * sqlite's own sentence behind php's `Unable to open blob: `, which is how a
+ * missing row, a missing column, a missing table and a NULL value are told
+ * apart.
+ */
+static int vm_builtin_SQLite3_openBlob(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn = Sq3LiveDb(pCtx,&rc);
+	const char *zTable,*zColumn,*zDb = "main";
+	int nTable = 0,nColumn = 0,nDb = (int)sizeof("main")-1;
+	ph7_int64 iRow;
+	int iFlags,bWrite;
+	SyBlob sTable,sColumn,sDb;
+	sqlite3_blob *pRaw = 0;
+	phl_sq3_blob *pBl;
+	io_private *pDev;
+	if( pConn == 0 ){
+		return rc;
+	}
+	zTable = ph7_value_to_string(apArg[0],&nTable);
+	zColumn = ph7_value_to_string(apArg[1],&nColumn);
+	iRow = ph7_value_to_int64(apArg[2]);
+	if( nArg > 3 ){
+		zDb = ph7_value_to_string(apArg[3],&nDb);
+	}
+	iFlags = nArg > 4 ? (int)ph7_value_to_int64(apArg[4]) : SQLITE_OPEN_READONLY;
+	bWrite = (iFlags & SQLITE_OPEN_READWRITE) != 0;
+	SyBlobInit(&sTable,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sTable,zTable,(sxu32)nTable);
+	SyBlobNullAppend(&sTable);
+	SyBlobInit(&sColumn,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sColumn,zColumn,(sxu32)nColumn);
+	SyBlobNullAppend(&sColumn);
+	SyBlobInit(&sDb,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sDb,zDb,(sxu32)nDb);
+	SyBlobNullAppend(&sDb);
+	rc = sqlite3_blob_open(pConn->pDb,(const char *)SyBlobData(&sDb),
+		(const char *)SyBlobData(&sTable),(const char *)SyBlobData(&sColumn),
+		(sqlite3_int64)iRow,bWrite,&pRaw);
+	SyBlobRelease(&sTable);
+	SyBlobRelease(&sColumn);
+	SyBlobRelease(&sDb);
+	if( rc != SQLITE_OK || pRaw == 0 ){
+		SyBlob sMsg;
+		sxi32 rcErr;
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Unable to open blob: %s",sqlite3_errmsg(pConn->pDb));
+		SyBlobNullAppend(&sMsg);
+		ph7_result_bool(pCtx,0);
+		rcErr = Sq3Error(pCtx,pConn,"SQLite3::openBlob",sqlite3_errcode(pConn->pDb),
+			(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+		return rcErr;
+	}
+	pBl = (phl_sq3_blob *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(phl_sq3_blob));
+	if( pBl == 0 ){
+		sqlite3_blob_close(pRaw);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SyZero(pBl,sizeof(phl_sq3_blob));
+	pBl->pBlob = pRaw;
+	pBl->pVm = pCtx->pVm;
+	pBl->pConn = pConn;
+	pBl->nSize = (ph7_int64)sqlite3_blob_bytes(pRaw);
+	pBl->bWrite = bWrite;
+	pBl->iFlags = iFlags;
+	pBl->pNext = pConn->pBlobs;
+	pConn->pBlobs = pBl;
+	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
+	if( pDev == 0 ){
+		Sq3BlobClose(pBl);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	InitIOPrivate(pCtx->pVm,&sSq3BlobStream,pDev);
+	pDev->pHandle = pBl;
+	pBl->pDev = pDev;
+	/* php's meta reports no uri for this stream and the mode it opened with. */
+	SetIOPrivateOpenedAs(pDev,"",0,bWrite ? "r+b" : "rb",bWrite ? 3 : 2);
+	ph7_result_resource(pCtx,pDev);
 	return PH7_OK;
 }
 
@@ -2982,6 +3363,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		  vm_builtin_SQLite3_busyTimeout },
 		{ "loadExtension", PH7_MOD_PUBLIC, "string $name", "@bool",
 		  vm_builtin_SQLite3_loadExtension },
+		{ "backup", PH7_MOD_PUBLIC,
+		  "SQLite3 $destination, string $sourceDatabase = 'main', "
+		  "string $destinationDatabase = 'main'", "@bool", vm_builtin_SQLite3_backup },
 		{ "escapeString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $string", "@string",
 		  vm_builtin_SQLite3_escapeString },
 		{ "prepare", PH7_MOD_PUBLIC, "string $query", "@SQLite3Stmt|false",
@@ -2999,12 +3383,15 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		  "int $argCount = -1", "@bool", vm_builtin_SQLite3_createAggregate },
 		{ "createCollation", PH7_MOD_PUBLIC, "string $name, callable $callback", "@bool",
 		  vm_builtin_SQLite3_createCollation },
-		{ "setAuthorizer", PH7_MOD_PUBLIC, "?callable $callback", "@bool",
-		  vm_builtin_SQLite3_setAuthorizer },
+		{ "openBlob", PH7_MOD_PUBLIC,
+		  "string $table, string $column, int $rowid, string $database = 'main', "
+		  "int $flags = SQLITE3_OPEN_READONLY", 0, vm_builtin_SQLite3_openBlob },
 		{ "enableExceptions", PH7_MOD_PUBLIC, "bool $enable = false", "@bool",
 		  vm_builtin_SQLite3_enableExceptions },
 		{ "enableExtendedResultCodes", PH7_MOD_PUBLIC, "bool $enable = true", "@bool",
 		  vm_builtin_SQLite3_enableExtendedResultCodes },
+		{ "setAuthorizer", PH7_MOD_PUBLIC, "?callable $callback", "@bool",
+		  vm_builtin_SQLite3_setAuthorizer },
 	};
 	/* The handle: storage the class owns and never presents -- php shows no
 	 * property at all on a SQLite3, so the slot is hidden. */
