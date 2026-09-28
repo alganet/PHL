@@ -56,6 +56,20 @@ ntrShow('DateTime', 'getMicrosecond');
 ntrShow('Closure', 'call');
 ntrShow('ReflectionClass', 'getStaticPropertyValue');
 
+/* The eight rows a return-type sweep against php 8.5 still disagreed on. Each
+ * named php's own TYPE and declared it as a REAL one, which is the same mark
+ * read from the other side: getReturnType() answered where php answers null.
+ * php_user_filter's three are the ones a program meets, because a stream
+ * filter OVERRIDES all three. */
+ntrShow('DateTime', 'createFromTimestamp');
+ntrShow('DateTimeImmutable', 'createFromTimestamp');
+ntrShow('DOMDocument', 'registerNodeClass');
+ntrShow('DOMImplementation', 'createDocument');
+ntrShow('DOMImplementation', 'hasFeature');
+ntrShow('php_user_filter', 'filter');
+ntrShow('php_user_filter', 'onCreate');
+ntrShow('php_user_filter', 'onClose');
+
 /* A USERLAND method has no tentative type at all — the concept is stubs-only. */
 class NtrUser { public function m(): int { return 1; } }
 ntrShow('NtrUser', 'm');
@@ -76,4 +90,12 @@ DateTime::setMicrosecond           real=static         tentative=-              
 DateTime::getMicrosecond           real=int            tentative=-                      - Return [ int ]
 Closure::call                      real=mixed          tentative=-                      - Return [ mixed ]
 ReflectionClass::getStaticPropertyValue real=-              tentative=mixed                  - Tentative return [ mixed ]
+DateTime::createFromTimestamp      real=-              tentative=static                 - Tentative return [ static ]
+DateTimeImmutable::createFromTimestamp real=-              tentative=static                 - Tentative return [ static ]
+DOMDocument::registerNodeClass     real=-              tentative=true                   - Tentative return [ true ]
+DOMImplementation::createDocument  real=-              tentative=DOMDocument            - Tentative return [ DOMDocument ]
+DOMImplementation::hasFeature      real=-              tentative=bool                   - Tentative return [ bool ]
+php_user_filter::filter            real=-              tentative=int                    - Tentative return [ int ]
+php_user_filter::onCreate          real=-              tentative=bool                   - Tentative return [ bool ]
+php_user_filter::onClose           real=-              tentative=void                   - Tentative return [ void ]
 NtrUser::m                         real=int            tentative=-                      - Return [ int ]

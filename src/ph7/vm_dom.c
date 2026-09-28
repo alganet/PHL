@@ -9882,7 +9882,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createFragment },
 		{ "normalizeDocument",    PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },
 		{ "registerNodeClass",    PH7_MOD_PUBLIC, "string $baseClass, ?string $extendedClass",
-		  "true", vm_builtin_DOMDocument_registerNodeClass },
+		  "@true", vm_builtin_DOMDocument_registerNodeClass },
 		{ "schemaValidate",       PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "@bool",
 		  vm_builtin_DOMDocument_schemaValidate },
 		{ "schemaValidateSource", PH7_MOD_PUBLIC, "string $source, int $flags = 0", "@bool",
@@ -10065,9 +10065,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMImplementation_createDocumentType },
 		{ "createDocument", PH7_MOD_PUBLIC,
 		  "?string $namespace = null, string $qualifiedName = '', "
-		  "?DOMDocumentType $doctype = null", "DOMDocument",
+		  "?DOMDocumentType $doctype = null", "@DOMDocument",
 		  vm_builtin_DOMImplementation_createDocument },
-		{ "hasFeature", PH7_MOD_PUBLIC, "string $feature, string $version", "bool",
+		{ "hasFeature", PH7_MOD_PUBLIC, "string $feature, string $version", "@bool",
 		  vm_builtin_DOMImplementation_hasFeature },
 	};
 	static const PH7_NativeMethodDef aNotationMethod[] = {

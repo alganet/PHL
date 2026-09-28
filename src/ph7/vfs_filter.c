@@ -2019,10 +2019,10 @@ static int vm_builtin_user_filter_onClose(ph7_context *pCtx,int nArg,ph7_value *
 PH7_PRIVATE sxi32 PH7_VmInstallStreamFilter(ph7_vm *pVm)
 {
 	static const PH7_NativeMethodDef aFilterMethod[] = {
-		{ "filter", PH7_MOD_PUBLIC, "$in, $out, &$consumed, bool $closing", "int",
+		{ "filter", PH7_MOD_PUBLIC, "$in, $out, &$consumed, bool $closing", "@int",
 		  vm_builtin_user_filter_filter },
-		{ "onCreate", PH7_MOD_PUBLIC, "", "bool", vm_builtin_user_filter_onCreate },
-		{ "onClose", PH7_MOD_PUBLIC, "", "void", vm_builtin_user_filter_onClose },
+		{ "onCreate", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_user_filter_onCreate },
+		{ "onClose", PH7_MOD_PUBLIC, "", "@void", vm_builtin_user_filter_onClose },
 	};
 	static const PH7_NativePropDef aFilterProp[] = {
 		{ "filtername", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" },
