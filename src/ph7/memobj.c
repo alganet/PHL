@@ -381,8 +381,19 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 	}else if( iFlags & MEMOBJ_OBJ ){
 		/* php has NO __toInt(): casting an object to int warns and yields 1. PH7's
 		 * __toInt() was an extension that changed the meaning of valid php source
-		 * (§10), so `(int)$obj` silently returned user data where php diagnoses. */
+		 * (§10), so `(int)$obj` silently returned user data where php diagnoses.
+		 *
+		 * Two classes are php's own exception -- the curl easy and multi handles,
+		 * which answer their OBJECT HANDLE and say nothing, because they used to be
+		 * resources and `(int)$h` used to be the resource id (PH7_CLASS_HANDLE_ID).
+		 * Every door that asks an int of a value comes through here, which is what
+		 * makes intval(), settype(), `%d` and array_sum() agree with the cast. */
 		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+		if( pInst && pInst->pClass && PH7_ClassCastsToHandleId(pInst->pClass) ){
+			sxi64 iId = (sxi64)pInst->nObjId;
+			PH7_ClassInstanceUnref(pInst);
+			return iId;
+		}
 		if( pInst && pInst->pClass ){
 			VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
 				"Object of class %z could not be converted to int",&pInst->pClass->sName);

@@ -4129,8 +4129,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		  vm_builtin_CURLStringFile_construct }
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
+		/* PH7_CLASS_HANDLE_ID: php's cast_object for this class answers the object
+		 * handle for `(int)`, silently -- see the flag. */
 		{ "CurlHandle", 0, 0,
-		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE|PH7_CLASS_HANDLE_ID,
 		  0, 0, 0, 0,
 		  aProp, SX_ARRAYSIZE(aProp),
 		  CurlInstanceRelease, 0, 0 },
@@ -4158,6 +4160,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 			 * why this class alone is not PH7_CLASS_NOCLONE. Stated on the
 			 * MOUNTED class, like every other handler hook. */
 			pClass->xClone = CurlInstanceClone;
+			/* ...and php's compare handler, which recognizes nothing: a handle is
+			 * UNCOMPARABLE with everything but itself. */
+			pClass->xCmp = PH7_NativeCmpOpaqueHandle;
 		}
 	}
 	if( rc == SXRET_OK ){

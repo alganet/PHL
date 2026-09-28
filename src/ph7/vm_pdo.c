@@ -2603,24 +2603,6 @@ static sxi32 PdoRowPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut
 	PH7_MemObjRelease(&sVal);
 	return SXRET_OK;
 }
-/*
- * php gives the row `zend_objects_not_comparable`: no two PDORows are ever
- * equal, `<=>` answers the uncomparable 1 from either side, and every
- * relational spelling is false -- `$row == $row` alone is true, and that is the
- * engine's identity shortcut answering before any handler. A BOOL partner is
- * not this handler's business in php either: that comparison converts both
- * sides, which is why `$row == true` is true.
- */
-static void PdoRowCmp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
-{
-	SXUNUSED(pVm);
-	SXUNUSED(pThis);
-	if( pCtx->pOtherValue && (pCtx->pOtherValue->iFlags & MEMOBJ_BOOL) ){
-		return;   /* declined: php's cast rule decides an object against a bool */
-	}
-	pCtx->bAnswered = 1;
-	pCtx->iResult = 1;   /* php's ZEND_UNCOMPARABLE, the same from both directions */
-}
 /* The row is going away: the statement must stop pointing at it. */
 static void PdoRowInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
 {
@@ -4831,12 +4813,22 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 	ph7_create_function(&(*pVm),"pdo_drivers",vm_builtin_pdo_drivers,0);
 	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 	if( rc == SXRET_OK ){
-		ph7_class *pRow = PH7_VmExtractClass(&(*pVm),"PDORow",sizeof("PDORow")-1,FALSE,0);
+		ph7_class *pRow;
+		/* php's compare handler for an opaque handle, on all three of ext/pdo's.
+		 * php gives each of them `zend_objects_not_comparable`: no two connections,
+		 * statements or rows are ever equal, `<=>` answers the uncomparable 1 from
+		 * either side, and every relational spelling is false -- `$row == $row`
+		 * alone is true, and that is the engine's identity shortcut answering
+		 * before any handler. Inherited, so `class MyPdo extends PDO` and
+		 * `Pdo\Sqlite` get it the way php's handler table does. */
+		PH7_NativeClassInstallCmpHook(&(*pVm),"PDO",PH7_NativeCmpOpaqueHandle);
+		PH7_NativeClassInstallCmpHook(&(*pVm),"PDOStatement",PH7_NativeCmpOpaqueHandle);
+		pRow = PH7_VmExtractClass(&(*pVm),"PDORow",sizeof("PDORow")-1,FALSE,0);
 		if( pRow ){
 			pRow->zNewRefusal = "You may not create a PDORow manually";
 			pRow->zNewRefusalClass = "PDOException";
 			pRow->xDim = PdoRowDim;
-			pRow->xCmp = PdoRowCmp;
+			pRow->xCmp = PH7_NativeCmpOpaqueHandle;
 		}
 		/* The declaration php makes and the object never holds: marked LAZY, and
 		 * nothing materializes it -- every write to this class is refused. */

@@ -1003,6 +1003,47 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallArithHook(ph7_vm *pVm,const char *zClass
 	pClass->xArith = xArith;
 	return SXRET_OK;
 }
+/*
+ * php's compare handler for an OPAQUE HANDLE class -- one whose object stands for
+ * something outside the engine (a curl easy/multi/share handle, a PDO connection,
+ * a statement, a lazy row). php gives each of them a handler that recognizes
+ * NOTHING, so every comparison that is not the identity shortcut is
+ * ZEND_UNCOMPARABLE: `$h == 1`, `$h < 2`, `$h > 0` and `$h == $other` are all
+ * false, `$h <=> $x` is 1 from either direction, and none of it says a word.
+ * Without it these fell through to php's cast-the-object rule, which warns
+ * `could not be converted to int` and then calls the handle equal to 1 -- so
+ * in_array($h, [1,2,3]) was TRUE, and sorting a list that held one was noise.
+ *
+ * The uncomparable 1 is deliberately not flipped for bReversed: php answers it
+ * from both sides alike, which is what leaves every relational spelling false.
+ */
+PH7_PRIVATE void PH7_NativeCmpOpaqueHandle(ph7_vm *pVm,ph7_class_instance *pThis,
+	PH7_NativeCmpCtx *pCtx)
+{
+	SXUNUSED(pVm);
+	SXUNUSED(pThis);
+	if( pCtx->pOtherValue && (pCtx->pOtherValue->iFlags & MEMOBJ_BOOL) ){
+		return;   /* declined: php's cast rule decides an object against a bool */
+	}
+	pCtx->bAnswered = 1;
+	pCtx->iResult = 1;   /* php's ZEND_UNCOMPARABLE */
+}
+/*
+ * TRUE when `(int)` on an instance of this class answers the object handle
+ * (PH7_CLASS_HANDLE_ID). Resolved through the ANCESTORS, like every other native
+ * hook: php installs the cast on the class's object handlers, and a subclass
+ * inherits the whole handler table.
+ */
+PH7_PRIVATE int PH7_ClassCastsToHandleId(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->iFlags & PH7_CLASS_HANDLE_ID ){
+			return 1;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
 PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *))
 {

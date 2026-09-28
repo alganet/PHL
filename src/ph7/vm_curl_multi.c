@@ -1025,8 +1025,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
 		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "array" }
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
+		/* PH7_CLASS_HANDLE_ID: like the easy handle, php's cast_object answers this
+		 * one's OBJECT HANDLE for `(int)`, silently. The two SHARE classes below do
+		 * not -- php never made them resources, so they keep the ordinary refusal. */
 		{ "CurlMultiHandle", 0, 0,
-		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE|PH7_CLASS_HANDLE_ID,
 		  0, 0, 0, 0,
 		  aProp, SX_ARRAYSIZE(aProp),
 		  CurlMultiInstanceRelease, 0, 0 },
@@ -1058,12 +1061,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
 		if( pClass ){
 			pClass->zNewRefusal =
 				"Cannot directly construct CurlMultiHandle, use curl_multi_init() instead";
+			pClass->xCmp = PH7_NativeCmpOpaqueHandle;
 		}
 		pClass = PH7_VmExtractClass(&(*pVm),"CurlShareHandle",
 			sizeof("CurlShareHandle")-1,FALSE,0);
 		if( pClass ){
 			pClass->zNewRefusal =
 				"Cannot directly construct CurlShareHandle, use curl_share_init() instead";
+			pClass->xCmp = PH7_NativeCmpOpaqueHandle;
 		}
 		pClass = PH7_VmExtractClass(&(*pVm),"CurlSharePersistentHandle",
 			sizeof("CurlSharePersistentHandle")-1,FALSE,0);
@@ -1071,6 +1076,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
 			pClass->zNewRefusal =
 				"Cannot directly construct CurlSharePersistentHandle, "
 				"use curl_share_init_persistent() instead";
+			pClass->xCmp = PH7_NativeCmpOpaqueHandle;
 		}
 	}
 	return rc;

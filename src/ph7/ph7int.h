@@ -1818,6 +1818,17 @@ struct ph7_class
                                        * only while the native offsetGet is still the one that
                                        * answers: an override takes the class off the fast handler
                                        * in php too. See PH7_VmDimFetchWritable. */
+/*
+ * ph7_class::iFlags bit: `(int)` on an instance of this class answers the OBJECT
+ * HANDLE, silently, instead of php's `Object of class X could not be converted to
+ * int` warning and its 1. php gives exactly two classes that cast_object -- the
+ * curl easy and multi handles -- and the reason is stated in its own source: both
+ * used to be RESOURCES, whose `(int)` was the resource id, and a program that keyed
+ * a table by it had to keep working. Composer's CurlDownloader is that program.
+ * `(float)`, `(string)` and every other cast stay php's refusal, and so does the
+ * COMPARISON, which is a different handler (see PH7_NativeCmpOpaqueHandle).
+ */
+#define PH7_CLASS_HANDLE_ID   0x40000
 #define PH7_CLASS_ANON        0x20000 /* Declared by `new class {...}`. php has no NAME to put in a
                                     * type text for it while its body compiles, which is why
                                     * `self` inside one may not be part of an intersection
@@ -2147,6 +2158,8 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 PH7_PRIVATE int PH7_ClassNativeCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,sxi32 *pResult);
 PH7_PRIVATE int PH7_ClassNativeCmpValue(ph7_class_instance *pLeft,ph7_value *pOther,
 	int bReversed,sxi32 *pResult);
+PH7_PRIVATE void PH7_NativeCmpOpaqueHandle(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx);
+PH7_PRIVATE int PH7_ClassCastsToHandleId(ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *));
 PH7_PRIVATE sxi32 PH7_NativeClassInstallArithHook(ph7_vm *pVm,const char *zClass,
