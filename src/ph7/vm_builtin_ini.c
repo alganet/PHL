@@ -41,12 +41,12 @@ static const struct {
 	const char *zValue;
 	sxi32 iAccess;
 } aIniDefault[] = {
-	{ "allow_url_fopen",          "1",          VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "allow_url_fopen",          "1",          VM_INI_SYSTEM },
 	/* php's default is OFF, and it spells that default as the EMPTY string — which
 	 * is what ini_get() answers. Including a remote file is the classic RFI, and
 	 * this is what a STREAM_IS_URL wrapper's include is gated on. */
 	{ "allow_url_include",        "",           VM_INI_SYSTEM },
-	{ "arg_separator.input",      "&",          VM_INI_ALL },
+	{ "arg_separator.input",      "&",          VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "arg_separator.output",     "&",          VM_INI_ALL },
 	{ "auto_detect_line_endings", "",           VM_INI_ALL },
 	/* ext/bcmath's only directive: the scale every bc* function defaults its
@@ -87,7 +87,7 @@ static const struct {
 	 * session.trans_sid_tags and session.trans_sid_hosts, and §10 does not carry
 	 * php's deprecated surface. The session.upload_progress.* family goes with the
 	 * file uploads §10 excludes from a CLI-plus-`-S` engine. */
-	{ "session.auto_start",       "0",          VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "session.auto_start",       "0",          VM_INI_PERDIR },
 	{ "session.cache_expire",     "180",        VM_INI_ALL },
 	{ "session.cache_limiter",    "nocache",    VM_INI_ALL },
 	/* The Set-Cookie the session sends is built out of these seven. */
