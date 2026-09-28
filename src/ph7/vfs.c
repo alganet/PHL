@@ -3639,133 +3639,208 @@ static int PH7_vfs_getmygid(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #include <sys/utsname.h>
 #endif
 /*
+ * php's five uname FIELDS, filled once per call. php answers one of them for a
+ * single-letter mode and all five, space-separated, for `a` -- and the ORDER of
+ * that composite is `s n r v m`, the OS, the HOST, the release, the version and
+ * the machine. This engine used to answer `s r v n m`, so the host name stood
+ * in the version's place in every string a program logged.
+ */
+typedef struct vfs_uname_fields vfs_uname_fields;
+struct vfs_uname_fields {
+	const char *zSys;     /* 's' */
+	const char *zNode;    /* 'n' */
+	const char *zRel;     /* 'r' */
+	const char *zVer;     /* 'v' */
+	const char *zMachine; /* 'm' */
+};
+#if defined(__WINNT__)
+/*
+ * The product NAME php prints inside the version field. php reads the real
+ * version through ntdll's RtlGetVersion (GetVersionEx() lies to any binary
+ * without a compatibility manifest -- it answers 6.2 on Windows 10 and 11) and
+ * names it from a table of its own. The rows below are the versions this port
+ * targets and the only ones an oracle can be asked about; anything older
+ * answers the bare "Windows" rather than a name nobody can verify.
+ */
+static const char * VfsWinProductName(unsigned long nMajor,unsigned long nMinor,
+	unsigned long nBuild,int bWorkstation)
+{
+	if( nMajor == 10 && nMinor == 0 ){
+		if( bWorkstation ){
+			return nBuild >= 22000 ? "Windows 11" : "Windows 10";
+		}
+		if( nBuild >= 26100 ){
+			return "Windows Server 2025";
+		}
+		if( nBuild >= 20348 ){
+			return "Windows Server 2022";
+		}
+		if( nBuild >= 17763 ){
+			return "Windows Server 2019";
+		}
+		return "Windows Server 2016";
+	}
+	return "Windows";
+}
+/*
+ * The true OS version. RtlGetVersion is the only call that answers it for an
+ * unmanifested binary, and it lives in ntdll rather than in an import library.
+ */
+static void VfsWinVersion(unsigned long *pnMajor,unsigned long *pnMinor,
+	unsigned long *pnBuild,int *pbWorkstation)
+{
+	/* RTL_OSVERSIONINFOEXW's documented layout, declared here rather than
+	 * taken from a header: the name only appears in some SDK versions, and
+	 * nothing else in this file needs ntdll. */
+	typedef struct vfs_rtl_osversion {
+		ULONG dwOSVersionInfoSize;
+		ULONG dwMajorVersion;
+		ULONG dwMinorVersion;
+		ULONG dwBuildNumber;
+		ULONG dwPlatformId;
+		WCHAR szCSDVersion[128];
+		USHORT wServicePackMajor;
+		USHORT wServicePackMinor;
+		USHORT wSuiteMask;
+		UCHAR wProductType;
+		UCHAR wReserved;
+	} vfs_rtl_osversion;
+	typedef LONG (WINAPI *rtl_get_version)(vfs_rtl_osversion *);
+	vfs_rtl_osversion sInfo;
+	rtl_get_version xGet;
+	HMODULE hNtdll;
+	*pnMajor = 0;
+	*pnMinor = 0;
+	*pnBuild = 0;
+	*pbWorkstation = 1;
+	SyZero(&sInfo,(sxu32)sizeof(sInfo));
+	sInfo.dwOSVersionInfoSize = (ULONG)sizeof(sInfo);
+	hNtdll = GetModuleHandleA("ntdll.dll");
+	if( hNtdll == 0 ){
+		return;
+	}
+	xGet = (rtl_get_version)GetProcAddress(hNtdll,"RtlGetVersion");
+	if( xGet == 0 || xGet(&sInfo) != 0 ){
+		return;
+	}
+	*pnMajor = (unsigned long)sInfo.dwMajorVersion;
+	*pnMinor = (unsigned long)sInfo.dwMinorVersion;
+	*pnBuild = (unsigned long)sInfo.dwBuildNumber;
+	/* VER_NT_WORKSTATION is 1; spelled out so the struct above needs no
+	 * header of its own. */
+	*pbWorkstation = (sInfo.wProductType == 1);
+}
+/* php's machine field: the NATIVE architecture, named the way php names it. */
+static const char * VfsWinMachine(char *zBuf,int nBuf)
+{
+	SYSTEM_INFO sInfo;
+	SyZero(&sInfo,(sxu32)sizeof(sInfo));
+	GetNativeSystemInfo(&sInfo);
+	switch( sInfo.wProcessorArchitecture ){
+		case PROCESSOR_ARCHITECTURE_AMD64: return "AMD64";
+		case PROCESSOR_ARCHITECTURE_ARM:   return "ARM";
+#ifdef PROCESSOR_ARCHITECTURE_ARM64
+		case PROCESSOR_ARCHITECTURE_ARM64: return "ARM64";
+#endif
+		case PROCESSOR_ARCHITECTURE_IA64:  return "IA64";
+		case PROCESSOR_ARCHITECTURE_INTEL:
+			SyBufferFormat(zBuf,(sxu32)nBuf,"i%u",(unsigned int)sInfo.dwProcessorType);
+			return zBuf;
+		default: break;
+	}
+	return "Unknown";
+}
+#endif /* __WINNT__ */
+/*
  * string php_uname([ string $mode = "a" ])
  *  Returns information about the host operating system.
  * Parameters
  *  $mode
- *   mode is a single character that defines what information is returned:
- *    'a': This is the default. Contains all modes in the sequence "s n r v m".
- *    's': Operating system name. eg. FreeBSD.
- *    'n': Host name. eg. localhost.example.com.
- *    'r': Release name. eg. 5.1.2-RELEASE.
- *    'v': Version information. Varies a lot between operating systems.
- *    'm': Machine type. eg. i386.
+ *   ONE character out of `a m n r s v`; php refuses every other spelling with
+ *   a ValueError, and refuses a longer or empty string with a different one.
+ *    'a': the default -- all five fields in the sequence "s n r v m".
+ *    's': operating system name.
+ *    'n': host name.
+ *    'r': release name.
+ *    'v': version information.
+ *    'm': machine type.
  * Return
- *  OS description as a string.
+ *  The requested field, or all five.
  */
 static int PH7_vfs_ph7_uname(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	vfs_uname_fields sF;
+	const char *zMode;
+	int nMode = 1,c;
 #if defined(__WINNT__)
-	const char *zName = "Microsoft Windows";
-	OSVERSIONINFOW sVer;
+	char zHost[256],zRel[32],zVer[128],zMach[32];
+	unsigned long nMajor,nMinor,nBuild;
+	int bWorkstation;
 #elif defined(__UNIXES__)
 	struct utsname sName;
 #endif
-	const char *zMode = "a";
-	if( nArg > 0 && ph7_value_is_string(apArg[0]) ){
-		/* Extract the desired mode */
-		zMode = ph7_value_to_string(apArg[0],0);
-	}
-#if defined(__WINNT__)
-	sVer.dwOSVersionInfoSize = sizeof(sVer);
-	/* GetVersionExW is deprecated in modern MSVC. Suppress deprecation for this call. */
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable:4996)
-#endif
-	if( TRUE != GetVersionExW(&sVer)){
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-		ph7_result_string(pCtx,zName,-1);
-		return PH7_OK;
-	}
-	if( sVer.dwPlatformId == VER_PLATFORM_WIN32_NT ){
-		if( sVer.dwMajorVersion <= 4 ){
-			zName = "Microsoft Windows NT";
-		}else if( sVer.dwMajorVersion == 5 ){
-			switch(sVer.dwMinorVersion){
-				case 0:	zName = "Microsoft Windows 2000"; break;
-				case 1: zName = "Microsoft Windows XP";   break;
-				case 2: zName = "Microsoft Windows Server 2003"; break;
-			}
-		}else if( sVer.dwMajorVersion == 6){
-				switch(sVer.dwMinorVersion){
-					case 0: zName = "Microsoft Windows Vista"; break;
-					case 1: zName = "Microsoft Windows 7"; break;
-					case 2: zName = "Microsoft Windows Server 2008"; break;
-					case 3: zName = "Microsoft Windows 8"; break;
-					default: break;
-				}
+	zMode = "a";
+	if( nArg > 0 ){
+		zMode = ph7_value_to_string(apArg[0],&nMode);
+		if( nMode != 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"php_uname(): Argument #1 ($mode) must be a single character");
 		}
 	}
-	switch(zMode[0]){
-	case 's':
-		/* Operating system name */
-		ph7_result_string(pCtx,zName,-1/* Compute length automatically*/);
-		break;
-	case 'n':
-		/* Host name */
-		ph7_result_string(pCtx,"localhost",(int)sizeof("localhost")-1);
-		break;
-	case 'r':
-	case 'v':
-		/* Version information. */
-		ph7_result_string_format(pCtx,"%u.%u build %u",
-			sVer.dwMajorVersion,sVer.dwMinorVersion,sVer.dwBuildNumber
-			);
-		break;
-	case 'm':
-		/* Machine name */
-		ph7_result_string(pCtx,"x86",(int)sizeof("x86")-1);
-		break;
-	default:
-		ph7_result_string_format(pCtx,"%s localhost %u.%u build %u x86",
-			zName,
-			sVer.dwMajorVersion,sVer.dwMinorVersion,sVer.dwBuildNumber
-			);
-		break;
+	c = zMode[0];
+	if( c != 'a' && c != 'm' && c != 'n' && c != 'r' && c != 's' && c != 'v' ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"php_uname(): Argument #1 ($mode) must be one of \"a\", \"m\", \"n\", \"r\", \"s\", or \"v\"");
 	}
+#if defined(__WINNT__)
+	VfsWinVersion(&nMajor,&nMinor,&nBuild,&bWorkstation);
+	zHost[0] = 0;
+	{
+		DWORD nName = (DWORD)sizeof(zHost);
+		if( !GetComputerNameA(zHost,&nName) ){
+			zHost[0] = 0;
+		}
+	}
+	SyBufferFormat(zRel,(sxu32)sizeof(zRel),"%u.%u",
+		(unsigned int)nMajor,(unsigned int)nMinor);
+	SyBufferFormat(zVer,(sxu32)sizeof(zVer),"build %u (%s)",
+		(unsigned int)nBuild,VfsWinProductName(nMajor,nMinor,nBuild,bWorkstation));
+	/* php's own answer on Windows is the KERNEL's name and never the product's,
+	 * which is what makes `php_uname('s')` the same three words on every
+	 * Windows there is. */
+	sF.zSys = "Windows NT";
+	sF.zNode = zHost;
+	sF.zRel = zRel;
+	sF.zVer = zVer;
+	sF.zMachine = VfsWinMachine(zMach,(int)sizeof(zMach));
 #elif defined(__UNIXES__)
 	if( uname(&sName) != 0 ){
 		ph7_result_string(pCtx,"Unix",(int)sizeof("Unix")-1);
 		return PH7_OK;
 	}
-	switch(zMode[0]){
-	case 's':
-		/* Operating system name */
-		ph7_result_string(pCtx,sName.sysname,-1/* Compute length automatically*/);
-		break;
-	case 'n':
-		/* Host name */
-		ph7_result_string(pCtx,sName.nodename,-1/* Compute length automatically*/);
-		break;
-	case 'r':
-		/* Release information */
-		ph7_result_string(pCtx,sName.release,-1/* Compute length automatically*/);
-		break;
-	case 'v':
-		/* Version information. */
-		ph7_result_string(pCtx,sName.version,-1/* Compute length automatically*/);
-		break;
-	case 'm':
-		/* Machine name */
-		ph7_result_string(pCtx,sName.machine,-1/* Compute length automatically*/);
-		break;
-	default:
-		ph7_result_string_format(pCtx,
-			"%s %s %s %s %s",
-			sName.sysname,
-			sName.release,
-			sName.version,
-			sName.nodename,
-			sName.machine
-			);
-		break;
-	}
+	sF.zSys = sName.sysname;
+	sF.zNode = sName.nodename;
+	sF.zRel = sName.release;
+	sF.zVer = sName.version;
+	sF.zMachine = sName.machine;
 #else
-	ph7_result_string(pCtx,"Unknown Operating System",(int)sizeof("Unknown Operating System")-1);
+	sF.zSys = "Unknown";
+	sF.zNode = "";
+	sF.zRel = "";
+	sF.zVer = "";
+	sF.zMachine = "";
 #endif
+	switch( c ){
+		case 's': ph7_result_string(pCtx,sF.zSys,-1); break;
+		case 'n': ph7_result_string(pCtx,sF.zNode,-1); break;
+		case 'r': ph7_result_string(pCtx,sF.zRel,-1); break;
+		case 'v': ph7_result_string(pCtx,sF.zVer,-1); break;
+		case 'm': ph7_result_string(pCtx,sF.zMachine,-1); break;
+		default:
+			ph7_result_string_format(pCtx,"%s %s %s %s %s",
+				sF.zSys,sF.zNode,sF.zRel,sF.zVer,sF.zMachine);
+			break;
+	}
 	return PH7_OK;
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
