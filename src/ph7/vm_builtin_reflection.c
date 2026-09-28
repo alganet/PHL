@@ -857,16 +857,22 @@ static void ReflectSigTrim(const char **pz, int *pn)
  * the offset of the first unquoted zWhat, or -1. */
 static int ReflectSigFindUnquoted(const char *z, int n, char cWhat)
 {
-	int k, bQuote = 0;
+	int k;
+	char cQuote = 0;
 	for( k = 0 ; k < n ; k++ ){
-		if( bQuote ){
+		if( cQuote ){
 			if( z[k] == '\\' && k + 1 < n ){
 				k++;
-			}else if( z[k] == '\'' ){
-				bQuote = 0;
+			}else if( z[k] == cQuote ){
+				cQuote = 0;
 			}
-		}else if( z[k] == '\'' ){
-			bQuote = 1;
+		}else if( z[k] == '\'' || z[k] == '"' ){
+			/* BOTH spellings open a run. A native method's zSig lives in C, so
+			 * `string $separator = ","` is the natural way to write it -- and
+			 * tracking only the single quote let the comma INSIDE that default
+			 * split the parameter in two, which is how setCsvControl() came to
+			 * report four parameters, one of them named `$"`. */
+			cQuote = z[k];
 		}else if( z[k] == cWhat ){
 			return k;
 		}
@@ -9510,6 +9516,13 @@ static void ReflectExportParamLine(ph7_context *pCtx, SyBlob *pOut, ReflectParam
 	if( pDesc->bHasDef ){
 		SyBlobAppend(pOut, " = ", sizeof(" = ")-1);
 		ReflectExportDefault(pCtx, pOut, pDesc);
+	}else if( pDesc->bOptional && !pDesc->bVariadic ){
+		/* An OPTIONAL parameter with no default a caller could read still gets
+		 * an `= ` from php -- and php's own placeholder after it, since there is
+		 * nothing to print. `mt_rand()`'s two bounds and `get_class()`'s
+		 * $object are that shape; a VARIADIC tail is not, because its "default"
+		 * is having no further arguments. */
+		SyBlobAppend(pOut, " = <default>", sizeof(" = <default>")-1);
 	}
 	SyBlobAppend(pOut, " ]", sizeof(" ]")-1);
 }

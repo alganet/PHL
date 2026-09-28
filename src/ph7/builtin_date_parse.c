@@ -8094,6 +8094,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aDpMethod[] = {
 		/* php overloads this constructor three ways and rejects everything else with
 		 * ONE message, so the signature stays unenforced and the body decides. */
+		/* No signature ON PURPOSE, which is why Reflection reports no parameters
+		 * for it. php declares four and enforces NEITHER end of the arity: the
+		 * constructor has three shapes (start+interval+end, start+interval+count,
+		 * and the ISO string), and both `new DatePeriod()` and a five-argument
+		 * call reach the body and answer its own three-shape TypeError. A zSig
+		 * here would enforce both bounds, so the choice is php's DIAGNOSTIC or
+		 * php's parameter list, and the diagnostic wins. */
 		{ "__construct",     PH7_MOD_PUBLIC, 0, "", vm_builtin_DatePeriod_construct },
 		{ "createFromISO8601String", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "string $specification, int $options = 0", "static",

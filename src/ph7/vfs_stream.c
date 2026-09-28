@@ -4538,7 +4538,7 @@ PH7_PRIVATE int PH7_builtin_stream_context_get_params(ph7_context *pCtx,int nArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pRes = StreamCtxArg(pCtx,apArg[0],TRUE,"$stream_or_context",&bThrew);
+	pRes = StreamCtxArg(pCtx,apArg[0],TRUE,"$context",&bThrew);
 	if( pRes == 0 ){
 		return PH7_OK;
 	}
