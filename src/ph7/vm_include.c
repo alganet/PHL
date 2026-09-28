@@ -1063,7 +1063,113 @@ PH7_PRIVATE int vm_builtin_spl_autoload_functions(ph7_context *pCtx,int nArg,ph7
 	return SXRET_OK;
 }
 /*
- * void spl_autoload(string $class [, string $file_extensions = ".php,.inc" ])
+ * string spl_autoload_extensions([?string $file_extensions = null])
+ *  Register and return default file extensions for spl_autoload().
+ * Return
+ *  The list in force AFTER the call, which is the new one when a string was
+ *  handed over and the standing one otherwise.
+ *
+ * The list is per-VM state rather than an ini directive (php keeps it in SPL's
+ * own globals), and `null` means READ: it is the one argument value that does
+ * not write. Every other value writes what it stringifies to, so `false`
+ * empties the list -- and an empty list is a real setting, not a reset.
+ */
+PH7_PRIVATE int vm_builtin_spl_autoload_extensions(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		const char *zExt;
+		int nExt;
+		zExt = ph7_value_to_string(apArg[0],&nExt);
+		SyBlobReset(&pVm->sAutoloadExt);
+		if( nExt > 0 ){
+			SyBlobAppend(&pVm->sAutoloadExt,zExt,(sxu32)nExt);
+		}
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&pVm->sAutoloadExt),
+		(int)SyBlobLength(&pVm->sAutoloadExt));
+	return SXRET_OK;
+}
+/*
+ * void spl_autoload_call(string $class)
+ *  Try all registered autoloaders to load the requested class.
+ *
+ * php runs the stack whether or not the class is already declared -- the
+ * verb is "call the autoloaders", not "load if missing" -- and stops as soon
+ * as one of them declares it. The answer is always NULL.
+ */
+PH7_PRIVATE int vm_builtin_spl_autoload_call(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zClass;
+	int nClass;
+	if( nArg < 1 ){
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
+	zClass = ph7_value_to_string(apArg[0],&nClass);
+	{
+		/* php runs the stack for the EMPTY name too -- the autoloaders see a
+		 * "" they have to answer for, rather than a call that never happened. */
+		sxu32 nByte = nClass > 0 ? (sxu32)nClass : 0;
+		if( zClass == 0 ){
+			zClass = "";
+		}
+		PH7_VmClassNameAnchor(&zClass,&nByte);
+		PH7_VmTriggerAutoload(pCtx->pVm,zClass,nByte,0);
+	}
+	ph7_result_null(pCtx);
+	return SXRET_OK;
+}
+/*
+ * array spl_classes()
+ *  Return an array with the name of every class and interface SPL declares.
+ *
+ * php answers a map whose key and value are both the name, in the order its
+ * own list is written -- which is alphabetical. The set is SPL's own and not
+ * "everything iterable": Traversable, Countable and the exception BASE are
+ * php's Core, so none of the three is here, while the five SPL INTERFACES
+ * (OuterIterator, RecursiveIterator, SeekableIterator, SplObserver,
+ * SplSubject) are.
+ */
+PH7_PRIVATE int vm_builtin_spl_classes(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char * const azSpl[] = {
+		"AppendIterator", "ArrayIterator", "ArrayObject", "BadFunctionCallException",
+		"BadMethodCallException", "CachingIterator", "CallbackFilterIterator",
+		"DirectoryIterator", "DomainException", "EmptyIterator", "FilesystemIterator",
+		"FilterIterator", "GlobIterator", "InfiniteIterator", "InvalidArgumentException",
+		"IteratorIterator", "LengthException", "LimitIterator", "LogicException",
+		"MultipleIterator", "NoRewindIterator", "OuterIterator", "OutOfBoundsException",
+		"OutOfRangeException", "OverflowException", "ParentIterator", "RangeException",
+		"RecursiveArrayIterator", "RecursiveCachingIterator",
+		"RecursiveCallbackFilterIterator", "RecursiveDirectoryIterator",
+		"RecursiveFilterIterator", "RecursiveIterator", "RecursiveIteratorIterator",
+		"RecursiveRegexIterator", "RecursiveTreeIterator", "RegexIterator",
+		"RuntimeException", "SeekableIterator", "SplDoublyLinkedList", "SplFileInfo",
+		"SplFileObject", "SplFixedArray", "SplHeap", "SplMinHeap", "SplMaxHeap",
+		"SplObjectStorage", "SplObserver", "SplPriorityQueue", "SplQueue", "SplStack",
+		"SplSubject", "SplTempFileObject", "UnderflowException", "UnexpectedValueException"
+	};
+	ph7_value *pArray,*pVal;
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(azSpl) ; ++n ){
+		ph7_value_string(pVal,azSpl[n],-1);
+		ph7_array_add_strkey_elem(pArray,azSpl[n],pVal);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	ph7_result_value(pCtx,pArray);
+	return SXRET_OK;
+}
+/*
+ * void spl_autoload(string $class [, ?string $file_extensions = null ])
  *  Default implementation of __autoload().
  *  Converts namespace separators to directory separators, lowercases the class
  *  name, and tries to include a file with each of the given extensions.
@@ -1071,13 +1177,18 @@ PH7_PRIVATE int vm_builtin_spl_autoload_functions(ph7_context *pCtx,int nArg,ph7
  *  class
  *   The class name being searched.
  *  file_extensions
- *   Comma-separated list of file extensions to try.
+ *   Comma-separated list of file extensions to try. When none is handed over,
+ *   the list is whatever spl_autoload_extensions() holds -- which is where the
+ *   ORDER comes from, and the order decides the answer: php's default tries
+ *   `.inc` BEFORE `.php`, and this engine had the pair hardcoded the other way
+ *   round, so a directory carrying both `foo.inc` and `foo.php` loaded the one
+ *   php does not.
  */
 PH7_PRIVATE int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zClass,*zExt,*zEnd,*zCur;
 	SyBlob sPath;
-	int nClass;
+	int nClass,nExt,iByte;
 	sxi32 rc;
 	if( nArg < 1 ){
 		return SXRET_OK;
@@ -1086,18 +1197,29 @@ PH7_PRIVATE int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **a
 	if( nClass < 1 ){
 		return SXRET_OK;
 	}
-	/* Default extensions */
-	zExt = ".php,.inc";
-	if( nArg >= 2 ){
-		int nExt;
+	/* The list to try: the argument when there is one, and the standing
+	 * spl_autoload_extensions() setting otherwise. */
+	if( nArg >= 2 && !ph7_value_is_null(apArg[1]) ){
+		/* An argument that is EMPTY is an empty list and not a request for the
+		 * default one, so `spl_autoload($c,"")` searches nothing at all. */
 		zExt = ph7_value_to_string(apArg[1],&nExt);
-		if( nExt < 1 ){
-			zExt = ".php,.inc";
+	}else{
+		zExt = (const char *)SyBlobData(&pCtx->pVm->sAutoloadExt);
+		nExt = (int)SyBlobLength(&pCtx->pVm->sAutoloadExt);
+	}
+	/* php walks the list as a C string, so a NUL byte in it ends the search. */
+	for( iByte = 0 ; iByte < nExt ; ++iByte ){
+		if( zExt[iByte] == 0 ){
+			nExt = iByte;
+			break;
 		}
+	}
+	if( nExt < 1 ){
+		return SXRET_OK;
 	}
 	SyBlobInit(&sPath,&pCtx->pVm->sAllocator);
 	/* Iterate over comma-separated extensions */
-	zEnd = zExt + SyStrlen(zExt);
+	zEnd = zExt + nExt;
 	zCur = zExt;
 	while( zCur < zEnd ){
 		const char *zComma;

@@ -2660,6 +2660,10 @@ struct VmIniSlot
 	SyBlob sGlobal;   /* php's global_value */
 	SyBlob sLocal;    /* php's local_value (what ini_get answers, modulo live wiring) */
 };
+/* php's default spl_autoload_extensions() list: the `.inc` is tried FIRST,
+ * which is what decides the answer when two files with the same base name
+ * both declare the class. */
+#define PH7_SPL_AUTOLOAD_EXT ".inc,.php"
 struct ph7_vm
 {
 	SyMemBackend sAllocator;	/* Memory backend */
@@ -2775,6 +2779,11 @@ struct ph7_vm
 	SyHash hDirHandle;          /* instance pointer bytes -> VmDirHandle* (the open DIR* behind a
 	                             * DirectoryIterator; the class's xRelease closes and unregisters) */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
+	SyBlob sAutoloadExt;        /* spl_autoload_extensions(): the comma-separated list
+	                             * spl_autoload() tries when it is handed none.
+	                             * php's own default is ".inc,.php" and the ORDER is
+	                             * observable -- it is what decides which of two files
+	                             * with the same base name defines the class. */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for every slot a store must be
 	                             * FILTERED through: a declared TYPE to enforce, a native
@@ -5362,6 +5371,9 @@ PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **a
 PH7_PRIVATE int vm_builtin_set_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_spl_autoload_functions(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_autoload_extensions(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_autoload_call(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_classes(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm_builtin_call.c — callable machinery shared with vm.c's interpreter */

@@ -2191,6 +2191,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sSessPath,&pVm->sAllocator);
 	SyBlobAppend(&pVm->sSessName,"PHPSESSID",sizeof("PHPSESSID")-1);
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
+	SyBlobInit(&pVm->sAutoloadExt,&pVm->sAllocator);
+	SyBlobAppend(&pVm->sAutoloadExt,PH7_SPL_AUTOLOAD_EXT,sizeof(PH7_SPL_AUTOLOAD_EXT)-1);
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hDirHandle,&pVm->sAllocator,0,0);
@@ -3246,6 +3248,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 		}
 	}
 	SySetReset(&pVm->aAutoload);
+	/* ...and so is the extension list they are searched with. */
+	SyBlobReset(&pVm->sAutoloadExt);
+	SyBlobAppend(&pVm->sAutoloadExt,PH7_SPL_AUTOLOAD_EXT,sizeof(PH7_SPL_AUTOLOAD_EXT)-1);
 	/* The reentrancy guard is empty outside an active autoload (the common case);
 	 * only rebuild the table when an aborted autoload left entries behind. */
 	if( SyHashTotalEntry(&pVm->hAutoloadActive) ){
@@ -5838,6 +5843,9 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "spl_autoload_unregister", vm_builtin_spl_autoload_unregister },
 	{ "spl_autoload_functions",  vm_builtin_spl_autoload_functions  },
 	{ "spl_autoload",            vm_builtin_spl_autoload            },
+	{ "spl_autoload_extensions", vm_builtin_spl_autoload_extensions },
+	{ "spl_autoload_call",       vm_builtin_spl_autoload_call       },
+	{ "spl_classes",             vm_builtin_spl_classes             },
 	   /* Random numbers/strings generators */
 	{ "rand",          vm_builtin_rand            },
 	{ "mt_rand",       vm_builtin_rand            },
