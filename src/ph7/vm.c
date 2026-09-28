@@ -2968,6 +2968,9 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	 * deprecation marks can be stamped on the names they cover wherever those
 	 * were installed -- a name a build does not carry is simply skipped. */
 	PH7_MarkDeprecatedConstants(&(*pVm));
+	/* Same stamp for the FUNCTIONS and native methods php deprecated; the
+	 * classes were installed by PH7_VmInit, well before this runs. */
+	PH7_MarkDeprecatedFunctions(&(*pVm));
 	/* Stamp PHP-8 minimum-arity metadata onto the registered builtins so the
 	 * OP_CALL choke point can raise ArgumentCountError on too few arguments. */
 	VmSetBuiltinArity(&(*pVm));

@@ -94,7 +94,7 @@ dtSerShow('tag is a string', fn() => (new DateTimeZone('UTC'))->__unserialize(
     ['timezone_type' => '3', 'timezone' => 'UTC']));
 dtSerShow('__set_state refuses', fn() => DateTime::__set_state(['nope' => 1]));
 // __wakeup reads the object's OWN properties, so a plain `new` is the failure case.
-dtSerShow('__wakeup with nothing to read', fn() => (new DateTime)->__wakeup());
+dtSerShow('__wakeup with nothing to read', fn() => @(new DateTime)->__wakeup());
 dtSerShow('not an array', fn() => (new DateTime)->__unserialize(1));
 --EXPECT--
 -- the payload is php's presented shape, not the engine slots

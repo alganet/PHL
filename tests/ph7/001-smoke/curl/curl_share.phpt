@@ -81,10 +81,10 @@ foreach ([[CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS], [CURLSHOPT_SHARE, CURL_LOCK_DAT
 $sh2 = curl_share_init();
 curl_share_setopt($sh2, CURLSHOPT_SHARE, 0);
 printf("errno before the close=%d\n", curl_share_errno($sh2));
-var_dump(curl_share_close($sh2));
+var_dump(@curl_share_close($sh2));
 printf("errno after the close=%d, setopt after it=%s\n", curl_share_errno($sh2),
     var_export(curl_share_setopt($sh2, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS), true));
-var_dump(curl_share_close($sh2));
+var_dump(@curl_share_close($sh2));
 
 echo "== the persistent one ==\n";
 $p = curl_share_init_persistent([CURL_LOCK_DATA_SSL_SESSION, CURL_LOCK_DATA_DNS, CURL_LOCK_DATA_DNS]);
@@ -109,7 +109,7 @@ var_dump($q === $r, $q == $r, $q === $q);
 echo "== what the persistent one refuses ==\n";
 foreach ([fn() => new CurlSharePersistentHandle(), fn() => clone $p, fn() => serialize($p),
           fn() => curl_share_setopt($p, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS),
-          fn() => curl_share_close($p), fn() => curl_share_errno($p),
+          fn() => @curl_share_close($p), fn() => curl_share_errno($p),
           fn() => $p->options = [1], fn() => $p->options[] = 9, fn() => $p->other = 1] as $f) {
     try { $f(); echo "no throw\n"; } catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
 }

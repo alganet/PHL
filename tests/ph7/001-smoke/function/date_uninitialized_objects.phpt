@@ -167,7 +167,7 @@ dtuninit_show('__unserialize on a bare object', function () {
     $u->__unserialize(['date' => '1970-01-01 00:00:07.000000', 'timezone_type' => 1, 'timezone' => '+00:00']);
     return $u->format('U');
 });
-dtuninit_show('__wakeup with no payload', fn() => dtuninit_new('DateTime')->__wakeup());
+dtuninit_show('__wakeup with no payload', fn() => @dtuninit_new('DateTime')->__wakeup());
 --EXPECT--
 format                                   DateObjectError: Object of type DateTime has not been correctly initialized by calling parent::__construct() in its constructor
 getTimestamp                             DateObjectError: Object of type DateTime has not been correctly initialized by calling parent::__construct() in its constructor

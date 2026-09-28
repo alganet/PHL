@@ -5428,13 +5428,29 @@ static int vm_builtin_ReflectionFunc_isClosure(ph7_context *pCtx, int nArg, ph7_
 	ph7_result_bool(pCtx, bAnon);
 	return PH7_OK;
 }
+/*
+ * php's deprecation for an INTERNAL name, or NULL. Userland's is the
+ * #[\Deprecated] attribute; this is the engine's own table, stamped on the C
+ * body a builtin and a native method share (aDeprecatedFunc[]).
+ */
+static const ph7_deprecated_name * ReflectFuncDeprecated(const ReflectFuncRef *pRef)
+{
+	if( pRef->pHost ){
+		return pRef->pHost->pDeprecated;
+	}
+	if( pRef->pFunc && (pRef->pFunc->iFlags & VM_FUNC_NATIVE) && pRef->pFunc->pNative ){
+		return pRef->pFunc->pNative->pDeprecated;
+	}
+	return 0;
+}
 static int vm_builtin_ReflectionFunc_isDeprecated(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
-	ph7_result_bool(pCtx, sRef.pFunc != 0 && ReflectHasDeprecated(&sRef.pFunc->aAttrs));
+	ph7_result_bool(pCtx, ReflectFuncDeprecated(&sRef) != 0
+		|| (sRef.pFunc != 0 && ReflectHasDeprecated(&sRef.pFunc->aAttrs)));
 	return PH7_OK;
 }
 static int vm_builtin_ReflectionFunc_isInternal(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -7103,18 +7119,11 @@ static int vm_builtin_ReflectionParameter_getType(ph7_context *pCtx, int nArg, p
 }
 /*
  * getClass()/isArray()/isCallable() — php 8.0 deprecated these in favour of
- * getType() but still declares them, still answers, and emits an E_DEPRECATED
- * naming the replacement. PHL fatalled on the call; all three are here now,
- * notice included.
+ * getType() but still declares them and still answers. The E_DEPRECATED that
+ * comes with a call is raised at the CALL now, from the one table every
+ * deprecated internal name is stamped from (aDeprecatedFunc[]), which is where
+ * php raises it too — before the callee's own screens rather than inside it.
  */
-static void ReflectParamDeprecated(ph7_context *pCtx, const char *zWho)
-{
-	char zMsg[160];
-	SyBufferFormat(zMsg, sizeof(zMsg),
-		"Method ReflectionParameter::%s() is deprecated since 8.0, "
-		"use ReflectionParameter::getType() instead", zWho);
-	PH7_VmThrowError(pCtx->pVm, 0, E_DEPRECATED, zMsg);
-}
 static int vm_builtin_ReflectionParameter_getClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
@@ -7123,7 +7132,6 @@ static int vm_builtin_ReflectionParameter_getClass(ph7_context *pCtx, int nArg, 
 	int nType;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ReflectParamDeprecated(pCtx, "getClass");
 	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) || SyStringLength(&sDesc.sType) < 1 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -7163,14 +7171,12 @@ static int vm_builtin_ReflectionParameter_isArray(ph7_context *pCtx, int nArg, p
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ReflectParamDeprecated(pCtx, "isArray");
 	return ReflectParamTypeIs(pCtx, "array");
 }
 static int vm_builtin_ReflectionParameter_isCallable(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ReflectParamDeprecated(pCtx, "isCallable");
 	return ReflectParamTypeIs(pCtx, "callable");
 }
 static int vm_builtin_ReflectionParameter_getDefaultValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -8963,12 +8969,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm)
  * `internal:Core` for all 878 functions and 197 classes because the engine had
  * no partition to name one from. iExt < 0 is a userland target.
  */
-static void ReflectExportKind(SyBlob *pOut, int iExt)
+static void ReflectExportKind(SyBlob *pOut, int iExt, int bDeprecated)
 {
+	SyBlobAppend(pOut, iExt >= 0 ? "internal" : "user", iExt >= 0 ? 8 : 4);
+	/* php writes the three parts in this order and each on its own condition,
+	 * so a deprecated INTERNAL name reads `<internal, deprecated:curl>` -- the
+	 * extension hangs off `deprecated`, not off `internal`. */
+	if( bDeprecated ){
+		SyBlobAppend(pOut, ", deprecated", sizeof(", deprecated")-1);
+	}
 	if( iExt >= 0 ){
-		SyBlobFormat(pOut, "internal:%s", PH7_VmExtensionName(iExt));
-	}else{
-		SyBlobAppend(pOut, "user", sizeof("user")-1);
+		SyBlobFormat(pOut, ":%s", PH7_VmExtensionName(iExt));
 	}
 }
 /* A declared type followed by a space, or nothing at all. */
@@ -9243,6 +9254,8 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 {
 	SyBlob sBody;
 	int bInternal = ReflectFuncIsInternal(pRef);
+	int bDeprecated = ReflectFuncDeprecated(pRef) != 0
+		|| (pRef->pFunc != 0 && ReflectHasDeprecated(&pRef->pFunc->aAttrs));
 	int nParam = ReflectParamCount(pRef);
 	const char *zRet = 0;
 	int nRet = 0, bHasRet, bTentRet = 0;
@@ -9258,7 +9271,7 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		/* A method names its DECLARING class's extension, which is why php's
 		 * `JsonException::__construct` prints `<internal:Core, inherits
 		 * Exception, ctor>` rather than json's own name. */
-		ReflectExportKind(&sBody, ReflectFuncExtId(pRef));
+		ReflectExportKind(&sBody, ReflectFuncExtId(pRef), bDeprecated);
 		bInherits = (pOwner != 0 && pDecl != 0 && pDecl != pOwner);
 		if( bInherits ){
 			SyBlobFormat(&sBody, ", inherits %z", &pDecl->sName);
@@ -9302,7 +9315,7 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 	}else{
 		SyBlobAppend(&sBody, pRef->pClosure ? "Closure [ <" : "Function [ <",
 			pRef->pClosure ? sizeof("Closure [ <")-1 : sizeof("Function [ <")-1);
-		ReflectExportKind(&sBody, ReflectFuncExtId(pRef));
+		ReflectExportKind(&sBody, ReflectFuncExtId(pRef), bDeprecated);
 		SyBlobAppend(&sBody, "> function ", sizeof("> function ")-1);
 		if( pRef->pFunc ){
 			SyBlobFormat(&sBody, "%z", &pRef->pFunc->sName);
@@ -9433,7 +9446,7 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 	}else{
 		SyBlobAppend(pOut, "Class [ <", sizeof("Class [ <")-1);
 	}
-	ReflectExportKind(pOut, ReflectClassExtId(pClass));
+	ReflectExportKind(pOut, ReflectClassExtId(pClass), 0);
 	SyBlobAppend(pOut, "> ", sizeof("> ")-1);
 	/* php tags a class that has an iteration handler, which its Traversable
 	 * implementers have — and so does anything with a HOOKED property, because

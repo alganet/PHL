@@ -7984,6 +7984,13 @@ NativeCall:
 		 * consumed) on the method path — building it a second time here would
 		 * consume them twice. Everything from this point down is shared verbatim:
 		 * a native method IS a host call that happens to carry a receiver. */
+		/* php raises a deprecated callee's E_DEPRECATED at the CALL, before the
+		 * body and before every screen under it: `curl_close()` with no argument
+		 * warns first and throws the ArgumentCountError second. A native method
+		 * joins this block too, and its notice names the DECLARING class. */
+		if( pFunc->pDeprecated ){
+			PH7_VmDeprecatedCallNotice(&(*pVm),pFunc->pDeprecated);
+		}
 		/* Start collecting function arguments */
 		SySetReset(&aArg);
 		while( pArg < pTos ){

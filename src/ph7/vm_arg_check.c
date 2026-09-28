@@ -2963,6 +2963,123 @@ static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
 	PH7_MemObjRelease(&sMsg);
 	PH7_MemObjRelease(&sSince);
 }
+/*
+ * The functions and methods php 8.x deprecated, and the clause each notice ends
+ * with. Calling one raises `Function f() is deprecated since <clause>` (or
+ * `Method C::m() ...`) at E_DEPRECATED, BEFORE the callee's arity and type
+ * screens -- `curl_close()` with no argument warns first and throws the
+ * ArgumentCountError second -- and the export format's head reads the same fact
+ * as `<internal, deprecated:curl>`.
+ *
+ * Marked here rather than raised from each body because the notice belongs to
+ * the CALL and not to what the body does (php warns and then runs it), and
+ * because the subject is php's own: it names the DECLARING class even for a
+ * call through a subclass, so a `MyStore extends SplObjectStorage` still reads
+ * `SplObjectStorage::attach()`. The stamp runs once, after every extension has
+ * installed, so a name a build does not carry is simply skipped.
+ *
+ * Only names this engine SHIPS are listed; php's own deprecated set is larger
+ * (strftime, utf8_encode, the whole mhash and zip_* families) and every one of
+ * those is a name PHL does not have.
+ */
+static const ph7_deprecated_name aDeprecatedFunc[] = {
+	{ "curl_close",        "8.5, as it has no effect since PHP 8.0" },
+	{ "curl_share_close",  "8.5, as it has no effect since PHP 8.0" },
+	{ "DateInterval::__wakeup",
+	  "8.5, this method is obsolete, as serialization hooks are provided by "
+	  "__unserialize() and __serialize()" },
+	{ "DatePeriod::__wakeup",
+	  "8.5, this method is obsolete, as serialization hooks are provided by "
+	  "__unserialize() and __serialize()" },
+	{ "DateTime::__wakeup",
+	  "8.5, this method is obsolete, as serialization hooks are provided by "
+	  "__unserialize() and __serialize()" },
+	{ "DateTimeImmutable::__wakeup",
+	  "8.5, this method is obsolete, as serialization hooks are provided by "
+	  "__unserialize() and __serialize()" },
+	{ "DateTimeZone::__wakeup",
+	  "8.5, this method is obsolete, as serialization hooks are provided by "
+	  "__unserialize() and __serialize()" },
+	{ "SplFixedArray::__wakeup",
+	  "8.4, this method is obsolete, as serialization hooks are provided by "
+	  "__unserialize() and __serialize()" },
+	{ "SplFileInfo::_bad_state_ex", "8.2" },
+	{ "SplObjectStorage::attach",
+	  "8.5, use method SplObjectStorage::offsetSet() instead" },
+	{ "SplObjectStorage::contains",
+	  "8.5, use method SplObjectStorage::offsetExists() instead" },
+	{ "SplObjectStorage::detach",
+	  "8.5, use method SplObjectStorage::offsetUnset() instead" },
+	{ "ReflectionFunction::isDisabled",
+	  "8.0, as ReflectionFunction can no longer be constructed for disabled functions" },
+	{ "ReflectionMethod::setAccessible", "8.5, as it has no effect since PHP 8.1" },
+	{ "ReflectionProperty::setAccessible", "8.5, as it has no effect since PHP 8.1" },
+	{ "ReflectionParameter::getClass",
+	  "8.0, use ReflectionParameter::getType() instead" },
+	{ "ReflectionParameter::isArray",
+	  "8.0, use ReflectionParameter::getType() instead" },
+	{ "ReflectionParameter::isCallable",
+	  "8.0, use ReflectionParameter::getType() instead" },
+};
+/* The ph7_user_func behind one entry: a global builtin, or a native method's
+ * own C body reached through its ph7_vm_func. */
+static ph7_user_func * VmDeprecatedTarget(ph7_vm *pVm,const char *zName)
+{
+	const char *zSep = 0;
+	SyHashEntry *pEntry;
+	sxu32 n;
+	for( n = 0 ; zName[n] != '\0' ; ++n ){
+		if( zName[n] == ':' && zName[n+1] == ':' ){
+			zSep = &zName[n];
+			break;
+		}
+	}
+	if( zSep == 0 ){
+		pEntry = SyHashGet(&pVm->hHostFunction,(const void *)zName,SyStrlen(zName));
+		return pEntry ? (ph7_user_func *)pEntry->pUserData : 0;
+	}
+	{
+		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zName,(sxu32)(zSep - zName),FALSE,0);
+		ph7_class_method *pMeth;
+		if( pClass == 0 ){
+			return 0;
+		}
+		pEntry = SyHashGet(&pClass->hMethod,(const void *)(zSep + 2),SyStrlen(zSep + 2));
+		if( pEntry == 0 ){
+			return 0;
+		}
+		pMeth = (ph7_class_method *)pEntry->pUserData;
+		return (pMeth->sFunc.iFlags & VM_FUNC_NATIVE) ? pMeth->sFunc.pNative : 0;
+	}
+}
+PH7_PRIVATE void PH7_MarkDeprecatedFunctions(ph7_vm *pVm)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aDeprecatedFunc) ; ++n ){
+		ph7_user_func *pTarget = VmDeprecatedTarget(&(*pVm),aDeprecatedFunc[n].zName);
+		if( pTarget ){
+			pTarget->pDeprecated = &aDeprecatedFunc[n];
+		}
+	}
+}
+/*
+ * The notice itself, raised from the one OP_CALL block a builtin and a native
+ * method share. php words a qualified subject as a METHOD and a bare one as a
+ * FUNCTION, which is exactly what the "::" in the recorded name says.
+ */
+PH7_PRIVATE void PH7_VmDeprecatedCallNotice(ph7_vm *pVm,const ph7_deprecated_name *pDep)
+{
+	int bMethod = 0;
+	sxu32 n;
+	for( n = 0 ; pDep->zName[n] != '\0' ; ++n ){
+		if( pDep->zName[n] == ':' ){
+			bMethod = 1;
+			break;
+		}
+	}
+	VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,"%s %s() is deprecated since %s",
+		bMethod ? "Method" : "Function",pDep->zName,pDep->zWhy);
+}
 PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass)
 {
 	ph7_value sMsg,sSince;

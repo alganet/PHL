@@ -55,9 +55,9 @@ try { curl_init(1, 2); } catch (Throwable $e) { echo get_class($e), ': ', $e->ge
 
 echo "== close is a no-op ==\n";
 $c = curl_init();
-var_dump(curl_close($c));
+var_dump(@curl_close($c));
 var_dump($c instanceof CurlHandle, curl_errno($c), curl_error($c));
-var_dump(curl_close($c), curl_reset($c), curl_errno($c));
+var_dump(@curl_close($c), curl_reset($c), curl_errno($c));
 
 echo "== reset ==\n";
 $r = curl_init();

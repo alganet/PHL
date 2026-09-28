@@ -417,6 +417,22 @@ typedef int (*ProchHostFunction)(ph7_context *,int,ph7_value **);
  * Please refer to the official documentation for more information on how
  * to create/install foreign functions.
  */
+/*
+ * One name php 8.x deprecated, and the clause it ends the notice with.
+ *
+ * The SUBJECT is php's own spelling -- `curl_close` for a function,
+ * `SplObjectStorage::attach` for a method, where php always names the
+ * DECLARING class even for a call through a subclass -- so the raise site
+ * needs no class lookup of its own. Static storage, shared by the E_DEPRECATED
+ * notice and the export format's `<internal, deprecated:EXT>` tag.
+ */
+typedef struct ph7_deprecated_name ph7_deprecated_name;
+struct ph7_deprecated_name
+{
+	const char *zName;  /* php's subject, without the trailing "()" */
+	const char *zWhy;   /* what follows "is deprecated since ": "8.2",
+	                     * "8.5, use method SplObjectStorage::offsetSet() instead" */
+};
 struct ph7_user_func
 {
 	ph7_vm *pVm;              /* VM that own this instance */
@@ -438,6 +454,10 @@ struct ph7_user_func
 	                           * static signature table, or NULL: ReflectionFunction input for
 	                           * internal functions. Points at static storage — never freed. */
 	const char *zRet;         /* Return-type text from the same table, or NULL */
+	const ph7_deprecated_name *pDeprecated; /* php's deprecation for this name, or NULL. A
+	                           * NATIVE method reaches it through ph7_vm_func::pNative, so one
+	                           * field covers both a C builtin and a native class method --
+	                           * they share this struct and the same OP_CALL block. */
 	sxu32 nByRefMask;         /* D1: bit N set => positional parameter N is by-reference (`&$p` in zSig),
 	                           * derived once in VmSetBuiltinSignatures. Lets OP_CALL materialize a
 	                           * deferred by-ref out-param regardless of how the builtin was reached
@@ -5352,6 +5372,8 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(ph7_vm *pVm,ph7_value *pArg,ph7_valu
 PH7_PRIVATE void PH7_VmArgTempCallNotice(ph7_vm *pVm,VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal);
 PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg);
 PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass);
+PH7_PRIVATE void PH7_MarkDeprecatedFunctions(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmDeprecatedCallNotice(ph7_vm *pVm,const ph7_deprecated_name *pDep);
 /* vm_exec_ctx.c — Fiber/Generator/Closure engine shared with vm.c */
 PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm);

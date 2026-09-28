@@ -38,7 +38,8 @@ var_dump($a === $b, $a == $b, $b == $c, $b === $b);
 var_dump(curl_errno($b), curl_error($b), curl_errno($c), curl_error($c));
 
 // each is a handle in its own right
-var_dump(curl_reset($b), curl_close($c), curl_errno($a));
+// php 8.5 deprecated curl_close(); the notice is not what this row measures.
+var_dump(curl_reset($b), @curl_close($c), curl_errno($a));
 
 // a copy of a copy
 $d = clone $c;
@@ -50,7 +51,7 @@ var_dump(curl_errno($b), curl_errno($c), curl_errno($d));
 
 // close is a no-op, so a closed handle is still copyable
 $e = curl_init();
-curl_close($e);
+@curl_close($e);
 var_dump(get_class(clone $e), get_class(curl_copy_handle($e)));
 
 $rf = new ReflectionFunction('curl_copy_handle');
