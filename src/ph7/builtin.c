@@ -978,6 +978,8 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	     /* ext/standard: the image container surface */
 	{ "image_type_to_mime_type", PH7_builtin_image_type_to_mime_type },
 	{ "image_type_to_extension", PH7_builtin_image_type_to_extension },
+	{ "getimagesize",            PH7_builtin_getimagesize            },
+	{ "getimagesizefromstring",  PH7_builtin_getimagesizefromstring  },
 	{ "wordwrap",     PH7_builtin_wordwrap   },
 	{ "strtok",       PH7_builtin_strtok     },
 	{ "str_pad",      PH7_builtin_str_pad    },

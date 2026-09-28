@@ -258,6 +258,7 @@ static const VmExtName aExtFunc[] = {
 	{"fsockopen",PH7_EXT_STANDARD}, {"pfsockopen",PH7_EXT_STANDARD},
 	{"http_build_query",PH7_EXT_STANDARD},
 	{"image_type_to_mime_type",PH7_EXT_STANDARD}, {"image_type_to_extension",PH7_EXT_STANDARD},
+	{"getimagesize",PH7_EXT_STANDARD}, {"getimagesizefromstring",PH7_EXT_STANDARD},
 	{"phpinfo",PH7_EXT_STANDARD},
 	{"phpversion",PH7_EXT_STANDARD}, {"php_sapi_name",PH7_EXT_STANDARD},
 	{"php_uname",PH7_EXT_STANDARD}, {"levenshtein",PH7_EXT_STANDARD},

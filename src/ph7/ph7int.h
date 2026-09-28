@@ -5634,6 +5634,8 @@ PH7_PRIVATE int PH7_builtin_easter_date(ph7_context *pCtx,int nArg,ph7_value **a
 PH7_PRIVATE const char * PH7_ImageTypeMime(ph7_int64 iType);
 PH7_PRIVATE int PH7_builtin_image_type_to_mime_type(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_image_type_to_extension(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_getimagesize(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_getimagesizefromstring(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin_scanf.c -- sscanf() and the scanner fscanf() (vfs_stream.c) shares. */
 PH7_PRIVATE sxi32 PH7_ScanfRun(ph7_context *pCtx,const char *zStr,int nStr,
 	const char *zFmt,int nFmt,ph7_value **apVar,int nVar);
