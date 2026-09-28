@@ -2598,7 +2598,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm)
 		  vm_builtin_BcNumber_sqrt },
 		{ "floor", PH7_MOD_PUBLIC, "", "BcMath\\Number", vm_builtin_BcNumber_floor },
 		{ "ceil", PH7_MOD_PUBLIC, "", "BcMath\\Number", vm_builtin_BcNumber_ceil },
-		{ "round", PH7_MOD_PUBLIC, "int $precision = 0, RoundingMode $mode = ?",
+		{ "round", PH7_MOD_PUBLIC, "int $precision = 0, RoundingMode $mode = RoundingMode::HalfAwayFromZero",
 		  "BcMath\\Number", vm_builtin_BcNumber_round },
 		{ "compare", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
 		  "int", vm_builtin_BcNumber_compare },

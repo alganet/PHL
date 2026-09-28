@@ -2016,7 +2016,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm)
 #ifndef PH7_OMIT_FLOATING_POINT
 		{ "nextFloat", PH7_MOD_PUBLIC, "", "float", vm_builtin_Randomizer_nextFloat },
 		{ "getFloat", PH7_MOD_PUBLIC,
-		  "float $min, float $max, Random\\IntervalBoundary $boundary = ?", "float",
+		  "float $min, float $max, Random\\IntervalBoundary $boundary = Random\\IntervalBoundary::ClosedOpen", "float",
 		  vm_builtin_Randomizer_getFloat },
 #endif
 		{ "getBytesFromString", PH7_MOD_PUBLIC, "string $string, int $length", "string",

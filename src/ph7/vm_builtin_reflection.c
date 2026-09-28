@@ -950,9 +950,14 @@ static int ReflectSigClassConst(ph7_context *pCtx, const char *z, int n, ph7_val
 		return 0;
 	}
 	if( pAttr->nIdx == SXU32_HIGH ){
-		/* Not materialized yet: run the initializer, exactly as a direct `C::K`
-		 * read would (an unread native constant is a literal waiting on this). */
-		if( VmClassConstEvalOnDemand(pVm, pClass, pAttr) != SXRET_OK ){
+		/* Not materialized yet: bring it into being exactly as a direct `C::K`
+		 * read would. An enum CASE is a singleton with its own materializer --
+		 * running the constant initializer over one answers nothing, which is
+		 * why `RoundingMode::HalfAwayFromZero` could not be reduced at all. */
+		sxi32 rcConst = (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE)
+			? VmEnumMaterializeCase(pVm, pClass, pAttr)
+			: VmClassConstEvalOnDemand(pVm, pClass, pAttr);
+		if( rcConst != SXRET_OK ){
 			return 0;
 		}
 	}
@@ -1052,6 +1057,95 @@ static int ReflectHexVal(char c)
 	return -1;
 }
 /*
+ * php keeps the SOURCE of a constant EXPRESSION in a stub's default and prints
+ * it back verbatim, and two more shapes of one live in the signature table
+ * beside the `C::K` and `A|B` forms already handled: an integer written in a
+ * RADIX (`0777` for mkdir's permissions) and a product (`2 * 1024 * 1024` for
+ * SplTempFileObject's memory bound). Both are text php never reduces on the
+ * page; both have to be reduced for getDefaultValue().
+ */
+static int ReflectSigRadixInt(const char *z, int n, sxi64 *pOut)
+{
+	int iRadix = 8, k = 1;
+	sxi64 iVal = 0;
+	ReflectSigTrim(&z, &n);
+	if( n < 2 || z[0] != '0' ){
+		return 0;
+	}
+	if( z[1] == 'x' || z[1] == 'X' ){       iRadix = 16; k = 2; }
+	else if( z[1] == 'o' || z[1] == 'O' ){  iRadix = 8;  k = 2; }
+	else if( z[1] == 'b' || z[1] == 'B' ){  iRadix = 2;  k = 2; }
+	if( k >= n ){
+		return 0;
+	}
+	for( ; k < n ; ++k ){
+		int iDigit = ReflectHexVal(z[k]);
+		if( iDigit < 0 || iDigit >= iRadix ){
+			return 0;
+		}
+		iVal = iVal * iRadix + iDigit;
+	}
+	*pOut = iVal;
+	return 1;
+}
+/* `a * b * c` over integer literals and integer constants. */
+static int ReflectSigProduct(ph7_context *pCtx, const char *z, int n, ph7_value *pOut)
+{
+	sxi64 iAcc = 1;
+	int iStart = 0, k, nTerm = 0;
+	if( ReflectSigFindUnquoted(z, n, '*') < 0 ){
+		return 0;
+	}
+	for( k = 0 ; k <= n ; ++k ){
+		const char *zTerm;
+		int nTermLen;
+		sxi64 iVal = 0;
+		sxu8 bReal = 0;
+		if( k < n && z[k] != '*' ){
+			continue;
+		}
+		zTerm = &z[iStart];
+		nTermLen = k - iStart;
+		ReflectSigTrim(&zTerm, &nTermLen);
+		if( nTermLen < 1 ){
+			return 0;
+		}
+		if( !ReflectSigRadixInt(zTerm, nTermLen, &iVal) ){
+			ph7_value *pTerm;
+			if( SyStrIsNumeric(zTerm, (sxu32)nTermLen, &bReal, 0) == SXRET_OK && !bReal ){
+				SyStrToInt64(zTerm, (sxu32)nTermLen, (void *)&iVal, 0);
+			}else if( (pTerm = ph7_context_new_scalar(pCtx)) != 0
+			       && (ReflectSigClassConst(pCtx, zTerm, nTermLen, pTerm)
+			        || ReflectSigGlobalConst(pCtx, zTerm, nTermLen, pTerm))
+			       && (pTerm->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 ){
+				PH7_MemObjToInteger(pTerm);
+				iVal = pTerm->x.iVal;
+			}else{
+				return 0;
+			}
+		}
+		iAcc *= iVal;
+		nTerm++;
+		iStart = k + 1;
+	}
+	if( nTerm < 2 ){
+		return 0;
+	}
+	ph7_value_int64(pOut, iAcc);
+	return 1;
+}
+/*
+ * Is this default TEXT one php prints back as SOURCE rather than as a value?
+ * The `C::K` and `A|B` forms are answered by their own readers above; these
+ * two are the ones a plain literal reader would silently reduce to a number.
+ */
+static int ReflectSigIsSourceExpr(const char *z, int n)
+{
+	sxi64 iIgnored = 0;
+	return ReflectSigFindUnquoted(z, n, '*') >= 0
+	    || ReflectSigRadixInt(z, n, &iIgnored);
+}
+/*
  * A default-value TEXT to a value, when the text denotes a scalar php can
  * reproduce. Answers 1 and fills pOut, or 0 for anything else (`[]`,
  * `array (`, a constant name) which the caller reports its own way.
@@ -1132,6 +1226,16 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 	}
 	if( ReflectSigGlobalConst(pCtx,z,n,pOut) ){
 		return 1;
+	}
+	if( ReflectSigProduct(pCtx,z,n,pOut) ){
+		return 1;
+	}
+	{
+		sxi64 iRadix = 0;
+		if( ReflectSigRadixInt(z,n,&iRadix) ){
+			ph7_value_int64(pOut,iRadix);
+			return 1;
+		}
 	}
 	if( n > 0 && SyStrIsNumeric(z,(sxu32)n,&bReal,0) == SXRET_OK ){
 		/* php's own rule for the text form: a '.', an exponent or a hex marker
@@ -9513,6 +9617,13 @@ static void ReflectExportDefault(ph7_context *pCtx, SyBlob *pOut, ReflectParamDe
 			/* And for the `|` fold of them, which is the one shape whose VALUE
 			 * names no constant at all: `SQLITE3_OPEN_READWRITE |
 			 * SQLITE3_OPEN_CREATE` prints as itself and answers 6. */
+			SyBlobAppend(pOut, zDef, (sxu32)nDef);
+			return;
+		}
+		if( ReflectSigIsSourceExpr(zDef, nDef) ){
+			/* The two arithmetic shapes: a RADIX integer and a product. php prints
+			 * `0777` and `2 * 1024 * 1024`, never the 511 and 2097152 they reduce
+			 * to -- and answers those numbers from getDefaultValue() all the same. */
 			SyBlobAppend(pOut, zDef, (sxu32)nDef);
 			return;
 		}

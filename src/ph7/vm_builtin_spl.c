@@ -1785,7 +1785,7 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 	};
 	static const PH7_NativeMethodDef aObjMethod[] = {
 		{ "__construct",      PH7_MOD_PUBLIC,
-		  "object|array $array = [], int $flags = 0, string $iteratorClass = 'ArrayIterator'", 0,
+		  "object|array $array = [], int $flags = 0, string $iteratorClass = ArrayIterator::class", 0,
 		  vm_builtin_ArrayObject_construct },
 		{ "offsetExists",     PH7_MOD_PUBLIC, "mixed $key", "@bool", vm_builtin_SplStore_offsetExists },
 		{ "offsetGet",        PH7_MOD_PUBLIC, "mixed $key", "@mixed", vm_builtin_SplStore_offsetGet },
@@ -9626,7 +9626,7 @@ static sxi32 VmInstallSplMultipleIterator(ph7_vm *pVm)
 		{ MIT_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aMitMethod[] = {
-		{ "__construct",      PH7_MOD_PUBLIC, "int $flags = 1", 0,
+		{ "__construct",      PH7_MOD_PUBLIC, "int $flags = MultipleIterator::MIT_NEED_ALL | MultipleIterator::MIT_KEYS_NUMERIC", 0,
 		  vm_builtin_MultipleIterator_construct },
 		{ "getFlags",         PH7_MOD_PUBLIC, "", "@int", vm_builtin_MultipleIterator_getFlags },
 		{ "setFlags",         PH7_MOD_PUBLIC, "int $flags", "@void",
@@ -13016,7 +13016,7 @@ static sxi32 VmInstallSplFileObject(ph7_vm *pVm)
 		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileObject_toString },
 	};
 	static const PH7_NativeMethodDef aTempMethod[] = {
-		{ "__construct", PH7_MOD_PUBLIC, "int $maxMemory = 2097152", 0,
+		{ "__construct", PH7_MOD_PUBLIC, "int $maxMemory = 2 * 1024 * 1024", 0,
 		  vm_builtin_SplTempFileObject_construct },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
