@@ -1117,7 +1117,8 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	sxu32 nLineLocal = pGen->pIn->nLine;
 	sxi32 iVv;
 	sxi32 iP1;
-	sxi32 iP2 = 0; /* 1 = quiet read (isset/empty): a missing variable must not warn */
+	sxi32 iP2 = 0; /* 1 = quiet read (isset/empty), 4 = quiet read (`??`): a missing
+	                * variable must not warn in either */
 	void *p3;
 	sxi32 rc;
 	iVv = -1; /* Variable variable counter */
@@ -1218,8 +1219,15 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	 * expression, so `isset($a[$i])` still warns for an undefined $i, as php
 	 * does. Contexts that VIVIFY (assignment targets, `??`, appends) already
 	 * emit iP1 = 0 and never reach the warning. */
-	if( iCompileFlag & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_QUIET_VAR) ){
+	if( iCompileFlag & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY) ){
 		iP2 = 1;
+	}else if( iCompileFlag & EXPR_FLAG_QUIET_VAR ){
+		/* `??`'s quiet read is quiet for the same WARNING and not for the same
+		 * rule: php swallows `Undefined variable $x` under `$x ?? d` but still
+		 * throws `Using $this when not in object context` for `$this ?? d`, where
+		 * `isset($this)` answers false in silence. One value each, so OP_LOAD can
+		 * tell the two silences apart. */
+		iP2 = 4;
 	}else if( iCompileFlag & EXPR_FLAG_RMW_LOAD ){
 		/* Warn-then-create: the read half of `$x++` / `$x .= ...` still needs a
 		 * writable slot, so it cannot use the read-only load above. */

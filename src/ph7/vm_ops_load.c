@@ -694,8 +694,14 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				}else{
 					PH7_MemObjRelease(&sNullKey);
 				}
-				/* Pop the value */
-				VmPopOperand(&pTos,1);
+				/* The VALUE stays on the stack: a store IS an expression and its
+				 * result is what was assigned, which is why `$x = ($c[$k] = 42)`
+				 * and `return $this[$k] = 42;` are 42 in php even when offsetSet
+				 * stored something else. This arm popped it, so the expression it
+				 * belongs to read a slot the stack no longer owned -- `var_dump($c[$k]
+				 * = 5)` printed garbage for a native ArrayAccess and SEGFAULTED for a
+				 * user one. The ordinary hashmap store below pops only the container,
+				 * for exactly this reason. */
 				VM_EXIT_BREAK;
 			}
 			/* Object without ArrayAccess: PHP throws a fatal Error rather

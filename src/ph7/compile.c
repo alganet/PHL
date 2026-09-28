@@ -859,6 +859,13 @@ static int GenStateArgShape(ph7_expr_node *pNode)
 	case EXPR_OP_FUNC_CALL:
 	case EXPR_OP_NEW:
 		return GEN_ARG_TEMPCALL;
+	case EXPR_OP_REF:
+		/* `take($q = &$p)`: a reference ASSIGNMENT hands back the reference it
+		 * made, so php passes it on to a by-ref parameter and all three names end
+		 * up aliasing one slot. A plain `$q = $p` does not -- php's ASSIGN yields
+		 * a temporary where ASSIGN_REF yields the VAR -- which is why only this
+		 * one arm moves. */
+		return GEN_ARG_LVALUE;
 	default:
 		/* Includes `?->` (php: "Cannot use nullsafe operator in write context"),
 		 * `@$x`, `$q = …`, `clone $o` and every arithmetic/logical operator. */
@@ -1120,7 +1127,22 @@ PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pT
 	if( pTarget == 0 ){
 		return SXRET_OK;
 	}
-	if( PH7_ExprNodeIsThis(pTarget) ){
+	if( PH7_ExprNodeIsThis(pTarget) && (iCtx & (PH7_WTC_REFSRC|PH7_WTC_RMW)) == 0 ){
+		/* Only as the TARGET. php refuses `$this = …`, `$this =& …`, a
+		 * foreach/list target and `unset($this)` -- but the SOURCE of a `=&` is
+		 * compiled in write context WITHOUT zend_ensure_writable_variable, and
+		 * that is the function that holds the $this rule. So `$t =& $this` binds
+		 * the receiver, and so do `$a[] =& $this`, `$this->p =& $this` and
+		 * `self::$s =& $this`; a $this that has no object behind it is the
+		 * ordinary RUNTIME "Using $this when not in object context". Refusing the
+		 * source here cost react/promise's `$target =& $this` -- Composer's whole
+		 * async download layer.
+		 *
+		 * And only for an ASSIGNMENT. php makes this rule in the assignment
+		 * compiler, so a READ-MODIFY-WRITE (`$this += 1`, `$this .= "x"`,
+		 * `$this++`) compiles and raises the ordinary operand error at run time
+		 * (`Unsupported operand types: C + int`, `Cannot increment C`) -- which
+		 * this engine already words for any other object. */
 		zMsg = (iCtx & PH7_WTC_UNSET) ? "Cannot unset $this" : "Cannot re-assign $this";
 	}else if( pTarget->pOp && pTarget->pOp->iOp == EXPR_OP_FUNC_CALL
 	       && (iCtx & PH7_WTC_REFSRC) == 0 ){
@@ -1351,6 +1373,17 @@ static sxi32 GenStateEmitExprCode(
 		return SXERR_ABORT;
 	}
 	iVmOp = pNode->pOp->iVmOp;
+	if( iVmOp == PH7_OP_STORE_REF && pNode->pLeft && PH7_ExprNodeIsThis(pNode->pLeft) ){
+		/* `$t =& $this` is a VALUE assignment. php's `$this` is not a slot a
+		 * reference can name -- the receiver lives in the frame's own field, not
+		 * in a variable -- so the bind quietly degrades to a copy of the object
+		 * HANDLE: `$t` gets a slot of its own, `$t->v = 9` still reaches the same
+		 * object (that is identity, not reference), and `$t = 5` leaves `$this`
+		 * an object. Binding the slot instead let a write through the alias
+		 * REPLACE the receiver for the rest of the call. The operands were
+		 * swapped in parse.c, so the source is pLeft. */
+		iVmOp = PH7_OP_STORE;
+	}
 	if( iVmOp == PH7_OP_CVT_NULL ){
 		/* php 8 removed the (unset) cast. Error recorded (nErr>0 fails the
 		 * whole compile); keep emitting so expression codegen stays aligned
@@ -1637,8 +1670,9 @@ static sxi32 GenStateEmitExprCode(
 			 * `++`/`--` are unary, their operand is pLeft. */
 			if( pNode->pOp
 				&& (pNode->pOp->iVmOp == PH7_OP_INCR || pNode->pOp->iVmOp == PH7_OP_DECR) ){
-				/* `(new A)->p++` writes through a temporary exactly as `= 1` does. */
-				rc = GenStateWriteTargetCheck(&(*pGen),pNode->pLeft,0);
+				/* `(new A)->p++` writes through a temporary exactly as `= 1` does --
+				 * but a `$this++` is a read-modify-write php leaves to run time. */
+				rc = GenStateWriteTargetCheck(&(*pGen),pNode->pLeft,PH7_WTC_RMW);
 				if( rc != SXRET_OK ){
 					return rc;
 				}
@@ -2071,8 +2105,11 @@ static sxi32 GenStateEmitExprCode(
 			 * `$o->p`) is auto-created — PHP auto-vivifies on a plain write AND on a `=&`
 			 * bind (`$a[0] =& $x` creates $a as [0 => &$x], it does not warn). */
 			/* php's compile-time write-target rules first ($this, a temporary base,
-			 * the call that is the target itself). */
-			rc = GenStateWriteTargetCheck(&(*pGen),pNode->pRight,0);
+			 * the call that is the target itself). A COMPOUND assignment is a
+			 * read-modify-write: php's $this rule does not reach it. */
+			rc = GenStateWriteTargetCheck(&(*pGen),pNode->pRight,
+				(iVmOp == PH7_OP_STORE || pNode->pOp->iOp == EXPR_OP_REF)
+					? 0 : PH7_WTC_RMW);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
@@ -2993,7 +3030,21 @@ static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
 				             (const void *)"this",sizeof("this")-1) == 0 ){
 					rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
 						"Cannot unset $this");
-					return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					/* php stops compiling at its own fatal; this generator carries
+					 * on to a budget of fifteen, so leave the cursor PAST the whole
+					 * `unset(...)` rather than on the operand it refused. Resuming
+					 * there re-read the closing ')' as a statement of its own and
+					 * printed an "Unmatched ')'" under the fatal that php never
+					 * reaches. */
+					pGen->pIn = pEnd;
+					if( pGen->pIn < pTmp && (pGen->pIn->nType & PH7_TK_RPAREN) ){
+						pGen->pIn++;
+					}
+					pGen->pEnd = pTmp;
+					return SXERR_SYNTAX;
 				}
 				char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
 					pGen->pIn[1].sData.zString,pGen->pIn[1].sData.nByte);

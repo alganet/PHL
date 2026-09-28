@@ -2784,6 +2784,26 @@ case PH7_OP_LOAD:{
 		/* Reserve a room for the target object */
 		pTos++;
 	}
+	if( sName.nByte == sizeof("this")-1
+	 && SyMemcmp(sName.zString,"this",sizeof("this")-1) == 0
+	 && pInstr->iP2 != 1 /* isset()/empty() ask a QUESTION -- see below */
+	 && VmExtractMemObj(&(*pVm),&sName,FALSE,FALSE) == 0 ){
+		/* `$this` is not a variable: a frame with no receiver answers a READ of it
+		 * with php's catchable Error, not the undefined-variable warning and a
+		 * NULL. The null was the hazard -- `$this->m()` in a plain function became
+		 * "Call to a member function m() on null", `var_dump($this)` printed NULL,
+		 * and `f($this)` passed one on -- each a wrong ANSWER a few frames from the
+		 * mistake. Asked BEFORE the extract so the vivifying contexts (`$this ??
+		 * 'd'`, which php throws for even though it swallows an ordinary undefined
+		 * variable) reach it too; `isset($this)`/`empty($this)` are php's one
+		 * exemption, and they answer false/true in silence. */
+		rc = VmThrowFromVm(&(*pVm),"Error","Using $this when not in object context",
+			sizeof("Using $this when not in object context")-1);
+		if( rc == SXERR_ABORT ){
+			goto Abort;
+		}
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
 	if( pInstr->iP2 == 2 ){
 		/* Read-modify-write target (`$x++`, `$x .= 'a'`): php reads the variable
 		 * before writing, so it warns when it does not exist and THEN seeds it.

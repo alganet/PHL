@@ -2189,6 +2189,14 @@ static void VmCompactBadName(ph7_context *pCtx,int iArg,ph7_value *pValue)
 }
 static void VmCompactUndefined(ph7_context *pCtx,SyString *pVar)
 {
+	if( pVar->nByte == sizeof("this")-1
+	 && SyMemcmp(pVar->zString,"this",sizeof("this")-1) == 0 ){
+		/* php's one silent miss here: `compact('this')` outside an object context
+		 * skips the name and says nothing -- `$this` is not a variable, so it is
+		 * not an undefined one either, and compact() is the one door that neither
+		 * warns nor throws for it. */
+		return;
+	}
 	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 		"Undefined variable $%.*s",(int)pVar->nByte,pVar->zString);
 }

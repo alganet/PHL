@@ -5022,6 +5022,12 @@ PH7_PRIVATE sxi32 PH7_ExprOperandNotAVariable(ph7_gen_state *pGen,ph7_expr_node 
                               * (so a temporary base is still refused) but never runs
                               * zend_ensure_writable_variable over it, which is why
                               * `$r =& f()` is legal where `f() =& $x` is not */
+#define PH7_WTC_RMW     0x04 /* a READ-MODIFY-WRITE target -- `+=`, `.=`, `++`, `--`.
+                              * php's `$this` rule belongs to the ASSIGNMENT compiler
+                              * (zend_compile_assign / assign_ref), so `$this += 1` and
+                              * `$this++` compile and fail at RUN time on the operand
+                              * types instead. The temporary and call rules still apply:
+                              * `(new A)->p++` is refused exactly as `= 1` is. */
 PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pTarget,int iCtx);
 PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToken **ppMax);
 PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext);
