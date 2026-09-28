@@ -1521,9 +1521,16 @@ static sxi32 VmMountUserClassAttrs(
 				 * pConstEvalClass lets self::/parent:: in the initializer
 				 * resolve (VmLocalExec runs without a method frame). */
 				ph7_class *pSaveCtx = pVm->pConstEvalClass;
+				void *pSaveFrame = pVm->pConstEvalFrame;
 				int bStaticProp = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0;
 				sxi32 rcExec;
-				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+				pVm->pConstEvalClass = PH7_VmMemberInitScope(&(*pVm),pAttr->pDeclClass,pClass);
+				/* ...and the frame marker is what makes that fallback reachable when a
+				 * frame IS current: a class declared inside a METHOD mounts here, and
+				 * without the marker PH7_VmPeekDeclaringClass answers that method's
+				 * class instead (`class G { function go(){ eval('class Q { const K=5;
+				 * public static $s = self::K; }'); } }` read G::K). */
+				pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
 				pAttr->iFlags |= PH7_CLASS_ATTR_EVALING; /* cycle guard, shared with the on-demand path */
 				pAttr->iFlags &= ~PH7_CLASS_ATTR_STATIC_DEFER; /* re-armed below; matters on a VM reset */
 				pVm->nConstEvalDepth++;
@@ -1539,6 +1546,7 @@ static sxi32 VmMountUserClassAttrs(
 				pVm->nConstEvalDepth--;
 				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 				pVm->pConstEvalClass = pSaveCtx;
+				pVm->pConstEvalFrame = pSaveFrame;
 				if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
 					/* php has not reached this initializer: defer it whole to the
 					 * first USE, where the throw is raised at the access site and is
@@ -1733,12 +1741,20 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			}else if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression).
 				 * pConstEvalClass: self::CONST in a property default resolves
-				 * against the declaring class (no method frame here). */
+				 * against the declaring class. This runs at `new`, i.e. at an
+				 * arbitrary point in execution -- typically inside some OTHER
+				 * class's method, whose frame is still current because
+				 * VmLocalExec pushes none of its own. Mark that frame, or
+				 * PH7_VmPeekDeclaringClass answers the caller's class and
+				 * `public $v = self::K` read F::K when `new` ran in F::make(). */
 				ph7_class *pSaveCtx = pVm->pConstEvalClass;
+				void *pSaveFrame = pVm->pConstEvalFrame;
 				sxi32 rcExec;
-				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+				pVm->pConstEvalClass = PH7_VmMemberInitScope(&(*pVm),pAttr->pDeclClass,pClass);
+				pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
 				rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 				pVm->pConstEvalClass = pSaveCtx;
+				pVm->pConstEvalFrame = pSaveFrame;
 				if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
 					/* The initializer itself threw (undefined constant, throwing
 					 * enum case): its exception is already registered — do NOT

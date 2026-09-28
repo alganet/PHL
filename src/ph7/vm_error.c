@@ -778,16 +778,22 @@ PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			 * is what that byte-code would have produced anyway. */
 			PH7_NativeLiteralValue(&(*pVm),pCase->pNativeValue,&sBacking);
 		}else if( SySetUsed(&pCase->aByteCode) > 0 ){
-			/* pConstEvalClass: `case A = self::OFF + 1` resolves self:: */
+			/* pConstEvalClass: `case A = self::OFF + 1` resolves self::, and the
+			 * frame marker keeps it reachable when the first access happens
+			 * inside another class's method (VmLocalExec pushes no frame, so
+			 * that method's frame is still the current one). */
 			ph7_class *pSaveCtx = pVm->pConstEvalClass;
+			void *pSaveFrame = pVm->pConstEvalFrame;
 			sxi32 rcExec;
 			pVm->pConstEvalClass = pClass;
+			pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
 			pCase->iFlags |= PH7_CLASS_ATTR_EVALING;
 			pVm->nConstEvalDepth++;
 			rcExec = VmLocalExec(&(*pVm),&pCase->aByteCode,&sBacking,FALSE);
 			pVm->nConstEvalDepth--;
 			pCase->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 			pVm->pConstEvalClass = pSaveCtx;
+			pVm->pConstEvalFrame = pSaveFrame;
 			if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
 				/* The backing expression raised: abandon materialization and
 				 * hand the status to the caller to park/route. */
@@ -1024,7 +1030,7 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 		sxu32 nSlot;
 		sxi32 rcExec;
 		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING;
-		pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		pVm->pConstEvalClass = PH7_VmMemberInitScope(&(*pVm),pAttr->pDeclClass,pClass);
 		/* Mark the frame current at eval start: while it stays current, self::/
 		 * parent:: in the initializer resolve to pConstEvalClass rather than the
 		 * enclosing method's class (VmLocalExec pushes no frame of its own). */
@@ -3038,7 +3044,7 @@ static sxi32 VmEvalDeferredStaticDefaults(ph7_vm *pVm,ph7_class *pClass,int *pbL
 	nUsed = SySetUsed(&aPending);
 	for( n = 0 ; rc == SXRET_OK && n < nUsed ; ++n ){
 		ph7_class_attr *pAttr = apPending[n];
-		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		ph7_class *pOwner = PH7_VmMemberInitScope(&(*pVm),pAttr->pDeclClass,pClass);
 		ph7_class *pSaveCtx;
 		void *pSaveFrame;
 		sxu32 nSaveLazyLine;

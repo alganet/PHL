@@ -1259,6 +1259,25 @@ PH7_PRIVATE ph7_class * PH7_VmTraitUsingClass(ph7_vm *pVm,ph7_class *pTrait,ph7_
 	return pFrom;
 }
 /*
+ * What `self`/`parent` name inside a MEMBER INITIALIZER -- a property default, a static
+ * property default, a class constant, an enum case backing value. The answer is the member's
+ * declaring class, with the same trait rule the method path already states: a trait's members
+ * are composed INTO the using class, so a default written in a trait resolves against that
+ * class and not against the trait (which has no constants of its own and no base).
+ *
+ * pFrom is the class being initialized, and the walk starts there -- `trait T { public $c =
+ * self::class; } class B { use T; } class Kid extends B {}` answers B from a Kid instance,
+ * exactly as php composes it.
+ */
+PH7_PRIVATE ph7_class * PH7_VmMemberInitScope(ph7_vm *pVm,ph7_class *pDeclClass,ph7_class *pFrom)
+{
+	ph7_class *pOwner = pDeclClass ? pDeclClass : pFrom;
+	if( pOwner && (pOwner->iFlags & PH7_CLASS_TRAIT) ){
+		pOwner = PH7_VmTraitUsingClass(&(*pVm),pOwner,pFrom);
+	}
+	return pOwner;
+}
+/*
  * What `self` names where the source wrote it: the declaring class, or — for a trait method,
  * whose declaring class stays the TRAIT because the method is shared by pointer — the class
  * that used the trait. Every site that resolves `self`/`parent`/`__CLASS__` asks this, so the
