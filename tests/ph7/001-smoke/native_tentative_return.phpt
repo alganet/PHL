@@ -70,6 +70,16 @@ ntrShow('php_user_filter', 'filter');
 ntrShow('php_user_filter', 'onCreate');
 ntrShow('php_user_filter', 'onClose');
 
+/* The five the same sweep found with NO return type at all, where php's stub
+ * has one: SPL's three contracts (php types them exactly as it types the core
+ * interfaces) and the one DOMDocument maker whose neighbours were typed
+ * already. */
+ntrShow('SeekableIterator', 'seek');
+ntrShow('OuterIterator', 'getInnerIterator');
+ntrShow('RecursiveIterator', 'hasChildren');
+ntrShow('RecursiveIterator', 'getChildren');
+ntrShow('DOMDocument', 'createDocumentFragment');
+
 /* A USERLAND method has no tentative type at all — the concept is stubs-only. */
 class NtrUser { public function m(): int { return 1; } }
 ntrShow('NtrUser', 'm');
@@ -98,4 +108,9 @@ DOMImplementation::hasFeature      real=-              tentative=bool           
 php_user_filter::filter            real=-              tentative=int                    - Tentative return [ int ]
 php_user_filter::onCreate          real=-              tentative=bool                   - Tentative return [ bool ]
 php_user_filter::onClose           real=-              tentative=void                   - Tentative return [ void ]
+SeekableIterator::seek             real=-              tentative=void                   - Tentative return [ void ]
+OuterIterator::getInnerIterator    real=-              tentative=?Iterator              - Tentative return [ ?Iterator ]
+RecursiveIterator::hasChildren     real=-              tentative=bool                   - Tentative return [ bool ]
+RecursiveIterator::getChildren     real=-              tentative=?RecursiveIterator     - Tentative return [ ?RecursiveIterator ]
+DOMDocument::createDocumentFragment real=-              tentative=DOMDocumentFragment    - Tentative return [ DOMDocumentFragment ]
 NtrUser::m                         real=int            tentative=-                      - Return [ int ]

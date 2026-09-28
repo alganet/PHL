@@ -1736,8 +1736,10 @@ static int vm_builtin_ArrayObject_unset(ph7_context *pCtx,int nArg,ph7_value **a
  */
 static sxi32 VmInstallSplStore(ph7_vm *pVm)
 {
+	/* php's `@tentative-return-type void`, as on the other SPL contracts
+	 * (VmInstallSplDualIterators). */
 	static const PH7_NativeMethodDef aSeekMethod[] = {
-		{ "seek", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $offset", 0, 0 },
+		{ "seek", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $offset", "@void", 0 },
 	};
 	static const PH7_NativePropDef aItProp[] = {
 		{ SPL_D, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
@@ -4296,8 +4298,12 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 	static const PH7_NativePropDef aCbProp[] = {
 		{ IT_CB, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
+	/* php types the SPL contracts as it types the core interfaces: a TENTATIVE
+	 * return on every method, so an iterator written before php 8.1 still
+	 * satisfies them. Both of the ones declared here, and SeekableIterator's
+	 * `seek` above, had no return type at all. */
 	static const PH7_NativeMethodDef aOuterMethod[] = {
-		{ "getInnerIterator", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "getInnerIterator", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@?Iterator", 0 },
 	};
 	static const PH7_NativeMethodDef aIterIterMethod[] = {
 		{ "__construct",      PH7_MOD_PUBLIC, "Traversable $iterator, ?string $class = null", 0,
@@ -4380,8 +4386,8 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "setPregFlags", PH7_MOD_PUBLIC, "int $pregFlags", "@void", vm_builtin_RegexIterator_setPregFlags },
 	};
 	static const PH7_NativeMethodDef aRecursiveMethod[] = {
-		{ "hasChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
-		{ "getChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "hasChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@bool", 0 },
+		{ "getChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@?RecursiveIterator", 0 },
 	};
 	static const PH7_NativeConstDef aRaiConst[] = {
 		{ "CHILD_ARRAYS_ONLY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RAI_CHILD_ARRAYS_ONLY, 0, 0.0 },

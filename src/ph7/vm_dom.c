@@ -9878,7 +9878,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createPI },
 		{ "createEntityReference", PH7_MOD_PUBLIC, "string $name", "",
 		  vm_builtin_DOMDocument_createEntityRef },
-		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "",
+		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "@DOMDocumentFragment",
 		  vm_builtin_DOMDocument_createFragment },
 		{ "normalizeDocument",    PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },
 		{ "registerNodeClass",    PH7_MOD_PUBLIC, "string $baseClass, ?string $extendedClass",
