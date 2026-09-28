@@ -124,6 +124,14 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		pGen->pIn++; /* Jump the 'static' keyword */
 	}
 	pGen->pIn++; /* Jump the 'function' keyword */
+	/* `function &(…) {…}` — a closure returns by reference exactly as a named
+	 * function does, and the `&` sits in the same place. Nothing consumed it here,
+	 * so every by-ref closure was `syntax error, unexpected token "&", expecting
+	 * "("`; the arrow form already read its own. */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_AMPER) ){
+		iFlags |= VM_FUNC_REF_RETURN;
+		pGen->pIn++;
+	}
 	if( pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
 		pGen->pIn++;
 	}
@@ -707,6 +715,26 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	/* Restore cursors; caller will re-synchronize via the node's pEnd */
 	pGen->pIn = pBodyEnd;
 	pGen->pEnd = pSavedEnd;
+	/* An arrow body is one expression, and php takes a `yield` in it: calling
+	 * `fn() => yield 7` hands back a Generator, exactly as the `function` form
+	 * does. Only the closure/function path scanned for the opcode, so the arrow's
+	 * yield ran with no generator frame around it and raised `Cannot use yield
+	 * outside of a generator`. Same scan, same definition-time return-type screen. */
+	{
+		VmInstr *aInstr = (VmInstr *)SySetBasePtr(&pFunc->aByteCode);
+		sxu32 i;
+		for( i = 0 ; i < SySetUsed(&pFunc->aByteCode) ; i++ ){
+			if( aInstr[i].iOp == PH7_OP_YIELD || aInstr[i].iOp == PH7_OP_YIELD_FROM ){
+				pFunc->iFlags |= VM_FUNC_GENERATOR;
+				break;
+			}
+		}
+	}
+	if( pFunc->iFlags & VM_FUNC_GENERATOR ){
+		if( SXERR_ABORT == GenStateValidateGeneratorReturnType(&(*pGen),pFunc) ){
+			return SXERR_ABORT;
+		}
+	}
 	/* Emit the load-closure instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_CLOSURE,0,0,pFunc,0);
 	return SXRET_OK;

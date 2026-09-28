@@ -3129,6 +3129,12 @@ static int GenStateisLangConstruct(sxu32 nKeyword)
 	if( rc == FALSE ){
 		if( nKeyword == PH7_TKWRD_SELF || nKeyword == PH7_TKWRD_PARENT || nKeyword == PH7_TKWRD_STATIC
 			|| nKeyword == PH7_TKWRD_YIELD
+			/* `match` is an EXPRESSION, and php takes an expression statement made of
+			 * one: `match (true) { ... };` is how a dispatch table is written when the
+			 * answer is not wanted. Without this the statement dispatcher refused the
+			 * keyword outright, and Doctrine's DQL parser -- which dispatches its tree
+			 * walkers exactly that way -- did not compile. */
+			|| nKeyword == PH7_TKWRD_MATCH
 			/*|| nKeyword == PH7_TKWRD_CLASS || nKeyword == PH7_TKWRD_FINAL || nKeyword == PH7_TKWRD_EXTENDS
 			  || nKeyword == PH7_TKWRD_ABSTRACT || nKeyword == PH7_TKWRD_INTERFACE
 			  || nKeyword == PH7_TKWRD_PUBLIC || nKeyword == PH7_TKWRD_PROTECTED
@@ -4133,6 +4139,21 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 		SySetAlloc(&aRawToken,32);
 		PH7_TokenizeRawText(pScript->zString,pScript->nByte,&aRawToken,nBaseLine);
 	}
+	/* Where the end of INPUT sits. php reports `unexpected end of file` at the line
+	 * the file ENDS on, which is past the last token whenever anything follows it --
+	 * a trailing newline always does -- and the chunk a statement was cut off in
+	 * does not carry that: the raw splitter hands it the source up to its last byte
+	 * of code, newline excluded. Counted here, where the whole script is still in
+	 * hand, and read back by PH7_GenSyntaxError's end-of-file branch. */
+	{
+		sxu32 i;
+		pCodeGen->nChunkEofLine = nBaseLine;
+		for( i = 0 ; i < pScript->nByte ; ++i ){
+			if( pScript->zString[i] == '\n' ){
+				pCodeGen->nChunkEofLine++;
+			}
+		}
+	}
 	/* Process high-level tokens */
 	pCodeGen->pRawIn = (SyToken *)SySetBasePtr(&aRawToken);
 	pCodeGen->pRawEnd = &pCodeGen->pRawIn[SySetUsed(&aRawToken)];
@@ -4476,6 +4497,10 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 		}
 	}
 	nLine = pTok ? pTok->nLine : (pGen->pIn > (SyToken *)SySetBasePtr(pGen->pTokenSet) ? pGen->pIn[-1].nLine : 1);
+	if( pTok == 0 && pGen->bChunkAtEof && pGen->nChunkEofLine > nLine ){
+		/* End of INPUT is reported where it sits, not where the last token ended. */
+		nLine = pGen->nChunkEofLine;
+	}
 	if( pTok == 0 ){
 		return PH7_GenCompileError(pGen,E_PARSE,nLine,
 			zExpecting ? "syntax error, unexpected end of file, expecting %s"

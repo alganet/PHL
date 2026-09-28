@@ -218,7 +218,6 @@ static void VmDiscardFinallyActions(ph7_vm *pVm, sxu32 nBase)
  */
 static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee,sxi32 rc)
 {
-	ph7_value *pObj;
 	/* Decrement nesting level */
 	pVm->nRecursionDepth--;
 	if( pCallee->bSelfPushed ){
@@ -226,31 +225,30 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 		(void)SySetPop(&pVm->aSelf);
 	}
 	if( (pCallee->pVmFunc->iFlags & VM_FUNC_REF_RETURN) && rc == SXRET_OK ){
-		/* Return by reference,reflect that */
+		/* Return by reference: the caller binds to the very slot the `return`
+		 * named. php keeps that slot alive because the reference holds it, and
+		 * the slot may well be one the frame about to be torn down owns -- a
+		 * local, a parameter, or an element of a local array. PIN it here, the
+		 * way a by-reference closure capture is pinned (VmPinMemObjSlot's own
+		 * comment records the same trade: php frees by refcount, PHL by a
+		 * script-lifetime pin). Before this the engine DROPPED the reference for
+		 * a local (behind two notices php does not have) and left the caller
+		 * aimed at an element the frame had already released, so
+		 * `function &f($x){ $a = [$x]; return $a[0]; }` handed back NULL.
+		 * A return with nothing to bind is reported at the RETURN instead, in
+		 * php's own words -- see the terminal OP_DONE.
+		 * The pin is what a refcount would be: it never comes back, so a by-ref
+		 * return naming a fresh frame slot retains it for the run (~0.6 KB a call;
+		 * PLAN.md 7.1 measures it). A slot that already outlives the frame -- a
+		 * static, a global, a property -- is pinned harmlessly: the flag only stops
+		 * its INDEX being recycled, and `unset($GLOBALS['G'])` still answers php's. */
 		if( pCallee->nLastRef != SXU32_HIGH ){
-			VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pCallee->pFrame->sLocal);
-			sxu32 i;
-			/* Make sure the referenced object is not a local variable */
-			for( i = 0 ; i < SySetUsed(&pCallee->pFrame->sLocal) ; ++i ){
-				if( pCallee->nLastRef == aSlot[i].nIdx ){
-					pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pCallee->nLastRef);
-					if( pObj && (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES)) == 0 ){
-						VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
-							"Function '%z',return by reference: Cannot reference local variable,PH7 is switching to return by value",
-							&pCallee->pVmFunc->sName);
-					}
-					pCallee->nLastRef = SXU32_HIGH;
-					break;
-				}
-			}
-		}else{
-			if( (pCaller->pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_NULL|MEMOBJ_RES)) == 0 ){
-				VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
-					"Function '%z',return by reference: Cannot reference constant expression,PH7 is switching to return by value",
-					&pCallee->pVmFunc->sName);
-			}
+			VmPinMemObjSlot(&(*pVm),pCallee->nLastRef);
 		}
 		pCaller->pTos->nIdx = pCallee->nLastRef;
+		/* The callee PROMISED a reference, whether or not it had one to give:
+		 * php says nothing further at the call site either way. */
+		pCaller->pTos->iFlags |= MEMOBJ_AUX_REFRET;
 	}else{
 		/* A by-VALUE return is a TEMPORARY — php's IS_TMP_VAR — and must not look like
 		 * an lvalue. The result lands in the slot the call's first ARGUMENT occupied,
@@ -2143,6 +2141,28 @@ case PH7_OP_DONE:
 			goto Exception;
 		}
 		goto Done;
+	}
+	/* php's `Only variable references should be returned by reference`, raised at
+	 * the RETURN and nowhere else: a function DECLARED `&` whose return expression
+	 * is not a variable has nothing to bind, and php says so whether the caller
+	 * went on to take the answer by reference or by value. Falling off the end and
+	 * a bare `return;` count too -- both leave it with no variable. The
+	 * VM_FRAME_THROW guard is the one the return-type check below uses: a function
+	 * unwinding through this terminal OP_DONE never returned anything. */
+	if( sState.pEnforceRetFunc
+	 && (sState.pEnforceRetFunc->iFlags & VM_FUNC_REF_RETURN)
+	 && (sState.pEnforceRetFunc->iFlags & VM_FUNC_GENERATOR) == 0
+	 && !(VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW)
+	 && ( !(pInstr->iP1 && pTos >= pStack) || pTos->nIdx == SXU32_HIGH ) ){
+		/* A `return` reports on its own line; falling off the END of the body has no
+		 * return to report on, and php names the closing brace there. */
+		sxu32 nSavedLine = pVm->nCurLine;
+		if( !(pInstr->iP1 && pTos >= pStack) && sState.pEnforceRetFunc->nEndLine > 0 ){
+			pVm->nCurLine = sState.pEnforceRetFunc->nEndLine;
+		}
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
+			"Only variable references should be returned by reference");
+		pVm->nCurLine = nSavedLine;
 	}
 	/* Return-type enforcement: only the user-function CALL handler (and
 	 * the fiber start/resume paths) set sState.pEnforceRetFunc, so this branch is
@@ -7864,7 +7884,11 @@ SkipFuncBody:
 			sState.pEntryFrame = pVm->pFrame;
 			sState.pResult = pRec->sCaller.pTos;
 			sState.pLastRef = &pRec->sCall.nLastRef;
-			sState.pEnforceRetFunc = VmFuncHasReturnType(pVmFunc) ? pVmFunc : 0;
+			/* Carries the callee for BOTH terminal-OP_DONE screens: the declared
+			 * return type (which re-tests VmFuncHasReturnType) and the by-reference
+			 * return above. */
+			sState.pEnforceRetFunc = ( VmFuncHasReturnType(pVmFunc)
+				|| (pVmFunc->iFlags & VM_FUNC_REF_RETURN) ) ? pVmFunc : 0;
 			sState.is_callback = 0;
 			sState.bReturnPropagates = 0;
 			goto VmLoopFetch;

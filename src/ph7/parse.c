@@ -637,6 +637,13 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 		&& SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_FUNCTION ){
 		pIn++;
 	}
+	/* `function &(…) {…}` returns by reference, exactly as the named form does, and
+	 * the `&` sits in the same place. The node assembler is what has to step over
+	 * it (PH7_CompileAnnonFunc reads it again for the flag); leaving it here made
+	 * every by-ref closure `syntax error, unexpected token "&", expecting "("`. */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_AMPER) ){
+		pIn++;
+	}
 	if( pIn >= pEnd || (pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
 		rc = PH7_GenSyntaxError(&(*pGen),pIn < pEnd ? pIn : 0,"\"(\"");
@@ -1037,12 +1044,33 @@ static void ExprDelimitKeywordOperand(SyToken *pIn,SyToken *pEnd,SyToken **ppEnd
 {
 	SyToken *pCur = pIn;
 	sxi32 iNest = 1;
+	sxi32 iQuesty = 0;   /* `?`s opened inside the operand and still unclosed */
 	for(;;){
 		if( pCur >= pEnd ){
 			break;
 		}
 		if( (pCur->nType & PH7_TK_COMMA) && iNest <= 1 ){
 			break;
+		}
+		/* Every construct that shares this delimiter -- `include`/`require` and
+		 * their `_once` forms, `print`, `echo`, `throw`, `yield` -- sits BELOW the
+		 * ternary in php's precedence table, so a `:` that closes a `?` opened
+		 * OUTSIDE the operand ends it: `c ? include $f : null` includes $f and the
+		 * `: null` is the ternary's. A `?` opened INSIDE takes its own `:` with it,
+		 * which is the other half of the same rule -- `include $f ? "y" : "n"`
+		 * includes the whole conditional's answer, and `include $f ?: 1` the elvis
+		 * one. Swallowing the `:` regardless left `? <operand>` with no colon, and
+		 * every `cond ? require $file : null` bootstrap failed to parse. `??` and
+		 * `?->` are their own tokens, so the one-byte test cannot see them, and a
+		 * named argument's `:` sits inside parentheses at iNest >= 2. */
+		if( iNest <= 1 && (pCur->nType & PH7_TK_OP)
+		 && pCur->sData.nByte == 1 && pCur->sData.zString[0] == '?' ){
+			iQuesty++;
+		}else if( iNest <= 1 && (pCur->nType & PH7_TK_COLON) ){
+			if( iQuesty < 1 ){
+				break;
+			}
+			iQuesty--;
 		}
 		if( pCur->nType & (PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB) ){
 			iNest++;
@@ -2743,6 +2771,35 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					 while( pParent->pRight && pParent->pRight->pOp && pParent->pRight->pRight
 						 && PH7_ExprIsModifiableValue(pParent->pRight) == FALSE ){
 						 pParent = pParent->pRight;
+					 }
+					 /* The spine may end on a PREFIX unary rather than on the lvalue
+					  * itself -- `c && !$d = f()`, which php reads as
+					  * `c && !($d = f())` exactly as it reads the unparenthesised
+					  * `!$d = f()`. Walk that chain down the same way the top-level
+					  * hoist above does and let the assignment bind at its innermost
+					  * operand, leaving the unary wrapped around the assignment. The
+					  * spine walk stopped at the unary (a unary node has no pRight),
+					  * so the whole shape was `syntax error, unexpected token "="`. */
+					 if( pParent->pRight && PH7_ExprIsModifiableValue(pParent->pRight) == FALSE ){
+						 ph7_expr_node *pUn = pParent->pRight;
+						 ph7_expr_node *pInnerUn = 0;
+						 while( pUn->pOp && pUn->pLeft
+							 && (pUn->iFlags & EXPR_NODE_PARENS) == 0
+							 && (pUn->pOp->iPrec == 4 /* -, +, !, ~, @, (cast) */
+							  || pUn->pOp->iOp == EXPR_OP_CLONE) ){
+							 pInnerUn = pUn;
+							 pUn = pUn->pLeft;
+						 }
+						 if( pInnerUn && PH7_ExprIsModifiableValue(pUn)
+							 && PH7_ExprContainsNullsafe(pUn) == 0 ){
+							 pNode->pLeft = apNode[iRight]; /* assignment RHS value */
+							 pNode->pRight = pUn;           /* the extracted lvalue */
+							 pInnerUn->pLeft = pNode;       /* the unary chain now covers it */
+							 apNode[iCur] = pHost;
+							 apNode[iLeft] = apNode[iRight] = 0;
+							 iRight = iCur;
+							 continue;
+						 }
 					 }
 					 if( pParent->pRight && PH7_ExprIsModifiableValue(pParent->pRight)
 						 && PH7_ExprContainsNullsafe(pParent->pRight) == 0 ){

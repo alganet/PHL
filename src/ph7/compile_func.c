@@ -457,6 +457,51 @@ static SyToken * GenStateSkipNestedFunc(SyToken *pIn, SyToken *pEnd)
 	return pIn;
 }
 /*
+ * ROOT C helper: from an `fn` keyword token, skip the whole arrow function -- its
+ * signature, its optional return type and the single expression that is its body.
+ * The body ends where the expression parser would end it: a `,` or `;` at nesting
+ * depth zero, or a closer that would unbalance the group the arrow sits in.
+ */
+static SyToken * GenStateSkipArrowBody(SyToken *pIn, SyToken *pEnd)
+{
+	sxi32 iNest = 0;
+	pIn++; /* past 'fn' */
+	/* The signature: skip the balanced `( … )`. Only an optional `&` can stand
+	 * between `fn` and the `(`, so anything that ends a statement or a block first
+	 * means this was never an arrow function -- stop rather than run off into the
+	 * enclosing body, where a real `yield` would then go unseen. */
+	while( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) == 0 ){
+		if( pIn->nType & (PH7_TK_SEMI|PH7_TK_OCB|PH7_TK_CCB) ){ return pIn; }
+		pIn++;
+	}
+	while( pIn < pEnd ){
+		sxu32 t = pIn->nType;
+		if( t & PH7_TK_LPAREN ){ iNest++; }
+		else if( t & PH7_TK_RPAREN ){ iNest--; if( iNest <= 0 ){ pIn++; break; } }
+		pIn++;
+	}
+	/* The `=>` that opens the body (a return type may sit before it). */
+	while( pIn < pEnd && (pIn->nType & PH7_TK_ARRAY_OP) == 0 ){
+		if( pIn->nType & (PH7_TK_SEMI|PH7_TK_CCB) ){ return pIn; }
+		pIn++;
+	}
+	if( pIn < pEnd ){ pIn++; } /* past '=>' */
+	/* The body expression. */
+	iNest = 0;
+	while( pIn < pEnd ){
+		sxu32 t = pIn->nType;
+		if( t & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){ iNest++; }
+		else if( t & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			if( iNest <= 0 ){ break; }
+			iNest--;
+		}else if( (t & (PH7_TK_COMMA|PH7_TK_SEMI)) && iNest <= 0 ){
+			break;
+		}
+		pIn++;
+	}
+	return pIn;
+}
+/*
  * ROOT C helper: does the function body about to be compiled (pGen->pIn at its opening
  * '{') contain a `yield`/`yield from` at THIS function's own level (i.e. is it a
  * generator)? Nested function/closure bodies are skipped so their yields don't count.
@@ -534,7 +579,7 @@ static int GenStateGenRetAtomOk(ph7_gen_state *pGen,sxu32 nType,const SyString *
  * used to leak into the BODY's completion OP_DONE via the ctx resume paths
  * and threw a spurious runtime TypeError instead (see VmStartCtx/VmResumeCtx).
  */
-static sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc)
+PH7_PRIVATE sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc)
 {
 	int bOk = 0;
 	sxu32 nLine;
@@ -605,7 +650,11 @@ static int GenStateFuncBodyHasYield(ph7_gen_state *pGen)
 			int kw = SX_PTR_TO_INT(pIn->pUserData);
 			if( kw == PH7_TKWRD_YIELD ){ return TRUE; }
 			if( kw == PH7_TKWRD_FUNCTION ){ pIn = GenStateSkipNestedFunc(pIn,pEnd); continue; }
-			/* `fn` arrow bodies are single expressions and cannot contain a valid yield. */
+			/* An arrow body is a single EXPRESSION, but php takes a `yield` in one --
+			 * `fn() => yield 7` is a generator, whose yield belongs to the ARROW. Skip
+			 * it, or the enclosing function would be classified a generator by a yield
+			 * that is not its own. */
+			if( kw == PH7_TKWRD_FN ){ pIn = GenStateSkipArrowBody(pIn,pEnd); continue; }
 		}
 		pIn++;
 	}

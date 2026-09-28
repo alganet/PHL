@@ -209,7 +209,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			 * (`f()[0]`) is silent. */
 			ph7_value *pObj;
 			if( (pInstr->iP1 & PH7_STOREREF_CALLSRC)
-			 && (pTos->iFlags & MEMOBJ_AUX_NATIVEPROP) == 0 ){
+			 && (pTos->iFlags & (MEMOBJ_AUX_NATIVEPROP|MEMOBJ_AUX_REFRET)) == 0 ){
 				PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
 					"Only variables should be assigned by reference");
 			}

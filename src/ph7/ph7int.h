@@ -276,8 +276,16 @@ struct VmDeferredPath {
  *  Scalar variables are those containing an integer, float, string or boolean.
  *  Types array, object and resource are not scalar.
  */
+#define MEMOBJ_AUX_REFRET 0x800000 /* Stack-only marker: this value is the result of a call to a
+                                    * function DECLARED to return by reference. php raises
+                                    * `Only variable references should be returned by reference`
+                                    * at the RETURN when such a function has no variable to
+                                    * bind, and says nothing more at the call site -- so the
+                                    * `Only variables should be assigned by reference` notice,
+                                    * which is about a callee that never promised a reference,
+                                    * stands down for a value carrying this. */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN|MEMOBJ_AUX_NATIVEPROP)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN|MEMOBJ_AUX_NATIVEPROP|MEMOBJ_AUX_REFRET)
 /* Closure-instance flags (ph7_class_instance.iFlags), shared by vm_exec.c's OP_LOAD_FCC
  * and vm_exec_ctx.c's closure machinery. Distinct from CLASS_INSTANCE_DESTROYED 0x001
  * (oo.c) and VM_INSTANCE_DUMPING 0x002 (vm_builtin_var.c), which share the same word. */
@@ -861,6 +869,9 @@ struct ph7_gen_state
 	                          * FILE rather than being closed by a `?>`. php reads the closing
 	                          * tag as a statement terminator, so only this chunk can leave one
 	                          * unfinished -- and that is a parse error there. */
+	sxu32 nChunkEofLine;     /* Line the chunk's end-of-input sits on -- its last line, which is
+	                          * NOT the last TOKEN's line when trailing blank lines follow. php
+	                          * reports `unexpected end of file` at the former. */
 	sxi8 bListSrcNotRef;     /* 1 while compiling the TARGET list of an assignment whose SOURCE
 	                          * cannot hold a reference (`[&$r] = [7];`). php checks this at
 	                          * compile time, where it still knows what the right-hand side was
