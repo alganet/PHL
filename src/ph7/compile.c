@@ -1228,6 +1228,67 @@ struct GenCallArgs {
 static sxi32 GenStateEmitCallArgs(ph7_gen_state *pGen,ph7_expr_node *pNode,sxi32 iFlags,
 	GenCallArgs *pArgs);
 /*
+ * TRUE when the `instanceof` SUBJECT that just compiled into the instruction
+ * stream starting at nFirst is what zend calls IS_CONST -- the shape whose
+ * whole expression its compiler folds to FALSE, without ever compiling the
+ * class operand.
+ *
+ * php decides this from its own constant FOLDER: `zend_compile_expr` on the
+ * subject comes back IS_CONST for a literal, for `null`/`true`/`false`, for an
+ * engine constant, for an array literal, and for arithmetic or concatenation
+ * over any of those -- and `5 instanceof $x` is then false whatever $x holds,
+ * while `$v instanceof $x` with the same 5 in $v reaches the runtime opcode and
+ * is refused when $x is neither an object nor a string. The two spellings really
+ * do answer differently, so OP_IS_A's screen has to be told which one it is.
+ *
+ * PHL has no constant folder, so the question is asked of the INSTRUCTIONS the
+ * subject compiled to: a run built only from LITERAL loads and pure value
+ * operators is a constant expression, and anything that reads a variable, names
+ * a constant, calls something or touches an object is not. php's own folder
+ * reaches two shapes further -- an ENGINE constant (`PHP_EOL`) and a builtin
+ * call it ct-evaluates (`strlen("a")`) -- where php answers false and this
+ * refuses; PLAN.md §7.2 records the pair under the constant-folding family.
+ */
+static int GenStateInstanceofFoldsLhs(ph7_gen_state *pGen,sxu32 nFirst)
+{
+	sxu32 n;
+	sxu32 nLen = PH7_VmInstrLength(pGen->pVm);
+	for( n = nFirst ; n < nLen ; ++n ){
+		VmInstr *pIn = PH7_VmGetInstr(pGen->pVm,n);
+		if( pIn == 0 ){
+			return 0;
+		}
+		switch( pIn->iOp ){
+		case PH7_OP_LOADC:
+			/* A LOADC that still carries EXPAND is a NAME the runtime resolves --
+			 * a constant -- and that is exactly what php does NOT fold: its
+			 * compiler substitutes only the engine's own persistent constants, so
+			 * a userland `const OBJ = new C();` reaches the runtime opcode and
+			 * `OBJ instanceof C` is a real question. Folding it answered FALSE for
+			 * every constant that holds an object. */
+			if( pIn->iP1 & PH7_LOADC_EXPAND ){
+				return 0;
+			}
+			break;
+		case PH7_OP_LOAD_MAP:
+		case PH7_OP_CAT:
+		case PH7_OP_CVT_INT: case PH7_OP_CVT_STR: case PH7_OP_CVT_REAL:
+		case PH7_OP_CVT_BOOL: case PH7_OP_CVT_NUMC: case PH7_OP_CVT_NULL:
+		case PH7_OP_UMINUS: case PH7_OP_UPLUS: case PH7_OP_BITNOT: case PH7_OP_LNOT:
+		case PH7_OP_MUL: case PH7_OP_DIV: case PH7_OP_MOD: case PH7_OP_POW:
+		case PH7_OP_ADD: case PH7_OP_SUB: case PH7_OP_SHL: case PH7_OP_SHR:
+		case PH7_OP_LT: case PH7_OP_LE: case PH7_OP_GT: case PH7_OP_GE:
+		case PH7_OP_SPACESHIP: case PH7_OP_EQ: case PH7_OP_NEQ:
+		case PH7_OP_TEQ: case PH7_OP_TNE:
+		case PH7_OP_BAND: case PH7_OP_BXOR: case PH7_OP_BOR:
+			break;
+		default:
+			return 0;
+		}
+	}
+	return nLen > nFirst;
+}
+/*
  * Generate bytecode for a given expression tree.
  * If something goes wrong while generating bytecode
  * for the expression tree (A very unlikely scenario)
@@ -1250,6 +1311,7 @@ static sxi32 GenStateEmitExprCode(
 	int bIsChainOp = 0; /* Set below once we know pNode->pOp */
 	int bFcc = 0;       /* First-class callable `f(...)`: emit OP_LOAD_FCC, not OP_CALL */
 	sxu32 nRhsNsBase = 0;
+	sxu32 nLhsFirst = 0; /* instruction index the LEFT operand starts at */
 	/* Consumed here so it describes THIS node only — the direct operand of a `new` —
 	 * and never travels down into the operand's own sub-expressions. */
 	int bNewCallee = (iFlags & EXPR_FLAG_NEW_CALLEE) != 0;
@@ -1453,6 +1515,7 @@ static sxi32 GenStateEmitExprCode(
 		return SXRET_OK;
 	}
 	bIsChainOp = GEN_IS_CHAIN_OP(pNode->pOp->iOp);
+	nLhsFirst = PH7_VmInstrLength(pGen->pVm);
 	/* Generate code for the left tree */
 	if( pNode->pLeft ){
 		sxu32 nLhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
@@ -1919,6 +1982,33 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 		}
+	}
+	if( iVmOp == PH7_OP_IS_A && nLhsFirst < PH7_VmInstrLength(pGen->pVm)
+	 && GenStateInstanceofFoldsLhs(&(*pGen),nLhsFirst) ){
+		/* php never even compiles the class operand when the SUBJECT of `instanceof`
+		 * is a compile-time constant: zend_compile_instanceof folds the whole
+		 * expression to FALSE the moment its left operand comes back IS_CONST, so
+		 * `5 instanceof $x` is false whatever $x holds -- while `$v instanceof $x`
+		 * with the same 5 in $v reaches the runtime opcode and is refused when $x is
+		 * neither an object nor a string. The two spellings really do answer
+		 * differently, so the screen added to OP_IS_A has to be told which one this
+		 * is, and GenStateInstanceofFoldsLhs reads it off the subject's own
+		 * instructions. */
+		ph7_value *pFalse;
+		sxu32 nFalseIdx;
+		/* The subject's own instructions go with it: php frees the folded operand
+		 * (zend_do_free) rather than leaving it to be computed and dropped. */
+		while( PH7_VmInstrLength(pGen->pVm) > nLhsFirst ){
+			(void)PH7_VmPopInstr(pGen->pVm);
+		}
+		pFalse = PH7_ReserveConstObj(pGen->pVm,&nFalseIdx);
+		if( pFalse == 0 ){
+			PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
+		PH7_MemObjInitFromBool(pGen->pVm,pFalse,0);
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,(sxi32)nFalseIdx,0,0);
+		return SXRET_OK;
 	}
 	/* Generate code for the right tree */
 	if( pNode->pRight ){

@@ -145,6 +145,17 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			const char *zKind = (pNotNew->iFlags & PH7_CLASS_INTERFACE) ? "interface"
 				: (pNotNew->iFlags & PH7_CLASS_TRAIT) ? "trait" : "abstract class";
 			SyBlobFormat(&sErrM,"Cannot instantiate %s %z",zKind,&pNotNew->sName);
+		}else if( (pTos->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
+			/* php refuses the OPERAND before it ever has a name to look up: a `new`
+			 * takes an object or a string and nothing else, and every other value --
+			 * int, float, bool, null, array, resource -- is
+			 * `Class name must be a valid object or a string`. PHL string-cast the
+			 * slot's raw blob instead, so all six answered `Class "" not found`, a
+			 * sentence that names a class the program never wrote. (An EMPTY string
+			 * really is `Class "" not found` in php, so the test is the TYPE.) The
+			 * `::` twin of this refusal is already at the bottom of VmExecOpMember. */
+			SyBlobAppend(&sErrM,"Class name must be a valid object or a string",
+				sizeof("Class name must be a valid object or a string")-1);
 		}else{
 			SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
 				SyBlobLength(&pTos->sBlob),(const char *)SyBlobData(&pTos->sBlob));
@@ -599,6 +610,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 	ph7_class_instance *pThis;
 	ph7_value *pNos;
 	SyString sName;
+	int bStaticHidden = 0; /* a `::$name` already refused for VISIBILITY */
 	if( !pInstr->iP1 ){
 		pNos = &pTos[-1];
 #ifdef UNTRUST
@@ -606,6 +618,59 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 			VM_EXIT_ABORT;
 		}
 #endif
+		/* What a dynamic NAME may BE, decided before the receiver is looked at --
+		 * php settles this in the opcode handler's first lines, and the two name
+		 * positions settle it differently.
+		 *
+		 * A METHOD name must ALREADY be a string: zend's INIT_METHOD_CALL refuses
+		 * anything else outright with `Method name must be a string`, before the
+		 * receiver's type, before __call, and before the name would be looked up.
+		 * A PROPERTY name is COERCED instead, with the user-visible rules -- an
+		 * array warns `Array to string conversion` and renders "Array", a float,
+		 * bool or null spells itself out, an object hands over its __toString()
+		 * and one without it is php's catchable `Object of class X could not be
+		 * converted to string`.
+		 *
+		 * PHL read the name slot's RAW BLOB, which is empty for every value that
+		 * is not already a string, so `$o->{5}`, `$o->{1.5}`, `$o->{true}` and
+		 * `$o->{$stringable}` all named the property "" -- one shared property per
+		 * object, silently, on every access shape (read, write, isset, unset,
+		 * increment, by-ref) -- and `$o->{[1]}` on an object with no such property
+		 * SEGFAULTED, because an empty blob hands out a NULL pointer that the
+		 * dynamic-property path dereferences.
+		 *
+		 * php's own exception is the one shape that answers before it ever asks
+		 * for the name: a lookup (isset/empty/`??`) or an unset() whose receiver
+		 * is not an object short-circuits, so no coercion and no diagnostic. A
+		 * `?->` on null never reaches here at all -- OP_NULLSAFE_JMP has already
+		 * jumped past both the name expression and this op.
+		 */
+		if( pInstr->iP2 == PH7_MEMBER_METHOD ){
+			if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
+				sxi32 rcMn;
+				VmPopOperand(&pTos,1);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				rcMn = VmThrowFromVm(&(*pVm),"Error","Method name must be a string",
+					sizeof("Method name must be a string")-1);
+				if( rcMn == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcMn;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+		}else if( (pNos->iFlags & MEMOBJ_OBJ)
+		       || (pInstr->iP2 != PH7_MEMBER_UNSET && !VmMemberCtxIsLookup(pInstr->iP2)) ){
+			sxi32 rcNm = PH7_MemObjToStringUV(pTos);
+			if( rcNm != SXRET_OK ){
+				VmPopOperand(&pTos,1);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				if( rcNm == PH7_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcNm;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+		}
 		if( pInstr->iP2 == PH7_MEMBER_DEFPATH
 		 && (pNos->iFlags & (MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_DEFERRED)) ){
 			/* D1 commit 2: deferred property arg ($o->p) whose base is itself a deferred lvalue
@@ -2370,6 +2435,51 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				rc = rcErr;
 				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}else{
+				/* The static twin of the name rule at the top of this handler, and it
+				 * runs HERE rather than up there because php resolves the CLASS first:
+				 * `NoSuchClass::${$arr}` is the class refusal alone, with no coercion
+				 * and no `Array to string conversion` behind it, while the same name on
+				 * a class that exists warns and then reports `Access to undeclared
+				 * static property C::$Array`. A `::` METHOD name is refused the same way
+				 * an instance one is -- once the class is known. */
+				if( !pInstr->p3 ){
+					if( pInstr->iP2 == PH7_MEMBER_METHOD ){
+						if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
+							sxi32 rcMn;
+							VmPopOperand(&pTos,1);
+							PH7_MemObjRelease(pTos);
+							MemObjSetType(pTos,MEMOBJ_NULL);
+							pTos->nIdx = SXU32_HIGH;
+							if( pThis ){
+								PH7_ClassInstanceUnref(pThis);
+								pThis = 0;
+							}
+							rcMn = VmThrowFromVm(&(*pVm),"Error","Method name must be a string",
+								sizeof("Method name must be a string")-1);
+							if( rcMn == SXERR_ABORT ){ VM_EXIT_ABORT; }
+							rc = rcMn;
+							PH7_THROW_ROUTE_MIDEXPR(rc)
+						}
+					}else{
+						sxi32 rcNm = PH7_MemObjToStringUV(pTos);
+						if( rcNm != SXRET_OK ){
+							VmPopOperand(&pTos,1);
+							PH7_MemObjRelease(pTos);
+							MemObjSetType(pTos,MEMOBJ_NULL);
+							pTos->nIdx = SXU32_HIGH;
+							if( pThis ){
+								PH7_ClassInstanceUnref(pThis);
+								pThis = 0;
+							}
+							if( rcNm == PH7_ABORT ){ VM_EXIT_ABORT; }
+							rc = rcNm;
+							PH7_THROW_ROUTE_MIDEXPR(rc)
+						}
+					}
+					/* The coercion rewrote the slot the name was read from. */
+					SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),
+						SyBlobLength(&pTos->sBlob));
+				}
 				if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 					/* Method call */
 					ph7_class_method *pMeth = 0;
@@ -2645,12 +2755,51 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						 * (p3==0, iP1==1) is a CONSTANT or enum case (hConst). This
 						 * is what lets `const C` and `public $C` coexist and resolve
 						 * to the right member. */
+						/* php gives a class CONSTANT no silent-lookup mode at all: there is
+						 * no BP_VAR_IS fetch for one, so `empty(C::K)` and `C::K ?? $d` raise
+						 * the same Error a plain read does -- undefined OR inaccessible --
+						 * where the same two shapes over a static PROPERTY answer quietly.
+						 * PHL silenced both, so a typo'd or private class constant read
+						 * through `??` handed back the default. (isset() over one is a php
+						 * COMPILE error, so it never reaches this.) */
+						int bConstForm = (pInstr->p3 == 0 && pInstr->iP1 != 2);
 						if( sName.nByte > 0 ){
-							pAttr = (pInstr->p3 || pInstr->iP1 == 2)
-								? PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte)
-								: PH7_ClassExtractConstant(pClass,sName.zString,sName.nByte);
+							pAttr = bConstForm
+								? PH7_ClassExtractConstant(pClass,sName.zString,sName.nByte)
+								: PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
 						}
-						if( pAttr == 0 ){
+						if( pAttr && !bConstForm
+						 && (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT))
+						     != PH7_CLASS_ATTR_STATIC ){
+							/* php's `::$name` reads the class's PROPERTY table -- which holds
+							 * the INSTANCE properties and the constants too -- and answers in
+							 * a fixed order: visibility first, then static-ness. So a private
+							 * instance property is `Cannot access private property H::$pi`,
+							 * a public one and a CONSTANT named with the `$` form are
+							 * `Access to undeclared static property H::$inst`, and neither
+							 * ever yields a value: the static table simply has no such row.
+							 * PHL matched only the constant case; an instance property
+							 * reached through `::` printed PH7's own uncatchable "Access to a
+							 * non-static class attribute ... PH7 is loading NULL" and CARRIED
+							 * ON -- reading null, and letting `H::$inst = 'w'` report success
+							 * for a write php refuses. Fold it into the not-found arm below,
+							 * raising the visibility refusal first when that is what php
+							 * answers. */
+							if( !VmMemberCtxIsLookup(pInstr->iP2)
+							 && !PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,
+									pAttr->iProtection,FALSE) ){
+								SyBlob sErrVis;
+								SyBlobInit(&sErrVis,&pVm->sAllocator);
+								SyBlobFormat(&sErrVis,"Cannot access %s property %z::$%z",
+									pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected",
+									&pClass->sName,&pAttr->sName);
+								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
+									sizeof("Error")-1,&sErrVis));
+								bStaticHidden = 1;
+							}
+							pAttr = 0;
+						}
+						if( pAttr == 0 && !bStaticHidden ){
 							/* No such member. php raises a catchable Error whose wording
 							 * depends on the ACCESS form (the same p3/iP1 signal used above):
 							 * a bareword `C::MISSING` (constant form) is "Undefined constant
@@ -2660,10 +2809,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * stays silently false. Parked on the boundary rail; the op
 							 * completes benignly with NULL and the fetch-point router lands
 							 * the throw. */
-							if( !VmMemberCtxIsLookup(pInstr->iP2) ){
+							if( bConstForm || !VmMemberCtxIsLookup(pInstr->iP2) ){
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
-								if( pInstr->p3 == 0 && pInstr->iP1 != 2 ){
+								if( bConstForm ){
 									SyBlobFormat(&sErrMsg,"Undefined constant %z::%z",
 										&pClass->sName,&sName);
 								}else{
@@ -2727,12 +2876,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							VM_EXIT_BREAK;
 						}
 						if( pAttr ){
-							if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
-								/* Access to a non static attribute */
-								VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Access to a non-static class attribute '%z::%z',PH7 is loading NULL",
-									&pClass->sName,&pAttr->sName
-									);
-							}else{
+							{
 								ph7_value *pValue;
 								/* php materializes the class's static table at the FIRST
 								 * static-property access (any property, any context — read,
@@ -2849,21 +2993,31 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 											pTos->nIdx = pAttr->nIdx;
 										}
 									}
-								}else{
-									/* Throw Error exception (PHP-compatible) */
-									char zMsg[256];
-									const char *zVis = pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+								}else if( bConstForm || !VmMemberCtxIsLookup(pInstr->iP2) ){
+									/* Denied by visibility. php's Error is CATCHABLE here
+									 * exactly as it is for an instance property, and PHL
+									 * reported it uncaught and ABORTED the script -- so a
+									 * `try { C::$protectedStatic; } catch` never ran its
+									 * catch, and everything after the try was dropped with
+									 * exit status 0. Parked on the boundary rail like the
+									 * instance twin; the op completes with the NULL already
+									 * in the slot and the fetch-point router lands the throw.
+									 * A lookup (isset/empty/`??`) stays silent and false, as
+									 * php's is. The name is built with the ATTRIBUTE's own
+									 * spelling, which is the declaration's. */
+									SyBlob sErrVis;
+									const char *zVis = pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+										? "private" : "protected";
+									SyBlobInit(&sErrVis,&pVm->sAllocator);
 									if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
-										SyBufferFormat(zMsg,sizeof(zMsg),"Cannot access %s constant %.*s::%.*s",
-											zVis,(int)pClass->sName.nByte,pClass->sName.zString,
-											(int)pAttr->sName.nByte,pAttr->sName.zString);
+										SyBlobFormat(&sErrVis,"Cannot access %s constant %z::%z",
+											zVis,&pClass->sName,&pAttr->sName);
 									}else{
-										SyBufferFormat(zMsg,sizeof(zMsg),"Cannot access %s property %.*s::$%.*s",
-											zVis,(int)pClass->sName.nByte,pClass->sName.zString,
-											(int)pAttr->sName.nByte,pAttr->sName.zString);
+										SyBlobFormat(&sErrVis,"Cannot access %s property %z::$%z",
+											zVis,&pClass->sName,&pAttr->sName);
 									}
-									VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
-									VM_EXIT_ABORT;
+									VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
+										sizeof("Error")-1,&sErrVis));
 								}
 							}
 						}

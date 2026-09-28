@@ -2583,6 +2583,25 @@ case PH7_OP_IS_A:{
 		goto Abort;
 	}
 #endif
+	/* php screens the CLASS operand before it looks at the subject: zend_fetch_class
+	 * takes an object or a string and refuses everything else with
+	 * `Class name must be a valid object or a string`, whatever is on the left --
+	 * `5 instanceof $arr` and `$obj instanceof $arr` are the same Error. PHL answered
+	 * FALSE for every one of them, so a typo'd or wrongly-typed class expression read
+	 * as a clean "no" and the program carried on. The same refusal already guards `::`
+	 * (VmExecOpMember) and now `new` (VmExecOpNew); this is the third door. */
+	if( (pTos->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
+		VmPopOperand(&pTos,1);
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		rc = VmThrowFromVm(&(*pVm),"Error","Class name must be a valid object or a string",
+			sizeof("Class name must be a valid object or a string")-1);
+		if( rc == SXERR_ABORT ){
+			goto Abort;
+		}
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
 	if( pNos->iFlags& MEMOBJ_OBJ ){
 		ph7_class_instance *pThis = (ph7_class_instance *)pNos->x.pOther;
 		ph7_class *pClass = 0;
