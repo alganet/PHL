@@ -71,7 +71,13 @@ struct phl_sq3_stmt {
 	ph7_class_instance *pConnObj; /* the SQLite3 object, RETAINED: a result outlives the
 	                               * variable its connection was in, and php keeps the
 	                               * database open through exactly this reference */
+	int bInitialised;             /* php's per-STATEMENT flag: raised by prepare, lowered by
+	                               * close() and by the connection's own close. It is what
+	                               * tells a closed statement (the Error naming SQLite3) from
+	                               * a statement of NOTHING (the one naming SQLite3Stmt) */
 	int nRef;                     /* holders: the statement object, and each live result */
+	struct phl_sq3_bind *pBinds;  /* what bindValue()/bindParam() recorded, applied at
+	                               * every execute -- php's bindings, not sqlite's */
 	phl_sq3_stmt *pNext;
 };
 /*
@@ -118,6 +124,7 @@ static void Sq3Close(phl_sq3 *pConn)
 			sqlite3_finalize(pSt->pStmt);
 			pSt->pStmt = 0;
 		}
+		pSt->bInitialised = 0;
 	}
 	if( pConn->pDb ){
 		/* _v2 anyway, so a handle something else still owns defers the close
@@ -143,6 +150,8 @@ static phl_sq3 * Sq3NewConn(ph7_vm *pVm)
  * object may well outlive it.
  */
 static void Sq3BlankSlot(ph7_class_instance *pOwner);
+/* Drop what bindValue()/bindParam() recorded (defined with the statement). */
+static void Sq3BindsClear(phl_sq3_stmt *pSt);
 /*
  * Let go of one hold on a statement. The LAST holder finalizes it -- which is
  * how a result over an anonymous statement destroys it while a result over a
@@ -156,6 +165,7 @@ static void Sq3StmtUnref(phl_sq3_stmt *pSt)
 		return;
 	}
 	pConn = pSt->pConn;
+	Sq3BindsClear(pSt);
 	if( pSt->pStmt ){
 		sqlite3_finalize(pSt->pStmt);
 		pSt->pStmt = 0;
@@ -226,6 +236,7 @@ static void Sq3StmtSweep(phl_sq3 *pConn)
 		phl_sq3_stmt *pSt = pConn->pStmts;
 		Sq3BlankSlot(pSt->pOwner);
 		pConn->pStmts = pSt->pNext;
+		Sq3BindsClear(pSt);
 		if( pSt->pStmt ){
 			sqlite3_finalize(pSt->pStmt);
 			pSt->pStmt = 0;
@@ -880,6 +891,7 @@ static phl_sq3_stmt * Sq3Prepare(ph7_context *pCtx,phl_sq3 *pConn,const char *zS
 		return 0;
 	}
 	pSt->pStmt = pRaw;
+	pSt->bInitialised = 1;
 	return pSt;
 }
 /*
@@ -1125,6 +1137,647 @@ static int vm_builtin_SQLite3_querySingle(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_result_null(pCtx);
 	}
 	Sq3StmtUnref(pSt);
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
+ * SQLite3Stmt -- a statement a script holds itself
+ * ------------------------------------------------------------------------ */
+/*
+ * One parameter a script bound before execute().
+ *
+ * The bindings are php's, not sqlite's: they are recorded here and applied at
+ * every execute, which is what makes bindParam() read its variable LATE -- the
+ * value the statement runs with is whatever the variable holds when execute()
+ * is called, not when the binding was made.
+ */
+typedef struct phl_sq3_bind phl_sq3_bind;
+struct phl_sq3_bind {
+	int iPos;                     /* 1-based; a NAME is resolved at bind time */
+	char *zName;                  /* the name the script spelled, or 0 for a positional bind:
+	                               * php keys its table by NAME for one and by POSITION for
+	                               * the other, so `:a` and `1` naming the same parameter are
+	                               * two bindings that are both applied */
+	int nName;
+	int iType;                    /* SQLITE3_* -- the declared one, or the value's own */
+	sxu32 nSlot;                  /* bindParam: the caller's memobj index (SXU32_HIGH = none) */
+	ph7_value *pVal;              /* bindValue: this statement's own copy */
+	phl_sq3_bind *pNext;
+};
+/* Drop every binding of one statement. */
+static void Sq3BindsClear(phl_sq3_stmt *pSt)
+{
+	phl_sq3_bind *pB = pSt->pBinds;
+	while( pB ){
+		phl_sq3_bind *pNext = pB->pNext;
+		if( pB->pVal ){
+			ph7_release_value(pSt->pConn->pVm,pB->pVal);
+		}
+		if( pB->zName ){
+			SyMemBackendFree(&pSt->pConn->pVm->sAllocator,pB->zName);
+		}
+		SyMemBackendFree(&pSt->pConn->pVm->sAllocator,pB);
+		pB = pNext;
+	}
+	pSt->pBinds = 0;
+}
+/*
+ * Record one binding, replacing whatever the same KEY already held -- and the
+ * key is the name for a named bind and the position for a positional one, so
+ * re-binding `:a` overwrites the earlier `:a` while `bindValue(1,...)` beside it
+ * is a second entry that also runs.
+ *
+ * New entries go on the END: php's table keeps insertion order and applies them
+ * in it, which is the order any diagnostics come out in.
+ */
+static phl_sq3_bind * Sq3BindSlot(phl_sq3_stmt *pSt,int iPos,const char *zName,int nName)
+{
+	ph7_vm *pVm = pSt->pConn->pVm;
+	phl_sq3_bind *pB,*pPrev = 0,*pTail = 0;
+	for( pB = pSt->pBinds ; pB ; pPrev = pB, pB = pB->pNext ){
+		int bSame = zName
+			? (pB->zName != 0 && pB->nName == nName
+			   && SyMemcmp(pB->zName,zName,(sxu32)nName) == 0)
+			: (pB->zName == 0 && pB->iPos == iPos);
+		if( bSame ){
+			/* php replaces a binding by REMOVING the old entry and adding the
+			 * new one, so re-binding a key moves it to the end of the run --
+			 * which is the order any failures are reported in. */
+			if( pB->pVal ){
+				ph7_release_value(pVm,pB->pVal);
+				pB->pVal = 0;
+			}
+			if( pPrev ){
+				pPrev->pNext = pB->pNext;
+			}else{
+				pSt->pBinds = pB->pNext;
+			}
+			pB->pNext = 0;
+			pB->iPos = iPos;
+			pB->nSlot = SXU32_HIGH;
+			break;
+		}
+	}
+	if( pB == 0 ){
+		pB = (phl_sq3_bind *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_sq3_bind));
+		if( pB == 0 ){
+			return 0;
+		}
+		SyZero(pB,sizeof(phl_sq3_bind));
+		pB->iPos = iPos;
+		pB->nSlot = SXU32_HIGH;
+		if( zName && nName > 0 ){
+			pB->zName = (char *)SyMemBackendDup(&pVm->sAllocator,zName,(sxu32)nName);
+			if( pB->zName == 0 ){
+				SyMemBackendFree(&pVm->sAllocator,pB);
+				return 0;
+			}
+			pB->nName = nName;
+		}
+	}
+	for( pTail = pSt->pBinds ; pTail && pTail->pNext ; pTail = pTail->pNext ){}
+	if( pTail ){
+		pTail->pNext = pB;
+	}else{
+		pSt->pBinds = pB;
+	}
+	return pB;
+}
+/*
+ * Which position a `string|int $param` names.
+ *
+ * An INT is the position itself, and 0 is the one php refuses outright -- every
+ * other number is accepted here and only fails when execute() tries to bind it.
+ * A NAME is looked up in the statement, first as the script spelled it and then
+ * with a `:` in front, so `:a` and `a` both find the same parameter while `@a`
+ * finds nothing. Answers 0 for a name the statement does not carry.
+ */
+static int Sq3BindPosition(phl_sq3_stmt *pSt,ph7_value *pParam)
+{
+	const char *zName;
+	int nName = 0;
+	SyBlob sName;
+	int iPos;
+	if( (pParam->iFlags & MEMOBJ_STRING) == 0 ){
+		return (int)ph7_value_to_int64(pParam);
+	}
+	zName = ph7_value_to_string(pParam,&nName);
+	SyBlobInit(&sName,&pSt->pConn->pVm->sAllocator);
+	SyBlobAppend(&sName,zName,(sxu32)nName);
+	SyBlobNullAppend(&sName);
+	iPos = sqlite3_bind_parameter_index(pSt->pStmt,(const char *)SyBlobData(&sName));
+	if( iPos == 0 ){
+		SyBlobReset(&sName);
+		SyBlobAppend(&sName,":",sizeof(char));
+		SyBlobAppend(&sName,zName,(sxu32)nName);
+		SyBlobNullAppend(&sName);
+		iPos = sqlite3_bind_parameter_index(pSt->pStmt,(const char *)SyBlobData(&sName));
+	}
+	SyBlobRelease(&sName);
+	return iPos;
+}
+/*
+ * php's type for a value nobody declared one for: the zval's own kind, with
+ * bool counting as an integer and everything that is not a number or null
+ * counting as text.
+ */
+static int Sq3TypeOfValue(ph7_value *pVal)
+{
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) != 0 ){
+		return SQLITE_NULL;
+	}
+	/* REAL is asked first: a PHL float carries the integer flag beside it, so
+	 * the other order makes 0.0 an integer. */
+	if( (pVal->iFlags & MEMOBJ_REAL) != 0 ){
+		return SQLITE_FLOAT;
+	}
+	if( (pVal->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL)) != 0 ){
+		return SQLITE_INTEGER;
+	}
+	return SQLITE3_TEXT;
+}
+/*
+ * Hand one recorded binding to sqlite, converting the value the way the
+ * declared type asks for. A NULL value is bound as NULL whatever the type says
+ * -- php asks that question first -- and every other type is php's own cast,
+ * so `bindValue(1,"12abc",SQLITE3_INTEGER)` binds 12 and a bool bound as text
+ * binds "1" or "".
+ */
+static int Sq3BindApply(ph7_context *pCtx,phl_sq3_stmt *pSt,phl_sq3_bind *pB,
+	ph7_value *pVal)
+{
+	sqlite3_stmt *pStmt = pSt->pStmt;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) != 0 || pB->iType == SQLITE_NULL ){
+		return sqlite3_bind_null(pStmt,pB->iPos);
+	}
+	switch( pB->iType ){
+		case SQLITE_INTEGER:
+			return sqlite3_bind_int64(pStmt,pB->iPos,
+				(sqlite3_int64)ph7_value_to_int64(pVal));
+#ifndef PH7_OMIT_FLOATING_POINT
+		case SQLITE_FLOAT:
+			return sqlite3_bind_double(pStmt,pB->iPos,ph7_value_to_double(pVal));
+#endif
+		case SQLITE_BLOB:
+		case SQLITE3_TEXT: {
+			/* php's own conversion, with its own diagnostics -- an array is the
+			 * `Array to string conversion` warning and the string "Array", an
+			 * object with no __toString the catchable Error. It runs on a COPY:
+			 * bindParam names the caller's variable and php never rewrites it. */
+			ph7_value sTmp;
+			const char *zVal = 0;
+			int nVal = 0, rcBind;
+			PH7_MemObjInit(pCtx->pVm,&sTmp);
+			PH7_MemObjStore(pVal,&sTmp);
+			if( PH7_ValueToStringUV(pCtx,&sTmp,&zVal,&nVal) != SXRET_OK ){
+				PH7_MemObjRelease(&sTmp);
+				return SQLITE_OK;   /* the throw is already parked on the context */
+			}
+			if( pB->iType == SQLITE_BLOB ){
+				rcBind = sqlite3_bind_blob(pStmt,pB->iPos,zVal ? zVal : "",nVal,
+					SQLITE_TRANSIENT);
+			}else{
+				rcBind = sqlite3_bind_text(pStmt,pB->iPos,zVal ? zVal : "",nVal,
+					SQLITE_TRANSIENT);
+			}
+			PH7_MemObjRelease(&sTmp);
+			return rcBind;
+		}
+		default:
+			break;
+	}
+	return -1;   /* a type php has no case for; the caller reports it */
+}
+/*
+ * Apply every binding, in the order they were MADE. A failure is reported and
+ * the run goes ON -- php reports the bind and steps the statement anyway, so a
+ * parameter that could not be bound is simply the NULL it already was.
+ */
+static sxi32 Sq3BindsApply(ph7_context *pCtx,phl_sq3_stmt *pSt,const char *zFn)
+{
+	phl_sq3_bind *pB;
+	sxi32 rc = PH7_OK;
+	for( pB = pSt->pBinds ; pB ; pB = pB->pNext ){
+		ph7_value *pVal = pB->pVal;
+		int rcBind;
+		if( pB->nSlot != SXU32_HIGH ){
+			/* bindParam: the caller's variable, read HERE rather than at bind */
+			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pB->nSlot);
+		}
+		rcBind = Sq3BindApply(pCtx,pSt,pB,pVal);
+		if( pCtx->nThrowRc != PH7_OK ){
+			return pCtx->nThrowRc;   /* the conversion threw; php propagates it too */
+		}
+		if( rcBind < 0 ){
+			/* A type php has no case for. It is a programming error rather than
+			 * a database one, so it stops the run instead of being reported and
+			 * carried past -- and it is the ONE answer here that cannot be
+			 * checked against php, whose own sentence for it carries a printf
+			 * modifier its engine no longer supports: naming an unknown type
+			 * ENDS the request there rather than printing anything. The text is
+			 * php's with the two numbers filled in. */
+			return PH7_VmThrowException(pCtx,"Error",
+				"Unknown parameter type: %d for parameter %d",pB->iType,pB->iPos);
+		}
+		if( rcBind != SQLITE_OK ){
+			SyBlob sMsg;
+			SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+			SyBlobFormat(&sMsg,"Unable to bind parameter number %d",pB->iPos);
+			SyBlobNullAppend(&sMsg);
+			rc = Sq3Error(pCtx,pSt->pConn,zFn,rcBind,(const char *)SyBlobData(&sMsg));
+			SyBlobRelease(&sMsg);
+			if( rc != PH7_OK ){
+				return rc;
+			}
+		}
+	}
+	return rc;
+}
+static phl_sq3_stmt * Sq3StmtOfInstance(ph7_class_instance *pThis)
+{
+	return (phl_sq3_stmt *)Sq3ResourceOf(pThis);
+}
+/*
+ * php asks TWO questions about a statement and words them with two different
+ * class names, which is visible to a script.
+ *
+ * The FIRST is whether the statement is attached to a live connection at all --
+ * php's macro is given the DATABASE object there, so a never-prepared object
+ * and a closed statement are both `The SQLite3 object ...`. execute() and
+ * close() ask only this one, which is why close() succeeds on a statement of
+ * NOTHING and a second close() is the Error.
+ */
+static phl_sq3_stmt * Sq3LiveStmtNull(ph7_context *pCtx,sxi32 *pRc)
+{
+	phl_sq3_stmt *pSt = Sq3StmtOfInstance(PH7_ContextThis(pCtx));
+	*pRc = PH7_OK;
+	if( pSt == 0 || !pSt->bInitialised ){
+		*pRc = Sq3Uninitialised(pCtx,"SQLite3");
+		return 0;
+	}
+	return pSt;
+}
+/*
+ * The SECOND is whether there is a handle to work on, and it names the
+ * STATEMENT class -- so a comment-only prepare, which php keeps as an object
+ * with no handle, answers `The SQLite3Stmt object ...` to every accessor.
+ */
+static phl_sq3_stmt * Sq3LiveStmt(ph7_context *pCtx,sxi32 *pRc)
+{
+	phl_sq3_stmt *pSt = Sq3LiveStmtNull(pCtx,pRc);
+	if( pSt == 0 ){
+		return 0;
+	}
+	if( pSt->pStmt == 0 ){
+		*pRc = Sq3Uninitialised(pCtx,"SQLite3Stmt");
+		return 0;
+	}
+	return pSt;
+}
+/* The statement object is going away: let go of its hold on the statement. */
+static void Sq3StmtInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	phl_sq3_stmt *pSt = Sq3StmtOfInstance(pThis);
+	SXUNUSED(pVm);
+	if( pSt == 0 || pSt->pOwner != pThis ){
+		return;
+	}
+	pSt->pOwner = 0;
+	Sq3StmtUnref(pSt);
+}
+/*
+ * SQLite3Stmt::__construct(SQLite3 $sqlite3, string $query) -- private, and it
+ * never runs: prepare() builds every statement itself.
+ */
+static int vm_builtin_SQLite3Stmt_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * SQLite3::prepare(string $query): SQLite3Stmt|false
+ *
+ * Compiles without running. A query that holds no statement still answers an
+ * OBJECT -- one whose handle is NULL, so every accessor on it is the Error and
+ * only close() answers -- while the EMPTY query is the silent false.
+ */
+static int vm_builtin_SQLite3_prepare(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn = Sq3LiveDb(pCtx,&rc);
+	const char *zSql;
+	int nSql = 0;
+	phl_sq3_stmt *pSt;
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	SXUNUSED(nArg);
+	if( pConn == 0 ){
+		return rc;
+	}
+	zSql = ph7_value_to_string(apArg[0],&nSql);
+	pSt = Sq3Prepare(pCtx,pConn,zSql,nSql,"SQLite3::prepare",&rc);
+	if( pSt == 0 ){
+		ph7_result_bool(pCtx,0);
+		return rc;
+	}
+	pClass = PH7_VmExtractClass(pCtx->pVm,"SQLite3Stmt",sizeof("SQLite3Stmt")-1,FALSE,0);
+	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
+	if( pObj == 0 || Sq3AttachRes(pObj,pSt) != 0 ){
+		if( pObj ){
+			PH7_ClassInstanceUnref(pObj);
+		}
+		Sq3StmtUnref(pSt);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pSt->pOwner = pObj;
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * SQLite3Stmt::execute(): SQLite3Result|false
+ *
+ * The bindings are applied, the statement is run once and rewound, and the
+ * result walks the SAME statement -- so two results handed out by one
+ * statement are two views of one cursor, and executing again rewinds both.
+ *
+ * A statement of NOTHING has no handle to step, and php asks the NULL one for
+ * its database rather than the connection it came from: what sqlite says about
+ * no connection at all is `out of memory`, and that is the message.
+ */
+static int vm_builtin_SQLite3Stmt_execute(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmtNull(pCtx,&rc);
+	ph7_class_instance *pObj;
+	int iStep;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	if( pSt->pStmt == 0 ){
+		ph7_result_bool(pCtx,0);
+		return Sq3Error(pCtx,pSt->pConn,"SQLite3Stmt::execute",0,
+			"Unable to execute statement: out of memory");
+	}
+	sqlite3_reset(pSt->pStmt);
+	rc = Sq3BindsApply(pCtx,pSt,"SQLite3Stmt::execute");
+	if( rc != PH7_OK ){
+		ph7_result_bool(pCtx,0);
+		return rc;
+	}
+	iStep = sqlite3_step(pSt->pStmt);
+	if( iStep != SQLITE_ROW && iStep != SQLITE_DONE ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Unable to execute statement: %s",sqlite3_errmsg(pSt->pConn->pDb));
+		SyBlobNullAppend(&sMsg);
+		ph7_result_bool(pCtx,0);
+		rc = Sq3Error(pCtx,pSt->pConn,"SQLite3Stmt::execute",
+			sqlite3_errcode(pSt->pConn->pDb),(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+		return rc;
+	}
+	sqlite3_reset(pSt->pStmt);
+	pSt->nRef++;   /* the result is a SECOND holder: the object keeps its own */
+	pObj = Sq3NewResultObject(pCtx,pSt,pSt->pOwner);
+	if( pObj == 0 ){
+		Sq3StmtUnref(pSt);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/* SQLite3Stmt::bindValue(string|int $param, mixed $value, int $type = SQLITE3_TEXT): bool
+ * SQLite3Stmt::bindParam(string|int $param, mixed &$var, int $type = SQLITE3_TEXT): bool
+ *
+ * The two differ in WHEN the value is read and in what an omitted $type means.
+ * bindValue copies the value now and, with no type given, takes the type from
+ * that value; bindParam records the caller's SLOT and reads it at execute --
+ * where there is no value yet to take a type from, so the declared default
+ * stands and an unqualified bindParam() binds TEXT even for an integer.
+ */
+static int Sq3BindOne(ph7_context *pCtx,int nArg,ph7_value **apArg,int bByRef)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	phl_sq3_bind *pB;
+	const char *zName = 0;
+	int nName = 0, iPos;
+	if( pSt == 0 ){
+		return rc;
+	}
+	iPos = Sq3BindPosition(pSt,apArg[0]);
+	if( iPos < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( (apArg[0]->iFlags & MEMOBJ_STRING) != 0 ){
+		zName = ph7_value_to_string(apArg[0],&nName);
+	}
+	pB = Sq3BindSlot(pSt,iPos,zName,nName);
+	if( pB == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( nArg > 2 ){
+		pB->iType = (int)ph7_value_to_int64(apArg[2]);
+	}else{
+		pB->iType = bByRef ? SQLITE3_TEXT : Sq3TypeOfValue(apArg[1]);
+	}
+	if( bByRef ){
+		pB->nSlot = apArg[1]->nIdx;
+	}else{
+		/* the copy has to OUTLIVE this call, so it is the VM's rather than the
+		 * context's -- a context value dies with the call that made it */
+		pB->pVal = ph7_new_scalar(pCtx->pVm);
+		if( pB->pVal == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_MemObjStore(apArg[1],pB->pVal);
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int vm_builtin_SQLite3Stmt_bindValue(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return Sq3BindOne(pCtx,nArg,apArg,0);
+}
+static int vm_builtin_SQLite3Stmt_bindParam(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return Sq3BindOne(pCtx,nArg,apArg,1);
+}
+/* SQLite3Stmt::clear(): bool -- drop the bindings, php's and sqlite's both. */
+static int vm_builtin_SQLite3Stmt_clear(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	Sq3BindsClear(pSt);
+	ph7_result_bool(pCtx,sqlite3_clear_bindings(pSt->pStmt) == SQLITE_OK);
+	return PH7_OK;
+}
+/*
+ * SQLite3Stmt::close(): true
+ *
+ * Finalizes NOW, whatever results are still walking it -- they start answering
+ * the Error. A second close() is the Error too, since there is no handle left
+ * to close.
+ */
+static int vm_builtin_SQLite3Stmt_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmtNull(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	if( pSt->pStmt ){
+		sqlite3_finalize(pSt->pStmt);
+		pSt->pStmt = 0;
+	}
+	pSt->bInitialised = 0;
+	Sq3BindsClear(pSt);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* SQLite3Stmt::reset(): bool -- rewind, keeping the bindings. */
+static int vm_builtin_SQLite3Stmt_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,sqlite3_reset(pSt->pStmt) == SQLITE_OK);
+	return PH7_OK;
+}
+/* SQLite3Stmt::paramCount(): int */
+static int vm_builtin_SQLite3Stmt_paramCount(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	ph7_result_int64(pCtx,(ph7_int64)sqlite3_bind_parameter_count(pSt->pStmt));
+	return PH7_OK;
+}
+/* SQLite3Stmt::readOnly(): bool -- whether running it can change the database. */
+static int vm_builtin_SQLite3Stmt_readOnly(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,sqlite3_stmt_readonly(pSt->pStmt) != 0);
+	return PH7_OK;
+}
+/* SQLite3Stmt::busy(): bool -- whether a walk is under way on it. */
+static int vm_builtin_SQLite3Stmt_busy(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,sqlite3_stmt_busy(pSt->pStmt) != 0);
+	return PH7_OK;
+}
+/*
+ * SQLite3Stmt::getSQL(bool $expand = false): string|false
+ *
+ * The text as it was PREPARED, or -- expanded -- the same text with every
+ * bound parameter written into it, which is sqlite's own rendering and not a
+ * substitution php performs.
+ */
+static int vm_builtin_SQLite3Stmt_getSQL(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	int bExpand = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 0;
+	const char *zSql;
+	if( pSt == 0 ){
+		return rc;
+	}
+	/* php binds FIRST and asks about $expand afterwards -- the same helper
+	 * execute() uses -- so the rendering shows what the statement would run
+	 * with, including the value a bindParam()ed variable holds right now, and
+	 * even the UNEXPANDED spelling reports a binding that could not be applied.
+	 * A failed bind is reported and the answer is produced without it. */
+	rc = Sq3BindsApply(pCtx,pSt,"SQLite3Stmt::getSQL");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( bExpand ){
+		char *zExp = sqlite3_expanded_sql(pSt->pStmt);
+		if( zExp == 0 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		ph7_result_string(pCtx,zExp,-1);
+		sqlite3_free(zExp);
+		return PH7_OK;
+	}
+	zSql = sqlite3_sql(pSt->pStmt);
+	if( zSql == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zSql,-1);
+	return PH7_OK;
+}
+/* SQLite3Stmt::explain(): int -- which of the three plans the statement runs. */
+static int vm_builtin_SQLite3Stmt_explain(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	ph7_result_int64(pCtx,(ph7_int64)sqlite3_stmt_isexplain(pSt->pStmt));
+	return PH7_OK;
+}
+/*
+ * SQLite3Stmt::setExplain(int $mode): bool
+ *
+ * Re-aims the SAME statement at its own query plan: mode 1 makes it answer the
+ * eight columns of EXPLAIN and mode 2 the four of EXPLAIN QUERY PLAN, and mode
+ * 0 puts it back. Anything else is a ValueError naming the constants.
+ */
+static int vm_builtin_SQLite3Stmt_setExplain(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_stmt *pSt = Sq3LiveStmt(pCtx,&rc);
+	ph7_int64 iMode;
+	SXUNUSED(nArg);
+	if( pSt == 0 ){
+		return rc;
+	}
+	iMode = ph7_value_to_int64(apArg[0]);
+	if( iMode < 0 || iMode > 2 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"SQLite3Stmt::setExplain(): Argument #1 ($mode) must be one of the "
+			"SQLite3Stmt::EXPLAIN_MODE_* constants");
+	}
+	ph7_result_bool(pCtx,sqlite3_stmt_explain(pSt->pStmt,(int)iMode) == SQLITE_OK);
 	return PH7_OK;
 }
 
@@ -1650,6 +2303,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		  vm_builtin_SQLite3_loadExtension },
 		{ "escapeString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $string", "@string",
 		  vm_builtin_SQLite3_escapeString },
+		{ "prepare", PH7_MOD_PUBLIC, "string $query", "@SQLite3Stmt|false",
+		  vm_builtin_SQLite3_prepare },
 		{ "exec", PH7_MOD_PUBLIC, "string $query", "@bool", vm_builtin_SQLite3_exec },
 		{ "query", PH7_MOD_PUBLIC, "string $query", "@SQLite3Result|false",
 		  vm_builtin_SQLite3_query },
@@ -1689,6 +2344,45 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		{ SQ3_RES, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
 		  { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
+	/*
+	 * php's own prepared statement. Its constructor is PRIVATE and takes the
+	 * connection and the query, which nothing may call: prepare() builds every
+	 * one. The three EXPLAIN_MODE_* constants are php 8.4's, over sqlite's
+	 * sqlite3_stmt_explain().
+	 */
+	static const PH7_NativeConstDef aSq3StmtConst[] = {
+		{ "EXPLAIN_MODE_PREPARED",           PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 0, 0, 0.0 },
+		{ "EXPLAIN_MODE_EXPLAIN",            PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },
+		{ "EXPLAIN_MODE_EXPLAIN_QUERY_PLAN", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aSq3StmtMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE, "SQLite3 $sqlite3, string $query", 0,
+		  vm_builtin_SQLite3Stmt_construct },
+		{ "bindParam", PH7_MOD_PUBLIC,
+		  "string|int $param, mixed &$var, int $type = SQLITE3_TEXT", "@bool",
+		  vm_builtin_SQLite3Stmt_bindParam },
+		{ "bindValue", PH7_MOD_PUBLIC,
+		  "string|int $param, mixed $value, int $type = SQLITE3_TEXT", "@bool",
+		  vm_builtin_SQLite3Stmt_bindValue },
+		{ "clear", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SQLite3Stmt_clear },
+		{ "close", PH7_MOD_PUBLIC, "", "@true", vm_builtin_SQLite3Stmt_close },
+		{ "execute", PH7_MOD_PUBLIC, "", "@SQLite3Result|false",
+		  vm_builtin_SQLite3Stmt_execute },
+		{ "getSQL", PH7_MOD_PUBLIC, "bool $expand = false", "@string|false",
+		  vm_builtin_SQLite3Stmt_getSQL },
+		{ "paramCount", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SQLite3Stmt_paramCount },
+		{ "readOnly", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SQLite3Stmt_readOnly },
+		{ "reset", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SQLite3Stmt_reset },
+		/* the three php declares WITHOUT the tentative marker */
+		{ "busy", PH7_MOD_PUBLIC, "", "bool", vm_builtin_SQLite3Stmt_busy },
+		{ "explain", PH7_MOD_PUBLIC, "", "int", vm_builtin_SQLite3Stmt_explain },
+		{ "setExplain", PH7_MOD_PUBLIC, "int $mode", "bool",
+		  vm_builtin_SQLite3Stmt_setExplain },
+	};
+	static const PH7_NativePropDef aSq3StmtProp[] = {
+		{ SQ3_RES, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* php registers the exception FIRST, and ReflectionExtension answers the
 		 * class list in that order. */
@@ -1702,6 +2396,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		  aSq3ClassConst, SX_ARRAYSIZE(aSq3ClassConst),
 		  aSq3Prop, SX_ARRAYSIZE(aSq3Prop),
 		  Sq3InstanceRelease, 0, 0 },
+		{ "SQLite3Stmt", 0, 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aSq3StmtMethod, SX_ARRAYSIZE(aSq3StmtMethod),
+		  aSq3StmtConst, SX_ARRAYSIZE(aSq3StmtConst),
+		  aSq3StmtProp, SX_ARRAYSIZE(aSq3StmtProp),
+		  Sq3StmtInstanceRelease, 0, 0 },
 		{ "SQLite3Result", 0, 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aSq3ResMethod, SX_ARRAYSIZE(aSq3ResMethod),
 		  0, 0,
