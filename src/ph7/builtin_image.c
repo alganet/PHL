@@ -4,6 +4,9 @@
  */
 #include "ph7int.h"
 #include <errno.h>
+#ifdef PH7_ENABLE_LIBXML
+#include <libxml/xmlreader.h>
+#endif
 /*
  * Section:
  *    ext/standard's image surface: the IMAGETYPE_* space, the two table
@@ -22,9 +25,10 @@
  *     So a caller cannot tell "unknown type" from "raw codestream" by the mime
  *     string alone.
  *   - the EXTENSION lookup is partial: it answers FALSE for a type it does not
- *     know, and it knows four names the mime table does not distinguish
- *     (`.jpc`, `.jpx`, `.jb2`) plus one the mime table splits (WBMP is
- *     `image/vnd.wap.wbmp` but its extension is `.bmp`, BMP's own).
+ *     know, and it splits three names the mime table collapses into
+ *     `application/octet-stream` (`.jpc`, `.jpx`, `.jb2`) while collapsing one
+ *     the mime table splits (WBMP is `image/vnd.wap.wbmp` and `.bmp`, BMP's
+ *     own).
  *   - `$include_dot` is not a branch: php stores each extension WITH its dot
  *     and answers `&imgext[!inc_dot]`, so the flag is a one-byte offset.
  *
@@ -484,15 +488,14 @@ static int ImgHandlePng(ImgReader *p,ImgInfo *pOut)
  *     that argument php returns at the frame header and never reads them at
  *     all.
  */
-#define IMG_M_SOF0  0xC0
-#define IMG_M_SOI   0xD8
-#define IMG_M_EOI   0xD9
-#define IMG_M_SOS   0xDA
+#define IMG_M_EOI   0xD9  /* end of image */
+#define IMG_M_SOS   0xDA  /* start of scan: the compressed data begins */
 #define IMG_M_APP0  0xE0
 #define IMG_M_APP15 0xEF
 /* Is this marker one of the thirteen frame headers php reads a size from?
- * C4 (define Huffman table) and CC (define arithmetic coding) sit inside the
- * C0..CF run and are NOT frame headers, which is what the two holes are. */
+ * Three markers sit inside the C0..CF run and are NOT frame headers -- C4
+ * (define Huffman table), C8 (reserved) and CC (define arithmetic coding) --
+ * which is what the three holes below are. */
 static int ImgJpegIsSof(unsigned int m)
 {
 	return (m >= 0xC0 && m <= 0xCF) && m != 0xC4 && m != 0xC8 && m != 0xCC;
@@ -898,6 +901,34 @@ static int ImgGetWbmp(ImgReader *p,ImgInfo *pOut)
 	return 1;
 }
 /*
+ * The digits at z read as a C `int`, which is what both text formats below
+ * store their size in. Two rules come from the platform's own strtol and are
+ * reproduced here rather than called for, so a Windows build answers what a
+ * POSIX one does: a run too long for a 64-bit signed value SATURATES at that
+ * bound (LONG_MAX going up, LONG_MIN going down) instead of wrapping, and
+ * what lands in the `int` is the low 32 bits of the result.
+ */
+static sxu32 ImgDigitsToU32(const char *z,int n,int bNeg)
+{
+	sxu64 nMag = 0;
+	sxu64 nBound = (sxu64)SXI64_HIGH + (sxu64)(bNeg ? 1 : 0);
+	int i,bOver = 0;
+	for( i = 0 ; i < n && z[i] >= '0' && z[i] <= '9' ; i++ ){
+		if( bOver ){
+			continue;
+		}
+		if( nMag > (nBound - (sxu64)(z[i] - '0')) / 10 ){
+			bOver = 1;
+		}else{
+			nMag = nMag * 10 + (sxu64)(z[i] - '0');
+		}
+	}
+	if( bOver ){
+		nMag = nBound;
+	}
+	return (sxu32)(bNeg ? (sxu64)(0 - nMag) : nMag);
+}
+/*
  * XBM is C source, so php reads it a LINE at a time and runs one sscanf
  * pattern over each: `#define %s %d`. Four rules of that pattern are visible
  * from PHP and easy to lose:
@@ -920,8 +951,7 @@ static int ImgIsSpace(int c)
 }
 static int ImgXbmScanDefine(const char *zLine,int nLine,const char **pzName,int *pnName,sxu32 *pnVal)
 {
-	int i,bNeg = 0,bDigit = 0,bOver = 0;
-	sxu64 nMag = 0,nBound;
+	int i,bNeg = 0;
 	/* sscanf() reads a C string: the line stops at its first NUL. */
 	for( i = 0 ; i < nLine ; i++ ){
 		if( zLine[i] == 0 ){
@@ -951,28 +981,10 @@ static int ImgXbmScanDefine(const char *zLine,int nLine,const char **pzName,int 
 		bNeg = (zLine[i] == '-');
 		i++;
 	}
-	/* strtol()'s bound: LONG_MAX going up, LONG_MIN going down. */
-	nBound = (sxu64)SXI64_HIGH + (sxu64)(bNeg ? 1 : 0);
-	while( i < nLine && zLine[i] >= '0' && zLine[i] <= '9' ){
-		bDigit = 1;
-		if( !bOver ){
-			if( nMag > (nBound - (sxu64)(zLine[i] - '0')) / 10 ){
-				bOver = 1;
-			}else{
-				nMag = nMag * 10 + (sxu64)(zLine[i] - '0');
-			}
-		}
-		i++;
-	}
-	if( !bDigit ){
+	if( i >= nLine || zLine[i] < '0' || zLine[i] > '9' ){
 		return 0;
 	}
-	if( bOver ){
-		nMag = nBound;
-	}
-	/* The magnitude lands in a C `int`: keep its low 32 bits, negated first
-	 * when the define carried a sign. */
-	*pnVal = (sxu32)(bNeg ? (sxu64)(0 - nMag) : nMag);
+	*pnVal = ImgDigitsToU32(&zLine[i],nLine - i,bNeg);
 	return 1;
 }
 static int ImgGetXbm(ph7_context *pCtx,ImgReader *p,ImgInfo *pOut)
@@ -1961,6 +1973,130 @@ static int ImgHandleAvif(ImgReader *p,ImgInfo *pOut)
 	pOut->nChannels = sFeat.nChannels;
 	return 1;
 }
+#ifdef PH7_ENABLE_LIBXML
+/*
+ * ---------------------------------------------------------------------------
+ * SVG: the one container that is TEXT, and the one whose size has a UNIT.
+ * ---------------------------------------------------------------------------
+ * php reads an SVG from ext/libxml rather than ext/standard: it is a
+ * REGISTERED handler, which is why it sits past every signature in the ladder,
+ * why its constant is the first past the fixed enum, and why a build without
+ * libxml has neither. Four rules of that handler are visible from PHP:
+ *   - it is a pull parse that stops at the FIRST element, and that element
+ *     must be an `svg` -- case-insensitively and by LOCAL name, so a namespace
+ *     prefix does not matter. A declaration, a comment or a processing
+ *     instruction before it is read past; an element inside anything else is
+ *     not the root and ends the parse;
+ *   - `width` and `height` must both be present and must both match
+ *     `[0-9]+[a-zA-Z]*`. That grammar is a GUARD rather than a parser -- it
+ *     exists so the unit it hands back cannot carry markup -- and it refuses a
+ *     sign, a decimal point and a percentage while accepting a plain zero;
+ *   - a unit that is not `px` is KEPT, and index 3 -- php's `width="..."
+ *     height="..."` string -- then disappears from the answer, because that
+ *     string means nothing outside pixels;
+ *   - the whole thing is guarded by a one-byte look first: a file whose first
+ *     byte is not `<` is refused before libxml is built at all.
+ */
+static int ImgSvgReadCb(void *pCookie,char *zBuf,int nLen)
+{
+	return (int)ImgRead((ImgReader *)pCookie,zBuf,(ph7_int64)nLen);
+}
+/* php's `[0-9]+[a-zA-Z]*`, answering where the unit starts (at the terminator
+ * when there is none). */
+static int ImgSvgDimension(const xmlChar *zIn,const xmlChar **pzUnit)
+{
+	if( !(*zIn >= '0' && *zIn <= '9') ){
+		return 0;
+	}
+	zIn++;
+	while( *zIn ){
+		if( !(*zIn >= '0' && *zIn <= '9') ){
+			if( (*zIn >= 'a' && *zIn <= 'z') || (*zIn >= 'A' && *zIn <= 'Z') ){
+				break;
+			}
+			return 0;
+		}
+		zIn++;
+	}
+	*pzUnit = zIn;
+	while( *zIn ){
+		if( !((*zIn >= 'a' && *zIn <= 'z') || (*zIn >= 'A' && *zIn <= 'Z')) ){
+			return 0;
+		}
+		zIn++;
+	}
+	return 1;
+}
+/* Copy a unit out of libxml's string into storage the answer can keep. */
+static const char * ImgSvgUnit(ph7_context *pCtx,const xmlChar *zUnit)
+{
+	int nByte = (int)SyStrlen((const char *)zUnit);
+	char *zOut;
+	if( nByte < 1 ){
+		return 0; /* no unit: php's "px" default stands */
+	}
+	zOut = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)nByte + 1,FALSE,TRUE);
+	if( zOut == 0 ){
+		return 0;
+	}
+	SyMemcpy(zUnit,zOut,(sxu32)nByte);
+	zOut[nByte] = 0;
+	return zOut;
+}
+/* Both the identify pass (pOut == 0) and the reader, exactly as php's one
+ * function is. */
+static int ImgSvgHandle(ph7_context *pCtx,ImgReader *p,ImgInfo *pOut)
+{
+	xmlTextReaderPtr pReader;
+	int bSvg = 0;
+	ImgRewind(p);
+	if( ImgGetc(p) != '<' ){
+		return 0; /* the cheap look php takes before it builds a parser */
+	}
+	ImgRewind(p);
+	pReader = xmlReaderForIO(ImgSvgReadCb,0,(void *)p,0,0,
+		XML_PARSE_NOWARNING | XML_PARSE_NOERROR | XML_PARSE_NONET);
+	if( pReader == 0 ){
+		return 0;
+	}
+	while( xmlTextReaderRead(pReader) == 1 ){
+		const xmlChar *zName;
+		xmlChar *zWidth,*zHeight;
+		const xmlChar *zWu,*zHu;
+		if( xmlTextReaderNodeType(pReader) != XML_READER_TYPE_ELEMENT ){
+			continue;
+		}
+		/* the ROOT element decides, and nothing past it is read */
+		zName = xmlTextReaderConstLocalName(pReader);
+		if( zName == 0 || SyStrlen((const char *)zName) != 3
+		 || SyStrnicmp((const char *)zName,"svg",3) != 0 ){
+			break;
+		}
+		zWidth  = xmlTextReaderGetAttribute(pReader,(const xmlChar *)"width");
+		zHeight = xmlTextReaderGetAttribute(pReader,(const xmlChar *)"height");
+		if( zWidth == 0 || zHeight == 0
+		 || !ImgSvgDimension(zWidth,&zWu) || !ImgSvgDimension(zHeight,&zHu) ){
+			xmlFree(zWidth);
+			xmlFree(zHeight);
+			break;
+		}
+		bSvg = 1;
+		if( pOut ){
+			pOut->nWidth  = ImgDigitsToU32((const char *)zWidth,
+				(int)SyStrlen((const char *)zWidth),FALSE);
+			pOut->nHeight = ImgDigitsToU32((const char *)zHeight,
+				(int)SyStrlen((const char *)zHeight),FALSE);
+			pOut->zWidthUnit  = ImgSvgUnit(pCtx,zWu);
+			pOut->zHeightUnit = ImgSvgUnit(pCtx,zHu);
+		}
+		xmlFree(zWidth);
+		xmlFree(zHeight);
+		break;
+	}
+	xmlFreeTextReader(pReader);
+	return bSvg;
+}
+#endif /* PH7_ENABLE_LIBXML */
 /*
  * ---------------------------------------------------------------------------
  * The detection ladder.
@@ -2082,6 +2218,12 @@ static int ImgDetectType(ph7_context *pCtx,ImgReader *p,const char *zInput,int n
 	if( ImgGetXbm(pCtx,p,0) ){
 		return PH7_IMG_XBM;
 	}
+#ifdef PH7_ENABLE_LIBXML
+	/* php consults its handler REGISTRY last, and this build registers one. */
+	if( ImgSvgHandle(pCtx,p,0) ){
+		return PH7_IMG_SVG;
+	}
+#endif
 	return PH7_IMG_UNKNOWN;
 }
 /*
@@ -2187,6 +2329,9 @@ static int ImgReadAny(ph7_context *pCtx,ImgReader *p,const char *zInput,int nInp
 		 * where the feature walk wants to start. */
 		bHave = ImgHandleAvif(p,&sInfo);
 		break;
+#ifdef PH7_ENABLE_LIBXML
+	case PH7_IMG_SVG:     bHave = ImgSvgHandle(pCtx,p,&sInfo);      break;
+#endif
 	case PH7_IMG_HEIF:
 		/* Told apart by its brand alone, so the same walk runs -- from the
 		 * beginning, skipping the "ftyp" on its way to "meta". */
