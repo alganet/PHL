@@ -235,6 +235,7 @@ PH7_PRIVATE sxi32 GenStateInstallLiteral(ph7_gen_state *pGen,ph7_value *pObj,sxu
 PH7_PRIVATE sxi32 GenStateStripNumericSeparators(SyMemBackend *pAlloc,const SyString *pToken,
 	char *zScratch,sxu32 nScratch,SyString *pOut,char **pzAlloc);
 PH7_PRIVATE SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd);
+PH7_PRIVATE int PH7_GenStateListSpanHasRef(SyToken *pStart,SyToken *pEnd);
 PH7_PRIVATE sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
 PH7_PRIVATE ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx);
 PH7_PRIVATE sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag);

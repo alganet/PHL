@@ -1709,6 +1709,35 @@ static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
  *  Return Values
  *   The assigned array.
  */
+/*
+ * TRUE when a destructuring target list binds at least one element BY REFERENCE
+ * (`[&$a]`, `list('k' => &$a)`, at any nesting depth). A `&` that OPENS an entry
+ * is the marker -- it can only follow the list's own delimiter, a comma or a
+ * `=>`, everywhere else the token is the bitwise operator.
+ *
+ * Three places ask. The list body settles its entries one at a time and in source
+ * ORDER when the answer is yes; the assignment reads its SOURCE in write context
+ * (php's BP_VAR_W), which is what keeps `[&$t] = $undef;` silent about what it is
+ * creating; and foreach fetches the ROW rather than a copy of it, so
+ * `foreach ($e as [&$x]) { $x *= 10; }` changes $e.
+ */
+PH7_PRIVATE int PH7_GenStateListSpanHasRef(SyToken *pStart,SyToken *pEnd)
+{
+	SyToken *pTok;
+	for( pTok = pStart ; pTok < pEnd ; pTok++ ){
+		if( (pTok->nType & PH7_TK_AMPER) == 0 || pTok == pStart ){
+			continue;
+		}
+		if( pTok[-1].nType & (PH7_TK_OSB|PH7_TK_LPAREN|PH7_TK_COMMA) ){
+			return 1;
+		}
+		if( (pTok[-1].nType & PH7_TK_OP) && pTok[-1].sData.nByte == 2
+		 && SyMemcmp((const void *)pTok[-1].sData.zString,(const void *)"=>",2) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
 /* Nested list entry recorded during first pass of list body compilation */
 struct NestedListEntry {
 	sxi32 nIndex;        /* Position in the outer list (0-based) */
@@ -1716,6 +1745,148 @@ struct NestedListEntry {
 	SyToken *pEnd;       /* Token range: past closing delimiter */
 	sxi32 isShort;       /* 1 if [...] form, 0 if list(...) form */
 };
+/*
+ * TRUE when one destructuring ENTRY binds by reference -- itself (`&$t`) or
+ * anywhere below it (`[[&$t]]`). php fetches such a position for WRITE, which is
+ * what makes a non-array source its `Cannot use a scalar value as an array` Error
+ * rather than the read's warning-and-NULL.
+ */
+static int GenStateEntryBindsRef(SyToken *pStart,SyToken *pEnd)
+{
+	if( pStart >= pEnd ){
+		return 0;
+	}
+	if( pStart->nType & PH7_TK_AMPER/*'&'*/ ){
+		return 1;
+	}
+	return PH7_GenStateListSpanHasRef(pStart,pEnd);
+}
+/*
+ * Give a destructuring SOURCE a name of its own, bound to it BY REFERENCE, and
+ * answer that name. Every element is then fetched through the name.
+ *
+ * Reading the elements off the stack value instead cannot work once an entry
+ * binds by reference: each fetch would be one more stack copy of the same array,
+ * and a write-context fetch through a copy COW-separates -- so the second bind of
+ * `[&$x, &$z] = $e` would land in a duplicate and never reach $e. Through a name
+ * each fetch is the `$t =& $e[k]` php compiles it as. A source with no slot
+ * behind it (a call result) gets the fresh variable php's `=&` gives one.
+ *
+ * The source stays on the stack, where the caller's teardown expects it.
+ */
+static sxi32 GenStateNameListSource(ph7_gen_state *pGen,SyString *pOut)
+{
+	static int iListSrcCnt = 0;
+	char zTmp[64];
+	sxu32 nLen;
+	char *zDup;
+	nLen = (sxu32)SyBufferFormat(zTmp,sizeof(zTmp),"[__list_src_%d__]",iListSrcCnt++);
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zTmp,nLen);
+	if( zDup == 0 ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn ? pGen->pIn->nLine : 0,
+			"Fatal, PH7 engine is running out of memory");
+		return SXERR_ABORT;
+	}
+	SyStringInitFromBuf(pOut,zDup,nLen);
+	/* STORE_REF binds the name and leaves the source where it was. */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_STORE_REF,0,0,zDup,0);
+	return SXRET_OK;
+}
+/* Drop that borrowed name; the targets keep whatever they bound through it. */
+static sxi32 GenStateDropListSourceName(ph7_gen_state *pGen,SyString *pName)
+{
+	SyString *pDup = (SyString *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(SyString));
+	if( pDup == 0 ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,0,"Fatal, PH7 engine is running out of memory");
+		return SXERR_ABORT;
+	}
+	*pDup = *pName;
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_UNSET_VAR,0,0,(void *)pDup,0);
+	return SXRET_OK;
+}
+/*
+ * Store the SOURCE element already on the stack top into one destructuring
+ * target: compiling the target appends its lvalue load, which folds into a
+ * STORE exactly as an ordinary assignment's does, and the assigned value is
+ * dropped so the source array is back on top for the next entry.
+ */
+static sxi32 GenStateEmitListValueStore(ph7_gen_state *pGen,SyToken *pTarget,SyToken *pEnd)
+{
+	VmInstr *pInstr;
+	sxi32 iVmOp = PH7_OP_STORE;
+	sxi32 iP1 = 0,iP2 = 0;
+	void *p3 = 0;
+	sxi32 rc;
+	rc = GenStateCompileArrayEntry(&(*pGen),pTarget,pEnd,
+		EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){
+		if( pInstr->iOp == PH7_OP_MEMBER ){
+			iP2 = 1; /* member store: keep MEMBER, store the value below it */
+		}else if( pInstr->iOp == PH7_OP_LOAD_IDX ){
+			iVmOp = PH7_OP_STORE_IDX;
+			iP1 = pInstr->iP1;
+			(void)PH7_VmPopInstr(pGen->pVm);
+		}else{
+			p3 = pInstr->p3; /* named store: $v = value */
+			(void)PH7_VmPopInstr(pGen->pVm);
+		}
+	}
+	PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+	return SXRET_OK;
+}
+/*
+ * Bind one destructuring target to its SOURCE element BY REFERENCE, which is
+ * exactly what php compiles `[&$t] = $src` into: `$t =& $src[k]`. The source
+ * element is already on the stack top -- the caller pushed the source, the key and
+ * a WRITE-context OP_LOAD_IDX, so a missing key vivifies silently the way a `=&`
+ * into one does -- and this compiles the target and folds its own load into the
+ * STORE_REF, the same three shapes the `=&` operator folds.
+ */
+static sxi32 GenStateEmitListRefBind(ph7_gen_state *pGen,SyToken *pTarget,SyToken *pEnd)
+{
+	VmInstr *pInstr;
+	sxi32 iVmOp = PH7_OP_STORE_REF,iP1 = 0,iP2 = 0;
+	void *p3 = 0;
+	sxi32 rc;
+	if( pGen->bListSrcNotRef ){
+		/* php asks this at COMPILE time, where it still knows how the right-hand
+		 * side was written: a value with no slot behind it cannot be referenced,
+		 * and the whole statement is refused rather than binding to a temporary. */
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pTarget->nLine,
+			"Cannot assign reference to non referenceable value");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_INVALID;
+	}
+	rc = GenStateCompileArrayEntry(&(*pGen),pTarget,pEnd,EXPR_FLAG_LOAD_IDX_STORE,
+		GenStateListNodeValidator);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pInstr = PH7_VmPeekInstr(pGen->pVm);
+	if( pInstr && pInstr->iOp == PH7_OP_MEMBER ){
+		/* A property target keeps its OP_MEMBER: the VM resolves and stashes the
+		 * slot there, exactly as `$o->p =& $x` does. */
+		pInstr->iP2 = PH7_MEMBER_REF_TARGET;
+		iP2 = 1;
+	}else if( (pInstr = PH7_VmPopInstr(pGen->pVm)) != 0 ){
+		if( pInstr->iOp == PH7_OP_LOAD_IDX ){
+			iVmOp = PH7_OP_STORE_IDX_REF;
+			iP1 = pInstr->iP1;
+			iP2 = pInstr->iP2;
+			p3  = pInstr->p3;
+		}else{
+			p3 = pInstr->p3;
+		}
+	}
+	PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
+	/* The bind leaves the source element behind; drop it so the source array is
+	 * back on the stack top for the next entry. */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+	return SXRET_OK;
+}
 /*
  * Compile the body of a *keyed* list/short-list destructuring (PHP 7.1), where
  * every entry has the form `keyExpr => target`. The source array is on the stack
@@ -1729,8 +1900,25 @@ struct NestedListEntry {
  */
 static sxi32 GenStateCompileKeyedListBody(ph7_gen_state *pGen)
 {
-	SyToken *pNext;
+	SyString sTmp = { 0, 0 };
+	SyToken *pNext,*pScanIn;
+	int bAnyRef = 0;
 	sxi32 rc;
+	/* Does any entry bind BY REFERENCE? If so the source is fetched through a NAME
+	 * (GenStateNameListSource) rather than off the stack, for the reason recorded
+	 * there. */
+	pScanIn = pGen->pIn;
+	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
+		SyToken *pArrow = GenStateFindTopLevelArrow(pGen->pIn,pNext);
+		if( pArrow < pNext && &pArrow[1] < pNext && (pArrow[1].nType & PH7_TK_AMPER/*'&'*/) ){
+			bAnyRef = 1;
+		}
+		pGen->pIn = &pNext[1];
+	}
+	pGen->pIn = pScanIn;
+	if( bAnyRef && GenStateNameListSource(pGen,&sTmp) != SXRET_OK ){
+		return SXERR_ABORT;
+	}
 	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
 		SyToken *pArrow,*pTarget;
 		/* Split `keyExpr => target` at the top-level '=>' */
@@ -1743,17 +1931,36 @@ static sxi32 GenStateCompileKeyedListBody(ph7_gen_state *pGen)
 				"Cannot use empty array entries in keyed array assignment");
 			return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
 		}
-		/* DUP the source array (it is on the stack top) */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);
+		/* Put the source array back on the stack: a DUP of the value sitting there,
+		 * or -- when an entry of this list binds by reference -- a load of the name
+		 * it was given, which is what makes a write-context fetch reach the source
+		 * rather than a copy of it. */
+		if( bAnyRef ){
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,(void *)SyStringData(&sTmp),0);
+		}else{
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);
+		}
 		/* Compile the key expression; it is pushed above the DUP'd source */
 		rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pArrow,EXPR_FLAG_RDONLY_LOAD,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		if( pTarget < pNext && (pTarget->nType & PH7_TK_AMPER/*'&'*/) ){
+			/* `['k' => &$t] = $src`: bind the target to the SOURCE element rather
+			 * than storing a copy into it. The fetch is a WRITE-context one, so a
+			 * missing key vivifies silently -- php's `$t =& $src['k']`. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,1,0,0);
+			rc = GenStateEmitListRefBind(&(*pGen),&pTarget[1],pNext);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			pGen->pIn = &pNext[1];
+			continue;
+		}
 		/* LOAD_IDX: pop the key, replace the DUP'd source with source[key].
 		 * iP2=7 is the keyed-destructuring read context: an array source reads like
-		 * iP2=0 (missing key loads NULL silently, matching a normal `$arr[$k]` read;
-		 * PHP also emits an "Undefined array key" warning here, PHL omits it — §3.7),
+		 * iP2=0 (a missing key loads NULL and warns `Undefined array key "k"`, php's
+		 * answer for the keyed spelling as much as for the positional one),
 		 * but a NON-array source yields NULL + a per-key "Cannot use <type> as array"
 		 * warning instead of char-indexing a string (matching PHP's OP_LOAD_LIST path). */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,7,0,0);
@@ -1777,39 +1984,113 @@ static sxi32 GenStateCompileKeyedListBody(ph7_gen_state *pGen)
 			}
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}else{
-			/* Simple lvalue target ($v / $o->p / $a[i] / Cls::$s). source[key]
-			 * is already on the stack as the value; compiling the target appends
-			 * its lvalue-load, which we fold into a STORE just as a normal
-			 * assignment does. */
-			VmInstr *pInstr;
-			sxi32 iVmOp = PH7_OP_STORE;
-			sxi32 iP1 = 0, iP2 = 0;
-			void *p3 = 0;
-			rc = GenStateCompileArrayEntry(&(*pGen),pTarget,pNext,
-				EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);
+			rc = GenStateEmitListValueStore(&(*pGen),pTarget,pNext);
 			if( rc != SXRET_OK ){
 				return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
 			}
-			if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){
-				if( pInstr->iOp == PH7_OP_MEMBER ){
-					iP2 = 1; /* member store: keep MEMBER, store value below it */
-				}else if( pInstr->iOp == PH7_OP_LOAD_IDX ){
-					iVmOp = PH7_OP_STORE_IDX;
-					iP1 = pInstr->iP1;
-					(void)PH7_VmPopInstr(pGen->pVm);
-				}else{
-					p3 = pInstr->p3; /* named store: $v = value */
-					(void)PH7_VmPopInstr(pGen->pVm);
-				}
-			}
-			PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
-			/* STORE leaves the assigned value on the stack top; drop it so the
-			 * source array is back on top for the next entry. */
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}
 		pGen->pIn = &pNext[1];
 	}
+	if( bAnyRef ){
+		return GenStateDropListSourceName(pGen,&sTmp);
+	}
 	return SXRET_OK;
+}
+/*
+ * Compile a POSITIONAL destructuring body one entry at a time, in SOURCE ORDER,
+ * instead of pushing every target and letting OP_LOAD_LIST assign them together.
+ *
+ * This is the shape php always has, and it only matters once an entry binds BY
+ * REFERENCE: the bind has to happen where it was written, because a later entry
+ * may write THROUGH it. `[&$y, $y] = [1, 2]` binds $y to element 0 and then
+ * assigns element 1's value to $y -- which lands in element 0, so php answers
+ * `[2, 2]`. Assigning first and binding afterwards answers `[1, 2]`.
+ *
+ * The source array is on the stack top on entry and stays there, exactly as the
+ * keyed body leaves it.
+ */
+static sxi32 GenStateCompileSeqListBody(ph7_gen_state *pGen)
+{
+	SyString sTmp;
+	SyToken *pNext;
+	sxi32 nIndex = 0;
+	sxi32 rc;
+	if( GenStateNameListSource(pGen,&sTmp) != SXRET_OK ){
+		return SXERR_ABORT;
+	}
+	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
+		SyToken *pTarget = pGen->pIn;
+		int bRef,bNested,bShort;
+		if( pTarget >= pNext ){
+			/* An empty slot ([, $b]) skips its index and touches nothing. */
+			pGen->pIn = &pNext[1];
+			nIndex++;
+			continue;
+		}
+		bRef = (pTarget->nType & PH7_TK_AMPER/*'&'*/) != 0;
+		if( bRef ){
+			pTarget++;
+			if( pTarget >= pNext ){
+				/* `[&] = $src`: php names the token that stopped it. */
+				rc = PH7_GenSyntaxError(&(*pGen),pNext < pGen->pEnd ? pNext : 0,0);
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+			}
+		}
+		bShort = (pTarget->nType & PH7_TK_OSB) != 0;
+		bNested = bShort || ( (pTarget->nType & PH7_TK_KEYWORD)
+			&& SX_PTR_TO_INT(pTarget->pUserData) == PH7_TKWRD_LIST );
+		if( bNested && PH7_GenStateListSpanHasRef(pTarget,pNext) ){
+			/* A nested level that binds by reference is a WRITE position for php as
+			 * much as a `&` target is: the bind below has to reach this element. */
+			bRef = 1;
+		}
+		/* Fetch source[index]. A by-REF position reads it in WRITE context -- which
+		 * vivifies a missing key silently and makes a non-array source php's
+		 * `Cannot use a scalar value as an array` Error -- while every other one
+		 * takes the destructuring READ (iP2=7): a missing key warns, and a source
+		 * that is not an array at all warns `Cannot use <type> as array` once for
+		 * this position, which is what php's list assign says per position. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,(void *)SyStringData(&sTmp),0);
+		{
+			ph7_value *pIdx;
+			sxu32 nConstIdx;
+			pIdx = PH7_ReserveConstObj(pGen->pVm,&nConstIdx);
+			if( pIdx == 0 ){
+				PH7_GenCompileError(&(*pGen),E_ERROR,pTarget->nLine,
+					"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			PH7_MemObjInitFromInt(pGen->pVm,pIdx,(sxi64)nIndex);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,(sxi32)nConstIdx,0,0);
+		}
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,bRef ? 1 : 7,0,0);
+		if( bNested ){
+			SyToken *pSavedIn = pGen->pIn,*pSavedEnd = pGen->pEnd;
+			pGen->pIn = pTarget;
+			pGen->pEnd = pNext;
+			rc = bShort ? PH7_CompileShortList(&(*pGen),0) : PH7_CompileList(&(*pGen),0);
+			pGen->pIn = pSavedIn;
+			pGen->pEnd = pSavedEnd;
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			/* Drop the element the inner body left behind. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		}else if( bRef ){
+			rc = GenStateEmitListRefBind(&(*pGen),pTarget,pNext);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}else{
+			rc = GenStateEmitListValueStore(&(*pGen),pTarget,pNext);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+		pGen->pIn = &pNext[1];
+		nIndex++;
+	}
+	return GenStateDropListSourceName(pGen,&sTmp);
 }
 /*
  * Shared body for list() and short list [...] compilation.
@@ -1821,7 +2102,7 @@ static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)
 	SySet sNested; /* Dynamically-sized container of NestedListEntry */
 	SyToken *pNext;
 	SyToken *pClassifyIn;
-	sxi32 nKeyed = 0, nPositional = 0, nEmpty = 0;
+	sxi32 nKeyed = 0, nPositional = 0, nEmpty = 0, nRefBind = 0;
 	sxi32 nExpr;
 	sxi32 rc;
 	/* First pass: classify entries as keyed (`k => v`), positional, or empty
@@ -1835,11 +2116,21 @@ static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)
 		}else if( GenStateFindTopLevelArrow(pGen->pIn,pNext) < pNext ){
 			nKeyed++;
 		}else{
+			if( GenStateEntryBindsRef(pGen->pIn,pNext) ){
+				nRefBind++;
+			}
 			nPositional++;
 		}
 		pGen->pIn = &pNext[1];
 	}
 	pGen->pIn = pClassifyIn;
+	if( nKeyed < 1 && nPositional < 1 ){
+		/* `[, ,] = $src` fills nothing: php refuses the whole construct rather than
+		 * running a destructure with no targets, which is what this used to do. */
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn < pGen->pEnd ? pGen->pIn->nLine : 0,
+			"Cannot use empty list");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+	}
 	if( nKeyed > 0 && nEmpty > 0 ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
 			"Cannot use empty array entries in keyed array assignment");
@@ -1852,6 +2143,12 @@ static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)
 	}
 	if( nKeyed > 0 ){
 		return GenStateCompileKeyedListBody(pGen);
+	}
+	if( nRefBind > 0 ){
+		/* An entry binds BY REFERENCE, so the entries are settled one at a time and
+		 * in SOURCE ORDER rather than pushed together for OP_LOAD_LIST to assign:
+		 * a later entry may write THROUGH a bind an earlier one made. */
+		return GenStateCompileSeqListBody(pGen);
 	}
 	nExpr = 0;
 	SySetInit(&sNested,&pGen->pVm->sAllocator,sizeof(struct NestedListEntry));
@@ -1916,8 +2213,10 @@ static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)
 		/* Advance the stream cursor */
 		pGen->pIn = &pNext[1];
 	}
-	/* Emit the LOAD_LIST instruction */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_LIST,nExpr,0,0,0);
+	/* Emit the LOAD_LIST instruction. P2 is how many entries FILL a position -- the
+	 * empty slots left out -- which is how many times php complains when the source
+	 * is not an array at all: it asks the source once per position it means to fill. */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_LIST,nExpr,nExpr - nEmpty,0,0);
 	/* After LOAD_LIST, the source array is still on the stack top.
 	 * For each nested entry, emit code to extract the sub-array
 	 * at the corresponding index and recursively destructure it.

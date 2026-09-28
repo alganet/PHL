@@ -857,6 +857,12 @@ struct ph7_gen_state
 	SySet   *pTokenSet;  /* Token containers */
 	sxi8 bStrictTypes;       /* Current file's strict_types mode (0 = weak/unset, 1 = strict) */
 	sxi8 bStrictTypesLocked; /* 1 once the current file has emitted any non-declare top-level statement */
+	sxi8 bListSrcNotRef;     /* 1 while compiling the TARGET list of an assignment whose SOURCE
+	                          * cannot hold a reference (`[&$r] = [7];`). php checks this at
+	                          * compile time, where it still knows what the right-hand side was
+	                          * written as; by the time a by-ref entry is emitted the source is
+	                          * an anonymous value on the stack, so the answer is carried here.
+	                          * A foreach `as` list has no such source and leaves it clear. */
 	sxi8 bInGenerator;       /* ROOT C: 1 while compiling a generator function body (a yield appears at
 	                          * this function's own level). Gates inline try/catch/finally so `yield`
 	                          * inside a catch/finally suspends correctly; non-generators keep the

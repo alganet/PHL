@@ -1295,6 +1295,27 @@ static int GenStateInstanceofFoldsLhs(ph7_gen_state *pGen,sxu32 nFirst)
  * this function takes care of generating the appropriate
  * error message.
  */
+/*
+ * php's `zend_is_variable_or_call`: what may sit on the right of a destructuring
+ * assignment whose target list binds BY REFERENCE. A variable, a property, a
+ * static property, a subscript and a CALL can each hand a slot over; an array
+ * literal, a string, `new`, and any computed value cannot, and php refuses those
+ * at compile time rather than binding to a temporary.
+ */
+static int GenStateNodeIsRefSource(ph7_expr_node *pNode)
+{
+	if( pNode == 0 ){
+		return 0;
+	}
+	if( pNode->pOp ){
+		return pNode->pOp->iOp == EXPR_OP_SUBSCRIPT
+		    || pNode->pOp->iOp == EXPR_OP_ARROW
+		    || pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+		    || pNode->pOp->iOp == EXPR_OP_DC
+		    || pNode->pOp->iOp == EXPR_OP_FUNC_CALL;
+	}
+	return pNode->xCode == PH7_CompileVariable;
+}
 static sxi32 GenStateEmitExprCode(
 	ph7_gen_state *pGen,  /* Code generator state */
 	ph7_expr_node *pNode, /* Root of the expression tree */
@@ -1635,6 +1656,16 @@ static sxi32 GenStateEmitExprCode(
 			 * php to hand out either, so `$r =& $iv->s` must keep taking the
 			 * read COPY it takes in php. */
 			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_REF ){
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE;
+			}
+			/* A destructuring target list that binds BY REFERENCE reads its SOURCE
+			 * in write context for the same reason: the bind must reach the thing
+			 * the source NAMES. That is what keeps `[&$t] = $undef;` from warning
+			 * about what it is on the point of creating. */
+			if( iVmOp == PH7_OP_STORE && pNode->pRight && pNode->pRight->pStart
+			 && (pNode->pRight->xCode == PH7_CompileList
+			  || pNode->pRight->xCode == PH7_CompileShortList)
+			 && PH7_GenStateListSpanHasRef(pNode->pRight->pStart,pNode->pRight->pEnd) ){
 				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE;
 			}
 			/* `??` reads its LEFT operand in isset-context: an undefined or
@@ -2066,7 +2097,23 @@ static sxi32 GenStateEmitExprCode(
 			}
 		}
 		nRhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
-		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_RDONLY_LOAD);
+		if( iVmOp == PH7_OP_STORE && pNode->pRight
+		 && (pNode->pRight->xCode == PH7_CompileList
+		  || pNode->pRight->xCode == PH7_CompileShortList) ){
+			/* A destructuring target list may bind BY REFERENCE (`[&$t] = $src`),
+			 * and php asks at COMPILE time whether the source can hold one --
+			 * `zend_is_variable_or_call`, which takes a variable, a property, a
+			 * static property, a subscript and a CALL, and refuses everything else
+			 * with `Cannot assign reference to non referenceable value`. The list
+			 * body cannot ask: by the time it emits a bind the source is an
+			 * anonymous value on the stack. Carry the answer to it. */
+			sxi8 bSavedSrcRef = pGen->bListSrcNotRef;
+			pGen->bListSrcNotRef = (sxi8)!GenStateNodeIsRefSource(pNode->pLeft);
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_RDONLY_LOAD);
+			pGen->bListSrcNotRef = bSavedSrcRef;
+		}else{
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_RDONLY_LOAD);
+		}
 		if( !bIsChainOp ){
 			/* Non-chain parent: RHS nullsafe chain ends here, before the
 			 * operator instruction is emitted. */

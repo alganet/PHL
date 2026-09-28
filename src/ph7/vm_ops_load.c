@@ -2370,14 +2370,16 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			}
 		}
 	}
-	if( pIdx && (bRmwMiss || (rc != SXRET_OK && (iP2 == 2 || iP2 == 0)))
+	if( pIdx && (bRmwMiss || (rc != SXRET_OK && (iP2 == 2 || iP2 == 7 || iP2 == 0)))
 	 && (pTos->iFlags & MEMOBJ_HASHMAP)
 	 && !VmIdxFeedsCoalesce(pInstr) ){
 		/* `$a['k'] ?? $d` compiles its LHS as a plain read (iP2 == 0) followed
 		 * by NULLC/NULLC_JMP — php does NOT warn there, so peek ahead and stay
 		 * silent (same guard the magic-accessor read path uses). */
-		/* php warns when a missing key is READ (iP2 == 0), destructured
-		 * (iP2 == 2), or read by the READ half of a read-modify-write (bRmwMiss).
+		/* php warns when a missing key is READ (iP2 == 0), destructured -- both
+		 * positionally (iP2 == 2) and by KEY (iP2 == 7, which used to stay silent
+		 * where php says `Undefined array key "k"` for `['k' => $v] = []`) -- or
+		 * read by the READ half of a read-modify-write (bRmwMiss).
 		 * isset/empty/??/unset (iP2 3-6) and plain write-context
 		 * vivification (iP2 == 1) stay silent, as does a read on a non-array
 		 * base (already diagnosed above). php prints an INT key bare and a
@@ -2418,10 +2420,13 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		SyBlobRelease(&sMsg);
 	}
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_STRING|MEMOBJ_OBJ)) == 0
-	 && (iP2 == 0 || iP2 == 2)
+	 && iP2 == 0
 	 && !VmIdxFeedsCoalesce(pInstr) ){
 		/* Subscripting a scalar base is a WARNING in php ("Trying to access array offset
-		 * on int") that yields NULL. PH7 yielded NULL in silence. */
+		 * on int") that yields NULL. PH7 yielded NULL in silence. (NOT for iP2 == 2, the
+		 * fetch a NESTED destructuring level makes: php never subscripts there -- its
+		 * outer list already answered that position with NULL and warned once for it --
+		 * so a second sentence about the same byte is one php does not print.) */
 		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Trying to access array offset on %s",
 			VmArithValueName(pTos));
 	}
@@ -2846,8 +2851,15 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		ph7_value *pObj;
 		int bFalseSrc = (pTos[-pInstr->iP1].iFlags & MEMOBJ_BOOL) != 0
 			&& pTos[-pInstr->iP1].x.iVal == 0;
-		if( (pTos[-pInstr->iP1].iFlags & MEMOBJ_NULL) == 0 && !bFalseSrc ){
+		sxi32 nWarn = (pTos[-pInstr->iP1].iFlags & MEMOBJ_NULL) == 0 && !bFalseSrc
+			? pInstr->iP2 : 0;
+		/* php asks the non-array source for each POSITION it means to fill, so the
+		 * warning is per ENTRY and not one for the whole list, which is what this
+		 * used to raise. An EMPTY slot fills nothing and is not counted -- P2 carries
+		 * the count the compiler made. */
+		while( nWarn > 0 ){
 			VmWarnCannotUseAsArray(&(*pVm),pTos[-pInstr->iP1].iFlags);
+			nWarn--;
 		}
 		while( pEntry <= pTos ){
 			if( pEntry->nIdx != SXU32_HIGH ){

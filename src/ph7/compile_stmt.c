@@ -1802,6 +1802,12 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 			SyStringInitFromBuf(&pInfo->sValue,pInstr->p3,SyStrlen((const char *)pInstr->p3));
 		}
 	}
+	if( (pInfo->iFlags & PH7_4EACH_STEP_LIST) && pListStart && pListEnd
+	 && PH7_GenStateListSpanHasRef(pListStart,pListEnd) ){
+		/* The list binds by reference, so this step's value has to BE the array
+		 * element rather than a copy of it. */
+		pInfo->iFlags |= PH7_4EACH_STEP_REF;
+	}
 	/* Emit the 'FOREACH_INIT' instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_FOREACH_INIT,0,0,pInfo,&nFalseJump);
 	/* Save the instruction index so we can fix it later when the jump destination is resolved */
@@ -1839,6 +1845,13 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		}
 		/* Pop the list result (LOAD_LIST leaves the assigned values on stack) */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		if( pInfo->iFlags & PH7_4EACH_STEP_REF ){
+			/* The bind is done; drop the STEP's own hold on the element, exactly as
+			 * the non-list by-ref target does. Left in place it would keep the row a
+			 * REFERENCE for the rest of the script -- php marks the ELEMENT the
+			 * target still aliases, never the row. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_UNSET_VAR,0,0,(void *)&pInfo->sValue,0);
+		}
 	}
 	/* Store this step's value and key into their non-name targets. php performs the
 	 * VALUE assignment first — visible through a __set() pair, and the order the
