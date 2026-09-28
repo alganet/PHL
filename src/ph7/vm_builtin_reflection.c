@@ -3331,7 +3331,30 @@ REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isInternal,    PH7_CLASS_INTERNAL,
 REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isUserDefined, PH7_CLASS_INTERNAL,  1)
 REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isInterface,   PH7_CLASS_INTERFACE, 0)
 REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isTrait,       PH7_CLASS_TRAIT,     0)
-REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isAbstract,    PH7_CLASS_ABSTRACT,  0)
+/*
+ * zend's IMPLICIT abstract bit, which this engine did not carry: an INTERFACE
+ * that declares a method is abstract, so `(new ReflectionClass('Countable'))
+ * ->isAbstract()` is true where this said false for 24 of php's 25 interfaces
+ * and for every userland one besides. The bit follows the METHODS rather than
+ * the keyword, which is why `Traversable` -- an interface with nothing in it --
+ * is php's one negative answer. Only this predicate reads it: getModifiers()
+ * is 0 for an interface in php too, and the export writes `interface X`, never
+ * `abstract interface X`.
+ */
+static int vm_builtin_ReflectionClass_isAbstract(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	int bAbstract = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass ){
+		bAbstract = (pClass->iFlags & PH7_CLASS_ABSTRACT) != 0
+			|| ((pClass->iFlags & PH7_CLASS_INTERFACE) != 0
+			 && SyHashTotalEntry(&pClass->hMethod) > 0);
+	}
+	ph7_result_bool(pCtx, bAbstract);
+	return PH7_OK;
+}
 REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isFinal,       PH7_CLASS_FINAL,     0)
 REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isReadOnly,    PH7_CLASS_READONLY,  0)
 REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isEnum,        PH7_CLASS_ENUM,      0)

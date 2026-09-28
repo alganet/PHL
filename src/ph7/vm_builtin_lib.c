@@ -1073,7 +1073,8 @@ static sxi32 VmInstallExceptions(ph7_vm *pVm)
 		{ "TypeError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "ArgumentCountError", "TypeError", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "ValueError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "FiberError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "FiberError", "Error", 0,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "AssertionError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "ArithmeticError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DivisionByZeroError", "ArithmeticError", 0, PH7_CLASS_NOCLONE,
@@ -1107,7 +1108,20 @@ static sxi32 VmInstallExceptions(ph7_vm *pVm)
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "JsonException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	};
-	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	{
+		sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+		if( rc == SXRET_OK ){
+			/* php refuses `new FiberError` -- the engine is the only thing that
+			 * raises one -- and words the refusal per class. */
+			ph7_class *pFe = PH7_VmExtractClass(&(*pVm),"FiberError",
+				sizeof("FiberError")-1,FALSE,0);
+			if( pFe ){
+				pFe->zNewRefusal = "The \"FiberError\" class is reserved for internal use "
+					"and cannot be manually instantiated";
+			}
+		}
+		return rc;
+	}
 }
 /*
  * The eleven core interfaces, declared from C.
@@ -1578,7 +1592,7 @@ static sxi32 VmInstallStdClasses(ph7_vm *pVm)
 		/* unserialize()'s carrier for a disallowed or unknown class: as empty as
 		 * stdClass (its properties are the payload's, created dynamically); what
 		 * makes it special is the pVm->pIncClass checks at the access sites. */
-		{ "__PHP_Incomplete_Class", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "__PHP_Incomplete_Class", 0, 0, PH7_CLASS_FINAL, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "Random\\RandomException", "Exception", 0, PH7_CLASS_NOCLONE,
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		/* php 8.5's filter exceptions: FILTER_THROW_ON_FAILURE raises the second,

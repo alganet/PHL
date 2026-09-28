@@ -10199,7 +10199,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "replaceWith", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMException", "Exception", 0, PH7_CLASS_FINAL, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMParentNode", 0, 0, PH7_CLASS_INTERFACE,
 		  aParentNodeIf, SX_ARRAYSIZE(aParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMChildNode", 0, 0, PH7_CLASS_INTERFACE,

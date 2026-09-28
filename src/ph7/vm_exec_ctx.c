@@ -1161,7 +1161,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
 		{ "__callable", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeClassSpec sSpec = {
-		"Fiber", 0, 0, PH7_CLASS_NOSERIALIZE,
+		"Fiber", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE,
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
@@ -1195,7 +1195,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 		{ "__ctx", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeClassSpec sSpec = {
-		"Generator", 0, 0, PH7_CLASS_NOSERIALIZE,
+		"Generator", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE,
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
@@ -1209,6 +1209,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 	}
 	/* `implements Iterator` last, for the reason in this function's header. */
 	pClass = PH7_VmExtractClass(&(*pVm),"Generator",sizeof("Generator")-1,0,0);
+	if( pClass ){
+		/* php refuses `new Generator` -- one only ever comes out of a call to a
+		 * function that yields -- and words the refusal per class. */
+		pClass->zNewRefusal = "The \"Generator\" class is reserved for internal use "
+			"and cannot be manually instantiated";
+	}
 	pIterator = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,0,0);
 	if( pClass == 0 || pIterator == 0 ){
 		return SXERR_NOTFOUND;
