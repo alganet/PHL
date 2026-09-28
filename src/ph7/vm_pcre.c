@@ -2118,6 +2118,45 @@ PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm)
 	ph7_create_constant(&(*pVm), "PREG_JIT_STACKLIMIT_ERROR", PcreConst_PREG_JIT_STACKLIMIT_ERROR, 0);
 }
 
+/*
+ * What the PCRE2 this build is LINKED AGAINST says about itself. php publishes the
+ * same four as constants and Composer reads PCRE_VERSION on startup (it records
+ * the platform's pcre in the lock file's platform requirements), so a missing one
+ * stops it before it can load a repository.
+ *
+ * Asked of the library rather than of its headers: the numbers differ per platform
+ * and per build, and pinning a header's idea of them would report a version this
+ * binary is not running.
+ */
+PH7_PRIVATE void PH7_PcreVersionInfo(char *zBuf,int nBuf,int *pMajor,int *pMinor,int *pJit)
+{
+	int n;
+	if( zBuf && nBuf > 0 ){
+		zBuf[0] = 0;
+		n = pcre2_config(PCRE2_CONFIG_VERSION,zBuf);
+		if( n < 0 || n > nBuf ){
+			zBuf[0] = 0;
+		}
+	}
+	if( pMajor || pMinor ){
+		/* The version string opens `MAJOR.MINOR ` -- php reads its own two numbers
+		 * the same way (its macros come from the same string). */
+		int iMaj = 0,iMin = 0;
+		const char *z = zBuf;
+		while( z && *z >= '0' && *z <= '9' ){ iMaj = iMaj*10 + (*z - '0'); z++; }
+		if( z && *z == '.' ){
+			z++;
+			while( *z >= '0' && *z <= '9' ){ iMin = iMin*10 + (*z - '0'); z++; }
+		}
+		if( pMajor ){ *pMajor = iMaj; }
+		if( pMinor ){ *pMinor = iMin; }
+	}
+	if( pJit ){
+		sxu32 nJit = 0;
+		*pJit = (pcre2_config(PCRE2_CONFIG_JIT,&nJit) == 0 && nJit != 0) ? 1 : 0;
+	}
+}
+
 #else
 /* Ensure non-empty translation unit when PCRE is disabled (MSVC C4206) */
 typedef int vm_pcre_unused;

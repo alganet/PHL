@@ -271,6 +271,19 @@ static sxu32 VmDiagnosticWhere(ph7_vm *pVm,SyString **ppFile)
 		*ppFile = &sNoFrame;
 		return 0;
 	}
+	{
+		/* The file the RUNNING code is in, which is the defining file of the
+		 * innermost active function -- not the top of the include stack. The two
+		 * agree only while top-level code is running: once a call reaches a
+		 * function defined in another unit, the include stack has moved on, so
+		 * every diagnostic raised inside a library named the ENTRY SCRIPT. In a
+		 * composer tree that is every warning any vendor package raises, and it is
+		 * what a framework's error handler logs. The line was already right. */
+		SyString *pUnit = PH7_VmExecutingUnitFile(&(*pVm));
+		if( pUnit && pUnit->nByte > 0 ){
+			*ppFile = pUnit;
+		}
+	}
 	return pVm->nCurLine ? pVm->nCurLine : 1;
 }
 static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile,sxu32 nLine)

@@ -1858,6 +1858,101 @@ static void PH7_PATHINFO_ALL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,PH7_PATHINFO_ALL);
 }
+#ifdef PH7_ENABLE_PCRE
+/*
+ * php's four PCRE build constants, asked of the linked library (see
+ * PH7_PcreVersionInfo). Composer reads PCRE_VERSION before it loads a repository.
+ */
+static void PH7_PCRE_VERSION_Const(ph7_value *pVal,void *pUserData)
+{
+	char zVer[64];
+	SXUNUSED(pUserData);
+	PH7_PcreVersionInfo(zVer,(int)sizeof(zVer),0,0,0);
+	ph7_value_string(pVal,zVer,-1);
+}
+static void PH7_PCRE_VERSION_MAJOR_Const(ph7_value *pVal,void *pUserData)
+{
+	char zVer[64];
+	int iMaj = 0;
+	SXUNUSED(pUserData);
+	PH7_PcreVersionInfo(zVer,(int)sizeof(zVer),&iMaj,0,0);
+	ph7_value_int(pVal,iMaj);
+}
+static void PH7_PCRE_VERSION_MINOR_Const(ph7_value *pVal,void *pUserData)
+{
+	char zVer[64];
+	int iMin = 0;
+	SXUNUSED(pUserData);
+	PH7_PcreVersionInfo(zVer,(int)sizeof(zVer),0,&iMin,0);
+	ph7_value_int(pVal,iMin);
+}
+static void PH7_PCRE_JIT_SUPPORT_Const(ph7_value *pVal,void *pUserData)
+{
+	char zVer[64];
+	int iJit = 0;
+	SXUNUSED(pUserData);
+	PH7_PcreVersionInfo(zVer,(int)sizeof(zVer),0,0,&iJit);
+	ph7_value_bool(pVal,iJit);
+}
+#endif /* PH7_ENABLE_PCRE */
+/*
+ * php's four BUILD-SHAPE booleans. A script reads them to decide what the engine
+ * can do, not what it is called: symfony/process asks `defined('ZEND_THREAD_SAFE')`
+ * to know whether `proc_open` needs an explicit cwd, and with the constant simply
+ * ABSENT it passed null and every subprocess Composer runs died in `is_dir(null)`.
+ * PHL runs one VM per thread with no shared globals, so it answers php's
+ * non-ZTS, non-debug shape.
+ */
+static void PH7_ZEND_THREAD_SAFE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_bool(pVal,0); }
+static void PH7_ZEND_DEBUG_BUILD_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_bool(pVal,0); }
+static void PH7_PHP_ZTS_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_bool(pVal,0); }
+static void PH7_PHP_DEBUG_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_bool(pVal,0); }
+/*
+ * php's phpinfo() SECTION flags. A script passes one to say which part it wants;
+ * symfony/process asks for INFO_GENERAL to read the build's configure line (it is
+ * how it detects `--enable-sigchild`), so Composer needs them to start at all.
+ */
+static void PH7_INFO_GENERAL_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,1); }
+static void PH7_INFO_CREDITS_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,2); }
+static void PH7_INFO_CONFIGURATION_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,4); }
+static void PH7_INFO_MODULES_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,8); }
+static void PH7_INFO_ENVIRONMENT_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,16); }
+static void PH7_INFO_VARIABLES_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,32); }
+static void PH7_INFO_LICENSE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,64); }
+static void PH7_INFO_ALL_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,4294967295LL); }
+/*
+ * The LC_* CATEGORY numbers. php registers the C library's own macros, so its
+ * numbers are the platform's (macOS and Windows put LC_ALL at 0); these are
+ * glibc's on every platform -- a script that uses the names cannot tell, one
+ * that prints the numbers can -- and setlocale() maps them to the platform's
+ * macros.
+ */
+static void PH7_LC_CTYPE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,0); }
+static void PH7_LC_NUMERIC_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,1); }
+static void PH7_LC_TIME_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,2); }
+static void PH7_LC_COLLATE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,3); }
+static void PH7_LC_MONETARY_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,4); }
+static void PH7_LC_MESSAGES_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,5); }
+static void PH7_LC_ALL_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int(pVal,6); }
 /*
  * SEEK_SET.
  *  Expand 0
@@ -2988,6 +3083,31 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PATHINFO_FILENAME",    PH7_PATHINFO_FILENAME_Const },
 	{"PATHINFO_ALL",         PH7_PATHINFO_ALL_Const },
 	/* ASSERT_QUIET_EVAL was REMOVED in php 8.0: referencing it is an Error there */
+#ifdef PH7_ENABLE_PCRE
+	{"PCRE_VERSION",         PH7_PCRE_VERSION_Const  },
+	{"PCRE_VERSION_MAJOR",   PH7_PCRE_VERSION_MAJOR_Const },
+	{"PCRE_VERSION_MINOR",   PH7_PCRE_VERSION_MINOR_Const },
+	{"PCRE_JIT_SUPPORT",     PH7_PCRE_JIT_SUPPORT_Const },
+#endif
+	{"ZEND_THREAD_SAFE",     PH7_ZEND_THREAD_SAFE_Const },
+	{"ZEND_DEBUG_BUILD",     PH7_ZEND_DEBUG_BUILD_Const },
+	{"PHP_ZTS",              PH7_PHP_ZTS_Const       },
+	{"PHP_DEBUG",            PH7_PHP_DEBUG_Const     },
+	{"INFO_GENERAL",         PH7_INFO_GENERAL_Const  },
+	{"INFO_CREDITS",         PH7_INFO_CREDITS_Const  },
+	{"INFO_CONFIGURATION",   PH7_INFO_CONFIGURATION_Const },
+	{"INFO_MODULES",         PH7_INFO_MODULES_Const  },
+	{"INFO_ENVIRONMENT",     PH7_INFO_ENVIRONMENT_Const },
+	{"INFO_VARIABLES",       PH7_INFO_VARIABLES_Const },
+	{"INFO_LICENSE",         PH7_INFO_LICENSE_Const  },
+	{"INFO_ALL",             PH7_INFO_ALL_Const      },
+	{"LC_CTYPE",             PH7_LC_CTYPE_Const      },
+	{"LC_NUMERIC",           PH7_LC_NUMERIC_Const    },
+	{"LC_TIME",              PH7_LC_TIME_Const       },
+	{"LC_COLLATE",           PH7_LC_COLLATE_Const    },
+	{"LC_MONETARY",          PH7_LC_MONETARY_Const   },
+	{"LC_MESSAGES",          PH7_LC_MESSAGES_Const   },
+	{"LC_ALL",               PH7_LC_ALL_Const        },
 	{"SEEK_SET",             PH7_SEEK_SET_Const      },
 	{"SEEK_CUR",             PH7_SEEK_CUR_Const      },
 	{"SEEK_END",             PH7_SEEK_END_Const      },

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#include <locale.h>
 /* filter_var(FILTER_VALIDATE_FLOAT) parses with libc strtod directly because it
  * needs errno==ERANGE to reject out-of-range magnitudes; SyStrToReal (also
  * strtod-backed nowadays) exposes no range-error signal. */
@@ -594,6 +595,107 @@ static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)
 
 /* Table of the built-in functions */
 /*
+ * One candidate name applied. php reads `"0"` as a QUERY -- "the locale setting is
+ * not affected, only the current setting is returned" -- which is how a script asks
+ * what is in force, and is also what `setlocale(LC_ALL, 0)` spells once the integer
+ * has been cast to a string. An EMPTY name asks the environment, as C does.
+ */
+static const char * SetLocaleApply(int iCat,const char *zName,int nName)
+{
+	if( nName == 1 && zName[0] == '0' ){
+		return setlocale(iCat,0);
+	}
+	return setlocale(iCat,nName > 0 ? zName : "");
+}
+/* One candidate list walked for setlocale(): the first name the system accepts wins. */
+typedef struct SetLocaleTry SetLocaleTry;
+struct SetLocaleTry { int iCat; const char *zRes; };
+static int SetLocaleWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	SetLocaleTry *p = (SetLocaleTry *)pUserData;
+	int nName;
+	const char *zName;
+	SXUNUSED(pKey);
+	if( p->zRes ){
+		return PH7_OK;   /* already settled */
+	}
+	zName = ph7_value_to_string(pData,&nName);
+	p->zRes = SetLocaleApply(p->iCat,zName,nName);
+	return PH7_OK;
+}
+/*
+ * string|false setlocale(int $category, array|string $locales, string ...$rest)
+ *
+ * php's own LC_* numbering maps to the platform's <locale.h> macros here, so a
+ * script keeps php's numbers whatever the C library uses. Each candidate locale is
+ * tried in order and the FIRST one the system accepts wins; `""` asks the
+ * environment and `"0"` (or 0) only QUERIES, changing nothing. false when none of
+ * them is available -- which is php's answer too, on a box without that locale.
+ *
+ * Composer's `bin/composer` opens with `setlocale(LC_ALL, 'C')`, so without this
+ * the tool did not reach its second line.
+ *
+ * PHL's own number and date formatting is its own code and does not read the C
+ * locale, exactly as php 8's does not -- so this changes what the C library does
+ * for the embedder, and nothing about how PHL prints.
+ */
+static int PH7_builtin_setlocale(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	/* php's category number -> this platform's macro, in php's order. */
+	static const int aCat[] = {
+		LC_CTYPE, LC_NUMERIC, LC_TIME, LC_COLLATE, LC_MONETARY,
+#ifdef LC_MESSAGES
+		LC_MESSAGES,
+#else
+		LC_ALL,   /* Windows has no LC_MESSAGES; php maps it to LC_ALL there */
+#endif
+		LC_ALL
+	};
+	int iCat,i;
+	const char *zRes = 0;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iCat = (int)ph7_value_to_int(apArg[0]);
+	if( iCat < 0 || iCat >= (int)SX_ARRAYSIZE(aCat) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg < 2 ){
+		/* Query only. */
+		zRes = setlocale(aCat[iCat],0);
+		if( zRes ){
+			ph7_result_string(pCtx,zRes,-1);
+		}else{
+			ph7_result_bool(pCtx,0);
+		}
+		return PH7_OK;
+	}
+	for( i = 1 ; i < nArg && zRes == 0 ; i++ ){
+		if( ph7_value_is_array(apArg[i]) ){
+			/* php accepts ONE array of candidates in the second position. */
+			SetLocaleTry sTry;
+			sTry.iCat = aCat[iCat];
+			sTry.zRes = 0;
+			ph7_array_walk(apArg[i],SetLocaleWalker,&sTry);
+			zRes = sTry.zRes;
+			continue;
+		}
+		{
+			int nName;
+			const char *zName = ph7_value_to_string(apArg[i],&nName);
+			zRes = SetLocaleApply(aCat[iCat],zName,nName);
+		}
+	}
+	if( zRes ){
+		ph7_result_string(pCtx,zRes,-1);
+	}else{
+		ph7_result_bool(pCtx,0);
+	}
+	return PH7_OK;
+}
+/*
  * int memory_get_usage([bool $real_usage = false])
  *  Amount of memory, in bytes, currently allocated to the script through PHL's
  *  memory backend. PHL tracks the backend's real allocated bytes, so the
@@ -702,6 +804,7 @@ static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 static const ph7_builtin_func aBuiltInFunc[] = {
+	{ "setlocale"            , PH7_builtin_setlocale             },
 	{ "memory_get_usage"     , PH7_builtin_memory_get_usage      },
 	{ "memory_get_peak_usage", PH7_builtin_memory_get_peak_usage },
 	{ "memory_reset_peak_usage", PH7_builtin_memory_reset_peak_usage },
@@ -1010,6 +1113,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "time"    ,    PH7_builtin_time         },
 	{ "microtime",   PH7_builtin_microtime    },
 	{ "hrtime",      PH7_builtin_hrtime       },
+	{ "getrusage",   PH7_builtin_getrusage    },
 	{ "getdate" ,    PH7_builtin_getdate      },
 	{ "gettimeofday",PH7_builtin_gettimeofday },
 	{ "date",        PH7_builtin_date         },

@@ -22,6 +22,8 @@
 #ifdef __WINNT__
 /* GetSystemTime() */
 #include <Windows.h>
+/* GetProcessMemoryInfo(), for getrusage() */
+#include <psapi.h>
 #ifdef _WIN32_WCE
 /* SPDX-SnippetBegin */
 /* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
@@ -57,6 +59,7 @@ struct tm *__cdecl localtime(const time_t *t)
 #endif /*_WIN32_WCE */
 #elif defined(__UNIXES__)
 #include <sys/time.h>
+#include <sys/resource.h>
 #endif /* __WINNT__*/
 /*
  * Resolve the current wall-clock time (epoch seconds + sub-second microseconds).
@@ -201,6 +204,121 @@ PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apA
 		 * fraction — matching PHP's "%.8F" output exactly. */
 		ph7_result_string_format(pCtx,"0.%08ld %ld",sTime.tm_usec*100,sTime.tm_sec);
 	}
+	return PH7_OK;
+}
+/*
+ * array|false getrusage(int $mode = 0)
+ *
+ * php's seventeen `getrusage(2)` fields, in php's own key ORDER (which is the
+ * struct's reverse -- the two time pairs last, each with its microseconds before
+ * its seconds). $mode 1 asks for RUSAGE_CHILDREN; php answers `false` for any
+ * other non-zero value.
+ *
+ * PHPUnit's telemetry calls it for every event it emits, so without it PHPUnit 13
+ * does not start at all -- `An error occurred inside PHPUnit. Call to undefined
+ * function getrusage()`, before a single test runs.
+ *
+ * php's Windows build has its own getrusage() and keys for only the SIX fields
+ * it fills: the page-fault count, the peak working set in KiB and the two
+ * CPU-time pairs. RUSAGE_CHILDREN is the same number as RUSAGE_THREAD there, so
+ * $mode 1 answers the calling thread's times (and 0 for the other two).
+ */
+PH7_PRIVATE int PH7_builtin_getrusage(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArray,*pVal;
+	int iMode = 0;
+	/* php's key order, and the field each one carries. */
+	ph7_int64 aVal[17];
+	static const char *const azKey[17] = {
+		"ru_oublock","ru_inblock","ru_msgsnd","ru_msgrcv","ru_maxrss","ru_ixrss",
+		"ru_idrss","ru_minflt","ru_majflt","ru_nsignals","ru_nvcsw","ru_nivcsw",
+		"ru_nswap","ru_utime.tv_usec","ru_utime.tv_sec","ru_stime.tv_usec",
+		"ru_stime.tv_sec"
+	};
+	int i;
+	if( nArg > 0 ){
+		iMode = (int)ph7_value_to_int(apArg[0]);
+	}
+	/* php asks the OS for RUSAGE_CHILDREN on 1 and RUSAGE_SELF on everything else
+	 * -- there is no refusal for an out-of-range mode, it simply is not 1. */
+	for( i = 0 ; i < 17 ; i++ ){
+		aVal[i] = 0;
+	}
+#if defined(__UNIXES__)
+	{
+		struct rusage sUsage;
+		if( getrusage(iMode == 1 ? RUSAGE_CHILDREN : RUSAGE_SELF,&sUsage) == 0 ){
+			aVal[0]  = (ph7_int64)sUsage.ru_oublock;
+			aVal[1]  = (ph7_int64)sUsage.ru_inblock;
+			aVal[2]  = (ph7_int64)sUsage.ru_msgsnd;
+			aVal[3]  = (ph7_int64)sUsage.ru_msgrcv;
+			aVal[4]  = (ph7_int64)sUsage.ru_maxrss;
+			aVal[5]  = (ph7_int64)sUsage.ru_ixrss;
+			aVal[6]  = (ph7_int64)sUsage.ru_idrss;
+			aVal[7]  = (ph7_int64)sUsage.ru_minflt;
+			aVal[8]  = (ph7_int64)sUsage.ru_majflt;
+			aVal[9]  = (ph7_int64)sUsage.ru_nsignals;
+			aVal[10] = (ph7_int64)sUsage.ru_nvcsw;
+			aVal[11] = (ph7_int64)sUsage.ru_nivcsw;
+			aVal[12] = (ph7_int64)sUsage.ru_nswap;
+			aVal[13] = (ph7_int64)sUsage.ru_utime.tv_usec;
+			aVal[14] = (ph7_int64)sUsage.ru_utime.tv_sec;
+			aVal[15] = (ph7_int64)sUsage.ru_stime.tv_usec;
+			aVal[16] = (ph7_int64)sUsage.ru_stime.tv_sec;
+		}
+	}
+#elif defined(__WINNT__)
+	{
+		FILETIME sCreate,sExit,sKernel,sUser;
+		BOOL bOk;
+		if( iMode == 1 ){
+			bOk = GetThreadTimes(GetCurrentThread(),&sCreate,&sExit,&sKernel,&sUser);
+		}else{
+			PROCESS_MEMORY_COUNTERS sMem = {0};
+			bOk = GetProcessTimes(GetCurrentProcess(),&sCreate,&sExit,&sKernel,&sUser)
+			   && GetProcessMemoryInfo(GetCurrentProcess(),&sMem,sizeof(sMem));
+			if( bOk ){
+				aVal[4] = (ph7_int64)(sMem.PeakWorkingSetSize / 1024);
+				aVal[8] = (ph7_int64)sMem.PageFaultCount;
+			}
+		}
+		if( !bOk ){
+			/* php's own getrusage() failed, and php answers false. */
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		{
+			/* Both are 100-nanosecond counts since the process started. */
+			ULONGLONG uUser = ((ULONGLONG)sUser.dwHighDateTime << 32) | sUser.dwLowDateTime;
+			ULONGLONG uKern = ((ULONGLONG)sKernel.dwHighDateTime << 32) | sKernel.dwLowDateTime;
+			aVal[13] = (ph7_int64)((uUser / 10) % 1000000);
+			aVal[14] = (ph7_int64)(uUser / 10000000);
+			aVal[15] = (ph7_int64)((uKern / 10) % 1000000);
+			aVal[16] = (ph7_int64)(uKern / 10000000);
+		}
+	}
+#endif
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+#if defined(__WINNT__)
+	{
+		/* Only the six keys php's Windows build has, in its order. */
+		static const int aWin[6] = { 8, 4, 13, 14, 15, 16 };
+		for( i = 0 ; i < 6 ; i++ ){
+			ph7_value_int64(pVal,aVal[aWin[i]]);
+			ph7_array_add_strkey_elem(pArray,azKey[aWin[i]],pVal);
+		}
+	}
+#else
+	for( i = 0 ; i < 17 ; i++ ){
+		ph7_value_int64(pVal,aVal[i]);
+		ph7_array_add_strkey_elem(pArray,azKey[i],pVal);
+	}
+#endif
+	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
 }
 /*

@@ -1054,6 +1054,10 @@ static const struct VmBuiltinSig {
 	{ "get_error_handler", "", "?callable" },
 	{ "get_exception_handler", "", "?callable" },
 	{ "hrtime", "bool $as_number = false", "array|int|float|false" },
+	{ "getrusage", "int $mode = 0", "array|false" },
+	/* php's own row is `int $category, mixed ...$rest` with a MINIMUM of two, so
+	 * `setlocale(LC_ALL)` is its ArgumentCountError and not a query. */
+	{ "setlocale", "int $category, array|string $locales, string ...$rest = ?", "string|false" },
 	{ "mb_check_encoding", "array|string|null $value = NULL, ?string $encoding = NULL", "bool" },
 	{ "mb_convert_case", "string $string, int $mode, ?string $encoding = NULL", "string" },
 	{ "mb_detect_encoding", "string $string, array|string|null $encodings = NULL, bool $strict = false", "string|false" },
