@@ -789,6 +789,7 @@ PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_v
 static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,
 	ph7_value *pArray,const char *zOwner)
 {
+	char zGiven[64];
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;
 	if( pSlot == 0 ){
@@ -852,7 +853,7 @@ static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,
 	}
 	return PH7_VmThrowException(pCtx,"TypeError",
 		"%s(): Argument #1 ($array) must be of type array, %s given",
-		zOwner,ph7_type_name(pArray));
+		zOwner,VmValueGivenName(pArray,zGiven,sizeof(zGiven)));
 }
 /* Hand one of the engine's own array builtins the instance's storage slot. */
 static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pExtra)
@@ -7868,6 +7869,7 @@ static int vm_builtin_SplFixedArray_offsetUnset(ph7_context *pCtx,int nArg,ph7_v
 }
 static int vm_builtin_SplFixedArray_fromArray(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pCls;
 	ph7_class_instance *pNew;
@@ -7878,7 +7880,7 @@ static int vm_builtin_SplFixedArray_fromArray(ph7_context *pCtx,int nArg,ph7_val
 	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"SplFixedArray::fromArray(): Argument #1 ($array) must be of type array, %s given",
-			nArg < 1 ? "none" : ph7_type_name(apArg[0]));
+			nArg < 1 ? "none" : VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	if( nArg > 1 ){
 		bPreserve = ph7_value_to_bool(apArg[1]);

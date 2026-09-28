@@ -3604,6 +3604,7 @@ static int vm_builtin_ReflectionZendExtension_toString(ph7_context *pCtx, int nA
  */
 static int vm_builtin_ReflectionReference_fromArrayElement(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pNode = 0;
@@ -3622,7 +3623,7 @@ static int vm_builtin_ReflectionReference_fromArrayElement(ph7_context *pCtx, in
 		 * did. Recorded in PLAN §2 with the rest of that gap. */
 		return PH7_VmThrowException(pCtx, "TypeError",
 			"ReflectionReference::fromArrayElement(): Argument #1 ($array) "
-			"must be of type array, %s given", ph7_type_name(apArg[0]));
+			"must be of type array, %s given", VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	if( nArg < 2 ){
 		ph7_result_null(pCtx);

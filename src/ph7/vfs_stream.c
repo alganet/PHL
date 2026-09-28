@@ -1380,6 +1380,7 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	const ph7_io_stream *pStream;
 	const char *zEnding = "";
 	io_private *pDev;
@@ -1395,7 +1396,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value
 	if( !ph7_value_is_resource(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"stream_get_line(): Argument #1 ($stream) must be of type resource, %s given",
-			ph7_type_name(apArg[0]));
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
 	if( IO_PRIVATE_INVALID(pDev) ){
@@ -4348,13 +4349,14 @@ static int StreamCtxParseParams(ph7_context *pCtx,phl_stream_ctx *pRes,ph7_value
 static phl_stream_ctx * StreamCtxArg(ph7_context *pCtx,ph7_value *pVal,int bCreate,
 	const char *zArgName,int *pbThrew)
 {
+	char zGiven[64];
 	phl_stream_ctx *pRes;
 	io_private *pDev;
 	*pbThrew = 1;
 	if( !ph7_value_is_resource(pVal) ){
 		PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #1 (%s) must be of type resource, %s given",
-			ph7_function_name(pCtx),zArgName,ph7_type_name(pVal));
+			ph7_function_name(pCtx),zArgName,VmValueGivenName(pVal,zGiven,sizeof(zGiven)));
 		return 0;
 	}
 	pRes = PH7_StreamCtxFromValue(pVal);
@@ -4391,6 +4393,7 @@ static phl_stream_ctx * StreamCtxArg(ph7_context *pCtx,ph7_value *pVal,int bCrea
 PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromArg(ph7_context *pCtx,int nArg,ph7_value **apArg,
 	int iArg,const char *zArgName,int bNoDefault,int *pbThrew)
 {
+	char zGiven[64];
 	phl_stream_ctx *pRes;
 	*pbThrew = 0;
 	if( iArg < nArg && apArg[iArg] && !ph7_value_is_null(apArg[iArg]) ){
@@ -4398,7 +4401,7 @@ PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromArg(ph7_context *pCtx,int nArg,ph7
 			*pbThrew = 1;
 			PH7_VmThrowException(pCtx,"TypeError",
 				"%s(): Argument #%d (%s) must be of type resource or null, %s given",
-				ph7_function_name(pCtx),iArg + 1,zArgName,ph7_type_name(apArg[iArg]));
+				ph7_function_name(pCtx),iArg + 1,zArgName,VmValueGivenName(apArg[iArg],zGiven,sizeof(zGiven)));
 			return 0;
 		}
 		pRes = PH7_StreamCtxFromValue(apArg[iArg]);
@@ -6770,12 +6773,13 @@ PH7_PRIVATE int PH7_builtin_gethostname(ph7_context *pCtx,int nArg,ph7_value **a
 static io_private * StreamSettingArgNamed(ph7_context *pCtx,ph7_value *pArg,int iPos,
 	const char *zName,int *pRc)
 {
+	char zGiven[64];
 	io_private *pDev;
 	*pRc = PH7_OK;
 	if( !ph7_value_is_resource(pArg) ){
 		*pRc = PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #%d ($%s) must be of type resource, %s given",
-			ph7_function_name(pCtx),iPos,zName,ph7_type_name(pArg));
+			ph7_function_name(pCtx),iPos,zName,VmValueGivenName(pArg,zGiven,sizeof(zGiven)));
 		return 0;
 	}
 	pDev = (io_private *)ph7_value_to_resource(pArg);

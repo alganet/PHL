@@ -1025,13 +1025,14 @@ PH7_PRIVATE int vm_builtin_rand_str(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 static int VmRandomCheckIntArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgPos,const char *zParamName)
 {
+	char zGiven[64];
 	if( ph7_value_is_array(pArg) || ph7_value_is_object(pArg)
 		|| ph7_value_is_resource(pArg) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"%s(): Argument #%d (%s) must be of type int, %s given",
 			zFunc,iArgPos,zParamName,
-			ph7_type_name(pArg)
+			VmValueGivenName(pArg,zGiven,sizeof(zGiven))
 			);
 	}
 	if( ph7_value_is_string(pArg) ){

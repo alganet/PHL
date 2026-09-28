@@ -5855,6 +5855,7 @@ static int DomC14NCollectPrefix(ph7_value *pKey,ph7_value *pVal,void *pUserData)
 static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos,
 	const char *zFn,xmlChar **pzOut,int *pRc)
 {
+	char zGiven[64];
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
@@ -5898,7 +5899,7 @@ static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos
 		if( !ph7_value_is_string(pQuery) ){
 			*pRc = PH7_VmThrowException(pCtx,"TypeError",
 				"%s(): Argument #%d ($xpath) \"query\" option must be a string, %s given",
-				zFn,iXPathPos,ph7_type_name(pQuery));
+				zFn,iXPathPos,VmValueGivenName(pQuery,zGiven,sizeof(zGiven)));
 			nOut = -1;
 			goto done;
 		}

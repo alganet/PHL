@@ -713,6 +713,7 @@ PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	/* PHP 8: ArgumentCountError if no arguments */
 	if( nArg < 1 ){
@@ -726,7 +727,7 @@ PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"asort(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
@@ -776,6 +777,7 @@ PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	const char *zName = ph7_function_name(pCtx);
 	/* natcasesort() is the SORT_FLAG_CASE twin; match the whole name, not a byte. */
 	int bFold = zName && SyStrlen(zName) == sizeof("natcasesort")-1
@@ -791,7 +793,7 @@ PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"%s(): Argument #1 ($array) must be of type array, %s given",
-			zName,ph7_type_name(apArg[0])
+			zName,VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
@@ -832,6 +834,7 @@ PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	/* PHP 8: ArgumentCountError if no arguments */
 	if( nArg < 1 ){
@@ -845,7 +848,7 @@ PH7_PRIVATE int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"arsort(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the input hashmap */

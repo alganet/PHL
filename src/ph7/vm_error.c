@@ -3566,6 +3566,12 @@ static sxi32 VmThrowNeverReturnError(ph7_vm *pVm,ph7_vm_func *pFunc)
  * Format the "X given" portion of error messages following PHP's value-name
  * convention: "true"/"false" for booleans, class name for objects, otherwise
  * the bare type name. zBuf must hold at least 64 bytes.
+ *
+ * A class name LONGER than the buffer is answered from the class itself rather
+ * than cut down to fit: PH7_NewClass() duplicates the name with
+ * SyMemBackendStrDup(), which appends the NUL, and the class outlives the
+ * message being built. php prints the whole name however long it is, and a
+ * truncated one would name a class that does not exist.
  */
 PH7_PRIVATE const char * VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
 {
@@ -3576,12 +3582,11 @@ PH7_PRIVATE const char * VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
 		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;
 		if( pThis && pThis->pClass ){
 			SyString *pName = &pThis->pClass->sName;
-			sxu32 n = pName->nByte;
-			if( n >= nBuf ){
-				n = nBuf - 1;
+			if( pName->nByte >= nBuf ){
+				return pName->zString;
 			}
-			SyMemcpy(pName->zString,zBuf,n);
-			zBuf[n] = 0;
+			SyMemcpy(pName->zString,zBuf,pName->nByte);
+			zBuf[pName->nByte] = 0;
 			return zBuf;
 		}
 		return "object";

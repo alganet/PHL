@@ -70,6 +70,7 @@ PH7_PRIVATE int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	int bRecursive = FALSE;
 	int bCycleDetected = FALSE;
 	sxi64 iCount;
@@ -124,7 +125,7 @@ PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"count(): Argument #1 ($value) must be of type Countable|array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Count */
@@ -151,6 +152,7 @@ PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	const char *zName = ph7_function_name(pCtx);
 	/* php words the illegal-key rejection differently in the ALIAS than in
 	 * array_key_exists() itself; the two names share this routine, so match the
@@ -173,7 +175,7 @@ PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"%s(): Argument #2 ($array) must be of type array, %s given",
-			zName,ph7_type_name(apArg[1])
+			zName,VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Normalize the key on a PRIVATE copy — a resource key is rewritten to its id
@@ -202,6 +204,7 @@ PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **ap
  */
 PH7_PRIVATE int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	/* PHP requires exactly one argument and it must be passed by reference */
 	if( nArg != 1 ){
@@ -222,7 +225,7 @@ PH7_PRIVATE int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_pop(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
@@ -260,6 +263,7 @@ PH7_PRIVATE int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	sxi32 rc;
 	int i;
@@ -276,7 +280,7 @@ PH7_PRIVATE int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_push(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
@@ -307,6 +311,7 @@ PH7_PRIVATE int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	/* PHP requires exactly one argument and it must be passed by reference */
 	if( nArg != 1 ){
@@ -322,7 +327,7 @@ PH7_PRIVATE int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_shift(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the hashmap */
@@ -1541,6 +1546,7 @@ boundary_error:
  */
 PH7_PRIVATE int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pNode;
 	ph7_hashmap *pMap;
 	ph7_value *pArray;
@@ -1560,7 +1566,7 @@ PH7_PRIVATE int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_values(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation that describe the input hashmap */
@@ -1601,6 +1607,7 @@ PH7_PRIVATE int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pNode;
 	ph7_hashmap *pMap;
 	ph7_value *pArray;
@@ -1623,7 +1630,7 @@ PH7_PRIVATE int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_keys(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
@@ -1641,7 +1648,7 @@ PH7_PRIVATE int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_keys(): Argument #3 ($strict) must be of type bool, %s given",
-				ph7_type_name(apArg[2])
+				VmValueGivenName(apArg[2],zGiven,sizeof(zGiven))
 				);
 		}
 		bStrict = ph7_value_to_bool(apArg[2]);
@@ -1730,6 +1737,7 @@ PH7_PRIVATE int ph7_hashmap_same(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_merge(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap,*pSrc;
 	ph7_value *pArray;
 	int i;
@@ -1750,7 +1758,7 @@ PH7_PRIVATE int ph7_hashmap_merge(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				"TypeError",
 				"array_merge(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}else{
 			pSrc = (ph7_hashmap *)apArg[i]->x.pOther;
@@ -1851,6 +1859,7 @@ PH7_PRIVATE int ph7_hashmap_erase(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap,*pSrc;
 	ph7_hashmap_node *pCur;
 	ph7_value *pArray;
@@ -1875,7 +1884,7 @@ PH7_PRIVATE int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_slice(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Validate $offset type: reject array, object, resource. NOT a string —
@@ -1886,7 +1895,7 @@ PH7_PRIVATE int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_slice(): Argument #2 ($offset) must be of type int, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Validate $length type if provided: nullable int */
@@ -1896,7 +1905,7 @@ PH7_PRIVATE int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_slice(): Argument #3 ($length) must be of type ?int, %s given",
-				ph7_type_name(apArg[2])
+				VmValueGivenName(apArg[2],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -1907,7 +1916,7 @@ PH7_PRIVATE int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_slice(): Argument #4 ($preserve_keys) must be of type bool, %s given",
-				ph7_type_name(apArg[3])
+				VmValueGivenName(apArg[3],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -2077,6 +2086,7 @@ static void HashmapMoveLastAfter(ph7_hashmap *pMap,ph7_hashmap_node *pAfter)
  */
 PH7_PRIVATE int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pCur,*pPrev,*pRnode,*pInsertAfter,*pNewNode;
 	ph7_value *pArray,*pRvalue;
 	ph7_hashmap *pMap,*pSrc,*pRep;
@@ -2093,7 +2103,7 @@ PH7_PRIVATE int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_splice(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the target array */
@@ -2270,6 +2280,7 @@ PH7_PRIVATE int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apAr
  */
 PH7_PRIVATE int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_value *pVal,sNeedle;
 	ph7_hashmap *pMap;
@@ -2302,7 +2313,7 @@ PH7_PRIVATE int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_search(): Argument #3 ($strict) must be of type bool, %s given",
-				ph7_type_name(apArg[2])
+				VmValueGivenName(apArg[2],zGiven,sizeof(zGiven))
 				);
 		}
 		bStrict = ph7_value_to_bool(apArg[2]);
@@ -2366,6 +2377,7 @@ PH7_PRIVATE int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc,*pMap;
 	ph7_value *pArray;
@@ -2387,7 +2399,7 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_diff(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	for(i = 1 ; i < nArg ; i++){
@@ -2396,7 +2408,7 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				"TypeError",
 				"array_diff(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -2642,6 +2654,7 @@ static int HashmapUVariant(
 	int iValRule        /* HASHMAP_UVAR_VAL_* */
 	)
 {
+	char zGiven[64];
 	ph7_value *pKeyCb = 0,*pValCb = 0;
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc;
@@ -2673,7 +2686,7 @@ static int HashmapUVariant(
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"%s(): Argument #1 ($array) must be of type array, %s given",
-			zFunc,ph7_type_name(apArg[0])
+			zFunc,VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	for( i = 1 ; i < nArg - nCb ; i++ ){
@@ -2681,7 +2694,7 @@ static int HashmapUVariant(
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"%s(): Argument #%d must be of type array, %s given",
-				zFunc,i + 1,ph7_type_name(apArg[i])
+				zFunc,i + 1,VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -2773,6 +2786,7 @@ PH7_PRIVATE int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pN1,*pN2,*pEntry;
 	ph7_hashmap *pSrc,*pMap;
 	ph7_value *pArray;
@@ -2794,7 +2808,7 @@ PH7_PRIVATE int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_diff_assoc(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	for(i = 1 ; i < nArg ; i++){
@@ -2803,7 +2817,7 @@ PH7_PRIVATE int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **ap
 				"TypeError",
 				"array_diff_assoc(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -2921,6 +2935,7 @@ PH7_PRIVATE int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **a
  */
 PH7_PRIVATE int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc,*pMap;
 	ph7_value *pArray;
@@ -2941,7 +2956,7 @@ PH7_PRIVATE int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apAr
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_diff_key(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	for(i = 1 ; i < nArg ; i++){
@@ -2950,7 +2965,7 @@ PH7_PRIVATE int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apAr
 				"TypeError",
 				"array_diff_key(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -3023,6 +3038,7 @@ PH7_PRIVATE int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apAr
  */
 PH7_PRIVATE int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc,*pMap;
 	ph7_value *pArray;
@@ -3041,7 +3057,7 @@ PH7_PRIVATE int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_intersect(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	for( i = 1 ; i < nArg ; i++ ){
@@ -3050,7 +3066,7 @@ PH7_PRIVATE int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apA
 				"TypeError",
 				"array_intersect(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -3130,6 +3146,7 @@ PH7_PRIVATE int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apA
  */
 PH7_PRIVATE int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry,*pN1,*pN2;
 	ph7_hashmap *pSrc,*pMap;
 	ph7_value *pArray;
@@ -3148,7 +3165,7 @@ PH7_PRIVATE int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_intersect_assoc(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	for( i = 1 ; i < nArg ; i++ ){
@@ -3157,7 +3174,7 @@ PH7_PRIVATE int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value
 				"TypeError",
 				"array_intersect_assoc(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -3245,6 +3262,7 @@ PH7_PRIVATE int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value
  */
 PH7_PRIVATE int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc,*pMap;
 	ph7_value *pArray;
@@ -3262,7 +3280,7 @@ PH7_PRIVATE int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value *
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_intersect_key(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	for( i = 1 ; i < nArg ; i++ ){
@@ -3271,7 +3289,7 @@ PH7_PRIVATE int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value *
 				"TypeError",
 				"array_intersect_key(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -3427,6 +3445,7 @@ PH7_PRIVATE int ph7_hashmap_intersect_uassoc(ph7_context *pCtx,int nArg,ph7_valu
  */
 PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_value *pArray;
 	int i,nEntry;
 
@@ -3449,7 +3468,7 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_fill(): Argument #1 ($start_index) must be of type int, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	if( ph7_value_is_string(apArg[0]) ){
@@ -3472,7 +3491,7 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_fill(): Argument #2 ($count) must be of type int, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	if( ph7_value_is_string(apArg[1]) ){
@@ -3555,6 +3574,7 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc;
 	ph7_value *pArray;
@@ -3572,7 +3592,7 @@ PH7_PRIVATE int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_fill_keys(): Argument #1 ($keys) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
@@ -3633,6 +3653,7 @@ PH7_PRIVATE int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apA
  */
 PH7_PRIVATE int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pKe,*pVe;
 	ph7_hashmap *pKey,*pValue;
 	ph7_value *pArray;
@@ -3652,14 +3673,14 @@ PH7_PRIVATE int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_combine(): Argument #1 ($keys) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	if( !ph7_value_is_array(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_combine(): Argument #2 ($values) must be of type array, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the input hashmaps */
@@ -3731,6 +3752,7 @@ PH7_PRIVATE int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc;
 	ph7_value *pArray;
@@ -3748,7 +3770,7 @@ PH7_PRIVATE int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_reverse(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	bPreserve = FALSE;
@@ -3792,6 +3814,7 @@ PH7_PRIVATE int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_value *pNeedle;
 	ph7_hashmap *pSrc;
@@ -3819,7 +3842,7 @@ PH7_PRIVATE int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_unique(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* php's default is SORT_STRING (2): elements compare as strings. Explicit
@@ -3890,6 +3913,7 @@ PH7_PRIVATE int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc;
 	ph7_value *pArray;
@@ -3912,7 +3936,7 @@ PH7_PRIVATE int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_flip(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
@@ -4560,6 +4584,7 @@ PH7_PRIVATE int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_value *pArray,*pChunk;
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
@@ -4580,7 +4605,7 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_chunk(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Create a new array */
@@ -4599,7 +4624,7 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_chunk(): Argument #2 ($length) must be of type int, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Strings that are non-numeric produce a TypeError.  Numeric
@@ -4649,7 +4674,7 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_chunk(): Argument #3 ($preserve_keys) must be of type bool, %s given",
-				ph7_type_name(apArg[2])
+				VmValueGivenName(apArg[2],zGiven,sizeof(zGiven))
 				);
 		}
 		bPreserve = ph7_value_to_bool(apArg[2]);
@@ -4880,6 +4905,7 @@ PH7_PRIVATE int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	ph7_value *pArray;
 	int i;
@@ -4893,7 +4919,7 @@ PH7_PRIVATE int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_replace(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Create a new array */
@@ -4913,7 +4939,7 @@ PH7_PRIVATE int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg
 				"TypeError",
 				"array_replace(): Argument #%d must be of type array, %s given",
 				i + 1,
-				ph7_type_name(apArg[i])
+				VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 		/* Point to the internal representation of the input hashmap */
@@ -5071,6 +5097,7 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_value *pArray,*pValue,sKey,sResult;
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
@@ -5098,13 +5125,13 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				return PH7_VmThrowException(pCtx,
 					"TypeError",
 					"array_map(): Argument #2 ($array) must be of type array, %s given",
-					ph7_type_name(apArg[1])
+					VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 					);
 			}
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_map(): Argument #%d must be of type array, %s given",
-				i+1,ph7_type_name(apArg[i])
+				i+1,VmValueGivenName(apArg[i],zGiven,sizeof(zGiven))
 				);
 		}
 	}
@@ -5245,6 +5272,7 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_value *apCbArg[2];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
@@ -5270,7 +5298,7 @@ PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_reduce(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	{
@@ -5328,6 +5356,7 @@ PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_value *apCbArg[3];
 	ph7_value *pValue,*pUserData,sKey;
 	ph7_hashmap_node *pEntry;
@@ -5351,7 +5380,7 @@ PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_walk(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	{
@@ -5468,6 +5497,7 @@ static sxi32 HashmapWalkRecursive(
  */
 PH7_PRIVATE int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,
@@ -5487,7 +5517,7 @@ PH7_PRIVATE int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value 
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_walk_recursive(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	{
@@ -5538,6 +5568,7 @@ PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap)
 }
 PH7_PRIVATE int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	if( nArg < 1 ){
 		return PH7_VmThrowException(pCtx,
 			"ArgumentCountError",
@@ -5548,7 +5579,7 @@ PH7_PRIVATE int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_is_list(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	ph7_result_bool(pCtx,PH7_HashmapIsList((ph7_hashmap *)apArg[0]->x.pOther));
@@ -5563,6 +5594,7 @@ PH7_PRIVATE int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 static int HashmapFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLast)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pNode;
 	ph7_value *pVal;
@@ -5579,7 +5611,7 @@ static int HashmapFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLa
 			"TypeError",
 			"%s(): Argument #1 ($array) must be of type array, %s given",
 			zName,
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -5614,6 +5646,7 @@ PH7_PRIVATE int ph7_hashmap_last(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int HashmapKeyFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLast)
 {
+	char zGiven[64];
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pNode;
 	const char *zName = bLast ? "array_key_last" : "array_key_first";
@@ -5629,7 +5662,7 @@ static int HashmapKeyFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int 
 			"TypeError",
 			"%s(): Argument #1 ($array) must be of type array, %s given",
 			zName,
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -5689,6 +5722,7 @@ static ph7_value * HashmapColumnFetch(ph7_vm *pVm,ph7_value *pRow,ph7_value *pKe
  */
 PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pNode;
 	ph7_hashmap *pMap;
 	ph7_value *pArray;
@@ -5709,7 +5743,7 @@ PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_column(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -5760,6 +5794,7 @@ static sxi32 HashmapCallbackSearch(
 	ph7_hashmap_node **ppMatch    /* OUT: first matching node or NULL */
 	)
 {
+	char zGiven[64];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
 	ph7_value *pValue;
@@ -5780,7 +5815,7 @@ static sxi32 HashmapCallbackSearch(
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"%s(): Argument #1 ($array) must be of type array, %s given",
-			zName,ph7_type_name(apArg[0])
+			zName,VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	{
@@ -5918,6 +5953,7 @@ static sxi32 IterCollectStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, vo
  */
 PH7_PRIVATE int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	char zGiven[64];
 	struct IterCollect sCol;
 	ph7_value *pArray;
 	sxi32 rc;
@@ -5949,7 +5985,7 @@ PH7_PRIVATE int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **a
 	if( rc == SXERR_NOTIMPLEMENTED ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"iterator_to_array(): Argument #1 ($iterator) must be of type Traversable|array, %s given",
-			ph7_type_name(apArg[0]));
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
@@ -5959,6 +5995,7 @@ PH7_PRIVATE int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **a
  */
 PH7_PRIVATE int ph7_iterator_count(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	char zGiven[64];
 	struct IterCollect sCol;
 	sxi32 rc;
 	if( nArg < 1 ){ ph7_result_int(pCtx,0); return PH7_OK; }
@@ -5972,7 +6009,7 @@ PH7_PRIVATE int ph7_iterator_count(ph7_context *pCtx, int nArg, ph7_value **apAr
 	if( rc == SXERR_NOTIMPLEMENTED ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"iterator_count(): Argument #1 ($iterator) must be of type Traversable|array, %s given",
-			ph7_type_name(apArg[0]));
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	ph7_result_int64(pCtx, sCol.nCount);
 	return PH7_OK;
@@ -6016,6 +6053,7 @@ static sxi32 IterApplyStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void
  */
 PH7_PRIVATE int ph7_iterator_apply(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	char zGiven[64];
 	struct IterApply sApp;
 	sxi32 rc;
 	if( nArg < 2 ){ ph7_result_int(pCtx,0); return PH7_OK; }
@@ -6031,7 +6069,7 @@ PH7_PRIVATE int ph7_iterator_apply(ph7_context *pCtx, int nArg, ph7_value **apAr
 	if( rc == SXERR_NOTIMPLEMENTED ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"iterator_apply(): Argument #1 ($iterator) must be of type Traversable, %s given",
-			ph7_type_name(apArg[0]));
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	ph7_result_int64(pCtx, sApp.nCount);
 	return PH7_OK;

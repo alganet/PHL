@@ -636,12 +636,13 @@ static int vm_builtin_xw_to_uri(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int vm_builtin_xw_to_stream(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	io_private *pDev;
 	phl_xmlwriter *pXw;
 	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"XMLWriter::toStream(): Argument #1 ($stream) must be of type resource, %s given",
-			nArg > 0 ? ph7_type_name(apArg[0]) : "null");
+			nArg > 0 ? VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)) : "null");
 	}
 	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
 	if( IO_PRIVATE_INVALID(pDev) ){

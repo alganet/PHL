@@ -1104,6 +1104,7 @@ PH7_PRIVATE int PH7_builtin_chunk_split(ph7_context *pCtx,int nArg,ph7_value **a
  */
 PH7_PRIVATE int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	const char *zCur,*zIn,*zEnd;
 	int nLen;
 	/* PHP enforces exactly one argument. */
@@ -1127,7 +1128,7 @@ PH7_PRIVATE int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addslashes(): Argument #1 ($string) must be of type string, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Convert to string representation first and obtain length. */
@@ -1238,6 +1239,7 @@ static void PH7_BuildCharMask(ph7_context *pCtx,const char *zList,int nLen,char 
  */
 PH7_PRIVATE int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	const char *zCur,*zIn,*zEnd,*zMask;
 	char aMask[256];
 	int nLen,nMask;
@@ -1261,7 +1263,7 @@ PH7_PRIVATE int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addcslashes(): Argument #1 ($string) must be of type string, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* php only DEPRECATES null here; PHL rejects it. */
@@ -1276,7 +1278,7 @@ PH7_PRIVATE int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addcslashes(): Argument #2 ($characters) must be of type string, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Extract the string to process */
@@ -4517,6 +4519,7 @@ PH7_PRIVATE int PH7_builtin_str_shuffle(ph7_context *pCtx,int nArg,ph7_value **a
  */
 PH7_PRIVATE int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	const char *zString,*zEnd;
 	ph7_value *pArray,*pValue;
 	int split_len;
@@ -4535,7 +4538,7 @@ PH7_PRIVATE int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"str_split(): Argument #1 ($string) must be of type string, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Point to the target string */

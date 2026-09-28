@@ -1787,6 +1787,7 @@ static int FvCheckFailureFlags(ph7_context *pCtx,int iFlags,const char *zFunc,in
 static int FvCheckOptionsArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNo,
                              const char *zArgName)
 {
+	char zGiven[64];
 	if( pArg==0 || ph7_value_is_array(pArg) || ph7_value_is_int(pArg)
 	 || ph7_value_is_bool(pArg) || ph7_value_is_null(pArg) ){
 		return PH7_OK;
@@ -1797,7 +1798,7 @@ static int FvCheckOptionsArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc
 	ph7_result_null(pCtx);
 	return PH7_VmThrowException(pCtx,"TypeError",
 		"%s(): Argument #%d ($%s) must be of type array|int, %s given",
-		zFunc,iArgNo,zArgName,ph7_type_name(pArg));
+		zFunc,iArgNo,zArgName,VmValueGivenName(pArg,zGiven,sizeof(zGiven)));
 }
 /*
  * php's php_filter_call: what the ARRAY shape flags decide before any filter
@@ -2119,6 +2120,7 @@ static int FvArrayHandler(ph7_context *pCtx,ph7_value *pInput,int nArg,ph7_value
  */
 PH7_PRIVATE int PH7_builtin_filter_var_array(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	if( nArg<1 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"filter_var_array() expects at least 1 argument, %d given",nArg);
@@ -2126,7 +2128,7 @@ PH7_PRIVATE int PH7_builtin_filter_var_array(ph7_context *pCtx,int nArg,ph7_valu
 	if( !ph7_value_is_array(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"filter_var_array(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0]));
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	return FvArrayHandler(pCtx,apArg[0],nArg,apArg,1,"filter_var_array");
 }

@@ -15,7 +15,9 @@ if (function_exists('zend_version')) {
  * setting the seed to 0", and still hashes with 0 — so `['seed' => $input]`
  * seeds nothing whenever the value arrived as a string, which is how a seed
  * read from a config file or a query string arrives. §10 rejects what php
- * deprecates, so PHL refuses it where it is written. See the zend half. */
+ * deprecates, so PHL refuses it where it is written. See the zend half.
+ * The refusal is worded as php words a ZPP one, down to the `given` tail
+ * naming a BOOL by its value. */
 foreach (['12', 1.5, [1], null, true] as $bad) {
     try {
         hash('murmur3a', "abc", false, ['seed' => $bad]);
@@ -35,7 +37,7 @@ hash(): Argument #4 ($options)["seed"] must be of type int, string given
 hash(): Argument #4 ($options)["seed"] must be of type int, float given
 hash(): Argument #4 ($options)["seed"] must be of type int, array given
 hash(): Argument #4 ($options)["seed"] must be of type int, null given
-hash(): Argument #4 ($options)["seed"] must be of type int, bool given
+hash(): Argument #4 ($options)["seed"] must be of type int, true given
 string(8) "4e4f1e68"
 string(8) "b3dd93fa"
 string(32) "900150983cd24fb0d6963f7d28e17f72"

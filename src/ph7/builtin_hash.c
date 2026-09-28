@@ -296,6 +296,7 @@ static const HashAlgo aHashAlgo[] = {
  */
 static int HashSeedOption(ph7_context *pCtx,const HashAlgo *pAlgo,ph7_value *pOptions,sxu64 *pSeed)
 {
+	char zGiven[64];
 	ph7_value *pVal;
 	*pSeed = 0;
 	if( !pAlgo->bSeeded || pOptions == 0 || !ph7_value_is_array(pOptions) ){
@@ -309,7 +310,7 @@ static int HashSeedOption(ph7_context *pCtx,const HashAlgo *pAlgo,ph7_value *pOp
 		/* $options is argument #4 of every function that takes one. */
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #4 ($options)[\"seed\"] must be of type int, %s given",
-			ph7_function_name(pCtx),ph7_type_name(pVal));
+			ph7_function_name(pCtx),VmValueGivenName(pVal,zGiven,sizeof(zGiven)));
 	}
 	*pSeed = (sxu64)ph7_value_to_int64(pVal);
 	return PH7_OK;
@@ -460,6 +461,7 @@ PH7_PRIVATE int PH7_builtin_hash_hmac(ph7_context *pCtx,int nArg,ph7_value **apA
  */
 PH7_PRIVATE int PH7_builtin_hash_equals(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	const char *zKnown,*zUser;
 	int nKnown,nUser,i;
 	volatile unsigned char vDiff = 0;
@@ -470,12 +472,12 @@ PH7_PRIVATE int PH7_builtin_hash_equals(ph7_context *pCtx,int nArg,ph7_value **a
 	if( !ph7_value_is_string(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"hash_equals(): Argument #1 ($known_string) must be of type string, %s given",
-			ph7_type_name(apArg[0]));
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	if( !ph7_value_is_string(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"hash_equals(): Argument #2 ($user_string) must be of type string, %s given",
-			ph7_type_name(apArg[1]));
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven)));
 	}
 	zKnown = ph7_value_to_string(apArg[0],&nKnown);
 	zUser = ph7_value_to_string(apArg[1],&nUser);
@@ -1440,6 +1442,7 @@ PH7_PRIVATE int PH7_builtin_hash_update_file(ph7_context *pCtx,int nArg,ph7_valu
  */
 PH7_PRIVATE int PH7_builtin_hash_update_stream(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	ph7_class_instance *pThis;
 	const HashAlgo *pAlgo;
 	HashState sState;
@@ -1457,7 +1460,7 @@ PH7_PRIVATE int PH7_builtin_hash_update_stream(ph7_context *pCtx,int nArg,ph7_va
 	if( !ph7_value_is_resource(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"hash_update_stream(): Argument #2 ($stream) must be of type resource, %s given",
-			ph7_type_name(apArg[1]));
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven)));
 	}
 	pDev = (io_private *)ph7_value_to_resource(apArg[1]);
 	if( IO_PRIVATE_INVALID(pDev) || pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC

@@ -189,6 +189,7 @@ PH7_PRIVATE int PH7_builtin_cos(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_acos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	double r, x;
 	/* PHP enforces exactly one argument and a floatable parameter. */
 	if( nArg != 1 ){
@@ -205,7 +206,7 @@ PH7_PRIVATE int PH7_builtin_acos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"acos(): Argument #1 ($num) must be of type float, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Convert to double now that we know it's numeric. */
@@ -276,6 +277,7 @@ PH7_PRIVATE int PH7_builtin_sin(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_asin(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	double r, x;
 	/* PHP enforces exactly one argument and a floatable parameter. */
 	if( nArg != 1 ){
@@ -292,7 +294,7 @@ PH7_PRIVATE int PH7_builtin_asin(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"asin(): Argument #1 ($num) must be of type float, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Convert to double now that we know it's numeric. */
@@ -391,6 +393,7 @@ PH7_PRIVATE int PH7_builtin_tan(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_atan(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	double r,x;
 	/* PHP enforces exactly one argument. */
 	if( nArg != 1 ){
@@ -406,7 +409,7 @@ PH7_PRIVATE int PH7_builtin_atan(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"atan(): Argument #1 ($num) must be of type float, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	x = ph7_value_to_double(apArg[0]);
@@ -450,6 +453,7 @@ PH7_PRIVATE int PH7_builtin_tanh(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	double r,x,y;
 	/* PHP enforces exactly two arguments. */
 	if( nArg != 2 ){
@@ -464,7 +468,7 @@ PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"atan2(): Argument #1 ($y) must be of type float, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Type checking: reject non-numeric values for $x (argument #2). */
@@ -472,7 +476,7 @@ PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"atan2(): Argument #2 ($x) must be of type float, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	y = ph7_value_to_double(apArg[0]);
@@ -1306,6 +1310,7 @@ PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value *
  */
 PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	sxi64 a,b;
 	/* PHP requires exactly two arguments. */
 	if( nArg != 2 ){
@@ -1321,7 +1326,7 @@ PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"intdiv(): Argument #1 ($num1) must be of type int, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	if( ph7_value_is_string(apArg[0]) ){
@@ -1340,7 +1345,7 @@ PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"intdiv(): Argument #2 ($num2) must be of type int, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zGiven,sizeof(zGiven))
 			);
 	}
 	if( ph7_value_is_string(apArg[1]) ){

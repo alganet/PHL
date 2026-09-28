@@ -1366,6 +1366,7 @@ PH7_PRIVATE int PH7_builtin_stream_filter_prepend(ph7_context *pCtx,int nArg,ph7
  */
 PH7_PRIVATE int PH7_builtin_stream_filter_remove(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	phl_stream_filter *pFilter;
 	SXUNUSED(nArg);
 	if( !ph7_value_is_resource(apArg[0]) ){
@@ -1373,7 +1374,7 @@ PH7_PRIVATE int PH7_builtin_stream_filter_remove(ph7_context *pCtx,int nArg,ph7_
 		 * a resource at all, and the two diagnostics are different. */
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #1 ($stream_filter) must be of type resource, %s given",
-			ph7_function_name(pCtx),ph7_type_name(apArg[0]));
+			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	pFilter = PH7_StreamFilterFromValue(apArg[0]);
 	if( pFilter == 0 ){
@@ -1891,6 +1892,7 @@ PH7_PRIVATE int PH7_builtin_stream_filter_register(ph7_context *pCtx,int nArg,ph
  */
 PH7_PRIVATE int PH7_builtin_stream_bucket_make_writeable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	char zGiven[64];
 	phl_brigade_res *pRes;
 	phl_bucket *pBucket;
 	ph7_class_instance *pObj;
@@ -1899,7 +1901,7 @@ PH7_PRIVATE int PH7_builtin_stream_bucket_make_writeable(ph7_context *pCtx,int n
 	if( pRes == 0 ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #1 ($brigade) must be of type resource, %s given",
-			ph7_function_name(pCtx),ph7_type_name(apArg[0]));
+			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	pBucket = pRes->pBrig ? FilterBucketPop(pRes->pBrig) : 0;
 	if( pBucket == 0 ){
@@ -1918,6 +1920,7 @@ PH7_PRIVATE int PH7_builtin_stream_bucket_make_writeable(ph7_context *pCtx,int n
 /* The two that put one back, differing only in WHICH end. */
 static int UserBucketPut(ph7_context *pCtx,ph7_value **apArg,int bPrepend)
 {
+	char zGiven[64];
 	phl_brigade_res *pRes;
 	ph7_class_instance *pObj;
 	phl_bucket *pBucket;
@@ -1927,12 +1930,12 @@ static int UserBucketPut(ph7_context *pCtx,ph7_value **apArg,int bPrepend)
 	if( pRes == 0 ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #1 ($brigade) must be of type resource, %s given",
-			ph7_function_name(pCtx),ph7_type_name(apArg[0]));
+			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	if( !ph7_value_is_object(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #2 ($bucket) must be of type object, %s given",
-			ph7_function_name(pCtx),ph7_type_name(apArg[1]));
+			ph7_function_name(pCtx),VmValueGivenName(apArg[1],zGiven,sizeof(zGiven)));
 	}
 	pObj = (ph7_class_instance *)apArg[1]->x.pOther;
 	/* The bytes are whatever the object holds NOW: a filter that replaced
