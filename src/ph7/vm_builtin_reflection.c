@@ -8745,6 +8745,26 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 			return PH7_OK;
 		}
 		PH7_MemObjRelease(&sNatVal);
+		if( sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
+			/* A VIRTUAL property: php reads it through the same handler `$o->p`
+			 * reaches, so Reflection answers the VALUE rather than warning that a
+			 * name the class declares is undefined. A class whose handlers are its
+			 * magic trio (ext/dom) is read through __get, which is the door the
+			 * member opcode takes for the very same name. */
+			ph7_value sMagic;
+			SyString sMagicName;
+			SyStringInitFromBuf(&sMagicName, sRef.zName, (sxu32)sRef.nName);
+			PH7_MemObjInit(pCtx->pVm, &sMagic);
+			if( PH7_ClassInstanceCallMagicMethod(pCtx->pVm, pObj->pClass, pObj,
+					"__get", sizeof("__get")-1, &sMagicName, &sMagic) == SXRET_OK ){
+				ph7_result_value(pCtx, &sMagic);
+				PH7_MemObjRelease(&sMagic);
+				return PH7_OK;
+			}
+			PH7_MemObjRelease(&sMagic);
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
 		if( sRef.pAttr
 		 && (sRef.pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
 		                           |PH7_CLASS_ATTR_HIDDEN)) == 0 ){
@@ -8814,6 +8834,33 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 			return PH7_VmThrowException(pCtx, sNat.zThrowClass, "%s", sNat.zThrowMsg);
 		}
 		PH7_MemObjRelease(&sNatVal);
+		if( sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
+			/* A VIRTUAL property: php's write goes to the same handler `$o->p = v`
+			 * reaches -- which for ext/dom is __set, and refuses the read-only half
+			 * of the surface with its own sentence. Creating a slot here would give
+			 * the object a real property php has none of. */
+			ph7_value sMagicVal, *pMagicArg = nArg > 1 ? apArg[1] : 0;
+			ph7_class_method *pSet = PH7_ClassExtractMethod(pObj->pClass,
+				"__set", sizeof("__set")-1);
+			PH7_MemObjInit(pCtx->pVm, &sMagicVal);
+			if( pMagicArg == 0 ){
+				pMagicArg = &sMagicVal;
+			}
+			if( pSet ){
+				ph7_value sMagicName, *apMagic[2];
+				PH7_MemObjInitFromString(pCtx->pVm, &sMagicName, 0);
+				PH7_MemObjStringAppend(&sMagicName, sRef.zName, (sxu32)sRef.nName);
+				sMagicName.nIdx = SXU32_HIGH;
+				apMagic[0] = &sMagicName;
+				apMagic[1] = pMagicArg;
+				rc = PH7_VmCallMagicMethod(pCtx->pVm, pObj, pSet, 0, 2, apMagic);
+				PH7_MemObjRelease(&sMagicName);
+				PH7_MemObjRelease(&sMagicVal);
+				return rc == PH7_ABORT ? PH7_ABORT : PH7_OK;
+			}
+			PH7_MemObjRelease(&sMagicVal);
+			return PH7_OK;
+		}
 		if( sRef.pAttr
 		 && (sRef.pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
 		                           |PH7_CLASS_ATTR_HIDDEN)) == 0 ){
@@ -8877,6 +8924,14 @@ static int vm_builtin_ReflectionProperty_isInitialized(ph7_context *pCtx, int nA
 		return rc;
 	}
 	pVmAttr = ReflectRefInstanceAttr(pCtx->pVm, pObj, &sRef);
+	if( pVmAttr == 0 && sRef.pAttr
+	 && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
+		/* A VIRTUAL property has no slot to be uninitialized: php asks the
+		 * has_property handler, and ext/dom's answers yes for every name it
+		 * declares. */
+		ph7_result_bool(pCtx, 1);
+		return PH7_OK;
+	}
 	ph7_result_bool(pCtx, pVmAttr != 0 && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0);
 	return PH7_OK;
 }

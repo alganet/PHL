@@ -1209,12 +1209,17 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						/* php's read-only handler answers an unset with the same sentence
 						 * it answers a store: `Property p is read only`. */
 						VmBoundaryPark(&(*pVm),VmThrowNativeReadOnly(&(*pVm),pObjAttr->pAttr));
-					}else if( pUnsNoWrite && (pUnsNoWrite->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) != 0 ){
+					}else if( pUnsNoWrite && (pUnsNoWrite->iFlags & (PH7_CLASS_ATTR_NATIVE_NOWRITE
+					                                                |PH7_CLASS_ATTR_NATIVE_NOSLOT)) != 0 ){
 						/* php's own unset handler for this class refuses, and words it
 						 * without either "readonly" or "property": `Cannot unset C::$p`.
 						 * It runs whether the object has a struct or not, so an
 						 * unconstructed one -- which holds no slot at all -- refuses too
-						 * rather than falling through to the missing-property no-op. */
+						 * rather than falling through to the missing-property no-op.
+						 * A VIRTUAL property (NOSLOT) is the same answer for the same
+						 * reason: php's unset_property handler for one has nothing to
+						 * remove, so `unset($doc->preserveWhiteSpace)` is this Error and
+						 * not the silent no-op a name the object lacks would take. */
 						VmBoundaryPark(&(*pVm),
 							VmThrowNativeNoUnset(&(*pVm),pThis->pClass,pUnsNoWrite));
 					}else if( pEntry && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) != 0 ){
@@ -1327,6 +1332,15 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								pTos->nIdx = SXU32_HIGH;
 								VM_EXIT_BREAK;
 							}
+							pDecl = 0;
+						}
+						if( pDecl && (pDecl->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
+							/* A VIRTUAL property: php keeps no slot to re-create, and its
+							 * write goes to the class's handler -- __set here, exactly as
+							 * the read goes to __get. Creating one would give the object a
+							 * real property php has none of, and would take the read with
+							 * it (`$doc->formatOutput = false` then answered out of the
+							 * slot rather than out of the extension's state). */
 							pDecl = 0;
 						}
 						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
@@ -1694,6 +1708,12 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							if( pDeclAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT ){
 								pLazyDefault = pDeclAttr;
 							}
+							pDeclAttr = 0;
+						}
+						if( pDeclAttr && (pDeclAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
+							/* ...and a VIRTUAL property is answered by the class's handler
+							 * too, so the DECLARATION must not raise the typed-slot Error
+							 * for a name php keeps no slot for either. */
 							pDeclAttr = 0;
 						}
 						if( pLazyDefault ){

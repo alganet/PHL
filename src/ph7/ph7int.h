@@ -2013,7 +2013,23 @@ struct ph7_class_attr
                                             * `date_string` is the case -- it exists on an
                                             * interval built from a STRING and on no other, and
                                             * `isset()`/`property_exists()` answer false there. */
-/* next free bit: 0x4000000 */
+#define PH7_CLASS_ATTR_NATIVE_NOSLOT 0x4000000 /* A NATIVE class's VIRTUAL property: php DECLARES the
+                                            * name (Reflection lists it, property_exists() answers
+                                            * true, isVirtual() true and hasDefaultValue() false) and
+                                            * keeps NO slot for it -- every value is a read_property /
+                                            * write_property handler over the extension's own state.
+                                            * ext/dom is the case: all forty of `DOMDocument`'s are
+                                            * handlers, which is why php's `(array)` cast,
+                                            * `get_object_vars()`, `json_encode()`, `foreach`,
+                                            * `var_export()` and `get_mangled_object_vars()` show
+                                            * NOTHING for one while `print_r`/`var_dump` show the
+                                            * whole forty (the get_debug_info handler, ph7_class::
+                                            * xPresent). The instance frame skips these at `new`, so
+                                            * a read, a write and an isset() all take the miss path
+                                            * and reach the class's __get/__set/__isset exactly as an
+                                            * undeclared name does; `unset()` is php's
+                                            * `Cannot unset C::$p` rather than a silent no-op. */
+/* next free bit: 0x8000000 */
 /*
  * Does a store into this property's slot have to be FILTERED? Two unrelated
  * reasons say yes -- a declared TYPE to enforce and a native class's own write
@@ -2049,6 +2065,9 @@ struct ph7_class_attr
 #define PH7_MOD_PRIV_SET   0x100 /* PROPERTY only: php's `private(set)` asymmetric visibility */
 #define PH7_MOD_ONDEMAND   0x200 /* PROPERTY only: installed on the object only when a C body
                                   * writes it (PH7_CLASS_ATTR_NATIVE_ONDEMAND) */
+#define PH7_MOD_VIRTUAL    0x400 /* PROPERTY only: php's VIRTUAL native property -- declared on the
+                                  * class and answered by its own handlers, with NO slot on the
+                                  * object (PH7_CLASS_ATTR_NATIVE_NOSLOT) */
 /* Literal kinds a native class constant may carry */
 #define PH7_NATIVE_VAL_NULL   0
 #define PH7_NATIVE_VAL_INT    1

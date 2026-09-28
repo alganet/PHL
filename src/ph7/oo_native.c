@@ -548,6 +548,13 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	if( pDef->iMods & PH7_MOD_ONDEMAND ){
 		iFlags |= PH7_CLASS_ATTR_NATIVE_ONDEMAND;
 	}
+	/* php's VIRTUAL property: declared, and answered by the class's own handlers
+	 * rather than by a slot. NATIVE_VIRTUAL rides with it because that is exactly
+	 * what the name means to Reflection (modifiers 512) and to the object
+	 * comparator -- there is no real property behind it to compare. */
+	if( pDef->iMods & PH7_MOD_VIRTUAL ){
+		iFlags |= PH7_CLASS_ATTR_NATIVE_NOSLOT|PH7_CLASS_ATTR_NATIVE_VIRTUAL;
+	}
 	/* php declares several native slots readonly and asymmetrically visible
 	 * (`public protected(set) readonly string $path` on Directory), and both are
 	 * php-visible twice over: the write refusal and Reflection's modifier list. */

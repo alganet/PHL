@@ -823,10 +823,18 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 		 * (zend_std_get_property_ptr_ptr consults `ce->__get` and nothing else): a
 		 * class carrying only `__set` has no way to ANSWER the fetch, so php falls
 		 * through and creates an ordinary dynamic property instead — which is §10's
-		 * refusal here, not this notice. */
-		VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
-			"Indirect modification of overloaded property %z::$%z has no effect",
-			&pClass->sName,pName);
+		 * refusal here, not this notice.
+		 *
+		 * The notice is the OVERLOAD's, though, not the fetch's: a native class's
+		 * VIRTUAL property is a declared name php answers from a handler, and php's
+		 * own get_property_ptr_ptr declines it in SILENCE — `$r = &$doc->formatOutput`
+		 * binds a temporary there and says nothing. */
+		ph7_class_attr *pVirt = PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte);
+		if( pVirt == 0 || (pVirt->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) == 0 ){
+			VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+				"Indirect modification of overloaded property %z::$%z has no effect",
+				&pClass->sName,pName);
+		}
 		*pbNoBind = 1;
 		if( pValOut && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
 		 && !VmMagicGuardHeld(pVm,(void *)pThis,pName,'g') ){

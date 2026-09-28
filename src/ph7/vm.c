@@ -1818,6 +1818,16 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 		sxu32 nKeyLen = pEntry->nKeyLen;
 		/* Extract the current attribute */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT ){
+			/* php's VIRTUAL property: the class declares the name and answers it
+			 * from its own state, and the OBJECT has no slot for it at all -- so
+			 * every table walk (the (array) cast, get_object_vars, foreach,
+			 * json_encode, var_export, serialize) finds nothing, and a read, a
+			 * write or an isset() takes the miss path to the class's magic trio.
+			 * Nothing ever installs one; unlike the LAZY kind there is no C body
+			 * behind it that would. */
+			continue;
+		}
 		if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY ){
 			/* A property php's own object does not HOLD until its constructor
 			 * fills it: no slot, no hAttr entry, nothing for a read, an isset()
