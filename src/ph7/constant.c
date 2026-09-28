@@ -940,6 +940,28 @@ static void PH7_OB_PROCESSED_Const(ph7_value *pVal,void *pUserData)
  * round, and they are a selector rather than a bit mask (php reads the argument
  * with ==, so any other number is the default value mode).
  */
+/*
+ * CONNECTION_NORMAL / CONNECTION_ABORTED / CONNECTION_TIMEOUT
+ *  The three states connection_status() reports. On a CLI there is no client
+ *  to disconnect and no time limit to run out, so NORMAL is the only one that
+ *  is ever answered -- but the names are what a program COMPARES against, and
+ *  an undefined constant is a fatal.
+ */
+static void PH7_CONNECTION_NORMAL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,0);
+	SXUNUSED(pUserData);
+}
+static void PH7_CONNECTION_ABORTED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,1);
+	SXUNUSED(pUserData);
+}
+static void PH7_CONNECTION_TIMEOUT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,2);
+	SXUNUSED(pUserData);
+}
 static void PH7_ARRAY_FILTER_USE_KEY_Const(ph7_value *pVal,void *pUserData)
 {
 	ph7_value_int(pVal,2);
@@ -2722,6 +2744,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PHP_OUTPUT_HANDLER_STARTED",   PH7_OB_STARTED_Const   },
 	{"PHP_OUTPUT_HANDLER_DISABLED",  PH7_OB_DISABLED_Const  },
 	{"PHP_OUTPUT_HANDLER_PROCESSED", PH7_OB_PROCESSED_Const },
+	{"CONNECTION_NORMAL",    PH7_CONNECTION_NORMAL_Const  },
+	{"CONNECTION_ABORTED",   PH7_CONNECTION_ABORTED_Const },
+	{"CONNECTION_TIMEOUT",   PH7_CONNECTION_TIMEOUT_Const },
 	{"ARRAY_FILTER_USE_KEY", PH7_ARRAY_FILTER_USE_KEY_Const },
 	{"ARRAY_FILTER_USE_BOTH",PH7_ARRAY_FILTER_USE_BOTH_Const},
 	{"COUNT_NORMAL",         PH7_COUNT_NORMAL_Const },

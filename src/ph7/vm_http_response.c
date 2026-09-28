@@ -334,6 +334,50 @@ static int vm_builtin_http_response_code(ph7_context *pCtx, int nArg, ph7_value 
 	return PH7_OK;
 }
 /*
+ * int connection_status()
+ *   The state of the connection to the client: NORMAL, or one of the two ways
+ *   php ends a request early. A CLI run has no client to lose and no time
+ *   limit that ends anything, so php's own answer there is NORMAL for the
+ *   whole run -- which is what makes the constant, not the number, the thing
+ *   a program should compare against.
+ */
+static int vm_builtin_connection_status(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	(void)nArg; (void)apArg;
+	ph7_result_int(pCtx, 0 /* CONNECTION_NORMAL */);
+	return PH7_OK;
+}
+/*
+ * int connection_aborted()
+ *   Whether the client has gone away. Zero for the same reason.
+ */
+static int vm_builtin_connection_aborted(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	(void)nArg; (void)apArg;
+	ph7_result_int(pCtx, 0);
+	return PH7_OK;
+}
+/*
+ * int ignore_user_abort([?bool $enable = null])
+ *   Read or write the `ignore_user_abort` directive, answering the value it
+ *   held BEFORE the call -- which is what makes the setting restorable. `null`
+ *   is the value that only reads. The directive is a real one (ini_get() and
+ *   ini_set() reach the same slot), so a program that saves and restores it
+ *   through either door sees the same number.
+ */
+static int vm_builtin_ignore_user_abort(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxi64 iOld = PH7_VmIniGetInt(pVm,"ignore_user_abort",0);
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		int bOn = ph7_value_to_bool(apArg[0]);
+		PH7_VmIniSet(pVm,"ignore_user_abort",sizeof("ignore_user_abort")-1,
+			bOn ? "1" : "0",1,"ignore_user_abort()");
+	}
+	ph7_result_int(pCtx, (int)(iOld ? 1 : 0));
+	return PH7_OK;
+}
+/*
  * The bytes a cookie NAME may not carry, and the ones a RAW value may not: php
  * refuses them where they are written rather than emitting a header a proxy would
  * read as two. A setcookie() VALUE is url-encoded and so has no such rule.
@@ -668,6 +712,9 @@ PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)
 		{ "header",             vm_builtin_header             },
 		{ "header_remove",      vm_builtin_header_remove      },
 		{ "headers_sent",       vm_builtin_headers_sent       },
+		{ "connection_status",  vm_builtin_connection_status  },
+		{ "connection_aborted", vm_builtin_connection_aborted },
+		{ "ignore_user_abort",  vm_builtin_ignore_user_abort  },
 		{ "headers_list",       vm_builtin_headers_list       },
 		{ "http_response_code", vm_builtin_http_response_code },
 		{ "setcookie",          vm_builtin_setcookie          },

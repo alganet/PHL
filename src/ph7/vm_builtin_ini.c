@@ -66,6 +66,10 @@ static const struct {
 	{ "highlight.html",           "#000000",    VM_INI_ALL },
 	{ "highlight.keyword",        "#007700",    VM_INI_ALL },
 	{ "highlight.string",         "#DD0000",    VM_INI_ALL },
+	/* ignore_user_abort(): the directive the function reads and writes. php
+	 * spells its default "0" rather than the empty string every other boolean
+	 * directive here uses, and ini_get() answers that byte. */
+	{ "ignore_user_abort",        "0",          VM_INI_ALL },
 	{ "include_path",             ".",          VM_INI_ALL },
 	{ "log_errors",               "1",          VM_INI_ALL },
 	{ "max_execution_time",       "0",          VM_INI_ALL },
