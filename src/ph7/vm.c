@@ -204,6 +204,7 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 		}
 		pCons->nLine = nLine;
 		pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
+		pCons->zDeprecated = 0;     /* ...and its deprecation, which was the old symbol's */
 		SySetReset(&pCons->aAttrs); /* redefinition drops the old attributes */
 		return SXRET_OK;
 	}
@@ -224,6 +225,7 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 	}
 	pCons->nLine = nLine;
 	pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
+	pCons->zDeprecated = 0;
 	/* Install the constant */
 	SyStringInitFromBuf(&pCons->sName,zDupName,pName->nByte);
 	pCons->xExpand = xExpand;
@@ -2962,6 +2964,10 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	/* Register the CURLOPT_* / CURLINFO_* / CURLE_* family */
 	PH7_RegisterCurlConstants(&(*pVm));
 #endif
+	/* Every extension has registered its own constants by now, so the
+	 * deprecation marks can be stamped on the names they cover wherever those
+	 * were installed -- a name a build does not carry is simply skipped. */
+	PH7_MarkDeprecatedConstants(&(*pVm));
 	/* Stamp PHP-8 minimum-arity metadata onto the registered builtins so the
 	 * OP_CALL choke point can raise ArgumentCountError on too few arguments. */
 	VmSetBuiltinArity(&(*pVm));

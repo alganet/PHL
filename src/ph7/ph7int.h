@@ -391,6 +391,10 @@ struct ph7_constant
 	sxu32 nLine;           /* Declaration line for `const`; 0 for define()/engine */
 	sxu8 bUserDefined;     /* 1 when created by user code (const / define()):
 	                        * Reflection isInternal()/getFileName() input */
+	const char *zDeprecated; /* php's reason clause when the SYMBOL is deprecated
+	                        * ("8.1, as the constant has no effect"), else NULL.
+	                        * Static storage. Naming the constant raises php's
+	                        * E_DEPRECATED; LISTING the table does not. */
 	SySet aAttrs;          /* Declared #[...] attributes (ph7_attribute records) —
 	                        * php 8.5 attributes on `const` statements */
 };
@@ -4859,6 +4863,7 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(ph7_gen_state *pGen,SyToken *pTok,const cha
 PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 /* constant.c function prototypes */
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);
+PH7_PRIVATE void PH7_MarkDeprecatedConstants(ph7_vm *pVm);
 /* vm.c reference/frame internals shared with vm_builtin_var.c */
 PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
 PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);

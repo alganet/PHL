@@ -721,7 +721,7 @@ foreach ($expect as $name => $value) {
         $missing++;
         continue;
     }
-    $got = constant($name);
+    $got = @constant($name);   // one of them (CURLOPT_BINARYTRANSFER) is php-deprecated
     if ($got !== $value) {
         echo "WRONG $name: expected ", var_export($value, true), ", got ", var_export($got, true), "\n";
         $wrong++;
@@ -743,7 +743,7 @@ $masks = [
 ];
 foreach ($masks as $name => $low) {
     if (!defined($name)) { echo "MISSING $name\n"; continue; }
-    $got = constant($name);
+    $got = @constant($name);   // one of them (CURLOPT_BINARYTRANSFER) is php-deprecated
     $v = constant($name) & 0xFFFFFFFF;
     $may = $grows[$name] ?? 0;
     printf("%s low32=%s int=%s\n", $name,

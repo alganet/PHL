@@ -15,8 +15,9 @@ var_dump($gdc['PHP_INT_MAX'] === PHP_INT_MAX);
 var_dump($gdc['E_ALL'] === E_ALL);
 var_dump($gdc['SORT_STRING'] === SORT_STRING);
 var_dump($gdc['ARRAY_FILTER_USE_KEY'] === ARRAY_FILTER_USE_KEY);
-var_dump($gdc['DATE_RFC7231'] === DATE_RFC7231);
-var_dump($gdc['FILE_TEXT'] === FILE_TEXT);
+// Both are php-DEPRECATED symbols: naming one is a notice this test is not about.
+var_dump($gdc['DATE_RFC7231'] === @constant('DATE_RFC7231'));
+var_dump($gdc['FILE_TEXT'] === @constant('FILE_TEXT'));
 // The keys are the NAMES, so isset() is the membership test (a list of names
 // would make in_array() the one that worked and isset() the one that did not).
 var_dump(isset($gdc['M_PI']), isset($gdc['NoSuchConstantAnywhere']));

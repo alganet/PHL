@@ -17,7 +17,8 @@ $codes = [
 ];
 $seen = [];
 foreach ($codes as $name) {
-    $seen[] = defined($name) ? $name . '=' . constant($name) : $name . '=MISSING';
+    // DOM_PHP_ERR is php-deprecated: naming it is a notice this sweep is not about.
+    $seen[] = defined($name) ? $name . '=' . @constant($name) : $name . '=MISSING';
 }
 var_dump(implode(' ', $seen));
 
@@ -31,7 +32,8 @@ $types = [
 ];
 $seen = [];
 foreach ($types as $name) {
-    $seen[] = defined($name) ? $name . '=' . constant($name) : $name . '=MISSING';
+    // DOM_PHP_ERR is php-deprecated: naming it is a notice this sweep is not about.
+    $seen[] = defined($name) ? $name . '=' . @constant($name) : $name . '=MISSING';
 }
 var_dump(implode(' ', $seen));
 
@@ -57,7 +59,7 @@ var_dump($say(fn() => $root->firstChild->firstChild->substringData(99, 1)));
 try {
     $root->removeChild($doc->createElement('z'));
 } catch (DOMException $e) {
-    var_dump($e->getCode() === DOM_NOT_FOUND_ERR, $e->getCode() === DOM_PHP_ERR);
+    var_dump($e->getCode() === DOM_NOT_FOUND_ERR, $e->getCode() === @constant('DOM_PHP_ERR'));
 }
 --EXPECT--
 string(411) "DOM_PHP_ERR=0 DOM_INDEX_SIZE_ERR=1 DOMSTRING_SIZE_ERR=2 DOM_HIERARCHY_REQUEST_ERR=3 DOM_WRONG_DOCUMENT_ERR=4 DOM_INVALID_CHARACTER_ERR=5 DOM_NO_DATA_ALLOWED_ERR=6 DOM_NO_MODIFICATION_ALLOWED_ERR=7 DOM_NOT_FOUND_ERR=8 DOM_NOT_SUPPORTED_ERR=9 DOM_INUSE_ATTRIBUTE_ERR=10 DOM_INVALID_STATE_ERR=11 DOM_SYNTAX_ERR=12 DOM_INVALID_MODIFICATION_ERR=13 DOM_NAMESPACE_ERR=14 DOM_INVALID_ACCESS_ERR=15 DOM_VALIDATION_ERR=16"

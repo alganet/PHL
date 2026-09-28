@@ -2835,6 +2835,13 @@ PH7_PRIVATE sxi32 VmExpandConstantOnce(ph7_vm *pVm,ph7_constant *pCons,ph7_value
 }
 PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)
 {
+	/* An ENGINE constant php deprecated the symbol of says so when a program
+	 * names it -- five of the six were silent here. Listing the table is not
+	 * naming one, which is what bConstEnum says. */
+	if( pCons->zDeprecated && !pVm->bConstEnum ){
+		VmErrorFormat(pVm,8192 /* E_DEPRECATED */,
+			"Constant %z is deprecated since %s",&pCons->sName,pCons->zDeprecated);
+	}
 	if( SySetUsed(&pCons->aAttrs) > 0 ){
 		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);
 	}

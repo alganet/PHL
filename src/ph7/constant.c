@@ -858,14 +858,10 @@ static void PH7_MT_RAND_MT19937_Const(ph7_value *pVal,void *pUserData)
 }
 static void PH7_MT_RAND_PHP_Const(ph7_value *pVal,void *pUserData)
 {
-	ph7_vm *pVm = (ph7_vm *)pUserData;
-	/* php 8.3 deprecated the SYMBOL as well as the mode, and says why — when a
-	 * program NAMES it. Listing the constant table is not naming it. */
-	if( pVm && !pVm->bConstEnum ){
-		PH7_VmThrowError(pVm,0,8192 /* E_DEPRECATED */,
-			"Constant MT_RAND_PHP is deprecated since 8.3, as it uses a biased non-standard variant of Mt19937");
-	}
+	/* php 8.3 deprecated the SYMBOL as well as the mode. The notice is
+	 * aDeprecatedConst[]'s now, raised where every deprecated constant's is. */
 	ph7_value_int(pVal,PH7_MT_RAND_PHP);
+	SXUNUSED(pUserData);
 }
 /*
  * Output-handler flags and phases (ob_start()'s $flags, and the $phase an output
@@ -2940,5 +2936,41 @@ PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)
 	 */
 	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){
 		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));
+	}
+}
+/*
+ * The constants php 8.x deprecated the SYMBOL of, and the reason clause it ends
+ * the notice with. Naming one raises `Constant X is deprecated since <clause>`;
+ * LISTING the table does not, which is what pVm->bConstEnum is for.
+ *
+ * They are marked rather than raised from their own expanders because they are
+ * registered in five different units -- date's, random's, the file flags',
+ * curl's and dom's -- and because the export format's `<persistent, deprecated>`
+ * tag has to read the same fact. The stamp runs once, after every extension has
+ * installed, so a name a build does not carry is simply skipped.
+ */
+static const struct {
+	const char *zName;
+	const char *zWhy;
+} aDeprecatedConst[] = {
+	{ "DATE_RFC7231",
+	  "8.5, as this format ignores the associated timezone and always uses GMT" },
+	{ "FILE_TEXT",               "8.1, as the constant has no effect" },
+	{ "FILE_BINARY",             "8.1, as the constant has no effect" },
+	{ "MT_RAND_PHP",
+	  "8.3, as it uses a biased non-standard variant of Mt19937" },
+	{ "CURLOPT_BINARYTRANSFER",  "8.4, as it had no effect since 5.1.2" },
+	{ "DOM_PHP_ERR",             "8.4, as it is no longer used" },
+};
+PH7_PRIVATE void PH7_MarkDeprecatedConstants(ph7_vm *pVm)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aDeprecatedConst) ; ++n ){
+		SyHashEntry *pEntry = SyHashGet(&pVm->hConstant,
+			(const void *)aDeprecatedConst[n].zName,
+			SyStrlen(aDeprecatedConst[n].zName));
+		if( pEntry ){
+			((ph7_constant *)pEntry->pUserData)->zDeprecated = aDeprecatedConst[n].zWhy;
+		}
 	}
 }
