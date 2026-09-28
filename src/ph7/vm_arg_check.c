@@ -790,6 +790,7 @@ static const struct VmBuiltinSig {
 	{ "getcwd", "", "string|false" },
 	{ "getdate", "?int $timestamp = NULL", "array" },
 	{ "getenv", "?string $name = NULL, bool $local_only = false", "array|string|false" },
+	{ "gethostname", "", "string|false" },
 	{ "getmygid", "", "int|false" },
 	{ "getmypid", "", "int|false" },
 	{ "getmyuid", "", "int|false" },
@@ -831,6 +832,8 @@ static const struct VmBuiltinSig {
 	{ "idate", "string $format, ?int $timestamp = NULL", "int|false" },
 	{ "implode", "array|string $separator, ?array $array = NULL", "string" },
 	{ "in_array", "mixed $needle, array $haystack, bool $strict = false", "bool" },
+	{ "inet_ntop", "string $ip", "string|false" },
+	{ "inet_pton", "string $ip", "string|false" },
 	{ "intdiv", "int $num1, int $num2", "int" },
 	{ "interface_exists", "string $interface, bool $autoload = true", "bool" },
 	{ "trait_exists", "string $trait, bool $autoload = true", "bool" },
@@ -1598,6 +1601,10 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "readlink",          8, 1u<<0 },
 		{ "realpath",          8, 1u<<0 },
 		{ "stream_resolve_include_path", 27, 1u<<0 },
+		/* Not a path at all: php reads inet_pton()'s $ip with the same
+		 * NUL-refusing macro, and answers the same ValueError for a name
+		 * that carries one. */
+		{ "inet_pton",         9, 1u<<0 },
 		/* Directories */
 		{ "mkdir",             5, 1u<<0 },
 		{ "rmdir",             5, 1u<<0 },

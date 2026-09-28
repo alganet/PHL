@@ -359,6 +359,28 @@ PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost, int iPort, int iBacklog)
 	return PH7_NetBind(zHost, iPort, 0, 1, iBacklog, 0, 0, 0);
 }
 /*
+ * The host's own name. Winsock's gethostname() wants the library started,
+ * which PH7_NetInit() has already done for any build that reaches here; on
+ * POSIX it is the plain unistd call. The buffer is left EMPTY and the OS code
+ * reported when the call fails, which is what php's warning names.
+ */
+PH7_PRIVATE int PH7_NetHostName(char *zBuf, int nBuf, int *pErrno)
+{
+	if( zBuf == 0 || nBuf < 2 ){
+		return -1;
+	}
+	zBuf[0] = 0;
+	if( gethostname(zBuf, (size_t)(nBuf - 1)) != 0 ){
+		if( pErrno ){ *pErrno = PH7_NetLastError(); }
+		zBuf[0] = 0;
+		return -1;
+	}
+	/* A name too long for the buffer is truncated rather than terminated on
+	 * some platforms; make the answer a C string either way. */
+	zBuf[nBuf-1] = 0;
+	return PH7_OK;
+}
+/*
  * The local (bPeer == 0) or the peer address of a socket, formatted the way
  * php's stream_socket_get_name() answers it: "ip:port". Returns PH7_OK, or -1
  * for a socket that has no such name (an unbound one, or the peer of a socket

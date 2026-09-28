@@ -6455,6 +6455,309 @@ PH7_PRIVATE int PH7_builtin_stream_socket_get_name(ph7_context *pCtx,int nArg,ph
 	ph7_result_string(pCtx,zName,-1);
 	return PH7_OK;
 }
+/*
+ * The two ADDRESS converters, `inet_pton()` and `inet_ntop()`, and the host
+ * name beside them -- three names that were a loud `Call to undefined function`
+ * until now, which is what a program handling an IPv6 literal ran into on its
+ * first line. php hands each address string straight to the C library, so what
+ * is accepted is the SYSTEM resolver's grammar rather than php's; this engine
+ * writes that grammar itself so a Windows build answers what a POSIX one does
+ * (the same reason the iconv converter is PHL's own).
+ *
+ * An IPv4 literal is four decimal octets of 0-255, each written with no
+ * LEADING ZERO (`01.2.3.4` is refused, which is what keeps a dotted quad from
+ * ever being read as octal), and nothing before or behind them.
+ */
+static int NetPton4(const char *zIn,int nLen,unsigned char *aOut)
+{
+	int iOctet = 0,iVal = 0,bDigit = 0,i;
+	for( i = 0 ; i < nLen ; ++i ){
+		int c = (unsigned char)zIn[i];
+		if( c >= '0' && c <= '9' ){
+			if( bDigit && iVal == 0 ){
+				return 0; /* a leading zero */
+			}
+			iVal = iVal * 10 + (c - '0');
+			if( iVal > 255 ){
+				return 0;
+			}
+			if( !bDigit ){
+				if( ++iOctet > 4 ){
+					return 0;
+				}
+				bDigit = 1;
+			}
+			aOut[iOctet-1] = (unsigned char)iVal;
+		}else if( c == '.' && bDigit ){
+			if( iOctet == 4 ){
+				return 0; /* a fifth octet, or a trailing dot */
+			}
+			bDigit = 0;
+			iVal = 0;
+		}else{
+			return 0;
+		}
+	}
+	return (iOctet == 4 && bDigit) ? 1 : 0;
+}
+static int NetIsHexDigit(int c)
+{
+	c &= 0xFF;
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+static int NetHexDigitVal(int c)
+{
+	c &= 0xFF;
+	if( c >= '0' && c <= '9' ){
+		return c - '0';
+	}
+	return (c | 0x20) - 'a' + 10;
+}
+/*
+ * An IPv6 literal: up to eight groups of at most four hex digits, at most ONE
+ * `::` standing for the run of zero groups that makes the count up to eight,
+ * and an optional dotted quad in place of the last two groups. The `::` is
+ * remembered as the POSITION it stood at and whatever was written after it is
+ * slid to the end once the string has been read -- which is what lets one
+ * spelling mean a different number of groups depending on what follows it.
+ */
+static int NetPton6(const char *zIn,int nLen,unsigned char *aOut)
+{
+	unsigned char aTmp[16];
+	const char *zEnd = &zIn[nLen];
+	const char *zTok;
+	int iOut = 0,iGap = -1,nDigit = 0,iVal = 0;
+	SyZero(aTmp,(sxu32)sizeof(aTmp));
+	if( zIn < zEnd && zIn[0] == ':' ){
+		/* A single leading colon belongs to a `::` and to nothing else. */
+		if( &zIn[1] >= zEnd || zIn[1] != ':' ){
+			return 0;
+		}
+		zIn++;
+	}
+	zTok = zIn;
+	while( zIn < zEnd ){
+		int c = (unsigned char)zIn[0];
+		zIn++;
+		if( NetIsHexDigit(c) ){
+			iVal = (iVal<<4) | NetHexDigitVal(c);
+			if( ++nDigit > 4 ){
+				return 0;
+			}
+			continue;
+		}
+		if( c == ':' ){
+			zTok = zIn;
+			if( nDigit < 1 ){
+				if( iGap >= 0 ){
+					return 0; /* a second `::` */
+				}
+				iGap = iOut;
+				continue;
+			}
+			if( zIn >= zEnd ){
+				return 0; /* a group with a colon and nothing behind it */
+			}
+			if( iOut + 2 > (int)sizeof(aTmp) ){
+				return 0;
+			}
+			aTmp[iOut++] = (unsigned char)(iVal>>8);
+			aTmp[iOut++] = (unsigned char)(iVal & 0xFF);
+			nDigit = 0;
+			iVal = 0;
+			continue;
+		}
+		if( c == '.' && iOut + 4 <= (int)sizeof(aTmp)
+		 && NetPton4(zTok,(int)(zEnd - zTok),&aTmp[iOut]) ){
+			/* A dotted quad runs to the END of the string by definition, so
+			 * reading it is also the end of the walk. */
+			iOut += 4;
+			nDigit = 0;
+			break;
+		}
+		return 0;
+	}
+	if( nDigit > 0 ){
+		if( iOut + 2 > (int)sizeof(aTmp) ){
+			return 0;
+		}
+		aTmp[iOut++] = (unsigned char)(iVal>>8);
+		aTmp[iOut++] = (unsigned char)(iVal & 0xFF);
+	}
+	if( iGap >= 0 ){
+		/* Slide everything written after the `::` to the end; what it steps
+		 * over is already zero. An address that is already full has no room
+		 * for a gap at all. */
+		int nTail = iOut - iGap,i;
+		if( iOut == (int)sizeof(aTmp) ){
+			return 0;
+		}
+		for( i = 1 ; i <= nTail ; ++i ){
+			aTmp[sizeof(aTmp)-i] = aTmp[iGap + nTail - i];
+			aTmp[iGap + nTail - i] = 0;
+		}
+		iOut = (int)sizeof(aTmp);
+	}
+	if( iOut != (int)sizeof(aTmp) ){
+		return 0;
+	}
+	SyMemcpy(aTmp,aOut,(sxu32)sizeof(aTmp));
+	return 1;
+}
+/* The dotted quad an IPv4 address prints as; zOut holds at least 16 bytes. */
+static void NetNtop4(const unsigned char *aIn,char *zOut,int nOut)
+{
+	SyBufferFormat(zOut,(sxu32)nOut,"%d.%d.%d.%d",aIn[0],aIn[1],aIn[2],aIn[3]);
+}
+/*
+ * The text an IPv6 address prints as: lower-case hex groups with no leading
+ * zeros, the LONGEST run of zero groups written as `::` (two groups at least,
+ * and the FIRST of them when two runs are the same length), and the last four
+ * bytes written as a dotted quad for the two IPv4-carrying shapes -- an
+ * address that is all zeros but for them, and an `::ffff:` one. zOut holds at
+ * least 46 bytes.
+ */
+static void NetNtop6(const unsigned char *aIn,char *zOut,int nOut)
+{
+	unsigned int aWord[8];
+	int iBest = -1,nBest = 0,iCur = -1,nCur = 0,i,n = 0;
+	for( i = 0 ; i < 8 ; ++i ){
+		aWord[i] = ((unsigned int)aIn[i*2] << 8) | aIn[i*2+1];
+	}
+	for( i = 0 ; i < 8 ; ++i ){
+		if( aWord[i] == 0 ){
+			if( iCur < 0 ){
+				iCur = i;
+				nCur = 1;
+			}else{
+				nCur++;
+			}
+			if( nCur > nBest ){
+				iBest = iCur;
+				nBest = nCur;
+			}
+		}else{
+			iCur = -1;
+			nCur = 0;
+		}
+	}
+	if( nBest < 2 ){
+		iBest = -1;
+	}
+	for( i = 0 ; i < 8 ; ++i ){
+		if( iBest >= 0 && i >= iBest && i < iBest + nBest ){
+			if( i == iBest ){
+				zOut[n++] = ':';
+			}
+			continue;
+		}
+		if( i != 0 ){
+			zOut[n++] = ':';
+		}
+		if( i == 6 && iBest == 0
+		 && (nBest == 6 || (nBest == 5 && aWord[5] == 0xFFFF)) ){
+			NetNtop4(&aIn[12],&zOut[n],nOut - n);
+			n += (int)SyStrlen(&zOut[n]);
+			break;
+		}
+		n += (int)SyBufferFormat(&zOut[n],(sxu32)(nOut - n),"%x",aWord[i]);
+	}
+	if( iBest >= 0 && iBest + nBest == 8 ){
+		zOut[n++] = ':';
+	}
+	zOut[n] = 0;
+}
+/*
+ * string|false inet_pton(string $ip)
+ *
+ * The packed bytes an address string stands for -- four for IPv4, sixteen for
+ * IPv6. php picks the family by LOOKING at the string: a colon anywhere makes
+ * it IPv6, and a string with no dot in it is not an address at all. Every
+ * refusal is a silent FALSE.
+ */
+PH7_PRIVATE int PH7_builtin_inet_pton(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	unsigned char aAddr[16];
+	const char *zIn;
+	int nLen,i,bColon = 0,bDot = 0;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nLen);
+	for( i = 0 ; i < nLen ; ++i ){
+		if( zIn[i] == ':' ){
+			bColon = 1;
+		}else if( zIn[i] == '.' ){
+			bDot = 1;
+		}
+	}
+	if( bColon ){
+		if( !NetPton6(zIn,nLen,aAddr) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		ph7_result_string(pCtx,(const char *)aAddr,16);
+		return PH7_OK;
+	}
+	if( !bDot || !NetPton4(zIn,nLen,aAddr) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,(const char *)aAddr,4);
+	return PH7_OK;
+}
+/*
+ * string|false inet_ntop(string $ip)
+ *
+ * The address string a packed address prints as. Its LENGTH is what names the
+ * family -- four bytes or sixteen -- and any other length is a silent FALSE
+ * rather than a diagnostic.
+ */
+PH7_PRIVATE int PH7_builtin_inet_ntop(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	char zOut[64];
+	const char *zIn;
+	int nLen;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nLen);
+	zOut[0] = 0;
+	if( nLen == 4 ){
+		NetNtop4((const unsigned char *)zIn,zOut,(int)sizeof(zOut));
+	}else if( nLen == 16 ){
+		NetNtop6((const unsigned char *)zIn,zOut,(int)sizeof(zOut));
+	}else{
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zOut,-1);
+	return PH7_OK;
+}
+/*
+ * string|false gethostname()
+ *
+ * The host's own name, as the OS reports it. php warns and answers false when
+ * the call fails, naming the OS code and its text.
+ */
+PH7_PRIVATE int PH7_builtin_gethostname(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	char zName[256];
+	int iErrno = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	zName[0] = 0;
+	if( PH7_NetHostName(zName,(int)sizeof(zName),&iErrno) != PH7_OK ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"unable to fetch host [%d]: %s",iErrno,PH7_NetStrError(iErrno));
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zName,-1);
+	return PH7_OK;
+}
 #endif /*
  * The stream SETTINGS family. Every one of these was a loud
  * `Call to undefined function` — so a program that puts a socket in

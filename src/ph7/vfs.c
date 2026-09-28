@@ -4022,6 +4022,12 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_socket_shutdown", PH7_builtin_stream_socket_shutdown },
 		{"stream_socket_recvfrom", PH7_builtin_stream_socket_recvfrom },
 		{"stream_socket_sendto",   PH7_builtin_stream_socket_sendto },
+		/* The address converters and the host name: php's ext/standard
+		 * network trio, which sits with the socket family here because the
+		 * last of the three is an OS call the others share a build flag with. */
+		{"inet_pton",  PH7_builtin_inet_pton },
+		{"inet_ntop",  PH7_builtin_inet_ntop },
+		{"gethostname",PH7_builtin_gethostname },
 #endif
 		{"popen",     PH7_builtin_popen  },
 		{"proc_open",      PH7_builtin_proc_open      },
