@@ -1915,6 +1915,76 @@ static void ReflectExportArray(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal,
 	SyBlobAppend(pOut, "]", sizeof(char));
 }
 /*
+ * php's TYPE word in a `Constant [ ... ]` head -- for a CLASS constant, a
+ * global one and an extension's listing alike. 0 means "an object", whose word
+ * is its own class name and which only the caller can spell.
+ */
+static const char * ReflectExportTypeWord(ph7_value *pVal)
+{
+	if( pVal == 0 ){
+		return "null";
+	}
+	if( (pVal->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
+		return 0;
+	}
+	if( pVal->iFlags & MEMOBJ_NULL ){
+		return "null";
+	}
+	if( pVal->iFlags & MEMOBJ_HASHMAP ){
+		return "array";
+	}
+	if( pVal->iFlags & MEMOBJ_RES ){
+		return "resource";
+	}
+	if( pVal->iFlags & MEMOBJ_BOOL ){
+		return "bool";
+	}
+	if( pVal->iFlags & MEMOBJ_REAL ){
+		return "float";
+	}
+	if( pVal->iFlags & MEMOBJ_INT ){
+		return "int";
+	}
+	if( pVal->iFlags & MEMOBJ_STRING ){
+		return "string";
+	}
+	return "null";
+}
+/* The text php prints between a constant's `{ ` and ` }`. NULL and FALSE are
+ * both nothing at all, an array is `Array` and an object `Object`. */
+static void ReflectExportConstValue(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal)
+{
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_HASHMAP ){
+		SyBlobAppend(pOut, "Array", sizeof("Array")-1);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_OBJ ){
+		SyBlobAppend(pOut, "Object", sizeof("Object")-1);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_BOOL ){
+		if( pVal->x.iVal ){
+			SyBlobAppend(pOut, "1", sizeof(char));
+		}
+		return;
+	}
+	{
+		ph7_value sTmp;
+		const char *zText;
+		int nText;
+		PH7_MemObjInit(pCtx->pVm, &sTmp);
+		PH7_MemObjStore(pVal, &sTmp);
+		zText = ph7_value_to_string(&sTmp, &nText);
+		if( nText > 0 ){
+			SyBlobAppend(pOut, zText, (sxu32)nText);
+		}
+		PH7_MemObjRelease(&sTmp);
+	}
+}
+/*
  * One value in php's reflection export syntax — the text after `= ` in a
  * parameter default and inside `Argument #0 [ … ]` in an attribute dump.
  *
@@ -2704,9 +2774,13 @@ static int vm_builtin_ReflectionConstant_getValue(ph7_context *pCtx, int nArg, p
 }
 static int vm_builtin_ReflectionConstant_isDeprecated(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	ph7_constant *pCons = ReflectConstOf(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ph7_result_bool(pCtx, 0);
+	/* The same fact the E_DEPRECATED at a NAMING reads, and the same one the
+	 * export tags -- reading it here does not raise the notice, which is why
+	 * this asks the record rather than expanding the constant. */
+	ph7_result_bool(pCtx, pCons != 0 && pCons->zDeprecated != 0);
 	return PH7_OK;
 }
 static int vm_builtin_ReflectionConstant_getFileName(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -2783,17 +2857,77 @@ static int vm_builtin_ReflectionConstant_getAttributes(ph7_context *pCtx, int nA
 		return rc;
 	}
 }
+/* php's ZEND_ACC_NO_FILE_CACHE: the two constants whose value belongs to the
+ * RUNNING process rather than to the build, so opcache must not bake them in. */
+static int ReflectConstNoFileCache(const SyString *pName)
+{
+	static const char * const azNoCache[] = { "PHP_BINARY", "PHP_SAPI" };
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azNoCache) ; ++n ){
+		if( SyStringLength(pName) == SyStrlen(azNoCache[n])
+		 && SyMemcmp(SyStringData(pName), azNoCache[n], SyStringLength(pName)) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * php's `Constant [ <persistent> int JSON_HEX_TAG ] { 1 }` -- one line, and the
+ * same one an extension's Constants block lists. `<persistent>` is the ENGINE's
+ * own: a define()d constant carries no tag at all, and one php deprecated the
+ * SYMBOL of reads `<persistent, deprecated>`. The value is taken from the
+ * constant's expander DIRECTLY, so asking for the export does not raise the
+ * E_DEPRECATED that naming it would.
+ */
+static void ReflectExportGlobalConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_constant *pCons)
+{
+	ph7_value sVal;
+	const char *zType;
+	PH7_MemObjInit(pCtx->pVm, &sVal);
+	if( pCons->xExpand ){
+		pCons->xExpand(&sVal, pCons->pUserData);
+	}
+	SyBlobAppend(pOut, "Constant [ ", sizeof("Constant [ ")-1);
+	zType = ReflectExportTypeWord(&sVal);
+	/* php's flag words, in its order. `persistent` is a MODULE's registration
+	 * and a define()d constant has none; the three standard streams are the
+	 * CLI SAPI's own per-REQUEST constants and have none either, which is what
+	 * the resource test below says. `no_file_cache` is php's opcache flag, and
+	 * it marks exactly the two constants whose value is this process's. */
+	if( !pCons->bUserDefined && (sVal.iFlags & MEMOBJ_RES) == 0 ){
+		if( pCons->zDeprecated ){
+			SyBlobAppend(pOut, "<persistent, deprecated> ", sizeof("<persistent, deprecated> ")-1);
+		}else if( ReflectConstNoFileCache(&pCons->sName) ){
+			SyBlobAppend(pOut, "<persistent, no_file_cache> ",
+				sizeof("<persistent, no_file_cache> ")-1);
+		}else{
+			SyBlobAppend(pOut, "<persistent> ", sizeof("<persistent> ")-1);
+		}
+	}
+	if( zType ){
+		SyBlobFormat(pOut, "%s ", zType);
+	}else{
+		SyBlobFormat(pOut, "%z ", &((ph7_class_instance *)sVal.x.pOther)->pClass->sName);
+	}
+	SyBlobFormat(pOut, "%z ] { ", &pCons->sName);
+	ReflectExportConstValue(pCtx, pOut, &sVal);
+	SyBlobAppend(pOut, " }\n", sizeof(" }\n")-1);
+	PH7_MemObjRelease(&sVal);
+}
 static int vm_builtin_ReflectionConstant_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	const char *zName = "";
-	int nName = 0;
+	ph7_constant *pCons = ReflectConstOf(pCtx);
+	SyBlob sOut;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pThis ){
-		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	if( pCons == 0 ){
+		ph7_result_string(pCtx, "", 0);
+		return PH7_OK;
 	}
-	ph7_result_string_format(pCtx, "Constant [ %.*s ]\n", nName, zName);
+	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+	ReflectExportGlobalConstLine(pCtx, &sOut, pCons);
+	ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
 	return PH7_OK;
 }
 /* ---- ReflectionExtension: one per name this build reports as loaded ---- */
@@ -9189,7 +9323,7 @@ static sxi32 ReflectExportConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_class *
 {
 	ph7_value *pVal = 0;
 	sxi32 rc = ReflectConstSlot(pCtx, pClass, pAttr, &pVal);
-	const char *zType = "null";
+	const char *zType;
 	if( rc != SXRET_OK ){
 		return rc;
 	}
@@ -9198,23 +9332,7 @@ static sxi32 ReflectExportConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_class *
 		SyBlobAppend(pOut, "final ", sizeof("final ")-1);
 	}
 	SyBlobFormat(pOut, "%s ", ReflectExportVis(pAttr->iProtection));
-	if( pVal ){
-		if( (pVal->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
-			zType = 0; /* the object's own class */
-		}else if( pVal->iFlags & MEMOBJ_NULL ){
-			zType = "null";
-		}else if( pVal->iFlags & MEMOBJ_HASHMAP ){
-			zType = "array";
-		}else if( pVal->iFlags & MEMOBJ_BOOL ){
-			zType = "bool";
-		}else if( pVal->iFlags & MEMOBJ_REAL ){
-			zType = "float";
-		}else if( pVal->iFlags & MEMOBJ_INT ){
-			zType = "int";
-		}else if( pVal->iFlags & MEMOBJ_STRING ){
-			zType = "string";
-		}
-	}
+	zType = ReflectExportTypeWord(pVal);
 	if( zType ){
 		SyBlobFormat(pOut, "%s ", zType);
 	}else{
@@ -9222,28 +9340,7 @@ static sxi32 ReflectExportConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_class *
 	}
 	SyBlobAppend(pOut, SyStringData(pKey), SyStringLength(pKey));
 	SyBlobAppend(pOut, " ] { ", sizeof(" ] { ")-1);
-	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
-		/* php prints nothing at all for null */
-	}else if( pVal->iFlags & MEMOBJ_HASHMAP ){
-		SyBlobAppend(pOut, "Array", sizeof("Array")-1);
-	}else if( (pVal->iFlags & MEMOBJ_OBJ) ){
-		SyBlobAppend(pOut, "Object", sizeof("Object")-1);
-	}else if( pVal->iFlags & MEMOBJ_BOOL ){
-		if( pVal->x.iVal ){
-			SyBlobAppend(pOut, "1", sizeof(char));
-		}
-	}else{
-		ph7_value sTmp;
-		const char *zText;
-		int nText;
-		PH7_MemObjInit(pCtx->pVm, &sTmp);
-		PH7_MemObjStore(pVal, &sTmp);
-		zText = ph7_value_to_string(&sTmp, &nText);
-		if( nText > 0 ){
-			SyBlobAppend(pOut, zText, (sxu32)nText);
-		}
-		PH7_MemObjRelease(&sTmp);
-	}
+	ReflectExportConstValue(pCtx, pOut, pVal);
 	SyBlobAppend(pOut, " }\n", sizeof(" }\n")-1);
 	return SXRET_OK;
 }
