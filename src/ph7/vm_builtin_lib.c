@@ -335,55 +335,6 @@
    "function long2ip(int $ip): string {"\
    "  return (($ip >> 24) & 255) . '.' . (($ip >> 16) & 255) . '.' . (($ip >> 8) & 255) . '.' . ($ip & 255);"\
    "}"\
-   "function preg_filter(array|string $pattern, array|string $replacement, array|string $subject, int $limit = -1, &$count = null): array|string|null {"\
-   "  /* php declares &$count and always writes it -- the total number of"\
-   "   * replacements across every subject, 0 when nothing matched. PHL never"\
-   "   * declared the parameter, so a caller reading it got its previous value. */"\
-   "  /* php shares preg_replace()'s C body but words its refusals from its OWN"\
-   "   * name; this one has to be raised here, because the delegation below would"\
-   "   * name preg_replace(). */"\
-   "  if( !is_array($pattern) && is_array($replacement) ){"\
-   "    throw new TypeError('preg_filter(): Argument #1 ($pattern) must be of type'"\
-   "      . ' array when argument #2 ($replacement) is an array, string given');"\
-   "  }"\
-   "  if( is_array($subject) ){"\
-   "    $total = 0;"\
-   "    $out = array();"\
-   "    foreach( $subject as $k => $v ){"\
-   "      $r = preg_replace($pattern, $replacement, (string)$v, $limit, $cnt);"\
-   "      $total = $total + $cnt;"\
-   "      if( $cnt > 0 ){ $out[$k] = $r; }"\
-   "    }"\
-   "    $count = $total;"\
-   "    return $out;"\
-   "  }"\
-   "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\
-   "  $count = $cnt;"\
-   "  return $cnt > 0 ? $r : null;"\
-   "}"\
-   "function preg_replace_callback_array(array $pattern, array|string $subject, int $limit = -1, &$count = null, int $flags = 0): array|string|null {"\
-   "  /* &$count is the total across every pattern; $flags shapes each callback's"\
-   "   * match array. php writes &$count only when the whole run SUCCEEDED -- a"\
-   "   * pattern that fails to compile answers null and leaves it untouched (an"\
-   "   * array subject is not a failure: it degrades to the empty array, count 0). */"\
-   "  $total = 0;"\
-   "  foreach( $pattern as $pat => $cb ){"\
-   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit, $cnt, $flags);"\
-   "    if( $subject === null ){ return null; }"\
-   "    $total = $total + $cnt;"\
-   "  }"\
-   "  $count = $total;"\
-   "  return $subject;"\
-   "}"\
-   "function preg_grep(string $pattern, array $array, int $flags = 0): array|false {"\
-   "  $out = array();"\
-   "  foreach( $array as $k => $v ){"\
-   "    $m = preg_match($pattern, (string)$v);"\
-   "    if( $flags & PREG_GREP_INVERT ){ $m = !$m; }"\
-   "    if( $m ){ $out[$k] = $v; }"\
-   "  }"\
-   "  return $out;"\
-   "}"\
    "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\
    "function str_increment(string $string): string {"\
    "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\

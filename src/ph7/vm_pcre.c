@@ -606,7 +606,7 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 	if( nArg < 2 ){
 		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
 			"preg_match_all() expects at least 2 parameters");
-		ph7_result_int(pCtx, 0);
+		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
 	zPattern = ph7_value_to_string(apArg[0], &nPatLen);
@@ -619,7 +619,9 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 	}
 	pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 	if( pCode == 0 ){
-		ph7_result_int(pCtx, 0);
+		/* php answers FALSE, not 0 -- the declared return type is int|false and a
+		 * caller cannot tell a refused pattern from "no matches" otherwise. */
+		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
 	/* php validates $flags AFTER the pattern compiles (a bad pattern warns first).
@@ -634,7 +636,7 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 	}
 	pMatchData = pcre2_match_data_create_from_pattern(pCode, NULL);
 	if( pMatchData == 0 ){
-		ph7_result_int(pCtx, 0);
+		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
 	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
@@ -1217,23 +1219,31 @@ static sxi32 PcreReplaceSubject(
 
 /* ======================================================================
  * preg_replace(pattern, replacement, subject [, limit [, &count]])
+ * preg_filter(pattern, replacement, subject [, limit [, &count]])
+ *
+ * php gives the two ONE C body and a flag: preg_filter keeps only the subjects
+ * that were actually changed (an array subject loses the untouched keys, a
+ * scalar one answers NULL). Everything else -- the diagnostics, &$count, the
+ * array shapes -- is the same code, so the two share it here too, and that is
+ * also what makes preg_filter's refusals wear its OWN name: they are raised
+ * through the calling context, which ph7_function_name() reads.
  * ====================================================================== */
-static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apArg)
+static int PcreReplaceCommon(ph7_context *pCtx, int nArg, ph7_value **apArg, int bFilter)
 {
 	int limit = -1;
 	int count = 0;
 
 	if( nArg < 3 ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-			"preg_replace() expects at least 3 parameters");
+		/* Unreachable while aBuiltinSig[] enforces the arity php reports as an
+		 * ArgumentCountError; kept for a direct C caller. */
+		ph7_context_throw_error_format(pCtx, PH7_CTX_WARNING,
+			"%s() expects at least 3 parameters", ph7_function_name(pCtx));
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
 	if( nArg >= 4 ){
 		limit = ph7_value_to_int(apArg[3]);
 	}
-	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
-
 	if( !ph7_value_is_array(apArg[0]) && ph7_value_is_array(apArg[1]) ){
 		/* php 8 refuses the PAIR, as a catchable TypeError naming both positions --
 		 * a string pattern cannot consume an array of replacements. PHL warned and
@@ -1243,6 +1253,10 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 			"%s(): Argument #1 ($pattern) must be of type array when argument #2 "
 			"($replacement) is an array, string given",ph7_function_name(pCtx));
 	}
+	/* Only now: preg_last_error() reports the last pattern that RAN, and an
+	 * argument php refuses before that never clears it. A cached pattern skips
+	 * the compile, which is why the clear cannot live there. */
+	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
 	if( ph7_value_is_array(apArg[2]) ){
 		/* Array subject: return an array, each element replaced, keys preserved. */
 		ph7_hashmap *pSubMap = (ph7_hashmap *)apArg[2]->x.pOther;
@@ -1262,6 +1276,7 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 		while( n > 0 ){
 			const char *zSubject;
 			int nSubLen;
+			int nBefore = count;
 			SyBlob sOut;
 			PH7_HashmapExtractNodeKey(pNode, &sKey);
 			PH7_HashmapExtractNodeValue(pNode, &sVal, FALSE);
@@ -1273,17 +1288,27 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 			}
 			SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
 			if( PcreReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen, limit, &count, &sOut) != SXRET_OK ){
-				/* A bad pattern with an array subject yields an empty array (PHP);
-				 * the failure hits the first element, so pResult is still empty. */
+				/* A refused pattern drops THIS subject and php moves to the next
+				 * one, so a two-element array reports the refusal twice and
+				 * answers the empty array. A coercion that THREW is the other
+				 * kind of failure: it stops the call where php stops it. */
 				SyBlobRelease(&sOut);
 				PH7_MemObjRelease(&sKey);
 				PH7_MemObjRelease(&sVal);
-				ph7_result_value(pCtx, pResult);
-				goto set_count;
+				if( pCtx->nThrowRc ){
+					ph7_result_value(pCtx, pResult);
+					goto set_count;
+				}
+				pNode = pNode->pPrev;
+				n--;
+				continue;
 			}
-			ph7_value_string(pElem, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
-			ph7_array_add_elem(pResult, &sKey, pElem); /* copies key+value */
-			ph7_value_reset_string_cursor(pElem);
+			/* preg_filter keeps a subject only when this one changed */
+			if( !bFilter || count > nBefore ){
+				ph7_value_string(pElem, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+				ph7_array_add_elem(pResult, &sKey, pElem); /* copies key+value */
+				ph7_value_reset_string_cursor(pElem);
+			}
 			SyBlobRelease(&sOut);
 			PH7_MemObjRelease(&sKey);
 			PH7_MemObjRelease(&sVal);
@@ -1307,7 +1332,11 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 			ph7_result_null(pCtx);
 			goto set_count;
 		}
-		ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+		if( bFilter && count == 0 ){
+			ph7_result_null(pCtx);
+		}else{
+			ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+		}
 		SyBlobRelease(&sOut);
 	}
 set_count:
@@ -1322,6 +1351,14 @@ set_count:
 		PH7_MemObjRelease(&sCount);
 	}
 	return PH7_OK;
+}
+static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return PcreReplaceCommon(pCtx, nArg, apArg, 0);
+}
+static int PH7_builtin_preg_filter(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return PcreReplaceCommon(pCtx, nArg, apArg, 1);
 }
 
 /* ===== Helper: run the callback over ONE compiled pattern on ONE subject =====
@@ -1523,11 +1560,16 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	if( !ph7_value_is_callable(apArg[1]) ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-			"preg_replace_callback() expects parameter 2 to be a valid callback");
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* php screens $callback as an ARGUMENT and says exactly what is wrong with it
+	 * ("function \"f\" not found or invalid function name", "no array or string
+	 * given", "class \"x\" not found", "array callback must have exactly two
+	 * members"). PHL answered one warning for all four and carried on with NULL,
+	 * where php raises a catchable TypeError and never runs the call. */
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx, apArg[1], 2, "callback", 0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
 	}
 	if( nArg >= 4 ){
 		limit = ph7_value_to_int(apArg[3]);
@@ -1574,17 +1616,24 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 			rc = PcreCallbackReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen,
 				limit, iFlags, &count, &sOut);
 			if( rc != SXRET_OK ){
-				/* A bad pattern with an array subject yields an empty array (php);
-				 * the failure hits the first element, so pResult is still empty.
-				 * A throwing callback unwinds with no result at all. */
+				/* A refused pattern drops THIS subject and php moves to the next,
+				 * so the refusal is reported once per subject and the answer is
+				 * the empty array. A throwing callback, and a coercion that
+				 * threw, stop the call instead. */
 				SyBlobRelease(&sOut);
 				PH7_MemObjRelease(&sKey);
 				PH7_MemObjRelease(&sVal);
 				if( PH7_CALLBACK_UNWOUND(rc) ){
+					pCtx->pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
 					return rc;
 				}
-				ph7_result_value(pCtx, pResult);
-				goto set_count;
+				if( pCtx->nThrowRc ){
+					ph7_result_value(pCtx, pResult);
+					goto set_count;
+				}
+				pNode = pNode->pPrev;
+				n--;
+				continue;
 			}
 			ph7_value_string(pElem, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
 			ph7_array_add_elem(pResult, &sKey, pElem); /* copies key+value */
@@ -1611,6 +1660,9 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 		if( rc != SXRET_OK ){
 			SyBlobRelease(&sOut);
 			if( PH7_CALLBACK_UNWOUND(rc) ){
+				/* php records the aborted run: preg_last_error() reads
+				 * PREG_INTERNAL_ERROR after a callback that threw. */
+				pCtx->pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
 				return rc;
 			}
 			/* Scalar subject: a bad pattern returns NULL (php). */
@@ -1631,6 +1683,208 @@ set_count:
 		PH7_MemObjRelease(&sCount);
 	}
 	return PH7_OK;
+}
+
+/* ======================================================================
+ * preg_grep(pattern, array [, flags])
+ *
+ * php compiles the pattern ONCE, before it looks at the array at all: a refused
+ * pattern is one diagnostic under preg_grep's own name and the answer FALSE,
+ * even for an empty array. Written as embedded PHP over preg_match() this said
+ * `preg_match():` once PER ELEMENT, answered an ARRAY (every element of it, with
+ * PREG_GREP_INVERT), and never spoke at all when the array was empty -- so a
+ * caller testing `=== false` saw a successful filter that had matched nothing.
+ * ====================================================================== */
+static int PH7_builtin_preg_grep(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	const char *zPattern;
+	int nPatLen;
+	pcre2_code *pCode;
+	pcre2_match_data *pMatchData;
+	sxu32 nCapture;
+	int bInvert = 0;
+	ph7_value *pResult;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode;
+	ph7_value sKey, sVal, sStr;
+	sxu32 n;
+
+	/* aBuiltinSig[] enforces php's arity before the call; this is the backstop
+	 * that keeps a missing row from turning into an out-of-bounds apArg read. */
+	if( nArg < 2 || !ph7_value_is_array(apArg[1]) ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	zPattern = ph7_value_to_string(apArg[0], &nPatLen);
+	if( nArg >= 3 ){
+		bInvert = (ph7_value_to_int(apArg[2]) & PHP_PREG_GREP_INVERT) != 0;
+	}
+	pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
+	if( pCode == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pMatchData = pcre2_match_data_create_from_pattern(pCode, NULL);
+	if( pMatchData == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pResult = ph7_context_new_array(pCtx);
+	if( pResult == 0 ){
+		pcre2_match_data_free(pMatchData);
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
+	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+	PH7_MemObjInit(pCtx->pVm, &sKey);
+	PH7_MemObjInit(pCtx->pVm, &sVal);
+	PH7_MemObjInit(pCtx->pVm, &sStr);
+	pNode = pMap ? pMap->pFirst : 0;
+	n = pMap ? pMap->nEntry : 0;
+	while( n > 0 ){
+		const char *zSubject;
+		int nSubLen, bKeep, rc;
+		PH7_HashmapExtractNodeKey(pNode, &sKey);
+		PH7_HashmapExtractNodeValue(pNode, &sVal, FALSE);
+		/* The MATCH is made against the element's string form; what is KEPT is
+		 * the element itself, so an int or a float comes back out as it went in.
+		 * PcreStrUV coerces in place, hence the second slot. */
+		PH7_MemObjRelease(&sStr);
+		PH7_MemObjStore(&sVal, &sStr);
+		sStr.nIdx = SXU32_HIGH;
+		if( !PcreStrUV(pCtx, &sStr, &zSubject, &nSubLen) ){
+			/* A coercion that threw stops the call where php stops it. */
+			PH7_MemObjRelease(&sKey);
+			PH7_MemObjRelease(&sVal);
+			break;
+		}
+		rc = pcre2_match(pCode, (PCRE2_SPTR)zSubject, (PCRE2_SIZE)nSubLen,
+			0, 0, pMatchData, NULL);
+		if( rc < 0 && rc != PCRE2_ERROR_NOMATCH ){
+			PcreSetMatchError(pCtx->pVm, rc);
+		}
+		bKeep = (rc >= 0);
+		if( bInvert ){
+			bKeep = !bKeep;
+		}
+		if( bKeep ){
+			ph7_array_add_elem(pResult, &sKey, &sVal); /* copies key+value */
+		}
+		PH7_MemObjRelease(&sKey);
+		PH7_MemObjRelease(&sVal);
+		pNode = pNode->pPrev; /* insertion-order walk (reverse link) */
+		n--;
+	}
+	PH7_MemObjRelease(&sStr);
+	pcre2_match_data_free(pMatchData);
+	ph7_result_value(pCtx, pResult);
+	return PH7_OK;
+}
+
+/* ======================================================================
+ * preg_replace_callback_array(pattern, subject [, limit [, &count [, flags]]])
+ *
+ * One pass of preg_replace_callback() per entry, each fed the PREVIOUS entry's
+ * output, and php validates each entry only when it reaches it -- so with
+ * ['/a/' => good, '/b/' => 'nosuchfn'] the first replacement has already
+ * happened when the TypeError for the second is raised. A refused pattern
+ * answers NULL and leaves &$count untouched; an ARRAY subject is not that kind
+ * of failure and degrades to the empty array with count 0.
+ * ====================================================================== */
+static int PH7_builtin_preg_replace_callback_array(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_value sSubject, sPat, sCb, sLimit, sCount, sFlags;
+	ph7_value *apDeleg[6];
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode;
+	sxu32 n;
+	int total = 0;
+	int bFailed = 0;
+	sxi32 rc = PH7_OK;
+
+	/* Same backstop as preg_grep's: the arity php reports is aBuiltinSig[]'s. */
+	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sSubject);
+	PH7_MemObjInit(pCtx->pVm, &sPat);
+	PH7_MemObjInit(pCtx->pVm, &sCb);
+	PH7_MemObjInitFromInt(pCtx->pVm, &sLimit, nArg >= 3 ? ph7_value_to_int(apArg[2]) : -1);
+	PH7_MemObjInitFromInt(pCtx->pVm, &sCount, 0);
+	PH7_MemObjInitFromInt(pCtx->pVm, &sFlags, nArg >= 5 ? ph7_value_to_int(apArg[4]) : 0);
+	/* &$count out-slot with no caller variable behind it: PH7_VmStoreArgByRef
+	 * writes through nIdx when it is not SXU32_HIGH, and a zeroed ph7_value's
+	 * nIdx is 0 -- a REAL slot index, which would corrupt aMemObj[0]. */
+	sCount.nIdx = SXU32_HIGH;
+	PH7_MemObjStore(apArg[1], &sSubject);
+	sSubject.nIdx = SXU32_HIGH;
+	apDeleg[0] = &sPat;
+	apDeleg[1] = &sCb;
+	apDeleg[2] = &sSubject;
+	apDeleg[3] = &sLimit;
+	apDeleg[4] = &sCount;
+	apDeleg[5] = &sFlags;
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	pNode = pMap ? pMap->pFirst : 0;
+	n = pMap ? pMap->nEntry : 0;
+	while( n > 0 ){
+		PH7_HashmapExtractNodeKey(pNode, &sPat);
+		PH7_HashmapExtractNodeValue(pNode, &sCb, FALSE);
+		if( (sPat.iFlags & MEMOBJ_STRING) == 0 ){
+			/* An INT key is not a pattern; php names the whole argument. */
+			rc = PH7_VmThrowException(pCtx, "TypeError",
+				"preg_replace_callback_array(): Argument #1 ($pattern) must contain "
+				"only string patterns as keys");
+			goto done;
+		}
+		if( !ph7_value_is_callable(&sCb) ){
+			rc = PH7_VmThrowException(pCtx, "TypeError",
+				"preg_replace_callback_array(): Argument #1 ($pattern) must contain "
+				"only valid callbacks");
+			goto done;
+		}
+		/* pCtx->pRet ACCUMULATES -- ph7_result_string() appends to the return
+		 * slot's blob -- so each delegated pass has to start from an empty one
+		 * or the second entry's answer is glued onto the first's. */
+		ph7_result_null(pCtx);
+		rc = PH7_builtin_preg_replace_callback(pCtx, 6, apDeleg);
+		if( rc != PH7_OK ){
+			goto done;   /* the callback threw; it is already unwinding */
+		}
+		if( ph7_value_is_null(pCtx->pRet) ){
+			/* A refused pattern: NULL, and &$count keeps whatever it held. */
+			bFailed = 1;
+			goto done;
+		}
+		total += ph7_value_to_int(&sCount);
+		/* This entry's output is the next entry's subject */
+		PH7_MemObjStore(pCtx->pRet, &sSubject);
+		sSubject.nIdx = SXU32_HIGH;
+		PH7_MemObjRelease(&sPat);
+		PH7_MemObjRelease(&sCb);
+		pNode = pNode->pPrev; /* insertion-order walk (reverse link) */
+		n--;
+	}
+done:
+	ph7_result_null(pCtx);
+	if( !bFailed && rc == PH7_OK ){
+		ph7_result_value(pCtx, &sSubject);
+		if( nArg >= 4 ){
+			ph7_value sTotal;
+			PH7_MemObjInitFromInt(pCtx->pVm, &sTotal, total);
+			PH7_VmStoreArgByRef(pCtx->pVm, apArg[3], &sTotal);
+			PH7_MemObjRelease(&sTotal);
+		}
+	}
+	PH7_MemObjRelease(&sSubject);
+	PH7_MemObjRelease(&sPat);
+	PH7_MemObjRelease(&sCb);
+	PH7_MemObjRelease(&sLimit);
+	PH7_MemObjRelease(&sCount);
+	PH7_MemObjRelease(&sFlags);
+	return rc;
 }
 
 /* ======================================================================
@@ -1805,7 +2059,10 @@ static const ph7_builtin_func aPcreFunc[] = {
 	{ "preg_match",              PH7_builtin_preg_match },
 	{ "preg_match_all",          PH7_builtin_preg_match_all },
 	{ "preg_replace",            PH7_builtin_preg_replace },
+	{ "preg_filter",             PH7_builtin_preg_filter },
 	{ "preg_replace_callback",   PH7_builtin_preg_replace_callback },
+	{ "preg_replace_callback_array", PH7_builtin_preg_replace_callback_array },
+	{ "preg_grep",               PH7_builtin_preg_grep },
 	{ "preg_split",              PH7_builtin_preg_split },
 	{ "preg_quote",              PH7_builtin_preg_quote },
 	{ "preg_last_error",         PH7_builtin_preg_last_error },
