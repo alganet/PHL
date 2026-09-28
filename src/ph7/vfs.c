@@ -9,6 +9,8 @@
 #include <string.h>
 #include <time.h> /* touch() resolves php's "now" default here, not in the driver */
 
+#include <sys/types.h>
+#include <sys/stat.h>  /* the shared fstat() shape of a stream's stat answer */
 #ifdef __UNIXES__
 #include <unistd.h>
 #include <sys/wait.h>
@@ -315,6 +317,75 @@ PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut)
 		ph7_array_add_strkey_elem(pOut,azField[i],pField);
 	}
 	return PH7_OK;
+}
+/*
+ * The thirteen NAMED fields of a stat answer, filled from thirteen values in
+ * php's own order. Two devices that never had a stat need one: php's memory
+ * streams (php://memory, php://temp, data://) answer a SYNTHETIC record that
+ * describes no file at all, and a pipe/socket/standard descriptor answers the
+ * real fstat() of its handle. Both go through here so the field list -- and
+ * therefore what PH7_VfsStatDoubleUp() can double -- exists in one place.
+ */
+PH7_PRIVATE int PH7_VfsStatFill(ph7_value *pArray,ph7_value *pWorker,const ph7_int64 *aVal)
+{
+	static const char * const azField[] = {
+		"dev","ino","mode","nlink","uid","gid","rdev","size",
+		"atime","mtime","ctime","blksize","blocks"
+	};
+	sxu32 i;
+	if( pArray == 0 || pWorker == 0 || aVal == 0 ){
+		return -1;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){
+		ph7_value_int64(pWorker,aVal[i]);
+		ph7_array_add_strkey_elem(pArray,azField[i],pWorker); /* Takes its own copy */
+	}
+	return PH7_OK;
+}
+/*
+ * The real fstat() of an open descriptor, in the shape above. php's pipe,
+ * socket and php://stdin|stdout|stderr streams all answer exactly this -- the
+ * same call, so the same platform answers, including the FAILURE that makes
+ * fstat() report false.
+ */
+PH7_PRIVATE int PH7_VfsStatFromFd(int iFd,ph7_value *pArray,ph7_value *pWorker)
+{
+#ifdef __WINNT__
+	struct _stat64 st;
+	if( iFd < 0 || _fstat64(iFd,&st) != 0 ){
+		return -1;
+	}
+#else
+	struct stat st;
+	if( iFd < 0 || fstat(iFd,&st) != 0 ){
+		return -1;
+	}
+#endif
+	{
+		ph7_int64 aVal[13];
+		aVal[0]  = (ph7_int64)st.st_dev;
+		aVal[1]  = (ph7_int64)st.st_ino;
+		aVal[2]  = (ph7_int64)st.st_mode;
+		aVal[3]  = (ph7_int64)st.st_nlink;
+		aVal[4]  = (ph7_int64)st.st_uid;
+		aVal[5]  = (ph7_int64)st.st_gid;
+		aVal[6]  = (ph7_int64)st.st_rdev;
+		aVal[7]  = (ph7_int64)st.st_size;
+		aVal[8]  = (ph7_int64)st.st_atime;
+		aVal[9]  = (ph7_int64)st.st_mtime;
+		aVal[10] = (ph7_int64)st.st_ctime;
+#ifdef __WINNT__
+		/* Windows has neither field, and php reports -1 for both there -- on
+		 * EVERY stream, a plain file included (read back from php 8.5.8 on the
+		 * gate guest). */
+		aVal[11] = -1;
+		aVal[12] = -1;
+#else
+		aVal[11] = (ph7_int64)st.st_blksize;
+		aVal[12] = (ph7_int64)st.st_blocks;
+#endif
+		return PH7_VfsStatFill(pArray,pWorker,aVal);
+	}
 }
 /*
  * Can this path be stat'ed at all? The three TIME readers report a failure as -1,
@@ -1180,11 +1251,9 @@ static int PH7_vfs_chown(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xChown == 0 ){
-		/* IO routine not implemented,return NULL */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",
-			ph7_function_name(pCtx)
-			);
+		/* No ownership to change: Windows has neither a uid nor anything to look
+		 * one up in, and php's own build there keeps the function and answers a
+		 * SILENT false for it -- asked of php 8.5.8 on the gate guest. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1235,11 +1304,9 @@ static int PH7_vfs_chgrp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xChgrp == 0 ){
-		/* IO routine not implemented,return NULL */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",
-			ph7_function_name(pCtx)
-			);
+		/* No ownership to change: Windows has neither a gid nor anything to look
+		 * one up in, and php's own build there keeps the function and answers a
+		 * SILENT false for it -- asked of php 8.5.8 on the gate guest. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}

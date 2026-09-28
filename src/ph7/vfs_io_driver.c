@@ -14,6 +14,9 @@
 #include <fcntl.h>
 #include <signal.h>
 #endif
+#ifdef __WINNT__
+#include <io.h>     /* _lseeki64/_chsize_s: the positional ops of a std descriptor */
+#endif
 /*
  * Section:
  *    Built-in IO stream drivers: php://, data://, pipe (popen) and the
@@ -63,7 +66,15 @@ struct ph7_stream_data
 	}x;
 	SyBlob sMem;     /* MEMORY type: backing buffer */
 	sxu32 nCur;      /* MEMORY type: read/write cursor */
-	int bReadOnly;   /* MEMORY type: TRUE for data:// payloads */
+	/* MEMORY type: php's TEMP_STREAM_READONLY -- a php://memory or php://temp
+	 * whose MODE STRING held none of `w`, `a` or `+`. Such a stream refuses
+	 * both writes and truncation, silently, and stats as 0100444 where a
+	 * writable one is 0100666. `x` and `c` land on the read-only side of that
+	 * test even though they are write modes, which is php's own rule and not a
+	 * transcription slip; in flag terms it is "no RDWR, no TRUNC, no APPEND".
+	 * A data:// payload is NOT one of these -- php builds it writable and only
+	 * its wrapper's missing writer refuses fwrite(). */
+	int bReadOnly;
 	int bTemp;       /* MEMORY type: opened as php://temp rather than php://memory.
 	                  * php's temp stream is a WRAPPER whose read copies the inner
 	                  * memory stream's eof flag, so it reports the end one read
@@ -74,6 +85,16 @@ struct ph7_stream_data
 	 * lives on this io_private, so every read and write below goes through
 	 * PH7_StreamRead/PH7_StreamWrite and is filtered on the way. */
 	io_private *pInner;
+	/* STDIN/STDOUT/STDERR and OUTPUT: where php says the stream IS. php's
+	 * stream layer keeps a position for every stream and only asks the device
+	 * when it seeks, so this is a COUNTER rather than a query -- and it starts
+	 * at whatever the descriptor answered when it was opened, which is -1 when
+	 * the descriptor is a pipe or a terminal. That negative start is visible:
+	 * php's ftell(php://stdout) is `false` on a pipe and `1` after a two-byte
+	 * write, and both fall straight out of counting from -1. */
+	ph7_int64 iPos;
+	int iFd;      /* STD* types: the descriptor number behind the handle */
+	int bNoSeek;  /* STD* types: that descriptor could not say where it was */
 };
 /*
  * Allocate a new instance of the ph7_stream_data structure.
@@ -96,6 +117,9 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
 	SyBlobInit(&pData->sMem,&pVm->sAllocator);
 	pData->nCur = 0;
 	pData->bReadOnly = 0;
+	pData->iPos = 0;
+	pData->iFd = -1;
+	pData->bNoSeek = 0;
 	if( iType == PH7_IO_STREAM_MEMORY ){
 		/* Nothing else to set up: the buffer is the stream */
 	}else if( iType == PH7_IO_STREAM_OUTPUT ){
@@ -112,6 +136,18 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
 			break;
 		}
 		pData->x.pHandle = GetStdHandle(nChannel);
+		/* The CRT descriptor beside that handle, for the positional ops -- but
+		 * only when there IS a standard handle. A host with none (a GUI process
+		 * that never had a console) leaves the CRT descriptor unopened, and the
+		 * CRT's answer to a call on one of those is its invalid-parameter
+		 * handler rather than an error code. */
+		if( pData->x.pHandle != NULL && pData->x.pHandle != INVALID_HANDLE_VALUE ){
+			pData->iFd = iType == PH7_IO_STREAM_STDOUT ? 1 : (iType == PH7_IO_STREAM_STDERR ? 2 : 0);
+			pData->iPos = (ph7_int64)_lseeki64(pData->iFd,0,SEEK_CUR);
+		}else{
+			pData->iPos = -1;
+		}
+		pData->bNoSeek = pData->iPos < 0;
 #else
 		/* Assume an UNIX system */
 		int ifd = STDIN_FILENO;
@@ -122,6 +158,11 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
 			break;
 		}
 		pData->x.pHandle = SX_INT_TO_PTR(ifd);
+		pData->iFd = ifd;
+		/* php asks the descriptor where it is exactly once, at open, and keeps
+		 * the answer -- including the -1 a pipe or a terminal gives back. */
+		pData->iPos = (ph7_int64)lseek(ifd,0,SEEK_CUR);
+		pData->bNoSeek = pData->iPos < 0;
 #endif
 	}
 	pData->pVm = pVm;
@@ -219,6 +260,7 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 {
 	ph7_stream_data *pData;
 	SyString sStream;
+	int iOpenFlags = iMode;   /* iMode is overwritten with the sub-stream below */
 	int bTemp = 0;
 	if( SyStrnicmp(zName,"filter",sizeof("filter")-1) == 0
 	 && (zName[6] == '/' || zName[6] == 0) ){
@@ -275,6 +317,8 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 		return -1;
 	}
 	pData->bTemp = bTemp;
+	pData->bReadOnly = iMode == PH7_IO_STREAM_MEMORY
+		&& (iOpenFlags & (PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_APPEND)) == 0;
 	/* Make the handle public */
 	*ppHandle = (void *)pData;
 	return PH7_OK;
@@ -317,6 +361,7 @@ static ph7_int64 PHPStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nDatat
 			/* IO error */
 			return -1;
 		}
+		pData->iPos += (ph7_int64)nRd;
 		return (ph7_int64)nRd;
 	}
 #elif defined(__UNIXES__)
@@ -328,6 +373,7 @@ static ph7_int64 PHPStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nDatat
 		if( nRd < 0 ){
 			return -1;
 		}
+		pData->iPos += (ph7_int64)nRd;
 		/* ZERO is end of file, not an error — the contract every other device
 		 * here keeps. Collapsing the two meant nothing could ever latch EOF on
 		 * php://stdin, so `while (!feof(STDIN))` never ended. */
@@ -394,6 +440,7 @@ static ph7_int64 PHPStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nW
 		if( rc == PH7_ABORT ){
 			return -1;
 		}
+		pData->iPos += nWrite;
 		return nWrite;
 	}
 #ifdef __WINNT__
@@ -405,6 +452,7 @@ static ph7_int64 PHPStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nW
 			/* IO error */
 			return -1;
 		}
+		pData->iPos += (ph7_int64)nWr;
 		return (ph7_int64)nWr;
 	}
 #elif defined(__UNIXES__)
@@ -416,6 +464,7 @@ static ph7_int64 PHPStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nW
 		if( nWr < 1 ){
 			return -1;
 		}
+		pData->iPos += (ph7_int64)nWr;
 		return (ph7_int64)nWr;
 	}
 #else
@@ -447,7 +496,7 @@ static void PHPStreamData_Close(void *pHandle)
 	/* Free the instance */
 	SyMemBackendFree(&pVm->sAllocator,pData);
 }
-/* int (*xSeek)(void *,ph7_int64,int); MEMORY type only */
+/* int (*xSeek)(void *,ph7_int64,int) */
 static int PHPStreamData_Seek(void *pHandle,ph7_int64 iOfft,int whence)
 {
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
@@ -458,8 +507,32 @@ static int PHPStreamData_Seek(void *pHandle,ph7_int64 iOfft,int whence)
 	if( pData->iType == PH7_IO_STREAM_FILTER ){
 		return PH7_StreamSeekWrapped(pData->pInner,iOfft,whence);
 	}
+	if( pData->iType == PH7_IO_STREAM_OUTPUT ){
+		/* php's output stream has no seek at all -- `fseek(): Stream does not
+		 * support seeking`, which is what the unsupported code asks for. */
+		return SXERR_NOTIMPLEMENTED;
+	}
 	if( pData->iType != PH7_IO_STREAM_MEMORY ){
-		return -1;
+		/* A standard descriptor seeks exactly as far as the descriptor does,
+		 * and php refuses the seek OUTRIGHT when the descriptor could not say
+		 * where it was at open -- so `php -r … > pipe` warns while the same
+		 * script redirected to a file seeks. */
+		if( pData->bNoSeek ){
+			return SXERR_NOTIMPLEMENTED;
+		}
+		{
+#ifdef __WINNT__
+			ph7_int64 iNewPos = pData->iFd < 0 ? -1
+				: (ph7_int64)_lseeki64(pData->iFd,iOfft,whence);
+#else
+			ph7_int64 iNewPos = (ph7_int64)lseek(pData->iFd,(off_t)iOfft,whence);
+#endif
+			if( iNewPos < 0 ){
+				return -1;
+			}
+			pData->iPos = iNewPos;
+			return PH7_OK;
+		}
 	}
 	switch(whence){
 	case 1/*SEEK_CUR*/: iNew = (ph7_int64)pData->nCur + iOfft; break;
@@ -472,7 +545,7 @@ static int PHPStreamData_Seek(void *pHandle,ph7_int64 iOfft,int whence)
 	pData->nCur = (sxu32)iNew;
 	return PH7_OK;
 }
-/* ph7_int64 (*xTell)(void *); MEMORY type only */
+/* ph7_int64 (*xTell)(void *) */
 static ph7_int64 PHPStreamData_Tell(void *pHandle)
 {
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
@@ -481,12 +554,60 @@ static ph7_int64 PHPStreamData_Tell(void *pHandle)
 		 * whatever the chain has already produced and nobody has taken. */
 		return PH7_StreamLogicalTell(pData->pInner);
 	}
-	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY ){
+	if( pData == 0 ){
 		return -1;
+	}
+	if( pData->iType != PH7_IO_STREAM_MEMORY ){
+		/* The COUNTER, not the descriptor: php never re-asks, which is why a
+		 * write to a non-seekable stdout moves the position it reports even
+		 * though nothing can seek there. */
+		return pData->iPos;
 	}
 	return (ph7_int64)pData->nCur;
 }
-/* int (*xTrunc)(void *,ph7_int64); MEMORY type only */
+/* int (*xStat)(void *,ph7_value *,ph7_value *) */
+static int PHPStreamData_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker)
+{
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	if( pData == 0 ){
+		return -1;
+	}
+	if( pData->iType == PH7_IO_STREAM_FILTER ){
+		io_private *pIn = pData->pInner;
+		if( pIn == 0 || pIn->pStream == 0 || pIn->pStream->xStat == 0 ){
+			return -1;
+		}
+		return pIn->pStream->xStat(pIn->pHandle,pArray,pWorker);
+	}
+	if( pData->iType == PH7_IO_STREAM_MEMORY ){
+		/* php's memory streams -- php://memory, php://temp and the data://
+		 * payloads that share them -- answer a SYNTHETIC record describing no
+		 * file at all: a regular-file mode of 0666, php's own 0xC device, and
+		 * -1 in the three fields a buffer cannot have. Only the size is real.
+		 * Read back from php 8.5.9 and confirmed identical on Windows. */
+		ph7_int64 aVal[13];
+		aVal[0]  = 0xC;                                   /* dev */
+		aVal[1]  = 0;                                     /* ino */
+		aVal[2]  = 0100000 | (pData->bReadOnly ? 0444 : 0666); /* mode: S_IFREG|… */
+		aVal[3]  = 1;                                     /* nlink */
+		aVal[4]  = 0;                                     /* uid */
+		aVal[5]  = 0;                                     /* gid */
+		aVal[6]  = -1;                                    /* rdev */
+		aVal[7]  = (ph7_int64)SyBlobLength(&pData->sMem); /* size */
+		aVal[8]  = 0;                                     /* atime */
+		aVal[9]  = 0;                                     /* mtime */
+		aVal[10] = 0;                                     /* ctime */
+		aVal[11] = -1;                                    /* blksize */
+		aVal[12] = -1;                                    /* blocks */
+		return PH7_VfsStatFill(pArray,pWorker,aVal);
+	}
+	if( pData->iType == PH7_IO_STREAM_OUTPUT ){
+		/* php's output stream has no descriptor to stat: fstat() is false. */
+		return -1;
+	}
+	return PH7_VfsStatFromFd(pData->iFd,pArray,pWorker);
+}
+/* int (*xTrunc)(void *,ph7_int64) */
 static int PHPStreamData_Trunc(void *pHandle,ph7_int64 nLen)
 {
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
@@ -497,9 +618,30 @@ static int PHPStreamData_Trunc(void *pHandle,ph7_int64 nLen)
 		}
 		return pIn->pStream->xTrunc(pIn->pHandle,nLen);
 	}
-	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY || pData->bReadOnly ){
+	if( pData == 0 ){
 		return -1;
 	}
+	if( pData->iType == PH7_IO_STREAM_OUTPUT ){
+		/* Nothing to truncate: php's `Can't truncate this stream!`. */
+		return SXERR_NOTIMPLEMENTED;
+	}
+	if( pData->iType == PH7_IO_STREAM_MEMORY && pData->bReadOnly ){
+		/* php's read-only memory stream answers a SILENT false. */
+		return -1;
+	}
+	if( pData->iType != PH7_IO_STREAM_MEMORY ){
+		/* A standard descriptor truncates whatever it points AT -- php does the
+		 * same call, so `php … > out.txt` really does empty out.txt through
+		 * ftruncate(STDOUT), and a pipe or a terminal answers a SILENT false. */
+#ifdef __WINNT__
+		return pData->iFd >= 0 && _chsize_s(pData->iFd,(__int64)nLen) == 0 ? PH7_OK : -1;
+#else
+		return ftruncate(pData->iFd,(off_t)nLen) == 0 ? PH7_OK : -1;
+#endif
+	}
+	/* php truncates a READ-ONLY memory stream happily -- data:// answers true
+	 * and its payload really does shrink, even though fwrite() to it is
+	 * refused. The two are separate permissions there, and they are here. */
 	if( nLen < (ph7_int64)SyBlobLength(&pData->sMem) ){
 		/* shrink in place: the blob keeps its allocation */
 		pData->sMem.nByte = (sxu32)nLen;
@@ -555,7 +697,6 @@ static int DataStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 	if( pData == 0 ){
 		return -1;
 	}
-	pData->bReadOnly = 1;
 	zIn = &zComma[1];
 	if( bBase64 ){
 		if( SyBase64Decode(zIn,(sxu32)(zEnd - zIn),DataStreamB64Consumer,&pData->sMem) != SXRET_OK ){
@@ -585,14 +726,6 @@ static int DataStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 	*ppHandle = (void *)pData;
 	return PH7_OK;
 }
-/* data:// rejects writes outright */
-static ph7_int64 DataStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)
-{
-	SXUNUSED(pHandle);
-	SXUNUSED(pBuf);
-	SXUNUSED(nWrite);
-	return -1;
-}
 PH7_PRIVATE const ph7_io_stream sDATA_Stream = {
 	"data",
 	PH7_IO_STREAM_VERSION,
@@ -602,14 +735,17 @@ PH7_PRIVATE const ph7_io_stream sDATA_Stream = {
 	0,  /* xCloseDir */
 	PHPStreamData_Read,  /* xRead */
 	0,  /* xReadDir */
-	DataStreamData_Write, /* xWrite */
+	/* xWrite: NONE. php's RFC 2397 stream has no writer at all, and its
+	 * fwrite() is `Stream is not writable` rather than a failed write --
+	 * a refusal that only a MISSING slot can produce. */
+	0,
 	PHPStreamData_Seek,  /* xSeek */
 	0,  /* xLock */
 	0,  /* xRewindDir */
 	PHPStreamData_Tell,  /* xTell */
-	0,  /* xTrunc */
+	PHPStreamData_Trunc, /* xTrunc: a data:// payload really does shrink */
 	0,  /* xSync */
-	0   /* xStat */
+	PHPStreamData_Stat   /* xStat: the synthetic memory-stream record */
 };
 /*
  * Pipe stream implementation for popen/pclose.
@@ -988,6 +1124,43 @@ static ph7_int64 PipeStream_Write(void *pHandle, const void *pBuf, ph7_int64 nWr
 	}
 	return (ph7_int64)nWritten;
 }
+/*
+ * A pipe's descriptor, for the two ops that go past the FILE*. php's popen
+ * stream is an ordinary stdio stream, so its truncate and its stat are the
+ * plain system calls -- which is exactly why ftruncate() on a pipe is a SILENT
+ * false (the call is made and EINVAL comes back) where a socket, which has no
+ * truncate at all, warns instead.
+ */
+static int PipeStream_Fd(void *pHandle)
+{
+	pipe_private *pPipe = (pipe_private *)pHandle;
+	if( pPipe == 0 || pPipe->pFile == 0 ){
+		return -1;
+	}
+#ifdef __WINNT__
+	return _fileno(pPipe->pFile);
+#else
+	return fileno(pPipe->pFile);
+#endif
+}
+/* int (*xTrunc)(void *,ph7_int64) */
+static int PipeStream_Trunc(void *pHandle,ph7_int64 nLen)
+{
+	int fd = PipeStream_Fd(pHandle);
+	if( fd < 0 ){
+		return -1;
+	}
+#ifdef __WINNT__
+	return _chsize_s(fd,(__int64)nLen) == 0 ? PH7_OK : -1;
+#else
+	return ftruncate(fd,(off_t)nLen) == 0 ? PH7_OK : -1;
+#endif
+}
+/* int (*xStat)(void *,ph7_value *,ph7_value *) */
+static int PipeStream_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker)
+{
+	return PH7_VfsStatFromFd(PipeStream_Fd(pHandle),pArray,pWorker);
+}
 /* Export the pipe:// stream (used internally, not registered as a URI scheme) */
 static const ph7_io_stream sPipe_Stream = {
 	"pipe",
@@ -1002,10 +1175,10 @@ static const ph7_io_stream sPipe_Stream = {
 	0,  /* xSeek */
 	0,  /* xLock */
 	0,  /* xRewindDir */
-	0,  /* xTell */
-	0,  /* xTrunc */
+	0,  /* xTell: php's pipe has none either -- the stream layer COUNTS */
+	PipeStream_Trunc, /* xTrunc */
 	0,  /* xSync */
-	0   /* xStat */
+	PipeStream_Stat   /* xStat */
 };
 /*
  * Return TRUE if we are dealing with the pipe:// stream.
@@ -2118,7 +2291,7 @@ PH7_PRIVATE const ph7_io_stream sPHP_Stream = {
 	PHPStreamData_Tell,  /* xTell */
 	PHPStreamData_Trunc, /* xTrunc */
 	0,  /* xSync */
-	0   /* xStat */
+	PHPStreamData_Stat   /* xStat */
 };
 #endif /* PH7_DISABLE_DISK_IO */
 /*

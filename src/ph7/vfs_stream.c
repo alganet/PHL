@@ -63,8 +63,16 @@ PH7_PRIVATE ph7_int64 PH7_StreamLogicalTell(io_private *pDev)
 		}
 		return iOfft;
 	}
+	if( pDev->bDir ){
+		/* A directory handle's position is php's own record counter and
+		 * nothing the device knows about. */
+		return pDev->iPos;
+	}
 	if( pDev->pStream == 0 || pDev->pStream->xTell == 0 ){
-		return -1;
+		/* php's stream layer tracks a position for EVERY stream and only asks
+		 * the device when it seeks, so a pipe or a socket -- neither of which
+		 * can be asked -- still reports how far it has got. */
+		return pDev->iPos - (ph7_int64)StreamAheadBytes(pDev);
 	}
 	iOfft = pDev->pStream->xTell(pDev->pHandle);
 	if( iOfft < 0 ){
@@ -112,6 +120,32 @@ PH7_PRIVATE io_private * PH7_StreamUnwrap(io_private *pDev)
 		}
 	}
 	return pDev;
+}
+/*
+ * Can this handle take bytes at all? php answers `Stream is not writable` -- an
+ * E_NOTICE naming the caller -- for a stream whose ops carry no writer: a
+ * directory handle, data://, glob://. That is a different event from a write
+ * that WAS attempted and failed (`Write of N bytes failed with errno=9`), which
+ * a read-only descriptor produces and which the device path already reports.
+ */
+static int StreamRefuseUnwritable(ph7_context *pCtx,io_private *pDev)
+{
+	if( pDev && !pDev->bDir && pDev->pStream && pDev->pStream->xWrite ){
+		return 0;
+	}
+	ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"Stream is not writable");
+	return 1;
+}
+/*
+ * ...and can it give any? php's readers answer a silent FALSE on a handle whose
+ * ops carry no reader, with no diagnostic of any kind. A DIRECTORY handle is
+ * one of those: its pHandle is a DIR*, so a byte op that reached the file
+ * device would hand an opendir() pointer to read()/lseek()/ftruncate() as if it
+ * were a descriptor number.
+ */
+static int StreamHasReader(io_private *pDev)
+{
+	return pDev && !pDev->bDir && pDev->pStream && pDev->pStream->xRead;
 }
 static sxu32 StreamAheadBytes(io_private *pDev)
 {
@@ -236,16 +270,22 @@ PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xTrunc == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( pDev->bDir || pStream == 0 || pStream->xTrunc == 0 ){
+		/* php asks the stream whether it supports truncation AT ALL and says so
+		 * when it does not -- a socket, php://output, an http:// body, a
+		 * directory handle. What it says is this sentence, and it is a
+		 * different event from a truncation that was tried and refused. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Can\'t truncate this stream!");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
 	rc = pStream->xTrunc(pDev->pHandle,nSize);
+	if( rc == SXERR_NOTIMPLEMENTED ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Can\'t truncate this stream!");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* php does NOT touch the read buffer here: truncating is not a seek, the
 	 * position does not move, and what the readers already pulled ahead is
 	 * still what the next read answers. Dropping it made ftell() jump to the
@@ -298,11 +338,8 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xSeek == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( !pDev->bDir && (pStream == 0 || pStream->xSeek == 0) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
@@ -325,6 +362,16 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
+	if( pDev->bDir ){
+		/* php's directory stream seeks by REWINDING, whatever the offset and
+		 * whatever the whence: it answers 0, the next readdir() is the first
+		 * entry again, and the position it REPORTS does not go back with it. */
+		if( pStream && pStream->xRewindDir ){
+			pStream->xRewindDir(pDev->pHandle);
+		}
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
 	if( pDev->pReadFilters && whence != 2 /* SEEK_END */ ){
 		/* On a FILTERED stream the two positions are unrelated, so a relative
 		 * seek is resolved against the one the script sees and the device is
@@ -337,6 +384,8 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( rc == PH7_OK ){
 			ResetIOPrivate(pDev);
 			pDev->iFiltPos = iOfft;
+		}else if( rc == SXERR_NOTIMPLEMENTED ){
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
 		}
 		ph7_result_int(pCtx,rc == PH7_OK ? 0 : - 1);
 		return PH7_OK;
@@ -357,6 +406,10 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( pDev->pReadFilters ){
 			pDev->iFiltPos = pStream->xTell ? pStream->xTell(pDev->pHandle) : 0;
 		}
+	}else if( rc == SXERR_NOTIMPLEMENTED ){
+		/* The device HAS a seek and this handle cannot use it -- php's
+		 * php://stdout on a pipe or a terminal. Same sentence as no seek. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
 	}
 	/* IO result */
 	ph7_result_int(pCtx,rc == PH7_OK ? 0 : - 1);
@@ -375,7 +428,6 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	io_private *pDev;
 	ph7_int64 iOfft;
 	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
@@ -394,15 +446,9 @@ PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xTell == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
+	/* No "unimplemented" arm: php's ftell() never refuses a stream. A device
+	 * that cannot be asked where it is has the engine's own counter answer
+	 * for it (PH7_StreamLogicalTell). */
 	/* Perform the requested operation. The device sits past whatever the line
 	 * readers buffered ahead, so the SCRIPT's position is the device position
 	 * less the unconsumed remainder — ftell() after fgets("abcdefghij\nrest")
@@ -450,11 +496,16 @@ PH7_PRIVATE int PH7_builtin_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xSeek == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( pDev->bDir ){
+		/* Same rewind fseek() gets, and php's rewind() answers TRUE for it. */
+		if( pStream && pStream->xRewindDir ){
+			pStream->xRewindDir(pDev->pHandle);
+		}
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	if( pStream == 0 || pStream->xSeek == 0 ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -463,6 +514,8 @@ PH7_PRIVATE int PH7_builtin_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( rc == PH7_OK ){
 		/* Ignore buffered data */
 		ResetIOPrivate(pDev);
+	}else if( rc == SXERR_NOTIMPLEMENTED ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
 	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
@@ -500,12 +553,12 @@ PH7_PRIVATE int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target IO stream device */
 	pDev = PH7_StreamUnwrap(pDev);
 	pStream = pDev->pStream;
-	if( pStream == 0 || pStream->xSync == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
-		ph7_result_bool(pCtx,0);
+	if( pDev->bDir || pStream == 0 || pStream->xSync == 0 ){
+		/* php's php_stream_flush SUCCEEDS when the device has nothing to flush,
+		 * silently -- which is why fflush() on php://memory, php://output, a
+		 * pipe, a socket or a directory handle is simply TRUE. Every
+		 * symfony/console write ends in one of these. */
+		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
@@ -578,7 +631,6 @@ PH7_PRIVATE int PH7_StreamAtEof(io_private *pDev)
  */
 PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	io_private *pDev;
 	int rc;
 	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
@@ -596,14 +648,10 @@ PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
-		ph7_result_bool(pCtx,1);
+	if( !StreamHasReader(pDev) ){
+		/* php's end-of-file flag is raised by a READ that came back empty, and
+		 * a handle nothing can read never had one: feof() is FALSE, silently. */
+		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	rc = PH7_StreamAtEof(pDev);
@@ -726,6 +774,11 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 {
 	ph7_int64 n;
+	if( !StreamHasReader(pDev) ){
+		/* No reader at all: php's silent false, and never the device's byte op
+		 * on a handle it does not own. */
+		return -1;
+	}
 	if( pDev->pReadFilters != 0 || SyBlobLength(&pDev->sFilt) > pDev->nFiltOfft ){
 		/* Bytes can still be waiting after the last read filter was REMOVED:
 		 * php flushes a filter on its way out and what it emitted belongs to
@@ -741,6 +794,11 @@ static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 		 * false while the line readers hold bytes -- PH7_StreamAtEof() asks the
 		 * buffer first, which is php's own rule. */
 		pDev->bEof = 1;
+	}
+	if( n > 0 ){
+		/* Where the SCRIPT will be once it has taken these bytes: the counter
+		 * ftell() reads on a device that cannot be asked. */
+		pDev->iPos += n;
 	}
 	if( n < 0 ){
 		/* LATCH the failure for the reader to report. php's notice comes from
@@ -839,11 +897,15 @@ PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int
 	SyBlob sOut;
 	ph7_int64 nWr;
 	int iStatus;
-	if( pDev->pStream == 0 || pDev->pStream->xWrite == 0 ){
+	if( pDev->pStream == 0 || pDev->pStream->xWrite == 0 || pDev->bDir ){
 		return -1;
 	}
 	if( pChain == 0 ){
-		return pDev->pStream->xWrite(pDev->pHandle,pData,nLen);
+		ph7_int64 nRaw = pDev->pStream->xWrite(pDev->pHandle,pData,nLen);
+		if( nRaw > 0 ){
+			pDev->iPos += nRaw;
+		}
+		return nRaw;
 	}
 	SyBlobInit(&sOut,pDev->sBuffer.pAllocator);
 	iStatus = PH7_FilterChainProcess(pChain,pData,(sxu32)nLen,
@@ -862,7 +924,8 @@ PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int
 		return -1;
 	}
 	/* A filter that held its input back (FEED_ME) still consumed it: php's
-	 * fwrite() answers the length it was given. */
+	 * fwrite() answers the length it was given, and moves the position by it. */
+	pDev->iPos += nLen;
 	return nLen;
 }
 /*
@@ -1255,7 +1318,6 @@ PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandl
  */
 PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	io_private *pDev;
 	int c,n;
 	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
@@ -1273,13 +1335,8 @@ PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( !StreamHasReader(pDev) ){
+		/* No reader: php answers FALSE and says nothing. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1309,7 +1366,6 @@ PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	const char *zLine,*zFmt;
 	io_private *pDev;
 	ph7_int64 n;
@@ -1325,12 +1381,8 @@ PH7_PRIVATE int PH7_builtin_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pStream = pDev->pStream;
-	if( pStream == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),"null_stream"
-			);
+	if( !StreamHasReader(pDev) ){
+		/* No reader: php answers FALSE and says nothing. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1361,7 +1413,6 @@ PH7_PRIVATE int PH7_builtin_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	const char *zLine;
 	io_private *pDev;
 	ph7_int64 n,nLen;
@@ -1380,13 +1431,8 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( !StreamHasReader(pDev) ){
+		/* No reader: php answers FALSE and says nothing. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1435,7 +1481,6 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	char zGiven[64];
-	const ph7_io_stream *pStream;
 	const char *zEnding = "";
 	io_private *pDev;
 	ph7_int64 nMaxLen;
@@ -1458,12 +1503,8 @@ PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"stream_get_line(): Argument #1 ($stream) must be an open stream resource");
 	}
-	pStream = pDev->pStream;
-	if( pStream == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),"null_stream"
-			);
+	if( !StreamHasReader(pDev) ){
+		/* No reader: php answers FALSE and says nothing. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1549,7 +1590,6 @@ PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value
  */
 PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	io_private *pDev;
 	ph7_int64 nRead;
 	void *pBuf;
@@ -1569,13 +1609,8 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( !StreamHasReader(pDev) ){
+		/* No reader: php answers FALSE and says nothing. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1667,7 +1702,6 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	const char *zLine;
 	io_private *pDev;
 	ph7_int64 n,nLen;
@@ -1689,13 +1723,8 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( !StreamHasReader(pDev) ){
+		/* No reader: php answers FALSE and says nothing. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1801,7 +1830,6 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int PH7_builtin_fgetss(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	const char *zLine;
 	io_private *pDev;
 	ph7_int64 n,nLen;
@@ -1820,13 +1848,8 @@ PH7_PRIVATE int PH7_builtin_fgetss(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( !StreamHasReader(pDev) ){
+		/* No reader: php answers FALSE and says nothing. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1883,11 +1906,8 @@ PH7_PRIVATE int PH7_builtin_readdir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xReadDir == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( pStream == 0 || pStream->xReadDir == 0 ){
+		/* No entries to give: php's readdir() answers FALSE in silence. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1897,6 +1917,11 @@ PH7_PRIVATE int PH7_builtin_readdir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( rc != PH7_OK ){
 		/* Return FALSE */
 		ph7_result_bool(pCtx,0);
+	}else{
+		/* php's directory stream moves by one record per entry it PRODUCED --
+		 * the read that finds the end moves nothing -- and that product is the
+		 * only thing ftell() on a directory handle reports. */
+		pDev->iPos += PHL_DIR_RECORD;
 	}
 	return PH7_OK;
 }
@@ -1930,12 +1955,8 @@ PH7_PRIVATE int PH7_builtin_rewinddir(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xRewindDir == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
-		ph7_result_bool(pCtx,0);
+	if( pStream == 0 || pStream->xRewindDir == 0 ){
+		/* Nothing to rewind, and php says nothing about it. */
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
@@ -1974,12 +1995,8 @@ PH7_PRIVATE int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apAr
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xCloseDir == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
-		ph7_result_bool(pCtx,0);
+	if( pStream == 0 || pStream->xCloseDir == 0 ){
+		/* Nothing to close, and php says nothing about it. */
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
@@ -2003,7 +2020,7 @@ PH7_PRIVATE int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apAr
 PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const ph7_io_stream *pStream;
-	const char *zPath;
+	const char *zPath,*zAsked;
 	io_private *pDev;
 	int iLen,rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
@@ -2027,6 +2044,9 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* php names the path AS WRITTEN in every diagnostic below, scheme included,
+	 * and the device lookup advances zPath past that scheme. */
+	zAsked = zPath;
 	/* Try to extract a stream */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zPath,iLen);
 	if( pStream == 0 ){
@@ -2035,10 +2055,12 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	if( pStream->xOpenDir == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device",
-			ph7_function_name(pCtx),pStream->zName
-			);
+		/* php words a wrapper with no directory opener as an ordinary failed
+		 * open whose reason is `not implemented` -- the same sentence a missing
+		 * directory gets, so a caller's error handling does not have to know
+		 * that this one is about the WRAPPER. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: not implemented",
+			ph7_function_name(pCtx),zAsked);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2602,11 +2624,9 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 			ph7_result_int64(pCtx,n);
 		}
 	}else{
-		/* Read-only stream */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,
-			"Read-only stream(%s): Cannot perform write operation",
-			pStream ? pStream->zName : "null_stream"
-			);
+		/* A wrapper with no writer at all: php's `Stream is not writable`,
+		 * the same notice fwrite() gives, and not a fatal of our own. */
+		ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"Stream is not writable");
 		ph7_result_bool(pCtx,0);
 	}
 	/* Close the handle */
@@ -2851,11 +2871,12 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		PH7_StreamCloseHandle(pSin,pIn);
 		return PH7_OK;
 	}
-	if( pSout->xWrite == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pSin->zName
-			);
+	if( pSout->xOpen != 0 && pSout->xWrite == 0 ){
+		/* php's copy() reaches the same `Stream is not writable` notice the
+		 * write doors do -- a destination wrapper with a stream opener and no
+		 * writer behind it. A wrapper with no OPENER either (glob://) is
+		 * refused one step earlier, by the open below, and says so. */
+		ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"Stream is not writable");
 		ph7_result_bool(pCtx,0);
 		PH7_StreamCloseHandle(pSin,pIn);
 		return PH7_OK;
@@ -2927,11 +2948,9 @@ PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pDev = PH7_StreamUnwrap(pDev);
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xStat == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( pDev->bDir || pStream == 0 || pStream->xStat == 0 ){
+		/* php's fstat() on a stream with no stat -- a directory handle, an
+		 * http:// body, php://output -- is FALSE and no diagnostic. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2944,7 +2963,12 @@ PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
-	pStream->xStat(pDev->pHandle,pArray,pValue);
+	if( pStream->xStat(pDev->pHandle,pArray,pValue) != PH7_OK ){
+		/* php's fstat() is FALSE when the device could not answer, and says
+		 * nothing about it -- php://output has no descriptor to stat. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* php answers the same thirteen fields twice -- numeric 0..12, then named
 	 * (PH7_VfsStatDoubleUp); fstat() is stat()'s answer for an open handle and
 	 * had the same missing half. */
@@ -2986,7 +3010,6 @@ static void SockReportWriteFailure(ph7_context *pCtx,io_private *pDev,int nLen);
  */
 PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	const char *zString;
 	io_private *pDev;
 	int nLen,n;
@@ -3006,12 +3029,7 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xWrite == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( StreamRefuseUnwritable(pCtx,pDev) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3160,7 +3178,6 @@ PH7_PRIVATE int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	io_private *pDev;
 	ph7_int64 n,nRead;
 	char zBuf[8192];
@@ -3180,14 +3197,10 @@ PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
-		ph7_result_bool(pCtx,0);
+	if( !StreamHasReader(pDev) ){
+		/* php's fpassthru() reports the FAILING READ's own -1 when nothing was
+		 * passed through, which is what a handle with no reader gives. */
+		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
@@ -3333,7 +3346,6 @@ static int csv_write_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
  */
 PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pStream;
 	struct csv_data sCsv;
 	io_private *pDev;
 	SyBlob sLine;
@@ -3356,12 +3368,7 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = pDev->pStream;
-	if( pStream == 0  || pStream->xWrite == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+	if( StreamRefuseUnwritable(pCtx,pDev) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3441,6 +3448,9 @@ struct fprintf_data
 	                         * the device took: php builds the whole string, writes
 	                         * it once and returns its length whatever the write
 	                         * did) */
+	int bNoWriter;          /* the stream has no writer AT ALL: announced once,
+	                         * before the format runs, and then every chunk is
+	                         * counted and dropped rather than offered */
 	int bIoErr;             /* the device refused, so stop feeding it -- but this
 	                         * is an IO failure and not a mid-format THROW, and the
 	                         * caller must not confuse the two */
@@ -3452,6 +3462,15 @@ static int fprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *p
 {
 	fprintf_data *pFdata = (fprintf_data *)pUserData;
 	ph7_int64 n;
+	if( pFdata->bNoWriter ){
+		/* Nowhere to put it, and php builds the string anyway: its fprintf()
+		 * formats first and writes once, so the LENGTH it answers is the same
+		 * whether the stream took the bytes or refused them all. Counting
+		 * without writing is what keeps `fprintf($dir, "a%sb", "q")` at 3
+		 * rather than the first chunk's 1. */
+		pFdata->nCount += nLen;
+		return PH7_OK;
+	}
 	/* Write the formatted data */
 	n = PH7_StreamWrite(pFdata->pIO,(const void *)zInput,nLen);
 	pFdata->nCount += nLen;
@@ -3503,15 +3522,6 @@ PH7_PRIVATE int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	if( pDev->pStream == 0  || pDev->pStream->xWrite == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device",
-			ph7_function_name(pCtx),pDev->pStream ? pDev->pStream->zName : "null_stream"
-			);
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
 	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError (#2). */
 	{
 		sxi32 rcf = PH7_FormatCheckFormatArg(pCtx,apArg[1],2);
@@ -3545,6 +3555,11 @@ PH7_PRIVATE int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 	sFdata.nCount = 0;
 	sFdata.pIO = pDev;
 	sFdata.bIoErr = 0;
+	/* A handle with no writer at all is announced HERE -- after every argument
+	 * screen, because php's TypeError/ValueError/ArgumentCountError come first
+	 * and carry no notice with them, and after the empty format, which writes
+	 * nothing and says nothing. */
+	sFdata.bNoWriter = StreamRefuseUnwritable(pCtx,pDev);
 	/* Format the string */
 	{
 	sxi32 rcv = PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,nArg - 1,&apArg[1],(void *)&sFdata,FALSE);
@@ -3616,15 +3631,6 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the target IO stream device */
-	if( pDev->pStream == 0  || pDev->pStream->xWrite == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device",
-			ph7_function_name(pCtx),pDev->pStream ? pDev->pStream->zName : "null_stream"
-			);
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
 	/* Extract the string format */
 	zFormat = ph7_value_to_string(apArg[1],&nLen);
 	if( nLen < 1 ){
@@ -3656,6 +3662,11 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 	sFdata.nCount = 0;
 	sFdata.pIO = pDev;
 	sFdata.bIoErr = 0;
+	/* A handle with no writer at all is announced HERE -- after every argument
+	 * screen, because php's TypeError/ValueError/ArgumentCountError come first
+	 * and carry no notice with them, and after the empty format, which writes
+	 * nothing and says nothing. */
+	sFdata.bNoWriter = StreamRefuseUnwritable(pCtx,pDev);
 	/* Format the string */
 	{
 	sxi32 rcv = PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&sFdata,TRUE);
@@ -4295,6 +4306,19 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 			int rcSeek = PH7_StreamHandleCanSeek(pDev);
 			if( rcSeek >= 0 ){
 				bSeekable = rcSeek;
+			}else if( is_php_stream(pDev->pStream)
+			       && PH7_PhpStreamInner(pDev->pHandle) == 0 ){
+				/* php://output has no seek AT ALL, and its neighbours on this
+				 * one device do. Ask with the seek that moves nothing: an
+				 * unsupported one answers SXERR_NOTIMPLEMENTED, which is the
+				 * same "no seek here" php's NO_SEEK flag records. The question
+				 * is not put to any other device -- a handle an extension built
+				 * can have a POSITION riding on its last seek (PDO's blob marks
+				 * its own unknown), and asking would move it -- nor to a
+				 * php://filter PROXY, whose seek is a real seek of the stream
+				 * underneath and would drop what the chain had produced. */
+				bSeekable = pDev->pStream->xSeek(pDev->pHandle,0,1/*SEEK_CUR*/)
+					!= SXERR_NOTIMPLEMENTED;
 			}else if( pDev->pStream->xOpen != 0 && pDev->pStream->xTell != 0 ){
 				/* Ask the HANDLE where it is, which is how a descriptor-backed
 				 * device says it cannot seek. A device an extension built by
@@ -5102,6 +5126,12 @@ static void SockReportWriteFailure(ph7_context *pCtx,io_private *pDev,int nLen)
 	if( pDev == 0 ){
 		return;
 	}
+	if( pDev->bDir || pDev->pStream == 0 || pDev->pStream->xWrite == 0 ){
+		/* Not a write that failed -- a stream that has no writer, already
+		 * announced as `Stream is not writable`. php has no second sentence
+		 * for it, and this one would name an errno nothing set. */
+		return;
+	}
 #ifdef PH7_ENABLE_NET
 	if( pDev->pStream == &sTCP_Stream && pDev->pHandle ){
 		sock_private *pSock = (sock_private *)pDev->pHandle;
@@ -5415,6 +5445,37 @@ static const char * SockResolveFailure(ph7_context *pCtx,const char *zHost,char 
 	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zBuf);
 	return zBuf;
 }
+/* int (*xStat)(void *,ph7_value *,ph7_value *)
+ *
+ * php's socket ops stat the DESCRIPTOR, so fstat() on a socket answers whatever
+ * the platform's fstat() says about one -- a full record on both boxes here,
+ * with the S_IFSOCK mode. The same call, so the same platform answer, failure
+ * included. */
+static int SockStreamData_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker)
+{
+	sock_private *pSock = (sock_private *)pHandle;
+	if( pSock == 0 ){
+		return -1;
+	}
+#ifdef __WINNT__
+	/* php's socket ops do not stat at all on Windows: they SUCCEED with a
+	 * zeroed record, so fstat() there is an array of zeros with the -1
+	 * blksize/blocks every Windows stat carries. A SOCKET is not a CRT
+	 * descriptor either, so asking one would be a call on a descriptor number
+	 * nothing opened. (Read back from php 8.5.8 on the gate guest.) */
+	{
+		ph7_int64 aVal[13];
+		int i;
+		for( i = 0 ; i < 11 ; ++i ){ aVal[i] = 0; }
+		aVal[11] = -1;
+		aVal[12] = -1;
+		SXUNUSED(pSock);
+		return PH7_VfsStatFill(pArray,pWorker,aVal);
+	}
+#else
+	return PH7_VfsStatFromFd((int)pSock->sock,pArray,pWorker);
+#endif
+}
 PH7_PRIVATE const ph7_io_stream sTCP_Stream = {
 	"tcp",
 	PH7_IO_STREAM_VERSION,
@@ -5428,10 +5489,10 @@ PH7_PRIVATE const ph7_io_stream sTCP_Stream = {
 	0,  /* xSeek (sockets are not seekable) */
 	0,  /* xLock */
 	0,  /* xRewindDir */
-	0,  /* xTell */
-	0,  /* xTrunc */
+	0,  /* xTell: none, so the stream layer's own counter answers ftell() */
+	0,  /* xTrunc: none at all, which is php's `Can't truncate this stream!` */
 	0,  /* xSync */
-	0   /* xStat */
+	SockStreamData_Stat  /* xStat */
 };
 #endif /* PH7_ENABLE_NET */
 /*
@@ -8281,10 +8342,7 @@ PH7_PRIVATE int PH7_builtin_fclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
 	if( pStream == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+		/* Nothing to close. php's fclose() has no diagnostic for it. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}

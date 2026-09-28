@@ -444,6 +444,20 @@ struct ph7_io_stream
 #define PH7_IO_LOCK_SH_NB  2
 #define PH7_IO_LOCK_EX_NB  3
 /*
+ * xSeek() and xTrunc() tell "this device cannot do it AT ALL" apart from "the
+ * attempt failed", because php's callers say different things about the two:
+ * an unsupported seek is `fseek(): Stream does not support seeking` and an
+ * unsupported truncation is `ftruncate(): Can't truncate this stream!`, while
+ * a truncation the device supports and the system refused is a SILENT false.
+ *
+ *   PH7_OK                success
+ *   SXERR_NOTIMPLEMENTED  the device has no such operation -- the caller warns
+ *   any other negative    the operation was attempted and failed -- silent
+ *
+ * A driver written before this split answers -1 for both, which lands on the
+ * silent arm; a NULL slot is the unsupported one, as it always was.
+ */
+/*
  * C-API-REF: Please refer to the official documentation for interfaces
  * purpose and expected parameters.
  */

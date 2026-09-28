@@ -4833,6 +4833,14 @@ struct io_private
 	                  * errno=..." notice) and cleared once it has. 0 = nothing
 	                  * to report; a read that merely found EOF never sets it. */
 	sxu8 bDir;       /* opendir()/dir() handle rather than a byte stream */
+	/* Where the SCRIPT is on a device that cannot say it itself -- a popen()
+	 * pipe, a socket, a directory handle. php's stream layer tracks a position
+	 * for EVERY stream and only asks the device when it seeks, so ftell() on a
+	 * pipe answers the bytes that have gone past rather than failing; this is
+	 * that counter, and it is read only when the device has no xTell. A
+	 * directory handle steps it by one php_stream_dirent per entry read
+	 * (PHL_DIR_RECORD), which is the number php's own ftell() reports. */
+	ph7_int64 iPos;
 	sxu8 bPersist;   /* opened PERSISTENTLY: get_resource_type() names it apart */
 	/* The stream CONTEXT this handle carries (phl_stream_ctx*), owned by the VM
 	 * registry. php attaches the opener's context to a TRANSPORT stream and to
@@ -5105,6 +5113,8 @@ PH7_PRIVATE void PH7_StreamSetOpenError(ph7_vm *pVm,const char *zReason);
 PH7_PRIVATE void PH7_StreamSetOpenErrorCall(ph7_vm *pVm,const char *zClass,const char *zMethod);
 PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int bDir);
 PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut);
+PH7_PRIVATE int PH7_VfsStatFill(ph7_value *pArray,ph7_value *pWorker,const ph7_int64 *aVal);
+PH7_PRIVATE int PH7_VfsStatFromFd(int iFd,ph7_value *pArray,ph7_value *pWorker);
 PH7_PRIVATE const char * VfsStrerror(int iErr);
 /* Stream-device predicates (vfs_io_driver.c) */
 PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream);
@@ -5143,6 +5153,25 @@ PH7_PRIVATE int PH7_StreamHandleCanSeek(io_private *pDev);
 #define PH7_IO_STREAM_OUTPUT 4 /* php://output */
 #define PH7_IO_STREAM_MEMORY 5 /* php://memory, php://temp, and data:// payloads */
 #define PH7_IO_STREAM_FILTER 6 /* php://filter/…/resource=… — a stream wrapped around another */
+/*
+ * How far php's directory stream advances per entry read: one
+ * `php_stream_dirent`, which is `char d_name[MAXPATHLEN]` plus the `d_type`
+ * byte. php's MAXPATHLEN is PATH_MAX where the platform has one and a flat 2048
+ * on Windows; both numbers were read back from the two php builds rather than
+ * assumed (`readdir($d); ftell($d)` answers 4097 here and 2049 there). It is the
+ * only thing ftell() on a directory handle reports, and fseek()/rewind() rewind
+ * the directory WITHOUT putting it back.
+ */
+#ifndef __WINNT__
+#include <limits.h>    /* PATH_MAX, which is where php's MAXPATHLEN comes from */
+#endif
+#ifdef __WINNT__
+#define PHL_DIR_RECORD 2049            /* php's win32 MAXPATHLEN is 2048 */
+#elif defined(PATH_MAX)
+#define PHL_DIR_RECORD (PATH_MAX + 1)  /* php takes MAXPATHLEN from PATH_MAX */
+#else
+#define PHL_DIR_RECORD 4097
+#endif
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
