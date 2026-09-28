@@ -5153,6 +5153,14 @@ PH7_PRIVATE int PH7_StreamHandleCanSeek(io_private *pDev);
 #define PH7_IO_STREAM_OUTPUT 4 /* php://output */
 #define PH7_IO_STREAM_MEMORY 5 /* php://memory, php://temp, and data:// payloads */
 #define PH7_IO_STREAM_FILTER 6 /* php://filter/…/resource=… — a stream wrapped around another */
+/* php://input — the REQUEST BODY. There is none under a command line, and php's
+ * CLI answers an empty stream for it rather than reading standard input (the
+ * body a `php x.php < file` supplies arrives through STDIN, and php://input
+ * stays ""). It runs on the memory machinery, so it is seekable and can be read
+ * twice, and it differs from php://memory in exactly four answers: fflush() is
+ * FALSE, fstat() is FALSE, ftruncate() is unsupported, and its metadata names
+ * it `Input`. */
+#define PH7_IO_STREAM_INPUT  7
 /*
  * How far php's directory stream advances per entry read: one
  * `php_stream_dirent`, which is `char d_name[MAXPATHLEN]` plus the `d_type`

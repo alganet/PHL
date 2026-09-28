@@ -255,6 +255,14 @@ static int PHPStreamFilterOpen(const char *zSpec,int nSpec,int iMode,ph7_vm *pVm
 	*ppData = pData;
 	return PH7_OK;
 }
+/* Does this php:// name say EXACTLY zWant? php matches its sub-stream names
+ * whole (case-insensitively) rather than by prefix, and only `temp` may carry
+ * anything after it. */
+static int PhpStreamNameIs(const SyString *pName,const char *zWant)
+{
+	sxu32 n = SyStrlen(zWant);
+	return pName->nByte == n && SyStrnicmp(pName->zString,zWant,n) == 0;
+}
 /* int (*xOpen)(const char *,int,ph7_value *,void **) */
 static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,void ** ppHandle)
 {
@@ -286,16 +294,23 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 	SyStringInitFromBuf(&sStream,zName,SyStrlen(zName));
 	/* Trim leading and trailing white spaces */
 	SyStringFullTrim(&sStream);
-	/* Stream to open */
-	if( SyStrnicmp(sStream.zString,"stdin",sizeof("stdin")-1) == 0 ){
+	/* Stream to open. Every name but `temp` has to match EXACTLY: php refuses
+	 * `php://memoryx`, `php://memory/` and `php://inputx` outright, and a
+	 * prefix test accepted all three -- `php://memoryx` opened a memory stream
+	 * where php has none. `temp` is php's one exception, because
+	 * `php://temp/maxmemory:1024` names the same device (and php accepts
+	 * `php://tempx` with it, prefix and all). */
+	if( PhpStreamNameIs(&sStream,"stdin") ){
 		iMode = PH7_IO_STREAM_STDIN;
-	}else if( SyStrnicmp(sStream.zString,"output",sizeof("output")-1) == 0 ){
+	}else if( PhpStreamNameIs(&sStream,"output") ){
 		iMode = PH7_IO_STREAM_OUTPUT;
-	}else if( SyStrnicmp(sStream.zString,"stdout",sizeof("stdout")-1) == 0 ){
+	}else if( PhpStreamNameIs(&sStream,"stdout") ){
 		iMode = PH7_IO_STREAM_STDOUT;
-	}else if( SyStrnicmp(sStream.zString,"stderr",sizeof("stderr")-1) == 0 ){
+	}else if( PhpStreamNameIs(&sStream,"stderr") ){
 		iMode = PH7_IO_STREAM_STDERR;
-	}else if( SyStrnicmp(sStream.zString,"memory",sizeof("memory")-1) == 0
+	}else if( PhpStreamNameIs(&sStream,"input") ){
+		iMode = PH7_IO_STREAM_INPUT;
+	}else if( PhpStreamNameIs(&sStream,"memory")
 	       || SyStrnicmp(sStream.zString,"temp",sizeof("temp")-1) == 0 ){
 		/* php://memory and php://temp (PHL keeps temp fully in memory —
 		 * php's 2MB disk spill is a memory-pressure detail, recorded) */
@@ -317,8 +332,9 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 		return -1;
 	}
 	pData->bTemp = bTemp;
-	pData->bReadOnly = iMode == PH7_IO_STREAM_MEMORY
-		&& (iOpenFlags & (PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_APPEND)) == 0;
+	pData->bReadOnly = iMode == PH7_IO_STREAM_INPUT
+		|| (iMode == PH7_IO_STREAM_MEMORY
+		 && (iOpenFlags & (PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_APPEND)) == 0);
 	/* Make the handle public */
 	*ppHandle = (void *)pData;
 	return PH7_OK;
@@ -334,7 +350,7 @@ static ph7_int64 PHPStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nDatat
 		/* Through the shared reader, which is where the chain runs. */
 		return PH7_StreamRead(pData->pInner,pBuffer,nDatatoRead);
 	}
-	if( pData->iType == PH7_IO_STREAM_MEMORY ){
+	if( pData->iType == PH7_IO_STREAM_MEMORY || pData->iType == PH7_IO_STREAM_INPUT ){
 		sxu32 nAvail = SyBlobLength(&pData->sMem);
 		sxu32 nRead;
 		if( pData->nCur >= nAvail ){
@@ -396,7 +412,7 @@ static ph7_int64 PHPStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nW
 	if( pData->iType == PH7_IO_STREAM_STDIN ){
 		/* Forbidden */
 		return -1;
-	}else if( pData->iType == PH7_IO_STREAM_MEMORY ){
+	}else if( pData->iType == PH7_IO_STREAM_MEMORY || pData->iType == PH7_IO_STREAM_INPUT ){
 		sxu32 nLen,nEnd;
 		if( pData->bReadOnly ){
 			return -1;
@@ -512,7 +528,7 @@ static int PHPStreamData_Seek(void *pHandle,ph7_int64 iOfft,int whence)
 		 * support seeking`, which is what the unsupported code asks for. */
 		return SXERR_NOTIMPLEMENTED;
 	}
-	if( pData->iType != PH7_IO_STREAM_MEMORY ){
+	if( pData->iType != PH7_IO_STREAM_MEMORY && pData->iType != PH7_IO_STREAM_INPUT ){
 		/* A standard descriptor seeks exactly as far as the descriptor does,
 		 * and php refuses the seek OUTRIGHT when the descriptor could not say
 		 * where it was at open -- so `php -r … > pipe` warns while the same
@@ -557,13 +573,34 @@ static ph7_int64 PHPStreamData_Tell(void *pHandle)
 	if( pData == 0 ){
 		return -1;
 	}
-	if( pData->iType != PH7_IO_STREAM_MEMORY ){
+	if( pData->iType != PH7_IO_STREAM_MEMORY && pData->iType != PH7_IO_STREAM_INPUT ){
 		/* The COUNTER, not the descriptor: php never re-asks, which is why a
 		 * write to a non-seekable stdout moves the position it reports even
 		 * though nothing can seek there. */
 		return pData->iPos;
 	}
 	return (ph7_int64)pData->nCur;
+}
+/* int (*xSync)(void *)
+ *
+ * Nothing on this device buffers, so a flush has nothing to do and SUCCEEDS --
+ * which is what php answers for php://memory, php://temp, php://output and the
+ * three standard descriptors. php://input is the one stream in the family whose
+ * flush op FAILS, and `fflush(fopen(php://input))` is php's `false`. */
+static int PHPStreamData_Sync(void *pHandle)
+{
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	if( pData == 0 ){
+		return -1;
+	}
+	if( pData->iType == PH7_IO_STREAM_FILTER ){
+		io_private *pIn = pData->pInner;
+		if( pIn == 0 || pIn->pStream == 0 || pIn->pStream->xSync == 0 ){
+			return PH7_OK;
+		}
+		return pIn->pStream->xSync(pIn->pHandle);
+	}
+	return pData->iType == PH7_IO_STREAM_INPUT ? -1 : PH7_OK;
 }
 /* int (*xStat)(void *,ph7_value *,ph7_value *) */
 static int PHPStreamData_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker)
@@ -601,8 +638,8 @@ static int PHPStreamData_Stat(void *pHandle,ph7_value *pArray,ph7_value *pWorker
 		aVal[12] = -1;                                    /* blocks */
 		return PH7_VfsStatFill(pArray,pWorker,aVal);
 	}
-	if( pData->iType == PH7_IO_STREAM_OUTPUT ){
-		/* php's output stream has no descriptor to stat: fstat() is false. */
+	if( pData->iType == PH7_IO_STREAM_OUTPUT || pData->iType == PH7_IO_STREAM_INPUT ){
+		/* Neither has a descriptor to stat: php's fstat() is false for both. */
 		return -1;
 	}
 	return PH7_VfsStatFromFd(pData->iFd,pArray,pWorker);
@@ -621,7 +658,7 @@ static int PHPStreamData_Trunc(void *pHandle,ph7_int64 nLen)
 	if( pData == 0 ){
 		return -1;
 	}
-	if( pData->iType == PH7_IO_STREAM_OUTPUT ){
+	if( pData->iType == PH7_IO_STREAM_OUTPUT || pData->iType == PH7_IO_STREAM_INPUT ){
 		/* Nothing to truncate: php's `Can't truncate this stream!`. */
 		return SXERR_NOTIMPLEMENTED;
 	}
@@ -2290,7 +2327,7 @@ PH7_PRIVATE const ph7_io_stream sPHP_Stream = {
 	0,  /* xRewindDir */
 	PHPStreamData_Tell,  /* xTell */
 	PHPStreamData_Trunc, /* xTrunc */
-	0,  /* xSync */
+	PHPStreamData_Sync,  /* xSync */
 	PHPStreamData_Stat   /* xStat */
 };
 #endif /* PH7_DISABLE_DISK_IO */

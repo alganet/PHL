@@ -137,6 +137,21 @@ static int StreamRefuseUnwritable(ph7_context *pCtx,io_private *pDev)
 	return 1;
 }
 /*
+ * php's stdio device announces a failed WRITE itself -- an E_NOTICE naming the
+ * caller, the count and the errno -- and only that device does: a write
+ * php://input or php://output refuses is silent, which is why the two
+ * whole-file writers cannot simply report every failure they see. They hold a
+ * bare handle rather than an io_private, so they ask by DEVICE.
+ */
+static void StreamReportRawWriteFailure(ph7_context *pCtx,const ph7_io_stream *pStream,int nLen,int iErr)
+{
+	if( pStream == 0 || pStream != pCtx->pVm->pDefStream ){
+		return;
+	}
+	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+		"Write of %d bytes failed with errno=%d %s",nLen,iErr,VfsStrerror(iErr));
+}
+/*
  * ...and can it give any? php's readers answer a silent FALSE on a handle whose
  * ops carry no reader, with no diagnostic of any kind. A DIRECTORY handle is
  * one of those: its pHandle is a DIR*, so a byte op that reached the file
@@ -2612,12 +2627,13 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 			pStream->xLock(pHandle,1/* LOCK_EX */);
 		}
 		/* Perform the write operation */
+		errno = 0;
 		n = pStream->xWrite(pHandle,(const void *)zData,nLen);
 		if( n < 0 ){
-			/* IO error,return FALSE — with php's write-failure diagnostic. */
-			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-				"Write of %d bytes failed with errno=%d %s",
-				(int)nLen,errno,VfsStrerror(errno));
+			/* IO error,return FALSE — with php's write-failure diagnostic,
+			 * which is a NOTICE and comes from the device rather than from
+			 * here: `file_put_contents('php://input','q')` is a silent false. */
+			StreamReportRawWriteFailure(pCtx,pStream,(int)nLen,errno);
 			ph7_result_bool(pCtx,0);
 		}else{
 			/* Total number of bytes written */
@@ -2893,6 +2909,8 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
+	{
+	int bFailed = 0,iErr = 0,nAsked = 0;
 	for(;;){
 		/* Read from source */
 		n = pSin->xRead(pIn,zBuf,sizeof(zBuf));
@@ -2901,17 +2919,27 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			break;
 		}
 		/* Write to dest */
+		nAsked = (int)n;
+		errno = 0;
 		n = pSout->xWrite(pOut,zBuf,n);
 		if( n < 1 ){
-			/* IO error,break immediately */
+			/* php's copy() is FALSE when the destination would not take the
+			 * bytes -- it answered TRUE here whatever the write did, so a copy
+			 * onto a full filesystem reported success. The device's own notice
+			 * goes with it, for the device that raises one. */
+			bFailed = 1;
+			iErr = errno;
 			break;
 		}
 	}
 	/* Close the streams */
 	PH7_StreamCloseHandle(pSin,pIn);
 	PH7_StreamCloseHandle(pSout,pOut);
-	/* Return TRUE */
-	ph7_result_bool(pCtx,1);
+	if( bFailed ){
+		StreamReportRawWriteFailure(pCtx,pSout,nAsked,iErr);
+	}
+	ph7_result_bool(pCtx,!bFailed);
+	}
 	return PH7_OK;
 }
 /*
@@ -4055,6 +4083,11 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 		if( PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_OUTPUT ){
 			/* php://output is the VM's output consumer, not a descriptor. */
 			*pzStream = "Output";
+			return;
+		}
+		if( PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_INPUT ){
+			/* php's request body, which a command line never has. */
+			*pzStream = "Input";
 			return;
 		}
 		if( PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
@@ -8228,6 +8261,11 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_OUTPUT ){
 			/* php://output has one mode whatever it was asked for. */
 			zMeta = "wb";
+			nMeta = 2;
+		}else if( is_php_stream(pStream)
+		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_INPUT ){
+			/* php's input stream is built read-only whatever was asked for. */
+			zMeta = "rb";
 			nMeta = 2;
 		}else if( is_php_stream(pStream)
 		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
