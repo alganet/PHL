@@ -3748,6 +3748,20 @@ static sxi32 PH7_CompilePHP(
 	/* Point to the head and tail of the token stream. */
 	pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);
 	pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];
+	/* php REMOVED `(real)` in its SCANNER, so the refusal belongs to the chunk and
+	 * not to the expression the cast sits in: `strlen(real)` -- where the token is
+	 * never an operator at all -- reports the same sentence, and reports it as a
+	 * PARSE error rather than the fatal `(unset)` gets from the compiler. */
+	{
+		SyToken *pTok;
+		for( pTok = pGen->pIn ; pTok < pGen->pEnd ; pTok++ ){
+			if( (pTok->nType & PH7_TK_OP) && pTok->sData.nByte == sizeof("(real)")-1
+			 && SyMemcmp((const void *)pTok->sData.zString,(const void *)"(real)",sizeof("(real)")-1) == 0 ){
+				return PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
+					"The (real) cast has been removed, use (float) instead");
+			}
+		}
+	}
 	if( is_expr ){
 		rc = SXERR_EMPTY;
 		if( pGen->pIn < pGen->pEnd ){
@@ -4152,6 +4166,81 @@ PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved)
  * a site can only claim an "expecting" clause it genuinely knows; every clause
  * emitted here was verified against php 8.5.7 for the construct in question.
  */
+/*
+ * TRUE when the SOURCE bytes of a double-quoted string interpolate -- `$name`,
+ * `${`, or `{$` -- which is what decides whether php's scanner produced ONE
+ * string token for it or an opening quote followed by parts. A backslash escapes
+ * whatever follows it, so `"\\$b"` does not interpolate.
+ */
+static int GenStateDqInterpolates(SyString *pStr)
+{
+	const unsigned char *z = (const unsigned char *)pStr->zString;
+	const unsigned char *zEnd = &z[pStr->nByte];
+	while( z < zEnd ){
+		if( z[0] == '\\' ){
+			z += 2;
+			continue;
+		}
+		if( z[0] == '$' && &z[1] < zEnd
+		 && (z[1] == '{' || z[1] >= 0x80 || SyisAlpha(z[1]) || z[1] == '_') ){
+			return 1;
+		}
+		if( z[0] == '{' && &z[1] < zEnd && z[1] == '$' ){
+			return 1;
+		}
+		z++;
+	}
+	return 0;
+}
+/*
+ * Rebuild the `<<<LABEL` marker of a heredoc/nowdoc token from the source the
+ * token's BODY points into: the header always sits immediately above it. Answers
+ * FALSE when no marker is found within reach, in which case the caller falls back
+ * to the generic noun rather than guessing.
+ */
+static int GenStateHeredocMarker(SyString *pBody,SyString *pOut)
+{
+	const unsigned char *z = (const unsigned char *)pBody->zString;
+	const unsigned char *zLabelEnd;
+	/* Walk the header BACKWARDS from the body, which begins one byte past the
+	 * terminator of the marker's own line: line terminator, trailing blanks, the
+	 * closing quote, the LABEL, the opening quote, leading blanks, `<<<`. Every
+	 * step stops on a byte the next step owns, so the walk cannot leave the
+	 * header -- `<` is not a label byte and a label is what sits above the body. */
+	z--;
+	if( z[0] == '\n' ){
+		z--;
+		if( z[0] == '\r' ){
+			z--;
+		}
+	}
+	while( z[0] == ' ' || z[0] == '\t' ){
+		z--;
+	}
+	if( z[0] == '"' || z[0] == '\'' ){
+		z--;
+	}
+	zLabelEnd = &z[1];
+	while( z[0] >= 0x80 || SyisAlphaNum(z[0]) || z[0] == '_' ){
+		z--;
+	}
+	if( zLabelEnd == &z[1] ){
+		return 0; /* No label: not a header this routine can read back */
+	}
+	if( z[0] == '"' || z[0] == '\'' ){
+		z--;
+	}
+	while( z[0] == ' ' || z[0] == '\t' ){
+		z--;
+	}
+	if( !(z[0] == '<' && z[-1] == '<' && z[-2] == '<') ){
+		return 0;
+	}
+	/* php's token text runs from `<<<` to the end of the LABEL -- the opening
+	 * quote of a nowdoc is inside it, the closing one is not. */
+	SyStringInitFromBuf(pOut,&z[-2],(sxu32)(zLabelEnd - &z[-2]));
+	return 1;
+}
 PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 	ph7_gen_state *pGen,   /* Code generator state */
 	SyToken *pTok,         /* Offending token, or NULL for end of file */
@@ -4216,7 +4305,40 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 	}else if( pTok->nType & PH7_TK_INTEGER ){
 		zNoun = "integer";
 	}else if( pTok->nType & PH7_TK_REAL ){
-		zNoun = "float";
+		/* php's noun, which is not the type name: `float` is what the CAST is
+		 * called, `floating-point number` what a stray literal is called. */
+		zNoun = "floating-point number";
+	}else if( pTok->nType & (PH7_TK_SSTR|PH7_TK_DSTR) ){
+		/* php names a string literal by the QUOTE it was written with, and prints
+		 * the SOURCE bytes between the quotes -- escapes unresolved, which is what
+		 * the token already holds here. A double-quoted string that INTERPOLATES is
+		 * not one token in php at all: its scanner emits the opening quote on its
+		 * own, so the parser has nothing to quote and the noun stands alone. */
+		if( (pTok->nType & PH7_TK_DSTR) && GenStateDqInterpolates(&pTok->sData) ){
+			if( zExpecting ){
+				return PH7_GenCompileError(pGen,E_PARSE,nLine,
+					"syntax error, unexpected double-quote mark, expecting %s",zExpecting);
+			}
+			return PH7_GenCompileError(pGen,E_PARSE,nLine,
+				"syntax error, unexpected double-quote mark");
+		}
+		zNoun = (pTok->nType & PH7_TK_SSTR) ? "single-quoted string" : "double-quoted string";
+	}else if( pTok->nType & (PH7_TK_HEREDOC|PH7_TK_NOWDOC) ){
+		/* php names the OPENING marker -- `<<<EOT`, or `<<<'EOT` for a nowdoc, the
+		 * closing quote dropped because the token text ends at the label -- and
+		 * reports it on the line AFTER the marker's, its scanner having consumed
+		 * that line's terminator before the token is handed over. The token here
+		 * carries the BODY, so the marker is read back off the source it points
+		 * into. */
+		SyString sMark;
+		if( GenStateHeredocMarker(&pTok->sData,&sMark) ){
+			if( zExpecting ){
+				return PH7_GenCompileError(pGen,E_PARSE,nLine + 1,
+					"syntax error, unexpected heredoc start \"%z\", expecting %s",&sMark,zExpecting);
+			}
+			return PH7_GenCompileError(pGen,E_PARSE,nLine + 1,
+				"syntax error, unexpected heredoc start \"%z\"",&sMark);
+		}
 	}
 	if( zExpecting ){
 		return PH7_GenCompileError(pGen,E_PARSE,nLine,
@@ -4238,8 +4360,15 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	SyString *pFile;
 	va_list ap;
 	sxi32 rc;
-	/* Reset the working buffer */
-	SyBlobReset(pWorker);
+	/* Reset the working buffer. NOT when nobody is logging: there the buffer is a
+	 * one-message store eval() reads its ParseError text out of, and php stops at
+	 * the FIRST error where this generator carries on to a budget of fifteen -- so
+	 * resetting handed eval the LAST message. `eval('echo 1 foo;')` reported
+	 * `unexpected token ";"`, the synchronizer's own complaint, where php names the
+	 * `identifier "foo"` it choked on. */
+	if( pGen->xErr ){
+		SyBlobReset(pWorker);
+	}
 	/* Peek the processed file path if available */
 	pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);
 	if( nErrType == E_ERROR || nErrType == E_PARSE ){
@@ -4269,10 +4398,14 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		/* No consumer — but keep the BARE message in the error buffer so a caller
 		 * that needs the text can read it back. eval() compiles with logging off
 		 * (a parse error there is php's catchable ParseError, not a printed
-		 * diagnostic) and needs exactly this string for the exception message. */
-		va_start(ap,zFormat);
-		SyBlobFormatAp(pWorker,zFormat,ap);
-		va_end(ap);
+		 * diagnostic) and needs exactly this string for the exception message. The
+		 * first message stands: everything after it is this generator's recovery
+		 * talking, and php never got that far. */
+		if( SyBlobLength(pWorker) < 1 ){
+			va_start(ap,zFormat);
+			SyBlobFormatAp(pWorker,zFormat,ap);
+			va_end(ap);
+		}
 		return SXRET_OK;
 	}
 	switch(nErrType){

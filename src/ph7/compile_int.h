@@ -232,7 +232,6 @@ PH7_PRIVATE int SyMemcmpNoCase(const char *zA,const char *zB,sxu32 n);
 #define GEN_NUM_SCRATCH 128
 PH7_PRIVATE sxi32 GenStateFindLiteral(ph7_gen_state *pGen,const SyString *pValue,sxu32 *pIdx);
 PH7_PRIVATE sxi32 GenStateInstallLiteral(ph7_gen_state *pGen,ph7_value *pObj,sxu32 nIdx);
-PH7_PRIVATE sxi32 GenStateValidateNumericSeparator(ph7_gen_state *pGen,SyToken *pToken);
 PH7_PRIVATE sxi32 GenStateStripNumericSeparators(SyMemBackend *pAlloc,const SyString *pToken,
 	char *zScratch,sxu32 nScratch,SyString *pOut,char **pzAlloc);
 PH7_PRIVATE SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd);

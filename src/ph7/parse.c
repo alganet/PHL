@@ -176,6 +176,11 @@ static const ph7_expr_op aOpTable[] = {
 	{ {"(array)",  sizeof("(array)")-1 }, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_ARRAY},
 	{ {"(object)", sizeof("(object)")-1}, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_OBJ  },
 	{ {"(unset)",  sizeof("(unset)")-1 }, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_NULL },
+	/* php 8 REMOVED `(real)`, and removed it in the SCANNER: the cast token is still
+	 * matched and then refused outright, with a sentence of its own. Kept as a row so
+	 * the token has an operator to hang on; the refusal is raised where the chunk is
+	 * tokenized, before any of it compiles. */
+	{ {"(real)",   sizeof("(real)")-1  }, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_REAL },
 	/* php 8.5's `(void)`: not a conversion at all — it converts nothing and answers
 	 * the operand — but it sits exactly where a cast sits and binds exactly as
 	 * tightly. Only the codegen's `for`-clause pass ever hands a token this row

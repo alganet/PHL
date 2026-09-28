@@ -31,6 +31,64 @@ static sxu32 KeywordCode(const char *z, int n);
 static sxu32 KeywordCodeCI(const char *zRaw, int n);
 static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken);
 /*
+ * php's cast is a SCANNER pattern, not three tokens the parser puts back together:
+ *
+ *   "(" [ \t]* ("int"|"integer"|"bool"|"boolean"|"float"|"double"|"real"
+ *              |"string"|"binary"|"array"|"object"|"unset"|"void") [ \t]* ")"
+ *
+ * Three facts follow from that, and PHL -- which used to MERGE `(`, a keyword and
+ * `)` after the fact -- had none of them. The name is matched as TEXT, so `double`
+ * and `binary` are casts (php's two aliases this engine had no keyword for, so
+ * `(double)$x` was `syntax error, unexpected variable`), while neither word is
+ * reserved anywhere else (`function double() {}` still compiles). Only TABS AND
+ * SPACES may sit inside, so a newline or a comment between the parentheses is NOT
+ * a cast in php -- `(\nint\n) $b` is a parenthesised constant followed by a stray
+ * variable -- where the merge accepted any separation at all. And the match runs
+ * wherever the three bytes meet, so `strlen(int)` is php's stray `(int)` token
+ * rather than a call passing a constant.
+ *
+ * Answers the CANONICAL spelling php reports the token by -- both aliases of a
+ * pair report the primary name -- or 0 when this is an ordinary parenthesis.
+ */
+static const char * LexCastToken(const unsigned char *zIn,const unsigned char *zEnd,
+	const unsigned char **pzNext)
+{
+	static const struct { const char *zName; int nName; const char *zCanon; } aCast[] = {
+		{ "int",     3, "(int)"    }, { "integer", 7, "(int)"    },
+		{ "bool",    4, "(bool)"   }, { "boolean", 7, "(bool)"   },
+		{ "float",   5, "(float)"  }, { "double",  6, "(float)"  },
+		{ "string",  6, "(string)" }, { "binary",  6, "(string)" },
+		{ "array",   5, "(array)"  }, { "object",  6, "(object)" },
+		{ "unset",   5, "(unset)"  }, { "real",    4, "(real)"   },
+		{ "void",    4, "(void)"   }
+	};
+	const unsigned char *z = zIn,*zName;
+	sxu32 nName;
+	sxu32 i;
+	while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+		z++;
+	}
+	zName = z;
+	while( z < zEnd && z[0] < 0x80 && SyisAlpha(z[0]) ){
+		z++;
+	}
+	nName = (sxu32)(z - zName);
+	while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+		z++;
+	}
+	if( nName < 1 || z >= zEnd || z[0] != ')' ){
+		return 0;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(aCast) ; ++i ){
+		if( nName == (sxu32)aCast[i].nName
+		 && SyStrnicmp((const char *)zName,aCast[i].zName,nName) == 0 ){
+			*pzNext = &z[1];
+			return aCast[i].zCanon;
+		}
+	}
+	return 0;
+}
+/*
  * Tokenize a raw PHP input.
  * Get a single low-level token from the input file. Update the stream pointer so that
  * it points to the first character beyond the extracted token.
@@ -361,19 +419,70 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 					}
 				}
 			}
-			/* PHP 7.4: absorb a trailing malformed underscore run into the
-			 * numeric token so the compile phase can emit a PHP-compatible
-			 * "syntax error, unexpected identifier" parse error. Valid
-			 * separators were already consumed by the per-loop peek logic
-			 * above, so an underscore here is always misplaced. */
-			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '_' ){
+			/* A MISPLACED PHP 7.4 separator needs nothing here: it is where php's
+			 * scanner stops the number and starts a LABEL, so `1_` is the integer
+			 * 1 followed by the identifier `_` and `0x_1f` the integer 0 followed
+			 * by `x_1f` -- which is the identifier php's parse error names. This
+			 * used to ABSORB the run into the numeric token and re-report it from
+			 * the compile phase; that named the same thing until a leading-dot
+			 * float could follow it, at which point `1_.5` complained about the
+			 * `.5` two tokens later where php complains about the `_`. */
+			/* Record token length */
+			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
+			return SXRET_OK;
+		}else if( pStream->zText[0] == '.' && &pStream->zText[1] < pStream->zEnd
+			&& pStream->zText[1] < 0xc0 && SyisDigit(pStream->zText[1]) ){
+			/* php's DNUM has a leading-dot form -- `({LNUM}?"."{LNUM})` -- so `.5`
+			 * is a float literal and not the concatenation operator followed by a 5.
+			 * The scanner takes it UNCONDITIONALLY, wherever the dot stands: php
+			 * reads `"x".5` as a string followed by the float `.5` and reports a
+			 * parse error for it, which is why a program that means concatenation
+			 * has to write the space (`"x". 5`). PHL had no such token at all, so
+			 * every `.5` in real source -- an ordinary way to write a fraction --
+			 * was `syntax error, unexpected token ";"`. */
+			pStream->zText++; /* Jump the dot */
+			while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0
+				&& SyisDigit(pStream->zText[0]) ){
 				pStream->zText++;
-				while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0
-					&& (SyisAlphaNum(pStream->zText[0]) || pStream->zText[0] == '_') ){
-					pStream->zText++;
+				if( pStream->zText < pStream->zEnd
+					&& pStream->zText[0] == '_'
+					&& pStream->zText + 1 < pStream->zEnd
+					&& pStream->zText[1] < 0xc0
+					&& SyisDigit(pStream->zText[1]) ){
+					pStream->zText++; /* swallow underscore between two digits */
 				}
 			}
-			/* Record token length */
+			if( pStream->zText < pStream->zEnd
+			 && (pStream->zText[0] == 'e' || pStream->zText[0] == 'E') ){
+				/* An EXPONENT_DNUM built on this DNUM. The sign is taken only when a
+				 * digit follows it, exactly as the two runs above do, so `.5e+` is
+				 * the float `.5` followed by an identifier rather than a bad float. */
+				const unsigned char *zRewind = pStream->zText;
+				pStream->zText++;
+				if( pStream->zText < pStream->zEnd
+				 && (pStream->zText[0] == '+' || pStream->zText[0] == '-')
+				 && &pStream->zText[1] < pStream->zEnd
+				 && pStream->zText[1] < 0xc0 && SyisDigit(pStream->zText[1]) ){
+					pStream->zText++;
+				}
+				if( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0
+				 && SyisDigit(pStream->zText[0]) ){
+					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0
+						&& SyisDigit(pStream->zText[0]) ){
+						pStream->zText++;
+						if( pStream->zText < pStream->zEnd
+							&& pStream->zText[0] == '_'
+							&& pStream->zText + 1 < pStream->zEnd
+							&& pStream->zText[1] < 0xc0
+							&& SyisDigit(pStream->zText[1]) ){
+							pStream->zText++; /* swallow underscore between two digits */
+						}
+					}
+				}else{
+					pStream->zText = zRewind;
+				}
+			}
+			pToken->nType = PH7_TK_REAL;
 			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
 			return SXRET_OK;
 		}
@@ -385,72 +494,34 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 		case '$': pToken->nType = PH7_TK_DOLLAR; break;
 		case '{': pToken->nType = PH7_TK_OCB;    break;
 		case '}': pToken->nType = PH7_TK_CCB;    break;
-		case '(': pToken->nType = PH7_TK_LPAREN; break;
+		case '(': {
+			/* A type cast is recognised HERE, off the raw bytes, exactly as php's
+			 * scanner does it (LexCastToken above). */
+			const unsigned char *zNext = 0;
+			const char *zCanon = LexCastToken(pStream->zText,pStream->zEnd,&zNext);
+			if( zCanon ){
+				pStream->zText = zNext;
+				SyStringInitFromBuf(&pToken->sData,zCanon,SyStrlen(zCanon));
+				if( SyStrncmp(zCanon,"(void)",sizeof("(void)")-1) == 0 ){
+					/* php 8.5's `(void)`, which converts nothing and is taken by the
+					 * grammar only at the head of an expression STATEMENT. */
+					pToken->nType = PH7_TK_VOID_CAST;
+					pToken->pUserData = 0;
+				}else{
+					pToken->nType = PH7_TK_OP;
+					pToken->pUserData = (void *)PH7_ExprExtractOperator(&pToken->sData,0);
+				}
+				return SXRET_OK;
+			}
+			pToken->nType = PH7_TK_LPAREN;
+			break;
+				  }
 		case '[': pToken->nType |= PH7_TK_OSB;   break; /* Bitwise operation here,since the square bracket token '['
 														 * is a potential operator [i.e: subscripting] */
 		case ']': pToken->nType = PH7_TK_CSB;    break;
-		case ')': {
-			SySet *pTokSet = pStream->pSet;
-			/* Assemble type cast operators [i.e: (int),(float),(bool)...] */
-			if( pTokSet->nUsed >= 2 ){
-				SyToken *pTmp;
-				/* Peek the last recongnized token */
-				pTmp = (SyToken *)SySetPeek(pTokSet);
-				if( pTmp->nType & PH7_TK_KEYWORD ){
-					sxi32 nID = SX_PTR_TO_INT(pTmp->pUserData);
-					if( (sxu32)nID & (PH7_TKWRD_ARRAY|PH7_TKWRD_INT|PH7_TKWRD_FLOAT|PH7_TKWRD_STRING|PH7_TKWRD_OBJECT|PH7_TKWRD_BOOL|PH7_TKWRD_UNSET) ){
-						pTmp = (SyToken *)SySetAt(pTokSet,pTokSet->nUsed - 2);
-						if( pTmp->nType & PH7_TK_LPAREN ){
-							/* Merge the three tokens '(' 'TYPE' ')' into a single one */
-							const char * zTypeCast = "(int)";
-							if( nID & PH7_TKWRD_FLOAT ){
-								zTypeCast = "(float)";
-							}else if( nID & PH7_TKWRD_BOOL ){
-								zTypeCast = "(bool)";
-							}else if( nID & PH7_TKWRD_STRING ){
-								zTypeCast = "(string)";
-							}else if( nID & PH7_TKWRD_ARRAY ){
-								zTypeCast = "(array)";
-							}else if( nID & PH7_TKWRD_OBJECT ){
-								zTypeCast = "(object)";
-							}else if( nID & PH7_TKWRD_UNSET ){
-								zTypeCast = "(unset)";
-							}
-							/* Reflect the change */
-							pToken->nType = PH7_TK_OP;
-							SyStringInitFromBuf(&pToken->sData,zTypeCast,SyStrlen(zTypeCast));
-							/* Save the instance associated with the type cast operator */
-							pToken->pUserData = (void *)PH7_ExprExtractOperator(&pToken->sData,0);
-							/* Remove the two previous tokens */
-							pTokSet->nUsed -= 2;
-							return SXRET_OK;
-						}
-					}
-				}
-			}
-			/* ...and php 8.5's `(void)`, which is a cast TOKEN there too. `void` is
-			 * not a reserved word (`const void = 5;` is legal in both engines), so
-			 * the merge keys on the identifier's text -- and it happens wherever
-			 * the three tokens meet, which is php's own behaviour: `foo(void)` is
-			 * `foo` followed by a stray cast, not a call passing a constant. */
-			if( pTokSet->nUsed >= 2 ){
-				SyToken *pTmp = (SyToken *)SySetPeek(pTokSet);
-				if( (pTmp->nType & PH7_TK_ID)
-				 && pTmp->sData.nByte == sizeof("void")-1
-				 && SyStrnicmp(pTmp->sData.zString,"void",sizeof("void")-1) == 0 ){
-					pTmp = (SyToken *)SySetAt(pTokSet,pTokSet->nUsed - 2);
-					if( pTmp->nType & PH7_TK_LPAREN ){
-						pToken->nType = PH7_TK_VOID_CAST;
-						SyStringInitFromBuf(&pToken->sData,"(void)",sizeof("(void)")-1);
-						pToken->pUserData = 0;
-						pTokSet->nUsed -= 2;
-						return SXRET_OK;
-					}
-				}
-			}
+		case ')':
 			pToken->nType = PH7_TK_RPAREN;
 			break;
-				  }
 		case '\'':{
 			/* Single quoted string */
 			pStr->zString++;

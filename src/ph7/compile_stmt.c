@@ -302,6 +302,118 @@ PH7_PRIVATE sxi32 GenStateJumpOutOfFinally(ph7_gen_state *pGen,sxu32 nLine)
 	return PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
 		"jump out of a finally block is disallowed");
 }
+/*
+ * php's `break`/`continue` grammar is `KEYWORD optional_expr ";"`, and the level is
+ * then screened as a compile-time VALUE rather than parsed as a number: an operand
+ * that is not a literal at all -- a constant, a variable, `-1`, `(1+0)` -- is
+ * `'break' operator with non-integer operand is no longer supported`, and one that
+ * IS a literal but not a positive integer -- `1.5`, `"1"`, `0` -- is
+ * `'break' operator accepts only positive integers`. Parentheses are transparent
+ * (`((1))` is 1) because they leave no node of their own, which is also why the
+ * arithmetic inside them is not folded away first.
+ *
+ * PHL used to read a NUMBER token and ignore anything else, so `break 1.5;` broke
+ * one level in silence, `break $x;` and `break foo;` compiled to a plain break with
+ * a WARNING about the missing semicolon, and the program then RAN.
+ *
+ * Answers SXRET_OK with *piLevel set (1 when there is no operand), SXERR_ABORT to
+ * abort the compile, or SXERR_SYNTAX once a refusal has been reported.
+ */
+static sxi32 GenStateJumpLevelArg(ph7_gen_state *pGen,const char *zWhich,sxu32 nLine,sxi32 *piLevel)
+{
+	SyToken *pStart = pGen->pIn,*pEnd = pGen->pEnd,*pAfter;
+	sxi32 rc;
+	*piLevel = 1;
+	/* The statement slice runs to the end of the enclosing block, so the operand
+	 * stops at its own terminator. */
+	for( pAfter = pStart ; pAfter < pEnd ; pAfter++ ){
+		if( pAfter->nType & PH7_TK_SEMI ){
+			pEnd = pAfter;
+			break;
+		}
+	}
+	if( pStart >= pEnd ){
+		return SXRET_OK; /* No operand at all: one level */
+	}
+	pGen->pIn = pEnd; /* The whole operand belongs to this statement either way */
+	/* Peel parenthesis pairs that wrap the WHOLE operand. */
+	for(;;){
+		SyToken *pTok;
+		sxi32 nDepth = 0;
+		if( !(pStart->nType & PH7_TK_LPAREN) || !(pEnd[-1].nType & PH7_TK_RPAREN) ){
+			break;
+		}
+		for( pTok = pStart ; pTok < pEnd ; pTok++ ){
+			if( pTok->nType & PH7_TK_LPAREN ){
+				nDepth++;
+			}else if( pTok->nType & PH7_TK_RPAREN ){
+				nDepth--;
+				if( nDepth == 0 ){
+					break;
+				}
+			}
+		}
+		if( pTok != pEnd - 1 ){
+			break; /* The opening paren closes before the end: not a wrap */
+		}
+		pStart++;
+		pEnd--;
+	}
+	if( pStart >= pEnd ){
+		/* The parentheses held nothing (`break ();`): php's expression parser has
+		 * no operand to read and names the closing one, which is where the peel
+		 * above left the cursor. */
+		rc = PH7_GenSyntaxError(&(*pGen),pStart,0);
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+	}
+	if( (pStart->nType & (PH7_TK_INTEGER|PH7_TK_REAL|PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_HEREDOC
+	                     |PH7_TK_NOWDOC|PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+		/* An operator leads the operand, so it cannot be a literal node. */
+		goto NonInteger;
+	}
+	/* The primary this operand starts with -- `$name` is two tokens here. */
+	pAfter = &pStart[(pStart->nType & PH7_TK_DOLLAR) ? 2 : 1];
+	if( pAfter < pEnd ){
+		if( (pAfter->nType & (PH7_TK_OP|PH7_TK_OSB|PH7_TK_LPAREN))
+		 && (pAfter->nType & PH7_TK_COMMA) == 0 ){
+			/* The primary continues into a larger expression php will not take.
+			 * A comma is typed as an operator here and is not one to php: the
+			 * expression has ENDED there, so the semicolon is what it wants. */
+			goto NonInteger;
+		}
+		/* php read its expression and now wants the semicolon. */
+		rc = PH7_GenSyntaxError(&(*pGen),pAfter,"\";\"");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+	}
+	if( pStart->nType & PH7_TK_INTEGER ){
+		char zScratch[GEN_NUM_SCRATCH];
+		char *zAlloc = 0;
+		SyString sNum;
+		if( SXRET_OK != GenStateStripNumericSeparators(&pGen->pVm->sAllocator,
+				&pStart->sData,zScratch,sizeof(zScratch),&sNum,&zAlloc) ){
+			return SXERR_ABORT;
+		}
+		*piLevel = (sxi32)PH7_TokenValueToInt64(&sNum);
+		if( zAlloc ){
+			SyMemBackendFree(&pGen->pVm->sAllocator,zAlloc);
+		}
+		if( *piLevel < 1 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"'%s' operator accepts only positive integers",zWhich);
+			return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		return SXRET_OK;
+	}
+	if( pStart->nType & (PH7_TK_REAL|PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_HEREDOC|PH7_TK_NOWDOC) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"'%s' operator accepts only positive integers",zWhich);
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+	}
+NonInteger:
+	rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+		"'%s' operator with non-integer operand is no longer supported",zWhich);
+	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+}
 PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
 	GenBlock *pLoop; /* Target loop */
@@ -314,41 +426,13 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 	iLevel = 0;
 	/* Jump the 'continue' keyword */
 	pGen->pIn++;
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NUM) ){
-		/* optional numeric argument which tells us how many levels
-		 * of enclosing loops we should skip to the end of.
-		 */
-		char zScratch[GEN_NUM_SCRATCH];
-		char *zAlloc = 0;
-		SyString sNum;
-		rc = GenStateValidateNumericSeparator(pGen, pGen->pIn);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		if( rc == SXRET_OK ){
-			rc = GenStateStripNumericSeparators(&pGen->pVm->sAllocator,
-				&pGen->pIn->sData, zScratch, sizeof(zScratch), &sNum, &zAlloc);
-			if( rc != SXRET_OK ){
-				return SXERR_ABORT;
-			}
-			iLevel = (sxi32)PH7_TokenValueToInt64(&sNum);
-			iRawLevel = iLevel;
-			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
-		}
-		if( iLevel < 2 ){
-			iLevel = 0;
-		}
-		pGen->pIn++; /* Jump the optional numeric argument */
+	rc = GenStateJumpLevelArg(&(*pGen),"continue",nLineLocal,&iRawLevel);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}else if( rc != SXRET_OK ){
+		return SXRET_OK; /* Refused and reported */
 	}
-	/* php rejects a non-positive level outright, before asking where it lands. */
-	if( iRawLevel < 1 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
-			"'continue' operator accepts only positive integers");
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		return SXRET_OK;
-	}
+	iLevel = iRawLevel < 2 ? 0 : iRawLevel;
 	/* Point to the target loop */
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
 	if( pLoop == 0 ){
@@ -400,9 +484,9 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 			}
 		}
 	}
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
-		/* Not so fatal,emit a warning only */
-		PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,"Expected semi-colon ';' after 'continue' statement");
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0
+	 && PH7_GenSyntaxError(&(*pGen),pGen->pIn,"\";\"") == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	/* Statement successfully compiled */
 	return SXRET_OK;
@@ -427,41 +511,13 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 	nLineLocal = pGen->pIn->nLine;
 	/* Jump the 'break' keyword */
 	pGen->pIn++;
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NUM) ){
-		/* optional numeric argument which tells us how many levels
-		 * of enclosing loops we should skip to the end of.
-		 */
-		char zScratch[GEN_NUM_SCRATCH];
-		char *zAlloc = 0;
-		SyString sNum;
-		rc = GenStateValidateNumericSeparator(pGen, pGen->pIn);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		if( rc == SXRET_OK ){
-			rc = GenStateStripNumericSeparators(&pGen->pVm->sAllocator,
-				&pGen->pIn->sData, zScratch, sizeof(zScratch), &sNum, &zAlloc);
-			if( rc != SXRET_OK ){
-				return SXERR_ABORT;
-			}
-			iLevel = (sxi32)PH7_TokenValueToInt64(&sNum);
-			iRawLevel = iLevel;
-			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
-		}
-		if( iLevel < 2 ){
-			iLevel = 0;
-		}
-		pGen->pIn++; /* Jump the optional numeric argument */
+	rc = GenStateJumpLevelArg(&(*pGen),"break",nLineLocal,&iRawLevel);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}else if( rc != SXRET_OK ){
+		return SXRET_OK; /* Refused and reported */
 	}
-	/* php rejects a non-positive level outright, before asking where it lands. */
-	if( iRawLevel < 1 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-			"'break' operator accepts only positive integers");
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto BreakLevelDone;
-	}
+	iLevel = iRawLevel < 2 ? 0 : iRawLevel;
 	/* Extract the target loop */
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
 	if( pLoop == 0 ){
@@ -495,10 +551,9 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 			}
 		}
 	}
-BreakLevelDone:
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
-		/* Not so fatal,emit a warning only */
-		PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,"Expected semi-colon ';' after 'break' statement");
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0
+	 && PH7_GenSyntaxError(&(*pGen),pGen->pIn,"\";\"") == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	/* Statement successfully compiled */
 	return SXRET_OK;
@@ -645,8 +700,11 @@ PH7_PRIVATE sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
 		}
 	}
 	pGen->pIn++; /* Jump the label name */
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
-		PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Expected semi-colon ';' after 'goto' statement");
+	/* php reads `goto LABEL ;` and nothing else: a stray token there is its parse
+	 * error naming the token, where this said so in a sentence of its own. */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0
+	 && PH7_GenSyntaxError(&(*pGen),pGen->pIn,"\";\"") == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	/* Statement successfully compiled */
 	return SXRET_OK;
@@ -2432,27 +2490,42 @@ PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 		pBlock = pBlock->pParent;
 	}
 	if( pBlock == 0 ){
-		/* Static statement,called outside of a function body,treat it as a simple variable. */
-		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
-			/* php: `static FOO;` is a syntax error naming FOO and expecting "::"
-			 * (the parser is still open to `static::` at that point). */
-			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"::\"");
+		/* Static statement,called outside of a function body,treat it as a simple variable.
+		 * php's list form applies here too, so each declarator is compiled on its own
+		 * and the comma is stepped over rather than reaching the expression parser
+		 * (which has no comma operator). */
+		for(;;){
+			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
+				/* php: `static FOO;` is a syntax error naming FOO and expecting "::"
+				 * (the parser is still open to `static::` at that point). */
+				rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"::\"");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto Synchronize;
+			}
+			/* Compile the expression holding the variable */
+			rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
+			}else if( rc != SXERR_EMPTY ){
+				/* Emit the POP instruction */
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 			}
-			goto Synchronize;
-		}
-		/* Compile the expression holding the variable */
-		rc = PH7_CompileExpr(&(*pGen),0,0);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}else if( rc != SXERR_EMPTY ){
-			/* Emit the POP instruction */
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COMMA) == 0 ){
+				break;
+			}
+			pGen->pIn++; /* Jump the comma and take the next declarator */
 		}
 		return SXRET_OK;
 	}
 	pFunc = (ph7_vm_func *)pBlock->pUserData;
+	/* php declares a LIST here -- `static $a, $b = 2, $c;` -- each element its own
+	 * slot with its own optional initializer. PHL took the first declarator and
+	 * then refused the comma (`static: Unexpected token ','`), which is a fatal on
+	 * an everyday spelling: two counters in one statement is how the construct is
+	 * usually written. */
+Declarator:
 	/* Make sure we are dealing with a valid statement */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 || &pGen->pIn[1] >= pGen->pEnd ||
 		(pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
@@ -2479,7 +2552,8 @@ PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 		goto Synchronize;
 	}
 	pGen->pIn++; /* Jump the var name */
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_EQUAL/*'='*/)) == 0 ){
+	if( pGen->pIn < pGen->pEnd
+	 && (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_EQUAL/*'='*/|PH7_TK_COMMA/*','*/)) == 0 ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"static: Unexpected token '%z'",&pGen->pIn->sData);
 		goto Synchronize;
 	}
@@ -2506,8 +2580,9 @@ PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 		/* Swap bytecode container */
 		pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 		PH7_VmSetByteCodeContainer(pGen->pVm,&sStatic.aByteCode);
-		/* Compile the expression */
-		rc = PH7_CompileExpr(&(*pGen),0,0);
+		/* Compile the expression. EXPR_FLAG_COMMA_STATEMENT stops it at the first
+		 * top-level comma so the declarator after it is left for the loop. */
+		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
 		/* Emit the done instruction */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
 		/* Restore default bytecode container */
@@ -2515,6 +2590,10 @@ PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 	}
 	/* Finally save the compiled static variable in the appropriate container */
 	SySetPut(&pFunc->aStatic,(const void *)&sStatic);
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
+		pGen->pIn++; /* Jump the comma and take the next declarator */
+		goto Declarator;
+	}
 	return SXRET_OK;
 Synchronize:
 	/* Synchronize with the first semi-colon ';',so we can avoid compiling this erroneous
