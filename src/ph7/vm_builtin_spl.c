@@ -6507,19 +6507,41 @@ static int vm_builtin_SplDll_prev(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * the same var_dump/cast disagreement WeakReference has, which is why xPresent is
  * told which surface is asking. `__debugInfo()` is the same array, reachable by
  * name because php declares it.
+ *
+ * Every key is php's MANGLED private name, which is what makes the dump print
+ * `[flags:SplDoublyLinkedList:private]` rather than a plain `[flags]`
+ * (SplObjectStorage's storage key has read that way all along).
  */
+/*
+ * One `"\0Class\0member"` key, under the class php says DECLARES the slot -- which
+ * for every container here is the ROOT of the chain, so SplStack, SplQueue,
+ * SplMinHeap and any userland subclass all show the base's name rather than their
+ * own, and SplPriorityQueue (which extends nothing) shows itself.
+ */
+static sxi32 SplRootDebugKey(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,
+	const char *zMember)
+{
+	ph7_class *pRoot = pThis->pClass;
+	while( pRoot->pBase ){
+		pRoot = pRoot->pBase;
+	}
+	PH7_MemObjInitFromString(pVm,pKey,0);
+	PH7_MemObjStringAppend(pKey,"\0",1);
+	PH7_MemObjStringAppend(pKey,SyStringData(&pRoot->sName),SyStringLength(&pRoot->sName));
+	PH7_MemObjStringAppend(pKey,"\0",1);
+	PH7_MemObjStringAppend(pKey,zMember,(sxu32)SyStrlen(zMember));
+	return PH7_OK;
+}
 static sxi32 DllFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 {
 	ph7_value sKey,sVal,*pStore;
-	PH7_MemObjInitFromString(pVm,&sKey,0);
-	PH7_MemObjStringAppend(&sKey,"flags",sizeof("flags")-1);
+	SplRootDebugKey(pVm,pThis,&sKey,"flags");
 	PH7_MemObjInitFromInt(pVm,&sVal,DllFlags(pThis));
 	ph7_array_add_elem(pOut,&sKey,&sVal);
 	PH7_MemObjRelease(&sKey);
 	PH7_MemObjRelease(&sVal);
 	pStore = DllSlot(pVm,pThis);
-	PH7_MemObjInitFromString(pVm,&sKey,0);
-	PH7_MemObjStringAppend(&sKey,"dllist",sizeof("dllist")-1);
+	SplRootDebugKey(pVm,pThis,&sKey,"dllist");
 	if( pStore ){
 		ph7_array_add_elem(pOut,&sKey,pStore);
 	}
@@ -7383,25 +7405,24 @@ static int vm_builtin_SplPq_getExtractFlags(ph7_context *pCtx,int nArg,ph7_value
 /*
  * php's get_debug_info: flags, isCorrupted, heap. The QUEUE renders its entries
  * EXTR_BOTH-style whatever the extract flags say, because the debug view is of the
- * STORAGE rather than of what extract() would hand back.
+ * STORAGE rather than of what extract() would hand back. All three keys are php's
+ * mangled private names (SplRootDebugKey): `SplHeap` for SplMinHeap/SplMaxHeap and
+ * every subclass of either, `SplPriorityQueue` for the queue.
  */
 static sxi32 HeapFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 {
 	ph7_value sKey,sVal,*pStore;
-	PH7_MemObjInitFromString(pVm,&sKey,0);
-	PH7_MemObjStringAppend(&sKey,"flags",sizeof("flags")-1);
+	SplRootDebugKey(pVm,pThis,&sKey,"flags");
 	PH7_MemObjInitFromInt(pVm,&sVal,PH7_NativeAttrInt(pThis,HP_FL));
 	ph7_array_add_elem(pOut,&sKey,&sVal);
 	PH7_MemObjRelease(&sKey);
 	PH7_MemObjRelease(&sVal);
-	PH7_MemObjInitFromString(pVm,&sKey,0);
-	PH7_MemObjStringAppend(&sKey,"isCorrupted",sizeof("isCorrupted")-1);
+	SplRootDebugKey(pVm,pThis,&sKey,"isCorrupted");
 	PH7_MemObjInitFromBool(pVm,&sVal,HeapCorrupted(pThis));
 	ph7_array_add_elem(pOut,&sKey,&sVal);
 	PH7_MemObjRelease(&sKey);
 	PH7_MemObjRelease(&sVal);
-	PH7_MemObjInitFromString(pVm,&sKey,0);
-	PH7_MemObjStringAppend(&sKey,"heap",sizeof("heap")-1);
+	SplRootDebugKey(pVm,pThis,&sKey,"heap");
 	pStore = HeapSlot(pVm,pThis);
 	if( pStore ){
 		ph7_array_add_elem(pOut,&sKey,pStore);

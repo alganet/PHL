@@ -2034,9 +2034,15 @@ PH7_PRIVATE sxi32 PH7_VmInstallStreamFilter(ph7_vm *pVm)
 	};
 	static const PH7_NativePropDef aBucketProp[] = {
 		{ "bucket", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
-		{ "data", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" },
-		{ "datalen", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, "int" },
-		{ "dataLength", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, "int" },
+		/* php declares the three TYPED and without a default, so a bucket the
+		 * stream layer has not filled yet carries them UNINITIALIZED: absent from
+		 * the (array) cast, get_object_vars() and json_encode(), printed as
+		 * `uninitialized(string)` by var_dump and uncounted in its header, and a
+		 * read before the first write is php's "must not be accessed before
+		 * initialization" Error rather than an empty string. */
+		{ "data", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ "datalen", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },
+		{ "dataLength", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "php_user_filter", 0, 0, 0,

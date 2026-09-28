@@ -3786,6 +3786,12 @@ static int vm_builtin_PDOStatement_getIterator(ph7_context *pCtx,int nArg,ph7_va
 	if( pThis == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement::getIterator() needs a receiver");
 	}
+	if( PdoStmtOfInstance(pThis) == 0 ){
+		/* A statement no driver built -- `new PDOStatement()` -- refuses the door
+		 * the way every other method on one does, and `foreach` is that door: php
+		 * has nothing to iterate and says so instead of walking an empty set. */
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
 	if( PdoStmtWalkRefusal(pCtx,PdoStmtOfInstance(pThis)) ){
 		/* php refuses at the DOOR as well as at every step: `getIterator()` on a
 		 * statement it cannot walk raises there, before an iterator exists. */
