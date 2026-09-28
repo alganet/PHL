@@ -78,6 +78,7 @@ static const VmExtName aExtFunc[] = {
 	{"get_resource_id",PH7_EXT_CORE}, {"get_loaded_extensions",PH7_EXT_CORE},
 	{"get_defined_constants",PH7_EXT_CORE}, {"debug_backtrace",PH7_EXT_CORE},
 	{"debug_print_backtrace",PH7_EXT_CORE}, {"extension_loaded",PH7_EXT_CORE},
+	{"get_extension_funcs",PH7_EXT_CORE},
 	{"gc_mem_caches",PH7_EXT_CORE}, {"gc_collect_cycles",PH7_EXT_CORE},
 	{"gc_enabled",PH7_EXT_CORE}, {"gc_enable",PH7_EXT_CORE}, {"gc_disable",PH7_EXT_CORE},
 	{"gc_status",PH7_EXT_CORE}, {"echo",PH7_EXT_CORE}, {"print",PH7_EXT_CORE},

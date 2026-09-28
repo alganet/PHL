@@ -4943,6 +4943,14 @@ PH7_PRIVATE int PH7_VmExtOfFunc(const char *zName,int nName);
 PH7_PRIVATE int PH7_VmExtOfClass(const char *zName,int nName);
 PH7_PRIVATE int PH7_VmExtOfConstant(const char *zName,int nName);
 PH7_PRIVATE int PH7_VmExtOfIni(const char *zName,int nName);
+#define PH7_EXT_KIND_FUNC   0
+#define PH7_EXT_KIND_CLASS  1
+#define PH7_EXT_KIND_CONST  2
+#define PH7_EXT_KIND_INI    3
+PH7_PRIVATE int PH7_VmExtWalk(int iExt,int iKind,int (*xVisit)(const char *,int,void *),void *pData);
+PH7_PRIVATE int PH7_VmInternalNameExists(ph7_vm *pVm,int iKind,const char *zName,int nName);
+PH7_PRIVATE int PH7_VmExtWalkDep(int iExt,int (*xVisit)(const char *,const char *,void *),void *pData);
+PH7_PRIVATE int vm_builtin_get_extension_funcs(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_print(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_random_bytes(ph7_context *pCtx,int nArg,ph7_value **apArg);

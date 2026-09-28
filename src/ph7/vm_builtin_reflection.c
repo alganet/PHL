@@ -2757,14 +2757,180 @@ static int vm_builtin_ReflectionExtension_getVersion(ph7_context *pCtx, int nArg
 	PH7_MemObjRelease(&sRes);
 	return PH7_OK;
 }
-static int vm_builtin_ReflectionExtension_emptyArray(ph7_context *pCtx, int nArg, ph7_value **apArg)
+/*
+ * The four listings an extension answers about ITSELF -- getFunctions(),
+ * getClasses()/getClassNames(), getConstants() and getINIEntries(). All of them
+ * are the partition walked in php's own registration order (which is not
+ * alphabetical) and filtered against the live VM, so a build without one of the
+ * compile-time extensions simply lists nothing for it.
+ */
+#define REFLECT_EXT_MAP        0   /* name => a fresh reflector over it */
+#define REFLECT_EXT_NAMES      1   /* a plain LIST of the names */
+#define REFLECT_EXT_VALUES     2   /* name => the value the engine holds */
+typedef struct ReflectExtList ReflectExtList;
+struct ReflectExtList {
+	ph7_context *pCtx;
+	ph7_value *pList;   /* the array being built */
+	ph7_value *pVal;    /* one scratch value, reused for every entry */
+	int iKind;          /* PH7_EXT_KIND_* */
+	int iShape;         /* REFLECT_EXT_* */
+};
+/* A reflector over one internal name, built with its `name` slot already filled:
+ * the constructor would only re-resolve what this walk already has. */
+static int ReflectExtMakeReflector(ph7_context *pCtx, const char *zRefl,
+	const char *zName, int nName, ph7_value *pOut)
 {
-	ph7_value *pList = ph7_context_new_array(pCtx);
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = PH7_VmExtractClass(pVm, zRefl, (sxu32)SyStrlen(zRefl), FALSE, 0);
+	ph7_class_instance *pObj;
+	if( pClass == 0 || (pObj = PH7_NewClassInstance(pVm, pClass)) == 0 ){
+		return 0;
+	}
+	PH7_NativeSetAttrStr(pVm, pObj, "name", zName, nName);
+	PH7_MemObjRelease(pOut);
+	pOut->x.pOther = pObj;
+	pOut->iFlags = MEMOBJ_OBJ;
+	return 1;
+}
+static int ReflectExtListStep(const char *zName, int nName, void *pData)
+{
+	ReflectExtList *p = (ReflectExtList *)pData;
+	ph7_context *pCtx = p->pCtx;
+	SyBlob sKey;
+	char *zKey;
+	int i, rc = 0;
+	if( !PH7_VmInternalNameExists(pCtx->pVm, p->iKind, zName, nName) ){
+		return 0;
+	}
+	/* ph7_array_add_strkey_elem() takes a NUL-terminated key, and the walk has
+	 * only a name and a length -- so the key is built rather than borrowed,
+	 * which is also where the fold happens. */
+	SyBlobInit(&sKey, &pCtx->pVm->sAllocator);
+	SyBlobAppend(&sKey, (const void *)zName, (sxu32)nName);
+	SyBlobAppend(&sKey, (const void *)"", 1);
+	zKey = (char *)SyBlobData(&sKey);
+	if( p->iKind == PH7_EXT_KIND_FUNC ){
+		/* php keys the map with the name the engine STORES, which is folded. */
+		for( i = 0 ; i < nName ; ++i ){
+			zKey[i] = (char)SyToLower(zKey[i]);
+		}
+	}
+	switch( p->iShape ){
+		case REFLECT_EXT_NAMES:
+			ph7_value_reset_string_cursor(p->pVal);
+			ph7_value_string(p->pVal, zName, nName);
+			ph7_array_add_elem(p->pList, 0, p->pVal);
+			SyBlobRelease(&sKey);
+			return 0;
+		case REFLECT_EXT_VALUES:
+			if( p->iKind == PH7_EXT_KIND_INI ){
+				SyBlob sVal;
+				SyBlobInit(&sVal, &pCtx->pVm->sAllocator);
+				PH7_VmIniGetStr(pCtx->pVm, zKey, &sVal);
+				ph7_value_reset_string_cursor(p->pVal);
+				ph7_value_string(p->pVal, (const char *)SyBlobData(&sVal), (int)SyBlobLength(&sVal));
+				SyBlobRelease(&sVal);
+			}else{
+				ph7_constant *pCons = ReflectConstEntry(pCtx->pVm, zName, nName);
+				PH7_MemObjRelease(p->pVal);
+				if( pCons && pCons->xExpand ){
+					/* Describing the table is not READING an entry: php's
+					 * deprecated constants report when a program names one,
+					 * and a listing is silent (get_defined_constants()'s
+					 * own rule, and the same switch). */
+					pCtx->pVm->bConstEnum++;
+					pCons->xExpand(p->pVal, pCons->pUserData);
+					pCtx->pVm->bConstEnum--;
+				}
+			}
+			break;
+		default:
+			if( !ReflectExtMakeReflector(pCtx,
+					p->iKind == PH7_EXT_KIND_CLASS ? "ReflectionClass" : "ReflectionFunction",
+					zName, nName, p->pVal) ){
+				SyBlobRelease(&sKey);
+				return 0;
+			}
+			break;
+	}
+	ph7_array_add_strkey_elem(p->pList, zKey, p->pVal);
+	SyBlobRelease(&sKey);
+	return rc;
+}
+static int ReflectExtListing(ph7_context *pCtx, int iKind, int iShape)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectExtList sWalk;
+	const char *zName = "";
+	int nName = 0, iExt;
+	sWalk.pCtx = pCtx;
+	sWalk.iKind = iKind;
+	sWalk.iShape = iShape;
+	sWalk.pList = ph7_context_new_array(pCtx);
+	sWalk.pVal = ph7_context_new_scalar(pCtx);
+	if( sWalk.pList == 0 || sWalk.pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	/* A `phl.stub_extensions` name has no id and synthesizes nothing, so its
+	 * every listing is empty -- which is also what php answers for a module
+	 * that registers none of that kind. */
+	iExt = PH7_VmExtensionLookup(zName, nName);
+	if( iExt >= 0 ){
+		PH7_VmExtWalk(iExt, iKind, ReflectExtListStep, &sWalk);
+	}
+	ph7_result_value(pCtx, sWalk.pList);
+	return PH7_OK;
+}
+#define REFLECT_EXT_LISTING(NAME,KIND,SHAPE) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectExtListing(pCtx, KIND, SHAPE); \
+	}
+REFLECT_EXT_LISTING(vm_builtin_ReflectionExtension_getFunctions,
+	PH7_EXT_KIND_FUNC,  REFLECT_EXT_MAP)
+REFLECT_EXT_LISTING(vm_builtin_ReflectionExtension_getClasses,
+	PH7_EXT_KIND_CLASS, REFLECT_EXT_MAP)
+REFLECT_EXT_LISTING(vm_builtin_ReflectionExtension_getClassNames,
+	PH7_EXT_KIND_CLASS, REFLECT_EXT_NAMES)
+REFLECT_EXT_LISTING(vm_builtin_ReflectionExtension_getConstants,
+	PH7_EXT_KIND_CONST, REFLECT_EXT_VALUES)
+REFLECT_EXT_LISTING(vm_builtin_ReflectionExtension_getINIEntries,
+	PH7_EXT_KIND_INI,   REFLECT_EXT_VALUES)
+static int ReflectExtDepStep(const char *zOn, const char *zKind, void *pData)
+{
+	ReflectExtList *p = (ReflectExtList *)pData;
+	ph7_value_reset_string_cursor(p->pVal);
+	ph7_value_string(p->pVal, zKind, -1);
+	ph7_array_add_strkey_elem(p->pList, zOn, p->pVal);
+	return 0;
+}
+static int vm_builtin_ReflectionExtension_getDependencies(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectExtList sWalk;
+	const char *zName = "";
+	int nName = 0, iExt;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pList ){
-		ph7_result_value(pCtx, pList);
+	sWalk.pList = ph7_context_new_array(pCtx);
+	sWalk.pVal = ph7_context_new_scalar(pCtx);
+	if( sWalk.pList == 0 || sWalk.pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
 	}
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	iExt = PH7_VmExtensionLookup(zName, nName);
+	if( iExt >= 0 ){
+		sWalk.pCtx = pCtx;
+		PH7_VmExtWalkDep(iExt, ReflectExtDepStep, &sWalk);
+	}
+	ph7_result_value(pCtx, sWalk.pList);
 	return PH7_OK;
 }
 static int vm_builtin_ReflectionExtension_isPersistent(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -2950,12 +3116,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 		{ "__construct",     PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionExtension_construct },
 		{ "getName",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionExtension_getName },
 		{ "getVersion",      PH7_MOD_PUBLIC, "", "@?string", vm_builtin_ReflectionExtension_getVersion },
-		{ "getFunctions",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getConstants",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getINIEntries",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getClasses",      PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getClassNames",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getDependencies", PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getFunctions",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_getFunctions },
+		{ "getConstants",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_getConstants },
+		{ "getINIEntries",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_getINIEntries },
+		{ "getClasses",      PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_getClasses },
+		{ "getClassNames",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_getClassNames },
+		{ "getDependencies", PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_getDependencies },
 		{ "info",            PH7_MOD_PUBLIC, "", "@void", vm_builtin_ReflectionExtension_info },
 		{ "isPersistent",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionExtension_isPersistent },
 		{ "isTemporary",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionExtension_isTemporary },
