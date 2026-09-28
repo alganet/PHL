@@ -2952,6 +2952,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	SyToken *pEnd,*pTmp;
 	SyString *pName;
 	SySet aOvMeth,aOvProp;   /* the #[\Override] claims this interface DECLARED */
+	SySet aExtraParents;     /* `extends A, S, T`: every parent after the first */
 	sxu32 nErrEntry = pGen->nErr; /* errors already reported when this one started */
 	sxi32 nKwrd;
 	sxi32 rc;
@@ -3000,6 +3001,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	}
 	/* Assume no base class is given */
 	pBase = 0;
+	SySetInit(&aExtraParents,&pGen->pVm->sAllocator,sizeof(ph7_class *));
 	if( pGen->pIn < pGen->pEnd  && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 		nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 		if( nKwrd == PH7_TKWRD_EXTENDS /* interface b extends a, c, … */ ){
@@ -3045,9 +3047,14 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 					/* First parent → single-inheritance base */
 					pBase = pParent;
 				}else{
-					/* Additional parent → record it in aInterface (+ copy its
-					 * constants/method stubs) so instanceof reaches it too. */
-					PH7_ClassImplement(pClass,pParent);
+					/* Additional parent → COLLECTED, and applied after the body like
+					 * the first one is. Copying its members here put them in hMethod
+					 * and hConst before the body was read, so the interface's own
+					 * `public function g();` collided with the very name it was
+					 * restating: `interface B extends A, S` could redeclare A's
+					 * members and not S's ("Cannot redeclare B::g()"), which is a
+					 * declaration php accepts and php-di writes. */
+					SySetPut(&aExtraParents,(const void *)&pParent);
 				}
 				SyBlobRelease(&sResolved);
 				/* Continue on a comma-separated list */
@@ -3138,12 +3145,49 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		SySetRelease(&aOvProp);
 		return SXERR_ABORT;
 	}
+	/* Every method this interface DECLARES, judged against the same name in each
+	 * parent -- hMethod holds only its own declarations until the inherits below
+	 * run, so this is the one moment the two sets are separable. php makes the
+	 * check for a restated method whichever parent it came from; PHL made it for
+	 * none of them, so `interface B extends A { public function f(): int; }` over
+	 * `A::f(): string` compiled in silence. */
+	if( pGen->nErr == nErrEntry ){
+		if( pBase && PH7_ClassInterfaceCheckRedeclare(&(*pGen),pClass,pBase) == SXERR_ABORT ){
+			SySetRelease(&aOvMeth);
+			SySetRelease(&aOvProp);
+			SySetRelease(&aExtraParents);
+			return SXERR_ABORT;
+		}
+		{
+			ph7_class **apExtra = (ph7_class **)SySetBasePtr(&aExtraParents);
+			sxu32 nExtra;
+			for( nExtra = 0 ; nExtra < SySetUsed(&aExtraParents) ; ++nExtra ){
+				if( PH7_ClassInterfaceCheckRedeclare(&(*pGen),pClass,apExtra[nExtra])
+					== SXERR_ABORT ){
+					SySetRelease(&aOvMeth);
+					SySetRelease(&aOvProp);
+					SySetRelease(&aExtraParents);
+					return SXERR_ABORT;
+				}
+			}
+		}
+	}
 	/* Install the interface */
 	rc = PH7_VmInstallClass(pGen->pVm,pClass);
 	if( rc == SXRET_OK && pBase ){
 		/* Inherit from the base interface */
 		rc = PH7_ClassInterfaceInherit(pClass,pBase);
 	}
+	if( rc == SXRET_OK ){
+		/* ...and from every parent after the first, whose members are copied only
+		 * where this interface declared none of its own. */
+		ph7_class **apExtra = (ph7_class **)SySetBasePtr(&aExtraParents);
+		sxu32 nExtra;
+		for( nExtra = 0 ; rc == SXRET_OK && nExtra < SySetUsed(&aExtraParents) ; ++nExtra ){
+			rc = PH7_ClassImplement(pClass,apExtra[nExtra]);
+		}
+	}
+	SySetRelease(&aExtraParents);
 	if( rc == SXRET_OK && pGen->nErr == nErrEntry
 	 && GenStateCheckOverrides(&(*pGen),pClass,&aOvMeth,&aOvProp) == SXERR_ABORT ){
 		SySetRelease(&aOvMeth);
@@ -3157,6 +3201,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}
 done:
+	SySetRelease(&aExtraParents);
 	pGen->pCurClass = pSavedCurClass;
 	/* Point beyond the interface body */
 	pGen->pIn  = &pEnd[1];
@@ -3485,6 +3530,43 @@ static sxi32 GenStateCheckOverrides(ph7_gen_state *pGen,ph7_class *pClass,
  * Check that a concrete class has no remaining abstract methods.
  * If it does, emit a PHP-compatible fatal error listing them all.
  */
+/*
+ * The interface FURTHEST up that declares this method name. php attributes an
+ * unimplemented method to the interface that first ASKED for it, and an
+ * interface reaches its parents through two containers: pBase (the first name
+ * after `extends`) and aInterface (every one after that). Following only pBase
+ * stopped at the restating interface, so `interface B extends A, S` reported
+ * `B::g` where php reports `S::g`.
+ *
+ * Depth-bounded like the Throwable walk beside it: an interface graph cannot
+ * cycle (every parent is already compiled), and the bound costs nothing.
+ */
+static ph7_class * GenStateIfaceDeclaringAt(ph7_class *pIface,const SyString *pMName,int iDepth)
+{
+	ph7_class *pDeepest = 0;
+	ph7_class **apUp;
+	sxu32 i;
+	if( pIface == 0 || iDepth > 32 ){
+		return 0;
+	}
+	if( PH7_ClassExtractMethod(pIface,pMName->zString,pMName->nByte) ){
+		pDeepest = pIface;
+	}
+	{
+		ph7_class *pUp = GenStateIfaceDeclaringAt(pIface->pBase,pMName,iDepth + 1);
+		if( pUp ){
+			pDeepest = pUp;
+		}
+	}
+	apUp = (ph7_class **)SySetBasePtr(&pIface->aInterface);
+	for( i = 0 ; i < SySetUsed(&pIface->aInterface) ; ++i ){
+		ph7_class *pUp = GenStateIfaceDeclaringAt(apUp[i],pMName,iDepth + 1);
+		if( pUp ){
+			pDeepest = pUp;
+		}
+	}
+	return pDeepest;
+}
 static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 {
 	ph7_class_method *pMeth;
@@ -3593,14 +3675,7 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 					while( pWalk && !pOrigin ){
 						apIface = (ph7_class **)SySetBasePtr(&pWalk->aInterface);
 						for(i = 0; i < SySetUsed(&pWalk->aInterface); i++){
-							ph7_class *pIface = apIface[i];
-							ph7_class *pDeepest = 0;
-							while( pIface ){
-								if( PH7_ClassExtractMethod(pIface,pMName->zString,pMName->nByte) ){
-									pDeepest = pIface;
-								}
-								pIface = pIface->pBase;
-							}
+							ph7_class *pDeepest = GenStateIfaceDeclaringAt(apIface[i],pMName,0);
 							if( pDeepest ){
 								pOrigin = pDeepest;
 								break;

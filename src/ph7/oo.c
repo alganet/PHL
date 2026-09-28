@@ -443,6 +443,34 @@ static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_cl
 	return SXRET_OK;
 }
 /*
+ * Every method the sub-INTERFACE declares ITSELF, judged against the same name in
+ * one parent. php checks a restated interface method exactly as it checks an
+ * overriding class method, and words the refusal the same way -- PHL checked
+ * neither, and instead refused the restatement outright when it came from a
+ * parent past the first (see the collected-parents comment in the interface
+ * compiler).
+ *
+ * Called while hMethod still holds only this interface's own declarations, which
+ * is the one moment the two sets are separable.
+ */
+PH7_PRIVATE sxi32 PH7_ClassInterfaceCheckRedeclare(ph7_gen_state *pGen,ph7_class *pSub,
+	ph7_class *pParent)
+{
+	SyHashEntry *pEntry;
+	SyHashResetLoopCursor(&pSub->hMethod);
+	while((pEntry = SyHashGetNextEntry(&pSub->hMethod)) != 0 ){
+		ph7_class_method *pOwn = (ph7_class_method *)pEntry->pUserData;
+		SyString *pName = &pOwn->sFunc.sName;
+		SyHashEntry *pUp = SyHashGet(&pParent->hMethod,
+			(const void *)pName->zString,pName->nByte);
+		if( pUp && OoCheckOverrideCompat(&(*pGen),pParent,pSub,
+			(ph7_class_method *)pUp->pUserData,pOwn) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Perform an inheritance operation.
  * According to the PHP language reference manual
  *  When you extend a class, the subclass inherits all of the public and protected methods
