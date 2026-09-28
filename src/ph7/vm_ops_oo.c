@@ -256,7 +256,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				const char *zVis = pCons->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 				/* php NAMES the calling scope when there is one (see the method twin in
 				 * OP_CALL); "global scope" is only for code outside every class. */
-				ph7_class *pCtorScope = PH7_VmCallerScopeName(&(*pVm));
+				ph7_class *pCtorScope = PH7_VmCallerScope(&(*pVm));
 				SyBlobInit(&sErrMsg,&pVm->sAllocator);
 				if( pCtorScope ){
 					SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from scope %z",
@@ -880,7 +880,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						 * which for a trait method is the composing class. */
 						SyBlob sErrM;
 						sxi32 rcErr;
-						ph7_class *pScope = PH7_VmCallerScopeName(&(*pVm));
+						ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
 						const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE
 							? "private" : "protected";
 						SyBlobInit(&sErrM,&pVm->sAllocator);
@@ -2625,7 +2625,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							SyBlob sErrM;
 							sxi32 rcErr;
 							ph7_class *pOwner = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth);
-							ph7_class *pScope = PH7_VmCallerScopeName(&(*pVm));
+							ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
 							const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE
 								? "private" : "protected";
 							SyBlobInit(&sErrM,&pVm->sAllocator);

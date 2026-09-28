@@ -909,6 +909,12 @@ struct VmFrame
 	void *pUserData;  /* Upper layer private data associated with this frame */
 	ph7_class_instance *pThis; /* Current class instance [i.e: the '$this' variable].NULL otherwise */
 	ph7_class *pBoundScope; /* Closure::bindTo/call scope override for private/protected access (Increment 2) */
+	ph7_class *pSelfClass;  /* The class this activation was reached THROUGH (php's called-scope):
+	                         * the receiver's class for an instance call, the named class for a
+	                         * static one, 0 for a plain function. Only a trait method needs it --
+	                         * its declaring class is the TRAIT, and the class php composed it
+	                         * into is found by walking this one's ancestry (a STATIC trait method
+	                         * has no $this to walk from). */
 	SySet sLocal;     /* Local variables container (VmSlot instance) */
 	ph7_vm *pVm;      /* VM that own this frame */
 	SyHash hVar;      /* Variable hashtable for fast lookup */
@@ -4126,7 +4132,7 @@ PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen);
 PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmPeekSelfClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmTraitUsingClass(ph7_vm *pVm,ph7_class *pTrait,ph7_class *pFrom);
-PH7_PRIVATE ph7_class * PH7_VmMemberInitScope(ph7_vm *pVm,ph7_class *pDeclClass,ph7_class *pFrom);
+PH7_PRIVATE ph7_class * PH7_VmMemberOwnerClass(ph7_class *pDeclClass,ph7_class *pFrom);
 PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm);
 PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke);
 PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value **ppTarget,ph7_value **ppMethod);
@@ -4411,7 +4417,6 @@ PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass);
 PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis);
 PH7_PRIVATE int PH7_VmClassMemberAccess(ph7_vm *pVm,ph7_class *pClass,const SyString *pAttrName,sxi32 iProtection,int bLog);
 PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm);
-PH7_PRIVATE ph7_class * PH7_VmCallerScopeName(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmMethodScopeName(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMeth);
 PH7_PRIVATE int PH7_VmFccMethodIsDirect(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName);
 PH7_PRIVATE ph7_class * PH7_VmClosureScopeClass(ph7_vm *pVm,ph7_class_instance *pClosure);

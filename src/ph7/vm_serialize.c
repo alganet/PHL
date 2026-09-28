@@ -126,8 +126,10 @@ static int VmSerializeArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserD
 	VmSerialize(pValue,pData);
 	return PH7_OK;
 }
-/* Emit an object property key with the proper visibility mangling. */
-static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr)
+/* Emit an object property key with the proper visibility mangling. pOwner is the class
+ * being serialized: a private key names the class that OWNS the property, and a trait's
+ * members are owned by the class that composed them, never by the trait. */
+static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr, ph7_class *pOwner)
 {
 	const char *zName = SyStringData(&pAttr->sName);
 	int nName = (int)SyStringLength(&pAttr->sName);
@@ -141,7 +143,7 @@ static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr)
 		SyBlobAppend(pOut,"\";",2);
 	}else{
 		/* private: "\0<DeclClass>\0" + name */
-		ph7_class *pDecl = pAttr->pDeclClass;
+		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pOwner);
 		const char *zCls = pDecl ? SyStringData(&pDecl->sName) : "";
 		int nCls = pDecl ? (int)SyStringLength(&pDecl->sName) : 0;
 		SyBlobFormat(pOut,"s:%u:\"",(unsigned)(nName+nCls+2));
@@ -199,7 +201,7 @@ static int VmSleepWalk(ph7_value *pKey, ph7_value *pName, void *pUserData)
 	if( pHE == 0 ){ return PH7_OK; } /* PHP notices a missing prop; we skip it */
 	pVmAttr = (VmClassAttr *)pHE->pUserData;
 	if( !VmAttrIsProperty(pVmAttr) ){ return PH7_OK; }
-	VmSerializePropKey(pData->pOut,pVmAttr->pAttr);
+	VmSerializePropKey(pData->pOut,pVmAttr->pAttr,pS->pThis->pClass);
 	pVal = PH7_ClassInstanceExtractAttrValue(pS->pThis,pVmAttr);
 	if( pVal ){ VmSerialize(pVal,pData); } else { SyBlobAppend(pData->pOut,"N;",2); }
 	pS->nCount++;
@@ -382,7 +384,7 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		ph7_value *pVal;
 		pVmAttr = (VmClassAttr *)pEntry->pUserData;
 		if( !VmAttrIsProperty(pVmAttr) ){ continue; }
-		VmSerializePropKey(&sBody,pVmAttr->pAttr);
+		VmSerializePropKey(&sBody,pVmAttr->pAttr,pThis->pClass);
 		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
 		if( pVal ){ VmSerialize(pVal,pData); } else { SyBlobAppend(&sBody,"N;",2); }
 		nCount++;

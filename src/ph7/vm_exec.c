@@ -1505,7 +1505,7 @@ static const char * VmMethodVisibilityMsg(ph7_vm *pVm,ph7_class *pDecl,
 	const char *zMeth,sxu32 nMeth,sxi32 iProtection,char *zBuf,int nBuf)
 {
 	const char *zVis = iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
-	ph7_class *pScope = PH7_VmCallerScopeName(&(*pVm));
+	ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
 	if( pScope ){
 		SyBufferFormat(zBuf,nBuf,"Call to %s method %z::%.*s() from scope %z",
 			zVis,&pDecl->sName,(int)nMeth,zMeth,&pScope->sName);
@@ -6884,6 +6884,13 @@ case PH7_OP_CALL: {
 					"Out of memory while creating generator for '%z'", &pVmFunc->sName);
 				break;
 			}
+			/* php's called-scope for the generator BODY: its frame is detached and
+			 * created before the receiver is known, so stamp it here, where the call
+			 * that made the generator still has it. A trait method's executing scope
+			 * is found by walking this class (VmTraitScopeFrom), and without it a
+			 * generator declared in a trait could not reach the class's protected
+			 * members -- the one activation shape the frame walk cannot recover. */
+			pExecCtx->pFrame->pSelfClass = pSelf ? pSelf : (pThis ? pThis->pClass : 0);
 			pGenerator = VmNewGenerator(pVm, pExecCtx);
 			if( pGenerator == 0 ){
 				VmReleaseExecCtx(pVm, pExecCtx);
@@ -6965,6 +6972,12 @@ case PH7_OP_CALL: {
 		aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
 		/* Create a new VM frame  */
 		rc = VmEnterFrame(&(*pVm),pVmFunc,pThis,&pFrame);
+		if( rc == SXRET_OK && pFrame && pSelf ){
+			/* php's called-scope: the class this call was made THROUGH. Same as the
+			 * receiver's for an instance call, and the named class for a static one --
+			 * which is the only way to say which class composed a static TRAIT method. */
+			pFrame->pSelfClass = pSelf;
+		}
 		if( rc != SXRET_OK ){
 			/* Raise exception: Out of memory */
 			VmErrorFormat(&(*pVm),PH7_CTX_ERR,

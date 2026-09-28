@@ -1259,21 +1259,22 @@ PH7_PRIVATE ph7_class * PH7_VmTraitUsingClass(ph7_vm *pVm,ph7_class *pTrait,ph7_
 	return pFrom;
 }
 /*
- * What `self`/`parent` name inside a MEMBER INITIALIZER -- a property default, a static
- * property default, a class constant, an enum case backing value. The answer is the member's
- * declaring class, with the same trait rule the method path already states: a trait's members
- * are composed INTO the using class, so a default written in a trait resolves against that
- * class and not against the trait (which has no constants of its own and no base).
+ * The class a MEMBER belongs to: its declaring class, except that a trait's members are
+ * composed INTO the using class, so one written in a trait belongs to that class and not to
+ * the trait (which has no constants of its own and no base). This is what `self`/`parent`
+ * mean inside a member INITIALIZER -- a property default, a static property default, a class
+ * constant, an enum case backing value -- and what Reflection reports as the member's
+ * declaring class.
  *
- * pFrom is the class being initialized, and the walk starts there -- `trait T { public $c =
- * self::class; } class B { use T; } class Kid extends B {}` answers B from a Kid instance,
- * exactly as php composes it.
+ * pFrom is the class the member was reached through, and the walk starts there -- `trait T {
+ * public $c = self::class; } class B { use T; } class Kid extends B {}` answers B from a Kid
+ * instance, exactly as php composes it.
  */
-PH7_PRIVATE ph7_class * PH7_VmMemberInitScope(ph7_vm *pVm,ph7_class *pDeclClass,ph7_class *pFrom)
+PH7_PRIVATE ph7_class * PH7_VmMemberOwnerClass(ph7_class *pDeclClass,ph7_class *pFrom)
 {
 	ph7_class *pOwner = pDeclClass ? pDeclClass : pFrom;
 	if( pOwner && (pOwner->iFlags & PH7_CLASS_TRAIT) ){
-		pOwner = PH7_VmTraitUsingClass(&(*pVm),pOwner,pFrom);
+		pOwner = PH7_VmTraitUsingClass(0,pOwner,pFrom); /* the walk needs no VM */
 	}
 	return pOwner;
 }

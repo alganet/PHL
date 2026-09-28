@@ -640,6 +640,7 @@ PH7_PRIVATE sxi32 VmEnterFrame(
 	if( pFrame == 0 ){
 		return SXERR_MEM;
 	}
+	pFrame->pSelfClass = pThis ? pThis->pClass : 0; /* the caller overwrites it for a static call */
 	/* The line currently executing IS the call site for the frame being pushed. */
 	pFrame->nCallLine = pVm->nCurLine;
 	/* Link to the list of active VM frame */
@@ -1524,7 +1525,7 @@ static sxi32 VmMountUserClassAttrs(
 				void *pSaveFrame = pVm->pConstEvalFrame;
 				int bStaticProp = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0;
 				sxi32 rcExec;
-				pVm->pConstEvalClass = PH7_VmMemberInitScope(&(*pVm),pAttr->pDeclClass,pClass);
+				pVm->pConstEvalClass = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 				/* ...and the frame marker is what makes that fallback reachable when a
 				 * frame IS current: a class declared inside a METHOD mounts here, and
 				 * without the marker PH7_VmPeekDeclaringClass answers that method's
@@ -1750,7 +1751,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 				ph7_class *pSaveCtx = pVm->pConstEvalClass;
 				void *pSaveFrame = pVm->pConstEvalFrame;
 				sxi32 rcExec;
-				pVm->pConstEvalClass = PH7_VmMemberInitScope(&(*pVm),pAttr->pDeclClass,pClass);
+				pVm->pConstEvalClass = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 				pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
 				rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 				pVm->pConstEvalClass = pSaveCtx;

@@ -377,7 +377,7 @@ static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLoo
 			SyHashResetLoopCursor(pSrcHash);
 			while( (pEntry = SyHashGetNextEntry(pSrcHash)) != 0 ){
 				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
-				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
+				ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pLevel);
 				if( pAttr->iFlags & PH7_CLASS_ATTR_HIDDEN ){
 					/* A native class's engine slot: php holds that state in its own C
 					 * struct and reports no property for it at all. */
@@ -414,7 +414,7 @@ static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLoo
 				sMember.iKind = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)
 					? REFLECT_MEMBER_CONST : REFLECT_MEMBER_PROP;
 				sMember.sKey = pAttr->sName;
-				sMember.pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
+				sMember.pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pLevel);
 				sMember.pAttr = pAttr;
 				sMember.pMeth = 0;
 				SySetPut(pOut, (const void *)&sMember);
@@ -5171,7 +5171,7 @@ static int vm_builtin_ReflectionClass_getStaticPropertyValue(ph7_context *pCtx, 
 			 * ReflectionProperty::getValue() and from `A::$s` itself — the
 			 * three wordings were checked against the oracle, they really do
 			 * differ by call site. */
-			ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+			ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 			return PH7_VmThrowException(pCtx, "Error",
 				"Typed property %z::$%z must not be accessed before initialization",
 				&pDecl->sName, &pAttr->sName);
@@ -8148,7 +8148,7 @@ static int ReflectStaticSlotRead(ph7_context *pCtx, ph7_class *pClass, ph7_class
 	}
 	pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
 	if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
-		ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 		return PH7_VmThrowException(pCtx, "Error",
 			"Typed static property %z::$%z must not be accessed before initialization",
 			&pDecl->sName, &pAttr->sName);
@@ -8235,7 +8235,7 @@ static int ReflectMemberOfThis(ph7_context *pCtx, ReflectMemberRef *pOut, int iK
 static ph7_class * ReflectMemberDecl(const ReflectMemberRef *pRef)
 {
 	if( pRef->pAttr && pRef->pAttr->pDeclClass ){
-		return pRef->pAttr->pDeclClass;
+		return PH7_VmMemberOwnerClass(pRef->pAttr->pDeclClass,pRef->pClass);
 	}
 	return pRef->pClass;
 }
@@ -8625,8 +8625,8 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 		return PH7_OK;
 	}
 	if( pVmAttr->iState & VM_CLASS_ATTR_UNINIT ){
-		ph7_class *pDecl = pVmAttr->pAttr && pVmAttr->pAttr->pDeclClass
-			? pVmAttr->pAttr->pDeclClass : pObj->pClass;
+		ph7_class *pDecl = PH7_VmMemberOwnerClass(
+			pVmAttr->pAttr ? pVmAttr->pAttr->pDeclClass : 0,pObj->pClass);
 		return PH7_VmThrowException(pCtx, "Error",
 			"Typed property %z::$%.*s must not be accessed before initialization",
 			&pDecl->sName, sRef.nName, sRef.zName);

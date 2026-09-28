@@ -1091,6 +1091,23 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 	return PH7_OK;
 }
 /*
+ * The class a TRAIT method's frame is really executing in: walk the receiver's ancestry
+ * (or, with no receiver, the current `self`) to the first class that uses this trait.
+ * `class Base { use T; } class Kid extends Base {}` answers Base from a Kid instance, which
+ * is where php composed the method. The trait itself stands when nothing in the chain lists
+ * it — a trait used by another trait reaching this through an unusual path; php has no such
+ * scope, but a lie would be worse.
+ */
+static ph7_class * VmTraitScopeFrom(ph7_vm *pVm,ph7_class *pTrait,VmFrame *pFrame)
+{
+	ph7_class *pWalk = pFrame ? pFrame->pSelfClass : 0;
+	if( pWalk == 0 ){
+		/* No activation of its own (a closure body, an initializer): the ambient self. */
+		pWalk = VmCurrentSelf(&(*pVm));
+	}
+	return PH7_VmTraitUsingClass(&(*pVm),pTrait,pWalk ? pWalk : pTrait);
+}
+/*
  * php's zend_get_executed_scope(): the class whose code is running, which is what every
  * visibility decision is made against — and what php NAMES in the Error when it refuses
  * ("... from scope C", or "from global scope" when this answers 0).
@@ -1103,6 +1120,7 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm)
 {
 	VmFrame *pFrame = pVm->pFrame;
 	ph7_vm_func *pVmFunc;
+	ph7_class *pScope = 0;
 	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH) ) ){
 		/* Safely ignore the exception frame */
 		pFrame = pFrame->pParent;
@@ -1114,12 +1132,11 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm)
 	/* The calling scope is the executing method's declaring class — OR, for a bound closure
 	 * (Closure::bindTo/call), the explicit scope override carried on the frame (Increment 2). */
 	if( pFrame->pBoundScope ){
-		return pFrame->pBoundScope;
+		return pFrame->pBoundScope; /* an explicit rebind names a CLASS; never a trait */
 	}
 	if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
-		return (ph7_class *)pVmFunc->pUserData;
-	}
-	if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLOSURE) && pVmFunc->pUserData ){
+		pScope = (ph7_class *)pVmFunc->pUserData;
+	}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLOSURE) && pVmFunc->pUserData ){
 		/* A closure/arrow-fn defined inside a class carries its creation-site
 		 * class in pUserData (stamped by OP_LOAD_CLOSURE via
 		 * PH7_VmPeekDeclaringClass, the same scope `self::`/`parent::` resolve
@@ -1127,55 +1144,25 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm)
 		 * so `$this->privateMethod()` / `self::$private` inside the closure are
 		 * allowed — an explicit Closure::bindTo/bind rebind still wins above via
 		 * pBoundScope. */
-		return (ph7_class *)pVmFunc->pUserData;
-	}
-	if( pVm->pConstEvalClass ){
+		pScope = (ph7_class *)pVmFunc->pUserData;
+	}else if( pVm->pConstEvalClass ){
 		/* Constant/property initializer bytecode runs without a method
 		 * frame; its scope is the class being initialized (php: a private
 		 * constant is reachable from its own class's initializers). */
-		return pVm->pConstEvalClass;
+		pScope = pVm->pConstEvalClass;
 	}
-	return 0;
-}
-/*
- * The scope php NAMES in a visibility Error. PH7_VmCallerScope with one adjustment: php
- * flattens a TRAIT into the class that uses it, so code running in a trait method reports
- * the USING class ("from scope Base"), never the trait — and not the RECEIVER's class
- * either, so `class Kid extends Base` (Base being the one that composed the trait) still
- * reports Base. Walk the receiver's ancestry to the first class that uses this trait; the
- * trait itself stands when nothing does (nothing php would print, but better than a lie).
- *
- * Kept apart from PH7_VmCallerScope because the ACCESS decision genuinely wants the trait:
- * its private/protected branches grant on "the caller is a trait used by the target class"
- * and on the reverse, and both compare against the trait itself.
- */
-PH7_PRIVATE ph7_class * PH7_VmCallerScopeName(ph7_vm *pVm)
-{
-	ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
-	VmFrame *pFrame;
-	ph7_class *pWalk;
-	if( pScope == 0 || (pScope->iFlags & PH7_CLASS_TRAIT) == 0 ){
-		return pScope;
-	}
-	pFrame = pVm->pFrame;
-	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
-		pFrame = pFrame->pParent;
-	}
-	pWalk = (pFrame && pFrame->pThis) ? pFrame->pThis->pClass : VmCurrentSelf(&(*pVm));
-	for( ; pWalk ; pWalk = pWalk->pBase ){
-		ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pWalk->aTrait);
-		sxu32 nTrait = SySetUsed(&pWalk->aTrait);
-		sxu32 k;
-		for( k = 0 ; k < nTrait ; ++k ){
-			if( apTrait[k] == pScope ){
-				return pWalk;
-			}
-		}
+	if( pScope && (pScope->iFlags & PH7_CLASS_TRAIT) != 0 ){
+		/* php COMPOSES a trait method into the using class at compile time, so the scope
+		 * its code executes in IS that class — `protected` members of the class are its
+		 * own from in there, and so are the class's protected METHODS. PHL shares a trait
+		 * method by pointer and its declaring class stays the trait, so this answered the
+		 * trait and every protected access from a trait body was refused. */
+		pScope = VmTraitScopeFrom(&(*pVm),pScope,pFrame);
 	}
 	return pScope;
 }
 /*
- * The DECLARING-side twin of PH7_VmCallerScopeName: the class php NAMES as a method's
+ * The DECLARING-side twin of PH7_VmCallerScope: the class php NAMES as a method's
  * owner. php composes a trait INTO the class that uses it — the composed method's scope
  * IS that class — so `trait T { private function p(){} } class C { use T; }` refuses with
  * "Call to private method C::p()", from a subclass instance too, and never says T. PHL
@@ -1202,21 +1189,13 @@ PH7_PRIVATE ph7_class * PH7_VmMethodScopeName(ph7_vm *pVm,ph7_class *pClass,ph7_
  */
 PH7_PRIVATE ph7_class * PH7_VmComposingClass(ph7_class *pClass,ph7_class *pDecl)
 {
-	ph7_class *pWalk;
-	if( pDecl == 0 || (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
-		return pDecl;
-	}
-	for( pWalk = pClass ; pWalk ; pWalk = pWalk->pBase ){
-		ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pWalk->aTrait);
-		sxu32 nTrait = SySetUsed(&pWalk->aTrait);
-		sxu32 k;
-		for( k = 0 ; k < nTrait ; ++k ){
-			if( apTrait[k] == pDecl ){
-				return pWalk;
-			}
-		}
-	}
-	return pDecl;
+	/* One rule, one implementation: a trait's members belong to the class that composed
+	 * them, found by walking pClass's ancestry -- through NESTED trait use as well, since
+	 * php flattens `class C { use Outer; } trait Outer { use Inner; }` into C whole. This
+	 * walk used to look at each class's OWN trait list only, so a member reached through
+	 * two levels kept the inner trait as its owner and every visibility rule about it
+	 * became a question about the trait. */
+	return PH7_VmMemberOwnerClass(pDecl,pClass);
 }
 /*
  * The name php prints for a method: the identity the class REGISTERED it under, not the

@@ -1287,8 +1287,11 @@ PH7_PRIVATE void PH7_ClassInstanceAttrKey(ph7_class_instance *pThis,VmClassAttr 
 	SyString *pAttrName = &pAttr->pAttr->sName;
 	SyBlobReset(&pKey->sBlob);
 	if( pAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
-		ph7_class *pDecl = pAttr->pAttr->pDeclClass
-			? pAttr->pAttr->pDeclClass : pThis->pClass;
+		/* php mangles a private key with the class that OWNS the property, and a
+		 * trait's members are owned by the class that composed them -- so the key,
+		 * and every wire format built on it (serialize, the (array) cast), names
+		 * the class and never the trait. */
+		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pAttr->pDeclClass,pThis->pClass);
 		PH7_MemObjStringAppend(pKey,"\0",1);
 		PH7_MemObjStringAppend(pKey,SyStringData(&pDecl->sName),SyStringLength(&pDecl->sName));
 		PH7_MemObjStringAppend(pKey,"\0",1);
@@ -1957,8 +1960,9 @@ static void DumpClassInstanceHeader(SyBlob *pOut,ph7_class *pClass,sxu32 nObjId,
 static ph7_class * OoAttrDeclaringClass(ph7_class *pClass,ph7_class_attr *pAttr)
 {
 	/* Attrs record their declaring class at install time (inheritance/trait
-	 * copies share the pointer, so the field survives the chain). */
-	return pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	 * copies share the pointer, so the field survives the chain) -- and a TRAIT's
+	 * members belong to the class that composed them, which is what php names. */
+	return PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 }
 /*
  * php's zend_unmangle_property_name_ex: a property key carries its own
