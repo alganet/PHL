@@ -2189,6 +2189,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sSessId,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessName,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessPath,&pVm->sAllocator);
+	SyBlobInit(&pVm->sOutStartFile,&pVm->sAllocator);
+	SyBlobInit(&pVm->sSessStartFile,&pVm->sAllocator);
 	SyBlobAppend(&pVm->sSessName,"PHPSESSID",sizeof("PHPSESSID")-1);
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyBlobInit(&pVm->sAutoloadExt,&pVm->sAllocator);
@@ -2255,6 +2257,10 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aResponseHeaders,&pVm->sAllocator,sizeof(VmResponseHeader));
 	pVm->iResponseStatus = 200;
 	pVm->bHeadersSent = 0;
+	SyBlobReset(&pVm->sOutStartFile);
+	pVm->nOutStartLine = 0;
+	SyBlobReset(&pVm->sSessStartFile);
+	pVm->nSessStartLine = 0;
 	SySetInit(&pVm->aIOstream,&pVm->sAllocator,sizeof(ph7_io_stream *));
 	SySetInit(&pVm->aSuppressedIo,&pVm->sAllocator,sizeof(ph7_io_stream *));
 	/* Error callbacks containers */
@@ -2458,6 +2464,75 @@ PH7_PRIVATE sxi32 PH7_VmBlobConsumer(
 	 return rc;
 }
 /*
+ * WHERE the response body began -- the file and the line php names in every
+ * headers-already-sent diagnostic and hands back through headers_sent()'s two
+ * by-ref out-params. Answers 0 while nothing has been emitted, which is php's
+ * "" and 0 rather than a missing answer.
+ */
+PH7_PRIVATE int PH7_VmOutputOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine)
+{
+	if( pFile ){
+		SyStringInitFromBuf(pFile,(const char *)SyBlobData(&pVm->sOutStartFile),
+			SyBlobLength(&pVm->sOutStartFile));
+	}
+	if( pnLine ){
+		*pnLine = pVm->nOutStartLine;
+	}
+	return SyBlobLength(&pVm->sOutStartFile) > 0;
+}
+/*
+ * WHERE the active session was started, which is the other half php names --
+ * a session directive refused because a session is ACTIVE points at the
+ * session_start() that opened it.
+ */
+PH7_PRIVATE int PH7_VmSessionOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine)
+{
+	if( pFile ){
+		SyStringInitFromBuf(pFile,(const char *)SyBlobData(&pVm->sSessStartFile),
+			SyBlobLength(&pVm->sSessStartFile));
+	}
+	if( pnLine ){
+		*pnLine = pVm->nSessStartLine;
+	}
+	return SyBlobLength(&pVm->sSessStartFile) > 0;
+}
+/*
+ * php's provenance clause, appended to a session refusal: a session that is
+ * ACTIVE points at the session_start() that opened it, and a response that has
+ * already begun points at the output. Appends nothing when the place is not
+ * known, which is the message php prints for a session no script started.
+ */
+PH7_PRIVATE void PH7_VmAppendWhere(ph7_vm *pVm,SyBlob *pMsg,int bSessionActive)
+{
+	SyString sFile;
+	sxu32 nLine = 0;
+	char zTail[64];
+	int bHave = bSessionActive ? PH7_VmSessionOrigin(pVm,&sFile,&nLine)
+	                           : PH7_VmOutputOrigin(pVm,&sFile,&nLine);
+	if( !bHave ){
+		return;
+	}
+	{
+		const char *zOpen = bSessionActive ? " (started from " : " (sent from ";
+		SyBlobAppend(pMsg,zOpen,(sxu32)SyStrlen(zOpen));
+	}
+	SyBlobAppend(pMsg,sFile.zString,sFile.nByte);
+	SyBufferFormat(zTail,sizeof(zTail)," on line %u)",nLine);
+	SyBlobAppend(pMsg,zTail,(sxu32)SyStrlen(zTail));
+}
+/*
+ * Record where the session now going ACTIVE was started.
+ */
+PH7_PRIVATE void PH7_VmSetSessionOrigin(ph7_vm *pVm)
+{
+	SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	SyBlobReset(&pVm->sSessStartFile);
+	if( pFile && pFile->nByte > 0 ){
+		SyBlobAppend(&pVm->sSessStartFile,pFile->zString,pFile->nByte);
+	}
+	pVm->nSessStartLine = pVm->nCurLine;
+}
+/*
  * Track output length and mark headers as sent when output reaches
  * a real external consumer (not the internal blob or OB buffer).
  */
@@ -2467,7 +2542,17 @@ PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen)
 	if( xCons != VmObConsumer ){
 		pVm->nOutputLen += nLen;
 		if( !pVm->bHeadersSent && xCons != PH7_VmBlobConsumer ){
+			/* The ORIGIN of the output is recorded with the flag, once: php's
+			 * four headers-sent diagnostics all name the place the response
+			 * body began, and headers_sent() hands the same pair back through
+			 * its two by-ref out-params. */
+			SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
 			pVm->bHeadersSent = 1;
+			SyBlobReset(&pVm->sOutStartFile);
+			if( pFile && pFile->nByte > 0 ){
+				SyBlobAppend(&pVm->sOutStartFile,pFile->zString,pFile->nByte);
+			}
+			pVm->nOutStartLine = pVm->nCurLine;
 		}
 	}
 }
@@ -3322,6 +3407,10 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	PH7_VmReleaseResponseHeaders(pVm);
 	pVm->iResponseStatus = 200;
 	pVm->bHeadersSent = 0;
+	SyBlobReset(&pVm->sOutStartFile);
+	pVm->nOutStartLine = 0;
+	SyBlobReset(&pVm->sSessStartFile);
+	pVm->nSessStartLine = 0;
 	pVm->bHttpContext = 0;
 	VmReinitMemObj(&(*pVm),&pVm->sExceptionCB);
 	VmReinitMemObj(&(*pVm),&pVm->sErrCB);

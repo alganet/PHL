@@ -73,6 +73,41 @@ static sxi32 VmAddResponseHeader(ph7_vm *pVm, const char *zName, sxu32 nName,
 	return SySetPut(&pVm->aResponseHeaders, (const void *)&sHeader);
 }
 /*
+ * php's headers-already-sent warning, in the two shapes php words it: the
+ * header family's, which carries NO function prefix and hangs the origin off
+ * the word "by", and http_response_code()'s, which is prefixed and does not.
+ * Both name WHERE the response body began; with no origin recorded (nothing
+ * emitted through a real consumer) the clause is left off entirely.
+ */
+static void VmHeadersAlreadySent(ph7_context *pCtx,int bResponseCode)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sMsg;
+	SyString sFile;
+	sxu32 nLine = 0;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( bResponseCode ){
+		SyBlobAppend(&sMsg,"http_response_code(): Cannot set response code - headers already sent",
+			sizeof("http_response_code(): Cannot set response code - headers already sent")-1);
+	}else{
+		SyBlobAppend(&sMsg,"Cannot modify header information - headers already sent",
+			sizeof("Cannot modify header information - headers already sent")-1);
+	}
+	if( PH7_VmOutputOrigin(pVm,&sFile,&nLine) ){
+		char zTail[64];
+		if( !bResponseCode ){
+			SyBlobAppend(&sMsg," by",3);
+		}
+		SyBlobAppend(&sMsg," (output started at ",sizeof(" (output started at ")-1);
+		SyBlobAppend(&sMsg,sFile.zString,sFile.nByte);
+		SyBufferFormat(zTail,sizeof(zTail),":%u)",nLine);
+		SyBlobAppend(&sMsg,zTail,(sxu32)SyStrlen(zTail));
+	}
+	SyBlobNullAppend(&sMsg);
+	PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+	SyBlobRelease(&sMsg);
+}
+/*
  * void header(string $header [, bool $replace = true [, int $response_code = 0]])
  *   Send a raw HTTP header.
  */
@@ -87,13 +122,16 @@ static int vm_builtin_header(ph7_context *pCtx, int nArg, ph7_value **apArg)
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		return PH7_OK;
 	}
-	/* In CLI mode (no HTTP context), header() is silently ignored */
-	if( !pVm->bHttpContext ){
+	/* php raises the headers-sent refusal in EVERY SAPI, the CLI included --
+	 * its own header handler asks whether the response has begun before it
+	 * asks whether anything will ever print the header. Only once that is
+	 * settled does a build with no HTTP context stop caring. */
+	if( pVm->bHeadersSent ){
+		VmHeadersAlreadySent(pCtx,0);
 		return PH7_OK;
 	}
-	/* Check if headers already sent */
-	if( pVm->bHeadersSent ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Cannot modify header information - headers already sent");
+	if( !pVm->bHttpContext ){
+		/* CLI: php takes the header and prints nothing. */
 		return PH7_OK;
 	}
 	zHeader = ph7_value_to_string(apArg[0], &nLen);
@@ -173,11 +211,12 @@ static int vm_builtin_header(ph7_context *pCtx, int nArg, ph7_value **apArg)
 static int vm_builtin_header_remove(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	if( !pVm->bHttpContext ){
+	/* The refusal comes first here too, for the reason header() gives. */
+	if( pVm->bHeadersSent ){
+		VmHeadersAlreadySent(pCtx,0);
 		return PH7_OK;
 	}
-	if( pVm->bHeadersSent ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Cannot modify header information - headers already sent");
+	if( !pVm->bHttpContext ){
 		return PH7_OK;
 	}
 	if( nArg < 1 ){
@@ -190,13 +229,34 @@ static int vm_builtin_header_remove(ph7_context *pCtx, int nArg, ph7_value **apA
 	return PH7_OK;
 }
 /*
- * bool headers_sent()
- *   Returns TRUE if headers have already been sent (output started).
+ * bool headers_sent([&$filename [, &$line]])
+ *   Whether the response body has begun -- and, through its two by-ref
+ *   out-params, WHERE it began. php writes both whatever the answer is: the
+ *   empty string and 0 while nothing has been emitted, so a caller that reads
+ *   them never sees its own previous value. This engine declared neither, so
+ *   both variables kept whatever they held.
  */
 static int vm_builtin_headers_sent(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	(void)nArg; (void)apArg;
-	ph7_result_bool(pCtx, pCtx->pVm->bHeadersSent);
+	ph7_vm *pVm = pCtx->pVm;
+	SyString sFile;
+	sxu32 nLine = 0;
+	PH7_VmOutputOrigin(pVm,&sFile,&nLine);
+	if( nArg > 0 ){
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( pVal ){
+			ph7_value_string(pVal,sFile.nByte > 0 ? sFile.zString : "",(int)sFile.nByte);
+			PH7_VmStoreArgByRef(pVm,apArg[0],pVal);
+		}
+	}
+	if( nArg > 1 ){
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( pVal ){
+			ph7_value_int64(pVal,(ph7_int64)nLine);
+			PH7_VmStoreArgByRef(pVm,apArg[1],pVal);
+		}
+	}
+	ph7_result_bool(pCtx, pVm->bHeadersSent);
 	return PH7_OK;
 }
 /*
@@ -250,8 +310,7 @@ static int vm_builtin_http_response_code(ph7_context *pCtx, int nArg, ph7_value 
 		int iCode = ph7_value_to_int(apArg[0]);
 		int iPrev = pVm->iResponseStatus;
 		if( pVm->bHeadersSent ){
-			ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-				"Cannot set response code - headers already sent");
+			VmHeadersAlreadySent(pCtx,1);
 			ph7_result_bool(pCtx, 0);
 			return PH7_OK;
 		}
@@ -553,8 +612,7 @@ static int VmSetCookieImpl(ph7_context *pCtx, int nArg, ph7_value **apArg, int b
 		/* php's CLI SAPI takes the header and answers TRUE even though nothing will
 		 * ever print it; only a real header ALREADY sent is a refusal. */
 		if( pVm->bHeadersSent ){
-			ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-				"Cannot modify header information - headers already sent");
+			VmHeadersAlreadySent(pCtx,0);
 			ph7_result_bool(pCtx, 0);
 		}else{
 			if( pVm->bHttpContext ){

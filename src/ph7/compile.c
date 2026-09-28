@@ -779,6 +779,7 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "getopt",                 6, 1u<<2 },  /* &$rest_index (apArg[2]) */
 		{ "is_callable",           11, 1u<<2 },  /* &$callable_name (apArg[2]) */
 		{ "similar_text",          12, 1u<<2 },  /* &$percent (apArg[2]) */
+		{ "headers_sent",         12, (1u<<0)|(1u<<1) },  /* &$filename, &$line */
 		{ "str_replace",           11, 1u<<3 },  /* &$count  (apArg[3]) */
 		{ "str_ireplace",          12, 1u<<3 },  /* &$count  (apArg[3]) */
 		{ "fsockopen",              9, (1u<<2)|(1u<<3) },  /* &$error_code, &$error_message */

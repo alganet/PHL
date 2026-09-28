@@ -354,7 +354,8 @@ static int IniSessionLocked(ph7_context *pCtx,VmIniSlot *pSlot,const char *zFunc
 	 || SyMemcmp(pSlot->sName.zString,"session.",sizeof("session.")-1) != 0 ){
 		return 0;
 	}
-	if( pVm->iSessStatus == 2 /* PHP_SESSION_ACTIVE */ ){
+	int bActive = (pVm->iSessStatus == 2 /* PHP_SESSION_ACTIVE */);
+	if( bActive ){
 		zWhy = "when a session is active";
 	}else if( pVm->bHeadersSent ){
 		zWhy = "after headers have already been sent";
@@ -363,7 +364,16 @@ static int IniSessionLocked(ph7_context *pCtx,VmIniSlot *pSlot,const char *zFunc
 	}
 	SyBufferFormat(zMsg,sizeof(zMsg),
 		"%s(): Session ini settings cannot be changed %s",zFunc,zWhy);
-	PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+	{
+		/* php names the session_start() or the output behind the refusal. */
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobAppend(&sMsg,zMsg,(sxu32)SyStrlen(zMsg));
+		PH7_VmAppendWhere(pVm,&sMsg,bActive);
+		SyBlobNullAppend(&sMsg);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+	}
 	return 1;
 }
 /*

@@ -2696,6 +2696,14 @@ struct ph7_vm
 	SySet aResponseHeaders;     /* HTTP response headers (VmResponseHeader entries) */
 	int iResponseStatus;        /* HTTP response status code (default 200) */
 	int bHeadersSent;           /* TRUE once non-OB output has been emitted */
+	SyBlob sOutStartFile;       /* WHERE that first output went out: php names the file and the
+	                             * line in four diagnostics ("output started at %s:%u", and the
+	                             * session pair's "sent from %s on line %u") and hands them to
+	                             * headers_sent()'s two by-ref out-params. Empty until output. */
+	sxu32 nOutStartLine;        /* ... its line (0 while nothing has been emitted) */
+	SyBlob sSessStartFile;      /* WHERE the active session was started: php's session-locked ini
+	                             * diagnostic names it ("started from %s on line %u"). */
+	sxu32 nSessStartLine;       /* ... its line */
 	int bHttpContext;           /* TRUE when an HTTP request has been fed (server/CGI mode) */
 	int bInlineTryCatch;        /* ROOT C: TRUE once the inline try/catch/finally VM handlers exist,
 	                             * enabling the compiler to inline generator-body try/catch (so a
@@ -4886,6 +4894,10 @@ PH7_PRIVATE sxi32 VmEnumMaterialize(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut);
 PH7_PRIVATE sxi32 VmExpandConstantOnce(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut);
 PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen);
+PH7_PRIVATE int PH7_VmOutputOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine);
+PH7_PRIVATE int PH7_VmSessionOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine);
+PH7_PRIVATE void PH7_VmSetSessionOrigin(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmAppendWhere(ph7_vm *pVm,SyBlob *pMsg,int bSessionActive);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
 /* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
 PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);

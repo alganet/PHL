@@ -856,16 +856,21 @@ static int VmSessLocked(ph7_context *pCtx,const char *zFunc,const char *zWhat,in
 {
 	ph7_vm *pVm = pCtx->pVm;
 	char zMsg[192];
-	if( pVm->iSessStatus == VM_SESSION_ACTIVE ){
-		SyBufferFormat(zMsg,sizeof(zMsg),"%s(): %s cannot be changed when a session is active",
-			zFunc,zWhat);
-		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
-		return 1;
-	}
-	if( bHeaders && pVm->bHeadersSent ){
+	int bActive = (pVm->iSessStatus == VM_SESSION_ACTIVE);
+	if( bActive || (bHeaders && pVm->bHeadersSent) ){
+		/* php names WHERE, every time: the session_start() that opened the
+		 * session, or the output that began the response. */
+		SyBlob sMsg;
 		SyBufferFormat(zMsg,sizeof(zMsg),
-			"%s(): %s cannot be changed after headers have already been sent",zFunc,zWhat);
-		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+			bActive ? "%s(): %s cannot be changed when a session is active"
+			        : "%s(): %s cannot be changed after headers have already been sent",
+			zFunc,zWhat);
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobAppend(&sMsg,zMsg,(sxu32)SyStrlen(zMsg));
+		PH7_VmAppendWhere(pVm,&sMsg,bActive);
+		SyBlobNullAppend(&sMsg);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
 		return 1;
 	}
 	return 0;
@@ -1066,8 +1071,14 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	if( pVm->bHeadersSent ){
-		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
-			"session_start(): Session cannot be started after headers have already been sent");
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobAppend(&sMsg,"session_start(): Session cannot be started after headers have already been sent",
+			sizeof("session_start(): Session cannot be started after headers have already been sent")-1);
+		PH7_VmAppendWhere(pVm,&sMsg,0);
+		SyBlobNullAppend(&sMsg);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1207,6 +1218,9 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	 * where php's reads open,read,gc. */
 	VmSessMaybeGc(pVm);
 	pVm->iSessStatus = VM_SESSION_ACTIVE;
+	/* Remember WHERE, for the refusals a later write to a session directive
+	 * meets. */
+	PH7_VmSetSessionOrigin(pVm);
 	VmSessSendCookie(pVm);
 	VmSessSendCacheHeaders(pVm);
 	if( sOpt.bReadClose ){
