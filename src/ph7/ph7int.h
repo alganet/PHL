@@ -2312,6 +2312,16 @@ struct ph7_class_instance
  */
 #define VM_INSTANCE_CLONING 0x008
 /*
+ * ph7_class_instance::iFlags bit: this object's __destruct has already been reached for
+ * (or the refusal that stands in for it raised), so no later teardown may run it a second
+ * time. php keeps the same bit (IS_OBJ_DESTRUCTOR_CALLED) for the same reason -- its
+ * shutdown pass calls destructors on objects it does NOT free, and the free that follows
+ * must not repeat them. Distinct from CLASS_INSTANCE_DESTROYED 0x001 (oo.c), which says
+ * the whole instance is gone. 0x080 because 0x002..0x040 are claimed by unrelated readers
+ * of this same word, each on its own kind of object.
+ */
+#define CLASS_INSTANCE_DTOR_CALLED 0x080
+/*
  * ph7_class_instance::iFlags bit set once this object's LAZY native properties
  * (PH7_CLASS_ATTR_NATIVE_LAZY) have been installed. It is the difference between
  * "the constructor has never run, so the name is not a property of this object at
@@ -3291,6 +3301,22 @@ struct ph7_vm
 								* global-scope destructors before (release nuked the arena),
 								* so this preserves prior semantics while staying crash-safe.
 								* Engine-level instance memory is still reclaimed. */
+	sxu8 bNoFrameLoc;          /* Set around a diagnostic raised with NO php frame under it.
+								* php then has no file and no line to name and reports the
+								* location as `in Unknown on line 0` (its
+								* EG(current_execute_data) == NULL branch). See
+								* VmDiagnosticWhere. */
+	sxu8 bShutdownAborted;     /* Set when a destructor in the shutdown pass left an uncaught
+								* throwable. php's phase runs under one zend_try, so the first
+								* bailout abandons every destructor still owed -- the flag is
+								* what carries that decision across the two passes. */
+	sxu8 bInShutdownDtor;      /* Set while the shutdown destructor pass runs (php's
+								* zend_call_destructors, between the shutdown callbacks and
+								* the output-buffer flush). php reads this state as
+								* `EG(current_execute_data) == NULL`: a non-public __destruct
+								* reached with no PHP frame on the stack is not the Error a
+								* running program gets but an E_WARNING that says the call was
+								* ignored, and the object is left undestructed. */
 	ph7_gen_state sCodeGen;    /* Code generator module */
 	sxu32 nLastEvalErr;        /* Compile-error count of the most recent VmEvalChunk unit. Unlike
 								* sCodeGen.nErr it survives the nested-compile state save/restore,
@@ -6246,6 +6272,7 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 PH7_PRIVATE int PH7_ClassIsUncloneable(ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,int bStrict,int iNest);
 PH7_PRIVATE void  PH7_ClassInstanceUnref(ph7_class_instance *pThis);
+PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth);
 PH7_PRIVATE int PH7_UnmangleAttrName(const char *zKey,sxu32 nKey,SyString *pClass,SyString *pName);
 PH7_PRIVATE SyHashEntry * PH7_ClassInstanceAttrEntry(ph7_class_instance *pThis,const char *zName,sxu32 nName);

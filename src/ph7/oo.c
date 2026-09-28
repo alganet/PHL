@@ -2653,26 +2653,28 @@ PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm, VmClassAttr *pVmAttr)
 	SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 }
 /*
- * Release a class instance [i.e: Object in the PHP jargon] and invoke any defined destructor.
- * This routine is invoked as soon as there are no other references to a particular
- * class instance.
+ * Run this instance's __destruct exactly once, or raise the refusal that stands in for it.
+ *
+ * Called from two places: PH7_ClassInstanceRelease, where the object dies because nothing
+ * refers to it any more, and the shutdown pass (VmCallShutdownDestructors), which reaches
+ * every object a program left alive WITHOUT freeing it -- php's zend_objects_store_call_destructors
+ * does exactly that, and the free that follows must not run the body a second time, which
+ * is what CLASS_INSTANCE_DTOR_CALLED records.
  */
-static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
+PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis)
 {
 	ph7_class_method *pDestr;
-	SyHashEntry *pEntry;
 	ph7_class *pClass;
 	ph7_vm *pVm;
-	if( pThis->iFlags & CLASS_INSTANCE_DESTROYED ){
-		/*
-		 * Already destroyed,return immediately.
-		 * This could happend if someone perform unset($this) in the destructor body.
-		 */
-		return;
+	sxi32 rc = SXRET_OK;
+	if( pThis->iFlags & CLASS_INSTANCE_DTOR_CALLED ){
+		return SXRET_OK;
 	}
-	/* Mark as destroyed */
-	pThis->iFlags |= CLASS_INSTANCE_DESTROYED;
-	/* Invoke any defined destructor if available */
+	/* Flagged whether or not there is a body to run, exactly as php flags its own
+	 * (IS_OBJ_DESTRUCTOR_CALLED is set before the handler is even looked up). The
+	 * shutdown pass sweeps the object pool until a round finds nothing unflagged, so
+	 * an object with no __destruct at all has to come back flagged too. */
+	pThis->iFlags |= CLASS_INSTANCE_DTOR_CALLED;
 	pVm = pThis->pVm;
 	pClass = pThis->pClass;
 	pDestr = PH7_ClassExtractMethod(pClass,"__destruct",sizeof("__destruct")-1);
@@ -2695,6 +2697,25 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 				? "private" : "protected";
 			ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
 			SyBlobInit(&sErrMsg,&pVm->sAllocator);
+			if( pVm->bInShutdownDtor ){
+				/* Reached from the shutdown pass, with no PHP frame under it. php tests
+				 * exactly that (`EG(current_execute_data) == NULL`) and answers a
+				 * different sentence at a different severity: an E_WARNING saying the
+				 * call was ignored, after which the object is simply not destructed and
+				 * the program is already over. The Error below is for a refusal a
+				 * running program can still catch. */
+				SyBlobFormat(&sErrMsg,
+					"Call to %s %z::__destruct() from global scope during shutdown ignored",
+					zVis,&pClass->sName);
+				SyBlobAppend(&sErrMsg,"\0",sizeof(char));
+				/* Raised between two destructor bodies, so there is no frame to name:
+				 * php reports it `in Unknown on line 0`. */
+				pVm->bNoFrameLoc = 1;
+				PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sErrMsg));
+				pVm->bNoFrameLoc = 0;
+				SyBlobRelease(&sErrMsg);
+				return SXRET_OK;
+			}
 			if( pScope ){
 				SyBlobFormat(&sErrMsg,"Call to %s %z::__destruct() from scope %z",
 					zVis,&pClass->sName,&pScope->sName);
@@ -2712,11 +2733,60 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 			SyBlobRelease(&sErrMsg);
 		}else{
 			/* Invoke the destructor. Skipped during ph7_vm_reset() bulk teardown:
-			 * running user PHP against a half-reset VM is unsafe (see bInReset). */
-			pThis->iRef = 2; /* Prevent garbage collection */
-			PH7_VmCallMethodUnchecked(pVm,pThis,pDestr,0,0,0);
+			 * running user PHP against a half-reset VM is unsafe (see bInReset).
+			 *
+			 * Pinned across the body rather than SET to a constant: reached from a
+			 * release the count is 0 and any value keeps the nested unref off it, but
+			 * the shutdown pass calls this on an object other names still hold, and
+			 * flattening their count there would free it under them. php pins the same
+			 * way (GC_ADDREF/GC_DELREF around dtor_obj), so a body that stores $this
+			 * somewhere keeps the reference it gained. */
+			sxu8 bPhase = pVm->bInShutdownDtor;
+			/* The body has a frame of its own, so php's "no execute_data" state ends
+			 * here and resumes when it returns: an object the body itself drops --
+			 * `$this->p = null` on the last holder of a private-destructor object --
+			 * is refused with the catchable Error naming the running scope, not with
+			 * the shutdown warning above. */
+			pVm->bInShutdownDtor = 0;
+			pThis->iRef += 2; /* Prevent garbage collection */
+			rc = PH7_VmCallMethodUnchecked(pVm,pThis,pDestr,0,0,0);
+			pThis->iRef -= 2;
+			pVm->bInShutdownDtor = bPhase;
 		}
 	}
+	/* SXERR_ABORT here means the body left an UNCAUGHT throwable (or exited). php runs
+	 * its whole destructor phase under one zend_try, so the first one abandons every
+	 * destructor still owed -- including the ones the symbol-table half would have
+	 * reached, which is why the decision is recorded on the VM and not just returned. */
+	if( rc == SXERR_ABORT && pVm->bInShutdownDtor ){
+		pVm->bShutdownAborted = 1;
+	}
+	return rc;
+}
+/*
+ * Release a class instance [i.e: Object in the PHP jargon] and invoke any defined destructor.
+ * This routine is invoked as soon as there are no other references to a particular
+ * class instance.
+ */
+static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
+{
+	SyHashEntry *pEntry;
+	ph7_class *pClass;
+	ph7_vm *pVm;
+	if( pThis->iFlags & CLASS_INSTANCE_DESTROYED ){
+		/*
+		 * Already destroyed,return immediately.
+		 * This could happend if someone perform unset($this) in the destructor body.
+		 */
+		return;
+	}
+	/* Mark as destroyed */
+	pThis->iFlags |= CLASS_INSTANCE_DESTROYED;
+	pVm = pThis->pVm;
+	pClass = pThis->pClass;
+	/* Invoke any defined destructor if available (a no-op once the shutdown pass
+	 * has already run it) */
+	PH7_ClassInstanceCallDestructor(pThis);
 	/* A native class's own teardown, while its slots are still readable. Not a
 	 * __destruct: the classes that need this (WeakReference) declare none in php,
 	 * and Reflection must not grow one.

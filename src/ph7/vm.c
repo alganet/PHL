@@ -5873,6 +5873,7 @@ static void VmInvokeShutdownCallbacks(ph7_vm *pVm)
 	VmShutdownCB *pEntry;
 	ph7_value *apArg[10];
 	sxu32 n,nEntry;
+	sxi32 rc = SXRET_OK;
 	int i;
 	/* Point to the stack of registered callbacks */
 	nEntry = SySetUsed(&pVm->aShutdown);
@@ -5895,7 +5896,7 @@ static void VmInvokeShutdownCallbacks(ph7_vm *pVm)
 				apArg[i] = &pEntry->aArg[i];
 			}
 			/* Invoke the callback */
-			PH7_VmCallUserFunction(&(*pVm),&pEntry->sCallback,pEntry->nArg,apArg,0);
+			rc = PH7_VmCallUserFunction(&(*pVm),&pEntry->sCallback,pEntry->nArg,apArg,0);
 			/*
 			 * TICKET 1433-56: Try re-access the same entry since the invoked
 			 * callback may call [register_shutdown_function()] in it's body.
@@ -5907,13 +5908,258 @@ static void VmInvokeShutdownCallbacks(ph7_vm *pVm)
 					PH7_MemObjRelease(apArg[i]);
 				}
 			}
-			if( pVm->bHaltRequested ){
-				/* exit() inside the callback: skip the remaining callbacks */
+			if( pVm->bHaltRequested || rc == SXERR_ABORT ){
+				/* exit() inside the callback, or a throwable it never caught: php
+				 * abandons the remaining callbacks either way (the bailout leaves
+				 * php_call_shutdown_functions), and goes on to the destructors. */
 				break;
 			}
 		}
 	}
 	SySetReset(&pVm->aShutdown);
+}
+/*
+ * One name of the global symbol table, snapshotted for the shutdown pass below.
+ * Held as an offset into a private blob rather than a pointer: a destructor is
+ * arbitrary PHP and may unset any global, which frees the key the table owns.
+ */
+typedef struct VmShutdownName VmShutdownName;
+struct VmShutdownName
+{
+	sxu32 nOfft;  /* Offset of the name in the caller's snapshot blob */
+	sxu32 nByte;  /* Its length */
+};
+/*
+ * TRUE when this slot is held by exactly ONE name and nothing else -- the state php
+ * spells `Z_TYPE_P(zv) == IS_OBJECT` with a refcount of 1 on a symbol-table entry.
+ *
+ * php's symbol-table pass tests the ZVAL, and a name written with `&` is not an object
+ * zval at all: `$g = new T; $r = &$g;` makes both entries IS_REFERENCE, which the test
+ * rejects outright and leaves to the object-store pass. This engine has no separate
+ * reference cell -- the two names simply share one slot -- so the equivalent question
+ * is how many names the slot's reference record still lists, plus whether anything the
+ * record cannot name pins it (a `use (&$x)` capture, a static, a reference-bound
+ * property), which php would also be carrying as a reference.
+ *
+ * The $GLOBALS entry for the name is not a holder for this purpose: it is how this
+ * engine spells the symbol table, not a second reference to the value.
+ */
+static int VmSlotHeldByOneName(ph7_vm *pVm,sxu32 nIdx)
+{
+	SyHashEntry **apEntry;
+	VmRefObj *pRef;
+	sxu32 n,nName = 0;
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef == 0 ){
+		return 0;
+	}
+	if( pRef->nPin > 0 || (pRef->iFlags & VM_REF_IDX_KEEP) ){
+		return 0;
+	}
+	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
+	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
+		if( apEntry[n] ){
+			nName++;
+		}
+	}
+	return nName == 1;
+}
+/*
+ * php's shutdown destructor phase, first half: the GLOBAL SYMBOL TABLE.
+ *
+ * `shutdown_destructors()` walks the symbol table in REVERSE and drops every entry
+ * holding an object nothing else refers to, repeating the walk while the table keeps
+ * shrinking. That reverse walk is observable -- `$a = new T; $b = new T;` destructs
+ * $b before $a -- and it is the half that actually FREES its objects, which is why a
+ * destructor here sees the rest of the program's globals still standing.
+ *
+ * `iRef == 1` plus VmSlotHeldByOneName is this engine's spelling of php's
+ * `Z_TYPE_P(zv) == IS_OBJECT && Z_REFCOUNT_P(zv) == 1`: exactly one memory object holds
+ * the instance and exactly one name holds that, so dropping the name ends it. Everything
+ * else -- an object two names share, one an array or a property also holds, one a name
+ * written with `&` reaches -- is left to the second half.
+ */
+static void VmShutdownGlobalPass(ph7_vm *pVm)
+{
+	VmFrame *pFrame;
+	for( pFrame = pVm->pFrame ; pFrame && pFrame->pParent ; pFrame = pFrame->pParent ){}
+	if( pFrame == 0 ){
+		return;
+	}
+	for(;;){
+		ph7_hashmap_node *pNode;
+		VmShutdownName *aName;
+		SyBlob sNames;
+		SySet aEntry;
+		sxu32 n;
+		int bDropped = 0;
+		if( pVm->pGlobal == 0 || pVm->pGlobal->nEntry < 1 ){
+			return;
+		}
+		/* Snapshot the names, last-declared first. The map's insertion list runs
+		 * pFirst -> pPrev -> ... -> pLast, so walking it BACKWARDS is pLast and the
+		 * pNext chain (the two link names read the other way round here). */
+		SyBlobInit(&sNames,&pVm->sAllocator);
+		SySetInit(&aEntry,&pVm->sAllocator,sizeof(VmShutdownName));
+		for( pNode = pVm->pGlobal->pLast ; pNode ; pNode = pNode->pNext ){
+			VmShutdownName sName;
+			if( pNode->iType != HASHMAP_BLOB_NODE || SyBlobLength(&pNode->xKey.sKey) < 1 ){
+				continue;
+			}
+			sName.nOfft = SyBlobLength(&sNames);
+			sName.nByte = SyBlobLength(&pNode->xKey.sKey);
+			if( SyBlobAppend(&sNames,SyBlobData(&pNode->xKey.sKey),sName.nByte) != SXRET_OK
+			 || SySetPut(&aEntry,(const void *)&sName) != SXRET_OK ){
+				/* Out of memory: go on with the names already gathered. */
+				break;
+			}
+		}
+		aName = (VmShutdownName *)SySetBasePtr(&aEntry);
+		for( n = 0 ; n < SySetUsed(&aEntry) ; ++n ){
+			const char *zName = (const char *)SyBlobData(&sNames) + aName[n].nOfft;
+			ph7_class_instance *pThis;
+			SyHashEntry *pHash;
+			ph7_value *pObj;
+			pHash = SyHashGet(&pFrame->hVar,(const void *)zName,aName[n].nByte);
+			if( pHash == 0 ){
+				continue;  /* An earlier destructor already dropped this one */
+			}
+			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,(sxu32)SX_PTR_TO_INT(pHash->pUserData));
+			if( pObj == 0 || (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
+				continue;
+			}
+			pThis = (ph7_class_instance *)pObj->x.pOther;
+			if( pThis->iRef != 1
+			 || !VmSlotHeldByOneName(&(*pVm),(sxu32)SX_PTR_TO_INT(pHash->pUserData)) ){
+				continue;
+			}
+			VmUnsetVarByNameEx(&(*pVm),pFrame,zName,aName[n].nByte,FALSE);
+			bDropped = 1;
+			if( pVm->bHaltRequested || pVm->bShutdownAborted ){
+				break;
+			}
+		}
+		SySetRelease(&aEntry);
+		SyBlobRelease(&sNames);
+		if( !bDropped || pVm->bHaltRequested || pVm->bShutdownAborted ){
+			return;
+		}
+	}
+}
+/*
+ * Order the collected instances by their object handle -- php's object store is
+ * walked front to back, and a handle is handed out in creation order, so this is
+ * "oldest object first". Shell sort: no allocation, no recursion, and the array is
+ * the objects a finished program left alive.
+ */
+static void VmSortByObjId(ph7_class_instance **apObj,sxu32 nUsed)
+{
+	static const sxu32 aGap[] = { 701, 301, 132, 57, 23, 10, 4, 1 };
+	sxu32 g;
+	for( g = 0 ; g < SX_ARRAYSIZE(aGap) ; ++g ){
+		sxu32 nGap = aGap[g], i;
+		for( i = nGap ; i < nUsed ; ++i ){
+			ph7_class_instance *pCur = apObj[i];
+			sxu32 j = i;
+			while( j >= nGap && apObj[j-nGap]->nObjId > pCur->nObjId ){
+				apObj[j] = apObj[j-nGap];
+				j -= nGap;
+			}
+			apObj[j] = pCur;
+		}
+	}
+}
+/*
+ * php's shutdown destructor phase, second half: the OBJECT STORE.
+ *
+ * `zend_objects_store_call_destructors()` reaches every object still alive after the
+ * symbol-table pass -- one a class static, a function static, an array or another
+ * object holds, and one that is only part of a cycle -- and calls its destructor in
+ * CREATION order without freeing it. The free comes later, from the teardown proper,
+ * which is why the destructor is flagged as already run (CLASS_INSTANCE_DTOR_CALLED).
+ *
+ * Every object is reachable from the memory-object pool, so that pool is the store.
+ * A destructor may create objects of its own (php destructs those too), so the sweep
+ * repeats until a round finds nothing new.
+ */
+static void VmShutdownObjectPass(ph7_vm *pVm)
+{
+	while( !pVm->bHaltRequested && !pVm->bShutdownAborted ){
+		ph7_class_instance **apObj;
+		SySet aObj;
+		sxu32 n,nUsed;
+		SySetInit(&aObj,&pVm->sAllocator,sizeof(ph7_class_instance *));
+		for( n = 0 ; n < SySetUsed(&pVm->aMemObj) ; ++n ){
+			ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,n);
+			if( pObj && (pObj->iFlags & MEMOBJ_OBJ) && pObj->x.pOther ){
+				ph7_class_instance *pThis = (ph7_class_instance *)pObj->x.pOther;
+				if( (pThis->iFlags & CLASS_INSTANCE_DTOR_CALLED) == 0 ){
+					SySetPut(&aObj,(const void *)&pThis);
+				}
+			}
+		}
+		nUsed = SySetUsed(&aObj);
+		if( nUsed < 1 ){
+			SySetRelease(&aObj);
+			return;
+		}
+		apObj = (ph7_class_instance **)SySetBasePtr(&aObj);
+		VmSortByObjId(apObj,nUsed);
+		/* Pin every one of them BEFORE the first body runs: a destructor is free to
+		 * unset whatever holds another object on this list, and the release that
+		 * follows would free a pointer still to be visited. php pins the same way,
+		 * one at a time, because its store can tell a dead bucket from a live one. */
+		for( n = 0 ; n < nUsed ; ++n ){
+			if( n > 0 && apObj[n] == apObj[n-1] ){
+				continue;  /* Several names for one object: sorted, so duplicates adjoin */
+			}
+			apObj[n]->iRef++;
+		}
+		for( n = 0 ; n < nUsed ; ++n ){
+			if( n > 0 && apObj[n] == apObj[n-1] ){
+				continue;
+			}
+			if( !pVm->bHaltRequested && !pVm->bShutdownAborted ){
+				/* A body that leaves an uncaught throwable raises bShutdownAborted
+				 * itself, which is what stops this loop and the sweep around it:
+				 * php abandons the whole phase on the first one, leaving every
+				 * remaining object undestructed. */
+				PH7_ClassInstanceCallDestructor(apObj[n]);
+			}
+		}
+		for( n = 0 ; n < nUsed ; ++n ){
+			if( n > 0 && apObj[n] == apObj[n-1] ){
+				continue;
+			}
+			PH7_ClassInstanceUnref(apObj[n]);
+		}
+		SySetRelease(&aObj);
+	}
+}
+/*
+ * Run every destructor a finished program still owes, between the shutdown callbacks
+ * and the output-buffer flush -- php's `zend_call_destructors()`, in that same slot of
+ * `php_request_shutdown()`, which is why a destructor's own echo still lands inside an
+ * open output buffer.
+ *
+ * Before this existed, an object a program left in a global (or a static, or any
+ * container) was torn down by PH7_VmReset with user destructors suppressed, so a
+ * destructor that closes a file, flushes a buffer or commits a transaction simply
+ * never fired. The two passes below are php's two, in php's order.
+ */
+static void VmCallShutdownDestructors(ph7_vm *pVm)
+{
+	if( pVm->bInReset ){
+		return;
+	}
+	/* A halt is consumed the same way the shutdown callbacks consume theirs: php runs
+	 * the destructor phase after an exit(), and after a shutdown callback that threw. */
+	pVm->bHaltRequested = 0;
+	pVm->bShutdownAborted = 0;
+	pVm->bInShutdownDtor = 1;
+	VmShutdownGlobalPass(&(*pVm));
+	VmShutdownObjectPass(&(*pVm));
+	pVm->bInShutdownDtor = 0;
 }
 /*
  * Execute as much of a PH7 bytecode program as we can then return.
@@ -5936,6 +6182,9 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	}
 	/* Invoke any shutdown callbacks */
 	VmInvokeShutdownCallbacks(&(*pVm));
+	/* Then every destructor the program still owes: php's zend_call_destructors(),
+	 * which sits exactly here -- after the shutdown callbacks, before the buffers. */
+	VmCallShutdownDestructors(&(*pVm));
 	/* php flushes every still-open output buffer on shutdown — after the
 	 * shutdown callbacks, which may still write into them. */
 	VmFlushOutputBuffers(&(*pVm));

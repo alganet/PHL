@@ -21,10 +21,10 @@
  * user handler claimed (by returning true) does not -- so this is called only on the
  * default-processing path.
  */
-static void VmRecordLastError(ph7_vm *pVm,sxi32 iErr,const char *zMsg,sxu32 nMsg,SyString *pFile)
+static void VmRecordLastError(ph7_vm *pVm,sxi32 iErr,const char *zMsg,sxu32 nMsg,SyString *pFile,sxu32 nLine)
 {
 	pVm->nLastErrType = iErr;
-	pVm->nLastErrLine = pVm->nCurLine ? pVm->nCurLine : 1;
+	pVm->nLastErrLine = nLine;
 	SyBlobReset(&pVm->sLastErrMsg);
 	if( zMsg && nMsg > 0 ){
 		SyBlobAppend(&pVm->sLastErrMsg,zMsg,nMsg);
@@ -251,11 +251,34 @@ static void VmDiagnosticHeader(SyBlob *pWorker,sxi32 iErr)
 {
 	SyBlobFormat(pWorker,"%s: ",VmDiagnosticLabel(iErr));
 }
+/*
+ * WHERE a diagnostic happened, as php reports it.
+ *
+ * Normally the file being executed and the current line, with php's floor of 1 for a
+ * line the engine never recorded. But a diagnostic can be raised with no PHP frame
+ * under it at all -- php tests `EG(current_execute_data) == NULL` and then has nothing
+ * to name, so `zend_get_executed_filename()` answers the literal string "Unknown" and
+ * the line is 0. The shutdown destructor pass is where PHL reaches that state: the
+ * refusal of a non-public __destruct is raised BETWEEN bodies, after the program's last
+ * statement. A diagnostic raised INSIDE a destructor body has a frame again and reports
+ * its real file and line, which is why this is a flag the raise site sets and not the
+ * whole phase.
+ */
+static sxu32 VmDiagnosticWhere(ph7_vm *pVm,SyString **ppFile)
+{
+	static SyString sNoFrame = { "Unknown", sizeof("Unknown")-1 };
+	if( pVm->bNoFrameLoc ){
+		*ppFile = &sNoFrame;
+		return 0;
+	}
+	return pVm->nCurLine ? pVm->nCurLine : 1;
+}
 static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile,sxu32 nLine)
 {
 	if( pFile ){
-		SyBlobFormat(pWorker," in %.*s on line %u",(int)pFile->nByte,pFile->zString,
-			nLine ? nLine : 1);
+		/* nLine arrives already normalized by VmDiagnosticWhere: "no line recorded"
+		 * is php's 1, and a raise with no frame under it is php's literal 0. */
+		SyBlobFormat(pWorker," in %.*s on line %u",(int)pFile->nByte,pFile->zString,nLine);
 	}
 }
 /*
@@ -339,6 +362,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	SyBlob sMsg;
 	SyString *pFile;
 	sxu32 nMsg = (sxu32)SyStrlen(zMessage);
+	sxu32 nLine;
 	sxi32 rc = SXRET_OK;
 	if( pVm->nSpeculative > 0 ){
 		/* Speculative evaluation (PH7_VmEvalConstExpr): the value is being LOOKED at,
@@ -349,6 +373,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	}
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	nLine = VmDiagnosticWhere(&(*pVm),&pFile);
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pFuncName && pFuncName->nByte > 0 ){
 		/* Qualify only when there IS a name: PH7_VmMemoryError() reports an
@@ -361,13 +386,13 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	}
 	/* Check for user error handler. php calls it whatever error_reporting() says
 	 * (see VmThrowErrorAp) -- the mask gates only the printed copy below. */
-	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)nMsg, pFile, (sxi32)pVm->nCurLine) ){
-		VmRecordLastError(&(*pVm),iErr,zMessage,nMsg,pFile);
+	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)nMsg, pFile, (sxi32)nLine) ){
+		VmRecordLastError(&(*pVm),iErr,zMessage,nMsg,pFile,nLine);
 		if( VmErrReportWants(pVm,iErr) && pVm->nErrSuppress == 0 ){
 			/* error_reporting() masks a severity out of the DISPLAY, and inside
 			 * '@' php still runs the handler (done just above) but prints
 			 * nothing itself. */
-			rc = VmEmitDiagnostic(pVm,iErr,zMessage,nMsg,pFile,pVm->nCurLine);
+			rc = VmEmitDiagnostic(pVm,iErr,zMessage,nMsg,pFile,nLine);
 		}
 	}
 	SyBlobRelease(&sMsg);
@@ -576,6 +601,7 @@ static sxi32 VmThrowErrorAp(
 {
 	SyBlob sMsg;
 	SyString *pFile;
+	sxu32 nLine;
 	sxi32 rc = SXRET_OK;
 	if( pVm->nSpeculative > 0 ){
 		/* See PH7_VmThrowError: nothing a speculative evaluation raises is observable. */
@@ -584,6 +610,7 @@ static sxi32 VmThrowErrorAp(
 	}
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	nLine = VmDiagnosticWhere(&(*pVm),&pFile);
 	/* Format the raw message behind php's `func(): ` qualifier */
 	SyBlobInit(&sMsg, &pVm->sAllocator);
 	VmDiagnosticQualify(&sMsg,pFuncName);
@@ -592,16 +619,16 @@ static sxi32 VmThrowErrorAp(
 	 * whatever error_reporting() says -- the mask only gates the built-in printer,
 	 * and a handler is expected to consult error_reporting() itself. Testing the
 	 * mask up here instead skipped the handler entirely for a masked severity. */
-	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, (sxi32)pVm->nCurLine) ){
+	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, (sxi32)nLine) ){
 		/* No handler or handler returned TRUE, normal processing — unless the
 		 * expression is under '@', which suppresses the printed diagnostic. */
-		VmRecordLastError(&(*pVm),iErr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg),pFile);
+		VmRecordLastError(&(*pVm),iErr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg),pFile,nLine);
 		if( !VmErrReportWants(pVm,iErr) || pVm->nErrSuppress > 0 ){
 			SyBlobRelease(&sMsg);
 			return SXRET_OK;
 		}
 		rc = VmEmitDiagnostic(pVm,iErr,(const char *)SyBlobData(&sMsg),
-			SyBlobLength(&sMsg),pFile,pVm->nCurLine);
+			SyBlobLength(&sMsg),pFile,nLine);
 	}
 	SyBlobRelease(&sMsg);
 	return rc;
