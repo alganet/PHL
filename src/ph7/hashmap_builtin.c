@@ -4617,10 +4617,13 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Extract and validate the chunk size argument. */
-	/* Reject types that cannot be sensibly converted to an integer. */
+	/* Reject types that cannot be sensibly converted to an integer. A BOOL is
+	 * not one of them: php coerces it like any other scalar an `int` parameter
+	 * is handed, so `array_chunk($a,true)` chunks by 1 and `false` falls
+	 * through to the "must be greater than 0" ValueError below. NULL stays
+	 * refused -- §10 rejects what php merely deprecates. */
 	if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1]) ||
-		ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ||
-		ph7_value_is_bool(apArg[1]) ){
+		ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_chunk(): Argument #2 ($length) must be of type int, %s given",
