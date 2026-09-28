@@ -942,24 +942,33 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 		}else if( pArrVal ){
 			ph7_array_add_elem(pArrVal,pKey,pVal);
 		}else{
-			/* Set a declared property by its (demangled) name. */
+			/* Set a declared property. The payload key is php's STORAGE name, so
+			 * try it as WRITTEN first — that is how a base class's private lands in
+			 * its own slot rather than over the same-named property of the object's
+			 * own class — and demangle only when the object holds nothing under it
+			 * (a `\0*\0` protected key, and a private of the object's OWN class,
+			 * are both stored plain here). */
 			int nKey; const char *zKey = ph7_value_to_string(pKey,&nKey);
-			const char *zName; int nName; SyString sName; ph7_value *pSlot;
-			VmUnstripKey(zKey,nKey,&zName,&nName);
-			SyStringInitFromBuf(&sName,zName,nName);
-			pSlot = PH7_ClassInstanceFetchAttr(pThis,&sName);
+			const char *zName; int nName; ph7_value *pSlot = 0;
+			SyHashEntry *pAttrEntry = PH7_ClassInstanceAttrEntry(pThis,zKey,(sxu32)nKey);
+			if( pAttrEntry == 0 ){
+				VmUnstripKey(zKey,nKey,&zName,&nName);
+				pAttrEntry = PH7_ClassInstanceAttrEntry(pThis,zName,(sxu32)nName);
+			}
+			if( pAttrEntry && pAttrEntry->pUserData ){
+				VmClassAttr *pVmAttr = (VmClassAttr *)pAttrEntry->pUserData;
+				if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) == 0 ){
+					pSlot = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+				}
+			}
 			if( pSlot ){
-				SyHashEntry *pAttrEntry;
 				PH7_MemObjStore(pVal,pSlot);
 				/* php's unserialize() bypasses the property type-check but the
 				 * value IS now set, so a typed property must no longer read as
 				 * "uninitialized" — clear the per-instance UNINIT latch directly
 				 * (routing through VmEnforcePropertyTypeOnStore would wrongly
 				 * apply readonly/scope checks from global scope). */
-				pAttrEntry = SyHashGet(&pThis->hAttr,(const void *)zName,(sxu32)nName);
-				if( pAttrEntry && pAttrEntry->pUserData ){
-					((VmClassAttr *)pAttrEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;
-				}
+				((VmClassAttr *)pAttrEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;
 			}else if( VmUnserializeDynamicProp(ud,pThis,zKey,(sxu32)nKey,pVal) != SXRET_OK ){
 				/* No DECLARED property of that name: php creates the dynamic one
 				 * under the key as WRITTEN, mangling bytes included — only the

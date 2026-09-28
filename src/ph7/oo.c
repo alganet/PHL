@@ -185,6 +185,179 @@ PH7_PRIVATE ph7_class_attr * PH7_ClassExtractAttribute(ph7_class *pClass,const c
 	return (ph7_class_attr *)pEntry->pUserData;
 }
 /*
+ * php's MANGLED storage name for one property, as an instance of pClass files it.
+ *
+ * php makes a split this engine did not: `ce->properties_info` is keyed by the
+ * PLAIN name and is where every visibility decision is made, while the object's
+ * own slot table is keyed by a MANGLED one -- "\0DeclaringClass\0name" for a
+ * private property, the bare name for everything else. Two things follow from it,
+ * and both were wrong here.
+ *
+ * `class A { private $q; } class B extends A { private $q; }` has TWO slots on one
+ * object, each reachable only from its own declaring class, where PHL had one --
+ * so a base method reading its own private got the CHILD's value, with nothing to
+ * announce it. And a base's private is INVISIBLE from outside rather than merely
+ * inaccessible: a lookup by the plain name finds nothing at all, which is why php
+ * answers `$b->q` with "Undefined property: B::$q" and not with the visibility
+ * refusal it words for `$a->q`.
+ *
+ * The declaring class is fixed per attribute, so the mangled name is built once
+ * and cached on it. A property this class DECLARED keeps its plain name -- php
+ * mangles the storage name there too, but nothing else in this engine ever sees
+ * the difference, and the plain key is what every lookup that does not know about
+ * a scope already asks for.
+ */
+PH7_PRIVATE const SyString * PH7_ClassAttrStorageName(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	ph7_class *pDecl;
+	sxu32 nCls,nName;
+	char *zKey;
+	if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE
+	 || (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_DYNAMIC)) != 0 ){
+		return &pAttr->sName;
+	}
+	pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
+	if( pDecl == 0 || pDecl == pClass ){
+		return &pAttr->sName;
+	}
+	if( pDecl->iFlags & PH7_CLASS_INTERNAL ){
+		/* An ENGINE class's slot keeps its plain name on every object below it:
+		 * the C bodies that own that storage address it by name (a DateTime's
+		 * timestamp, a PDOStatement's handle), and a subclass instance whose slots
+		 * were renamed read as an object whose parent constructor never ran. php
+		 * mangles an internal private too; nothing here can see the difference,
+		 * because an engine class's private is not a name user code declares. */
+		return &pAttr->sName;
+	}
+	if( SyStringLength(&pAttr->sStoreName) > 0 ){
+		return &pAttr->sStoreName;
+	}
+	nCls = SyStringLength(&pDecl->sName);
+	nName = SyStringLength(&pAttr->sName);
+	/* Class-lifetime, like sName's own dup: an attribute outlives every instance
+	 * whose table points at this key. */
+	zKey = (char *)SyMemBackendAlloc(&pVm->sAllocator,nCls + nName + 3);
+	if( zKey == 0 ){
+		return &pAttr->sName;
+	}
+	zKey[0] = 0;
+	SyMemcpy((const void *)SyStringData(&pDecl->sName),(void *)&zKey[1],nCls);
+	zKey[1+nCls] = 0;
+	SyMemcpy((const void *)SyStringData(&pAttr->sName),(void *)&zKey[nCls+2],nName);
+	zKey[nCls+nName+2] = 0;
+	SyStringInitFromBuf(&pAttr->sStoreName,zKey,nCls + nName + 2);
+	return &pAttr->sStoreName;
+}
+/*
+ * Which PROPERTY does `name` mean, seen from the class whose code is RUNNING?
+ *
+ * php's zend_get_parent_private_property: a scope that declares a private of this
+ * name owns a slot of its own on every instance below it, and that slot -- not
+ * whatever the object's class holds under the plain name -- is what its code
+ * means. Answers 0 when the executing scope has no such private, which leaves the
+ * caller on the ordinary plain-name path.
+ */
+static ph7_class_attr * OoScopePrivateAttr(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName)
+{
+	ph7_class *pScope;
+	SyHashEntry *pEntry;
+	ph7_class_attr *pOwn;
+	if( nName < 1 ){
+		return 0;
+	}
+	if( (pClass->iFlags & PH7_CLASS_SHADOW_PROP) == 0 ){
+		/* No property of this class is filed under a mangled name, so it holds no
+		 * slot the plain probe cannot reach. Reaching one at all takes a scope this
+		 * class DESCENDS from, and inheriting that scope's private is exactly what
+		 * sets the flag -- so this is the whole test, and every ordinary property
+		 * access skips the frame walk below on it. */
+		return 0;
+	}
+	pScope = PH7_VmCallerScope(&(*pVm));
+	if( pScope == 0 || pScope == pClass ){
+		return 0;   /* global scope, or the object's own class: the plain name IS the slot */
+	}
+	pEntry = SyHashGet(&pScope->hAttr,(const void *)zName,nName);
+	pOwn = pEntry ? (ph7_class_attr *)pEntry->pUserData : 0;
+	if( pOwn == 0
+	 || pOwn->iProtection != PH7_CLASS_PROT_PRIVATE
+	 || (pOwn->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) != 0
+	 || PH7_VmMemberOwnerClass(pOwn->pDeclClass,pScope) != pScope
+	 || !PH7_VmInstanceOf(pClass,pScope) ){
+		return 0;
+	}
+	return pOwn;
+}
+/*
+ * php presents an object's properties by their PLAIN names, so two slots that
+ * unmangle to the same one -- a base's private and the subclass's own property --
+ * collide on every surface that walks the object BY NAME: `foreach` and
+ * get_object_vars(). php keeps the FIRST accessible one in storage order and drops
+ * the rest, which is base-first, so a base method iterating a subclass instance
+ * sees its OWN `$q` and never the child's. Only the RAW surfaces show both --
+ * (array), serialize(), var_dump(), get_mangled_object_vars() -- and those key by
+ * the mangled name, where nothing collides.
+ *
+ * TRUE when an EARLIER entry of this object's table carries the same plain name
+ * and is itself accessible from here.
+ */
+PH7_PRIVATE int PH7_ClassInstanceAttrShadowed(ph7_vm *pVm,ph7_class_instance *pThis,SyHashEntry *pEntry)
+{
+	VmClassAttr *pMe = (VmClassAttr *)pEntry->pUserData;
+	SyString *pName;
+	SyHashEntry *pWalk;
+	if( (pThis->pClass->iFlags & PH7_CLASS_SHADOW_PROP) == 0 || pMe == 0 ){
+		return 0;   /* no mangled slot on this class: no name can collide */
+	}
+	pName = &pMe->pAttr->sName;
+	for( pWalk = SyHashFirstEntry(&pThis->hAttr) ; pWalk && pWalk != pEntry ;
+	     pWalk = SyHashEntryNext(pWalk) ){
+		VmClassAttr *pOther = (VmClassAttr *)pWalk->pUserData;
+		if( pOther == 0 || pOther->pAttr == pMe->pAttr ){
+			continue;
+		}
+		if( SyStringLength(&pOther->pAttr->sName) != SyStringLength(pName)
+		 || SyMemcmp((const void *)SyStringData(&pOther->pAttr->sName),
+			(const void *)SyStringData(pName),SyStringLength(pName)) != 0 ){
+			continue;
+		}
+		if( PH7_ClassInstanceAttrPresented(pOther)
+		 && PH7_VmClassAttrAccess(&(*pVm),pThis->pClass,pOther->pAttr,FALSE) ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * PH7_ClassExtractAttribute, told which scope is asking: the executing class's own
+ * private wins over the same name declared further down the chain.
+ */
+PH7_PRIVATE ph7_class_attr * PH7_ClassScopedAttribute(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName)
+{
+	ph7_class_attr *pOwn = OoScopePrivateAttr(&(*pVm),pClass,zName,nName);
+	if( pOwn ){
+		return pOwn;
+	}
+	return PH7_ClassExtractAttribute(pClass,zName,nName);
+}
+/*
+ * PH7_ClassInstanceAttrEntry, told which scope is asking. When the executing class
+ * declares a private of this name, its MANGLED slot is the only one it can mean --
+ * so a miss there is a miss, and never falls back to the plain name (php's fetch
+ * stops at the property_info it resolved; an `unset()` of that slot reads as
+ * undefined even when a public property of the same name sits beside it).
+ */
+PH7_PRIVATE SyHashEntry * PH7_ClassInstanceScopedAttrEntry(ph7_vm *pVm,ph7_class_instance *pThis,
+	const char *zName,sxu32 nName)
+{
+	ph7_class_attr *pOwn = OoScopePrivateAttr(&(*pVm),pThis->pClass,zName,nName);
+	if( pOwn ){
+		const SyString *pKey = PH7_ClassAttrStorageName(&(*pVm),pThis->pClass,pOwn);
+		return SyHashGet(&pThis->hAttr,(const void *)SyStringData(pKey),SyStringLength(pKey));
+	}
+	return PH7_ClassInstanceAttrEntry(pThis,zName,nName);
+}
+/*
  * Check if the given name is a class CONSTANT (or enum case).
  * php keeps constants and properties in separate namespaces, so constants live
  * in a dedicated table (hConst) and never collide with a same-named property.
@@ -548,6 +721,12 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			return SXERR_ABORT;
 		}
 	}
+	/* Mark as subclass BEFORE the members are copied. php's mangled storage name
+	 * for a TRAIT-composed private names the class that composed it, found by
+	 * walking the subclass's ANCESTRY (PH7_VmMemberOwnerClass) -- with pBase still
+	 * unset the walk stopped at the trait, cached that answer on the attribute,
+	 * and every later lookup then asked for a key the object's table did not hold. */
+	pSub->pBase = pBase;
 	/* A native class whose php-visible properties are LAZY passes that on: the
 	 * attributes copied below keep their flags, so a subclass of DateInterval has
 	 * the same ten to install, and the O(1) gate in front of the materialization
@@ -561,6 +740,20 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		/* Make sure the private attributes are not redeclared in the subclass */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
+		if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+		 && (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			/* A base's private INSTANCE property is a slot of its own on every
+			 * object below it, filed under php's mangled storage name -- so it can
+			 * never collide with a subclass member of the same name, and the
+			 * redeclaration rules below have nothing to say about it. The subclass
+			 * keeps its own declaration exactly where it wrote it. */
+			rc = SySetPut(&aInherited,(const void *)&pAttr);
+			if( rc != SXRET_OK ){
+				SySetRelease(&aInherited);
+				return rc;
+			}
+			continue;
+		}
 		if( (pEntry = SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte)) != 0 ){
 			if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_FINAL))
 				== (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_FINAL) ){
@@ -619,24 +812,23 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			}
 			continue;
 		}
-		/* Collect the attribute. php: a base class's private INSTANCE property
-		 * lives on every child instance too (its own methods read/write it
-		 * through $this on the child; the access check grants private access by
-		 * DECLARING class, so child methods and outsiders still can't touch it).
-		 * Private STATICS/CONSTANTS stay uncopied — base methods reach those
-		 * through self:: against the declaring class directly.
+		/* Collect the attribute. A private STATIC comes down too: php keeps one
+		 * in the child's property table -- `B::$s` on `class A { private static
+		 * $s; }` is "Cannot access private property B::$s", the visibility
+		 * refusal, and not the undeclared-static one -- and nothing else could
+		 * find it, so `static::$s` from a base method with the subclass as its
+		 * late-static-binding target reported its own static as undeclared. Its
+		 * storage is the DECLARING class's slot either way (nIdx is shared), so
+		 * this is a second name for one static, exactly as php has it.
 		 *
 		 * These are gathered rather than installed here because php orders an
 		 * instance's properties BASE-DECLARED FIRST, then the subclass's own,
 		 * then trait members — while inheritance runs AFTER the subclass body
 		 * has already filled hAttr. They are prepended below. */
-		if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE
-		 || (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
-			rc = SySetPut(&aInherited,(const void *)&pAttr);
-			if( rc != SXRET_OK ){
-				SySetRelease(&aInherited);
-				return rc;
-			}
+		rc = SySetPut(&aInherited,(const void *)&pAttr);
+		if( rc != SXRET_OK ){
+			SySetRelease(&aInherited);
+			return rc;
 		}
 	}
 	/* Prepend the collected base attributes so hAttr reads base-first. The
@@ -650,7 +842,13 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		sxu32 n = SySetUsed(&aInherited);
 		while( n > 0 ){
 			ph7_class_attr *pIn = apInherited[--n];
-			rc = SyHashInsert(&pSub->hAttr,(const void *)pIn->sName.zString,pIn->sName.nByte,pIn);
+			/* Under php's STORAGE name, which is the plain one for everything but
+			 * an inherited private instance property. */
+			const SyString *pKey = PH7_ClassAttrStorageName(pGen->pVm,pSub,pIn);
+			if( pKey != &pIn->sName ){
+				pSub->iFlags |= PH7_CLASS_SHADOW_PROP;
+			}
+			rc = SyHashInsert(&pSub->hAttr,(const void *)pKey->zString,pKey->nByte,pIn);
 			if( rc != SXRET_OK ){
 				SySetRelease(&aInherited);
 				return rc;
@@ -666,6 +864,14 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		SyHashEntry *pOwn;
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
+		if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
+			/* A private CONSTANT is not inherited at all: php answers `B::K` with
+			 * "Undefined constant B::K", never with the visibility refusal it words
+			 * for `A::K`. Copying it down said "Cannot access private constant
+			 * B::K" -- and let `static::K` from a base method find one php does
+			 * not. A base method's own `self::K` resolves against A directly. */
+			continue;
+		}
 		if( (pOwn = SyHashGet(&pSub->hConst,(const void *)pName->zString,pName->nByte)) != 0 ){
 			if( (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) ){
 				/* Cannot override a final class constant. Report the class that
@@ -778,8 +984,6 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			return rc;
 		}
 	}
-	/* Mark as subclass */
-	pSub->pBase = pBase;
 	/* All done */
 	return SXRET_OK;
 }
@@ -893,6 +1097,8 @@ static ph7_class_attr * VmCloneTraitAttr(ph7_vm *pVm,ph7_class_attr *pSrc)
 	}
 	SyMemcpy((const void *)pSrc,(void *)pNew,sizeof(ph7_class_attr));
 	pNew->nIdx = SXU32_HIGH; /* its own storage slot, reserved at this class's mount */
+	SyZero(&pNew->sStoreName,sizeof(SyString)); /* ...and its own mangled name, which
+	                          * names the class that COMPOSED it and not the source's */
 	pNew->iFlags &= ~(PH7_CLASS_ATTR_EVALING|PH7_CLASS_ATTR_STATIC_DEFER);
 	return pNew;
 }
@@ -1647,7 +1853,10 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 		if( pSrcAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
 			continue;
 		}
-		pEntry2 = SyHashGet(&pClone->hAttr,SyStringData(&pSrcAttr->pAttr->sName),SyStringLength(&pSrcAttr->pAttr->sName));
+		/* By the source's own KEY: a private property of a BASE class is filed under
+		 * php's mangled storage name, and matching on the attribute's plain name
+		 * would copy it over the same-named slot of the object's own class. */
+		pEntry2 = SyHashGet(&pClone->hAttr,pEntry->pKey,pEntry->nKeyLen);
 		if( pEntry2 ){
 			pDestAttr = (VmClassAttr *)pEntry2->pUserData;
 			pvDest = ExtractClassAttrValue(pVm,pDestAttr);
@@ -1702,25 +1911,23 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 	 * free the node the SyHash loop cursor points at. */
 	{
 		SySet sDrop;
-		SySetInit(&sDrop,&pVm->sAllocator,sizeof(VmClassAttr *));
+		SySetInit(&sDrop,&pVm->sAllocator,sizeof(SyHashEntry *));
 		SyHashResetLoopCursor(&pClone->hAttr);
 		while((pEntry = SyHashGetNextEntry(&pClone->hAttr)) != 0 ){
 			VmClassAttr *pCloneAttr = (VmClassAttr *)pEntry->pUserData;
 			if( pCloneAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
 				continue;
 			}
-			if( SyHashGet(&pSrc->hAttr,SyStringData(&pCloneAttr->pAttr->sName),
-					SyStringLength(&pCloneAttr->pAttr->sName)) == 0 ){
-				SySetPut(&sDrop,(const void *)&pCloneAttr);
+			if( SyHashGet(&pSrc->hAttr,pEntry->pKey,pEntry->nKeyLen) == 0 ){
+				SySetPut(&sDrop,(const void *)&pEntry);
 			}
 		}
 		if( SySetUsed(&sDrop) > 0 ){
-			VmClassAttr **apDrop = (VmClassAttr **)SySetBasePtr(&sDrop);
+			SyHashEntry **apDrop = (SyHashEntry **)SySetBasePtr(&sDrop);
 			sxu32 i;
 			for( i = 0 ; i < SySetUsed(&sDrop) ; ++i ){
-				VmClassAttr *pVmAttr = apDrop[i];
-				SyHashDeleteEntry(&pClone->hAttr,SyStringData(&pVmAttr->pAttr->sName),
-					SyStringLength(&pVmAttr->pAttr->sName),0);
+				VmClassAttr *pVmAttr = (VmClassAttr *)apDrop[i]->pUserData;
+				SyHashDeleteEntry(&pClone->hAttr,apDrop[i]->pKey,apDrop[i]->nKeyLen,0);
 				PH7_VmReleaseInstanceAttr(pVm,pVmAttr);
 			}
 		}

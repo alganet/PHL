@@ -1351,6 +1351,62 @@ dis:
 	return 0; /* Access is forbidden */
 }
 /*
+ * The same question about one PROPERTY rather than about a NAME.
+ *
+ * A private member belongs to a SLOT, not to a name: once a base's private
+ * instance property is carried into a subclass under php's mangled storage name
+ * (PH7_ClassAttrStorageName), one object can hold two of them, and the name-based
+ * rule above would hand the executing scope whichever it was shown -- a subclass
+ * method reading its own `$q` would be granted its base's `$q` just as readily.
+ * php decides an inherited private by identity alone: the executing scope IS the
+ * declaring class, or the slot is not reachable at all.
+ *
+ * A property the reflected class DECLARED is left to the name-based rule, whose
+ * trait grants and legacy fallbacks are what every other caller has always had.
+ */
+PH7_PRIVATE int PH7_VmClassAttrAccess(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,int bLog)
+{
+	if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+	 && (pClass->iFlags & PH7_CLASS_TRAIT) == 0 ){
+		ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
+		ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
+		int bDeny = 0;
+		if( pScope && pOwner ){
+			if( pScope == pOwner ){
+				return 1;   /* php's rule, stated positively */
+			}
+			if( pOwner != pClass ){
+				/* An INHERITED private: this slot is the declaring class's and no
+				 * one else's, so identity is the whole rule. */
+				bDeny = 1;
+			}else{
+				/* The scope declares a private of this NAME, but it is a member of
+				 * its own -- granting on the name would hand a base method the
+				 * CHILD's property (and the other way round). Properties and
+				 * constants are php's two separate namespaces, so ask the table
+				 * this member belongs to. */
+				SyHash *pTab = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)
+					? &pScope->hConst : &pScope->hAttr;
+				SyHashEntry *pE = SyHashGet(pTab,
+					(const void *)SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName));
+				ph7_class_attr *pOwn = pE ? (ph7_class_attr *)pE->pUserData : 0;
+				if( pOwn && pOwn != pAttr && pOwn->iProtection == PH7_CLASS_PROT_PRIVATE ){
+					bDeny = 1;
+				}
+			}
+		}
+		if( bDeny ){
+			if( bLog ){
+				VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+					"Access to the class attribute '%z->%z' is forbidden",
+					&pClass->sName,&pAttr->sName);
+			}
+			return 0;
+		}
+	}
+	return PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,bLog);
+}
+/*
  * array get_class_vars(string/object $class_name)
  *   Get the default properties of the class
  * Parameters
@@ -1492,7 +1548,9 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 	 * the hash's single embedded loop cursor) or unset()/create properties. The
 	 * names point into CLASS-owned attr storage (they outlive instance mutation);
 	 * each is re-looked-up before use so an entry unset by an earlier hook is
-	 * skipped instead of read after free. */
+	 * skipped instead of read after free. The name snapshotted is the STORAGE
+	 * key -- an inherited private lives under php's mangled one -- while the key
+	 * php puts in the answer is the property's plain name. */
 	{
 		SySet sNames;
 		SyString *aName;
@@ -1512,7 +1570,14 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 				continue; /* virtual set-only property: no value to expose (php) */
 			}
-			SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
+			if( PH7_ClassInstanceAttrShadowed(pCtx->pVm,pThis,pEntry) ){
+				continue; /* an earlier accessible slot already answers for this name */
+			}
+			{
+				SyString sKey;
+				SyStringInitFromBuf(&sKey,(const char *)pEntry->pKey,pEntry->nKeyLen);
+				SySetPut(&sNames,(const void *)&sKey);
+			}
 		}
 		aName = (SyString *)SySetBasePtr(&sNames);
 		nName = SySetUsed(&sNames);
@@ -1525,7 +1590,7 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 			}
 			pVmAttr = (VmClassAttr *)pEntry->pUserData;
 			/* Check if the access is allowed */
-			if( PH7_VmClassMemberAccess(pCtx->pVm,pThis->pClass,pAttrName,pVmAttr->pAttr->iProtection,FALSE) ){
+			if( PH7_VmClassAttrAccess(pCtx->pVm,pThis->pClass,pVmAttr->pAttr,FALSE) ){
 				ph7_value *pValue = 0;
 				ph7_value sHookVal;
 				sxi32 rcHk;
@@ -1547,8 +1612,9 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 					break;
 				}
 				if( pValue ){
-					/* Insert attribute name in the array */
-					ph7_value_string(pName,pAttrName->zString,pAttrName->nByte);
+					/* Insert attribute name in the array -- php unmangles it. */
+					ph7_value_string(pName,SyStringData(&pVmAttr->pAttr->sName),
+						(int)SyStringLength(&pVmAttr->pAttr->sName));
 					ph7_array_add_elem(pArray,pName,pValue); /* Will make it's own copy */
 				}
 				PH7_MemObjRelease(&sHookVal);

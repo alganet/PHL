@@ -857,7 +857,14 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 				 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 					continue; /* virtual set-only property: no value to export (php) */
 				}
-				SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
+				{
+					/* The STORAGE key, which is php's MANGLED name for an inherited
+					 * private -- snapshotting the plain one re-looked-up the object's
+					 * OWN property of that name and exported its value twice. */
+					SyString sKey;
+					SyStringInitFromBuf(&sKey,(const char *)pEntry->pKey,pEntry->nKeyLen);
+					SySetPut(&sNames,(const void *)&sKey);
+				}
 			}
 			aName = (SyString *)SySetBasePtr(&sNames);
 			nName = SySetUsed(&sNames);
@@ -870,8 +877,9 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 				pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				VmExportIndent(pOut,nIndent+3); /* object property lines sit one deeper than arrays */
 				if( pAName->nByte > 0 && pAName->zString[0] == 0 ){
-					/* A MANGLED key stored raw (the __PHP_Incomplete_Class carrier):
-					 * php's var_export prints the PLAIN name ('bp' => 1). */
+					/* A MANGLED key -- an inherited private's storage name, or the
+					 * __PHP_Incomplete_Class carrier's raw payload key: php's
+					 * var_export prints the PLAIN name ('bp' => 1). */
 					SyString sUnmCls, sUnmName;
 					SyStringInitFromBuf(&sUnmName,pAName->zString,pAName->nByte);
 					PH7_UnmangleAttrName(pAName->zString,pAName->nByte,&sUnmCls,&sUnmName);

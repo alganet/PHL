@@ -597,6 +597,66 @@ static void VmMagicRmwArm(
 	*pnScratch = pScr->nIdx;
 }
 /*
+ * The property php's `C::$name` form finds. That form reads the class's whole
+ * property table -- instance properties and constants included, answering on
+ * visibility before static-ness (see the arm that uses it) -- and php's table
+ * carries a base's PRIVATE instance property as a SHADOW entry, so `B::$q` on
+ * `class A { private $q; }` is "Cannot access private property B::$q" and not the
+ * undeclared-static sentence. Here that member lives under its mangled STORAGE
+ * name, which the plain probe cannot see, so the ancestry answers for it: the
+ * nearest base that declares one under the plain name.
+ */
+static ph7_class_attr * VmClassAttrWithShadow(ph7_class *pClass,const char *zName,sxu32 nName)
+{
+	ph7_class *pWalk;
+	ph7_class_attr *pAttr = PH7_ClassExtractAttribute(pClass,zName,nName);
+	if( pAttr ){
+		return pAttr;
+	}
+	for( pWalk = pClass->pBase ; pWalk ; pWalk = pWalk->pBase ){
+		pAttr = PH7_ClassExtractAttribute(pWalk,zName,nName);
+		if( pAttr ){
+			return (pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+			     && (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0)
+				? pAttr : 0;
+		}
+	}
+	return 0;
+}
+/*
+ * May the executing scope touch this class-level member reached through an
+ * INSTANCE (`$o->s` on a static, or on a class constant)?
+ *
+ * The ordinary attribute rule, plus php's shadow re-lookup: when the member the
+ * object's class holds under this name is a private one the scope may not touch,
+ * php asks the SCOPE's own table for the name and uses what it finds there. With
+ * `class A { private static $q; } class B extends A { private static $q; }` that
+ * is how `$b->q` from inside A reaches A's own -- the as-non-static notice and
+ * then the ordinary undefined-property answer, rather than a visibility refusal
+ * about B's.
+ */
+static int VmStaticThroughInstanceVisible(ph7_vm *pVm,ph7_class *pClass,
+	ph7_class_attr *pAttr,const SyString *pName)
+{
+	ph7_class *pScope;
+	ph7_class_attr *pShadow;
+	if( PH7_VmClassAttrAccess(&(*pVm),pClass,pAttr,FALSE) ){
+		return 1;
+	}
+	if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE || pName->nByte < 1 ){
+		return 0;
+	}
+	pScope = PH7_VmCallerScope(&(*pVm));
+	if( pScope == 0 || !PH7_VmInstanceOf(pClass,pScope) ){
+		return 0;
+	}
+	pShadow = PH7_ClassExtractAttribute(pScope,pName->zString,pName->nByte);
+	return pShadow != 0
+		&& pShadow != pAttr
+		&& pShadow->iProtection == PH7_CLASS_PROT_PRIVATE
+		&& PH7_VmMemberOwnerClass(pShadow->pDeclClass,pScope) == pScope;
+}
+/*
  * OP_MEMBER: body moved verbatim from the OP_MEMBER arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -978,24 +1038,33 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						PH7_THROW_ROUTE_MIDEXPR(rc)
 					}
 				}
-				/* Extract the target attribute. The EMPTY name is a real property
-				 * name in php — `$o->{''} = 1` creates one and `$o->{''}` reads it
-				 * back — and it is the one name SyHashGet cannot answer for, so it
-				 * takes the list-walking lookup; every other name keeps the direct
-				 * hash probe this path has always made. */
-				if( sName.nByte > 0 ){
-					pEntry = SyHashGet(&pThis->hAttr,(const void *)sName.zString,sName.nByte);
-				}else{
-					pEntry = PH7_ClassInstanceAttrEntry(pThis,sName.zString,0);
-				}
+				/* Extract the target attribute, as the class whose code is RUNNING
+				 * sees it: a scope that declares a private of this name owns a slot
+				 * of its own on every instance below it (php's mangled storage name)
+				 * and means THAT one, whatever the object's class holds under the
+				 * plain name. The EMPTY name is a real property name in php —
+				 * `$o->{''} = 1` creates one and `$o->{''}` reads it back — and it is
+				 * the one name SyHashGet cannot answer for, so it takes a
+				 * list-walking lookup inside. */
+				pEntry = PH7_ClassInstanceScopedAttrEntry(&(*pVm),pThis,sName.zString,sName.nByte);
 				if( pEntry ){
 					/* Point to the attribute value */
 					pObjAttr = (VmClassAttr *)pEntry->pUserData;
 				}
 				if( pObjAttr
 				 && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT))
-				 && PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,
-					pObjAttr->pAttr->iProtection,FALSE) ){
+				 && !VmStaticThroughInstanceVisible(&(*pVm),pClass,pObjAttr->pAttr,&sName) ){
+					/* A private static this scope may not touch. When it is an INHERITED
+					 * one php's instance path does not see it at all: `$b->s` is an
+					 * ordinary MISSING property (warn and null, a dynamic write, a silent
+					 * unset), with none of the visibility refusal the DECLARING class's
+					 * own instance gets. The declaring class's own keeps the refusal. */
+					if( PH7_VmMemberOwnerClass(pObjAttr->pAttr->pDeclClass,pClass) != pClass ){
+						pEntry = 0;
+						pObjAttr = 0;
+					}
+				}else if( pObjAttr
+				 && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) ){
 					/* A static property (or a constant) belongs to the CLASS: php does
 					 * not find it through an instance at all. It notices the attempt —
 					 * `Accessing static property C::$s as non static` — and then treats
@@ -1132,9 +1201,9 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * (band A #3b — pre-fix an inaccessible private was silently DELETED from
 					 * outside the class); without __unset, an inaccessible unset is php's
 					 * catchable "Cannot access ..." Error and a missing one stays a no-op. */
-					int bUnsAccessible = pEntry ? PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) : 0;
+					int bUnsAccessible = pEntry ? PH7_VmClassAttrAccess(&(*pVm),pClass,pObjAttr->pAttr,FALSE) : 0;
 					ph7_class_attr *pUnsNoWrite = pEntry ? pObjAttr->pAttr
-						: PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
+						: PH7_ClassScopedAttribute(&(*pVm),pClass,sName.zString,sName.nByte);
 					sxi32 rcUnsRo = SXRET_OK;
 					if( pEntry && (pObjAttr->iState & VM_CLASS_ATTR_RDONLY) != 0 ){
 						/* php's read-only handler answers an unset with the same sentence
@@ -1240,7 +1309,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					VmInstr *pNext = pInstr + 1;
 					if( pInstr->iP2 == PH7_MEMBER_WRITE || pInstr->iP2 == PH7_MEMBER_LIST_TARGET
 					 || VmMemberNextIsWrite(pNext) ){
-						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);
+						ph7_class_attr *pDecl = PH7_ClassScopedAttribute(&(*pVm),pThis->pClass,sName.zString,sName.nByte);
 						if( pDecl && PH7_ATTR_LAZY_ABSENT(pDecl,pThis) ){
 							/* The object has never held this name. A class whose handler
 							 * REFUSES every write answers the same sentence with or
@@ -1604,7 +1673,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						 * raises). Only a name the class does not declare at all is the
 						 * "Undefined property" warning. A destructuring target is silent
 						 * either way: php created the property above or dispatched __set. */
-						ph7_class_attr *pDeclAttr = PH7_ClassExtractAttribute(pClass,
+						ph7_class_attr *pDeclAttr = PH7_ClassScopedAttribute(&(*pVm),pClass,
 							SyStringData(&sName),SyStringLength(&sName));
 						/* A static property, a class constant and a native engine slot are
 						 * not instance properties; a dynamic one is gone for good once it
@@ -1630,8 +1699,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						if( pLazyDefault ){
 							/* php's read handler answered: say nothing. */
 						}else if( pDeclAttr
-						 && !PH7_VmClassMemberAccess(&(*pVm),pClass,&pDeclAttr->sName,
-							pDeclAttr->iProtection,FALSE) ){
+						 && !PH7_VmClassAttrAccess(&(*pVm),pClass,pDeclAttr,FALSE) ){
 							SyBlob sErrMsg;
 							const char *zVis = pDeclAttr->iProtection == PH7_CLASS_PROT_PRIVATE
 								? "private" : "protected";
@@ -1730,7 +1798,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				if( pObjAttr ){
 					ph7_value *pValue = 0; /* cc warning */
 					/* Check attribute access */
-					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) ){
+					if( PH7_VmClassAttrAccess(&(*pVm),pClass,pObjAttr->pAttr,FALSE) ){
 						if( (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET))
 						 && !VmHookGuardHeld(pVm,(void *)pThis,&sName) ){
 							/* PHP 8.4 property hooks: route reads, writes, and the
@@ -2207,24 +2275,14 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							PH7_ClassInstanceUnref(pThis);
 							VM_EXIT_BREAK; /* pTos is already the null temp */
 						}
-						/* A subclass reading a PARENT's PRIVATE property: php treats it as
-						 * an UNDEFINED property (the base-private is invisible to the
-						 * subclass scope) — a Warning + null, NOT an access Error. Only
-						 * this exact shape warns; every other denied read is the catchable
-						 * "Cannot access" Error below. */
-						{
-						ph7_class *pSelf = VmCurrentSelf(&(*pVm));
-						ph7_class *pDecl = pObjAttr->pAttr->pDeclClass;
-						if( pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
-						 && pSelf && pDecl && pSelf != pDecl && PH7_VmInstanceOf(pSelf,pDecl) ){
-							if( !VmMemberCtxIsLookup(pInstr->iP2) ){
-								VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
-									&pClass->sName,&sName);
-							}
-							PH7_ClassInstanceUnref(pThis);
-							VM_EXIT_BREAK; /* pTos is already the null temp */
-						}
-						}
+						/* A subclass reading a PARENT's PRIVATE property used to be
+						 * special-cased into an "Undefined property" warning here. It is
+						 * php's answer, but not because of the SCOPE: the base's private
+						 * lives under its mangled storage name, so the subclass's plain
+						 * lookup never reaches this point at all -- and reading the SAME
+						 * property on an instance of the declaring class, which does, is
+						 * php's ordinary visibility refusal. Deciding it from the scope
+						 * turned that one into a warning too. */
 						/* Genuinely inaccessible: php's CATCHABLE Error (parked on the
 						 * boundary rail; the fetch-point router lands it — it was an
 						 * uncatchable VmReportUncaughtException+Abort before). */
@@ -2786,7 +2844,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						if( sName.nByte > 0 ){
 							pAttr = bConstForm
 								? PH7_ClassExtractConstant(pClass,sName.zString,sName.nByte)
-								: PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
+								: VmClassAttrWithShadow(pClass,sName.zString,sName.nByte);
 						}
 						if( pAttr && bConstForm && (pClass->iFlags & PH7_CLASS_TRAIT) != 0
 						 && !VmMemberCtxIsLookup(pInstr->iP2) ){
@@ -2821,8 +2879,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * raising the visibility refusal first when that is what php
 							 * answers. */
 							if( !VmMemberCtxIsLookup(pInstr->iP2)
-							 && !PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,
-									pAttr->iProtection,FALSE) ){
+							 && !PH7_VmClassAttrAccess(&(*pVm),pClass,pAttr,FALSE) ){
 								SyBlob sErrVis;
 								SyBlobInit(&sErrVis,&pVm->sAllocator);
 								SyBlobFormat(&sErrVis,"Cannot access %s property %z::$%z",
@@ -2895,7 +2952,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								}
 							}
 							if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_STATIC)
-							 && PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
+							 && PH7_VmClassAttrAccess(&(*pVm),pClass,pAttr,FALSE) ){
 								pVm->pRefTargetStaticAttr = pAttr;
 								pVm->pRefTargetAttr = 0;
 								pVm->pRefTargetThis = 0;
@@ -2943,7 +3000,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									}
 								}
 								/* Check if the access to the attribute is allowed */
-								if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
+								if( PH7_VmClassAttrAccess(&(*pVm),pClass,pAttr,FALSE) ){
 									/* PHP 7.4+: uninitialized typed static read.
 									 * Same LHS-of-store peek as the instance path. */
 									if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0

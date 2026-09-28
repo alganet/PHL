@@ -1708,6 +1708,12 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 	SyHashResetLoopCursor(&pClass->hAttr);
 	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
 		VmClassAttr *pVmAttr;
+		/* The KEY the class filed it under, not the attribute's own name: an
+		 * inherited PRIVATE instance property lives under php's mangled storage
+		 * name (PH7_ClassAttrStorageName), which is what keeps a base's `$q` and a
+		 * child's `$q` two slots on one object instead of one. */
+		const void *pKey = pEntry->pKey;
+		sxu32 nKeyLen = pEntry->nKeyLen;
 		/* Extract the current attribute */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY ){
@@ -1791,7 +1797,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 				 * it before the first write is an Error in PHP 7.4+. */
 				pVmAttr->iState |= VM_CLASS_ATTR_UNINIT;
 			}
-			rc = SyHashInsertTail(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
+			rc = SyHashInsertTail(&pObj->hAttr,pKey,nKeyLen,pVmAttr);
 			if( rc != SXRET_OK ){
 				VmSlot sSlot;
 				/* Restore memory object */
@@ -1810,7 +1816,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			rc = PH7_VmStoreFilterRegister(&(*pVm),pVmAttr);
 			if( rc != SXRET_OK ){
 				VmSlot sSlot;
-				SyHashDeleteEntry(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
+				SyHashDeleteEntry(&pObj->hAttr,pKey,nKeyLen,0);
 				sSlot.nIdx = pMemObj->nIdx;
 				sSlot.pUserData = 0;
 				SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
@@ -1823,7 +1829,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			pVmAttr->iState = 0;
 			pVmAttr->pOwner = pClass;
 			pVmAttr->pInst = 0;   /* a static slot belongs to the class, not to this object */
-			rc = SyHashInsertTail(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
+			rc = SyHashInsertTail(&pObj->hAttr,pKey,nKeyLen,pVmAttr);
 			if( rc != SXRET_OK ){
 				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 				return SXERR_MEM;
@@ -2035,6 +2041,9 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 {
 	VmClassAttr *pVmAttr;
 	ph7_value *pMemObj;
+	/* php's storage name: a base's private goes back into the slot it came out
+	 * of, beside (not over) a same-named property of the object's own class. */
+	const SyString *pKey = PH7_ClassAttrStorageName(&(*pVm),pThis->pClass,pAttr);
 	pVmAttr = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));
 	if( pVmAttr == 0 ){
 		return;
@@ -2061,7 +2070,7 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 	 * PHP keeps a re-added DECLARED property in its original declared position; replicating that
 	 * exactly needs a keep-entry/mark-unset model across every iteration site — deferred. The value
 	 * is always correct; only the relative order of a declared prop re-added after unset differs. */
-	if( SyHashInsertTail(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr) != SXRET_OK ){
+	if( SyHashInsertTail(&pThis->hAttr,SyStringData(pKey),SyStringLength(pKey),pVmAttr) != SXRET_OK ){
 		VmSlot sSlot;
 		sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
 		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
@@ -2071,7 +2080,7 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
 	if( PH7_VmStoreFilterRegister(&(*pVm),pVmAttr) != SXRET_OK ){
 		VmSlot sSlot;
-		SyHashDeleteEntry(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
+		SyHashDeleteEntry(&pThis->hAttr,SyStringData(pKey),SyStringLength(pKey),0);
 		sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
 		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
 		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
@@ -2079,7 +2088,7 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 	}
 	/* Re-armed only once the entry is here to stay: the rollback above deletes it. */
 	PH7_ClassInstanceAttrAppended(pThis,
-		SyHashGet(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName)));
+		SyHashGet(&pThis->hAttr,SyStringData(pKey),SyStringLength(pKey)));
 	if( ppAttr ){
 		*ppAttr = pVmAttr;
 	}

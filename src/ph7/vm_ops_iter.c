@@ -212,8 +212,10 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				continue; /* typed, never written: not there yet (php) */
 			}
 			/* Check access permission */
-			if( PH7_VmClassMemberAccess(&(*pVm),pThis->pClass,&pVmAttr->pAttr->sName,
-				pVmAttr->pAttr->iProtection,FALSE) ){
+			if( PH7_ClassInstanceAttrShadowed(&(*pVm),pThis,pEntry) ){
+				continue; /* an earlier accessible slot already answers for this name */
+			}
+			if( PH7_VmClassAttrAccess(&(*pVm),pThis->pClass,pVmAttr->pAttr,FALSE) ){
 					break; /* Access is granted */
 			}
 		}

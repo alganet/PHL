@@ -8252,6 +8252,23 @@ static VmClassAttr * ReflectInstanceAttr(ph7_class_instance *pObj, const char *z
 	pEntry = SyHashGet(&pObj->hAttr, (const void *)zName, (sxu32)nName);
 	return pEntry ? (VmClassAttr *)pEntry->pUserData : 0;
 }
+/*
+ * The instance slot a resolved ReflectionProperty addresses. A base class's
+ * PRIVATE property lives under php's MANGLED storage name on every object below
+ * it, so looking it up by its plain name would find the same-named property of
+ * the object's OWN class instead -- reading and writing the wrong slot.
+ */
+static VmClassAttr * ReflectRefInstanceAttr(ph7_vm *pVm, ph7_class_instance *pObj,
+	const ReflectMemberRef *pRef)
+{
+	if( pObj && pRef->pAttr ){
+		const SyString *pKey = PH7_ClassAttrStorageName(pVm, pObj->pClass, pRef->pAttr);
+		SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,
+			(const void *)SyStringData(pKey), SyStringLength(pKey));
+		return pEntry ? (VmClassAttr *)pEntry->pUserData : 0;
+	}
+	return ReflectInstanceAttr(pObj, pRef->zName, pRef->nName);
+}
 /* ---- ReflectionProperty ---- */
 /* ReflectionProperty::__construct(object|string $class, string $property) */
 static int vm_builtin_ReflectionProperty_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -8609,7 +8626,7 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
+	pVmAttr = ReflectRefInstanceAttr(pCtx->pVm, pObj, &sRef);
 	if( pVmAttr == 0 ){
 		/* No slot: a class whose properties are its own handlers answers here,
 		 * as php's does -- Reflection reads a PDORow's `queryString` through
@@ -8629,6 +8646,15 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 			return PH7_OK;
 		}
 		PH7_MemObjRelease(&sNatVal);
+		if( sRef.pAttr
+		 && (sRef.pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
+		                           |PH7_CLASS_ATTR_HIDDEN)) == 0 ){
+			/* A DECLARED property the object no longer holds -- unset() took it.
+			 * php reads it the way `$o->p` does, and warns exactly the same:
+			 * `Undefined property: C::$p`, naming the OBJECT's class. */
+			VmErrorFormat(pCtx->pVm, PH7_CTX_WARNING, "Undefined property: %z::$%.*s",
+				&pObj->pClass->sName, sRef.nName, sRef.zName);
+		}
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -8673,7 +8699,7 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
+	pVmAttr = ReflectRefInstanceAttr(pCtx->pVm, pObj, &sRef);
 	if( pVmAttr == 0 ){
 		/* No slot: the write handler answers, and for a class that has one the
 		 * answer is its own refusal (php's PDORow refuses Reflection's write
@@ -8689,7 +8715,16 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 			return PH7_VmThrowException(pCtx, sNat.zThrowClass, "%s", sNat.zThrowMsg);
 		}
 		PH7_MemObjRelease(&sNatVal);
-		return PH7_OK;
+		if( sRef.pAttr
+		 && (sRef.pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
+		                           |PH7_CLASS_ATTR_HIDDEN)) == 0 ){
+			/* A DECLARED property unset() took away: php's write RE-CREATES it,
+			 * exactly as `$o->p = v` does. PHL wrote nowhere and said nothing. */
+			VmRecreateDeclaredAttr(pCtx->pVm, pObj, sRef.pAttr, &pVmAttr);
+		}
+		if( pVmAttr == 0 ){
+			return PH7_OK;
+		}
 	}
 	if( pVmAttr->pAttr && (pVmAttr->iState & VM_CLASS_ATTR_RDONLY) ){
 		/* php's read-only handler refuses Reflection's write with the sentence
@@ -8742,7 +8777,7 @@ static int vm_builtin_ReflectionProperty_isInitialized(ph7_context *pCtx, int nA
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
+	pVmAttr = ReflectRefInstanceAttr(pCtx->pVm, pObj, &sRef);
 	ph7_result_bool(pCtx, pVmAttr != 0 && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0);
 	return PH7_OK;
 }

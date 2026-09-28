@@ -1750,6 +1750,12 @@ struct ph7_class
                                        * only while the native offsetGet is still the one that
                                        * answers: an override takes the class off the fast handler
                                        * in php too. See PH7_VmDimFetchWritable. */
+#define PH7_CLASS_SHADOW_PROP 0x10000 /* At least one property of this class is filed under php's
+                                       * MANGLED storage name -- a base's PRIVATE instance property,
+                                       * carried down so the subclass's objects still hold its slot
+                                       * (PH7_ClassAttrStorageName). The only way two slots of one
+                                       * object can share a plain NAME, which is what the by-name
+                                       * presentation surfaces have to de-duplicate. */
 #define PH7_CLASS_LAZY_ATTR    0x8000 /* This class declares at least one PH7_CLASS_ATTR_NATIVE_LAZY
                                        * property. The O(1) gate in front of the materialization walk:
                                        * every native class writes its slots through the same setters,
@@ -1774,6 +1780,11 @@ struct ph7_class
 struct ph7_class_attr
 {
 	SyString sName;      /* Atrribute name */
+	SyString sStoreName; /* php's MANGLED storage name for a PRIVATE instance property --
+	                      * "\0DeclaringClass\0name" -- materialized the first time this
+	                      * attribute is filed in a class that did not declare it. Empty
+	                      * (nByte == 0) until then, and for every other attribute, whose
+	                      * storage name is sName. See PH7_ClassAttrStorageName. */
 	sxi32 iFlags;        /* Attribute configuration [i.e: static, variable, constant, etc.] */
 	sxi32 iProtection;   /* Protection level [i.e: public, private, protected] */
 	SySet aByteCode;     /* Compiled attribute body */
@@ -4420,6 +4431,7 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...);
 PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass);
 PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis);
 PH7_PRIVATE int PH7_VmClassMemberAccess(ph7_vm *pVm,ph7_class *pClass,const SyString *pAttrName,sxi32 iProtection,int bLog);
+PH7_PRIVATE int PH7_VmClassAttrAccess(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,int bLog);
 PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmMethodScopeName(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMeth);
 PH7_PRIVATE int PH7_VmFccMethodIsDirect(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName);
@@ -6131,6 +6143,10 @@ PH7_PRIVATE void  PH7_ClassInstanceUnref(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth);
 PH7_PRIVATE int PH7_UnmangleAttrName(const char *zKey,sxu32 nKey,SyString *pClass,SyString *pName);
 PH7_PRIVATE SyHashEntry * PH7_ClassInstanceAttrEntry(ph7_class_instance *pThis,const char *zName,sxu32 nName);
+PH7_PRIVATE const SyString * PH7_ClassAttrStorageName(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
+PH7_PRIVATE ph7_class_attr * PH7_ClassScopedAttribute(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName);
+PH7_PRIVATE SyHashEntry * PH7_ClassInstanceScopedAttrEntry(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName);
+PH7_PRIVATE int PH7_ClassInstanceAttrShadowed(ph7_vm *pVm,ph7_class_instance *pThis,SyHashEntry *pEntry);
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const char *zMethod,
 	sxu32 nByte,const SyString *pAttrName,ph7_value *pResult);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pThis,VmClassAttr *pAttr);
