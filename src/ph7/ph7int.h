@@ -4344,6 +4344,11 @@ PH7_PRIVATE sxi32 PH7_PhpFloatShape(char *zBuf,sxi32 nLen,int bGeneric);
 PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,int bReturnPropagates);
 PH7_PRIVATE int VmLocalExecThrew(ph7_vm *pVm,sxi32 rc,const void *pResumeBefore,const void *pInlineBefore);
 PH7_PRIVATE int PH7_VmIsAutoGlobal(const char *zName,sxu32 nByte);
+/* The engine's two NON-refusing offset rules, shared with the native ArrayAccess
+ * classes: a RESOURCE key warns and is rewritten in place to its integer id, and a
+ * NULL key deprecates and then folds to the "" key (the caller falls through). */
+PH7_PRIVATE void PH7_VmOffsetResourceWarn(ph7_vm *pVm,ph7_value *pKey);
+PH7_PRIVATE int PH7_VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey);
 /* Wording modes for PH7_VmArrayKeyArg(): the RULES are the engine's subscript
  * rules in all three, only the two sentences differ. */
 #define PH7_ARRAYKEY_OFFSET 0 /* the engine's own offset wording, `$a[$k]`'s */

@@ -744,6 +744,15 @@ PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_v
 		 * offset there). Cheaper to stand down than to probe on a copy. */
 		return SXU32_HIGH;
 	}
+	if( (pKey->iFlags & MEMOBJ_RES)
+	 || ((pKey->iFlags & MEMOBJ_REAL) && pKey->rVal != (ph7_real)(sxi64)pKey->rVal) ){
+		/* Same reason, for the two keys the accessor answers with a DIAGNOSTIC: a
+		 * resource is php's warning plus its integer id, and a lossy float is §10's
+		 * refusal. The raw lookup here would string-cast the resource to
+		 * "Resource id #N" -- a key nothing else writes -- and silently truncate the
+		 * float, both without a word. */
+		return SXU32_HIGH;
+	}
 	if( PH7_NativeAttr(pThis,SPL_D) != 0 ){
 		ph7_value *pSlot;
 		if( pKey->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP) ){
@@ -869,27 +878,45 @@ static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pEx
 	return xFunc(pCtx,pExtra ? 2 : 1,apCall);
 }
 /*
- * php's `Cannot access offset of type X on <class>` for the store's four
- * offsets. An array offset here goes through the ordinary array-key rules, and
- * php refuses the two shapes that have no key at all — an OBJECT (named by its
- * CLASS, as get_debug_type() names it) and an ARRAY — rather than folding them:
- * PHL used to fold both to the string "Object"/"Array", so `$ao[$obj] = 1` wrote
- * under a key no reader could ever ask for and `$ao[$obj]` warned about a key the
- * caller never wrote.
+ * The ARRAY-OFFSET rules for the store's four offset methods. php's ArrayObject /
+ * ArrayIterator hand the key to the same machinery `$a[$k]` uses, so all five of
+ * the engine's answers belong here and not only the two refusals:
  *
- * The wording is the ENGINE's own three-way split (vm_ops_load.c): a read or a
- * write names the receiver's class, isset/empty names none, and unset says
+ *   object / array   refused — no key exists for either. PHL used to fold them to
+ *                    the strings "Object"/"Array", so `$ao[$obj] = 1` wrote under
+ *                    a key no reader could ask for.
+ *   RESOURCE         php's `Resource ID#N used as offset, casting to integer (N)`
+ *                    warning, then the id IS the key. The string cast had been
+ *                    keying it "Resource id #N" — a key php never writes, and one
+ *                    `$ao[$res]` could then read back while `$a[$res]` could not.
+ *   NULL             php's `Using null as an array offset is deprecated` and the
+ *                    "" key — except in offsetSet(), where a null key is php's
+ *                    append form (`$ao[] = $v`) and says nothing.
+ *   LOSSY FLOAT      §10: php deprecates and truncates, PHL refuses — but only
+ *                    where the ENGINE refuses it, which is a READ or a WRITE.
+ *                    `isset($a[1.9])` and `unset($a[1.9])` truncate quietly on a
+ *                    plain array, so they do here, or the store would answer
+ *                    differently from the array it IS.
+ *
+ * The refusal wording is the ENGINE's own three-way split (vm_ops_load.c): a read
+ * or a write names the receiver's class, isset/empty names none, and unset says
  * "Cannot unset". offsetExists() reached by hand is php's isset arm too.
+ *
+ * pKey is the method's own argument copy (a native method never aliases the
+ * caller's variable), so the resource rewrite is in place. Returns 1 when the key
+ * is refused and *pRc carries the throw's status; 0 when the key is usable, with
+ * the two non-refusing rules already applied to it.
  */
 #define SPL_OFF_ACCESS 0
 #define SPL_OFF_ISSET  1
 #define SPL_OFF_UNSET  2
-static int SplOffsetKeyRefused(ph7_context *pCtx,ph7_value *pKey,int iKind,int *pRc)
+#define SPL_OFF_SET    3   /* offsetSet: a NULL key is the append form, not a key */
+static int SplOffsetKeyArg(ph7_context *pCtx,ph7_value *pKey,int iKind,int *pRc)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	SyString *pOwner = pThis ? &pThis->pClass->sName : 0;
 	SyString *pClass = 0;
-	const char *zType = "array";
+	const char *zType = 0;
 	*pRc = PH7_OK;
 	if( pKey->iFlags & MEMOBJ_OBJ ){
 		ph7_class_instance *pInst = (ph7_class_instance *)pKey->x.pOther;
@@ -897,7 +924,18 @@ static int SplOffsetKeyRefused(ph7_context *pCtx,ph7_value *pKey,int iKind,int *
 			pClass = &pInst->pClass->sName;
 		}
 		zType = "object";
-	}else if( (pKey->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	}else if( pKey->iFlags & MEMOBJ_HASHMAP ){
+		zType = "array";
+	}else if( (pKey->iFlags & MEMOBJ_REAL)
+	       && pKey->rVal != (ph7_real)(sxi64)pKey->rVal
+	       && (iKind == SPL_OFF_ACCESS || iKind == SPL_OFF_SET) ){
+		zType = "float";
+	}
+	if( zType == 0 ){
+		PH7_VmOffsetResourceWarn(pCtx->pVm,pKey);
+		if( iKind != SPL_OFF_SET ){
+			PH7_VmNullOffsetDeprecate(pCtx->pVm,pKey);
+		}
 		return 0;
 	}
 	if( iKind == SPL_OFF_ISSET ){
@@ -921,7 +959,7 @@ static int vm_builtin_SplStore_offsetExists(ph7_context *pCtx,int nArg,ph7_value
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
 	ph7_hashmap_node *pNode = 0;
 	int bFound = 0, rc;
-	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_ISSET,&rc) ){
+	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_ISSET,&rc) ){
 		return rc;
 	}
 	if( pMap && nArg > 0 ){
@@ -938,7 +976,7 @@ static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **
 	ph7_hashmap *pMap = SplStore(pVm,PH7_ContextThis(pCtx));
 	ph7_hashmap_node *pNode = 0;
 	int rcKey;
-	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_ACCESS,&rcKey) ){
+	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_ACCESS,&rcKey) ){
 		return rcKey;
 	}
 	if( pMap == 0 || nArg < 1 || PH7_HashmapLookup(pMap,apArg[0],&pNode) != SXRET_OK ){
@@ -994,7 +1032,7 @@ static int vm_builtin_SplStore_offsetSet(ph7_context *pCtx,int nArg,ph7_value **
 {
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
 	int rcKey;
-	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_ACCESS,&rcKey) ){
+	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_SET,&rcKey) ){
 		return rcKey;
 	}
 	if( pMap && nArg > 1 ){
@@ -1009,7 +1047,7 @@ static int vm_builtin_SplStore_offsetUnset(ph7_context *pCtx,int nArg,ph7_value 
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
 	ph7_hashmap_node *pNode = 0;
 	int rcKey;
-	if( nArg > 0 && SplOffsetKeyRefused(pCtx,apArg[0],SPL_OFF_UNSET,&rcKey) ){
+	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_UNSET,&rcKey) ){
 		return rcKey;
 	}
 	if( pMap && nArg > 0 && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
@@ -7612,8 +7650,9 @@ static sxi32 VmInstallSplHeap(ph7_vm *pVm)
  * independent-cursor behaviour (two getIterator() calls, or nested foreach, walk
  * separately) for free.
  *
- * php's offset rule is its own: an int, a bool and an INTEGER-LIKE string are
- * accepted, everything else is `Cannot access offset of type %s on SplFixedArray`.
+ * php's offset rule is its own: an int, a bool, an INTEGER-LIKE string and a
+ * RESOURCE (which warns and becomes its id, php's engine-wide rule) are accepted,
+ * everything else is `Cannot access offset of type %s on SplFixedArray`.
  * The chunk refused bools. A FLOAT offset stays refused here, which is not php's
  * answer (php truncates, with a precision deprecation when it is lossy) but IS
  * PHL's engine-wide one — `$a[1.5]` on a plain array raises the same TypeError,
@@ -7695,6 +7734,15 @@ static int FaOffset(ph7_context *pCtx,ph7_value *pArg,sxi64 *piOut,sxi32 *pRc)
 		PH7_MemObjToInteger(&sTmp);
 		*piOut = sTmp.x.iVal;
 		PH7_MemObjRelease(&sTmp);
+		return 1;
+	}
+	if( pArg->iFlags & MEMOBJ_RES ){
+		/* php's offset rule again: a resource is not refused, it WARNS and becomes
+		 * its integer id — which for a fixed array is then an ordinary out-of-range
+		 * index. The refusal below had named `resource` instead. Rewrites the
+		 * method's own argument copy, as the store's offsets do. */
+		PH7_VmOffsetResourceWarn(pCtx->pVm,pArg);
+		*piOut = pArg->x.iVal;
 		return 1;
 	}
 	*piOut = 0;

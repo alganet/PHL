@@ -278,7 +278,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
  *
  * A RESOURCE is deliberately absent: php does not reject it, it warns
  * ("Resource ID#N used as offset, casting to integer (N)") and uses the id as an
- * integer key. VmOffsetResourceWarn() below handles that half.
+ * integer key. PH7_VmOffsetResourceWarn() below handles that half.
  *
  * Returns TRUE and fills pMsg when the key must be rejected. iCtx is the
  * instruction's iP2 (any value other than the isset/unset/empty codes reads as
@@ -326,7 +326,7 @@ static int VmOffsetTypeRejected(ph7_vm *pVm,ph7_value *pKey,int iCtx,SyBlob *pMs
  * becomes that integer. Rewrites pKey in place so the normal integer-key path
  * takes over.
  */
-static void VmOffsetResourceWarn(ph7_vm *pVm,ph7_value *pKey)
+PH7_PRIVATE void PH7_VmOffsetResourceWarn(ph7_vm *pVm,ph7_value *pKey)
 {
 	sxu32 nId;
 	if( pKey == 0 || (pKey->iFlags & MEMOBJ_RES) == 0 ){
@@ -350,7 +350,7 @@ static void VmOffsetResourceWarn(ph7_vm *pVm,ph7_value *pKey)
  * float->int truncation (VmRejectFloatOperand policy, §2), so only the null case
  * is coerced here. Returns FALSE (no notice) for a non-null key.
  */
-static int VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey)
+PH7_PRIVATE int PH7_VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey)
 {
 	if( pKey == 0 || (pKey->iFlags & MEMOBJ_NULL) == 0 ){
 		return FALSE;
@@ -409,7 +409,7 @@ PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int iWordi
 		SyBlobRelease(&sMsg);
 		return rc;
 	}
-	VmOffsetResourceWarn(pVm,pKey);
+	PH7_VmOffsetResourceWarn(pVm,pKey);
 	if( (pKey->iFlags & MEMOBJ_REAL)
 	 && pKey->rVal != (ph7_real)(sxi64)pKey->rVal ){
 		/* php DEPRECATES the lossy float and truncates; PHL rejects it, here as
@@ -420,7 +420,7 @@ PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int iWordi
 	}
 	if( pKey->iFlags & MEMOBJ_NULL ){
 		if( iWording == PH7_ARRAYKEY_OFFSET ){
-			VmNullOffsetDeprecate(pVm,pKey);
+			PH7_VmNullOffsetDeprecate(pVm,pKey);
 		}else{
 			/* php names the parameter here rather than "an array offset"; the effect
 			 * is the engine's — the lookup below reads the "" key. */
@@ -616,7 +616,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				rc = rcSc;
 				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
-			VmOffsetResourceWarn(&(*pVm),pKey);
+			PH7_VmOffsetResourceWarn(&(*pVm),pKey);
 			if( (pKey->iFlags & MEMOBJ_REAL)
 			 && pKey->rVal != (ph7_real)(sxi64)pKey->rVal ){
 				sxi32 rcSc;
@@ -877,7 +877,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 	 * vivification, when the base is not yet a hashmap). HashmapInsert /
 	 * HashmapInsertByRef both then cast NULL->"". A null pKey==0 (an append, no key)
 	 * is not a null OFFSET and is left alone. */
-	VmNullOffsetDeprecate(&(*pVm),pKey);
+	PH7_VmNullOffsetDeprecate(&(*pVm),pKey);
 	if( pInstr->iOp == PH7_OP_STORE_IDX_REF
 	 && (pInstr->iP1 & PH7_STOREREF_CALLSRC)
 	 && (pTos->iFlags & MEMOBJ_AUX_STROFFSET) == 0
@@ -2270,7 +2270,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
-		VmOffsetResourceWarn(&(*pVm),pIdx);
+		PH7_VmOffsetResourceWarn(&(*pVm),pIdx);
 	}
 	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx ){
 		/* php DEPRECATES a null offset in EVERY subscript context except unset()
@@ -2280,7 +2280,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * lookup/insert below casts NULL->"", and a plain read miss then warns
 		 * `Undefined array key ""` on the now-string pIdx (php's exact pair). */
 		if( (pIdx->iFlags & MEMOBJ_NULL) && !VM_IDX_IS_UNSET(iP2) ){
-			VmNullOffsetDeprecate(&(*pVm),pIdx);
+			PH7_VmNullOffsetDeprecate(&(*pVm),pIdx);
 		}
 		/* A lossy-FLOAT subscript stays a rejected TypeError on a READ or WRITE
 		 * (iP2 0/1) — the recorded non-deprecated-surface policy (§2); the lenient
@@ -2582,7 +2582,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 						if( VmOffsetTypeRejected(&(*pVm),pEntry,0,&sTypeMsg) ){
 							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg));
 						}else{
-							VmOffsetResourceWarn(&(*pVm),pEntry);
+							PH7_VmOffsetResourceWarn(&(*pVm),pEntry);
 						}
 						/* php DEPRECATES a null literal key (then normalizes to "") and
 						 * rejects nothing there; PHL matches that (deprecate + fall
@@ -2593,7 +2593,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 						int bLossyFloat = (pEntry->iFlags & MEMOBJ_REAL) != 0
 							&& pEntry->rVal != (ph7_real)(sxi64)pEntry->rVal;
 						if( bNull ){
-							VmNullOffsetDeprecate(&(*pVm),pEntry);
+							PH7_VmNullOffsetDeprecate(&(*pVm),pEntry);
 						}else if( bLossyFloat ){
 							const char *zErr = "Cannot access offset of type float on array";
 							SyBlob sErrMsg;
