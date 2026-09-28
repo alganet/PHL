@@ -178,6 +178,26 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
  * returning FALSE" -- which names neither the function's argument nor what was
  * wrong with it, and two more call sites had a third wording of their own.
  */
+/*
+ * The FIRST half of the sentence above, on its own: php's
+ * `Unable to find the wrapper "zzz" - did you forget to enable it when you
+ * configured PHP?`. A caller that resolves a wrapper WITHOUT opening anything
+ * (get_headers()) reports only this one -- the failed-open line under it comes
+ * from the open, and there is none.
+ */
+PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri)
+{
+	int nScheme = 0;
+	if( zUri == 0 ){
+		zUri = "";
+	}
+	PH7_VmStreamDeviceIsRemoteHost(zUri,-1,&nScheme);
+	if( nScheme > 0 ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it when you configured PHP?",
+			ph7_function_name(pCtx),nScheme,zUri);
+	}
+}
 PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int bDir)
 {
 	const char *zFunc = ph7_function_name(pCtx);
@@ -4168,6 +4188,8 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 	for( n = 0 ; n < SX_ARRAYSIZE(aVfsHelperFunc) ; ++n ){
 		ph7_create_function(&(*pVm),aVfsHelperFunc[n].zName,aVfsHelperFunc[n].xFunc,pVm);
 	}
+	/* The three names a script asks an http:// exchange about. */
+	PH7_HttpInstallFuncs(&(*pVm));
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 
 	/* Install streams if disk I/O is enabled */

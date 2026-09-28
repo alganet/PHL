@@ -11,6 +11,11 @@ anything -- php's screen there is TEXTUAL, `strpbrk(mode, "awx+")`, which is
 why `c` is the one write-ish mode it lets through and answers for by trying the
 connection -- and the two ini directives it reads exist with php's defaults.
 
+php 8.4's `http_get_last_response_headers()` and
+`http_clear_last_response_headers()` are here too, for the half of them that
+needs no exchange: the getter is a `?array` and answers NULL when nothing has
+been recorded, and the clear answers nothing at all.
+
 The exchange itself is in 002-integration/function/http, where a server can be
 spawned.
 --FILE--
@@ -37,6 +42,14 @@ foreach (array('w', 'a', 'r+', 'x', 'c') as $hwsMode) {
 }
 restore_error_handler();
 
+/* php 8.4's two last-response-header functions, which read the same store
+ * $http_response_header is written from. Nothing has been fetched here, so the
+ * getter answers NULL -- and it is a ?array, never the empty one. */
+http_clear_last_response_headers();
+var_dump(http_get_last_response_headers());
+var_dump(http_clear_last_response_headers());
+var_dump(http_get_last_response_headers());
+
 /* The two directives the request composer reads. php ships user_agent as the
  * empty string and `from` with no value at all, which ini_get() answers alike. */
 var_dump(ini_get('user_agent'), ini_get('from'));
@@ -52,6 +65,9 @@ a: false / refused by the mode
 r+: false / refused by the mode
 x: false / refused by the mode
 c: false / refused by the connection
+NULL
+NULL
+NULL
 string(0) ""
 string(0) ""
 string(0) ""

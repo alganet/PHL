@@ -570,8 +570,15 @@ static void HttpBuildRequest(ph7_vm *pVm,phl_stream_ctx *pCtx,SyhttpUri *pUri,
 	}
 	SyBlobAppend(pOut,SyBlobData(&sUser),SyBlobLength(&sUser));
 	if( nBody > 0 && !HttpUserHas(&sUser,"content-type:") ){
+		SyString sCaller;
 		SyBlobAppend(pOut,"Content-Type: application/x-www-form-urlencoded\r\n",
 			sizeof("Content-Type: application/x-www-form-urlencoded\r\n")-1);
+		/* php SAYS so, once per request it composes: an E_NOTICE under the name
+		 * of whatever function is doing the opening. */
+		SyStringInitFromBuf(&sCaller,pVm->zOpenCaller ? pVm->zOpenCaller : "",
+			pVm->zOpenCaller ? SyStrlen(pVm->zOpenCaller) : 0);
+		PH7_VmThrowError(pVm,pVm->zOpenCaller ? &sCaller : 0,PH7_CTX_NOTICE,
+			"Content-type not specified assuming application/x-www-form-urlencoded");
 	}
 	SyBlobAppend(pOut,"\r\n",sizeof("\r\n")-1);
 	if( nBody > 0 ){
@@ -825,6 +832,7 @@ static int HttpReadResponse(http_private *pH,SyBlob *pHdrs,SyBlob *pStatus,
 				return -1;
 			}
 			if( nColon == sizeof("Transfer-Encoding")-1
+			 && !pH->pVm->bHttpGetHeaders
 			 && SyStrnicmp(zLine,"Transfer-Encoding",sizeof("Transfer-Encoding")-1) == 0 ){
 				sxu32 nOfft;
 				if( SyBlobSearch(&zLine[nColon],nLine - nColon,"chunked",
@@ -913,11 +921,21 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx)
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		if( iErrno == PH7_NET_ERR_RESOLVE ){
 			SyBlob sMsg;
+			SyString sCaller;
 			SyBlobInit(&sMsg,&pH->pVm->sAllocator);
 			SyBlobFormat(&sMsg,
 				"php_network_getaddresses: getaddrinfo for %z failed: Name or service not known",
 				&pUri->sHost);
-			HttpFail(pH->pVm,(const char *)SyBlobData(&sMsg),(int)SyBlobLength(&sMsg));
+			SyBlobNullAppend(&sMsg);
+			HttpFail(pH->pVm,(const char *)SyBlobData(&sMsg),(int)SyBlobLength(&sMsg)-1);
+			/* php says this one TWICE: the resolver's own failure under the
+			 * calling function's name, and then the caller's failed-open
+			 * sentence carrying it as the reason. A refused CONNECT is only the
+			 * second -- the resolver is where php has the extra warning. */
+			SyStringInitFromBuf(&sCaller,pH->pVm->zOpenCaller ? pH->pVm->zOpenCaller : "",
+				pH->pVm->zOpenCaller ? SyStrlen(pH->pVm->zOpenCaller) : 0);
+			PH7_VmThrowError(pH->pVm,pH->pVm->zOpenCaller ? &sCaller : 0,PH7_CTX_WARNING,
+				(const char *)SyBlobData(&sMsg));
 			SyBlobRelease(&sMsg);
 		}else{
 			HttpFail(pH->pVm,zErr && zErr[0] ? zErr : "Connection refused",-1);
@@ -951,6 +969,12 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 	SyBlobInit(&sTarget,&pVm->sAllocator);
 	SyBlobInit(&sMethod,&pVm->sAllocator);
 	SyBlobAppend(&sUrl,zUrl,(sxu32)nUrl);
+	/* php drops the previous exchange's headers before this one starts, so an
+	 * open that never reaches a response leaves http_get_last_response_headers()
+	 * answering NULL rather than the set before it -- while the CALLER's own
+	 * $http_response_header, which is only written when there is something to
+	 * write, keeps whatever it held. */
+	PH7_HttpClearResponseHeaders(pVm);
 	pOptV = HttpOpt(pCtx,"max_redirects");
 	if( pOptV ){
 		iRedirLeft = (int)HttpOptInt(pVm,pOptV,HTTP_MAX_REDIRECTS);
@@ -962,6 +986,11 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 	pOptV = HttpOpt(pCtx,"ignore_errors");
 	if( pOptV ){
 		bIgnoreErr = HttpOptBool(pVm,pOptV,0);
+	}
+	if( pVm->bHttpGetHeaders ){
+		/* get_headers() asks for the HEADERS of whatever answered, so php opens
+		 * with this on whatever the caller's context said. */
+		bIgnoreErr = 1;
 	}
 	pOptV = HttpOpt(pCtx,"method");
 	if( pOptV && (pOptV->iFlags & MEMOBJ_STRING) ){
@@ -1020,12 +1049,8 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 		if( iCode < 0 ){
 			goto done; /* the malformed-header refusal named itself */
 		}
-		if( iCode >= 300 && iCode < 400 && bHasLoc && bFollow ){
+		if( iCode >= 300 && iCode < 400 && bHasLoc && bFollow && --iRedirLeft >= 1 ){
 			SyBlob sNext;
-			if( --iRedirLeft < 1 ){
-				HttpFail(pVm,"Redirection limit reached, aborting",-1);
-				goto done;
-			}
 			SyBlobInit(&sNext,&pVm->sAllocator);
 			HttpResolveLocation(&sUri,(const char *)SyBlobData(&sLoc),
 				SyBlobLength(&sLoc),&sNext);
@@ -1051,6 +1076,14 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 			pH->bChunkDone = 0;
 			pH->iChunkLeft = -1;
 			continue;
+		}
+		if( iCode >= 300 && iCode < 400 && bHasLoc && bFollow && !pVm->bHttpGetHeaders ){
+			/* The follow above declined because the count ran out. php calls that
+			 * a failed open -- except for a headers-only one (get_headers()),
+			 * which stops where it is and answers the headers it collected,
+			 * silently. */
+			HttpFail(pVm,"Redirection limit reached, aborting",-1);
+			goto done;
 		}
 		if( (iCode < 200 || iCode >= 400) && !bIgnoreErr ){
 			/* php's own sentence, and the status LINE it carries keeps the
@@ -1281,4 +1314,207 @@ PH7_PRIVATE int PH7_HttpStreamAtEof(void *pHandle)
 	}
 	return pH->bEof && HttpRawLeft(pH) == 0;
 }
+/* ------------------------------------------------------------------------- */
+/* get_headers()                                                               */
+/* ------------------------------------------------------------------------- */
+/*
+ * array|false get_headers(string $url, bool $associative = false,
+ *                         ?resource $context = null)
+ *
+ * php's one function for "ask that URL what it answers, and nothing else". It
+ * is the http:// wrapper with `ignore_errors` forced on -- a 404 is a set of
+ * headers, not a failure -- opened and closed without a byte of the body read.
+ *
+ * Two refusals of its own: an EMPTY url is php's `Path must not be empty`
+ * ValueError, before anything is looked up; and a url that does not resolve to
+ * the HTTP wrapper specifically -- a path, an unknown scheme, even data://,
+ * which IS a url wrapper -- is a warning and false.
+ *
+ * `$associative` reshapes the SAME lines: a line with no colon in it is a status
+ * line and takes the next INTEGER key (which is how `abcdefghi 200 OK` gets one
+ * and `HTTP/1.1 200 OK: weird` does not), everything else is keyed by the text
+ * before its first colon with the value left-trimmed after it, and a name that
+ * arrives twice -- across a redirect chain included -- collects into an ARRAY.
+ */
+static int PH7_builtin_get_headers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	phl_stream_ctx *pCtxRes;
+	ph7_value *pArr,*pKey,*pVal,*pLine;
+	http_private *pH;
+	void *pHandle;
+	const char *zUrl,*zIn,*zEnd,*zCur;
+	int nUrl = 0,bAssoc = 0,bThrew = 0,iStatus = 0;
+	/* The declared signature is the screen: a non-string $url is its TypeError
+	 * and a fourth argument its ArgumentCountError, both before this runs. */
+	zUrl = ph7_value_to_string(apArg[0],&nUrl);
+	if( nUrl < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
+	}
+	if( nArg > 1 ){
+		bAssoc = ph7_value_to_bool(apArg[1]);
+	}
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
+	}
+	{
+		/* php's screen is the wrapper's URL bit, not its identity: php:// and a
+		 * plain path are the refusal, and data:// -- which php DOES count as a
+		 * url wrapper -- goes through and answers false further down, silently,
+		 * because a stream with no response headers has nothing to give. */
+		const char *zProbe = zUrl;
+		pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zProbe,nUrl);
+		if( pStream == 0 ){
+			/* php names the missing wrapper first -- and only that: the
+			 * failed-open line beside it belongs to an open, and get_headers()
+			 * never reaches one. */
+			VfsThrowUnknownWrapperWarning(pCtx,zUrl);
+		}
+		if( pStream == 0 || !PH7_StreamIsUrlWrapper(pStream) ){
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
+				"This function may only be used against URLs");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		zUrl = zProbe;
+	}
+	/* php builds its own context over the caller's, with `ignore_errors` on: a
+	 * status php would refuse to open is a set of headers here. The flag rides
+	 * the VM rather than a synthesized context so the caller's own options --
+	 * its method, its headers -- reach the request unchanged. */
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
+	pCtx->pVm->bHttpGetHeaders = 1;
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUrl,PH7_IO_OPEN_RDONLY,
+		FALSE,0,FALSE,0,ph7_function_name(pCtx));
+	pCtx->pVm->bHttpGetHeaders = 0;
+	if( pHandle == 0 ){
+		VfsThrowOpenWarning(pCtx,zUrl);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !PH7_HttpStreamIs(pStream) ){
+		/* A url wrapper of some other kind opened fine and has no response
+		 * headers to answer with. */
+		PH7_StreamCloseHandle(pStream,pHandle);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pH = (http_private *)pHandle;
+	pArr = ph7_context_new_array(pCtx);
+	pKey = ph7_context_new_scalar(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	pLine = ph7_context_new_scalar(pCtx);
+	if( pArr == 0 || pKey == 0 || pVal == 0 || pLine == 0 ){
+		HttpStream_Close(pHandle);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = (const char *)SyBlobData(&pH->sHdrs);
+	zEnd = &zIn[SyBlobLength(&pH->sHdrs)];
+	while( zIn < zEnd ){
+		sxu32 nColon,nLine;
+		zCur = zIn;
+		while( zCur < zEnd && zCur[0] != '\n' ){
+			zCur++;
+		}
+		nLine = (sxu32)(zCur - zIn);
+		for( nColon = 0 ; nColon < nLine && zIn[nColon] != ':' ; ++nColon ){
+			;
+		}
+		if( !bAssoc ){
+			ph7_value_string(pLine,zIn,(int)nLine);
+			ph7_array_add_elem(pArr,0,pLine);
+			ph7_value_reset_string_cursor(pLine);
+		}else if( nColon >= nLine ){
+			/* No colon: a status line, and php numbers those from 0 whatever
+			 * they say. */
+			ph7_value_string(pLine,zIn,(int)nLine);
+			ph7_value_int(pKey,iStatus++);
+			ph7_array_add_elem(pArr,pKey,pLine);
+			ph7_value_reset_string_cursor(pLine);
+		}else{
+			sxu32 i = nColon + 1;
+			ph7_value *pOld;
+			while( i < nLine && (zIn[i] == ' ' || zIn[i] == '\t') ){
+				i++;
+			}
+			ph7_value_string(pKey,zIn,(int)nColon);
+			ph7_value_string(pVal,&zIn[i],(int)(nLine - i));
+			pOld = ph7_array_fetch(pArr,zIn,(int)nColon);
+			if( pOld == 0 ){
+				ph7_array_add_elem(pArr,pKey,pVal);
+			}else if( pOld->iFlags & MEMOBJ_HASHMAP ){
+				/* Already a list of its own: this is the third and later. */
+				ph7_array_add_elem(pOld,0,pVal);
+			}else{
+				/* php turns the pair into a LIST the moment a name repeats. */
+				ph7_value *pList = ph7_context_new_array(pCtx);
+				if( pList ){
+					ph7_array_add_elem(pList,0,pOld);
+					ph7_array_add_elem(pList,0,pVal);
+					ph7_array_add_elem(pArr,pKey,pList);
+				}
+			}
+			ph7_value_reset_string_cursor(pKey);
+			ph7_value_reset_string_cursor(pVal);
+		}
+		zIn = zCur < zEnd ? &zCur[1] : zEnd;
+	}
+	HttpStream_Close(pHandle);
+	ph7_result_value(pCtx,pArr);
+	return PH7_OK;
+}
 #endif /* !PH7_DISABLE_DISK_IO && PH7_ENABLE_NET */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+/*
+ * ?array http_get_last_response_headers()
+ *
+ * php 8.4's modern spelling of `$http_response_header`, and the same store: the
+ * response headers of the last http:// exchange, or NULL when nothing has been
+ * recorded since the last clear.
+ */
+static int PH7_builtin_http_get_last_response_headers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArr;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArr = PH7_HttpHeaderArray(pCtx->pVm,&pCtx->pVm->sHttpRespHdrs);
+	if( pArr == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_value(pCtx,pArr);
+	ph7_release_value(pCtx->pVm,pArr);
+	return PH7_OK;
+}
+/*
+ * void http_clear_last_response_headers()
+ *
+ * Drops the store, so the getter above answers NULL rather than the array it
+ * was answering a moment ago.
+ */
+static int PH7_builtin_http_clear_last_response_headers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_HttpClearResponseHeaders(pCtx->pVm);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * The three names a script asks an exchange about. The two getters are in every
+ * build -- the store they read is -- and get_headers() goes with the wrapper it
+ * is the one door of.
+ */
+PH7_PRIVATE void PH7_HttpInstallFuncs(ph7_vm *pVm)
+{
+	ph7_create_function(&(*pVm),"http_get_last_response_headers",
+		PH7_builtin_http_get_last_response_headers,0);
+	ph7_create_function(&(*pVm),"http_clear_last_response_headers",
+		PH7_builtin_http_clear_last_response_headers,0);
+#if !defined(PH7_DISABLE_DISK_IO) && defined(PH7_ENABLE_NET)
+	ph7_create_function(&(*pVm),"get_headers",PH7_builtin_get_headers,0);
+#endif
+}
+#endif /* PH7_DISABLE_BUILTIN_FUNC */

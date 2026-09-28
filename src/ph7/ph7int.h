@@ -3259,6 +3259,9 @@ struct ph7_vm
 	const char *zOpenUri;      /* the URI as written, or 0 */
 	int nOpenUri;              /* its length */
 	const char *zOpenUriTail;  /* the scheme-stripped remainder handed to the wrapper */
+	const char *zOpenCaller;   /* the FUNCTION reporting this open, for a wrapper that
+	                            * raises a diagnostic of its own before the caller's
+	                            * (php's resolver failure is two warnings, not one) */
 	const char *zOpenErr;      /* the wrapper's own reason for the open in flight, or 0
 	                            * for the plain-file wrapper's errno */
 	char zOpenErrBuf[512];     /* storage for a reason that has to be BUILT -- a userland
@@ -3280,6 +3283,12 @@ struct ph7_vm
 	SyBlob sHttpRespHdrs;      /* the lines, '\n'-separated */
 	sxu8 bHttpRespHdrs;        /* something has been recorded (the getter's NULL/array split) */
 	sxu8 bHttpRespFresh;       /* recorded by the open in flight and not yet published */
+	sxu8 bHttpGetHeaders;      /* the open in flight is get_headers()', which php makes
+	                            * two things at once: a context with `ignore_errors` on,
+	                            * so a refused status is an ordinary set of headers, and
+	                            * STREAM_ONLY_GET_HEADERS, which skips the dechunk filter
+	                            * and so KEEPS the Transfer-Encoding header the ordinary
+	                            * read consumes */
 	/* Stream filters (stream_filter_append and the php://filter wrapper). The
 	 * chain owns every filter INSTANCE the script created, so one that is never
 	 * removed still goes back at reset. */
@@ -4585,6 +4594,9 @@ PH7_PRIVATE void PH7_HttpPublishHeaders(ph7_vm *pVm,SyBlob *pLines);
 PH7_PRIVATE ph7_value * PH7_HttpHeaderArray(ph7_vm *pVm,SyBlob *pLines);
 PH7_PRIVATE void PH7_HttpFlushResponseHeaders(ph7_vm *pVm);
 PH7_PRIVATE void PH7_HttpClearResponseHeaders(ph7_vm *pVm);
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+PH7_PRIVATE void PH7_HttpInstallFuncs(ph7_vm *pVm);
+#endif
 #if !defined(PH7_DISABLE_DISK_IO) && defined(PH7_ENABLE_NET)
 /* ... and the wrapper itself, which is where the store is filled. */
 extern const ph7_io_stream sHTTP_Stream;
@@ -4857,6 +4869,7 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 /* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
  * fopen/opendir/file_* family in vfs_stream.c. */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
+PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri);
 /* A wrapper's own reason for refusing the open in flight, which is what php
  * prints after "Failed to open stream:" instead of an errno. Set from an xOpen
  * body; PH7_StreamOpenHandle() re-arms the default before every open. */

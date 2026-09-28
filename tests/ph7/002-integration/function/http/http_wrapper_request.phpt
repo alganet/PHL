@@ -50,8 +50,14 @@ function show($label, $url, $opt)
     global $dir;
     http_test_requests_clear($dir);
     $ctx = stream_context_create(array('http' => $opt));
-    $r = @file_get_contents($url, false, $ctx);
+    $seen = array();
+    set_error_handler(function ($no, $str) use (&$seen) { $seen[] = $str; return true; });
+    $r = file_get_contents($url, false, $ctx);
+    restore_error_handler();
     echo "-- $label\n";
+    foreach ($seen as $line) {
+        echo '   ! ', $line, "\n";
+    }
     if ($r === false) {
         echo "FALSE\n";
         return;
@@ -145,6 +151,7 @@ Connection: close
 
 |
 -- method and content
+   ! file_get_contents(): Content-type not specified assuming application/x-www-form-urlencoded
 POST /echo HTTP/1.1
 Host: HOST
 Connection: close

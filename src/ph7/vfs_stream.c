@@ -995,6 +995,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 	 * xOpen body may replace it through PH7_StreamSetOpenError(). */
 	if( pVm->nOpenDepth < 1 ){
 		pVm->zOpenErr = pStream == pVm->pDefStream ? 0 : "operation failed";
+		pVm->zOpenCaller = zCaller;
 	}
 	if( pStream->xOpen == 0 ){
 		/* A wrapper with a dir_opener and NOTHING else — glob:// is php's one,
