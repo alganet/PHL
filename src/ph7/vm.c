@@ -5942,6 +5942,9 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "get_include_path",  vm_builtin_get_include_path },
 	{ "set_include_path",  vm_builtin_set_include_path },
 	{ "get_included_files",vm_builtin_get_included_files},
+	/* php's alias: the same list under the name a `require` reader
+	 * reaches for. */
+	{ "get_required_files",vm_builtin_get_included_files},
 	{ "include",      vm_builtin_include          },
 	{ "include_once", vm_builtin_include_once     },
 	{ "require",      vm_builtin_require          },

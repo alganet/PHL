@@ -489,6 +489,7 @@ static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zVal;
 	int nName = 0, nVal = 0;
 	SyBlob sOld;
+	char zWho[64];
 	if( nArg < 2 || IniSeed(pVm) != SXRET_OK ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -499,7 +500,7 @@ static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( IniSessionLocked(pCtx,pSlot,"ini_set") ){
+	if( IniSessionLocked(pCtx,pSlot,ph7_function_name(pCtx)) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -527,7 +528,8 @@ static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}else{
 		zVal = ph7_value_to_string(apArg[1],&nVal);
 	}
-	if( !IniValueAccepted(pVm,pSlot,zVal,(sxu32)nVal,"ini_set()") ){
+	SyBufferFormat(zWho,sizeof(zWho),"%s()",ph7_function_name(pCtx));
+	if( !IniValueAccepted(pVm,pSlot,zVal,(sxu32)nVal,zWho) ){
 		SyBlobRelease(&sOld);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -753,6 +755,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)
 	} aFunc[] = {
 		{ "ini_get",      vm_builtin_ini_get      },
 		{ "ini_set",      vm_builtin_ini_set      },
+		/* php's alias for the same routine. Both of the diagnostics a write
+		 * can raise name the INVOKED function, so they read the context's
+		 * name rather than a literal. */
+		{ "ini_alter",    vm_builtin_ini_set      },
 		{ "ini_restore",  vm_builtin_ini_restore  },
 		{ "ini_get_all",  vm_builtin_ini_get_all  },
 		{ "get_cfg_var",  vm_builtin_get_cfg_var  },

@@ -3981,6 +3981,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"is_link",     PH7_vfs_is_link  },
 		{"is_readable", PH7_vfs_is_readable   },
 		{"is_writable", PH7_vfs_is_writable   },
+		/* php's own alias, spelled the other way; the diagnostics every
+		 * builtin raises name the INVOKED name, so the one routine serves
+		 * both. */
+		{"is_writeable",PH7_vfs_is_writable   },
 		{"is_executable",PH7_vfs_is_executable},
 		{"filetype",    PH7_vfs_filetype },
 		{"stat",        PH7_vfs_stat     },
