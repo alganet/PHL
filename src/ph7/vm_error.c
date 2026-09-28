@@ -4589,6 +4589,64 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
 	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
 	while( pFrame ){
+		/* The include/require/eval activations started from THIS frame come first:
+		 * they are still running, so they are inner to whatever called the frame.
+		 * php shows each as a frame whose function is the construct's name, whose
+		 * file and line are the call site, and whose single argument is the unit --
+		 * except for the innermost entry of the whole trace, which php leaves
+		 * argument-less. Nothing else records them: an include shares its caller's
+		 * variable scope and pushes no VmFrame. */
+		sxu32 nInc = SySetUsed(&pVm->aIncFrame);
+		if( (iOptions & 4) != 0 && nInc > 0 && nDone == 0 ){
+			/* The caller is a compile-time refusal, which php raises BEFORE it pushes
+			 * the include/require/eval activation that is loading this unit -- so that
+			 * one innermost activation is not on php's trace. (A class REDECLARATION
+			 * is php's run-time refusal and does carry it; the caller says which.) */
+			VmIncFrame *pTop = (VmIncFrame *)SySetAt(&pVm->aIncFrame,nInc - 1);
+			if( pTop && pTop->pFrame == (void *)pFrame ){
+				nInc--;
+			}
+		}
+		while( nInc > 0 ){
+			VmIncFrame *pInc = (VmIncFrame *)SySetAt(&pVm->aIncFrame,--nInc);
+			ph7_value *pIncEntry;
+			if( pInc == 0 || pInc->pFrame != (void *)pFrame ){
+				continue;
+			}
+			if( iLimit != 0 && nDone >= iLimit ){
+				break;
+			}
+			pIncEntry = ph7_new_array(&(*pVm));
+			if( pIncEntry == 0 ){
+				break;
+			}
+			nDone++;
+			if( SyStringLength(&pInc->sFile) > 0 ){
+				ph7_value_string(pValue,pInc->sFile.zString,(int)pInc->sFile.nByte);
+				ph7_array_add_strkey_elem(pIncEntry,"file",pValue);
+				ph7_value_reset_string_cursor(pValue);
+			}
+			ph7_value_int(pValue,(int)pInc->nLine);
+			ph7_array_add_strkey_elem(pIncEntry,"line",pValue);
+			ph7_value_string(pValue,pInc->zName,-1);
+			ph7_array_add_strkey_elem(pIncEntry,"function",pValue);
+			ph7_value_reset_string_cursor(pValue);
+			if( SyStringLength(&pInc->sPath) > 0 && ph7_array_count(pList) > 0 ){
+				ph7_value *pArgs = ph7_new_array(&(*pVm));
+				if( pArgs ){
+					ph7_value *pArg = ph7_new_scalar(&(*pVm));
+					if( pArg ){
+						ph7_value_string(pArg,pInc->sPath.zString,(int)pInc->sPath.nByte);
+						ph7_array_add_elem(pArgs,0,pArg);
+						ph7_release_value(&(*pVm),pArg);
+					}
+					ph7_array_add_strkey_elem(pIncEntry,"args",pArgs);
+					ph7_release_value(&(*pVm),pArgs);
+				}
+			}
+			ph7_array_add_elem(pList,0,pIncEntry);
+			ph7_release_value(&(*pVm),pIncEntry);
+		}
 		/* $limit stops the walk after that many frames, 0 meaning "no limit".
 		 * The test is php's own, on the NARROWED value: a limit that wraps
 		 * negative reports NOTHING (frame 0 is already >= it), which is why
@@ -4607,19 +4665,17 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 		if( pEntry == 0 ){
 			break;
 		}
-		/* php's key order: file, line, function[, class, type][, object][, args].
-		 * The frame's file/line is the CALL SITE -- i.e. the caller's body, which
-		 * lives in the CALLER function's defining file. Use that (not the include-
-		 * stack top, which is wrong once a call chain spans files); fall back to the
-		 * include-stack top for a call made at global scope. */
+		/* php's key order: file, line, function[, class, type][, object][, args]. */
 		{
-			SyString *pFrameFile = pFile;
-			if( pFrame->pParent->pUserData ){
-				ph7_vm_func *pCaller = (ph7_vm_func *)pFrame->pParent->pUserData;
-				if( pCaller->sFile.nByte > 0 ){
-					pFrameFile = &pCaller->sFile;
-				}
-			}
+			/* The file the CALL SITE is in, captured when the frame was pushed
+			 * (VmEnterFrame). Deriving it here read the caller's function through
+			 * pParent -- which is a `try` block's own function-less frame for a call
+			 * written inside one, so it fell back to the include-stack TOP and blamed
+			 * the entry script -- and the include stack itself has moved on by now,
+			 * so a call made by an included file's top-level code was blamed on
+			 * whatever is being included at the moment of the trace. */
+			SyString *pFrameFile = SyStringLength(&pFrame->sCallFile) > 0
+				? &pFrame->sCallFile : pFile;
 			if( pFrameFile ){
 				ph7_value_string(pValue,pFrameFile->zString,(int)pFrameFile->nByte);
 				ph7_array_add_strkey_elem(pEntry,"file",pValue);

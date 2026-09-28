@@ -856,6 +856,20 @@ struct ph7_gen_state
 	sxi32 nFatal;        /* Refusals of E_ERROR severity in this unit. php's E_COMPILE_ERROR:
 	                      * uncatchable, where a PARSE error is a catchable ParseError -- so
 	                      * nErr says the unit failed and this says WHICH WAY. */
+	int iFatalTrace;     /* WHICH stack trace php prints under the refusal being raised -- php's
+	                      * three phases, and they answer differently:
+	                      *   PH7_FATAL_TRACE_COMPILE (0) the compiler refused: the active frames,
+	                      *     WITHOUT the include/require/eval that is loading this unit (php
+	                      *     raises it before pushing that activation) -- the common case;
+	                      *   PH7_FATAL_TRACE_RUNTIME (1) php makes this one at RUN time, so the
+	                      *     activation IS on its trace. A class REDECLARATION is the only one:
+	                      *     php cannot early-bind a name it already holds, so DECLARE_CLASS
+	                      *     reports it;
+	                      *   PH7_FATAL_TRACE_NONE (2) php's PARSER refused, while reading a
+	                      *     modifier run, before any op array exists -- it prints no trace at
+	                      *     all.
+	                      * A ONE-SHOT: the call sites that need a non-default set it just before
+	                      * raising, and PH7_GenCompileError consumes it. */
 	int bParseThrows;    /* This unit's parse errors are the CALLER's to raise (include/require:
 	                      * php throws a ParseError there and prints nothing until it goes
 	                      * uncaught). A refusal of E_ERROR severity still prints at once. */
@@ -912,6 +926,26 @@ typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
 typedef struct ph7_vm_func_static_var  ph7_vm_func_static_var;
 typedef struct ph7_vm_func_arg ph7_vm_func_arg;
 typedef struct ph7_vm_func ph7_vm_func;
+/*
+ * One ACTIVE include/require/eval, as php reports it in a backtrace: a frame whose
+ * function is the construct's name, whose file and line are the CALL SITE, and whose
+ * single argument is the unit being loaded.
+ */
+#define PH7_FATAL_TRACE_COMPILE 0 /* see ph7_gen_state::iFatalTrace */
+#define PH7_FATAL_TRACE_RUNTIME 1
+#define PH7_FATAL_TRACE_NONE    2
+typedef struct VmIncFrame VmIncFrame;
+struct VmIncFrame
+{
+	void *pFrame;      /* the VmFrame this activation was started from -- where it belongs in
+	                    * the walk (php's trace is ordered by activation, and an include is
+	                    * INNER to the function that wrote it) */
+	SyString sFile;    /* the file the construct is written in ... */
+	sxu32 nLine;       /* ...and the line */
+	SyString sPath;    /* the unit being loaded: php's single argument for the frame, rendered
+	                    * as `'...'`. Empty for eval(), which php shows argument-less. */
+	const char *zName; /* "include" / "include_once" / "require" / "require_once" / "eval" */
+};
 typedef struct VmFrame VmFrame;
 struct VmFrame
 {
@@ -945,6 +979,12 @@ struct VmFrame
 	sxu32 nCallLine;  /* Line of the OP_CALL that pushed this frame (0 for the global frame).
 	                   * debug_backtrace() reports a frame's line as the line of the call
 	                   * SITE, not of the code running inside it. */
+	SyString sCallFile;/* ...and the FILE that call site is in, captured when the frame is
+	                   * pushed. It cannot be derived afterwards: the caller's own file is the
+	                   * defining file of the CALLER's function, and for a call made by
+	                   * top-level code it is whichever included unit was executing THEN --
+	                   * the include stack has moved on by the time a trace is taken. Aliases
+	                   * a VM-lifetime string (a function's sFile, or an aFiles entry). */
 	int nActualArgs;  /* Actual call arity (band A #4): how many arguments the CALLER passed,
 	                   * stamped by the OP_CALL / generator-fiber install sites; -1 when
 	                   * unknown (non-call frames) - func_num_args()/func_get_args() then fall
@@ -2802,6 +2842,12 @@ struct ph7_vm
 	SyBlob sConsumer;           /* Default VM consumer [i.e Redirect all VM output to this blob] */
 	SyBlob sWorker;             /* General purpose working buffer */
 	SySet aFiles;               /* Stack of processed files */
+	SySet aIncFrame;            /* Stack of ACTIVE include/require/eval activations (VmIncFrame).
+	                             * php shows each of them as a trace frame of its own -- the
+	                             * `#N main.php(4): require()` between the included file's frames
+	                             * and the caller's -- and nothing else in this engine records
+	                             * one: an include shares its caller's variable scope, so it
+	                             * pushes no VmFrame to be found later. */
 	SySet aPaths;               /* Set of import paths */
 	SySet aIncluded;            /* Set of included files */
 	SySet aOB;                  /* Stackable output buffers */
@@ -5198,6 +5244,7 @@ PH7_PRIVATE int vm_builtin_uniqid(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm.c frame/backtrace internals shared with vm_builtin_error.c */
 PH7_PRIVATE VmFrame * VmSkipExceptionFrames(VmFrame *pFrame);
 PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_value *pList);
+PH7_PRIVATE void PH7_GenAppendFatalTrace(ph7_vm *pVm,SyBlob *pOut,int iTraceKind);
 PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMarker,SyBlob *pOut);
 PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pArray);
 /* vm_builtin_error.c function prototypes (rows stay in vm.c's aVmFunc[]) */
@@ -5636,6 +5683,9 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 /* vm_include.c function prototypes (rows stay in vm.c's aVmFunc[]) */
 PH7_PRIVATE sxi32 VmMountUserClass(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFlags,int bTrueReturn);
+PH7_PRIVATE SyString * PH7_VmExecutingUnitFile(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmIncFramePush(ph7_vm *pVm,const char *zName,SyString *pPath);
+PH7_PRIVATE void PH7_VmIncFramePop(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDeferredReq **ppMissing);
 PH7_PRIVATE ph7_user_func * PH7_VmMagicCallFunc(ph7_vm *pVm);
 PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg);

@@ -35,9 +35,60 @@ static void VmReportCompileFatal(ph7_vm *pVm,SyBlob *pMsg,sxu32 nLine)
 	if( pFile ){
 		SyBlobFormat(&sOut," in %.*s on line %u",(int)pFile->nByte,pFile->zString,nLine);
 	}
+	PH7_GenAppendFatalTrace(&(*pVm),&sOut,PH7_FATAL_TRACE_COMPILE);
 	SyBlobAppend(&sOut,"\n",sizeof(char));
 	pVm->pEngine->xConf.xErr(SyBlobData(&sOut),SyBlobLength(&sOut),pVm->pEngine->xConf.pErrData);
 	SyBlobRelease(&sOut);
+}
+/*
+ * Record an ACTIVE include/require/eval so a backtrace can show it: php gives each
+ * one a frame of its own between the loaded unit's frames and the caller's. Nothing
+ * else in this engine records it -- an include shares its caller's variable scope,
+ * so it pushes no VmFrame.
+ *
+ * pPath is the unit being loaded (php's single argument for the frame) and is empty
+ * for eval(), which php shows argument-less. The call SITE is read here rather than
+ * later for the same reason a frame's is (see VmEnterFrame): the include stack moves
+ * on, and a `try` block's frame carries no function to read a file from.
+ */
+PH7_PRIVATE void PH7_VmIncFramePush(ph7_vm *pVm,const char *zName,SyString *pPath)
+{
+	VmIncFrame sInc;
+	VmFrame *pCaller = pVm->pFrame;
+	SyString *pFile;
+	SyZero(&sInc,sizeof(sInc));
+	while( pCaller && pCaller->pParent
+	    && (pCaller->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
+		pCaller = pCaller->pParent;
+	}
+	sInc.pFrame = (void *)pCaller;
+	sInc.nLine = pVm->nCurLine;
+	sInc.zName = zName;
+	/* The unit this construct is LOADING is already on the include stack by the
+	 * time we get here, so it must not be mistaken for the one the construct is
+	 * WRITTEN in: pop it for the question and put it back. */
+	if( pPath ){
+		SyString sTop = *(SyString *)SySetPeek(&pVm->aFiles);
+		(void)SySetPop(&pVm->aFiles);
+		pFile = PH7_VmExecutingUnitFile(&(*pVm));
+		if( pFile ){
+			sInc.sFile = *pFile;
+		}
+		SySetPut(&pVm->aFiles,(const void *)&sTop);
+	}else{
+		pFile = PH7_VmExecutingUnitFile(&(*pVm));
+		if( pFile ){
+			sInc.sFile = *pFile;
+		}
+	}
+	if( pPath ){
+		sInc.sPath = *pPath;
+	}
+	SySetPut(&pVm->aIncFrame,(const void *)&sInc);
+}
+PH7_PRIVATE void PH7_VmIncFramePop(ph7_vm *pVm)
+{
+	(void)SySetPop(&pVm->aIncFrame);
 }
 /*
  * Compile and evaluate a PHP chunk at run-time.
@@ -304,7 +355,11 @@ PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return SXRET_OK;
 	}
 	/* Eval the chunk */
+	/* php gives eval() a trace frame of its own, exactly as it does an include --
+	 * argument-less, where an include names the unit it loaded. */
+	PH7_VmIncFramePush(pCtx->pVm,"eval",0);
 	rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sChunk,PH7_PHP_ONLY,FALSE);
+	PH7_VmIncFramePop(pCtx->pVm);
 	if( pCtx->pVm->bHaltRequested ){
 		/* exit/die inside the evaluated chunk: cascade the halt */
 		return PH7_ABORT;
@@ -462,7 +517,12 @@ static sxi32 VmExecIncludedFile(
 			 * the statement instead of resuming it. It is not an IO failure, so the
 			 * callers must tell the two apart before warning. */
 			SyStringInitFromBuf(&sScript,SyBlobData(&sContents),SyBlobLength(&sContents));
+			/* php shows the construct itself as a trace frame; the path it names is
+			 * the RESOLVED one, which is what aFiles was just given. */
+			PH7_VmIncFramePush(pVm,ph7_function_name(pCtx),
+				(SyString *)SySetPeek(&pVm->aFiles));
 			rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sScript,0,TRUE);
+			PH7_VmIncFramePop(pVm);
 			if( rc != PH7_EXCEPTION ){
 				rc = SXRET_OK;
 			}

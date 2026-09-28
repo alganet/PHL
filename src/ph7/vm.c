@@ -625,6 +625,44 @@ PH7_PRIVATE VmFrame * VmNewFrame(
 /* Forward declaration */
 static void VmSpreadCaptureReset(ph7_vm *pVm);
 /*
+ * The file the code RUNNING RIGHT NOW is written in -- what php would call the
+ * executing op array's filename, and what a trace frame records as its call site.
+ *
+ * Three answers, in order. An include/require/eval started from the current frame
+ * means that unit's own top-level code is what is running, so the include stack's
+ * top is the file (a frame is SHARED with the unit it includes: php gives the unit
+ * an op array of its own, this engine does not). Otherwise it is the defining file
+ * of the function whose frame this is -- the include stack is no help there, since
+ * a call chain spanning files leaves it pointing at the outermost unit. And for
+ * top-level code with no function at all, the include stack's top again.
+ *
+ * A `try` block pushes a frame of its own carrying no function, so the search for
+ * the running function looks past those.
+ */
+PH7_PRIVATE SyString * PH7_VmExecutingUnitFile(ph7_vm *pVm)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	sxu32 nInc;
+	while( pFrame && pFrame->pParent
+	    && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
+		pFrame = pFrame->pParent;
+	}
+	nInc = SySetUsed(&pVm->aIncFrame);
+	if( nInc > 0 ){
+		VmIncFrame *pInc = (VmIncFrame *)SySetAt(&pVm->aIncFrame,nInc - 1);
+		if( pInc && pInc->pFrame == (void *)pFrame ){
+			return (SyString *)SySetPeek(&pVm->aFiles);
+		}
+	}
+	if( pFrame && pFrame->pUserData ){
+		ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;
+		if( SyStringLength(&pFunc->sFile) > 0 ){
+			return &pFunc->sFile;
+		}
+	}
+	return (SyString *)SySetPeek(&pVm->aFiles);
+}
+/*
  * Enter a VM frame.
  */
 PH7_PRIVATE sxi32 VmEnterFrame(
@@ -643,6 +681,14 @@ PH7_PRIVATE sxi32 VmEnterFrame(
 	pFrame->pSelfClass = pThis ? pThis->pClass : 0; /* the caller overwrites it for a static call */
 	/* The line currently executing IS the call site for the frame being pushed. */
 	pFrame->nCallLine = pVm->nCurLine;
+	{
+		/* ...and the file that line is in, which has to be read NOW: the include
+		 * stack has moved on by the time a backtrace is taken. */
+		SyString *pCallFile = PH7_VmExecutingUnitFile(&(*pVm));
+		if( pCallFile ){
+			pFrame->sCallFile = *pCallFile;
+		}
+	}
 	/* Link to the list of active VM frame */
 	pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pFrame;
@@ -2288,6 +2334,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobRelease(&pVm->sMagicCallName);
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
+	SySetInit(&pVm->aIncFrame,&pVm->sAllocator,sizeof(VmIncFrame));
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aIncluded,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aOB,&pVm->sAllocator,sizeof(VmObEntry));

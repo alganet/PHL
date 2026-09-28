@@ -240,6 +240,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 			 * them identically wherever the modifier was written -- plus the two a
 			 * PARAMETER never takes, which php words against "a parameter". */
 			if( zTwice ){
+				pGen->iFatalTrace = PH7_FATAL_TRACE_NONE;
 				rc = zTwice[0]
 					? PH7_GenCompileError(pGen,E_ERROR,nModLine,
 						"Multiple %s modifiers are not allowed",zTwice)
@@ -251,6 +252,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 				return SXERR_SYNTAX;
 			}
 			if( zNotHere ){
+				pGen->iFatalTrace = PH7_FATAL_TRACE_NONE;
 				rc = PH7_GenCompileError(pGen,E_ERROR,nModLine,
 					"Cannot use the %s modifier on a parameter",zNotHere);
 				if( rc == SXERR_ABORT ){

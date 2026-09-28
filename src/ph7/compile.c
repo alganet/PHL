@@ -2429,6 +2429,17 @@ static sxi32 GenStateEmitExprCode(
 		}
 		/* Finally,emit the VM instruction associated with this operator */
 		PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
+		if( (iVmOp == PH7_OP_CALL || iVmOp == PH7_OP_NEW) && pNode->pStart ){
+			/* A call's own line is where it BEGINS, not where its argument list
+			 * closes. The emitter stamps every instruction with the token the
+			 * generator is standing on, which for a call is the ')' -- so a call
+			 * written across several lines went into the backtrace at its LAST one
+			 * and php records its first. */
+			VmInstr *pCallInstr = PH7_VmPeekInstr(pGen->pVm);
+			if( pCallInstr ){
+				pCallInstr->nLine = pNode->pStart->nLine;
+			}
+		}
 	}
 	if( nJmpIdx > 0 ){
 		/* Fix short-circuited jumps now the destination is resolved */
@@ -4360,6 +4371,7 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	pGen->nFatal = 0;
 	pGen->nFirstErrLine = 0;
 	pGen->bParseThrows = 0;
+	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
 	/* Clear the class-body context (a prior compile aborted mid-class-body would
 	 * otherwise leave these live for the next eval/include on this VM). */
 	pGen->pCurClass = 0;
@@ -4418,6 +4430,7 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->nFatal = 0;
 	pGen->nFirstErrLine = 0;
 	pGen->bParseThrows = 0;
+	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
 	pGen->nLoopId = pGen->nCurLoopId = 0;
 	pGen->nCommaExprOk = 0;
 	pGen->zClauseCloser = 0;
@@ -4662,6 +4675,39 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(
  * this function return SXERR_ABORT.In that case upper-layers must
  * abort compilation immediately.
  */
+/*
+ * php's `Stack trace:` block under a compile-time FATAL: the activations that are
+ * live at the refusal -- the enclosing functions, and the include/require/eval that
+ * loaded the unit being compiled -- then the `#N {main}` marker. A parse error gets
+ * none: that one is the parser's own refusal and php reports it as an E_PARSE.
+ *
+ * A refusal raised while the VM is still INITIALIZING is the main script's own
+ * compile: there is no runtime state to walk (and no object pool to build the array
+ * in), and php's answer there is the bare bottom marker.
+ */
+PH7_PRIVATE void PH7_GenAppendFatalTrace(ph7_vm *pVm,SyBlob *pOut,int iTraceKind)
+{
+	ph7_value *pTrace;
+	if( pVm == 0 || iTraceKind == PH7_FATAL_TRACE_NONE ){
+		return;
+	}
+	SyBlobAppend(pOut,"\nStack trace:\n",sizeof("\nStack trace:\n")-1);
+	if( pVm->nMagic == PH7_VM_INIT ){
+		SyBlobAppend(pOut,"#0 {main}",sizeof("#0 {main}")-1);
+		return;
+	}
+	pTrace = ph7_new_array(&(*pVm));
+	if( pTrace == 0 ){
+		SyBlobAppend(pOut,"#0 {main}",sizeof("#0 {main}")-1);
+		return;
+	}
+	/* php's fatal trace carries no argument list. Nor, unless this is one of the
+	 * refusals php makes at RUN time, the include/require/eval that loaded the unit
+	 * being compiled: php raises a compile error before it pushes that activation. */
+	VmBuildBacktrace(&(*pVm),0x2 | (iTraceKind == PH7_FATAL_TRACE_RUNTIME ? 0 : 0x4),0,pTrace);
+	PH7_VmTraceToString(&(*pVm),pTrace,TRUE,pOut);
+	ph7_release_value(&(*pVm),pTrace);
+}
 PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...)
 {
 	SyBlob *pWorker = &pGen->sErrBuf;
@@ -4700,29 +4746,19 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 			SyBlobFormatAp(&pGen->sFirstErr,zFormat,apF);
 			va_end(apF);
 			pGen->nFirstErrLine = nLine;
-		}else if( nErrType == E_ERROR || nErrType == E_PARSE ){
+		}else{
 			/* php stops at the first one. This generator recovers and carries on so
 			 * that the rest of the unit is still walked (a later pass needs the
 			 * symbols), but everything it says after the first refusal is its own
 			 * recovery talking -- and printing it put diagnostics on the user's
-			 * screen that php, having stopped, never reaches. */
-			return SXRET_OK;
-		}
-		if( pGen->nErr > 15 ){
-			/* Error count limit reached */
-			if( pGen->xErr ){
-				SyBlobAppend(pWorker,"PHP ",4);
-				SyBlobFormat(pWorker,"Fatal error:  Error count limit reached,PH7 is aborting compilation");
-				if( pFile ){
-					SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);
-				}
-				SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));
-				if( SyBlobLength(pWorker) > 0 ){
-					pGen->xErr(SyBlobData(pWorker),SyBlobLength(pWorker),pGen->pErrData);
-				}
-			}
-			/* Abort immediately */
-			return SXERR_ABORT;
+			 * screen that php, having stopped, never reaches.
+			 *
+			 * The recovery is still bounded, and now SILENTLY: the old limit
+			 * announced itself with a `Error count limit reached` line of PH7's own
+			 * invention, which no php prints and which would land on top of the one
+			 * diagnostic php does. The unit has already failed and its first message
+			 * is already recorded, so there is nothing left to say. */
+			return (pGen->nErr > 15) ? SXERR_ABORT : SXRET_OK;
 		}
 	}
 	if( nErrType == E_PARSE && pGen->bParseThrows ){
@@ -4767,6 +4803,13 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	if( pFile ){
 		SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);
 	}
+	if( nErrType == E_ERROR ){
+		PH7_GenAppendFatalTrace(pGen->pVm,pWorker,pGen->iFatalTrace);
+	}
+	/* iFatalTrace is a ONE-SHOT: a site that raises one of php's non-compiler
+	 * refusals sets it just before the call and this consumes it, so no site has to
+	 * remember to put it back and none of them can leak it onto a later refusal. */
+	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
 	/* Append a new line */
 	SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));
 	if( SyBlobLength(pWorker) > 0 ){

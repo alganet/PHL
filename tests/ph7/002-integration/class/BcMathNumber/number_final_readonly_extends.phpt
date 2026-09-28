@@ -14,13 +14,6 @@ not allow: a compile-time fatal is uncatchable there and ends the process. Now
 that this engine agrees, one refusal is all a process can show; the readonly
 mismatch rows moved to oo/readonly_class_extend_nonreadonly.phpt and
 oo/readonly_class_readonly_extend_plain.phpt, which already pinned them.
---SKIPIF--
-<?php
-// Both engines stop here and word it identically; php prints a `Stack trace:`
-// block under a compile-time FATAL that this engine does not (ECOSYSTEM.md F30,
-// behind F6's frame attribution).
-if (function_exists('zend_version')) { echo 'skip php prints a Stack trace under a compile-time fatal'; }
-?>
 --FILE--
 <?php
 class BcNumSubA extends BcMath\Number {}

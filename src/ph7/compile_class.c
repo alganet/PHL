@@ -43,6 +43,11 @@ static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pCla
 		ph7_class *pPrev = (ph7_class *)pEntry->pUserData;
 		while( pPrev ){
 			if( pPrev->iFlags & PH7_CLASS_BOUND ){
+				/* php cannot early-bind a name it already holds, so THIS refusal comes
+				 * from the DECLARE_CLASS opcode at run time -- and its stack trace
+				 * carries the include/require that loaded the unit, where every other
+				 * compile-time refusal's does not. */
+				pGen->iFatalTrace = PH7_FATAL_TRACE_RUNTIME;
 				/* php names the entity by the PREVIOUS declaration's kind and omits
 				 * the "(previously declared in ...)" clause for internal symbols. */
 				if( pPrev->sFile.nByte > 0 ){
@@ -2191,7 +2196,9 @@ static sxi32 GenStateReadMemberMods(ph7_gen_state *pGen,GenMemberMods *pMods)
 		}
 		pMods->bAny = 1;
 		if( zTwice ){
-			sxi32 rc = zTwice[0]
+			sxi32 rc;
+			pGen->iFatalTrace = PH7_FATAL_TRACE_NONE;
+			rc = zTwice[0]
 				? PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
 					"Multiple %s modifiers are not allowed",zTwice)
 				: PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
@@ -2268,6 +2275,7 @@ static sxi32 GenStateScreenMemberMods(ph7_gen_state *pGen,const GenMemberMods *p
 	if( zBad == 0 ){
 		return SXRET_OK;
 	}
+	pGen->iFatalTrace = PH7_FATAL_TRACE_NONE;
 	rc = PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
 		"Cannot use the %s modifier on %s",zBad,zWhere);
 	return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
@@ -5571,6 +5579,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassModifiers(ph7_gen_state *pGen)
 	}
 	if( (iFlags & (PH7_CLASS_FINAL|PH7_CLASS_ABSTRACT))
 		== (PH7_CLASS_FINAL|PH7_CLASS_ABSTRACT) ){
+		pGen->iFatalTrace = PH7_FATAL_TRACE_NONE;
 		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 			"Cannot use the final modifier on an abstract class");
 		if( rc == SXERR_ABORT ){
