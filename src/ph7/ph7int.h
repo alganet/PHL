@@ -2261,6 +2261,11 @@ struct VmInstr
 struct VmCallArgMap
 {
 	sxu8 bHasNamed;      /* 1 if any argument uses name: syntax */
+	sxu8 bFromUnpack;    /* 1 when this is the EFFECTIVE map an argument UNPACK
+	                      * produced (VmBuildEffectiveArgMap). php words its
+	                      * positional-after-named refusal with a trailing
+	                      * ` during unpacking` only there; the same rule broken by
+	                      * call_user_func_array's array gets the bare sentence. */
 	sxu8 bIsNamespaced;  /* 1 if compiler namespace-qualified the call */
 	sxu8 bStrict;        /* 1 if the call site's file declared strict_types=1 */
 	sxu32 nOrigNameLit;  /* Original (unqualified) name-literal index + 1, stored

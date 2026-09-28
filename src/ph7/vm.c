@@ -4606,6 +4606,14 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 			 * reconstructed from an array — call_user_func_array(['b'=>9, 'x']) —
 			 * can, so enforce PHP's rule at this shared choke point. */
 			if( bSeenNamed ){
+				/* php has two sentences for the one rule: the argument list an
+				 * UNPACK produced ends with ` during unpacking`, and the one
+				 * call_user_func_array() rebuilt from an array does not. */
+				if( pMap->bFromUnpack ){
+					return VmThrowNamedArgError(&(*pVm),
+						"Cannot use positional argument after named argument during unpacking",
+						sizeof("Cannot use positional argument after named argument during unpacking") - 1);
+				}
 				return VmThrowNamedArgError(&(*pVm),
 					"Cannot use positional argument after named argument",
 					sizeof("Cannot use positional argument after named argument") - 1);
@@ -4639,26 +4647,78 @@ PH7_PRIVATE int VmValueIsTraversable(ph7_vm *pVm, ph7_value *pVal)
 	return PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass, pVm->pTraversableClass);
 }
 /*
+ * Shared body of the two Traversable-spread steps. An ARRAY source can only hand
+ * over the two key types an array holds, but an ITERATOR may answer key() with
+ * anything at all, so php screens it: `Keys must be of type int|string during
+ * {array,argument} unpacking` is an Error raised at the offending element, and it
+ * refuses a float (a WHOLE one included), a bool, a null and a resource as well as
+ * the two containers — this is not the offset rule set, which folds all four.
+ *
+ * What survives the screen follows php's ordinary 8.1 unpack rules, which are the
+ * ones an array source already gets: a key that stays a STRING is kept, a key that
+ * FOLDS to an integer — a canonical numeric string like "7" among them — is
+ * renumbered. PH7_HashmapKeyIsInt answers that fold, and asking it is what keeps
+ * `yield "7" => v` off the integer key 7 the raw insert would have written.
+ *
+ * On the ARGUMENT path the kept string key is what makes the element a NAMED
+ * argument: VmSpreadCaptureRun reads the temp map's node keys, so binding, the
+ * unknown-name Error and the duplicate-name Error all come for free. Before this,
+ * both steps threw the key away — `[...$gen]` silently renumbered a key php
+ * refuses, and `f(...$gen)` passed a named argument positionally, which is a
+ * DIFFERENT parameter's value with no diagnostic at all.
+ */
+static sxi32 VmSpreadKeyedStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue,
+                               ph7_hashmap *pMap, int bArgs)
+{
+	SyBlob sMsg;
+	sxi32 rc;
+	int bKeep;
+	if( (pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_INT)) == 0
+	 || (pKey->iFlags & (MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES)) ){
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Keys must be of type int|string during %s unpacking",
+			bArgs ? "argument" : "array");
+		rc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		SyBlobRelease(&sMsg);
+		return (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+	}
+	/* PH7_HashmapKeyIsInt may cast pKey to a string to answer; pKey is the walk's
+	 * own temporary, released the moment this step returns. */
+	bKeep = (pKey->iFlags & MEMOBJ_STRING) && !PH7_HashmapKeyIsInt(pKey);
+	if( bKeep && bArgs && PH7_HashmapLookup(pMap,pKey,0) == SXRET_OK ){
+		/* Two elements under the same string key are two NAMED arguments with the
+		 * same name, which php refuses. The array path lets the later one win (that
+		 * IS php's array-unpack rule), but here the collision would silently drop an
+		 * argument: the temp map keeps one element, so the callee would be handed a
+		 * shorter list with no diagnostic. The message is the binder's own — a
+		 * duplicate spread ACROSS two sources still reaches it there. */
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Named parameter $%.*s overwrites previous argument",
+			(int)SyBlobLength(&pKey->sBlob),(const char *)SyBlobData(&pKey->sBlob));
+		rc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		SyBlobRelease(&sMsg);
+		return (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+	}
+	PH7_HashmapInsert(pMap, bKeep ? pKey : 0 /* auto-index */, pValue);
+	return SXRET_OK;
+}
+/*
  * PH7_VmIteratorWalk step for array-literal Traversable spread `[...$it]`:
  * merge each element with PHP 8.1 array-unpack key rules — string keys are
  * preserved (later wins), integer keys are renumbered.
  */
 PH7_PRIVATE sxi32 VmSpreadMergeStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
 {
-	ph7_hashmap *pMap = (ph7_hashmap *)pUserData;
-	(void)pVm;
-	PH7_HashmapInsert(pMap, (pKey->iFlags & MEMOBJ_STRING) ? pKey : 0 /* auto-index */, pValue);
-	return SXRET_OK;
+	return VmSpreadKeyedStep(pVm,pKey,pValue,(ph7_hashmap *)pUserData,0);
 }
 /*
  * PH7_VmIteratorWalk step for call-argument Traversable spread `f(...$it)`:
- * collect values positionally (keys ignored) into a temp array.
+ * collect the elements into a temp array, keeping a string key so the CALL
+ * replays it as a named argument.
  */
 PH7_PRIVATE sxi32 VmSpreadValuesStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
 {
-	(void)pVm; (void)pKey;
-	PH7_HashmapInsert((ph7_hashmap *)pUserData, 0 /* auto-index */, pValue);
-	return SXRET_OK;
+	return VmSpreadKeyedStep(pVm,pKey,pValue,(ph7_hashmap *)pUserData,1);
 }
 /*
  * Shared OP_SPREAD expansion tail: replace the stack slot holding an
@@ -4981,6 +5041,7 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 		return 0;
 	}
 	pEff->bHasNamed = 1;
+	pEff->bFromUnpack = 1; /* picks php's ` during unpacking` refusal wording */
 	pEff->bIsNamespaced = pCompile ? pCompile->bIsNamespaced : 0;
 	pEff->bStrict = pCompile ? pCompile->bStrict : 0;
 	pEff->nOrigNameLit = pCompile ? pCompile->nOrigNameLit : 0;
