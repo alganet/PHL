@@ -5632,7 +5632,7 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 PH7_PRIVATE void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,const SyString *pName,ph7_value *pValue)
 {
 	ph7_class_method *pSetMeth;
-	if( PH7_ClassNativePropOwns(pSetThis->pClass,pName) ){
+	if( PH7_ClassNativePropOwns(pSetThis,pName) ){
 		/* php's write_property handler for a name the class's own table carries:
 		 * it answers BEFORE the standard path, so a subclass's `__set` never sees
 		 * a DOM property and the handler's refusal is the one a program catches.

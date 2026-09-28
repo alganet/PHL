@@ -10082,6 +10082,18 @@ static void DomPropHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx 
 	}
 	SyMemcpy(SyStringData(pCtx->pName),zName,nName);
 	zName[nName] = 0;
+	if( pCtx->iMode == PH7_NATIVE_PROP_OWNS ){
+		/* php's table membership, which for ext/dom is the DECLARATION: every one
+		 * of its ninety names is declared virtual on the class, and nothing else
+		 * is the handler's. Answered without running a recognizer -- a write shape
+		 * asks this before the value exists, and the deprecated names would raise
+		 * their notice on a read the program has not made. */
+		ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,zName,nName);
+		if( pDecl && (pDecl->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
+			pCtx->bAnswered = 1;
+		}
+		return;
+	}
 	/* The recognizers answer by WRITING a result, so the scratch context carries
 	 * one slot of its own -- and the refusal channel, which is what stops a
 	 * readonly Error or a DOMException from running the enclosing catch in the
@@ -10133,11 +10145,11 @@ static void DomPropHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx 
 		}else{
 			/* php's has_property fetches the value and judges it: by NULL-ness for
 			 * isset() (`isset($n->nextSibling)` is false on a last child while
-			 * `isset($n->nodeName)` is true) and by TRUTH for the check_empty
-			 * question empty() asks. */
-			int bSet = pCtx->iMode == PH7_NATIVE_PROP_EXISTS
-				? ph7_value_to_bool(&sVal)
-				: (sVal.iFlags & MEMOBJ_NULL) == 0;
+			 * `isset($n->nodeName)` is true) and by TRUTH for the two check_empty
+			 * questions -- ext/dom's handler makes no distinction between them. */
+			int bSet = pCtx->iMode == PH7_NATIVE_PROP_ISSET
+				? (sVal.iFlags & MEMOBJ_NULL) == 0
+				: ph7_value_to_bool(&sVal);
 			PH7_MemObjRelease(pCtx->pResult);
 			ph7_value_bool(pCtx->pResult,bSet);
 		}

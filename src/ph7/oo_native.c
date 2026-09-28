@@ -822,30 +822,36 @@ PH7_PRIVATE int PH7_ClassNativePropAsk(ph7_class_instance *pThis,PH7_NativePropC
 	pCtx->zThrowClass = 0;
 	pCtx->zThrowMsg[0] = 0;
 	pCtx->iThrowCode = 0;
+	pCtx->bQuiet = 0;
+	pCtx->bWriteCtx = 0;
+	pCtx->nSlot = SXU32_HIGH;
 	return PH7_ClassNativeProp(pThis,pCtx);
 }
 /*
  * Does this class answer `$o->p` through a HANDLER of its own -- php's question
  * "is the name in the class's property-handler table"?
  *
- * A native class states that by DECLARING the name VIRTUAL (PH7_MOD_VIRTUAL: a
- * declaration with no slot of any kind) and carrying a ph7_class::xProp hook.
- * That pair is ext/dom's whole shape -- ninety declarations, a C handler behind
- * each and no magic accessor anywhere -- and it is what makes the handler beat a
- * subclass's own `__get`: a name the table carries never reaches the magic layer,
- * and a name it does not carry falls through to it, which is php's handler order.
+ * The hook answers for itself, because what the answer depends on differs per
+ * class: ext/dom reads the class's VIRTUAL declarations (PH7_MOD_VIRTUAL -- a
+ * name declared with no slot of any kind), ArrayObject reads the object's
+ * ARRAY_AS_PROPS flag and owns every name once it is set. Whether a REAL property
+ * of that name is in the way is not the hook's question: every caller asks only
+ * after the instance's own table missed, which is php's order too.
  *
- * Asked at the write shapes, where the member opcode has no value yet and the
- * hook cannot be run for its answer.
+ * It is what makes the handler beat a subclass's own `__get`: a name the table
+ * carries never reaches the magic layer, and a name it does not carry falls
+ * through to it, which is php's handler order. Asked at the write shapes, where
+ * the member opcode has no value yet and the write half cannot be run for an
+ * answer.
  */
-PH7_PRIVATE int PH7_ClassNativePropOwns(ph7_class *pClass,const SyString *pName)
+PH7_PRIVATE int PH7_ClassNativePropOwns(ph7_class_instance *pThis,const SyString *pName)
 {
-	ph7_class_attr *pAttr;
-	if( pClass == 0 || NativePropClass(pClass) == 0 ){
+	PH7_NativePropCtx sCtx;
+	if( pThis == 0 || NativePropClass(pThis->pClass) == 0 ){
 		return 0;
 	}
-	pAttr = PH7_ClassExtractAttribute(pClass,SyStringData(pName),SyStringLength(pName));
-	return pAttr != 0 && (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0;
+	return PH7_ClassNativePropAsk(pThis,&sCtx,PH7_NATIVE_PROP_OWNS,pName,0)
+	    && sCtx.zThrowClass == 0;
 }
 /*
  * Install a property handler on a mounted native class. Called by the owning

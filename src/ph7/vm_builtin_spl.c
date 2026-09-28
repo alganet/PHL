@@ -594,7 +594,6 @@ static void SplAddMembers(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 	SyHashResetLoopCursor(&pThis->hAttr);
 	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		SyString *pName = &pVmAttr->pAttr->sName;
 		ph7_value *pVal;
 		ph7_value sKey;
 		if( PH7_ATTR_UNPRESENTED(pVmAttr)
@@ -606,7 +605,14 @@ static void SplAddMembers(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 			continue;
 		}
 		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
-		PH7_MemObjStringAppend(&sKey,pName->zString,pName->nByte);
+		/* php's MANGLED name -- `\0*\0p` for a protected member and
+		 * `\0Declaring\0p` for a private one. Every door this walk feeds is one
+		 * php hands the raw table to: the debug array `var_dump()` prints and
+		 * `__debugInfo()` answers, `serialize()`'s member map, and the (array) cast
+		 * a STD_PROP_LIST container takes. PHL spelled all four with the bare name,
+		 * so a subclass's private property printed `[pri]` and serialized under a
+		 * key php's unserializer reads as a PUBLIC one. */
+		PH7_ClassInstanceAttrKey(pThis,pVmAttr,&sKey);
 		ph7_array_add_elem(pOut,&sKey,pVal);
 		PH7_MemObjRelease(&sKey);
 	}
@@ -1723,71 +1729,154 @@ static int vm_builtin_ArrayObject_getIterator(ph7_context *pCtx,int nArg,ph7_val
 	return PH7_OK;
 }
 /*
- * ARRAY_AS_PROPS (flag 2) reaches the store through the four magic accessors, which is how
- * the PHP did it. php has no such methods — it implements the flag in its property handler,
- * so `getMethods()` does not list them (a surface divergence carried over, §7.4).
+ * php's read_property / has_property / write_property / unset_property for the two
+ * store containers, as ph7_class::xProp -- and the FLAG is the whole handler.
+ *
+ * php's `spl_array_get_hash_table` answers the storage only when
+ * SPL_ARRAY_ARRAY_AS_PROPS is set, and its handlers stand down entirely when it is
+ * not: the object's ordinary property table answers instead, so a read of a
+ * storage key on the DEFAULT object is php's `Undefined property` warning and a
+ * write creates a property BESIDE the storage. PHL reached the storage through
+ * `__get`/`__set`/`__isset`/`__unset` -- four methods php does not have, which
+ * `get_class_methods()` reported -- and those bodies could not stand down: with
+ * the flag off they answered null and swallowed the write in silence, and with it
+ * on they answered a missing key in silence where php warns.
+ *
+ * A name the object holds a REAL property for never reaches here at all (the
+ * member opcode consults the handler only on a miss), which is php's own order:
+ * `class S extends ArrayObject { public $own; }` writes `$s->own` to the slot and
+ * `$s->x` to the storage.
  */
-static int vm_builtin_ArrayObject_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+#define SPL_ARRAY_AS_PROPS 0x0002
+/* The store's node for this property name, or 0. bCreate is php's write-context
+ * vivification -- the same rule the DIMENSION fast path above follows. */
+static ph7_hashmap_node * SplPropNode(ph7_vm *pVm,ph7_class_instance *pThis,
+	const SyString *pName,int bCreate)
 {
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_hashmap *pMap;
+	ph7_hashmap *pMap = SplStore(pVm,pThis);
 	ph7_hashmap_node *pNode = 0;
-	if( pThis == 0 || nArg < 1 || (PH7_NativeAttrInt(pThis,SPL_F) & 2) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	ph7_value sKey;
+	int bHit;
+	if( pMap == 0 ){
+		return 0;
 	}
-	pMap = SplStore(pVm,pThis);
-	if( pMap && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
-		ph7_result_value(pCtx,(ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx));
-		return PH7_OK;
-	}
-	/* `?? null`: a missing key must not raise the undefined-key warning from in here —
-	 * php reports the missing PROPERTY, and PHL's magic-read path already does. */
-	ph7_result_null(pCtx);
-	return PH7_OK;
-}
-static int vm_builtin_ArrayObject_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_hashmap *pMap;
-	if( pThis == 0 || nArg < 2 || (PH7_NativeAttrInt(pThis,SPL_F) & 2) == 0 ){
-		return PH7_OK;
-	}
-	pMap = SplStore(pCtx->pVm,pThis);
-	if( pMap ){
-		PH7_HashmapInsert(pMap,apArg[0],apArg[1]);
-	}
-	return PH7_OK;
-}
-static int vm_builtin_ArrayObject_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_hashmap *pMap;
-	ph7_hashmap_node *pNode = 0;
-	int bSet = 0;
-	if( pThis && nArg > 0 && (PH7_NativeAttrInt(pThis,SPL_F) & 2) ){
-		pMap = SplStore(pVm,pThis);
-		if( pMap && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
-			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
-			bSet = pVal && (pVal->iFlags & MEMOBJ_NULL) == 0; /* isset(), not exists */
+	PH7_MemObjInitFromString(pVm,&sKey,pName);
+	bHit = PH7_HashmapLookup(pMap,&sKey,&pNode) == SXRET_OK;
+	if( !bHit && bCreate ){
+		if( PH7_HashmapInsert(pMap,&sKey,0) == SXRET_OK ){
+			pNode = pMap->pLast;
+			bHit = pNode != 0;
 		}
 	}
-	ph7_result_bool(pCtx,bSet);
-	return PH7_OK;
+	PH7_MemObjRelease(&sKey);
+	return bHit ? pNode : 0;
 }
-static int vm_builtin_ArrayObject_unset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static void SplArrayProp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *pCtx)
 {
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_hashmap *pMap;
-	ph7_hashmap_node *pNode = 0;
-	if( pThis && nArg > 0 && (PH7_NativeAttrInt(pThis,SPL_F) & 2) ){
-		pMap = SplStore(pCtx->pVm,pThis);
-		if( pMap && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
+	ph7_hashmap_node *pNode;
+	ph7_value *pVal;
+	if( pThis == 0 || (PH7_NativeAttrInt(pThis,SPL_F) & SPL_ARRAY_AS_PROPS) == 0 ){
+		return;   /* php's handler stands down: the standard property path answers */
+	}
+	if( pCtx->iMode == PH7_NATIVE_PROP_WRITE ){
+		return;   /* the value does not exist yet; OWNS routes it to STORE */
+	}
+	if( pCtx->iMode == PH7_NATIVE_PROP_OWNS ){
+		/* Every name is the storage's once the flag is on -- php's handler does not
+		 * consult the keys to decide, which is why a write to a name no key carries
+		 * CREATES one rather than falling through to a dynamic property. */
+		pCtx->bAnswered = 1;
+		return;
+	}
+	if( pCtx->iMode == PH7_NATIVE_PROP_STORE ){
+		ph7_hashmap *pMap = SplStore(pVm,pThis);
+		if( pMap ){
+			ph7_value sKey;
+			PH7_MemObjInitFromString(pVm,&sKey,pCtx->pName);
+			PH7_HashmapInsert(pMap,&sKey,pCtx->pResult);
+			PH7_MemObjRelease(&sKey);
+		}
+		pCtx->bAnswered = 1;
+		return;
+	}
+	if( pCtx->iMode == PH7_NATIVE_PROP_UNSET ){
+		pNode = SplPropNode(pVm,pThis,pCtx->pName,FALSE);
+		if( pNode ){
 			PH7_HashmapUnlinkNode(pNode,TRUE);
 		}
+		pCtx->bAnswered = 1;
+		return;
 	}
+	pCtx->bAnswered = 1;
+	/* A WRITE-context read is php's get_property_ptr_ptr: it hands back the store's
+	 * OWN element -- creating the key when there is none, silently, exactly as the
+	 * dimension form does -- so `$ao->list[] = 1` and `$ao->deep['k'] = 1` land in
+	 * the store rather than in a temporary nothing else can see. An element that
+	 * already EXISTS is handed out for a plain read too, which is what makes
+	 * `sort($ao->nums)` and `foreach ($ao->rows as &$r)` write through. */
+	pNode = SplPropNode(pVm,pThis,pCtx->pName,
+		pCtx->iMode == PH7_NATIVE_PROP_READ && pCtx->bWriteCtx);
+	pVal = pNode ? (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx) : 0;
+	if( pCtx->iMode != PH7_NATIVE_PROP_READ ){
+		/* php's three has_property questions, each judging the value it just
+		 * fetched: NULL-ness for isset(), TRUTH for the check_empty question
+		 * `empty()` NEGATES, and mere EXISTENCE for property_exists(). A key
+		 * holding 0 answers true, false and true -- so it is `isset()`, it IS
+		 * `empty()`, and `property_exists()` finds it. */
+		int bSet;
+		if( pCtx->iMode == PH7_NATIVE_PROP_ISSET ){
+			bSet = pVal != 0 && (pVal->iFlags & MEMOBJ_NULL) == 0;
+		}else if( pCtx->iMode == PH7_NATIVE_PROP_NOTEMPTY ){
+			/* The truth of a COPY: this element is the store's own slot and
+			 * PH7_MemObjToBool retypes what it is handed, so asking the question
+			 * here would turn `$ao->n` from the int it holds into the bool the
+			 * answer is -- and leave it that way for every later read. */
+			bSet = 0;
+			if( pVal ){
+				ph7_value sTruth;
+				PH7_MemObjInit(pVm,&sTruth);
+				PH7_MemObjStore(pVal,&sTruth);
+				PH7_MemObjToBool(&sTruth);
+				bSet = sTruth.x.iVal != 0;
+				PH7_MemObjRelease(&sTruth);
+			}
+		}else{
+			bSet = pVal != 0;
+		}
+		ph7_value_bool(pCtx->pResult,bSet);
+		return;
+	}
+	if( pVal == 0 ){
+		/* php reports the missing ARRAY KEY here, not a missing property: the
+		 * handler took the access and the storage is where it looked. Silent for
+		 * the lookup `??` makes, as every read-miss diagnostic is. */
+		if( !pCtx->bQuiet ){
+			VmErrorFormat(pVm,PH7_CTX_WARNING,"Undefined array key \"%z\"",pCtx->pName);
+		}
+		return;
+	}
+	PH7_MemObjStore(pVal,pCtx->pResult);
+	pCtx->nSlot = pNode->nValIdx;
+}
+/*
+ * php's `__debugInfo()`, which both classes declare so a program can read by name
+ * the array `var_dump()` prints: the object's own properties under php's mangled
+ * keys, then the storage under the mangled `storage` key of the class that
+ * DECLARED it (an `ArrayIterator` subclass shows `\0ArrayIterator\0storage`).
+ * The same array the debug presentation hook builds, which is php's own sharing.
+ */
+static int vm_builtin_SplStore_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pOut = ph7_context_new_array(pCtx);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SplStorePresent(pCtx->pVm,pThis,pOut,TRUE);
+	ph7_result_value(pCtx,pOut);
 	return PH7_OK;
 }
 /*
@@ -1839,12 +1928,16 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "__serialize",  PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplStore_serializeMagic },
 		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "@void",
 		  vm_builtin_SplStore_unserializeMagic },
+		/* php's own order for the Iterator five -- rewind FIRST, which is the order
+		 * its stub declares them in and therefore the order get_class_methods() and
+		 * Reflection report. */
+		{ "rewind",       PH7_MOD_PUBLIC, "", "@void", vm_builtin_ArrayIterator_rewind },
 		{ "current",      PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_ArrayIterator_current },
 		{ "key",          PH7_MOD_PUBLIC, "", "@string|int|null", vm_builtin_ArrayIterator_key },
 		{ "next",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_ArrayIterator_next },
-		{ "rewind",       PH7_MOD_PUBLIC, "", "@void", vm_builtin_ArrayIterator_rewind },
 		{ "valid",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ArrayIterator_valid },
 		{ "seek",         PH7_MOD_PUBLIC, "int $offset", "@void", vm_builtin_ArrayIterator_seek },
+		{ "__debugInfo",  PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_debugInfo },
 	};
 	static const PH7_NativeMethodDef aObjMethod[] = {
 		{ "__construct",      PH7_MOD_PUBLIC,
@@ -1874,10 +1967,7 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "exchangeArray",    PH7_MOD_PUBLIC, "object|array $array", "@array", vm_builtin_ArrayObject_exchangeArray },
 		{ "setIteratorClass", PH7_MOD_PUBLIC, "~string $iteratorClass", "@void", vm_builtin_ArrayObject_setIteratorClass },
 		{ "getIteratorClass", PH7_MOD_PUBLIC, "", "@string", vm_builtin_ArrayObject_getIteratorClass },
-		{ "__get",            PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_get },
-		{ "__set",            PH7_MOD_PUBLIC, "$name, $value", 0, vm_builtin_ArrayObject_set },
-		{ "__isset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_isset },
-		{ "__unset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_unset },
+		{ "__debugInfo",      PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_debugInfo },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* `interface X extends Iterator` is a PARENT, not an implemented interface:
@@ -1898,7 +1988,16 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),
 		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, SplStorePresent },
 	};
-	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc == SXRET_OK ){
+		/* The property handler, assigned here for the same reason the clone and
+		 * dimension hooks are: PH7_NativeClassSpec carries no field for one. Both
+		 * roots wear it, and RecursiveArrayIterator reaches ArrayIterator's through
+		 * the engine's base-chain walk -- php's handler inheritance. */
+		PH7_NativeClassInstallPropHook(&(*pVm),"ArrayObject",SplArrayProp);
+		PH7_NativeClassInstallPropHook(&(*pVm),"ArrayIterator",SplArrayProp);
+	}
+	return rc;
 }
 /*
  * ---------------------------------------------------------------------------

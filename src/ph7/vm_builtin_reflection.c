@@ -8848,7 +8848,7 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 			if( pMagicArg == 0 ){
 				pMagicArg = &sMagicVal;
 			}
-			if( PH7_ClassNativePropOwns(pObj->pClass, &sNatName) ){
+			if( PH7_ClassNativePropOwns(pObj, &sNatName) ){
 				PH7_NativePropCtx sStore;
 				sxi32 rcSt = PH7_OK;
 				if( PH7_ClassNativePropAsk(pObj, &sStore, PH7_NATIVE_PROP_STORE,

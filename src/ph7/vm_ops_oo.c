@@ -491,11 +491,11 @@ static int VmMemberNativeSetKeepsSlot(const VmInstr *pInstr)
  * point the value arrives, so this shape is left to it: the read it makes goes
  * through the same handler anyway.
  */
-static int VmMemberCoalOwned(ph7_class *pClass,const VmInstr *pInstr,const SyString *pName)
+static int VmMemberCoalOwned(ph7_class_instance *pThis,const VmInstr *pInstr,const SyString *pName)
 {
 	return pInstr->iP2 == PH7_MEMBER_WRITE
 	    && pInstr[1].iOp == PH7_OP_NULLC_JMP
-	    && PH7_ClassNativePropOwns(pClass,pName);
+	    && PH7_ClassNativePropOwns(pThis,pName);
 }
 /*
  * php's `Indirect modification of overloaded property C::$p has no effect`: the
@@ -538,7 +538,7 @@ PH7_PRIVATE void PH7_VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const 
  */
 static int VmMagicRmwEligible(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const SyString *pName)
 {
-	if( PH7_ClassNativePropOwns(pClass,pName) ){
+	if( PH7_ClassNativePropOwns(pThis,pName) ){
 		/* A native class's own property handler answers BOTH halves -- php reads
 		 * `$doc->version .= '.1'` through read_property and writes the result back
 		 * through write_property, with no magic accessor involved either way. */
@@ -1126,7 +1126,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					pObjAttr = 0;
 				}
 				if( pObjAttr == 0 && PH7_ClassHasNativeProp(pClass)
-				 && !VmMemberCoalOwned(pClass,pInstr,&sName) ){
+				 && !VmMemberCoalOwned(pThis,pInstr,&sName) ){
 					/* php's read_property / has_property / write_property /
 					 * unset_property handlers, for a class whose properties are not
 					 * storage at all: PDORow answers every read from the statement's
@@ -1162,7 +1162,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						 * reads the value. The two are not the same question:
 						 * `empty($row->queryString)` is TRUE on a name the
 						 * handler does not know, while reading it works. */
-						sProp.iMode = PH7_NATIVE_PROP_EXISTS;
+						sProp.iMode = PH7_NATIVE_PROP_NOTEMPTY;
 					}else{
 						sProp.iMode = PH7_NATIVE_PROP_READ;
 					}
@@ -1172,6 +1172,15 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					sProp.zThrowClass = 0;
 					sProp.zThrowMsg[0] = 0;
 					sProp.iThrowCode = 0;
+					/* php's `??` is its THIRD accessor level: it takes the property's
+					 * VALUE and says nothing about a name that is not there. */
+					sProp.bQuiet = (pInstr->iP2 == PH7_MEMBER_COALESCE);
+					/* ...and a fetch in WRITE context is php's get_property_ptr_ptr,
+					 * which a handler whose property is a real element answers with
+					 * the element itself -- so `$ao->list[] = 1` lands in the store
+					 * rather than in a temporary, and creates the key it is missing. */
+					sProp.bWriteCtx = VmMemberNativeSetKeepsSlot(pInstr);
+					sProp.nSlot = SXU32_HIGH;
 					if( PH7_ClassNativeProp(pThis,&sProp) ){
 						if( sProp.zThrowClass == 0 && bPropCoal
 						 && sProp.iMode == PH7_NATIVE_PROP_READ
@@ -1210,7 +1219,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * judges for emptiness -- the same answer php takes. */
 							PH7_MemObjStore(&sPropVal,pTos);
 						}
-						pTos->nIdx = SXU32_HIGH;   /* a value, never an lvalue */
+						/* SXU32_HIGH unless the handler handed back a real element's
+						 * slot: a virtual property is a VALUE and never an lvalue,
+						 * while ArrayObject's storage element is the thing itself. */
+						pTos->nIdx = sProp.nSlot;
 						PH7_MemObjRelease(&sPropVal);
 						PH7_ClassInstanceUnref(pThis);
 						VM_EXIT_BREAK;
@@ -1391,7 +1403,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * write_property stands where `__set` would -- so every rail
 							 * below takes it, and the one door they all end at
 							 * (VmMagicSetDispatch) asks the handler first. */
-							int bOwnedSet = PH7_ClassNativePropOwns(pClass,&sName);
+							int bOwnedSet = PH7_ClassNativePropOwns(pThis,&sName);
 							if( bPlainStore || pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
 								pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);
 							}
@@ -1448,6 +1460,20 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									PH7_MemObjToBool(&sIssetRet);
 									bMiss = sIssetRet.x.iVal == 0;
 									PH7_MemObjRelease(&sIssetRet);
+								}
+								if( bOwnedSet && !bMiss ){
+									/* php's ASSIGN_COALESCE fetches BP_VAR_IS, which
+									 * asks has_property before read_property -- so a
+									 * name the handler answers nothing for is never
+									 * READ, and the assign it makes says nothing about
+									 * a key that was not there. */
+									ph7_value sOwnIs;
+									PH7_MemObjInit(pVm,&sOwnIs);
+									PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,
+										"__isset",sizeof("__isset")-1,&sName,&sOwnIs);
+									PH7_MemObjToBool(&sOwnIs);
+									bMiss = sOwnIs.x.iVal == 0;
+									PH7_MemObjRelease(&sOwnIs);
 								}
 								if( !bMiss && (pCoalGet || bOwnedSet)
 								 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){

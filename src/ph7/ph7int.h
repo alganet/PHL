@@ -1550,32 +1550,52 @@ struct PH7_NativeSetCtx
 #define PH7_NATIVE_PROP_WRITE 2
 #define PH7_NATIVE_PROP_UNSET 3
 /*
- * php's has_property asked the way property_exists() asks it: with a non-zero
- * `check_empty`, which its handlers read as the EMPTINESS question rather than
- * the null one. It is the same handler and a different answer -- a PDORow
- * column holding 0 or "" is `isset()` but does NOT `property_exists()` -- so
- * the two questions are two modes here.
+ * php's has_property asked the way `empty()` asks it -- ZEND_PROPERTY_NOT_EMPTY,
+ * a non-zero `check_empty`, which its handlers read as the EMPTINESS question
+ * rather than the null one. It is the same handler and a different answer: a
+ * PDORow column holding 0 or "" is `isset()` and is not this.
  */
-#define PH7_NATIVE_PROP_EXISTS 4
+#define PH7_NATIVE_PROP_NOTEMPTY 4
 /*
  * php's write_property, asked at the point the VALUE exists.
  *
- * The four modes above are asked by the member opcode, which runs BEFORE the
- * store that carries the value -- enough for a class that only ever refuses a
- * write (PDORow), and not enough for one whose handler really stores (ext/dom's
+ * The modes above are asked by the member opcode, which runs BEFORE the store
+ * that carries the value -- enough for a class that only ever refuses a write
+ * (PDORow), and not enough for one whose handler really stores (ext/dom's
  * `$el->nodeValue = 'x'`). STORE is the second half: pResult carries the
  * incoming value, and the hook writes it or refuses. It is dispatched from the
  * one place every overloaded write funnels through, so a plain store, a
  * compound assign, a `??=` and Reflection's setValue() all reach it.
  */
 #define PH7_NATIVE_PROP_STORE  5
+/*
+ * php's has_property asked the third way -- ZEND_PROPERTY_EXISTS, which is what
+ * `property_exists()` passes and nothing else does. A handler may answer it
+ * differently from the emptiness question, and ArrayObject's does: a storage key
+ * holding 0 EXISTS and is not `empty()`-false, where PDORow's handler makes no
+ * distinction and answers both by truth.
+ */
+#define PH7_NATIVE_PROP_EXISTS 6
+/*
+ * "Would you take a WRITE of this name?", asked where the value does not exist
+ * yet -- the member opcode's write shapes, which have to decide between the
+ * handler, a magic `__set` and creating a property before the store runs.
+ *
+ * Answering (bAnswered) means the write is the handler's and the rails route it
+ * to STORE above; declining leaves the name on the ordinary path. It is the one
+ * question a handler must answer without seeing a value, so it is about the NAME
+ * and the object's state alone: ext/dom answers it from the class's virtual
+ * declarations, ArrayObject from its ARRAY_AS_PROPS flag.
+ */
+#define PH7_NATIVE_PROP_OWNS   7
 typedef struct PH7_NativePropCtx PH7_NativePropCtx;
 struct PH7_NativePropCtx
 {
 	int iMode;               /* PH7_NATIVE_PROP_* */
 	const SyString *pName;   /* The property being asked about */
 	ph7_value *pResult;      /* READ: where the answer goes (the caller inits it NULL).
-	                          * ISSET/EXISTS: set to a bool by the hook. */
+	                          * ISSET/NOTEMPTY/EXISTS: set to a bool by the hook.
+	                          * STORE: the INCOMING value, which the hook stores. */
 	int bAnswered;           /* Set by the hook when it OWNS this name; 0 (the caller's
 	                          * init) leaves the access to the ordinary path */
 	const char *zThrowClass; /* Set by the hook to refuse; 0 (the caller's init) means answered */
@@ -1584,6 +1604,20 @@ struct PH7_NativePropCtx
 	                          * code a program reads (DOM_NOT_FOUND_ERR & co), so the number
 	                          * has to survive the trip out to the site that raises. 0 -- the
 	                          * caller's init -- is every other class's answer. */
+	int bQuiet;              /* READ only: this fetch is a LOOKUP (`$o->p ?? d`), php's third
+	                          * accessor level -- it takes the VALUE and says nothing about a
+	                          * name that is not there, where a plain read reports it. */
+	int bWriteCtx;           /* READ only: this fetch is the BASE of a write -- `$o->p[0] = 1`,
+	                          * `$o->p[] = 1`, a destructuring target -- so php asks
+	                          * get_property_ptr_ptr rather than read_property and a handler
+	                          * that CAN hand out a real slot should create the name it is
+	                          * missing. Set by the member opcode; ignored by a handler with
+	                          * no slot to give. */
+	sxu32 nSlot;             /* The memobj index the answer LIVES in, for a handler whose
+	                          * property is a real element of something the object owns
+	                          * (ArrayObject's storage). SXU32_HIGH -- the caller's init --
+	                          * means the answer is a value and the access is not an lvalue,
+	                          * which is every virtual property's answer. */
 };
 /*
  * One COMPARISON asked of a native class through ph7_class::xCmp -- php's
@@ -2194,7 +2228,7 @@ PH7_PRIVATE int PH7_ClassNativePropAsk(ph7_class_instance *pThis,PH7_NativePropC
 	int iMode,const SyString *pName,ph7_value *pResult);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallPropHook(ph7_vm *pVm,const char *zClass,
 	void (*xProp)(ph7_vm *,ph7_class_instance *,PH7_NativePropCtx *));
-PH7_PRIVATE int PH7_ClassNativePropOwns(ph7_class *pClass,const SyString *pName);
+PH7_PRIVATE int PH7_ClassNativePropOwns(ph7_class_instance *pThis,const SyString *pName);
 PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *));

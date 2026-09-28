@@ -2436,7 +2436,9 @@ static void PdoRowColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut)
 }
 /*
  * php's read_property / has_property / write_property / unset_property for the
- * row. A name that is no column at all is NULL to a read and false to an
+ * row -- and never its "would you take a write" question, which no rail asks of a
+ * class that refuses every write outright. A name that is no column at all is
+ * NULL to a read and false to an
  * isset(), never a warning -- and `queryString` is answered from the STATEMENT
  * BEFORE any column is looked at, so a query selecting a column of that name
  * cannot shadow it. The has side does NOT know the name at all, which is why
@@ -2461,6 +2463,11 @@ static void PdoRowProp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *
 			"Cannot unset PDORow property");
 		return;
 	}
+	if( pCtx->iMode == PH7_NATIVE_PROP_OWNS ){
+		/* Never: every write this class sees is refused above, at the member
+		 * opcode, so no write rail ever asks whether the handler would take one. */
+		return;
+	}
 	pCtx->bAnswered = 1;
 	if( pSt == 0 ){
 		return;   /* the statement is gone: every name reads null */
@@ -2480,10 +2487,13 @@ static void PdoRowProp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *
 		 * `queryString`, which is why reading one works where isset() on it is
 		 * false. */
 		int bSet;
-		if( pCtx->iMode == PH7_NATIVE_PROP_EXISTS ){
-			bSet = iCol >= 0 && ph7_value_to_bool(pCtx->pResult);
-		}else{
+		if( pCtx->iMode == PH7_NATIVE_PROP_ISSET ){
 			bSet = iCol >= 0 && (pCtx->pResult->iFlags & MEMOBJ_NULL) == 0;
+		}else{
+			/* php's handler answers the two check_empty questions the same way, so
+			 * `empty($row->c)` and `property_exists($row,'c')` are both the column's
+			 * TRUTH -- a column holding 0 is isset() and is neither of these. */
+			bSet = iCol >= 0 && ph7_value_to_bool(pCtx->pResult);
 		}
 		PH7_MemObjRelease(pCtx->pResult);
 		ph7_value_bool(pCtx->pResult,bSet);

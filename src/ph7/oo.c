@@ -3444,7 +3444,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(
 	int bMagicGet = nByte == sizeof("__get")-1 && SyMemcmp(zMethod,"__get",nByte) == 0;
 	int bMagicIsset = nByte == sizeof("__isset")-1 && SyMemcmp(zMethod,"__isset",nByte) == 0;
 	if( (bMagicGet || bMagicIsset) && pAttrName
-	 && PH7_ClassNativePropOwns(pClass,pAttrName) ){
+	 && PH7_ClassNativePropOwns(pThis,pAttrName) ){
 		/* php's read_property / has_property handler for a name the class's own
 		 * table carries: it answers before the standard path ever looks for a
 		 * magic accessor, so a subclass's `__get` does not shadow ext/dom's
