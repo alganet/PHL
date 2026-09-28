@@ -218,7 +218,7 @@ PH7_PRIVATE int GenStateTakeVoidCast(ph7_gen_state *pGen);
 PH7_PRIVATE int GenStateEnableClauseVoidCasts(ph7_gen_state *pGen,int bLastToo);
 PH7_PRIVATE void GenStateMarkDiscardedCall(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(ph7_gen_state *pGen,sxu32 *pnType,SyString *pClass,SySet *pAlts,
-	sxi32 *piTypeFlags,SyString *pTypeText,int iNullableFlag,int iUnionFlag,int bAllowVoid,sxu32 nLine);
+	sxi32 *piTypeFlags,SyString *pTypeText,int iNullableFlag,int iUnionFlag,int bAllowVoid,int bParamCtx,sxu32 nLine);
 PH7_PRIVATE int SyMemcmpNoCase(const char *zA,const char *zB,sxu32 n);
 /*
  * Stack-scratch size for stripping PHP 7.4 numeric separators. A typical

@@ -1818,6 +1818,10 @@ struct ph7_class
                                        * only while the native offsetGet is still the one that
                                        * answers: an override takes the class off the fast handler
                                        * in php too. See PH7_VmDimFetchWritable. */
+#define PH7_CLASS_ANON        0x20000 /* Declared by `new class {...}`. php has no NAME to put in a
+                                    * type text for it while its body compiles, which is why
+                                    * `self` inside one may not be part of an intersection
+                                    * (see the scope-keyword screen in the type parser). */
 #define PH7_CLASS_SHADOW_PROP 0x10000 /* At least one property of this class is filed under php's
                                        * MANGLED storage name -- a base's PRIVATE instance property,
                                        * carried down so the subclass's objects still hold its slot

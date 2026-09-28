@@ -102,23 +102,29 @@ static int GenStateClassConstHasType(ph7_gen_state *pGen)
 		return 0;
 	}
 	p0 = pGen->pIn;
-	/* A leading '\' (namespaced class type) or '?' (nullable) always starts a type */
-	if( p0->nType & PH7_TK_NSSEP ){
+	/* A leading '\' (namespaced class type), '?' (nullable) or '(' (a DNF type's
+	 * first intersection group) always starts a type -- none of the three can begin
+	 * a constant NAME. */
+	if( p0->nType & (PH7_TK_NSSEP|PH7_TK_LPAREN) ){
 		return 1;
 	}
 	if( (p0->nType & PH7_TK_OP) && p0->sData.nByte == 1 && p0->sData.zString[0] == '?' ){
 		return 1;
 	}
 	/* A name-like first token begins a type only when followed by another
-	 * name (the constant name) or a union separator '|'. Followed by '=',
-	 * ';' or ',' it is the constant name itself (untyped). */
+	 * name (the constant name), a union separator '|' or an intersection '&'.
+	 * Followed by '=', ';' or ',' it is the constant name itself (untyped).
+	 * Without the '&' a typed constant whose type is an INTERSECTION was read as
+	 * an untyped one named after the first member, and refused with
+	 * "Expected '=' after class constant Countable". */
 	if( p0->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
 		p1 = (pGen->pIn + 1 < pGen->pEnd) ? (pGen->pIn + 1) : 0;
 		if( p1 ){
-			if( p1->nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_NSSEP) ){
+			if( p1->nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_NSSEP|PH7_TK_AMPER) ){
 				return 1;
 			}
-			if( (p1->nType & PH7_TK_OP) && p1->sData.nByte == 1 && p1->sData.zString[0] == '|' ){
+			if( (p1->nType & PH7_TK_OP) && p1->sData.nByte == 1
+			 && (p1->sData.zString[0] == '|' || p1->sData.zString[0] == '&') ){
 				return 1;
 			}
 		}
@@ -622,7 +628,8 @@ static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,
 	 * applied to every name in a multi-declaration `const int A = 1, B = 2`. */
 	if( GenStateClassConstHasType(pGen) ){
 		rc = GenStateParseUnionTypeDecl(pGen,&nType,&sTypeClass,&aUnionAlts,&iTypeFlags,&sTypeText,
-			PH7_CLASS_ATTR_NULLABLE,PH7_CLASS_ATTR_UNION,/* bAllowVoid */ 0,pGen->pIn->nLine);
+			PH7_CLASS_ATTR_NULLABLE,PH7_CLASS_ATTR_UNION,/* bAllowVoid */ 0,
+			/* bParamCtx */ 0,pGen->pIn->nLine);
 		/* On abort the whole compilation tears down and the VM allocator (which
 		 * backs aUnionAlts) is released, so abort paths below don't free it —
 		 * matching the rest of this function; only the recoverable Synchronize
@@ -960,6 +967,7 @@ static sxi32 GenStateParsePropertyType(
 		PH7_CLASS_ATTR_NULLABLE,
 		PH7_CLASS_ATTR_UNION,
 		/* bAllowVoid */ 0,
+		/* bParamCtx */ 0,
 		pGen->pIn->nLine);
 	if( rc != SXRET_OK ){
 		return rc;
@@ -4942,6 +4950,11 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	pGen->pEnd = pEnd;
 	/* Merge the inherited flags (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= iFlags;
+	if( pAnonName ){
+		/* `new class {...}`: the name is synthesized, which is what makes `self`
+		 * inside it unusable in an intersection type (see PH7_CLASS_ANON). */
+		pClass->iFlags |= PH7_CLASS_ANON;
+	}
 	/* ...which is what php's own attribute validators judge: `#[\Attribute]` on an
 	 * abstract class, `#[\AllowDynamicProperties]` on a readonly one or an enum. */
 	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,1,1,

@@ -300,7 +300,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 				pGen, &sArg.nType, &sArg.sClass, &sArg.aUnionAlts,
 				&iTFlags, &sArg.sTypeName,
 				VM_FUNC_ARG_NULLABLE, VM_FUNC_ARG_UNION,
-				/* bAllowVoid */ 0,
+				/* bAllowVoid */ 0, /* bParamCtx */ 1,
 						nLineLocal);
 			pIn = pGen->pIn;
 			if( rc == SXERR_ABORT ){
@@ -1488,6 +1488,7 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 	int iNullableFlag,
 	int iUnionFlag,
 	int bAllowVoid,
+	int bParamCtx,   /* this type is a PARAMETER's: `static` is not one in php's grammar */
 	sxu32 nLine
 ){
 	PhlTypeAtom aAtoms[PHL_UNION_MAX_ALTS];
@@ -1581,12 +1582,68 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 				"Nullable intersection types are not supported; use (A&B)|null instead");
 			return SXERR_SYNTAX;
 		}
+		/*
+		 * php's declaration-time screen for the three SCOPE keywords, which runs
+		 * BEFORE the intersection-member kinds below (that is php's order: a
+		 * `parent&Countable` in a base-less class is refused for the parent, not
+		 * for the intersection).
+		 *
+		 * Each keyword names something relative to WHERE the declaration is
+		 * written, and one written where that thing does not exist is refused
+		 * before the program runs. A CLOSURE is exempt — its scope is decided when
+		 * it is bound — and so is a TRAIT, which defers the question to whatever
+		 * composes it. An interface has no `parent` however many it extends.
+		 *
+		 * `static` is not a PARAMETER type in php's grammar at all: the modifier
+		 * run ahead of this parser catches the bare and `&` spellings, and `?static`
+		 * reaches here, where php answers with the parse error its grammar produces.
+		 */
+		for( i = 0; i < nAtoms; i++ ){
+			const SyString *pKw;
+			ph7_class *pScope;
+			const char *zKw;
+			if( aAtoms[i].nType != SXU32_HIGH ){
+				continue;
+			}
+			pKw = &aAtoms[i].sClass;
+			zKw = (pKw->nByte == 4 && SyStrnicmp(pKw->zString,"self",4) == 0)   ? "self"   :
+			      (pKw->nByte == 6 && SyStrnicmp(pKw->zString,"parent",6) == 0) ? "parent" :
+			      (pKw->nByte == 6 && SyStrnicmp(pKw->zString,"static",6) == 0) ? "static" : 0;
+			if( zKw == 0 ){
+				continue;
+			}
+			if( bParamCtx && zKw[0] == 's' && zKw[1] == 't' ){
+				/* GRAMMAR, not scope: `static` is no parameter type at all, so a
+				 * CLOSURE is not exempt from this one. The modifier run ahead of this
+				 * parser already catches the bare and `&` spellings; `?static` and
+				 * `int|static` reach here. */
+				PH7_GenCompileError(pGen, E_PARSE, nLine,
+					"syntax error, unexpected token \"static\"");
+				return SXERR_SYNTAX;
+			}
+			if( pGen->iSigScope == PH7_SIGSCOPE_CLOSURE ){
+				continue;
+			}
+			pScope = ( pGen->iSigScope == PH7_SIGSCOPE_FUNC ) ? 0 : pGen->pCurClass;
+			if( pScope == 0 ){
+				PH7_GenCompileError(pGen, E_ERROR, nLine,
+					"Cannot use \"%s\" when no class scope is active", zKw);
+				return SXERR_SYNTAX;
+			}
+			if( zKw[0] == 'p' && pGen->pCurBase == 0
+			 && (pScope->iFlags & PH7_CLASS_TRAIT) == 0 ){
+				PH7_GenCompileError(pGen, E_ERROR, nLine,
+					"Cannot use \"parent\" when current class scope has no parent");
+				return SXERR_SYNTAX;
+			}
+		}
 		for( i = 0; i < nAtoms; i++ ){
 			/* Intersection members must be class/interface types (PHP rejects
 			 * scalars, `object`, and the pseudo-types `iterable`/`callable`/
 			 * `true`/`false` in an intersection). */
 			if( aGroupCount[aAtoms[i].nGroup] >= 2 ){
 				int bClassLike = (aAtoms[i].nType == SXU32_HIGH);
+				int bLowerKw = 0;
 				if( bClassLike ){
 					SyString *pC = &aAtoms[i].sClass;
 					if( (pC->nByte == 8 && SyMemcmpNoCase(pC->zString,"iterable",8) == 0)
@@ -1595,10 +1652,30 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 					 || (pC->nByte == 5 && SyMemcmpNoCase(pC->zString,"false",5) == 0) ){
 						bClassLike = 0;
 					}
+					/* A SCOPE keyword is class-like only where php can substitute a
+					 * class NAME for it while the body compiles: `static` never (the
+					 * called class is not known until the call), and `self`/`parent`
+					 * not in a closure, a trait or an ANONYMOUS class, none of which
+					 * has a name to put there. In a named class, interface or enum
+					 * php resolves them and the intersection stands. */
+					else if( pC->nByte == 6 && SyMemcmpNoCase(pC->zString,"static",6) == 0 ){
+						bClassLike = 0;
+						bLowerKw = 1; /* php prints the keyword, not what was written */
+					}else if( (pC->nByte == 4 && SyMemcmpNoCase(pC->zString,"self",4) == 0)
+					       || (pC->nByte == 6 && SyMemcmpNoCase(pC->zString,"parent",6) == 0) ){
+						ph7_class *pScope = ( pGen->iSigScope == PH7_SIGSCOPE_FUNC )
+							? 0 : pGen->pCurClass;
+						if( pGen->iSigScope == PH7_SIGSCOPE_CLOSURE || pScope == 0
+						 || (pScope->iFlags & (PH7_CLASS_TRAIT|PH7_CLASS_ANON)) != 0 ){
+							bClassLike = 0;
+						}
+					}
 				}
 				if( !bClassLike ){
 					const char *zName; sxu32 nName;
-					if( aAtoms[i].nType == SXU32_HIGH ){
+					if( bLowerKw ){
+						zName = "static"; nName = sizeof("static")-1;
+					}else if( aAtoms[i].nType == SXU32_HIGH ){
 						zName = aAtoms[i].sClass.zString; nName = aAtoms[i].sClass.nByte;
 					}else{
 						zName = aAtoms[i].zCanon; nName = aAtoms[i].nCanon;
@@ -1606,32 +1683,6 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 					PH7_GenCompileError(pGen, E_ERROR, nLine,
 						"Type %.*s cannot be part of an intersection type",
 						(int)nName, zName);
-					return SXERR_SYNTAX;
-				}
-			}
-			/* php's declaration-time screen for the three SCOPE keywords: each names
-			 * something relative to WHERE the declaration is written, and one written
-			 * where that thing does not exist is refused before the program runs.
-			 * A CLOSURE is exempt -- its scope is decided when it is bound -- and so
-			 * is a TRAIT, which defers the question to whatever composes it. An
-			 * interface has no `parent` however many it extends (pCurBase). */
-			if( pGen->iSigScope != PH7_SIGSCOPE_CLOSURE && aAtoms[i].nType == SXU32_HIGH ){
-				const SyString *pKw = &aAtoms[i].sClass;
-				int bFn = ( pGen->iSigScope == PH7_SIGSCOPE_FUNC );
-				ph7_class *pScope = bFn ? 0 : pGen->pCurClass;
-				const char *zKw =
-					(pKw->nByte == 4 && SyStrnicmp(pKw->zString,"self",4) == 0)   ? "self"   :
-					(pKw->nByte == 6 && SyStrnicmp(pKw->zString,"parent",6) == 0) ? "parent" :
-					(pKw->nByte == 6 && SyStrnicmp(pKw->zString,"static",6) == 0) ? "static" : 0;
-				if( zKw && pScope == 0 ){
-					PH7_GenCompileError(pGen, E_ERROR, nLine,
-						"Cannot use \"%s\" when no class scope is active", zKw);
-					return SXERR_SYNTAX;
-				}
-				if( zKw && zKw[0] == 'p' && pGen->pCurBase == 0
-				 && (pScope->iFlags & PH7_CLASS_TRAIT) == 0 ){
-					PH7_GenCompileError(pGen, E_ERROR, nLine,
-						"Cannot use \"parent\" when current class scope has no parent");
 					return SXERR_SYNTAX;
 				}
 			}
@@ -1885,7 +1936,7 @@ PH7_PRIVATE sxi32 GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFun
 		VM_FUNC_RETURN_NULLABLE, /* nullability flag — a null alternative isn't stored
 		                          * in aReturnUnion, so the func carries it explicitly */
 		/* iUnionFlag */ 0,
-		/* bAllowVoid */ 1,
+		/* bAllowVoid */ 1, /* bParamCtx */ 0,
 		nLine);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
