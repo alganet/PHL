@@ -204,8 +204,9 @@ static void ReflectFlattenIfaces(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, in
 	}
 	SySetRelease(&aDecl);
 }
-/* The list every Reflection door asks for. */
-static void ReflectInterfacesOf(ph7_vm *pVm, ph7_class *pClass, SySet *pOut)
+/* The list every Reflection door asks for -- and `class_implements()`, which is
+ * the same answer under another name (vm_builtin_class.c). */
+PH7_PRIVATE void PH7_ReflectInterfacesOf(ph7_vm *pVm, ph7_class *pClass, SySet *pOut)
 {
 	ReflectFlattenIfaces(pVm, pClass, pOut, 0);
 }
@@ -3931,7 +3932,7 @@ static int ReflectClassNameList(ph7_context *pCtx, int bTraits, int bReflector)
 		apOut = (ph7_class **)SySetBasePtr(&pClass->aTrait);
 		nOut = SySetUsed(&pClass->aTrait);
 	}else{
-		ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
+		PH7_ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
 		apOut = (ph7_class **)SySetBasePtr(&aSet);
 		nOut = SySetUsed(&aSet);
 	}
@@ -4004,7 +4005,7 @@ static int vm_builtin_ReflectionClass_isIterable(ph7_context *pCtx, int nArg, ph
 		return PH7_OK;
 	}
 	SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
-	ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
+	PH7_ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
 	apIface = (ph7_class **)SySetBasePtr(&aSet);
 	for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
 		if( pCtx->pVm->pTraversableClass && apIface[n] == pCtx->pVm->pTraversableClass ){
@@ -4049,7 +4050,7 @@ static int vm_builtin_ReflectionClass_implementsInterface(ph7_context *pCtx, int
 		return PH7_OK;
 	}
 	SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
-	ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
+	PH7_ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
 	apIface = (ph7_class **)SySetBasePtr(&aSet);
 	for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
 		if( apIface[n] == pTarget ){
@@ -4094,7 +4095,7 @@ static int vm_builtin_ReflectionClass_isSubclassOf(ph7_context *pCtx, int nArg, 
 		iDepth++;
 	}
 	SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
-	ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
+	PH7_ReflectInterfacesOf(pCtx->pVm, pClass, &aSet);
 	apIface = (ph7_class **)SySetBasePtr(&aSet);
 	for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
 		if( apIface[n] == pTarget ){
@@ -9838,7 +9839,7 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
 	SySetInit(&aIface, &pVm->sAllocator, sizeof(ph7_class *));
 	ReflectMembers(pVm, pClass, &aMembers, 0);
-	ReflectInterfacesOf(pVm, pClass, &aIface);
+	PH7_ReflectInterfacesOf(pVm, pClass, &aIface);
 	/* ---- head ---- */
 	if( bIface ){
 		SyBlobAppend(pOut, "Interface [ <", sizeof("Interface [ <")-1);

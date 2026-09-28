@@ -4341,6 +4341,9 @@ PH7_PRIVATE int vm_builtin_get_declared_classes(ph7_context *pCtx,int nArg,ph7_v
 PH7_PRIVATE int vm_builtin_get_declared_interfaces(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_declared_traits(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_class_parents(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_class_implements(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_class_uses(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_mangled_object_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -5847,6 +5850,7 @@ PH7_PRIVATE int PH7_HashmapKeyIsInt(ph7_value *pKey);
  * array_rand() domain-error messages in hashmap.c, which are compiled in every
  * mode, so it must stay outside the PH7_DISABLE_DISK_IO guard. */
 PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
+PH7_PRIVATE void PH7_ReflectInterfacesOf(ph7_vm *pVm,ph7_class *pClass,SySet *pOut);
 /* Outcomes of php's STRING-container offset rules (VmStringOffsetResolve). */
 #define VM_STROFF_OK      0  /* *piOfft holds php's offset */
 #define VM_STROFF_REJECT  1  /* php's TypeError; pMsg carries its message */

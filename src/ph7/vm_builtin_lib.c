@@ -311,11 +311,12 @@
    "  }"\
    "  return $array;"\
    "}"\
-   "function class_uses($object_or_class, bool $autoload = true): array|false {"\
-   "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
-   "  if( !class_exists($c) ){ return false; }"\
-   "  return array();  /* PHL has no traits yet -- always the empty set */"\
-   "}"\
+   /* class_parents/class_implements/class_uses moved to C (vm_builtin_class.c):
+    * as prelude wrappers they gated on class_exists(), so an interface, a trait
+    * and an enum all answered FALSE where php answers a list; class_uses could
+    * not reach the trait table at all and returned the empty set for every class;
+    * and the E_WARNING php raises for a name nothing declares cannot be raised
+    * from here at php's severity or against the CALLER's line. */\
    "function ip2long(string $ip): int|false {"\
    "  $p = explode('.', $ip);"\
    "  if( count($p) !== 4 ){ return false; }"\
@@ -368,26 +369,6 @@
    "    $m = preg_match($pattern, (string)$v);"\
    "    if( $flags & PREG_GREP_INVERT ){ $m = !$m; }"\
    "    if( $m ){ $out[$k] = $v; }"\
-   "  }"\
-   "  return $out;"\
-   "}"\
-   "function class_implements($object_or_class, bool $autoload = true): array|false {"\
-   "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
-   "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\
-   "  $out = array();"\
-   "  $r = new ReflectionClass($c);"\
-   "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\
-   "  return $out;"\
-   "}"\
-   "function class_parents($object_or_class, bool $autoload = true): array|false {"\
-   "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
-   "  if( !class_exists($c) ){ return false; }"\
-   "  $out = array();"\
-   "  $r = new ReflectionClass($c);"\
-   "  while( ($p = $r->getParentClass()) ){"\
-   "    $n = $p->getName();"\
-   "    $out[$n] = $n;"\
-   "    $r = $p;"\
    "  }"\
    "  return $out;"\
    "}"\

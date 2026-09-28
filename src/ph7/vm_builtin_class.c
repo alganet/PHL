@@ -728,6 +728,155 @@ static void VmEmitMethodName(ph7_value *pArray,ph7_value *pName,SyHashEntry *pEn
 	ph7_value_reset_string_cursor(pName);
 }
 /*
+ * The three functions that answer what a class is RELATED to: the ancestors it
+ * extends, the interfaces it carries and the traits it composed. All three
+ * resolve the same argument and say the same two things when they cannot, so the
+ * lookup is written once here.
+ *
+ * php's ZPP for `$object_or_class` is Z_PARAM_OBJ_OR_STR, which screens without
+ * DECLARING: ReflectionParameter reports no type for that parameter at all, and
+ * the refusal is still php's standard "must be of type object|string" sentence.
+ * That is why the aBuiltinSig[] row leaves it bare and the screen is spelled here.
+ */
+static ph7_class * VmClassRelationTarget(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zName,*zLook;
+	int nLen,nShow,bAutoload;
+	sxu32 nLook;
+	SyHashEntry *pEntry;
+	if( nArg < 1
+	 || (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0
+	 || (apArg[0]->iFlags & MEMOBJ_NULL) != 0 ){
+		char zGiven[64];
+		PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($object_or_class) must be of type object|string, %s given",
+			ph7_function_name(pCtx),
+			nArg > 0 ? VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)) : "no value");
+		return 0;
+	}
+	if( apArg[0]->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pInst = (ph7_class_instance *)apArg[0]->x.pOther;
+		return pInst ? pInst->pClass : 0;
+	}
+	bAutoload = nArg > 1 ? ph7_value_to_bool(apArg[1]) : 1;
+	zName = ph7_value_to_string(apArg[0],&nLen);
+	zLook = zName;
+	nLook = (sxu32)nLen;
+	/* A leading '\' is the global-namespace anchor for the LOOKUP and part of the
+	 * name for the DIAGNOSTIC: php reports back what it was handed. */
+	PH7_VmClassNameAnchor(&zLook,&nLook);
+	pEntry = nLook > 0 ? SyHashGet(&pCtx->pVm->hClass,(const void *)zLook,nLook) : 0;
+	if( pEntry == 0 && nLook > 0 && bAutoload ){
+		if( PH7_VmTriggerAutoload(pCtx->pVm,zLook,nLook,FALSE) ){
+			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zLook,nLook);
+		}
+	}
+	if( pEntry ){
+		/* Anything a class name can stand for answers, php's zend_lookup_class
+		 * included: an interface, a trait and an enum all have relations to
+		 * report, and PHL's class_exists() gate said FALSE for every one of them
+		 * -- so `class_implements('Countable')` was false rather than a list. */
+		return (ph7_class *)pEntry->pUserData;
+	}
+	/* php has TWO sentences here and the difference is whether it was allowed to
+	 * look: the autoloading form says the name could not be LOADED, the other only
+	 * that it does not exist. PHL said neither -- all three answered a bare false,
+	 * so a typo in a class name was completely silent. The name is printed as php
+	 * prints it, which stops at the first NUL. */
+	for( nShow = 0 ; nShow < nLen && zName[nShow] ; ++nShow ){}
+	/* The context prints `class_uses(): ` in front of this itself. */
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+		bAutoload ? "Class %.*s does not exist and could not be loaded"
+		          : "Class %.*s does not exist",
+		nShow,zName);
+	return 0;
+}
+/* `[$name => $name, ...]` over a list of classes, php's shape for all three. */
+static int VmClassRelationList(ph7_context *pCtx,ph7_class **apClass,sxu32 nClass)
+{
+	ph7_value *pArray,*pName;
+	sxu32 n;
+	pArray = ph7_context_new_array(pCtx);
+	pName = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pName == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( n = 0 ; n < nClass ; ++n ){
+		SyString *pStr = &apClass[n]->sName;
+		/* The name is its own key. A ph7_value key rather than the strkey door,
+		 * which wants a NUL-terminated C string a SyString does not promise. */
+		ph7_value_string(pName,SyStringData(pStr),(int)SyStringLength(pStr));
+		ph7_array_add_elem(pArray,pName,pName);
+		ph7_value_reset_string_cursor(pName);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * array|false class_parents($object_or_class, bool $autoload = true)
+ *  Every ancestor of the class, nearest first, keyed by its own name.
+ */
+PH7_PRIVATE int vm_builtin_class_parents(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pClass = VmClassRelationTarget(pCtx,nArg,apArg);
+	SySet aOut;
+	int rc;
+	if( pClass == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SySetInit(&aOut,&pCtx->pVm->sAllocator,sizeof(ph7_class *));
+	/* An INTERFACE keeps its first parent on pBase here where php keeps none at
+	 * all, so an interface answers the empty list the way php's does. */
+	if( (pClass->iFlags & PH7_CLASS_INTERFACE) == 0 ){
+		ph7_class *pUp = pClass->pBase;
+		sxu32 nGuard = 0;
+		while( pUp && nGuard++ < 1024 ){
+			SySetPut(&aOut,(const void *)&pUp);
+			pUp = pUp->pBase;
+		}
+	}
+	rc = VmClassRelationList(pCtx,(ph7_class **)SySetBasePtr(&aOut),SySetUsed(&aOut));
+	SySetRelease(&aOut);
+	return rc;
+}
+/*
+ * array|false class_implements($object_or_class, bool $autoload = true)
+ *  Every interface the class carries, in the order zend linked them (the one
+ *  Reflection publishes too -- see PH7_ReflectInterfacesOf).
+ */
+PH7_PRIVATE int vm_builtin_class_implements(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pClass = VmClassRelationTarget(pCtx,nArg,apArg);
+	SySet aOut;
+	int rc;
+	if( pClass == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SySetInit(&aOut,&pCtx->pVm->sAllocator,sizeof(ph7_class *));
+	PH7_ReflectInterfacesOf(pCtx->pVm,pClass,&aOut);
+	rc = VmClassRelationList(pCtx,(ph7_class **)SySetBasePtr(&aOut),SySetUsed(&aOut));
+	SySetRelease(&aOut);
+	return rc;
+}
+/*
+ * array|false class_uses($object_or_class, bool $autoload = true)
+ *  The traits this class composed ITSELF, in the order its `use` clauses named
+ *  them. Not the ancestors' -- php answers the empty list for a subclass of a
+ *  class that uses a trait -- and not the traits those traits flattened in.
+ */
+PH7_PRIVATE int vm_builtin_class_uses(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pClass = VmClassRelationTarget(pCtx,nArg,apArg);
+	if( pClass == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	return VmClassRelationList(pCtx,
+		(ph7_class **)SySetBasePtr(&pClass->aTrait),SySetUsed(&pClass->aTrait));
+}
+/*
  * array get_class_methods(object|string $object_or_class)
  *   Returns an array with the names of the class methods the CALLING SCOPE can reach,
  *   in php's order: each class's own body methods, then its trait composition, then the

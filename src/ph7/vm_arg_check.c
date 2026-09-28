@@ -628,6 +628,13 @@ static const struct VmBuiltinSig {
 	{ "chunk_split", "string $string, int $length = 76, string $separator = ?", "string" },
 	{ "class_alias", "string $class, string $alias, bool $autoload = true", "bool" },
 	{ "class_exists", "string $class, bool $autoload = true", "bool" },
+	/* `$object_or_class` carries NO declared type on purpose: php screens it with
+	 * Z_PARAM_OBJ_OR_STR, which refuses in the standard "must be of type
+	 * object|string" wording while ReflectionParameter reports no type at all.
+	 * The builtin raises that refusal itself (vm_builtin_class.c). */
+	{ "class_implements", "$object_or_class, bool $autoload = true", "array|false" },
+	{ "class_parents", "$object_or_class, bool $autoload = true", "array|false" },
+	{ "class_uses", "$object_or_class, bool $autoload = true", "array|false" },
 	{ "enum_exists", "string $enum, bool $autoload = true", "bool" },
 	{ "clone", "object $object, array $withProperties = []", "object" },
 	{ "closedir", "$dir_handle = NULL", "void" },
