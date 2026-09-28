@@ -1609,6 +1609,32 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 					return SXERR_SYNTAX;
 				}
 			}
+			/* php's declaration-time screen for the three SCOPE keywords: each names
+			 * something relative to WHERE the declaration is written, and one written
+			 * where that thing does not exist is refused before the program runs.
+			 * A CLOSURE is exempt -- its scope is decided when it is bound -- and so
+			 * is a TRAIT, which defers the question to whatever composes it. An
+			 * interface has no `parent` however many it extends (pCurBase). */
+			if( pGen->iSigScope != PH7_SIGSCOPE_CLOSURE && aAtoms[i].nType == SXU32_HIGH ){
+				const SyString *pKw = &aAtoms[i].sClass;
+				int bFn = ( pGen->iSigScope == PH7_SIGSCOPE_FUNC );
+				ph7_class *pScope = bFn ? 0 : pGen->pCurClass;
+				const char *zKw =
+					(pKw->nByte == 4 && SyStrnicmp(pKw->zString,"self",4) == 0)   ? "self"   :
+					(pKw->nByte == 6 && SyStrnicmp(pKw->zString,"parent",6) == 0) ? "parent" :
+					(pKw->nByte == 6 && SyStrnicmp(pKw->zString,"static",6) == 0) ? "static" : 0;
+				if( zKw && pScope == 0 ){
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"Cannot use \"%s\" when no class scope is active", zKw);
+					return SXERR_SYNTAX;
+				}
+				if( zKw && zKw[0] == 'p' && pGen->pCurBase == 0
+				 && (pScope->iFlags & PH7_CLASS_TRAIT) == 0 ){
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"Cannot use \"parent\" when current class scope has no parent");
+					return SXERR_SYNTAX;
+				}
+			}
 			if( aAtoms[i].nType == UTA_VOID_FLAG ){
 				if( nAtoms > 1 ){
 					PH7_GenCompileError(pGen, E_ERROR, nLine,
@@ -1969,22 +1995,31 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	if( pGen->pIn < pEnd ){
-		/* Collect function arguments */
-		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd,0,0);
-		if( rc == SXERR_ABORT ){
-			/* Don't worry about freeing memory, everything will be released shortly */
-			return SXERR_ABORT;
-		}
-	}
-	/* Point past ')' and parse optional return type ': type' */
-	pGen->pIn = &pEnd[1];
+	/* Whose signature this is, for php's scope-keyword screen (see iSigScope): a
+	 * closure's is EXEMPT, and a NAMED function has no class scope even when it is
+	 * written inside a method body. */
 	{
-		sxi32 rcRt = GenStateParseReturnType(pGen, pFunc);
-		if( rcRt == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}else if( rcRt == SXERR_SYNTAX ){
-			return SXERR_SYNTAX;
+		int iSavedSig = pGen->iSigScope;
+		pGen->iSigScope = bHandleClosure ? PH7_SIGSCOPE_CLOSURE : PH7_SIGSCOPE_FUNC;
+		if( pGen->pIn < pEnd ){
+			/* Collect function arguments */
+			rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd,0,0);
+			if( rc == SXERR_ABORT ){
+				/* Don't worry about freeing memory, everything will be released shortly */
+				pGen->iSigScope = iSavedSig;
+				return SXERR_ABORT;
+			}
+		}
+		/* Point past ')' and parse optional return type ': type' */
+		pGen->pIn = &pEnd[1];
+		{
+			sxi32 rcRt = GenStateParseReturnType(pGen, pFunc);
+			pGen->iSigScope = iSavedSig;
+			if( rcRt == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}else if( rcRt == SXERR_SYNTAX ){
+				return SXERR_SYNTAX;
+			}
 		}
 	}
 	/* php's #[\NoDiscard] declaration rules, which want the return type. A

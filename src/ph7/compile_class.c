@@ -2957,6 +2957,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class *pClass,*pBase;
 	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' */
+	ph7_class *pSavedCurBase = pGen->pCurBase;   /* ...and its base, see pCurBase */
 	SyToken *pEnd,*pTmp;
 	SyString *pName;
 	SySet aOvMeth,aOvProp;   /* the #[\Override] claims this interface DECLARED */
@@ -3106,6 +3107,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	/* This interface is now the lexical class for its body (see pCurClass) — a
 	 * const default here is not a trait, so __TRAIT__ stays "". */
 	pGen->pCurClass = pClass;
+	pGen->pCurBase = 0; /* php gives an interface no `parent`, however many it extends */
 	/* Start the parse process
 	 * Note (According to the PHP reference manual):
 	 *  Only constants and function signatures(without body) are allowed.
@@ -3211,6 +3213,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 done:
 	SySetRelease(&aExtraParents);
 	pGen->pCurClass = pSavedCurClass;
+	pGen->pCurBase = pSavedCurBase;
 	/* Point beyond the interface body */
 	pGen->pIn  = &pEnd[1];
 	pGen->pEnd = pTmp;
@@ -4662,6 +4665,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class *pClass,*pBase;
 	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' (enclosing class for a nested anon) */
+	ph7_class *pSavedCurBase = pGen->pCurBase;   /* ...and its base, see pCurBase */
 	SyToken *pEnd,*pTmp;
 	SySet aInterfaces;
 	SySet aUseEntries;
@@ -4946,6 +4950,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	}
 	/* This class/enum is now the lexical class for its body — see pCurClass. */
 	pGen->pCurClass = pClass;
+	pGen->pCurBase = pBase;
 	/* Start the parse process */
 	for(;;){
 		/* Jump leading/trailing semi-colons */
@@ -5200,6 +5205,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	}
 done:
 	pGen->pCurClass = pSavedCurClass;
+	pGen->pCurBase = pSavedCurBase;
 	/* Point beyond the class body */
 	pGen->pIn = &pEnd[1];
 	pGen->pEnd = pTmp;
@@ -5551,6 +5557,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class *pClass;
 	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' */
+	ph7_class *pSavedCurBase = pGen->pCurBase;   /* ...and its base, see pCurBase */
 	SyToken *pEnd,*pTmp;
 	SySet aUseEntries; /* trait-body `use` statements (incl. adaptation blocks) */
 	SyString *pName;
@@ -5637,6 +5644,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	/* This trait is now the lexical class for its body, so a property/parameter
 	 * default here resolves __TRAIT__ to it (see pCurClass). */
 	pGen->pCurClass = pClass;
+	pGen->pCurBase = 0; /* a trait has no base; its `parent` is deferred to composition */
 	/* Parse the body: same as a normal class (methods, attributes, visibility modifiers) */
 	for(;;){
 		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
@@ -5755,6 +5763,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	}
 done:
 	pGen->pCurClass = pSavedCurClass;
+	pGen->pCurBase = pSavedCurBase;
 	/* Point beyond the trait body */
 	pGen->pIn = &pEnd[1];
 	pGen->pEnd = pTmp;

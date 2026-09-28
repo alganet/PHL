@@ -596,16 +596,24 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
+	/* An arrow function is a closure: its signature is exempt from the
+	 * scope-keyword screen, exactly as `function () {}`'s is (see iSigScope). */
+	{
+	int iSavedSig = pGen->iSigScope;
+	pGen->iSigScope = PH7_SIGSCOPE_CLOSURE;
 	/* Collect function arguments */
 	if( pGen->pIn < pSigEnd ){
 		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pSigEnd,0,0);
 		if( rc == SXERR_ABORT ){
+			pGen->iSigScope = iSavedSig;
 			return SXERR_ABORT;
 		}
 	}
 	/* Point past ')' and parse optional return type */
 	pGen->pIn = &pSigEnd[1];
 	rc = GenStateParseReturnType(pGen,pFunc);
+	pGen->iSigScope = iSavedSig;
+	}
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}else if( rc == SXERR_SYNTAX ){

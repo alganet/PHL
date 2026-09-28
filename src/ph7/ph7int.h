@@ -804,6 +804,24 @@ struct ph7_gen_state
 	                       * compiles OUTSIDE any function block — a property default or a
 	                       * parameter default — resolve __TRAIT__ to the enclosing trait, which
 	                       * the block-chain walk alone cannot see (no func block on the chain). */
+	ph7_class *pCurBase; /* The BASE CLASS of pCurClass, known while its body compiles --
+	                       * pCurClass->pBase is only filled at inheritance, which runs
+	                       * AFTER the body. Saved/restored with pCurClass. 0 for an
+	                       * interface (php gives one no `parent` however many it extends)
+	                       * and for a trait (which defers the question to composition). */
+	/* Whose SIGNATURE is being parsed, for php's scope-keyword screen -- see iSigScope. */
+#define PH7_SIGSCOPE_MEMBER  0
+#define PH7_SIGSCOPE_CLOSURE 1
+#define PH7_SIGSCOPE_FUNC    2
+	int iSigScope;       /* Whose SIGNATURE is being parsed, for php's scope-keyword screen
+	                       * (`self`/`parent`/`static` in a type). Saved and restored around
+	                       * each signature, so a nested one answers for itself:
+	                       *   PH7_SIGSCOPE_MEMBER  -- a method, property or class constant:
+	                       *                          the enclosing class body's scope applies
+	                       *   PH7_SIGSCOPE_CLOSURE -- a closure or arrow function: EXEMPT, its
+	                       *                          scope is decided when it is bound
+	                       *   PH7_SIGSCOPE_FUNC    -- a named function: NO class scope, even
+	                       *                          written inside a method body */
 	int iInMemberDefault; /* > 0 while compiling a property/parameter DEFAULT value. Such a
 	                       * const-expression belongs to pCurClass, never to a lexically-
 	                       * enclosing method, so __TRAIT__ reads pCurClass directly rather than
