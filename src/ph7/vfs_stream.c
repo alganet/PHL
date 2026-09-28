@@ -5901,6 +5901,134 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 	*ppHandle = (void *)pH;
 	return PH7_OK;
 }
+/*
+ * php's streamWrapper::url_stat(): the STAT door of a userland wrapper.
+ *
+ * PHL's stat family went straight to the OS VFS for every path, so a path a script's
+ * own wrapper owns -- `vfs://root/t.txt`, the shape every test suite that fakes a
+ * filesystem writes -- answered "does not exist" even though fopen() on the same name
+ * worked. php asks the wrapper instead: `url_stat($url, $flags)`, with the FULL url
+ * and php's own flag bits, and reads php's thirteen NAMED fields off the array it
+ * gets back (the numeric half a wrapper usually merges in is IGNORED, and a field it
+ * omits reads 0).
+ *
+ * Nothing but plain integers crosses the call: the wrapper is PHP code, and every
+ * ph7_value the caller holds is invalidated by running some (see the
+ * `pointers-die-across-a-user-callback` rule), so the answer leaves here as aVal[13]
+ * and the caller builds its array afterwards.
+ *
+ * Answers PHL_URLSTAT_NOWRAP when no userland wrapper owns the path -- the caller
+ * asks the VFS exactly as before -- PHL_URLSTAT_OK when the wrapper filled aVal, and
+ * PHL_URLSTAT_FAIL when it declined. A wrapper with no url_stat at all is php's own
+ * `%s::url_stat is not implemented!` warning, raised whatever the QUIET flag says,
+ * and then a failure.
+ */
+PH7_PRIVATE int PH7_StreamUserUrlStat(ph7_context *pCtx,const char *zPath,int iFlags,
+	ph7_int64 *aVal)
+{
+	static const char * const azField[] = {
+		"dev","ino","mode","nlink","uid","gid","rdev","size",
+		"atime","mtime","ctime","blksize","blocks"
+	};
+	ph7_vm *pVm;
+	const char *zTail;
+	const ph7_io_stream *pDev;
+	uwrap_slot *pSlot = 0;
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	ph7_class_method *pMeth;
+	ph7_value sUrl,sFlags,sRet;
+	ph7_value *apArg[2];
+	SyBlob sPath;
+	int i,rc,iRet;
+	if( pCtx == 0 || zPath == 0 ){
+		return PHL_URLSTAT_NOWRAP;
+	}
+	pVm = pCtx->pVm;
+	zTail = zPath;
+	/* The resolver takes a real length, never -1. */
+	pDev = PH7_VmGetStreamDevice(pVm,&zTail,(int)SyStrlen(zPath));
+	if( pDev == 0 ){
+		return PHL_URLSTAT_NOWRAP;
+	}
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm == pVm && &g_aUwrap[i].sStream == pDev ){
+			pSlot = &g_aUwrap[i];
+			break;
+		}
+	}
+	if( pSlot == 0 ){
+		return PHL_URLSTAT_NOWRAP;
+	}
+	pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)SyStrlen(pSlot->zClass),TRUE,0);
+	if( pClass == 0 ){
+		return PHL_URLSTAT_FAIL;
+	}
+	pMeth = PH7_ClassExtractMethod(pClass,"url_stat",sizeof("url_stat")-1);
+	if( pMeth == 0 ){
+		/* php's own sentence, and it is raised even for a QUIET ask -- it reports the
+		 * wrapper's own incompleteness, not the path's absence. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"%s::url_stat is not implemented!",pSlot->zClass);
+		return PHL_URLSTAT_FAIL;
+	}
+	/* The path may come from a caller's argument slot, which running PHP code can
+	 * move; own a copy for the whole call. */
+	SyBlobInit(&sPath,&pVm->sAllocator);
+	SyBlobAppend(&sPath,zPath,(sxu32)SyStrlen(zPath));
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		SyBlobRelease(&sPath);
+		return PHL_URLSTAT_FAIL;
+	}
+	{
+		/* php sets $context on the serving instance here too; a stat has no opener
+		 * behind it, so what it gets is php's NULL. */
+		ph7_value *pCtxSlot = PH7_NativeAttr(pObj,"context");
+		if( pCtxSlot == 0 ){
+			pCtxSlot = PH7_VmCreateDynamicAttr(pVm,pObj,"context",sizeof("context")-1,0);
+		}
+		if( pCtxSlot ){
+			ph7_value_null(pCtxSlot);
+		}
+	}
+	PH7_MemObjInit(pVm,&sUrl);
+	PH7_MemObjInit(pVm,&sFlags);
+	PH7_MemObjInit(pVm,&sRet);
+	ph7_value_string(&sUrl,(const char *)SyBlobData(&sPath),(int)SyBlobLength(&sPath));
+	ph7_value_int(&sFlags,iFlags);
+	apArg[0] = &sUrl;
+	apArg[1] = &sFlags;
+	rc = PH7_VmCallClassMethod(pVm,pObj,pMeth,&sRet,2,apArg);
+	iRet = PHL_URLSTAT_FAIL;
+	if( PH7_CALLBACK_UNWOUND(rc) ){
+		/* The wrapper THREW. That is not a "the path is missing" answer: php lets
+		 * the exception out of the stat, so the raw status travels back and a
+		 * caller that would otherwise raise one of its OWN (SplFileInfo's
+		 * RuntimeException) propagates this one instead. PH7_EXCEPTION and
+		 * PH7_ABORT are both distinct from the three answers above, so they need
+		 * no channel of their own. */
+		iRet = rc;
+	}else if( rc == SXRET_OK && ph7_value_is_array(&sRet) ){
+		for( i = 0 ; i < (int)SX_ARRAYSIZE(azField) ; ++i ){
+			ph7_value *pField = ph7_array_fetch(&sRet,azField[i],-1);
+			aVal[i] = pField ? ph7_value_to_int64(pField) : 0;
+		}
+#ifdef __WINNT__
+		/* php's Windows stat record has neither field, so it never reads the
+		 * wrapper's two and reports -1 for both, as on every other stream. */
+		aVal[11] = -1;
+		aVal[12] = -1;
+#endif
+		iRet = PHL_URLSTAT_OK;
+	}
+	PH7_MemObjRelease(&sUrl);
+	PH7_MemObjRelease(&sFlags);
+	PH7_MemObjRelease(&sRet);
+	PH7_ClassInstanceUnref(pObj);
+	SyBlobRelease(&sPath);
+	return iRet;
+}
 /* One xOpen thunk per slot (the device callbacks get no device pointer) */
 #define PHL_UWRAP_THUNK(N) \
 	static int UwrapOpen##N(const char *zName,int iMode,ph7_value *pResource,void **ppHandle) \

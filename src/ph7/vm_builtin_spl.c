@@ -10079,11 +10079,29 @@ static sxi32 SfiStat(ph7_context *pCtx,const char *zMethod,int bLstat,ph7_value 
 		return PH7_ContextMemoryError(pCtx);
 	}
 	PH7_MemObjInit(pVm,&sWorker);
-	if( SfiPathBuf(pVm,pThis,zPath,(int)sizeof(zPath)) == SXRET_OK && pVfs ){
-		if( bLstat ){
-			rc = pVfs->xlStat ? pVfs->xlStat(zPath,pOut,&sWorker) : -1;
-		}else{
-			rc = pVfs->xStat ? pVfs->xStat(zPath,pOut,&sWorker) : -1;
+	if( SfiPathBuf(pVm,pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
+		/* A path a userland stream wrapper owns is ITS stat, not the VFS's --
+		 * php runs SplFileInfo's accessors through the same
+		 * php_stream_url_stat_path every free function uses. zPath is a local
+		 * buffer, so it survives the PHP the wrapper runs. */
+		ph7_int64 aVal[13];
+		int rcU = PH7_VfsUserStatFields(pCtx,zPath,
+			bLstat ? PH7_STAT_ASK_LSTAT : PH7_STAT_ASK_STAT,aVal);
+		if( PH7_CALLBACK_UNWOUND(rcU) ){
+			/* The wrapper threw: that exception is the answer, and stacking
+			 * SplFileInfo's own RuntimeException on top of it left the first one
+			 * already caught and the second one UNCAUGHT. */
+			PH7_MemObjRelease(&sWorker);
+			return rcU;
+		}
+		if( rcU != PHL_URLSTAT_NOWRAP ){
+			rc = rcU == PHL_URLSTAT_OK ? PH7_VfsStatFill(pOut,&sWorker,aVal) : -1;
+		}else if( pVfs ){
+			if( bLstat ){
+				rc = pVfs->xlStat ? pVfs->xlStat(zPath,pOut,&sWorker) : -1;
+			}else{
+				rc = pVfs->xStat ? pVfs->xStat(zPath,pOut,&sWorker) : -1;
+			}
 		}
 	}
 	PH7_MemObjRelease(&sWorker);
@@ -10300,9 +10318,20 @@ static int vm_builtin_SplFileInfo_getType(ph7_context *pCtx,int nArg,ph7_value *
 	if( !SfiDirReady(pCtx,&rcReady) ){
 		return rcReady;
 	}
-	if( pVfs && pVfs->xFiletype
-	 && SfiPathBuf(pCtx->pVm,pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
-		rc = pVfs->xFiletype(zPath,pCtx);
+	if( SfiPathBuf(pCtx->pVm,pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
+		ph7_int64 aVal[13];
+		int rcU = PH7_VfsUserStatFields(pCtx,zPath,PH7_STAT_ASK_TYPE,aVal);
+		if( PH7_CALLBACK_UNWOUND(rcU) ){
+			return rcU;
+		}
+		if( rcU != PHL_URLSTAT_NOWRAP ){
+			if( rcU == PHL_URLSTAT_OK ){
+				PH7_VfsUserStatResult(pCtx,PH7_STAT_ASK_TYPE,aVal);
+				rc = PH7_OK;
+			}
+		}else if( pVfs && pVfs->xFiletype ){
+			rc = pVfs->xFiletype(zPath,pCtx);
+		}
 	}
 	if( rc != PH7_OK ){
 		int nName = 0;
@@ -10317,7 +10346,7 @@ static int vm_builtin_SplFileInfo_getType(ph7_context *pCtx,int nArg,ph7_value *
 }
 /* The six predicates: a VFS question each, and never a diagnostic -- php answers
  * false for a path that does not exist. */
-static int SfiPredicate(ph7_context *pCtx,int (*xTest)(const char *))
+static int SfiPredicate(ph7_context *pCtx,int (*xTest)(const char *),int eAsk)
 {
 	char zPath[4096];
 	int bYes = 0;
@@ -10325,9 +10354,25 @@ static int SfiPredicate(ph7_context *pCtx,int (*xTest)(const char *))
 	if( !SfiDirReady(pCtx,&rcReady) ){
 		return rcReady;
 	}
-	if( xTest
-	 && SfiPathBuf(pCtx->pVm,PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
-		bYes = xTest(zPath) == PH7_OK;
+	if( SfiPathBuf(pCtx->pVm,PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
+		/* Same door as the free functions: a wrapper's record answers the six,
+		 * and a miss is the plain false php answers (these asks are QUIET). */
+		ph7_int64 aVal[13];
+		int rcU = PH7_VfsUserStatFields(pCtx,zPath,eAsk,aVal);
+		if( PH7_CALLBACK_UNWOUND(rcU) ){
+			return rcU;
+		}
+		if( rcU != PHL_URLSTAT_NOWRAP ){
+			if( rcU == PHL_URLSTAT_OK ){
+				PH7_VfsUserStatResult(pCtx,eAsk,aVal);
+			}else{
+				ph7_result_bool(pCtx,0);
+			}
+			return PH7_OK;
+		}
+		if( xTest ){
+			bYes = xTest(zPath) == PH7_OK;
+		}
 	}
 	ph7_result_bool(pCtx,bYes);
 	return PH7_OK;
@@ -10335,32 +10380,32 @@ static int SfiPredicate(ph7_context *pCtx,int (*xTest)(const char *))
 static int vm_builtin_SplFileInfo_isWritable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg); SXUNUSED(apArg);
-	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xWritable : 0);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xWritable : 0,PH7_STAT_ASK_IS_W);
 }
 static int vm_builtin_SplFileInfo_isReadable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg); SXUNUSED(apArg);
-	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xReadable : 0);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xReadable : 0,PH7_STAT_ASK_IS_R);
 }
 static int vm_builtin_SplFileInfo_isExecutable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg); SXUNUSED(apArg);
-	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xExecutable : 0);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xExecutable : 0,PH7_STAT_ASK_IS_X);
 }
 static int vm_builtin_SplFileInfo_isFile(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg); SXUNUSED(apArg);
-	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIsfile : 0);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIsfile : 0,PH7_STAT_ASK_IS_FILE);
 }
 static int vm_builtin_SplFileInfo_isDir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg); SXUNUSED(apArg);
-	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIsdir : 0);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIsdir : 0,PH7_STAT_ASK_IS_DIR);
 }
 static int vm_builtin_SplFileInfo_isLink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg); SXUNUSED(apArg);
-	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIslink : 0);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIslink : 0,PH7_STAT_ASK_IS_LINK);
 }
 /* php's getLinkTarget(): readlink(), and a RuntimeException naming the errno text
  * when it fails -- which includes asking a plain file for its target. */

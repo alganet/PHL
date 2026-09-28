@@ -388,6 +388,220 @@ PH7_PRIVATE int PH7_VfsStatFromFd(int iFd,ph7_value *pArray,ph7_value *pWorker)
 	}
 }
 /*
+ * ---------------------------------------------------------------------------
+ * The stat family over a path a USERLAND stream wrapper owns.
+ *
+ * php routes every member of the family through one door -- `php_stat`, over
+ * `php_stream_url_stat_path` -- so a registered wrapper answers `file_exists()`,
+ * `is_dir()`, `filesize()`, `stat()` and the rest through its own `url_stat()`.
+ * PHL asked the OS VFS straight from each builtin, so a wrapper was reachable
+ * through fopen() and invisible to everything that asks ABOUT a name: vfsStream --
+ * what every test suite that fakes a filesystem uses -- could not report the size
+ * of a virtual file, and `file_exists('vfs://root/t.txt')` was false.
+ *
+ * Everything php's door decides is decided here, once, for all of them:
+ *  - the FLAGS the wrapper is handed: LINK for the three lstat readers, QUIET for
+ *    the seven existence/access questions, and NOCACHE always (php's own one-entry
+ *    stat cache lives above this door, so it asks for a fresh answer every time);
+ *  - what a FAILURE says: nothing at all for a quiet ask -- php answers a plain
+ *    false there -- and `%s(): stat failed for %s` / `Lstat failed for` for the
+ *    rest;
+ *  - how the thirteen fields answer each question: the mode's type bits, and php's
+ *    owner/group/other access masks.
+ * ---------------------------------------------------------------------------
+ */
+/* The seven questions php asks QUIETLY, and reports as a bare false. */
+static int VfsAskIsQuiet(int eAsk)
+{
+	return eAsk <= PH7_STAT_ASK_IS_X;
+}
+/* The three php asks with LSTAT, and words a failure as `Lstat failed for`. */
+static int VfsAskIsLink(int eAsk)
+{
+	return eAsk == PH7_STAT_ASK_IS_LINK || eAsk == PH7_STAT_ASK_TYPE
+	    || eAsk == PH7_STAT_ASK_LSTAT;
+}
+/*
+ * php's rmask/wmask/xmask for a stat record that did not come from a plain file.
+ * It starts at the OTHER bits and moves to the OWNER bits when the record's uid is
+ * the process's, or to the GROUP bits when its gid is the process's or one of its
+ * supplementary groups. On Windows php makes none of those comparisons: it seeds
+ * the masks with `S_IREAD/S_IWRITE/S_IEXEC` -- the OWNER bits -- and reads those
+ * whatever the record says (read back from php 8.5 on the gate guest, where a
+ * record with uid 65534 and mode 0644 still answered readable AND writable).
+ */
+PH7_PRIVATE void PH7_VfsStatAccessMasks(ph7_context *pCtx,ph7_int64 nUid,ph7_int64 nGid,
+	int *pR,int *pW,int *pX)
+{
+#ifdef __WINNT__
+	SXUNUSED(pCtx); SXUNUSED(nUid); SXUNUSED(nGid);
+	*pR = 0400; *pW = 0200; *pX = 0100;
+#else
+	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+	*pR = 0004; *pW = 0002; *pX = 0001;
+	if( pVfs && pVfs->xUid && (ph7_int64)pVfs->xUid() == nUid ){
+		*pR = 0400; *pW = 0200; *pX = 0100;
+		return;
+	}
+	if( pVfs && pVfs->xGid && (ph7_int64)pVfs->xGid() == nGid ){
+		*pR = 0040; *pW = 0020; *pX = 0010;
+		return;
+	}
+#ifdef __UNIXES__
+	{
+		/* php's last arm: the record's group may be one the process merely
+		 * belongs to. */
+		int nGroup = getgroups(0,NULL);
+		if( nGroup > 0 ){
+			gid_t *aGid = (gid_t *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+				(sxu32)nGroup * (sxu32)sizeof(gid_t));
+			if( aGid ){
+				int n = getgroups(nGroup,aGid);
+				int i;
+				for( i = 0 ; i < n ; ++i ){
+					if( (ph7_int64)aGid[i] == nGid ){
+						*pR = 0040; *pW = 0020; *pX = 0010;
+						break;
+					}
+				}
+				SyMemBackendFree(&pCtx->pVm->sAllocator,aGid);
+			}
+		}
+	}
+#endif /* __UNIXES__ */
+#endif /* __WINNT__ */
+}
+/*
+ * Ask the wrapper that owns zPath, with the flags this member of the family uses.
+ * PHL_URLSTAT_NOWRAP means nothing here owns the path and the caller carries on to
+ * the VFS.
+ */
+PH7_PRIVATE int PH7_VfsUserStatFields(ph7_context *pCtx,const char *zPath,int eAsk,
+	ph7_int64 *aVal)
+{
+	int iFlags = PH7_URL_STAT_NOCACHE;
+	if( VfsAskIsLink(eAsk) ){
+		iFlags |= PH7_URL_STAT_LINK;
+	}
+	if( VfsAskIsQuiet(eAsk) ){
+		iFlags |= PH7_URL_STAT_QUIET;
+	}
+	return PH7_StreamUserUrlStat(pCtx,zPath,iFlags,aVal);
+}
+/*
+ * Answer one question from a filled record. Shared with SplFileInfo, whose
+ * accessors ask exactly the same things of exactly the same thirteen fields.
+ */
+PH7_PRIVATE void PH7_VfsUserStatResult(ph7_context *pCtx,int eAsk,const ph7_int64 *aVal)
+{
+	ph7_int64 nMode = aVal[2];
+	switch( eAsk ){
+	case PH7_STAT_ASK_EXISTS:
+		ph7_result_bool(pCtx,1);
+		break;
+	case PH7_STAT_ASK_IS_FILE:
+		ph7_result_bool(pCtx,(nMode & PH7_S_IFMT) == PH7_S_IFREG);
+		break;
+	case PH7_STAT_ASK_IS_DIR:
+		ph7_result_bool(pCtx,(nMode & PH7_S_IFMT) == PH7_S_IFDIR);
+		break;
+	case PH7_STAT_ASK_IS_LINK:
+		ph7_result_bool(pCtx,(nMode & PH7_S_IFMT) == PH7_S_IFLNK);
+		break;
+	case PH7_STAT_ASK_IS_R:
+	case PH7_STAT_ASK_IS_W:
+	case PH7_STAT_ASK_IS_X: {
+		int iR,iW,iX,iMask;
+		PH7_VfsStatAccessMasks(pCtx,aVal[4],aVal[5],&iR,&iW,&iX);
+		iMask = eAsk == PH7_STAT_ASK_IS_R ? iR : (eAsk == PH7_STAT_ASK_IS_W ? iW : iX);
+		ph7_result_bool(pCtx,(nMode & iMask) != 0);
+		break; }
+	case PH7_STAT_ASK_SIZE:  ph7_result_int64(pCtx,aVal[7]);  break;
+	case PH7_STAT_ASK_ATIME: ph7_result_int64(pCtx,aVal[8]);  break;
+	case PH7_STAT_ASK_MTIME: ph7_result_int64(pCtx,aVal[9]);  break;
+	case PH7_STAT_ASK_CTIME: ph7_result_int64(pCtx,aVal[10]); break;
+	case PH7_STAT_ASK_OWNER: ph7_result_int64(pCtx,aVal[4]);  break;
+	case PH7_STAT_ASK_GROUP: ph7_result_int64(pCtx,aVal[5]);  break;
+	case PH7_STAT_ASK_INODE: ph7_result_int64(pCtx,aVal[1]);  break;
+	case PH7_STAT_ASK_PERMS: ph7_result_int64(pCtx,nMode);    break;
+	case PH7_STAT_ASK_TYPE: {
+		/* php's FS_TYPE: a symlink first (this ask lstats), then the S_IFMT
+		 * switch, then a NOTICE naming the type bits it did not recognise.
+		 * S_IFSOCK is the one arm php's Windows build does not compile, so a
+		 * socket record answers "unknown" there -- read back from the gate
+		 * guest's php 8.5. */
+		const char *zType = 0;
+		switch( (int)(nMode & PH7_S_IFMT) ){
+		case PH7_S_IFLNK:  zType = "link";   break;
+		case PH7_S_IFIFO:  zType = "fifo";   break;
+		case PH7_S_IFCHR:  zType = "char";   break;
+		case PH7_S_IFDIR:  zType = "dir";    break;
+		case PH7_S_IFBLK:  zType = "block";  break;
+		case PH7_S_IFREG:  zType = "file";   break;
+#ifndef __WINNT__
+		case PH7_S_IFSOCK: zType = "socket"; break;
+#endif
+		default: break;
+		}
+		if( zType == 0 ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+				"Unknown file type (%d)",(int)(nMode & PH7_S_IFMT));
+			zType = "unknown";
+		}
+		ph7_result_string(pCtx,zType,-1);
+		break; }
+	default: {
+		/* stat()/lstat(): php's thirteen fields numbered 0..12 and then named. */
+		ph7_value *pArray = ph7_context_new_array(pCtx);
+		ph7_value *pWorker = ph7_context_new_scalar(pCtx);
+		ph7_value *pFull = ph7_context_new_array(pCtx);
+		if( pArray == 0 || pWorker == 0 ){
+			ph7_result_bool(pCtx,0);
+			break;
+		}
+		PH7_VfsStatFill(pArray,pWorker,aVal);
+		if( pFull && PH7_VfsStatDoubleUp(pArray,pFull) == PH7_OK ){
+			ph7_result_value(pCtx,pFull);
+		}else{
+			ph7_result_value(pCtx,pArray);
+		}
+		break; }
+	}
+}
+/*
+ * The one line every member of the family carries: if a userland wrapper owns this
+ * path, answer from it and stop. Returns 0 when nothing does.
+ */
+static int VfsUserStat(ph7_context *pCtx,const char *zPath,int eAsk)
+{
+	ph7_int64 aVal[13];
+	SyBlob sPath;
+	int rc;
+	if( zPath == 0 ){
+		return 0;
+	}
+	/* The wrapper is PHP code, and running some can move the argument slot zPath
+	 * points into -- so the copy the failure message needs is taken first. */
+	SyBlobInit(&sPath,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sPath,zPath,(sxu32)SyStrlen(zPath));
+	SyBlobAppend(&sPath,"",1); /* NUL, for the %s below */
+	rc = PH7_VfsUserStatFields(pCtx,zPath,eAsk,aVal);
+	if( rc == PHL_URLSTAT_NOWRAP ){
+		SyBlobRelease(&sPath);
+		return 0;
+	}
+	if( rc == PHL_URLSTAT_OK ){
+		PH7_VfsUserStatResult(pCtx,eAsk,aVal);
+	}else{
+		if( !VfsAskIsQuiet(eAsk) ){
+			VfsThrowStatWarning(pCtx,(const char *)SyBlobData(&sPath),VfsAskIsLink(eAsk));
+		}
+		ph7_result_bool(pCtx,0);
+	}
+	SyBlobRelease(&sPath);
+	return 1;
+}
+/*
  * Can this path be stat'ed at all? The three TIME readers report a failure as -1,
  * which is also a legitimate timestamp (a file stamped in the last second before
  * the epoch), so the failure verdict is asked of the VFS separately rather than
@@ -603,7 +817,11 @@ static int PH7_vfs_is_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_DIR) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xIsdir == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1460,7 +1678,11 @@ static int PH7_vfs_file_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_EXISTS) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xFileExists == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1498,7 +1720,11 @@ static int PH7_vfs_file_size(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_SIZE) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xFileSize == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1544,7 +1770,11 @@ static int PH7_vfs_file_atime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_ATIME) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xFileAtime == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1590,7 +1820,11 @@ static int PH7_vfs_file_mtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_MTIME) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xFileMtime == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1636,7 +1870,11 @@ static int PH7_vfs_file_ctime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_CTIME) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xFileCtime == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1682,7 +1920,11 @@ static int PH7_vfs_is_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_FILE) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xIsfile == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1720,7 +1962,11 @@ static int PH7_vfs_is_link(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_LINK) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xIslink == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1758,7 +2004,11 @@ static int PH7_vfs_is_readable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_R) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xReadable == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1796,7 +2046,11 @@ static int PH7_vfs_is_writable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_W) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xWritable == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1834,7 +2088,11 @@ static int PH7_vfs_is_executable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_IS_X) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xExecutable == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1872,7 +2130,11 @@ static int PH7_vfs_filetype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,"unknown",sizeof("unknown")-1);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_TYPE) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xFiletype == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -1933,7 +2195,11 @@ static int PH7_vfs_stat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_STAT) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xStat == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -2010,7 +2276,11 @@ static int PH7_vfs_lstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Point to the underlying vfs */
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),PH7_STAT_ASK_LSTAT) ){
+		return PH7_OK;
+	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xlStat == 0 ){
 		/* IO routine not implemented,return NULL */
@@ -2063,7 +2333,7 @@ static int PH7_vfs_lstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * and its line was the prelude's, not the caller's). In C the family shares one
  * warning site with the rest of stat(), and the four get real signature rows.
  */
-static int VfsStatField(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zField)
+static int VfsStatField(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zField,int eAsk)
 {
 	ph7_value *pArray,*pValue,*pField;
 	const char *zPath;
@@ -2071,6 +2341,11 @@ static int VfsStatField(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 	int rc;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php asks the wrapper that owns the path before anything else
+	 * (php_stream_url_stat_path); the VFS answers only what none owns. */
+	if( VfsUserStat(pCtx,ph7_value_to_string(apArg[0],0),eAsk) ){
 		return PH7_OK;
 	}
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -2109,19 +2384,19 @@ static int VfsStatField(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 }
 static int PH7_vfs_file_owner(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return VfsStatField(pCtx,nArg,apArg,"uid");
+	return VfsStatField(pCtx,nArg,apArg,"uid",PH7_STAT_ASK_OWNER);
 }
 static int PH7_vfs_file_group(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return VfsStatField(pCtx,nArg,apArg,"gid");
+	return VfsStatField(pCtx,nArg,apArg,"gid",PH7_STAT_ASK_GROUP);
 }
 static int PH7_vfs_file_inode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return VfsStatField(pCtx,nArg,apArg,"ino");
+	return VfsStatField(pCtx,nArg,apArg,"ino",PH7_STAT_ASK_INODE);
 }
 static int PH7_vfs_file_perms(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return VfsStatField(pCtx,nArg,apArg,"mode");
+	return VfsStatField(pCtx,nArg,apArg,"mode",PH7_STAT_ASK_PERMS);
 }
 /*
  * array|string|false getenv(?string $name = null, bool $local_only = false)

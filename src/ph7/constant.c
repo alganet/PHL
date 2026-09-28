@@ -699,6 +699,124 @@ static void PH7_STREAM_IS_URL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * The rest of the streamWrapper PROTOCOL vocabulary: the numbers php hands a
+ * userland wrapper, and the ones a wrapper hands back. PHL registered wrappers
+ * without them, so the ordinary spellings every real wrapper is written against --
+ * `$options & STREAM_USE_PATH` in stream_open(), `$flags & STREAM_URL_STAT_QUIET`
+ * in url_stat(), the STREAM_META_* verb in stream_metadata() -- were an undefined
+ * constant, i.e. an Error, in code php runs.
+ */
+static void PH7_STREAM_USE_PATH_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_USE_PATH);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_IGNORE_URL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_IGNORE_URL);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_REPORT_ERRORS_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_REPORT_ERRORS);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_MUST_SEEK_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_MUST_SEEK);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_URL_STAT_LINK_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_URL_STAT_LINK);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_URL_STAT_QUIET_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_URL_STAT_QUIET);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_MKDIR_RECURSIVE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_MKDIR_RECURSIVE);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_META_TOUCH_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_META_TOUCH);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_META_OWNER_NAME_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_META_OWNER_NAME);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_META_OWNER_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_META_OWNER);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_META_GROUP_NAME_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_META_GROUP_NAME);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_META_GROUP_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_META_GROUP);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_META_ACCESS_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_META_ACCESS);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_OPTION_BLOCKING_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_OPTION_BLOCKING);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_OPTION_READ_BUFFER_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_OPTION_READ_BUFFER);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_OPTION_WRITE_BUFFER_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_OPTION_WRITE_BUFFER);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_OPTION_READ_TIMEOUT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_OPTION_READ_TIMEOUT);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_BUFFER_NONE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_BUFFER_NONE);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_BUFFER_LINE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_BUFFER_LINE);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_BUFFER_FULL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_BUFFER_FULL);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_CAST_AS_STREAM_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_CAST_AS_STREAM);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_CAST_FOR_SELECT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_CAST_FOR_SELECT);
+	SXUNUSED(pUserData);
+}
+/*
  * A userland filter's ANSWER, and which kind of call it is answering. FEED_ME
  * says "I produced nothing, ask me again with more"; ERR_FATAL ends the stream.
  */
@@ -2926,6 +3044,28 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},
 	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },
 	{"STREAM_IS_URL",                PH7_STREAM_IS_URL_Const },
+	{"STREAM_USE_PATH",              PH7_STREAM_USE_PATH_Const },
+	{"STREAM_IGNORE_URL",            PH7_STREAM_IGNORE_URL_Const },
+	{"STREAM_REPORT_ERRORS",         PH7_STREAM_REPORT_ERRORS_Const },
+	{"STREAM_MUST_SEEK",             PH7_STREAM_MUST_SEEK_Const },
+	{"STREAM_URL_STAT_LINK",         PH7_STREAM_URL_STAT_LINK_Const },
+	{"STREAM_URL_STAT_QUIET",        PH7_STREAM_URL_STAT_QUIET_Const },
+	{"STREAM_MKDIR_RECURSIVE",       PH7_STREAM_MKDIR_RECURSIVE_Const },
+	{"STREAM_META_TOUCH",            PH7_STREAM_META_TOUCH_Const },
+	{"STREAM_META_OWNER_NAME",       PH7_STREAM_META_OWNER_NAME_Const },
+	{"STREAM_META_OWNER",            PH7_STREAM_META_OWNER_Const },
+	{"STREAM_META_GROUP_NAME",       PH7_STREAM_META_GROUP_NAME_Const },
+	{"STREAM_META_GROUP",            PH7_STREAM_META_GROUP_Const },
+	{"STREAM_META_ACCESS",           PH7_STREAM_META_ACCESS_Const },
+	{"STREAM_OPTION_BLOCKING",       PH7_STREAM_OPTION_BLOCKING_Const },
+	{"STREAM_OPTION_READ_BUFFER",    PH7_STREAM_OPTION_READ_BUFFER_Const },
+	{"STREAM_OPTION_WRITE_BUFFER",   PH7_STREAM_OPTION_WRITE_BUFFER_Const },
+	{"STREAM_OPTION_READ_TIMEOUT",   PH7_STREAM_OPTION_READ_TIMEOUT_Const },
+	{"STREAM_BUFFER_NONE",           PH7_STREAM_BUFFER_NONE_Const },
+	{"STREAM_BUFFER_LINE",           PH7_STREAM_BUFFER_LINE_Const },
+	{"STREAM_BUFFER_FULL",           PH7_STREAM_BUFFER_FULL_Const },
+	{"STREAM_CAST_AS_STREAM",        PH7_STREAM_CAST_AS_STREAM_Const },
+	{"STREAM_CAST_FOR_SELECT",       PH7_STREAM_CAST_FOR_SELECT_Const },
 	{"STREAM_SERVER_BIND",           PH7_STREAM_SERVER_BIND_Const },
 	{"STREAM_SERVER_LISTEN",         PH7_STREAM_SERVER_LISTEN_Const },
 	{"STREAM_CLIENT_CONNECT",        PH7_STREAM_CLIENT_CONNECT_Const },

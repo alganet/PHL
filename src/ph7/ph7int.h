@@ -1181,6 +1181,81 @@ struct VmObEntry
 /* stream_wrapper_register()'s $flags: php defines this one bit. A wrapper that
  * declares itself a URL is the one allow_url_fopen and allow_url_include gate. */
 #define PH7_STREAM_IS_URL 1
+/*
+ * The rest of the streamWrapper protocol's vocabulary, in php's own numbers.
+ *
+ * USE_PATH / IGNORE_URL / REPORT_ERRORS / MUST_SEEK are the `$options` bits
+ * stream_open() is handed; URL_STAT_LINK / URL_STAT_QUIET are url_stat()'s
+ * `$flags` (LINK means lstat, QUIET means report a miss in silence), and NOCACHE
+ * rides beside them on every ask php's stat family makes because php's own
+ * one-entry stat cache sits ABOVE that door; MKDIR_RECURSIVE is mkdir()'s;
+ * META_* names the verb stream_metadata() is asked for; the OPTION_ and BUFFER_
+ * pair belong to stream_set_option(), and CAST_ to stream_cast().
+ */
+#define PH7_STREAM_USE_PATH           1
+#define PH7_STREAM_IGNORE_URL         2
+#define PH7_STREAM_REPORT_ERRORS      8
+#define PH7_STREAM_MUST_SEEK          16
+#define PH7_URL_STAT_LINK             1
+#define PH7_URL_STAT_QUIET            2
+#define PH7_URL_STAT_NOCACHE          4
+#define PH7_STREAM_MKDIR_RECURSIVE    1
+#define PH7_STREAM_META_TOUCH         1
+#define PH7_STREAM_META_OWNER_NAME    2
+#define PH7_STREAM_META_OWNER         3
+#define PH7_STREAM_META_GROUP_NAME    4
+#define PH7_STREAM_META_GROUP         5
+#define PH7_STREAM_META_ACCESS        6
+#define PH7_STREAM_OPTION_BLOCKING    1
+#define PH7_STREAM_OPTION_READ_BUFFER 2
+#define PH7_STREAM_OPTION_WRITE_BUFFER 3
+#define PH7_STREAM_OPTION_READ_TIMEOUT 4
+#define PH7_STREAM_BUFFER_NONE        0
+#define PH7_STREAM_BUFFER_LINE        1
+#define PH7_STREAM_BUFFER_FULL        2
+#define PH7_STREAM_CAST_AS_STREAM     0
+#define PH7_STREAM_CAST_FOR_SELECT    3
+/*
+ * What PH7_StreamUserUrlStat() answered: the wrapper filled the record, the
+ * wrapper declined, or no userland wrapper owns this path at all (the caller then
+ * asks the VFS exactly as it always did).
+ */
+#define PHL_URLSTAT_OK      0
+#define PHL_URLSTAT_FAIL    1
+#define PHL_URLSTAT_NOWRAP (-1)
+/*
+ * Which member of the stat family is asking. php routes them all through one
+ * `php_stat`, and the code decides three things: the flags the wrapper is handed,
+ * whether a miss is silent, and which of the thirteen fields answers.
+ * The seven QUIET ones come first on purpose -- that ORDER is the test.
+ */
+#define PH7_STAT_ASK_EXISTS   0
+#define PH7_STAT_ASK_IS_FILE  1
+#define PH7_STAT_ASK_IS_DIR   2
+#define PH7_STAT_ASK_IS_LINK  3
+#define PH7_STAT_ASK_IS_R     4
+#define PH7_STAT_ASK_IS_W     5
+#define PH7_STAT_ASK_IS_X     6
+#define PH7_STAT_ASK_SIZE     7
+#define PH7_STAT_ASK_ATIME    8
+#define PH7_STAT_ASK_MTIME    9
+#define PH7_STAT_ASK_CTIME    10
+#define PH7_STAT_ASK_OWNER    11
+#define PH7_STAT_ASK_GROUP    12
+#define PH7_STAT_ASK_INODE    13
+#define PH7_STAT_ASK_PERMS    14
+#define PH7_STAT_ASK_TYPE     15
+#define PH7_STAT_ASK_STAT     16
+#define PH7_STAT_ASK_LSTAT    17
+/* php's S_IFMT decode, spelled in octal so it means the same on every port. */
+#define PH7_S_IFMT   0170000
+#define PH7_S_IFIFO  0010000
+#define PH7_S_IFCHR  0020000
+#define PH7_S_IFDIR  0040000
+#define PH7_S_IFBLK  0060000
+#define PH7_S_IFREG  0100000
+#define PH7_S_IFLNK  0120000
+#define PH7_S_IFSOCK 0140000
 /* stream_socket_client()'s $flags. CONNECT is its default; without it php
  * creates no socket at all. PERSISTENT is what pfsockopen() means, and is the
  * only one that changes what a second call ANSWERS. */
@@ -6569,6 +6644,10 @@ PH7_PRIVATE int PH7_builtin_stream_get_transports(ph7_context *pCtx,int nArg,ph7
 PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_StreamUserUrlStat(ph7_context *pCtx,const char *zPath,int iFlags,ph7_int64 *aVal);
+PH7_PRIVATE int PH7_VfsUserStatFields(ph7_context *pCtx,const char *zPath,int eAsk,ph7_int64 *aVal);
+PH7_PRIVATE void PH7_VfsUserStatResult(ph7_context *pCtx,int eAsk,const ph7_int64 *aVal);
+PH7_PRIVATE void PH7_VfsStatAccessMasks(ph7_context *pCtx,ph7_int64 nUid,ph7_int64 nGid,int *pR,int *pW,int *pX);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_restore(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_filter_append(ph7_context *pCtx,int nArg,ph7_value **apArg);
