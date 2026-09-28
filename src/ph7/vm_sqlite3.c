@@ -39,13 +39,54 @@
  * second object can ever hold the same handle.
  */
 typedef struct phl_sq3 phl_sq3;
+typedef struct phl_sq3_stmt phl_sq3_stmt;
+typedef struct phl_sq3_res phl_sq3_res;
 struct phl_sq3 {
 	sqlite3 *pDb;                 /* 0 before the first open and after close() */
 	int bInitialised;             /* an open has SUCCEEDED on this object */
 	int bExceptions;              /* enableExceptions(): what routes a failure */
 	ph7_vm *pVm;
 	ph7_class_instance *pOwner;   /* the object whose slot holds it */
+	phl_sq3_stmt *pStmts;         /* statements prepared on it: sqlite will not close a
+	                               * database while one of them is alive */
+	phl_sq3_res *pResults;        /* the result objects walking those statements */
 	phl_sq3 *pNext;
+};
+/*
+ * One prepared statement, REFERENCE-COUNTED -- which is the shape php's own
+ * object graph has and the reason two verbs that look alike behave differently.
+ * `query()` builds a statement nothing but its result holds, so finalizing that
+ * result destroys it; `execute()` hands out a result over a statement the script
+ * ALSO holds, so finalizing that result leaves the statement runnable. The count
+ * is what tells the two apart at the moment of the finalize.
+ *
+ * `close()` on the statement is not a release: it finalizes NOW, whatever
+ * results are still pointing at it, and every one of them starts answering the
+ * Error instead.
+ */
+struct phl_sq3_stmt {
+	sqlite3_stmt *pStmt;          /* 0 for a statement of NOTHING (see below), and once closed */
+	phl_sq3 *pConn;
+	ph7_class_instance *pOwner;   /* the SQLite3Stmt object, when a script holds one */
+	ph7_class_instance *pConnObj; /* the SQLite3 object, RETAINED: a result outlives the
+	                               * variable its connection was in, and php keeps the
+	                               * database open through exactly this reference */
+	int nRef;                     /* holders: the statement object, and each live result */
+	phl_sq3_stmt *pNext;
+};
+/*
+ * One result -- php's cursor over a statement, and nothing more. It owns no row
+ * of its own: `numColumns()` reads the statement's column count, `columnType()`
+ * reads the row sqlite has UP, and `fetchArray()` steps.
+ */
+struct phl_sq3_res {
+	phl_sq3_stmt *pSt;            /* 0 once finalize() has run on THIS result */
+	phl_sq3 *pConn;               /* kept beside pSt: the record has to find its chain
+	                               * again after finalize() has let the statement go */
+	ph7_class_instance *pOwner;
+	ph7_class_instance *pStmtObj; /* the SQLite3Stmt it came from, RETAINED, or 0 for the
+	                               * anonymous statement query() builds */
+	phl_sq3_res *pNext;
 };
 
 /* The hidden slot every one of these classes reaches its record through. */
@@ -54,11 +95,33 @@ struct phl_sq3 {
 /* ------------------------------------------------------------------------
  * Lifetime
  * ------------------------------------------------------------------------ */
+/*
+ * Close the database, and every statement standing on it with it.
+ *
+ * The statements go FIRST and they are not merely released: php keeps a list of
+ * everything a connection handed out and cleans it here, so `close()` finalizes
+ * a statement a script is still holding and every result walking one starts
+ * answering the Error. The records themselves stay -- the objects that reach
+ * them are still alive and have to find an emptied handle rather than freed
+ * memory.
+ *
+ * That is also why dropping the last reference to a SQLite3 is NOT the same
+ * thing: a live statement retains the object, so there is no last reference to
+ * drop while one exists, and a result outlives the variable its connection was
+ * in.
+ */
 static void Sq3Close(phl_sq3 *pConn)
 {
+	phl_sq3_stmt *pSt;
+	for( pSt = pConn->pStmts ; pSt ; pSt = pSt->pNext ){
+		if( pSt->pStmt ){
+			sqlite3_finalize(pSt->pStmt);
+			pSt->pStmt = 0;
+		}
+	}
 	if( pConn->pDb ){
-		/* _v2, so a statement this slice does not yet know about defers the
-		 * close rather than leaking the handle. */
+		/* _v2 anyway, so a handle something else still owns defers the close
+		 * rather than leaking. */
 		sqlite3_close_v2(pConn->pDb);
 		pConn->pDb = 0;
 	}
@@ -75,10 +138,114 @@ static phl_sq3 * Sq3NewConn(ph7_vm *pVm)
 	pVm->pSq3Conns = pConn;
 	return pConn;
 }
+/*
+ * Blank one object's hidden slot: the record behind it is going away and the
+ * object may well outlive it.
+ */
+static void Sq3BlankSlot(ph7_class_instance *pOwner);
+/*
+ * Let go of one hold on a statement. The LAST holder finalizes it -- which is
+ * how a result over an anonymous statement destroys it while a result over a
+ * script's own statement does not.
+ */
+static void Sq3StmtUnref(phl_sq3_stmt *pSt)
+{
+	phl_sq3 *pConn;
+	phl_sq3_stmt *pCur,*pPrev = 0;
+	if( pSt == 0 || --pSt->nRef > 0 ){
+		return;
+	}
+	pConn = pSt->pConn;
+	if( pSt->pStmt ){
+		sqlite3_finalize(pSt->pStmt);
+		pSt->pStmt = 0;
+	}
+	for( pCur = pConn->pStmts ; pCur ; pPrev = pCur, pCur = pCur->pNext ){
+		if( pCur == pSt ){
+			if( pPrev ){
+				pPrev->pNext = pCur->pNext;
+			}else{
+				pConn->pStmts = pCur->pNext;
+			}
+			break;
+		}
+	}
+	if( pSt->pConnObj ){
+		/* drop the reference taken at creation; the connection may go now */
+		ph7_class_instance *pObj = pSt->pConnObj;
+		pSt->pConnObj = 0;
+		PH7_ClassInstanceUnref(pObj);
+	}
+	SyMemBackendFree(&pConn->pVm->sAllocator,pSt);
+}
+/*
+ * Let go of what a result is HOLDING without freeing the record: `finalize()`
+ * does exactly this and leaves the object standing, answering the Error.
+ */
+static void Sq3ResDetach(phl_sq3_res *pRes)
+{
+	if( pRes->pSt ){
+		Sq3StmtUnref(pRes->pSt);
+		pRes->pSt = 0;
+	}
+	if( pRes->pStmtObj ){
+		ph7_class_instance *pObj = pRes->pStmtObj;
+		pRes->pStmtObj = 0;
+		PH7_ClassInstanceUnref(pObj);
+	}
+}
+/* Free one result record: what it holds, then its place on the chain. */
+static void Sq3FreeRes(phl_sq3_res *pRes)
+{
+	phl_sq3 *pConn = pRes->pConn;
+	phl_sq3_res *pCur,*pPrev = 0;
+	Sq3ResDetach(pRes);
+	for( pCur = pConn->pResults ; pCur ; pPrev = pCur, pCur = pCur->pNext ){
+		if( pCur == pRes ){
+			if( pPrev ){
+				pPrev->pNext = pCur->pNext;
+			}else{
+				pConn->pResults = pCur->pNext;
+			}
+			break;
+		}
+	}
+	SyMemBackendFree(&pConn->pVm->sAllocator,pRes);
+}
+static void Sq3ResSweep(phl_sq3 *pConn)
+{
+	while( pConn->pResults ){
+		phl_sq3_res *pRes = pConn->pResults;
+		Sq3BlankSlot(pRes->pOwner);
+		Sq3FreeRes(pRes);
+	}
+}
+static void Sq3StmtSweep(phl_sq3 *pConn)
+{
+	while( pConn->pStmts ){
+		phl_sq3_stmt *pSt = pConn->pStmts;
+		Sq3BlankSlot(pSt->pOwner);
+		pConn->pStmts = pSt->pNext;
+		if( pSt->pStmt ){
+			sqlite3_finalize(pSt->pStmt);
+			pSt->pStmt = 0;
+		}
+		if( pSt->pConnObj ){
+			ph7_class_instance *pObj = pSt->pConnObj;
+			pSt->pConnObj = 0;
+			PH7_ClassInstanceUnref(pObj);
+		}
+		SyMemBackendFree(&pConn->pVm->sAllocator,pSt);
+	}
+}
 static void Sq3FreeConn(phl_sq3 *pConn)
 {
 	ph7_vm *pVm = pConn->pVm;
 	phl_sq3 *pCur,*pPrev = 0;
+	/* Results first, then statements: a result names a statement, and sqlite
+	 * refuses to close a database while a statement of its own is alive. */
+	Sq3ResSweep(pConn);
+	Sq3StmtSweep(pConn);
 	Sq3Close(pConn);
 	for( pCur = (phl_sq3 *)pVm->pSq3Conns ; pCur ; pPrev = pCur, pCur = pCur->pNext ){
 		if( pCur == pConn ){
@@ -91,27 +258,6 @@ static void Sq3FreeConn(phl_sq3 *pConn)
 		}
 	}
 	SyMemBackendFree(&pVm->sAllocator,pConn);
-}
-/*
- * Blank the hidden slot of the object that holds a record about to be freed.
- * Without it the object outlives its record -- any handle still alive at VM
- * teardown -- and its own release reads freed memory to ask whether it still
- * owns one. ext/pdo learned this from ASan; nothing in an ordinary build
- * notices.
- */
-static void Sq3BlankSlot(ph7_class_instance *pOwner)
-{
-	SyString sAttr;
-	ph7_value *pRes;
-	if( pOwner == 0 ){
-		return;
-	}
-	SyStringInitFromBuf(&sAttr,SQ3_RES,sizeof(SQ3_RES)-1);
-	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);
-	if( pRes ){
-		PH7_MemObjRelease(pRes);
-		MemObjSetType(pRes,MEMOBJ_NULL);
-	}
 }
 static void Sq3VmSweep(ph7_vm *pVm)
 {
@@ -138,7 +284,8 @@ PH7_PRIVATE void PH7_Sqlite3VmRelease(ph7_vm *pVm)
 /* ------------------------------------------------------------------------
  * The object and its hidden slot
  * ------------------------------------------------------------------------ */
-static phl_sq3 * Sq3OfInstance(ph7_class_instance *pThis)
+/* The record behind any of the three classes' hidden slots. */
+static void * Sq3ResourceOf(ph7_class_instance *pThis)
 {
 	SyString sAttr;
 	ph7_value *pRes;
@@ -150,9 +297,23 @@ static phl_sq3 * Sq3OfInstance(ph7_class_instance *pThis)
 	if( pRes == 0 || !ph7_value_is_resource(pRes) ){
 		return 0;
 	}
-	return (phl_sq3 *)ph7_value_to_resource(pRes);
+	return ph7_value_to_resource(pRes);
 }
-static int Sq3Attach(ph7_class_instance *pThis,phl_sq3 *pConn)
+static void Sq3BlankSlot(ph7_class_instance *pOwner)
+{
+	SyString sAttr;
+	ph7_value *pRes;
+	if( pOwner == 0 ){
+		return;
+	}
+	SyStringInitFromBuf(&sAttr,SQ3_RES,sizeof(SQ3_RES)-1);
+	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);
+	if( pRes ){
+		PH7_MemObjRelease(pRes);
+		MemObjSetType(pRes,MEMOBJ_NULL);
+	}
+}
+static int Sq3AttachRes(ph7_class_instance *pThis,void *pRecord)
 {
 	SyString sAttr;
 	ph7_value *pRes;
@@ -165,8 +326,19 @@ static int Sq3Attach(ph7_class_instance *pThis,phl_sq3 *pConn)
 		return -1;
 	}
 	PH7_MemObjRelease(pRes);
-	pRes->x.pOther = pConn;
+	pRes->x.pOther = pRecord;
 	MemObjSetType(pRes,MEMOBJ_RES);
+	return 0;
+}
+static phl_sq3 * Sq3OfInstance(ph7_class_instance *pThis)
+{
+	return (phl_sq3 *)Sq3ResourceOf(pThis);
+}
+static int Sq3Attach(ph7_class_instance *pThis,phl_sq3 *pConn)
+{
+	if( Sq3AttachRes(pThis,pConn) != 0 ){
+		return -1;
+	}
 	pConn->pOwner = pThis;
 	return 0;
 }
@@ -643,6 +815,557 @@ static int vm_builtin_SQLite3_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 
 /* ------------------------------------------------------------------------
+ * Preparing, stepping, and the cursor a script walks
+ * ------------------------------------------------------------------------ */
+/* A fresh statement record, chained on its connection and retaining the object
+ * the connection lives in. */
+static phl_sq3_stmt * Sq3NewStmt(phl_sq3 *pConn)
+{
+	phl_sq3_stmt *pSt = (phl_sq3_stmt *)SyMemBackendAlloc(&pConn->pVm->sAllocator,
+		sizeof(phl_sq3_stmt));
+	if( pSt == 0 ){
+		return 0;
+	}
+	SyZero(pSt,sizeof(phl_sq3_stmt));
+	pSt->pConn = pConn;
+	pSt->nRef = 1;
+	pSt->pConnObj = pConn->pOwner;
+	if( pSt->pConnObj ){
+		pSt->pConnObj->iRef++;
+	}
+	pSt->pNext = pConn->pStmts;
+	pConn->pStmts = pSt;
+	return pSt;
+}
+/*
+ * php's prepare, shared by prepare(), query() and querySingle().
+ *
+ * Two answers are not failures and are not the same either. An EMPTY query is
+ * refused before the library is asked -- php checks the length itself, so there
+ * is no diagnostic to report. A query that holds no STATEMENT (whitespace, a
+ * comment) prepares perfectly well and leaves sqlite's out-parameter NULL; php
+ * keeps that as a statement of nothing, and everything a script then does with
+ * it answers off the missing handle rather than off an error.
+ *
+ * Answers 0 when the caller should hand back false -- which both of those are,
+ * told apart only by whether anything was reported on the way.
+ */
+static phl_sq3_stmt * Sq3Prepare(ph7_context *pCtx,phl_sq3 *pConn,const char *zSql,int nSql,
+	const char *zFn,sxi32 *pRc)
+{
+	phl_sq3_stmt *pSt;
+	sqlite3_stmt *pRaw = 0;
+	int rc;
+	*pRc = PH7_OK;
+	if( nSql < 1 ){
+		return 0;
+	}
+	rc = sqlite3_prepare_v2(pConn->pDb,zSql,nSql,&pRaw,0);
+	if( rc != SQLITE_OK ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Unable to prepare statement: %s",sqlite3_errmsg(pConn->pDb));
+		SyBlobNullAppend(&sMsg);
+		*pRc = Sq3Error(pCtx,pConn,zFn,sqlite3_errcode(pConn->pDb),
+			(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+		return 0;
+	}
+	pSt = Sq3NewStmt(pConn);
+	if( pSt == 0 ){
+		if( pRaw ){
+			sqlite3_finalize(pRaw);
+		}
+		*pRc = PH7_ContextMemoryError(pCtx);
+		return 0;
+	}
+	pSt->pStmt = pRaw;
+	return pSt;
+}
+/*
+ * Run a statement once and rewind it, which is what BOTH `query()` and
+ * `execute()` do before they hand a cursor back. It is not a lookahead: the
+ * step really runs, so `query("INSERT ...")` inserts, and the reset that
+ * follows is what makes the result's first fetch start at the first row --
+ * and what makes a fetch on that INSERT's result insert a SECOND time.
+ *
+ * A statement of NOTHING has no handle to step and is a failure here, reported
+ * off the CONNECTION -- which has met no error, so what a comment-only query
+ * says is `Unable to execute statement: not an error`.
+ */
+static int Sq3StepOnce(ph7_context *pCtx,phl_sq3_stmt *pSt,const char *zFn,sxi32 *pRc)
+{
+	int rc;
+	*pRc = PH7_OK;
+	if( pSt->pStmt ){
+		rc = sqlite3_step(pSt->pStmt);
+		if( rc == SQLITE_ROW || rc == SQLITE_DONE ){
+			sqlite3_reset(pSt->pStmt);
+			return 1;
+		}
+	}
+	{
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Unable to execute statement: %s",
+			sqlite3_errmsg(pSt->pConn->pDb));
+		SyBlobNullAppend(&sMsg);
+		*pRc = Sq3Error(pCtx,pSt->pConn,zFn,sqlite3_errcode(pSt->pConn->pDb),
+			(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+	}
+	return 0;
+}
+/*
+ * One column of the row sqlite has up, in the type sqlite says it is.
+ *
+ * The cursor is reset first because callers reuse ONE scalar down a row: a
+ * string write appends, so without this the second text column of a row comes
+ * back carrying the first one's bytes in front of it.
+ */
+static void Sq3ColumnValue(sqlite3_stmt *pStmt,int iCol,ph7_value *pOut)
+{
+	ph7_value_reset_string_cursor(pOut);
+	switch( sqlite3_column_type(pStmt,iCol) ){
+		case SQLITE_INTEGER:
+			ph7_value_int64(pOut,(ph7_int64)sqlite3_column_int64(pStmt,iCol));
+			break;
+#ifndef PH7_OMIT_FLOATING_POINT
+		case SQLITE_FLOAT:
+			ph7_value_double(pOut,sqlite3_column_double(pStmt,iCol));
+			break;
+#endif
+		case SQLITE_NULL:
+			ph7_value_null(pOut);
+			break;
+		case SQLITE_BLOB: {
+			const void *pBlob = sqlite3_column_blob(pStmt,iCol);
+			int nByte = sqlite3_column_bytes(pStmt,iCol);
+			ph7_value_string(pOut,pBlob ? (const char *)pBlob : "",nByte);
+			break;
+		}
+		default: {
+			const unsigned char *zText = sqlite3_column_text(pStmt,iCol);
+			int nByte = sqlite3_column_bytes(pStmt,iCol);
+			ph7_value_string(pOut,zText ? (const char *)zText : "",nByte);
+			break;
+		}
+	}
+}
+/* Build the SQLite3Result object over one statement. */
+static ph7_class_instance * Sq3NewResultObject(ph7_context *pCtx,phl_sq3_stmt *pSt,
+	ph7_class_instance *pStmtObj)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"SQLite3Result",
+		sizeof("SQLite3Result")-1,FALSE,0);
+	ph7_class_instance *pObj;
+	phl_sq3_res *pRes;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pObj = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pObj == 0 ){
+		return 0;
+	}
+	pRes = (phl_sq3_res *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_sq3_res));
+	if( pRes == 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		return 0;
+	}
+	SyZero(pRes,sizeof(phl_sq3_res));
+	pRes->pSt = pSt;
+	pRes->pConn = pSt->pConn;
+	pRes->pOwner = pObj;
+	pRes->pStmtObj = pStmtObj;
+	if( pStmtObj ){
+		pStmtObj->iRef++;
+	}
+	pRes->pNext = pSt->pConn->pResults;
+	pSt->pConn->pResults = pRes;
+	if( Sq3AttachRes(pObj,pRes) != 0 ){
+		pRes->pSt = 0;   /* the caller still owns the statement hold */
+		Sq3FreeRes(pRes);
+		PH7_ClassInstanceUnref(pObj);
+		return 0;
+	}
+	return pObj;
+}
+static phl_sq3_res * Sq3ResOfInstance(ph7_class_instance *pThis)
+{
+	return (phl_sq3_res *)Sq3ResourceOf(pThis);
+}
+/*
+ * The guard every SQLite3Result verb shares. Two different things reach it:
+ * a result whose own finalize() has run, and one whose STATEMENT was closed
+ * from the other side -- php tells them apart nowhere, and neither does this.
+ */
+static phl_sq3_res * Sq3LiveRes(ph7_context *pCtx,sxi32 *pRc)
+{
+	phl_sq3_res *pRes = Sq3ResOfInstance(PH7_ContextThis(pCtx));
+	*pRc = PH7_OK;
+	if( pRes == 0 || pRes->pSt == 0 || pRes->pSt->pStmt == 0 ){
+		*pRc = Sq3Uninitialised(pCtx,"SQLite3Result");
+		return 0;
+	}
+	return pRes;
+}
+/* The result object is going away: let go of the statement now. */
+static void Sq3ResInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	phl_sq3_res *pRes = Sq3ResOfInstance(pThis);
+	SXUNUSED(pVm);
+	if( pRes == 0 || pRes->pOwner != pThis ){
+		return;
+	}
+	Sq3FreeRes(pRes);
+}
+
+/*
+ * SQLite3::query(string $query): SQLite3Result|false
+ *
+ * Prepare, run once, rewind, and hand back a cursor. Only the FIRST statement
+ * of the string is ever prepared, so `query('SELECT 1; garbage')` answers a
+ * row and never sees the garbage -- unlike exec(), which runs the whole string
+ * through sqlite3_exec and refuses on the tail.
+ */
+static int vm_builtin_SQLite3_query(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn = Sq3LiveDb(pCtx,&rc);
+	const char *zSql;
+	int nSql = 0;
+	phl_sq3_stmt *pSt;
+	ph7_class_instance *pObj;
+	SXUNUSED(nArg);
+	if( pConn == 0 ){
+		return rc;
+	}
+	zSql = ph7_value_to_string(apArg[0],&nSql);
+	pSt = Sq3Prepare(pCtx,pConn,zSql,nSql,"SQLite3::query",&rc);
+	if( pSt == 0 ){
+		ph7_result_bool(pCtx,0);
+		return rc;
+	}
+	if( !Sq3StepOnce(pCtx,pSt,"SQLite3::query",&rc) ){
+		Sq3StmtUnref(pSt);
+		ph7_result_bool(pCtx,0);
+		return rc;
+	}
+	pObj = Sq3NewResultObject(pCtx,pSt,0);
+	if( pObj == 0 ){
+		Sq3StmtUnref(pSt);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * SQLite3::querySingle(string $query, bool $entireRow = false): mixed
+ *
+ * One statement, one step, and the statement is gone again -- there is no
+ * cursor to hand back. What "no row" means depends on the shape the caller
+ * asked for: a scalar query answers NULL and a whole-row query answers the
+ * EMPTY ARRAY, which is why a write (which produces no row at all) answers
+ * null rather than false.
+ */
+static int vm_builtin_SQLite3_querySingle(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3 *pConn = Sq3LiveDb(pCtx,&rc);
+	const char *zSql;
+	int nSql = 0;
+	int bWhole = nArg > 1 ? ph7_value_to_bool(apArg[1]) : 0;
+	phl_sq3_stmt *pSt;
+	int iStep;
+	if( pConn == 0 ){
+		return rc;
+	}
+	zSql = ph7_value_to_string(apArg[0],&nSql);
+	pSt = Sq3Prepare(pCtx,pConn,zSql,nSql,"SQLite3::querySingle",&rc);
+	if( pSt == 0 ){
+		ph7_result_bool(pCtx,0);
+		return rc;
+	}
+	iStep = pSt->pStmt ? sqlite3_step(pSt->pStmt) : SQLITE_MISUSE;
+	if( iStep != SQLITE_ROW && iStep != SQLITE_DONE ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Unable to execute statement: %s",sqlite3_errmsg(pConn->pDb));
+		SyBlobNullAppend(&sMsg);
+		ph7_result_bool(pCtx,0);
+		rc = Sq3Error(pCtx,pConn,"SQLite3::querySingle",sqlite3_errcode(pConn->pDb),
+			(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+		Sq3StmtUnref(pSt);
+		return rc;
+	}
+	if( bWhole ){
+		ph7_value *pRow = ph7_context_new_array(pCtx);
+		ph7_value *pCell = ph7_context_new_scalar(pCtx);
+		int i,nCol = iStep == SQLITE_ROW ? sqlite3_data_count(pSt->pStmt) : 0;
+		if( pRow == 0 || pCell == 0 ){
+			Sq3StmtUnref(pSt);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		for( i = 0 ; i < nCol ; ++i ){
+			Sq3ColumnValue(pSt->pStmt,i,pCell);
+			ph7_array_add_strkey_elem(pRow,sqlite3_column_name(pSt->pStmt,i),pCell);
+		}
+		ph7_result_value(pCtx,pRow);
+	}else if( iStep == SQLITE_ROW && sqlite3_data_count(pSt->pStmt) > 0 ){
+		ph7_value *pCell = ph7_context_new_scalar(pCtx);
+		if( pCell == 0 ){
+			Sq3StmtUnref(pSt);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		Sq3ColumnValue(pSt->pStmt,0,pCell);
+		ph7_result_value(pCtx,pCell);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	Sq3StmtUnref(pSt);
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
+ * SQLite3Result -- the cursor
+ * ------------------------------------------------------------------------ */
+/*
+ * SQLite3Result::__construct() -- private, and it never runs: the extension
+ * builds every result itself. The body stands only so the declaration php makes
+ * exists to be reflected.
+ */
+static int vm_builtin_SQLite3Result_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/* SQLite3Result::numColumns(): int -- what the STATEMENT declares, so a write
+ * answers 0 and a SELECT answers its width before any row has been read. */
+static int vm_builtin_SQLite3Result_numColumns(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pRes == 0 ){
+		return rc;
+	}
+	ph7_result_int64(pCtx,(ph7_int64)sqlite3_column_count(pRes->pSt->pStmt));
+	return PH7_OK;
+}
+/* SQLite3Result::columnName(int $column): string|false -- also from the
+ * statement, so it answers with no row up. */
+static int vm_builtin_SQLite3Result_columnName(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
+	int iCol;
+	const char *zName;
+	SXUNUSED(nArg);
+	if( pRes == 0 ){
+		return rc;
+	}
+	iCol = (int)ph7_value_to_int64(apArg[0]);
+	/* sqlite answers NULL for a column that is not there, and false is what php
+	 * makes of that -- no range check of php's own. */
+	zName = sqlite3_column_name(pRes->pSt->pStmt,iCol);
+	if( zName == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zName,-1);
+	return PH7_OK;
+}
+/*
+ * SQLite3Result::columnType(int $column): int|false
+ *
+ * A type belongs to a VALUE, not to a column, so this one answers only while a
+ * row is UP: sqlite's data_count is the width of the row it is holding, and it
+ * is 0 before the first fetch and 0 again once the walk has run out. The width
+ * columnName() answers from does not move that way.
+ *
+ * There is no range check beyond that gate. A column past the row's width --
+ * and a NEGATIVE one -- is SQLITE3_NULL rather than false, and asking leaves
+ * `column index out of range` on the CONNECTION, which the same question to
+ * columnName() never does.
+ */
+static int vm_builtin_SQLite3Result_columnType(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
+	SXUNUSED(nArg);
+	if( pRes == 0 ){
+		return rc;
+	}
+	if( sqlite3_data_count(pRes->pSt->pStmt) < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,
+		(ph7_int64)sqlite3_column_type(pRes->pSt->pStmt,(int)ph7_value_to_int64(apArg[0])));
+	return PH7_OK;
+}
+/*
+ * One row into pOut, in the shape $mode asks for. The two bits are read
+ * independently and both may be set, so a BOTH row carries each column twice --
+ * position first, name second, column by column.
+ */
+static void Sq3RowInto(sqlite3_stmt *pStmt,int iMode,ph7_value *pOut,ph7_value *pCell)
+{
+	int i,nCol = sqlite3_data_count(pStmt);
+	for( i = 0 ; i < nCol ; ++i ){
+		Sq3ColumnValue(pStmt,i,pCell);
+		if( iMode & 2 /* SQLITE3_NUM */ ){
+			ph7_array_add_intkey_elem(pOut,i,pCell);
+		}
+		if( iMode & 1 /* SQLITE3_ASSOC */ ){
+			ph7_array_add_strkey_elem(pOut,sqlite3_column_name(pStmt,i),pCell);
+		}
+	}
+}
+/*
+ * Step once for a script. Nothing latches a finished flag and nothing resets:
+ * a statement prepared with prepare_v2 rewinds ITSELF when it is stepped after
+ * SQLITE_DONE, which is why a walk that has run out starts over on the next
+ * call and why fetchAll() may be asked twice.
+ *
+ * Leaving the reset out is visible from the other side of the connection: the
+ * end of a walk is SQLITE_DONE and stays on the handle, so lastErrorCode()
+ * reads 101 and lastErrorMsg() `no more rows available` after the fetch that
+ * ran out. An explicit reset would clear both back to "not an error".
+ *
+ * Answers 1 for a row, 0 for the end, -1 for a failure already reported.
+ */
+static int Sq3StepFetch(ph7_context *pCtx,phl_sq3_res *pRes,const char *zFn,sxi32 *pRc)
+{
+	int rc = sqlite3_step(pRes->pSt->pStmt);
+	*pRc = PH7_OK;
+	if( rc == SQLITE_ROW ){
+		return 1;
+	}
+	if( rc == SQLITE_DONE ){
+		return 0;
+	}
+	{
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Unable to execute statement: %s",
+			sqlite3_errmsg(pRes->pSt->pConn->pDb));
+		SyBlobNullAppend(&sMsg);
+		*pRc = Sq3Error(pCtx,pRes->pSt->pConn,zFn,sqlite3_errcode(pRes->pSt->pConn->pDb),
+			(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+	}
+	return -1;
+}
+/* SQLite3Result::fetchArray(int $mode = SQLITE3_BOTH): array|false */
+static int vm_builtin_SQLite3Result_fetchArray(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
+	int iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : 3;
+	ph7_value *pRow,*pCell;
+	int iStep;
+	if( pRes == 0 ){
+		return rc;
+	}
+	iStep = Sq3StepFetch(pCtx,pRes,"SQLite3Result::fetchArray",&rc);
+	if( iStep != 1 ){
+		ph7_result_bool(pCtx,0);
+		return rc;
+	}
+	pRow = ph7_context_new_array(pCtx);
+	pCell = ph7_context_new_scalar(pCtx);
+	if( pRow == 0 || pCell == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	Sq3RowInto(pRes->pSt->pStmt,iMode,pRow,pCell);
+	ph7_result_value(pCtx,pRow);
+	return PH7_OK;
+}
+/*
+ * SQLite3Result::fetchAll(int $mode = SQLITE3_BOTH): array|false
+ *
+ * The rows still AHEAD of the cursor, not all the rows: a walk already
+ * underway hands back what is left of it. The end rewinds the statement the
+ * way a single fetch does, so a second fetchAll() answers the whole set again.
+ */
+static int vm_builtin_SQLite3Result_fetchAll(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
+	int iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : 3;
+	ph7_value *pAll,*pRow,*pCell;
+	int iStep;
+	if( pRes == 0 ){
+		return rc;
+	}
+	pAll = ph7_context_new_array(pCtx);
+	pCell = ph7_context_new_scalar(pCtx);
+	if( pAll == 0 || pCell == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for(;;){
+		iStep = Sq3StepFetch(pCtx,pRes,"SQLite3Result::fetchAll",&rc);
+		if( iStep != 1 ){
+			break;
+		}
+		pRow = ph7_context_new_array(pCtx);
+		if( pRow == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		Sq3RowInto(pRes->pSt->pStmt,iMode,pRow,pCell);
+		ph7_array_add_elem(pAll,0,pRow);
+		ph7_context_release_value(pCtx,pRow);
+	}
+	if( iStep < 0 ){
+		ph7_result_bool(pCtx,0);
+		return rc;
+	}
+	ph7_result_value(pCtx,pAll);
+	return PH7_OK;
+}
+/* SQLite3Result::reset(): bool -- rewind, so the next fetch is the first row. */
+static int vm_builtin_SQLite3Result_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pRes == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,sqlite3_reset(pRes->pSt->pStmt) == SQLITE_OK);
+	return PH7_OK;
+}
+/*
+ * SQLite3Result::finalize(): true
+ *
+ * Not a close of the statement -- a release of THIS result's hold on it. The
+ * statement query() built has no other holder, so it is finalized here; one a
+ * script prepared itself is still runnable afterwards. Either way the result
+ * itself is spent, and a second finalize() is the Error rather than a second
+ * true.
+ */
+static int vm_builtin_SQLite3Result_finalize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	phl_sq3_res *pRes = Sq3LiveRes(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pRes == 0 ){
+		return rc;
+	}
+	Sq3ResDetach(pRes);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
  * Small readers and switches
  * ------------------------------------------------------------------------ */
 /* SQLite3::lastInsertRowID(): int */
@@ -928,6 +1651,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		{ "escapeString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $string", "@string",
 		  vm_builtin_SQLite3_escapeString },
 		{ "exec", PH7_MOD_PUBLIC, "string $query", "@bool", vm_builtin_SQLite3_exec },
+		{ "query", PH7_MOD_PUBLIC, "string $query", "@SQLite3Result|false",
+		  vm_builtin_SQLite3_query },
+		{ "querySingle", PH7_MOD_PUBLIC, "string $query, bool $entireRow = false", "@mixed",
+		  vm_builtin_SQLite3_querySingle },
 		{ "enableExceptions", PH7_MOD_PUBLIC, "bool $enable = false", "@bool",
 		  vm_builtin_SQLite3_enableExceptions },
 		{ "enableExtendedResultCodes", PH7_MOD_PUBLIC, "bool $enable = true", "@bool",
@@ -936,6 +1663,29 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 	/* The handle: storage the class owns and never presents -- php shows no
 	 * property at all on a SQLite3, so the slot is hidden. */
 	static const PH7_NativePropDef aSq3Prop[] = {
+		{ SQ3_RES, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	/*
+	 * php's cursor. Its constructor is PRIVATE and takes nothing: only the
+	 * extension ever builds one, and a script that tries is refused by the
+	 * engine's own visibility rule rather than by a body.
+	 */
+	static const PH7_NativeMethodDef aSq3ResMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE, "", 0, vm_builtin_SQLite3Result_construct },
+		{ "numColumns", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SQLite3Result_numColumns },
+		{ "columnName", PH7_MOD_PUBLIC, "int $column", "@string|false",
+		  vm_builtin_SQLite3Result_columnName },
+		{ "columnType", PH7_MOD_PUBLIC, "int $column", "@int|false",
+		  vm_builtin_SQLite3Result_columnType },
+		{ "fetchArray", PH7_MOD_PUBLIC, "int $mode = SQLITE3_BOTH", "@array|false",
+		  vm_builtin_SQLite3Result_fetchArray },
+		{ "fetchAll", PH7_MOD_PUBLIC, "int $mode = SQLITE3_BOTH", "array|false",
+		  vm_builtin_SQLite3Result_fetchAll },
+		{ "reset", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SQLite3Result_reset },
+		{ "finalize", PH7_MOD_PUBLIC, "", "@true", vm_builtin_SQLite3Result_finalize },
+	};
+	static const PH7_NativePropDef aSq3ResProp[] = {
 		{ SQ3_RES, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
 		  { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
@@ -952,6 +1702,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)
 		  aSq3ClassConst, SX_ARRAYSIZE(aSq3ClassConst),
 		  aSq3Prop, SX_ARRAYSIZE(aSq3Prop),
 		  Sq3InstanceRelease, 0, 0 },
+		{ "SQLite3Result", 0, 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aSq3ResMethod, SX_ARRAYSIZE(aSq3ResMethod),
+		  0, 0,
+		  aSq3ResProp, SX_ARRAYSIZE(aSq3ResProp),
+		  Sq3ResInstanceRelease, 0, 0 },
 	};
 #undef SQ3_INT_CONST
 	pVm->pSq3Conns = 0;
