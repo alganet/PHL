@@ -1143,7 +1143,15 @@ static int PH7_vfs_chmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the mode */
 	iMode = ph7_value_to_int(apArg[1]);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xChmod(zPath,iMode);
+	if( rc != PH7_OK ){
+		/* php warns with the C library's own reason and names NO path -- one of
+		 * the family's two shapes, the one mkdir() and the link pair share.
+		 * PHL answered FALSE in silence. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+			ph7_function_name(pCtx),VfsStrerror(errno));
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -2245,7 +2253,14 @@ static int PH7_vfs_touch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
 		nAccess = ph7_value_to_int64(apArg[2]);
 	}
+	errno = 0;
 	rc = pVfs->xTouch(zFile,nTime,nAccess);
+	if( rc != PH7_OK ){
+		/* php's own sentence for this one, which names both the path and the
+		 * reason and reads like neither of the family's other two. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Unable to create file %s because %s",
+			ph7_function_name(pCtx),zFile ? zFile : "",VfsStrerror(errno));
+	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -3420,7 +3435,15 @@ static int PH7_vfs_link(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zTarget  = ph7_value_to_string(apArg[0],0);
 	zLink = ph7_value_to_string(apArg[1],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xLink(zTarget,zLink,0/*Not a symbolic link */);
+	if( rc != PH7_OK ){
+		/* php's no-path shape again, the same chmod() takes. PHL answered FALSE
+		 * in silence, so a failed link was indistinguishable from a made one
+		 * without testing the return value. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+			ph7_function_name(pCtx),VfsStrerror(errno));
+	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK );
 	return PH7_OK;
@@ -3500,7 +3523,15 @@ static int PH7_vfs_symlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zTarget  = ph7_value_to_string(apArg[0],0);
 	zLink = ph7_value_to_string(apArg[1],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xLink(zTarget,zLink,1/*A symbolic link */);
+	if( rc != PH7_OK ){
+		/* php's no-path shape again, the same chmod() takes. PHL answered FALSE
+		 * in silence, so a failed link was indistinguishable from a made one
+		 * without testing the return value. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+			ph7_function_name(pCtx),VfsStrerror(errno));
+	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK );
 	return PH7_OK;
