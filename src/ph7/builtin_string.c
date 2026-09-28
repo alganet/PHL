@@ -1309,23 +1309,29 @@ PH7_PRIVATE int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **a
 			/* Make sure we treat the byte as unsigned to avoid negative values
 			 * on platforms where char is signed. */
 			int c = (unsigned char)zIn[0];
-			/* Handle special C-like escapes for common control characters first.
-			 * PHP outputs "\n" "\r" "\t" "\v" "\f" when those chars are
-			 * in the mask. NUL is left to the octal conversion below. */
-			if( c == '\n' ){
-				ph7_result_string(pCtx,"\\n",2);
-			}else if( c == '\r' ){
-				ph7_result_string(pCtx,"\\r",2);
-			}else if( c == '\t' ){
-				ph7_result_string(pCtx,"\\t",2);
-			}else if( c == '\v' ){
-				ph7_result_string(pCtx,"\\v",2);
-			}else if( c == '\f' ){
-				ph7_result_string(pCtx,"\\f",2);
-			}else if( c > 126 || (c < 32 && (!SyisAlphaNum(c)/*EBCDIC*/ && !SyisSpace(c))) ){
-				/* Convert to octal.  PHP always emits three-digit zero-padded
-				 * octal escapes (\001 not \1). */
-				ph7_result_string_format(pCtx,"\\%03o",c);
+			/* php escapes a byte OUTSIDE the printable range with a named C
+			 * escape when it has one and with three-digit octal otherwise; a
+			 * printable byte in the mask simply gets a backslash in front of
+			 * it. The named set is php's own seven -- \n \t \r \a \v \b \f --
+			 * and the two this engine used to leave out (\a and \b) were
+			 * written as \007 and \010, a string php never produces, which
+			 * stripcslashes() reads back to the same byte and every other
+			 * reader does not. */
+			if( c < 32 || c > 126 ){
+				switch( c ){
+					case '\n': ph7_result_string(pCtx,"\\n",2); break;
+					case '\t': ph7_result_string(pCtx,"\\t",2); break;
+					case '\r': ph7_result_string(pCtx,"\\r",2); break;
+					case '\a': ph7_result_string(pCtx,"\\a",2); break;
+					case '\v': ph7_result_string(pCtx,"\\v",2); break;
+					case '\b': ph7_result_string(pCtx,"\\b",2); break;
+					case '\f': ph7_result_string(pCtx,"\\f",2); break;
+					default:
+						/* php always emits three zero-padded octal digits
+						 * (\001 and not \1). */
+						ph7_result_string_format(pCtx,"\\%03o",c);
+						break;
+				}
 			}else{
 				ph7_result_string_format(pCtx,"\\%c",c);
 			}
@@ -1441,6 +1447,272 @@ PH7_PRIVATE int PH7_builtin_stripslashes(ph7_context *pCtx,int nArg,ph7_value **
 		}else{
 			break;
 		}
+	}
+	return PH7_OK;
+}
+/*
+ * A hex digit, decided by VALUE rather than by the C library: isxdigit() (which
+ * SyisHex() is) reads the current locale and is undefined for the negative
+ * `char` a high byte becomes on a signed-char platform. The two decoders below
+ * walk arbitrary BYTES, so both matter.
+ */
+static int StrIsHexDigit(int c)
+{
+	c &= 0xFF;
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+static int StrHexDigitVal(int c)
+{
+	c &= 0xFF;
+	if( c >= '0' && c <= '9' ){
+		return c - '0';
+	}
+	return (c | 0x20) - 'a' + 10;
+}
+/*
+ * string stripcslashes(string $string)
+ *  Un-quote a string quoted with addcslashes().
+ * Return
+ *  The un-escaped string.
+ *
+ * php's php_stripcslashes, byte for byte. Three readings share the escape:
+ * the named C escapes, `\xHH` with ONE or TWO hex digits, and an octal run of
+ * at most THREE digits — and a backslash before anything else simply drops,
+ * which is what makes `\8` an 8 and `\e` an e. Both numeric readings take the
+ * low byte of what they add up to, so `\400` is a NUL and `\777` a 0xFF; a
+ * trailing backslash with nothing behind it is kept.
+ */
+PH7_PRIVATE int PH7_builtin_stripcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn,*zEnd,*zCur;
+	int nLen;
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nLen);
+	/* Seed an empty result: the loop only ever appends. */
+	ph7_result_string(pCtx,"",0);
+	if( zIn == 0 || nLen < 1 ){
+		return PH7_OK;
+	}
+	zEnd = &zIn[nLen];
+	while( zIn < zEnd ){
+		int c;
+		if( zIn[0] != '\\' || &zIn[1] >= zEnd ){
+			/* A run with no escape in it (a trailing backslash included) */
+			zCur = zIn;
+			while( zIn < zEnd && (zIn[0] != '\\' || &zIn[1] >= zEnd) ){
+				zIn++;
+			}
+			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
+			continue;
+		}
+		zIn++; /* Step over the backslash */
+		c = (unsigned char)zIn[0];
+		switch( c ){
+			case 'n': c = '\n'; break;
+			case 'r': c = '\r'; break;
+			case 'a': c = '\a'; break;
+			case 't': c = '\t'; break;
+			case 'v': c = '\v'; break;
+			case 'b': c = '\b'; break;
+			case 'f': c = '\f'; break;
+			case '\\': c = '\\'; break;
+			case 'x':
+				if( &zIn[1] < zEnd && StrIsHexDigit(zIn[1]) ){
+					int iVal = StrHexDigitVal(zIn[1]);
+					zIn++;
+					if( &zIn[1] < zEnd && StrIsHexDigit(zIn[1]) ){
+						iVal = (iVal<<4) | StrHexDigitVal(zIn[1]);
+						zIn++;
+					}
+					c = iVal & 0xFF;
+					break;
+				}
+				/* No hex digit behind the `x`: fall through to the octal
+				 * reading, which finds no octal digit either and keeps the
+				 * `x` itself. */
+				/* fall through */
+			default: {
+				int i = 0, iVal = 0;
+				while( zIn < zEnd && zIn[0] >= '0' && zIn[0] <= '7' && i < 3 ){
+					iVal = (iVal<<3) | (zIn[0] - '0');
+					zIn++;
+					i++;
+				}
+				if( i > 0 ){
+					c = iVal & 0xFF;
+					zIn--; /* The loop below steps over the last digit */
+				}else{
+					c = (unsigned char)zIn[0];
+				}
+				break;
+			}
+		}
+		{
+			char zByte = (char)c;
+			ph7_result_string(pCtx,&zByte,1);
+		}
+		zIn++;
+	}
+	return PH7_OK;
+}
+/*
+ * php's quoted-printable line limit (PHP_QPRINT_MAXL): the length a line may
+ * reach before the encoder breaks it with a soft line break.
+ */
+#define PH7_QPRINT_MAXL 75
+/*
+ * string quoted_printable_encode(string $string)
+ *  Convert an 8 bit string to a quoted-printable string.
+ * Return
+ *  The encoded string.
+ *
+ * php's php_quot_print_encode. A CRLF PAIR passes through untouched and resets
+ * the line; everything else is either encoded as `=HH` (a control byte, DEL,
+ * any high byte, `=` itself, and a SPACE that stands before a CR) or copied.
+ * The line break is decided BEFORE the byte is written, and the room the
+ * encoder demands for a high byte is its UTF-8 sequence's whole width rather
+ * than the three characters it is about to write -- which is why a run of
+ * two-byte characters breaks at 72 and not at 75.
+ */
+PH7_PRIVATE int PH7_builtin_quoted_printable_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char zHex[] = "0123456789ABCDEF";
+	const char *zIn,*zEnd;
+	sxu32 nLine = 0;
+	int nLen;
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nLen);
+	ph7_result_string(pCtx,"",0);
+	if( zIn == 0 || nLen < 1 ){
+		return PH7_OK;
+	}
+	zEnd = &zIn[nLen];
+	while( zIn < zEnd ){
+		int c = (unsigned char)zIn[0];
+		/* The byte behind this one; php reads its NUL terminator past the end. */
+		int cNext = (&zIn[1] < zEnd) ? (unsigned char)zIn[1] : 0;
+		zIn++;
+		if( c == '\r' && cNext == '\n' ){
+			ph7_result_string(pCtx,"\r\n",2);
+			zIn++;
+			nLine = 0;
+			continue;
+		}
+		if( c < 32 || c == 127 || c > 127 || c == '=' || (c == ' ' && cNext == '\r') ){
+			char zEsc[3];
+			nLine += 3;
+			if( (nLine > PH7_QPRINT_MAXL && c <= 127)
+			 || (c > 127 && c <= 0xDF && nLine + 3 > PH7_QPRINT_MAXL)
+			 || (c > 0xDF && c <= 0xEF && nLine + 6 > PH7_QPRINT_MAXL)
+			 || (c > 0xEF && c <= 0xF4 && nLine + 9 > PH7_QPRINT_MAXL) ){
+				ph7_result_string(pCtx,"=\r\n",3);
+				nLine = 3;
+			}
+			zEsc[0] = '=';
+			zEsc[1] = zHex[c>>4];
+			zEsc[2] = zHex[c&0x0F];
+			ph7_result_string(pCtx,zEsc,3);
+		}else{
+			char zByte = (char)c;
+			if( ++nLine > PH7_QPRINT_MAXL ){
+				ph7_result_string(pCtx,"=\r\n",3);
+				nLine = 1;
+			}
+			ph7_result_string(pCtx,&zByte,1);
+		}
+	}
+	return PH7_OK;
+}
+/*
+ * string quoted_printable_decode(string $string)
+ *  Convert a quoted-printable string to an 8 bit string.
+ * Return
+ *  The decoded string.
+ *
+ * php's php_quot_print_decode, with the `_`-to-space replacement left off (it
+ * belongs to the MIME header decoder, not to this name). An `=` reads three
+ * ways: two hex digits are a byte, an end-of-line -- optionally behind a run of
+ * spaces and tabs -- is a soft break that vanishes, and anything else leaves
+ * the `=` standing as itself with the bytes behind it read normally. php walks
+ * a C string here, so a NUL byte ENDS the answer.
+ */
+PH7_PRIVATE int PH7_builtin_quoted_printable_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn,*zEnd,*zCur;
+	int nLen;
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nLen);
+	ph7_result_string(pCtx,"",0);
+	if( zIn == 0 || nLen < 1 ){
+		return PH7_OK;
+	}
+	zEnd = &zIn[nLen];
+	while( zIn < zEnd && zIn[0] != 0 ){
+		char zByte;
+		if( zIn[0] != '=' ){
+			/* A run with no escape and no NUL in it */
+			zCur = zIn;
+			while( zIn < zEnd && zIn[0] != '=' && zIn[0] != 0 ){
+				zIn++;
+			}
+			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
+			continue;
+		}
+		zIn++; /* Step over the '=' */
+		if( zIn >= zEnd || zIn[0] == 0 ){
+			/* A trailing '=' is dropped */
+			break;
+		}
+		if( StrIsHexDigit(zIn[0]) ){
+			if( &zIn[1] < zEnd && StrIsHexDigit(zIn[1]) ){
+				zByte = (char)((StrHexDigitVal(zIn[0])<<4) | StrHexDigitVal(zIn[1]));
+				ph7_result_string(pCtx,&zByte,1);
+				zIn += 2;
+			}else{
+				/* One hex digit alone: the '=' stands as itself */
+				ph7_result_string(pCtx,"=",1);
+			}
+			continue;
+		}
+		if( zIn[0] == ' ' || zIn[0] == '\t' ){
+			/* A soft break may stand behind a run of spaces and tabs; when no
+			 * end-of-line follows the run, the '=' is an ordinary byte and the
+			 * run is read normally. */
+			zCur = zIn;
+			while( zCur < zEnd && (zCur[0] == ' ' || zCur[0] == '\t') ){
+				zCur++;
+			}
+			if( zCur < zEnd && zCur[0] != 0 && zCur[0] != '\r' && zCur[0] != '\n' ){
+				ph7_result_string(pCtx,"=",1);
+				continue;
+			}
+			zIn = zCur;
+			if( zIn >= zEnd || zIn[0] == 0 ){
+				break;
+			}
+		}
+		if( zIn[0] == '\r' ){
+			zIn++;
+			if( zIn < zEnd && zIn[0] == '\n' ){
+				zIn++;
+			}
+			continue;
+		}
+		if( zIn[0] == '\n' ){
+			zIn++;
+			continue;
+		}
+		/* Anything else: the '=' stands as itself */
+		ph7_result_string(pCtx,"=",1);
 	}
 	return PH7_OK;
 }

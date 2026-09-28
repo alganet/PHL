@@ -77,10 +77,12 @@ runs:
     # so test-compat was silently comparing against an arbitrary php on Windows.
     # setup-php enables only openssl, curl and mbstring on Windows, so the
     # oracle there had no pdo_sqlite while Linux's and macOS's do; the PDO
-    # rows then measured a missing driver instead of php.
+    # rows then measured a missing driver instead of php. ext/sqlite3 is the
+    # same gap, and worse: a missing SQLite3 class is an uncaught Error that
+    # aborts the whole in-process smoke run.
     - if: runner.os == 'Windows'
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.5'
         coverage: none
-        extensions: pdo_sqlite
+        extensions: pdo_sqlite, sqlite3
