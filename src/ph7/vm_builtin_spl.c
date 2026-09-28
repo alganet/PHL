@@ -630,6 +630,21 @@ static int SplMembersWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)
 		return PH7_OK;
 	}
 	zKey = ph7_value_to_string(pKey,&nKey);
+	if( nKey < 1 ){
+		return PH7_OK;
+	}
+	if( SyHashGet(&pThis->hAttr,(const void *)zKey,(sxu32)nKey) == 0 ){
+		/* php restores a member the class never declared as a DYNAMIC property;
+		 * PH7_NativeSetProp only writes a slot that already exists, so a payload
+		 * whose members were the object's own additions came back empty --
+		 * `__unserialize([0, [], ['p' => 7], null])` left `$o->p` unset. */
+		ph7_value *pSlot = PH7_VmCreateDynamicAttr(pThis->pVm,pThis,
+			zKey,(sxu32)nKey,0);
+		if( pSlot ){
+			PH7_MemObjStore(pVal,pSlot);
+		}
+		return PH7_OK;
+	}
 	PH7_NativeSetProp(pThis->pVm,pThis,zKey,(sxu32)nKey,pVal);
 	return PH7_OK;
 }
@@ -1306,6 +1321,156 @@ static int vm_builtin_SplStore_serializeMagic(ph7_context *pCtx,int nArg,ph7_val
 	PH7_MemObjRelease(&sOut);
 	return PH7_OK;
 }
+static void SplSerializeInto(ph7_context *pCtx,ph7_value **apCall,SyBlob *pOut);
+/*
+ * php's Serializable pair for the array store -- the LEGACY byte format the
+ * magic pair above replaced, which php still declares (`ArrayObject implements
+ * ... Serializable`) and still answers. Neither name existed here, so the
+ * interface could not be declared either: `$ao instanceof Serializable` was
+ * false and `$ao->serialize()` a `Call to undefined method`.
+ *
+ * The string is `x:<flags><storage>;m:<members>`, each part php's own
+ * serialize() output -- so a payload written here reads back in php and the
+ * other way round. php's reader is a hand-rolled walk and its refusal reports
+ * WHERE it gave up, which is why the offsets below are spelled out one by one:
+ * a value it could not read at all blames the position it started from, while
+ * one it read and then rejected for its TYPE blames the position after it.
+ * The storage is screened by its type BYTE before the read, so a well-formed
+ * `i:5;` there is refused at the byte rather than after it.
+ */
+static int vm_builtin_SplStore_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sVal,*pStore,*apCall[1];
+	SyBlob sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	SyBlobAppend(&sOut,"x:",sizeof("x:")-1);
+	PH7_MemObjInitFromInt(pVm,&sVal,pThis ? PH7_NativeAttrInt(pThis,SPL_F) : 0);
+	apCall[0] = &sVal;
+	SplSerializeInto(pCtx,apCall,&sOut);
+	PH7_MemObjRelease(&sVal);
+	pStore = SplStoreSlot(pVm,pThis);
+	if( pStore ){
+		apCall[0] = pStore;
+		SplSerializeInto(pCtx,apCall,&sOut);
+	}
+	SyBlobAppend(&sOut,";m:",sizeof(";m:")-1);
+	if( SplMembersOf(pVm,pThis,&sVal) == SXRET_OK ){
+		apCall[0] = &sVal;
+		SplSerializeInto(pCtx,apCall,&sOut);
+		PH7_MemObjRelease(&sVal);
+	}
+	/* ph7_result_string APPENDS, and pRet still holds the last nested answer. */
+	if( pCtx->pRet ){
+		PH7_MemObjRelease(pCtx->pRet);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/* php reports WHERE its walk gave up, in bytes. */
+static sxi32 SplStoreOffsetErr(ph7_context *pCtx,int nAt,int nTotal)
+{
+	return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+		"Error at offset %d of %d bytes",nAt,nTotal);
+}
+static int vm_builtin_SplStore_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zData;
+	int nData = 0,nAt,nRead = 0;
+	ph7_value sFlags,sStore,sMembers;
+	sxi32 rc;
+	if( nArg < 1 || pThis == 0 ){
+		return PH7_OK;
+	}
+	zData = ph7_value_to_string(apArg[0],&nData);
+	if( nData < 1 ){
+		return PH7_OK;   /* php returns without touching the store */
+	}
+	if( zData[0] != 'x' ){
+		return SplStoreOffsetErr(pCtx,0,nData);
+	}
+	if( nData < 2 || zData[1] != ':' ){
+		return SplStoreOffsetErr(pCtx,1,nData);
+	}
+	nAt = 2;
+	PH7_MemObjInit(pVm,&sFlags);
+	PH7_MemObjInit(pVm,&sStore);
+	PH7_MemObjInit(pVm,&sMembers);
+	rc = PH7_VmUnserializeOne(pCtx,&zData[nAt],nData - nAt,&nRead,&sFlags);
+	if( rc == PH7_EXCEPTION ){
+		goto Done;
+	}
+	if( rc != SXRET_OK ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	nAt += nRead;
+	if( (sFlags.iFlags & MEMOBJ_INT) == 0 ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	/* The storage's type BYTE decides before the read: php accepts an array,
+	 * an object of any of its three spellings, or a back-reference. */
+	if( nAt >= nData || (zData[nAt] != 'a' && zData[nAt] != 'O'
+	 && zData[nAt] != 'C' && zData[nAt] != 'r') ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	rc = PH7_VmUnserializeOne(pCtx,&zData[nAt],nData - nAt,&nRead,&sStore);
+	if( rc == PH7_EXCEPTION ){
+		goto Done;
+	}
+	if( rc != SXRET_OK ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	nAt += nRead;
+	if( nAt >= nData || zData[nAt] != ';' ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	nAt++;
+	if( nAt >= nData || zData[nAt] != 'm' ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	nAt++;
+	if( nAt >= nData || zData[nAt] != ':' ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	nAt++;
+	rc = PH7_VmUnserializeOne(pCtx,&zData[nAt],nData - nAt,&nRead,&sMembers);
+	if( rc == PH7_EXCEPTION ){
+		goto Done;
+	}
+	if( rc != SXRET_OK ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	nAt += nRead;
+	if( (sMembers.iFlags & MEMOBJ_HASHMAP) == 0 ){
+		rc = SplStoreOffsetErr(pCtx,nAt,nData);
+		goto Done;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(&sFlags) & SPL_FLAG_MASK);
+	rc = SplInitStore(pCtx,pThis,&sStore,"ArrayObject::unserialize");
+	if( rc == SXRET_OK ){
+		SplMembersLoad(pThis,&sMembers);
+		rc = PH7_OK;
+	}
+Done:
+	PH7_MemObjRelease(&sFlags);
+	PH7_MemObjRelease(&sStore);
+	PH7_MemObjRelease(&sMembers);
+	return rc;
+}
 static int vm_builtin_SplStore_unserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -1606,15 +1771,17 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "uksort",       PH7_MOD_PUBLIC, "callable $callback", "@true", vm_builtin_SplStore_uksort },
 		{ "natsort",      PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplStore_natsort },
 		{ "natcasesort",  PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplStore_natcasesort },
+		{ "unserialize",  PH7_MOD_PUBLIC, "string $data", "@void", vm_builtin_SplStore_unserialize },
+		{ "serialize",    PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplStore_serialize },
+		{ "__serialize",  PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplStore_serializeMagic },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplStore_unserializeMagic },
 		{ "current",      PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_ArrayIterator_current },
 		{ "key",          PH7_MOD_PUBLIC, "", "@string|int|null", vm_builtin_ArrayIterator_key },
 		{ "next",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_ArrayIterator_next },
 		{ "rewind",       PH7_MOD_PUBLIC, "", "@void", vm_builtin_ArrayIterator_rewind },
 		{ "valid",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ArrayIterator_valid },
 		{ "seek",         PH7_MOD_PUBLIC, "int $offset", "@void", vm_builtin_ArrayIterator_seek },
-		{ "__serialize",  PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplStore_serializeMagic },
-		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "@void",
-		  vm_builtin_SplStore_unserializeMagic },
 	};
 	static const PH7_NativeMethodDef aObjMethod[] = {
 		{ "__construct",      PH7_MOD_PUBLIC,
@@ -1635,17 +1802,19 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "uksort",           PH7_MOD_PUBLIC, "callable $callback", "@true", vm_builtin_SplStore_uksort },
 		{ "natsort",          PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplStore_natsort },
 		{ "natcasesort",      PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplStore_natcasesort },
-		{ "exchangeArray",    PH7_MOD_PUBLIC, "object|array $array", "@array", vm_builtin_ArrayObject_exchangeArray },
+		{ "unserialize",      PH7_MOD_PUBLIC, "string $data", "@void", vm_builtin_SplStore_unserialize },
+		{ "serialize",        PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplStore_serialize },
+		{ "__serialize",      PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplStore_serializeMagic },
+		{ "__unserialize",    PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplStore_unserializeMagic },
 		{ "getIterator",      PH7_MOD_PUBLIC, "", "@Iterator", vm_builtin_ArrayObject_getIterator },
+		{ "exchangeArray",    PH7_MOD_PUBLIC, "object|array $array", "@array", vm_builtin_ArrayObject_exchangeArray },
 		{ "setIteratorClass", PH7_MOD_PUBLIC, "string $iteratorClass", "@void", vm_builtin_ArrayObject_setIteratorClass },
 		{ "getIteratorClass", PH7_MOD_PUBLIC, "", "@string", vm_builtin_ArrayObject_getIteratorClass },
 		{ "__get",            PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_get },
 		{ "__set",            PH7_MOD_PUBLIC, "$name, $value", 0, vm_builtin_ArrayObject_set },
 		{ "__isset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_isset },
 		{ "__unset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_unset },
-		{ "__serialize",      PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplStore_serializeMagic },
-		{ "__unserialize",    PH7_MOD_PUBLIC, "array $data", "@void",
-		  vm_builtin_SplStore_unserializeMagic },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* `interface X extends Iterator` is a PARENT, not an implemented interface:
@@ -1659,10 +1828,10 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		 * REAL element for a write fetch, so `$ao['k']['n'] = v` lands — unlike
 		 * SplFixedArray / SplDoublyLinkedList / SplObjectStorage, which keep the
 		 * standard handler and get php's indirect-modification notice. */
-		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Countable", PH7_CLASS_DIM_WRITABLE,
+		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Serializable,Countable", PH7_CLASS_DIM_WRITABLE,
 		  aItMethod, SX_ARRAYSIZE(aItMethod), aConst, SX_ARRAYSIZE(aConst),
 		  aItProp, SX_ARRAYSIZE(aItProp), 0, 0, SplStorePresent },
-		{ "ArrayObject", 0, "IteratorAggregate,ArrayAccess,Countable", PH7_CLASS_DIM_WRITABLE,
+		{ "ArrayObject", 0, "IteratorAggregate,ArrayAccess,Serializable,Countable", PH7_CLASS_DIM_WRITABLE,
 		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),
 		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, SplStorePresent },
 	};
