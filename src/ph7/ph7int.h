@@ -4290,6 +4290,9 @@ struct ph7_sockopts
 	int iBindPort;         /* `bindto`'s port half */
 	int bReusePort;        /* `so_reuseport` */
 	int bNoDelay;          /* `tcp_nodelay` */
+	int bBroadcast;        /* `so_broadcast`: what a DATAGRAM socket needs before
+	                        * it may address 255.255.255.255 at all */
+	int bV6Only;           /* `ipv6_v6only`, applied to an AF_INET6 listener */
 	int iBacklog;          /* `backlog`; <= 0 keeps the transport's default */
 	/* OUT: how the local bind failed on the socket that was USED, which php
 	 * warns about in two different wordings and never treats as fatal. */
@@ -4301,7 +4304,7 @@ struct ph7_sockopts
 PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost,int iPort,int bDgram,int bListen,
 	int iBacklog,const ph7_sockopts *pOpt,int *pErrno,const char **pzErr);
 PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost,int iPort,int iTimeoutMs,
-	ph7_sockopts *pOpt,int *pErrno,const char **pzErr);
+	int bDgram,int bAsync,ph7_sockopts *pOpt,int *pErrno,const char **pzErr);
 PH7_PRIVATE ph7_socket PH7_NetAccept(ph7_socket listenSock,struct sockaddr *pAddr,ph7_socklen *pAddrLen);
 PH7_PRIVATE ph7_socket PH7_NetAcceptTimed(ph7_socket listenSock,int iTimeoutMs,int *pbTimedOut,
 	char *zPeer,int nPeer);
@@ -4326,6 +4329,7 @@ PH7_PRIVATE int PH7_NetWait(ph7_socket sock,int bWrite,int iTimeoutMs);
 PH7_PRIVATE ph7_int64 PH7_NetSocketConst(int iWhich);
 PH7_PRIVATE int PH7_NetShutdown(ph7_socket sock,int iHow);
 PH7_PRIVATE int PH7_NetAtEnd(ph7_socket sock);
+PH7_PRIVATE int PH7_NetIsAlive(ph7_socket sock);
 PH7_PRIVATE int PH7_NetRecvFrom(ph7_socket sock,void *pBuf,int nLen,int iFlags,char *zAddr,int nAddr);
 PH7_PRIVATE int PH7_NetSendTo(ph7_socket sock,const void *pBuf,int nLen,int iFlags,
 	const char *zHost,int iPort,int *pErrno);

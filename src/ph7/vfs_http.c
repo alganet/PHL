@@ -917,7 +917,7 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx)
 		double rSec = HttpOptReal(pH->pVm,pOptV,0);
 		iTimeoutMs = rSec > 0 ? (int)(rSec * 1000) : 0;
 	}
-	sock = PH7_NetConnect(zHost,HttpUriPort(pUri),iTimeoutMs,0,&iErrno,&zErr);
+	sock = PH7_NetConnect(zHost,HttpUriPort(pUri),iTimeoutMs,0,0,0,&iErrno,&zErr);
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		if( iErrno == PH7_NET_ERR_RESOLVE ){
 			SyBlob sMsg;

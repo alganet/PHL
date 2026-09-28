@@ -36,6 +36,40 @@
  * ignores what the platform has no name for (SO_REUSEPORT is absent on Windows,
  * where php's own code is #ifdef'd out the same way).
  */
+/*
+ * Stamp a port into a resolved address. php resolves the HOST and then writes
+ * the port into each candidate itself, which is why the port is not a service
+ * NAME here: a negative or out-of-range one simply wraps in the 16 bits the
+ * wire has (php's own truncation, `-1` becoming 65535), where handing
+ * getaddrinfo() the digits would make it an unresolvable address instead.
+ */
+static void NetStampPort(struct sockaddr *pAddr,int iPort)
+{
+	if( pAddr == 0 ){
+		return;
+	}
+	if( pAddr->sa_family == AF_INET ){
+		((struct sockaddr_in *)pAddr)->sin_port = htons((unsigned short)iPort);
+	}else if( pAddr->sa_family == AF_INET6 ){
+		((struct sockaddr_in6 *)pAddr)->sin6_port = htons((unsigned short)iPort);
+	}
+}
+/* Defined with the address helpers further down; used by the three callers that
+ * report an address to a script. */
+static int NetFormatAddr(const struct sockaddr *pAddr,char *zBuf,int nBuf);
+/*
+ * inet_ntop() with a buffer size the platform's own prototype accepts: Winsock
+ * declares the last parameter `size_t` and POSIX `socklen_t`, and /W4 /WX will
+ * not take a plain int for either.
+ */
+static void NetInetNtop(int iFamily,const void *pSrc,char *zBuf,int nBuf)
+{
+#ifdef __WINNT__
+	inet_ntop(iFamily,pSrc,zBuf,(size_t)nBuf);
+#else
+	inet_ntop(iFamily,pSrc,zBuf,(socklen_t)nBuf);
+#endif
+}
 static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)
 {
 	int on = 1;
@@ -50,6 +84,17 @@ static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)
 	if( pOpt->bNoDelay ){
 #ifdef TCP_NODELAY
 		setsockopt(sock,IPPROTO_TCP,TCP_NODELAY,(const char *)&on,sizeof(on));
+#endif
+	}
+	if( pOpt->bBroadcast ){
+		/* The one `socket` option that is a PERMISSION rather than a tuning
+		 * knob: without it the OS refuses a datagram addressed to a broadcast
+		 * address outright (EACCES at the connect, or at the sendto for a bound
+		 * socket), so a script that asks for it and does not get it cannot tell
+		 * the difference between a wrong address and an unset flag. php reads
+		 * it on both halves, the bound one included. */
+#ifdef SO_BROADCAST
+		setsockopt(sock,SOL_SOCKET,SO_BROADCAST,(const char *)&on,sizeof(on));
 #endif
 	}
 }
@@ -72,8 +117,9 @@ static int NetBindLocal(ph7_socket sock,int iFamily,const char *zHost,int iPort,
 	 * inet_pton(), not the resolver — so `bindto => 'localhost:0'` is an
 	 * Invalid IP Address there and binds nothing. It is parsed in the family of
 	 * the socket that will carry it, so the answer describes THIS candidate and
-	 * not the address family net.c prefers. (php's bracketed IPv6 spelling is
-	 * the recorded gap §7.4 slice-2 (a) names; it does not parse here either.) */
+	 * not the address family net.c prefers. (php's bracketed spelling, and what
+	 * it does with a local address the candidate's family cannot take, is the
+	 * recorded gap §7.4 slice-1 (b)(iii) names.) */
 	if( iFamily == AF_INET6 ){
 		memset(&sin6,0,sizeof(sin6));
 		sin6.sin6_family = AF_INET6;
@@ -294,9 +340,9 @@ PH7_PRIVATE void PH7_NetCleanup(void)
 PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost, int iPort, int bDgram, int bListen,
 	int iBacklog, const ph7_sockopts *pOpt, int *pErrno, const char **pzErr)
 {
-	struct sockaddr_in addr;
-	ph7_socket sock;
-	int on = 1;
+	struct addrinfo hints, *res = 0, *rp;
+	ph7_socket sock = PH7_NET_INVALID_SOCKET;
+	int on = 1, iLastErr = 0;
 	int iType = bDgram ? SOCK_DGRAM : SOCK_STREAM;
 	if( pErrno ){ *pErrno = 0; }
 	if( pzErr ){ *pzErr = ""; }
@@ -304,51 +350,57 @@ PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost, int iPort, int bDgram, int
 		if( pzErr ){ *pzErr = "Unable to start the networking subsystem"; }
 		return PH7_NET_INVALID_SOCKET;
 	}
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons((unsigned short)iPort);
-	if( zHost == 0 || zHost[0] == 0 || strcmp(zHost, "0.0.0.0") == 0 ){
-		addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	}else if( strcmp(zHost, "localhost") == 0 || strcmp(zHost, "127.0.0.1") == 0 ){
-		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	}else{
-		struct addrinfo hints, *res;
-		memset(&hints, 0, sizeof(hints));
-		hints.ai_family = AF_INET;
-		hints.ai_socktype = iType;
-		if( getaddrinfo(zHost, 0, &hints, &res) != 0 || res == 0 ){
-			/* Nothing is open yet: the socket is created below. */
-			if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }
-			if( pzErr ){ *pzErr = 0; }
-			return PH7_NET_INVALID_SOCKET;
-		}
-		addr.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
-		freeaddrinfo(res);
-	}
-	sock = socket(AF_INET, iType, 0);
-	if( sock == PH7_NET_INVALID_SOCKET ){
-		if( pErrno ){ *pErrno = PH7_NetLastError(); }
-		if( pzErr ){ *pzErr = PH7_NetStrError(PH7_NetLastError()); }
+	/* php RESOLVES the address it is asked to bind, family and all, and binds
+	 * the first candidate that takes -- which is what makes `[::1]:0` an
+	 * AF_INET6 listener and `0.0.0.0:0` an AF_INET one. This used to build a
+	 * sockaddr_in by hand with three special cases in front of it, so every
+	 * IPv6 address a script could write was refused by the resolver. */
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = iType;
+	hints.ai_flags = AI_PASSIVE;
+	if( getaddrinfo((zHost && zHost[0]) ? zHost : 0, 0, &hints, &res) != 0 || res == 0 ){
+		/* Nothing is open yet: the socket is created below. */
+		if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }
+		if( pzErr ){ *pzErr = 0; }
 		return PH7_NET_INVALID_SOCKET;
 	}
-	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
-	NetApplySockOpts(sock, pOpt);
 	if( pOpt && pOpt->iBacklog > 0 ){
 		/* php's `backlog` context option: how many completed connections the OS
 		 * may queue before the accept loop gets to them. */
 		iBacklog = pOpt->iBacklog;
 	}
-	if( bind(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0
-	 || (bListen && !bDgram && listen(sock, iBacklog) != 0) ){
+	for( rp = res ; rp != 0 ; rp = rp->ai_next ){
+		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if( sock == PH7_NET_INVALID_SOCKET ){
+			iLastErr = PH7_NetLastError();
+			continue;
+		}
+		NetStampPort(rp->ai_addr, iPort);
+		setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
+		NetApplySockOpts(sock, pOpt);
+		if( rp->ai_family == AF_INET6 && pOpt && pOpt->bV6Only ){
+#ifdef IPV6_V6ONLY
+			/* php's `ipv6_v6only` context option, which had no consumer at all
+			 * while nothing here could open an AF_INET6 socket. */
+			setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&on, sizeof(on));
+#endif
+		}
+		if( bind(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen) == 0
+		 && (!bListen || bDgram || listen(sock, iBacklog) == 0) ){
+			freeaddrinfo(res);
+			return sock;
+		}
 		/* Read the error BEFORE closing the socket: close() is a call of its
 		 * own and overwrites what the failure left behind. */
-		int iErr = PH7_NetLastError();
-		if( pErrno ){ *pErrno = iErr; }
-		if( pzErr ){ *pzErr = PH7_NetStrError(iErr); }
+		iLastErr = PH7_NetLastError();
 		PH7_NetClose(sock);
-		return PH7_NET_INVALID_SOCKET;
+		sock = PH7_NET_INVALID_SOCKET;
 	}
-	return sock;
+	freeaddrinfo(res);
+	if( pErrno ){ *pErrno = iLastErr; }
+	if( pzErr ){ *pzErr = PH7_NetStrError(iLastErr); }
+	return PH7_NET_INVALID_SOCKET;
 }
 /*
  * Create a TCP listening socket bound to the given host and port.
@@ -388,10 +440,8 @@ PH7_PRIVATE int PH7_NetHostName(char *zBuf, int nBuf, int *pErrno)
  */
 PH7_PRIVATE int PH7_NetSockName(ph7_socket sock, int bPeer, char *zBuf, int nBuf)
 {
-	struct sockaddr_in addr;
+	struct sockaddr_storage addr;
 	ph7_socklen nLen = (ph7_socklen)sizeof(addr);
-	char zAddr[64];
-	int n;
 	if( zBuf == 0 || nBuf < 2 ){
 		return -1;
 	}
@@ -401,17 +451,11 @@ PH7_PRIVATE int PH7_NetSockName(ph7_socket sock, int bPeer, char *zBuf, int nBuf
 	           : getsockname(sock, (struct sockaddr *)&addr, &nLen)) != 0 ){
 		return -1;
 	}
-	if( addr.sin_family != AF_INET ){
-		/* A socketpair has no address of any kind, and php answers false for
-		 * one rather than inventing a name for it. */
-		return -1;
-	}
-	PH7_NetAddrToString((struct sockaddr *)&addr, zAddr, (int)sizeof(zAddr));
-	if( zAddr[0] == 0 ){
-		return -1;
-	}
-	n = snprintf(zBuf, (size_t)nBuf, "%s:%d", zAddr, PH7_NetAddrPort((struct sockaddr *)&addr));
-	return (n > 0 && n < nBuf) ? PH7_OK : -1;
+	/* A sockaddr_in is too small to hold the answer for an IPv6 socket -- the
+	 * OS truncates into whatever it is given -- so the buffer is the storage
+	 * union. A socketpair has no address of any kind, and php answers false for
+	 * one rather than inventing a name for it. */
+	return NetFormatAddr((struct sockaddr *)&addr, zBuf, nBuf) ? PH7_OK : -1;
 }
 /*
  * accept() bounded by a timeout in milliseconds (a negative one blocks). The
@@ -422,7 +466,7 @@ PH7_PRIVATE int PH7_NetSockName(ph7_socket sock, int bPeer, char *zBuf, int nBuf
 PH7_PRIVATE ph7_socket PH7_NetAcceptTimed(ph7_socket listenSock, int iTimeoutMs, int *pbTimedOut,
 	char *zPeer, int nPeer)
 {
-	struct sockaddr_in addr;
+	struct sockaddr_storage addr;
 	ph7_socklen nLen = (ph7_socklen)sizeof(addr);
 	ph7_socket sock;
 	if( pbTimedOut ){ *pbTimedOut = 0; }
@@ -442,28 +486,38 @@ PH7_PRIVATE ph7_socket PH7_NetAcceptTimed(ph7_socket listenSock, int iTimeoutMs,
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		return PH7_NET_INVALID_SOCKET;
 	}
-	if( zPeer && nPeer > 0 && addr.sin_family == AF_INET ){
-		char zAddr[64];
-		PH7_NetAddrToString((struct sockaddr *)&addr, zAddr, (int)sizeof(zAddr));
-		if( zAddr[0] ){
-			snprintf(zPeer, (size_t)nPeer, "%s:%d", zAddr, PH7_NetAddrPort((struct sockaddr *)&addr));
-		}
+	if( zPeer && nPeer > 0 ){
+		NetFormatAddr((struct sockaddr *)&addr, zPeer, nPeer);
 	}
 	return sock;
 }
 /*
- * Connect a TCP socket to the given host and port (blocking; the caller sets
- * a timeout with PH7_NetSetTimeout afterwards). *pErrno receives the OS error
- * code and *pzErr a static description on failure, matching what fsockopen()
- * reports through its by-ref out-params.
+ * Did the connect() merely START? php's asynchronous dial puts the socket in
+ * non-blocking mode first, and the "not finished yet" code IS the success it
+ * reports back to the script.
+ */
+static int NetConnectInProgress(void)
+{
+#ifdef __WINNT__
+	int iErr = WSAGetLastError();
+	return iErr == WSAEWOULDBLOCK || iErr == WSAEINPROGRESS || iErr == WSAEALREADY;
+#else
+	return errno == EINPROGRESS || errno == EINTR || errno == EALREADY;
+#endif
+}
+/*
+ * Connect a socket to the given host and port (blocking unless bAsync; the
+ * caller sets a timeout with PH7_NetSetTimeout afterwards). *pErrno receives
+ * the OS error code and *pzErr a static description on failure, matching what
+ * fsockopen() reports through its by-ref out-params.
  * Returns the connected socket, or PH7_NET_INVALID_SOCKET on error.
  */
 PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeoutMs,
-	ph7_sockopts *pOpt, int *pErrno, const char **pzErr)
+	int bDgram, int bAsync, ph7_sockopts *pOpt, int *pErrno, const char **pzErr)
 {
 	struct addrinfo hints, *res = 0, *rp;
-	char zPort[16];
 	ph7_socket sock = PH7_NET_INVALID_SOCKET;
+	int iLastErr = 0;
 	if( pErrno ){ *pErrno = 0; }
 	if( pzErr ){ *pzErr = ""; }
 	if( PH7_NetEnsureInit() != PH7_OK ){
@@ -472,15 +526,20 @@ PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeout
 		return PH7_NET_INVALID_SOCKET;
 	}
 	if( zHost == 0 || zHost[0] == 0 ){
-		if( pErrno ){ *pErrno = -1; }
-		if( pzErr ){ *pzErr = "Empty host"; }
+		/* An address whose host half is empty (`tcp://:9`, `[]:9`, an
+		 * fsockopen() with no hostname) is a NAME php hands to the resolver
+		 * like any other, and the resolver is what refuses it -- twice, in the
+		 * two sentences the caller composes. This used to answer a message of
+		 * PHL's own, "Empty host" with an errno of -1, that no php prints; the
+		 * BIND half has always reported the resolver's. */
+		if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }
+		if( pzErr ){ *pzErr = 0; }
 		return PH7_NET_INVALID_SOCKET;
 	}
-	snprintf(zPort, sizeof(zPort), "%d", iPort);
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	if( getaddrinfo(zHost, zPort, &hints, &res) != 0 || res == 0 ){
+	hints.ai_socktype = bDgram ? SOCK_DGRAM : SOCK_STREAM;
+	if( getaddrinfo(zHost, 0, &hints, &res) != 0 || res == 0 ){
 		/* php words the HOST into this one and reports no OS code for it; the
 		 * caller composes it, since only it has the name to interpolate. */
 		if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }
@@ -490,8 +549,10 @@ PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeout
 	for( rp = res ; rp != 0 ; rp = rp->ai_next ){
 		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if( sock == PH7_NET_INVALID_SOCKET ){
+			iLastErr = PH7_NetLastError();
 			continue;
 		}
+		NetStampPort(rp->ai_addr, iPort);
 		NetApplySockOpts(sock, pOpt);
 		if( pOpt ){
 			/* Per CANDIDATE: the failure that gets reported belongs to the socket
@@ -510,16 +571,46 @@ PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeout
 			 * subsequent recv/send (php applies it to both — recorded) */
 			PH7_NetSetTimeout(sock, iTimeoutMs);
 		}
+		if( bAsync ){
+			/* php's STREAM_CLIENT_ASYNC_CONNECT: the socket is put in
+			 * non-blocking mode, connect() is ISSUED, and "in progress" is the
+			 * answer the caller gets -- so a dial to a port nothing is
+			 * listening on hands the script a working RESOURCE and reports the
+			 * refusal later, at the first write. php then puts the socket back
+			 * in blocking mode, which is why the handle reports `blocked`. */
+			int rcA;
+			PH7_NetSetBlocking(sock, 0);
+			rcA = connect(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen);
+			if( rcA == 0 || NetConnectInProgress() ){
+				PH7_NetSetBlocking(sock, 1);
+				freeaddrinfo(res);
+				return sock;
+			}
+			iLastErr = PH7_NetLastError();
+			PH7_NetClose(sock);
+			sock = PH7_NET_INVALID_SOCKET;
+			continue;
+		}
 		if( connect(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen) == 0 ){
 			freeaddrinfo(res);
 			return sock;
 		}
+		/* Read the code BEFORE closing: close() is a call of its own. php keeps
+		 * the LAST candidate's, which is what a script reads back from
+		 * $errno/$errstr -- this used to answer a hardcoded ECONNREFUSED for
+		 * every failure, so a broadcast address refused for want of
+		 * SO_BROADCAST, an unreachable network and a refused port were one
+		 * answer. */
+		iLastErr = PH7_NetLastError();
 		PH7_NetClose(sock);
 		sock = PH7_NET_INVALID_SOCKET;
 	}
 	freeaddrinfo(res);
-	if( pErrno ){ *pErrno = 111; }
-	if( pzErr ){ *pzErr = "Connection refused"; }
+	if( iLastErr == 0 ){
+		iLastErr = 111; /* nothing was even tried: php's own default reason */
+	}
+	if( pErrno ){ *pErrno = iLastErr; }
+	if( pzErr ){ *pzErr = PH7_NetStrError(iLastErr); }
 	return PH7_NET_INVALID_SOCKET;
 }
 /*
@@ -665,39 +756,66 @@ PH7_PRIVATE void PH7_NetSetBlocking(ph7_socket sock, int bBlocking)
  */
 PH7_PRIVATE void PH7_NetAddrToString(const struct sockaddr *pAddr, char *zBuf, int nBufLen)
 {
-	const struct sockaddr_in *pIn = (const struct sockaddr_in *)pAddr;
-	if( pAddr == 0 || pAddr->sa_family != AF_INET ){
-		if( nBufLen > 0 ){
-			zBuf[0] = 0;
-		}
+	if( nBufLen > 0 ){
+		zBuf[0] = 0;
+	}
+	if( pAddr == 0 || nBufLen < 2 ){
 		return;
 	}
-#ifdef __WINNT__
-	{
-		char *zAddr = inet_ntoa(pIn->sin_addr);
-		if( zAddr ){
-			int n = (int)strlen(zAddr);
-			if( n >= nBufLen ) n = nBufLen - 1;
-			memcpy(zBuf, zAddr, n);
-			zBuf[n] = 0;
-		}else{
-			zBuf[0] = 0;
-		}
+	if( pAddr->sa_family == AF_INET ){
+		const struct sockaddr_in *pIn = (const struct sockaddr_in *)pAddr;
+		NetInetNtop(AF_INET, (const void *)&pIn->sin_addr, zBuf, nBufLen);
+		return;
 	}
-#else
-	inet_ntop(AF_INET, &pIn->sin_addr, zBuf, (ph7_socklen)nBufLen);
-#endif
+	if( pAddr->sa_family == AF_INET6 ){
+		const struct sockaddr_in6 *pIn6 = (const struct sockaddr_in6 *)pAddr;
+		NetInetNtop(AF_INET6, (const void *)&pIn6->sin6_addr, zBuf, nBufLen);
+		return;
+	}
+	/* A socketpair, or anything else with no address of its own. */
 }
 /*
  * Extract the port number from a sockaddr (in host byte order).
  */
 PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr)
 {
-	const struct sockaddr_in *pIn = (const struct sockaddr_in *)pAddr;
-	if( pAddr == 0 || pAddr->sa_family != AF_INET ){
+	if( pAddr == 0 ){
 		return 0;
 	}
-	return (int)ntohs(pIn->sin_port);
+	if( pAddr->sa_family == AF_INET ){
+		return (int)ntohs(((const struct sockaddr_in *)pAddr)->sin_port);
+	}
+	if( pAddr->sa_family == AF_INET6 ){
+		return (int)ntohs(((const struct sockaddr_in6 *)pAddr)->sin6_port);
+	}
+	return 0;
+}
+/*
+ * One sockaddr as php's stream_socket_get_name() spells it: `ip:port` for IPv4
+ * and `[ip]:port` for IPv6 -- the BRACKETED form, which is the same spelling
+ * every address argument in the family reads back. Answers 0 when the address
+ * has no name at all (a socketpair), which is php's `false`.
+ */
+static int NetFormatAddr(const struct sockaddr *pAddr, char *zBuf, int nBuf)
+{
+	char zIp[80];
+	int n;
+	if( zBuf == 0 || nBuf < 2 ){
+		return 0;
+	}
+	zBuf[0] = 0;
+	PH7_NetAddrToString(pAddr, zIp, (int)sizeof(zIp));
+	if( zIp[0] == 0 ){
+		return 0;
+	}
+	n = pAddr->sa_family == AF_INET6
+		? snprintf(zBuf, (size_t)nBuf, "[%s]:%d", zIp, PH7_NetAddrPort(pAddr))
+		: snprintf(zBuf, (size_t)nBuf, "%s:%d", zIp, PH7_NetAddrPort(pAddr));
+	if( n <= 0 || n >= nBuf ){
+		zBuf[0] = 0;
+		return 0;
+	}
+	return 1;
 }
 
 /*
@@ -762,6 +880,43 @@ PH7_PRIVATE int PH7_NetAtEnd(ph7_socket sock)
 	char c;
 	return recv(sock,&c,1,MSG_PEEK) <= 0 ? 1 : 0;
 }
+/*
+ * php's feof() for a SOCKET is not a latch on a read that already happened: it
+ * is a liveness probe run at the moment the question is asked (zend's
+ * PHP_STREAM_OPTION_CHECK_LIVENESS). Poll the descriptor for readability with a
+ * zero timeout and, only if something IS there, peek one byte: a peek that
+ * comes back with data means the stream is alive, and one that comes back with
+ * nothing (or with an error that is not "would have waited") means the far end
+ * is gone. Everything else -- a listening socket with no connection queued, a
+ * bound datagram socket with no datagram -- is not readable and therefore not
+ * an end of file.
+ *
+ * The three answers this changes are all sockets nothing has read from yet: a
+ * bound-but-not-listening one, a connected one whose peer has departed, and a
+ * socketpair whose other end was closed. php reports EOF for all three before a
+ * single read; PHL reported false until a read came back empty, so a
+ * `while (!feof($sock))` loop written php's way ran one turn too many.
+ */
+PH7_PRIVATE int PH7_NetIsAlive(ph7_socket sock)
+{
+	char c;
+	if( sock == PH7_NET_INVALID_SOCKET ){
+		return 0;
+	}
+	if( PH7_NetWait(sock,0,0) <= 0 ){
+		/* Not readable, or the wait itself failed: neither is evidence of an
+		 * end, and php only looks further when the poll says there is
+		 * something to look at. */
+		return 1;
+	}
+#ifndef __WINNT__
+	errno = 0; /* so a STALE EAGAIN cannot answer for this call's recv() */
+#endif
+	if( recv(sock,&c,1,MSG_PEEK) > 0 ){
+		return 1;
+	}
+	return PH7_NetWouldBlock() ? 1 : 0;
+}
 /* php's STREAM_OOB/STREAM_PEEK are php's own bits, not the OS's. */
 static int NetMsgFlags(int iFlags)
 {
@@ -782,7 +937,7 @@ static int NetMsgFlags(int iFlags)
  */
 PH7_PRIVATE int PH7_NetRecvFrom(ph7_socket sock,void *pBuf,int nLen,int iFlags,char *zAddr,int nAddr)
 {
-	struct sockaddr_in sFrom;
+	struct sockaddr_storage sFrom;
 	ph7_socklen nFrom = (ph7_socklen)sizeof(sFrom);
 	int n;
 	if( zAddr && nAddr > 0 ){
@@ -790,12 +945,18 @@ PH7_PRIVATE int PH7_NetRecvFrom(ph7_socket sock,void *pBuf,int nLen,int iFlags,c
 	}
 	memset(&sFrom,0,sizeof(sFrom));
 	n = (int)recvfrom(sock,(char *)pBuf,nLen,NetMsgFlags(iFlags),(struct sockaddr *)&sFrom,&nFrom);
-	if( n >= 0 && zAddr && nAddr > 0 && sFrom.sin_family == AF_INET ){
-		char zIp[64];
-		PH7_NetAddrToString((struct sockaddr *)&sFrom,zIp,(int)sizeof(zIp));
-		if( zIp[0] ){
-			snprintf(zAddr,(size_t)nAddr,"%s:%d",zIp,PH7_NetAddrPort((struct sockaddr *)&sFrom));
-		}
+#ifdef __WINNT__
+	if( n < 0 && WSAGetLastError() == WSAEMSGSIZE ){
+		/* A datagram LONGER than the buffer is a truncated read on POSIX and a
+		 * failed call on Winsock -- which fills the buffer anyway and reports
+		 * WSAEMSGSIZE for the part it dropped. php hands the truncated bytes
+		 * back on both, so the two answer the same `wor` for a three-byte read
+		 * of `world`; without this the whole datagram was lost to a false. */
+		n = nLen;
+	}
+#endif
+	if( n >= 0 && zAddr && nAddr > 0 ){
+		NetFormatAddr((struct sockaddr *)&sFrom,zAddr,nAddr);
 	}
 	return n;
 }
@@ -807,32 +968,51 @@ PH7_PRIVATE int PH7_NetRecvFrom(ph7_socket sock,void *pBuf,int nLen,int iFlags,c
 PH7_PRIVATE int PH7_NetSendTo(ph7_socket sock,const void *pBuf,int nLen,int iFlags,
 	const char *zHost,int iPort,int *pErrno)
 {
-	struct sockaddr_in sTo;
+	struct sockaddr_storage sTo;
+	ph7_socklen nTo;
 	if( pErrno ){ *pErrno = 0; }
-	if( zHost == 0 || zHost[0] == 0 ){
+	if( zHost == 0 ){
+		/* No $address at all: php's plain send() to whatever the socket is
+		 * connected to. An EMPTY host is not this case -- it is a name the
+		 * resolver refuses, which is what php answers for `stream_socket_sendto
+		 * ($s, $d, 0, ':53')`. */
 		return (int)send(sock,(const char *)pBuf,nLen,NetMsgFlags(iFlags));
 	}
 	memset(&sTo,0,sizeof(sTo));
-	sTo.sin_family = AF_INET;
-	sTo.sin_port = htons((unsigned short)iPort);
-	if( strcmp(zHost,"localhost") == 0 || strcmp(zHost,"127.0.0.1") == 0 ){
-		sTo.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	}else{
-		struct addrinfo hints,*res;
-		memset(&hints,0,sizeof(hints));
-		hints.ai_family = AF_INET;
-		hints.ai_socktype = SOCK_DGRAM;
-		if( getaddrinfo(zHost,0,&hints,&res) != 0 || res == 0 ){
-			/* Nothing was sent, and the caller says so in php's own three
-			 * voices — which is a different answer from a send that failed. */
-			if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }
-			return -1;
+	{
+		/* php's own ladder: a NUMERIC literal is used as written -- in either
+		 * family -- and only a name goes to the resolver. The family that comes
+		 * back is the one sendto() is handed, so an IPv6 target on an IPv4
+		 * socket is the OS's own refusal rather than a silent send elsewhere. */
+		struct sockaddr_in *pIn = (struct sockaddr_in *)&sTo;
+		struct sockaddr_in6 *pIn6 = (struct sockaddr_in6 *)&sTo;
+		if( inet_pton(AF_INET,zHost,(void *)&pIn->sin_addr) == 1 ){
+			pIn->sin_family = AF_INET;
+			pIn->sin_port = htons((unsigned short)iPort);
+			nTo = (ph7_socklen)sizeof(*pIn);
+		}else if( inet_pton(AF_INET6,zHost,(void *)&pIn6->sin6_addr) == 1 ){
+			pIn6->sin6_family = AF_INET6;
+			pIn6->sin6_port = htons((unsigned short)iPort);
+			nTo = (ph7_socklen)sizeof(*pIn6);
+		}else{
+			struct addrinfo hints,*res;
+			memset(&hints,0,sizeof(hints));
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = SOCK_DGRAM;
+			if( zHost[0] == 0 || getaddrinfo(zHost,0,&hints,&res) != 0 || res == 0 ){
+				/* Nothing was sent, and the caller says so in php's own three
+				 * voices — which is a different answer from a send that failed. */
+				if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }
+				return -1;
+			}
+			memcpy(&sTo,res->ai_addr,(size_t)res->ai_addrlen);
+			nTo = (ph7_socklen)res->ai_addrlen;
+			NetStampPort((struct sockaddr *)&sTo,iPort);
+			freeaddrinfo(res);
 		}
-		sTo.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
-		freeaddrinfo(res);
 	}
 	return (int)sendto(sock,(const char *)pBuf,nLen,NetMsgFlags(iFlags),
-		(struct sockaddr *)&sTo,(ph7_socklen)sizeof(sTo));
+		(struct sockaddr *)&sTo,nTo);
 }
 /*
  * A connected PAIR of sockets, which is what a program hands a child process (or

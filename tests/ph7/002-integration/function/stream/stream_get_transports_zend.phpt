@@ -13,10 +13,12 @@ if (!function_exists('zend_version')) {
 <?php
 $t = stream_get_transports();
 var_dump(in_array('tcp', $t, true));
+var_dump(in_array('udp', $t, true));
 /* php registers the transports its build has; the ones PHL does not model are
  * exactly what the PHL half records as missing. */
-var_dump(count($t) > 1);
+var_dump(count($t) > 2);
 ?>
 --EXPECT--
+bool(true)
 bool(true)
 bool(true)
