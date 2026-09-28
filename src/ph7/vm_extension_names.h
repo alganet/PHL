@@ -1325,7 +1325,8 @@ static const VmExtName aExtIni[] = {
 	/* date */
 	{"date.timezone",PH7_EXT_DATE},
 	/* standard */
-	{"unserialize_max_depth",PH7_EXT_STANDARD}, {"default_socket_timeout",PH7_EXT_STANDARD},
+	{"unserialize_max_depth",PH7_EXT_STANDARD}, {"user_agent",PH7_EXT_STANDARD},
+	{"from",PH7_EXT_STANDARD}, {"default_socket_timeout",PH7_EXT_STANDARD},
 	{"auto_detect_line_endings",PH7_EXT_STANDARD},
 	/* bcmath */
 	{"bcmath.scale",PH7_EXT_BCMATH},

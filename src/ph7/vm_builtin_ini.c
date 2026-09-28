@@ -62,6 +62,11 @@ static const struct {
 	{ "display_errors",           "",           VM_INI_ALL },
 	{ "error_log",                0,            VM_INI_ALL },
 	{ "error_reporting",          "30719",      VM_INI_ALL },
+	/* The From: header the http:// wrapper writes. php ships it UNSET, and the
+	 * difference matters: an unset directive writes no header at all, while an
+	 * ini_set() to the EMPTY string writes `From: ` -- which is not how
+	 * user_agent below behaves. */
+	{ "from",                     0,            VM_INI_ALL },
 	{ "highlight.comment",        "#FF8000",    VM_INI_ALL },
 	{ "highlight.default",        "#0000BB",    VM_INI_ALL },
 	{ "highlight.html",           "#000000",    VM_INI_ALL },
@@ -129,6 +134,11 @@ static const struct {
 	{ "unserialize_callback_func","",           VM_INI_ALL },
 	{ "unserialize_max_depth",    "4096",       VM_INI_ALL },
 	{ "upload_max_filesize",      "2M",         VM_INI_PERDIR|VM_INI_SYSTEM },
+	/* The User-Agent the http:// wrapper writes when the request names none.
+	 * UNSET like `from` above, and for the same reason -- but the wrapper reads
+	 * the two differently: an empty user_agent writes no header at all, while an
+	 * empty `from` writes `From: `. */
+	{ "user_agent",               0,            VM_INI_ALL },
 	{ "zend.assertions",          "-1",         VM_INI_ALL },
 };
 

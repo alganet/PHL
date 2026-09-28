@@ -3261,15 +3261,25 @@ struct ph7_vm
 	const char *zOpenUriTail;  /* the scheme-stripped remainder handed to the wrapper */
 	const char *zOpenErr;      /* the wrapper's own reason for the open in flight, or 0
 	                            * for the plain-file wrapper's errno */
-	char zOpenErrBuf[160];     /* storage for a reason that has to be BUILT -- a userland
-	                            * wrapper names its own class and method -- since the
-	                            * caller's buffer does not outlive the call */
+	char zOpenErrBuf[512];     /* storage for a reason that has to be BUILT -- a userland
+	                            * wrapper names its own class and method, and the http
+	                            * wrapper interpolates a host name or a whole status
+	                            * line -- since the caller's buffer does not outlive the
+	                            * call */
 	int nOpenDepth;            /* opens in flight. The three fields above belong to the
 	                            * OUTERMOST one: php://filter opens its own resource from
 	                            * inside its xOpen, and that inner open would otherwise
 	                            * report the RESOURCE's errno under the filter's name --
 	                            * and leave zOpenUriTail pointing into a blob it frees on
 	                            * the way out. */
+	/* The response headers of the last http:// exchange, one line per '\n'. Two
+	 * consumers outlive the handle that produced them: `$http_response_header`,
+	 * which the stream layer writes into the frame that called the opener, and
+	 * php 8.4's http_get_last_response_headers(), which answers them until
+	 * http_clear_last_response_headers() drops the store. */
+	SyBlob sHttpRespHdrs;      /* the lines, '\n'-separated */
+	sxu8 bHttpRespHdrs;        /* something has been recorded (the getter's NULL/array split) */
+	sxu8 bHttpRespFresh;       /* recorded by the open in flight and not yet published */
 	/* Stream filters (stream_filter_append and the php://filter wrapper). The
 	 * chain owns every filter INSTANCE the script created, so one that is never
 	 * removed still goes back at reset. */
@@ -4568,6 +4578,22 @@ extern const ph7_io_stream sUnixFileStream;
  * and the pipe (popen) stream live in vfs_io_driver.c. Registration (vfs.c)
  * and the standard-stream exporters reference them across those files. */
 extern const ph7_io_stream sTCP_Stream;
+/* vfs_http.c -- what a script reads BACK from an http:// exchange. The store is
+ * in every build: the two php 8.4 getters over it are ordinary builtins, and a
+ * build with no network simply never records anything into it. */
+PH7_PRIVATE void PH7_HttpPublishHeaders(ph7_vm *pVm,SyBlob *pLines);
+PH7_PRIVATE ph7_value * PH7_HttpHeaderArray(ph7_vm *pVm,SyBlob *pLines);
+PH7_PRIVATE void PH7_HttpFlushResponseHeaders(ph7_vm *pVm);
+PH7_PRIVATE void PH7_HttpClearResponseHeaders(ph7_vm *pVm);
+#if !defined(PH7_DISABLE_DISK_IO) && defined(PH7_ENABLE_NET)
+/* ... and the wrapper itself, which is where the store is filled. */
+extern const ph7_io_stream sHTTP_Stream;
+PH7_PRIVATE int PH7_HttpStreamIs(const ph7_io_stream *pStream);
+PH7_PRIVATE ph7_value * PH7_HttpStreamHeaderArray(ph7_vm *pVm,void *pHandle);
+PH7_PRIVATE ph7_socket * PH7_HttpStreamSocket(void *pHandle);
+PH7_PRIVATE sxu32 PH7_HttpStreamUnread(void *pHandle);
+PH7_PRIVATE int PH7_HttpStreamAtEof(void *pHandle);
+#endif /* !PH7_DISABLE_DISK_IO && PH7_ENABLE_NET */
 extern const ph7_io_stream sDATA_Stream;
 extern const ph7_io_stream sPHP_Stream;
 #ifndef PH7_DISABLE_BUILTIN_FUNC

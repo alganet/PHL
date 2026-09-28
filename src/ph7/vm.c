@@ -2169,6 +2169,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sWorker,&pVm->sAllocator);
 	SyBlobInit(&pVm->sLastErrMsg,&pVm->sAllocator);
 	SyBlobInit(&pVm->sLastErrFile,&pVm->sAllocator);
+	/* The http:// wrapper's last response headers (see PH7_HttpPublishHeaders). */
+	SyBlobInit(&pVm->sHttpRespHdrs,&pVm->sAllocator);
 	SySetInit(&pVm->aLitObj,&pVm->sAllocator,sizeof(ph7_value));
 	SySetAlloc(&pVm->aLitObj,0xFF);
 	/* php FUNCTION names are case-insensitive — `STRLEN("x")`, `MyFn()` and
@@ -3472,6 +3474,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* And every filter INSTANCE it created: a chain that was never removed
 	 * still owns memory the next request must not inherit. */
 	PH7_StreamFilterVmReset(&(*pVm));
+	/* And the last http:// exchange's response headers, for the same reason:
+	 * http_get_last_response_headers() must not answer the previous request's. */
+	PH7_HttpClearResponseHeaders(&(*pVm));
 	pVm->iCmpCallbackExc = 0;
 	pVm->bHaltRequested = 0;
 	pVm->iExitStatus = 0;

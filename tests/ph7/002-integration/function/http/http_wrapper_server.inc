@@ -1,0 +1,221 @@
+<?php
+/**
+ * SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * The local HTTP server the http:// STREAM WRAPPER tests talk to.
+ *
+ * The wrapper's contract is about bytes on both sides of the socket -- which
+ * request it composed, and what it makes of a response nobody would call
+ * well-formed -- so a dev server is no use here. This is a raw socket server
+ * that answers each request with a CANNED reply the test wrote to a file, and
+ * logs the raw request bytes so the test can assert on them.
+ *
+ * It is one file in two modes, like the ext/curl one beside it: run as a SCRIPT
+ * with `--serve <port> <dir>` it is the server, INCLUDED from a test it is the
+ * client helpers. The child is whatever binary the runner is testing
+ * (PHPT_TARGET_EXECUTABLE), so the same test file runs under real php, which is
+ * where its expectations come from.
+ *
+ * Nothing here reaches the network: the socket binds 127.0.0.1 and the port is
+ * probed free first. Every wait is bounded.
+ */
+
+/** Pick a free port, spawn the server on it, and wait until it accepts. */
+function http_test_server_start(&$proc, $dir, $base = 19700)
+{
+    $exe = getenv('PHPT_TARGET_EXECUTABLE');
+    if ($exe === false || $exe === '') {
+        $exe = PHP_BINARY;
+    }
+    $port = http_test_free_port($base);
+    $spec = array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w'));
+    $proc = proc_open(array($exe, __FILE__, '--serve', (string) $port, $dir), $spec, $pipes);
+    if (!is_resource($proc)) {
+        return null;
+    }
+    foreach ($pipes as $p) {
+        if (is_resource($p)) {
+            fclose($p);
+        }
+    }
+    for ($i = 0; $i < 100; $i++) {
+        $probe = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
+        if ($probe !== false) {
+            fclose($probe);
+            return $port;
+        }
+        usleep(50000);
+    }
+    return null;
+}
+
+/** Ask the server to stop, then make sure the child is gone either way. */
+function http_test_server_stop($proc, $port)
+{
+    $c = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.5);
+    if ($c !== false) {
+        fwrite($c, "GET /quit HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        stream_set_timeout($c, 1);
+        while (!feof($c)) {
+            if (fread($c, 4096) === '') {
+                break;
+            }
+        }
+        fclose($c);
+    }
+    if (is_resource($proc)) {
+        proc_terminate($proc);
+        proc_close($proc);
+    }
+}
+
+/** A port on 127.0.0.1 nothing is listening on right now. */
+function http_test_free_port($base = 19700, $span = 100)
+{
+    $port = $base + (getmypid() % $span);
+    for ($i = 0; $i < $span; $i++) {
+        $probe = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
+        if ($probe === false) {
+            return $port;
+        }
+        fclose($probe);
+        $port = $base + (($port - $base + 1) % $span);
+    }
+    return $port;
+}
+
+/** A scratch directory for this test's canned replies. */
+function http_test_dir($tag)
+{
+    $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'phlhttp' . $tag . getmypid();
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+    return $dir;
+}
+
+/** Remove it again, replies and request log included. */
+function http_test_dir_clean($dir)
+{
+    foreach (glob($dir . DIRECTORY_SEPARATOR . '*') as $f) {
+        @unlink($f);
+    }
+    @rmdir($dir);
+}
+
+/** Arm `/canned/<name>` with these exact response bytes. */
+function http_test_reply($dir, $name, $bytes)
+{
+    file_put_contents($dir . DIRECTORY_SEPARATOR . $name, $bytes);
+}
+
+/** The raw requests the server has been handed since the last clear. */
+function http_test_requests($dir)
+{
+    $log = $dir . DIRECTORY_SEPARATOR . 'log';
+    if (!is_file($log)) {
+        return array();
+    }
+    $out = array();
+    foreach (file($log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $out[] = hex2bin(trim($line));
+    }
+    return $out;
+}
+
+function http_test_requests_clear($dir)
+{
+    @unlink($dir . DIRECTORY_SEPARATOR . 'log');
+}
+
+/** The volatile parts out: this run's port, and CRLF made visible. */
+function http_test_scrub($raw)
+{
+    $raw = preg_replace('/127\.0\.0\.1:\d+/', 'HOST', $raw);
+    return str_replace("\r\n", "\n", $raw);
+}
+
+/* ===== the server half ===== */
+
+function http_test_server_main($port, $dir)
+{
+    $srv = @stream_socket_server("tcp://127.0.0.1:$port", $errno, $errstr);
+    if ($srv === false) {
+        fwrite(STDERR, "bind failed: $errstr\n");
+        exit(1);
+    }
+    $n = 0;
+    for ($served = 0; $served < 256; $served++) {
+        $c = @stream_socket_accept($srv, 20);
+        if ($c === false) {
+            break;
+        }
+        if (http_test_server_serve($c, $dir) === false) {
+            fclose($c);
+            break;
+        }
+        fclose($c);
+    }
+    fclose($srv);
+}
+
+/** Read one request, answer it. FALSE means the client asked us to stop. */
+function http_test_server_serve($c, $dir)
+{
+    stream_set_timeout($c, 20);
+    $head = '';
+    while (($line = fgets($c, 8192)) !== false) {
+        $head .= $line;
+        if ($line === "\r\n" || $line === "\n") {
+            break;
+        }
+    }
+    if ($head === '') {
+        return true;
+    }
+    $len = 0;
+    foreach (explode("\r\n", $head) as $l) {
+        if (stripos($l, 'content-length:') === 0) {
+            $len = (int) trim(substr($l, 15));
+        }
+    }
+    $body = '';
+    while (strlen($body) < $len) {
+        $r = fread($c, $len - strlen($body));
+        if ($r === '' || $r === false) {
+            break;
+        }
+        $body .= $r;
+    }
+    $path = '/';
+    if (preg_match('#^\S+ (\S+)#', $head, $m)) {
+        $path = $m[1];
+    }
+    if ($path === '/quit') {
+        fwrite($c, "HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nbye");
+        return false;
+    }
+    file_put_contents($dir . DIRECTORY_SEPARATOR . 'log', bin2hex($head . $body) . "\n", FILE_APPEND);
+    if (preg_match('#/canned/([A-Za-z0-9_.-]+)#', $path, $m)
+        && is_file($dir . DIRECTORY_SEPARATOR . $m[1])) {
+        fwrite($c, file_get_contents($dir . DIRECTORY_SEPARATOR . $m[1]));
+        return true;
+    }
+    /* Everything else answers the request BYTES, so a test can assert on what
+     * the wrapper actually wrote without the response getting in the way. */
+    $hex = bin2hex($head . $body);
+    fwrite($c, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+        . strlen($hex) . "\r\nConnection: close\r\n\r\n" . $hex);
+    return true;
+}
+
+/*
+ * The mode switch, at the BOTTOM so every function above it is declared before
+ * the server loop runs.
+ */
+if (isset($argv[0], $argv[1], $argv[2], $argv[3])
+    && $argv[1] === '--serve' && basename($argv[0]) === basename(__FILE__)) {
+    http_test_server_main((int) $argv[2], $argv[3]);
+    exit(0);
+}

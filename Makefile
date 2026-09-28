@@ -68,6 +68,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/parse$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs_filter$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vfs_http$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs_io_driver$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs_stream$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs_unix$(OBJ_SUFFIX) \

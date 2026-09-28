@@ -536,6 +536,13 @@ PH7_PRIVATE int PH7_StreamAtEof(io_private *pDev)
 		 * streamWrapper::stream_eof() rather than inferring anything. */
 		return bEof;
 	}
+#ifdef PH7_ENABLE_NET
+	if( PH7_HttpStreamIs(pDev->pStream) && pDev->pHandle ){
+		/* The http handle owns the end: the socket may have closed while its
+		 * dechunker still holds bytes nobody has taken. */
+		return PH7_HttpStreamAtEof(pDev->pHandle);
+	}
+#endif
 	return pDev->bEof != 0;
 }
 /*
@@ -1004,22 +1011,38 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 	 * allow_url_include for the one that EXECUTES what comes back — which is off
 	 * by default, because including a remote file is the classic RFI. */
 	if( PH7_StreamIsUrlWrapper(pStream) ){
-		/* php tests BOTH, in this order: a URL wrapper is unusable at all without
-		 * allow_url_fopen, and an INCLUDE needs allow_url_include on top of it. */
-		const char *zIni = 0;
+		/* php tests BOTH, in this order, and words them differently. Without
+		 * allow_url_fopen the wrapper is not FOUND at all -- php's lookup
+		 * declines to hand it over, so the caller reports the missing-wrapper
+		 * sentence and names the URI -- while allow_url_include, off by default,
+		 * refuses only the open that would EXECUTE what came back, and that one
+		 * names the wrapper and the directive. */
+		SyString sCaller;
+		SyStringInitFromBuf(&sCaller,zCaller ? zCaller : "",zCaller ? SyStrlen(zCaller) : 0);
 		if( !PH7_VmIniGetBool(pVm,"allow_url_fopen",1) ){
-			zIni = "allow_url_fopen";
-		}else if( bPushInclude && !PH7_VmIniGetBool(pVm,"allow_url_include",0) ){
-			zIni = "allow_url_include";
-		}
-		if( zIni ){
-			SyString sCaller;
+			/* TWO sentences, as php raises them: its own about the directive,
+			 * and then the caller's about an open that found no wrapper -- which
+			 * is what this open's REASON has to be, since php's lookup is where
+			 * the switch lives and a lookup that declines has nothing else to
+			 * say. This engine used to raise only the first, leaving the
+			 * caller to print whatever reason was armed ("operation failed"). */
 			char zMsg[160];
 			pVm->pOpenCtx = 0;
-			SyStringInitFromBuf(&sCaller,zCaller ? zCaller : "",zCaller ? SyStrlen(zCaller) : 0);
+			if( pVm->nOpenDepth < 1 ){
+				pVm->zOpenErr = "no suitable wrapper could be found";
+			}
 			SyBufferFormat(zMsg,sizeof(zMsg),
-				"%s:// wrapper is disabled in the server configuration by %s=0",
-				pStream->zName,zIni);
+				"%s:// wrapper is disabled in the server configuration by allow_url_fopen=0",
+				pStream->zName);
+			PH7_VmThrowError(pVm,zCaller ? &sCaller : 0,PH7_CTX_WARNING,zMsg);
+			return 0;
+		}
+		if( bPushInclude && !PH7_VmIniGetBool(pVm,"allow_url_include",0) ){
+			char zMsg[160];
+			pVm->pOpenCtx = 0;
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"%s:// wrapper is disabled in the server configuration by allow_url_include=0",
+				pStream->zName);
 			PH7_VmThrowError(pVm,zCaller ? &sCaller : 0,PH7_CTX_WARNING,zMsg);
 			return 0;
 		}
@@ -1121,6 +1144,14 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 	 * worked or not. A device that wanted it (a userland wrapper) read it while
 	 * its xOpen was running. */
 	pVm->pOpenCtx = 0;
+	/* An http:// exchange publishes `$http_response_header` into the frame that
+	 * called the opener, and it does so whether the open SUCCEEDED or not: a 404
+	 * is a failed open with a complete set of headers behind it. Only the
+	 * OUTERMOST open publishes -- a php://filter that opened its own resource is
+	 * not what the script asked about. */
+	if( pVm->nOpenDepth < 1 ){
+		PH7_HttpFlushResponseHeaders(pVm);
+	}
 	if( rc != PH7_OK ){
 		/* IO error */
 		return 0;
@@ -3982,6 +4013,15 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 		*pzWrapper = *pzStream = "user-space";
 		return;
 	}
+#ifdef PH7_ENABLE_NET
+	if( PH7_HttpStreamIs(pS) ){
+		/* php names the WRAPPER `http` and the ops under it the transport's,
+		 * which is the same socket label a tcp:// handle reports. */
+		*pzWrapper = "http";
+		*pzStream  = "tcp_socket/ssl";
+		return;
+	}
+#endif
 	if( pS->zName && SyStrncmp(pS->zName,"tcp",sizeof("tcp")) == 0 ){
 		/* php names the socket ops and reports no wrapper for them — and names
 		 * a socket with no transport under it (a pair) differently again. */
@@ -4111,6 +4151,13 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 	 * already has and never reads ahead for it, so its `unread_bytes` counts
 	 * only what the SCRIPT's own reads left buffered. */
 	nUnread = StreamAheadBytes(pDev);
+#ifdef PH7_ENABLE_NET
+	if( PH7_HttpStreamIs(pDev->pStream) && pDev->pHandle ){
+		/* The http wrapper does its own buffering, and what it holds is exactly
+		 * what php counts here. */
+		nUnread += PH7_HttpStreamUnread(pDev->pHandle);
+	}
+#endif
 	if( is_data_stream(pDev->pStream) ){
 		/* A device that answers metadata of its OWN replaces php's three
 		 * defaults rather than adding to them: data:// (and php://temp, which
@@ -4133,6 +4180,18 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 		ph7_value_bool(pV,PH7_StreamAtEof(pDev) != 0);
 		ph7_array_add_strkey_elem(pArr,"eof",pV);
 	}
+#ifdef PH7_ENABLE_NET
+	if( PH7_HttpStreamIs(pDev->pStream) ){
+		/* php's `wrapper_data` for an http handle is the response headers of the
+		 * exchange THIS handle made -- the redirect chain's included, in the
+		 * order they arrived. */
+		ph7_value *pHdr = PH7_HttpStreamHeaderArray(pCtx->pVm,pDev->pHandle);
+		if( pHdr ){
+			ph7_array_add_strkey_elem(pArr,"wrapper_data",pHdr);
+			ph7_release_value(pCtx->pVm,pHdr);
+		}
+	}
+#endif
 	{
 		ph7_class_instance *pObj = IoPrivateUwrapObject(pDev);
 		if( pObj ){
@@ -5218,6 +5277,14 @@ PH7_PRIVATE int PH7_StreamIsUrlWrapper(const ph7_io_stream *pStream)
 	 && SyStrlen(pStream->zName) == 4 && SyStrnicmp(pStream->zName,"data",4) == 0 ){
 		return 1;
 	}
+#ifdef PH7_ENABLE_NET
+	/* http:// is php's STREAM_IS_URL wrapper proper: allow_url_fopen switches it
+	 * off wholesale, and allow_url_include -- off by default -- is what stops an
+	 * `include 'http://…'` from executing whatever answered. */
+	if( PH7_HttpStreamIs(pStream) ){
+		return 1;
+	}
+#endif
 	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
 		if( g_aUwrap[i].pVm && &g_aUwrap[i].sStream == pStream ){
 			return g_aUwrap[i].bIsUrl;
@@ -6930,6 +6997,11 @@ static ph7_socket * IoPrivateSocket(io_private *pDev)
 #ifdef PH7_ENABLE_NET
 	if( pDev->pStream == &sTCP_Stream && pDev->pHandle ){
 		return &((sock_private *)pDev->pHandle)->sock;
+	}
+	if( PH7_HttpStreamIs(pDev->pStream) && pDev->pHandle ){
+		/* An http body is still a socket, and php's stream_select() waits on
+		 * that descriptor exactly as it does for a transport stream. */
+		return PH7_HttpStreamSocket(pDev->pHandle);
 	}
 #endif
 	SXUNUSED(pDev); /* cc warning when NET is off */

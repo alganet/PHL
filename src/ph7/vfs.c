@@ -4187,6 +4187,9 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 #endif
 #ifdef PH7_ENABLE_NET
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sTCP_Stream);
+	/* php's one built-in protocol wrapper. It speaks over the same sockets
+	 * tcp:// hands out, so it is in the build exactly when they are. */
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sHTTP_Stream);
 #endif
 	if( pFileStream ){
 		/* Install the file:// stream */
