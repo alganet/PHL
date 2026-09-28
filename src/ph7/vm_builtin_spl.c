@@ -3694,25 +3694,6 @@ static ph7_value * CitCacheChecked(ph7_context *pCtx,int *pRc)
 	return CitCacheSlot(pCtx->pVm,pThis);
 }
 /*
- * php's array_set_zval_key screens the key exactly as `$a[$k] = v` does, so an
- * OBJECT or ARRAY key raises rather than folding to anything — the same wording
- * the engine's own subscript store uses.
- */
-static int CitCacheKeyCheck(ph7_context *pCtx,ph7_value *pKey)
-{
-	if( pKey->iFlags & MEMOBJ_OBJ ){
-		ph7_class_instance *pInst = (ph7_class_instance *)pKey->x.pOther;
-		SyString *pName = pInst && pInst->pClass ? &pInst->pClass->sName : 0;
-		return PH7_VmThrowException(pCtx,"TypeError",
-			"Cannot access offset of type %z on array",pName);
-	}
-	if( pKey->iFlags & MEMOBJ_HASHMAP ){
-		return PH7_VmThrowException(pCtx,"TypeError",
-			"Cannot access offset of type array on array");
-	}
-	return PH7_OK;
-}
-/*
  * php's spl_caching_it_next tail: the string the class will answer from. The two
  * eager spellings are exclusive (spl_cit_check_flags saw to that), and the cast is
  * php's own, warnings and refusals included.
@@ -3867,17 +3848,36 @@ static sxi32 CitFetch(ph7_context *pCtx)
 	}
 	PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags | CIT_VALID);
 	if( iFlags & CIT_FULL_CACHE ){
-		ph7_value *pCache = CitCacheSlot(pVm,pThis);
 		ph7_value *pKey = PH7_NativeAttr(pThis,IT_CK);
 		ph7_value *pCur = PH7_NativeAttr(pThis,IT_CD);
-		if( pCache && pKey && pCur ){
-			/* php's array_set_zval_key: the ordinary array-key rules, an object
-			 * key's refusal included. */
-			rc = CitCacheKeyCheck(pCtx,pKey);
-			if( rc != PH7_OK ){
+		if( pKey && pCur ){
+			/* php's array_set_zval_key: the WHOLE array-key rule set, which is the
+			 * engine's own subscript rule set (PH7_VmArrayKeyArg) — an object or an
+			 * array key refused, a RESOURCE key warned about and cached under its
+			 * integer id (the string cast had been caching it under the literal
+			 * "Resource id #N"), a NULL key deprecated and cached under "".
+			 * The pair is copied out of the instance first: the rail rewrites a
+			 * resource key in place, which must not touch the iterator's own
+			 * key() slot, and its diagnostics can reach a user error handler that
+			 * no borrowed ph7_value* survives — the cache slot included, which is
+			 * why it is fetched only once the screen is through. */
+			ph7_value sKey,sVal,*pCache;
+			PH7_MemObjInit(pVm,&sKey);
+			PH7_MemObjInit(pVm,&sVal);
+			PH7_MemObjStore(pKey,&sKey);
+			PH7_MemObjStore(pCur,&sVal);
+			rc = PH7_VmArrayKeyArg(pCtx,&sKey,PH7_ARRAYKEY_OFFSET);
+			if( rc != SXRET_OK ){
+				PH7_MemObjRelease(&sKey);
+				PH7_MemObjRelease(&sVal);
 				return rc;
 			}
-			ph7_array_add_elem(pCache,pKey,pCur);
+			pCache = CitCacheSlot(pVm,pThis);
+			if( pCache ){
+				ph7_array_add_elem(pCache,&sKey,&sVal);
+			}
+			PH7_MemObjRelease(&sKey);
+			PH7_MemObjRelease(&sVal);
 		}
 	}
 	if( bRecursive ){

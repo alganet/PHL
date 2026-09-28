@@ -374,23 +374,31 @@ static int VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey)
  * them: a __toString() object was stringified and could answer TRUE for a key
  * php refuses to look up at all.
  *
- * bZppWording picks which of php's two messages the caller reports. php words the
- * illegal-type rejection differently in the alias than in the function itself —
- * `key_exists(): Argument #1 ($key) must be a valid array offset type` vs the
- * engine's offset Error — verified against 8.5.8; the null-key DEPRECATION is the
- * array_key_exists() wording in both.
+ * The same rules are what php applies wherever a key arrives as a VALUE rather
+ * than as a subscript — a Traversable's `key()` collected by iterator_to_array()
+ * or cached by CachingIterator, and array_column()'s `$index_key` COLUMN — so the
+ * rail is shared by all of them. A door that skips it keys the array by the
+ * string CAST instead, which is a key php never writes (`"Array"`, `"Object"`,
+ * `"Resource id #N"`) and, for an object, a key php refuses outright.
+ *
+ * iWording picks which of php's sentences the caller reports (PH7_ARRAYKEY_*).
+ * php words the illegal-type rejection differently in the key_exists alias than in
+ * array_key_exists() itself — `key_exists(): Argument #1 ($key) must be a valid
+ * array offset type` vs the engine's offset Error — verified against 8.5.8; the
+ * null-key DEPRECATION names array_key_exists() for BOTH of those spellings and is
+ * the engine's own `Using null as an array offset is deprecated` everywhere else.
  *
  * pKey is rewritten in place (resource -> int), so callers pass a private copy,
  * not the caller's own argument slot. Returns SXRET_OK when the key is usable, or
  * the status of the TypeError thrown.
  */
-PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int bZppWording)
+PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int iWording)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	SyBlob sMsg;
 	if( VmOffsetTypeRejected(pVm,pKey,0,&sMsg) ){
 		sxi32 rc;
-		if( bZppWording ){
+		if( iWording == PH7_ARRAYKEY_ZPP ){
 			SyBlobRelease(&sMsg);
 			return PH7_VmThrowException(pCtx,"TypeError",
 				"%s(): Argument #1 ($key) must be a valid array offset type",
@@ -411,11 +419,15 @@ PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int bZppWo
 			"Cannot access offset of type float on array");
 	}
 	if( pKey->iFlags & MEMOBJ_NULL ){
-		/* php names the parameter here rather than "an array offset"; the effect
-		 * is the engine's — the lookup below reads the "" key. */
-		PH7_VmThrowError(pVm,0,E_DEPRECATED,
-			"Using null as the key parameter for array_key_exists() is deprecated, "
-			"use an empty string instead");
+		if( iWording == PH7_ARRAYKEY_OFFSET ){
+			VmNullOffsetDeprecate(pVm,pKey);
+		}else{
+			/* php names the parameter here rather than "an array offset"; the effect
+			 * is the engine's — the lookup below reads the "" key. */
+			PH7_VmThrowError(pVm,0,E_DEPRECATED,
+				"Using null as the key parameter for array_key_exists() is deprecated, "
+				"use an empty string instead");
+		}
 	}
 	return SXRET_OK;
 }

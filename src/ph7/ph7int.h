@@ -4339,7 +4339,12 @@ PH7_PRIVATE sxi32 PH7_PhpFloatShape(char *zBuf,sxi32 nLen,int bGeneric);
 PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,int bReturnPropagates);
 PH7_PRIVATE int VmLocalExecThrew(ph7_vm *pVm,sxi32 rc,const void *pResumeBefore,const void *pInlineBefore);
 PH7_PRIVATE int PH7_VmIsAutoGlobal(const char *zName,sxu32 nByte);
-PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int bZppWording);
+/* Wording modes for PH7_VmArrayKeyArg(): the RULES are the engine's subscript
+ * rules in all three, only the two sentences differ. */
+#define PH7_ARRAYKEY_OFFSET 0 /* the engine's own offset wording, `$a[$k]`'s */
+#define PH7_ARRAYKEY_AKE    1 /* array_key_exists(): engine type wording, its own null clause */
+#define PH7_ARRAYKEY_ZPP    2 /* key_exists(): php's ZPP type wording, the same null clause */
+PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int iWording);
 PH7_PRIVATE sxi32 PH7_VmExecAttrArg(ph7_vm *pVm,SySet *pByteCode,ph7_class *pDeclCls,ph7_value *pResult);
 PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...);
 /* vm_builtin_class.c function prototypes */

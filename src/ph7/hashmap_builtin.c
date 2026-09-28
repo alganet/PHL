@@ -182,7 +182,7 @@ PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 	 * and the caller's own variable must not change. */
 	PH7_MemObjInit(pCtx->pVm,&sKey);
 	PH7_MemObjStore(apArg[0],&sKey);
-	rc = PH7_VmArrayKeyArg(pCtx,&sKey,bAlias);
+	rc = PH7_VmArrayKeyArg(pCtx,&sKey,bAlias ? PH7_ARRAYKEY_ZPP : PH7_ARRAYKEY_AKE);
 	if( rc != SXRET_OK ){
 		PH7_MemObjRelease(&sKey);
 		return rc;
@@ -5869,10 +5869,41 @@ PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pCol = pRow;
 		}
 		pIdx = bWantIdx ? HashmapColumnFetch(pMap->pVm,pRow,apArg[2]) : 0;
-		if( pIdx ){
+		if( pIdx == 0 ){
+			ph7_array_add_elem(pArray,0,pCol); /* Auto-index */
+		}else if( pIdx->iFlags & (MEMOBJ_INT|MEMOBJ_STRING) ){
+			/* Already a key php writes verbatim (a numeric string still folds in
+			 * the insert): no diagnostic can fire, so keep the borrowed pointers.
+			 * A WHOLE float lands here too — MemObjTryIntger caches MEMOBJ_INT
+			 * beside MEMOBJ_REAL only when the int/real round trip is exact, which
+			 * is the same float php keys silently; a LOSSY one never carries that
+			 * bit and reaches the screen below. */
 			ph7_array_add_elem(pArray,pIdx,pCol);
 		}else{
-			ph7_array_add_elem(pArray,0,pCol); /* Auto-index */
+			/* php screens the VALUE it is about to key the result by with the
+			 * array-offset rules, exactly as `$out[$row[$index_key]] = …` would:
+			 * an object (Stringable included) or an array is a TypeError, a
+			 * resource warns and becomes its id, a null deprecates and reads "".
+			 * PHL keyed by the string CAST instead, so an array row landed on the
+			 * literal "Array" and a resource on "Resource id #N".
+			 * Both values are copied out first — the screen's Error, warning or
+			 * deprecation can reach a user error handler, and a borrowed
+			 * ph7_value* does not survive one. */
+			ph7_value sKey,sVal;
+			sxi32 rcKey;
+			PH7_MemObjInit(pCtx->pVm,&sKey);
+			PH7_MemObjInit(pCtx->pVm,&sVal);
+			PH7_MemObjStore(pIdx,&sKey);
+			PH7_MemObjStore(pCol,&sVal);
+			rcKey = PH7_VmArrayKeyArg(pCtx,&sKey,PH7_ARRAYKEY_OFFSET);
+			if( rcKey != SXRET_OK ){
+				PH7_MemObjRelease(&sKey);
+				PH7_MemObjRelease(&sVal);
+				return rcKey;
+			}
+			ph7_array_add_elem(pArray,&sKey,&sVal);
+			PH7_MemObjRelease(&sKey);
+			PH7_MemObjRelease(&sVal);
 		}
 	}
 	ph7_result_value(pCtx,pArray);
@@ -6032,16 +6063,30 @@ PH7_PRIVATE int ph7_hashmap_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * helper (the reusable form of the foreach Iterator protocol).
  */
 /* Step shared by iterator_to_array (pArray set) and iterator_count (pArray NULL). */
-struct IterCollect { ph7_value *pArray; int bPreserve; sxi64 nCount; };
+struct IterCollect { ph7_context *pCtx; ph7_value *pArray; int bPreserve; sxi64 nCount; };
 static sxi32 IterCollectStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
 {
 	struct IterCollect *p = (struct IterCollect *)pUserData;
 	(void)pVm;
 	p->nCount++;
-	if( p->pArray ){
-		/* preserve_keys: insert with the iterator key (later wins on collision);
-		 * otherwise append with an auto-assigned int index. */
-		ph7_array_add_elem(p->pArray, p->bPreserve ? pKey : 0, pValue);
+	if( p->pArray == 0 ){
+		return SXRET_OK; /* iterator_count(): the key is never used */
+	}
+	if( p->bPreserve ){
+		/* php stores the element under the iterator's OWN key with the array-offset
+		 * rules `$a[$k] = v` applies (PH7_VmArrayKeyArg): an object or an array key
+		 * is a TypeError, a resource warns and becomes its id, a null deprecates and
+		 * reads "". Without them the string CAST decided the key, so a generator
+		 * yielding an array or an object key landed on the literal "Array"/"Object"
+		 * — a key php never writes, and for an object one it refuses.
+		 * pKey is the walk's own temporary, so the resource rewrite is in place. */
+		sxi32 rcKey = PH7_VmArrayKeyArg(p->pCtx,pKey,PH7_ARRAYKEY_OFFSET);
+		if( rcKey != SXRET_OK ){
+			return rcKey;
+		}
+		ph7_array_add_elem(p->pArray, pKey, pValue); /* later wins on collision */
+	}else{
+		ph7_array_add_elem(p->pArray, 0, pValue);    /* auto-assigned int index */
 	}
 	return SXRET_OK;
 }
@@ -6057,6 +6102,7 @@ PH7_PRIVATE int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **a
 	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	sCol.pCtx = pCtx;
 	sCol.pArray = pArray;
 	sCol.bPreserve = (nArg > 1) ? ph7_value_to_bool(apArg[1]) : 1;
 	sCol.nCount = 0;
@@ -6100,7 +6146,7 @@ PH7_PRIVATE int ph7_iterator_count(ph7_context *pCtx, int nArg, ph7_value **apAr
 		ph7_result_int64(pCtx, (ph7_int64)((ph7_hashmap *)apArg[0]->x.pOther)->nEntry);
 		return PH7_OK;
 	}
-	sCol.pArray = 0; sCol.bPreserve = 0; sCol.nCount = 0;
+	sCol.pCtx = pCtx; sCol.pArray = 0; sCol.bPreserve = 0; sCol.nCount = 0;
 	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterCollectStep, &sCol);
 	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ return rc; }
 	if( rc == SXERR_NOTIMPLEMENTED ){
