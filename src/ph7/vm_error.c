@@ -1167,6 +1167,92 @@ static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const cha
 	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 }
 /*
+ * Of the pseudo-types a property may be declared with, the two whose mask holds
+ * an array. `object` does not, and neither does any real class or interface --
+ * php looks at the type MASK, so `ArrayAccess` and `Traversable` are refused
+ * exactly like `int`.
+ */
+static int VmPseudoTypeAcceptsArray(const SyString *pClass)
+{
+	return (pClass->nByte == 8 && SyStrnicmp(pClass->zString,"iterable",8) == 0)
+	    || (pClass->nByte == 5 && SyStrnicmp(pClass->zString,"mixed",5) == 0);
+}
+/*
+ * TRUE when a property's declared type admits an ARRAY, which is what decides
+ * whether a dimension write to it may AUTO-INITIALIZE one. php asks the type's
+ * mask (`MAY_BE_ARRAY`), so `array`, `?array`, `iterable`, `mixed` and any union
+ * with an array alternative say yes and every class type says no -- `ArrayAccess`
+ * and `Traversable` included, which is the part a "does it behave like an array"
+ * reading would get wrong.
+ */
+static int VmAttrTypeAcceptsArray(ph7_class_attr *pAttr)
+{
+	if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+		return 1; /* untyped: a dimension write vivifies as it always has */
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
+		ph7_type_alt *aAlt = (ph7_type_alt *)SySetBasePtr(&pAttr->aUnionAlts);
+		sxu32 i;
+		for( i = 0 ; i < SySetUsed(&pAttr->aUnionAlts) ; ++i ){
+			if( aAlt[i].nType == MEMOBJ_HASHMAP ){
+				return 1;
+			}
+			if( aAlt[i].nType == SXU32_HIGH && VmPseudoTypeAcceptsArray(&aAlt[i].sClass) ){
+				return 1;
+			}
+		}
+		return 0;
+	}
+	if( pAttr->nType == MEMOBJ_HASHMAP ){
+		return 1;
+	}
+	if( pAttr->nType == SXU32_HIGH ){
+		return VmPseudoTypeAcceptsArray(&pAttr->sClass);
+	}
+	return 0;
+}
+/*
+ * Throw php's TypeError for a dimension write that would have to auto-initialize
+ * an array inside a property whose declared type has no room for one.
+ */
+PH7_PRIVATE sxi32 VmThrowAutoInitArrayError(ph7_vm *pVm,VmClassAttr *pVmAttr)
+{
+	ph7_class_attr *pAttr = pVmAttr->pAttr;
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+	char zType[256];
+	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
+		VmHintScopeClass(pVm,pAttr->pDeclClass,pVmAttr->pOwner),zType,sizeof(zType));
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pOwner ){
+		SyBlobFormat(&sMsg,"Cannot auto-initialize an array inside property %z::$%z of type %s",
+			&pOwner->sName,&pAttr->sName,zTypeText);
+	}else{
+		SyBlobFormat(&sMsg,"Cannot auto-initialize an array inside property $%z of type %s",
+			&pAttr->sName,zTypeText);
+	}
+	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
+}
+/*
+ * Decide what a DIMENSION write to an uninitialized typed property does, which
+ * is php's `zend_handle_fetch_obj_flags`: auto-initialize an empty array when the
+ * declared type admits one, and refuse otherwise. Returns SXRET_OK with the slot
+ * left holding a fresh empty array, or the thrown TypeError.
+ */
+PH7_PRIVATE sxi32 VmAutoInitArrayProperty(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_value *pSlot)
+{
+	if( pVmAttr->pAttr == 0 || pSlot == 0 ){
+		return SXRET_OK;
+	}
+	if( !VmAttrTypeAcceptsArray(pVmAttr->pAttr) ){
+		return VmThrowAutoInitArrayError(pVm,pVmAttr);
+	}
+	PH7_MemObjRelease(pSlot);
+	PH7_MemObjToHashmap(pSlot);
+	pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
+	return SXRET_OK;
+}
+/*
  * Throw a PHP-compatible Error for reading an uninitialized typed property.
  */
 PH7_PRIVATE sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
@@ -1191,21 +1277,30 @@ PH7_PRIVATE sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClas
  * property from a scope its set-visibility excludes:
  * "Cannot modify private(set) property C::$x from {global scope|scope X}".
  */
-static sxi32 VmThrowSetVisibilityError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+static sxi32 VmThrowSetVisibilityErrorEx(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,
+	int bIndirect)
 {
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 	ph7_class *pActive = VmCurrentSelf(pVm);
 	const char *zVis = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) ? "private(set)" : "protected(set)";
+	/* php words a write that only reaches the property THROUGH something it holds
+	 * -- `$o->arr['k'] = v`, a by-reference bind -- as an INDIRECT modification,
+	 * the same distinction its readonly sentence makes. */
+	const char *zVerb = bIndirect ? "indirectly modify" : "modify";
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pActive ){
-		SyBlobFormat(&sMsg,"Cannot modify %s property %z::$%z from scope %z",
-			zVis,&pOwner->sName,&pAttr->sName,&pActive->sName);
+		SyBlobFormat(&sMsg,"Cannot %s %s property %z::$%z from scope %z",
+			zVerb,zVis,&pOwner->sName,&pAttr->sName,&pActive->sName);
 	}else{
-		SyBlobFormat(&sMsg,"Cannot modify %s property %z::$%z from global scope",
-			zVis,&pOwner->sName,&pAttr->sName);
+		SyBlobFormat(&sMsg,"Cannot %s %s property %z::$%z from global scope",
+			zVerb,zVis,&pOwner->sName,&pAttr->sName);
 	}
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+static sxi32 VmThrowSetVisibilityError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	return VmThrowSetVisibilityErrorEx(pVm,pClass,pAttr,0);
 }
 /*
  * Check the PHP 8.4 asymmetric set-visibility of a property write against the
@@ -1391,6 +1486,20 @@ PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx)
 		SyBlobFormat(&sMsg,"Cannot indirectly modify readonly property %z::$%z",
 			&pOwner->sName,&pAttr->sName);
 		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+	}
+	/* An asymmetric set-visibility (PHP 8.4) gates the indirect write exactly as
+	 * readonly does, and from the same scopes: `$o->arr['k'] = v` on a
+	 * `public private(set) array $arr` is refused outside the declaring class.
+	 * Only readonly was screened here, so that write landed in SILENCE. */
+	if( pAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
+		ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+		ph7_class *pActive = VmCurrentSelf(pVm);
+		int bOk = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET)
+			? (pActive != 0 && pActive == pDecl)
+			: (pActive != 0 && pDecl != 0 && PH7_VmInstanceOf(pActive,pDecl));
+		if( !bOk ){
+			return VmThrowSetVisibilityErrorEx(pVm,pVmAttr->pOwner,pAttr,1);
+		}
 	}
 	return SXRET_OK;
 }

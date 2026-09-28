@@ -1991,6 +1991,26 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							if( VmMemberCtxIsLookup(pInstr->iP2) ){
 								bIsLhs = 1;
 							}
+							/* A WRITE base is not a read either. `$o->p ??= v` takes the
+							 * slot's NULL and assigns over it, and a DIMENSION write
+							 * (`$o->t['n'] = v`) AUTO-INITIALIZES an array when the
+							 * declared type has room for one -- php's
+							 * zend_handle_fetch_obj_flags -- or refuses with its own
+							 * TypeError when it does not. Raising the read Error here
+							 * instead is what stopped Doctrine's ClassMetadata, whose
+							 * `public array $table;` is filled exactly that way. */
+							if( (pInstr + 1)->iOp == PH7_OP_NULLC_JMP ){
+								bIsLhs = 1;   /* `$o->p ??= v` assigns over the unset slot */
+							}else if( VmMemberFetchForWrite(pInstr) ){
+								sxi32 rcAI = VmAutoInitArrayProperty(&(*pVm),pObjAttr,
+									(ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx));
+								if( rcAI != SXRET_OK ){
+									VmBoundaryPark(&(*pVm),rcAI);
+									PH7_ClassInstanceUnref(pThis);
+									VM_EXIT_BREAK;
+								}
+								bIsLhs = 1;
+							}
 							if( !bIsLhs ){
 								sxi32 rcU = VmThrowUninitializedPropertyError(&(*pVm),pClass,pObjAttr->pAttr);
 								PH7_ClassInstanceUnref(pThis);
@@ -2926,6 +2946,36 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 												if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
 													/* Destructuring target ([S::$s] = [...]):
 													 * initialized by the OP_LOAD_LIST store. */
+													bIsLhs = 1;
+												}
+												/* isset()/empty()/`??` ask whether the property
+												 * HAS a value and read an uninitialized one as
+												 * "not set" -- a silent miss, not the Error a
+												 * plain read raises. The instance path has had
+												 * this since typed properties landed; the STATIC
+												 * one never did, so `isset(C::$n)` threw where php
+												 * answers false. (`??=` is the NULLC_JMP branch
+												 * below -- it is a write base, not a lookup.) */
+												if( VmMemberCtxIsLookup(pInstr->iP2) ){
+													bIsLhs = 1;
+												}
+												/* And a WRITE base is not a read: same
+												 * auto-initialize rule as the instance path. A
+												 * read-MODIFY-write (`C::$n++`, `.=`) is not one
+												 * of these -- it reads the property first, so
+												 * php's Error stands. */
+												if( (pInstr + 1)->iOp == PH7_OP_NULLC_JMP ){
+													bIsLhs = 1;
+												}else if( VmMemberFetchForWrite(pInstr) ){
+													sxi32 rcAI = VmAutoInitArrayProperty(&(*pVm),pV,
+														(ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx));
+													if( rcAI != SXRET_OK ){
+														VmBoundaryPark(&(*pVm),rcAI);
+														if( pThis ){
+															PH7_ClassInstanceUnref(pThis);
+														}
+														VM_EXIT_BREAK;
+													}
 													bIsLhs = 1;
 												}
 												if( !bIsLhs ){
