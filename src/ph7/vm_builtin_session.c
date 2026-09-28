@@ -2122,37 +2122,43 @@ static int vm_builtin_session_decode(ph7_context *pCtx,int nArg,ph7_value **apAr
 }
 /*
  * php's three save-handler interfaces, and the class that implements the first
- * two over the built-in `files` store. The interfaces declare no return types:
- * php's own stubs do not, so a handler written against them may answer whatever
- * its store answers.
+ * two over the built-in `files` store.
+ *
+ * Every method here declares a return type, and every one of them is php's
+ * TENTATIVE kind (the leading `@`) -- which is what lets a handler written
+ * before php 8.1 keep answering whatever its store answers. The rows used to
+ * declare none at all, on the belief that php's stubs declare none; php's
+ * stubs declare all sixteen, and a return-type sweep of both engines reports
+ * every one. `read` is the pair's odd one (`string|false`, not `string`), and
+ * `gc` answers php's `int|false` -- the count of records it removed.
  */
 static sxi32 VmSessInstallClasses(ph7_vm *pVm)
 {
 	static const PH7_NativeMethodDef aIface[] = {
-		{ "open",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $path, string $name", 0, 0 },
-		{ "close",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
-		{ "read",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", 0, 0 },
-		{ "write",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id, string $data", 0, 0 },
-		{ "destroy", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", 0, 0 },
-		{ "gc",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $max_lifetime", 0, 0 },
+		{ "open",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $path, string $name", "@bool", 0 },
+		{ "close",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@bool", 0 },
+		{ "read",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", "@string|false", 0 },
+		{ "write",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id, string $data", "@bool", 0 },
+		{ "destroy", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", "@bool", 0 },
+		{ "gc",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $max_lifetime", "@int|false", 0 },
 	};
 	static const PH7_NativeMethodDef aIdIface[] = {
-		{ "create_sid", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "create_sid", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@string", 0 },
 	};
 	static const PH7_NativeMethodDef aStampIface[] = {
-		{ "validateId",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", 0, 0 },
-		{ "updateTimestamp", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id, string $data", 0, 0 },
+		{ "validateId",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", "@bool", 0 },
+		{ "updateTimestamp", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id, string $data", "@bool", 0 },
 	};
 	static const PH7_NativeMethodDef aHandler[] = {
-		{ "open",    PH7_MOD_PUBLIC, "string $path, string $name", 0,
+		{ "open",    PH7_MOD_PUBLIC, "string $path, string $name", "@bool",
 		  vm_builtin_SessionHandler_open },
-		{ "close",   PH7_MOD_PUBLIC, "", 0, vm_builtin_SessionHandler_close },
-		{ "read",    PH7_MOD_PUBLIC, "string $id", 0, vm_builtin_SessionHandler_read },
-		{ "write",   PH7_MOD_PUBLIC, "string $id, string $data", 0,
+		{ "close",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SessionHandler_close },
+		{ "read",    PH7_MOD_PUBLIC, "string $id", "@string|false", vm_builtin_SessionHandler_read },
+		{ "write",   PH7_MOD_PUBLIC, "string $id, string $data", "@bool",
 		  vm_builtin_SessionHandler_write },
-		{ "destroy", PH7_MOD_PUBLIC, "string $id", 0, vm_builtin_SessionHandler_destroy },
-		{ "gc",      PH7_MOD_PUBLIC, "int $max_lifetime", 0, vm_builtin_SessionHandler_gc },
-		{ "create_sid", PH7_MOD_PUBLIC, "", 0, vm_builtin_SessionHandler_create_sid },
+		{ "destroy", PH7_MOD_PUBLIC, "string $id", "@bool", vm_builtin_SessionHandler_destroy },
+		{ "gc",      PH7_MOD_PUBLIC, "int $max_lifetime", "@int|false", vm_builtin_SessionHandler_gc },
+		{ "create_sid", PH7_MOD_PUBLIC, "", "@string", vm_builtin_SessionHandler_create_sid },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "SessionHandlerInterface", 0, 0, PH7_CLASS_INTERFACE,
