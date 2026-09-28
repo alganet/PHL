@@ -707,6 +707,56 @@ static int MbCodeWidth(sxu32 cp)
 #define MB_ENC_UTF8    0
 #define MB_ENC_LATIN1  1
 #define MB_ENC_ASCII   2
+/*
+ *   CP1252   one byte per character too, and identical to LATIN1 except for the
+ *            0x80..0x9F band, where Windows-1252 puts twenty-seven typographic
+ *            characters (the euro sign, the curly quotes, the dashes) instead of
+ *            the C1 controls. The five bytes the code page leaves undefined keep
+ *            their LATIN1 code point, which is what php's own table does -- every
+ *            byte is a character, `mb_check_encoding()` answers true for all 256,
+ *            and the round trip is exact.
+ *
+ * It is here because egulias/email-validator -- the email validator under
+ * Respect\Validation, Symfony, Laravel and PHPUnit's own dependencies -- converts
+ * every single character it lexes `from` Windows-1252, so refusing the name put an
+ * unhandled TypeError through every email validation in the ecosystem.
+ */
+#define MB_ENC_CP1252  3
+/* The 0x80..0x9F band. A zero entry is one of the five undefined bytes, which
+ * take their own value as their code point. */
+static const sxu32 aMbCp1252[32] = {
+	0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+	0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017D, 0,
+	0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+	0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178
+};
+/* One CP1252 byte as a code point. */
+static sxu32 MbCp1252Decode(unsigned char c)
+{
+	if( c >= 0x80 && c <= 0x9F && aMbCp1252[c - 0x80] != 0 ){
+		return aMbCp1252[c - 0x80];
+	}
+	return (sxu32)c;
+}
+/* ...and back: the CP1252 byte for a code point, or -1 when it has none. */
+static int MbCp1252Encode(sxu32 cp)
+{
+	int i;
+	if( cp <= 0xFF ){
+		/* A byte in the band means the C1 control, which CP1252 only keeps for
+		 * the five undefined slots; everything else outside the band is LATIN1. */
+		if( cp < 0x80 || cp > 0x9F ){
+			return (int)cp;
+		}
+		return aMbCp1252[cp - 0x80] == 0 ? (int)cp : -1;
+	}
+	for( i = 0 ; i < 32 ; i++ ){
+		if( aMbCp1252[i] == cp ){
+			return 0x80 + i;
+		}
+	}
+	return -1;
+}
 /* The code an error character carries. Not a code point (php's own marker is
  * not one either), so it compares equal to another error character and to
  * nothing else — a literal '?' in the haystack is NOT a match for an
@@ -724,7 +774,8 @@ static const struct MbEncName {
 	{ "UTF-8", MB_ENC_UTF8 },
 	{ "8bit", MB_ENC_LATIN1 },
 	{ "ISO-8859-1", MB_ENC_LATIN1 },
-	{ "ASCII", MB_ENC_ASCII }
+	{ "ASCII", MB_ENC_ASCII },
+	{ "Windows-1252", MB_ENC_CP1252 }
 };
 /* Resolve an encoding name to an aMbEncName[] index, or -1 when it is outside
  * PHL's modelled set. Surrounding ASCII whitespace is trimmed (php accepts
@@ -745,6 +796,12 @@ static int MbEncodingNameId(const char *z,int n)
 	}
 	if( (n==5 && SyStrnicmp(z,"ASCII",5)==0) || (n==8 && SyStrnicmp(z,"US-ASCII",8)==0) ){
 		return 3;
+	}
+	/* php's two spellings, both canonicalised to `Windows-1252`. `1252` and
+	 * `Windows1252` are NOT names it knows (probed). */
+	if( (n==12 && SyStrnicmp(z,"Windows-1252",12)==0)
+	 || (n==6 && SyStrnicmp(z,"CP1252",6)==0) ){
+		return 4;
 	}
 	return -1;
 }
@@ -770,6 +827,20 @@ static int MbConvEncId(const char *z,int n)
 #define MB_SUBST_NONE    1
 #define MB_SUBST_LONG    2
 #define MB_SUBST_ENTITY  3
+/* Can iEnc hold this code point at all? UTF-8 holds everything; the one-byte
+ * encodings hold what their table has a byte for -- which for Windows-1252 is
+ * neither "under 0x100" nor a contiguous range, since it trades the C1 controls
+ * for characters from four different Unicode blocks. */
+static int MbEncHolds(int iEnc,sxu32 cp)
+{
+	if( iEnc == MB_ENC_UTF8 ){
+		return 1;
+	}
+	if( iEnc == MB_ENC_CP1252 ){
+		return MbCp1252Encode(cp) >= 0;
+	}
+	return cp <= (sxu32)(iEnc == MB_ENC_ASCII ? 0x7F : 0xFF);
+}
 /* Write one code point in iEnc, with no substitution of its own: a code the
  * encoding cannot hold becomes '?', which is where the fallback stops. */
 static void MbEncodeRaw(SyBlob *pOut,sxu32 cp,int iEnc)
@@ -777,6 +848,12 @@ static void MbEncodeRaw(SyBlob *pOut,sxu32 cp,int iEnc)
 	unsigned char zEnc[4];
 	if( iEnc == MB_ENC_UTF8 ){
 		SyBlobAppend(pOut,zEnc,MbUtf8Encode(cp,zEnc));
+		return;
+	}
+	if( iEnc == MB_ENC_CP1252 ){
+		int b = MbCp1252Encode(cp);
+		zEnc[0] = (unsigned char)(b < 0 ? '?' : b);
+		SyBlobAppend(pOut,zEnc,1);
 		return;
 	}
 	zEnc[0] = (unsigned char)((cp <= (iEnc == MB_ENC_ASCII ? 0x7Fu : 0xFFu)) ? cp : '?');
@@ -804,7 +881,7 @@ static void MbSubstAppend(ph7_context *pCtx,SyBlob *pOut,int iEnc,sxi64 iCpOrig)
 			/* An error character has no code point to spell out, so these two
 			 * modes fall back to the substitute code point — and, unlike the
 			 * plain one, write NOTHING when the encoding cannot hold it. */
-			if( iEnc != MB_ENC_UTF8 && (sxu32)iSub > (sxu32)(iEnc == MB_ENC_ASCII ? 0x7F : 0xFF) ){
+			if( !MbEncHolds(iEnc,(sxu32)iSub) ){
 				return;
 			}
 			MbEncodeRaw(pOut,(sxu32)iSub,iEnc);
@@ -845,6 +922,9 @@ static sxu32 MbNextCode(const unsigned char *z,sxu32 n,int iEnc,sxu32 *pLen)
 	sxi32 iCp;
 	if( iEnc != MB_ENC_UTF8 ){
 		*pLen = 1;
+		if( iEnc == MB_ENC_CP1252 ){
+			return MbCp1252Decode(z[0]);
+		}
 		return (iEnc == MB_ENC_ASCII && z[0] > 0x7F) ? MB_BAD_CODE : (sxu32)z[0];
 	}
 	iCp = MbUtf8Decode(z,n,pLen);
@@ -2100,8 +2180,8 @@ static int MbBufferIsValid(const char *zIn,sxu32 nByte,int iEnc)
 {
 	const unsigned char *z = (const unsigned char *)zIn;
 	sxu32 i = 0,nLen;
-	if( iEnc == MB_ENC_LATIN1 ){
-		return 1;
+	if( iEnc == MB_ENC_LATIN1 || iEnc == MB_ENC_CP1252 ){
+		return 1;   /* every byte is a character of both */
 	}
 	while( i < nByte ){
 		if( MbNextCode(&z[i],nByte - i,iEnc,&nLen) == MB_BAD_CODE ){
@@ -2207,8 +2287,14 @@ static int PH7_builtin_mb_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * encoding cannot hold: mb_chr(233,"ASCII") is false where mb_chr(233,"8bit")
 	 * is the single byte 0xE9. */
 	if( cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)
-	 || (iEnc == MB_ENC_LATIN1 && cp > 0xFF) || (iEnc == MB_ENC_ASCII && cp > 0x7F) ){
+	 || (iEnc == MB_ENC_LATIN1 && cp > 0xFF) || (iEnc == MB_ENC_ASCII && cp > 0x7F)
+	 || (iEnc == MB_ENC_CP1252 && MbCp1252Encode((sxu32)cp) < 0) ){
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( iEnc == MB_ENC_CP1252 ){
+		zOut[0] = (unsigned char)MbCp1252Encode((sxu32)cp);
+		ph7_result_string(pCtx,(const char *)zOut,1);
 		return PH7_OK;
 	}
 	if( iEnc != MB_ENC_UTF8 ){
@@ -2311,14 +2397,43 @@ static int MbDetectEncId(const char *z,int n)
 	 || (n == 6 && SyStrnicmp(z,"binary",6) == 0) ){
 		return MB_DETECT_NEVER;
 	}
+	if( (n == 12 && SyStrnicmp(z,"Windows-1252",12) == 0)
+	 || (n == 6 && SyStrnicmp(z,"CP1252",6) == 0) ){
+		return 4;
+	}
 	return -1;
+}
+/* The canonical spelling php's `mb_detect_order()` answers for each of them --
+ * `binary` reads back as `8bit`, `latin1` as `ISO-8859-1`, `UTF8` as `UTF-8`. */
+static const char *const azMbDetectName[] = { "ASCII", "UTF-8", "ISO-8859-1", "8bit", "Windows-1252" };
+/* How many of them index the per-candidate count arrays (the `8bit` row never
+ * does: it is named and counted, and never chosen). */
+#define MB_DETECT_SLOTS 5
+/*
+ * php's `auto`: not an encoding, an encoding LIST. It is accepted exactly where a
+ * list is expected -- `mb_detect_encoding()`'s $encodings and
+ * `mb_convert_encoding()`'s $from_encoding -- and refused everywhere a single
+ * encoding is (`mb_strlen($s,'auto')` is php's `must be a valid encoding` ValueError,
+ * which this engine already answers).
+ *
+ * It expands to the LANGUAGE's default detect order, which for php's neutral default
+ * is exactly ASCII then UTF-8 -- and NOT to whatever `mb_detect_order()` currently
+ * holds. The two are indistinguishable until a script sets an order: with
+ * `mb_detect_order(['ISO-8859-1'])` in force, php still answers false for a latin-1
+ * byte asked with `auto` and answers `ISO-8859-1` when asked with null.
+ */
+static int MbNameIsAuto(const char *z,int n)
+{
+	while( n > 0 && (z[0]==' '||z[0]=='\t'||z[0]=='\n'||z[0]=='\r') ){ z++; n--; }
+	while( n > 0 && (z[n-1]==' '||z[n-1]=='\t'||z[n-1]=='\n'||z[n-1]=='\r') ){ n--; }
+	return n == 4 && SyStrnicmp(z,"auto",4) == 0;
 }
 /* Per-detection running state, shared by the array walker and the string path. */
 typedef struct mb_detect_state mb_detect_state;
 struct mb_detect_state {
 	ph7_context *pCtx;
-	int aErr[3];      /* precomputed [ASCII], [UTF-8], [ISO-8859-1] error counts */
-	int aChar[3];     /* and the character count each one reads */
+	int aErr[MB_DETECT_SLOTS];  /* precomputed per-candidate error counts */
+	int aChar[MB_DETECT_SLOTS]; /* and the character count each one reads */
 	int iBestEnc;     /* winning encoding id, -1 until the first that can win */
 	int iBestErr;     /* its error count */
 	int iBestChar;    /* and its character count */
@@ -2326,21 +2441,22 @@ struct mb_detect_state {
 	int bError;       /* an out-of-scope name threw -> abort */
 	int rc;           /* the throw's propagation code (PH7_ABORT/PH7_EXCEPTION) */
 };
-/* Fold one candidate encoding name into the running best. Returns SXERR_ABORT
- * (and throws) when the name is outside PHL's detectable scope. */
-static int MbDetectConsider(mb_detect_state *pState,const char *zName,int nName)
+/* A detect id (ASCII/UTF-8/ISO-8859-1/8bit/Windows-1252) as the MB_ENC_* the
+ * converters speak. `8bit` reaches this only as a NAMED source encoding -- it is
+ * never a detection winner -- and decodes the way ISO-8859-1 does. */
+static int MbDetectIdToConvId(int iDetect)
 {
-	int enc = MbDetectEncId(zName,nName);
-	if( enc < 0 ){
-		pState->bError = 1;
-		pState->rc = PH7_VmThrowException(pState->pCtx,"ValueError",
-			"mb_detect_encoding(): Argument #2 ($encodings) contains invalid encoding \"%.*s\"",
-			nName,zName);
-		return SXERR_ABORT;
-	}
+	if( iDetect == 1 ){ return MB_ENC_UTF8; }
+	if( iDetect == 2 || iDetect == MB_DETECT_NEVER ){ return MB_ENC_LATIN1; }
+	if( iDetect == 4 ){ return MB_ENC_CP1252; }
+	return MB_ENC_ASCII;
+}
+/* Fold one candidate encoding, already screened and expanded, into the running best. */
+static void MbDetectConsider(mb_detect_state *pState,int enc)
+{
 	pState->nSeen++;
 	if( enc == MB_DETECT_NEVER ){
-		return PH7_OK;
+		return;
 	}
 	if( pState->iBestEnc < 0
 	 || pState->aErr[enc] < pState->iBestErr
@@ -2349,17 +2465,145 @@ static int MbDetectConsider(mb_detect_state *pState,const char *zName,int nName)
 		pState->iBestErr = pState->aErr[enc];
 		pState->iBestChar = pState->aChar[enc];
 	}
+}
+/*
+ * One encoding LIST, expanded and screened: php takes an array, a comma-separated
+ * string or the name `auto` wherever it wants a list, and answers the SAME two
+ * ValueErrors for every one of them -- only the function and the argument change.
+ * Building the list once and folding it afterwards is what lets the three list
+ * positions (detect, convert-from, detect_order) share the rules.
+ */
+#define MB_ENCLIST_MAX 16
+typedef struct mb_enclist mb_enclist;
+struct mb_enclist {
+	ph7_context *pCtx;
+	const char *zFn;   /* "mb_detect_encoding" */
+	int iArgNo;        /* php's argument NUMBER in the message */
+	const char *zArg;  /* ...and its name, without the `$` */
+	sxu8 aEnc[MB_ENCLIST_MAX];
+	int nEnc;
+	int bError;
+	int rc;
+};
+static void MbEncListInit(mb_enclist *p,ph7_context *pCtx,const char *zFn,int iArgNo,const char *zArg)
+{
+	p->pCtx = pCtx; p->zFn = zFn; p->iArgNo = iArgNo; p->zArg = zArg;
+	p->nEnc = 0; p->bError = 0; p->rc = PH7_OK;
+}
+static void MbEncListPut(mb_enclist *p,int iEnc)
+{
+	if( p->nEnc < MB_ENCLIST_MAX ){
+		p->aEnc[p->nEnc++] = (sxu8)iEnc;
+	}
+}
+static int MbEncListAdd(mb_enclist *p,const char *zName,int nName)
+{
+	int enc;
+	if( MbNameIsAuto(zName,nName) ){
+		MbEncListPut(p,0);   /* the language default order: ASCII, */
+		MbEncListPut(p,1);   /* then UTF-8 */
+		return PH7_OK;
+	}
+	enc = MbDetectEncId(zName,nName);
+	if( enc < 0 ){
+		p->bError = 1;
+		p->rc = PH7_VmThrowException(p->pCtx,"ValueError",
+			"%s(): Argument #%d ($%s) contains invalid encoding \"%.*s\"",
+			p->zFn,p->iArgNo,p->zArg,nName,zName);
+		return SXERR_ABORT;
+	}
+	MbEncListPut(p,enc);
 	return PH7_OK;
 }
-/* ph7_array_walk() callback over the $encodings array. */
-static int MbDetectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+/* ph7_array_walk() callback over an $encodings array. */
+static int MbEncListWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 {
-	mb_detect_state *pState = (mb_detect_state *)pUserData;
+	mb_enclist *p = (mb_enclist *)pUserData;
 	const char *zName;
 	int nName;
 	SXUNUSED(pKey);
 	zName = ph7_value_to_string(pData,&nName);
-	return MbDetectConsider(pState,zName,nName);
+	return MbEncListAdd(p,zName,nName);
+}
+/*
+ * Expand pVal -- an array or a comma-separated string -- into p. Returns SXERR_ABORT
+ * with p->rc carrying the throw when a name is outside this engine's set, and raises
+ * php's "must specify at least one encoding" for a list that names none.
+ */
+static int MbEncListBuild(mb_enclist *p,ph7_value *pVal)
+{
+	if( ph7_value_is_array(pVal) ){
+		if( ph7_array_count(pVal) < 1 ){
+			p->bError = 1;
+			p->rc = PH7_VmThrowException(p->pCtx,"ValueError",
+				"%s(): Argument #%d ($%s) must specify at least one encoding",
+				p->zFn,p->iArgNo,p->zArg);
+			return SXERR_ABORT;
+		}
+		ph7_array_walk(pVal,MbEncListWalker,p);
+		if( p->bError ){
+			return SXERR_ABORT;
+		}
+	}else{
+		const char *z;
+		int n,i,iStart = 0;
+		z = ph7_value_to_string(pVal,&n);
+		for( i = 0 ; i <= n ; i++ ){
+			if( i == n || z[i] == ',' ){
+				const char *zTok = &z[iStart];
+				int nTok = i - iStart, t = nTok;
+				/* ignore an empty / all-whitespace token */
+				while( t > 0 && (zTok[0]==' '||zTok[0]=='\t'||zTok[0]=='\n'||zTok[0]=='\r') ){ zTok++; t--; }
+				if( t > 0 && MbEncListAdd(p,&z[iStart],nTok) == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				iStart = i + 1;
+			}
+		}
+	}
+	if( p->nEnc < 1 ){
+		p->bError = 1;
+		p->rc = PH7_VmThrowException(p->pCtx,"ValueError",
+			"%s(): Argument #%d ($%s) must specify at least one encoding",
+			p->zFn,p->iArgNo,p->zArg);
+		return SXERR_ABORT;
+	}
+	return PH7_OK;
+}
+/* The order `mb_detect_encoding()` walks with no list of its own: whatever
+ * `mb_detect_order()` last set, and php's default pair until something does. */
+static void MbEncListFromVmOrder(mb_enclist *p,ph7_vm *pVm)
+{
+	int i;
+	if( pVm->nMbDetectOrder < 1 ){
+		MbEncListPut(p,0);
+		MbEncListPut(p,1);
+		return;
+	}
+	for( i = 0 ; i < (int)pVm->nMbDetectOrder ; i++ ){
+		MbEncListPut(p,pVm->aMbDetectOrder[i]);
+	}
+}
+/* Precompute the per-candidate error and character counts for one input. */
+static void MbDetectInit(mb_detect_state *pState,ph7_context *pCtx,const char *zIn,int nByte)
+{
+	pState->pCtx = pCtx;
+	pState->aErr[0] = MbAsciiErrors((const unsigned char *)zIn,nByte);
+	pState->aErr[1] = MbUtf8Errors((const unsigned char *)zIn,nByte);
+	pState->aErr[2] = 0;   /* every byte is a character of ISO-8859-1 */
+	pState->aErr[3] = 0;   /* (the 8bit row: named, counted, never chosen) */
+	pState->aErr[4] = 0;   /* ...and of Windows-1252 */
+	pState->aChar[0] = nByte;
+	pState->aChar[1] = (int)MbStrlen(zIn,(sxu32)nByte,MB_ENC_UTF8);
+	pState->aChar[2] = nByte;
+	pState->aChar[3] = nByte;
+	pState->aChar[4] = nByte;
+	pState->iBestEnc = -1;
+	pState->iBestErr = 0;
+	pState->iBestChar = 0;
+	pState->nSeen = 0;
+	pState->bError = 0;
+	pState->rc = PH7_OK;
 }
 static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2372,51 +2616,21 @@ static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	zIn = ph7_value_to_string(apArg[0],&nByte);
 	if( nArg > 2 ){ bStrict = ph7_value_to_bool(apArg[2]); }
-	sState.pCtx = pCtx;
-	sState.aErr[0] = MbAsciiErrors((const unsigned char *)zIn,nByte);
-	sState.aErr[1] = MbUtf8Errors((const unsigned char *)zIn,nByte);
-	sState.aErr[2] = 0;   /* every byte is a character of ISO-8859-1 */
-	sState.aChar[0] = nByte;
-	sState.aChar[1] = (int)MbStrlen(zIn,(sxu32)nByte,MB_ENC_UTF8);
-	sState.aChar[2] = nByte;
-	sState.iBestEnc = -1;
-	sState.iBestErr = 0;
-	sState.iBestChar = 0;
-	sState.nSeen = 0;
-	sState.bError = 0;
-	sState.rc = PH7_OK;
-	if( nArg < 2 || ph7_value_is_null(apArg[1]) ){
-		/* php's default detect order is exactly ASCII, then UTF-8 */
-		MbDetectConsider(&sState,"ASCII",5);
-		MbDetectConsider(&sState,"UTF-8",5);
-	}else if( ph7_value_is_array(apArg[1]) ){
-		if( ph7_array_count(apArg[1]) == 0 ){
-			return PH7_VmThrowException(pCtx,"ValueError",
-				"mb_detect_encoding(): Argument #2 ($encodings) must specify at least one encoding");
+	MbDetectInit(&sState,pCtx,zIn,nByte);
+	{
+		/* php walks a LIST here: an array, a comma string, or `auto` -- and with
+		 * nothing given at all, the detect ORDER a script may have set. */
+		mb_enclist sList;
+		int i;
+		MbEncListInit(&sList,pCtx,"mb_detect_encoding",2,"encodings");
+		if( nArg < 2 || ph7_value_is_null(apArg[1]) ){
+			MbEncListFromVmOrder(&sList,pCtx->pVm);
+		}else if( MbEncListBuild(&sList,apArg[1]) == SXERR_ABORT ){
+			return sList.rc;
 		}
-		ph7_array_walk(apArg[1],MbDetectWalker,&sState);
-		if( sState.bError ){ return sState.rc; }
-	}else{
-		/* comma-separated list, e.g. "ASCII, UTF-8" */
-		const char *z2;
-		int n2,i,iStart = 0;
-		z2 = ph7_value_to_string(apArg[1],&n2);
-		for( i = 0 ; i <= n2 ; i++ ){
-			if( i == n2 || z2[i] == ',' ){
-				const char *zTok = &z2[iStart];
-				int nTok = i - iStart,t = nTok;
-				/* ignore an empty / all-whitespace token */
-				while( t > 0 && (zTok[0]==' '||zTok[0]=='\t'||zTok[0]=='\n'||zTok[0]=='\r') ){ zTok++; t--; }
-				if( t > 0 && MbDetectConsider(&sState,&z2[iStart],nTok) == SXERR_ABORT ){
-					return sState.rc;
-				}
-				iStart = i + 1;
-			}
+		for( i = 0 ; i < sList.nEnc ; i++ ){
+			MbDetectConsider(&sState,sList.aEnc[i]);
 		}
-	}
-	if( sState.nSeen == 0 ){
-		return PH7_VmThrowException(pCtx,"ValueError",
-			"mb_detect_encoding(): Argument #2 ($encodings) must specify at least one encoding");
 	}
 	if( sState.iBestEnc < 0 || (bStrict && sState.iBestErr > 0) ){
 		/* nothing but 8bit/binary was named, or the best candidate still had an
@@ -2424,11 +2638,82 @@ static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( sState.iBestEnc == 2 ){
-		ph7_result_string(pCtx,"ISO-8859-1",sizeof("ISO-8859-1")-1);
-	}else{
-		ph7_result_string(pCtx,sState.iBestEnc == 0 ? "ASCII" : "UTF-8",5);
+	{
+		const char *zWin = azMbDetectName[sState.iBestEnc];
+		ph7_result_string(pCtx,zWin,-1);
 	}
+	return PH7_OK;
+}
+/*
+ * array mb_list_encodings(): the encodings this engine models, in php's own
+ * spelling and php's own order for the five they share. php answers 79 names;
+ * this is the §10 scope cut, spelled out rather than hidden -- a program that asks
+ * (Respect\Validation's Charset validator does, to screen its argument) gets a
+ * truthful list of what will actually work here.
+ */
+static int PH7_builtin_mb_list_encodings(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char *const azList[] = { "8bit", "UTF-8", "ASCII", "Windows-1252", "ISO-8859-1" };
+	ph7_value *pArray, *pName;
+	int i;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	pArray = ph7_context_new_array(pCtx);
+	pName = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pName == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( i = 0 ; i < (int)SX_ARRAYSIZE(azList) ; i++ ){
+		ph7_value_string(pName,azList[i],-1);
+		ph7_array_add_elem(pArray,0,pName);
+		ph7_value_reset_string_cursor(pName);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * array|bool mb_detect_order(array|string|null $encoding = null)
+ *
+ * php's detect ORDER: the list `mb_detect_encoding()` walks when it is given no list
+ * of its own. Reading it answers the canonical names; setting it answers `true` and
+ * takes an array, a comma string, or `auto` -- which resets it to the LANGUAGE's
+ * default pair rather than to whatever is in force (php's own reading of the name).
+ * A name outside this engine's set, and an empty list, raise php's two ValueErrors.
+ */
+static int PH7_builtin_mb_detect_order(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	mb_enclist sList;
+	int i;
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		/* Read it back, in the spelling php answers. */
+		ph7_value *pArray = ph7_context_new_array(pCtx);
+		ph7_value *pName = ph7_context_new_scalar(pCtx);
+		if( pArray == 0 || pName == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		MbEncListInit(&sList,pCtx,"mb_detect_order",1,"encoding");
+		MbEncListFromVmOrder(&sList,pVm);
+		for( i = 0 ; i < sList.nEnc ; i++ ){
+			const char *zName = azMbDetectName[sList.aEnc[i]];
+			ph7_value_string(pName,zName,-1);
+			ph7_array_add_elem(pArray,0,pName);
+			ph7_value_reset_string_cursor(pName);
+		}
+		ph7_result_value(pCtx,pArray);
+		return PH7_OK;
+	}
+	MbEncListInit(&sList,pCtx,"mb_detect_order",1,"encoding");
+	if( MbEncListBuild(&sList,apArg[0]) == SXERR_ABORT ){
+		return sList.rc;
+	}
+	if( sList.nEnc > (int)sizeof(pVm->aMbDetectOrder) ){
+		sList.nEnc = (int)sizeof(pVm->aMbDetectOrder);
+	}
+	for( i = 0 ; i < sList.nEnc ; i++ ){
+		pVm->aMbDetectOrder[i] = sList.aEnc[i];
+	}
+	pVm->nMbDetectOrder = (sxu8)sList.nEnc;
+	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
 /*
@@ -2460,7 +2745,7 @@ static void MbConvertBuffer(ph7_context *pCtx,SyBlob *pOut,const char *zIn,sxu32
 			MbSubstAppend(pCtx,pOut,idTo,-1);
 			continue;
 		}
-		if( idTo != MB_ENC_UTF8 && cp > (sxu32)(idTo == MB_ENC_ASCII ? 0x7F : 0xFF) ){
+		if( !MbEncHolds(idTo,cp) ){
 			/* a code point the TARGET cannot hold, which is the one substitution
 			 * that knows what it lost — php's "long" and "entity" spell it out */
 			MbSubstAppend(pCtx,pOut,idTo,(sxi64)cp);
@@ -2532,16 +2817,46 @@ static int PH7_builtin_mb_convert_encoding(ph7_context *pCtx,int nArg,ph7_value 
 			nTo,zTo);
 	}
 	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
-		/* php also accepts an array / comma list here for source detection;
-		 * PHL's modelled set makes detection trivial, so a single name is taken
-		 * (a list falls out of scope and hits the same loud ValueError). */
-		zFrom = ph7_value_to_string(apArg[2],&nFrom);
-		idFrom = MbConvEncId(zFrom,nFrom);
-		if( idFrom < 0 ){
-			return PH7_VmThrowException(pCtx,"ValueError",
-				"mb_convert_encoding(): Argument #3 ($from_encoding) contains invalid encoding \"%.*s\"",
-				nFrom,zFrom);
+		/* php's $from_encoding is a LIST -- an array, a comma string or `auto` --
+		 * and what it names is DETECTED over the input, not taken as given. Only a
+		 * single name was read here, so `auto` and every real list were refused;
+		 * egulias/email-validator asks for exactly `auto`, which put an unhandled
+		 * ValueError through every email validation in the ecosystem. */
+		mb_enclist sList;
+		mb_detect_state sDet;
+		const char *zSrc;
+		int nSrc,i;
+		MbEncListInit(&sList,pCtx,"mb_convert_encoding",3,"from_encoding");
+		if( MbEncListBuild(&sList,apArg[2]) == SXERR_ABORT ){
+			return sList.rc;
 		}
+		if( sList.nEnc == 1 ){
+			/* ONE name is not a detection: php decodes with exactly that encoding,
+			 * which is the only way `8bit` -- a name detection never selects -- can
+			 * be a source at all (`mb_convert_encoding($s,'UTF-8','8bit')`). */
+			idFrom = MbDetectIdToConvId(sList.aEnc[0]);
+		}else{
+			/* An ARRAY source has no ONE string to detect over; php picks the
+			 * encoding per element there, and this engine's element loop below
+			 * re-enters with the same list, so the empty probe simply leaves the
+			 * internal encoding standing. (Initialized on both arms: MSVC's /WX
+			 * reads the ternary as leaving nSrc untouched.) */
+			nSrc = 0;
+			zSrc = "";
+			if( !ph7_value_is_array(apArg[0]) ){
+				zSrc = ph7_value_to_string(apArg[0],&nSrc);
+			}
+			MbDetectInit(&sDet,pCtx,zSrc,nSrc);
+			for( i = 0 ; i < sList.nEnc ; i++ ){
+				MbDetectConsider(&sDet,sList.aEnc[i]);
+			}
+			/* A list that could only name 8bit/binary leaves nothing to decode as; php
+			 * falls back on the internal encoding there, as it does with no list. */
+			idFrom = sDet.iBestEnc < 0
+				? aMbEncName[pCtx->pVm->iMbEncoding].iEnc
+				: MbDetectIdToConvId(sDet.iBestEnc);
+		}
+		SXUNUSED(zFrom); SXUNUSED(nFrom);
 	}else{
 		/* php falls back to the internal encoding, which is a setting now */
 		idFrom = aMbEncName[pCtx->pVm->iMbEncoding].iEnc;
@@ -2578,6 +2893,8 @@ PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value *
 PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ord(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_detect_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_detect_encoding(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_detect_order_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_detect_order(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_list_encodings_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_list_encodings(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_convert_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_encoding(pCtx,nArg,apArg); }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
