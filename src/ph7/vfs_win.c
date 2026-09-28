@@ -405,6 +405,66 @@ static HANDLE OpenReadOnly(LPCWSTR pPath)
 	}
 	return pHandle;
 }
+/*
+ * Does this path NAME an executable? Windows has no execute permission, so php
+ * reads one off the extension, matched case-insensitively against the END of
+ * the name -- `dot.exe.txt` is not one, and a file called exactly `.exe` is.
+ *
+ * php uses TWO different lists for it, and they disagree: the stat MODE takes
+ * `.exe`, `.com`, `.bat` and `.cmd`, while is_executable() takes `.exe` and
+ * `.com` alone -- so `a.bat` stats as 33279, execute bits and all, and
+ * `is_executable('a.bat')` is false. Both read off php 8.5.8 on the gate guest;
+ * bScripts is which of the two lists is being asked.
+ */
+static int WinPathIsExec(const char *zPath,int bScripts)
+{
+	static const char * const azExt[] = { ".exe", ".com", ".bat", ".cmd" };
+	sxu32 n,i,nExt;
+	if( zPath == 0 ){
+		return 0;
+	}
+	n = SyStrlen(zPath);
+	if( n < 4 ){
+		return 0;
+	}
+	nExt = bScripts ? (sxu32)SX_ARRAYSIZE(azExt) : 2;
+	for( i = 0 ; i < nExt ; ++i ){
+		if( SyStrnicmp(&zPath[n-4],azExt[i],4) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * The `mode` of a Windows stat answer. Windows keeps no such field, so php
+ * SYNTHESISES one from the file ATTRIBUTES: a directory is S_IFDIR with the
+ * three execute bits, anything else is S_IFREG, the read-only attribute is the
+ * difference between 0444 and 0666, and an executable NAME adds the execute
+ * bits back. php 8.5.8 on the gate guest, over the whole table: 33206 for an
+ * ordinary file, 33060 read-only, 33279 executable, 33133 read-only and
+ * executable, 16895 for a directory and 16749 for a read-only one.
+ *
+ * PHL reported 0 for every one of them, so `($st['mode'] & 0170000) == 0100000`
+ * -- how a portable is-this-a-file is written -- was false for everything, and
+ * fileperms() answered 0 on a whole platform.
+ *
+ * zPath is NULL where there is no name to read: fstat() has only a handle, and
+ * php's answer there carries no execute bit even for an .exe.
+ */
+static int WinStatMode(DWORD dwAttr,const char *zPath)
+{
+	int iMode;
+	if( dwAttr & FILE_ATTRIBUTE_DIRECTORY ){
+		iMode = 0040000 | 0111;   /* S_IFDIR, and a directory is always enterable */
+	}else{
+		iMode = 0100000;          /* S_IFREG */
+	}
+	iMode |= (dwAttr & FILE_ATTRIBUTE_READONLY) ? 0444 : 0666;
+	if( (dwAttr & FILE_ATTRIBUTE_DIRECTORY) == 0 && WinPathIsExec(zPath,TRUE) ){
+		iMode |= 0111;
+	}
+	return iMode;
+}
 /* ph7_int64 (*xFileSize)(const char *) */
 static ph7_int64 WinVfs_FileSize(const char *zPath)
 {
@@ -418,8 +478,11 @@ static ph7_int64 WinVfs_FileSize(const char *zPath)
 	if( pConverted == 0 ){
 		return -1;
 	}
-	/* Open the file in read-only mode */
-	pHandle = OpenReadOnly((LPCWSTR)pConverted);
+	/* Through the STAT opener: a DIRECTORY has a size on Windows (php reports
+	 * its allocation -- 16384 for C:\Windows) and a plain read-only open cannot
+	 * get a handle to one at all, so filesize() answered false for every
+	 * directory here. */
+	pHandle = OpenForStat((LPCWSTR)pConverted);
 	HeapFree(GetProcessHeap(),0,pConverted);
 	if( pHandle ){
 		dwLow = GetFileSize(pHandle,&dwHigh);
@@ -600,8 +663,10 @@ static int WinVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	if( pConverted == 0 ){
 		return -1;
 	}
-	/* Open the file in read-only mode */
-	pHandle = OpenReadOnly((LPCWSTR)pConverted);
+	/* Through the STAT opener: a plain read-only open cannot get a handle to a
+	 * DIRECTORY, so stat() answered FALSE for every one of them here -- and
+	 * with it fileperms(), fileowner(), filegroup() and fileinode(). */
+	pHandle = OpenForStat((LPCWSTR)pConverted);
 	HeapFree(GetProcessHeap(),0,pConverted);
 	if( pHandle == 0 ){
 		return -1;
@@ -618,7 +683,7 @@ static int WinVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileIndexHigh << 32) | sInfo.nFileIndexLow));
 	ph7_array_add_strkey_elem(pArray,"ino",pWorker); /* Will make it's own copy */
 	/* mode */
-	ph7_value_int(pWorker,0);
+	ph7_value_int(pWorker,WinStatMode(sInfo.dwFileAttributes,zPath));
 	ph7_array_add_strkey_elem(pArray,"mode",pWorker);
 	/* nlink */
 	ph7_value_int(pWorker,(int)sInfo.nNumberOfLinks);
@@ -640,8 +705,9 @@ static int WinVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	/* ctime */
 	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));
 	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */
-	/* blksize,blocks */
-	ph7_value_int(pWorker,0);
+	/* blksize,blocks: php reports -1 for both on Windows -- on every file and
+	 * every stream -- having neither field to fill them from. */
+	ph7_value_int(pWorker,-1);
 	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);
 	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);
 	return PH7_OK;
@@ -726,12 +792,17 @@ static int WinVfs_isexecutable(const char *zPath)
 	if( dwAttr == INVALID_FILE_ATTRIBUTES ){
 		return -1;
 	}
-	if( (dwAttr & FILE_ATTRIBUTE_NORMAL) == 0 ){
-		/* Not a regular file */
+	if( dwAttr & FILE_ATTRIBUTE_DIRECTORY ){
+		/* php answers FALSE for a directory on Windows whatever its mode bits
+		 * say -- and its mode bits DO carry the execute triplet. */
 		return -1;
 	}
-	/* File is executable */
-	return PH7_OK;
+	/* Windows has no execute permission: php reads one off the NAME, and this
+	 * used to test FILE_ATTRIBUTE_NORMAL -- a flag no real file carries -- so
+	 * is_executable() was false for everything on the platform. The list here
+	 * is php's SHORTER one: a `.bat` carries the mode's execute bits and is
+	 * still not executable to this question. */
+	return WinPathIsExec(zPath,FALSE) ? PH7_OK : -1;
 }
 /* int (*xFiletype)(const char *,ph7_context *) */
 static int WinVfs_Filetype(const char *zPath,ph7_context *pCtx)
@@ -1555,8 +1626,9 @@ static int WinFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)
 	/* ino */
 	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileIndexHigh << 32) | sInfo.nFileIndexLow));
 	ph7_array_add_strkey_elem(pArray,"ino",pWorker); /* Will make it's own copy */
-	/* mode */
-	ph7_value_int(pWorker,0);
+	/* mode. A handle carries no NAME, so php's fstat() answers 33206 even for an
+	 * open .exe -- the extension arm belongs to the path-based stat alone. */
+	ph7_value_int(pWorker,WinStatMode(sInfo.dwFileAttributes,0));
 	ph7_array_add_strkey_elem(pArray,"mode",pWorker);
 	/* nlink */
 	ph7_value_int(pWorker,(int)sInfo.nNumberOfLinks);
@@ -1578,8 +1650,9 @@ static int WinFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)
 	/* ctime */
 	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));
 	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */
-	/* blksize,blocks */
-	ph7_value_int(pWorker,0);
+	/* blksize,blocks: php reports -1 for both on Windows -- on every file and
+	 * every stream -- having neither field to fill them from. */
+	ph7_value_int(pWorker,-1);
 	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);
 	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);
 	return PH7_OK;
