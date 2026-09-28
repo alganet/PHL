@@ -1291,7 +1291,11 @@ struct ph7_vm_func_closure_env
                                        * (PH7_VmFuncSetNoDiscard). The message, when there is
                                        * one, comes from zNoDiscard for a native member and
                                        * from the attribute's own argument for a compiled one. */
-/* next free bit: 0x800000 */
+#define VM_FUNC_ARG_FINAL 0x800000 /* PHP 8.4's `final` on a PROMOTED property. Kept apart from
+                                    * the class-body rule it mirrors: php refuses
+                                    * `final private $p` in a class body and ACCEPTS the same
+                                    * pair here (modifiers 36), so the screen cannot be shared. */
+/* next free bit: 0x1000000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.

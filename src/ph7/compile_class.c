@@ -593,31 +593,6 @@ static void GenStateCopyTypeToAttr(ph7_class_attr *pAttr,sxu32 nType,
 		}
 	}
 }
-/*
- * Consume a run of `static` / `abstract` / visibility modifiers in ANY order, which is how
- * php's parser takes them -- they are a SET, so `abstract static public function f();`,
- * `static abstract public function f();` and `abstract public static function f();` are one
- * declaration. Both member loops used a fixed ladder (visibility, then static, then the
- * member) and refused every other spelling with "Expecting method declaration".
- * Stops at the first token that is not one of these; never consumes the member itself.
- */
-static void GenStateConsumeMemberModifiers(ph7_gen_state *pGen,sxi32 *piProtection,sxi32 *piFlags)
-{
-	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-		sxi32 nKw = SX_PTR_TO_INT(pGen->pIn->pUserData);
-		if( nKw == PH7_TKWRD_STATIC ){
-			*piFlags |= PH7_CLASS_ATTR_STATIC;
-		}else if( nKw == PH7_TKWRD_ABSTRACT ){
-			*piFlags |= PH7_CLASS_ATTR_ABSTRACT;
-		}else if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PRIVATE
-			|| nKw == PH7_TKWRD_PROTECTED ){
-			*piProtection = nKw;
-		}else{
-			break;
-		}
-		pGen->pIn++;
-	}
-}
 static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -696,6 +671,20 @@ loop:
 	 * names (compile_stmt.c still rejects `const true = 1`), but `C::true` addresses a
 	 * class constant and php accepts the declaration like any other reserved word. The
 	 * member-name flag keeps the read from folding into the boolean literal. */
+	if( (iFlags & PH7_CLASS_ATTR_FINAL) && iProtection == PH7_CLASS_PROT_PRIVATE ){
+		/* `final` says "no subclass may replace this", and a PRIVATE constant is not
+		 * visible to one -- so php refuses the pair, naming the constant. Same shape
+		 * as the private-final METHOD rule one member over, except php makes this one
+		 * a fatal rather than a warning. Reported per NAME, which is php's order for
+		 * a multi-declaration too. */
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Private constant %z::%z cannot be final as it is not visible to other classes",
+			&pClass->sName,pName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	/* Reject pseudo-types PHP forbids on a typed constant (callable/void/never) */
 	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
 		rc = GenStateValidateMemberType(pGen,pClass,pName,nType,&sTypeClass,&sTypeText,
@@ -1360,6 +1349,18 @@ loop:
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB /*'{'*/) ){
 		/* PHP 8.4 property hooks: `public [T] $x [= default] { get ...; set ...; }`.
 		 * The list ends the declaration at '}' — no trailing ';', no comma list. */
+		if( iFlags & PH7_CLASS_ATTR_READONLY ){
+			/* `readonly` promises one write, a hook decides what a write MEANS, and
+			 * php will not have both -- a rule the declaration screen never had, so
+			 * `public readonly int $p { get => 1; }` compiled here and does not in
+			 * php (in a readonly CLASS too, where the modifier is implied). */
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Hooked properties cannot be readonly");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
 		rc = GenStateCompilePropertyHooks(&(*pGen),pClass,pAttr);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
@@ -1776,13 +1777,22 @@ static sxi32 GenStateCompileClassMethod(
 	nMagicSeverity = GenStateCheckMagicMethod(pClass,pName,pMeth,zMagicErr,(int)sizeof(zMagicErr));
 	if( nMagicSeverity == 0
 	 && (pMeth->iFlags & PH7_CLASS_ATTR_FINAL)
-	 && pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
+	 && pMeth->iProtection == PH7_CLASS_PROT_PRIVATE
+	 && !(pName->nByte == sizeof("__construct")-1
+	   && SyStrnicmp(pName->zString,"__construct",sizeof("__construct")-1) == 0) ){
 		/* Not a magic rule, but the same KIND of rule and the same parking: php
 		 * checks a declaration php itself decides the meaning of. A private method
 		 * is never overridden, so `final` on one says nothing — php WARNS here (8.0+)
 		 * and compiles the class. PHL was silent at the declaration and then fataled
 		 * at the SUBCLASS that reused the name ("Cannot override final method"), a
-		 * class php accepts; the inheritance half is in PH7_ClassInherit. */
+		 * class php accepts; the inheritance half is in PH7_ClassInherit.
+		 *
+		 * The CONSTRUCTOR is php's one exemption, and it is a deliberate one:
+		 * `final private function __construct()` is the singleton idiom -- private
+		 * to stop `new`, final to stop a subclass widening it back to public -- so
+		 * the modifier does say something there. Every other private method warns,
+		 * `__destruct`, `__clone` and a static one included. PHPUnit's TestSuite
+		 * declares exactly this and drew the warning on every single run. */
 		SyBufferFormat(zMagicErr,sizeof(zMagicErr),
 			"Private methods cannot be final as they are never overridden by other classes");
 		nMagicSeverity = E_WARNING;
@@ -1920,6 +1930,13 @@ SkipToStringType:
 				}
 				iAttrFlags |= PH7_CLASS_ATTR_READONLY;
 			}
+			if( pArg->iFlags & VM_FUNC_ARG_FINAL ){
+				/* PHP 8.4's `final` on a promoted property. No "final and private"
+				 * screen here: php refuses that pair in a CLASS BODY and accepts it
+				 * on a promoted parameter (`final private int $p` reflects as
+				 * modifiers 36), which is php's own asymmetry, not a gap. */
+				iAttrFlags |= PH7_CLASS_ATTR_FINAL;
+			}
 			if( pArg->iFlags & (VM_FUNC_ARG_PRIV_SET|VM_FUNC_ARG_PROT_SET) ){
 				/* Asymmetric set-visibility on a promoted property (PHP 8.4) */
 				if( (iAttrFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
@@ -1985,6 +2002,20 @@ SkipToStringType:
 		}
 		/* Only method signature is allowed */
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI /* ';'*/) == 0 ){
+			/* php words this as the declaration's problem rather than a missing
+			 * token -- an abstract method (an interface's included, which is
+			 * abstract by being one) is a promise, and a body makes it something
+			 * else. The two kinds get the two nouns php uses. */
+			if( iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"%s function %z::%z() cannot contain body",
+					(pClass->iFlags & PH7_CLASS_INTERFACE) ? "Interface" : "Abstract",
+					&pClass->sName,pName);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				return SXERR_CORRUPT;
+			}
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 				"Expected ';' after method signature '%z'",pName);
 				if( rc == SXERR_ABORT ){
@@ -2050,6 +2081,339 @@ Synchronize:
 		pGen->pIn++;
 	}
 	return SXERR_CORRUPT;
+}
+/*
+ * php's member-modifier RUN and the screens on it.
+ *
+ * Everything a class/trait/interface member may carry in front of the
+ * declaration it modifies -- the read visibility, an asymmetric `(set)`
+ * visibility, `static`, `abstract`, `final` and the context-sensitive `readonly`
+ * -- in ANY order and each at most once. They are a SET in php's grammar, so
+ * `final public static int $p` and `static final public $p` are one declaration
+ * each.
+ *
+ * The three body loops used to read ONE modifier per branch and then re-enter
+ * their keyword ladder, which works only while every branch happens to be
+ * reachable from every other: `static final public $p` fell out of the chain
+ * with "Unexpected token 'final'", and the `final` branch only ever led to a
+ * method or a constant -- so PHP 8.4's final PROPERTY was a parse error in every
+ * one of its spellings, promoted parameter included. Reading the whole run in
+ * one place makes the order irrelevant and gives the duplicate/combination rules
+ * a single home; the caller dispatches on the token the run stops at (`const`,
+ * `function`, `var`, a type, a `$name`).
+ */
+#define GEN_MEMBER_PROP   0  /* `[type] $name`  */
+#define GEN_MEMBER_CONST  1  /* `const NAME`    */
+#define GEN_MEMBER_METHOD 2  /* `function name` */
+#define GEN_MEMBER_VAR    3  /* the pre-5.0 `var $name` spelling */
+typedef struct GenMemberMods GenMemberMods;
+struct GenMemberMods
+{
+	sxi32 iProtection;  /* read-visibility keyword; php's default is public */
+	sxi32 iFlags;       /* PH7_CLASS_ATTR_* collected from the run */
+	sxi32 nSetVis;      /* the `(set)` visibility keyword, when one was written */
+	sxu32 nLine;        /* line the run starts on -- where php reports its refusals */
+	int bAny;           /* TRUE once anything at all was consumed */
+	int bVis,bSetVis,bStatic,bAbstract,bFinal,bReadonly;
+};
+/*
+ * Read the run. A modifier written twice is php's own compile-time fatal, worded
+ * per modifier -- and the two VISIBILITY kinds share one sentence, which is also
+ * what php says for two DIFFERENT ones (`public private $p`).
+ *
+ * Returns SXRET_OK, SXERR_SYNTAX when a rule above was reported (the caller
+ * abandons the member), or SXERR_ABORT when the error budget is spent.
+ */
+static sxi32 GenStateReadMemberMods(ph7_gen_state *pGen,GenMemberMods *pMods)
+{
+	pMods->iProtection = PH7_TKWRD_PUBLIC;
+	pMods->iFlags = 0;
+	pMods->nSetVis = 0;
+	pMods->nLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : 0;
+	pMods->bAny = pMods->bVis = pMods->bSetVis = 0;
+	pMods->bStatic = pMods->bAbstract = pMods->bFinal = pMods->bReadonly = 0;
+	while( pGen->pIn < pGen->pEnd ){
+		const char *zTwice = 0;  /* the modifier php names; "" = the access-type sentence */
+		int nSetTok = 0;
+		sxi32 nSetVis;
+		if( GenStateIsReadonly(pGen->pIn) ){
+			/* `readonly` is not a reserved word, so it arrives as a plain ID; at
+			 * modifier position it is always the modifier -- which is why php's
+			 * answer to `public readonly readonly $x` is the duplicate rule and
+			 * not a property typed `readonly`. */
+			if( pMods->bReadonly ){
+				zTwice = "readonly";
+			}
+			pMods->bReadonly = 1;
+			pMods->iFlags |= PH7_CLASS_ATTR_READONLY;
+			pGen->pIn++;
+		}else if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
+			break;
+		}else if( (nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok)) != 0 ){
+			if( pMods->bSetVis ){
+				zTwice = "";
+			}
+			pMods->bSetVis = 1;
+			pMods->nSetVis = nSetVis;
+			pMods->iFlags |= GenStateSetVisFlag(nSetVis);
+			pGen->pIn += nSetTok;
+		}else{
+			sxi32 nKw = SX_PTR_TO_INT(pGen->pIn->pUserData);
+			if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PRIVATE
+			 || nKw == PH7_TKWRD_PROTECTED ){
+				if( pMods->bVis ){
+					zTwice = "";
+				}
+				pMods->bVis = 1;
+				pMods->iProtection = nKw;
+			}else if( nKw == PH7_TKWRD_STATIC ){
+				if( pMods->bStatic ){
+					zTwice = "static";
+				}
+				pMods->bStatic = 1;
+				pMods->iFlags |= PH7_CLASS_ATTR_STATIC;
+			}else if( nKw == PH7_TKWRD_ABSTRACT ){
+				if( pMods->bAbstract ){
+					zTwice = "abstract";
+				}
+				pMods->bAbstract = 1;
+				pMods->iFlags |= PH7_CLASS_ATTR_ABSTRACT;
+			}else if( nKw == PH7_TKWRD_FINAL ){
+				if( pMods->bFinal ){
+					zTwice = "final";
+				}
+				pMods->bFinal = 1;
+				pMods->iFlags |= PH7_CLASS_ATTR_FINAL;
+			}else{
+				break; /* not a modifier -- the member itself starts here */
+			}
+			pGen->pIn++;
+		}
+		pMods->bAny = 1;
+		if( zTwice ){
+			sxi32 rc = zTwice[0]
+				? PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
+					"Multiple %s modifiers are not allowed",zTwice)
+				: PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
+					"Multiple access type modifiers are not allowed");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+	}
+	return SXRET_OK;
+}
+/* php's name for a `(set)` visibility, as its refusals spell it. */
+static const char * GenStateSetVisWord(sxi32 nKw)
+{
+	if( nKw == PH7_TKWRD_PRIVATE ){
+		return "private(set)";
+	}
+	return (nKw == PH7_TKWRD_PROTECTED) ? "protected(set)" : "public(set)";
+}
+/*
+ * The run, judged against the KIND of declaration it turned out to modify. php
+ * refuses each combination with its own sentence, and the order tested below is
+ * the order php reports them in when one declaration breaks several
+ * (`static abstract const` is the static rule, `public private(set) static const`
+ * the private(set) one).
+ */
+static sxi32 GenStateScreenMemberMods(ph7_gen_state *pGen,const GenMemberMods *pMods,
+	int iKind,ph7_class *pClass)
+{
+	const char *zBad = 0;   /* the modifier php names */
+	const char *zWhere = 0; /* ...and what it was written on */
+	sxi32 rc;
+	if( iKind == GEN_MEMBER_CONST ){
+		zWhere = "a class constant";
+		if( pMods->bReadonly ){
+			zBad = "readonly";
+		}else if( pMods->bSetVis ){
+			zBad = GenStateSetVisWord(pMods->nSetVis);
+		}else if( pMods->bStatic ){
+			zBad = "static";
+		}else if( pMods->bAbstract ){
+			zBad = "abstract";
+		}
+	}else if( iKind == GEN_MEMBER_METHOD ){
+		zWhere = "a method";
+		if( pMods->bReadonly ){
+			zBad = "readonly";
+		}else if( pMods->bSetVis ){
+			zBad = GenStateSetVisWord(pMods->nSetVis);
+		}else if( pMods->bFinal && pMods->bAbstract ){
+			zBad = "final";
+			zWhere = "an abstract method";
+		}
+	}else{
+		if( pMods->bFinal && pMods->bAbstract ){
+			zBad = "final";
+			zWhere = "an abstract property";
+		}else if( pMods->bFinal && (pClass->iFlags & PH7_CLASS_INTERFACE) ){
+			/* php words the interface case as the PROPERTY's problem rather than
+			 * the modifier's: an interface property is a hooked REQUIREMENT, and a
+			 * requirement no implementor may restate cannot be one. */
+			rc = PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
+				"Property in interface cannot be final");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}else if( pMods->bFinal && pMods->iProtection == PH7_TKWRD_PRIVATE ){
+			/* A private property is invisible to a subclass, so `final` on one says
+			 * nothing php can honour. This is the PROPERTY rule only: php accepts
+			 * the same pair on a PROMOTED constructor parameter (modifiers 36
+			 * there) -- an asymmetry of php's own, reproduced rather than smoothed
+			 * over. */
+			rc = PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
+				"Property cannot be both final and private");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+	}
+	if( zBad == 0 ){
+		return SXRET_OK;
+	}
+	rc = PH7_GenCompileError(pGen,E_ERROR,pMods->nLine,
+		"Cannot use the %s modifier on %s",zBad,zWhere);
+	return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+}
+/*
+ * Peek the NAME a `const`/`function` keyword introduces, for the diagnostics php
+ * words with it. Returns 0 when the declaration is malformed enough that there
+ * is no name to show (the caller then falls back to a nameless sentence).
+ */
+static SyString * GenStateMemberNamePeek(ph7_gen_state *pGen)
+{
+	SyToken *p = pGen->pIn + 1;
+	if( p < pGen->pEnd && (p->nType & PH7_TK_AMPER) ){
+		p++; /* a by-reference method: `function &f()` */
+	}
+	if( p < pGen->pEnd && (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+		return &p->sData;
+	}
+	return 0;
+}
+/*
+ * One MEMBER of a class/trait/interface body: the modifier run, php's screens on
+ * it, and the declaration it turned out to modify. Shared by the three body
+ * loops, which used to carry three near-identical modifier ladders -- and three
+ * different sets of gaps.
+ *
+ * The enum `case` and the trait `use` statement are NOT members and never reach
+ * here: they take no modifiers, and their loops consume them first.
+ *
+ * Returns SXRET_OK, SXERR_SYNTAX when a refusal was reported (the caller
+ * abandons the body), or SXERR_ABORT when the error budget is spent.
+ */
+static sxi32 GenStateCompileMember(ph7_gen_state *pGen,ph7_class *pClass,const char *zBody)
+{
+	SyString *pName = &pClass->sName;
+	GenMemberMods sMods;
+	int iKind;
+	sxi32 rc;
+	rc = GenStateReadMemberMods(&(*pGen),&sMods);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( pGen->pIn >= pGen->pEnd ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,sMods.nLine,
+			"Expecting member declaration inside %s '%z'",zBody,pName);
+		return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+	}
+	/* What the run modifies. A '$' -- or a TYPE followed by one -- is a property;
+	 * the three keywords are each their own declaration. */
+	if( (pGen->pIn->nType & PH7_TK_DOLLAR)
+	 || GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
+		iKind = GEN_MEMBER_PROP;
+	}else if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			"Unexpected token '%z'. Expecting member declaration inside %s '%z'",
+			&pGen->pIn->sData,zBody,pName);
+		return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+	}else{
+		sxi32 nKw = SX_PTR_TO_INT(pGen->pIn->pUserData);
+		if( nKw == PH7_TKWRD_CONST ){
+			iKind = GEN_MEMBER_CONST;
+		}else if( nKw == PH7_TKWRD_FUNCTION ){
+			iKind = GEN_MEMBER_METHOD;
+		}else if( nKw == PH7_TKWRD_VAR ){
+			iKind = GEN_MEMBER_VAR;
+		}else{
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+				"Unexpected token '%z'. Expecting member declaration inside %s '%z'",
+				&pGen->pIn->sData,zBody,pName);
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+	}
+	if( iKind == GEN_MEMBER_VAR ){
+		/* `var $x` is the pre-5.0 spelling of `public $x` and takes NO other
+		 * modifier: php's parser is looking for a VARIABLE where the modifier run
+		 * left off, so `public var $x` and `final var $x` are parse errors naming
+		 * the token that is not one. */
+		if( sMods.bAny ){
+			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,"variable");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		pGen->pIn++; /* Jump the 'var' keyword */
+		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
+			rc = PH7_GenSyntaxError(&(*pGen),
+				(pGen->pIn < pGen->pEnd) ? pGen->pIn : 0,"variable");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		iKind = GEN_MEMBER_PROP;
+	}else{
+		rc = GenStateScreenMemberMods(&(*pGen),&sMods,iKind,pClass);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	if( pClass->iFlags & PH7_CLASS_INTERFACE ){
+		/* An interface member is public by declaration, and its methods are
+		 * implicitly abstract -- so php refuses both `abstract` written out and
+		 * `final`, naming the method in each. */
+		if( sMods.iProtection != PH7_TKWRD_PUBLIC ){
+			SyString *pMember = (iKind == GEN_MEMBER_PROP) ? 0 : GenStateMemberNamePeek(&(*pGen));
+			if( iKind == GEN_MEMBER_PROP ){
+				/* php words the PROPERTY case as the property's problem, and names
+				 * neither of the two visibilities it refuses. */
+				rc = PH7_GenCompileError(pGen,E_ERROR,sMods.nLine,
+					"Property in interface cannot be protected or private");
+			}else if( pMember ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,sMods.nLine,
+					"Access type for interface %s %z::%z%s must be public",
+					(iKind == GEN_MEMBER_CONST) ? "constant" : "method",pName,pMember,
+					(iKind == GEN_MEMBER_CONST) ? "" : "()");
+			}else{
+				rc = PH7_GenCompileError(pGen,E_ERROR,sMods.nLine,
+					"Access type for interface %s must be public",
+					(iKind == GEN_MEMBER_CONST) ? "constant" : "method");
+			}
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		if( iKind == GEN_MEMBER_METHOD && (sMods.bFinal || sMods.bAbstract) ){
+			SyString *pMember = GenStateMemberNamePeek(&(*pGen));
+			const char *zWhat = sMods.bFinal ? "final" : "abstract";
+			if( pMember ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,sMods.nLine,
+					"Interface method %z::%z() must not be %s",pName,pMember,zWhat);
+			}else{
+				rc = PH7_GenCompileError(pGen,E_ERROR,sMods.nLine,
+					"Interface method must not be %s",zWhat);
+			}
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		/* Both remaining kinds are abstract in an interface: a method has no body
+		 * to compile, and a property is a HOOKED requirement (a plain one is
+		 * GenStateCompileClassAttr's own "Interfaces may only include hooked
+		 * properties"). */
+		if( iKind != GEN_MEMBER_CONST ){
+			sMods.iFlags |= PH7_CLASS_ATTR_ABSTRACT;
+		}
+	}
+	if( iKind == GEN_MEMBER_CONST ){
+		return GenStateCompileClassConstant(&(*pGen),sMods.iProtection,sMods.iFlags,pClass);
+	}
+	if( iKind == GEN_MEMBER_METHOD ){
+		/* An interface method is a SIGNATURE: it has no body to compile. */
+		return GenStateCompileClassMethod(&(*pGen),sMods.iProtection,sMods.iFlags,
+			(pClass->iFlags & PH7_CLASS_INTERFACE) ? FALSE : TRUE,pClass);
+	}
+	return GenStateCompileClassAttr(&(*pGen),sMods.iProtection,sMods.iFlags,pClass);
 }
 /*
  * Compile a PHP 8.4 property-hook list `{ get ...; set ...; }` following a
@@ -2743,7 +3107,8 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		}
 		/* Bind a directly-preceding docblock to this member */
 		GenStateSetPendingDoc(&(*pGen));
-		if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
+		if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
+			&& !GenStateIsReadonly(pGen->pIn) ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 				"Unexpected token '%z'.Expecting method signature or constant declaration inside interface '%z'",
 				&pGen->pIn->sData,pName);
@@ -2753,153 +3118,15 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 			}
 			goto done;
 		}
-		/* Extract the current keyword */
-		nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-		if( nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-			/* Fatal error: interface members must be public (PHP 7.1-8.0 behavior).
-			 * Peek ahead to distinguish constant vs method and extract the member name. */
-			const char *zKind = "member";
-			SyString *pMemberName = 0;
-			if( (pGen->pIn + 1) < pGen->pEnd ){
-				sxi32 nNext = SX_PTR_TO_INT((pGen->pIn + 1)->pUserData);
-				if( nNext == PH7_TKWRD_CONST ){
-					zKind = "constant";
-					if( (pGen->pIn + 2) < pGen->pEnd && ((pGen->pIn + 2)->nType & PH7_TK_ID) ){
-						pMemberName = &(pGen->pIn + 2)->sData;
-					}
-				}else if( nNext == PH7_TKWRD_FUNCTION ){
-					zKind = "method";
-					if( (pGen->pIn + 2) < pGen->pEnd && ((pGen->pIn + 2)->nType & PH7_TK_ID) ){
-						pMemberName = &(pGen->pIn + 2)->sData;
-					}
-				}
-			}
-			if( pMemberName ){
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
-					"Access type for interface %s %z::%z must be public",zKind,pName,pMemberName);
-			}else{
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
-					"Access type for interface %s must be public",zKind);
-			}
+		/* The member, through the shared modifier run -- which is where an
+		 * interface's own rules live now (public-only, no `final`, no written
+		 * `abstract`, and a property that may only be a hooked requirement). */
+		rc = GenStateCompileMember(&(*pGen),pClass,"interface");
+		if( rc != SXRET_OK ){
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			goto done;
-		}
-		if( nKwrd != PH7_TKWRD_PUBLIC && nKwrd != PH7_TKWRD_FUNCTION && nKwrd != PH7_TKWRD_CONST && nKwrd != PH7_TKWRD_STATIC ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-				"Expecting method signature or constant declaration inside interface '%z'",pName);
-			if( rc == SXERR_ABORT ){
-				/* Error count limit reached,abort immediately */
-				return SXERR_ABORT;
-			}
-			goto done;
-		}
-		if( nKwrd == PH7_TKWRD_PUBLIC ){
-			/* Advance the stream cursor */
-			pGen->pIn++;
-			if( pGen->pIn < pGen->pEnd
-			 && ((pGen->pIn->nType & PH7_TK_DOLLAR) != 0
-			  || (pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '?')) ){
-				/* PHP 8.4: `public [?T] $x { get; set; }` — a hooked-property
-				 * requirement. The attribute compiler + hook parser handle it
-				 * (bare hooks are implicitly abstract inside an interface; a
-				 * property without hooks is ITS "Interfaces may only include
-				 * hooked properties" error). */
-				rc = GenStateCompileClassAttr(&(*pGen),PH7_CLASS_PROT_PUBLIC,
-					PH7_CLASS_ATTR_ABSTRACT,pClass);
-				if( rc != SXRET_OK ){
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-				continue;
-			}
-			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
-				/* A type NAME (a plain identifier, e.g. a class type) followed by
-				 * '$' also opens a hooked-property requirement. */
-				if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID) != 0
-				 && (pGen->pIn + 1) < pGen->pEnd
-				 && ((pGen->pIn + 1)->nType & PH7_TK_DOLLAR) != 0 ){
-					rc = GenStateCompileClassAttr(&(*pGen),PH7_CLASS_PROT_PUBLIC,
-						PH7_CLASS_ATTR_ABSTRACT,pClass);
-					if( rc != SXRET_OK ){
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					continue;
-				}
-				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-					"Expecting method signature inside interface '%z'",pName);
-				if( rc == SXERR_ABORT ){
-					/* Error count limit reached,abort immediately */
-					return SXERR_ABORT;
-				}
-				goto done;
-			}
-			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-			if( nKwrd != PH7_TKWRD_FUNCTION && nKwrd != PH7_TKWRD_CONST && nKwrd != PH7_TKWRD_STATIC ){
-				/* A type KEYWORD (int/string/bool/…) followed by '$' opens a
-				 * hooked-property requirement (PHP 8.4). */
-				if( (pGen->pIn + 1) < pGen->pEnd
-				 && ((pGen->pIn + 1)->nType & PH7_TK_DOLLAR) != 0 ){
-					rc = GenStateCompileClassAttr(&(*pGen),PH7_CLASS_PROT_PUBLIC,
-						PH7_CLASS_ATTR_ABSTRACT,pClass);
-					if( rc != SXRET_OK ){
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					continue;
-				}
-				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-					"Expecting method signature or constant declaration inside interface '%z'",pName);
-				if( rc == SXERR_ABORT ){
-					/* Error count limit reached,abort immediately */
-					return SXERR_ABORT;
-				}
-				goto done;
-			}
-		}
-		if( nKwrd == PH7_TKWRD_CONST ){
-			/* Parse constant */
-			rc = GenStateCompileClassConstant(&(*pGen),0,0,pClass);
-			if( rc != SXRET_OK ){
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				goto done;
-			}
-		}else{
-			sxi32 iFlags = PH7_CLASS_ATTR_ABSTRACT; /* Interface methods are implicitly abstract */
-			if( nKwrd == PH7_TKWRD_STATIC ){
-				/* Static method,record that */
-				iFlags |= PH7_CLASS_ATTR_STATIC;
-				/* Advance the stream cursor */
-				pGen->pIn++;
-				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
-					|| SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"Expecting method signature inside interface '%z'",pName);
-						if( rc == SXERR_ABORT ){
-							/* Error count limit reached,abort immediately */
-							return SXERR_ABORT;
-						}
-						goto done;
-				}
-			}
-			/* Process method signature (no body for interface methods) */
-			rc = GenStateCompileClassMethod(&(*pGen),0,iFlags,FALSE,pClass);
-			if( rc != SXRET_OK ){
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				goto done;
-			}
 		}
 	}
 	/* An interface method may claim #[\Override] too, against the interfaces this
@@ -4401,12 +4628,10 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	ph7_class *pClass,*pBase;
 	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' (enclosing class for a nested anon) */
 	SyToken *pEnd,*pTmp;
-	sxi32 iProtection;
 	SySet aInterfaces;
 	SySet aUseEntries;
 	SySet aOvMeth,aOvProp;   /* the #[\Override] claims this class DECLARED */
 	sxu32 nErrEntry = pGen->nErr; /* errors already reported when this class started */
-	sxi32 iAttrflags;
 	SyString *pName;
 	sxi32 nKwrd;
 	sxi32 rc;
@@ -4709,37 +4934,6 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			}
 			goto done;
 		}
-		/* Assume public visibility */
-		iProtection = PH7_TKWRD_PUBLIC;
-		iAttrflags = 0;
-		/* Optional leading `readonly` modifier (PHP 8.1) — context-sensitive, so
-		 * it may precede the visibility keyword: `readonly public int $x`,
-		 * `readonly int $x`. The visibility branch below also accepts it after
-		 * the visibility keyword (`public readonly int $x`). */
-		if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
-			int bMod = 0;
-			iAttrflags |= PH7_CLASS_ATTR_READONLY;
-			pGen->pIn++; /* Jump the 'readonly' modifier */
-			/* If a visibility/static modifier follows, let the dispatch below
-			 * handle it; otherwise this is `readonly Type $x` (implicit public)
-			 * and we compile it directly — the type may be a keyword (int/array)
-			 * that the generic keyword dispatch would misread as a method. */
-			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-				sxi32 k = SX_PTR_TO_INT(pGen->pIn->pUserData);
-				bMod = ( k == PH7_TKWRD_PUBLIC || k == PH7_TKWRD_PRIVATE
-					|| k == PH7_TKWRD_PROTECTED || k == PH7_TKWRD_STATIC );
-			}
-			if( !bMod ){
-				rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-				if( rc != SXRET_OK ){
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-				continue;
-			}
-		}
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 			/* Extract the current keyword */
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
@@ -4824,277 +5018,15 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				/* The semicolon will be consumed by the outer loop */
 				continue;
 			}
-			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-				int nSetTok;
-				sxi32 nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
-				if( nSetVis ){
-					/* Leading `private(set)`/`protected(set)` with no read
-					 * visibility: the read side defaults to public (php 8.4). */
-					iAttrflags |= GenStateSetVisFlag(nSetVis);
-					pGen->pIn += nSetTok;
-				}else{
-					iProtection = nKwrd;
-					pGen->pIn++; /* Jump the visibility token */
-					/* Optional asymmetric set-visibility after the read
-					 * visibility: `public private(set) int $x`. */
-					nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
-					if( nSetVis ){
-						iAttrflags |= GenStateSetVisFlag(nSetVis);
-						pGen->pIn += nSetTok;
-					}
-				}
-				/* Optional `readonly` after the visibility: `public readonly int $x`,
-				 * `public private(set) readonly int $x`. */
-				if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
-					iAttrflags |= PH7_CLASS_ATTR_READONLY;
-					pGen->pIn++; /* Jump the 'readonly' modifier */
-				}
-				if( pGen->pIn >= pGen->pEnd
-					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-						"Unexpected token '%z'. Expecting attribute declaration inside class '%z'",
-						&pGen->pIn->sData,pName);
-					if( rc == SXERR_ABORT ){
-						/* Error count limit reached,abort immediately */
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-				if( pGen->pIn->nType & PH7_TK_DOLLAR ){
-					/* Attribute declaration (untyped) */
-					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-					if( rc != SXRET_OK ){
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					continue;
-				}
-				if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
-					/* Typed attribute declaration (PHP 7.4+) */
-					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-					if( rc != SXRET_OK ){
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					continue;
-				}
-				/* Extract the keyword */
-				nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+		}
+		/* Everything else is a MEMBER: its modifier run and the declaration it
+		 * modifies. */
+		rc = GenStateCompileMember(&(*pGen),pClass,"class");
+		if( rc != SXRET_OK ){
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
 			}
-			if( nKwrd == PH7_TKWRD_CONST ){
-				/* Process constant declaration */
-				rc = GenStateCompileClassConstant(&(*pGen),iProtection,iAttrflags,pClass);
-				if( rc != SXRET_OK ){
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-			}else{
-				if( nKwrd == PH7_TKWRD_STATIC ){
-					/* Static method or attribute,record that */
-					iAttrflags |= PH7_CLASS_ATTR_STATIC;
-					pGen->pIn++; /* Jump the static keyword */
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-						int nSetTok;
-						sxi32 nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
-						if( nSetVis ){
-							/* `static private(set) int $x` — read side stays public */
-							iAttrflags |= GenStateSetVisFlag(nSetVis);
-							pGen->pIn += nSetTok;
-						}else{
-							/* Extract the keyword */
-							nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-							if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-								iProtection = nKwrd;
-								pGen->pIn++; /* Jump the visibility token */
-								nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
-								if( nSetVis ){
-									iAttrflags |= GenStateSetVisFlag(nSetVis);
-									pGen->pIn += nSetTok;
-								}
-							}
-						}
-					}
-					/* `readonly` after `static` (an invalid combination): detect it so the
-					 * static+readonly diagnostic fires from GenStateCompileClassAttr rather
-					 * than a generic "expecting method" parse error. */
-					if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
-						iAttrflags |= PH7_CLASS_ATTR_READONLY;
-						pGen->pIn++; /* Jump the 'readonly' modifier */
-					}
-					/* ...and `abstract` on either side of it: the modifiers are a SET
-					 * (`static abstract public function f();` is php's declaration too). */
-					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
-					if( pGen->pIn >= pGen->pEnd
-						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"Unexpected token '%z',Expecting method,attribute or constant declaration inside class '%z'",
-							&pGen->pIn->sData,pName);
-						if( rc == SXERR_ABORT ){
-							/* Error count limit reached,abort immediately */
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					if( pGen->pIn->nType & PH7_TK_DOLLAR ){
-						/* Attribute declaration */
-						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-						if( rc != SXRET_OK ){
-							if( rc == SXERR_ABORT ){
-								return SXERR_ABORT;
-							}
-							goto done;
-						}
-						continue;
-					}
-					if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
-						/* Typed static attribute declaration */
-						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-						if( rc != SXRET_OK ){
-							if( rc == SXERR_ABORT ){
-								return SXERR_ABORT;
-							}
-							goto done;
-						}
-						continue;
-					}
-					/* Extract the keyword */
-					nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-				}else if( nKwrd == PH7_TKWRD_ABSTRACT ){
-					/* Abstract method,record that.
-					 * PHL used to also mark the whole CLASS abstract here, silently
-					 * promoting `class C{abstract function m();}` -- which php rejects
-					 * outright -- into a valid abstract class. That promotion is why
-					 * GenStateCheckAbstractMethods never fired for it: by the time the
-					 * check ran, the class looked declared-abstract. The declaration is
-					 * now diagnosed where the method name is known (see the install
-					 * site), so the class flag stays what the SOURCE said. */
-					iAttrflags |= PH7_CLASS_ATTR_ABSTRACT;
-					/* Advance the stream cursor */
-					pGen->pIn++;
-					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
-						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
-							/* PHP 8.4: `abstract public [T] $x { get; set; }` — an abstract
-							 * HOOKED property declaration. Route anything that is not a
-							 * method through the attribute compiler with the ABSTRACT flag;
-							 * the hook parser accepts the bare `get;`/`set;` forms there
-							 * (and a non-hooked abstract property is ITS error to raise). */
-							if( pGen->pIn < pGen->pEnd
-							 && ((pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID|PH7_TK_DOLLAR)) != 0
-							  || (pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '?')) ){
-								rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-								if( rc != SXRET_OK ){
-									if( rc == SXERR_ABORT ){
-										return SXERR_ABORT;
-									}
-									goto done;
-								}
-								continue;
-							}
-							rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-								"Unexpected token '%z',Expecting method declaration after 'abstract' keyword inside class '%z'",
-								&pGen->pIn->sData,pName);
-							if( rc == SXERR_ABORT ){
-								/* Error count limit reached,abort immediately */
-								return SXERR_ABORT;
-							}
-							goto done;
-					}
-					nKwrd = PH7_TKWRD_FUNCTION;
-				}else if( nKwrd == PH7_TKWRD_FINAL ){
-					/* final method ,record that */
-					iAttrflags |= PH7_CLASS_ATTR_FINAL;
-					pGen->pIn++; /* Jump the final keyword */
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-						/* Extract the keyword */
-						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-							iProtection = nKwrd;
-							pGen->pIn++; /* Jump the visibility token */
-						}
-					}
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
-						SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CONST ){
-							/* final class constant (PHP 8.1). iAttrflags already carries
-							 * PH7_CLASS_ATTR_FINAL; the override ban is enforced when a
-							 * child class is compiled (PH7_ClassInherit). */
-							rc = GenStateCompileClassConstant(&(*pGen),iProtection,iAttrflags,pClass);
-							if( rc != SXRET_OK ){
-								if( rc == SXERR_ABORT ){
-									return SXERR_ABORT;
-								}
-								goto done;
-							}
-							continue;
-					}
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
-						SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
-							/* Static method */
-							iAttrflags |= PH7_CLASS_ATTR_STATIC;
-							pGen->pIn++; /* Jump the static keyword */
-					}
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
-						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
-							rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-								"Unexpected token '%z',Expecting method declaration after 'final' keyword inside class '%z'",
-								&pGen->pIn->sData,pName);
-							if( rc == SXERR_ABORT ){
-								/* Error count limit reached,abort immediately */
-								return SXERR_ABORT;
-							}
-							goto done;
-					}
-					nKwrd = PH7_TKWRD_FUNCTION;
-				}
-				if( nKwrd != PH7_TKWRD_FUNCTION && nKwrd != PH7_TKWRD_VAR ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-						"Unexpected token '%z',Expecting method declaration inside class '%z'",
-							&pGen->pIn->sData,pName);
-						if( rc == SXERR_ABORT ){
-							/* Error count limit reached,abort immediately */
-							return SXERR_ABORT;
-						}
-						goto done;
-				}
-				if( nKwrd == PH7_TKWRD_VAR ){
-					pGen->pIn++; /* Jump the 'var' keyword */
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR/*'$'*/) == 0){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"Expecting attribute declaration after 'var' keyword");
-						if( rc == SXERR_ABORT ){
-							/* Error count limit reached,abort immediately */
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					/* Attribute declaration */
-					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-				}else{
-					/* Process method declaration */
-					rc = GenStateCompileClassMethod(&(*pGen),iProtection,iAttrflags,TRUE,pClass);
-				}
-				if( rc != SXRET_OK ){
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-			}
-		}else{
-			/* Attribute declaration */
-			rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-			if( rc != SXRET_OK ){
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				goto done;
-			}
+			goto done;
 		}
 	}
 	/* Apply collected traits (per use-statement) before installing the class.
@@ -5584,8 +5516,6 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	ph7_class *pClass;
 	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' */
 	SyToken *pEnd,*pTmp;
-	sxi32 iProtection;
-	sxi32 iAttrflags;
 	SySet aUseEntries; /* trait-body `use` statements (incl. adaptation blocks) */
 	SyString *pName;
 	sxi32 nKwrd;
@@ -5681,7 +5611,8 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		}
 		/* Bind a directly-preceding docblock to this member */
 		GenStateSetPendingDoc(&(*pGen));
-		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0
+			&& !GenStateIsReadonly(pGen->pIn) /* allow a leading `readonly` modifier */ ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 				"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
 				&pGen->pIn->sData,pName);
@@ -5690,8 +5621,6 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 			}
 			goto done;
 		}
-		iProtection = PH7_TKWRD_PUBLIC;
-		iAttrflags = 0;
 		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 			if( nKwrd == PH7_TKWRD_USE ){
@@ -5760,209 +5689,15 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				SySetPut(&aUseEntries,(const void *)&sUse);
 				continue;
 			}
-			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-				int nSetTok;
-				sxi32 nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
-				if( nSetVis ){
-					/* Leading `private(set)`/`protected(set)` with no read visibility:
-					 * the read side defaults to public (php 8.4). Same rule as a class
-					 * body -- a trait declares properties, so it declares them the same
-					 * way, and php makes no exception for either modifier. */
-					iAttrflags |= GenStateSetVisFlag(nSetVis);
-					pGen->pIn += nSetTok;
-				}else{
-					iProtection = nKwrd;
-					pGen->pIn++;
-					/* Optional asymmetric set-visibility after the read visibility:
-					 * `public private(set) int $x`. */
-					nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
-					if( nSetVis ){
-						iAttrflags |= GenStateSetVisFlag(nSetVis);
-						pGen->pIn += nSetTok;
-					}
-				}
-				/* Optional `readonly` after the visibility (PHP 8.1): `private readonly T
-				 * $x` — the generated PHPUnit runtime traits (StubApi, …) declare their
-				 * readonly state this way. Mirrors the class-body attribute parser. */
-				if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
-					iAttrflags |= PH7_CLASS_ATTR_READONLY;
-					pGen->pIn++; /* Jump the 'readonly' modifier */
-				}
-				if( pGen->pIn >= pGen->pEnd
-					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-						"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
-						&pGen->pIn->sData,pName);
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-				if( pGen->pIn->nType & PH7_TK_DOLLAR ){
-					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-					if( rc != SXRET_OK ){
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					continue;
-				}
-				if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
-					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-					if( rc != SXRET_OK ){
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					continue;
-				}
-				nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+		}
+		/* Everything else is a MEMBER: its modifier run and the declaration it
+		 * modifies, read by the same code a class body uses. */
+		rc = GenStateCompileMember(&(*pGen),pClass,"trait");
+		if( rc != SXRET_OK ){
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
 			}
-			if( nKwrd == PH7_TKWRD_CONST ){
-				/* PHP 8.2: a trait may declare constants, and they are composed into the
-				 * using class exactly as its properties are (PH7_ClassInheritTrait
-				 * already copies hConst). Reaching them THROUGH the trait is the one
-				 * thing php refuses, at the access. */
-				rc = GenStateCompileClassConstant(&(*pGen),iProtection,iAttrflags,pClass);
-				if( rc != SXRET_OK ){
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-				continue;
-			}else{
-				if( nKwrd == PH7_TKWRD_STATIC ){
-					iAttrflags |= PH7_CLASS_ATTR_STATIC;
-					pGen->pIn++;
-					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
-					if( pGen->pIn >= pGen->pEnd
-						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"Unexpected token '%z',Expecting method or attribute declaration inside trait '%z'",
-							&pGen->pIn->sData,pName);
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					if( pGen->pIn->nType & PH7_TK_DOLLAR ){
-						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-						if( rc != SXRET_OK ){
-							if( rc == SXERR_ABORT ){
-								return SXERR_ABORT;
-							}
-							goto done;
-						}
-						continue;
-					}
-					if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
-						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-						if( rc != SXRET_OK ){
-							if( rc == SXERR_ABORT ){
-								return SXERR_ABORT;
-							}
-							goto done;
-						}
-						continue;
-					}
-					nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-				}else if( nKwrd == PH7_TKWRD_ABSTRACT ){
-					iAttrflags |= PH7_CLASS_ATTR_ABSTRACT;
-					pGen->pIn++;
-					GenStateConsumeMemberModifiers(&(*pGen),&iProtection,&iAttrflags);
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
-						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"Unexpected token '%z',Expecting method declaration after 'abstract' keyword inside trait '%z'",
-							&pGen->pIn->sData,pName);
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					nKwrd = PH7_TKWRD_FUNCTION;
-				}else if( nKwrd == PH7_TKWRD_FINAL ){
-					/* A trait's member may be `final` -- the method is final in every class
-					 * that composes it, and a `final const` (PHP 8.1) is one no using
-					 * class's child may override. Mirrors the class-body branch. */
-					iAttrflags |= PH7_CLASS_ATTR_FINAL;
-					pGen->pIn++; /* Jump the 'final' keyword */
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-							iProtection = nKwrd;
-							pGen->pIn++;
-						}
-					}
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
-						&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CONST ){
-						rc = GenStateCompileClassConstant(&(*pGen),iProtection,iAttrflags,pClass);
-						if( rc != SXRET_OK ){
-							if( rc == SXERR_ABORT ){
-								return SXERR_ABORT;
-							}
-							goto done;
-						}
-						continue;
-					}
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
-						&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
-						iAttrflags |= PH7_CLASS_ATTR_STATIC;
-						pGen->pIn++; /* Jump the 'static' keyword */
-					}
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
-						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"Unexpected token '%z',Expecting method declaration after 'final' keyword inside trait '%z'",
-							&pGen->pIn->sData,pName);
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					nKwrd = PH7_TKWRD_FUNCTION;
-				}
-				if( nKwrd != PH7_TKWRD_FUNCTION && nKwrd != PH7_TKWRD_VAR ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-						"Unexpected token '%z',Expecting method declaration inside trait '%z'",
-						&pGen->pIn->sData,pName);
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-				if( nKwrd == PH7_TKWRD_VAR ){
-					pGen->pIn++;
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"Expecting attribute declaration after 'var' keyword");
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						goto done;
-					}
-					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-				}else{
-					rc = GenStateCompileClassMethod(&(*pGen),iProtection,iAttrflags,TRUE,pClass);
-				}
-				if( rc != SXRET_OK ){
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					goto done;
-				}
-			}
-		}else{
-			rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
-			if( rc != SXRET_OK ){
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				goto done;
-			}
+			goto done;
 		}
 	}
 	/* Apply the collected `use` entries (incl. adaptation blocks) through the

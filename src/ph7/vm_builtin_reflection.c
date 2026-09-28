@@ -4541,6 +4541,9 @@ static sxi64 ReflectPropModifiers(ph7_class_attr *pAttr)
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){ iMods |= 128; }
 	if( ReflectPropProtectedSet(pAttr) ){ iMods |= 2048; }
+	/* PHP 8.4's `final` PROPERTY -- IS_FINAL, the same bit a method and a class
+	 * constant carry. */
+	if( pAttr->iFlags & PH7_CLASS_ATTR_FINAL ){ iMods |= 32; }
 	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
 		/* private(set) cannot be widened by a subclass, so php reports it FINAL. */
 		iMods |= 4096|32;
@@ -8370,7 +8373,11 @@ static int ReflectPropFlag(ph7_context *pCtx, int iWhat)
 		case 8: bYes = 0; break;                                    /* isDynamic */
 		case 9: bYes = (pAttr->iFlags
 			& (PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_NATIVE_VIRTUAL)) != 0; break;
-		default:
+		/* isFinal: the DECLARED `final` (PHP 8.4) or the one private(set) implies
+		 * -- php answers true for both, the same pair its modifier mask carries. */
+		case 10: bYes = (pAttr->iFlags
+			& (PH7_CLASS_ATTR_FINAL|PH7_CLASS_ATTR_PRIVATE_SET)) != 0; break;
+		default:  /* 11: hasHooks */
 			bYes = (pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) != 0;
 			break;
 		}
@@ -8395,10 +8402,11 @@ REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isPrivateSet, 3)
 REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isProtectedSet, 4)
 REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isStatic, 5)
 REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isReadOnly, 6)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isFinal, 10)
 REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isDefault, 7)
 REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isDynamic, 8)
 REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isVirtual, 9)
-REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_hasHooks, 10)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_hasHooks, 11)
 
 /* php has no abstract properties outside an interface stub, and PHL none at
  * all; isLazy() answers what is true of a VM without lazy objects. */
@@ -9172,7 +9180,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 		  vm_builtin_ReflectionProperty_hasHook },
 		{ "getHook",     PH7_MOD_PUBLIC, "PropertyHookType $type", "?ReflectionMethod",
 		  vm_builtin_ReflectionProperty_getHook },
-		{ "isFinal",     PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_false },
+		{ "isFinal",     PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isFinal },
 	};
 	static const PH7_NativeConstDef aConstConst[] = {
 		{ "IS_PUBLIC",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1,  0, 0.0 },
@@ -9711,8 +9719,10 @@ static void ReflectExportPropLine(ph7_context *pCtx, SyBlob *pOut, ph7_class_att
 	sxi32 iSet = pAttr->iProtection;
 	SyBlobAppend(pOut, "Property [ ", sizeof("Property [ ")-1);
 	/* php's modifier MASK implies two bits the declaration never wrote:
-	 * private(set) implies final, and readonly implies protected(set). */
-	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
+	 * private(set) implies final, and readonly implies protected(set). A property
+	 * DECLARED final (PHP 8.4) prints the same word, and the two spellings do not
+	 * print it twice. */
+	if( pAttr->iFlags & (PH7_CLASS_ATTR_FINAL|PH7_CLASS_ATTR_PRIVATE_SET) ){
 		SyBlobAppend(pOut, "final ", sizeof("final ")-1);
 	}
 	SyBlobFormat(pOut, "%s ", ReflectExportVis(pAttr->iProtection));
@@ -9866,13 +9876,12 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		if( pProto ){
 			SyBlobFormat(&sBody, ", prototype %z", &pProto->sName);
 		}
-		/* php closes the bracket with the ctor/dtor word, AFTER the prototype:
-		 * an interface's constructor prints `prototype F1, ctor`. */
+		/* php closes the bracket with the ctor word, AFTER the prototype: an
+		 * interface's constructor prints `prototype F1, ctor`. There is no `dtor`
+		 * twin -- php's exporter prints the word for ZEND_ACC_CTOR only, so a
+		 * `__destruct` reads `Method [ <user> public method __destruct ]`. */
 		if( bCtor ){
 			SyBlobAppend(&sBody, ", ctor", sizeof(", ctor")-1);
-		}else if( SyStringLength(pName) == sizeof("__destruct")-1
-		 && SyStrnicmp(SyStringData(pName), "__destruct", sizeof("__destruct")-1) == 0 ){
-			SyBlobAppend(&sBody, ", dtor", sizeof(", dtor")-1);
 		}
 		SyBlobAppend(&sBody, "> ", sizeof("> ")-1);
 		if( pRef->pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){

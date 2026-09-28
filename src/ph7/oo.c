@@ -133,19 +133,17 @@ PH7_PRIVATE ph7_class_method * PH7_NewClassMethod(ph7_vm *pVm,ph7_class *pClass,
 		SyStringDupPtr(pNamePtr,&pCurrent->sVmName);
 		zName = (char *)pNamePtr->zString;
 	}
-	if( iProtection != PH7_CLASS_PROT_PUBLIC ){
-		if( pName->nByte == sizeof("__destruct") - 1 && SyMemcmp(pName->zString,"__destruct",sizeof("__destruct") - 1 ) == 0 ){
-				/* Switch to public visibility for destructors (the engine invokes them
-				 * internally, bypassing visibility either way). __construct KEEPS its
-				 * declared visibility (band A #4): php enforces it at `new` — a
-				 * private/protected ctor from the wrong scope is a catchable Error,
-				 * checked at OP_NEW — and ReflectionClass::isInstantiable()/
-				 * newInstance() now see it. A method named like the class is a PLAIN
-				 * method (PHP-4 constructors removed in 8.0), so it keeps its declared
-				 * visibility too — no longer forced public. */
-				iProtection = PH7_CLASS_PROT_PUBLIC;
-		}
-	}
+	/* Every method keeps the visibility it was DECLARED with, `__destruct`
+	 * included. It used to be forced public here "because the engine invokes it
+	 * internally" -- but the engine's teardown reaches it through
+	 * PH7_VmCallClassMethod, which never consults the visibility, so the force
+	 * bought nothing and cost the declaration: a private destructor reflected as
+	 * public (isPrivate() false, modifiers 1), was listed by get_class_methods()
+	 * from outside the class, printed `private` nowhere in its Reflection export,
+	 * and could be called as `$o->__destruct()` from any scope. __construct has
+	 * kept its declared visibility since band A #4, and php enforces that one at
+	 * `new`; a method named like the class is a PLAIN method (PHP-4 constructors
+	 * removed in 8.0) and keeps its own too. */
 	/* Initialize method fields */
 	pMeth->iProtection = iProtection;
 	pMeth->iFlags = iFlags;
@@ -541,11 +539,31 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				/* Cannot override a final class constant (PHP 8.1). Report the
 				 * class that originally declared it (pDeclClass) rather than the
 				 * immediate base, so a multi-level chain matches PHP -- and a
-				 * TRAIT-declared one belongs to the class that composed it. */
+				 * TRAIT-declared one belongs to the class that composed it.
+				 * php reports it on the SUBCLASS's declaration line, not on the
+				 * line the offending member sits on: the refusal is inheritance
+				 * talking, and inheritance happens where `extends` is written.
+				 * (Its final-METHOD twin below is the other rule -- php reports
+				 * THAT one at the method.) */
 				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_attr *)pEntry->pUserData)->nLine,
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 					"%z::%z cannot override final constant %z::%z",
 					&pSub->sName,pName,&pOwner->sName,pName);
+				if( rc == SXERR_ABORT ){
+					SySetRelease(&aInherited);
+					return SXERR_ABORT;
+				}
+			}else if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_FINAL))
+				== PH7_CLASS_ATTR_FINAL ){
+				/* PHP 8.4's final PROPERTY: no subclass may redeclare it, however the
+				 * redeclaration is spelled -- a plain or static property of its own, a
+				 * PROMOTED constructor parameter, or a trait it composes -- because all
+				 * three land in the subclass's attribute table before inheritance runs.
+				 * Same class-line rule and same declaring-class naming as the constant
+				 * above. */
+				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+					"Cannot override final property %z::$%z",&pOwner->sName,pName);
 				if( rc == SXERR_ABORT ){
 					SySetRelease(&aInherited);
 					return SXERR_ABORT;
@@ -626,7 +644,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				 * originally declared it (pDeclClass) for a multi-level chain -- and a
 				 * TRAIT-declared one belongs to the class that composed it. */
 				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_attr *)pOwn->pUserData)->nLine,
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 					"%z::%z cannot override final constant %z::%z",
 					&pSub->sName,pName,&pOwner->sName,pName);
 				if( rc == SXERR_ABORT ){
@@ -1769,10 +1787,45 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 	pClass = pThis->pClass;
 	pDestr = PH7_ClassExtractMethod(pClass,"__destruct",sizeof("__destruct")-1);
 	if( pDestr && !pVm->bInReset ){
-		/* Invoke the destructor. Skipped during ph7_vm_reset() bulk teardown:
-		 * running user PHP against a half-reset VM is unsafe (see bInReset). */
-		pThis->iRef = 2; /* Prevent garbage collection */
-		PH7_VmCallClassMethod(pVm,pThis,pDestr,0,0,0);
+		/* php checks a non-public destructor's visibility HERE, against the scope
+		 * the destruction happened in, and refuses with a sentence of its own: the
+		 * engine reached for the method, so the message names the OBJECT's class
+		 * and drops the word "method" the ordinary call refusal carries
+		 * (`Call to private B::__destruct() from global scope` for a `class B
+		 * extends A` whose base declared it). Screening here rather than letting
+		 * the dispatcher speak is what keeps that wording; the call is then made
+		 * unchecked, since this IS the check. */
+		ph7_class *pDestrDecl = pDestr->sFunc.pUserData
+			? (ph7_class *)pDestr->sFunc.pUserData : pClass;
+		if( pDestr->iProtection != PH7_CLASS_PROT_PUBLIC
+		 && !PH7_VmClassMemberAccess(&(*pVm),pDestrDecl,&pDestr->sFunc.sName,
+			pDestr->iProtection,FALSE) ){
+			SyBlob sErrMsg;
+			const char *zVis = pDestr->iProtection == PH7_CLASS_PROT_PRIVATE
+				? "private" : "protected";
+			ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
+			SyBlobInit(&sErrMsg,&pVm->sAllocator);
+			if( pScope ){
+				SyBlobFormat(&sErrMsg,"Call to %s %z::__destruct() from scope %z",
+					zVis,&pClass->sName,&pScope->sName);
+			}else{
+				SyBlobFormat(&sErrMsg,"Call to %s %z::__destruct() from global scope",
+					zVis,&pClass->sName);
+			}
+			/* Parked, not returned: this release has no channel back to the
+			 * executor (nothing "called" the destruct), and the dispatcher's own
+			 * screen used to do the parking for us through
+			 * VmCallClassMethodWithMap. Without it the uncaught Error is printed
+			 * and the program carries on past a statement php never reaches. */
+			VmBoundaryPark(&(*pVm),
+				VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+			SyBlobRelease(&sErrMsg);
+		}else{
+			/* Invoke the destructor. Skipped during ph7_vm_reset() bulk teardown:
+			 * running user PHP against a half-reset VM is unsafe (see bInReset). */
+			pThis->iRef = 2; /* Prevent garbage collection */
+			PH7_VmCallMethodUnchecked(pVm,pThis,pDestr,0,0,0);
+		}
 	}
 	/* A native class's own teardown, while its slots are still readable. Not a
 	 * __destruct: the classes that need this (WeakReference) declare none in php,

@@ -163,63 +163,110 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 		if( GenStateCollectParamAttrs(&(*pGen),pIn,&sArg.aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
-		/* Parse optional visibility + readonly modifiers (constructor property
-		 * promotion, PHP 8.0+/8.1+). A property is promoted when a visibility
-		 * keyword and/or `readonly` is present; `readonly` may appear on either
-		 * side of the visibility keyword (`public readonly T $x`,
-		 * `readonly public T $x`), or alone (`readonly T $x` ⇒ public readonly). */
+		/* Parse the promotion-modifier RUN (constructor property promotion, PHP
+		 * 8.0+; `readonly` 8.1, asymmetric `(set)` 8.4, `final` 8.4). php takes
+		 * them as a SET in any order, and ANY of them promotes the parameter --
+		 * `final int $x` alone is a public final property, exactly as `readonly
+		 * int $x` alone is a public readonly one. The old fixed ladder read
+		 * readonly, then a visibility, then readonly again, so a `final` anywhere
+		 * fell through to the type parser as "syntax error, unexpected token
+		 * final, expecting variable". */
 		{
-			int bReadonly = 0, bVisSeen = 0;
+			int bReadonly = 0, bVisSeen = 0, bReadVis = 0, bSetSeen = 0, bFinal = 0;
 			sxi32 iVis = PH7_CLASS_PROT_PUBLIC;
 			sxi32 iSetVisFlag = 0;
 			int nSetTok = 0;   /* left unset when bNameHead skips the peek below */
 			sxi32 nSetVis;
+			sxu32 nModLine = (pIn < pEnd) ? pIn->nLine : 0;
+			const char *zTwice = 0;    /* a modifier written twice; "" = the access-type one */
+			const char *zNotHere = 0;  /* ...and one a PARAMETER never takes */
 			/* php lexes `private\Q` as one T_NAME_QUALIFIED, so a modifier word a
 			 * `\` follows is the head of a TYPE name and no modifier at all:
 			 * `function f(private\Q $x)` is an ordinary parameter, not a promoted
 			 * property outside a constructor. */
 			int bNameHead = ( pIn + 1 < pEnd && (pIn[1].nType & PH7_TK_NSSEP)
 				&& GenStateTokensGlued(pIn,&pIn[1]) );
-			if( !bNameHead && pIn < pEnd && GenStateIsReadonly(pIn) ){
-				bReadonly = 1;
-				pIn++;
-			}
-			nSetVis = bNameHead ? 0 : GenStatePeekSetVisibility(pIn,pEnd,&nSetTok);
-			if( nSetVis ){
-				/* Leading `private(set)` etc: promoted with a public read side */
-				iSetVisFlag = GenStateSetVisFlag(nSetVis);
-				bVisSeen = 1;
-				pIn += nSetTok;
-				if( pIn < pEnd && GenStateIsReadonly(pIn) ){
+			while( !bNameHead && zTwice == 0 && zNotHere == 0 && pIn < pEnd ){
+				if( GenStateIsReadonly(pIn) ){
+					if( bReadonly ){
+						zTwice = "readonly";
+					}
 					bReadonly = 1;
 					pIn++;
+					continue;
 				}
-			}else if( !bNameHead && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
-				sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
-				if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PROTECTED || nKw == PH7_TKWRD_PRIVATE ){
+				if( (pIn->nType & PH7_TK_KEYWORD) == 0 ){
+					break;
+				}
+				nSetVis = GenStatePeekSetVisibility(pIn,pEnd,&nSetTok);
+				if( nSetVis ){
+					if( bSetSeen ){
+						zTwice = "";
+					}
+					bSetSeen = 1;
+					iSetVisFlag = GenStateSetVisFlag(nSetVis);
 					bVisSeen = 1;
-					iVis = (nKw == PH7_TKWRD_PRIVATE) ? PH7_CLASS_PROT_PRIVATE
-						: (nKw == PH7_TKWRD_PROTECTED) ? PH7_CLASS_PROT_PROTECTED
-						: PH7_CLASS_PROT_PUBLIC;
-					pIn++;
-					nSetVis = GenStatePeekSetVisibility(pIn,pEnd,&nSetTok);
-					if( nSetVis ){
-						/* `public private(set) T $x` promoted form */
-						iSetVisFlag = GenStateSetVisFlag(nSetVis);
-						pIn += nSetTok;
-					}
-					if( pIn < pEnd && GenStateIsReadonly(pIn) ){
-						bReadonly = 1;
-						pIn++;
-					}
+					pIn += nSetTok;
+					continue;
 				}
+				{
+					sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
+					if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PROTECTED
+					 || nKw == PH7_TKWRD_PRIVATE ){
+						if( bReadVis ){
+							zTwice = "";
+						}
+						bReadVis = 1;
+						bVisSeen = 1;
+						iVis = (nKw == PH7_TKWRD_PRIVATE) ? PH7_CLASS_PROT_PRIVATE
+							: (nKw == PH7_TKWRD_PROTECTED) ? PH7_CLASS_PROT_PROTECTED
+							: PH7_CLASS_PROT_PUBLIC;
+					}else if( nKw == PH7_TKWRD_FINAL ){
+						if( bFinal ){
+							zTwice = "final";
+						}
+						bFinal = 1;
+					}else if( nKw == PH7_TKWRD_STATIC ){
+						zNotHere = "static";
+					}else if( nKw == PH7_TKWRD_ABSTRACT ){
+						zNotHere = "abstract";
+					}else{
+						break; /* the type or the `$name` starts here */
+					}
+					pIn++;
+				}
+			}
+			/* The same duplicate rules the class body's run enforces -- php words
+			 * them identically wherever the modifier was written -- plus the two a
+			 * PARAMETER never takes, which php words against "a parameter". */
+			if( zTwice ){
+				rc = zTwice[0]
+					? PH7_GenCompileError(pGen,E_ERROR,nModLine,
+						"Multiple %s modifiers are not allowed",zTwice)
+					: PH7_GenCompileError(pGen,E_ERROR,nModLine,
+						"Multiple access type modifiers are not allowed");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				return SXERR_SYNTAX;
+			}
+			if( zNotHere ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nModLine,
+					"Cannot use the %s modifier on a parameter",zNotHere);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				return SXERR_SYNTAX;
 			}
 			if( iSetVisFlag == PH7_CLASS_ATTR_PRIVATE_SET ){
 				sArg.iFlags |= VM_FUNC_ARG_PRIV_SET;
 			}else if( iSetVisFlag == PH7_CLASS_ATTR_PROTECTED_SET ){
 				sArg.iFlags |= VM_FUNC_ARG_PROT_SET;
 			}
-			if( bVisSeen || bReadonly ){
+			if( bFinal ){
+				sArg.iFlags |= VM_FUNC_ARG_FINAL;
+			}
+			if( bVisSeen || bReadonly || bFinal ){
 				if( !bCtorCtx ){
 					if( bAbstractCtx ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pIn->nLine,
