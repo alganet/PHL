@@ -739,6 +739,26 @@ PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault)
 }
 /* The same, as a borrowed STRING (arg_separator.input). The bytes live in the
  * caller's blob, which it owns. */
+/*
+ * One directive as the export format needs it: php's access bitmask, the value
+ * a script reads now, and the DEFAULT behind it. `pOut`/`pDef` are the
+ * caller's blobs. Answers 0 when the build has no such directive.
+ */
+PH7_PRIVATE int PH7_VmIniDescribe(ph7_vm *pVm,const char *zName,sxu32 nName,
+	sxi32 *piAccess,SyBlob *pOut,SyBlob *pDef)
+{
+	VmIniSlot *pSlot;
+	IniSeed(&(*pVm));
+	pSlot = IniFind(&(*pVm),zName,nName);
+	if( pSlot == 0 ){
+		return 0;
+	}
+	*piAccess = pSlot->iAccess;
+	IniLiveGet(&(*pVm),pSlot,pOut);
+	SyBlobReset(pDef);
+	SyBlobAppend(pDef,SyBlobData(&pSlot->sGlobal),SyBlobLength(&pSlot->sGlobal));
+	return 1;
+}
 PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut)
 {
 	VmIniSlot *pSlot;
@@ -803,6 +823,11 @@ PH7_PRIVATE int PH7_VmIniGetBool(ph7_vm *pVm,const char *zName,int bDefault){
 }
 PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut){
 	(void)pVm; (void)zName; SyBlobReset(pOut);
+}
+PH7_PRIVATE int PH7_VmIniDescribe(ph7_vm *pVm,const char *zName,sxu32 nName,
+	sxi32 *piAccess,SyBlob *pOut,SyBlob *pDef){
+	(void)pVm; (void)zName; (void)nName; (void)piAccess;
+	SyBlobReset(pOut); SyBlobReset(pDef); return 0;
 }
 PH7_PRIVATE int PH7_VmIniSet(ph7_vm *pVm,const char *zName,sxu32 nName,
 	const char *zVal,sxu32 nVal,const char *zWho){

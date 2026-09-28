@@ -88,7 +88,7 @@ static void FatalSilent(void)
  */
 static void Help(void)
 {
-	puts("phl [-h|--help|-b|-i|-l|-v|--version|-r code|--rf name|--rc name|-d name=value|-c inifile] path/to/php_file [script args]");
+	puts("phl [-h|--help|-b|-i|-l|-v|--version|-r code|--rf name|--rc name|--re name|-d name=value|-c inifile] path/to/php_file [script args]");
 #ifdef PHL_ENABLE_SERVER
 	puts("phl -S host:port [-t docroot] [router.php]");
 #endif
@@ -483,6 +483,35 @@ int main(int argc,char **argv)
 						zWhat,zEsc);
 				}
 				zRunCode = zReflCode;
+				run_code = 1;
+			}else if( strcmp(argv[n], "--re") == 0 ){
+				/* php CLI parity: `--re <extension>` prints the module's whole
+				 * Reflection export. An extension NAME is not an identifier --
+				 * php has `Zend OPcache` and `pdo_sqlite` -- so the charset is
+				 * --rz's, and the refusal is ReflectionExtension's own. */
+				static char zExtCode[768];
+				const char *zName;
+				const char *zChk;
+				if( n + 1 >= argc ){
+					FatalCode("Missing name argument for --re",1);
+				}
+				zName = argv[++n];
+				for( zChk = zName ; *zChk ; zChk++ ){
+					char ch = *zChk;
+					if( !(ch == '_' || ch == ' ' || ch == '.' || ch == '-'
+					   || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+					   || (ch >= '0' && ch <= '9')) ){
+						FatalCode("Invalid name for --re",1);
+					}
+				}
+				if( strlen(zName) > 250 ){
+					FatalCode("Name too long for --re",1);
+				}
+				snprintf(zExtCode,sizeof(zExtCode),
+					"try { echo new ReflectionExtension(\"%s\"), \"\n\"; }"
+					" catch (Throwable $e) { echo \"Exception: \", $e->getMessage(), \"\n\"; exit(1); }",
+					zName);
+				zRunCode = zExtCode;
 				run_code = 1;
 			}else if( strcmp(argv[n], "--rz") == 0 ){
 				/* php CLI parity: `--rz <name>` reflects a ZEND extension. PHL

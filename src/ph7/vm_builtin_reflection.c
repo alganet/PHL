@@ -3185,17 +3185,225 @@ static int vm_builtin_ReflectionExtension_info(ph7_context *pCtx, int nArg, ph7_
 	SXUNUSED(pCtx);
 	return PH7_OK;
 }
+/*
+ * ---------------------------------------------------------------------------
+ * The EXTENSION block -- php's whole module, and the last export this engine
+ * did not have (it printed one placeholder line, `Extension [ extension #1
+ * name ]`). It NESTS the function and class blocks, which is why it waited for
+ * them: its bytes cannot match php's until theirs do.
+ *
+ * php's shape, measured against 8.5.9:
+ *
+ *   Extension [ <persistent> extension #N name version V ] {
+ *   <blank>
+ *     - Dependencies { … }        each section only when it has rows,
+ *   <blank>                       in this order, and each preceded by a
+ *     - INI { … }                 blank line -- an extension with no rows
+ *   <blank>                       at all prints `{` and `}` on consecutive
+ *     - Constants [C] { … }       lines instead.
+ *   <blank>
+ *     - Functions { … }
+ *   <blank>
+ *     - Classes [K] { … }
+ *   }
+ *
+ * A nested block is the STANDALONE export with four spaces on every non-empty
+ * line -- verified byte for byte against php, which is what lets this reuse
+ * the two block builders rather than threading an indent through them.
+ * ---------------------------------------------------------------------------
+ */
+static void ReflectExportFuncByName(ph7_context *pCtx, SyBlob *pOut,
+	const char *zName, int nName);
+static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class *pClass);
+/* Copy pIn into pOut with nPad spaces in front of every non-empty line. */
+static void ReflectExportPad(SyBlob *pOut, SyBlob *pIn, int nPad)
+{
+	const char *zIn = (const char *)SyBlobData(pIn);
+	sxu32 nIn = SyBlobLength(pIn), i = 0;
+	while( i < nIn ){
+		sxu32 j = i;
+		while( j < nIn && zIn[j] != '\n' ){
+			j++;
+		}
+		if( j > i ){
+			int k;
+			for( k = 0 ; k < nPad ; k++ ){
+				SyBlobAppend(pOut, " ", sizeof(char));
+			}
+			SyBlobAppend(pOut, &zIn[i], j - i);
+		}
+		if( j < nIn ){
+			SyBlobAppend(pOut, "\n", sizeof(char));
+		}
+		i = j + 1;
+	}
+}
+typedef struct ReflectExtDump ReflectExtDump;
+struct ReflectExtDump {
+	ph7_context *pCtx;
+	SyBlob *pOut;     /* the section body, already indented */
+	int iKind;
+	sxu32 nRow;
+};
+/* php's access word for an ini directive: the whole mask is `ALL`, and
+ * anything else is the set bits joined with a comma in php's own order. */
+static void ReflectExtIniAccess(SyBlob *pOut, sxi32 iAccess)
+{
+	static const struct { sxi32 iBit; const char *zWord; } aBit[] = {
+		{ 1, "USER" }, { 2, "PERDIR" }, { 4, "SYSTEM" }
+	};
+	sxu32 n;
+	int bFirst = 1;
+	if( (iAccess & 7) == 7 ){
+		SyBlobAppend(pOut, "ALL", sizeof("ALL")-1);
+		return;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aBit) ; ++n ){
+		if( iAccess & aBit[n].iBit ){
+			if( !bFirst ){
+				SyBlobAppend(pOut, ",", sizeof(char));
+			}
+			SyBlobAppend(pOut, aBit[n].zWord, SyStrlen(aBit[n].zWord));
+			bFirst = 0;
+		}
+	}
+}
+static int ReflectExtDumpStep(const char *zName, int nName, void *pData)
+{
+	ReflectExtDump *p = (ReflectExtDump *)pData;
+	ph7_context *pCtx = p->pCtx;
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sBlock;
+	if( !PH7_VmInternalNameExists(pVm, p->iKind, zName, nName) ){
+		return 0;
+	}
+	p->nRow++;
+	if( p->iKind == PH7_EXT_KIND_INI ){
+		SyBlob sVal, sDef;
+		sxi32 iAccess = 0;
+		SyBlobInit(&sVal, &pVm->sAllocator);
+		SyBlobInit(&sDef, &pVm->sAllocator);
+		if( PH7_VmIniDescribe(pVm, zName, (sxu32)nName, &iAccess, &sVal, &sDef) ){
+			SyBlobAppend(p->pOut, "    Entry [ ", sizeof("    Entry [ ")-1);
+			SyBlobAppend(p->pOut, zName, (sxu32)nName);
+			SyBlobAppend(p->pOut, " <", sizeof(" <")-1);
+			ReflectExtIniAccess(p->pOut, iAccess);
+			SyBlobAppend(p->pOut, "> ]\n      Current = '", sizeof("> ]\n      Current = '")-1);
+			SyBlobAppend(p->pOut, SyBlobData(&sVal), SyBlobLength(&sVal));
+			SyBlobAppend(p->pOut, "'\n", sizeof("'\n")-1);
+			/* php prints the DEFAULT only for a directive a script moved. */
+			if( SyBlobLength(&sVal) != SyBlobLength(&sDef)
+			 || SyMemcmp(SyBlobData(&sVal), SyBlobData(&sDef), SyBlobLength(&sVal)) != 0 ){
+				SyBlobAppend(p->pOut, "      Default = '", sizeof("      Default = '")-1);
+				SyBlobAppend(p->pOut, SyBlobData(&sDef), SyBlobLength(&sDef));
+				SyBlobAppend(p->pOut, "'\n", sizeof("'\n")-1);
+			}
+			SyBlobAppend(p->pOut, "    }\n", sizeof("    }\n")-1);
+		}
+		SyBlobRelease(&sVal);
+		SyBlobRelease(&sDef);
+		return 0;
+	}
+	SyBlobInit(&sBlock, &pVm->sAllocator);
+	if( p->iKind == PH7_EXT_KIND_CONST ){
+		ph7_constant *pCons = ReflectConstEntry(pVm, zName, nName);
+		if( pCons ){
+			pVm->bConstEnum++;   /* describing the table is not READING an entry */
+			ReflectExportGlobalConstLine(pCtx, &sBlock, pCons);
+			pVm->bConstEnum--;
+		}
+	}else if( p->iKind == PH7_EXT_KIND_CLASS ){
+		ph7_class *pClass = PH7_VmExtractClass(pVm, zName, (sxu32)nName, FALSE, 0);
+		/* php separates one CLASS block from the next with a blank line, and
+		 * does NOT do the same for functions or constants. */
+		if( p->nRow > 1 ){
+			SyBlobAppend(p->pOut, "\n", sizeof(char));
+		}
+		if( pClass ){
+			ReflectExportClassBlock(pCtx, &sBlock, pClass);
+		}
+	}else{
+		ReflectExportFuncByName(pCtx, &sBlock, zName, nName);
+	}
+	ReflectExportPad(p->pOut, &sBlock, 4);
+	SyBlobRelease(&sBlock);
+	return 0;
+}
+/* One `  - <title>[ [N]] { … }` section, written only when it has rows. */
+static void ReflectExtSection(SyBlob *pOut, const char *zTitle, SyBlob *pBody,
+	sxu32 nRow, int bCount)
+{
+	if( SyBlobLength(pBody) < 1 ){
+		return;
+	}
+	SyBlobFormat(pOut, "\n  - %s ", zTitle);
+	if( bCount ){
+		SyBlobFormat(pOut, "[%u] ", nRow);
+	}
+	SyBlobAppend(pOut, "{\n", sizeof("{\n")-1);
+	SyBlobAppend(pOut, SyBlobData(pBody), SyBlobLength(pBody));
+	SyBlobAppend(pOut, "  }\n", sizeof("  }\n")-1);
+}
+static int ReflectExtDepLine(const char *zOn, const char *zKind, void *pData)
+{
+	ReflectExtDump *p = (ReflectExtDump *)pData;
+	p->nRow++;
+	SyBlobFormat(p->pOut, "    Dependency [ %s (%s) ]\n", zOn, zKind);
+	return 0;
+}
+static void ReflectExtOneSection(ph7_context *pCtx, SyBlob *pOut, int iExt,
+	int iKind, const char *zTitle, int bCount)
+{
+	ReflectExtDump sDump;
+	SyBlob sBody;
+	SyBlobInit(&sBody, &pCtx->pVm->sAllocator);
+	sDump.pCtx = pCtx;
+	sDump.pOut = &sBody;
+	sDump.iKind = iKind;
+	sDump.nRow = 0;
+	PH7_VmExtWalk(iExt, iKind, ReflectExtDumpStep, &sDump);
+	ReflectExtSection(pOut, zTitle, &sBody, sDump.nRow, bCount);
+	SyBlobRelease(&sBody);
+}
 static int vm_builtin_ReflectionExtension_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_vm *pVm = pCtx->pVm;
 	const char *zName = "";
-	int nName = 0;
+	int nName = 0, iExt;
+	SyBlob sOut;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
 		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
 	}
-	ph7_result_string_format(pCtx, "Extension [ extension #1 %.*s ]\n", nName, zName);
+	iExt = PH7_VmExtensionLookup(zName, nName);
+	SyBlobInit(&sOut, &pVm->sAllocator);
+	/* php's `#N` is the module's REGISTRATION index; a `phl.stub_extensions`
+	 * name has no partition of its own and rides at the end of the table. */
+	/* The version is the one getVersion() reports, which is php's answer for a
+	 * BUNDLED module: the interpreter's own, not the extension's. */
+	SyBlobFormat(&sOut, "Extension [ <persistent> extension #%d %.*s version %s ] {\n",
+		iExt >= 0 ? iExt : PH7_VmExtensionCount(), nName, zName, PHP_COMPAT_VERSION);
+	if( iExt >= 0 ){
+		ReflectExtDump sDep;
+		SyBlob sBody;
+		SyBlobInit(&sBody, &pVm->sAllocator);
+		sDep.pCtx = pCtx;
+		sDep.pOut = &sBody;
+		sDep.iKind = -1;
+		sDep.nRow = 0;
+		PH7_VmExtWalkDep(iExt, ReflectExtDepLine, &sDep);
+		ReflectExtSection(&sOut, "Dependencies", &sBody, sDep.nRow, 0);
+		SyBlobRelease(&sBody);
+		ReflectExtOneSection(pCtx, &sOut, iExt, PH7_EXT_KIND_INI,   "INI",       0);
+		ReflectExtOneSection(pCtx, &sOut, iExt, PH7_EXT_KIND_CONST, "Constants", 1);
+		ReflectExtOneSection(pCtx, &sOut, iExt, PH7_EXT_KIND_FUNC,  "Functions", 0);
+		ReflectExtOneSection(pCtx, &sOut, iExt, PH7_EXT_KIND_CLASS, "Classes",   1);
+	}
+	SyBlobAppend(&sOut, "}\n", sizeof("}\n")-1);
+	ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
 	return PH7_OK;
 }
 /* ---- ReflectionZendExtension: none exist, so the constructor always refuses ---- */
@@ -9731,6 +9939,19 @@ static int ReflectExportClassSelf(ph7_context *pCtx)
 	}
 	SyBlobRelease(&sOut);
 	return rc == SXRET_OK ? PH7_OK : rc;
+}
+/* The standalone Function block for a name the extension walk handed over. */
+static void ReflectExportFuncByName(ph7_context *pCtx, SyBlob *pOut,
+	const char *zName, int nName)
+{
+	ph7_value sTarget;
+	ReflectFuncRef sRef;
+	PH7_MemObjInit(pCtx->pVm, &sTarget);
+	ph7_value_string(&sTarget, zName, nName);
+	if( ReflectFuncFill(pCtx->pVm, &sTarget, 0, &sRef) ){
+		ReflectExportFuncBlock(pCtx, pOut, &sRef, "", 0);
+	}
+	PH7_MemObjRelease(&sTarget);
 }
 static int ReflectExportFuncSelf(ph7_context *pCtx)
 {
