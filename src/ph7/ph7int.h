@@ -2842,6 +2842,10 @@ struct ph7_vm
 	SyBlob sConsumer;           /* Default VM consumer [i.e Redirect all VM output to this blob] */
 	SyBlob sWorker;             /* General purpose working buffer */
 	SySet aFiles;               /* Stack of processed files */
+	SyBlob sReflectConstName;   /* Scratch for the `Class::MEMBER` name ReflectionParameter::
+	                             * getDefaultValueConstantName() answers for a class-constant
+	                             * default: the two halves live in separate literals, so the
+	                             * joined text needs somewhere to live past the return. */
 	SySet aIncFrame;            /* Stack of ACTIVE include/require/eval activations (VmIncFrame).
 	                             * php shows each of them as a trace frame of its own -- the
 	                             * `#N main.php(4): require()` between the included file's frames

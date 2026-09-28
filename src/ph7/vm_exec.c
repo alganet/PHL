@@ -1811,6 +1811,39 @@ PH7_PRIVATE int PH7_VmCallableStringParts(const char *zName,sxu32 nName,
 	}
 	return FALSE;
 }
+/*
+ * A parameter DEFAULT is a mini-program run in the callee's frame before the body
+ * starts, and `self::K` inside one means the class that DECLARED the method -- for
+ * a method composed from a trait, the class that composed it. That answer is not
+ * reachable by the ordinary route here: the call's self stack is not pushed until
+ * the body begins, so the trait rule has nothing to walk from and `self` was left
+ * unresolved -- read as a class of that name, and thrown as `Class "self" not
+ * found` for a default php evaluates without a word.
+ *
+ * Mark the declaring class explicitly for the duration, the way a member
+ * initializer's evaluation does (PH7_VmPeekDeclaringClass reads the frame-keyed
+ * pair). A non-trait method resolves to the class it already did, so nothing else
+ * moves. The pair is saved and restored around each default because one default
+ * may CALL something that evaluates defaults of its own.
+ */
+typedef struct VmDefaultScope VmDefaultScope;
+struct VmDefaultScope { ph7_class *pClass; void *pFrame; };
+static void VmDefaultScopeEnter(ph7_vm *pVm,VmFrame *pFrame,ph7_vm_func *pVmFunc,
+	ph7_class *pSelf,VmDefaultScope *pSave)
+{
+	pSave->pClass = pVm->pConstEvalClass;
+	pSave->pFrame = pVm->pConstEvalFrame;
+	if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) && pVmFunc->pUserData ){
+		pVm->pConstEvalClass = PH7_VmMemberOwnerClass((ph7_class *)pVmFunc->pUserData,
+			pSelf ? pSelf : (ph7_class *)pVmFunc->pUserData);
+		pVm->pConstEvalFrame = (void *)pFrame;
+	}
+}
+static void VmDefaultScopeLeave(ph7_vm *pVm,VmDefaultScope *pSave)
+{
+	pVm->pConstEvalClass = pSave->pClass;
+	pVm->pConstEvalFrame = pSave->pFrame;
+}
 static sxi32 VmByteCodeExecBody(
 	ph7_vm *pVm,         /* Target VM */
 	VmInstr *aInstr,     /* PH7 bytecode program */
@@ -7319,7 +7352,10 @@ case PH7_OP_CALL: {
 					}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 						if( pObj ){
+							VmDefaultScope sDefScope;
+							VmDefaultScopeEnter(&(*pVm),pFrame,pVmFunc,pSelf,&sDefScope);
 							rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pObj,FALSE);
+							VmDefaultScopeLeave(&(*pVm),&sDefScope);
 							if( rc == PH7_ABORT ) goto Abort;
 							sArg.nIdx = pObj->nIdx;
 							sArg.pUserData = 0;
@@ -7783,7 +7819,10 @@ case PH7_OP_CALL: {
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 				if( pObj ){
 					/* Evaluate the default value and extract it's result */
+					VmDefaultScope sDefScope;
+					VmDefaultScopeEnter(&(*pVm),pFrame,pVmFunc,pSelf,&sDefScope);
 					rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pObj,FALSE);
+					VmDefaultScopeLeave(&(*pVm),&sDefScope);
 					if( rc == PH7_ABORT ){
 						goto Abort;
 					}

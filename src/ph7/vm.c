@@ -2335,6 +2335,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aIncFrame,&pVm->sAllocator,sizeof(VmIncFrame));
+	SyBlobInit(&pVm->sReflectConstName,&pVm->sAllocator);
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aIncluded,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aOB,&pVm->sAllocator,sizeof(VmObEntry));

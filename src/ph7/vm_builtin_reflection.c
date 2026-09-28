@@ -7724,6 +7724,19 @@ static int vm_builtin_ReflectionParameter_isCallable(ph7_context *pCtx, int nArg
 	SXUNUSED(apArg);
 	return ReflectParamTypeIs(pCtx, "callable");
 }
+/*
+ * The class `self`/`parent` resolve against inside a parameter's default: the one
+ * that DECLARED the method (a trait's members belong to the composing class). 0 for
+ * a plain function, whose defaults can name neither.
+ */
+static ph7_class * ReflectParamSelfClass(const ReflectFuncRef *pRef)
+{
+	if( pRef->pMeth == 0 ){
+		return 0;
+	}
+	return PH7_VmMemberOwnerClass((ph7_class *)pRef->pMeth->sFunc.pUserData,
+		pRef->pClass ? pRef->pClass : (ph7_class *)pRef->pMeth->sFunc.pUserData);
+}
 static int vm_builtin_ReflectionParameter_getDefaultValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
@@ -7735,10 +7748,24 @@ static int vm_builtin_ReflectionParameter_getDefaultValue(ph7_context *pCtx, int
 			"Internal error: Failed to retrieve the default value");
 	}
 	if( sDesc.pArg ){
-		/* Compiled: the same evaluation path the VM uses for an omitted argument */
+		/* Compiled: the same evaluation path the VM uses for an omitted argument --
+		 * except that one runs INSIDE the call, where the frame already names the
+		 * class `self::K` resolves against. Reflection has no such frame, so a
+		 * default written `self::K` answered `Class "self" not found` where php
+		 * answers its value. Mark the declaring class the way a member
+		 * initializer's evaluation does (PH7_VmPeekDeclaringClass reads the pair). */
 		ph7_value sValue;
+		ph7_class *pSaveCls = pCtx->pVm->pConstEvalClass;
+		void *pSaveFrame = pCtx->pVm->pConstEvalFrame;
+		ph7_class *pDecl = ReflectParamSelfClass(&sRef);
+		if( pDecl ){
+			pCtx->pVm->pConstEvalClass = pDecl;
+			pCtx->pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pCtx->pVm->pFrame);
+		}
 		PH7_MemObjInit(pCtx->pVm, &sValue);
 		VmLocalExec(pCtx->pVm, &sDesc.pArg->aByteCode, &sValue, FALSE);
+		pCtx->pVm->pConstEvalClass = pSaveCls;
+		pCtx->pVm->pConstEvalFrame = pSaveFrame;
 		ph7_result_value(pCtx, &sValue);
 		PH7_MemObjRelease(&sValue);
 		return PH7_OK;
@@ -7804,7 +7831,49 @@ static int ReflectParamDefConst(ph7_context *pCtx, ReflectParamDesc *pDesc,
 		*pn = nDef;
 		return 1;
 	}
-	if( pDesc->pArg == 0 || SySetUsed(&pDesc->pArg->aByteCode) != 2 ){
+	if( pDesc->pArg == 0 ){
+		return 0;
+	}
+	if( SySetUsed(&pDesc->pArg->aByteCode) == 4 ){
+		/* A CLASS constant compiles to the class name, the member name and the `::`
+		 * fetch: [ LOADC <class>, LOADC <member>, MEMBER(static, bareword), DONE ].
+		 * php answers true for one and names it the way the source spelled it --
+		 * `self::K` stays `self::K` -- minus a leading `\`, which it drops. Only the
+		 * plain global-constant shape below was recognised, so every class-constant
+		 * default reported itself as no constant at all. */
+		VmInstr *aCC = (VmInstr *)SySetBasePtr(&pDesc->pArg->aByteCode);
+		if( aCC[0].iOp == PH7_OP_LOADC && aCC[1].iOp == PH7_OP_LOADC
+		 && aCC[2].iOp == PH7_OP_MEMBER && aCC[2].iP1 == 1 && aCC[2].p3 == 0
+		 && aCC[3].iOp == PH7_OP_DONE ){
+			ph7_value *pCls = (ph7_value *)SySetAt(&pCtx->pVm->aLitObj,aCC[0].iP2);
+			ph7_value *pMem = (ph7_value *)SySetAt(&pCtx->pVm->aLitObj,aCC[1].iP2);
+			if( pCls && pMem && SyBlobLength(&pCls->sBlob) > 0
+			 && SyBlobLength(&pMem->sBlob) > 0
+			 && !(SyBlobLength(&pMem->sBlob) == sizeof("class")-1
+			   && SyStrnicmp((const char *)SyBlobData(&pMem->sBlob),"class",
+			                 sizeof("class")-1) == 0) ){
+				/* `C::class` reads a class NAME rather than a constant, and php
+				 * answers false for it -- the same rule the declared-signature path
+				 * above makes. */
+				const char *zCls = (const char *)SyBlobData(&pCls->sBlob);
+				sxu32 nCls = SyBlobLength(&pCls->sBlob);
+				SyBlob *pOut = &pCtx->pVm->sReflectConstName;
+				while( nCls > 0 && zCls[0] == '\\' ){
+					zCls++;
+					nCls--;
+				}
+				SyBlobReset(pOut);
+				SyBlobAppend(pOut,zCls,nCls);
+				SyBlobAppend(pOut,"::",sizeof("::")-1);
+				SyBlobAppend(pOut,SyBlobData(&pMem->sBlob),SyBlobLength(&pMem->sBlob));
+				*pz = (const char *)SyBlobData(pOut);
+				*pn = (int)SyBlobLength(pOut);
+				return 1;
+			}
+		}
+		return 0;
+	}
+	if( SySetUsed(&pDesc->pArg->aByteCode) != 2 ){
 		return 0;
 	}
 	aInstr = (VmInstr *)SySetBasePtr(&pDesc->pArg->aByteCode);
