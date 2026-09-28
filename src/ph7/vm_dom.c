@@ -4449,6 +4449,12 @@ static int DomReadFileAs(ph7_context *pCtx,const char *zFile,int nFile,const cha
 		DomAbsPath(pCtx,zFile,pPath);
 	}
 	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	/* php hands its document loaders the context libxml_set_streams_context()
+	 * left, which is what lets a `load('http://…')` carry a script's own headers
+	 * and user agent. The slot was stored and answered and READ BY NOTHING until
+	 * there was an http:// wrapper to read it; a file:// open ignores it exactly
+	 * as php's does. */
+	PH7_StreamCtxArm(pVm,PH7_StreamCtxFromValue(&pVm->sXmlStreamsCtx));
 	pHandle = (pStream && pStream->xRead) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
 		PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx)) : 0;
 	if( pHandle == 0 ){
