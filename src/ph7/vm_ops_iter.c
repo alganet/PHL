@@ -193,8 +193,8 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		ph7_class_instance *pThis = pStep->xIter.pThis;
 		VmClassAttr *pVmAttr = 0; /* Stupid cc -06 warning */
 		SyHashEntry *pEntry;
-		/* Point to the next attribute */
-		while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+		/* Point to the next attribute (this loop's own cursor) */
+		while((pEntry = PH7_ClassInstanceIterNext(&pStep->sAttrIter)) != 0 ){
 			pVmAttr = (VmClassAttr *)pEntry->pUserData;
 			if( PH7_ATTR_UNPRESENTED(pVmAttr) ){
 				/* A static property belongs to the CLASS, never to an object: php
@@ -221,6 +221,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			/* Clean up the mess left behind */
 			pc = pInstr->iP2 - 1; /* Jump to this destination */
 			/* The binding survives the loop (see the hashmap step) */
+			PH7_ClassInstanceIterClose(pThis,&pStep->sAttrIter);
 			VmForeachStepUnlink(pInfo,pStep);
 			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 			PH7_ClassInstanceUnref(pThis);
@@ -259,6 +260,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 					&pThis->pClass->sName,&pVmAttr->pAttr->sName);
 				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
+				PH7_ClassInstanceIterClose(pThis,&pStep->sAttrIter);
 				VmForeachStepUnlink(pInfo,pStep);
 				SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 				PH7_ClassInstanceUnref(pThis);
@@ -269,18 +271,15 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				/* PHP 8.4 property hooks: object iteration reads through the
 				 * get hook (virtual properties included; the flag gate keeps
 				 * hook-free classes on the raw zero-copy path below). The
-				 * object step walks hAttr with the hash's single EMBEDDED
-				 * cursor — save/restore it around the dispatch so a hook that
+				 * step carries its own registered cursor, so a hook that
 				 * re-enters an hAttr walk on this instance (get_object_vars,
-				 * json_encode of $this) can't truncate THIS iteration. A hook
-				 * that unset()s the property the saved cursor points at stays
-				 * a recorded hazard (php's own semantics there are murky). */
+				 * json_encode of $this) cannot truncate THIS iteration, and one
+				 * that unset()s the property the cursor is parked on has that
+				 * cursor advanced under it. */
 				ph7_value sHookVal;
 				sxi32 rcHk;
-				SyHashEntry_Pr *pSavedCur = pThis->hAttr.pCurrent;
 				PH7_MemObjInit(pVm,&sHookVal);
 				rcHk = PH7_VmHookGetAttrValue(pThis,pVmAttr,&sHookVal);
-				pThis->hAttr.pCurrent = pSavedCur;
 				if( rcHk != SXERR_NOTFOUND ){
 					if( rcHk == SXRET_OK ){
 						pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);
@@ -395,6 +394,27 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		pc = pInstr->iP2 - 1;
 	}else{
 		ph7_foreach_step *pStep;
+		VmFrame *pInitFrame = VmSkipExceptionFrames(pVm->pFrame);
+		/* Reclaim this activation's LEFTOVER step for this same foreach statement.
+		 * A loop left through break/return/goto/an exception never reaches the
+		 * "no more entries" arm that frees its step, so the step, its retain of
+		 * the subject and — for an object walk — its registered cursor all
+		 * survived until the VM died. The running frame cannot be inside that
+		 * loop's body while it is executing INIT, so the step is stale by
+		 * construction. */
+		{
+			ph7_foreach_step **apOld = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
+			sxu32 nOld = SySetUsed(&pInfo->aStep);
+			while( nOld > 0 ){
+				ph7_foreach_step *pOld = apOld[--nOld];
+				if( pOld->pFrame == pInitFrame ){
+					VmForeachStepRelease(&(*pVm),pInfo,pOld);
+					/* The set shifted under us: restart the scan. */
+					apOld = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
+					nOld = SySetUsed(&pInfo->aStep);
+				}
+			}
+		}
 		pStep = (ph7_foreach_step *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_foreach_step));
 		if( pStep == 0 ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory while preparing the 'foreach' step");
@@ -409,7 +429,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			 * activation's step out of the per-statement stack — two suspended
 			 * generator/fiber instances (or a recursive call) paused in the same
 			 * textual foreach otherwise resume onto each other's cursor. */
-			pStep->pFrame = VmSkipExceptionFrames(pVm->pFrame);
+			pStep->pFrame = pInitFrame;
 			if( pTos->iFlags & MEMOBJ_HASHMAP ){
 				ph7_hashmap *pMap,*pIterMap;
 				/* COW: For by-reference foreach, eagerly separate the
@@ -552,11 +572,15 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 							pc = pInstr->iP2 - 1;
 						}
 					}else{
-						/* Plain object iteration via hAttr */
-						SyHashResetLoopCursor(&pThis->hAttr);
+						/* Plain object iteration via hAttr. A PRIVATE cursor,
+						 * registered on the instance -- the table's embedded one
+						 * is shared, so a nested loop over the same object rewound
+						 * this one (an infinite loop) and an unset() in the body
+						 * freed the entry it was parked on. */
 						pStep->iFlags |= PH7_4EACH_STEP_OBJECT;
 						pStep->xIter.pThis = pThis;
 						pThis->iRef++;
+						PH7_ClassInstanceIterOpen(pThis,&pStep->sAttrIter);
 					}
 				}
 			}
@@ -567,6 +591,12 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
 					VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,FALSE/*never made it onto aStep*/);
 				}else{
+					if( pStep->iFlags & PH7_4EACH_STEP_OBJECT ){
+						/* Unhook the cursor before the pool slot is recycled: a
+						 * registered walker left behind is what the next unset()
+						 * on this object would step through. */
+						PH7_ClassInstanceIterClose(pStep->xIter.pThis,&pStep->sAttrIter);
+					}
 					SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 				}
 				/* Jump out of the loop */

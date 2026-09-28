@@ -1129,7 +1129,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							pObjAttr->iState |= VM_CLASS_ATTR_UNINIT;
 						}else{
 							PH7_VmReleaseInstanceAttr(&(*pVm),pObjAttr);
-							SyHashDeleteEntry2(pEntry);
+							/* Through the instance's own door: a `foreach`/`array_walk`
+							 * standing one property short of this one is holding the
+							 * entry about to be freed. */
+							PH7_ClassInstanceDeleteAttrEntry(pThis,pEntry);
 						}
 					}else{
 						ph7_class_method *pUnsetMagic = PH7_ClassExtractMethod(pClass,"__unset",sizeof("__unset")-1);

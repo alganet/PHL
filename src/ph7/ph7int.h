@@ -585,6 +585,25 @@ struct ph7_foreach_info
 	sxi32 iFlags;       /* Control flags */
 	SySet aStep;        /* Stack of steps [i.e: ph7_foreach_step instance] */
 };
+/*
+ * One live walk of ONE object's property table.
+ *
+ * An object's attributes live in a SyHash, and SyHashGetNextEntry() shares a
+ * single cursor embedded in the table — which is wrong twice for `foreach`:
+ * nested loops over one object rewind each other (an infinite loop, since the
+ * inner walk always leaves the cursor at the head), and the cursor is advanced
+ * before the body runs, so a body that unset()s the property the walk is about
+ * to reach freed the entry the cursor held. This is the object twin of the
+ * hashmap's per-loop `ph7_foreach_step::pCursor` + `pActiveSteps` pair: every
+ * walker keeps its own position, and the instance keeps the list of walkers so
+ * an attribute added or removed under them can fix their cursors up.
+ */
+typedef struct PH7_AttrIter PH7_AttrIter;
+struct PH7_AttrIter
+{
+	SyHashEntry *pCursor;   /* Next attribute entry to yield; 0 once exhausted */
+	PH7_AttrIter *pNextIter;/* Next live walker on the instance */
+};
 struct ph7_foreach_step
 {
 	sxi32 iFlags;                   /* Control flags (see below) */
@@ -608,6 +627,8 @@ struct ph7_foreach_step
 									 * paused in the same textual foreach cannot clash on
 									 * each other's cursor. */
 	ph7_foreach_step *pNextActive;  /* Next step on the map's pActiveSteps list */
+	PH7_AttrIter sAttrIter;         /* Object iteration: this loop's PRIVATE cursor over the
+	                                 * instance's property table (see PH7_AttrIter) */
 };
 /* Foreach step control flags */
 #define PH7_4EACH_STEP_HASHMAP 0x001 /* Hashmap iteration */
@@ -2164,6 +2185,9 @@ struct ph7_class_instance
 	sxi32 iFlags;       /* Control flags */
 	sxu32 nObjId;       /* Per-instance monotonic handle id (from pVm->nNextObjId,
 	                     * never reused). Drives spl_object_id/hash + var_dump #N. */
+	PH7_AttrIter *pActiveIters; /* Walks of hAttr currently in flight over this object
+	                     * (foreach, array_walk). A property removed under one of them
+	                     * advances its cursor; one appended re-arms an exhausted one. */
 };
 /*
  * ph7_class_instance::iFlags bit set while the object's __clone() magic method
@@ -5239,6 +5263,7 @@ PH7_PRIVATE void VmPopOperand(ph7_value **ppTos, sxi32 nPop);
 PH7_PRIVATE void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *pStep);
 PH7_PRIVATE int VmHookGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName);
 PH7_PRIVATE void VmForeachHashmapStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,int bPop);
+PH7_PRIVATE void VmForeachStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep);
 PH7_PRIVATE void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,ph7_class_instance *pThis);
 PH7_PRIVATE int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE int VmClassHasAttributeNamed(ph7_class *pClass,const char *zName,sxu32 nName);
@@ -5966,6 +5991,11 @@ PH7_PRIVATE SyHashEntry * PH7_ClassInstanceAttrEntry(ph7_class_instance *pThis,c
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const char *zMethod,
 	sxu32 nByte,const SyString *pAttrName,ph7_value *pResult);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pThis,VmClassAttr *pAttr);
+PH7_PRIVATE void PH7_ClassInstanceIterOpen(ph7_class_instance *pThis,PH7_AttrIter *pIter);
+PH7_PRIVATE SyHashEntry * PH7_ClassInstanceIterNext(PH7_AttrIter *pIter);
+PH7_PRIVATE void PH7_ClassInstanceIterClose(ph7_class_instance *pThis,PH7_AttrIter *pIter);
+PH7_PRIVATE void PH7_ClassInstanceDeleteAttrEntry(ph7_class_instance *pThis,SyHashEntry *pEntry);
+PH7_PRIVATE void PH7_ClassInstanceAttrAppended(ph7_class_instance *pThis,SyHashEntry *pEntry);
 PH7_PRIVATE sxi32 PH7_VmHookGetAttrValue(ph7_class_instance *pThis,VmClassAttr *pVmAttr,ph7_value *pOut);
 PH7_PRIVATE void PH7_MemObjPrintRInline(SyBlob *pOut,ph7_value *pObj);
 PH7_PRIVATE ph7_value * PH7_EnumCaseNameValue(ph7_class_instance *pThis);

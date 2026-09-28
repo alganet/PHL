@@ -261,6 +261,13 @@ static sxi32 HashDeleteEntry(SyHash *pHash,SyHashEntry_Pr *pEntry,void **ppUserD
 	if( pHash->pLast == pEntry ){
 		pHash->pLast = pEntry->pPrev;
 	}
+	/* ...and the embedded loop cursor, which the caller may be standing on: the
+	 * cursor is advanced BEFORE the body of a SyHashGetNextEntry() walk runs, so
+	 * a body that deletes the entry it is about to reach left pCurrent pointing
+	 * into the pool slot freed below. */
+	if( pHash->pCurrent == pEntry ){
+		pHash->pCurrent = pEntry->pNext;
+	}
 	MACRO_LD_REMOVE(pHash->pList,pEntry);
 	pHash->nEntry--;
 	if( ppUserData ){
@@ -485,6 +492,29 @@ PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void
 PH7_PRIVATE sxi32 SyHashInsertTail(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData)
 {
 	return SyHashInsertCore(&(*pHash),pKey,nKeyLen,pUserData,1);
+}
+/*
+ * The iteration list, walkable WITHOUT the hash's single embedded cursor: the
+ * head entry and, from any entry, its successor. A consumer that must survive
+ * re-entrancy (nested walks of one table) or a delete under its own feet keeps
+ * its own SyHashEntry* here instead of sharing pCurrent — see the instance
+ * attribute iterator in oo.c.
+ */
+PH7_PRIVATE SyHashEntry * SyHashFirstEntry(SyHash *pHash)
+{
+#if defined(UNTRUST)
+	if( INVALID_HASH(pHash) ){
+		return 0;
+	}
+#endif
+	return (SyHashEntry *)pHash->pList;
+}
+PH7_PRIVATE SyHashEntry * SyHashEntryNext(SyHashEntry *pEntry)
+{
+	if( pEntry == 0 ){
+		return 0;
+	}
+	return (SyHashEntry *)((SyHashEntry_Pr *)pEntry)->pNext;
 }
 PH7_PRIVATE SyHashEntry * SyHashLastEntry(SyHash *pHash)
 {

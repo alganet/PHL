@@ -1196,6 +1196,85 @@ PH7_PRIVATE ph7_class_instance * PH7_NewClassInstance(ph7_vm *pVm,ph7_class *pCl
 	return pNew;
 }
 /*
+ * Open a private walk of this object's property table.
+ *
+ * Every consumer that hands PHP code the control flow between two attributes --
+ * `foreach ($o as $k => $v)`, `array_walk($o, $fn)` -- must own its position
+ * rather than share the SyHash's embedded cursor: php iterates each walk
+ * independently (nested loops over one object do not rewind each other), and the
+ * body it runs in between can add or remove a property. The instance keeps the
+ * list of open walks so those two mutations can fix the cursors up; the walker
+ * MUST close it on every exit path, or the next mutation walks a recycled slot.
+ */
+PH7_PRIVATE void PH7_ClassInstanceIterOpen(ph7_class_instance *pThis,PH7_AttrIter *pIter)
+{
+	pIter->pCursor = SyHashFirstEntry(&pThis->hAttr);
+	pIter->pNextIter = pThis->pActiveIters;
+	pThis->pActiveIters = pIter;
+}
+/*
+ * The next attribute entry, or 0 when the walk is exhausted. The cursor is
+ * advanced BEFORE the entry is handed out, exactly like SyHashGetNextEntry:
+ * php's own iteration standing on an entry is free to unset() it.
+ */
+PH7_PRIVATE SyHashEntry * PH7_ClassInstanceIterNext(PH7_AttrIter *pIter)
+{
+	SyHashEntry *pEntry = pIter->pCursor;
+	if( pEntry ){
+		pIter->pCursor = SyHashEntryNext(pEntry);
+	}
+	return pEntry;
+}
+PH7_PRIVATE void PH7_ClassInstanceIterClose(ph7_class_instance *pThis,PH7_AttrIter *pIter)
+{
+	PH7_AttrIter **ppLink = &pThis->pActiveIters;
+	while( *ppLink ){
+		if( *ppLink == pIter ){
+			*ppLink = pIter->pNextIter;
+			pIter->pNextIter = 0;
+			pIter->pCursor = 0;
+			return;
+		}
+		ppLink = &(*ppLink)->pNextIter;
+	}
+}
+/*
+ * Remove one attribute entry from the instance, advancing any open walk parked
+ * on it first. The ONLY door for an `unset($o->p)`-shaped removal: the entry is
+ * freed here, so a walker still holding it would read a recycled pool slot on
+ * its next step (php visits the properties AFTER the deleted one, and so does
+ * this).
+ */
+PH7_PRIVATE void PH7_ClassInstanceDeleteAttrEntry(ph7_class_instance *pThis,SyHashEntry *pEntry)
+{
+	PH7_AttrIter *pIter;
+	for( pIter = pThis->pActiveIters ; pIter ; pIter = pIter->pNextIter ){
+		if( pIter->pCursor == pEntry ){
+			pIter->pCursor = SyHashEntryNext(pEntry);
+		}
+	}
+	SyHashDeleteEntry2(pEntry);
+}
+/*
+ * The mirror: an attribute APPENDED to the table (a dynamic property created by
+ * the loop body, a declared one re-created after unset()) re-arms any walk that
+ * has run off the end -- php walks the LIVE table, so `foreach ($o as ...)` over
+ * a stdClass whose body keeps adding properties keeps visiting them. A walker
+ * with a NULL cursor is always mid-walk: it unregisters as soon as it stops.
+ */
+PH7_PRIVATE void PH7_ClassInstanceAttrAppended(ph7_class_instance *pThis,SyHashEntry *pEntry)
+{
+	PH7_AttrIter *pIter;
+	if( pEntry == 0 ){
+		return;
+	}
+	for( pIter = pThis->pActiveIters ; pIter ; pIter = pIter->pNextIter ){
+		if( pIter->pCursor == 0 ){
+			pIter->pCursor = pEntry;
+		}
+	}
+}
+/*
  * Extract the value of a class instance [i.e: Object in the PHP jargon] attribute.
  * This function never fail.
  */

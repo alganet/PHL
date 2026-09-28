@@ -1986,6 +1986,10 @@ PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *
 	}
 	/* Install in the reference table so COW/refcount tracks the slot. */
 	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
+	/* php walks the LIVE property table: a `foreach`/`array_walk` that has run off
+	 * the end re-arms onto a property the body just created. */
+	PH7_ClassInstanceAttrAppended(pThis,
+		SyHashGet(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName)));
 	if( ppAttr ){
 		*ppAttr = pVmAttr;
 	}
@@ -2056,6 +2060,9 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 		return;
 	}
+	/* Re-armed only once the entry is here to stay: the rollback above deletes it. */
+	PH7_ClassInstanceAttrAppended(pThis,
+		SyHashGet(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName)));
 	if( ppAttr ){
 		*ppAttr = pVmAttr;
 	}
@@ -5466,6 +5473,42 @@ PH7_PRIVATE void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_fo
 	VmForeachStepUnlink(pInfo,pStep);
 	SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 	PH7_ClassInstanceUnref(pThis);
+}
+/*
+ * Release ONE foreach step of any kind — the single door OP_FOREACH_INIT uses to
+ * reclaim a step its loop never exhausted.
+ *
+ * A `foreach` that leaves through `break`, `return`, `goto` or an exception never
+ * reaches the "no more entries" arm, so its step stayed on pInfo->aStep forever
+ * (~140 bytes and one retain of the subject per execution: 200k broken loops leaked
+ * 28 MB). Worse for an OBJECT loop, whose cursor is REGISTERED on the instance —
+ * every abandoned walk left an entry that each later property add/remove had to
+ * walk past. A step for THIS pInfo whose owning frame is the running one cannot be
+ * mid-loop when INIT runs again (the frame executes one instruction at a time), so
+ * INIT reclaims it before pushing its own.
+ */
+PH7_PRIVATE void VmForeachStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep)
+{
+	ph7_class_instance *pThis;
+	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
+		VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,TRUE);
+		return;
+	}
+	/* Object-shaped step (plain attribute walk or the Iterator protocol): both
+	 * retain xIter.pThis, and only the plain one holds a registered cursor. */
+	pThis = (pStep->iFlags & (PH7_4EACH_STEP_OBJECT|PH7_4EACH_STEP_ITERATOR))
+		? pStep->xIter.pThis : 0;
+	if( pStep->iFlags & PH7_4EACH_STEP_OBJECT ){
+		PH7_ClassInstanceIterClose(pStep->xIter.pThis,&pStep->sAttrIter);
+	}
+	if( pStep->pOwner ){
+		PH7_ClassInstanceUnref(pStep->pOwner);
+	}
+	VmForeachStepUnlink(pInfo,pStep);
+	SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+	if( pThis ){
+		PH7_ClassInstanceUnref(pThis);
+	}
 }
 /*
  * Tear down a HASHMAP-mode foreach step: unhook its private cursor from the

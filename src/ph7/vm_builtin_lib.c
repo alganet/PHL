@@ -644,7 +644,7 @@ static void VmExcDropSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlo
 	SyHashEntry *pEntry = SyHashGet(&pThis->hAttr,(const void *)zSlot,SyStrlen(zSlot));
 	if( pEntry ){
 		PH7_VmReleaseInstanceAttr(&(*pVm),(VmClassAttr *)pEntry->pUserData);
-		SyHashDeleteEntry2(pEntry);
+		PH7_ClassInstanceDeleteAttrEntry(pThis,pEntry);
 	}
 }
 static int vm_builtin_Exception_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
