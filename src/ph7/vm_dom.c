@@ -154,8 +154,54 @@ static phl_domnode * DomResOf(ph7_class_instance *pObj);
  */
 #define DOM_REFUSE_FALSE 0   /* the method answers false */
 #define DOM_REFUSE_VOID  1   /* the method answers nothing (php declares it void) */
+/*
+ * A refusal made while the PROPERTY hook is running.
+ *
+ * The readers and writers below are shared: the same body answers `$el->tagName`
+ * and the debug walk, and under the hook it runs on a scratch context inside the
+ * member opcode. A throw raised there would run the enclosing catch mid-access,
+ * before the opcode has settled its stack -- which is why PH7_NativePropCtx has
+ * a refusal channel of its own. Answers 1 when the refusal was RECORDED (the
+ * opcode raises it where the access lands) and 0 when the caller must throw the
+ * ordinary way, which is every call made from a method body.
+ */
+static int DomPropRefuse(ph7_context *pCtx,const char *zClass,sxi32 iCode,const char *zMsg)
+{
+	PH7_NativePropCtx *pProp = pCtx ? pCtx->pPropCtx : 0;
+	if( pProp == 0 ){
+		return 0;
+	}
+	pProp->bAnswered = 1;
+	pProp->zThrowClass = zClass;
+	pProp->iThrowCode = iCode;
+	SyBufferFormat(pProp->zThrowMsg,sizeof(pProp->zThrowMsg),"%s",zMsg);
+	return 1;
+}
+/* The same, for a refusal whose message is formatted. */
+static sxi32 DomPropThrow(ph7_context *pCtx,const char *zClass,sxi32 iCode,
+	const char *zFormat,...)
+{
+	SyBlob sMsg;
+	va_list ap;
+	sxi32 rc;
+	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+	va_start(ap,zFormat);
+	SyBlobFormatAp(&sMsg,zFormat,ap);
+	va_end(ap);
+	SyBlobNullAppend(&sMsg);
+	if( DomPropRefuse(pCtx,zClass,iCode,(const char *)SyBlobData(&sMsg)) ){
+		rc = PH7_OK;
+	}else{
+		rc = PH7_VmThrowExceptionCode(pCtx,zClass,iCode,"%s",(const char *)SyBlobData(&sMsg));
+	}
+	SyBlobRelease(&sMsg);
+	return rc;
+}
 static int DomThrowAlways(ph7_context *pCtx,int iCode)
 {
+	if( DomPropRefuse(pCtx,"DOMException",(sxi32)iCode,DomErrText(iCode)) ){
+		return PH7_OK;
+	}
 	return PH7_VmThrowExceptionCode(pCtx,"DOMException",(sxi32)iCode,"%s",DomErrText(iCode));
 }
 static int DomThrowFor(ph7_context *pCtx,ph7_class_instance *pDoc,int iCode,int iAnswer)
@@ -6353,7 +6399,7 @@ DOM_METHOD(vm_builtin_DOMNodeList_item)
 	return DomResultWrap(pCtx,DomListItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
 }
 /* php exposes `length` on both collections as a virtual property; the
- * DOM_PROP_ACCESSORS pair below turns each recognizer into __get + __isset. */
+ * property HOOK below turns each recognizer into php's read and has handlers. */
 static int DomListProp(ph7_context *pCtx,const char *zName)
 {
 	if( DomNameIs(zName,"length") ){
@@ -8520,11 +8566,6 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	}
 	return 1;
 }
-/* The argument every __get body reads. */
-static const char * DomGetName(int nArg,ph7_value **apArg)
-{
-	return nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-}
 /*
  * Is this receiver a node class with NO node behind it?
  *
@@ -8550,92 +8591,32 @@ static int DomNodeLess(ph7_context *pCtx,const char *zName)
 	return PH7_ClassExtractAttribute(pThis->pClass,zName,(sxu32)SyStrlen(zName)) != 0;
 }
 /*
- * The __get/__isset/__set trio every DOM class carries.
- *
- * Both ride ONE recognizer per class -- the DomProp_X readers below, which
- * answer 1 when the name is a property of that class and have written its
- * value, and 0 when it is not.  php models these as real (virtual) properties,
- * so the 0 case is its `Undefined property` WARNING rather than a silent null,
- * and `isset()` is php's own has_property: the name has to exist AND read back
- * non-null (which is what makes `isset($n->nextSibling)` false on a last child
- * while `isset($n->nodeName)` is true).  Without the __isset half every
- * `isset($doc->documentElement)` and every `$node->attributes ?? []` answered
- * as though the whole surface were absent.
- */
-static int DomUndefProp(ph7_context *pCtx,const char *zName)
-{
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_result_null(pCtx);
-	if( pThis ){
-		/* php names the INSTANCE's class, so a userland subclass of DOMElement
-		 * is reported under its own name. */
-		SyBlob sMsg;
-		SyString sName;
-		SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
-		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
-		SyBlobFormat(&sMsg,"Undefined property: %z::$%z",&pThis->pClass->sName,&sName);
-		SyBlobNullAppend(&sMsg);
-		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
-		SyBlobRelease(&sMsg);
-	}
-	return PH7_OK;
-}
-/*
  * The write half. A per-class WRITER answers one of these; the name it does
- * not write is looked up in the class's READER, which decides between php's
- * two refusals -- a property that exists is read-only, one that does not is a
- * dynamic property (deprecated in php 8.2, so §10 rejects it here, which is
- * what the engine's own store path would have said had the class carried no
- * __set at all).
+ * not write is looked up in the class's READER by the property HOOK, which
+ * decides between php's two refusals -- a property the table carries is
+ * read-only, one it does not is nothing this class answers and goes back on
+ * the ordinary path (where PHL's §10 policy meets a dynamic property).
  */
 #define DOM_SET_UNKNOWN  0   /* not a property of this class */
 #define DOM_SET_DONE     1   /* written, or a refusal already raised into *pRc */
-static int DomRefuseWrite(ph7_context *pCtx,const char *zName,int bKnown)
+/*
+ * php's `Cannot modify readonly property C::$p`, worded under the INSTANCE's
+ * class so a userland subclass of DOMElement is reported under its own name.
+ *
+ * Three writers refuse a name of their own HERE rather than by declining it: the
+ * two DTD halves whose read-only properties are DEPRECATED (php's readonly Error
+ * carries no deprecation notice, and the reader would have raised one) and the
+ * document's read-only four for the same reason.
+ */
+static sxi32 DomRefuseWrite(ph7_context *pCtx,const char *zName)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	SyString sName;
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
-	return PH7_VmThrowException(pCtx,"Error",
-		bKnown ? "Cannot modify readonly property %z::$%z"
-		       : "Cannot create dynamic property %z::$%z",
-		&pThis->pClass->sName,&sName);
+	return DomPropThrow(pCtx,"Error",0,"Cannot modify readonly property %z::$%s",
+		&pThis->pClass->sName,zName);
 }
-#define DOM_PROP_ACCESSORS(CLS,READER,WRITER)                                   \
-	DOM_METHOD(vm_builtin_##CLS##_get)                                          \
-	{                                                                           \
-		const char *zName = DomGetName(nArg,apArg);                             \
-		if( DomNodeLess(pCtx,zName) ){                                          \
-			return DomThrowAlways(pCtx,DOM_ERR_INVALID_STATE);                  \
-		}                                                                       \
-		if( READER(pCtx,zName) == 0 ){                                          \
-			return DomUndefProp(pCtx,zName);                                    \
-		}                                                                       \
-		return PH7_OK;                                                          \
-	}                                                                           \
-	DOM_METHOD(vm_builtin_##CLS##_isset)                                        \
-	{                                                                           \
-		const char *zIsName = DomGetName(nArg,apArg);                           \
-		int bKnown, bNull;                                                      \
-		if( DomNodeLess(pCtx,zIsName) ){                                        \
-			return DomThrowAlways(pCtx,DOM_ERR_INVALID_STATE);                  \
-		}                                                                       \
-		bKnown = READER(pCtx,zIsName) != 0;                                     \
-		bNull = (pCtx->pRet->iFlags & MEMOBJ_NULL) != 0;                        \
-		ph7_result_bool(pCtx,bKnown && !bNull);                                 \
-		return PH7_OK;                                                          \
-	}                                                                           \
-	DOM_METHOD(vm_builtin_##CLS##_set)                                          \
-	{                                                                           \
-		const char *zName = DomGetName(nArg,apArg);                             \
-		int rc = PH7_OK;                                                        \
-		if( WRITER(pCtx,zName,nArg > 1 ? apArg[1] : 0,&rc) == DOM_SET_DONE ){   \
-			return rc;                                                          \
-		}                                                                       \
-		return DomRefuseWrite(pCtx,zName,READER(pCtx,zName) != 0);              \
-	}
 /* A libxml string slot answered as php answers it: the bytes, or null when the
  * document never carried one (`encoding` on a declaration-less document). */
 static void DomResultXmlStr(ph7_context *pCtx,const xmlChar *zVal)
@@ -9154,7 +9135,7 @@ static int DomWriteText(ph7_context *pCtx,const char *zOwner,const char *zProp,
 		}else if( pVal ){
 			zGiven = ph7_type_name(pVal);
 		}
-		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+		*pRc = DomPropThrow(pCtx,"TypeError",0,
 			"Cannot assign %s to property %s::$%s of type %s",zGiven,zOwner,zProp,zType);
 		return 0;
 	}
@@ -9190,7 +9171,7 @@ static int DomWriteBool(ph7_context *pCtx,const char *zOwner,const char *zProp,
 		}else if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 ){
 			zGiven = ph7_type_name(pVal);
 		}
-		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+		*pRc = DomPropThrow(pCtx,"TypeError",0,
 			"Cannot assign %s to property %s::$%s of type bool",zGiven,zOwner,zProp);
 		return 0;
 	}
@@ -9514,7 +9495,7 @@ static int DomSetDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int
 	SyBlob sVal;
 	if( DomNameIs(zName,"actualEncoding") || DomNameIs(zName,"config")
 	 || DomNameIs(zName,"xmlEncoding") ){
-		*pRc = DomRefuseWrite(pCtx,zName,1);
+		*pRc = DomRefuseWrite(pCtx,zName);
 		return DOM_SET_DONE;
 	}
 	if( bVersion || bUri || DomNameIs(zName,"encoding") ){
@@ -9549,7 +9530,7 @@ static int DomSetDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int
 				: xmlFindCharEncodingHandler(zNew);
 			if( pEnc == 0 ){
 				SyBlobRelease(&sVal);
-				*pRc = PH7_VmThrowException(pCtx,"ValueError","Invalid document encoding");
+				*pRc = DomPropThrow(pCtx,"ValueError",0,"Invalid document encoding");
 				return DOM_SET_DONE;
 			}
 			xmlCharEncCloseFunc(pEnc);
@@ -9692,21 +9673,6 @@ static int DomNsNodeProp(ph7_context *pCtx,const char *zName)
 	}
 	return 0;
 }
-DOM_PROP_ACCESSORS(DOMNameSpaceNode,DomNsNodeProp,DomSetNothing)
-DOM_PROP_ACCESSORS(DOMNodeList,DomListProp,DomSetNothing)
-DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp,DomSetNothing)
-DOM_PROP_ACCESSORS(DOMNode,DomNodeProp,DomSetNodeProp)
-DOM_PROP_ACCESSORS(DOMDocument,DomDocProp,DomSetDocProp)
-DOM_PROP_ACCESSORS(DOMElement,DomElemProp,DomSetElemProp)
-DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)
-DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)
-DOM_PROP_ACCESSORS(DOMText,DomTextProp,DomSetCharProp)
-DOM_PROP_ACCESSORS(DOMProcessingInstruction,DomPiProp,DomSetPiProp)
-/* The DTD half's OWN properties are all read-only, so the writer states none of
- * them and each lands on DomRefuseWrite's readonly Error. DOMNode's three still
- * write here -- `nodeValue` and `textContent` are accepted and ignored on a
- * doctype, which is not the same answer as refusing them. */
-DOM_PROP_ACCESSORS(DOMDocumentType,DomDocTypeProp,DomSetNodeProp)
 /*
  * Every property DOMEntity adds is read-only, and the refusal is raised HERE
  * rather than by falling through to the reader: the reader is where the three
@@ -9718,12 +9684,11 @@ static int DomSetEntityProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,
 	if( DomNameIs(zName,"publicId") || DomNameIs(zName,"systemId")
 	 || DomNameIs(zName,"notationName") || DomNameIs(zName,"actualEncoding")
 	 || DomNameIs(zName,"encoding") || DomNameIs(zName,"version") ){
-		*pRc = DomRefuseWrite(pCtx,zName,1);
+		*pRc = DomRefuseWrite(pCtx,zName);
 		return DOM_SET_DONE;
 	}
 	return DomSetNodeProp(pCtx,zName,pVal,pRc);
 }
-DOM_PROP_ACCESSORS(DOMEntity,DomEntityProp,DomSetEntityProp)
 /*
  * DOMNotation: the two identifiers a `<!NOTATION ...>` declares.
  *
@@ -9752,14 +9717,11 @@ static int DomNotationProp(ph7_context *pCtx,const char *zName)
 static int DomSetNotationProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
 {
 	if( DomNameIs(zName,"publicId") || DomNameIs(zName,"systemId") ){
-		*pRc = DomRefuseWrite(pCtx,zName,1);
+		*pRc = DomRefuseWrite(pCtx,zName);
 		return DOM_SET_DONE;
 	}
 	return DomSetNodeProp(pCtx,zName,pVal,pRc);
 }
-DOM_PROP_ACCESSORS(DOMNotation,DomNotationProp,DomSetNotationProp)
-/* The fragment writes what DOMNode writes; only its READ set is wider. */
-DOM_PROP_ACCESSORS(DOMDocumentFragment,DomFragProp,DomSetNodeProp)
 /*
  * DOMXPath's two, out of the hidden slots that hold them: php declares both
  * VIRTUAL, so `document` is read-only because its handler has no writer (and not
@@ -9795,7 +9757,6 @@ static int DomSetXPathProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,i
 	 * recognizer and words php's `Cannot modify readonly property`. */
 	return DOM_SET_UNKNOWN;
 }
-DOM_PROP_ACCESSORS(DOMXPath,DomXPathProp,DomSetXPathProp)
 /*
  * DOMDocumentFragment::appendXML(string $data): bool
  *
@@ -9998,53 +9959,191 @@ static const char * const azDomXPathDebug[] = { "document", "registerNodeNamespa
 	DOM_VPROP("previousElementSibling","?DOMElement"), \
 	DOM_VPROP("nextElementSibling","?DOMElement")
 /*
- * One row per class that HAS a handler table. bNode says the receiver's $__res is
- * an xmlNode, which is what the `ownerDocument` rule may be asked about -- a
- * namespace declaration carries an xmlNs instead and has no such field to read.
+ * One row per class that HAS a property-handler table -- php's own
+ * `dom_xxx_prop_handlers`, which is what its read_property / has_property /
+ * write_property consult before anything else about the object.
+ *
+ * xRead is the READ handler and xWrite the write one; xDebug is xRead with php's
+ * two #[\Deprecated] notices held back, because get_debug_info reads the C
+ * function behind the declaration and not the declaration. bNode says the
+ * receiver's $__res is an xmlNode, which is what the `ownerDocument` rule may be
+ * asked about -- a namespace declaration carries an xmlNs instead and has no such
+ * field to read.
  */
-typedef struct DomDebugSpec DomDebugSpec;
-struct DomDebugSpec {
+typedef struct DomPropSpec DomPropSpec;
+struct DomPropSpec {
 	const char *zClass;
 	int (*xRead)(ph7_context *,const char *);
+	int (*xWrite)(ph7_context *,const char *,ph7_value *,int *);
+	int (*xDebug)(ph7_context *,const char *);
 	const char * const *azName;
 	sxu32 nName;
 	int bNode;
 };
-static const DomDebugSpec aDomDebug[] = {
-	{ "DOMDocument", DomDocPropQuiet, azDomDocDebug, SX_ARRAYSIZE(azDomDocDebug), 1 },
-	{ "DOMElement", DomElemProp, azDomElemDebug, SX_ARRAYSIZE(azDomElemDebug), 1 },
-	{ "DOMAttr", DomAttrProp, azDomAttrDebug, SX_ARRAYSIZE(azDomAttrDebug), 1 },
-	{ "DOMText", DomTextProp, azDomTextDebug, SX_ARRAYSIZE(azDomTextDebug), 1 },
-	{ "DOMCharacterData", DomCharProp, azDomCharDebug, SX_ARRAYSIZE(azDomCharDebug), 1 },
-	{ "DOMProcessingInstruction", DomPiProp, azDomPiDebug, SX_ARRAYSIZE(azDomPiDebug), 1 },
-	{ "DOMDocumentFragment", DomFragProp, azDomFragDebug, SX_ARRAYSIZE(azDomFragDebug), 1 },
-	{ "DOMDocumentType", DomDocTypeProp, azDomDocTypeDebug, SX_ARRAYSIZE(azDomDocTypeDebug), 1 },
-	{ "DOMEntity", DomEntityPropQuiet, azDomEntityDebug, SX_ARRAYSIZE(azDomEntityDebug), 1 },
-	{ "DOMNotation", DomNotationProp, azDomNotationDebug, SX_ARRAYSIZE(azDomNotationDebug), 1 },
-	{ "DOMNodeList", DomListProp, azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
-	{ "DOMNamedNodeMap", DomMapProp, azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
-	{ "DOMNameSpaceNode", DomNsNodeProp, azDomNsNodeDebug, SX_ARRAYSIZE(azDomNsNodeDebug), 0 },
-	{ "DOMXPath", DomXPathProp, azDomXPathDebug, SX_ARRAYSIZE(azDomXPathDebug), 0 },
+static const DomPropSpec aDomProp[] = {
+	{ "DOMDocument", DomDocProp, DomSetDocProp, DomDocPropQuiet,
+	  azDomDocDebug, SX_ARRAYSIZE(azDomDocDebug), 1 },
+	{ "DOMElement", DomElemProp, DomSetElemProp, DomElemProp,
+	  azDomElemDebug, SX_ARRAYSIZE(azDomElemDebug), 1 },
+	{ "DOMAttr", DomAttrProp, DomSetAttrProp, DomAttrProp,
+	  azDomAttrDebug, SX_ARRAYSIZE(azDomAttrDebug), 1 },
+	{ "DOMText", DomTextProp, DomSetCharProp, DomTextProp,
+	  azDomTextDebug, SX_ARRAYSIZE(azDomTextDebug), 1 },
+	{ "DOMCharacterData", DomCharProp, DomSetCharProp, DomCharProp,
+	  azDomCharDebug, SX_ARRAYSIZE(azDomCharDebug), 1 },
+	{ "DOMProcessingInstruction", DomPiProp, DomSetPiProp, DomPiProp,
+	  azDomPiDebug, SX_ARRAYSIZE(azDomPiDebug), 1 },
+	/* The fragment writes what DOMNode writes; only its READ set is wider. */
+	{ "DOMDocumentFragment", DomFragProp, DomSetNodeProp, DomFragProp,
+	  azDomFragDebug, SX_ARRAYSIZE(azDomFragDebug), 1 },
+	/* The DTD half's OWN properties are all read-only, so its writer states none
+	 * of them and each lands on the hook's readonly Error. DOMNode's three still
+	 * write here -- `nodeValue` and `textContent` are accepted and ignored on a
+	 * doctype, which is not the same answer as refusing them. */
+	{ "DOMDocumentType", DomDocTypeProp, DomSetNodeProp, DomDocTypeProp,
+	  azDomDocTypeDebug, SX_ARRAYSIZE(azDomDocTypeDebug), 1 },
+	{ "DOMEntity", DomEntityProp, DomSetEntityProp, DomEntityPropQuiet,
+	  azDomEntityDebug, SX_ARRAYSIZE(azDomEntityDebug), 1 },
+	{ "DOMNotation", DomNotationProp, DomSetNotationProp, DomNotationProp,
+	  azDomNotationDebug, SX_ARRAYSIZE(azDomNotationDebug), 1 },
+	{ "DOMNodeList", DomListProp, DomSetNothing, DomListProp,
+	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
+	{ "DOMNamedNodeMap", DomMapProp, DomSetNothing, DomMapProp,
+	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
+	{ "DOMNameSpaceNode", DomNsNodeProp, DomSetNothing, DomNsNodeProp,
+	  azDomNsNodeDebug, SX_ARRAYSIZE(azDomNsNodeDebug), 0 },
+	{ "DOMXPath", DomXPathProp, DomSetXPathProp, DomXPathProp,
+	  azDomXPathDebug, SX_ARRAYSIZE(azDomXPathDebug), 0 },
 	/* DOMComment, DOMCdataSection and DOMEntityReference name no row of their own:
 	 * they declare no property php's table does not already carry, so the base-chain
 	 * walk below reaches their parent's -- which is php's answer for them too. */
-	{ "DOMNode", DomNodeProp, azDomNodeDebug, SX_ARRAYSIZE(azDomNodeDebug), 1 }
+	{ "DOMNode", DomNodeProp, DomSetNodeProp, DomNodeProp,
+	  azDomNodeDebug, SX_ARRAYSIZE(azDomNodeDebug), 1 }
 };
 /* The nearest ancestor with a handler table -- php's own lookup, which is why a
  * userland subclass of DOMElement shows DOMElement's twenty-seven. */
-static const DomDebugSpec * DomDebugSpecOf(ph7_class *pClass)
+static const DomPropSpec * DomPropSpecOf(ph7_class *pClass)
 {
 	for( ; pClass ; pClass = pClass->pBase ){
 		sxu32 nName = SyStringLength(&pClass->sName);
 		sxu32 i;
-		for( i = 0 ; i < SX_ARRAYSIZE(aDomDebug) ; ++i ){
-			if( SyStrlen(aDomDebug[i].zClass) == nName
-			 && SyStrncmp(SyStringData(&pClass->sName),aDomDebug[i].zClass,nName) == 0 ){
-				return &aDomDebug[i];
+		for( i = 0 ; i < SX_ARRAYSIZE(aDomProp) ; ++i ){
+			if( SyStrlen(aDomProp[i].zClass) == nName
+			 && SyStrncmp(SyStringData(&pClass->sName),aDomProp[i].zClass,nName) == 0 ){
+				return &aDomProp[i];
 			}
 		}
 	}
 	return 0;
+}
+/*
+ * php's read_property / has_property / write_property for every DOM class, as
+ * ph7_class::xProp.
+ *
+ * ext/dom has no `__get`/`__set`/`__isset` anywhere: each class carries a table
+ * of property handlers and php's object handlers consult it FIRST, so a name the
+ * table holds is answered by the handler and only a name it does NOT hold falls
+ * through to the standard path -- which is where a subclass's own magic accessor
+ * finally gets a say. Routing the surface through the magic trio had the order
+ * exactly backwards: a subclass that wrote `__get` without delegating replaced
+ * the whole DOM surface for its instances, and every DOM class carried three
+ * methods php does not.
+ *
+ * The recognizers below ARE the table: one per class, answering 1 for a name it
+ * knows. A name none of them knows leaves bAnswered at 0, and the member opcode
+ * takes the ordinary path from there -- php's own fall-through, undefined-property
+ * warning and all.
+ *
+ * UNSET is not answered here. php's unset_property for a virtual property has
+ * nothing to remove and refuses with `Cannot unset C::$p`, which the opcode
+ * already words off the declaration itself; declining leaves that answer, and
+ * leaves a name the class does NOT declare on the __unset path php sends it to.
+ *
+ * Neither is WRITE, the member opcode's question -- it is asked before the value
+ * exists, and a handler that really STORES needs it. The opcode recognizes the
+ * name as this table's (PH7_ClassNativePropOwns) and routes the write to STORE
+ * below, at the point php's write_property gets its zval.
+ */
+static void DomPropHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *pCtx)
+{
+	const DomPropSpec *pSpec = pThis ? DomPropSpecOf(pThis->pClass) : 0;
+	sxu32 nName = SyStringLength(pCtx->pName);
+	ph7_context sCtx;
+	ph7_value sVal;
+	char zName[128];
+	int bKnown;
+	if( pSpec == 0
+	 || pCtx->iMode == PH7_NATIVE_PROP_UNSET || pCtx->iMode == PH7_NATIVE_PROP_WRITE ){
+		return;
+	}
+	if( nName >= sizeof(zName) ){
+		/* Longer than any name ext/dom declares: the ordinary path owns it. */
+		return;
+	}
+	SyMemcpy(SyStringData(pCtx->pName),zName,nName);
+	zName[nName] = 0;
+	/* The recognizers answer by WRITING a result, so the scratch context carries
+	 * one slot of its own -- and the refusal channel, which is what stops a
+	 * readonly Error or a DOMException from running the enclosing catch in the
+	 * middle of this access. */
+	PH7_MemObjInit(pVm,&sVal);
+	VmInitCallContext(&sCtx,pVm,0,&sVal,0);
+	sCtx.pThis = pThis;
+	sCtx.pCalledClass = pThis->pClass;
+	sCtx.pPropCtx = pCtx;
+	if( pCtx->iMode == PH7_NATIVE_PROP_STORE ){
+		/* php's write_property, with the value. A name the WRITER does not state
+		 * is read-only when the class declares it at all -- and the refusal is
+		 * php's own, raised where the store would have landed -- and nothing this
+		 * class knows otherwise, which puts the write back on the ordinary path. */
+		int rcW = PH7_OK;
+		if( pSpec->xWrite(&sCtx,zName,pCtx->pResult,&rcW) == DOM_SET_DONE ){
+			pCtx->bAnswered = 1;
+			if( pCtx->zThrowClass == 0 && DomNodeLess(&sCtx,zName) ){
+				/* A writable name on an object with no node behind it: php's
+				 * handler reaches its DOM_GET_OBJ and answers Invalid State --
+				 * AFTER the declared type has had its say, which is why a
+				 * TypeError already recorded stands. */
+				DomPropRefuse(&sCtx,"DOMException",DOM_ERR_INVALID_STATE,
+					DomErrText(DOM_ERR_INVALID_STATE));
+			}
+		}else if( pSpec->xRead(&sCtx,zName) ){
+			pCtx->bAnswered = 1;
+			DomRefuseWrite(&sCtx,zName);
+		}
+		VmReleaseCallContext(&sCtx);
+		PH7_MemObjRelease(&sVal);
+		return;
+	}
+	if( DomNodeLess(&sCtx,zName) ){
+		/* A name the class DECLARES, on an object libxml gave no node -- every
+		 * handler would fetch a null pointer, and php answers Invalid State on a
+		 * read and on an isset() alike. */
+		DomPropRefuse(&sCtx,"DOMException",DOM_ERR_INVALID_STATE,
+			DomErrText(DOM_ERR_INVALID_STATE));
+		VmReleaseCallContext(&sCtx);
+		PH7_MemObjRelease(&sVal);
+		return;
+	}
+	bKnown = pSpec->xRead(&sCtx,zName) != 0;
+	if( bKnown && pCtx->zThrowClass == 0 ){
+		pCtx->bAnswered = 1;
+		if( pCtx->iMode == PH7_NATIVE_PROP_READ ){
+			PH7_MemObjStore(&sVal,pCtx->pResult);
+		}else{
+			/* php's has_property fetches the value and judges it: by NULL-ness for
+			 * isset() (`isset($n->nextSibling)` is false on a last child while
+			 * `isset($n->nodeName)` is true) and by TRUTH for the check_empty
+			 * question empty() asks. */
+			int bSet = pCtx->iMode == PH7_NATIVE_PROP_EXISTS
+				? ph7_value_to_bool(&sVal)
+				: (sVal.iFlags & MEMOBJ_NULL) == 0;
+			PH7_MemObjRelease(pCtx->pResult);
+			ph7_value_bool(pCtx->pResult,bSet);
+		}
+	}
+	VmReleaseCallContext(&sCtx);
+	PH7_MemObjRelease(&sVal);
 }
 /* php's `dom_node_owner_document_read` answers FAILURE -- and the debug walk then
  * writes no row -- for a node libxml gave no document: one built with `new`, and
@@ -10067,7 +10166,7 @@ static int DomDebugSkip(ph7_class_instance *pThis,const char *zName,int bNode)
 }
 static sxi32 DomPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
 {
-	const DomDebugSpec *pSpec;
+	const DomPropSpec *pSpec;
 	ph7_context sCtx;
 	ph7_value sVal,sKey;
 	sxu32 i;
@@ -10077,7 +10176,7 @@ static sxi32 DomPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,in
 		 * answer and this hook has nothing to add. */
 		return SXERR_NOTFOUND;
 	}
-	pSpec = pThis ? DomDebugSpecOf(pThis->pClass) : 0;
+	pSpec = pThis ? DomPropSpecOf(pThis->pClass) : 0;
 	if( pSpec == 0 || (pOut->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		return SXERR_NOTFOUND;
 	}
@@ -10108,7 +10207,7 @@ static sxi32 DomPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,in
 		}
 		PH7_MemObjRelease(&sVal);
 		PH7_MemObjInit(pVm,&sVal);
-		if( pSpec->xRead(&sCtx,zName) == 0 ){
+		if( pSpec->xDebug(&sCtx,zName) == 0 ){
 			continue;
 		}
 		if( sVal.iFlags & MEMOBJ_OBJ ){
@@ -10207,9 +10306,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMNode_lookupPrefix },
 		{ "isDefaultNamespace", PH7_MOD_PUBLIC, "string $namespace", "@bool",
 		  vm_builtin_DOMNode_isDefaultNamespace },
-		{ "__get",          PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNode_get },
-		{ "__isset",        PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNode_isset },
-		{ "__set",          PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNode_set },
 	};
 	/* php declares the six on DOMNode; every node class inherits them. */
 	static const PH7_NativeConstDef aNodeConst[] = {
@@ -10333,9 +10429,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
 		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },
 		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },
-		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocument_get },
-		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocument_isset },
-		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMDocument_set },
 	};
 	static const PH7_NativeMethodDef aElemMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC,
@@ -10400,17 +10493,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  "?DOMElement", vm_builtin_DOMElement_insertAdjacentElement },
 		{ "insertAdjacentText",    PH7_MOD_PUBLIC, "string $where, string $data", "void",
 		  vm_builtin_DOMElement_insertAdjacentText },
-		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },
-		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },
-		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },
 	};
 	static const PH7_NativeMethodDef aAttrMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",
 		  vm_builtin_DOMAttr_construct },
 		{ "isId",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMAttr_isId },
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMAttr_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMAttr_set },
 	};
 	static const PH7_NativeMethodDef aCharMethod[] = {
 		/* Every offset and count here is in UTF-8 CHARACTERS, php's unit. */
@@ -10430,17 +10517,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "remove",      PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf },
 		{ "before",      PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_before },
 		{ "after",       PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_after },
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },
 	};
 	static const PH7_NativeMethodDef aPiMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",
 		  vm_builtin_DOMProcessingInstruction_construct },
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMProcessingInstruction_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMProcessingInstruction_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
-		  vm_builtin_DOMProcessingInstruction_set },
 	};
 	static const PH7_NativeMethodDef aFragMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "", "",
@@ -10450,10 +10530,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
 		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },
 		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentFragment_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentFragment_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
-		  vm_builtin_DOMDocumentFragment_set },
 	};
 	static const PH7_NativeMethodDef aTextMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $data = ''", "",
@@ -10464,9 +10540,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMText_isWhitespace },
 		{ "isElementContentWhitespace",   PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_DOMText_isWhitespace },
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMText_set },
 	};
 	static const PH7_NativeMethodDef aEntRefMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $name", "",
@@ -10474,18 +10547,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	};
 	/* The DTD half declares no method of its own at all -- php's whole
 	 * DOMDocumentType surface is properties over DOMNode's method list. */
-	static const PH7_NativeMethodDef aDocTypeMethod[] = {
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentType_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentType_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
-		  vm_builtin_DOMDocumentType_set },
-	};
-	static const PH7_NativeMethodDef aEntityMethod[] = {
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMEntity_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMEntity_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
-		  vm_builtin_DOMEntity_set },
-	};
 	/* php's factory class: three ordinary instance methods and no state. */
 	static const PH7_NativeMethodDef aImplMethod[] = {
 		{ "createDocumentType", PH7_MOD_PUBLIC,
@@ -10497,12 +10558,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMImplementation_createDocument },
 		{ "hasFeature", PH7_MOD_PUBLIC, "string $feature, string $version", "@bool",
 		  vm_builtin_DOMImplementation_hasFeature },
-	};
-	static const PH7_NativeMethodDef aNotationMethod[] = {
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNotation_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNotation_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
-		  vm_builtin_DOMNotation_set },
 	};
 	/* The comment and CDATA constructors -- the only method either class
 	 * declares of its own; php's CDATA data is REQUIRED where the other two
@@ -10537,9 +10592,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "count",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNodeList_count },
 		{ "item",        PH7_MOD_PUBLIC, "int $index", "", vm_builtin_DOMNodeList_item },
 		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
-		{ "__get",       PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNodeList_get },
-		{ "__isset",     PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNodeList_isset },
-		{ "__set",       PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNodeList_set },
 	};
 	static const PH7_NativeMethodDef aMapMethod[] = {
 		{ "count",        PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNamedNodeMap_count },
@@ -10549,9 +10601,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "getNamedItemNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@?DOMNode",
 		  vm_builtin_DOMNamedNodeMap_getNamedItemNS },
 		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
-		{ "__get",        PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNamedNodeMap_get },
-		{ "__isset",      PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNamedNodeMap_isset },
-		{ "__set",        PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNamedNodeMap_set },
 	};
 	/* The declaration itself, the document it belongs to, and the element that
 	 * MAKES it -- php's parentNode/parentElement. */
@@ -10575,10 +10624,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aNsNodeMethod[] = {
 		{ "__sleep",  PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },
 		{ "__wakeup", PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },
-		{ "__get",    PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNameSpaceNode_get },
-		{ "__isset",  PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNameSpaceNode_isset },
-		{ "__set",    PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
-		  vm_builtin_DOMNameSpaceNode_set },
 	};
 	static const PH7_NativePropDef aXPathProp[] = {
 		/* php models both as VIRTUAL: `document` is read-only because its handler
@@ -10613,10 +10658,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMXPath_registerPhpFunctionNS },
 		{ "quote", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $str", "string",
 		  vm_builtin_DOMXPath_quote },
-		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMXPath_get },
-		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMXPath_isset },
-		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
-		  vm_builtin_DOMXPath_set },
 	};
 	/* Bases before subclasses: PH7_InstallNativeClasses declares the whole table
 	 * before touching a method, but PH7_ClassInherit still needs the parent to
@@ -10742,16 +10783,18 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  0, 0, DomPresent },
 		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aEntRefMethod, SX_ARRAYSIZE(aEntRefMethod), 0, 0, 0, 0, 0, 0, DomPresent },
+		/* The DTD trio state no method of their own -- every name php declares on
+		 * them is a property, and the class's handler answers it. */
 		{ "DOMDocumentType", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aDocTypeMethod, SX_ARRAYSIZE(aDocTypeMethod), 0, 0, aDocTypeProp,
+		  0, 0, 0, 0, aDocTypeProp,
 		  SX_ARRAYSIZE(aDocTypeProp), 0, 0, DomPresent },
 		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aEntityMethod, SX_ARRAYSIZE(aEntityMethod), 0, 0, aEntityProp,
+		  0, 0, 0, 0, aEntityProp,
 		  SX_ARRAYSIZE(aEntityProp), 0, 0, DomPresent },
 		{ "DOMImplementation", 0, 0, 0,
 		  aImplMethod, SX_ARRAYSIZE(aImplMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMNotation", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aNotationMethod, SX_ARRAYSIZE(aNotationMethod), 0, 0, aNotationProp,
+		  0, 0, 0, 0, aNotationProp,
 		  SX_ARRAYSIZE(aNotationProp), 0, 0, DomPresent },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
 		 * list carry its own cursor) and Countable. */
@@ -10809,6 +10852,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		pClass = PH7_VmExtractClass(&(*pVm),"DOMNamedNodeMap",sizeof("DOMNamedNodeMap")-1,FALSE,0);
 		if( pClass ){
 			pClass->xDim = DomMapDim;
+		}
+		/* The property handlers (ph7_class::xProp, php's read_property /
+		 * has_property / write_property), assigned for the same reason. One per
+		 * ROOT: the engine walks the base chain for the hook exactly as php's
+		 * handlers are inherited, and the hook then picks the per-class table off
+		 * aDomProp[] -- so a subclass of DOMElement reaches DOMElement's. */
+		{
+			static const char * const azPropRoot[] = {
+				"DOMNode", "DOMNodeList", "DOMNamedNodeMap", "DOMNameSpaceNode", "DOMXPath"
+			};
+			for( n = 0 ; n < SX_ARRAYSIZE(azPropRoot) ; ++n ){
+				PH7_NativeClassInstallPropHook(&(*pVm),azPropRoot[n],DomPropHook);
+			}
 		}
 	}
 	return rc;

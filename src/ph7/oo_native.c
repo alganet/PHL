@@ -821,7 +821,31 @@ PH7_PRIVATE int PH7_ClassNativePropAsk(ph7_class_instance *pThis,PH7_NativePropC
 	pCtx->bAnswered = 0;
 	pCtx->zThrowClass = 0;
 	pCtx->zThrowMsg[0] = 0;
+	pCtx->iThrowCode = 0;
 	return PH7_ClassNativeProp(pThis,pCtx);
+}
+/*
+ * Does this class answer `$o->p` through a HANDLER of its own -- php's question
+ * "is the name in the class's property-handler table"?
+ *
+ * A native class states that by DECLARING the name VIRTUAL (PH7_MOD_VIRTUAL: a
+ * declaration with no slot of any kind) and carrying a ph7_class::xProp hook.
+ * That pair is ext/dom's whole shape -- ninety declarations, a C handler behind
+ * each and no magic accessor anywhere -- and it is what makes the handler beat a
+ * subclass's own `__get`: a name the table carries never reaches the magic layer,
+ * and a name it does not carry falls through to it, which is php's handler order.
+ *
+ * Asked at the write shapes, where the member opcode has no value yet and the
+ * hook cannot be run for its answer.
+ */
+PH7_PRIVATE int PH7_ClassNativePropOwns(ph7_class *pClass,const SyString *pName)
+{
+	ph7_class_attr *pAttr;
+	if( pClass == 0 || NativePropClass(pClass) == 0 ){
+		return 0;
+	}
+	pAttr = PH7_ClassExtractAttribute(pClass,SyStringData(pName),SyStringLength(pName));
+	return pAttr != 0 && (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0;
 }
 /*
  * Install a property handler on a mounted native class. Called by the owning

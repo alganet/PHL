@@ -674,7 +674,8 @@ static int VmExcCtorEnter(ph7_vm *pVm)
  * class is unavailable or the engine is aborting. Shared scaffolding for the
  * typed-property / uninitialized-property / readonly error throwers.
  */
-PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyBlob *pMsg)
+PH7_PRIVATE sxi32 VmThrowBuiltinErrorCode(ph7_vm *pVm,const char *zClass,sxu32 nClass,
+	SyBlob *pMsg,sxi32 iCode)
 {
 	ph7_class *pErrClass;
 	ph7_class_instance *pThis;
@@ -693,13 +694,24 @@ PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClas
 	}
 	pCons = PH7_ClassExtractMethod(pErrClass,"__construct",sizeof("__construct")-1);
 	if( pCons && VmExcCtorEnter(&(*pVm)) ){
-		ph7_value sArg;
-		ph7_value *apArg[1];
+		ph7_value sArg,sCode;
+		ph7_value *apArg[2];
 		SyString sMsgStr;
+		int nArg = 1;
 		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(pMsg),SyBlobLength(pMsg));
 		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
 		apArg[0] = &sArg;
-		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		if( iCode != 0 ){
+			/* php's $code, second constructor argument -- the DOMException codes a
+			 * program compares against (DOM_NOT_FOUND_ERR & co) travel this way. */
+			PH7_MemObjInitFromInt(&(*pVm),&sCode,(sxi64)iCode);
+			apArg[1] = &sCode;
+			nArg = 2;
+		}
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,nArg,apArg);
+		if( iCode != 0 ){
+			PH7_MemObjRelease(&sCode);
+		}
 		PH7_MemObjRelease(&sArg);
 		pVm->nExcCtorDepth--;
 	}
@@ -716,6 +728,12 @@ PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClas
 	}
 	return PH7_EXCEPTION;
 }
+/* The same with php's default $code of 0, which is what all but the DOM refusals
+ * carry. */
+PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyBlob *pMsg)
+{
+	return VmThrowBuiltinErrorCode(pVm,zClass,nClass,pMsg,0);
+}
 /*
  * Throw a built-in error class (e.g. "Error") carrying a FIXED message string.
  * Thin wrapper over VmThrowBuiltinError for the several dispatch-loop sites that
@@ -725,10 +743,17 @@ PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClas
  */
 PH7_PRIVATE sxi32 VmThrowFixedError(ph7_vm *pVm, const char *zClass, const char *zMsg)
 {
+	return VmThrowFixedErrorCode(pVm,zClass,0,zMsg);
+}
+/* The same, carrying php's $code: what a native class's property handler refused
+ * with (PH7_NativePropCtx::iThrowCode) is raised through here. */
+PH7_PRIVATE sxi32 VmThrowFixedErrorCode(ph7_vm *pVm,const char *zClass,sxi32 iCode,
+	const char *zMsg)
+{
 	SyBlob sMsg;
 	SyBlobInit(&sMsg, &pVm->sAllocator);
 	SyBlobAppend(&sMsg, zMsg, SyStrlen(zMsg));
-	return VmThrowBuiltinError(pVm, zClass, SyStrlen(zClass), &sMsg);
+	return VmThrowBuiltinErrorCode(pVm, zClass, SyStrlen(zClass), &sMsg, iCode);
 }
 /*
  * Enum case singletons (PHP 8.1).

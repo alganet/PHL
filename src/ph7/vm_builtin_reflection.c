@@ -8738,7 +8738,8 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 		if( PH7_ClassNativePropAsk(pObj, &sNat, PH7_NATIVE_PROP_READ, &sNatName, &sNatVal) ){
 			if( sNat.zThrowClass ){
 				PH7_MemObjRelease(&sNatVal);
-				return PH7_VmThrowException(pCtx, sNat.zThrowClass, "%s", sNat.zThrowMsg);
+				return PH7_VmThrowExceptionCode(pCtx, sNat.zThrowClass, sNat.iThrowCode,
+					"%s", sNat.zThrowMsg);
 			}
 			ph7_result_value(pCtx, &sNatVal);
 			PH7_MemObjRelease(&sNatVal);
@@ -8831,20 +8832,33 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 		if( PH7_ClassNativePropAsk(pObj, &sNat, PH7_NATIVE_PROP_WRITE, &sNatName, &sNatVal)
 		 && sNat.zThrowClass ){
 			PH7_MemObjRelease(&sNatVal);
-			return PH7_VmThrowException(pCtx, sNat.zThrowClass, "%s", sNat.zThrowMsg);
+			return PH7_VmThrowExceptionCode(pCtx, sNat.zThrowClass, sNat.iThrowCode,
+				"%s", sNat.zThrowMsg);
 		}
 		PH7_MemObjRelease(&sNatVal);
 		if( sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
 			/* A VIRTUAL property: php's write goes to the same handler `$o->p = v`
-			 * reaches -- which for ext/dom is __set, and refuses the read-only half
-			 * of the surface with its own sentence. Creating a slot here would give
-			 * the object a real property php has none of. */
+			 * reaches -- the class's own write_property, which refuses the read-only
+			 * half of the surface with its own sentence. Creating a slot here would
+			 * give the object a real property php has none of. */
 			ph7_value sMagicVal, *pMagicArg = nArg > 1 ? apArg[1] : 0;
 			ph7_class_method *pSet = PH7_ClassExtractMethod(pObj->pClass,
 				"__set", sizeof("__set")-1);
 			PH7_MemObjInit(pCtx->pVm, &sMagicVal);
 			if( pMagicArg == 0 ){
 				pMagicArg = &sMagicVal;
+			}
+			if( PH7_ClassNativePropOwns(pObj->pClass, &sNatName) ){
+				PH7_NativePropCtx sStore;
+				sxi32 rcSt = PH7_OK;
+				if( PH7_ClassNativePropAsk(pObj, &sStore, PH7_NATIVE_PROP_STORE,
+						&sNatName, pMagicArg)
+				 && sStore.zThrowClass ){
+					rcSt = PH7_VmThrowExceptionCode(pCtx, sStore.zThrowClass,
+						sStore.iThrowCode, "%s", sStore.zThrowMsg);
+				}
+				PH7_MemObjRelease(&sMagicVal);
+				return rcSt;
 			}
 			if( pSet ){
 				ph7_value sMagicName, *apMagic[2];

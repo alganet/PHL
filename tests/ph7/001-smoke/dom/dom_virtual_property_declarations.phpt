@@ -11,8 +11,9 @@ is false -- there is no slot to hold a default in. Reflection's getValue()/setVa
 reach the same handler `$o->p` reaches, which is why the write half refuses exactly
 where the property has no writer; and unset() is php's `Cannot unset C::$p` rather than
 the silent no-op a name the object merely lacks would take. PHL declared seven of
-DOMDocument's forty as ordinary slots and answered the other thirty-three from __get
-alone, so property_exists() was false for them and Reflection reported the wrong set.
+DOMDocument's forty as ordinary slots and answered the other thirty-three from a magic
+accessor alone, so property_exists() was false for them and Reflection reported the
+wrong set.
 --FILE--
 <?php
 // The names ARE declared: Reflection lists them, property_exists() answers true,

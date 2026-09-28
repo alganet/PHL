@@ -482,6 +482,22 @@ static int VmMemberNativeSetKeepsSlot(const VmInstr *pInstr)
 	return VmMemberNextIsWrite(pInstr + 1);   /* ++/-- and the compound assigns */
 }
 /*
+ * `$doc->encoding ??= 'UTF-8'` on a name a native class's own property-handler
+ * table carries.
+ *
+ * The member opcode's handler gate answers a READ and can only REFUSE a write,
+ * because the value does not exist yet -- and a coalesce that finds null must
+ * make one. Only the overloaded-coalesce rail carries a pending store to the
+ * point the value arrives, so this shape is left to it: the read it makes goes
+ * through the same handler anyway.
+ */
+static int VmMemberCoalOwned(ph7_class *pClass,const VmInstr *pInstr,const SyString *pName)
+{
+	return pInstr->iP2 == PH7_MEMBER_WRITE
+	    && pInstr[1].iOp == PH7_OP_NULLC_JMP
+	    && PH7_ClassNativePropOwns(pClass,pName);
+}
+/*
  * php's `Indirect modification of overloaded property C::$p has no effect`: the
  * write-context fetch above landed on a property only __get answers for, so what
  * comes back is a VALUE and whatever the rest of the expression writes into it is
@@ -522,6 +538,12 @@ PH7_PRIVATE void PH7_VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const 
  */
 static int VmMagicRmwEligible(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const SyString *pName)
 {
+	if( PH7_ClassNativePropOwns(pClass,pName) ){
+		/* A native class's own property handler answers BOTH halves -- php reads
+		 * `$doc->version .= '.1'` through read_property and writes the result back
+		 * through write_property, with no magic accessor involved either way. */
+		return 1;
+	}
 	return PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) != 0
 	    && PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1) != 0
 	    && !VmMagicGuardHeld(pVm,(void *)pThis,pName,'g');
@@ -1103,7 +1125,8 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					pEntry = 0;
 					pObjAttr = 0;
 				}
-				if( pObjAttr == 0 && PH7_ClassHasNativeProp(pClass) ){
+				if( pObjAttr == 0 && PH7_ClassHasNativeProp(pClass)
+				 && !VmMemberCoalOwned(pClass,pInstr,&sName) ){
 					/* php's read_property / has_property / write_property /
 					 * unset_property handlers, for a class whose properties are not
 					 * storage at all: PDORow answers every read from the statement's
@@ -1148,6 +1171,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					sProp.bAnswered = 0;
 					sProp.zThrowClass = 0;
 					sProp.zThrowMsg[0] = 0;
+					sProp.iThrowCode = 0;
 					if( PH7_ClassNativeProp(pThis,&sProp) ){
 						if( sProp.zThrowClass == 0 && bPropCoal
 						 && sProp.iMode == PH7_NATIVE_PROP_READ
@@ -1163,7 +1187,8 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							/* Parked, like every other refusal this op makes: the
 							 * fetch-point router lands it and abandons this slot. */
 							VmBoundaryPark(&(*pVm),
-								VmThrowFixedError(&(*pVm),sProp.zThrowClass,sProp.zThrowMsg));
+								VmThrowFixedErrorCode(&(*pVm),sProp.zThrowClass,
+									sProp.iThrowCode,sProp.zThrowMsg));
 							PH7_MemObjRelease(&sPropVal);
 							VmPopOperand(&pTos,1);      /* the property name */
 							PH7_MemObjRelease(pTos);    /* the object slot is the answer */
@@ -1336,11 +1361,12 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						}
 						if( pDecl && (pDecl->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
 							/* A VIRTUAL property: php keeps no slot to re-create, and its
-							 * write goes to the class's handler -- __set here, exactly as
-							 * the read goes to __get. Creating one would give the object a
-							 * real property php has none of, and would take the read with
-							 * it (`$doc->formatOutput = false` then answered out of the
-							 * slot rather than out of the extension's state). */
+							 * write goes to the class's own write_property handler, which
+							 * the rails below reach through PH7_ClassNativePropOwns.
+							 * Creating one would give the object a real property php has
+							 * none of, and would take the read with it
+							 * (`$doc->formatOutput = false` then answered out of the slot
+							 * rather than out of the extension's state). */
 							pDecl = 0;
 						}
 						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
@@ -1360,17 +1386,24 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							ph7_class_method *pSetMagic = 0;
 							ph7_class_method *pCoalIsset = 0, *pCoalGet = 0, *pCoalSet = 0;
 							int bPlainStore = (pNext->iOp == PH7_OP_STORE && pNext->iP2 != 0);
+							/* A name the class's OWN property-handler table carries is
+							 * overloaded exactly the way a `__set` class's is -- php's
+							 * write_property stands where `__set` would -- so every rail
+							 * below takes it, and the one door they all end at
+							 * (VmMagicSetDispatch) asks the handler first. */
+							int bOwnedSet = PH7_ClassNativePropOwns(pClass,&sName);
 							if( bPlainStore || pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
 								pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);
 							}
-							if( pSetMagic && pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
+							if( (pSetMagic || bOwnedSet) && pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
 								/* php dispatches __set($name, element) for a missing
 								 * destructuring target, but the element value only exists
 								 * at the following OP_LOAD_LIST — the dispatch is
 								 * unsupported (recorded residual). Leave the miss: the
 								 * property stays uncreated, matching php's observable
 								 * state (its __set did not store either). */
-							}else if( pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s') ){
+							}else if( (bOwnedSet && bPlainStore)
+							 || (pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s')) ){
 								pThis->iRef++;
 								pVm->pMagicSetThis = pThis;
 								SyBlobReset(&pVm->sMagicSetName);
@@ -1378,7 +1411,8 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								/* pObjAttr stays NULL; the miss path below stays silent. */
 							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE
 							 && pNext->iOp == PH7_OP_NULLC_JMP
-							 && ((pCoalIsset = PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1)) != 0
+							 && (bOwnedSet
+							  || (pCoalIsset = PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1)) != 0
 							  || (pCoalGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)) != 0
 							  || (pCoalSet = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1)) != 0) ){
 								/* `$o->p ??= v` on a missing property with magic accessors:
@@ -1415,12 +1449,14 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									bMiss = sIssetRet.x.iVal == 0;
 									PH7_MemObjRelease(&sIssetRet);
 								}
-								if( !bMiss && pCoalGet && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
+								if( !bMiss && (pCoalGet || bOwnedSet)
+								 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
 									VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
 									PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sTest);
 									VmMagicGuardPop(pVm);
 								}
-								if( pCoalSet && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s')
+								if( (pCoalSet || bOwnedSet)
+								 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s')
 								 && pVm->nBoundaryRc == 0 ){
 									VmHookRmw sPend;
 									sPend.iKind = VM_HOOK_PEND_COAL_MAGIC;

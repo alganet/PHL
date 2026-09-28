@@ -3706,6 +3706,9 @@ PH7_PRIVATE sxi32 VmInitCallContext(
 	pOut->pThis = 0;
 	pOut->pCalledClass = 0;
 	pOut->bThisInit = 0;
+	/* Only the scratch context a native PROPERTY handler runs on carries one; every
+	 * ordinary call leaves it empty, so a refusal there throws as it always did. */
+	pOut->pPropCtx = 0;
 	return SXRET_OK;
 }
 /*
@@ -5628,7 +5631,24 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
  */
 PH7_PRIVATE void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,const SyString *pName,ph7_value *pValue)
 {
-	ph7_class_method *pSetMeth = PH7_ClassExtractMethod(pSetThis->pClass,"__set",sizeof("__set")-1);
+	ph7_class_method *pSetMeth;
+	if( PH7_ClassNativePropOwns(pSetThis->pClass,pName) ){
+		/* php's write_property handler for a name the class's own table carries:
+		 * it answers BEFORE the standard path, so a subclass's `__set` never sees
+		 * a DOM property and the handler's refusal is the one a program catches.
+		 * Every overloaded write funnels through here -- the plain store, the
+		 * compound assign's write-back, the `??=` and Reflection -- so this is the
+		 * one door the handler needs. The refusal is PARKED: this runs at an
+		 * opcode's tail rather than at a throw boundary. */
+		PH7_NativePropCtx sNat;
+		if( PH7_ClassNativePropAsk(pSetThis,&sNat,PH7_NATIVE_PROP_STORE,pName,pValue)
+		 && sNat.zThrowClass ){
+			VmBoundaryPark(&(*pVm),VmThrowFixedErrorCode(&(*pVm),sNat.zThrowClass,
+				sNat.iThrowCode,sNat.zThrowMsg));
+		}
+		return;
+	}
+	pSetMeth = PH7_ClassExtractMethod(pSetThis->pClass,"__set",sizeof("__set")-1);
 	if( pSetMeth ){
 		ph7_value sNameVal;
 		ph7_value *apSetArg[2];

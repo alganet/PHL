@@ -513,6 +513,13 @@ struct ph7_context
 	                         * (ph7_object_fetch_attr & co). bThisInit gates the lazy init;
 	                         * VmReleaseCallContext tears it down. */
 	sxu8 bThisInit;         /* 1 once sThis has been initialized */
+	struct PH7_NativePropCtx *pPropCtx; /* Non-zero while this SCRATCH context is running a native
+	                         * class's property handler (ph7_class::xProp). A handler shares
+	                         * its bodies with the ordinary method path, and those raise a
+	                         * refusal by throwing -- which here would run the enclosing catch
+	                         * in the middle of the member opcode. With this set the DOM
+	                         * refusal helpers RECORD into the hook's context instead, and the
+	                         * opcode raises it where the access would have landed. */
 };
 /*
  * Each hashmap entry [i.e: array(4,5,6)] is recorded in an instance
@@ -1550,6 +1557,18 @@ struct PH7_NativeSetCtx
  * the two questions are two modes here.
  */
 #define PH7_NATIVE_PROP_EXISTS 4
+/*
+ * php's write_property, asked at the point the VALUE exists.
+ *
+ * The four modes above are asked by the member opcode, which runs BEFORE the
+ * store that carries the value -- enough for a class that only ever refuses a
+ * write (PDORow), and not enough for one whose handler really stores (ext/dom's
+ * `$el->nodeValue = 'x'`). STORE is the second half: pResult carries the
+ * incoming value, and the hook writes it or refuses. It is dispatched from the
+ * one place every overloaded write funnels through, so a plain store, a
+ * compound assign, a `??=` and Reflection's setValue() all reach it.
+ */
+#define PH7_NATIVE_PROP_STORE  5
 typedef struct PH7_NativePropCtx PH7_NativePropCtx;
 struct PH7_NativePropCtx
 {
@@ -1561,6 +1580,10 @@ struct PH7_NativePropCtx
 	                          * init) leaves the access to the ordinary path */
 	const char *zThrowClass; /* Set by the hook to refuse; 0 (the caller's init) means answered */
 	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
+	sxi32 iThrowCode;        /* ...and its php $code. A DOM refusal is a DOMException whose
+	                          * code a program reads (DOM_NOT_FOUND_ERR & co), so the number
+	                          * has to survive the trip out to the site that raises. 0 -- the
+	                          * caller's init -- is every other class's answer. */
 };
 /*
  * One COMPARISON asked of a native class through ph7_class::xCmp -- php's
@@ -2171,6 +2194,7 @@ PH7_PRIVATE int PH7_ClassNativePropAsk(ph7_class_instance *pThis,PH7_NativePropC
 	int iMode,const SyString *pName,ph7_value *pResult);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallPropHook(ph7_vm *pVm,const char *zClass,
 	void (*xProp)(ph7_vm *,ph7_class_instance *,PH7_NativePropCtx *));
+PH7_PRIVATE int PH7_ClassNativePropOwns(ph7_class *pClass,const SyString *pName);
 PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *));
@@ -5747,7 +5771,11 @@ PH7_PRIVATE int VmValueIsLossyToInt(ph7_value *pVal);
 PH7_PRIVATE sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal);
 PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nArg,SyString *pArgName);
 PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyBlob *pMsg);
+PH7_PRIVATE sxi32 VmThrowBuiltinErrorCode(ph7_vm *pVm,const char *zClass,sxu32 nClass,
+	SyBlob *pMsg,sxi32 iCode);
 PH7_PRIVATE sxi32 VmThrowFixedError(ph7_vm *pVm, const char *zClass, const char *zMsg);
+PH7_PRIVATE sxi32 VmThrowFixedErrorCode(ph7_vm *pVm,const char *zClass,sxi32 iCode,
+	const char *zMsg);
 PH7_PRIVATE sxi32 VmThrowFromVm(ph7_vm *pVm, const char *zClass, const char *zMsg, sxu32 nMsg);
 PH7_PRIVATE sxi32 VmThrowNamedArgError(ph7_vm *pVm,const char *zMsg,sxu32 nMsg);
 PH7_PRIVATE sxi32 VmThrowSpreadError(ph7_vm *pVm,ph7_value *pBad,int bArgUnpack);

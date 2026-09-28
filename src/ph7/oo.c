@@ -3441,6 +3441,31 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(
 	ph7_value sAttr; /* cc warning */
 	sxi32 rc;
 	int nArg;
+	int bMagicGet = nByte == sizeof("__get")-1 && SyMemcmp(zMethod,"__get",nByte) == 0;
+	int bMagicIsset = nByte == sizeof("__isset")-1 && SyMemcmp(zMethod,"__isset",nByte) == 0;
+	if( (bMagicGet || bMagicIsset) && pAttrName
+	 && PH7_ClassNativePropOwns(pClass,pAttrName) ){
+		/* php's read_property / has_property handler for a name the class's own
+		 * table carries: it answers before the standard path ever looks for a
+		 * magic accessor, so a subclass's `__get` does not shadow ext/dom's
+		 * surface. The read-modify-write and `??=` rails reach the handler here;
+		 * the member opcode's own read gate asks it a step earlier. */
+		PH7_NativePropCtx sNat;
+		ph7_value sNatVal;
+		PH7_MemObjInit(pVm,&sNatVal);
+		if( PH7_ClassNativePropAsk(pThis,&sNat,
+				bMagicIsset ? PH7_NATIVE_PROP_ISSET : PH7_NATIVE_PROP_READ,pAttrName,&sNatVal) ){
+			if( sNat.zThrowClass ){
+				VmBoundaryPark(pVm,VmThrowFixedErrorCode(pVm,sNat.zThrowClass,
+					sNat.iThrowCode,sNat.zThrowMsg));
+			}else if( pResult ){
+				PH7_MemObjStore(&sNatVal,pResult);
+			}
+			PH7_MemObjRelease(&sNatVal);
+			return SXRET_OK;
+		}
+		PH7_MemObjRelease(&sNatVal);
+	}
 	/* Make sure the magic method is available */
 	pMeth = PH7_ClassExtractMethod(&(*pClass),zMethod,nByte);
 	if( pMeth == 0 ){
