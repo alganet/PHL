@@ -4481,7 +4481,7 @@ PH7_PRIVATE int PH7_builtin_stream_context_get_options(ph7_context *pCtx,int nAr
 	return PH7_OK;
 }
 /*
- * bool stream_context_set_option(resource $context, string $wrapper, string $option_name, mixed $value)
+ * true stream_context_set_option(resource $context, string $wrapper, string $option_name, mixed $value)
  *
  * php also accepts the two-argument (context, options-array) spelling and
  * DEPRECATES it in 8.3 — §10 refuses what php deprecates, so an array in
@@ -4504,7 +4504,7 @@ PH7_PRIVATE int PH7_builtin_stream_context_set_option(ph7_context *pCtx,int nArg
 	return PH7_OK;
 }
 /*
- * bool stream_context_set_options(resource $context, array $options)
+ * true stream_context_set_options(resource $context, array $options)
  */
 PH7_PRIVATE int PH7_builtin_stream_context_set_options(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -4555,7 +4555,7 @@ PH7_PRIVATE int PH7_builtin_stream_context_get_params(ph7_context *pCtx,int nArg
 	return PH7_OK;
 }
 /*
- * bool stream_context_set_params(resource $context, array $params)
+ * true stream_context_set_params(resource $context, array $params)
  */
 PH7_PRIVATE int PH7_builtin_stream_context_set_params(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {

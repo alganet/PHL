@@ -1152,9 +1152,10 @@ PH7_PRIVATE int PH7_builtin_cal_from_jd(ph7_context *pCtx,int nArg,ph7_value **a
 	return PH7_OK;
 }
 /*
- * int|string jddayofweek(int $julian_day, int $mode = CAL_DOW_DAYNO)
+ * string|int jddayofweek(int $julian_day, int $mode = CAL_DOW_DAYNO)
  *  Only two modes answer a name; every other value -- negative, unknown, out
- *  of range -- falls through to the day NUMBER.
+ *  of range -- falls through to the day NUMBER. The union prints in the STUB's
+ *  order, which puts the rarer answer first here.
  */
 PH7_PRIVATE int PH7_builtin_jddayofweek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {

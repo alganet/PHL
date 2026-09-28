@@ -685,8 +685,9 @@ PH7_PRIVATE int PH7_builtin_hash_init(ph7_context *pCtx,int nArg,ph7_value **apA
 	return PH7_OK;
 }
 /*
- * bool hash_update(HashContext $context,string $data)
- *   Feed the context. Always true -- php has no failure to report here.
+ * true hash_update(HashContext $context,string $data)
+ *   Feed the context. Always true -- php has no failure to report here, and
+ *   its stub says so: the declared return type is the LITERAL true.
  */
 PH7_PRIVATE int PH7_builtin_hash_update(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {

@@ -821,7 +821,7 @@ static const struct VmBuiltinSig {
 	{ "hash_hmac", "string $algo, string $data, string $key, bool $binary = false", "string" },
 	{ "hash_hmac_algos", "", "array" },
 	{ "hash_init", "string $algo, int $flags = 0, string $key = \'\', array $options = []", "HashContext" },
-	{ "hash_update", "HashContext $context, string $data", "bool" },
+	{ "hash_update", "HashContext $context, string $data", "true" },
 	{ "hash_final", "HashContext $context, bool $binary = false", "string" },
 	{ "hash_copy", "HashContext $context", "HashContext" },
 	{ "hash_file", "string $algo, string $filename, bool $binary = false, array $options = []", "string|false" },
@@ -881,7 +881,7 @@ static const struct VmBuiltinSig {
 	{ "iterator_apply", "Traversable $iterator, callable $callback, ?array $args = NULL", "int" },
 	{ "iterator_count", "Traversable|array $iterator", "int" },
 	{ "iterator_to_array", "Traversable|array $iterator, bool $preserve_keys = true", "array" },
-	{ "jddayofweek", "int $julian_day, int $mode = CAL_DOW_DAYNO", "int|string" },
+	{ "jddayofweek", "int $julian_day, int $mode = CAL_DOW_DAYNO", "string|int" },
 	{ "jdmonthname", "int $julian_day, int $mode", "string" },
 	{ "jdtofrench", "int $julian_day", "string" },
 	{ "jdtogregorian", "int $julian_day", "string" },
@@ -1129,10 +1129,10 @@ static const struct VmBuiltinSig {
 	 * — the two-argument spelling — is DEPRECATED in 8.3; §10 refuses what php
 	 * deprecates, so this row declares the string and the whole-array form is
 	 * spelled stream_context_set_options(). */
-	{ "stream_context_set_option", "$context, string $wrapper_name, string $option_name, mixed $value", "bool" },
-	{ "stream_context_set_options", "$context, array $options", "bool" },
+	{ "stream_context_set_option", "$context, string $wrapper_name, string $option_name, mixed $value", "true" },
+	{ "stream_context_set_options", "$context, array $options", "true" },
 	{ "stream_context_get_params", "$context", "array" },
-	{ "stream_context_set_params", "$context, array $params", "bool" },
+	{ "stream_context_set_params", "$context, array $params", "true" },
 	{ "stream_context_get_default", "?array $options = NULL", "" },
 	{ "stream_context_set_default", "array $options", "" },
 	{ "stream_get_contents", "$stream, ?int $length = NULL, int $offset = -1", "string|false" },
