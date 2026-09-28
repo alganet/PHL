@@ -1043,6 +1043,14 @@ static int ReflectSigConstExpr(ph7_context *pCtx, const char *z, int n, ph7_valu
 	}
 	return nTerm > 0;
 }
+/* One hex digit's value, or -1. */
+static int ReflectHexVal(char c)
+{
+	if( c >= '0' && c <= '9' ) return c - '0';
+	if( c >= 'a' && c <= 'f' ) return c - 'a' + 10;
+	if( c >= 'A' && c <= 'F' ) return c - 'A' + 10;
+	return -1;
+}
 /*
  * A default-value TEXT to a value, when the text denotes a scalar php can
  * reproduce. Answers 1 and fills pOut, or 0 for anything else (`[]`,
@@ -1067,20 +1075,53 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 		return 1;
 	}
 	if( n >= 2 && (z[0] == '\'' || z[0] == '"') && z[n-1] == z[0] ){
-		/* Unescape the quote character and \\ , the only two escapes the signature
-		 * writer emits. BOTH quote spellings are accepted because both scanners in
-		 * vm_arg_check.c step over either one: a native method's zSig lives in C, so
-		 * `= \"static\"` is the natural way to write Closure::bindTo's default and it
-		 * used to reduce to php's `<default>` placeholder here. */
+		/* Undo the escapes the signature writer emits, which are php's own set --
+		 * the same one ReflectExportStrQ puts back when it prints the line. A row
+		 * cannot hold these bytes any other way: a signature is a C string, so a
+		 * NUL would END it, which is why trim()'s ` \n\r\t\v\x00` had no default
+		 * row at all and its parameter answered isDefaultValueAvailable() false.
+		 * BOTH quote spellings are accepted because both scanners in vm_arg_check.c
+		 * step over either one: a native method's zSig lives in C, so `= \"static\"`
+		 * is the natural way to write Closure::bindTo's default. */
 		SyBlob sOut;
 		char cQuote = z[0];
 		int k;
 		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
 		for( k = 1 ; k < n - 1 ; k++ ){
-			if( z[k] == '\\' && k + 1 < n - 1 && (z[k+1] == cQuote || z[k+1] == '\\') ){
-				k++;
+			char c = z[k];
+			if( c == '\\' && k + 1 < n - 1 ){
+				char e = z[k+1];
+				int bTook = 1;
+				switch( e ){
+					case 'n': c = 0x0A; break;
+					case 'r': c = 0x0D; break;
+					case 't': c = 0x09; break;
+					case 'v': c = 0x0B; break;
+					case 'f': c = 0x0C; break;
+					case 'e': c = 0x1B; break;
+					case 'x': {
+						int h1 = ReflectHexVal(k + 3 < n - 1 ? z[k+2] : 0);
+						int h2 = ReflectHexVal(k + 3 < n - 1 ? z[k+3] : 0);
+						if( h1 < 0 || h2 < 0 ){
+							bTook = 0;
+							break;
+						}
+						c = (char)((h1 << 4) | h2);
+						k += 2;   /* the two hex digits; the 'x' below */
+						break;
+					}
+					default:
+						bTook = (e == cQuote || e == '\\');
+						c = e;
+						break;
+				}
+				if( bTook ){
+					k++;
+				}else{
+					c = '\\';
+				}
 			}
-			SyBlobAppend(&sOut,(const void *)&z[k],sizeof(char));
+			SyBlobAppend(&sOut,(const void *)&c,sizeof(char));
 		}
 		ph7_value_string(pOut,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
 		SyBlobRelease(&sOut);
