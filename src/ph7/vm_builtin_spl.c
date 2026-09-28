@@ -4416,7 +4416,11 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		  vm_builtin_RecursiveCallbackFilterIterator_construct },
 		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_RecursiveFilterIterator_hasChildren },
-		{ "getChildren", PH7_MOD_PUBLIC, "", "@?RecursiveCallbackFilterIterator",
+		/* NOT nullable, where the RecursiveFilterIterator row above it is: php's
+		 * nine getChildren stubs disagree with each other about a child every
+		 * one of them builds the same way, and the declaration is what a
+		 * program reads. */
+		{ "getChildren", PH7_MOD_PUBLIC, "", "@RecursiveCallbackFilterIterator",
 		  vm_builtin_RecursiveCallbackFilterIterator_getChildren },
 	};
 	static const PH7_NativeMethodDef aRregexMethod[] = {
@@ -4428,7 +4432,7 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "accept",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_RecursiveRegexIterator_accept },
 		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_RecursiveFilterIterator_hasChildren },
-		{ "getChildren", PH7_MOD_PUBLIC, "", "@?RecursiveRegexIterator",
+		{ "getChildren", PH7_MOD_PUBLIC, "", "@RecursiveRegexIterator",
 		  vm_builtin_RecursiveRegexIterator_getChildren },
 	};
 	static const PH7_NativeConstDef aCitConst[] = {
@@ -13002,7 +13006,7 @@ static sxi32 VmInstallSplFileObject(ph7_vm *pVm)
 		{ "fstat",         PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFileObject_fstat },
 		{ "ftruncate",     PH7_MOD_PUBLIC, "int $size", "@bool",
 		  vm_builtin_SplFileObject_ftruncate },
-		{ "current",       PH7_MOD_PUBLIC, "", "@string|array|false",
+		{ "current",       PH7_MOD_PUBLIC, "", "@array|string|false",
 		  vm_builtin_SplFileObject_current },
 		{ "key",           PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_key },
 		{ "next",          PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFileObject_next },
@@ -13012,8 +13016,11 @@ static sxi32 VmInstallSplFileObject(ph7_vm *pVm)
 		{ "setMaxLineLen", PH7_MOD_PUBLIC, "int $maxLength", "@void",
 		  vm_builtin_SplFileObject_setMaxLineLen },
 		{ "getMaxLineLen", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_getMaxLineLen },
-		{ "hasChildren",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_hasChildren },
-		{ "getChildren",   PH7_MOD_PUBLIC, "", "@?RecursiveIterator",
+		/* php types the two it answers CONSTANTLY with the constant itself:
+		 * `false` and `null`, not `bool` and `?RecursiveIterator`. A file has no
+		 * children, and both bodies say so on every path. */
+		{ "hasChildren",   PH7_MOD_PUBLIC, "", "@false", vm_builtin_SplFileObject_hasChildren },
+		{ "getChildren",   PH7_MOD_PUBLIC, "", "@null",
 		  vm_builtin_SplFileObject_getChildren },
 		{ "seek",          PH7_MOD_PUBLIC, "int $line", "@void", vm_builtin_SplFileObject_seek },
 		/* php aliases getCurrentLine() to fgets(); the override branch in
