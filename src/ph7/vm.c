@@ -2255,7 +2255,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aIncluded,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aOB,&pVm->sAllocator,sizeof(VmObEntry));
 	SySetInit(&pVm->aResponseHeaders,&pVm->sAllocator,sizeof(VmResponseHeader));
-	pVm->iResponseStatus = 200;
+	/* 0 is php's "no code set": a CLI run reads FALSE until something sets
+	 * one, and a request-driven run is put at 200 when the request arrives. */
+	pVm->iResponseStatus = 0;
 	pVm->bHeadersSent = 0;
 	SyBlobReset(&pVm->sOutStartFile);
 	pVm->nOutStartLine = 0;
@@ -3405,7 +3407,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->nOutputLen = 0;
 	VmReinitMemObj(&(*pVm),&pVm->sExec);
 	PH7_VmReleaseResponseHeaders(pVm);
-	pVm->iResponseStatus = 200;
+	/* 0 is php's "no code set": a CLI run reads FALSE until something sets
+	 * one, and a request-driven run is put at 200 when the request arrives. */
+	pVm->iResponseStatus = 0;
 	pVm->bHeadersSent = 0;
 	SyBlobReset(&pVm->sOutStartFile);
 	pVm->nOutStartLine = 0;
@@ -4399,6 +4403,11 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		/* Mark this VM as operating in HTTP context only on success */
 		if( rc == SXRET_OK ){
 			pVm->bHttpContext = 1;
+			if( pVm->iResponseStatus == 0 ){
+				/* A request-driven run starts at 200, which is what
+				 * http_response_code() reads back before anything sets one. */
+				pVm->iResponseStatus = 200;
+			}
 		}
 		break;
 									}
@@ -4406,7 +4415,8 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		/* Extract HTTP response status code */
 		int *pStatus = va_arg(ap, int *);
 		if( pStatus ){
-			*pStatus = pVm->iResponseStatus;
+			/* A response nothing set a code for goes out as 200. */
+			*pStatus = pVm->iResponseStatus ? pVm->iResponseStatus : 200;
 		}
 		break;
 										}

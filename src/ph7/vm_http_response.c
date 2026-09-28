@@ -290,39 +290,47 @@ static int vm_builtin_headers_list(ph7_context *pCtx, int nArg, ph7_value **apAr
 	return PH7_OK;
 }
 /*
- * int http_response_code([int $code])
+ * int|bool http_response_code([int $response_code = 0])
  *   Get or set the HTTP response status code.
+ *
+ * php keeps ONE code, in every SAPI. Zero means "nothing set": a CLI script
+ * that has not set one reads FALSE, and the first set answers TRUE rather than
+ * a previous code -- while a request-driven run starts at 200 and every set
+ * answers the code it replaced. A zero ARGUMENT is a read and not a write, and
+ * php range-checks nothing at all, so 99 and -5 are stored as written. The one
+ * refusal is a response that has already begun.
+ *
+ * This engine used to answer FALSE for every call outside the server and warn
+ * on every set, so a CLI script could neither set a code nor read one back,
+ * and it clamped 100..599 in the server where php clamps nothing.
  */
 static int vm_builtin_http_response_code(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	if( !pVm->bHttpContext ){
-		/* CLI mode: no HTTP context */
-		if( nArg >= 1 && ph7_value_is_int(apArg[0]) ){
-			ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-				"Cannot set response code - headers already sent");
+	ph7_int64 iCode = 0;
+	if( nArg >= 1 ){
+		iCode = ph7_value_to_int64(apArg[0]);
+	}
+	if( iCode == 0 ){
+		/* A read: the standing code, or FALSE when there is none. */
+		if( pVm->iResponseStatus ){
+			ph7_result_int(pCtx, pVm->iResponseStatus);
+		}else{
+			ph7_result_bool(pCtx, 0);
 		}
+		return PH7_OK;
+	}
+	if( pVm->bHeadersSent ){
+		VmHeadersAlreadySent(pCtx,1);
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
-	/* HTTP context (server/CGI mode) */
-	if( nArg >= 1 && ph7_value_is_int(apArg[0]) ){
-		int iCode = ph7_value_to_int(apArg[0]);
-		int iPrev = pVm->iResponseStatus;
-		if( pVm->bHeadersSent ){
-			VmHeadersAlreadySent(pCtx,1);
-			ph7_result_bool(pCtx, 0);
-			return PH7_OK;
-		}
-		if( iCode >= 100 && iCode <= 599 ){
-			pVm->iResponseStatus = iCode;
-		}
-		/* Return the previous status code */
-		ph7_result_int(pCtx, iPrev);
-	}else{
-		/* Return current status code */
+	if( pVm->iResponseStatus ){
 		ph7_result_int(pCtx, pVm->iResponseStatus);
+	}else{
+		ph7_result_bool(pCtx, 1);
 	}
+	pVm->iResponseStatus = (int)iCode;
 	return PH7_OK;
 }
 /*
