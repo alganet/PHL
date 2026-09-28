@@ -104,11 +104,25 @@ static void PcreCache_Insert(const char *zPattern, sxu32 nLen, pcre2_code *pCode
 	pEntry->iLastUsed = ++iCacheClock;
 }
 
-/* ===== Delimiter parser ===== */
+/* ===== Delimiter parser =====
+ *
+ * php reads the pattern STRING before it ever reaches PCRE2: leading
+ * whitespace, one delimiter byte, the body up to its close, then the
+ * modifier letters. Two rules in there are easy to get wrong and both
+ * mis-match SILENTLY rather than refusing:
+ *
+ *  - the four bracket delimiters scan for their MATCHING close, counting
+ *    nesting, so `{^a{2}$}` is the whole `^a{2}$` and not `^a{2` (which
+ *    compiles fine as a literal and then never matches);
+ *  - php's leading-whitespace skip is isspace(), not "every byte <= 0x20",
+ *    so "\x01^a$\x01" is a pattern delimited by \x01 and a NUL delimiter is
+ *    refused rather than skipped over.
+ */
 #define PCRE_PARSE_OK             0
 #define PCRE_PARSE_EMPTY          1  /* Empty pattern string */
-#define PCRE_PARSE_BAD_DELIMITER  2  /* Alphanumeric, backslash, or whitespace delimiter */
+#define PCRE_PARSE_BAD_DELIMITER  2  /* Alphanumeric, backslash, or NUL delimiter */
 #define PCRE_PARSE_NO_ENDING      3  /* No closing delimiter found */
+#define PCRE_PARSE_BAD_MODIFIER   4  /* A letter after the close php does not know */
 
 static sxi32 PcreParsePattern(
 	const char *zInput, int nInputLen,
@@ -120,23 +134,26 @@ static sxi32 PcreParsePattern(
 	const char *z = zInput;
 	char cOpen, cClose;
 	const char *pStart;
+	int nDepth;
 
 	/* Delimiter details for a "no ending delimiter" diagnostic (php names it) */
 	*pCloseDelim = 0;
 	*pbPaired = 0;
-	/* Skip leading whitespace */
-	while( z < zEnd && (unsigned char)*z <= 0x20 ){
+	/* Skip leading whitespace -- php's isspace() set exactly */
+	while( z < zEnd && SyisSpace((unsigned char)*z) ){
 		z++;
 	}
 	if( z >= zEnd ){
 		return PCRE_PARSE_EMPTY;
 	}
 	cOpen = *z;
-	/* Must not be alphanumeric, backslash, or whitespace */
-	if( SyisAlphaNum(cOpen) || cOpen == '\\' || (unsigned char)cOpen <= 0x20 ){
+	/* Must not be alphanumeric, backslash, or NUL. Any other control byte IS a
+	 * delimiter here -- only the six isspace() bytes were consumed above. */
+	if( cOpen == 0 || SyisAlphaNum((unsigned char)cOpen) || cOpen == '\\' ){
 		return PCRE_PARSE_BAD_DELIMITER;
 	}
-	/* Paired delimiters */
+	/* Paired delimiters. A CLOSING bracket opens a pattern of its own and
+	 * closes on itself -- `)^a$)` is php's, and it scans without nesting. */
 	switch( cOpen ){
 		case '(': cClose = ')'; break;
 		case '[': cClose = ']'; break;
@@ -148,14 +165,23 @@ static sxi32 PcreParsePattern(
 	*pbPaired = (cOpen != cClose);
 	z++; /* Skip opening delimiter */
 	pStart = z;
-	/* Scan for closing delimiter, respecting backslash escapes */
+	/* Scan for the MATCHING close, respecting backslash escapes: every unescaped
+	 * open raises the nesting level and every unescaped close lowers it. This is
+	 * a bracket count and nothing else -- a close inside a character class or a
+	 * quantifier still counts, which is why `{[{}]}` is the pattern `[{}]`.
+	 * An unpaired delimiter falls out of the same loop with no nesting to count:
+	 * its close IS its open, so the first one ends the body. */
+	nDepth = 1;
 	while( z < zEnd ){
 		if( *z == '\\' && z + 1 < zEnd ){
 			z += 2; /* Skip escaped char */
 			continue;
 		}
-		if( *z == cClose ){
+		if( *z == cClose && --nDepth <= 0 ){
 			break;
+		}
+		if( *z == cOpen ){
+			nDepth++;
 		}
 		z++;
 	}
@@ -170,13 +196,21 @@ static sxi32 PcreParsePattern(
 	return PH7_OK;
 }
 
-/* ===== Flag mapper ===== */
+/* ===== Flag mapper =====
+ *
+ * php SCREENS the modifiers and refuses the pattern on the first byte it does
+ * not know, before PCRE2 is asked to compile anything -- so `)(\d+))`, whose
+ * body is `(\d+`, is "Unknown modifier ')'" and never a compile failure.
+ * Space, LF and CR are ignored (a heredoc'd pattern keeps its newline); TAB,
+ * VT and FF are not.
+ */
 static sxi32 PcreMapFlags(
 	const char *zFlags, int nFlagLen,
-	uint32_t *pCompileOpts)
+	uint32_t *pCompileOpts, unsigned char *pBadFlag)
 {
 	int i;
 	*pCompileOpts = 0;
+	*pBadFlag = 0;
 	for( i = 0; i < nFlagLen; i++ ){
 		switch( zFlags[i] ){
 			case 'i': *pCompileOpts |= PCRE2_CASELESS; break;
@@ -188,8 +222,13 @@ static sxi32 PcreMapFlags(
 			case 'D': *pCompileOpts |= PCRE2_DOLLAR_ENDONLY; break;
 			case 'U': *pCompileOpts |= PCRE2_UNGREEDY; break;
 			case 'J': *pCompileOpts |= PCRE2_DUPNAMES; break;
+			case 'n': *pCompileOpts |= PCRE2_NO_AUTO_CAPTURE; break;
 			case 'S': /* Study hint — no-op in PCRE2 */ break;
-			default: break;
+			case 'X': /* PCRE1's "extra" strictness — no-op in PCRE2 */ break;
+			case ' ': case '\n': case '\r': /* php ignores these three */ break;
+			default:
+				*pBadFlag = (unsigned char)zFlags[i];
+				return PCRE_PARSE_BAD_MODIFIER;
 		}
 	}
 	return PH7_OK;
@@ -202,7 +241,7 @@ static sxi32 PcreMapFlags(
  * SPL wraps the compile in zend_replace_error_handling(EH_THROW,
  * InvalidArgumentException), so `new RegexIterator($it, 'nodelim')` raises an
  * exception carrying this exact text instead of warning. Nothing else may
- * reproduce these four messages -- they are php's, verbatim, in one place.
+ * reproduce these six messages -- they are php's, verbatim, in one place.
  */
 static pcre2_code *PcreCompileQuiet(
 	ph7_vm *pVm,
@@ -220,6 +259,7 @@ static pcre2_code *PcreCompileQuiet(
 	sxi32 parseRc;
 	char cDelim;
 	int bPaired;
+	unsigned char cBadFlag;
 
 	if( nErr > 0 ){
 		zErr[0] = 0;
@@ -247,8 +287,17 @@ static pcre2_code *PcreCompileQuiet(
 		pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
 		return 0;
 	}
-	/* Map flags */
-	PcreMapFlags(zFlags, nFlagLen, &compileOpts);
+	/* Screen the modifiers. php refuses here, BEFORE the compile, so a pattern
+	 * that is bad in both ways is reported as the modifier php read first. */
+	if( PcreMapFlags(zFlags, nFlagLen, &compileOpts, &cBadFlag) != PCRE_PARSE_OK ){
+		if( cBadFlag == 0 ){
+			SyBufferFormat(zErr, nErr, "NUL byte is not a valid modifier");
+		}else{
+			SyBufferFormat(zErr, nErr, "Unknown modifier '%c'", (int)cBadFlag);
+		}
+		pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
+		return 0;
+	}
 	/* Compile */
 	pCode = pcre2_compile(
 		(PCRE2_SPTR)zPat, (PCRE2_SIZE)nPatLen,
