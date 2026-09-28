@@ -715,6 +715,73 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 	return SXRET_OK;
 }
 /*
+ * Do these two compiled property defaults say the same thing? A raw memcmp of the
+ * two instruction buffers is not that question: an instruction carries the LINE it
+ * was compiled from and a literal travels as an INDEX into the VM's constant table,
+ * so `public $p = 1` written in a trait and the same `public $p = 1` written in the
+ * composing class compare as different bytes and made php's incompatible-property
+ * fatal fire on a class php composes without a word. Compare what the instructions
+ * MEAN instead: the opcode, its operands, and for a constant load the VALUE behind
+ * the index.
+ */
+static int VmTraitLiteralSame(ph7_vm *pVm,sxu32 nLeft,sxu32 nRight)
+{
+	ph7_value *pLeft,*pRight;
+	if( nLeft == nRight ){
+		return 1;
+	}
+	pLeft  = (ph7_value *)SySetAt(&pVm->aLitObj,nLeft);
+	pRight = (ph7_value *)SySetAt(&pVm->aLitObj,nRight);
+	if( pLeft == 0 || pRight == 0 ){
+		return 0;
+	}
+	if( (pLeft->iFlags & ~MEMOBJ_AUX) != (pRight->iFlags & ~MEMOBJ_AUX) ){
+		return 0;
+	}
+	if( SyBlobLength(&pLeft->sBlob) != SyBlobLength(&pRight->sBlob)
+	 || (SyBlobLength(&pLeft->sBlob) > 0
+	     && SyMemcmp(SyBlobData(&pLeft->sBlob),SyBlobData(&pRight->sBlob),
+	                 SyBlobLength(&pLeft->sBlob)) != 0) ){
+		return 0;
+	}
+	if( (pLeft->iFlags & MEMOBJ_INT) && pLeft->x.iVal != pRight->x.iVal ){
+		return 0;
+	}
+	if( (pLeft->iFlags & MEMOBJ_REAL) && pLeft->rVal != pRight->rVal ){
+		return 0;
+	}
+	return 1;
+}
+static int VmTraitDefaultsMatch(ph7_vm *pVm,SySet *pLeft,SySet *pRight)
+{
+	VmInstr *aLeft,*aRight;
+	sxu32 n,nUsed;
+	nUsed = SySetUsed(pLeft);
+	if( nUsed != SySetUsed(pRight) ){
+		return 0;
+	}
+	if( nUsed < 1 ){
+		return 1;
+	}
+	aLeft  = (VmInstr *)SySetBasePtr(pLeft);
+	aRight = (VmInstr *)SySetBasePtr(pRight);
+	for( n = 0 ; n < nUsed ; ++n ){
+		if( aLeft[n].iOp != aRight[n].iOp || aLeft[n].iP1 != aRight[n].iP1 ){
+			return 0;
+		}
+		if( aLeft[n].iOp == PH7_OP_LOADC ){
+			if( !VmTraitLiteralSame(pVm,aLeft[n].iP2,aRight[n].iP2) ){
+				return 0;
+			}
+			continue;
+		}
+		if( aLeft[n].iP2 != aRight[n].iP2 || aLeft[n].p3 != aRight[n].p3 ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
  * Apply a trait to a class: copy all methods and attributes from the trait
  * into the target class. Unlike inheritance, traits copy ALL members including
  * private ones. Members already defined in the class take precedence.
@@ -745,32 +812,40 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 		pName = &pAttr->sName;
 		pExisting = SyHashGet(&pClass->hAttr,(const void *)pName->zString,pName->nByte);
 		if( pExisting != 0 ){
-			/* Attribute already exists. Check if it came from another trait
-			 * and whether the definitions are compatible (same defaults).
-			 */
-			ph7_class **apUsedTraits;
-			sxu32 nUsed,k;
-			apUsedTraits = (ph7_class **)SySetBasePtr(&pClass->aTrait);
-			nUsed = SySetUsed(&pClass->aTrait);
-			for(k = 0; k < nUsed; k++){
-				ph7_class_attr *pOther;
-				pOther = PH7_ClassExtractAttribute(apUsedTraits[k],pName->zString,pName->nByte);
-				if( pOther ){
-					/* Two traits define the same property — check if defaults differ */
-					ph7_class_attr *pClassAttr = (ph7_class_attr *)pExisting->pUserData;
-					if( SySetUsed(&pAttr->aByteCode) != SySetUsed(&pClassAttr->aByteCode) ||
-						(SySetUsed(&pAttr->aByteCode) > 0 &&
-						 SyMemcmp(SySetBasePtr(&pAttr->aByteCode),SySetBasePtr(&pClassAttr->aByteCode),
-							SySetUsed(&pAttr->aByteCode) * SySetElemSize(&pAttr->aByteCode)) != 0) ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pAttr->nLine,
-							"%z and %z define the same property ($%z) in the composition of %z. "
-							"However, the definition differs and is considered incompatible",
-							&apUsedTraits[k]->sName,&pTrait->sName,pName,&pClass->sName);
-						if( rc == SXERR_ABORT ){
-							goto cleanup;
+			/* The name is taken. What decides is the definition ALREADY standing --
+			 * the class's own body just as much as an earlier trait's -- and whether
+			 * its default is the same one. Looking the name up in the traits applied
+			 * so far and comparing only THEN let a class-body property through:
+			 * `class M { use TA, TB; public $p = 3; }` said nothing when TA arrived
+			 * (no trait held the name yet) and then blamed the wrong pair when TB did. */
+			ph7_class_attr *pClassAttr = (ph7_class_attr *)pExisting->pUserData;
+			if( !VmTraitDefaultsMatch(pGen->pVm,&pAttr->aByteCode,&pClassAttr->aByteCode) ){
+				/* php names the FIRST definition rather than the standing one: when the
+				 * holder is the composing class itself, it walks the traits applied so
+				 * far and names the first that declares the property, so the same class
+				 * body reads "M and TA" with one trait behind it and "TA and TB" with
+				 * two. The sentence ends with a clause of its own and lets the fatal's
+				 * " in %s on line %u" finish it -- the line is the composing class's. */
+				ph7_class *pHolder = pClassAttr->pDeclClass;
+				if( pHolder == 0 || pHolder == pClass ){
+					ph7_class **apUsedTraits = (ph7_class **)SySetBasePtr(&pClass->aTrait);
+					sxu32 nUsed = SySetUsed(&pClass->aTrait);
+					sxu32 k;
+					pHolder = pClass;
+					for(k = 0; k < nUsed; k++){
+						if( PH7_ClassExtractAttribute(apUsedTraits[k],pName->zString,pName->nByte) ){
+							pHolder = apUsedTraits[k];
+							break;
 						}
 					}
-					break;
+				}
+				rc = PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+					"%z and %z define the same property ($%z) in the composition of %z. "
+					"However, the definition differs and is considered incompatible. "
+					"Class was composed",
+					&pHolder->sName,&pTrait->sName,pName,&pClass->sName);
+				if( rc == SXERR_ABORT ){
+					goto cleanup;
 				}
 			}
 			continue;
@@ -828,15 +903,35 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 				pClassMethEntry->pUserData = (void *)pMeth;
 				continue;
 			}
+			/* Two names are not two METHODS. A trait that `use`s another trait
+			 * flattens it by sharing the very ph7_class_method the origin trait
+			 * compiled, so a method reaching the class down two composition paths
+			 * arrives as the SAME struct both times -- which is php's own test
+			 * (zend compares the two functions' op_array.opcodes) and why
+			 * `trait TB { use TA; } class M { use TB, TA; }` composes there and
+			 * fatalled here. Only two genuinely different definitions collide. */
+			if( pExistingMeth == pMeth ){
+				continue;
+			}
+			/* A method the class declares ITSELF wins over every trait, however many
+			 * of them offer the name: php reports no collision at all for
+			 * `class M { use TA, TB; public function m(){} }`, where PHL raised one
+			 * as soon as the second trait arrived. */
+			if( (ph7_class *)pExistingMeth->sFunc.pUserData == pClass ){
+				continue;
+			}
 			/* Both concrete: a genuine collision only when the OTHER definition came
 			 * from another trait (a concrete one). A class-body method wins silently. */
 			apUsedTraits = (ph7_class **)SySetBasePtr(&pClass->aTrait);
 			nUsed = SySetUsed(&pClass->aTrait);
 			for(k = 0; k < nUsed; k++){
 				ph7_class_method *pOtherMeth = PH7_ClassExtractMethod(apUsedTraits[k],pName->zString,pName->nByte);
-				if( pOtherMeth != 0 && (pOtherMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
-					/* Two different traits define the same CONCRETE method with no resolution */
-					rc = PH7_GenCompileError(pGen,E_ERROR,pTrait->nLine,
+				if( pOtherMeth != 0 && pOtherMeth != pMeth
+				 && (pOtherMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
+					/* Two different traits define the same CONCRETE method with no
+					 * resolution. php reports the line of the COMPOSING class, not
+					 * the one the losing definition was written on. */
+					rc = PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
 						"Trait method %z::%z has not been applied as %z::%z, "
 						"because of collision with %z::%z",
 						&pTrait->sName,pName,
