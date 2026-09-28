@@ -30,7 +30,7 @@
 	 * methods. It cannot live here — a chunk-declared property is on every presentation
 	 * surface, and `call()` in PHP leaked get_class()'s own TypeError text. */\
 	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
-	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING, $context = null)"\
+	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING, $context = null): array|false"\
     "{"\
 	"  /* php's Z_PARAM_PATH refusal, spelled here because this builtin is prelude PHP:"\
 	"     the C screen (VmBuiltinPathMask) reaches host builtins only, so without this"\
@@ -73,7 +73,7 @@
 	"  }"\
 	"  return $aDir;"\
 	"}"\
-	"function glob(string $pattern,int $flags = 0){"\
+	"function glob(string $pattern,int $flags = 0): array|false {"\
 	"/* php's Z_PARAM_PATH refusal (see scandir above). It precedes the flag check:"\
 	"   php's ZPP runs before the function body. Without it the NUL was simply the end"\
 	"   of the pattern and glob() answered for the truncated one. */"\
@@ -230,12 +230,17 @@
    "  $pHandle = fopen($zPath,'r+b');"\
    "  return $pHandle;"\
    "}"\
-   "function is_nan($num){ $num = (float)$num; return $num != $num; }"\
-   "function is_infinite($num){ $num = (float)$num; return $num == INF || $num == -INF; }"\
-   "function is_finite($num){ $num = (float)$num; return !is_nan($num) && !is_infinite($num); }"\
+   /* A builtin written here is INTERNAL to php, and php declares every one of
+    * these parameters. The declaration is not decoration: it is the ZPP screen,
+    * so an untyped $num CAST what php refuses -- is_nan('abc') answered false
+    * where php raises a TypeError, and each of the manual casts these bodies
+    * opened with was hiding exactly that. The return types are php's too; they
+    * are what ReflectionFunction prints. */\
+   "function is_nan(float $num): bool { return $num != $num; }"\
+   "function is_infinite(float $num): bool { return $num == INF || $num == -INF; }"\
+   "function is_finite(float $num): bool { return !is_nan($num) && !is_infinite($num); }"\
    "/* Inverse of bin2hex() */"\
-   "function hex2bin($string){"\
-   "  $string = (string)$string;"\
+   "function hex2bin(string $string): string|false {"\
    "  $len = strlen($string);"\
    "  if( $len % 2 !== 0 ){"\
    "    trigger_error('hex2bin(): Hexadecimal input string must have an even length', E_USER_WARNING);"\
@@ -263,8 +268,7 @@
    "  }"\
    "  return $num1 / $num2;"\
    "}"\
-   "function checkdate($month, $day, $year){"\
-   "  $month = (int)$month; $day = (int)$day; $year = (int)$year;"\
+   "function checkdate(int $month, int $day, int $year): bool {"\
    "  if( $month < 1 || $month > 12 || $year < 1 || $year > 32767 || $day < 1 ){ return false; }"\
    "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\
    "  $max = $days[$month - 1];"\
@@ -273,10 +277,10 @@
    "  }"\
    "  return $day <= $max;"\
    "}"\
-   "function is_iterable($value){ return is_array($value) || ($value instanceof Traversable); }"\
-   "function is_countable($value){ return is_array($value) || ($value instanceof Countable); }"\
-   "function doubleval($value){ return (float)$value; }"\
-   "function array_count_values($array){"\
+   "function is_iterable(mixed $value): bool { return is_array($value) || ($value instanceof Traversable); }"\
+   "function is_countable(mixed $value): bool { return is_array($value) || ($value instanceof Countable); }"\
+   "function doubleval(mixed $value): float { return (float)$value; }"\
+   "function array_count_values(array $array): array {"\
    "  $out = array();"\
    "  foreach( $array as $v ){"\
    "    if( !is_int($v) && !is_string($v) ){"\
@@ -287,7 +291,7 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "function array_change_key_case($array, $case = CASE_LOWER){"\
+   "function array_change_key_case(array $array, int $case = CASE_LOWER): array {"\
    "  $out = array();"\
    "  foreach( $array as $k => $v ){"\
    "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\
@@ -295,7 +299,7 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "function array_replace_recursive($array, ...$replacements){"\
+   "function array_replace_recursive(array $array, array ...$replacements): array {"\
    "  foreach( $replacements as $o ){"\
    "    foreach( $o as $k => $v ){"\
    "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\
@@ -307,13 +311,13 @@
    "  }"\
    "  return $array;"\
    "}"\
-   "function class_uses($object_or_class, $autoload = true){"\
+   "function class_uses($object_or_class, bool $autoload = true): array|false {"\
    "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
    "  if( !class_exists($c) ){ return false; }"\
    "  return array();  /* PHL has no traits yet -- always the empty set */"\
    "}"\
-   "function ip2long($ip){"\
-   "  $p = explode('.', (string)$ip);"\
+   "function ip2long(string $ip): int|false {"\
+   "  $p = explode('.', $ip);"\
    "  if( count($p) !== 4 ){ return false; }"\
    "  $n = 0;"\
    "  foreach( $p as $o ){"\
@@ -322,11 +326,10 @@
    "  }"\
    "  return $n;"\
    "}"\
-   "function long2ip($ip){"\
-   "  $n = (int)$ip;"\
-   "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\
+   "function long2ip(int $ip): string {"\
+   "  return (($ip >> 24) & 255) . '.' . (($ip >> 16) & 255) . '.' . (($ip >> 8) & 255) . '.' . ($ip & 255);"\
    "}"\
-   "function preg_filter($pattern, $replacement, $subject, $limit = -1, &$count = null){"\
+   "function preg_filter(array|string $pattern, array|string $replacement, array|string $subject, int $limit = -1, &$count = null): array|string|null {"\
    "  /* php declares &$count and always writes it -- the total number of"\
    "   * replacements across every subject, 0 when nothing matched. PHL never"\
    "   * declared the parameter, so a caller reading it got its previous value. */"\
@@ -345,7 +348,7 @@
    "  $count = $cnt;"\
    "  return $cnt > 0 ? $r : null;"\
    "}"\
-   "function preg_replace_callback_array($pattern, $subject, $limit = -1, &$count = null, $flags = 0){"\
+   "function preg_replace_callback_array(array $pattern, array|string $subject, int $limit = -1, &$count = null, int $flags = 0): array|string|null {"\
    "  /* &$count is the total across every pattern; $flags shapes each callback's"\
    "   * match array. php writes &$count only when the whole run SUCCEEDED -- a"\
    "   * pattern that fails to compile answers null and leaves it untouched (an"\
@@ -359,7 +362,7 @@
    "  $count = $total;"\
    "  return $subject;"\
    "}"\
-   "function preg_grep($pattern, $array, $flags = 0){"\
+   "function preg_grep(string $pattern, array $array, int $flags = 0): array|false {"\
    "  $out = array();"\
    "  foreach( $array as $k => $v ){"\
    "    $m = preg_match($pattern, (string)$v);"\
@@ -368,7 +371,7 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "function class_implements($object_or_class, $autoload = true){"\
+   "function class_implements($object_or_class, bool $autoload = true): array|false {"\
    "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
    "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\
    "  $out = array();"\
@@ -376,7 +379,7 @@
    "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\
    "  return $out;"\
    "}"\
-   "function class_parents($object_or_class, $autoload = true){"\
+   "function class_parents($object_or_class, bool $autoload = true): array|false {"\
    "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
    "  if( !class_exists($c) ){ return false; }"\
    "  $out = array();"\
@@ -389,8 +392,7 @@
    "  return $out;"\
    "}"\
    "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\
-   "function str_increment($string){"\
-   "  $string = (string)$string;"\
+   "function str_increment(string $string): string {"\
    "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\
    "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\
    "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\
@@ -407,8 +409,7 @@
    "}"\
    "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\
    " * at the bottom of the counting sequence. */"\
-   "function str_decrement($string){"\
-   "  $string = (string)$string;"\
+   "function str_decrement(string $string): string {"\
    "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\
    "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\
    "  $orig = $string;"\
@@ -435,13 +436,13 @@
     * and the fourth raised trigger_error, whose errno is E_USER_WARNING's 512 and
     * whose line is this chunk's rather than the caller's. */\
    "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\
-   "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\
+   "function clearstatcache(bool $clear_realpath_cache = false, string $filename = ''): void {}"\
    /* mb_ucfirst/mb_lcfirst moved to C (builtin_mb.c): as prelude wrappers they
     * dropped $encoding, UPPER-cased where php title-cases ('ß' -> 'SS' for php's
     * 'Ss') and lowered a leading Σ with nothing after it, which is php's FINAL
     * sigma and not what a first character gets. */\
    "/* Creates a temporary file and returns its name */"\
-   "function tempnam(string $directory,string $prefix)"\
+   "function tempnam(string $directory,string $prefix): string|false"\
    "{"\
    "   /* php's Z_PARAM_PATH refusal on BOTH parameters (see scandir above); the prefix"\
    "    * is a path fragment there too, and PHL used to build a filename with the NUL"\
