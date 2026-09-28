@@ -388,6 +388,31 @@ PH7_PRIVATE int PH7_VfsStatFromFd(int iFd,ph7_value *pArray,ph7_value *pWorker)
 	}
 }
 /*
+ * php's WRITE door for a path a userland wrapper owns: unlink(), rename(), mkdir(),
+ * rmdir(), and the stream_metadata() that touch(), chmod(), chown() and chgrp() all
+ * become. PHL sent every one of them to the OS instead -- so `unlink('vfs://root/f')`
+ * reported `No such file or directory` about a path the OS had never heard of, and
+ * the wrapper was never told -- which is the second half of what a test suite that
+ * fakes a filesystem does with one. (The `?resource $context` these builtins already
+ * screened is what php sets on the serving instance, so it is handed over too.)
+ *
+ * Answers 1 when a wrapper owned the path and the result is set; 0 when none did and
+ * the caller carries on to the VFS.
+ */
+static int VfsUserWrite(ph7_context *pCtx,const char *zPath,const char *zMethod,
+	void *pStreamCtx,ph7_value **apExtra,int nExtra)
+{
+	int bAnswer = 0;
+	int rc = PH7_StreamUserPathOp(pCtx,zPath,zMethod,pStreamCtx,apExtra,nExtra,&bAnswer);
+	if( rc == PHL_URLSTAT_NOWRAP ){
+		return 0;
+	}
+	/* A wrapper that declined, one with no such method (php has already said so), and
+	 * one that threw all answer the same false; the throw is its own report. */
+	ph7_result_bool(pCtx,rc == PHL_URLSTAT_OK ? bAnswer : 0);
+	return 1;
+}
+/*
  * ---------------------------------------------------------------------------
  * The stat family over a path a USERLAND stream wrapper owns.
  *
@@ -760,20 +785,34 @@ static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath;
 	ph7_vfs *pVfs;
+	phl_stream_ctx *pStreamCtx;
 	int rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* php's `?resource $context`, refused when it is a resource of another kind.
-	 * Nothing here CONSUMES it — this operation never opens a stream, and the
-	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
-	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
-	 * was accepted in silence. */
-	PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
+	/* php's `?resource $context`, refused when it is a resource of another kind,
+	 * and SET on the wrapper instance the write door below dispatches to. */
+	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
 	if( bThrew ){
 		return PH7_OK;
+	}
+	/* php's rmdir() hands the wrapper the url and its own $options -- always
+	 * STREAM_REPORT_ERRORS, the bit that says a diagnostic is wanted. */
+	{
+		ph7_value sOpt;
+		ph7_value *apExtra[1];
+		int bDone;
+		PH7_MemObjInit(pCtx->pVm,&sOpt);
+		ph7_value_int(&sOpt,PH7_STREAM_REPORT_ERRORS);
+		apExtra[0] = &sOpt;
+		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"rmdir",
+			(void *)pStreamCtx,apExtra,1);
+		PH7_MemObjRelease(&sOpt);
+		if( bDone ){
+			return PH7_OK;
+		}
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -975,20 +1014,40 @@ static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int iRecursive = 0;
 	const char *zPath;
 	ph7_vfs *pVfs;
+	phl_stream_ctx *pStreamCtx;
 	int iMode,rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* php's `?resource $context`, refused when it is a resource of another kind.
-	 * Nothing here CONSUMES it — this operation never opens a stream, and the
-	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
-	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
-	 * was accepted in silence. */
-	PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",0,&bThrew);
+	/* php's `?resource $context`, refused when it is a resource of another kind,
+	 * and SET on the wrapper instance the write door below dispatches to. */
+	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",0,&bThrew);
 	if( bThrew ){
 		return PH7_OK;
+	}
+	/* php's mkdir() hands the wrapper ($url, $mode, $options) -- the mode the caller
+	 * asked for (0777 by default on every platform: it is the WRAPPER's to
+	 * interpret), and STREAM_REPORT_ERRORS plus STREAM_MKDIR_RECURSIVE. */
+	{
+		ph7_value sMode,sOpt;
+		ph7_value *apExtra[2];
+		int bDone;
+		PH7_MemObjInit(pCtx->pVm,&sMode);
+		PH7_MemObjInit(pCtx->pVm,&sOpt);
+		ph7_value_int(&sMode,nArg > 1 ? ph7_value_to_int(apArg[1]) : 0777);
+		ph7_value_int(&sOpt,PH7_STREAM_REPORT_ERRORS
+			| ((nArg > 2 && ph7_value_to_bool(apArg[2])) ? PH7_STREAM_MKDIR_RECURSIVE : 0));
+		apExtra[0] = &sMode;
+		apExtra[1] = &sOpt;
+		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"mkdir",
+			(void *)pStreamCtx,apExtra,2);
+		PH7_MemObjRelease(&sMode);
+		PH7_MemObjRelease(&sOpt);
+		if( bDone ){
+			return PH7_OK;
+		}
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -1046,20 +1105,64 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zOld,*zNew;
 	ph7_vfs *pVfs;
+	phl_stream_ctx *pStreamCtx;
 	int rc,bThrew = 0;
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* php's `?resource $context`, refused when it is a resource of another kind.
-	 * Nothing here CONSUMES it — this operation never opens a stream, and the
-	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
-	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
-	 * was accepted in silence. */
-	PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
+	/* php's `?resource $context`, refused when it is a resource of another kind,
+	 * and SET on the wrapper instance the write door below dispatches to. */
+	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
 	if( bThrew ){
 		return PH7_OK;
+	}
+	zOld = ph7_value_to_string(apArg[0],0);
+	zNew = ph7_value_to_string(apArg[1],0);
+	{
+		/* php resolves BOTH ends before renaming anything. A scheme nothing is
+		 * registered under is its own reason, reported and then left to the
+		 * ordinary rename to fail on; two ends belonging to DIFFERENT wrappers are
+		 * refused outright rather than read through one and written to the other. */
+		const char *zProbe = zOld;
+		const ph7_io_stream *pA = PH7_VmGetStreamDevice(pCtx->pVm,&zProbe,(int)SyStrlen(zOld));
+		const ph7_io_stream *pB;
+		zProbe = zNew;
+		pB = PH7_VmGetStreamDevice(pCtx->pVm,&zProbe,(int)SyStrlen(zNew));
+		if( pA == 0 || pB == 0 ){
+			/* php reports the scheme it could not place and then goes on with the
+			 * comparison, the unplaced end counting as the plain-files wrapper --
+			 * so a plain path beside it renames (and fails on the path), while a
+			 * WRAPPER beside it is the across-types refusal below. */
+			VfsThrowUnknownWrapperWarning(pCtx,pA == 0 ? zOld : zNew);
+			if( pA == 0 ){
+				pA = pCtx->pVm->pDefStream;
+			}
+			if( pB == 0 ){
+				pB = pCtx->pVm->pDefStream;
+			}
+		}
+		if( pA != pB ){
+			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Cannot rename a file across wrapper types",
+				ph7_function_name(pCtx));
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}else{
+			/* One wrapper owns both ends, so the destination is its second
+			 * argument -- the full url, as php hands it over. */
+			ph7_value sDest;
+			ph7_value *apExtra[1];
+			int bDone;
+			PH7_MemObjInit(pCtx->pVm,&sDest);
+			ph7_value_string(&sDest,zNew,-1);
+			apExtra[0] = &sDest;
+			bDone = VfsUserWrite(pCtx,zOld,"rename",(void *)pStreamCtx,apExtra,1);
+			PH7_MemObjRelease(&sDest);
+			if( bDone ){
+				return PH7_OK;
+			}
+		}
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -1073,8 +1176,6 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
-	zOld = ph7_value_to_string(apArg[0],0);
-	zNew = ph7_value_to_string(apArg[1],0);
 	errno = 0;
 	rc = pVfs->xRename(zOld,zNew);
 	if( rc != PH7_OK ){
@@ -1356,19 +1457,22 @@ static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath;
 	ph7_vfs *pVfs;
+	phl_stream_ctx *pStreamCtx;
 	int rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* php's `?resource $context`, refused when it is a resource of another kind.
-	 * Nothing here CONSUMES it — this operation never opens a stream, and the
-	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
-	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
-	 * was accepted in silence. */
-	PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
+	/* php's `?resource $context`, refused when it is a resource of another kind,
+	 * and SET on the wrapper instance the write door below dispatches to. */
+	pStreamCtx = PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
 	if( bThrew ){
+		return PH7_OK;
+	}
+	/* php's unlink() hands the wrapper the url and nothing else. */
+	if( VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"unlink",
+		(void *)pStreamCtx,0,0) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -1415,6 +1519,25 @@ static int PH7_vfs_chmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	/* php's chmod() is a stream_metadata(STREAM_META_ACCESS) on a wrapper path. */
+	{
+		ph7_value sOp,sVal;
+		ph7_value *apExtra[2];
+		int bDone;
+		PH7_MemObjInit(pCtx->pVm,&sOp);
+		PH7_MemObjInit(pCtx->pVm,&sVal);
+		ph7_value_int(&sOp,PH7_STREAM_META_ACCESS);
+		ph7_value_int(&sVal,ph7_value_to_int(apArg[1]));
+		apExtra[0] = &sOp;
+		apExtra[1] = &sVal;
+		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"stream_metadata",
+			0,apExtra,2);
+		PH7_MemObjRelease(&sOp);
+		PH7_MemObjRelease(&sVal);
+		if( bDone ){
+			return PH7_OK;
+		}
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -1465,6 +1588,34 @@ static int PH7_vfs_chown(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	/* php's chown() is a stream_metadata() on a wrapper path, and WHICH verb it is
+	 * depends on the argument's TYPE: an integer names the id, anything else the
+	 * name. */
+	{
+		ph7_value sOp,sVal;
+		ph7_value *apExtra[2];
+		int bDone;
+		int bId = ph7_value_is_int(apArg[1]);
+		PH7_MemObjInit(pCtx->pVm,&sOp);
+		PH7_MemObjInit(pCtx->pVm,&sVal);
+		ph7_value_int(&sOp,bId ? PH7_STREAM_META_OWNER : PH7_STREAM_META_OWNER_NAME);
+		if( bId ){
+			ph7_value_int64(&sVal,ph7_value_to_int64(apArg[1]));
+		}else{
+			int nUser = 0;
+			const char *zVal = ph7_value_to_string(apArg[1],&nUser);
+			ph7_value_string(&sVal,zVal,nUser);
+		}
+		apExtra[0] = &sOp;
+		apExtra[1] = &sVal;
+		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"stream_metadata",
+			0,apExtra,2);
+		PH7_MemObjRelease(&sOp);
+		PH7_MemObjRelease(&sVal);
+		if( bDone ){
+			return PH7_OK;
+		}
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -1518,6 +1669,34 @@ static int PH7_vfs_chgrp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	/* php's chgrp() is a stream_metadata() on a wrapper path, and WHICH verb it is
+	 * depends on the argument's TYPE: an integer names the id, anything else the
+	 * name. */
+	{
+		ph7_value sOp,sVal;
+		ph7_value *apExtra[2];
+		int bDone;
+		int bId = ph7_value_is_int(apArg[1]);
+		PH7_MemObjInit(pCtx->pVm,&sOp);
+		PH7_MemObjInit(pCtx->pVm,&sVal);
+		ph7_value_int(&sOp,bId ? PH7_STREAM_META_GROUP : PH7_STREAM_META_GROUP_NAME);
+		if( bId ){
+			ph7_value_int64(&sVal,ph7_value_to_int64(apArg[1]));
+		}else{
+			int nUser = 0;
+			const char *zVal = ph7_value_to_string(apArg[1],&nUser);
+			ph7_value_string(&sVal,zVal,nUser);
+		}
+		apExtra[0] = &sOp;
+		apExtra[1] = &sVal;
+		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"stream_metadata",
+			0,apExtra,2);
+		PH7_MemObjRelease(&sOp);
+		PH7_MemObjRelease(&sVal);
+		if( bDone ){
+			return PH7_OK;
+		}
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -2560,6 +2739,42 @@ static int PH7_vfs_touch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	/* php's touch() is a stream_metadata(STREAM_META_TOUCH) on a wrapper path, and
+	 * its value is an ARRAY: empty when the caller named no time at all, else
+	 * [mtime, atime] -- resolved BEFORE php's own now/echo defaults, which belong
+	 * to the plain-file path below. */
+	{
+		ph7_value *pTimes = ph7_context_new_array(pCtx);
+		ph7_value sOp,sOne;
+		ph7_value *apExtra[2];
+		int bDone;
+		if( pTimes == 0 ){
+			ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		PH7_MemObjInit(pCtx->pVm,&sOp);
+		PH7_MemObjInit(pCtx->pVm,&sOne);
+		ph7_value_int(&sOp,PH7_STREAM_META_TOUCH);
+		if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+			ph7_int64 nM = ph7_value_to_int64(apArg[1]);
+			ph7_int64 nA = (nArg > 2 && !ph7_value_is_null(apArg[2]))
+				? ph7_value_to_int64(apArg[2]) : nM;
+			ph7_value_int64(&sOne,nM);
+			ph7_array_add_elem(pTimes,0,&sOne);
+			ph7_value_int64(&sOne,nA);
+			ph7_array_add_elem(pTimes,0,&sOne);
+		}
+		apExtra[0] = &sOp;
+		apExtra[1] = pTimes;
+		bDone = VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"stream_metadata",
+			0,apExtra,2);
+		PH7_MemObjRelease(&sOp);
+		PH7_MemObjRelease(&sOne);
+		if( bDone ){
+			return PH7_OK;
+		}
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);

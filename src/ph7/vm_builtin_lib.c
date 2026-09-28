@@ -79,6 +79,13 @@
 	"  return $aDir;"\
 	"}"\
 	"function glob(string $pattern,int $flags = 0): array|false {"\
+	"/* php's glob() is the C library's glob(3) over the RAW pattern -- it is the one"\
+	"   directory reader php does not route through a stream wrapper, so a pattern"\
+	"   carrying a scheme names a directory that does not exist and matches nothing."\
+	"   PHL globbed through the wrapper lookup opendir() uses, so glob('file://'.'/tmp/*')"\
+	"   listed /tmp where php answers [], and a userland wrapper's own listing would"\
+	"   have answered here too once its directory door opened. */"\
+	"if( preg_match('#^[A-Za-z][A-Za-z0-9+.\\\\-]*://#', $pattern) ){ return array(); }"\
 	"/* php's Z_PARAM_PATH refusal (see scandir above). It precedes the flag check:"\
 	"   php's ZPP runs before the function body. Without it the NUL was simply the end"\
 	"   of the pattern and glob() answered for the truncated one. */"\

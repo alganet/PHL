@@ -3590,6 +3590,13 @@ struct ph7_vm
 	void *pStreamCtx;          /* phl_stream_ctx registry chain; freed on reset */
 	void *pDefaultCtx;         /* phl_stream_ctx* — the default context, or 0 */
 	void *pOpenCtx;            /* the context the open in flight runs under */
+	char zOpenMode[16];        /* the mode string the open in flight was ASKED with, when a
+	                            * caller had one: php hands a userland wrapper's stream_open()
+	                            * the caller's own spelling ('rb', 'w+', 'x'), and PHL could
+	                            * only rebuild an approximation from the flag bits -- so
+	                            * file_put_contents() told a wrapper it was opening for
+	                            * READING. Empty when the opener has no string of its own
+	                            * (the C-level readers), and cleared after every open. */
 	/* What a FAILED open says. php names the URI the script wrote -- scheme and
 	 * all -- and gives the WRAPPER's reason for it, where only the plain-file
 	 * wrapper's reason is an errno. PH7_VmGetStreamDevice() advances past the
@@ -6645,6 +6652,9 @@ PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_v
 PH7_PRIVATE int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_StreamUserUrlStat(ph7_context *pCtx,const char *zPath,int iFlags,ph7_int64 *aVal);
+PH7_PRIVATE int PH7_StreamUserPathOp(ph7_context *pCtx,const char *zPath,const char *zMethod,void *pStreamCtx,ph7_value **apExtra,int nExtra,int *pbAnswer);
+PH7_PRIVATE void PH7_StreamArmOpenMode(ph7_vm *pVm,const char *zMode,int nMode);
+PH7_PRIVATE int PH7_StreamUserDirReason(ph7_vm *pVm,const ph7_io_stream *pStream,char *zBuf,int nBuf);
 PH7_PRIVATE int PH7_VfsUserStatFields(ph7_context *pCtx,const char *zPath,int eAsk,ph7_int64 *aVal);
 PH7_PRIVATE void PH7_VfsUserStatResult(ph7_context *pCtx,int eAsk,const ph7_int64 *aVal);
 PH7_PRIVATE void PH7_VfsStatAccessMasks(ph7_context *pCtx,ph7_int64 nUid,ph7_int64 nGid,int *pR,int *pW,int *pX);

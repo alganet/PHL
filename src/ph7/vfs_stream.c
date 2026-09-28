@@ -1083,6 +1083,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		 * nothing else, so it is dropped on every exit — a caller that armed one
 		 * and returned early must not leave it for the next open to pick up. */
 		pVm->pOpenCtx = 0;
+		pVm->zOpenMode[0] = 0;
 		if( pVm->nOpenDepth < 1 ){
 			pVm->zOpenErr = 0;
 		}
@@ -1102,6 +1103,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		 * and this is php's sentence for it. Reached before the call, because
 		 * the call would be through a null pointer. */
 		pVm->pOpenCtx = 0;
+		pVm->zOpenMode[0] = 0;
 		if( pVm->nOpenDepth < 1 ){
 			pVm->zOpenErr = "wrapper does not support stream open";
 		}
@@ -1129,6 +1131,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 			 * caller to print whatever reason was armed ("operation failed"). */
 			char zMsg[160];
 			pVm->pOpenCtx = 0;
+			pVm->zOpenMode[0] = 0;
 			if( pVm->nOpenDepth < 1 ){
 				pVm->zOpenErr = "no suitable wrapper could be found";
 			}
@@ -1141,6 +1144,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		if( bPushInclude && !PH7_VmIniGetBool(pVm,"allow_url_include",0) ){
 			char zMsg[160];
 			pVm->pOpenCtx = 0;
+			pVm->zOpenMode[0] = 0;
 			SyBufferFormat(zMsg,sizeof(zMsg),
 				"%s:// wrapper is disabled in the server configuration by allow_url_include=0",
 				pStream->zName);
@@ -1245,6 +1249,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 	 * worked or not. A device that wanted it (a userland wrapper) read it while
 	 * its xOpen was running. */
 	pVm->pOpenCtx = 0;
+	pVm->zOpenMode[0] = 0;
 	/* An http:// exchange publishes `$http_response_header` into the frame that
 	 * called the opener, and it does so whether the open SUCCEEDED or not: a 404
 	 * is a failed open with a complete set of headers behind it. Only the
@@ -1276,6 +1281,25 @@ PH7_PRIVATE void PH7_StreamSetOpenError(ph7_vm *pVm,const char *zReason)
 	}
 }
 /* See ph7int.h. */
+/*
+ * Remember the mode STRING an open was asked with. php hands a userland wrapper's
+ * stream_open() the caller's own spelling, and only fopen() and SplFileObject have
+ * one -- every other opener is C code with a fixed mode, which UwrapOpenSlot spells
+ * back from the flag bits. Cleared after each open, exactly like pOpenCtx.
+ */
+PH7_PRIVATE void PH7_StreamArmOpenMode(ph7_vm *pVm,const char *zMode,int nMode)
+{
+	int n = nMode;
+	if( zMode == 0 || n < 1 ){
+		pVm->zOpenMode[0] = 0;
+		return;
+	}
+	if( n > (int)sizeof(pVm->zOpenMode) - 1 ){
+		n = (int)sizeof(pVm->zOpenMode) - 1;
+	}
+	SyMemcpy(zMode,pVm->zOpenMode,(sxu32)n);
+	pVm->zOpenMode[n] = 0;
+}
 PH7_PRIVATE void PH7_StreamSetOpenErrorCall(ph7_vm *pVm,const char *zClass,const char *zMethod)
 {
 	if( pVm->nOpenDepth != 1 ){
@@ -2109,7 +2133,14 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		/* IO error: php WARNS here — `opendir(/nope): Failed to open directory: No
 		 * such file or directory` — and PHL returned FALSE in silence. The message
 		 * names the ACTIVE function, which is how dir() gets php's `dir(...)`
-		 * wording out of the same call. */
+		 * wording out of the same call.
+		 *
+		 * A userland wrapper's refusal is not an errno: php names the METHOD it
+		 * called and whether the wrapper has one at all, the same way a failed
+		 * stream_open() is reported. */
+		char zWhy[160];
+		const char *zReason = PH7_StreamUserDirReason(pCtx->pVm,pStream,zWhy,(int)sizeof(zWhy))
+			? zWhy : VfsStrerror(errno);
 #ifdef __WINNT__
 		if( pStream == &sWinFileStream ){
 			/* php's plain-files opener on Windows warns with the system's own
@@ -2119,13 +2150,13 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 			unsigned long nCode = PH7_WinOpenDirReason(zSys,(int)sizeof(zSys));
 			if( nCode ){
 				PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s (code: %lu)",
-					ph7_function_name(pCtx),zPath,zSys,nCode);
+					ph7_function_name(pCtx),zAsked,zSys,nCode);
 			}
 			errno = iSaved;
 		}
 #endif
 		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: %s",
-			ph7_function_name(pCtx),zPath,VfsStrerror(errno));
+			ph7_function_name(pCtx),zAsked,zReason);
 		ReleaseIOPrivate(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
@@ -2441,8 +2472,10 @@ PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void
 		VfsThrowOpenWarning(pCtx,zFile);
 		return -1;
 	}
+	/* php opens for WRITING only here ("ab"), and nothing reads back through the
+	 * handle -- which is also the mode string a userland wrapper is handed. */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,
-		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_APPEND,FALSE,0,FALSE,0,ph7_function_name(pCtx));
+		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_APPEND,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		return -1;
@@ -2566,8 +2599,9 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 			bScalarBad = 1;
 		}
 	}
-	/* Try to open the file in read-write mode */
-	iOpenFlags = PH7_IO_OPEN_CREATE|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC;
+	/* php opens for WRITING only -- "wb", or "ab" once FILE_APPEND turns up below --
+	 * and that is the mode string a userland wrapper is handed. */
+	iOpenFlags = PH7_IO_OPEN_CREATE|PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_TRUNC;
 	/* Extract the flags */
 	iFlags = 0;
 	if( nArg > 2 ){
@@ -2899,9 +2933,9 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* php hands the ONE context to both halves of the copy. */
 	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
-	/* Try to open the destination file in a read-write mode */
+	/* php opens the destination for WRITING only ("wb"). */
 	pOut = PH7_StreamOpenHandle(pCtx->pVm,pSout,zFile,
-		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_RDWR,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
+		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_WRONLY,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pOut == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -5874,8 +5908,37 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 		ph7_value_string(&sPath,(const char *)SyBlobData(&sUrl),(int)SyBlobLength(&sUrl));
 		SyBlobRelease(&sUrl);
 	}
-	ph7_value_string(&sMode,(iMode & PH7_IO_OPEN_WRONLY) ? "w"
-		: ((iMode & PH7_IO_OPEN_APPEND) ? "a" : "r"),-1);
+	if( pVm->zOpenMode[0] ){
+		/* fopen()/SplFileObject: php hands over the caller's own spelling. */
+		ph7_value_string(&sMode,pVm->zOpenMode,-1);
+	}else{
+		/* Every other opener is C with a fixed mode, and php's own are the three
+		 * BINARY spellings below -- file_get_contents()/file()/readfile()/copy's
+		 * source and include are "rb", file_put_contents() "wb", and its
+		 * FILE_APPEND "ab". Spell the flags back rather than guessing: PHL used
+		 * to answer "r" for every one of them, so a wrapper was told a WRITE
+		 * open was a read. */
+		char zSpell[8];
+		int n = 0;
+		if( iMode & PH7_IO_OPEN_APPEND ){
+			zSpell[n++] = 'a';
+		}else if( iMode & PH7_IO_OPEN_EXCL ){
+			zSpell[n++] = 'x';
+		}else if( iMode & PH7_IO_OPEN_TRUNC ){
+			zSpell[n++] = 'w';
+		}else if( iMode & PH7_IO_OPEN_CREATE ){
+			zSpell[n++] = 'c';
+		}else{
+			zSpell[n++] = 'r';
+		}
+		if( iMode & PH7_IO_OPEN_RDWR ){
+			zSpell[n++] = '+';
+		}
+		if( (iMode & PH7_IO_OPEN_TEXT) == 0 ){
+			zSpell[n++] = 'b';
+		}
+		ph7_value_string(&sMode,zSpell,n);
+	}
 	ph7_value_int(&sOpts,0);
 	apArg[0] = &sPath;
 	apArg[1] = &sMode;
@@ -5902,6 +5965,120 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 	return PH7_OK;
 }
 /*
+ * Instantiate the wrapper class of a userland slot and set php's `$context` on it,
+ * the way every dispatch of the protocol does. Answers 0 when the class is gone.
+ */
+static ph7_class_instance * UwrapNewInstance(ph7_vm *pVm,uwrap_slot *pSlot,void *pStreamCtx)
+{
+	ph7_class *pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)SyStrlen(pSlot->zClass),TRUE,0);
+	ph7_class_instance *pObj;
+	ph7_value *pCtxSlot;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return 0;
+	}
+	/* php adds the slot whether or not the class declares it. */
+	pCtxSlot = PH7_NativeAttr(pObj,"context");
+	if( pCtxSlot == 0 ){
+		pCtxSlot = PH7_VmCreateDynamicAttr(pVm,pObj,"context",sizeof("context")-1,0);
+	}
+	if( pCtxSlot ){
+		if( pStreamCtx ){
+			ph7_value_resource(pCtxSlot,pStreamCtx);
+		}else{
+			ph7_value_null(pCtxSlot);
+		}
+	}
+	return pObj;
+}
+/* The slot a path belongs to, or 0 when no userland wrapper owns it. */
+static uwrap_slot * UwrapSlotForPath(ph7_vm *pVm,const char *zPath)
+{
+	const char *zTail = zPath;
+	const ph7_io_stream *pDev;
+	int i;
+	if( zPath == 0 ){
+		return 0;
+	}
+	pDev = PH7_VmGetStreamDevice(pVm,&zTail,(int)SyStrlen(zPath));
+	if( pDev == 0 ){
+		return 0;
+	}
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm == pVm && &g_aUwrap[i].sStream == pDev ){
+			return &g_aUwrap[i];
+		}
+	}
+	return 0;
+}
+/*
+ * php's WRITE door for a userland wrapper: unlink(), rename(), mkdir(), rmdir() and
+ * stream_metadata() -- what touch(), chmod(), chown() and chgrp() all become.
+ *
+ * PHL sent every one of them to the OS instead, so `unlink('vfs://root/t.txt')`
+ * reported `No such file or directory` about a path the OS had never heard of and
+ * the wrapper was never told. php dispatches the method with the FULL url first and
+ * the operation's own extra arguments after it, and answers the bool the wrapper
+ * gives back.
+ *
+ * Same three answers as the stat door -- NOWRAP when nothing owns the path, OK with
+ * *pbAnswer set, FAIL after php's `%s::%s is not implemented!` -- plus the raw
+ * unwound status when the wrapper threw.
+ */
+PH7_PRIVATE int PH7_StreamUserPathOp(ph7_context *pCtx,const char *zPath,const char *zMethod,
+	void *pStreamCtx,ph7_value **apExtra,int nExtra,int *pbAnswer)
+{
+	ph7_vm *pVm;
+	uwrap_slot *pSlot;
+	ph7_class_instance *pObj;
+	ph7_class_method *pMeth;
+	ph7_value sUrl,sRet;
+	ph7_value *apArg[4];
+	int i,rc,iRet;
+	if( pCtx == 0 || zPath == 0 || nExtra > 3 ){
+		return PHL_URLSTAT_NOWRAP;
+	}
+	pVm = pCtx->pVm;
+	pSlot = UwrapSlotForPath(pVm,zPath);
+	if( pSlot == 0 ){
+		return PHL_URLSTAT_NOWRAP;
+	}
+	pObj = UwrapNewInstance(pVm,pSlot,pStreamCtx);
+	if( pObj == 0 ){
+		return PHL_URLSTAT_FAIL;
+	}
+	pMeth = PH7_ClassExtractMethod(pObj->pClass,zMethod,(sxu32)SyStrlen(zMethod));
+	if( pMeth == 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"%s::%s is not implemented!",pSlot->zClass,zMethod);
+		return PHL_URLSTAT_FAIL;
+	}
+	PH7_MemObjInit(pVm,&sUrl);
+	PH7_MemObjInit(pVm,&sRet);
+	ph7_value_string(&sUrl,zPath,-1);
+	apArg[0] = &sUrl;
+	for( i = 0 ; i < nExtra ; ++i ){
+		apArg[i+1] = apExtra[i];
+	}
+	rc = PH7_VmCallClassMethod(pVm,pObj,pMeth,&sRet,nExtra+1,apArg);
+	if( PH7_CALLBACK_UNWOUND(rc) ){
+		iRet = rc;
+	}else if( rc == SXRET_OK ){
+		*pbAnswer = ph7_value_to_bool(&sRet);
+		iRet = PHL_URLSTAT_OK;
+	}else{
+		iRet = PHL_URLSTAT_FAIL;
+	}
+	PH7_MemObjRelease(&sUrl);
+	PH7_MemObjRelease(&sRet);
+	PH7_ClassInstanceUnref(pObj);
+	return iRet;
+}
+/*
  * php's streamWrapper::url_stat(): the STAT door of a userland wrapper.
  *
  * PHL's stat family went straight to the OS VFS for every path, so a path a script's
@@ -5921,7 +6098,7 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
  * asks the VFS exactly as before -- PHL_URLSTAT_OK when the wrapper filled aVal, and
  * PHL_URLSTAT_FAIL when it declined. A wrapper with no url_stat at all is php's own
  * `%s::url_stat is not implemented!` warning, raised whatever the QUIET flag says,
- * and then a failure.
+ * and then a failure; one that THREW hands the raw unwound status back.
  */
 PH7_PRIVATE int PH7_StreamUserUrlStat(ph7_context *pCtx,const char *zPath,int iFlags,
 	ph7_int64 *aVal)
@@ -5931,71 +6108,38 @@ PH7_PRIVATE int PH7_StreamUserUrlStat(ph7_context *pCtx,const char *zPath,int iF
 		"atime","mtime","ctime","blksize","blocks"
 	};
 	ph7_vm *pVm;
-	const char *zTail;
-	const ph7_io_stream *pDev;
-	uwrap_slot *pSlot = 0;
-	ph7_class *pClass;
+	uwrap_slot *pSlot;
 	ph7_class_instance *pObj;
 	ph7_class_method *pMeth;
 	ph7_value sUrl,sFlags,sRet;
 	ph7_value *apArg[2];
-	SyBlob sPath;
 	int i,rc,iRet;
 	if( pCtx == 0 || zPath == 0 ){
 		return PHL_URLSTAT_NOWRAP;
 	}
 	pVm = pCtx->pVm;
-	zTail = zPath;
-	/* The resolver takes a real length, never -1. */
-	pDev = PH7_VmGetStreamDevice(pVm,&zTail,(int)SyStrlen(zPath));
-	if( pDev == 0 ){
-		return PHL_URLSTAT_NOWRAP;
-	}
-	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
-		if( g_aUwrap[i].pVm == pVm && &g_aUwrap[i].sStream == pDev ){
-			pSlot = &g_aUwrap[i];
-			break;
-		}
-	}
+	pSlot = UwrapSlotForPath(pVm,zPath);
 	if( pSlot == 0 ){
 		return PHL_URLSTAT_NOWRAP;
 	}
-	pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)SyStrlen(pSlot->zClass),TRUE,0);
-	if( pClass == 0 ){
+	/* A stat has no opener behind it, so `$context` is php's NULL. */
+	pObj = UwrapNewInstance(pVm,pSlot,0);
+	if( pObj == 0 ){
 		return PHL_URLSTAT_FAIL;
 	}
-	pMeth = PH7_ClassExtractMethod(pClass,"url_stat",sizeof("url_stat")-1);
+	pMeth = PH7_ClassExtractMethod(pObj->pClass,"url_stat",sizeof("url_stat")-1);
 	if( pMeth == 0 ){
 		/* php's own sentence, and it is raised even for a QUIET ask -- it reports the
 		 * wrapper's own incompleteness, not the path's absence. */
+		PH7_ClassInstanceUnref(pObj);
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 			"%s::url_stat is not implemented!",pSlot->zClass);
 		return PHL_URLSTAT_FAIL;
 	}
-	/* The path may come from a caller's argument slot, which running PHP code can
-	 * move; own a copy for the whole call. */
-	SyBlobInit(&sPath,&pVm->sAllocator);
-	SyBlobAppend(&sPath,zPath,(sxu32)SyStrlen(zPath));
-	pObj = PH7_NewClassInstance(pVm,pClass);
-	if( pObj == 0 ){
-		SyBlobRelease(&sPath);
-		return PHL_URLSTAT_FAIL;
-	}
-	{
-		/* php sets $context on the serving instance here too; a stat has no opener
-		 * behind it, so what it gets is php's NULL. */
-		ph7_value *pCtxSlot = PH7_NativeAttr(pObj,"context");
-		if( pCtxSlot == 0 ){
-			pCtxSlot = PH7_VmCreateDynamicAttr(pVm,pObj,"context",sizeof("context")-1,0);
-		}
-		if( pCtxSlot ){
-			ph7_value_null(pCtxSlot);
-		}
-	}
 	PH7_MemObjInit(pVm,&sUrl);
 	PH7_MemObjInit(pVm,&sFlags);
 	PH7_MemObjInit(pVm,&sRet);
-	ph7_value_string(&sUrl,(const char *)SyBlobData(&sPath),(int)SyBlobLength(&sPath));
+	ph7_value_string(&sUrl,zPath,-1);
 	ph7_value_int(&sFlags,iFlags);
 	apArg[0] = &sUrl;
 	apArg[1] = &sFlags;
@@ -6026,7 +6170,6 @@ PH7_PRIVATE int PH7_StreamUserUrlStat(ph7_context *pCtx,const char *zPath,int iF
 	PH7_MemObjRelease(&sFlags);
 	PH7_MemObjRelease(&sRet);
 	PH7_ClassInstanceUnref(pObj);
-	SyBlobRelease(&sPath);
 	return iRet;
 }
 /* One xOpen thunk per slot (the device callbacks get no device pointer) */
@@ -6041,11 +6184,179 @@ PHL_UWRAP_THUNK(4)
 PHL_UWRAP_THUNK(5)
 PHL_UWRAP_THUNK(6)
 PHL_UWRAP_THUNK(7)
+/* Slot index -> its own opener */
 static int (* const g_aUwrapOpen[PHL_UWRAP_MAX])(const char *,int,ph7_value *,void **) = {
 	UwrapOpen0,UwrapOpen1,UwrapOpen2,UwrapOpen3,
 	UwrapOpen4,UwrapOpen5,UwrapOpen6,UwrapOpen7
 };
-/* Is this device already in the VM's list? (A slot survives its wrapper.) */
+/*
+ * php's DIRECTORY door for a userland wrapper: dir_opendir(), dir_readdir(),
+ * dir_rewinddir() and dir_closedir().
+ *
+ * The slots carried no directory ops at all, so `opendir('vfs://root')` failed with
+ * `Failed to open directory: not implemented` and every reader built on it --
+ * scandir(), dir(), DirectoryIterator, FilesystemIterator -- failed with it. php
+ * hands the opener the FULL url and its `$options` (0 for every caller that reaches
+ * here), then reads NAMES one at a time until the wrapper answers false. The list is
+ * used exactly as given: php synthesizes no `.` or `..` for a userland wrapper.
+ */
+static int UwrapOpenDirSlot(int iSlot,const char *zName,ph7_value *pResource,void **ppHandle)
+{
+	uwrap_slot *pSlot = &g_aUwrap[iSlot];
+	ph7_vm *pVm = pResource ? pResource->pVm : 0;
+	uwrap_handle *pH;
+	ph7_class_method *pMeth;
+	ph7_value sPath,sOpts,sRet;
+	ph7_value *apArg[2];
+	int rc;
+	if( pVm == 0 || pSlot->pVm == 0 ){
+		return -1;
+	}
+	pH = (uwrap_handle *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(uwrap_handle));
+	if( pH == 0 ){
+		return -1;
+	}
+	pH->pVm = pVm;
+	pH->iSlot = iSlot;
+	pH->bEof = 0;
+	pH->pObj = UwrapNewInstance(pVm,pSlot,pVm->pOpenCtx);
+	if( pH->pObj == 0 ){
+		SyMemBackendFree(&pVm->sAllocator,pH);
+		return -1;
+	}
+	pMeth = PH7_ClassExtractMethod(pH->pObj->pClass,"dir_opendir",sizeof("dir_opendir")-1);
+	if( pMeth == 0 ){
+		PH7_ClassInstanceUnref(pH->pObj);
+		SyMemBackendFree(&pVm->sAllocator,pH);
+		return -1;
+	}
+	/* php hands the opener the FULL url, scheme included -- with the one exception
+	 * every other dispatch makes for a wrapper that replaced file://. */
+	PH7_MemObjInit(pVm,&sPath);
+	PH7_MemObjInit(pVm,&sOpts);
+	PH7_MemObjInit(pVm,&sRet);
+	if( SyStrlen(pSlot->zScheme) == sizeof("file")-1
+	 && SyStrnicmp(pSlot->zScheme,"file",sizeof("file")-1) == 0 ){
+		ph7_value_string(&sPath,zName,-1);
+	}else{
+		SyBlob sUrl;
+		SyBlobInit(&sUrl,&pVm->sAllocator);
+		SyBlobFormat(&sUrl,"%s://%s",pSlot->zScheme,zName);
+		ph7_value_string(&sPath,(const char *)SyBlobData(&sUrl),(int)SyBlobLength(&sUrl));
+		SyBlobRelease(&sUrl);
+	}
+	ph7_value_int(&sOpts,0);
+	apArg[0] = &sPath;
+	apArg[1] = &sOpts;
+	rc = UwrapCall(pH,"dir_opendir",2,apArg,&sRet);
+	if( rc == 0 && !ph7_value_to_bool(&sRet) ){
+		rc = -1;
+	}
+	PH7_MemObjRelease(&sPath);
+	PH7_MemObjRelease(&sOpts);
+	PH7_MemObjRelease(&sRet);
+	if( rc != 0 ){
+		PH7_ClassInstanceUnref(pH->pObj);
+		SyMemBackendFree(&pVm->sAllocator,pH);
+		return -1;
+	}
+	*ppHandle = (void *)pH;
+	return PH7_OK;
+}
+/* One xOpenDir thunk per slot, for the same reason xOpen needs one. */
+#define PHL_UWRAP_DIR_THUNK(N) \
+	static int UwrapOpenDir##N(const char *zName,ph7_value *pResource,void **ppHandle) \
+	{ return UwrapOpenDirSlot(N,zName,pResource,ppHandle); }
+PHL_UWRAP_DIR_THUNK(0)
+PHL_UWRAP_DIR_THUNK(1)
+PHL_UWRAP_DIR_THUNK(2)
+PHL_UWRAP_DIR_THUNK(3)
+PHL_UWRAP_DIR_THUNK(4)
+PHL_UWRAP_DIR_THUNK(5)
+PHL_UWRAP_DIR_THUNK(6)
+PHL_UWRAP_DIR_THUNK(7)
+static int (* const g_aUwrapOpenDir[PHL_UWRAP_MAX])(const char *,ph7_value *,void **) = {
+	UwrapOpenDir0,UwrapOpenDir1,UwrapOpenDir2,UwrapOpenDir3,
+	UwrapOpenDir4,UwrapOpenDir5,UwrapOpenDir6,UwrapOpenDir7
+};
+/*
+ * One entry. The VFS contract reports a name by WRITING the call context's result,
+ * and answers anything but PH7_OK to end the walk -- which is what the wrapper's own
+ * `false` means.
+ */
+static int UwrapReadDir(void *pHandle,ph7_context *pCtx)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	ph7_value sRet;
+	const char *zName;
+	int nName = 0;
+	if( pH == 0 ){
+		return -1;
+	}
+	PH7_MemObjInit(pH->pVm,&sRet);
+	if( UwrapCall(pH,"dir_readdir",0,0,&sRet) != 0 ){
+		PH7_MemObjRelease(&sRet);
+		return -1;
+	}
+	if( (sRet.iFlags & MEMOBJ_BOOL) && sRet.x.iVal == 0 ){
+		/* php's end of the walk. */
+		PH7_MemObjRelease(&sRet);
+		return -1;
+	}
+	zName = ph7_value_to_string(&sRet,&nName);
+	if( nName < 1 ){
+		PH7_MemObjRelease(&sRet);
+		return -1;
+	}
+	ph7_result_string(pCtx,zName,nName);
+	PH7_MemObjRelease(&sRet);
+	return PH7_OK;
+}
+static void UwrapRewindDir(void *pHandle)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	if( pH ){
+		UwrapCall(pH,"dir_rewinddir",0,0,0);
+	}
+}
+static void UwrapCloseDir(void *pHandle)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	if( pH == 0 ){
+		return;
+	}
+	UwrapCall(pH,"dir_closedir",0,0,0);
+	if( pH->pObj ){
+		PH7_ClassInstanceUnref(pH->pObj);
+	}
+	SyMemBackendFree(&pH->pVm->sAllocator,pH);
+}
+/*
+ * Why did a userland wrapper's directory open fail? php names the METHOD, and says
+ * whether the wrapper has one at all -- `"C::dir_opendir" call failed` against
+ * `"C::dir_opendir" is not implemented`. Answers 0 when pStream is not one of ours,
+ * and the caller then keeps the C library's own errno text.
+ */
+PH7_PRIVATE int PH7_StreamUserDirReason(ph7_vm *pVm,const ph7_io_stream *pStream,
+	char *zBuf,int nBuf)
+{
+	int i;
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		ph7_class *pClass;
+		int bHas;
+		if( g_aUwrap[i].pVm != pVm || &g_aUwrap[i].sStream != pStream ){
+			continue;
+		}
+		pClass = PH7_VmExtractClass(pVm,g_aUwrap[i].zClass,
+			(sxu32)SyStrlen(g_aUwrap[i].zClass),TRUE,0);
+		bHas = pClass != 0
+			&& PH7_ClassExtractMethod(pClass,"dir_opendir",sizeof("dir_opendir")-1) != 0;
+		SyBufferFormat(zBuf,(sxu32)nBuf,"\"%s::dir_opendir\" %s",g_aUwrap[i].zClass,
+			bHas ? "call failed" : "is not implemented");
+		return 1;
+	}
+	return 0;
+}
 static int UwrapDeviceInstalled(ph7_vm *pVm,const ph7_io_stream *pStream)
 {
 	ph7_io_stream **apDev = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
@@ -6139,6 +6450,10 @@ PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,p
 		pSlot->sStream.zName = pSlot->zScheme;
 		pSlot->sStream.iVersion = PH7_IO_STREAM_VERSION;
 		pSlot->sStream.xOpen = g_aUwrapOpen[iFree];
+		pSlot->sStream.xOpenDir = g_aUwrapOpenDir[iFree];
+		pSlot->sStream.xCloseDir = UwrapCloseDir;
+		pSlot->sStream.xReadDir = UwrapReadDir;
+		pSlot->sStream.xRewindDir = UwrapRewindDir;
 		pSlot->sStream.xClose = UwrapClose;
 		pSlot->sStream.xRead = UwrapRead;
 		pSlot->sStream.xWrite = UwrapWrite;
@@ -8369,6 +8684,8 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 	/* Initialize the structure */
 	InitIOPrivate(pCtx->pVm,pStream,pDev);
 	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
+	/* The caller wrote this mode; a userland wrapper is handed it verbatim. */
+	PH7_StreamArmOpenMode(pCtx->pVm,zMode,nMode);
 	/* Try to get a handle */
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iOpenFlags,
 		bUseInclude,pResource,FALSE,0,ph7_function_name(pCtx));

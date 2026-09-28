@@ -11773,6 +11773,32 @@ static int vm_builtin_RecursiveDirectoryIterator_hasChildren(ph7_context *pCtx,i
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	{
+		/* A path a userland wrapper owns is ITS answer, asked exactly as the two
+		 * VFS questions below are: the link question of an lstat record, the
+		 * directory question of a stat one. Without this the walk treated every
+		 * directory a wrapper reported as a LEAF, so a recursive iteration over
+		 * one never descended. */
+		ph7_int64 aVal[13];
+		int rcU = PH7_VfsUserStatFields(pCtx,zPath,PH7_STAT_ASK_IS_LINK,aVal);
+		if( PH7_CALLBACK_UNWOUND(rcU) ){
+			return rcU;
+		}
+		if( rcU != PHL_URLSTAT_NOWRAP ){
+			if( rcU == PHL_URLSTAT_OK && (aVal[2] & PH7_S_IFMT) == PH7_S_IFLNK
+			 && !bAllow && (iFlags & SDI_FOLLOW_SYMLINKS) == 0 ){
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			rcU = PH7_VfsUserStatFields(pCtx,zPath,PH7_STAT_ASK_IS_DIR,aVal);
+			if( PH7_CALLBACK_UNWOUND(rcU) ){
+				return rcU;
+			}
+			ph7_result_bool(pCtx,rcU == PHL_URLSTAT_OK
+				&& (aVal[2] & PH7_S_IFMT) == PH7_S_IFDIR);
+			return PH7_OK;
+		}
+	}
 	if( pVfs->xIslink && pVfs->xIslink(zPath) == PH7_OK
 	 && !bAllow && (iFlags & SDI_FOLLOW_SYMLINKS) == 0 ){
 		ph7_result_bool(pCtx,0);

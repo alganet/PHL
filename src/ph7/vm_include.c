@@ -492,13 +492,20 @@ static sxi32 VmExecIncludedFile(
 	pVm = pCtx->pVm;
 	SyBlobInit(&sContents,&pVm->sAllocator);
 	isNew = 0;
-	/* Extract the associated stream */
-	pStream = PH7_VmGetStreamDevice(pVm,&pPath->zString,pPath->nByte);
-	/*
-	 * Open the file or the URL [i.e: http://ph7.symisc.net/example/hello.php"]
-	 * in a read-only mode.
-	 */
-	pHandle = PH7_StreamOpenHandle(pVm,pStream,pPath->zString,PH7_IO_OPEN_RDONLY,TRUE,0,TRUE,&isNew,ph7_function_name(pCtx));
+	/* Extract the associated stream. The lookup ADVANCES the pointer past the
+	 * scheme, so it walks a copy: advancing the caller's SyString left its nByte
+	 * describing the whole url and its zString seven bytes in, and the failure
+	 * message below then printed that many bytes from there -- past the end of the
+	 * string, so `include 'file:///nope'` reported whatever followed it in memory. */
+	{
+		const char *zOpen = pPath->zString;
+		pStream = PH7_VmGetStreamDevice(pVm,&zOpen,(int)pPath->nByte);
+		/*
+		 * Open the file or the URL [i.e: http://ph7.symisc.net/example/hello.php"]
+		 * in a read-only mode.
+		 */
+		pHandle = PH7_StreamOpenHandle(pVm,pStream,zOpen,PH7_IO_OPEN_RDONLY,TRUE,0,TRUE,&isNew,ph7_function_name(pCtx));
+	}
 	if( pHandle == 0 ){
 		return SXERR_IO;
 	}
