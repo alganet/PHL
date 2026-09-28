@@ -2351,6 +2351,42 @@ PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void
 	PH7_StreamCloseHandle(pStream,pHandle);
 	return PH7_OK;
 }
+/*
+ * file_put_contents()'s array $data: php walks the array and writes the
+ * elements one after another with nothing between them, casting each one
+ * user-visibly -- so a nested array warns `Array to string conversion` and
+ * contributes "Array", and an element that is an object with no __toString()
+ * is php's catchable Error and the file is left as the open truncated it.
+ */
+typedef struct VfsPutContentsJoin VfsPutContentsJoin;
+struct VfsPutContentsJoin
+{
+	ph7_context *pCtx;
+	SyBlob *pOut;
+	sxi32 rcThrow;      /* Allocation failure only */
+	ph7_class *pOwed;   /* First class that could not be coerced; raised after the write */
+};
+static int VfsPutContentsWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	VfsPutContentsJoin *pJn = (VfsPutContentsJoin *)pUserData;
+	const char *zElem;
+	int nElem;
+	ph7_class *pBad;
+	SXUNUSED(pKey);
+	/* php does not stop for the coercion's throw: the failing element contributes
+	 * nothing and the ELEMENTS AFTER IT are still written, so
+	 * `file_put_contents($f,['A',$obj,'B'])` leaves "AB" in the file and reports
+	 * the Error afterwards -- which is why the raise is deferred to the caller. */
+	pBad = PH7_ValueToStringUVDefer(pJn->pCtx,pData,&zElem,&nElem);
+	if( pBad && pJn->pOwed == 0 ){
+		pJn->pOwed = pBad;
+	}
+	if( nElem > 0 && SyBlobAppend(pJn->pOut,(const void *)zElem,(sxu32)nElem) != SXRET_OK ){
+		pJn->rcThrow = PH7_ContextMemoryError(pJn->pCtx);
+		return PH7_ABORT;
+	}
+	return PH7_OK;
+}
 PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int use_include  = FALSE;
@@ -2362,6 +2398,9 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	phl_stream_ctx *pCtxRes;
 	int iFlags;
 	int nLen,bThrew = 0;
+	SyBlob sJoin;        /* array/stream $data, joined (see below) */
+	ph7_class *pOwed = 0;/* A $data element php stringifies to nothing and throws for */
+	int bScalarBad = 0;  /* Scalar $data php cannot stringify: FALSE, and no throw */
 
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -2378,8 +2417,49 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Data to write */
-	zData = ph7_value_to_string(apArg[1],&nLen);
+	/* The bytes to write, which php reads from `mixed $data` in THREE shapes and
+	 * PHL string-cast wholesale -- so an ARRAY wrote the five bytes "Array" and a
+	 * STREAM wrote "Resource id #N", both instead of the content the program
+	 * meant. php JOINS an array's elements with nothing between them (its own
+	 * comment calls it "an array-to-string with no glue"), casting each element
+	 * user-visibly, and COPIES a stream handle's remaining contents. Anything
+	 * else is the ordinary user-visible cast: an object hands over its
+	 * __toString(), one without it is php's catchable Error.
+	 *
+	 * The joined bytes have to outlive this block, so they live in sJoin until
+	 * the write below; the scalar path keeps pointing straight at the value. */
+	SyBlobInit(&sJoin,&pCtx->pVm->sAllocator);
+	if( ph7_value_is_array(apArg[1]) ){
+		VfsPutContentsJoin sJn;
+		sJn.pCtx = pCtx;
+		sJn.pOut = &sJoin;
+		sJn.rcThrow = SXRET_OK;
+		sJn.pOwed = 0;
+		ph7_array_walk(apArg[1],VfsPutContentsWalker,&sJn);
+		if( sJn.rcThrow != SXRET_OK ){
+			/* Allocation failure only -- a coercion carries on above. */
+			SyBlobRelease(&sJoin);
+			return sJn.rcThrow;
+		}
+		pOwed = sJn.pOwed;
+		zData = (const char *)SyBlobData(&sJoin);
+		nLen = (int)SyBlobLength(&sJoin);
+	}else if( ph7_value_is_resource(apArg[1]) ){
+		io_private *pSrc = (io_private *)ph7_value_to_resource(apArg[1]);
+		if( !IO_PRIVATE_INVALID(pSrc) && pSrc->pStream && pSrc->pStream->xRead ){
+			PH7_StreamReadWholeFile(pSrc->pHandle,pSrc->pStream,&sJoin);
+		}
+		zData = (const char *)SyBlobData(&sJoin);
+		nLen = (int)SyBlobLength(&sJoin);
+	}else{
+		if( PH7_ValueToStringUVDefer(pCtx,apArg[1],&zData,&nLen) != 0 ){
+			/* php's SCALAR $data path is not its array one: an object it cannot
+			 * stringify raises NOTHING here -- the file is still opened and
+			 * TRUNCATED, nothing is written, and the call answers FALSE. The
+			 * asymmetry with the array branch above (which does throw) is php's. */
+			bScalarBad = 1;
+		}
+	}
 	/* Try to open the file in read-write mode */
 	iOpenFlags = PH7_IO_OPEN_CREATE|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC;
 	/* Extract the flags */
@@ -2403,6 +2483,7 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",
 		(iFlags & 0x10) != 0,&bThrew);
 	if( bThrew ){
+		SyBlobRelease(&sJoin);
 		return PH7_OK;
 	}
 	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
@@ -2411,12 +2492,26 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
+		SyBlobRelease(&sJoin);
+		return PH7_OK;
+	}
+	if( bScalarBad ){
+		/* Opened and truncated, then refused — php's answer, and its order. */
+		ph7_result_bool(pCtx,0);
+		PH7_StreamCloseHandle(pStream,pHandle);
+		SyBlobRelease(&sJoin);
 		return PH7_OK;
 	}
 	if( nLen < 1 ){
 		/* Empty data, file is created/truncated */
 		ph7_result_int64(pCtx,0);
 		PH7_StreamCloseHandle(pStream,pHandle);
+		SyBlobRelease(&sJoin);
+		if( pOwed ){
+			return PH7_VmThrowException(pCtx,"Error",
+				"Object of class %.*s could not be converted to string",
+				(int)pOwed->sName.nByte,pOwed->sName.zString);
+		}
 		return PH7_OK;
 	}
 	if( pStream->xWrite ){
@@ -2447,6 +2542,12 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	}
 	/* Close the handle */
 	PH7_StreamCloseHandle(pStream,pHandle);
+	SyBlobRelease(&sJoin);
+	if( pOwed ){
+		return PH7_VmThrowException(pCtx,"Error",
+			"Object of class %.*s could not be converted to string",
+			(int)pOwed->sName.nByte,pOwed->sName.zString);
+	}
 	return PH7_OK;
 }
 /*
@@ -3045,6 +3146,8 @@ struct csv_data
 	int escape;        /* Escape, or PH7_CSV_NO_ESCAPE when "" disabled it */
 	SyBlob *pLine;     /* The line being built */
 	sxu32 nCount;      /* Fields still to write after this one */
+	ph7_context *pCtx; /* Call context (the field cast's diagnostics) */
+	ph7_class *pOwed;  /* First field class that could not be coerced */
 };
 /*
  * The following callback is used by fputcsv() to walk the $fields array and
@@ -3072,7 +3175,16 @@ static int csv_write_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 	int nLen,i;
 	int bEnclose = 0;
 	SXUNUSED(pKey); /* cc warning */
-	zData = ph7_value_to_string(pValue,&nLen);
+	/* php casts each field USER-VISIBLY: a field that is itself an array warns
+	 * `Array to string conversion` and is written as "Array", and one that is an
+	 * object with no __toString() is php's catchable Error -- where PHL wrote the
+	 * placeholder "Object" into the file, in silence. */
+	{
+		ph7_class *pBad = PH7_ValueToStringUVDefer(pData->pCtx,pValue,&zData,&nLen);
+		if( pBad && pData->pOwed == 0 ){
+			pData->pOwed = pBad;
+		}
+	}
 	for( i = 0 ; i < nLen ; ++i ){
 		int c = (unsigned char)zData[i];
 		if( c == pData->delimiter || c == pData->enclosure
@@ -3202,6 +3314,8 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	SyBlobInit(&sLine,&pCtx->pVm->sAllocator);
 	sCsv.pLine = &sLine;
 	sCsv.nCount = (sxu32)ph7_array_count(apArg[1]);
+	sCsv.pCtx = pCtx;
+	sCsv.pOwed = 0;
 	ph7_array_walk(apArg[1],csv_write_callback,&sCsv);
 	if( nEol > 0 ){
 		SyBlobAppend(&sLine,(const void *)zEol,(sxu32)nEol);
@@ -3220,6 +3334,14 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 	}else{
 		ph7_result_int64(pCtx,nWr);
+	}
+	if( sCsv.pOwed ){
+		/* php writes the line first and reports the field it could not stringify
+		 * afterwards; raising it during the build would put the catch's own
+		 * output in front of the row. */
+		return PH7_VmThrowException(pCtx,"Error",
+			"Object of class %.*s could not be converted to string",
+			(int)sCsv.pOwed->sName.nByte,sCsv.pOwed->sName.zString);
 	}
 	return PH7_OK;
 }

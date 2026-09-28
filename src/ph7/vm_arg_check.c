@@ -3266,3 +3266,50 @@ PH7_PRIVATE sxi32 PH7_ValueToStringUV(ph7_context *pCtx,ph7_value *pValue,const 
 	}
 	return SXRET_OK;
 }
+/*
+ * The same user-visible coercion for a builtin that php does NOT stop for.
+ * zend's zval_get_string leaves the empty string behind when it throws and the
+ * C function carries on, so `str_replace()`'s `&$count` still comes back written
+ * from a call that threw. Only the FIRST un-stringable value raises -- a second
+ * one would land two Errors for one call -- while every OTHER kind of value is
+ * converted normally either way (an array still warns, a scalar still spells
+ * itself out), which is what keeps the elements AFTER the failure intact.
+ *
+ * pzData/pnLen always come back usable, so the caller has nothing to check.
+ */
+PH7_PRIVATE void PH7_ValueToStringUVOnce(ph7_context *pCtx,ph7_value *pValue,
+	const char **pzData,int *pnLen)
+{
+	if( pCtx && pCtx->nThrowRc != 0 && PH7_MemObjIsNotStringable(pValue) ){
+		if( pzData ){ *pzData = ""; }
+		if( pnLen ){ *pnLen = 0; }
+		return;
+	}
+	(void)PH7_ValueToStringUV(pCtx,pValue,pzData,pnLen);
+}
+/*
+ * The same coercion again, for a builtin that must FINISH ITS OUTPUT before the
+ * Error is raised. php's C functions carry on past the throw and the bytes they
+ * write reach the stream BEFORE the exception surfaces:
+ * `file_put_contents($f,['A',$obj,'B'])` leaves "AB" behind and `fputcsv()`
+ * writes its whole line with an empty field. A throw raised from inside a
+ * builtin HERE runs the enclosing catch immediately, so raising in place would
+ * put the catch's own output in front of the builtin's.
+ *
+ * Answers the class that could not be converted (and the empty string with it),
+ * leaving the caller to raise once its writing is done; 0 when the value
+ * converted, which is every other kind -- an array still warns here, in place,
+ * exactly as php's does.
+ */
+PH7_PRIVATE ph7_class *PH7_ValueToStringUVDefer(ph7_context *pCtx,ph7_value *pValue,
+	const char **pzData,int *pnLen)
+{
+	if( PH7_MemObjIsNotStringable(pValue) ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+		if( pzData ){ *pzData = ""; }
+		if( pnLen ){ *pnLen = 0; }
+		return pInst ? pInst->pClass : 0;
+	}
+	(void)PH7_ValueToStringUV(pCtx,pValue,pzData,pnLen);
+	return 0;
+}

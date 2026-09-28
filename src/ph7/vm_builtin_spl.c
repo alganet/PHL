@@ -1187,16 +1187,32 @@ static int vm_builtin_ArrayIterator_construct(ph7_context *pCtx,int nArg,ph7_val
 	return PH7_OK;
 }
 /* ArrayObject */
-static int vm_builtin_ArrayObject_setIteratorClass(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * The iterator class, taken by two doors: `setIteratorClass()` and the
+ * constructor's third argument. php refuses the same names at both but words
+ * the refusal from the door it came in by, so the method NAME and the argument
+ * POSITION travel with the check -- PHL reported the constructor's refusal as
+ * setIteratorClass()'s Argument #1.
+ *
+ * The cast is php's user-visible one (zend's class-name parameter): an array
+ * warns `Array to string conversion` and is refused as the name "Array", and an
+ * object with no __toString() is the catchable `could not be converted to
+ * string` Error rather than a refusal naming the placeholder "Object".
+ */
+static int SplSetIteratorClass(ph7_context *pCtx,ph7_value *pArg,const char *zWhere)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	const char *zName;
 	int nName;
-	if( pThis == 0 || nArg < 1 ){
+	sxi32 rcSv;
+	if( pThis == 0 || pArg == 0 ){
 		return PH7_OK;
 	}
-	zName = ph7_value_to_string(apArg[0],&nName);
+	rcSv = PH7_ValueToStringUV(pCtx,pArg,&zName,&nName);
+	if( rcSv != SXRET_OK ){
+		return rcSv;
+	}
 	if( nName != (int)sizeof("ArrayIterator")-1
 	 || SyMemcmp(zName,"ArrayIterator",sizeof("ArrayIterator")-1) != 0 ){
 		ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,FALSE,0);
@@ -1205,12 +1221,17 @@ static int vm_builtin_ArrayObject_setIteratorClass(ph7_context *pCtx,int nArg,ph
 		if( pClass == 0 || pBase == 0 || pClass == pBase
 		 || !PH7_VmInstanceOf(pClass,pBase) ){
 			return PH7_VmThrowException(pCtx,"TypeError",
-				"ArrayObject::setIteratorClass(): Argument #1 ($iteratorClass) must be "
-				"a class name derived from ArrayIterator, %.*s given",nName,zName);
+				"%s must be a class name derived from ArrayIterator, %.*s given",
+				zWhere,nName,zName);
 		}
 	}
 	PH7_NativeSetAttrStr(pVm,pThis,SPL_IT,zName,nName);
 	return PH7_OK;
+}
+static int vm_builtin_ArrayObject_setIteratorClass(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SplSetIteratorClass(pCtx,nArg > 0 ? apArg[0] : 0,
+		"ArrayObject::setIteratorClass(): Argument #1 ($iteratorClass)");
 }
 static int vm_builtin_ArrayObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1225,7 +1246,8 @@ static int vm_builtin_ArrayObject_construct(ph7_context *pCtx,int nArg,ph7_value
 		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(apArg[1]) & SPL_FLAG_MASK);
 	}
 	if( nArg > 2 ){
-		return vm_builtin_ArrayObject_setIteratorClass(pCtx,1,&apArg[2]);
+		return SplSetIteratorClass(pCtx,apArg[2],
+			"ArrayObject::__construct(): Argument #3 ($iteratorClass)");
 	}
 	return PH7_OK;
 }
@@ -1788,7 +1810,7 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 	};
 	static const PH7_NativeMethodDef aObjMethod[] = {
 		{ "__construct",      PH7_MOD_PUBLIC,
-		  "object|array $array = [], int $flags = 0, string $iteratorClass = ArrayIterator::class", 0,
+		  "object|array $array = [], int $flags = 0, ~string $iteratorClass = ArrayIterator::class", 0,
 		  vm_builtin_ArrayObject_construct },
 		{ "offsetExists",     PH7_MOD_PUBLIC, "mixed $key", "@bool", vm_builtin_SplStore_offsetExists },
 		{ "offsetGet",        PH7_MOD_PUBLIC, "mixed $key", "@mixed", vm_builtin_SplStore_offsetGet },
@@ -1812,7 +1834,7 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		  vm_builtin_SplStore_unserializeMagic },
 		{ "getIterator",      PH7_MOD_PUBLIC, "", "@Iterator", vm_builtin_ArrayObject_getIterator },
 		{ "exchangeArray",    PH7_MOD_PUBLIC, "object|array $array", "@array", vm_builtin_ArrayObject_exchangeArray },
-		{ "setIteratorClass", PH7_MOD_PUBLIC, "string $iteratorClass", "@void", vm_builtin_ArrayObject_setIteratorClass },
+		{ "setIteratorClass", PH7_MOD_PUBLIC, "~string $iteratorClass", "@void", vm_builtin_ArrayObject_setIteratorClass },
 		{ "getIteratorClass", PH7_MOD_PUBLIC, "", "@string", vm_builtin_ArrayObject_getIteratorClass },
 		{ "__get",            PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_get },
 		{ "__set",            PH7_MOD_PUBLIC, "$name, $value", 0, vm_builtin_ArrayObject_set },
@@ -10216,9 +10238,16 @@ static int vm_builtin_SplFileInfo_getRealPath(ph7_context *pCtx,int nArg,ph7_val
  * The class getFileInfo()/getPathInfo() build with: the argument when it names
  * one, this instance's info_class otherwise. php refuses anything not derived
  * from SplFileInfo, and words the refusal from the ARGUMENT position.
+ *
+ * The two do not word it identically, and the split is php's: getPathInfo()
+ * takes the argument through zend's CLASS-NAME parameter, which reports a name
+ * NOTHING declares as `must be a valid class name or null` and leaves the
+ * derived-from check to the SPL code behind it, while getFileInfo() reports
+ * both failures with the derived-from sentence. bValidFirst says which of the
+ * two this door is.
  */
 static sxi32 SfiInfoClass(ph7_context *pCtx,const char *zMethod,ph7_value *pArg,
-	ph7_class **ppOut)
+	int bValidFirst,ph7_class **ppOut)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -10227,8 +10256,16 @@ static sxi32 SfiInfoClass(ph7_context *pCtx,const char *zMethod,ph7_value *pArg,
 	const char *zName;
 	int nName = 0;
 	if( pArg && (pArg->iFlags & MEMOBJ_NULL) == 0 ){
-		zName = ph7_value_to_string(pArg,&nName);
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,pArg,&zName,&nName);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
 		pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);
+		if( pClass == 0 && bValidFirst ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"SplFileInfo::%s(): Argument #1 ($class) must be a valid class name "
+				"or null, %.*s given",zMethod,nName,zName);
+		}
 		if( pClass == 0 || pBase == 0 || !PH7_VmInstanceOf(pClass,pBase) ){
 			return PH7_VmThrowException(pCtx,"TypeError",
 				"SplFileInfo::%s(): Argument #1 ($class) must be a class name derived "
@@ -10304,7 +10341,7 @@ static int vm_builtin_SplFileInfo_getFileInfo(ph7_context *pCtx,int nArg,ph7_val
 	if( !SfoChecked(pCtx,&rcChk) ){
 		return rcChk;
 	}
-	rc = SfiInfoClass(pCtx,"getFileInfo",nArg > 0 ? apArg[0] : 0,&pClass);
+	rc = SfiInfoClass(pCtx,"getFileInfo",nArg > 0 ? apArg[0] : 0,0,&pClass);
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -10336,7 +10373,7 @@ static int vm_builtin_SplFileInfo_getPathInfo(ph7_context *pCtx,int nArg,ph7_val
 	if( !SfoChecked(pCtx,&rcChk) ){
 		return rcChk;
 	}
-	rc = SfiInfoClass(pCtx,"getPathInfo",nArg > 0 ? apArg[0] : 0,&pClass);
+	rc = SfiInfoClass(pCtx,"getPathInfo",nArg > 0 ? apArg[0] : 0,1,&pClass);
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -10365,7 +10402,15 @@ static int vm_builtin_SplFileInfo_setInfoClass(ph7_context *pCtx,int nArg,ph7_va
 		return rcChk;
 	}
 	if( nArg > 0 ){
-		zName = ph7_value_to_string(apArg[0],&nName);
+		/* php's cast here is the USER-VISIBLE one: an array warns
+		 * `Array to string conversion` and is refused as the name "Array", and an
+		 * object with no __toString() is the catchable
+		 * `Object of class X could not be converted to string` rather than a
+		 * refusal naming the placeholder "Object". */
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&zName,&nName);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
 	}
 	pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);
 	if( pClass == 0 || pBase == 0 || !PH7_VmInstanceOf(pClass,pBase) ){
@@ -10396,7 +10441,10 @@ static int vm_builtin_SplFileInfo_setFileClass(ph7_context *pCtx,int nArg,ph7_va
 		return rcChk;
 	}
 	if( nArg > 0 ){
-		zName = ph7_value_to_string(apArg[0],&nName);
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&zName,&nName);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
 	}
 	pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);
 	if( pClass == 0 || pBase == 0 || !PH7_VmInstanceOf(pClass,pBase) ){
@@ -10682,9 +10730,9 @@ static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
 		  vm_builtin_SplFileInfo_getLinkTarget },
 		{ "getRealPath",   PH7_MOD_PUBLIC, "", "@string|false",
 		  vm_builtin_SplFileInfo_getRealPath },
-		{ "getFileInfo",   PH7_MOD_PUBLIC, "?string $class = null", "@SplFileInfo",
+		{ "getFileInfo",   PH7_MOD_PUBLIC, "~?string $class = null", "@SplFileInfo",
 		  vm_builtin_SplFileInfo_getFileInfo },
-		{ "getPathInfo",   PH7_MOD_PUBLIC, "?string $class = null", "@?SplFileInfo",
+		{ "getPathInfo",   PH7_MOD_PUBLIC, "~?string $class = null", "@?SplFileInfo",
 		  vm_builtin_SplFileInfo_getPathInfo },
 		/* spl_directory.stub.php's order, which is what every method-enumeration
 		 * surface reports: openFile, setFileClass, setInfoClass. */
@@ -11437,7 +11485,7 @@ static int vm_builtin_FilesystemIterator_current(ph7_context *pCtx,int nArg,ph7_
 			/* php's create_type again: there is no entry to describe. */
 			return PH7_VmThrowException(pCtx,"RuntimeException","Could not open file");
 		}
-		rc = SfiInfoClass(pCtx,"current",0,&pClass);
+		rc = SfiInfoClass(pCtx,"current",0,0,&pClass);
 		if( rc != PH7_OK ){
 			return rc;
 		}

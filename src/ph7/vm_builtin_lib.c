@@ -334,6 +334,13 @@
    "  /* php declares &$count and always writes it -- the total number of"\
    "   * replacements across every subject, 0 when nothing matched. PHL never"\
    "   * declared the parameter, so a caller reading it got its previous value. */"\
+   "  /* php shares preg_replace()'s C body but words its refusals from its OWN"\
+   "   * name; this one has to be raised here, because the delegation below would"\
+   "   * name preg_replace(). */"\
+   "  if( !is_array($pattern) && is_array($replacement) ){"\
+   "    throw new TypeError('preg_filter(): Argument #1 ($pattern) must be of type'"\
+   "      . ' array when argument #2 ($replacement) is an array, string given');"\
+   "  }"\
    "  if( is_array($subject) ){"\
    "    $total = 0;"\
    "    $out = array();"\

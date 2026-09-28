@@ -5879,8 +5879,18 @@ static int StrReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 	SyString sWorker;
 	const char *zIn;
 	int nByte;
-	/* Extract a string representation of the given argument */
-	zIn = ph7_value_to_string(pData,&nByte);
+	/* Extract a string representation of the given argument, USER-VISIBLY: php's
+	 * cast of a search or replace TERM warns `Array to string conversion` for a
+	 * nested array and throws the catchable `could not be converted to string`
+	 * for an object with no __toString() -- PHL rendered the latter as the
+	 * literal "Object" and said nothing about the former.
+	 *
+	 * php does NOT stop for the throw: zval_get_string leaves the empty string
+	 * behind and the walk carries on, which is why `&$count` still comes back
+	 * written (0) from a call that threw. The status is on the call context and
+	 * OP_CALL lands it once this builtin has finished. Only the FIRST failure
+	 * raises -- a second one would land a second Error for one call. */
+	PH7_ValueToStringUVOnce(pRep->pCtx,pData,&zIn,&nByte);
 	SyStringInitFromBuf(&sWorker,0,0);
 	if( nByte > 0 ){
 		char *zDup;
@@ -5997,23 +6007,22 @@ struct str_replace_subject
 	int rep_str;           /* TRUE: scalar $replace */
 	sxi64 nReplaced;       /* Replacements performed so far (&$count) */
 	sxi32 rc;              /* SXRET_OK or SXERR_MEM */
+	ph7_context *pCtx;     /* Call context (for the coercion's diagnostics) */
 };
 /*
  * ph7_array_walk() callback over an array $subject: string-cast one element, run
  * the search/replace over it, and insert the result under the element's original
- * key. A non-string element is coerced exactly like php (int/float/bool/null via
- * their string form). A nested-array element becomes "Array" — the value matches
- * php, but PHL does not emit php's "Array to string conversion" warning here (the
- * engine raises it at echo/interpolation sites, not this C-level cast; a
- * recorded divergence).
+ * key. The cast is php's USER-VISIBLE one: an int/float/bool/null spells itself
+ * out, a nested array renders "Array" and warns `Array to string conversion`,
+ * and an object with no __toString() is php's catchable Error rather than the
+ * literal "Object" PHL used to hand back.
  */
 static int StrReplaceSubjectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 {
 	str_replace_subject *pS = (str_replace_subject *)pUserData;
 	const char *zSub;
 	int nSub;
-	/* php coerces every element to string (same cast used everywhere). */
-	zSub = ph7_value_to_string(pData,&nSub);
+	PH7_ValueToStringUVOnce(pS->pCtx,pData,&zSub,&nSub);
 	if( StrReplaceOneSubject(pS->pWorker,zSub,(sxu32)(nSub > 0 ? nSub : 0),
 			pS->pSearch,pS->pReplace,pS->rep_str,pS->xMatch,&pS->nReplaced) != SXRET_OK ){
 		pS->rc = SXERR_MEM;
@@ -6107,7 +6116,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	if( ph7_value_is_array(apArg[0]) ){
 		ph7_array_walk(apArg[0],StrReplaceWalker,&sRep);
 	}else{
-		zIn = ph7_value_to_string(apArg[0],&nByte);
+		PH7_ValueToStringUVOnce(pCtx,apArg[0],&zIn,&nByte);
 		SyStringInitFromBuf(&sTemp,zIn,nByte > 0 ? nByte : 0);
 		SySetPut(&sSearch,(const void *)&sTemp);
 	}
@@ -6116,7 +6125,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 		sRep.pCollector = &sReplace;
 		ph7_array_walk(apArg[1],StrReplaceWalker,&sRep);
 	}else{
-		zIn = ph7_value_to_string(apArg[1],&nByte);
+		PH7_ValueToStringUVOnce(pCtx,apArg[1],&zIn,&nByte);
 		rep_str = 1;
 		SyStringInitFromBuf(&sTemp,zIn,nByte > 0 ? nByte : 0);
 		SySetPut(&sReplace,(const void *)&sTemp);
@@ -6150,6 +6159,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 		}
 		ph7_value_string(pScratch,"",0); /* force string representation */
 		SyZero(&sSub,sizeof(sSub));
+		sSub.pCtx     = pCtx;
 		sSub.pResult  = pResult;
 		sSub.pScratch = pScratch;
 		sSub.pWorker  = &sWorker;
@@ -6171,7 +6181,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	/* Scalar subject: run once and return a string. An empty subject yields the
 	 * empty string, and a lone empty search term leaves the subject untouched —
 	 * both fall out of StrReplaceOneSubject's empty-term skip. */
-	zIn = ph7_value_to_string(apArg[2],&nByte);
+	PH7_ValueToStringUVOnce(pCtx,apArg[2],&zIn,&nByte);
 	rc = StrReplaceOneSubject(&sWorker,zIn,(sxu32)(nByte > 0 ? nByte : 0),
 		&sSearch,&sReplace,rep_str,xMatch,&nReplaced);
 	if( rc != SXRET_OK ){
@@ -6210,6 +6220,7 @@ struct strtr_collect
 	SyBlob *pPool;  /* Byte pool holding copied key + value bytes */
 	SySet  *pTable; /* Set of strtr_entry (parallel offsets into pPool) */
 	sxi32   rc;     /* Carries an allocation failure (SXERR_MEM) out of the walker */
+	sxi32   rcThrow;/* Captured coercion throw; the builtin propagates it */
 	ph7_context *pCtx; /* Needed to warn about an empty key */
 };
 /*
@@ -6230,7 +6241,18 @@ static int StrtrCollectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 			"Ignoring replacement of empty string");
 		return PH7_OK;
 	}
-	zVal = ph7_value_to_string(pData,&nVal);
+	/* php's cast of the REPLACEMENT is user-visible (the KEY's is not -- an array
+	 * key is already an int or a string): a pair whose value is an array warns
+	 * `Array to string conversion` and translates to "Array", and one whose value
+	 * is an object with no __toString() is php's catchable Error, where PHL
+	 * translated to the placeholder "Object". */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pCol->pCtx,pData,&zVal,&nVal);
+		if( rcSv != SXRET_OK ){
+			pCol->rcThrow = rcSv;
+			return SXERR_ABORT;
+		}
+	}
 	sEnt.nKeyOfft = SyBlobLength(pCol->pPool);
 	sEnt.nKeyLen  = (sxu32)nKey;
 	if( SyBlobAppend(pCol->pPool,(const void *)zKey,(sxu32)nKey) != SXRET_OK ){
@@ -6342,8 +6364,17 @@ PH7_PRIVATE int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		sCol.pPool  = &sPool;
 		sCol.pTable = &sTable;
 		sCol.rc     = SXRET_OK;
+		sCol.rcThrow= SXRET_OK;
 		sCol.pCtx   = pCtx;
 		ph7_array_walk(apArg[1],StrtrCollectWalker,&sCol);
+		if( sCol.rcThrow != SXRET_OK ){
+			/* A pair value that could not be coerced threw php's catchable Error:
+			 * the call answers nothing at all. */
+			SyBlobRelease(&sPool);
+			SyBlobRelease(&sWorker);
+			SySetRelease(&sTable);
+			return sCol.rcThrow;
+		}
 		if( sCol.rc != SXRET_OK ){
 			/* Allocation failure while collecting the pairs: surface a fatal */
 			SyBlobRelease(&sPool);

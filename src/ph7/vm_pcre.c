@@ -1037,6 +1037,24 @@ static void PcreDoReplace(
 	SXUNUSED(pCtx);
 }
 
+/*
+ * php's USER-VISIBLE string cast of a pcre PATTERN, REPLACEMENT or SUBJECT --
+ * any of which preg_replace()/preg_replace_callback() may be handed as an ARRAY
+ * whose elements are themselves anything at all. An element that is an array
+ * warns `Array to string conversion` and reads as "Array"; one that is an
+ * object with no __toString() is php's catchable
+ * `Object of class X could not be converted to string`, and the call then
+ * answers nothing. PHL used the SILENT embedder cast here, so the first said
+ * nothing and the second rendered as the literal "Object" -- a string php never
+ * produces, matched against the subject as if the program had written it.
+ *
+ * Answers 0 when the coercion threw; the status is on the call context and
+ * OP_CALL lands it, so the caller has only to stop.
+ */
+static int PcreStrUV(ph7_context *pCtx, ph7_value *pVal, const char **pzOut, int *pnOut)
+{
+	return PH7_ValueToStringUV(pCtx, pVal, pzOut, pnOut) == SXRET_OK;
+}
 /* ===== Helper: apply pattern(s)+replacement(s) to ONE subject string =====
  * pPattern is a string or an array of patterns; pRepl is a string (used for
  * every pattern) or, only when pPattern is an array, an array taken by ORDER
@@ -1059,8 +1077,10 @@ static sxi32 PcreReplaceSubject(
 		const char *zPattern, *zRepl;
 		int nPatLen, nReplLen;
 		pcre2_code *pCode;
-		zPattern = ph7_value_to_string(pPattern, &nPatLen);
-		zRepl = ph7_value_to_string(pRepl, &nReplLen);
+		if( !PcreStrUV(pCtx, pPattern, &zPattern, &nPatLen)
+		 || !PcreStrUV(pCtx, pRepl, &zRepl, &nReplLen) ){
+			return SXERR_SYNTAX;
+		}
 		pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 		if( pCode == 0 ){
 			return SXERR_SYNTAX; /* NOT SXERR_ABORT: that is a real unwind status */
@@ -1080,8 +1100,8 @@ static sxi32 PcreReplaceSubject(
 		SyBlob sA, sB, *pSrc, *pDst;
 		sxu32 n;
 		sxi32 rc = SXRET_OK;
-		if( pRepMap == 0 ){
-			zScalarRepl = ph7_value_to_string(pRepl, &nScalarRepl);
+		if( pRepMap == 0 && !PcreStrUV(pCtx, pRepl, &zScalarRepl, &nScalarRepl) ){
+			return SXERR_SYNTAX;
 		}
 		SyBlobInit(&sA, &pCtx->pVm->sAllocator);
 		SyBlobInit(&sB, &pCtx->pVm->sAllocator);
@@ -1098,11 +1118,20 @@ static sxi32 PcreReplaceSubject(
 			pcre2_code *pCode;
 			SyBlob *pSwap;
 			PH7_HashmapExtractNodeValue(pPatNode, &sPat, FALSE);
-			zPattern = ph7_value_to_string(&sPat, &nPatLen);
+			if( !PcreStrUV(pCtx, &sPat, &zPattern, &nPatLen) ){
+				rc = SXERR_SYNTAX;
+				PH7_MemObjRelease(&sPat);
+				break;
+			}
 			if( pRepMap ){
 				if( pRepNode ){
 					PH7_HashmapExtractNodeValue(pRepNode, &sRep, FALSE);
-					zRepl = ph7_value_to_string(&sRep, &nReplLen);
+					if( !PcreStrUV(pCtx, &sRep, &zRepl, &nReplLen) ){
+						rc = SXERR_SYNTAX;
+						PH7_MemObjRelease(&sPat);
+						PH7_MemObjRelease(&sRep);
+						break;
+					}
 				}else{
 					zRepl = ""; nReplLen = 0;
 				}
@@ -1156,13 +1185,14 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 	}
 	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
 
-	/* A scalar pattern with an array replacement is a parameter mismatch (PHP
-	 * throws a TypeError; PHL keeps preg_replace's warning-based arg-error style). */
 	if( !ph7_value_is_array(apArg[0]) && ph7_value_is_array(apArg[1]) ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-			"Parameter mismatch, pattern is a string while replacement is an array");
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* php 8 refuses the PAIR, as a catchable TypeError naming both positions --
+		 * a string pattern cannot consume an array of replacements. PHL warned and
+		 * answered NULL, php 5's shape, so a program written against php carried on
+		 * past a call php stops it for. */
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($pattern) must be of type array when argument #2 "
+			"($replacement) is an array, string given",ph7_function_name(pCtx));
 	}
 	if( ph7_value_is_array(apArg[2]) ){
 		/* Array subject: return an array, each element replaced, keys preserved. */
@@ -1186,7 +1216,12 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 			SyBlob sOut;
 			PH7_HashmapExtractNodeKey(pNode, &sKey);
 			PH7_HashmapExtractNodeValue(pNode, &sVal, FALSE);
-			zSubject = ph7_value_to_string(&sVal, &nSubLen);
+			if( !PcreStrUV(pCtx, &sVal, &zSubject, &nSubLen) ){
+				PH7_MemObjRelease(&sKey);
+				PH7_MemObjRelease(&sVal);
+				ph7_result_value(pCtx, pResult);
+				goto set_count;
+			}
 			SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
 			if( PcreReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen, limit, &count, &sOut) != SXRET_OK ){
 				/* A bad pattern with an array subject yields an empty array (PHP);
@@ -1212,7 +1247,10 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 		const char *zSubject;
 		int nSubLen;
 		SyBlob sOut;
-		zSubject = ph7_value_to_string(apArg[2], &nSubLen);
+		if( !PcreStrUV(pCtx, apArg[2], &zSubject, &nSubLen) ){
+			ph7_result_null(pCtx);
+			goto set_count;
+		}
 		SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
 		if( PcreReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen, limit, &count, &sOut) != SXRET_OK ){
 			/* Scalar subject: a bad pattern returns NULL (PHP). */
@@ -1225,8 +1263,10 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 	}
 set_count:
 	/* Set &$count if provided — written on success AND on a bad-pattern failure
-	 * (PHP always writes it: 0, or the count accumulated by earlier good patterns). */
-	if( nArg >= 5 ){
+	 * (PHP always writes it: 0, or the count accumulated by earlier good patterns).
+	 * A coercion that THREW is not one of those: php raises out of the call, so
+	 * the caller's variable keeps whatever it held. */
+	if( nArg >= 5 && pCtx->nThrowRc == 0 ){
 		ph7_value sCount;
 		PH7_MemObjInitFromInt(pCtx->pVm, &sCount, count);
 		PH7_VmStoreArgByRef(pCtx->pVm, apArg[4], &sCount);
@@ -1356,7 +1396,9 @@ static sxi32 PcreCallbackReplaceSubject(
 		const char *zPattern;
 		int nPatLen;
 		pcre2_code *pCode;
-		zPattern = ph7_value_to_string(pPattern, &nPatLen);
+		if( !PcreStrUV(pCtx, pPattern, &zPattern, &nPatLen) ){
+			return SXERR_SYNTAX;
+		}
 		pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 		if( pCode == 0 ){
 			return SXERR_SYNTAX; /* bad pattern, NOT a callback unwind */
@@ -1383,7 +1425,11 @@ static sxi32 PcreCallbackReplaceSubject(
 			pcre2_code *pCode;
 			SyBlob *pSwap;
 			PH7_HashmapExtractNodeValue(pPatNode, &sPat, FALSE);
-			zPattern = ph7_value_to_string(&sPat, &nPatLen);
+			if( !PcreStrUV(pCtx, &sPat, &zPattern, &nPatLen) ){
+				rc = SXERR_SYNTAX;
+				PH7_MemObjRelease(&sPat);
+				break;
+			}
 			pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 			if( pCode == 0 ){
 				rc = SXERR_SYNTAX; /* bad pattern, NOT a callback unwind */
@@ -1469,7 +1515,12 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 			SyBlob sOut;
 			PH7_HashmapExtractNodeKey(pNode, &sKey);
 			PH7_HashmapExtractNodeValue(pNode, &sVal, FALSE);
-			zSubject = ph7_value_to_string(&sVal, &nSubLen);
+			if( !PcreStrUV(pCtx, &sVal, &zSubject, &nSubLen) ){
+				PH7_MemObjRelease(&sKey);
+				PH7_MemObjRelease(&sVal);
+				ph7_result_value(pCtx, pResult);
+				goto set_count;
+			}
 			SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
 			rc = PcreCallbackReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen,
 				limit, iFlags, &count, &sOut);
@@ -1501,7 +1552,10 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 		const char *zSubject;
 		int nSubLen;
 		SyBlob sOut;
-		zSubject = ph7_value_to_string(apArg[2], &nSubLen);
+		if( !PcreStrUV(pCtx, apArg[2], &zSubject, &nSubLen) ){
+			ph7_result_null(pCtx);
+			goto set_count;
+		}
 		SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
 		rc = PcreCallbackReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen,
 			limit, iFlags, &count, &sOut);
@@ -1519,8 +1573,9 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 	}
 set_count:
 	/* Set &$count if provided — written on success AND on a bad-pattern failure
-	 * (php always writes it: 0, or the count accumulated by earlier good patterns). */
-	if( nArg >= 5 ){
+	 * (php always writes it: 0, or the count accumulated by earlier good patterns).
+	 * A coercion that THREW is not one of those: php raises out of the call. */
+	if( nArg >= 5 && pCtx->nThrowRc == 0 ){
 		ph7_value sCount;
 		PH7_MemObjInitFromInt(pCtx->pVm, &sCount, count);
 		PH7_VmStoreArgByRef(pCtx->pVm, apArg[4], &sCount);
