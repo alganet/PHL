@@ -3059,7 +3059,15 @@ static int ReflectExtListStep(const char *zName, int nName, void *pData)
 				SyBlobInit(&sVal, &pCtx->pVm->sAllocator);
 				PH7_VmIniGetStr(pCtx->pVm, zKey, &sVal);
 				ph7_value_reset_string_cursor(p->pVal);
-				ph7_value_string(p->pVal, (const char *)SyBlobData(&sVal), (int)SyBlobLength(&sVal));
+				if( PH7_VmIniIsUnset(pCtx->pVm, zKey) ){
+					/* php shows the RAW value here, so a directive declared with
+					 * no value is NULL rather than the empty string ini_get()
+					 * makes of it. */
+					PH7_MemObjRelease(p->pVal);
+				}else{
+					ph7_value_string(p->pVal, (const char *)SyBlobData(&sVal),
+						(int)SyBlobLength(&sVal));
+				}
 				SyBlobRelease(&sVal);
 			}else{
 				ph7_constant *pCons = ReflectConstEntry(pCtx->pVm, zName, nName);

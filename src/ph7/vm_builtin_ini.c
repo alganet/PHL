@@ -38,7 +38,8 @@
  */
 static const struct {
 	const char *zName;
-	const char *zValue;
+	const char *zValue;   /* 0 = php's UNSET directive, which reports NULL and
+	                       * is not the same thing as "" */
 	sxi32 iAccess;
 } aIniDefault[] = {
 	{ "allow_url_fopen",          "1",          VM_INI_SYSTEM },
@@ -59,7 +60,7 @@ static const struct {
 	{ "default_socket_timeout",   "60",         VM_INI_ALL },
 	{ "default_mimetype",         "text/html",  VM_INI_ALL },
 	{ "display_errors",           "",           VM_INI_ALL },
-	{ "error_log",                "",           VM_INI_ALL },
+	{ "error_log",                0,            VM_INI_ALL },
 	{ "error_reporting",          "30719",      VM_INI_ALL },
 	{ "highlight.comment",        "#FF8000",    VM_INI_ALL },
 	{ "highlight.default",        "#0000BB",    VM_INI_ALL },
@@ -123,7 +124,7 @@ static const struct {
 	 * "SQLite Extensions are disabled", and php ships it empty. The access masks
 	 * are php's own, which do not agree with each other. */
 	{ "sqlite3.defensive",        "1",          VM_INI_USER },
-	{ "sqlite3.extension_dir",    "",           VM_INI_SYSTEM },
+	{ "sqlite3.extension_dir",    0,            VM_INI_SYSTEM },
 #endif
 	{ "unserialize_callback_func","",           VM_INI_ALL },
 	{ "unserialize_max_depth",    "4096",       VM_INI_ALL },
@@ -176,8 +177,15 @@ static sxi32 IniSeed(ph7_vm *pVm)
 		sSlot.iAccess = aIniDefault[i].iAccess;
 		SyBlobInit(&sSlot.sGlobal,&pVm->sAllocator);
 		SyBlobInit(&sSlot.sLocal,&pVm->sAllocator);
-		SyBlobAppend(&sSlot.sGlobal,aIniDefault[i].zValue,(sxu32)SyStrlen(aIniDefault[i].zValue));
-		SyBlobAppend(&sSlot.sLocal,aIniDefault[i].zValue,(sxu32)SyStrlen(aIniDefault[i].zValue));
+		/* A row with no value at all is php's UNSET directive, which is not the
+		 * empty string: it reports NULL everywhere the raw value is shown. */
+		sSlot.bGlobalNull = sSlot.bLocalNull = aIniDefault[i].zValue ? 0 : 1;
+		if( aIniDefault[i].zValue ){
+			SyBlobAppend(&sSlot.sGlobal,aIniDefault[i].zValue,
+				(sxu32)SyStrlen(aIniDefault[i].zValue));
+			SyBlobAppend(&sSlot.sLocal,aIniDefault[i].zValue,
+				(sxu32)SyStrlen(aIniDefault[i].zValue));
+		}
 		if( SySetPut(&pVm->aIniTab,(const void *)&sSlot) != SXRET_OK ){
 			return SXERR_MEM;
 		}
@@ -193,6 +201,9 @@ static sxi32 IniSeed(ph7_vm *pVm)
 				SyBlobReset(&aSlot[j].sLocal);
 				SyBlobAppend(&aSlot[j].sGlobal,aCli[i].sValue.zString,aCli[i].sValue.nByte);
 				SyBlobAppend(&aSlot[j].sLocal,aCli[i].sValue.zString,aCli[i].sValue.nByte);
+				/* `-d name=` names the directive on the command line, so what it
+				 * carries is a value -- the empty one, never the unset state. */
+				aSlot[j].bGlobalNull = aSlot[j].bLocalNull = 0;
 				bFound = 1;
 				break;
 			}
@@ -202,6 +213,7 @@ static sxi32 IniSeed(ph7_vm *pVm)
 			/* aIniCli holds VM-lifetime copies already, so the name can be aliased. */
 			sSlot.sName = aCli[i].sName;
 			sSlot.iAccess = VM_INI_ALL;
+			sSlot.bGlobalNull = sSlot.bLocalNull = 0;
 			SyBlobInit(&sSlot.sGlobal,&pVm->sAllocator);
 			SyBlobInit(&sSlot.sLocal,&pVm->sAllocator);
 			SyBlobAppend(&sSlot.sGlobal,aCli[i].sValue.zString,aCli[i].sValue.nByte);
@@ -456,6 +468,37 @@ static int IniValueAccepted(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 
 	return 1;
 }
 /*
+ * Store one written value.  A write always leaves a local value; what it does to
+ * the GLOBAL one depends on whether there was ever a global to keep. php saves
+ * the original at the first modification and reports THAT as global_value -- but
+ * an UNSET directive has no original to save, so its global_value starts reading
+ * the written value instead, and only ini_restore() puts the NULL back.
+ */
+static void IniWriteLocal(VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
+{
+	SyBlobReset(&pSlot->sLocal);
+	SyBlobAppend(&pSlot->sLocal,zVal,nVal);
+	pSlot->bLocalNull = 0;
+}
+/*
+ * What global_value reports: the saved original, unless there was none -- in
+ * which case it is whatever the directive currently holds, NULL included.
+ */
+static int IniGlobalValue(VmIniSlot *pSlot,const char **pz,sxu32 *pn)
+{
+	if( !pSlot->bGlobalNull ){
+		*pz = (const char *)SyBlobData(&pSlot->sGlobal);
+		*pn = SyBlobLength(&pSlot->sGlobal);
+		return 1;
+	}
+	if( pSlot->bLocalNull ){
+		return 0;   /* still unset: php reports NULL */
+	}
+	*pz = (const char *)SyBlobData(&pSlot->sLocal);
+	*pn = SyBlobLength(&pSlot->sLocal);
+	return 1;
+}
+/*
  * Write a directive from C, the way ini_set() writes it. Answers 0 when the write
  * was refused (unknown name, not user-settable, or a value the directive's own
  * rule rejects) -- which is exactly what session_start()'s $options reports as
@@ -475,8 +518,7 @@ PH7_PRIVATE int PH7_VmIniSet(ph7_vm *pVm,const char *zName,sxu32 nName,
 	if( !IniValueAccepted(pVm,pSlot,zVal,nVal,zWho) ){
 		return 0;
 	}
-	SyBlobReset(&pSlot->sLocal);
-	SyBlobAppend(&pSlot->sLocal,zVal,nVal);
+	IniWriteLocal(pSlot,zVal,nVal);
 	IniLiveSet(pVm,pSlot,zVal,nVal);
 	return 1;
 }
@@ -558,8 +600,7 @@ static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	SyBlobReset(&pSlot->sLocal);
-	SyBlobAppend(&pSlot->sLocal,zVal,(sxu32)nVal);
+	IniWriteLocal(pSlot,zVal,(sxu32)nVal);
 	IniLiveSet(pVm,pSlot,zVal,(sxu32)nVal);
 	ph7_result_string(pCtx,(const char *)SyBlobData(&sOld),(int)SyBlobLength(&sOld));
 	SyBlobRelease(&sOld);
@@ -583,6 +624,7 @@ static int vm_builtin_ini_restore(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	SyBlobReset(&pSlot->sLocal);
 	SyBlobAppend(&pSlot->sLocal,SyBlobData(&pSlot->sGlobal),SyBlobLength(&pSlot->sGlobal));
+	pSlot->bLocalNull = pSlot->bGlobalNull;   /* an unset directive goes back to unset */
 	IniLiveSet(pVm,pSlot,(const char *)SyBlobData(&pSlot->sGlobal),SyBlobLength(&pSlot->sGlobal));
 	return PH7_OK;
 }
@@ -679,11 +721,22 @@ static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( pRow == 0 ){
 				break;
 			}
-			ph7_value_string(pCur,(const char *)SyBlobData(&pSlot->sGlobal),
-				(int)SyBlobLength(&pSlot->sGlobal));
+			{
+				const char *zG = 0;
+				sxu32 nG = 0;
+				if( IniGlobalValue(pSlot,&zG,&nG) ){
+					ph7_value_string(pCur,zG,(int)nG);
+				}else{
+					ph7_value_null(pCur);
+				}
+			}
 			ph7_array_add_strkey_elem(pRow,"global_value",pCur);
 			ph7_value_reset_string_cursor(pCur);
-			ph7_value_string(pCur,(const char *)SyBlobData(&sVal),(int)SyBlobLength(&sVal));
+			if( pSlot->bLocalNull ){
+				ph7_value_null(pCur);
+			}else{
+				ph7_value_string(pCur,(const char *)SyBlobData(&sVal),(int)SyBlobLength(&sVal));
+			}
 			ph7_array_add_strkey_elem(pRow,"local_value",pCur);
 			ph7_value_reset_string_cursor(pCur);
 			ph7_value_int(pCur,pSlot->iAccess);
@@ -692,7 +745,11 @@ static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_array_add_strkey_elem(pOut,zKey,pRow);
 		}else{
 			ph7_value_reset_string_cursor(pCur);
-			ph7_value_string(pCur,(const char *)SyBlobData(&sVal),(int)SyBlobLength(&sVal));
+			if( pSlot->bLocalNull ){
+				ph7_value_null(pCur);
+			}else{
+				ph7_value_string(pCur,(const char *)SyBlobData(&sVal),(int)SyBlobLength(&sVal));
+			}
 			ph7_array_add_strkey_elem(pOut,zKey,pCur);
 			ph7_value_reset_string_cursor(pCur);
 		}
@@ -714,7 +771,11 @@ static int vm_builtin_get_cfg_var(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	zName = ph7_value_to_string(apArg[0],&nName);
 	pSlot = IniFind(pVm,zName,(sxu32)nName);
-	if( pSlot == 0 ){
+	if( pSlot == 0 || pSlot->bGlobalNull ){
+		/* php reads this one from the php.ini FILE rather than from the live
+		 * directive, so a name the file never mentioned is false -- and a
+		 * directive declared with no value is exactly such a name, whatever a
+		 * later ini_set() put in it. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -780,6 +841,18 @@ PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut)
 	}
 }
 /*
+ * Does this directive currently hold php's UNSET value? Only the surfaces that
+ * show a RAW value ask -- ini_get() answers the empty string for one either
+ * way, which is why the question has to be put separately.
+ */
+PH7_PRIVATE int PH7_VmIniIsUnset(ph7_vm *pVm,const char *zName)
+{
+	VmIniSlot *pSlot;
+	IniSeed(pVm);
+	pSlot = IniFind(pVm,zName,(sxu32)SyStrlen(zName));
+	return pSlot != 0 && pSlot->bLocalNull;
+}
+/*
  * Read a BOOLEAN directive the way zend_ini does — "on"/"yes"/"true" as well as
  * a non-zero number. Reading one through the integer parser answers 0 for
  * `On`, which is the spelling php.ini-production ships, so a directive written
@@ -833,6 +906,9 @@ PH7_PRIVATE int PH7_VmIniGetBool(ph7_vm *pVm,const char *zName,int bDefault){
 }
 PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut){
 	(void)pVm; (void)zName; SyBlobReset(pOut);
+}
+PH7_PRIVATE int PH7_VmIniIsUnset(ph7_vm *pVm,const char *zName){
+	(void)pVm; (void)zName; return 0;
 }
 PH7_PRIVATE int PH7_VmIniDescribe(ph7_vm *pVm,const char *zName,sxu32 nName,
 	sxi32 *piAccess,SyBlob *pOut,SyBlob *pDef){
