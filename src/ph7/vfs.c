@@ -199,26 +199,6 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
  * returning FALSE" -- which names neither the function's argument nor what was
  * wrong with it, and two more call sites had a third wording of their own.
  */
-/*
- * The FIRST half of the sentence above, on its own: php's
- * `Unable to find the wrapper "zzz" - did you forget to enable it when you
- * configured PHP?`. A caller that resolves a wrapper WITHOUT opening anything
- * (get_headers()) reports only this one -- the failed-open line under it comes
- * from the open, and there is none.
- */
-PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri)
-{
-	int nScheme = 0;
-	if( zUri == 0 ){
-		zUri = "";
-	}
-	PH7_VmStreamDeviceIsRemoteHost(zUri,-1,&nScheme);
-	if( nScheme > 0 ){
-		PH7_VmThrowWarningFmt(pCtx->pVm,
-			"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it when you configured PHP?",
-			ph7_function_name(pCtx),nScheme,zUri);
-	}
-}
 PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int bDir)
 {
 	const char *zFunc = ph7_function_name(pCtx);
@@ -257,6 +237,26 @@ PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int 
 	}
 	PH7_VmThrowWarningFmt(pCtx->pVm,
 		"%s(%s): Failed to open %s: No such file or directory",zFunc,zUri,zWhat);
+}
+/*
+ * The FIRST half of the sentence above, on its own: php's
+ * `Unable to find the wrapper "zzz" - did you forget to enable it when you
+ * configured PHP?`. A caller that resolves a wrapper WITHOUT opening anything
+ * (get_headers()) reports only this one -- the failed-open line under it comes
+ * from the open, and there is none.
+ */
+PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri)
+{
+	int nScheme = 0;
+	if( zUri == 0 ){
+		zUri = "";
+	}
+	PH7_VmStreamDeviceIsRemoteHost(zUri,-1,&nScheme);
+	if( nScheme > 0 ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it when you configured PHP?",
+			ph7_function_name(pCtx),nScheme,zUri);
+	}
 }
 /*
  * php's stat-failure warning: `filemtime(): stat failed for /nope`, and
