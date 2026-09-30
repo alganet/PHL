@@ -322,6 +322,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(
 	}
 	/* Install the function in the corresponding hashtable */
 	rc = SyHashInsert(&pVm->hHostFunction,SyStringData(&pFunc->sName),pName->nByte,pFunc);
+	pVm->nCallableGen++; /* a name that was not callable may be now (OP_CALL_INIT) */
 	if( rc != SXRET_OK ){
 		SyMemBackendFree(&pVm->sAllocator,(void *)SyStringData(&pFunc->sName));
 		SyMemBackendPoolFree(&pVm->sAllocator,pFunc);
@@ -454,6 +455,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(
 	/* First time seen */
 	pFunc->pNextName = 0;
 	rc = SyHashInsert(&pVm->hFunction,pName->zString,pName->nByte,pFunc);
+	if( (pFunc->iFlags & (VM_FUNC_CLASS_METHOD|VM_FUNC_CLOSURE)) == 0 ){
+		/* A name a SCRIPT can now call. This table also holds every method and every
+		 * per-instantiation closure copy -- names PH7_VmGetUserFunction refuses to a
+		 * script -- and counting those would retire OP_CALL_INIT's screened-at stamps
+		 * on every closure EXPRESSION a program evaluates, which is most of them. */
+		pVm->nCallableGen++;
+	}
 	return rc;
 }
 /*
@@ -2439,6 +2447,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * (Only the constant tables stay byte-exact: php constants ARE case-sensitive.) */
 	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hFunction,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
+	/* 0 means "this call site has never been screened", so the first generation is 1. */
+	pVm->nCallableGen = 1;
 	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
@@ -3825,6 +3835,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	SyHashRelease(&pVm->hSuper);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
 	SyZero(pVm->aSuperFirst,sizeof(pVm->aSuperFirst));
+	/* A reused VM (the -S server, the in-process .phpt runner) starts the next run
+	 * with the bytecode of the last one still holding its screened-at stamps. */
+	pVm->nCallableGen++;
 	/* (8) Drain remaining per-exec containers. */
 	SySetReset(&pVm->aSelf);
 	/* Shutdown callbacks are normally drained+released by VmInvokeShutdownCallbacks

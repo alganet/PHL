@@ -1926,6 +1926,7 @@ static sxi32 VmByteCodeExecBody(
 	                     * that boundary into an explicit record push/pop). */
 	sxi32 pc;
 	sxi32 rc;
+	int bCallInitStamp = 0; /* PH7_OP_CALL_INIT: may this site's verdict be remembered? */
 	sState.aInstr = aInstr;
 	sState.pStack = pStack;
 	sState.nStackCap = pnBaseCap ? *pnBaseCap : 0; /* CURRENT capacity (grown on a coroutine resume) */
@@ -6044,6 +6045,17 @@ yf_propagate:
  *  with no arguments at all — there the call IS the first thing that happens.
  */
 case PH7_OP_CALL_INIT: {
+	/* This screen resolves the callee that OP_CALL is about to resolve again -- it is
+	 * here only so php's Error lands before the arguments run -- and it was 4.4% of a
+	 * phpcs profile. When the callee is a compile-time constant (the push behind this
+	 * instruction is an OP_LOADC) the answer can only change if the set of callable
+	 * NAMES changes, and that bumps pVm->nCallableGen. So a site that has passed once
+	 * passes for free until something is declared. A dynamic callee is never stamped
+	 * and is screened on every call, as it must be. */
+	if( pInstr->nAux == pVm->nCallableGen ){
+		break;
+	}
+	bCallInitStamp = 0;
 	if( (pTos->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_MAGICCALL)) == 0
 	 && !VmValueIsClosure(pVm,pTos) ){
 		const char *zInitCls = 0,*zInitMeth = 0;
@@ -6061,6 +6073,11 @@ case PH7_OP_CALL_INIT: {
 			}
 			bInitScoped = PH7_VmCallableStringParts(sInitName.zString,sInitName.nByte,
 				&zInitCls,&nInitCls,&zInitMeth,&nInitMeth);
+			/* A plain function NAME is the one verdict that depends on nothing but the
+			 * callable set. A `Class::method` string is screened for VISIBILITY too,
+			 * and a trait's body can run under more than one class, so that one is
+			 * asked every time. */
+			bCallInitStamp = !bInitScoped;
 		}
 		if( bInitScoped ){
 			/* A `"Class::method"` string carries its whole taxonomy in one builder — the
@@ -6072,6 +6089,13 @@ case PH7_OP_CALL_INIT: {
 				PH7_VmExtractClass(&(*pVm),zInitCls,nInitCls,FALSE,0),
 				zInitCls,nInitCls,zInitMeth,nInitMeth,TRUE,zInitMsg,sizeof(zInitMsg));
 		}else if( !PH7_VmIsCallable(&(*pVm),pTos,TRUE) ){
+			/* Not callable under the name as WRITTEN. php's global fallback below may
+			 * still find it, and that verdict is generation-dependent like any other --
+			 * so the stamp is left standing here and only a real refusal retires it,
+			 * which it does by throwing before the stamp is written. Most calls in a
+			 * namespaced file (every `count()`, `is_array()`, `trim()` in phpcs) take
+			 * exactly this path, and it is the expensive one: two callability screens
+			 * and a temporary value for the shortened name. */
 			int bInitOk = 0;
 			if( pInstr->iP2 == 1 && (pTos->iFlags & MEMOBJ_STRING) ){
 				/* php's global fallback for an UNQUALIFIED name written inside a
@@ -6113,6 +6137,12 @@ case PH7_OP_CALL_INIT: {
 			rc = rcInit;
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
+	}
+	if( bCallInitStamp && pc > 0 && aInstr[pc-1].iOp == PH7_OP_LOADC ){
+		/* The callee is the same literal every time this site runs, so record that it
+		 * was screened -- and at WHICH generation, because a later `function f(){}`
+		 * (or a class, or an unregistered host function) can change the answer. */
+		pInstr->nAux = pVm->nCallableGen;
 	}
 	break;
 }

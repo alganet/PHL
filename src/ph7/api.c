@@ -1164,6 +1164,9 @@ int ph7_delete_function(ph7_vm *pVm,const char *zName)
 	/* Perform the deletion */
 	rc = SyHashDeleteEntry(&pVm->hHostFunction,(const void *)zName,SyStrlen(zName),(void **)&pFunc);
 	if( rc == PH7_OK ){
+		/* A name that WAS callable is not any more; every call site that remembers
+		 * having screened it has to ask again (OP_CALL_INIT). */
+		pVm->nCallableGen++;
 		/* Release internal fields */
 		SySetRelease(&pFunc->aAux);
 		SyMemBackendFree(&pVm->sAllocator,(void *)SyStringData(&pFunc->sName));

@@ -2711,11 +2711,14 @@ struct VmInstr
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	sxu32 nAux; /* A per-instruction scratch word the RUNTIME owns, zero until it writes
-	             * one. It holds an answer that cannot change under the instruction:
+	             * one. Two opcodes use it, each for an answer that cannot change under it:
 	             *
 	             *   PH7_OP_LOAD      the length of the variable NAME in p3. The name is a
 	             *                    NUL-terminated compile-time buffer, and measuring it
 	             *                    again on every execution was ~2% of a phpcs run.
+	             *   PH7_OP_CALL_INIT the pVm->nCallableGen this call site was last screened
+	             *                    at, written only when the callee is a compile-time
+	             *                    constant (the push behind it is an OP_LOADC).
 	             *
 	             * Lives in the padding after iP2, so VmInstr is still 32 bytes and the
 	             * bytecode costs nothing extra. */
@@ -3679,6 +3682,12 @@ struct ph7_vm
 	SySet aSelf;               /* 'self' stack used for static member access [i.e: self::MyConstant] */
 	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
+	sxu32 nCallableGen;        /* Bumped whenever the set of things a NAME can call changes --
+	                            * a function, a class or a host function installed or removed.
+	                            * PH7_OP_CALL_INIT stamps a call site it has screened with the
+	                            * generation it screened at, so a site whose callee is a
+	                            * compile-time constant asks the question once per generation
+	                            * instead of once per call. Starts at 1: 0 is 'never screened'. */
 	sxu32 nCurLine;            /* Line of the instruction currently executing (0 outside the
 	                            * dispatch loop). Every runtime diagnostic, debug_backtrace()
 	                            * and Throwable reads its line from here. */
