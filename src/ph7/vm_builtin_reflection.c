@@ -4444,6 +4444,9 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 	}
 	pCons = PH7_ClassExtractMethod(pClass, "__construct", sizeof("__construct")-1);
 	if( pCons ){
+		/* Weak binding, like ReflectMethodInvoke: the frame that makes this call is
+		 * ReflectionClass::newInstance(), an internal function. */
+		pVm->bCallbackWeak = 1;
 		if( pNames ){
 			VmCallArgMap sMap;
 			SyZero(&sMap, sizeof(sMap));
@@ -4454,6 +4457,7 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 		}else{
 			rc = PH7_VmCallClassMethod(pVm, pObj, pCons, 0, nCtor, apCtor);
 		}
+		pVm->bCallbackWeak = 0;
 		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
 			PH7_ClassInstanceCtorFailed(pObj);
 			PH7_ClassInstanceUnref(pObj);
@@ -7204,7 +7208,15 @@ static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall,
 	/* Reflection ignores method visibility (PHP 8.1+); the flag is consumed by
 	 * the first OP_CALL, i.e. this synthetic one. */
 	pVm->bReflectBypass = 1;
+	/* And it binds the arguments WEAKLY however strict the file that called
+	 * invoke() is: php reads strict mode off the frame that MADE the call, and
+	 * that frame is ReflectionMethod::invoke itself, an internal function with no
+	 * strict_types of its own. PHPUnit's mock builder reaches every original
+	 * constructor this way (Generator::instantiate -> getConstructor()->invokeArgs),
+	 * from a file that declares strict_types=1. */
+	pVm->bCallbackWeak = 1;
 	rc = PH7_VmCallClassMethod(pVm, pRecv, sRef.pMeth, &sResult, nCall, apCall);
+	pVm->bCallbackWeak = 0; /* clear if the dispatch never reached an OP_CALL */
 	pVm->bReflectBypass = 0;
 	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
 		PH7_MemObjRelease(&sResult);

@@ -6808,7 +6808,15 @@ static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,s
 			continue;
 		}
 		apArg[0] = &sArg;
-		if( PH7_VmCallUserFunction(pVm,&pEntry->sCallback,1,apArg,&sResult) != SXRET_OK ){
+		/* NOT PH7_VmCallUserFunction: that wrapper marks the dispatch as an internal
+		 * function reaching for a callback, which binds the argument weakly. php's
+		 * autoload call is the one such dispatch that is NOT weak -- it reads the
+		 * strict_types of the code whose class reference triggered it, and says so in
+		 * its own diagnostic ("called in <that file> on line <that line>"). An
+		 * autoloader declaring anything but `string` therefore RAISES under a strict
+		 * caller, where PHL coerced the class name (`bool $c` got true) and ran the
+		 * loader on a value that no longer named anything. */
+		if( PH7_VmCallUserFunctionWithMap(pVm,&pEntry->sCallback,1,apArg,&sResult,0) != SXRET_OK ){
 			/* Callback could not be invoked — skip to next autoloader */
 			continue;
 		}
