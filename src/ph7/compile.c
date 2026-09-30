@@ -2813,6 +2813,22 @@ static sxi32 GenStateEmitCallArgs(
 			&pGen->pVm->sAllocator, mapSize);
 		if( pMap ){
 			SyZero(pMap, mapSize);
+			/* The names need their own contiguous allocation, so this map REPLACES
+			 * whatever the callee's namespace qualification built -- and it has to
+			 * carry that map's findings across. Dropping them lost the ORIGINAL
+			 * name literal, which is the only thing the `new` codegen can
+			 * re-qualify with CLASS imports: `new Imported(x: 1)` then resolved
+			 * against the current namespace and the class was not found, while
+			 * the same `new` with positional arguments worked. */
+			if( p3 ){
+				VmCallArgMap *pPrior = (VmCallArgMap *)p3;
+				pMap->nOrigNameLit = pPrior->nOrigNameLit;
+				pMap->bIsNamespaced = pPrior->bIsNamespaced;
+				pMap->nNewClassInstr = pPrior->nNewClassInstr;
+				pMap->bStrict = pPrior->bStrict;
+				/* Nothing else holds it: it is attached to no instruction yet. */
+				SyMemBackendFree(&pGen->pVm->sAllocator,pPrior);
+			}
 			pMap->bHasNamed = 1;
 			pMap->nTotal = (sxu32)nArgs;
 			pMap->aNames = (SyString *)&pMap[1];

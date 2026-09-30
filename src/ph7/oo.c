@@ -998,7 +998,19 @@ static int OvAtomLE(const OvAtom *pC,const OvAtom *pP,ph7_class *pSubScope)
 		return pC->nBit == OVB_BOOL || pC->nBit == OVB_FALSE || pC->nBit == OVB_TRUE;
 	}
 	if( pP->nBit == OVB_STATIC ){
-		return pC->nBit == OVB_STATIC;
+		if( pC->nBit == OVB_STATIC ){
+			return 1;
+		}
+		/* php's one exception, and a library really writes it: in a FINAL class
+		 * `self` IS `static`, because no subclass can ever exist for the called
+		 * class to be. It is the class ITSELF and nothing else -- naming the
+		 * PARENT is still a fatal, even from a final child (an enum carries the
+		 * final flag, so its own name works the same way). */
+		if( pC->nBit == OVB_CLS && pSubScope != 0 && pC->pCls == pSubScope
+		 && (pSubScope->iFlags & PH7_CLASS_FINAL) != 0 ){
+			return 1;
+		}
+		return 0;
 	}
 	if( pP->nBit == OVB_CLS ){
 		if( pC->nBit == OVB_CLS ){
