@@ -3,8 +3,10 @@
 # Pinned to a commit rather than a tag: the tree tracks `main`.
 REPO="https://github.com/Respect/Validation.git"
 REF="b885ab8"
-# phpcs sniffs 711 files: 9.5s under php and ~15 minutes under phl -- the gap is real
-# work (every docblock goes through phpstan/phpdoc-parser's ~50-branch MARK alternation)
-# and a performance divergence worth its own row, not a hang. The budget is per STEP and
-# both engines get it, so a timeout stays a comparable answer.
+# phpcs sniffs 711 files and is by far the most expensive step here: ~3s under php, ~90s
+# under phl. It used to be ~14 MINUTES, and the reason recorded here was wrong -- it was
+# not "real work" in phpdoc-parser's MARK alternation, it was a leaked `foreach` step
+# making OP_FOREACH_INIT quadratic (fixed 26 Aug 2026; see DONE.md). The budget stays: it
+# is per STEP and both engines get it, so a timeout is a comparable answer rather than a
+# hang, and this is the step an engine performance regression would show up in first.
 STEP_TIMEOUT=1800

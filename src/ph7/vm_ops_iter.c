@@ -630,7 +630,17 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			}
 		}
 		if( pStep ){
-			if( SXRET_OK != SySetPut(&pInfo->aStep,(const void *)&pStep) ){
+			if( SXRET_OK == SySetPut(&pInfo->aStep,(const void *)&pStep) ){
+				/* Hand the step to its owning activation. Whatever a `break`, a
+				 * `return`, a `goto` or an exception leaves behind is released when
+				 * that frame dies, so aStep only ever holds LIVE walks -- the scan
+				 * above stays short instead of growing for the life of the VM. Linked
+				 * only once the step is really on aStep, so the failure arm below has
+				 * nothing to unlink. */
+				pStep->pInfo = pInfo;
+				pStep->pNextFrameStep = pInitFrame->pForeachSteps;
+				pInitFrame->pForeachSteps = pStep;
+			}else{
 				PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory while preparing the 'foreach' step");
 				if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
 					VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,FALSE/*never made it onto aStep*/);

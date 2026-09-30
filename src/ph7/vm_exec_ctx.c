@@ -490,6 +490,9 @@ static void VmFreeDetachedFrame(ph7_vm *pVm, VmFrame *pFrame)
 	if( pFrame == 0 ){
 		return;
 	}
+	/* End the foreach walks this (abandoned) activation never finished — the same
+	 * teardown, at the same point, VmLeaveFrame does it at. */
+	VmReleaseFrameForeachSteps(pVm,pFrame);
 	/* Remove local references FIRST, then free the locals nothing else holds — the
 	 * order and the holder test VmLeaveFrame explains. */
 	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sRef);

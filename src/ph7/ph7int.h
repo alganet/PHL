@@ -652,6 +652,18 @@ struct ph7_foreach_step
 									 * paused in the same textual foreach cannot clash on
 									 * each other's cursor. */
 	ph7_foreach_step *pNextActive;  /* Next step on the map's pActiveSteps list */
+	ph7_foreach_info *pInfo;        /* The statement this step belongs to. Carried so the OWNING
+	                                 * FRAME can tear the step down without knowing which foreach
+	                                 * it came from (see pNextFrameStep). */
+	ph7_foreach_step *pNextFrameStep;/* Next step owned by the same activation (VmFrame::pForeachSteps).
+	                                 * A loop left through break/return/goto/an exception never
+	                                 * reaches the "no more entries" arm, so its step used to sit on
+	                                 * the per-STATEMENT aStep until the VM died -- reclaimed only if
+	                                 * a LATER activation happened to be handed the same frame
+	                                 * address. aStep therefore grew without bound, and INIT's
+	                                 * linear reclaim scan over it made every foreach in the program
+	                                 * quadratic. The frame that owns a step is the one that can
+	                                 * always end it: this list is how it finds them. */
 	PH7_AttrIter sAttrIter;         /* Object iteration: this loop's PRIVATE cursor over the
 	                                 * instance's property table (see PH7_AttrIter) */
 };
@@ -1037,6 +1049,12 @@ struct VmFrame
 	                   * top-level code it is whichever included unit was executing THEN --
 	                   * the include stack has moved on by the time a trace is taken. Aliases
 	                   * a VM-lifetime string (a function's sFile, or an aFiles entry). */
+	ph7_foreach_step *pForeachSteps; /* Foreach steps this activation still owns, newest first.
+	                   * Every step OP_FOREACH_INIT pushes is linked here and unlinked by the one
+	                   * teardown door (VmForeachStepUnlink); whatever is left when the frame dies
+	                   * is released with it. Without this a broken loop's step outlived its
+	                   * activation for the life of the VM -- ~140 bytes plus a retain of the
+	                   * subject each -- and INIT's reclaim scan walked every one of them. */
 	int nActualArgs;  /* Actual call arity (band A #4): how many arguments the CALLER passed,
 	                   * stamped by the OP_CALL / generator-fiber install sites; -1 when
 	                   * unknown (non-call frames) - func_num_args()/func_get_args() then fall
@@ -6004,6 +6022,7 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 	ph7_class *pSelf);
 PH7_PRIVATE void VmMaterializeIntTyped(ph7_value *pVal, sxu32 nType);
 PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame);
+PH7_PRIVATE void VmReleaseFrameForeachSteps(ph7_vm *pVm, VmFrame *pFrame);
 /* The in-place-catch resume record, moved as a whole. See its four fields in ph7_vm. */
 typedef struct VmResumeTarget {
 	VmFrame *pFrame;

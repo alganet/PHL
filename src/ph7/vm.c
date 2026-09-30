@@ -804,6 +804,10 @@ PH7_PRIVATE void VmLeaveFrame(ph7_vm *pVm)
 	if( pCurFrame ){
 		/* Unlink from the list of active VM frame */
 		pVm->pFrame = pCurFrame->pParent;
+		/* End the foreach walks this activation never finished, before its locals go:
+		 * a step retains its subject, and an object walk holds a cursor registered on
+		 * the instance. */
+		VmReleaseFrameForeachSteps(&(*pVm),pCurFrame);
 		if( pCurFrame->pParent && (pCurFrame->iFlags & VM_FRAME_EXCEPTION) == 0 ){
 			VmSlot  *aSlot;
 			sxu32 n;
@@ -5877,6 +5881,22 @@ PH7_PRIVATE void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *p
 	ph7_foreach_step **apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
 	sxu32 n = SySetUsed(&pInfo->aStep);
 	sxu32 i;
+	/* Drop the owning activation's claim on it first: the frame list is what
+	 * guarantees a step cannot outlive the frame that made it, so it has to be
+	 * left in step with aStep by the same door. A step that never made it onto
+	 * aStep never made it onto the frame list either (INIT links both together,
+	 * after the SySetPut), so the walk below simply finds nothing. */
+	if( pStep->pFrame ){
+		ph7_foreach_step **ppLink = &pStep->pFrame->pForeachSteps;
+		while( *ppLink ){
+			if( *ppLink == pStep ){
+				*ppLink = pStep->pNextFrameStep;
+				break;
+			}
+			ppLink = &(*ppLink)->pNextFrameStep;
+		}
+		pStep->pNextFrameStep = 0;
+	}
 	for( i = 0 ; i < n ; ++i ){
 		if( apStep[i] == pStep ){
 			for( ; i + 1 < n ; ++i ){
@@ -5885,6 +5905,48 @@ PH7_PRIVATE void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *p
 			(void)SySetPop(&pInfo->aStep);
 			return;
 		}
+	}
+}
+/*
+ * End every foreach walk this activation still owns, because the activation is
+ * about to die.
+ *
+ * A loop left through `break`, `return`, `goto` or an exception never reaches the
+ * "no more entries" arm that frees its step. OP_FOREACH_INIT reclaims such a
+ * leftover, but only one whose owning frame is the frame running INIT -- so a step
+ * belonging to an activation that had already returned stayed on the per-STATEMENT
+ * aStep for the life of the VM, holding ~140 bytes and a retain of the subject, and
+ * INIT's reclaim scan walked past all of them on every single iteration of every
+ * enclosing loop. That is quadratic in the number of broken loops a program runs:
+ * phpcs over one 318-line file reached 3600 dead steps and spent 60% of its time in
+ * that scan.
+ *
+ * The frame that made a step is the one that can always end it. Called from both
+ * VmFrame free sites (VmLeaveFrame and VmFreeDetachedFrame), after the frame has
+ * left the active chain and before its locals are torn down -- the same point, and
+ * the same order, the loop's own last iteration would have released it at.
+ */
+PH7_PRIVATE void VmReleaseFrameForeachSteps(ph7_vm *pVm, VmFrame *pFrame)
+{
+	if( pFrame == 0 ){
+		return;
+	}
+	while( pFrame->pForeachSteps ){
+		ph7_foreach_step *pStep = pFrame->pForeachSteps;
+		/* Detach BEFORE releasing rather than letting the release do it. The release
+		 * runs teardown that can re-enter the VM (an instance losing its last retain
+		 * runs __destruct), and a head that is still linked when that happens is a
+		 * step whose frame is dying being handed back out. It also makes the loop
+		 * unconditionally terminate: nothing here depends on the release finding this
+		 * step to unlink, which VmForeachStepUnlink then simply doesn't. */
+		pFrame->pForeachSteps = pStep->pNextFrameStep;
+		pStep->pNextFrameStep = 0;
+		if( pStep->pInfo == 0 ){
+			/* Never linked to a statement, so nothing else can free it. */
+			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+			continue;
+		}
+		VmForeachStepRelease(&(*pVm),pStep->pInfo,pStep);
 	}
 }
 PH7_PRIVATE void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,ph7_class_instance *pThis)
