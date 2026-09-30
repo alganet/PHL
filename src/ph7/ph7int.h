@@ -86,10 +86,15 @@ struct ph7_value
 		sxi64 iVal;     /* Integer value */
 		void *pOther;   /* Other values (Object, Array, Resource, Namespace, etc.) */
 	}x;
+	/* iFlags and nIdx are adjacent on purpose: each is four bytes and each used to
+	 * sit alone in front of a pointer, so the struct carried eight bytes of padding
+	 * it did nothing with. This is the engine's per-VALUE size -- every variable,
+	 * every array element and every operand-stack cell is one -- so those eight
+	 * bytes were 11% of it. Order only; no field changed meaning. */
 	sxi32 iFlags;       /* Control flags (see below) */
+	sxu32 nIdx;         /* Index number of this entry in the global object allocator */
 	ph7_vm *pVm;        /* Virtual machine that own this instance */
 	SyBlob sBlob;       /* String values */
-	sxu32 nIdx;         /* Index number of this entry in the global object allocator */
 };
 /* The pending offset of a `$s[k] ??= v`, owned by its MEMOBJ_AUX_COALSTROFF peek result.
  * Carries its own allocator so PH7_MemObjRelease can free it without a VM pointer, exactly
