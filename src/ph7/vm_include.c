@@ -543,6 +543,31 @@ PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8
 		}
 	}
 #endif
+	/* A `phar://` url has no realpath() to ask, so its own canonical form is
+	 * built here: the archive half as the url spells it, the ENTRY half with its
+	 * `.` and `..` segments collapsed the way the archive's reader already
+	 * resolves them. Without it two spellings of one entry are two rows in the
+	 * once-registry.
+	 *
+	 * Behind the same guard as ext/phar itself: vm_phar.c's whole body, and the
+	 * prototype block this calls into, are `#ifndef PH7_DISABLE_BUILTIN_FUNC`, so
+	 * the tiny build has no archive reader to ask and no phar:// url to ask about. */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	{
+		SyBlob sPhar;
+		SyBlobInit(&sPhar,&pVm->sAllocator);
+		if( PH7_PharCanonicalUrl(pVm,zDup,nLen,&sPhar) ){
+			char *zPharDup = SyMemBackendStrDup(&pVm->sAllocator,
+				(const char *)SyBlobData(&sPhar),SyBlobLength(&sPhar));
+			if( zPharDup ){
+				SyMemBackendFree(&pVm->sAllocator,zDup);
+				zDup = zPharDup;
+				nLen = (int)SyBlobLength(&sPhar);
+			}
+		}
+		SyBlobRelease(&sPhar);
+	}
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
 	/* Install the file path */
 	SyStringInitFromBuf(&sPath,zDup,nLen);
 	if( !bMain ){

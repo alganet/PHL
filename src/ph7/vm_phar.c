@@ -1705,6 +1705,47 @@ static phl_phar * PharResolveUrl(ph7_vm *pVm,const char *zUrl,int nUrl,
 	*pzErr = "unable to open phar for reading";
 	return 0;
 }
+/*
+ * The name a phar entry is RECORDED under -- `__FILE__`, `__DIR__`,
+ * `get_included_files()` and the once-registry's key. php canonicalizes it, and
+ * that is not decoration: two spellings of one entry are two entries in the
+ * registry, so `require_once __DIR__.'/../inc.php'` and
+ * `require_once __DIR__.'/../vendor/../inc.php'` included the same file TWICE
+ * and the second one died on `Cannot redeclare`. It is exactly how phpstan.phar
+ * reaches its own `src/Analyser/InternalScopeFactory.php` from `preload.php`, so
+ * no phpstan run started. The same two spellings on the FILESYSTEM dedupe (the
+ * push realpath()s them); a phar:// url has no realpath() to ask, and the
+ * archive's own reader normalizes only what it looks an ENTRY up by.
+ *
+ * The ARCHIVE half is left exactly as the url spells it -- an alias stays an
+ * alias -- because the entry is the half a `..` can be written in.
+ */
+PH7_PRIVATE int PH7_PharCanonicalUrl(ph7_vm *pVm,const char *zPath,int nPath,SyBlob *pOut)
+{
+	const char *zEnt,*zErr;
+	phl_phar *pPhar;
+	SyBlob sNorm;
+	int nEnt,nHead;
+	if( nPath <= (int)(sizeof("phar://")-1)
+	 || SyStrnicmp(zPath,"phar://",sizeof("phar://")-1) != 0 ){
+		return 0;
+	}
+	nHead = (int)(sizeof("phar://")-1);
+	pPhar = PharResolveUrl(pVm,&zPath[nHead],nPath - nHead,&zEnt,&nEnt,&zErr);
+	if( pPhar == 0 ){
+		return 0;
+	}
+	SyBlobInit(&sNorm,&pVm->sAllocator);
+	PharNormalize(zEnt,nEnt,&sNorm);
+	SyBlobReset(pOut);
+	SyBlobAppend(pOut,zPath,(sxu32)(zEnt - zPath));
+	if( SyBlobLength(&sNorm) > 0 ){
+		SyBlobAppend(pOut,"/",1);
+		SyBlobAppend(pOut,SyBlobData(&sNorm),SyBlobLength(&sNorm));
+	}
+	SyBlobRelease(&sNorm);
+	return 1;
+}
 /* ------------------------------------------------------------------ */
 /* The phar:// device                                                  */
 /* ------------------------------------------------------------------ */

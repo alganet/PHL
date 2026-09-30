@@ -7352,6 +7352,7 @@ PH7_PRIVATE void PH7_VmAddResponseHeader(ph7_vm *pVm,const char *zName,const cha
 PH7_PRIVATE sxi32 PH7_VmInstallPhar(ph7_vm *pVm);
 PH7_PRIVATE int PH7_PharStreamIs(const ph7_io_stream *pStream);
 PH7_PRIVATE int PH7_PharUrlStat(ph7_vm *pVm,const char *zPath,ph7_int64 *aVal);
+PH7_PRIVATE int PH7_PharCanonicalUrl(ph7_vm *pVm,const char *zPath,int nPath,SyBlob *pOut);
 /* What PH7_PharPathOp() was asked to do. Mirrors vfs.c's VFS_POP_* codes, which
  * are file-local. */
 #define PHAR_PATHOP_UNLINK 0
