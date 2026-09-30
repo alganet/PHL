@@ -6536,50 +6536,113 @@ case PH7_OP_CALL: {
 			PH7_MemObjStore(&sResult,pTos);
 			PH7_MemObjRelease(&sResult);
 		}else if( pTos->iFlags & MEMOBJ_OBJ ){
+			/* An __invoke object is a METHOD CALL wearing one slot: `$o(...)` is
+			 * `$o->__invoke(...)` with the name resolved by the ENGINE rather than
+			 * spelled by the source. So give it the layout OP_MEMBER leaves for a
+			 * spelled method call -- [args..., receiver, method vm-name] -- and let
+			 * the one dispatch below run it, on the stage-2 trampoline like every
+			 * other PHP->PHP call.
+			 *
+			 * It used to be handed to VmCallObjectInvoke, which builds a synthetic
+			 * OP_CALL and a fresh VmByteCodeExec: one real C activation per call,
+			 * and two user-visible consequences.
+			 *
+			 *   - Recursion through an invokable object died at nMaxNativeDepth
+			 *     (256) where php runs to memory: `$i()` calling `($this)()` hit
+			 *     "Maximum native nesting depth reached" at 256 and php reached
+			 *     20000. A plain closure, a method and a static call were all
+			 *     already iterative; only this shape was not.
+			 *   - A Fiber::suspend() reached through `$o(...)` was refused with
+			 *     "Cannot suspend across an internal call boundary", because the
+			 *     fiber body's nBodyExecDepth and the suspend's nVmExecDepth no
+			 *     longer matched. The trampoline PARKS a nested PHP call
+			 *     (pParkedSegment); a native re-entry it cannot. That is the whole
+			 *     of what stopped phpstan's FiberNodeScopeResolver, whose fiber body
+			 *     calls a ClassStatementsGatherer OBJECT and suspends inside it.
+			 *
+			 * call_user_func(), array_map() and the rest of the C-callback doors
+			 * still reach __invoke through VmCallObjectInvoke, and those ARE the
+			 * internal boundaries php's fibers cross and PHL's do not (PLAN.md,
+			 * "Generators / fibers"). This changes only the dispatch a call site
+			 * SPELLS as `$o(...)`. */
 			ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
-			ph7_value sResult;
-			sxi32 rcInv;
-			/* __invoke object callable: the object slot isn't popped, so pArg is
-			 * already this call's arg base — build the map + consume the runs. */
-			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
-				nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
-			/* Materialize the deferred arguments against this object's __invoke, the
-			 * array-callable path's rule one shape over. */
-			{
-				sxi32 rcDA = VmResolveIndirectArgs(&(*pVm),pTos,pArg,pTos,pEffCallMap);
-				PH7_DISPATCH_ENFORCE_RC(rcDA)
-			}
-			SySetReset(&aArg);
-			while( pArg < pTos ){
-				SySetPut(&aArg,(const void *)&pArg);
-				pArg++;
-			}
-			PH7_MemObjInit(pVm,&sResult);
-			pVm->bDiscardCallback = bResultDropped;   /* see the array-callable site */
-			rcInv = VmCallObjectInvoke(&(*pVm),pThis,
-				(int)SySetUsed(&aArg),
-				(ph7_value **)SySetBasePtr(&aArg),
-				&sResult,
-				pEffCallMap);
-			pVm->bDiscardCallback = 0;
-			SySetReset(&aArg);
-			/* Pin pThis BEFORE popping operands: VmPopOperand releases the callable
-			 * slot itself (it pops top-down and the callable IS pTos), which for a
-			 * temporary like (new Plain())(...) holds the only reference — popping it
-			 * would free pThis before VmRaiseNotCallable reads its class name below.
-			 * Only the not-callable branch dereferences pThis afterwards, so pin just
-			 * for that case; the matching PH7_ClassInstanceUnref drops it (destroying
-			 * the temporary). The other branches let the pop free the temp as before. */
-			if( rcInv == SXERR_INVALID ){
-				pThis->iRef++;
-			}
-			if( nCallArgs > 0 ){
-				VmPopOperand(&pTos,nCallArgs);
-			}
-			if( rcInv == SXERR_INVALID ){
-				/* No __invoke: raise a catchable Error and route through try/catch.
-				 * sResult was already released by VmCallObjectInvoke. */
+			ph7_class_method *pInvMeth = pThis
+				? PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1) : 0;
+			if( pInvMeth ){
+				/* The compiler sized this body for a ONE-slot callee here, so the
+				 * name slot is one more than it budgeted. Ask for it properly rather
+				 * than spend VM_STACK_GUARD's slack: the growth is a no-op whenever
+				 * the slack is there (which is every ordinary call), and the slot is
+				 * released a few lines below by the method branch's own pop, so at
+				 * most one is ever outstanding. */
+				ph7_value *pInvOldBase = pStack;
+				if( !VmGrowOperandStack(pVm,(sxu32)(pTos - pStack) + 2,
+				                        &pStack,&pTos,&sState,
+				                        pCallTop,ppBaseOwner,pnBaseCap) ){
+					PH7_VmMemoryError(&(*pVm));
+					goto Abort;
+				}
+				if( pStack != pInvOldBase ){
+					/* The buffer moved: the watermark is a pointer INTO it. Unlike
+					 * OP_SPREAD (which re-anchors at the whole capacity), keep it tight —
+					 * nLiveTos is what the recycle sweep walks, and this runs on every
+					 * `$o(...)`. */
+					pHigh = pStack + (pHigh - pInvOldBase);
+				}
+				pTos++;
+				if( pTos > pHigh ){
+					/* The name slot is above this activation's high-water mark until the
+					 * next fetch point raises it, and an exit between here and the pop
+					 * below (an unresolvable callee, the recursion cap) would leave its
+					 * blob unswept. */
+					pHigh = pTos;
+				}
 				PH7_MemObjRelease(pTos);
+				SyBlobAppend(&pTos->sBlob,(const void *)SyStringData(&pInvMeth->sVmName),
+					SyStringLength(&pInvMeth->sVmName));
+				MemObjSetType(pTos,MEMOBJ_STRING);
+				/* The engine's own function-table key, not a name the program spelled --
+				 * the mark VmCallClassMethodLsb writes on its synthetic callee slot, and
+				 * what lets PH7_VmGetUserFunction answer for it. */
+				pTos->iFlags |= MEMOBJ_AUX_ENGINEFN;
+				pTos->nIdx = SXU32_HIGH;
+				pArg = &pTos[-1-nCallArgs];
+				bEngineCallee = 1;
+				/* php dispatches a non-public __invoke through `$o()` from any scope
+				 * (it only WARNS at the declaration) -- the second half of what
+				 * VmCallObjectInvoke stated, with pVm->bMagicDispatch. */
+				bMagicDispatch = 1;
+				goto CalleeByName;
+			}
+			{
+				/* No __invoke: php's catchable Error, named after the class.
+				 * Building the effective map is what CONSUMES this call's captured
+				 * unpack runs, which a refused callee owes just as a dispatched one
+				 * does — the map itself is never read from here. */
+				pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+					nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+				/* Pin pThis BEFORE popping operands: VmPopOperand releases the callable
+				 * slot itself (it pops top-down and the callable IS pTos), which for a
+				 * temporary like (new Plain())(...) holds the only reference — popping it
+				 * would free pThis before VmRaiseNotCallable reads its class name. */
+				if( pThis ){
+					pThis->iRef++;
+				}
+				if( nCallArgs > 0 ){
+					VmPopOperand(&pTos,nCallArgs);
+				}
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				if( pThis == 0 ){
+					/* An object slot with no instance behind it: nothing to name. */
+					sxi32 rcNi = VmThrowFromVm(&(*pVm),"Error",
+						"Value of type object is not callable",
+						sizeof("Value of type object is not callable")-1);
+					if( rcNi == SXERR_ABORT ){ goto Abort; }
+					rc = rcNi;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
+				}
 				rc = VmRaiseNotCallable(&(*pVm),pThis);
 				PH7_ClassInstanceUnref(pThis);
 				if( rc == SXERR_ABORT ){
@@ -6598,30 +6661,6 @@ case PH7_OP_CALL: {
 				}
 				goto Exception;
 			}
-			if( rcInv == PH7_ABORT ){
-				PH7_MemObjRelease(&sResult);
-				goto Abort;
-			}
-			if( rcInv == PH7_EXCEPTION ){
-				/* __invoke raised. The catch body (if any) already ran in-place
-				 * inside VmThrowException. If THIS frame's own try caught it,
-				 * resume after the try/catch; otherwise propagate so the
-				 * exception unwinds through intermediate frames with no handler. */
-				sxi32 iResumePc;
-				PH7_MemObjRelease(&sResult);
-				if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
-					PH7_MemObjRelease(pTos);
-					/* Drain the abandoned outer-expression operands (`1 + $inv()`)
-					 * to the try's base — one leaked slot per caught throw
-					 * otherwise (ASan heap-buffer-overflow in a catch loop). */
-					PH7_RESUME_DRAIN()
-					pc = iResumePc;
-					break;
-				}
-				goto Exception;
-			}
-			PH7_MemObjStore(&sResult,pTos);
-			PH7_MemObjRelease(&sResult);
 		}else{
 			/* php: calling a non-callable is a catchable Error naming the type
 			 * ("Value of type int is not callable"), or -- for an array -- the shape it
@@ -6658,6 +6697,11 @@ case PH7_OP_CALL: {
 		}
 		break;
 	}
+	/* The callee is a NAME in pTos, with its arguments (and, for a method, its
+	 * receiver) below it. Reached by falling through from the callable decode
+	 * above, and jumped to by the __invoke-object branch, which builds exactly
+	 * the two-slot method shape and lands here. */
+CalleeByName:
 	SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 	/* php: a leading '\\' on a callable string name ("\\trim", "\\Foo\\bar") just
 	 * anchors it to the global namespace — strip it before resolving so a
