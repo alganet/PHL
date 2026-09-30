@@ -2425,6 +2425,12 @@ struct ph7_class_attr
                                             * is "slots a store must be filtered through", and the
                                             * two reasons compose (a native property may also be
                                             * typed). */
+#define PH7_CLASS_ATTR_REFSRCPIN    0x8000000 /* STATIC property that is the SOURCE of a reference:
+                                               * it holds one counted pin on its own slot, the
+                                               * instance-side VM_CLASS_ATTR_REFSRCPIN's twin. A
+                                               * class static lives as long as the VM, so the pin
+                                               * is never given back -- which is the point: it
+                                               * stops the other end's unpin from freeing it. */
 #define PH7_CLASS_ATTR_REFBOUND     0x80000 /* STATIC property currently bound to another slot by `=&`
                                              * (`C::$s =& $x`). The instance side records this per
                                              * INSTANCE (VM_CLASS_ATTR_REFBOUND); a static has one slot
@@ -3087,6 +3093,14 @@ struct VmClassAttr
                                     * slot is SHARED with (and pinned by) the source variable, so
                                     * PH7_VmReleaseInstanceAttr must NOT release/recycle it — the
                                     * surviving alias would dangle. Mirrors the use(&$x) pin. */
+#define VM_CLASS_ATTR_REFSRCPIN 0x20 /* Property is the SOURCE of a reference (`$r =& $o->p`,
+                                     * `$q->p =& $o->p`, `foreach ($o->p as &$v)`): php makes both
+                                     * ends references, and the other end pins the slot. A property
+                                     * is not a holder the reference table can NAME, so the slot's
+                                     * only recorded holder was that pin -- and when the other end
+                                     * died, the unpin freed the value out from under THIS property,
+                                     * which then read NULL. The bit says this property holds one
+                                     * counted pin of its own, given back when it is released. */
  /* Forward reference */
 typedef struct VmSlot VmSlot;
 struct VmSlot

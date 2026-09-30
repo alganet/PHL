@@ -2738,11 +2738,16 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
  */
 PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm, VmClassAttr *pVmAttr)
 {
-	if( pVmAttr->iState & VM_CLASS_ATTR_REFBOUND ){
-		/* Reference-bound property (`$o->p =& $x`): its value slot is SHARED, so it must
-		 * not be released here — but the property WAS one of its holders, so give the pin
-		 * back. The slot (and its value, which used to stay alive for the rest of the
-		 * script) goes if the property was the last thing holding it. */
+	if( pVmAttr->iState & (VM_CLASS_ATTR_REFBOUND|VM_CLASS_ATTR_REFSRCPIN) ){
+		/* A property at either end of a reference (`$o->p =& $x` bound it, `$r =& $o->p`
+		 * made it a source) holds its value slot with a COUNTED PIN and shares it, so it
+		 * must not be released here — but the property WAS one of its holders, so give the
+		 * pin back. The slot (and its value, which used to stay alive for the rest of the
+		 * script) goes if the property was the last thing holding it. A SOURCE still owns
+		 * its declaration, so its typed-slot enforcement entry goes with it. */
+		if( (pVmAttr->iState & VM_CLASS_ATTR_REFBOUND) == 0 ){
+			PH7_VmStoreFilterDrop(pVm,pVmAttr->pAttr,pVmAttr->nIdx);
+		}
 		VmUnpinMemObjSlot(pVm,pVmAttr->nIdx);
 	}else if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 		/* Drop any typed-property enforcement slot registered for this memobj, before the memobj

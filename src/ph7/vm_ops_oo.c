@@ -2299,6 +2299,19 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								if( pThis->iRef > 1 ){
 									/* Load attribute index */
 									pTos->nIdx = pObjAttr->nIdx;
+									if( VmMemberFetchIsRefSource(pInstr)
+									 && (pObjAttr->iState & (VM_CLASS_ATTR_REFBOUND|VM_CLASS_ATTR_REFSRCPIN)) == 0 ){
+										/* This fetch is about to become a reference, so php makes
+										 * THIS property a reference too. The table cannot name a
+										 * property as a holder, so without a pin of its own the
+										 * slot's only recorded holder is the other end's -- and
+										 * `$q->p =& $o->p` followed by $q's death freed the value
+										 * and left $o->p reading NULL. One counted pin, given back
+										 * when the property is released; the bit makes it
+										 * idempotent, so a source fetched in a loop pins once. */
+										pObjAttr->iState |= VM_CLASS_ATTR_REFSRCPIN;
+										VmPinMemObjSlotCounted(&(*pVm),pObjAttr->nIdx);
+									}
 								}
 							}
 							if( (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET)
@@ -3319,6 +3332,15 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 										if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){
 											/* Load index number */
 											pTos->nIdx = pAttr->nIdx;
+											if( VmMemberFetchIsRefSource(pInstr)
+											 && (pAttr->iFlags & (PH7_CLASS_ATTR_REFBOUND|PH7_CLASS_ATTR_REFSRCPIN)) == 0 ){
+												/* The instance path's rule, for a class static:
+												 * one counted pin so the other end's unpin cannot
+												 * free the static's value. `$o->p =& C::$s;` then
+												 * dropping $o read C::$s as NULL. */
+												pAttr->iFlags |= PH7_CLASS_ATTR_REFSRCPIN;
+												VmPinMemObjSlotCounted(&(*pVm),pAttr->nIdx);
+											}
 										}
 									}
 								}else if( bConstForm || !VmMemberCtxIsLookup(pInstr->iP2) ){
