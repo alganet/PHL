@@ -342,6 +342,9 @@ static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,
 	}
 	/* Perform the insertion */
 	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));
+	if( iKey > pMap->iMaxIntKey ){
+		pMap->iMaxIntKey = iKey; /* the auto-index scan's only reason to run */
+	}
 	/* Install in the reference table */
 	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);
 	/* All done */
@@ -621,24 +624,59 @@ result:
  * past it is signed overflow); the occupied-slot case errors at append time
  * via HashmapAppendIndexBusy.
  */
+/*
+ * Walk the auto-index past any slot that is already taken. Only a key ABOVE the
+ * one that moved the index can be in the way, so the whole walk is skipped
+ * unless the map has held one (iMaxIntKey): the scan's first step is a hash
+ * lookup that MISSES, and paying it on every int-keyed insert made `$a[$i]=$i`
+ * six times slower than `$a[]=$i` over the same keys.
+ */
+static void HashmapSkipReservedIndex(ph7_hashmap *pMap)
+{
+	if( pMap->iNextIdx > pMap->iMaxIntKey ){
+		return;
+	}
+	while( pMap->iNextIdx < SXI64_HIGH
+	    && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
+		pMap->iNextIdx++;
+	}
+}
 static void HashmapAdvanceAutoIndex(ph7_hashmap *pMap,sxi64 iKey)
 {
 	if( !pMap->bIntKeySeen ){
 		/* php 8.3: the first integer key sets the auto-index even if it is negative */
 		pMap->bIntKeySeen = 1;
 		pMap->iNextIdx = iKey < SXI64_HIGH ? iKey + 1 : SXI64_HIGH;
-		while( pMap->iNextIdx < SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
-			pMap->iNextIdx++;
-		}
+		HashmapSkipReservedIndex(&(*pMap));
 		return;
 	}
 	if( iKey >= pMap->iNextIdx ){
 		pMap->iNextIdx = iKey < SXI64_HIGH ? iKey + 1 : SXI64_HIGH;
 		/* Make sure the automatic index is not reserved */
-		while( pMap->iNextIdx < SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
-			pMap->iNextIdx++;
-		}
+		HashmapSkipReservedIndex(&(*pMap));
 	}
+}
+/*
+ * Insert a value under an int key it KEEPS, and move the auto-index on.
+ *
+ * Every builtin that rebuilds an array PRESERVING keys lands here — array_chunk,
+ * array_slice, array_filter, array_reverse, array_unique, the whole diff and
+ * intersect family, array_pad, and the `+` union — and none of them moved the
+ * index, so the rebuilt array's next `$a[] = v` went back to 0 even though an
+ * integer key was already in it. php's nNextFreeElement is one past the largest
+ * integer key COPIED, whichever call built the array; twig's `batch` filter pads
+ * a chunk by appending to it and wrote a `0` key into a row whose last key was
+ * 123. The advance is the same one PH7_HashmapInsert's own int-key path makes,
+ * so putting it beside the insert is what stops the two drifting again.
+ */
+static sxi32 HashmapKeepIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,
+	sxu32 nRefIdx,int isForeign)
+{
+	sxi32 rc = HashmapInsertIntKey(&(*pMap),iKey,pValue,nRefIdx,isForeign);
+	if( rc == SXRET_OK ){
+		HashmapAdvanceAutoIndex(&(*pMap),iKey);
+	}
+	return rc;
 }
 /*
  * TRUE when an append (`$a[] = v`) cannot proceed because the saturated
@@ -740,10 +778,7 @@ IntKey:
 			return PH7_VmInstallGlobalVar(pMap->pVm,zKey,nKey,pVal,SXU32_HIGH);
 		}
 		/* Perform a 64-bit-int-key insertion */
-		rc = HashmapInsertIntKey(&(*pMap),pKey->x.iVal,&(*pVal),0,FALSE);
-		if( rc == SXRET_OK ){
-			HashmapAdvanceAutoIndex(&(*pMap),pKey->x.iVal);
-		}
+		rc = HashmapKeepIntKey(&(*pMap),pKey->x.iVal,&(*pVal),0,FALSE);
 	}else{
 		if( pMap == pMap->pVm->pGlobal ){
 			/* php's catchable Error: Cannot append to $GLOBALS */
@@ -838,10 +873,7 @@ IntKey:
 			return SXRET_OK;
 		}
 		/* Perform a 64-bit-int-key insertion */
-		rc = HashmapInsertIntKey(&(*pMap),pKey->x.iVal,0,nRefIdx,TRUE);
-		if( rc == SXRET_OK ){
-			HashmapAdvanceAutoIndex(&(*pMap),pKey->x.iVal);
-		}
+		rc = HashmapKeepIntKey(&(*pMap),pKey->x.iVal,0,nRefIdx,TRUE);
 	}else{
 		if( HashmapAppendIndexBusy(&(*pMap),&rc) ){
 			return rc; /* PH7_EXCEPTION/PH7_ABORT: php's catchable Error was thrown */
@@ -930,7 +962,7 @@ PH7_PRIVATE sxi32 HashmapInsertNode(ph7_hashmap *pMap,ph7_hashmap_node *pNode,in
 			/* Assign an automatic index */
 			rc = HashmapInsert(&(*pMap),0,pObj);
 		}else{
-			rc = HashmapInsertIntKey(&(*pMap),pNode->xKey.iKey,pObj,0,FALSE);
+			rc = HashmapKeepIntKey(&(*pMap),pNode->xKey.iKey,pObj,0,FALSE);
 		}
 	}else{
 		/* Blob key */
@@ -995,6 +1027,9 @@ PH7_PRIVATE void HashmapRehashIntNode(ph7_hashmap_node *pEntry)
 	/* Compute the new hash */
 	pEntry->nHash = pMap->xIntHash(pMap->iNextIdx);
 	pEntry->xKey.iKey = pMap->iNextIdx;
+	if( pMap->iNextIdx > pMap->iMaxIntKey ){
+		pMap->iMaxIntKey = pMap->iNextIdx;
+	}
 	nBucket = pEntry->nHash & (pMap->nSize - 1);
 	/* Link to the new bucket */
 	pEntry->pNextCollide = pMap->apBucket[nBucket];
@@ -1378,7 +1413,7 @@ static sxi32 HashmapDuplicateNode(
 				rc = HashmapInsertByRef(pDest,&sKey,nRefIdx);
 				PH7_MemObjRelease(&sKey);
 			}else{ /* Dup: preserve the int key */
-				rc = HashmapInsertIntKey(pDest,pEntry->xKey.iKey,0,nRefIdx,TRUE);
+				rc = HashmapKeepIntKey(pDest,pEntry->xKey.iKey,0,nRefIdx,TRUE);
 			}
 		}
 		return rc;
@@ -1400,7 +1435,7 @@ static sxi32 HashmapDuplicateNode(
 			rc = PH7_HashmapInsert(pDest,&sKey,&sSafeVal);
 			PH7_MemObjRelease(&sKey);
 		}else{ /* Dup */
-			rc = HashmapInsertIntKey(pDest,pEntry->xKey.iKey,&sSafeVal,0,FALSE);
+			rc = HashmapKeepIntKey(pDest,pEntry->xKey.iKey,&sSafeVal,0,FALSE);
 		}
 	}
 	return rc;
@@ -1568,7 +1603,7 @@ PH7_PRIVATE sxi32 PH7_HashmapDupMaterialized(ph7_hashmap *pSrc,ph7_hashmap *pDes
 				rc = HashmapInsertBlobKey(&(*pDest),SyBlobData(&pEntry->xKey.sKey),
 					SyBlobLength(&pEntry->xKey.sKey),pVal,0,FALSE);
 			}else{
-				rc = HashmapInsertIntKey(&(*pDest),pEntry->xKey.iKey,pVal,0,FALSE);
+				rc = HashmapKeepIntKey(&(*pDest),pEntry->xKey.iKey,pVal,0,FALSE);
 			}
 			if( rc != SXRET_OK ){
 				return rc;
@@ -1778,7 +1813,7 @@ PH7_PRIVATE sxi32 PH7_HashmapUnion(ph7_hashmap *pLeft,ph7_hashmap *pRight)
 				if( pObj ){
 					ph7_value sSafeVal = *pObj;
 					/* Perform the insertion */
-					rc = HashmapInsertIntKey(&(*pLeft),pEntry->xKey.iKey,&sSafeVal,0,FALSE);
+					rc = HashmapKeepIntKey(&(*pLeft),pEntry->xKey.iKey,&sSafeVal,0,FALSE);
 					if( rc != SXRET_OK ){
 						return rc;
 					}

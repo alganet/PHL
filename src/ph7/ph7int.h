@@ -567,6 +567,16 @@ struct ph7_hashmap
 	                               * ($a[-4]=x; $a[]=y stores y at -3), where it used to
 	                               * restart at 0. Only the FIRST key may move the index
 	                               * downwards, hence the flag. */
+	sxi64 iMaxIntKey;             /* Upper bound on the integer keys this map has held. Read
+	                               * only to decide whether the auto-index advance has to
+	                               * SCAN for a free slot: it can find one occupied only when
+	                               * a key ABOVE the one just inserted exists, which is
+	                               * exactly `iNextIdx <= iMaxIntKey`. Without the test every
+	                               * int-keyed store paid a failing hash lookup -- `$a[$i]=$i`
+	                               * over 200k keys ran 6x slower than `$a[]=$i`, and the
+	                               * key-preserving array builtins inherited it. A stale-HIGH
+	                               * bound (a key that was since removed, a renumbering) only
+	                               * costs an extra scan, so it is never lowered. */
 	sxi32 iRef;                   /* Reference count. INVARIANT: the number of
 								   * SHARERS for copy-on-write purposes is
 								   * iRef minus the by-REFERENCE foreach steps
