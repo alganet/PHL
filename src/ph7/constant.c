@@ -3060,6 +3060,26 @@ PH7_FILTER_INT_CONST(INPUT_COOKIE,2)
 PH7_FILTER_INT_CONST(INPUT_ENV,4)
 PH7_FILTER_INT_CONST(INPUT_SERVER,5)
 /*
+ * ext/fileinfo's flags. libmagic's MAGIC_* values, which php re-exports under
+ * its own names -- a script stores one and hands it back, so the NUMBERS are
+ * the contract (see builtin_fileinfo.c).
+ */
+#define PH7_FILEINFO_INT_CONST(Name,Val) \
+	static void PH7_##Name##_Const(ph7_value *pVal,void *pUnused){ \
+		SXUNUSED(pUnused); ph7_value_int(pVal,Val); \
+	}
+PH7_FILEINFO_INT_CONST(FILEINFO_NONE,0)
+PH7_FILEINFO_INT_CONST(FILEINFO_SYMLINK,2)
+PH7_FILEINFO_INT_CONST(FILEINFO_MIME,1040)
+PH7_FILEINFO_INT_CONST(FILEINFO_MIME_TYPE,16)
+PH7_FILEINFO_INT_CONST(FILEINFO_MIME_ENCODING,1024)
+PH7_FILEINFO_INT_CONST(FILEINFO_DEVICES,8)
+PH7_FILEINFO_INT_CONST(FILEINFO_CONTINUE,32)
+PH7_FILEINFO_INT_CONST(FILEINFO_PRESERVE_ATIME,128)
+PH7_FILEINFO_INT_CONST(FILEINFO_RAW,256)
+PH7_FILEINFO_INT_CONST(FILEINFO_APPLE,2048)
+PH7_FILEINFO_INT_CONST(FILEINFO_EXTENSION,16777216)
+/*
  * Table of built-in constants.
  */
 static const ph7_builtin_constant aBuiltIn[] = {
@@ -3655,6 +3675,17 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	 * them as constants that quietly expanded to the class name / NULL, so a typo'd bare
 	 * word silently produced a value. The `self::`/`parent::`/`static::` forms are handled
 	 * by the `::` compile path and do not go through the constant table. */
+	{"FILEINFO_NONE",          PH7_FILEINFO_NONE_Const },
+	{"FILEINFO_SYMLINK",       PH7_FILEINFO_SYMLINK_Const },
+	{"FILEINFO_MIME",          PH7_FILEINFO_MIME_Const },
+	{"FILEINFO_MIME_TYPE",     PH7_FILEINFO_MIME_TYPE_Const },
+	{"FILEINFO_MIME_ENCODING", PH7_FILEINFO_MIME_ENCODING_Const },
+	{"FILEINFO_DEVICES",       PH7_FILEINFO_DEVICES_Const },
+	{"FILEINFO_CONTINUE",      PH7_FILEINFO_CONTINUE_Const },
+	{"FILEINFO_PRESERVE_ATIME",PH7_FILEINFO_PRESERVE_ATIME_Const },
+	{"FILEINFO_RAW",           PH7_FILEINFO_RAW_Const },
+	{"FILEINFO_APPLE",         PH7_FILEINFO_APPLE_Const },
+	{"FILEINFO_EXTENSION",     PH7_FILEINFO_EXTENSION_Const },
 	{"__CLASS__",            PH7_class_magic_Const  }
 };
 /*

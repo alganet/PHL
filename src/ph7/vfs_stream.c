@@ -6031,6 +6031,44 @@ static uwrap_slot * UwrapSlotForPath(ph7_vm *pVm,const char *zPath)
 	return 0;
 }
 /*
+ * php's php_stream_cast() over a USERLAND stream, which is what a caller that
+ * wants a real descriptor for an open stream does -- ext/fileinfo asks for one
+ * after it has read the bytes, and the answer is visible either way: a wrapper
+ * that declares stream_cast() is CALLED (with STREAM_CAST_AS_STREAM, and
+ * whatever it answers is discarded here), and one that does not gets php's
+ * `%s::stream_cast is not implemented!` warning. Silent for every other kind of
+ * stream, which all have a descriptor of their own.
+ */
+PH7_PRIVATE void PH7_StreamUserCast(ph7_context *pCtx,const ph7_io_stream *pStream,void *pHandle)
+{
+	uwrap_handle *pH;
+	ph7_class_method *pMeth;
+	if( pCtx == 0 || pHandle == 0 || !IoPrivateIsUwrap(pStream) ){
+		return;
+	}
+	pH = (uwrap_handle *)pHandle;
+	if( pH->pObj == 0 ){
+		return;
+	}
+	pMeth = PH7_ClassExtractMethod(pH->pObj->pClass,"stream_cast",sizeof("stream_cast")-1);
+	if( pMeth == 0 ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"%z::stream_cast is not implemented!",&pH->pObj->pClass->sName);
+		return;
+	}
+	{
+		ph7_value sAs,sRet;
+		ph7_value *apArg[1];
+		PH7_MemObjInit(pH->pVm,&sAs);
+		PH7_MemObjInit(pH->pVm,&sRet);
+		ph7_value_int(&sAs,PH7_STREAM_CAST_AS_STREAM);
+		apArg[0] = &sAs;
+		PH7_VmCallClassMethod(pH->pVm,pH->pObj,pMeth,&sRet,1,apArg);
+		PH7_MemObjRelease(&sAs);
+		PH7_MemObjRelease(&sRet);
+	}
+}
+/*
  * php's WRITE door for a userland wrapper: unlink(), rename(), mkdir(), rmdir() and
  * stream_metadata() -- what touch(), chmod(), chown() and chgrp() all become.
  *

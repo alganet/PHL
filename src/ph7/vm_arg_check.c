@@ -778,6 +778,13 @@ static const struct VmBuiltinSig {
 	{ "gc_mem_caches", "", "int" },
 	{ "gc_status", "", "array" },
 	{ "get_called_class", "", "string" },
+	/* ext/fileinfo */
+	{ "finfo_open", "int $flags = FILEINFO_NONE, ?string $magic_database = null", "finfo|false" },
+	{ "finfo_close", "finfo $finfo", "true" },
+	{ "finfo_set_flags", "finfo $finfo, int $flags", "true" },
+	{ "finfo_file", "finfo $finfo, string $filename, int $flags = FILEINFO_NONE, $context = null", "string|false" },
+	{ "finfo_buffer", "finfo $finfo, string $string, int $flags = FILEINFO_NONE, $context = null", "string|false" },
+	{ "mime_content_type", "$filename", "string|false" },
 	/* ext/gettext */
 	{ "_", "string $message", "string" },
 	{ "bind_textdomain_codeset", "string $domain, ?string $codeset = NULL", "string|false" },
@@ -1735,6 +1742,14 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "posix_mkfifo",     12, 1u<<0 },
 		{ "posix_mknod",      11, 1u<<0 },
 		{ "posix_pathconf",   14, 1u<<0 },
+		/* ext/fileinfo: the name a type is asked about, and the database the
+		 * two openers name, are php Z_PARAM_PATH arguments -- so a NUL in one
+		 * is the catchable ValueError rather than a truncated read. */
+		{ "finfo_file",            10, 1u<<1 },
+		{ "finfo_open",            10, 1u<<1 },
+		{ "finfo::file",           11, 1u<<0 },
+		{ "finfo::__construct",    18, 1u<<1 },
+		{ "mime_content_type",     17, 1u<<0 },
 		/* Path-shaped settings and the pattern matcher */
 		{ "fnmatch",           7, (1u<<0)|(1u<<1) },
 		{ "set_include_path", 16, 1u<<0 },
@@ -3081,6 +3096,7 @@ static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
  */
 static const ph7_deprecated_name aDeprecatedFunc[] = {
 	{ "curl_close",        "8.5, as it has no effect since PHP 8.0" },
+	{ "finfo_close",       "8.5, as finfo objects are freed automatically" },
 	{ "curl_share_close",  "8.5, as it has no effect since PHP 8.0" },
 	{ "DateInterval::__wakeup",
 	  "8.5, this method is obsolete, as serialization hooks are provided by "

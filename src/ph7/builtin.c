@@ -1091,6 +1091,13 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "dngettext",               PH7_builtin_dngettext               },
 	{ "dcngettext",              PH7_builtin_dcngettext              },
 	{ "bind_textdomain_codeset", PH7_builtin_bind_textdomain_codeset },
+	     /* ext/fileinfo: php's own order for the extension */
+	{ "finfo_open",              PH7_builtin_finfo_open              },
+	{ "finfo_close",             PH7_builtin_finfo_close             },
+	{ "finfo_set_flags",         PH7_builtin_finfo_set_flags         },
+	{ "finfo_file",              PH7_builtin_finfo_file              },
+	{ "finfo_buffer",            PH7_builtin_finfo_buffer            },
+	{ "mime_content_type",       PH7_builtin_mime_content_type       },
 #ifndef __WINNT__
 	     /* ext/posix, in php's own order. php builds none of this on Windows,
 	      * so `function_exists('posix_kill')` is FALSE there -- which is what a

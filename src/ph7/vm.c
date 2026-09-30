@@ -2596,6 +2596,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* php's ext/random object surface. It rides the builtin guard for the same
 	 * reason bcmath does: the tiny build ships no consumer for it. */
 	PH7_VmInstallRandom(&(*pVm));
+	/* php's ext/fileinfo: the finfo class. It rides the builtin guard with the
+	 * two above -- the tiny build ships none of its six functions. */
+	PH7_VmInstallFileinfo(&(*pVm));
 #endif
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));

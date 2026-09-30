@@ -30,23 +30,24 @@
 #define PH7_EXT_REFLECTION   11
 #define PH7_EXT_SESSION      12
 #define PH7_EXT_MBSTRING     13
-#define PH7_EXT_GETTEXT      14
-#define PH7_EXT_ICONV        15
-#define PH7_EXT_RANDOM       16
-#define PH7_EXT_TOKENIZER    17
-#define PH7_EXT_LIBXML       18
-#define PH7_EXT_XML          19
-#define PH7_EXT_DOM          20
-#define PH7_EXT_XMLWRITER    21
-#define PH7_EXT_PDO          22
-#define PH7_EXT_PDO_SQLITE   23
-#define PH7_EXT_CURL         24
-#define PH7_EXT_POSIX        25
-#define PH7_EXT_SQLITE3      26
+#define PH7_EXT_FILEINFO     14
+#define PH7_EXT_GETTEXT      15
+#define PH7_EXT_ICONV        16
+#define PH7_EXT_RANDOM       17
+#define PH7_EXT_TOKENIZER    18
+#define PH7_EXT_LIBXML       19
+#define PH7_EXT_XML          20
+#define PH7_EXT_DOM          21
+#define PH7_EXT_XMLWRITER    22
+#define PH7_EXT_PDO          23
+#define PH7_EXT_PDO_SQLITE   24
+#define PH7_EXT_CURL         25
+#define PH7_EXT_POSIX        26
+#define PH7_EXT_SQLITE3      27
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
-	"filter", "hash", "Reflection", "session", "mbstring", "gettext", "iconv", "random",
+	"filter", "hash", "Reflection", "session", "mbstring", "fileinfo", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
 	"posix", "sqlite3",
 };
@@ -406,6 +407,10 @@ static const VmExtName aExtFunc[] = {
 	{"mb_rtrim",PH7_EXT_MBSTRING}, {"mb_detect_encoding",PH7_EXT_MBSTRING},
 	{"mb_check_encoding",PH7_EXT_MBSTRING}, {"mb_scrub",PH7_EXT_MBSTRING},
 	{"mb_ord",PH7_EXT_MBSTRING}, {"mb_chr",PH7_EXT_MBSTRING}, {"mb_str_pad",PH7_EXT_MBSTRING},
+	/* fileinfo -- php's own order for the extension */
+	{"finfo_open",PH7_EXT_FILEINFO}, {"finfo_close",PH7_EXT_FILEINFO},
+	{"finfo_set_flags",PH7_EXT_FILEINFO}, {"finfo_file",PH7_EXT_FILEINFO},
+	{"finfo_buffer",PH7_EXT_FILEINFO}, {"mime_content_type",PH7_EXT_FILEINFO},
 	/* gettext */
 	{"textdomain",PH7_EXT_GETTEXT}, {"gettext",PH7_EXT_GETTEXT}, {"_",PH7_EXT_GETTEXT},
 	{"dgettext",PH7_EXT_GETTEXT}, {"dcgettext",PH7_EXT_GETTEXT},
@@ -600,6 +605,8 @@ static const VmExtName aExtClass[] = {
 	{"SessionHandlerInterface",PH7_EXT_SESSION}, {"SessionIdInterface",PH7_EXT_SESSION},
 	{"SessionUpdateTimestampHandlerInterface",PH7_EXT_SESSION},
 	{"SessionHandler",PH7_EXT_SESSION},
+	/* fileinfo */
+	{"finfo",PH7_EXT_FILEINFO},
 	/* random */
 	{"Random\\Engine",PH7_EXT_RANDOM}, {"Random\\CryptoSafeEngine",PH7_EXT_RANDOM},
 	{"Random\\RandomError",PH7_EXT_RANDOM}, {"Random\\BrokenRandomEngineError",PH7_EXT_RANDOM},
@@ -849,6 +856,13 @@ static const VmExtName aExtConst[] = {
 	/* mbstring */
 	{"MB_CASE_UPPER",PH7_EXT_MBSTRING}, {"MB_CASE_LOWER",PH7_EXT_MBSTRING},
 	{"MB_CASE_TITLE",PH7_EXT_MBSTRING},
+	/* fileinfo -- php's own order for the extension */
+	{"FILEINFO_NONE",PH7_EXT_FILEINFO}, {"FILEINFO_SYMLINK",PH7_EXT_FILEINFO},
+	{"FILEINFO_MIME",PH7_EXT_FILEINFO}, {"FILEINFO_MIME_TYPE",PH7_EXT_FILEINFO},
+	{"FILEINFO_MIME_ENCODING",PH7_EXT_FILEINFO}, {"FILEINFO_DEVICES",PH7_EXT_FILEINFO},
+	{"FILEINFO_CONTINUE",PH7_EXT_FILEINFO}, {"FILEINFO_PRESERVE_ATIME",PH7_EXT_FILEINFO},
+	{"FILEINFO_RAW",PH7_EXT_FILEINFO}, {"FILEINFO_APPLE",PH7_EXT_FILEINFO},
+	{"FILEINFO_EXTENSION",PH7_EXT_FILEINFO},
 	/* iconv */
 	{"ICONV_IMPL",PH7_EXT_ICONV}, {"ICONV_VERSION",PH7_EXT_ICONV},
 	{"ICONV_MIME_DECODE_STRICT",PH7_EXT_ICONV},
