@@ -32,6 +32,13 @@ SQLITE3_LIBS   := $(shell pkg-config --libs   sqlite3 2>/dev/null)
 CURL_CFLAGS := $(shell pkg-config --cflags libcurl 2>/dev/null)
 CURL_LIBS   := $(shell pkg-config --libs   libcurl 2>/dev/null)
 
+# OpenSSL detection via pkg-config (empty when absent or for tiny mode) -- the
+# ext/openssl backend. Both halves are named: libcrypto is what every
+# openssl_* function is, and libssl is the TLS transport the ssl:// stream
+# rides. php's own extension links exactly these two.
+OPENSSL_CFLAGS := $(shell pkg-config --cflags openssl 2>/dev/null)
+OPENSSL_LIBS   := $(shell pkg-config --libs   openssl 2>/dev/null)
+
 # zlib detection -- the ext/zlib backend, and the compression ext/phar reads.
 # Unlike the four above there is no header package to miss on a normal box
 # (libz ships with the toolchain on Linux and inside the macOS SDK), so the
@@ -47,9 +54,9 @@ full_OPT_CFLAGS     = -O3
 tiny_OPT_CFLAGS     = -Oz
 coverage_OPT_CFLAGS = -O0 -fprofile-arcs -ftest-coverage
 
-full_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) $(ZLIB_LIBS)
+full_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) $(ZLIB_LIBS) $(OPENSSL_LIBS)
 tiny_LDFLAGS =
-coverage_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) $(ZLIB_LIBS) -fprofile-arcs -ftest-coverage
+coverage_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) $(ZLIB_LIBS) $(OPENSSL_LIBS) -fprofile-arcs -ftest-coverage
 
 PH7_DEFINES = $($(MODE)_DEFINES)
 MODE_EXTRA_CFLAGS = $($(MODE)_EXTRA_CFLAGS)

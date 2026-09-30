@@ -82,6 +82,18 @@ static const struct {
 	{ "max_input_nesting_level",  "64",         VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "max_input_vars",           "1000",       VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "memory_limit",             "-1",         VM_INI_ALL },
+#ifdef PH7_ENABLE_OPENSSL
+	/* ext/openssl's two path directives, php's own defaults (both UNSET, the
+	 * empty string) and its access mask (PHP_INI_PERDIR for both). They are
+	 * what openssl_get_cert_locations() reports as ini_cafile/ini_capath and
+	 * what a TLS peer verification falls back to when a stream context names
+	 * no CA of its own. php's third, `openssl.libctx`, is not here: it picks
+	 * between the default OpenSSL library context and a private one, and this
+	 * build has only the default -- registering the name would report a
+	 * choice that is not being made. */
+	{ "openssl.cafile",           "",           VM_INI_PERDIR },
+	{ "openssl.capath",           "",           VM_INI_PERDIR },
+#endif
 	/* ext/phar's three. `phar.readonly` is php's own default ON: every write
 	 * door refuses until an installer turns it off, which is why building an
 	 * archive is a `-d phar.readonly=0` job on a stock php too. */

@@ -2628,6 +2628,24 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* ext/curl: the libcurl binding. */
 	PH7_VmInstallCurl(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_OPENSSL
+	/* ext/openssl: the three opaque handle classes and the extension's own
+	 * functions, in two units -- the library-wide/cipher half and the
+	 * certificate half. */
+	{
+		const ph7_builtin_func *aSsl;
+		sxu32 nSsl = 0,n;
+		PH7_VmInstallOpenSsl(&(*pVm));
+		aSsl = PH7_OpenSslFuncTable(&nSsl);
+		for( n = 0 ; n < nSsl ; ++n ){
+			ph7_create_function(&(*pVm),aSsl[n].zName,aSsl[n].xFunc,pVm);
+		}
+		aSsl = PH7_OpenSslX509FuncTable(&nSsl);
+		for( n = 0 ; n < nSsl ; ++n ){
+			ph7_create_function(&(*pVm),aSsl[n].zName,aSsl[n].xFunc,pVm);
+		}
+	}
+#endif
 #ifdef PH7_ENABLE_ZLIB
 	/* ext/zlib: the two context classes and the extension's own functions.
 	 * Its gz* handle verbs are aliases registered beside the stream functions
@@ -3656,6 +3674,11 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * allocation, which the wholesale release below would not reach. */
 	PH7_ZlibVmReset(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_OPENSSL
+	/* And every certificate, key and signing request still held: each is
+	 * OpenSSL's own allocation, outside the backend the release below wipes. */
+	PH7_SslVmReset(&(*pVm));
+#endif
 	/* And every archive it opened: php's phar cache is per-request too. */
 	PH7_PharVmReset(&(*pVm));
 	/* Drop the stream contexts this run created, the default one included: a
@@ -3710,6 +3733,10 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 #ifdef PH7_ENABLE_ZLIB
 	/* Same rule for the z_streams behind still-open Deflate/InflateContexts. */
 	PH7_ZlibVmRelease(pVm);
+#endif
+#ifdef PH7_ENABLE_OPENSSL
+	/* Same rule for the X509/EVP_PKEY handles behind still-open objects. */
+	PH7_SslVmRelease(pVm);
 #endif
 	PH7_PharVmRelease(pVm);
 	/* Same rule for the OS directory streams behind still-open directory

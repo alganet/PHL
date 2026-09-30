@@ -814,6 +814,18 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "passthru",               8, 1u<<1 },  /* &$result_code (apArg[1]) */
 		/* A by-ref VARIADIC tail: every actual from the third on is one of
 		 * sscanf()'s `&...$vars`, so each is created rather than read. */
+		/* ext/openssl's out-params. Each is the argument php declares `&$x`;
+		 * the certificate half adds its own rows beside these. */
+		{ "openssl_encrypt",             15, 1u<<5 },  /* &$tag (apArg[5]) */
+		{ "openssl_random_pseudo_bytes", 27, 1u<<1 },  /* &$strong_result */
+		{ "openssl_pkey_export",         19, 1u<<1 },  /* &$output */
+		{ "openssl_sign",                12, 1u<<1 },  /* &$signature */
+		{ "openssl_private_encrypt",     23, 1u<<1 },  /* &$encrypted_data */
+		{ "openssl_private_decrypt",     23, 1u<<1 },  /* &$decrypted_data */
+		{ "openssl_public_encrypt",      22, 1u<<1 },  /* &$encrypted_data */
+		{ "openssl_public_decrypt",      22, 1u<<1 },  /* &$decrypted_data */
+		{ "openssl_seal",                12, (1u<<1)|(1u<<2)|(1u<<5) },
+		{ "openssl_open",                12, 1u<<1 },  /* &$output */
 		{ "sscanf",                 6, ~((1u<<2) - 1u) },
 		{ "fscanf",                 6, ~((1u<<2) - 1u) },
 	};

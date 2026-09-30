@@ -47,12 +47,13 @@
 #define PH7_EXT_SQLITE3      28
 #define PH7_EXT_ZLIB         29
 #define PH7_EXT_PHAR         30
+#define PH7_EXT_OPENSSL      31
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "fileinfo", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
-	"posix", "SimpleXML", "sqlite3", "zlib", "Phar",
+	"posix", "SimpleXML", "sqlite3", "zlib", "Phar", "openssl",
 };
 
 typedef struct VmExtName VmExtName;
@@ -541,7 +542,33 @@ static const VmExtName aExtFunc[] = {
 	{"gzread",PH7_EXT_ZLIB}, {"gzgets",PH7_EXT_ZLIB},
 	{"deflate_init",PH7_EXT_ZLIB}, {"deflate_add",PH7_EXT_ZLIB},
 	{"inflate_init",PH7_EXT_ZLIB}, {"inflate_add",PH7_EXT_ZLIB},
-	{"inflate_get_status",PH7_EXT_ZLIB}, {"inflate_get_read_len",PH7_EXT_ZLIB},
+	{"inflate_get_status",PH7_EXT_ZLIB}, {"inflate_get_read_len",PH7_EXT_ZLIB},	/* openssl -- php's own order for the extension: the certificate family
+	 * first, then keys, then the message and cipher surfaces. The two aliases
+	 * php still registers (openssl_get_publickey, openssl_get_privatekey) are
+	 * listed HERE, in the position php lists them, rather than beside the
+	 * names they alias. php's three DEPRECATED names -- openssl_x509_free,
+	 * openssl_pkey_free and openssl_free_key, all no-ops since 8.0 -- are not
+	 * in this table at all, because §10 removes what php deprecates. */
+	{"openssl_x509_export_to_file",PH7_EXT_OPENSSL}, {"openssl_x509_export",PH7_EXT_OPENSSL}, {"openssl_x509_fingerprint",PH7_EXT_OPENSSL},
+	{"openssl_x509_check_private_key",PH7_EXT_OPENSSL}, {"openssl_x509_verify",PH7_EXT_OPENSSL}, {"openssl_x509_parse",PH7_EXT_OPENSSL},
+	{"openssl_x509_checkpurpose",PH7_EXT_OPENSSL}, {"openssl_x509_read",PH7_EXT_OPENSSL}, 	{"openssl_pkcs12_export_to_file",PH7_EXT_OPENSSL}, {"openssl_pkcs12_export",PH7_EXT_OPENSSL}, {"openssl_pkcs12_read",PH7_EXT_OPENSSL},
+	{"openssl_csr_export_to_file",PH7_EXT_OPENSSL}, {"openssl_csr_export",PH7_EXT_OPENSSL}, {"openssl_csr_sign",PH7_EXT_OPENSSL},
+	{"openssl_csr_new",PH7_EXT_OPENSSL}, {"openssl_csr_get_subject",PH7_EXT_OPENSSL}, {"openssl_csr_get_public_key",PH7_EXT_OPENSSL},
+	{"openssl_pkey_new",PH7_EXT_OPENSSL}, {"openssl_pkey_export_to_file",PH7_EXT_OPENSSL}, {"openssl_pkey_export",PH7_EXT_OPENSSL},
+	{"openssl_pkey_get_public",PH7_EXT_OPENSSL}, {"openssl_get_publickey",PH7_EXT_OPENSSL}, 	{"openssl_pkey_get_private",PH7_EXT_OPENSSL}, {"openssl_get_privatekey",PH7_EXT_OPENSSL},
+	{"openssl_pkey_get_details",PH7_EXT_OPENSSL}, {"openssl_pbkdf2",PH7_EXT_OPENSSL}, {"openssl_pkcs7_verify",PH7_EXT_OPENSSL},
+	{"openssl_pkcs7_encrypt",PH7_EXT_OPENSSL}, {"openssl_pkcs7_sign",PH7_EXT_OPENSSL}, {"openssl_pkcs7_decrypt",PH7_EXT_OPENSSL},
+	{"openssl_pkcs7_read",PH7_EXT_OPENSSL}, {"openssl_cms_verify",PH7_EXT_OPENSSL}, {"openssl_cms_encrypt",PH7_EXT_OPENSSL},
+	{"openssl_cms_sign",PH7_EXT_OPENSSL}, {"openssl_cms_decrypt",PH7_EXT_OPENSSL}, {"openssl_cms_read",PH7_EXT_OPENSSL},
+	{"openssl_private_encrypt",PH7_EXT_OPENSSL}, {"openssl_private_decrypt",PH7_EXT_OPENSSL}, {"openssl_public_encrypt",PH7_EXT_OPENSSL},
+	{"openssl_public_decrypt",PH7_EXT_OPENSSL}, {"openssl_error_string",PH7_EXT_OPENSSL}, {"openssl_sign",PH7_EXT_OPENSSL},
+	{"openssl_verify",PH7_EXT_OPENSSL}, {"openssl_seal",PH7_EXT_OPENSSL}, {"openssl_open",PH7_EXT_OPENSSL},
+	{"openssl_get_md_methods",PH7_EXT_OPENSSL}, {"openssl_get_cipher_methods",PH7_EXT_OPENSSL}, {"openssl_get_curve_names",PH7_EXT_OPENSSL},
+	{"openssl_digest",PH7_EXT_OPENSSL}, {"openssl_encrypt",PH7_EXT_OPENSSL}, {"openssl_decrypt",PH7_EXT_OPENSSL},
+	{"openssl_cipher_iv_length",PH7_EXT_OPENSSL}, {"openssl_cipher_key_length",PH7_EXT_OPENSSL}, {"openssl_dh_compute_key",PH7_EXT_OPENSSL},
+	{"openssl_pkey_derive",PH7_EXT_OPENSSL}, {"openssl_random_pseudo_bytes",PH7_EXT_OPENSSL}, {"openssl_spki_new",PH7_EXT_OPENSSL},
+	{"openssl_spki_verify",PH7_EXT_OPENSSL}, {"openssl_spki_export",PH7_EXT_OPENSSL}, {"openssl_spki_export_challenge",PH7_EXT_OPENSSL},
+	{"openssl_get_cert_locations",PH7_EXT_OPENSSL},
 };
 
 static const VmExtName aExtClass[] = {
@@ -673,7 +700,10 @@ static const VmExtName aExtClass[] = {
 	{"InflateContext",PH7_EXT_ZLIB}, {"DeflateContext",PH7_EXT_ZLIB},
 	/* Phar -- php's own order for the extension */
 	{"PharException",PH7_EXT_PHAR}, {"Phar",PH7_EXT_PHAR}, {"PharData",PH7_EXT_PHAR},
-	{"PharFileInfo",PH7_EXT_PHAR},
+	{"PharFileInfo",PH7_EXT_PHAR},	/* openssl -- three opaque handle classes, in php's registration order */
+	{"OpenSSLCertificate",PH7_EXT_OPENSSL},
+	{"OpenSSLCertificateSigningRequest",PH7_EXT_OPENSSL},
+	{"OpenSSLAsymmetricKey",PH7_EXT_OPENSSL},
 };
 
 static const VmExtName aExtConst[] = {
@@ -1420,7 +1450,31 @@ static const VmExtName aExtConst[] = {
 	{"ZLIB_NEED_DICT",PH7_EXT_ZLIB}, {"ZLIB_ERRNO",PH7_EXT_ZLIB},
 	{"ZLIB_STREAM_ERROR",PH7_EXT_ZLIB}, {"ZLIB_DATA_ERROR",PH7_EXT_ZLIB},
 	{"ZLIB_MEM_ERROR",PH7_EXT_ZLIB}, {"ZLIB_BUF_ERROR",PH7_EXT_ZLIB},
-	{"ZLIB_VERSION_ERROR",PH7_EXT_ZLIB},
+	{"ZLIB_VERSION_ERROR",PH7_EXT_ZLIB},	/* openssl */
+	{"OPENSSL_VERSION_TEXT",PH7_EXT_OPENSSL}, {"OPENSSL_VERSION_NUMBER",PH7_EXT_OPENSSL}, {"X509_PURPOSE_SSL_CLIENT",PH7_EXT_OPENSSL},
+	{"X509_PURPOSE_SSL_SERVER",PH7_EXT_OPENSSL}, {"X509_PURPOSE_NS_SSL_SERVER",PH7_EXT_OPENSSL}, {"X509_PURPOSE_SMIME_SIGN",PH7_EXT_OPENSSL},
+	{"X509_PURPOSE_SMIME_ENCRYPT",PH7_EXT_OPENSSL}, {"X509_PURPOSE_CRL_SIGN",PH7_EXT_OPENSSL}, {"X509_PURPOSE_ANY",PH7_EXT_OPENSSL},
+	{"X509_PURPOSE_OCSP_HELPER",PH7_EXT_OPENSSL}, {"X509_PURPOSE_TIMESTAMP_SIGN",PH7_EXT_OPENSSL}, {"OPENSSL_ALGO_SHA1",PH7_EXT_OPENSSL},
+	{"OPENSSL_ALGO_MD5",PH7_EXT_OPENSSL}, {"OPENSSL_ALGO_MD4",PH7_EXT_OPENSSL}, {"OPENSSL_ALGO_SHA224",PH7_EXT_OPENSSL},
+	{"OPENSSL_ALGO_SHA256",PH7_EXT_OPENSSL}, {"OPENSSL_ALGO_SHA384",PH7_EXT_OPENSSL}, {"OPENSSL_ALGO_SHA512",PH7_EXT_OPENSSL},
+	{"OPENSSL_ALGO_RMD160",PH7_EXT_OPENSSL}, {"PKCS7_DETACHED",PH7_EXT_OPENSSL}, {"PKCS7_TEXT",PH7_EXT_OPENSSL},
+	{"PKCS7_NOINTERN",PH7_EXT_OPENSSL}, {"PKCS7_NOVERIFY",PH7_EXT_OPENSSL}, {"PKCS7_NOCHAIN",PH7_EXT_OPENSSL},
+	{"PKCS7_NOCERTS",PH7_EXT_OPENSSL}, {"PKCS7_NOATTR",PH7_EXT_OPENSSL}, {"PKCS7_BINARY",PH7_EXT_OPENSSL},
+	{"PKCS7_NOSIGS",PH7_EXT_OPENSSL}, {"PKCS7_NOOLDMIMETYPE",PH7_EXT_OPENSSL}, {"PKCS7_NOSMIMECAP",PH7_EXT_OPENSSL},
+	{"PKCS7_CRLFEOL",PH7_EXT_OPENSSL}, {"PKCS7_NOCRL",PH7_EXT_OPENSSL}, {"PKCS7_NO_DUAL_CONTENT",PH7_EXT_OPENSSL},
+	{"OPENSSL_CMS_DETACHED",PH7_EXT_OPENSSL}, {"OPENSSL_CMS_TEXT",PH7_EXT_OPENSSL}, {"OPENSSL_CMS_NOINTERN",PH7_EXT_OPENSSL},
+	{"OPENSSL_CMS_NOVERIFY",PH7_EXT_OPENSSL}, {"OPENSSL_CMS_NOCERTS",PH7_EXT_OPENSSL}, {"OPENSSL_CMS_NOATTR",PH7_EXT_OPENSSL},
+	{"OPENSSL_CMS_BINARY",PH7_EXT_OPENSSL}, {"OPENSSL_CMS_NOSIGS",PH7_EXT_OPENSSL}, {"OPENSSL_CMS_OLDMIMETYPE",PH7_EXT_OPENSSL},
+	{"OPENSSL_PKCS1_PADDING",PH7_EXT_OPENSSL}, {"OPENSSL_NO_PADDING",PH7_EXT_OPENSSL}, {"OPENSSL_PKCS1_OAEP_PADDING",PH7_EXT_OPENSSL},
+	{"OPENSSL_PKCS1_PSS_PADDING",PH7_EXT_OPENSSL}, {"OPENSSL_DEFAULT_STREAM_CIPHERS",PH7_EXT_OPENSSL}, {"OPENSSL_CIPHER_RC2_40",PH7_EXT_OPENSSL},
+	{"OPENSSL_CIPHER_RC2_128",PH7_EXT_OPENSSL}, {"OPENSSL_CIPHER_RC2_64",PH7_EXT_OPENSSL}, {"OPENSSL_CIPHER_DES",PH7_EXT_OPENSSL},
+	{"OPENSSL_CIPHER_3DES",PH7_EXT_OPENSSL}, {"OPENSSL_CIPHER_AES_128_CBC",PH7_EXT_OPENSSL}, {"OPENSSL_CIPHER_AES_192_CBC",PH7_EXT_OPENSSL},
+	{"OPENSSL_CIPHER_AES_256_CBC",PH7_EXT_OPENSSL}, {"OPENSSL_KEYTYPE_RSA",PH7_EXT_OPENSSL}, {"OPENSSL_KEYTYPE_DSA",PH7_EXT_OPENSSL},
+	{"OPENSSL_KEYTYPE_DH",PH7_EXT_OPENSSL}, {"OPENSSL_KEYTYPE_EC",PH7_EXT_OPENSSL}, {"OPENSSL_KEYTYPE_X25519",PH7_EXT_OPENSSL},
+	{"OPENSSL_KEYTYPE_ED25519",PH7_EXT_OPENSSL}, {"OPENSSL_KEYTYPE_X448",PH7_EXT_OPENSSL}, {"OPENSSL_KEYTYPE_ED448",PH7_EXT_OPENSSL},
+	{"OPENSSL_RAW_DATA",PH7_EXT_OPENSSL}, {"OPENSSL_ZERO_PADDING",PH7_EXT_OPENSSL}, {"OPENSSL_DONT_ZERO_PAD_KEY",PH7_EXT_OPENSSL},
+	{"OPENSSL_TLSEXT_SERVER_NAME",PH7_EXT_OPENSSL}, {"OPENSSL_ENCODING_DER",PH7_EXT_OPENSSL}, {"OPENSSL_ENCODING_SMIME",PH7_EXT_OPENSSL},
+	{"OPENSSL_ENCODING_PEM",PH7_EXT_OPENSSL},
 };
 
 static const VmExtName aExtIni[] = {
@@ -1467,5 +1521,8 @@ static const VmExtName aExtIni[] = {
 	/* Phar */
 	{"phar.readonly",PH7_EXT_PHAR}, {"phar.require_hash",PH7_EXT_PHAR},
 	{"phar.cache_list",PH7_EXT_PHAR},
+	/* openssl -- php's `openssl.libctx` is deliberately not registered
+	 * (vm_builtin_ini.c says why), so the row is not here either */
+	{"openssl.cafile",PH7_EXT_OPENSSL}, {"openssl.capath",PH7_EXT_OPENSSL},
 };
 

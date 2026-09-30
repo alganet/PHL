@@ -15,8 +15,8 @@
  */
 #include "vm_extension_names.h"
 /*
- * Is this extension part of THIS build? The four XML names, the two PDO ones
- * and curl are compile-time options, and posix is a PLATFORM one -- php builds
+ * Is this extension part of THIS build? The four XML names, the two PDO ones,
+ * curl, zlib and openssl are compile-time options, and posix is a PLATFORM one -- php builds
  * no ext/posix for Windows, so `extension_loaded('posix')` is false there under
  * php and under this. Everything else is always here.
  */
@@ -41,6 +41,11 @@ static int VmExtAvailable(int iExt)
 #endif
 #ifndef PH7_ENABLE_ZLIB
 	if( iExt == PH7_EXT_ZLIB ){
+		return 0;
+	}
+#endif
+#ifndef PH7_ENABLE_OPENSSL
+	if( iExt == PH7_EXT_OPENSSL ){
 		return 0;
 	}
 #endif

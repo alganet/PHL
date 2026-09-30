@@ -3699,6 +3699,14 @@ struct ph7_vm
 	                            * compress.zlib:// is a wrapper and php gives every one of its
 	                            * failures the same flat "operation failed". */
 #endif
+#ifdef PH7_ENABLE_OPENSSL
+	void *pSslObjs;            /* phl_ssl_obj registry chain (ext/openssl); freed on reset/release
+	                            * -- an X509/EVP_PKEY/X509_REQ is OpenSSL's own allocation, outside
+	                            * SyMemBackend, so the wholesale release would leak it */
+	void *pSslErrors;          /* phl_ssl_errors: php's 16-slot ring, drained from OpenSSL's own
+	                            * error queue after a failure and read one entry at a time by
+	                            * openssl_error_string() */
+#endif
 	/* php numbers every resource with a small sequential id that (int) casts and
 	 * "Resource id #N" render, and that distinguishes two live resources from one
 	 * another. PHL's resource value is a bare void*, so the id lives in this
@@ -6405,6 +6413,13 @@ PH7_PRIVATE int PH7_builtin_posix_fpathconf(ph7_context *pCtx,int nArg,ph7_value
 /* fileinfo (builtin_fileinfo.c) -- php's ext/fileinfo, over PHL's own signature
  * table rather than a magic database file. */
 #ifdef PH7_ENABLE_ZLIB
+/* vm_openssl.c / vm_openssl_x509.c */
+PH7_PRIVATE sxi32 PH7_VmInstallOpenSsl(ph7_vm *pVm);
+PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslFuncTable(sxu32 *pnEntry);
+PH7_PRIVATE sxi32 PH7_VmInstallOpenSslX509(ph7_vm *pVm);
+PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslX509FuncTable(sxu32 *pnEntry);
+PH7_PRIVATE void PH7_SslVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_SslVmRelease(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallZlib(ph7_vm *pVm);
 PH7_PRIVATE const ph7_builtin_func * PH7_ZlibFuncTable(sxu32 *pnEntry);
 PH7_PRIVATE void PH7_ZlibVmReset(ph7_vm *pVm);

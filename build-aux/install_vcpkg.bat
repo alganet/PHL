@@ -100,6 +100,18 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: OpenSSL backs ext/openssl -- both halves, libcrypto for the openssl_*
+:: functions and libssl for the TLS a stream negotiates. It is a SECOND crypto
+:: stack beside the Schannel one the curl port above resolves to; php's own
+:: Windows build has the same split.
+echo Installing openssl:x64-windows-static...
+"%VCPKG_DIR%\vcpkg.exe" install openssl:x64-windows-static
+
+if %errorlevel% neq 0 (
+    echo Failed to install openssl.
+    exit /b 1
+)
+
 echo.
-echo vcpkg, PCRE2, libxml2, sqlite3, curl and zlib installed successfully.
+echo vcpkg, PCRE2, libxml2, sqlite3, curl, zlib and openssl installed successfully.
 echo vcpkg root: %VCPKG_DIR%
