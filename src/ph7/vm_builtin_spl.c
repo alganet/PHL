@@ -2356,6 +2356,52 @@ static int vm_builtin_NoRewindIterator_construct(ph7_context *pCtx,int nArg,ph7_
 {
 	return DualConstruct(pCtx,"NoRewindIterator",nArg,apArg);
 }
+/*
+ * php's `spl_dual_it_call_method`: every iterator that extends IteratorIterator --
+ * FilterIterator and its whole family, LimitIterator, CachingIterator,
+ * NoRewindIterator, InfiniteIterator, RegexIterator, AppendIterator -- forwards a
+ * method it does not itself have to the iterator it WRAPS. Symfony's Finder is built
+ * on that: `ExcludeDirectoryFilterIterator::accept()` calls `$this->getFilename()`
+ * and means the RecursiveDirectoryIterator's, so composer's `dump-autoload` stopped
+ * with `Call to undefined method …::getFilename()` without it.
+ *
+ * It is NOT a `__call` method: php's is an internal handler, so
+ * `method_exists($it,'__call')` is false and `get_class_methods()` never lists one.
+ * RecursiveIteratorIterator, RecursiveTreeIterator and MultipleIterator are not dual
+ * iterators and forward nothing -- which is why the test is the CLASS, not the
+ * presence of an inner slot.
+ *
+ * Answers 1 with *ppInner / *ppMeth filled when the call should be re-targeted.
+ */
+PH7_PRIVATE int PH7_SplOuterForward(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pName,
+	ph7_class_instance **ppInner,ph7_class_method **ppMeth)
+{
+	ph7_class *pDual;
+	ph7_class_instance *pInner;
+	ph7_class_method *pMeth;
+	if( pThis == 0 || pName == 0 || pName->nByte < 1 ){
+		return 0;
+	}
+	pDual = PH7_VmExtractClass(pVm,"IteratorIterator",sizeof("IteratorIterator")-1,TRUE,0);
+	if( pDual == 0 || pThis->pClass == 0 || !PH7_VmInstanceOf(pThis->pClass,pDual) ){
+		return 0;
+	}
+	/* php forwards to `inner.zobject` -- what getInnerIterator() answers -- and an
+	 * instance that has none (a fresh AppendIterator) forwards nothing. */
+	pInner = PH7_NativeAttrObj(pThis,IT_IN);
+	if( pInner == 0 || pInner->pClass == 0 ){
+		return 0;
+	}
+	pMeth = PH7_ClassExtractMethod(pInner->pClass,pName->zString,pName->nByte);
+	if( pMeth == 0 ){
+		/* php reports the OUTER class in that case, which is what the caller's own
+		 * undefined-method path already says. */
+		return 0;
+	}
+	*ppInner = pInner;
+	*ppMeth = pMeth;
+	return 1;
+}
 static int vm_builtin_Dual_getInnerIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -13417,5 +13463,14 @@ PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_v
 {
 	(void)pVm; (void)pThis; (void)pKey; (void)bCreate;
 	return SXU32_HIGH;
+}
+/* Same reasoning for the dual-iterator method forward: OP_MEMBER asks it on every
+ * missing method, and with no SPL classes in this build the answer is always "not
+ * one of mine". */
+PH7_PRIVATE int PH7_SplOuterForward(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pName,
+	ph7_class_instance **ppInner,ph7_class_method **ppMeth)
+{
+	(void)pVm; (void)pThis; (void)pName; (void)ppInner; (void)ppMeth;
+	return 0;
 }
 #endif

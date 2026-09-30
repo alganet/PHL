@@ -869,9 +869,33 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 			if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 				/* Method call */
 				ph7_class_method *pMeth = 0;
+				int bFwdCall = 0; /* re-targeted to a dual iterator's inner: no scope check */
 				if( sName.nByte > 0 ){
 					/* Extract the target method */
 					pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);
+				}
+				if( pMeth == 0 ){
+					/* php's dual iterators forward an unknown method to the one they
+					 * WRAP (spl_dual_it_call_method), ahead of __call and of the
+					 * undefined-method Error. Re-target the receiver slot the call
+					 * below binds `$this` from and carry on down the ordinary path, so
+					 * the visibility rules and the screened-name marking are the same
+					 * ones every other method call takes. */
+					ph7_class_instance *pFwdInner = 0;
+					ph7_class_method *pFwdMeth = 0;
+					if( PH7_SplOuterForward(&(*pVm),pThis,&sName,&pFwdInner,&pFwdMeth) ){
+						ph7_class_instance *pOuter = pThis;
+						pFwdInner->iRef++;      /* the stack slot's new reference */
+						pNos->x.pOther = pFwdInner;
+						PH7_ClassInstanceUnref(pOuter); /* ...and drop its old one */
+						pThis = pFwdInner;
+						pClass = pFwdInner->pClass;
+						pMeth = pFwdMeth;
+						/* php's forward is a direct zend_call_method with no calling
+						 * scope, so the inner's own visibility does not apply: a
+						 * PROTECTED method on the wrapped iterator answers. */
+						bFwdCall = 1;
+					}
 				}
 				if( pMeth == 0 ){
 					ph7_class_method *pCallMagic = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);
@@ -921,7 +945,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * class (not a trait user itself) and granted to an unrelated class
 					 * that happened to use the same trait. */
 					ph7_class *pOwner = 0;
-					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC
+					if( !bFwdCall && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC
 					 && !PH7_VmClassMemberAccess(&(*pVm),
 						(pOwner = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth)),
 						&sName,pMeth->iProtection,FALSE) ){

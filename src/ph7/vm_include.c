@@ -354,12 +354,35 @@ PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
-	/* Eval the chunk */
-	/* php gives eval() a trace frame of its own, exactly as it does an include --
-	 * argument-less, where an include names the unit it loaded. */
-	PH7_VmIncFramePush(pCtx->pVm,"eval",0);
-	rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sChunk,PH7_PHP_ONLY,FALSE);
-	PH7_VmIncFramePop(pCtx->pVm);
+	/* Eval the chunk.
+	 *
+	 * php compiles it as though it began right after a `<?php`, which means a `?>`
+	 * inside it LEAVES php mode: the text after it is echoed and a later `<?php`
+	 * re-enters. `eval('?>' . file_get_contents($f))` is the ordinary way to run a
+	 * php FILE's bytes, and composer reloads its own `vendor/composer/installed.php`
+	 * exactly that way. PHL handed the whole chunk to the compiler as ONE php token
+	 * (PH7_PHP_ONLY), so the `?>` was a syntax error and composer could not boot.
+	 *
+	 * Prepending the opening tag and letting the ordinary raw tokenizer split it is
+	 * php's rule itself, with no second implementation of it. The prefix carries no
+	 * newline, so every line still reports the number the caller wrote it on. */
+	{
+		SyBlob sTagged;
+		SyString sTaggedStr;
+		SyBlobInit(&sTagged,&pCtx->pVm->sAllocator);
+		if( SyBlobAppend(&sTagged,"<?php ",sizeof("<?php ")-1) != SXRET_OK
+		 || SyBlobAppend(&sTagged,sChunk.zString,sChunk.nByte) != SXRET_OK ){
+			SyBlobRelease(&sTagged);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		SyStringInitFromBuf(&sTaggedStr,SyBlobData(&sTagged),SyBlobLength(&sTagged));
+		/* php gives eval() a trace frame of its own, exactly as it does an include --
+		 * argument-less, where an include names the unit it loaded. */
+		PH7_VmIncFramePush(pCtx->pVm,"eval",0);
+		rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sTaggedStr,0,FALSE);
+		PH7_VmIncFramePop(pCtx->pVm);
+		SyBlobRelease(&sTagged);
+	}
 	if( pCtx->pVm->bHaltRequested ){
 		/* exit/die inside the evaluated chunk: cascade the halt */
 		return PH7_ABORT;
