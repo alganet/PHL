@@ -506,58 +506,54 @@ PH7_PRIVATE sxu32 SyMemcpy(const void *pSrc,void *pDest,sxu32 nLen)
 	SX_MACRO_FAST_MEMCPY(pSrc,pDest,nLen);
 	return nLen;
 }
-/* Size prefix stored ahead of every OS allocation. Padded to pointer size so
- * the returned payload (and the SyMemBlock/SyMemHeader the backend lays on
- * top of it) keeps the allocator's natural alignment — a bare sxu32 prefix
- * left every chunk 4-misaligned on 64-bit platforms. */
-typedef union MemOSHeader MemOSHeader;
-union MemOSHeader {
-	sxu32 nBytes;
-	void *pAlign;
-};
+/*
+ * The OS methods are malloc/realloc/free and nothing else.
+ *
+ * They used to carry an 8-byte size prefix ahead of every allocation, for two
+ * readers. The first was xChunkSize, which no call site in the tree has ever
+ * used -- SyMemBackendInitFromOthers checked it for non-NULL and nobody called
+ * it, and sx.h has always documented it as [Optional:]. The second was a
+ * shrink-in-place shortcut in MemOSRealloc, which saved a realloc() the C
+ * library answers in a few instructions when the block already fits.
+ *
+ * Every direct (non-pool) allocation the engine makes pays for that prefix on
+ * TOP of the backend's own 24-byte SyMemBlock. On the ecosystem gate's phpcs
+ * step there are 160,541,911 of them in one run and ~415,000 live at the peak.
+ * Removing it costs one store fewer per allocation and one cold cache line
+ * fewer per free, and takes the run's peak RSS from 180.1 MB to 172.2 MB
+ * (-4.4%, three runs each, the two groups not overlapping). That is more than
+ * the 8 bytes x 415,000 the arithmetic predicts, because malloc rounds a chunk
+ * to 16: a 16-byte string body asked 48 bytes and got a 64-byte chunk, and now
+ * asks 40 and gets 48. Neither the heap census nor memory_get_peak_usage() can
+ * see any of it -- both count what the BACKEND handed out, and this header was
+ * underneath. (PERF.md P14.)
+ *
+ * Alignment: what the reference word's pointer tags need is FOUR bytes
+ * (VM_REF_TAG_MASK, ph7int.h), and what a ph7_value needs is eight, for its
+ * double. malloc and HeapAlloc both return at least 8-aligned (16 on x86-64),
+ * SyMemBlock is a multiple of 8, and the pool's SyMemHeader is one pointer --
+ * so every chunk the backend hands out is still 8-aligned without the prefix.
+ * Nothing in the engine allocates a type that wants more; sxlongreal, the only
+ * long double in the tree, lives on sxfmt.c's stack.
+ */
 static void * MemOSAlloc(sxu32 nBytes)
 {
-	MemOSHeader *pChunk;
-	pChunk = (MemOSHeader *)SyOSHeapAlloc(nBytes + sizeof(MemOSHeader));
-	if( pChunk == 0 ){
-		return 0;
-	}
-	pChunk->nBytes = nBytes;
-	return (void *)&pChunk[1];
+	return SyOSHeapAlloc(nBytes);
 }
 static void * MemOSRealloc(void *pOld,sxu32 nBytes)
 {
-	MemOSHeader *pOldChunk;
-	MemOSHeader *pChunk;
-	pOldChunk = (MemOSHeader *)(((char *)pOld)-sizeof(MemOSHeader));
-	if( pOldChunk->nBytes >= nBytes ){
-		return pOld;
-	}
-	pChunk = (MemOSHeader *)SyOSHeapRealloc(pOldChunk,nBytes + sizeof(MemOSHeader));
-	if( pChunk == 0 ){
-		return 0;
-	}
-	pChunk->nBytes = nBytes;
-	return (void *)&pChunk[1];
+	return SyOSHeapRealloc(pOld,nBytes);
 }
 static void MemOSFree(void *pBlock)
 {
-	void *pChunk;
-	pChunk = (void *)(((char *)pBlock)-sizeof(MemOSHeader));
-	SyOSHeapFree(pChunk);
-}
-static sxu32 MemOSChunkSize(void *pBlock)
-{
-	MemOSHeader *pChunk;
-	pChunk = (MemOSHeader *)(((char *)pBlock)-sizeof(MemOSHeader));
-	return pChunk->nBytes;
+	SyOSHeapFree(pBlock);
 }
 /* Export OS allocation methods */
 static const SyMemMethods sOSAllocMethods = {
 	MemOSAlloc,
 	MemOSRealloc,
 	MemOSFree,
-	MemOSChunkSize,
+	0,  /* xChunkSize: optional, and nothing in the engine asks */
 	0,
 	0,
 	0
@@ -1055,8 +1051,11 @@ PH7_PRIVATE sxi32 SyMemBackendInitFromOthers(SyMemBackend *pBackend,const SyMemM
 		return SXERR_EMPTY;
 	}
 #endif
-	if( pMethods->xAlloc == 0 || pMethods->xRealloc == 0 || pMethods->xFree == 0 || pMethods->xChunkSize == 0 ){
-		/* mandatory methods are missing */
+	if( pMethods->xAlloc == 0 || pMethods->xRealloc == 0 || pMethods->xFree == 0 ){
+		/* mandatory methods are missing. xChunkSize is NOT one of them: sx.h has
+		 * always documented it as optional and no call site in the library asks
+		 * for it, but this check demanded it anyway -- so an embedder supplying
+		 * the three methods that are actually used was refused. */
 		return SXERR_INVALID;
 	}
 	/* Zero the allocator first */

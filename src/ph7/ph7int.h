@@ -3153,7 +3153,7 @@ struct VmRefObj
  *   pRef   (tag 0, non-zero)   a VmRefObj *: two or more holders, or a pin beside one
  *
  * The two pointer tags ride in the low bits of a pool-allocated address; the allocator
- * keeps every chunk pointer-aligned (see the MemOSHeader note in sxmem.c), and a
+ * keeps every chunk 8-aligned (see the alignment note on sxmem.c's OS methods), and a
  * pointer that is not 4-aligned falls back to a record rather than being tagged.
  */
 #define VM_REF_TAG_MASK    3

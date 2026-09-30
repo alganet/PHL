@@ -7987,11 +7987,12 @@ static void VmRefWordSet(ph7_vm *pVm,sxu32 nIdx,void *pWord)
 /* A holder pointer carried in a word, with its tag taken back off. */
 #define VM_REF_UNTAG(W,T) ((void *)&((char *)(W))[-(T)])
 /*
- * May this pointer be tagged? The pool allocator keeps every chunk pointer-aligned
- * (sxmem.c's MemOSHeader union exists for that), so this is true everywhere it is
- * asked -- but a word whose low bits are not free would read back as another shape
- * entirely, so the question is asked rather than assumed and a stray pointer simply
- * takes the record path.
+ * May this pointer be tagged? The pool allocator keeps every chunk 8-aligned (the
+ * C library's own alignment, a SyMemBlock that is a multiple of 8, and a
+ * pointer-sized SyMemHeader -- see the alignment note on sxmem.c's OS methods), so
+ * this is true everywhere it is asked -- but a word whose low bits are not free
+ * would read back as another shape entirely, so the question is asked rather than
+ * assumed and a stray pointer simply takes the record path.
  */
 static int VmRefTaggable(void *pPtr)
 {
