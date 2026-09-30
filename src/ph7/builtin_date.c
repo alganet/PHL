@@ -91,10 +91,32 @@ static void DateNow(ph7_vm *pVm,sytime *pOut)
 	{
 		/* FILETIME is 100-ns ticks since 1601-01-01 UTC; convert to the Unix
 		 * epoch with microsecond resolution (GetSystemTime() only carries
-		 * milliseconds, and time() has no sub-second part at all). */
+		 * milliseconds, and time() has no sub-second part at all).
+		 *
+		 * GetSystemTimeAsFileTime is a FILETIME with the timer-interrupt's
+		 * granularity behind it -- about 15.6ms by default -- so it does not
+		 * carry microseconds at all, whatever its unit says. php reads the
+		 * PRECISE call where the system has one (Windows 8 and up) for exactly
+		 * this reason, and resolves it at run time so an older system still
+		 * links; without it `uniqid()` answers the same id for every call inside
+		 * one timer tick, and microtime() has three useful digits. */
+		static void (WINAPI *xPrecise)(LPFILETIME) = 0;
+		static int bPreciseResolved = 0;
 		FILETIME ft;
 		ph7_int64 t;
-		GetSystemTimeAsFileTime(&ft);
+		if( !bPreciseResolved ){
+			HMODULE hKernel = GetModuleHandleA("kernel32.dll");
+			if( hKernel ){
+				xPrecise = (void (WINAPI *)(LPFILETIME))(void *)
+					GetProcAddress(hKernel,"GetSystemTimePreciseAsFileTime");
+			}
+			bPreciseResolved = 1;
+		}
+		if( xPrecise ){
+			xPrecise(&ft);
+		}else{
+			GetSystemTimeAsFileTime(&ft);
+		}
 		t  = (ph7_int64)ft.dwHighDateTime << 32;
 		t += ft.dwLowDateTime;
 		t -= 116444736000000000LL; /* 100-ns ticks between 1601 and 1970 */
@@ -110,6 +132,25 @@ static void DateNow(ph7_vm *pVm,sytime *pOut)
 	}
 #endif /* __UNIXES__ */
 }
+/*
+ * ...and the same clock for a caller outside this file. php reads it in exactly
+ * two places that matter to a script: the date surface, and uniqid(), whose
+ * whole value is `%08x%05x` of these two numbers.
+ */
+PH7_PRIVATE void PH7_VmClockNow(ph7_vm *pVm,ph7_int64 *pSec,ph7_int64 *pUsec)
+{
+	sytime sNow;
+	sNow.tm_sec = 0;
+	sNow.tm_usec = 0;
+	DateNow(pVm,&sNow);
+	if( pSec ){
+		*pSec = (ph7_int64)sNow.tm_sec;
+	}
+	if( pUsec ){
+		*pUsec = (ph7_int64)sNow.tm_usec;
+	}
+}
+
 /*
  * The current moment as the DateTime layer wants it: epoch seconds plus the
  * MICROSECONDS beside them.

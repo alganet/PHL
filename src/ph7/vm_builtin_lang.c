@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#if defined(__UNIXES__)
+/* usleep(), which uniqid() spends a microsecond in so two ids cannot collide --
+ * php's own POSIX-only guarantee. */
+#include <unistd.h>
+#endif
 /*
  * Section:
  *    Language-level builtins: define/defined/constant and the enum
@@ -1195,95 +1200,107 @@ PH7_PRIVATE int vm_builtin_random_bytes(ph7_context *pCtx,int nArg,ph7_value **a
 	return SXRET_OK;
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
-#if !defined(PH7_DISABLE_HASH_FUNC)
-/* Unique ID private data */
-struct unique_id_data
-{
-	ph7_context *pCtx; /* Call context */
-	int entropy;       /* TRUE if the more_entropy flag is set */
-};
+/* uniqid() used to be gated on PH7_DISABLE_HASH_FUNC as well, because PH7 built
+ * its id out of a SHA1. php's is the clock, so the hash guard has nothing to say
+ * about it any more. */
 /*
- * Binary to hex consumer callback.
- * This callback is the default consumer used by [uniqid()] function
- * defined below.
+ * php's `php_combined_lcg()`: L'Ecuyer's combined linear congruential generator,
+ * two streams whose difference is the answer.
+ *
+ * It is not the engine's general randomness -- PH7_VmRandomNum is -- and it is
+ * here for one reason: it is what php's uniqid() puts in the `$more_entropy`
+ * tail, and what its lcg_value() answers. The seed is the clock and the engine's
+ * own entropy, taken once, the way php seeds its pair once per process (from the
+ * clock and the pid); the STREAM is therefore not reproducible between two runs
+ * of either engine, and no test pins its value -- only the SHAPE it lands in.
  */
-static int HexConsumer(const void *pData,unsigned int nLen,void *pUserData)
+#define PH7_LCG_MODMULT(a,b,c,m,s) { \
+	sxi32 q = (s) / (a); \
+	(s) = (b) * ((s) % (a)) - (c) * q; \
+	if( (s) < 0 ){ (s) += (m); } \
+}
+PH7_PRIVATE double PH7_VmCombinedLcg(ph7_vm *pVm)
 {
-	struct unique_id_data *pUniq = (struct unique_id_data *)pUserData;
-	sxu32 nBuflen;
-	/* Extract result buffer length */
-	nBuflen = ph7_context_result_buf_length(pUniq->pCtx);
-	if( nBuflen > 12 && !pUniq->entropy ){
-			/*
-			 * If the more_entropy flag is not set,then the returned
-			 * string will be 13 characters long
-			 */
-		return SXERR_ABORT;
+	sxi32 z;
+	if( !pVm->bLcgSeeded ){
+		ph7_int64 iSec = 0,iUsec = 0;
+		PH7_VmClockNow(pVm,&iSec,&iUsec);
+		pVm->iLcgS1 = (sxi32)(iSec ^ (iUsec << 11));
+		pVm->iLcgS2 = (sxi32)PH7_VmRandomNum(&(*pVm));
+		PH7_VmClockNow(pVm,&iSec,&iUsec);
+		pVm->iLcgS2 ^= (sxi32)(iUsec << 11);
+		/* Both streams must start inside their own modulus and away from zero,
+		 * which a raw clock word is not. */
+		if( pVm->iLcgS1 < 1 ){
+			pVm->iLcgS1 = -pVm->iLcgS1;
+		}
+		if( pVm->iLcgS2 < 1 ){
+			pVm->iLcgS2 = -pVm->iLcgS2;
+		}
+		pVm->iLcgS1 = (pVm->iLcgS1 % 2147483562) + 1;
+		pVm->iLcgS2 = (pVm->iLcgS2 % 2147483398) + 1;
+		pVm->bLcgSeeded = 1;
 	}
-	if( nBuflen > 22 ){
-		return SXERR_ABORT;
+	PH7_LCG_MODMULT(53668,40014,12211,2147483563L,pVm->iLcgS1)
+	PH7_LCG_MODMULT(52774,40692,3791,2147483399L,pVm->iLcgS2)
+	z = pVm->iLcgS1 - pVm->iLcgS2;
+	if( z < 1 ){
+		z += 2147483562;
 	}
-	/* Safely Consume the hex stream */
-	ph7_result_string(pUniq->pCtx,(const char *)pData,(int)nLen);
-	return SXRET_OK;
+	return z * 4.656613e-10;
 }
 /*
- * string uniqid([string $prefix = "" [, bool $more_entropy = false]])
+ * string uniqid(string $prefix = "", bool $more_entropy = false)
  *  Generate a unique ID
- * Parameter
- * $prefix
- *  Append this prefix to the generated unique ID.
- *  With an empty prefix, the returned string will be 13 characters long.
- *  If more_entropy is TRUE, it will be 23 characters.
- * $more_entropy
- *  If set to TRUE, uniqid() will add additional entropy which increases the likelihood
- *  that the result will be unique.
- * Return
- *  Returns the unique identifier, as a string.
+ *
+ * php's id is the CLOCK, not a random number: eight hex digits of epoch seconds
+ * and five of the microseconds within them (`%08x%05x`, the microseconds masked
+ * to 0x100000 because five hex digits is all they need). Three things follow,
+ * and PH7's SHA1-of-a-random-string answered none of them -- it was 14 hex
+ * characters where php's is 13, it did not increase, and it was all DIGITS about
+ * once in 1200 calls where php's, carrying the current epoch, effectively never
+ * is. That last one is not cosmetic: Respect\Validation feeds a uniqid() through
+ * `ctype_digit()`, and an all-digit id becomes an int on one side of a
+ * comparison and stays a string on the other (ECOSYSTEM.md F69).
+ *
+ * php also SLEEPS a microsecond first when `$more_entropy` is false, so two
+ * calls in a row cannot land in the same microsecond and the ids are strictly
+ * increasing. It does that on POSIX only -- its own Windows build has no
+ * usleep() there and makes no such promise -- and so does this.
  */
 PH7_PRIVATE int vm_builtin_uniqid(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	struct unique_id_data sUniq;
-	unsigned char zDigest[20];
 	ph7_vm *pVm = pCtx->pVm;
-	const char *zPrefix;
-	SHA1Context sCtx;
-	char zRandom[7];
-	int nPrefix;
-	int entropy;
-	/* Generate a random string first */
-	PH7_VmRandomString(pVm,zRandom,(int)sizeof(zRandom));
-	/* Initialize fields */
-	zPrefix = 0;
-	nPrefix = 0;
-	entropy = 0;
+	ph7_int64 iSec = 0,iUsec = 0;
+	const char *zPrefix = 0;
+	int nPrefix = 0;
+	int bEntropy = 0;
 	if( nArg > 0 ){
-		/* Append this prefix to the generated unqiue ID */
 		zPrefix = ph7_value_to_string(apArg[0],&nPrefix);
 		if( nArg > 1 ){
-			entropy = ph7_value_to_bool(apArg[1]);
+			bEntropy = ph7_value_to_bool(apArg[1]);
 		}
 	}
-	SHA1Init(&sCtx);
-	/* Generate the random ID */
-	if( nPrefix > 0 ){
-		SHA1Update(&sCtx,(const unsigned char *)zPrefix,(unsigned int)nPrefix);
+#if defined(__UNIXES__)
+	if( !bEntropy ){
+		usleep(1);
 	}
-	/* Append the random ID */
-	SHA1Update(&sCtx,(const unsigned char *)&pVm->unique_id,sizeof(int));
-	/* Append the random string */
-	SHA1Update(&sCtx,(const unsigned char *)zRandom,sizeof(zRandom));
-	/* Increment the number */
-	pVm->unique_id++;
-	SHA1Final(&sCtx,zDigest);
-	/* Hexify the digest */
-	sUniq.pCtx = pCtx;
-	sUniq.entropy = entropy;
-	SyBinToHexConsumer((const void *)zDigest,sizeof(zDigest),HexConsumer,&sUniq);
-	/* All done */
+#endif
+	PH7_VmClockNow(pVm,&iSec,&iUsec);
+	if( nPrefix > 0 ){
+		ph7_result_string(pCtx,zPrefix,nPrefix);
+	}
+	/* The seconds are php's `(int) tv.tv_sec` -- a 32-bit field, so the eight
+	 * hex digits are the low word and stay eight after 2038 rather than growing
+	 * a ninth. */
+	ph7_result_string_format(pCtx,"%08x%05x",(unsigned int)(sxu32)iSec,
+		(unsigned int)(iUsec % 0x100000));
+	if( bEntropy ){
+		/* php's `%.8F` of the LCG times ten: one digit, a point and eight more. */
+		ph7_result_string_format(pCtx,"%.8f",PH7_VmCombinedLcg(pVm) * 10);
+	}
 	return PH7_OK;
 }
-#endif /* PH7_DISABLE_HASH_FUNC */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 /*
  * Section:

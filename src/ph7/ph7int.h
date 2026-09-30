@@ -3451,7 +3451,13 @@ struct ph7_vm
 	                            * folded, so its caller renders php's `<expression>` instead. */
 	int closure_cnt;           /* Loaded closures counter */
 	int json_rc;               /* JSON return status [refer to json_encode()/json_decode()]*/
-	sxu32 unique_id;           /* Random number used to generate unique ID [refer to uniqid() for more info]*/
+	sxi32 iLcgS1;              /* php's combined LCG, the generator behind uniqid()'s $more_entropy
+	                            * tail (and php's own lcg_value()). Two L'Ecuyer streams whose
+	                            * DIFFERENCE is the answer; seeded lazily from the clock and the
+	                            * engine's own entropy, once per VM, the way php seeds its pair
+	                            * once per process. */
+	sxi32 iLcgS2;
+	int bLcgSeeded;            /* ...and whether that has happened yet */
 	sxu32 nNextObjId;          /* Next object handle id to hand out (monotonic; reset to 1 per exec
 	                            * so a reused VM looks like a fresh process). See ph7_class_instance.nObjId */
 	ProcErrLog xErrLog;        /* error_log() consumer [refer to PH7_VM_CONFIG_ERR_LOG_HANDLER] */
@@ -4504,6 +4510,13 @@ PH7_PRIVATE SySet * PH7_VmGetByteCodeContainer(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmSetByteCodeContainer(ph7_vm *pVm,SySet *pContainer);
 PH7_PRIVATE sxi32 PH7_VmEmitInstr(ph7_vm *pVm,sxi32 iOp,sxi32 iP1,sxu32 iP2,void *p3,sxu32 *pIndex);
 PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm);
+/* The wall clock as php reads it: epoch seconds and the sub-second microseconds,
+ * through whatever source this build/embedder has (see DateNow). uniqid() is the
+ * second caller after the date surface itself. */
+PH7_PRIVATE void PH7_VmClockNow(ph7_vm *pVm,ph7_int64 *pSec,ph7_int64 *pUsec);
+/* php's `php_combined_lcg()`: a double in [0,1) from the two L'Ecuyer streams on
+ * the VM. Seeds them on first use. */
+PH7_PRIVATE double PH7_VmCombinedLcg(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmMtSrand(ph7_vm *pVm,sxu32 nSeed,int bLegacyTwist);
 PH7_PRIVATE sxu32 PH7_VmMtRand(ph7_vm *pVm);
 PH7_PRIVATE sxi64 PH7_VmMtRandRange(ph7_vm *pVm,sxi64 iMin,sxi64 iMax);

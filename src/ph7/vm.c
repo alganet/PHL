@@ -3185,7 +3185,6 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 		}
 	}
 	/* Random number betwwen 0 and 1023 used to generate unique ID */
-	pVm->unique_id = PH7_VmRandomNum(&(*pVm)) & 1023;
 	/* First object handle id handed out is 1 (matches PHP's first userland object #1) */
 	pVm->nNextObjId = 1;
 	/* VM is ready for bytecode execution */
@@ -3655,8 +3654,6 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pCoalesceObj = 0;
 	pVm->bCoalesceArmed = 0;
 	VmReinitMemObj(&(*pVm),&pVm->sCoalesceKey);
-	/* Re-roll the uniqid() seed, matching PH7_VmMakeReady(). */
-	pVm->unique_id = PH7_VmRandomNum(&(*pVm)) & 1023;
 	/* Restart object handle ids per exec so a reused VM (e.g. the -S server)
 	 * looks like a fresh process, matching PH7_VmMakeReady(). */
 	pVm->nNextObjId = 1;
