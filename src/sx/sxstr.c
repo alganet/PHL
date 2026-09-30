@@ -9,19 +9,14 @@
 
 PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)
 {
-	register const char *zIn = zSrc;
 #if defined(UNTRUST)
-	if( zIn == 0 ){
+	if( zSrc == 0 ){
 		return 0;
 	}
 #endif
-	for(;;){
-		if( !zIn[0] ){ break; } zIn++;
-		if( !zIn[0] ){ break; } zIn++;
-		if( !zIn[0] ){ break; } zIn++;
-		if( !zIn[0] ){ break; } zIn++;
-	}
-	return (sxu32)(zIn - zSrc);
+	/* The C library's, not a byte loop: this is called ~111M times in a
+	 * nine-second run of the ecosystem gate's phpcs step. */
+	return (sxu32)strlen(zSrc);
 }
 PH7_PRIVATE sxi32 SyByteFind(const char *zStr,sxu32 nLen,sxi32 c,sxu32 *pPos)
 {

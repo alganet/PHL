@@ -7,6 +7,7 @@
 #define __SXMACROS_H__
 
 #include "sxtypes.h"
+#include <string.h>
 
 /* SyString manipulation macros */
 #define SyStringData(RAW)   ((RAW)->zString)
@@ -65,28 +66,35 @@
 	if( Item->pNext ){ Item->pNext->pPrev = Item->pPrev;}
 
 /* Comparison, byte swap, byte copy macros */
+/*
+ * The two byte-at-a-time primitives the whole engine is built on, over the C
+ * library's own. These ran a hand-unrolled four-byte loop, which is what a 2011
+ * compiler could be trusted with and is now several times slower than one call
+ * to a libc routine that reads a vector register at a time -- and they are the
+ * bottom of everything: a profile of the ecosystem gate's phpcs step counted
+ * 201M SyMemcmp, 191M SyMemcpy and 52M SyZero in a nine-second run.
+ *
+ * SX_MACRO_FAST_CMP keeps its exact answer, which is NOT memcmp's: php's
+ * strcmp() reports the DIFFERENCE of the first bytes that differ
+ * (`strcmp("a","z")` is -25, under php 8.5 too), where memcmp only promises the
+ * sign of it. So memcmp decides equality at vector speed and the byte scan runs
+ * only over the equal prefix of an UNEQUAL pair, which is short by definition.
+ */
 #define SX_MACRO_FAST_CMP(X1,X2,SIZE,RC){\
-	register unsigned char *r1 = (unsigned char *)X1;\
-	register unsigned char *r2 = (unsigned char *)X2;\
-	register sxu32 LEN = SIZE;\
-	for(;;){\
-	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
-	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
-	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
-	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
+	const unsigned char *r1 = (const unsigned char *)(X1);\
+	const unsigned char *r2 = (const unsigned char *)(X2);\
+	sxu32 LEN = (sxu32)(SIZE);\
+	RC = LEN ? memcmp(r1,r2,(size_t)LEN) : 0;\
+	if( RC != 0 ){\
+		while( r1[0] == r2[0] ){ r1++; r2++; }\
+		RC = (sxi32)r1[0] - (sxi32)r2[0];\
 	}\
-	RC = !LEN ? 0 : r1[0] - r2[0];\
 }
+/* memMOVE, not memcpy: the byte loop this replaces copied forward, so a caller
+ * whose ranges overlap downwards was well-defined before and stays so. */
 #define SX_MACRO_FAST_MEMCPY(SRC,DST,SIZ){\
-	register unsigned char *xSrc = (unsigned char *)SRC;\
-	register unsigned char *xDst = (unsigned char *)DST;\
-	register sxu32 xLen = SIZ;\
-	for(;;){\
-	    if( !xLen ){ break; }xDst[0] = xSrc[0]; xDst++; xSrc++; --xLen;\
-		if( !xLen ){ break; }xDst[0] = xSrc[0]; xDst++; xSrc++; --xLen;\
-		if( !xLen ){ break; }xDst[0] = xSrc[0]; xDst++; xSrc++; --xLen;\
-		if( !xLen ){ break; }xDst[0] = xSrc[0]; xDst++; xSrc++; --xLen;\
-	}\
+	sxu32 xLen = (sxu32)(SIZ);\
+	if( xLen ){ memmove((void *)(DST),(const void *)(SRC),(size_t)xLen); }\
 }
 #define SX_MACRO_BYTE_SWAP(X,Y,Z){\
 	register unsigned char *s = (unsigned char *)X;\

@@ -45,21 +45,21 @@ static void SyOSHeapFree(void *pPtr)
 }
 
 
+/*
+ * Zero a block. Every ph7_value, VM frame, hashmap and reference record is born
+ * through here -- 52M calls in a nine-second run of the ecosystem gate's phpcs
+ * step -- and it used to be a hand-unrolled byte loop. memset is the same
+ * operation a vector register at a time.
+ */
 PH7_PRIVATE void SyZero(void *pSrc,sxu32 nSize)
 {
-	register unsigned char *zSrc = (unsigned char *)pSrc;
-	unsigned char *zEnd;
 #if defined(UNTRUST)
-	if( zSrc == 0 || nSize <= 0 ){
+	if( pSrc == 0 || nSize <= 0 ){
 		return ;
 	}
 #endif
-	zEnd = &zSrc[nSize];
-	for(;;){
-		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;
-		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;
-		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;
-		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;
+	if( nSize > 0 ){
+		memset(pSrc,0,(size_t)nSize);
 	}
 }
 PH7_PRIVATE sxi32 SyMemcmp(const void *pB1,const void *pB2,sxu32 nSize)
