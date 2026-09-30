@@ -3339,11 +3339,11 @@ static ProcLangConstruct GenStateGetStatementHandler(
 		n++;
 	}
 	if( pLookahed ){
-		if(nKeywordID == PH7_TKWRD_INTERFACE && (pLookahed->nType & PH7_TK_ID) ){
+		if(nKeywordID == PH7_TKWRD_INTERFACE && PH7_IsClassNameToken(pLookahed) ){
 			return PH7_CompileClassInterface;
-		}else if(nKeywordID == PH7_TKWRD_CLASS && (pLookahed->nType & PH7_TK_ID) ){
+		}else if(nKeywordID == PH7_TKWRD_CLASS && PH7_IsClassNameToken(pLookahed) ){
 			return PH7_CompileClass;
-		}else if(nKeywordID == PH7_TKWRD_TRAIT && (pLookahed->nType & PH7_TK_ID) ){
+		}else if(nKeywordID == PH7_TKWRD_TRAIT && PH7_IsClassNameToken(pLookahed) ){
 			return PH7_CompileTrait;
 		}
 		/* `final`/`abstract` (and `readonly`, an ID) class modifiers — possibly
@@ -3352,6 +3352,83 @@ static ProcLangConstruct GenStateGetStatementHandler(
 		 * a single token and cannot see past `final readonly …`). */
 	}
 	/* Not a language construct */
+	return 0;
+}
+/*
+ * Which words may NAME a class, an interface, a trait or an enum, and which may
+ * not — php has two separate answers and this file used to have one.
+ *
+ * php's SCANNER decides the first: a reserved keyword is not an identifier, so
+ * `class list {}` and `class callable {}` are parse errors. Its COMPILER decides
+ * the second, for a handful of words the scanner does hand over as identifiers:
+ * `zend_is_reserved_class_name` refuses `int`, `bool`, `void`, `null`, `self`
+ * and their neighbours with `Cannot use "X" as a class name as it is reserved`.
+ *
+ * PHL's keyword set is not php's, which is where the divergence came from in both
+ * directions. `integer` and `boolean` are CAST words here and identifiers in php,
+ * so `class Integer extends Base {}` — phpseclib writes exactly that, three times
+ * — did not compile at all. And `void`, `never`, `null`, `false`, `true`, `mixed`
+ * and `iterable` arrive as plain identifiers here, so declaring a class with one
+ * of those names SUCCEEDED where php refuses.
+ */
+static int GenStateNameIs(const SyString *pName,const char *zWord)
+{
+	sxu32 n = (sxu32)SyStrlen(zWord);
+	/* Length FIRST: the token's bytes point into the source and are not
+	 * NUL-terminated, so a shorter name must never be compared over its end. */
+	return pName->nByte == n && SyStrnicmp(pName->zString,zWord,n) == 0;
+}
+static int GenStateClassNameKeywordOk(const SyString *pName)
+{
+	/* The only two words PHL lexes as keywords that php lets name a class. */
+	return GenStateNameIs(pName,"integer") || GenStateNameIs(pName,"boolean");
+}
+PH7_PRIVATE int PH7_IsClassNameToken(const SyToken *pTok)
+{
+	if( pTok == 0 ){
+		return 0;
+	}
+	if( pTok->nType & PH7_TK_KEYWORD ){
+		return GenStateClassNameKeywordOk(&pTok->sData);
+	}
+	if( (pTok->nType & PH7_TK_ID) == 0 ){
+		return 0;
+	}
+	if( pTok->nType & PH7_TK_OP ){
+		/* php's alpha-stream operators — `and`, `or`, `xor`, `new`, `clone`,
+		 * `instanceof` — are keywords in its scanner and cannot be identifiers.
+		 * They reach here carrying both flags, and were accepted as names. */
+		return 0;
+	}
+	{
+		/* Two more php keywords that PHL treats as context-sensitive identifiers. */
+		static const char *const azNo[] = { "callable", "readonly" };
+		sxu32 i;
+		for( i = 0 ; i < SX_ARRAYSIZE(azNo) ; ++i ){
+			if( GenStateNameIs(&pTok->sData,azNo[i]) ){
+				return 0;
+			}
+		}
+	}
+	return 1;
+}
+/*
+ * php's zend_is_reserved_class_name: a word its scanner DOES hand over as an
+ * identifier but its compiler refuses to name a class with. The check is
+ * case-insensitive and the refusal quotes the name as WRITTEN.
+ */
+PH7_PRIVATE int PH7_IsReservedClassName(const SyString *pName)
+{
+	static const char *const azReserved[] = {
+		"bool", "int", "float", "string", "null", "false", "true", "void",
+		"never", "iterable", "object", "mixed", "self", "parent", "static"
+	};
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(azReserved) ; ++i ){
+		if( GenStateNameIs(pName,azReserved[i]) ){
+			return 1;
+		}
+	}
 	return 0;
 }
 /*

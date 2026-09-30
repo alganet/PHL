@@ -885,6 +885,7 @@ static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *
 	sxu32 nLine;
 	sxi32 rc;
 	int iNest;
+	int iTern;   /* ternary '?'s opened inside the body and not yet closed */
 	nLine = pIn->nLine;
 	/* Optional 'static' prefix */
 	if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)
@@ -921,12 +922,31 @@ static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *
 	if( pIn < pEnd && (pIn->nType & PH7_TK_ARRAY_OP) ){
 		pIn++;
 	}
-	/* Scan body until first top-level ',' ';' ')' ']' '}' */
+	/* Scan body until first top-level ',' ';' ')' ']' '}' -- or a ':' that belongs
+	 * to an enclosing TERNARY. php's grammar ends an arrow body there, which is
+	 * what makes `$c ? fn($v) => a : fn($v) => b` legal: the first body stops at
+	 * the `:` and the second is the false branch. Without the rule the body ran on
+	 * and swallowed `: fn($v) => b`, and the statement's `;` was `unexpected token
+	 * ";"` -- symfony/config and symfony/var-exporter both write that shape.
+	 * A ternary opened INSIDE the body owns its own colon (`fn() => $a ? $b : $c`),
+	 * so count them; `?:`, `??` and `?->` never reach the counter as a bare '?'
+	 * (the first is two tokens whose colon pairs with its own '?', the other two
+	 * are single tokens). */
 	iNest = 0;
+	iTern = 0;
 	while( pIn < pEnd ){
 		if( iNest == 0 && (pIn->nType &
 			(PH7_TK_COMMA|PH7_TK_SEMI|PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB)) ){
 			break;
+		}
+		if( iNest == 0 && (pIn->nType & PH7_TK_COLON) ){
+			if( iTern < 1 ){
+				break;     /* the colon of an enclosing '?': the body ends here */
+			}
+			iTern--;       /* ...or of a ternary this body opened itself */
+		}else if( iNest == 0 && (pIn->nType & PH7_TK_OP)
+			&& pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
+			iTern++;
 		}
 		if( pIn->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
 			iNest++;

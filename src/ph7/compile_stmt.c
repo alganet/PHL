@@ -765,6 +765,18 @@ Consume:
 		pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];
 		/* Advance the stream cursor */
 		pGen->pRawIn++;
+		if( pGen->pIn >= pGen->pEnd ){
+			/* The chunk held no TOKENS. `<?php // note ?>` is a whole PHP block that
+			 * produces none, and so is a block holding only a comment of any kind --
+			 * the lexer emits the chunk (its bytes are not empty) and tokenizing it
+			 * yields nothing. Handing that empty stream back reads as END OF INPUT to
+			 * every caller, so the enclosing block ended there and the real `}` two
+			 * lines later was "Unmatched". A php TEMPLATE writes exactly this shape --
+			 * `<?php } else { ?>` … `<?php // why ?>` … `<?php } ?>` is symfony's
+			 * error-handler view -- so take the NEXT chunk instead. The cursor has
+			 * already advanced, so the loop always makes progress. */
+			goto Consume;
+		}
 		/* TICKET 1433-011 */
 		if( pGen->pIn < pGen->pEnd && ( pGen->pIn->nType & PH7_TK_EQUAL ) ){
 			static const sxu32 nKeyID = PH7_TKWRD_ECHO;

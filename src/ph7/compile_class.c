@@ -1784,10 +1784,27 @@ static sxi32 GenStateCompileClassMethod(
 	/* Jump the method name */
 	pGen->pIn++;
 	if( iFlags & PH7_CLASS_ATTR_ABSTRACT ){
-		/* Abstract method */
-		if( iProtection == PH7_CLASS_PROT_PRIVATE ){
+		/* Abstract method. php has THREE answers here and this had one:
+		 *
+		 *  - an ENUM may not declare an abstract method at all, whatever its
+		 *    visibility ("Enum method E::m() must not be abstract");
+		 *  - a TRAIT may declare a PRIVATE one -- php 8.0 allowed it, and
+		 *    symfony/messenger's BatchHandlerTrait is written that way, so a
+		 *    refusal here stops a real component from compiling;
+		 *  - a class (abstract or not) refuses it, in php's own words: `Abstract
+		 *    function C::m() cannot be declared private`, not this file's older
+		 *    "Access type for abstract method" sentence, which php keeps for an
+		 *    INTERFACE member (and which the interface path already spells). */
+		if( pClass->iFlags & PH7_CLASS_ENUM ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				"Access type for abstract method '%z::%z' cannot be 'private'",
+				"Enum method %z::%z() must not be abstract",&pClass->sName,pName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}else if( iProtection == PH7_CLASS_PROT_PRIVATE
+		       && (pClass->iFlags & PH7_CLASS_TRAIT) == 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Abstract function %z::%z() cannot be declared private",
 				&pClass->sName,pName);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
@@ -4219,7 +4236,11 @@ static sxi32 GenStateScanDeferDeps(ph7_gen_state *pGen,int bAnon,int iSelfKind,
 			pCur = &pClose[1];
 		}
 	}else{
-		if( pCur >= pEnd || (pCur->nType & PH7_TK_ID) == 0 ){
+		if( pCur >= pEnd || !PH7_IsClassNameToken(pCur) ){
+			/* Same name test the declaration compiler uses: a word php lets name a
+			 * class may be one of PHL's KEYWORD tokens (`class Integer …`), and
+			 * demanding a plain ID here sent such a declaration down the
+			 * non-deferring path, where a not-yet-loaded parent is a fatal. */
 			SySetRelease(&aNames);
 			return SXERR_INVALID;
 		}
@@ -4841,7 +4862,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		pName = pAnonName;
 		pClass = PH7_NewRawClass(pGen->pVm,pAnonName,nLine);
 	}else{
-		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+		if( pGen->pIn >= pGen->pEnd || !PH7_IsClassNameToken(pGen->pIn) ){
 			/* Syntax error */
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Invalid class name");
 			if( rc == SXERR_ABORT ){
@@ -4856,6 +4877,22 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		}
 		/* Extract class name */
 		pName = &pGen->pIn->sData;
+		if( PH7_IsReservedClassName(pName) ){
+			/* php's compiler-side screen (zend_is_reserved_class_name): the scanner
+			 * hands these over as identifiers and the compiler refuses them, quoting
+			 * the name as WRITTEN. `class Null {}` and `class void {}` used to
+			 * compile here and are fatals in php. */
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+				"Cannot use \"%z\" as a class name as it is reserved",pName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			while( pGen->pIn < pGen->pEnd
+			    && (pGen->pIn->nType & (PH7_TK_OCB/*'{'*/|PH7_TK_SEMI/*';'*/)) == 0 ){
+				pGen->pIn++;
+			}
+			return SXRET_OK;
+		}
 		/* Advance the stream cursor */
 		pGen->pIn++;
 		/* Build FQN and obtain a raw class */ {
