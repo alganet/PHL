@@ -6455,6 +6455,39 @@ static int vm_builtin_ReflectionFunc_getStaticVariables(ph7_context *pCtx, int n
 		ph7_result_value(pCtx, pOut);
 		return PH7_OK;
 	}
+	/* php reports a closure's captured `use` variables here TOO, ahead of the body's
+	 * own statics: it compiles both into one static-variables table, and
+	 * ReflectionFunction::getStaticVariables() hands back the whole thing. PHL listed
+	 * only the `static $x` ones, so a closure's captures were invisible to reflection.
+	 *
+	 * Pest reads exactly this to find the closure a test case wraps --
+	 * `Reflection::getFunctionVariable($this->__test, 'closure')` is
+	 * `(new ReflectionFunction($f))->getStaticVariables()['closure']` -- and with the
+	 * captures missing it got null and EVERY test in a Pest suite failed on the
+	 * TypeError that followed.
+	 *
+	 * `$this` is not one of them: php keeps the receiver in its own slot and never
+	 * lists it as a static, while PHL carries it as an ordinary env entry. A by-REFERENCE
+	 * capture reports what its slot holds NOW, not the value at closure creation. */
+	{
+		ph7_vm_func_closure_env *aEnv =
+			(ph7_vm_func_closure_env *)SySetBasePtr(&sRef.pFunc->aClosureEnv);
+		sxu32 k;
+		for( k = 0 ; k < SySetUsed(&sRef.pFunc->aClosureEnv) ; ++k ){
+			ph7_value *pVal = &aEnv[k].sValue;
+			if( SyStringLength(&aEnv[k].sName) == sizeof("this")-1
+			 && SyMemcmp(SyStringData(&aEnv[k].sName), "this", sizeof("this")-1) == 0 ){
+				continue;
+			}
+			if( aEnv[k].nIdx != SXU32_HIGH ){
+				ph7_value *pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aEnv[k].nIdx);
+				if( pSlot ){
+					pVal = pSlot;
+				}
+			}
+			ReflectMapAddDyn(pCtx, pOut, &aEnv[k].sName, pVal);
+		}
+	}
 	/* Current value when the slot was initialized (first call), otherwise the
 	 * evaluated default — php's getStaticVariables initializes on demand and
 	 * reports the same values. */
