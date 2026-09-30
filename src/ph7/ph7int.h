@@ -2818,11 +2818,26 @@ struct VmSlot
 	void *pUserData; /* Upper-layer private data */
 };
 typedef struct VmRefObj VmRefObj;
+typedef struct VmRefSpill VmRefSpill;
+/*
+ * The SECOND and later holder of each kind. Allocated only for a slot that really
+ * has two names on it, or two array nodes -- which is what a PHP `&` reference is,
+ * and which almost no slot is: an ordinary variable is named once and an ordinary
+ * array element is pointed at by one node. Every slot used to carry both of these
+ * sets inline (80 bytes) plus the 32-byte buffer each grew on its first row, so the
+ * engine paid a reference's price for every variable and every element it created.
+ */
+struct VmRefSpill
+{
+	SySet aReference;  /* Holders beyond pEntry0 */
+	SySet aArrEntries; /* Holders beyond pNode0 */
+};
 /* Reference-object body (vm.c reference machinery; shared with vm_builtin_var.c's unset) */
 struct VmRefObj
 {
-	SySet aReference;  /* Table of references to this memory object */
-	SySet aArrEntries; /* Foreign hashmap entries [i.e: array(&$a) ] */
+	SyHashEntry *pEntry0;     /* The one name bound to this slot; 0 once it is gone */
+	ph7_hashmap_node *pNode0; /* The one array node pointing here; 0 once it is gone */
+	VmRefSpill *pSpill;       /* The 2nd..nth holder of either kind; 0 while there is none */
 	sxu32 nIdx;        /* Referenced object index */
 	sxu32 nPin;        /* Holders the table cannot name, COUNTED so the last one to go
 	                    * can release the slot: reference-bound properties (one per
@@ -5767,6 +5782,8 @@ PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);
 PH7_PRIVATE void PH7_MarkDeprecatedConstants(ph7_vm *pVm);
 /* vm.c reference/frame internals shared with vm_builtin_var.c */
 PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
+PH7_PRIVATE sxu32 PH7_VmRefEntryCount(VmRefObj *pRef);
+PH7_PRIVATE sxu32 PH7_VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);
 PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry);

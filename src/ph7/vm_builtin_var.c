@@ -128,13 +128,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 			if( SXRET_OK == PH7_HashmapLookup((ph7_hashmap *)pGlobals->x.pOther,&sKey,&pNode)
 			 && pNode && pNode->nValIdx == nIdx ){
 				if( pRef ){
-					ph7_hashmap_node **apN = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
-					sxu32 k;
-					for( k = 0 ; k < SySetUsed(&pRef->aArrEntries) ; ++k ){
-						if( apN[k] == pNode ){
-							apN[k] = 0;
-						}
-					}
+					PH7_VmRefObjRemove(&(*pVm),nIdx,0,pNode);
 				}
 				PH7_HashmapUnlinkNode(pNode,FALSE);
 			}
@@ -158,14 +152,8 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 		return SXRET_OK;
 	}
 	{
-		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-		sxu32 n;
 		/* Forget THIS name in the slot's reference record (leave the others alone) */
-		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
-			if( apEntry[n] == pEntry ){
-				apEntry[n] = 0;
-			}
-		}
+		PH7_VmRefObjRemove(&(*pVm),nIdx,pEntry,0);
 		SyHashDeleteEntry2(pEntry);
 		/* The value goes with the LAST holder and not before — the one rule, counted in
 		 * one place: other names, array nodes that still point here, and a PIN (a static's

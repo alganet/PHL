@@ -6280,9 +6280,7 @@ struct VmShutdownName
  */
 static int VmSlotHeldByOneName(ph7_vm *pVm,sxu32 nIdx)
 {
-	SyHashEntry **apEntry;
 	VmRefObj *pRef;
-	sxu32 n,nName = 0;
 	pRef = VmRefObjExtract(&(*pVm),nIdx);
 	if( pRef == 0 ){
 		return 0;
@@ -6290,13 +6288,7 @@ static int VmSlotHeldByOneName(ph7_vm *pVm,sxu32 nIdx)
 	if( pRef->nPin > 0 || (pRef->iFlags & VM_REF_IDX_KEEP) ){
 		return 0;
 	}
-	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
-		if( apEntry[n] ){
-			nName++;
-		}
-	}
-	return nName == 1;
+	return PH7_VmRefEntryCount(pRef) == 1;
 }
 /*
  * php's shutdown destructor phase, first half: the GLOBAL SYMBOL TABLE.
@@ -7075,6 +7067,14 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
  */
 /*
  * Allocate a new reference entry.
+ *
+ * A record is created for EVERY variable a frame binds and EVERY element an array
+ * inserts, so its size is the engine's per-value overhead: the two inline SySets it
+ * used to carry made it 128 bytes (a 256-byte pool bucket) before either of them had
+ * a row, and the first row of each then grew a 32-byte buffer of its own. The one
+ * holder a slot almost always has now lives in the record itself and nothing is
+ * allocated for it; the sets move to VmRefSpill, which only a real `&` reference
+ * ever asks for.
  */
 static VmRefObj * VmNewRefObj(ph7_vm *pVm,sxu32 nIdx)
 {
@@ -7086,11 +7086,161 @@ static VmRefObj * VmNewRefObj(ph7_vm *pVm,sxu32 nIdx)
 	}
 	/* Zero the structure */
 	SyZero(pRef,sizeof(VmRefObj));
-	/* Initialize fields */
-	SySetInit(&pRef->aReference,&pVm->sAllocator,sizeof(SyHashEntry *));
-	SySetInit(&pRef->aArrEntries,&pVm->sAllocator,sizeof(ph7_hashmap_node *));
 	pRef->nIdx = nIdx;
 	return pRef;
+}
+/*
+ * The spill sets of a record that has just been given a second holder, created on
+ * demand. NULL on OOM, in which case the caller drops the row -- the same
+ * degradation SySetPut's own failure already produced.
+ */
+static VmRefSpill * VmRefSpillGet(ph7_vm *pVm,VmRefObj *pRef)
+{
+	VmRefSpill *pSpill;
+	if( pRef->pSpill ){
+		return pRef->pSpill;
+	}
+	pSpill = (VmRefSpill *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmRefSpill));
+	if( pSpill == 0 ){
+		return 0;
+	}
+	SySetInit(&pSpill->aReference,&pVm->sAllocator,sizeof(SyHashEntry *));
+	SySetInit(&pSpill->aArrEntries,&pVm->sAllocator,sizeof(ph7_hashmap_node *));
+	pRef->pSpill = pSpill;
+	return pSpill;
+}
+/*
+ * File one holder on a record, ignoring a name that is already on it -- a name can be
+ * RE-BOUND to the same slot any number of times, and a table that only ever grew made
+ * both the install and the holder count O(rows).
+ */
+static void VmRefAddEntry(ph7_vm *pVm,VmRefObj *pRef,SyHashEntry *pEntry)
+{
+	VmRefSpill *pSpill;
+	SyHashEntry **apEntry;
+	sxu32 n, nFree = SXU32_HIGH;
+	if( pRef->pEntry0 == pEntry ){
+		return;
+	}
+	if( pRef->pEntry0 == 0 ){
+		pRef->pEntry0 = pEntry;
+		return;
+	}
+	pSpill = VmRefSpillGet(&(*pVm),pRef);
+	if( pSpill == 0 ){
+		return;
+	}
+	apEntry = (SyHashEntry **)SySetBasePtr(&pSpill->aReference);
+	for( n = 0 ; n < SySetUsed(&pSpill->aReference) ; ++n ){
+		if( apEntry[n] == pEntry ){
+			return; /* already recorded: never file one holder twice */
+		}
+		if( apEntry[n] == 0 && nFree == SXU32_HIGH ){
+			nFree = n; /* a row a dead holder left behind */
+		}
+	}
+	if( nFree != SXU32_HIGH ){
+		apEntry[nFree] = pEntry;
+	}else{
+		SySetPut(&pSpill->aReference,(const void *)&pEntry);
+	}
+}
+static void VmRefAddNode(ph7_vm *pVm,VmRefObj *pRef,ph7_hashmap_node *pNode)
+{
+	VmRefSpill *pSpill;
+	ph7_hashmap_node **apNode;
+	sxu32 n, nFree = SXU32_HIGH;
+	if( pRef->pNode0 == pNode ){
+		return;
+	}
+	if( pRef->pNode0 == 0 ){
+		pRef->pNode0 = pNode;
+		return;
+	}
+	pSpill = VmRefSpillGet(&(*pVm),pRef);
+	if( pSpill == 0 ){
+		return;
+	}
+	apNode = (ph7_hashmap_node **)SySetBasePtr(&pSpill->aArrEntries);
+	for( n = 0 ; n < SySetUsed(&pSpill->aArrEntries) ; ++n ){
+		if( apNode[n] == pNode ){
+			return;
+		}
+		if( apNode[n] == 0 && nFree == SXU32_HIGH ){
+			nFree = n;
+		}
+	}
+	if( nFree != SXU32_HIGH ){
+		apNode[nFree] = pNode;
+	}else{
+		SySetPut(&pSpill->aArrEntries,(const void *)&pNode);
+	}
+}
+/*
+ * Drop one holder from a record. Every row that names it goes, inline or spilled:
+ * the table has never promised a holder appears once, and the count below reads
+ * whatever is left.
+ */
+static void VmRefDropEntry(VmRefObj *pRef,SyHashEntry *pEntry)
+{
+	if( pRef->pEntry0 == pEntry ){
+		pRef->pEntry0 = 0;
+	}
+	if( pRef->pSpill ){
+		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->pSpill->aReference);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pRef->pSpill->aReference) ; ++n ){
+			if( apEntry[n] == pEntry ){
+				apEntry[n] = 0;
+			}
+		}
+	}
+}
+static void VmRefDropNode(VmRefObj *pRef,ph7_hashmap_node *pNode)
+{
+	if( pRef->pNode0 == pNode ){
+		pRef->pNode0 = 0;
+	}
+	if( pRef->pSpill ){
+		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->pSpill->aArrEntries);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pRef->pSpill->aArrEntries) ; ++n ){
+			if( apNode[n] == pNode ){
+				apNode[n] = 0;
+			}
+		}
+	}
+}
+/*
+ * How many LIVE holders of each kind a record still carries. A node counts only while
+ * it still points HERE -- a slot index travels through the free list, so a record can
+ * outlive the node that filed the row.
+ */
+PH7_PRIVATE sxu32 PH7_VmRefEntryCount(VmRefObj *pRef)
+{
+	sxu32 n, nLive = pRef->pEntry0 ? 1 : 0;
+	if( pRef->pSpill ){
+		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->pSpill->aReference);
+		for( n = 0 ; n < SySetUsed(&pRef->pSpill->aReference) ; ++n ){
+			if( apEntry[n] ){
+				nLive++;
+			}
+		}
+	}
+	return nLive;
+}
+PH7_PRIVATE sxu32 PH7_VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx)
+{
+	sxu32 n, nLive = (pRef->pNode0 && pRef->pNode0->nValIdx == nIdx) ? 1 : 0;
+	if( pRef->pSpill ){
+		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->pSpill->aArrEntries);
+		for( n = 0 ; n < SySetUsed(&pRef->pSpill->aArrEntries) ; ++n ){
+			if( apNode[n] && apNode[n]->nValIdx == nIdx ){
+				nLive++;
+			}
+		}
+	}
+	return nLive;
 }
 /*
  * Default hash function used by the reference table
@@ -7207,21 +7357,40 @@ static sxi32 VmRefObjInsert(ph7_vm *pVm,VmRefObj *pRef)
  */
 PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef)
 {
-	ph7_hashmap_node **apNode;
-	SyHashEntry **apEntry;
+	VmRefSpill *pSpill;
 	sxu32 n;
-	/* Point to the reference table */
-	apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
-	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-	/* Unlink the entry from the reference table */
-	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; n++ ){
-		if( apEntry[n] ){
-			SyHashDeleteEntry2(apEntry[n]);
-		}
+	/* Clear each row BEFORE the call that acts on it: unlinking a node runs the
+	 * value's release, which can re-enter this table for the same slot, and a row
+	 * still filled when that happens is a holder being handed out twice. The base
+	 * pointer is re-read per row for the same reason -- a re-entrant install may
+	 * have grown the set out from under it. */
+	if( pRef->pEntry0 ){
+		SyHashEntry *pEntry = pRef->pEntry0;
+		pRef->pEntry0 = 0;
+		SyHashDeleteEntry2(pEntry);
 	}
-	for(n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){
-		if( apNode[n] ){
-			PH7_HashmapUnlinkNode(apNode[n],FALSE);
+	if( pRef->pNode0 ){
+		ph7_hashmap_node *pNode = pRef->pNode0;
+		pRef->pNode0 = 0;
+		PH7_HashmapUnlinkNode(pNode,FALSE);
+	}
+	pSpill = pRef->pSpill;
+	if( pSpill ){
+		for( n = 0 ; n < SySetUsed(&pSpill->aReference) ; n++ ){
+			SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pSpill->aReference);
+			SyHashEntry *pEntry = apEntry[n];
+			if( pEntry ){
+				apEntry[n] = 0;
+				SyHashDeleteEntry2(pEntry);
+			}
+		}
+		for(n = 0 ; n < SySetUsed(&pSpill->aArrEntries) ; ++n ){
+			ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pSpill->aArrEntries);
+			ph7_hashmap_node *pNode = apNode[n];
+			if( pNode ){
+				apNode[n] = 0;
+				PH7_HashmapUnlinkNode(pNode,FALSE);
+			}
 		}
 	}
 	if( pRef->pPrevCollide ){
@@ -7234,8 +7403,12 @@ PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef)
 	}
 	MACRO_LD_REMOVE(pVm->pRefList,pRef);
 	/* Release the node */
-	SySetRelease(&pRef->aReference);
-	SySetRelease(&pRef->aArrEntries);
+	if( pRef->pSpill ){
+		SySetRelease(&pRef->pSpill->aReference);
+		SySetRelease(&pRef->pSpill->aArrEntries);
+		SyMemBackendPoolFree(&pVm->sAllocator,pRef->pSpill);
+		pRef->pSpill = 0;
+	}
 	SyMemBackendPoolFree(&pVm->sAllocator,pRef);
 	pVm->nRefUsed--;
 	return SXRET_OK;
@@ -7284,48 +7457,12 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 		}
 	}
 	if( pEntry ){
-		/* Address of the hash-entry (into a row a dead holder left behind — a name can
-		 * be RE-BOUND to the same slot any number of times, and a set that only ever
-		 * grew made both the install and the holder count O(rows)) */
-		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-		sxu32 n, nFree = SXU32_HIGH;
-		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
-			if( apEntry[n] == pEntry ){
-				nFree = SXU32_HIGH; /* already recorded: never file one holder twice */
-				break;
-			}
-			if( apEntry[n] == 0 && nFree == SXU32_HIGH ){
-				nFree = n;
-			}
-		}
-		if( n >= SySetUsed(&pRef->aReference) ){
-			if( nFree != SXU32_HIGH ){
-				apEntry[nFree] = pEntry;
-			}else{
-				SySetPut(&pRef->aReference,(const void *)&pEntry);
-			}
-		}
+		/* The name bound to this slot */
+		VmRefAddEntry(&(*pVm),pRef,pEntry);
 	}
 	if( pMapEntry ){
-		/* Address of the hashmap node [i.e: Array entry] — same row reuse */
-		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
-		sxu32 n, nFree = SXU32_HIGH;
-		for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){
-			if( apNode[n] == pMapEntry ){
-				nFree = SXU32_HIGH;
-				break;
-			}
-			if( apNode[n] == 0 && nFree == SXU32_HIGH ){
-				nFree = n;
-			}
-		}
-		if( n >= SySetUsed(&pRef->aArrEntries) ){
-			if( nFree != SXU32_HIGH ){
-				apNode[nFree] = pMapEntry;
-			}else{
-				SySetPut(&pRef->aArrEntries,(const void *)&pMapEntry);
-			}
-		}
+		/* The hashmap node [i.e: Array entry] pointing at it */
+		VmRefAddNode(&(*pVm),pRef,pMapEntry);
 	}
 	return SXRET_OK;
 }
@@ -7346,7 +7483,6 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
 	)
 {
 	VmRefObj *pRef;
-	sxu32 n;
 	/* Check if the referenced object already exists */
 	pRef = VmRefObjExtract(&(*pVm),nIdx);
 	if( pRef == 0 ){
@@ -7355,29 +7491,10 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
 	}
 	/* Remove the desired entry */
 	if( pEntry ){
-		SyHashEntry **apEntry;
-		apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; n++ ){
-			if( apEntry[n] == pEntry ){
-				/* Nullify the entry */
-				apEntry[n] = 0;
-				/*
-				 * NOTE:
-				 * In future releases,think to add a free pool of entries,so that
-				 * we avoid wasting spaces.
-				 */
-			}
-		}
+		VmRefDropEntry(pRef,pEntry);
 	}
 	if( pMapEntry ){
-		ph7_hashmap_node **apNode;
-		apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
-		for(n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; n++ ){
-			if( apNode[n] == pMapEntry ){
-				/* nullify the entry */
-				apNode[n] = 0;
-			}
-		}
+		VmRefDropNode(pRef,pMapEntry);
 	}
 	return SXRET_OK;
 }
@@ -7394,10 +7511,8 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
  */
 PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
 {
-	ph7_hashmap_node **apNode;
-	SyHashEntry **apEntry;
 	VmRefObj *pRef;
-	sxu32 n, nLive = 0;
+	sxu32 nLive = 0;
 	if( nIdx == SXU32_HIGH ){
 		return 0;
 	}
@@ -7415,18 +7530,8 @@ PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
 		 * php's refcount does. */
 		nLive++;
 	}
-	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
-		if( apEntry[n] ){
-			nLive++;
-		}
-	}
-	apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
-	for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){
-		if( apNode[n] && apNode[n]->nValIdx == nIdx ){
-			nLive++;
-		}
-	}
+	nLive += PH7_VmRefEntryCount(pRef);
+	nLive += PH7_VmRefNodeCount(pRef,nIdx);
 	return nLive;
 }
 /*

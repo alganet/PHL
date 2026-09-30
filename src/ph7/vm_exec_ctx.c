@@ -978,7 +978,7 @@ PH7_PRIVATE int PH7_VmSlotRefCount(ph7_vm *pVm,sxu32 nIdx)
 	if( pRef == 0 ){
 		return 0;
 	}
-	return (int)(SySetUsed(&pRef->aReference) + SySetUsed(&pRef->aArrEntries));
+	return (int)(PH7_VmRefEntryCount(pRef) + PH7_VmRefNodeCount(pRef,nIdx));
 }
 /*
  * First-class callable over an arbitrary callable VALUE: `($expr)(...)`.
