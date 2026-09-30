@@ -4422,8 +4422,17 @@ static sxi32 GenStateCompileCaseExpr(ph7_gen_state *pGen,ph7_case_expr *pExpr)
 	SySet *pInstrContainer;
 	SyToken *pEnd,*pTmp;
 	sxi32 iNest = 0;
+	sxi32 iQuesty = 0;  /* `?`s opened in the case expression and still unclosed */
 	sxi32 rc;
-	/* Delimit the expression */
+	/* Delimit the expression. The `:` that ends a case label is the one standing
+	 * outside every paren AND outside every open ternary: php reads the whole
+	 * expression first, so `case \PHP_VERSION_ID < 80100 ? \T_CLASS : \T_ENUM:`
+	 * is one label with three colons' worth of punctuation in it. Stopping at the
+	 * first colon cut that label at the ternary's, and the leftover `\T_ENUM:`
+	 * came back as `syntax error, unexpected token ":"` -- it is how nette/utils
+	 * spells its token switch, so no phpstan run got past its own bootstrap. A
+	 * `?:` closes itself here (its two tokens are adjacent), and a named
+	 * argument's `:` sits at iNest >= 1 where neither test can see it. */
 	pEnd = pGen->pIn;
 	while( pEnd < pGen->pEnd ){
 		if( pEnd->nType & PH7_TK_LPAREN /*(*/ ){
@@ -4432,7 +4441,16 @@ static sxi32 GenStateCompileCaseExpr(ph7_gen_state *pGen,ph7_case_expr *pExpr)
 		}else if( pEnd->nType & PH7_TK_RPAREN /*)*/ ){
 			/* Decrement nesting level */
 			iNest--;
-		}else if( pEnd->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_COLON/*;'*/) && iNest < 1 ){
+		}else if( iNest < 1 && (pEnd->nType & PH7_TK_OP)
+			&& pEnd->sData.nByte == 1 && pEnd->sData.zString[0] == '?' ){
+			/* `??` and `?->` are tokens of their own, so this cannot see them */
+			iQuesty++;
+		}else if( (pEnd->nType & PH7_TK_COLON) && iNest < 1 ){
+			if( iQuesty < 1 ){
+				break;
+			}
+			iQuesty--;
+		}else if( (pEnd->nType & PH7_TK_SEMI/*';'*/) && iNest < 1 ){
 			break;
 		}
 		pEnd++;
