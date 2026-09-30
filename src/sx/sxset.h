@@ -52,6 +52,13 @@ struct SyBlob
 #define SXBLOB_LOCKED  0x01  /* Blob is locked [i.e: Cannot auto grow] */
 #define SXBLOB_STATIC  0x02  /* Not allocated from heap */
 #define SXBLOB_RDONLY  0x04  /* Read-Only data */
+#define SXBLOB_POOLED  0x08  /* pBlob came from SyMemBackendPoolAlloc, not from the tracked
+                              * backend, so SyBlobRelease must give it back the same way.
+                              * The flag always describes the pointer CURRENTLY in pBlob:
+                              * every path that replaces the buffer sets it or clears it,
+                              * and none leaves it to mean something about a previous one.
+                              * (PERF.md P12; sxmem.c's BlobSetCapacity is the one place
+                              * that chooses.) */
 
 /* SyBlob access macros */
 #define SyBlobFreeSpace(BLOB)    ((BLOB)->mByte - (BLOB)->nByte)

@@ -1243,16 +1243,100 @@ PH7_PRIVATE sxi32 SyBlobReadOnly(SyBlob *pBlob,const void *pData,sxu32 nByte)
 	pBlob->pBlob = (void *)pData;
 	pBlob->nByte = nByte;
 	pBlob->mByte = 0;
-	pBlob->nFlags |= SXBLOB_RDONLY;
+	/* POOLED describes the pointer being installed, and this one is somebody else's.
+	 * (A caller that had an owned buffer here leaked it before this flag existed too --
+	 * the contract has always been "release, then alias" -- but the flag must never
+	 * outlive the buffer it described.) */
+	pBlob->nFlags = (pBlob->nFlags & ~SXBLOB_POOLED) | SXBLOB_RDONLY;
 	return SXRET_OK;
 }
 #ifndef SXBLOB_MIN_GROWTH
 #define SXBLOB_MIN_GROWTH 16
 #endif
+/*
+ * The largest buffer a blob takes from the POOL rather than from the tracked backend.
+ *
+ * A blob's backing store used to come from SyMemBackendRealloc without exception, which
+ * meant a malloc() for every string body the engine ever built. Counted on the ecosystem
+ * gate's phpcs step over 711 files: of 160,541,911 calls the engine makes into malloc,
+ * 119,844,811 -- three quarters -- are a blob's FIRST growth arriving here with
+ * pBlob->pBlob still 0, and 119,727,780 of those (99.9%) ask for 256 bytes or less.
+ * 72,314,251 ask for 64 or less. The pool serves exactly that size in a free-list pop,
+ * and was already serving 129 million requests a run of the same shape from hashmap
+ * nodes, hash entries and class instances. (PERF.md P12.)
+ *
+ * Why a CAP and not the pool's own 32 KB ceiling: the pool never returns memory to the
+ * OS (PERF.md §6 -- a feature for a long-running device), so one big transient blob
+ * routed through it would hold a 32 KB bucket block for the life of the VM. A large
+ * blob keeps the tracked backend, where a free is a free, and keeps realloc's ability
+ * to extend in place -- which matters for the output buffer and for string building,
+ * the two things that actually grow past this.
+ *
+ * Why 248 and not 256: 248 + sizeof(SyMemHeader) is exactly the 256-byte bucket, so a
+ * pooled buffer can never overshoot into the 512 one. Measured, the value barely
+ * matters -- 248, 256 and 1016 all land within noise of each other on peak RSS, because
+ * the win is dominated by one band (189,788 live bodies asking 16-23 bytes). What the
+ * cap really buys is a BOUND on what the pool can be made to retain.
+ */
+#ifndef SXBLOB_POOL_MAX
+#define SXBLOB_POOL_MAX 248
+#endif
+/*
+ * Give pBlob a buffer of exactly nByte, from whichever allocator that size belongs to,
+ * moving it between the two when the size crosses SXBLOB_POOL_MAX.
+ *
+ * This is the ONLY place that decides which allocator owns a blob's bytes, and
+ * SXBLOB_POOLED is set or cleared on every path out of it -- there is no path that
+ * leaves the flag describing a buffer that is no longer there. A blob is never demoted
+ * back INTO the pool once it has outgrown it: capacity only rises, so the tracked block
+ * it already holds is the right home for everything after.
+ */
+static sxi32 BlobSetCapacity(SyBlob *pBlob,sxu32 nByte)
+{
+	SyMemBackend *pAlloc = pBlob->pAllocator;
+	int bWantPool = (nByte <= SXBLOB_POOL_MAX);
+	void *pNew;
+	if( pBlob->pBlob == 0 ){
+		/* The first buffer -- three quarters of every direct allocation the engine
+		 * used to make, and the reason this function exists. */
+		pNew = bWantPool ? SyMemBackendPoolAlloc(pAlloc,nByte)
+		                 : SyMemBackendAlloc(pAlloc,nByte);
+		if( pNew == 0 ){
+			return SXERR_MEM;
+		}
+	}else if( (pBlob->nFlags & SXBLOB_POOLED) == 0 ){
+		/* Already a tracked block: realloc, exactly as before this existed. */
+		pNew = SyMemBackendRealloc(pAlloc,pBlob->pBlob,nByte);
+		if( pNew == 0 ){
+			return SXERR_MEM;
+		}
+	}else{
+		/* A pooled buffer growing. The pool has no realloc, so this is
+		 * allocate-copy-free -- which is what realloc does anyway for any growth it
+		 * cannot satisfy in place. Only the USED bytes are carried over; the rest of
+		 * the old chunk was never written. */
+		pNew = bWantPool ? SyMemBackendPoolAlloc(pAlloc,nByte)
+		                 : SyMemBackendAlloc(pAlloc,nByte);
+		if( pNew == 0 ){
+			return SXERR_MEM;   /* the old buffer is still ours and still valid */
+		}
+		if( pBlob->nByte > 0 ){
+			SX_MACRO_FAST_MEMCPY(pBlob->pBlob,pNew,pBlob->nByte);
+		}
+		SyMemBackendPoolFree(pAlloc,pBlob->pBlob);
+	}
+	if( bWantPool ){
+		pBlob->nFlags |= SXBLOB_POOLED;
+	}else{
+		pBlob->nFlags &= ~SXBLOB_POOLED;
+	}
+	pBlob->pBlob = pNew;
+	pBlob->mByte = nByte;
+	return SXRET_OK;
+}
 static sxi32 BlobPrepareGrow(SyBlob *pBlob,sxu32 *pByte)
 {
 	sxu32 nByte;
-	void *pNew;
 	nByte = *pByte;
 	if( pBlob->nFlags & (SXBLOB_LOCKED|SXBLOB_STATIC) ){
 		if ( SyBlobFreeSpace(pBlob) < nByte ){
@@ -1264,20 +1348,25 @@ static sxi32 BlobPrepareGrow(SyBlob *pBlob,sxu32 *pByte)
 		return SXRET_OK;
 	}
 	if( pBlob->nFlags & SXBLOB_RDONLY ){
-		/* Make a copy of the read-only item */
-		if( pBlob->nByte > 0 ){
-			pNew = SyMemBackendDup(pBlob->pAllocator,pBlob->pBlob,pBlob->nByte);
-			if( pNew == 0 ){
+		/* Make a copy of the read-only item. The second allocation door, and it takes
+		 * the same routing as the first: the alias being copied is somebody else's
+		 * short string far more often than not. Detached from pBlob first so
+		 * BlobSetCapacity sees "no buffer" and cannot try to grow or free an alias it
+		 * does not own. */
+		sxu32 nCopy = pBlob->nByte;
+		const void *pSrc = pBlob->pBlob;
+		pBlob->pBlob = 0;
+		pBlob->mByte = 0;
+		pBlob->nFlags &= ~(SXBLOB_RDONLY|SXBLOB_POOLED);
+		if( nCopy > 0 ){
+			if( BlobSetCapacity(&(*pBlob),nCopy) != SXRET_OK ){
+				/* Put the alias back: refusing to grow must not lose the bytes. */
+				pBlob->pBlob = (void *)pSrc;
+				pBlob->nFlags |= SXBLOB_RDONLY;
 				return SXERR_MEM;
 			}
-			pBlob->pBlob = pNew;
-			pBlob->mByte = pBlob->nByte;
-		}else{
-			pBlob->pBlob = 0;
-			pBlob->mByte = 0;
+			SX_MACRO_FAST_MEMCPY(pSrc,pBlob->pBlob,nCopy);
 		}
-		/* Remove the read-only flag */
-		pBlob->nFlags &= ~SXBLOB_RDONLY;
 	}
 	if( SyBlobFreeSpace(pBlob) >= nByte ){
 		return SXRET_OK;
@@ -1287,13 +1376,7 @@ static sxi32 BlobPrepareGrow(SyBlob *pBlob,sxu32 *pByte)
 	}else if ( nByte < SXBLOB_MIN_GROWTH ){
 		nByte = SXBLOB_MIN_GROWTH;
 	}
-	pNew = SyMemBackendRealloc(pBlob->pAllocator,pBlob->pBlob,nByte);
-	if( pNew == 0 ){
-		return SXERR_MEM;
-	}
-	pBlob->pBlob = pNew;
-	pBlob->mByte = nByte;
-	return SXRET_OK;
+	return BlobSetCapacity(&(*pBlob),nByte);
 }
 PH7_PRIVATE sxi32 SyBlobAppend(SyBlob *pBlob,const void *pData,sxu32 nSize)
 {
@@ -1370,7 +1453,15 @@ PH7_PRIVATE sxi32 SyBlobReset(SyBlob *pBlob)
 PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob)
 {
 	if( (pBlob->nFlags & (SXBLOB_STATIC|SXBLOB_RDONLY)) == 0 && pBlob->mByte > 0 ){
-		SyMemBackendFree(pBlob->pAllocator,pBlob->pBlob);
+		/* Whichever door BlobSetCapacity took. Getting this wrong is not a leak, it is
+		 * a wrong-allocator free -- and under SXMEM_POOL_BYPASS (the sanitizer build)
+		 * a pool chunk is a real block handed out eight bytes in, so ASan says so
+		 * immediately rather than the heap going quietly wrong. */
+		if( pBlob->nFlags & SXBLOB_POOLED ){
+			SyMemBackendPoolFree(pBlob->pAllocator,pBlob->pBlob);
+		}else{
+			SyMemBackendFree(pBlob->pAllocator,pBlob->pBlob);
+		}
 	}
 	pBlob->pBlob = 0;
 	pBlob->nByte = pBlob->mByte = 0;
