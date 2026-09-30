@@ -32,6 +32,9 @@
 #include <time.h>
 #include <errno.h>
 #include <locale.h>
+#ifndef __WINNT__
+#include <signal.h>   /* SIGPIPE — see main() */
+#endif
 #ifdef __UNIXES__
 #include <unistd.h>
 #endif
@@ -419,6 +422,17 @@ int main(int argc,char **argv)
 	const char *azIniDefine[64]; /* -d name=value directives, in order */
 	int nIniDefine = 0;
 	const char *zIniFile = 0;    /* -c php.ini path */
+	/* php's CLI ignores SIGPIPE for the whole process, and this is PHL's CLI: a
+	 * write to a pipe or socket whose reader is gone then answers EPIPE instead of
+	 * KILLING the interpreter, which is the answer every php program is written
+	 * against. The disposition is inherited across fork AND exec, so it is also
+	 * what a proc_open() child runs with -- `cat` writing into a pipe the script
+	 * has closed exits 1 with a write error under php, where a default SIGPIPE
+	 * kills it and proc_close() reports 141. The networking subsystem used to set
+	 * this lazily at the first socket, so a program that opened none never had it. */
+#if defined(SIGPIPE) && defined(SIG_IGN)
+	signal(SIGPIPE,SIG_IGN);
+#endif
 	/* php's own module startup pins LC_CTYPE to C.UTF-8 and leaves every other
 	 * category at C, whatever the environment says -- so `setlocale(LC_CTYPE,'0')`
 	 * answers "C.UTF-8" under php on a box with the locale and "C" on one without,

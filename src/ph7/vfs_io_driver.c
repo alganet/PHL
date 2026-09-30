@@ -1959,7 +1959,27 @@ struct proc_private
 	int pid;           /* child process id */
 	int running;       /* TRUE until reaped by proc_close/proc_get_status */
 	int exit_code;     /* cached exit status once reaped */
+	/* The parent ends this handle created and handed to $pipes. php's proc resource
+	 * OWNS them: its destructor closes every one before it waits, with the comment
+	 * "Close all pipes first, so that the child may exit" -- and proc_close() IS that
+	 * destructor, so after it the script's own $pipes entries are closed resources.
+	 * Without the ownership a child reading its stdin never sees EOF and the wait
+	 * never returns: monolog's ProcessHandler suite hung the engine forever there.
+	 * The device structs are never freed on close (MarkIOPrivateClosed only flags
+	 * them), so these stay valid even when the script closed them first. */
+	io_private *apPipe[PROC_MAX_DESC];
+	int nPipe;
 };
+/* Close a parent pipe end this handle still owns, exactly as fclose() would. */
+static void ProcClosePipe(io_private *pEnd)
+{
+	if( pEnd == 0 || pEnd->iMagic != IO_PRIVATE_MAGIC || pEnd->pStream == 0 ){
+		return; /* the script closed it already, or it never opened */
+	}
+	PH7_StreamFilterReleaseChains(pEnd);
+	PH7_StreamCloseHandle(pEnd->pStream,pEnd->pHandle);
+	MarkIOPrivateClosed(pEnd);
+}
 /* Wrap a raw fd as an fopen-style stream resource (a php pipe end). */
 static io_private * ProcWrapFd(ph7_vm *pVm,int fd,int bParentReads)
 {
@@ -1991,6 +2011,8 @@ struct proc_desc
 PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	struct proc_desc aDesc[PROC_MAX_DESC];
+	io_private *apEnd[PROC_MAX_DESC]; /* the parent ends, handed to the handle below */
+	int nEnd = 0;
 	int nDesc = 0;
 	ph7_value *pSpec, *pPipes, *pEntry, *pType, *pParam;
 	ph7_hashmap *pSpecMap;
@@ -2107,6 +2129,19 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 							pD->child_end = fds[0]; pD->parent_end = fds[1];
 						pD->parent_reads = 0;
 						}
+						/* The PARENT end is close-on-exec, which is php's own
+						 * `fcntl(descriptors[i].parentend, F_SETFD, FD_CLOEXEC)`:
+						 * without it the NEXT proc_open()'s child inherits a copy of
+						 * this pipe, and the first child then never sees EOF on its
+						 * stdin however carefully the script closes its own end. Two
+						 * such handlers alive at once deadlock the interpreter --
+						 * monolog's ProcessHandler suite ran to its last line and
+						 * then hung forever in proc_close(). The CHILD's end is
+						 * dup2()'d onto 0/1/2, and dup2 clears the flag, so the
+						 * process being started keeps exactly what it should. */
+#if defined(F_SETFD) && defined(FD_CLOEXEC)
+						fcntl(pD->parent_end,F_SETFD,FD_CLOEXEC);
+#endif
 						nDesc++;
 						PH7_MemObjRelease(&sMode);
 					}
@@ -2186,6 +2221,7 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 			if( pEnd && pRes && pPipes ){
 				ph7_value_resource(pRes,pEnd);
 				ph7_array_add_intkey_elem(pPipes,pD->child_fd,pRes);
+				apEnd[nEnd++] = pEnd;   /* the handle keeps its own list; see proc_private */
 			}
 			if( pRes ){ ph7_context_release_value(pCtx,pRes); }
 		}else if( pD->kind == 1 && pD->file_fd >= 0 ){
@@ -2212,6 +2248,8 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 	pProc->pid = (int)pid;
 	pProc->running = 1;
 	pProc->exit_code = 0;
+	for( i = 0 ; i < nEnd ; ++i ){ pProc->apPipe[i] = apEnd[i]; }
+	pProc->nPipe = nEnd;
 	ph7_result_resource(pCtx,pProc);
 	(void)rc;
 	return PH7_OK;
@@ -2229,34 +2267,67 @@ static void ProcReap(proc_private *pProc,int block)
 		else if( WIFSIGNALED(status) ){ pProc->exit_code = 128 + WTERMSIG(status); }
 	}
 }
+/*
+ * The three verbs all take a LIVE process resource, and php answers anything else --
+ * a file handle, an already-closed process, a process resource closed by an earlier
+ * proc_close() -- with one catchable sentence naming the function.
+ */
+static proc_private * ProcOfArg(ph7_context *pCtx,int nArg,ph7_value **apArg,sxi32 *pRc)
+{
+	proc_private *pProc;
+	char zGiven[128];
+	*pRc = PH7_OK;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		/* Not a resource at all: php's ordinary argument sentence, naming the type. */
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%z(): Argument #1 ($process) must be of type resource, %s given",
+			&pCtx->pFunc->sName,
+			nArg < 1 ? "none" : VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+		return 0;
+	}
+	pProc = (proc_private *)ph7_value_to_resource(apArg[0]);
+	if( pProc && pProc->base.iMagic == PROC_PRIVATE_MAGIC ){
+		return pProc;
+	}
+	/* A resource, but not a live process one -- a file handle, or a process
+	 * handle an earlier proc_close() already closed. */
+	*pRc = PH7_VmThrowException(pCtx,"TypeError",
+		"%z(): supplied resource is not a valid process resource",
+		&pCtx->pFunc->sName);
+	return 0;
+}
 PH7_PRIVATE int PH7_builtin_proc_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	proc_private *pProc;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
-		ph7_result_int(pCtx,-1);
-		return PH7_OK;
+	sxi32 rcArg;
+	int i;
+	pProc = ProcOfArg(pCtx,nArg,apArg,&rcArg);
+	if( pProc == 0 ){
+		return rcArg;
 	}
-	pProc = (proc_private *)ph7_value_to_resource(apArg[0]);
-	if( pProc == 0 || pProc->base.iMagic != PROC_PRIVATE_MAGIC ){
-		ph7_result_int(pCtx,-1);
-		return PH7_OK;
+	/* php's own order, and the reason it has one: the pipes go FIRST so a child
+	 * blocked reading its stdin sees EOF and can exit, and only then do we wait
+	 * for it. Waiting first is a deadlock with any such child. */
+	for( i = 0 ; i < pProc->nPipe ; ++i ){
+		ProcClosePipe(pProc->apPipe[i]);
+		pProc->apPipe[i] = 0;
 	}
+	pProc->nPipe = 0;
 	ProcReap(pProc,1/*block until it exits*/);
 	ph7_result_int(pCtx,pProc->exit_code);
+	/* proc_close() IS the resource's destructor in php, so the handle is closed
+	 * afterwards: is_resource() answers false and every verb refuses it. */
+	pProc->base.iMagic = IO_PRIVATE_CLOSED_MAGIC;
 	return PH7_OK;
 }
 PH7_PRIVATE int PH7_builtin_proc_terminate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	proc_private *pProc;
+	sxi32 rcArg;
 	int sig = 15; /* SIGTERM */
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	pProc = (proc_private *)ph7_value_to_resource(apArg[0]);
-	if( pProc == 0 || pProc->base.iMagic != PROC_PRIVATE_MAGIC ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	pProc = ProcOfArg(pCtx,nArg,apArg,&rcArg);
+	if( pProc == 0 ){
+		return rcArg;
 	}
 	if( nArg > 1 ){ sig = ph7_value_to_int(apArg[1]); }
 	if( pProc->running ){ kill((pid_t)pProc->pid,sig); }
@@ -2267,14 +2338,10 @@ PH7_PRIVATE int PH7_builtin_proc_get_status(ph7_context *pCtx,int nArg,ph7_value
 {
 	proc_private *pProc;
 	ph7_value *pArray, *pVal;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	pProc = (proc_private *)ph7_value_to_resource(apArg[0]);
-	if( pProc == 0 || pProc->base.iMagic != PROC_PRIVATE_MAGIC ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	sxi32 rcArg;
+	pProc = ProcOfArg(pCtx,nArg,apArg,&rcArg);
+	if( pProc == 0 ){
+		return rcArg;
 	}
 	ProcReap(pProc,0/*non-blocking poll*/);
 	pArray = ph7_context_new_array(pCtx);

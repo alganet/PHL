@@ -834,8 +834,23 @@ static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 		 * the stream op, which knows the errno but not which builtin is asking;
 		 * here the builtin knows how to report and the device knows why, so the
 		 * two meet at the latch -- the same shape the socket write already uses.
-		 * Cleared by whoever reports it, so one failure is announced once. */
-		pDev->iLastReadErr = errno ? errno : EIO;
+		 * Cleared by whoever reports it, so one failure is announced once.
+		 *
+		 * EAGAIN is not a failure: on a NON-BLOCKING stream it means "nothing to
+		 * read right now", which php answers with an empty read and no diagnostic
+		 * at all (its read op only reports when the operation itself failed). An
+		 * EINTR read is the same "try again". Latching either made
+		 * `stream_get_contents()` on a non-blocking proc_open() pipe -- the
+		 * everyday shape, and what monolog's ProcessHandler does on every write --
+		 * raise a notice php never raises. */
+		int iRdErr = errno ? errno : EIO;
+		if( iRdErr != EAGAIN && iRdErr != EINTR
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+		 && iRdErr != EWOULDBLOCK
+#endif
+		){
+			pDev->iLastReadErr = iRdErr;
+		}
 	}
 	return n;
 }
