@@ -444,7 +444,31 @@ struct VmArgScreenParam
 	sxu16 nName;
 	sxu8 bByRef;         /* "array &$array" */
 	sxu8 bStub;          /* "~Type $p": the builtin raises its own TypeError */
+	sxu32 nMask;         /* VMSIG_* -- which arms this declared type has. The screen asks
+	                      * that question up to forty-four times per argument, and every
+	                      * ask was a split-on-'|' walk over the same text. The bits are
+	                      * SET by calling the very functions they replace (see
+	                      * VmArgScreenNext), so a bit cannot mean something the walk did
+	                      * not say. (PERF.md P13.) */
 };
+/* The arms VmArgScreenParam::nMask records. The first thirteen are VmSigTypeHas() tokens;
+ * the last three are the three composite questions the screen asks about a whole type. */
+#define VMSIG_MIXED      0x00000001
+#define VMSIG_ARRAY      0x00000002
+#define VMSIG_ITERABLE   0x00000004
+#define VMSIG_CALLABLE   0x00000008
+#define VMSIG_OBJECT     0x00000010
+#define VMSIG_STRING     0x00000020
+#define VMSIG_NULL       0x00000040
+#define VMSIG_INT        0x00000080
+#define VMSIG_FLOAT      0x00000100
+#define VMSIG_BOOL       0x00000200
+#define VMSIG_TRUE       0x00000400
+#define VMSIG_FALSE      0x00000800
+#define VMSIG_RESOURCE   0x00001000
+#define VMSIG_CLASS      0x00002000   /* VmSigTypeHasClass: an arm that is not a builtin type */
+#define VMSIG_INTONLY    0x00004000   /* VmSigTypeIsIntOnly */
+#define VMSIG_ARRAYONLY  0x00008000   /* VmSigTypeIsArrayOnly */
 typedef struct ph7_user_func ph7_user_func;
 typedef struct ph7_conf ph7_conf;
 /*

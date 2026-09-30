@@ -2152,6 +2152,30 @@ static int VmArgScreenNext(const char **pzCur,const char *zEnd,VmArgScreenParam 
 	pOut->zName  = zName;
 	pOut->nName  = (sxu16)nName;
 	pOut->bByRef = (sxu8)bByRef;
+	/* Which arms this type has, asked ONCE. Every bit is set by calling the function
+	 * that used to answer it per argument, so the mask cannot say something the walk
+	 * would not -- the same construction the parse above uses, for the same reason:
+	 * this screen decides TypeErrors. */
+	{
+		sxu32 m = 0;
+		if( VmSigTypeHas(zType,nType,"mixed")    ){ m |= VMSIG_MIXED;    }
+		if( VmSigTypeHas(zType,nType,"array")    ){ m |= VMSIG_ARRAY;    }
+		if( VmSigTypeHas(zType,nType,"iterable") ){ m |= VMSIG_ITERABLE; }
+		if( VmSigTypeHas(zType,nType,"callable") ){ m |= VMSIG_CALLABLE; }
+		if( VmSigTypeHas(zType,nType,"object")   ){ m |= VMSIG_OBJECT;   }
+		if( VmSigTypeHas(zType,nType,"string")   ){ m |= VMSIG_STRING;   }
+		if( VmSigTypeHas(zType,nType,"null")     ){ m |= VMSIG_NULL;     }
+		if( VmSigTypeHas(zType,nType,"int")      ){ m |= VMSIG_INT;      }
+		if( VmSigTypeHas(zType,nType,"float")    ){ m |= VMSIG_FLOAT;    }
+		if( VmSigTypeHas(zType,nType,"bool")     ){ m |= VMSIG_BOOL;     }
+		if( VmSigTypeHas(zType,nType,"true")     ){ m |= VMSIG_TRUE;     }
+		if( VmSigTypeHas(zType,nType,"false")    ){ m |= VMSIG_FALSE;    }
+		if( VmSigTypeHas(zType,nType,"resource") ){ m |= VMSIG_RESOURCE; }
+		if( VmSigTypeHasClass(zType,nType)       ){ m |= VMSIG_CLASS;    }
+		if( VmSigTypeIsIntOnly(zType,nType)      ){ m |= VMSIG_INTONLY;  }
+		if( VmSigTypeIsArrayOnly(zType,nType)    ){ m |= VMSIG_ARRAYONLY;}
+		pOut->nMask = m;
+	}
 	*pzCur = (zStop < zEnd) ? zStop + 1 : zEnd;
 	return 1;
 }
@@ -2304,6 +2328,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		VmArgScreenParam sParam;
 		const char *zType, *zName;
 		int nType, nName, bByRef;
+		sxu32 nMask;
 		ph7_value *pArg;
 		char zGivenBuf[64];
 		/* The parameter this argument is screened against. Worked out once per
@@ -2325,6 +2350,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		zName  = sParam.zName;
 		nName  = (int)sParam.nName;
 		bByRef = sParam.bByRef;
+		nMask  = sParam.nMask;   /* which arms this type has, worked out once per parameter */
 		pArg = apArg[iArg];
 		if( bByRef && pArg->nIdx == SXU32_HIGH
 		 && !(pCtx->pArgMap && pCtx->pArgMap->bArgShapes && !pCtx->pArgMap->bHasNamed) ){
@@ -2343,34 +2369,34 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 			 * given", not a silent false). */
 			continue;
 		}
-		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){
+		if( nType > 0 && !(nMask & VMSIG_MIXED) ){
 			const char *zGiven = 0;
 			if( bStrict && VmStrictArgRefused(pArg,zType,nType) ){
 				/* php names the VALUE for a bool here too (`true given`). */
 				zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
 			}else if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){
-				if( !VmSigTypeHas(zType,nType,"array")
-				 && !VmSigTypeHas(zType,nType,"iterable")
-				 && !VmSigTypeHas(zType,nType,"callable") ){
+				if( !(nMask & VMSIG_ARRAY)
+				 && !(nMask & VMSIG_ITERABLE)
+				 && !(nMask & VMSIG_CALLABLE) ){
 					zGiven = "array";
 				}
 			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){
-				if( !VmSigTypeHas(zType,nType,"object")
-				 && !VmSigTypeHas(zType,nType,"iterable")
-				 && !VmSigTypeHas(zType,nType,"callable")
-				 && !VmSigTypeHasClass(zType,nType) ){
+				if( !(nMask & VMSIG_OBJECT)
+				 && !(nMask & VMSIG_ITERABLE)
+				 && !(nMask & VMSIG_CALLABLE)
+				 && !(nMask & VMSIG_CLASS) ){
 					/* An object with __toString() still satisfies a string
 					 * parameter in weak mode — php coerces it. */
-					int bStringable = VmSigTypeHas(zType,nType,"string")
+					int bStringable = (nMask & VMSIG_STRING)
 						&& PH7_ArgSatisfiesString(pArg);
 					if( !bStringable ){
 						zGiven = VmArgTypeName(pArg);
 					}
-				}else if( VmSigTypeHasClass(zType,nType)
-				       && !VmSigTypeHas(zType,nType,"object")
-				       && !VmSigTypeHas(zType,nType,"iterable")
-				       && !VmSigTypeHas(zType,nType,"callable")
-				       && !VmSigTypeHas(zType,nType,"string") ){
+				}else if( (nMask & VMSIG_CLASS)
+				       && !(nMask & VMSIG_OBJECT)
+				       && !(nMask & VMSIG_ITERABLE)
+				       && !(nMask & VMSIG_CALLABLE)
+				       && !(nMask & VMSIG_STRING) ){
 					/* A class-typed parameter given an object of the WRONG class.
 					 * Naming a class used to be enough to let ANY object through, so
 					 * `date_modify($immutable)` and `timezone_name_get($date)`
@@ -2390,13 +2416,13 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * php's way ("must be a valid callback, no array or string given") —
 				 * the same reason get_class_vars() sits on azSelfChecked[]. */
 				if( zType[0] != '?'
-				 && !VmSigTypeHas(zType,nType,"null")
-				 && !VmSigTypeHas(zType,nType,"callable") ){
+				 && !(nMask & VMSIG_NULL)
+				 && !(nMask & VMSIG_CALLABLE) ){
 					zGiven = "null";
 				}
 			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) != 0
-			       && (VmSigTypeHasClass(zType,nType)
-			        || VmSigTypeHas(zType,nType,"object")) ){
+			       && ((nMask & VMSIG_CLASS)
+			        || (nMask & VMSIG_OBJECT)) ){
 				/* A SCALAR against a parameter that can only hold an INSTANCE —
 				 * a named class, or the bare `object` keyword. Every other scalar
 				 * pairing is left to weak-mode coercion, which is why nothing
@@ -2413,25 +2439,25 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * builtin's own check rather than from the declared type
 				 * (array_walk's `array|object &$array` says "must be of type
 				 * array", not "of type array|object"). */
-				if( !VmSigTypeHas(zType,nType,"string")
-				 && !VmSigTypeHas(zType,nType,"int")
-				 && !VmSigTypeHas(zType,nType,"float")
-				 && !VmSigTypeHas(zType,nType,"bool")
-				 && !VmSigTypeHas(zType,nType,"true")
-				 && !VmSigTypeHas(zType,nType,"false")
-				 && !VmSigTypeHas(zType,nType,"array")
-				 && !VmSigTypeHas(zType,nType,"callable") ){
+				if( !(nMask & VMSIG_STRING)
+				 && !(nMask & VMSIG_INT)
+				 && !(nMask & VMSIG_FLOAT)
+				 && !(nMask & VMSIG_BOOL)
+				 && !(nMask & VMSIG_TRUE)
+				 && !(nMask & VMSIG_FALSE)
+				 && !(nMask & VMSIG_ARRAY)
+				 && !(nMask & VMSIG_CALLABLE) ){
 					/* php's VALUE name, not the type's: a bool is reported as
 					 * `true`/`false` (the rule Generator::throw()'s own check
 					 * already followed, and which this screen now runs first). */
 					zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
 				}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING
-				       && !VmSigTypeHas(zType,nType,"string")
-				       && !VmSigTypeHas(zType,nType,"bool")
-				       && !VmSigTypeHas(zType,nType,"true")
-				       && !VmSigTypeHas(zType,nType,"false")
-				       && !VmSigTypeHas(zType,nType,"array")
-				       && !VmSigTypeHas(zType,nType,"callable")
+				       && !(nMask & VMSIG_STRING)
+				       && !(nMask & VMSIG_BOOL)
+				       && !(nMask & VMSIG_TRUE)
+				       && !(nMask & VMSIG_FALSE)
+				       && !(nMask & VMSIG_ARRAY)
+				       && !(nMask & VMSIG_CALLABLE)
 				       && !PH7_MemObjStringIsNumeric(pArg) ){
 					/* The one arm that let this STRING past is `int`/`float`, and it
 					 * only takes a NUMERIC one — no coercion turns a string into an
@@ -2445,7 +2471,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					zGiven = "string";
 				}
 			}else if( (pArg->iFlags & MEMOBJ_REAL) != 0
-			       && VmSigTypeIsIntOnly(zType,nType)
+			       && (nMask & VMSIG_INTONLY)
 			       && !VmDoubleFitsInt((double)pArg->rVal) ){
 				/* A FLOAT against a parameter typed exactly `int` (or `?int`), and
 				 * one no int can hold: a fraction, a magnitude past the signed
@@ -2466,15 +2492,15 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * message rows this screen cannot reach (the `azSelfChecked` set). */
 				zGiven = "float";
 			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING
-			       && (VmSigTypeHas(zType,nType,"int")
-			        || VmSigTypeHas(zType,nType,"float"))
-			       && !VmSigTypeHas(zType,nType,"string")
-			       && !VmSigTypeHas(zType,nType,"array")
-			       && !VmSigTypeHas(zType,nType,"object")
-			       && !VmSigTypeHas(zType,nType,"iterable")
-			       && !VmSigTypeHas(zType,nType,"callable")
-			       && !VmSigTypeHas(zType,nType,"bool")
-			       && !VmSigTypeHasClass(zType,nType) ){
+			       && ((nMask & VMSIG_INT)
+			        || (nMask & VMSIG_FLOAT))
+			       && !(nMask & VMSIG_STRING)
+			       && !(nMask & VMSIG_ARRAY)
+			       && !(nMask & VMSIG_OBJECT)
+			       && !(nMask & VMSIG_ITERABLE)
+			       && !(nMask & VMSIG_CALLABLE)
+			       && !(nMask & VMSIG_BOOL)
+			       && !(nMask & VMSIG_CLASS) ){
 				/* A STRING against a NUMBER-only parameter — `int`, `float`, or the
 				 * `int|float` union, with no arm a string can satisfy. Weak mode
 				 * coerces a NUMERIC one and php refuses every other — "x", "2abc"
@@ -2500,7 +2526,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * non-nullable parameter by policy (§10) where php deprecates. */
 				if( !PH7_MemObjStringIsNumeric(pArg) ){
 					zGiven = "string";
-				}else if( VmSigTypeIsIntOnly(zType,nType) && !VmNumStrFitsInt(pArg) ){
+				}else if( (nMask & VMSIG_INTONLY) && !VmNumStrFitsInt(pArg) ){
 					/* A NUMERIC string an int cannot hold — "1.5", "1e19",
 					 * "99999999999999999999". php refuses all three (the fractional
 					 * one after a deprecation §10 turns into the refusal), and PHL
@@ -2511,7 +2537,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					zGiven = "string";
 				}
 			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) != 0
-			       && VmSigTypeIsArrayOnly(zType,nType) ){
+			       && (nMask & VMSIG_ARRAYONLY) ){
 				/* A SCALAR against a parameter typed exactly `array`. No coercion
 				 * produces one, so php refuses it -- but the screen exempted every
 				 * `array` arm, union or not, and a whole family had no check of its
@@ -2535,8 +2561,8 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * screen would otherwise reject the engine's own parser handle. Recorded
 				 * as a divergence in NEWPLAN §7 — it goes away when those handles become
 				 * real objects. */
-				if( !VmSigTypeHas(zType,nType,"resource")
-				 && !VmSigTypeHasClass(zType,nType) ){
+				if( !(nMask & VMSIG_RESOURCE)
+				 && !(nMask & VMSIG_CLASS) ){
 					zGiven = "resource";
 				}
 			}
@@ -2548,7 +2574,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * SCALAR branch above already encodes that rule by declining to
 				 * screen at all; the null and resource branches do screen, so the
 				 * reported type has to be corrected here instead. */
-				if( VmSigTypeHas(zType,nType,"array") && VmSigTypeHas(zType,nType,"object") ){
+				if( (nMask & VMSIG_ARRAY) && (nMask & VMSIG_OBJECT) ){
 					zType = "array";
 					nType = (int)sizeof("array")-1;
 				}
@@ -2569,10 +2595,10 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		 * coerce and does warn. */
 		if( (pArg->iFlags & (MEMOBJ_REAL|MEMOBJ_STRING)) == MEMOBJ_REAL
 		 && PH7_IS_NAN((double)pArg->rVal)
-		 && VmSigTypeHas(zType,nType,"string")
-		 && !VmSigTypeHas(zType,nType,"float")
-		 && !VmSigTypeHas(zType,nType,"int")
-		 && !VmSigTypeHas(zType,nType,"mixed") ){
+		 && (nMask & VMSIG_STRING)
+		 && !(nMask & VMSIG_FLOAT)
+		 && !(nMask & VMSIG_INT)
+		 && !(nMask & VMSIG_MIXED) ){
 			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
 				"unexpected NAN value was coerced to string");
 		}
