@@ -544,6 +544,10 @@ static int WinVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access_
 		FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,0,OPEN_ALWAYS,
 		FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS,0);
 	if( pHandle == INVALID_HANDLE_VALUE ){
+		/* The caller reports strerror(errno), and this API sets GetLastError()
+		 * instead -- so a failed touch() read whatever errno already held
+		 * ("No error" for a path that does not exist). */
+		WinVfsMapErrno();
 		pHandle = 0;
 	}
 	if( pHandle ){
@@ -557,6 +561,9 @@ static int WinVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access_
 		 * left filemtime() reporting whatever the file already had. Creation stays
 		 * untouched, like php. */
 		rc = SetFileTime(pHandle,0,&sAccess,&sTouch);
+		if( !rc ){
+			WinVfsMapErrno();
+		}
 		/* Close the handle */
 		CloseHandle(pHandle);
 	}

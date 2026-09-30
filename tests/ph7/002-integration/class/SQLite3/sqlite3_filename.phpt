@@ -27,6 +27,17 @@ that is genuinely missing after the collapse still fails.
 <?php
 $dir = sys_get_temp_dir() . '/sq3fn' . getmypid();
 @mkdir($dir);
+/* This test LISTS its directory, and a pid the OS reuses can land it on one a
+ * killed run left behind -- which is a stray name in the listing months later.
+ * Start from an empty directory rather than a merely existing one. */
+foreach (glob($dir . '/*') as $f) {
+    if (is_dir($f)) {
+        foreach (glob($f . '/*') as $g) { @unlink($g); }
+        @rmdir($f);
+    } else {
+        @unlink($f);
+    }
+}
 $old = getcwd();
 chdir($dir);
 

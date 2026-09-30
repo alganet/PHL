@@ -1019,6 +1019,11 @@ PH7_PRIVATE void PH7_ZlibArmOpen(ph7_vm *pVm,int iLevel,int iStrategy)
 	pVm->iZlibLevel = iLevel;
 	pVm->iZlibStrategy = iStrategy;
 }
+/* gzopen() and its two whole-file doors, which name a FILE rather than a url. */
+PH7_PRIVATE void PH7_ZlibArmDirect(ph7_vm *pVm,int bDirect)
+{
+	pVm->bZlibDirect = bDirect;
+}
 static void ZStreamEndZ(phl_zstream *pZ)
 {
 	if( pZ->bInit ){
@@ -1403,7 +1408,7 @@ static int ZStreamOpen(const char *zName,int iMode,ph7_value *pResource,void **p
 	phl_zstream *pZ;
 	io_private *pInner;
 	const char *zPath = zName;
-	int iInnerMode,rc;
+	int iInnerMode,rc,bRefuse;
 	if( pVm == 0 ){
 		return -1;
 	}
@@ -1419,12 +1424,29 @@ static int ZStreamOpen(const char *zName,int iMode,ph7_value *pResource,void **p
 	pZ->iStrategy = pVm->iZlibStrategy;
 	/* The armed options describe THIS open and nothing after it. */
 	PH7_ZlibArmOpen(pVm,-1,Z_DEFAULT_STRATEGY);
+	/*
+	 * php's zlib wrapper takes ONE direction and nothing else: `r`, `w` and `a`
+	 * with their b/t hints. A mode asking for both (`r+`, `w+`, `c+`) is refused
+	 * before anything is opened, while `x` and `c` are refused only after php has
+	 * opened the file underneath -- so a refused `x` still LEAVES the file it
+	 * created. The refusal itself is the wrapper's flat one either way.
+	 */
+	if( (iMode & PH7_IO_OPEN_RDWR) != 0 ){
+		SyBlobRelease(&pZ->sOut);
+		SyBlobRelease(&pZ->sUri);
+		SyMemBackendFree(&pVm->sAllocator,pZ);
+		return -1;
+	}
+	bRefuse = (iMode & PH7_IO_OPEN_EXCL) != 0
+		|| ((iMode & PH7_IO_OPEN_CREATE) != 0
+			&& (iMode & (PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_APPEND)) == 0);
 	pZ->bWrite = (iMode & (PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_APPEND|PH7_IO_OPEN_RDWR)) != 0;
-	iInnerMode = pZ->bWrite
-		? (iMode & PH7_IO_OPEN_APPEND
-			? PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_APPEND
-			: PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC)
-		: PH7_IO_OPEN_RDONLY;
+	iInnerMode = bRefuse ? iMode
+		: (pZ->bWrite
+			? (iMode & PH7_IO_OPEN_APPEND
+				? PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_APPEND
+				: PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC)
+			: PH7_IO_OPEN_RDONLY);
 	pInner = (io_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(io_private));
 	if( pInner == 0 ){
 		SyBlobRelease(&pZ->sOut);
@@ -1436,22 +1458,41 @@ static int ZStreamOpen(const char *zName,int iMode,ph7_value *pResource,void **p
 	pInnerDev = PH7_VmGetStreamDevice(pVm,&zPath,(int)SyStrlen(zPath));
 	InitIOPrivate(pVm,pInnerDev,pInner);
 	/*
-	 * The inner open reports as though it WERE the outer one. php's
-	 * compress.zlib:// is a wrapper over another wrapper and the failure a
-	 * script reads is the INNER one's -- the errno for a file, "Connection
-	 * refused" for an http:// one -- where an open running inside another is
-	 * otherwise kept from naming the failure its caller will report.
+	 * gzopen() names a FILE, and the failure a script reads from it is that
+	 * file's own -- the errno for a path, "Connection refused" for an http://
+	 * one -- so its inner open reports as though it WERE the outer one, where an
+	 * open running inside another is otherwise kept from naming the failure its
+	 * caller will report. Through `compress.zlib://` the same open is a WRAPPER's
+	 * and php answers every one of those with a flat "operation failed".
 	 */
-	pVm->nOpenDepth--;
+	if( pVm->bZlibDirect ){
+		pVm->nOpenDepth--;
+	}
 	pInner->pHandle = pInnerDev
 		? PH7_StreamOpenHandle(pVm,pInnerDev,zPath,iInnerMode,FALSE,0,FALSE,0,0)
 		: 0;
-	pVm->nOpenDepth++;
+	if( pVm->bZlibDirect ){
+		pVm->nOpenDepth++;
+	}else{
+		/* php's WRAPPER never repeats what the file underneath said. */
+		PH7_StreamSetOpenError(pVm,"operation failed");
+	}
 	if( pInner->pHandle == 0 ){
 		SyMemBackendFree(&pVm->sAllocator,pInner);
 		SyBlobRelease(&pZ->sOut);
 		SyBlobRelease(&pZ->sUri);
 		SyMemBackendFree(&pVm->sAllocator,pZ);
+		return -1;
+	}
+	if( bRefuse ){
+		/* The file exists now, which is what php leaves behind; the stream does
+		 * not, because libz has no direction for the mode that made it. */
+		PH7_StreamCloseHandle(pInnerDev,pInner->pHandle);
+		SyMemBackendFree(&pVm->sAllocator,pInner);
+		SyBlobRelease(&pZ->sOut);
+		SyBlobRelease(&pZ->sUri);
+		SyMemBackendFree(&pVm->sAllocator,pZ);
+		PH7_StreamSetOpenError(pVm,"operation failed");
 		return -1;
 	}
 	SetIOPrivateOpenedAs(pInner,zName,(int)SyStrlen(zName),pZ->bWrite ? "wb" : "rb",2);
@@ -1572,8 +1613,10 @@ static io_private * ZlibOpenDevice(ph7_context *pCtx,ph7_value *pPath,
 	}
 	InitIOPrivate(pCtx->pVm,pStream,pDev);
 	PH7_StreamArmOpenMode(pCtx->pVm,zMode,nMode);
+	PH7_ZlibArmDirect(pCtx->pVm,1);
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iFlags,
 		bUseInclude,0,FALSE,0,ph7_function_name(pCtx));
+	PH7_ZlibArmDirect(pCtx->pVm,0);
 	if( pDev->pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zUri);
 		PH7_StreamReleaseUnopened(pCtx,pDev);
@@ -1665,9 +1708,11 @@ static int ZlibWholeFile(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLines
 	 * the engine does it. */
 	PH7_ZlibArmOpen(pCtx->pVm,-1,Z_DEFAULT_STRATEGY);
 	PH7_StreamArmOpenMode(pCtx->pVm,"rb",2);
+	PH7_ZlibArmDirect(pCtx->pVm,1);
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,&sZLIB_Stream,zUri,PH7_IO_OPEN_RDONLY,
 		nArg > 1 ? ph7_value_to_bool(apArg[1]) : FALSE,0,FALSE,0,
 		ph7_function_name(pCtx));
+	PH7_ZlibArmDirect(pCtx->pVm,0);
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zUri);
 		ph7_result_bool(pCtx,0);

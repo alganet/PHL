@@ -1345,6 +1345,26 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			/* FALSE constant are always indexed at 2 */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,2,0,0);
 			return SXRET_OK;
+	}else if( pStr->nByte == sizeof("__COMPILER_HALT_OFFSET__") - 1
+		&& pGen->bHaltSeen
+		&& SyStrnicmp(pStr->zString,"__COMPILER_HALT_OFFSET__",
+			sizeof("__COMPILER_HALT_OFFSET__")-1) == 0 ){
+			/*
+			 * php's `__COMPILER_HALT_OFFSET__`: the byte just past the
+			 * `__halt_compiler();` statement's semicolon, resolved at COMPILE time
+			 * and only in a file that HAS one. That is why `defined()` answers
+			 * false for it (php registers it under a mangled per-file name, and
+			 * this emits a literal instead) and why a file with no halt reaches
+			 * the ordinary constant path and raises php's `Undefined constant`.
+			 */
+			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+			if( pObj == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			PH7_MemObjInitFromInt(pGen->pVm,pObj,(sxi64)pGen->nHaltOffset);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+			return SXRET_OK;
 	}else if(pStr->nByte == sizeof("__LINE__") - 1 &&
 		SyMemcmp(pStr->zString,"__LINE__",sizeof("__LINE__")-1) == 0 ){
 			/* TICKET 1433-004: __LINE__ constant must be resolved at compile time,not run time */
@@ -1719,6 +1739,34 @@ static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)
 			SyString sPath;
 			sxu32 nIdx;
 			SyStringInitFromBuf(&sPath,(const char *)SyBlobData(pWorker),SyBlobLength(pWorker));
+			/*
+			 * `\true`, `\false` and `\null` are php's three reserved literals
+			 * written the way a code GENERATOR writes them -- fully qualified, so
+			 * that no `use` or namespace can shadow them. php resolves each to the
+			 * literal itself; this engine looked the name up in the constant table
+			 * and answered `Undefined constant "true"`. nikic/php-parser emits
+			 * every one of its booleans that way, which is what phpunit.phar dies
+			 * on. Only the GLOBAL spelling counts: `\Ns\true` is an ordinary
+			 * constant, and so is a bare `true` (handled by the literal path,
+			 * which folds it already).
+			 */
+			if( isAbsolute && SyByteFind(sPath.zString,sPath.nByte,'\\',0) != SXRET_OK ){
+				if( sPath.nByte == sizeof("null")-1
+				 && SyStrnicmp(sPath.zString,"null",sizeof("null")-1) == 0 ){
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
+					return SXRET_OK;
+				}
+				if( sPath.nByte == sizeof("true")-1
+				 && SyStrnicmp(sPath.zString,"true",sizeof("true")-1) == 0 ){
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,1,0,0);
+					return SXRET_OK;
+				}
+				if( sPath.nByte == sizeof("false")-1
+				 && SyStrnicmp(sPath.zString,"false",sizeof("false")-1) == 0 ){
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,2,0,0);
+					return SXRET_OK;
+				}
+			}
 			/* Install in the literal table */
 			if( SXRET_OK != GenStateFindLiteral(&(*pGen),&sPath,&nIdx) ){
 				pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);

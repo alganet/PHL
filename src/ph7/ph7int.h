@@ -921,6 +921,18 @@ struct ph7_gen_state
 	sxu32 nChunkEofLine;     /* Line the chunk's end-of-input sits on -- its last line, which is
 	                          * NOT the last TOKEN's line when trailing blank lines follow. php
 	                          * reports `unexpected end of file` at the former. */
+	sxi8 bHalted;            /* 1 once `__halt_compiler();` has been compiled in this file:
+	                          * everything after it -- the rest of the chunk, every later chunk
+	                          * and every byte of inline text between them -- is DATA, and the
+	                          * chunk loop stops. */
+	sxi8 bHaltSeen;          /* 1 when the file HAS a halt (found by the pre-scan below, which
+	                          * runs before any of it compiles because the offset may be read
+	                          * ahead of the statement that sets it). */
+	sxu32 nHaltOffset;       /* What `__COMPILER_HALT_OFFSET__` expands to: the byte offset in
+	                          * the FILE just past the halt statement's `;` -- a shebang line
+	                          * this compiler skipped included, since php counts from the first
+	                          * byte on disk. Meaningful only while bHaltSeen. */
+	const char *zScriptBase; /* First byte of the whole script, for the offset above. */
 	sxi8 bListSrcNotRef;     /* 1 while compiling the TARGET list of an assignment whose SOURCE
 	                          * cannot hold a reference (`[&$r] = [7];`). php checks this at
 	                          * compile time, where it still knows what the right-hand side was
@@ -1941,6 +1953,10 @@ struct ph7_class
                                       * chain. Set on the class whose mount saw the failure; the gate
                                       * (VmClassStaticDeferPending) walks the bases, so mount ORDER
                                       * between a base and its subclass does not matter. */
+#define PH7_CLASS_TOPLEVEL    0x200000 /* Declared UNCONDITIONALLY at file top level. php runs such a
+                                     * declaration whatever else is in the file, so two of them under one
+                                     * name is a redeclaration even when neither was early-bound -- which
+                                     * is the difference between this flag and PH7_CLASS_BOUND below. */
 #define PH7_CLASS_BOUND       0x100 /* Bound by an UNCONDITIONAL top-level declaration. PHP fatals on a
                                      * second such binding of the same name ("Cannot redeclare ..."); a
                                      * conditional (if/loop/func-nested) declaration is NOT marked, so the
@@ -3658,6 +3674,15 @@ struct ph7_vm
 	ph7_value sXmlStreamsCtx;  /* libxml_set_streams_context()'s stream-context resource; read by
 	                            * nothing until an http:// wrapper exists. */
 #endif
+	void *pPhars;              /* phl_phar registry chain (ext/phar): every archive this run
+	                            * opened, freed on reset/release. php's own cache is
+	                            * per-request and behaves the same way. */
+	SyBlob sPharRunning;       /* The archive the running script came from, as Phar::running()
+	                            * answers it: set by Phar::mapPhar(), empty outside one. */
+	SyBlob sPharErr;           /* The phar wrapper's open-failure sentence. It has to outlive the
+	                            * xOpen that formatted it -- the engine keeps the POINTER and the
+	                            * caller prints it after the open returned -- so it cannot be a
+	                            * stack buffer (ASan caught exactly that). */
 #ifdef PH7_ENABLE_ZLIB
 	void *pZlibCtx;            /* phl_zctx registry chain (ext/zlib); freed on reset/release --
 	                            * a z_stream's window is libz's own allocation, outside
@@ -3668,6 +3693,11 @@ struct ph7_vm
 	                            * so the door that parsed them arms them here. Reset to libz's
 	                            * defaults by the open that reads them. */
 	int iZlibStrategy;
+	int bZlibDirect;           /* 1 while a gzopen()-family open is in flight. The two doors
+	                            * onto this device report a failure differently: gzopen() reads
+	                            * as the FILE open it is ("No such file or directory"), while
+	                            * compress.zlib:// is a wrapper and php gives every one of its
+	                            * failures the same flat "operation failed". */
 #endif
 	/* php numbers every resource with a small sequential id that (int) casts and
 	 * "Resource id #N" render, and that distinguishes two live resources from one
@@ -6380,6 +6410,7 @@ PH7_PRIVATE const ph7_builtin_func * PH7_ZlibFuncTable(sxu32 *pnEntry);
 PH7_PRIVATE void PH7_ZlibVmReset(ph7_vm *pVm);
 PH7_PRIVATE void PH7_ZlibVmRelease(ph7_vm *pVm);
 PH7_PRIVATE void PH7_ZlibArmOpen(ph7_vm *pVm,int iLevel,int iStrategy);
+PH7_PRIVATE void PH7_ZlibArmDirect(ph7_vm *pVm,int bDirect);
 PH7_PRIVATE int PH7_ZlibStreamIs(const ph7_io_stream *pStream);
 PH7_PRIVATE int PH7_ZlibFilterCreate(phl_stream_filter *pFilter,ph7_value *pParams);
 PH7_PRIVATE int PH7_ZlibFilterRun(phl_stream_filter *pFilter,phl_brigade *pIn,
@@ -6388,6 +6419,19 @@ PH7_PRIVATE void PH7_ZlibFilterClose(phl_stream_filter *pFilter);
 extern const ph7_io_stream sZLIB_Stream;
 #endif
 PH7_PRIVATE void PH7_VmAddResponseHeader(ph7_vm *pVm,const char *zName,const char *zValue);
+PH7_PRIVATE sxi32 PH7_VmInstallPhar(ph7_vm *pVm);
+PH7_PRIVATE int PH7_PharStreamIs(const ph7_io_stream *pStream);
+PH7_PRIVATE int PH7_PharUrlStat(ph7_vm *pVm,const char *zPath,ph7_int64 *aVal);
+/* What PH7_PharPathOp() was asked to do. Mirrors vfs.c's VFS_POP_* codes, which
+ * are file-local. */
+#define PHAR_PATHOP_UNLINK 0
+#define PHAR_PATHOP_RENAME 1
+#define PHAR_PATHOP_MKDIR  2
+#define PHAR_PATHOP_CHMOD  3
+#define PHAR_PATHOP_RMDIR  4
+PH7_PRIVATE int PH7_PharPathOp(ph7_context *pCtx,const char *zPath,const char *zDest,int eOp);
+PH7_PRIVATE int PH7_VmSerializeValue(ph7_context *pCtx,ph7_value *pIn,SyBlob *pOut);
+extern const ph7_io_stream sPHAR_Stream;
 PH7_PRIVATE sxi32 PH7_VmInstallFileinfo(ph7_vm *pVm);
 PH7_PRIVATE int PH7_builtin_finfo_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_finfo_close(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -6754,6 +6798,10 @@ PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,con
 PH7_PRIVATE int PH7_VmDimFetchWritable(ph7_class *pClass);
 PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate);
 PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm);
+/* Called from the VM's reset and release paths, which every build has: the
+ * tiny one answers them with the stubs at the tail of vm_phar.c. */
+PH7_PRIVATE void PH7_PharVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_PharVmRelease(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal);
 PH7_PRIVATE void PH7_VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,ph7_value *pVal);
 PH7_PRIVATE ph7_class_instance * PH7_ContextThis(ph7_context *pCtx);

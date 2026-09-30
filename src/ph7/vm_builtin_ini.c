@@ -82,6 +82,12 @@ static const struct {
 	{ "max_input_nesting_level",  "64",         VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "max_input_vars",           "1000",       VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "memory_limit",             "-1",         VM_INI_ALL },
+	/* ext/phar's three. `phar.readonly` is php's own default ON: every write
+	 * door refuses until an installer turns it off, which is why building an
+	 * archive is a `-d phar.readonly=0` job on a stock php too. */
+	{ "phar.cache_list",          "",           VM_INI_SYSTEM },
+	{ "phar.readonly",            "1",          VM_INI_ALL },
+	{ "phar.require_hash",        "1",          VM_INI_ALL },
 	{ "post_max_size",            "8M",         VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "precision",                "14",         VM_INI_ALL },
 	{ "serialize_precision",      "-1",         VM_INI_ALL },

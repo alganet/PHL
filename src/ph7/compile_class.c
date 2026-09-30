@@ -28,11 +28,86 @@ static const char * GenStateClassKind(const ph7_class *pClass)
  * (after emitting the fatal) if it redeclares an already-bound type; otherwise
  * marks it bound (when unconditional & top-level) and returns SXRET_OK.
  */
-static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pClass)
+/*
+ * Does this earlier declaration hold the name against the one being compiled?
+ *
+ * A class php EARLY-BINDS holds it from the moment the file compiles, so
+ * anything else under that name is a redeclaration wherever it sits. One php
+ * declares at RUN time (it implements an interface, uses a trait, is an enum,
+ * or declares __toString and so implicitly implements Stringable) holds it only
+ * once its own statement has run -- which, within one file, means only against
+ * a declaration that comes AFTER it. That is the whole of the "polyfill" shape:
+ *
+ *     if (PHP_VERSION_ID >= 80000) { class T extends PhpToken {} return; }
+ *     class T { public function __toString(): string { ... } }
+ *
+ * php runs the first branch, returns, and never reaches the second -- so the
+ * second never takes the name. Reading the two declarations' ORDER is how this
+ * compiler tells that apart without a runtime declaration of its own.
+ */
+static int GenStateDeclHoldsName(ph7_gen_state *pGen,ph7_class *pPrev,ph7_class *pClass)
+{
+	SyString *pFile;
+	if( pPrev->iFlags & PH7_CLASS_BOUND ){
+		return 1;   /* early-bound: the name is taken before anything runs */
+	}
+	if( (pPrev->iFlags & PH7_CLASS_TOPLEVEL) == 0 ){
+		return 0;   /* conditional: it may never run at all */
+	}
+	pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);
+	if( pFile && pPrev->sFile.nByte == pFile->nByte
+	 && SyMemcmp(pPrev->sFile.zString,pFile->zString,pFile->nByte) == 0 ){
+		/* Same file: it holds the name only if it is written FIRST. */
+		return pPrev->nLine <= pClass->nLine;
+	}
+	return 1;   /* another file, already loaded: it has run */
+}
+static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pClass,
+	int bEarlyBindable)
 {
 	SyHashEntry *pEntry;
-	if( !GenStateUnconditionalTopLevel(pGen) ){
-		return SXRET_OK; /* conditional/nested: keep hoisting */
+	int bTopLevel = GenStateUnconditionalTopLevel(pGen);
+	if( bTopLevel ){
+		/* php RUNS this declaration whatever else the file holds, early bound or
+		 * not -- so two of them under one name collide even when neither was. */
+		pClass->iFlags |= PH7_CLASS_TOPLEVEL;
+	}
+	if( bTopLevel && !bEarlyBindable ){
+		/* Not early-bound, but it RUNS: only another declaration that also runs
+		 * unconditionally collides with it. */
+		SyHashEntry *pTop = SyHashGet(&pGen->pVm->hClass,
+			(const void *)pClass->sName.zString,pClass->sName.nByte);
+		if( pTop ){
+			ph7_class *pPrev = (ph7_class *)pTop->pUserData;
+			while( pPrev ){
+				if( GenStateDeclHoldsName(pGen,pPrev,pClass) ){
+					pGen->iFatalTrace = PH7_FATAL_TRACE_RUNTIME;
+					if( pPrev->sFile.nByte > 0 ){
+						PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+							"Cannot redeclare %s %z (previously declared in %.*s:%u)",
+							GenStateClassKind(pPrev),&pClass->sName,
+							pPrev->sFile.nByte,pPrev->sFile.zString,pPrev->nLine);
+					}else{
+						PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+							"Cannot redeclare %s %z",GenStateClassKind(pPrev),&pClass->sName);
+					}
+					return SXERR_ABORT;
+				}
+				pPrev = pPrev->pNextName;
+			}
+		}
+		return SXRET_OK;
+	}
+	if( !bTopLevel ){
+		/* Conditional, nested -- or one php would not EARLY-BIND either, which
+		 * is the same thing for this guard: such a declaration only takes effect
+		 * when its statement runs, so another declaration of the name is not a
+		 * redeclaration of it. php early-binds only a class it can link with
+		 * nothing left over, so an implemented INTERFACE, a used TRAIT, an enum
+		 * or a `__toString()` (which brings Stringable with it) all rule it out.
+		 * Binding one of those at compile time made the polyfill shape above a
+		 * redeclaration, and phpunit.phar died on it. */
+		return SXRET_OK;
 	}
 	pClass->iFlags |= PH7_CLASS_BOUND;
 	if( pGen->pVm->bCompilingBuiltin ){
@@ -42,7 +117,7 @@ static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pCla
 	if( pEntry ){
 		ph7_class *pPrev = (ph7_class *)pEntry->pUserData;
 		while( pPrev ){
-			if( pPrev->iFlags & PH7_CLASS_BOUND ){
+			if( GenStateDeclHoldsName(pGen,pPrev,pClass) ){
 				/* php cannot early-bind a name it already holds, so THIS refusal comes
 				 * from the DECLARE_CLASS opcode at run time -- and its stack trace
 				 * carries the include/require that loaded the unit, where every other
@@ -3171,8 +3246,11 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	/* An interface method may claim #[\Override] too, against the interfaces this
 	 * one extends -- collected before the inherit copies theirs in. */
 	GenStateCollectOverrides(&(*pGen),pClass,&aOvMeth,&aOvProp);
-	/* Reject a php-fatal redeclaration before hoisting the interface */
-	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+	/* Reject a php-fatal redeclaration before hoisting the interface. An
+	 * interface that EXTENDS another is not early-bound, exactly as a class
+	 * that implements one is not. */
+	if( GenStateGuardClassRedeclaration(pGen,pClass,
+			pBase == 0 && SySetUsed(&aExtraParents) == 0) == SXERR_ABORT ){
 		SySetRelease(&aOvMeth);
 		SySetRelease(&aOvProp);
 		return SXERR_ABORT;
@@ -5126,8 +5204,13 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	 * before inheritance copies the base's records in beside them, and verified
 	 * once the answer exists. */
 	GenStateCollectOverrides(&(*pGen),pClass,&aOvMeth,&aOvProp);
-	/* Reject a php-fatal redeclaration before hoisting the class */
-	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+	/* Reject a php-fatal redeclaration before hoisting the class. An ENUM is
+	 * never early-bound either: php gives every one of them UnitEnum. */
+	if( GenStateGuardClassRedeclaration(pGen,pClass,
+			SySetUsed(&aInterfaces) == 0 && SySetUsed(&aUseEntries) == 0
+			&& (pClass->iFlags & PH7_CLASS_ENUM) == 0
+			&& SyHashGet(&pClass->hMethod,"__toString",sizeof("__toString")-1) == 0)
+		== SXERR_ABORT ){
 		SySetRelease(&aOvMeth);
 		SySetRelease(&aOvProp);
 		return SXERR_ABORT;
@@ -5785,8 +5868,9 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	/* Reject a php-fatal redeclaration before hoisting the trait */
-	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+	/* Reject a php-fatal redeclaration before hoisting the trait. php early-binds
+	 * a trait like a plain class -- it has nothing left to link. */
+	if( GenStateGuardClassRedeclaration(pGen,pClass,1) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	/* Install the trait */

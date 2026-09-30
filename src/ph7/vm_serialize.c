@@ -432,6 +432,25 @@ static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData)
 	return PH7_OK;
 }
 /*
+ * The serializer, for an extension that stores a php VALUE in a file of its
+ * own: a phar's archive-level and per-entry metadata are php-serialized inside
+ * its manifest, and `getMetadata()` reads them back with the unserializer
+ * below. Answers -1 when the value could not be serialized (a resource, a depth
+ * php refuses), which is what leaves the metadata unset.
+ */
+PH7_PRIVATE int PH7_VmSerializeValue(ph7_context *pCtx,ph7_value *pIn,SyBlob *pOut)
+{
+	serialize_data sData;
+	sData.pVm = pCtx->pVm;
+	sData.pCtx = pCtx;
+	sData.pOut = pOut;
+	sData.depth = 0;
+	sData.exc = 0;
+	sData.err = 0;
+	VmSerialize(pIn,&sData);
+	return (sData.exc || sData.err) ? -1 : 0;
+}
+/*
  * string serialize(mixed $value)
  *  Returns a storable representation of a value.
  */

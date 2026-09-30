@@ -46,12 +46,13 @@
 #define PH7_EXT_SIMPLEXML    27
 #define PH7_EXT_SQLITE3      28
 #define PH7_EXT_ZLIB         29
+#define PH7_EXT_PHAR         30
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "fileinfo", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
-	"posix", "SimpleXML", "sqlite3", "zlib",
+	"posix", "SimpleXML", "sqlite3", "zlib", "Phar",
 };
 
 typedef struct VmExtName VmExtName;
@@ -670,6 +671,9 @@ static const VmExtName aExtClass[] = {
 	{"SQLite3Stmt",PH7_EXT_SQLITE3}, {"SQLite3Result",PH7_EXT_SQLITE3},
 	/* zlib */
 	{"InflateContext",PH7_EXT_ZLIB}, {"DeflateContext",PH7_EXT_ZLIB},
+	/* Phar -- php's own order for the extension */
+	{"PharException",PH7_EXT_PHAR}, {"Phar",PH7_EXT_PHAR}, {"PharData",PH7_EXT_PHAR},
+	{"PharFileInfo",PH7_EXT_PHAR},
 };
 
 static const VmExtName aExtConst[] = {
@@ -1460,5 +1464,8 @@ static const VmExtName aExtIni[] = {
 	{"zlib.output_compression",PH7_EXT_ZLIB},
 	{"zlib.output_compression_level",PH7_EXT_ZLIB},
 	{"zlib.output_handler",PH7_EXT_ZLIB},
+	/* Phar */
+	{"phar.readonly",PH7_EXT_PHAR}, {"phar.require_hash",PH7_EXT_PHAR},
+	{"phar.cache_list",PH7_EXT_PHAR},
 };
 

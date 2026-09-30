@@ -3917,6 +3917,145 @@ static const char * GenStateEofExpecting(SyToken *pStmt,SyToken *pLast)
 	}
 	return 0;
 }
+/* Does this script spell `__halt_compiler` at all, in any case? A cheap scan
+ * that keeps the token pass below off every ordinary file. */
+static int GenStateMentionsHalt(const char *zIn,sxu32 nIn)
+{
+	static const char zWord[] = "__halt_compiler";
+	sxu32 nWord = (sxu32)sizeof(zWord)-1;
+	sxu32 i;
+	for( i = 0 ; i + nWord <= nIn ; ++i ){
+		if( zIn[i] != '_' ){
+			continue;
+		}
+		if( SyStrnicmp(&zIn[i],zWord,nWord) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Is this token the `__halt_compiler` identifier? It is not a keyword in this
+ * lexer (the generated table takes nothing longer than twelve bytes), so it
+ * arrives as an ordinary identifier and is recognised by NAME -- case
+ * insensitively, as php's own scanner does. */
+static int GenStateIsHaltCompiler(SyToken *pTok,SyToken *pEnd)
+{
+	return pTok < pEnd
+	    && (pTok->nType & PH7_TK_ID)
+	    && pTok->sData.nByte == sizeof("__halt_compiler")-1
+	    && SyStrnicmp(pTok->sData.zString,"__halt_compiler",sizeof("__halt_compiler")-1) == 0;
+}
+/*
+ * The pre-scan behind `__COMPILER_HALT_OFFSET__`: find the halt statement in
+ * whichever PHP chunk holds it and remember the byte just past its `;`. The
+ * chunks are tokenized a second time here -- the compile below tokenizes each
+ * one as it reaches it -- because the constant's value has to be known before
+ * the first statement compiles. Only a file that spells the identifier gets
+ * here at all.
+ *
+ * A `__halt_compiler` in a scope php refuses is still found: the statement
+ * compiler raises php's fatal when it reaches it, and the offset is never read.
+ */
+static void GenStateScanHaltOffset(ph7_gen_state *pGen,SySet *pRawToken,const char *zFileBase)
+{
+	SyToken *pRaw = (SyToken *)SySetBasePtr(pRawToken);
+	SyToken *pRawEnd = &pRaw[SySetUsed(pRawToken)];
+	SySet aTok,aTriv;
+	SySetInit(&aTok,&pGen->pVm->sAllocator,sizeof(SyToken));
+	SySetInit(&aTriv,&pGen->pVm->sAllocator,sizeof(SyToken));
+	for( ; pRaw < pRawEnd && pGen->bHaltSeen == 0 ; pRaw++ ){
+		SyToken *pTok,*pEnd;
+		if( (pRaw->nType & PH7_TOKEN_PHP) == 0 ){
+			continue;
+		}
+		SySetReset(&aTok);
+		SySetReset(&aTriv);
+		PH7_TokenizePHP(SyStringData(&pRaw->sData),SyStringLength(&pRaw->sData),
+			pRaw->nLine,&aTok,&aTriv);
+		pTok = (SyToken *)SySetBasePtr(&aTok);
+		pEnd = &pTok[SySetUsed(&aTok)];
+		for( ; pTok < pEnd ; pTok++ ){
+			if( !GenStateIsHaltCompiler(pTok,pEnd) ){
+				continue;
+			}
+			if( pTok + 3 < pEnd
+			 && (pTok[1].nType & PH7_TK_LPAREN)
+			 && (pTok[2].nType & PH7_TK_RPAREN)
+			 && (pTok[3].nType & PH7_TK_SEMI) ){
+				const char *zSemi = SyStringData(&pTok[3].sData);
+				if( zSemi > zFileBase ){
+					pGen->nHaltOffset = (sxu32)((zSemi - zFileBase) + 1);
+					pGen->bHaltSeen = 1;
+				}
+			}
+			break;
+		}
+	}
+	SySetRelease(&aTok);
+	SySetRelease(&aTriv);
+}
+/*
+ * ---------------------------------------------------------------------------
+ * `__halt_compiler();`
+ *
+ * php's scanner STOPS at it: the rest of the file is not code and is never
+ * output either, which is what lets a .phar carry a binary archive in the bytes
+ * behind its stub. Three rules come with it, all php's:
+ *
+ *   - it is only legal at the OUTERMOST scope -- inside a function, a class or
+ *     even a plain `if` block it is a compile-time fatal, not a parse error;
+ *   - the parentheses and the semicolon are part of the construct, and php's
+ *     parser names what it wanted when one is missing;
+ *   - `__COMPILER_HALT_OFFSET__` expands to the byte just past that `;`.
+ *
+ * It is NOT a keyword in this lexer (the generated table takes nothing longer
+ * than twelve bytes), so it arrives as an ordinary identifier in statement
+ * position and is recognised by name -- case-insensitively, as php does.
+ * ---------------------------------------------------------------------------
+ */
+static sxi32 GenStateCompileHaltCompiler(ph7_gen_state *pGen)
+{
+	sxu32 nLine = pGen->pIn->nLine;
+	if( pGen->pCurrent != &pGen->sGlobal ){
+		/* php's own sentence: a FATAL rather than a parse error, and one its
+		 * PARSER makes -- so it prints no stack trace under it. */
+		pGen->iFatalTrace = PH7_FATAL_TRACE_NONE;
+		return PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"__HALT_COMPILER() can only be used from the outermost scope");
+	}
+	pGen->pIn++;
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
+		return PH7_GenSyntaxError(&(*pGen),
+			pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
+	}
+	/* php's scanner ran out INSIDE the parentheses: it names the `(` it never
+	 * closed rather than the token it wanted, and reports it where the INPUT
+	 * ends rather than where the `(` is. */
+#define PHL_HALT_EOF_LINE (pGen->bChunkAtEof && pGen->nChunkEofLine > nLine \
+	? pGen->nChunkEofLine : nLine)
+	if( pGen->pIn >= pGen->pEnd ){
+		return PH7_GenCompileError(&(*pGen),E_PARSE,PHL_HALT_EOF_LINE,
+			"Unclosed '(' on line %u",nLine);
+	}
+	pGen->pIn++;
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_RPAREN) == 0 ){
+		return pGen->pIn >= pGen->pEnd
+			? PH7_GenCompileError(&(*pGen),E_PARSE,PHL_HALT_EOF_LINE,
+				"Unclosed '(' on line %u",nLine)
+			: PH7_GenSyntaxError(&(*pGen),pGen->pIn,"\")\"");
+	}
+	pGen->pIn++;
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
+		return PH7_GenSyntaxError(&(*pGen),
+			pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\";\"");
+	}
+	pGen->pIn++;
+	/* Nothing after it is code, in this chunk or in any that follows. */
+	pGen->pIn = pGen->pEnd;
+	pGen->bHalted = 1;
+#undef PHL_HALT_EOF_LINE
+	return SXRET_OK;
+}
 PH7_PRIVATE sxi32 GenStateCompileChunk(
 	ph7_gen_state *pGen, /* Code generator state */
 	sxi32 iFlags         /* Compile flags */
@@ -3983,6 +4122,13 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 			/* Any non-declare top-level statement locks the strict_types
 			 * directive: it's now too late for declare(strict_types=1). */
 			pGen->bStrictTypesLocked = 1;
+		}
+		if( GenStateIsHaltCompiler(pGen->pIn,pGen->pEnd) ){
+			/* Everything from here on is DATA. php's own scanner stops in exactly
+			 * the same place, which is what lets a .phar carry its archive in the
+			 * bytes after its stub. */
+			rc = GenStateCompileHaltCompiler(&(*pGen));
+			break;
 		}
 		if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){
 			/* Compile block */
@@ -4311,6 +4457,10 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	int is_expr;
 	sxi8 bSavedStrict;
 	sxi8 bSavedStrictLocked;
+	sxi8 bSavedHalted,bSavedHaltSeen;
+	sxu32 nSavedHaltOffset;
+	const char *zSavedScriptBase;
+	const char *zFileBase;
 	SyToken *pSavedIn,*pSavedEnd;
 	sxi32 rc;
 	sxu32 nBaseLine = 1;
@@ -4318,6 +4468,9 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 		/* Nothing to compile */
 		return PH7_OK;
 	}
+	/* Kept before the shebang skip below: php counts __COMPILER_HALT_OFFSET__
+	 * from the first byte on DISK, shebang line included. */
+	zFileBase = pScript->zString;
 	/* php skips a "#!" shebang on the first line of a CLI script: consume it
 	 * (including its newline) so it is not echoed as inline text, and bump the
 	 * base line to 2 so the code below still reports php-matching line numbers. */
@@ -4348,6 +4501,15 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	bSavedStrictLocked = pCodeGen->bStrictTypesLocked;
 	pCodeGen->bStrictTypes = 0;
 	pCodeGen->bStrictTypesLocked = 0;
+	/* The halt is per-FILE too, and an include compiles inside its includer. */
+	bSavedHalted = pCodeGen->bHalted;
+	bSavedHaltSeen = pCodeGen->bHaltSeen;
+	nSavedHaltOffset = pCodeGen->nHaltOffset;
+	zSavedScriptBase = pCodeGen->zScriptBase;
+	pCodeGen->bHalted = 0;
+	pCodeGen->bHaltSeen = 0;
+	pCodeGen->nHaltOffset = 0;
+	pCodeGen->zScriptBase = zFileBase;
 	/* Initialize the tokens containers */
 	SySetInit(&aRawToken,&pVm->sAllocator,sizeof(SyToken));
 	SySetInit(&aPhpToken,&pVm->sAllocator,sizeof(SyToken));
@@ -4388,6 +4550,17 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	/* Process high-level tokens */
 	pCodeGen->pRawIn = (SyToken *)SySetBasePtr(&aRawToken);
 	pCodeGen->pRawEnd = &pCodeGen->pRawIn[SySetUsed(&aRawToken)];
+	/*
+	 * Where `__halt_compiler();` sits, decided BEFORE anything compiles: the
+	 * constant it defines may be read ahead of the statement that sets it (and
+	 * in an earlier chunk than the one holding it), exactly as it may under php,
+	 * whose compiler registers the constant for the whole file. The scan costs a
+	 * second tokenization of every PHP chunk, so it only runs when the file
+	 * contains the identifier at all -- which no ordinary program does.
+	 */
+	if( GenStateMentionsHalt(pScript->zString,pScript->nByte) ){
+		GenStateScanHaltOffset(pCodeGen,&aRawToken,zFileBase);
+	}
 	rc = PH7_OK;
 	if( is_expr ){
 		/* Compile the expression */
@@ -4404,6 +4577,11 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 			/* Compile the PHP chunk */
 			rc = PH7_CompilePHP(pCodeGen,&aPhpToken,FALSE);
 			if( rc == SXERR_ABORT ){
+				break;
+			}
+			if( pCodeGen->bHalted ){
+				/* `__halt_compiler();` -- the rest of the FILE is data, inline
+				 * text between later chunks included. */
 				break;
 			}
 			continue;
@@ -4437,6 +4615,11 @@ cleanup:
 	/* Restore outer file's strict_types scope */
 	pCodeGen->bStrictTypes = bSavedStrict;
 	pCodeGen->bStrictTypesLocked = bSavedStrictLocked;
+	/* ...and its halt state. */
+	pCodeGen->bHalted = bSavedHalted;
+	pCodeGen->bHaltSeen = bSavedHaltSeen;
+	pCodeGen->nHaltOffset = nSavedHaltOffset;
+	pCodeGen->zScriptBase = zSavedScriptBase;
 	return rc;
 }
 /*

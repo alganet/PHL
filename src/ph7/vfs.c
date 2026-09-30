@@ -388,11 +388,14 @@ PH7_PRIVATE int PH7_VfsStatFromFd(int iFd,ph7_value *pArray,ph7_value *pWorker)
 	}
 }
 /* Defined with the path operations below, and used by every one of them. */
-static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,int eOp);
+static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,const char *zDest,int eOp);
 #define VFS_POP_UNLINK 0
 #define VFS_POP_RENAME 1
-#define VFS_POP_QUIET  2   /* mkdir and rmdir: false, and nothing said */
+#define VFS_POP_MKDIR  2   /* mkdir and rmdir: false, and nothing said -- but they
+                            * are two different operations to a wrapper that
+                            * IMPLEMENTS them, which ext/phar does */
 #define VFS_POP_CHMOD  3
+#define VFS_POP_RMDIR  4
 /*
  * php's WRITE door for a path a userland wrapper owns: unlink(), rename(), mkdir(),
  * rmdir(), and the stream_metadata() that touch(), chmod(), chown() and chgrp() all
@@ -511,6 +514,17 @@ PH7_PRIVATE int PH7_VfsUserStatFields(ph7_context *pCtx,const char *zPath,int eA
 	ph7_int64 *aVal)
 {
 	int iFlags = PH7_URL_STAT_NOCACHE;
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	/* An ARCHIVE answers for its own entries. php gives every wrapper a
+	 * url_stat handler and routes the whole stat family through it, which is
+	 * what makes `file_exists('phar://x.phar/f')` and `is_dir()` true for a name
+	 * that exists nowhere on disk. This engine has the door for a USERLAND
+	 * wrapper (below) and this one built-in wrapper that needs it. */
+	if( zPath && SyStrnicmp(zPath,"phar://",sizeof("phar://")-1) == 0 ){
+		return PH7_PharUrlStat(pCtx->pVm,&zPath[sizeof("phar://")-1],aVal) == 0
+			? PHL_URLSTAT_OK : PHL_URLSTAT_FAIL;
+	}
+#endif
 	if( VfsAskIsLink(eAsk) ){
 		iFlags |= PH7_URL_STAT_LINK;
 	}
@@ -820,7 +834,7 @@ static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 	}
-	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_QUIET) ){
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_RMDIR) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -1058,7 +1072,7 @@ static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 	}
-	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_QUIET) ){
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_MKDIR) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -1174,7 +1188,7 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( bDone ){
 				return PH7_OK;
 			}
-			if( VfsBuiltinWrapperRefuses(pCtx,zOld,VFS_POP_RENAME) ){
+			if( VfsBuiltinWrapperRefuses(pCtx,zOld,zNew,VFS_POP_RENAME) ){
 				return PH7_OK;
 			}
 		}
@@ -1479,7 +1493,7 @@ static int PH7_vfs_usleep(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * first and answers for it, including php's "no such method" refusal.
  * ---------------------------------------------------------------------------
  */
-static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,int eOp)
+static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,const char *zDest,int eOp)
 {
 	const ph7_io_stream *pStream;
 	const char *zTail = zPath;
@@ -1492,6 +1506,16 @@ static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,int eOp)
 	if( zLabel == 0 ){
 		return 0;
 	}
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	if( PH7_PharStreamIs(pStream) && eOp != VFS_POP_CHMOD ){
+		/* ext/phar is the one built-in wrapper here that DOES implement the
+		 * path operations -- an archive can have an entry deleted, created or
+		 * renamed -- so it answers for those itself, with its own `phar.readonly`
+		 * refusal. It implements no stream_metadata, so chmod(), chown() and
+		 * chgrp() still take the sentence below. */
+		return PH7_PharPathOp(pCtx,zPath,zDest,eOp);
+	}
+#endif
 	switch( eOp ){
 	case VFS_POP_UNLINK:
 		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s does not allow unlinking",
@@ -1507,6 +1531,7 @@ static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,int eOp)
 			ph7_function_name(pCtx),ph7_function_name(pCtx));
 		break;
 	default:
+		/* mkdir() and rmdir(): php answers a bare false and says nothing. */
 		break;
 	}
 	ph7_result_bool(pCtx,0);
@@ -1543,7 +1568,7 @@ static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		(void *)pStreamCtx,0,0) ){
 		return PH7_OK;
 	}
-	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_UNLINK) ){
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_UNLINK) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -1610,7 +1635,7 @@ static int PH7_vfs_chmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 	}
-	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_CHMOD) ){
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_CHMOD) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -1691,7 +1716,7 @@ static int PH7_vfs_chown(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 	}
-	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_CHMOD) ){
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_CHMOD) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -1775,7 +1800,7 @@ static int PH7_vfs_chgrp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 	}
-	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_CHMOD) ){
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),0,VFS_POP_CHMOD) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -2854,6 +2879,44 @@ static int PH7_vfs_touch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		PH7_MemObjRelease(&sOne);
 		if( bDone ){
 			return PH7_OK;
+		}
+	}
+	/*
+	 * A BUILT-IN wrapper has no stream_metadata to call, and php's touch() falls
+	 * back to opening the url: it answers true for a name the wrapper has -- a
+	 * phar entry, a `data:` payload, `php://memory` -- and the open's own
+	 * sentence for one it does not. A userland wrapper without the method is NOT
+	 * this case: php drops it to the plain-file path below, which reports it as
+	 * a file it could not create.
+	 */
+	{
+		const char *zPath = ph7_value_to_string(apArg[0],0);
+		const char *zTail = zPath;
+		const ph7_io_stream *pStream = zPath
+			? PH7_VmGetStreamDevice(pCtx->pVm,&zTail,(int)SyStrlen(zPath)) : 0;
+		if( zPath && PH7_StreamWrapperLabel(pCtx->pVm,pStream) != 0 ){
+			/* php's fallback opens the url the way `c` does -- so a wrapper that
+			 * has the name answers true, one that cannot take a write-mode url
+			 * says so, and a `compress.zlib://` name is CREATED before its own
+			 * refusal. ext/phar is the one wrapper here with a touch handler of
+			 * its own, and php's asks the entry the READING question. */
+			int iMode = PH7_PharStreamIs(pStream)
+				? PH7_IO_OPEN_RDONLY : PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE;
+			void *pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zTail,
+				iMode,FALSE,0,FALSE,0,0);
+			if( pHandle ){
+				PH7_StreamCloseHandle(pStream,pHandle);
+				ph7_result_bool(pCtx,1);
+			}else{
+				VfsThrowOpenWarning(pCtx,zTail);
+				ph7_result_bool(pCtx,0);
+			}
+			return PH7_OK;
+		}
+		if( zPath && pStream == 0 ){
+			/* A scheme nothing is registered under: php names it and then goes
+			 * on to the plain-files path, which fails on the whole url. */
+			VfsThrowUnknownWrapperWarning(pCtx,zPath);
 		}
 	}
 	/* Point to the underlying vfs */
@@ -4928,6 +4991,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 #ifdef PH7_ENABLE_ZLIB
 	/* compress.zlib:// -- the same device gzopen() opens directly. */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sZLIB_Stream);
+#endif
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	/* phar:// -- what an archive's own entries are read through. */
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHAR_Stream);
 #endif
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);
 #ifndef PH7_DISABLE_BUILTIN_FUNC

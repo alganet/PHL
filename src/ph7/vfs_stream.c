@@ -1209,8 +1209,19 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 				/*  Open the file directly */
 				rc = pStream->xOpen(zFile,iFlags,pResource,&pHandle);
 				if( rc == PH7_OK && bPushInclude ){
-					/* Mark as included */
-					PH7_VmPushFilePath(pVm,sFile.zString,sFile.nByte,FALSE,pNew);
+					/* Mark as included -- under the name the SCRIPT wrote, scheme
+					 * included. The lookup handed the wrapper a stripped path, and
+					 * pushing THAT made `__FILE__` inside an included phar entry
+					 * `x.phar/src/f.php` rather than `phar://x.phar/src/f.php` --
+					 * so the `__DIR__ . '/../vendor/autoload.php'` every real stub
+					 * writes resolved to a path outside the archive. */
+					const char *zPush = sFile.zString;
+					sxu32 nPush = sFile.nByte;
+					if( zPush == pVm->zOpenUriTail && pVm->zOpenUri != 0 ){
+						zPush = pVm->zOpenUri;
+						nPush = (sxu32)pVm->nOpenUri;
+					}
+					PH7_VmPushFilePath(pVm,zPush,nPush,FALSE,pNew);
 				}
 		}else{
 			SyString *pPath;

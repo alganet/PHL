@@ -2599,6 +2599,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* php's ext/fileinfo: the finfo class. It rides the builtin guard with the
 	 * two above -- the tiny build ships none of its six functions. */
 	PH7_VmInstallFileinfo(&(*pVm));
+	/* ext/phar stands on SPL's directory iterators (a Phar IS one) and on
+	 * ext/zlib for a compressed entry, so it mounts after both. */
+	PH7_VmInstallPhar(&(*pVm));
 #endif
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));
@@ -3653,6 +3656,8 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * allocation, which the wholesale release below would not reach. */
 	PH7_ZlibVmReset(&(*pVm));
 #endif
+	/* And every archive it opened: php's phar cache is per-request too. */
+	PH7_PharVmReset(&(*pVm));
 	/* Drop the stream contexts this run created, the default one included: a
 	 * reused VM (the -S server's) must not answer the next request from the
 	 * previous one's stream_context_set_default(). */
@@ -3706,6 +3711,7 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 	/* Same rule for the z_streams behind still-open Deflate/InflateContexts. */
 	PH7_ZlibVmRelease(pVm);
 #endif
+	PH7_PharVmRelease(pVm);
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */
 	PH7_SplDirVmRelease(pVm);
