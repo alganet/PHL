@@ -1909,6 +1909,7 @@ PH7_PRIVATE sxi32 PH7_HashmapCreateSuper(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
+	PH7_VmSuperNote(&(*pVm),"GLOBALS",sizeof("GLOBALS")-1);
 	/* Install superglobals now */
 	for( n =  0 ; n < SX_ARRAYSIZE(azSuper)  ; n++ ){
 		ph7_value *pSuper;

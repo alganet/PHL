@@ -3187,6 +3187,14 @@ struct ph7_vm
 	SyHash hHostFunction;       /* Host-application installable functions */
 	SyHash hFunction;           /* Compiled functions */
 	SyHash hSuper;              /* Superglobals hashtable */
+	sxu32 aSuperFirst[8];       /* Which FIRST BYTES any superglobal name starts with, as a
+	                             * 256-bit set. Every variable access asks hSuper before the
+	                             * frame -- php's rule, and the order cannot change -- and
+	                             * that question hashed the whole name to answer "no" for the
+	                             * ~9 names that are superglobals ($GLOBALS and the $_* set).
+	                             * Two thirds of the engine's hash lookups on a real workload
+	                             * were that miss. One bit test now settles it for a name that
+	                             * cannot be one. */
 	SyHash hPDO;                /* PDO installed drivers */
 	SyBlob sConsumer;           /* Default VM consumer [i.e Redirect all VM output to this blob] */
 	SyBlob sWorker;             /* General purpose working buffer */
@@ -5782,6 +5790,8 @@ PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);
 PH7_PRIVATE void PH7_MarkDeprecatedConstants(ph7_vm *pVm);
 /* vm.c reference/frame internals shared with vm_builtin_var.c */
+PH7_PRIVATE SyHashEntry * PH7_VmSuperGet(ph7_vm *pVm,const char *zName,sxu32 nByte);
+PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
 PH7_PRIVATE sxu32 PH7_VmRefEntryCount(VmRefObj *pRef);
 PH7_PRIVATE sxu32 PH7_VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx);

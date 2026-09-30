@@ -727,7 +727,7 @@ PH7_PRIVATE sxi32 VmFrameLink(ph7_vm *pVm,SyString *pName)
 	}
 	/* A superglobal is already global storage; link ITS slot rather than creating a
 	 * plain global that would shadow it. */
-	pEntry = SyHashGet(&pVm->hSuper,(const void *)pName->zString,pName->nByte);
+	pEntry = PH7_VmSuperGet(&(*pVm),pName->zString,pName->nByte);
 	if( pEntry == 0 ){
 		pEntry = SyHashGet(&pGlobal->hVar,(const void *)pName->zString,pName->nByte);
 	}
@@ -887,6 +887,43 @@ PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx)
 		}
 	}
 	return FALSE;
+}
+/*
+ * The superglobal table, asked the cheap question first.
+ *
+ * Every variable access consults hSuper before the frame -- php resolves $_SERVER
+ * the same in every scope, so the order is the semantics and cannot change -- and
+ * for the ~9 names that are superglobals ($GLOBALS and the $_* set) the answer is
+ * no. Hashing a whole variable name to learn that was, measured on the ecosystem
+ * gate's phpcs step, 101M of the engine's 325M hash-table lookups.
+ *
+ * aSuperFirst is the set of first bytes any INSTALLED superglobal name starts
+ * with, so a name whose first byte is not in it cannot be one and never reaches
+ * the table. It is a set and not a fixed 'G'/'_' test because an embedder may
+ * install a superglobal of its own (PH7_VM_CONFIG_CREATE_SUPER).
+ */
+PH7_PRIVATE SyHashEntry * PH7_VmSuperGet(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	unsigned char c;
+	if( nByte < 1 || zName == 0 ){
+		return 0;
+	}
+	c = (unsigned char)zName[0];
+	if( (pVm->aSuperFirst[c >> 5] & (1u << (c & 31))) == 0 ){
+		return 0;
+	}
+	return SyHashGet(&pVm->hSuper,(const void *)zName,nByte);
+}
+/* Record a name just installed in hSuper. Every insertion into that table must
+ * come through here, or the lookup above stops finding it. */
+PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	unsigned char c;
+	if( nByte < 1 || zName == 0 ){
+		return;
+	}
+	c = (unsigned char)zName[0];
+	pVm->aSuperFirst[c >> 5] |= (1u << (c & 31));
 }
 PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
 {
@@ -2386,6 +2423,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
+	SyZero(pVm->aSuperFirst,sizeof(pVm->aSuperFirst));
 	SyHashInit(&pVm->hPDO,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aFreeObj,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
@@ -3633,6 +3671,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* (7) Reset the superglobal name table and namespace scratch. */
 	SyHashRelease(&pVm->hSuper);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
+	SyZero(pVm->aSuperFirst,sizeof(pVm->aSuperFirst));
 	/* (8) Drain remaining per-exec containers. */
 	SySetReset(&pVm->aSelf);
 	/* Shutdown callbacks are normally drained+released by VmInvokeShutdownCallbacks
@@ -4120,7 +4159,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nBy
 		pFrame = pFrame->pParent;
 	}
 	/* An existing global (or superglobal) is overwritten in place */
-	pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);
+	pEntry = PH7_VmSuperGet(&(*pVm),zName,nByte);
 	if( pEntry && (sxu32)SX_PTR_TO_INT(pEntry->pUserData) == pVm->nGlobalIdx ){
 		/* $GLOBALS['GLOBALS'] = ... must NOT clobber the live $GLOBALS slot:
 		 * php creates an ordinary symbol-table entry named GLOBALS while the
@@ -4229,7 +4268,7 @@ PH7_PRIVATE ph7_value * VmExtractMemObj(
 		bDup = FALSE;
 	}
 	/* Check the superglobals table first */
-	pEntry = SyHashGet(&pVm->hSuper,(const void *)pName->zString,pName->nByte);
+	pEntry = PH7_VmSuperGet(&(*pVm),pName->zString,pName->nByte);
 	if( pEntry == 0 ){
 		/* Query the top active frame */
 		pEntry = SyHashGet(&pFrame->hVar,(const void *)pName->zString,pName->nByte);
@@ -4305,7 +4344,7 @@ PH7_PRIVATE ph7_value * PH7_VmExtractSuper(
 	ph7_value *pValue;
 	sxu32 nIdx;
 	/* Query the superglobal table */
-	pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);
+	pEntry = PH7_VmSuperGet(&(*pVm),zName,nByte);
 	if( pEntry == 0 ){
 		/* No such entry */
 		return 0;
@@ -4514,7 +4553,7 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		nByte = SyStrlen(zName);
 		if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){
 			/* Check if the superglobal is already installed */
-			pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);
+			pEntry = PH7_VmSuperGet(&(*pVm),zName,nByte);
 		}else{
 			/* Query the top active VM frame */
 			pEntry = SyHashGet(&pVm->pFrame->hVar,(const void *)zName,nByte);
@@ -4541,6 +4580,9 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 			if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){
 				/* Install the superglobal */
 				rc = SyHashInsert(&pVm->hSuper,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx));
+				if( rc == SXRET_OK ){
+					PH7_VmSuperNote(&(*pVm),zName,nByte);
+				}
 			}else{
 				/* Install in the current frame */
 				rc = SyHashInsert(&pVm->pFrame->hVar,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx));

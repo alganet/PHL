@@ -2430,7 +2430,7 @@ static int VmExtractIsThis(const char *zName,sxu32 nByte)
  */
 static int VmExtractIsProtected(ph7_vm *pVm,const char *zName,sxu32 nByte)
 {
-	return SyHashGet(&pVm->hSuper,(const void *)zName,nByte) != 0;
+	return PH7_VmSuperGet(&(*pVm),zName,nByte) != 0;
 }
 /*
  * TRUE when the calling frame already holds this variable name.
