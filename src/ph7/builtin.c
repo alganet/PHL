@@ -842,7 +842,7 @@ static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value_bool(pVal,0);      ph7_array_add_strkey_elem(pArray,"full",pVal);
 	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcRuns);      ph7_array_add_strkey_elem(pArray,"runs",pVal);
 	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcCollected); ph7_array_add_strkey_elem(pArray,"collected",pVal);
-	ph7_value_int(pVal,10000);   ph7_array_add_strkey_elem(pArray,"threshold",pVal);
+	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcThreshold); ph7_array_add_strkey_elem(pArray,"threshold",pVal);
 	ph7_value_int(pVal,(sxi64)SySetUsed(&pCtx->pVm->aGcRoot)); ph7_array_add_strkey_elem(pArray,"buffer_size",pVal);
 	ph7_value_int(pVal,(sxi64)SySetUsed(&pCtx->pVm->aGcRoot)); ph7_array_add_strkey_elem(pArray,"roots",pVal);
 	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"application_time",pVal);

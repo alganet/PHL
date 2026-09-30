@@ -3532,6 +3532,7 @@ struct ph7_vm
 	                            * happens in the middle of a dispatch that is still about to
 	                            * look the function up. See PH7_VmPurgeDeadClosures. */
 	sxu8 bClosurePurge;        /* ...and whether that list has anything on it */
+	sxu32 nGcThreshold;        /* Buffered roots that trigger a collection; adaptive (vm_gc.c) */
 	sxu32 nGcRuns;             /* Collections run, for gc_status() */
 	sxu32 nGcCollected;        /* Containers freed by them, for gc_status() */
 	sxi32 iErrMask;      /* error_reporting() level. PH7 collapsed it to the bErrReport

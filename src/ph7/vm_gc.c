@@ -48,8 +48,14 @@
  */
 #include "ph7int.h"
 
-/* Buffered roots before the VM is asked to collect. php's own is 10001. */
-#define VM_GC_THRESHOLD 10000
+/* Buffered roots before the VM is asked to collect. php's own starting point is
+ * 10001, and like php's it MOVES: a program with no cycles in it buffers a root on
+ * every refcount drop that does not reach zero -- which is most of them -- and
+ * would otherwise pay a full mark-and-scan over ten thousand live containers, over
+ * and over, to find nothing. A run that reclaims little doubles the threshold; one
+ * that reclaims a real share of what it looked at puts it back. */
+#define VM_GC_THRESHOLD_MIN 10000
+#define VM_GC_THRESHOLD_MAX 1000000
 
 /*
  * Is this slot held by nothing except the container that owns it?
@@ -253,7 +259,7 @@ PH7_PRIVATE void PH7_GcPossibleRoot(ph7_vm *pVm,void *pCont,int bMap)
 		}
 		return;
 	}
-	if( SySetUsed(&pVm->aGcRoot) >= VM_GC_THRESHOLD ){
+	if( SySetUsed(&pVm->aGcRoot) >= pVm->nGcThreshold ){
 		/* Ask the VM to collect at its next fetch point -- NOT here, which is the
 		 * middle of somebody's refcount drop and so the middle of an opcode. */
 		pVm->bGcWanted = 1;
@@ -597,6 +603,16 @@ PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm)
 	}
 	SySetReset(&pVm->aGcDead);
 	pVm->nGcCollected += nCollected;
+	/* What this round cost against what it bought. Rewarding a productive run with
+	 * the low threshold keeps a cycle-heavy program collecting often; doubling after
+	 * a barren one is what stops a cycle-FREE program paying for the search. */
+	if( nCollected * 4 < nRoots ){
+		if( pVm->nGcThreshold < VM_GC_THRESHOLD_MAX ){
+			pVm->nGcThreshold <<= 1;
+		}
+	}else{
+		pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;
+	}
 	pVm->bGcRunning = 0;
 	return nCollected;
 }
@@ -604,6 +620,7 @@ PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm)
 
 PH7_PRIVATE void PH7_GcInit(ph7_vm *pVm)
 {
+	pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;
 	SySetInit(&pVm->aGcRoot,&pVm->sAllocator,sizeof(VmGcRef));
 	SySetInit(&pVm->aGcWork,&pVm->sAllocator,sizeof(VmGcRef));
 	SySetInit(&pVm->aGcAux,&pVm->sAllocator,sizeof(VmGcRef));
@@ -633,6 +650,7 @@ PH7_PRIVATE void PH7_GcResetBuffer(ph7_vm *pVm)
 	SySetReset(&pVm->aGcAux);
 	SySetReset(&pVm->aGcDead);
 	pVm->bGcWanted = 0;
+	pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;
 }
 PH7_PRIVATE void PH7_GcRelease(ph7_vm *pVm)
 {
