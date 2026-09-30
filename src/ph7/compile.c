@@ -826,6 +826,13 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "openssl_public_decrypt",      22, 1u<<1 },  /* &$decrypted_data */
 		{ "openssl_seal",                12, (1u<<1)|(1u<<2)|(1u<<5) },
 		{ "openssl_open",                12, 1u<<1 },  /* &$output */
+		{ "openssl_x509_export",         19, 1u<<1 },  /* &$output */
+		{ "openssl_csr_export",          18, 1u<<1 },  /* &$output */
+		{ "openssl_csr_new",             15, 1u<<1 },  /* &$private_key */
+		{ "openssl_pkcs12_export",       21, 1u<<1 },  /* &$output */
+		{ "openssl_pkcs12_read",         19, 1u<<1 },  /* &$certificates */
+		{ "openssl_pkcs7_read",          18, 1u<<1 },  /* &$certificates */
+		{ "openssl_cms_read",            16, 1u<<1 },  /* &$certificates */
 		{ "sscanf",                 6, ~((1u<<2) - 1u) },
 		{ "fscanf",                 6, ~((1u<<2) - 1u) },
 	};

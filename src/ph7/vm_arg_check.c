@@ -49,6 +49,13 @@ static const struct VmBuiltinArity {
 	{ "substr_compare",3,1 }, { "strpbrk",       2, 0 }, { "strspn",         2, 1 },
 	{ "strcspn",      2, 1 }, { "hexdec",        1, 0 }, { "octdec",         1, 0 },
 	{ "bindec",       1, 0 }, { "chunk_split",   1, 1 },
+	/* ext/openssl. One row, and it is php's own inconsistency rather than a
+	 * shape this table usually carries: openssl_cms_verify() DECLARES
+	 * `int $flags = 0` -- ReflectionFunction reports one required parameter --
+	 * and then refuses a one-argument call with "expects at least 2
+	 * arguments". The declaration is what Reflection answers and this row is
+	 * what a caller hits. */
+	{ "openssl_cms_verify",        2, 1 },
 	/* Math family (atan2/intdiv already self-throw the same ArgumentCountError,
 	 * so they stay off the table per the disjointness rule above). */
 	{ "pow",          2, 0 }, { "fmod",          2, 0 }, { "hypot",          2, 0 },
@@ -433,6 +440,33 @@ static const struct VmBuiltinSig {
 	 * The five untyped `$key` / `$certificate` parameters are untyped in php
 	 * too: each takes a handle object, a PEM string, a `file://` path or an
 	 * array pair, so php declares no type and screens by hand. */
+	{ "openssl_x509_export_to_file", "OpenSSLCertificate|string $certificate, string $output_filename, bool $no_text = true", "bool" },
+	{ "openssl_x509_export", "OpenSSLCertificate|string $certificate, &$output, bool $no_text = true", "bool" },
+	{ "openssl_x509_fingerprint", "OpenSSLCertificate|string $certificate, string $digest_algo = 'sha1', bool $binary = false", "string|false" },
+	{ "openssl_x509_check_private_key", "OpenSSLCertificate|string $certificate, $private_key", "bool" },
+	{ "openssl_x509_verify", "OpenSSLCertificate|string $certificate, $public_key", "int" },
+	{ "openssl_x509_parse", "OpenSSLCertificate|string $certificate, bool $short_names = true", "array|false" },
+	{ "openssl_x509_checkpurpose", "OpenSSLCertificate|string $certificate, int $purpose, array $ca_info = [], ?string $untrusted_certificates_file = NULL", "int|bool" },
+	{ "openssl_x509_read", "OpenSSLCertificate|string $certificate", "OpenSSLCertificate|false" },
+	{ "openssl_pkcs12_export_to_file", "OpenSSLCertificate|string $certificate, string $output_filename, $private_key, string $passphrase, array $options = []", "bool" },
+	{ "openssl_pkcs12_export", "OpenSSLCertificate|string $certificate, &$output, $private_key, string $passphrase, array $options = []", "bool" },
+	{ "openssl_pkcs12_read", "string $pkcs12, &$certificates, string $passphrase", "bool" },
+	{ "openssl_csr_export_to_file", "OpenSSLCertificateSigningRequest|string $csr, string $output_filename, bool $no_text = true", "bool" },
+	{ "openssl_csr_export", "OpenSSLCertificateSigningRequest|string $csr, &$output, bool $no_text = true", "bool" },
+	{ "openssl_csr_sign", "OpenSSLCertificateSigningRequest|string $csr, OpenSSLCertificate|string|null $ca_certificate, $private_key, int $days, ?array $options = NULL, int $serial = 0, ?string $serial_hex = NULL", "OpenSSLCertificate|false" },
+	{ "openssl_csr_new", "array $distinguished_names, &$private_key, ?array $options = NULL, ?array $extra_attributes = NULL", "OpenSSLCertificateSigningRequest|bool" },
+	{ "openssl_csr_get_subject", "OpenSSLCertificateSigningRequest|string $csr, bool $short_names = true", "array|false" },
+	{ "openssl_csr_get_public_key", "OpenSSLCertificateSigningRequest|string $csr, bool $short_names = true", "OpenSSLAsymmetricKey|false" },
+	{ "openssl_pkcs7_verify", "string $input_filename, int $flags, ?string $signers_certificates_filename = NULL, array $ca_info = [], ?string $untrusted_certificates_filename = NULL, ?string $content = NULL, ?string $output_filename = NULL", "int|bool" },
+	{ "openssl_pkcs7_encrypt", "string $input_filename, string $output_filename, $certificate, ?array $headers, int $flags = 0, int $cipher_algo = OPENSSL_CIPHER_AES_128_CBC", "bool" },
+	{ "openssl_pkcs7_sign", "string $input_filename, string $output_filename, OpenSSLCertificate|string $certificate, $private_key, ?array $headers, int $flags = PKCS7_DETACHED, ?string $untrusted_certificates_filename = NULL", "bool" },
+	{ "openssl_pkcs7_decrypt", "string $input_filename, string $output_filename, $certificate, $private_key = NULL", "bool" },
+	{ "openssl_pkcs7_read", "string $data, &$certificates", "bool" },
+	{ "openssl_cms_verify", "string $input_filename, int $flags = 0, ?string $certificates = NULL, array $ca_info = [], ?string $untrusted_certificates_filename = NULL, ?string $content = NULL, ?string $pk7 = NULL, ?string $sigfile = NULL, int $encoding = OPENSSL_ENCODING_SMIME", "bool" },
+	{ "openssl_cms_encrypt", "string $input_filename, string $output_filename, $certificate, ?array $headers, int $flags = 0, int $encoding = OPENSSL_ENCODING_SMIME, string|int $cipher_algo = OPENSSL_CIPHER_AES_128_CBC", "bool" },
+	{ "openssl_cms_sign", "string $input_filename, string $output_filename, OpenSSLCertificate|string $certificate, $private_key, ?array $headers, int $flags = 0, int $encoding = OPENSSL_ENCODING_SMIME, ?string $untrusted_certificates_filename = NULL", "bool" },
+	{ "openssl_cms_decrypt", "string $input_filename, string $output_filename, $certificate, $private_key = NULL, int $encoding = OPENSSL_ENCODING_SMIME", "bool" },
+	{ "openssl_cms_read", "string $input_filename, &$certificates", "bool" },
 	{ "openssl_pbkdf2", "string $password, string $salt, int $key_length, int $iterations, string $digest_algo = 'sha1'", "string|false" },
 	{ "openssl_error_string", "", "string|false" },
 	{ "openssl_get_md_methods", "bool $aliases = false", "array" },
@@ -1140,6 +1174,8 @@ static const struct VmBuiltinSig {
 	{ "pathinfo", "string $path, int $flags = PATHINFO_ALL", "array|string" },
 	{ "pclose", "$handle", "int" },
 	{ "php_sapi_name", "", "string|false" },
+	{ "php_ini_loaded_file", "", "string|false" },
+	{ "php_ini_scanned_files", "", "string|false" },
 	{ "php_uname", "string $mode = 'a'", "string" },
 	/* php spells this default `INFO_ALL`, and this engine spells the NUMBER: the
 	 * INFO_* family has no consumer here, since phpinfo() ignores $flags and

@@ -71,7 +71,7 @@ PH7_PRIVATE void PH7_SslStoreErrors(ph7_vm *pVm)
 	}
 	while( (iErr = ERR_get_error()) != 0 ){
 		pRing->iTop = (pRing->iTop + 1) % PHL_SSL_ERR_RING;
-		pRing->aErr[pRing->iTop] = iErr;
+		pRing->aErr[pRing->iTop] = (int)iErr;
 		if( pRing->iTop == pRing->iBottom ){
 			pRing->iBottom = (pRing->iBottom + 1) % PHL_SSL_ERR_RING;
 		}
@@ -98,8 +98,8 @@ static int vm_builtin_openssl_error_string(ph7_context *pCtx,int nArg,ph7_value 
 		return PH7_OK;
 	}
 	pRing->iBottom = (pRing->iBottom + 1) % PHL_SSL_ERR_RING;
-	iErr = pRing->aErr[pRing->iBottom];
-	if( iErr == 0 ){
+	iErr = (unsigned long)(long)pRing->aErr[pRing->iBottom];
+	if( pRing->aErr[pRing->iBottom] == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1458,30 +1458,40 @@ static ph7_value * SslArrayNth(ph7_value *pArray,int n)
 	}
 	return 0;
 }
-/* Write a whole file through the engine's stream layer -- the `_to_file` half
- * of four export doors. Answers 0 on success, -1 with php's own warning left
- * to the caller. */
+/*
+ * The `_to_file` half of the five export doors. It writes through OpenSSL's
+ * own file BIO rather than the engine's stream layer, and that is php's choice
+ * showing through rather than a shortcut: a path that cannot be opened leaves
+ * `system library::No such file or directory` and `BIO routines::no such file`
+ * in the error ring, which is what a script reads back. The cost is the same
+ * one php pays -- these doors write to the filesystem and to nothing else, so
+ * a `phar://` or userland-wrapper path is not a destination here.
+ */
 PH7_PRIVATE int PH7_SslWriteFileArg(ph7_context *pCtx,const char *zPath,int nPath,
 	const void *pData,sxu32 nData)
 {
-	const ph7_io_stream *pStream;
-	void *pHandle;
-	const char *zTarget = zPath;
+	char *zZ;
+	BIO *pOut;
+	int rc = -1;
 	if( zPath == 0 || nPath < 1 ){
 		return -1;
 	}
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zTarget,nPath);
-	pHandle = pStream ? PH7_StreamOpenHandle(pCtx->pVm,pStream,zTarget,
-		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_WRONLY,FALSE,0,FALSE,0,0) : 0;
-	if( pHandle == 0 ){
+	zZ = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)(nPath + 1));
+	if( zZ == 0 ){
 		return -1;
 	}
-	if( pStream->xWrite == 0 || pStream->xWrite(pHandle,pData,nData) < 0 ){
-		PH7_StreamCloseHandle(pStream,pHandle);
+	SyMemcpy(zPath,zZ,(sxu32)nPath);
+	zZ[nPath] = 0;
+	pOut = BIO_new_file(zZ,"wb");
+	SyMemBackendFree(&pCtx->pVm->sAllocator,zZ);
+	if( pOut == 0 ){
 		return -1;
 	}
-	PH7_StreamCloseHandle(pStream,pHandle);
-	return 0;
+	if( nData == 0 || BIO_write(pOut,pData,(int)nData) == (int)nData ){
+		rc = 0;
+	}
+	BIO_free(pOut);
+	return rc;
 }
 /* Read a whole file through the engine's stream layer -- the certificate
  * unit's `$ca_info` paths and the PKCS#7 input files. */
@@ -1551,33 +1561,29 @@ static EVP_PKEY * SslKeyFromBytes(const char *zData,int nData,int bPublic,char *
 	if( pBio == 0 ){
 		return 0;
 	}
+	/* PEM only, both halves: a string holding DER is
+	 * `error:1E08010C:DECODER routines::unsupported` and false under php, and
+	 * a DER key reaches these doors through a `file://` path instead. */
 	if( bPublic ){
-		X509 *pCert;
 		pKey = PEM_read_bio_PUBKEY(pBio,0,0,0);
 		if( pKey == 0 ){
 			/* A certificate is a public key a program HAS, so php reads one
-			 * here too -- both in PEM and in DER. */
+			 * here too -- `openssl_verify($d, $s, $certPem)` is the ordinary
+			 * spelling in a program that was handed a certificate. */
+			X509 *pCert;
+			ERR_set_mark();
 			BIO_reset(pBio);
 			pCert = PEM_read_bio_X509(pBio,0,0,0);
-			if( pCert == 0 ){
-				BIO_reset(pBio);
-				pCert = d2i_X509_bio(pBio,0);
-			}
 			if( pCert ){
+				ERR_clear_last_mark();
 				pKey = X509_get_pubkey(pCert);
 				X509_free(pCert);
+			}else{
+				ERR_pop_to_mark();
 			}
-		}
-		if( pKey == 0 ){
-			BIO_reset(pBio);
-			pKey = d2i_PUBKEY_bio(pBio,0);
 		}
 	}else{
 		pKey = PEM_read_bio_PrivateKey(pBio,0,SslPassCb,(void *)zPass);
-		if( pKey == 0 ){
-			BIO_reset(pBio);
-			pKey = d2i_PrivateKey_bio(pBio,0);
-		}
 	}
 	BIO_free(pBio);
 	return pKey;

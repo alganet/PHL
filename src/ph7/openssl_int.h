@@ -49,7 +49,12 @@
 #define PHL_SSL_ERR_RING 16
 typedef struct phl_ssl_errors phl_ssl_errors;
 struct phl_ssl_errors {
-	unsigned long aErr[PHL_SSL_ERR_RING];
+	/* php's ring holds the code as an INT, and the narrowing is visible: a
+	 * system error such as 0x80000002 comes back out sign-extended, which is
+	 * why php prints `error:FFFFFFFF80000002:system library::No such file or
+	 * directory` on a 64-bit box. Storing it as an unsigned long here would
+	 * print eight hex digits where php prints sixteen. */
+	int aErr[PHL_SSL_ERR_RING];
 	int iTop;
 	int iBottom;
 };

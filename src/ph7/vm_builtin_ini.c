@@ -87,12 +87,14 @@ static const struct {
 	 * empty string) and its access mask (PHP_INI_PERDIR for both). They are
 	 * what openssl_get_cert_locations() reports as ini_cafile/ini_capath and
 	 * what a TLS peer verification falls back to when a stream context names
-	 * no CA of its own. php's third, `openssl.libctx`, is not here: it picks
+	 * no CA of its own. Both ship UNSET rather than empty, which is what php
+	 * reports and is a different thing: ini_get_all() answers NULL for an
+	 * unset directive and "" for one set to the empty string. php's third, `openssl.libctx`, is not here: it picks
 	 * between the default OpenSSL library context and a private one, and this
 	 * build has only the default -- registering the name would report a
 	 * choice that is not being made. */
-	{ "openssl.cafile",           "",           VM_INI_PERDIR },
-	{ "openssl.capath",           "",           VM_INI_PERDIR },
+	{ "openssl.cafile",           0,            VM_INI_PERDIR },
+	{ "openssl.capath",           0,            VM_INI_PERDIR },
 #endif
 	/* ext/phar's three. `phar.readonly` is php's own default ON: every write
 	 * door refuses until an installer turns it off, which is why building an

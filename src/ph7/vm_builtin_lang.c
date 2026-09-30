@@ -1503,6 +1503,25 @@ PH7_PRIVATE int vm_builtin_php_sapi_name(ph7_context *pCtx,int nArg,ph7_value **
 	return PH7_OK;
 }
 /*
+ * string|false php_ini_loaded_file(void)
+ * string|false php_ini_scanned_files(void)
+ *  Which php.ini this interpreter read, and which files it then scanned.
+ * Return
+ *  false from both, and that is php's OWN answer rather than a stub: a php
+ *  started with `-n`, or built with no `--with-config-file-scan-dir`, answers
+ *  exactly this. PHL reads no configuration FILE at all -- its directives come
+ *  from the table in vm_builtin_ini.c and from `-d` -- so there is never a path
+ *  to name. Composer's XdebugHandler asks both on its way to reporting where a
+ *  directive came from, and takes "nowhere" for an answer.
+ */
+PH7_PRIVATE int vm_builtin_php_ini_loaded_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+/*
  * PH7 release information HTML page used by the ph7info() and ph7credits() functions.
  */
  #define PH7_HTML_PAGE_HEADER "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">"\
