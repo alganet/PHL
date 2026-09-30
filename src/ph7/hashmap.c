@@ -1992,7 +1992,9 @@ PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)
 		SyMemBackendFree(&pVm->sAllocator,pMap->apBucket);
 	}
 	if( FreeDS ){
-		/* Free the whole instance */
+		/* Free the whole instance -- and stop the collector's root buffer naming
+		 * memory that is going back to the pool. */
+		PH7_GcForget(pVm,(void *)pMap,1);
 		SyMemBackendPoolFree(&pVm->sAllocator,pMap);
 	}else{
 		/* Keep the instance but reset it's fields */
@@ -2016,6 +2018,10 @@ PH7_PRIVATE void  PH7_HashmapUnref(ph7_hashmap *pMap)
 	pMap->iRef--;
 	if( pMap->iRef < 1 && pMap != pVm->pGlobal){
 		PH7_HashmapRelease(pMap,TRUE);
+	}else if( pMap->iRef >= 1 ){
+		/* Still held -- but by whom? A drop that does NOT reach zero is the only
+		 * event that can strand a cycle, so it is what the collector buffers. */
+		PH7_GcPossibleRoot(pVm,(void *)pMap,1);
 	}
 }
 /*

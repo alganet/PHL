@@ -2647,7 +2647,8 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 	/* Return the cloned object */
 	return pClone;
 }
-#define CLASS_INSTANCE_DESTROYED 0x001 /* Instance is released */
+/* CLASS_INSTANCE_DESTROYED moved to ph7int.h: the cycle collector has to know
+ * an instance that is already mid-release when it walks one. */
 /*
  * Free the per-instance allocations owned by ONE object attribute: its value slot (+ the typed-slot
  * enforcement entry), the synthesized ph7_class_attr for a dynamic (runtime-added) property, and the
@@ -2917,6 +2918,9 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 	}
 	/* Release the whole structure */
 	SyHashRelease(&pThis->hAttr);
+	/* ...and stop the collector's root buffer naming memory that is going back
+	 * to the pool. */
+	PH7_GcForget(pVm,(void *)pThis,0);
 	SyMemBackendPoolFree(&pVm->sAllocator,pThis);
 }
 /*
@@ -2929,6 +2933,10 @@ PH7_PRIVATE void PH7_ClassInstanceUnref(ph7_class_instance *pThis)
 	if( pThis->iRef < 1 ){
 		/* No more reference to this instance */
 		PH7_ClassInstanceRelease(&(*pThis));
+	}else{
+		/* Still held -- but by whom? A drop that does NOT reach zero is the only
+		 * event that can strand a cycle, so it is what the collector buffers. */
+		PH7_GcPossibleRoot(pThis->pVm,(void *)pThis,0);
 	}
 }
 /*

@@ -586,6 +586,8 @@ struct ph7_hashmap
 								   * count like PH7_HashmapCowSeparate, never
 								   * raw iRef. */
 	sxi32 iFlags;                 /* Control flags (see HASHMAP_* below) */
+	sxu32 nGcRoot;                /* 1-based row in the collector's root buffer, 0 while unbuffered */
+	sxu8 iGcColor;                /* PH7_GC_* -- see vm_gc.c */
 	ph7_foreach_step *pActiveSteps; /* foreach steps currently iterating this map
 									 * (per-step cursors — PH7_HashmapUnlinkNode
 									 * advances any cursor parked on a dying node,
@@ -2597,6 +2599,8 @@ struct ph7_class_instance
 	sxi32 iFlags;       /* Control flags */
 	sxu32 nObjId;       /* Per-instance monotonic handle id (from pVm->nNextObjId,
 	                     * never reused). Drives spl_object_id/hash + var_dump #N. */
+	sxu32 nGcRoot;      /* 1-based row in the collector's root buffer, 0 while unbuffered */
+	sxu8 iGcColor;      /* PH7_GC_* -- see vm_gc.c */
 	PH7_AttrIter *pActiveIters; /* Walks of hAttr currently in flight over this object
 	                     * (foreach, array_walk). A property removed under one of them
 	                     * advances its cursor; one appended re-arms an exhausted one. */
@@ -2608,6 +2612,9 @@ struct ph7_class_instance
  * $this. (Other iFlags bits are declared privately in their owning .c file:
  * 0x001 destroyed, 0x002 dumping, 0x004 fcc-bound.)
  */
+#define CLASS_INSTANCE_DESTROYED 0x001 /* Instance is released (oo.c's teardown latch;
+                                        * read by the cycle collector, which must not
+                                        * walk a table being torn down) */
 #define VM_INSTANCE_CLONING 0x008
 /*
  * ph7_class_instance::iFlags bit: this object's __destruct has already been reached for
@@ -2816,6 +2823,24 @@ struct VmSlot
 {
 	sxu32 nIdx;      /* Index in pVm->aMemObj[] */
 	void *pUserData; /* Upper-layer private data */
+};
+/*
+ * Cycle-collector colours (vm_gc.c). php's, and Bacon & Rajan's before it.
+ * BLACK is "in use", GREY "being trial-deleted", WHITE "counted zero",
+ * PURPLE "buffered as a possible root", DEAD "proved garbage, being freed".
+ * A container is born BLACK because its struct is zeroed.
+ */
+#define PH7_GC_BLACK   0
+#define PH7_GC_GREY    1
+#define PH7_GC_WHITE   2
+#define PH7_GC_PURPLE  3
+#define PH7_GC_DEAD    4
+typedef struct VmGcRef VmGcRef;
+/* One container, in the root buffer or in a traversal worklist. */
+struct VmGcRef
+{
+	void *pPtr;  /* ph7_hashmap * or ph7_class_instance *; 0 once the row is spent */
+	sxu8 bMap;   /* which of the two it is */
 };
 typedef struct VmRefObj VmRefObj;
 typedef struct VmRefSpill VmRefSpill;
@@ -3481,9 +3506,20 @@ struct ph7_vm
 	int bLogErrors;            /* log_errors ini gate: TRUE emits the LOG copy of a runtime
 	                            * diagnostic (`PHP Warning:  msg in F on line N`) to the error
 	                            * stream (stderr via sVmErrConsumer). php CLI default: on. */
-	int bGcEnabled;            /* gc_enable()/gc_disable() state reported by gc_enabled()/
-	                            * gc_status(); PHL frees by refcount, so the cycle collector
-	                            * is a no-op and this flag is purely observational. */
+	int bGcEnabled;            /* gc_enable()/gc_disable(): whether the cycle collector may
+	                            * buffer a possible root at all. Off means PHL frees by
+	                            * reference count alone, which strands every cycle. */
+	SySet aGcRoot;             /* Possible cycle roots: a container whose refcount dropped
+	                            * without reaching zero. See vm_gc.c */
+	SySet aGcWork;             /* Traversal worklist (VM-owned so a collection allocates
+	                            * nothing per run) */
+	SySet aGcAux;              /* ...and the one scan_black runs on, since it is entered
+	                            * mid-drain of the primary */
+	SySet aGcDead;             /* What the collect phase proved garbage */
+	sxu8 bGcWanted;            /* The root buffer filled: collect at the next fetch point */
+	sxu8 bGcRunning;           /* A collection is in flight; nothing may buffer or re-enter */
+	sxu32 nGcRuns;             /* Collections run, for gc_status() */
+	sxu32 nGcCollected;        /* Containers freed by them, for gc_status() */
 	sxi32 iErrMask;      /* error_reporting() level. PH7 collapsed it to the bErrReport
 	                      * boolean, so E_ALL & ~E_DEPRECATED still printed every
 	                      * deprecation — any non-zero level meant "report all". */
@@ -5790,6 +5826,18 @@ PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);
 PH7_PRIVATE void PH7_MarkDeprecatedConstants(ph7_vm *pVm);
 /* vm.c reference/frame internals shared with vm_builtin_var.c */
+/* vm_gc.c -- the cycle collector */
+PH7_PRIVATE void PH7_GcInit(ph7_vm *pVm);
+PH7_PRIVATE void PH7_GcResetBuffer(ph7_vm *pVm);
+PH7_PRIVATE void PH7_GcRelease(ph7_vm *pVm);
+PH7_PRIVATE void PH7_GcPossibleRoot(ph7_vm *pVm,void *pCont,int bMap);
+PH7_PRIVATE void PH7_GcForget(ph7_vm *pVm,void *pCont,int bMap);
+PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm);
+/* vm.c -- lifetime of a run-time closure's per-instantiation ph7_vm_func */
+PH7_PRIVATE ph7_vm_func * PH7_VmRuntimeClosure(ph7_vm *pVm,const char *zName,sxu32 nByte);
+PH7_PRIVATE void PH7_VmClosureFuncRef(ph7_vm_func *pFunc);
+PH7_PRIVATE void PH7_VmClosureFuncUnref(ph7_vm *pVm,ph7_vm_func *pFunc);
+PH7_PRIVATE void PH7_VmClosureInstanceRef(ph7_vm *pVm,ph7_class_instance *pObj,int iDelta);
 PH7_PRIVATE SyHashEntry * PH7_VmSuperGet(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);

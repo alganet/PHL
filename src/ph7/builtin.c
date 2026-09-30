@@ -778,21 +778,14 @@ static int PH7_builtin_memory_reset_peak_usage(ph7_context *pCtx,int nArg,ph7_va
 	return PH7_OK;
 }
 /*
- * PHL frees values by reference count as they go out of scope, so there is no
- * mark-and-sweep cycle collector to drive. The gc_* family is provided for
- * source compatibility (real frameworks call it around test runs): the state is
- * observational and collection is a no-op.
+ * The gc_* family, over the real collector in vm_gc.c.
  *
- * That makes a reference CYCLE unreclaimable, which is not a small divergence --
- * it is the largest one still open, and it is what makes a long-running program
- * here grow without bound where php holds flat (phpcs over one project: ~4.9 MB
- * per file, 3976 MB against php's 50). The measurement, the shapes that leak and
- * the shape of the fix are in PLAN.md §5 "NO CYCLE COLLECTOR"; memory_limit is
- * enforced (DONE.md, 26 Aug 2026) so a runaway dies as php's fatal rather than as
- * an OOM kill, but that is a safety valve and not the fix.
- *
- * This comment used to call itself a "recorded divergence" while recording it
- * nowhere -- a claim of being written down IS a claim, and it wasn't one.
+ * PHL frees a value when the last reference to it goes, which is exact for
+ * everything except a CYCLE; vm_gc.c is php's trial-deletion pass over the
+ * containers whose refcount dropped without reaching zero. gc_enable()/
+ * gc_disable() turn root buffering on and off, gc_collect_cycles() runs a
+ * collection on demand and answers what it freed, and gc_status() reports the
+ * counters the collector actually keeps.
  */
 static int PH7_builtin_gc_enable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -814,9 +807,10 @@ static int PH7_builtin_gc_enabled(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 static int PH7_builtin_gc_collect_cycles(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	/* No cycle collector: nothing to reclaim. Returns the count collected (0). */
+	/* php: the number of collected CYCLES. Run one now, whatever the buffer holds --
+	 * an explicit call is a demand, not a hint. */
 	SXUNUSED(nArg); SXUNUSED(apArg);
-	ph7_result_int(pCtx,0);
+	ph7_result_int(pCtx,(sxi64)PH7_GcCollect(pCtx->pVm));
 	return PH7_OK;
 }
 static int PH7_builtin_gc_mem_caches(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -827,8 +821,10 @@ static int PH7_builtin_gc_mem_caches(ph7_context *pCtx,int nArg,ph7_value **apAr
 }
 /*
  * array gc_status(void)
- *  php 8.3 shape. PHL never runs a collection, so every counter is zero and the
- *  timing fields are 0.0; 'running' reflects gc_enable()/gc_disable().
+ *  php 8.3 shape. The counters are the collector's own; the four timing fields are
+ *  0.0 (nothing here measures them) and 'protected'/'full' are php's own internal
+ *  re-entrancy states, which this collector expresses as one flag it never exposes
+ *  mid-collection.
  */
 static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -844,11 +840,11 @@ static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value_bool(pVal,pCtx->pVm->bGcEnabled); ph7_array_add_strkey_elem(pArray,"running",pVal);
 	ph7_value_bool(pVal,0);      ph7_array_add_strkey_elem(pArray,"protected",pVal);
 	ph7_value_bool(pVal,0);      ph7_array_add_strkey_elem(pArray,"full",pVal);
-	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"runs",pVal);
-	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"collected",pVal);
-	ph7_value_int(pVal,1000);    ph7_array_add_strkey_elem(pArray,"threshold",pVal);
-	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"buffer_size",pVal);
-	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"roots",pVal);
+	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcRuns);      ph7_array_add_strkey_elem(pArray,"runs",pVal);
+	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcCollected); ph7_array_add_strkey_elem(pArray,"collected",pVal);
+	ph7_value_int(pVal,10000);   ph7_array_add_strkey_elem(pArray,"threshold",pVal);
+	ph7_value_int(pVal,(sxi64)SySetUsed(&pCtx->pVm->aGcRoot)); ph7_array_add_strkey_elem(pArray,"buffer_size",pVal);
+	ph7_value_int(pVal,(sxi64)SySetUsed(&pCtx->pVm->aGcRoot)); ph7_array_add_strkey_elem(pArray,"roots",pVal);
 	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"application_time",pVal);
 	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"collector_time",pVal);
 	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"destructor_time",pVal);

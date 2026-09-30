@@ -2380,6 +2380,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* Initialize VM fields */
 	pVm->pEngine = &(*pEngine);
 	pVm->bGcEnabled = 1; /* php default: the cycle collector is enabled */
+	PH7_GcInit(&(*pVm));
 	/* php CLI diagnostic-stream defaults: display_errors off (program stdout stays
 	 * clean), log_errors on (the log copy goes to stderr). -d/-c and ini_set()
 	 * override these; bErrReport is the separate master gate installed by the CLI. */
@@ -3637,6 +3638,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * here is unsafe (and could realloc aMemObj mid-release). Engine memory is
 	 * still reclaimed. Mirrors prior behaviour (global destructors never ran). */
 	pVm->bInReset = 1;
+	/* (0) Forget every buffered cycle root. The object pool is about to go, and a
+	 * row that outlived it would name freed memory on the next run. */
+	PH7_GcResetBuffer(&(*pVm));
 	/* (1) Unlink the whole reference table while frames and objects are intact. */
 	VmResetRefTable(&(*pVm));
 	/* (2) Free run-time closures and reset every function/method static sentinel
@@ -3950,6 +3954,7 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */
 	PH7_SplDirVmRelease(pVm);
+	PH7_GcRelease(pVm);
 	/* Release the private memory subsystem */
 	SyMemBackendRelease(&pVm->sAllocator);
 	return SXRET_OK;

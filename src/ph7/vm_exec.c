@@ -2128,7 +2128,16 @@ VmLoopFetch:
 		 * The pending write-back sweep shares this one guard so the hot
 		 * no-hooks path pays a single predicted branch per fetch. */
 		if( pVm->nBoundaryRc != 0 || SySetUsed(&pVm->aHookRmw) > 0
-		 || PH7_PcntlAsyncPending || pVm->sAllocator.nMemTried != 0 ){
+		 || PH7_PcntlAsyncPending || pVm->sAllocator.nMemTried != 0
+		 || pVm->bGcWanted ){
+			if( pVm->bGcWanted ){
+				/* The cycle collector's root buffer filled. HERE is the only place
+				 * it may run: between two instructions, with the operand stack
+				 * consistent and no C builtin holding a raw ph7_value* across it.
+				 * The drop that buffered the root was in the middle of an opcode's
+				 * C body, which is no place to be running destructors. */
+				PH7_GcCollect(&(*pVm));
+			}
 			if( pVm->sAllocator.nMemTried != 0 ){
 				/* memory_limit: an allocation asked for more than the script's
 				 * remaining budget and was refused. The allocator cannot raise
