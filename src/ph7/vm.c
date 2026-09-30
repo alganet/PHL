@@ -2016,14 +2016,11 @@ static sxi32 VmMountUserClassAttrs(
 						pAttr->iFlags |= PH7_CLASS_ATTR_STATIC_DEFER;
 						pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
 					}else{
-						VmSlot sSlot;
-						/* Release before recycling: PH7_ReserveMemObj re-inits a
-						 * reused slot without releasing it, and a muted eval that
-						 * only recorded a CYCLE still left its value here. */
-						sSlot.nIdx = pMemObj->nIdx;
-						sSlot.pUserData = 0;
+						/* Release before recycling: the value a muted eval that
+						 * only recorded a CYCLE left here must go before the
+						 * slot's dead nIdx word becomes the free-list link. */
 						PH7_MemObjRelease(pMemObj);
-						SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+						VmMemPoolFreeSlot(&pVm->aMemObj,pMemObj->nIdx);
 						continue;
 					}
 				}else if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED))
@@ -2263,11 +2260,8 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			}
 			rc = SyHashInsertTail(&pObj->hAttr,pKey,nKeyLen,pVmAttr);
 			if( rc != SXRET_OK ){
-				VmSlot sSlot;
-				/* Restore memory object */
-				sSlot.nIdx = pMemObj->nIdx;
-				sSlot.pUserData = 0;
-				SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+				/* Restore the reserved (NULL-valued) slot to the free list */
+				VmMemPoolFreeSlot(&pVm->aMemObj,pMemObj->nIdx);
 				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 				return SXERR_MEM;
 			}
@@ -2279,11 +2273,8 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			 * caller sees a consistent instance. */
 			rc = PH7_VmStoreFilterRegister(&(*pVm),pVmAttr);
 			if( rc != SXRET_OK ){
-				VmSlot sSlot;
 				SyHashDeleteEntry(&pObj->hAttr,pKey,nKeyLen,0);
-				sSlot.nIdx = pMemObj->nIdx;
-				sSlot.pUserData = 0;
-				SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+				VmMemPoolFreeSlot(&pVm->aMemObj,pMemObj->nIdx);
 				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 				return SXERR_MEM;
 			}
@@ -2493,12 +2484,7 @@ PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *
 	}
 	return pMemObj;
 fail_slot:
-	{
-		VmSlot sSlot;
-		sSlot.nIdx = pMemObj->nIdx;
-		sSlot.pUserData = 0;
-		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
-	}
+	VmMemPoolFreeSlot(&pVm->aMemObj,pMemObj->nIdx);
 fail_vmattr:
 	SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 fail_attr:
@@ -2546,18 +2532,14 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 	 * exactly needs a keep-entry/mark-unset model across every iteration site — deferred. The value
 	 * is always correct; only the relative order of a declared prop re-added after unset differs. */
 	if( SyHashInsertTail(&pThis->hAttr,SyStringData(pKey),SyStringLength(pKey),pVmAttr) != SXRET_OK ){
-		VmSlot sSlot;
-		sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
-		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+		VmMemPoolFreeSlot(&pVm->aMemObj,pMemObj->nIdx);
 		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 		return;
 	}
 	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
 	if( PH7_VmStoreFilterRegister(&(*pVm),pVmAttr) != SXRET_OK ){
-		VmSlot sSlot;
 		SyHashDeleteEntry(&pThis->hAttr,SyStringData(pKey),SyStringLength(pKey),0);
-		sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
-		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+		VmMemPoolFreeSlot(&pVm->aMemObj,pMemObj->nIdx);
 		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 		return;
 	}
@@ -2628,7 +2610,37 @@ PH7_PRIVATE sxi32 VmMemPoolInit(VmMemPool *pPool,SyMemBackend *pAllocator)
 	pPool->apSeg[0] = pSeg;
 	pPool->nSeg = 1;
 	pPool->nCap = 16;
+	pPool->nFreeHead = SXU32_HIGH; /* 0 is a valid slot; the empty-list mark cannot be it */
 	return SXRET_OK;
+}
+/*
+ * Return a freed slot to the pool's intrusive free list. The slot's value must
+ * already have been RELEASED by the caller (the sites that push NULL-valued
+ * freshly-reserved slots on error have nothing to release): the link is written
+ * into the slot's own dead nIdx word, so a slot in the list must be a dead slot.
+ * O(1), and zero memory beyond the pool's single head word.
+ *
+ * Freeing an index that is already on the list is a NO-OP, not a corruption:
+ * see MEMOBJ_POOLFREE. That is the one behaviour the old aFreeObj stack had for
+ * free and this list does not, so it is bought back explicitly.
+ */
+PH7_PRIVATE void VmMemPoolFreeSlot(VmMemPool *pPool,sxu32 nIdx)
+{
+	ph7_value *pObj = PH7_MemObjAt(pPool,nIdx);
+	if( pObj == 0 ){
+		return;   /* stale index -- the caller's own contract, and truncate's */
+	}
+	if( pObj->iFlags & MEMOBJ_POOLFREE ){
+		/* Already on the list. The old aFreeObj stack tolerated a double free by
+		 * handing the index out twice and draining; this list would write the head
+		 * into the slot the head already names, and every reserve after it would
+		 * return that one slot forever. Refusing leaks nothing -- the slot stays
+		 * exactly where it already is, on the list. */
+		return;
+	}
+	pObj->iFlags |= MEMOBJ_POOLFREE;
+	pObj->nIdx = pPool->nFreeHead;
+	pPool->nFreeHead = nIdx;
 }
 /*
  * Reserve a slot at the end of the pool. Returns the raw slot (uninitialized --
@@ -2676,7 +2688,28 @@ PH7_PRIVATE ph7_value * VmMemPoolReserve(VmMemPool *pPool,sxu32 *pIndex)
 PH7_PRIVATE sxi32 VmMemPoolTruncate(VmMemPool *pPool,sxu32 nNewSize)
 {
 	sxu32 nSegNeed;
+	sxu32 nGuard;
+	sxu32 nCur;
 	sxu32 n;
+	/* Abandon the free list: its chain threads through slots that are about to be
+	 * truncated away (and through segments about to be freed). The retained
+	 * segments' free slots are simply forgotten -- they become fresh reserves,
+	 * exactly as the SySetReset(&pVm->aFreeObj) this replaces emptied the old
+	 * stack. Walk it FIRST, while nUsed still resolves every link, to take
+	 * MEMOBJ_POOLFREE back off the slots that survive: the bit means "on the
+	 * list", and a slot still wearing it after the list is gone would refuse the
+	 * next legitimate free of that index. nGuard bounds the walk by the slot
+	 * count so a chain corrupted from outside cannot spin here. */
+	nCur = pPool->nFreeHead;
+	for( nGuard = pPool->nUsed ; nGuard > 0 && nCur != SXU32_HIGH ; --nGuard ){
+		ph7_value *pFree = PH7_MemObjAt(pPool,nCur);
+		if( pFree == 0 ){
+			break;
+		}
+		pFree->iFlags &= ~MEMOBJ_POOLFREE;
+		nCur = pFree->nIdx;
+	}
+	pPool->nFreeHead = SXU32_HIGH;
 	if( nNewSize < pPool->nUsed ){
 		pPool->nUsed = nNewSize;
 	}
@@ -2787,7 +2820,6 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
 	SyZero(pVm->aSuperFirst,sizeof(pVm->aSuperFirst));
 	SyHashInit(&pVm->hPDO,&pVm->sAllocator,0,0);
-	SySetInit(&pVm->aFreeObj,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pVm->aCallSite,&pVm->sAllocator,sizeof(VmCallSite));
 	SyHashInit(&pVm->hCallName,&pVm->sAllocator,0,0);
 	pVm->nFreeCallSite = 0;
@@ -4174,7 +4206,6 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * slots (their indices no longer exist). Fully-free trailing segments are
 	 * returned by VmMemPoolTruncate. */
 	VmMemPoolTruncate(&pVm->aMemObj,nWater);
-	SySetReset(&pVm->aFreeObj);
 	/* (7) Reset the superglobal name table and namespace scratch. */
 	SyHashRelease(&pVm->hSuper);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
@@ -4604,14 +4635,24 @@ PH7_PRIVATE void VmPopOperand(
 PH7_PRIVATE ph7_value * PH7_ReserveMemObj(ph7_vm *pVm)
 {
 	ph7_value *pObj = 0;
-	VmSlot *pSlot;
 	sxu32 nIdx;
-	/* Check for a free slot */
+	/* Check for a free slot. The head is a slot index, and the freed slot's own
+	 * (dead) nIdx word holds the next one -- one load past the bounds test, the
+	 * same shape as the SySetPop of the stack this replaced. The PH7_MemObjInit
+	 * below is what takes MEMOBJ_POOLFREE back off: every acquire runs it, so the
+	 * bit means "on the list" and nothing else. */
 	nIdx = SXU32_HIGH; /* cc warning */
-	pSlot = (VmSlot *)SySetPop(&pVm->aFreeObj);
-	if( pSlot ){
-		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pSlot->nIdx);
-		nIdx = pSlot->nIdx;
+	if( pVm->aMemObj.nFreeHead != SXU32_HIGH ){
+		nIdx = pVm->aMemObj.nFreeHead;
+		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
+		if( pObj == 0 || (pObj->iFlags & MEMOBJ_POOLFREE) == 0 ){
+			/* Stale or corrupted chain (defensive -- truncate clears the head and
+			 * clears the bit): abandon it rather than hand out a LIVE slot. */
+			pVm->aMemObj.nFreeHead = SXU32_HIGH;
+			pObj = 0;
+		}else{
+			pVm->aMemObj.nFreeHead = pObj->nIdx;
+		}
 	}
 	if( pObj == 0 ){
 		/* Reserve a new memory object */
@@ -4722,20 +4763,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nBy
 		if( nRefIdx == SXU32_HIGH ){
 			/* Return the reserved slot to the free pool (as VmExtractMemObj
 			 * does) so an OOM here doesn't burn aMemObj slots. */
-			VmSlot sFree;
-			sFree.nIdx = nIdx;
-			sFree.pUserData = 0;
-			SySetPut(&pVm->aFreeObj,(const void *)&sFree);
+			VmMemPoolFreeSlot(&pVm->aMemObj,nIdx);
 		}
 		return SXERR_MEM;
 	}
 	rc = SyHashInsert(&pFrame->hVar,(const void *)zDup,nByte,SX_INT_TO_PTR(nIdx));
 	if( rc != SXRET_OK ){
 		if( nRefIdx == SXU32_HIGH ){
-			VmSlot sFree;
-			sFree.nIdx = nIdx;
-			sFree.pUserData = 0;
-			SySetPut(&pVm->aFreeObj,(const void *)&sFree);
+			VmMemPoolFreeSlot(&pVm->aMemObj,nIdx);
 		}
 		SyMemBackendFree(&pVm->sAllocator,zDup);
 		return rc;
@@ -4816,9 +4851,7 @@ static ph7_value * VmExtractMemObjEx(
 			rc = SyHashInsert(&pFrame->hVar,zName,pName->nByte,SX_INT_TO_PTR(nIdx));
 			if( rc != SXRET_OK ){
 				/* Return the slot to the free pool */
-				sLocal.nIdx = nIdx;
-				sLocal.pUserData = 0;
-				SySetPut(&pVm->aFreeObj,(const void *)&sLocal);
+				VmMemPoolFreeSlot(&pVm->aMemObj,nIdx);
 				return 0;
 			}
 			if( pFrame->pParent != 0 ){
@@ -6541,13 +6574,10 @@ PH7_PRIVATE sxi32 PH7_VmHookGetAttrValue(ph7_class_instance *pThis,VmClassAttr *
 PH7_PRIVATE void VmHookRmwFreeScratch(ph7_vm *pVm,sxu32 nIdx)
 {
 	ph7_value *pScr = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
-	VmSlot sFree;
 	if( pScr ){
 		PH7_MemObjRelease(pScr);
 	}
-	sFree.nIdx = nIdx;
-	sFree.pUserData = 0;
-	SySetPut(&pVm->aFreeObj,(const void *)&sFree);
+	VmMemPoolFreeSlot(&pVm->aMemObj,nIdx);
 }
 /*
  * Drop the top pending write-back entry without dispatching its set side: the

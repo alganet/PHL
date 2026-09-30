@@ -186,11 +186,8 @@ PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)
 		/* Unlink from the reference table */
 		PH7_VmSlotUnlink(&(*pVm),nObjIdx);
 		if( (bForce == TRUE) || bKeep == 0 ){
-			VmSlot sFree;
 			/* Restore to the free list */
-			sFree.nIdx = nObjIdx;
-			sFree.pUserData = 0;
-			SySetPut(&pVm->aFreeObj,(const void *)&sFree);
+			VmMemPoolFreeSlot(&pVm->aMemObj,nObjIdx);
 		}
 	}
 	return SXRET_OK;

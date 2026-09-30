@@ -1106,14 +1106,11 @@ static sxu32 VmLazyInitLineHere(ph7_vm *pVm)
 static void VmRecycleMemObj(ph7_vm *pVm,sxu32 nIdx)
 {
 	ph7_value *pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
-	VmSlot sSlot;
 	if( pObj == 0 ){
 		return;
 	}
 	PH7_MemObjRelease(pObj);
-	sSlot.nIdx = nIdx;
-	sSlot.pUserData = 0;
-	SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+	VmMemPoolFreeSlot(&pVm->aMemObj,nIdx);
 }
 /*
  * Evaluate a class constant's initializer on demand.

@@ -348,6 +348,17 @@ struct VmDeferredPath {
                                     * `Only variables should be assigned by reference` notice,
                                     * which is about a callee that never promised a reference,
                                     * stands down for a value carrying this. */
+#define MEMOBJ_POOLFREE 0x1000000  /* NOT a type or a stack marker: pool bookkeeping. This slot is
+                                    * ON the value pool's intrusive free list (see VmMemPool), so
+                                    * its nIdx word is the link to the next free slot and NOT its
+                                    * own index. Set by VmMemPoolFreeSlot, cleared by the
+                                    * PH7_MemObjInit every acquire runs and by VmMemPoolTruncate
+                                    * when it abandons the chain. It exists to make a double free
+                                    * a no-op: the link lives inside the slot, so freeing the same
+                                    * index twice would point the head at itself and hand that one
+                                    * slot out for the rest of the run. Deliberately survives
+                                    * PH7_MemObjRelease, which leaves iFlags alone once a value is
+                                    * already MEMOBJ_NULL -- and a slot on the list always is. */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
 #define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN|MEMOBJ_AUX_NATIVEPROP|MEMOBJ_AUX_REFRET)
 /* Closure-instance flags (ph7_class_instance.iFlags), shared by vm_exec.c's OP_LOAD_FCC
@@ -3022,6 +3033,17 @@ struct VmSlot
  * segments, ~33 KB of allocator headers and a 2,048-entry pointer table -- under
  * 0.04% of the peak. Override with -DPH7_VM_MEMPOOL_SEG_SHIFT=n for a target
  * that wants a different trade; nothing but the two constants below depends on it.
+ *
+ * Freed slots form a single INTRUSIVE free list threaded through the slots'
+ * own (dead) nIdx word -- VmMemPoolFreeSlot writes the link into the slot, so
+ * slot reuse is O(1) and costs zero extra memory. nFreeHead is the head, or
+ * SXU32_HIGH when the list is empty. This replaced the aFreeObj SySet, which
+ * grew one 16-byte VmSlot per free index to describe exactly what the link now
+ * describes for free. Because the link lives INSIDE the slot, a slot on the
+ * list carries MEMOBJ_POOLFREE: a second free of the same index would otherwise
+ * write the head into the slot the head already points at, and every later
+ * reserve would hand out that one slot forever. The old stack merely handed the
+ * index out twice and drained; this one would not.
  */
 #ifndef PH7_VM_MEMPOOL_SEG_SHIFT
 #define PH7_VM_MEMPOOL_SEG_SHIFT 8
@@ -3037,6 +3059,7 @@ struct VmMemPool
 	sxu32         nSeg;       /* Segments currently allocated */
 	sxu32         nCap;       /* Capacity of apSeg */
 	sxu32         nUsed;      /* Logical slots in use -- SySetUsed(aMemObj) semantics */
+	sxu32         nFreeHead;  /* First free slot, or SXU32_HIGH; freed slots chain through their nIdx */
 };
 /*
  * The nIdx'th slot of the pool, or NULL when the index is past the end -- the
@@ -3476,7 +3499,6 @@ struct ph7_vm
 	VmMemPool aMemObj;          /* Object allocation table (segmented, PERF.md P1) */
 	SySet aLitObj;              /* Literals allocation table */
 	ph7_value *aOps;            /* Operand stack */
-	SySet aFreeObj;             /* Stack of free memory objects */
 	SyHash hClass;              /* Compiled classes container */
 	SyHash hConstant;           /* Host-application and user defined constants container */
 	SyHash hHostFunction;       /* Host-application installable functions */
@@ -6514,6 +6536,7 @@ PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex);
 PH7_PRIVATE sxi32 VmMemPoolInit(VmMemPool *pPool,SyMemBackend *pAllocator);
 PH7_PRIVATE ph7_value * VmMemPoolReserve(VmMemPool *pPool,sxu32 *pIndex);
 PH7_PRIVATE sxi32 VmMemPoolTruncate(VmMemPool *pPool,sxu32 nNewSize);
+PH7_PRIVATE void VmMemPoolFreeSlot(VmMemPool *pPool,sxu32 nIdx);
 /* Argument-unpacking key capture (PHP 8.1 named-parameter semantics for spreads).
  * `pMap->aNames` is COMPILE-TIME metadata indexed by compile-time argument
  * position, but a runtime spread expands its slot to a variable element count,
