@@ -55,7 +55,21 @@
  * and over, to find nothing. A run that reclaims little doubles the threshold; one
  * that reclaims a real share of what it looked at puts it back. */
 #define VM_GC_THRESHOLD_MIN 10000
-#define VM_GC_THRESHOLD_MAX 1000000
+/*
+ * ...and the ceiling, which is OURS and not php's million. A root buffer holds
+ * at most one row per live container -- PH7_GcPossibleRoot dedupes on nGcRoot --
+ * so a threshold above the number of collectable containers alive just means
+ * "never collect", and the rows are not free: a VmGcRef is 16 bytes, and a SySet
+ * doubles, so a million-root threshold is a THIRTY-TWO megabyte buffer. The gate's
+ * phpcs step has ~110,000 live collectable containers at its peak, so most of that
+ * million is buffer for roots that cannot exist -- and it costs: engine-reported
+ * peak went from 153.18 to 184.93 MB under php's ceiling and to 156.93 under this
+ * one (those two figures are exact and repeatable; the wall-clock win that came
+ * with them is not, this box is shared -- PERF.md §7). A hundred thousand is ~2 MB
+ * and still turns that run's 523 collections into about fifty, which is the ratio
+ * the choice actually rests on.
+ */
+#define VM_GC_THRESHOLD_MAX 100000
 
 /*
  * Is this slot held by nothing except the container that owns it?
@@ -484,6 +498,32 @@ static int VmGcVerifyDead(VmGcCtx *pCtx)
 }
 /* ---------------------------------------------------------------- the collection */
 
+/*
+ * What a round cost, against what it bought. Rewarding a productive run with the
+ * low threshold keeps a cycle-heavy program collecting often; doubling after a
+ * barren one is what stops a cycle-FREE program paying for the search.
+ *
+ * EVERY round has to come through here, and the BARREN ones most of all -- they
+ * are the entire reason the rule exists. This used to be written inline at the
+ * end of PH7_GcCollect, past the `nDead < 1` early return, so the one case it
+ * was for was the one case that never reached it: a program with no reclaimable
+ * cycles rescanned ten thousand live containers for nothing, over and over, with
+ * the throttle pinned at its minimum for the life of the process. The ecosystem
+ * gate's phpcs step ran the collector 523 times, collected NOTHING, and finished
+ * with the threshold still at 10000 (143rd session). Those three counters are the
+ * evidence -- they are facts about the program, not about the machine, which is
+ * shared here and cannot be timed (PERF.md §7).
+ */
+static void VmGcAdjustThreshold(ph7_vm *pVm,sxu32 nCollected,sxu32 nRoots)
+{
+	if( nCollected * 4 < nRoots ){
+		if( pVm->nGcThreshold < VM_GC_THRESHOLD_MAX ){
+			pVm->nGcThreshold <<= 1;
+		}
+	}else{
+		pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;
+	}
+}
 PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm)
 {
 	VmGcCtx sCtx;
@@ -547,6 +587,9 @@ PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm)
 
 	nDead = SySetUsed(&pVm->aGcDead);
 	if( nDead < 1 ){
+		/* Nothing was reclaimable. That is a full mark-and-scan spent, and the
+		 * threshold has to answer for it -- see VmGcAdjustThreshold. */
+		VmGcAdjustThreshold(pVm,0,nRoots);
 		pVm->bGcRunning = 0;
 		return 0;
 	}
@@ -601,16 +644,7 @@ PH7_PRIVATE sxu32 PH7_GcCollect(ph7_vm *pVm)
 	}
 	SySetReset(&pVm->aGcDead);
 	pVm->nGcCollected += nCollected;
-	/* What this round cost against what it bought. Rewarding a productive run with
-	 * the low threshold keeps a cycle-heavy program collecting often; doubling after
-	 * a barren one is what stops a cycle-FREE program paying for the search. */
-	if( nCollected * 4 < nRoots ){
-		if( pVm->nGcThreshold < VM_GC_THRESHOLD_MAX ){
-			pVm->nGcThreshold <<= 1;
-		}
-	}else{
-		pVm->nGcThreshold = VM_GC_THRESHOLD_MIN;
-	}
+	VmGcAdjustThreshold(pVm,nCollected,nRoots);
 	pVm->bGcRunning = 0;
 	return nCollected;
 }
