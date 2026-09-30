@@ -270,6 +270,28 @@ PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash)
 }
 #if defined(PHL_HASH_CENSUS)
 /*
+ * Which frame a site address is taken from -- see build-aux/hashcensus.sh -c.
+ *
+ * By default a row names the line that called SyHashGet, which is what a change is
+ * aimed at. But a row can be a whole SUBSYSTEM's worth of work funnelled through one
+ * line: PH7_VmExtractClass has 221 callers and PH7_VmExtractVarCached's misses, the
+ * foreach step, OP_STORE and three frame-setup doors all reach the frame table
+ * through the same SyHashGet. Building with PHL_HCENSUS_CALLER lifts every row one
+ * frame, so it names the CALLER instead, and the two runs together decompose a large
+ * row into the doors that actually make it. That is how the 146th session found that
+ * 60% of the engine's lookups were six doors and not one (PERF.md §2).
+ *
+ * It needs -fno-omit-frame-pointer (gcc will not walk up without one) and
+ * -Wno-frame-address (gcc warns about a nonzero argument on principle); the script
+ * passes both. Never in a shipping build -- like everything else in this file it is
+ * compiled out unless PHL_HASH_CENSUS is defined.
+ */
+#if defined(PHL_HCENSUS_CALLER)
+#define PHL_HCENSUS_SITE() __builtin_return_address(1)
+#else
+#define PHL_HCENSUS_SITE() __builtin_return_address(0)
+#endif
+/*
  * PHL_HASH_CENSUS -- which CALL SITE spends the engine's name hashing.
  * ---------------------------------------------------------------------------
  * Compiled out entirely unless PHL_HASH_CENSUS is defined; see PERF.md §7, and
@@ -301,7 +323,7 @@ extern char __executable_start[];   /* its ADDRESS is the PIE load base */
 
 typedef struct phl_hcensus_rec phl_hcensus_rec;
 struct phl_hcensus_rec {
-	void *pSite;     /* __builtin_return_address(0) at SyHashGet; 0 = free slot */
+	void *pSite;     /* PHL_HCENSUS_SITE() at SyHashGet; 0 = free slot */
 	sxu64 nCall;     /* lookups made from here */
 	sxu64 nKeyByte;  /* key bytes hashed for them (0 for one the table answered
 	                  * without hashing -- an empty table, or an empty key) */
@@ -407,7 +429,7 @@ PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen
 {
 	SyHashEntry_Pr *pEntry;
 #if defined(PHL_HASH_CENSUS)
-	void *pCensusSite = __builtin_return_address(0);
+	void *pCensusSite = PHL_HCENSUS_SITE();
 #endif
 #if defined(UNTRUST)
 	if( INVALID_HASH(pHash) ){
@@ -446,7 +468,7 @@ PH7_PRIVATE sxu32 SyHashKey(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
 {
 	sxu32 nHash;
 #if defined(PHL_HASH_CENSUS)
-	void *pCensusSite = __builtin_return_address(0);
+	void *pCensusSite = PHL_HCENSUS_SITE();
 #endif
 	nHash = pHash->xHash(pKey,nKeyLen);
 #if defined(PHL_HASH_CENSUS)
@@ -464,7 +486,7 @@ PH7_PRIVATE SyHashEntry * SyHashGetHashed(SyHash *pHash,const void *pKey,sxu32 n
 {
 	SyHashEntry_Pr *pEntry;
 #if defined(PHL_HASH_CENSUS)
-	void *pCensusSite = __builtin_return_address(0);
+	void *pCensusSite = PHL_HCENSUS_SITE();
 #endif
 #if defined(UNTRUST)
 	if( INVALID_HASH(pHash) ){

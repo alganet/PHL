@@ -13,8 +13,21 @@
 # census, nothing here needs to know a peak in advance), and resolves every
 # site through addr2line.
 #
-# Usage: build-aux/hashcensus.sh [-b] <script.php> [args...]
+# Usage: build-aux/hashcensus.sh [-b] [-c] <script.php> [args...]
 #   -b   rebuild the census binary first (needed after any src/ change)
+#   -c   attribute each row to the CALLER of the function that made the lookup,
+#        rather than to the line that made it. Its own target and its own binary,
+#        so -c and the ordinary run do not invalidate each other's build.
+#
+# Why -c exists. A row is a line in the SOURCE, which is what a change is aimed at
+# -- but a large row can be a whole subsystem funnelled through one line.
+# PH7_VmExtractClass has 221 callers; the frame-table lookup has six doors reaching
+# it (a memo missing, the foreach step, OP_STORE, and three frame-setup installs)
+# and the default view shows them as one 60%-of-everything row that no design can
+# be aimed at. Run both and the big rows decompose. It is how the 146th session
+# found that the largest door was a CACHE MISSING and not a lookup being made
+# (PERF.md §2).
+#
 # Env:
 #   PHL_HCENSUS_TOP  rows in the ranked table (default 30)
 #   PHL_HCENSUS_KEEP keep the raw dump at this path instead of a temp file
@@ -29,6 +42,7 @@ cd "$ROOT" || exit 1
 if [ -x build-aux/mk.sh ]; then MAKE=build-aux/mk.sh; else MAKE=${MAKE:-make}; fi
 
 TARGET=x86_64-linux-gnu-hcensus
+CALLER_CFLAGS=
 BIN="$ROOT/build/$TARGET/full/phl"
 TOP=${PHL_HCENSUS_TOP:-30}
 
@@ -42,7 +56,21 @@ if [ -z "$PHL_FORCE" ] && [ -f build/.gate-lock ]; then
 fi
 
 BUILD=0
-if [ "$1" = "-b" ]; then BUILD=1; shift; fi
+while :; do
+	case $1 in
+	-b) BUILD=1; shift ;;
+	-c)
+		# A separate TARGET, so the two attributions keep separate object trees.
+		# -fno-omit-frame-pointer because gcc will not walk up a frame without one,
+		# and -Wno-frame-address because it warns about a nonzero argument on
+		# principle -- the walk is one frame and the census is a debug build.
+		TARGET=x86_64-linux-gnu-hcaller
+		CALLER_CFLAGS=" -fno-omit-frame-pointer -Wno-frame-address -DPHL_HCENSUS_CALLER"
+		BIN="$ROOT/build/$TARGET/full/phl"
+		shift ;;
+	*) break ;;
+	esac
+done
 if [ ! -x "$BIN" ]; then BUILD=1; fi
 if [ $# -lt 1 ]; then
 	echo "usage: build-aux/hashcensus.sh [-b] <script.php> [args...]" >&2
@@ -54,7 +82,7 @@ if [ $BUILD = 1 ]; then
 	# -O2 rather than -O3, like the heap census: the answer is WHICH SITE, and
 	# -O2 keeps a return address attributable to the function that asked.
 	PHL_FORCE=1 $MAKE TARGET="$TARGET" MODE=full -j"$(nproc 2>/dev/null || echo 4)" \
-		build full_OPT_CFLAGS="-O2 -g -DPHL_HASH_CENSUS" >/dev/null || exit 1
+		build full_OPT_CFLAGS="-O2 -g -DPHL_HASH_CENSUS$CALLER_CFLAGS" >/dev/null || exit 1
 fi
 
 DUMP=${PHL_HCENSUS_KEEP:-$(mktemp)}
@@ -74,7 +102,7 @@ NAMES=$(printf '%s\n' $SITES | xargs addr2line -e "$BIN" -f -C 2>/dev/null)
 printf '%s\n' "$SITES" > "$DUMP.addr"
 printf '%s\n' "$NAMES" > "$DUMP.name"
 
-LC_ALL=C awk -v top="$TOP" '
+LC_ALL=C awk -v top="$TOP" -v caller="${CALLER_CFLAGS:+1}" '
 	FILENAME == ARGV[1] { addr[++na] = $0; next }
 	FILENAME == ARGV[2] {
 		if (++nl % 2 == 1) { fn[(nl+1)/2] = $0 }
@@ -107,6 +135,8 @@ LC_ALL=C awk -v top="$TOP" '
 		}
 		printf "\n  ci = the table folds case (SyStrHash/SyStrnmicmp) rather than comparing bytes.\n"
 		printf "  A site with a low hit rate and a large key is the engine hashing a long name\n"
-		printf "  to learn that it is not there -- see PERF.md P4.\n\n"
+		printf "  to learn that it is not there -- see PERF.md P4.\n"
+		if (caller) printf "  Rows name the CALLER of the function that looked up (-c), not the line.\n"
+		printf "\n"
 	}
 ' "$DUMP.addr" "$DUMP.name" "$DUMP"
