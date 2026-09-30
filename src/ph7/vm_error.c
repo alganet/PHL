@@ -852,7 +852,7 @@ PH7_PRIVATE sxi32 VmThrowFixedErrorCode(ph7_vm *pVm,const char *zClass,sxi32 iCo
  * enum case, or 0 when unavailable (pure enum / not yet materialized). */
 PH7_PRIVATE ph7_value * VmEnumCaseBackingValue(ph7_vm *pVm,ph7_class_attr *pCase)
 {
-	ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pCase->nIdx);
+	ph7_value *pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pCase->nIdx);
 	ph7_class_instance *pObj;
 	SyHashEntry *pEntry;
 	if( pSlot == 0 || (pSlot->iFlags & MEMOBJ_OBJ) == 0 ){
@@ -863,7 +863,7 @@ PH7_PRIVATE ph7_value * VmEnumCaseBackingValue(ph7_vm *pVm,ph7_class_attr *pCase
 	if( pEntry == 0 ){
 		return 0;
 	}
-	return (ph7_value *)SySetAt(&pVm->aMemObj,((VmClassAttr *)pEntry->pUserData)->nIdx);
+	return (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,((VmClassAttr *)pEntry->pUserData)->nIdx);
 }
 /*
  * Raise the pending self-referencing-constant Error recorded by an inner
@@ -1105,7 +1105,7 @@ static sxu32 VmLazyInitLineHere(ph7_vm *pVm)
  */
 static void VmRecycleMemObj(ph7_vm *pVm,sxu32 nIdx)
 {
-	ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	ph7_value *pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 	VmSlot sSlot;
 	if( pObj == 0 ){
 		return;
@@ -2918,7 +2918,7 @@ PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
 		return rc;
 	}
 	/* Commit the (possibly coerced) value into the property slot. */
-	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+	pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);
 	if( pSlot ){
 		PH7_MemObjStore(pValue,pSlot);
 	}
@@ -3201,7 +3201,7 @@ static sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass)
 				if( pSlot ){
 					VmClassAttr *pVmAttr = (VmClassAttr *)pSlot->pUserData;
 					if( pVmAttr->iState & VM_CLASS_ATTR_TYPE_DEFER ){
-						ph7_value *pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+						ph7_value *pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx);
 						ph7_value sNull;
 						if( pValue == 0 ){
 							PH7_MemObjInit(&(*pVm),&sNull);
@@ -3330,7 +3330,7 @@ static sxi32 VmEvalDeferredStaticDefaults(ph7_vm *pVm,ph7_class *pClass,int *pbL
 		if( (pAttr->iFlags & PH7_CLASS_ATTR_STATIC_DEFER) == 0 ){
 			continue; /* the base pass already ran this shared slot */
 		}
-		pMemObj = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+		pMemObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx);
 		if( pMemObj == 0 ){
 			continue;
 		}

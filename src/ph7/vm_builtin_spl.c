@@ -862,7 +862,7 @@ static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,
 			if( pVmAttr->pAttr->iProtection != PH7_CLASS_PROT_PUBLIC ){
 				continue;
 			}
-			pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+			pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);
 			if( pVal == 0 ){
 				continue;
 			}
@@ -1025,7 +1025,7 @@ static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	ph7_result_value(pCtx,(ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx));
+	ph7_result_value(pCtx,(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx));
 	return PH7_OK;
 }
 /*
@@ -1830,7 +1830,7 @@ static void SplArrayProp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx
 	 * `sort($ao->nums)` and `foreach ($ao->rows as &$r)` write through. */
 	pNode = SplPropNode(pVm,pThis,pCtx->pName,
 		pCtx->iMode == PH7_NATIVE_PROP_READ && pCtx->bWriteCtx);
-	pVal = pNode ? (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx) : 0;
+	pVal = pNode ? (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx) : 0;
 	if( pCtx->iMode != PH7_NATIVE_PROP_READ ){
 		/* php's three has_property questions, each judging the value it just
 		 * fetched: NULL-ness for isset(), TRUTH for the check_empty question

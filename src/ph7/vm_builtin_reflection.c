@@ -554,7 +554,7 @@ static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOu
 	pMap = (ph7_hashmap *)pArray->x.pOther;
 	pEntry = pMap->pFirst;
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
+		ph7_value *pValue = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
 		if( pValue ){
 			if( ppNames && pEntry->iType == HASHMAP_BLOB_NODE ){
 				if( aNames == 0 ){
@@ -962,7 +962,7 @@ static int ReflectSigClassConst(ph7_context *pCtx, const char *z, int n, ph7_val
 			return 0;
 		}
 	}
-	pValue = (ph7_value *)SySetAt(&pVm->aMemObj, pAttr->nIdx);
+	pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj, pAttr->nIdx);
 	if( pValue == 0 ){
 		return 0;
 	}
@@ -2066,7 +2066,7 @@ static void ReflectExportArray(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal,
 	}
 	SyBlobAppend(pOut, "[", sizeof(char));
 	for( pEntry = pMap->pFirst, n = 0 ; n < pMap->nEntry && pEntry ; n++ ){
-		ph7_value *pMember = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
+		ph7_value *pMember = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
 		if( n > 0 ){
 			SyBlobAppend(pOut, ", ", sizeof(", ")-1);
 		}
@@ -2203,7 +2203,7 @@ static void ReflectExportValue(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal,
 				 || (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
 					continue; /* class-level members are not part of the object */
 				}
-				pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
+				pSlot = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
 				if( nWritten++ ){
 					SyBlobAppend(pOut, ", ", sizeof(", ")-1);
 				}
@@ -2288,7 +2288,7 @@ static int ReflectAttrSpec(ph7_context *pCtx, ph7_class_instance *pThis, ph7_val
 		if( rc != SXRET_OK || pNode == 0 ){
 			return 0;
 		}
-		apOut[i] = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pNode->nValIdx);
+		apOut[i] = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pNode->nValIdx);
 		if( apOut[i] == 0 ){
 			return 0;
 		}
@@ -2491,7 +2491,7 @@ static int vm_builtin_ReflectionAttribute_toString(ph7_context *pCtx, int nArg, 
 		sxu32 n;
 		SyBlobFormat(&sOut, " {\n  - Arguments [%u] {\n", nCount);
 		for( n = 0 ; n < nCount && pEntry ; n++ ){
-			ph7_value *pMember = (ph7_value *)SySetAt(&pVm->aMemObj, pEntry->nValIdx);
+			ph7_value *pMember = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj, pEntry->nValIdx);
 			SyBlobFormat(&sOut, "    Argument #%u [ ", n);
 			if( pEntry->iType == HASHMAP_BLOB_NODE ){
 				SyBlobAppend(&sOut, SyBlobData(&pEntry->xKey.sKey),
@@ -2721,7 +2721,7 @@ static int vm_builtin_ReflectionGenerator_getThis(ph7_context *pCtx, int nArg, p
 	if( pExec && pExec->pFrame ){
 		SyHashEntry *pVar = SyHashGet(&pExec->pFrame->hVar, "this", sizeof("this")-1);
 		if( pVar ){
-			ph7_value *pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,
+			ph7_value *pSlot = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,
 				(sxu32)SX_PTR_TO_INT(pVar->pUserData));
 			if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){
 				ph7_result_value(pCtx, pSlot);
@@ -4663,7 +4663,7 @@ static sxi32 ReflectConstSlot(ph7_context *pCtx, ph7_class *pClass, ph7_class_at
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	*ppOut = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	*ppOut = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	return SXRET_OK;
 }
 static int vm_builtin_ReflectionClass_getConstant(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -5123,7 +5123,7 @@ static int vm_builtin_ReflectionClass_getStaticProperties(ph7_context *pCtx, int
 		if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
 			continue;
 		}
-		pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pM->pAttr->nIdx);
+		pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pM->pAttr->nIdx);
 		if( pVal ){
 			ReflectMapAddDyn(pCtx, pOut, &pM->sKey, pVal);
 		}
@@ -5189,7 +5189,7 @@ static int vm_builtin_ReflectionClass_getStaticPropertyValue(ph7_context *pCtx, 
 				"Typed property %z::$%z must not be accessed before initialization",
 				&pDecl->sName, &pAttr->sName);
 		}
-		pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+		pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 		if( pVal ){
 			ph7_result_value(pCtx, pVal);
 		}else{
@@ -5220,7 +5220,7 @@ static int vm_builtin_ReflectionClass_setStaticPropertyValue(ph7_context *pCtx, 
 		return PH7_VmThrowException(pCtx, "ReflectionException",
 			"Class %z does not have a property named %.*s", &pClass->sName, nName, zName);
 	}
-	pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	pSlot = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pSlot == 0 ){
 		return PH7_OK;
 	}
@@ -6212,7 +6212,7 @@ static int vm_builtin_ReflectionFunc_getClosureUsedVariables(ph7_context *pCtx, 
 		}
 		if( (aEnv[n].iFlags & VM_FUNC_ARG_BY_REF) && aEnv[n].nIdx != SXU32_HIGH ){
 			/* Captured by reference: report the slot's live value */
-			ph7_value *pLive = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aEnv[n].nIdx);
+			ph7_value *pLive = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, aEnv[n].nIdx);
 			ReflectMapAddDyn(pCtx, pOut, &aEnv[n].sName, pLive ? pLive : &aEnv[n].sValue);
 			continue;
 		}
@@ -6480,7 +6480,7 @@ static int vm_builtin_ReflectionFunc_getStaticVariables(ph7_context *pCtx, int n
 				continue;
 			}
 			if( aEnv[k].nIdx != SXU32_HIGH ){
-				ph7_value *pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aEnv[k].nIdx);
+				ph7_value *pSlot = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, aEnv[k].nIdx);
 				if( pSlot ){
 					pVal = pSlot;
 				}
@@ -6497,7 +6497,7 @@ static int vm_builtin_ReflectionFunc_getStaticVariables(ph7_context *pCtx, int n
 		ph7_value sScratch;
 		int bScratch = 0;
 		if( aStatic[n].nIdx != SXU32_HIGH ){
-			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aStatic[n].nIdx);
+			pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, aStatic[n].nIdx);
 		}
 		if( pVal == 0 ){
 			PH7_MemObjInit(pCtx->pVm, &sScratch);
@@ -6644,7 +6644,7 @@ PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 				if( aEnv[n].nIdx != SXU32_HIGH ){
 					/* `use (&$x)`: the capture is an alias onto a pinned slot, and
 					 * php reports what the slot holds NOW, not the birth value. */
-					ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj, aEnv[n].nIdx);
+					ph7_value *pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj, aEnv[n].nIdx);
 					if( pSlot ){
 						pVal = pSlot;
 					}
@@ -6658,7 +6658,7 @@ PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 				ph7_value sScratch, sKey;
 				int bScratch = 0;
 				if( aStatic[n].nIdx != SXU32_HIGH ){
-					pVal = (ph7_value *)SySetAt(&pVm->aMemObj, aStatic[n].nIdx);
+					pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj, aStatic[n].nIdx);
 				}
 				if( pVal == 0 ){
 					PH7_MemObjInit(pVm, &sScratch);
@@ -8331,7 +8331,7 @@ static int ReflectStaticSlotRead(ph7_context *pCtx, ph7_class *pClass, ph7_class
 			"Typed static property %z::$%z must not be accessed before initialization",
 			&pDecl->sName, &pAttr->sName);
 	}
-	pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pVal ){
 		ph7_result_value(pCtx, pVal);
 	}else{
@@ -8351,7 +8351,7 @@ static int ReflectStaticSlotWrite(ph7_context *pCtx, ph7_class *pClass, ph7_clas
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	pSlot = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pSlot ){
 		PH7_MemObjStore(pValue, pSlot);
 	}
@@ -8982,7 +8982,7 @@ static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, p
 			PH7_MemObjRelease(&sNull);
 			return rc;
 		}
-		pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
+		pSlot = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
 		if( pSlot ){
 			PH7_MemObjStore(pVal, pSlot);
 			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;

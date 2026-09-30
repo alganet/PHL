@@ -655,7 +655,7 @@ PH7_PRIVATE int PH7_builtin_substr_replace(ph7_context *pCtx,int nArg,ph7_value 
 		zRepl = "";
 		nRepl = 0;
 		if( pMap->pFirst ){
-			ph7_value *pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pMap->pFirst->nValIdx);
+			ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pMap->pFirst->nValIdx);
 			if( pVal ){
 				zRepl = ph7_value_to_string(pVal,&nRepl);
 			}

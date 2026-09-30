@@ -219,7 +219,7 @@
 		} \
 		SyBlobRelease(&_sStepMsg); \
 		if( pTos->nIdx != SXU32_HIGH ){ \
-			ph7_value *_pStepObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx); \
+			ph7_value *_pStepObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx); \
 			if( _pStepObj ){ \
 				PH7_ENFORCE_TYPED_STORE(pTos->nIdx,&_sStepSum); \
 				PH7_MemObjStore(&_sStepSum,_pStepObj); \

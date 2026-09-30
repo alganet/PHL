@@ -2290,7 +2290,7 @@ static sxi32 Sq3BindsApply(ph7_context *pCtx,phl_sq3_stmt *pSt,const char *zFn)
 		int rcBind;
 		if( pB->nSlot != SXU32_HIGH ){
 			/* bindParam: the caller's variable, read HERE rather than at bind */
-			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pB->nSlot);
+			pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pB->nSlot);
 		}
 		rcBind = Sq3BindApply(pCtx,pSt,pB,pVal);
 		if( pCtx->nThrowRc != PH7_OK ){

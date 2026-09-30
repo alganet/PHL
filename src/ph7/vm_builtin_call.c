@@ -53,7 +53,7 @@ static sxu32 VmCountNamedVariadicArgs(ph7_vm *pVm, VmFrame *pFrame)
 		return 0;
 	}
 	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
-	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[nFormal-1].nIdx);
+	pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,aSlot[nFormal-1].nIdx);
 	if( pObj && (pObj->iFlags & MEMOBJ_HASHMAP) ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 		ph7_hashmap_node *pNode = pMap->pFirst;
@@ -133,7 +133,7 @@ PH7_PRIVATE int vm_builtin_func_get_arg(ph7_context *pCtx,int nArg,ph7_value **a
 	}
 	/* Extract the desired argument */
 	if( (pSlot = (VmSlot *)SySetAt(&pFrame->sArg,(sxu32)nArg)) != 0 ){
-		if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pSlot->nIdx)) != 0 ){
+		if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pSlot->nIdx)) != 0 ){
 			/* Return the desired argument */
 			ph7_result_value(pCtx,(ph7_value *)pObj);
 		}else{
@@ -217,7 +217,7 @@ PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pA
 			nHead = nFormal - 1;
 		}
 		for( n = 0; n < (sxu32)nActual && n < nHead && n < SySetUsed(&pFrame->sArg); n++ ){
-			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,aSlot[n].nIdx);
 			if( pObj ){
 				ph7_array_add_elem(pArray,0,pObj);
 			}
@@ -226,7 +226,7 @@ PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pA
 			if( nHead < nFormal ){
 				/* A variadic formal exists: the extras live, in order, inside
 				 * its packed array */
-				pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[nHead].nIdx);
+				pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,aSlot[nHead].nIdx);
 				if( pObj && (pObj->iFlags & MEMOBJ_HASHMAP) ){
 					ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 					ph7_hashmap_node *pNode = pMap->pFirst;
@@ -239,7 +239,7 @@ PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pA
 							continue;
 						}
 						{
-							ph7_value *pElem = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+							ph7_value *pElem = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 							if( pElem ){
 								ph7_array_add_elem(pArray,0,pElem);
 							}
@@ -252,7 +252,7 @@ PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pA
 				 * entries beyond the formals (e.g. Fiber::start()'s own
 				 * zero-formal func_get_args() relay). */
 				for( n = nHead; n < SySetUsed(&pFrame->sArg) && n < (sxu32)nActual; n++ ){
-					pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+					pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,aSlot[n].nIdx);
 					if( pObj ){
 						ph7_array_add_elem(pArray,0,pObj);
 					}
@@ -262,7 +262,7 @@ PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pA
 		return;
 	}
 	for( n = 0;  n < SySetUsed(&pFrame->sArg) ; n++ ){
-		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,aSlot[n].nIdx);
 		if( pObj ){
 			ph7_array_add_elem(pArray,0/* Automatic index assign*/,pObj);
 		}
@@ -375,7 +375,7 @@ PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value
 		if( rc != SXRET_OK || pNode == 0 ){
 			return FALSE;
 		}
-		apPart[i] = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+		apPart[i] = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 		if( apPart[i] == 0 ){
 			return FALSE;
 		}
@@ -444,7 +444,7 @@ PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pCla
 		 * ReflectionGenerator::getThis() checks both for the coroutine twin. */
 		SyHashEntry *pVar = SyHashGet(&pFrame->hVar,"this",sizeof("this")-1);
 		if( pVar ){
-			ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,
+			ph7_value *pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,
 				(sxu32)SX_PTR_TO_INT(pVar->pUserData));
 			if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){
 				pThis = (ph7_class_instance *)pSlot->x.pOther;

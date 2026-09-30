@@ -2460,7 +2460,7 @@ static ph7_value * ExtractClassAttrValue(ph7_vm *pVm,VmClassAttr *pAttr)
 {
 	/* Extract the value */
 	ph7_value *pValue;
-	pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+	pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx);
 	return pValue;
 }
 /*

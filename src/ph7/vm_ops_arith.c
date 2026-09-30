@@ -164,7 +164,7 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 		 * offset the quiet peek let through raises at the store. */
 		VmCoalStrOff *pCoalOff = (VmCoalStrOff *)pNos->x.pOther;
 		ph7_value *pStrBase = pNos->nIdx != SXU32_HIGH
-			? (ph7_value *)SySetAt(&pVm->aMemObj,pNos->nIdx) : 0;
+			? (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNos->nIdx) : 0;
 		sxi64 iOfft = 0;
 		SyBlob sTypeMsg;
 		int eOfft;
@@ -221,7 +221,7 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 		 * php computes it, drops it with the temporary and stays silent. Every case
 		 * that IS a refusal — a class constant, a hooked or handler-backed property —
 		 * is decided before the VM sees it. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}
@@ -431,7 +431,7 @@ PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 mod_store_write:
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
@@ -614,7 +614,7 @@ PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 sub_store_write:
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
@@ -903,7 +903,7 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
 			/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 			PH7_MemObjStore(pNos,pObj);
 		}
@@ -1254,7 +1254,7 @@ PH7_PRIVATE VmOpRc VmExecOpShrStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	MemObjSetType(pNos,MEMOBJ_INT);
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
@@ -1403,7 +1403,7 @@ mul_store_write:
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
 			/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 			PH7_MemObjStore(pNos,pObj);
 		}

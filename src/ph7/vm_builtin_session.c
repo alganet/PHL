@@ -311,7 +311,7 @@ static int VmSessEncode(ph7_vm *pVm,SyBlob *pOut,const char *zWho)
 			SyBlobReset(pOut);
 			return 0;
 		}
-		pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+		pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 		if( pVal == 0 ){
 			continue;
 		}
@@ -720,7 +720,7 @@ static sxi64 VmSessGcFiles(ph7_vm *pVm,sxi64 iMaxLife)
 	pMap = (ph7_hashmap *)sList.x.pOther;
 	pNode = pMap->pFirst;
 	for( n = 0 ; n < pMap->nEntry && pNode ; n++, pNode = pNode->pPrev ){
-		ph7_value *pName = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+		ph7_value *pName = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 		SyBlob sPath;
 		ph7_value sArg,sTime;
 		ph7_value *apB[1];

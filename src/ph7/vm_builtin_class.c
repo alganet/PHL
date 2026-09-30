@@ -1572,7 +1572,7 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 			if( pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC) ){
 				/* Static slots are computed at mount; constants lazily */
 				PH7_VmMaterializeClassConst(pCtx->pVm,pClass,pAttr);
-				pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
+				pValue = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
 			}else{
 				if( SySetUsed(&pAttr->aByteCode) > 0 ){
 					PH7_MemObjRelease(&sValue);
@@ -2021,7 +2021,7 @@ PH7_PRIVATE int vm_builtin_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				zName = (const char *)SyBlobData(&pNode->xKey.sKey);
 				nName = SyBlobLength(&pNode->xKey.sKey);
 			}
-			pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+			pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 			if( pVal ){
 				/* Snapshot the update value first: applying it may create a dynamic
 				 * property, whose slot reservation can reallocate pVm->aMemObj and
@@ -2229,7 +2229,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	pEntry = pMap->pFirst; /* First inserted entry */
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
 		/* Extract node value */
-		if( (pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pEntry->nValIdx)) != 0 ){
+		if( (pValue = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pEntry->nValIdx)) != 0 ){
 			if( pEntry->iType == HASHMAP_BLOB_NODE ){
 				if( aNames == 0 ){
 					/* First string key: allocate the whole map, zeroed so every

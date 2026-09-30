@@ -350,7 +350,7 @@ PH7_PRIVATE int vm_builtin_enum_cases(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
 	for( n = 0 ; n < SySetUsed(&pClass->aEnumCases) ; n++ ){
-		ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,apCase[n]->nIdx);
+		ph7_value *pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,apCase[n]->nIdx);
 		if( pSlot ){
 			ph7_array_add_elem(pArray,0,pSlot); /* Copies; the object ref is retained */
 		}
@@ -421,7 +421,7 @@ static ph7_value * VmEnumFindCaseByValue(ph7_vm *pVm,ph7_class *pClass,ph7_value
 			}
 		}
 		if( bMatch ){
-			return (ph7_value *)SySetAt(&pVm->aMemObj,apCase[n]->nIdx);
+			return (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,apCase[n]->nIdx);
 		}
 	}
 	return 0;
@@ -567,7 +567,7 @@ PH7_PRIVATE int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg
 				}
 			}
 			{
-				ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
+				ph7_value *pValue = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
 				if( pValue ){
 					if( SySetUsed(&pAttr->aAttrs) > 0 ){
 						/* #[\Deprecated] warns through constant() too (php) */

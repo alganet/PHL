@@ -681,7 +681,7 @@ static ph7_value * PdoArrayAtInt(ph7_vm *pVm,ph7_value *pArray,sxi64 iKey)
 	if( rc != SXRET_OK || pNode == 0 ){
 		return 0;
 	}
-	return (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+	return (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 }
 /*
  * ATTR_STATEMENT_CLASS's own validation, which is four refusals deep and in
@@ -1177,7 +1177,7 @@ static void PdoCallCtor(ph7_vm *pVm,ph7_class_instance *pObj,ph7_class_method *p
 		sxu32 n,nCount = pMap->nEntry;
 		for( n = 0 ; n < nCount && pEntry && nArg < (int)SX_ARRAYSIZE(apArg) ;
 		     ++n, pEntry = pEntry->pPrev ){
-			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);
 			if( pVal ){
 				apArg[nArg++] = pVal;
 			}
@@ -1466,7 +1466,7 @@ static void PdoWriteRowProps(ph7_vm *pVm,ph7_class_instance *pObj,ph7_value *pRo
 	nCount = pMap->nEntry;
 	for( n = 0 ; n < nCount && pEntry ; ++n, pEntry = pEntry->pPrev ){
 		ph7_value sKey;
-		ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+		ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);
 		int nKey = 0;
 		const char *zKey;
 		PH7_MemObjInit(pVm,&sKey);
@@ -1520,7 +1520,7 @@ static int PdoRowIntoObject(ph7_vm *pVm,phl_pdo_stmt *pSt,ph7_class *pClass,
 		sxu32 n,nCount = pMap->nEntry;
 		for( n = 0 ; n < nCount && pEntry ; ++n, pEntry = pEntry->pPrev ){
 			ph7_value sKey;
-			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);
 			int nKey = 0;
 			const char *zKey;
 			PH7_MemObjInit(pVm,&sKey);
@@ -1875,7 +1875,7 @@ static int PdoWriteBoundColumns(ph7_vm *pVm,phl_pdo_stmt *pSt)
 		if( pB->nSlot == SXU32_HIGH ){
 			continue;
 		}
-		pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pB->nSlot);
+		pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pB->nSlot);
 		if( pSlot == 0 ){
 			continue;
 		}
@@ -3927,7 +3927,7 @@ static int PdoBindApply(ph7_vm *pVm,phl_pdo_stmt *pSt,phl_pdo_bind *pB)
 	}
 	if( pB->nSlot != SXU32_HIGH ){
 		/* bindParam(): read the caller's variable NOW */
-		pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pB->nSlot);
+		pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pB->nSlot);
 	}
 	return PH7_PdoSqliteBindAt(pSt,iPos,pB->iType,pVal);
 }
@@ -3950,7 +3950,7 @@ static int PdoBindFromArray(ph7_vm *pVm,phl_pdo_stmt *pSt,ph7_value *pArray)
 	pEntry = pMap->pFirst;
 	for( n = 0 ; n < nCount && pEntry ; ++n, pEntry = pEntry->pPrev ){
 		ph7_value sKey;
-		ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+		ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);
 		int iPos;
 		PH7_MemObjInit(pVm,&sKey);
 		PH7_HashmapExtractNodeKey(pEntry,&sKey);
@@ -4334,7 +4334,7 @@ static void PdoApplyOptions(phl_pdo *pConn,ph7_value *pOptions)
 		PH7_HashmapExtractNodeKey(pEntry,&sKey);
 		iKey = sKey.x.iVal;
 		PH7_MemObjRelease(&sKey);
-		pVal = (ph7_value *)SySetAt(&pConn->pVm->aMemObj,pEntry->nValIdx);
+		pVal = (ph7_value *)PH7_MemObjAt(&pConn->pVm->aMemObj,pEntry->nValIdx);
 		if( pVal == 0 ){
 			continue;
 		}

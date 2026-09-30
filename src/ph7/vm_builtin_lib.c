@@ -752,7 +752,7 @@ static ph7_value * VmExcFrameField(ph7_vm *pVm,ph7_hashmap *pFrame,const char *z
 	if( rc != SXRET_OK || pNode == 0 ){
 		return 0;
 	}
-	return (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+	return (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 }
 static void VmExcFrameStr(SyBlob *pOut,ph7_value *pVal)
 {
@@ -822,7 +822,7 @@ PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMark
 		pMap = (ph7_hashmap *)pTrace->x.pOther;
 		/* Insertion order is pFirst then the pPrev chain (rule 12). */
 		for( pEntry = pMap->pFirst ; pEntry ; pEntry = pEntry->pPrev ){
-			ph7_value *pFrameVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			ph7_value *pFrameVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);
 			ph7_hashmap *pFrame;
 			ph7_value *pFile;
 			if( pFrameVal == 0 || (pFrameVal->iFlags & MEMOBJ_HASHMAP) == 0 ){
@@ -855,7 +855,7 @@ PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMark
 						}
 						bFirst = 0;
 						VmExcTraceArg(&(*pVm),pOut,
-							(ph7_value *)SySetAt(&pVm->aMemObj,pArg->nValIdx));
+							(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArg->nValIdx));
 					}
 				}
 			}

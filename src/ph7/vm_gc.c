@@ -201,7 +201,7 @@ static void VmGcWalkChildren(VmGcCtx *pCtx,void *pCont,int bMap,ProcGcVisit xVis
 		while( n > 0 && pNode ){
 			ph7_hashmap_node *pNext = pNode->pPrev; /* reverse link -- insertion order */
 			if( VmGcSlotOwned(&(*pVm),pNode->nValIdx,pNode) ){
-				ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 				pChild = VmGcValueTarget(pVal,&bChildMap);
 				if( pChild && VmGcCollectable(&(*pVm),pChild,bChildMap) ){
 					xVisit(pCtx,pChild,bChildMap,pVal);
@@ -221,7 +221,7 @@ static void VmGcWalkChildren(VmGcCtx *pCtx,void *pCont,int bMap,ProcGcVisit xVis
 			 * this object's edge at all. Counting it once per instance would
 			 * subtract a reference per instance for a value held once. */
 			if( pVmAttr && pVmAttr->pInst == pThis && VmGcSlotOwned(&(*pVm),pVmAttr->nIdx,0) ){
-				ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);
 				pChild = VmGcValueTarget(pVal,&bChildMap);
 				if( pChild && VmGcCollectable(&(*pVm),pChild,bChildMap) ){
 					xVisit(pCtx,pChild,bChildMap,pVal);

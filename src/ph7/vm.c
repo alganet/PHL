@@ -1670,7 +1670,7 @@ PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **pp
 	PH7_MemObjInit(&(*pVm),&sVal);
 	rc = VmLocalExec(&(*pVm),pByteCode,&sVal,bReturnPropagates);
 	/* aMemObj may have moved during the eval — re-fetch by the reserved index. */
-	*ppMemObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	*ppMemObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 	if( *ppMemObj ){
 		PH7_MemObjStore(&sVal,*ppMemObj);
 	}
@@ -2379,7 +2379,7 @@ PH7_PRIVATE void PH7_VmIncompleteMsg(ph7_vm *pVm,ph7_class_instance *pThis,const
 		(const void *)PH7_INCOMPLETE_MAGIC_MEMBER,sizeof(PH7_INCOMPLETE_MAGIC_MEMBER)-1);
 	if( pEntry ){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		ph7_value *pVal = pVmAttr ? (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx) : 0;
+		ph7_value *pVal = pVmAttr ? (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx) : 0;
 		if( pVal && (pVal->iFlags & MEMOBJ_STRING) && SyBlobLength(&pVal->sBlob) > 0 ){
 			zName = (const char *)SyBlobData(&pVal->sBlob);
 			nName = SyBlobLength(&pVal->sBlob);
@@ -2597,26 +2597,117 @@ PH7_PRIVATE ph7_value * PH7_ReserveConstObj(ph7_vm *pVm,sxu32 *pIndex)
 	return pObj;
 }
 /*
+ * The segmented memory-object pool (PERF.md P1). See VmMemPool in ph7int.h.
+ * A slot's ADDRESS never moves once it exists, which is the whole point: the
+ * engine's standing "a pointer into aMemObj dangles across a reserve" hazard
+ * (written down at pointers-die-across-a-user-callback) exists only because the
+ * old table reallocated. Growth here appends a VM_MEMPOOL_SEG_SLOTS segment --
+ * one allocation, no copy -- and a fully-free trailing segment is returned on
+ * truncate, so a reused VM (-S server, in-process .phpt runner) hands the pool
+ * back most of what a large run grew.
+ */
+PH7_PRIVATE sxi32 VmMemPoolInit(VmMemPool *pPool,SyMemBackend *pAllocator)
+{
+	ph7_value *pSeg;
+	SyZero(pPool,sizeof(VmMemPool));
+	pPool->pAllocator = pAllocator;
+	/* The first segment up front, mirroring the SySetAlloc(&pVm->aMemObj,0xFF)
+	 * the pool replaced: an aMemObj exists the moment the VM does, and at 256
+	 * slots it costs the same 16 KB that opening bid did. This allocation IS the
+	 * per-VM floor -- see the segment-size note on VmMemPool in ph7int.h before
+	 * raising VM_MEMPOOL_SEG_SHIFT. */
+	pSeg = (ph7_value *)SyMemBackendAlloc(pAllocator,sizeof(ph7_value) * VM_MEMPOOL_SEG_SLOTS);
+	if( pSeg == 0 ){
+		return SXERR_MEM;
+	}
+	pPool->apSeg = (ph7_value **)SyMemBackendAlloc(pAllocator,sizeof(ph7_value *) * 16);
+	if( pPool->apSeg == 0 ){
+		SyMemBackendFree(pAllocator,pSeg);
+		return SXERR_MEM;
+	}
+	pPool->apSeg[0] = pSeg;
+	pPool->nSeg = 1;
+	pPool->nCap = 16;
+	return SXRET_OK;
+}
+/*
+ * Reserve a slot at the end of the pool. Returns the raw slot (uninitialized --
+ * callers PH7_MemObjInit it, as they did the SySetPeek of the set this replaced)
+ * and stores its index. Appending a slot never relocates an existing one.
+ */
+PH7_PRIVATE ph7_value * VmMemPoolReserve(VmMemPool *pPool,sxu32 *pIndex)
+{
+	sxu32 nIdx;
+	sxu32 nSeg;
+	if( pPool->nUsed >= (pPool->nSeg << VM_MEMPOOL_SEG_SHIFT) ){
+		ph7_value *pSeg;
+		if( pPool->nSeg >= pPool->nCap ){
+			/* The segment table itself doubles. It is a few hundred pointers at
+			 * the engine's real peaks, so this is cheap and does not touch the
+			 * values. */
+			ph7_value **apNew;
+			sxu32 nNew = pPool->nCap ? pPool->nCap * 2 : 16;
+			apNew = (ph7_value **)SyMemBackendRealloc(pPool->pAllocator,pPool->apSeg,sizeof(ph7_value *) * nNew);
+			if( apNew == 0 ){
+				return 0;
+			}
+			pPool->apSeg = apNew;
+			pPool->nCap = nNew;
+		}
+		pSeg = (ph7_value *)SyMemBackendAlloc(pPool->pAllocator,sizeof(ph7_value) * VM_MEMPOOL_SEG_SLOTS);
+		if( pSeg == 0 ){
+			return 0;
+		}
+		pPool->apSeg[pPool->nSeg++] = pSeg;
+	}
+	nIdx = pPool->nUsed;
+	pPool->nUsed++;
+	nSeg = nIdx >> VM_MEMPOOL_SEG_SHIFT;
+	if( pIndex ){
+		*pIndex = nIdx;
+	}
+	return &pPool->apSeg[nSeg][nIdx & VM_MEMPOOL_SEG_MASK];
+}
+/*
+ * Shrink the pool's logical size. Fully-free trailing segments are RETURNED to
+ * the allocator; the segment table itself keeps its capacity (a few hundred
+ * pointers), so a reset does not realloc the table that describes the pool.
+ */
+PH7_PRIVATE sxi32 VmMemPoolTruncate(VmMemPool *pPool,sxu32 nNewSize)
+{
+	sxu32 nSegNeed;
+	sxu32 n;
+	if( nNewSize < pPool->nUsed ){
+		pPool->nUsed = nNewSize;
+	}
+	/* Return every segment past the one that still holds a slot. nSeg is kept
+	 * rounded UP to cover nUsed, so a slot index already handed out never stops
+	 * resolving. */
+	nSegNeed = (pPool->nUsed + VM_MEMPOOL_SEG_SLOTS - 1) >> VM_MEMPOOL_SEG_SHIFT;
+	if( nSegNeed < pPool->nSeg ){
+		for( n = nSegNeed ; n < pPool->nSeg ; ++n ){
+			SyMemBackendFree(pPool->pAllocator,pPool->apSeg[n]);
+			pPool->apSeg[n] = 0;
+		}
+		pPool->nSeg = nSegNeed;
+	}
+	return SXRET_OK;
+}
+/*
  * Reserve a memory object.
  * Return a pointer to the raw ph7_value on success. NULL on failure.
  */
 PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex)
 {
 	ph7_value *pObj;
-	sxi32 rc;
-	if( pIndex ){
-		/* Object index in the object table */
-		*pIndex = SySetUsed(&pVm->aMemObj);
-	}
-	/* Reserve a slot for the new object */
-	rc = SySetPut(&pVm->aMemObj,(const void *)zDummy);
-	if( rc != SXRET_OK ){
-		/* If the supplied memory subsystem is so sick that we are unable to allocate
-		 * a tiny chunk of memory, there is no much we can do here.
-		 */
+	pObj = VmMemPoolReserve(&pVm->aMemObj,pIndex);
+	if( pObj == 0 ){
 		return 0;
 	}
-	pObj = (ph7_value *)SySetPeek(&pVm->aMemObj);
+	/* The slot this replaced came from a SySetPut of a zeroed filler, so a slot
+	 * the caller leaves untouched (a static without an initializer, say) reads as
+	 * a null value. Keep that: zero the fresh slot. */
+	SyZero(pObj,sizeof(ph7_value));
 	return pObj;
 }
 /* Forward declaration */
@@ -2660,8 +2751,10 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetAlloc(&pVm->aByteCode,0xFF);
 	pVm->pByteContainer = &pVm->aByteCode;
 	/* Object containers */
-	SySetInit(&pVm->aMemObj,&pVm->sAllocator,sizeof(ph7_value));
-	SySetAlloc(&pVm->aMemObj,0xFF);
+	rc = VmMemPoolInit(&pVm->aMemObj,&pVm->sAllocator);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	/* Argument-unpacking key capture (see VmSpreadRun/VmSpreadKey in vm.c) */
 	SySetInit(&pVm->aSpreadRun,&pVm->sAllocator,sizeof(VmSpreadRun));
 	SySetInit(&pVm->aSpreadKey,&pVm->sAllocator,sizeof(VmSpreadKey));
@@ -3575,7 +3668,7 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	 * every object/variable created during execution) is per-exec state that
 	 * ph7_vm_reset() releases and truncates away before rebuilding; everything
 	 * below it is compile-time/init state that survives a reset. */
-	pVm->nSuperBaseline = SySetUsed(&pVm->aMemObj);
+	pVm->nSuperBaseline = pVm->aMemObj.nUsed;
 	/* Create superglobals [i.e: $GLOBALS, $_GET, $_POST...] */
 	rc = PH7_HashmapCreateSuper(&(*pVm));
 	if( rc != SXRET_OK ){
@@ -4059,8 +4152,8 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	VmResetFunctionState(&(*pVm));
 	/* (3) Release every object/variable reserved during the run. Re-reading the
 	 * used count each iteration tolerates a destructor reserving a fresh slot. */
-	for( n = nWater ; n < SySetUsed(&pVm->aMemObj) ; ++n ){
-		ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,n);
+	for( n = nWater ; n < pVm->aMemObj.nUsed ; ++n ){
+		ph7_value *pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,n);
 		if( pObj ){
 			PH7_MemObjRelease(pObj);
 		}
@@ -4078,8 +4171,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* Object teardown is complete; user __destruct may run normally again. */
 	pVm->bInReset = 0;
 	/* (6) Truncate the object pool back to the watermark and forget stale free
-	 * slots (their indices no longer exist). */
-	SySetTruncate(&pVm->aMemObj,nWater);
+	 * slots (their indices no longer exist). Fully-free trailing segments are
+	 * returned by VmMemPoolTruncate. */
+	VmMemPoolTruncate(&pVm->aMemObj,nWater);
 	SySetReset(&pVm->aFreeObj);
 	/* (7) Reset the superglobal name table and namespace scratch. */
 	SyHashRelease(&pVm->hSuper);
@@ -4516,7 +4610,7 @@ PH7_PRIVATE ph7_value * PH7_ReserveMemObj(ph7_vm *pVm)
 	nIdx = SXU32_HIGH; /* cc warning */
 	pSlot = (VmSlot *)SySetPop(&pVm->aFreeObj);
 	if( pSlot ){
-		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pSlot->nIdx);
+		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pSlot->nIdx);
 		nIdx = pSlot->nIdx;
 	}
 	if( pObj == 0 ){
@@ -4597,7 +4691,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nBy
 			PH7_VmRebindVarSlot(&(*pVm),pFrame,pEntry,zName,nByte,nRefIdx);
 			return SXRET_OK;
 		}
-		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,(sxu32)SX_PTR_TO_INT(pEntry->pUserData));
+		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,(sxu32)SX_PTR_TO_INT(pEntry->pUserData));
 		if( pObj == 0 ){
 			return SXERR_NOTFOUND;
 		}
@@ -4617,7 +4711,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nBy
 		nIdx = pObj->nIdx;
 	}else{
 		/* Reference assignment: bind the name to the existing slot */
-		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nRefIdx);
+		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nRefIdx);
 		if( pObj == 0 ){
 			return SXERR_NOTFOUND;
 		}
@@ -4742,7 +4836,7 @@ static ph7_value * VmExtractMemObjEx(
 		}else{
 			/* Extract variable contents */
 			nIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);
-			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 			if( bNullify && pObj ){
 				PH7_MemObjRelease(pObj);
 			}
@@ -4750,7 +4844,7 @@ static ph7_value * VmExtractMemObjEx(
 	}else{
 		/* Superglobal */
 		nIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);
-		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 	}
 	if( pnIdx ){
 		*pnIdx = nIdx;
@@ -4943,7 +5037,7 @@ PH7_PRIVATE ph7_value * PH7_VmExtractVarSlot(
 	if( nSlot > 0 && pFrame->pCodeBase == aCode ){
 		sxu32 nCached = pFrame->aLocalSlot[nSlot - 1];
 		if( nCached > 0 ){
-			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nCached - 1);
+			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nCached - 1);
 			if( pObj ){
 				return pObj;
 			}
@@ -4982,7 +5076,7 @@ PH7_PRIVATE ph7_value * PH7_VmExtractSuper(
 	/* Extract the superglobal index in the global object pool */
 	nIdx = SX_PTR_TO_INT(pEntry->pUserData);
 	/* Extract the variable value  */
-	pValue = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 	return pValue;
 }
 /*
@@ -5192,7 +5286,7 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 			/* Variable already installed */
 			nIdx = SX_PTR_TO_INT(pEntry->pUserData);
 			/* Extract contents */
-			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 			if( pObj ){
 				/* Overwrite old contents */
 				PH7_MemObjStore(pValue,pObj);
@@ -5981,7 +6075,7 @@ PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *
 		VmSpreadCaptureRun(pVm, pTos, pMap, nEntry);
 		/* Overwrite the source slot with the first element */
 		pNode = pMap->pFirst;
-		pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
+		pElem = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj, pNode->nValIdx);
 		PH7_MemObjRelease(pTos);
 		if( pElem ){
 			if( bTemp ){
@@ -6009,7 +6103,7 @@ PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *
 		for( i = 1; i < nEntry; i++ ){
 			pTos++;
 			PH7_MemObjInit(pVm, pTos);
-			pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
+			pElem = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj, pNode->nValIdx);
 			if( pElem ){
 				if( bTemp ){
 					PH7_MemObjStore(pElem, pTos);
@@ -6375,7 +6469,7 @@ PH7_PRIVATE sxi32 VmHookSetDispatch(ph7_vm *pVm,ph7_class_instance *pHThis,ph7_c
 		 && nBackIdx != SXU32_HIGH && pVm->nBoundaryRc == 0 ){
 			sxi32 rcH = VmEnforcePropertyTypeOnStore(&(*pVm),nBackIdx,&sHookRet,0);
 			if( rcH == SXRET_OK ){
-				ph7_value *pBack = (ph7_value *)SySetAt(&pVm->aMemObj,nBackIdx);
+				ph7_value *pBack = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nBackIdx);
 				if( pBack ){
 					PH7_MemObjStore(&sHookRet,pBack);
 				}
@@ -6446,7 +6540,7 @@ PH7_PRIVATE sxi32 PH7_VmHookGetAttrValue(ph7_class_instance *pThis,VmClassAttr *
  */
 PH7_PRIVATE void VmHookRmwFreeScratch(ph7_vm *pVm,sxu32 nIdx)
 {
-	ph7_value *pScr = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	ph7_value *pScr = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 	VmSlot sFree;
 	if( pScr ){
 		PH7_MemObjRelease(pScr);
@@ -6499,7 +6593,7 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	 * scratch index past this point). The DIM kind's KEY slot goes the same
 	 * way, for the same reason: reserving relocates the aMemObj set. */
 	PH7_MemObjInit(pVm,&sVal);
-	pScr = (ph7_value *)SySetAt(&pVm->aMemObj,sEnt.nScratchIdx);
+	pScr = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,sEnt.nScratchIdx);
 	if( pScr ){
 		PH7_MemObjStore(pScr,&sVal);
 	}
@@ -6507,7 +6601,7 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	sVal.nIdx = SXU32_HIGH;
 	PH7_MemObjInit(pVm,&sKey);
 	if( sEnt.iKind == VM_HOOK_PEND_RMW_DIM && sEnt.nBackIdx != SXU32_HIGH ){
-		ph7_value *pKeySlot = (ph7_value *)SySetAt(&pVm->aMemObj,sEnt.nBackIdx);
+		ph7_value *pKeySlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,sEnt.nBackIdx);
 		if( pKeySlot ){
 			PH7_MemObjStore(pKeySlot,&sKey);
 		}
@@ -7040,7 +7134,7 @@ static void VmShutdownGlobalPass(ph7_vm *pVm)
 			if( pHash == 0 ){
 				continue;  /* An earlier destructor already dropped this one */
 			}
-			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,(sxu32)SX_PTR_TO_INT(pHash->pUserData));
+			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,(sxu32)SX_PTR_TO_INT(pHash->pUserData));
 			if( pObj == 0 || (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
 				continue;
 			}
@@ -7105,8 +7199,8 @@ static void VmShutdownObjectPass(ph7_vm *pVm)
 		SySet aObj;
 		sxu32 n,nUsed;
 		SySetInit(&aObj,&pVm->sAllocator,sizeof(ph7_class_instance *));
-		for( n = 0 ; n < SySetUsed(&pVm->aMemObj) ; ++n ){
-			ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,n);
+		for( n = 0 ; n < pVm->aMemObj.nUsed ; ++n ){
+			ph7_value *pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,n);
 			if( pObj && (pObj->iFlags & MEMOBJ_OBJ) && pObj->x.pOther ){
 				ph7_class_instance *pThis = (ph7_class_instance *)pObj->x.pOther;
 				if( (pThis->iFlags & CLASS_INSTANCE_DTOR_CALLED) == 0 ){

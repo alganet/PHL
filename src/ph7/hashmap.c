@@ -63,7 +63,7 @@ PH7_PRIVATE sxi64 HashmapCount(ph7_hashmap *pMap,int bRecursive,int *pCycleDetec
 				break;
 			}
 			/* Point to the element value */
-			pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pEntry->nValIdx);
+			pElem = (ph7_value *)PH7_MemObjAt(&pMap->pVm->aMemObj,pEntry->nValIdx);
 			if( pElem ){
 				if( pElem->iFlags & MEMOBJ_HASHMAP ){
 					ph7_hashmap *pSub = (ph7_hashmap *)pElem->x.pOther;
@@ -730,7 +730,7 @@ PH7_PRIVATE sxi32 HashmapInsert(
 			SyBlobLength(&pKey->sBlob),&pNode) ){
 				/* Overwrite the old value */
 				ph7_value *pElem;
-				pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pNode->nValIdx);
+				pElem = (ph7_value *)PH7_MemObjAt(&pMap->pVm->aMemObj,pNode->nValIdx);
 				if( pElem ){
 					if( pVal ){
 						PH7_MemObjStore(pVal,pElem);
@@ -766,7 +766,7 @@ IntKey:
 		if( SXRET_OK == HashmapLookupIntKey(&(*pMap),pKey->x.iVal,&pNode) ){
 			/* Overwrite the old value */
 			ph7_value *pElem;
-			pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pNode->nValIdx);
+			pElem = (ph7_value *)PH7_MemObjAt(&pMap->pVm->aMemObj,pNode->nValIdx);
 			if( pElem ){
 				if( pVal ){
 					PH7_MemObjStore(pVal,pElem);
@@ -922,7 +922,7 @@ PH7_PRIVATE ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode)
 {
 	/* Point to the desired object */
 	ph7_value *pObj;
-	pObj = (ph7_value *)SySetAt(&pNode->pMap->pVm->aMemObj,pNode->nValIdx);
+	pObj = (ph7_value *)PH7_MemObjAt(&pNode->pMap->pVm->aMemObj,pNode->nValIdx);
 	return pObj;
 }
 /*
@@ -1672,7 +1672,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	 * backing variable instead so the change persists after the stack
 	 * frame is popped. */
 	if( pValue->nIdx != SXU32_HIGH ){
-		pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pValue->nIdx);
+		pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pValue->nIdx);
 		if( pBacking && pBacking != pValue
 			&& (pBacking->iFlags & MEMOBJ_HASHMAP)
 			&& (ph7_hashmap *)pBacking->x.pOther == pMap ){
@@ -1703,7 +1703,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 			 * dereferences the freed old buffer, which is a hard SIGSEGV on
 			 * glibc/x86_64 once aMemObj is large enough to be mmap-backed (the old
 			 * mapping is munmap'd on move) and a silent use-after-free elsewhere. */
-			pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pValue->nIdx);
+			pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pValue->nIdx);
 			if( pBacking ){
 				pBacking->x.pOther = pNew;
 			}
@@ -1722,7 +1722,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	 * pBacking in the backing-variable branch above). */
 	nValIdx = pValue->nIdx;
 	bValueInPool = ( nValIdx != SXU32_HIGH
-		&& (ph7_value *)SySetAt(&pVm->aMemObj,nValIdx) == pValue );
+		&& (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nValIdx) == pValue );
 	pNew = PH7_NewHashmap(pVm,0,0);
 	if( pNew == 0 ){
 		/* Allocation failure — fall through with shared map */
@@ -1737,7 +1737,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	pMap->iRef--;
 	if( bValueInPool ){
 		/* aMemObj may have moved during the dup — re-resolve pValue's slot. */
-		pValue = (ph7_value *)SySetAt(&pVm->aMemObj,nValIdx);
+		pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nValIdx);
 		if( pValue == 0 ){
 			return pNew;
 		}
@@ -2088,7 +2088,7 @@ PH7_PRIVATE sxi32 PH7_HashmapInsertRawKey(
 {
 	ph7_hashmap_node *pNode = 0;
 	if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),zKey,nKey,&pNode) && pNode ){
-		ph7_value *pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pNode->nValIdx);
+		ph7_value *pElem = (ph7_value *)PH7_MemObjAt(&pMap->pVm->aMemObj,pNode->nValIdx);
 		if( pElem ){
 			if( pVal ){
 				PH7_MemObjStore(pVal,pElem);

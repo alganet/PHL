@@ -299,7 +299,7 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		sxu32 nTotal = pThis->hAttr.nEntry;
 		sxu32 nEmit = nTotal > 0 ? nTotal - 1 : 0;
 		if( pMagic && pMagic->pUserData ){
-			ph7_value *pNameVal = (ph7_value *)SySetAt(&pVm->aMemObj,
+			ph7_value *pNameVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,
 				((VmClassAttr *)pMagic->pUserData)->nIdx);
 			if( pNameVal && (pNameVal->iFlags & MEMOBJ_STRING) && SyBlobLength(&pNameVal->sBlob) > 0 ){
 				SyStringInitFromBuf(&sOutName,
@@ -706,7 +706,7 @@ static ph7_value * VmUnserializePropSlot(unserialize_data *ud,ph7_class_instance
 	SyHashEntry *pEntry = PH7_ClassInstanceAttrEntry(pThis,zKey,nKey);
 	if( pEntry ){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		return pVmAttr ? (ph7_value *)SySetAt(&ud->pVm->aMemObj,pVmAttr->nIdx) : 0;
+		return pVmAttr ? (ph7_value *)PH7_MemObjAt(&ud->pVm->aMemObj,pVmAttr->nIdx) : 0;
 	}
 	return PH7_VmCreateDynamicAttr(ud->pVm,pThis,zKey,nKey,0);
 }
@@ -1076,7 +1076,7 @@ static ph7_value * VmUnserializeEnumCase(unserialize_data *ud)
 		ud->exc = 1;
 		return 0;
 	}
-	pSlot = (ph7_value *)SySetAt(&ud->pVm->aMemObj,pAttr->nIdx);
+	pSlot = (ph7_value *)PH7_MemObjAt(&ud->pVm->aMemObj,pAttr->nIdx);
 	if( pSlot == 0 ){ return 0; }
 	pOut = ph7_context_new_scalar(ud->pCtx);
 	if( pOut ){ PH7_MemObjStore(pSlot,pOut); } /* retains the singleton */

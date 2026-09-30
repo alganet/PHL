@@ -4658,7 +4658,7 @@ static ph7_value * StreamCtxFetch(ph7_value *pArray,ph7_value *pKey)
 	if( PH7_HashmapLookup((ph7_hashmap *)pArray->x.pOther,pKey,&pNode) != SXRET_OK ){
 		return 0;
 	}
-	return (ph7_value *)SySetAt(&pArray->pVm->aMemObj,pNode->nValIdx);
+	return (ph7_value *)PH7_MemObjAt(&pArray->pVm->aMemObj,pNode->nValIdx);
 }
 /*
  * Store one option. The wrapper's sub-array is created on first use; an

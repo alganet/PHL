@@ -1670,7 +1670,7 @@ ph7_value * ph7_array_fetch(ph7_value *pArray,const char *zKey,int nByte)
 		return 0;
 	}
 	/* Extract the target value */
-	pValue = (ph7_value *)SySetAt(&pArray->pVm->aMemObj,pNode->nValIdx);
+	pValue = (ph7_value *)PH7_MemObjAt(&pArray->pVm->aMemObj,pNode->nValIdx);
 	return pValue;
 }
 /*

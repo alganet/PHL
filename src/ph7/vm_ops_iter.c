@@ -439,7 +439,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				/* COW: For by-reference foreach, eagerly separate the
 				 * source array so mutations don't affect other sharers. */
 				if( (pStep->iFlags & PH7_4EACH_STEP_REF) && pTos->nIdx != SXU32_HIGH ){
-					ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx);
+					ph7_value *pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx);
 					if( pBacking && (pBacking->iFlags & MEMOBJ_HASHMAP) ){
 						ph7_hashmap *pCur = (ph7_hashmap *)pTos->x.pOther;
 						/* Only adjust refcounts/separate if the backing

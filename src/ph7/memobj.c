@@ -1664,7 +1664,7 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 	 /* Identity, not nIdx: transient values carry nIdx==0 (SyZero), which
 	  * collides with a typical nGlobalIdx of 0 and would skip the snapshot
 	  * for closure envs and other non-slot destinations. */
-	 && pDest != (ph7_value *)SySetAt(&pDest->pVm->aMemObj,pDest->pVm->nGlobalIdx) ){
+	 && pDest != (ph7_value *)PH7_MemObjAt(&pDest->pVm->aMemObj,pDest->pVm->nGlobalIdx) ){
 		/* php 8.1: a COPY of $GLOBALS ($snap = $GLOBALS, $a[] = $GLOBALS,
 		 * by-value argument passing, return $GLOBALS, ...) is a by-value
 		 * SNAPSHOT of the symbol table with its reference entries

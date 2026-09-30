@@ -818,7 +818,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 				 * `g($i->s)` with `function g(&$x)` passes the VALUE and the callee's
 				 * write is lost — in SILENCE, unlike the overloaded case below, which
 				 * php has a notice for. `preg_match($p,$s,$i->s)` is the same answer. */
-				ph7_value *pCur = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+				ph7_value *pCur = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx);
 				*pbNoBind = 1;
 				if( pValOut && pCur ){
 					PH7_MemObjStore(pCur,pValOut);
@@ -833,7 +833,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 				 * when it does not. A by-VALUE argument takes the ordinary read Error,
 				 * which the value re-drive next door produces. */
 				sxi32 rcRs = VmRefUninitTypedProperty(&(*pVm),pClass,pAttr,
-					(ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx));
+					(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx));
 				if( rcRs != SXRET_OK ){
 					*pbNoBind = 1;
 					return (rcRs == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
@@ -940,7 +940,7 @@ static sxi32 VmWalkStepsFromSlot(ph7_vm *pVm,VmDeferredPath *pPath,sxu32 iFrom,s
 			ph7_value sMagicVal;
 			int bLastStep = (i + 1 == pPath->nStep);
 			PH7_MemObjInit(&(*pVm),&sMagicVal);
-			rc = VmBindPropByRef(&(*pVm),(ph7_value *)SySetAt(&pVm->aMemObj,nCur),
+			rc = VmBindPropByRef(&(*pVm),(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nCur),
 				&pStep->sProp,&nOut,&bNoBind,bLastStep ? &sMagicVal : 0);
 			if( rc != SXRET_OK ){
 				PH7_MemObjRelease(&sMagicVal);
@@ -961,7 +961,7 @@ static sxi32 VmWalkStepsFromSlot(ph7_vm *pVm,VmDeferredPath *pPath,sxu32 iFrom,s
 			nCur = nOut;
 		}else{
 			ph7_value out;
-			ph7_value *pContainer = (ph7_value *)SySetAt(&pVm->aMemObj,nCur);
+			ph7_value *pContainer = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nCur);
 			if( pContainer == 0 ){
 				return SXRET_OK;
 			}
@@ -987,7 +987,7 @@ static sxi32 VmWalkStepsFromSlot(ph7_vm *pVm,VmDeferredPath *pPath,sxu32 iFrom,s
 		 * MISS — the vivified element is NULL and so was the carrier — and stopped being
 		 * true when a WRITABLE container's existing element started riding one
 		 * (`sort($ao['a'])` reached sort() as NULL). */
-		ph7_value *pFinal = (ph7_value *)SySetAt(&pVm->aMemObj,nCur);
+		ph7_value *pFinal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nCur);
 		if( pFinal ){
 			PH7_MemObjLoad(pFinal,pSlot);
 		}
@@ -1157,7 +1157,7 @@ static sxi32 VmResolvePathByValue(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *p
 			cur.nIdx = pRoot->nIdx;
 		}
 	}else{
-		ph7_value *pRoot = (ph7_value *)SySetAt(&pVm->aMemObj,pPath->nRootIdx);
+		ph7_value *pRoot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pPath->nRootIdx);
 		if( pRoot ){
 			PH7_MemObjLoad(pRoot,&cur);
 			cur.nIdx = pRoot->nIdx;
@@ -1223,7 +1223,7 @@ PH7_PRIVATE void PH7_VmByRefArgWriteBack(ph7_vm *pVm,ph7_value *pArg,sxi32 iPreF
 	 || (pArg->iFlags & MEMOBJ_ALL) == (iPreFlags & MEMOBJ_ALL) ){
 		return;
 	}
-	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pArg->nIdx);
+	pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArg->nIdx);
 	if( pSlot && pSlot != pArg ){
 		PH7_MemObjStore(pArg,pSlot);
 	}
@@ -3415,7 +3415,7 @@ case PH7_OP_STORE: {
 				goto Exception;
 			}
 			/* Point to the desired memory object */
-			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 			if( pObj ){
 				/* Perform the store operation */
 				PH7_MemObjStore(pTos,pObj);
@@ -3593,7 +3593,7 @@ case PH7_OP_INCR:
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_BOOL)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
-			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+			if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 				if( VmStringWantsPerlIncr(pObj) ){
 					/* php 8.3 only DEPRECATES the Perl-style increment of a non-numeric
 					 * string (it points at str_increment() instead); PHL rejects it. */
@@ -3755,7 +3755,7 @@ case PH7_OP_DECR:
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
-			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+			if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 				if( VmStringWantsPerlIncr(pObj) ){
 					/* php 8.3 only DEPRECATES the no-op `--` of a non-numeric string
 					 * (php has no string decrement); PHL rejects it. */
@@ -4140,7 +4140,7 @@ case PH7_OP_ADD_STORE:{
 	if( nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary (`f()[0] += 5`): php computes it,
 		 * drops it and stays silent. See the OP_STORE member note above. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}
@@ -4371,7 +4371,7 @@ case PH7_OP_DIV_STORE:{
 	}
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
@@ -4530,7 +4530,7 @@ case PH7_OP_BXOR_STORE:{
 	}
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
@@ -4684,7 +4684,7 @@ case PH7_OP_CAT_STORE:{
 	 * and remains O(n^2) by design. */
 	if( nIdx != SXU32_HIGH
 	 && nIdx != pNos->nIdx
-	 && (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0
+	 && (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx)) != 0
 	 && !PH7_VM_STORE_FILTERED(pVm,nIdx) ){
 		/* e.g. $x = 5; $x .= "a";  ->  "5a" (user-visible: warns if $x is an array,
 		 * throws if it is a not-stringable object — and then the lvalue keeps
@@ -4741,7 +4741,7 @@ case PH7_OP_CAT_STORE:{
 	/* Perform the store operation */
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+	}else if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}

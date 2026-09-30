@@ -661,7 +661,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		if( pTos->iFlags & MEMOBJ_OBJ ){
 			pInst = (ph7_class_instance *)pTos->x.pOther;
 		}else if( nIdx != SXU32_HIGH ){
-			ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			ph7_value *pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 			if( pBacking && (pBacking->iFlags & MEMOBJ_OBJ) ){
 				pInst = (ph7_class_instance *)pBacking->x.pOther;
 			}
@@ -778,7 +778,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		 * The stack holds a temporary ref (from LOAD), so undo it before
 		 * checking true sharing count, then re-add after separation. */
 		if( nIdx != SXU32_HIGH ){
-			ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			ph7_value *pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 			if( pBacking && (pBacking->iFlags & MEMOBJ_HASHMAP) ){
 				ph7_hashmap *pCur = (ph7_hashmap *)pTos->x.pOther;
 				/* Only adjust refcount / perform COW if the backing variable
@@ -810,7 +810,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		}
 	}else{
 		ph7_value *pObj;
-		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+		pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 		if( pObj == 0 ){
 			/* No slot behind the container: this is a write THROUGH a TEMPORARY
 			 * (`f()[0] = 5`, `f()[0][1] = 5`). php still screens the base's TYPE the
@@ -1291,7 +1291,7 @@ static void VmDimRmwArm(
 	if( pIdx ){
 		PH7_MemObjStore(pIdx,pSlot);
 	}
-	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,nScratch);
+	pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nScratch);
 	if( pSlot == 0 ){
 		VmHookRmwFreeScratch(&(*pVm),nKey);
 		VmHookRmwFreeScratch(&(*pVm),nScratch);
@@ -2044,7 +2044,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					 * intermediate step never does. */
 					VmIdxFetchForWrite(pInstr,iP2) && !VM_IDX_IS_UNSET(iP2));
 				ph7_value *pElem = (nElem == SXU32_HIGH) ? 0
-					: (ph7_value *)SySetAt(&pVm->aMemObj,nElem);
+					: (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nElem);
 				if( pElem ){
 					PH7_MemObjRelease(pTos);
 					PH7_MemObjLoad(pElem,pTos);
@@ -2284,7 +2284,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			 * throws. The temporary is screened and vivified in place, on the stack —
 			 * there is nowhere to write it back to. */
 			ph7_value *pObj = (pTos->nIdx != SXU32_HIGH)
-				? (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)
+				? (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx)
 				: pTos;
 			if( pObj != 0 ){
 				/* php 8 write-context auto-vivify rules: NULL converts to array
@@ -2411,7 +2411,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			 * correct for the outermost write. */
 			int needWrite = (rc != SXRET_OK);
 			if( !needWrite && pNode ){
-				ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
 				if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
 					needWrite = 1;
 				}
@@ -2812,7 +2812,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		while( pEntry <= pTos ){
 			if( pEntry->nIdx != SXU32_HIGH /* Variable not constant */  ){
 				rc = PH7_HashmapLookup(pMap,&sKey,&pNode);
-				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
+				if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
 					int bTyped = PH7_VM_STORE_FILTERED(pVm,pEntry->nIdx);
 					if( rc != SXRET_OK ){
 						/* Undefined array key */
@@ -2912,7 +2912,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 					}
 					/* Re-fetch AFTER the read: a userland offsetGet can reserve
 					 * slots, and growing aMemObj relocates every pointer into it. */
-					pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nSlot);
+					pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nSlot);
 					if( pObj ){
 						PH7_MemObjStore(&sVal,pObj);
 					}
@@ -2947,7 +2947,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		}
 		while( pEntry <= pTos ){
 			if( pEntry->nIdx != SXU32_HIGH ){
-				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
+				if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
 					int bTyped = PH7_VM_STORE_FILTERED(pVm,pEntry->nIdx);
 					if( !bTyped ){
 						PH7_MemObjRelease(pObj);

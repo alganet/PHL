@@ -100,7 +100,7 @@ PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,
 		return;
 	}
 	pVmAttr = (VmClassAttr *)pEntry->pUserData;
-	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+	pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);
 	if( pSlot == 0 ){
 		return;
 	}
@@ -221,7 +221,7 @@ static ph7_value * NativeAttrForWrite(ph7_vm *pVm,ph7_class_instance *pObj,const
 				VmRecreateDeclaredAttr(&(*pVm),pObj,pAttr,&pVmAttr);
 				if( pVmAttr ){
 					pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
-					pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+					pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);
 				}
 			}
 		}
@@ -1306,7 +1306,7 @@ PH7_PRIVATE void PH7_NativeMaterializeLazy(ph7_vm *pVm,ph7_class_instance *pObj)
 		if( pAttr->pNativeValue == 0 ){
 			continue;
 		}
-		pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+		pSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);
 		if( pSlot ){
 			PH7_NativeLiteralValue(&(*pVm),pAttr->pNativeValue,pSlot);
 		}

@@ -3031,7 +3031,7 @@ PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,con
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal)
 {
 	if( pArg->nIdx != SXU32_HIGH ){
-		ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pArg->nIdx);
+		ph7_value *pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArg->nIdx);
 		if( pObj ){
 			PH7_MemObjStore(pNewVal,pObj);
 		}

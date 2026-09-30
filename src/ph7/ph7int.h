@@ -2998,6 +2998,65 @@ struct VmSlot
 	void *pUserData; /* Upper-layer private data */
 };
 /*
+ * The segmented memory-object table (PERF.md P1).
+ *
+ * aMemObj used to be one doubling SySet: every value pointer died on any growth,
+ * the doubling realloc moved a whole 33 MB block, and the buffer never shrank.
+ * Here the value slots live in FIXED-SIZE segments (VM_MEMPOOL_SEG_SLOTS each,
+ * one pool allocation per segment), addressed by the same flat nIdx the engine
+ * has always carried -- the split is a shift and a mask here, in the accessor,
+ * so every caller's index means what it always meant. A value's address never
+ * moves, growth appends a segment instead of copying the table, and a fully-free
+ * trailing segment is handed back on truncate.
+ *
+ * SEGMENT SIZE is a floor, not just a granularity: the first segment is
+ * allocated when the VM is, so every VM pays for one whether it holds three
+ * values or three hundred thousand. 256 slots is 16 KB, which is what the
+ * SySetAlloc(&pVm->aMemObj,0xFF) this replaced opened with -- deliberately, so
+ * that segmenting the table did not raise the per-VM floor. It matters in two
+ * places that are not this box: the -S server caches PHL_VM_CACHE_SIZE (16) VMs,
+ * so the floor is paid sixteen times, and on ESP32-S3 internal RAM dips to 32 KB
+ * free (ESP32.md), where a 256 KB opening allocation is not a cost but a failure.
+ * The price of a small segment is one direct block and one segment-table entry
+ * per 256 slots: at the phpcs peak of record (~356K slots) that is ~1,400
+ * segments, ~33 KB of allocator headers and a 2,048-entry pointer table -- under
+ * 0.04% of the peak. Override with -DPH7_VM_MEMPOOL_SEG_SHIFT=n for a target
+ * that wants a different trade; nothing but the two constants below depends on it.
+ */
+#ifndef PH7_VM_MEMPOOL_SEG_SHIFT
+#define PH7_VM_MEMPOOL_SEG_SHIFT 8
+#endif
+#define VM_MEMPOOL_SEG_SHIFT  PH7_VM_MEMPOOL_SEG_SHIFT
+#define VM_MEMPOOL_SEG_SLOTS  (1u << VM_MEMPOOL_SEG_SHIFT)
+#define VM_MEMPOOL_SEG_MASK   (VM_MEMPOOL_SEG_SLOTS - 1u)
+typedef struct VmMemPool VmMemPool;
+struct VmMemPool
+{
+	SyMemBackend *pAllocator; /* Memory backend the segments come from */
+	ph7_value   **apSeg;      /* Segment pointer table (VM_MEMPOOL_SEG_SLOTS slots each) */
+	sxu32         nSeg;       /* Segments currently allocated */
+	sxu32         nCap;       /* Capacity of apSeg */
+	sxu32         nUsed;      /* Logical slots in use -- SySetUsed(aMemObj) semantics */
+};
+/*
+ * The nIdx'th slot of the pool, or NULL when the index is past the end -- the
+ * same bounds contract SySetAt kept on the set this replaces, so a call site
+ * that leaned on NULL for "that index has not been allocated" still works.
+ * INLINE because this is the engine's hottest read: every array element,
+ * property and variable is reached through it -- which is also why the shift and
+ * the mask are the COMPILE-TIME constants and not fields of the pool. They can
+ * only ever hold these two values, and reading them out of the struct would put
+ * two loads and a variable shift on every value access to say what an immediate
+ * already says.
+ */
+SX_STATIC_INLINE ph7_value * PH7_MemObjAt(VmMemPool *pPool,sxu32 nIdx)
+{
+	if( nIdx >= pPool->nUsed ){
+		return 0;   /* Out of range */
+	}
+	return &pPool->apSeg[nIdx >> VM_MEMPOOL_SEG_SHIFT][nIdx & VM_MEMPOOL_SEG_MASK];
+}
+/*
  * Cycle-collector colours (vm_gc.c). php's, and Bacon & Rajan's before it.
  * BLACK is "in use", GREY "being trial-deleted", WHITE "counted zero",
  * PURPLE "buffered as a possible root", DEAD "proved garbage, being freed".
@@ -3414,7 +3473,7 @@ struct ph7_vm
 	SyPRNGCtx sPrng;            /* PRNG context (engine-internal, OS-seeded entropy) */
 	SyMT19937Ctx sMt;           /* MT19937 backing rand()/mt_rand(); reset by srand()/mt_srand() */
 	sxi32 mtSeeded;             /* TRUE once sMt holds a seed (lazy: first draw seeds from the OS CSPRNG, like PHP) */
-	SySet aMemObj;              /* Object allocation table */
+	VmMemPool aMemObj;          /* Object allocation table (segmented, PERF.md P1) */
 	SySet aLitObj;              /* Literals allocation table */
 	ph7_value *aOps;            /* Operand stack */
 	SySet aFreeObj;             /* Stack of free memory objects */
@@ -6452,6 +6511,9 @@ PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyStrin
 PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_vm_func *pCallee,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven);
 PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph7_vm_func *pCallee,ph7_vm_func_arg *pFormal,ph7_value *pVal,sxu32 nArgPos,int bCallIsStrict);
 PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex);
+PH7_PRIVATE sxi32 VmMemPoolInit(VmMemPool *pPool,SyMemBackend *pAllocator);
+PH7_PRIVATE ph7_value * VmMemPoolReserve(VmMemPool *pPool,sxu32 *pIndex);
+PH7_PRIVATE sxi32 VmMemPoolTruncate(VmMemPool *pPool,sxu32 nNewSize);
 /* Argument-unpacking key capture (PHP 8.1 named-parameter semantics for spreads).
  * `pMap->aNames` is COMPILE-TIME metadata indexed by compile-time argument
  * position, but a runtime spread expands its slot to a variable element count,

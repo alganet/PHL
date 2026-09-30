@@ -6130,7 +6130,7 @@ PH7_PRIVATE int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **a
 			ph7_value sKey, *pVal;
 			PH7_MemObjInit(pCtx->pVm,&sKey);
 			PH7_HashmapExtractNodeKey(pEntry,&sKey);
-			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pEntry->nValIdx);
+			pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pEntry->nValIdx);
 			if( pVal ){ ph7_array_add_elem(pArray, sCol.bPreserve ? &sKey : 0, pVal); }
 			PH7_MemObjRelease(&sKey);
 			pEntry = pEntry->pPrev;
@@ -6190,7 +6190,7 @@ static sxi32 IterApplyStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void
 		ph7_hashmap_node *pEntry = pMap->pFirst;
 		sxu32 n;
 		for( n = 0 ; n < pMap->nEntry ; n++ ){
-			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pEntry->nValIdx);
 			if( pVal ){ SySetPut(&aArg,(const void *)&pVal); }
 			pEntry = pEntry->pPrev;
 		}

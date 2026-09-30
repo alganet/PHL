@@ -119,7 +119,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 	 * otherwise dereference freed memory.
 	 */
 	if( pFrame->pParent == 0 ){
-		ph7_value *pGlobals = (ph7_value *)SySetAt(&pVm->aMemObj,pVm->nGlobalIdx);
+		ph7_value *pGlobals = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVm->nGlobalIdx);
 		if( pGlobals && (pGlobals->iFlags & MEMOBJ_HASHMAP) ){
 			ph7_hashmap_node *pNode = 0;
 			ph7_value sKey;
@@ -173,7 +173,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)
 {
 	ph7_value *pObj;
-	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);
+	pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nObjIdx);
 	if( pObj ){
 		/* Release the object */
 		PH7_MemObjRelease(pObj);
@@ -259,7 +259,7 @@ static sxi32 VmHashVarWalker(SyHashEntry *pEntry,void *pUserData)
 	}
 	/* Extract the memory object */
 	nIdx = SX_PTR_TO_INT(pEntry->pUserData);
-	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 	if( pObj ){
 		if( (pObj->iFlags & MEMOBJ_HASHMAP) == 0 || (ph7_hashmap *)pObj->x.pOther != pVm->pGlobal ){
 			if( pEntry->nKeyLen > 0 ){

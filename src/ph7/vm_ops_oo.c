@@ -1350,7 +1350,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * appending a dynamic one at the end. The seven other
 							 * presentation surfaces leave an uninitialized property out,
 							 * which is what made the delete look right. */
-							ph7_value *pUnsSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);
+							ph7_value *pUnsSlot = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pObjAttr->nIdx);
 							if( pUnsSlot ){
 								PH7_MemObjRelease(pUnsSlot);
 								MemObjSetType(pUnsSlot,MEMOBJ_NULL);
@@ -2119,7 +2119,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								if( rcCur == SXERR_NOTFOUND ){
 									/* set-only hook (or guard edge): the read side is the
 									 * raw backing store (php) */
-									ph7_value *pBack = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);
+									ph7_value *pBack = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pObjAttr->nIdx);
 									if( pBack ){
 										PH7_MemObjStore(pBack,&sCur);
 									}
@@ -2249,7 +2249,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								 * rule below belongs to a DIMENSION write, and running it
 								 * here turned `?int $t` into an ARRAY. */
 								sxi32 rcRs = VmRefUninitTypedProperty(&(*pVm),pClass,pObjAttr,
-									(ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx));
+									(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pObjAttr->nIdx));
 								if( rcRs != SXRET_OK ){
 									VmBoundaryPark(&(*pVm),rcRs);
 									PH7_ClassInstanceUnref(pThis);
@@ -2258,7 +2258,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								bIsLhs = 1;
 							}else if( VmMemberFetchForWrite(pInstr) ){
 								sxi32 rcAI = VmAutoInitArrayProperty(&(*pVm),pObjAttr,
-									(ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx));
+									(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pObjAttr->nIdx));
 								if( rcAI != SXRET_OK ){
 									VmBoundaryPark(&(*pVm),rcAI);
 									PH7_ClassInstanceUnref(pThis);
@@ -2284,7 +2284,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							}
 						}
 						/* Load attribute */
-						pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);
+						pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pObjAttr->nIdx);
 						if( pValue ){
 							if( pThis->iRef < 2 ){
 								/* Perform a store operation,rather than a load operation since
@@ -3235,7 +3235,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 													 * rule: NULL and bind when the type admits it,
 													 * php's by-reference refusal when it does not. */
 													sxi32 rcRs = VmRefUninitTypedProperty(&(*pVm),pClass,pV,
-														(ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx));
+														(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx));
 													if( rcRs != SXRET_OK ){
 														VmBoundaryPark(&(*pVm),rcRs);
 														if( pThis ){
@@ -3246,7 +3246,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 													bIsLhs = 1;
 												}else if( VmMemberFetchForWrite(pInstr) ){
 													sxi32 rcAI = VmAutoInitArrayProperty(&(*pVm),pV,
-														(ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx));
+														(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx));
 													if( rcAI != SXRET_OK ){
 														VmBoundaryPark(&(*pVm),rcAI);
 														if( pThis ){
@@ -3313,7 +3313,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 										}
 									}
 									/* Load the desired attribute */
-									pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+									pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pAttr->nIdx);
 									if( pValue ){
 										PH7_MemObjLoad(pValue,pTos);
 										if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){
