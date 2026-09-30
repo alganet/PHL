@@ -422,6 +422,187 @@ PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(
 	return pEntry;
 }
 /*
+ * The one copy of a callee name that every call site spelling it shares, made on first
+ * demand. 0 when it cannot be made, which just costs the caller its cache.
+ */
+static const char * VmCallNameIntern(ph7_vm *pVm,const SyString *pName)
+{
+	SyHashEntry *pEntry = SyHashGet(&pVm->hCallName,pName->zString,pName->nByte);
+	char *zCopy;
+	if( pEntry ){
+		return (const char *)pEntry->pKey;
+	}
+	zCopy = (char *)SyMemBackendDup(&pVm->sAllocator,pName->zString,pName->nByte);
+	if( zCopy == 0 ){
+		return 0;
+	}
+	if( SyHashInsert(&pVm->hCallName,zCopy,pName->nByte,zCopy) != SXRET_OK ){
+		SyMemBackendFree(&pVm->sAllocator,zCopy);
+		return 0;
+	}
+	return zCopy;
+}
+/*
+ * The VmCallSite record a PH7_OP_CALL site owns. bClaim says which of the two doors is
+ * asking: the RECORDING one may create the record, the ASKING one only reads it.
+ *
+ * Answers 0 whenever the site has to resolve the long way -- it has no record yet, it
+ * has been marked dead, it is asking about a name it did not ask about before (which is
+ * what marks it dead), or the bookkeeping could not be allocated.
+ */
+static VmCallSite * VmCallSiteFor(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,
+	int bEngineName,int bClaim)
+{
+	VmCallSite *pSite;
+	if( pName->nByte < 1 || pName->zString == 0 ){
+		return 0;
+	}
+	if( pInstr->nSite == 0 ){
+		/* No record yet. Claim one only on this site's SECOND execution, because a
+		 * record costs more memory than a site that runs once can ever save -- a
+		 * bootstrap, a one-shot branch, a sniff that matches nothing. pInstr->nAux is
+		 * free on a PH7_OP_CALL (OP_LOAD and OP_CALL_INIT are the only opcodes that
+		 * use it), so the site counts its own first two executions there.
+		 *
+		 * Only the ASKING door counts, and only the RECORDING door claims: both run on
+		 * one dispatch, so a shared counter would reach two before the first call has
+		 * finished and the site would pay on its first execution after all. */
+		VmCallSite sNew;
+		const char *zCopy;
+		if( !bClaim ){
+			if( pInstr->nAux < 2 ){
+				pInstr->nAux++;
+			}
+			return 0;
+		}
+		if( pInstr->nAux < 2 ){
+			return 0;
+		}
+		zCopy = VmCallNameIntern(&(*pVm),pName);
+		if( zCopy == 0 ){
+			return 0;
+		}
+		sNew.zName = zCopy;
+		sNew.nName = pName->nByte;
+		sNew.pEntry = 0;
+		sNew.nGen = 0;
+		sNew.nNextFree = 0;
+		sNew.bHost = 0;
+		sNew.bEngine = (sxu8)(bEngineName ? 1 : 0);
+		sNew.bDead = 0;
+		if( pVm->nFreeCallSite ){
+			pSite = (VmCallSite *)SySetAt(&pVm->aCallSite,pVm->nFreeCallSite - 1);
+			if( pSite ){
+				pInstr->nSite = pVm->nFreeCallSite;
+				pVm->nFreeCallSite = pSite->nNextFree;
+				*pSite = sNew;
+				return pSite;
+			}
+			pVm->nFreeCallSite = 0; /* corrupt link: give up on reuse rather than on the cache */
+		}
+		if( SySetPut(&pVm->aCallSite,(const void *)&sNew) != SXRET_OK ){
+			return 0; /* the interned name stays; another site may still want it */
+		}
+		pInstr->nSite = SySetUsed(&pVm->aCallSite); /* index + 1 */
+		return (VmCallSite *)SySetAt(&pVm->aCallSite,pInstr->nSite - 1);
+	}
+	pSite = (VmCallSite *)SySetAt(&pVm->aCallSite,pInstr->nSite - 1);
+	if( pSite == 0 || pSite->bDead ){
+		return 0;
+	}
+	if( pSite->nName != pName->nByte
+	 || pSite->bEngine != (sxu8)(bEngineName ? 1 : 0)
+	 || SyMemcmp(pSite->zName,pName->zString,pSite->nName) != 0 ){
+		/* A second name at one site: the callee is a variable (or a closure key), and
+		 * re-interning it on every call would cost more than the lookup it saves. */
+		pSite->zName = 0;
+		pSite->nName = 0;
+		pSite->pEntry = 0;
+		pSite->nGen = 0;
+		pSite->bDead = 1;
+		return 0;
+	}
+	return pSite;
+}
+/*
+ * The function-table entry this call site resolved its callee to last time, or 0 if it
+ * has to be resolved again. *pbHost says which table the answer is in.
+ */
+PH7_PRIVATE SyHashEntry * PH7_VmCallSiteAnswer(
+	ph7_vm *pVm,          /* Target VM */
+	VmInstr *pInstr,      /* The PH7_OP_CALL being dispatched */
+	const SyString *pName,/* Callee name, as this dispatch spelled it */
+	int bEngineName,      /* TRUE when the engine, not the script, spelled it */
+	int *pbHost           /* OUT: 1 when the answer lives in hHostFunction */
+	)
+{
+	VmCallSite *pSite = VmCallSiteFor(&(*pVm),pInstr,pName,bEngineName,0);
+	if( pSite == 0 || pSite->nGen != pVm->nCallableGen ){
+		return 0;
+	}
+	*pbHost = pSite->bHost;
+	return pSite->pEntry;
+}
+/*
+ * Remember what this call site's callee name resolved to, so the next execution can
+ * skip the lookups. Silently does nothing for a site that has no record to write to.
+ */
+PH7_PRIVATE void PH7_VmCallSiteRecord(
+	ph7_vm *pVm,          /* Target VM */
+	VmInstr *pInstr,      /* The PH7_OP_CALL being dispatched */
+	const SyString *pName,/* Callee name, as this dispatch spelled it */
+	int bEngineName,      /* TRUE when the engine, not the script, spelled it */
+	int bHost,            /* TRUE when pEntry lives in hHostFunction */
+	SyHashEntry *pEntry   /* The entry the name resolved to */
+	)
+{
+	VmCallSite *pSite;
+	if( pEntry == 0 ){
+		return;
+	}
+	pSite = VmCallSiteFor(&(*pVm),pInstr,pName,bEngineName,1);
+	if( pSite == 0 ){
+		return;
+	}
+	pSite->pEntry = pEntry;
+	pSite->bHost = (sxu8)(bHost ? 1 : 0);
+	pSite->nGen = pVm->nCallableGen;
+}
+/*
+ * Give back every call-site record the instructions in a bytecode container claimed.
+ * Called just before the container itself is released -- which happens exactly once, for
+ * the chunk an eval() or an include compiles -- so that a program evaluating chunks in a
+ * loop reuses the records instead of accumulating one per chunk for ever.
+ */
+PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode)
+{
+	VmInstr *aInstr = (VmInstr *)SySetBasePtr(pByteCode);
+	sxu32 n = SySetUsed(pByteCode);
+	sxu32 i;
+	if( aInstr == 0 ){
+		return;
+	}
+	for( i = 0 ; i < n ; ++i ){
+		VmCallSite *pSite;
+		sxu32 nSite = aInstr[i].nSite;
+		if( aInstr[i].iOp != PH7_OP_CALL || nSite == 0 ){
+			continue;
+		}
+		aInstr[i].nSite = 0;
+		pSite = (VmCallSite *)SySetAt(&pVm->aCallSite,nSite - 1);
+		if( pSite == 0 ){
+			continue;
+		}
+		pSite->zName = 0; /* the name itself is hCallName's, and other sites may share it */
+		pSite->nName = 0;
+		pSite->pEntry = 0;
+		pSite->nGen = 0;
+		pSite->bDead = 0;
+		pSite->nNextFree = pVm->nFreeCallSite;
+		pVm->nFreeCallSite = nSite;
+	}
+}
+/*
  * Namespace-aware function lookup.
  * Resolution order: exact name -> use imports -> current NS\name -> global fallback.
  * For functions (unlike classes), PHP falls back to global if not found in current NS.
@@ -522,6 +703,9 @@ PH7_PRIVATE sxi32 PH7_VmEmitInstr(
 	 * one OP_MEMBER it belongs to, AFTER this returns. */
 	sInstr.bRefSrc = 0;
 	sInstr.nAux = 0;
+	/* ...nor the call site's cache index: a stale one would point this site at
+	 * another site's remembered callee. */
+	sInstr.nSite = 0;
 	sInstr.nLine = 0;
 	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){
 		sInstr.nLine = pGen->pIn->nLine;
@@ -2411,6 +2595,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyZero(pVm->aSuperFirst,sizeof(pVm->aSuperFirst));
 	SyHashInit(&pVm->hPDO,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aFreeObj,&pVm->sAllocator,sizeof(VmSlot));
+	SySetInit(&pVm->aCallSite,&pVm->sAllocator,sizeof(VmCallSite));
+	SyHashInit(&pVm->hCallName,&pVm->sAllocator,0,0);
+	pVm->nFreeCallSite = 0;
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));
 	SySetInit(&pVm->aIniCli,&pVm->sAllocator,sizeof(VmIniEntry));
@@ -2451,7 +2638,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pMagicCallClass = 0;
 	SyBlobInit(&pVm->sMagicCallName,&pVm->sAllocator);
 	pVm->pIdleCallFrames = 0;
-	pVm->pIdleOperandStacks = 0;
+	SyZero(pVm->apIdleOperandStack,sizeof(pVm->apIdleOperandStack));
 	pVm->nIdleOperandStacks = 0;
 	pVm->nIdleOperandSlots = 0;
 	pVm->pIdleStackNodes = 0;
@@ -3129,14 +3316,17 @@ PH7_PRIVATE ph7_value * VmNewOperandStack(
  * bounded three ways so it can't grow without end: entry count, per-buffer size,
  * and -- the one that actually bounds the MEMORY -- a total parked-slot budget.
  *
- * The match walks the whole (capped) list rather than testing only its head.
- * Head-only was tuned for the design target — recursion, or a hot loop calling
- * one function: one size, near-total reuse — and everything else missed it. Real
- * code interleaves calls to differently-sized functions, so the head was almost
- * never the size being asked for and every call fell through to a fresh
- * allocation whose every slot had to be initialized: 11% of a phpcs run sat in
- * that init. Walking up to VM_STACK_POOL_MAX pointers to avoid initializing up
- * to VM_STACK_POOL_MAXSLOTS values is never the worse trade.
+ * Only an EXACT size is reusable, so the size picks the chain: the pool is
+ * PH7_STACK_POOL_BUCKETS separate LIFO lists indexed by `nCap & (BUCKETS-1)`, with
+ * the size still checked per node. It used to be ONE list walked end to end. That
+ * replaced a head-only match, which was tuned for the design target -- recursion, or
+ * a hot loop calling one function: one size, near-total reuse -- and which real code
+ * (a dozen differently-sized functions in turn) missed on nearly every call, falling
+ * back to a fresh buffer whose every slot had to be initialized: 11% of a phpcs run
+ * sat in that init. Walking the whole list fixed the misses and bought its own
+ * problem, because the cap that makes the reuse work is 256 buffers and a call
+ * compared itself against all of them: 2.2% of the run, nearly all of it against
+ * sizes it could never take. Keying by size keeps the hit rate and drops the walk.
  */
 typedef struct VmIdleStack VmIdleStack;
 struct VmIdleStack {
@@ -3166,15 +3356,10 @@ struct VmIdleStack {
  */
 PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)
 {
-	VmIdleStack **ppIdle = (VmIdleStack **)&pVm->pIdleOperandStacks;
 	sxu32 nCap = nSlots + VM_STACK_GUARD;
-	/* Look for a parked buffer of exactly this size ANYWHERE in the list, not just
-	 * at its head. Head-only matching was tuned for recursion -- one function, one
-	 * size, total reuse -- and a program that is not recursing never hits it: real
-	 * code calls a dozen differently-sized functions in turn, so every call missed,
-	 * allocated a fresh buffer and initialized every slot of it. The list is capped
-	 * at VM_STACK_POOL_MAX, so the walk is a handful of pointer compares against a
-	 * per-slot init of up to VM_STACK_POOL_MAXSLOTS values -- never the worse deal. */
+	/* Only this size's own chain can hold a buffer this call can take. */
+	VmIdleStack **ppIdle =
+		(VmIdleStack **)&pVm->apIdleOperandStack[nCap & (PH7_STACK_POOL_BUCKETS - 1)];
 	while( *ppIdle ){
 		VmIdleStack *pIdle = *ppIdle;
 		if( pIdle->nCap == nCap ){
@@ -3234,8 +3419,8 @@ PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCa
 	}
 	pIdle->pStack = pStack;
 	pIdle->nCap = nCap;
-	pIdle->pNext = (VmIdleStack *)pVm->pIdleOperandStacks;
-	pVm->pIdleOperandStacks = pIdle;
+	pIdle->pNext = (VmIdleStack *)pVm->apIdleOperandStack[nCap & (PH7_STACK_POOL_BUCKETS - 1)];
+	pVm->apIdleOperandStack[nCap & (PH7_STACK_POOL_BUCKETS - 1)] = pIdle;
 	pVm->nIdleOperandStacks++;
 	pVm->nIdleOperandSlots += nCap;
 }
@@ -4481,15 +4666,26 @@ PH7_PRIVATE ph7_value * VmExtractMemObj(
 	return VmExtractMemObjEx(&(*pVm),pName,bDup,bCreate,0);
 }
 /*
- * Which memo entry a name's ADDRESS maps to. The low bits of a heap pointer are
- * alignment padding and carry nothing, so two bits of the address are folded in.
+ * Which memo entry a name's ADDRESS maps to.
+ *
+ * A multiply-shift over the whole pointer, not a pair of shifted xors. Variable
+ * names are interned into the VM's pool allocator, so the addresses this is asked
+ * about are spaced by a bucket size -- 32 or 64 bytes for the short names most
+ * programs use -- and the low bits of `address >> 4` are then very nearly constant.
+ * The old spelling fed exactly those to the modulo, and it showed: 31% of every
+ * variable read on the ecosystem gate's phpcs step was a direct-mapped COLLISION in
+ * a memo that had a free entry for it. Knuth's constant mixes the high bits down and
+ * the top of the product selects the entry, so a bucket stride no longer aliases.
+ *
  * Through sxuptr and not SX_ADDR: sxptr is `long`, which is 32 bits on 64-bit
  * WINDOWS and truncates a pointer (MSVC says so, C4311). Truncation would only
  * cost a collision here -- the hit is decided by comparing the whole pointer --
- * but a /WX build does not get that far.
+ * but a /WX build does not get that far. The multiply is narrowed to sxu32 for the
+ * same reason: an sxuptr-wide multiply is 64 bits on POSIX and 32 on Windows, and
+ * the two would not pick the same entry for the same name.
  */
 #define VM_VAR_MEMO_SLOT(z) \
-	((sxu32)((((sxuptr)(z)) >> 4) ^ (((sxuptr)(z)) >> 9)) & (PH7_VAR_MEMO_SIZE - 1))
+	((((sxu32)(((sxuptr)(z)) >> 3) * 2654435761u) >> 29) & (PH7_VAR_MEMO_SIZE - 1))
 /*
  * Forget everything this frame has memoized about where its variables live. Called
  * from the doors that can move a NAME to a different slot; a door that only ever

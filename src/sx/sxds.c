@@ -146,17 +146,32 @@ PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)
 	zBase = (const char *)pSet->pBase;
 	return (void *)&zBase[nIdx * pSet->eSize];
 }
-/* Private hash entry */
+/* Private hash entry.
+ *
+ * Fifty-six bytes, which is what the memory pool's 64-byte bucket holds once its
+ * eight-byte header is in it. It used to be seventy-two -- eight of them padding
+ * around a badly ordered public prefix (fixed in SyHashEntry itself) and eight a
+ * BACKWARD collision link -- and seventy-two lands in the next bucket up, so every
+ * hash entry in the engine occupied a hundred and twenty-eight bytes to hold
+ * seventy-two. On the ecosystem gate's phpcs step 54,000 of them are live at the
+ * heap's high-water mark, which was 6.9 MB of a 76 MB peak for 3.9 MB of entries.
+ *
+ * The collision chain is singly linked as a result: an unlink walks its bucket to
+ * find the predecessor. Buckets hold SXHASH_FILL_FACTOR entries on average, so that
+ * is three pointer compares on a DELETE -- against sixty-four bytes on every entry
+ * that ever exists. The linear-traversal list (pNext/pPrev) stays doubly linked:
+ * SyHashForEachReverse and get_defined_vars() walk it backward. */
 struct SyHashEntry_Pr
 {
+	/* The public SyHashEntry prefix, in its order -- this struct is cast to it. */
 	const void *pKey; /* Hash key */
-	sxu32 nKeyLen;    /* Key length */
 	void *pUserData;  /* User private data */
+	sxu32 nKeyLen;    /* Key length */
 	/* Private fields */
 	sxu32 nHash;
 	SyHash *pHash;
 	SyHashEntry_Pr *pNext,*pPrev; /* Next and previous entry in the list */
-	SyHashEntry_Pr *pNextCollide,*pPrevCollide; /* Collision list */
+	SyHashEntry_Pr *pNextCollide; /* Collision chain, forward only (see above) */
 };
 #define INVALID_HASH(H) ((H)->apBucket == 0)
 PH7_PRIVATE sxi32 SyHashInit(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHash,ProcCmp xCmp)
@@ -249,13 +264,19 @@ PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen
 static sxi32 HashDeleteEntry(SyHash *pHash,SyHashEntry_Pr *pEntry,void **ppUserData)
 {
 	sxi32 rc;
-	if( pEntry->pPrevCollide == 0 ){
-		pHash->apBucket[pEntry->nHash & (pHash->nBucketSize - 1)] = pEntry->pNextCollide;
-	}else{
-		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;
-	}
-	if( pEntry->pNextCollide ){
-		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;
+	/* Unlink from the collision chain. It is singly linked (see SyHashEntry_Pr), so
+	 * the predecessor is found by walking the bucket -- SXHASH_FILL_FACTOR entries
+	 * long on average. An entry that is not in its own bucket is a corrupted table
+	 * and the walk simply finds nothing rather than writing through a stale link. */
+	{
+		SyHashEntry_Pr **ppSlot = &pHash->apBucket[pEntry->nHash & (pHash->nBucketSize - 1)];
+		while( *ppSlot ){
+			if( *ppSlot == pEntry ){
+				*ppSlot = pEntry->pNextCollide;
+				break;
+			}
+			ppSlot = &(*ppSlot)->pNextCollide;
+		}
 	}
 	/* Keep the tail pointer valid when the last entry is the one removed. */
 	if( pHash->pLast == pEntry ){
@@ -404,13 +425,9 @@ static sxi32 HashGrowTable(SyHash *pHash)
 	SyZero((void *)apNew,nNewSize * sizeof(SyHashEntry_Pr *));
 	/* Rehash all entries */
 	for( n = 0,pEntry = pHash->pList; n < pHash->nEntry ; n++  ){
-		pEntry->pNextCollide = pEntry->pPrevCollide = 0;
 		/* Install in the new bucket */
 		iBucket = pEntry->nHash & (nNewSize - 1);
 		pEntry->pNextCollide = apNew[iBucket];
-		if( apNew[iBucket] != 0 ){
-			apNew[iBucket]->pPrevCollide = pEntry;
-		}
 		apNew[iBucket] = pEntry;
 		/* Point to the next entry */
 		pEntry = pEntry->pNext;
@@ -426,9 +443,6 @@ static sxi32 HashInsert(SyHash *pHash,SyHashEntry_Pr *pEntry,int bTail)
 	sxu32 iBucket = pEntry->nHash & (pHash->nBucketSize - 1);
 	/* Insert the entry in its corresponding bucket */
 	pEntry->pNextCollide = pHash->apBucket[iBucket];
-	if( pHash->apBucket[iBucket] != 0 ){
-		pHash->apBucket[iBucket]->pPrevCollide = pEntry;
-	}
 	pHash->apBucket[iBucket] = pEntry;
 	/* Link to the entry list. The default is head-insert (LIFO); bTail appends
 	 * to the tail (O(1) via pLast) so iteration follows insertion order — for

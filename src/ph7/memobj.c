@@ -1642,7 +1642,7 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 	}else if( pDest->iFlags & MEMOBJ_OBJ ){
 		pObj = (ph7_class_instance *)pDest->x.pOther;
 	}
-	SyMemcpy((const void *)&(*pSrc),&(*pDest),sizeof(ph7_value)-(sizeof(ph7_vm *)+sizeof(SyBlob)+sizeof(sxu32)));
+	PH7_MEMOBJ_COPY_SCALAR(pDest,pSrc);
 	pDest->iFlags &= ~MEMOBJ_AUX;
 	rc = SXRET_OK;
 	if( SyBlobLength(&pSrc->sBlob) > 0 ){
@@ -1687,8 +1687,7 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
  */
 PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
 {
-	SyMemcpy((const void *)&(*pSrc),&(*pDest),
-		sizeof(ph7_value)-(sizeof(ph7_vm *)+sizeof(SyBlob)+sizeof(sxu32)));
+	PH7_MEMOBJ_COPY_SCALAR(pDest,pSrc);
 	/* D1 commit 2: a MEMOBJ_AUX_DEFPATH carrier OWNS its heap descriptor via x.pOther, and
 	 * PH7_MemObjRelease frees it exactly once. An aliasing Load copies iFlags+x.pOther
 	 * verbatim, so a Load-duplicated carrier would let two slots free the same descriptor.

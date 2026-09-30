@@ -260,6 +260,9 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 Cleanup:
 	/* Cleanup the mess left behind */
 	pVm->pByteContainer = pByteCode;
+	/* Hand back the call-site cache records this chunk's OP_CALLs claimed, BEFORE the
+	 * instructions holding their indices disappear. */
+	PH7_VmCallSiteReleaseChunk(pVm,&aByteCode);
 	SySetRelease(&aByteCode);
 	/* Restore the outer compile's generator state if this was a nested unit. */
 	if( bNested ){

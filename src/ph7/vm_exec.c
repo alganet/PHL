@@ -6278,6 +6278,10 @@ case PH7_OP_CALL: {
 	VmCallArgMap sEffMap;
 	VmCallArgMap *pEffCallMap = (VmCallArgMap *)pInstr->p3;
 	SyHashEntry *pEntry;
+	/* What this call SITE remembered about its callee, consulted once and used by
+	 * whichever of the two dispatch branches the answer belongs to. */
+	SyHashEntry *pSiteEntry = 0;
+	int bSiteHost = 0;
 	SyString sName;
 	/* The host-call trio, hoisted out of the foreign-function branch below so the
 	 * NativeCall label there can also be reached from the compiled-function branch:
@@ -6634,6 +6638,17 @@ case PH7_OP_CALL: {
 		sName.zString++;
 		sName.nByte--;
 	}
+	/* Ask this call SITE what its callee name meant last time. Resolving it costs up
+	 * to four case-insensitive hash lookups -- the user table under the qualified name
+	 * and then the global one, then the same pair of the host table -- and on a phpcs
+	 * run that was 9.2% of everything the engine did. The site's answer is stamped with
+	 * pVm->nCallableGen, so declaring anything retires all of them at once; see
+	 * VmCallSite. */
+	pSiteEntry = PH7_VmCallSiteAnswer(pVm,pInstr,&sName,bEngineCallee,&bSiteHost);
+	if( pSiteEntry ){
+		pEntry = bSiteHost ? 0 : pSiteEntry;
+	}else
+	{
 	/* Check for a compiled function first.
 	 * Static names are already namespace-qualified by the compiler.
 	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
@@ -6667,6 +6682,10 @@ case PH7_OP_CALL: {
 		}
 	}
 	} /* end VmCallArgMap namespace scope */
+	/* A user-table hit is the whole answer; a MISS is not (the host branch below
+	 * resolves the rest), so only the hit is recorded here. */
+	PH7_VmCallSiteRecord(pVm,pInstr,&sName,bEngineCallee,0,pEntry);
+	} /* end call-site cache miss */
 	if( pEntry ){
 		ph7_vm_func_arg *aFormalArg;
 		ph7_class_instance *pThis;
@@ -8199,6 +8218,11 @@ SkipFuncBody:
 		 * If the compiler namespace-qualified the name, extract the short
 		 * name (last component after \) and try that. This implements PHP's
 		 * global fallback for unqualified function calls in namespaces. */
+		if( pSiteEntry && bSiteHost ){
+			/* The site already knows which host entry this name means (see the
+			 * VmCallSite consult above the user-table lookup). */
+			pEntry = pSiteEntry;
+		}else{
 		pEntry = SyHashGet(&pVm->hHostFunction,(const void *)sName.zString,sName.nByte);
 		{
 		VmCallArgMap *pCallMap2 = pEffCallMap;
@@ -8217,6 +8241,10 @@ SkipFuncBody:
 			}
 		}
 		} /* end VmCallArgMap namespace scope */
+		/* Every builtin call in a namespaced file lands here, having missed the user
+		 * table twice on the way -- this is the answer worth remembering. */
+		PH7_VmCallSiteRecord(pVm,pInstr,&sName,bEngineCallee,1,pEntry);
+		}
 		if( pEntry == 0 ){
 			/* php accepts the "Class::method" STATIC-callable string everywhere a
 			 * callable goes ($f = "C::s"; $f(), call_user_func, array_map, …).

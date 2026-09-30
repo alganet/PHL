@@ -96,6 +96,60 @@ struct ph7_value
 	ph7_vm *pVm;        /* Virtual machine that own this instance */
 	SyBlob sBlob;       /* String values */
 };
+/*
+ * Copy the SCALAR half of a value -- rVal, x and iFlags, the three leading fields --
+ * leaving nIdx, pVm and sBlob as the destination already had them. That is what every
+ * value copy in the engine starts with (PH7_MemObjLoad and PH7_MemObjStore both do it,
+ * and between them they run on nearly every instruction).
+ *
+ * Written out field by field rather than as one SyMemcpy of `sizeof(ph7_value) -
+ * (sizeof(ph7_vm*) + sizeof(SyBlob) + sizeof(sxu32))`, which is what it used to be. That
+ * spelling was exact -- the three fields ARE the first twenty bytes -- but it went out
+ * of line into SyMemcpy and from there into the C library's `memcpy`, whose
+ * AVX-with-ERMS entry sequence costs far more than the twenty bytes it moves: a phpcs
+ * profile put `__memcpy_avx_unaligned_erms` at 6.7% of the run with two thirds of it
+ * arriving from these two callers. Three assignments compile to three loads and three
+ * stores with no call at all, and they say what is copied instead of computing it from
+ * the size of what is not.
+ */
+#define PH7_MEMOBJ_COPY_SCALAR(pDst,pSrc) \
+	do{ (pDst)->rVal = (pSrc)->rVal; (pDst)->x = (pSrc)->x; (pDst)->iFlags = (pSrc)->iFlags; }while(0)
+/*
+ * What one PH7_OP_CALL site last learned about its own callee.
+ *
+ * Resolving a call's NAME is the single most expensive thing the dispatch loop does:
+ * php's order is the user function table first and the host table second, and a call
+ * written inside a namespace is spelled QUALIFIED by the compiler, so an ordinary
+ * `count($a)` in a namespaced file asks four case-insensitive hash questions --
+ * `Ns\count` and `count` of hFunction, then the same pair of hHostFunction -- before
+ * anything runs. Measured on the ecosystem gate's phpcs step that was 9.2% of the whole
+ * run, and it is the same four answers every time the site executes.
+ *
+ * So each site remembers them. The record is keyed by the callee name it answers for
+ * (the interned copy in ph7_vm::hCallName, compared byte for byte -- NOT by the name's
+ * ADDRESS, which a freed and reused heap block could repeat) and stamped with the
+ * pVm->nCallableGen it was resolved at, so declaring anything retires every site at
+ * once, and a stale pEntry is never even read. A site whose callee is a VARIABLE would
+ * thrash this, so the name is recorded ONCE: a site that later asks about a different
+ * name is marked dead and resolves the long way for ever after.
+ *
+ * What is cached is the table ENTRY, never the ph7_vm_func behind it: installing an
+ * overload re-points an existing entry's pUserData without touching the entry, and
+ * without bumping the generation.
+ */
+typedef struct VmCallSite VmCallSite;
+struct VmCallSite
+{
+	const char *zName;   /* the callee name this record answers for (interned in hCallName,
+	                      * which owns it -- a record never frees it) */
+	SyHashEntry *pEntry; /* the entry it resolved to */
+	sxu32 nName;         /* zName length */
+	sxu32 nGen;          /* pVm->nCallableGen it was resolved at (0 = not resolved yet) */
+	sxu32 nNextFree;     /* free-list link (index + 1) while this record is unclaimed */
+	sxu8 bHost;          /* 1 = pEntry is in hHostFunction, 0 = in hFunction */
+	sxu8 bEngine;        /* the bEngineCallee the answer was resolved under */
+	sxu8 bDead;          /* 1 = this site has seen more than one name; never cache it */
+};
 /* The pending offset of a `$s[k] ??= v`, owned by its MEMOBJ_AUX_COALSTROFF peek result.
  * Carries its own allocator so PH7_MemObjRelease can free it without a VM pointer, exactly
  * like VmDeferredPath. */
@@ -1037,6 +1091,11 @@ typedef struct VmFrame VmFrame;
  * which is what the frame's pool bucket has spare -- raising it reallocates every
  * frame out of the 512-byte bucket into the 1024-byte one. */
 #define PH7_VAR_MEMO_SIZE 8
+/* Chains in ph7_vm::apIdleOperandStack. A parked operand stack is reusable only by a
+ * call of EXACTLY its slot count, so the count picks the chain: `nCap & (N-1)`, with
+ * the exact size still checked on each node (sizes sharing the low bits share a
+ * chain). Sixty-four heads over a pool capped at 256 buffers is ~4 compares. */
+#define PH7_STACK_POOL_BUCKETS 64
 struct VmFrame
 {
 	VmFrame *pParent; /* Parent frame or NULL if global scope */
@@ -2746,6 +2805,11 @@ struct VmInstr
 	sxu32 nLine; /* Source line this instruction was compiled from (0 = unknown).
 	              * Stamped by PH7_VmEmitInstr from the codegen's current token, so
 	              * every one of its ~150 call sites keeps its signature. */
+	sxu32 nSite; /* PH7_OP_CALL only: this call site's entry in pVm->aCallSite, plus one
+	              * (0 = it has never asked for one). The site remembers which function
+	              * table entry its callee NAME resolved to, so a call that has run once
+	              * does not hash that name again -- see VmCallSite. Lives in the trailing
+	              * padding after nLine, so VmInstr is still 32 bytes. */
 };
 /*
  * Named-argument metadata attached to PH7_OP_CALL instructions via p3.
@@ -3664,15 +3728,20 @@ struct ph7_vm
 	                            * them skips a pool alloc/free round-trip per PHP
 	                            * call (the measured trampoline overhead). Backing
 	                            * memory is allocator-owned; freed wholesale. */
-	void *pIdleOperandStacks;  /* Freelist of recycled operand-stack buffers (BYTECODE
-	                            * stage 7): a returning PHP call recycles its (tight-sized)
-	                            * operand stack here instead of freeing it, so a same-size
-	                            * call reuses it — skipping the buffer alloc AND the per-slot
-	                            * init. Exact-size match anywhere in the list, bounded by an
-	                            * entry count AND a total-slot budget; buffers are plain
-	                            * allocator blocks so cold/suspend/abort paths can still
-	                            * raw-free them. */
-	int nIdleOperandStacks;    /* Length of pIdleOperandStacks (cap: VM_STACK_POOL_MAX) */
+	/* Freelists of recycled operand-stack buffers (BYTECODE stage 7): a returning PHP
+	 * call recycles its (tight-sized) operand stack here instead of freeing it, so a
+	 * same-size call reuses it -- skipping the buffer alloc AND the per-slot init.
+	 * Bounded by an entry count AND a total-slot budget; buffers are plain allocator
+	 * blocks so cold/suspend/abort paths can still raw-free them.
+	 *
+	 * KEYED BY SIZE, because only an EXACT size is reusable. One list held every
+	 * parked buffer and every call walked it looking for its own size: with the cap
+	 * at 256 buffers that walk was 2.2% of a phpcs run, spent almost entirely on
+	 * sizes the caller was never going to take. The size picks the chain now, so a
+	 * call compares against the handful of buffers whose size ends in the same six
+	 * bits instead of against all of them. */
+	void *apIdleOperandStack[PH7_STACK_POOL_BUCKETS];
+	int nIdleOperandStacks;    /* Buffers parked across every chain (cap: VM_STACK_POOL_MAX) */
 	sxu32 nIdleOperandSlots;   /* Slots parked across those buffers. The pool's real cost is
 	                            * memory, not entries, so this -- not the entry count alone --
 	                            * is what bounds it (VM_STACK_POOL_SLOTS). */
@@ -3761,6 +3830,23 @@ struct ph7_vm
 	SySet aSelf;               /* 'self' stack used for static member access [i.e: self::MyConstant] */
 	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
+	SySet aCallSite;           /* VmCallSite -- one per PH7_OP_CALL site that has run, holding
+	                            * the function-table entry its callee name resolved to. Indexed
+	                            * by VmInstr.nSite - 1, and claimed only by a site that actually
+	                            * executes. */
+	SyHash hCallName;          /* The callee names aCallSite records point at, interned. 43,375
+	                            * call sites execute on the ecosystem gate's phpcs step and they
+	                            * spell only a few thousand distinct names between them, so a
+	                            * copy per SITE was 2.8 MB where a copy per NAME is a fifth of
+	                            * one -- and the shared copy is the one already in cache when
+	                            * the next site checks its own record. Keyed by the name BYTES
+	                            * (case-sensitively: a site spells its callee the same way every
+	                            * time), and the entry's key IS the interned copy. */
+	sxu32 nFreeCallSite;       /* Head of aCallSite's free list (index + 1, 0 = empty). An
+	                            * eval()/include compiles into a bytecode container that is
+	                            * RELEASED when the chunk finishes, so the records its call
+	                            * sites claimed go back here -- without it, `while(1) eval(...)`
+	                            * would grow aCallSite for ever. */
 	sxu32 nCallableGen;        /* Bumped whenever the set of things a NAME can call changes --
 	                            * a function, a class or a host function installed or removed.
 	                            * PH7_OP_CALL_INIT stamps a call site it has screened with the
@@ -4762,6 +4848,9 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(ph7_vm *pVm,ph7_vm_func *pFunc,const char 
 	sxi32 iFlags,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(ph7_vm *pVm,ph7_vm_func *pFunc,SyString *pName);
 PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(ph7_vm *pVm,const void *pName,sxu32 nByte,int bEngineName);
+PH7_PRIVATE SyHashEntry * PH7_VmCallSiteAnswer(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int *pbHost);
+PH7_PRIVATE void PH7_VmCallSiteRecord(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int bHost,SyHashEntry *pEntry);
+PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode);
 PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(ph7_vm *pVm,ph7_class_instance *pObj);
 PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName,VmClassAttr **ppAttr);
 PH7_PRIVATE sxi32 PH7_VmRefObjRemove(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry,ph7_hashmap_node *pMapEntry);
