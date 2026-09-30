@@ -3300,10 +3300,18 @@ struct ph7_vm
 	                             * with the resume target. Used only by Generator::throw() inject-at-yield
 	                             * to drain abandoned mid-expression operands before landing at iResumePc. */
 	/* ROOT C inline redirect: set by VmThrowException when a throw is caught by an INLINE
-	 * try (generator body). The throw site checks pInlineInstr==aInstr, drains the operand
-	 * stack to iInlineDrain, and jumps to iInlinePc; a mismatch means an outer exec owns it,
-	 * so the throw propagates. Separate from the ROOT B fields above (legacy path). */
+	 * try (generator body). The throw site checks the pair (pInlineInstr, pInlineFrame)
+	 * against its own (aInstr, pEntryFrame), drains the operand stack to iInlineDrain, and
+	 * jumps to iInlinePc; a mismatch means another activation owns it, so the throw
+	 * propagates. The bytecode array alone is NOT identity: two live activations of the
+	 * same function share it, so a generator whose sibling activation owned the try
+	 * consumed the redirect and ran that try's finally against its OWN variables (twig's
+	 * `Template::yieldBlock`, whose recursive delegation runs three activations of one
+	 * method at once, read an unset `$level` there). The frame pins the activation, the
+	 * same pairing VmRecordedResume and OP_LOAD_EXCEPTION's activation match already use.
+	 * Separate from the ROOT B fields above (legacy path). */
 	void *pInlineInstr;         /* Owner bytecode array of the catching inline try (0 = none) */
+	void *pInlineFrame;         /* Body frame that owns that try (the activation's identity) */
 	sxu32 iInlinePc;            /* 0-based target pc (iHandlerPc or iFinallyPc) */
 	sxi32 iInlineDrain;         /* Operand-stack base to drain to before landing (0-based TOS idx) */
 	SySet aMagicGuard;          /* In-flight magic-accessor guard (php's property guard):
@@ -6017,6 +6025,17 @@ typedef enum VmOpRc {
 	VM_OP_EXCEPTION   /* -> the loop's Exception label */
 } VmOpRc;
 PH7_PRIVATE int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,VmInstr *aInstr);
+/*
+ * Does the pending ROOT C inline redirect belong to the activation running
+ * (aInstrArg, pEntryArg)? Both halves are needed: the bytecode array alone is
+ * shared by every live activation of one function (see pInlineFrame). A redirect
+ * whose owning frame was invalidated (VmDrainFinally retires a handler by zeroing
+ * it) names no activation, so it falls back to the bytecode array alone — losing
+ * the catch entirely would be worse than landing it one activation over.
+ */
+#define VmInlineOwnedBy(pVm,aInstrArg,pEntryArg) \
+	((pVm)->pInlineInstr == (void *)(aInstrArg) \
+	 && ((pVm)->pInlineFrame == 0 || (pVm)->pInlineFrame == (void *)(pEntryArg)))
 PH7_PRIVATE void VmPopOperand(ph7_value **ppTos, sxi32 nPop);
 PH7_PRIVATE void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *pStep);
 PH7_PRIVATE int VmHookGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName);

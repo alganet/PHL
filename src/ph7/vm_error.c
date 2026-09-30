@@ -5796,6 +5796,7 @@ static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 		if( pThis ){ pThis->iRef++; }
 		pException->pInflight = pThis;
 		pVm->pInlineInstr = pException->pOwnerInstr;
+		pVm->pInlineFrame = (void *)pException->pFrame;
 		pVm->iInlinePc = pCatch->iHandlerPc;
 		pVm->iInlineDrain = pException->iStackDepth;
 		return SXRET_OK;
@@ -5808,6 +5809,7 @@ static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 		sAct.pExc = pThis;
 		SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
 		pVm->pInlineInstr = pException->pOwnerInstr;
+		pVm->pInlineFrame = (void *)pException->pFrame;
 		pVm->iInlinePc = pException->iFinallyPc;
 		pVm->iInlineDrain = pException->iStackDepth;
 		VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */

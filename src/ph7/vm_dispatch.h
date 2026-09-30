@@ -31,10 +31,11 @@
  * propagate. Must be used inside a case of the main switch (uses break/pc/pTos).
  */
 #define PH7_INLINE_RESUME_BREAK() \
-	if( pVm->pInlineInstr == (void *)aInstr ){ \
+	if( VmInlineOwnedBy(pVm,aInstr,sState.pEntryFrame) ){ \
 		while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){ PH7_MemObjRelease(pTos); pTos--; } \
 		pc = (sxi32)pVm->iInlinePc - 1; \
 		pVm->pInlineInstr = 0; \
+		pVm->pInlineFrame = 0; \
 		pVm->nBoundaryRc = 0; /* redirect consumed: drop any parked copy of this throw */ \
 		VM_EXIT_BREAK; \
 	}
@@ -148,7 +149,8 @@
  * drift; a missed edit here would silently re-swallow exceptions.
  */
 #define VmIterCallThrew(rcVar) \
-	((rcVar) == PH7_ABORT || (rcVar) == PH7_EXCEPTION || pVm->pInlineInstr == (void *)aInstr)
+	((rcVar) == PH7_ABORT || (rcVar) == PH7_EXCEPTION \
+	 || VmInlineOwnedBy(pVm,aInstr,sState.pEntryFrame))
 /*
  * Typed-property enforcement helper for compound stores. Called before
  * PH7_MemObjStore writes into a member memobj slot. On failure throws a

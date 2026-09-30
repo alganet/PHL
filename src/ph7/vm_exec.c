@@ -272,7 +272,7 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 		 * return (ROOT B, face c). */
 		sxi32 iResumePc;
 		VmFrame *pParentFrame = pCallee->pFrame->pParent;
-		if( !pCaller->is_callback && pVm->pInlineInstr == (void *)pCaller->aInstr ){
+		if( !pCaller->is_callback && VmInlineOwnedBy(pVm,pCaller->aInstr,pCaller->pEntryFrame) ){
 			/* ROOT C: the callee's throw was caught by an inline try in THIS caller
 			 * (generator body). Drain the operand stack (incl. the unwritten result
 			 * slot) to the try's base and land at its catch/finally. */
@@ -282,6 +282,7 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 			}
 			pCaller->pc = (sxi32)pVm->iInlinePc - 1;
 			pVm->pInlineInstr = 0;
+			pVm->pInlineFrame = 0;
 			rc = PH7_OK;
 		}else if( !pCaller->is_callback && VmRecordedResume(pVm,&iResumePc,pCaller->pEntryFrame,pCaller->aInstr) ){
 			/* Pop the result, then drain any abandoned outer-expression operands
@@ -321,7 +322,36 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 		 * the allocated slot count either way. */
 		VmOperandStackRecycle(pVm,pCallee->pFrameStack,pCallee->nStackCap);
 	}
-	/* Leave the frame */
+	/* Leave the frame. A throw that left this callee through a try it had OPEN
+	 * never reached that try's OP_POP_EXCEPTION, so the try's transparent wrapper
+	 * frames are still stacked ON TOP of the callee's own frame — the shape
+	 * `function f(){ try { g(); } catch (NoMatch $e) {} }` leaves behind for every
+	 * throw g() raises. Popping once here then tore the WRAPPER down and left the
+	 * callee's real frame on the chain for good: its locals were never released,
+	 * every frame above it was attributed to the wrong activation, and a generator
+	 * body that ended this way failed VmFinishCtxRun's identity test — so its ctx
+	 * frame was freed while the leftover still pointed at it, and the next frame
+	 * the pool handed out at that address closed pParent into a CYCLE that hung
+	 * every later walk of the chain. Drop the wrappers first, exactly as the
+	 * coroutine suspend/finish paths do (VmFreeSuspendedExceptionFrames): they are
+	 * transient, and OP_LOAD_EXCEPTION builds a fresh one when the try is next
+	 * entered. */
+	{
+		VmFrame *pW;
+		/* Only when every frame between the top and the callee's own is such a
+		 * wrapper: anything else means this callee's frame is already gone and the
+		 * chain above belongs to somebody else — leave it alone. */
+		for( pW = pVm->pFrame ; pW && pW != pCallee->pFrame ; pW = pW->pParent ){
+			if( (pW->iFlags & VM_FRAME_EXCEPTION) == 0 ){
+				break;
+			}
+		}
+		if( pW == pCallee->pFrame ){
+			while( pVm->pFrame != pCallee->pFrame ){
+				VmLeaveFrame(&(*pVm));
+			}
+		}
+	}
 	VmLeaveFrame(&(*pVm));
 	if( rc == PH7_ABORT ){
 		return PH7_ABORT;
@@ -2022,7 +2052,7 @@ static sxi32 VmByteCodeExecBody(
 		if( rc == SXERR_ABORT ){
 			goto Abort;
 		}
-		if( pVm->pInlineInstr == (void *)aInstr ){
+		if( VmInlineOwnedBy(pVm,aInstr,sState.pEntryFrame) ){
 			/* ROOT C: the inject was caught by an inline try in THIS generator. Drain the
 			 * abandoned mid-expression operands and land at the catch/finally body. This is
 			 * the pre-loop path (the first fetch uses pc directly), so no -1 adjustment. */
@@ -2032,6 +2062,7 @@ static sxi32 VmByteCodeExecBody(
 			}
 			pc = (sxi32)pVm->iInlinePc;
 			pVm->pInlineInstr = 0;
+			pVm->pInlineFrame = 0;
 		}else if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 			/* Caught by THIS generator's own try. (VmRecordedResume returns FALSE unless a
 			 * catch recorded a resume target for this exec, so rc need not be pre-checked;
@@ -2103,7 +2134,7 @@ VmLoopFetch:
 				if( rcBr == PH7_ABORT ){
 					goto Abort;
 				}
-				if( pVm->pInlineInstr == (void *)aInstr ){
+				if( VmInlineOwnedBy(pVm,aInstr,sState.pEntryFrame) ){
 					/* Caught by an inline try (generator body) THIS exec owns: drain
 					 * and land (pre-fetch path: pc is used directly, no trailing ++). */
 					while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){
@@ -2112,6 +2143,7 @@ VmLoopFetch:
 					}
 					pc = (sxi32)pVm->iInlinePc;
 					pVm->pInlineInstr = 0;
+					pVm->pInlineFrame = 0;
 				}else{
 					sxi32 iBrPc;
 					if( VmRecordedResume(pVm,&iBrPc,sState.pEntryFrame,aInstr) ){
@@ -8377,7 +8409,7 @@ NativeCallDone:
 			PH7_MemObjRelease(&sRet);
 			goto Abort;
 		}
-		if( rc != PH7_SUSPEND && pVm->pInlineInstr == (void *)aInstr ){
+		if( rc != PH7_SUSPEND && VmInlineOwnedBy(pVm,aInstr,sState.pEntryFrame) ){
 			/* A throw raised inside this host function — directly
 			 * (PH7_VmThrowException) or by a PHP callback it invoked — was
 			 * caught by an INLINE try (generator body) THIS exec owns.
