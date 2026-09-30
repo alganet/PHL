@@ -48,7 +48,13 @@ static int VmExtAvailable(int iExt)
 	}
 #endif
 #ifdef PH7_DISABLE_BUILTIN_FUNC
-	if( iExt == PH7_EXT_ZIP || iExt == PH7_EXT_PCNTL ){
+	if( iExt == PH7_EXT_ZIP || iExt == PH7_EXT_PCNTL || iExt == PH7_EXT_SOCKETS ){
+		return 0;
+	}
+#endif
+#ifndef PH7_ENABLE_NET
+	/* ext/sockets IS the descriptor layer net.c compiles to nothing without. */
+	if( iExt == PH7_EXT_SOCKETS ){
 		return 0;
 	}
 #endif

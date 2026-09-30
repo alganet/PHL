@@ -54,6 +54,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/builtin_pcntl$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_posix$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_scanf$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/builtin_sockets$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_string$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_syslog$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_zlib$(OBJ_SUFFIX) \

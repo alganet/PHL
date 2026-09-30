@@ -185,6 +185,11 @@ struct sock_private
 	int iLastErr; /* the OS code a failed send left, for php's own notice */
 	int bGeneric; /* a socketpair: no transport, and php labels it apart */
 	int bDgram;   /* udp://: a DATAGRAM socket, which php names apart again */
+	const char *zLabel; /* an explicit `stream_type`, or 0 to derive it from the two
+	                     * flags above. socket_export_stream() states one: php picks
+	                     * the ops from the DOMAIN as well as the type there, so an
+	                     * AF_UNIX datagram socket reports `udg_socket`, a label no
+	                     * URI this device stack opens can produce. Static storage. */
 };
 #endif
 /*
@@ -4263,7 +4268,10 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 		 * one its handle got: a socket with no transport under it (a pair) is
 		 * `generic_socket` and a DATAGRAM one `udp_socket`. */
 #ifdef PH7_ENABLE_NET
-		if( pDev->pHandle && ((sock_private *)pDev->pHandle)->bGeneric ){
+		if( pDev->pHandle && ((sock_private *)pDev->pHandle)->zLabel ){
+			/* ext/sockets stated it outright (socket_export_stream). */
+			*pzStream = ((sock_private *)pDev->pHandle)->zLabel;
+		}else if( pDev->pHandle && ((sock_private *)pDev->pHandle)->bGeneric ){
 			*pzStream = "generic_socket";
 		}else if( pDev->pHandle && ((sock_private *)pDev->pHandle)->bDgram ){
 			*pzStream = "udp_socket";
@@ -5402,6 +5410,8 @@ static io_private * SockWrapSocket(ph7_context *pCtx,ph7_socket sock,int bDgram,
 	pSock->iLastErr = 0;
 	pSock->bGeneric = 0;
 	pSock->bDgram = bDgram;
+	/* Derived from the two flags above unless ext/sockets states one. */
+	pSock->zLabel = 0;
 	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
 	/* php's feof() answers TRUE for a stream whose socket was never created. */
 	pDev->bEof = (sxu8)(sock == PH7_NET_INVALID_SOCKET ? 1 : 0);
@@ -8065,6 +8075,54 @@ static ph7_socket * IoPrivateSocket(io_private *pDev)
 	SXUNUSED(pDev); /* cc warning when NET is off */
 	return 0;
 }
+#ifdef PH7_ENABLE_NET
+/*
+ * ext/sockets' two doors onto this device stack, and the close that goes with
+ * them. php ties a Socket and an exported stream together in BOTH directions --
+ * `socket_export_stream()` twice answers the same handle, and `socket_close()`
+ * on an exported socket leaves the stream closed too -- so the extension needs
+ * the descriptor behind a stream, a stream around a descriptor, and a close
+ * that runs the device's own teardown rather than the raw closesocket().
+ */
+PH7_PRIVATE int PH7_StreamSocketHandle(io_private *pDev,ph7_socket *pOut)
+{
+	ph7_socket *pSock;
+	if( pDev == 0 || IO_PRIVATE_INVALID(pDev) ){
+		return 0;
+	}
+	pSock = IoPrivateSocket(PH7_StreamUnwrap(pDev));
+	if( pSock == 0 || *pSock == PH7_NET_INVALID_SOCKET ){
+		return 0;
+	}
+	*pOut = *pSock;
+	return 1;
+}
+PH7_PRIVATE io_private * PH7_StreamWrapSocket(ph7_context *pCtx,ph7_socket sock,int bDgram,
+	const char *zLabel,const char *zUri)
+{
+	io_private *pDev = SockWrapSocket(pCtx,sock,bDgram,zUri,
+		zUri ? (int)SyStrlen(zUri) : 0);
+	if( pDev ){
+		((sock_private *)pDev->pHandle)->zLabel = zLabel;
+	}
+	return pDev;
+}
+/*
+ * The close socket_close() runs on a socket it had exported: the device's own
+ * teardown (which closes the descriptor) followed by the same closed-marking
+ * fclose() does, so every ph7_value still naming the handle reports it shut
+ * rather than reading a freed device.
+ */
+PH7_PRIVATE void PH7_StreamCloseExported(io_private *pDev)
+{
+	if( pDev == 0 || IO_PRIVATE_INVALID(pDev) || pDev->pStream == 0 ){
+		return;
+	}
+	PH7_StreamFilterReleaseChains(pDev);
+	PH7_StreamCloseHandle(pDev->pStream,pDev->pHandle);
+	MarkIOPrivateClosed(pDev);
+}
+#endif /* PH7_ENABLE_NET */
 /*
  * bool stream_set_blocking(resource $stream, bool $enable)
  *

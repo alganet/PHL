@@ -2675,6 +2675,19 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* ext/curl: the libcurl binding. */
 	PH7_VmInstallCurl(&(*pVm));
 #endif
+#if defined(PH7_ENABLE_NET) && !defined(PH7_DISABLE_BUILTIN_FUNC)
+	/* ext/sockets: the Socket/AddressInfo handle classes and php's BSD socket
+	 * API over the descriptors net.c already drives for the stream wrappers. */
+	{
+		const ph7_builtin_func *aSock;
+		sxu32 nSock = 0,n;
+		PH7_VmInstallSockets(&(*pVm));
+		aSock = PH7_SocketsFuncTable(&nSock);
+		for( n = 0 ; n < nSock ; ++n ){
+			ph7_create_function(&(*pVm),aSock[n].zName,aSock[n].xFunc,pVm);
+		}
+	}
+#endif
 #ifdef PH7_ENABLE_OPENSSL
 	/* ext/openssl: the three opaque handle classes and the extension's own
 	 * functions, in two units -- the library-wide/cipher half and the
@@ -3226,6 +3239,12 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	PH7_RegisterPcntlConstants(&(*pVm));
 	/* Register the LOG_* constants ext/standard's syslog trio reads */
 	PH7_RegisterSyslogConstants(&(*pVm));
+#if defined(PH7_ENABLE_NET) && !defined(PH7_DISABLE_BUILTIN_FUNC)
+	/* Register ext/sockets' AF_, SOCK_, SO_ and SOCKET_E family. php builds this
+	 * extension on every platform, so unlike pcntl's these are not #ifdef'd
+	 * away on Windows -- only the names that platform has no macro for are. */
+	PH7_RegisterSocketsConstants(&(*pVm));
+#endif
 	/* Register built-in functions [i.e: is_null(), array_diff(), strlen(), etc.] */
 	PH7_RegisterBuiltInFunction(&(*pVm));
 	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */
@@ -3731,6 +3750,11 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * and a connection cache of their own. */
 	PH7_CurlVmReset(&(*pVm));
 #endif
+#if defined(PH7_ENABLE_NET) && !defined(PH7_DISABLE_BUILTIN_FUNC)
+	/* And every ext/sockets descriptor: a reused VM must not leave the previous
+	 * request's listener bound to its port. */
+	PH7_SocketsVmReset(&(*pVm));
+#endif
 #ifdef PH7_ENABLE_ZLIB
 	/* And its deflate/inflate contexts: a z_stream's window is libz's own
 	 * allocation, which the wholesale release below would not reach. */
@@ -3793,6 +3817,10 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 #ifdef PH7_ENABLE_CURL
 	/* Same rule for the libcurl handles behind still-open CurlHandle objects. */
 	PH7_CurlVmRelease(pVm);
+#endif
+#if defined(PH7_ENABLE_NET) && !defined(PH7_DISABLE_BUILTIN_FUNC)
+	/* Same rule for the descriptors behind still-open Socket objects. */
+	PH7_SocketsVmRelease(pVm);
 #endif
 #ifdef PH7_ENABLE_ZLIB
 	/* Same rule for the z_streams behind still-open Deflate/InflateContexts. */

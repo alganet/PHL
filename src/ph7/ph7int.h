@@ -3745,6 +3745,16 @@ struct ph7_vm
 	                            * or a `zip://` open is holding, freed on reset/release */
 	SyBlob sPharRunning;       /* The archive the running script came from, as Phar::running()
 	                            * answers it: set by Phar::mapPhar(), empty outside one. */
+#ifdef PH7_ENABLE_NET
+	void *pSockets;            /* phl_socket registry chain (ext/sockets); freed on reset/release
+	                            * -- a DESCRIPTOR is not the allocator's, so the wholesale
+	                            * release would leak the file handle and its port */
+	void *pAddrInfos;          /* phl_addrinfo registry chain (ext/sockets), same rule: each
+	                            * record holds a copied ai_canonname of its own */
+	int iSocketLastErr;        /* php's SOCKETS_G(last_error): the per-REQUEST errno
+	                            * socket_last_error() answers with no argument, beside the
+	                            * per-socket one every record carries */
+#endif
 	SyBlob sPharErr;           /* The phar wrapper's open-failure sentence. It has to outlive the
 	                            * xOpen that formatted it -- the engine keeps the POINTER and the
 	                            * caller prints it after the open returned -- so it cannot be a
@@ -4932,6 +4942,23 @@ PH7_PRIVATE void PH7_NetSetRwTimeout(ph7_socket sock,ph7_int64 iSeconds,ph7_int6
 PH7_PRIVATE void PH7_NetSetBlocking(ph7_socket sock,int bBlocking);
 PH7_PRIVATE void PH7_NetAddrToString(const struct sockaddr *pAddr,char *zBuf,int nBufLen);
 PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr);
+/* ext/sockets (builtin_sockets.c): php's BSD socket API, which is the other
+ * face of the descriptors net.c drives for the stream wrappers. */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+PH7_PRIVATE const ph7_builtin_func * PH7_SocketsFuncTable(sxu32 *pnEntry);
+PH7_PRIVATE sxi32 PH7_VmInstallSockets(ph7_vm *pVm);
+PH7_PRIVATE void PH7_RegisterSocketsConstants(ph7_vm *pVm);
+PH7_PRIVATE void PH7_SocketsVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_SocketsVmRelease(ph7_vm *pVm);
+/* socket_strerror()'s table: the platform's own, plus php's -10000 host-lookup
+ * range, which no errno occupies. */
+PH7_PRIVATE const char * PH7_SocketStrError(int iErr);
+#endif
+/* The three doors ext/sockets uses onto the stream device stack (vfs_stream.c). */
+PH7_PRIVATE int PH7_StreamSocketHandle(io_private *pDev,ph7_socket *pOut);
+PH7_PRIVATE io_private * PH7_StreamWrapSocket(ph7_context *pCtx,ph7_socket sock,int bDgram,
+	const char *zLabel,const char *zUri);
+PH7_PRIVATE void PH7_StreamCloseExported(io_private *pDev);
 #endif /* PH7_ENABLE_NET */
 /* vm_json.c function prototypes */
 PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg);
