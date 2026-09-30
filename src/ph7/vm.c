@@ -2391,6 +2391,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aPersistSock,&pVm->sAllocator,sizeof(VmPersistSock));
 	pVm->bIniSeeded = 0;
 	pVm->pGettext = 0;   /* ext/gettext binds its first domain lazily */
+	pVm->pPcntl = 0;     /* ext/pcntl allocates its handler table on the first call */
 	pVm->iPosixErr = 0;  /* ext/posix has seen no failure yet */
 	pVm->iSessStatus = 1; /* PHP_SESSION_NONE */
 	PH7_MemObjInit(&(*pVm),&pVm->sSessHandler);
@@ -2633,6 +2634,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * builtin guard because round() -- and bcround() -- do: a build with no
 	 * consumer for the symbol does not ship the symbol. */
 	PH7_VmInstallRoundingMode(&(*pVm));
+	/* Pcntl\QosClass: php registers this pure enum on every platform, even the
+	 * ones whose build has no function that reads it. */
+	PH7_VmInstallPcntl(&(*pVm));
 	/* BcMath\Number: after RoundingMode, whose cases its round() reads. */
 	PH7_VmInstallBcMath(&(*pVm));
 	/* php's ext/random object surface. It rides the builtin guard for the same
@@ -3216,6 +3220,9 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	PH7_RegisterBuiltInConstant(&(*pVm));
 	/* Register the tokenizer T_* / TOKEN_PARSE constants */
 	PH7_RegisterTokenizerConstants(&(*pVm));
+	/* Register ext/pcntl's signal, priority and namespace constants (none of
+	 * which exist on Windows, where php builds no ext/pcntl either) */
+	PH7_RegisterPcntlConstants(&(*pVm));
 	/* Register built-in functions [i.e: is_null(), array_diff(), strlen(), etc.] */
 	PH7_RegisterBuiltInFunction(&(*pVm));
 	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */
@@ -3795,6 +3802,10 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 	/* Same rule for the X509/EVP_PKEY handles behind still-open objects. */
 	PH7_SslVmRelease(pVm);
 #endif
+	/* ext/pcntl put a C signal handler in front of this VM's handler table;
+	 * every disposition it took over goes back to SIG_DFL before the allocator
+	 * that table lives in disappears. */
+	PH7_PcntlVmRelease(pVm);
 	PH7_PharVmRelease(pVm);
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */

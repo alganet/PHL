@@ -54,6 +54,7 @@
 /* Mutex function prototypes */
 #if defined(PH7_ENABLE_THREADS)
 PH7_PRIVATE const SyMutexMethods *SyMutexExportMethods(void);
+PH7_PRIVATE int SyMutexResetAfterFork(const SyMutexMethods *pMethods,SyMutex *pMutex);
 #endif
 
 #endif /* __SXMUTEX_H__ */

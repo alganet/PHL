@@ -175,6 +175,30 @@ static void UnixMutexRelease(SyMutex *pMutex)
 		free(pMutex);
 	}
 }
+/*
+ * Re-initialize a mutex in the CHILD of a fork(). Only one thread survives a
+ * fork, and every lock the others held is frozen -- worse, a lock this thread
+ * held is now owned by a thread id that no longer exists, so the child cannot
+ * even take it again. Re-initializing in the child is what pthread_atfork's
+ * child handler is FOR, and it is the only defined way out: destroying a locked
+ * mutex is not, and unlocking one you do not own does nothing.
+ *
+ * The lock COUNT is dropped with the lock, so a balancing SyMutexLeave the child
+ * still owes answers EPERM and changes nothing -- which is the right answer,
+ * because after this nobody holds it.
+ */
+static void UnixMutexResetAfterFork(SyMutex *pMutex)
+{
+	pthread_mutexattr_t sAttr;
+	if( pMutex->nType == SXMUTEX_TYPE_RECURSIVE ){
+		pthread_mutexattr_init(&sAttr);
+		pthread_mutexattr_settype(&sAttr,PTHREAD_MUTEX_RECURSIVE);
+		pthread_mutex_init(&pMutex->sMutex,&sAttr);
+		pthread_mutexattr_destroy(&sAttr);
+	}else{
+		pthread_mutex_init(&pMutex->sMutex,0);
+	}
+}
 static void UnixMutexEnter(SyMutex *pMutex)
 {
 	pthread_mutex_lock(&pMutex->sMutex);
@@ -238,4 +262,24 @@ PH7_PRIVATE const SyMutexMethods * SyMutexExportMethods(void)
 	return &sDummyMutexMethods;
 }
 #endif /* __WINNT__ */
+/*
+ * Put one mutex back into an unlocked, usable state in the CHILD of a fork().
+ * Answers 1 when it could, 0 when the mutex is not one of ours -- an embedder
+ * that installed its OWN mutex subsystem (PH7_LIB_CONFIG_USER_MUTEX) knows what
+ * its locks are made of and this cannot speak for them, so the caller falls back
+ * to abandoning the pointer instead.
+ *
+ * Only a POSIX build has anything to do here: Windows has no fork().
+ */
+PH7_PRIVATE int SyMutexResetAfterFork(const SyMutexMethods *pMethods,SyMutex *pMutex)
+{
+#if !defined(__WINNT__) && defined(__UNIXES__)
+	if( pMethods == SyMutexExportMethods() && pMutex ){
+		UnixMutexResetAfterFork(pMutex);
+		return 1;
+	}
+#endif
+	SXUNUSED(pMethods); SXUNUSED(pMutex);
+	return 0;
+}
 #endif /* PH7_ENABLE_THREADS */

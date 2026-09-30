@@ -1190,6 +1190,45 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "posix_sysconf",           PH7_builtin_posix_sysconf           },
 	{ "posix_pathconf",          PH7_builtin_posix_pathconf          },
 	{ "posix_fpathconf",         PH7_builtin_posix_fpathconf         },
+	     /* ext/pcntl, in php's own order. php builds none of this on Windows
+	      * either, which is exactly what monolog's SignalHandler and
+	      * symfony/console's SignalRegistry check before calling anything. */
+	{ "pcntl_fork",               PH7_builtin_pcntl_fork               },
+	{ "pcntl_waitpid",            PH7_builtin_pcntl_waitpid            },
+	{ "pcntl_waitid",             PH7_builtin_pcntl_waitid             },
+	{ "pcntl_wait",               PH7_builtin_pcntl_wait               },
+	{ "pcntl_signal",             PH7_builtin_pcntl_signal             },
+	{ "pcntl_signal_get_handler", PH7_builtin_pcntl_signal_get_handler },
+	{ "pcntl_signal_dispatch",    PH7_builtin_pcntl_signal_dispatch    },
+	{ "pcntl_sigprocmask",        PH7_builtin_pcntl_sigprocmask        },
+#ifndef __APPLE__
+	/* php builds these two only where the system has them; macOS has neither. */
+	{ "pcntl_sigwaitinfo",        PH7_builtin_pcntl_sigwaitinfo        },
+	{ "pcntl_sigtimedwait",       PH7_builtin_pcntl_sigtimedwait       },
+#endif
+	{ "pcntl_wifexited",          PH7_builtin_pcntl_wifexited          },
+	{ "pcntl_wifstopped",         PH7_builtin_pcntl_wifstopped         },
+	{ "pcntl_wifcontinued",       PH7_builtin_pcntl_wifcontinued       },
+	{ "pcntl_wifsignaled",        PH7_builtin_pcntl_wifsignaled        },
+	{ "pcntl_wexitstatus",        PH7_builtin_pcntl_wexitstatus        },
+	{ "pcntl_wtermsig",           PH7_builtin_pcntl_wtermsig           },
+	{ "pcntl_wstopsig",           PH7_builtin_pcntl_wstopsig           },
+	{ "pcntl_exec",               PH7_builtin_pcntl_exec               },
+	{ "pcntl_alarm",              PH7_builtin_pcntl_alarm              },
+	{ "pcntl_get_last_error",     PH7_builtin_pcntl_get_last_error     },
+	{ "pcntl_errno",              PH7_builtin_pcntl_get_last_error     },
+	{ "pcntl_getpriority",        PH7_builtin_pcntl_getpriority        },
+	{ "pcntl_setpriority",        PH7_builtin_pcntl_setpriority        },
+	{ "pcntl_strerror",           PH7_builtin_pcntl_strerror           },
+	{ "pcntl_async_signals",      PH7_builtin_pcntl_async_signals      },
+#ifdef __linux__
+	/* php builds these four only where the kernel has them, so a php on a
+	 * non-Linux unix answers false to function_exists('pcntl_unshare'). */
+	{ "pcntl_unshare",            PH7_builtin_pcntl_unshare            },
+	{ "pcntl_getcpuaffinity",     PH7_builtin_pcntl_getcpuaffinity     },
+	{ "pcntl_setcpuaffinity",     PH7_builtin_pcntl_setcpuaffinity     },
+	{ "pcntl_getcpu",             PH7_builtin_pcntl_getcpu             },
+#endif /* __linux__ */
 #endif /* __WINNT__ */
 	     /* ext/standard: the image container surface */
 	{ "image_type_to_mime_type", PH7_builtin_image_type_to_mime_type },

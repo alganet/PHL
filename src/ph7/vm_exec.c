@@ -2127,7 +2127,21 @@ VmLoopFetch:
 		 * silently resuming the surrounding PHP code with a bogus value.
 		 * The pending write-back sweep shares this one guard so the hot
 		 * no-hooks path pays a single predicted branch per fetch. */
-		if( pVm->nBoundaryRc != 0 || SySetUsed(&pVm->aHookRmw) > 0 ){
+		if( pVm->nBoundaryRc != 0 || SySetUsed(&pVm->aHookRmw) > 0
+		 || PH7_PcntlAsyncPending ){
+			if( PH7_PcntlAsyncPending && pVm->nBoundaryRc == 0 ){
+				/* ext/pcntl with pcntl_async_signals(true): a C signal handler
+				 * recorded a delivery and raised this flag, and HERE is the
+				 * safe point php's EG(vm_interrupt) picks too -- between two
+				 * instructions, with the operand stack consistent. The PHP
+				 * handlers run now; a throw from one of them is parked in
+				 * nBoundaryRc by the callback dispatcher and routed by the
+				 * very next branch, exactly as any other C-boundary throw.
+				 * A throw that is ALREADY parked wins: running a handler on
+				 * top of somebody else's unwind is not a safe point at all,
+				 * so the flag is left standing for the next fetch. */
+				PH7_PcntlDrainAsync(&(*pVm));
+			}
 			if( pVm->nBoundaryRc != 0 ){
 				sxi32 rcBr = pVm->nBoundaryRc;
 				pVm->nBoundaryRc = 0;

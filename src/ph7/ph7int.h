@@ -3253,6 +3253,12 @@ struct ph7_vm
 	                             * VMs apart. Nothing ever clears it -- a later
 	                             * SUCCESS leaves the last failure standing,
 	                             * which is php's own contract. */
+	void *pPcntl;               /* ext/pcntl's per-VM state (builtin_pcntl.c owns the
+	                             * shape): the handler each signal was last given, the
+	                             * remembered errno and the async-dispatch flag. Allocated
+	                             * lazily on the first call and freed by PH7_PcntlVmRelease,
+	                             * which also puts every disposition this VM took over back
+	                             * to SIG_DFL. */
 	void *pGettext;             /* ext/gettext's per-VM state (builtin_gettext.c owns the
 	                             * shape): the domain bindings, the current textdomain and
 	                             * the catalog each domain last resolved. Allocated lazily
@@ -6372,6 +6378,28 @@ PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif /* PH7_DISABLE_DISK_IO */
+#include <signal.h>   /* sig_atomic_t: PH7_PcntlAsyncPending, read at the fetch point */
+/*
+ * ext/pcntl (builtin_pcntl.c). These four are OUTSIDE every guard because the
+ * engine links against them in every build: vm_exec.c reads the flag at its
+ * fetch point, vm.c registers the constants and releases the state. Where the
+ * extension is not compiled in -- Windows, or a build with no builtins -- the
+ * flag is simply always zero and the three functions are no-ops.
+ */
+extern volatile sig_atomic_t PH7_PcntlAsyncPending;
+PH7_PRIVATE void PH7_PcntlDrainAsync(ph7_vm *pVm);
+PH7_PRIVATE void PH7_PcntlVmRelease(ph7_vm *pVm);
+PH7_PRIVATE void PH7_RegisterPcntlConstants(ph7_vm *pVm);
+PH7_PRIVATE sxi32 PH7_VmInstallPcntl(ph7_vm *pVm);
+/* Its uncatchable `Error installing signal handler for %d`, which lives with the
+ * engine's other clean-halt fatals in vm_error.c rather than with the extension. */
+PH7_PRIVATE sxi32 PH7_VmSignalInstallFatal(ph7_vm *pVm,int signo);
+#if defined(PH7_ENABLE_THREADS)
+/* Drop this process to single-threaded mode in the CHILD of a fork() (api.c).
+ * Declared beside pcntl's names because pcntl_fork() is its only caller, but it
+ * belongs to the library core and is built wherever threads are. */
+PH7_PRIVATE void PH7_LibForkChild(void);
+#endif
 /* builtin_parse.c function prototypes */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /* HTML entity escape engine: shared by the htmlspecialchars/htmlentities
@@ -6478,6 +6506,38 @@ PH7_PRIVATE int PH7_builtin_cal_info(ph7_context *pCtx,int nArg,ph7_value **apAr
 /* posix (builtin_posix.c) -- php builds no ext/posix on Windows, and neither
  * does this, so every name below is absent there. */
 #ifndef __WINNT__
+/* ext/pcntl's own builtins (builtin_pcntl.c); the names the engine links against
+ * in EVERY build are declared above, outside both guards. */
+PH7_PRIVATE int PH7_builtin_pcntl_fork(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_waitpid(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_waitid(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wait(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_signal(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_signal_get_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_signal_dispatch(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_sigprocmask(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_sigwaitinfo(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_sigtimedwait(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wifexited(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wifstopped(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wifcontinued(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wifsignaled(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wexitstatus(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wtermsig(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_wstopsig(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_alarm(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_get_last_error(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_getpriority(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_setpriority(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_strerror(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_async_signals(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#ifdef __linux__
+PH7_PRIVATE int PH7_builtin_pcntl_unshare(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_getcpuaffinity(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_setcpuaffinity(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pcntl_getcpu(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#endif
 PH7_PRIVATE int PH7_builtin_posix_kill(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_posix_getpid(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_posix_getppid(ph7_context *pCtx,int nArg,ph7_value **apArg);

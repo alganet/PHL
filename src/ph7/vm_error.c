@@ -600,6 +600,23 @@ PH7_PRIVATE sxi32 VmNativeNestingFatal(ph7_vm *pVm)
 	return PH7_ABORT;
 }
 /*
+ * ext/pcntl's `Error installing signal handler for %d`, and it is the same
+ * clean-halt fatal as the two above rather than a catchable Error -- because
+ * php's is not catchable either: a disposition sigaction() refuses (SIGKILL,
+ * SIGSTOP) is an E_ERROR under php, not the ValueError every other pcntl_signal()
+ * refusal is. Raised only from PH7_builtin_pcntl_signal.
+ */
+PH7_PRIVATE sxi32 PH7_VmSignalInstallFatal(ph7_vm *pVm,int signo)
+{
+	if( pVm->bHaltRequested ){
+		return PH7_ABORT;
+	}
+	pVm->iExitStatus = 255;
+	pVm->bHaltRequested = 1;
+	VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Error installing signal handler for %d",signo);
+	return PH7_ABORT;
+}
+/*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
  * Refer to the implementation of [ph7_context_throw_error_format()] for additional
  * information.

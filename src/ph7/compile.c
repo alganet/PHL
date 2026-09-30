@@ -833,6 +833,14 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "openssl_pkcs12_read",         19, 1u<<1 },  /* &$certificates */
 		{ "openssl_pkcs7_read",          18, 1u<<1 },  /* &$certificates */
 		{ "openssl_cms_read",            16, 1u<<1 },  /* &$certificates */
+		/* ext/pcntl's out-params. `pcntl_signal_dispatch` has none; every
+		 * other by-reference argument in the extension is one of these. */
+		{ "pcntl_waitpid",         13, (1u<<1)|(1u<<3) }, /* &$status, &$resource_usage */
+		{ "pcntl_wait",            10, (1u<<0)|(1u<<2) }, /* &$status, &$resource_usage */
+		{ "pcntl_waitid",          12, (1u<<2)|(1u<<4) }, /* &$info,   &$resource_usage */
+		{ "pcntl_sigprocmask",     17, 1u<<2 },           /* &$old_signals */
+		{ "pcntl_sigwaitinfo",     17, 1u<<1 },           /* &$info */
+		{ "pcntl_sigtimedwait",    18, 1u<<1 },           /* &$info */
 		{ "sscanf",                 6, ~((1u<<2) - 1u) },
 		{ "fscanf",                 6, ~((1u<<2) - 1u) },
 	};

@@ -436,6 +436,75 @@ static void PH7CoreShutdown(void)
 	}
 	sMPGlobal.nMagic = 0x1928;
 }
+#if defined(PH7_ENABLE_THREADS)
+/*
+ * Drop THIS process to single-threaded mode, called in the CHILD of a fork().
+ *
+ * Only one thread survives fork(), and every mutex the library holds is a
+ * pthread RECURSIVE one whose owner field still names the PARENT's thread id.
+ * The child's single thread is therefore not the owner of anything -- so the
+ * first SyMutexEnter it reaches (the one ph7_vm_config takes, which every exit
+ * path goes through) blocks on a futex nobody will ever post. A forked child
+ * that merely called exit() hung forever, which is what made this necessary.
+ *
+ * The fix is to RE-INITIALIZE every one of them, which is exactly what
+ * pthread_atfork's child handler exists for and the only defined way out:
+ * destroying a locked mutex is undefined, and unlocking one this thread does
+ * not own does nothing. After this nobody holds anything and the child's single
+ * thread can lock and unlock normally; a balancing SyMutexLeave the interrupted
+ * call still owes answers EPERM and changes nothing, which is the right answer.
+ *
+ * An embedder that installed its OWN mutex subsystem is a different matter --
+ * this cannot know what its locks are made of. There the mutex POINTERS are
+ * dropped instead (SyMutexEnter/Leave are no-ops on a null one) and the level
+ * goes to SINGLE, which is safe for the same reason: a child has one thread
+ * until it makes another, so the locks protect nothing.
+ */
+PH7_PRIVATE void PH7_LibForkChild(void)
+{
+	ph7 *pEngine;
+	sxi32 i;
+	int bReset;
+	if( sMPGlobal.nMagic != PH7_LIB_MAGIC
+	 || sMPGlobal.nThreadingLevel == PH7_THREAD_LEVEL_SINGLE ){
+		return;
+	}
+	/* One probe decides which of the two answers this build gets. */
+	bReset = SyMutexResetAfterFork(sMPGlobal.pMutexMethods,sMPGlobal.pMutex);
+	pEngine = sMPGlobal.pEngines;
+	for( i = 0 ; i < sMPGlobal.nEngine && pEngine ; ++i ){
+		ph7_vm *pVm = pEngine->pVms;
+		sxi32 j;
+		for( j = 0 ; j < pEngine->iVm && pVm ; ++j ){
+			if( bReset ){
+				SyMutexResetAfterFork(sMPGlobal.pMutexMethods,pVm->pMutex);
+			}else{
+				pVm->pMutex = 0;
+			}
+			pVm = pVm->pNext;
+		}
+		if( bReset ){
+			SyMutexResetAfterFork(sMPGlobal.pMutexMethods,pEngine->pMutex);
+			SyMutexResetAfterFork(pEngine->sAllocator.pMutexMethods,
+				pEngine->sAllocator.pMutex);
+		}else{
+			pEngine->pMutex = 0;
+			pEngine->sAllocator.pMutex = 0;
+			pEngine->sAllocator.pMutexMethods = 0;
+		}
+		pEngine = pEngine->pNext;
+	}
+	if( bReset ){
+		SyMutexResetAfterFork(sMPGlobal.sAllocator.pMutexMethods,
+			sMPGlobal.sAllocator.pMutex);
+		return;
+	}
+	sMPGlobal.pMutex = 0;
+	sMPGlobal.sAllocator.pMutex = 0;
+	sMPGlobal.sAllocator.pMutexMethods = 0;
+	sMPGlobal.nThreadingLevel = PH7_THREAD_LEVEL_SINGLE;
+}
+#endif /* PH7_ENABLE_THREADS */
 /*
  * [CAPIREF: ph7_lib_shutdown()]
  * Please refer to the official documentation for function purpose and expected parameters.

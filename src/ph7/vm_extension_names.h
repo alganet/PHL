@@ -49,12 +49,13 @@
 #define PH7_EXT_PHAR         30
 #define PH7_EXT_OPENSSL      31
 #define PH7_EXT_ZIP          32
+#define PH7_EXT_PCNTL        33
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "fileinfo", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
-	"posix", "SimpleXML", "sqlite3", "zlib", "Phar", "openssl", "zip",
+	"posix", "SimpleXML", "sqlite3", "zlib", "Phar", "openssl", "zip", "pcntl",
 };
 
 typedef struct VmExtName VmExtName;
@@ -447,6 +448,21 @@ static const VmExtName aExtFunc[] = {
 	{"posix_strerror",PH7_EXT_POSIX}, {"posix_initgroups",PH7_EXT_POSIX},
 	{"posix_sysconf",PH7_EXT_POSIX}, {"posix_pathconf",PH7_EXT_POSIX},
 	{"posix_fpathconf",PH7_EXT_POSIX},
+	/* pcntl -- php's own order, and absent on Windows (VmExtAvailable). */
+	{"pcntl_fork",PH7_EXT_PCNTL}, {"pcntl_waitpid",PH7_EXT_PCNTL}, {"pcntl_waitid",PH7_EXT_PCNTL},
+	{"pcntl_wait",PH7_EXT_PCNTL}, {"pcntl_signal",PH7_EXT_PCNTL},
+	{"pcntl_signal_get_handler",PH7_EXT_PCNTL}, {"pcntl_signal_dispatch",PH7_EXT_PCNTL},
+	{"pcntl_sigprocmask",PH7_EXT_PCNTL}, {"pcntl_sigwaitinfo",PH7_EXT_PCNTL},
+	{"pcntl_sigtimedwait",PH7_EXT_PCNTL}, {"pcntl_wifexited",PH7_EXT_PCNTL},
+	{"pcntl_wifstopped",PH7_EXT_PCNTL}, {"pcntl_wifcontinued",PH7_EXT_PCNTL},
+	{"pcntl_wifsignaled",PH7_EXT_PCNTL}, {"pcntl_wexitstatus",PH7_EXT_PCNTL},
+	{"pcntl_wtermsig",PH7_EXT_PCNTL}, {"pcntl_wstopsig",PH7_EXT_PCNTL},
+	{"pcntl_exec",PH7_EXT_PCNTL}, {"pcntl_alarm",PH7_EXT_PCNTL},
+	{"pcntl_get_last_error",PH7_EXT_PCNTL}, {"pcntl_errno",PH7_EXT_PCNTL},
+	{"pcntl_getpriority",PH7_EXT_PCNTL}, {"pcntl_setpriority",PH7_EXT_PCNTL},
+	{"pcntl_strerror",PH7_EXT_PCNTL}, {"pcntl_async_signals",PH7_EXT_PCNTL},
+	{"pcntl_unshare",PH7_EXT_PCNTL}, {"pcntl_getcpuaffinity",PH7_EXT_PCNTL},
+	{"pcntl_setcpuaffinity",PH7_EXT_PCNTL}, {"pcntl_getcpu",PH7_EXT_PCNTL},
 	/* iconv */
 	{"iconv_strlen",PH7_EXT_ICONV}, {"iconv_substr",PH7_EXT_ICONV},
 	{"iconv_strpos",PH7_EXT_ICONV}, {"iconv_strrpos",PH7_EXT_ICONV},
@@ -716,6 +732,8 @@ static const VmExtName aExtClass[] = {
 	{"OpenSSLAsymmetricKey",PH7_EXT_OPENSSL},
 	/* zip */
 	{"ZipArchive",PH7_EXT_ZIP},
+	/* pcntl -- php registers this pure enum on every platform. */
+	{"Pcntl\\QosClass",PH7_EXT_PCNTL},
 };
 
 static const VmExtName aExtConst[] = {
@@ -1420,6 +1438,53 @@ static const VmExtName aExtConst[] = {
 	{"CURLOPT_QUICK_EXIT",PH7_EXT_CURL}, {"CURL_HTTP_VERSION_3ONLY",PH7_EXT_CURL},
 	{"CURLOPT_SAFE_UPLOAD",PH7_EXT_CURL},
 	/* posix -- php's own order, which is what getConstants() answers in. */
+	/* pcntl -- php's own order (ReflectionExtension::getConstants()). */
+	{"WNOHANG",PH7_EXT_PCNTL}, {"WUNTRACED",PH7_EXT_PCNTL}, {"WCONTINUED",PH7_EXT_PCNTL},
+	{"WEXITED",PH7_EXT_PCNTL}, {"WSTOPPED",PH7_EXT_PCNTL}, {"WNOWAIT",PH7_EXT_PCNTL},
+	{"P_ALL",PH7_EXT_PCNTL}, {"P_PID",PH7_EXT_PCNTL}, {"P_PGID",PH7_EXT_PCNTL},
+	{"P_PIDFD",PH7_EXT_PCNTL}, {"SIG_IGN",PH7_EXT_PCNTL}, {"SIG_DFL",PH7_EXT_PCNTL},
+	{"SIG_ERR",PH7_EXT_PCNTL}, {"SIGHUP",PH7_EXT_PCNTL}, {"SIGINT",PH7_EXT_PCNTL},
+	{"SIGQUIT",PH7_EXT_PCNTL}, {"SIGILL",PH7_EXT_PCNTL}, {"SIGTRAP",PH7_EXT_PCNTL},
+	{"SIGABRT",PH7_EXT_PCNTL}, {"SIGIOT",PH7_EXT_PCNTL}, {"SIGBUS",PH7_EXT_PCNTL},
+	{"SIGFPE",PH7_EXT_PCNTL}, {"SIGKILL",PH7_EXT_PCNTL}, {"SIGUSR1",PH7_EXT_PCNTL},
+	{"SIGSEGV",PH7_EXT_PCNTL}, {"SIGUSR2",PH7_EXT_PCNTL}, {"SIGPIPE",PH7_EXT_PCNTL},
+	{"SIGALRM",PH7_EXT_PCNTL}, {"SIGTERM",PH7_EXT_PCNTL}, {"SIGSTKFLT",PH7_EXT_PCNTL},
+	{"SIGCLD",PH7_EXT_PCNTL}, {"SIGCHLD",PH7_EXT_PCNTL}, {"SIGCONT",PH7_EXT_PCNTL},
+	{"SIGSTOP",PH7_EXT_PCNTL}, {"SIGTSTP",PH7_EXT_PCNTL}, {"SIGTTIN",PH7_EXT_PCNTL},
+	{"SIGTTOU",PH7_EXT_PCNTL}, {"SIGURG",PH7_EXT_PCNTL}, {"SIGXCPU",PH7_EXT_PCNTL},
+	{"SIGXFSZ",PH7_EXT_PCNTL}, {"SIGVTALRM",PH7_EXT_PCNTL}, {"SIGPROF",PH7_EXT_PCNTL},
+	{"SIGWINCH",PH7_EXT_PCNTL}, {"SIGPOLL",PH7_EXT_PCNTL}, {"SIGIO",PH7_EXT_PCNTL},
+	{"SIGPWR",PH7_EXT_PCNTL}, {"SIGSYS",PH7_EXT_PCNTL}, {"SIGBABY",PH7_EXT_PCNTL},
+	{"SIGRTMIN",PH7_EXT_PCNTL}, {"SIGRTMAX",PH7_EXT_PCNTL}, {"PRIO_PGRP",PH7_EXT_PCNTL},
+	{"PRIO_USER",PH7_EXT_PCNTL}, {"PRIO_PROCESS",PH7_EXT_PCNTL}, {"SIG_BLOCK",PH7_EXT_PCNTL},
+	{"SIG_UNBLOCK",PH7_EXT_PCNTL}, {"SIG_SETMASK",PH7_EXT_PCNTL}, {"SI_USER",PH7_EXT_PCNTL},
+	{"SI_KERNEL",PH7_EXT_PCNTL}, {"SI_QUEUE",PH7_EXT_PCNTL}, {"SI_TIMER",PH7_EXT_PCNTL},
+	{"SI_MESGQ",PH7_EXT_PCNTL}, {"SI_ASYNCIO",PH7_EXT_PCNTL}, {"SI_SIGIO",PH7_EXT_PCNTL},
+	{"SI_TKILL",PH7_EXT_PCNTL}, {"CLD_EXITED",PH7_EXT_PCNTL}, {"CLD_KILLED",PH7_EXT_PCNTL},
+	{"CLD_DUMPED",PH7_EXT_PCNTL}, {"CLD_TRAPPED",PH7_EXT_PCNTL}, {"CLD_STOPPED",PH7_EXT_PCNTL},
+	{"CLD_CONTINUED",PH7_EXT_PCNTL}, {"TRAP_BRKPT",PH7_EXT_PCNTL}, {"TRAP_TRACE",PH7_EXT_PCNTL},
+	{"POLL_IN",PH7_EXT_PCNTL}, {"POLL_OUT",PH7_EXT_PCNTL}, {"POLL_MSG",PH7_EXT_PCNTL},
+	{"POLL_ERR",PH7_EXT_PCNTL}, {"POLL_PRI",PH7_EXT_PCNTL}, {"POLL_HUP",PH7_EXT_PCNTL},
+	{"ILL_ILLOPC",PH7_EXT_PCNTL}, {"ILL_ILLOPN",PH7_EXT_PCNTL}, {"ILL_ILLADR",PH7_EXT_PCNTL},
+	{"ILL_ILLTRP",PH7_EXT_PCNTL}, {"ILL_PRVOPC",PH7_EXT_PCNTL}, {"ILL_PRVREG",PH7_EXT_PCNTL},
+	{"ILL_COPROC",PH7_EXT_PCNTL}, {"ILL_BADSTK",PH7_EXT_PCNTL}, {"FPE_INTDIV",PH7_EXT_PCNTL},
+	{"FPE_INTOVF",PH7_EXT_PCNTL}, {"FPE_FLTDIV",PH7_EXT_PCNTL}, {"FPE_FLTOVF",PH7_EXT_PCNTL},
+	{"FPE_FLTUND",PH7_EXT_PCNTL}, {"FPE_FLTRES",PH7_EXT_PCNTL}, {"FPE_FLTINV",PH7_EXT_PCNTL},
+	{"FPE_FLTSUB",PH7_EXT_PCNTL}, {"SEGV_MAPERR",PH7_EXT_PCNTL}, {"SEGV_ACCERR",PH7_EXT_PCNTL},
+	{"BUS_ADRALN",PH7_EXT_PCNTL}, {"BUS_ADRERR",PH7_EXT_PCNTL}, {"BUS_OBJERR",PH7_EXT_PCNTL},
+	{"CLONE_NEWNS",PH7_EXT_PCNTL}, {"CLONE_NEWIPC",PH7_EXT_PCNTL}, {"CLONE_NEWUTS",PH7_EXT_PCNTL},
+	{"CLONE_NEWNET",PH7_EXT_PCNTL}, {"CLONE_NEWPID",PH7_EXT_PCNTL},
+	{"CLONE_NEWUSER",PH7_EXT_PCNTL}, {"CLONE_NEWCGROUP",PH7_EXT_PCNTL},
+	{"PCNTL_EINTR",PH7_EXT_PCNTL}, {"PCNTL_ECHILD",PH7_EXT_PCNTL}, {"PCNTL_EINVAL",PH7_EXT_PCNTL},
+	{"PCNTL_EAGAIN",PH7_EXT_PCNTL}, {"PCNTL_ESRCH",PH7_EXT_PCNTL}, {"PCNTL_EACCES",PH7_EXT_PCNTL},
+	{"PCNTL_EPERM",PH7_EXT_PCNTL}, {"PCNTL_ENOMEM",PH7_EXT_PCNTL}, {"PCNTL_E2BIG",PH7_EXT_PCNTL},
+	{"PCNTL_EFAULT",PH7_EXT_PCNTL}, {"PCNTL_EIO",PH7_EXT_PCNTL}, {"PCNTL_EISDIR",PH7_EXT_PCNTL},
+	{"PCNTL_ELIBBAD",PH7_EXT_PCNTL}, {"PCNTL_ELOOP",PH7_EXT_PCNTL},
+	{"PCNTL_EMFILE",PH7_EXT_PCNTL}, {"PCNTL_ENAMETOOLONG",PH7_EXT_PCNTL},
+	{"PCNTL_ENFILE",PH7_EXT_PCNTL}, {"PCNTL_ENOENT",PH7_EXT_PCNTL},
+	{"PCNTL_ENOEXEC",PH7_EXT_PCNTL}, {"PCNTL_ENOTDIR",PH7_EXT_PCNTL},
+	{"PCNTL_ETXTBSY",PH7_EXT_PCNTL}, {"PCNTL_ENOSPC",PH7_EXT_PCNTL},
+	{"PCNTL_EUSERS",PH7_EXT_PCNTL},
 	{"POSIX_F_OK",PH7_EXT_POSIX}, {"POSIX_X_OK",PH7_EXT_POSIX}, {"POSIX_W_OK",PH7_EXT_POSIX},
 	{"POSIX_R_OK",PH7_EXT_POSIX}, {"POSIX_S_IFREG",PH7_EXT_POSIX},
 	{"POSIX_S_IFCHR",PH7_EXT_POSIX}, {"POSIX_S_IFBLK",PH7_EXT_POSIX},
