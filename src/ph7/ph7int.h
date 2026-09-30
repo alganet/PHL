@@ -3743,6 +3743,11 @@ struct ph7_vm
 	                            * per-request and behaves the same way. */
 	void *pZips;               /* phl_zip registry chain (ext/zip): every archive a ZipArchive
 	                            * or a `zip://` open is holding, freed on reset/release */
+	void *pLastDir;            /* php's "last opened directory stream": the io_private the
+	                            * most recent opendir() handed out, which readdir(),
+	                            * rewinddir() and closedir() fall back to when they are
+	                            * given null (deprecated since 8.1). Cleared when THAT
+	                            * handle is closed and at reset; never owns anything. */
 	SyBlob sPharRunning;       /* The archive the running script came from, as Phar::running()
 	                            * answers it: set by Phar::mapPhar(), empty outside one. */
 #ifdef PH7_ENABLE_NET

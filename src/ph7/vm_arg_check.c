@@ -853,7 +853,11 @@ static const struct VmBuiltinSig {
 	{ "forward_static_call_array", "callable $callback, array $args", "mixed" },
 	{ "fpow", "float $num, float $exponent", "float" },
 	{ "fpassthru", "$stream", "int" },
-	{ "fprintf", "$stream, string $format, mixed ...$values = ?", "int" },
+	/* `~string $format`: php resolves the STREAM first and refuses a closed one
+	 * before it looks at the format at all, so the central screen stands aside
+	 * and PH7_FormatCheckFormatArg() in the body raises the same TypeError
+	 * after the handle has been accepted. */
+	{ "fprintf", "$stream, ~string $format, mixed ...$values = ?", "int" },
 	{ "fputcsv", "$stream, array $fields, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\', string $eol = \"\n\"", "int|false" },
 	{ "fputs", "$stream, string $data, ?int $length = NULL", "int|false" },
 	{ "fread", "$stream, int $length", "string|false" },
@@ -1506,7 +1510,9 @@ static const struct VmBuiltinSig {
 	{ "var_dump", "mixed $value, mixed ...$values = ?", "void" },
 	{ "var_export", "mixed $value, bool $return = false", "?string" },
 	{ "version_compare", "string $version1, string $version2, ?string $operator = null", "int|bool" },
-	{ "vfprintf", "$stream, string $format, array $values", "int" },
+	/* Both typed parameters stand aside for the same reason as fprintf's: php
+	 * refuses $stream before either of them. */
+	{ "vfprintf", "$stream, ~string $format, ~array $values", "int" },
 	{ "vprintf", "string $format, array $values", "int" },
 	{ "vsprintf", "string $format, array $values", "string" },
 	{ "wordwrap", "string $string, int $width = 75, string $break = \"\\n\", bool $cut_long_words = false", "string" },

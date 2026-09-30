@@ -1908,20 +1908,18 @@ PH7_PRIVATE int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const ph7_io_stream *pStream;
 	pipe_private *pPipe;
 	io_private *pDev;
-	int status;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int status,rc;
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments, return -1 */
 		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");
 		ph7_result_int(pCtx, -1);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");
-		ph7_result_int(pCtx, -1);
-		return PH7_OK;
+	/* php's screen, and it names this one's argument `$handle` rather than
+	 * `$stream`: a non-resource and an already-CLOSED pipe are both TypeErrors. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"handle",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
@@ -2593,15 +2591,22 @@ PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream)
  */
 PH7_PRIVATE int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int bTty = 0;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int bTty = 0,rc;
+	io_private *pDev;
+	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* php's screen runs FIRST here too: a closed handle is a TypeError, not the
+	 * `false` a stream that simply is not a terminal answers. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	SXUNUSED(pDev); /* a build with no disk IO compiles the block below away */
 #ifndef PH7_DISABLE_DISK_IO
 	{
-		io_private *pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-		if( !IO_PRIVATE_INVALID(pDev) && is_php_stream(pDev->pStream) ){
+		if( is_php_stream(pDev->pStream) ){
 			ph7_stream_data *pData = (ph7_stream_data *)pDev->pHandle;
 			if( pData && (pData->iType == PH7_IO_STREAM_STDIN
 				|| pData->iType == PH7_IO_STREAM_STDOUT

@@ -193,6 +193,62 @@ struct sock_private
 };
 #endif
 /*
+ * The dir trio's argument, which php declares `?resource $dir_handle = null`
+ * and which therefore has a THIRD case the byte-stream doors do not: given
+ * nothing (or null), php raises `Passing null is deprecated, instead the last
+ * opened directory stream should be provided` and falls back to whatever
+ * opendir() handed out last -- and, when there is none or it was closed,
+ * refuses with a TypeError that names neither the function nor the argument.
+ */
+static io_private * StreamDirArg(ph7_context *pCtx,int nArg,ph7_value **apArg,int *pRc)
+{
+	io_private *pDev;
+	*pRc = PH7_OK;
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		VmErrorFormat(pCtx->pVm,8192 /* E_DEPRECATED */,
+			"%s(): Passing null is deprecated, instead the last opened "
+			"directory stream should be provided",ph7_function_name(pCtx));
+		pDev = (io_private *)pCtx->pVm->pLastDir;
+		if( pDev == 0 || IO_PRIVATE_INVALID(pDev) ){
+			*pRc = PH7_VmThrowException(pCtx,"TypeError","No resource supplied");
+			return 0;
+		}
+		return pDev;
+	}
+	if( !ph7_value_is_resource(apArg[0]) ){
+		char zGiven[64];
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($dir_handle) must be of type resource or null, %s given",
+			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+		return 0;
+	}
+	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($dir_handle) must be an open stream resource",
+			ph7_function_name(pCtx));
+		return 0;
+	}
+	return pDev;
+}
+/*
+ * php's screen for a stream-handle ARGUMENT, forward-declared here because every
+ * f* door below runs it and it is defined with the settings family further down.
+ * It answers php's TWO TypeErrors -- `Argument #N ($stream) must be of type
+ * resource, X given` for something that was never a handle, and `...must be an
+ * open stream resource` for a resource whose device is gone, which is what an
+ * already-CLOSED handle is -- and 0, with *pRc carrying the throw.
+ *
+ * Both used to be one legacy warning ("Expecting an IO handle") and a `false`,
+ * at ~24 doors. The name and position are the DOOR's: php calls the same
+ * argument `$stream` for the byte-stream verbs, `$dir_handle` for the directory
+ * trio and `$handle` for pclose(), and the function in the message is the one
+ * that was CALLED -- which is how gzread()'s refusal says gzread() and not
+ * fread(), the same body under another name.
+ */
+PH7_PRIVATE io_private * PH7_StreamHandleArg(ph7_context *pCtx,ph7_value *pArg,int iPos,
+	const char *zName,int *pRc);
+/*
  * Return the PHP resource-type name for a raw resource handle.
  * Every IO handle this VFS hands out (fopen/tmpfile/popen/opendir and the
  * STDIN/STDOUT/STDERR constants) is an io_private, which PHP reports as
@@ -278,20 +334,16 @@ PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apA
 	io_private *pDev;
 	ph7_int64 nSize;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 2 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	nSize = ph7_value_to_int64(apArg[1]);
 	if( nSize < 0 ){
@@ -353,20 +405,16 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_int64 iOfft;
 	int whence;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 2 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_int(pCtx,-1);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
@@ -462,20 +510,17 @@ PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	io_private *pDev;
 	ph7_int64 iOfft;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	/* No "unimplemented" arm: php's ftell() never refuses a stream. A device
@@ -511,20 +556,16 @@ PH7_PRIVATE int PH7_builtin_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const ph7_io_stream *pStream;
 	io_private *pDev;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
@@ -567,20 +608,16 @@ PH7_PRIVATE int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const ph7_io_stream *pStream;
 	io_private *pDev;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	pDev = PH7_StreamUnwrap(pDev);
@@ -667,20 +704,16 @@ PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	io_private *pDev;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,1);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	if( !StreamHasReader(pDev) ){
 		/* php's end-of-file flag is raised by a READ that came back empty, and
@@ -1429,20 +1462,17 @@ PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	io_private *pDev;
 	int c,n;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	if( !StreamHasReader(pDev) ){
 		/* No reader: php answers FALSE and says nothing. */
@@ -1479,16 +1509,25 @@ PH7_PRIVATE int PH7_builtin_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	io_private *pDev;
 	ph7_int64 n;
 	int nFmt = 0;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 2 ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( !ph7_value_is_resource(apArg[0]) ){
+		char zGiven[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($stream) must be of type resource, %s given",
+			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+	}
+	/* ...but a resource whose DEVICE is gone is the one refusal in this family
+	 * php words its own way: it names neither the argument nor its position,
+	 * and calls the thing a File-Handle. */
 	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
 	if( IO_PRIVATE_INVALID(pDev) ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): supplied resource is not a valid File-Handle resource",
+			ph7_function_name(pCtx));
 	}
 	if( !StreamHasReader(pDev) ){
 		/* No reader: php answers FALSE and says nothing. */
@@ -1525,20 +1564,17 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zLine;
 	io_private *pDev;
 	ph7_int64 n,nLen;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	if( !StreamHasReader(pDev) ){
 		/* No reader: php answers FALSE and says nothing. */
@@ -1704,20 +1740,17 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_int64 nRead;
 	void *pBuf;
 	int nLen;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	if( !StreamHasReader(pDev) ){
 		/* No reader: php answers FALSE and says nothing. */
@@ -1819,20 +1852,17 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	int delim  = ',';   /* Delimiter */
 	int encl   = '"' ;  /* Enclosure */
 	int escape = '\\';  /* Escape character */
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rcArg;   /* the handle screen's; the CSV screens below shadow `rc` */
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rcArg);
+	if( pDev == 0 ){
+		return rcArg;
 	}
 	if( !StreamHasReader(pDev) ){
 		/* No reader: php answers FALSE and says nothing. */
@@ -2000,20 +2030,9 @@ PH7_PRIVATE int PH7_builtin_readdir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	const ph7_io_stream *pStream;
 	io_private *pDev;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
-		/* Missing/Invalid arguments,return FALSE */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	pDev = StreamDirArg(pCtx,nArg,apArg,&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
@@ -2049,20 +2068,10 @@ PH7_PRIVATE int PH7_builtin_rewinddir(ph7_context *pCtx,int nArg,ph7_value **apA
 {
 	const ph7_io_stream *pStream;
 	io_private *pDev;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
-		/* Missing/Invalid arguments,return FALSE */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	int rc;
+	pDev = StreamDirArg(pCtx,nArg,apArg,&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
@@ -2089,20 +2098,10 @@ PH7_PRIVATE int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apAr
 {
 	const ph7_io_stream *pStream;
 	io_private *pDev;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
-		/* Missing/Invalid arguments,return FALSE */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	int rc;
+	pDev = StreamDirArg(pCtx,nArg,apArg,&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
@@ -2115,6 +2114,11 @@ PH7_PRIVATE int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apAr
 	pStream->xCloseDir(pDev->pHandle);
 	/* Keep the handle alive but flag it closed (php: gettype()=='resource (closed)') */
 	MarkIOPrivateClosed(pDev);
+	if( pCtx->pVm->pLastDir == (void *)pDev ){
+		/* php's fallback is the last opened stream, not the last LIVE one: once
+		 * it is closed, readdir() with no argument is "No resource supplied". */
+		pCtx->pVm->pLastDir = 0;
+	}
 	return PH7_OK;
  }
 /*
@@ -2236,6 +2240,10 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		 * ops `dir` rather than the byte-stream STDIO. */
 		SetIOPrivateOpenedAs(pDev,0,0,"r",1);
 		pDev->bDir = 1;
+		/* php remembers this one as the "last opened directory stream", which is
+		 * what readdir()/rewinddir()/closedir() reach for when they are given
+		 * null. Only opendir() sets it; dir() goes through here too. */
+		pCtx->pVm->pLastDir = (void *)pDev;
 		/* Return the handle as a resource */
 		ph7_result_resource(pCtx,pDev);
 	}
@@ -3062,20 +3070,17 @@ PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pArray,*pValue;
 	const ph7_io_stream *pStream;
 	io_private *pDev;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/* Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* A php://filter handle is the stream underneath it, and that is the one
 	 * with a stat to answer. */
@@ -3147,20 +3152,17 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zString;
 	io_private *pDev;
 	int nLen,n;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 2 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/* Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Point to the target IO stream device */
 	if( StreamRefuseUnwritable(pCtx,pDev) ){
@@ -3242,20 +3244,16 @@ PH7_PRIVATE int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	io_private *pDev;
 	int nLock;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 2 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	/* Requested lock operation. php 8 validates it BEFORE the stream's lock
 	 * support is considered: the low two bits select the action (its bison
@@ -3316,20 +3314,16 @@ PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apA
 	ph7_int64 n,nRead;
 	char zBuf[8192];
 	int rc;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	if( !StreamHasReader(pDev) ){
 		/* php's fpassthru() reports the FAILING READ's own -1 when nothing was
@@ -3486,18 +3480,21 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	const char *zEol = "\n";
 	int nEol = 1;
 	ph7_int64 nWr;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) || !ph7_value_is_array(apArg[1]) ){
+	int rcArg;   /* the handle screen's; the CSV screens below shadow `rc` */
+	if( nArg < 2 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Missing/Invalid arguments");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rcArg);
+	if( pDev == 0 ){
+		return rcArg;
+	}
+	if( !ph7_value_is_array(apArg[1]) ){
+		/* Missing/Invalid arguments,return FALSE */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Missing/Invalid arguments");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3641,20 +3638,15 @@ PH7_PRIVATE int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	{
-		/* php: a non-resource $stream is a TypeError (#1), not a warn-and-return-0. */
-		sxi32 rcs = PH7_CheckStreamArg(pCtx,apArg[0],1,"stream");
-		if( rcs != PH7_OK ){
+		/* php: the $stream argument is refused BEFORE $format and $values -- a
+		 * non-resource names the type it got, and one whose device is gone is
+		 * "must be an open stream resource". Both are TypeErrors, not the
+		 * warn-and-return-0 this door used to give. */
+		int rcs;
+		pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rcs);
+		if( pDev == 0 ){
 			return rcs;
 		}
-	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
 	}
 	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError (#2). */
 	{
@@ -3736,9 +3728,13 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 		return PH7_OK;
 	}
 	{
-		/* php: a non-resource $stream is a TypeError (#1), not a warn-and-return-0. */
-		sxi32 rcs = PH7_CheckStreamArg(pCtx,apArg[0],1,"stream");
-		if( rcs != PH7_OK ){
+		/* php: the $stream argument is refused BEFORE $format and $values -- a
+		 * non-resource names the type it got, and one whose device is gone is
+		 * "must be an open stream resource". Both are TypeErrors, not the
+		 * warn-and-return-0 this door used to give. */
+		int rcs;
+		pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rcs);
+		if( pDev == 0 ){
 			return rcs;
 		}
 	}
@@ -3755,15 +3751,6 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"vfprintf(): Argument #3 ($values) must be of type array, %s given",
 			VmValueGivenName(apArg[2],zBuf,sizeof(zBuf)));
-	}
-	/* Extract our private data */
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* Make sure we are dealing with a valid io_private instance */
-	if( IO_PRIVATE_INVALID(pDev) ){
-		/*Expecting an IO handle */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
 	}
 	/* Extract the string format */
 	zFormat = ph7_value_to_string(apArg[1],&nLen);
@@ -4074,16 +4061,16 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 	ph7_int64 nMax = -1;
 	char zBuf[4096];
 	ph7_int64 nRead;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 1 ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	if( IO_PRIVATE_INVALID(pDev) ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	pStream = pDev->pStream;
 	if( pStream == 0 || pStream->xRead == 0 ){
@@ -4421,16 +4408,16 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 	io_private *pDev;
 	ph7_value *pArr,*pV;
 	sxu32 nUnread;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	int rc;
+	if( nArg < 1 ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	if( IO_PRIVATE_INVALID(pDev) ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* php's two TypeErrors, in place of the legacy warn-and-false. */
+	pDev = PH7_StreamHandleArg(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
 	}
 	pArr = ph7_context_new_array(pCtx);
 	pV = ph7_context_new_scalar(pCtx);
@@ -9045,18 +9032,27 @@ PH7_PRIVATE int PH7_builtin_fclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const ph7_io_stream *pStream;
 	io_private *pDev;
 	ph7_vm *pVm;
-	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( !ph7_value_is_resource(apArg[0]) ){
+		char zGiven[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($stream) must be of type resource, %s given",
+			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+	}
 	/* Extract our private data */
 	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
-	/* php: fclose() on an already-closed stream raises a catchable TypeError */
+	/* php: fclose() on an already-closed stream raises a catchable TypeError,
+	 * and the name in it is the one that was CALLED -- gzclose() is this same
+	 * body under another name and says gzclose(). */
 	if( pDev != 0 && pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC ){
 		return PH7_VmThrowException(pCtx,"TypeError",
-			"fclose(): Argument #1 ($stream) must be an open stream resource");
+			"%s(): Argument #1 ($stream) must be an open stream resource",
+			ph7_function_name(pCtx));
 	}
 	/* Make sure we are dealing with a valid io_private instance */
 	if( IO_PRIVATE_INVALID(pDev) ){

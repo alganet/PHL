@@ -3755,6 +3755,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * request's listener bound to its port. */
 	PH7_SocketsVmReset(&(*pVm));
 #endif
+	/* php's "last opened directory stream" is per REQUEST: a reused VM must not
+	 * let readdir() with no argument reach the previous one's handle. */
+	pVm->pLastDir = 0;
 #ifdef PH7_ENABLE_ZLIB
 	/* And its deflate/inflate contexts: a z_stream's window is libz's own
 	 * allocation, which the wholesale release below would not reach. */
