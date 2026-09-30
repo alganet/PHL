@@ -1440,14 +1440,28 @@ PH7_PRIVATE int PH7_builtin_stripslashes(ph7_context *pCtx,int nArg,ph7_value **
 			/* Append raw contents */
 			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
 		}
-		if( &zIn[1] < zEnd ){
-			int c = zIn[1];
-			if( c == '\'' || c == '"' || c == '\\' ){
-				/* Ignore the backslash */
-				zIn++;
-			}
-		}else{
+		if( zIn >= zEnd ){
+			/* No backslash in the tail: the raw append above took all of it. */
 			break;
+		}
+		/* zIn is ON a backslash. php drops it and takes the NEXT byte LITERALLY,
+		 * whatever that byte is -- `\t` is a `t`, `\\` is one `\`, `\'` is a `'` --
+		 * and a lone trailing backslash is dropped with nothing after it.
+		 *
+		 * The old shape only skipped the backslash when the next byte was one of
+		 * `'`, `"` or `\`, and otherwise advanced NOTHING: `stripslashes(" some\thing ")`
+		 * spun forever on the `\t`. It is reachable from any input a user types, and
+		 * it is what hung Respect\Validation's `v::after('stripslashes', ...)`. */
+		zIn++;
+		if( zIn < zEnd ){
+			if( zIn[0] == '0' ){
+				/* php's ONE special case: `\0` is a NUL byte, not the digit zero
+				 * (php_stripslashes' `case '0'`). */
+				ph7_result_string(pCtx,"\0",1);
+			}else{
+				ph7_result_string(pCtx,zIn,1);
+			}
+			zIn++;
 		}
 	}
 	return PH7_OK;
