@@ -1240,6 +1240,9 @@ int ph7_delete_constant(ph7_vm *pVm,const char *zName)
 	 /* Query the constant hashtable */
 	 rc = SyHashDeleteEntry(&pVm->hConstant,(const void *)zName,SyStrlen(zName),(void **)&pCons);
 	 if( rc == PH7_OK ){
+		 /* A name that WAS a constant is not any more, and the entry every LOADC site
+		  * that resolved to it remembers is about to be freed (PH7_VmConstSiteAnswer). */
+		 pVm->nConstGen++;
 		 /* Perform the deletion */
 		 SyMemBackendFree(&pVm->sAllocator,(void *)SyStringData(&pCons->sName));
 		 SyMemBackendPoolFree(&pVm->sAllocator,pCons);

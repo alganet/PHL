@@ -140,8 +140,13 @@ struct ph7_value
 typedef struct VmCallSite VmCallSite;
 struct VmCallSite
 {
+	/* One record per BYTECODE SITE that has resolved a name and may resolve it again.
+	 * PH7_OP_CALL owns most of them (see VmCallSiteFor); PH7_OP_LOADC owns the rest
+	 * (PH7_VmConstSiteAnswer), and uses only pEntry, nGen and nNextFree -- a LOADC's
+	 * name is fixed by its instruction, so there is nothing for zName to guard. One
+	 * set means one free list and one release sweep for both. */
 	const char *zName;   /* the callee name this record answers for (interned in hCallName,
-	                      * which owns it -- a record never frees it) */
+	                      * which owns it -- a record never frees it); 0 for a LOADC site */
 	SyHashEntry *pEntry; /* the entry it resolved to */
 	sxu32 nName;         /* zName length */
 	sxu32 nGen;          /* pVm->nCallableGen it was resolved at (0 = not resolved yet) */
@@ -2798,6 +2803,9 @@ struct VmInstr
 	             *   PH7_OP_CALL_INIT the pVm->nCallableGen this call site was last screened
 	             *                    at, written only when the callee is a compile-time
 	             *                    constant (the push behind it is an OP_LOADC).
+	             *   PH7_OP_LOADC     how many times this site has run, capped at two -- a
+	             *                    site that runs once can never repay a cache record.
+	             *   PH7_OP_CALL      the same count, for the same reason (VmCallSiteFor).
 	             *
 	             * Lives in the padding after iP2, so VmInstr is still 32 bytes and the
 	             * bytecode costs nothing extra. */
@@ -2805,11 +2813,12 @@ struct VmInstr
 	sxu32 nLine; /* Source line this instruction was compiled from (0 = unknown).
 	              * Stamped by PH7_VmEmitInstr from the codegen's current token, so
 	              * every one of its ~150 call sites keeps its signature. */
-	sxu32 nSite; /* PH7_OP_CALL only: this call site's entry in pVm->aCallSite, plus one
-	              * (0 = it has never asked for one). The site remembers which function
-	              * table entry its callee NAME resolved to, so a call that has run once
-	              * does not hash that name again -- see VmCallSite. Lives in the trailing
-	              * padding after nLine, so VmInstr is still 32 bytes. */
+	sxu32 nSite; /* PH7_OP_CALL and PH7_OP_LOADC: this site's entry in pVm->aCallSite, plus
+	              * one (0 = it has never asked for one). A CALL remembers which function
+	              * table entry its callee NAME resolved to; a LOADC remembers which
+	              * hConstant entry its constant name resolved to. Both are a name hashed
+	              * once instead of once per execution -- see VmCallSite. Lives in the
+	              * trailing padding after nLine, so VmInstr is still 32 bytes. */
 };
 /*
  * Named-argument metadata attached to PH7_OP_CALL instructions via p3.
@@ -3853,6 +3862,12 @@ struct ph7_vm
 	                            * generation it screened at, so a site whose callee is a
 	                            * compile-time constant asks the question once per generation
 	                            * instead of once per call. Starts at 1: 0 is 'never screened'. */
+	sxu32 nConstGen;           /* The same idea for the CONSTANT table: bumped whenever a name
+	                            * is installed in or removed from hConstant. A PH7_OP_LOADC
+	                            * site's answer can only change then -- both the constant it
+	                            * resolved to and, for a namespaced site, WHICH of its two
+	                            * candidate names won -- so a site stamped with this generation
+	                            * skips the lookups. Starts at 1: 0 is 'never resolved'. */
 	sxu32 nCurLine;            /* Line of the instruction currently executing (0 outside the
 	                            * dispatch loop). Every runtime diagnostic, debug_backtrace()
 	                            * and Throwable reads its line from here. */
@@ -4851,6 +4866,8 @@ PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(ph7_vm *pVm,const void *pName,sx
 PH7_PRIVATE SyHashEntry * PH7_VmCallSiteAnswer(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int *pbHost);
 PH7_PRIVATE void PH7_VmCallSiteRecord(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int bHost,SyHashEntry *pEntry);
 PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode);
+PH7_PRIVATE SyHashEntry * PH7_VmConstSiteAnswer(ph7_vm *pVm,VmInstr *pInstr);
+PH7_PRIVATE void PH7_VmConstSiteRecord(ph7_vm *pVm,VmInstr *pInstr,SyHashEntry *pEntry);
 PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(ph7_vm *pVm,ph7_class_instance *pObj);
 PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName,VmClassAttr **ppAttr);
 PH7_PRIVATE sxi32 PH7_VmRefObjRemove(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry,ph7_hashmap_node *pMapEntry);

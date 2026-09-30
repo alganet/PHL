@@ -2864,32 +2864,32 @@ case PH7_OP_LOADC: {
 			const char *zCand = (const char *)pInstr->p3;
 			const char *zLit = (const char *)SyBlobData(&pObj->sBlob);
 			sxu32 nLit = (sxu32)SyBlobLength(&pObj->sBlob);
-			if( zCand ){
-				pEntry = SyHashGet(&pVm->hConstant,zCand,SyStrlen(zCand));
-				if( pEntry ){
-					ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
-					MemObjSetType(pTos,MEMOBJ_NULL);
-					SyBlobReset(&pTos->sBlob);
-					VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
-					pTos->nIdx = SXU32_HIGH;
-					break;
+			/* Both names are fixed by the instruction, so which one wins and what it
+			 * resolves to can only change when hConstant does. A site that has already
+			 * answered under the current generation answers again without hashing
+			 * either -- see PH7_VmConstSiteAnswer for what that was costing. */
+			pEntry = PH7_VmConstSiteAnswer(&(*pVm),pInstr);
+			if( pEntry == 0 ){
+				if( zCand ){
+					pEntry = SyHashGet(&pVm->hConstant,zCand,SyStrlen(zCand));
 				}
+				/* The GLOBAL step — skipped when the candidate came from an import,
+				 * which php resolves without any fallback. */
+				if( pEntry == 0 && (pInstr->iP1 & PH7_LOADC_NOGLOBAL) == 0 ){
+					pEntry = SyHashGet(&pVm->hConstant,(const void *)zLit,nLit);
+				}
+				PH7_VmConstSiteRecord(&(*pVm),pInstr,pEntry);
 			}
-			/* The GLOBAL step — skipped when the candidate came from an import, which
-			 * php resolves without any fallback. */
-			if( (pInstr->iP1 & PH7_LOADC_NOGLOBAL) == 0 ){
-				pEntry = SyHashGet(&pVm->hConstant,(const void *)zLit,nLit);
-				if( pEntry ){
-					ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
-					/* Set a NULL default value */
-					MemObjSetType(pTos,MEMOBJ_NULL);
-					SyBlobReset(&pTos->sBlob);
-					/* Invoke the callback and deal with the expanded value */
-					VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
-					/* Mark as constant */
-					pTos->nIdx = SXU32_HIGH;
-					break;
-				}
+			if( pEntry ){
+				ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
+				/* Set a NULL default value */
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				SyBlobReset(&pTos->sBlob);
+				/* Invoke the callback and deal with the expanded value */
+				VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
+				/* Mark as constant */
+				pTos->nIdx = SXU32_HIGH;
+				break;
 			}
 			{
 				/*

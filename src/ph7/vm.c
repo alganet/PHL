@@ -232,6 +232,10 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 	pCons->pUserData = pUserData;
 	SySetInit(&pCons->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));
 	rc = SyHashInsert(&pVm->hConstant,(const void *)zDupName,SyStringLength(&pCons->sName),pCons);
+	/* A name that was not a constant is one now, so every PH7_OP_LOADC site that
+	 * remembers what its name resolved to has to ask again -- including one whose
+	 * namespaced candidate used to MISS and fall through to the global literal. */
+	pVm->nConstGen++;
 	if( rc != SXRET_OK ){
 		SyMemBackendFree(&pVm->sAllocator,zDupName);
 		SyMemBackendPoolFree(&pVm->sAllocator,pCons);
@@ -569,10 +573,93 @@ PH7_PRIVATE void PH7_VmCallSiteRecord(
 	pSite->nGen = pVm->nCallableGen;
 }
 /*
- * Give back every call-site record the instructions in a bytecode container claimed.
- * Called just before the container itself is released -- which happens exactly once, for
- * the chunk an eval() or an include compiles -- so that a program evaluating chunks in a
- * loop reuses the records instead of accumulating one per chunk for ever.
+ * The hConstant entry a PH7_OP_LOADC site resolved its constant to last time, or 0 when
+ * it has to be resolved the long way.
+ *
+ * A LOADC site looks up as many as TWO names on every execution -- the compile-time
+ * candidate in p3 (a `use const` import's FQN, or `current-namespace\NAME`) and then the
+ * bare literal -- and on the ecosystem gate's phpcs step those two were 104M of the
+ * engine's 724M hash lookups and 3.0 GB of its 7.5 GB of hashed key bytes. The candidate
+ * alone hashed 2.3 GB to miss 91% of the time, because a namespace-qualified name is
+ * long and usually is not a constant.
+ *
+ * Which of the two wins, and what it resolves to, can only change when a name enters or
+ * leaves hConstant. So the site stamps the pVm->nConstGen it resolved at, and a site
+ * whose stamp is current answers without hashing anything.
+ *
+ * The record is claimed on the site's SECOND execution, for VmCallSiteFor's reason: a
+ * bootstrap or a one-shot branch would pay for bookkeeping it never reads. pInstr->nAux
+ * is free on a PH7_OP_LOADC, so the site counts its first two executions there.
+ */
+PH7_PRIVATE SyHashEntry * PH7_VmConstSiteAnswer(ph7_vm *pVm,VmInstr *pInstr)
+{
+	VmCallSite *pSite;
+	if( pInstr->nSite == 0 ){
+		if( pInstr->nAux < 2 ){
+			pInstr->nAux++;
+		}
+		return 0;
+	}
+	pSite = (VmCallSite *)SySetAt(&pVm->aCallSite,pInstr->nSite - 1);
+	if( pSite == 0 || pSite->nGen != pVm->nConstGen ){
+		return 0;
+	}
+	return pSite->pEntry;
+}
+/*
+ * Remember what this PH7_OP_LOADC site's constant name resolved to. Silently does
+ * nothing when the site has not earned a record yet or one cannot be allocated -- the
+ * lookup path above is always correct on its own.
+ */
+PH7_PRIVATE void PH7_VmConstSiteRecord(ph7_vm *pVm,VmInstr *pInstr,SyHashEntry *pEntry)
+{
+	VmCallSite *pSite;
+	if( pEntry == 0 ){
+		return;
+	}
+	if( pInstr->nSite == 0 ){
+		VmCallSite sNew;
+		if( pInstr->nAux < 2 ){
+			return;
+		}
+		sNew.zName = 0;   /* a LOADC site's name is its instruction; nothing to guard */
+		sNew.nName = 0;
+		sNew.pEntry = 0;
+		sNew.nGen = 0;
+		sNew.nNextFree = 0;
+		sNew.bHost = 0;
+		sNew.bEngine = 0;
+		sNew.bDead = 0;
+		if( pVm->nFreeCallSite ){
+			pSite = (VmCallSite *)SySetAt(&pVm->aCallSite,pVm->nFreeCallSite - 1);
+			if( pSite ){
+				pInstr->nSite = pVm->nFreeCallSite;
+				pVm->nFreeCallSite = pSite->nNextFree;
+				*pSite = sNew;
+			}else{
+				pVm->nFreeCallSite = 0; /* corrupt link: give up on reuse, not on the cache */
+			}
+		}
+		if( pInstr->nSite == 0 ){
+			if( SySetPut(&pVm->aCallSite,(const void *)&sNew) != SXRET_OK ){
+				return;
+			}
+			pInstr->nSite = SySetUsed(&pVm->aCallSite); /* index + 1 */
+		}
+	}
+	pSite = (VmCallSite *)SySetAt(&pVm->aCallSite,pInstr->nSite - 1);
+	if( pSite == 0 ){
+		return;
+	}
+	pSite->pEntry = pEntry;
+	pSite->nGen = pVm->nConstGen;
+}
+/*
+ * Give back every site record the instructions in a bytecode container claimed -- a
+ * PH7_OP_CALL's callee answer and a PH7_OP_LOADC's constant answer alike. Called just
+ * before the container itself is released -- which happens exactly once, for the chunk an
+ * eval() or an include compiles -- so that a program evaluating chunks in a loop reuses
+ * the records instead of accumulating one per chunk for ever.
  */
 PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode)
 {
@@ -585,7 +672,8 @@ PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode)
 	for( i = 0 ; i < n ; ++i ){
 		VmCallSite *pSite;
 		sxu32 nSite = aInstr[i].nSite;
-		if( aInstr[i].iOp != PH7_OP_CALL || nSite == 0 ){
+		if( nSite == 0
+		 || (aInstr[i].iOp != PH7_OP_CALL && aInstr[i].iOp != PH7_OP_LOADC) ){
 			continue;
 		}
 		aInstr[i].nSite = 0;
@@ -2589,6 +2677,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hFunction,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	/* 0 means "this call site has never been screened", so the first generation is 1. */
 	pVm->nCallableGen = 1;
+	pVm->nConstGen = 1; /* likewise for a PH7_OP_LOADC site (PH7_VmConstSiteAnswer) */
 	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
@@ -3988,6 +4077,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* A reused VM (the -S server, the in-process .phpt runner) starts the next run
 	 * with the bytecode of the last one still holding its screened-at stamps. */
 	pVm->nCallableGen++;
+	pVm->nConstGen++;
 	/* (8) Drain remaining per-exec containers. */
 	SySetReset(&pVm->aSelf);
 	/* Shutdown callbacks are normally drained+released by VmInvokeShutdownCallbacks
