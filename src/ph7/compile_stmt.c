@@ -46,8 +46,11 @@
  */
 static int GenStateConstNameKeywordOk(SyString *pName)
 {
-	static const char *azOk[] = { "bool", "float", "int", "object", "string",
-	                              "self", "parent" };
+	/* `integer` and `boolean` lex to the same tokens as `int` and `bool` here,
+	 * but php has no reserved word under either spelling and takes both as a
+	 * constant name. */
+	static const char *azOk[] = { "bool", "boolean", "float", "int", "integer",
+	                              "object", "string", "self", "parent" };
 	sxu32 i;
 	for( i = 0 ; i < SX_ARRAYSIZE(azOk) ; ++i ){
 		sxu32 n = (sxu32)SyStrlen(azOk[i]);

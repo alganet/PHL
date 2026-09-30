@@ -3504,6 +3504,18 @@ static int GenStateisLangConstruct(sxu32 nKeyword)
 			 * keyword outright, and Doctrine's DQL parser -- which dispatches its tree
 			 * walkers exactly that way -- did not compile. */
 			|| nKeyword == PH7_TKWRD_MATCH
+			/* php reserves NONE of `int`/`integer`/`bool`/`boolean`/`float`/
+			 * `string`/`object`: its scanner hands every one of them back as a
+			 * plain T_STRING, and only a TYPE position gives them a meaning. A
+			 * statement that begins with one is therefore an ordinary expression
+			 * -- `Integer::setModulo($id, $m);`, which is how phpseclib's
+			 * BinaryField spells the class it imported under that name, and which
+			 * this dispatcher answered `Unexpected keyword 'Integer'` for. The
+			 * same word after `$x = ` already compiled, so only the STATEMENT head
+			 * was refusing it. */
+			|| nKeyword == PH7_TKWRD_INT || nKeyword == PH7_TKWRD_BOOL
+			|| nKeyword == PH7_TKWRD_FLOAT || nKeyword == PH7_TKWRD_STRING
+			|| nKeyword == PH7_TKWRD_OBJECT
 			/*|| nKeyword == PH7_TKWRD_CLASS || nKeyword == PH7_TKWRD_FINAL || nKeyword == PH7_TKWRD_EXTENDS
 			  || nKeyword == PH7_TKWRD_ABSTRACT || nKeyword == PH7_TKWRD_INTERFACE
 			  || nKeyword == PH7_TKWRD_PUBLIC || nKeyword == PH7_TKWRD_PROTECTED
