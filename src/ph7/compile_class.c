@@ -62,11 +62,36 @@ static int GenStateDeclHoldsName(ph7_gen_state *pGen,ph7_class *pPrev,ph7_class 
 	}
 	return 1;   /* another file, already loaded: it has run */
 }
+/*
+ * A `phl -l` compile PARSES; it does not BIND. php binds inheritance at run time,
+ * so `php -l` says nothing about a parent, an interface or a trait it cannot see --
+ * and under -l nothing autoloads, so it can see almost none of them. TRUE means
+ * "say nothing and carry on with no base", which is what leaves the BODY to be
+ * compiled: the whole point of the mode is that a syntax error in there is found.
+ */
+static int GenStateLintSkipsBase(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	if( pGen->pVm->bSyntaxCheck == 0 ){
+		return 0;
+	}
+	if( pClass ){
+		pClass->iFlags |= PH7_CLASS_LINT_UNBOUND;
+	}
+	return 1;
+}
 static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pClass,
 	int bEarlyBindable)
 {
 	SyHashEntry *pEntry;
 	int bTopLevel = GenStateUnconditionalTopLevel(pGen);
+	if( pGen->pVm->bSyntaxCheck ){
+		/* `php -l` reports a redeclared FUNCTION and not a redeclared CLASS: a
+		 * class name is taken at the DECLARE_CLASS opcode, which lint never runs.
+		 * So `class DateTime {}` and symfony/polyfill-php80's stub `final class
+		 * Attribute` -- a file composer only ever loads under php 7 -- both lint
+		 * clean there, and this refused them. */
+		return SXRET_OK;
+	}
 	if( bTopLevel ){
 		/* php RUNS this declaration whatever else the file holds, early bound or
 		 * not -- so two of them under one name collide even when neither was. */
@@ -3160,11 +3185,13 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 					pParent = pParent->pNextName;
 				}
 				if( pParent == 0 ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
-						"Nonexistent base interface '%z'",&sBaseName);
-					if( rc == SXERR_ABORT ){
-						SyBlobRelease(&sResolved);
-						return SXERR_ABORT;
+					if( !GenStateLintSkipsBase(pGen,pClass) ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
+							"Nonexistent base interface '%z'",&sBaseName);
+						if( rc == SXERR_ABORT ){
+							SyBlobRelease(&sResolved);
+							return SXERR_ABORT;
+						}
 					}
 				}else if( pBase == 0 ){
 					/* First parent → single-inheritance base */
@@ -3584,6 +3611,12 @@ static sxi32 GenStateCheckOverrides(ph7_gen_state *pGen,ph7_class *pClass,
 	ph7_class_method **apMeth = (ph7_class_method **)SySetBasePtr(pMeths);
 	ph7_class_attr **apProp = (ph7_class_attr **)SySetBasePtr(pProps);
 	sxu32 n;
+	if( pClass->iFlags & PH7_CLASS_LINT_UNBOUND ){
+		/* A base this lint could not see may well DECLARE the member; php reports
+		 * an #[\Override] mismatch only where it early-binds, and it early-binds
+		 * nothing it cannot link. */
+		return SXRET_OK;
+	}
 	/* hMethod is a LIFO iteration list (SyHashInsert), so the collected order is
 	 * the REVERSE of the declaration order; hAttr is a FIFO one
 	 * (SyHashInsertTail) and needs no such turn. php reports the first member it
@@ -3656,6 +3689,12 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 	sxi32 rc;
 	/* Abstract classes, interfaces, and traits may have unimplemented methods */
 	if( pClass->iFlags & (PH7_CLASS_ABSTRACT|PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
+		return SXRET_OK;
+	}
+	if( pClass->iFlags & PH7_CLASS_LINT_UNBOUND ){
+		/* A trait this lint could not see is exactly where the implementations
+		 * usually are (`class C implements ArrayAccess { use HasDataTrait; }`),
+		 * so the count would be of methods the class does have. */
 		return SXRET_OK;
 	}
 	/* Count abstract methods */
@@ -4548,6 +4587,15 @@ static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKin
 	 * resolved here. */
 	int bCond = GenStateDeclIsConditional(&(*pGen));
 	*pRc = SXRET_OK;
+	if( pGen->pVm->bSyntaxCheck ){
+		/* `phl -l`: the declaration is never EXECUTED, so there is nothing to
+		 * defer it to -- and deferring captures the body as raw text that no one
+		 * ever parses, which is how a file with `$x = ;` inside a class extending
+		 * an autoloaded base linted CLEAN. Nothing autoloads under -l either, so
+		 * this is the common case rather than the rare one. php's own lint parses
+		 * every body and binds nothing. */
+		return 0;
+	}
 	SySetInit(&aMissing,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
 	SyBlobInit(&sSelfFqn,&pGen->pVm->sAllocator);
 	if( GenStateScanDeferDeps(pGen,0,iSelfKind,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,bCond) == SXRET_OK
@@ -4987,11 +5035,13 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				pBase = pBase->pNextName;
 			}
 			if( pBase == 0 ){
-				rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
-					"Nonexistent base class '%z'",&sBaseName);
-				if( rc == SXERR_ABORT ){
-					SyBlobRelease(&sResolved);
-					return SXERR_ABORT;
+				if( !GenStateLintSkipsBase(pGen,pClass) ){
+					rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
+						"Nonexistent base class '%z'",&sBaseName);
+					if( rc == SXERR_ABORT ){
+						SyBlobRelease(&sResolved);
+						return SXERR_ABORT;
+					}
 				}
 			}else{
 				if( pBase->iFlags & PH7_CLASS_ENUM ){
@@ -5046,11 +5096,13 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					pInterface = pInterface->pNextName;
 				}
 				if( pInterface == 0 ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
-						"Nonexistent base interface '%z'",&sIntName);
-					if( rc == SXERR_ABORT ){
-						SyBlobRelease(&sResolved);
-						return SXERR_ABORT;
+					if( !GenStateLintSkipsBase(pGen,pClass) ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
+							"Nonexistent base interface '%z'",&sIntName);
+						if( rc == SXERR_ABORT ){
+							SyBlobRelease(&sResolved);
+							return SXERR_ABORT;
+						}
 					}
 				}else{
 					/* Reject user classes that try to implement Throwable
@@ -5207,11 +5259,13 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 						pTrait = pTrait->pNextName;
 					}
 					if( pTrait == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
-							"'%z' is not a trait",&sTraitName);
-						if( rc == SXERR_ABORT ){
-							SyBlobRelease(&sResolved);
-							return SXERR_ABORT;
+						if( !GenStateLintSkipsBase(pGen,pClass) ){
+							rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
+								"'%z' is not a trait",&sTraitName);
+							if( rc == SXERR_ABORT ){
+								SyBlobRelease(&sResolved);
+								return SXERR_ABORT;
+							}
 						}
 					}else{
 						SySetPut(&sUse.aTraits,(const void *)&pTrait);
@@ -5469,7 +5523,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		 * so resolving its parent here is resolving it at its execution point --
 		 * the autoload belongs. */
 		if( GenStateScanDeferDeps(pGen,1,PH7_DEFER_KIND_CLASS,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,0) == SXRET_OK
-		 && SySetUsed(&aMissing) > 0 ){
+		 && SySetUsed(&aMissing) > 0 && !pGen->pVm->bSyntaxCheck ){
 			if( &pTokKw[1] < pGen->pEnd && (pTokKw[1].nType & PH7_TK_LPAREN) ){
 				SyToken *pClose = 0;
 				PH7_DelimitNestedTokens(&pTokKw[2],pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pClose);
@@ -5928,11 +5982,13 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 						pUsedTrait = pUsedTrait->pNextName;
 					}
 					if( pUsedTrait == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
-							"'%z' is not a trait",&sUsedName);
-						if( rc == SXERR_ABORT ){
-							SyBlobRelease(&sResolved);
-							return SXERR_ABORT;
+						if( !GenStateLintSkipsBase(pGen,pClass) ){
+							rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
+								"'%z' is not a trait",&sUsedName);
+							if( rc == SXERR_ABORT ){
+								SyBlobRelease(&sResolved);
+								return SXERR_ABORT;
+							}
 						}
 					}else{
 						SySetPut(&sUse.aTraits,(const void *)&pUsedTrait);

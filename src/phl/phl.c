@@ -760,7 +760,7 @@ int main(int argc,char **argv)
 			return 255;
 		}
 		zFile = argv[n];
-		rc = ph7_compile_file(pEngine,zFile,&pVm,0);
+		rc = ph7_compile_file(pEngine,zFile,&pVm,PH7_SYNTAX_CHECK);
 		if( rc == PH7_OK ){
 			printf("No syntax errors detected in %s\n",zFile);
 			ph7_vm_release(pVm);

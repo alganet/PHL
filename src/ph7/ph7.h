@@ -270,6 +270,12 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 						   * Everything will pass through the PH7 compiler.
 						   */
 #define PH7_PHP_EXPR 0x02 /* This flag is reserved for future use. */
+#define PH7_SYNTAX_CHECK 0x04 /* Compile only to CHECK the syntax (phl -l): the program
+                               * is never executed, so a class declaration whose
+                               * parent/interface/trait is missing is compiled in place
+                               * rather than deferred to its execution point, and the
+                               * refusals that need a resolved one are not raised.
+                               */
 /*
  * Call Context Error Message Serverity Level.
  *

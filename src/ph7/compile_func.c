@@ -1640,7 +1640,7 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 				return SXERR_SYNTAX;
 			}
 			if( zKw[0] == 'p' && pGen->pCurBase == 0
-			 && (pScope->iFlags & PH7_CLASS_TRAIT) == 0 ){
+			 && (pScope->iFlags & (PH7_CLASS_TRAIT|PH7_CLASS_LINT_UNBOUND)) == 0 ){
 				PH7_GenCompileError(pGen, E_ERROR, nLine,
 					"Cannot use \"parent\" when current class scope has no parent");
 				return SXERR_SYNTAX;

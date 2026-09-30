@@ -2242,6 +2242,13 @@ struct ph7_class
                                       * chain. Set on the class whose mount saw the failure; the gate
                                       * (VmClassStaticDeferPending) walks the bases, so mount ORDER
                                       * between a base and its subclass does not matter. */
+#define PH7_CLASS_LINT_UNBOUND 0x400000 /* Syntax-check compile (phl -l) only: a parent, interface or
+                                        * trait this declaration names could not be resolved, and the
+                                        * mode carried on with the body rather than refusing. Every
+                                        * check that needs the missing member's contents -- #[\Override],
+                                        * the unimplemented-abstract count -- is then skipped, which is
+                                        * what php does: it reports those only for a class it could
+                                        * EARLY-BIND, and it binds nothing whose base it cannot see. */
 #define PH7_CLASS_TOPLEVEL    0x200000 /* Declared UNCONDITIONALLY at file top level. php runs such a
                                      * declaration whatever else is in the file, so two of them under one
                                      * name is a redeclaration even when neither was early-bound -- which
@@ -3659,6 +3666,13 @@ struct ph7_vm
 	int bCompilingBuiltin;      /* TRUE while the embedded builtin PHP library chunks compile at VM
 	                             * init: classes/functions defined then are stamped INTERNAL so
 	                             * Reflection reports isInternal() like Zend does for C-level code. */
+	int bSyntaxCheck;           /* TRUE for a `phl -l` compile (PH7_SYNTAX_CHECK): the unit is only
+	                             * ever PARSED, never run. A class declaration is then never
+	                             * DEFERRED -- nothing autoloads here, so deferring would leave its
+	                             * whole body unparsed and lint an unparsable file clean -- and the
+	                             * refusals that only a resolved parent/interface/trait can answer
+	                             * are not raised, because php binds inheritance at run time and
+	                             * `php -l` does not report those either. */
 	int bReflectBypass;         /* Consume-once: the next method OP_CALL skips the visibility
 	                             * check (ReflectionMethod::invoke bypasses protection like PHP
 	                             * 8.1+). Cleared by the check site; never survives past one call. */

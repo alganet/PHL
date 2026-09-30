@@ -772,6 +772,10 @@ static sxi32 ProcessScript(
 				SyStringLength(pScript),nLimit);
 		}
 	}
+	/* A syntax-CHECK compile (phl -l) never runs what it compiles, which changes
+	 * what a class declaration whose base is missing has to do -- see the flag's
+	 * note in ph7int.h. */
+	pVm->bSyntaxCheck = (iFlags & PH7_SYNTAX_CHECK) ? 1 : 0;
 	/* Compile the script */
 	if( pVm->sCodeGen.nErr == 0 ){
 		PH7_CompileScript(pVm,&(*pScript),iFlags);
