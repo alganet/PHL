@@ -1682,34 +1682,6 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 	return rc;
 }
 /*
- * Duplicate the contents of a ph7_value but do not copy internal
- * buffer contents,simply point to it.
- */
-PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
-{
-	PH7_MEMOBJ_COPY_SCALAR(pDest,pSrc);
-	/* D1 commit 2: a MEMOBJ_AUX_DEFPATH carrier OWNS its heap descriptor via x.pOther, and
-	 * PH7_MemObjRelease frees it exactly once. An aliasing Load copies iFlags+x.pOther
-	 * verbatim, so a Load-duplicated carrier would let two slots free the same descriptor.
-	 * Carriers are transient (produced by LOAD_IDX/MEMBER, consumed at OP_CALL) and are never
-	 * Load-copied today; strip the flag defensively so the invariant can't be violated. */
-	pDest->iFlags &= ~MEMOBJ_AUX_DEFPATH;
-	if( pSrc->iFlags & MEMOBJ_HASHMAP ){
-		/* Increment reference count */
-		((ph7_hashmap *)pSrc->x.pOther)->iRef++;
-	}else if( pSrc->iFlags & MEMOBJ_OBJ ){
-		/* Increment reference count */
-		((ph7_class_instance *)pSrc->x.pOther)->iRef++;
-	}
-	if( SyBlobLength(&pDest->sBlob) > 0 ){
-		SyBlobRelease(&pDest->sBlob);
-	}
-	if( SyBlobLength(&pSrc->sBlob) > 0 ){
-		SyBlobReadOnly(&pDest->sBlob,SyBlobData(&pSrc->sBlob),SyBlobLength(&pSrc->sBlob));
-	}
-	return SXRET_OK;
-}
-/*
  * Read a value WITHOUT converting the caller's copy of it.
  *
  * Every ph7_value_to_xxx()/PH7_MemObjToXxx() is destructive: it rewrites the

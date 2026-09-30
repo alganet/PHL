@@ -4947,7 +4947,46 @@ struct VmUrlParts
 	sxu8 bScheme,bUser,bPass,bHost,bPort,bPath,bQuery,bFragment;
 };
 PH7_PRIVATE int PH7_VmUrlSplit(const char *z,int n,VmUrlParts *pOut);
-PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest);
+/*
+ * Load an ALIASING copy of a value: the destination gets the scalar half verbatim, one
+ * more reference on a container, and a READ-ONLY view of the source's string bytes. It is
+ * how a variable, an element and a property all reach the operand stack, and it is the
+ * engine's second-most-called function -- 1.34 BILLION times on the ecosystem gate's phpcs
+ * step (counted, PERF.md §2), from only 62 call sites.
+ *
+ * Inline for the same reason SySetAt, PH7_MemObjAt and PH7_MemObjRelease are: the body is
+ * a dozen instructions and it lived in memobj.c while every hot caller lived elsewhere, so
+ * with no LTO every one of those 1.34 billion was a real call. Sixty-two sites is a cheap
+ * place to spend that.
+ *
+ * The destination's blob is released first because a Load OVERWRITES it. On the workload of
+ * record that branch was taken **0 times in 1.34 billion** -- the destination is nearly
+ * always a fresh operand slot -- so it stays a call rather than more inline bytes.
+ */
+SX_STATIC_INLINE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
+{
+	PH7_MEMOBJ_COPY_SCALAR(pDest,pSrc);
+	/* D1 commit 2: a MEMOBJ_AUX_DEFPATH carrier OWNS its heap descriptor via x.pOther, and
+	 * PH7_MemObjRelease frees it exactly once. An aliasing Load copies iFlags+x.pOther
+	 * verbatim, so a Load-duplicated carrier would let two slots free the same descriptor.
+	 * Carriers are transient (produced by LOAD_IDX/MEMBER, consumed at OP_CALL) and are never
+	 * Load-copied today; strip the flag defensively so the invariant can't be violated. */
+	pDest->iFlags &= ~MEMOBJ_AUX_DEFPATH;
+	if( pSrc->iFlags & MEMOBJ_HASHMAP ){
+		/* Increment reference count */
+		((ph7_hashmap *)pSrc->x.pOther)->iRef++;
+	}else if( pSrc->iFlags & MEMOBJ_OBJ ){
+		/* Increment reference count */
+		((ph7_class_instance *)pSrc->x.pOther)->iRef++;
+	}
+	if( SyBlobLength(&pDest->sBlob) > 0 ){
+		SyBlobRelease(&pDest->sBlob);
+	}
+	if( SyBlobLength(&pSrc->sBlob) > 0 ){
+		SyBlobReadOnly(&pDest->sBlob,SyBlobData(&pSrc->sBlob),SyBlobLength(&pSrc->sBlob));
+	}
+	return SXRET_OK;
+}
 PH7_PRIVATE ph7_value * PH7_ValuePeek(ph7_value *pVal,ph7_value *pScratch);
 PH7_PRIVATE sxi64 PH7_ValuePeekInt64(ph7_value *pVal);
 #ifndef PH7_OMIT_FLOATING_POINT
