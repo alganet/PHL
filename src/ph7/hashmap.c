@@ -40,6 +40,26 @@ static sxu32 BinHash(const void *pSrc,sxu32 nLen)
 	return nH;
 }
 /*
+ * The hash a map ACTUALLY uses, spelled so the compiler can inline the body.
+ *
+ * Every map in the engine is built by PH7_NewHashmap(pVm,0,0) -- all 28 of its call
+ * sites pass no hash functions -- so xIntHash is IntHash and xBlobHash is BinHash in
+ * every array a PHP program can reach. Through the pointer, each of the 244 million
+ * array subscript reads on the ecosystem gate's phpcs step paid a real indirect call
+ * to reach three shifts (an int key) or a four-byte loop (a string key), and a body
+ * behind a pointer the compiler cannot resolve is a body it cannot inline.
+ *
+ * The test keeps the pointer meaningful rather than deleting it: a map built with its
+ * own hash still uses it, and the branch is perfectly predicted because nothing in the
+ * tree takes the other arm. This is NOT the devirtualization PERF.md §5 warns about --
+ * that one was SyHash's xHash, where BOTH implementations are live (SyStrHash folds
+ * case, SyBinHash does not) and the branch it added was a real one.
+ */
+#define HASHMAP_INT_HASH(pMap,iKey) \
+	( (pMap)->xIntHash == IntHash ? IntHash(iKey) : (pMap)->xIntHash(iKey) )
+#define HASHMAP_BLOB_HASH(pMap,pKey,nLen) \
+	( (pMap)->xBlobHash == BinHash ? BinHash(pKey,nLen) : (pMap)->xBlobHash(pKey,nLen) )
+/*
  * Return the total number of entries in a given hashmap.
  * If bRecursive is set to TRUE then recurse on hashmap entries.
  * Self-referential arrays are detected via the HASHMAP_COUNTING flag;
@@ -330,7 +350,7 @@ static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,
 		nIdx = nRefIdx;
 	}
 	/* Hash the key */
-	nHash = pMap->xIntHash(iKey);
+	nHash = HASHMAP_INT_HASH(pMap,iKey);
 	/* Allocate a new int node */
 	pNode = HashmapNewIntNode(&(*pMap),iKey,nHash,nIdx);
 	if( pNode == 0 ){
@@ -392,7 +412,7 @@ static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyL
 		nIdx = nRefIdx;
 	}
 	/* Hash the key */
-	nHash = pMap->xBlobHash(pKey,nKeyLen);
+	nHash = HASHMAP_BLOB_HASH(pMap,pKey,nKeyLen);
 	/* Allocate a new blob node */
 	pNode = HashmapNewBlobNode(&(*pMap),pKey,nKeyLen,nHash,nIdx);
 	if( pNode == 0 ){
@@ -433,7 +453,7 @@ PH7_PRIVATE sxi32 HashmapLookupIntKey(
 		return SXERR_NOTFOUND;
 	}
 	/* Hash the key first */
-	nHash = pMap->xIntHash(iKey);
+	nHash = HASHMAP_INT_HASH(pMap,iKey);
 	/* Point to the appropriate bucket */
 	pNode = pMap->apBucket[nHash & (pMap->nSize - 1)];
 	/* Perform the lookup */
@@ -457,6 +477,23 @@ PH7_PRIVATE sxi32 HashmapLookupIntKey(
 	return SXERR_NOTFOUND;
 }
 /*
+ * Can this key POSSIBLY be one of php's numeric array keys? A yes still has to be
+ * confirmed by HashmapIsIntKey; a no is final, and it is the answer for nearly every
+ * array read a program makes -- 'code', 'content', 'type'. php's rule can only say yes
+ * for a key that starts with a digit or with '-', so one byte settles it INLINE, where
+ * the full rule is an out-of-line call that re-derives that same first byte before it
+ * does anything else. 121 million string-key subscript reads asked it on the phpcs step
+ * of record.
+ */
+static int HashmapKeyMayBeInt(SyBlob *pKey)
+{
+	const unsigned char *zIn = (const unsigned char *)SyBlobData(pKey);
+	if( SyBlobLength(pKey) < 1 ){
+		return FALSE;
+	}
+	return ( zIn[0] == '-' || (zIn[0] >= '0' && zIn[0] <= '9') ) ? TRUE : FALSE;
+}
+/*
  * Check if a given BLOB key exists in the given hashmap.
  * Write a pointer to the target node on success. Otherwise
  * SXERR_NOTFOUND is returned on failure.
@@ -475,7 +512,7 @@ PH7_PRIVATE sxi32 HashmapLookupBlobKey(
 		return SXERR_NOTFOUND;
 	}
 	/* Hash the key first */
-	nHash = pMap->xBlobHash(pKey,nKeyLen);
+	nHash = HASHMAP_BLOB_HASH(pMap,pKey,nKeyLen);
 	/* Point to the appropriate bucket */
 	pNode = pMap->apBucket[nHash & (pMap->nSize - 1)];
 	/* Perform the lookup */
@@ -485,13 +522,23 @@ PH7_PRIVATE sxi32 HashmapLookupBlobKey(
 		}
 		if( pNode->iType == HASHMAP_BLOB_NODE
 			&& pNode->nHash == nHash
-			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen
-			&& SyMemcmp(SyBlobData(&pNode->xKey.sKey),pKey,nKeyLen) == 0 ){
-				/* Node found */
-				if( ppNode ){
-					*ppNode = pNode;
+			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen ){
+				/* The bytes, compared INLINE. SyMemcmp is the same loop (it is
+				 * SX_MACRO_FAST_CMP either way, PERF.md §5) plus a call and two
+				 * null tests, and the keys here are four or five bytes: the call
+				 * costs more than the comparison it makes, tens of millions of
+				 * times a run. */
+				sxi32 rcCmp = 0;
+				if( nKeyLen > 0 ){
+					SX_MACRO_FAST_CMP(SyBlobData(&pNode->xKey.sKey),pKey,nKeyLen,rcCmp);
 				}
-				return SXRET_OK;
+				if( rcCmp == 0 ){
+					/* Node found */
+					if( ppNode ){
+						*ppNode = pNode;
+					}
+					return SXRET_OK;
+				}
 		}
 		/* Follow the collision link */
 		pNode = pNode->pNextCollide;
@@ -574,7 +621,7 @@ PH7_PRIVATE int PH7_HashmapKeyIsInt(ph7_value *pKey)
 			/* Force a string cast (NULL becomes "", php's empty-string key) */
 			PH7_MemObjToString(&(*pKey));
 		}
-		return HashmapIsIntKey(&pKey->sBlob) ? TRUE : FALSE;
+		return ( HashmapKeyMayBeInt(&pKey->sBlob) && HashmapIsIntKey(&pKey->sBlob) ) ? TRUE : FALSE;
 	}
 	/* int / float / BOOL all reach an integer key ($a[false] is $a[0]) */
 	return TRUE;
@@ -597,7 +644,7 @@ static sxi32 HashmapLookup(
 			/* Force a string cast (NULL becomes "", php's empty-string key) */
 			PH7_MemObjToString(&(*pKey));
 		}
-		if( !HashmapIsIntKey(&pKey->sBlob) ){
+		if( !HashmapKeyMayBeInt(&pKey->sBlob) || !HashmapIsIntKey(&pKey->sBlob) ){
 			/* Blob lookup. The EMPTY string is a real key here, symmetric with the insert
 			 * path: reading $a[""] must find what writing $a[""] stored, not fall through
 			 * to an integer lookup for key 0. */
@@ -718,7 +765,7 @@ PH7_PRIVATE sxi32 HashmapInsert(
 			 * path and filed it under 0). */
 			PH7_MemObjToString(&(*pKey));
 		}
-		if( HashmapIsIntKey(&pKey->sBlob) ){
+		if( HashmapKeyMayBeInt(&pKey->sBlob) && HashmapIsIntKey(&pKey->sBlob) ){
 			goto IntKey;
 		}
 		/* An empty key is a real key: $a[""] = v stores under "", it does NOT
@@ -842,7 +889,7 @@ static sxi32 HashmapInsertByRef(
 			 * EMPTY STRING key, symmetric with HashmapInsert (the by-value path). */
 			PH7_MemObjToString(&(*pKey));
 		}
-		if( HashmapIsIntKey(&pKey->sBlob) ){
+		if( HashmapKeyMayBeInt(&pKey->sBlob) && HashmapIsIntKey(&pKey->sBlob) ){
 			goto IntKey;
 		}
 		/* An empty key is a REAL key: `$a[""] =& $x` binds (and OVERWRITES an existing
@@ -1030,7 +1077,7 @@ PH7_PRIVATE void HashmapRehashIntNode(ph7_hashmap_node *pEntry)
 	}
 	pEntry->pNextCollide = pEntry->pPrevCollide = 0;
 	/* Compute the new hash */
-	pEntry->nHash = pMap->xIntHash(pMap->iNextIdx);
+	pEntry->nHash = HASHMAP_INT_HASH(pMap,pMap->iNextIdx);
 	pEntry->xKey.iKey = pMap->iNextIdx;
 	if( pMap->iNextIdx > pMap->iMaxIntKey ){
 		pMap->iMaxIntKey = pMap->iNextIdx;
