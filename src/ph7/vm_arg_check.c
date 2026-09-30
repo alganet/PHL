@@ -2084,6 +2084,112 @@ static int VmStrictArgRefused(ph7_value *pArg,const char *zType,int nType)
 	return 0;
 }
 /*
+ * The next parameter of a signature starting at *pzCur, or 0 when the screen must
+ * STOP -- a malformed row with no '$', a variadic tail (whose type applies to every
+ * argument after it), or the end of the text. Advances *pzCur past the parameter.
+ *
+ * This is the walk VmEnforceBuiltinArgTypes used to do inline, moved out unchanged so
+ * that it has exactly ONE implementation: VmArgScreenStamp drives it once per builtin
+ * to build the cached table, and the screen drives it per call when there is no table.
+ * The cached form is therefore correct by construction rather than by inspection.
+ */
+static int VmArgScreenNext(const char **pzCur,const char *zEnd,VmArgScreenParam *pOut)
+{
+	const char *zCur = *pzCur;
+	const char *zType,*zName,*zStop;
+	int nType,nName,bByRef;
+	if( zCur >= zEnd ){
+		return 0;
+	}
+	/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever
+	 * precedes the '$', and an empty type means "untyped" (no screen). */
+	while( zCur < zEnd && zCur[0] == ' ' ){
+		zCur++;
+	}
+	zStop = zCur;
+	while( zStop < zEnd && zStop[0] != ',' ){
+		if( zStop[0] == '\'' || zStop[0] == '"' ){
+			zStop = VmSigSkipQuoted(zStop);
+			if( zStop >= zEnd ){
+				break;
+			}
+		}
+		zStop++;
+	}
+	zName = zCur;
+	while( zName < zStop && zName[0] != '$' ){
+		zName++;
+	}
+	if( zName >= zStop ){
+		return 0; /* malformed / no parameter name -- stop screening */
+	}
+	if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){
+		return 0; /* variadic tail: stop (its type applies to the rest) */
+	}
+	zType = zCur;
+	nType = (int)(zName - zCur);
+	/* A `~Type $p` row is php's stub-versus-body mismatch: the type php DECLARES
+	 * (which Reflection must report) is looser than the one its C body asks for, so
+	 * the screen stands aside and the builtin raises the TypeError itself.
+	 * RecursiveCachingIterator::__construct is the first: it is declared
+	 * `Iterator $iterator` and refuses anything that is not a RecursiveIterator. */
+	pOut->bStub = (sxu8)((nType > 0 && zType[0] == '~') ? 1 : 0);
+	/* Trim the trailing spaces and the by-ref marker of "array &$array" */
+	bByRef = 0;
+	while( nType > 0 && (zType[nType-1] == ' ' || zType[nType-1] == '&') ){
+		if( zType[nType-1] == '&' ){
+			bByRef = 1;
+		}
+		nType--;
+	}
+	zName++; /* skip '$' */
+	nName = 0;
+	while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){
+		nName++;
+	}
+	pOut->zType  = zType;
+	pOut->nType  = (sxu16)nType;
+	pOut->zName  = zName;
+	pOut->nName  = (sxu16)nName;
+	pOut->bByRef = (sxu8)bByRef;
+	*pzCur = (zStop < zEnd) ? zStop + 1 : zEnd;
+	return 1;
+}
+/*
+ * Work out this builtin's parameter table once and keep it on its record, beside the
+ * two name questions and the signature length. Two passes over the same walk: count,
+ * then fill. Leaves aSigParam at 0 when the signature yields no parameters or the
+ * allocation fails, and the screen then walks the text per call exactly as before --
+ * the fallback is the same code, so there is no second set of answers to keep in step.
+ *
+ * The table lives in the VM's allocator and is reclaimed with it, the same lifetime as
+ * the name strdup beside it in PH7_NewForeignFunction.
+ */
+static void VmArgScreenStamp(ph7_vm *pVm,ph7_user_func *pFunc,const char *zSig,sxu32 nSigLen)
+{
+	const char *zEnd = &zSig[nSigLen];
+	const char *zCur;
+	VmArgScreenParam sTmp;
+	VmArgScreenParam *aParam;
+	sxu32 n;
+	for( n = 0, zCur = zSig ; VmArgScreenNext(&zCur,zEnd,&sTmp) ; ++n ){
+		/* counting only */
+	}
+	if( n < 1 ){
+		return;
+	}
+	aParam = (VmArgScreenParam *)SyMemBackendPoolAlloc(&pVm->sAllocator,
+		n * (sxu32)sizeof(VmArgScreenParam));
+	if( aParam == 0 ){
+		return;
+	}
+	for( n = 0, zCur = zSig ; VmArgScreenNext(&zCur,zEnd,&aParam[n]) ; ++n ){
+		/* filling */
+	}
+	pFunc->aSigParam = aParam;
+	pFunc->nSigParam = (sxu16)n;
+}
+/*
  * PHP-8 ZPP type enforcement for host functions, driven by the aBuiltinSig[]
  * declaration (band A #7). Screens only the arguments that php can NEVER coerce
  * into a declared scalar parameter — arrays, resources, and objects without a
@@ -2167,13 +2273,17 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	if( zSig == 0 ){
 		return SXRET_OK;
 	}
-	/* Both of the questions below are about the NAME, which cannot change, and both
-	 * used to be answered by SCANNING a table on every builtin call -- seventeen
-	 * names here and about seventy in VmBuiltinPathMask, two SyStrlen calls per row.
-	 * Worked out once and kept on the function's own record. */
+	/* All three of the questions below are about the DECLARATION, which cannot change:
+	 * two are about the NAME -- and used to be answered by SCANNING a table on every
+	 * builtin call, seventeen names here and about seventy in VmBuiltinPathMask, two
+	 * SyStrlen calls per row -- and the third is the length of the signature TEXT,
+	 * which zEnd below used to measure on every call. Worked out once and kept on the
+	 * function's own record. */
 	if( !pFunc->bScreenStamped ){
 		int iSelf;
 		pFunc->nPathMask = VmBuiltinPathMask(&pFunc->sName);
+		pFunc->nSigLen = (sxu32)SyStrlen(zSig);
+		VmArgScreenStamp(pCtx->pVm,pFunc,zSig,pFunc->nSigLen);
 		for( iSelf = 0 ; iSelf < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iSelf ){
 			const char *zSelf = azSelfChecked[iSelf];
 			if( SyStrncmp(pFunc->sName.zString,zSelf,pFunc->sName.nByte) == 0
@@ -2188,65 +2298,33 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		return SXRET_OK;
 	}
 	nPathMask = pFunc->nPathMask;
-	iArg = 0;
 	zCur = zSig;
-	zEnd = &zSig[SyStrlen(zSig)];
-	while( zCur < zEnd && iArg < nGiven ){
-		const char *zType, *zName, *zStop;
+	zEnd = &zSig[pFunc->nSigLen];   /* measured once, above -- never per call */
+	for( iArg = 0 ; iArg < nGiven ; ++iArg ){
+		VmArgScreenParam sParam;
+		const char *zType, *zName;
 		int nType, nName, bByRef;
 		ph7_value *pArg;
 		char zGivenBuf[64];
-		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever
-		 * precedes the '$', and an empty type means "untyped" (no screen). */
-		while( zCur < zEnd && zCur[0] == ' ' ){
-			zCur++;
-		}
-		zStop = zCur;
-		while( zStop < zEnd && zStop[0] != ',' ){
-			if( zStop[0] == '\'' || zStop[0] == '"' ){
-				zStop = VmSigSkipQuoted(zStop);
-				if( zStop >= zEnd ){
-					break;
-				}
+		/* The parameter this argument is screened against. Worked out once per
+		 * builtin when the table could be built, and by the same walk per call when
+		 * it could not; either way the screen stops where the walk stopped. */
+		if( pFunc->aSigParam ){
+			if( iArg >= (int)pFunc->nSigParam ){
+				break;
 			}
-			zStop++;
+			sParam = pFunc->aSigParam[iArg];
+		}else if( !VmArgScreenNext(&zCur,zEnd,&sParam) ){
+			break;
 		}
-		zName = zCur;
-		while( zName < zStop && zName[0] != '$' ){
-			zName++;
+		if( sParam.bStub ){
+			continue; /* the builtin raises its own TypeError -- see VmArgScreenNext */
 		}
-		if( zName >= zStop ){
-			break; /* malformed / no parameter name — stop screening */
-		}
-		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){
-			break; /* variadic tail: stop (its type applies to the rest) */
-		}
-		zType = zCur;
-		nType = (int)(zName - zCur);
-		if( nType > 0 && zType[0] == '~' ){
-			/* A `~Type $p` row is php's stub-versus-body mismatch: the type php
-			 * DECLARES (which Reflection must report) is looser than the one its C
-			 * body asks for, so the screen stands aside and the builtin raises the
-			 * TypeError itself. RecursiveCachingIterator::__construct is the first:
-			 * it is declared `Iterator $iterator` and refuses anything that is not a
-			 * RecursiveIterator. */
-			zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
-			iArg++;
-			continue;
-		}
-		/* Trim the trailing spaces and the by-ref marker of "array &$array" */
-		bByRef = 0;
-		while( nType > 0 && (zType[nType-1] == ' ' || zType[nType-1] == '&') ){
-			if( zType[nType-1] == '&' ){
-				bByRef = 1;
-			}
-			nType--;
-		}
-		zName++; /* skip '$' */
-		nName = 0;
-		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){
-			nName++;
-		}
+		zType  = sParam.zType;
+		nType  = (int)sParam.nType;
+		zName  = sParam.zName;
+		nName  = (int)sParam.nName;
+		bByRef = sParam.bByRef;
 		pArg = apArg[iArg];
 		if( bByRef && pArg->nIdx == SXU32_HIGH
 		 && !(pCtx->pArgMap && pCtx->pArgMap->bArgShapes && !pCtx->pArgMap->bHasNamed) ){
@@ -2263,8 +2341,6 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 			 * standing aside here would swallow the type error php still reports for
 			 * the latter (`sort(new stdClass)` is "must be of type array, stdClass
 			 * given", not a silent false). */
-			zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
-			iArg++;
 			continue;
 		}
 		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){
@@ -2528,8 +2604,6 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					&pFunc->sName,iArg + 1,nName,zName);
 			}
 		}
-		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
-		iArg++;
 	}
 	return SXRET_OK;
 }

@@ -421,6 +421,30 @@ PH7_PRIVATE int PH7_MulOverflow64(sxi64 a,sxi64 b,sxi64 *pR);
 typedef sxi32 (*ProcMemObjCast)(ph7_value *);
 /* Forward reference */
 typedef struct ph7_output_consumer ph7_output_consumer;
+/*
+ * One parameter of a builtin's declared signature, as the shared argument screen
+ * (VmEnforceBuiltinArgTypes) needs to see it: the type TEXT, the parameter name, and
+ * the two markers the text carries -- `&` for by-reference and a leading `~` for
+ * php's stub-versus-body disagreement. Every pointer is INTO zSig, which is static
+ * storage; nothing here is copied and nothing here is freed.
+ *
+ * Getting this out of zSig is a walk -- skip spaces, find the comma that ends the
+ * parameter (honouring a quoted default, which can contain one), find the '$', check
+ * for a variadic '...', trim the type's trailing spaces and '&'. The screen did that
+ * walk for every argument of every builtin call: 18,901,261 parameters on the
+ * ecosystem gate's phpcs step, for an answer that is a property of the DECLARATION
+ * and cannot change between two calls. (PERF.md P13.)
+ */
+typedef struct VmArgScreenParam VmArgScreenParam;
+struct VmArgScreenParam
+{
+	const char *zType;   /* into zSig; nType 0 means untyped and unscreened */
+	const char *zName;   /* into zSig, past the '$' */
+	sxu16 nType;
+	sxu16 nName;
+	sxu8 bByRef;         /* "array &$array" */
+	sxu8 bStub;          /* "~Type $p": the builtin raises its own TypeError */
+};
 typedef struct ph7_user_func ph7_user_func;
 typedef struct ph7_conf ph7_conf;
 /*
@@ -556,11 +580,26 @@ struct ph7_user_func
 	sxu8 bSelfChecked;        /* This builtin words its own argument refusals and must not be
 	                           * pre-empted by the shared screen (php overloads it on arity, or
 	                           * its declared type and its refusal text disagree). */
-	sxu8 bScreenStamped;      /* The two above have been worked out. The struct is SyZero'd at
-	                           * creation, so 0 means "not yet" and never "no". Stamped lazily
-	                           * rather than at VM init because a NATIVE METHOD's record is
-	                           * reached through ph7_vm_func::pNative and is not in the host
-	                           * function table the init pass walks. */
+	sxu8 bScreenStamped;      /* Everything this screen keeps on the record -- nPathMask,
+	                           * bSelfChecked, nSigLen and the aSigParam table -- has been
+	                           * worked out. The struct is SyZero'd at creation, so 0 means
+	                           * "not yet" and never "no".
+	                           * Stamped lazily rather than at VM init because a NATIVE
+	                           * METHOD's record is reached through ph7_vm_func::pNative and
+	                           * is not in the host function table the init pass walks. */
+	VmArgScreenParam *aSigParam; /* zSig's parameters, parsed ONCE (see the struct above and
+	                           * VmArgScreenStamp). 0 when there are none, or when the
+	                           * allocation failed -- the screen then walks the text, which
+	                           * is the same code and the same answers, just per call. */
+	sxu16 nSigParam;          /* how many aSigParam holds; beyond it the screen stops, which
+	                           * is what the walk did at a variadic tail or a malformed row. */
+	sxu32 nSigLen;            /* SyStrlen(zSig), worked out with the rest. zSig is a
+	                           * literal from aBuiltinSig[] (or a native method's table) and
+	                           * is assigned exactly once, so its length is a constant of the
+	                           * DECLARATION -- but the shared argument screen measured it on
+	                           * every call, which on the ecosystem gate's phpcs step was
+	                           * 425,987,828 bytes of strlen across 11,391,725 calls.
+	                           * (PERF.md P13.) Only meaningful once bScreenStamped. */
 };
 /*
  * The 'context' argument for an installable function. A pointer to an
