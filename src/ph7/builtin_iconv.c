@@ -564,6 +564,39 @@ static int IcvConvertBounded(SyBlob *pOut,const char *zIn,int nIn,int *pi,
 	return ICV_OK;
 }
 
+/*
+ * One buffer converted between two charsets NAMED the way a MO catalog's
+ * `Content-Type` header names them: ext/gettext's whole conversion door.
+ *
+ * Transliteration is on unconditionally because glibc's gettext opens its own
+ * conversion that way (`norm_add_slashes (outcharset, "TRANSLIT")` in
+ * loadmsgcat.c), which is why a translated string a narrower target cannot hold
+ * comes back approximated rather than refused. Answers -1 when either name is
+ * outside the three code sets PHL models, which is the case php answers the
+ * msgid UNTRANSLATED for -- the same thing its iconv_open() failure does.
+ */
+PH7_PRIVATE int PH7_IconvTranslate(SyBlob *pOut,const char *zIn,int nIn,
+	const char *zFrom,int nFrom,const char *zTo,int nTo)
+{
+	icv_cs sFrom,sTo;
+	if( nFrom < 1 || nTo < 1 ){
+		return -1;
+	}
+	IcvParseCharset(zFrom,nFrom,&sFrom);
+	IcvParseCharset(zTo,nTo,&sTo);
+	if( sFrom.iEnc < 0 || sTo.iEnc < 0 ){
+		return -1;
+	}
+	if( sFrom.iEnc == sTo.iEnc ){
+		/* Same code set: glibc's conversion is a copy, and so is this. */
+		SyBlobAppend(pOut,zIn,(sxu32)nIn);
+		return PH7_OK;
+	}
+	sTo.bTranslit = 1;
+	sTo.bIgnore = 0;
+	return IcvConvert(pOut,zIn,nIn,sFrom.iEnc,&sTo,0) == ICV_OK ? PH7_OK : -1;
+}
+
 /* --- Diagnostics ------------------------------------------------------- */
 
 /*

@@ -1080,6 +1080,17 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "jdtounix",     PH7_builtin_jdtounix      },
 	{ "easter_days",  PH7_builtin_easter_days   },
 	{ "easter_date",  PH7_builtin_easter_date   },
+	     /* ext/gettext: php's own order for the extension */
+	{ "textdomain",              PH7_builtin_textdomain              },
+	{ "gettext",                 PH7_builtin_gettext                 },
+	{ "_",                       PH7_builtin_gettext                 },
+	{ "dgettext",                PH7_builtin_dgettext                },
+	{ "dcgettext",               PH7_builtin_dcgettext               },
+	{ "bindtextdomain",          PH7_builtin_bindtextdomain          },
+	{ "ngettext",                PH7_builtin_ngettext                },
+	{ "dngettext",               PH7_builtin_dngettext               },
+	{ "dcngettext",              PH7_builtin_dcngettext              },
+	{ "bind_textdomain_codeset", PH7_builtin_bind_textdomain_codeset },
 	     /* ext/standard: the image container surface */
 	{ "image_type_to_mime_type", PH7_builtin_image_type_to_mime_type },
 	{ "image_type_to_extension", PH7_builtin_image_type_to_extension },

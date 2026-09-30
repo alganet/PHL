@@ -31,6 +31,7 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <locale.h>
 #ifdef __UNIXES__
 #include <unistd.h>
 #endif
@@ -418,6 +419,16 @@ int main(int argc,char **argv)
 	const char *azIniDefine[64]; /* -d name=value directives, in order */
 	int nIniDefine = 0;
 	const char *zIniFile = 0;    /* -c php.ini path */
+	/* php's own module startup pins LC_CTYPE to C.UTF-8 and leaves every other
+	 * category at C, whatever the environment says -- so `setlocale(LC_CTYPE,'0')`
+	 * answers "C.UTF-8" under php on a box with the locale and "C" on one without,
+	 * and never the LANG the shell exported. That is observable on its own, and it
+	 * also decides the encoding ext/gettext hands an answer back in when nothing
+	 * called bind_textdomain_codeset(). The engine LIBRARY does not touch the
+	 * process locale; this is the CLI, which is PHL's SAPI. */
+	if( setlocale(LC_CTYPE,"C.UTF-8") == 0 ){
+		setlocale(LC_CTYPE,"C");
+	}
 	/* Process interpreter arguments first*/
 	for(n = 1 ; n < argc ; ++n ){
 		int c;

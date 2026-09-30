@@ -778,6 +778,17 @@ static const struct VmBuiltinSig {
 	{ "gc_mem_caches", "", "int" },
 	{ "gc_status", "", "array" },
 	{ "get_called_class", "", "string" },
+	/* ext/gettext */
+	{ "_", "string $message", "string" },
+	{ "bind_textdomain_codeset", "string $domain, ?string $codeset = NULL", "string|false" },
+	{ "bindtextdomain", "string $domain, ?string $directory = NULL", "string|false" },
+	{ "dcgettext", "string $domain, string $message, int $category", "string" },
+	{ "dcngettext", "string $domain, string $singular, string $plural, int $count, int $category", "string" },
+	{ "dgettext", "string $domain, string $message", "string" },
+	{ "dngettext", "string $domain, string $singular, string $plural, int $count", "string" },
+	{ "gettext", "string $message", "string" },
+	{ "ngettext", "string $singular, string $plural, int $count", "string" },
+	{ "textdomain", "?string $domain = NULL", "string" },
 	{ "get_class", "object $object = ?", "string" },
 	{ "get_class_methods", "object|string $object_or_class", "array" },
 	{ "get_class_vars", "string $class", "array" },
@@ -1671,6 +1682,11 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		 * reads it up to the NUL. */
 		{ "SQLite3::__construct",                  20, 1u<<0 },
 		{ "SQLite3::open",                         13, 1u<<0 },
+		/* Not a path either, and php screens it exactly as if it were: BOTH of
+		 * bindtextdomain's arguments are Z_PARAM_PATH, so a NUL in the DOMAIN is
+		 * the same catchable ValueError the directory gets. The other nine
+		 * gettext doors take ordinary strings and read up to the NUL. */
+		{ "bindtextdomain",   14, (1u<<0)|(1u<<1) },
 		/* Path-shaped settings and the pattern matcher */
 		{ "fnmatch",           7, (1u<<0)|(1u<<1) },
 		{ "set_include_path", 16, 1u<<0 },

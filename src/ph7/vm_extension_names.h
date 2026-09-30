@@ -30,22 +30,24 @@
 #define PH7_EXT_REFLECTION   11
 #define PH7_EXT_SESSION      12
 #define PH7_EXT_MBSTRING     13
-#define PH7_EXT_ICONV        14
-#define PH7_EXT_RANDOM       15
-#define PH7_EXT_TOKENIZER    16
-#define PH7_EXT_LIBXML       17
-#define PH7_EXT_XML          18
-#define PH7_EXT_DOM          19
-#define PH7_EXT_XMLWRITER    20
-#define PH7_EXT_PDO          21
-#define PH7_EXT_PDO_SQLITE   22
-#define PH7_EXT_CURL         23
-#define PH7_EXT_SQLITE3      24
+#define PH7_EXT_GETTEXT      14
+#define PH7_EXT_ICONV        15
+#define PH7_EXT_RANDOM       16
+#define PH7_EXT_TOKENIZER    17
+#define PH7_EXT_LIBXML       18
+#define PH7_EXT_XML          19
+#define PH7_EXT_DOM          20
+#define PH7_EXT_XMLWRITER    21
+#define PH7_EXT_PDO          22
+#define PH7_EXT_PDO_SQLITE   23
+#define PH7_EXT_CURL         24
+#define PH7_EXT_SQLITE3      25
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
-	"filter", "hash", "Reflection", "session", "mbstring", "iconv", "random", "tokenizer",
-	"libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl", "sqlite3",
+	"filter", "hash", "Reflection", "session", "mbstring", "gettext", "iconv", "random",
+	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
+	"sqlite3",
 };
 
 typedef struct VmExtName VmExtName;
@@ -403,6 +405,12 @@ static const VmExtName aExtFunc[] = {
 	{"mb_rtrim",PH7_EXT_MBSTRING}, {"mb_detect_encoding",PH7_EXT_MBSTRING},
 	{"mb_check_encoding",PH7_EXT_MBSTRING}, {"mb_scrub",PH7_EXT_MBSTRING},
 	{"mb_ord",PH7_EXT_MBSTRING}, {"mb_chr",PH7_EXT_MBSTRING}, {"mb_str_pad",PH7_EXT_MBSTRING},
+	/* gettext */
+	{"textdomain",PH7_EXT_GETTEXT}, {"gettext",PH7_EXT_GETTEXT}, {"_",PH7_EXT_GETTEXT},
+	{"dgettext",PH7_EXT_GETTEXT}, {"dcgettext",PH7_EXT_GETTEXT},
+	{"bindtextdomain",PH7_EXT_GETTEXT}, {"ngettext",PH7_EXT_GETTEXT},
+	{"dngettext",PH7_EXT_GETTEXT}, {"dcngettext",PH7_EXT_GETTEXT},
+	{"bind_textdomain_codeset",PH7_EXT_GETTEXT},
 	/* iconv */
 	{"iconv_strlen",PH7_EXT_ICONV}, {"iconv_substr",PH7_EXT_ICONV},
 	{"iconv_strpos",PH7_EXT_ICONV}, {"iconv_strrpos",PH7_EXT_ICONV},
