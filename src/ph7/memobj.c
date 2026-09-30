@@ -347,6 +347,37 @@ static sxi32 MemObjCallClassCastMethod(
 	return PH7_VmCallClassMethod(&(*pVm),&(*pThis),pMethod,&(*pResult),0,0);
 }
 /*
+ * The number an object's own STRING is -- php's cast_object with IS_LONG /
+ * IS_DOUBLE for the one class that answers those (PH7_CLASS_NUM_AS_STRING).
+ *
+ * Both casts read the same text, so this answers the integer and, when the
+ * caller wants it, writes the float beside it: `(int)$x` on `<c>2.5</c>` is 2
+ * and `(float)$x` is 2.5, exactly as the two string conversions would give.
+ * Silent: this class HAS an answer, so php raises nothing.
+ */
+static sxi64 MemObjIntFromClassString(ph7_vm *pVm,ph7_class_instance *pThis,ph7_real *pReal)
+{
+	ph7_value sText;
+	sxi64 iVal = 0;
+	if( pReal ){
+		*pReal = 0;
+	}
+	if( pVm == 0 || pThis == 0 ){
+		return 0;
+	}
+	PH7_MemObjInit(pVm,&sText);
+	if( MemObjCallClassCastMethod(pVm,pThis,"__toString",sizeof("__toString")-1,&sText)
+		== SXRET_OK && (sText.iFlags & MEMOBJ_STRING) ){
+		iVal = MemObjStringToInt(&sText,0);
+		if( pReal ){
+			SyStrToReal((const char *)SyBlobData(&sText.sBlob),
+				SyBlobLength(&sText.sBlob),(void *)pReal,0);
+		}
+	}
+	PH7_MemObjRelease(&sText);
+	return iVal;
+}
+/*
  * Return some kind of integer value which is the best we can
  * do at representing the value that pObj describes as an integer.
  * If pObj is an integer, then the value is exact. If pObj is
@@ -393,6 +424,12 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 			sxi64 iId = (sxi64)pInst->nObjId;
 			PH7_ClassInstanceUnref(pInst);
 			return iId;
+		}
+		if( pInst && pInst->pClass && PH7_ClassNumberIsString(pInst->pClass) ){
+			/* php's SimpleXMLElement casts to the NUMBER ITS TEXT IS, silently. */
+			sxi64 iVal = MemObjIntFromClassString(pObj->pVm,pInst,0);
+			PH7_ClassInstanceUnref(pInst);
+			return iVal;
 		}
 		if( pInst && pInst->pClass ){
 			VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
@@ -459,6 +496,12 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 	}else if( iFlags & MEMOBJ_OBJ ){
 		/* php has NO __toFloat(): casting an object to float warns and yields 1.0. */
 		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+		if( pInst && pInst->pClass && PH7_ClassNumberIsString(pInst->pClass) ){
+			ph7_real rV = 0;
+			(void)MemObjIntFromClassString(pObj->pVm,pInst,&rV);
+			PH7_ClassInstanceUnref(pInst);
+			return rV;
+		}
 		if( pInst && pInst->pClass ){
 			VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
 				"Object of class %z could not be converted to float",&pInst->pClass->sName);
@@ -1328,6 +1371,17 @@ PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj)
 			SyBlobRelease(&pObj->sBlob);
 		}
 	}else if(pObj->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES)){
+		if( pObj->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+			if( pInst && pInst->pClass && PH7_ClassNumberIsString(pInst->pClass)
+			 && PH7_MemObjToString(pObj) == SXRET_OK ){
+				/* php's cast_object answers IS_NUMBER from the object's TEXT, and
+				 * the text's own shape then decides int or float -- so
+				 * `$xml->price + 0` on `<price>2.5</price>` is 2.5 and not 2. The
+				 * value is a STRING now, so this recursion ends here. */
+				return PH7_MemObjToNumeric(pObj);
+			}
+		}
 		PH7_MemObjToInteger(pObj);
 	}else{
 		/* Perform a blind cast */
@@ -1804,6 +1858,17 @@ static int MemObjCmpCastObject(ph7_value *pSelf,ph7_value *pOther,ph7_value *pOu
 	if( pOther->iFlags & MEMOBJ_BOOL ){
 		/* An object is always truthy, with no diagnostic (php has no __toBool). */
 		PH7_MemObjInitFromBool(pSelf->pVm,pOut,1);
+		return TRUE;
+	}
+	if( (pOther->iFlags & (MEMOBJ_INT|MEMOBJ_REAL))
+	 && pInst && pInst->pClass && PH7_ClassNumberIsString(pInst->pClass) ){
+		/* A class whose cast_object really answers a number: php compares against
+		 * THAT, silently -- `(string)$xml->n == 5` and `$xml->n == 5` agree. */
+		PH7_MemObjLoad(pSelf,pOut);
+		if( PH7_MemObjToString(pOut) != SXRET_OK ){
+			return FALSE;
+		}
+		PH7_MemObjToNumeric(pOut);
 		return TRUE;
 	}
 	if( pOther->iFlags & (MEMOBJ_INT|MEMOBJ_REAL) ){

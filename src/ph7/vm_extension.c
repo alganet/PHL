@@ -24,7 +24,8 @@ static int VmExtAvailable(int iExt)
 {
 #ifndef PH7_ENABLE_LIBXML
 	if( iExt == PH7_EXT_LIBXML || iExt == PH7_EXT_XML
-	 || iExt == PH7_EXT_DOM || iExt == PH7_EXT_XMLWRITER ){
+	 || iExt == PH7_EXT_DOM || iExt == PH7_EXT_XMLWRITER
+	 || iExt == PH7_EXT_SIMPLEXML ){
 		return 0;
 	}
 #endif

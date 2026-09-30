@@ -273,32 +273,15 @@ static void LibxmlGenericErr(void *pUserData,const char *zFmt,...)
 	va_start(ap,zFmt);
 	SyBlobFormatAp(&sMsg,zFmt,ap);
 	va_end(ap);
-	/* php's own generic handler is line-buffered and reports what it flushed
-	 * WITHOUT the newline, where a structured message keeps its own -- this
-	 * channel's messages arrive whole and newline-terminated. */
-	{
-		char *zMsg = (char *)SyBlobData(&sMsg);
-		sxu32 nMsg = SyBlobLength(&sMsg);
-		while( nMsg > 0 && (zMsg[nMsg-1] == '\n' || zMsg[nMsg-1] == '\r') ){
-			nMsg--;
-		}
-		sMsg.nByte = nMsg;
-	}
+	/* The message keeps its newline: php's own generic handler is LINE-buffered
+	 * and this channel does not deliver whole lines. libxml's default
+	 * parser-error routine calls it FOUR times for one error -- `Entity: line
+	 * 1: `, `parser `, `error : `, then the message and a newline -- and php
+	 * prints the four as the one line they are. Trimming each fragment here
+	 * instead printed four warnings for one diagnostic; the drain does the
+	 * flushing, exactly as it does for a structured message. */
 	SyBlobAppend(&sMsg,"",1);   /* the queue copies a C string */
-	{
-		/* The channel mark goes on the entry the queue just took -- confirmed
-		 * by the depth having GROWN, so an insertion that failed cannot leave
-		 * the mark on the message before it. */
-		sxu32 nBefore = SySetUsed(&pVm->aLibxmlErr);
-		PH7_LibxmlQueueError(pVm,XML_ERR_ERROR,1,0,0,(const char *)SyBlobData(&sMsg),"");
-		if( SySetUsed(&pVm->aLibxmlErr) > nBefore ){
-			phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);
-			aErr[SySetUsed(&pVm->aLibxmlErr)-1].bWholeLine = 1;
-			if( pVm->pLibxmlLastErr ){
-				((phl_libxml_err *)pVm->pLibxmlLastErr)->bWholeLine = 1;
-			}
-		}
-	}
+	PH7_LibxmlQueueError(pVm,XML_ERR_ERROR,1,0,0,(const char *)SyBlobData(&sMsg),"");
 	SyBlobRelease(&sMsg);
 }
 /* xmlSetGenericErrorFunc is deprecated from libxml 2.12 and the MSVC gate
@@ -326,6 +309,28 @@ static void LibxmlGenericSet(ph7_vm *pVm,int bOn)
 PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm)
 {
 	xmlSetStructuredErrorFunc(pVm,LibxmlStructuredErr);
+	LibxmlGenericSet(pVm,1);
+	return SySetUsed(&pVm->aLibxmlErr);
+}
+/*
+ * The same window for an entry point that leaves libxml's OWN formatting in
+ * place -- ext/simplexml's parse, which php reports through the generic channel
+ * and not through the structured one.
+ *
+ * The difference is visible in every parse diagnostic the two extensions raise:
+ * ext/dom's is php's one-line `StartTag: invalid element name in Entity,
+ * line: 1`, while ext/simplexml's is libxml's own three lines --
+ * `Entity: line 1: parser error : StartTag: invalid element name`, the offending
+ * source line, and a caret under it. That is what libxml's default parser-error
+ * routine prints, and it only runs when no structured handler is installed.
+ * With `libxml_use_internal_errors()` ON php's structured handler takes
+ * precedence there too, and the queue `libxml_get_errors()` answers carries the
+ * error CODES -- so the structured handler is still installed for that case.
+ */
+PH7_PRIVATE sxu32 PH7_LibxmlCaptureBeginRaw(ph7_vm *pVm)
+{
+	xmlSetStructuredErrorFunc(pVm->bLibxmlInternalErr ? pVm : 0,
+		pVm->bLibxmlInternalErr ? LibxmlStructuredErr : 0);
 	LibxmlGenericSet(pVm,1);
 	return SySetUsed(&pVm->aLibxmlErr);
 }
@@ -399,7 +404,7 @@ PH7_PRIVATE void PH7_LibxmlCaptureEndOpts(ph7_vm *pVm,sxu32 nMark,const char *zF
 			SyBlobAppend(&pVm->sLibxmlPend,aErr[n].sMsg.zString,aErr[n].sMsg.nByte);
 			zPend = (const char *)SyBlobData(&pVm->sLibxmlPend);
 			nPend = SyBlobLength(&pVm->sLibxmlPend);
-			if( !aErr[n].bWholeLine && (nPend < 1 || zPend[nPend-1] != '\n') ){
+			if( nPend < 1 || zPend[nPend-1] != '\n' ){
 				/* no line yet: hold it for the next message */
 				LibxmlFreeErr(pVm,&aErr[n]);
 				continue;

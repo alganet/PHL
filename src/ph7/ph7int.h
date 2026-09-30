@@ -1556,19 +1556,38 @@ typedef struct PH7_NativeDimCtx PH7_NativeDimCtx;
 #define PH7_NATIVE_DIM_READ  0 /* php's read_dimension: the value, or NULL for a miss */
 #define PH7_NATIVE_DIM_ISSET 1 /* php's has_dimension: presence only, and never a refusal */
 /*
- * The WRITE side, which a hook may only REFUSE: php's write_dimension and
- * unset_dimension for a container that answers reads and stores nothing.
- * The engine's own sentence for such a class is
- * `Cannot use object of type C as array`, and a class states its own here --
- * PDORow's three are `Cannot write to PDORow offset`, `Cannot append to
- * PDORow offset` and `Cannot unset PDORow offset`. Neither pOffset nor
- * pResult is passed (none of php's wordings names the offset, and there is no
- * answer to write): a hook that does not word one of these must return without
- * touching either.
+ * The WRITE side. Two kinds of class arrive here.
+ *
+ * One answers reads and stores NOTHING, and may only REFUSE: php's
+ * write_dimension and unset_dimension for such a container. The engine's own
+ * sentence is `Cannot use object of type C as array`, and a class states its
+ * own here -- PDORow's three are `Cannot write to PDORow offset`, `Cannot
+ * append to PDORow offset` and `Cannot unset PDORow offset`. A refusal is
+ * asked with neither pOffset nor pResult (none of php's wordings names the
+ * offset, and there is no answer to write): a hook that does not word one of
+ * these must return without touching either.
+ *
+ * The other really STORES: `$x['a'] = '1'` on a SimpleXMLElement writes an
+ * attribute, and php's handler is a write_dimension like any other. Those
+ * three modes are asked a second way -- with pOffset (0 for the keyless `$o[]`
+ * spelling) and with pResult carrying the INCOMING VALUE -- and the hook says
+ * it took the write by setting bStored. A hook that leaves bStored at 0 is the
+ * first kind and the caller falls back to the refusal above, which is what
+ * keeps DOMNodeList and PDORow answering exactly as they did.
  */
 #define PH7_NATIVE_DIM_WRITE  2 /* php's write_dimension with a key */
 #define PH7_NATIVE_DIM_APPEND 3 /* ...and its keyless `$o[] = v` spelling */
 #define PH7_NATIVE_DIM_UNSET  4 /* php's unset_dimension */
+/*
+ * php's has_dimension asked the way `empty()` asks it -- a non-zero
+ * `check_empty`, which its handlers read as the EMPTINESS question rather than
+ * the null one. SimpleXMLElement is the one that answers it differently:
+ * `empty($x['a'])` on `a="0"` is TRUE, judged on the ATTRIBUTE'S TEXT, where
+ * reading the same offset hands back a truthy object. A hook that has no such
+ * distinction leaves pResult alone and the caller falls back to reading the
+ * value and judging that, which is every other class's answer.
+ */
+#define PH7_NATIVE_DIM_NOTEMPTY 5
 struct PH7_NativeDimCtx
 {
 	int iMode;               /* PH7_NATIVE_DIM_* */
@@ -1577,6 +1596,10 @@ struct PH7_NativeDimCtx
 	                          * ISSET: set to a bool by the hook. */
 	const char *zThrowClass; /* Set by the hook to refuse; 0 (the caller's init) means answered */
 	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
+	int bStored;             /* WRITE/APPEND/UNSET only: the hook TOOK the write. 0 -- the
+	                          * caller's init -- means it did not, and the access takes the
+	                          * `Cannot use object of type C as array` refusal (or the hook's
+	                          * own wording of it) instead. */
 };
 /*
  * One property WRITE asked of a native class through ph7_class::xSet -- php's
@@ -1968,6 +1991,32 @@ struct ph7_class
  * COMPARISON, which is a different handler (see PH7_NativeCmpOpaqueHandle).
  */
 #define PH7_CLASS_HANDLE_ID   0x40000
+/*
+ * ph7_class::iFlags bit: `get_object_vars()` on an instance of this class is
+ * answered by the class's ph7_class::xPresent table rather than by its real
+ * slots.
+ *
+ * php's get_properties handler is asked for three PURPOSES, and its native
+ * classes mostly disagree between them -- a DateTime shows its three keys to
+ * var_dump and to `(array)` and NOTHING to get_object_vars, a DOM node shows a
+ * table to var_dump and nothing to either of the others. SimpleXMLElement is
+ * the one that answers all three the same way, so the third purpose is a
+ * per-class opt-in instead of a fourth argument every handler would have to
+ * learn.
+ */
+#define PH7_CLASS_VARS_PRESENT 0x80000
+/*
+ * ph7_class::iFlags bit: `(int)`, `(float)` and every numeric COERCION of an
+ * instance of this class run through the class's string form, silently, instead
+ * of php's `Object of class X could not be converted to int` warning and its 1.
+ *
+ * php's SimpleXMLElement is the one that does it: `(int)$xml->count` is the
+ * number the element CONTAINS, and `$xml->n + 1` adds to it, because its
+ * cast_object answers IS_LONG and IS_DOUBLE from the node's text. Its `(bool)`
+ * is a different question again (ph7_class::xBool), and `(string)` is the
+ * ordinary __toString().
+ */
+#define PH7_CLASS_NUM_AS_STRING 0x100000
 #define PH7_CLASS_ANON        0x20000 /* Declared by `new class {...}`. php has no NAME to put in a
                                     * type text for it while its body compiles, which is why
                                     * `self` inside one may not be part of an intersection
@@ -2296,6 +2345,12 @@ PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec
 PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug);
 PH7_PRIVATE int PH7_ClassHasNativeDim(ph7_class *pClass);
 PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx);
+/* Offer a dimension WRITE / APPEND / UNSET to the class's own handler, with the
+ * offset and the incoming value. Answers 1 when the handler TOOK it (or refused
+ * it in its own words, which zThrowClass then carries) and 0 when the caller
+ * must raise the ordinary refusal. */
+PH7_PRIVATE int PH7_ClassNativeDimStore(ph7_class_instance *pThis,int iMode,
+	ph7_value *pOffset,ph7_value *pValue,PH7_NativeDimCtx *pCtx);
 /* The refusal a native container gives a dimension WRITE/APPEND/UNSET: its own
  * sentence when its hook words one, and php's `Cannot use object of type C as
  * array` for every class that does not. Answers the message length. */
@@ -2319,6 +2374,8 @@ PH7_PRIVATE int PH7_ClassNativeCmpValue(ph7_class_instance *pLeft,ph7_value *pOt
 	int bReversed,sxi32 *pResult);
 PH7_PRIVATE void PH7_NativeCmpOpaqueHandle(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx);
 PH7_PRIVATE int PH7_ClassCastsToHandleId(ph7_class *pClass);
+PH7_PRIVATE int PH7_ClassNumberIsString(ph7_class *pClass);
+PH7_PRIVATE int PH7_ClassVarsFromPresent(ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *));
 PH7_PRIVATE sxi32 PH7_NativeClassInstallArithHook(ph7_vm *pVm,const char *zClass,
@@ -4555,9 +4612,6 @@ struct phl_libxml_err {
 	int iCode;       /* raw libxml2 error code */
 	int iLine;
 	int iColumn;
-	int bWholeLine;  /* Came off libxml's GENERIC channel, which php line-buffers on its
-	                  * own: the message is a FLUSHED line, so it carries no trailing
-	                  * newline and must not be held back waiting for one. */
 	SyString sMsg;   /* message text, trailing newline preserved (php parity) */
 	SyString sFile;  /* source file/URI, empty for in-memory strings */
 };
@@ -4577,6 +4631,15 @@ struct phl_xmldoc {
 	 * an xmlEntity's length/etype pair as a node's property list. */
 	SySet aNotations;   /* synthesized XML_NOTATION_NODE xmlNodePtr's */
 	ph7_vm *pVm;        /* Owning VM (error routing from libxml callbacks) */
+	void *pDocObj;      /* The DOMDocument wrapper for this tree, BORROWED, or 0.
+	                     * ext/dom keys its per-node wrapper cache on the document
+	                     * OBJECT, so `dom_import_simplexml()` needs the one this
+	                     * tree already has -- that is what makes two imports of the
+	                     * same node the same DOMElement, and what makes an import
+	                     * back out of a SimpleXML that came FROM a DOMDocument
+	                     * answer that document's own nodes. Cleared by
+	                     * DOMDocument's xRelease when the object goes, so the
+	                     * pointer is never stale. */
 	int bPreserveWS;    /* DOMDocument->preserveWhiteSpace */
 	int bFormatOutput;  /* DOMDocument->formatOutput */
 	phl_xmldoc *pNext;  /* Registry chain (pVm->pXmlDocs) */
@@ -4597,6 +4660,7 @@ PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm);
 PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm);
 PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr);
 PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm);
+PH7_PRIVATE sxu32 PH7_LibxmlCaptureBeginRaw(ph7_vm *pVm);
 PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName);
 PH7_PRIVATE void PH7_LibxmlDropErrors(ph7_vm *pVm,sxu32 nMark);
 /* Push one error onto the per-VM queue + last-error slot (strings copied).
@@ -4608,6 +4672,19 @@ PH7_PRIVATE void PH7_LibxmlQueueError(ph7_vm *pVm,int iLevel,int iCode,int iLine
 	const char *zMsg,const char *zFile);
 /* vm_dom.c */
 PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm);
+/* Read a document's bytes for a loader, through php's own stream layer, with
+ * libxml's `failed to load external entity` warning already raised for a file
+ * that is not there. ext/simplexml's two file doors want exactly what
+ * DOMDocument::load() wants. */
+PH7_PRIVATE int PH7_DomReadFile(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
+	SyBlob *pBody,SyBlob *pPath);
+/* The DOMDocument-cached wrapper for one node of pShell's tree, creating the
+ * document object if this tree has none yet. ext/simplexml's
+ * dom_import_simplexml() is the only caller: every other wrap already has a
+ * document object in hand. */
+PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShell,void *pNode);
+/* vm_simplexml.c */
+PH7_PRIVATE sxi32 PH7_VmInstallSimpleXml(ph7_vm *pVm);
 /* vm_xmlwriter.c */
 PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm);
 PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm);

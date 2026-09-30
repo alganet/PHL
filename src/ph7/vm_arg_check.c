@@ -430,6 +430,18 @@ static const struct VmBuiltinSig {
 	{ "libxml_set_external_entity_loader", "?callable $resolver_function", "true" },
 	{ "libxml_set_streams_context", "$context", "void" },
 	{ "libxml_use_internal_errors", "?bool $use_errors = null", "bool" },
+	/* ext/simplexml's three, and ext/dom's one door into it. `object $node` is
+	 * php's own declaration for both directions: the class screen is the body's,
+	 * so a plain object gets the TypeError the body words and not ZPP's. */
+	{ "simplexml_load_file",
+	  "string $filename, ?string $class_name = SimpleXMLElement::class, int $options = 0, "
+	  "string $namespace_or_prefix = '', bool $is_prefix = false", "SimpleXMLElement|false" },
+	{ "simplexml_load_string",
+	  "string $data, ?string $class_name = SimpleXMLElement::class, int $options = 0, "
+	  "string $namespace_or_prefix = '', bool $is_prefix = false", "SimpleXMLElement|false" },
+	{ "simplexml_import_dom",
+	  "object $node, ?string $class_name = SimpleXMLElement::class", "?SimpleXMLElement" },
+	{ "dom_import_simplexml", "object $node", "DOMAttr|DOMElement" },
 	/* ext/pdo's one function: the procedural spelling of
 	 * PDO::getAvailableDrivers(). */
 	{ "pdo_drivers", "", "array" },
@@ -1750,6 +1762,8 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "finfo::file",           11, 1u<<0 },
 		{ "finfo::__construct",    18, 1u<<1 },
 		{ "mime_content_type",     17, 1u<<0 },
+		/* ext/simplexml's file door takes a php path argument too. */
+		{ "simplexml_load_file",   19, 1u<<0 },
 		/* Path-shaped settings and the pattern matcher */
 		{ "fnmatch",           7, (1u<<0)|(1u<<1) },
 		{ "set_include_path", 16, 1u<<0 },

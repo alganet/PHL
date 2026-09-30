@@ -108,12 +108,33 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 		apArg[0] = &pVm->sCoalesceKey;
 		apArg[1] = pTos;
 		if( pSet == 0 ){
-			/* A container that answered the READ and has nowhere to put the write:
-			 * a class carrying a native dimension handler (ph7_class::xDim) and no
-			 * ArrayAccess, which is php's DOMNodeList. The store is the same one
+			/* A container that answered the READ and has no ArrayAccess: its own
+			 * dimension handler is offered the store first -- php's
+			 * SimpleXMLElement takes it. One that stores nothing (DOMNodeList,
+			 * PDORow) leaves it, and the store is then the same one
 			 * `$list[9] = 'x'` performs, so it takes the same Error. */
 			char zMsg[256];
-			sxu32 nMsg = PH7_ClassNativeDimRefusal(pInst,PH7_NATIVE_DIM_WRITE,
+			sxu32 nMsg;
+			PH7_NativeDimCtx sDim;
+			if( PH7_ClassNativeDimStore(pInst,PH7_NATIVE_DIM_WRITE,
+				&pVm->sCoalesceKey,pTos,&sDim) && sDim.zThrowClass == 0 ){
+				PH7_MemObjStore(pTos,pNos);
+				VmPopOperand(&pTos,1);
+				VmCoalesceDisarm(pVm);
+				VM_EXIT_BREAK;
+			}
+			if( sDim.zThrowClass ){
+				rc = VmThrowFromVm(&(*pVm),sDim.zThrowClass,sDim.zThrowMsg,
+					(sxu32)SyStrlen(sDim.zThrowMsg));
+				VmPopOperand(&pTos,1);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				VmCoalesceDisarm(pVm);
+				if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+			nMsg = PH7_ClassNativeDimRefusal(pInst,PH7_NATIVE_DIM_WRITE,
 				zMsg,sizeof(zMsg));
 			rc = VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg);
 			VmPopOperand(&pTos,1);

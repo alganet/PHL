@@ -193,6 +193,14 @@ PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value 
 				}else if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_ONDEMAND) ){
 					pAttr = 0;   /* asked about the CLASS: php declares no such name */
 				}
+				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_HIDDEN) != 0 ){
+					/* A native class's ENGINE SLOT is php's own C struct, not a
+					 * declared property: `property_exists($doc, '__res')` is false
+					 * under php because no such name is in its properties_info.
+					 * They are already hidden from Reflection, var_dump and the
+					 * (array) cast; this was the one door that still showed them. */
+					pAttr = 0;
+				}
 				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
 					/* A base's PRIVATE property is invisible to the child it was asked
 					 * about, php's `property_info->ce == ce` rule: PHL copies one down
@@ -1540,6 +1548,16 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 	if( pArray == 0 || pName == 0){
 		/* Out of memory,return NULL */
 		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* A class whose get_properties handler answers this purpose too: php asks
+	 * the handler with ZEND_PROP_PURPOSE_GET_OBJECT_VARS, and SimpleXMLElement
+	 * is the one native class here that answers it with the same table it shows
+	 * var_dump. Every other one answers its real (empty) slots, which is the
+	 * walk below. */
+	if( PH7_ClassVarsFromPresent(pThis->pClass)
+	 && PH7_ClassInstancePresent(pThis,pArray,0) ){
+		ph7_result_value(pCtx,pArray);
 		return PH7_OK;
 	}
 	/* Fill the array with the defined attribute visible from the current scope.

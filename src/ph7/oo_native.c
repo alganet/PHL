@@ -760,6 +760,7 @@ PH7_PRIVATE sxu32 PH7_ClassNativeDimRefusal(ph7_class_instance *pThis,int iMode,
 		sDim.pResult = 0;
 		sDim.zThrowClass = 0;
 		sDim.zThrowMsg[0] = 0;
+		sDim.bStored = 0;
 		pClass->xDim(pThis->pVm,pThis,&sDim);
 		if( sDim.zThrowClass ){
 			return SyBufferFormat(zMsg,nMsg,"%s",sDim.zThrowMsg);
@@ -768,6 +769,33 @@ PH7_PRIVATE sxu32 PH7_ClassNativeDimRefusal(ph7_class_instance *pThis,int iMode,
 	return SyBufferFormat(zMsg,nMsg,"Cannot use object of type %.*s as array",
 		pThis ? (int)pThis->pClass->sName.nByte : 0,
 		pThis ? pThis->pClass->sName.zString : "");
+}
+/*
+ * Offer a dimension WRITE, APPEND or UNSET to the class's own handler, with the
+ * offset and the value the refusal-only form does not carry.
+ *
+ * Answers 1 when the handler took the access -- either by STORING (bStored,
+ * with zThrowClass still 0) or by wording its own refusal in
+ * zThrowClass/zThrowMsg -- and 0 when the class has no handler or its handler
+ * declined, which puts the access on the ordinary `Cannot use object of type C
+ * as array` path. pCtx is the caller's scratch: it is initialized here and left
+ * filled for the caller to read.
+ */
+PH7_PRIVATE int PH7_ClassNativeDimStore(ph7_class_instance *pThis,int iMode,
+	ph7_value *pOffset,ph7_value *pValue,PH7_NativeDimCtx *pCtx)
+{
+	ph7_class *pClass = pThis ? NativeDimClass(pThis->pClass) : 0;
+	pCtx->iMode = iMode;
+	pCtx->pOffset = pOffset;
+	pCtx->pResult = pValue;
+	pCtx->zThrowClass = 0;
+	pCtx->zThrowMsg[0] = 0;
+	pCtx->bStored = 0;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pClass->xDim(pThis->pVm,pThis,pCtx);
+	return pCtx->bStored || pCtx->zThrowClass ? 1 : 0;
 }
 /*
  * The nearest ph7_class::xProp in a class's base chain -- the same handler
@@ -1075,6 +1103,29 @@ PH7_PRIVATE int PH7_ClassCastsToHandleId(ph7_class *pClass)
 {
 	while( pClass ){
 		if( pClass->iFlags & PH7_CLASS_HANDLE_ID ){
+			return 1;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
+/* The same base-chain question for the two flags beside it: a subclass of
+ * SimpleXMLElement casts to a number and answers get_object_vars the way its
+ * parent does, which is php's handler inheritance. */
+PH7_PRIVATE int PH7_ClassNumberIsString(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->iFlags & PH7_CLASS_NUM_AS_STRING ){
+			return 1;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
+PH7_PRIVATE int PH7_ClassVarsFromPresent(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->iFlags & PH7_CLASS_VARS_PRESENT ){
 			return 1;
 		}
 		pClass = pClass->pBase;

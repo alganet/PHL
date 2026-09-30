@@ -43,13 +43,14 @@
 #define PH7_EXT_PDO_SQLITE   24
 #define PH7_EXT_CURL         25
 #define PH7_EXT_POSIX        26
-#define PH7_EXT_SQLITE3      27
+#define PH7_EXT_SIMPLEXML    27
+#define PH7_EXT_SQLITE3      28
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "fileinfo", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
-	"posix", "sqlite3",
+	"posix", "SimpleXML", "sqlite3",
 };
 
 typedef struct VmExtName VmExtName;
@@ -470,6 +471,8 @@ static const VmExtName aExtFunc[] = {
 	{"xml_error_string",PH7_EXT_XML}, {"xml_get_current_line_number",PH7_EXT_XML},
 	{"xml_get_current_column_number",PH7_EXT_XML}, {"xml_get_current_byte_index",PH7_EXT_XML},
 	{"xml_parser_set_option",PH7_EXT_XML}, {"xml_parser_get_option",PH7_EXT_XML},
+	/* dom */
+	{"dom_import_simplexml",PH7_EXT_DOM},
 	/* xmlwriter */
 	{"xmlwriter_open_uri",PH7_EXT_XMLWRITER}, {"xmlwriter_open_memory",PH7_EXT_XMLWRITER},
 	{"xmlwriter_set_indent",PH7_EXT_XMLWRITER}, {"xmlwriter_set_indent_string",PH7_EXT_XMLWRITER},
@@ -519,6 +522,9 @@ static const VmExtName aExtFunc[] = {
 	{"curl_share_setopt",PH7_EXT_CURL}, {"curl_share_strerror",PH7_EXT_CURL},
 	{"curl_share_init_persistent",PH7_EXT_CURL}, {"curl_strerror",PH7_EXT_CURL},
 	{"curl_version",PH7_EXT_CURL},
+	/* SimpleXML */
+	{"simplexml_load_file",PH7_EXT_SIMPLEXML}, {"simplexml_load_string",PH7_EXT_SIMPLEXML},
+	{"simplexml_import_dom",PH7_EXT_SIMPLEXML},
 };
 
 static const VmExtName aExtClass[] = {
@@ -641,6 +647,8 @@ static const VmExtName aExtClass[] = {
 	{"CurlHandle",PH7_EXT_CURL}, {"CurlMultiHandle",PH7_EXT_CURL},
 	{"CurlShareHandle",PH7_EXT_CURL}, {"CurlSharePersistentHandle",PH7_EXT_CURL},
 	{"CURLFile",PH7_EXT_CURL}, {"CURLStringFile",PH7_EXT_CURL},
+	/* SimpleXML */
+	{"SimpleXMLElement",PH7_EXT_SIMPLEXML}, {"SimpleXMLIterator",PH7_EXT_SIMPLEXML},
 	/* sqlite3 -- php registers the exception first, and the listing answers so */
 	{"SQLite3Exception",PH7_EXT_SQLITE3}, {"SQLite3",PH7_EXT_SQLITE3},
 	{"SQLite3Stmt",PH7_EXT_SQLITE3}, {"SQLite3Result",PH7_EXT_SQLITE3},

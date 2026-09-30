@@ -704,7 +704,52 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				 * for exactly this reason. */
 				VM_EXIT_BREAK;
 			}
-			/* Object without ArrayAccess: PHP throws a fatal Error rather
+			/* Object without ArrayAccess, but with a dimension handler that
+			 * really STORES: php's SimpleXMLElement writes an attribute for
+			 * `$x['a'] = '1'` and appends an element for `$x->kid[] = 'v'`,
+			 * through a write_dimension it has instead of the interface. The
+			 * handler is offered the write before the refusal below, and takes
+			 * it or leaves it -- DOMNodeList and PDORow leave it. */
+			if( pInstr->iOp == PH7_OP_STORE_IDX_REF
+			 && PH7_ClassHasNativeDim(pInst->pClass) ){
+				/* php words a by-reference store into a class whose OWN handler
+				 * answers dimensions differently from one that answers none:
+				 * `Cannot assign by reference to an array dimension of an object`
+				 * rather than `Cannot use object of type C as array`, which stays
+				 * the answer for a plain object. (An ArrayAccess class has its own
+				 * third sentence, raised above.) */
+				const char *zRef = "Cannot assign by reference to an array dimension of an object";
+				rc = VmThrowFromVm(pVm,"Error",zRef,(sxu32)SyStrlen(zRef));
+				if( pKey ){ PH7_MemObjRelease(pKey); }
+				VmPopOperand(&pTos,2);
+				if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+			if( pInstr->iOp != PH7_OP_STORE_IDX_REF ){
+				PH7_NativeDimCtx sDim;
+				/* The stack is [value, container]; the container is popped only
+				 * once the handler has taken the write, so the refusal below
+				 * still sees both operands. */
+				if( PH7_ClassNativeDimStore(pInst,
+					pKey == 0 ? PH7_NATIVE_DIM_APPEND : PH7_NATIVE_DIM_WRITE,
+					pKey,pTos - 1,&sDim) ){
+					if( pKey ){ PH7_MemObjRelease(pKey); }
+					if( sDim.zThrowClass ){
+						/* The refusal takes BOTH operands, like the ordinary one
+						 * below: the store never happened, so its value is not the
+						 * expression's result. */
+						VmPopOperand(&pTos,2);
+						rc = VmThrowFromVm(pVm,sDim.zThrowClass,sDim.zThrowMsg,
+							(sxu32)SyStrlen(sDim.zThrowMsg));
+						if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+						PH7_THROW_ROUTE_MIDEXPR(rc)
+					}
+					VmPopOperand(&pTos,1);
+					/* The VALUE stays on the stack: a store IS an expression. */
+					VM_EXIT_BREAK;
+				}
+			}
+			/* Otherwise: PHP throws a fatal Error rather
 			 * than silently coercing the object into a hashmap (which is
 			 * what the legacy PH7 fall-through would do via MemObjToHashmap
 			 * a few lines below). Match PHP -- and let a class whose READ
@@ -1851,16 +1896,25 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			sDim.pResult = &sResult;
 			sDim.zThrowClass = 0;
 			sDim.zThrowMsg[0] = 0;
+			sDim.bStored = 0;
 			PH7_ClassNativeDim(pInst,&sDim);
 			if( iP2 == 6 && sDim.zThrowClass == 0 && ph7_value_to_bool(&sResult) ){
 				/* empty(): php asks has_dimension first and reads the VALUE only on
 				 * a hit, which is why an out-of-range `empty($map[-1])` is a plain
-				 * TRUE where the read of the same offset refuses. */
+				 * TRUE where the read of the same offset refuses. The emptiness
+				 * question goes to the handler first -- a class that judges it on
+				 * something other than the value it would HAND BACK answers here --
+				 * and a handler that has no answer leaves the value read below. */
 				PH7_MemObjRelease(&sResult);
 				PH7_MemObjInit(&(*pVm),&sResult);
-				sDim.iMode = PH7_NATIVE_DIM_READ;
+				sDim.iMode = PH7_NATIVE_DIM_NOTEMPTY;
 				sDim.pResult = &sResult;
 				PH7_ClassNativeDim(pInst,&sDim);
+				if( (sResult.iFlags & MEMOBJ_NULL) && sDim.zThrowClass == 0 ){
+					sDim.iMode = PH7_NATIVE_DIM_READ;
+					sDim.pResult = &sResult;
+					PH7_ClassNativeDim(pInst,&sDim);
+				}
 			}
 			if( sDim.zThrowClass ){
 				char zMsg[256];
@@ -2180,6 +2234,22 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * contexts (read, isset, unset, empty). Match it. A class carrying a
 		 * READ handler reaches here only for the unset (iP2 5), which the hook
 		 * branch above skips, and words that refusal itself. */
+		if( pInst && iP2 == 5 ){
+			/* unset($o[$k]) on a handler that really removes something: php's
+			 * SimpleXMLElement drops the attribute or the element. Offered the
+			 * access before the refusal below. */
+			PH7_NativeDimCtx sDim;
+			if( PH7_ClassNativeDimStore(pInst,PH7_NATIVE_DIM_UNSET,pIdx,0,&sDim)
+			 && sDim.zThrowClass == 0 ){
+				if( pIdx ){
+					PH7_MemObjRelease(pIdx);
+				}
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				VM_EXIT_BREAK;
+			}
+		}
 		if( pInst ){
 			char zMsg[256];
 			sxu32 nMsg = PH7_ClassNativeDimRefusal(pInst,
@@ -2686,6 +2756,7 @@ static sxi32 VmObjectDimRead(ph7_vm *pVm,ph7_class_instance *pInst,ph7_value *pK
 		sDim.pResult = pOut;
 		sDim.zThrowClass = 0;
 		sDim.zThrowMsg[0] = 0;
+		sDim.bStored = 0;
 		PH7_ClassNativeDim(pInst,&sDim);
 		return SXRET_OK;
 	}

@@ -284,6 +284,27 @@ static void DomSetRes(ph7_vm *pVm,ph7_class_instance *pObj,phl_domnode *pRes)
 	sVal.x.pOther = pRes;
 	sVal.iFlags = MEMOBJ_RES;
 	PH7_NativeSetProp(&(*pVm),pObj,DOM_RES,sizeof(DOM_RES)-1,&sVal);
+	/* A handle that IS the document names this object as the tree's document
+	 * wrapper, so anything holding only the SHELL -- ext/simplexml's
+	 * dom_import_simplexml() -- can reach the cache the identity rule lives in.
+	 * Borrowed: DomDocRelease clears it when the object goes. */
+	if( pRes && pRes->pShell && pRes->pNode
+	 && (((xmlNodePtr)pRes->pNode)->type == XML_DOCUMENT_NODE
+	  || ((xmlNodePtr)pRes->pNode)->type == XML_HTML_DOCUMENT_NODE) ){
+		pRes->pShell->pDocObj = (void *)pObj;
+	}
+}
+/* ph7_class::xRelease for DOMDocument: forget a document object its tree still
+ * points at. Not a __destruct -- php declares none. */
+static void DomDocRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pVal = PH7_NativeAttr(pThis,DOM_RES);
+	phl_domnode *pNd = pVal && (pVal->iFlags & MEMOBJ_RES)
+		? (phl_domnode *)pVal->x.pOther : 0;
+	(void)pVm;
+	if( pNd && pNd->pShell && pNd->pShell->pDocObj == (void *)pThis ){
+		pNd->pShell->pDocObj = 0;
+	}
 }
 /*
  * The document's identity cache, materialized and separated from any copy that
@@ -413,6 +434,42 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	PH7_MemObjRelease(&sKey);
 	PH7_ClassInstanceUnref(pObj);            /* ...and the cache is now the owner */
 	return pObj;
+}
+/*
+ * The wrapper for one node of a tree whose DOCUMENT OBJECT the caller does not
+ * have -- ext/simplexml's `dom_import_simplexml()`, which holds a shell and a
+ * node and nothing else.
+ *
+ * The identity rule (`$doc->documentElement === $doc->documentElement`) lives
+ * in a cache keyed on the document object, so a tree that has none yet gets one
+ * built here and remembered on the shell; a tree that came from a DOMDocument
+ * already names it, which is what makes an import back out of a SimpleXML made
+ * from that document answer the document's own nodes. BORROWED, like DomWrap's.
+ */
+PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShell,void *pNode)
+{
+	ph7_class_instance *pDoc;
+	if( pShell == 0 || pShell->pDoc == 0 ){
+		return 0;
+	}
+	pDoc = (ph7_class_instance *)pShell->pDocObj;
+	if( pDoc == 0 ){
+		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",
+			sizeof("DOMDocument")-1,FALSE,0);
+		phl_domnode *pRes;
+		pDoc = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
+		pRes = pDoc ? DomNewRes(&(*pVm),pShell,pShell->pDoc) : 0;
+		if( pRes == 0 ){
+			if( pDoc ){
+				PH7_ClassInstanceUnref(pDoc);
+			}
+			return 0;
+		}
+		PH7_NativeSetAttrInt(&(*pVm),pDoc,DOM_DFLAGS,DOM_F_DEFAULT);
+		DomSetRes(&(*pVm),pDoc,pRes);          /* ...which records pShell->pDocObj */
+		PH7_NativeSetAttrObj(&(*pVm),pDoc,DOM_DOC,pDoc);
+	}
+	return DomWrap(&(*pVm),pDoc,pShell,(xmlNodePtr)pNode);
 }
 /* Answer a borrowed instance (or NULL) from a native method. */
 static int DomResultWrap(ph7_context *pCtx,ph7_class_instance *pObj)
@@ -4493,7 +4550,7 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
  */
 static int DomReadFileAs(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
 	SyBlob *pBody,SyBlob *pPath,int bVerbatim);
-static int DomReadFile(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
+PH7_PRIVATE int PH7_DomReadFile(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
 	SyBlob *pBody,SyBlob *pPath)
 {
 	return DomReadFileAs(pCtx,zFile,nFile,zFn,pBody,pPath,0);
@@ -4588,7 +4645,7 @@ DOM_METHOD(vm_builtin_DOMDocument_load)
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"DOMDocument::load(): Argument #1 ($filename) must not be empty");
 	}
-	if( !DomReadFile(pCtx,zFile,nFile,"DOMDocument::load",&sBody,&sPath) ){
+	if( !PH7_DomReadFile(pCtx,zFile,nFile,"DOMDocument::load",&sBody,&sPath) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -10768,7 +10825,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
 		  aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, DomPresent },
 		{ "DOMDocument", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0, DomPresent },
+		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp),
+		  DomDocRelease, 0, DomPresent },
 		{ "DOMElement", "DOMNode", "DOMParentNode,DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, aElemProp, SX_ARRAYSIZE(aElemProp),
 		  0, 0, DomPresent },

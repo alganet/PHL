@@ -656,6 +656,12 @@ struct VmExportCtx
 	                 * carries the object's own table MANGLED. var_export prints a
 	                 * non-public property under its PLAIN name (the attribute loop
 	                 * below already does), so the key is unmangled here too. */
+	int nKeyExtra; /* extra columns the KEY line carries beyond nIndent+2, and the
+	                * value's container indent does NOT. An object body's keys sit
+	                * one deeper than an array's while a nested array under one of
+	                * them sits at the OBJECT's indent -- which is why a
+	                * SimpleXMLElement's `@attributes` row prints its array two
+	                * columns in and not three. 0 for a plain array. */
 };
 static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth);
 /* Append nIndent spaces. */
@@ -713,7 +719,7 @@ static void VmExportEntryValue(SyBlob *pOut, ph7_value *pVal, int nContainerInde
 static int VmExportArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)
 {
 	VmExportCtx *pC = (VmExportCtx *)pUserData;
-	VmExportIndent(pC->pOut,pC->nIndent+2);
+	VmExportIndent(pC->pOut,pC->nIndent+2+pC->nKeyExtra);
 	if( ph7_value_is_string(pKey) ){
 		int n;
 		const char *z = ph7_value_to_string(pKey,&n);
@@ -771,6 +777,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 		}else{
 			VmExportCtx ctx;
 			ctx.bPresented = 0;
+			ctx.nKeyExtra = 0;
 			pMap->iFlags |= HASHMAP_DUMPING;
 			SyBlobAppend(pOut,"array (\n",8);
 			ctx.pOut = pOut; ctx.nIndent = nIndent; ctx.depth = depth;
@@ -828,9 +835,10 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 						 * object body's entries sit one deeper than an array's. */
 						VmExportCtx sCtx;
 						sCtx.pOut = pOut;
-						sCtx.nIndent = nIndent + 1;
+						sCtx.nIndent = nIndent;
 						sCtx.depth = depth;
 						sCtx.bPresented = 1;
+						sCtx.nKeyExtra = 1;
 						ph7_array_walk(&sPresent,VmExportArrayWalk,&sCtx);
 						PH7_MemObjRelease(&sPresent);
 						VmExportIndent(pOut,nIndent);

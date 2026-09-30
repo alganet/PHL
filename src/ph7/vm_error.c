@@ -5377,6 +5377,14 @@ PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pR
 		int bBad = 0;
 		if( pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
 			bBad = 1;
+			if( pVal->iFlags & MEMOBJ_OBJ ){
+				ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+				/* A class whose cast_object really answers a number is an operand
+				 * php accepts: `$xml->qty + 1` adds to the element's text. */
+				if( pInst && pInst->pClass && PH7_ClassNumberIsString(pInst->pClass) ){
+					bBad = 0;
+				}
+			}
 		}else if( pVal->iFlags & MEMOBJ_STRING ){
 			const char *zTail = 0;
 			const char *zEnd = (const char *)SyBlobData(&pVal->sBlob) + SyBlobLength(&pVal->sBlob);

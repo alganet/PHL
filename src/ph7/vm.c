@@ -2609,6 +2609,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallXml(&(*pVm));
 	PH7_VmInstallDom(&(*pVm));
 	PH7_VmInstallXmlWriter(&(*pVm));
+	/* ext/simplexml stands on ext/dom's document shells and hands nodes back to
+	 * it (dom_import_simplexml), so it mounts after DOMDocument exists. */
+	PH7_VmInstallSimpleXml(&(*pVm));
 #endif
 #ifdef PH7_ENABLE_SQLITE
 	/* ext/pdo's class library first: `Pdo\Sqlite` extends PDO, so the driver's
@@ -5621,16 +5624,27 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 				apArg[1] = &sVal;
 				PH7_VmCallClassMethod(&(*pVm),sEnt.pThis,pSet,0,2,apArg);
 			}else{
-				/* A container that answers a READ and has nowhere to put the write:
-				 * a class carrying a native dimension handler (ph7_class::xDim) and
-				 * no ArrayAccess, which is php's DOMNodeList. php's read-then-write
-				 * pair ends in the plain store's Error, so `$list[9] .= 'x'` says
-				 * what `$list[9] = 'x'` says. Parked: this runs at an arithmetic
-				 * op's tail, not at a throw boundary. */
-				char zMsg[256];
-				sxu32 nMsg = PH7_ClassNativeDimRefusal(sEnt.pThis,PH7_NATIVE_DIM_WRITE,
-					zMsg,sizeof(zMsg));
-				VmBoundaryPark(&(*pVm),VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg));
+				/* A container that answers a READ and no ArrayAccess: its own
+				 * dimension handler gets the computed value first -- php's
+				 * SimpleXMLElement stores it, which is what makes `$x['a'] .= 'x'`
+				 * work there. A handler that stores nothing (DOMNodeList, PDORow)
+				 * leaves the write, and php's read-then-write pair then ends in the
+				 * plain store's Error, so `$list[9] .= 'x'` says what
+				 * `$list[9] = 'x'` says. Parked: this runs at an arithmetic op's
+				 * tail, not at a throw boundary. */
+				PH7_NativeDimCtx sDim;
+				if( PH7_ClassNativeDimStore(sEnt.pThis,PH7_NATIVE_DIM_WRITE,
+					&sKey,&sVal,&sDim) ){
+					if( sDim.zThrowClass ){
+						VmBoundaryPark(&(*pVm),VmThrowFromVm(&(*pVm),sDim.zThrowClass,
+							sDim.zThrowMsg,(sxu32)SyStrlen(sDim.zThrowMsg)));
+					}
+				}else{
+					char zMsg[256];
+					sxu32 nMsg = PH7_ClassNativeDimRefusal(sEnt.pThis,PH7_NATIVE_DIM_WRITE,
+						zMsg,sizeof(zMsg));
+					VmBoundaryPark(&(*pVm),VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg));
+				}
 			}
 		}else{
 			rc = VmHookSetDispatch(&(*pVm),sEnt.pThis,sEnt.pAttr,sEnt.nBackIdx,&sVal);
