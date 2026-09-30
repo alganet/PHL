@@ -1013,6 +1013,10 @@ struct VmIncFrame
 	const char *zName; /* "include" / "include_once" / "require" / "require_once" / "eval" */
 };
 typedef struct VmFrame VmFrame;
+/* Entries in a frame's variable-slot memo (see VmFrame). Eight of them are 96 bytes,
+ * which is what the frame's pool bucket has spare -- raising it reallocates every
+ * frame out of the 512-byte bucket into the 1024-byte one. */
+#define PH7_VAR_MEMO_SIZE 8
 struct VmFrame
 {
 	VmFrame *pParent; /* Parent frame or NULL if global scope */
@@ -1062,6 +1066,19 @@ struct VmFrame
 	                   * unknown (non-call frames) - func_num_args()/func_get_args() then fall
 	                   * back to the installed-formals count. Unlike sArg this excludes
 	                   * defaulted params and counts variadic-packed args individually. */
+	/* Variable-slot memo: the answer this frame last gave for a variable NAME, so a
+	 * name is hashed at most once per frame instead of once per access. Keyed by the
+	 * name's ADDRESS -- the compiler interns every variable name it emits into one
+	 * VM-lifetime buffer (pGen->hVar), so the same spelling anywhere in the program is
+	 * the same pointer, and a pointer that is live cannot be another name's. Only a
+	 * name whose buffer outlives the lookup may be filed here, which is why the door
+	 * is a separate one (PH7_VmExtractVarCached) and not VmExtractMemObj itself.
+	 * Direct-mapped and deliberately small: it rides in the padding of the frame's
+	 * 512-byte pool bucket, so it costs no allocation at all. Emptied by the three
+	 * doors that can move a name to another slot -- PH7_VmBindVarSlot,
+	 * PH7_VmRebindVarSlot and VmUnsetVarByNameEx -- see VmVarMemoFlush. */
+	const char *apVarName[PH7_VAR_MEMO_SIZE]; /* interned name, 0 = empty entry */
+	sxu32 aVarIdx[PH7_VAR_MEMO_SIZE];         /* the slot that name is bound to */
 };
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
@@ -2693,6 +2710,15 @@ struct VmInstr
 	                * write would create it. Padding after bDiscard, like bStrict itself. */
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
+	sxu32 nAux; /* A per-instruction scratch word the RUNTIME owns, zero until it writes
+	             * one. It holds an answer that cannot change under the instruction:
+	             *
+	             *   PH7_OP_LOAD      the length of the variable NAME in p3. The name is a
+	             *                    NUL-terminated compile-time buffer, and measuring it
+	             *                    again on every execution was ~2% of a phpcs run.
+	             *
+	             * Lives in the padding after iP2, so VmInstr is still 32 bytes and the
+	             * bytecode costs nothing extra. */
 	void *p3;  /* Third operand (Often Upper layer private data) */
 	sxu32 nLine; /* Source line this instruction was compiled from (0 = unknown).
 	              * Stamped by PH7_VmEmitInstr from the codegen's current token, so
@@ -5899,6 +5925,8 @@ PH7_PRIVATE int PH7_VmSessionOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine);
 PH7_PRIVATE void PH7_VmSetSessionOrigin(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmAppendWhere(ph7_vm *pVm,SyBlob *pMsg,int bSessionActive);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
+PH7_PRIVATE ph7_value * PH7_VmExtractVarCached(ph7_vm *pVm,const SyString *pName,int bCreate);
+PH7_PRIVATE void VmVarMemoFlush(VmFrame *pFrame);
 /* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
 PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);
 PH7_PRIVATE VmDeferredPath * VmDeferPathNewPrefetch(ph7_vm *pVm,int nKind,ph7_class *pClass,

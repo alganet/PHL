@@ -2956,42 +2956,62 @@ case PH7_OP_LOAD:{
 		}
 		SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 	}else{
-		SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
+		if( pInstr->nAux == 0 ){
+			/* Measured once: the name is a compile-time buffer that never changes. */
+			pInstr->nAux = (sxu32)SyStrlen((const char *)pInstr->p3);
+		}
+		SyStringInitFromBuf(&sName,pInstr->p3,pInstr->nAux);
 		/* Reserve a room for the target object */
 		pTos++;
 	}
-	if( sName.nByte == sizeof("this")-1
-	 && SyMemcmp(sName.zString,"this",sizeof("this")-1) == 0
-	 && pInstr->iP2 != 1 /* isset()/empty() ask a QUESTION -- see below */
-	 && VmExtractMemObj(&(*pVm),&sName,FALSE,FALSE) == 0 ){
-		/* `$this` is not a variable: a frame with no receiver answers a READ of it
-		 * with php's catchable Error, not the undefined-variable warning and a
-		 * NULL. The null was the hazard -- `$this->m()` in a plain function became
-		 * "Call to a member function m() on null", `var_dump($this)` printed NULL,
-		 * and `f($this)` passed one on -- each a wrong ANSWER a few frames from the
-		 * mistake. Asked BEFORE the extract so the vivifying contexts (`$this ??
-		 * 'd'`, which php throws for even though it swallows an ordinary undefined
-		 * variable) reach it too; `isset($this)`/`empty($this)` are php's one
-		 * exemption, and they answer false/true in silence. */
-		rc = VmThrowFromVm(&(*pVm),"Error","Using $this when not in object context",
-			sizeof("Using $this when not in object context")-1);
-		if( rc == SXERR_ABORT ){
-			goto Abort;
-		}
-		PH7_THROW_ROUTE_MIDEXPR(rc)
-	}
-	if( pInstr->iP2 == 2 ){
-		/* Read-modify-write target (`$x++`, `$x .= 'a'`): php reads the variable
-		 * before writing, so it warns when it does not exist and THEN seeds it.
-		 * Peek first (no create) purely to raise that warning; the load below
-		 * still creates the slot the operator needs. A plain `=` never gets here
-		 * — it writes without reading, and stays silent, as php does. */
-		if( VmExtractMemObj(&(*pVm),&sName,FALSE,FALSE) == 0 ){
-			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
+	{
+	/* A name the compiler put in the instruction is interned for the life of the VM,
+	 * so the frame may remember which slot it resolved to (PH7_VmExtractVarCached);
+	 * a variable-variable's name is a string on the stack and gets the plain door. */
+	int bThis = ( sName.nByte == sizeof("this")-1
+	           && SyMemcmp(sName.zString,"this",sizeof("this")-1) == 0
+	           && pInstr->iP2 != 1 /* isset()/empty() ask a QUESTION -- see below */ );
+	if( bThis || pInstr->iP2 == 2 ){
+		/* One PEEK (no create) answers both questions below -- `$this` in a frame
+		 * with no receiver, and php's read-before-write warning -- where two
+		 * separate lookups used to ask the same table the same thing twice for
+		 * every `$this` in every method body. */
+		ph7_value *pPeek = pInstr->p3
+			? PH7_VmExtractVarCached(&(*pVm),&sName,FALSE)
+			: VmExtractMemObj(&(*pVm),&sName,FALSE,FALSE);
+		if( pPeek == 0 ){
+			if( bThis ){
+				/* `$this` is not a variable: a frame with no receiver answers a READ
+				 * of it with php's catchable Error, not the undefined-variable
+				 * warning and a NULL. The null was the hazard -- `$this->m()` in a
+				 * plain function became "Call to a member function m() on null",
+				 * `var_dump($this)` printed NULL, and `f($this)` passed one on --
+				 * each a wrong ANSWER a few frames from the mistake. Asked BEFORE the
+				 * extract so the vivifying contexts (`$this ?? 'd'`, which php throws
+				 * for even though it swallows an ordinary undefined variable) reach it
+				 * too; `isset($this)`/`empty($this)` are php's one exemption, and they
+				 * answer false/true in silence. */
+				rc = VmThrowFromVm(&(*pVm),"Error","Using $this when not in object context",
+					sizeof("Using $this when not in object context")-1);
+				if( rc == SXERR_ABORT ){
+					goto Abort;
+				}
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}else{
+				/* Read-modify-write target (`$x++`, `$x .= 'a'`): php reads the
+				 * variable before writing, so it warns when it does not exist and
+				 * THEN seeds it. The load below still creates the slot the operator
+				 * needs. A plain `=` never gets here -- it writes without reading,
+				 * and stays silent, as php does. */
+				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
+			}
 		}
 	}
 	/* Extract the requested memory object */
-	pObj = VmExtractMemObj(&(*pVm),&sName,pInstr->p3 ? FALSE : TRUE,pInstr->iP1 != 1);
+	pObj = pInstr->p3
+		? PH7_VmExtractVarCached(&(*pVm),&sName,pInstr->iP1 != 1)
+		: VmExtractMemObj(&(*pVm),&sName,TRUE,pInstr->iP1 != 1);
+	}
 	if( pObj == 0 ){
 		if( pInstr->iP1 ){
 			/* Reading a variable that does not exist. php raises E_WARNING

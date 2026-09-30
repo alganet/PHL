@@ -99,6 +99,8 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 		/* No such variable: unset() is a no-op on an undefined name, as in php */
 		return SXRET_OK;
 	}
+	/* The binding about to go may be memoized on the frame (see VmFrame). */
+	VmVarMemoFlush(pFrame);
 	nIdx = SX_PTR_TO_INT(pEntry->pUserData);
 	if( nIdx == pVm->nGlobalIdx ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,

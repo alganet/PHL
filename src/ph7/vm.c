@@ -513,6 +513,7 @@ PH7_PRIVATE sxi32 PH7_VmEmitInstr(
 	/* ...and neither must the reference-source marker: the codegen stamps it on the
 	 * one OP_MEMBER it belongs to, AFTER this returns. */
 	sInstr.bRefSrc = 0;
+	sInstr.nAux = 0;
 	sInstr.nLine = 0;
 	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){
 		sInstr.nLine = pGen->pIn->nLine;
@@ -926,12 +927,20 @@ PH7_PRIVATE SyHashEntry * PH7_VmSuperGet(ph7_vm *pVm,const char *zName,sxu32 nBy
  * come through here, or the lookup above stops finding it. */
 PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte)
 {
+	VmFrame *pFrame;
 	unsigned char c;
 	if( nByte < 1 || zName == 0 ){
 		return;
 	}
 	c = (unsigned char)zName[0];
 	pVm->aSuperFirst[c >> 5] |= (1u << (c & 31));
+	/* A name the frames may already have memoized as an ordinary variable now
+	 * resolves through hSuper instead, and hSuper is consulted FIRST. Installing a
+	 * superglobal is a VM-configuration act with only the global frame live, so the
+	 * active chain is every frame there is to correct. */
+	for( pFrame = pVm->pFrame ; pFrame ; pFrame = pFrame->pParent ){
+		VmVarMemoFlush(pFrame);
+	}
 }
 PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
 {
@@ -4388,12 +4397,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nBy
  * Extract a variable value from the top active VM frame.
  * Return a pointer to the variable value on success.
  * NULL otherwise (non-existent variable/Out-of-memory,...).
+ *
+ * pnIdx, when given, receives the SLOT the name resolved to -- which the value's own
+ * nIdx does not always carry (a superglobal's does not), and which the caller cannot
+ * ask for afterwards without repeating the lookup this function just did.
  */
-PH7_PRIVATE ph7_value * VmExtractMemObj(
+static ph7_value * VmExtractMemObjEx(
 	ph7_vm *pVm,           /* Target VM */
 	const SyString *pName, /* Variable name */
 	int bDup,              /* True to duplicate variable name */
-	int bCreate            /* True to create the variable if non-existent */
+	int bCreate,           /* True to create the variable if non-existent */
+	sxu32 *pnIdx           /* OUT: the slot the name is bound to (may be NULL) */
 	)
 {
 	int bNullify = FALSE;
@@ -4473,6 +4487,90 @@ PH7_PRIVATE ph7_value * VmExtractMemObj(
 		/* Superglobal */
 		nIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);
 		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	}
+	if( pnIdx ){
+		*pnIdx = nIdx;
+	}
+	return pObj;
+}
+PH7_PRIVATE ph7_value * VmExtractMemObj(
+	ph7_vm *pVm,           /* Target VM */
+	const SyString *pName, /* Variable name */
+	int bDup,              /* True to duplicate variable name */
+	int bCreate            /* True to create the variable if non-existent */
+	)
+{
+	return VmExtractMemObjEx(&(*pVm),pName,bDup,bCreate,0);
+}
+/*
+ * Which memo entry a name's ADDRESS maps to. The low bits of a heap pointer are
+ * alignment padding and carry nothing, so two bits of the address are folded in.
+ * Through sxuptr and not SX_ADDR: sxptr is `long`, which is 32 bits on 64-bit
+ * WINDOWS and truncates a pointer (MSVC says so, C4311). Truncation would only
+ * cost a collision here -- the hit is decided by comparing the whole pointer --
+ * but a /WX build does not get that far.
+ */
+#define VM_VAR_MEMO_SLOT(z) \
+	((sxu32)((((sxuptr)(z)) >> 4) ^ (((sxuptr)(z)) >> 9)) & (PH7_VAR_MEMO_SIZE - 1))
+/*
+ * Forget everything this frame has memoized about where its variables live. Called
+ * from the doors that can move a NAME to a different slot; a door that only ever
+ * INSTALLS a name the frame did not have does not need it, because a lookup that
+ * found nothing is never filed.
+ *
+ * Written out rather than SyZero'd: the array holds `const char *`, and handing it
+ * to a `void *` parameter is a const cast MSVC refuses under /WX (C4090). Eight
+ * stores compile to the same clear.
+ */
+PH7_PRIVATE void VmVarMemoFlush(VmFrame *pFrame)
+{
+	sxu32 i;
+	for( i = 0 ; i < PH7_VAR_MEMO_SIZE ; ++i ){
+		pFrame->apVarName[i] = 0;
+	}
+}
+/*
+ * VmExtractMemObj for a name the CALLER guarantees outlives the lookup -- a variable
+ * name the compiler interned into the bytecode, and nothing else.
+ *
+ * Every variable access consults the superglobal table and then hashes the name into
+ * the frame's symbol table; measured on the ecosystem gate's phpcs step that was 100M
+ * of the engine's 224M hash lookups, and the hash is over a name whose answer cannot
+ * change between two accesses in the same frame unless something re-binds it. So the
+ * answer is remembered on the frame, keyed by the name's address (see VmFrame), and
+ * the second and later reads of a variable inside one activation cost a compare.
+ *
+ * bDup is deliberately absent: a name that has to be COPIED to become a symbol-table
+ * key is by definition not one that outlives the lookup.
+ */
+PH7_PRIVATE ph7_value * PH7_VmExtractVarCached(
+	ph7_vm *pVm,           /* Target VM */
+	const SyString *pName, /* Variable name -- interned, NUL-terminated, VM-lifetime */
+	int bCreate            /* True to create the variable if non-existent */
+	)
+{
+	VmFrame *pFrame;
+	ph7_value *pObj;
+	sxu32 nIdx;
+	sxu32 nSlot;
+	if( pName->nByte < 1 || pName->zString == 0 ){
+		return VmExtractMemObjEx(&(*pVm),pName,FALSE,bCreate,0);
+	}
+	pFrame = VmSkipExceptionFrames(pVm->pFrame);
+	nSlot = VM_VAR_MEMO_SLOT(pName->zString);
+	if( pFrame->apVarName[nSlot] == pName->zString ){
+		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pFrame->aVarIdx[nSlot]);
+		if( pObj ){
+			return pObj;
+		}
+	}
+	nIdx = SXU32_HIGH;
+	pObj = VmExtractMemObjEx(&(*pVm),pName,FALSE,bCreate,&nIdx);
+	if( pObj && nIdx != SXU32_HIGH ){
+		/* VmExtractMemObjEx may have grown the frame chain's tables, but never the
+		 * chain itself, so the frame the answer belongs to is still this one. */
+		pFrame->apVarName[nSlot] = pName->zString;
+		pFrame->aVarIdx[nSlot] = nIdx;
 	}
 	return pObj;
 }
@@ -7838,6 +7936,10 @@ PH7_PRIVATE void PH7_VmBindVarSlot(ph7_vm *pVm,VmFrame *pFrame,const char *zName
 	if( SXRET_OK != SyHashInsert(&pFrame->hVar,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx)) ){
 		return;
 	}
+	/* The name may already be memoized against the slot it had before this frame
+	 * installed it -- a by-reference `foreach` re-binds its value variable on every
+	 * step, and the first step is an INSERT. */
+	VmVarMemoFlush(pFrame);
 	if( pFrame->pParent == 0 && !PH7_VmVarNameIsInternal(zName,nByte) ){
 		/* A global is also an entry of the $GLOBALS view */
 		VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);
@@ -7871,6 +7973,8 @@ PH7_PRIVATE void PH7_VmRebindVarSlot(
 		/* Already this slot: `$r = &$x` twice over is a no-op, not a rebind */
 		return;
 	}
+	/* This name now means another slot; every memo this frame holds goes. */
+	VmVarMemoFlush(pFrame);
 	/* Forget this name in the old slot's reference record, and in the frame's own
 	 * "release this reference at exit" set */
 	PH7_VmRefObjRemove(&(*pVm),nOld,pEntry,0);

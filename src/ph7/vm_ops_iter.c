@@ -262,6 +262,8 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 					&pThis->pClass->sName,&pVmAttr->pAttr->sName);
 				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
+				/* ...and with the binding gone, the frame's memo of it (see VmFrame). */
+				VmVarMemoFlush(pFrameLocal);
 				PH7_ClassInstanceIterClose(pThis,&pStep->sAttrIter);
 				VmForeachStepUnlink(pInfo,pStep);
 				SyMemBackendPoolFree(&pVm->sAllocator,pStep);
