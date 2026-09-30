@@ -1092,10 +1092,17 @@ struct VmIncFrame
 	const char *zName; /* "include" / "include_once" / "require" / "require_once" / "eval" */
 };
 typedef struct VmFrame VmFrame;
-/* Entries in a frame's variable-slot memo (see VmFrame). Eight of them are 96 bytes,
- * which is what the frame's pool bucket has spare -- raising it reallocates every
- * frame out of the 512-byte bucket into the 1024-byte one. */
-#define PH7_VAR_MEMO_SIZE 8
+typedef struct VmInstr VmInstr;   /* defined below; a frame names the body it is numbered for */
+/* How many of a body's variables get a NUMBER (see VmFrame's aLocalSlot and
+ * VmNumberLocals). The frame's 512-byte pool bucket has 136 bytes spare once the
+ * struct's named fields are laid out; a code pointer takes 8 of them and 28 slots
+ * take the other 112, with room left over -- raising it past 32 reallocates every
+ * frame out of the 512-byte bucket into the 1024-byte one, which is a doubling of
+ * the engine's per-activation memory for the tail of the distribution. A static scan
+ * of the ecosystem gate's phpcs sources puts 98% of function bodies at 28 distinct
+ * variable names or fewer, and a body with more than that still numbers its 28
+ * most-REFERENCED ones -- so the cap costs the tail its cold names, not its hot ones. */
+#define PH7_VAR_SLOT_MAX 28
 /* Chains in ph7_vm::apIdleOperandStack. A parked operand stack is reusable only by a
  * call of EXACTLY its slot count, so the count picks the chain: `nCap & (N-1)`, with
  * the exact size still checked on each node (sizes sharing the low bits share a
@@ -1150,19 +1157,27 @@ struct VmFrame
 	                   * unknown (non-call frames) - func_num_args()/func_get_args() then fall
 	                   * back to the installed-formals count. Unlike sArg this excludes
 	                   * defaulted params and counts variadic-packed args individually. */
-	/* Variable-slot memo: the answer this frame last gave for a variable NAME, so a
-	 * name is hashed at most once per frame instead of once per access. Keyed by the
-	 * name's ADDRESS -- the compiler interns every variable name it emits into one
-	 * VM-lifetime buffer (pGen->hVar), so the same spelling anywhere in the program is
-	 * the same pointer, and a pointer that is live cannot be another name's. Only a
-	 * name whose buffer outlives the lookup may be filed here, which is why the door
-	 * is a separate one (PH7_VmExtractVarCached) and not VmExtractMemObj itself.
-	 * Direct-mapped and deliberately small: it rides in the padding of the frame's
-	 * 512-byte pool bucket, so it costs no allocation at all. Emptied by the three
-	 * doors that can move a name to another slot -- PH7_VmBindVarSlot,
-	 * PH7_VmRebindVarSlot and VmUnsetVarByNameEx -- see VmVarMemoFlush. */
-	const char *apVarName[PH7_VAR_MEMO_SIZE]; /* interned name, 0 = empty entry */
-	sxu32 aVarIdx[PH7_VAR_MEMO_SIZE];         /* the slot that name is bound to */
+	/* Where this activation's variables live, BY NUMBER: aLocalSlot[k] is the value
+	 * slot the body's k-th variable name is bound to, plus one (0 = not resolved yet).
+	 * The number comes from the bytecode, not from the name -- VmNumberLocals walks a
+	 * body once and writes each variable instruction's number into its nSite -- so a
+	 * read is an array index and a name is hashed at most ONCE per activation instead
+	 * of once per access.
+	 *
+	 * It replaced an eight-entry memo keyed by the name's ADDRESS, which missed 28.5%
+	 * of reads on the ecosystem gate's phpcs step and whose misses were LUCK: the
+	 * entry a name landed in depended on where the compiler's pool happened to intern
+	 * it, so the same commit measured 343.6M, 349.4M and 414.0M frame lookups in three
+	 * builds (PERF.md §7). A number the bytecode carries has none of that in it.
+	 *
+	 * pCodeBase is what makes a number MEAN anything: it is the instruction array this
+	 * frame's numbers were assigned against, so a body sharing the frame but not the
+	 * numbering -- an include, an eval, a default-argument mini-program -- is told
+	 * apart by one compare and falls back to the hash. Emptied by the three doors that
+	 * can move a name to another slot -- PH7_VmBindVarSlot, PH7_VmRebindVarSlot and
+	 * VmUnsetVarByNameEx -- see VmVarMemoFlush. */
+	const VmInstr *pCodeBase;             /* the body aLocalSlot is numbered for, 0 = none */
+	sxu32 aLocalSlot[PH7_VAR_SLOT_MAX];   /* slot index + 1, 0 = this name is unresolved here */
 };
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
@@ -1630,6 +1645,15 @@ struct ph7_vm_func
 	SySet aReturnUnion;  /* Return-type union alternatives (ph7_type_alt). Empty unless union return. */
 	SyString sReturnTypeName; /* Original return-type text for error messages, in canonical PHP order */
 	sxu8 bStrictTypes;   /* 1 if defining file declared strict_types=1 (governs return-value coercion) */
+	sxu16 nLocalName;    /* How many of this body's variable names VmNumberLocals gave a
+	                      * number to, capped at PH7_VAR_SLOT_MAX. Meaningful only once
+	                      * bNumbered is set; 0 with bNumbered set means the body names no
+	                      * variable the compiler wrote down. */
+	sxu8 bNumbered;      /* 1 = VmNumberLocals has walked this body. Lazily, on the first
+	                      * activation, exactly like nMaxStack below and for the same
+	                      * reason: a body that has not been walked yet just walks, where a
+	                      * compile-time pass would have to answer for every path that can
+	                      * build one. */
 	sxu32 nMaxStack;     /* Cached operand-stack depth for this body (BYTECODE stage 7):
 						  * 0 = not yet computed; otherwise the number of slots to allocate
 						  * per call (a tight bound from VmComputeMaxStack, or the whole
@@ -2778,7 +2802,6 @@ struct ph7_class_instance
  * Each VM instruction resulting from compiling a PHP script
  * is stored in an instance of the following structure.
  */
-typedef struct VmInstr VmInstr;
 struct VmInstr
 {
 	sxu8  iOp; /* Operation to preform */
@@ -2806,8 +2829,10 @@ struct VmInstr
 	             * one. Two opcodes use it, each for an answer that cannot change under it:
 	             *
 	             *   PH7_OP_LOAD      the length of the variable NAME in p3. The name is a
-	             *                    NUL-terminated compile-time buffer, and measuring it
+	             *   PH7_OP_STORE     NUL-terminated compile-time buffer, and measuring it
 	             *                    again on every execution was ~2% of a phpcs run.
+	             *                    Written by VmNumberLocals for a body it walks, and
+	             *                    lazily on first execution for one it does not.
 	             *   PH7_OP_CALL_INIT the pVm->nCallableGen this call site was last screened
 	             *                    at, written only when the callee is a compile-time
 	             *                    constant (the push behind it is an OP_LOADC).
@@ -2821,12 +2846,21 @@ struct VmInstr
 	sxu32 nLine; /* Source line this instruction was compiled from (0 = unknown).
 	              * Stamped by PH7_VmEmitInstr from the codegen's current token, so
 	              * every one of its ~150 call sites keeps its signature. */
-	sxu32 nSite; /* PH7_OP_CALL and PH7_OP_LOADC: this site's entry in pVm->aCallSite, plus
-	              * one (0 = it has never asked for one). A CALL remembers which function
-	              * table entry its callee NAME resolved to; a LOADC remembers which
-	              * hConstant entry its constant name resolved to. Both are a name hashed
-	              * once instead of once per execution -- see VmCallSite. Lives in the
-	              * trailing padding after nLine, so VmInstr is still 32 bytes. */
+	sxu32 nSite; /* Two opcodes' worth of "this SITE already knows the answer", sharing one
+	              * word because no instruction is ever both.
+	              *
+	              *   PH7_OP_CALL      this site's entry in pVm->aCallSite, plus one (0 = it
+	              *   PH7_OP_LOADC     has never asked for one). A CALL remembers which
+	              *                    function table entry its callee NAME resolved to; a
+	              *                    LOADC which hConstant entry its constant name did.
+	              *                    Both are a name hashed once instead of once per
+	              *                    execution -- see VmCallSite.
+	              *   PH7_OP_LOAD      the NUMBER this body gave the variable in p3, plus
+	              *   PH7_OP_STORE     one (0 = the body was never numbered, or the name
+	              *                    did not fit PH7_VAR_SLOT_MAX). It indexes the running
+	              *                    frame's aLocalSlot -- see VmNumberLocals.
+	              *
+	              * Lives in the trailing padding after nLine, so VmInstr is still 32 bytes. */
 };
 /*
  * Named-argument metadata attached to PH7_OP_CALL instructions via p3.
@@ -6132,7 +6166,7 @@ PH7_PRIVATE int PH7_VmSessionOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine);
 PH7_PRIVATE void PH7_VmSetSessionOrigin(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmAppendWhere(ph7_vm *pVm,SyBlob *pMsg,int bSessionActive);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
-PH7_PRIVATE ph7_value * PH7_VmExtractVarCached(ph7_vm *pVm,const SyString *pName,int bCreate);
+PH7_PRIVATE ph7_value * PH7_VmExtractVarSlot(ph7_vm *pVm,const SyString *pName,int bCreate,sxu32 nSlot,const VmInstr *aCode);
 /* Is a store to this slot filtered at all? The screen in front of every hTypedSlot
  * lookup on a hot path; a false answer is final, a true one still asks the table.
  * With the bitmap disabled it degrades to the emptiness test every one of those

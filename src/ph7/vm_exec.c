@@ -2958,7 +2958,9 @@ case PH7_OP_LOAD:{
 		SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 	}else{
 		if( pInstr->nAux == 0 ){
-			/* Measured once: the name is a compile-time buffer that never changes. */
+			/* Measured once: the name is a compile-time buffer that never changes.
+			 * VmNumberLocals fills this in for a body it walks; this is the door for
+			 * one it does not (an include, an eval, a mini-program). */
 			pInstr->nAux = (sxu32)SyStrlen((const char *)pInstr->p3);
 		}
 		SyStringInitFromBuf(&sName,pInstr->p3,pInstr->nAux);
@@ -2966,9 +2968,9 @@ case PH7_OP_LOAD:{
 		pTos++;
 	}
 	{
-	/* A name the compiler put in the instruction is interned for the life of the VM,
-	 * so the frame may remember which slot it resolved to (PH7_VmExtractVarCached);
-	 * a variable-variable's name is a string on the stack and gets the plain door. */
+	/* A name the compiler put in the instruction has a NUMBER in this body, so the
+	 * frame answers it out of an array (PH7_VmExtractVarSlot); a variable-variable's
+	 * name is a string on the stack and gets the plain door. */
 	int bThis = ( sName.nByte == sizeof("this")-1
 	           && SyMemcmp(sName.zString,"this",sizeof("this")-1) == 0
 	           && pInstr->iP2 != 1 /* isset()/empty() ask a QUESTION -- see below */ );
@@ -2978,7 +2980,7 @@ case PH7_OP_LOAD:{
 		 * separate lookups used to ask the same table the same thing twice for
 		 * every `$this` in every method body. */
 		ph7_value *pPeek = pInstr->p3
-			? PH7_VmExtractVarCached(&(*pVm),&sName,FALSE)
+			? PH7_VmExtractVarSlot(&(*pVm),&sName,FALSE,pInstr->nSite,aInstr)
 			: VmExtractMemObj(&(*pVm),&sName,FALSE,FALSE);
 		if( pPeek == 0 ){
 			if( bThis ){
@@ -3010,7 +3012,7 @@ case PH7_OP_LOAD:{
 	}
 	/* Extract the requested memory object */
 	pObj = pInstr->p3
-		? PH7_VmExtractVarCached(&(*pVm),&sName,pInstr->iP1 != 1)
+		? PH7_VmExtractVarSlot(&(*pVm),&sName,pInstr->iP1 != 1,pInstr->nSite,aInstr)
 		: VmExtractMemObj(&(*pVm),&sName,TRUE,pInstr->iP1 != 1);
 	}
 	if( pObj == 0 ){
@@ -3435,7 +3437,12 @@ case PH7_OP_STORE: {
 		}
 #endif
 	}else{
-		SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
+		if( pInstr->nAux == 0 ){
+			/* Measured once, like OP_LOAD's: the name is a compile-time buffer.
+			 * VmNumberLocals fills it in for a body it walks. */
+			pInstr->nAux = (sxu32)SyStrlen((const char *)pInstr->p3);
+		}
+		SyStringInitFromBuf(&sName,pInstr->p3,pInstr->nAux);
 	}
 	if( sName.nByte == sizeof("GLOBALS")-1
 	 && SyMemcmp((const void *)sName.zString,(const void *)"GLOBALS",sName.nByte) == 0 ){
@@ -3458,7 +3465,9 @@ case PH7_OP_STORE: {
 		break;
 	}
 	/* Extract the desired variable and if not available dynamically create it */
-	pObj = VmExtractMemObj(&(*pVm),&sName,pInstr->p3 ? FALSE : TRUE,TRUE);
+	pObj = pInstr->p3
+		? PH7_VmExtractVarSlot(&(*pVm),&sName,TRUE,pInstr->nSite,aInstr)
+		: VmExtractMemObj(&(*pVm),&sName,TRUE,TRUE);
 	if( pObj == 0 ){
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 			"Fatal, PH7 engine is running out of memory while loading variable '%z'",&sName);

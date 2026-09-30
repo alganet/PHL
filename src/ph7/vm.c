@@ -946,6 +946,9 @@ PH7_PRIVATE SyString * PH7_VmExecutingUnitFile(ph7_vm *pVm)
 	}
 	return (SyString *)SySetPeek(&pVm->aFiles);
 }
+/* Defined with the variable-slot machinery below; VmEnterFrame is what arms it. */
+static void VmNumberLocals(VmInstr *aInstr,sxu32 nInstr,sxu16 *pnName);
+static void VmFrameNumberBody(VmFrame *pFrame,ph7_vm_func *pFunc);
 /*
  * Enter a VM frame.
  */
@@ -963,6 +966,14 @@ PH7_PRIVATE sxi32 VmEnterFrame(
 		return SXERR_MEM;
 	}
 	pFrame->pSelfClass = pThis ? pThis->pClass : 0; /* the caller overwrites it for a static call */
+	if( pUserData ){
+		/* A function frame runs a body whose variables can be numbered; do it once,
+		 * here, so every push site inherits it (the OP_CALL trampoline, a generator
+		 * or fiber resume, a closure, an engine-dispatched magic method). A frame
+		 * with no function -- the global one, a try's -- leaves pCodeBase 0 and its
+		 * variables take the hash path. */
+		VmFrameNumberBody(pFrame,(ph7_vm_func *)pUserData);
+	}
 	/* The line currently executing IS the call site for the frame being pushed. */
 	pFrame->nCallLine = pVm->nCurLine;
 	{
@@ -4756,41 +4767,141 @@ PH7_PRIVATE ph7_value * VmExtractMemObj(
 	return VmExtractMemObjEx(&(*pVm),pName,bDup,bCreate,0);
 }
 /*
- * Which memo entry a name's ADDRESS maps to.
+ * Number a body's variables, once, from the body itself.
  *
- * A multiply-shift over the whole pointer, not a pair of shifted xors. Variable
- * names are interned into the VM's pool allocator, so the addresses this is asked
- * about are spaced by a bucket size -- 32 or 64 bytes for the short names most
- * programs use -- and the low bits of `address >> 4` are then very nearly constant.
- * The old spelling fed exactly those to the modulo, and it showed: 31% of every
- * variable read on the ecosystem gate's phpcs step was a direct-mapped COLLISION in
- * a memo that had a free entry for it. Knuth's constant mixes the high bits down and
- * the top of the product selects the entry, so a bucket stride no longer aliases.
+ * Every instruction that names a variable the compiler wrote down -- OP_LOAD and
+ * OP_STORE with a p3 -- gets a small NUMBER in its nSite, and the running frame then
+ * answers that number out of an array instead of hashing the name (see VmFrame's
+ * aLocalSlot). Two instructions naming the same variable get the same number, so the
+ * frame holds one entry per NAME and not one per site.
  *
- * Through sxuptr and not SX_ADDR: sxptr is `long`, which is 32 bits on 64-bit
- * WINDOWS and truncates a pointer (MSVC says so, C4311). Truncation would only
- * cost a collision here -- the hit is decided by comparing the whole pointer --
- * but a /WX build does not get that far. The multiply is narrowed to sxu32 for the
- * same reason: an sxuptr-wide multiply is 64 bits on POSIX and 32 on Windows, and
- * the two would not pick the same entry for the same name.
+ * Names are compared by ADDRESS, which is exact and not an approximation: the compiler
+ * interns every variable name it emits into one VM-lifetime buffer (pGen->hVar), so
+ * within a body the same spelling is the same pointer. Two pointers for one spelling
+ * would only cost a body two numbers for one name, which stays correct -- both entries
+ * hold the same slot and both are emptied together.
+ *
+ * A body with more distinct names than PH7_VAR_SLOT_MAX numbers its most REFERENCED
+ * ones: the pass counts static references first and hands the numbers out in that
+ * order, so what a hot loop reads is what fits. The rest keep nSite = 0 and take the
+ * hash path, exactly as every site did before this existed.
+ *
+ * Lazy and self-computing, like nMaxStack: a body that has not been walked yet just
+ * walks. There is no path that can produce a WRONG number -- an unwalked body has 0
+ * everywhere, which means "ask the table".
  */
-#define VM_VAR_MEMO_SLOT(z) \
-	((((sxu32)(((sxuptr)(z)) >> 3) * 2654435761u) >> 29) & (PH7_VAR_MEMO_SIZE - 1))
+#define VM_LOCAL_SCAN_MAX 32   /* distinct names the pass will rank; past this it stops
+                                * counting and numbers what it has. A body naming more
+                                * than this has long since stopped fitting the frame, and
+                                * the three arrays below are C STACK -- 352 bytes at this
+                                * width, which matters on a 16-frame embedded target. */
+static int VmInstrNamesVar(const VmInstr *pInstr)
+{
+	return ( pInstr->iOp == PH7_OP_LOAD || pInstr->iOp == PH7_OP_STORE ) && pInstr->p3 != 0;
+}
+static void VmNumberLocals(VmInstr *aInstr,sxu32 nInstr,sxu16 *pnName)
+{
+	const char *azName[VM_LOCAL_SCAN_MAX];
+	sxu16 aRef[VM_LOCAL_SCAN_MAX];   /* references, then re-used as name -> number+1 */
+	sxu8 aRank[VM_LOCAL_SCAN_MAX];
+	sxu32 nName = 0;
+	sxu32 i,j,n;
+	*pnName = 0;
+	if( aInstr == 0 ){
+		return;
+	}
+	/* Pass one: the distinct names, and how many instructions reach for each. */
+	for( i = 0 ; i < nInstr ; ++i ){
+		const char *zName;
+		if( !VmInstrNamesVar(&aInstr[i]) ){
+			continue;
+		}
+		zName = (const char *)aInstr[i].p3;
+		/* The length belongs to the name and not to the execution: measure it here,
+		 * once, for the handlers that used to call SyStrlen on every pass. */
+		if( aInstr[i].nAux == 0 ){
+			aInstr[i].nAux = (sxu32)SyStrlen(zName);
+		}
+		for( j = 0 ; j < nName ; ++j ){
+			if( azName[j] == zName ){
+				if( aRef[j] < SXU16_HIGH ){
+					aRef[j]++;   /* a count that saturates still ranks first */
+				}
+				break;
+			}
+		}
+		if( j == nName ){
+			if( nName >= VM_LOCAL_SCAN_MAX ){
+				continue;
+			}
+			azName[nName] = zName;
+			aRef[nName] = 1;
+			nName++;
+		}
+	}
+	if( nName < 1 ){
+		return;
+	}
+	/* Rank by static reference count, first appearance breaking ties -- an insertion
+	 * sort over at most VM_LOCAL_SCAN_MAX entries, run once per body. aRank[k] is the
+	 * name that gets number k. */
+	for( i = 0 ; i < nName ; ++i ){
+		for( j = i ; j > 0 && aRef[aRank[j-1]] < aRef[i] ; --j ){
+			aRank[j] = aRank[j-1];
+		}
+		/* aRank holds name INDICES, so VM_LOCAL_SCAN_MAX must fit an sxu8. */
+		aRank[j] = (sxu8)i;
+	}
+	n = nName > PH7_VAR_SLOT_MAX ? PH7_VAR_SLOT_MAX : nName;
+	/* aRef is re-used as name -> number+1, so pass two is a single lookup. */
+	for( i = 0 ; i < nName ; ++i ){
+		aRef[i] = 0;
+	}
+	for( i = 0 ; i < n ; ++i ){
+		aRef[aRank[i]] = (sxu16)(i + 1);
+	}
+	/* Pass two: stamp the number on every instruction that names one. */
+	for( i = 0 ; i < nInstr ; ++i ){
+		const char *zName;
+		if( !VmInstrNamesVar(&aInstr[i]) ){
+			continue;
+		}
+		zName = (const char *)aInstr[i].p3;
+		for( j = 0 ; j < nName ; ++j ){
+			if( azName[j] == zName ){
+				aInstr[i].nSite = aRef[j];
+				break;
+			}
+		}
+	}
+	*pnName = (sxu16)n;
+}
 /*
- * Forget everything this frame has memoized about where its variables live. Called
- * from the doors that can move a NAME to a different slot; a door that only ever
- * INSTALLS a name the frame did not have does not need it, because a lookup that
- * found nothing is never filed.
- *
- * Written out rather than SyZero'd: the array holds `const char *`, and handing it
- * to a `void *` parameter is a const cast MSVC refuses under /WX (C4090). Eight
- * stores compile to the same clear.
+ * Number a function body if it has not been numbered, and tell the frame about to run
+ * it which body its numbers belong to. One branch per activation; the walk itself
+ * happens once per function for the life of the VM.
+ */
+static void VmFrameNumberBody(VmFrame *pFrame,ph7_vm_func *pFunc)
+{
+	if( !pFunc->bNumbered ){
+		VmNumberLocals((VmInstr *)SySetBasePtr(&pFunc->aByteCode),
+			SySetUsed(&pFunc->aByteCode),&pFunc->nLocalName);
+		pFunc->bNumbered = 1;
+	}
+	if( pFunc->nLocalName > 0 ){
+		pFrame->pCodeBase = (const VmInstr *)SySetBasePtr(&pFunc->aByteCode);
+	}
+}
+/*
+ * Forget where this frame's variables live. Called from the doors that can move a NAME
+ * to a different slot; a door that only ever INSTALLS a name the frame did not have
+ * does not need it, because a lookup that found nothing is never filed.
  */
 PH7_PRIVATE void VmVarMemoFlush(VmFrame *pFrame)
 {
 	sxu32 i;
-	for( i = 0 ; i < PH7_VAR_MEMO_SIZE ; ++i ){
-		pFrame->apVarName[i] = 0;
+	for( i = 0 ; i < PH7_VAR_SLOT_MAX ; ++i ){
+		pFrame->aLocalSlot[i] = 0;
 	}
 }
 /*
@@ -4798,43 +4909,54 @@ PH7_PRIVATE void VmVarMemoFlush(VmFrame *pFrame)
  * name the compiler interned into the bytecode, and nothing else.
  *
  * Every variable access consults the superglobal table and then hashes the name into
- * the frame's symbol table; measured on the ecosystem gate's phpcs step that was 100M
- * of the engine's 224M hash lookups, and the hash is over a name whose answer cannot
- * change between two accesses in the same frame unless something re-binds it. So the
- * answer is remembered on the frame, keyed by the name's address (see VmFrame), and
- * the second and later reads of a variable inside one activation cost a compare.
+ * the frame's symbol table; measured on the ecosystem gate's phpcs step that was the
+ * largest single row in the engine's whole name-lookup census, and the hash is over a
+ * name whose answer cannot change between two accesses in the same frame unless
+ * something re-binds it. So the answer is remembered on the frame, BY NUMBER (see
+ * VmFrame's aLocalSlot), and the second and later reads of a variable inside one
+ * activation cost an array index.
+ *
+ * nSlot is the number the body gave this name plus one, and aCode the instruction
+ * array it was numbered in -- 0 for a caller that has neither, which then pays the
+ * lookup it always did. The aCode compare is what keeps an included unit, an eval and
+ * a default-argument mini-program from reading numbers that are not theirs: they share
+ * the frame, so their instructions must not index its array.
  *
  * bDup is deliberately absent: a name that has to be COPIED to become a symbol-table
  * key is by definition not one that outlives the lookup.
  */
-PH7_PRIVATE ph7_value * PH7_VmExtractVarCached(
+PH7_PRIVATE ph7_value * PH7_VmExtractVarSlot(
 	ph7_vm *pVm,           /* Target VM */
 	const SyString *pName, /* Variable name -- interned, NUL-terminated, VM-lifetime */
-	int bCreate            /* True to create the variable if non-existent */
+	int bCreate,           /* True to create the variable if non-existent */
+	sxu32 nSlot,           /* The body's number for this name, plus one (0 = none) */
+	const VmInstr *aCode   /* The instruction array nSlot was numbered in */
 	)
 {
 	VmFrame *pFrame;
 	ph7_value *pObj;
 	sxu32 nIdx;
-	sxu32 nSlot;
 	if( pName->nByte < 1 || pName->zString == 0 ){
 		return VmExtractMemObjEx(&(*pVm),pName,FALSE,bCreate,0);
 	}
 	pFrame = VmSkipExceptionFrames(pVm->pFrame);
-	nSlot = VM_VAR_MEMO_SLOT(pName->zString);
-	if( pFrame->apVarName[nSlot] == pName->zString ){
-		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pFrame->aVarIdx[nSlot]);
-		if( pObj ){
-			return pObj;
+	if( nSlot > 0 && pFrame->pCodeBase == aCode ){
+		sxu32 nCached = pFrame->aLocalSlot[nSlot - 1];
+		if( nCached > 0 ){
+			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nCached - 1);
+			if( pObj ){
+				return pObj;
+			}
 		}
+	}else{
+		nSlot = 0;
 	}
 	nIdx = SXU32_HIGH;
 	pObj = VmExtractMemObjEx(&(*pVm),pName,FALSE,bCreate,&nIdx);
-	if( pObj && nIdx != SXU32_HIGH ){
+	if( pObj && nSlot > 0 && nIdx != SXU32_HIGH ){
 		/* VmExtractMemObjEx may have grown the frame chain's tables, but never the
 		 * chain itself, so the frame the answer belongs to is still this one. */
-		pFrame->apVarName[nSlot] = pName->zString;
-		pFrame->aVarIdx[nSlot] = nIdx;
+		pFrame->aLocalSlot[nSlot - 1] = nIdx + 1;
 	}
 	return pObj;
 }
@@ -7072,6 +7194,17 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	 * pass &pVm->aOps so the growth updates the field that VM release frees. */
 	{
 		sxu32 nOpsCap = SySetUsed(pVm->pByteContainer) + VM_STACK_GUARD;
+		/* Top-level code is a body like any other, and the global frame is the one
+		 * frame that was pushed long before there was anything to number. Number it
+		 * here, where the program about to run is finally known. */
+		if( pVm->pFrame && pVm->pFrame->pCodeBase == 0 ){
+			sxu16 nMainName = 0;
+			VmNumberLocals((VmInstr *)SySetBasePtr(pVm->pByteContainer),
+				SySetUsed(pVm->pByteContainer),&nMainName);
+			if( nMainName > 0 ){
+				pVm->pFrame->pCodeBase = (const VmInstr *)SySetBasePtr(pVm->pByteContainer);
+			}
+		}
 		VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE,0,&pVm->aOps,&nOpsCap,nOpsCap);
 	}
 	/* Invoke any shutdown callbacks */

@@ -248,6 +248,10 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 				}
 			}else{
 				rc = SyHashInsert(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte,SX_INT_TO_PTR(nIdx));
+				/* Installing a name is a rebind too, for a frame that may still
+				 * remember where the name USED to live -- the same reason
+				 * PH7_VmBindVarSlot flushes on its own insert branch. */
+				VmVarMemoFlush(pFrameLocal);
 				if( pFrameLocal->pParent == 0 ){
 					/* Insert in the $GLOBALS array */
 					VmHashmapRefInsert(pVm->pGlobal,sName.zString,sName.nByte,nIdx);
