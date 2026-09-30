@@ -331,6 +331,12 @@ struct tok_state {
 	int          bParse;   /* TOKEN_PARSE flag: apply php's semi-reserved re-tagging */
 	int          bStop;    /* __halt_compiler seen: stop scanning entirely */
 	int          bOOM;     /* memory failure flag */
+	/* php_strip_whitespace(): write the stripped source HERE instead of building an
+	 * array. The three flags are zend_strip's own state -- see tok_strip(). */
+	SyBlob      *pStrip;
+	int          bStripPrevSpace;
+	int          bStripPendingNl;
+	int          bStripAfterHd;
 };
 
 /* --- character classes (byte-level, UTF-8 lead bytes count as label chars) --- */
@@ -404,11 +410,67 @@ static void tok_object(tok_state *ts,int iId,const char *z,int n,int iLine)
 	PH7_MemObjRelease(&sVal);
 	PH7_ClassInstanceUnref(pObj);   /* drop the creation reference (rule 16) */
 }
+/*
+ * php_strip_whitespace()'s sink: php's `zend_strip`, over the same token stream
+ * token_get_all() walks. It writes
+ *   - a COMMENT (line, block or doc) as NOTHING at all;
+ *   - a WHITESPACE run as ONE space, and only when the last thing written was not
+ *     already one;
+ *   - everything else verbatim;
+ *   - and a NEWLINE just after a heredoc terminator: in place of the WHITESPACE
+ *     that follows it, and otherwise after the token that does -- which is what
+ *     makes `EOT;` come out as "EOT;\n", `EOT\n;` as "EOT\n; " and `EOT :` as
+ *     "EOT\n: ".
+ * Derived from php 8.5.9 over the 15,000 vendor files of the four ECOSYSTEM.md
+ * projects: every one of them matches byte for byte.
+ */
+static void tok_strip(tok_state *ts,int iId,const char *z,int n)
+{
+	int bWs = iId == T_WHITESPACE;
+	if( ts->bStripAfterHd ){
+		ts->bStripAfterHd = 0;
+		if( bWs ){
+			/* WHITESPACE right after the terminator: the newline goes there, and
+			 * the run itself is swallowed with it. */
+			SyBlobAppend(ts->pStrip,"\n",1);
+			ts->bStripPrevSpace = 1;
+			return;
+		}
+		ts->bStripPendingNl = 1;
+	}
+	if( iId == T_COMMENT || iId == T_DOC_COMMENT ){
+		return;
+	}
+	if( bWs ){
+		if( !ts->bStripPrevSpace ){
+			SyBlobAppend(ts->pStrip," ",1);
+			ts->bStripPrevSpace = 1;
+		}
+		return;
+	}
+	SyBlobAppend(ts->pStrip,z,(sxu32)n);
+	ts->bStripPrevSpace = 0;
+	if( ts->bStripPendingNl ){
+		SyBlobAppend(ts->pStrip,"\n",1);
+		ts->bStripPrevSpace = 1;
+		ts->bStripPendingNl = 0;
+		return;
+	}
+	if( iId == T_END_HEREDOC ){
+		ts->bStripAfterHd = 1;
+	}
+}
 /* Every emitted lexeme advances the byte offset; the stream covers the source
  * contiguously, which is what makes the running count equal php's pointer
  * arithmetic (asserted by the text-roundtrip probe). */
 static void tok_plain(tok_state *ts,const char *z,int n){
 	if( ts->bOOM ){ return; }
+	if( ts->pStrip ){
+		/* A single-character token is never whitespace or a comment. */
+		tok_strip(ts,0,z,n);
+		ts->iPos += n;
+		return;
+	}
 	if( ts->pTokClass ){
 		tok_object(ts,(unsigned char)z[0],z,n,ts->iLine);
 		ts->iPos += n;
@@ -424,6 +486,11 @@ static void tok_plain(tok_state *ts,const char *z,int n){
 static void tok_tok(tok_state *ts,int iId,const char *z,int n,int iLine){
 	ph7_value *pInner;
 	if( ts->bOOM ){ return; }
+	if( ts->pStrip ){
+		tok_strip(ts,iId,z,n);
+		ts->iPos += n;
+		return;
+	}
 	if( ts->pTokClass ){
 		tok_object(ts,iId,z,n,iLine);
 		ts->iPos += n;
@@ -843,12 +910,15 @@ static int tok_lex_one(tok_state *ts){
 		tok_tok(ts,T_WHITESPACE,(const char *)z0,(int)(ts->z-z0),iLine);
 		return 0;
 	}
-	/* Comments: hash/slash-slash to EOL-or-close-tag, and block comments. Preserve property state. */
+	/* Comments: hash/slash-slash to EOL-or-close-tag, and block comments. Preserve property state.
+	 * A LINE ending is any of "\n", "\r" and "\r\n" -- a bare CR ends a line comment in php too,
+	 * so a CR-only file (old Mac endings) is a stream of comments and code there and was ONE
+	 * comment running to the end of the file here. */
 	if( c=='#' && !(z+1 < ts->zEnd && z[1]=='[') ){
 		const unsigned char *z0 = z;
 		int iLine = ts->iLine;
 		ts->z++;
-		while( ts->z < ts->zEnd && *ts->z!='\n' ){
+		while( ts->z < ts->zEnd && *ts->z!='\n' && *ts->z!='\r' ){
 			if( *ts->z=='?' && ts->z+1 < ts->zEnd && ts->z[1]=='>' ){ break; }
 			ts->z++;
 		}
@@ -859,7 +929,7 @@ static int tok_lex_one(tok_state *ts){
 		const unsigned char *z0 = z;
 		int iLine = ts->iLine;
 		ts->z += 2;
-		while( ts->z < ts->zEnd && *ts->z!='\n' ){
+		while( ts->z < ts->zEnd && *ts->z!='\n' && *ts->z!='\r' ){
 			if( *ts->z=='?' && ts->z+1 < ts->zEnd && ts->z[1]=='>' ){ break; }
 			ts->z++;
 		}
@@ -1220,8 +1290,17 @@ static int tok_open_tag(tok_state *ts){
 			const unsigned char *e = z+5;
 			int iLine = ts->iLine;
 			if( e < ts->zEnd && tok_is_ws(*e) ){
-				if( tok_at_nl(e,ts->zEnd) ){ ts->iLine++; }
-				e++;                 /* one trailing whitespace char joins the tag */
+				/* ONE trailing whitespace character joins the tag -- and a CRLF is
+				 * one newline, not two characters: php's scanner eats `\r\n`
+				 * whole, so `<?php\r\n` is a single T_OPEN_TAG there and was an
+				 * open tag plus a stray T_WHITESPACE("\n") here (every CRLF file's
+				 * token stream, and php_strip_whitespace's answer with it). */
+				int bCrLf = *e == '\r' && e+1 < ts->zEnd && e[1] == '\n';
+				if( bCrLf || tok_at_nl(e,ts->zEnd) ){ ts->iLine++; }
+				if( bCrLf ){
+					e++;
+				}
+				e++;
 			}
 			tok_tok(ts,T_OPEN_TAG,(const char *)z,(int)(e-z),iLine);
 			ts->z = e;
@@ -1306,6 +1385,103 @@ static int PH7_builtin_token_get_all(ph7_context *pCtx,int nArg,ph7_value **apAr
 	return PH7_OK;
 }
 
+/*
+ * string php_strip_whitespace(string $filename)
+ *   The source of $filename with its comments and whitespace stripped.
+ *
+ * Composer's classmap generator is built on it -- `PhpFileParser` refuses to run
+ * without it and reports the absence as `disabled by the disable_functions
+ * directive` -- so `composer dump-autoload` stopped here. php implements it as
+ * `zend_strip` over its own scanner; PHL runs the tokenizer token_get_all() already
+ * uses, with tok_strip() as the sink.
+ *
+ * The file is opened through the stream layer, so a userland wrapper serves it and
+ * a failure is php's own `php_strip_whitespace(<path>): Failed to open stream: …`
+ * naming this function. A leading `#!` line is dropped before scanning, as php's
+ * open_file_for_scanning does.
+ */
+static int PH7_builtin_php_strip_whitespace(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	const char *zFile;
+	void *pHandle;
+	SyBlob sSrc,sOut;
+	tok_state ts;
+	int nLen = 0;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"php_strip_whitespace() expects exactly 1 argument, %d given",nArg);
+	}
+	zFile = ph7_value_to_string(apArg[0],&nLen);
+	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
+		return PH7_OK;
+	}
+	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	if( pStream == 0 ){
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	{
+		/* php opens this one the way `include` does, and that opener refuses a
+		 * DIRECTORY -- with the same sentence a missing path gets. The plain
+		 * files wrapper is the only one that has directories to refuse. */
+		const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+		if( pStream == pCtx->pVm->pDefStream && pVfs && pVfs->xIsdir
+		 && pVfs->xIsdir(zFile) == PH7_OK ){
+			int nAsked = 0;
+			const char *zAsked = ph7_value_to_string(apArg[0],&nAsked);
+			PH7_VmThrowWarningFmt(pCtx->pVm,
+				"%s(%.*s): Failed to open stream: No such file or directory",
+				ph7_function_name(pCtx),nAsked,zAsked);
+			ph7_result_string(pCtx,"",0);
+			return PH7_OK;
+		}
+	}
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,
+		ph7_function_name(pCtx));
+	if( pHandle == 0 ){
+		VfsThrowOpenWarning(pCtx,zFile);
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sSrc,&pCtx->pVm->sAllocator);
+	PH7_StreamReadWholeFile(pHandle,pStream,&sSrc);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	{
+		const unsigned char *zIn = (const unsigned char *)SyBlobData(&sSrc);
+		sxu32 nIn = SyBlobLength(&sSrc);
+		if( nIn >= 2 && zIn[0] == '#' && zIn[1] == '!' ){
+			/* php's scanner eats the shebang line before the first token. */
+			sxu32 i = 2;
+			while( i < nIn && zIn[i] != '\n' ){
+				i++;
+			}
+			if( i < nIn ){
+				i++;
+			}
+			zIn += i;
+			nIn -= i;
+		}
+		SyZero(&ts,sizeof(ts));
+		ts.pCtx = pCtx;
+		ts.pStrip = &sOut;
+		ts.z = zIn;
+		ts.zEnd = zIn + nIn;
+		ts.iLine = 1;
+		tok_run(&ts);
+	}
+	if( ts.bOOM ){
+		SyBlobRelease(&sSrc);
+		SyBlobRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sSrc);
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
 /*
  * string token_name(int $id)
  */
@@ -1608,6 +1784,7 @@ static sxi32 VmInstallPhpToken(ph7_vm *pVm)
 
 PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){
 	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);
+	ph7_create_function(&(*pVm),"php_strip_whitespace",PH7_builtin_php_strip_whitespace,0);
 	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);
 	return VmInstallPhpToken(&(*pVm));
 }

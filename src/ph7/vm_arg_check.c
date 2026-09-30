@@ -1208,6 +1208,7 @@ static const struct VmBuiltinSig {
 	{ "tanh", "float $num", "float" },
 	{ "time", "", "int" },
 	{ "token_get_all", "string $code, int $flags = 0", "array" },
+	{ "php_strip_whitespace", "string $filename", "string" },
 	{ "token_name", "int $id", "string" },
 	{ "touch", "string $filename, ?int $mtime = NULL, ?int $atime = NULL", "bool" },
 	{ "trigger_error", "string $message, int $error_level = E_USER_NOTICE", "true" },

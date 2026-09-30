@@ -415,6 +415,7 @@ static const VmExtName aExtFunc[] = {
 	{"random_bytes",PH7_EXT_RANDOM}, {"random_int",PH7_EXT_RANDOM},
 	/* tokenizer */
 	{"token_get_all",PH7_EXT_TOKENIZER}, {"token_name",PH7_EXT_TOKENIZER},
+	{"php_strip_whitespace",PH7_EXT_STANDARD},
 	/* libxml */
 	{"libxml_set_streams_context",PH7_EXT_LIBXML}, {"libxml_use_internal_errors",PH7_EXT_LIBXML},
 	{"libxml_get_last_error",PH7_EXT_LIBXML}, {"libxml_get_errors",PH7_EXT_LIBXML},
