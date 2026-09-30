@@ -400,6 +400,34 @@ static PCRE2_SIZE PcreEmptyMatchNext(pcre2_code *pCode, const char *zSubject,
 	}
 	return n;
 }
+/*
+ * php reports the NAME of the (*MARK)/(*:NAME) verb the successful match path last
+ * passed through, under the string key "MARK". The key exists only when the match
+ * actually reached a mark -- a pattern that HAS marks but matched down an unmarked
+ * branch has no MARK entry at all -- and it is a plain string even under
+ * PREG_OFFSET_CAPTURE, where every other entry is a [value, offset] pair.
+ *
+ * phpstan/phpdoc-parser's lexer is built on it: one alternation of ~50 marked
+ * branches, and `(int) $match['MARK']` is how it names the token it just read. With
+ * no MARK key that read is an "Undefined array key" warning per token, which is why
+ * every slevomat sniff that parses a docblock died and phpcs reported an internal
+ * exception for each file.
+ */
+static void PcreAddMark(ph7_context *pCtx,ph7_value *pArray,pcre2_match_data *pMatchData)
+{
+	PCRE2_SPTR zMark = pMatchData ? pcre2_get_mark(pMatchData) : 0;
+	ph7_value *pVal;
+	if( zMark == 0 ){
+		return;
+	}
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pVal == 0 ){
+		return;
+	}
+	ph7_value_string(pVal,(const char *)zMark,-1);
+	ph7_array_add_strkey_elem(pArray,"MARK",pVal);
+	ph7_context_release_value(pCtx,pVal);
+}
 static void PcrePopulateMatches(
 	ph7_context *pCtx,
 	ph7_value *pArray,          /* Target array (apArg[2] or sub-array) */
@@ -407,6 +435,7 @@ static void PcrePopulateMatches(
 	PCRE2_SIZE *ovector,
 	int nGroups,
 	pcre2_code *pCode,
+	pcre2_match_data *pMatchData, /* for the MARK entry; may be 0 */
 	int iFlags)                 /* PREG_OFFSET_CAPTURE etc. */
 {
 	ph7_value *pVal = ph7_context_new_scalar(pCtx);
@@ -500,6 +529,8 @@ static void PcrePopulateMatches(
 	if( pSub ){
 		ph7_context_release_value(pCtx, pSub);
 	}
+	/* php appends it AFTER every numbered and named group. */
+	PcreAddMark(pCtx,pArray,pMatchData);
 }
 
 /*
@@ -604,7 +635,7 @@ static int PH7_builtin_preg_match(ph7_context *pCtx, int nArg, ph7_value **apArg
 		/* Populate $matches */
 		ph7_value *pArray = ph7_context_new_array(pCtx);
 		ovector = pcre2_get_ovector_pointer(pMatchData);
-		PcrePopulateMatches(pCtx, pArray, zSubject, ovector, rc, pCode, iFlags);
+		PcrePopulateMatches(pCtx, pArray, zSubject, ovector, rc, pCode, pMatchData, iFlags);
 		/* Write the array back to the caller's variable */
 		PH7_VmStoreArgByRef(pCtx->pVm, apArg[2], pArray);
 		ph7_context_release_value(pCtx, pArray);
@@ -681,7 +712,7 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 				ovector = pcre2_get_ovector_pointer(pMatchData);
 				if( pOutArray ){
 					ph7_value *pSet = ph7_context_new_array(pCtx);
-					PcrePopulateMatches(pCtx, pSet, zSubject, ovector, rc, pCode, iFlags & ~0xFF);
+					PcrePopulateMatches(pCtx, pSet, zSubject, ovector, rc, pCode, pMatchData, iFlags & ~0xFF);
 					ph7_array_add_intkey_elem(pOutArray, totalMatches, pSet);
 					ph7_context_release_value(pCtx, pSet);
 				}
@@ -695,6 +726,12 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 		}else{
 			/* PREG_PATTERN_ORDER (default) */
 			ph7_value **apGroupArrays = 0;
+			/* The marks the successful paths passed through, in match order. php
+			 * appends them as one "MARK" array after the numbered groups -- and it
+			 * holds ONLY the matches that reached a mark, renumbered from 0, so it is
+			 * not aligned with the group arrays beside it. A run where nothing was
+			 * marked has no MARK key at all. */
+			ph7_value *pMarkArray = 0;
 			sxu32 nGroups = nCapture + 1;
 			sxu32 g;
 			if( pOutArray ){
@@ -716,8 +753,19 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 				}
 				ovector = pcre2_get_ovector_pointer(pMatchData);
 				if( apGroupArrays ){
+					PCRE2_SPTR zMark = pcre2_get_mark(pMatchData);
 					ph7_value *pVal = ph7_context_new_scalar(pCtx);
 					int nActual = rc;
+					if( zMark ){
+						if( pMarkArray == 0 ){
+							pMarkArray = ph7_context_new_array(pCtx);
+						}
+						if( pMarkArray ){
+							ph7_value_string(pVal,(const char *)zMark,-1);
+							ph7_array_add_elem(pMarkArray,0,pVal);
+							ph7_value_reset_string_cursor(pVal);
+						}
+					}
 					for( g = 0; g < nGroups; g++ ){
 						if( (int)g < nActual && ovector[2*g] != PCRE2_UNSET ){
 							PCRE2_SIZE s = ovector[2*g];
@@ -804,6 +852,10 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 					ph7_context_release_value(pCtx, apGroupArrays[g]);
 				}
 				ph7_context_free_chunk(pCtx, apGroupArrays);
+				if( pMarkArray ){
+					ph7_array_add_strkey_elem(pOutArray,"MARK",pMarkArray);
+					ph7_context_release_value(pCtx, pMarkArray);
+				}
 			}
 		}
 		/* Write output array to caller's variable */
@@ -1439,7 +1491,7 @@ static sxi32 PcreDoCallbackReplace(
 		}
 		/* Build matches array for callback */
 		pMatchArr = ph7_context_new_array(pCtx);
-		PcrePopulateMatches(pCtx, pMatchArr, zSubject, ovector, rc, pCode, iFlags);
+		PcrePopulateMatches(pCtx, pMatchArr, zSubject, ovector, rc, pCode, pMatchData, iFlags);
 		/* Call the callback */
 		PH7_MemObjInit(pCtx->pVm, &sResult);
 		apCbArg[0] = pMatchArr;
