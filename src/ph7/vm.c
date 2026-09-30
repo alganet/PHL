@@ -447,6 +447,47 @@ static const char * VmCallNameIntern(ph7_vm *pVm,const SyString *pName)
 	return zCopy;
 }
 /*
+ * Are these two names the same bytes? Equality only -- the guard below never orders.
+ *
+ * SyMemcmp is a byte loop (SX_MACRO_FAST_CMP, four bytes unrolled with a branch each)
+ * behind a call, and THIS ONE SITE walked 1,737,378,747 bytes of callee name on the
+ * ecosystem gate's phpcs step: 42,994,248 guards averaging forty bytes, because a
+ * namespaced function name is long. It was the second-largest SyMemcmp caller in the
+ * engine, above the one inside SyHashGetHashed. Eight bytes at a time turns forty
+ * comparisons into five and drops the call. (PERF.md P16.)
+ *
+ * The load is through memcpy rather than a cast: an unaligned sxu64 read through a
+ * char pointer is what UBSan exists to catch, and every compiler in the matrix folds a
+ * constant-size memcpy into the one load anyway.
+ *
+ * This is NOT a case for widening SyMemcmp itself. PERF.md §5 records that measuring
+ * neutral, because most of its callers compare short property names where a word loop
+ * never gets going -- the same reason glibc's memcmp measured 1.3% SLOWER there.
+ */
+static int VmCallNameEq(const char *zA,const char *zB,sxu32 nByte)
+{
+	/* Declared and seeded out here for MSVC: /WX turns C4701 ("potentially
+	 * uninitialized local variable used") into an error, and cl cannot see that the
+	 * memmove below is what writes them. Both compilers drop the two stores. */
+	sxu64 a = 0,b = 0;
+	while( nByte >= sizeof(sxu64) ){
+		SX_MACRO_FAST_MEMCPY(zA,&a,sizeof(a));
+		SX_MACRO_FAST_MEMCPY(zB,&b,sizeof(b));
+		if( a != b ){
+			return 0;
+		}
+		zA += sizeof(sxu64);
+		zB += sizeof(sxu64);
+		nByte -= (sxu32)sizeof(sxu64);
+	}
+	while( nByte-- > 0 ){
+		if( *zA++ != *zB++ ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
  * The VmCallSite record a PH7_OP_CALL site owns. bClaim says which of the two doors is
  * asking: the RECORDING one may create the record, the ASKING one only reads it.
  *
@@ -516,7 +557,7 @@ static VmCallSite * VmCallSiteFor(ph7_vm *pVm,VmInstr *pInstr,const SyString *pN
 	}
 	if( pSite->nName != pName->nByte
 	 || pSite->bEngine != (sxu8)(bEngineName ? 1 : 0)
-	 || SyMemcmp(pSite->zName,pName->zString,pSite->nName) != 0 ){
+	 || !VmCallNameEq(pSite->zName,pName->zString,pSite->nName) ){
 		/* A second name at one site: the callee is a variable (or a closure key), and
 		 * re-interning it on every call would cost more than the lookup it saves. */
 		pSite->zName = 0;
