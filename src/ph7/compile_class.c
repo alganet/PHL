@@ -4610,6 +4610,7 @@ static sxi32 GenStateApplyTraitUses(ph7_gen_state *pGen,ph7_class *pClass,SySet 
 						pNR = &pAR->sName;
 						if( SyHashGet(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte) == 0 ){
 							SyHashInsertTail(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte,pAR);
+							PH7_ClassNotePrivateName(pClass,pAR);
 						}
 					}
 					/* Trait constants (PHP 8.2) live in the separate hConst namespace */

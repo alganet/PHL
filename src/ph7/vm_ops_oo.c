@@ -1110,8 +1110,14 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				 * plain name. The EMPTY name is a real property name in php —
 				 * `$o->{''} = 1` creates one and `$o->{''}` reads it back — and it is
 				 * the one name SyHashGet cannot answer for, so it takes a
-				 * list-walking lookup inside. */
-				pEntry = PH7_ClassInstanceScopedAttrEntry(&(*pVm),pThis,sName.zString,sName.nByte);
+				 * list-walking lookup inside.
+				 *
+				 * The name is hashed ONCE, here, and reused by both questions
+				 * underneath -- the scope's private-name screen and the slot probe
+				 * on this object -- because every property table shares one hash
+				 * function and hashing is what a lookup spends (PERF.md §5). */
+				pEntry = PH7_ClassInstanceScopedAttrEntry(&(*pVm),pThis,sName.zString,sName.nByte,
+					sName.nByte > 0 ? SyHashKey(&pThis->hAttr,(const void *)sName.zString,sName.nByte) : 0);
 				if( pEntry ){
 					/* Point to the attribute value */
 					pObjAttr = (VmClassAttr *)pEntry->pUserData;

@@ -381,12 +381,10 @@ static void HCensusNote(void *pSite,SyHash *pHash,sxu32 nKeyLen,int bHit)
 	sHCensus.nHit += bHit ? 1 : 0;
 }
 #endif /* PHL_HASH_CENSUS */
-static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
+static SyHashEntry_Pr * HashGetEntryHashed(SyHash *pHash,const void *pKey,sxu32 nKeyLen,sxu32 nHash)
 {
 	SyHashEntry_Pr *pEntry;
-	sxu32 nHash;
 
-	nHash = pHash->xHash(pKey,nKeyLen);
 	pEntry = pHash->apBucket[nHash & (pHash->nBucketSize - 1)];
 	for(;;){
 		if( pEntry == 0 ){
@@ -400,6 +398,10 @@ static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLe
 	}
 	/* Entry not found */
 	return 0;
+}
+static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
+{
+	return HashGetEntryHashed(&(*pHash),pKey,nKeyLen,pHash->xHash(pKey,nKeyLen));
 }
 PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
 {
@@ -422,6 +424,69 @@ PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen
 	pEntry = HashGetEntry(&(*pHash),pKey,nKeyLen);
 #if defined(PHL_HASH_CENSUS)
 	HCensusNote(pCensusSite,pHash,nKeyLen,pEntry != 0);
+#endif
+	if( pEntry == 0 ){
+		return 0;
+	}
+	return (SyHashEntry *)pEntry;
+}
+/*
+ * The KEY hashed once, for a caller that is about to ask several questions with it.
+ *
+ * A property access asks two -- does the executing scope declare a private of this
+ * name, and where is the slot on this object -- and used to hash the same bytes for
+ * each. Hashing is what a lookup spends (PERF.md §5), so the caller hashes once here
+ * and hands the answer to SyHashGetHashed below.
+ *
+ * The hash belongs to the TABLE, not to the key: two tables with different xHash
+ * answer differently for the same bytes. Only pass a hash taken from this function,
+ * and only to a table that shares this one's xHash.
+ */
+PH7_PRIVATE sxu32 SyHashKey(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
+{
+	sxu32 nHash;
+#if defined(PHL_HASH_CENSUS)
+	void *pCensusSite = __builtin_return_address(0);
+#endif
+	nHash = pHash->xHash(pKey,nKeyLen);
+#if defined(PHL_HASH_CENSUS)
+	/* Counted as a question asked at this site, because that is what it is: the
+	 * bytes are charged HERE, and the prehashed probes below then show none. A
+	 * census that only counted SyHashGet would make the work disappear. */
+	HCensusNote(pCensusSite,pHash,nKeyLen,1);
+#endif
+	return nHash;
+}
+/*
+ * SyHashGet with the key already hashed (SyHashKey). Hashes nothing.
+ */
+PH7_PRIVATE SyHashEntry * SyHashGetHashed(SyHash *pHash,const void *pKey,sxu32 nKeyLen,sxu32 nHash)
+{
+	SyHashEntry_Pr *pEntry;
+#if defined(PHL_HASH_CENSUS)
+	void *pCensusSite = __builtin_return_address(0);
+#endif
+#if defined(UNTRUST)
+	if( INVALID_HASH(pHash) ){
+		return 0;
+	}
+	/* The one way to get this wrong is to hand over a hash taken for another
+	 * table. Answer NOT FOUND rather than whatever sits in the wrong bucket --
+	 * the same shape as the INVALID_HASH screen above, and like it this only
+	 * exists in an UNTRUST build. */
+	if( nKeyLen > 0 && nHash != pHash->xHash(pKey,nKeyLen) ){
+		return 0;
+	}
+#endif
+	if( pHash->nEntry < 1 || nKeyLen < 1 ){
+#if defined(PHL_HASH_CENSUS)
+		HCensusNote(pCensusSite,pHash,0,0);
+#endif
+		return 0;
+	}
+	pEntry = HashGetEntryHashed(&(*pHash),pKey,nKeyLen,nHash);
+#if defined(PHL_HASH_CENSUS)
+	HCensusNote(pCensusSite,pHash,0,pEntry != 0);
 #endif
 	if( pEntry == 0 ){
 		return 0;

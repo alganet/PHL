@@ -64,6 +64,8 @@ struct SyHash
 PH7_PRIVATE sxi32 SyHashInit(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHash,ProcCmp xCmp);
 PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash);
 PH7_PRIVATE SyHashEntry *SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen);
+PH7_PRIVATE sxu32 SyHashKey(SyHash *pHash,const void *pKey,sxu32 nKeyLen);
+PH7_PRIVATE SyHashEntry *SyHashGetHashed(SyHash *pHash,const void *pKey,sxu32 nKeyLen,sxu32 nHash);
 PH7_PRIVATE sxi32 SyHashDeleteEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void **ppUserData);
 PH7_PRIVATE sxi32 SyHashDeleteEntry2(SyHashEntry *pEntry);
 PH7_PRIVATE sxi32 SyHashResetLoopCursor(SyHash *pHash);

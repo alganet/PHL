@@ -1970,6 +1970,14 @@ struct ph7_class
 	SyHash hDerived;      /* Derived [child] classes */
 	SyString sName;       /* Class full qualified name */
 	sxi32 iFlags;         /* Class configuration flags [i.e: final, interface, abstract, etc.]  */
+	sxu64 nShadowName;    /* One bit per PLAIN name this class holds a MANGLED slot for
+	                       * (OoShadowNameBit). PH7_CLASS_SHADOW_PROP says the class has at
+	                       * least one; this says WHICH, cheaply enough to ask on every
+	                       * property access. Zero when the flag is clear. */
+	sxu64 nPrivName;      /* ...and one bit per plain name this class declares as a PRIVATE
+	                       * instance property of its own (its trait-composed ones included).
+	                       * The other half of the same screen: a scope can only mean a
+	                       * mangled slot for a name it declares private itself. */
 	SyHash hAttr;         /* Class PROPERTIES [static + instance]. Constants live in hConst */
 	SyHash hConst;        /* Class CONSTANTS [incl. enum cases] — php keeps constants and
 	                       * properties in SEPARATE namespaces, so `const C` and `public $C`
@@ -7375,8 +7383,9 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 PH7_PRIVATE int PH7_UnmangleAttrName(const char *zKey,sxu32 nKey,SyString *pClass,SyString *pName);
 PH7_PRIVATE SyHashEntry * PH7_ClassInstanceAttrEntry(ph7_class_instance *pThis,const char *zName,sxu32 nName);
 PH7_PRIVATE const SyString * PH7_ClassAttrStorageName(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
+PH7_PRIVATE void PH7_ClassNotePrivateName(ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE ph7_class_attr * PH7_ClassScopedAttribute(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName);
-PH7_PRIVATE SyHashEntry * PH7_ClassInstanceScopedAttrEntry(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName);
+PH7_PRIVATE SyHashEntry * PH7_ClassInstanceScopedAttrEntry(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName,sxu32 nHash);
 PH7_PRIVATE int PH7_ClassInstanceAttrShadowed(ph7_vm *pVm,ph7_class_instance *pThis,SyHashEntry *pEntry);
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const char *zMethod,
 	sxu32 nByte,const SyString *pAttrName,ph7_value *pResult);
@@ -7590,6 +7599,8 @@ PH7_PRIVATE sxi32 SyHashResetLoopCursor(SyHash *pHash);
 PH7_PRIVATE sxi32 SyHashDeleteEntry2(SyHashEntry *pEntry);
 PH7_PRIVATE sxi32 SyHashDeleteEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void **ppUserData);
 PH7_PRIVATE SyHashEntry *SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen);
+PH7_PRIVATE sxu32 SyHashKey(SyHash *pHash,const void *pKey,sxu32 nKeyLen);
+PH7_PRIVATE SyHashEntry *SyHashGetHashed(SyHash *pHash,const void *pKey,sxu32 nKeyLen,sxu32 nHash);
 PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash);
 PH7_PRIVATE sxi32 SyHashInit(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHash,ProcCmp xCmp);
 PH7_PRIVATE sxu32 SyStrHash(const void *pSrc,sxu32 nLen);

@@ -249,6 +249,45 @@ PH7_PRIVATE const SyString * PH7_ClassAttrStorageName(ph7_vm *pVm,ph7_class *pCl
 	return &pAttr->sStoreName;
 }
 /*
+ * One bit of sixty-four for a property NAME, taken from the name's own hash.
+ *
+ * The two masks below are how a property access decides, without a lookup, that no
+ * mangled slot can be involved. They have to be SHARP: a mask built from a few
+ * bytes of the name collides with whatever ordinary property a class reads in its
+ * hot loop, and one unlucky pair then puts the whole workload back on the slow
+ * path -- measured, 65.3 million times on the phpcs step, out of 65.8 million that
+ * got past a length-and-three-bytes signature. So the bit comes from the same hash
+ * the lookup itself uses, which the caller has already computed for the instance
+ * probe (SyHashKey) and hands down.
+ *
+ * Every side of this asks a class's hAttr for the hash rather than naming a hash
+ * function, because a bit set under one function and tested under another would
+ * make a scope's private stop resolving -- silently, and only for the names that
+ * collide. All the property tables share one function; this is what keeps that a
+ * fact rather than an assumption.
+ */
+static sxu64 OoShadowNameBit(sxu32 nHash)
+{
+	return ((sxu64)1) << (nHash & 63);
+}
+/*
+ * Note, on the class that DECLARES it, that this name is one of its own private
+ * instance properties. Called from every path that files an attribute in a class's
+ * hAttr under its plain name.
+ *
+ * Only an instance property counts: a private STATIC and a private CONSTANT are
+ * never reached through an object's slot table, and OoScopePrivateAttr refuses
+ * both explicitly.
+ */
+PH7_PRIVATE void PH7_ClassNotePrivateName(ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+	 && (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+		pClass->nPrivName |= OoShadowNameBit(SyHashKey(&pClass->hAttr,
+			(const void *)SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName)));
+	}
+}
+/*
  * Which PROPERTY does `name` mean, seen from the class whose code is RUNNING?
  *
  * php's zend_get_parent_private_property: a scope that declares a private of this
@@ -257,11 +296,13 @@ PH7_PRIVATE const SyString * PH7_ClassAttrStorageName(ph7_vm *pVm,ph7_class *pCl
  * means. Answers 0 when the executing scope has no such private, which leaves the
  * caller on the ordinary plain-name path.
  */
-static ph7_class_attr * OoScopePrivateAttr(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName)
+static ph7_class_attr * OoScopePrivateAttr(ph7_vm *pVm,ph7_class *pClass,const char *zName,
+	sxu32 nName,sxu32 nHash)
 {
 	ph7_class *pScope;
 	SyHashEntry *pEntry;
 	ph7_class_attr *pOwn;
+	sxu64 nBit;
 	if( nName < 1 ){
 		return 0;
 	}
@@ -273,11 +314,30 @@ static ph7_class_attr * OoScopePrivateAttr(ph7_vm *pVm,ph7_class *pClass,const c
 		 * access skips the frame walk below on it. */
 		return 0;
 	}
+	nBit = OoShadowNameBit(nHash);
+	if( (pClass->nShadowName & nBit) == 0 ){
+		/* ...and the flag alone is not enough. A class that inherits ONE private
+		 * property pays for the walk below on every access to every OTHER property
+		 * it has, and on the phpcs step that was 79.4 million hash lookups made to
+		 * answer "no" -- 99.4% of the ones this function made, and 14% of every
+		 * lookup the engine did. The mask names the plain names a mangled slot
+		 * could be hiding under, so a miss is the complete answer: nothing can be
+		 * reached under a name this class holds no mangled slot for. */
+		return 0;
+	}
 	pScope = PH7_VmCallerScope(&(*pVm));
 	if( pScope == 0 || pScope == pClass ){
 		return 0;   /* global scope, or the object's own class: the plain name IS the slot */
 	}
-	pEntry = SyHashGet(&pScope->hAttr,(const void *)zName,nName);
+	if( (pScope->nPrivName & nBit) == 0 ){
+		/* ...and the same question from the other side, which is the one that
+		 * decides: the scope can only mean a mangled slot for a name it declares
+		 * PRIVATE itself. A class inherits many more mangled names than it
+		 * declares private ones, so this mask is the sparser of the two, and the
+		 * pair of them is what leaves this lookup to the accesses that need it. */
+		return 0;
+	}
+	pEntry = SyHashGetHashed(&pScope->hAttr,(const void *)zName,nName,nHash);
 	pOwn = pEntry ? (ph7_class_attr *)pEntry->pUserData : 0;
 	if( pOwn == 0
 	 || pOwn->iProtection != PH7_CLASS_PROT_PRIVATE
@@ -334,7 +394,8 @@ PH7_PRIVATE int PH7_ClassInstanceAttrShadowed(ph7_vm *pVm,ph7_class_instance *pT
  */
 PH7_PRIVATE ph7_class_attr * PH7_ClassScopedAttribute(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName)
 {
-	ph7_class_attr *pOwn = OoScopePrivateAttr(&(*pVm),pClass,zName,nName);
+	ph7_class_attr *pOwn = OoScopePrivateAttr(&(*pVm),pClass,zName,nName,
+		nName > 0 ? SyHashKey(&pClass->hAttr,(const void *)zName,nName) : 0);
 	if( pOwn ){
 		return pOwn;
 	}
@@ -348,12 +409,18 @@ PH7_PRIVATE ph7_class_attr * PH7_ClassScopedAttribute(ph7_vm *pVm,ph7_class *pCl
  * undefined even when a public property of the same name sits beside it).
  */
 PH7_PRIVATE SyHashEntry * PH7_ClassInstanceScopedAttrEntry(ph7_vm *pVm,ph7_class_instance *pThis,
-	const char *zName,sxu32 nName)
+	const char *zName,sxu32 nName,sxu32 nHash)
 {
-	ph7_class_attr *pOwn = OoScopePrivateAttr(&(*pVm),pThis->pClass,zName,nName);
+	ph7_class_attr *pOwn = OoScopePrivateAttr(&(*pVm),pThis->pClass,zName,nName,nHash);
 	if( pOwn ){
+		/* The MANGLED key is a different string, so the caller's hash says nothing
+		 * about it -- this is the 0.6% of accesses that really do mean a scope's
+		 * private, and they hash their own key. */
 		const SyString *pKey = PH7_ClassAttrStorageName(&(*pVm),pThis->pClass,pOwn);
 		return SyHashGet(&pThis->hAttr,(const void *)SyStringData(pKey),SyStringLength(pKey));
+	}
+	if( nName > 0 ){
+		return SyHashGetHashed(&pThis->hAttr,(const void *)zName,nName,nHash);
 	}
 	return PH7_ClassInstanceAttrEntry(pThis,zName,nName);
 }
@@ -393,6 +460,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr)
 		rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pAttr);
 	}else{
 		rc = SyHashInsertTail(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+		PH7_ClassNotePrivateName(pClass,pAttr);
 	}
 	return rc;
 }
@@ -1514,6 +1582,10 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			const SyString *pKey = PH7_ClassAttrStorageName(pGen->pVm,pSub,pIn);
 			if( pKey != &pIn->sName ){
 				pSub->iFlags |= PH7_CLASS_SHADOW_PROP;
+				/* ...and WHICH plain name it is hidden under, so the per-access
+				 * screen in OoScopePrivateAttr can answer without a lookup. */
+				pSub->nShadowName |= OoShadowNameBit(SyHashKey(&pSub->hAttr,
+					(const void *)SyStringData(&pIn->sName),SyStringLength(&pIn->sName)));
 			}
 			rc = SyHashInsert(&pSub->hAttr,(const void *)pKey->zString,pKey->nByte,pIn);
 			if( rc != SXRET_OK ){
@@ -1851,6 +1923,9 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 		if( rc != SXRET_OK ){
 			goto cleanup;
 		}
+		/* A trait's private is the COMPOSING class's own (php composes it in), so
+		 * the mask has to name it here too. */
+		PH7_ClassNotePrivateName(pClass,pAttr);
 	}
 	/* Copy constants from the trait (PHP 8.2 trait constants; separate hConst
 	 * namespace). The name being taken is only a conflict when the DEFINITION differs,
