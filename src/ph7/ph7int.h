@@ -3408,6 +3408,14 @@ struct ph7_vm
 	                             * Registered and dropped through the two helpers below, which
 	                             * are the only writers -- the predicate must not be spelled
 	                             * out at a call site again. */
+	unsigned char *pFilterBits; /* One BIT per memobj slot: is it in hTypedSlot? A store to a
+	                             * property asks that on every write, and it is a hash of a
+	                             * dense small INTEGER to hear "no" -- 9M of the engine's 225M
+	                             * lookups on the ecosystem gate's phpcs step. The slot index
+	                             * indexes this directly instead. Kept by the same two helpers
+	                             * that own the table, so it cannot drift from it; a slot past
+	                             * nFilterBits was never registered, which is the same answer. */
+	sxu32 nFilterBits;          /* How many slots pFilterBits covers (0 = never allocated) */
 	sxu32 nNativeSetSlot;       /* How many of those slots carry a native WRITE HANDLER. Kept
 	                             * by the same two helpers, and read by the in-place mutation
 	                             * opcodes: `$i++` on an ordinary variable must not pay for a
@@ -5935,6 +5943,11 @@ PH7_PRIVATE void PH7_VmSetSessionOrigin(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmAppendWhere(ph7_vm *pVm,SyBlob *pMsg,int bSessionActive);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
 PH7_PRIVATE ph7_value * PH7_VmExtractVarCached(ph7_vm *pVm,const SyString *pName,int bCreate);
+/* Is a store to this slot filtered at all? The screen in front of every hTypedSlot
+ * lookup on a hot path; a false answer is final, a true one still asks the table. */
+#define PH7_VM_STORE_FILTERED(pVm,nIdx) \
+	((nIdx) < (pVm)->nFilterBits \
+	 && ((pVm)->pFilterBits[(nIdx) >> 3] & (1 << ((nIdx) & 7))) != 0)
 PH7_PRIVATE void VmVarMemoFlush(VmFrame *pFrame);
 /* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
 PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);

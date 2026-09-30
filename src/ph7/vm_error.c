@@ -1664,7 +1664,7 @@ PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx)
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
 	ph7_class_attr *pAttr;
-	if( nIdx == SXU32_HIGH || SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
+	if( nIdx == SXU32_HIGH || !PH7_VM_STORE_FILTERED(pVm,nIdx) ){
 		return SXRET_OK;
 	}
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
@@ -1716,7 +1716,7 @@ PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)
 {
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
-	if( nIdx == SXU32_HIGH || SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
+	if( nIdx == SXU32_HIGH || !PH7_VM_STORE_FILTERED(pVm,nIdx) ){
 		return SXRET_OK; /* Non-lvalue operand, or no typed/readonly properties — skip */
 	}
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
@@ -2511,6 +2511,33 @@ static sxi32 VmRunNativeSet(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_value *pValue)
  * beside it -- registering in one place and forgetting to drop in another is
  * exactly how a recycled memobj index would inherit a stale entry.
  */
+/*
+ * Make room in the slot bitmap for nIdx and set its bit. A failure here is not
+ * fatal: the bitmap is a SCREEN in front of the table, and a slot it cannot cover
+ * simply keeps asking the table, which is what every caller did before it existed.
+ */
+static void VmFilterBitSet(ph7_vm *pVm,sxu32 nIdx)
+{
+	if( nIdx >= pVm->nFilterBits ){
+		sxu32 nNew = pVm->nFilterBits ? pVm->nFilterBits : 1024;
+		unsigned char *pNew;
+		while( nNew <= nIdx ){
+			nNew <<= 1;
+		}
+		pNew = (unsigned char *)SyMemBackendAlloc(&pVm->sAllocator,nNew >> 3);
+		if( pNew == 0 ){
+			return;
+		}
+		SyZero(pNew,nNew >> 3);
+		if( pVm->pFilterBits ){
+			SyMemcpy(pVm->pFilterBits,pNew,pVm->nFilterBits >> 3);
+			SyMemBackendFree(&pVm->sAllocator,pVm->pFilterBits);
+		}
+		pVm->pFilterBits = pNew;
+		pVm->nFilterBits = nNew;
+	}
+	pVm->pFilterBits[nIdx >> 3] |= (unsigned char)(1 << (nIdx & 7));
+}
 PH7_PRIVATE sxi32 PH7_VmStoreFilterRegister(ph7_vm *pVm,VmClassAttr *pVmAttr)
 {
 	if( !PH7_ATTR_STORE_FILTERED(pVmAttr->pAttr) ){
@@ -2519,6 +2546,7 @@ PH7_PRIVATE sxi32 PH7_VmStoreFilterRegister(ph7_vm *pVm,VmClassAttr *pVmAttr)
 	if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr) != SXRET_OK ){
 		return SXERR_MEM;
 	}
+	VmFilterBitSet(&(*pVm),pVmAttr->nIdx);
 	if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
 		pVm->nNativeSetSlot++;
 	}
@@ -2529,16 +2557,20 @@ PH7_PRIVATE void PH7_VmStoreFilterDrop(ph7_vm *pVm,ph7_class_attr *pAttr,sxu32 n
 	if( pAttr == 0 || !PH7_ATTR_STORE_FILTERED(pAttr) ){
 		return;
 	}
-	if( SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32),0) == SXRET_OK
-	 && (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) && pVm->nNativeSetSlot > 0 ){
-		pVm->nNativeSetSlot--;
+	if( SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32),0) == SXRET_OK ){
+		if( nIdx < pVm->nFilterBits ){
+			pVm->pFilterBits[nIdx >> 3] &= (unsigned char)~(1 << (nIdx & 7));
+		}
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) && pVm->nNativeSetSlot > 0 ){
+			pVm->nNativeSetSlot--;
+		}
 	}
 }
 PH7_PRIVATE sxi32 PH7_VmNativeSetSlot(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue)
 {
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
-	if( nIdx == SXU32_HIGH || pVm->nNativeSetSlot == 0 ){
+	if( nIdx == SXU32_HIGH || pVm->nNativeSetSlot == 0 || !PH7_VM_STORE_FILTERED(pVm,nIdx) ){
 		return SXRET_OK;
 	}
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
@@ -2565,6 +2597,9 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	 * instruction's own unit mode says (pVm->bCurStrict, published under the
 	 * nLine != 0 gate so an engine-dispatched write keeps the calling file's). */
 	int bStrict = pVm->bCurStrict ? 1 : 0;
+	if( !PH7_VM_STORE_FILTERED(pVm,nIdx) ){
+		return SXRET_OK; /* Not a filtered slot -- the common answer, and free */
+	}
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
 	if( pSlot == 0 ){
 		return SXRET_OK; /* Not a typed slot */

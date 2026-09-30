@@ -2809,8 +2809,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			if( pEntry->nIdx != SXU32_HIGH /* Variable not constant */  ){
 				rc = PH7_HashmapLookup(pMap,&sKey,&pNode);
 				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
-					int bTyped = SyHashTotalEntry(&pVm->hTypedSlot) > 0
-						&& SyHashGet(&pVm->hTypedSlot,(const void *)&pEntry->nIdx,sizeof(sxu32)) != 0;
+					int bTyped = PH7_VM_STORE_FILTERED(pVm,pEntry->nIdx);
 					if( rc != SXRET_OK ){
 						/* Undefined array key */
 						char zMsg[128];
@@ -2886,8 +2885,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			while( pEntry <= pTos ){
 				if( pEntry->nIdx != SXU32_HIGH /* Variable not constant */ ){
 					sxu32 nSlot = pEntry->nIdx;
-					int bTyped = SyHashTotalEntry(&pVm->hTypedSlot) > 0
-						&& SyHashGet(&pVm->hTypedSlot,(const void *)&nSlot,sizeof(sxu32)) != 0;
+					int bTyped = PH7_VM_STORE_FILTERED(pVm,nSlot);
 					ph7_value sVal,*pObj;
 					PH7_MemObjInit(&(*pVm),&sVal);
 					if( VmObjectDimRead(&(*pVm),pInst,&sKey,&sVal) != SXRET_OK ){
@@ -2946,8 +2944,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		while( pEntry <= pTos ){
 			if( pEntry->nIdx != SXU32_HIGH ){
 				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
-					int bTyped = SyHashTotalEntry(&pVm->hTypedSlot) > 0
-						&& SyHashGet(&pVm->hTypedSlot,(const void *)&pEntry->nIdx,sizeof(sxu32)) != 0;
+					int bTyped = PH7_VM_STORE_FILTERED(pVm,pEntry->nIdx);
 					if( !bTyped ){
 						PH7_MemObjRelease(pObj);
 					}else{

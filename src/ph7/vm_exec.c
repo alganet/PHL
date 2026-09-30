@@ -4676,8 +4676,7 @@ case PH7_OP_CAT_STORE:{
 	if( nIdx != SXU32_HIGH
 	 && nIdx != pNos->nIdx
 	 && (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0
-	 && (SyHashTotalEntry(&pVm->hTypedSlot) == 0
-	     || SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32)) == 0) ){
+	 && !PH7_VM_STORE_FILTERED(pVm,nIdx) ){
 		/* e.g. $x = 5; $x .= "a";  ->  "5a" (user-visible: warns if $x is an array,
 		 * throws if it is a not-stringable object — and then the lvalue keeps
 		 * holding that object, since the throw abandons the coercion) */

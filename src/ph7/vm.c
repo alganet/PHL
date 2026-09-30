@@ -3678,6 +3678,12 @@ static void VmResetFunctionState(ph7_vm *pVm)
 static void VmResetTypedSlots(ph7_vm *pVm)
 {
 	SyHashEntry *pEntry;
+	/* The bitmap in front of the table goes with it, whether or not the table has
+	 * anything left in it: a bit that outlived its entry would send a store into a
+	 * lookup that answers nothing, and the class re-mount registers fresh ones. */
+	if( pVm->pFilterBits ){
+		SyZero(pVm->pFilterBits,pVm->nFilterBits >> 3);
+	}
 	/* Common case: no class static typed properties — table already empty. */
 	if( SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
 		return;
