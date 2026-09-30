@@ -2551,10 +2551,12 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * PH7_VmMakeReady because the COMPILER now runs bytecode of its own: the
 	 * constant-expression evaluation behind a declaration message
 	 * (PH7_VmEvalConstExpr) builds the array a parameter defaults to, and every
-	 * hashmap insert installs a reference-table entry. With the table still
-	 * unallocated that lookup indexed `apRefObj[hash & (0 - 1)]` and segfaulted
-	 * the compiler. */
-	pVm->nRefSize = 0x10; /* Must be a power of two for fast arithemtic */
+	 * hashmap insert installs a reference-table entry. (While the table was a
+	 * HASH, an unallocated one made that lookup index `apRefObj[hash & (0 - 1)]`
+	 * and segfaulted the compiler; the slot-indexed table answers "no record"
+	 * for an out-of-range index instead, so this is now a head start rather than
+	 * the thing standing between the compiler and a crash.) */
+	pVm->nRefSize = 0x10;
 	pVm->apRefObj = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * pVm->nRefSize);
 	if( pVm->apRefObj == 0 ){
 		rc = SXERR_MEM;
@@ -3360,11 +3362,32 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
  */
 static void VmResetRefTable(ph7_vm *pVm)
 {
-	/* VmRefObjUnlink splices each node out of its apRefObj bucket and decrements
-	 * nRefUsed, so draining the list leaves the bucket array empty and nRefUsed
-	 * at 0 — no extra clearing needed. The bucket array and nRefSize survive. */
-	while( pVm->pRefList ){
-		VmRefObjUnlink(&(*pVm),pVm->pRefList);
+	/* VmRefObjUnlink clears each record's own cell and decrements nRefUsed, so a
+	 * sweep of the table leaves it empty and nRefUsed at 0 — no extra clearing
+	 * needed. The cell array and nRefSize survive.
+	 *
+	 * Unlinking one record deletes the names and array nodes it holds, which
+	 * releases values, which can unlink OTHER records — including ones this sweep
+	 * has already passed, and (through a destructor) ones it has not created yet.
+	 * So the sweep repeats while it is still making progress rather than trusting
+	 * one pass, and stops the moment a pass frees nothing so it cannot spin. */
+	for(;;){
+		sxu32 n, nBefore = pVm->nRefUsed;
+		if( nBefore == 0 ){
+			break;
+		}
+		for( n = 0 ; n < pVm->nRefSize ; ++n ){
+			while( pVm->apRefObj[n] ){
+				VmRefObj *pRef = pVm->apRefObj[n];
+				VmRefObjUnlink(&(*pVm),pRef);
+				if( pVm->apRefObj[n] == pRef ){
+					break; /* unlink did not clear it: do not spin on this cell */
+				}
+			}
+		}
+		if( pVm->nRefUsed >= nBefore ){
+			break;
+		}
 	}
 }
 /*
@@ -7243,47 +7266,26 @@ PH7_PRIVATE sxu32 PH7_VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx)
 	return nLive;
 }
 /*
- * Default hash function used by the reference table
- * for lookup/insertion operations.
- */
-static sxu32 VmRefHash(sxu32 nIdx)
-{
-	/* Calculate the hash based on the memory object index */
-	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);
-}
-/*
- * Check if a memory object [i.e: a variable] is already installed
- * in the reference table.
- * Return a pointer to the entry (VmRefObj instance) on success.NULL
- * otherwise.
- * The implementation of the reference mechanism in the PH7 engine
- * differ greatly from the one used by the zend engine. That is,
- * the reference implementation is consistent,solid and it's
- * behavior resemble the C++ reference mechanism.
- * Refer to the official for more information on this powerful
- * extension.
+ * The reference record for a memory-object slot, or NULL when it has none.
+ *
+ * A slot index is the position of a ph7_value in the VM's aMemObj set: dense, small,
+ * and already unique. The table is indexed by it directly. It used to be a hash table
+ * over that same integer, which bought nothing and cost a full rehash -- every record
+ * re-bucketed, a cache miss each -- every time it doubled; on a run that creates
+ * millions of variables and array elements that rehash was the single most expensive
+ * thing the engine did.
+ *
+ * The implementation of the reference mechanism in the PH7 engine differ greatly from
+ * the one used by the zend engine. That is, the reference implementation is
+ * consistent,solid and it's behavior resemble the C++ reference mechanism.
  */
 PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx)
 {
-	VmRefObj *pRef;
-	sxu32 nBucket;
-	/* Point to the appropriate bucket */
-	nBucket = VmRefHash(nObjIdx) & (pVm->nRefSize - 1);
-	/* Perform the lookup */
-	pRef = pVm->apRefObj[nBucket];
-	for(;;){
-		if( pRef == 0 ){
-			break;
-		}
-		if( pRef->nIdx == nObjIdx ){
-			/* Entry found */
-			return pRef;
-		}
-		/* Point to the next entry */
-		pRef = pRef->pNextCollide;
+	if( nObjIdx >= pVm->nRefSize ){
+		/* A slot the table has never been grown to cover has no record by definition */
+		return 0;
 	}
-	/* No such entry,return NULL */
-	return 0;
+	return pVm->apRefObj[nObjIdx];
 }
 /*
  * Install a memory object [i.e: a variable] in the reference table.
@@ -7297,49 +7299,28 @@ PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx)
  */
 static sxi32 VmRefObjInsert(ph7_vm *pVm,VmRefObj *pRef)
 {
-	sxu32 nBucket;
-	if( pVm->nRefUsed * 3 >= pVm->nRefSize ){
+	if( pRef->nIdx >= pVm->nRefSize ){
 		VmRefObj **apNew;
-		sxu32 nNew;
-		/* Allocate a larger table */
-		nNew = pVm->nRefSize << 1;
-		apNew = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * nNew);
-		if( apNew ){
-			VmRefObj *pEntry = pVm->pRefList;
-			sxu32 n;
-			/* Zero the structure */
-			SyZero((void *)apNew,nNew * sizeof(VmRefObj *));
-			/* Rehash all referenced entries */
-			for( n = 0 ; n < pVm->nRefUsed ; ++n ){
-				/* Remove old collision links */
-				pEntry->pNextCollide = pEntry->pPrevCollide = 0;
-				/* Point to the appropriate bucket */
-				nBucket = VmRefHash(pEntry->nIdx) & (nNew - 1);
-				/* Insert the entry  */
-				pEntry->pNextCollide = apNew[nBucket];
-				if( apNew[nBucket] ){
-					apNew[nBucket]->pPrevCollide = pEntry;
-				}
-				apNew[nBucket] = pEntry;
-				/* Point to the next entry */
-				pEntry = pEntry->pNext;
-			}
-			/* Release the old table */
-			SyMemBackendFree(&pVm->sAllocator,pVm->apRefObj);
-			/* Install the new one */
-			pVm->apRefObj = apNew;
-			pVm->nRefSize = nNew;
+		sxu32 nNew = pVm->nRefSize ? pVm->nRefSize : 0x10;
+		/* Grow to cover the slot. Doubling keeps the growth amortized, and unlike the
+		 * hash table this replaced nothing has to be MOVED: the cells that exist keep
+		 * their index, so the copy is one memcpy and the tail is zeroed. */
+		while( pRef->nIdx >= nNew ){
+			nNew <<= 1;
 		}
+		apNew = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * nNew);
+		if( apNew == 0 ){
+			return SXERR_MEM;
+		}
+		if( pVm->nRefSize > 0 ){
+			SyMemcpy((const void *)pVm->apRefObj,(void *)apNew,pVm->nRefSize * sizeof(VmRefObj *));
+		}
+		SyZero((void *)&apNew[pVm->nRefSize],(nNew - pVm->nRefSize) * sizeof(VmRefObj *));
+		SyMemBackendFree(&pVm->sAllocator,pVm->apRefObj);
+		pVm->apRefObj = apNew;
+		pVm->nRefSize = nNew;
 	}
-	/* Point to the appropriate bucket */
-	nBucket = VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1);
-	/* Insert the entry */
-	pRef->pNextCollide = pVm->apRefObj[nBucket];
-	if( pVm->apRefObj[nBucket] ){
-		pVm->apRefObj[nBucket]->pPrevCollide = pRef;
-	}
-	pVm->apRefObj[nBucket] = pRef;
-	MACRO_LD_PUSH(pVm->pRefList,pRef);
+	pVm->apRefObj[pRef->nIdx] = pRef;
 	pVm->nRefUsed++;
 	return SXRET_OK;
 }
@@ -7393,15 +7374,9 @@ PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef)
 			}
 		}
 	}
-	if( pRef->pPrevCollide ){
-		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;
-	}else{
-		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;
+	if( pRef->nIdx < pVm->nRefSize && pVm->apRefObj[pRef->nIdx] == pRef ){
+		pVm->apRefObj[pRef->nIdx] = 0;
 	}
-	if( pRef->pNextCollide ){
-		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;
-	}
-	MACRO_LD_REMOVE(pVm->pRefList,pRef);
 	/* Release the node */
 	if( pRef->pSpill ){
 		SySetRelease(&pRef->pSpill->aReference);
@@ -7441,8 +7416,12 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 			return SXERR_MEM;
 		}
 		pRef->iFlags = iFlags;
-		/* Install the entry */
-		VmRefObjInsert(&(*pVm),pRef);
+		/* Install the entry. A table that cannot be grown leaves the record
+		 * unreachable, so drop it rather than leak one nothing can find. */
+		if( VmRefObjInsert(&(*pVm),pRef) != SXRET_OK ){
+			SyMemBackendPoolFree(&pVm->sAllocator,pRef);
+			return SXERR_MEM;
+		}
 	}
 	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent != 0 && pEntry ){

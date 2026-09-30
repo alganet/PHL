@@ -2838,7 +2838,7 @@ struct VmRefObj
 	SyHashEntry *pEntry0;     /* The one name bound to this slot; 0 once it is gone */
 	ph7_hashmap_node *pNode0; /* The one array node pointing here; 0 once it is gone */
 	VmRefSpill *pSpill;       /* The 2nd..nth holder of either kind; 0 while there is none */
-	sxu32 nIdx;        /* Referenced object index */
+	sxu32 nIdx;        /* Referenced object index -- also this record's cell in apRefObj[] */
 	sxu32 nPin;        /* Holders the table cannot name, COUNTED so the last one to go
 	                    * can release the slot: reference-bound properties (one per
 	                    * binding, dropped when the property is released or re-bound).
@@ -2846,8 +2846,6 @@ struct VmRefObj
 	                    * a static, an enum case) leaves this 0 and relies on the
 	                    * VM_REF_IDX_KEEP flag alone, which is a permanent pin. */
 	sxi32 iFlags;      /* Configuration flags */
-	VmRefObj *pNextCollide,*pPrevCollide; /* Collision link */
-	VmRefObj *pNext,*pPrev;               /* List of all referenced objects */
 };
 #define VM_REF_IDX_KEEP  0x001 /* Do not restore the memory object to the free list */
 /* VmObEntry struct moved to ph7int.h */
@@ -3586,10 +3584,13 @@ struct ph7_vm
 	                            * embedders that never wire a stderr stream still see diagnostics. */
 	int iAssertFlags;          /* Assertion flags */
 	ph7_value sAssertCallback; /* Callback to call on failed assertions */
-	VmRefObj **apRefObj;       /* Hashtable of referenced object */
-	VmRefObj *pRefList;        /* List of referenced memory objects */
-	sxu32 nRefSize;            /* apRefObj[] size */
-	sxu32 nRefUsed;            /* Total entries in apRefObj[] */
+	VmRefObj **apRefObj;       /* Reference record per memory-object slot, INDEXED BY SLOT:
+	                            * apRefObj[nIdx] is the record for aMemObj[nIdx], or 0 when
+	                            * that slot has none. A slot index is already a dense small
+	                            * integer, so hashing it bought nothing and cost a rehash of
+	                            * every record each time the table doubled. */
+	sxu32 nRefSize;            /* apRefObj[] length, in slots */
+	sxu32 nRefUsed;            /* Records currently installed */
 	SySet aSelf;               /* 'self' stack used for static member access [i.e: self::MyConstant] */
 	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
