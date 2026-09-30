@@ -1359,6 +1359,29 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 		}else{
 			/* Protected */
 			ph7_class *pBase = pCallerScope;
+			/* The walk below exists for one shape only -- a SIBLING scope, which reaches
+			 * a protected member through the ancestor that INTRODUCES it. When the two
+			 * classes are on one inheritance chain the walk cannot change the answer, so
+			 * it is skipped: the introducing class is by construction an ancestor-or-self
+			 * of pClass, so it lies on that same chain, and one of the two directions of
+			 * the test below therefore holds however far the walk climbs. Asked over the
+			 * pBase links alone rather than through PH7_VmInstanceOf, so an interface in
+			 * the picture cannot make the shortcut claim more than the walk would. It is
+			 * the ordinary case -- a class touching its own protected member -- and the
+			 * walk it skips costs two hash lookups per ANCESTOR, per access. */
+			{
+				ph7_class *pChain;
+				for( pChain = pClass ; pChain ; pChain = pChain->pBase ){
+					if( pChain == pBase ){
+						return 1;
+					}
+				}
+				for( pChain = pBase ; pChain ; pChain = pChain->pBase ){
+					if( pChain == pClass ){
+						return 1;
+					}
+				}
+			}
 			/* php checks the hierarchy against the class that INTRODUCES the member,
 			 * not the one that (re)declares the override we resolved. A protected
 			 * member declared in a common ancestor B and overridden in a child C is
