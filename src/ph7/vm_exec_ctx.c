@@ -46,6 +46,9 @@ PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	 * so they don't pollute the resumer's aSelf. Borrowed ph7_class* pointers. */
 	SySetInit(&pCtx->aSavedSelf, &pVm->sAllocator, sizeof(ph7_class *));
 	pCtx->nSelfBase = 0;
+	/* The class this body's `static::` means, taken from the CALL that is creating it
+	 * (VmStartCtx pushes it back for the body's duration). */
+	pCtx->pLsbClass = PH7_VmPeekTopClass(pVm);
 	/* Caller slots this body's by-reference parameters alias (see the struct). */
 	SySetInit(&pCtx->aByRefArg, &pVm->sAllocator, sizeof(sxu32));
 	pCtx->pParkedSegment = 0;
@@ -250,6 +253,11 @@ static sxi32 VmFinishCtxRun(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_exec_ctx *pOldC
 		pVm->pFrame = pCtx->pFrame->pParent;
 		pCtx->pFrame->pParent = 0;
 	}
+	/* The body is over (it did not suspend): drop whatever it left on the shared
+	 * self stack, which is at least the LSB class VmStartCtx published for it. */
+	if( SySetUsed(&pVm->aSelf) > pCtx->nSelfBase ){
+		SySetTruncate(&pVm->aSelf, pCtx->nSelfBase);
+	}
 	if( rc == PH7_ABORT ){
 		pCtx->iState = PH7_CTX_STATE_CLOSED;
 		return PH7_ABORT;
@@ -292,6 +300,14 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	pCtx->nExceptionBase = SySetUsed(&pVm->aException);
 	pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);
 	pCtx->nSelfBase = SySetUsed(&pVm->aSelf);
+	/* Re-publish the creating call's late-static-binding class ABOVE that base, so the
+	 * body's `static::` resolves to what php resolves it to. It rides the ordinary
+	 * park/restore of this coroutine's own aSelf slice, so a suspend takes it off the
+	 * shared stack and a resume puts it back; VmFinishCtxRun truncates it away when the
+	 * body ends for good. */
+	if( pCtx->pLsbClass ){
+		SySetPut(&pVm->aSelf,(const void *)&pCtx->pLsbClass);
+	}
 	/* Native depth the body runs at (the VmByteCodeExec wrapper bumps +1): a
 	 * Fiber::suspend() at a deeper depth is inside a C->PHP callback and gets a
 	 * FiberError instead of parking across the native frame (stage 4). */

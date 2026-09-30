@@ -1107,6 +1107,14 @@ struct ph7_exec_ctx
 	SySet aSavedSelf;         /* Stage 4: this coroutine's own aSelf (self::/static::)
 	                           * entries, parked while suspended (ph7_class* pointers) */
 	sxu32 nSelfBase;          /* aSelf depth below this coroutine's own pushes */
+	ph7_class *pLsbClass;     /* The late-static-binding class the body runs under, captured
+	                           * when the coroutine was CREATED. A generator body resumes long
+	                           * after the call that made it returned, so pVm->aSelf no longer
+	                           * carries the class the method was called through and `static::`
+	                           * inside the body answered "Class \"static\" not found" -- for
+	                           * `new static`, `static::method()` and `static::class` alike.
+	                           * php binds the called scope to the generator at creation and
+	                           * restores it on every resume; this is that scope. Borrowed. */
 	SySet aByRefArg;          /* Caller slots (sxu32) this body's by-REFERENCE parameters
 	                           * alias. The body outlives its caller's frame, so whichever
 	                           * of the two dies last releases the slot: the caller's

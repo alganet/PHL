@@ -7046,6 +7046,14 @@ case PH7_OP_CALL: {
 			 * generator declared in a trait could not reach the class's protected
 			 * members -- the one activation shape the frame walk cannot recover. */
 			pExecCtx->pFrame->pSelfClass = pSelf ? pSelf : (pThis ? pThis->pClass : 0);
+			/* And the LATE-STATIC-BINDING class, which is a different question: `self::`
+			 * is the declaring scope above, `static::` is the class the call was made
+			 * THROUGH. The body resumes long after this call returned, so pVm->aSelf no
+			 * longer holds it and `static::class` / `new static` / `static::m()` inside a
+			 * generator answered `Class "static" not found`. VmStartCtx republishes this
+			 * for the body's duration. An instance call means the receiver's class; a
+			 * static one means the class the call named. */
+			pExecCtx->pLsbClass = pThis ? pThis->pClass : (pSelf ? pSelf : 0);
 			pGenerator = VmNewGenerator(pVm, pExecCtx);
 			if( pGenerator == 0 ){
 				VmReleaseExecCtx(pVm, pExecCtx);
