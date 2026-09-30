@@ -855,9 +855,13 @@ static int SimilarChar(const char *zTxt1,int nLen1,const char *zTxt2,int nLen2)
  */
 PH7_PRIVATE int PH7_builtin_similar_text(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zStr1,*zStr2;
+	/* Initialized only to satisfy -Wmaybe-uninitialized: StrPredicateResolveArg
+	 * writes both out-params on every PH7_OK return and the `goto out` covers every
+	 * other one, but the inlined PH7_MemObjRelease made gcc inline enough of the
+	 * call chain to start guessing otherwise. */
+	const char *zStr1 = 0,*zStr2 = 0;
 	ph7_value sTmp1,sTmp2;
-	int nLen1,nLen2;
+	int nLen1 = 0,nLen2 = 0;
 	int nSim;
 	sxi32 rc;
 	if( nArg < 2 ){

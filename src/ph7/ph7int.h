@@ -4954,7 +4954,33 @@ PH7_PRIVATE sxi64 PH7_ValuePeekInt64(ph7_value *pVal);
 PH7_PRIVATE ph7_real PH7_ValuePeekReal(ph7_value *pVal);
 #endif
 PH7_PRIVATE int PH7_ValuePeekBool(ph7_value *pVal);
-PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj);
+PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj);
+/*
+ * Drop whatever a value owns. THE most-called function in the engine: 2.72 billion
+ * times on the ecosystem gate's phpcs step, out of ~4.5 billion calls into the four
+ * value primitives together (counted, PERF.md §2).
+ *
+ * 43.1% of those calls -- 1.17 billion of them -- had NOTHING TO DO, and this test is
+ * why they no longer make the call. A value already typed MEMOBJ_NULL owns no hashmap,
+ * no instance, and no string (the slow path's own `(iFlags & MEMOBJ_NULL) == 0` guard is
+ * what skips SyBlobRelease, so a NULL value's blob is not released today either). What
+ * IS still owned by a NULL-typed value is one of the three AUX carriers, each of which
+ * holds a heap descriptor this is the universal free site for -- so they are the mask,
+ * and they must stay in it: a `??=` peek, a __call carrier and a deferred-path lvalue
+ * are all NULL-typed by construction.
+ *
+ * Inline because the body it guards is three flag tests and a return for nearly half of
+ * those 2.72 billion calls, and the call and return around them cost more than they do.
+ * The same reason SySetAt and PH7_MemObjAt are inline.
+ */
+#define MEMOBJ_AUX_OWNED (MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_DEFPATH)
+SX_STATIC_INLINE sxi32 PH7_MemObjRelease(ph7_value *pObj)
+{
+	if( (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_AUX_OWNED)) == MEMOBJ_NULL ){
+		return SXRET_OK;   /* Owns nothing -- 43.1% of every release the engine makes */
+	}
+	return PH7_MemObjReleaseSlow(pObj);
+}
 PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjStringIncrement(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjTryInteger(ph7_value *pObj);

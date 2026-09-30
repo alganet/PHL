@@ -1767,8 +1767,15 @@ PH7_PRIVATE int PH7_ValuePeekBool(ph7_value *pVal)
 }
 /*
  * Invalidate any prior representation of a given ph7_value.
+ *
+ * The SLOW half of PH7_MemObjRelease (ph7int.h), which is the door every caller
+ * still writes. This body runs only for a value that actually owns something: a
+ * hashmap or instance reference, a string blob, or one of the three AUX carriers.
+ * The inline guard turns the other 43.1% of the engine's 2.72 billion releases
+ * into a test. Nothing below may act on a value that is MEMOBJ_NULL and carries
+ * no AUX bit -- that combination never reaches here.
  */
-PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
+PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj)
 {
 	if( pObj->iFlags & MEMOBJ_AUX_COALSTROFF ){
 		/* A `$s[k] ??= v` peek result OWNS the heap VmCoalStrOff holding its raw
