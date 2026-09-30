@@ -320,7 +320,7 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 		/* nStackCap is nMaxStack+VM_STACK_GUARD unless an OP_SPREAD in this callee
 		 * grew the buffer (VmGrowOperandStack updated the record) — recycle exactly
 		 * the allocated slot count either way. */
-		VmOperandStackRecycle(pVm,pCallee->pFrameStack,pCallee->nStackCap);
+		VmOperandStackRecycle(pVm,pCallee->pFrameStack,pCallee->nStackCap,pCallee->nLiveTos);
 	}
 	/* Leave the frame. A throw that left this callee through a try it had OPEN
 	 * never reached that try's OP_POP_EXCEPTION, so the try's transparent wrapper
@@ -1915,6 +1915,12 @@ static sxi32 VmByteCodeExecBody(
 {
 	VmInstr *pInstr;
 	ph7_value *pTos;
+	/* The activation's operand-stack WATERMARK: the deepest pTos has been at any
+	 * instruction boundary. A local for the same reason pTos and pc are -- it is
+	 * touched once per instruction -- and synced into sState at the same boundaries.
+	 * Its whole purpose is the teardown sweep: nothing above it was ever written, so
+	 * VmOperandStackRecycle walks to it instead of walking the whole buffer. */
+	ph7_value *pHigh;
 	SySet aArg;
 	VmCallFrame *pCallTop = 0; /* Top of this invocation's in-loop call-record
 	                            * stack (BYTECODE stage 2); NULL = executing the
@@ -1944,6 +1950,8 @@ static sxi32 VmByteCodeExecBody(
 		pTos = &pStack[nTos];
 	}
 	sState.pTos = pTos;
+	pHigh = pTos;
+	sState.pHigh = pHigh;
 	sState.pc = nPc;
 	/* Finally-drain base. For a resumed generator/fiber TOP-LEVEL body, its own
 	 * exception handlers were just re-published above the caller depth
@@ -1989,6 +1997,9 @@ static sxi32 VmByteCodeExecBody(
 		/* pc is already nPc (== pCtx->pc, the innermost's post-suspend pc) from the
 		 * init above; only the stack/top move to the innermost activation. */
 		pTos = &pStack[nTos];   /* nTos == pCtx->nTos — innermost, resume value pushed */
+		/* The parked state carries the innermost activation's watermark; the resume
+		 * value was pushed above it, so take whichever is higher. */
+		pHigh = ( sState.pHigh > pTos ) ? sState.pHigh : pTos;
 		SyMemBackendFree(&pVm->sAllocator,pSeg); /* holder only; its contents are now live */
 	}
 /*
@@ -2237,6 +2248,9 @@ VmLoopFetch:
 				}
 				VmHookRmwDropTop(&(*pVm));
 			}
+		}
+		if( pTos > pHigh ){
+			pHigh = pTos;   /* the activation's high-water mark; see pHigh's declaration */
 		}
 		/* Fetch the instruction to execute */
 		pInstr = &aInstr[pc];
@@ -4917,6 +4931,10 @@ case PH7_OP_SPREAD: {
 				pTmpMap->nEntry);
 			break;
 		}
+		/* The buffer may have MOVED (and grown): re-anchor the watermark at the whole
+		 * new capacity rather than carry a pointer into the freed one. Conservative --
+		 * this activation's teardown then sweeps everything -- and OP_SPREAD is rare. */
+		pHigh = pStack + sState.nStackCap - 1;
 		VmSpreadExpandMap(pVm, &pTos, pTmpMap, 0/*a Traversable's values are not the caller's slots*/);
 		PH7_HashmapRelease(pTmpMap,TRUE);
 		break;
@@ -4930,6 +4948,7 @@ case PH7_OP_SPREAD: {
 				pMap->nEntry);
 			break;
 		}
+		pHigh = pStack + sState.nStackCap - 1;   /* see the Traversable arm above */
 		VmSpreadExpandMap(pVm, &pTos, pMap, pInstr->iP1 != 0);
 		break;
 	}
@@ -8146,6 +8165,10 @@ SkipFuncBody:
 			sCallee.pFrame = pFrame;
 			sCallee.pFrameStack = pFrameStack;
 			sCallee.nStackCap = pVmFunc->nMaxStack + VM_STACK_GUARD;
+			/* The body never ran, so this stack is untouched -- but the path is rare
+			 * (an argument's own evaluation threw) and sweeping the whole capacity
+			 * costs nothing here, so do that rather than reason about the binder. */
+			sCallee.nLiveTos = sCallee.nStackCap;
 			sCallee.nLastRef = SXU32_HIGH;
 			sCallee.bSelfPushed = (sxu8)(pSelf ? 1 : 0);
 			sState.pTos = pTos;
@@ -8188,11 +8211,17 @@ SkipFuncBody:
 			}
 			sState.pTos = pTos;
 			sState.pc = pc;
+			sState.pHigh = pHigh;   /* the caller's watermark rides with its pTos */
 			pRec->sCaller = sState;
 			pRec->sCall.pVmFunc = pVmFunc;
 			pRec->sCall.pFrame = pFrame;
 			pRec->sCall.pFrameStack = pFrameStack;
 			pRec->sCall.nStackCap = pVmFunc->nMaxStack + VM_STACK_GUARD;
+			/* Overwritten with the callee's real watermark when the call finishes;
+			 * the safe default is "sweep everything", so a path that ever reaches
+			 * VmCallFinish without going through the unwind above still cleans the
+			 * whole buffer rather than parking a live value in the pool. */
+			pRec->sCall.nLiveTos = pRec->sCall.nStackCap;
 			pRec->sCall.nLastRef = SXU32_HIGH;
 			pRec->sCall.bSelfPushed = (sxu8)(pSelf ? 1 : 0);
 			pRec->pPrev = pCallTop;
@@ -8205,6 +8234,8 @@ SkipFuncBody:
 			pc = 0;
 			sState.aInstr = aInstr;
 			sState.pStack = pStack;
+			pHigh = pTos;             /* the callee starts with an empty stack */
+			sState.pHigh = pHigh;
 			sState.nStackCap = pRec->sCall.nStackCap; /* callee's operand-stack capacity for OP_SPREAD growth */
 			sState.nStackOrig = pRec->sCall.nStackCap; /* fixed headroom reference (never grows) */
 			sState.pTos = pTos;
@@ -8697,6 +8728,7 @@ Suspend:
 			goto Unwind;
 		}
 		sState.pTos = pTos; /* innermost live top (args already popped at the CALL) */
+		sState.pHigh = ( pHigh > pTos ) ? pHigh : pTos;
 		pSeg->sState = sState;
 		pSeg->pCallTop = pCallTop;
 		pSeg->pTopFrame = pVm->pFrame;
@@ -8760,6 +8792,15 @@ Unwind:
 		}
 		{
 			VmCallFrame *pRec = pCallTop;
+			/* What the finishing callee ever touched of its own operand stack. The
+			 * live top is in it too: an op handler that pushed and then threw hands
+			 * control to the drain above without another instruction fetch, so pTos
+			 * can be above the last sampled watermark. VmCallFinish's recycle sweeps
+			 * exactly this much and leaves the rest of the buffer alone. */
+			if( pTos > pHigh ){
+				pHigh = pTos;
+			}
+			pRec->sCall.nLiveTos = (pHigh >= pStack) ? (sxu32)(pHigh - pStack) + 1 : 0;
 			sState = pRec->sCaller;
 			rc = VmCallFinish(&(*pVm),&sState,&pRec->sCall,rc);
 			pCallTop = pRec->pPrev;
@@ -8768,6 +8809,7 @@ Unwind:
 			aInstr = sState.aInstr;
 			pStack = sState.pStack;
 			pTos = sState.pTos;
+			pHigh = sState.pHigh;
 			pc = sState.pc;
 		}
 		if( rc == PH7_OK ){

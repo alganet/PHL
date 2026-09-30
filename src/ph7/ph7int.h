@@ -6486,6 +6486,13 @@ struct VmExecState
 	VmInstr *aInstr;        /* Bytecode of this activation */
 	ph7_value *pStack;      /* Operand-stack base (owned by this activation) */
 	ph7_value *pTos;        /* Top-of-stack (synced at boundaries) */
+	ph7_value *pHigh;       /* WATERMARK: the deepest pTos this activation ever reached,
+	                         * sampled at each instruction fetch and synced with pTos at
+	                         * the same boundaries. Nothing above it was ever written, so
+	                         * it is what the operand stack's teardown sweep walks to --
+	                         * see VmOperandStackRecycle. An OP_SPREAD that reallocs the
+	                         * buffer resets it to the whole (grown) capacity rather than
+	                         * carrying a pointer into the freed one. */
 	sxu32 nStackCap;        /* pStack's allocated slot count; grows when an OP_SPREAD in
 	                         * this activation reallocs the operand stack (see
 	                         * VmGrowOperandStack). Saved/restored with the activation. */
@@ -6522,6 +6529,10 @@ struct VmCallRecord
 	sxu32 nStackCap;        /* pFrameStack's allocated slot count — nMaxStack+VM_STACK_GUARD
 	                         * at setup, updated if an OP_SPREAD in the callee grew it; the
 	                         * pop-time recycle releases exactly this many slots */
+	sxu32 nLiveTos;         /* How many of pFrameStack's slots this activation ever
+	                         * touched: its operand-stack watermark + 1. The pop-time
+	                         * recycle releases exactly this many and leaves the rest
+	                         * alone -- see VmOperandStackRecycle */
 	sxu32 nLastRef;         /* Callee body's last-referenced slot (by-ref return) */
 	sxu8 bSelfPushed;       /* TRUE when the setup pushed onto pVm->aSelf */
 };
@@ -6729,7 +6740,7 @@ PH7_PRIVATE void VmHookRmwDropTop(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmInitCallContext(ph7_context *pOut, ph7_vm *pVm, ph7_user_func *pFunc, ph7_value *pRet, sxi32 iFlags);
 PH7_PRIVATE void VmMaterializeCatchReturn(ph7_vm *pVm, ph7_value *pResult, VmFrame *pEntryFrame);
 PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots);
-PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap);
+PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap, sxu32 nLive);
 PH7_PRIVATE ph7_vm_func * VmOverload(ph7_vm *pVm, ph7_vm_func *pList, ph7_value *aArg, int nArg);
 PH7_PRIVATE void VmReleaseCallContext(ph7_context *pCtx);
 PH7_PRIVATE sxi32 VmResolveNamedArgs(ph7_vm *pVm, VmCallArgMap *pMap, ph7_vm_func_arg *aFormalArg, sxu32 nNonVariadic, sxi32 iVariadicIdx, sxu32 nActual, sxi32 *aSlot, sxu8 *aUsed);

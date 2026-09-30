@@ -3606,11 +3606,28 @@ PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)
 }
 /*
  * Return an operand stack to the freelist (or free it if the pool is full).
- * nCap is its full allocated slot count (== the VmNewOperandStack size). Every
- * slot is released so the parked buffer is clean for reuse and never retains a
- * live value.
+ * nCap is its full allocated slot count (== the VmNewOperandStack size); a parked
+ * buffer must leave here with every slot released, so it can be handed to the next
+ * call without re-initialization and can never retain a live value.
+ *
+ * nLive is how many slots the finishing activation could have touched -- its
+ * operand-stack WATERMARK, the deepest its top ever reached (VmByteCodeExecBody
+ * keeps it; the callee's record carries it here). Above that the buffer is still
+ * exactly as it was handed out: clean. Releasing the whole capacity instead was
+ * 1,044,870,548 releases on the phpcs step of record -- 38% of every release the
+ * engine makes -- of which 34,354 found a value and 1,044,836,194 found a slot
+ * that owned nothing. 11.85 million recycles walking 88 slots each, to free 34
+ * thousand values, all of which live in the first handful of slots. The watermark
+ * bounds the same sweep at 44.5 million slots (-95.7%) and finds every one of
+ * those values; both corpora and the phpcs step agree that NOTHING above it is
+ * ever dirty (PERF.md P10 item 1, and §7's fourth instrument is what found it).
+ *
+ * The bound has to be the watermark and not the final top: a call abandons its
+ * argument slots by lowering the top past them (`pTos = &pTos[-nCallArgs]`), so a
+ * body's own stack routinely carries dirt ABOVE where its top ends up -- 28,343
+ * of those 11.85 million recycles. The watermark is above both by construction.
  */
-PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap)
+PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap, sxu32 nLive)
 {
 	VmIdleStack *pIdle;
 	sxu32 i;
@@ -3635,13 +3652,19 @@ PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCa
 			return;
 		}
 	}
-	for( i = 0; i < nCap; i++ ){
+	if( nLive > nCap ){
+		nLive = nCap;   /* defensive: never walk past the buffer */
+	}
+	for( i = 0; i < nLive; i++ ){
 		PH7_MemObjRelease(&pStack[i]);
 		/* Reset the global-slot index to the "temporary / not a variable" marker.
 		 * A released slot is already reusable (the dispatch reuses released slots
 		 * mid-call, and every push sets nIdx before the slot is read), but marking
 		 * it here means a stale index can never masquerade as a live variable slot
-		 * across invocations — cheap defense in depth. */
+		 * across invocations — cheap defense in depth. The slots ABOVE nLive keep
+		 * whatever index they had, which is exactly what a FRESH buffer looks like:
+		 * VmNewOperandStack zeroes the array and never writes nIdx, so slot 0's
+		 * index is what an untouched slot has always carried. */
 		pStack[i].nIdx = SXU32_HIGH;
 	}
 	pIdle->pStack = pStack;
