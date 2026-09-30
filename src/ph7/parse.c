@@ -410,6 +410,33 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 	}
 	iParen = iSquare = iQuesty = iBraces = 0;
 	for( i = 0 ; i < nNode ; ++i ){
+		/* A closure LITERAL is not dereferencable in php: `function () {…}` and
+		 * `fn (…) => …` may not be followed by `(`, `[`, `->`, `?->` or `::` unless
+		 * the user parenthesised them, which is why every IIFE in the wild is
+		 * written `(function () {…})()`. PHL accepted all five spellings — a
+		 * silent acceptance of what php refuses, and the reason it was found: the
+		 * statement-position rule above sends `function () {…};` down this path,
+		 * and without the screen `function () {…}();` would have become the one
+		 * shape php rejects that PHL runs. */
+		if( (apNode[i]->xCode == PH7_CompileAnnonFunc || apNode[i]->xCode == PH7_CompileArrowFunc)
+		 && (apNode[i]->iFlags & EXPR_NODE_PARENS) == 0
+		 && i + 1 < nNode && apNode[i+1] ){
+			ph7_expr_node *pAfter = apNode[i+1];
+			int bDeref = (pAfter->pStart->nType & (PH7_TK_LPAREN|PH7_TK_OSB)) != 0;
+			if( !bDeref && pAfter->pOp
+			 && ( pAfter->pOp->iOp == EXPR_OP_ARROW
+			   || pAfter->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+			   || pAfter->pOp->iOp == EXPR_OP_DC ) ){
+				bDeref = 1;
+			}
+			if( bDeref ){
+				rc = PH7_GenSyntaxError(pGen,pAfter->pStart,0);
+				if( rc != SXERR_ABORT ){
+					rc = SXERR_SYNTAX;
+				}
+				return rc;
+			}
+		}
 		if( apNode[i]->xCode == PH7_CompileShortArray || apNode[i]->xCode == PH7_CompileShortList ){
 			/* Short array/list literal: brackets are self-contained, skip */
 			continue;

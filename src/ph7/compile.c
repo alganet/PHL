@@ -4300,6 +4300,11 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 				/* `enum Name …` (PHP 8.1) — `enum` is a context-sensitive ID,
 				 * so it is detected here rather than the keyword dispatcher. */
 				xCons = PH7_CompileEnum;
+			}else if( GenStateStartsClosureExpr(pGen->pIn,pGen->pEnd) ){
+				/* `function () {…};` / `fn (…) => …;` at STATEMENT position is an
+				 * expression statement in php, not a declaration — the `(` where a
+				 * named function has its name is what says so. */
+				xCons = 0;
 			}else if( GenStateIsNsRelName(pGen->pIn,pGen->pEnd) ){
 				/* A statement that STARTS with php's `namespace\X` name operator
 				 * (`namespace\Cee::m();`) is an expression, not a namespace

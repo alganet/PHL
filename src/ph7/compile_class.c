@@ -5991,6 +5991,41 @@ PH7_PRIVATE int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd)
 		&& &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_ID);
 }
 /*
+ * Return TRUE when the token stream starts a CLOSURE EXPRESSION at statement
+ * position: `function () {…};` or `fn (…) => …;`, with an optional `&` for a
+ * by-reference return.
+ *
+ * php compiles both as ordinary expression statements — the closure is built and
+ * discarded — and 176 files across the vendor trees write one. PHL sent the bare
+ * `function` keyword to PH7_CompileFunction, which demands a NAME and answered
+ * `syntax error, unexpected token "(", expecting "("`; `fn` was not a statement
+ * keyword at all and answered `Unexpected keyword 'fn'`. The `static` forms
+ * (`static function () {};`, `static fn () => 1;`) already worked, which is what
+ * made this look narrower than it was.
+ *
+ * The NAMED declaration is what must not be caught here, and the `(` is what
+ * tells them apart: `function foo(` has an identifier where a closure has its
+ * parameter list. php refuses an immediately-invoked `function () {}()` at
+ * statement position too, so nothing here tries to accept one.
+ */
+PH7_PRIVATE int GenStateStartsClosureExpr(SyToken *pIn,SyToken *pEnd)
+{
+	if( (pIn->nType & PH7_TK_KEYWORD) == 0 ){
+		return 0;
+	}
+	{
+		sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
+		if( nKw != PH7_TKWRD_FUNCTION && nKw != PH7_TKWRD_FN ){
+			return 0;
+		}
+	}
+	pIn++;
+	if( pIn < pEnd && (pIn->nType & PH7_TK_AMPER) ){
+		pIn++;   /* `function &() {…}` returns by reference */
+	}
+	return pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) != 0;
+}
+/*
  * Compile an enum declaration (PHP 8.1). An enum is a final class carrying
  * PH7_CLASS_ENUM: `case` members become lazily-materialized singleton
  * constants, cases()/from()/tryFrom() are synthesized, and UnitEnum/BackedEnum
