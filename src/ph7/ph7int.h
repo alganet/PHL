@@ -945,6 +945,11 @@ struct ph7_gen_state
 	                      * name must be on the ph7_vm_func before the body compiles, because
 	                      * __FUNCTION__ inside it resolves at compile time. Consumed (and
 	                      * cleared) the moment the function state is initialized. */
+	SyString sPendingClosureScope; /* ...and the CLASS that closure belongs to, when it was written
+	                               * inside a method (or inside a closure that was). php prefixes an
+	                               * argument diagnostic with it -- `C::{closure:C::m():5}` -- and
+	                               * the name above cannot be taken apart for it: a top-level
+	                               * closure's is a FILE PATH, which may hold a `::` of its own. */
 };
 /* Forward references */
 typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
@@ -1491,6 +1496,8 @@ struct ph7_vm_func
 	                      * VM allocator. sName stays the synthesized unique lookup key
 	                      * ("[lambda_3]"); this is what __FUNCTION__, a backtrace, Reflection
 	                      * and is_callable() report. nByte == 0 for anything but a closure. */
+	SyString sClosureScope;/* The class the closure was written inside, for the `C::` php prefixes
+	                        * its argument diagnostics with. Empty for a top-level one. */
 	void *pUserData;     /* Upper layer private data associated with this instance */
 	void *pLsbClass;     /* For a closure: the late-static-binding class captured at its
 	                      * creation site (ph7_class*), so `static::` inside the body
@@ -5741,7 +5748,7 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,Sy
 PH7_PRIVATE sxi32 VmThrowBuiltinTooManyArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nMax,sxu32 nRequired);
 PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, ph7_vm_func *pCallee,sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite);
 PH7_PRIVATE void PH7_VmWarnByRefValueGiven(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_vm_func *pCallee,sxu32 nArgPos,SyString *pArgName);
-PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,sxu32 nArgPos,SyString *pArgName);
+PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,ph7_vm_func *pCallee,sxu32 nArgPos,SyString *pArgName);
 PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_vm_func *pCallee,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven);
 PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph7_vm_func *pCallee,ph7_vm_func_arg *pFormal,ph7_value *pVal,sxu32 nArgPos,int bCallIsStrict);
 PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex);
@@ -5914,7 +5921,7 @@ PH7_PRIVATE int VmRecursionExceeded(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmRecursionFatal(ph7_vm *pVm);
 PH7_PRIVATE int VmValueIsLossyToInt(ph7_value *pVal);
 PH7_PRIVATE sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal);
-PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nArg,SyString *pArgName);
+PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, ph7_vm_func *pCallee,sxu32 nArg,SyString *pArgName);
 PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyBlob *pMsg);
 PH7_PRIVATE sxi32 VmThrowBuiltinErrorCode(ph7_vm *pVm,const char *zClass,sxu32 nClass,
 	SyBlob *pMsg,sxi32 iCode);

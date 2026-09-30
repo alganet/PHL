@@ -2033,6 +2033,7 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 	if( SyStringLength(&pGen->sPendingClosureName) > 0 ){
 		if( bHandleClosure ){
 			pFunc->sClosureName = pGen->sPendingClosureName;
+			pFunc->sClosureScope = pGen->sPendingClosureScope;
 		}
 		SyStringInitFromBuf(&pGen->sPendingClosureName,0,0);
 	}

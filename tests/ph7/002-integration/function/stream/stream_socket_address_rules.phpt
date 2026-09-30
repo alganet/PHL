@@ -137,6 +137,9 @@ $a1 = stream_socket_accept($srv, 1);
 $p2 = stream_socket_client("tcp://$nm", $e, $es, null, STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT);
 var_dump((int)$p1 === (int)$p2, get_resource_type($p2));
 fclose($a1);
+/* let the far end's FIN cross the loopback before the probe looks: macOS
+ * delivers it a moment later than Linux, and an unseen close is reused */
+usleep(200000);
 $p3 = stream_socket_client("tcp://$nm", $e, $es, null, STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT);
 var_dump(is_resource($p3), (int)$p3 === (int)$p1);
 $a2 = stream_socket_accept($srv, 1);

@@ -1246,7 +1246,7 @@ static sxi32 VmScreenGenByRefArgs(ph7_vm *pVm,ph7_vm_func *pFunc,VmCallArgMap *p
 		if( PH7_VmArgRefusedByRef(pMap,i,&pArg[i]) ){
 			sxi32 rcT = VmThrowByRefRefusal(&(*pVm),
 				(pFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0,
-				&pFunc->sName,n + 1,&aFormal[n].sName);
+				&pFunc->sName,pFunc,n + 1,&aFormal[n].sName);
 			return (rcT == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 		}
 		PH7_VmArgTempCallNotice(&(*pVm),pMap,i,&pArg[i]);
@@ -6924,7 +6924,7 @@ case PH7_OP_CALL: {
 									}
 								}
 								if( iHole >= 0 ){
-									rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,
+									rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
 										(sxu32)iHole+1,&aFA[iHole].sName);
 									SyMemBackendFree(&pVm->sAllocator, aGSlot);
 									SyMemBackendFree(&pVm->sAllocator, apCallArgs);
@@ -7322,7 +7322,7 @@ case PH7_OP_CALL: {
 							sxi32 rcRef;
 							rcRef = VmThrowByRefRefusal(&(*pVm),
 								(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0,
-								&pVmFunc->sName,(sxu32)(n+1),&aFormalArg[n].sName);
+								&pVmFunc->sName,pVmFunc,(sxu32)(n+1),&aFormalArg[n].sName);
 							if( rcRef == PH7_ABORT ){
 								goto Abort;
 							}
@@ -7383,9 +7383,9 @@ case PH7_OP_CALL: {
 								? VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
 									nMaxFilled,nReqNamed,SySetUsed(&pVmFunc->aArgs))
 								: VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
-									nMaxFilled,nReqNamed,nNVNamed,TRUE);
+									nMaxFilled,nReqNamed,nNVNamed,!bCallbackWeak);
 						}else{
-							rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,&aFormalArg[n].sName);
+							rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,n+1,&aFormalArg[n].sName);
 						}
 						SyMemBackendFree(&pVm->sAllocator, aSlot);
 						for( i = 0; i < nActual; i++ ){
@@ -7693,7 +7693,7 @@ case PH7_OP_CALL: {
 						sxi32 rcRef;
 						rcRef = VmThrowByRefRefusal(&(*pVm),
 							(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0,
-							&pVmFunc->sName,(sxu32)(n+1),&aFormalArg[n].sName);
+							&pVmFunc->sName,pVmFunc,(sxu32)(n+1),&aFormalArg[n].sName);
 						if( rcRef == PH7_ABORT ){
 							goto Abort;
 						}
@@ -7811,8 +7811,12 @@ case PH7_OP_CALL: {
 					rc = VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
 						nPassed,nReq,SySetUsed(&pVmFunc->aArgs));
 				}else{
+					/* php names the call SITE only when the caller is user code: an
+					 * INTERNAL function reaching for a callback (array_map, usort,
+					 * an autoloader) has no calling line to name, which is exactly
+					 * what bCallbackWeak already marks. */
 					rc = VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
-						nPassed,nReq,nNonVar,TRUE);
+						nPassed,nReq,nNonVar,!bCallbackWeak);
 				}
 				if( rc == PH7_ABORT ){
 					goto Abort;

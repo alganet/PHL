@@ -50,6 +50,13 @@ runs:
       run: |
         ini="$(php -r 'echo php_ini_loaded_file();')"
         cp "$(dirname "$ini")/php.ini-production" "$ini"
+        # Homebrew's formula also writes its own openssl.cafile/capath into BOTH
+        # templates; comment them out so they read php's NULL default like the
+        # other two oracles do. The ini's directory is not writable, so no
+        # `sed -i`: filter into a temp file and copy back over the file itself.
+        sed -E 's/^(openssl\.ca(file|path)[[:space:]]*=)/;\1/' "$ini" > "$RUNNER_TEMP/php.ini"
+        cp "$RUNNER_TEMP/php.ini" "$ini"
+        php -i | grep -E '^openssl\.ca(file|path) '
         php -i | grep -E '^zend\.(assertions|exception_ignore_args) '
     # Homebrew's libxml2, sqlite and curl are all keg-only; expose their .pc files
     # so pkg-config finds them (macOS ships libsqlite3 and libcurl but neither

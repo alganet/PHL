@@ -50,6 +50,7 @@ static void GenStateClosureName(ph7_gen_state *pGen,sxu32 nLine)
 		pBlock = pBlock->pParent;
 	}
 	SyStringInitFromBuf(&pGen->sPendingClosureName,0,0);
+	SyStringInitFromBuf(&pGen->sPendingClosureScope,0,0);
 	SyBlobInit(&sName,&pGen->pVm->sAllocator);
 	SyBlobAppend(&sName,"{closure:",sizeof("{closure:")-1);
 	if( pOuter == 0 ){
@@ -60,14 +61,18 @@ static void GenStateClosureName(ph7_gen_state *pGen,sxu32 nLine)
 			SyBlobAppend(&sName,SyStringData(pFile),SyStringLength(pFile));
 		}
 	}else if( SyStringLength(&pOuter->sClosureName) > 0 ){
-		/* Enclosing closure: its whole name, no parens and no class. */
+		/* Enclosing closure: its whole name, no parens and no class -- but php's
+		 * SCOPE is inherited, so a closure written inside a closure inside a method
+		 * still belongs to that class. */
 		SyBlobAppend(&sName,SyStringData(&pOuter->sClosureName),
 			SyStringLength(&pOuter->sClosureName));
+		pGen->sPendingClosureScope = pOuter->sClosureScope;
 	}else{
 		if( (pOuter->iFlags & VM_FUNC_CLASS_METHOD) && pOuter->pUserData ){
 			SyString *pCls = &((ph7_class *)pOuter->pUserData)->sName;
 			SyBlobAppend(&sName,SyStringData(pCls),SyStringLength(pCls));
 			SyBlobAppend(&sName,"::",2);
+			pGen->sPendingClosureScope = *pCls;
 		}
 		SyBlobAppend(&sName,SyStringData(&pOuter->sName),SyStringLength(&pOuter->sName));
 		SyBlobAppend(&sName,"()",2);
@@ -588,6 +593,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	 * compiler builds its own function state, so it consumes the pending name itself. */
 	GenStateClosureName(&(*pGen),nLine);
 	pFunc->sClosureName = pGen->sPendingClosureName;
+	pFunc->sClosureScope = pGen->sPendingClosureScope;
 	SyStringInitFromBuf(&pGen->sPendingClosureName,0,0);
 	/* Expression-position attributes (`$f = #[A] fn () => …`) */
 	if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pFunc->aAttrs) == SXERR_ABORT ){

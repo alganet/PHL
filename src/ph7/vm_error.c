@@ -3325,6 +3325,36 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
 	return rc;
 }
 /*
+ * php prefixes an argument diagnostic with the class the callee belongs to: the
+ * owner the caller already knows for a METHOD, and for a CLOSURE the class it was
+ * WRITTEN inside -- `C::{closure:C::m():5}`, which php reads off the function's own
+ * scope and PHL records at compile time. Appends `Name::` and answers 1 when there
+ * is one.
+ */
+static int VmArgOwnerPrefix(ph7_vm *pVm,SyBlob *pOut,ph7_class *pOwnerClass,ph7_vm_func *pCallee)
+{
+	SyString *pName = 0;
+	if( pOwnerClass ){
+		pName = &pOwnerClass->sName;
+	}else if( pCallee ){
+		/* A closure's scope is REBINDABLE (`Closure::bind($c, null, B::class)`), and
+		 * php reports the scope it is running under -- which the frame records. The
+		 * declared one is the answer when there is no frame of the callee's to ask,
+		 * or when nothing rebound it. */
+		VmFrame *pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+		if( pFrame && pFrame->pUserData == (void *)pCallee && pFrame->pBoundScope ){
+			pName = &pFrame->pBoundScope->sName;
+		}else if( SyStringLength(&pCallee->sClosureScope) > 0 ){
+			pName = &pCallee->sClosureScope;
+		}
+	}
+	if( pName == 0 ){
+		return 0;
+	}
+	SyBlobFormat(pOut,"%z::",pName);
+	return 1;
+}
+/*
  * The CALL SITE php names in an argument diagnostic: the `called in FILE on line
  * N` tail of a TypeError, and the `in FILE on line N` of an ArgumentCountError.
  * It is the CALLER's position -- which the callee's frame recorded for itself when
@@ -3414,6 +3444,7 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 		/* A closure's internal lookup key ("[closure_3]") is not what php shows. */
 		const char *zShow = 0;
 		int nShow = PH7_VmFuncDisplayName(pVm,pCallee,&zShow);
+		VmArgOwnerPrefix(pVm,&sMsg,0,pCallee);
 		if( pArgName ){
 			SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) must be of type %s, %s given",
 				nShow,zShow,nArg,pArgName,zExpected,zGiven);
@@ -3594,12 +3625,21 @@ PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
 {
 	static const SyString sUnknown = { "unknown", sizeof("unknown") - 1 };
 	SyBlob sMsg;
-	SyBlobInit(&sMsg,&pVm->sAllocator);
-	if( pOwnerClass ){
-		SyBlobFormat(&sMsg,"Too few arguments to function %z::%z(), %u passed",
-			&pOwnerClass->sName,pFuncName,nPassed);
-	}else{
-		SyBlobFormat(&sMsg,"Too few arguments to function %z(), %u passed",pFuncName,nPassed);
+	/* A CLOSURE has no name of its own: php calls it `{closure:file:line}` (or
+	 * `{closure:enclosing():line}` for one written inside a function), and this
+	 * message was the last of the four argument diagnostics still printing the
+	 * engine's internal `[closure_N]` instead. */
+	{
+		const char *zShow = 0;
+		int nShow = PH7_VmFuncDisplayName(pVm,pCallee,&zShow);
+		if( nShow < 1 ){
+			zShow = SyStringData(pFuncName);
+			nShow = (int)SyStringLength(pFuncName);
+		}
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobAppend(&sMsg,"Too few arguments to function ",sizeof("Too few arguments to function ")-1);
+		VmArgOwnerPrefix(pVm,&sMsg,pOwnerClass,pCallee);
+		SyBlobFormat(&sMsg,"%.*s(), %u passed",nShow,zShow,nPassed);
 	}
 	if( bCallSite ){
 		SyString *pFile;
@@ -3659,17 +3699,19 @@ PH7_PRIVATE void PH7_VmWarnByRefValueGiven(ph7_vm *pVm,ph7_class *pOwnerClass,
 	}
 }
 PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
-	sxu32 nArgPos,SyString *pArgName)
+	ph7_vm_func *pCallee,sxu32 nArgPos,SyString *pArgName)
 {
 	SyBlob sMsg;
-	SyBlobInit(&sMsg,&pVm->sAllocator);
-	if( pOwnerClass ){
-		SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) could not be passed by reference",
-			&pOwnerClass->sName,pFuncName,nArgPos,pArgName);
-	}else{
-		SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) could not be passed by reference",
-			pFuncName,nArgPos,pArgName);
+	const char *zShow = 0;
+	int nShow = PH7_VmFuncDisplayName(pVm,pCallee,&zShow);
+	if( nShow < 1 ){
+		zShow = SyStringData(pFuncName);
+		nShow = (int)SyStringLength(pFuncName);
 	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	VmArgOwnerPrefix(pVm,&sMsg,pOwnerClass,pCallee);
+	SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) could not be passed by reference",
+		nShow,zShow,nArgPos,pArgName);
 	/* VmThrowBuiltinError consumes (releases) sMsg */
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
@@ -3736,16 +3778,18 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooManyArgs(ph7_vm *pVm,ph7_class *pOwnerClass,S
  * (php's named-hole shape — no file/line or expected-count segment).
  */
 PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
-	sxu32 nArg,SyString *pArgName)
+	ph7_vm_func *pCallee,sxu32 nArg,SyString *pArgName)
 {
 	SyBlob sMsg;
-	SyBlobInit(&sMsg,&pVm->sAllocator);
-	if( pOwnerClass ){
-		SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) not passed",
-			&pOwnerClass->sName,pFuncName,nArg,pArgName);
-	}else{
-		SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) not passed",pFuncName,nArg,pArgName);
+	const char *zShow = 0;
+	int nShow = PH7_VmFuncDisplayName(pVm,pCallee,&zShow);
+	if( nShow < 1 ){
+		zShow = SyStringData(pFuncName);
+		nShow = (int)SyStringLength(pFuncName);
 	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	VmArgOwnerPrefix(pVm,&sMsg,pOwnerClass,pCallee);
+	SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) not passed",nShow,zShow,nArg,pArgName);
 	/* VmThrowBuiltinError consumes (releases) sMsg */
 	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
 }
