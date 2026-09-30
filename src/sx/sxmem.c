@@ -143,6 +143,32 @@ static const SyMemMethods sOSAllocMethods = {
 	0,
 	0
 };
+/*
+ * Would this allocation take the backend past its total live-byte ceiling
+ * (php's memory_limit)?
+ *
+ * The first request that would cross it fails AND DISARMS the ceiling, recording
+ * its size in nMemTried. Disarming is not a leak of the guarantee: the script is
+ * already over and is about to die, and the fatal that says so has to be able to
+ * allocate -- a limit that stays armed starves its own error path and the engine
+ * dies without ever saying why. php keeps a reserve block for the same reason.
+ * nMemTried is what carries the size php names in the message out to the VM.
+ */
+static int MemBackendOverLimit(SyMemBackend *pBackend,sxu32 nByte,sxu32 nFreed)
+{
+	sxu32 nLive;
+	if( pBackend->nMemLimit == 0 ){
+		return 0;
+	}
+	nLive = (pBackend->nMemUsed >= nFreed) ? (pBackend->nMemUsed - nFreed) : 0;
+	if( nLive + nByte <= pBackend->nMemLimit ){
+		return 0;
+	}
+	pBackend->nMemTried = nByte;
+	pBackend->nMemLimitHit = pBackend->nMemLimit;
+	pBackend->nMemLimit = 0; /* disarm so the fatal can be built and printed */
+	return 1;
+}
 static void * MemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)
 {
 	SyMemBlock *pBlock;
@@ -156,6 +182,10 @@ static void * MemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)
 	 * returns NULL just like a genuine OS failure, driving the normal SXERR_MEM
 	 * propagation; the retry callback is intentionally skipped (hard limit). */
 	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){
+		return 0;
+	}
+	/* ...and the total ceiling (php's memory_limit). */
+	if( MemBackendOverLimit(&(*pBackend),nByte,0) ){
 		return 0;
 	}
 	for(;;){
@@ -217,6 +247,12 @@ static void * MemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)
 	nByte += sizeof(SyMemBlock);
 	/* Enforce the optional per-allocation cap (0 = unlimited); see MemBackendAlloc. */
 	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){
+		return 0;
+	}
+	/* ...and the total ceiling, against the size this block is GIVING BACK: a
+	 * realloc that shrinks, or grows by less than it already owns, must not be
+	 * refused for memory it is not asking for. */
+	if( MemBackendOverLimit(&(*pBackend),nByte,pBlock->nSize) ){
 		return 0;
 	}
 	pPrev = pBlock->pPrev;

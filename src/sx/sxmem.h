@@ -58,6 +58,19 @@ struct SyMemBackend
 	sxu32 nMaxRequest;             /* Per-allocation cap in bytes (0 = unlimited); fails
 	                                * any single alloc/realloc larger than this. Used to
 	                                * exercise out-of-memory paths deterministically. */
+	sxu32 nMemLimit;               /* TOTAL live-byte ceiling (0 = unlimited): php's
+	                                * memory_limit. Unlike nMaxRequest this bounds nMemUsed,
+	                                * not one request, and it is a USER directive rather than
+	                                * a test knob. The allocation that would cross it fails
+	                                * and DISARMS the limit (see nMemTried) -- the fatal that
+	                                * reports it has to be able to allocate. */
+	sxu32 nMemLimitHit;            /* The ceiling as configured, kept across the disarm so the
+	                                * fatal can name the number the user actually set. */
+	sxu32 nMemTried;               /* Size of the allocation that hit nMemLimit, 0 while none
+	                                * has. The VM reads it between two instructions and turns
+	                                * it into php's "Allowed memory size ... exhausted" fatal;
+	                                * it is how the size php names in that message survives
+	                                * the trip out of the allocator. */
 	SyMemHeader *apPool[SXMEM_POOL_NBUCKETS+SXMEM_POOL_INCR]; /* Pool of memory chunks */
 };
 

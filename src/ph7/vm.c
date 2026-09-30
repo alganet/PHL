@@ -4686,6 +4686,20 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 				sxi64 iLevel = 0;
 				SyStrToInt64(zValue,nValue,(void *)&iLevel,0);
 				pVm->bErrReport = iLevel != 0;
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+			}else if( nName == sizeof("memory_limit")-1
+			 && SyMemcmp(zName,"memory_limit",nName) == 0 ){
+				/* Arm the allocator ceiling now: `-d memory_limit=32M` has to hold
+				 * for the whole run, and the INI chunk that would otherwise carry it
+				 * is seeded lazily -- by which time a runaway script has already
+				 * taken the box.
+				 *
+				 * Guarded because the applier lives in vm_builtin_ini.c, which the
+				 * tiny build compiles away wholesale: an unguarded call here links
+				 * fine in `full` and fails ONLY in tiny, which is the one build the
+				 * ASan and Windows gates do not cover. */
+				PH7_VmApplyMemoryLimit(&(*pVm),zValue,nValue);
+#endif
 			}else if( nName == sizeof("date.timezone")-1
 			 && SyMemcmp(zName,"date.timezone",nName) == 0
 			 && nValue == 3

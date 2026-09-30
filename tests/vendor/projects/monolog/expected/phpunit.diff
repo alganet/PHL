@@ -1,6 +1,6 @@
 --- php
 +++ phl
-@@ -3,29 +3,82 @@
+@@ -3,28 +3,81 @@
  Runtime: @RUNTIME@
  Configuration: @ROOT@/phpunit.xml.dist
  
@@ -32,7 +32,7 @@
 +.................. 315 / 734 ( 42%)
 +......................................S.SS..S.S................ 378 / 734 ( 51%)
 +............................................................... 441 / 734 ( 60%)
-+............................................................... 504 / 734 ( 68%)
++.......................................................SS...... 504 / 734 ( 68%)
 +.....................................SS........................ 567 / 734 ( 77%)
 +......EE.......F..........................W.................... 630 / 734 ( 85%)
 +.....................E..............................FF......... 693 / 734 ( 94%)
@@ -40,7 +40,6 @@
  
  Time: @TIME@
  
--There were 33 skipped tests:
 +There was 1 PHPUnit error:
 +
 +1) Monolog\LoggerTest::testSetTimezone
@@ -99,30 +98,11 @@
 +
 +--
 +
-+There were 31 skipped tests:
+ There were 33 skipped tests:
  
  1) Monolog\Formatter\LineFormatterTest::testDefFormatWithSoapFaultException
- Requires the soap extension
-@@ -111,21 +164,29 @@
- 28) Monolog\Handler\RedisPubSubHandlerTest::testRedisHandle
- The redis ext is required to run this test
- 
--29) Monolog\Handler\StreamHandlerTest::testPreventOOMError with data set #0 ('1M', 104857)
--We could not set a memory limit that would trigger the error.
--
--30) Monolog\Handler\StreamHandlerTest::testPreventOOMError with data set #1 ('10M', 1048576)
--We could not set a memory limit that would trigger the error.
--
--31) Monolog\Handler\ZendMonitorHandlerTest::testWrite
-+29) Monolog\Handler\ZendMonitorHandlerTest::testWrite
- ZendServer is not installed
- 
--32) Monolog\Handler\ZendMonitorHandlerTest::testGetDefaultFormatterReturnsNormalizerFormatter
-+30) Monolog\Handler\ZendMonitorHandlerTest::testGetDefaultFormatterReturnsNormalizerFormatter
- ZendServer is not installed
- 
--33) Monolog\Processor\MercurialProcessorTest::testProcessor
-+31) Monolog\Processor\MercurialProcessorTest::testProcessor
+@@ -126,6 +179,20 @@
+ 33) Monolog\Processor\MercurialProcessorTest::testProcessor
  hg is missing
  
 -OK, but there were issues!
@@ -143,5 +123,5 @@
 +date_default_timezone_set(): Timezone ID 'CET' is invalid
 +
 +ERRORS!
-+Tests: 734, Assertions: 1623, Errors: 4, Failures: 3, Warnings: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 31.
++Tests: 734, Assertions: 1621, Errors: 4, Failures: 3, Warnings: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
 +@exit@ 2

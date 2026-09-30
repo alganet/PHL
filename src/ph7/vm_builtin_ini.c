@@ -389,6 +389,93 @@ static void IniLiveGet(ph7_vm *pVm,VmIniSlot *pSlot,SyBlob *pOut)
  * Push a new value at the runtime knob behind a live-wired directive. The stored
  * local value is updated by the caller either way.
  */
+/*
+ * php's byte shorthand: a plain integer, optionally suffixed K, M or G (case
+ * insensitive, no "B"). `-1` -- and any negative -- means UNLIMITED, which is the
+ * CLI default. Anything unparseable reads as 0, which php also treats as
+ * "allocate nothing", so it is left to say exactly that rather than being
+ * silently promoted to unlimited.
+ */
+static sxu32 IniParseBytes(const char *zVal,sxu32 nVal,int *pbUnlimited)
+{
+	sxi64 iVal = 0;
+	sxu32 n = 0;
+	int bNeg = 0;
+	*pbUnlimited = 0;
+	while( n < nVal && (zVal[n] == ' ' || zVal[n] == '\t') ){ n++; }
+	if( n < nVal && (zVal[n] == '-' || zVal[n] == '+') ){
+		bNeg = (zVal[n] == '-');
+		n++;
+	}
+	while( n < nVal && zVal[n] >= '0' && zVal[n] <= '9' ){
+		iVal = iVal * 10 + (zVal[n] - '0');
+		if( iVal > (sxi64)0x7FFFFFFF ){ iVal = (sxi64)0x7FFFFFFF; } /* clamp: the field is 32-bit */
+		n++;
+	}
+	if( bNeg ){
+		*pbUnlimited = 1;   /* php: any negative memory_limit is "no limit" */
+		return 0;
+	}
+	if( n < nVal ){
+		sxi64 nMul = 0;
+		switch( zVal[n] ){
+			case 'k': case 'K': nMul = 1024; break;
+			case 'm': case 'M': nMul = 1024 * 1024; break;
+			case 'g': case 'G': nMul = 1024 * 1024 * 1024; break;
+			default: nMul = 0; break;
+		}
+		if( nMul > 0 ){
+			iVal = (iVal > (sxi64)0x7FFFFFFF / nMul) ? (sxi64)0x7FFFFFFF : iVal * nMul;
+		}
+	}
+	return (sxu32)iVal;
+}
+/*
+ * Arm the allocator's total live-byte ceiling from a memory_limit value, and answer
+ * whether it took. THE one place the directive is interpreted: ini_set() reaches it
+ * through the validator and `-d name=value` reaches it directly, and a rule that
+ * lived in only one of those would hold for one door and not the other.
+ *
+ * The one directive that reaches into the ALLOCATOR. php enforces a ceiling and
+ * kills the script with a fatal when a request would cross it; PHL stored the
+ * string and enforced nothing, so a runaway allocation -- a reference cycle nothing
+ * reclaims is the usual way in (PLAN.md §5) -- had no ceiling below the kernel's, and
+ * the OOM killer took the whole process instead of the script. On a shared box that
+ * is not the script's problem any more: it is everything else's.
+ *
+ * Unlimited is the CLI default here as it is in php, so a plain run is unchanged.
+ */
+PH7_PRIVATE int PH7_VmApplyMemoryLimit(ph7_vm *pVm,const char *zVal,sxu32 nVal)
+{
+	int bUnlimited = 0;
+	sxu32 nBytes = IniParseBytes(zVal,nVal,&bUnlimited);
+	if( !bUnlimited && nBytes > 0 && nBytes < pVm->sAllocator.nMemUsed ){
+		/* php REFUSES to lower the ceiling below what is already in use --
+		 * zend_set_memory_limit answers FAILURE -- and it does so from the
+		 * directive's own OnUpdate handler, which is why the rule holds at STARTUP
+		 * (`-d memory_limit=8K` warns and runs on) exactly as it holds for
+		 * ini_set(). Arming a ceiling the interpreter is already past is not a
+		 * limit, it is a delayed crash: the very next allocation is fatal.
+		 *
+		 * Without the rule, a library that PROBES the limit by setting a small one
+		 * dies instead of learning that it cannot -- monolog's StreamHandler sizes
+		 * its write chunk exactly that way, and its test walks 1M, 10M, 1024M, 3G
+		 * in turn, reading the false back and skipping.
+		 *
+		 * php prints this one WITHOUT the `ini_set(): ` prefix its other ini
+		 * warnings carry, because it comes from the handler and not from the call. */
+		char zMsg[160];
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"Failed to set memory limit to %u bytes (Current memory usage is %u bytes)",
+			nBytes,pVm->sAllocator.nMemUsed);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+		return 0;
+	}
+	pVm->sAllocator.nMemLimit = bUnlimited ? 0 : nBytes;
+	pVm->sAllocator.nMemLimitHit = 0;
+	pVm->sAllocator.nMemTried = 0;
+	return 1;
+}
 static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 {
 	if( IniNameIs(pSlot,"error_reporting") ){
@@ -398,6 +485,10 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 		}
 		pVm->iErrMask = iVal;
 		pVm->bErrReport = iVal != 0;
+		return;
+	}
+	if( IniNameIs(pSlot,"memory_limit") ){
+		(void)PH7_VmApplyMemoryLimit(pVm,zVal,nVal);
 		return;
 	}
 	if( IniNameIs(pSlot,"display_errors") ){
@@ -488,6 +579,13 @@ static int IniValueAccepted(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 
 		/* php registers include_path with OnUpdateStringUnempty: the EMPTY value
 		 * is refused in silence and the directive keeps what it had. */
 		return 0;
+	}
+	if( IniNameIs(pSlot,"memory_limit") ){
+		/* One rule, one warning, one place: the applier owns both, so ini_set() and
+		 * the `-d` startup path cannot drift apart. Arming from the validator is
+		 * idempotent -- an ACCEPTED value is then written and re-applied through
+		 * IniLiveSet with the same bytes, and a refused one is never written. */
+		return PH7_VmApplyMemoryLimit(pVm,zVal,nVal);
 	}
 	if( IniNameIs(pSlot,"syslog.filter")
 	 && !(nVal == 3 && SyMemcmp(zVal,"all",3) == 0)

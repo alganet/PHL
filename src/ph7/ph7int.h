@@ -5225,6 +5225,7 @@ PH7_PRIVATE void PH7_VmSessionShutdown(ph7_vm *pVm);
 /* vm_builtin_ini.c */
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm);
 PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault);
+PH7_PRIVATE int PH7_VmApplyMemoryLimit(ph7_vm *pVm,const char *zVal,sxu32 nVal);
 PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut);
 PH7_PRIVATE int PH7_VmIniIsUnset(ph7_vm *pVm,const char *zName);
 PH7_PRIVATE int PH7_VmIniDescribe(ph7_vm *pVm,const char *zName,sxu32 nName,

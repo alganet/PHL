@@ -781,8 +781,18 @@ static int PH7_builtin_memory_reset_peak_usage(ph7_context *pCtx,int nArg,ph7_va
  * PHL frees values by reference count as they go out of scope, so there is no
  * mark-and-sweep cycle collector to drive. The gc_* family is provided for
  * source compatibility (real frameworks call it around test runs): the state is
- * observational and collection is a no-op. Recorded divergence from php, whose
- * collector actually reclaims reference cycles.
+ * observational and collection is a no-op.
+ *
+ * That makes a reference CYCLE unreclaimable, which is not a small divergence --
+ * it is the largest one still open, and it is what makes a long-running program
+ * here grow without bound where php holds flat (phpcs over one project: ~4.9 MB
+ * per file, 3976 MB against php's 50). The measurement, the shapes that leak and
+ * the shape of the fix are in PLAN.md §5 "NO CYCLE COLLECTOR"; memory_limit is
+ * enforced (DONE.md, 26 Aug 2026) so a runaway dies as php's fatal rather than as
+ * an OOM kill, but that is a safety valve and not the fix.
+ *
+ * This comment used to call itself a "recorded divergence" while recording it
+ * nowhere -- a claim of being written down IS a claim, and it wasn't one.
  */
 static int PH7_builtin_gc_enable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {

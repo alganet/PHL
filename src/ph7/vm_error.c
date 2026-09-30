@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+
+/* memory_limit: php's one sentence for an exhausted ceiling. Defined below, next to
+ * the va_list raise funnel; declared here because the plain-message funnel is first. */
+static int VmMemLimitMessage(ph7_vm *pVm,char *zBuf,sxu32 nBuf);
 /*
  * Section:
  *    Error, diagnostics and type-enforcement machinery: PH7_VmThrowError
@@ -374,9 +378,21 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 {
 	SyBlob sMsg;
 	SyString *pFile;
-	sxu32 nMsg = (sxu32)SyStrlen(zMessage);
+	sxu32 nMsg;
 	sxu32 nLine;
 	sxi32 rc = SXRET_OK;
+	char zMemMsg[128];
+	if( VmMemLimitMessage(&(*pVm),zMemMsg,sizeof(zMemMsg)) ){
+		/* Every engine "out of memory" wording downstream of the ceiling becomes
+		 * php's one sentence. Severity 256 is what makes the label read "Fatal
+		 * error": PHL's label table maps E_ERROR(1) to its own "Error", and this
+		 * diagnostic is one users match against php's output, not against the
+		 * engine's house style. */
+		zMessage = zMemMsg;
+		iErr = 256;
+		pFuncName = 0;
+	}
+	nMsg = (sxu32)SyStrlen(zMessage);
 	if( pVm->nSpeculative > 0 ){
 		/* Speculative evaluation (PH7_VmEvalConstExpr): the value is being LOOKED at,
 		 * not produced, so this diagnostic never happened. Count it -- the caller reads
@@ -621,6 +637,35 @@ PH7_PRIVATE sxi32 PH7_VmSignalInstallFatal(ph7_vm *pVm,int signo)
  * Refer to the implementation of [ph7_context_throw_error_format()] for additional
  * information.
  */
+/*
+ * Did memory_limit just stop this script, and if so what does php call it?
+ *
+ * The allocation that crossed the ceiling returned NULL into whichever site asked
+ * for it, and that site then complains in its OWN words -- "PH7 is running out of
+ * memory while loading variable", and a dozen others, each naming the operation
+ * that happened to be unlucky. php has ONE sentence for this, and it is the one
+ * every framework's OOM triage greps for, so the first diagnostic raised after the
+ * ceiling is hit becomes that sentence whatever the site meant to say.
+ *
+ * Both raise funnels consult this (the va_list one and the plain-message one): which
+ * of them a given allocation failure happens to reach is an accident of the site, and
+ * the user-visible answer must not be.
+ *
+ * Answers 0 and writes nothing when no ceiling was hit. Clears the flag, so a script
+ * that somehow survives its own allocation failure is not told twice -- and so the
+ * PH7_VmThrowError this returns into does not see it again and recurse.
+ */
+static int VmMemLimitMessage(ph7_vm *pVm,char *zBuf,sxu32 nBuf)
+{
+	if( pVm->sAllocator.nMemTried == 0 ){
+		return 0;
+	}
+	SyBufferFormat(zBuf,nBuf,
+		"Allowed memory size of %u bytes exhausted (tried to allocate %u bytes)",
+		pVm->sAllocator.nMemLimitHit,pVm->sAllocator.nMemTried);
+	pVm->sAllocator.nMemTried = 0;
+	return 1;
+}
 static sxi32 VmThrowErrorAp(
 	ph7_vm *pVm,         /* Target VM */
 	SyString *pFuncName, /* Function name. NULL otherwise */
@@ -633,10 +678,14 @@ static sxi32 VmThrowErrorAp(
 	SyString *pFile;
 	sxu32 nLine;
 	sxi32 rc = SXRET_OK;
+	char zMemMsg[128];
 	if( pVm->nSpeculative > 0 ){
 		/* See PH7_VmThrowError: nothing a speculative evaluation raises is observable. */
 		pVm->nSpecDiag++;
 		return SXRET_OK;
+	}
+	if( VmMemLimitMessage(&(*pVm),zMemMsg,sizeof(zMemMsg)) ){
+		return PH7_VmThrowError(&(*pVm),0,256,zMemMsg);
 	}
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);

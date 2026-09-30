@@ -2128,7 +2128,33 @@ VmLoopFetch:
 		 * The pending write-back sweep shares this one guard so the hot
 		 * no-hooks path pays a single predicted branch per fetch. */
 		if( pVm->nBoundaryRc != 0 || SySetUsed(&pVm->aHookRmw) > 0
-		 || PH7_PcntlAsyncPending ){
+		 || PH7_PcntlAsyncPending || pVm->sAllocator.nMemTried != 0 ){
+			if( pVm->sAllocator.nMemTried != 0 ){
+				/* memory_limit: an allocation asked for more than the script's
+				 * remaining budget and was refused. The allocator cannot raise
+				 * anything itself -- it has no VM and no unwind -- so it recorded
+				 * the size and disarmed the ceiling, and HERE, at the same safe
+				 * point the pcntl handlers and the C-boundary throws use, it
+				 * becomes php's fatal.
+				 *
+				 * php's text exactly, including the two byte counts: this is the
+				 * message every framework's OOM triage greps for. Severity 256 is
+				 * what makes the label read "Fatal error" -- PHL's label table maps
+				 * E_ERROR(1) to its own "Error", and this diagnostic is one users
+				 * match against php's, not against the engine's house style.
+				 *
+				 * The refused allocation has already returned NULL into whatever
+				 * asked for it, so the abort is not optional: the caller is holding
+				 * a failure it may not check, and the next instruction must not run.
+				 */
+				sxu32 nLimit = pVm->sAllocator.nMemLimitHit;
+				sxu32 nTried = pVm->sAllocator.nMemTried;
+				pVm->sAllocator.nMemTried = 0;
+				VmErrorFormat(&(*pVm),256,
+					"Allowed memory size of %u bytes exhausted (tried to allocate %u bytes)",
+					nLimit,nTried);
+				goto Abort;
+			}
 			if( PH7_PcntlAsyncPending && pVm->nBoundaryRc == 0 ){
 				/* ext/pcntl with pcntl_async_signals(true): a C signal handler
 				 * recorded a delivery and raised this flag, and HERE is the
