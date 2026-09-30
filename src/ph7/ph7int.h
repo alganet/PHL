@@ -1077,6 +1077,9 @@ struct ph7_exec_ctx
 	sxi32 nTos;               /* Saved top-of-stack index */
 	sxi32 pc;                 /* Saved program counter (resume point) */
 	sxi32 iState;             /* One of PH7_CTX_STATE_* */
+	sxu8 bThrew;              /* The body ENDED by letting an exception escape. php keeps the two
+	                           * apart: such a fiber is terminated like any other, but getReturn()
+	                           * says it threw rather than that it has not returned. */
 	ph7_value sSuspendValue;  /* Value passed out via Fiber::suspend() / yield */
 	ph7_value sRetValue;      /* Final return value */
 	sxu32 nExceptionBase;     /* Exception-stack depth below this body's own handlers
@@ -3625,6 +3628,13 @@ struct ph7_vm
 								* class carries the SAME name the site's OP_NEW loads; consumed
 								* (cleared) by PH7_CompileAnnonClass. {0,0} otherwise. */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
+	ph7_class_instance *pCurFiber; /* The Fiber whose body the running code is inside, or NULL --
+	                            * php's EG(active_fiber), which is what Fiber::getCurrent()
+	                            * answers. Distinct from pActiveCtx: that one is whatever
+	                            * coroutine is executing (a GENERATOR started inside a fiber
+	                            * is the active ctx while the fiber is still the current one),
+	                            * and it names no object. Saved and restored around a fiber's
+	                            * start/resume, so nesting is the call structure itself. */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
 	ph7_class *pClosureClass;  /* Cached Closure class pointer (closures are instances of it) */
@@ -6197,8 +6207,10 @@ PH7_PRIVATE int vm_builtin_Fiber_isRunning(ph7_context *pCtx, int nArg, ph7_valu
 PH7_PRIVATE int vm_builtin_Fiber_isStarted(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_isSuspended(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_isTerminated(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_getCurrent(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_throw(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);

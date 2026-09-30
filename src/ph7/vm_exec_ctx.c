@@ -232,6 +232,7 @@ static sxi32 VmFinishCtxRun(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_exec_ctx *pOldC
 	}
 	if( rc == PH7_EXCEPTION ){
 		pCtx->iState = PH7_CTX_STATE_CLOSED;
+		pCtx->bThrew = 1;
 		return PH7_EXCEPTION;
 	}
 	pCtx->iState = PH7_CTX_STATE_COMPLETED;
@@ -1131,23 +1132,60 @@ static int VmClosureResolveScope(ph7_value *pScopeArg, SyString *pOut)
 	return 0;
 }
 /*
+ * Fiber::getCurrent() — the fiber the running code is INSIDE, or null in the main
+ * flow. php answers EG(active_fiber), which is the fiber whose body is on the
+ * stack, not the innermost coroutine: a GENERATOR iterated from inside a fiber
+ * leaves the fiber current, and code running after a fiber suspends back to its
+ * caller is outside it again. pVm->pCurFiber is that name, saved and restored
+ * around every start/resume, so the nesting is the call structure itself.
+ *
+ * Reached by every library that logs or schedules per-fiber: monolog asks for it
+ * on EVERY record it writes.
+ */
+PH7_PRIVATE int vm_builtin_Fiber_getCurrent(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pVm->pCurFiber == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* The result slot takes a reference of its own: pCurFiber is borrowed from the
+	 * activation that set it, and the value handed back outlives that call. */
+	PH7_MemObjRelease(pCtx->pRet);
+	pVm->pCurFiber->iRef++;
+	pCtx->pRet->x.pOther = pVm->pCurFiber;
+	MemObjSetType(pCtx->pRet, MEMOBJ_OBJ);
+	return PH7_OK;
+}
+/*
  * Fiber's C-bodied methods. Every one of them was a global `__fiber_verb($this,…)`
  * thunk that a one-line prelude method forwarded to; the class body in the builtin
  * chunk now holds only its two private slots.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
 {
+	/* php's own declaration ORDER, which is what get_class_methods() and
+	 * ReflectionClass::getMethods() answer in. One row still differs from php's
+	 * list and is recorded in PLAN.md: `__destruct` is the engine's teardown hook
+	 * published as a method name php does not have (Generator's is the twin). */
 	static const PH7_NativeMethodDef aMethod[] = {
 		{ "__construct",  PH7_MOD_PUBLIC, "callable $callback",  "",       vm_builtin_Fiber_construct },
 		/* Variadic: the arguments now reach the C body directly instead of being
 		 * repackaged by a func_get_args() call in the prelude. */
 		{ "start",        PH7_MOD_PUBLIC, "mixed ...$args",      "mixed",  vm_builtin_Fiber_start },
 		{ "resume",       PH7_MOD_PUBLIC, "mixed $value = null", "mixed",  vm_builtin_Fiber_resume },
-		{ "getReturn",    PH7_MOD_PUBLIC, "",                    "mixed",  vm_builtin_Fiber_getReturn },
+		{ "throw",        PH7_MOD_PUBLIC, "Throwable $exception", "mixed", vm_builtin_Fiber_throw },
 		{ "isStarted",    PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isStarted },
-		{ "isRunning",    PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isRunning },
 		{ "isSuspended",  PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isSuspended },
+		{ "isRunning",    PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isRunning },
 		{ "isTerminated", PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isTerminated },
+		{ "getReturn",    PH7_MOD_PUBLIC, "",                    "mixed",  vm_builtin_Fiber_getReturn },
+		/* Static like suspend, and the one method a program calls without holding a
+		 * fiber at all — it is how code asks whether it is inside one. */
+		{ "getCurrent",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "",                    "?Fiber",
+		  vm_builtin_Fiber_getCurrent },
 		/* Static, and the only one that never took a receiver even as a thunk:
 		 * `__fiber_suspend($value)` already read the value from argument #0. */
 		{ "suspend",      PH7_MOD_PUBLIC|PH7_MOD_STATIC, "mixed $value = null", "mixed",
@@ -2237,7 +2275,17 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		return (rc == PH7_EXCEPTION) ? PH7_EXCEPTION : PH7_ABORT;
 	}
 	PH7_MemObjInit(pVm, &sResult);
-	rc = VmStartCtx(pVm, pExecCtx, &sResult);
+	{
+		/* php's EG(active_fiber): the fiber the running code is INSIDE, which is what
+		 * Fiber::getCurrent() answers. Saved and restored around the body run, so a
+		 * fiber that starts another one nests, and a fiber that finishes hands the
+		 * name back to whoever was current before it. Borrowed for the duration: the
+		 * receiver of this call owns the reference. */
+		ph7_class_instance *pOldFiber = pVm->pCurFiber;
+		pVm->pCurFiber = pThis;
+		rc = VmStartCtx(pVm, pExecCtx, &sResult);
+		pVm->pCurFiber = pOldFiber;
+	}
 	if( rc == PH7_ABORT ){
 		PH7_MemObjRelease(&sResult);
 		return PH7_ABORT;
@@ -2277,7 +2325,72 @@ PH7_PRIVATE int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value *
 	}
 	pResumeVal = (nArg > 0) ? apArg[0] : 0;
 	PH7_MemObjInit(pVm, &sResult);
-	rc = VmResumeCtx(pVm, pExecCtx, pResumeVal, &sResult);
+	{
+		/* See Fiber::start(): the current fiber is this one for the length of the run. */
+		ph7_class_instance *pOldFiber = pVm->pCurFiber;
+		pVm->pCurFiber = (ph7_class_instance *)pRecv->x.pOther;
+		rc = VmResumeCtx(pVm, pExecCtx, pResumeVal, &sResult);
+		pVm->pCurFiber = pOldFiber;
+	}
+	if( rc == PH7_ABORT ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_ABORT;
+	}
+	if( rc == PH7_EXCEPTION ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_EXCEPTION;
+	}
+	ph7_result_value(pCtx, &sResult);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+/*
+ * Fiber->throw(Throwable $exception) — resume the fiber by RAISING at its
+ * suspension point, so `Fiber::suspend()` throws instead of returning. Same
+ * transport as Generator::throw(): the exception is parked on the context and
+ * the resumed body raises it in its own frame at the top of the dispatch loop,
+ * which is what lets a try/catch INSIDE the fiber catch it and carry on. The
+ * answer is the next suspend value, or null if the body ran to completion --
+ * symmetric with resume(). Every non-suspended state is php's one sentence.
+ */
+PH7_PRIVATE int vm_builtin_Fiber_throw(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_exec_ctx *pExecCtx;
+	ph7_class_instance *pInj;
+	ph7_value sResult;
+	sxi32 rc;
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	if( pRecv == 0 || (pRecv->iFlags & MEMOBJ_OBJ) == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	if( (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK; /* the declared `Throwable $exception` screen already spoke */
+	}
+	pExecCtx = VmFiberExtractCtx(pVm, pRecv);
+	if( pExecCtx == 0 || pExecCtx->iState != PH7_CTX_STATE_SUSPENDED ){
+		/* php answers the same sentence for never-started, running and terminated. */
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Cannot resume a fiber that is not suspended");
+	}
+	/* Hold a reference for the whole operation: the resumed body may bind the
+	 * instance in a catch and release it again before we are back. */
+	pInj = (ph7_class_instance *)apArg[0]->x.pOther;
+	pInj->iRef++;
+	pExecCtx->pInjected = pInj;   /* borrowed; consumed at the resume's loop top */
+	PH7_MemObjInit(pVm, &sResult);
+	{
+		/* See Fiber::start(): the current fiber is this one for the length of the run. */
+		ph7_class_instance *pOldFiber = pVm->pCurFiber;
+		pVm->pCurFiber = (ph7_class_instance *)pRecv->x.pOther;
+		rc = VmResumeCtx(pVm, pExecCtx, 0, &sResult);
+		pVm->pCurFiber = pOldFiber;
+	}
+	/* Normally consumed (cleared) at the loop top; clear it here too for the path
+	 * where VmResumeCtx bails BEFORE entering the loop (the recursion-depth fatal),
+	 * so no dangling borrowed pointer survives the Unref. */
+	pExecCtx->pInjected = 0;
+	PH7_ClassInstanceUnref(pInj);
 	if( rc == PH7_ABORT ){
 		PH7_MemObjRelease(&sResult);
 		return PH7_ABORT;
@@ -2307,13 +2420,20 @@ PH7_PRIVATE int vm_builtin_Fiber_getReturn(ph7_context *pCtx, int nArg, ph7_valu
 	}
 	pExecCtx = VmFiberExtractCtx(pVm, pRecv);
 	if( pExecCtx == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* No context at all IS the never-started state -- the fiber's __ctx slot is
+		 * filled by start(). php names it rather than answering null. */
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Cannot get fiber return value: The fiber has not been started");
 	}
 	if( pExecCtx->iState != PH7_CTX_STATE_COMPLETED ){
 		if( pExecCtx->iState == PH7_CTX_STATE_CREATED ){
 			return PH7_VmThrowException(pCtx, "FiberError",
 				"Cannot get fiber return value: The fiber has not been started");
+		}
+		if( pExecCtx->bThrew ){
+			/* Terminated, but with nothing to hand back: php's own third sentence. */
+			return PH7_VmThrowException(pCtx, "FiberError",
+				"Cannot get fiber return value: The fiber threw an exception");
 		}
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Cannot get fiber return value: The fiber has not returned");
@@ -2365,7 +2485,10 @@ PH7_PRIVATE int vm_builtin_Fiber_isTerminated(ph7_context *pCtx, int nArg, ph7_v
 	SXUNUSED(nArg);
 	if( pRecv == 0 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
 	pExecCtx = VmFiberExtractCtx(pCtx->pVm, pRecv);
-	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState == PH7_CTX_STATE_COMPLETED);
+	/* php's DEAD state: a body that returned and a body that let an exception
+	 * escape are both terminated -- only getReturn() tells them apart. */
+	ph7_result_bool(pCtx, pExecCtx && (pExecCtx->iState == PH7_CTX_STATE_COMPLETED
+		|| pExecCtx->iState == PH7_CTX_STATE_CLOSED));
 	return PH7_OK;
 }
 /*

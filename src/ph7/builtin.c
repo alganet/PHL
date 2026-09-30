@@ -695,6 +695,50 @@ static int PH7_builtin_setlocale(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	return PH7_OK;
 }
+/* php registers sys_getloadavg() only under its HAVE_GETLOADAVG configure test.
+ * The call is a BSD one that glibc and the BSDs (macOS included) carry and neither
+ * Windows nor an embedded libc does, so the same list decides it here. */
+#if !defined(__WINNT__) && (defined(__linux__) || defined(__APPLE__) \
+	|| defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) \
+	|| defined(__DragonFly__))
+#define PH7_HAVE_GETLOADAVG 1
+#endif
+#ifdef PH7_HAVE_GETLOADAVG
+/*
+ * array|false sys_getloadavg()
+ *  The system's 1/5/15-minute load averages. php builds this one only where the
+ *  C library has getloadavg(), which is not Windows -- so a program that guards
+ *  its use with function_exists() (monolog's LoadAverageProcessor does) reads
+ *  the same FALSE there that it reads under php.
+ */
+static int PH7_builtin_sys_getloadavg(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	double aLoad[3];
+	ph7_value *pArray,*pVal;
+	int i;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( getloadavg(aLoad,3) == -1 ){
+		/* php's own sentence and its own severity; the value is FALSE. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Failed to retrieve load average");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	for( i = 0 ; i < 3 ; ++i ){
+		ph7_value_double(pVal,aLoad[i]);
+		ph7_array_add_elem(pArray,0,pVal);
+	}
+	ph7_context_release_value(pCtx,pVal);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+#endif /* PH7_HAVE_GETLOADAVG */
 /*
  * int memory_get_usage([bool $real_usage = false])
  *  Amount of memory, in bytes, currently allocated to the script through PHL's
@@ -805,6 +849,9 @@ static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "setlocale"            , PH7_builtin_setlocale             },
+#ifdef PH7_HAVE_GETLOADAVG
+	{ "sys_getloadavg"       , PH7_builtin_sys_getloadavg        },
+#endif
 	{ "memory_get_usage"     , PH7_builtin_memory_get_usage      },
 	{ "memory_get_peak_usage", PH7_builtin_memory_get_peak_usage },
 	{ "memory_reset_peak_usage", PH7_builtin_memory_reset_peak_usage },

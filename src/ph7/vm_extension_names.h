@@ -194,6 +194,7 @@ static const VmExtName aExtFunc[] = {
 	{"print_r",PH7_EXT_STANDARD}, {"connection_aborted",PH7_EXT_STANDARD},
 	{"connection_status",PH7_EXT_STANDARD}, {"ignore_user_abort",PH7_EXT_STANDARD},
 	{"parse_ini_file",PH7_EXT_STANDARD}, {"parse_ini_string",PH7_EXT_STANDARD},
+	{"sys_getloadavg",PH7_EXT_STANDARD},
 	{"crc32",PH7_EXT_STANDARD}, {"crypt",PH7_EXT_STANDARD}, {"gethostname",PH7_EXT_STANDARD},
 	{"hrtime",PH7_EXT_STANDARD}, {"md5",PH7_EXT_STANDARD}, {"md5_file",PH7_EXT_STANDARD},
 	{"getmyuid",PH7_EXT_STANDARD}, {"getmygid",PH7_EXT_STANDARD}, {"getmypid",PH7_EXT_STANDARD},

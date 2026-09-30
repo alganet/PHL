@@ -1993,8 +1993,14 @@ static sxi32 VmByteCodeExecBody(
 	 * (iDelegateState==3), a Generator::throw() on the OUTER generator must be forwarded
 	 * INTO the delegate (PHP yield-from transparency), not raised here. Leave pInjected
 	 * set and skip; the resume pc is that OP_YIELD_FROM, which consumes and forwards it. */
+	/* pAdoptSegment says the same thing for a DEEP suspend: this invocation IS the
+	 * resume, but the adopt above moved sState to the innermost parked activation,
+	 * so its entry frame is that callee's and no longer the body's. Fiber::throw()
+	 * on a fiber suspended inside a nested call has to raise THERE -- at the
+	 * `Fiber::suspend()` the callee is parked on -- which is where pVm->pFrame and
+	 * the adopted aInstr already point. */
 	if( pVm->pActiveCtx && pVm->pActiveCtx->pInjected
-	 && pVm->pActiveCtx->pFrame == sState.pEntryFrame
+	 && (pAdoptSegment != 0 || pVm->pActiveCtx->pFrame == sState.pEntryFrame)
 	 && pVm->pActiveCtx->iDelegateState != 3 ){
 		ph7_class_instance *pInj = pVm->pActiveCtx->pInjected;
 		VmFrame *pThrowFrame;

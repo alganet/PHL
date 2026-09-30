@@ -1395,6 +1395,7 @@ static const struct VmBuiltinSig {
 	{ "substr_replace", "array|string $string, array|string $replace, array|int $offset, array|int|null $length = NULL", "array|string" },
 	{ "symlink", "string $target, string $link", "bool" },
 	{ "sys_get_temp_dir", "", "string" },
+	{ "sys_getloadavg", "", "array|false" },
 	{ "system", "string $command, &$result_code = NULL", "string|false" },
 	{ "tan", "float $num", "float" },
 	{ "tanh", "float $num", "float" },

@@ -3750,6 +3750,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	VmSpreadCaptureReset(pVm);
 	pVm->nRecursionDepth = 0;
 	pVm->pActiveCtx = 0;
+	pVm->pCurFiber = 0;
 	pVm->pCoalesceObj = 0;
 	pVm->bCoalesceArmed = 0;
 	VmReinitMemObj(&(*pVm),&pVm->sCoalesceKey);
