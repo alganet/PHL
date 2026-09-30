@@ -2430,6 +2430,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pIdleCallFrames = 0;
 	pVm->pIdleOperandStacks = 0;
 	pVm->nIdleOperandStacks = 0;
+	pVm->nIdleOperandSlots = 0;
 	pVm->pIdleStackNodes = 0;
 	SySetInit(&pVm->aFinallyAction,&pVm->sAllocator,sizeof(VmFinallyAction));
 	pVm->bInlineTryCatch = 1; /* ROOT C: enable inline generator try/catch/finally */
@@ -3069,10 +3070,18 @@ PH7_PRIVATE ph7_value * VmNewOperandStack(
 	if( pStack == 0 ){
 		return 0;
 	}
-	/* Initialize the operand stack */
+	/* Initialize the operand stack. PH7_MemObjInit per slot is one call, one
+	 * sizeof(ph7_value) SyZero and one SyBlobInit each; the whole buffer is
+	 * contiguous, so zero it ONCE and fill in only the three fields a null value
+	 * needs that are not zero. This is a hot path in its own right -- an OP_CALL
+	 * that misses the recycling pool inits the callee's whole stack, and the fill
+	 * loop below was 11% of a phpcs run. */
+	SyZero(pStack,nInstr * sizeof(ph7_value));
 	while( nInstr > 0 ){
-		PH7_MemObjInit(&(*pVm),&pStack[nInstr - 1]);
-		--nInstr;
+		ph7_value *pSlot = &pStack[--nInstr];
+		pSlot->pVm = pVm;
+		pSlot->sBlob.pAllocator = &pVm->sAllocator;
+		pSlot->iFlags = MEMOBJ_NULL;
 	}
 	/* Ready for bytecode execution */
 	return pStack;
@@ -3090,16 +3099,19 @@ PH7_PRIVATE ph7_value * VmNewOperandStack(
  * The freelist holds plain allocator blocks (no header): a parked buffer is just
  * a ph7_value array whose slots were all released at recycle time, so it is
  * clean to reuse, cannot leak a stale value, and can still be raw-freed by the
- * cold/suspend/abort paths that never route through here. Head-only exact-size
- * match keeps it O(1) and memory-tight (a mismatched size allocates fresh rather
- * than over-allocating — deep recursion, whose freelist is empty during descent,
- * is unaffected). Length is capped so the pool can't grow without bound.
+ * cold/suspend/abort paths that never route through here. A buffer is reused
+ * only for a request of exactly its size (never over-allocated), and the pool is
+ * bounded three ways so it can't grow without end: entry count, per-buffer size,
+ * and -- the one that actually bounds the MEMORY -- a total parked-slot budget.
  *
- * The head-only match is tuned for the design target (recursion / a hot loop
- * calling one function — one size, ~total reuse). An alternating-size pattern
- * (a() then b() with different depths, repeatedly) never matches the head, so it
- * degrades to a fresh allocation every call — same as no pool, never worse; the
- * recursion case is the one worth the O(1) simplicity.
+ * The match walks the whole (capped) list rather than testing only its head.
+ * Head-only was tuned for the design target — recursion, or a hot loop calling
+ * one function: one size, near-total reuse — and everything else missed it. Real
+ * code interleaves calls to differently-sized functions, so the head was almost
+ * never the size being asked for and every call fell through to a fresh
+ * allocation whose every slot had to be initialized: 11% of a phpcs run sat in
+ * that init. Walking up to VM_STACK_POOL_MAX pointers to avoid initializing up
+ * to VM_STACK_POOL_MAXSLOTS values is never the worse trade.
  */
 typedef struct VmIdleStack VmIdleStack;
 struct VmIdleStack {
@@ -3107,28 +3119,51 @@ struct VmIdleStack {
 	sxu32 nCap;          /* Its allocated slot count (VmNewOperandStack size) */
 	VmIdleStack *pNext;  /* LIFO link */
 };
-#define VM_STACK_POOL_MAX 64      /* max buffers parked at once */
-#define VM_STACK_POOL_MAXSLOTS 512 /* only pool buffers this small — bounds pool memory
-                                    * (a large fallback-sized stack recursing would
-                                    * otherwise park up to VM_STACK_POOL_MAX huge buffers;
-                                    * the tight-sized hot case is far below this) */
+#define VM_STACK_POOL_MAX 256      /* max buffers parked at once. A program calls far more
+                                    * than 64 distinct-sized functions in its hot loop, and a
+                                    * pool that is FULL turns every recycle into a free and
+                                    * every call after it into a fresh, freshly-initialized
+                                    * buffer: at 64 entries a phpcs run refused 86k of its
+                                    * 400k recycles for being full and missed 24% of its
+                                    * allocations. The memory this could cost is bounded by
+                                    * the slot budget below, not by this count. */
+#define VM_STACK_POOL_MAXSLOTS 4096 /* never pool a buffer bigger than this: one outlier
+                                    * (an unmodelable body falls back to its whole
+                                    * instruction count — 8000+ slots is real) must not sit
+                                    * in the pool holding half a megabyte for a size nothing
+                                    * asks for again */
+#define VM_STACK_POOL_SLOTS 65536  /* total slots parked across the pool: ~4 MB of ph7_values,
+                                    * the real bound on what recycling costs. Entry count and
+                                    * per-buffer size are shape limits; this is the budget. */
 /*
  * Allocate an operand stack of nSlots (+ VM_STACK_GUARD) usable slots, reusing a
  * parked same-size buffer when one is available (its slots are already clean).
  */
 PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)
 {
-	VmIdleStack *pIdle = (VmIdleStack *)pVm->pIdleOperandStacks;
+	VmIdleStack **ppIdle = (VmIdleStack **)&pVm->pIdleOperandStacks;
 	sxu32 nCap = nSlots + VM_STACK_GUARD;
-	if( pIdle && pIdle->nCap == nCap ){
-		ph7_value *pStack = pIdle->pStack;
-		pVm->pIdleOperandStacks = pIdle->pNext;
-		pVm->nIdleOperandStacks--;
-		/* Keep the wrapper node on the spare-node freelist for the next recycle
-		 * instead of returning it to the pool (mirrors pIdleCallFrames). */
-		pIdle->pNext = (VmIdleStack *)pVm->pIdleStackNodes;
-		pVm->pIdleStackNodes = pIdle;
-		return pStack; /* slots already released -> reusable without re-init */
+	/* Look for a parked buffer of exactly this size ANYWHERE in the list, not just
+	 * at its head. Head-only matching was tuned for recursion -- one function, one
+	 * size, total reuse -- and a program that is not recursing never hits it: real
+	 * code calls a dozen differently-sized functions in turn, so every call missed,
+	 * allocated a fresh buffer and initialized every slot of it. The list is capped
+	 * at VM_STACK_POOL_MAX, so the walk is a handful of pointer compares against a
+	 * per-slot init of up to VM_STACK_POOL_MAXSLOTS values -- never the worse deal. */
+	while( *ppIdle ){
+		VmIdleStack *pIdle = *ppIdle;
+		if( pIdle->nCap == nCap ){
+			ph7_value *pStack = pIdle->pStack;
+			*ppIdle = pIdle->pNext;
+			pVm->nIdleOperandStacks--;
+			pVm->nIdleOperandSlots -= nCap;
+			/* Keep the wrapper node on the spare-node freelist for the next recycle
+			 * instead of returning it to the pool (mirrors pIdleCallFrames). */
+			pIdle->pNext = (VmIdleStack *)pVm->pIdleStackNodes;
+			pVm->pIdleStackNodes = pIdle;
+			return pStack; /* slots already released -> reusable without re-init */
+		}
+		ppIdle = &pIdle->pNext;
 	}
 	return VmNewOperandStack(&(*pVm),nSlots);
 }
@@ -3145,7 +3180,9 @@ PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCa
 	if( pStack == 0 ){
 		return;
 	}
-	if( pVm->nIdleOperandStacks >= VM_STACK_POOL_MAX || nCap > VM_STACK_POOL_MAXSLOTS ){
+	if( pVm->nIdleOperandStacks >= VM_STACK_POOL_MAX
+	 || nCap > VM_STACK_POOL_MAXSLOTS
+	 || pVm->nIdleOperandSlots + nCap > VM_STACK_POOL_SLOTS ){
 		SyMemBackendFree(&pVm->sAllocator,pStack);
 		return;
 	}
@@ -3175,6 +3212,7 @@ PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCa
 	pIdle->pNext = (VmIdleStack *)pVm->pIdleOperandStacks;
 	pVm->pIdleOperandStacks = pIdle;
 	pVm->nIdleOperandStacks++;
+	pVm->nIdleOperandSlots += nCap;
 }
 /* Forward declaration */
 static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm);

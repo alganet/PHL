@@ -3490,11 +3490,15 @@ struct ph7_vm
 	void *pIdleOperandStacks;  /* Freelist of recycled operand-stack buffers (BYTECODE
 	                            * stage 7): a returning PHP call recycles its (tight-sized)
 	                            * operand stack here instead of freeing it, so a same-size
-	                            * call (recursion / a hot call loop) reuses it — skipping
-	                            * the buffer alloc AND the per-slot init. LIFO, exact-size
-	                            * head match, capped length; buffers are plain allocator
-	                            * blocks so cold/suspend/abort paths can still raw-free them. */
+	                            * call reuses it — skipping the buffer alloc AND the per-slot
+	                            * init. Exact-size match anywhere in the list, bounded by an
+	                            * entry count AND a total-slot budget; buffers are plain
+	                            * allocator blocks so cold/suspend/abort paths can still
+	                            * raw-free them. */
 	int nIdleOperandStacks;    /* Length of pIdleOperandStacks (cap: VM_STACK_POOL_MAX) */
+	sxu32 nIdleOperandSlots;   /* Slots parked across those buffers. The pool's real cost is
+	                            * memory, not entries, so this -- not the entry count alone --
+	                            * is what bounds it (VM_STACK_POOL_SLOTS). */
 	void *pIdleStackNodes;     /* Freelist of spare VmIdleStack nodes (BYTECODE stage 7b):
 	                            * reused across recycle/reuse cycles so a parked buffer's
 	                            * wrapper node isn't pool-alloc/freed per call (mirrors
