@@ -41,13 +41,14 @@
 #define PH7_EXT_PDO          22
 #define PH7_EXT_PDO_SQLITE   23
 #define PH7_EXT_CURL         24
-#define PH7_EXT_SQLITE3      25
+#define PH7_EXT_POSIX        25
+#define PH7_EXT_SQLITE3      26
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
-	"sqlite3",
+	"posix", "sqlite3",
 };
 
 typedef struct VmExtName VmExtName;
@@ -411,6 +412,28 @@ static const VmExtName aExtFunc[] = {
 	{"bindtextdomain",PH7_EXT_GETTEXT}, {"ngettext",PH7_EXT_GETTEXT},
 	{"dngettext",PH7_EXT_GETTEXT}, {"dcngettext",PH7_EXT_GETTEXT},
 	{"bind_textdomain_codeset",PH7_EXT_GETTEXT},
+	/* posix -- php's own order, and absent on Windows (VmExtAvailable). */
+	{"posix_kill",PH7_EXT_POSIX}, {"posix_getpid",PH7_EXT_POSIX},
+	{"posix_getppid",PH7_EXT_POSIX}, {"posix_getuid",PH7_EXT_POSIX},
+	{"posix_setuid",PH7_EXT_POSIX}, {"posix_geteuid",PH7_EXT_POSIX},
+	{"posix_seteuid",PH7_EXT_POSIX}, {"posix_getgid",PH7_EXT_POSIX},
+	{"posix_setgid",PH7_EXT_POSIX}, {"posix_getegid",PH7_EXT_POSIX},
+	{"posix_setegid",PH7_EXT_POSIX}, {"posix_getgroups",PH7_EXT_POSIX},
+	{"posix_getlogin",PH7_EXT_POSIX}, {"posix_getpgrp",PH7_EXT_POSIX},
+	{"posix_setsid",PH7_EXT_POSIX}, {"posix_setpgid",PH7_EXT_POSIX},
+	{"posix_getpgid",PH7_EXT_POSIX}, {"posix_getsid",PH7_EXT_POSIX},
+	{"posix_uname",PH7_EXT_POSIX}, {"posix_times",PH7_EXT_POSIX},
+	{"posix_ctermid",PH7_EXT_POSIX}, {"posix_ttyname",PH7_EXT_POSIX},
+	{"posix_isatty",PH7_EXT_POSIX}, {"posix_getcwd",PH7_EXT_POSIX},
+	{"posix_mkfifo",PH7_EXT_POSIX}, {"posix_mknod",PH7_EXT_POSIX},
+	{"posix_access",PH7_EXT_POSIX}, {"posix_eaccess",PH7_EXT_POSIX},
+	{"posix_getgrnam",PH7_EXT_POSIX}, {"posix_getgrgid",PH7_EXT_POSIX},
+	{"posix_getpwnam",PH7_EXT_POSIX}, {"posix_getpwuid",PH7_EXT_POSIX},
+	{"posix_getrlimit",PH7_EXT_POSIX}, {"posix_setrlimit",PH7_EXT_POSIX},
+	{"posix_get_last_error",PH7_EXT_POSIX}, {"posix_errno",PH7_EXT_POSIX},
+	{"posix_strerror",PH7_EXT_POSIX}, {"posix_initgroups",PH7_EXT_POSIX},
+	{"posix_sysconf",PH7_EXT_POSIX}, {"posix_pathconf",PH7_EXT_POSIX},
+	{"posix_fpathconf",PH7_EXT_POSIX},
 	/* iconv */
 	{"iconv_strlen",PH7_EXT_ICONV}, {"iconv_substr",PH7_EXT_ICONV},
 	{"iconv_strpos",PH7_EXT_ICONV}, {"iconv_strrpos",PH7_EXT_ICONV},
@@ -1310,6 +1333,28 @@ static const VmExtName aExtConst[] = {
 	{"CURLWS_RAW_MODE",PH7_EXT_CURL}, {"CURLOPT_CA_CACHE_TIMEOUT",PH7_EXT_CURL},
 	{"CURLOPT_QUICK_EXIT",PH7_EXT_CURL}, {"CURL_HTTP_VERSION_3ONLY",PH7_EXT_CURL},
 	{"CURLOPT_SAFE_UPLOAD",PH7_EXT_CURL},
+	/* posix -- php's own order, which is what getConstants() answers in. */
+	{"POSIX_F_OK",PH7_EXT_POSIX}, {"POSIX_X_OK",PH7_EXT_POSIX}, {"POSIX_W_OK",PH7_EXT_POSIX},
+	{"POSIX_R_OK",PH7_EXT_POSIX}, {"POSIX_S_IFREG",PH7_EXT_POSIX},
+	{"POSIX_S_IFCHR",PH7_EXT_POSIX}, {"POSIX_S_IFBLK",PH7_EXT_POSIX},
+	{"POSIX_S_IFIFO",PH7_EXT_POSIX}, {"POSIX_S_IFSOCK",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_AS",PH7_EXT_POSIX}, {"POSIX_RLIMIT_CORE",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_CPU",PH7_EXT_POSIX}, {"POSIX_RLIMIT_DATA",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_FSIZE",PH7_EXT_POSIX}, {"POSIX_RLIMIT_LOCKS",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_MEMLOCK",PH7_EXT_POSIX}, {"POSIX_RLIMIT_MSGQUEUE",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_NICE",PH7_EXT_POSIX}, {"POSIX_RLIMIT_NOFILE",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_NPROC",PH7_EXT_POSIX}, {"POSIX_RLIMIT_RSS",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_RTPRIO",PH7_EXT_POSIX}, {"POSIX_RLIMIT_RTTIME",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_SIGPENDING",PH7_EXT_POSIX}, {"POSIX_RLIMIT_STACK",PH7_EXT_POSIX},
+	{"POSIX_RLIMIT_INFINITY",PH7_EXT_POSIX}, {"POSIX_SC_ARG_MAX",PH7_EXT_POSIX},
+	{"POSIX_SC_CHILD_MAX",PH7_EXT_POSIX}, {"POSIX_SC_CLK_TCK",PH7_EXT_POSIX},
+	{"POSIX_SC_PAGESIZE",PH7_EXT_POSIX}, {"POSIX_SC_NPROCESSORS_CONF",PH7_EXT_POSIX},
+	{"POSIX_SC_NPROCESSORS_ONLN",PH7_EXT_POSIX}, {"POSIX_PC_LINK_MAX",PH7_EXT_POSIX},
+	{"POSIX_PC_MAX_CANON",PH7_EXT_POSIX}, {"POSIX_PC_MAX_INPUT",PH7_EXT_POSIX},
+	{"POSIX_PC_NAME_MAX",PH7_EXT_POSIX}, {"POSIX_PC_PATH_MAX",PH7_EXT_POSIX},
+	{"POSIX_PC_PIPE_BUF",PH7_EXT_POSIX}, {"POSIX_PC_CHOWN_RESTRICTED",PH7_EXT_POSIX},
+	{"POSIX_PC_NO_TRUNC",PH7_EXT_POSIX}, {"POSIX_PC_ALLOC_SIZE_MIN",PH7_EXT_POSIX},
+	{"POSIX_PC_SYMLINK_MAX",PH7_EXT_POSIX}, {"POSIX_SC_OPEN_MAX",PH7_EXT_POSIX},
 	/* sqlite3 */
 	{"SQLITE3_ASSOC",PH7_EXT_SQLITE3}, {"SQLITE3_NUM",PH7_EXT_SQLITE3},
 	{"SQLITE3_BOTH",PH7_EXT_SQLITE3}, {"SQLITE3_INTEGER",PH7_EXT_SQLITE3},

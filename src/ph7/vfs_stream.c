@@ -4188,6 +4188,22 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 	*pzWrapper = "plainfile";
 }
 /*
+ * The `stream_type` label above, on its own. ext/posix prints it in php's
+ * `Could not use stream of type '%s'` -- the diagnostic a descriptor door
+ * raises for a stream that has no descriptor behind it -- and php reads it from
+ * the same place its metadata does.
+ */
+PH7_PRIVATE const char * PH7_StreamTypeLabel(io_private *pDev)
+{
+	const char *zWrapper = 0,*zStream = "STDIO";
+	if( pDev == 0 ){
+		return "STDIO";
+	}
+	IoPrivateStreamLabels(pDev,&zWrapper,&zStream);
+	return zStream;
+}
+
+/*
  * data:// carries its own metadata in php, and all of it comes back out of the
  * URI the wrapper parsed: `data://<mediatype>[;name=value]*[;base64],<payload>`
  * answers the media type, ONE KEY PER PARAMETER, and the base64 flag last. A

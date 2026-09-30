@@ -5,6 +5,12 @@
  */
 #include "ph7int.h"
 #include <float.h> /* DBL_EPSILON/DBL_MAX/DBL_MIN/DBL_DIG for the PHP_FLOAT_* constants */
+#ifndef __WINNT__
+/* ext/posix's constants are the platform's own macros -- see PH7_POSIX_*_Const. */
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/resource.h>
+#endif
 /* This file implement built-in constants for the PH7 engine. */
 /*
  * PH7_VERSION
@@ -2072,6 +2078,189 @@ static void PH7_LC_MESSAGES_Const(ph7_value *pVal,void *pUserData)
 static void PH7_LC_ALL_Const(ph7_value *pVal,void *pUserData)
 { SXUNUSED(pUserData); ph7_value_int(pVal,6); }
 /*
+ * ext/posix's constants. Every one of them is the PLATFORM's macro rather than
+ * a number copied out of one build: `RLIMIT_AS` is 9 on Linux and something
+ * else elsewhere, and a script that stores one and hands it back to
+ * posix_getrlimit() has to get its own system's answer. php builds no
+ * ext/posix on Windows, so none of these is defined there either.
+ */
+#ifndef __WINNT__
+#ifdef F_OK
+static void PH7_POSIX_F_OK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)F_OK); }
+#endif
+#ifdef X_OK
+static void PH7_POSIX_X_OK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)X_OK); }
+#endif
+#ifdef W_OK
+static void PH7_POSIX_W_OK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)W_OK); }
+#endif
+#ifdef R_OK
+static void PH7_POSIX_R_OK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)R_OK); }
+#endif
+#ifdef S_IFREG
+static void PH7_POSIX_S_IFREG_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)S_IFREG); }
+#endif
+#ifdef S_IFCHR
+static void PH7_POSIX_S_IFCHR_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)S_IFCHR); }
+#endif
+#ifdef S_IFBLK
+static void PH7_POSIX_S_IFBLK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)S_IFBLK); }
+#endif
+#ifdef S_IFIFO
+static void PH7_POSIX_S_IFIFO_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)S_IFIFO); }
+#endif
+#ifdef S_IFSOCK
+static void PH7_POSIX_S_IFSOCK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)S_IFSOCK); }
+#endif
+#ifdef RLIMIT_AS
+static void PH7_POSIX_RLIMIT_AS_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_AS); }
+#endif
+#ifdef RLIMIT_CORE
+static void PH7_POSIX_RLIMIT_CORE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_CORE); }
+#endif
+#ifdef RLIMIT_CPU
+static void PH7_POSIX_RLIMIT_CPU_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_CPU); }
+#endif
+#ifdef RLIMIT_DATA
+static void PH7_POSIX_RLIMIT_DATA_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_DATA); }
+#endif
+#ifdef RLIMIT_FSIZE
+static void PH7_POSIX_RLIMIT_FSIZE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_FSIZE); }
+#endif
+#ifdef RLIMIT_LOCKS
+static void PH7_POSIX_RLIMIT_LOCKS_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_LOCKS); }
+#endif
+#ifdef RLIMIT_MEMLOCK
+static void PH7_POSIX_RLIMIT_MEMLOCK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_MEMLOCK); }
+#endif
+#ifdef RLIMIT_MSGQUEUE
+static void PH7_POSIX_RLIMIT_MSGQUEUE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_MSGQUEUE); }
+#endif
+#ifdef RLIMIT_NICE
+static void PH7_POSIX_RLIMIT_NICE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_NICE); }
+#endif
+#ifdef RLIMIT_NOFILE
+static void PH7_POSIX_RLIMIT_NOFILE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_NOFILE); }
+#endif
+#ifdef RLIMIT_NPROC
+static void PH7_POSIX_RLIMIT_NPROC_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_NPROC); }
+#endif
+#ifdef RLIMIT_RSS
+static void PH7_POSIX_RLIMIT_RSS_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_RSS); }
+#endif
+#ifdef RLIMIT_RTPRIO
+static void PH7_POSIX_RLIMIT_RTPRIO_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_RTPRIO); }
+#endif
+#ifdef RLIMIT_RTTIME
+static void PH7_POSIX_RLIMIT_RTTIME_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_RTTIME); }
+#endif
+#ifdef RLIMIT_SIGPENDING
+static void PH7_POSIX_RLIMIT_SIGPENDING_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_SIGPENDING); }
+#endif
+#ifdef RLIMIT_STACK
+static void PH7_POSIX_RLIMIT_STACK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)RLIMIT_STACK); }
+#endif
+#ifdef _SC_ARG_MAX
+static void PH7_POSIX_SC_ARG_MAX_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_SC_ARG_MAX); }
+#endif
+#ifdef _SC_CHILD_MAX
+static void PH7_POSIX_SC_CHILD_MAX_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_SC_CHILD_MAX); }
+#endif
+#ifdef _SC_CLK_TCK
+static void PH7_POSIX_SC_CLK_TCK_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_SC_CLK_TCK); }
+#endif
+#ifdef _SC_OPEN_MAX
+static void PH7_POSIX_SC_OPEN_MAX_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_SC_OPEN_MAX); }
+#endif
+#ifdef _SC_PAGESIZE
+static void PH7_POSIX_SC_PAGESIZE_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_SC_PAGESIZE); }
+#endif
+#ifdef _SC_NPROCESSORS_CONF
+static void PH7_POSIX_SC_NPROCESSORS_CONF_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_SC_NPROCESSORS_CONF); }
+#endif
+#ifdef _SC_NPROCESSORS_ONLN
+static void PH7_POSIX_SC_NPROCESSORS_ONLN_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_SC_NPROCESSORS_ONLN); }
+#endif
+#ifdef _PC_LINK_MAX
+static void PH7_POSIX_PC_LINK_MAX_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_LINK_MAX); }
+#endif
+#ifdef _PC_MAX_CANON
+static void PH7_POSIX_PC_MAX_CANON_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_MAX_CANON); }
+#endif
+#ifdef _PC_MAX_INPUT
+static void PH7_POSIX_PC_MAX_INPUT_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_MAX_INPUT); }
+#endif
+#ifdef _PC_NAME_MAX
+static void PH7_POSIX_PC_NAME_MAX_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_NAME_MAX); }
+#endif
+#ifdef _PC_PATH_MAX
+static void PH7_POSIX_PC_PATH_MAX_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_PATH_MAX); }
+#endif
+#ifdef _PC_PIPE_BUF
+static void PH7_POSIX_PC_PIPE_BUF_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_PIPE_BUF); }
+#endif
+#ifdef _PC_CHOWN_RESTRICTED
+static void PH7_POSIX_PC_CHOWN_RESTRICTED_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_CHOWN_RESTRICTED); }
+#endif
+#ifdef _PC_NO_TRUNC
+static void PH7_POSIX_PC_NO_TRUNC_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_NO_TRUNC); }
+#endif
+#ifdef _PC_ALLOC_SIZE_MIN
+static void PH7_POSIX_PC_ALLOC_SIZE_MIN_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_ALLOC_SIZE_MIN); }
+#endif
+#ifdef _PC_SYMLINK_MAX
+static void PH7_POSIX_PC_SYMLINK_MAX_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,(ph7_int64)_PC_SYMLINK_MAX); }
+#endif
+/*
+ * RLIM_INFINITY is a rlim_t, which is unsigned; php answers it as -1, which is
+ * what posix_setrlimit() takes back for "no limit".
+ */
+static void PH7_POSIX_RLIMIT_INFINITY_Const(ph7_value *pVal,void *pUserData)
+{ SXUNUSED(pUserData); ph7_value_int64(pVal,-1); }
+#endif /* __WINNT__ */
+/*
  * SEEK_SET.
  *  Expand 0
  */
@@ -3248,6 +3437,136 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"LC_MONETARY",          PH7_LC_MONETARY_Const   },
 	{"LC_MESSAGES",          PH7_LC_MESSAGES_Const   },
 	{"LC_ALL",               PH7_LC_ALL_Const        },
+#ifndef __WINNT__
+	/* ext/posix */
+#ifdef F_OK
+	{"POSIX_F_OK", PH7_POSIX_F_OK_Const },
+#endif
+#ifdef X_OK
+	{"POSIX_X_OK", PH7_POSIX_X_OK_Const },
+#endif
+#ifdef W_OK
+	{"POSIX_W_OK", PH7_POSIX_W_OK_Const },
+#endif
+#ifdef R_OK
+	{"POSIX_R_OK", PH7_POSIX_R_OK_Const },
+#endif
+#ifdef S_IFREG
+	{"POSIX_S_IFREG", PH7_POSIX_S_IFREG_Const },
+#endif
+#ifdef S_IFCHR
+	{"POSIX_S_IFCHR", PH7_POSIX_S_IFCHR_Const },
+#endif
+#ifdef S_IFBLK
+	{"POSIX_S_IFBLK", PH7_POSIX_S_IFBLK_Const },
+#endif
+#ifdef S_IFIFO
+	{"POSIX_S_IFIFO", PH7_POSIX_S_IFIFO_Const },
+#endif
+#ifdef S_IFSOCK
+	{"POSIX_S_IFSOCK", PH7_POSIX_S_IFSOCK_Const },
+#endif
+#ifdef RLIMIT_AS
+	{"POSIX_RLIMIT_AS", PH7_POSIX_RLIMIT_AS_Const },
+#endif
+#ifdef RLIMIT_CORE
+	{"POSIX_RLIMIT_CORE", PH7_POSIX_RLIMIT_CORE_Const },
+#endif
+#ifdef RLIMIT_CPU
+	{"POSIX_RLIMIT_CPU", PH7_POSIX_RLIMIT_CPU_Const },
+#endif
+#ifdef RLIMIT_DATA
+	{"POSIX_RLIMIT_DATA", PH7_POSIX_RLIMIT_DATA_Const },
+#endif
+#ifdef RLIMIT_FSIZE
+	{"POSIX_RLIMIT_FSIZE", PH7_POSIX_RLIMIT_FSIZE_Const },
+#endif
+#ifdef RLIMIT_LOCKS
+	{"POSIX_RLIMIT_LOCKS", PH7_POSIX_RLIMIT_LOCKS_Const },
+#endif
+#ifdef RLIMIT_MEMLOCK
+	{"POSIX_RLIMIT_MEMLOCK", PH7_POSIX_RLIMIT_MEMLOCK_Const },
+#endif
+#ifdef RLIMIT_MSGQUEUE
+	{"POSIX_RLIMIT_MSGQUEUE", PH7_POSIX_RLIMIT_MSGQUEUE_Const },
+#endif
+#ifdef RLIMIT_NICE
+	{"POSIX_RLIMIT_NICE", PH7_POSIX_RLIMIT_NICE_Const },
+#endif
+#ifdef RLIMIT_NOFILE
+	{"POSIX_RLIMIT_NOFILE", PH7_POSIX_RLIMIT_NOFILE_Const },
+#endif
+#ifdef RLIMIT_NPROC
+	{"POSIX_RLIMIT_NPROC", PH7_POSIX_RLIMIT_NPROC_Const },
+#endif
+#ifdef RLIMIT_RSS
+	{"POSIX_RLIMIT_RSS", PH7_POSIX_RLIMIT_RSS_Const },
+#endif
+#ifdef RLIMIT_RTPRIO
+	{"POSIX_RLIMIT_RTPRIO", PH7_POSIX_RLIMIT_RTPRIO_Const },
+#endif
+#ifdef RLIMIT_RTTIME
+	{"POSIX_RLIMIT_RTTIME", PH7_POSIX_RLIMIT_RTTIME_Const },
+#endif
+#ifdef RLIMIT_SIGPENDING
+	{"POSIX_RLIMIT_SIGPENDING", PH7_POSIX_RLIMIT_SIGPENDING_Const },
+#endif
+#ifdef RLIMIT_STACK
+	{"POSIX_RLIMIT_STACK", PH7_POSIX_RLIMIT_STACK_Const },
+#endif
+#ifdef _SC_ARG_MAX
+	{"POSIX_SC_ARG_MAX", PH7_POSIX_SC_ARG_MAX_Const },
+#endif
+#ifdef _SC_CHILD_MAX
+	{"POSIX_SC_CHILD_MAX", PH7_POSIX_SC_CHILD_MAX_Const },
+#endif
+#ifdef _SC_CLK_TCK
+	{"POSIX_SC_CLK_TCK", PH7_POSIX_SC_CLK_TCK_Const },
+#endif
+#ifdef _SC_OPEN_MAX
+	{"POSIX_SC_OPEN_MAX", PH7_POSIX_SC_OPEN_MAX_Const },
+#endif
+#ifdef _SC_PAGESIZE
+	{"POSIX_SC_PAGESIZE", PH7_POSIX_SC_PAGESIZE_Const },
+#endif
+#ifdef _SC_NPROCESSORS_CONF
+	{"POSIX_SC_NPROCESSORS_CONF", PH7_POSIX_SC_NPROCESSORS_CONF_Const },
+#endif
+#ifdef _SC_NPROCESSORS_ONLN
+	{"POSIX_SC_NPROCESSORS_ONLN", PH7_POSIX_SC_NPROCESSORS_ONLN_Const },
+#endif
+#ifdef _PC_LINK_MAX
+	{"POSIX_PC_LINK_MAX", PH7_POSIX_PC_LINK_MAX_Const },
+#endif
+#ifdef _PC_MAX_CANON
+	{"POSIX_PC_MAX_CANON", PH7_POSIX_PC_MAX_CANON_Const },
+#endif
+#ifdef _PC_MAX_INPUT
+	{"POSIX_PC_MAX_INPUT", PH7_POSIX_PC_MAX_INPUT_Const },
+#endif
+#ifdef _PC_NAME_MAX
+	{"POSIX_PC_NAME_MAX", PH7_POSIX_PC_NAME_MAX_Const },
+#endif
+#ifdef _PC_PATH_MAX
+	{"POSIX_PC_PATH_MAX", PH7_POSIX_PC_PATH_MAX_Const },
+#endif
+#ifdef _PC_PIPE_BUF
+	{"POSIX_PC_PIPE_BUF", PH7_POSIX_PC_PIPE_BUF_Const },
+#endif
+#ifdef _PC_CHOWN_RESTRICTED
+	{"POSIX_PC_CHOWN_RESTRICTED", PH7_POSIX_PC_CHOWN_RESTRICTED_Const },
+#endif
+#ifdef _PC_NO_TRUNC
+	{"POSIX_PC_NO_TRUNC", PH7_POSIX_PC_NO_TRUNC_Const },
+#endif
+#ifdef _PC_ALLOC_SIZE_MIN
+	{"POSIX_PC_ALLOC_SIZE_MIN", PH7_POSIX_PC_ALLOC_SIZE_MIN_Const },
+#endif
+#ifdef _PC_SYMLINK_MAX
+	{"POSIX_PC_SYMLINK_MAX", PH7_POSIX_PC_SYMLINK_MAX_Const },
+#endif
+	{"POSIX_RLIMIT_INFINITY", PH7_POSIX_RLIMIT_INFINITY_Const },
+#endif /* __WINNT__ */
 	{"SEEK_SET",             PH7_SEEK_SET_Const      },
 	{"SEEK_CUR",             PH7_SEEK_CUR_Const      },
 	{"SEEK_END",             PH7_SEEK_END_Const      },

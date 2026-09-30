@@ -2347,6 +2347,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aPersistSock,&pVm->sAllocator,sizeof(VmPersistSock));
 	pVm->bIniSeeded = 0;
 	pVm->pGettext = 0;   /* ext/gettext binds its first domain lazily */
+	pVm->iPosixErr = 0;  /* ext/posix has seen no failure yet */
 	pVm->iSessStatus = 1; /* PHP_SESSION_NONE */
 	PH7_MemObjInit(&(*pVm),&pVm->sSessHandler);
 	SyBlobInit(&pVm->sSessData,&pVm->sAllocator);
