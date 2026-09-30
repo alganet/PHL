@@ -72,10 +72,25 @@ PH7_PRIVATE sxi32 SySetGetNextEntry(SySet *pSet,void **ppEntry);
 PH7_PRIVATE void * SySetPeekCurrentEntry(SySet *pSet);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE sxi32 SySetTruncate(SySet *pSet,sxu32 nNewSize);
+PH7_PRIVATE void SySetShrinkToFit(SySet *pSet);
 PH7_PRIVATE sxi32 SySetRelease(SySet *pSet);
 PH7_PRIVATE void * SySetPeek(SySet *pSet);
 PH7_PRIVATE void * SySetPop(SySet *pSet);
-PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx);
+/*
+ * The nIdx'th slot of a set, or NULL when the index is past the end.
+ *
+ * INLINE because of one caller: every array element the engine reads goes
+ * through it to reach the value table (`SySetAt(&pVm->aMemObj,pNode->nValIdx)`),
+ * and a bounds test plus a multiply was 1.5% of an ecosystem-gate phpcs run
+ * spent almost entirely on the call and return around them.
+ */
+SX_STATIC_INLINE void * SySetAt(SySet *pSet,sxu32 nIdx)
+{
+	if( nIdx >= pSet->nUsed ){
+		return 0;   /* Out of range */
+	}
+	return (void *)&((char *)pSet->pBase)[nIdx * pSet->eSize];
+}
 
 /* SyBlob function prototypes */
 PH7_PRIVATE sxi32 SyBlobInit(SyBlob *pBlob,SyMemBackend *pAllocator);

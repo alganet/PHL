@@ -1473,38 +1473,34 @@ PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext
 	return SXRET_OK;
 }
 /*
- * Free an expression tree.
+ * Release one node -- its own storage and the argument set it carries, and
+ * nothing else. The tree it is part of is NOT walked: every node an expression
+ * ever produced is in the extraction set, and that set is what owns them (see
+ * PH7_ExprFreeTree).
  */
-static void ExprFreeTree(ph7_gen_state *pGen,ph7_expr_node *pNode)
+static void ExprFreeNode(ph7_gen_state *pGen,ph7_expr_node *pNode)
 {
-	if( pNode->pLeft ){
-		/* Release the left tree */
-		ExprFreeTree(&(*pGen),pNode->pLeft);
-	}
-	if( pNode->pRight ){
-		/* Release the right tree */
-		ExprFreeTree(&(*pGen),pNode->pRight);
-	}
-	if( pNode->pCond ){
-		/* Release the conditional tree used by the ternary operator */
-		ExprFreeTree(&(*pGen),pNode->pCond);
-	}
-	if( SySetUsed(&pNode->aNodeArgs) > 0 ){
-		ph7_expr_node **apArg;
-		sxu32 n;
-		/* Release node arguments */
-		apArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
-		for( n = 0 ; n < SySetUsed(&pNode->aNodeArgs) ; ++n ){
-			ExprFreeTree(&(*pGen),apArg[n]);
-		}
-		SySetRelease(&pNode->aNodeArgs);
-	}
-	/* Finally,release this node */
+	SySetRelease(&pNode->aNodeArgs);
 	SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
 }
 /*
- * Free an expression tree.
- * This function is a wrapper around ExprFreeTree() defined above.
+ * Free every node of an expression.
+ *
+ * The EXTRACTION SET owns the nodes, one entry per node, in the order the
+ * tokens were read -- which is the only container that ever sees all of them.
+ * Tree building runs on a COPY of that list and consumes it by NULLING each
+ * slot it folds in, so a walk from the roots reaches only what ended up in a
+ * tree: every delimiter a fold swallowed ('(' ')' '[' ']' ',' and the label
+ * and colon of a named argument) was dropped from the copy and then reachable
+ * from nothing. That leaked 17% of all the nodes an ordinary program compiles
+ * -- 40,072 of 235,466 on one 40-file lint run, 5.1 MB held for the life of
+ * the process -- because the compiler's AST is pool-allocated and the pool is
+ * only handed back at VM teardown, so no leak checker ever named it.
+ *
+ * Freeing from the set instead of from the roots also makes the count exact in
+ * the other direction: a node cannot be reached twice, so the ownership rule
+ * that used to have to be maintained at every fold site ("null it here, free
+ * it there, and never both") is gone.
  */
 PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet)
 {
@@ -1513,9 +1509,10 @@ PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet)
 	apNode = (ph7_expr_node **)SySetBasePtr(pNodeSet);
 	for( n = 0  ; n < SySetUsed(pNodeSet) ; ++n ){
 		if( apNode[n] ){
-			ExprFreeTree(&(*pGen),apNode[n]);
+			ExprFreeNode(&(*pGen),apNode[n]);
 		}
 	}
+	SySetReset(pNodeSet);
 	return SXRET_OK;
 }
 /*
@@ -1679,6 +1676,12 @@ PH7_PRIVATE sxi32 PH7_ExprOperandNotAVariable(ph7_gen_state *pGen,ph7_expr_node 
 }
 /* Forward declaration */
 static sxi32 ExprMakeTree(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nToken);
+/* How many nodes of tree-building scratch PH7_ExprMakeTree carries in its own
+ * frame. One pointer each, and an expression longer than this borrows from the
+ * pool instead -- 64 covers everything a hand-written statement is likely to
+ * be, and the frame only exists while ONE expression is being folded (a nested
+ * one is compiled later, from the tree). */
+#define EXPR_STACK_NODES 64
 /* Macro to check if the given node is a terminal.
  * A node is a term if it has no operator, or has already been linked into an
  * expression tree (pLeft set for binary ops, or pCond+pRight for a fully
@@ -1744,11 +1747,11 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				&& apNode[iNode]->xCode == PH7_CompileLiteral
 				&& apNode[iNode+1]
 				&& (apNode[iNode+1]->pStart->nType & PH7_TK_COLON) ){
-				/* Named argument detected: save name, free ID and colon nodes */
+				/* Named argument detected: save the name and drop the label and
+				 * colon nodes from the working copy. Dropping is all a fold ever
+				 * does now -- the extraction set frees them (PH7_ExprFreeTree). */
 				sArgName = apNode[iNode]->pStart->sData;
-				ExprFreeTree(&(*pGen),apNode[iNode]);
 				apNode[iNode] = 0;
-				ExprFreeTree(&(*pGen),apNode[iNode+1]);
 				apNode[iNode+1] = 0;
 				iNode += 2;
 				/* Guard: the value expression must not be empty.  Catches
@@ -1769,7 +1772,6 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				&& apNode[iNode+1]->xCode == PH7_CompileVariable ){
 					PH7_GenCompileError(&(*pGen),E_WARNING,apNode[iNode]->pStart->nLine,
 						"call-time pass-by-reference is depreceated");
-					ExprFreeTree(&(*pGen),apNode[iNode]);
 					apNode[iNode] = 0;
 			}
 			{
@@ -1984,9 +1986,7 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 }
 			 }
 		 }
-		 /* Free the left and right nodes */
-		 ExprFreeTree(&(*pGen),apNode[iLeft]);
-		 ExprFreeTree(&(*pGen),apNode[iCur]);
+		 /* Drop the enclosing delimiters; the extraction set frees them. */
 		 apNode[iLeft] = 0;
 		 apNode[iCur] = 0;
 	 }
@@ -2025,9 +2025,7 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 return rc;
 			 }
 		 }
-		 /* Free the left and right nodes */
-		 ExprFreeTree(&(*pGen),apNode[iLeft]);
-		 ExprFreeTree(&(*pGen),apNode[iCur]);
+		 /* Drop the enclosing delimiters; the extraction set frees them. */
 		 apNode[iLeft] = 0;
 		 apNode[iCur] = 0;
 	 }
@@ -2200,11 +2198,14 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					 }
 					 return rc;
 				 }
-				 /* Validate the left operand BEFORE linking it. A node that is both
-				  * still in apNode[] and already reachable as pNode->pLeft is freed
-				  * TWICE by PH7_ExprFreeTree on the error path — a heap-use-after-free
-				  * that `1->x;`, `"s"->x;` and `[1]->x;` all reached. Ownership moves
-				  * out of the set only once the link is certain. */
+				 /* Validate the left operand BEFORE linking it. The refusal below
+				  * used to be reached with the operand already installed as
+				  * pNode->pLeft AND still standing in apNode[], which the recursive
+				  * release then freed twice -- a heap-use-after-free `1->x;`,
+				  * `"s"->x;` and `[1]->x;` all reached. Nothing owns a node through
+				  * a tree any more (PH7_ExprFreeTree), so the order is no longer
+				  * load-bearing; it is kept because refusing before mutating is the
+				  * clearer shape either way. */
 				 if( (pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ || pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW /*'?->'*/)
 					 && apNode[iLeft]->pOp == 0 &&
 					 apNode[iLeft]->xCode != PH7_CompileVariable &&
@@ -2949,8 +2950,10 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
   */
 PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr_node **ppRoot)
 {
+	ph7_expr_node *aStack[EXPR_STACK_NODES];
 	ph7_expr_node **apNode;
 	ph7_expr_node *pNode;
+	sxu32 nNode;
 	sxi32 rc;
 	/* Reset node container */
 	SySetReset(pExprNode);
@@ -2988,24 +2991,35 @@ PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr
 		*ppRoot = 0;
 		return SXRET_OK;
 	}
-	apNode = (ph7_expr_node **)SySetBasePtr(pExprNode);
+	/* Tree building CONSUMES its array -- every slot it folds into a tree, and
+	 * every delimiter a fold swallows, is nulled -- so it cannot run on the set
+	 * that OWNS the nodes (PH7_ExprFreeTree). It gets a copy, and the copy dies
+	 * here: nothing downstream reads it, because a fold copies the node POINTER
+	 * into pLeft/pRight/pCond or into the operator's aNodeArgs. An expression of
+	 * up to EXPR_STACK_NODES tokens -- which is nearly all of them -- borrows the
+	 * copy from this frame and allocates nothing at all. */
+	nNode = SySetUsed(pExprNode);
+	apNode = aStack;
+	if( nNode > EXPR_STACK_NODES ){
+		apNode = (ph7_expr_node **)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,
+			nNode * sizeof(ph7_expr_node *));
+		if( apNode == 0 ){
+			*ppRoot = 0;
+			return SXERR_MEM;
+		}
+	}
+	SyMemcpy(SySetBasePtr(pExprNode),(void *)apNode,nNode * sizeof(ph7_expr_node *));
 	/* Make sure we are dealing with valid nodes */
-	rc = ExprVerifyNodes(&(*pGen),apNode,(sxi32)SySetUsed(pExprNode));
-	if( rc != SXRET_OK ){
-		/* Don't worry about freeing memory,upper layer will
-		 * cleanup the mess left behind.
-		 */
-		*ppRoot = 0;
-		return rc;
+	rc = ExprVerifyNodes(&(*pGen),apNode,(sxi32)nNode);
+	if( rc == SXRET_OK ){
+		/* Build the tree */
+		rc = ExprMakeTree(&(*pGen),apNode,(sxi32)nNode);
 	}
-	/* Build the tree */
-	rc = ExprMakeTree(&(*pGen),apNode,(sxi32)SySetUsed(pExprNode));
-	if( rc != SXRET_OK ){
-		/* Something goes wrong [i.e: Syntax error] */
-		*ppRoot = 0;
-		return rc;
+	/* On a syntax error the nodes stay where they are: the extraction set still
+	 * holds every one of them and the caller releases it. */
+	*ppRoot = (rc == SXRET_OK) ? apNode[0] : 0;
+	if( apNode != aStack ){
+		SyMemBackendPoolFree(&pGen->pVm->sAllocator,apNode);
 	}
-	/* Point to the root of the tree */
-	*ppRoot = apNode[0];
-	return SXRET_OK;
+	return rc;
 }

@@ -94,6 +94,9 @@ static sxi32 GenStateProcessArgValue(ph7_gen_state *pGen,ph7_vm_func_arg *pArg,S
 	/* Emit the done instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+	/* Finished, like a function body: give back the doubling slack. A default is a
+	 * handful of instructions in a container that opened at eight. */
+	SySetShrinkToFit(&pArg->aByteCode);
 	RE_SWAP_DELIMITER(pGen);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
@@ -843,6 +846,12 @@ PH7_PRIVATE sxi32 GenStateCompileFuncBody(
 			return SXERR_ABORT;
 		}
 	}
+	/* This body is finished: the emit container has been restored above, so nothing
+	 * appends to it again, and the doubling slack it is holding -- up to as much as
+	 * it uses -- is dead for the rest of the process. The execution paths re-read
+	 * SySetBasePtr on every invocation, and the first invocation cannot precede this
+	 * point, so moving the buffer here is invisible to them. */
+	SySetShrinkToFit(&pFunc->aByteCode);
 	/* All done, function body compiled */
 	return SXRET_OK;
 }

@@ -3104,6 +3104,11 @@ PH7_PRIVATE sxi32 PH7_CompileExpr(
 			rc = PH7_GenCompileError(&(*pGen),E_PARSE,pRoot->pStart->nLine,
 				"syntax error, unexpected token \",\"");
 			pGen->pEnd = pTmp;
+			/* This refusal leaves by its own door, so it owes the release the
+			 * ordinary path makes below -- the set owns every node the
+			 * expression produced, and a bare SySetRelease drops the pointers
+			 * without freeing what they point at. */
+			PH7_ExprFreeTree(&(*pGen),&sExprNode);
 			if( rc == SXERR_ABORT ){
 				SySetRelease(&sExprNode);
 				return SXERR_ABORT;

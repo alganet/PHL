@@ -11,6 +11,8 @@
 #include "sxhash.h"
 #include "sxstr.h"
 
+/* Byte budget for a set's FIRST allocation -- see SySetPut. */
+#define SXSET_FIRST_BYTES 256
 PH7_PRIVATE sxi32 SySetInit(SySet *pSet,SyMemBackend *pAllocator,sxu32 ElemSize)
 {
 	pSet->nSize = 0 ;
@@ -27,18 +29,35 @@ PH7_PRIVATE sxi32 SySetPut(SySet *pSet,const void *pItem)
 	unsigned char *zbase;
 	if( pSet->nUsed >= pSet->nSize ){
 		void *pNew;
+		sxu32 nNew;
 		if( pSet->pAllocator == 0 ){
 			return  SXERR_LOCKED;
 		}
-		if( pSet->nSize <= 0 ){
-			pSet->nSize = 4;
+		/* The FIRST growth is sized in BYTES, not in slots. It used to be eight
+		 * slots whatever they cost -- `nSize = 4` followed by the unconditional
+		 * `* 2` of the doubling step -- which is a generous opening bid for a
+		 * container whose element is large and whose population is usually one or
+		 * two. The engine's biggest such set is a function's declared arguments
+		 * (192 bytes each): 1,679 of them were live at the peak of a 40-file lint
+		 * run, every one holding eight slots, 2.6 MB to describe a few thousand
+		 * parameters. A quarter-kilobyte opening keeps all eight for the small
+		 * elements that fill them -- an instruction is 32 bytes, a pointer is 8 --
+		 * and hands the large ones only what they are likely to use. Everything
+		 * after the first doubles, as before. */
+		nNew = pSet->nSize;
+		if( nNew > 0 ){
+			nNew *= 2;
+		}else{
+			nNew = pSet->eSize > 0 ? SXSET_FIRST_BYTES / pSet->eSize : 8;
+			if( nNew < 1 ){ nNew = 1; }
+			else if( nNew > 8 ){ nNew = 8; }
 		}
-		pNew = SyMemBackendRealloc(pSet->pAllocator,pSet->pBase,pSet->eSize * pSet->nSize * 2);
+		pNew = SyMemBackendRealloc(pSet->pAllocator,pSet->pBase,pSet->eSize * nNew);
 		if( pNew == 0 ){
 			return SXERR_MEM;
 		}
 		pSet->pBase = pNew;
-		pSet->nSize <<= 1;
+		pSet->nSize = nNew;
 	}
 	zbase = (unsigned char *)pSet->pBase;
 	SX_MACRO_FAST_MEMCPY(pItem,&zbase[pSet->nUsed * pSet->eSize],pSet->eSize);
@@ -97,6 +116,42 @@ PH7_PRIVATE void * SySetPeekCurrentEntry(SySet *pSet)
 	return (void *)&zSrc[pSet->nCursor * pSet->eSize];
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
+/*
+ * Give back the slack a doubling set is holding.
+ *
+ * A set that grew by doubling ends between half full and full, so a container
+ * that will never be appended to again is holding up to as much again as it
+ * uses. That is the shape of compiled BYTECODE: a function's instructions are
+ * emitted once, at compile time, and then only read -- and they were the single
+ * largest thing on the heap of an ecosystem-gate lint run after the value table,
+ * 11.1 MB across 2,965 containers.
+ *
+ * Only for a set nothing will append to: it leaves nUsed == nSize, so the very
+ * next SySetPut reallocs. A failed shrink is not an error -- the set keeps the
+ * larger buffer it already has.
+ */
+PH7_PRIVATE void SySetShrinkToFit(SySet *pSet)
+{
+	void *pNew;
+	if( pSet->pAllocator == 0 || pSet->nSize <= pSet->nUsed ){
+		return;
+	}
+	if( pSet->nUsed < 1 ){
+		/* Nothing to keep. Spelled out rather than routed through SySetRelease,
+		 * which leaves nSize standing over a NULL base -- harmless for a set
+		 * nobody touches again, a NULL write for one that is put to. */
+		SyMemBackendFree(pSet->pAllocator,pSet->pBase);
+		pSet->pBase = 0;
+		pSet->nSize = 0;
+		return;
+	}
+	pNew = SyMemBackendRealloc(pSet->pAllocator,pSet->pBase,pSet->eSize * pSet->nUsed);
+	if( pNew == 0 ){
+		return;   /* keep what we have */
+	}
+	pSet->pBase = pNew;
+	pSet->nSize = pSet->nUsed;
+}
 PH7_PRIVATE sxi32 SySetTruncate(SySet *pSet,sxu32 nNewSize)
 {
 	if( nNewSize < pSet->nUsed ){
@@ -135,16 +190,6 @@ PH7_PRIVATE void * SySetPop(SySet *pSet)
 	pSet->nUsed--;
 	pData =  (void *)&zBase[pSet->nUsed * pSet->eSize];
 	return pData;
-}
-PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)
-{
-	const char *zBase;
-	if( nIdx >= pSet->nUsed ){
-		/* Out of range */
-		return 0;
-	}
-	zBase = (const char *)pSet->pBase;
-	return (void *)&zBase[nIdx * pSet->eSize];
 }
 /* Private hash entry.
  *
