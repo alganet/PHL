@@ -132,6 +132,117 @@ PH7_PRIVATE int PH7_VfsEmptyPathRefused(ph7_context *pCtx,int nPath)
 	return 1;
 }
 /*
+ * Is this path already anchored -- a leading slash, or a drive prefix on
+ * Windows? Everything else resolves against the working directory.
+ */
+PH7_PRIVATE int PH7_VfsPathIsAbsolute(const char *zPath,int nPath)
+{
+	if( nPath < 1 ){
+		return 0;
+	}
+	if( zPath[0] == '/' ){
+		return 1;
+	}
+#ifdef __WINNT__
+	if( zPath[0] == '\\' ){
+		return 1;
+	}
+	if( nPath > 2 && zPath[1] == ':' && (zPath[2] == '/' || zPath[2] == '\\') ){
+		return 1;
+	}
+#endif
+	return 0;
+}
+/*
+ * php's `expand_filepath()`: the absolute form of a name, built without asking
+ * the filesystem anything. Two extensions run every filename they are given
+ * through it -- ext/sqlite3 before it hands one to the library, and ext/zip for
+ * the `filename` property a script reads back -- and both need the same two
+ * properties: a relative name resolves against the working directory, and a
+ * name that does not EXIST expands just as well as one that does.
+ *
+ * The `.` and `..` segments are collapsed HERE rather than by the filesystem,
+ * which is php's own behaviour: `sub/../db` names `db` even when no `sub`
+ * directory exists, where handing the OS the uncollapsed path is ENOENT.
+ *
+ * The result is NUL-terminated without counting the byte, so it is both a
+ * length-carrying blob and a C string.
+ */
+PH7_PRIVATE void PH7_VfsExpandPath(ph7_context *pCtx,const char *zPath,int nPath,SyBlob *pOut)
+{
+	SyBlob sRaw;
+	const char *z;
+	sxu32 n,nRoot,nRaw;
+	SyBlobInit(pOut,&pCtx->pVm->sAllocator);
+	SyBlobInit(&sRaw,&pCtx->pVm->sAllocator);
+	if( !PH7_VfsPathIsAbsolute(zPath,nPath) ){
+		/* the VFS answers through the context's RESULT slot, which the caller
+		 * overwrites with its own return value afterwards */
+		const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+		PH7_MemObjRelease(pCtx->pRet);
+		if( pVfs && pVfs->xGetcwd && pVfs->xGetcwd(pCtx) == PH7_OK
+		 && (pCtx->pRet->iFlags & MEMOBJ_STRING) != 0 ){
+			SyBlobAppend(&sRaw,SyBlobData(&pCtx->pRet->sBlob),
+				SyBlobLength(&pCtx->pRet->sBlob));
+		}
+		PH7_MemObjRelease(pCtx->pRet);
+		SyBlobAppend(&sRaw,PH7_PATH_SEP_STR,sizeof(PH7_PATH_SEP_STR)-1);
+	}
+	if( nPath > 0 ){
+		SyBlobAppend(&sRaw,zPath,(sxu32)nPath);
+	}
+	/* Keep the root -- a leading slash, or a drive prefix -- and rebuild the
+	 * rest segment by segment. */
+	z = (const char *)SyBlobData(&sRaw);
+	nRaw = SyBlobLength(&sRaw);
+	nRoot = 0;
+#ifdef __WINNT__
+	if( nRaw > 1 && z[1] == ':' ){
+		nRoot = 2;
+	}
+#endif
+	if( nRoot < nRaw && (z[nRoot] == '/' || z[nRoot] == '\\') ){
+		++nRoot;
+	}
+	SyBlobAppend(pOut,z,nRoot);
+	for( n = nRoot ; n < nRaw ; ){
+		sxu32 nStart = n;
+		sxu32 nSeg;
+		while( n < nRaw && z[n] != '/' && z[n] != '\\' ){
+			++n;
+		}
+		nSeg = n - nStart;
+		if( n < nRaw ){
+			++n;   /* step past the separator */
+		}
+		if( nSeg == 0 || (nSeg == 1 && z[nStart] == '.') ){
+			continue;   /* `//` and `.` name the directory they stand in */
+		}
+		if( nSeg == 2 && z[nStart] == '.' && z[nStart+1] == '.' ){
+			/* pop the previous segment; `..` above the root is the root */
+			sxu32 nHave = SyBlobLength(pOut);
+			while( nHave > nRoot && ((char *)SyBlobData(pOut))[nHave-1] != PH7_PATH_SEP ){
+				--nHave;
+			}
+			if( nHave > nRoot ){
+				--nHave;   /* and the separator that held it */
+			}
+			pOut->nByte = nHave;   /* the blob has no truncate of its own */
+			continue;
+		}
+		if( SyBlobLength(pOut) > nRoot ){
+			/* php's expansion writes the PLATFORM's separator, which is what a
+			 * name it hands back reads as: ext/zip's `filename` property is the
+			 * one surface that shows it, and a Windows one there is spelled
+			 * with backslashes exactly as php spells it. */
+			SyBlobAppend(pOut,PH7_PATH_SEP_STR,sizeof(PH7_PATH_SEP_STR)-1);
+		}
+		SyBlobAppend(pOut,&z[nStart],nSeg);
+	}
+	SyBlobRelease(&sRaw);
+	SyBlobNullAppend(pOut);
+}
+/*
  * Compile the VFS implementations when builtins are enabled OR when disk I/O
  * is explicitly enabled (i.e. PH7_DISABLE_DISK_IO is NOT defined).
  */
@@ -177,6 +288,26 @@ static void VfsThrowSysWarning(ph7_context *pCtx,const char *zPath)
  * php's reason is the wrapper's: its own sentence when it logged one, and a
  * flat "operation failed" when it did not.
  */
+/*
+ * The errno a stream OPEN reports, which is not always the one the system left.
+ *
+ * php's plain-file opener expands the whole path before it opens anything, so a
+ * name whose parent is a FILE rather than a directory fails there and reports
+ * `No such file or directory` -- where the open itself would have said `Not a
+ * directory`. The substitution belongs to the OPEN and to nothing else: an
+ * opendir(), an unlink(), a rename(), a touch() and a mkdir() on the same name
+ * all report ENOTDIR under php, and it is only what a script reads after
+ * `Failed to open stream:` that changes.
+ */
+PH7_PRIVATE const char * PH7_VfsOpenStrerror(int iErr)
+{
+#ifdef ENOTDIR
+	if( iErr == ENOTDIR ){
+		iErr = ENOENT;
+	}
+#endif
+	return VfsStrerror(iErr);
+}
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -188,7 +319,7 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
 	}
 	PH7_VmThrowWarningFmt(pVm,"%s(%.*s): Failed to open stream: %s",
 		ph7_function_name(pCtx),nName < 0 ? (int)SyStrlen(zName) : nName,zName,
-		pVm->zOpenErr ? pVm->zOpenErr : VfsStrerror(errno));
+		pVm->zOpenErr ? pVm->zOpenErr : PH7_VfsOpenStrerror(errno));
 }
 /*
  * php's answer when NO wrapper will take a name is a reason of its own, raised
@@ -3637,12 +3768,7 @@ static int PH7_builtin_strglob(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 /* One matched path. The blob it points into grows as the walk does, so an
  * OFFSET is what may be kept -- a pointer would not survive the next append. */
-typedef struct glob_hit glob_hit;
-struct glob_hit
-{
-	sxu32 nOfs;   /* where this path starts in glob_stream.sHit */
-	sxu32 nLen;
-};
+typedef PH7_GlobHit glob_hit;
 typedef struct glob_stream glob_stream;
 struct glob_stream
 {
@@ -3941,6 +4067,69 @@ static sxi32 GlobExpand(ph7_vm *pVm,const char *zPat,int nPat,int bOnlyDir,
 		return rc;
 	}
 	rc = GlobLeaf(pVm,zPat,nPat,bOnlyDir,pHit,pSet);
+	if( rc == SXRET_OK ){
+		GlobSort(pHit,pSet,nStart);
+	}
+	return rc;
+}
+/*
+ * Every entry of one directory, in the shape above. This is php's
+ * `php_stream_scandir` with its alphasort comparator, which ZipArchive::
+ * addPattern() walks: unlike a glob it keeps the DOTTED names -- `.` and `..`
+ * among them -- because php's caller is the one that decides what to do with
+ * them, and it decides by STATTING each rather than by looking at the name.
+ */
+PH7_PRIVATE sxi32 PH7_VfsListDir(ph7_vm *pVm,const char *zDir,int nDir,SyBlob *pHit,SySet *pSet)
+{
+	const ph7_io_stream *pStream;
+	const char *zDev;
+	void *pHandle;
+	ph7_value sEntry;
+	ph7_context sCtx;
+	char zPath[PH7_GLOB_PATH_MAX];
+	sxu32 nStart = SySetUsed(pSet);
+	sxi32 rc = SXRET_OK;
+	if( nDir < 1 || nDir >= (int)sizeof(zPath) ){
+		return SXERR_INVALID;
+	}
+	SyMemcpy(zDir,zPath,(sxu32)nDir);
+	zPath[nDir] = 0;
+	zDev = zPath;
+	pStream = PH7_VmGetStreamDevice(&(*pVm),&zDev,nDir);
+	if( pStream == 0 || pStream->xOpenDir == 0 || pStream->xReadDir == 0 ){
+		return SXERR_IO;
+	}
+	PH7_MemObjInit(pVm,&sEntry);
+	if( pStream->xOpenDir(zDev,&sEntry,&pHandle) != PH7_OK ){
+		PH7_MemObjRelease(&sEntry);
+		return SXERR_IO;
+	}
+	VmInitCallContext(&sCtx,pVm,0,&sEntry,0);
+	for(;;){
+		const char *zName;
+		int nName = 0;
+		PH7_GlobHit sHit;
+		ph7_value_reset_string_cursor(&sEntry);
+		if( pStream->xReadDir(pHandle,&sCtx) != PH7_OK ){
+			break;
+		}
+		zName = ph7_value_to_string(&sEntry,&nName);
+		if( nName < 1 ){
+			continue;
+		}
+		sHit.nOfs = SyBlobLength(pHit);
+		sHit.nLen = (sxu32)nName;
+		SyBlobAppend(pHit,zName,(sxu32)nName);
+		rc = SySetPut(pSet,(const void *)&sHit);
+		if( rc != SXRET_OK ){
+			break;
+		}
+	}
+	VmReleaseCallContext(&sCtx);
+	PH7_MemObjRelease(&sEntry);
+	if( pStream->xCloseDir ){
+		pStream->xCloseDir(pHandle);
+	}
 	if( rc == SXRET_OK ){
 		GlobSort(pHit,pSet,nStart);
 	}
@@ -5012,6 +5201,14 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		/* Install the file:// stream */
 		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);
 	}
+#if defined(PH7_ENABLE_ZLIB) && !defined(PH7_DISABLE_BUILTIN_FUNC)
+	/* zip:// -- an OPENER and nothing else, exactly as php's is: no url_stat,
+	 * so `file_exists('zip://…')` is false, and no directory door, so an
+	 * archive can only be listed through ZipArchive. It goes on LAST because
+	 * php registers it last and `stream_get_wrappers()` answers in that
+	 * order. */
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sZIP_Stream);
+#endif
 #endif /* PH7_DISABLE_DISK_IO */
 
 	return SXRET_OK;

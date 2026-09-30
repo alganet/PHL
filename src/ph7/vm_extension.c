@@ -40,7 +40,14 @@ static int VmExtAvailable(int iExt)
 	}
 #endif
 #ifndef PH7_ENABLE_ZLIB
-	if( iExt == PH7_EXT_ZLIB ){
+	/* ext/zip rides the same guard: php's own requires zlib, and so does the
+	 * derivation here. */
+	if( iExt == PH7_EXT_ZLIB || iExt == PH7_EXT_ZIP ){
+		return 0;
+	}
+#endif
+#ifdef PH7_DISABLE_BUILTIN_FUNC
+	if( iExt == PH7_EXT_ZIP ){
 		return 0;
 	}
 #endif

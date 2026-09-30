@@ -519,28 +519,6 @@ static sxi32 Sq3ErrorFromDb(ph7_context *pCtx,phl_sq3 *pConn,const char *zFn)
  * Opening and closing
  * ------------------------------------------------------------------------ */
 /*
- * Is this an absolute path already? The Windows spelling has three shapes a
- * POSIX one does not -- a drive letter, a leading backslash and a UNC share.
- */
-static int Sq3PathIsAbsolute(const char *zPath,int nPath)
-{
-	if( nPath < 1 ){
-		return 0;
-	}
-	if( zPath[0] == '/' ){
-		return 1;
-	}
-#ifdef __WINNT__
-	if( zPath[0] == '\\' ){
-		return 1;
-	}
-	if( nPath > 2 && zPath[1] == ':' && (zPath[2] == '/' || zPath[2] == '\\') ){
-		return 1;
-	}
-#endif
-	return 0;
-}
-/*
  * php's `expand_filepath()`, which every ext/sqlite3 open runs the filename
  * through unless it is exactly `:memory:` or the empty string. It is what makes
  * a relative name resolve against the working directory -- and, less obviously,
@@ -550,81 +528,9 @@ static int Sq3PathIsAbsolute(const char *zPath,int nPath)
  * is not, so an unexpanded `file:x` would open two different things on this
  * engine's two platforms while php opens neither.
  *
- * The `.` and `..` segments are collapsed HERE rather than by the filesystem,
- * which is php's own behaviour: `sub/../db` opens `db` even when no `sub`
- * directory exists, where handing the OS the uncollapsed path is ENOENT.
- */
-static void Sq3ExpandPath(ph7_context *pCtx,const char *zPath,int nPath,SyBlob *pOut)
-{
-	SyBlob sRaw;
-	const char *z;
-	sxu32 n,nRoot,nRaw;
-	SyBlobInit(pOut,&pCtx->pVm->sAllocator);
-	SyBlobInit(&sRaw,&pCtx->pVm->sAllocator);
-	if( !Sq3PathIsAbsolute(zPath,nPath) ){
-		/* the VFS answers through the context's RESULT slot, which the caller
-		 * overwrites with its own return value afterwards */
-		const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
-		PH7_MemObjRelease(pCtx->pRet);
-		if( pVfs && pVfs->xGetcwd && pVfs->xGetcwd(pCtx) == PH7_OK
-		 && (pCtx->pRet->iFlags & MEMOBJ_STRING) != 0 ){
-			SyBlobAppend(&sRaw,SyBlobData(&pCtx->pRet->sBlob),
-				SyBlobLength(&pCtx->pRet->sBlob));
-		}
-		PH7_MemObjRelease(pCtx->pRet);
-		SyBlobAppend(&sRaw,"/",sizeof(char));
-	}
-	if( nPath > 0 ){
-		SyBlobAppend(&sRaw,zPath,(sxu32)nPath);
-	}
-	/* Keep the root -- a leading slash, or a drive prefix -- and rebuild the
-	 * rest segment by segment. */
-	z = (const char *)SyBlobData(&sRaw);
-	nRaw = SyBlobLength(&sRaw);
-	nRoot = 0;
-#ifdef __WINNT__
-	if( nRaw > 1 && z[1] == ':' ){
-		nRoot = 2;
-	}
-#endif
-	if( nRoot < nRaw && (z[nRoot] == '/' || z[nRoot] == '\\') ){
-		++nRoot;
-	}
-	SyBlobAppend(pOut,z,nRoot);
-	for( n = nRoot ; n < nRaw ; ){
-		sxu32 nStart = n;
-		sxu32 nSeg;
-		while( n < nRaw && z[n] != '/' && z[n] != '\\' ){
-			++n;
-		}
-		nSeg = n - nStart;
-		if( n < nRaw ){
-			++n;   /* step past the separator */
-		}
-		if( nSeg == 0 || (nSeg == 1 && z[nStart] == '.') ){
-			continue;   /* `//` and `.` name the directory they stand in */
-		}
-		if( nSeg == 2 && z[nStart] == '.' && z[nStart+1] == '.' ){
-			/* pop the previous segment; `..` above the root is the root */
-			sxu32 nHave = SyBlobLength(pOut);
-			while( nHave > nRoot && ((char *)SyBlobData(pOut))[nHave-1] != '/' ){
-				--nHave;
-			}
-			if( nHave > nRoot ){
-				--nHave;   /* and the separator that held it */
-			}
-			pOut->nByte = nHave;   /* the blob has no truncate of its own */
-			continue;
-		}
-		if( SyBlobLength(pOut) > nRoot ){
-			SyBlobAppend(pOut,"/",sizeof(char));
-		}
-		SyBlobAppend(pOut,&z[nStart],nSeg);
-	}
-	SyBlobRelease(&sRaw);
-	SyBlobNullAppend(pOut);
-}
-/*
+ * The walk itself is PH7_VfsExpandPath(), which ext/zip runs its own filenames
+ * through for the same reason.
+ *
  * The open both `__construct` and `open` are. php refuses a SECOND open on a
  * live handle before it looks at the arguments' meaning, throws a plain
  * Exception (not SQLite3Exception -- the object cannot have been told to use
@@ -669,7 +575,7 @@ static sxi32 Sq3OpenImpl(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		SyBlobNullAppend(&sPath);
 	}else{
 		SyBlobRelease(&sPath);
-		Sq3ExpandPath(pCtx,zFile,nFile,&sPath);
+		PH7_VfsExpandPath(pCtx,zFile,nFile,&sPath);
 	}
 	rc = sqlite3_open_v2((const char *)SyBlobData(&sPath),&pConn->pDb,iFlags,0);
 	SyBlobRelease(&sPath);

@@ -2659,6 +2659,19 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 			ph7_create_function(&(*pVm),aZlib[n].zName,aZlib[n].xFunc,pVm);
 		}
 	}
+	/* ext/zip: the ZipArchive class and the ten deprecated procedural verbs.
+	 * It stands ON ext/zlib -- a deflated member is the format's normal case,
+	 * and php's own build requires the library for the same reason -- so it
+	 * mounts inside that guard and after it. */
+	{
+		const ph7_builtin_func *aZip;
+		sxu32 nZip = 0,n;
+		PH7_VmInstallZip(&(*pVm));
+		aZip = PH7_ZipFuncTable(&nZip);
+		for( n = 0 ; n < nZip ; ++n ){
+			ph7_create_function(&(*pVm),aZip[n].zName,aZip[n].xFunc,pVm);
+		}
+	}
 #endif
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
@@ -3673,6 +3686,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* And its deflate/inflate contexts: a z_stream's window is libz's own
 	 * allocation, which the wholesale release below would not reach. */
 	PH7_ZlibVmReset(&(*pVm));
+	PH7_ZipVmReset(&(*pVm));
 #endif
 #ifdef PH7_ENABLE_OPENSSL
 	/* And every certificate, key and signing request still held: each is
@@ -3733,6 +3747,9 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 #ifdef PH7_ENABLE_ZLIB
 	/* Same rule for the z_streams behind still-open Deflate/InflateContexts. */
 	PH7_ZlibVmRelease(pVm);
+	/* ...and for the archives behind still-open ZipArchives, whose entry
+	 * tables are this allocator's but whose lifetime is not the object's. */
+	PH7_ZipVmRelease(pVm);
 #endif
 #ifdef PH7_ENABLE_OPENSSL
 	/* Same rule for the X509/EVP_PKEY handles behind still-open objects. */

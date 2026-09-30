@@ -3225,11 +3225,23 @@ static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
  * installed, so a name a build does not carry is simply skipped.
  *
  * Only names this engine SHIPS are listed; php's own deprecated set is larger
- * (strftime, utf8_encode, the whole mhash and zip_* families) and every one of
- * those is a name PHL does not have.
+ * (strftime, utf8_encode, the whole mhash family) and every one of those is a
+ * name PHL does not have.
  */
 static const ph7_deprecated_name aDeprecatedFunc[] = {
 	{ "curl_close",        "8.5, as it has no effect since PHP 8.0" },
+	/* ext/zip's whole procedural half, deprecated together in 8.0. php names a
+	 * replacement for seven of the ten and none for the other three. */
+	{ "zip_open",          "8.0, use ZipArchive::open() instead" },
+	{ "zip_close",         "8.0, use ZipArchive::close() instead" },
+	{ "zip_read",          "8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_open",    "8.0" },
+	{ "zip_entry_close",   "8.0" },
+	{ "zip_entry_read",    "8.0, use ZipArchive::getFromIndex() instead" },
+	{ "zip_entry_name",    "8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_compressedsize", "8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_filesize", "8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_compressionmethod", "8.0, use ZipArchive::statIndex() instead" },
 	{ "finfo_close",       "8.5, as finfo objects are freed automatically" },
 	{ "curl_share_close",  "8.5, as it has no effect since PHP 8.0" },
 	{ "DateInterval::__wakeup",

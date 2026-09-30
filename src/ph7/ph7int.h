@@ -1839,6 +1839,15 @@ struct ph7_class
 	                       * materialize lazily and INDIVIDUALLY on first access (php 8.1: a broken
 	                       * sibling case does not poison a valid one); an unmaterialized case has
 	                       * nIdx == SXU32_HIGH. */
+	void (*xNew)(ph7_vm *,ph7_class_instance *); /* php's create_object handler, run once the
+	                       * instance frame exists and before any constructor. A native class whose
+	                       * php counterpart answers its declared properties through a READ handler
+	                       * uses it to SEED those slots: php's ZipArchive declares `public int
+	                       * $numFiles;` with no default and still shows 0 on a fresh object, because
+	                       * the handler answers rather than the slot. Seeding is the same fact from
+	                       * the other side and keeps Reflection honest -- hasDefaultValue() stays
+	                       * false, because there is no default, only a starting value. Resolved
+	                       * through the ANCESTORS exactly as xRelease is. */
 	void (*xRelease)(ph7_vm *,ph7_class_instance *); /* Native teardown for an instance of this class,
 	                       * run by PH7_ClassInstanceRelease while the instance's slots are still
 	                       * readable. This is NOT __destruct: php's WeakReference declares no
@@ -2344,6 +2353,9 @@ struct PH7_NativeClassSpec
 	const PH7_NativePropDef   *aProp;   sxu32 nProp;
 	void (*xRelease)(ph7_vm *,ph7_class_instance *); /* or 0; see ph7_class::xRelease */
 	const PH7_NativeIterVtab *pIterVtab; /* or 0; see ph7_class::pIterVtab */
+	/* xNew is not stated here: a spec that wants one installs it after mounting
+	 * with PH7_NativeClassInstallNewHook(), the way the property, set and
+	 * comparison hooks are installed. */
 	sxi32 (*xPresent)(ph7_vm *,ph7_class_instance *,ph7_value *,int); /* or 0; see ph7_class::xPresent */
 };
 /*
@@ -2385,6 +2397,8 @@ PH7_PRIVATE int PH7_ClassNativePropOwns(ph7_class_instance *pThis,const SyString
 PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *));
+PH7_PRIVATE sxi32 PH7_NativeClassInstallNewHook(ph7_vm *pVm,const char *zClass,
+	void (*xNew)(ph7_vm *,ph7_class_instance *));
 PH7_PRIVATE int PH7_ClassNativeCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,sxi32 *pResult);
 PH7_PRIVATE int PH7_ClassNativeCmpValue(ph7_class_instance *pLeft,ph7_value *pOther,
 	int bReversed,sxi32 *pResult);
@@ -3677,6 +3691,8 @@ struct ph7_vm
 	void *pPhars;              /* phl_phar registry chain (ext/phar): every archive this run
 	                            * opened, freed on reset/release. php's own cache is
 	                            * per-request and behaves the same way. */
+	void *pZips;               /* phl_zip registry chain (ext/zip): every archive a ZipArchive
+	                            * or a `zip://` open is holding, freed on reset/release */
 	SyBlob sPharRunning;       /* The archive the running script came from, as Phar::running()
 	                            * answers it: set by Phar::mapPhar(), empty outside one. */
 	SyBlob sPharErr;           /* The phar wrapper's open-failure sentence. It has to outlive the
@@ -5450,8 +5466,37 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 /* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
  * fopen/opendir/file_* family in vfs_stream.c. */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
+/* strerror() for a failed stream OPEN: php's own substitution of ENOENT for
+ * ENOTDIR, which belongs to the open and to no other file operation. */
+PH7_PRIVATE const char * PH7_VfsOpenStrerror(int iErr);
 PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri);
 PH7_PRIVATE int PH7_VfsEmptyPathRefused(ph7_context *pCtx,int nPath);
+/* The separator php's own path expansion writes on this platform. */
+#ifdef __WINNT__
+#define PH7_PATH_SEP      '\\'
+#define PH7_PATH_SEP_STR  "\\"
+#else
+#define PH7_PATH_SEP      '/'
+#define PH7_PATH_SEP_STR  "/"
+#endif
+PH7_PRIVATE int PH7_VfsPathIsAbsolute(const char *zPath,int nPath);
+PH7_PRIVATE void PH7_VfsExpandPath(ph7_context *pCtx,const char *zPath,int nPath,SyBlob *pOut);
+/*
+ * One name a directory walk produced, as an OFFSET into the blob that holds
+ * them back to back -- the blob grows as the walk does, so a pointer would not
+ * survive the next append. It is the shape glob:// keeps its matches in and the
+ * shape ext/zip's addGlob()/addPattern() read them back out of.
+ */
+typedef struct PH7_GlobHit PH7_GlobHit;
+struct PH7_GlobHit
+{
+	sxu32 nOfs;
+	sxu32 nLen;
+};
+/* Every entry of ONE directory, `.` and `..` included and sorted by bytes --
+ * php's `php_stream_scandir` with its alphasort comparator, which is what
+ * ZipArchive::addPattern() walks. */
+PH7_PRIVATE sxi32 PH7_VfsListDir(ph7_vm *pVm,const char *zDir,int nDir,SyBlob *pHit,SySet *pSet);
 /* A wrapper's own reason for refusing the open in flight, which is what php
  * prints after "Failed to open stream:" instead of an errno. Set from an xOpen
  * body; PH7_StreamOpenHandle() re-arms the default before every open. */
@@ -6421,6 +6466,20 @@ PH7_PRIVATE sxi32 PH7_VmInstallOpenSslX509(ph7_vm *pVm);
 PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslX509FuncTable(sxu32 *pnEntry);
 PH7_PRIVATE void PH7_SslVmReset(ph7_vm *pVm);
 PH7_PRIVATE void PH7_SslVmRelease(ph7_vm *pVm);
+/* ext/zip: the ZipArchive class, its ten deprecated procedural verbs and the
+ * read-only `zip://` wrapper. It rides ext/zlib's build guard because php's own
+ * requires zlib -- a deflated member is the format's normal case. */
+#ifdef PH7_ENABLE_ZLIB
+PH7_PRIVATE sxi32 PH7_VmInstallZip(ph7_vm *pVm);
+PH7_PRIVATE const ph7_builtin_func * PH7_ZipFuncTable(sxu32 *pnEntry);
+PH7_PRIVATE int PH7_ZipStreamIs(const ph7_io_stream *pStream);
+PH7_PRIVATE int PH7_ZipStreamViaWrapper(void *pHandle);
+#endif
+PH7_PRIVATE void PH7_ZipVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_ZipVmRelease(ph7_vm *pVm);
+/* The name get_resource_type() gives one of ext/zip's two procedural handles,
+ * or 0 when the resource is not one of them. */
+PH7_PRIVATE const char * PH7_ZipResourceType(void *pResource);
 PH7_PRIVATE sxi32 PH7_VmInstallZlib(ph7_vm *pVm);
 PH7_PRIVATE const ph7_builtin_func * PH7_ZlibFuncTable(sxu32 *pnEntry);
 PH7_PRIVATE void PH7_ZlibVmReset(ph7_vm *pVm);
@@ -6433,6 +6492,7 @@ PH7_PRIVATE int PH7_ZlibFilterRun(phl_stream_filter *pFilter,phl_brigade *pIn,
 	phl_brigade *pOut,int iFlags);
 PH7_PRIVATE void PH7_ZlibFilterClose(phl_stream_filter *pFilter);
 extern const ph7_io_stream sZLIB_Stream;
+extern const ph7_io_stream sZIP_Stream;
 #endif
 PH7_PRIVATE void PH7_VmAddResponseHeader(ph7_vm *pVm,const char *zName,const char *zValue);
 PH7_PRIVATE sxi32 PH7_VmInstallPhar(ph7_vm *pVm);

@@ -2246,6 +2246,18 @@ PH7_PRIVATE ph7_class_instance * PH7_NewClassInstance(ph7_vm *pVm,ph7_class *pCl
 	 * subclass that overrides __construct without calling parent::__construct still
 	 * reports the right site. Every instantiation path lands here. */
 	PH7_VmStampThrowableSite(&(*pVm),pNew);
+	/* php's create_object handler, resolved through the ANCESTORS the way the
+	 * teardown one is: a subclass of a native class whose slots are SEEDED at
+	 * `new` (ZipArchive's six) must start with the same six. */
+	{
+		ph7_class *pOwner = pClass;
+		while( pOwner && pOwner->xNew == 0 ){
+			pOwner = pOwner->pBase;
+		}
+		if( pOwner && pOwner->xNew ){
+			pOwner->xNew(&(*pVm),pNew);
+		}
+	}
 	return pNew;
 }
 /*

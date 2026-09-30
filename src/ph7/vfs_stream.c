@@ -227,6 +227,18 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 		 * `stream-context` and the filter `stream filter`. */
 		return "stream filter";
 	}
+#if defined(PH7_ENABLE_ZLIB) && !defined(PH7_DISABLE_BUILTIN_FUNC)
+	{
+		/* ext/zip's two procedural handles, which are not streams at all:
+		 * `zip_open()` hands out a `Zip Directory` and `zip_read()` a
+		 * `Zip Entry`, and get_resource_type() is the only way a script tells
+		 * one from the other. */
+		const char *zZip = PH7_ZipResourceType(pResource);
+		if( zZip ){
+			return zZip;
+		}
+	}
+#endif
 	return "Unknown";
 }
 /*
@@ -4189,6 +4201,21 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 		*pzWrapper = *pzStream = "RFC2397";
 		return;
 	}
+#if defined(PH7_ENABLE_ZLIB) && !defined(PH7_DISABLE_BUILTIN_FUNC)
+	if( PH7_ZipStreamIs(pS) ){
+		/* One device, two doors, the same shape ZLIB has below: `zip://` opens
+		 * it through a WRAPPER and ZipArchive::getStream() hands one out
+		 * directly. php reports the ops as `zip` either way and names the
+		 * wrapper only for the first -- and here the URI cannot tell them
+		 * apart, because getStream()'s stream carries the ENTRY name as its
+		 * uri, so the handle is asked instead. */
+		*pzStream = "zip";
+		if( PH7_ZipStreamViaWrapper(pDev->pHandle) ){
+			*pzWrapper = "zip wrapper";
+		}
+		return;
+	}
+#endif
 #ifdef PH7_ENABLE_ZLIB
 	if( PH7_ZlibStreamIs(pS) ){
 		/* One device, two doors: compress.zlib:// goes through a WRAPPER and

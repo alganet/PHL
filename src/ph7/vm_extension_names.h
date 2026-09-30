@@ -48,12 +48,13 @@
 #define PH7_EXT_ZLIB         29
 #define PH7_EXT_PHAR         30
 #define PH7_EXT_OPENSSL      31
+#define PH7_EXT_ZIP          32
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "fileinfo", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
-	"posix", "SimpleXML", "sqlite3", "zlib", "Phar", "openssl",
+	"posix", "SimpleXML", "sqlite3", "zlib", "Phar", "openssl", "zip",
 };
 
 typedef struct VmExtName VmExtName;
@@ -571,6 +572,12 @@ static const VmExtName aExtFunc[] = {
 	{"openssl_pkey_derive",PH7_EXT_OPENSSL}, {"openssl_random_pseudo_bytes",PH7_EXT_OPENSSL}, {"openssl_spki_new",PH7_EXT_OPENSSL},
 	{"openssl_spki_verify",PH7_EXT_OPENSSL}, {"openssl_spki_export",PH7_EXT_OPENSSL}, {"openssl_spki_export_challenge",PH7_EXT_OPENSSL},
 	{"openssl_get_cert_locations",PH7_EXT_OPENSSL},
+	/* zip -- php's own order, and every one of the ten is deprecated */
+	{"zip_open",PH7_EXT_ZIP}, {"zip_close",PH7_EXT_ZIP}, {"zip_read",PH7_EXT_ZIP},
+	{"zip_entry_open",PH7_EXT_ZIP}, {"zip_entry_close",PH7_EXT_ZIP},
+	{"zip_entry_read",PH7_EXT_ZIP}, {"zip_entry_name",PH7_EXT_ZIP},
+	{"zip_entry_compressedsize",PH7_EXT_ZIP}, {"zip_entry_filesize",PH7_EXT_ZIP},
+	{"zip_entry_compressionmethod",PH7_EXT_ZIP},
 };
 
 static const VmExtName aExtClass[] = {
@@ -706,6 +713,8 @@ static const VmExtName aExtClass[] = {
 	{"OpenSSLCertificate",PH7_EXT_OPENSSL},
 	{"OpenSSLCertificateSigningRequest",PH7_EXT_OPENSSL},
 	{"OpenSSLAsymmetricKey",PH7_EXT_OPENSSL},
+	/* zip */
+	{"ZipArchive",PH7_EXT_ZIP},
 };
 
 static const VmExtName aExtConst[] = {

@@ -926,6 +926,27 @@ PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *p
 	return 1;
 }
 /*
+ * php's create_object handler for a mounted native class: the C routine that
+ * runs once the instance frame exists and before any constructor.
+ *
+ * It exists for one shape -- a class whose properties php DECLARES and then
+ * answers through a read_property handler rather than out of the slots. Seeding
+ * the slots reproduces every surface of that at once (the read, `var_dump`, the
+ * `(array)` cast, `json_encode`, `foreach`, `serialize`, `get_object_vars`),
+ * and leaves the DECLARATION alone: the properties still have no default, so
+ * Reflection's hasDefaultValue() answers false the way php's does.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassInstallNewHook(ph7_vm *pVm,const char *zClass,
+	void (*xNew)(ph7_vm *,ph7_class_instance *))
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pClass->xNew = xNew;
+	return SXRET_OK;
+}
+/*
  * Install a write handler on a mounted native class and mark every INSTANCE
  * property it declares as filtered, which is what makes instantiation register
  * the slots the filter looks up. Called by the owning installer right after
