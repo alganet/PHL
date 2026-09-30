@@ -4672,12 +4672,14 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		nSize = (sxu32)nSizeSigned;
 	}
-	if( nSize >= pMap->nEntry ){
-		/* Return the whole array */
-		ph7_array_add_elem(pArray,0,apArg[0]);
-		ph7_result_value(pCtx,pArray);
-		return PH7_OK;
-	}
+	/* No "the whole array fits in one chunk" shortcut: it answered the INPUT
+	 * unchanged, which is two wrong answers. An EMPTY input came back as one
+	 * empty chunk where php answers no chunks at all -- twig's ArrayExpression
+	 * calls array_chunk() on a node list that is empty for `{{ foo.bar }}`, read
+	 * $pair[0] out of the phantom chunk and compiled a null into the template,
+	 * which then looped forever rendering it. And a short array with STRING keys
+	 * kept them, where php reindexes every chunk unless $preserve_keys says
+	 * otherwise. The loop below is already right about both. */
 	bPreserve = 0;
 	if( nArg > 2 ){
 		/* The third argument has a bool type hint in PHP.  Values that
