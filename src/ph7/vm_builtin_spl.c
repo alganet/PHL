@@ -699,12 +699,14 @@ static void SplMembersLoad(ph7_class_instance *pThis,ph7_value *pMembers)
  * the SLOT rather than the hashmap because that is what the array builtins below take.
  *
  * The slot is a memobj POOL entry (an instance attribute is `aMemObj[nIdx]`), and the
- * copy-on-write separation reserves one memobj per copied element -- which can grow, and
- * therefore MOVE, that pool. Holding the pointer across it left every caller reading a
- * freed buffer: harmless while the pool never moved, and a hard SIGSEGV once a program
- * allocated enough for the mapping to be relocated (twig's suite, at a million live
- * slots). Re-ask the instance for the slot afterwards -- the attribute's INDEX is what
- * survives a move, and that is what the lookup goes through.
+ * copy-on-write separation reserves one memobj per copied element. That used to grow,
+ * and therefore MOVE, the pool: holding the pointer across it left every caller reading
+ * a freed buffer -- harmless while the pool happened not to move, and a hard SIGSEGV
+ * once a program allocated enough for the mapping to be relocated (twig's suite, at a
+ * million live slots). Since P1 the pool's segments are fixed and the address is stable,
+ * so re-asking is no longer load-bearing for THAT reason; it is kept because the lookup
+ * goes through the attribute by NAME, which is also what survives the property being
+ * unset and re-created underneath (VmRecreateDeclaredAttr).
  */
 static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 {
@@ -2082,10 +2084,11 @@ static int DualReady(ph7_class_instance *pThis)
 		|| PH7_NativeAttrObj(pThis,AP_LIST) != 0);
 }
 /*
- * Assign one of the instance's own slots. The slot pointer is re-resolved here on
- * purpose: it lives inside pVm->aMemObj, a SySet that REALLOCATES as the VM
- * reserves objects, so any pointer taken before a call into user code (and every
- * inner->current() is one) may be stale by the time the call returns.
+ * Assign one of the instance's own slots. The slot is re-resolved BY NAME here on
+ * purpose: a call into user code (and every inner->current() is one) can unset and
+ * re-create the property underneath, which gives it a different pool slot. It used
+ * to matter for a second reason as well -- the pool itself reallocated as the VM
+ * reserved objects -- and that one is gone since P1 (fixed segments).
  */
 static void DualSetSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,ph7_value *pVal)
 {
@@ -4915,9 +4918,10 @@ static void RitErase(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int
 	}
 }
 /*
- * The sub-iterator at a level. Re-resolved on every use on purpose: RitAt()
- * hands back a pointer into pVm->aMemObj, which REALLOCATES as the VM reserves
- * objects, and every call into a user iterator reserves some (rule 47).
+ * The sub-iterator at a level. Re-resolved on every use on purpose: every call into
+ * a user iterator can rewrite the level's own storage (rule 47). It used to matter
+ * for a second reason as well -- RitAt() hands back a pointer into pVm->aMemObj and
+ * the pool reallocated as the VM reserved objects -- and that one is gone since P1.
  */
 static ph7_class_instance * RitSub(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel)
 {
@@ -5045,7 +5049,7 @@ static sxi32 RitMoveForward(ph7_context *pCtx)
 			if( rc != SXRET_OK ){
 				return rc;
 			}
-			pSub = RitSub(pVm,pThis,iLevel);   /* the call may have moved aMemObj */
+			pSub = RitSub(pVm,pThis,iLevel);   /* the call may have rewritten the level */
 			if( pSub == 0 ){
 				return PH7_OK;
 			}
@@ -7103,8 +7107,9 @@ static sxi64 HeapCount(ph7_vm *pVm,ph7_class_instance *pThis)
 	ph7_hashmap *pMap = HeapMap(pVm,pThis);
 	return pMap ? (sxi64)pMap->nEntry : 0;
 }
-/* Re-resolved on every use: any call into the user's compare() may have moved
- * pVm->aMemObj under us (rule 47). */
+/* Re-resolved on every use: any call into the user's compare() may have rewritten
+ * the heap's own storage under us (rule 47). It also used to move the pool, which
+ * P1's fixed segments took care of. */
 static ph7_value * HeapAt(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i)
 {
 	ph7_hashmap *pMap = HeapMap(pVm,pThis);

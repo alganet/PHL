@@ -2628,9 +2628,9 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 			}
 		}
 		/* Fetch the source value LAST: PH7_VmCreateDynamicAttr above may have
-		 * reserved a slot and reallocated pVm->aMemObj, which would dangle any
-		 * ph7_value* obtained before it. pvDest from the synth path already points
-		 * into the post-realloc aMemObj; resolve pvSrc now so both are current. */
+		 * reserved a slot, which used to reallocate pVm->aMemObj and dangle any
+		 * ph7_value* obtained before it. Redundant since P1 (fixed segments);
+		 * left for the harvest sweep (PERF.md P1). */
 		pvSrc = ExtractClassAttrValue(pVm,pSrcAttr);
 		if( (pSrcAttr->iState & VM_CLASS_ATTR_REFBOUND) && pDestAttr ){
 			/* php preserves references across clone: the clone shares the SAME slot

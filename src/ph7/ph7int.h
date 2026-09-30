@@ -4072,8 +4072,8 @@ struct ph7_vm
 	sxu8 bInReset;             /* Set while ph7_vm_reset() bulk-releases the per-exec
 								* object pool. Suppresses user __destruct invocation during
 								* that teardown: destructors would run arbitrary PHP against a
-								* half-reset VM (reference table already gone, $GLOBALS nulled)
-								* and could realloc aMemObj mid-release. PH7 never ran
+								* half-reset VM (reference table already gone, $GLOBALS
+								* nulled). PH7 never ran
 								* global-scope destructors before (release nuked the arena),
 								* so this preserves prior semantics while staying crash-safe.
 								* Engine-level instance memory is still reclaimed. */

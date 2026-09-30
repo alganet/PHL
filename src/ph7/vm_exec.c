@@ -7619,8 +7619,10 @@ case PH7_OP_CALL: {
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[iVariadicIdx].sName,FALSE,TRUE);
 				if( pObj ){
 					/* Capture the slot index now: PH7_HashmapInsert below can
-					 * PH7_ReserveMemObj, reallocating pVm->aMemObj and dangling pObj
-					 * (same latent UAF the positional path guards against). */
+					 * PH7_ReserveMemObj, which used to reallocate pVm->aMemObj and
+					 * dangle pObj. Redundant since P1 -- the pool's segments are
+					 * fixed, so a slot's address never moves. Left for the harvest
+					 * sweep (PERF.md P1). */
 					sxu32 nVariadicSlot;
 					PH7_MemObjToHashmap(pObj);
 					nVariadicSlot = pObj->nIdx;
@@ -7709,7 +7711,7 @@ case PH7_OP_CALL: {
 							}
 						}
 					}
-					sArg.nIdx = nVariadicSlot; /* pObj may be stale here (aMemObj realloc) */
+					sArg.nIdx = nVariadicSlot; /* the saved index (see above; redundant since P1) */
 					sArg.pUserData = 0;
 					SySetPut(&pFrame->sArg,(const void *)&sArg);
 				}
@@ -7759,9 +7761,9 @@ case PH7_OP_CALL: {
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 				if( pObj ){
 					/* Capture the slot index now: PH7_HashmapInsert below can PH7_ReserveMemObj,
-					 * reallocating pVm->aMemObj and dangling pObj — so don't read pObj->nIdx after
-					 * the packing loop (pre-existing UAF, masked by the pool allocator). pMap is a
-					 * separately-allocated hashmap and stays valid across the realloc. */
+					 * which used to reallocate pVm->aMemObj and dangle pObj (a real UAF, masked by
+					 * the pool allocator). Redundant since P1 -- the pool's segments are fixed, so
+					 * a slot's address never moves. Left for the harvest sweep (PERF.md P1). */
 					sxu32 nVariadicIdx;
 					/* Initialize as empty array */
 					PH7_MemObjToHashmap(pObj);
@@ -7825,7 +7827,7 @@ case PH7_OP_CALL: {
 							pArg++;
 						}
 					}
-					sArg.nIdx = nVariadicIdx; /* pObj may be stale here (aMemObj realloc) — use the saved index */
+					sArg.nIdx = nVariadicIdx; /* the saved index (see above; redundant since P1) */
 					sArg.pUserData = 0;
 					SySetPut(&pFrame->sArg,(const void *)&sArg);
 				}

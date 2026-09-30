@@ -1286,8 +1286,10 @@ static void VmDimRmwArm(
 		return;
 	}
 	nKey = pSlot->nIdx;
-	/* Reserving can GROW the aMemObj set, so address both slots by index from
-	 * here on — the pointer the first reservation handed back may be stale. */
+	/* Address both slots by index from here on. This guarded a reservation
+	 * GROWING the aMemObj set under the pointer the first one handed back;
+	 * redundant since P1 -- the pool's segments are fixed, so a slot's address
+	 * never moves. Left for the harvest sweep (PERF.md P1). */
 	if( pIdx ){
 		PH7_MemObjStore(pIdx,pSlot);
 	}
@@ -2911,7 +2913,9 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 						}
 					}
 					/* Re-fetch AFTER the read: a userland offsetGet can reserve
-					 * slots, and growing aMemObj relocates every pointer into it. */
+					 * slots, which used to relocate every pointer into the pool.
+					 * Redundant since P1 (fixed segments); left for the harvest
+					 * sweep (PERF.md P1). */
 					pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nSlot);
 					if( pObj ){
 						PH7_MemObjStore(&sVal,pObj);

@@ -2151,8 +2151,9 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				ph7_hashmap *pMap;
 				sxu32 k;
 				PH7_MemObjToHashmap(pObj);
-				/* Capture the slot index now: PH7_HashmapInsert can reallocate
-				 * pVm->aMemObj and dangle pObj (same hazard as OP_CALL's path). */
+				/* Capture the slot index now: PH7_HashmapInsert used to reallocate
+				 * pVm->aMemObj and dangle pObj (same hazard as OP_CALL's path).
+				 * Redundant since P1; left for the harvest sweep (PERF.md P1). */
 				nVariadicIdx = pObj->nIdx;
 				pMap = (ph7_hashmap *)pObj->x.pOther;
 				for( k = n; k < (sxu32)nArg; k++ ){
@@ -2372,10 +2373,11 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		/* The arguments are this call's own operand-stack slots, so they can be
 		 * handed to the frame setup as-is. The old form had to snapshot them out of
 		 * pVm->aMemObj first, because they arrived as a func_get_args() hashmap
-		 * whose element values live in that set — and VmFiberSetupFrame reserves
-		 * memory objects (VmExtractMemObj) before reading its arguments, which can
-		 * reallocate the set and dangle a raw pool pointer. Operand slots do not
-		 * move, so the copy is gone with the array that made it necessary. */
+		 * whose element values live in that pool — and VmFiberSetupFrame reserves
+		 * memory objects (VmExtractMemObj) before reading its arguments, which back
+		 * then reallocated the pool and dangled a raw pointer into it. Operand slots
+		 * do not move, so the copy went with the array that made it necessary. (Pool
+		 * slots do not move either since P1, which retires the hazard entirely.) */
 		ph7_value **apValues = (nArg > 0) ? apArg : 0;
 		int nActual = nArg;
 		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues,

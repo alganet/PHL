@@ -4674,10 +4674,10 @@ static int StreamCtxSetOption(phl_stream_ctx *pRes,ph7_value *pWrapper,ph7_value
 	if( pRes == 0 || pRes->pOptions == 0 || pWrapper == 0 || pName == 0 || pValue == 0 ){
 		return -1;
 	}
-	/* Every insertion below can reserve a memory object, which GROWS (and
-	 * therefore moves) pVm->aMemObj — and all three arguments may point into
-	 * it. Snapshot the structs first: a shallow copy is a safe insertion
-	 * source, since the referent and the heap-resident blob survive the move. */
+	/* Every insertion below can reserve a memory object, which used to GROW (and
+	 * therefore move) pVm->aMemObj — and all three arguments may point into it,
+	 * so the structs are snapshotted first. Redundant since P1 (fixed segments);
+	 * left for the harvest sweep (PERF.md P1). */
 	sKey = *pWrapper; pWrapper = &sKey;
 	sName = *pName;   pName = &sName;
 	sVal = *pValue;   pValue = &sVal;

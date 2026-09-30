@@ -447,9 +447,10 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 						 * the stack value. */
 						if( pBacking->x.pOther == (void *)pCur ){
 							pCur->iRef--;
-							/* Use the returned map, not pBacking->x.pOther: PH7_HashmapDup
-							 * inside CowSeparate can reallocate (move) pVm->aMemObj and leave
-							 * pBacking dangling. The return value is the post-separation map. */
+							/* Use the returned map, not pBacking->x.pOther: CowSeparate answers
+							 * a DIFFERENT hashmap, and reading it back out of pBacking assumes
+							 * the separation wrote there. (It also used to move the pool under
+							 * pBacking, which P1's fixed segments retired.) */
 							pTos->x.pOther = PH7_HashmapCowSeparate(&(*pVm),pBacking);
 							((ph7_hashmap *)pTos->x.pOther)->iRef++;
 						}

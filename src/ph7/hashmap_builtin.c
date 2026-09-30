@@ -495,8 +495,9 @@ static ph7_value * MergeRecSeparateNode(ph7_vm *pVm,ph7_hashmap_node *pNode)
 		/* Already this node's own value. */
 		return pOld;
 	}
-	/* Shallow snapshot first: reserving can grow (move) pVm->aMemObj, and pOld
-	 * points into it — the same rule HashmapInsertIntKey follows. */
+	/* Shallow snapshot first: reserving used to grow (move) pVm->aMemObj, and
+	 * pOld points into it — the same rule HashmapInsertIntKey follows. Redundant
+	 * since P1 (fixed segments); left for the harvest sweep (PERF.md P1). */
 	sSafe = *pOld;
 	pNew = PH7_ReserveMemObj(pVm);
 	if( pNew == 0 ){
@@ -595,8 +596,10 @@ static sxi32 MergeRecWalk(ph7_context *pCtx,ph7_hashmap *pDest,ph7_hashmap *pSrc
 		if( pEntry->iType == HASHMAP_BLOB_NODE
 		 && HashmapLookupBlobKey(pDest,SyBlobData(&pEntry->xKey.sKey),
 			SyBlobLength(&pEntry->xKey.sKey),&pDup) == SXRET_OK && pDup ){
-			/* Separate FIRST: it can grow (move) pVm->aMemObj, which both value
-			 * pointers live in, so neither may be read before it runs. */
+			/* Separate FIRST. This was because separating grew (and moved) the
+			 * pool both value pointers live in; P1's fixed segments retired that,
+			 * but the order still matters -- MergeRecSeparateNode is what gives
+			 * the destination node a value of its own to be read. */
 			ph7_value *pDestVal = MergeRecSeparateNode(pCtx->pVm,pDup);
 			pVal = HashmapExtractNodeValue(pEntry);
 			if( pDestVal == 0 || pVal == 0 ){
@@ -6174,7 +6177,8 @@ PH7_PRIVATE int ph7_iterator_count(ph7_context *pCtx, int nArg, ph7_value **apAr
 }
 /* iterator_apply step: call the fixed callback with $args each iteration. The
  * arg pointers are resolved fresh per step because the iterator's own methods
- * run user code between iterations and may reallocate the aMemObj pool. */
+ * run user code between iterations, which can rewrite the arguments' storage.
+ * It also used to move the pool, which P1's fixed segments took care of. */
 struct IterApply { ph7_value *pCallback; ph7_value *pArgsArray; sxi64 nCount; };
 static sxi32 IterApplyStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
 {

@@ -79,10 +79,12 @@ PH7_PRIVATE void * SySetPop(SySet *pSet);
 /*
  * The nIdx'th slot of a set, or NULL when the index is past the end.
  *
- * INLINE because of one caller: every array element the engine reads goes
- * through it to reach the value table (`SySetAt(&pVm->aMemObj,pNode->nValIdx)`),
- * and a bounds test plus a multiply was 1.5% of an ecosystem-gate phpcs run
- * spent almost entirely on the call and return around them.
+ * INLINE for a caller it no longer has: every array element the engine read went
+ * through it to reach the value table, and a bounds test plus a multiply was 1.5%
+ * of an ecosystem-gate phpcs run spent almost entirely on the call and return
+ * around them. That caller is PH7_MemObjAt now (PERF.md P1) and inlines for the
+ * same reason; the remaining callers here are the bytecode and literal sets, which
+ * are read far less often but pay nothing for this.
  */
 SX_STATIC_INLINE void * SySetAt(SySet *pSet,sxu32 nIdx)
 {

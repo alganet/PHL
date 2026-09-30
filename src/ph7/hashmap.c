@@ -307,12 +307,11 @@ static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,
 	if( !isForeign ){
 		ph7_value *pObj;
 		ph7_value sSafeVal;
-		/* Snapshot the source BEFORE reserving: PH7_ReserveMemObj can grow (move)
-		 * pVm->aMemObj, which would dangle pValue when it points into the pool
-		 * (e.g. get_defined_vars/func_get_args/get_class_vars/get_object_vars pass
-		 * a pool slot). A shallow copy is a safe PH7_MemObjStore source — the
-		 * referent and the heap-resident blob data survive the move; only the
-		 * ph7_value struct relocates (same sSafeVal idiom used by PH7_HashmapDup). */
+		/* Snapshot the source BEFORE reserving. This guarded PH7_ReserveMemObj
+		 * MOVING pVm->aMemObj under a pValue that points into the pool (e.g.
+		 * get_defined_vars/func_get_args/get_class_vars/get_object_vars all pass
+		 * a pool slot). Redundant since P1 -- the pool's segments are fixed, so a
+		 * slot's address never moves. Left for the harvest sweep (PERF.md P1). */
 		if( pValue ){
 			sSafeVal = *pValue;
 			pValue = &sSafeVal;
@@ -370,12 +369,11 @@ static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyL
 	if( !isForeign ){
 		ph7_value *pObj;
 		ph7_value sSafeVal;
-		/* Snapshot the source BEFORE reserving: PH7_ReserveMemObj can grow (move)
-		 * pVm->aMemObj, which would dangle pValue when it points into the pool
-		 * (e.g. get_defined_vars/func_get_args/get_class_vars/get_object_vars pass
-		 * a pool slot). A shallow copy is a safe PH7_MemObjStore source — the
-		 * referent and the heap-resident blob data survive the move; only the
-		 * ph7_value struct relocates (same sSafeVal idiom used by PH7_HashmapDup). */
+		/* Snapshot the source BEFORE reserving. This guarded PH7_ReserveMemObj
+		 * MOVING pVm->aMemObj under a pValue that points into the pool (e.g.
+		 * get_defined_vars/func_get_args/get_class_vars/get_object_vars all pass
+		 * a pool slot). Redundant since P1 -- the pool's segments are fixed, so a
+		 * slot's address never moves. Left for the harvest sweep (PERF.md P1). */
 		if( pValue ){
 			sSafeVal = *pValue;
 			pValue = &sSafeVal;
@@ -1697,12 +1695,11 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 			pNew->iNextIdx = pMap->iNextIdx;
 			pMap->iRef--;  /* Backing variable no longer references old map */
 			/* PH7_HashmapDup reserves a memory object per duplicated entry, which
-			 * can grow — and therefore reallocate (move) — pVm->aMemObj. That
-			 * invalidates the pBacking pointer captured above, so re-resolve it
-			 * from the (stable) slot index before writing. Using the stale pointer
-			 * dereferences the freed old buffer, which is a hard SIGSEGV on
-			 * glibc/x86_64 once aMemObj is large enough to be mmap-backed (the old
-			 * mapping is munmap'd on move) and a silent use-after-free elsewhere. */
+			 * used to grow — and therefore reallocate (move) — pVm->aMemObj and
+			 * invalidate the pBacking pointer captured above; the stale pointer
+			 * was a hard SIGSEGV once the table was big enough to be mmap-backed.
+			 * Redundant since P1 -- the pool's segments are fixed, so a slot's
+			 * address never moves. Left for the harvest sweep (PERF.md P1). */
 			pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pValue->nIdx);
 			if( pBacking ){
 				pBacking->x.pOther = pNew;
@@ -1714,12 +1711,12 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 		}
 	}
 	/* Some callers (e.g. OP_STORE_IDX, by-ref foreach) pass a pValue that points
-	 * directly into pVm->aMemObj. PH7_HashmapDup below reserves a memory object
-	 * per duplicated entry, which can grow — and therefore reallocate (move) —
-	 * pVm->aMemObj, leaving such a pValue dangling. Capture its slot identity now,
-	 * before the dup, so the write-back can re-resolve from the (stable) index
-	 * rather than dereference the captured pointer (the same hazard handled for
-	 * pBacking in the backing-variable branch above). */
+	 * directly into pVm->aMemObj, and PH7_HashmapDup below reserves a memory
+	 * object per duplicated entry — which used to reallocate (move) the table and
+	 * leave such a pValue dangling, so the slot identity is captured here and the
+	 * write-back re-resolves from the index. Redundant since P1 -- the pool's
+	 * segments are fixed, so a slot's address never moves. Left for the harvest
+	 * sweep (PERF.md P1). */
 	nValIdx = pValue->nIdx;
 	bValueInPool = ( nValIdx != SXU32_HIGH
 		&& (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nValIdx) == pValue );
@@ -1736,7 +1733,8 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	pNew->iNextIdx = pMap->iNextIdx;
 	pMap->iRef--;
 	if( bValueInPool ){
-		/* aMemObj may have moved during the dup — re-resolve pValue's slot. */
+		/* Re-resolve pValue's slot. Redundant since P1 (see above): the dup can no
+		 * longer move it. Left for the harvest sweep (PERF.md P1). */
 		pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nValIdx);
 		if( pValue == 0 ){
 			return pNew;

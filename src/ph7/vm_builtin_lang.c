@@ -2601,9 +2601,10 @@ PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		sxu32 nKey, nFinal;
 		char zNum[32];
 		int bIntKey, iAction;
-		/* Work off a COPY of the entry value: installing a variable can grow
-		 * pVm->aMemObj, and a pointer into that set would dangle across the
-		 * reallocation (this is why the walk API hands out copies too). The
+		/* Work off a COPY of the entry value. Installing a variable used to grow
+		 * pVm->aMemObj and dangle a pointer into it (this is why the walk API
+		 * hands out copies too); P1's fixed segments retired that, but the copy
+		 * still earns its place for the reference discipline below. The
 		 * release comes FIRST so it covers every continue/goto below: the load
 		 * takes a reference on an array/object value and does not drop the one
 		 * the previous entry left behind (PH7_HashmapWalk releases per iteration

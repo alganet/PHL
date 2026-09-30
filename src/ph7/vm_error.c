@@ -1095,10 +1095,11 @@ static sxu32 VmLazyInitLineHere(ph7_vm *pVm)
 }
 /*
  * Hand a reserved memory-object slot back to the free list. Takes the INDEX,
- * not the pointer: aMemObj is a by-value SySet, so any nested evaluation (an
- * initializer, or the constructor of the very TypeError being raised) can grow
- * and REALLOC the pool, leaving a pointer taken before it dangling — the rule
- * VmLocalExecIntoObj is built around. The slot's contents are released first:
+ * not the pointer -- which used to be load-bearing, because a nested evaluation
+ * (an initializer, or the constructor of the very TypeError being raised) grew
+ * and REALLOC'd the pool and left a pointer taken before it dangling. P1's fixed
+ * segments retired that; an index is still the right currency for a free, since
+ * the free list is keyed by one. The slot's contents are released first:
  * PH7_ReserveMemObj re-inits a recycled slot without releasing it, so a string
  * blob / array / object left in there would be orphaned once per evaluation,
  * which for a constant that re-evaluates on every access grows without bound.
@@ -1223,8 +1224,9 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 			 * access raises again — php re-runs the whole materialization each
 			 * time. A pass may widen int -> float in place, which is the value
 			 * memoized below. The check can THROW, and constructing that TypeError
-			 * runs php code that may grow (and realloc) aMemObj — so the slot is
-			 * addressed by index from here on, never through pMemObj. */
+			 * runs php code that used to grow (and realloc) aMemObj — so the slot is
+			 * addressed by index from here on, never through pMemObj. Redundant
+			 * since P1 (fixed segments); left for the harvest sweep (PERF.md P1). */
 			sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj,1 /* lazy */);
 			if( rcType != SXRET_OK ){
 				VmRecycleMemObj(&(*pVm),nSlot);
@@ -5265,10 +5267,10 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 				continue;
 			}
 			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/,0,pList);
-			/* Building the trace reserves new memobjs, which may realloc
-			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO that set,
-			 * from PH7_ClassInstanceExtractAttrValue above). Re-fetch the slot
-			 * AFTER the walk before releasing/storing into it. */
+			/* Building the trace reserves new memobjs, which used to realloc
+			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO the pool,
+			 * from PH7_ClassInstanceExtractAttrValue above). Redundant since P1
+			 * (fixed segments); left for the harvest sweep (PERF.md P1). */
 			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
 			if( pAttrValue ){
 				PH7_MemObjRelease(pAttrValue);

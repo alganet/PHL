@@ -1647,20 +1647,22 @@ PH7_PRIVATE ph7_vm_func * VmOverload(
 /* Forward declaration */
 /* VmLocalExec and VmErrorFormat forward declarations removed - now PH7_PRIVATE in ph7int.h */
 /*
- * Evaluate a constant/default initializer bytecode into a pool memory-object slot,
- * safely across a pool reallocation.
+ * Evaluate a constant/default initializer bytecode into a pool memory-object slot.
  *
  * VmLocalExec writes its result through the caller's pResult pointer at
- * end-of-exec. When pResult is a slot in the growable aMemObj pool AND the
- * initializer allocates pool memobjs — a large array literal grows aMemObj via
- * PH7_ReserveMemObj (per element), reallocating and FREEING the pool buffer —
- * the reserved pResult pointer dangles and the final store is a heap
- * use-after-free (confirmed via ASan on a >=~227-element class-const array; it
- * is what blocked Composer's autoload class-map). Evaluate into a stable local
- * instead, then store into the slot re-fetched by its (stable) index. On return
- * *ppMemObj points at the valid post-eval slot. PH7_MemObjStore preserves the
- * destination slot's nIdx (excluded from its memcpy), so the slot identity is
- * kept. Mirrors the enum-case backing path, which already evaluates into a local.
+ * end-of-exec. When the pool was one doubling buffer, an initializer that
+ * allocated pool memobjs — a large array literal reserves one per element —
+ * reallocated and FREED that buffer, so a pResult pointing into it dangled and
+ * the final store was a heap use-after-free (confirmed via ASan on a >=~227
+ * element class-const array; it is what blocked Composer's autoload class-map).
+ * The answer was to evaluate into a stable local and store into the slot
+ * re-fetched by its index, which is what this does. Redundant since P1 -- the
+ * pool's segments are fixed, so a slot's address never moves. Left for the
+ * harvest sweep (PERF.md P1); the history above is why it was ever needed.
+ *
+ * On return *ppMemObj points at the valid post-eval slot. PH7_MemObjStore
+ * preserves the destination slot's nIdx (excluded from its memcpy), so the slot
+ * identity is kept. Mirrors the enum-case backing path.
  */
 PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj,int bReturnPropagates)
 {
@@ -1669,7 +1671,7 @@ PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **pp
 	sxi32 rc;
 	PH7_MemObjInit(&(*pVm),&sVal);
 	rc = VmLocalExec(&(*pVm),pByteCode,&sVal,bReturnPropagates);
-	/* aMemObj may have moved during the eval — re-fetch by the reserved index. */
+	/* Re-fetch by the reserved index (redundant since P1: see above). */
 	*ppMemObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nIdx);
 	if( *ppMemObj ){
 		PH7_MemObjStore(&sVal,*ppMemObj);
@@ -4165,8 +4167,8 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pClosureScope = 0;
 	/* Suppress user __destruct while we tear down the per-exec object pool: the
 	 * reference table is gone and $GLOBALS is nulled, so running arbitrary PHP
-	 * here is unsafe (and could realloc aMemObj mid-release). Engine memory is
-	 * still reclaimed. Mirrors prior behaviour (global destructors never ran). */
+	 * here is unsafe. Engine memory is still reclaimed. Mirrors prior behaviour
+	 * (global destructors never ran). */
 	pVm->bInReset = 1;
 	/* (0) Forget every buffered cycle root. The object pool is about to go, and a
 	 * row that outlived it would name freed memory on the next run. */
@@ -6618,10 +6620,11 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	}
 	sEnt = *pEnt;
 	(void)SySetPop(&pVm->aHookRmw);
-	/* Copy the computed value out of the scratch slot, then free the slot
-	 * (the set dispatch below may reserve slots — nothing may read the
-	 * scratch index past this point). The DIM kind's KEY slot goes the same
-	 * way, for the same reason: reserving relocates the aMemObj set. */
+	/* Copy the computed value out of the scratch slot, then free the slot:
+	 * once it is back on the pool's free list the next reserve may hand it to
+	 * someone else, so nothing may read the scratch index past this point. The
+	 * DIM kind's KEY slot goes the same way, for the same reason. (The pool
+	 * itself no longer MOVES -- P1 -- but a freed index is still a freed index.) */
 	PH7_MemObjInit(pVm,&sVal);
 	pScr = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,sEnt.nScratchIdx);
 	if( pScr ){
