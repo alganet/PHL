@@ -684,6 +684,28 @@ struct ph7_context
 /* Node control flags (iFlags below) */
 #define HASHMAP_NODE_FOREIGN_OBJ 0x001 /* Node holds a reference to a foreign ph7_value
                                         * [i.e: array(&var) / $a[] =& $var ] */
+/*
+ * A string key of up to this many bytes lives INSIDE its node, and xKey.sKey is pointed
+ * at it (SXBLOB_STATIC, so nothing grows it and nothing frees it). Every reader still
+ * goes through SyBlobData()/SyBlobLength(), so none of the sixty-odd places that read a
+ * node's key changed.
+ *
+ * Why it is free: the node is 96 bytes and the pool serves it out of a 128-byte chunk
+ * (96 + the pool's own 8-byte header rounds up), so 24 bytes were already being paid for
+ * and thrown away. 96 + 24 = 120, +8 = 128 -- the same chunk, to the byte.
+ *
+ * Why it is worth having: a string-keyed lookup compares the key bytes through
+ * sKey.pBlob, which used to be a SEPARATE allocation somewhere else in the heap. Counted
+ * on the ecosystem gate's phpcs step, that is 114,418,815 dereferences to a foreign cache
+ * line in one run, for keys averaging 7.7 bytes -- while the three tests in front of them
+ * (iType, nHash, length) all live in the node's first cache line. It also deletes one
+ * allocation per string-keyed node. (PERF.md P9.)
+ *
+ * A key LONGER than this keeps the old arrangement, so the size is a tuning constant and
+ * not a limit. Nothing appends to a node's key after HashmapNewBlobNode builds it -- if
+ * that ever changes, the LOCKED blob would silently truncate rather than grow.
+ */
+#define HASHMAP_NODE_INLINE_KEY 24
 struct ph7_hashmap_node
 {
 	ph7_hashmap *pMap;     /* Hashmap that own this instance */
@@ -697,6 +719,7 @@ struct ph7_hashmap_node
 	sxu32 nValIdx;         /* Value stored in this node */
 	ph7_hashmap_node *pNext,*pPrev;               /* Link to other entries [i.e: linear traversal] */
 	ph7_hashmap_node *pNextCollide,*pPrevCollide; /* Collision chain */
+	char zKey[HASHMAP_NODE_INLINE_KEY];           /* A short blob key, in the node itself */
 };
 /*
  * Each active hashmap aka array in the PHP jargon is represented

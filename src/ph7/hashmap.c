@@ -150,7 +150,15 @@ static ph7_hashmap_node * HashmapNewBlobNode(ph7_hashmap *pMap,const void *pKey,
 	pNode->pMap  = &(*pMap);
 	pNode->iType = HASHMAP_BLOB_NODE;
 	pNode->nHash = nHash;
-	SyBlobInit(&pNode->xKey.sKey,&pMap->pVm->sAllocator);
+	if( nKeyLen <= sizeof(pNode->zKey) ){
+		/* The key lives in the node -- see HASHMAP_NODE_INLINE_KEY. LOCKED|STATIC is
+		 * what SyBlobInitFromBuf marks it, which is exactly right here: the buffer is
+		 * not the allocator's to grow and not SyBlobRelease's to free, and the key is
+		 * written once, right below, by an append that is guaranteed to fit. */
+		SyBlobInitFromBuf(&pNode->xKey.sKey,pNode->zKey,sizeof(pNode->zKey));
+	}else{
+		SyBlobInit(&pNode->xKey.sKey,&pMap->pVm->sAllocator);
+	}
 	SyBlobAppend(&pNode->xKey.sKey,pKey,nKeyLen);
 	pNode->nValIdx = nValIdx;
 	return pNode;
