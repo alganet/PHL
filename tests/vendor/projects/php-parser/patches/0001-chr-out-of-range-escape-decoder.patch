@@ -1,0 +1,17 @@
+PHL-Patch-Reason: chr-out-of-range
+PHL-Patch-Kind: rewrite
+PHL-Patch-Note: `\400` in a php string is codepoint 256; php 8.5 deprecates chr() out of range and wraps it modulo 256, so `% 256` is that same answer spelled without the deprecation. Identical output under php; it is the escape-sequence decoder every consumer of this library goes through.
+
+diff --git a/lib/PhpParser/Node/Scalar/String_.php b/lib/PhpParser/Node/Scalar/String_.php
+index c965366..d77f6d0 100644
+--- a/lib/PhpParser/Node/Scalar/String_.php
++++ b/lib/PhpParser/Node/Scalar/String_.php
+@@ -124,7 +124,7 @@ class String_ extends Scalar {
+                     // If it overflowed to float, treat as INT_MAX, it will throw an error anyway.
+                     return self::codePointToUtf8(\is_int($dec) ? $dec : \PHP_INT_MAX);
+                 } else {
+-                    return chr(octdec($str));
++                    return chr(octdec($str) % 256);
+                 }
+             },
+             $str

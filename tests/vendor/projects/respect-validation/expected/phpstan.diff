@@ -1,0 +1,17 @@
+--- php
++++ phl
+@@ -1,5 +1,9 @@
+-Note: Using configuration file @ROOT@/phpstan.neon.dist.
+-
+- [OK] No errors
+-
+-@exit@ 0
++PHP Fatal error:  Cannot redeclare interface PHPStan\Analyser\InternalScopeFactory (previously declared in phar://phpstan.phar/bin/../vendor/composer/../../src/Analyser/InternalScopeFactory.php:11) in phar://phpstan.phar/bin/../src/Analyser/InternalScopeFactory.php on line 11
++Stack trace:
++#0 phar://phpstan.phar/bin/../preload.php(128): require_once()
++#1 phar://phpstan.phar/bin/phpstan(28): require_once('...')
++#2 phar://phpstan.phar/bin/phpstan(110): {closure:phar://phpstan.phar/bin/phpstan:16}()
++#3 @ROOT@/vendor/phpstan/phpstan/phpstan(8): require('...')
++#4 @ROOT@/vendor/bin/phpstan(119): include('...')
++#5 {main}
++@exit@ 255

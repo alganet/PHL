@@ -1,0 +1,16 @@
+PHL-Patch-Reason: e-strict
+PHL-Patch-Kind: rewrite
+PHL-Patch-Note: `E_ALL | E_STRICT` is `E_ALL` on every php 8 (E_STRICT is inside E_ALL and raises nothing since 8.0); §10 removes the constant, so the OR is dropped. Same error_reporting value under php.
+
+diff -ruN a/vendor/php-console/php-console/src/PhpConsole/Handler.php b/vendor/php-console/php-console/src/PhpConsole/Handler.php
+--- a/vendor/php-console/php-console/src/PhpConsole/Handler.php	2019-07-25 00:43:28.000000000 -0300
++++ b/vendor/php-console/php-console/src/PhpConsole/Handler.php	2026-08-25 23:44:06.823636267 -0300
+@@ -147,7 +147,7 @@
+ 	 */
+ 	protected function initErrorsHandler() {
+ 		ini_set('display_errors', false);
+-		error_reporting($this->errorsHandlerLevel ? : E_ALL | E_STRICT);
++		error_reporting($this->errorsHandlerLevel ? : E_ALL);
+ 		$this->oldErrorsHandler = set_error_handler(array($this, 'handleError'));
+ 		register_shutdown_function(array($this, 'checkFatalErrorOnShutDown'));
+ 		$this->connector->registerFlushOnShutDown();

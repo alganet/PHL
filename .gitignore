@@ -16,3 +16,9 @@ php
 *.diag.clean
 *.diag.output
 *.diag.expect
+
+# tests/vendor is the ecosystem gate's harness (manifests, locks, patches, baselines),
+# not an installed dependency tree -- the three patterns above would swallow it.
+# The installed trees themselves live under build/, which is ignored above.
+!tests/vendor/
+!tests/vendor/**

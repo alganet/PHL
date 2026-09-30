@@ -1,0 +1,5 @@
+# nikic/php-parser -- the library PHPStan, Rector, Psalm and php-cs-fixer are built on.
+# Picked for REACH: anything it cannot do, none of them can. Its own suite is a
+# SCANNER'S suite, so it asks for spellings no application writes.
+REPO="https://github.com/nikic/PHP-Parser.git"
+REF="v5.6.1"

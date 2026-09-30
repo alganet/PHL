@@ -1,0 +1,17 @@
+PHL-Patch-Reason: ord-multibyte
+PHL-Patch-Kind: rewrite
+PHL-Patch-Note: twig's html_attr escaper (Zend Framework's, adapted) walks every non-alphanumeric character of the subject through ord() under a /u regex, so a non-ASCII subject hands ord() a multi-byte string; php 8.5 deprecates that and answers the FIRST BYTE, which is what `$chr[0]` is. The match is never empty, so the two are the same value under php -- and without it the filter THROWS here for any non-ASCII input, which is a broken template output filter, not two test rows.
+
+diff --git a/src/Extension/EscaperExtension.php b/src/Extension/EscaperExtension.php
+index dee0f79f..9c169ad2 100644
+--- a/src/Extension/EscaperExtension.php
++++ b/src/Extension/EscaperExtension.php
+@@ -351,7 +351,7 @@ final class EscaperExtension extends AbstractExtension
+                      * @license   https://framework.zend.com/license/new-bsd New BSD License
+                      */
+                     $chr = $matches[0];
+-                    $ord = \ord($chr);
++                    $ord = \ord($chr[0]);
+ 
+                     /*
+                     * The following replaces characters undefined in HTML with the

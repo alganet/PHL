@@ -1,0 +1,147 @@
+--- php
++++ phl
+@@ -3,29 +3,82 @@
+ Runtime: @RUNTIME@
+ Configuration: @ROOT@/phpunit.xml.dist
+ 
+-..............................................D..............   61 / 1153 (  5%)
+-..S.................SSSSSSSSS...S..............D.............  122 / 1153 ( 10%)
+-.............S.....................S..............SSSSSSS....  183 / 1153 ( 15%)
+-.............................................................  244 / 1153 ( 21%)
+-.....SSS.....................................................  305 / 1153 ( 26%)
+-................................................S.SS..S.S....  366 / 1153 ( 31%)
+-.............................................................  427 / 1153 ( 37%)
+-.............................................................  488 / 1153 ( 42%)
+-........SS...........................................SS......  549 / 1153 ( 47%)
+-.............................................................  610 / 1153 ( 52%)
+-.............................................................  671 / 1153 ( 58%)
+-.............................................................  732 / 1153 ( 63%)
+-.............................................................  793 / 1153 ( 68%)
+-.............................................................  854 / 1153 ( 74%)
+-.............................................................  915 / 1153 ( 79%)
+-.............................................................  976 / 1153 ( 84%)
+-....................................................S........ 1037 / 1153 ( 89%)
+-............................................................. 1098 / 1153 ( 95%)
+-.......................................................       1153 / 1153 (100%)
++...............................................................  63 / 734 (  8%)
++S.................SSSSSSSSS...S................................ 126 / 734 ( 17%)
++.........S.....................S..............SSSSSSS.......... 189 / 734 ( 25%)
++............................................................SSS 252 / 734 ( 34%)
++.............................................PHP Warning:  Private methods cannot be final as they are never overridden by other classes in @ROOT@/vendor/php-console/php-console/src/PhpConsole/Connector.php on line 101
++PHP Warning:  Private methods cannot be final as they are never overridden by other classes in @ROOT@/vendor/php-console/php-console/src/PhpConsole/Handler.php on line 55
++.................. 315 / 734 ( 42%)
++......................................S.SS..S.S................ 378 / 734 ( 51%)
++............................................................... 441 / 734 ( 60%)
++............................................................... 504 / 734 ( 68%)
++.....................................SS........................ 567 / 734 ( 77%)
++......EE.......F..........................W.................... 630 / 734 ( 85%)
++.....................E..............................FF......... 693 / 734 ( 94%)
++.........................................                       734 / 734 (100%)
+ 
+ Time: @TIME@
+ 
+-There were 33 skipped tests:
++There was 1 PHPUnit error:
++
++1) Monolog\LoggerTest::testSetTimezone
++The data provider specified for Monolog\LoggerTest::testSetTimezone is invalid
++Call to undefined method DateTimeZone::listIdentifiers()
++
++@ROOT@/tests/Monolog/LoggerTest.php:536
++
++--
++
++There were 3 errors:
++
++1) Monolog\LoggerTest::testTimezoneIsRespectedInUTC
++DateInvalidTimeZoneException: DateTimeZone::__construct(): Unknown or bad timezone (America/New_York)
++
++@ROOT@/tests/Monolog/LoggerTest.php:566
++
++2) Monolog\LoggerTest::testTimezoneIsRespectedInOtherTimezone
++DateInvalidTimeZoneException: DateTimeZone::__construct(): Unknown or bad timezone (America/New_York)
++
++@ROOT@/tests/Monolog/LoggerTest.php:589
++
++3) Monolog\PsrLogCompatTest::testContextCanContainAnything
++DateInvalidTimeZoneException: DateTimeZone::__construct(): Unknown or bad timezone (Europe/London)
++
++@ROOT@/tests/Monolog/PsrLogCompatTest.php:136
++
++--
++
++There were 3 failures:
++
++1) Monolog\LoggerTest::testReset
++Failed asserting that two strings are not identical.
++
++@ROOT@/tests/Monolog/LoggerTest.php:762
++
++2) Monolog\UtilsTest::testGetClass with data set #1 ('class@anonymous', class@anonymous_3 Object ())
++Failed asserting that two strings are identical.
++--- Expected
+++++ Actual
++@@ @@
++-'class@anonymous'
+++'class@anonymous_3'
++
++@ROOT@/tests/Monolog/UtilsTest.php:21
++
++3) Monolog\UtilsTest::testGetClass with data set #2 ('stdClass@anonymous', class@anonymous_4 Object ())
++Failed asserting that two strings are identical.
++--- Expected
+++++ Actual
++@@ @@
++-'stdClass@anonymous'
+++'class@anonymous_4'
++
++@ROOT@/tests/Monolog/UtilsTest.php:21
++
++--
++
++There were 31 skipped tests:
+ 
+ 1) Monolog\Formatter\LineFormatterTest::testDefFormatWithSoapFaultException
+ Requires the soap extension
+@@ -111,21 +164,29 @@
+ 28) Monolog\Handler\RedisPubSubHandlerTest::testRedisHandle
+ The redis ext is required to run this test
+ 
+-29) Monolog\Handler\StreamHandlerTest::testPreventOOMError with data set #0 ('1M', 104857)
+-We could not set a memory limit that would trigger the error.
+-
+-30) Monolog\Handler\StreamHandlerTest::testPreventOOMError with data set #1 ('10M', 1048576)
+-We could not set a memory limit that would trigger the error.
+-
+-31) Monolog\Handler\ZendMonitorHandlerTest::testWrite
++29) Monolog\Handler\ZendMonitorHandlerTest::testWrite
+ ZendServer is not installed
+ 
+-32) Monolog\Handler\ZendMonitorHandlerTest::testGetDefaultFormatterReturnsNormalizerFormatter
++30) Monolog\Handler\ZendMonitorHandlerTest::testGetDefaultFormatterReturnsNormalizerFormatter
+ ZendServer is not installed
+ 
+-33) Monolog\Processor\MercurialProcessorTest::testProcessor
++31) Monolog\Processor\MercurialProcessorTest::testProcessor
+ hg is missing
+ 
+-OK, but there were issues!
+-Tests: 1153, Assertions: 2071, Deprecations: 2, PHPUnit Deprecations: 220, Skipped: 33.
+-@exit@ 0
++--
++
++1 test triggered 1 PHP warning:
++
++1) @ROOT@/tests/Monolog/Processor/MercurialProcessorTest.php:27
++chdir(): Permission denied (errno 13)
++
++--
++
++1 test triggered 1 PHP notice:
++
++1) @ROOT@/tests/Monolog/LoggerTest.php:585
++date_default_timezone_set(): Timezone ID 'CET' is invalid
++
++ERRORS!
++Tests: 734, Assertions: 1623, Errors: 4, Failures: 3, Warnings: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 31.
++@exit@ 2

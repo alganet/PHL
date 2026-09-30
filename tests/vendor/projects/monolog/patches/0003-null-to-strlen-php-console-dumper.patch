@@ -1,0 +1,33 @@
+PHL-Patch-Reason: null-to-non-nullable-param
+PHL-Patch-Kind: rewrite
+PHL-Patch-Note: php-console's dumper hands null to strlen() at four sites -- its scalar branch explicitly skips var_export for null, so null reaches them by design. php 8.5 deprecates null to a non-nullable internal parameter and coerces it to "", PLAN.md §10 makes it a TypeError; `?? ''` is that coercion written down, and strlen("") is 0 either way.
+
+diff -ruN a/vendor/php-console/php-console/src/PhpConsole/Dumper.php b/vendor/php-console/php-console/src/PhpConsole/Dumper.php
+--- a/vendor/php-console/php-console/src/PhpConsole/Dumper.php	2019-07-25 00:43:28.000000000 -0300
++++ b/vendor/php-console/php-console/src/PhpConsole/Dumper.php	2026-08-25 23:46:11.808515519 -0300
+@@ -147,7 +147,7 @@
+ 				$level = array_shift($levelsQueue);
+ 				$refData =& $refQueue[0];
+ 				array_shift($refQueue);
+-				$sizeLeft += strlen($refData);
++				$sizeLeft += strlen($refData ?? '');
+ 				if($refData !== '*RECURSION*') {
+ 					$this->dumpVarData($origData, $level - 1, false);
+ 					$refData = $origData;
+@@ -169,13 +169,13 @@
+ 				}
+ 				$data = var_export($data, true);
+ 			}
+-			if(strlen($data) > $this->itemSizeLimit) {
++			if(strlen($data ?? '') > $this->itemSizeLimit) {
+ 				$data = substr($data, 0, $this->itemSizeLimit - 3) . '...';
+ 			}
+-			if(strlen($data) > $sizeLeft) {
++			if(strlen($data ?? '') > $sizeLeft) {
+ 				$data = substr($data, 0, $sizeLeft - 3) . '...';
+ 			}
+-			$sizeLeft -= strlen($data);
++			$sizeLeft -= strlen($data ?? '');
+ 		}
+ 	}
+ }

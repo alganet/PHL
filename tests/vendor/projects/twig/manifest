@@ -1,0 +1,12 @@
+# twigphp/Twig -- a template engine compiles PHP and evals it, which is a face of the
+# engine no other project here exercises.
+REPO="https://github.com/twigphp/Twig.git"
+REF="v3.9.3"
+# twig's dev dependency is symfony/phpunit-bridge, whose `simple-phpunit` DOWNLOADS and
+# installs a PHPUnit on first use. That install is a build step, not a measurement, so it
+# is run once under the ORACLE here; the step below then runs the installed PHPUnit under
+# each engine in turn. Running the installer under phl would measure composer, not twig.
+PREPARE='"$PHP_BIN" vendor/bin/simple-phpunit install'
+# Every compiled template class carries a per-run hash in its name; the SECOND hash is
+# the source key and is stable, the first is not, and neither is what any test asserts.
+NORMALIZE='s/__TwigTemplate_[0-9a-f]\{32\}_/__TwigTemplate_@HASH@_/g'

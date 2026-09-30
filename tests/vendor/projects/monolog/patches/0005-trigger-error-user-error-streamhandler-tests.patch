@@ -1,0 +1,26 @@
+PHL-Patch-Reason: trigger-error-user-error
+PHL-Patch-Kind: adapt
+PHL-Patch-Note: two StreamHandler tests fake a failed fwrite by raising E_USER_ERROR; the handler under test collects ANY error, and php's own fwrite failure is an E_WARNING, so the level drops to E_USER_WARNING. Both tests keep every assertion -- the retry, the reopen and the UnexpectedValueException.
+
+diff --git a/tests/Monolog/Handler/StreamHandlerTest.php b/tests/Monolog/Handler/StreamHandlerTest.php
+index bdce21f..99d9faf 100644
+--- a/tests/Monolog/Handler/StreamHandlerTest.php
++++ b/tests/Monolog/Handler/StreamHandlerTest.php
+@@ -230,7 +230,7 @@ STRING;
+                     self::assertNotSame($stream, $refs[0]);
+                 }
+                 if (\count($refs) === 1) {
+-                    trigger_error('fwrite(): Write of 378 bytes failed with errno=32 Broken pipe', E_USER_ERROR);
++                    trigger_error('fwrite(): Write of 378 bytes failed with errno=32 Broken pipe', E_USER_WARNING);
+                 }
+             });
+ 
+@@ -259,7 +259,7 @@ STRING;
+                 if (\count($refs) === 2) {
+                     self::assertNotSame($stream, $refs[0]);
+                 }
+-                trigger_error('fwrite(): Write of 378 bytes failed with errno=32 Broken pipe', E_USER_ERROR);
++                trigger_error('fwrite(): Write of 378 bytes failed with errno=32 Broken pipe', E_USER_WARNING);
+             });
+ 
+         self::expectException(\UnexpectedValueException::class);

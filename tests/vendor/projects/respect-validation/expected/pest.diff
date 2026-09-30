@@ -1,0 +1,62 @@
+--- php
++++ phl
+@@ -1,8 +1,8 @@
+ 
++  ⨯...........................................................................
+   ............................................................................
+   ............................................................................
+-  ............................................................................
+-  ............................................................................
++  ..........................................................⨯.................
+   ............................................................................
+   ............................................................................
+   ............................................................................
+@@ -15,8 +15,46 @@
+   ............................................................................
+   ............................................................................
+   .....................
++  ────────────────────────────────────────────────────────────────────────────
++   FAILED  Tests\feature\AssertWithKeysTest > Scenario #1          ParseError
++  Syntax error: Unexpected token ':'
++
++  at tests/feature/AssertWithKeysTest.php:42
++     38▕             ],
++     39▕         ]),
++     40▕     // This is failing because the paths now have name.
++     41▕     // the name should not be displayed on the children if the parent is being displayed.
++  ➜  42▕     fn(string $fullMessage) => expect($fullMessage)->toBe(<<<'FULL_MESSAGE'
++     43▕             - the given data must pass all the rules
++     44▕               - `.mysql` must pass all the rules
++     45▕                 - `.mysql.host` must be a string
++     46▕                 - `.mysql.user` must be present
++
++  1   tests/feature/AssertWithKeysTest.php:42
++  2   tests/Pest.php:45
++
++  ────────────────────────────────────────────────────────────────────────────
++   FAILED  Tests\feature\ValidationExceptionStackTraceTest > Should go not o…
++  Failed asserting that two strings are identical.
++  -'@ROOT@/tests/feature/ValidationExceptionStackTraceTest.php'
++  +'@ROOT@/vendor/pestphp/pest/src/Factories/TestCaseFactory.php(178) : eval()'d code'
++
++
++  at tests/feature/ValidationExceptionStackTraceTest.php:81
++     77▕         $trace[] = __FILE__;
++     78▕
++     79▕         throw new ValidationException('message', $resultQuery, ...$trace);
++     80▕     } catch (ValidationException $e) {
++  ➜  81▕         expect($e->getFile())->toBe(__FILE__);
++     82▕         expect($e->getLine())->toBe(__LINE__ - 3);
++     83▕     }
++     84▕ });
++     85▕
++
++  1   tests/feature/ValidationExceptionStackTraceTest.php:81
++
+ 
+-  Tests:    1161 passed (1937 assertions)
++  Tests:    2 failed, 1159 passed (1935 assertions)
+   Duration: @TIME@
+ 
+-@exit@ 0
++@exit@ 2

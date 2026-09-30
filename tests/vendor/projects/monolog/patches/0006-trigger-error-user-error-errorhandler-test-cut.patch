@@ -1,0 +1,21 @@
+PHL-Patch-Reason: trigger-error-user-error
+PHL-Patch-Kind: cut
+PHL-Patch-Note: COVERAGE LOST -- ErrorHandlerTest::testHandleError asserts that an E_USER_ERROR is logged at LogLevel::ERROR, which is the deprecated call BY NAME and has no non-deprecated spelling. The three lines asserting it are removed and the following count adjusted; the remapping half of the test (E_USER_NOTICE -> EMERGENCY) still runs. ErrorHandler's E_USER_ERROR mapping is untested here now.
+
+diff --git a/tests/Monolog/ErrorHandlerTest.php b/tests/Monolog/ErrorHandlerTest.php
+index b3435ee..50ec8f8 100644
+--- a/tests/Monolog/ErrorHandlerTest.php
++++ b/tests/Monolog/ErrorHandlerTest.php
+@@ -42,11 +42,8 @@ class ErrorHandlerTest extends \PHPUnit\Framework\TestCase
+ 
+             $resHandler = $errHandler->registerErrorHandler([E_USER_NOTICE => LogLevel::EMERGENCY], false);
+             $this->assertSame($errHandler, $resHandler);
+-            trigger_error('Foo', E_USER_ERROR);
+-            $this->assertCount(1, $handler->getRecords());
+-            $this->assertTrue($handler->hasErrorRecords());
+             trigger_error('Foo', E_USER_NOTICE);
+-            $this->assertCount(2, $handler->getRecords());
++            $this->assertCount(1, $handler->getRecords());
+             // check that the remapping of notice to emergency above worked
+             $this->assertTrue($handler->hasEmergencyRecords());
+             $this->assertFalse($handler->hasNoticeRecords());

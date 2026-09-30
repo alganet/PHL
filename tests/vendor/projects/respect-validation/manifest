@@ -1,0 +1,10 @@
+# Respect/Validation -- the only project here whose suite is a full `composer qa`:
+# seven steps, two runners, a linter, a static analyser and two console commands.
+# Pinned to a commit rather than a tag: the tree tracks `main`.
+REPO="https://github.com/Respect/Validation.git"
+REF="b885ab8"
+# phpcs sniffs 711 files: 9.5s under php and ~15 minutes under phl -- the gap is real
+# work (every docblock goes through phpstan/phpdoc-parser's ~50-branch MARK alternation)
+# and a performance divergence worth its own row, not a hang. The budget is per STEP and
+# both engines get it, so a timeout stays a comparable answer.
+STEP_TIMEOUT=1800
