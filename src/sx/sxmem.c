@@ -14,6 +14,424 @@
 #else
 #include <stdlib.h>
 #endif
+/*
+ * ---------------------------------------------------------------------------
+ * PHL_MEM_CENSUS -- where the heap actually IS, at the high-water mark.
+ * ---------------------------------------------------------------------------
+ * Compiled out entirely unless PHL_MEM_CENSUS is defined; see PERF.md §7, which
+ * this exists to stop a sixth session from hand-rolling. It records every LIVE
+ * object handed out by the public doors of this file, each tagged with the
+ * return address that asked for it, and dumps a ranked table the moment the
+ * recorded live bytes first cross PHL_CENSUS_AT.
+ *
+ * Three properties it has to have, each of which cost a session to learn:
+ *
+ *  - It must not allocate through the allocator it is measuring. The table is
+ *    one mmap taken at first use and never grown; if it ever filled, recording
+ *    would STOP and the dump would say so rather than lie by a smaller number.
+ *  - Every free path must reach it, or a reused address answers for a dead
+ *    object. The two free doors are not enough on their own: MemBackendRelease
+ *    bulk-frees a whole backend without passing through either, so a record
+ *    carries its backend and a release sweeps the table for it.
+ *  - The tag has to survive the dump. Site addresses are emitted RELATIVE to
+ *    the PIE load base (the ADDRESS of __executable_start is that base at run
+ *    time), so addr2line takes them exactly as printed -- there is no slide
+ *    left to subtract by hand.
+ *
+ * Deletion is backward-shift, not tombstones: a run frees millions of objects
+ * and a tombstone per free would saturate the table however few are live.
+ *
+ * The protocol is two runs, and build-aux/census.sh runs both:
+ *   1. no PHL_CENSUS_AT      -- prints the peak recorded live bytes at exit
+ *   2. PHL_CENSUS_AT=<peak>  -- dumps the table the first time the live bytes
+ *                               reach it, then keeps recording, so this run
+ *                               ALSO reports its own peak at exit. Comparing
+ *                               the two is the only way to catch a workload
+ *                               that did different work the second time.
+ */
+#if defined(PHL_MEM_CENSUS)
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+
+extern char __executable_start[];   /* its ADDRESS is the PIE load base */
+
+#define PHL_CENSUS_KIND_DIRECT 0    /* SyMemBackendAlloc/Realloc -- a SyMemBlock */
+#define PHL_CENSUS_KIND_POOL   1    /* SyMemBackendPoolAlloc     -- a pool chunk */
+
+typedef struct phl_census_rec phl_census_rec;
+struct phl_census_rec {
+	void *pPtr;              /* what was handed out; 0 = free slot */
+	void *pSite;             /* __builtin_return_address(0) at the public door */
+	void *pBackend;          /* which SyMemBackend owns it (for the release sweep) */
+	sxu32 nByte;             /* bytes the caller ASKED for */
+	sxu32 nChunk;            /* bytes the allocator actually spent on it */
+	sxu32 nKind;             /* PHL_CENSUS_KIND_* */
+	sxu32 nPad;
+};
+static struct {
+	int bReady;              /* 0 = untouched, 1 = live, -1 = off */
+	int bFull;               /* the table filled; recording stopped */
+	int bDumped;             /* the one dump PHL_CENSUS_AT buys has been taken */
+	phl_census_rec *aRec;
+	sxu32 nSlot;             /* power of two */
+	sxu32 nMask;
+	sxu32 nLiveRec;          /* live records == occupied slots */
+	sxu64 nLiveByte;         /* live chunk bytes */
+	sxu64 nPeakByte;         /* high-water of nLiveByte */
+	sxu64 nAt;               /* PHL_CENSUS_AT, 0 = never dump */
+	const char *zOut;        /* PHL_CENSUS_OUT */
+} sCensus;
+
+static sxu32 CensusHashPtr(const void *p)
+{
+	/* Fibonacci scramble: the low four to six bits of a chunk address are
+	 * always the same, so the raw pointer is not a key. */
+	sxu64 x = (sxu64)(sxuptr)p;
+	x ^= x >> 33;
+	x *= (sxu64)0xff51afd7ed558ccdULL;
+	x ^= x >> 29;
+	return (sxu32)x;
+}
+static void CensusDump(void);
+static void CensusInit(void)
+{
+	const char *zSlots,*zAt;
+	sxu32 nSlot = 1u << 21;   /* 2M records x 40 B = 80 MB; the phpcs step's peak
+	                           * is ~700k live objects, a 33% load */
+	size_t nByte;
+	void *pMap;
+
+	sCensus.bReady = -1;      /* pessimistic: any early return leaves it off */
+	zSlots = getenv("PHL_CENSUS_SLOTS");
+	if( zSlots ){
+		sxu32 n = (sxu32)strtoul(zSlots,0,0);
+		if( n >= 1024 ){
+			nSlot = 1;
+			while( nSlot < n && nSlot < (1u<<28) ){ nSlot <<= 1; }
+		}
+	}
+	nByte = (size_t)nSlot * sizeof(phl_census_rec);
+	pMap = mmap(0,nByte,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+	if( pMap == MAP_FAILED ){
+		fprintf(stderr,"census: cannot map %lu bytes -- disabled\n",(unsigned long)nByte);
+		return;
+	}
+	sCensus.aRec  = (phl_census_rec *)pMap;
+	sCensus.nSlot = nSlot;
+	sCensus.nMask = nSlot - 1;
+	zAt = getenv("PHL_CENSUS_AT");
+	sCensus.nAt = zAt ? (sxu64)strtoull(zAt,0,0) : 0;
+	sCensus.zOut = getenv("PHL_CENSUS_OUT");
+	if( sCensus.zOut == 0 ){
+		sCensus.zOut = "phl-census.out";
+	}
+	sCensus.bReady = 1;
+}
+/* The slot holding pPtr, or -- when bInsert -- the free slot it belongs in. */
+static sxu32 CensusSlot(void *pPtr,int bInsert)
+{
+	sxu32 i = CensusHashPtr(pPtr) & sCensus.nMask;
+	for(;;){
+		void *p = sCensus.aRec[i].pPtr;
+		if( p == pPtr ){
+			return i;
+		}
+		if( p == 0 ){
+			return bInsert ? i : SXU32_HIGH;
+		}
+		i = (i + 1) & sCensus.nMask;
+	}
+}
+/*
+ * Backward-shift deletion. Emptying the slot outright would cut every probe
+ * chain that runs through it; a tombstone would never be reclaimed. Instead the
+ * hole walks forward, pulling back each record that can still be found from
+ * where it lands.
+ */
+static void CensusDeleteAt(sxu32 i)
+{
+	sxu32 j = i;
+	for(;;){
+		sxu32 k;
+		int bMove;
+		j = (j + 1) & sCensus.nMask;
+		if( sCensus.aRec[j].pPtr == 0 ){
+			break;
+		}
+		k = CensusHashPtr(sCensus.aRec[j].pPtr) & sCensus.nMask;
+		/* Does k lie cyclically in (i,j]? If it does, record j is still
+		 * reachable from i's chain and must stay where it is. */
+		bMove = (i <= j) ? !(i < k && k <= j) : !(i < k || k <= j);
+		if( bMove ){
+			sCensus.aRec[i] = sCensus.aRec[j];
+			i = j;
+		}
+	}
+	sCensus.aRec[i].pPtr = 0;
+}
+static void CensusRecord(SyMemBackend *pBackend,void *pPtr,void *pSite,
+	sxu32 nByte,sxu32 nChunk,sxu32 nKind)
+{
+	phl_census_rec *p;
+	sxu32 i;
+	if( sCensus.bReady == 0 ){
+		CensusInit();
+	}
+	if( sCensus.bReady != 1 || pPtr == 0 ){
+		return;
+	}
+	if( sCensus.nLiveRec * 4 >= sCensus.nSlot * 3 ){
+		/* Past a 75% load the probe chains stop being chains. Stop, and say
+		 * so twice -- here and in the dump -- so no one reads a short answer
+		 * as a small heap. */
+		if( !sCensus.bFull ){
+			sCensus.bFull = 1;
+			fprintf(stderr,"census: table full at %lu records -- "
+				"raise PHL_CENSUS_SLOTS\n",(unsigned long)sCensus.nLiveRec);
+		}
+		return;
+	}
+	i = CensusSlot(pPtr,1);
+	p = &sCensus.aRec[i];
+	if( p->pPtr == 0 ){
+		sCensus.nLiveRec++;
+	}else{
+		sCensus.nLiveByte -= p->nChunk;   /* same address re-recorded */
+	}
+	p->pPtr = pPtr;
+	p->pSite = pSite;
+	p->pBackend = pBackend;
+	p->nByte = nByte;
+	p->nChunk = nChunk;
+	p->nKind = nKind;
+	sCensus.nLiveByte += nChunk;
+	if( sCensus.nLiveByte > sCensus.nPeakByte ){
+		sCensus.nPeakByte = sCensus.nLiveByte;
+	}
+	if( sCensus.nAt && !sCensus.bDumped && sCensus.nLiveByte >= sCensus.nAt ){
+		CensusDump();
+	}
+}
+static void CensusForget(void *pPtr)
+{
+	sxu32 i;
+	if( sCensus.bReady != 1 || pPtr == 0 ){
+		return;
+	}
+	i = CensusSlot(pPtr,0);
+	if( i == SXU32_HIGH ){
+		return;
+	}
+	sCensus.nLiveByte -= sCensus.aRec[i].nChunk;
+	sCensus.nLiveRec--;
+	CensusDeleteAt(i);
+}
+/*
+ * A backend released every one of its blocks at once, without passing through
+ * either free door -- and the pool chunks carved out of those blocks were never
+ * blocks of their own to begin with. Sweep its records out, or the next
+ * allocation to land on one of those addresses answers for a dead object.
+ * Repeated because backward-shift deletion can move a record to a slot the
+ * sweep has already walked past.
+ */
+static void CensusForgetBackend(SyMemBackend *pBackend)
+{
+	int bMoved = 1;
+	if( sCensus.bReady != 1 ){
+		return;
+	}
+	while( bMoved ){
+		sxu32 i = 0;
+		bMoved = 0;
+		while( i < sCensus.nSlot ){
+			phl_census_rec *p = &sCensus.aRec[i];
+			if( p->pPtr != 0 && p->pBackend == (void *)pBackend ){
+				sCensus.nLiveByte -= p->nChunk;
+				sCensus.nLiveRec--;
+				CensusDeleteAt(i);
+				bMoved = 1;
+				continue;   /* another record may have shifted INTO i */
+			}
+			i++;
+		}
+	}
+}
+/*
+ * The dump aggregates by (site, kind, chunk size, requested-size band) so one
+ * table answers both questions the census is for: WHO asked for the bytes, and
+ * what SHAPE the requests were. The band column is the only place a fact like
+ * "most of these strings are sixteen bytes in a forty-byte hole" is visible.
+ */
+typedef struct phl_census_agg phl_census_agg;
+struct phl_census_agg {
+	void *pSite;
+	sxu32 nKind;
+	sxu32 nChunk;
+	sxu32 nBand;
+	sxu32 nCount;
+	sxu64 nByte;
+	sxu64 nChunkTotal;
+};
+/* Requested size -> band: exact eight-byte steps below 256, powers of two above. */
+static sxu32 CensusBand(sxu32 nByte)
+{
+	sxu32 k;
+	if( nByte < 256 ){
+		return nByte >> 3;              /* 0 .. 31 */
+	}
+	k = 8;
+	while( k < 31 && nByte >= (1u << (k + 1)) ){
+		k++;
+	}
+	return 24 + k;                      /* 32 .. 55 */
+}
+static void CensusBandRange(sxu32 nBand,sxu32 *pLo,sxu32 *pHi)
+{
+	if( nBand < 32 ){
+		*pLo = nBand << 3;
+		*pHi = (nBand << 3) + 7;
+	}else{
+		sxu32 k = nBand - 24;
+		*pLo = 1u << k;
+		*pHi = (k >= 31) ? SXU32_HIGH : ((1u << (k + 1)) - 1);
+	}
+}
+static int CensusAggCmp(const void *a,const void *b)
+{
+	const phl_census_agg *pA = (const phl_census_agg *)a;
+	const phl_census_agg *pB = (const phl_census_agg *)b;
+	if( pA->nChunkTotal < pB->nChunkTotal ){ return  1; }
+	if( pA->nChunkTotal > pB->nChunkTotal ){ return -1; }
+	return 0;
+}
+static void CensusDump(void)
+{
+	const sxu32 nAggSlot = 1u << 17;
+	phl_census_agg *aAgg;
+	sxu32 nAgg = 0;
+	sxu32 nLost = 0;
+	sxu32 i;
+	FILE *pOut;
+
+	/* The dump allocates and writes; it must not be reentered from either.
+	 * Recording resumes afterwards so the run still reports its TRUE peak at
+	 * exit -- which is the only way to notice that run two of the protocol
+	 * measured a different workload than run one (a tool with a warm cache
+	 * measures itself, not the engine). */
+	sCensus.bReady = -1;
+	sCensus.bDumped = 1;
+	aAgg = (phl_census_agg *)calloc(nAggSlot,sizeof(phl_census_agg));
+	if( aAgg == 0 ){
+		fprintf(stderr,"census: no room to aggregate\n");
+		sCensus.bReady = 1;
+		return;
+	}
+	for( i = 0 ; i < sCensus.nSlot ; ++i ){
+		phl_census_rec *p = &sCensus.aRec[i];
+		sxu32 nBand,h,n;
+		if( p->pPtr == 0 ){
+			continue;
+		}
+		nBand = CensusBand(p->nByte);
+		h = (CensusHashPtr(p->pSite) ^ (p->nChunk * 2654435761u)
+			^ (nBand * 40503u) ^ (p->nKind * 97u)) & (nAggSlot - 1);
+		for( n = 0 ; n < nAggSlot ; ++n ){
+			phl_census_agg *q = &aAgg[h];
+			if( q->nCount == 0 ){
+				q->pSite = p->pSite; q->nKind = p->nKind;
+				q->nChunk = p->nChunk; q->nBand = nBand;
+			}
+			if( q->pSite == p->pSite && q->nKind == p->nKind
+				&& q->nChunk == p->nChunk && q->nBand == nBand ){
+				q->nCount++;
+				q->nByte += p->nByte;
+				q->nChunkTotal += p->nChunk;
+				break;
+			}
+			h = (h + 1) & (nAggSlot - 1);
+		}
+		if( n == nAggSlot ){
+			nLost++;
+		}
+	}
+	for( i = 0 ; i < nAggSlot ; ++i ){
+		if( aAgg[i].nCount ){
+			aAgg[nAgg++] = aAgg[i];
+		}
+	}
+	qsort(aAgg,nAgg,sizeof(phl_census_agg),CensusAggCmp);
+	pOut = fopen(sCensus.zOut,"w");
+	if( pOut == 0 ){
+		pOut = stderr;
+	}
+	fprintf(pOut,"# phl heap census\n");
+	fprintf(pOut,"# base 0x%lx -- SITE addresses below are ALREADY relative to it\n",
+		(unsigned long)(sxuptr)__executable_start);
+	fprintf(pOut,"# live-bytes %llu  live-records %lu  peak-bytes %llu  rows %lu%s%s\n",
+		(unsigned long long)sCensus.nLiveByte,(unsigned long)sCensus.nLiveRec,
+		(unsigned long long)sCensus.nPeakByte,(unsigned long)nAgg,
+		sCensus.bFull ? "  TRUNCATED(table-filled)" : "",
+		nLost ? "  TRUNCATED(rows-filled)" : "");
+	fprintf(pOut,"# SITE <rel-addr> <pool|direct> <count> <chunk-bytes> <req-bytes>"
+		" <chunk-size> <req-lo> <req-hi>\n");
+	for( i = 0 ; i < nAgg ; ++i ){
+		sxu32 lo,hi;
+		CensusBandRange(aAgg[i].nBand,&lo,&hi);
+		fprintf(pOut,"SITE %lx %s %lu %llu %llu %lu %lu %lu\n",
+			(unsigned long)((char *)aAgg[i].pSite - __executable_start),
+			aAgg[i].nKind == PHL_CENSUS_KIND_POOL ? "pool" : "direct",
+			(unsigned long)aAgg[i].nCount,
+			(unsigned long long)aAgg[i].nChunkTotal,
+			(unsigned long long)aAgg[i].nByte,
+			(unsigned long)aAgg[i].nChunk,
+			(unsigned long)lo,(unsigned long)hi);
+	}
+	if( pOut != stderr ){
+		fclose(pOut);
+	}
+	fprintf(stderr,"census: dumped %lu rows / %llu live bytes to %s\n",
+		(unsigned long)nAgg,(unsigned long long)sCensus.nLiveByte,sCensus.zOut);
+	free(aAgg);
+	sCensus.bReady = 1;
+}
+/* Run 1 of the protocol: say what the peak was, so run 2 can aim at it. */
+static void CensusAtExit(void) __attribute__((destructor));
+static void CensusAtExit(void)
+{
+	if( sCensus.bReady == 0 || sCensus.aRec == 0 ){
+		return;   /* never armed, or the table could not be mapped */
+	}
+	fprintf(stderr,"census: peak recorded live bytes %llu (%.1f MiB)%s\n",
+		(unsigned long long)sCensus.nPeakByte,
+		(double)sCensus.nPeakByte / (1024.0*1024.0),
+		sCensus.bFull ? " -- TRUNCATED, raise PHL_CENSUS_SLOTS" : "");
+}
+/* A pool chunk's real cost is its BUCKET, which only its header knows. */
+static sxu32 CensusPoolChunkSize(void *pChunk,sxu32 nByte)
+{
+	SyMemHeader *pHeader = (SyMemHeader *)(((char *)pChunk) - sizeof(SyMemHeader));
+	sxu32 nBucket = pHeader->nBucket & 0xFFFF;
+	if( nBucket == SXU16_HIGH ){
+		/* Big block: a SyMemBlock and a SyMemHeader around the request. */
+		return nByte + (sxu32)sizeof(SyMemHeader) + (sxu32)sizeof(SyMemBlock);
+	}
+	return 1u << (nBucket + SXMEM_POOL_INCR);
+}
+#define PHL_CENSUS_DIRECT(B,P,N) \
+	CensusRecord(B,P,__builtin_return_address(0),N, \
+		(N) + (sxu32)sizeof(SyMemBlock),PHL_CENSUS_KIND_DIRECT)
+#define PHL_CENSUS_POOL(B,P,N) \
+	CensusRecord(B,P,__builtin_return_address(0),N, \
+		CensusPoolChunkSize(P,N),PHL_CENSUS_KIND_POOL)
+#define PHL_CENSUS_FORGET(P)         CensusForget(P)
+#define PHL_CENSUS_FORGET_BACKEND(B) CensusForgetBackend(B)
+#else
+#define PHL_CENSUS_DIRECT(B,P,N)     ((void)0)
+#define PHL_CENSUS_POOL(B,P,N)       ((void)0)
+#define PHL_CENSUS_FORGET(P)         ((void)0)
+#define PHL_CENSUS_FORGET_BACKEND(B) ((void)0)
+#endif /* PHL_MEM_CENSUS */
 
 static void * SyOSHeapAlloc(sxu32 nByte)
 {
@@ -226,6 +644,7 @@ PH7_PRIVATE void * SyMemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)
 		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);
 	}
 	pChunk = MemBackendAlloc(&(*pBackend),nByte);
+	PHL_CENSUS_DIRECT(pBackend,pChunk,nByte);
 	if( pBackend->pMutexMethods ){
 		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);
 	}
@@ -308,6 +727,11 @@ PH7_PRIVATE void * SyMemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 
 		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);
 	}
 	pChunk = MemBackendRealloc(&(*pBackend),pOld,nByte);
+	if( pChunk ){
+		/* The old address is gone whether or not realloc moved the block. */
+		PHL_CENSUS_FORGET(pOld);
+		PHL_CENSUS_DIRECT(pBackend,pChunk,nByte);
+	}
 	if( pBackend->pMutexMethods ){
 		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);
 	}
@@ -351,6 +775,7 @@ PH7_PRIVATE sxi32 SyMemBackendFree(SyMemBackend *pBackend,void * pChunk)
 	if( pBackend->pMutexMethods ){
 		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);
 	}
+	PHL_CENSUS_FORGET(pChunk);
 	rc = MemBackendFree(&(*pBackend),pChunk);
 	if( pBackend->pMutexMethods ){
 		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);
@@ -492,6 +917,9 @@ PH7_PRIVATE void * SyMemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);
 	}
 	pChunk = MemBackendPoolAlloc(&(*pBackend),nByte);
+	if( pChunk ){
+		PHL_CENSUS_POOL(pBackend,pChunk,nByte);
+	}
 	if( pBackend->pMutexMethods ){
 		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);
 	}
@@ -532,6 +960,7 @@ PH7_PRIVATE sxi32 SyMemBackendPoolFree(SyMemBackend *pBackend,void * pChunk)
 	if( pBackend->pMutexMethods ){
 		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);
 	}
+	PHL_CENSUS_FORGET(pChunk);
 	rc = MemBackendPoolFree(&(*pBackend),pChunk);
 	if( pBackend->pMutexMethods ){
 		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);
@@ -734,6 +1163,7 @@ PH7_PRIVATE sxi32 SyMemBackendRelease(SyMemBackend *pBackend)
 	if( pBackend->pMutexMethods ){
 		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);
 	}
+	PHL_CENSUS_FORGET_BACKEND(pBackend);
 	(void)MemBackendRelease(&(*pBackend));
 	if( pBackend->pMutexMethods ){
 		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);
