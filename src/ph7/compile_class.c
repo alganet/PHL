@@ -4171,16 +4171,34 @@ static sxi32 GenStateDeferRecordRef(ph7_gen_state *pGen,SyToken **ppCur,SyToken 
 	return SXRET_OK;
 }
 /*
+ * Look a class/interface/trait name up WITHOUT asking the autoloader: is this
+ * name declared right now? php's early binding asks exactly this question --
+ * zend_try_early_binding does a plain class-table lookup and gives up if the
+ * parent is not there yet, because a compile-time autoload would run user code
+ * in the middle of compiling a file.
+ */
+static ph7_class * GenStateFindDeclaredClass(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	SyHashEntry *pEntry;
+	PH7_VmClassNameAnchor(&zName,&nByte);
+	if( nByte < 1 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
+	return pEntry ? (ph7_class *)pEntry->pUserData : 0;
+}
+/*
  * Scan the declaration whose keyword pGen->pIn sits on (class/enum/interface/
  * trait, or an anonymous `class(args)`) WITHOUT consuming tokens. Collects
  * every referenced dependency name, locates the body braces, and filters the
- * collected names down to the UNRESOLVABLE ones (each lookup fires autoload,
- * exactly like the compile it replaces). SXRET_OK with an empty pMissing set
- * means "compile normally"; a non-empty set means "defer". Any structural
- * surprise returns SXERR_INVALID so the normal compile reports it.
+ * collected names down to the UNRESOLVABLE ones. SXRET_OK with an empty
+ * pMissing set means "compile normally"; a non-empty set means "defer". Any
+ * structural surprise returns SXERR_INVALID so the normal compile reports it.
+ *
+ * bNoAutoload picks which question the filter asks -- see its use below.
  */
 static sxi32 GenStateScanDeferDeps(ph7_gen_state *pGen,int bAnon,int iSelfKind,
-	SySet *pMissing,SyToken **ppBody,SyToken **ppBodyEnd,SyBlob *pSelfFqn)
+	SySet *pMissing,SyToken **ppBody,SyToken **ppBodyEnd,SyBlob *pSelfFqn,int bNoAutoload)
 {
 	SyToken *pCur = pGen->pIn; /* on the declaration keyword */
 	SyToken *pEnd = pGen->pEnd;
@@ -4298,13 +4316,23 @@ static sxi32 GenStateScanDeferDeps(ph7_gen_state *pGen,int bAnon,int iSelfKind,
 			p++;
 		}
 	}
-	/* Filter: keep only the names that do NOT resolve. The lookup fires the
-	 * autoloader exactly where the replaced compile would. */
+	/* Filter: keep only the names that do NOT resolve. For a declaration that
+	 * will be compiled where it stands, the lookup fires the autoloader exactly
+	 * where the replaced compile would. For a CONDITIONAL one it must not: the
+	 * declaration is deferred whatever this answers, and php never resolves a
+	 * parent it has not reached. `if (false) { class C extends B {} }` is the
+	 * shape that shows it -- nikic/php-parser's own class aliases are written
+	 * that way, with a `require` of the parent's file BEFORE the dead block, so
+	 * an autoload here loaded that file first and the require then declared
+	 * everything in it a second time. */
 	{
 		VmDeferredReq *aReq = (VmDeferredReq *)SySetBasePtr(&aNames);
 		sxu32 n;
 		for( n = 0 ; n < SySetUsed(&aNames) ; ++n ){
-			if( PH7_VmExtractClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte,FALSE,0) == 0 ){
+			ph7_class *pFound = bNoAutoload
+				? GenStateFindDeclaredClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte)
+				: PH7_VmExtractClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte,FALSE,0);
+			if( pFound == 0 ){
 				SySetPut(pMissing,(const void *)&aReq[n]);
 			}
 		}
@@ -4493,11 +4521,16 @@ static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKin
 	SyToken *pBodyEnd = 0;
 	SyBlob sSelfFqn;
 	int bDefer = 0;
+	/* php's binding rule, decided before anything is resolved: a declaration that
+	 * is not at a unit's top level is bound when execution REACHES it, so it is
+	 * deferred whatever its dependencies look like -- and nothing about it may be
+	 * resolved here. */
+	int bCond = GenStateDeclIsConditional(&(*pGen));
 	*pRc = SXRET_OK;
 	SySetInit(&aMissing,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
 	SyBlobInit(&sSelfFqn,&pGen->pVm->sAllocator);
-	if( GenStateScanDeferDeps(pGen,0,iSelfKind,&aMissing,&pBody,&pBodyEnd,&sSelfFqn) == SXRET_OK
-	 && (SySetUsed(&aMissing) > 0 || GenStateDeclIsConditional(&(*pGen))) ){
+	if( GenStateScanDeferDeps(pGen,0,iSelfKind,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,bCond) == SXRET_OK
+	 && (SySetUsed(&aMissing) > 0 || bCond) ){
 		/* Two reasons to compile this declaration where it RUNS rather than here.
 		 * The first is a missing dependency (the autoloader that resolves it has
 		 * not been registered yet). The second is php's binding rule: a class
@@ -5384,7 +5417,10 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		int bDeferred = 0;
 		SySetInit(&aMissing,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
 		SyBlobInit(&sSelfFqn,&pGen->pVm->sAllocator);
-		if( GenStateScanDeferDeps(pGen,1,PH7_DEFER_KIND_CLASS,&aMissing,&pBody,&pBodyEnd,&sSelfFqn) == SXRET_OK
+		/* An anonymous class is an EXPRESSION: it is always compiled where it runs,
+		 * so resolving its parent here is resolving it at its execution point --
+		 * the autoload belongs. */
+		if( GenStateScanDeferDeps(pGen,1,PH7_DEFER_KIND_CLASS,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,0) == SXRET_OK
 		 && SySetUsed(&aMissing) > 0 ){
 			if( &pTokKw[1] < pGen->pEnd && (pTokKw[1].nType & PH7_TK_LPAREN) ){
 				SyToken *pClose = 0;
