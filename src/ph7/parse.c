@@ -224,7 +224,12 @@ static const ph7_expr_op aOpTable[] = {
 	{ {"!==",sizeof(char)*3}, EXPR_OP_TNE, 11, EXPR_OP_NON_ASSOC, PH7_OP_TNE},
 	/* Precedence 12,left-associative */
 	{ {"&",sizeof(char)}, EXPR_OP_BAND, 12, EXPR_OP_ASSOC_LEFT, PH7_OP_BAND},
-	/* Precedence 12,left-associative */
+	/* Precedence 12,left-associative. php puts `=&` at ASSIGNMENT level, looser than
+	 * every comparison; this table cannot say that without moving the operator out of
+	 * the pass that carries all of its own rules (the not-a-variable refusals, the
+	 * unary hoist, the nullsafe screens), so the one shape the difference is visible in
+	 * -- a comparison to its left -- is re-associated in that pass instead. See
+	 * "php gives `=&` ASSIGNMENT precedence" in PH7_ExprMakeTree. */
 	{ {"=&",sizeof(char)*2}, EXPR_OP_REF, 12, EXPR_OP_ASSOC_LEFT, PH7_OP_STORE_REF},
 	                         /* Binary operators */
 	/* Precedence 13,left-associative */
@@ -2516,6 +2521,7 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 			 if( pNode->pOp && pNode->pOp->iPrec == i && pNode->pLeft == 0 ){
 				 ph7_expr_node *pRefUn = 0;      /* `=&` under a prefix unary */
 				 ph7_expr_node *pRefUnOuter = 0;
+				 ph7_expr_node *pRefCmp = 0;     /* comparison to re-hang a `=&` under */
 				 /* Get the right node */
 				 iRight = iCur + 1;
 				 while( iRight < nToken && apNode[iRight] == 0 ){
@@ -2531,6 +2537,28 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 }
 				 if( pNode->pOp->iOp == EXPR_OP_REF ){
 					 sxi32  iTmp;
+					 /* php gives `=&` ASSIGNMENT precedence -- looser than every
+					  * comparison -- so `null === $x =& $a[$k]` is
+					  * `null === ($x =& $a[$k])`. This table processes `=&` at 12, one
+					  * step TIGHTER than `===` at 11, because the operator's own rules
+					  * (the refusals below, the unary hoist, the nullsafe screens) live
+					  * in this pass and moving it to 18 would leave all of them behind.
+					  * A comparison has therefore already taken the variable this bind
+					  * means, and the bind was left with `(null === $x)` as its target --
+					  * not a variable, so the file was a parse error. symfony/translation
+					  * writes exactly this shape, and it cost the whole file.
+					  *
+					  * Take the comparison's RIGHT operand as the bind target and hang
+					  * the finished bind back under it, which is the tree php builds.
+					  * Parenthesised groups are left alone: `($a === $b) =& $c` really is
+					  * a refusal. */
+					 if( iLeft >= 0 && apNode[iLeft] && apNode[iLeft]->pOp
+					  && (apNode[iLeft]->pOp->iPrec == 10 || apNode[iLeft]->pOp->iPrec == 11)
+					  && apNode[iLeft]->pRight != 0
+					  && (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 ){
+						 pRefCmp = apNode[iLeft];
+						 apNode[iLeft] = pRefCmp->pRight;
+					 }
 					 /* Reference operator [i.e: '&=' ]*/
 					 /* A prefix unary covers the whole BIND too — `@$a[0] =& $x` is
 					  * `@($a[0] =& $x)`, and so are its `-`/`+`/`!`/`~`/cast spellings,
@@ -2619,6 +2647,11 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					 /* Re-wrap: the unary chain now covers the whole bind. */
 					 pRefUn->pLeft = pNode;
 					 apNode[iCur] = pRefUnOuter;
+				 }
+				 if( pRefCmp ){
+					 /* Re-hang: the comparison now compares against the bind's value. */
+					 pRefCmp->pRight = apNode[iCur] ? apNode[iCur] : pNode;
+					 apNode[iCur] = pRefCmp;
 				 }
 			 }
 			 iLeft = iCur;
