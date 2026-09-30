@@ -791,6 +791,29 @@ static int VfsPathStatable(ph7_vfs *pVfs,const char *zPath)
 	return pVfs->xFileExists(zPath) == PH7_OK;
 }
 /*
+ * php declares every path parameter in this file `string`, and its ZPP converts an
+ * OBJECT with __toString before the C body runs. PHL's guards asked
+ * ph7_value_is_string, which is false for such an object, so each of these builtins
+ * silently answered its miss value for one -- `is_dir($it->current())` answered FALSE
+ * for a directory, which is how phpcs walked three top-level directories and found
+ * 16 of a project's 711 files without reporting anything wrong. SplFileInfo is the
+ * object every real program passes here (RecursiveDirectoryIterator yields it).
+ *
+ * The conversion itself is already in ph7_value_to_string(); only the screen in front
+ * of it was wrong.
+ */
+static int VfsPathArgUsable(ph7_value *pVal)
+{
+	if( pVal == 0 ){
+		return 0;
+	}
+	if( ph7_value_is_string(pVal) ){
+		return 1;
+	}
+	return ph7_value_is_object(pVal) && !PH7_MemObjIsNotStringable(pVal);
+}
+
+/*
  * bool chdir(string $directory)
  *  Change the current directory.
  * Parameters
@@ -855,7 +878,7 @@ static int PH7_vfs_chroot(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -938,7 +961,7 @@ static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vfs *pVfs;
 	phl_stream_ctx *pStreamCtx;
 	int rc,bThrew = 0;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1005,7 +1028,7 @@ static int PH7_vfs_is_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1170,7 +1193,7 @@ static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vfs *pVfs;
 	phl_stream_ctx *pStreamCtx;
 	int iMode,rc,bThrew = 0;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1264,7 +1287,7 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vfs *pVfs;
 	phl_stream_ctx *pStreamCtx;
 	int rc,bThrew = 0;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1361,7 +1384,7 @@ static int PH7_vfs_realpath(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
         int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1683,7 +1706,7 @@ static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vfs *pVfs;
 	phl_stream_ctx *pStreamCtx;
 	int rc,bThrew = 0;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1742,7 +1765,7 @@ static int PH7_vfs_chmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vfs *pVfs;
 	int iMode;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1814,7 +1837,7 @@ static int PH7_vfs_chown(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath,*zUser;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1898,7 +1921,7 @@ static int PH7_vfs_chgrp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath,*zGroup;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1980,7 +2003,7 @@ static int PH7_vfs_disk_free_space(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_int64 iSize;
 	ph7_vfs *pVfs;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2037,7 +2060,7 @@ static int PH7_vfs_disk_total_space(ph7_context *pCtx,int nArg,ph7_value **apArg
 	const char *zPath;
 	ph7_int64 iSize;
 	ph7_vfs *pVfs;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2088,7 +2111,7 @@ static int PH7_vfs_file_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2130,7 +2153,7 @@ static int PH7_vfs_file_size(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_int64 iSize;
 	ph7_vfs *pVfs;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2180,7 +2203,7 @@ static int PH7_vfs_file_atime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_int64 iTime;
 	ph7_vfs *pVfs;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2230,7 +2253,7 @@ static int PH7_vfs_file_mtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_int64 iTime;
 	ph7_vfs *pVfs;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2280,7 +2303,7 @@ static int PH7_vfs_file_ctime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_int64 iTime;
 	ph7_vfs *pVfs;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2330,7 +2353,7 @@ static int PH7_vfs_is_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2372,7 +2395,7 @@ static int PH7_vfs_is_link(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2414,7 +2437,7 @@ static int PH7_vfs_is_readable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2456,7 +2479,7 @@ static int PH7_vfs_is_writable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2498,7 +2521,7 @@ static int PH7_vfs_is_executable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2540,7 +2563,7 @@ static int PH7_vfs_filetype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath;
 	ph7_vfs *pVfs;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return 'unknown' */
 		ph7_result_string(pCtx,"unknown",sizeof("unknown")-1);
 		return PH7_OK;
@@ -2605,7 +2628,7 @@ static int PH7_vfs_stat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2686,7 +2709,7 @@ static int PH7_vfs_lstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2971,7 +2994,7 @@ static int PH7_vfs_touch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zFile;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -3119,7 +3142,7 @@ static int PH7_builtin_dirname(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath,*zDir;
 	int iLen,iDirlen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid arguments,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
@@ -3177,7 +3200,7 @@ static int PH7_builtin_basename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath,*zBase;
 	int iLen,nBase;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
@@ -3285,7 +3308,7 @@ static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	path_info sInfo;
 	int iLen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		/* Missing/Invalid argument,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
@@ -3676,7 +3699,7 @@ static int PH7_builtin_fnmatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int iEsc = '\\';
 	int noCase = 0;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -3719,7 +3742,7 @@ static int PH7_builtin_strglob(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zString,*zPattern;
 	int iEsc = '\\';
 	int rc;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -4304,7 +4327,7 @@ static int PH7_vfs_link(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zTarget,*zLink;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -4352,7 +4375,7 @@ static int PH7_vfs_readlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 || !VfsPathArgUsable(apArg[0]) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -4392,7 +4415,7 @@ static int PH7_vfs_symlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zTarget,*zLink;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
+	if( nArg < 2 || !VfsPathArgUsable(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
