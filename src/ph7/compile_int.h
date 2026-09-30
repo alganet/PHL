@@ -256,7 +256,6 @@ PH7_PRIVATE sxi32 PH7_CompileClassModifiers(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileEnum(ph7_gen_state *pGen);
 PH7_PRIVATE int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd);
 PH7_PRIVATE int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd);
-PH7_PRIVATE int GenStateStartsClosureExpr(SyToken *pIn,SyToken *pEnd);
 PH7_PRIVATE int GenStateIsReadonly(SyToken *pTok);
 PH7_PRIVATE sxi32 GenStatePeekSetVisibility(SyToken *pTok,SyToken *pEnd,int *pnTok);
 PH7_PRIVATE sxi32 GenStateSetVisFlag(sxi32 nKw);

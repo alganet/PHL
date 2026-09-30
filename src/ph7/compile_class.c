@@ -5418,13 +5418,23 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	static int iCnt = 1;     /* Single-threaded compile: no locking needed */
 	SyString sName;
 	SyToken *pArgStart,*pArgEnd;
-	SyToken *pTokKw = pGen->pIn; /* Attribute-sidecar key: `new #[A] class` trivia
-	                              * is keyed to this 'class' token */
+	SyToken *pTokKw;
+	sxi32 iAnonFlags = 0;
 	ph7_value *pObj;
 	sxu32 nLine = pGen->pIn->nLine;
 	sxu32 nIdx,nLen;
 	sxi32 nArg,rc;
 	SXUNUSED(iCompileFlag);
+	if( GenStateIsReadonly(pGen->pIn) && &pGen->pIn[1] < pGen->pEnd ){
+		/* `new readonly class …` (PHP 8.3). Step over the modifier so everything
+		 * below sees the cursor on `class`, where it has always been, and carry
+		 * the flag into the class body — which is what makes every property
+		 * readonly and refuses a non-readonly base. */
+		iAnonFlags = PH7_CLASS_READONLY;
+		pGen->pIn++;
+	}
+	pTokKw = pGen->pIn; /* Attribute-sidecar key: `new #[A] class` trivia
+	                     * is keyed to this 'class' token */
 	if( pGen->pVm->sDeferAnonName.nByte > 0 ){
 		/* Deferred re-compile (VmExecDeferredClass): install under the SAME
 		 * synthesized name the original site's OP_NEW loads. One-shot. */
@@ -5479,7 +5489,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		SySetRelease(&aMissing);
 		SyBlobRelease(&sSelfFqn);
 		if( !bDeferred ){
-			rc = GenStateCompileClassEx(pGen,0,&sName,&pArgStart,&pArgEnd);
+			rc = GenStateCompileClassEx(pGen,iAnonFlags,&sName,&pArgStart,&pArgEnd);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
@@ -5706,6 +5716,31 @@ PH7_PRIVATE int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd)
 	sxi32 iFlags = GenStateScanClassModifiers(&pIn,pEnd,0);
 	return iFlags != 0 && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)
 		&& (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_CLASS;
+}
+/*
+ * Return TRUE when the token stream starts `readonly class …` in a `new`
+ * operand — PHP 8.3's readonly ANONYMOUS class. `readonly` is the only modifier
+ * php admits there: `new final class {}` and `new abstract class {}` are parse
+ * errors, so this deliberately does NOT reuse GenStateScanClassModifiers.
+ */
+PH7_PRIVATE int GenStateStartsReadonlyAnonClass(SyToken *pIn,SyToken *pEnd)
+{
+	if( !GenStateIsReadonly(pIn) || &pIn[1] >= pEnd ){
+		return 0;
+	}
+	pIn++;
+	if( (pIn->nType & PH7_TK_KEYWORD) == 0
+	 || (sxu32)SX_PTR_TO_INT(pIn->pUserData) != PH7_TKWRD_CLASS
+	 || &pIn[1] >= pEnd ){
+		return 0;
+	}
+	/* Same shape test the bare `new class` branch makes, so a stray `readonly`
+	 * followed by the `::class` constant is left to the literal path. */
+	pIn++;
+	return (pIn->nType & (PH7_TK_OCB|PH7_TK_LPAREN)) != 0
+		|| ( (pIn->nType & PH7_TK_KEYWORD)
+		  && ( (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_EXTENDS
+		    || (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_IMPLEMENTS ) );
 }
 /*
  * Compile a class declaration carrying one or more leading modifiers

@@ -826,6 +826,9 @@ static sxi32 ExprAssembleAnnonClass(ph7_gen_state *pGen,SyToken **ppCur,SyToken 
 	SyToken *pIn = *ppCur;
 	sxu32 nLine = pIn->nLine;
 	sxi32 rc;
+	if( GenStateIsReadonly(pIn) ){
+		pIn++; /* `new readonly class …` (PHP 8.3): step over the modifier */
+	}
 	pIn++; /* Jump the 'class' keyword */
 	/* Optional constructor argument list */
 	if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
@@ -1331,6 +1334,20 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 			}
 		}
 		pNode->xCode = PH7_CompileVariable;
+	 }else if( !bAfterMemberOp && GenStateStartsReadonlyAnonClass(pCur,pGen->pEnd) ){
+		 /* `new readonly class(args) [extends/implements] { body }` (PHP 8.3).
+		  * `readonly` is a context-sensitive ID, so it never reaches the keyword
+		  * chain below and the `class` after it read as the `::class` constant --
+		  * `syntax error, unexpected token "class"`. It is the ONLY modifier php
+		  * allows here (`new final class {}` and `new abstract class {}` are parse
+		  * errors in both engines), and pest writes one in its parallel result
+		  * printer. */
+		 rc = ExprAssembleAnnonClass(&(*pGen),&pCur,pGen->pEnd);
+		 if( rc != SXRET_OK ){
+			 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+			 return rc;
+		 }
+		 pNode->xCode = PH7_CompileAnnonClass;
 	 }else if( pCur->nType & PH7_TK_KEYWORD ){
 		 sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pCur->pUserData);
 		 if( bAfterMemberOp ){
