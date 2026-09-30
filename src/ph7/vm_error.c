@@ -5092,19 +5092,17 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 		return;
 	}
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	pSiteFile = pFile;
-	/* getFile() is the file where `new` executed = the DEFINING file of the
-	 * innermost active function (aFiles tracks include nesting, not the running
-	 * function's source, so it is wrong once a call chain spans files). Fall back
-	 * to the include-stack top at global scope / for engine-created throwables. */
-	{
-		VmFrame *pInner = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
-		if( pInner && pInner->pUserData ){
-			ph7_vm_func *pInnerFunc = (ph7_vm_func *)pInner->pUserData;
-			if( pInnerFunc->sFile.nByte > 0 ){
-				pSiteFile = &pInnerFunc->sFile;
-			}
-		}
+	/* getFile() is the file the `new` is WRITTEN in, which is the same question
+	 * __FILE__ asks and PH7_VmExecutingUnitFile is the one answer to: the running
+	 * function's DEFINING file, the include-stack top for code at a loaded unit's
+	 * top level, and an eval()'d chunk's own name inside one. This asked it by
+	 * hand and knew only the first half, so an undefined function called at the
+	 * top level of a file some METHOD included was reported in the method's file
+	 * (PHPUnit's TestSuiteLoader is exactly that shape, and named itself instead
+	 * of the test file it had just loaded). */
+	pSiteFile = PH7_VmExecutingUnitFile(&(*pVm));
+	if( pSiteFile == 0 ){
+		pSiteFile = pFile;
 	}
 	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){
 		SyHashEntry *pEntry;

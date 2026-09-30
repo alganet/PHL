@@ -1970,6 +1970,15 @@ static sxi32 GenStateEmitExprCode(
 					 * resolution — the parens are exactly what distinguishes `($o->p)()` from
 					 * the method call `$o->p()`. */
 					pInstr->iP2 = 1;
+					/* This OP_MEMBER is where php SCREENS a method call -- an undefined
+					 * or inaccessible method, a class that is not there -- and php
+					 * reports that refusal at the line the CALL BEGINS on. The emitter
+					 * stamped it with the token the generator was standing on, which
+					 * for a call spanning several lines is its closing ')'. Same rule,
+					 * same source, as the OP_CALL/OP_NEW stamp further down. */
+					if( pInstr->iOp == PH7_OP_MEMBER && pNode->pStart ){
+						pInstr->nLine = pNode->pStart->nLine;
+					}
 					/* A static call with a DYNAMIC method name (`C::$m(...)`): the
 					 * static-`::` codegen folded the variable NAME into OP_MEMBER->p3
 					 * as if it were a static-PROPERTY read (`C::$m`), but in a CALL the
@@ -2035,8 +2044,26 @@ static sxi32 GenStateEmitExprCode(
 							PH7_VmEmitInstr(pGen->pVm,PH7_OP_NEW,-1,0,0,0);
 						}
 					}else if( nCallArg > 0 && !bTwoSlot && !bNodeFcc ){
+						/* This screen is where a `Call to undefined function` is
+						 * raised for a call that HAS arguments, and php reports such a
+						 * call at the line the CALLEE is written on -- not at the
+						 * closing parenthesis, which is where the emitter's token
+						 * cursor has reached by now. The callee's own load is the
+						 * instruction immediately behind (`pInstr`, peeked just above
+						 * for bTwoSlot), so its line is the one to carry. A call with
+						 * no arguments needs nothing: OP_CALL itself is then the first
+						 * thing to run and already reports the callee's line. */
+						sxu32 nInitIdx = PH7_VmInstrLength(pGen->pVm);
+						sxu32 nCalleeLine = pNode->pStart
+							? pNode->pStart->nLine : (pInstr ? pInstr->nLine : 0);
 						PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL_INIT,0,
 							(p3 && ((VmCallArgMap *)p3)->bIsNamespaced) ? 1 : 0,0,0);
+						if( nCalleeLine ){
+							VmInstr *pInitInstr = PH7_VmGetInstr(pGen->pVm,nInitIdx);
+							if( pInitInstr ){
+								pInitInstr->nLine = nCalleeLine;
+							}
+						}
 					}
 				}
 				rc = GenStateEmitCallArgs(&(*pGen),pNode,iFlags,&sArgs);
