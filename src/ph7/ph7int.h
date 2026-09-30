@@ -4948,6 +4948,39 @@ struct VmUrlParts
 };
 PH7_PRIVATE int PH7_VmUrlSplit(const char *z,int n,VmUrlParts *pOut);
 /*
+ * PHL_VALUE_CENSUS -- the value-primitive census (PERF.md §7, memobj.c has the
+ * instrument and build-aux/valuecensus.sh drives it). Off in every shipping build.
+ *
+ * PHL_VC_DOOR is what makes a row a call SITE: the two hot doors below are inlined
+ * in the build that ships, and __builtin_return_address(0) inside an INLINED function
+ * names the caller's caller. Under the census they are compiled out of line, so a row
+ * is the line that called. `unused` is on it because a translation unit that never
+ * calls the door would otherwise warn -- gcc refuses `inline` and `noinline` together,
+ * so the usual static-inline exemption is not available here.
+ *
+ * PHL_VCENSUS_CALLER lifts every row one frame -- the hashcensus -c convention, and
+ * the same warning applies: it needs -fno-omit-frame-pointer, and it is how a row that
+ * is a whole subsystem funnelled through one line gets decomposed.
+ */
+#if defined(PHL_VALUE_CENSUS)
+#define PHL_VC_RELEASE 0
+#define PHL_VC_LOAD    1
+#define PHL_VC_STORE   2
+#define PHL_VC_INIT    3
+#define PHL_VC_KINDS   4
+PH7_PRIVATE void PH7_ValueCensusNote(void *pSite,sxu32 iKind,int bWork);
+#if defined(PHL_VCENSUS_CALLER)
+#define PHL_VCENSUS_SITE() __builtin_return_address(1)
+#else
+#define PHL_VCENSUS_SITE() __builtin_return_address(0)
+#endif
+#define PHL_VC_NOTE(K,W) PH7_ValueCensusNote(PHL_VCENSUS_SITE(),(K),(W))
+#define PHL_VC_DOOR static __attribute__((noinline,unused))
+#else
+#define PHL_VC_NOTE(K,W) ((void)0)
+#define PHL_VC_DOOR SX_STATIC_INLINE
+#endif
+/*
  * Load an ALIASING copy of a value: the destination gets the scalar half verbatim, one
  * more reference on a container, and a READ-ONLY view of the source's string bytes. It is
  * how a variable, an element and a property all reach the operand stack, and it is the
@@ -4963,8 +4996,9 @@ PH7_PRIVATE int PH7_VmUrlSplit(const char *z,int n,VmUrlParts *pOut);
  * record that branch was taken **0 times in 1.34 billion** -- the destination is nearly
  * always a fresh operand slot -- so it stays a call rather than more inline bytes.
  */
-SX_STATIC_INLINE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
+PHL_VC_DOOR sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
 {
+	PHL_VC_NOTE(PHL_VC_LOAD,(pSrc->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) != 0);
 	PH7_MEMOBJ_COPY_SCALAR(pDest,pSrc);
 	/* D1 commit 2: a MEMOBJ_AUX_DEFPATH carrier OWNS its heap descriptor via x.pOther, and
 	 * PH7_MemObjRelease frees it exactly once. An aliasing Load copies iFlags+x.pOther
@@ -5013,8 +5047,10 @@ PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj);
  * The same reason SySetAt and PH7_MemObjAt are inline.
  */
 #define MEMOBJ_AUX_OWNED (MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_DEFPATH)
-SX_STATIC_INLINE sxi32 PH7_MemObjRelease(ph7_value *pObj)
+PHL_VC_DOOR sxi32 PH7_MemObjRelease(ph7_value *pObj)
 {
+	PHL_VC_NOTE(PHL_VC_RELEASE,
+		(pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_AUX_OWNED)) != MEMOBJ_NULL);
 	if( (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_AUX_OWNED)) == MEMOBJ_NULL ){
 		return SXRET_OK;   /* Owns nothing -- 43.1% of every release the engine makes */
 	}

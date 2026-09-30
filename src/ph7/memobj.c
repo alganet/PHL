@@ -9,6 +9,120 @@
 #include <stdlib.h> /* strtod — var_dump's shortest-round-trip float shape
                      * verifies each candidate by parsing it back */
 
+#if defined(PHL_VALUE_CENSUS)
+/*
+ * PHL_VALUE_CENSUS -- which CALL SITE spends the engine's value primitives.
+ * ---------------------------------------------------------------------------
+ * Compiled out entirely unless PHL_VALUE_CENSUS is defined; see PERF.md §7 and
+ * build-aux/valuecensus.sh, which builds it and resolves what it prints.
+ *
+ * The fourth instrument, and it exists because the other three cannot see this.
+ * The heap census answers "where are the bytes"; the lookup census answers "which
+ * line hashes the names". PH7_MemObjRelease allocates nothing and looks nothing
+ * up, so it appears in NEITHER -- and it is the most-called function in the
+ * engine: 2.72 billion calls on the ecosystem gate's phpcs step, 43.1% of them on
+ * a value that owned nothing (PERF.md §2, P10). A whole-program counter said that
+ * much; it could not say WHICH of the ~700 call sites made those calls, which is
+ * the question a design has to answer.
+ *
+ * One record per (return address, primitive), so a site is a place in the SOURCE
+ * and not a function: the release inside VmOperandStackRecycle's loop and the one
+ * in VmPopOperand are two rows, which is what a change is aimed at. Addresses are
+ * emitted relative to the PIE load base (the ADDRESS of __executable_start is that
+ * base at run time), so addr2line takes them exactly as printed -- the other two
+ * censuses' convention, for the same reason.
+ *
+ * `nWork` is the half the call-count alone cannot give: how many of a site's calls
+ * had anything to DO. For a release that is the slow path (it owned a string, a
+ * container reference or an AUX carrier); for a load/store it is a container
+ * reference taken; for an init it is always 1. A site with a large count and a
+ * near-zero nWork is the engine building and tearing down slots that never held
+ * anything -- which is P10 item 1, and it is what this instrument was built to
+ * find.
+ *
+ * The table is fixed-size and static, for the other censuses' reason: it must not
+ * allocate through the allocator whose values it is counting. Nothing is ever
+ * deleted (a site is a code address), so a full table refuses to record and says
+ * TRUNCATED rather than under-count.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+
+extern char __executable_start[];   /* its ADDRESS is the PIE load base */
+
+typedef struct phl_vcensus_rec phl_vcensus_rec;
+struct phl_vcensus_rec {
+	void *pSite;     /* PHL_VCENSUS_SITE() at the door; 0 = free slot */
+	sxu32 iKind;     /* PHL_VC_* -- which primitive was called */
+	sxu64 nCall;     /* calls made from here */
+	sxu64 nWork;     /* how many of them had anything to do */
+};
+#define PHL_VCENSUS_SLOTS 8192
+static struct {
+	int bReady;      /* 0 = untouched, 1 = live */
+	int bFull;       /* the table filled; recording stopped */
+	phl_vcensus_rec aRec[PHL_VCENSUS_SLOTS];
+	sxu64 aCall[PHL_VC_KINDS],aWork[PHL_VC_KINDS];
+} sVCensus;
+
+static void VCensusDump(void)
+{
+	const char *zOut = getenv("PHL_VCENSUS_OUT");
+	FILE *pOut = zOut ? fopen(zOut,"w") : stderr;
+	sxu32 i;
+	if( pOut == 0 ){
+		pOut = stderr;
+	}
+	for( i = 0 ; i < PHL_VC_KINDS ; ++i ){
+		fprintf(pOut,"# kind %u %llu %llu%s\n",i,
+			(unsigned long long)sVCensus.aCall[i],(unsigned long long)sVCensus.aWork[i],
+			sVCensus.bFull ? "  TRUNCATED" : "");
+	}
+	for( i = 0 ; i < PHL_VCENSUS_SLOTS ; ++i ){
+		phl_vcensus_rec *pRec = &sVCensus.aRec[i];
+		if( pRec->pSite == 0 ){
+			continue;
+		}
+		fprintf(pOut,"SITE 0x%lx %u %llu %llu\n",
+			(unsigned long)((char *)pRec->pSite - __executable_start),
+			pRec->iKind,
+			(unsigned long long)pRec->nCall,(unsigned long long)pRec->nWork);
+	}
+	if( pOut != stderr ){
+		fclose(pOut);
+	}
+}
+PH7_PRIVATE void PH7_ValueCensusNote(void *pSite,sxu32 iKind,int bWork)
+{
+	/* Fibonacci scramble: the low bits of a code address are not a key, and the
+	 * kind has to be in it or one line's release and load share a slot. */
+	sxu64 x = (sxu64)(sxuptr)pSite ^ ((sxu64)iKind * (sxu64)0x9e3779b97f4a7c15ULL);
+	sxu32 i,n;
+	if( !sVCensus.bReady ){
+		sVCensus.bReady = 1;
+		atexit(VCensusDump);
+	}
+	x ^= x >> 33; x *= (sxu64)0xff51afd7ed558ccdULL; x ^= x >> 29;
+	i = (sxu32)x & (PHL_VCENSUS_SLOTS - 1);
+	for( n = 0 ; n < PHL_VCENSUS_SLOTS ; ++n ){
+		phl_vcensus_rec *pRec = &sVCensus.aRec[i];
+		if( pRec->pSite == 0 ){
+			pRec->pSite = pSite;
+			pRec->iKind = iKind;
+		}
+		if( pRec->pSite == pSite && pRec->iKind == iKind ){
+			pRec->nCall++;
+			pRec->nWork += bWork ? 1 : 0;
+			sVCensus.aCall[iKind]++;
+			sVCensus.aWork[iKind] += bWork ? 1 : 0;
+			return;
+		}
+		i = (i + 1) & (PHL_VCENSUS_SLOTS - 1);
+	}
+	sVCensus.bFull = 1;   /* said out loud in the dump rather than counted wrong */
+}
+#endif /* PHL_VALUE_CENSUS */
+
 /* Portable 64-bit overflow-detecting arithmetic for compilers that lack the
  * GCC/Clang __builtin_*_overflow intrinsics (i.e. MSVC). The header exposes
  * these through the PH7_{ADD,SUB,MUL}_OVERFLOW64 macros; the intrinsic path
@@ -1497,6 +1611,7 @@ PH7_PRIVATE sxi32 PH7_MemObjTryInteger(ph7_value *pObj)
  */
 PH7_PRIVATE sxi32 PH7_MemObjInit(ph7_vm *pVm,ph7_value *pObj)
 {
+	PHL_VC_NOTE(PHL_VC_INIT,1);
 	/* Zero the structure */
 	SyZero(pObj,sizeof(ph7_value));
 	/* Initialize fields */
@@ -1630,6 +1745,7 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 	ph7_class_instance *pObj = 0;
 	ph7_hashmap *pMap = 0;
 	sxi32 rc;
+	PHL_VC_NOTE(PHL_VC_STORE,(pSrc->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) != 0);
 	if( pSrc->iFlags & MEMOBJ_HASHMAP ){
 		/* Increment reference count */
 		((ph7_hashmap *)pSrc->x.pOther)->iRef++;
