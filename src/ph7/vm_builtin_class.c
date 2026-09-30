@@ -1176,6 +1176,25 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm)
 		return 0;
 	}
 	pVmFunc = (ph7_vm_func *)pFrame->pUserData;
+	/* An INITIALIZER -- a class constant's, or an instance property's default -- is a
+	 * mini-program run by VmLocalExec, which pushes no frame of its own. The frame still
+	 * current is therefore the one the `new` executed in, and every branch below would
+	 * answer the CONSTRUCTING class. php runs an initializer in its DECLARING class's
+	 * scope: `private const A;` beside `private string $x = self::A;` is readable from
+	 * that initializer no matter where the `new` happens to be, and reading it as the
+	 * caller made a library's own tunable default an Error the moment the object was
+	 * built from inside another class (phpcs's Tokens::WEIGHTINGS, Collision's
+	 * Highlighter::ARROW_SYMBOL_UTF8 -- neither tool could START).
+	 *
+	 * pConstEvalClass alone is not the test: it stays set while the initializer runs, so
+	 * a METHOD the initializer calls would inherit the initializer's scope. The marker is
+	 * the frame the eval began in -- the same test PH7_VmPeekDeclaringClass makes for
+	 * `self::` -- and once a method pushes a frame it stops matching. */
+	if( pVm->pConstEvalClass
+	 && pVm->pConstEvalFrame == (void *)VmSkipExceptionFrames(pVm->pFrame) ){
+		pScope = pVm->pConstEvalClass;
+		goto normalize_trait;
+	}
 	/* The calling scope is the executing method's declaring class — OR, for a bound closure
 	 * (Closure::bindTo/call), the explicit scope override carried on the frame (Increment 2). */
 	if( pFrame->pBoundScope ){
@@ -1198,6 +1217,7 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm)
 		 * constant is reachable from its own class's initializers). */
 		pScope = pVm->pConstEvalClass;
 	}
+normalize_trait:
 	if( pScope && (pScope->iFlags & PH7_CLASS_TRAIT) != 0 ){
 		/* php COMPOSES a trait method into the using class at compile time, so the scope
 		 * its code executes in IS that class — `protected` members of the class are its
