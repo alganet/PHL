@@ -471,6 +471,21 @@ struct ph7_user_func
 	                           * deferred by-ref out-param regardless of how the builtin was reached
 	                           * (bare name, dynamic `$f=...`, or callable) — the compile-time
 	                           * GenStateByRefBuiltinMask only sees the bare-name case. 0 when unstamped. */
+	sxu32 nPathMask;          /* Which of this builtin's arguments php reads with Z_PARAM_PATH,
+	                           * so a NUL inside one is a catchable ValueError rather than a
+	                           * truncated read. Derived from a ~70-name table, and the two
+	                           * questions the shared argument screen used to ask by SCANNING
+	                           * that table (and a second one) on every single builtin call.
+	                           * Both answers depend on the NAME alone, so they are worked out
+	                           * the first time this function is called and kept here. */
+	sxu8 bSelfChecked;        /* This builtin words its own argument refusals and must not be
+	                           * pre-empted by the shared screen (php overloads it on arity, or
+	                           * its declared type and its refusal text disagree). */
+	sxu8 bScreenStamped;      /* The two above have been worked out. The struct is SyZero'd at
+	                           * creation, so 0 means "not yet" and never "no". Stamped lazily
+	                           * rather than at VM init because a NATIVE METHOD's record is
+	                           * reached through ph7_vm_func::pNative and is not in the host
+	                           * function table the init pass walks. */
 };
 /*
  * The 'context' argument for an installable function. A pointer to an

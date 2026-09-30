@@ -2167,14 +2167,27 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	if( zSig == 0 ){
 		return SXRET_OK;
 	}
-	nPathMask = VmBuiltinPathMask(&pFunc->sName);
-	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){
-		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],
-			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0
-		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){
-			return SXRET_OK;
+	/* Both of the questions below are about the NAME, which cannot change, and both
+	 * used to be answered by SCANNING a table on every builtin call -- seventeen
+	 * names here and about seventy in VmBuiltinPathMask, two SyStrlen calls per row.
+	 * Worked out once and kept on the function's own record. */
+	if( !pFunc->bScreenStamped ){
+		int iSelf;
+		pFunc->nPathMask = VmBuiltinPathMask(&pFunc->sName);
+		for( iSelf = 0 ; iSelf < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iSelf ){
+			const char *zSelf = azSelfChecked[iSelf];
+			if( SyStrncmp(pFunc->sName.zString,zSelf,pFunc->sName.nByte) == 0
+			 && SyStrlen(zSelf) == pFunc->sName.nByte ){
+				pFunc->bSelfChecked = 1;
+				break;
+			}
 		}
+		pFunc->bScreenStamped = 1;
 	}
+	if( pFunc->bSelfChecked ){
+		return SXRET_OK;
+	}
+	nPathMask = pFunc->nPathMask;
 	iArg = 0;
 	zCur = zSig;
 	zEnd = &zSig[SyStrlen(zSig)];
