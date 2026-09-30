@@ -846,6 +846,14 @@ PH7_PRIVATE void VmLeaveFrame(ph7_vm *pVm)
 		PH7_MemObjRelease(&pCurFrame->sRet);
 		/* Drop a recorded in-place-catch resume target pointing at this frame (ROOT B). */
 		VmDropResumeTarget(pVm,pCurFrame);
+		/* This activation no longer needs the function it was running. For a
+		 * run-time closure that is one of the two holds on its per-instantiation
+		 * copy -- the other is the Closure object -- and the copy goes when both
+		 * are gone. pUserData is a ph7_vm_func for a user-function frame and 0 for
+		 * every other kind (the global frame, an exception wrapper, a local exec). */
+		if( pCurFrame->pUserData ){
+			PH7_VmClosureFuncUnref(&(*pVm),(ph7_vm_func *)pCurFrame->pUserData);
+		}
 		/* Release the whole structure */
 		SyMemBackendPoolFree(&pVm->sAllocator,pCurFrame);
 	}
@@ -2381,6 +2389,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pEngine = &(*pEngine);
 	pVm->bGcEnabled = 1; /* php default: the cycle collector is enabled */
 	PH7_GcInit(&(*pVm));
+	SySetInit(&pVm->aDeadClosure,&pVm->sAllocator,sizeof(ph7_vm_func *));
 	/* php CLI diagnostic-stream defaults: display_errors off (program stdout stays
 	 * clean), log_errors on (the log copy goes to stderr). -d/-c and ini_set()
 	 * override these; bErrReport is the separate master gate installed by the CLI. */
@@ -3467,6 +3476,145 @@ static void VmResetFuncStatics(ph7_vm_func *pFunc)
 	}
 }
 /*
+ * Tear down one run-time closure's per-instantiation ph7_vm_func: reset its
+ * (template-shared) statics, release its captured-by-value environment, then free
+ * the name buffer and the structure. The caller owns unlinking the hFunction row.
+ */
+static void VmFreeRuntimeClosure(ph7_vm *pVm,ph7_vm_func *pFunc)
+{
+	ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+	const char *zName = SyStringData(&pFunc->sName);
+	sxu32 k;
+	VmResetFuncStatics(pFunc);
+	for( k = 0 ; k < SySetUsed(&pFunc->aClosureEnv) ; ++k ){
+		PH7_MemObjRelease(&aEnv[k].sValue);
+	}
+	SySetRelease(&pFunc->aClosureEnv);
+	if( zName ){
+		SyMemBackendFree(&pVm->sAllocator,(void *)zName);
+	}
+	SyMemBackendPoolFree(&pVm->sAllocator,pFunc);
+}
+/*
+ * The run-time closure this name belongs to, or NULL when the name is anything
+ * else -- a named user function, a host function, a method. Only a
+ * per-instantiation copy (VM_FUNC_CLOSURE, minted by OP_LOAD_CLOSURE) is owned by
+ * the Closure objects that name it; everything else in hFunction outlives them.
+ */
+PH7_PRIVATE ph7_vm_func * PH7_VmRuntimeClosure(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	SyHashEntry *pEntry;
+	ph7_vm_func *pFunc;
+	if( zName == 0 || nByte < 1 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pVm->hFunction,(const void *)zName,nByte);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	pFunc = (ph7_vm_func *)pEntry->pUserData;
+	if( pFunc == 0 || (pFunc->iFlags & VM_FUNC_CLOSURE) == 0 ){
+		return 0;
+	}
+	return pFunc;
+}
+PH7_PRIVATE void PH7_VmClosureFuncRef(ph7_vm_func *pFunc)
+{
+	if( pFunc && (pFunc->iFlags & VM_FUNC_CLOSURE) ){
+		pFunc->nRef++;
+	}
+}
+/*
+ * Give back one hold on a run-time closure. At zero nothing can reach it any more
+ * -- no Closure object names it and no activation is running it -- so it leaves
+ * the function table and the memory goes back.
+ */
+PH7_PRIVATE void PH7_VmClosureFuncUnref(ph7_vm *pVm,ph7_vm_func *pFunc)
+{
+	if( pFunc == 0 || (pFunc->iFlags & VM_FUNC_CLOSURE) == 0 ){
+		return;
+	}
+	pFunc->nRef--;
+	if( pFunc->nRef > 0 || pVm->bInReset || pFunc->bQueued ){
+		return;
+	}
+	/* Queued, not freed on the spot. The drop that brings a closure to zero is
+	 * usually OP_CALL releasing the Closure OBJECT it just unwrapped -- and the
+	 * dispatch that did it is about to look the function up BY NAME. Freeing here
+	 * turned `(function(){ yield 1; })()` into "Call to undefined function
+	 * [closure_6]()". The list is drained at the VM's fetch point, where no dispatch
+	 * is half-done; anything that took the function up again in between (the call's
+	 * own frame does, one instruction later) is simply dropped from the list. */
+	pFunc->bQueued = 1;
+	if( SySetPut(&pVm->aDeadClosure,(const void *)&pFunc) != SXRET_OK ){
+		pFunc->bQueued = 0;
+		return; /* no room to remember it: it goes with the wholesale teardown */
+	}
+	pVm->bClosurePurge = 1;
+}
+/*
+ * Free the run-time closures nothing needs any more. Called only from the VM's
+ * fetch point, between two instructions, where no dispatch is half-resolved.
+ *
+ * Drained by POPPING: freeing one releases its captured environment, which can
+ * release the last Closure object naming ANOTHER one and queue it mid-drain.
+ */
+PH7_PRIVATE void PH7_VmPurgeDeadClosures(ph7_vm *pVm)
+{
+	pVm->bClosurePurge = 0;
+	for(;;){
+		ph7_vm_func **ppFunc = (ph7_vm_func **)SySetPop(&pVm->aDeadClosure);
+		ph7_vm_func *pFunc;
+		SyHashEntry *pEntry;
+		if( ppFunc == 0 ){
+			break;
+		}
+		pFunc = *ppFunc;
+		pFunc->bQueued = 0;
+		if( pFunc->nRef > 0 || pVm->bInReset ){
+			continue; /* taken up again between the drop and here */
+		}
+		pEntry = SyHashGet(&pVm->hFunction,(const void *)SyStringData(&pFunc->sName),
+			SyStringLength(&pFunc->sName));
+		if( pEntry == 0 || pEntry->pUserData != (void *)pFunc ){
+			/* The name is not this copy's any more (an overload chain, a reset in
+			 * flight): leave it to the wholesale teardown rather than guess. */
+			continue;
+		}
+		SyHashDeleteEntry2(pEntry);
+		VmFreeRuntimeClosure(&(*pVm),pFunc);
+	}
+}
+/*
+ * A Closure OBJECT taking or giving back its hold on the function `$__fn` names.
+ * One door for all of them: `function(){}` (OP_LOAD_CLOSURE via VmCreateClosure),
+ * `clone`, and `bindTo`/`bind`, which clones.
+ */
+PH7_PRIVATE void PH7_VmClosureInstanceRef(ph7_vm *pVm,ph7_class_instance *pObj,int iDelta)
+{
+	ph7_value *pFn;
+	ph7_vm_func *pFunc;
+	SyString sAttr;
+	if( pObj == 0 || pVm->pClosureClass == 0 || pObj->pClass != pVm->pClosureClass ){
+		return;
+	}
+	SyStringInitFromBuf(&sAttr,"__fn",4);
+	pFn = PH7_ClassInstanceFetchAttr(pObj,&sAttr);
+	if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 ){
+		return;
+	}
+	pFunc = PH7_VmRuntimeClosure(&(*pVm),(const char *)SyBlobData(&pFn->sBlob),
+		SyBlobLength(&pFn->sBlob));
+	if( pFunc == 0 ){
+		return;
+	}
+	if( iDelta > 0 ){
+		PH7_VmClosureFuncRef(pFunc);
+	}else{
+		PH7_VmClosureFuncUnref(&(*pVm),pFunc);
+	}
+}
+/*
  * Reset per-execution function-table state in a single pass over hFunction:
  *  - run-time closures (VM_FUNC_CLOSURE) are freed. Closure templates are never
  *    installed in hFunction (see compile.c) and closure names are unique, so any
@@ -3487,23 +3635,11 @@ static void VmResetFunctionState(ph7_vm *pVm)
 	while( (pEntry = SyHashGetNextEntry(&pVm->hFunction)) != 0 ){
 		ph7_vm_func *pFunc = (ph7_vm_func *)pEntry->pUserData;
 		if( pFunc && (pFunc->iFlags & VM_FUNC_CLOSURE) ){
-			/* Standalone run-time closure: reset its (template-shared) statics,
-			 * release its captured-by-value environment, then free the entry,
-			 * name buffer and structure. */
-			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
-			const char *zName = SyStringData(&pFunc->sName);
-			sxu32 k;
-			VmResetFuncStatics(pFunc);
-			for( k = 0 ; k < SySetUsed(&pFunc->aClosureEnv) ; ++k ){
-				PH7_MemObjRelease(&aEnv[k].sValue);
-			}
-			SySetRelease(&pFunc->aClosureEnv);
+			/* Whatever run-time closures outlived their objects (one being executed
+			 * when its last holder went, one the engine still names) go here. */
 			/* SyHashDeleteEntry2 frees only the entry, not the key buffer. */
 			SyHashDeleteEntry2(pEntry);
-			if( zName ){
-				SyMemBackendFree(&pVm->sAllocator,(void *)zName);
-			}
-			SyMemBackendPoolFree(&pVm->sAllocator,pFunc);
+			VmFreeRuntimeClosure(&(*pVm),pFunc);
 			continue;
 		}
 		/* Named function: reset statics for every overload sharing this name. */
@@ -3643,6 +3779,10 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	PH7_GcResetBuffer(&(*pVm));
 	/* (1) Unlink the whole reference table while frames and objects are intact. */
 	VmResetRefTable(&(*pVm));
+	/* (1b) The pending-free list names functions the wholesale teardown below is
+	 * about to free anyway; forget it rather than leave rows pointing at them. */
+	SySetReset(&pVm->aDeadClosure);
+	pVm->bClosurePurge = 0;
 	/* (2) Free run-time closures and reset every function/method static sentinel
 	 * in a single pass over hFunction. User-defined constants are treated like
 	 * function/class registrations and intentionally persist across reuse (a
@@ -3954,6 +4094,7 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */
 	PH7_SplDirVmRelease(pVm);
+	SySetRelease(&pVm->aDeadClosure);
 	PH7_GcRelease(pVm);
 	/* Release the private memory subsystem */
 	SyMemBackendRelease(&pVm->sAllocator);

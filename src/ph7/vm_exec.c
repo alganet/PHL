@@ -2129,7 +2129,13 @@ VmLoopFetch:
 		 * no-hooks path pays a single predicted branch per fetch. */
 		if( pVm->nBoundaryRc != 0 || SySetUsed(&pVm->aHookRmw) > 0
 		 || PH7_PcntlAsyncPending || pVm->sAllocator.nMemTried != 0
-		 || pVm->bGcWanted ){
+		 || pVm->bGcWanted || pVm->bClosurePurge ){
+			if( pVm->bClosurePurge ){
+				/* Run-time closures whose last holder went. Freed HERE and not at the
+				 * drop, because the drop is usually a dispatch releasing the Closure
+				 * object it has just unwrapped and is about to look up by name. */
+				PH7_VmPurgeDeadClosures(&(*pVm));
+			}
 			if( pVm->bGcWanted ){
 				/* The cycle collector's root buffer filled. HERE is the only place
 				 * it may run: between two instructions, with the operand stack
@@ -3172,7 +3178,7 @@ case PH7_OP_LOAD_FCC:{
 		pCloObj = VmFccWrapValue(pVm, pTos);
 		if( pCloObj ){
 			PH7_MemObjRelease(pTos);
-			pCloObj->iRef++;
+			/* The fresh instance's own reference is this stack slot's (see OP_LOAD_CLOSURE) */
 			pTos->x.pOther = pCloObj;
 			MemObjSetType(pTos, MEMOBJ_OBJ);
 		}else{
@@ -3287,7 +3293,7 @@ case PH7_OP_LOAD_FCC:{
 		pTos--;
 		PH7_MemObjRelease(pTos);
 		if( pCloObj ){
-			pCloObj->iRef++;
+			/* The fresh instance's own reference is this stack slot's (see OP_LOAD_CLOSURE) */
 			pTos->x.pOther = pCloObj;
 			MemObjSetType(pTos, MEMOBJ_OBJ);
 		}else{
@@ -7170,6 +7176,15 @@ case PH7_OP_CALL: {
 		aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
 		/* Create a new VM frame  */
 		rc = VmEnterFrame(&(*pVm),pVmFunc,pThis,&pFrame);
+		if( rc == SXRET_OK ){
+			/* This activation now needs the function it is about to run. For a
+			 * run-time closure that is a hold on its per-instantiation copy, so the
+			 * copy cannot be freed under a body that is still executing when its
+			 * last Closure object dies. VmLeaveFrame / VmFreeDetachedFrame give it
+			 * back -- and a coroutine's DETACHED body frame keeps it for exactly as
+			 * long as the frame lives, which is what a suspended generator needs. */
+			PH7_VmClosureFuncRef(pVmFunc);
+		}
 		if( rc == SXRET_OK && pFrame && pSelf ){
 			/* php's called-scope: the class this call was made THROUGH. Same as the
 			 * receiver's for an instance call, and the named class for a static one --

@@ -1552,6 +1552,15 @@ struct ph7_vm_func
 	SyString sClosureScope;/* The class the closure was written inside, for the `C::` php prefixes
 	                        * its argument diagnostics with. Empty for a top-level one. */
 	void *pUserData;     /* Upper layer private data associated with this instance */
+	sxu8 bQueued;        /* VM_FUNC_CLOSURE only: already on the VM's pending-free list */
+	sxi32 nRef;          /* VM_FUNC_CLOSURE only: how many things still need this
+	                      * per-instantiation copy -- the Closure OBJECTS whose `$__fn`
+	                      * names it, plus every activation currently running it. At zero
+	                      * it is unregistered from hFunction and freed. Every closure
+	                      * expression evaluated used to mint one of these and leave it in
+	                      * the function table for the life of the VM: ~3 KB per closure,
+	                      * which on a real workload (phpcs) was over half the engine's
+	                      * whole memory footprint. */
 	void *pLsbClass;     /* For a closure: the late-static-binding class captured at its
 	                      * creation site (ph7_class*), so `static::` inside the body
 	                      * resolves like php. NULL for a plain function/method. */
@@ -3518,6 +3527,11 @@ struct ph7_vm
 	SySet aGcDead;             /* What the collect phase proved garbage */
 	sxu8 bGcWanted;            /* The root buffer filled: collect at the next fetch point */
 	sxu8 bGcRunning;           /* A collection is in flight; nothing may buffer or re-enter */
+	SySet aDeadClosure;        /* Run-time closures whose last holder went: freed at the VM's
+	                            * next fetch point rather than on the spot, because the drop
+	                            * happens in the middle of a dispatch that is still about to
+	                            * look the function up. See PH7_VmPurgeDeadClosures. */
+	sxu8 bClosurePurge;        /* ...and whether that list has anything on it */
 	sxu32 nGcRuns;             /* Collections run, for gc_status() */
 	sxu32 nGcCollected;        /* Containers freed by them, for gc_status() */
 	sxi32 iErrMask;      /* error_reporting() level. PH7 collapsed it to the bErrReport
@@ -5838,6 +5852,7 @@ PH7_PRIVATE ph7_vm_func * PH7_VmRuntimeClosure(ph7_vm *pVm,const char *zName,sxu
 PH7_PRIVATE void PH7_VmClosureFuncRef(ph7_vm_func *pFunc);
 PH7_PRIVATE void PH7_VmClosureFuncUnref(ph7_vm *pVm,ph7_vm_func *pFunc);
 PH7_PRIVATE void PH7_VmClosureInstanceRef(ph7_vm *pVm,ph7_class_instance *pObj,int iDelta);
+PH7_PRIVATE void PH7_VmPurgeDeadClosures(ph7_vm *pVm);
 PH7_PRIVATE SyHashEntry * PH7_VmSuperGet(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);

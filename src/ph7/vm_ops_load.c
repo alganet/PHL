@@ -1152,7 +1152,11 @@ PH7_PRIVATE VmOpRc VmExecOpLoadClosure(ph7_vm *pVm,VmExecState *pState,VmInstr *
 	{
 		ph7_class_instance *pCloObj = VmCreateClosure(pVm, &pTarget->sName, 0, 0);
 		if( pCloObj ){
-			pCloObj->iRef++;
+			/* The instance is born holding ONE reference and this stack slot is what
+			 * holds it -- the same handover OP_NEW makes. Taking a second one here
+			 * meant no Closure object ever reached zero: every closure expression a
+			 * program evaluated leaked its object, its three slots and (through the
+			 * object) the per-instantiation function body behind it. */
 			pTos->x.pOther = pCloObj;
 			MemObjSetType(pTos, MEMOBJ_OBJ);
 		}else{

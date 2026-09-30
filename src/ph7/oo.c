@@ -2612,6 +2612,11 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 		}
 		SySetRelease(&sDrop);
 	}
+	/* A copy of a Closure names the same function, so it is a new holder of it --
+	 * `clone $f`, and Closure::bindTo()/bind(), which clone. Without this the
+	 * ORIGINAL's death would free a per-instantiation body the copy still calls.
+	 * A no-op for every other class (one pointer compare). */
+	PH7_VmClosureInstanceRef(pVm,pClone,1);
 	/* The native clone hook (php's clone_obj handler): what the copy MEANS for a
 	 * class whose instances stand for engine-side state -- a DOM wrapper's copy
 	 * is a copy of the node. The nearest ancestor's hook serves a user subclass,

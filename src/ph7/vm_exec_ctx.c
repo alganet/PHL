@@ -29,6 +29,13 @@ PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	SyZero(pCtx, sizeof(ph7_exec_ctx));
 	pCtx->pVm = pVm;
 	pCtx->pFunc = pFunc;
+	/* A coroutine outlives the call that made it and reads pFunc for the whole of
+	 * its life -- including before its body frame exists, which VmStartCtx creates
+	 * LAZILY. For a run-time closure that is a hold of its own on the
+	 * per-instantiation copy: `(function(){ yield 1; })()` drops the Closure object
+	 * at the call, and without this the body was freed under the Generator that
+	 * still names it. */
+	PH7_VmClosureFuncRef(pFunc);
 	pCtx->iState = PH7_CTX_STATE_CREATED;
 	pCtx->nTos = -1; /* Empty stack — matches VmByteCodeExec convention */
 	pCtx->pc = 0;
@@ -490,6 +497,12 @@ static void VmFreeDetachedFrame(ph7_vm *pVm, VmFrame *pFrame)
 	if( pFrame == 0 ){
 		return;
 	}
+	/* The activation's hold on the function it was running, the same one
+	 * VmLeaveFrame gives back for a live frame. */
+	if( pFrame->pUserData ){
+		PH7_VmClosureFuncUnref(pVm,(ph7_vm_func *)pFrame->pUserData);
+		pFrame->pUserData = 0;
+	}
 	/* End the foreach walks this (abandoned) activation never finished — the same
 	 * teardown, at the same point, VmLeaveFrame does it at. */
 	VmReleaseFrameForeachSteps(pVm,pFrame);
@@ -568,6 +581,10 @@ PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 		return;
 	}
 	pCtx->iState = PH7_CTX_STATE_CLOSED;
+	/* ...and give back the hold VmNewExecCtx took on the function this coroutine runs. */
+	if( pCtx->pFunc ){
+		PH7_VmClosureFuncUnref(pVm,pCtx->pFunc);
+	}
 	/* Release values */
 	PH7_MemObjRelease(&pCtx->sSuspendValue);
 	PH7_MemObjRelease(&pCtx->sRetValue);
@@ -887,6 +904,15 @@ PH7_PRIVATE ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget)
  * is deliberately NOT wired into the OP_CALL resolve check, which must keep answering
  * `Class "self" not found`.
  */
+/*
+ * A Closure object is going: give back its hold on the function `$__fn` names.
+ * A run-time closure's per-instantiation ph7_vm_func belongs to the objects that
+ * name it, and this is where the last of them lets go.
+ */
+static void VmClosureRelease(ph7_vm *pVm, ph7_class_instance *pThis)
+{
+	PH7_VmClosureInstanceRef(pVm, pThis, -1);
+}
 PH7_PRIVATE ph7_class * PH7_VmResolveScopeName(ph7_vm *pVm, const char *zCls, sxu32 nCls)
 {
 	ph7_class *pClass;
@@ -905,7 +931,9 @@ PH7_PRIVATE ph7_class * PH7_VmResolveScopeName(ph7_vm *pVm, const char *zCls, sx
  * Create a Closure object wrapping a callable name (+ optional bound $this object and/or
  * scope class-name, for the method/static first-class callables `$o->m(...)`/`C::m(...)`).
  * Mirrors the Generator/Fiber "object carries its state in private attributes" pattern.
- * Returns the fresh instance (iRef == 0; caller takes the reference), or 0 on OOM.
+ * Returns the fresh instance holding ONE reference, which the caller's value TAKES --
+ * the same handover PH7_NewClassInstance makes to OP_NEW. (It used to say the caller
+ * had to add one, and every closure site did, so no Closure object ever reached zero.)
  */
 PH7_PRIVATE ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,
 	ph7_class_instance *pBoundThis, const SyString *pScope)
@@ -924,6 +952,10 @@ PH7_PRIVATE ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pN
 	pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);
 	if( pAttr ){
 		PH7_MemObjStringAppend(pAttr, pName->zString, pName->nByte);
+		/* This object is now a holder of the function it names. For a run-time
+		 * closure that is what keeps the per-instantiation copy alive, and losing
+		 * it is what frees the copy. */
+		PH7_VmClosureInstanceRef(pVm, pObj, 1);
 	}
 	if( pBoundThis ){
 		SyStringInitFromBuf(&sAttr, "__this", 6);
@@ -990,8 +1022,8 @@ PH7_PRIVATE int PH7_VmSlotRefCount(ph7_vm *pVm,sxu32 nIdx)
  *     target -> scope) closure, mirroring the [obj,m]/[class,m] decode in PH7_VmIsCallable
  *   - an __invoke object               -> closure bound to the object's __invoke
  * An existing Closure returns 0 here (it is already a Closure — the caller keeps it as-is), so this
- * stays idempotent even for a direct caller. Returns the fresh instance (iRef == 0; caller takes the
- * reference) or 0 if the value is an existing Closure / not a normalizable callable / on OOM — in
+ * stays idempotent even for a direct caller. Returns the fresh instance holding ONE reference,
+ * which the caller's value TAKES (see VmCreateClosure) or 0 if the value is an existing Closure / not a normalizable callable / on OOM — in
  * which case the caller leaves the value untouched (graceful degradation). This is the generic
  * "callable value -> Closure" primitive: the body is FCC-agnostic and self-contained, so the future
  * Closure::bind/fromCallable work (Increment 2) can call it directly.
@@ -1118,7 +1150,8 @@ static int VmClosureResult(ph7_context *pCtx, ph7_class_instance *pClosure)
 		return PH7_OK;
 	}
 	PH7_MemObjRelease(pCtx->pRet);
-	pClosure->iRef++;
+	/* Every caller hands over a FRESH instance, whose own reference is the one this
+	 * return value takes (see OP_LOAD_CLOSURE). */
 	pCtx->pRet->x.pOther = pClosure;
 	MemObjSetType(pCtx->pRet, MEMOBJ_OBJ);
 	return PH7_OK;
@@ -1503,7 +1536,8 @@ PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value *
 	PH7_MemObjInit(pVm, &sBound);
 	sBound.x.pOther = pClone;
 	MemObjSetType(&sBound, MEMOBJ_OBJ);
-	pClone->iRef++;
+	/* The clone's own reference is this carrier's, and releasing the carrier below
+	 * is what ends the temporary (see OP_LOAD_CLOSURE). */
 	rc = PH7_VmCallUserFunction(pVm, &sBound, nArg - 1, apArg + 1, pCtx->pRet);
 	PH7_MemObjRelease(&sBound);
 	return rc;
@@ -1559,7 +1593,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
-		0, 0, PH7_ClosurePresent
+		VmClosureRelease, 0, PH7_ClosurePresent
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
