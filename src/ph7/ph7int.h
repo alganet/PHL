@@ -3658,6 +3658,17 @@ struct ph7_vm
 	ph7_value sXmlStreamsCtx;  /* libxml_set_streams_context()'s stream-context resource; read by
 	                            * nothing until an http:// wrapper exists. */
 #endif
+#ifdef PH7_ENABLE_ZLIB
+	void *pZlibCtx;            /* phl_zctx registry chain (ext/zlib); freed on reset/release --
+	                            * a z_stream's window is libz's own allocation, outside
+	                            * SyMemBackend, so the wholesale release would leak it */
+	int iZlibLevel;            /* the compression level the NEXT compress.zlib open uses, and
+	                            * the strategy with it: gzopen()'s mode string carries both
+	                            * ("wb9f") and an xOpen is handed flags rather than the string,
+	                            * so the door that parsed them arms them here. Reset to libz's
+	                            * defaults by the open that reads them. */
+	int iZlibStrategy;
+#endif
 	/* php numbers every resource with a small sequential id that (int) casts and
 	 * "Resource id #N" render, and that distinguishes two live resources from one
 	 * another. PHL's resource value is a bare void*, so the id lives in this
@@ -5335,6 +5346,7 @@ struct phl_stream_filter
 };
 /* Brigade plumbing, shared with the userland-filter half. */
 PH7_PRIVATE phl_bucket * PH7_FilterBucketNew(ph7_vm *pVm,const void *pData,sxu32 nLen);
+PH7_PRIVATE phl_bucket * PH7_FilterBucketPop(phl_brigade *pBrig);
 PH7_PRIVATE void PH7_FilterBucketAppend(phl_brigade *pBrig,phl_bucket *pBucket);
 PH7_PRIVATE void PH7_FilterBucketFree(ph7_vm *pVm,phl_bucket *pBucket);
 PH7_PRIVATE void PH7_FilterBrigadeRelease(ph7_vm *pVm,phl_brigade *pBrig);
@@ -5372,6 +5384,7 @@ PH7_PRIVATE io_private * PH7_StreamHandleArg(ph7_context *pCtx,ph7_value *pArg,i
 	const char *zName,int *pRc);
 PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut);
 PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUriLen,const char *zMode,int nModeLen);
+PH7_PRIVATE const char * PH7_StreamWrapperLabel(ph7_vm *pVm,const ph7_io_stream *pStream);
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
 PH7_PRIVATE void PH7_StreamReleaseUnopened(ph7_context *pCtx,io_private *pDev);
 /* One buffered line off a handle, php's php_stream_get_line: the newline is
@@ -6361,6 +6374,20 @@ PH7_PRIVATE int PH7_builtin_posix_fpathconf(ph7_context *pCtx,int nArg,ph7_value
 #endif /* __WINNT__ */
 /* fileinfo (builtin_fileinfo.c) -- php's ext/fileinfo, over PHL's own signature
  * table rather than a magic database file. */
+#ifdef PH7_ENABLE_ZLIB
+PH7_PRIVATE sxi32 PH7_VmInstallZlib(ph7_vm *pVm);
+PH7_PRIVATE const ph7_builtin_func * PH7_ZlibFuncTable(sxu32 *pnEntry);
+PH7_PRIVATE void PH7_ZlibVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_ZlibVmRelease(ph7_vm *pVm);
+PH7_PRIVATE void PH7_ZlibArmOpen(ph7_vm *pVm,int iLevel,int iStrategy);
+PH7_PRIVATE int PH7_ZlibStreamIs(const ph7_io_stream *pStream);
+PH7_PRIVATE int PH7_ZlibFilterCreate(phl_stream_filter *pFilter,ph7_value *pParams);
+PH7_PRIVATE int PH7_ZlibFilterRun(phl_stream_filter *pFilter,phl_brigade *pIn,
+	phl_brigade *pOut,int iFlags);
+PH7_PRIVATE void PH7_ZlibFilterClose(phl_stream_filter *pFilter);
+extern const ph7_io_stream sZLIB_Stream;
+#endif
+PH7_PRIVATE void PH7_VmAddResponseHeader(ph7_vm *pVm,const char *zName,const char *zValue);
 PH7_PRIVATE sxi32 PH7_VmInstallFileinfo(ph7_vm *pVm);
 PH7_PRIVATE int PH7_builtin_finfo_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_finfo_close(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -6742,6 +6769,8 @@ PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void
 PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandle);
 PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen);
 PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int64 nLen);
+PH7_PRIVATE void PH7_StreamFlushWriteChain(io_private *pDev);
+PH7_PRIVATE int PH7_StreamModeIsValid(const char *zMode,int nLen,int *piFlags);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen);
 PH7_PRIVATE const char * PH7_ExtractBaseName(const char *zPath,int nByte,int *pLen);

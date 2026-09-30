@@ -45,12 +45,13 @@
 #define PH7_EXT_POSIX        26
 #define PH7_EXT_SIMPLEXML    27
 #define PH7_EXT_SQLITE3      28
+#define PH7_EXT_ZLIB         29
 
 static const char * const azExtName[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard", "bcmath", "calendar", "ctype",
 	"filter", "hash", "Reflection", "session", "mbstring", "fileinfo", "gettext", "iconv", "random",
 	"tokenizer", "libxml", "xml", "dom", "xmlwriter", "PDO", "pdo_sqlite", "curl",
-	"posix", "SimpleXML", "sqlite3",
+	"posix", "SimpleXML", "sqlite3", "zlib",
 };
 
 typedef struct VmExtName VmExtName;
@@ -525,6 +526,21 @@ static const VmExtName aExtFunc[] = {
 	/* SimpleXML */
 	{"simplexml_load_file",PH7_EXT_SIMPLEXML}, {"simplexml_load_string",PH7_EXT_SIMPLEXML},
 	{"simplexml_import_dom",PH7_EXT_SIMPLEXML},
+	/* zlib -- php's own order for the extension. The eleven handle verbs are
+	 * aliases of the stream functions, and php lists them HERE rather than with
+	 * the originals. */
+	{"ob_gzhandler",PH7_EXT_ZLIB}, {"zlib_get_coding_type",PH7_EXT_ZLIB},
+	{"gzfile",PH7_EXT_ZLIB}, {"gzopen",PH7_EXT_ZLIB}, {"readgzfile",PH7_EXT_ZLIB},
+	{"zlib_encode",PH7_EXT_ZLIB}, {"zlib_decode",PH7_EXT_ZLIB},
+	{"gzdeflate",PH7_EXT_ZLIB}, {"gzencode",PH7_EXT_ZLIB}, {"gzcompress",PH7_EXT_ZLIB},
+	{"gzinflate",PH7_EXT_ZLIB}, {"gzdecode",PH7_EXT_ZLIB}, {"gzuncompress",PH7_EXT_ZLIB},
+	{"gzwrite",PH7_EXT_ZLIB}, {"gzputs",PH7_EXT_ZLIB}, {"gzrewind",PH7_EXT_ZLIB},
+	{"gzclose",PH7_EXT_ZLIB}, {"gzeof",PH7_EXT_ZLIB}, {"gzgetc",PH7_EXT_ZLIB},
+	{"gzpassthru",PH7_EXT_ZLIB}, {"gzseek",PH7_EXT_ZLIB}, {"gztell",PH7_EXT_ZLIB},
+	{"gzread",PH7_EXT_ZLIB}, {"gzgets",PH7_EXT_ZLIB},
+	{"deflate_init",PH7_EXT_ZLIB}, {"deflate_add",PH7_EXT_ZLIB},
+	{"inflate_init",PH7_EXT_ZLIB}, {"inflate_add",PH7_EXT_ZLIB},
+	{"inflate_get_status",PH7_EXT_ZLIB}, {"inflate_get_read_len",PH7_EXT_ZLIB},
 };
 
 static const VmExtName aExtClass[] = {
@@ -652,6 +668,8 @@ static const VmExtName aExtClass[] = {
 	/* sqlite3 -- php registers the exception first, and the listing answers so */
 	{"SQLite3Exception",PH7_EXT_SQLITE3}, {"SQLite3",PH7_EXT_SQLITE3},
 	{"SQLite3Stmt",PH7_EXT_SQLITE3}, {"SQLite3Result",PH7_EXT_SQLITE3},
+	/* zlib */
+	{"InflateContext",PH7_EXT_ZLIB}, {"DeflateContext",PH7_EXT_ZLIB},
 };
 
 static const VmExtName aExtConst[] = {
@@ -1384,6 +1402,21 @@ static const VmExtName aExtConst[] = {
 	{"SQLITE3_BLOB",PH7_EXT_SQLITE3}, {"SQLITE3_NULL",PH7_EXT_SQLITE3},
 	{"SQLITE3_OPEN_READONLY",PH7_EXT_SQLITE3}, {"SQLITE3_OPEN_READWRITE",PH7_EXT_SQLITE3},
 	{"SQLITE3_OPEN_CREATE",PH7_EXT_SQLITE3}, {"SQLITE3_DETERMINISTIC",PH7_EXT_SQLITE3},
+	/* zlib */
+	{"FORCE_GZIP",PH7_EXT_ZLIB}, {"FORCE_DEFLATE",PH7_EXT_ZLIB},
+	{"ZLIB_ENCODING_RAW",PH7_EXT_ZLIB}, {"ZLIB_ENCODING_GZIP",PH7_EXT_ZLIB},
+	{"ZLIB_ENCODING_DEFLATE",PH7_EXT_ZLIB}, {"ZLIB_NO_FLUSH",PH7_EXT_ZLIB},
+	{"ZLIB_PARTIAL_FLUSH",PH7_EXT_ZLIB}, {"ZLIB_SYNC_FLUSH",PH7_EXT_ZLIB},
+	{"ZLIB_FULL_FLUSH",PH7_EXT_ZLIB}, {"ZLIB_BLOCK",PH7_EXT_ZLIB},
+	{"ZLIB_FINISH",PH7_EXT_ZLIB}, {"ZLIB_FILTERED",PH7_EXT_ZLIB},
+	{"ZLIB_HUFFMAN_ONLY",PH7_EXT_ZLIB}, {"ZLIB_RLE",PH7_EXT_ZLIB},
+	{"ZLIB_FIXED",PH7_EXT_ZLIB}, {"ZLIB_DEFAULT_STRATEGY",PH7_EXT_ZLIB},
+	{"ZLIB_VERSION",PH7_EXT_ZLIB}, {"ZLIB_VERNUM",PH7_EXT_ZLIB},
+	{"ZLIB_OK",PH7_EXT_ZLIB}, {"ZLIB_STREAM_END",PH7_EXT_ZLIB},
+	{"ZLIB_NEED_DICT",PH7_EXT_ZLIB}, {"ZLIB_ERRNO",PH7_EXT_ZLIB},
+	{"ZLIB_STREAM_ERROR",PH7_EXT_ZLIB}, {"ZLIB_DATA_ERROR",PH7_EXT_ZLIB},
+	{"ZLIB_MEM_ERROR",PH7_EXT_ZLIB}, {"ZLIB_BUF_ERROR",PH7_EXT_ZLIB},
+	{"ZLIB_VERSION_ERROR",PH7_EXT_ZLIB},
 };
 
 static const VmExtName aExtIni[] = {
@@ -1423,5 +1456,9 @@ static const VmExtName aExtIni[] = {
 	{"session.lazy_write",PH7_EXT_SESSION},
 	/* sqlite3 */
 	{"sqlite3.extension_dir",PH7_EXT_SQLITE3}, {"sqlite3.defensive",PH7_EXT_SQLITE3},
+	/* zlib */
+	{"zlib.output_compression",PH7_EXT_ZLIB},
+	{"zlib.output_compression_level",PH7_EXT_ZLIB},
+	{"zlib.output_handler",PH7_EXT_ZLIB},
 };
 

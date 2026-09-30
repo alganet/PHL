@@ -18,7 +18,7 @@ runs:
     - if: runner.os == 'Linux'
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: lcov libpcre2-dev libxml2-dev libsqlite3-dev libcurl4-openssl-dev
+        packages: lcov libpcre2-dev libxml2-dev libsqlite3-dev libcurl4-openssl-dev zlib1g-dev
         version: 1.2
     # The Ubuntu runner ships an older php (8.3) whose ValueError / arity
     # wording predates 8.4/8.5; the cross-engine oracle must be the version PHL
@@ -36,7 +36,7 @@ runs:
     - if: runner.os == 'macOS'
       uses: tecolicom/actions-use-homebrew-tools@v1
       with:
-        tools: lcov php pcre2 libxml2 sqlite curl
+        tools: lcov php pcre2 libxml2 sqlite curl zlib
         cache: yes
         key: brewcache-2.4
     # Homebrew installs php.ini-DEVELOPMENT as php.ini, while setup-php gives the
@@ -68,7 +68,7 @@ runs:
       uses: microsoft/setup-msbuild@v2
     - if: runner.os == 'Windows'
       shell: cmd
-      run: vcpkg install pcre2:x64-windows-static "libxml2[core]:x64-windows-static" sqlite3:x64-windows-static "curl[core,non-http,ssl]:x64-windows-static"
+      run: vcpkg install pcre2:x64-windows-static "libxml2[core]:x64-windows-static" sqlite3:x64-windows-static "curl[core,non-http,ssl]:x64-windows-static" zlib:x64-windows-static
     - if: runner.os == 'Windows'
       uses: actions/cache@v4
       id: cache-opencppcoverage

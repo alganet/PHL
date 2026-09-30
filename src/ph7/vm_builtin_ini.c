@@ -140,6 +140,15 @@ static const struct {
 	 * empty `from` writes `From: `. */
 	{ "user_agent",               0,            VM_INI_ALL },
 	{ "zend.assertions",          "-1",         VM_INI_ALL },
+#ifdef PH7_ENABLE_ZLIB
+	/* ext/zlib's three, php's own defaults and its access mask (all three are
+	 * PHP_INI_ALL). They are READ by ob_gzhandler() and zlib_get_coding_type()
+	 * and by nothing else: php's output-layer compression is a SAPI feature a
+	 * command line never turns on, and neither does this. */
+	{ "zlib.output_compression",  "",           VM_INI_ALL },
+	{ "zlib.output_compression_level","-1",     VM_INI_ALL },
+	{ "zlib.output_handler",      "",           VM_INI_ALL },
+#endif
 };
 
 static int IniNameIs(const VmIniSlot *pSlot,const char *zName)

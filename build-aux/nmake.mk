@@ -44,18 +44,26 @@ SQLITE3_LIBS = "$(VCPKG_INSTALLED)\lib\sqlite3.lib"
 # extra imports are Windows system libs plus the port's own zlib.
 #
 # A STATIC libcurl carries none of its own dependencies, so every one it was
-# built against has to be named here: zlib (content_encoding), secur32
-# (Schannel's InitSecurityInterfaceW), iphlpapi (if_nametoindex), plus the
-# usual crypt32/normaliz/wldap32. The zlib port's output name is not stable
-# across vcpkg versions -- older trees ship zlib.lib, this one ships zs.lib --
-# so pick whichever is actually installed rather than guessing.
+# built against has to be named here: secur32 (Schannel's
+# InitSecurityInterfaceW), iphlpapi (if_nametoindex), plus the usual
+# crypt32/normaliz/wldap32. Its zlib is $(ZLIB_LIBS) below, which ext/zlib
+# links for its own sake and every mode's LDFLAGS names after $(CURL_LIBS).
 CURL_CFLAGS = /DCURL_STATICLIB
+CURL_LIBS = "$(VCPKG_INSTALLED)\lib\libcurl.lib" crypt32.lib normaliz.lib wldap32.lib secur32.lib iphlpapi.lib
+
+# zlib via vcpkg (static) -- ext/zlib's backend, and the same library a static
+# libcurl's content_encoding needs, which is why it was already on this link
+# line before ext/zlib existed. The header sits directly in include\, already on
+# the search path from PCRE2_CFLAGS above, so only the library is named here.
+# The port's output name is not stable across vcpkg versions -- older trees ship
+# zlib.lib, this one ships zs.lib -- so pick whichever is actually installed
+# rather than guessing.
+ZLIB_CFLAGS =
 !IF EXIST("$(VCPKG_INSTALLED)\lib\zlib.lib")
-CURL_ZLIB = "$(VCPKG_INSTALLED)\lib\zlib.lib"
+ZLIB_LIBS = "$(VCPKG_INSTALLED)\lib\zlib.lib"
 !ELSE
-CURL_ZLIB = "$(VCPKG_INSTALLED)\lib\zs.lib"
+ZLIB_LIBS = "$(VCPKG_INSTALLED)\lib\zs.lib"
 !ENDIF
-CURL_LIBS = "$(VCPKG_INSTALLED)\lib\libcurl.lib" $(CURL_ZLIB) crypt32.lib normaliz.lib wldap32.lib secur32.lib iphlpapi.lib
 
 # Base flags shared by all modes.
 # /wd4127 (constant conditional) and /wd4702 (unreachable code) are noisy MSVC
@@ -72,9 +80,9 @@ coverage_CFLAGS = $(BASE_CFLAGS) /Od /Zi $(coverage_DEFINES:-=/) $(coverage_EXTR
 
 # Per-mode LDFLAGS (used by patterns.mk generated link rules)
 # bcrypt.lib provides BCryptGenRandom, used by SyOSCSPRNG in src/sx/sxrand.c.
-full_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) /subsystem:console /entry:mainCRTStartup
+full_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) $(ZLIB_LIBS) /subsystem:console /entry:mainCRTStartup
 tiny_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib /subsystem:console /entry:mainCRTStartup
-coverage_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib dbghelp.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) /subsystem:console /entry:mainCRTStartup
+coverage_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib dbghelp.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) $(ZLIB_LIBS) /subsystem:console /entry:mainCRTStartup
 
 LDFLAGS = $(full_LDFLAGS)
 

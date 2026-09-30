@@ -88,6 +88,18 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: zlib backs ext/zlib (and, behind it, ext/phar's compressed entries). It is
+:: also what a static libcurl's content_encoding was already being linked
+:: against, so this is an explicit install of a port that was already present
+:: as a transitive dependency.
+echo Installing zlib:x64-windows-static...
+"%VCPKG_DIR%\vcpkg.exe" install zlib:x64-windows-static
+
+if %errorlevel% neq 0 (
+    echo Failed to install zlib.
+    exit /b 1
+)
+
 echo.
-echo vcpkg, PCRE2, libxml2, sqlite3 and curl installed successfully.
+echo vcpkg, PCRE2, libxml2, sqlite3, curl and zlib installed successfully.
 echo vcpkg root: %VCPKG_DIR%

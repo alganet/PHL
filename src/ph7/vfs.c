@@ -387,6 +387,12 @@ PH7_PRIVATE int PH7_VfsStatFromFd(int iFd,ph7_value *pArray,ph7_value *pWorker)
 		return PH7_VfsStatFill(pArray,pWorker,aVal);
 	}
 }
+/* Defined with the path operations below, and used by every one of them. */
+static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,int eOp);
+#define VFS_POP_UNLINK 0
+#define VFS_POP_RENAME 1
+#define VFS_POP_QUIET  2   /* mkdir and rmdir: false, and nothing said */
+#define VFS_POP_CHMOD  3
 /*
  * php's WRITE door for a path a userland wrapper owns: unlink(), rename(), mkdir(),
  * rmdir(), and the stream_metadata() that touch(), chmod(), chown() and chgrp() all
@@ -814,6 +820,9 @@ static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 	}
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_QUIET) ){
+		return PH7_OK;
+	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xRmdir == 0 ){
@@ -1049,6 +1058,9 @@ static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 	}
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_QUIET) ){
+		return PH7_OK;
+	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xMkdir == 0 ){
@@ -1160,6 +1172,9 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			bDone = VfsUserWrite(pCtx,zOld,"rename",(void *)pStreamCtx,apExtra,1);
 			PH7_MemObjRelease(&sDest);
 			if( bDone ){
+				return PH7_OK;
+			}
+			if( VfsBuiltinWrapperRefuses(pCtx,zOld,VFS_POP_RENAME) ){
 				return PH7_OK;
 			}
 		}
@@ -1445,6 +1460,59 @@ static int PH7_vfs_usleep(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * A path operation over a BUILT-IN wrapper other than the plain-file one.
+ *
+ * php's unlink/rename/mkdir/rmdir/chmod belong to a WRAPPER, and every built-in
+ * wrapper but the plain-file one implements none of them: php answers false and
+ * words the refusal from the wrapper's LABEL. PHL sent every one of them
+ * straight to the OS, which then failed on a path with a scheme in it -- so
+ * `unlink('php://memory')` reported `No such file or directory` where php says
+ * `PHP does not allow unlinking`, and the same for data://, glob://, http:// and
+ * compress.zlib://.
+ *
+ * The two silent ones are php's too: mkdir() and rmdir() over such a wrapper are
+ * a bare false with no diagnostic at all, while unlink() and rename() have a
+ * sentence each and the chmod family shares a third.
+ *
+ * A USERLAND wrapper never reaches here -- its own door (VfsUserWrite) runs
+ * first and answers for it, including php's "no such method" refusal.
+ * ---------------------------------------------------------------------------
+ */
+static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,int eOp)
+{
+	const ph7_io_stream *pStream;
+	const char *zTail = zPath;
+	const char *zLabel;
+	if( zPath == 0 ){
+		return 0;
+	}
+	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zTail,(int)SyStrlen(zPath));
+	zLabel = PH7_StreamWrapperLabel(pCtx->pVm,pStream);
+	if( zLabel == 0 ){
+		return 0;
+	}
+	switch( eOp ){
+	case VFS_POP_UNLINK:
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s does not allow unlinking",
+			ph7_function_name(pCtx),zLabel);
+		break;
+	case VFS_POP_RENAME:
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s wrapper does not support renaming",
+			ph7_function_name(pCtx),zLabel);
+		break;
+	case VFS_POP_CHMOD:
+		/* php's sentence names the function TWICE and the wrapper not at all. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Cannot call %s() for a non-standard stream",
+			ph7_function_name(pCtx),ph7_function_name(pCtx));
+		break;
+	default:
+		break;
+	}
+	ph7_result_bool(pCtx,0);
+	return 1;
+}
+/*
  * bool unlink (string $filename)
  *  Delete a file.
  * Parameters
@@ -1473,6 +1541,9 @@ static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* php's unlink() hands the wrapper the url and nothing else. */
 	if( VfsUserWrite(pCtx,ph7_value_to_string(apArg[0],0),"unlink",
 		(void *)pStreamCtx,0,0) ){
+		return PH7_OK;
+	}
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_UNLINK) ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -1538,6 +1609,9 @@ static int PH7_vfs_chmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( bDone ){
 			return PH7_OK;
 		}
+	}
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_CHMOD) ){
+		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -1616,6 +1690,9 @@ static int PH7_vfs_chown(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( bDone ){
 			return PH7_OK;
 		}
+	}
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_CHMOD) ){
+		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -1697,6 +1774,9 @@ static int PH7_vfs_chgrp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( bDone ){
 			return PH7_OK;
 		}
+	}
+	if( VfsBuiltinWrapperRefuses(pCtx,ph7_value_to_string(apArg[0],0),VFS_POP_CHMOD) ){
+		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
@@ -4783,7 +4863,25 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"hash_update_stream", PH7_builtin_hash_update_stream },
 #endif /* PH7_DISABLE_HASH_FUNC */
 		{"parse_ini_file", PH7_builtin_parse_ini_file},
-		{"vfprintf",  PH7_builtin_vfprintf}
+		{"vfprintf",  PH7_builtin_vfprintf},
+#ifdef PH7_ENABLE_ZLIB
+		/* ext/zlib's handle verbs, beside the stream functions they ARE: php
+		 * registers each as an alias of the one above it, which is why
+		 * gzread() works on a plain fopen() handle and fread() works on a
+		 * gzopen() one. Their own signature rows word their diagnostics.
+		 * The rest of the extension registers itself (PH7_ZlibFuncTable). */
+		{"gzread",     PH7_builtin_fread  },
+		{"gzwrite",    PH7_builtin_fwrite },
+		{"gzputs",     PH7_builtin_fwrite },
+		{"gzgets",     PH7_builtin_fgets  },
+		{"gzgetc",     PH7_builtin_fgetc  },
+		{"gzeof",      PH7_builtin_feof   },
+		{"gzclose",    PH7_builtin_fclose },
+		{"gzseek",     PH7_builtin_fseek  },
+		{"gztell",     PH7_builtin_ftell  },
+		{"gzrewind",   PH7_builtin_rewind },
+		{"gzpassthru", PH7_builtin_fpassthru }
+#endif /* PH7_ENABLE_ZLIB */
 	};
 	const ph7_io_stream *pFileStream = 0;
 	sxu32 n = 0;
@@ -4827,6 +4925,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 #endif
 	/* Install the php:// stream */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);
+#ifdef PH7_ENABLE_ZLIB
+	/* compress.zlib:// -- the same device gzopen() opens directly. */
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sZLIB_Stream);
+#endif
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 	/* glob:// lives beside the pattern matcher it drives, so it is only in the

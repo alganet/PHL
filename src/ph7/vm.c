@@ -2625,6 +2625,20 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* ext/curl: the libcurl binding. */
 	PH7_VmInstallCurl(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_ZLIB
+	/* ext/zlib: the two context classes and the extension's own functions.
+	 * Its gz* handle verbs are aliases registered beside the stream functions
+	 * they are (vfs.c), and its device beside the other wrappers. */
+	{
+		const ph7_builtin_func *aZlib;
+		sxu32 nZlib = 0,n;
+		PH7_VmInstallZlib(&(*pVm));
+		aZlib = PH7_ZlibFuncTable(&nZlib);
+		for( n = 0 ; n < nZlib ; ++n ){
+			ph7_create_function(&(*pVm),aZlib[n].zName,aZlib[n].xFunc,pVm);
+		}
+	}
+#endif
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
@@ -3634,6 +3648,11 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * and a connection cache of their own. */
 	PH7_CurlVmReset(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_ZLIB
+	/* And its deflate/inflate contexts: a z_stream's window is libz's own
+	 * allocation, which the wholesale release below would not reach. */
+	PH7_ZlibVmReset(&(*pVm));
+#endif
 	/* Drop the stream contexts this run created, the default one included: a
 	 * reused VM (the -S server's) must not answer the next request from the
 	 * previous one's stream_context_set_default(). */
@@ -3682,6 +3701,10 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 #ifdef PH7_ENABLE_CURL
 	/* Same rule for the libcurl handles behind still-open CurlHandle objects. */
 	PH7_CurlVmRelease(pVm);
+#endif
+#ifdef PH7_ENABLE_ZLIB
+	/* Same rule for the z_streams behind still-open Deflate/InflateContexts. */
+	PH7_ZlibVmRelease(pVm);
 #endif
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */

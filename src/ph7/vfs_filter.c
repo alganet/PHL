@@ -74,7 +74,7 @@ PH7_PRIVATE void PH7_FilterBucketFree(ph7_vm *pVm,phl_bucket *pBucket)
 	SyMemBackendFree(&pVm->sAllocator,pBucket);
 }
 /* Unlink and answer the first bucket of a brigade, or 0 when it is empty. */
-static phl_bucket * FilterBucketPop(phl_brigade *pBrig)
+PH7_PRIVATE phl_bucket * PH7_FilterBucketPop(phl_brigade *pBrig)
 {
 	phl_bucket *pBucket = pBrig->pHead;
 	if( pBucket == 0 ){
@@ -90,7 +90,7 @@ static phl_bucket * FilterBucketPop(phl_brigade *pBrig)
 PH7_PRIVATE void PH7_FilterBrigadeRelease(ph7_vm *pVm,phl_brigade *pBrig)
 {
 	phl_bucket *pBucket;
-	while( (pBucket = FilterBucketPop(pBrig)) != 0 ){
+	while( (pBucket = PH7_FilterBucketPop(pBrig)) != 0 ){
 		PH7_FilterBucketFree(pVm,pBucket);
 	}
 }
@@ -121,7 +121,7 @@ static int StringFilterRun(phl_stream_filter *pFilter,phl_brigade *pIn,phl_briga
 	phl_bucket *pBucket;
 	SXUNUSED(iFlags);
 	SXUNUSED(pFilter);
-	while( (pBucket = FilterBucketPop(pIn)) != 0 ){
+	while( (pBucket = PH7_FilterBucketPop(pIn)) != 0 ){
 		unsigned char *zData = (unsigned char *)SyBlobData(&pBucket->sData);
 		sxu32 n,nLen = SyBlobLength(&pBucket->sData);
 		for( n = 0 ; n < nLen ; n++ ){
@@ -605,7 +605,7 @@ static int ConvFilter(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade *p
 		return PHL_PSFS_ERR_FATAL;
 	}
 	SyBlobInit(&sOut,&pFilter->pVm->sAllocator);
-	while( (pBucket = FilterBucketPop(pIn)) != 0 ){
+	while( (pBucket = PH7_FilterBucketPop(pIn)) != 0 ){
 		const unsigned char *z = (const unsigned char *)SyBlobData(&pBucket->sData);
 		sxu32 n = SyBlobLength(&pBucket->sData);
 		switch( pState->iKind ){
@@ -744,7 +744,7 @@ static int DechunkFilter(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade
 		return PHL_PSFS_ERR_FATAL;
 	}
 	SyBlobInit(&sOut,&pFilter->pVm->sAllocator);
-	while( (pBucket = FilterBucketPop(pIn)) != 0 ){
+	while( (pBucket = PH7_FilterBucketPop(pIn)) != 0 ){
 		if( SyBlobLength(&pBucket->sData) > 0 ){
 			SyBlobAppend(&pFilter->sCarry,SyBlobData(&pBucket->sData),
 				SyBlobLength(&pBucket->sData));
@@ -848,7 +848,7 @@ static int DechunkFilter(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade
  * registers `convert.*` once and lets it answer for every convert.<something>,
  * which is why the lookup below falls back to progressively shorter wildcards.
  *
- * php's own list carries two more this build has no engine for — `zlib.*` and
+ * php's own list carries one more this build has no engine for —
  * `convert.iconv.*` — and one it has no explicable behaviour for: `consumed`
  * passes every byte through (a userland filter placed after it receives them
  * all) and yet php answers "" to `fgets()`, to `fread($h,100)` and to
@@ -857,6 +857,11 @@ static int DechunkFilter(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade
  * reader asked is not one to reproduce, so it is left out rather than guessed.
  */
 static const phl_filter_ops aBuiltinFilters[] = {
+#ifdef PH7_ENABLE_ZLIB
+	/* php registers this one FIRST, which is where stream_get_filters() lists
+	 * it. Its body is ext/zlib's own (builtin_zlib.c). */
+	{ "zlib.*",         PH7_ZlibFilterCreate, PH7_ZlibFilterRun, PH7_ZlibFilterClose },
+#endif
 	{ "string.rot13",   0, Rot13Filter,   0 },
 	{ "string.toupper", 0, ToUpperFilter, 0 },
 	{ "string.tolower", 0, ToLowerFilter, 0 },
@@ -986,7 +991,7 @@ static int FilterInvoke(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade 
 			 * stream_filter_remove() after the last read, say) would emit that
 			 * tail twice. Whatever arrives now simply passes through. */
 			phl_bucket *pBucket;
-			while( (pBucket = FilterBucketPop(pIn)) != 0 ){
+			while( (pBucket = PH7_FilterBucketPop(pIn)) != 0 ){
 				PH7_FilterBucketAppend(pOut,pBucket);
 			}
 			return PHL_PSFS_PASS_ON;
@@ -1059,7 +1064,7 @@ PH7_PRIVATE int PH7_FilterChainProcess(phl_stream_filter *pHead,
 			"Unprocessed filter buckets remaining on input brigade");
 	}
 	if( iStatus == PHL_PSFS_PASS_ON && pOut ){
-		while( (pBucket = FilterBucketPop(pIn)) != 0 ){
+		while( (pBucket = PH7_FilterBucketPop(pIn)) != 0 ){
 			if( SyBlobLength(&pBucket->sData) > 0 ){
 				SyBlobAppend(pOut,SyBlobData(&pBucket->sData),SyBlobLength(&pBucket->sData));
 			}
@@ -1903,7 +1908,7 @@ PH7_PRIVATE int PH7_builtin_stream_bucket_make_writeable(ph7_context *pCtx,int n
 			"%s(): Argument #1 ($brigade) must be of type resource, %s given",
 			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
-	pBucket = pRes->pBrig ? FilterBucketPop(pRes->pBrig) : 0;
+	pBucket = pRes->pBrig ? PH7_FilterBucketPop(pRes->pBrig) : 0;
 	if( pBucket == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;

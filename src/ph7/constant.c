@@ -5,6 +5,9 @@
  */
 #include "ph7int.h"
 #include <float.h> /* DBL_EPSILON/DBL_MAX/DBL_MIN/DBL_DIG for the PHP_FLOAT_* constants */
+#ifdef PH7_ENABLE_ZLIB
+#include <zlib.h> /* ZLIB_VERSION/ZLIB_VERNUM: the library this build links */
+#endif
 #ifndef __WINNT__
 /* ext/posix's constants are the platform's own macros -- see PH7_POSIX_*_Const. */
 #include <unistd.h>
@@ -3068,6 +3071,50 @@ PH7_FILTER_INT_CONST(INPUT_SERVER,5)
 	static void PH7_##Name##_Const(ph7_value *pVal,void *pUnused){ \
 		SXUNUSED(pUnused); ph7_value_int(pVal,Val); \
 	}
+/*
+ * ext/zlib's constants. The three encodings are libz's own windowBits spelling
+ * (negative = raw, +16 = gzip), which is why they are -15/15/31; the flush and
+ * status numbers are libz's too. ZLIB_VERSION and ZLIB_VERNUM report the
+ * library this build was compiled against, exactly as php's report theirs --
+ * so they are the one pair here that is not the same on every box.
+ */
+#ifdef PH7_ENABLE_ZLIB
+#define PH7_ZLIB_INT_CONST(Name,Val) \
+	static void PH7_##Name##_Const(ph7_value *pVal,void *pUnused){ \
+		SXUNUSED(pUnused); ph7_value_int(pVal,Val); \
+	}
+PH7_ZLIB_INT_CONST(FORCE_GZIP,31)
+PH7_ZLIB_INT_CONST(FORCE_DEFLATE,15)
+PH7_ZLIB_INT_CONST(ZLIB_ENCODING_RAW,-15)
+PH7_ZLIB_INT_CONST(ZLIB_ENCODING_GZIP,31)
+PH7_ZLIB_INT_CONST(ZLIB_ENCODING_DEFLATE,15)
+PH7_ZLIB_INT_CONST(ZLIB_NO_FLUSH,0)
+PH7_ZLIB_INT_CONST(ZLIB_PARTIAL_FLUSH,1)
+PH7_ZLIB_INT_CONST(ZLIB_SYNC_FLUSH,2)
+PH7_ZLIB_INT_CONST(ZLIB_FULL_FLUSH,3)
+PH7_ZLIB_INT_CONST(ZLIB_BLOCK,5)
+PH7_ZLIB_INT_CONST(ZLIB_FINISH,4)
+PH7_ZLIB_INT_CONST(ZLIB_FILTERED,1)
+PH7_ZLIB_INT_CONST(ZLIB_HUFFMAN_ONLY,2)
+PH7_ZLIB_INT_CONST(ZLIB_RLE,3)
+PH7_ZLIB_INT_CONST(ZLIB_FIXED,4)
+PH7_ZLIB_INT_CONST(ZLIB_DEFAULT_STRATEGY,0)
+PH7_ZLIB_INT_CONST(ZLIB_VERNUM,ZLIB_VERNUM)
+PH7_ZLIB_INT_CONST(ZLIB_OK,0)
+PH7_ZLIB_INT_CONST(ZLIB_STREAM_END,1)
+PH7_ZLIB_INT_CONST(ZLIB_NEED_DICT,2)
+PH7_ZLIB_INT_CONST(ZLIB_ERRNO,-1)
+PH7_ZLIB_INT_CONST(ZLIB_STREAM_ERROR,-2)
+PH7_ZLIB_INT_CONST(ZLIB_DATA_ERROR,-3)
+PH7_ZLIB_INT_CONST(ZLIB_MEM_ERROR,-4)
+PH7_ZLIB_INT_CONST(ZLIB_BUF_ERROR,-5)
+PH7_ZLIB_INT_CONST(ZLIB_VERSION_ERROR,-6)
+static void PH7_ZLIB_VERSION_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,ZLIB_VERSION,-1);
+}
+#endif /* PH7_ENABLE_ZLIB */
 PH7_FILEINFO_INT_CONST(FILEINFO_NONE,0)
 PH7_FILEINFO_INT_CONST(FILEINFO_SYMLINK,2)
 PH7_FILEINFO_INT_CONST(FILEINFO_MIME,1040)
@@ -3675,6 +3722,35 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	 * them as constants that quietly expanded to the class name / NULL, so a typo'd bare
 	 * word silently produced a value. The `self::`/`parent::`/`static::` forms are handled
 	 * by the `::` compile path and do not go through the constant table. */
+#ifdef PH7_ENABLE_ZLIB
+	{"FORCE_GZIP",             PH7_FORCE_GZIP_Const },
+	{"FORCE_DEFLATE",          PH7_FORCE_DEFLATE_Const },
+	{"ZLIB_ENCODING_RAW",      PH7_ZLIB_ENCODING_RAW_Const },
+	{"ZLIB_ENCODING_GZIP",     PH7_ZLIB_ENCODING_GZIP_Const },
+	{"ZLIB_ENCODING_DEFLATE",  PH7_ZLIB_ENCODING_DEFLATE_Const },
+	{"ZLIB_NO_FLUSH",          PH7_ZLIB_NO_FLUSH_Const },
+	{"ZLIB_PARTIAL_FLUSH",     PH7_ZLIB_PARTIAL_FLUSH_Const },
+	{"ZLIB_SYNC_FLUSH",        PH7_ZLIB_SYNC_FLUSH_Const },
+	{"ZLIB_FULL_FLUSH",        PH7_ZLIB_FULL_FLUSH_Const },
+	{"ZLIB_BLOCK",             PH7_ZLIB_BLOCK_Const },
+	{"ZLIB_FINISH",            PH7_ZLIB_FINISH_Const },
+	{"ZLIB_FILTERED",          PH7_ZLIB_FILTERED_Const },
+	{"ZLIB_HUFFMAN_ONLY",      PH7_ZLIB_HUFFMAN_ONLY_Const },
+	{"ZLIB_RLE",               PH7_ZLIB_RLE_Const },
+	{"ZLIB_FIXED",             PH7_ZLIB_FIXED_Const },
+	{"ZLIB_DEFAULT_STRATEGY",  PH7_ZLIB_DEFAULT_STRATEGY_Const },
+	{"ZLIB_VERSION",           PH7_ZLIB_VERSION_Const },
+	{"ZLIB_VERNUM",            PH7_ZLIB_VERNUM_Const },
+	{"ZLIB_OK",                PH7_ZLIB_OK_Const },
+	{"ZLIB_STREAM_END",        PH7_ZLIB_STREAM_END_Const },
+	{"ZLIB_NEED_DICT",         PH7_ZLIB_NEED_DICT_Const },
+	{"ZLIB_ERRNO",             PH7_ZLIB_ERRNO_Const },
+	{"ZLIB_STREAM_ERROR",      PH7_ZLIB_STREAM_ERROR_Const },
+	{"ZLIB_DATA_ERROR",        PH7_ZLIB_DATA_ERROR_Const },
+	{"ZLIB_MEM_ERROR",         PH7_ZLIB_MEM_ERROR_Const },
+	{"ZLIB_BUF_ERROR",         PH7_ZLIB_BUF_ERROR_Const },
+	{"ZLIB_VERSION_ERROR",     PH7_ZLIB_VERSION_ERROR_Const },
+#endif /* PH7_ENABLE_ZLIB */
 	{"FILEINFO_NONE",          PH7_FILEINFO_NONE_Const },
 	{"FILEINFO_SYMLINK",       PH7_FILEINFO_SYMLINK_Const },
 	{"FILEINFO_MIME",          PH7_FILEINFO_MIME_Const },

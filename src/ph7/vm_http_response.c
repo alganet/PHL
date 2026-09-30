@@ -73,6 +73,17 @@ static sxi32 VmAddResponseHeader(ph7_vm *pVm, const char *zName, sxu32 nName,
 	return SySetPut(&pVm->aResponseHeaders, (const void *)&sHeader);
 }
 /*
+ * The same store, for an extension that sets a header of its own rather than
+ * carrying out a script's header() call: ob_gzhandler() announces the
+ * Content-Encoding it just applied. Always REPLACES, which is what php's own
+ * sapi_add_header does for these two.
+ */
+PH7_PRIVATE void PH7_VmAddResponseHeader(ph7_vm *pVm,const char *zName,const char *zValue)
+{
+	VmAddResponseHeader(pVm,zName,(sxu32)SyStrlen(zName),
+		zValue,(sxu32)SyStrlen(zValue),TRUE);
+}
+/*
  * php's headers-already-sent warning, in the two shapes php words it: the
  * header family's, which carries NO function prefix and hangs the origin off
  * the word "by", and http_response_code()'s, which is prefixed and does not.

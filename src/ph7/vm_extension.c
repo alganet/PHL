@@ -39,6 +39,11 @@ static int VmExtAvailable(int iExt)
 		return 0;
 	}
 #endif
+#ifndef PH7_ENABLE_ZLIB
+	if( iExt == PH7_EXT_ZLIB ){
+		return 0;
+	}
+#endif
 #ifdef __WINNT__
 	if( iExt == PH7_EXT_POSIX ){
 		return 0;

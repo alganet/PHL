@@ -568,6 +568,8 @@ PH7_PRIVATE int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target IO stream device */
 	pDev = PH7_StreamUnwrap(pDev);
 	pStream = pDev->pStream;
+	/* The chain first, and whatever the device can do about it second. */
+	PH7_StreamFlushWriteChain(pDev);
 	if( pDev->bDir || pStream == 0 || pStream->xSync == 0 ){
 		/* php's php_stream_flush SUCCEEDS when the device has nothing to flush,
 		 * silently -- which is why fflush() on php://memory, php://output, a
@@ -942,6 +944,31 @@ PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int
 	 * fwrite() answers the length it was given, and moves the position by it. */
 	pDev->iPos += nLen;
 	return nLen;
+}
+/*
+ * php's fflush() flushes the WRITE CHAIN before the device: its
+ * php_stream_flush runs every filter with a NON-closing flush, so a filter that
+ * has been holding bytes back emits what it has and stays open. PHL flushed the
+ * device alone, which is invisible for a filter that buffers nothing and very
+ * visible for one that does -- a `zlib.deflate` chain wrote NOTHING until the
+ * handle closed, where php's had already emitted the deflate stream up to a
+ * sync point.
+ */
+PH7_PRIVATE void PH7_StreamFlushWriteChain(io_private *pDev)
+{
+	phl_stream_filter *pChain = (phl_stream_filter *)pDev->pWriteFilters;
+	SyBlob sOut;
+	if( pChain == 0 || pDev->pStream == 0 || pDev->pStream->xWrite == 0 ){
+		return;
+	}
+	SyBlobInit(&sOut,pDev->sBuffer.pAllocator);
+	if( PH7_FilterChainProcess(pChain,0,0,PHL_PSFS_FLAG_FLUSH_INC,
+			PHL_PSFS_FLAG_FLUSH_INC,&sOut,0) != PHL_PSFS_ERR_FATAL
+	 && SyBlobLength(&sOut) > 0 ){
+		pDev->pStream->xWrite(pDev->pHandle,SyBlobData(&sOut),
+			(ph7_int64)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
 }
 /*
  * Extract a single line from the buffered input.
@@ -1482,7 +1509,8 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		nLen = ph7_value_to_int64(apArg[1]);
 		if( nLen < 1 ){
 			return PH7_VmThrowException(pCtx,"ValueError",
-				"fgets(): Argument #2 ($length) must be greater than 0");
+				"%s(): Argument #2 ($length) must be greater than 0",
+				ph7_function_name(pCtx));
 		}
 		/* php reads at most length-1 bytes -- one byte is reserved for the
 		 * string terminator -- so a length of 1 reads nothing and returns
@@ -1661,7 +1689,8 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	  ph7_int64 nWant = ph7_value_to_int64(apArg[1]);
 	  if( nWant < 1 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"fread(): Argument #2 ($length) must be greater than 0");
+			"%s(): Argument #2 ($length) must be greater than 0",
+			ph7_function_name(pCtx));
 	  }
 	  nLen = (int)nWant;
 	  if( nLen < 1 ){
@@ -3844,6 +3873,16 @@ static int StrModeToFlags(const char *zMode,int nLen,int *piFlags)
 	return 0;
 }
 /*
+ * The same grammar, for a door that has to know whether a mode is php's before
+ * deciding whose refusal to raise: gzopen() reports the sentence above for a
+ * letter php does not know, and libz's own flat failure for one php takes and
+ * libz has no direction for. Answers 1 when php would accept the mode.
+ */
+PH7_PRIVATE int PH7_StreamModeIsValid(const char *zMode,int nLen,int *piFlags)
+{
+	return StrModeToFlags(zMode,nLen,piFlags) == 0;
+}
+/*
  * Initialize the IO private structure.
  */
 PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut)
@@ -4139,6 +4178,19 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 		*pzWrapper = *pzStream = "RFC2397";
 		return;
 	}
+#ifdef PH7_ENABLE_ZLIB
+	if( PH7_ZlibStreamIs(pS) ){
+		/* One device, two doors: compress.zlib:// goes through a WRAPPER and
+		 * gzopen() opens the device directly -- which php reports by leaving
+		 * both `wrapper_type` and `uri` off the second one. The ops are the
+		 * same either way, and php names them ZLIB. */
+		*pzStream = "ZLIB";
+		if( SyBlobLength(&pDev->sUri) > 0 ){
+			*pzWrapper = "ZLIB";
+		}
+		return;
+	}
+#endif
 	if( IoPrivateIsUwrap(pS) ){
 		*pzWrapper = *pzStream = "user-space";
 		return;
@@ -4186,6 +4238,32 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 		return;
 	}
 	*pzWrapper = "plainfile";
+}
+/*
+ * The WRAPPER label on its own, for a device rather than an open handle: php's
+ * path operations name it in their refusals (`unlink(): ZLIB does not allow
+ * unlinking`), and they have no handle to ask. Answers 0 for the plain-file
+ * wrapper -- which implements the operations rather than refusing them -- and
+ * for a userland one, whose own door runs before this.
+ */
+PH7_PRIVATE const char * PH7_StreamWrapperLabel(ph7_vm *pVm,const ph7_io_stream *pStream)
+{
+	if( pStream == 0 || pStream == pVm->pDefStream || IoPrivateIsUwrap(pStream) ){
+		return 0;
+	}
+	if( is_php_stream(pStream) ){
+		return "PHP";
+	}
+	if( is_data_stream(pStream) ){
+		return "RFC2397";
+	}
+#ifdef PH7_ENABLE_ZLIB
+	if( PH7_ZlibStreamIs(pStream) ){
+		return "ZLIB";
+	}
+#endif
+	/* php's remaining built-in wrappers label themselves with their scheme. */
+	return pStream->zName;
 }
 /*
  * The `stream_type` label above, on its own. ext/posix prints it in php's
