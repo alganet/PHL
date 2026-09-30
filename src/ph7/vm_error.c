@@ -2503,29 +2503,29 @@ static sxi32 VmRunNativeSet(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_value *pValue)
  * 2.456007, the microsecond truncation of the sum). Answers SXRET_OK when the
  * slot is not a native one.
  */
-/*
- * Register a property slot with the store filter, and drop it again. These two
- * are the ONLY writers of pVm->hTypedSlot: the predicate that decides membership
- * lives here once (a declared type, a native write handler, or both), and the
- * handler COUNT that lets the mutation opcodes skip the table entirely is kept
- * beside it -- registering in one place and forgetting to drop in another is
- * exactly how a recycled memobj index would inherit a stale entry.
- */
-/*
- * Make room in the slot bitmap for nIdx and set its bit. A failure here is not
- * fatal: the bitmap is a SCREEN in front of the table, and a slot it cannot cover
- * simply keeps asking the table, which is what every caller did before it existed.
- */
 static void VmFilterBitSet(ph7_vm *pVm,sxu32 nIdx)
 {
+	if( pVm->bFilterBitsOff ){
+		return;
+	}
 	if( nIdx >= pVm->nFilterBits ){
 		sxu32 nNew = pVm->nFilterBits ? pVm->nFilterBits : 1024;
 		unsigned char *pNew;
+		/* An index this large cannot be a real slot, and doubling toward it would
+		 * wrap. Treat it exactly like a failed allocation. */
+		if( nIdx >= (1u << 30) ){
+			pVm->bFilterBitsOff = 1;
+			return;
+		}
 		while( nNew <= nIdx ){
 			nNew <<= 1;
 		}
 		pNew = (unsigned char *)SyMemBackendAlloc(&pVm->sAllocator,nNew >> 3);
 		if( pNew == 0 ){
+			/* This slot IS filtered and the bitmap cannot say so. It must not answer
+			 * for anything else either, or the screens in front of it would skip a
+			 * type check, a readonly refusal or a native write handler. */
+			pVm->bFilterBitsOff = 1;
 			return;
 		}
 		SyZero(pNew,nNew >> 3);
@@ -2538,6 +2538,18 @@ static void VmFilterBitSet(ph7_vm *pVm,sxu32 nIdx)
 	}
 	pVm->pFilterBits[nIdx >> 3] |= (unsigned char)(1 << (nIdx & 7));
 }
+/*
+ * Register a property slot with the store filter, and drop it again. These two
+ * are the ONLY writers of pVm->hTypedSlot: the predicate that decides membership
+ * lives here once (a declared type, a native write handler, or both), and the
+ * handler COUNT that lets the mutation opcodes skip the table entirely is kept
+ * beside it -- registering in one place and forgetting to drop in another is
+ * exactly how a recycled memobj index would inherit a stale entry.
+ *
+ * They also keep the SLOT BITMAP the hot-path screens read (see pFilterBits): it
+ * answers the membership question without hashing, and because it is written here
+ * and nowhere else it cannot drift from the table it screens.
+ */
 PH7_PRIVATE sxi32 PH7_VmStoreFilterRegister(ph7_vm *pVm,VmClassAttr *pVmAttr)
 {
 	if( !PH7_ATTR_STORE_FILTERED(pVmAttr->pAttr) ){

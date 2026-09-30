@@ -3684,6 +3684,9 @@ static void VmResetTypedSlots(ph7_vm *pVm)
 	if( pVm->pFilterBits ){
 		SyZero(pVm->pFilterBits,pVm->nFilterBits >> 3);
 	}
+	/* The table is emptied with it, so a bitmap that had been switched off can be
+	 * trusted again from here. */
+	pVm->bFilterBitsOff = 0;
 	/* Common case: no class static typed properties — table already empty. */
 	if( SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
 		return;

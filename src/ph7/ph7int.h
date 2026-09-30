@@ -3436,6 +3436,16 @@ struct ph7_vm
 	                             * that own the table, so it cannot drift from it; a slot past
 	                             * nFilterBits was never registered, which is the same answer. */
 	sxu32 nFilterBits;          /* How many slots pFilterBits covers (0 = never allocated) */
+	sxu8 bFilterBitsOff;        /* The bitmap could not be grown to cover a slot that IS
+	                             * registered, so it can no longer answer for anything and
+	                             * every question goes back to the table. Sticky, because a
+	                             * fresh bitmap would be missing the bits of everything
+	                             * registered before it. An allocation CAN fail here without
+	                             * the box being out of memory -- a script's memory_limit is a
+	                             * real ceiling since the 137th session -- and answering "not
+	                             * filtered" there would silently skip a typed property's
+	                             * type check, its readonly screen and a native write
+	                             * handler. */
 	sxu32 nNativeSetSlot;       /* How many of those slots carry a native WRITE HANDLER. Kept
 	                             * by the same two helpers, and read by the in-place mutation
 	                             * opcodes: `$i++` on an ordinary variable must not pay for a
@@ -5964,10 +5974,14 @@ PH7_PRIVATE void PH7_VmAppendWhere(ph7_vm *pVm,SyBlob *pMsg,int bSessionActive);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
 PH7_PRIVATE ph7_value * PH7_VmExtractVarCached(ph7_vm *pVm,const SyString *pName,int bCreate);
 /* Is a store to this slot filtered at all? The screen in front of every hTypedSlot
- * lookup on a hot path; a false answer is final, a true one still asks the table. */
+ * lookup on a hot path; a false answer is final, a true one still asks the table.
+ * With the bitmap disabled it degrades to the emptiness test every one of those
+ * call sites used before it existed, which over-answers and never under-answers. */
 #define PH7_VM_STORE_FILTERED(pVm,nIdx) \
-	((nIdx) < (pVm)->nFilterBits \
-	 && ((pVm)->pFilterBits[(nIdx) >> 3] & (1 << ((nIdx) & 7))) != 0)
+	((pVm)->bFilterBitsOff \
+	 ? SyHashTotalEntry(&(pVm)->hTypedSlot) > 0 \
+	 : ((nIdx) < (pVm)->nFilterBits \
+	    && ((pVm)->pFilterBits[(nIdx) >> 3] & (1 << ((nIdx) & 7))) != 0))
 PH7_PRIVATE void VmVarMemoFlush(VmFrame *pFrame);
 /* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
 PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);
