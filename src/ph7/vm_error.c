@@ -3998,10 +3998,23 @@ PH7_PRIVATE int PH7_VmHookFuncName(ph7_class *pClass,ph7_vm_func *pFunc,SyBlob *
 static void VmReturnFuncName(ph7_vm *pVm,ph7_vm_func *pFunc,SyBlob *pOut)
 {
 	if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
-		if( PH7_VmHookFuncName((ph7_class *)pFunc->pUserData,pFunc,pOut) ){
+		/* ...and a TRAIT method's declaring class is the trait, which php does not
+		 * have at run time: it composed the method INTO the using class, and names
+		 * that class here. `trait T { function m(): self {…} } class C { use T; }`
+		 * reported `T::m(): Return value must be…` where php says `C::m()`, while
+		 * the ARGUMENT-side twin (which is handed an already-resolved owner) said
+		 * `C::m()` in the same function. PH7_VmMemberOwnerClass is the shared walk;
+		 * it needs the class the call was made THROUGH to find the user, and answers
+		 * 0 only when there is none — keep the declaring class for that. */
+		ph7_class *pDecl = (ph7_class *)pFunc->pUserData;
+		ph7_class *pOwner = PH7_VmMemberOwnerClass(pDecl,PH7_VmPeekTopClass(pVm));
+		if( pOwner == 0 ){
+			pOwner = pDecl;
+		}
+		if( PH7_VmHookFuncName(pOwner,pFunc,pOut) ){
 			return;
 		}
-		SyBlobFormat(pOut,"%z::%z",&((ph7_class *)pFunc->pUserData)->sName,&pFunc->sName);
+		SyBlobFormat(pOut,"%z::%z",&pOwner->sName,&pFunc->sName);
 		return;
 	}
 	{

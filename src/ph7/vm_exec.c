@@ -2821,18 +2821,24 @@ case PH7_OP_IS_A:{
 			/* Instance already loaded */
 			pClass = ((ph7_class_instance *)pTos->x.pOther)->pClass;
 		}else if( pTos->iFlags & MEMOBJ_STRING && SyBlobLength(&pTos->sBlob) > 0 ){
-			const char *zCls = (const char *)SyBlobData(&pTos->sBlob);
-			sxu32 nCls = (sxu32)SyBlobLength(&pTos->sBlob);
-			/* Handle self/static/parent keywords */
-			if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
-				pClass = PH7_VmPeekDeclaringClass(&(*pVm));
-			}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
-				pClass = PH7_VmPeekTopClass(&(*pVm));
-			}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
-				pClass = PH7_VmResolveParentClass(&(*pVm));
-			}else{
-				pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
-			}
+			/* self/static/parent, through the shared rail (PH7_VmResolveScopeName), and
+			 * an ordinary name through the same non-autoloading extract as before.
+			 *
+			 * This handler open-coded the three keywords and answered `self` with the
+			 * DECLARING class, which for a trait method is the TRAIT — and no object is
+			 * ever an instance of a trait, so `$x instanceof self` inside a trait method
+			 * was FALSE for every $x, including one of the very class that used it.
+			 * php composes a trait into the class, so `self` there is the USING class
+			 * (PH7_VmPeekSelfClass states the rule once, and `self::`/`__CLASS__`/
+			 * `new self` all already asked it). The same silent false answered inside a
+			 * CLOSURE declared in a trait method, whose stamped scope is the trait too.
+			 *
+			 * phpstan is where it showed: JustNullableTypeTrait::isSuperTypeOf() begins
+			 * `if ($type instanceof self)`, and with that never taken the trait fell
+			 * through to `$type->isSubTypeOf($this)` — a mutual recursion with
+			 * IntegerRangeType::isSubTypeOf() that php terminates on the first line. */
+			pClass = PH7_VmResolveScopeName(&(*pVm),
+				(const char *)SyBlobData(&pTos->sBlob),(sxu32)SyBlobLength(&pTos->sBlob));
 		}
 		if( pClass ){
 			/* Perform the query */
