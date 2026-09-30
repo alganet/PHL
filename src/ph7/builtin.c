@@ -837,13 +837,21 @@ static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Key order matches php 8.3's gc_status(). */
-	ph7_value_bool(pVal,pCtx->pVm->bGcEnabled); ph7_array_add_strkey_elem(pArray,"running",pVal);
+	/* php's "running" is its gc_active -- whether a collection is IN PROGRESS,
+	 * not whether the collector is switched on. Outside one it is always false,
+	 * and the only PHP that can see it true is a __destruct() the collector is
+	 * itself running. Answering bGcEnabled here made every call say true, which
+	 * is the one thing php's never says. gc_enabled() is the enabled question. */
+	ph7_value_bool(pVal,pCtx->pVm->bGcRunning); ph7_array_add_strkey_elem(pArray,"running",pVal);
 	ph7_value_bool(pVal,0);      ph7_array_add_strkey_elem(pArray,"protected",pVal);
 	ph7_value_bool(pVal,0);      ph7_array_add_strkey_elem(pArray,"full",pVal);
 	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcRuns);      ph7_array_add_strkey_elem(pArray,"runs",pVal);
 	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcCollected); ph7_array_add_strkey_elem(pArray,"collected",pVal);
 	ph7_value_int(pVal,(sxi64)pCtx->pVm->nGcThreshold); ph7_array_add_strkey_elem(pArray,"threshold",pVal);
-	ph7_value_int(pVal,(sxi64)SySetUsed(&pCtx->pVm->aGcRoot)); ph7_array_add_strkey_elem(pArray,"buffer_size",pVal);
+	/* php's two are the buffer's CAPACITY and how much of it is used. Answering
+	 * the used count twice made a full buffer indistinguishable from an empty
+	 * one -- the pair only means anything as a ratio. */
+	ph7_value_int(pVal,(sxi64)SySetSize(&pCtx->pVm->aGcRoot)); ph7_array_add_strkey_elem(pArray,"buffer_size",pVal);
 	ph7_value_int(pVal,(sxi64)SySetUsed(&pCtx->pVm->aGcRoot)); ph7_array_add_strkey_elem(pArray,"roots",pVal);
 	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"application_time",pVal);
 	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"collector_time",pVal);
