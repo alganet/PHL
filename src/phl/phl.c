@@ -78,14 +78,18 @@ static void Fatal(const char *zMsg)
  * ordinary use (the process is exiting) and turns every leak-detecting run over
  * a corpus that spawns a failing child into a wall of reports. */
 static ph7 *pFatalEngine = 0;
-static void FatalSilent(void)
+static void FatalSilentCode(int iCode)
 {
 	if( pFatalEngine ){
 		ph7_release(pFatalEngine);
 		pFatalEngine = 0;
 	}
 	ph7_lib_shutdown();
-	exit(255);
+	exit(iCode);
+}
+static void FatalSilent(void)
+{
+	FatalSilentCode(255);
 }
 /*
  * Display the banner,a help message and exit.
@@ -761,13 +765,19 @@ int main(int argc,char **argv)
 			printf("No syntax errors detected in %s\n",zFile);
 			ph7_vm_release(pVm);
 		}else if( rc == PH7_IO_ERR ){
-			printf("Could not open input file: %s\n",zFile);
+			/* php says this on STDERR, like the run path above */
+			fprintf(stderr,"Could not open input file: %s\n",zFile);
 		}else{
 			printf("Errors parsing %s\n",zFile);
 		}
 		ph7_release(pEngine);
 		pFatalEngine = 0;
-		return (rc == PH7_OK) ? 0 : 255;
+		/* php's two exit codes are not one: a file it cannot OPEN is 1 (a bad
+		 * invocation), a file that does not PARSE is 255. */
+		if( rc == PH7_OK ){
+			return 0;
+		}
+		return (rc == PH7_IO_ERR) ? 1 : 255;
 	}
 	/* Now,it's time to compile our PHP file */
 	if( run_code ){
@@ -813,7 +823,12 @@ int main(int argc,char **argv)
 			);
 		if( rc != PH7_OK ){ /* Compile error */
 			if( rc == PH7_IO_ERR ){
-				FatalCode("IO error while opening the target file",1);
+				/* php names the file it could not open, and says so on STDERR --
+				 * this answered a generic "IO error while opening the target file"
+				 * on stdout, which a script capturing program output then read as
+				 * part of the answer. */
+				fprintf(stderr,"Could not open input file: %s\n",argv[n]);
+				FatalSilentCode(1);
 			}else if( rc == PH7_VM_ERR ){
 				Fatal("VM initialization error");
 			}else{
