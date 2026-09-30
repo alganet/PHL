@@ -12,3 +12,12 @@ REF="b885ab8"
 # STEP and both engines get it, so a timeout is a comparable answer rather than a hang,
 # and this is the step an engine performance regression would show up in first.
 STEP_TIMEOUT=1800
+# `--debug` on the phpstan step is NOT a debugging aid -- it is what stops phpstan
+# forking. Its default `parallel: maximumNumberOfProcesses` is 8, and until 29 Aug 2026
+# that never mattered because the step died in under a second at phpstan.phar's own
+# bootstrap. Three engine defects shipped that day and it now runs a real analysis: eight
+# more `phl` processes, each carrying this engine's ~3.3x memory over php, which OOM-killed
+# a 30 GB box twice. A per-process `ulimit -v` cannot hold it -- the limit applies to each
+# child, not to their sum -- so the fork has to not happen. `--debug` forces one process
+# and is the only flag that does it from the command line. BOTH engines get it, so the
+# comparison is unchanged; what changes is that the step is runnable at all.

@@ -1,6 +1,6 @@
 spdx-lint	$PHL_VENDOR_ENGINE bin/console lint:spdx
 phpcs	$PHL_VENDOR_ENGINE vendor/bin/phpcs
-phpstan	$PHL_VENDOR_ENGINE vendor/bin/phpstan analyze --no-progress
+phpstan	$PHL_VENDOR_ENGINE vendor/bin/phpstan analyze --no-progress --debug
 phpunit	$PHL_VENDOR_ENGINE vendor/bin/phpunit --testsuite=unit --display-notices --no-coverage
 pest	$PHL_VENDOR_ENGINE vendor/bin/pest --testsuite=feature --compact
 docs-lint	$PHL_VENDOR_ENGINE bin/console lint:docs
