@@ -17,6 +17,23 @@ It is **off the Makefile and off CI** for now: it needs the network, a real `com
 several minutes to run. Run it by hand before a release and after any change to the
 compiler, the error surface or a shipped extension.
 
+> ### ⚠ The `phpstan` step forks EIGHT workers, and that OOMs a loaded box
+>
+> Until 29 Aug 2026 respect-validation's `phpstan` step died in under a second, at
+> phpstan.phar's own bootstrap, and its baseline was that death. Three engine defects
+> shipped that day and it now starts a REAL analysis — and phpstan's default
+> `parallel: maximumNumberOfProcesses` is **8**, so that is eight more `phl` processes,
+> each carrying this engine's standing ~3.3x memory over php. It took this 30 GB box down
+> twice, and a per-process `ulimit -v` cannot hold it: the limit applies to each child, not
+> to their sum.
+>
+> **Bound it before running this project again.** Either force a single process
+> (`--debug` on the phpstan command line does that, or a `parallel:
+> maximumNumberOfProcesses: 1` override in the project's `phpstan.neon.dist`), or run the
+> gate with the other projects only (`tests/vendor/run.sh monolog php-parser twig`) while
+> the step's real cost is being measured. The baseline for that step is stale until
+> somebody does.
+
 Every verdict line carries what the step COST, per engine — `PARITY [php 9s phl 61s]` — and
 each project and the run as a whole print their total. Those numbers are not part of the
 answer (they are never diffed and never a baseline); they are there because a gate whose
