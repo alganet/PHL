@@ -49,7 +49,8 @@ static void SyOSHeapFree(void *pPtr)
  * Zero a block. Every ph7_value, VM frame, hashmap and reference record is born
  * through here -- 52M calls in a nine-second run of the ecosystem gate's phpcs
  * step -- and it used to be a hand-unrolled byte loop. memset is the same
- * operation a vector register at a time.
+ * operation a vector register at a time, and unlike the COMPARE (see
+ * SX_MACRO_FAST_CMP) it cannot over-read: nSize is memory the caller owns.
  */
 PH7_PRIVATE void SyZero(void *pSrc,sxu32 nSize)
 {

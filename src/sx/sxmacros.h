@@ -67,28 +67,32 @@
 
 /* Comparison, byte swap, byte copy macros */
 /*
- * The two byte-at-a-time primitives the whole engine is built on, over the C
- * library's own. These ran a hand-unrolled four-byte loop, which is what a 2011
- * compiler could be trusted with and is now several times slower than one call
- * to a libc routine that reads a vector register at a time -- and they are the
- * bottom of everything: a profile of the ecosystem gate's phpcs step counted
- * 201M SyMemcmp, 191M SyMemcpy and 52M SyZero in a nine-second run.
+ * The byte-at-a-time primitives the whole engine is built on. They are the bottom
+ * of everything: a profile of the ecosystem gate's phpcs step counted 201M
+ * SyMemcmp, 191M SyMemcpy and 52M SyZero in a nine-second run.
  *
- * SX_MACRO_FAST_CMP keeps its exact answer, which is NOT memcmp's: php's
- * strcmp() reports the DIFFERENCE of the first bytes that differ
- * (`strcmp("a","z")` is -25, under php 8.5 too), where memcmp only promises the
- * sign of it. So memcmp decides equality at vector speed and the byte scan runs
- * only over the equal prefix of an UNEQUAL pair, which is short by definition.
+ * The COPY is the C library's, which moves a vector register at a time. The
+ * COMPARE deliberately is not, and stays a loop that stops at the first byte that
+ * differs. Callers all over the engine ask it for a fixed count against a string
+ * that may be SHORTER -- `SyMemcmp(row->zName,"node",4)` where the row holds
+ * "sh" -- and a short-circuiting loop never reads the bytes past the difference,
+ * where memcmp reads the whole count and walks off the end of the literal. That
+ * is not hypothetical: swapping this one for memcmp made ASan report a
+ * global-buffer-overflow in ext/fileinfo the first time the corpus ran it. The
+ * comparison is ~1% of the profile; a class of out-of-bounds reads is not worth
+ * it, and it is the callers that would have to change.
  */
 #define SX_MACRO_FAST_CMP(X1,X2,SIZE,RC){\
-	const unsigned char *r1 = (const unsigned char *)(X1);\
-	const unsigned char *r2 = (const unsigned char *)(X2);\
-	sxu32 LEN = (sxu32)(SIZE);\
-	RC = LEN ? memcmp(r1,r2,(size_t)LEN) : 0;\
-	if( RC != 0 ){\
-		while( r1[0] == r2[0] ){ r1++; r2++; }\
-		RC = (sxi32)r1[0] - (sxi32)r2[0];\
+	register unsigned char *r1 = (unsigned char *)X1;\
+	register unsigned char *r2 = (unsigned char *)X2;\
+	register sxu32 LEN = SIZE;\
+	for(;;){\
+	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
+	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
+	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
+	  if( !LEN ){ break; }if( r1[0] != r2[0] ){ break; } r1++; r2++; LEN--;\
 	}\
+	RC = !LEN ? 0 : r1[0] - r2[0];\
 }
 /* memMOVE, not memcpy: the byte loop this replaces copied forward, so a caller
  * whose ranges overlap downwards was well-defined before and stays so. */
