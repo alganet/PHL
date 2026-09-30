@@ -950,50 +950,6 @@ PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte)
 		VmVarMemoFlush(pFrame);
 	}
 }
-PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
-{
-	VmRefObj *pRef;
-	VmDropFrameLocalSlot(&(*pVm),nIdx);
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef ){
-		pRef->iFlags |= VM_REF_IDX_KEEP;
-	}else{
-		/* No record yet — a pin on a slot nothing refers to was silently a NO-OP, so the
-		 * slot stayed releasable and (since a pin is a holder) nothing counted it. */
-		PH7_VmRefObjInstall(&(*pVm),nIdx,0,0,VM_REF_IDX_KEEP);
-	}
-}
-/*
- * A pin that can be GIVEN BACK: a reference-bound property (`$o->p =& $x`) holds the slot
- * only while the property does. The permanent pins (a `use (&$x)` capture, a static, an
- * enum case) stay on VmPinMemObjSlot, which never counts down.
- */
-PH7_PRIVATE void VmPinMemObjSlotCounted(ph7_vm *pVm,sxu32 nIdx)
-{
-	VmRefObj *pRef;
-	VmPinMemObjSlot(&(*pVm),nIdx);
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef ){
-		pRef->nPin++;
-	}
-}
-/*
- * Give back a counted pin. The slot goes when it was the last holder — without this the
- * value a released property was pinning stayed alive for the rest of the script (the pin
- * used to be a flag, so nothing could tell one holder from two).
- */
-PH7_PRIVATE void VmUnpinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
-{
-	VmRefObj *pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 || pRef->nPin < 1 ){
-		return;
-	}
-	pRef->nPin--;
-	if( pRef->nPin < 1 ){
-		pRef->iFlags &= ~VM_REF_IDX_KEEP;
-		PH7_VmReleaseUnheldSlot(&(*pVm),nIdx);
-	}
-}
 /*
  * Skip exception frames to reach the nearest non-exception frame.
  * Exception frames are transparent wrappers pushed by try/catch and
@@ -2624,13 +2580,13 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * for an out-of-range index instead, so this is now a head start rather than
 	 * the thing standing between the compiler and a crash.) */
 	pVm->nRefSize = 0x10;
-	pVm->apRefObj = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * pVm->nRefSize);
+	pVm->apRefObj = (void **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(void *) * pVm->nRefSize);
 	if( pVm->apRefObj == 0 ){
 		rc = SXERR_MEM;
 		goto Err;
 	}
 	/* Zero the reference table */
-	SyZero(pVm->apRefObj,sizeof(VmRefObj *) * pVm->nRefSize);
+	SyZero(pVm->apRefObj,sizeof(void *) * pVm->nRefSize);
 	/* Create the global frame */
 	rc = VmEnterFrame(&(*pVm),0,0,0);
 	if( rc != SXRET_OK ){
@@ -3429,12 +3385,12 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
  */
 static void VmResetRefTable(ph7_vm *pVm)
 {
-	/* VmRefObjUnlink clears each record's own cell and decrements nRefUsed, so a
+	/* VmRefSlotUnlink empties the cell it is given and decrements nRefUsed, so a
 	 * sweep of the table leaves it empty and nRefUsed at 0 — no extra clearing
 	 * needed. The cell array and nRefSize survive.
 	 *
-	 * Unlinking one record deletes the names and array nodes it holds, which
-	 * releases values, which can unlink OTHER records — including ones this sweep
+	 * Unlinking one cell deletes the names and array nodes it holds, which
+	 * releases values, which can unlink OTHER cells — including ones this sweep
 	 * has already passed, and (through a destructor) ones it has not created yet.
 	 * So the sweep repeats while it is still making progress rather than trusting
 	 * one pass, and stops the moment a pass frees nothing so it cannot spin. */
@@ -3445,9 +3401,9 @@ static void VmResetRefTable(ph7_vm *pVm)
 		}
 		for( n = 0 ; n < pVm->nRefSize ; ++n ){
 			while( pVm->apRefObj[n] ){
-				VmRefObj *pRef = pVm->apRefObj[n];
-				VmRefObjUnlink(&(*pVm),pRef);
-				if( pVm->apRefObj[n] == pRef ){
+				void *pWord = pVm->apRefObj[n];
+				PH7_VmSlotUnlink(&(*pVm),n);
+				if( pVm->apRefObj[n] == pWord ){
 					break; /* unlink did not clear it: do not spin on this cell */
 				}
 			}
@@ -6611,15 +6567,10 @@ struct VmShutdownName
  */
 static int VmSlotHeldByOneName(ph7_vm *pVm,sxu32 nIdx)
 {
-	VmRefObj *pRef;
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
+	if( PH7_VmSlotSelfPinned(&(*pVm),nIdx) ){
 		return 0;
 	}
-	if( pRef->nPin > 0 || (pRef->iFlags & VM_REF_IDX_KEEP) ){
-		return 0;
-	}
-	return PH7_VmRefEntryCount(pRef) == 1;
+	return PH7_VmSlotEntryCount(&(*pVm),nIdx) == 1;
 }
 /*
  * php's shutdown destructor phase, first half: the GLOBAL SYMBOL TABLE.
@@ -7397,20 +7348,115 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
  *  extension.
  */
 /*
- * Allocate a new reference entry.
+ * ---------------------------------------------------------------------------
+ * The reference table.
  *
- * A record is created for EVERY variable a frame binds and EVERY element an array
- * inserts, so its size is the engine's per-value overhead: the two inline SySets it
- * used to carry made it 128 bytes (a 256-byte pool bucket) before either of them had
- * a row, and the first row of each then grew a 32-byte buffer of its own. The one
- * holder a slot almost always has now lives in the record itself and nothing is
- * allocated for it; the sets move to VmRefSpill, which only a real `&` reference
- * ever asks for.
+ * One TAGGED WORD per memory-object slot (pVm->apRefObj[nIdx]; see VM_REF_TAG_*
+ * in ph7int.h for the five shapes). The table answers one question -- who still
+ * holds this slot -- and that answer decides when a value is freed, so every
+ * accessor below is asked BY SLOT INDEX: a slot whose answer fits in its word has
+ * no record for a caller to hold on to.
+ *
+ * A record (VmRefObj) is the fallback for the answers a word cannot carry: two or
+ * more names, two or more nodes, or a pin standing beside a named holder.
+ * ---------------------------------------------------------------------------
+ */
+/* The word for a slot the table has been grown to cover; 0 otherwise. */
+static void * VmRefWord(ph7_vm *pVm,sxu32 nIdx)
+{
+	if( nIdx >= pVm->nRefSize ){
+		return 0;
+	}
+	return pVm->apRefObj[nIdx];
+}
+/*
+ * Grow the table to cover a slot. Doubling keeps the growth amortized and, unlike
+ * the hash table this replaced, nothing has to be MOVED: the cells that exist keep
+ * their index, so the copy is one memcpy and the tail is zeroed.
+ */
+static sxi32 VmRefTableGrow(ph7_vm *pVm,sxu32 nIdx)
+{
+	void **apNew;
+	sxu32 nNew;
+	if( nIdx < pVm->nRefSize ){
+		return SXRET_OK;
+	}
+	nNew = pVm->nRefSize ? pVm->nRefSize : 0x10;
+	while( nIdx >= nNew ){
+		nNew <<= 1;
+	}
+	apNew = (void **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(void *) * nNew);
+	if( apNew == 0 ){
+		return SXERR_MEM;
+	}
+	if( pVm->nRefSize > 0 ){
+		SyMemcpy((const void *)pVm->apRefObj,(void *)apNew,pVm->nRefSize * sizeof(void *));
+	}
+	SyZero((void *)&apNew[pVm->nRefSize],(nNew - pVm->nRefSize) * sizeof(void *));
+	SyMemBackendFree(&pVm->sAllocator,pVm->apRefObj);
+	pVm->apRefObj = apNew;
+	pVm->nRefSize = nNew;
+	return SXRET_OK;
+}
+/*
+ * Store a word. The ONE place nRefUsed moves: it counts FILLED CELLS, so a cell
+ * that goes from one shape to another (a name dropped to a bare mark, a word
+ * promoted to a record) does not move it. The caller must already have grown the
+ * table -- this cannot fail, which is what lets the callers below commit a state
+ * change and a holder in the same breath.
+ */
+static void VmRefWordSet(ph7_vm *pVm,sxu32 nIdx,void *pWord)
+{
+	void *pOld = pVm->apRefObj[nIdx];
+	if( pOld == 0 && pWord != 0 ){
+		pVm->nRefUsed++;
+	}else if( pOld != 0 && pWord == 0 ){
+		pVm->nRefUsed--;
+	}
+	pVm->apRefObj[nIdx] = pWord;
+}
+/* A holder pointer carried in a word, with its tag taken back off. */
+#define VM_REF_UNTAG(W,T) ((void *)&((char *)(W))[-(T)])
+/*
+ * May this pointer be tagged? The pool allocator keeps every chunk pointer-aligned
+ * (sxmem.c's MemOSHeader union exists for that), so this is true everywhere it is
+ * asked -- but a word whose low bits are not free would read back as another shape
+ * entirely, so the question is asked rather than assumed and a stray pointer simply
+ * takes the record path.
+ */
+static int VmRefTaggable(void *pPtr)
+{
+	return pPtr != 0 && (SX_PTR_TO_INT(pPtr) & VM_REF_TAG_MASK) == 0;
+}
+/* Build a MARK word out of a pin count and the flags. */
+static void * VmRefMarkWord(sxu32 nPin,sxi32 iFlags)
+{
+	int iWord = VM_REF_TAG_MARK;
+	if( iFlags & VM_REF_IDX_KEEP ){
+		iWord |= VM_REF_MARK_KEEP;
+	}
+	iWord |= (int)(nPin * VM_REF_MARK_PIN);
+	return SX_INT_TO_PTR(iWord);
+}
+static sxu32 VmRefMarkPin(void *pWord)
+{
+	return ((sxu32)SX_PTR_TO_INT(pWord)) / VM_REF_MARK_PIN;
+}
+static int VmRefMarkKeep(void *pWord)
+{
+	return (SX_PTR_TO_INT(pWord) & VM_REF_MARK_KEEP) != 0;
+}
+/*
+ * Allocate a new reference record.
+ *
+ * Reached only by a slot whose holders will not fit in its word -- two names, two
+ * nodes, or a pin beside a named holder. It used to be allocated for EVERY variable
+ * a frame binds and EVERY element an array inserts, which made its size the engine's
+ * per-value memory overhead.
  */
 static VmRefObj * VmNewRefObj(ph7_vm *pVm,sxu32 nIdx)
 {
 	VmRefObj *pRef;
-	/* Allocate a new instance */
 	pRef = (VmRefObj *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmRefObj));
 	if( pRef == 0 ){
 		return 0;
@@ -7543,11 +7589,11 @@ static void VmRefDropNode(VmRefObj *pRef,ph7_hashmap_node *pNode)
 	}
 }
 /*
- * How many LIVE holders of each kind a record still carries. A node counts only while
+ * How many LIVE holders of each kind a RECORD still carries. A node counts only while
  * it still points HERE -- a slot index travels through the free list, so a record can
  * outlive the node that filed the row.
  */
-PH7_PRIVATE sxu32 PH7_VmRefEntryCount(VmRefObj *pRef)
+static sxu32 VmRefEntryCount(VmRefObj *pRef)
 {
 	sxu32 n, nLive = pRef->pEntry0 ? 1 : 0;
 	if( pRef->pSpill ){
@@ -7560,7 +7606,7 @@ PH7_PRIVATE sxu32 PH7_VmRefEntryCount(VmRefObj *pRef)
 	}
 	return nLive;
 }
-PH7_PRIVATE sxu32 PH7_VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx)
+static sxu32 VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx)
 {
 	sxu32 n, nLive = (pRef->pNode0 && pRef->pNode0->nValIdx == nIdx) ? 1 : 0;
 	if( pRef->pSpill ){
@@ -7574,85 +7620,275 @@ PH7_PRIVATE sxu32 PH7_VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx)
 	return nLive;
 }
 /*
- * The reference record for a memory-object slot, or NULL when it has none.
- *
- * A slot index is the position of a ph7_value in the VM's aMemObj set: dense, small,
- * and already unique. The table is indexed by it directly. It used to be a hash table
- * over that same integer, which bought nothing and cost a full rehash -- every record
- * re-bucketed, a cache miss each -- every time it doubled; on a run that creates
- * millions of variables and array elements that rehash was the single most expensive
- * thing the engine did.
- *
- * The implementation of the reference mechanism in the PH7 engine differ greatly from
- * the one used by the zend engine. That is, the reference implementation is
- * consistent,solid and it's behavior resemble the C++ reference mechanism.
+ * The RECORD behind a slot, or 0 when the slot's answer is in its word (which,
+ * unlike the old VmRefObjExtract, does NOT mean the slot is unheld). Nothing
+ * outside this section may hold one: every question is asked by index below.
  */
-PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx)
+static VmRefObj * VmRefFull(ph7_vm *pVm,sxu32 nIdx)
 {
-	if( nObjIdx >= pVm->nRefSize ){
-		/* A slot the table has never been grown to cover has no record by definition */
+	void *pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 || VM_REF_TAGOF(pWord) != VM_REF_TAG_FULL ){
 		return 0;
 	}
-	return pVm->apRefObj[nObjIdx];
+	return (VmRefObj *)pWord;
 }
 /*
- * Install a memory object [i.e: a variable] in the reference table.
- *
- * The implementation of the reference mechanism in the PH7 engine
- * differ greatly from the one used by the zend engine. That is,
- * the reference implementation is consistent,solid and it's
- * behavior resemble the C++ reference mechanism.
- * Refer to the official for more information on this powerful
- * extension.
+ * Promote whatever a slot has into a real record, creating one if the slot has
+ * nothing yet. 0 on OOM (the table cannot be grown, or the record cannot be
+ * allocated), which every caller degrades to "the slot records nothing", exactly
+ * as a failed install always has.
  */
-static sxi32 VmRefObjInsert(ph7_vm *pVm,VmRefObj *pRef)
+static VmRefObj * VmRefMaterialize(ph7_vm *pVm,sxu32 nIdx)
 {
-	if( pRef->nIdx >= pVm->nRefSize ){
-		VmRefObj **apNew;
-		sxu32 nNew = pVm->nRefSize ? pVm->nRefSize : 0x10;
-		/* Grow to cover the slot. Doubling keeps the growth amortized, and unlike the
-		 * hash table this replaced nothing has to be MOVED: the cells that exist keep
-		 * their index, so the copy is one memcpy and the tail is zeroed. */
-		while( pRef->nIdx >= nNew ){
-			nNew <<= 1;
-		}
-		apNew = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * nNew);
-		if( apNew == 0 ){
-			return SXERR_MEM;
-		}
-		if( pVm->nRefSize > 0 ){
-			SyMemcpy((const void *)pVm->apRefObj,(void *)apNew,pVm->nRefSize * sizeof(VmRefObj *));
-		}
-		SyZero((void *)&apNew[pVm->nRefSize],(nNew - pVm->nRefSize) * sizeof(VmRefObj *));
-		SyMemBackendFree(&pVm->sAllocator,pVm->apRefObj);
-		pVm->apRefObj = apNew;
-		pVm->nRefSize = nNew;
+	void *pWord;
+	VmRefObj *pRef;
+	int iTag;
+	if( VmRefTableGrow(&(*pVm),nIdx) != SXRET_OK ){
+		return 0;
 	}
-	pVm->apRefObj[pRef->nIdx] = pRef;
-	pVm->nRefUsed++;
-	return SXRET_OK;
+	pWord = pVm->apRefObj[nIdx];
+	iTag = pWord ? VM_REF_TAGOF(pWord) : VM_REF_TAG_MARK;
+	if( pWord != 0 && iTag == VM_REF_TAG_FULL ){
+		return (VmRefObj *)pWord;
+	}
+	pRef = VmNewRefObj(&(*pVm),nIdx);
+	if( pRef == 0 ){
+		return 0;
+	}
+	if( pWord != 0 ){
+		switch( iTag ){
+		case VM_REF_TAG_NAME:
+			pRef->pEntry0 = (SyHashEntry *)VM_REF_UNTAG(pWord,VM_REF_TAG_NAME);
+			break;
+		case VM_REF_TAG_NODE:
+			pRef->pNode0 = (ph7_hashmap_node *)VM_REF_UNTAG(pWord,VM_REF_TAG_NODE);
+			break;
+		default: /* VM_REF_TAG_MARK */
+			pRef->nPin = VmRefMarkPin(pWord);
+			pRef->iFlags = VmRefMarkKeep(pWord) ? VM_REF_IDX_KEEP : 0;
+			break;
+		}
+	}
+	VmRefWordSet(&(*pVm),nIdx,(void *)pRef);
+	return pRef;
 }
 /*
- * Destroy a memory object [i.e: a variable] and remove it from
- * the reference table.
- * This function is invoked when the user perform an unset
- * call [i.e: unset($var); ].
- * The implementation of the reference mechanism in the PH7 engine
- * differ greatly from the one used by the zend engine. That is,
- * the reference implementation is consistent,solid and it's
- * behavior resemble the C++ reference mechanism.
- * Refer to the official for more information on this powerful
- * extension.
+ * ---------------------------------------------------------------------------
+ * The questions, all asked by slot index.
+ * ---------------------------------------------------------------------------
  */
-PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef)
+/* Has anything ever been registered against this slot? A slot that answers NO has
+ * never been in the table at all, which is what keeps it out of the free pool. */
+PH7_PRIVATE int PH7_VmSlotRegistered(ph7_vm *pVm,sxu32 nIdx)
+{
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	return VmRefWord(&(*pVm),nIdx) != 0;
+}
+/* The names bound to the slot. */
+PH7_PRIVATE sxu32 PH7_VmSlotEntryCount(ph7_vm *pVm,sxu32 nIdx)
+{
+	void *pWord;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
+		return 0;
+	}
+	switch( VM_REF_TAGOF(pWord) ){
+	case VM_REF_TAG_NAME: return 1;
+	case VM_REF_TAG_NODE: /* fall through */
+	case VM_REF_TAG_MARK: return 0;
+	default:              return VmRefEntryCount((VmRefObj *)pWord);
+	}
+}
+/* The array nodes still pointing HERE -- a node that has moved on does not count. */
+PH7_PRIVATE sxu32 PH7_VmSlotNodeCount(ph7_vm *pVm,sxu32 nIdx)
+{
+	void *pWord;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
+		return 0;
+	}
+	switch( VM_REF_TAGOF(pWord) ){
+	case VM_REF_TAG_NODE: {
+		ph7_hashmap_node *pNode = (ph7_hashmap_node *)VM_REF_UNTAG(pWord,VM_REF_TAG_NODE);
+		return pNode->nValIdx == nIdx ? 1 : 0;
+	}
+	case VM_REF_TAG_NAME: /* fall through */
+	case VM_REF_TAG_MARK: return 0;
+	default:              return VmRefNodeCount((VmRefObj *)pWord,nIdx);
+	}
+}
+/* The counted pins (a reference-bound property, one per binding). */
+PH7_PRIVATE sxu32 PH7_VmSlotPinCount(ph7_vm *pVm,sxu32 nIdx)
+{
+	void *pWord;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
+		return 0;
+	}
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_MARK ){
+		return VmRefMarkPin(pWord);
+	}
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_FULL ){
+		return ((VmRefObj *)pWord)->nPin;
+	}
+	return 0;
+}
+/* The permanent pin (VM_REF_IDX_KEEP): a use(&$x) capture, a static, an enum case,
+ * and the hold a declared property has on its own value slot. */
+PH7_PRIVATE int PH7_VmSlotKeepPinned(ph7_vm *pVm,sxu32 nIdx)
+{
+	void *pWord;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
+		return 0;
+	}
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_MARK ){
+		return VmRefMarkKeep(pWord);
+	}
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_FULL ){
+		return (((VmRefObj *)pWord)->iFlags & VM_REF_IDX_KEEP) != 0;
+	}
+	return 0;
+}
+/*
+ * Is pNode the FIRST node filed against this slot, and the only live one? The cycle
+ * collector's "is this element held by its own array and nothing else" test; the
+ * first-filed row is the one an ordinary insert leaves, so any other answer means
+ * somebody else is pointing at the same slot.
+ */
+PH7_PRIVATE int PH7_VmSlotSoleNodeIs(ph7_vm *pVm,sxu32 nIdx,ph7_hashmap_node *pNode)
+{
+	void *pWord;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
+		return 0;
+	}
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_NODE ){
+		return VM_REF_UNTAG(pWord,VM_REF_TAG_NODE) == (void *)pNode
+			&& pNode->nValIdx == nIdx;
+	}
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_FULL ){
+		VmRefObj *pRef = (VmRefObj *)pWord;
+		return pRef->pNode0 == pNode && VmRefNodeCount(pRef,nIdx) == 1;
+	}
+	return 0;
+}
+/*
+ * How many LIVE holders still refer to a memory-object slot: the symbol-table
+ * names bound to it plus the array nodes pointing at it, plus the holders the
+ * table cannot name. php refcounts a reference set and keeps the VALUE alive
+ * while any holder remains, so this is the count every "may I release this
+ * slot?" decision asks for.
+ */
+PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
+{
+	void *pWord;
+	sxu32 nLive = 0;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
+		return 0;
+	}
+	switch( VM_REF_TAGOF(pWord) ){
+	case VM_REF_TAG_NAME:
+		return 1;
+	case VM_REF_TAG_NODE: {
+		ph7_hashmap_node *pNode = (ph7_hashmap_node *)VM_REF_UNTAG(pWord,VM_REF_TAG_NODE);
+		return pNode->nValIdx == nIdx ? 1 : 0;
+	}
+	case VM_REF_TAG_MARK: {
+		sxu32 nPin = VmRefMarkPin(pWord);
+		if( nPin > 0 ){
+			return nPin;
+		}
+		/* A permanent pin -- a `use (&$x)` capture, a static, an enum case. It is the
+		 * reason the slot is alive, so it counts as a holder: `$o->p = &$a[0]` leaves
+		 * that element a reference for as long as the property aliases it, exactly as
+		 * php's refcount does. */
+		return VmRefMarkKeep(pWord) ? 1 : 0;
+	}
+	default: {
+		VmRefObj *pRef = (VmRefObj *)pWord;
+		if( pRef->nPin > 0 ){
+			nLive += pRef->nPin;
+		}else if( pRef->iFlags & VM_REF_IDX_KEEP ){
+			nLive++;
+		}
+		nLive += VmRefEntryCount(pRef);
+		nLive += VmRefNodeCount(pRef,nIdx);
+		return nLive;
+	}
+	}
+}
+/*
+ * Does this slot's holder count include the OWNER's own hold?
+ *
+ * A property's slot is installed in the reference table with a permanent pin
+ * (VM_REF_IDX_KEEP) when the property was created dynamically or re-created after
+ * unset(), with a COUNTED pin when the property was BOUND to somebody else's slot
+ * (`$o->p =& $x`), and with nothing at all when it came straight from the class
+ * declaration. PH7_VmSlotHolderCount counts those pins as holders, so a renderer
+ * asking "is this value a REFERENCE" has to subtract the one hold that is the
+ * property itself -- an array ELEMENT, which is its own first holder in the table,
+ * asks the same question with a threshold of two.
+ */
+PH7_PRIVATE int PH7_VmSlotSelfPinned(ph7_vm *pVm,sxu32 nIdx)
+{
+	return PH7_VmSlotPinCount(&(*pVm),nIdx) > 0 || PH7_VmSlotKeepPinned(&(*pVm),nIdx);
+}
+/*
+ * Delete every holder a slot has and empty its cell.
+ *
+ * Each row is cleared BEFORE the call that acts on it: unlinking a node runs the
+ * value's release, which can re-enter this table for the same slot, and a row still
+ * filled when that happens is a holder being handed out twice. The base pointer is
+ * re-read per row for the same reason -- a re-entrant install may have grown the set
+ * out from under it.
+ */
+PH7_PRIVATE void PH7_VmSlotUnlink(ph7_vm *pVm,sxu32 nIdx)
 {
 	VmRefSpill *pSpill;
+	VmRefObj *pRef;
+	void *pWord;
 	sxu32 n;
-	/* Clear each row BEFORE the call that acts on it: unlinking a node runs the
-	 * value's release, which can re-enter this table for the same slot, and a row
-	 * still filled when that happens is a holder being handed out twice. The base
-	 * pointer is re-read per row for the same reason -- a re-entrant install may
-	 * have grown the set out from under it. */
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
+		return;
+	}
+	/* Empty the cell first: everything below can re-enter the table for this slot. */
+	VmRefWordSet(&(*pVm),nIdx,0);
+	switch( VM_REF_TAGOF(pWord) ){
+	case VM_REF_TAG_NAME:
+		SyHashDeleteEntry2((SyHashEntry *)VM_REF_UNTAG(pWord,VM_REF_TAG_NAME));
+		return;
+	case VM_REF_TAG_NODE:
+		PH7_HashmapUnlinkNode((ph7_hashmap_node *)VM_REF_UNTAG(pWord,VM_REF_TAG_NODE),FALSE);
+		return;
+	case VM_REF_TAG_MARK:
+		return; /* pins and flags name nothing to delete */
+	default:
+		break;
+	}
+	pRef = (VmRefObj *)pWord;
 	if( pRef->pEntry0 ){
 		SyHashEntry *pEntry = pRef->pEntry0;
 		pRef->pEntry0 = 0;
@@ -7681,29 +7917,24 @@ PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef)
 				PH7_HashmapUnlinkNode(pNode,FALSE);
 			}
 		}
-	}
-	if( pRef->nIdx < pVm->nRefSize && pVm->apRefObj[pRef->nIdx] == pRef ){
-		pVm->apRefObj[pRef->nIdx] = 0;
-	}
-	/* Release the node */
-	if( pRef->pSpill ){
 		SySetRelease(&pRef->pSpill->aReference);
 		SySetRelease(&pRef->pSpill->aArrEntries);
 		SyMemBackendPoolFree(&pVm->sAllocator,pRef->pSpill);
 		pRef->pSpill = 0;
 	}
 	SyMemBackendPoolFree(&pVm->sAllocator,pRef);
-	pVm->nRefUsed--;
-	return SXRET_OK;
 }
 /*
  * Install a memory object [i.e: a variable] in the reference table.
- * The implementation of the reference mechanism in the PH7 engine
- * differ greatly from the one used by the zend engine. That is,
- * the reference implementation is consistent,solid and it's
- * behavior resemble the C++ reference mechanism.
- * Refer to the official for more information on this powerful
- * extension.
+ *
+ * iFlags is applied only when the slot has NOTHING registered against it yet; a slot
+ * already in the table keeps the flags it has (VmPinMemObjSlot is the door that adds
+ * one). That has always been the rule -- it is now spelled out because the word for a
+ * fresh slot is chosen from it.
+ *
+ * The implementation of the reference mechanism in the PH7 engine differ greatly from
+ * the one used by the zend engine. That is, the reference implementation is
+ * consistent,solid and it's behavior resemble the C++ reference mechanism.
  */
 PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 	ph7_vm *pVm,                 /* Target VM */
@@ -7713,25 +7944,16 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 	sxi32 iFlags                 /* Control flags */
 	)
 {
-	VmFrame *pFrame = pVm->pFrame;
+	VmFrame *pFrame;
 	VmRefObj *pRef;
-	/* Check if the referenced object already exists */
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
-		/* Create a new entry */
-		pRef = VmNewRefObj(&(*pVm),nIdx);
-		if( pRef == 0 ){
-			return SXERR_MEM;
-		}
-		pRef->iFlags = iFlags;
-		/* Install the entry. A table that cannot be grown leaves the record
-		 * unreachable, so drop it rather than leak one nothing can find. */
-		if( VmRefObjInsert(&(*pVm),pRef) != SXRET_OK ){
-			SyMemBackendPoolFree(&pVm->sAllocator,pRef);
-			return SXERR_MEM;
-		}
+	void *pWord;
+	/* Cover the slot up front: everything below commits without a way to fail, and a
+	 * table that cannot be grown records nothing at all -- the same degradation a
+	 * failed record allocation has always produced. */
+	if( VmRefTableGrow(&(*pVm),nIdx) != SXRET_OK ){
+		return SXERR_MEM;
 	}
-	pFrame = VmSkipExceptionFrames(pFrame);
+	pFrame = VmSkipExceptionFrames(pVm->pFrame);
 	if( pFrame->pParent != 0 && pEntry ){
 		VmSlot sRef;
 		/* Local frame,record referenced entry so that it can
@@ -7742,6 +7964,69 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 		if( SXRET_OK != SySetPut(&pFrame->sRef,(const void *)&sRef)) {
 			pEntry = 0; /* Do not record this entry */
 		}
+	}
+	pWord = pVm->apRefObj[nIdx];
+	if( pWord == 0 ){
+		/* A slot nothing has claimed yet. This is the common case by three orders of
+		 * magnitude, and every shape of it fits in the word. */
+		if( iFlags == 0 && pEntry != 0 && pMapEntry == 0 && VmRefTaggable(pEntry) ){
+			VmRefWordSet(&(*pVm),nIdx,(void *)&((char *)pEntry)[VM_REF_TAG_NAME]);
+			return SXRET_OK;
+		}
+		if( iFlags == 0 && pMapEntry != 0 && pEntry == 0 && VmRefTaggable(pMapEntry) ){
+			VmRefWordSet(&(*pVm),nIdx,(void *)&((char *)pMapEntry)[VM_REF_TAG_NODE]);
+			return SXRET_OK;
+		}
+		if( pEntry == 0 && pMapEntry == 0 && (iFlags & ~VM_REF_IDX_KEEP) == 0 ){
+			/* A pin with no named holder -- every declared property's own hold on its
+			 * value slot -- and the empty registration a dropped holder leaves behind. */
+			VmRefWordSet(&(*pVm),nIdx,VmRefMarkWord(0,iFlags));
+			return SXRET_OK;
+		}
+	}else{
+		switch( VM_REF_TAGOF(pWord) ){
+		case VM_REF_TAG_NAME:
+			/* A name RE-BOUND to the slot it already names changes nothing, which is
+			 * the frame-local variable written to in a loop. */
+			if( pMapEntry == 0
+			 && (pEntry == 0 || VM_REF_UNTAG(pWord,VM_REF_TAG_NAME) == (void *)pEntry) ){
+				return SXRET_OK;
+			}
+			break;
+		case VM_REF_TAG_NODE:
+			if( pEntry == 0
+			 && (pMapEntry == 0 || VM_REF_UNTAG(pWord,VM_REF_TAG_NODE) == (void *)pMapEntry) ){
+				return SXRET_OK;
+			}
+			break;
+		case VM_REF_TAG_MARK:
+			if( pEntry == 0 && pMapEntry == 0 ){
+				return SXRET_OK; /* iFlags is ignored on a slot already registered */
+			}
+			if( SX_PTR_TO_INT(pWord) == VM_REF_TAG_MARK ){
+				/* A bare mark says "registered, held by nothing"; a holder on top of it
+				 * says exactly what the pointer words say. */
+				if( pMapEntry == 0 && VmRefTaggable(pEntry) ){
+					VmRefWordSet(&(*pVm),nIdx,(void *)&((char *)pEntry)[VM_REF_TAG_NAME]);
+					return SXRET_OK;
+				}
+				if( pEntry == 0 && VmRefTaggable(pMapEntry) ){
+					VmRefWordSet(&(*pVm),nIdx,(void *)&((char *)pMapEntry)[VM_REF_TAG_NODE]);
+					return SXRET_OK;
+				}
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	/* More than one word can say. */
+	pRef = VmRefMaterialize(&(*pVm),nIdx);
+	if( pRef == 0 ){
+		return SXERR_MEM;
+	}
+	if( pWord == 0 ){
+		pRef->iFlags = iFlags;
 	}
 	if( pEntry ){
 		/* The name bound to this slot */
@@ -7755,12 +8040,9 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 }
 /*
  * Remove a memory object [i.e: a variable] from the reference table.
- * The implementation of the reference mechanism in the PH7 engine
- * differ greatly from the one used by the zend engine. That is,
- * the reference implementation is consistent,solid and it's
- * behavior resemble the C++ reference mechanism.
- * Refer to the official for more information on this powerful
- * extension.
+ *
+ * The slot stays REGISTERED with no holders (a bare mark) rather than leaving the
+ * table: that is what still returns the index to the free pool when the value goes.
  */
 PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
 	ph7_vm *pVm,                 /* Target VM */
@@ -7770,12 +8052,29 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
 	)
 {
 	VmRefObj *pRef;
-	/* Check if the referenced object already exists */
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
+	void *pWord;
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
 		/* Not such entry */
 		return SXERR_NOTFOUND;
 	}
+	switch( VM_REF_TAGOF(pWord) ){
+	case VM_REF_TAG_NAME:
+		if( pEntry != 0 && VM_REF_UNTAG(pWord,VM_REF_TAG_NAME) == (void *)pEntry ){
+			VmRefWordSet(&(*pVm),nIdx,VmRefMarkWord(0,0));
+		}
+		return SXRET_OK;
+	case VM_REF_TAG_NODE:
+		if( pMapEntry != 0 && VM_REF_UNTAG(pWord,VM_REF_TAG_NODE) == (void *)pMapEntry ){
+			VmRefWordSet(&(*pVm),nIdx,VmRefMarkWord(0,0));
+		}
+		return SXRET_OK;
+	case VM_REF_TAG_MARK:
+		return SXRET_OK; /* nothing named to drop */
+	default:
+		break;
+	}
+	pRef = (VmRefObj *)pWord;
 	/* Remove the desired entry */
 	if( pEntry ){
 		VmRefDropEntry(pRef,pEntry);
@@ -7786,61 +8085,89 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
 	return SXRET_OK;
 }
 /*
- * How many LIVE holders still refer to a memory-object slot: the symbol-table
- * names bound to it plus the array nodes pointing at it. php refcounts a
- * reference set and keeps the VALUE alive while any holder remains, so this is
- * the count every "may I release this slot?" decision asks for.
- *
- * A row is only a holder while it is non-NULL (every holder's death nullifies
- * its own row through PH7_VmRefObjRemove) and, for a node, while it still points
- * HERE — a slot index travels through the free list, so a record can outlive the
- * node that filed the row (the same filter VmUnsetVarByName applies).
+ * Pin a slot past its frame: a `use (&$x)` capture, a static, an enum case, a
+ * reference-bound property. A pin is a holder the table cannot NAME.
  */
-PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
+PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
 {
+	void *pWord;
 	VmRefObj *pRef;
-	sxu32 nLive = 0;
-	if( nIdx == SXU32_HIGH ){
-		return 0;
+	VmDropFrameLocalSlot(&(*pVm),nIdx);
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord != 0 && VM_REF_TAGOF(pWord) == VM_REF_TAG_MARK ){
+		VmRefWordSet(&(*pVm),nIdx,VmRefMarkWord(VmRefMarkPin(pWord),VM_REF_IDX_KEEP));
+		return;
 	}
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
-		return 0;
+	if( pWord == 0 ){
+		/* No record yet -- a pin on a slot nothing refers to was silently a NO-OP, so the
+		 * slot stayed releasable and (since a pin is a holder) nothing counted it. */
+		PH7_VmRefObjInstall(&(*pVm),nIdx,0,0,VM_REF_IDX_KEEP);
+		return;
 	}
-	if( pRef->nPin > 0 ){
-		/* Holders the table cannot name, counted: reference-bound properties. */
-		nLive += pRef->nPin;
-	}else if( pRef->iFlags & VM_REF_IDX_KEEP ){
-		/* A permanent pin — a `use (&$x)` capture, a static, an enum case. It is the
-		 * reason the slot is alive, so it counts as a holder: `$o->p = &$a[0]` leaves
-		 * that element a reference for as long as the property aliases it, exactly as
-		 * php's refcount does. */
-		nLive++;
+	pRef = VmRefMaterialize(&(*pVm),nIdx);
+	if( pRef ){
+		pRef->iFlags |= VM_REF_IDX_KEEP;
 	}
-	nLive += PH7_VmRefEntryCount(pRef);
-	nLive += PH7_VmRefNodeCount(pRef,nIdx);
-	return nLive;
 }
 /*
- * Does this slot's holder count include the OWNER's own hold?
- *
- * A property's slot is installed in the reference table with a permanent pin
- * (VM_REF_IDX_KEEP) when the property was created dynamically or re-created after
- * unset(), with a COUNTED pin when the property was BOUND to somebody else's slot
- * (`$o->p =& $x`), and with nothing at all when it came straight from the class
- * declaration. PH7_VmSlotHolderCount counts those pins as holders, so a renderer
- * asking "is this value a REFERENCE" has to subtract the one hold that is the
- * property itself -- an array ELEMENT, which is its own first holder in the table,
- * asks the same question with a threshold of two.
+ * A pin that can be GIVEN BACK: a reference-bound property (`$o->p =& $x`) holds the slot
+ * only while the property does. The permanent pins (a `use (&$x)` capture, a static, an
+ * enum case) stay on VmPinMemObjSlot, which never counts down.
  */
-PH7_PRIVATE int PH7_VmSlotSelfPinned(ph7_vm *pVm,sxu32 nIdx)
+PH7_PRIVATE void VmPinMemObjSlotCounted(ph7_vm *pVm,sxu32 nIdx)
 {
+	void *pWord;
 	VmRefObj *pRef;
-	if( nIdx == SXU32_HIGH ){
-		return 0;
+	VmPinMemObjSlot(&(*pVm),nIdx);
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord != 0 && VM_REF_TAGOF(pWord) == VM_REF_TAG_MARK ){
+		sxu32 nPin = VmRefMarkPin(pWord);
+		if( nPin < VM_REF_MARK_PINMAX ){
+			VmRefWordSet(&(*pVm),nIdx,VmRefMarkWord(nPin + 1,VM_REF_IDX_KEEP));
+			return;
+		}
 	}
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	return pRef != 0 && (pRef->nPin > 0 || (pRef->iFlags & VM_REF_IDX_KEEP) != 0);
+	pRef = VmRefFull(&(*pVm),nIdx);
+	if( pRef == 0 && pWord != 0 ){
+		pRef = VmRefMaterialize(&(*pVm),nIdx);
+	}
+	if( pRef ){
+		pRef->nPin++;
+	}
+}
+/*
+ * Give back a counted pin. The slot goes when it was the last holder -- without this the
+ * value a released property was pinning stayed alive for the rest of the script (the pin
+ * used to be a flag, so nothing could tell one holder from two).
+ */
+PH7_PRIVATE void VmUnpinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
+{
+	void *pWord = VmRefWord(&(*pVm),nIdx);
+	VmRefObj *pRef;
+	if( pWord == 0 ){
+		return;
+	}
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_MARK ){
+		sxu32 nPin = VmRefMarkPin(pWord);
+		if( nPin < 1 ){
+			return;
+		}
+		nPin--;
+		VmRefWordSet(&(*pVm),nIdx,VmRefMarkWord(nPin,nPin < 1 ? 0 : VM_REF_IDX_KEEP));
+		if( nPin < 1 ){
+			PH7_VmReleaseUnheldSlot(&(*pVm),nIdx);
+		}
+		return;
+	}
+	pRef = VmRefFull(&(*pVm),nIdx);
+	if( pRef == 0 || pRef->nPin < 1 ){
+		return;
+	}
+	pRef->nPin--;
+	if( pRef->nPin < 1 ){
+		pRef->iFlags &= ~VM_REF_IDX_KEEP;
+		PH7_VmReleaseUnheldSlot(&(*pVm),nIdx);
+	}
 }
 /*
  * Give up the OWNER's own hold on a slot, and say whether anybody else still has one.
@@ -7858,17 +8185,27 @@ PH7_PRIVATE int PH7_VmSlotSelfPinned(ph7_vm *pVm,sxu32 nIdx)
  */
 PH7_PRIVATE int PH7_VmSlotDropOwnerHold(ph7_vm *pVm,sxu32 nIdx)
 {
+	void *pWord;
 	VmRefObj *pRef;
 	if( nIdx == SXU32_HIGH ){
 		return 0;
 	}
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
+	pWord = VmRefWord(&(*pVm),nIdx);
+	if( pWord == 0 ){
 		return 0;
 	}
-	if( pRef->nPin == 0 ){
-		pRef->iFlags &= ~VM_REF_IDX_KEEP;
+	if( VM_REF_TAGOF(pWord) == VM_REF_TAG_MARK ){
+		if( VmRefMarkPin(pWord) == 0 ){
+			VmRefWordSet(&(*pVm),nIdx,VmRefMarkWord(0,0));
+		}
+	}else if( VM_REF_TAGOF(pWord) == VM_REF_TAG_FULL ){
+		pRef = (VmRefObj *)pWord;
+		if( pRef->nPin == 0 ){
+			pRef->iFlags &= ~VM_REF_IDX_KEEP;
+		}
 	}
+	/* A word carrying a name or a node has no pin to give back; its holder is the
+	 * one the count below reports. */
 	return PH7_VmSlotHolderCount(&(*pVm),nIdx) > 0;
 }
 /*
@@ -7879,22 +8216,20 @@ PH7_PRIVATE int PH7_VmSlotDropOwnerHold(ph7_vm *pVm,sxu32 nIdx)
  */
 PH7_PRIVATE void PH7_VmReleaseUnheldSlot(ph7_vm *pVm,sxu32 nIdx)
 {
-	VmRefObj *pRef;
 	if( nIdx == SXU32_HIGH ){
 		return;
 	}
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef ){
-		if( pRef->iFlags & VM_REF_IDX_KEEP ){
+	if( PH7_VmSlotRegistered(&(*pVm),nIdx) ){
+		if( PH7_VmSlotKeepPinned(&(*pVm),nIdx) ){
 			return; /* pinned past its frame — its holder is not in the table */
 		}
 		if( PH7_VmSlotHolderCount(&(*pVm),nIdx) > 0 ){
 			return; /* somebody still holds it */
 		}
 	}
-	/* No record at all means nothing was ever registered against the slot, which is
-	 * the same answer as a count of zero — release it (this is what every caller did
-	 * unconditionally before the holder rule). */
+	/* Nothing registered at all means nothing was ever recorded against the slot,
+	 * which is the same answer as a count of zero — release it (this is what every
+	 * caller did unconditionally before the holder rule). */
 	PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
 	/* The slot is back in the free pool; drop its stale local-teardown entry so a
 	 * later reuse of the index is not double-freed (see VmDropFrameLocalSlot). */

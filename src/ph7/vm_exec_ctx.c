@@ -1006,11 +1006,7 @@ PH7_PRIVATE sxi32 PH7_VmEnforcePropStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValu
  */
 PH7_PRIVATE int PH7_VmSlotRefCount(ph7_vm *pVm,sxu32 nIdx)
 {
-	VmRefObj *pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
-		return 0;
-	}
-	return (int)(PH7_VmRefEntryCount(pRef) + PH7_VmRefNodeCount(pRef,nIdx));
+	return (int)(PH7_VmSlotEntryCount(&(*pVm),nIdx) + PH7_VmSlotNodeCount(&(*pVm),nIdx));
 }
 /*
  * First-class callable over an arbitrary callable VALUE: `($expr)(...)`.

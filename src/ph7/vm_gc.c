@@ -71,18 +71,16 @@
  */
 static int VmGcSlotOwned(ph7_vm *pVm,sxu32 nIdx,ph7_hashmap_node *pNode)
 {
-	VmRefObj *pRef;
 	if( nIdx == SXU32_HIGH ){
 		return 0;
 	}
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
+	if( !PH7_VmSlotRegistered(&(*pVm),nIdx) ){
 		return 1;
 	}
-	if( pRef->nPin > 0 ){
+	if( PH7_VmSlotPinCount(&(*pVm),nIdx) > 0 ){
 		return 0; /* counted pin: the slot is BOUND to somebody else (`$o->p =& $x`) */
 	}
-	if( PH7_VmRefEntryCount(pRef) > 0 ){
+	if( PH7_VmSlotEntryCount(&(*pVm),nIdx) > 0 ){
 		return 0; /* a NAME holds it too */
 	}
 	if( pNode == 0 ){
@@ -90,12 +88,12 @@ static int VmGcSlotOwned(ph7_vm *pVm,sxu32 nIdx,ph7_hashmap_node *pNode)
 		 * is built -- that pin IS the property's own hold, which is why it is not
 		 * disqualifying here and is for an element. Any node row on top of it is
 		 * somebody else pointing at the same slot. */
-		return PH7_VmRefNodeCount(pRef,nIdx) == 0;
+		return PH7_VmSlotNodeCount(&(*pVm),nIdx) == 0;
 	}
-	if( (pRef->iFlags & VM_REF_IDX_KEEP) != 0 ){
+	if( PH7_VmSlotKeepPinned(&(*pVm),nIdx) ){
 		return 0; /* an element pinned past its frame: a by-ref return, a capture */
 	}
-	return pRef->pNode0 == pNode && PH7_VmRefNodeCount(pRef,nIdx) == 1;
+	return PH7_VmSlotSoleNodeIs(&(*pVm),nIdx,pNode);
 }
 /*
  * May the collector touch this container's refcount at all?

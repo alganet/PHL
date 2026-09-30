@@ -83,7 +83,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 	int bNameGuard)
 {
 	SyHashEntry *pEntry;
-	VmRefObj *pRef;
+	int bRegistered;
 	sxu32 nIdx;
 	/* php 8.1 forbids unset($GLOBALS) outright. Checked by NAME: the superglobal is not an
 	 * ordinary hVar binding, so the slot-index test below never sees it. */
@@ -109,7 +109,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 		pVm->bHaltRequested = 1;
 		return PH7_ABORT;
 	}
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	bRegistered = PH7_VmSlotRegistered(&(*pVm),nIdx);
 	/*
 	 * A GLOBAL variable is ALSO an entry of the $GLOBALS array, and that node points at the
 	 * same slot. php's unset($x) in global scope drops $GLOBALS['x'] too, so unlink the node
@@ -129,7 +129,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 			PH7_MemObjInitFromString(&(*pVm),&sKey,&sName);
 			if( SXRET_OK == PH7_HashmapLookup((ph7_hashmap *)pGlobals->x.pOther,&sKey,&pNode)
 			 && pNode && pNode->nValIdx == nIdx ){
-				if( pRef ){
+				if( bRegistered ){
 					PH7_VmRefObjRemove(&(*pVm),nIdx,0,pNode);
 				}
 				PH7_HashmapUnlinkNode(pNode,FALSE);
@@ -143,7 +143,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 	 * unset once per loop filed one row per loop, which nothing consumed until the
 	 * function returned). */
 	VmDropFrameRefEntry(&(*pVm),nIdx,pEntry);
-	if( pRef == 0 ){
+	if( !bRegistered ){
 		/* Unaliased variable: nobody else holds the slot, so the old path is right */
 		SyHashDeleteEntry2(pEntry);
 		PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
@@ -173,19 +173,19 @@ PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)
 {
 	ph7_value *pObj;
-	VmRefObj *pRef;
 	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);
 	if( pObj ){
 		/* Release the object */
 		PH7_MemObjRelease(pObj);
 	}
-	/* Remove old reference links */
-	pRef = VmRefObjExtract(&(*pVm),nObjIdx);
-	if( pRef ){
-		sxi32 iFlags = pRef->iFlags;
+	/* Remove old reference links. The permanent pin is read BEFORE the unlink --
+	 * it is what decides whether the index goes back to the free pool, and the
+	 * unlink is what takes the answer away. */
+	if( PH7_VmSlotRegistered(&(*pVm),nObjIdx) ){
+		int bKeep = PH7_VmSlotKeepPinned(&(*pVm),nObjIdx);
 		/* Unlink from the reference table */
-		VmRefObjUnlink(&(*pVm),pRef);
-		if( (bForce == TRUE) || (iFlags & VM_REF_IDX_KEEP) == 0 ){
+		PH7_VmSlotUnlink(&(*pVm),nObjIdx);
+		if( (bForce == TRUE) || bKeep == 0 ){
 			VmSlot sFree;
 			/* Restore to the free list */
 			sFree.nIdx = nObjIdx;

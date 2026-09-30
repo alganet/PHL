@@ -2915,7 +2915,11 @@ struct VmRefSpill
 	SySet aReference;  /* Holders beyond pEntry0 */
 	SySet aArrEntries; /* Holders beyond pNode0 */
 };
-/* Reference-object body (vm.c reference machinery; shared with vm_builtin_var.c's unset) */
+/* Reference-object body (vm.c reference machinery; shared with vm_builtin_var.c's unset).
+ *
+ * A record is the FALLBACK shape, not the ordinary one: apRefObj[nIdx] is a tagged
+ * WORD (see VM_REF_TAG_* below) and only a slot whose answer will not fit in one
+ * ever allocates this. */
 struct VmRefObj
 {
 	SyHashEntry *pEntry0;     /* The one name bound to this slot; 0 once it is gone */
@@ -2931,6 +2935,40 @@ struct VmRefObj
 	sxi32 iFlags;      /* Configuration flags */
 };
 #define VM_REF_IDX_KEEP  0x001 /* Do not restore the memory object to the free list */
+/*
+ * apRefObj[nIdx] is ONE TAGGED WORD, not a pointer to a record.
+ *
+ * What the reference table has to say about the ordinary slot is one sentence long --
+ * "this name holds it", "this array node points at it", "the object that declares it
+ * holds it" -- and a whole heap record to say it is the engine's single largest
+ * per-value cost. The word says the sentence itself; a record is allocated only when
+ * the answer needs more than one holder, which a census of the ecosystem gate's phpcs
+ * step puts at 14 of the 360264 records live at peak.
+ *
+ *   0                          nothing has ever been registered against the slot
+ *   pEntry | VM_REF_TAG_NAME   exactly ONE holder: the name bound to the slot
+ *   pNode  | VM_REF_TAG_NODE   exactly ONE holder: the array node pointing at it
+ *   bits   | VM_REF_TAG_MARK   registered, NO NAMED holder; the rest of the word is
+ *                              the pin count and the flags (this is both the spent
+ *                              record a dropped holder leaves behind -- which is what
+ *                              still returns the slot to the free pool -- and the
+ *                              declared property's own VM_REF_IDX_KEEP)
+ *   pRef   (tag 0, non-zero)   a VmRefObj *: two or more holders, or a pin beside one
+ *
+ * The two pointer tags ride in the low bits of a pool-allocated address; the allocator
+ * keeps every chunk pointer-aligned (see the MemOSHeader note in sxmem.c), and a
+ * pointer that is not 4-aligned falls back to a record rather than being tagged.
+ */
+#define VM_REF_TAG_MASK    3
+#define VM_REF_TAG_FULL    0  /* a VmRefObj * */
+#define VM_REF_TAG_NAME    1  /* a SyHashEntry * */
+#define VM_REF_TAG_NODE    2  /* a ph7_hashmap_node * */
+#define VM_REF_TAG_MARK    3  /* no pointer: pin count and flags in the upper bits */
+#define VM_REF_MARK_KEEP   0x4        /* bit 2 of a MARK word: VM_REF_IDX_KEEP */
+#define VM_REF_MARK_PIN    0x8        /* bit 3 and up: the counted pin */
+#define VM_REF_MARK_PINMAX 0x0FFFFFFF /* a pin count past this promotes to a record */
+/* The tag of a word. Only the low two bits are read, so the cast may narrow. */
+#define VM_REF_TAGOF(W)    (SX_PTR_TO_INT(W) & VM_REF_TAG_MASK)
 /* VmObEntry struct moved to ph7int.h */
 
 /*
@@ -3710,13 +3748,16 @@ struct ph7_vm
 	                            * embedders that never wire a stderr stream still see diagnostics. */
 	int iAssertFlags;          /* Assertion flags */
 	ph7_value sAssertCallback; /* Callback to call on failed assertions */
-	VmRefObj **apRefObj;       /* Reference record per memory-object slot, INDEXED BY SLOT:
-	                            * apRefObj[nIdx] is the record for aMemObj[nIdx], or 0 when
-	                            * that slot has none. A slot index is already a dense small
-	                            * integer, so hashing it bought nothing and cost a rehash of
-	                            * every record each time the table doubled. */
+	void **apRefObj;           /* Reference WORD per memory-object slot, INDEXED BY SLOT:
+	                            * apRefObj[nIdx] describes the holders of aMemObj[nIdx], or
+	                            * is 0 when nothing has ever been registered against it. A
+	                            * slot index is already a dense small integer, so hashing it
+	                            * bought nothing and cost a rehash of every record each time
+	                            * the table doubled. See VM_REF_TAG_* for what a word says --
+	                            * nearly every slot's answer fits in the word itself and
+	                            * allocates no record at all. */
 	sxu32 nRefSize;            /* apRefObj[] length, in slots */
-	sxu32 nRefUsed;            /* Records currently installed */
+	sxu32 nRefUsed;            /* Cells currently filled (a word or a record) */
 	SySet aSelf;               /* 'self' stack used for static member access [i.e: self::MyConstant] */
 	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
@@ -5929,10 +5970,15 @@ PH7_PRIVATE void PH7_VmClosureInstanceRef(ph7_vm *pVm,ph7_class_instance *pObj,i
 PH7_PRIVATE void PH7_VmPurgeDeadClosures(ph7_vm *pVm);
 PH7_PRIVATE SyHashEntry * PH7_VmSuperGet(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte);
-PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
-PH7_PRIVATE sxu32 PH7_VmRefEntryCount(VmRefObj *pRef);
-PH7_PRIVATE sxu32 PH7_VmRefNodeCount(VmRefObj *pRef,sxu32 nIdx);
-PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);
+/* The reference table asks its questions BY SLOT: a slot that answers from its word
+ * has no record for a caller to hold, so there is no VmRefObjExtract any more. */
+PH7_PRIVATE sxu32 PH7_VmSlotEntryCount(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE sxu32 PH7_VmSlotNodeCount(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE sxu32 PH7_VmSlotPinCount(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE int PH7_VmSlotKeepPinned(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE int PH7_VmSlotRegistered(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE int PH7_VmSlotSoleNodeIs(ph7_vm *pVm,sxu32 nIdx,ph7_hashmap_node *pNode);
+PH7_PRIVATE void PH7_VmSlotUnlink(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry);
 PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx);
