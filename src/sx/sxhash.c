@@ -1898,3 +1898,541 @@ PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xCo
 	}
         return SXRET_OK;
 }
+#ifndef PH7_DISABLE_HASH_FUNC
+/*
+ * ---------------------------------------------------------------------------
+ * XXH3 (64- and 128-bit)
+ * ---------------------------------------------------------------------------
+ * The third xxHash design, and a different algorithm from xxh64 rather than a
+ * wider one: short inputs are mixed directly against a 192-byte SECRET, and
+ * only past 240 bytes does an eight-lane accumulator loop run. php's ext/hash
+ * exposes both widths, and the 128-bit digest is the pair {high, low} written
+ * big-endian, whose low half IS the 64-bit answer for the same input.
+ *
+ * The secret is one of three things, and php lets a caller pick: the
+ * algorithm's own constant (below), one DERIVED from a 64-bit seed, or one the
+ * caller supplied whole (at least XXH3_SECRET_MIN bytes). A seed also enters
+ * the short paths directly, so a seeded digest of a 3-byte input differs from
+ * an unseeded one even though the derived secret is only read past 240 bytes.
+ */
+static const unsigned char zXxh3Secret[XXH3_SECRET_SIZE] = {
+	0xb8,0xfe,0x6c,0x39,0x23,0xa4,0x4b,0xbe,0x7c,0x01,0x81,0x2c,0xf7,0x21,0xad,0x1c,
+	0xde,0xd4,0x6d,0xe9,0x83,0x90,0x97,0xdb,0x72,0x40,0xa4,0xa4,0xb7,0xb3,0x67,0x1f,
+	0xcb,0x79,0xe6,0x4e,0xcc,0xc0,0xe5,0x78,0x82,0x5a,0xd0,0x7d,0xcc,0xff,0x72,0x21,
+	0xb8,0x08,0x46,0x74,0xf7,0x43,0x24,0x8e,0xe0,0x35,0x90,0xe6,0x81,0x3a,0x26,0x4c,
+	0x3c,0x28,0x52,0xbb,0x91,0xc3,0x00,0xcb,0x88,0xd0,0x65,0x8b,0x1b,0x53,0x2e,0xa3,
+	0x71,0x64,0x48,0x97,0xa2,0x0d,0xf9,0x4e,0x38,0x19,0xef,0x46,0xa9,0xde,0xac,0xd8,
+	0xa8,0xfa,0x76,0x3f,0xe3,0x9c,0x34,0x3f,0xf9,0xdc,0xbb,0xc7,0xc7,0x0b,0x4f,0x1d,
+	0x8a,0x51,0xe0,0x4b,0xcd,0xb4,0x59,0x31,0xc8,0x9f,0x7e,0xc9,0xd9,0x78,0x73,0x64,
+	0xea,0xc5,0xac,0x83,0x34,0xd3,0xeb,0xc3,0xc5,0x81,0xa0,0xff,0xfa,0x13,0x63,0xeb,
+	0x17,0x0d,0xdd,0x51,0xb7,0xf0,0xda,0x49,0xd3,0x16,0x55,0x26,0x29,0xd4,0x68,0x9e,
+	0x2b,0x16,0xbe,0x58,0x7d,0x47,0xa1,0xfc,0x8f,0xf8,0xb8,0xd1,0x7a,0xd0,0x31,0xce,
+	0x45,0xcb,0x3a,0x8f,0x95,0x16,0x04,0x28,0xaf,0xd7,0xfb,0xca,0xbb,0x4b,0x40,0x7e
+};
+#define XXH3_SECRET_CONSUME_RATE  8   /* secret bytes advanced per stripe */
+#define XXH3_SECRET_MERGEACCS     11  /* where the final merge reads the secret */
+#define XXH3_SECRET_LASTACC       7   /* ...and where the LAST stripe reads it */
+#define XXH3_MIDSIZE_STARTOFFSET  3
+#define XXH3_MIDSIZE_LASTOFFSET   17
+#define XXH3_BUFFER_STRIPES       (XXH3_BUFFER_SIZE / XXH3_STRIPE_LEN)
+
+static sxu32 Xxh3Swap32(sxu32 x)
+{
+	return ((x << 24) & 0xff000000u) | ((x << 8) & 0x00ff0000u)
+	     | ((x >> 8) & 0x0000ff00u) | ((x >> 24) & 0x000000ffu);
+}
+static sxu64 Xxh3Swap64(sxu64 x)
+{
+	return ((x << 56) & 0xff00000000000000ULL) | ((x << 40) & 0x00ff000000000000ULL)
+	     | ((x << 24) & 0x0000ff0000000000ULL) | ((x << 8)  & 0x000000ff00000000ULL)
+	     | ((x >> 8)  & 0x00000000ff000000ULL) | ((x >> 24) & 0x0000000000ff0000ULL)
+	     | ((x >> 40) & 0x000000000000ff00ULL) | ((x >> 56) & 0x00000000000000ffULL);
+}
+/* The 64x64 -> 128 product, folded to 64 by xor. Written in 32-bit halves so it
+ * needs no 128-bit integer type -- MSVC has none. */
+static void Xxh3Mul128(sxu64 a,sxu64 b,sxu64 *pLow,sxu64 *pHigh)
+{
+	sxu64 lo_lo = (sxu64)(sxu32)a * (sxu64)(sxu32)b;
+	sxu64 hi_lo = (a >> 32) * (sxu64)(sxu32)b;
+	sxu64 lo_hi = (sxu64)(sxu32)a * (b >> 32);
+	sxu64 hi_hi = (a >> 32) * (b >> 32);
+	sxu64 cross = (lo_lo >> 32) + (sxu64)(sxu32)hi_lo + lo_hi;
+	*pHigh = (cross >> 32) + (hi_lo >> 32) + hi_hi;
+	*pLow = (cross << 32) | (sxu64)(sxu32)lo_lo;
+}
+static sxu64 Xxh3Fold(sxu64 a,sxu64 b)
+{
+	sxu64 lo,hi;
+	Xxh3Mul128(a,b,&lo,&hi);
+	return lo ^ hi;
+}
+static sxu64 Xxh3Avalanche(sxu64 h)
+{
+	h ^= h >> 37;
+	h *= 0x165667919E3779F9ULL;
+	h ^= h >> 32;
+	return h;
+}
+static sxu64 Xxh64Avalanche(sxu64 h)
+{
+	h ^= h >> 33;
+	h *= XXH64_P2;
+	h ^= h >> 29;
+	h *= XXH64_P3;
+	h ^= h >> 32;
+	return h;
+}
+static sxu64 Xxh3Rrmxmx(sxu64 h,sxu64 nLen)
+{
+	h ^= SX_ROTL64(h,49) ^ SX_ROTL64(h,24);
+	h *= 0x9FB21C651E98DF25ULL;
+	h ^= (h >> 35) + nLen;
+	h *= 0x9FB21C651E98DF25ULL;
+	return h ^ (h >> 28);
+}
+static sxu64 Xxh3Mix16(const unsigned char *zIn,const unsigned char *zSecret,sxu64 nSeed)
+{
+	return Xxh3Fold(SxGet64Le(zIn)     ^ (SxGet64Le(zSecret)     + nSeed),
+	                SxGet64Le(&zIn[8]) ^ (SxGet64Le(&zSecret[8]) - nSeed));
+}
+/* ---- the short paths, 64-bit ---- */
+static sxu64 Xxh3Len1to3(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)
+{
+	sxu32 c1 = z[0],c2 = z[n >> 1],c3 = z[n - 1];
+	sxu32 nComb = (c1 << 16) | (c2 << 24) | c3 | (n << 8);
+	sxu64 nFlip = (sxu64)(SxGet32Le(zS) ^ SxGet32Le(&zS[4])) + nSeed;
+	return Xxh64Avalanche((sxu64)nComb ^ nFlip);
+}
+static sxu64 Xxh3Len4to8(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)
+{
+	sxu64 nIn,nFlip;
+	nSeed ^= (sxu64)Xxh3Swap32((sxu32)nSeed) << 32;
+	nIn = (sxu64)SxGet32Le(&z[n - 4]) + ((sxu64)SxGet32Le(z) << 32);
+	nFlip = (SxGet64Le(&zS[8]) ^ SxGet64Le(&zS[16])) - nSeed;
+	return Xxh3Rrmxmx(nIn ^ nFlip,(sxu64)n);
+}
+static sxu64 Xxh3Len9to16(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)
+{
+	sxu64 nFlip1 = (SxGet64Le(&zS[24]) ^ SxGet64Le(&zS[32])) + nSeed;
+	sxu64 nFlip2 = (SxGet64Le(&zS[40]) ^ SxGet64Le(&zS[48])) - nSeed;
+	sxu64 nLo = SxGet64Le(z) ^ nFlip1;
+	sxu64 nHi = SxGet64Le(&z[n - 8]) ^ nFlip2;
+	sxu64 nAcc = (sxu64)n + Xxh3Swap64(nLo) + nHi + Xxh3Fold(nLo,nHi);
+	return Xxh3Avalanche(nAcc);
+}
+static sxu64 Xxh3Len0to16(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)
+{
+	if( n > 8 ){
+		return Xxh3Len9to16(z,n,zS,nSeed);
+	}
+	if( n >= 4 ){
+		return Xxh3Len4to8(z,n,zS,nSeed);
+	}
+	if( n > 0 ){
+		return Xxh3Len1to3(z,n,zS,nSeed);
+	}
+	return Xxh64Avalanche(nSeed ^ (SxGet64Le(&zS[56]) ^ SxGet64Le(&zS[64])));
+}
+static sxu64 Xxh3Len17to128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)
+{
+	sxu64 nAcc = (sxu64)n * XXH64_P1;
+	if( n > 32 ){
+		if( n > 64 ){
+			if( n > 96 ){
+				nAcc += Xxh3Mix16(&z[48],&zS[96],nSeed);
+				nAcc += Xxh3Mix16(&z[n - 64],&zS[112],nSeed);
+			}
+			nAcc += Xxh3Mix16(&z[32],&zS[64],nSeed);
+			nAcc += Xxh3Mix16(&z[n - 48],&zS[80],nSeed);
+		}
+		nAcc += Xxh3Mix16(&z[16],&zS[32],nSeed);
+		nAcc += Xxh3Mix16(&z[n - 32],&zS[48],nSeed);
+	}
+	nAcc += Xxh3Mix16(z,zS,nSeed);
+	nAcc += Xxh3Mix16(&z[n - 16],&zS[16],nSeed);
+	return Xxh3Avalanche(nAcc);
+}
+static sxu64 Xxh3Len129to240(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)
+{
+	sxu64 nAcc = (sxu64)n * XXH64_P1;
+	sxu32 i,nRounds = n / 16;
+	for( i = 0 ; i < 8 ; ++i ){
+		nAcc += Xxh3Mix16(&z[16*i],&zS[16*i],nSeed);
+	}
+	nAcc = Xxh3Avalanche(nAcc);
+	for( i = 8 ; i < nRounds ; ++i ){
+		nAcc += Xxh3Mix16(&z[16*i],&zS[16*(i - 8) + XXH3_MIDSIZE_STARTOFFSET],nSeed);
+	}
+	nAcc += Xxh3Mix16(&z[n - 16],&zS[XXH3_SECRET_MIN - XXH3_MIDSIZE_LASTOFFSET],nSeed);
+	return Xxh3Avalanche(nAcc);
+}
+/* ---- the short paths, 128-bit ---- */
+static void Xxh3Len1to3_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,
+	sxu64 *pLow,sxu64 *pHigh)
+{
+	sxu32 c1 = z[0],c2 = z[n >> 1],c3 = z[n - 1];
+	sxu32 nCombL = (c1 << 16) | (c2 << 24) | c3 | (n << 8);
+	sxu32 nCombH = SX_ROTL32(Xxh3Swap32(nCombL),13);
+	sxu64 nFlipL = (sxu64)(SxGet32Le(zS) ^ SxGet32Le(&zS[4])) + nSeed;
+	sxu64 nFlipH = (sxu64)(SxGet32Le(&zS[8]) ^ SxGet32Le(&zS[12])) - nSeed;
+	*pLow  = Xxh64Avalanche((sxu64)nCombL ^ nFlipL);
+	*pHigh = Xxh64Avalanche((sxu64)nCombH ^ nFlipH);
+}
+static void Xxh3Len4to8_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,
+	sxu64 *pLow,sxu64 *pHigh)
+{
+	sxu64 nIn,nFlip,nLo,nHi;
+	nSeed ^= (sxu64)Xxh3Swap32((sxu32)nSeed) << 32;
+	nIn = (sxu64)SxGet32Le(z) + ((sxu64)SxGet32Le(&z[n - 4]) << 32);
+	nFlip = (SxGet64Le(&zS[16]) ^ SxGet64Le(&zS[24])) + nSeed;
+	Xxh3Mul128(nIn ^ nFlip,XXH64_P1 + ((sxu64)n << 2),&nLo,&nHi);
+	nHi += (nLo << 1);
+	nLo ^= (nHi >> 3);
+	nLo ^= nLo >> 35;
+	nLo *= 0x9FB21C651E98DF25ULL;
+	nLo ^= nLo >> 28;
+	*pLow = nLo;
+	*pHigh = Xxh3Avalanche(nHi);
+}
+static void Xxh3Len9to16_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,
+	sxu64 *pLow,sxu64 *pHigh)
+{
+	sxu64 nFlipL = (SxGet64Le(&zS[32]) ^ SxGet64Le(&zS[40])) - nSeed;
+	sxu64 nFlipH = (SxGet64Le(&zS[48]) ^ SxGet64Le(&zS[56])) + nSeed;
+	sxu64 nInLo = SxGet64Le(z);
+	sxu64 nInHi = SxGet64Le(&z[n - 8]);
+	sxu64 mLo,mHi,hLo,hHi;
+	Xxh3Mul128(nInLo ^ nInHi ^ nFlipL,XXH64_P1,&mLo,&mHi);
+	mLo += (sxu64)(n - 1) << 54;
+	nInHi ^= nFlipH;
+	/* The reference's 64-bit arm: the 32-bit halves are folded in by hand so a
+	 * platform without a 128-bit type answers the same. */
+	mHi += nInHi + (sxu64)(sxu32)nInHi * (sxu64)(XXH32_P2 - 1);
+	mLo ^= Xxh3Swap64(mHi);
+	Xxh3Mul128(mLo,XXH64_P2,&hLo,&hHi);
+	hHi += mHi * XXH64_P2;
+	*pLow = Xxh3Avalanche(hLo);
+	*pHigh = Xxh3Avalanche(hHi);
+}
+static void Xxh3Len0to16_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,
+	sxu64 *pLow,sxu64 *pHigh)
+{
+	if( n > 8 ){
+		Xxh3Len9to16_128(z,n,zS,nSeed,pLow,pHigh);
+		return;
+	}
+	if( n >= 4 ){
+		Xxh3Len4to8_128(z,n,zS,nSeed,pLow,pHigh);
+		return;
+	}
+	if( n > 0 ){
+		Xxh3Len1to3_128(z,n,zS,nSeed,pLow,pHigh);
+		return;
+	}
+	*pLow  = Xxh64Avalanche(nSeed ^ (SxGet64Le(&zS[64]) ^ SxGet64Le(&zS[72])));
+	*pHigh = Xxh64Avalanche(nSeed ^ (SxGet64Le(&zS[80]) ^ SxGet64Le(&zS[88])));
+}
+/* The 128-bit mixer: two 16-byte halves, each folded into one accumulator and
+ * xored with the OTHER half's words. */
+static void Xxh3Mix32(sxu64 *pLow,sxu64 *pHigh,const unsigned char *z1,const unsigned char *z2,
+	const unsigned char *zS,sxu64 nSeed)
+{
+	*pLow += Xxh3Mix16(z1,zS,nSeed);
+	*pLow ^= SxGet64Le(z2) + SxGet64Le(&z2[8]);
+	*pHigh += Xxh3Mix16(z2,&zS[16],nSeed);
+	*pHigh ^= SxGet64Le(z1) + SxGet64Le(&z1[8]);
+}
+static void Xxh3Len17to128_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,
+	sxu64 *pLow,sxu64 *pHigh)
+{
+	sxu64 aLo = (sxu64)n * XXH64_P1,aHi = 0;
+	if( n > 32 ){
+		if( n > 64 ){
+			if( n > 96 ){
+				Xxh3Mix32(&aLo,&aHi,&z[48],&z[n - 64],&zS[96],nSeed);
+			}
+			Xxh3Mix32(&aLo,&aHi,&z[32],&z[n - 48],&zS[64],nSeed);
+		}
+		Xxh3Mix32(&aLo,&aHi,&z[16],&z[n - 32],&zS[32],nSeed);
+	}
+	Xxh3Mix32(&aLo,&aHi,z,&z[n - 16],zS,nSeed);
+	*pLow = Xxh3Avalanche(aLo + aHi);
+	*pHigh = (sxu64)0 - Xxh3Avalanche((aLo * XXH64_P1) + (aHi * XXH64_P4)
+		+ (((sxu64)n - nSeed) * XXH64_P2));
+}
+static void Xxh3Len129to240_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,
+	sxu64 *pLow,sxu64 *pHigh)
+{
+	sxu64 aLo = (sxu64)n * XXH64_P1,aHi = 0;
+	sxu32 i,nRounds = n / 32;
+	for( i = 0 ; i < 4 ; ++i ){
+		Xxh3Mix32(&aLo,&aHi,&z[32*i],&z[32*i + 16],&zS[32*i],nSeed);
+	}
+	aLo = Xxh3Avalanche(aLo);
+	aHi = Xxh3Avalanche(aHi);
+	for( i = 4 ; i < nRounds ; ++i ){
+		Xxh3Mix32(&aLo,&aHi,&z[32*i],&z[32*i + 16],
+			&zS[XXH3_MIDSIZE_STARTOFFSET + 32*(i - 4)],nSeed);
+	}
+	Xxh3Mix32(&aLo,&aHi,&z[n - 16],&z[n - 32],
+		&zS[XXH3_SECRET_MIN - XXH3_MIDSIZE_LASTOFFSET - 16],(sxu64)0 - nSeed);
+	*pLow = Xxh3Avalanche(aLo + aHi);
+	*pHigh = (sxu64)0 - Xxh3Avalanche((aLo * XXH64_P1) + (aHi * XXH64_P4)
+		+ (((sxu64)n - nSeed) * XXH64_P2));
+}
+/* ---- the long path: the eight-lane accumulator ---- */
+static void Xxh3Accumulate512(sxu64 *acc,const unsigned char *z,const unsigned char *zS)
+{
+	int i;
+	for( i = 0 ; i < XXH3_ACC_NB ; ++i ){
+		sxu64 nData = SxGet64Le(&z[8*i]);
+		sxu64 nKey = nData ^ SxGet64Le(&zS[8*i]);
+		acc[i ^ 1] += nData;   /* the adjacent lane, which is what makes it a mix */
+		acc[i] += (sxu64)(sxu32)nKey * (sxu64)(sxu32)(nKey >> 32);
+	}
+}
+static void Xxh3Accumulate(sxu64 *acc,const unsigned char *z,const unsigned char *zS,sxu32 nStripes)
+{
+	sxu32 n;
+	for( n = 0 ; n < nStripes ; ++n ){
+		Xxh3Accumulate512(acc,&z[n * XXH3_STRIPE_LEN],&zS[n * XXH3_SECRET_CONSUME_RATE]);
+	}
+}
+static void Xxh3Scramble(sxu64 *acc,const unsigned char *zS)
+{
+	int i;
+	for( i = 0 ; i < XXH3_ACC_NB ; ++i ){
+		sxu64 v = acc[i];
+		v ^= v >> 47;
+		v ^= SxGet64Le(&zS[8*i]);
+		v *= XXH32_P1;
+		acc[i] = v;
+	}
+}
+static sxu64 Xxh3MergeAccs(const sxu64 *acc,const unsigned char *zS,sxu64 nStart)
+{
+	sxu64 nRes = nStart;
+	int i;
+	for( i = 0 ; i < 4 ; ++i ){
+		nRes += Xxh3Fold(acc[2*i] ^ SxGet64Le(&zS[16*i]),acc[2*i + 1] ^ SxGet64Le(&zS[16*i + 8]));
+	}
+	return Xxh3Avalanche(nRes);
+}
+static void Xxh3AccInit(sxu64 *acc)
+{
+	acc[0] = XXH32_P3; acc[1] = XXH64_P1; acc[2] = XXH64_P2; acc[3] = XXH64_P3;
+	acc[4] = XXH64_P4; acc[5] = XXH32_P2; acc[6] = XXH64_P5; acc[7] = XXH32_P1;
+}
+static void Xxh3HashLongLoop(sxu64 *acc,const unsigned char *z,sxu64 nLen,
+	const unsigned char *zS,sxu32 nSecret)
+{
+	sxu32 nStripesPerBlock = (nSecret - XXH3_STRIPE_LEN) / XXH3_SECRET_CONSUME_RATE;
+	sxu64 nBlockLen = (sxu64)XXH3_STRIPE_LEN * nStripesPerBlock;
+	sxu64 nBlocks = (nLen - 1) / nBlockLen;
+	sxu64 n;
+	sxu32 nStripes;
+	for( n = 0 ; n < nBlocks ; ++n ){
+		Xxh3Accumulate(acc,&z[n * nBlockLen],zS,nStripesPerBlock);
+		Xxh3Scramble(acc,&zS[nSecret - XXH3_STRIPE_LEN]);
+	}
+	nStripes = (sxu32)(((nLen - 1) - (nBlockLen * nBlocks)) / XXH3_STRIPE_LEN);
+	Xxh3Accumulate(acc,&z[nBlocks * nBlockLen],zS,nStripes);
+	/* The last stripe is always the final 64 bytes, however they overlap. */
+	Xxh3Accumulate512(acc,&z[nLen - XXH3_STRIPE_LEN],
+		&zS[nSecret - XXH3_STRIPE_LEN - XXH3_SECRET_LASTACC]);
+}
+/* A seed with no caller secret means a DERIVED one: every 16-byte pair of the
+ * default secret moved by the seed, up then down. */
+static void Xxh3DeriveSecret(unsigned char *zOut,sxu64 nSeed)
+{
+	int i;
+	for( i = 0 ; i < XXH3_SECRET_SIZE / 16 ; ++i ){
+		sxu64 lo = SxGet64Le(&zXxh3Secret[16*i]) + nSeed;
+		sxu64 hi = SxGet64Le(&zXxh3Secret[16*i + 8]) - nSeed;
+		int k;
+		for( k = 0 ; k < 8 ; ++k ){
+			zOut[16*i + k] = (unsigned char)(lo >> (8*k));
+			zOut[16*i + 8 + k] = (unsigned char)(hi >> (8*k));
+		}
+	}
+}
+/*
+ * The one-shot digest of a whole buffer, which is also what a STREAMED digest
+ * of 240 bytes or fewer runs at the end -- the accumulator loop never starts
+ * below that, so the staged bytes are simply hashed here.
+ */
+static void Xxh3OneShot(const unsigned char *z,sxu32 n,int b128,sxu64 nSeed,
+	const unsigned char *zS,sxu32 nSecret,sxu64 *pLow,sxu64 *pHigh)
+{
+	if( n <= 16 ){
+		if( b128 ){
+			Xxh3Len0to16_128(z,n,zS,nSeed,pLow,pHigh);
+		}else{
+			*pLow = Xxh3Len0to16(z,n,zS,nSeed);
+		}
+		return;
+	}
+	if( n <= 128 ){
+		if( b128 ){
+			Xxh3Len17to128_128(z,n,zS,nSeed,pLow,pHigh);
+		}else{
+			*pLow = Xxh3Len17to128(z,n,zS,nSeed);
+		}
+		return;
+	}
+	if( n <= XXH3_MIDSIZE_MAX ){
+		if( b128 ){
+			Xxh3Len129to240_128(z,n,zS,nSeed,pLow,pHigh);
+		}else{
+			*pLow = Xxh3Len129to240(z,n,zS,nSeed);
+		}
+		return;
+	}
+	{
+		sxu64 acc[XXH3_ACC_NB];
+		Xxh3AccInit(acc);
+		Xxh3HashLongLoop(acc,z,(sxu64)n,zS,nSecret);
+		*pLow = Xxh3MergeAccs(acc,&zS[XXH3_SECRET_MERGEACCS],(sxu64)n * XXH64_P1);
+		if( b128 ){
+			*pHigh = Xxh3MergeAccs(acc,&zS[nSecret - XXH3_ACC_NB*8 - XXH3_SECRET_MERGEACCS],
+				~((sxu64)n * XXH64_P2));
+		}
+	}
+}
+/*
+ * Start a context. A caller SECRET is used as given (php has already screened
+ * its length); a seed with no secret derives one; neither means the algorithm's
+ * own constant. The seed is remembered either way, because the short paths read
+ * it directly and a digest below 241 bytes re-runs them.
+ */
+PH7_PRIVATE void Xxh3Init(Xxh3Context *pCtx,int b128,sxu64 nSeed,
+	const unsigned char *zSecret,sxu32 nSecret)
+{
+	SyZero(pCtx,sizeof(*pCtx));
+	pCtx->b128 = b128;
+	pCtx->nSeed = nSeed;
+	Xxh3AccInit(pCtx->acc);
+	if( zSecret != 0 && nSecret >= XXH3_SECRET_MIN ){
+		if( nSecret > XXH3_SECRET_SIZE ){
+			nSecret = XXH3_SECRET_SIZE;   /* php's own cap: the state holds 192 */
+		}
+		SyMemcpy(zSecret,pCtx->zSecret,nSecret);
+		pCtx->nSecret = nSecret;
+	}else if( nSeed != 0 ){
+		Xxh3DeriveSecret(pCtx->zSecret,nSeed);
+		pCtx->nSecret = XXH3_SECRET_SIZE;
+		pCtx->bUseSeed = 1;
+	}else{
+		SyMemcpy(zXxh3Secret,pCtx->zSecret,XXH3_SECRET_SIZE);
+		pCtx->nSecret = XXH3_SECRET_SIZE;
+	}
+	pCtx->nSecretLimit = pCtx->nSecret - XXH3_STRIPE_LEN;
+	pCtx->nStripesPerBlock = pCtx->nSecretLimit / XXH3_SECRET_CONSUME_RATE;
+}
+/* One buffer's worth of stripes, wrapping at the end of the secret's block. */
+static void Xxh3ConsumeStripes(Xxh3Context *pCtx,const unsigned char *z,sxu32 nStripes)
+{
+	if( pCtx->nStripesPerBlock - pCtx->nStripesSoFar <= nStripes ){
+		sxu32 nToEnd = pCtx->nStripesPerBlock - pCtx->nStripesSoFar;
+		sxu32 nAfter = nStripes - nToEnd;
+		Xxh3Accumulate(pCtx->acc,z,
+			&pCtx->zSecret[pCtx->nStripesSoFar * XXH3_SECRET_CONSUME_RATE],nToEnd);
+		Xxh3Scramble(pCtx->acc,&pCtx->zSecret[pCtx->nSecretLimit]);
+		Xxh3Accumulate(pCtx->acc,&z[nToEnd * XXH3_STRIPE_LEN],pCtx->zSecret,nAfter);
+		pCtx->nStripesSoFar = nAfter;
+	}else{
+		Xxh3Accumulate(pCtx->acc,z,
+			&pCtx->zSecret[pCtx->nStripesSoFar * XXH3_SECRET_CONSUME_RATE],nStripes);
+		pCtx->nStripesSoFar += nStripes;
+	}
+}
+PH7_PRIVATE void Xxh3Update(Xxh3Context *pCtx,const unsigned char *data,unsigned int len)
+{
+	const unsigned char *zEnd = &data[len];
+	if( len < 1 ){
+		return;
+	}
+	pCtx->nTotal += len;
+	if( pCtx->nBuffered + len <= XXH3_BUFFER_SIZE ){
+		SyMemcpy(data,&pCtx->zBuf[pCtx->nBuffered],len);
+		pCtx->nBuffered += len;
+		return;
+	}
+	if( pCtx->nBuffered > 0 ){
+		sxu32 nLoad = XXH3_BUFFER_SIZE - pCtx->nBuffered;
+		SyMemcpy(data,&pCtx->zBuf[pCtx->nBuffered],nLoad);
+		data += nLoad;
+		Xxh3ConsumeStripes(pCtx,pCtx->zBuf,XXH3_BUFFER_STRIPES);
+		pCtx->nBuffered = 0;
+	}
+	/* Strictly less at BOTH ends: a feed that ends exactly on a buffer boundary
+	 * leaves that whole buffer STAGED rather than consuming it, because the
+	 * final stripe is always accumulated separately (with its own secret
+	 * offset) by the digest. Consuming it here counts it twice, which shows up
+	 * only when the total is a multiple of the buffer -- 512, 1024, 2048. */
+	if( &data[XXH3_BUFFER_SIZE] < zEnd ){
+		const unsigned char *zLimit = zEnd - XXH3_BUFFER_SIZE;
+		do {
+			Xxh3ConsumeStripes(pCtx,data,XXH3_BUFFER_STRIPES);
+			data += XXH3_BUFFER_SIZE;
+		} while( data < zLimit );
+		/* The tail of the last consumed buffer is kept at the END of the staging
+		 * buffer: a digest with fewer than 64 bytes staged reads back into it for
+		 * the last stripe, which always spans the final 64 bytes of the input. */
+		SyMemcpy(&data[-XXH3_STRIPE_LEN],&pCtx->zBuf[XXH3_BUFFER_SIZE - XXH3_STRIPE_LEN],
+			XXH3_STRIPE_LEN);
+	}
+	if( data < zEnd ){
+		SyMemcpy(data,pCtx->zBuf,(sxu32)(zEnd - data));
+		pCtx->nBuffered = (sxu32)(zEnd - data);
+	}
+}
+PH7_PRIVATE void Xxh3Final(Xxh3Context *pCtx,unsigned char *digest)
+{
+	sxu64 nLow = 0,nHigh = 0;
+	if( pCtx->nTotal > XXH3_MIDSIZE_MAX ){
+		sxu64 acc[XXH3_ACC_NB];
+		SyMemcpy(pCtx->acc,acc,sizeof(acc));
+		if( pCtx->nBuffered >= XXH3_STRIPE_LEN ){
+			sxu32 nStripes = (pCtx->nBuffered - 1) / XXH3_STRIPE_LEN;
+			sxu32 nSoFar = pCtx->nStripesSoFar;
+			Xxh3Context sTmp;
+			/* The consume walks a COPY's cursor: a digest must not move the
+			 * state, since php lets a context keep going afterwards. */
+			SyMemcpy(pCtx,&sTmp,sizeof(sTmp));
+			SyMemcpy(acc,sTmp.acc,sizeof(acc));
+			sTmp.nStripesSoFar = nSoFar;
+			Xxh3ConsumeStripes(&sTmp,sTmp.zBuf,nStripes);
+			SyMemcpy(sTmp.acc,acc,sizeof(acc));
+			Xxh3Accumulate512(acc,&pCtx->zBuf[pCtx->nBuffered - XXH3_STRIPE_LEN],
+				&pCtx->zSecret[pCtx->nSecretLimit - XXH3_SECRET_LASTACC]);
+		}else{
+			unsigned char zLast[XXH3_STRIPE_LEN];
+			sxu32 nCatchup = XXH3_STRIPE_LEN - pCtx->nBuffered;
+			SyMemcpy(&pCtx->zBuf[XXH3_BUFFER_SIZE - nCatchup],zLast,nCatchup);
+			SyMemcpy(pCtx->zBuf,&zLast[nCatchup],pCtx->nBuffered);
+			Xxh3Accumulate512(acc,zLast,
+				&pCtx->zSecret[pCtx->nSecretLimit - XXH3_SECRET_LASTACC]);
+		}
+		nLow = Xxh3MergeAccs(acc,&pCtx->zSecret[XXH3_SECRET_MERGEACCS],
+			pCtx->nTotal * XXH64_P1);
+		if( pCtx->b128 ){
+			nHigh = Xxh3MergeAccs(acc,
+				&pCtx->zSecret[pCtx->nSecret - XXH3_ACC_NB*8 - XXH3_SECRET_MERGEACCS],
+				~(pCtx->nTotal * XXH64_P2));
+		}
+	}else{
+		/* Everything fits in the staging buffer: the short paths decide, with the
+		 * SEED where one was given (a derived secret alone is not the same thing). */
+		Xxh3OneShot(pCtx->zBuf,(sxu32)pCtx->nTotal,pCtx->b128,
+			pCtx->bUseSeed ? pCtx->nSeed : 0,
+			pCtx->bUseSeed ? zXxh3Secret : pCtx->zSecret,pCtx->nSecret,&nLow,&nHigh);
+	}
+	if( pCtx->b128 ){
+		SxPut64Be(digest,nHigh);
+		SxPut64Be(&digest[8],nLow);
+	}else{
+		SxPut64Be(digest,nLow);
+	}
+}
+#endif /* PH7_DISABLE_HASH_FUNC */

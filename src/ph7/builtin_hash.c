@@ -199,6 +199,10 @@ static void HashMur3cInit(HashCtx *c,sxu64 nSeed){ MurmurInit(&c->murmur,MUR_3C,
 static void HashMur3fInit(HashCtx *c,sxu64 nSeed){ MurmurInit(&c->murmur,MUR_3F,nSeed); }
 static void HashMurUpdate(HashCtx *c,const unsigned char *d,unsigned int n){ MurmurUpdate(&c->murmur,d,n); }
 static void HashMurFinal(HashCtx *c,unsigned char *o){ MurmurFinal(&c->murmur,o); }
+static void HashXxh3Init(HashCtx *c,sxu64 nSeed){ Xxh3Init(&c->xxh3,0,nSeed,0,0); }
+static void HashXxh128Init(HashCtx *c,sxu64 nSeed){ Xxh3Init(&c->xxh3,1,nSeed,0,0); }
+static void HashXxh3Update(HashCtx *c,const unsigned char *d,unsigned int n){ Xxh3Update(&c->xxh3,d,n); }
+static void HashXxh3Final(HashCtx *c,unsigned char *o){ Xxh3Final(&c->xxh3,o); }
 static void HashXxh32Init(HashCtx *c,sxu64 nSeed){ XxhInit(&c->xxh,XXH_32,nSeed); }
 static void HashXxh64Init(HashCtx *c,sxu64 nSeed){ XxhInit(&c->xxh,XXH_64,nSeed); }
 static void HashXxhUpdate(HashCtx *c,const unsigned char *d,unsigned int n){ XxhUpdate(&c->xxh,d,n); }
@@ -223,6 +227,7 @@ static void HashXxhFinal(HashCtx *c,unsigned char *o){ XxhFinal(&c->xxh,o); }
 #define HCTX_MD2     8
 #define HCTX_KECCAK  9
 #define HCTX_RMD    10
+#define HCTX_XXH3   11
 typedef struct HashAlgo HashAlgo;
 struct HashAlgo {
 	const char *zName;   /* lowercase canonical name */
@@ -280,6 +285,19 @@ static const HashAlgo aHashAlgo[] = {
 	{ "murmur3f",   16,   0, 1, HCTX_MUR,    HashMur3fInit,      HashMurUpdate,     HashMurFinal      },
 	{ "xxh32",       4,   0, 1, HCTX_XXH,    HashXxh32Init,      HashXxhUpdate,     HashXxhFinal      },
 	{ "xxh64",       8,   0, 1, HCTX_XXH,    HashXxh64Init,      HashXxhUpdate,     HashXxhFinal      },
+	{ "xxh3",        8,   0, 1, HCTX_XXH3,   HashXxh3Init,       HashXxh3Update,    HashXxh3Final     },
+	{ "xxh128",     16,   0, 1, HCTX_XXH3,   HashXxh128Init,     HashXxh3Update,    HashXxh3Final     },
+};
+/*
+ * What $options carried, once screened: the seed every seeded row reads, and
+ * the SECRET only XXH3 does. They are exclusive -- php refuses a call that
+ * spells both -- and the secret is copied here because Init keeps its own.
+ */
+typedef struct HashOpts HashOpts;
+struct HashOpts {
+	sxu64 nSeed;
+	const unsigned char *zSecret;   /* into the caller's value, alive for the call */
+	sxu32 nSecret;
 };
 /*
  * hash()'s $options argument, which only the seeded rows above read. php looks
@@ -314,6 +332,62 @@ static int HashSeedOption(ph7_context *pCtx,const HashAlgo *pAlgo,ph7_value *pOp
 	}
 	*pSeed = (sxu64)ph7_value_to_int64(pVal);
 	return PH7_OK;
+}
+/*
+ * The whole $options screen. XXH3's `secret` is the only option beyond `seed`
+ * php has, and its three refusals are the ALGORITHM's rather than the
+ * function's -- they name `xxh3`/`xxh128` and not the caller -- and they are
+ * plain Errors: a length below XXH3_SECRET_MIN, a secret beside a seed, and
+ * (php's own leniency) a non-string that is CONVERTED after a deprecation and
+ * then measured, which is why `['secret' => 42]` reports two bytes.
+ */
+static int HashOptions(ph7_context *pCtx,const HashAlgo *pAlgo,ph7_value *pOptions,HashOpts *pOut)
+{
+	ph7_value *pVal;
+	int rc,nLen = 0;
+	SyZero(pOut,sizeof(*pOut));
+	rc = HashSeedOption(pCtx,pAlgo,pOptions,&pOut->nSeed);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( pAlgo->nCtxKind != HCTX_XXH3 || pOptions == 0 || !ph7_value_is_array(pOptions) ){
+		return PH7_OK;
+	}
+	pVal = ph7_array_fetch(pOptions,"secret",-1);
+	if( pVal == 0 ){
+		return PH7_OK;
+	}
+	if( !ph7_value_is_string(pVal) ){
+		VmErrorFormat(pCtx->pVm,8192 /* E_DEPRECATED */,
+			"%s(): Passing a secret of a type other than string is deprecated because it "
+			"implicitly converts to a string, potentially hiding bugs",ph7_function_name(pCtx));
+	}
+	if( ph7_array_fetch(pOptions,"seed",-1) != 0 ){
+		/* Before the length is even measured, and whichever key was written
+		 * first -- measured, because the two refusals could not otherwise be
+		 * told apart. */
+		return PH7_VmThrowException(pCtx,"Error",
+			"%s: Only one of seed or secret is to be passed for initialization",pAlgo->zName);
+	}
+	pOut->zSecret = (const unsigned char *)ph7_value_to_string(pVal,&nLen);
+	pOut->nSecret = (sxu32)(nLen < 0 ? 0 : nLen);
+	if( pOut->nSecret < XXH3_SECRET_MIN ){
+		pOut->zSecret = 0;
+		return PH7_VmThrowException(pCtx,"Error",
+			"%s: Secret length must be >= %d bytes, %d bytes passed",
+			pAlgo->zName,XXH3_SECRET_MIN,nLen < 0 ? 0 : nLen);
+	}
+	return PH7_OK;
+}
+/* Start a context under those options: the secret-aware family takes both, and
+ * every other row has only ever read the seed. */
+static void HashInitOpts(const HashAlgo *pAlgo,HashCtx *pCtx,const HashOpts *pOpts)
+{
+	if( pAlgo->nCtxKind == HCTX_XXH3 ){
+		Xxh3Init(&pCtx->xxh3,pAlgo->nDigestLen == 16,pOpts->nSeed,pOpts->zSecret,pOpts->nSecret);
+		return;
+	}
+	pAlgo->xInit(pCtx,pOpts->nSeed);
 }
 static const HashAlgo * HashFindAlgo(const char *zName,int nLen){
 	sxu32 i;
@@ -376,9 +450,10 @@ PH7_PRIVATE int PH7_builtin_hash(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const HashAlgo *pAlgo;
 	const char *zAlgo,*zData;
 	int nAlgoLen,nDataLen,raw_output = FALSE;
-	sxu64 nSeed = 0;
+	HashOpts sOpts;
 	HashCtx sCtx;
 	unsigned char zDigest[HASH_MAX_DIGEST];
+	SyZero(&sOpts,sizeof(sOpts));
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"hash() expects at least 2 arguments, %d given",nArg);
@@ -394,12 +469,12 @@ PH7_PRIVATE int PH7_builtin_hash(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		raw_output = ph7_value_to_bool(apArg[2]);
 	}
 	if( nArg > 3 ){
-		int rc = HashSeedOption(pCtx,pAlgo,apArg[3],&nSeed);
+		int rc = HashOptions(pCtx,pAlgo,apArg[3],&sOpts);
 		if( rc != PH7_OK ){
 			return rc;
 		}
 	}
-	pAlgo->xInit(&sCtx,nSeed);
+	HashInitOpts(pAlgo,&sCtx,&sOpts);
 	pAlgo->xUpdate(&sCtx,(const unsigned char *)zData,(unsigned int)nDataLen);
 	pAlgo->xFinal(&sCtx,zDigest);
 	if( raw_output ){
@@ -556,6 +631,13 @@ static int HashStateValid(const HashState *pState)
 		case HCTX_MUR:    return p->murmur.nKind >= MUR_3A && p->murmur.nKind <= MUR_3F
 			&& aMurLen[p->murmur.nKind] == pAlgo->nDigestLen
 			&& p->murmur.nBlock < (p->murmur.nKind == MUR_3A ? 4u : 16u);
+		case HCTX_XXH3:   /* php refuses to serialize one of these at all (below), so a
+		                   * context in this state never arrives from unserialize(). */
+			return p->xxh3.nBuffered <= XXH3_BUFFER_SIZE
+			    && p->xxh3.nSecret >= XXH3_SECRET_MIN && p->xxh3.nSecret <= XXH3_SECRET_SIZE
+			    && p->xxh3.nSecretLimit <= XXH3_SECRET_SIZE
+			    && p->xxh3.nStripesSoFar <= p->xxh3.nStripesPerBlock
+			    && (p->xxh3.b128 ? 16 : 8) == pAlgo->nDigestLen;
 		case HCTX_XXH:    return (p->xxh.nKind == XXH_32 || p->xxh.nKind == XXH_64)
 			&& (p->xxh.nKind == XXH_32 ? 4 : 8) == pAlgo->nDigestLen
 			&& p->xxh.nBlock < (p->xxh.nKind == XXH_32 ? 16u : 32u);
@@ -634,7 +716,8 @@ PH7_PRIVATE int PH7_builtin_hash_init(ph7_context *pCtx,int nArg,ph7_value **apA
 	ph7_int64 iFlags = 0;
 	ph7_class_instance *pThis;
 	HashState sState;
-	sxu64 nSeed = 0;
+	HashOpts sOpts;
+	SyZero(&sOpts,sizeof(sOpts));
 	if( nArg < 1 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"hash_init() expects at least 1 argument, %d given",nArg);
@@ -667,7 +750,7 @@ PH7_PRIVATE int PH7_builtin_hash_init(ph7_context *pCtx,int nArg,ph7_value **apA
 		}
 	}
 	if( nArg > 3 ){
-		rc = HashSeedOption(pCtx,pAlgo,apArg[3],&nSeed);
+		rc = HashOptions(pCtx,pAlgo,apArg[3],&sOpts);
 		if( rc != PH7_OK ){
 			return rc;
 		}
@@ -677,7 +760,7 @@ PH7_PRIVATE int PH7_builtin_hash_init(ph7_context *pCtx,int nArg,ph7_value **apA
 		HashHmacInner(pAlgo,&sState.sCtx,sState.zKey);
 	}else{
 		/* A $key without the flag is simply not read -- php ignores it too. */
-		pAlgo->xInit(&sState.sCtx,nSeed);
+		HashInitOpts(pAlgo,&sState.sCtx,&sOpts);
 	}
 	pThis = HashContextNew(pCtx->pVm,&sState);
 	if( pThis == 0 ){
@@ -818,6 +901,13 @@ static int vm_builtin_HashContext_serialize(ph7_context *pCtx,int nArg,ph7_value
 		 * carries the KEY, and a serialized context would carry it in clear. */
 		return PH7_VmThrowException(pCtx,"Exception",
 			"HashContext with HASH_HMAC option cannot be serialized");
+	}
+	if( aHashAlgo[sState.nAlgo].nCtxKind == HCTX_XXH3 ){
+		/* php refuses the XXH3 family by name: its state carries a 192-byte
+		 * SECRET and a cursor into it, and php's own serializer writes neither. */
+		return PH7_VmThrowException(pCtx,"Exception",
+			"HashContext for algorithm \"%s\" cannot be serialized",
+			aHashAlgo[sState.nAlgo].zName);
 	}
 	pArray = ph7_context_new_array(pCtx);
 	pVal = ph7_context_new_scalar(pCtx);
@@ -1297,7 +1387,8 @@ PH7_PRIVATE int PH7_builtin_hash_file(ph7_context *pCtx,int nArg,ph7_value **apA
 	void *pHandle;
 	HashCtx sCtx;
 	unsigned char zDigest[HASH_MAX_DIGEST];
-	sxu64 nSeed = 0;
+	HashOpts sOpts;
+	SyZero(&sOpts,sizeof(sOpts));
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"hash_file() expects at least 2 arguments, %d given",nArg);
@@ -1313,7 +1404,7 @@ PH7_PRIVATE int PH7_builtin_hash_file(ph7_context *pCtx,int nArg,ph7_value **apA
 		raw_output = ph7_value_to_bool(apArg[2]);
 	}
 	if( nArg > 3 ){
-		rc = HashSeedOption(pCtx,pAlgo,apArg[3],&nSeed);
+		rc = HashOptions(pCtx,pAlgo,apArg[3],&sOpts);
 		if( rc != PH7_OK ){
 			return rc;
 		}
@@ -1323,7 +1414,7 @@ PH7_PRIVATE int PH7_builtin_hash_file(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pAlgo->xInit(&sCtx,nSeed);
+	HashInitOpts(pAlgo,&sCtx,&sOpts);
 	rc = HashFeedStream(pCtx,pStream,pHandle,0,pAlgo,&sCtx,-1,0);
 	PH7_StreamCloseHandle(pStream,pHandle);
 	if( rc != 0 ){

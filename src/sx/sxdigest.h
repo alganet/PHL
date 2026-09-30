@@ -156,6 +156,38 @@ struct XxhContext {
 	sxu32 nBlock;
 };
 
+/*
+ * XXH3, in its 64- and 128-bit widths. It is a different algorithm from xxh64
+ * rather than a wider one, and its state is the largest here by an order of
+ * magnitude: eight accumulators, a 256-byte staging buffer, and a 192-byte
+ * SECRET that is either the algorithm's own constant, one derived from a seed,
+ * or one the caller supplied. php exposes all three (hash()'s $options carries
+ * `seed` or `secret`, never both) and REFUSES to serialize a context in this
+ * state, which is why it is the one family whose HashContext cannot round-trip
+ * through serialize().
+ */
+#define XXH3_SECRET_SIZE      192  /* the default secret, and the derived one */
+#define XXH3_SECRET_MIN       136  /* the shortest secret php accepts */
+#define XXH3_STRIPE_LEN        64
+#define XXH3_ACC_NB             8
+#define XXH3_BUFFER_SIZE      256
+#define XXH3_MIDSIZE_MAX      240  /* above this the accumulator loop runs */
+typedef struct Xxh3Context Xxh3Context;
+struct Xxh3Context {
+	int b128;                             /* 0 = xxh3 (8 bytes), 1 = xxh128 (16) */
+	sxu64 acc[XXH3_ACC_NB];               /* the eight accumulators */
+	sxu64 nTotal;                         /* bytes fed so far */
+	sxu64 nSeed;                          /* the seed, 0 when none */
+	int bUseSeed;                         /* a seed was given (digest re-runs the short path with it) */
+	sxu32 nSecret;                        /* secret bytes in use (192, or the caller's length) */
+	sxu32 nStripesSoFar;                  /* position inside the current secret block */
+	sxu32 nStripesPerBlock;
+	sxu32 nSecretLimit;
+	sxu32 nBuffered;                      /* bytes staged in zBuf */
+	unsigned char zSecret[XXH3_SECRET_SIZE];
+	unsigned char zBuf[XXH3_BUFFER_SIZE];
+};
+
 /* A union over every digest context so a single fixed-size, correctly-aligned
  * buffer can back any algorithm (used by the hash() descriptor dispatch). */
 typedef union HashCtx {
@@ -166,6 +198,7 @@ typedef union HashCtx {
 	SumContext sum;
 	MurmurContext murmur;
 	XxhContext xxh;
+	Xxh3Context xxh3;
 	MD4Context md4;
 	MD2Context md2;
 	KeccakContext keccak;
@@ -226,6 +259,10 @@ PH7_PRIVATE void MurmurFinal(MurmurContext *pCtx,unsigned char *digest);
 PH7_PRIVATE void XxhInit(XxhContext *pCtx,int nKind,sxu64 nSeed);
 PH7_PRIVATE void XxhUpdate(XxhContext *pCtx,const unsigned char *data,unsigned int len);
 PH7_PRIVATE void XxhFinal(XxhContext *pCtx,unsigned char *digest);
+PH7_PRIVATE void Xxh3Init(Xxh3Context *pCtx,int b128,sxu64 nSeed,
+	const unsigned char *zSecret,sxu32 nSecret);
+PH7_PRIVATE void Xxh3Update(Xxh3Context *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void Xxh3Final(Xxh3Context *pCtx,unsigned char *digest);
 #endif /* PH7_DISABLE_HASH_FUNC */
 
 /* SyBinToHexConsumer is a general helper (used by bin2hex, md5_file, etc.)
