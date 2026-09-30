@@ -268,6 +268,119 @@ PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash)
 	pHash->pAllocator = 0;
 	return SXRET_OK;
 }
+#if defined(PHL_HASH_CENSUS)
+/*
+ * PHL_HASH_CENSUS -- which CALL SITE spends the engine's name hashing.
+ * ---------------------------------------------------------------------------
+ * Compiled out entirely unless PHL_HASH_CENSUS is defined; see PERF.md §7, and
+ * build-aux/hashcensus.sh, which builds it and resolves what it prints.
+ *
+ * The heap census (src/sx/sxmem.c) answers "where are the bytes and who asked
+ * for them"; this answers the same question for SyHashGet, which on a real
+ * workload is the single largest subsystem in a profile and which the sampler
+ * can only attribute one frame deep, for the samples that happened to land in
+ * it. These counts are exact, and they do not care that this box is loaded
+ * (PERF.md §7) -- a lookup either happened or it did not.
+ *
+ * One record per return address, so a site is a place in the SOURCE and not a
+ * table: two lookups against the same hash table from two lines are two rows,
+ * which is what a change has to be aimed at. Addresses are emitted relative to
+ * the PIE load base (the ADDRESS of __executable_start is that base at run
+ * time), so addr2line takes them exactly as printed -- the heap census's
+ * convention, for the same reason.
+ *
+ * The table is fixed-size and static: it must not allocate through the
+ * allocator whose tables it is measuring. Nothing is ever deleted from it (a
+ * site is a code address and there are a few thousand), so a full table would
+ * spin -- it refuses to record instead, and says so.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+
+extern char __executable_start[];   /* its ADDRESS is the PIE load base */
+
+typedef struct phl_hcensus_rec phl_hcensus_rec;
+struct phl_hcensus_rec {
+	void *pSite;     /* __builtin_return_address(0) at SyHashGet; 0 = free slot */
+	sxu64 nCall;     /* lookups made from here */
+	sxu64 nKeyByte;  /* key bytes hashed for them (0 for one the table answered
+	                  * without hashing -- an empty table, or an empty key) */
+	sxu64 nHit;      /* how many found an entry */
+	sxu64 nCI;       /* how many were against a case-insensitive table */
+};
+#define PHL_HCENSUS_SLOTS 8192
+static struct {
+	int bReady;      /* 0 = untouched, 1 = live */
+	int bFull;       /* the table filled; recording stopped */
+	phl_hcensus_rec aRec[PHL_HCENSUS_SLOTS];
+	sxu64 nCall,nKeyByte,nHit;
+} sHCensus;
+
+static void HCensusDump(void)
+{
+	const char *zOut = getenv("PHL_HCENSUS_OUT");
+	FILE *pOut = zOut ? fopen(zOut,"w") : stderr;
+	sxu32 i;
+	if( pOut == 0 ){
+		pOut = stderr;
+	}
+	fprintf(pOut,"# lookups %llu bytes %llu hits %llu%s\n",
+		(unsigned long long)sHCensus.nCall,(unsigned long long)sHCensus.nKeyByte,
+		(unsigned long long)sHCensus.nHit,sHCensus.bFull ? "  TRUNCATED" : "");
+	for( i = 0 ; i < PHL_HCENSUS_SLOTS ; ++i ){
+		phl_hcensus_rec *pRec = &sHCensus.aRec[i];
+		if( pRec->pSite == 0 ){
+			continue;
+		}
+		fprintf(pOut,"SITE 0x%lx %llu %llu %llu %llu\n",
+			(unsigned long)((char *)pRec->pSite - __executable_start),
+			(unsigned long long)pRec->nCall,(unsigned long long)pRec->nKeyByte,
+			(unsigned long long)pRec->nHit,(unsigned long long)pRec->nCI);
+	}
+	if( pOut != stderr ){
+		fclose(pOut);
+	}
+}
+static phl_hcensus_rec * HCensusSlot(void *pSite)
+{
+	/* Fibonacci scramble: the low bits of a code address are not a key. */
+	sxu64 x = (sxu64)(sxuptr)pSite;
+	sxu32 i,n;
+	x ^= x >> 33; x *= (sxu64)0xff51afd7ed558ccdULL; x ^= x >> 29;
+	i = (sxu32)x & (PHL_HCENSUS_SLOTS - 1);
+	for( n = 0 ; n < PHL_HCENSUS_SLOTS ; ++n ){
+		if( sHCensus.aRec[i].pSite == pSite ){
+			return &sHCensus.aRec[i];
+		}
+		if( sHCensus.aRec[i].pSite == 0 ){
+			sHCensus.aRec[i].pSite = pSite;
+			return &sHCensus.aRec[i];
+		}
+		i = (i + 1) & (PHL_HCENSUS_SLOTS - 1);
+	}
+	sHCensus.bFull = 1;   /* said out loud in the dump rather than counted wrong */
+	return 0;
+}
+static void HCensusNote(void *pSite,SyHash *pHash,sxu32 nKeyLen,int bHit)
+{
+	phl_hcensus_rec *pRec;
+	if( !sHCensus.bReady ){
+		sHCensus.bReady = 1;
+		atexit(HCensusDump);
+	}
+	pRec = HCensusSlot(pSite);
+	if( pRec == 0 ){
+		return;
+	}
+	pRec->nCall++;
+	pRec->nKeyByte += nKeyLen;
+	pRec->nHit += bHit ? 1 : 0;
+	pRec->nCI += (pHash->xHash == SyStrHash) ? 1 : 0;
+	sHCensus.nCall++;
+	sHCensus.nKeyByte += nKeyLen;
+	sHCensus.nHit += bHit ? 1 : 0;
+}
+#endif /* PHL_HASH_CENSUS */
 static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
 {
 	SyHashEntry_Pr *pEntry;
@@ -291,6 +404,9 @@ static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLe
 PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
 {
 	SyHashEntry_Pr *pEntry;
+#if defined(PHL_HASH_CENSUS)
+	void *pCensusSite = __builtin_return_address(0);
+#endif
 #if defined(UNTRUST)
 	if( INVALID_HASH(pHash) ){
 		return 0;
@@ -298,9 +414,15 @@ PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen
 #endif
 	if( pHash->nEntry < 1 || nKeyLen < 1 ){
 		/* Don't bother hashing,return immediately */
+#if defined(PHL_HASH_CENSUS)
+		HCensusNote(pCensusSite,pHash,0,0);
+#endif
 		return 0;
 	}
 	pEntry = HashGetEntry(&(*pHash),pKey,nKeyLen);
+#if defined(PHL_HASH_CENSUS)
+	HCensusNote(pCensusSite,pHash,nKeyLen,pEntry != 0);
+#endif
 	if( pEntry == 0 ){
 		return 0;
 	}
