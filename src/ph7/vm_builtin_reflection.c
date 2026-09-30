@@ -5929,6 +5929,21 @@ static int ReflectHasDeprecated(SySet *pAttrs)
 /* Resolve `$this`, or answer a default when the target has gone missing. */
 #define REFLECT_FUNC_OR(REF,STMT) \
 	if( !ReflectFuncOfThis(pCtx, &(REF)) ){ STMT; return PH7_OK; }
+/*
+ * The same, for the three getClosure* accessors: what they read is captured on
+ * the Closure OBJECT, not in a function record, so a reflector over a closure
+ * nothing resolves (php's magic-method trampoline) must still answer from the
+ * Closure `$this` is holding. Without this they fell out at the resolve and
+ * reported no scope and no bound object for a callable php describes fully.
+ */
+#define REFLECT_CLOSURE_OR(REF,STMT) \
+	if( !ReflectFuncOfThis(pCtx, &(REF)) ){ \
+		ph7_class_instance *_pRcThis = PH7_ContextThis(pCtx); \
+		SyZero(&(REF), sizeof(REF)); \
+		(REF).pVm = pCtx->pVm; \
+		(REF).pClosure = _pRcThis ? PH7_NativeAttrObj(_pRcThis, RF_CL) : 0; \
+		if( (REF).pClosure == 0 ){ STMT; return PH7_OK; } \
+	}
 
 /* ---- ReflectionFunctionAbstract ---- */
 static int vm_builtin_ReflectionFunc_clone(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -6112,7 +6127,7 @@ static int vm_builtin_ReflectionFunc_getClosureThis(ph7_context *pCtx, int nArg,
 	ph7_value *pAttr;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	REFLECT_CLOSURE_OR(sRef, ph7_result_null(pCtx))
 	pAttr = ReflectClosureAttr(&sRef, "__this");
 	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
 		ph7_result_value(pCtx, pAttr);
@@ -6127,7 +6142,7 @@ static int vm_builtin_ReflectionFunc_getClosureScopeClass(ph7_context *pCtx, int
 	ph7_value *pAttr;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	REFLECT_CLOSURE_OR(sRef, ph7_result_null(pCtx))
 	pAttr = ReflectClosureAttr(&sRef, "__scope");
 	if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
 		/* php reports the class that DECLARED the callee, not the one the callable NAMED:
@@ -6157,7 +6172,7 @@ static int vm_builtin_ReflectionFunc_getClosureCalledClass(ph7_context *pCtx, in
 	ph7_value *pAttr;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	REFLECT_CLOSURE_OR(sRef, ph7_result_null(pCtx))
 	pAttr = ReflectClosureAttr(&sRef, "__this");
 	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
 		return ReflectResultClassOf(pCtx, ((ph7_class_instance *)pAttr->x.pOther)->pClass);
@@ -6802,9 +6817,25 @@ static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, 
 		const char *zName;
 		int nName;
 		if( pClo ){
-			/* A Closure whose body no table holds: still a valid reflection
-			 * target, so record it and let the accessors answer emptily. */
+			/* A Closure whose body no table holds -- php's magic-method TRAMPOLINE
+			 * (`Closure::fromCallable([$o, 'zz'])` where the class reaches `zz`
+			 * only through __call) is the shape real libraries hit. php still
+			 * NAMES it: the name is the one that was asked for, which the Closure
+			 * carries in $__fn, and the scope is $__scope. Leaving `name`
+			 * uninitialized made every read of it a typed-property Error, and
+			 * `str_contains($r->name, '{closure')` is one line of twig's filter
+			 * compiler. The rest of the accessors still answer emptily: there is
+			 * no body to describe, which is php's answer too (0 parameters, no
+			 * file, no line). */
+			SyString sAttr;
+			ph7_value *pFn;
 			PH7_NativeSetAttrObj(pVm, pThis, RF_CL, pClo);
+			SyStringInitFromBuf(&sAttr, "__fn", 4);
+			pFn = PH7_ClassInstanceFetchAttr(pClo, &sAttr);
+			if( pFn && (pFn->iFlags & MEMOBJ_STRING) && SyBlobLength(&pFn->sBlob) > 0 ){
+				PH7_NativeSetAttrStr(pVm, pThis, "name",
+					(const char *)SyBlobData(&pFn->sBlob), (int)SyBlobLength(&pFn->sBlob));
+			}
 			return PH7_OK;
 		}
 		zName = ph7_value_to_string(apArg[0], &nName);

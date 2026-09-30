@@ -519,59 +519,101 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 					pIterAggClass = PH7_VmExtractClass(&(*pVm),"IteratorAggregate",
 						sizeof("IteratorAggregate")-1,FALSE,0);
 					if( pIterAggClass && PH7_VmInstanceOf(pThis->pClass,pIterAggClass) ){
-						/* Call getIterator() and use the returned Iterator object */
+						/* php resolves a CHAIN, not one hop: whatever getIterator()
+						 * hands back is asked the same question, so an
+						 * IteratorAggregate may return another one and only the
+						 * Iterator at the end drives the loop. PHL stopped at the
+						 * first hop and refused everything else, which is what
+						 * `foreach` over any aggregate-of-an-aggregate hit -- twig's
+						 * `in` filter over one is two rows of its suite. The two
+						 * ends php still refuses are a receiver that returns ITSELF
+						 * and a return that is not Traversable at all; a cycle
+						 * between two aggregates is php's stack overflow, and a
+						 * bounded walk here (nothing real nests) so the engine
+						 * answers instead of spinning. */
+						ph7_class_instance *pAgg = pThis;  /* whose getIterator() to ask */
+						ph7_class_instance *pAggHold = 0;  /* an intermediate this walk owns */
+						ph7_class_instance *pIterObj = 0;
 						ph7_class_method *pGetIter;
-						int iterAggOk = 0;
-						pGetIter = PH7_ClassExtractMethod(pThis->pClass,"getIterator",sizeof("getIterator")-1);
-						if( pGetIter ){
+						int iterAggOk = 0, nHop = 0;
+						for(;;){
 							ph7_value sResult;
+							pGetIter = PH7_ClassExtractMethod(pAgg->pClass,"getIterator",sizeof("getIterator")-1);
+							if( pGetIter == 0 ){
+								break;
+							}
 							PH7_MemObjInit(&(*pVm),&sResult);
-							rc = PH7_VmCallClassMethod(&(*pVm),pThis,pGetIter,&sResult,0,0);
+							rc = PH7_VmCallClassMethod(&(*pVm),pAgg,pGetIter,&sResult,0,0);
 							if( VmIterCallThrew(rc) ){
 								/* getIterator() threw: drop the step and route the
-								 * exception (don't pile the "must implement Iterator"
+								 * exception (don't pile the "must be traversable"
 								 * error on top of it). */
 								PH7_MemObjRelease(&sResult);
+								if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
 								SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 								pStep = 0;
 								PH7_DISPATCH_ITER_RC(rc,1)
 							}
-							if( (sResult.iFlags & MEMOBJ_OBJ) && sResult.x.pOther ){
-								ph7_class_instance *pIterObj = (ph7_class_instance *)sResult.x.pOther;
-								if( pIteratorClass && PH7_VmInstanceOf(pIterObj->pClass,pIteratorClass) ){
-									ph7_class_method *pRewind;
-									pStep->iFlags |= PH7_4EACH_STEP_ITERATOR|PH7_4EACH_STEP_FIRST;
-									pStep->xIter.pThis = pIterObj;
-									pIterObj->iRef++;
-									/* Retain the aggregate so it lives for the duration of the foreach */
-									pStep->pOwner = pThis;
-									pThis->iRef++;
-									pRewind = PH7_ClassExtractMethod(pIterObj->pClass,"rewind",sizeof("rewind")-1);
-									if( pRewind ){
-										rc = PH7_VmCallClassMethod(&(*pVm),pIterObj,pRewind,0,0,0);
-										if( VmIterCallThrew(rc) ){
-											/* The aggregate's iterator rewind() threw: undo
-											 * both retains, drop the step, route the exception. */
-											pIterObj->iRef--;
-											pThis->iRef--;
-											PH7_MemObjRelease(&sResult);
-											SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-											pStep = 0;
-											PH7_DISPATCH_ITER_RC(rc,1)
-										}
-									}
-									iterAggOk = 1;
-								}
+							pIterObj = ((sResult.iFlags & MEMOBJ_OBJ) && sResult.x.pOther)
+								? (ph7_class_instance *)sResult.x.pOther : 0;
+							if( pIterObj && pIteratorClass
+							 && PH7_VmInstanceOf(pIterObj->pClass,pIteratorClass) ){
+								pIterObj->iRef++; /* survive the release below */
+								PH7_MemObjRelease(&sResult);
+								iterAggOk = 1;
+								break;
 							}
+							if( pIterObj == 0 || pIterObj == pAgg
+							 || !PH7_VmInstanceOf(pIterObj->pClass,pIterAggClass)
+							 || ++nHop > 256 ){
+								PH7_MemObjRelease(&sResult);
+								break;
+							}
+							/* Another aggregate: own it across the next call, exactly
+							 * as php's own retval does, and drop the one before it. */
+							pIterObj->iRef++;
+							if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
+							pAggHold = pIterObj;
+							pAgg = pIterObj;
 							PH7_MemObjRelease(&sResult);
 						}
-						if( !iterAggOk ){
-							/* getIterator() failed or returned non-Iterator: abort this foreach */
-							PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-								"Object returned by getIterator() must implement Iterator");
+						if( iterAggOk ){
+							ph7_class_method *pRewind;
+							pStep->iFlags |= PH7_4EACH_STEP_ITERATOR|PH7_4EACH_STEP_FIRST;
+							pStep->xIter.pThis = pIterObj; /* ref taken in the walk */
+							/* Retain the aggregate so it lives for the duration of the foreach */
+							pStep->pOwner = pThis;
+							pThis->iRef++;
+							pRewind = PH7_ClassExtractMethod(pIterObj->pClass,"rewind",sizeof("rewind")-1);
+							if( pRewind ){
+								rc = PH7_VmCallClassMethod(&(*pVm),pIterObj,pRewind,0,0,0);
+								if( VmIterCallThrew(rc) ){
+									/* The aggregate's iterator rewind() threw: undo
+									 * both retains, drop the step, route the exception. */
+									pIterObj->iRef--;
+									pThis->iRef--;
+									if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
+									SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+									pStep = 0;
+									PH7_DISPATCH_ITER_RC(rc,1)
+								}
+							}
+							if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
+						}else{
+							/* php's own wording, and php's own THROW: a catchable
+							 * Exception naming the receiver that answered wrong, where
+							 * PHL raised an uncatchable E_ERROR diagnostic. */
+							char zMsg[256];
+							int nMsg;
+							ph7_class *pBad = pAgg->pClass;
+							nMsg = (int)SyBufferFormat(zMsg,sizeof(zMsg),
+								"Objects returned by %.*s::getIterator() must be traversable or implement interface Iterator",
+								(int)SyStringLength(&pBad->sName),SyStringData(&pBad->sName));
+							if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
 							SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 							pStep = 0; /* Signal: do not store this step */
-							pc = pInstr->iP2 - 1;
+							rc = VmThrowFromVm(&(*pVm),"Exception",zMsg,(sxu32)nMsg);
+							PH7_DISPATCH_ITER_RC(rc,1)
 						}
 					}else{
 						/* Plain object iteration via hAttr. A PRIVATE cursor,

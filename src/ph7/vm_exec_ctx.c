@@ -990,7 +990,39 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 	}
 	if( pValue->iFlags & MEMOBJ_STRING ){
 		SyString sName;
-		SyStringInitFromBuf(&sName, SyBlobData(&pValue->sBlob), SyBlobLength(&pValue->sBlob));
+		const char *zName = (const char *)SyBlobData(&pValue->sBlob);
+		sxu32 nName = SyBlobLength(&pValue->sBlob), nSep;
+		/* `"C::m"` is the SAME callable as `[C, 'm']`, and php mints the same
+		 * closure for it: scope C, name m. PHL kept the whole string as the
+		 * function name, so the Closure ran (dispatch splits it) but described
+		 * itself as nothing -- ReflectionFunction over it had no name, no scope
+		 * and no parameters, and a library that reflects a callback before
+		 * calling it (twig compiles every filter that way) died on the read. */
+		for( nSep = 0 ; nSep + 1 < nName ; ++nSep ){
+			if( zName[nSep] == ':' && zName[nSep+1] == ':' ){
+				break;
+			}
+		}
+		if( nSep + 1 < nName ){
+			ph7_class *pScopeCls;
+			SyString sCls;
+			SyStringInitFromBuf(&sCls, zName, nSep);
+			pScopeCls = PH7_VmExtractClass(pVm, SyStringData(&sCls), SyStringLength(&sCls), FALSE, 0);
+			if( pScopeCls ){
+				ph7_class_instance *pFccObj;
+				SyStringInitFromBuf(&sName, zName + nSep + 2, nName - (nSep + 2));
+				pFccObj = VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName);
+				if( pFccObj ){
+					pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
+					if( PH7_VmFccMethodIsDirect(pVm,pScopeCls,
+							SyStringData(&sName),SyStringLength(&sName)) ){
+						pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
+					}
+				}
+				return pFccObj;
+			}
+		}
+		SyStringInitFromBuf(&sName, zName, nName);
 		return VmCreateClosure(pVm, &sName, 0, 0);
 	}
 	if( pValue->iFlags & MEMOBJ_HASHMAP ){

@@ -1586,32 +1586,63 @@ PH7_PRIVATE sxi32 PH7_VmIteratorWalk(ph7_vm *pVm,ph7_value *pObj,ProcIterStep xS
 	if( PH7_VmInstanceOf(pThis->pClass,pIteratorClass) ){
 		pThis->iRef++; /* keep the iterator alive across the walk */
 	}else{
-		/* Maybe an IteratorAggregate: resolve its inner Iterator via getIterator() */
+		/* Maybe an IteratorAggregate: resolve its inner Iterator via getIterator().
+		 * php asks the returned object the same question, so the walk follows the
+		 * whole CHAIN -- the foreach opcode's own resolution and this one have to
+		 * agree, or `foreach ($x as ...)` and `iterator_to_array($x)` answer
+		 * differently for the same value. */
 		ph7_class *pAggClass = PH7_VmExtractClass(&(*pVm),"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);
-		ph7_value sInner;
-		int bOk = 0;
+		ph7_class_instance *pAggWalk = pThis, *pAggHold = 0;
+		int bOk = 0, nHop = 0;
 		if( pAggClass == 0 || !PH7_VmInstanceOf(pThis->pClass,pAggClass) ){
 			return SXERR_NOTIMPLEMENTED; /* not Traversable at all */
 		}
-		PH7_MemObjInit(&(*pVm),&sInner);
-		rc = VmIterCallMethod(pVm,pThis,"getIterator",sizeof("getIterator")-1,&sInner);
-		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
-			PH7_MemObjRelease(&sInner);
-			return rc;
-		}
-		if( (sInner.iFlags & MEMOBJ_OBJ) && sInner.x.pOther ){
-			ph7_class_instance *pIter = (ph7_class_instance *)sInner.x.pOther;
-			if( PH7_VmInstanceOf(pIter->pClass,pIteratorClass) ){
+		for(;;){
+			ph7_value sInner;
+			ph7_class_instance *pIter;
+			PH7_MemObjInit(&(*pVm),&sInner);
+			rc = VmIterCallMethod(pVm,pAggWalk,"getIterator",sizeof("getIterator")-1,&sInner);
+			if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+				PH7_MemObjRelease(&sInner);
+				if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
+				return rc;
+			}
+			pIter = ((sInner.iFlags & MEMOBJ_OBJ) && sInner.x.pOther)
+				? (ph7_class_instance *)sInner.x.pOther : 0;
+			if( pIter && PH7_VmInstanceOf(pIter->pClass,pIteratorClass) ){
 				pAggregate = pThis; pAggregate->iRef++; /* keep the aggregate alive */
 				pThis = pIter; pThis->iRef++;           /* survive release of sInner */
 				bOk = 1;
+				PH7_MemObjRelease(&sInner);
+				break;
 			}
+			if( pIter == 0 || pIter == pAggWalk
+			 || !PH7_VmInstanceOf(pIter->pClass,pAggClass)
+			 || ++nHop > 256 ){
+				PH7_MemObjRelease(&sInner);
+				break;
+			}
+			pIter->iRef++;
+			if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
+			pAggHold = pIter;
+			pAggWalk = pIter;
+			PH7_MemObjRelease(&sInner);
 		}
-		PH7_MemObjRelease(&sInner);
 		if( !bOk ){
-			/* getIterator() returned a non-Iterator: surface as not-a-Traversable */
-			return SXERR_NOTIMPLEMENTED;
+			/* php's wording and php's class: the value IS Traversable, so the
+			 * caller's "must be of type Traversable|array" TypeError would name the
+			 * wrong problem. */
+			char zMsg[256];
+			int nMsg;
+			ph7_class *pBad = pAggWalk->pClass;
+			nMsg = (int)SyBufferFormat(zMsg,sizeof(zMsg),
+				"Objects returned by %.*s::getIterator() must be traversable or implement interface Iterator",
+				(int)SyStringLength(&pBad->sName),SyStringData(&pBad->sName));
+			if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
+			rc = VmThrowFromVm(&(*pVm),"Exception",zMsg,(sxu32)nMsg);
+			return (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 		}
+		if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
 	}
 	if( PH7_VmGeneratorIsClosed(&(*pVm),pThis) ){
 		/* Same refusal the foreach opcode makes: php will not START a walk over a
