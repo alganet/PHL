@@ -1435,7 +1435,11 @@ PH7_PRIVATE sxi32 PH7_StreamReadWholeFile(void *pHandle,const ph7_io_stream *pSt
 			break;
 		}
 	}
-	return SyBlobLength(pOut) > 0 ? SXRET_OK : -1;
+	/* An EMPTY file is read, not failed: php's include of a 0-byte file is a
+	 * silent no-op where this answered -1 and the include warned "IO error while
+	 * importing". The device's own failure still is one -- it answers a NEGATIVE
+	 * count, where end-of-file is 0. */
+	return (SyBlobLength(pOut) > 0 || nRead == 0) ? SXRET_OK : -1;
 }
 /*
  * Close an open IO stream handle [i.e local file/URI..].

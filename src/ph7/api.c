@@ -932,8 +932,11 @@ int ph7_compile_file(ph7 *pEngine,const char *zFilePath,ph7_vm **ppOutVm,int iFl
 			 /* Compile the file */
 			 SyStringInitFromBuf(&sScript,pMapView,nSize);
 			 rc = ProcessScript(&(*pEngine),ppOutVm,&sScript,iFlags,zFilePath);
-			 /* Release the memory view of the whole file */
-			 if( pVfs->xUnmap ){
+			 /* Release the memory view of the whole file. A ZERO-length view is
+			  * the answer for a 0-byte file -- a legal, empty PHP program -- and
+			  * it is not a mapping: the vfs hands back a static empty string, so
+			  * unmapping it would be a free of something it never allocated. */
+			 if( pVfs->xUnmap && nSize > 0 ){
 				 pVfs->xUnmap(pMapView,nSize);
 			 }
 		 }

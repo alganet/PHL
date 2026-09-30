@@ -998,6 +998,17 @@ static int WinVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)
 	}
 	/* Get the file size */
 	dwSizeLow = GetFileSize(pHandle,&dwSizeHigh);
+	if( dwSizeLow == 0 && dwSizeHigh == 0 ){
+		/* A 0-byte file is a legal PHP program that prints nothing.
+		 * CreateFileMapping refuses a zero-length file (ERROR_FILE_INVALID), so
+		 * this came back as an IO error and `phl empty.php` said "Could not open
+		 * input file" where php runs it. Answer an EMPTY view; the caller does
+		 * not unmap one (api.c). */
+		CloseHandle(pHandle);
+		*ppMap = (void *)"";
+		*pSize = 0;
+		return PH7_OK;
+	}
 	/* Create the mapping */
 	pMapHandle = CreateFileMappingW(pHandle,0,PAGE_READONLY,dwSizeHigh,dwSizeLow,0);
 	if( pMapHandle == 0 ){

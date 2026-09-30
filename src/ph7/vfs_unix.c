@@ -574,6 +574,19 @@ static int UnixVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)
 	}
 	/* stat the handle */
 	fstat(fd,&st);
+	if( S_ISREG(st.st_mode) && st.st_size == 0 ){
+		/* A 0-byte file is a legal PHP program: php runs it and prints nothing.
+		 * mmap() refuses a zero length with EINVAL, so this used to come back as
+		 * an IO error and `phl empty.php` answered "Could not open input file"
+		 * where `php -l` says no syntax errors. Hand back an EMPTY view instead;
+		 * the caller does not unmap one (api.c), so its pointer is never freed.
+		 * REGULAR files only: a pipe or a character device also stats as 0 and is
+		 * not empty -- neither was ever mappable, and both stay an IO error. */
+		*ppMap = (void *)"";
+		*pSize = 0;
+		close(fd);
+		return PH7_OK;
+	}
 	/* Obtain a memory view of the whole file */
 	pMap = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE|MAP_FILE,fd,0);
 	rc = PH7_OK;
