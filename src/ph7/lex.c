@@ -115,6 +115,21 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 	pToken->pUserData = 0;
 	pStr = &pToken->sData;
 	SyStringInitFromBuf(pStr,pStream->zText,0);
+	/* php's BINARY-STRING PREFIX. A lone `b`/`B` welded to a quote or to `<<<` is
+	 * not an identifier: php's scanner takes it as part of the string token, and
+	 * since php has ONE string type it marks nothing at runtime -- which is exactly
+	 * why it survives in real source (`b'foo'` is `'foo'`). PHL lexed the letter as
+	 * a label, so every such literal was `syntax error, unexpected
+	 * single-quoted string`. The prefix is ADJACENT only: `b <<<'S'` and `bb'foo'`
+	 * are an identifier followed by a string, in php as here. */
+	if( (pStream->zText[0] == 'b' || pStream->zText[0] == 'B')
+	 && &pStream->zText[1] < pStream->zEnd
+	 && ( pStream->zText[1] == '\'' || pStream->zText[1] == '"'
+	   || ( pStream->zText[1] == '<' && &pStream->zText[3] < pStream->zEnd
+	     && pStream->zText[2] == '<' && pStream->zText[3] == '<' ) ) ){
+		pStream->zText++;                       /* the prefix is not part of the VALUE */
+		SyStringInitFromBuf(pStr,pStream->zText,0);
+	}
 	if( LEX_LABEL_START(pStream->zText[0]) ){
 		const unsigned char *zIn;
 		sxu32 nKeyword;

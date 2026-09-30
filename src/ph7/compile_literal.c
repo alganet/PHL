@@ -1163,6 +1163,15 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 				 * "'->': Missing/Invalid member name" on source php RUNS. */
 				zIn += 2;
 				GenStateSkipStringLabel(&zIn,zEnd);
+			}else if( &zIn[3] < zEnd && zIn[0] == '?' && zIn[1] == '-' && zIn[2] == '>'
+				&& GEN_STRING_LABEL_START(zIn[3]) ){
+				/* php 8.0 gave the simple syntax the NULLSAFE arrow on the same terms
+				 * as '->': exactly one property name, taken only when a LABEL follows.
+				 * Without it `"$o?->b"` cast the OBJECT to a string and appended four
+				 * literal bytes -- an uncatchable "could not be converted to string"
+				 * on source php runs. */
+				zIn += 3;
+				GenStateSkipStringLabel(&zIn,zEnd);
 			}
 			/*
 			 * "$a[offset]" -- php parses a simple-syntax subscript with its OWN tiny

@@ -472,7 +472,11 @@ static void tok_plain(tok_state *ts,const char *z,int n){
 		return;
 	}
 	if( ts->pTokClass ){
-		tok_object(ts,(unsigned char)z[0],z,n,ts->iLine);
+		/* php's PhpToken id for a single-character token is the character ITSELF,
+		 * and for the two-byte binary-string opener `b"` that character is the
+		 * QUOTE -- the last byte, not the prefix. (token_get_all's array form has
+		 * no id here at all, so only this branch can tell.) */
+		tok_object(ts,(unsigned char)z[n-1],z,n,ts->iLine);
 		ts->iPos += n;
 		return;
 	}
@@ -544,6 +548,46 @@ static int  tok_lex_one(tok_state *ts);
 static void tok_scan_curly(tok_state *ts,int bVarname);
 
 /*
+ * php's {WHITESPACE_OR_COMMENTS}: the run of whitespace and complete comments a
+ * contextual keyword is allowed to look across. Returns the cursor past it and
+ * sets *pbAny when anything at all was skipped -- `enum Foo` needs a separator,
+ * and a comment counts as one (a block comment between `enum` and the name
+ * still leaves an enum declaration).
+ */
+static const unsigned char * tok_skip_ws_comments(tok_state *ts,const unsigned char *z,int *pbAny)
+{
+	int bAny = 0;
+	for(;;){
+		if( z < ts->zEnd && tok_is_ws(*z) ){
+			while( z < ts->zEnd && tok_is_ws(*z) ){ z++; }
+			bAny = 1;
+			continue;
+		}
+		if( z+1 < ts->zEnd && z[0]=='/' && z[1]=='*' ){
+			const unsigned char *p = z+2;
+			while( p+1 < ts->zEnd && !(p[0]=='*' && p[1]=='/') ){ p++; }
+			if( p+1 >= ts->zEnd ){ break; }   /* unterminated: not a separator */
+			z = p+2;
+			bAny = 1;
+			continue;
+		}
+		if( z+1 < ts->zEnd && z[0]=='/' && z[1]=='/' ){
+			while( z < ts->zEnd && *z!='\n' && *z!='\r' ){ z++; }
+			bAny = 1;
+			continue;
+		}
+		if( z < ts->zEnd && *z=='#' && !(z+1 < ts->zEnd && z[1]=='[') ){
+			while( z < ts->zEnd && *z!='\n' && *z!='\r' ){ z++; }
+			bAny = 1;
+			continue;
+		}
+		break;
+	}
+	if( pbAny ){ *pbAny = bAny; }
+	return z;
+}
+
+/*
  * After a T_HALT_COMPILER token: php emits the "();" that follows as normal
  * tokens and then the entire remainder of the source as a single T_INLINE_HTML.
  */
@@ -571,6 +615,24 @@ static void tok_halt_tail(tok_state *ts){
 			ts->z++;
 			break;
 		}
+		if( *ts->z=='?' && ts->z+1 < ts->zEnd && ts->z[1]=='>' ){
+			/* php's other statement terminator. The close tag is a TOKEN there, and
+			 * the remainder starts after it (and after the one newline the tag
+			 * swallows); this swallowed the `?>` into the T_INLINE_HTML, so a
+			 * `__halt_compiler()` with no semicolon -- the shape every phar stub and
+			 * every data-appended script uses -- lost its terminator. */
+			const unsigned char *z0 = ts->z;
+			int iLine = ts->iLine;
+			ts->z += 2;
+			if( ts->z < ts->zEnd && *ts->z=='\r' && ts->z+1 < ts->zEnd && ts->z[1]=='\n' ){ ts->z += 2; }
+			else if( ts->z < ts->zEnd && (*ts->z=='\n' || *ts->z=='\r') ){ ts->z++; }
+			/* The line does NOT advance for the newline this tag swallows, and that
+			 * is php's own asymmetry rather than an oversight: the ordinary close tag
+			 * hands the rest of the file to the INITIAL state, which counts it, while
+			 * the halt-compiler remainder is emitted here and keeps the tag's line. */
+			tok_tok(ts,T_CLOSE_TAG,(const char *)z0,(int)(ts->z-z0),iLine);
+			break;
+		}
 		break;
 	}
 	if( ts->z < ts->zEnd ){
@@ -582,6 +644,70 @@ static void tok_halt_tail(tok_state *ts){
 	ts->bStop = 1;
 }
 
+/* Which digits a run may hold. */
+#define TOK_DIG_DEC 10
+#define TOK_DIG_HEX 16
+#define TOK_DIG_BIN 2
+#define TOK_DIG_OCT 8
+static int tok_is_digit_of(int c,int radix){
+	if( c>='0' && c<='9' ){ return (c-'0') < radix; }
+	if( radix == 16 ){ return (c>='a'&&c<='f') || (c>='A'&&c<='F'); }
+	return 0;
+}
+/*
+ * One digit run in php's number grammar, whose separator rule is
+ * `{DIGIT}+(_{DIGIT}+)*` -- an underscore is legal only BETWEEN two digits of
+ * the run's own class. Taking `_` as just another digit character (which is what
+ * the loops here used to do) accepted `100_`, `1__1` and `1_.0`, all of which php
+ * rejects: it stops the number at the first digit and lexes the rest as a LABEL,
+ * so `1__1` is the integer 1 followed by T_STRING `__1`. Advances *pz past the
+ * run and answers how many digits it held.
+ */
+static int tok_digit_run(tok_state *ts,const unsigned char **pz,int radix)
+{
+	const unsigned char *z = *pz;
+	int n = 0;
+	while( z < ts->zEnd && tok_is_digit_of(*z,radix) ){ z++; n++; }
+	if( n == 0 ){ return 0; }
+	for(;;){
+		if( z+1 < ts->zEnd && *z=='_' && tok_is_digit_of(z[1],radix) ){
+			z++;
+			while( z < ts->zEnd && tok_is_digit_of(*z,radix) ){ z++; n++; }
+			continue;
+		}
+		break;
+	}
+	*pz = z;
+	return n;
+}
+/*
+ * php's ST_VAR_OFFSET number: `{LNUM}|{HNUM}|{BNUM}|{ONUM}` -- the SAME four
+ * spellings a literal has, `_` separators included, not the plain digit run this
+ * used to take. `"$a[0x0]"` is one T_NUM_STRING covering `0x0` in php (the VALUE
+ * is still the string key "0x0"; the offset grammar decides the TOKEN, not the
+ * meaning), and splitting it left `x0]` as encapsed text and a parse error where
+ * php has none. Advances *pz past the run and returns 1 on a match.
+ */
+static int tok_offset_num(tok_state *ts,const unsigned char **pz)
+{
+	const unsigned char *z = *pz;
+	if( z >= ts->zEnd ){ return 0; }
+	if( *z=='0' && z+1 < ts->zEnd ){
+		int c1 = z[1];
+		const unsigned char *d = z+2;
+		if( (c1=='x'||c1=='X') && tok_digit_run(ts,&d,TOK_DIG_HEX) ){ *pz = d; return 1; }
+		d = z+2;
+		if( (c1=='b'||c1=='B') && tok_digit_run(ts,&d,TOK_DIG_BIN) ){ *pz = d; return 1; }
+		d = z+2;
+		if( (c1=='o'||c1=='O') && tok_digit_run(ts,&d,TOK_DIG_OCT) ){ *pz = d; return 1; }
+	}
+	if( *z>='0' && *z<='9' ){
+		tok_digit_run(ts,&z,TOK_DIG_DEC);
+		*pz = z;
+		return 1;
+	}
+	return 0;
+}
 /*
  * Handle a possible interpolation construct at the cursor inside a double-quoted
  * string or heredoc body. Returns 1 if it consumed one (emitting tokens), else 0
@@ -599,35 +725,85 @@ static int tok_try_interp(tok_state *ts,const unsigned char **pLitStart,int *pLi
 		ts->z = zVar;
 		/* one optional simple offset [...] or ->prop */
 		if( ts->z < ts->zEnd && *ts->z=='[' ){
+			/* php's ST_VAR_OFFSET, which is a STATE and therefore a loop, not one
+			 * token: it keeps producing tokens until a ']' pops it (or until one of
+			 * six bytes gives the input back). This used to read at most a single
+			 * offset token, so `"$a[0x]"` -- valid source whose key is the string
+			 * "0x" -- left `x]` as encapsed text and a parse error where php has a
+			 * T_NUM_STRING and a T_STRING. */
 			tok_plain(ts,"[",1);
 			ts->z++;
-			if( ts->z < ts->zEnd && *ts->z=='$' && ts->z+1 < ts->zEnd && tok_is_label_start(ts->z[1]) ){
-				const unsigned char *v = ts->z+1;
-				while( v < ts->zEnd && tok_is_label(*v) ){ v++; }
-				tok_tok(ts,T_VARIABLE,(const char *)ts->z,(int)(v-ts->z),ts->iLine);
-				ts->z = v;
-			}else{
-				const unsigned char *n0 = ts->z;
-				if( ts->z < ts->zEnd && *ts->z=='-' ){
-					tok_plain(ts,"-",1);
+			for(;;){
+				int co;
+				if( ts->z >= ts->zEnd ){ break; }
+				co = *ts->z;
+				if( co==']' ){
+					tok_plain(ts,"]",1);
 					ts->z++;
-					n0 = ts->z;
+					break;
 				}
-				if( ts->z < ts->zEnd && *ts->z>='0' && *ts->z<='9' ){
-					while( ts->z < ts->zEnd && *ts->z>='0' && *ts->z<='9' ){ ts->z++; }
-					tok_tok(ts,T_NUM_STRING,(const char *)n0,(int)(ts->z-n0),ts->iLine);
-				}else if( ts->z < ts->zEnd && tok_is_label_start(*ts->z) ){
+				if( co==' '||co=='\n'||co=='\r'||co=='\t'||co=='\\'||co=='\''||co=='#' ){
+					/* php's one rule whose whole job is a better parse error: it gives
+					 * the input BACK (yyless(0)) and pops the state, so the offset
+					 * produces an EMPTY T_ENCAPSED_AND_WHITESPACE and the string
+					 * scanner then reads the rest -- ` 0]` and all -- as one more
+					 * encapsed run. The empty token is the position a parser reports
+					 * the error at, so it is part of the contract. */
+					tok_tok(ts,T_ENCAPSED_AND_WHITESPACE,(const char *)ts->z,0,ts->iLine);
+					break;
+				}
+				if( co=='$' && ts->z+1 < ts->zEnd && tok_is_label_start(ts->z[1]) ){
+					const unsigned char *v = ts->z+1;
+					while( v < ts->zEnd && tok_is_label(*v) ){ v++; }
+					tok_tok(ts,T_VARIABLE,(const char *)ts->z,(int)(v-ts->z),ts->iLine);
+					ts->z = v;
+					continue;
+				}
+				{
+					const unsigned char *n0 = ts->z;
+					if( tok_offset_num(ts,&ts->z) ){
+						tok_tok(ts,T_NUM_STRING,(const char *)n0,(int)(ts->z-n0),ts->iLine);
+						continue;
+					}
+				}
+				if( tok_is_label_start(co) ){
 					const unsigned char *l = ts->z;
 					while( l < ts->zEnd && tok_is_label(*l) ){ l++; }
 					tok_tok(ts,T_STRING,(const char *)ts->z,(int)(l-ts->z),ts->iLine);
 					ts->z = l;
+					continue;
+				}
+				if( co < 0x20 || co == 0x7f ){
+					char chBad = (char)co;
+					tok_tok(ts,T_BAD_CHARACTER,&chBad,1,ts->iLine);
+					ts->z++;
+					continue;
+				}
+				/* Everything else is php's generic one-character rule -- `-`, `+`,
+				 * `,`, `@`, a brace, a quote: "only '[' or '-' can be valid, but
+				 * returning other tokens allows a more explicit parse error". */
+				{
+					char chTok = (char)co;
+					tok_plain(ts,&chTok,1);
+					ts->z++;
 				}
 			}
-			if( ts->z < ts->zEnd && *ts->z==']' ){ tok_plain(ts,"]",1); ts->z++; }
 		}else if( ts->z+2 < ts->zEnd && ts->z[0]=='-' && ts->z[1]=='>' && tok_is_label_start(ts->z[2]) ){
 			const unsigned char *l;
 			tok_tok(ts,T_OBJECT_OPERATOR,"->",2,ts->iLine);
 			ts->z += 2;
+			l = ts->z;
+			while( l < ts->zEnd && tok_is_label(*l) ){ l++; }
+			tok_tok(ts,T_STRING,(const char *)ts->z,(int)(l-ts->z),ts->iLine);
+			ts->z = l;
+		}else if( ts->z+3 < ts->zEnd && ts->z[0]=='?' && ts->z[1]=='-' && ts->z[2]=='>'
+			&& tok_is_label_start(ts->z[3]) ){
+			/* php 8.0 gave the simple syntax the NULLSAFE arrow too, on the same
+			 * terms as '->': one property name and no further accessor. Without it
+			 * `"$a?->b"` was the variable followed by four literal bytes. */
+			const unsigned char *l;
+			tok_tok(ts,T_NULLSAFE_OBJECT_OPERATOR,"?->",3,ts->iLine);
+			ts->z += 3;
 			l = ts->z;
 			while( l < ts->zEnd && tok_is_label(*l) ){ l++; }
 			tok_tok(ts,T_STRING,(const char *)ts->z,(int)(l-ts->z),ts->iLine);
@@ -701,9 +877,15 @@ static void tok_scan_curly(tok_state *ts,int bVarname){
 static void tok_scan_dquote(tok_state *ts,int chDelim){
 	const unsigned char *zOpen = ts->z;
 	int iOpenLine = ts->iLine;
-	const unsigned char *zScan = ts->z+1;
+	/* A leading `b`/`B` is php's binary-string prefix (see tok_lex_one): it belongs
+	 * to the token, so the token starts at zOpen while the DELIMITER scan starts
+	 * one byte later. nPfx is 1 exactly when the prefix is there. */
+	int nPfx = (*zOpen != (unsigned char)chDelim) ? 1 : 0;
+	const unsigned char *zScan;
 	int bInterp = 0;
 	int bClosed = 0;
+	ts->z += nPfx;
+	zScan = ts->z+1;
 	/* Peek for interpolation to decide constant-vs-split (only for '"'). */
 	while( zScan < ts->zEnd ){
 		int c = *zScan;
@@ -729,10 +911,15 @@ static void tok_scan_dquote(tok_state *ts,int chDelim){
 	}
 	/* Split form: opening delimiter, then body, then closing delimiter. */
 	{
+		char aOpen[2];
 		char d = (char)chDelim;
 		const unsigned char *litStart;
 		int litLine;
-		tok_plain(ts,&d,1);
+		/* The opening token carries the prefix: php emits `b"` as one two-byte
+		 * single-character-token, not `b` and then `"`. */
+		aOpen[0] = nPfx ? (char)zOpen[0] : d;
+		aOpen[1] = d;
+		tok_plain(ts,nPfx ? aOpen : &d,nPfx ? 2 : 1);
 		ts->z++;
 		litStart = ts->z;
 		litLine  = ts->iLine;
@@ -786,7 +973,9 @@ static const unsigned char * tok_heredoc_close(tok_state *ts,const unsigned char
 static int tok_scan_heredoc(tok_state *ts){
 	const unsigned char *zStart = ts->z;
 	int iStartLine = ts->iLine;
-	const unsigned char *z = ts->z+3;
+	/* `b<<<LABEL`: the binary-string prefix is part of T_START_HEREDOC. */
+	int nPfx = (*zStart != '<') ? 1 : 0;
+	const unsigned char *z = ts->z+3+nPfx;
 	int bNowdoc = 0;
 	int chQuote = 0;
 	const unsigned char *zLabel;
@@ -804,6 +993,9 @@ static int tok_scan_heredoc(tok_state *ts){
 	while( z < ts->zEnd && tok_is_label(*z) ){ z++; }
 	nLabel = (int)(z - zLabel);
 	if( nLabel < 1 ){ return 0; } /* no label -> not a heredoc */
+	/* Every failure below returns 0 with ts->z still on the first byte, so a
+	 * `b<<<` that turns out not to open a heredoc can fall back to lexing the
+	 * prefix as an ordinary label. */
 	if( chQuote ){
 		if( z < ts->zEnd && *z==chQuote ){ z++; }
 		else { return 0; } /* unbalanced quote -> not a heredoc */
@@ -859,6 +1051,10 @@ static int tok_cast_id(const char *z,int n){
 	if( tok_ci_eq(z,n,"object") ) return T_OBJECT_CAST;
 	if( tok_ci_eq(z,n,"bool") || tok_ci_eq(z,n,"boolean") ) return T_BOOL_CAST;
 	if( tok_ci_eq(z,n,"unset") ) return T_UNSET_CAST;
+	/* php 8.5's `(void)`. It converts nothing and the grammar takes it only at the
+	 * head of an expression statement, but the SCANNER produces it wherever the
+	 * spelling appears -- so `$x = (void);` is T_VOID_CAST followed by ';'. */
+	if( tok_ci_eq(z,n,"void") ) return T_VOID_CAST;
 	return 0;
 }
 
@@ -961,9 +1157,12 @@ static int tok_lex_one(tok_state *ts){
 		const unsigned char *z0 = z;
 		int iLine = ts->iLine;
 		ts->z += 2;
-		/* php swallows one trailing newline (\n or \r\n) into the close tag */
+		/* php swallows one trailing NEWLINE into the close tag, and its newline is
+		 * ("\r\n"|"\n"|"\r") -- a lone CR counts. `?>\r\r\n` therefore ends the tag
+		 * after the FIRST CR (the pair "\r\r" is not "\r\n"), and the inline HTML that
+		 * follows starts a line later. */
 		if( ts->z < ts->zEnd && *ts->z=='\r' && ts->z+1 < ts->zEnd && ts->z[1]=='\n' ){ ts->z += 2; ts->iLine++; }
-		else if( ts->z < ts->zEnd && *ts->z=='\n' ){ ts->z++; ts->iLine++; }
+		else if( ts->z < ts->zEnd && (*ts->z=='\n' || *ts->z=='\r') ){ ts->z++; ts->iLine++; }
 		tok_tok(ts,T_CLOSE_TAG,(const char *)z0,(int)(ts->z-z0),iLine);
 		return -1;
 	}
@@ -980,6 +1179,39 @@ static int tok_lex_one(tok_state *ts){
 		tok_tok(ts,T_VARIABLE,(const char *)z,(int)(v-z),ts->iLine);
 		ts->z = v;
 		return 0;
+	}
+	/* php's BINARY-STRING PREFIX. A single `b`/`B` welded to a quote or to `<<<`
+	 * is not an identifier: it is part of the string TOKEN, and php's scanner says
+	 * so -- `b'foo'` is one T_CONSTANT_ENCAPSED_STRING six bytes long, an
+	 * interpolating `b"foo$x"` opens with a two-byte `b"` and `b<<<'S'` is a
+	 * T_START_HEREDOC carrying the `b`. It marks nothing at runtime (php has one
+	 * string type), which is exactly why it survives in real source. The prefix is
+	 * ADJACENT only: `b <<<'S'` and `bb'foo'` are an identifier and a string, and a
+	 * `b` in php's LOOKING_FOR_PROPERTY state (right after `->`/`?->`) is a member
+	 * NAME, never a prefix. */
+	if( (c=='b' || c=='B') && !bWasProp && z+1 < ts->zEnd
+	 && ( z[1]=='\'' || z[1]=='"'
+	   || (z[1]=='<' && z+3 < ts->zEnd && z[2]=='<' && z[3]=='<') ) ){
+		if( z[1]=='\'' ){
+			const unsigned char *p = z+2;
+			int bClosed = 0;
+			while( p < ts->zEnd ){
+				if( *p=='\\' && p+1 < ts->zEnd ){ p += 2; continue; }
+				if( *p=='\'' ){ p++; bClosed = 1; break; }
+				p++;
+			}
+			tok_tok(ts,bClosed ? T_CONSTANT_ENCAPSED_STRING : T_ENCAPSED_AND_WHITESPACE,
+				(const char *)z,(int)(p-z),ts->iLine);
+			tok_bump_lines(ts,z,p);
+			ts->z = p;
+			return 0;
+		}
+		if( z[1]=='"' ){
+			tok_scan_dquote(ts,'"');
+			return 0;
+		}
+		if( tok_scan_heredoc(ts) ){ return 0; }
+		/* Not a heredoc after all: fall through and lex the `b` as an identifier. */
 	}
 	/* Namespaced name / identifier / keyword. */
 	if( tok_is_label_start(c) || (c=='\\' && z+1 < ts->zEnd && tok_is_label_start(z[1])) ){
@@ -1018,11 +1250,31 @@ static int tok_lex_one(tok_state *ts){
 			if( bWasProp ){
 				id = T_STRING;              /* property access after -> / ?-> */
 			}else if( tok_ci_eq((const char *)z,n,"enum") ){
-				/* Contextual: T_ENUM only when followed by <ws>+ then a label-start. */
-				const unsigned char *q = firstLabelEnd;
+				/* Contextual, and php has TWO rules for it, tried in this order:
+				 *
+				 *   "enum" WS_OR_COMMENTS ("extends"|"implements") WS_OR_COMMENTS
+				 *        -> T_STRING: this is a CLASS NAMED "enum", as in
+				 *           `class Enum extends X {}` -- which is ordinary source
+				 *           (nikic/php-parser's own emulation tests carry it);
+				 *   "enum" WS_OR_COMMENTS LABEL-START
+				 *        -> T_ENUM.
+				 *
+				 * The separator is php's WHITESPACE_OR_COMMENTS, not plain
+				 * whitespace: a block comment between the two is a separator too. */
 				int sawWs = 0;
-				while( q < ts->zEnd && (*q==' '||*q=='\t'||*q=='\n'||*q=='\r') ){ q++; sawWs = 1; }
-				if( sawWs && q < ts->zEnd && tok_is_label_start(*q) ){ id = T_ENUM; }
+				const unsigned char *q = tok_skip_ws_comments(ts,firstLabelEnd,&sawWs);
+				if( sawWs && q < ts->zEnd && tok_is_label_start(*q) ){
+					const unsigned char *w = q;
+					int nw;
+					while( w < ts->zEnd && tok_is_label(*w) ){ w++; }
+					nw = (int)(w - q);
+					if( tok_ci_eq((const char *)q,nw,"extends")
+					 || tok_ci_eq((const char *)q,nw,"implements") ){
+						id = T_STRING;
+					}else{
+						id = T_ENUM;
+					}
+				}
 			}else if( tok_ci_eq((const char *)z,n,"yield") ){
 				/* Contextual: "yield from" collapses to one T_YIELD_FROM. */
 				const unsigned char *q = firstLabelEnd;
@@ -1044,6 +1296,24 @@ static int tok_lex_one(tok_state *ts){
 						break;
 					}
 				}
+			}
+			/* php 8.4's asymmetric-visibility modifiers are ONE token whose text is
+			 * the whole `private(set)` -- no whitespace and no comment anywhere
+			 * inside it, and both halves case-insensitive. Emitted here rather than
+			 * from the keyword table because the spelling straddles a paren pair
+			 * that would otherwise lex as three tokens. */
+			if( (id == T_PRIVATE || id == T_PROTECTED || id == T_PUBLIC)
+			 && firstLabelEnd + 5 <= ts->zEnd
+			 && firstLabelEnd[0]=='('
+			 && tok_lower(firstLabelEnd[1])=='s'
+			 && tok_lower(firstLabelEnd[2])=='e'
+			 && tok_lower(firstLabelEnd[3])=='t'
+			 && firstLabelEnd[4]==')' ){
+				int idSet = id == T_PRIVATE ? T_PRIVATE_SET
+				          : (id == T_PROTECTED ? T_PROTECTED_SET : T_PUBLIC_SET);
+				tok_tok(ts,idSet,(const char *)z,n+5,ts->iLine);
+				ts->z = firstLabelEnd + 5;
+				return 0;
 			}
 			/* Under TOKEN_PARSE, a reserved word right after 'case' that names an
 			 * enum case (followed by ';' or '=') is T_STRING; a switch 'case
@@ -1096,37 +1366,38 @@ static int tok_lex_one(tok_state *ts){
 				&& ((p[2]>='0'&&p[2]<='9')||(p[2]>='a'&&p[2]<='f')||(p[2]>='A'&&p[2]<='F')) ){
 			const unsigned char *d0;
 			p += 2; d0 = p;
-			while( p < ts->zEnd && ((*p>='0'&&*p<='9')||(*p>='a'&&*p<='f')||(*p>='A'&&*p<='F')||*p=='_') ){ p++; }
+			tok_digit_run(ts,&p,TOK_DIG_HEX);
 			id = tok_int_overflows(d0,p,16) ? T_DNUMBER : T_LNUMBER;
 		}else if( c=='0' && p+2 < ts->zEnd && (p[1]=='b'||p[1]=='B') && (p[2]=='0'||p[2]=='1') ){
 			const unsigned char *d0;
 			p += 2; d0 = p;
-			while( p < ts->zEnd && (*p=='0'||*p=='1'||*p=='_') ){ p++; }
+			tok_digit_run(ts,&p,TOK_DIG_BIN);
 			id = tok_int_overflows(d0,p,2) ? T_DNUMBER : T_LNUMBER;
 		}else if( c=='0' && p+2 < ts->zEnd && (p[1]=='o'||p[1]=='O') && (p[2]>='0'&&p[2]<='7') ){
 			const unsigned char *d0;
 			p += 2; d0 = p;
-			while( p < ts->zEnd && ((*p>='0'&&*p<='7')||*p=='_') ){ p++; }
+			tok_digit_run(ts,&p,TOK_DIG_OCT);
 			id = tok_int_overflows(d0,p,8) ? T_DNUMBER : T_LNUMBER;
 		}else{
 			const unsigned char *intStart = p;
 			int allOctalDigits = 1;
-			while( p < ts->zEnd && ((*p>='0'&&*p<='9')||*p=='_') ){
-				if( *p>'7' ){ allOctalDigits = 0; }
-				p++;
+			const unsigned char *q;
+			tok_digit_run(ts,&p,TOK_DIG_DEC);
+			for( q = intStart ; q < p ; ++q ){
+				if( *q>'7' && *q<='9' ){ allOctalDigits = 0; }
 			}
 			if( p < ts->zEnd && *p=='.' && !(c=='.') ){
 				/* fractional part (unless the token itself started with '.') */
 				isFloat = 1;
 				p++;
-				while( p < ts->zEnd && ((*p>='0'&&*p<='9')||*p=='_') ){ p++; }
+				tok_digit_run(ts,&p,TOK_DIG_DEC);
 			}else if( c=='.' ){
 				isFloat = 1; /* .5 style: leading dot already consumed below */
 			}
 			if( c=='.' ){
 				/* token began with '.': consume the dot + digits here */
 				p = z+1;
-				while( p < ts->zEnd && ((*p>='0'&&*p<='9')||*p=='_') ){ p++; }
+				tok_digit_run(ts,&p,TOK_DIG_DEC);
 				isFloat = 1;
 			}
 			if( p < ts->zEnd && (*p=='e'||*p=='E') ){
@@ -1135,7 +1406,7 @@ static int tok_lex_one(tok_state *ts){
 				if( e < ts->zEnd && *e>='0' && *e<='9' ){
 					isFloat = 1;
 					p = e;
-					while( p < ts->zEnd && ((*p>='0'&&*p<='9')||*p=='_') ){ p++; }
+					tok_digit_run(ts,&p,TOK_DIG_DEC);
 				}
 			}
 			if( isFloat ){
