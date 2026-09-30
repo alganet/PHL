@@ -2859,6 +2859,26 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 	/* Invoke any defined destructor if available (a no-op once the shutdown pass
 	 * has already run it) */
 	PH7_ClassInstanceCallDestructor(pThis);
+	/* php: a destructor may RESURRECT the object. Anything the body hands `$this` to
+	 * that outlives the release -- a registry, a property of something still alive, a
+	 * closure's `use ($this)` -- is a new reference taken while the refcount was
+	 * already at zero, and zend_objects_store_del re-reads it after dtor_obj and frees
+	 * ONLY when it is still zero. PHL freed unconditionally, so every holder the
+	 * destructor had just handed the object to was left pointing at freed memory.
+	 *
+	 * Pest is exactly that shape: a TestCase's teardown registers closures that capture
+	 * `$this`, and the next `new` of a test case read the dead object through one of
+	 * them -- a segfault a fifth of the way into any suite it runs, with the refcount
+	 * still reading 7.
+	 *
+	 * Clearing DESTROYED is what lets the object die properly LATER: when its new
+	 * holders drop it to zero this runs again, and CLASS_INSTANCE_DTOR_CALLED (set by
+	 * PH7_ClassInstanceCallDestructor, php's IS_OBJ_DESTRUCTOR_CALLED) keeps the
+	 * destructor from running a second time -- php's rule for the same case. */
+	if( pThis->iRef > 0 ){
+		pThis->iFlags &= ~CLASS_INSTANCE_DESTROYED;
+		return;
+	}
 	/* A native class's own teardown, while its slots are still readable. Not a
 	 * __destruct: the classes that need this (WeakReference) declare none in php,
 	 * and Reflection must not grow one.
