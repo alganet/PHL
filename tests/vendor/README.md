@@ -14,8 +14,14 @@ tests/vendor/run.sh --accept        # write the current diffs as the new baselin
 ```
 
 It is **off the Makefile and off CI** for now: it needs the network, a real `composer`, and
-several minutes per project. Run it by hand before a release and after any change to the
+several minutes to run. Run it by hand before a release and after any change to the
 compiler, the error surface or a shipped extension.
+
+Every verdict line carries what the step COST, per engine — `PARITY [php 9s phl 61s]` — and
+each project and the run as a whole print their total. Those numbers are not part of the
+answer (they are never diffed and never a baseline); they are there because a gate whose
+wall-clock nobody can see is a gate that quietly stops being run. It was worth having: one
+step was 98% of a whole run and nothing printed said so.
 
 ## What is committed, and what is not
 

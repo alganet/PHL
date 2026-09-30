@@ -207,6 +207,7 @@ normalize() {
 # ------------------------------------------------------------------- per project
 
 FAILED=""
+TOTAL_SECS=0
 for P in $WANTED; do
 	PDIR="$PROJECTS_DIR/$P"
 	[ -f "$PDIR/manifest" ] || die "no such project: $P"
@@ -298,6 +299,7 @@ for P in $WANTED; do
 	mkdir -p "$OUTDIR" "$PDIR/expected"
 	STEP_N=0
 	PROJECT_BAD=0
+	PROJECT_SECS=0
 	# steps: one shell command per line, run from the checkout root. Blank lines and
 	# # comments ignored. The name in the first field is the step's id, then a TAB,
 	# then the command -- which names the engine as $PHL_VENDOR_ENGINE, UNQUOTED,
@@ -325,6 +327,7 @@ for P in $WANTED; do
 			# hid, and it would make every measurement here depend on run order.)
 			# vendor/ and our lock survive; everything else untracked or ignored goes.
 			git -C "$CHECKOUT" clean -qfdx -e vendor -e composer.lock
+			eng_t0=$(date +%s)
 			set +e
 			( cd "$CHECKOUT"
 			  ulimit -v "${PHL_VENDOR_VMAX:-8000000}" 2>/dev/null || true
@@ -340,10 +343,19 @@ for P in $WANTED; do
 				sh -c "$STEP_CMD" </dev/null ) >"$OUTDIR/$STEP_ID.$eng" 2>&1
 			st=$?
 			set -e
+			# How long each engine took is not part of the ANSWER (it is never diffed
+			# and never a baseline), but it is the only thing that says where the gate's
+			# wall-clock goes -- one step was 98% of a whole run and nothing printed said
+			# so. Recorded per engine so the php column stays there as the reference.
+			eng_secs=$(( $(date +%s) - eng_t0 ))
+			eval "SECS_$eng=\$eng_secs"
 			# The exit STATUS is part of the answer: a suite that fails the same rows
 			# under both engines still has to fail the same way to the shell that ran it.
 			echo "@exit@ $st" >>"$OUTDIR/$STEP_ID.$eng"
 		done
+		STEP_SECS="$(( SECS_php + SECS_phl ))"
+		PROJECT_SECS=$(( PROJECT_SECS + STEP_SECS ))
+		TIMING="[php ${SECS_php}s phl ${SECS_phl}s]"
 
 		normalize <"$OUTDIR/$STEP_ID.php" >"$OUTDIR/$STEP_ID.php.norm"
 		normalize <"$OUTDIR/$STEP_ID.phl" >"$OUTDIR/$STEP_ID.phl.norm"
@@ -359,7 +371,7 @@ for P in $WANTED; do
 		# 128+N is a signal death; 255 is php's own exit for an uncaught fatal, which
 		# is an ordinary answer and belongs in the diff like any other.
 		if [ -n "$CRASHED" ] && [ "$CRASHED" -ge 128 ] && [ "$CRASHED" -le 192 ] 2>/dev/null; then
-			printf '   %-22s CRASHED (exit %s) -- %s\n' "$STEP_ID" "$CRASHED" "$OUTDIR/$STEP_ID.phl"
+			printf '   %-22s CRASHED (exit %s) %s -- %s\n' "$STEP_ID" "$CRASHED" "$TIMING" "$OUTDIR/$STEP_ID.phl"
 			tail -3 "$OUTDIR/$STEP_ID.phl" | sed 's/^/      /'
 			PROJECT_BAD=1
 			continue
@@ -368,24 +380,26 @@ for P in $WANTED; do
 		BASE="$PDIR/expected/$STEP_ID.diff"
 		if [ "$ACCEPT" = 1 ]; then
 			cp "$OUTDIR/$STEP_ID.diff" "$BASE"
-			printf '   %-22s ACCEPTED  (%s diff lines)\n' "$STEP_ID" "$(wc -l <"$BASE" | tr -d ' ')"
+			printf '   %-22s ACCEPTED  (%s diff lines) %s\n' "$STEP_ID" "$(wc -l <"$BASE" | tr -d ' ')" "$TIMING"
 			continue
 		fi
 		[ -f "$BASE" ] || : >"$BASE"
 		if diff -q "$BASE" "$OUTDIR/$STEP_ID.diff" >/dev/null 2>&1; then
 			if [ -s "$BASE" ]; then
-				printf '   %-22s PARITY (known: %s diff lines)\n' "$STEP_ID" "$(wc -l <"$BASE" | tr -d ' ')"
+				printf '   %-22s PARITY (known: %s diff lines) %s\n' "$STEP_ID" "$(wc -l <"$BASE" | tr -d ' ')" "$TIMING"
 			else
-				printf '   %-22s PARITY\n' "$STEP_ID"
+				printf '   %-22s PARITY %s\n' "$STEP_ID" "$TIMING"
 			fi
 		else
-			printf '   %-22s DIVERGED  -- %s\n' "$STEP_ID" "$OUTDIR/$STEP_ID.diff"
+			printf '   %-22s DIVERGED %s -- %s\n' "$STEP_ID" "$TIMING" "$OUTDIR/$STEP_ID.diff"
 			diff -u "$BASE" "$OUTDIR/$STEP_ID.diff" | sed -n '3,25p' | sed 's/^/      /'
 			PROJECT_BAD=1
 		fi
 	done <"$PDIR/steps"
 
 	[ "$STEP_N" -gt 0 ] || die "$P: steps file ran nothing"
+	printf '   %-22s %s steps, %ss\n' "(total)" "$STEP_N" "$PROJECT_SECS"
+	TOTAL_SECS=$(( TOTAL_SECS + PROJECT_SECS ))
 	if [ "$PROJECT_BAD" = 1 ]; then
 		FAILED="$FAILED $P"
 		[ "$KEEP_GOING" = 1 ] || break
@@ -394,13 +408,13 @@ done
 
 if [ -n "$FAILED" ]; then
 	echo
-	echo "ECOSYSTEM GATE: FAILED --$FAILED"
+	echo "ECOSYSTEM GATE: FAILED --$FAILED (${TOTAL_SECS}s in the suites)"
 	echo "A step diverged from its committed baseline. Either the engine regressed, or"
 	echo "the answer changed on purpose -- in which case review the diff and --accept it."
 	exit 1
 fi
 if [ "$DO_RUN" = 1 ]; then
 	echo
-	echo "ECOSYSTEM GATE: ok"
+	echo "ECOSYSTEM GATE: ok (${TOTAL_SECS}s in the suites)"
 fi
 exit 0
