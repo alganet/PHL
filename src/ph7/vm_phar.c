@@ -9,6 +9,14 @@
 #ifdef PH7_ENABLE_ZLIB
 #include <zlib.h>
 #endif
+#ifdef PH7_ENABLE_OPENSSL
+/* php's three OpenSSL signature flavours are a BUILD question: an archive
+ * signed with one is refused outright by a php with no ext/openssl, and by
+ * this engine without one too. */
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+#endif
 /*
  * Section:
  *    php's phar extension: an archive that is also a php program.
@@ -78,6 +86,8 @@
 #define PHAR_SIG_SHA256 3
 #define PHAR_SIG_SHA512 4
 #define PHAR_SIG_OPENSSL 16
+#define PHAR_SIG_OPENSSL_SHA256 17
+#define PHAR_SIG_OPENSSL_SHA512 18
 /* php's own api version for the archives it writes: 1.1.1 in the class's
  * `apiVersion()`, and 1.1.0 in the manifest word (php stores the api version it
  * WRITES, which is one revision behind the reader's). */
@@ -112,6 +122,9 @@ struct phl_phar {
 	SyBlob sMeta;        /* php-serialized archive metadata */
 	SyBlob sFile;        /* the whole archive, as read */
 	SyBlob sSig;         /* the signature bytes, as stored */
+	SyBlob sPrivKey;     /* the PEM setSignatureAlgorithm() was handed, for an OpenSSL
+	                      * signature -- the only kind that needs a key to WRITE one */
+	const char *zSigReason;  /* why a signature check failed, in php's own words */
 	int iFormat;
 	int iSigType;
 	int bData;           /* a PharData: never executable */
@@ -146,6 +159,7 @@ static void PharFree(phl_phar *pPhar)
 	SyBlobRelease(&pPhar->sMeta);
 	SyBlobRelease(&pPhar->sFile);
 	SyBlobRelease(&pPhar->sSig);
+	SyBlobRelease(&pPhar->sPrivKey);
 	SyMemBackendFree(&pVm->sAllocator,pPhar);
 }
 /*
@@ -490,14 +504,30 @@ static int PharParsePhar(phl_phar *pPhar,const unsigned char *zFile,sxu32 nFile,
 		if( nFile >= 8 && SyMemcmp(&zFile[nFile-4],"GBMB",4) == 0 ){
 			sxu32 nSigType = PharGet32(&zFile[nFile-8]);
 			sxu32 nSigLen = 0;
+			pPhar->iSigType = (int)nSigType;
 			switch( nSigType ){
 			case PHAR_SIG_MD5:    nSigLen = 16; break;
 			case PHAR_SIG_SHA1:   nSigLen = 20; break;
 			case PHAR_SIG_SHA256: nSigLen = 32; break;
 			case PHAR_SIG_SHA512: nSigLen = 64; break;
+			case PHAR_SIG_OPENSSL:
+			case PHAR_SIG_OPENSSL_SHA256:
+			case PHAR_SIG_OPENSSL_SHA512:
+				/* An RSA signature is as wide as the key, so its block carries
+				 * its own LENGTH: `<signature><uint32 len><uint32 flags>GBMB`.
+				 * That is four bytes more than every hash block, and reading it
+				 * as one is how an OpenSSL-signed archive used to be accepted
+				 * with no verification at all. */
+				if( nFile >= 12 ){
+					sxu32 nDeclared = PharGet32(&zFile[nFile-12]);
+					if( nDeclared > 0 && nDeclared <= 65536 && nFile >= nDeclared + 12 ){
+						SyBlobAppend(&pPhar->sSig,&zFile[nFile-12-nDeclared],nDeclared);
+					}
+				}
+				nSigLen = 0;
+				break;
 			default: break;
 			}
-			pPhar->iSigType = (int)nSigType;
 			if( nSigLen > 0 && nFile >= nSigLen + 8 ){
 				SyBlobAppend(&pPhar->sSig,&zFile[nFile-8-nSigLen],nSigLen);
 			}
@@ -506,6 +536,137 @@ static int PharParsePhar(phl_phar *pPhar,const unsigned char *zFile,sxu32 nFile,
 	SyBlobAppend(&pPhar->sStub,zFile,nOff);
 	pPhar->iFormat = PHAR_FORMAT_PHAR;
 	return 0;
+}
+#ifdef PH7_ENABLE_OPENSSL
+/*
+ * An RSA signature over the archive, verified against the key in
+ * `<archive>.pubkey`. php's three flavours differ only in the digest: 16 is
+ * SHA-1, 17 SHA-256, 18 SHA-512.
+ *
+ * The failure REASONS are php's own two sentences and the caller prints them
+ * verbatim: a key file that is missing or will not parse is `openssl public
+ * key could not be read`, and a signature that does not check out is `broken
+ * openssl signature` -- not the plain `broken signature` the hash algorithms
+ * give.
+ */
+static const char * PharOpenSslReason(phl_phar *pPhar,sxu32 nCovered)
+{
+	SyBlob sKey;
+	BIO *pBio = 0;
+	EVP_PKEY *pKey = 0;
+	EVP_MD_CTX *pMdCtx = 0;
+	const EVP_MD *pMd;
+	const char *zReason = "openssl public key could not be read";
+	int nPath = (int)SyBlobLength(&pPhar->sPath);
+	char *zPub;
+	SyBlobInit(&sKey,&pPhar->pVm->sAllocator);
+	zPub = (char *)SyMemBackendAlloc(&pPhar->pVm->sAllocator,(sxu32)(nPath + 8));
+	if( zPub == 0 ){
+		SyBlobRelease(&sKey);
+		return zReason;
+	}
+	SyMemcpy(SyBlobData(&pPhar->sPath),zPub,(sxu32)nPath);
+	SyMemcpy(".pubkey",&zPub[nPath],sizeof(".pubkey"));
+	{
+		/* Read the key file the way the ARCHIVE was read -- through the engine's
+		 * stream layer, so a phar inside a userland wrapper finds its key. */
+		const char *zTarget = zPub;
+		const ph7_io_stream *pStream = PH7_VmGetStreamDevice(pPhar->pVm,&zTarget,nPath + 7);
+		void *pHandle = pStream ? PH7_StreamOpenHandle(pPhar->pVm,pStream,zTarget,
+			PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,0) : 0;
+		if( pHandle ){
+			PH7_StreamReadWholeFile(pHandle,pStream,&sKey);
+			PH7_StreamCloseHandle(pStream,pHandle);
+		}
+	}
+	SyMemBackendFree(&pPhar->pVm->sAllocator,zPub);
+	if( SyBlobLength(&sKey) > 0 ){
+		pBio = BIO_new_mem_buf(SyBlobData(&sKey),(int)SyBlobLength(&sKey));
+		if( pBio ){
+			pKey = PEM_read_bio_PUBKEY(pBio,0,0,0);
+			BIO_free(pBio);
+		}
+	}
+	ERR_clear_error();
+	if( pKey == 0 ){
+		SyBlobRelease(&sKey);
+		return zReason;
+	}
+	switch( pPhar->iSigType ){
+		case PHAR_SIG_OPENSSL_SHA256: pMd = EVP_sha256(); break;
+		case PHAR_SIG_OPENSSL_SHA512: pMd = EVP_sha512(); break;
+		default:                      pMd = EVP_sha1();   break;
+	}
+	pMdCtx = EVP_MD_CTX_new();
+	zReason = "broken openssl signature";
+	if( pMdCtx && EVP_DigestVerifyInit(pMdCtx,0,pMd,0,pKey) == 1
+	 && EVP_DigestVerify(pMdCtx,(const unsigned char *)SyBlobData(&pPhar->sSig),
+			(size_t)SyBlobLength(&pPhar->sSig),
+			(const unsigned char *)SyBlobData(&pPhar->sFile),(size_t)nCovered) == 1 ){
+		zReason = 0;
+	}
+	ERR_clear_error();
+	if( pMdCtx ){ EVP_MD_CTX_free(pMdCtx); }
+	EVP_PKEY_free(pKey);
+	SyBlobRelease(&sKey);
+	return zReason;
+}
+static int PharVerifyOpenSsl(phl_phar *pPhar,sxu32 nCovered,SyBlob *pHashOut)
+{
+	const char *zReason;
+	if( SyBlobLength(&pPhar->sSig) < 1 ){
+		pPhar->zSigReason = "broken openssl signature";
+		return -1;
+	}
+	zReason = PharOpenSslReason(pPhar,nCovered);
+	if( zReason ){
+		pPhar->zSigReason = zReason;
+		return -1;
+	}
+	if( pHashOut ){
+		/* getSignature()'s `hash` for an OpenSSL archive is the SIGNATURE
+		 * itself, hex-uppercased -- not a digest of anything. */
+		SyBlobAppend(pHashOut,SyBlobData(&pPhar->sSig),SyBlobLength(&pPhar->sSig));
+	}
+	return 0;
+}
+#endif /* PH7_ENABLE_OPENSSL */
+/*
+ * php's name for a signature ALGORITHM inside a diagnostic, which is not the
+ * one `getSignature()` reports: the message says `SHA512` where the array says
+ * `SHA-512`.
+ */
+static const char * PharSigAlgoName(int iSig)
+{
+	switch( iSig ){
+		case PHAR_SIG_MD5:            return "MD5";
+		case PHAR_SIG_SHA1:           return "SHA1";
+		case PHAR_SIG_SHA256:         return "SHA256";
+		case PHAR_SIG_SHA512:         return "SHA512";
+		case PHAR_SIG_OPENSSL:
+		case PHAR_SIG_OPENSSL_SHA256:
+		case PHAR_SIG_OPENSSL_SHA512: return "openssl";
+		default:                      return "Unknown";
+	}
+}
+/*
+ * Everything after the archive's name in php's refusal. It is assembled into
+ * the VM's own `sPharErr` rather than the record's storage, because the caller
+ * FREES the record and then prints this -- the same lifetime trap the wrapper's
+ * open-failure sentence records.
+ */
+static const char * PharSigFailure(phl_phar *pPhar)
+{
+	ph7_vm *pVm = pPhar->pVm;
+	SyBlobReset(&pVm->sPharErr);
+	SyBlobFormat(&pVm->sPharErr,"%s signature could not be verified: %s",
+		PharSigAlgoName(pPhar->iSigType),
+		pPhar->zSigReason ? pPhar->zSigReason : "broken signature");
+	SyBlobNullAppend(&pVm->sPharErr);
+	if( SyBlobLength(&pVm->sPharErr) < 2 ){
+		return "signature could not be verified: broken signature";
+	}
+	return (const char *)SyBlobData(&pVm->sPharErr);
 }
 /*
  * The signature php checks on every open with `phar.require_hash` on (its own
@@ -556,9 +717,19 @@ static int PharVerifySignature(phl_phar *pPhar,SyBlob *pHashOut)
 		SHA512Final(&sSha,zDigest);
 		nDigest = 64;
 		break; }
+#ifdef PH7_ENABLE_OPENSSL
+	case PHAR_SIG_OPENSSL:
+	case PHAR_SIG_OPENSSL_SHA256:
+	case PHAR_SIG_OPENSSL_SHA512:
+		/* The public half is NOT in the archive: php reads it from a
+		 * `<archive>.pubkey` file beside it, and an archive whose key file is
+		 * missing is refused rather than trusted. The covered range is twelve
+		 * bytes shorter than a hash block's, because the length rides with it. */
+		return PharVerifyOpenSsl(pPhar,nFile - nSig - 12,pHashOut);
+#endif
 	default:
-		/* An OpenSSL signature: php's own build refuses it without the
-		 * extension, and so does this one. */
+		/* An OpenSSL signature in a build with no crypto: php's own build
+		 * refuses it without the extension, and so does this one. */
 		return -1;
 	}
 	if( pHashOut ){
@@ -911,6 +1082,7 @@ static phl_phar * PharOpenPath(ph7_vm *pVm,const char *zPath,int nPath,int bData
 	SyBlobInit(&pPhar->sMeta,&pVm->sAllocator);
 	SyBlobInit(&pPhar->sFile,&pVm->sAllocator);
 	SyBlobInit(&pPhar->sSig,&pVm->sAllocator);
+	SyBlobInit(&pPhar->sPrivKey,&pVm->sAllocator);
 	SyBlobAppend(&pPhar->sPath,zPath,(sxu32)nPath);
 	PH7_StreamReadWholeFile(pHandle,pStream,&pPhar->sFile);
 	PH7_StreamCloseHandle(pStream,pHandle);
@@ -940,7 +1112,11 @@ static phl_phar * PharOpenPath(ph7_vm *pVm,const char *zPath,int nPath,int bData
 	}
 	if( pPhar->iFormat == PHAR_FORMAT_PHAR && pPhar->iSigType != 0 ){
 		if( PharVerifySignature(pPhar,0) != 0 ){
-			*pzErr = "broken signature";
+			/* php names the ALGORITHM and its own reason:
+			 * `phar "…" SHA512 signature could not be verified: broken
+			 * signature`. The caller assembles the sentence; what travels here
+			 * is everything after the archive's name. */
+			*pzErr = PharSigFailure(pPhar);
 			PharFree(pPhar);
 			return 0;
 		}
@@ -961,6 +1137,60 @@ static void PharPut32(SyBlob *pOut,sxu32 v)
 	z[3] = (unsigned char)((v >> 24) & 0xFF);
 	SyBlobAppend(pOut,z,4);
 }
+#ifdef PH7_ENABLE_OPENSSL
+/*
+ * Sign what has been written so far with the private key
+ * `setSignatureAlgorithm()` was handed. Answers -1 without touching the output
+ * when there is no key or the key will not parse, which is what makes php's
+ * two refusals ("unable to write to phar … with requested openssl signature"
+ * for no key, "unable to process private key" for a bad one) two different
+ * sentences.
+ */
+static int PharSignOpenSsl(phl_phar *pPhar,SyBlob *pOut,int iSig,sxu32 *pnSigLen)
+{
+	BIO *pBio;
+	EVP_PKEY *pKey = 0;
+	EVP_MD_CTX *pMdCtx;
+	const EVP_MD *pMd;
+	unsigned char *zSig = 0;
+	size_t nSig = 0;
+	int rc = -1;
+	if( SyBlobLength(&pPhar->sPrivKey) < 1 ){
+		return -1;
+	}
+	pBio = BIO_new_mem_buf(SyBlobData(&pPhar->sPrivKey),(int)SyBlobLength(&pPhar->sPrivKey));
+	if( pBio ){
+		pKey = PEM_read_bio_PrivateKey(pBio,0,0,0);
+		BIO_free(pBio);
+	}
+	ERR_clear_error();
+	if( pKey == 0 ){
+		return -1;
+	}
+	switch( iSig ){
+		case PHAR_SIG_OPENSSL_SHA256: pMd = EVP_sha256(); break;
+		case PHAR_SIG_OPENSSL_SHA512: pMd = EVP_sha512(); break;
+		default:                      pMd = EVP_sha1();   break;
+	}
+	pMdCtx = EVP_MD_CTX_new();
+	if( pMdCtx && EVP_DigestSignInit(pMdCtx,0,pMd,0,pKey) == 1
+	 && EVP_DigestSign(pMdCtx,0,&nSig,(const unsigned char *)SyBlobData(pOut),
+			(size_t)SyBlobLength(pOut)) == 1 ){
+		zSig = (unsigned char *)SyMemBackendAlloc(&pPhar->pVm->sAllocator,(sxu32)nSig);
+		if( zSig && EVP_DigestSign(pMdCtx,zSig,&nSig,(const unsigned char *)SyBlobData(pOut),
+				(size_t)SyBlobLength(pOut)) == 1 ){
+			SyBlobAppend(pOut,zSig,(sxu32)nSig);
+			*pnSigLen = (sxu32)nSig;
+			rc = 0;
+		}
+	}
+	if( zSig ){ SyMemBackendFree(&pPhar->pVm->sAllocator,zSig); }
+	if( pMdCtx ){ EVP_MD_CTX_free(pMdCtx); }
+	EVP_PKEY_free(pKey);
+	ERR_clear_error();
+	return rc;
+}
+#endif /* PH7_ENABLE_OPENSSL */
 static void PharPut16(SyBlob *pOut,sxu32 v)
 {
 	unsigned char z[2];
@@ -1137,6 +1367,16 @@ static int PharBuildPhar(phl_phar *pPhar,SyBlob *pOut)
 				MD5Final(zD,&sM);
 				SyBlobAppend(pOut,zD,16);
 				nSigLen = 16;
+#ifdef PH7_ENABLE_OPENSSL
+			}else if( iSig == PHAR_SIG_OPENSSL || iSig == PHAR_SIG_OPENSSL_SHA256
+			       || iSig == PHAR_SIG_OPENSSL_SHA512 ){
+				/* An RSA signature over everything written so far, and the only
+				 * signature that needs a KEY. Its block carries its own length
+				 * ahead of the flags, which is four bytes more than a hash's. */
+				if( PharSignOpenSsl(pPhar,pOut,iSig,&nSigLen) != 0 ){
+					rc = -1;
+				}
+#endif
 			}else{
 				iSig = PHAR_SIG_SHA1;
 				SHA1Init(&sSha);
@@ -1144,14 +1384,25 @@ static int PharBuildPhar(phl_phar *pPhar,SyBlob *pOut)
 				SHA1Final(&sSha,zDigest);
 				SyBlobAppend(pOut,zDigest,20);
 			}
-			PharPut32(pOut,(sxu32)iSig);
-			SyBlobAppend(pOut,"GBMB",4);
-			pPhar->iSigType = iSig;
-			/* Keep the digest: `getSignature()` answers it without re-reading
-			 * the file. */
-			SyBlobReset(&pPhar->sSig);
-			SyBlobAppend(&pPhar->sSig,
-				(const char *)SyBlobData(pOut) + SyBlobLength(pOut) - 8 - nSigLen,nSigLen);
+			if( rc == 0 ){
+				int bWide = 0;
+#ifdef PH7_ENABLE_OPENSSL
+				bWide = iSig == PHAR_SIG_OPENSSL || iSig == PHAR_SIG_OPENSSL_SHA256
+				     || iSig == PHAR_SIG_OPENSSL_SHA512;
+				if( bWide ){
+					PharPut32(pOut,nSigLen);
+				}
+#endif
+				PharPut32(pOut,(sxu32)iSig);
+				SyBlobAppend(pOut,"GBMB",4);
+				pPhar->iSigType = iSig;
+				/* Keep the signature: `getSignature()` answers it without
+				 * re-reading the file. */
+				SyBlobReset(&pPhar->sSig);
+				SyBlobAppend(&pPhar->sSig,
+					(const char *)SyBlobData(pOut) + SyBlobLength(pOut) - 8
+						- (bWide ? 4 : 0) - nSigLen,nSigLen);
+			}
 		}
 	}
 	SyBlobRelease(&sManifest);
@@ -2217,10 +2468,28 @@ static phl_phar * PharNewEmpty(ph7_vm *pVm,const char *zPath,int nPath,int iFmt,
 	SyBlobInit(&pPhar->sMeta,&pVm->sAllocator);
 	SyBlobInit(&pPhar->sFile,&pVm->sAllocator);
 	SyBlobInit(&pPhar->sSig,&pVm->sAllocator);
+	SyBlobInit(&pPhar->sPrivKey,&pVm->sAllocator);
 	SyBlobAppend(&pPhar->sPath,zPath,(sxu32)nPath);
 	pPhar->pNext = (phl_phar *)pVm->pPhars;
 	pVm->pPhars = pPhar;
 	return pPhar;
+}
+/*
+ * Is this reason the signature one? Every algorithm's sentence carries the
+ * same middle, and matching on it is what keeps the three shapes of php's
+ * refusal apart without a second out-parameter.
+ */
+static int PharSigSentence(const char *zErr)
+{
+	const char *z = zErr;
+	while( *z ){
+		if( *z == 's' && SyStrncmp(z,"signature could not be verified",
+				sizeof("signature could not be verified") - 1) == 0 ){
+			return 1;
+		}
+		++z;
+	}
+	return 0;
 }
 /* ---- Phar::__construct ---- */
 static int vm_builtin_Phar_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2285,6 +2554,12 @@ static int vm_builtin_Phar_construct(ph7_context *pCtx,int nArg,ph7_value **apAr
 		if( zErr && SyStrncmp(zErr,"unable to open",sizeof("unable to open")-1) == 0 ){
 			return PH7_VmThrowException(pCtx,"UnexpectedValueException",
 				"Cannot open phar file \"%.*s\": %s",nPath,zPath,zErr);
+		}
+		if( zErr && PharSigSentence(zErr) ){
+			/* php's third sentence, and the only one that names the archive
+			 * FIRST: `phar "…" SHA512 signature could not be verified: …`. */
+			return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+				"phar \"%.*s\" %s",nPath,zPath,zErr);
 		}
 		return PH7_VmThrowException(pCtx,"UnexpectedValueException",
 			"internal corruption of phar \"%.*s\" (%s)",nPath,zPath,
@@ -2374,6 +2649,9 @@ static int vm_builtin_Phar_getSignature(ph7_context *pCtx,int nArg,ph7_value **a
 	case PHAR_SIG_SHA1:   zType = "SHA-1";   break;
 	case PHAR_SIG_SHA256: zType = "SHA-256"; break;
 	case PHAR_SIG_SHA512: zType = "SHA-512"; break;
+	case PHAR_SIG_OPENSSL:        zType = "OpenSSL";        break;
+	case PHAR_SIG_OPENSSL_SHA256: zType = "OpenSSL_SHA256"; break;
+	case PHAR_SIG_OPENSSL_SHA512: zType = "OpenSSL_SHA512"; break;
 	default:              zType = "OpenSSL"; break;
 	}
 	pArray = ph7_context_new_array(pCtx);
@@ -3290,6 +3568,7 @@ static int vm_builtin_Phar_setSignatureAlgorithm(ph7_context *pCtx,int nArg,ph7_
 {
 	phl_phar *pPhar;
 	sxi64 iAlgo;
+	int iPrev;
 	if( PharRefuseWrite(pCtx,PHAR_RO_WRITE) ){
 		return PH7_OK;
 	}
@@ -3299,12 +3578,51 @@ static int vm_builtin_Phar_setSignatureAlgorithm(ph7_context *pCtx,int nArg,ph7_
 	}
 	iAlgo = ph7_value_to_int64(apArg[0]);
 	if( iAlgo != PHAR_SIG_MD5 && iAlgo != PHAR_SIG_SHA1
-	 && iAlgo != PHAR_SIG_SHA256 && iAlgo != PHAR_SIG_SHA512 ){
+	 && iAlgo != PHAR_SIG_SHA256 && iAlgo != PHAR_SIG_SHA512
+#ifdef PH7_ENABLE_OPENSSL
+	 && iAlgo != PHAR_SIG_OPENSSL && iAlgo != PHAR_SIG_OPENSSL_SHA256
+	 && iAlgo != PHAR_SIG_OPENSSL_SHA512
+#endif
+	  ){
+		/* A build with no crypto refuses the three OpenSSL numbers here, which
+		 * is what php's own no-ext/openssl build does with them. */
 		return PH7_VmThrowException(pCtx,"UnexpectedValueException",
 			"Unknown signature algorithm specified");
 	}
+	iPrev = pPhar->iSigType;
 	pPhar->iSigType = (int)iAlgo;
-	PharCommit(pPhar);
+#ifdef PH7_ENABLE_OPENSSL
+	SyBlobReset(&pPhar->sPrivKey);
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		int nKey = 0;
+		const char *zKey = ph7_value_to_string(apArg[1],&nKey);
+		if( zKey && nKey > 0 ){
+			SyBlobAppend(&pPhar->sPrivKey,zKey,(sxu32)nKey);
+		}
+	}
+	if( (iAlgo == PHAR_SIG_OPENSSL || iAlgo == PHAR_SIG_OPENSSL_SHA256
+	  || iAlgo == PHAR_SIG_OPENSSL_SHA512) && SyBlobLength(&pPhar->sPrivKey) < 1 ){
+		/* php's own sentence for "you asked for an openssl signature and gave
+		 * me nothing to sign with". */
+		pPhar->iSigType = iPrev;
+		return PH7_VmThrowException(pCtx,"PharException",
+			"phar error: unable to write signature: unable to write to phar \"%.*s\" with requested openssl signature",
+			(int)SyBlobLength(&pPhar->sPath),(const char *)SyBlobData(&pPhar->sPath));
+	}
+#endif
+	if( PharCommit(pPhar) != 0 ){
+#ifdef PH7_ENABLE_OPENSSL
+		if( iAlgo == PHAR_SIG_OPENSSL || iAlgo == PHAR_SIG_OPENSSL_SHA256
+		 || iAlgo == PHAR_SIG_OPENSSL_SHA512 ){
+			/* The only way the writer refuses an archive it was going to write
+			 * anyway: the key parsed as nothing. php says so in its own words. */
+			pPhar->iSigType = iPrev;
+			SyBlobReset(&pPhar->sPrivKey);
+			return PH7_VmThrowException(pCtx,"PharException",
+				"phar error: unable to write signature: unable to process private key");
+		}
+#endif
+	}
 	ph7_result_null(pCtx);
 	return PH7_OK;
 }
@@ -3358,7 +3676,13 @@ static int vm_builtin_Phar_getSupportedCompression(ph7_context *pCtx,int nArg,ph
 }
 static int vm_builtin_Phar_getSupportedSignatures(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	static const char * const azSig[] = { "MD5", "SHA-1", "SHA-256", "SHA-512" };
+	/* What the BUILD can do, which is php's own answer here: a php with no
+	 * ext/openssl lists four and this engine did too until it linked one. */
+	static const char * const azSig[] = { "MD5", "SHA-1", "SHA-256", "SHA-512"
+#ifdef PH7_ENABLE_OPENSSL
+		, "OpenSSL", "OpenSSL_SHA256", "OpenSSL_SHA512"
+#endif
+	};
 	ph7_value *pArray = ph7_context_new_array(pCtx);
 	ph7_value *pVal = ph7_context_new_scalar(pCtx);
 	sxu32 i;

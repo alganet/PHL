@@ -62,9 +62,11 @@ echo "-- the statics that answer for the BUILD\n";
 var_dump(Phar::apiVersion(), Phar::canWrite(),
     Phar::interceptFileFuncs(), Phar::running(), Phar::running(false));
 $sig = Phar::getSupportedSignatures();
-foreach (['MD5', 'SHA-1', 'SHA-256', 'SHA-512'] as $want) {
-    printf("  %-8s %d\n", $want, (int) in_array($want, $sig, true));
+foreach (['MD5', 'SHA-1', 'SHA-256', 'SHA-512',
+          'OpenSSL', 'OpenSSL_SHA256', 'OpenSSL_SHA512'] as $want) {
+    printf("  %-16s %d\n", $want, (int) in_array($want, $sig, true));
 }
+var_dump($sig === array_values(array_unique($sig)), count($sig));
 echo "-- which names are archive names\n";
 foreach ([['a.phar', true], ['a.txt', true], ['a.phar.tar', true], ['dir/b.phar', true],
           ['a.tar', false], ['a.zip', false], ['a.txt', false]] as [$name, $exec]) {
@@ -152,10 +154,15 @@ bool(false)
 NULL
 string(0) ""
 string(0) ""
-  MD5      1
-  SHA-1    1
-  SHA-256  1
-  SHA-512  1
+  MD5              1
+  SHA-1            1
+  SHA-256          1
+  SHA-512          1
+  OpenSSL          1
+  OpenSSL_SHA256   1
+  OpenSSL_SHA512   1
+bool(true)
+int(7)
 -- which names are archive names
   a.phar       executable=1 -> 1
   a.txt        executable=1 -> 0
