@@ -236,10 +236,23 @@ PH7_PRIVATE int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}else{
 		ph7_hashmap_node *pLast = pMap->pLast;
 		ph7_value *pObj;
+		/* php's array_pop GIVES THE INDEX BACK: when the popped element carries the
+		 * highest auto-assigned int key, nNextFreeElement steps down with it, so the
+		 * next `$a[] =` reuses the slot just vacated. Without it a push/pop stack --
+		 * `$stack[] = $n` on the way in, `array_pop($stack)` on the way out -- grows a
+		 * hole on every cycle: after one pop, `$stack[count($stack)-1]` reads a key
+		 * that is not there any more (nikic/php-parser's ParentConnectingVisitor is
+		 * exactly that stack, and every traversal warned). Only the top index is
+		 * given back, and only when it IS the top: `unset($a[2])` leaves the counter
+		 * alone in php too. */
 		pObj = HashmapExtractNodeValue(pLast);
 		if( pObj ){
 			/* Node value */
 			ph7_result_value(pCtx,pObj);
+			if( pLast->iType == HASHMAP_INT_NODE
+			 && pLast->xKey.iKey == pMap->iNextIdx - 1 ){
+				pMap->iNextIdx--;
+			}
 			/* Unlink the node */
 			PH7_HashmapUnlinkNode(pLast,TRUE);
 		}else{

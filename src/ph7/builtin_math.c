@@ -1461,13 +1461,55 @@ PH7_PRIVATE int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * The three bytes php's _php_math_basetozval accepts BEFORE it starts reading
+ * digits, and that no program is deprecated for writing:
+ *
+ *   - leading and trailing WHITESPACE, trimmed off both ends (' ', '\t', '\n',
+ *     '\r', '\v', '\f' — a NUL is not whitespace and stays an invalid digit);
+ *   - the base's own PREFIX, when the base is one that has one: `0x`/`0X` for 16,
+ *     `0o`/`0O` for 8, `0b`/`0B` for 2. It is stripped only for the MATCHING base,
+ *     which is why hexdec("0o17") still deprecates its `o` and base_convert with
+ *     from_base 36 reads the `x` of "0x1f" as the digit 33.
+ *
+ * Both were treated as invalid characters here, so `hexdec("0xff")` — the literal
+ * a program hands back to the engine after reading it out of source, and exactly
+ * what nikic/php-parser passes — raised the ValueError §10 keeps for php's
+ * DEPRECATED skipping instead of answering 255.
+ *
+ * On return the two out-parameters name the digit run; the caller decides what a
+ * leftover non-digit means.
+ */
+static void MathBaseTrimPrefix(const char **pz,int *pn,int base)
+{
+	const char *z = *pz;
+	const char *zEnd = z + *pn;
+	while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]=='\n'||z[0]=='\r'||z[0]=='\v'||z[0]=='\f') ){
+		z++;
+	}
+	while( z < zEnd && (zEnd[-1]==' '||zEnd[-1]=='\t'||zEnd[-1]=='\n'
+	                 || zEnd[-1]=='\r'||zEnd[-1]=='\v'||zEnd[-1]=='\f') ){
+		zEnd--;
+	}
+	if( zEnd - z >= 2 && z[0] == '0' ){
+		int c = z[1];
+		if( (base == 16 && (c=='x'||c=='X'))
+		 || (base == 8  && (c=='o'||c=='O'))
+		 || (base == 2  && (c=='b'||c=='B')) ){
+			z += 2;
+		}
+	}
+	*pz = z;
+	*pn = (int)(zEnd - z);
+}
+/*
  * Convert a base-2/8/16 digit string to a number, mirroring PHP's
  * _php_math_basetozval (ext/standard/math.c) so hexdec/octdec/bindec agree with
- * php byte-for-byte: walk every byte, decode a digit (0-9,a-z,A-Z) or skip any
- * invalid one, accumulate into a signed 64-bit integer and transparently promote
- * to a double once the value would overflow PHP_INT_MAX. The context result is
- * set to an int when it fits, otherwise a float — PHP returns a float for values
- * above PHP_INT_MAX (e.g. hexdec("ffffffffffffffff") == 1.8446744073709552E+19).
+ * php byte-for-byte: trim the ends and the base prefix (above), then walk every
+ * byte, decode a digit (0-9,a-z,A-Z) or skip any invalid one, accumulate into a
+ * signed 64-bit integer and transparently promote to a double once the value
+ * would overflow PHP_INT_MAX. The context result is set to an int when it fits,
+ * otherwise a float — PHP returns a float for values above PHP_INT_MAX (e.g.
+ * hexdec("ffffffffffffffff") == 1.8446744073709552E+19).
  * A byte >= 0x80 (e.g. a UTF-8 continuation) matches none of the digit ranges and
  * is skipped, so leading/interior multibyte junk is ignored like php.
  * Note: php also raises E_DEPRECATED for skipped invalid characters; that notice
@@ -1482,6 +1524,7 @@ static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int bas
 	int cutlim = (int)(SXI64_HIGH % base); /* PHP_INT_MAX % base */
 	int bIgnored = 0;   /* any character skipped below? php deprecates that */
 	int i;
+	MathBaseTrimPrefix(&zStr,&nLen,base);
 	for( i = 0 ; i < nLen ; ++i ){
 		int c = (unsigned char)zStr[i];
 		if( c >= '0' && c <= '9' ){
@@ -1721,6 +1764,7 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	zNum = ph7_value_to_string(apArg[0],&nLen);
 	bIgnored = 0;
+	MathBaseTrimPrefix(&zNum,&nLen,iFbase);
 	for( i = 0 ; i < nLen ; ++i ){
 		int c = (unsigned char)zNum[i];
 		int d;

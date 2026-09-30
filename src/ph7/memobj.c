@@ -1949,6 +1949,20 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		/* Strict comparisons with === */
 		iF1 = pObj1->iFlags&~MEMOBJ_AUX;
 		iF2 = pObj2->iFlags&~MEMOBJ_AUX;
+		/* MEMOBJ_INT beside MEMOBJ_REAL is not a TYPE: it is the speculative
+		 * integer MemObjTryIntger leaves on a float whose value happens to be a
+		 * whole number, and whether a given float carries one depends on which
+		 * road it took here. A literal `1.0` is built through PH7_MemObjToReal
+		 * and arrives REAL|INT; `(float)"1.0"` goes through OP_CVT_REAL, whose
+		 * MemObjSetType wipes the speculation, and arrives REAL. Comparing the
+		 * raw flags then made `(float)"1.0" === 1.0` FALSE while
+		 * `(float)"2.5" === 2.5` was true -- the same wrong answer through
+		 * in_array($x,[...],true), array_search(), an array `===` and every
+		 * other door that asks this comparator for identity. php has one float
+		 * type, so drop the speculation before the type test; the numeric branch
+		 * below already compares as reals whenever either side is one. */
+		if( iF1 & MEMOBJ_REAL ){ iF1 &= ~MEMOBJ_INT; }
+		if( iF2 & MEMOBJ_REAL ){ iF2 &= ~MEMOBJ_INT; }
 		if( iF1 != iF2 ){
 			/* Not of the same type */
 			return 1;

@@ -492,21 +492,29 @@ PH7_PRIVATE int vm_builtin_trait_exists(ph7_context *pCtx,int nArg,ph7_value **a
 	return PH7_OK;
 }
 /*
- * bool class_alias([string $original[,string $alias ]])
+ * bool class_alias(string $class, string $alias, bool $autoload = true)
  *   Creates an alias for a class.
  * Parameters
- *  original
- *    The original class.
+ *  class
+ *    The original class (interface, trait or enum — php aliases all four).
  *  alias
  *   The alias name for the class.
+ *  autoload
+ *   Whether to autoload $class when it is not declared yet. php's default is TRUE,
+ *   and this is not a detail: the ordinary use of this builtin is a compatibility
+ *   shim written against a class the AUTOLOADER owns —
+ *   `class_alias('\\PHPUnit\\Framework\\TestCase','\\PHPUnit_Framework_TestCase')`
+ *   in monolog's test bootstrap is exactly that, and with no autoload it silently
+ *   answered false, so every test class extending the alias was undefined.
  * Return
  *   Returns TRUE on success or FALSE on failure.
  */
 PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zOld,*zNew;
+	const char *zOld,*zNew,*zOldRaw,*zNewRaw;
 	int nOldLen,nNewLen;
 	sxu32 nOld,nNew;
+	int iAutoload = 1;
 	SyHashEntry *pEntry;
 	ph7_class *pClass;
 	char *zDup;
@@ -517,9 +525,12 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_OK;
 	}
 	/* Extract old class name */
-	zOld = ph7_value_to_string(apArg[0],&nOldLen);
+	zOld = zOldRaw = ph7_value_to_string(apArg[0],&nOldLen);
 	/* Extract alias name */
-	zNew = ph7_value_to_string(apArg[1],&nNewLen);
+	zNew = zNewRaw = ph7_value_to_string(apArg[1],&nNewLen);
+	if( nArg >= 3 ){
+		iAutoload = ph7_value_to_bool(apArg[2]);
+	}
 	/* Strip a leading '\' (global-namespace anchor) from BOTH names: php
 	 * resolves the target and stores the alias without it, so class_exists()
 	 * on the plain name then matches. */
@@ -527,20 +538,48 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 	nNew = (sxu32)nNewLen;
 	PH7_VmClassNameAnchor(&zOld,&nOld);
 	PH7_VmClassNameAnchor(&zNew,&nNew);
-	if( nNew < 1 ){
-		/* Invalid alias name,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
 	/* Perform a hash lookup */
-	pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zOld,nOld);
+	pEntry = nOld > 0 ? SyHashGet(&pCtx->pVm->hClass,(const void *)zOld,nOld) : 0;
+	if( pEntry == 0 && iAutoload && nOld > 0 ){
+		/* Not declared yet: ask the autoloader, exactly as class_exists() does.
+		 * iLoadable is FALSE so an interface or a trait comes back too — php
+		 * aliases those as readily as a class. */
+		if( PH7_VmTriggerAutoload(pCtx->pVm,zOld,nOld,FALSE) ){
+			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zOld,nOld);
+		}
+	}
 	if( pEntry ==  0 ){
-		/* No such class,return FALSE */
+		/* php names the class it could not find and answers false. The sentence
+		 * carries no `class_alias(): ` prefix, so it is raised on the VM rather
+		 * than through the context. */
+		VmErrorFormat(pCtx->pVm,PH7_CTX_WARNING,"Class \"%.*s\" not found",nOldLen,zOldRaw);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	/* Point to the class */
 	pClass = (ph7_class *)pEntry->pUserData;
+	if( nNew > 0 && SyHashGet(&pCtx->pVm->hClass,(const void *)zNew,nNew) != 0 ){
+		/* The alias name is already a declared class/interface/trait/enum. php
+		 * refuses and — this is php's own quirk, not a slip — names the file and
+		 * line of the class being ALIASED, not of the name already taken. */
+		if( pClass->sFile.nByte > 0 ){
+			VmErrorFormat(pCtx->pVm,PH7_CTX_WARNING,
+				"Cannot redeclare class %.*s (previously declared in %.*s:%u)",
+				nNewLen,zNewRaw,
+				(int)pClass->sFile.nByte,pClass->sFile.zString,pClass->nLine);
+		}else{
+			/* No defining file: php's own wording for a class it did not compile. */
+			VmErrorFormat(pCtx->pVm,PH7_CTX_WARNING,
+				"Cannot redeclare class %.*s",nNewLen,zNewRaw);
+		}
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nNew < 1 ){
+		/* Invalid alias name,return FALSE */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* Duplicate alias name */
 	zDup = SyMemBackendStrDup(&pCtx->pVm->sAllocator,zNew,nNew);
 	if( zDup == 0 ){

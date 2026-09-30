@@ -483,12 +483,37 @@ PH7_PRIVATE int vm_builtin_enum_tryfrom(ph7_context *pCtx,int nArg,ph7_value **a
 /*
  * bool enum_exists(string $enum, bool $autoload = true)
  *  TRUE only for a declared enum (PHP 8.1); a plain class/interface is FALSE.
+ *
+ * $autoload was declared and never read: VmExtractEnumClass resolves through
+ * PH7_VmExtractClass, which always asks the autoloader, so `enum_exists($n,false)`
+ * ran the loader anyway. That is the one spelling a program uses to ask "is this
+ * already loaded" WITHOUT paying for a load, and its whole point is the refusal.
  */
 PH7_PRIVATE int vm_builtin_enum_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class *pClass = 0;
 	if( nArg > 0 ){
-		pClass = VmExtractEnumClass(pCtx->pVm,apArg[0]);
+		if( nArg >= 2 && !ph7_value_to_bool(apArg[1]) ){
+			/* Declared-only lookup: probe the class table directly, then filter
+			 * the same-name chain down to an enum exactly as VmExtractEnumClass does. */
+			const char *zName;
+			int nLen;
+			sxu32 nName;
+			zName = ph7_value_to_string(apArg[0],&nLen);
+			nName = (sxu32)nLen;
+			PH7_VmClassNameAnchor(&zName,&nName);
+			if( nName > 0 ){
+				SyHashEntry *pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
+				if( pEntry ){
+					pClass = (ph7_class *)pEntry->pUserData;
+					while( pClass && (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+						pClass = pClass->pNextName;
+					}
+				}
+			}
+		}else{
+			pClass = VmExtractEnumClass(pCtx->pVm,apArg[0]);
+		}
 	}
 	ph7_result_bool(pCtx,pClass != 0);
 	return SXRET_OK;
