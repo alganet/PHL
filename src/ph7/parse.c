@@ -391,6 +391,16 @@ PH7_PRIVATE int PH7_IsLangConstruct(sxu32 nKeyID,sxu8 bCheckFunc)
 static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nNode)
 {
 	sxi32 iParen,iSquare,iQuesty,iBraces;
+	/* The nesting depth each still-open '?' was seen at. A ternary's ':' is the one
+	 * that stands at its OWN depth: `$c ? f(b: 2) : 'n'` opens its '?' outside the
+	 * call and closes it outside, and the named argument's ':' one paren deeper is
+	 * not it. Counting colons against a bare '?' tally spent the ternary's question
+	 * mark on the argument LABEL, so the real ':' arrived with nothing open and
+	 * `Syntax error: Unexpected token ':'` was a compile fatal on source php --
+	 * nette/utils' Type::fromReflection() and Pest's own Mixins/Expectation.php.
+	 * Only the unparenthesized form ever showed it: an enclosing '(' put the '?'
+	 * and both colons at depths that happened to work out. */
+	sxi32 aQuestyDepth[64];
 	sxi32 i,rc;
 
 	if( nNode > 0 && apNode[0]->pOp && (apNode[0]->pOp->iOp == EXPR_OP_ADD || apNode[0]->pOp->iOp == EXPR_OP_SUB) ){
@@ -470,7 +480,10 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			}
 			iBraces--;
 		}else if ( apNode[i]->pStart->nType & PH7_TK_COLON ){
-			if( iQuesty > 0 ){
+			sxi32 iDepth = iParen + iSquare + iBraces;
+			if( iQuesty > 0
+			 && ( iQuesty > (sxi32)SX_ARRAYSIZE(aQuestyDepth)
+			   || aQuestyDepth[iQuesty - 1] == iDepth ) ){
 				iQuesty--;
 			}else if( iParen <= 0 ){
 				/* Colon outside parentheses with no matching '?' — syntax error.
@@ -485,6 +498,9 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 		}else if( apNode[i]->pStart->nType & PH7_TK_OP ){
 			const ph7_expr_op *pOp = (const ph7_expr_op *)apNode[i]->pOp;
 			if( pOp->iOp == EXPR_OP_QUESTY ){
+				if( iQuesty < (sxi32)SX_ARRAYSIZE(aQuestyDepth) ){
+					aQuestyDepth[iQuesty] = iParen + iSquare + iBraces;
+				}
 				iQuesty++;
 			}else if( i > 0 && (pOp->iOp == EXPR_OP_UMINUS || pOp->iOp == EXPR_OP_UPLUS)){
 				if( apNode[i-1]->xCode == PH7_CompileVariable || apNode[i-1]->xCode == PH7_CompileLiteral ){
