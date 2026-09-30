@@ -5861,7 +5861,7 @@ Rethrow:
 	 * the previous catch's landing is no longer where control should resume. Cleared
 	 * here so nested in-place catches resolve correctly — the OUTERMOST catch to finish
 	 * records last (on its SXRET_OK return below) and therefore owns the resume. */
-	pVm->pResumeFrame = 0;
+	VmClearResumeTarget(&(*pVm));
 	/* Point to the stack of loaded exceptions */
 	apException = (ph7_exception **)SySetBasePtr(&pVm->aException);
 	pException = 0;
@@ -5976,17 +5976,13 @@ Rethrow:
 						 * where php returns 5. The pad's OP_POP_EXCEPTION tears the
 						 * try frame down and its bHasRet tail materializes the
 						 * return, same as the in-place-catch landing. */
-						pVm->pResumeFrame = pOwnerFrame;
-						pVm->iResumePc = pException->iLandingPc;
-						pVm->pResumeInstr = pException->pOwnerInstr;
-						pVm->iResumeStackDepth = pException->iStackDepth;
+						VmSetResumeTarget(&(*pVm),pOwnerFrame,pException->iLandingPc,
+							pException->pOwnerInstr,pException->iStackDepth);
 						VmExcRelease(&(*pVm),pException);
 						return SXRET_OK;
 					}
-					pVm->pResumeFrame = pOwnerFrame;
-					pVm->iResumePc = pException->iLandingPc;
-					pVm->pResumeInstr = pException->pOwnerInstr;
-					pVm->iResumeStackDepth = pException->iStackDepth;
+					VmSetResumeTarget(&(*pVm),pOwnerFrame,pException->iLandingPc,
+						pException->pOwnerInstr,pException->iStackDepth);
 					VmExcRelease(&(*pVm),pException);
 					return PH7_EXCEPTION;
 				}
@@ -6252,10 +6248,7 @@ Rethrow:
 		 * try (no PH7_EXCEPTION/ABORT return above). Record the resume target so the
 		 * throwing site — which may be several frames below — resumes at this catching
 		 * body's landing pad. Consumed one-shot by VmRecordedResume at the resume site. */
-		pVm->pResumeFrame = pCatchBody;
-		pVm->iResumePc = iCatchPc;
-		pVm->pResumeInstr = pCatchInstr;
-		pVm->iResumeStackDepth = pException->iStackDepth;
+		VmSetResumeTarget(&(*pVm),pCatchBody,iCatchPc,pCatchInstr,pException->iStackDepth);
 		/* (TICKET 1433-60 is retired by stage 2b: this frees the per-entry
 		 * ACTIVATION; a `goto` re-entering the try mints a fresh one at
 		 * OP_LOAD_EXCEPTION. The compiled object is untouched.) */

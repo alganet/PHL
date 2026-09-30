@@ -348,6 +348,10 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			sxi32 rcDef = pVm->nBoundaryRc;
 			sxi32 iDefResumePc;
 			pVm->nBoundaryRc = 0;
+			/* php never reaches a __destruct here either: object_init_ex evaluates the
+			 * defaults BEFORE the object exists, so a failing one leaves nothing to
+			 * destruct. PHL builds the instance first, so it marks it instead. */
+			PH7_ClassInstanceCtorFailed(pNew);
 			PH7_ClassInstanceUnref(pNew);
 			if( rcDef == PH7_ABORT ){
 				VM_EXIT_ABORT;
@@ -395,6 +399,9 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				 * The class-name operand (and any leftover args) are released by
 				 * the Abort/Exception unwind, or explicitly on the resume path. */
 				sxi32 iResumePc;
+				/* php's ctor-failed mark: no __destruct for an object whose
+				 * constructor threw, here or ever (see PH7_ClassInstanceCtorFailed). */
+				PH7_ClassInstanceCtorFailed(pNew);
 				PH7_ClassInstanceUnref(pNew);
 				if( rcCons == PH7_ABORT ){
 					VM_EXIT_ABORT;

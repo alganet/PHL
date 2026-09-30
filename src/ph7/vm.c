@@ -762,8 +762,38 @@ PH7_PRIVATE sxi32 VmFrameLink(ph7_vm *pVm,SyString *pName)
 PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame)
 {
 	if( pVm->pResumeFrame == pFrame ){
-		pVm->pResumeFrame = 0;
+		VmClearResumeTarget(&(*pVm));
 	}
+}
+/*
+ * The four resume fields are ONE record: a frame, the landing pad inside it, the
+ * bytecode array that pad indexes, and the operand-stack base to drain to. They
+ * were written together but cleared, saved and restored INDIVIDUALLY (only the
+ * frame), so a live frame could end up paired with a dead try's pad and depth —
+ * which drains the operand stack to a foreign base and lands mid-statement, one
+ * slot below the stack. These four functions are the only writers.
+ */
+PH7_PRIVATE void VmSetResumeTarget(ph7_vm *pVm,VmFrame *pFrame,sxu32 iPc,void *pInstr,sxi32 iStackDepth)
+{
+	pVm->pResumeFrame = pFrame;
+	pVm->iResumePc = iPc;
+	pVm->pResumeInstr = pInstr;
+	pVm->iResumeStackDepth = iStackDepth;
+}
+PH7_PRIVATE void VmClearResumeTarget(ph7_vm *pVm)
+{
+	VmSetResumeTarget(&(*pVm),0,0,0,0);
+}
+PH7_PRIVATE void VmSaveResumeTarget(ph7_vm *pVm,VmResumeTarget *pSave)
+{
+	pSave->pFrame = pVm->pResumeFrame;
+	pSave->iPc = pVm->iResumePc;
+	pSave->pInstr = pVm->pResumeInstr;
+	pSave->iStackDepth = pVm->iResumeStackDepth;
+}
+PH7_PRIVATE void VmRestoreResumeTarget(ph7_vm *pVm,const VmResumeTarget *pSave)
+{
+	VmSetResumeTarget(&(*pVm),pSave->pFrame,pSave->iPc,pSave->pInstr,pSave->iStackDepth);
 }
 /*
  * Leave the top-most active frame.
@@ -985,14 +1015,28 @@ PH7_PRIVATE int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFra
 	 * pads are unique per try within one bytecode array, and the function guard above
 	 * pins (frame,array) to this exec, so the iExceptionJump match cannot stop at the
 	 * wrong try. OP_POP_EXCEPTION's frame-leave is guarded on VM_FRAME_EXCEPTION, so
-	 * leaving the catching exception frame here (rather than the body) lands cleanly. */
-	while( pVm->pFrame != pEntryFrame
-	    && !((pVm->pFrame->iFlags & VM_FRAME_EXCEPTION)
-	         && pVm->pFrame->iExceptionJump == pVm->iResumePc) ){
-		VmLeaveFrame(&(*pVm));
+	 * leaving the catching exception frame here (rather than the body) lands cleanly.
+	 *
+	 * The record is CONSUMED FIRST — snapshotted whole and cleared — because the pop
+	 * loop below runs USER CODE: leaving a frame releases its locals, and a local's
+	 * last reference dying runs that object's __destruct(). A destructor allocates,
+	 * calls, and may throw; a throw re-enters VmThrowException, whose first act is to
+	 * invalidate the in-flight resume record. Reading pVm->iResumePc AFTER the loop
+	 * therefore read a ZERO the destructor had left behind, and `iResumePc - 1` handed
+	 * the dispatcher -1, which its pc++ turned into a re-run of the whole body from
+	 * index 0: monolog's suite restarted its top-level script forever. The loop's own
+	 * landing-pad test has to read the snapshot for the same reason. */
+	{
+		VmResumeTarget sTarget;
+		VmSaveResumeTarget(&(*pVm),&sTarget);
+		VmClearResumeTarget(&(*pVm)); /* one-shot consume: the whole record, before any teardown */
+		while( pVm->pFrame != pEntryFrame
+		    && !((pVm->pFrame->iFlags & VM_FRAME_EXCEPTION)
+		         && pVm->pFrame->iExceptionJump == sTarget.iPc) ){
+			VmLeaveFrame(&(*pVm));
+		}
+		*pResumePc = (sxi32)sTarget.iPc - 1;
 	}
-	*pResumePc = (sxi32)pVm->iResumePc - 1;
-	pVm->pResumeFrame = 0; /* one-shot consume */
 	/* Landing at the catch pad consumes any C-boundary parked copy of the same
 	 * in-flight throw (VmBoundaryPark): the status is routed now, so the fetch-
 	 * point router must not re-fire it after this resume. */
@@ -1341,7 +1385,7 @@ typedef struct VmMuteState {
 	sxu32 nSaved;
 	sxi32 iSaveStatus;
 	sxi32 iSaveBoundary;
-	VmFrame *pSaveResume;
+	VmResumeTarget sSaveResume;
 	ph7_class_attr *pSaveCycleAttr;
 	ph7_class *pSaveCycleClass;
 } VmMuteState;
@@ -1351,7 +1395,7 @@ static void VmMuteEnter(ph7_vm *pVm,VmMuteState *pSave)
 	pSave->nSaved = SySetUsed(&pVm->aException);
 	pSave->iSaveStatus = pVm->iExitStatus;
 	pSave->iSaveBoundary = pVm->nBoundaryRc;
-	pSave->pSaveResume = pVm->pResumeFrame;
+	VmSaveResumeTarget(&(*pVm),&pSave->sSaveResume);
 	pSave->pSaveCycleAttr = pVm->pConstCycleAttr;
 	pSave->pSaveCycleClass = pVm->pConstCycleClass;
 	if( pSave->nSaved > 0 ){
@@ -1399,7 +1443,7 @@ static int VmMuteLeave(ph7_vm *pVm,VmMuteState *pSave,sxi32 rc)
 	}
 	pVm->iExitStatus = pSave->iSaveStatus;
 	pVm->nBoundaryRc = pSave->iSaveBoundary;
-	pVm->pResumeFrame = pSave->pSaveResume;
+	VmRestoreResumeTarget(&(*pVm),&pSave->sSaveResume);
 	pVm->pConstCycleAttr = pSave->pSaveCycleAttr;
 	pVm->pConstCycleClass = pSave->pSaveCycleClass;
 	return TRUE;
@@ -2386,10 +2430,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pPendingException = 0;
 	pVm->pInflightException = 0;
 	pVm->nInflightExcBase = 0;
-	pVm->pResumeFrame = 0;
-	pVm->iResumePc = 0;
-	pVm->pResumeInstr = 0;
-	pVm->iResumeStackDepth = 0;
+	VmClearResumeTarget(&(*pVm));
 	pVm->nBoundaryRc = 0;
 	PH7_CmpRefusalClear(&(*pVm));
 	pVm->pConstEvalClass = 0;
@@ -3521,10 +3562,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pPendingException = 0;
 	pVm->pInflightException = 0;
 	pVm->nInflightExcBase = 0;
-	pVm->pResumeFrame = 0;
-	pVm->iResumePc = 0;
-	pVm->pResumeInstr = 0;
-	pVm->iResumeStackDepth = 0;
+	VmClearResumeTarget(&(*pVm));
 	pVm->nBoundaryRc = 0;
 	PH7_CmpRefusalClear(&(*pVm));
 	pVm->pConstEvalClass = 0;

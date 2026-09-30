@@ -3284,7 +3284,13 @@ struct ph7_vm
 	                                         * (PHP finally-supersede) */
 	sxu32 nInflightExcBase;                 /* Exception-stack depth when the in-flight finally started; a throw
 	                                         * is "leaving the finally" once the stack unwinds to/below this */
-	VmFrame *pResumeFrame;      /* Body frame whose in-place catch consumed the live throw (ROOT B) */
+	/* The in-place-catch resume target (ROOT B). The four fields are ONE record and
+	 * only mean anything together: a frame paired with another try's landing pad
+	 * drains the operand stack to a foreign base and lands mid-statement. They are
+	 * written, cleared, saved and restored only through VmSetResumeTarget /
+	 * VmClearResumeTarget / VmSaveResumeTarget / VmRestoreResumeTarget — never one
+	 * at a time. */
+	VmFrame *pResumeFrame;      /* Body frame whose in-place catch consumed the live throw */
 	sxu32 iResumePc;            /* Its post-try landing pad (1-based, as iExceptionJump) */
 	void *pResumeInstr;         /* Bytecode array the catching try lives in; resume only in that exec */
 	sxi32 iResumeStackDepth;    /* Operand-stack base (0-based TOS index) of the catching try, recorded
@@ -5914,6 +5920,17 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 	ph7_class *pSelf);
 PH7_PRIVATE void VmMaterializeIntTyped(ph7_value *pVal, sxu32 nType);
 PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame);
+/* The in-place-catch resume record, moved as a whole. See its four fields in ph7_vm. */
+typedef struct VmResumeTarget {
+	VmFrame *pFrame;
+	sxu32 iPc;
+	void *pInstr;
+	sxi32 iStackDepth;
+} VmResumeTarget;
+PH7_PRIVATE void VmSetResumeTarget(ph7_vm *pVm,VmFrame *pFrame,sxu32 iPc,void *pInstr,sxi32 iStackDepth);
+PH7_PRIVATE void VmClearResumeTarget(ph7_vm *pVm);
+PH7_PRIVATE void VmSaveResumeTarget(ph7_vm *pVm,VmResumeTarget *pSave);
+PH7_PRIVATE void VmRestoreResumeTarget(ph7_vm *pVm,const VmResumeTarget *pSave);
 /* Flags for VmEnforcePropertyTypeOnStore(). CLONE_INIT is php 8.5's
  * clone-with re-initialization of a readonly property; VIA_REF says the write
  * arrived through a REFERENCE to the slot rather than through the property
@@ -6841,6 +6858,7 @@ PH7_PRIVATE int PH7_ClassIsUncloneable(ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,int bStrict,int iNest);
 PH7_PRIVATE void  PH7_ClassInstanceUnref(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis);
+PH7_PRIVATE void PH7_ClassInstanceCtorFailed(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth);
 PH7_PRIVATE int PH7_UnmangleAttrName(const char *zKey,sxu32 nKey,SyString *pClass,SyString *pName);
 PH7_PRIVATE SyHashEntry * PH7_ClassInstanceAttrEntry(ph7_class_instance *pThis,const char *zName,sxu32 nName);

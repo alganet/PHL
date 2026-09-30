@@ -639,6 +639,7 @@ static sxi32 ReflectAttrInstantiate(ph7_context *pCtx, ph7_value *pClassName, ph
 		}
 		SySetRelease(&aArg);
 		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			PH7_ClassInstanceCtorFailed(pThis);
 			PH7_ClassInstanceUnref(pThis);
 			return rc;
 		}
@@ -1898,6 +1899,7 @@ static ph7_class_instance * ReflectConstruct(ph7_context *pCtx, const char *zCla
 	if( pCons ){
 		sxi32 rc = PH7_VmCallClassMethod(pVm, pThis, pCons, 0, nArg, apArg);
 		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			PH7_ClassInstanceCtorFailed(pThis);
 			PH7_ClassInstanceUnref(pThis);
 			*pRc = rc;
 			return 0;
@@ -4453,6 +4455,7 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 			rc = PH7_VmCallClassMethod(pVm, pObj, pCons, 0, nCtor, apCtor);
 		}
 		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			PH7_ClassInstanceCtorFailed(pObj);
 			PH7_ClassInstanceUnref(pObj);
 			return rc;
 		}

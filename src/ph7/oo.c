@@ -2690,6 +2690,8 @@ PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm, VmClassAttr *pVmAttr)
  * every object a program left alive WITHOUT freeing it -- php's zend_objects_store_call_destructors
  * does exactly that, and the free that follows must not run the body a second time, which
  * is what CLASS_INSTANCE_DTOR_CALLED records.
+ *
+ * PH7_ClassInstanceCtorFailed below sets that same bit for php's other reason.
  */
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis)
 {
@@ -2772,6 +2774,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis)
 			 * way (GC_ADDREF/GC_DELREF around dtor_obj), so a body that stores $this
 			 * somewhere keeps the reference it gained. */
 			sxu8 bPhase = pVm->bInShutdownDtor;
+			VmResumeTarget sSaveResume;
 			/* The body has a frame of its own, so php's "no execute_data" state ends
 			 * here and resumes when it returns: an object the body itself drops --
 			 * `$this->p = null` on the last holder of a private-destructor object --
@@ -2779,7 +2782,26 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis)
 			 * the shutdown warning above. */
 			pVm->bInShutdownDtor = 0;
 			pThis->iRef += 2; /* Prevent garbage collection */
+			/* A destructor runs in the MIDDLE of somebody else's control flow: the
+			 * release that reaches it is usually a frame teardown on an unwind that
+			 * is already carrying a throw. php hides the in-flight exception for the
+			 * duration (zend_objects_store_del saves EG(exception), clears it, and
+			 * puts it back afterwards) precisely so the body cannot observe or
+			 * disturb it. PHL's in-place-catch resume record is that same in-flight
+			 * state — it says "the throw now unwinding was already caught at frame F,
+			 * pad P" — and a destructor body with a try/catch of its own writes a
+			 * record when ITS catch finishes, overwriting the one the outer throw is
+			 * still owed. monolog's `Handler::__destruct` is exactly that shape
+			 * (`try { $this->close(); } catch (Throwable) {}`), and the outer throw
+			 * then never landed: the script that was catching it simply ENDED.
+			 * Save, clear, restore — and, like php, let a record the body LEAVES
+			 * behind (a throw of its own still in flight) supersede the saved one. */
+			VmSaveResumeTarget(pVm,&sSaveResume);
+			VmClearResumeTarget(pVm);
 			rc = PH7_VmCallMethodUnchecked(pVm,pThis,pDestr,0,0,0);
+			if( pVm->pResumeFrame == 0 ){
+				VmRestoreResumeTarget(pVm,&sSaveResume);
+			}
 			pThis->iRef -= 2;
 			pVm->bInShutdownDtor = bPhase;
 		}
@@ -2792,6 +2814,26 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis)
 		pVm->bShutdownAborted = 1;
 	}
 	return rc;
+}
+/*
+ * A constructor CALL raised, so this object never became one: php marks it
+ * (zend_object_store_ctor_failed sets the very bit that records "the destructor
+ * has been reached for") and its __destruct is therefore never run -- not when the
+ * half-built object is dropped at the `new`, and not later either, because the mark
+ * lives on the object and follows it wherever the constructor happened to store
+ * `$this` before it threw. PHL ran the destructor on both, so monolog's
+ * `Handler::__destruct` -- a `try { $this->close(); } catch {}` -- executed against
+ * an instance whose typed properties were still uninitialised, in the middle of the
+ * unwind that was already carrying the constructor's own exception.
+ *
+ * Called at every door that CALLS a constructor: `new` itself, and Reflection's
+ * newInstance family (php flags at each of those and nowhere else).
+ */
+PH7_PRIVATE void PH7_ClassInstanceCtorFailed(ph7_class_instance *pThis)
+{
+	if( pThis ){
+		pThis->iFlags |= CLASS_INSTANCE_DTOR_CALLED;
+	}
 }
 /*
  * Release a class instance [i.e: Object in the PHP jargon] and invoke any defined destructor.
