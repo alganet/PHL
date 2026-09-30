@@ -697,6 +697,14 @@ static void SplMembersLoad(ph7_class_instance *pThis,ph7_value *pMembers)
 /*
  * The instance's storage slot, separated for writing (every caller may mutate it). Answers
  * the SLOT rather than the hashmap because that is what the array builtins below take.
+ *
+ * The slot is a memobj POOL entry (an instance attribute is `aMemObj[nIdx]`), and the
+ * copy-on-write separation reserves one memobj per copied element -- which can grow, and
+ * therefore MOVE, that pool. Holding the pointer across it left every caller reading a
+ * freed buffer: harmless while the pool never moved, and a hard SIGSEGV once a program
+ * allocated enough for the mapping to be relocated (twig's suite, at a million live
+ * slots). Re-ask the instance for the slot afterwards -- the attribute's INDEX is what
+ * survives a move, and that is what the lookup goes through.
  */
 static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 {
@@ -712,7 +720,7 @@ static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
 		return 0;
 	}
-	return pSlot;
+	return PH7_NativeAttr(pThis,SPL_D);
 }
 static ph7_hashmap * SplStore(ph7_vm *pVm,ph7_class_instance *pThis)
 {
@@ -3865,7 +3873,9 @@ static ph7_value * CitCacheSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
 		return 0;
 	}
-	return pSlot;
+	/* Re-ask: the separation can MOVE the memobj pool this slot lives in
+	 * (SplStoreSlot explains it). */
+	return PH7_NativeAttr(pThis,CIT_CCH);
 }
 /* Every cache reader is refused outright without FULL_CACHE, php's own guard. */
 static ph7_value * CitCacheChecked(ph7_context *pCtx,int *pRc)
@@ -5636,7 +5646,9 @@ static ph7_value * RtiPrefixSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
 		return 0;
 	}
-	return pSlot;
+	/* Re-ask: the separation can MOVE the memobj pool this slot lives in
+	 * (SplStoreSlot explains it). */
+	return PH7_NativeAttr(pThis,RTI_PFX);
 }
 /* One prefix part, appended to pOut. A part nothing has written is php's own
  * default rather than the empty string. */
@@ -6195,7 +6207,9 @@ static ph7_value * DllSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
 		return 0;
 	}
-	return pSlot;
+	/* Re-ask: the separation can MOVE the memobj pool this slot lives in
+	 * (SplStoreSlot explains it). */
+	return PH7_NativeAttr(pThis,DLL_Q);
 }
 static ph7_hashmap * DllMap(ph7_vm *pVm,ph7_class_instance *pThis)
 {
@@ -7075,7 +7089,9 @@ static ph7_value * HeapSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
 		return 0;
 	}
-	return pSlot;
+	/* Re-ask: the separation can MOVE the memobj pool this slot lives in
+	 * (SplStoreSlot explains it). */
+	return PH7_NativeAttr(pThis,HP_H);
 }
 static ph7_hashmap * HeapMap(ph7_vm *pVm,ph7_class_instance *pThis)
 {
@@ -7848,7 +7864,9 @@ static ph7_value * FaSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
 		return 0;
 	}
-	return pSlot;
+	/* Re-ask: the separation can MOVE the memobj pool this slot lives in
+	 * (SplStoreSlot explains it). */
+	return PH7_NativeAttr(pThis,FA_A);
 }
 static ph7_hashmap * FaMap(ph7_vm *pVm,ph7_class_instance *pThis)
 {
@@ -8414,7 +8432,9 @@ static ph7_value * SosSlot(ph7_vm *pVm,ph7_class_instance *pThis)
 	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
 		return 0;
 	}
-	return pSlot;
+	/* Re-ask: the separation can MOVE the memobj pool this slot lives in
+	 * (SplStoreSlot explains it). */
+	return PH7_NativeAttr(pThis,SOS_S);
 }
 static ph7_hashmap * SosMap(ph7_vm *pVm,ph7_class_instance *pThis)
 {

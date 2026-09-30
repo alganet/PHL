@@ -374,6 +374,32 @@ static void PcreSetMatchError(ph7_vm *pVm, int rc)
 }
 
 /* ===== Helper: populate matches array from ovector ===== */
+/*
+ * Where the scan resumes after a ZERO-WIDTH match at nAt.
+ *
+ * php steps on by one CHARACTER, which under a UTF pattern is the whole
+ * multi-byte sequence: stepping one BYTE lands INSIDE it, and pcre2_match then
+ * refuses the offset (PCRE2_ERROR_BADUTFOFFSET) and the scan simply stops. So
+ * `preg_split('/(?<!^)(?!$)/u', 'éÄßご')` — the unicode str_split every library
+ * writes, twig's `split` filter and its `random()` among them — answered TWO
+ * pieces (the first character, then all the rest) instead of four, and the same
+ * one-byte step truncated preg_replace/preg_replace_callback/preg_match_all on
+ * any non-ASCII subject. A continuation byte is 10xxxxxx, so skipping them is
+ * the whole rule; without PCRE2_UTF the unit is the byte, as php's is.
+ */
+static PCRE2_SIZE PcreEmptyMatchNext(pcre2_code *pCode, const char *zSubject,
+	int nSubLen, PCRE2_SIZE nAt)
+{
+	uint32_t nOpts = 0;
+	PCRE2_SIZE n = nAt + 1;
+	pcre2_pattern_info(pCode, PCRE2_INFO_ALLOPTIONS, &nOpts);
+	if( nOpts & PCRE2_UTF ){
+		while( n < (PCRE2_SIZE)nSubLen && (((unsigned char)zSubject[n]) & 0xC0) == 0x80 ){
+			n++;
+		}
+	}
+	return n;
+}
 static void PcrePopulateMatches(
 	ph7_context *pCtx,
 	ph7_value *pArray,          /* Target array (apArg[2] or sub-array) */
@@ -660,7 +686,7 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 					ph7_context_release_value(pCtx, pSet);
 				}
 				if( ovector[1] == ovector[0] ){
-					startOffset = ovector[0] + 1;
+					startOffset = PcreEmptyMatchNext(pCode, zSubject, nSubLen, ovector[0]);
 				}else{
 					startOffset = ovector[1];
 				}
@@ -741,7 +767,7 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 					ph7_context_release_value(pCtx, pVal);
 				}
 				if( ovector[1] == ovector[0] ){
-					startOffset = ovector[0] + 1;
+					startOffset = PcreEmptyMatchNext(pCode, zSubject, nSubLen, ovector[0]);
 				}else{
 					startOffset = ovector[1];
 				}
@@ -905,7 +931,7 @@ static int PH7_builtin_preg_split(ph7_context *pCtx, int nArg, ph7_value **apArg
 			/* Advance */
 			lastOffset = matchEnd;
 			if( matchEnd == matchStart ){
-				startOffset = matchEnd + 1;
+				startOffset = PcreEmptyMatchNext(pCode, zSubject, nSubLen, matchStart);
 			}else{
 				startOffset = matchEnd;
 			}
@@ -1069,10 +1095,11 @@ static void PcreDoReplace(
 			 * split /(?<=[[:lower:]])(?=[[:upper:]])/), so copying zSubject[startOffset]
 			 * grabbed the wrong byte ("fooBar" -> "foo far"). The text between
 			 * startOffset and ovector[0] was already copied above. */
+			PCRE2_SIZE nNext = PcreEmptyMatchNext(pCode, zSubject, nSubLen, ovector[0]);
 			if( ovector[0] < (PCRE2_SIZE)nSubLen ){
-				SyBlobAppend(pOut, &zSubject[ovector[0]], 1);
+				SyBlobAppend(pOut, &zSubject[ovector[0]], (sxu32)(nNext - ovector[0]));
 			}
-			startOffset = ovector[0] + 1;
+			startOffset = nNext;
 		}else{
 			startOffset = ovector[1];
 		}
@@ -1441,10 +1468,11 @@ static sxi32 PcreDoCallbackReplace(
 			 * assertion, e.g. the camelCase split), so copying zSubject[startOffset]
 			 * grabbed the wrong byte ("fooBar" -> "foo far") — the same fix
 			 * PcreDoReplace() carries. */
+			PCRE2_SIZE nNext = PcreEmptyMatchNext(pCode, zSubject, nSubLen, ovector[0]);
 			if( ovector[0] < (PCRE2_SIZE)nSubLen ){
-				SyBlobAppend(pOut, &zSubject[ovector[0]], 1);
+				SyBlobAppend(pOut, &zSubject[ovector[0]], (sxu32)(nNext - ovector[0]));
 			}
-			startOffset = ovector[0] + 1;
+			startOffset = nNext;
 		}else{
 			startOffset = ovector[1];
 		}
