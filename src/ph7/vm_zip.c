@@ -218,6 +218,11 @@ struct phl_zip_ent {
 	sxi64 iOffset;       /* where the STORED bytes begin in the archive file */
 	sxu8 bDir;           /* the name ended in `/`: an explicit directory entry */
 	sxu8 bLoaded;        /* sData holds the uncompressed bytes */
+	SyBlob sLoadedPw;    /* ...and, for an ENCRYPTED entry, the password that
+	                      * opened them. The cache is only good for that one:
+	                      * libzip decrypts on every zip_fopen, so a read with a
+	                      * DIFFERENT password must refuse rather than answer
+	                      * plaintext somebody else's key produced. */
 	sxu8 bNew;           /* added this session: there is no original behind it */
 	sxu8 bDeleted;
 	sxu8 bNameHidden;    /* deleted once: the name lookup misses even after an
@@ -370,6 +375,7 @@ static void ZipEntFree(ph7_vm *pVm,phl_zip_ent *pEnt)
 	SyBlobRelease(&pEnt->sData);
 	SyBlobRelease(&pEnt->sSrcPath);
 	SyBlobRelease(&pEnt->sPassword);
+	SyBlobRelease(&pEnt->sLoadedPw);
 	SyMemBackendFree(&pVm->sAllocator,pEnt);
 }
 /* Room for one more index in the table. */
@@ -416,6 +422,7 @@ static phl_zip_ent * ZipEntNew(phl_zip *pZip,const char *zName,int nName)
 	SyBlobInit(&pEnt->sData,&pZip->pVm->sAllocator);
 	SyBlobInit(&pEnt->sSrcPath,&pZip->pVm->sAllocator);
 	SyBlobInit(&pEnt->sPassword,&pZip->pVm->sAllocator);
+	SyBlobInit(&pEnt->sLoadedPw,&pZip->pVm->sAllocator);
 	pEnt->iSrcLen = -1;
 	pEnt->iSetMethod = ZIP_CM_DEFAULT;
 	pEnt->iSetEncrypt = -1;
@@ -983,8 +990,26 @@ static int ZipDecrypt(phl_zip *pZip,phl_zip_ent *pEnt,const unsigned char *zData
 #endif
 }
 /*
+ * Is the cached plaintext of an ENCRYPTED entry still the answer? Only if the
+ * archive's password is the one that produced it. libzip decrypts on every
+ * zip_fopen, so php refuses a read whose password is wrong however many times
+ * the entry was read correctly before -- where a cache with no key on it
+ * answered the plaintext to anybody who asked twice.
+ */
+static int ZipCachedPwMatches(phl_zip *pZip,phl_zip_ent *pEnt)
+{
+	sxu32 nNow = SyBlobLength(&pZip->sPassword);
+	sxu32 nWas = SyBlobLength(&pEnt->sLoadedPw);
+	if( nNow != nWas ){
+		return 0;
+	}
+	return nNow == 0
+		|| SyMemcmp(SyBlobData(&pZip->sPassword),SyBlobData(&pEnt->sLoadedPw),nNow) == 0;
+}
+/*
  * The uncompressed bytes of one entry, decompressed once and kept: an archive
- * is normally read many times over, and the file is already in memory.
+ * is normally read many times over, and the file is already in memory. An
+ * ENCRYPTED entry's cache is only good for the password that opened it.
  */
 static int ZipEntLoad(phl_zip *pZip,phl_zip_ent *pEnt)
 {
@@ -993,6 +1018,13 @@ static int ZipEntLoad(phl_zip *pZip,phl_zip_ent *pEnt)
 	SyBlob sPlain;
 	int rc;
 	SyBlobInit(&sPlain,&pZip->pVm->sAllocator);
+	if( pEnt->bLoaded && pEnt->iEncMethod != ZIP_EM_NONE && !pEnt->bNew
+	 && !pEnt->bDataChanged && !ZipCachedPwMatches(pZip,pEnt) ){
+		/* A different password than the one behind sData: drop it and decrypt
+		 * again, so a wrong one refuses the way it would have the first time. */
+		SyBlobReset(&pEnt->sData);
+		pEnt->bLoaded = 0;
+	}
 	if( pEnt->bLoaded || pEnt->bDir ){
 		pEnt->bLoaded = 1;
 		SyBlobRelease(&sPlain);
@@ -1022,6 +1054,13 @@ static int ZipEntLoad(phl_zip *pZip,phl_zip_ent *pEnt)
 		}
 		zData = (const unsigned char *)SyBlobData(&sPlain);
 		nData = SyBlobLength(&sPlain);
+		/* Remember WHICH password opened it. Every `bLoaded = 1` below is on
+		 * this side of the decrypt, so one record covers them all. */
+		SyBlobReset(&pEnt->sLoadedPw);
+		if( SyBlobLength(&pZip->sPassword) > 0 ){
+			SyBlobAppend(&pEnt->sLoadedPw,SyBlobData(&pZip->sPassword),
+				SyBlobLength(&pZip->sPassword));
+		}
 	}
 	if( pEnt->iMethod == ZIP_CM_STORE ){
 		SyBlobAppend(&pEnt->sData,zData,nData);

@@ -52,17 +52,40 @@ foreach ([
     'aes256' => ZipArchive::EM_AES_256,
 ] as $name => $method) {
     $p = $dir . '/' . $name . '.zip';
-    @unlink($p);
-    $z = new ZipArchive();
-    $z->open($p, ZipArchive::CREATE);
-    $z->setPassword('s3cret');
-    /* short enough that WinZip writes no CRC, and long enough that it does */
-    $z->addFromString('short.txt', 'hello');
-    $z->setEncryptionName('short.txt', $method);
-    $z->addFromString('long.txt', str_repeat('AB', 600));
-    $z->setEncryptionName('long.txt', $method);
-    $z->addFromString('plain.txt', 'not encrypted');
-    show($name . ' close', fn() => $z->close());
+    $write = function () use ($p, $method) {
+        @unlink($p);
+        $z = new ZipArchive();
+        $z->open($p, ZipArchive::CREATE);
+        $z->setPassword('s3cret');
+        /* short enough that WinZip writes no CRC, and long enough that it does */
+        $z->addFromString('short.txt', 'hello');
+        $z->setEncryptionName('short.txt', $method);
+        $z->addFromString('long.txt', str_repeat('AB', 600));
+        $z->setEncryptionName('long.txt', $method);
+        $z->addFromString('plain.txt', 'not encrypted');
+        return $z->close();
+    };
+    /* A WRONG password is not always refused, and that is the FORMAT, not this
+     * engine: PKWARE's traditional cipher verifies one with a single byte (WinZip
+     * AES with two), so a wrong one is accepted about once in 256 archives -- php
+     * over libzip included, measured here at 3 in 1226. Pinning the refusal on a
+     * five-byte STORED entry therefore turns the whole suite red about once in
+     * four hundred runs. Write until the archive is one where the wrong password
+     * IS refused, so the rows below are a measurement rather than a toss. */
+    $closed = $write();
+    while (true) {
+        /* Both entries: the check byte is written per ENTRY, so each is its own
+         * coin and both are read with the wrong key below. */
+        $t = new ZipArchive();
+        $t->open($p);
+        $t->setPassword('wrong');
+        $lucky = $t->getFromName('short.txt') !== false
+              || $t->getFromName('long.txt') !== false;
+        $t->close();
+        if (!$lucky) { break; }
+        $closed = $write();
+    }
+    show($name . ' close', fn() => $closed);
     $y = new ZipArchive();
     $y->open($p);
     for ($i = 0; $i < $y->numFiles; $i++) {
@@ -79,6 +102,15 @@ foreach ([
     show('  short', fn() => $y->getFromName('short.txt'));
     show('  long', fn() => $y->getFromName('long.txt') === str_repeat('AB', 600));
     show('  the plain one never needed a key', fn() => $y->getFromName('plain.txt'));
+    /* The cached plaintext belongs to the password that produced it. An entry
+     * read successfully and then read again with a WRONG key must refuse, not
+     * answer what the right one decrypted: libzip decrypts on every zip_fopen,
+     * so php has no cache to hand back. */
+    $y->setPassword('wrong');
+    show('  a wrong key AFTER a right one', fn() => $y->getFromName('long.txt'));
+    show('  status', fn() => [$y->status, $y->getStatusString()]);
+    $y->setPassword('s3cret');
+    show('  ...and the right one still works', fn() => $y->getFromName('long.txt') === str_repeat('AB', 600));
     $y->close();
 }
 
@@ -204,6 +236,12 @@ trad close: true
   short: 'hello'
   long: true
   the plain one never needed a key: 'not encrypted'
+  a wrong key AFTER a right one: false
+  status: array (
+  0 => 27,
+  1 => 'Wrong password provided',
+)
+  ...and the right one still works: true
 aes128 close: true
   short.txt  size=5     comp=25    method=0 enc=257 crc=0
   long.txt   size=1200  comp=33    method=8 enc=257 crc=784825680
@@ -221,6 +259,12 @@ aes128 close: true
   short: 'hello'
   long: true
   the plain one never needed a key: 'not encrypted'
+  a wrong key AFTER a right one: false
+  status: array (
+  0 => 27,
+  1 => 'Wrong password provided',
+)
+  ...and the right one still works: true
 aes192 close: true
   short.txt  size=5     comp=29    method=0 enc=258 crc=0
   long.txt   size=1200  comp=37    method=8 enc=258 crc=784825680
@@ -238,6 +282,12 @@ aes192 close: true
   short: 'hello'
   long: true
   the plain one never needed a key: 'not encrypted'
+  a wrong key AFTER a right one: false
+  status: array (
+  0 => 27,
+  1 => 'Wrong password provided',
+)
+  ...and the right one still works: true
 aes256 close: true
   short.txt  size=5     comp=33    method=0 enc=259 crc=0
   long.txt   size=1200  comp=41    method=8 enc=259 crc=784825680
@@ -255,6 +305,12 @@ aes256 close: true
   short: 'hello'
   long: true
   the plain one never needed a key: 'not encrypted'
+  a wrong key AFTER a right one: false
+  status: array (
+  0 => 27,
+  1 => 'Wrong password provided',
+)
+  ...and the right one still works: true
 -- the three refusals, each from a different place
 EM_NONE needs no key at all: true
 status: array (
