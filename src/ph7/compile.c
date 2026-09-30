@@ -1968,6 +1968,7 @@ static sxi32 GenStateEmitExprCode(
 						}
 					}
 				}else if( (pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */
+						&& !bNewCallee
 						&& !(pNode->pLeft && (pNode->pLeft->iFlags & EXPR_NODE_PARENS)))
 					|| pInstr->iOp == PH7_OP_NEW ){
 					/* Method call,flag that. But NOT when the callee was an explicitly
@@ -1978,6 +1979,15 @@ static sxi32 GenStateEmitExprCode(
 					 * resolution — the parens are exactly what distinguishes `($o->p)()` from
 					 * the method call `$o->p()`. */
 					pInstr->iP2 = 1;
+					/* …and a `new`'s operand is the third shape that is NOT a method
+					 * call: after `new`, php's class expression is a `new_variable`,
+					 * which has no call in it, so the parentheses that follow are
+					 * always the CONSTRUCTOR's. `new $config->defType()` -- how
+					 * nette/di spells every service it builds -- read the property as
+					 * a METHOD and died on `Call to undefined method
+					 * stdClass::defType()`. Same exception, same reason, as the
+					 * parenthesised member above: the OP_MEMBER stays a property READ
+					 * and leaves the class NAME for OP_NEW. */
 					/* This OP_MEMBER is where php SCREENS a method call -- an undefined
 					 * or inaccessible method, a class that is not there -- and php
 					 * reports that refusal at the line the CALL BEGINS on. The emitter
@@ -2482,7 +2492,13 @@ static sxi32 GenStateEmitExprCode(
 				 * already answers (a method callee is the two-slot one). */
 				bPrevMember = pPrev && (pPrev->iOp == PH7_OP_ROT_CALLEE
 					? (pPrev->iP2 & PH7_ROT_TWOSLOT) != 0
-					: pPrev->iOp == PH7_OP_MEMBER);
+					/* …and only a METHOD member is one. A `new`'s class expression may
+					 * BE a property read (`new $config->defType()`), which leaves an
+					 * OP_MEMBER in PH7_MEMBER_READ mode with the class NAME on the
+					 * stack -- the trailing OP_CALL is the constructor's and must be
+					 * folded away like any other. Reading the opcode alone kept it, so
+					 * the property's VALUE was then called as a function. */
+					: (pPrev->iOp == PH7_OP_MEMBER && pPrev->iP2 == PH7_MEMBER_METHOD));
 				if( !bPrevMember ){
 					/* Pop the call instruction, preserve named-arg map and
 					 * the hasSpread flag (OP_NEW consumes the spread
