@@ -1189,9 +1189,22 @@ PH7_PRIVATE char * SyMemBackendStrDup(SyMemBackend *pBackend,const char *zSrc,sx
 {
 	char *zDest;
 	zDest = (char *)SyMemBackendAlloc(&(*pBackend),nSize + 1);
-	if( zDest ){
-		Systrcpy(zDest,nSize+1,zSrc,nSize);
+	if( zDest == 0 ){
+		return 0;
 	}
+	if( nSize < 1 ){
+		/* Systrcpy reads a zero length as "the source is NUL-terminated, measure it",
+		 * which is the right convention for ITS callers and the wrong one here: a
+		 * caller of this function passed a length, so it has already said the answer.
+		 * The difference is not academic -- an EMPTY php string hands out a NULL data
+		 * pointer (a SyBlob with no bytes has no buffer), so measuring it is a read of
+		 * address zero. `f($o->{''})` reached exactly that, through the deferred
+		 * argument path's copy of the property name, and SEGFAULTED where php warns
+		 * about an undefined property and answers null. */
+		zDest[0] = 0;
+		return zDest;
+	}
+	Systrcpy(zDest,nSize+1,zSrc,nSize);
 	return zDest;
 }
 PH7_PRIVATE sxi32 SyBlobInitFromBuf(SyBlob *pBlob,void *pBuffer,sxu32 nSize)
