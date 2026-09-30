@@ -147,6 +147,30 @@ static void VmFreeSuspendedExceptionFrames(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	}
 }
 /*
+ * Stamp a coroutine body frame with the site that is starting or RESUMING it.
+ *
+ * An ordinary frame gets this in VmEnterFrame; a coroutine's body frame is built
+ * detached (VmNewExecCtx -> VmNewFrame) and never went through it, so a backtrace
+ * taken inside a generator reported the frame below it at line 0 -- printed as
+ * line 1, in whatever file the include stack happened to top out at. php answers
+ * the CURRENT resume site rather than the creation site (`foreach (g() as $v)`
+ * for the first step, the `yield from` line for a delegate), which is exactly
+ * what this reads, so it is stamped on every start and resume rather than once.
+ * Must run BEFORE the frame is spliced onto the chain: the site is the resumer's.
+ */
+static void VmStampCoroutineCallSite(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	SyString *pFile;
+	if( pCtx->pFrame == 0 ){
+		return;
+	}
+	pCtx->pFrame->nCallLine = pVm->nCurLine;
+	pFile = PH7_VmExecutingUnitFile(&(*pVm));
+	if( pFile ){
+		pCtx->pFrame->sCallFile = *pFile;
+	}
+}
+/*
  * Common suspend epilogue for VmStartCtx / VmResumeCtx: detach the suspended
  * coroutine from the live VM chain and park its exception handlers. Two forms:
  *   - Body-level (pParkedSegment == 0): a generator yield or a fiber suspending
@@ -258,6 +282,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 		return VmNativeNestingFatal(pVm);
 	}
 	/* Attach the fiber's frame to the VM frame chain */
+	VmStampCoroutineCallSite(pVm, pCtx);
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
 	/* Save and set the active context */
@@ -356,6 +381,7 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 		 * suspend-time top frame (the innermost callee / open-try wrapper) then
 		 * becomes current so the adopt at VmByteCodeExec entry resumes inside the
 		 * callee; body-level resumes make the body frame current. */
+		VmStampCoroutineCallSite(pVm, pCtx);
 		pCtx->pFrame->pParent = pVm->pFrame;
 		pVm->pFrame = pSeg ? pSeg->pTopFrame : pCtx->pFrame;
 	}
@@ -1982,6 +2008,18 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			pObj->x.pOther = pClosureThis;
 			MemObjSetType(pObj, MEMOBJ_OBJ);
 			pClosureThis->iRef++; /* Take a strong reference; frame teardown will unref */
+		}
+		/* And on the FRAME, which is what everything asking "whose method is this
+		 * activation" reads: a coroutine body installed the receiver only as a
+		 * variable, so a `debug_backtrace()` frame for a generator METHOD came back
+		 * with its class but no `object` — and twig's error reporter, which finds the
+		 * template to blame by looking for `$trace['object'] instanceof Template`
+		 * across the backtrace, found none and could not say `at line N` for any
+		 * template whose failing frame is a compiled generator. Borrowed exactly like
+		 * VmEnterFrame's: the variable installed above owns the reference, and it
+		 * lives and dies with this frame. */
+		if( pExecCtx->pFrame ){
+			pExecCtx->pFrame->pThis = pClosureThis;
 		}
 	}
 	/* Install static variables */

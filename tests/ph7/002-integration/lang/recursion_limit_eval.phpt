@@ -13,7 +13,10 @@ so the fatal fires quickly and deterministically. This pins the CONFIG-KNOB path
 (PHL_MAX_NATIVE_DEPTH -> PH7_VM_CONFIG_NATIVE_DEPTH); its deep-tier sibling
 tests/ph7/004-deep/native_cap_eval.phpt pins the same fatal at the SHIPPED
 default (256, no env) — the pair is deliberate, not redundant. phl-only: an
-engine-internal cap real php does not express.
+engine-internal cap real php does not express. The location is matched with %A
+rather than %s because php's name for an eval()'d unit (which PHL now shares)
+contains SPACES, and one per level of the chain: `f.php(2) : eval()'d code(2) :
+eval()'d code…`.
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip phl-only: engine-internal native-nesting cap, not expressible in php'; ?>
 --ENV--
@@ -26,4 +29,4 @@ echo "AFTER\n";
 ?>
 --EXPECT--
 --EXPECT_STDERR--
-PHP Error:  Maximum native nesting depth reached in %s on line %d
+PHP Error:  Maximum native nesting depth reached in %A on line %d

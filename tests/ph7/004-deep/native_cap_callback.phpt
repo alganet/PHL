@@ -22,6 +22,6 @@ f(50000);
 echo "UNREACHABLE\n";
 ?>
 --EXPECTF--
-Error: Maximum native nesting depth reached in %s on line %d
+PHP Error:  Maximum native nesting depth reached in %s on line %d
 --CLEAN--
 <?php

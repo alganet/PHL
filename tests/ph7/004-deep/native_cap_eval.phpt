@@ -12,6 +12,8 @@ protects the C stack. Its integration sibling
 tests/ph7/002-integration/lang/recursion_limit_eval.phpt pins the same fatal via
 the PHL_MAX_NATIVE_DEPTH config knob — the pair is deliberate, not redundant.
 phl-only: this pins an engine-internal cap fatal, which real php cannot express.
+The location is matched with %A rather than %s: php's name for an eval()'d unit
+(which PHL now shares) contains SPACES, one set per level of the chain.
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip phl-only: engine-internal native-nesting cap, not expressible in php'; ?>
 --FILE--
@@ -20,6 +22,6 @@ function r(int $n): int { return $n === 0 ? 0 : 1 + eval("return r(" . ($n - 1) 
 echo r(50000), "\n";
 ?>
 --EXPECTF--
-Error: Maximum native nesting depth reached in %s on line %d
+PHP Error:  Maximum native nesting depth reached in %A on line %d
 --CLEAN--
 <?php

@@ -320,6 +320,63 @@ PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDefe
 	return SXRET_OK;
 }
 /*
+ * php names an eval()'d compilation unit after the SITE that evaluated it:
+ * `<file>(<line>) : eval()'d code`, where <file> is the unit the eval() was
+ * written in -- itself such a name when the eval is nested -- and <line> the line
+ * it sits on. That name is not a decoration on one message: it is the unit's
+ * identity, so `__FILE__`, every diagnostic's location, a Throwable's getFile(),
+ * and ReflectionFunction/ReflectionClass::getFileName() for anything the chunk
+ * declares all read it. PHL left the chunk sharing its caller's name, so a
+ * template engine that compiles to PHP and evals it (twig, and every cache-less
+ * renderer of that shape) reported positions in the COMPILER's file -- and the
+ * caller could not map them back, because its own class had the compiler's name
+ * on it too.
+ *
+ * Interned per site rather than per call: the name is copied by value into every
+ * function and class record compiled out of the chunk, so it must outlive the
+ * eval, and an eval inside a loop repeats one site.
+ */
+static sxi32 VmEvalUnitName(ph7_vm *pVm,SyString *pOut)
+{
+	SyString *pHost = PH7_VmExecutingUnitFile(&(*pVm));
+	SyString *aName;
+	SyString sKey;
+	SyBlob sName;
+	char *zDup;
+	sxu32 n;
+	SyBlobInit(&sName,&pVm->sAllocator);
+	if( pHost && pHost->nByte > 0 ){
+		SyBlobAppend(&sName,pHost->zString,pHost->nByte);
+	}
+	SyBlobFormat(&sName,"(%u) : eval()'d code",pVm->nCurLine);
+	if( SyBlobLength(&sName) < 1 ){
+		SyBlobRelease(&sName);
+		return SXERR_MEM;
+	}
+	SyStringInitFromBuf(&sKey,SyBlobData(&sName),SyBlobLength(&sName));
+	aName = (SyString *)SySetBasePtr(&pVm->aEvalFile);
+	for( n = 0 ; n < SySetUsed(&pVm->aEvalFile) ; ++n ){
+		if( SyStringCmp(&sKey,&aName[n],SyMemcmp) == 0 ){
+			*pOut = aName[n];
+			SyBlobRelease(&sName);
+			return SXRET_OK;
+		}
+	}
+	zDup = SyMemBackendStrDup(&pVm->sAllocator,sKey.zString,sKey.nByte);
+	n = sKey.nByte;
+	SyBlobRelease(&sName);
+	if( zDup == 0 ){
+		return SXERR_MEM;
+	}
+	SyStringInitFromBuf(&sKey,zDup,n);
+	if( SySetPut(&pVm->aEvalFile,(const void *)&sKey) != SXRET_OK ){
+		SyMemBackendFree(&pVm->sAllocator,zDup);
+		return SXERR_MEM;
+	}
+	*pOut = sKey;
+	return SXRET_OK;
+}
+/*
  * value eval(string $code)
  *   Evaluate a string as PHP code.
  * Parameter
@@ -369,6 +426,8 @@ PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	{
 		SyBlob sTagged;
 		SyString sTaggedStr;
+		SyString sUnit;
+		int bUnit;
 		SyBlobInit(&sTagged,&pCtx->pVm->sAllocator);
 		if( SyBlobAppend(&sTagged,"<?php ",sizeof("<?php ")-1) != SXRET_OK
 		 || SyBlobAppend(&sTagged,sChunk.zString,sChunk.nByte) != SXRET_OK ){
@@ -378,8 +437,22 @@ PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		SyStringInitFromBuf(&sTaggedStr,SyBlobData(&sTagged),SyBlobLength(&sTagged));
 		/* php gives eval() a trace frame of its own, exactly as it does an include --
 		 * argument-less, where an include names the unit it loaded. */
+		/* Name the chunk BEFORE the trace frame goes on: PH7_VmIncFramePush records
+		 * an entry whose pFrame is the CURRENT frame, and PH7_VmExecutingUnitFile
+		 * answers such a frame from the include-stack TOP -- so asking after the push
+		 * names the unit being loaded rather than the one holding the eval(), and a
+		 * template engine's compiled chunk came out named after the SCRIPT instead of
+		 * the library method that evaluated it. */
+		bUnit = (VmEvalUnitName(pCtx->pVm,&sUnit) == SXRET_OK);
 		PH7_VmIncFramePush(pCtx->pVm,"eval",0);
+		/* Now push the chunk's own unit name. The include-frame entry is what makes
+		 * the include stack answer for code running at the chunk's TOP level -- which
+		 * pushes no VmFrame of its own -- so the two go together. */
+		bUnit = bUnit && (SySetPut(&pCtx->pVm->aFiles,(const void *)&sUnit) == SXRET_OK);
 		rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sTaggedStr,0,FALSE);
+		if( bUnit ){
+			(void)SySetPop(&pCtx->pVm->aFiles);
+		}
 		PH7_VmIncFramePop(pCtx->pVm);
 		SyBlobRelease(&sTagged);
 	}

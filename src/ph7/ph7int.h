@@ -3154,6 +3154,11 @@ struct ph7_vm
 	                             * pushes no VmFrame to be found later. */
 	SySet aPaths;               /* Set of import paths */
 	SySet aIncluded;            /* Set of included files */
+	SySet aEvalFile;            /* Interned `<file>(<line>) : eval()'d code` unit names, one per
+	                             * eval() SITE. A compiled function or class copies the name it
+	                             * was declared in, so the text has to outlive the eval that
+	                             * made it -- and an eval in a loop must not mint a fresh copy
+	                             * every turn, since the site's file and line never change. */
 	SySet aOB;                  /* Stackable output buffers */
 	SySet aResponseHeaders;     /* HTTP response headers (VmResponseHeader entries) */
 	int iResponseStatus;        /* HTTP response status code (default 200) */

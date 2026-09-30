@@ -2461,6 +2461,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sReflectConstName,&pVm->sAllocator);
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aIncluded,&pVm->sAllocator,sizeof(SyString));
+	SySetInit(&pVm->aEvalFile,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aOB,&pVm->sAllocator,sizeof(VmObEntry));
 	SySetInit(&pVm->aResponseHeaders,&pVm->sAllocator,sizeof(VmResponseHeader));
 	/* 0 is php's "no code set": a CLI run reads FALSE until something sets

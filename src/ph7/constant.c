@@ -481,8 +481,13 @@ static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)
 {
 	ph7_vm *pVm = (ph7_vm *)pUserData;
 	SyString *pFile;
-	/* Peek the top entry */
-	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	/* The unit the LITERAL is written in, which php fixes at compile time: the
+	 * declared file of the function running, else the unit on top of the include
+	 * stack. Reading the stack top alone answered the unit currently being LOADED,
+	 * so a function defined in one file and called from an include (or from an
+	 * eval()'d chunk, whose own name is now such an entry) reported the caller's
+	 * file as its own. */
+	pFile = PH7_VmExecutingUnitFile(&(*pVm));
 	if( pFile == 0 ){
 		/* Expand the magic word: ":MEMORY:" */
 		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);
@@ -498,8 +503,8 @@ static void PH7_DIR_Const(ph7_value *pVal,void *pUserData)
 {
 	ph7_vm *pVm = (ph7_vm *)pUserData;
 	SyString *pFile;
-	/* Peek the top entry */
-	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	/* Same question as __FILE__, one directory up. */
+	pFile = PH7_VmExecutingUnitFile(&(*pVm));
 	if( pFile == 0 ){
 		/* Expand the magic word: ":MEMORY:" */
 		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);
