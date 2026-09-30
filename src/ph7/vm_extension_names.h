@@ -199,7 +199,9 @@ static const VmExtName aExtFunc[] = {
 	{"crc32",PH7_EXT_STANDARD}, {"crypt",PH7_EXT_STANDARD}, {"gethostname",PH7_EXT_STANDARD},
 	{"hrtime",PH7_EXT_STANDARD}, {"md5",PH7_EXT_STANDARD}, {"md5_file",PH7_EXT_STANDARD},
 	{"getmyuid",PH7_EXT_STANDARD}, {"getmygid",PH7_EXT_STANDARD}, {"getmypid",PH7_EXT_STANDARD},
-	{"sha1",PH7_EXT_STANDARD}, {"sha1_file",PH7_EXT_STANDARD}, {"inet_ntop",PH7_EXT_STANDARD},
+	{"sha1",PH7_EXT_STANDARD}, {"sha1_file",PH7_EXT_STANDARD},
+	{"openlog",PH7_EXT_STANDARD}, {"closelog",PH7_EXT_STANDARD}, {"syslog",PH7_EXT_STANDARD},
+	{"inet_ntop",PH7_EXT_STANDARD},
 	{"inet_pton",PH7_EXT_STANDARD}, {"metaphone",PH7_EXT_STANDARD}, {"header",PH7_EXT_STANDARD},
 	{"header_remove",PH7_EXT_STANDARD}, {"setrawcookie",PH7_EXT_STANDARD},
 	{"setcookie",PH7_EXT_STANDARD}, {"http_response_code",PH7_EXT_STANDARD},
@@ -849,6 +851,22 @@ static const VmExtName aExtConst[] = {
 	{"IMAGETYPE_WEBP",PH7_EXT_STANDARD}, {"IMAGETYPE_AVIF",PH7_EXT_STANDARD},
 	{"IMAGETYPE_HEIF",PH7_EXT_STANDARD}, {"IMAGETYPE_UNKNOWN",PH7_EXT_STANDARD},
 	{"IMAGETYPE_COUNT",PH7_EXT_STANDARD},
+	/* ext/standard's syslog constants, in php's own order. LOG_LOCAL0..7 do not
+	 * exist on Windows; every reader filters against the live VM. */
+	{"LOG_EMERG",PH7_EXT_STANDARD}, {"LOG_ALERT",PH7_EXT_STANDARD}, {"LOG_CRIT",PH7_EXT_STANDARD},
+	{"LOG_ERR",PH7_EXT_STANDARD}, {"LOG_WARNING",PH7_EXT_STANDARD},
+	{"LOG_NOTICE",PH7_EXT_STANDARD}, {"LOG_INFO",PH7_EXT_STANDARD},
+	{"LOG_DEBUG",PH7_EXT_STANDARD}, {"LOG_KERN",PH7_EXT_STANDARD}, {"LOG_USER",PH7_EXT_STANDARD},
+	{"LOG_MAIL",PH7_EXT_STANDARD}, {"LOG_DAEMON",PH7_EXT_STANDARD}, {"LOG_AUTH",PH7_EXT_STANDARD},
+	{"LOG_SYSLOG",PH7_EXT_STANDARD}, {"LOG_LPR",PH7_EXT_STANDARD}, {"LOG_NEWS",PH7_EXT_STANDARD},
+	{"LOG_UUCP",PH7_EXT_STANDARD}, {"LOG_CRON",PH7_EXT_STANDARD},
+	{"LOG_AUTHPRIV",PH7_EXT_STANDARD}, {"LOG_LOCAL0",PH7_EXT_STANDARD},
+	{"LOG_LOCAL1",PH7_EXT_STANDARD}, {"LOG_LOCAL2",PH7_EXT_STANDARD},
+	{"LOG_LOCAL3",PH7_EXT_STANDARD}, {"LOG_LOCAL4",PH7_EXT_STANDARD},
+	{"LOG_LOCAL5",PH7_EXT_STANDARD}, {"LOG_LOCAL6",PH7_EXT_STANDARD},
+	{"LOG_LOCAL7",PH7_EXT_STANDARD}, {"LOG_PID",PH7_EXT_STANDARD}, {"LOG_CONS",PH7_EXT_STANDARD},
+	{"LOG_ODELAY",PH7_EXT_STANDARD}, {"LOG_NDELAY",PH7_EXT_STANDARD},
+	{"LOG_NOWAIT",PH7_EXT_STANDARD}, {"LOG_PERROR",PH7_EXT_STANDARD},
 	{"STR_PAD_LEFT",PH7_EXT_STANDARD}, {"STR_PAD_RIGHT",PH7_EXT_STANDARD},
 	{"STR_PAD_BOTH",PH7_EXT_STANDARD}, {"PATHINFO_DIRNAME",PH7_EXT_STANDARD},
 	{"PATHINFO_BASENAME",PH7_EXT_STANDARD}, {"PATHINFO_EXTENSION",PH7_EXT_STANDARD},
@@ -1601,5 +1619,8 @@ static const VmExtName aExtIni[] = {
 	/* openssl -- php's `openssl.libctx` is deliberately not registered
 	 * (vm_builtin_ini.c says why), so the row is not here either */
 	{"openssl.cafile",PH7_EXT_OPENSSL}, {"openssl.capath",PH7_EXT_OPENSSL},
+	/* php keeps the three syslog directives in Core, not in standard. */
+	{"syslog.facility",PH7_EXT_CORE}, {"syslog.ident",PH7_EXT_CORE},
+	{"syslog.filter",PH7_EXT_CORE},
 };
 

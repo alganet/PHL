@@ -926,6 +926,11 @@ static const struct VmBuiltinSig {
 	{ "gettext", "string $message", "string" },
 	{ "ngettext", "string $singular, string $plural, int $count", "string" },
 	{ "textdomain", "?string $domain = NULL", "string" },
+	/* ext/standard's syslog trio. All three answer `true` and nothing else --
+	 * php declares the return type as the literal `true`, not `bool`. */
+	{ "openlog", "string $prefix, int $flags, int $facility", "true" },
+	{ "closelog", "", "true" },
+	{ "syslog", "int $priority, string $message", "true" },
 	/* ext/pcntl. Only reachable where the extension is built, but the table is
 	 * a DECLARATION rather than a registration -- Reflection filters it against
 	 * the live VM, so the rows cost nothing on Windows. */

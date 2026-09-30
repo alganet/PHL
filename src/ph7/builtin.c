@@ -1043,6 +1043,11 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 #endif /* PH7_NEED_FMT_AND_INI */
 #ifdef PH7_NEED_BUILTIN_REG
 	{ "size_format",  PH7_builtin_size_format},
+	     /* ext/standard's syslog trio, in php's own order. Not an extension --
+	      * these are here on every platform php has them on, Windows included. */
+	{ "openlog",      PH7_builtin_openlog   },
+	{ "closelog",     PH7_builtin_closelog  },
+	{ "syslog",       PH7_builtin_syslog    },
 
 
 #ifndef PH7_DISABLE_HASH_FUNC

@@ -3253,6 +3253,11 @@ struct ph7_vm
 	                             * VMs apart. Nothing ever clears it -- a later
 	                             * SUCCESS leaves the last failure standing,
 	                             * which is php's own contract. */
+	void *pSyslog;              /* ext/standard's syslog state (builtin_syslog.c owns the
+	                             * shape): the prefix openlog() was given -- POSIX keeps the
+	                             * POINTER, so it has to outlive the call -- and, on Windows,
+	                             * the event-source handle a record is reported through.
+	                             * Allocated on the first call, freed by PH7_SyslogVmRelease. */
 	void *pPcntl;               /* ext/pcntl's per-VM state (builtin_pcntl.c owns the
 	                             * shape): the handler each signal was last given, the
 	                             * remembered errno and the async-dispatch flag. Allocated
@@ -6399,6 +6404,15 @@ PH7_PRIVATE sxi32 PH7_VmSignalInstallFatal(ph7_vm *pVm,int signo);
  * Declared beside pcntl's names because pcntl_fork() is its only caller, but it
  * belongs to the library core and is built wherever threads are. */
 PH7_PRIVATE void PH7_LibForkChild(void);
+#endif
+/* php's syslog trio (builtin_syslog.c). Not an extension -- ext/standard, and
+ * therefore present on every platform php is. */
+PH7_PRIVATE void PH7_RegisterSyslogConstants(ph7_vm *pVm);
+PH7_PRIVATE void PH7_SyslogVmRelease(ph7_vm *pVm);
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+PH7_PRIVATE int PH7_builtin_openlog(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_syslog(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_closelog(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif
 /* builtin_parse.c function prototypes */
 #ifndef PH7_DISABLE_BUILTIN_FUNC

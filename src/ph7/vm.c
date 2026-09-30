@@ -2392,6 +2392,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->bIniSeeded = 0;
 	pVm->pGettext = 0;   /* ext/gettext binds its first domain lazily */
 	pVm->pPcntl = 0;     /* ext/pcntl allocates its handler table on the first call */
+	pVm->pSyslog = 0;    /* openlog() allocates the prefix it has to keep alive */
 	pVm->iPosixErr = 0;  /* ext/posix has seen no failure yet */
 	pVm->iSessStatus = 1; /* PHP_SESSION_NONE */
 	PH7_MemObjInit(&(*pVm),&pVm->sSessHandler);
@@ -3223,6 +3224,8 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	/* Register ext/pcntl's signal, priority and namespace constants (none of
 	 * which exist on Windows, where php builds no ext/pcntl either) */
 	PH7_RegisterPcntlConstants(&(*pVm));
+	/* Register the LOG_* constants ext/standard's syslog trio reads */
+	PH7_RegisterSyslogConstants(&(*pVm));
 	/* Register built-in functions [i.e: is_null(), array_diff(), strlen(), etc.] */
 	PH7_RegisterBuiltInFunction(&(*pVm));
 	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */
@@ -3806,6 +3809,8 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 	 * every disposition it took over goes back to SIG_DFL before the allocator
 	 * that table lives in disappears. */
 	PH7_PcntlVmRelease(pVm);
+	/* ...and for the syslog prefix a still-open openlog() points at. */
+	PH7_SyslogVmRelease(pVm);
 	PH7_PharVmRelease(pVm);
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */

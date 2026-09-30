@@ -141,6 +141,15 @@ static const struct {
 	{ "session.use_only_cookies", "1",          VM_INI_ALL },
 	{ "session.use_strict_mode",  "0",          VM_INI_ALL },
 	{ "short_open_tag",           "",           VM_INI_PERDIR|VM_INI_SYSTEM },
+	/* php's three syslog directives, with php's defaults and php's access masks.
+	 * `syslog.filter` is the one this engine READS: it decides which bytes
+	 * syslog() escapes and is PHP_INI_ALL, so a script can change it. The other
+	 * two are what php's own error logger uses when `error_log = syslog`, a
+	 * target this build does not have -- they are declared because ini_get() and
+	 * ini_get_all() answer them under php and a program can read either. */
+	{ "syslog.facility",          "LOG_USER",   VM_INI_SYSTEM },
+	{ "syslog.filter",            "no-ctrl",    VM_INI_ALL },
+	{ "syslog.ident",             "php",        VM_INI_SYSTEM },
 #ifdef PH7_ENABLE_SQLITE
 	/* ext/sqlite3's two directives, in this sorted list's own place. `defensive`
 	 * is applied to every connection SQLite3 opens (it is what makes an UPDATE of
@@ -196,6 +205,26 @@ static int IniTruthy(const char *zVal,sxu32 nVal)
 	return 0;
 }
 /*
+ * The value rules that apply to a `-d name=value` on the COMMAND LINE, which are
+ * not the same set IniValueAccepted enforces on ini_set(). php runs each
+ * directive's OnUpdate handler at startup too, but several of those refuse only
+ * at RUNTIME -- `-d session.serialize_handler=bogus` is taken by php because the
+ * serializer table it would look the name up in is still empty -- so this is a
+ * per-directive list rather than a shared screen. A value refused here leaves the
+ * directive at its default, which is what php reports.
+ */
+static int IniStartupValueAccepted(const SyString *pName,const char *zVal,sxu32 nVal)
+{
+	if( pName->nByte == sizeof("syslog.filter")-1
+	 && SyMemcmp(pName->zString,"syslog.filter",sizeof("syslog.filter")-1) == 0 ){
+		return (nVal == 3 && SyMemcmp(zVal,"all",3) == 0)
+		    || (nVal == 7 && SyMemcmp(zVal,"no-ctrl",7) == 0)
+		    || (nVal == 5 && SyMemcmp(zVal,"ascii",5) == 0)
+		    || (nVal == 3 && SyMemcmp(zVal,"raw",3) == 0);
+	}
+	return 1;
+}
+/*
  * Build the table: the static defaults, then the CLI queue merged over them (an
  * unknown CLI name is appended as a new INI_ALL directive, as the chunk did),
  * then sorted by name so ini_get_all() can walk it in php's order without a sort.
@@ -232,6 +261,10 @@ static sxi32 IniSeed(ph7_vm *pVm)
 	aCli = (VmIniEntry *)SySetBasePtr(&pVm->aIniCli);
 	for( i = 0 ; i < SySetUsed(&pVm->aIniCli) ; i++ ){
 		int bFound = 0;
+		if( !IniStartupValueAccepted(&aCli[i].sName,aCli[i].sValue.zString,
+			aCli[i].sValue.nByte) ){
+			continue;   /* the directive keeps its default, as it does under php */
+		}
 		aSlot = (VmIniSlot *)SySetBasePtr(&pVm->aIniTab);
 		for( j = 0 ; j < SySetUsed(&pVm->aIniTab) ; j++ ){
 			if( aSlot[j].sName.nByte == aCli[i].sName.nByte
@@ -454,6 +487,18 @@ static int IniValueAccepted(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 
 	if( IniNameIs(pSlot,"include_path") && nVal < 1 ){
 		/* php registers include_path with OnUpdateStringUnempty: the EMPTY value
 		 * is refused in silence and the directive keeps what it had. */
+		return 0;
+	}
+	if( IniNameIs(pSlot,"syslog.filter")
+	 && !(nVal == 3 && SyMemcmp(zVal,"all",3) == 0)
+	 && !(nVal == 7 && SyMemcmp(zVal,"no-ctrl",7) == 0)
+	 && !(nVal == 5 && SyMemcmp(zVal,"ascii",5) == 0)
+	 && !(nVal == 3 && SyMemcmp(zVal,"raw",3) == 0) ){
+		/* php names the four modes in its OnUpdate handler and refuses anything
+		 * else in silence, keeping what the directive had -- so
+		 * `ini_set('syslog.filter','bogus')` is false and reads back unchanged.
+		 * The match is CASE-SENSITIVE there: `ASCII` is refused where `ascii` is
+		 * taken, which is not what most of php's word-valued directives do. */
 		return 0;
 	}
 	if( IniNameIs(pSlot,"bcmath.scale") ){
