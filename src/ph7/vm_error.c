@@ -255,6 +255,18 @@ PH7_PRIVATE sxi32 PH7_VmErrPhpBit(sxi32 iErr)
 		return 16384;
 	case 256  /* E_USER_ERROR */:
 		return 256;
+	/* The COMPILER's three, which php reports under bits of their own rather
+	 * than under E_WARNING/E_ERROR: a diagnostic the compiler raises is
+	 * E_COMPILE_WARNING or E_COMPILE_ERROR, and the parser's own refusal is
+	 * E_PARSE. `error_reporting(E_ALL & ~E_COMPILE_WARNING)` hides the first
+	 * and leaves a compile-time E_WARNING standing, which is a distinction
+	 * only these rows can express. */
+	case 4    /* E_PARSE */:
+		return 4;
+	case 64   /* E_COMPILE_ERROR */:
+		return 64;
+	case 128  /* E_COMPILE_WARNING */:
+		return 128;
 	default:
 		return 1; /* E_ERROR and everything else fatal-ish */
 	}
@@ -3548,12 +3560,74 @@ static ph7_output_consumer * VmCompileDisplaySink(ph7_vm *pVm)
 	}
 	return 0;
 }
-PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,const char *zLabel,
-	const char *zBody,sxu32 nBody)
+PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,sxi32 iErr,const char *zLabel,
+	const char *zBody,sxu32 nBody,const char *zBare,sxu32 nBare,sxu32 nLine)
 {
-	SyBlob sCopy;
+	SyBlob sCopy,sHold;
 	sxi32 rc = SXRET_OK;
 	if( pVm == 0 ){
+		return SXRET_OK;
+	}
+	/*
+	 * A compile diagnostic owes the same three things a runtime one does
+	 * (PH7_VmThrowError): the user handler, error_get_last(), and the
+	 * error_reporting() mask. It used to owe NONE of them, so a library that
+	 * silences a probe -- `error_reporting(0); class_exists('X');` , which is
+	 * how a php-console-style optional dependency is tested and how monolog's
+	 * suite loads one -- got the compiler's warning printed anyway.
+	 *
+	 * Who sees what is php's split. E_COMPILE_WARNING/E_COMPILE_ERROR/E_PARSE
+	 * are on `set_error_handler`'s own exclusion list, so those go straight to
+	 * default processing; a compile-time E_WARNING (php raises `"continue"
+	 * targeting switch` and the magic-visibility rules at that level) reaches
+	 * the handler like any other. error_get_last() records what reached
+	 * DEFAULT processing, masked or not -- so it is recorded here even when
+	 * the mask hides the print, and NOT when a handler claimed it.
+	 *
+	 * Both texts are the CALLER's buffer -- the code generator's one-message
+	 * store -- and a user handler can compile (an `include`, an `eval`), which
+	 * resets and reallocates exactly that buffer. Everything below reads the
+	 * copy instead; only the copy's lifetime is this function's.
+	 */
+	SyBlobInit(&sHold,&pVm->sAllocator);
+	SyBlobAppend(&sHold,zBody,nBody);
+	zBody = (const char *)SyBlobData(&sHold);
+	zBare = zBody;
+	if( nBare > nBody ){
+		nBare = nBody;
+	}
+	{
+		/* The handler and error_get_last() take the BARE sentence and the line
+		 * as their own fields; only the printed copies carry php's
+		 * ` in FILE on line N` tail, which the caller has already appended to
+		 * zBody. */
+		SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+		if( iErr == 2 /* E_WARNING */ || iErr == 8 /* E_NOTICE */
+		 || iErr == 8192 /* E_DEPRECATED */ ){
+			if( !VmInvokeErrorHandler(pVm,iErr,zBare,(sxi32)nBare,pFile,(sxi32)nLine) ){
+				SyBlobRelease(&sHold);
+				return SXRET_OK;
+			}
+			/* The handler may have moved the file stack (its own include) and it
+			 * may have written the copy's backing store's neighbours; re-read
+			 * both before they are used again. */
+			zBody = (const char *)SyBlobData(&sHold);
+			zBare = zBody;
+			pFile = (SyString *)SySetPeek(&pVm->aFiles);
+		}
+		VmRecordLastError(&(*pVm),iErr,zBare,nBare,pFile,nLine);
+	}
+	/*
+	 * The MAIN script's own compile is the one window where the mask cannot be
+	 * asked: ph7_compile_file CREATES the VM, so a diagnostic raised there is
+	 * older than the host's first ph7_vm_config() call and iErrMask is still
+	 * zero -- which must not be read as `error_reporting(0)`. bErrMaskSet says
+	 * whether anybody has spoken yet; until somebody has, the pre-mask
+	 * behaviour (report it) stands. Recorded in PLAN.md with the
+	 * `-d error_reporting=0` divergence it leaves.
+	 */
+	if( pVm->bErrMaskSet && !VmErrReportWants(pVm,iErr) ){
+		SyBlobRelease(&sHold);
 		return SXRET_OK;
 	}
 	if( pVm->bLogErrors ){
@@ -3580,6 +3654,7 @@ PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,const char *zLabel,
 			rc = rc2;
 		}
 	}
+	SyBlobRelease(&sHold);
 	return rc;
 }
 PH7_PRIVATE sxi32 PH7_VmFatalError(ph7_vm *pVm,const char *zFormat,...)

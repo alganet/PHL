@@ -3997,6 +3997,12 @@ struct ph7_vm
 	sxi32 iErrMask;      /* error_reporting() level. PH7 collapsed it to the bErrReport
 	                      * boolean, so E_ALL & ~E_DEPRECATED still printed every
 	                      * deprecation — any non-zero level meant "report all". */
+	int bErrMaskSet;     /* Has anybody SAID what the level is? The main script's own
+	                      * compile runs inside ph7_compile_file, which is what CREATES
+	                      * the VM, so a diagnostic raised there is older than the host's
+	                      * first ph7_vm_config() call and iErrMask is still zero — which
+	                      * a compile diagnostic must not read as `error_reporting(0)`.
+	                      * Set by every door that writes iErrMask, never cleared. */
 	int nRecursionDepth;       /* Current PHP call depth (OP_CALL frames only) */
 	int nErrSuppress;          /* '@' error-control depth: >0 means the diagnostics raised
 	                            * while evaluating the suppressed expression are not printed
@@ -5710,7 +5716,7 @@ PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int iWordi
 PH7_PRIVATE sxi32 PH7_VmExecAttrArg(ph7_vm *pVm,SySet *pByteCode,ph7_class *pDeclCls,ph7_value *pResult);
 PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...);
 PH7_PRIVATE sxi32 PH7_VmFatalError(ph7_vm *pVm,const char *zFormat,...);
-PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,const char *zLabel,const char *zBody,sxu32 nBody);
+PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,sxi32 iErr,const char *zLabel,const char *zBody,sxu32 nBody,const char *zBare,sxu32 nBare,sxu32 nLine);
 PH7_PRIVATE sxu32 PH7_ClassAbstractGap(ph7_vm *pVm,ph7_class *pClass,SyBlob *pMsg);
 /* vm_builtin_class.c function prototypes */
 PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass);

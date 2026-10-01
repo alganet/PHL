@@ -208,6 +208,7 @@ PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value 
 		nNew = ph7_value_to_int(apArg[0]);
 		pVm->iErrMask = (sxi32)nNew;
 		pVm->bErrReport = nNew != 0;
+		pVm->bErrMaskSet = 1;
 	}
 	/* Return the old level */
 	ph7_result_int(pCtx,nOld);

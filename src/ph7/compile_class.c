@@ -1939,7 +1939,12 @@ static sxi32 GenStateCompileClassMethod(
 		 * declares exactly this and drew the warning on every single run. */
 		SyBufferFormat(zMagicErr,sizeof(zMagicErr),
 			"Private methods cannot be final as they are never overridden by other classes");
-		nMagicSeverity = E_WARNING;
+		/* php's E_COMPILE_WARNING, not the E_WARNING the visibility rules above
+		 * raise -- swept out of php 8.5, which passes the visibility ones to a
+		 * user error handler and this one straight to default processing, and
+		 * hides exactly one of the two under
+		 * `error_reporting(E_ALL & ~E_COMPILE_WARNING)`. */
+		nMagicSeverity = 128 /* E_COMPILE_WARNING */;
 	}
 	if( nMagicSeverity == E_ERROR ){
 		/* Suppress the __toString rule below: php never reaches it on a

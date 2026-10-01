@@ -35,10 +35,13 @@ static void VmReportCompileFatal(ph7_vm *pVm,SyBlob *pMsg,sxu32 nLine)
 		SyBlobFormat(&sOut," in %.*s on line %u",(int)pFile->nByte,pFile->zString,nLine);
 	}
 	PH7_GenAppendFatalTrace(&(*pVm),&sOut,PH7_FATAL_TRACE_COMPILE);
-	/* The label and php's two copies are the shared compile-diagnostic emitter's,
-	 * so eval()'s fatal cannot drift from the compiler's own. */
-	PH7_VmEmitCompileDiagnostic(&(*pVm),"Fatal error",
-		(const char *)SyBlobData(&sOut),SyBlobLength(&sOut));
+	/* The label, php's two copies, the error_reporting() gate and
+	 * error_get_last() are the shared compile-diagnostic emitter's, so eval()'s
+	 * fatal cannot drift from the compiler's own. E_COMPILE_ERROR is php's bit
+	 * for it, and the BARE sentence is what pMsg still holds. */
+	PH7_VmEmitCompileDiagnostic(&(*pVm),64 /* E_COMPILE_ERROR */,"Fatal error",
+		(const char *)SyBlobData(&sOut),SyBlobLength(&sOut),
+		(const char *)SyBlobData(pMsg),SyBlobLength(pMsg),nLine);
 	SyBlobRelease(&sOut);
 }
 /*

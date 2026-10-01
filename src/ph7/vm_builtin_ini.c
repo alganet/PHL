@@ -485,6 +485,7 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 		}
 		pVm->iErrMask = iVal;
 		pVm->bErrReport = iVal != 0;
+		pVm->bErrMaskSet = 1;
 		return;
 	}
 	if( IniNameIs(pSlot,"memory_limit") ){

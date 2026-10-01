@@ -3696,7 +3696,8 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 		}else if( DeclareNameIs(pDirName, "encoding", sizeof("encoding")-1) ){
 			/* php always ignores declare(encoding=...) unless it was built with
 			 * Zend multibyte, and says so in these exact words. */
-			PH7_GenCompileError(&(*pGen),E_WARNING,nLine,
+			/* php's E_COMPILE_WARNING (probe-verified against 8.5). */
+			PH7_GenCompileError(&(*pGen),128 /* E_COMPILE_WARNING */,nLine,
 				"declare(encoding=...) ignored because Zend multibyte feature is turned off by settings");
 		}else{
 			/* Other directives (ticks and friends) are accepted as no-ops.

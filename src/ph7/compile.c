@@ -5223,6 +5223,7 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	const char *zErr = "Error";
 	SyString *pFile;
 	va_list ap;
+	sxu32 nBare = 0;
 	sxi32 rc;
 	/* Reset the working buffer. NOT when nobody is logging: there the buffer is a
 	 * one-message store eval() reads its ParseError text out of, and php stops at
@@ -5293,6 +5294,7 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	switch(nErrType){
 	case E_ERROR:   zErr = "Fatal error"; break;
 	case E_WARNING: zErr = "Warning";     break;
+	case 128 /* E_COMPILE_WARNING */: zErr = "Warning"; break;
 	case E_PARSE:   zErr = "Parse error"; break;
 	case E_NOTICE:  zErr = "Notice";      break;
 	case E_USER_ERROR:   zErr = "User error";   break;
@@ -5311,6 +5313,11 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	va_start(ap,zFormat);
 	SyBlobFormatAp(pWorker,zFormat,ap);
 	va_end(ap);
+	/* Where php's own sentence ENDS. Everything appended below is the location
+	 * tail and a fatal's trace, which belong to the printed copies alone -- the
+	 * user handler and error_get_last() get the sentence and the line as
+	 * separate fields, the way a runtime diagnostic hands them over. */
+	nBare = SyBlobLength(pWorker);
 	if( pFile ){
 		SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);
 	}
@@ -5322,8 +5329,21 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	 * remember to put it back and none of them can leak it onto a later refusal. */
 	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
 	if( SyBlobLength(pWorker) > 0 ){
-		PH7_VmEmitCompileDiagnostic(pGen->pVm,zErr,
-			(const char *)SyBlobData(pWorker),SyBlobLength(pWorker));
+		/* php's error_reporting BIT for this diagnostic. The compiler's own
+		 * refusals are E_COMPILE_ERROR and E_PARSE rather than E_ERROR, and a
+		 * site that means php's E_COMPILE_WARNING says 128 outright; everything
+		 * else (a compile-time E_WARNING, which is what php raises for the
+		 * `continue`-targeting-switch and magic-visibility rules) passes its own
+		 * level through. */
+		sxi32 iPhpErr;
+		switch( nErrType ){
+		case E_ERROR: iPhpErr = 64 /* E_COMPILE_ERROR */; break;
+		case E_PARSE: iPhpErr = 4  /* E_PARSE */;         break;
+		default:      iPhpErr = nErrType;                 break;
+		}
+		PH7_VmEmitCompileDiagnostic(pGen->pVm,iPhpErr,zErr,
+			(const char *)SyBlobData(pWorker),SyBlobLength(pWorker),
+			(const char *)SyBlobData(pWorker),nBare,nLine);
 	}
 	return rc;
 }

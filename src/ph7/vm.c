@@ -5316,6 +5316,7 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		/* Run-Time Error report */
 		pVm->bErrReport = 1;
 		pVm->iErrMask = PH7_E_ALL_MASK; /* E_ALL (php 8: E_STRICT/2048 is no longer part of E_ALL) */
+		pVm->bErrMaskSet = 1;
 		break;
 	case PH7_VM_CONFIG_RECURSION_DEPTH:{
 		/* PHP call-depth cap (OP_CALL frames). The host default is UNBOUNDED

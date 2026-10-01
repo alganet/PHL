@@ -976,7 +976,9 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 				if( c > 0xFF ){
 					SyString sSeq;
 					SyStringInitFromBuf(&sSeq,zIn,(sxu32)(zPtr-zIn));
-					PH7_GenCompileError(&(*pGen),E_WARNING,GenStateStringEscLine(&(*pGen),zIn,bHeredoc),
+					/* php's E_COMPILE_WARNING (probe-verified against 8.5: hidden by
+					 * `E_ALL & ~E_COMPILE_WARNING`, never offered to a user handler). */
+					PH7_GenCompileError(&(*pGen),128 /* E_COMPILE_WARNING */,GenStateStringEscLine(&(*pGen),zIn,bHeredoc),
 						"Octal escape sequence overflow \\%z is greater than \\377",&sSeq);
 					c &= 0xFF;
 				}
