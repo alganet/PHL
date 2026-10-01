@@ -762,6 +762,167 @@ static int MbCp1252Encode(sxu32 cp)
  * nothing else — a literal '?' in the haystack is NOT a match for an
  * undecodable needle, which is what folding through '?' used to make it. */
 #define MB_BAD_CODE  0xFFFFFFFFu
+#ifdef PH7_ENABLE_JIS
+/*
+ *   EUC-JP   ASCII, JIS X 0201's katakana behind a 0x8E shift, and JIS X 0208 as
+ *            a 0xA1..0xFE pair whose two bytes are the row and the cell with the
+ *            high bit set. php's third code set -- JIS X 0212, behind 0x8F -- has
+ *            no table here, so those three-byte sequences are error characters;
+ *            everything else round-trips.
+ *   SJIS     the same two code sets packed differently: the katakana are BARE
+ *            bytes 0xA1..0xDF, and JIS X 0208 is a 0x81..0x9F/0xE0..0xEF lead
+ *            with a 0x40..0xFC trail that carries two rows per lead. Its ASCII
+ *            half is ASCII -- 0x5C is the backslash and 0x7E the tilde, not JIS
+ *            X 0201 Roman's yen sign and overline (php's SJIS-mac is the one
+ *            that moves them, and is not modelled).
+ *
+ * Both are STATELESS, which is what separates them from ISO-2022-JP: every
+ * character carries its own code set in its own bytes, so a decode never has to
+ * remember what came before it.
+ */
+#define MB_ENC_EUCJP   4
+#define MB_ENC_SJIS    5
+/* Does iEnc spend more than one byte on some character? The one-byte encodings
+ * answer every length question by counting bytes; these two have to walk. */
+#define MbEncIsWide(e)  ((e) == MB_ENC_EUCJP || (e) == MB_ENC_SJIS)
+/* Can this byte START a multi-byte sequence? php consumes the byte AFTER a lead
+ * even when the pair is not a character -- `mb_strlen("\xa9\xa1","EUC-JP")` is
+ * one error character over two bytes, where `mb_strlen("\xff\xff","EUC-JP")` is
+ * two over two -- so the lead set is what an ERROR's length is measured against,
+ * not just a valid character's. Both were swept byte by byte from php. */
+static int MbJisIsLead(int iEnc,unsigned char c)
+{
+	if( iEnc == MB_ENC_EUCJP ){
+		return c == 0x8E || c == 0x8F || (c >= 0xA1 && c <= 0xFE);
+	}
+	return (c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xEF);
+}
+/* One EUC-JP or Shift_JIS character as a code point, MB_BAD_CODE for a sequence
+ * the encoding does not carry; *pLen is the bytes it spans either way. */
+static sxu32 MbJisDecode(const unsigned char *z,sxu32 n,int iEnc,sxu32 *pLen)
+{
+	sxu32 cp;
+	int iRow,iCell;
+	*pLen = 1;
+	if( z[0] < 0x80 ){
+		return (sxu32)z[0];
+	}
+	if( iEnc == MB_ENC_SJIS && z[0] >= 0xA1 && z[0] <= 0xDF ){
+		return PH7_JisX0201KanaToUni((int)z[0]);   /* bare halfwidth katakana */
+	}
+	if( !MbJisIsLead(iEnc,z[0]) || n < 2 ){
+		return MB_BAD_CODE;
+	}
+	/* A lead byte owns the byte after it whatever that byte is. */
+	*pLen = 2;
+	if( iEnc == MB_ENC_EUCJP ){
+		if( z[0] == 0x8E ){
+			cp = PH7_JisX0201KanaToUni((int)z[1]);
+			return cp == 0 ? MB_BAD_CODE : cp;
+		}
+		if( z[0] == 0x8F ){
+			/* JIS X 0212. php decodes it; PHL has no table for the plane, so the
+			 * cell is an error character -- and the third byte still belongs to
+			 * it, so the rest of the string stays in step. */
+			if( n >= 3 && z[1] >= 0xA1 && z[1] <= 0xFE && z[2] >= 0xA1 && z[2] <= 0xFE ){
+				*pLen = 3;
+			}
+			return MB_BAD_CODE;
+		}
+		if( z[1] < 0xA1 || z[1] > 0xFE ){
+			return MB_BAD_CODE;
+		}
+		iRow  = (int)z[0] - 0x80;
+		iCell = (int)z[1] - 0x80;
+	}else{
+		int k = (z[0] <= 0x9F) ? ((int)z[0] - 0x81) * 2 : ((int)z[0] - 0xC1) * 2;
+		if( z[1] == 0x7F ){
+			/* The one hole in the trail set: 0x40..0x7E then 0x80..0xFC. Reading
+			 * it arithmetically instead put 36 characters at a byte pair php
+			 * rejects, one per lead. */
+			return MB_BAD_CODE;
+		}
+		if( z[1] >= 0x9F ){
+			iRow = k + 2; iCell = (int)z[1] - 0x9E;
+		}else{
+			iRow = k + 1; iCell = (int)z[1] - (z[1] <= 0x7E ? 0x3F : 0x40);
+		}
+		if( iCell < 1 || iCell > 94 ){
+			return MB_BAD_CODE;
+		}
+		iRow += 0x20; iCell += 0x20;
+	}
+	cp = PH7_JisX0208ToUni(iRow,iCell);
+	return cp == 0 ? MB_BAD_CODE : cp;   /* an unassigned cell is not a character */
+}
+/* ...and back: the bytes cp takes in iEnc, or 0 when the encoding has no cell
+ * for it. Writes at most two bytes. */
+static int MbJisEncode(sxu32 cp,int iEnc,unsigned char *zOut)
+{
+	int iRow,iCell,iByte,h;
+	if( cp < 0x80 ){
+		zOut[0] = (unsigned char)cp;
+		return 1;
+	}
+	if( PH7_JisX0201KanaFromUni(cp,&iByte) ){
+		if( iEnc == MB_ENC_SJIS ){
+			zOut[0] = (unsigned char)iByte;
+			return 1;
+		}
+		zOut[0] = 0x8E; zOut[1] = (unsigned char)iByte;
+		return 2;
+	}
+	if( !PH7_JisX0208FromUni(cp,&iRow,&iCell) ){
+		/* php's encoder is many-to-one where the decoder is one-to-one: nine
+		 * Unicode characters have no cell of their own and are written into the
+		 * cell of the character they duplicate -- the fullwidth tilde into the
+		 * wave dash's, the fullwidth hyphen-minus into the minus sign's, the
+		 * fullwidth cent/pound/not signs into the halfwidth ones'. Swept from
+		 * php by asking every BMP code point for its bytes; without them a
+		 * round trip through either encoding lost exactly these. */
+		static const sxu16 aDup[][2] = {
+			{ 0x203E, 0xFFE3 },   /* overline           -> fullwidth macron */
+			{ 0x2225, 0x2016 },   /* parallel to        -> double vertical line */
+			{ 0xFF0D, 0x2212 },   /* fullwidth hyphen   -> minus sign */
+			{ 0xFF5E, 0x301C },   /* fullwidth tilde    -> wave dash */
+			{ 0xFFE0, 0x00A2 },   /* fullwidth cent     -> cent sign */
+			{ 0xFFE1, 0x00A3 },   /* fullwidth pound    -> pound sign */
+			{ 0xFFE2, 0x00AC }    /* fullwidth not      -> not sign */
+		};
+		sxu32 i;
+		sxu32 cpAlt = 0;
+		for( i = 0 ; i < SX_ARRAYSIZE(aDup) ; i++ ){
+			if( (sxu32)aDup[i][0] == cp ){ cpAlt = (sxu32)aDup[i][1]; break; }
+		}
+		if( cpAlt == 0 && iEnc == MB_ENC_SJIS ){
+			/* Two more, and only here: EUC-JP has a JIS X 0212 cell for each and
+			 * spends it rather than falling back, which is a difference between
+			 * the two encodings in php and not one between their tables. */
+			if( cp == 0x00A5 ){ cpAlt = 0xFFE5; }
+			else if( cp == 0x00AF ){ cpAlt = 0xFFE3; }
+		}
+		if( cpAlt == 0 || !PH7_JisX0208FromUni(cpAlt,&iRow,&iCell) ){
+			return 0;
+		}
+	}
+	if( iEnc == MB_ENC_EUCJP ){
+		zOut[0] = (unsigned char)(iRow + 0x80);
+		zOut[1] = (unsigned char)(iCell + 0x80);
+		return 2;
+	}
+	iRow -= 0x20; iCell -= 0x20;          /* back to the 1..94 numbering */
+	h = (iRow - 1) >> 1;
+	zOut[0] = (unsigned char)(h + (h <= 0x1E ? 0x81 : 0xC1));
+	if( iRow & 1 ){
+		iByte = iCell + 0x3F;
+		if( iByte >= 0x7F ){ iByte++; }   /* the trail set skips 0x7F */
+	}else{
+		iByte = iCell + 0x9E;
+	}
+	zOut[1] = (unsigned char)iByte;
+	return 2;
+}
+#endif /* PH7_ENABLE_JIS */
 
 /* php canonicalises every alias it accepts to one of four NAMES, and two of
  * them — "8bit" and "ISO-8859-1" — ask for the same behaviour here, which is
@@ -790,6 +951,10 @@ static const char *const azMbAliasAscii[]  = {
 	"US-ASCII", "ISO646-US", "us", "IBM367", "IBM-367", "cp367", "csASCII", 0
 };
 static const char *const azMbAliasCp1252[] = { "cp1252", 0 };
+#ifdef PH7_ENABLE_JIS
+static const char *const azMbAliasEucJp[]  = { "EUC", "EUC_JP", "eucJP", "x-euc-jp", 0 };
+static const char *const azMbAliasSjis[]   = { "x-sjis", "SHIFT-JIS", 0 };
+#endif
 static const struct MbEncName aMbEncName[] = {
 	{ "UTF-8", MB_ENC_UTF8, azMbAliasUtf8 },
 	{ "8bit", MB_ENC_LATIN1, azMbAlias8bit },
@@ -798,6 +963,13 @@ static const struct MbEncName aMbEncName[] = {
 	/* php's second spelling for this one is an ALIAS (`cp1252`), not a name:
 	 * `1252` and `Windows1252` are neither, and stay refused (probed). */
 	{ "Windows-1252", MB_ENC_CP1252, azMbAliasCp1252 }
+#ifdef PH7_ENABLE_JIS
+	/* Appended rather than slotted in beside the code sets they belong with:
+	 * three parallel tables are indexed by this one's position, and a build
+	 * without the JIS table has to lose the rows without renumbering the rest. */
+	,{ "EUC-JP", MB_ENC_EUCJP, azMbAliasEucJp }
+	,{ "SJIS", MB_ENC_SJIS, azMbAliasSjis }
+#endif
 };
 /* Resolve an encoding name to an aMbEncName[] index, or -1 when it is outside
  * PHL's modelled set. The canonical name and every alias above, case-insensitive.
@@ -870,6 +1042,12 @@ static int MbEncHolds(int iEnc,sxu32 cp)
 	if( iEnc == MB_ENC_CP1252 ){
 		return MbCp1252Encode(cp) >= 0;
 	}
+#ifdef PH7_ENABLE_JIS
+	if( MbEncIsWide(iEnc) ){
+		unsigned char zEnc[2];
+		return MbJisEncode(cp,iEnc,zEnc) > 0;
+	}
+#endif
 	return cp <= (sxu32)(iEnc == MB_ENC_ASCII ? 0x7F : 0xFF);
 }
 /* Write one code point in iEnc, with no substitution of its own: a code the
@@ -887,6 +1065,14 @@ static void MbEncodeRaw(SyBlob *pOut,sxu32 cp,int iEnc)
 		SyBlobAppend(pOut,zEnc,1);
 		return;
 	}
+#ifdef PH7_ENABLE_JIS
+	if( MbEncIsWide(iEnc) ){
+		int n = MbJisEncode(cp,iEnc,zEnc);
+		if( n < 1 ){ zEnc[0] = '?'; n = 1; }
+		SyBlobAppend(pOut,zEnc,(sxu32)n);
+		return;
+	}
+#endif
 	zEnc[0] = (unsigned char)((cp <= (iEnc == MB_ENC_ASCII ? 0x7Fu : 0xFFu)) ? cp : '?');
 	SyBlobAppend(pOut,zEnc,1);
 }
@@ -952,6 +1138,11 @@ static sxu32 MbNextCode(const unsigned char *z,sxu32 n,int iEnc,sxu32 *pLen)
 {
 	sxi32 iCp;
 	if( iEnc != MB_ENC_UTF8 ){
+#ifdef PH7_ENABLE_JIS
+		if( MbEncIsWide(iEnc) ){
+			return MbJisDecode(z,n,iEnc,pLen);
+		}
+#endif
 		*pLen = 1;
 		if( iEnc == MB_ENC_CP1252 ){
 			return MbCp1252Decode(z[0]);
@@ -966,6 +1157,16 @@ static sxu32 MbStrlen(const char *zIn,sxu32 nByte,int iEnc)
 {
 	const unsigned char *z = (const unsigned char *)zIn;
 	sxu32 i = 0,nCp = 0,nLen;
+#ifdef PH7_ENABLE_JIS
+	if( MbEncIsWide(iEnc) ){
+		while( i < nByte ){
+			MbJisDecode(&z[i],nByte - i,iEnc,&nLen);
+			i += nLen;
+			nCp++;
+		}
+		return nCp;
+	}
+#endif
 	if( iEnc != MB_ENC_UTF8 ){
 		return nByte;   /* one byte per character */
 	}
@@ -979,6 +1180,18 @@ static sxu32 MbStrlen(const char *zIn,sxu32 nByte,int iEnc)
 /* Byte offset of character index iCp (clamped to the buffer end) */
 static sxu32 MbSkip(const char *zIn,sxu32 nByte,sxu32 iCp,int iEnc)
 {
+#ifdef PH7_ENABLE_JIS
+	if( MbEncIsWide(iEnc) ){
+		const unsigned char *z = (const unsigned char *)zIn;
+		sxu32 i = 0,nLen;
+		while( i < nByte && iCp > 0 ){
+			MbJisDecode(&z[i],nByte - i,iEnc,&nLen);
+			i += nLen;
+			iCp--;
+		}
+		return i;
+	}
+#endif
 	if( iEnc != MB_ENC_UTF8 ){
 		return iCp < nByte ? iCp : nByte;
 	}
@@ -1156,10 +1369,14 @@ static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		iLen = (sxi64)nCp - iStart;
 	}
 	if( iEnc != MB_ENC_UTF8 ){
-		/* One byte per character: the slice is the byte range, handed back as it
+		/* The slice is the byte range its characters occupy, handed back as it
 		 * stands (php substitutes nothing here — mb_substr("\xff",0,1,"ASCII")
-		 * is the raw byte, error character or not). */
-		ph7_result_string(pCtx,&zIn[iStart],(int)iLen);
+		 * is the raw byte, error character or not). Under a one-byte encoding
+		 * the character index IS the offset; under EUC-JP or SJIS it is not, so
+		 * both ends are walked. */
+		sxu32 iFrom = MbSkip(zIn,(sxu32)nByte,(sxu32)iStart,iEnc);
+		sxu32 iTo = iFrom + MbSkip(&zIn[iFrom],(sxu32)nByte - iFrom,(sxu32)iLen,iEnc);
+		ph7_result_string(pCtx,&zIn[iFrom],(int)(iTo - iFrom));
 		return PH7_OK;
 	}
 	iOfft = MbUtf8Skip(zIn,(sxu32)nByte,(sxu32)iStart);
@@ -1175,7 +1392,7 @@ static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * substitute character, the same '?' an error character gets. */
 static void MbAppendCode(ph7_context *pCtx,SyBlob *pOut,sxu32 cp,int iEnc)
 {
-	if( iEnc != MB_ENC_UTF8 && cp > (sxu32)(iEnc == MB_ENC_ASCII ? 0x7F : 0xFF) ){
+	if( iEnc != MB_ENC_UTF8 && !MbEncHolds(iEnc,cp) ){
 		/* Upper-casing 0xFF is U+0178, which no one-byte encoding can hold */
 		MbSubstAppend(pCtx,pOut,iEnc,(sxi64)cp);
 		return;
@@ -2318,8 +2535,7 @@ static int PH7_builtin_mb_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * encoding cannot hold: mb_chr(233,"ASCII") is false where mb_chr(233,"8bit")
 	 * is the single byte 0xE9. */
 	if( cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)
-	 || (iEnc == MB_ENC_LATIN1 && cp > 0xFF) || (iEnc == MB_ENC_ASCII && cp > 0x7F)
-	 || (iEnc == MB_ENC_CP1252 && MbCp1252Encode((sxu32)cp) < 0) ){
+	 || (iEnc != MB_ENC_UTF8 && !MbEncHolds(iEnc,(sxu32)cp)) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2328,6 +2544,13 @@ static int PH7_builtin_mb_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,(const char *)zOut,1);
 		return PH7_OK;
 	}
+#ifdef PH7_ENABLE_JIS
+	if( MbEncIsWide(iEnc) ){
+		n = (sxu32)MbJisEncode((sxu32)cp,iEnc,zOut);
+		ph7_result_string(pCtx,(const char *)zOut,(int)n);
+		return PH7_OK;
+	}
+#endif
 	if( iEnc != MB_ENC_UTF8 ){
 		zOut[0] = (unsigned char)cp;
 		ph7_result_string(pCtx,(const char *)zOut,1);
@@ -2418,6 +2641,10 @@ static const int aMbNameToDetect[] = {
 	2,                 /* ISO-8859-1 */
 	0,                 /* ASCII */
 	4                  /* Windows-1252 */
+#ifdef PH7_ENABLE_JIS
+	,5                 /* EUC-JP */
+	,6                 /* SJIS */
+#endif
 };
 static int MbDetectEncId(const char *z,int n)
 {
@@ -2426,10 +2653,18 @@ static int MbDetectEncId(const char *z,int n)
 }
 /* The canonical spelling php's `mb_detect_order()` answers for each of them --
  * `binary` reads back as `8bit`, `latin1` as `ISO-8859-1`, `UTF8` as `UTF-8`. */
-static const char *const azMbDetectName[] = { "ASCII", "UTF-8", "ISO-8859-1", "8bit", "Windows-1252" };
+static const char *const azMbDetectName[] = { "ASCII", "UTF-8", "ISO-8859-1", "8bit", "Windows-1252"
+#ifdef PH7_ENABLE_JIS
+	, "EUC-JP", "SJIS"
+#endif
+};
 /* How many of them index the per-candidate count arrays (the `8bit` row never
  * does: it is named and counted, and never chosen). */
+#ifdef PH7_ENABLE_JIS
+#define MB_DETECT_SLOTS 7
+#else
 #define MB_DETECT_SLOTS 5
+#endif
 /*
  * php's `auto`: not an encoding, an encoding LIST. It is accepted exactly where a
  * list is expected -- `mb_detect_encoding()`'s $encodings and
@@ -2470,6 +2705,10 @@ static int MbDetectIdToConvId(int iDetect)
 	if( iDetect == 1 ){ return MB_ENC_UTF8; }
 	if( iDetect == 2 || iDetect == MB_DETECT_NEVER ){ return MB_ENC_LATIN1; }
 	if( iDetect == 4 ){ return MB_ENC_CP1252; }
+#ifdef PH7_ENABLE_JIS
+	if( iDetect == 5 ){ return MB_ENC_EUCJP; }
+	if( iDetect == 6 ){ return MB_ENC_SJIS; }
+#endif
 	return MB_ENC_ASCII;
 }
 /* Fold one candidate encoding, already screened and expanded, into the running best. */
@@ -2623,6 +2862,27 @@ static void MbDetectInit(mb_detect_state *pState,ph7_context *pCtx,const char *z
 	pState->aChar[2] = nByte;
 	pState->aChar[3] = nByte;
 	pState->aChar[4] = nByte;
+#ifdef PH7_ENABLE_JIS
+	{
+		/* The two wide candidates have to be walked: their error count and their
+		 * character count are the same walk, and neither is the byte count. */
+		int j;
+		for( j = 5 ; j <= 6 ; j++ ){
+			int iEnc = MbDetectIdToConvId(j);
+			const unsigned char *z = (const unsigned char *)zIn;
+			sxu32 i = 0,nLen,nErr = 0,nCp = 0;
+			while( i < (sxu32)nByte ){
+				if( MbJisDecode(&z[i],(sxu32)nByte - i,iEnc,&nLen) == MB_BAD_CODE ){
+					nErr++;
+				}
+				i += nLen;
+				nCp++;
+			}
+			pState->aErr[j] = (int)nErr;
+			pState->aChar[j] = (int)nCp;
+		}
+	}
+#endif
 	pState->iBestEnc = -1;
 	pState->iBestErr = 0;
 	pState->iBestChar = 0;
@@ -2678,7 +2938,11 @@ static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value *
  */
 static int PH7_builtin_mb_list_encodings(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	static const char *const azList[] = { "8bit", "UTF-8", "ASCII", "Windows-1252", "ISO-8859-1" };
+	static const char *const azList[] = { "8bit", "UTF-8", "ASCII",
+#ifdef PH7_ENABLE_JIS
+		"EUC-JP", "SJIS",
+#endif
+		"Windows-1252", "ISO-8859-1" };
 	ph7_value *pArray, *pName;
 	int i;
 	SXUNUSED(nArg); SXUNUSED(apArg);
