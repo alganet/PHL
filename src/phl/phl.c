@@ -289,13 +289,23 @@ static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCe
 }
 /*
  * Apply one "name=value" php.ini directive to the VM (used by -d and each
- * -c file line). Trims surrounding whitespace and one layer of quotes off
- * the value, php.ini style.
+ * -c file line). The value's TEXT is what travels: the engine runs php's ini
+ * value grammar over it, which is what turns `E_ALL & ~E_NOTICE` into a number,
+ * `On` into "1" and a quoted run into its literal bytes -- so unquoting here
+ * would hand that grammar a constant name where php hands it four letters.
+ *
+ * The two doors differ in one rule, and it is php's own: `-d` takes the argument
+ * verbatim from argv and QUOTES it whenever its first byte is not alphanumeric
+ * and not already a quote, so `-d 'x=(E_ALL) ^ E_NOTICE'` and `-d 'x=~~2'` store
+ * their own text where the same lines in a `-c` file are expressions. A file
+ * line has no such rule and keeps only the blank-trimming the ini scanner does
+ * around a value.
  */
-static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair)
+static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair,int bDashD)
 {
 	char zName[128];
-	char zValue[512];
+	char zStack[512];
+	char *zValue = zStack;   /* heap-backed past what the stack buffer holds */
 	const char *zEq = strchr(zPair,'=');
 	const char *zEnd;
 	size_t n;
@@ -313,30 +323,52 @@ static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair)
 	}
 	memcpy(zName,zPair,n);
 	zName[n] = 0;
-	/* value: trim + unquote */
+	/* value */
 	if( *zEq == '=' ){
 		const char *zV = zEq + 1;
-		const char *zVEnd;
-		while( *zV == ' ' || *zV == '\t' ){ zV++; }
-		zVEnd = zV + strlen(zV);
-		while( zVEnd > zV && (zVEnd[-1] == ' ' || zVEnd[-1] == '\t'
-		    || zVEnd[-1] == '\r' || zVEnd[-1] == '\n') ){ zVEnd--; }
-		if( zVEnd - zV >= 2 && (zV[0] == '"' || zV[0] == '\'') && zVEnd[-1] == zV[0] ){
-			zV++;
-			zVEnd--;
+		const char *zVEnd = zV + strlen(zV);
+		int bQuote = 0;
+		if( bDashD ){
+			/* php's rule, applied to the argv text before any trimming: an
+			 * empty value and one opening on a quote go through as they are. */
+			bQuote = zV[0] != 0 && zV[0] != '"' && zV[0] != '\''
+			      && !((zV[0] >= '0' && zV[0] <= '9')
+			        || (zV[0] >= 'a' && zV[0] <= 'z')
+			        || (zV[0] >= 'A' && zV[0] <= 'Z'));
+		}else{
+			while( *zV == ' ' || *zV == '\t' ){ zV++; }
+			while( zVEnd > zV && (zVEnd[-1] == ' ' || zVEnd[-1] == '\t'
+			    || zVEnd[-1] == '\r' || zVEnd[-1] == '\n') ){ zVEnd--; }
 		}
 		n = (size_t)(zVEnd - zV);
-		if( n >= sizeof(zValue) ){
-			n = sizeof(zValue) - 1;
+		if( n + 3 > sizeof(zStack) ){
+			/* php has no ceiling on an ini value, and a real one can be long:
+			 * PHPUnit hands its child a ~700-byte redaction pattern. Truncating
+			 * at a fixed width stored half a value, and cutting one in the
+			 * middle of a quoted run made the whole directive a syntax error. */
+			zValue = (char *)malloc(n + 3);
+			if( zValue == 0 ){
+				return;
+			}
 		}
-		memcpy(zValue,zV,n);
-		zValue[n] = 0;
+		if( bQuote ){
+			zValue[0] = '"';
+			memcpy(zValue + 1,zV,n);
+			zValue[n+1] = '"';
+			zValue[n+2] = 0;
+		}else{
+			memcpy(zValue,zV,n);
+			zValue[n] = 0;
+		}
 	}else{
 		/* default "on" flag; avoid strcpy (MSVC C4996 under /WX) */
 		zValue[0] = '1';
 		zValue[1] = 0;
 	}
 	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zName,zValue);
+	if( zValue != zStack ){
+		free(zValue);
+	}
 }
 /*
  * Load php.ini directives from a -c file: name=value lines; [sections],
@@ -357,7 +389,7 @@ static void PHL_LoadIniFile(ph7 *pEngine,const char *zPath)
 		if( *z == 0 || *z == ';' || *z == '#' || *z == '[' || *z == '\n' || *z == '\r' ){
 			continue;
 		}
-		PHL_ApplyIniPair(pEngine,z);
+		PHL_ApplyIniPair(pEngine,z,0);
 	}
 	fclose(pFile);
 }
@@ -755,7 +787,7 @@ int main(int argc,char **argv)
 	{
 		int i;
 		for( i = 0 ; i < nIniDefine ; i++ ){
-			PHL_ApplyIniPair(pEngine,azIniDefine[i]);
+			PHL_ApplyIniPair(pEngine,azIniDefine[i],1);
 		}
 	}
 	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to

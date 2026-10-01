@@ -5446,6 +5446,7 @@ struct VmIniExpr {
 	ph7_vm *pVm;
 	const char *zCur;
 	const char *zEnd;
+	int bErr;            /* a token php's scanner never completes: an unterminated quote */
 };
 static void VmIniExprSpace(VmIniExpr *p)
 {
@@ -5510,16 +5511,36 @@ static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut)
 			nPend = 0;
 		}
 		if( c == '"' || c == '\'' ){
-			const char *zStr;
 			p->zCur++;
-			zStr = p->zCur;
 			while( p->zCur < p->zEnd && (unsigned char)p->zCur[0] != c ){
+				if( c == '"' && p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
+					/* php collapses exactly three escapes inside a double-quoted
+					 * run and keeps both bytes of every other one. A tool that
+					 * has to put a quote in an ini value writes it this way --
+					 * PHPUnit's job runner does -- and reading the `\"` as the
+					 * end of the run cut the value in half. Single quotes carry
+					 * no escapes at all. */
+					int e = (unsigned char)p->zCur[1];
+					if( e == '"' || e == '\\' || e == '$' ){
+						SyBlobAppend(pOut,&p->zCur[1],sizeof(char));
+					}else{
+						SyBlobAppend(pOut,p->zCur,2*sizeof(char));
+					}
+					p->zCur += 2;
+					continue;
+				}
+				SyBlobAppend(pOut,p->zCur,sizeof(char));
 				p->zCur++;
 			}
-			SyBlobAppend(pOut,zStr,(sxu32)(p->zCur - zStr));
-			if( p->zCur < p->zEnd ){
-				p->zCur++;    /* the closing quote */
+			if( p->zCur >= p->zEnd ){
+				/* php's ST_DOUBLE_QUOTES runs to the end of the INPUT, not to the
+				 * end of the line, so a quote with no partner is the end of file
+				 * and the whole value is refused. Dropping the quote and keeping
+				 * the letters made `a"b` the two bytes "ab". */
+				p->bErr = 1;
+				return 0;
 			}
+			p->zCur++;    /* the closing quote */
 			bAny = 1;
 			continue;
 		}
@@ -5532,8 +5553,14 @@ static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut)
 				p->zCur++;
 			}
 			PH7_MemObjInit(p->pVm,&sCons);
-			if( PH7_ExpandBuiltinConstant(p->pVm,zTok,(sxu32)(p->zCur - zTok),&sCons)
-			 || PH7_VmQueryConstant(p->pVm,zTok,(sxu32)(p->zCur - zTok),&sCons) ){
+			/* php reads php.ini before a single extension has registered a
+			 * constant, so only the ENGINE's own answer here: `M_PI`,
+			 * `SORT_ASC` and `DIRECTORY_SEPARATOR` are ext/standard's and
+			 * store their own NAMES, while the same text through
+			 * parse_ini_file() at runtime stores the constant. */
+			if( PH7_VmExtOfConstant(zTok,(int)(p->zCur - zTok)) == PH7_EXT_CORE
+			 && (PH7_ExpandBuiltinConstant(p->pVm,zTok,(sxu32)(p->zCur - zTok),&sCons)
+			  || PH7_VmQueryConstant(p->pVm,zTok,(sxu32)(p->zCur - zTok),&sCons)) ){
 				int nCons = 0;
 				const char *zCons = ph7_value_to_string(&sCons,&nCons);
 				SyBlobAppend(pOut,zCons,(sxu32)nCons);
@@ -5636,6 +5663,13 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 	VmIniExpr sIn;
 	sxu32 i;
 	SyBlobReset(pOut);
+	while( nVal > 0 && (zVal[0] == ' ' || zVal[0] == '\t') ){
+		zVal++;
+		nVal--;
+	}
+	while( nVal > 0 && (zVal[nVal-1] == ' ' || zVal[nVal-1] == '\t') ){
+		nVal--;
+	}
 	if( nVal == 0 ){
 		return 1;   /* `-d name=` carries the empty value, not an expression */
 	}
@@ -5649,6 +5683,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 	sIn.pVm = pVm;
 	sIn.zCur = zVal;
 	sIn.zEnd = &zVal[nVal];
+	sIn.bErr = 0;
 	if( !VmIniExprEval(&sIn,pOut,0) ){
 		return 0;
 	}
@@ -5668,7 +5703,7 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 	sxi32 rc = SXRET_OK;
 	VmIniEntry sEntry;
 	SyBlob sEval;
-	int bLevel = 0,bEval = 0;
+	int bLevel = 0;
 	char *zDupN,*zDupV;
 	sxu32 nName,nValue;
 	if( SX_EMPTY_STR(zName) ){
@@ -5682,19 +5717,26 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 	SyBlobInit(&sEval,&pVm->sAllocator);
 	bLevel = nName == sizeof("error_reporting")-1
 	      && SyMemcmp(zName,"error_reporting",nName) == 0;
-	if( bLevel && VmIniEvalValue(pVm,zValue,nValue,&sEval) ){
-		/* php stores what its ini parser MADE of the value, not what was typed:
-		 * ini_get() then shows "30711" for `E_ALL & ~E_NOTICE`, and ini_restore()
-		 * has a number to re-apply rather than an expression the runtime setter
-		 * would read as 0. Queue the evaluated text, so the INI chunk this seeds
-		 * and the C-side knob below can never name different levels. */
-		nValue = SyBlobLength(&sEval);
-		zValue = nValue > 0 ? (const char *)SyBlobData(&sEval) : "";
-		bEval = 1;
+	/* php stores what its ini parser MADE of the value, not what was typed, and
+	 * it runs that parser over EVERY directive: ini_get() shows "30711" for
+	 * `E_ALL & ~E_NOTICE` and "1" for `On` whatever the name in front of it, and
+	 * ini_restore() then has that text to re-apply rather than an expression the
+	 * runtime setter would read as 0. */
+	if( !VmIniEvalValue(pVm,zValue,nValue,&sEval) ){
+		/* php's ini parser calls this a syntax error, and a refused directive
+		 * never lands at all -- its default stands, rather than the raw text or
+		 * a zero standing in for it. */
+		SyBlobRelease(&sEval);
+		return SXRET_OK;
 	}
+	nValue = SyBlobLength(&sEval);
+	zValue = nValue > 0 ? (const char *)SyBlobData(&sEval) : "";
 	zDupN = SyMemBackendStrDup(&pVm->sAllocator,zName,nName);
 	zDupV = SyMemBackendStrDup(&pVm->sAllocator,zValue,nValue);
 	SyBlobRelease(&sEval);
+	/* From here on the evaluated TEXT is the allocator's copy: the blob it was
+	 * built in is gone, and every knob armed below reads this value. */
+	zValue = zDupV ? zDupV : "";
 	if( zDupN == 0 || zDupV == 0 ){
 		return SXERR_MEM;
 	}
@@ -5705,18 +5747,17 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 		if( bLevel ){
 			/* The LEVEL, not an on/off gate. It used to move bErrReport alone, so
 			 * `-d error_reporting=2` left the mask at E_ALL and printed every
-			 * severity it was set to hide. A value php's ini parser refuses is
-			 * left unapplied, as php leaves it -- reading it as 0 silenced the
-			 * whole run over one stray operator. */
-			if( bEval ){
-				sxi64 iLevel = 0;
-				if( nValue > 0 ){
-					SyStrToInt64(zDupV,nValue,(void *)&iLevel,0);
-				}
-				pVm->iErrMask = (sxi32)iLevel;
-				pVm->bErrReport = pVm->iErrMask != 0;
-				pVm->bErrMaskSet = 1;
+			 * severity it was set to hide. The text read here is the grammar's,
+			 * so it is always a number: a value php's ini parser refuses never
+			 * reaches this far, and reading one as 0 silenced the whole run over
+			 * one stray operator. */
+			sxi64 iLevel = 0;
+			if( nValue > 0 ){
+				SyStrToInt64(zDupV,nValue,(void *)&iLevel,0);
 			}
+			pVm->iErrMask = (sxi32)iLevel;
+			pVm->bErrReport = pVm->iErrMask != 0;
+			pVm->bErrMaskSet = 1;
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 		}else if( nName == sizeof("memory_limit")-1
 		 && SyMemcmp(zName,"memory_limit",nName) == 0 ){
