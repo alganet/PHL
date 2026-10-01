@@ -383,7 +383,8 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(
 	pMeth = PH7_NewClassMethod(&(*pVm),pClass,&sName,0,
 		NativeProtection(pDef->iMods),
 		((pDef->iMods & PH7_MOD_FINAL) ? PH7_CLASS_ATTR_FINAL : 0)
-		| ((pDef->iMods & PH7_MOD_ABSTRACT) ? PH7_CLASS_ATTR_ABSTRACT : 0),
+		| ((pDef->iMods & PH7_MOD_ABSTRACT) ? PH7_CLASS_ATTR_ABSTRACT : 0)
+		| ((pDef->iMods & PH7_MOD_FABRICATED) ? PH7_CLASS_ATTR_FABRICATED : 0),
 		iFuncFlags);
 	if( pMeth == 0 ){
 		return SXERR_MEM;

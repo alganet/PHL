@@ -733,6 +733,26 @@ static ph7_vm_func * ReflectResolveCallable(ph7_vm *pVm, ph7_value *pTarget,
 		}
 		pMeth = PH7_ClassExtractMethod(pClass, (const char *)SyBlobData(&pMethodArg->sBlob),
 			SyBlobLength(&pMethodArg->sBlob));
+		if( pMeth && (pMeth->iFlags & PH7_CLASS_ATTR_FABRICATED) ){
+			/* `Closure::__invoke` named over an OBJECT is the one method whose IDENTITY
+			 * and whose BODY come from different places: php builds an internal method
+			 * record on the Closure class and copies the closure's parameter list into
+			 * it. So report the method (name, class, modifiers) and the closure's own
+			 * function (parameters, return type, what invoke() runs) together. Named
+			 * over a class instead, there is no closure and the declaration -- which is
+			 * empty -- is all there is, which is why php's class-level `__invoke`
+			 * answers zero parameters. */
+			ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);
+			if( pClo ){
+				ph7_vm_func *pBody = ReflectResolveCallable(pVm, pTarget, 0, 0, 0, 0, 0);
+				if( pBody ){
+					if( ppClass ){ *ppClass = pClass; }
+					if( ppMeth ){ *ppMeth = pMeth; }
+					if( ppClosure ){ *ppClosure = pClo; }
+					return pBody;
+				}
+			}
+		}
 		if( pMeth == 0 ){
 			/* getMethods()/ReflectionClass reports a base class's PRIVATE methods on
 			 * the subclass (php copies them into the child's table), but private
@@ -4792,7 +4812,10 @@ static int ReflectResultMember(ph7_context *pCtx, const char *zClass,
 	ph7_value_string(&sName, SyStringData(pName), (int)SyStringLength(pName));
 	apCtor[0] = pTarget;
 	apCtor[1] = &sName;
+	/* A FACTORY build, not a user constructor call — see ph7_vm::nReflectFactory. */
+	pCtx->pVm->nReflectFactory++;
 	pOut = ReflectConstruct(pCtx, zClass, 2, apCtor, &rc);
+	pCtx->pVm->nReflectFactory--;
 	PH7_MemObjRelease(&sName);
 	if( pOut == 0 ){
 		if( rc != PH7_OK ){
@@ -4803,13 +4826,30 @@ static int ReflectResultMember(ph7_context *pCtx, const char *zClass,
 	}
 	return ReflectResultObject(pCtx, pOut);
 }
-/* A `ReflectionMethod($this->name, ...)`-shaped first argument. */
+/*
+ * A `ReflectionMethod($this->..., ...)`-shaped first argument.
+ *
+ * The OBJECT when this reflector was built over one (a ReflectionObject), its
+ * class NAME otherwise. For every ordinary member the two are interchangeable --
+ * the constructor resolves an object to its class either way -- but not for a
+ * FABRICATED method: `(new ReflectionObject($c))->getMethod('__invoke')` describes
+ * THE CLOSURE's parameters where `(new ReflectionClass('Closure'))
+ * ->getMethod('__invoke')` has nothing to describe, and php draws that line at
+ * exactly this question. Takes a reference, so the caller's release balances.
+ */
 static void ReflectSelfName(ph7_context *pCtx, ph7_value *pOut)
 {
+	ph7_class_instance *pObj = ReflectClassObj(pCtx);
 	const char *zName;
 	int nName;
-	ReflectClassName(pCtx, &zName, &nName);
 	PH7_MemObjInit(pCtx->pVm, pOut);
+	if( pObj ){
+		pObj->iRef++;
+		pOut->x.pOther = pObj;
+		pOut->iFlags = MEMOBJ_OBJ;
+		return;
+	}
+	ReflectClassName(pCtx, &zName, &nName);
 	ph7_value_string(pOut, zName, nName);
 }
 static int vm_builtin_ReflectionClass_getMethod(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -4946,7 +4986,9 @@ static int ReflectMemberList(ph7_context *pCtx, int iKind, const char *zClass,
 		ph7_value_string(&sName, SyStringData(&pM->sKey), (int)SyStringLength(&pM->sKey));
 		apCtor[0] = &sSelf;
 		apCtor[1] = &sName;
+		pCtx->pVm->nReflectFactory++;   /* see ph7_vm::nReflectFactory */
 		pRef = ReflectConstruct(pCtx, zClass, 2, apCtor, &rc);
+		pCtx->pVm->nReflectFactory--;
 		PH7_MemObjRelease(&sName);
 		if( pRef == 0 ){
 			SySetRelease(&aMembers);
@@ -5682,6 +5724,11 @@ struct ReflectFuncRef
 	ph7_class_instance *pClosure; /* the Closure being reflected, if any */
 	const char *zSig;             /* declared parameter signature, or NULL */
 	const char *zRet;             /* declared return type, or NULL */
+	int bFabricated;              /* `Closure::__invoke`: pFunc is the CLOSURE's, borrowed for its
+	                               * parameter list alone. Everything that describes where the
+	                               * function came FROM -- internal or user, file, lines, module --
+	                               * belongs to the fabricated method instead, which php builds as
+	                               * an internal one with no module at all. */
 };
 /*
  * Resolve a callable into the reference, and work out WHICH of the two
@@ -5703,6 +5750,15 @@ static int ReflectFuncFill(ph7_vm *pVm, ph7_value *pTarget, ph7_value *pMethodAr
 	if( pOut->pFunc == 0 ){
 		pOut->zSig = pOut->pHost->zSig;
 		pOut->zRet = pOut->pHost->zRet;
+		return 1;
+	}
+	if( pOut->pMeth && (pOut->pMeth->iFlags & PH7_CLASS_ATTR_FABRICATED) ){
+		/* The split above: with a closure, pFunc is the CLOSURE's, so nothing of the
+		 * method's own (empty) declaration may describe it -- and where it CAME from
+		 * is still the method's, which bFabricated is what says. WITHOUT one (the
+		 * class-level form) there is nothing to describe at all, which php prints as
+		 * a block with no parameter section rather than an empty one. */
+		pOut->bFabricated = 1;
 		return 1;
 	}
 	if( (pOut->pFunc->iFlags & VM_FUNC_NATIVE) && pOut->pFunc->pNative ){
@@ -5746,7 +5802,7 @@ static int ReflectFuncOfThis(ph7_context *pCtx, ReflectFuncRef *pOut)
 	ph7_class_instance *pClo;
 	ph7_value sTarget, sMethod;
 	const char *zName, *zClass;
-	int nName, nClass, rc;
+	int nName, nClass, rc, bMethod;
 	SyZero(pOut, sizeof(*pOut));
 	if( pThis == 0 ){
 		return 0;
@@ -5755,10 +5811,18 @@ static int ReflectFuncOfThis(ph7_context *pCtx, ReflectFuncRef *pOut)
 	PH7_MemObjInit(pCtx->pVm, &sMethod);
 	pClo = PH7_NativeAttrObj(pThis, RF_CL);
 	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
-	if( pClo ){
+	bMethod = ReflectIsMethodReflector(pCtx, pThis);
+	if( pClo && bMethod ){
+		/* The fabricated `Closure::__invoke`: name it over the OBJECT, which is what
+		 * makes the resolver hand back the method's identity and the closure's body
+		 * together (see ReflectResolveCallable). */
 		sTarget.x.pOther = pClo;
 		sTarget.iFlags = MEMOBJ_OBJ;
-	}else if( ReflectIsMethodReflector(pCtx, pThis) ){
+		ph7_value_string(&sMethod, zName, nName);
+	}else if( pClo ){
+		sTarget.x.pOther = pClo;
+		sTarget.iFlags = MEMOBJ_OBJ;
+	}else if( bMethod ){
 		PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
 		ph7_value_string(&sTarget, zClass, nClass);
 		ph7_value_string(&sMethod, zName, nName);
@@ -5858,13 +5922,21 @@ static int ReflectParamAt(const ReflectFuncRef *pRef, int iPos, ReflectParamDesc
 		pOut->bNullable = (pArg->iFlags & VM_FUNC_ARG_NULLABLE) != 0;
 		pOut->bPromoted = (pArg->iFlags & VM_FUNC_ARG_PROMOTED) != 0;
 		pOut->bOptional = pOut->bVariadic || pOut->bHasDef;
+		if( pRef->bFabricated ){
+			/* php copies the closure's parameter list into an INTERNAL record, and a
+			 * default VALUE does not survive that copy: every optional parameter of a
+			 * fabricated `Closure::__invoke` answers isDefaultValueAvailable() false
+			 * and exports as `= <default>`, while staying optional. */
+			pOut->bHasDef = 0;
+		}
 		{
 			const char *zT = VmHintTextResolvedEx(pRef->pVm,&pArg->sTypeName,
 				ReflectDeclScope(pRef),0,pOut->zTypeBuf,sizeof(pOut->zTypeBuf));
 			SyStringInitFromBuf(&pOut->sType,zT,(sxu32)SyStrlen(zT));
 		}
 		pOut->pArg = pArg;
-		pOut->bInternal = (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
+		pOut->bInternal = pRef->bFabricated
+			|| (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
 		return 1;
 	}
 }
@@ -5933,7 +6005,7 @@ static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *
 /* Is the reflected function internal (a C builtin or an embedded-chunk one)? */
 static int ReflectFuncIsInternal(const ReflectFuncRef *pRef)
 {
-	if( pRef->pHost ){
+	if( pRef->pHost || pRef->bFabricated ){
 		return 1;
 	}
 	return pRef->pFunc != 0 && (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
@@ -6265,7 +6337,7 @@ static int vm_builtin_ReflectionFunc_getFileName(ph7_context *pCtx, int nArg, ph
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
-	if( sRef.pFunc && SyStringLength(&sRef.pFunc->sFile) > 0 ){
+	if( sRef.pFunc && !sRef.bFabricated && SyStringLength(&sRef.pFunc->sFile) > 0 ){
 		ph7_result_string(pCtx, SyStringData(&sRef.pFunc->sFile), (int)SyStringLength(&sRef.pFunc->sFile));
 	}else{
 		ph7_result_bool(pCtx, 0);
@@ -6398,22 +6470,37 @@ static void ReflectFuncParamSpec(ph7_context *pCtx, ph7_value *pSpec)
 		return;
 	}
 	pClo = PH7_NativeAttrObj(pThis, RF_CL);
-	if( pClo ){
+	if( pClo && !ReflectIsMethodReflector(pCtx, pThis) ){
 		pSpec->x.pOther = pClo;
 		pSpec->iFlags = MEMOBJ_OBJ;
 		return;
 	}
 	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
 	if( ReflectIsMethodReflector(pCtx, pThis) ){
-		/* `[class, method]`, which ReflectionParameter's constructor accepts */
+		/* `[class, method]`, which ReflectionParameter's constructor accepts -- and
+		 * for the fabricated `Closure::__invoke` the OBJECT stands in for the class,
+		 * because that pair is what resolves to the closure's parameter list while
+		 * still naming a method (php's parameter reports `Closure` as its declaring
+		 * class and `__invoke` as its declaring function). */
 		ph7_value *pList = ph7_context_new_array(pCtx);
 		ph7_value *pA = ph7_context_new_scalar(pCtx);
 		ph7_value *pB = ph7_context_new_scalar(pCtx);
 		if( pList == 0 || pA == 0 || pB == 0 ){
 			return;
 		}
-		PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
-		ph7_value_string(pA, zClass, nClass);
+		if( pClo ){
+			/* pA is a CONTEXT value: the call's teardown releases it, so stamping an
+			 * object into it has to take a reference the way any other holder does.
+			 * (Without it the closure was unref'd once per getParameters() call and
+			 * freed under its own Closure object -- a use-after-free that surfaced
+			 * three hundred files into a phpstan run.) */
+			pClo->iRef++;
+			pA->x.pOther = pClo;
+			pA->iFlags = MEMOBJ_OBJ;
+		}else{
+			PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+			ph7_value_string(pA, zClass, nClass);
+		}
 		ph7_value_string(pB, zName, nName);
 		ph7_array_add_elem(pList, 0, pA);
 		ph7_array_add_elem(pList, 0, pB);
@@ -6785,7 +6872,10 @@ PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 static int ReflectFuncExtId(const ReflectFuncRef *pRef)
 {
 	const SyString *pName;
-	if( !ReflectFuncIsInternal(pRef) ){
+	if( !ReflectFuncIsInternal(pRef) || pRef->bFabricated ){
+		/* A fabricated method belongs to no module: php answers false for
+		 * getExtensionName() and NULL for getExtension(), and prints a bare
+		 * `<internal>` in the export. */
 		return -1;
 	}
 	if( pRef->pMeth ){
@@ -7097,6 +7187,24 @@ static int vm_builtin_ReflectionMethod_construct(ph7_context *pCtx, int nArg, ph
 		rc = PH7_VmThrowException(pCtx, "ReflectionException",
 			"Method %z::%.*s() does not exist", &pClass->sDisp, nMethod, zMethod);
 		goto Done;
+	}
+	if( ((ph7_class_method *)pEntry->pUserData)->iFlags & PH7_CLASS_ATTR_FABRICATED ){
+		/* php has no such row in the class's function table, so a CONSTRUCTOR asked
+		 * for it by class name finds nothing: `new ReflectionMethod('Closure',
+		 * '__invoke')` is a ReflectionException even though the method answers
+		 * everywhere else. Given the OBJECT, php builds it -- and so does a
+		 * ReflectionClass door, which is the nReflectFactory window. */
+		if( (sClass.iFlags & MEMOBJ_OBJ) == 0 && pVm->nReflectFactory < 1 ){
+			rc = PH7_VmThrowException(pCtx, "ReflectionException",
+				"Method %z::%.*s() does not exist", &pClass->sDisp, nMethod, zMethod);
+			goto Done;
+		}
+		if( sClass.iFlags & MEMOBJ_OBJ ){
+			/* ...and what it builds describes THAT closure: park the instance where
+			 * ReflectFuncOfThis already looks for a reflected Closure, so the
+			 * parameter list, the return type and invoke() are the closure's own. */
+			PH7_NativeSetAttrObj(pVm, pThis, RF_CL, (ph7_class_instance *)sClass.x.pOther);
+		}
 	}
 	{
 		/* php's $class is the DECLARING class, not the one the lookup went
@@ -7611,8 +7719,21 @@ static int vm_builtin_ReflectionParameter_construct(ph7_context *pCtx, int nArg,
 		ph7_value *pB = ph7_array_fetch(apArg[0], "1", 1);
 		if( pA && (pA->iFlags & MEMOBJ_OBJ) ){
 			ph7_class_instance *pObj = (ph7_class_instance *)pA->x.pOther;
-			ph7_value_string(&sTarget, SyStringData(&pObj->pClass->sName),
-				(int)SyStringLength(&pObj->pClass->sName));
+			ph7_class_method *pM0 = pB && (pB->iFlags & MEMOBJ_STRING)
+				? PH7_ClassExtractMethod(pObj->pClass,
+					(const char *)SyBlobData(&pB->sBlob), SyBlobLength(&pB->sBlob))
+				: 0;
+			if( pM0 && (pM0->iFlags & PH7_CLASS_ATTR_FABRICATED) ){
+				/* `[$closure, '__invoke']` has to keep the OBJECT: the class name alone
+				 * resolves to the empty class-level declaration, and it is THIS
+				 * closure's parameter list the pair is naming. Every other pair
+				 * reduces to its class, which is what php reports as the parameter's
+				 * declaring class either way. */
+				PH7_MemObjStore(pA, &sTarget);
+			}else{
+				ph7_value_string(&sTarget, SyStringData(&pObj->pClass->sName),
+					(int)SyStringLength(&pObj->pClass->sName));
+			}
 		}else if( pA ){
 			PH7_MemObjStore(pA, &sTarget);
 		}
@@ -7676,7 +7797,13 @@ static int vm_builtin_ReflectionParameter_construct(ph7_context *pCtx, int nArg,
 		(int)SyStringLength(&sDesc.sName));
 	/* Record the CANONICAL target: the class the method really came through and
 	 * its declared spelling, so a re-resolve cannot land somewhere else. */
-	if( sRef.pMeth && sRef.pClass ){
+	if( sRef.bFabricated && sRef.pClosure && sRef.pMeth ){
+		/* Its target is the OBJECT plus the method name: re-resolving by class name
+		 * would find the empty class-level declaration instead of this closure. */
+		PH7_NativeSetAttrObj(pVm, pThis, RP_T, sRef.pClosure);
+		PH7_NativeSetAttrStr(pVm, pThis, RP_M, SyStringData(&sRef.pMeth->sFunc.sName),
+			(int)SyStringLength(&sRef.pMeth->sFunc.sName));
+	}else if( sRef.pMeth && sRef.pClass ){
 		PH7_NativeSetAttrStr(pVm, pThis, RP_T, SyStringData(&sRef.pClass->sName),
 			(int)SyStringLength(&sRef.pClass->sName));
 		PH7_NativeSetAttrStr(pVm, pThis, RP_M, SyStringData(&sRef.pMeth->sFunc.sName),
@@ -9861,16 +9988,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm)
  * `internal:Core` for all 878 functions and 197 classes because the engine had
  * no partition to name one from. iExt < 0 is a userland target.
  */
-static void ReflectExportKind(SyBlob *pOut, int iExt, int bDeprecated)
+static void ReflectExportKind(SyBlob *pOut, int bInternal, int iExt, int bDeprecated)
 {
-	SyBlobAppend(pOut, iExt >= 0 ? "internal" : "user", iExt >= 0 ? 8 : 4);
+	/* The two questions are separate: an INTERNAL target may still name no module
+	 * (php's fabricated `Closure::__invoke` prints `<internal>` with nothing after
+	 * it), so the extension is only appended when there is one. */
+	SyBlobAppend(pOut, bInternal ? "internal" : "user", bInternal ? 8 : 4);
 	/* php writes the three parts in this order and each on its own condition,
 	 * so a deprecated INTERNAL name reads `<internal, deprecated:curl>` -- the
 	 * extension hangs off `deprecated`, not off `internal`. */
 	if( bDeprecated ){
 		SyBlobAppend(pOut, ", deprecated", sizeof(", deprecated")-1);
 	}
-	if( iExt >= 0 ){
+	if( bInternal && iExt >= 0 ){
 		SyBlobFormat(pOut, ":%s", PH7_VmExtensionName(iExt));
 	}
 }
@@ -10203,7 +10333,7 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		/* A method names its DECLARING class's extension, which is why php's
 		 * `JsonException::__construct` prints `<internal:Core, inherits
 		 * Exception, ctor>` rather than json's own name. */
-		ReflectExportKind(&sBody, ReflectFuncExtId(pRef), bDeprecated);
+		ReflectExportKind(&sBody, bInternal, ReflectFuncExtId(pRef), bDeprecated);
 		bInherits = (pOwner != 0 && pDecl != 0 && pDecl != pOwner);
 		if( bInherits ){
 			SyBlobFormat(&sBody, ", inherits %z", &pDecl->sName);
@@ -10246,7 +10376,7 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 	}else{
 		SyBlobAppend(&sBody, pRef->pClosure ? "Closure [ <" : "Function [ <",
 			pRef->pClosure ? sizeof("Closure [ <")-1 : sizeof("Function [ <")-1);
-		ReflectExportKind(&sBody, ReflectFuncExtId(pRef), bDeprecated);
+		ReflectExportKind(&sBody, bInternal, ReflectFuncExtId(pRef), bDeprecated);
 		SyBlobAppend(&sBody, "> function ", sizeof("> function ")-1);
 		if( pRef->pFunc ){
 			SyBlobFormat(&sBody, "%z", &pRef->pFunc->sName);
@@ -10265,8 +10395,11 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		SyBlobFormat(&sBody, " %u - %u\n", pRef->pFunc->nLine, pRef->pFunc->nEndLine);
 	}
 	/* php prints the parameter block for every INTERNAL function, and for a
-	 * user one only when there is something to say. */
-	if( nParam > 0 || bHasRet || bInternal ){
+	 * user one only when there is something to say -- with one exception, the
+	 * class-level `Closure::__invoke`: php fabricates it with no parameter
+	 * information at all (not an empty list), and prints neither section. */
+	if( (nParam > 0 || bHasRet || bInternal)
+	 && !(pRef->bFabricated && pRef->pClosure == 0) ){
 		int n;
 		SyBlobFormat(&sBody, "\n  - Parameters [%d] {\n", nParam);
 		for( n = 0 ; n < nParam ; n++ ){
@@ -10384,7 +10517,10 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 	}else{
 		SyBlobAppend(pOut, "Class [ <", sizeof("Class [ <")-1);
 	}
-	ReflectExportKind(pOut, ReflectClassExtId(pClass), 0);
+	{
+		int iClassExt = ReflectClassExtId(pClass);
+		ReflectExportKind(pOut, iClassExt >= 0, iClassExt, 0);
+	}
 	SyBlobAppend(pOut, "> ", sizeof("> ")-1);
 	/* php tags a class that has an iteration handler, which its Traversable
 	 * implementers have — and so does anything with a HOOKED property, because
@@ -10455,6 +10591,10 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 		}else if( pM->iKind == REFLECT_MEMBER_PROP ){
 			if( pM->pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){ nStaticProp++; }else{ nProp++; }
 		}else{
+			/* A FABRICATED method is absent from the class's own export, for the same
+			 * reason get_class_methods() does not name it: php is printing its
+			 * function table and this one is not in it. */
+			if( pM->pMeth->iFlags & PH7_CLASS_ATTR_FABRICATED ){ continue; }
 			if( pM->pMeth->iFlags & PH7_CLASS_ATTR_STATIC ){ nStaticMeth++; }else{ nMeth++; }
 		}
 	}
@@ -10502,6 +10642,9 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 			}
 			if( bMethods != (pM->iKind == REFLECT_MEMBER_METHOD) ){
 				continue;
+			}
+			if( bMethods && (pM->pMeth->iFlags & PH7_CLASS_ATTR_FABRICATED) ){
+				continue;   /* not in the function table this is printing */
 			}
 			bIsStatic = bMethods ? (pM->pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0
 				: (pM->pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0;

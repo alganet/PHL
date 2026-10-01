@@ -2702,6 +2702,9 @@ struct ph7_class_attr
                                             * `date_string` is the case -- it exists on an
                                             * interval built from a STRING and on no other, and
                                             * `isset()`/`property_exists()` answer false there. */
+#define PH7_CLASS_ATTR_FABRICATED   0x10000000 /* METHOD php builds on demand instead of keeping in
+                                 * the class's function table. See PH7_MOD_FABRICATED for the five
+                                 * doors and how each of them answers. */
 #define PH7_CLASS_ATTR_NATIVE_NOSLOT 0x4000000 /* A NATIVE class's VIRTUAL property: php DECLARES the
                                             * name (Reflection lists it, property_exists() answers
                                             * true, isVirtual() true and hasDefaultValue() false) and
@@ -2757,6 +2760,13 @@ struct ph7_class_attr
 #define PH7_MOD_VIRTUAL    0x400 /* PROPERTY only: php's VIRTUAL native property -- declared on the
                                   * class and answered by its own handlers, with NO slot on the
                                   * object (PH7_CLASS_ATTR_NATIVE_NOSLOT) */
+#define PH7_MOD_FABRICATED 0x800 /* METHOD only: php does not keep this one in the class's function
+                                  * table -- it BUILDS it when something asks (Closure::__invoke is
+                                  * the whole set). Present to method_exists(), hasMethod(),
+                                  * getMethod() and getMethods(); absent from get_class_methods()
+                                  * and from the class's own export, and refused by
+                                  * ReflectionMethod::__construct, which is exactly the shape those
+                                  * five doors have in php (PH7_CLASS_ATTR_FABRICATED). */
 /* Literal kinds a native class constant may carry */
 #define PH7_NATIVE_VAL_NULL   0
 #define PH7_NATIVE_VAL_INT    1
@@ -4419,6 +4429,15 @@ struct ph7_vm
 								* deferred `new class ... {}` chunk so the runtime-installed
 								* class carries the SAME name the site's OP_NEW loads; consumed
 								* (cleared) by PH7_CompileAnnonClass. {0,0} otherwise. */
+	int nReflectFactory;       /* > 0 while a ReflectionClass door is BUILDING a member reflector
+	                            * rather than a user calling its constructor. php's own doors do
+	                            * not go through ReflectionMethod::__construct at all -- they are
+	                            * handed the function directly -- which is why
+	                            * `(new ReflectionClass('Closure'))->getMethod('__invoke')` answers
+	                            * and `new ReflectionMethod('Closure','__invoke')` refuses. Here
+	                            * both spellings reach the same constructor, so this is what tells
+	                            * them apart. Depth-counted; nothing user-visible runs inside the
+	                            * window (the constructor it brackets is native). */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 #ifdef PH7_CORO_STACK
 	ph7_exec_ctx *pCoroCtx;    /* The fiber whose own native STACK is the one executing, or NULL.
@@ -7239,6 +7258,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm);
 PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Closure_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);

@@ -1006,6 +1006,12 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 				 * the one that used the trait, so a subclass listed its inherited trait
 				 * methods before its own. */
 				ph7_class *pDecl = VmMethodListLevel(pClass,apEntry[nPick],pMethod);
+				/* A FABRICATED method is not in php's function table, and this walk is
+				 * that table: `get_class_methods($closure)` does not name `__invoke`
+				 * even though `method_exists($closure,'__invoke')` is true. */
+				if( pMethod->iFlags & PH7_CLASS_ATTR_FABRICATED ){
+					continue;
+				}
 				/* php lists only what the CALLING scope could reach: public always,
 				 * protected within the hierarchy, private only from the class that
 				 * declares it. PHL listed the whole table, so global-scope code was handed

@@ -2324,11 +2324,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
 		 * parameter list. */
 		{ "__construct",  PH7_MOD_PRIVATE, "", 0,
 		  vm_builtin_Closure_construct },
-		{ "bindTo",       PH7_MOD_PUBLIC,
-		  "?object $newThis, object|string|null $newScope = \"static\"", "?Closure",
-		  vm_builtin_Closure_bindTo },
+		/* php's own registration order, which is what get_class_methods() and
+		 * ReflectionClass::getMethods() answer in: `bind` before `bindTo`. */
 		{ "bind",         PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "Closure $closure, ?object $newThis, object|string|null $newScope = \"static\"", "?Closure",
+		  vm_builtin_Closure_bindTo },
+		{ "bindTo",       PH7_MOD_PUBLIC,
+		  "?object $newThis, object|string|null $newScope = \"static\"", "?Closure",
 		  vm_builtin_Closure_bindTo },
 		{ "call",         PH7_MOD_PUBLIC,
 		  "object $newThis, mixed ...$args", "mixed",
@@ -2336,6 +2338,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
 		{ "fromCallable", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "callable $callback", "Closure",
 		  vm_builtin_Closure_fromCallable },
+		/* A closure IS its own `__invoke`, and php says so: `$c->__invoke($x)` calls
+		 * it, `method_exists($c,'__invoke')` is true, and reflecting it hands back
+		 * THE CLOSURE's parameter list. php does not keep it in the class's function
+		 * table -- it fabricates one per closure -- which is why it is absent from
+		 * get_class_methods() and from the class export, and why
+		 * `new ReflectionMethod('Closure','__invoke')` refuses while
+		 * `(new ReflectionObject($c))->getMethod('__invoke')` answers. That whole
+		 * shape is PH7_MOD_FABRICATED. Declared with NO signature: the reflector
+		 * built from a class NAME has nothing to describe (php reports zero
+		 * parameters and no return type for it), and the one built from an OBJECT
+		 * describes the closure instead. */
+		{ "__invoke",     PH7_MOD_PUBLIC|PH7_MOD_FABRICATED, 0, 0,
+		  vm_builtin_Closure_invoke },
 	};
 	/* The engine's own slots: the callable NAME, the bound receiver and the bound
 	 * scope. php presents no property at all for a Closure, so all three carry
@@ -2428,6 +2443,24 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
 	}
 	VmClosureRebind(pClone, pNewThis, pScopePtr);
 	return VmClosureResult(pCtx, pClone);
+}
+/*
+ * Closure::__invoke(...$args) — call the closure the receiver IS.
+ *
+ * php reaches the closure's own body through this name; here the receiver is a
+ * Closure OBJECT and every call door already knows how to invoke one, so the whole
+ * body is "call myself with what I was given". Argument binding, by-reference
+ * parameters and the declared-type screens are the callee's own, exactly as they
+ * are for `$c(...)`.
+ */
+PH7_PRIVATE int vm_builtin_Closure_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	if( pRecv == 0 || (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK;
+	}
+	return PH7_VmCallUserFunction(pVm, pRecv, nArg, apArg, pCtx->pRet);
 }
 /*
  * Closure::fromCallable($callable) — normalize any callable value to a Closure (reuses the
