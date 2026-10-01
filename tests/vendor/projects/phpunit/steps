@@ -1,0 +1,12 @@
+# The unit suite is the assertion, constraint, comparator, mock-object and metadata code
+# that every other project's verdict passes through.
+#
+# The other suite this project ships, `end-to-end`, is NOT here yet, and the reason is a
+# measurement rather than a preference: one of its 805 cases -- a test whose data
+# provider yields an array that contains itself -- does not terminate under this engine.
+# A self-referential array that leaves the function that built it comes back with its
+# cycle flattened into an unbounded nesting, so the exporter that prints the data set
+# descends for ever. A step that has to be killed on a timer answers a different question
+# on every run, which is the one thing a baseline cannot be. It goes in when that
+# terminates.
+unit	$PHL_VENDOR_ENGINE phpunit --testsuite unit --no-coverage

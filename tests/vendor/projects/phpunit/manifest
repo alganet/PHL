@@ -1,0 +1,12 @@
+# sebastianbergmann/phpunit -- picked because it is the INSTRUMENT. Five of the six
+# projects beside it produce their verdict by running this code, so a defect here is not
+# one project's failure, it is a wrong answer in the thing that decided whether any of
+# the others passed. Nothing else in this directory measures its own measurer.
+REPO="https://github.com/sebastianbergmann/phpunit.git"
+# The release respect-validation already installs, so the runtime under test is the
+# runtime three other baselines were taken with.
+REF="12.5.30"
+# The suite asserts on the text PHPUnit prints about its own generated mocks, and every
+# mock class name carries a per-run hash that a failure message quotes back.
+NORMALIZE='s/Mock_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/Mock_\1_@HASH@/g
+s/MockObject_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/MockObject_\1_@HASH@/g'

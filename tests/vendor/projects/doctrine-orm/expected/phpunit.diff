@@ -1,0 +1,3581 @@
+--- php
++++ phl
+@@ -5,67 +5,3538 @@
+ 
+ ..............................................
+ Using DB driver Doctrine\DBAL\Logging\Driver
+-...............   61 / 3485 (  1%)
++....E..EE......   61 / 3485 (  1%)
+ .............................................................  122 / 3485 (  3%)
+ .............................................................  183 / 3485 (  5%)
+ .............................................................  244 / 3485 (  7%)
+-.............................................................  305 / 3485 (  8%)
+-.............................................S...............  366 / 3485 ( 10%)
+-.S...........................................................  427 / 3485 ( 12%)
+-...................................................S.........  488 / 3485 ( 14%)
++.......................E......E.......E.................E..EE  305 / 3485 (  8%)
++.E.EE.....E.....E.E..............E....E.EEEEES..EE...........  366 / 3485 ( 10%)
++.S.EEE............................EE.............E.EEE....E..  427 / 3485 ( 12%)
++....E..............E...............................S.........  488 / 3485 ( 14%)
+ .............................................................  549 / 3485 ( 15%)
+-...............................SSS...........................  610 / 3485 ( 17%)
+-.............................................................  671 / 3485 ( 19%)
+-.............................................................  732 / 3485 ( 21%)
+-.............................................................  793 / 3485 ( 22%)
++...EEE........E......W.........SSS........E..................  610 / 3485 ( 17%)
++.....................E..E....EE..............................  671 / 3485 ( 19%)
++........EEEEEE......W......E.....EE...............E.E....E.E.  732 / 3485 ( 21%)
++..EEE....EEE...E..E.E........................................  793 / 3485 ( 22%)
+ .............................................................  854 / 3485 ( 24%)
+-.......SSS....................S..............................  915 / 3485 ( 26%)
+-.............................................................  976 / 3485 ( 28%)
+-...............................S............................. 1037 / 3485 ( 29%)
+-...................................SSSSSSSS.................. 1098 / 3485 ( 31%)
+-............................................................. 1159 / 3485 ( 33%)
+-............................................................. 1220 / 3485 ( 35%)
+-S............................................................ 1281 / 3485 ( 36%)
+-............................................................. 1342 / 3485 ( 38%)
+-...........................S..........................SSSS... 1403 / 3485 ( 40%)
+-..........S.................................................. 1464 / 3485 ( 42%)
+-.........................................S................... 1525 / 3485 ( 43%)
+-..S.............................SSSSS........................ 1586 / 3485 ( 45%)
+-.............S..............................................S 1647 / 3485 ( 47%)
+-............................................................. 1708 / 3485 ( 49%)
+-..........................................................SS. 1769 / 3485 ( 50%)
+-............................................................. 1830 / 3485 ( 52%)
+-............................................................. 1891 / 3485 ( 54%)
+-............................................................. 1952 / 3485 ( 56%)
++.......SSS...EE.EEEEE.E..E.EEES..............................  915 / 3485 ( 26%)
++...........................................FFF........EE.....  976 / 3485 ( 28%)
++.............E..E..EEEEEEEEEEEES...........E................. 1037 / 3485 ( 29%)
++...................................SSSSSSSS........W......... 1098 / 3485 ( 31%)
++...................EEEE.E..............EE...EEEE.EEFE.EEEEE.E 1159 / 3485 ( 33%)
++E.EEE....EE.E.....E..EEEE....EEE............E...EE.EE...E.E.. 1220 / 3485 ( 35%)
++S......................E.E.E....E..EEEEE.EE..E.E.EEEE..E.E... 1281 / 3485 ( 36%)
++EEEEE..E......E....E....E.E....E............................. 1342 / 3485 ( 38%)
++....................E......SE..EEE..E.WEE.E...EE...E..SSSSEEW 1403 / 3485 ( 40%)
++E....E....S...EE.W......EE..........E.E..........E........... 1464 / 3485 ( 42%)
++....E.E............EW..E............E...ES....WE...EE.....W.W 1525 / 3485 ( 43%)
++.WSE...................E..E.....SSSSS...........WE........... 1586 / 3485 ( 45%)
++.......E...E.SEE........EEE....E.....E..EEEE..E.............S 1647 / 3485 ( 47%)
++.....E................E..E...............E........E..E....W.. 1708 / 3485 ( 49%)
++................................................E.........SS. 1769 / 3485 ( 50%)
++........E..........EES..........................EE...E....... 1830 / 3485 ( 52%)
++...E.....EE...E....E.W..................F.................... 1891 / 3485 ( 54%)
++.........................................EE.................. 1952 / 3485 ( 56%)
+ ............................................................. 2013 / 3485 ( 57%)
+ ............................................................. 2074 / 3485 ( 59%)
+-............................................................. 2135 / 3485 ( 61%)
+-...................................S....S.................... 2196 / 3485 ( 63%)
+-..............................................S.............. 2257 / 3485 ( 64%)
++.....W......WWWWW..........................WWW..W.WWWWWW..... 2135 / 3485 ( 61%)
++...................................S....S................W... 2196 / 3485 ( 63%)
++.......................................EE.....S.......W.EE... 2257 / 3485 ( 64%)
+ ............................................................. 2318 / 3485 ( 66%)
+ ............................................................. 2379 / 3485 ( 68%)
+-.....................................S...............SSS..... 2440 / 3485 ( 70%)
+-.IISS........................................................ 2501 / 3485 ( 71%)
+-...............................................SS............ 2562 / 3485 ( 73%)
+-..............................S.SS........................... 2623 / 3485 ( 75%)
++.....................................SW.....WWWWW....SSS..... 2440 / 3485 ( 70%)
++.IISS.......................FF.FS.......FF.F..........W.....W 2501 / 3485 ( 71%)
++WWWW...........................................SS............ 2562 / 3485 ( 73%)
++........................E...EESESS........................... 2623 / 3485 ( 75%)
+ ............................................................. 2684 / 3485 ( 77%)
+ ............................................................. 2745 / 3485 ( 78%)
+ ............................................................. 2806 / 3485 ( 80%)
+ ....S........................................................ 2867 / 3485 ( 82%)
+ ............................................................. 2928 / 3485 ( 84%)
+ ....................................S........................ 2989 / 3485 ( 85%)
+-...................................................S......... 3050 / 3485 ( 87%)
++...................................................S......W.. 3050 / 3485 ( 87%)
+ ............................................................. 3111 / 3485 ( 89%)
+ ............................................................. 3172 / 3485 ( 91%)
+ ............................................................. 3233 / 3485 ( 92%)
+ ............................................................. 3294 / 3485 ( 94%)
+-.................SS.....................S.................... 3355 / 3485 ( 96%)
+-............................................................. 3416 / 3485 ( 98%)
++................ESS........F............S.................... 3355 / 3485 ( 96%)
++..........W..............................EEEE................ 3416 / 3485 ( 98%)
+ ..SS......................................................... 3477 / 3485 ( 99%)
+ ........                                                      3485 / 3485 (100%)
+ 
+ Time: @TIME@
+ 
+-OK, but there were issues!
+-Tests: 3485, Assertions: 12005, Skipped: 59, Incomplete: 2.
+-@exit@ 0
++There were 251 errors:
++
++1) Doctrine\Tests\ORM\Cache\DefaultEntityHydratorTest::testLoadProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Cache/DefaultEntityHydratorTest.php:58
++
++2) Doctrine\Tests\ORM\Cache\DefaultEntityHydratorTest::testBuildCacheEntryNonInitializedAssocProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Cache/DefaultEntityHydratorTest.php:132
++
++3) Doctrine\Tests\ORM\Cache\DefaultEntityHydratorTest::testCacheEntryWithWrongIdentifierType
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Cache/DefaultEntityHydratorTest.php:163
++
++4) Doctrine\Tests\ORM\EntityManagerTest::testLazyGhostEntityManager
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/tests/Tests/ORM/EntityManagerTest.php:189
++
++5) Doctrine\Tests\ORM\Functional\AdvancedAssociationTest::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/AdvancedAssociationTest.php:73
++
++6) Doctrine\Tests\ORM\Functional\AdvancedDqlQueryTest::testIsNullAssociation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/AdvancedDqlQueryTest.php:150
++
++7) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testCreateEntityOfProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:427
++
++8) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testSetToOneAssociationWithGetReference
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:539
++
++9) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testAddToToManyAssociationWithGetReference
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:583
++
++10) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testTextColumnSaveAndRetrieve
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:665
++
++11) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testRemoveEntityByReference
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:730
++
++12) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testQueryEntityByReference
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:757
++
++13) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testManyToOneFetchModeQuery
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:941
++
++14) Doctrine\Tests\ORM\Functional\BasicFunctionalTest::testItThrowsWhenReferenceUsesIdAssignedByDatabase
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/BasicFunctionalTest.php:1065
++
++15) Doctrine\Tests\ORM\Functional\CascadeRemoveOrderTest::testMany
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CascadeRemoveOrderTest.php:62
++
++16) Doctrine\Tests\ORM\Functional\ClassTableInheritanceTest::testGetReferenceEntityWithSubclasses
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ClassTableInheritanceTest.php:439
++
++17) Doctrine\Tests\ORM\Functional\CompositeKeyRelationsTest::testFindEntityWithNotNullRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CompositeKeyRelationsTest.php:56
++@ROOT@/tests/Tests/ORM/Functional/CompositeKeyRelationsTest.php:34
++
++18) Doctrine\Tests\ORM\Functional\CompositePrimaryKeyTest::testPersistCompositePkEntity
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:56
++
++19) Doctrine\Tests\ORM\Functional\CompositePrimaryKeyTest::testSetParameterCompositeKeyObject
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:69
++
++20) Doctrine\Tests\ORM\Functional\CompositePrimaryKeyTest::testIdentityFunctionWithCompositePrimaryKey
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:87
++
++21) Doctrine\Tests\ORM\Functional\CompositePrimaryKeyTest::testManyToManyCompositeRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:40
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:109
++
++22) Doctrine\Tests\ORM\Functional\CompositePrimaryKeyTest::testCompositeDqlEagerFetching
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:40
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:119
++
++23) Doctrine\Tests\ORM\Functional\CompositePrimaryKeyTest::testDeleteCompositePersistentCollection
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyTest.php:176
++
++24) Doctrine\Tests\ORM\Functional\CompositePrimaryKeyWithAssociationsTest::testFindByAbleToGetCompositeEntitiesWithMixedTypeIdentifiers
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/tests/Tests/ORM/Functional/CompositePrimaryKeyWithAssociationsTest.php:50
++
++25) Doctrine\Tests\ORM\Functional\DefaultTimeExpressionXmlTest::testUsingTimeRelatedDefaultExpressionCausesAnOrmDeprecationAndNoDbalDeprecation
++Doctrine\DBAL\Exception\NotNullConstraintViolationException: An exception occurred while executing a query: SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: XmlLegacyTimeEntity.createdAt
++
++@ROOT@/vendor/doctrine/dbal/src/Driver/API/SQLite/ExceptionConverter.php:48
++@ROOT@/vendor/doctrine/dbal/src/Connection.php:1454
++@ROOT@/vendor/doctrine/dbal/src/Connection.php:1390
++@ROOT@/vendor/doctrine/dbal/src/Statement.php:108
++@ROOT@/vendor/doctrine/dbal/src/Statement.php:133
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:253
++@ROOT@/src/UnitOfWork.php:1069
++@ROOT@/src/UnitOfWork.php:408
++@ROOT@/src/EntityManager.php:268
++@ROOT@/tests/Tests/ORM/Functional/DefaultTimeExpressionXmlTest.php:52
++
++Caused by
++Doctrine\DBAL\Driver\PDO\Exception: SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: XmlLegacyTimeEntity.createdAt
++
++@ROOT@/vendor/doctrine/dbal/src/Driver/PDO/Exception.php:24
++@ROOT@/vendor/doctrine/dbal/src/Driver/PDO/Statement.php:57
++@ROOT@/vendor/doctrine/dbal/src/Driver/Middleware/AbstractStatementMiddleware.php:24
++@ROOT@/vendor/doctrine/dbal/src/Logging/Statement.php:46
++@ROOT@/vendor/doctrine/dbal/src/Statement.php:104
++@ROOT@/vendor/doctrine/dbal/src/Statement.php:133
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:253
++@ROOT@/src/UnitOfWork.php:1069
++@ROOT@/src/UnitOfWork.php:408
++@ROOT@/src/EntityManager.php:268
++@ROOT@/tests/Tests/ORM/Functional/DefaultTimeExpressionXmlTest.php:52
++
++Caused by
++PDOException: SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: XmlLegacyTimeEntity.createdAt
++
++@ROOT@/vendor/doctrine/dbal/src/Driver/PDO/Statement.php:55
++@ROOT@/vendor/doctrine/dbal/src/Driver/Middleware/AbstractStatementMiddleware.php:24
++@ROOT@/vendor/doctrine/dbal/src/Logging/Statement.php:46
++@ROOT@/vendor/doctrine/dbal/src/Statement.php:104
++@ROOT@/vendor/doctrine/dbal/src/Statement.php:133
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:253
++@ROOT@/src/UnitOfWork.php:1069
++@ROOT@/src/UnitOfWork.php:408
++@ROOT@/src/EntityManager.php:268
++@ROOT@/tests/Tests/ORM/Functional/DefaultTimeExpressionXmlTest.php:52
++
++26) Doctrine\Tests\ORM\Functional\DefaultTimeExpressionXmlTest::testUsingDefaultExpressionInstancesCausesNoDeprecationXmlDriver
++Doctrine\ORM\Mapping\MappingException: The mapping of field 'object' is invalid: The option 'class' is required.
++
++@ROOT@/src/Mapping/MappingException.php:201
++@ROOT@/src/Mapping/Driver/XmlDriver.php:718
++@ROOT@/src/Mapping/Driver/XmlDriver.php:675
++@ROOT@/src/Mapping/Driver/XmlDriver.php:862
++@ROOT@/src/Mapping/Driver/XmlDriver.php:256
++@ROOT@/src/Mapping/ClassMetadataFactory.php:167
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:318
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:187
++@ROOT@/src/EntityManager.php:224
++@ROOT@/tests/Tests/OrmFunctionalTestCase.php:523
++@ROOT@/tests/Tests/OrmFunctionalTestCase.php:521
++@ROOT@/tests/Tests/OrmFunctionalTestCase.php:493
++@ROOT@/tests/Tests/ORM/Functional/DefaultTimeExpressionXmlTest.php:75
++
++27) Doctrine\Tests\ORM\Functional\DefaultValuesTest::testSimpleDetachMerge
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/DefaultValuesTest.php:42
++
++28) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindByAssociationWithIntegerAsParameter
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:224
++
++29) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindByAssociationWithObjectAsParameter
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:246
++
++30) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindOneByAssociationKey
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:398
++
++31) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindByAssociationKey
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:421
++
++32) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindAssociationByMagicCall
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/src/EntityRepository.php:235
++@ROOT@/src/EntityRepository.php:154
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:433
++
++33) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindOneAssociationByMagicCall
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/src/EntityRepository.php:235
++@ROOT@/src/EntityRepository.php:158
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:445
++
++34) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindByOrderByAssociation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:509
++
++35) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testFindByAssociationArray
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:650
++
++36) Doctrine\Tests\ORM\Functional\EntityRepositoryTest::testMatchingCriteriaNullAssocComparison
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/EntityRepositoryTest.php:879
++
++37) Doctrine\Tests\ORM\Functional\IndexByAssociationTest::testManyToMany
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1037
++@ROOT@/src/UnitOfWork.php:2750
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:41
++@ROOT@/src/PersistentCollection.php:391
++@ROOT@/tests/Tests/ORM/Functional/IndexByAssociationTest.php:77
++
++38) Doctrine\Tests\ORM\Functional\IndexByAssociationTest::testManytoManyDQL
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:407
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/IndexByAssociationTest.php:87
++
++39) Doctrine\Tests\ORM\Functional\IndexByAssociationTest::testDqlOverrideIndexBy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:407
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/IndexByAssociationTest.php:99
++
++40) Doctrine\Tests\ORM\Functional\LifecycleCallbackTest::testGetReferenceWithPostLoadEventIsDelayedUntilProxyTrigger
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/LifecycleCallbackTest.php:136
++
++41) Doctrine\Tests\ORM\Functional\Locking\OptimisticTest::testLockWorksWithProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Locking/OptimisticTest.php:196
++
++42) Doctrine\Tests\ORM\Functional\MappedSuperclassTest::testCRUD
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/MappedSuperclassTest.php:43
++
++43) Doctrine\Tests\ORM\Functional\NativeQueryTest::testBasicNativeQueryWithMetaResult
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/NativeQueryTest.php:141
++
++44) Doctrine\Tests\ORM\Functional\NativeQueryTest::testJoinedOneToManyNativeQueryWithRSMBuilder
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/NativeQueryTest.php:370
++
++45) Doctrine\Tests\ORM\Functional\NativeQueryTest::testJoinedOneToOneNativeQueryWithRSMBuilder
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/NativeQueryTest.php:421
++
++46) Doctrine\Tests\ORM\Functional\NewOperatorTest::testEntityInDtoWithRoot
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:580
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:367
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:327
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/NewOperatorTest.php:1253
++
++47) Doctrine\Tests\ORM\Functional\NewOperatorTest::testEntityInDtoWithoutRoot
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:580
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:367
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:327
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/NewOperatorTest.php:1314
++
++48) Doctrine\Tests\ORM\Functional\NewOperatorTest::testOnlyObjectInDto
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:580
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:367
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:327
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/NewOperatorTest.php:1364
++
++49) Doctrine\Tests\ORM\Functional\NewOperatorTest::testOnlyObjectInNamedDto
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:580
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:367
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:327
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/NewOperatorTest.php:1418
++
++50) Doctrine\Tests\ORM\Functional\NewOperatorTest::testOnlyObjectInNamedDtoWithAlias
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:580
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:367
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:327
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/NewOperatorTest.php:1472
++
++51) Doctrine\Tests\ORM\Functional\NewOperatorTest::testOnlyObjectInNamedDtoWithSameNameAsTheProperties
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:580
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:367
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:327
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/NewOperatorTest.php:1526
++
++52) Doctrine\Tests\ORM\Functional\OneToManyBidirectionalAssociationTest::testLazyLoadsObjectsOnTheInverseSide
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/OneToManyBidirectionalAssociationTest.php:123
++
++53) Doctrine\Tests\ORM\Functional\OneToManyOrphanRemovalTest::testOrphanRemoval
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/OneToManyOrphanRemovalTest.php:49
++
++54) Doctrine\Tests\ORM\Functional\OneToManyOrphanRemovalTest::testOrphanRemovalRemoveFromCollection
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/OneToManyOrphanRemovalTest.php:77
++
++55) Doctrine\Tests\ORM\Functional\OneToOneBidirectionalAssociationTest::testLazyLoadsObjectsOnTheOwningSide
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/OneToOneBidirectionalAssociationTest.php:81
++
++56) Doctrine\Tests\ORM\Functional\OneToOneBidirectionalAssociationTest::testUpdateWithProxyObject
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/OneToOneBidirectionalAssociationTest.php:123
++
++57) Doctrine\Tests\ORM\Functional\OneToOneEagerLoadingTest::testEagerLoadManyToOne
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/OneToOneEagerLoadingTest.php:124
++
++58) Doctrine\Tests\ORM\Functional\OneToOneEagerLoadingTest::testEagerLoadWithNonNullableColumnsGeneratesInnerJoinOnOwningSide
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/OneToOneEagerLoadingTest.php:165
++
++59) Doctrine\Tests\ORM\Functional\OneToOneInverseSideWithAssociativeIdLoadAfterDqlQueryTest::testInverseSideWithAssociativeIdOneToOneLoadedAfterDqlQuery
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/OneToOneInverseSideWithAssociativeIdLoadAfterDqlQueryTest.php:52
++
++60) Doctrine\Tests\ORM\Functional\OneToOneOrphanRemovalTest::testOrphanRemoval
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/OneToOneOrphanRemovalTest.php:45
++
++61) Doctrine\Tests\ORM\Functional\OneToOneOrphanRemovalTest::testOrphanRemovalWhenUnlink
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/OneToOneOrphanRemovalTest.php:81
++
++62) Doctrine\Tests\ORM\Functional\OneToOneSelfReferentialAssociationTest::testLazyLoadsAssociation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/OneToOneSelfReferentialAssociationTest.php:92
++
++63) Doctrine\Tests\ORM\Functional\OneToOneSelfReferentialAssociationTest::testMultiSelfReference
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/OneToOneSelfReferentialAssociationTest.php:109
++
++64) Doctrine\Tests\ORM\Functional\OneToOneSingleTableInheritanceTest::testFindFromOneToOneOwningSideJoinedTableInheritance
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/OneToOneSingleTableInheritanceTest.php:43
++
++65) Doctrine\Tests\ORM\Functional\OneToOneUnidirectionalAssociationTest::testLazyLoadsObjects
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/OneToOneUnidirectionalAssociationTest.php:75
++
++66) Doctrine\Tests\ORM\Functional\OrderedCollectionTest::testLazyManyToManyCollectionIsRetrievedWithOrderByClause
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1037
++@ROOT@/src/UnitOfWork.php:2750
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:41
++@ROOT@/src/PersistentCollection.php:391
++@ROOT@/tests/Tests/ORM/Functional/OrderedCollectionTest.php:70
++
++67) Doctrine\Tests\ORM\Functional\OrderedCollectionTest::testOrderedResultFromDqlQuery
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:407
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/OrderedCollectionTest.php:112
++
++68) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testLoadedEntityUsingFindShouldTriggerEvent
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:44
++
++69) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testLoadedEntityUsingQueryShouldTriggerEvent
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:63
++
++70) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testLoadedAssociationToManyShouldTriggerEvent
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:101
++
++71) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testLoadedProxyEntityShouldTriggerEvent
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:117
++
++72) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testLoadedProxyPartialShouldTriggerEvent
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:150
++
++73) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testLoadedProxyAssociationToOneShouldTriggerEvent
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:155
++
++74) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testLoadedProxyAssociationToManyShouldTriggerEvent
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:175
++
++75) Doctrine\Tests\ORM\Functional\PostLoadEventTest::testEventRaisedCorrectTimesWhenOtherEntityLoadedInEventHandler
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/PostLoadEventTest.php:215
++
++76) Doctrine\Tests\ORM\Functional\PropertyHooksTest::testTriggerLazyLoadingWhenAccessingPropertyHooks
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/PropertyHooksTest.php:78
++
++77) Doctrine\Tests\ORM\Functional\ProxiesLikeEntitiesTest::testPersistUpdate
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/tests/Tests/ORM/Functional/ProxiesLikeEntitiesTest.php:59
++
++78) Doctrine\Tests\ORM\Functional\ProxiesLikeEntitiesTest::testEntityWithIdentifier
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ProxiesLikeEntitiesTest.php:79
++
++79) Doctrine\Tests\ORM\Functional\ProxiesLikeEntitiesTest::testProxyAsDqlParameterPersist
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ProxiesLikeEntitiesTest.php:95
++
++80) Doctrine\Tests\ORM\Functional\QueryTest::testEntityParameters
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/QueryTest.php:707
++
++81) Doctrine\Tests\ORM\Functional\QueryTest::testEnableFetchEagerMode
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/QueryTest.php:738
++
++82) Doctrine\Tests\ORM\Functional\ReadOnlyTest::testNotReadOnlyIfObjectWasProxyBefore
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReadOnlyTest.php:118
++
++83) Doctrine\Tests\ORM\Functional\ReadonlyPropertiesTest::testEntityWithLazyManyToOne
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ReadonlyPropertiesTest.php:56
++
++84) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testLazyLoadsFieldValuesFromDatabase
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:65
++
++85) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testAccessMetatadaForProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:74
++
++86) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testReferenceFind
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:85
++
++87) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testCloneProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:97
++
++88) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testCloneProxyWithResetId
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:119
++
++89) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testInitializeProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:138
++
++90) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testInitializeChangeAndFlushProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:151
++
++91) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testWakeupOnProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:167
++
++92) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testDoNotInitializeProxyOnGettingTheIdentifier
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:185
++
++93) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testDoNotInitializeProxyOnGettingTheIdentifierDDC1625
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:198
++
++94) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testDoNotInitializeProxyOnGettingTheIdentifierAndReturnTheRightType
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/src/EntityRepository.php:86
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:220
++
++95) Doctrine\Tests\ORM\Functional\ReferenceProxyTest::testInitializeProxyOnGettingSomethingOtherThanTheIdentifier
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/ReferenceProxyTest.php:233
++
++96) Doctrine\Tests\ORM\Functional\ResultCacheTest::testResultCacheWithObjectParameter
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/ResultCacheTest.php:309
++
++97) Doctrine\Tests\ORM\Functional\SecondLevelCacheCompositePrimaryKeyTest::testPutAndLoadCompositPrimaryKeyEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheCompositePrimaryKeyTest.php:26
++
++98) Doctrine\Tests\ORM\Functional\SecondLevelCacheCompositePrimaryKeyTest::testRemoveCompositPrimaryKeyEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheCompositePrimaryKeyTest.php:72
++
++99) Doctrine\Tests\ORM\Functional\SecondLevelCacheCompositePrimaryKeyTest::testUpdateCompositPrimaryKeyEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheCompositePrimaryKeyTest.php:116
++
++100) Doctrine\Tests\ORM\Functional\SecondLevelCacheCompositePrimaryKeyWithAssociationsTest::testFindByReturnsCachedEntity
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:318
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheCompositePrimaryKeyWithAssociationsTest.php:58
++
++101) Doctrine\Tests\ORM\Functional\SecondLevelCacheConcurrentTest::testBasicConcurrentCollectionReadLock
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheConcurrentTest.php:89
++
++102) Doctrine\Tests\ORM\Functional\SecondLevelCacheCriteriaTest::testCollectionMatching
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheCriteriaTest.php:133
++
++103) Doctrine\Tests\ORM\Functional\SecondLevelCacheExtraLazyCollectionTest::testCacheCountAfterAddThenFlush
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheExtraLazyCollectionTest.php:49
++
++104) Doctrine\Tests\ORM\Functional\SecondLevelCacheJoinTableInheritanceTest::testPutAndLoadJoinTableEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:782
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:533
++@ROOT@/src/UnitOfWork.php:2548
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheJoinTableInheritanceTest.php:82
++
++105) Doctrine\Tests\ORM\Functional\SecondLevelCacheJoinTableInheritanceTest::testQueryCacheFindAllJoinTableEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheJoinTableInheritanceTest.php:140
++
++106) Doctrine\Tests\ORM\Functional\SecondLevelCacheJoinTableInheritanceTest::testOneToManyRelationJoinTable
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheJoinTableInheritanceTest.php:169
++
++107) Doctrine\Tests\ORM\Functional\SecondLevelCacheJoinTableInheritanceTest::testQueryCacheShouldBeEvictedOnTimestampUpdate
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:782
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:533
++@ROOT@/src/UnitOfWork.php:2548
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheJoinTableInheritanceTest.php:210
++
++108) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToManyTest::testPutAndLoadManyToManyRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToManyTest.php:68
++
++109) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToManyTest::testStoreManyToManyAssociationWhitCascade
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToManyTest.php:184
++
++110) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToManyTest::testManyToManyWithEmptyRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToManyTest.php:233
++
++111) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToOneTest::testPutAndLoadManyToOneRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToOneTest.php:46
++
++112) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToOneTest::testInverseSidePutShouldEvictCollection
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToOneTest.php:115
++
++113) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToOneTest::testShouldNotReloadWhenAssociationIsMissing
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToOneTest.php:164
++
++114) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToOneTest::testPutAndLoadNonCacheableManyToOne
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Cache/DefaultEntityHydrator.php:170
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToOneTest.php:202
++
++115) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToOneTest::testPutAndLoadNonCacheableCompositeManyToOne
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Cache/DefaultEntityHydrator.php:170
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToOneTest.php:243
++
++116) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToManyTest::testPutAndLoadOneToManyRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToManyTest.php:58
++
++117) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToManyTest::testLoadOneToManyCollectionFromDatabaseWhenEntityMissing
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToManyTest.php:141
++
++118) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToManyTest::testOneToManyRemove
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToManyTest.php:206
++
++119) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToManyTest::testOneToManyWithEmptyRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToManyTest.php:307
++
++120) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToManyTest::testOneToManyCount
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToManyTest.php:335
++
++121) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToOneTest::testPutAndLoadOneToOneUnidirectionalRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToOneTest.php:80
++
++122) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToOneTest::testPutAndLoadOneToOneBidirectionalRelation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/EntityCacheEntry.php:47
++@ROOT@/src/Cache/EntityCacheEntry.php:42
++@ROOT@/src/Cache/DefaultEntityHydrator.php:163
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToOneTest.php:175
++
++123) Doctrine\Tests\ORM\Functional\SecondLevelCacheOneToOneTest::testPutAndLoadNonCacheableOneToOne
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Cache/DefaultEntityHydrator.php:170
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheOneToOneTest.php:275
++
++124) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testMultipleNestedDQLAliases
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:312
++
++125) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testBasicQueryFetchJoinsOneToMany
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:477
++
++126) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testBasicQueryFetchJoinsManyToOne
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:543
++
++127) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testReloadQueryIfToOneIsNotFound
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:610
++
++128) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testReloadQueryIfToManyAssociationItemIsNotFound
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:654
++
++129) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testResolveAssociationCacheEntry
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:935
++
++130) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testResolveToOneAssociationCacheEntry
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:982
++
++131) Doctrine\Tests\ORM\Functional\SecondLevelCacheQueryCacheTest::testResolveToManyAssociationCacheEntry
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheQueryCacheTest.php:1027
++
++132) Doctrine\Tests\ORM\Functional\SecondLevelCacheRepositoryTest::testRepositoryCacheFindAllToOneAssociation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:357
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/src/EntityRepository.php:96
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheRepositoryTest.php:191
++
++133) Doctrine\Tests\ORM\Functional\SecondLevelCacheSingleTableInheritanceTest::testPutAndLoadEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheSingleTableInheritanceTest.php:79
++
++134) Doctrine\Tests\ORM\Functional\SecondLevelCacheSingleTableInheritanceTest::testQueryCacheFindAll
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheSingleTableInheritanceTest.php:134
++
++135) Doctrine\Tests\ORM\Functional\SecondLevelCacheSingleTableInheritanceTest::testOneToManyRelationSingleTable
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheSingleTableInheritanceTest.php:185
++
++136) Doctrine\Tests\ORM\Functional\SecondLevelCacheSingleTableInheritanceTest::testQueryCacheShouldBeEvictedOnTimestampUpdate
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:993
++@ROOT@/src/AbstractQuery.php:883
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheSingleTableInheritanceTest.php:231
++
++137) Doctrine\Tests\ORM\Functional\SecondLevelCacheTest::testUpdateEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheTest.php:145
++
++138) Doctrine\Tests\ORM\Functional\SecondLevelCacheTest::testPostUpdateFailure
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheTest.php:254
++
++139) Doctrine\Tests\ORM\Functional\SingleTableInheritanceTest::testGetReferenceEntityWithSubclasses
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/SingleTableInheritanceTest.php:398
++
++140) Doctrine\Tests\ORM\Functional\StandardEntityPersisterTest::testAcceptsForeignKeysAsCriteria
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/tests/Tests/ORM/Functional/StandardEntityPersisterTest.php:49
++
++141) Doctrine\Tests\ORM\Functional\StandardEntityPersisterTest::testPersistLazyGhost
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/tests/Tests/ORM/Functional/StandardEntityPersisterTest.php:124
++
++142) Doctrine\Tests\ORM\Functional\Ticket\DDC1080Test::testHydration
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:41
++@ROOT@/src/PersistentCollection.php:391
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1080Test.php:75
++
++143) Doctrine\Tests\ORM\Functional\Ticket\DDC1163Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1163Test.php:79
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1163Test.php:46
++
++144) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testAssociationOnlyCompositeKey
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:69
++
++145) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testUpdateAssociationEntity
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:106
++
++146) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testFetchDql
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:121
++
++147) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testRemoveCompositeElement
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:136
++
++148) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testInverseSideAccess
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:41
++@ROOT@/src/PersistentCollection.php:391
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:165
++
++149) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testMixedCompositeKey
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:192
++
++150) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testOneToOneCascadeRemove
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:315
++@ROOT@/src/UnitOfWork.php:2210
++@ROOT@/src/UnitOfWork.php:1892
++@ROOT@/src/UnitOfWork.php:1866
++@ROOT@/src/EntityManager.php:459
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:244
++
++151) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testReferencesToForeignKeyEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:266
++
++152) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testLoadManyToManyCollectionOfForeignKeyEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1037
++@ROOT@/src/UnitOfWork.php:2750
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:315
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:301
++
++153) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testClearManyToManyCollectionOfForeignKeyEntities
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1037
++@ROOT@/src/UnitOfWork.php:2750
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:41
++@ROOT@/src/PersistentCollection.php:391
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:316
++
++154) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testLoadInverseManyToManyCollection
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1037
++@ROOT@/src/UnitOfWork.php:2750
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:120
++@ROOT@/src/PersistentCollection.php:380
++@ROOT@/src/PersistentCollection.php:425
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:331
++
++155) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testLoadOneToManyOfSourceEntityWithAssociationIdentifier
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1037
++@ROOT@/src/UnitOfWork.php:2750
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:120
++@ROOT@/src/PersistentCollection.php:380
++@ROOT@/src/PersistentCollection.php:425
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:356
++
++156) Doctrine\Tests\ORM\Functional\Ticket\DDC117Test::testIndexByOnCompositeKeyField
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:41
++@ROOT@/src/PersistentCollection.php:391
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC117Test.php:446
++
++157) Doctrine\Tests\ORM\Functional\Ticket\DDC1193Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1193Test.php:44
++
++158) Doctrine\Tests\ORM\Functional\Ticket\DDC1228Test::testOneToOnePersist
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1228Test.php:38
++
++159) Doctrine\Tests\ORM\Functional\Ticket\DDC1228Test::testRefresh
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1228Test.php:66
++
++160) Doctrine\Tests\ORM\Functional\Ticket\DDC1238Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1238Test.php:36
++
++161) Doctrine\Tests\ORM\Functional\Ticket\DDC1238Test::testIssueProxyClear
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1238Test.php:55
++
++162) Doctrine\Tests\ORM\Functional\Ticket\DDC1250Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1250Test.php:41
++
++163) Doctrine\Tests\ORM\Functional\Ticket\DDC1301Test::testCountNotInitializesLegacyCollectionWithForeignIdentifier
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:315
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1301Test.php:69
++
++164) Doctrine\Tests\ORM\Functional\Ticket\DDC1400Test::testFailingCase
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1400Test.php:59
++
++165) Doctrine\Tests\ORM\Functional\Ticket\DDC1436Test::testIdentityMap
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:737
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1436Test.php:46
++
++166) Doctrine\Tests\ORM\Functional\Ticket\DDC1458Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/src/EntityRepository.php:86
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1458Test.php:38
++
++167) Doctrine\Tests\ORM\Functional\Ticket\DDC1514Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1514Test.php:61
++
++168) Doctrine\Tests\ORM\Functional\Ticket\DDC1545Test::testUnlinkObjects
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC1545Test.php:113
++
++169) Doctrine\Tests\ORM\Functional\Ticket\DDC2084Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2084Test.php:46
++
++170) Doctrine\Tests\ORM\Functional\Ticket\DDC2214Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2214Test.php:45
++
++171) Doctrine\Tests\ORM\Functional\Ticket\DDC2252Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2252Test.php:86
++
++172) Doctrine\Tests\ORM\Functional\Ticket\DDC2306Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:169
++@ROOT@/src/PersistentCollection.php:518
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2306Test.php:65
++
++173) Doctrine\Tests\ORM\Functional\Ticket\DDC2346Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/src/EntityRepository.php:96
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2346Test.php:62
++
++174) Doctrine\Tests\ORM\Functional\Ticket\DDC237Test::testUninitializedProxyIsInitializedOnFetchJoin
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC237Test.php:49
++
++175) Doctrine\Tests\ORM\Functional\Ticket\DDC2494Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2494Test.php:55
++
++176) Doctrine\Tests\ORM\Functional\Ticket\DDC2519Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2519Test.php:28
++
++177) Doctrine\Tests\ORM\Functional\Ticket\DDC2579Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/UnitOfWork.php:3265
++@ROOT@/src/UnitOfWork.php:2552
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2579Test.php:57
++
++178) Doctrine\Tests\ORM\Functional\Ticket\DDC2660Test::testIssueWithExtraColumn
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2660Test.php:61
++
++179) Doctrine\Tests\ORM\Functional\Ticket\DDC2660Test::testIssueWithoutExtraColumn
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2660Test.php:79
++
++180) Doctrine\Tests\ORM\Functional\Ticket\DDC2780Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:737
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2780Test.php:48
++
++181) Doctrine\Tests\ORM\Functional\Ticket\DDC2862Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2862Test.php:44
++
++182) Doctrine\Tests\ORM\Functional\Ticket\DDC2862Test::testIssueReopened
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:394
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2862Test.php:85
++
++183) Doctrine\Tests\ORM\Functional\Ticket\DDC2931Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2931Test.php:42
++
++184) Doctrine\Tests\ORM\Functional\Ticket\DDC2996Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2996Test.php:42
++
++185) Doctrine\Tests\ORM\Functional\Ticket\DDC3192Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC3192Test.php:60
++
++186) Doctrine\Tests\ORM\Functional\Ticket\DDC3223Test::testIssueGetId
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC3223Test.php:49
++
++187) Doctrine\Tests\ORM\Functional\Ticket\DDC353Test::testWorkingCase
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC353Test.php:40
++
++188) Doctrine\Tests\ORM\Functional\Ticket\DDC353Test::testFailingCase
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC353Test.php:67
++
++189) Doctrine\Tests\ORM\Functional\Ticket\DDC381Test::testCallUnserializedProxyMethods
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC381Test.php:34
++
++190) Doctrine\Tests\ORM\Functional\Ticket\DDC4003Test::testReadsThroughRepositorySameDataThatItWroteInCache
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/EntityCacheEntry.php:47
++@ROOT@/src/Cache/EntityCacheEntry.php:42
++@ROOT@/src/Cache/DefaultQueryCache.php:104
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:310
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC4003Test.php:59
++
++191) Doctrine\Tests\ORM\Functional\Ticket\DDC522Test::testJoinColumnWithSameNameAsAssociationField
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC522Test.php:63
++
++192) Doctrine\Tests\ORM\Functional\Ticket\DDC633Test::testDQLDeferredEagerLoad
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC633Test.php:66
++
++193) Doctrine\Tests\ORM\Functional\Ticket\DDC6460Test::testInlineEmbeddableProxyInitialization
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/src/EntityRepository.php:235
++@ROOT@/src/EntityRepository.php:158
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC6460Test.php:62
++
++194) Doctrine\Tests\ORM\Functional\Ticket\DDC69Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:315
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC69Test.php:99
++
++195) Doctrine\Tests\ORM\Functional\Ticket\DDC736Test::testDqlTreeWalkerReordering
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC736Test.php:74
++
++196) Doctrine\Tests\ORM\Functional\Ticket\DDC837Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC837Test.php:63
++
++197) Doctrine\Tests\ORM\Functional\Ticket\DDC881Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:442
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/DDC881Test.php:87
++
++198) Doctrine\Tests\ORM\Functional\Ticket\GH10132Test::testQueryBackedEnumInCompositeKeyJoin
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:737
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH10132Test.php:44
++
++199) Doctrine\Tests\ORM\Functional\Ticket\GH10334Test::testGetChildWithBackedEnumId
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH10334Test.php:69
++
++200) Doctrine\Tests\ORM\Functional\Ticket\GH10336Test::testCanAccessRelationPropertyAfterClear
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH10336Test.php:35
++
++201) Doctrine\Tests\ORM\Functional\Ticket\GH10473Test::testMappedSuperclassAssociationsCanBeResolvedToEntities
++Error: Cannot indirectly modify readonly property Doctrine\ORM\Mapping\AssociationMapping::$fieldName
++
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:94
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:74
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:250
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:318
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:187
++@ROOT@/src/EntityManager.php:224
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH10473Test.php:28
++
++202) Doctrine\Tests\ORM\Functional\Ticket\GH10808Test::testDQLDeferredEagerLoad
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH10808Test.php:46
++
++203) Doctrine\Tests\ORM\Functional\Ticket\GH10889Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH10889Test.php:42
++
++204) Doctrine\Tests\ORM\Functional\Ticket\GH11149\GH11149Test::testFetchEagerModeWithIndexBy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/UnitOfWork.php:2625
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH11149/GH11149Test.php:34
++
++205) Doctrine\Tests\ORM\Functional\Ticket\GH11386\GH11386Test::testInitializeClonedProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH11386/GH11386Test.php:35
++
++206) Doctrine\Tests\ORM\Functional\Ticket\GH11524Test::testPostLoadCalledOnProxy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH11524Test.php:41
++
++207) Doctrine\Tests\ORM\Functional\Ticket\GH12166\GH12166Test::testProxyWithReadonlyIdIsNotInitializedImmediately
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH12166/GH12166Test.php:17
++
++208) Doctrine\Tests\ORM\Functional\Ticket\GH12174Test::testMappedSuperclassNameCanBeUsedToResolveTargetEntityClass
++Error: Cannot indirectly modify readonly property Doctrine\ORM\Mapping\AssociationMapping::$fieldName
++
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:94
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:74
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:250
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:318
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:187
++@ROOT@/src/EntityManager.php:224
++@ROOT@/tests/Tests/OrmFunctionalTestCase.php:523
++@ROOT@/tests/Tests/OrmFunctionalTestCase.php:521
++@ROOT@/tests/Tests/OrmFunctionalTestCase.php:493
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH12174Test.php:32
++
++209) Doctrine\Tests\ORM\Functional\Ticket\GH5562Test::testCacheShouldBeUpdatedWhenAssociationChanges
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Cache/DefaultEntityHydrator.php:163
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH5562Test.php:53
++
++210) Doctrine\Tests\ORM\Functional\Ticket\GH5742Test::testUpdateOneToOneToNewEntityBeforePreviousEntityCanBeRemoved
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH5742Test.php:52
++
++211) Doctrine\Tests\ORM\Functional\Ticket\GH5742Test::testManyToManyCollectionUpdateBeforeRemoval
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH5742Test.php:86
++
++212) Doctrine\Tests\ORM\Functional\Ticket\GH5998Test::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/EntityRepository.php:125
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH5998Test.php:53
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH5998Test.php:34
++
++213) Doctrine\Tests\ORM\Functional\Ticket\GH6217Test::testLoadingOfSecondLevelCacheOnEagerAssociations
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:967
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:357
++@ROOT@/src/EntityRepository.php:110
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH6217Test.php:48
++
++214) Doctrine\Tests\ORM\Functional\Ticket\GH6402Test::testFind
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH6402Test.php:28
++
++215) Doctrine\Tests\ORM\Functional\Ticket\GH6402Test::testQuery
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH6402Test.php:38
++
++216) Doctrine\Tests\ORM\Functional\Ticket\GH6402Test::testFindWithSubClass
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH6402Test.php:48
++
++217) Doctrine\Tests\ORM\Functional\Ticket\GH6402Test::testQueryWithSubClass
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:688
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH6402Test.php:58
++
++218) Doctrine\Tests\ORM\Functional\Ticket\GH6499OneToOneRelationshipTest::testIssue
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH6499OneToOneRelationshipTest.php:33
++
++219) Doctrine\Tests\ORM\Functional\Ticket\GH7062Test::testEntityWithAssociationKeyIdentityCanBeUpdated
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH7062Test.php:68
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH7062Test.php:45
++
++220) Doctrine\Tests\Functional\Ticket\GH7661Test::testIndexByAssociation
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1819
++@ROOT@/src/UnitOfWork.php:2746
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:130
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH7661Test.php:46
++
++221) Doctrine\Tests\ORM\Functional\Ticket\GH7735Test::findByReturnsCachedEntity
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH7735Test.php:45
++
++222) Doctrine\Tests\ORM\Functional\Ticket\GH7869Test::testDQLDeferredEagerLoad
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2568
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH7869Test.php:60
++
++223) Doctrine\Tests\ORM\Functional\Ticket\GH8415Test::testAssociationIsBasedOnBaseClass
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:737
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH8415Test.php:39
++
++224) Doctrine\Tests\ORM\Functional\Ticket\GH8443Test::testJoinRootEntityWithOnlyOneEntityInHierarchy
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/AbstractQuery.php:943
++@ROOT@/src/AbstractQuery.php:886
++@ROOT@/src/AbstractQuery.php:772
++@ROOT@/tests/Tests/ORM/Functional/Ticket/GH8443Test.php:80
++
++225) Doctrine\Tests\ORM\Functional\Ticket\SwitchContextWithFilter\SwitchContextTest::testSwitchContext
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/tests/Tests/ORM/Functional/Ticket/SwitchContextWithFilter/SwitchContextTest.php:66
++@ROOT@/tests/Tests/ORM/Functional/Ticket/SwitchContextWithFilter/SwitchContextTest.php:91
++
++226) Doctrine\Tests\ORM\Functional\TypeValueSqlTest::testTypeValueSqlWithAssociations
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/TypeValueSqlTest.php:108
++
++227) Doctrine\Tests\ORM\Functional\ValueConversionType\ManyToManyCompositeIdForeignKeyTest::testThatTheCollectionFromOwningToInversedIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1026
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:1037
++@ROOT@/src/UnitOfWork.php:2750
++@ROOT@/src/PersistentCollection.php:636
++@ROOT@/src/PersistentCollection.php:186
++@ROOT@/vendor/doctrine/collections/src/AbstractLazyCollection.php:41
++@ROOT@/src/PersistentCollection.php:391
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/ManyToManyCompositeIdForeignKeyTest.php:149
++
++228) Doctrine\Tests\ORM\Functional\ValueConversionType\ManyToManyCompositeIdForeignKeyTest::testThatTheCollectionFromInversedToOwningIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/ManyToManyCompositeIdForeignKeyTest.php:155
++
++229) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToManyCompositeIdForeignKeyTest::testThatTheProxyFromOwningToInversedIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/UnitOfWork.php:3265
++@ROOT@/src/UnitOfWork.php:2552
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToManyCompositeIdForeignKeyTest.php:142
++
++230) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToManyCompositeIdForeignKeyTest::testThatTheCollectionFromInversedToOwningIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToManyCompositeIdForeignKeyTest.php:157
++
++231) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToManyCompositeIdTest::testThatTheProxyFromOwningToInversedIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToManyCompositeIdTest.php:105
++
++232) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToManyTest::testThatTheProxyFromOwningToInversedIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToManyTest.php:101
++
++233) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToOneCompositeIdForeignKeyTest::testThatTheProxyFromOwningToInversedIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/UnitOfWork.php:3265
++@ROOT@/src/UnitOfWork.php:2552
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToOneCompositeIdForeignKeyTest.php:142
++
++234) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToOneCompositeIdForeignKeyTest::testThatTheEntityFromInversedToOwningIsEagerLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToOneCompositeIdForeignKeyTest.php:155
++
++235) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToOneCompositeIdTest::testThatTheProxyFromOwningToInversedIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToOneCompositeIdTest.php:105
++
++236) Doctrine\Tests\ORM\Functional\ValueConversionType\OneToOneTest::testThatTheProxyFromOwningToInversedIsLoaded
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:176
++@ROOT@/src/Internal/Hydration/SimpleObjectHydrator.php:60
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:746
++@ROOT@/src/Persisters/Entity/BasicEntityPersister.php:756
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/ValueConversionType/OneToOneTest.php:101
++
++237) Doctrine\Tests\ORM\Hydration\ObjectHydratorTest::testCreatesProxyForLazyLoadingWithForeignKeys
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/tests/Tests/ORM/Hydration/ObjectHydratorTest.php:1036
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/tests/Tests/ORM/Hydration/ObjectHydratorTest.php:1048
++
++238) Doctrine\Tests\ORM\Hydration\ObjectHydratorTest::testCreatesProxyForLazyLoadingWithForeignKeysWithAliasedProductEntity
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/tests/Tests/ORM/Hydration/ObjectHydratorTest.php:1089
++@ROOT@/src/UnitOfWork.php:2557
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:268
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:495
++@ROOT@/src/Internal/Hydration/ObjectHydrator.php:147
++@ROOT@/src/Internal/Hydration/AbstractHydrator.php:176
++@ROOT@/tests/Tests/ORM/Hydration/ObjectHydratorTest.php:1101
++
++239) Doctrine\Tests\ORM\Mapping\ClassMetadataTest::testGetSequenceName with data set "quoted table name with schema" ('custom.reserved_id_seq', 'custom.`reserved`')
++Error: Typed property Doctrine\ORM\Mapping\ClassMetadata::$table must not be accessed before initialization
++
++@ROOT@/src/Mapping/ClassMetadata.php:1886
++@ROOT@/tests/Tests/ORM/Mapping/ClassMetadataTest.php:982
++
++240) Doctrine\Tests\ORM\Mapping\ClassMetadataTest::testGetSequenceName with data set "unquoted table name with schema" ('custom.non_reserved_id_seq', 'custom.non_reserved')
++Error: Typed property Doctrine\ORM\Mapping\ClassMetadata::$table must not be accessed before initialization
++
++@ROOT@/src/Mapping/ClassMetadata.php:1886
++@ROOT@/tests/Tests/ORM/Mapping/ClassMetadataTest.php:982
++
++241) Doctrine\Tests\ORM\Mapping\DefaultQuoteStrategyTest::testGetTableName with data set "quoted table name with schema" ('✌️custom✌️.✌️reserved✌️', 'custom.`reserved`')
++Error: Typed property Doctrine\ORM\Mapping\ClassMetadata::$table must not be accessed before initialization
++
++@ROOT@/src/Mapping/ClassMetadata.php:1886
++@ROOT@/tests/Tests/ORM/Mapping/DefaultQuoteStrategyTest.php:42
++
++242) Doctrine\Tests\ORM\Mapping\DefaultQuoteStrategyTest::testGetTableName with data set "unquoted table name with schema" ('custom.non_reserved', 'custom.non_reserved')
++Error: Typed property Doctrine\ORM\Mapping\ClassMetadata::$table must not be accessed before initialization
++
++@ROOT@/src/Mapping/ClassMetadata.php:1886
++@ROOT@/tests/Tests/ORM/Mapping/DefaultQuoteStrategyTest.php:42
++
++243) Doctrine\Tests\ORM\Proxy\ProxyFactoryTest::testReferenceProxyDelegatesLoadingToThePersister
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/tests/Tests/ORM/Proxy/ProxyFactoryTest.php:87
++
++244) Doctrine\Tests\ORM\Proxy\ProxyFactoryTest::testFailedProxyLoadingDoesNotMarkTheProxyAsInitialized
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/tests/Tests/ORM/Proxy/ProxyFactoryTest.php:144
++
++245) Doctrine\Tests\ORM\Proxy\ProxyFactoryTest::testFailedProxyCloningDoesNotMarkTheProxyAsInitialized
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/tests/Tests/ORM/Proxy/ProxyFactoryTest.php:181
++
++246) Doctrine\Tests\ORM\Proxy\ProxyFactoryTest::testProxyFactoryAcceptsNullProxyArgsWhenNativeLazyObjectsAreEnabled
++Error: ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)
++
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/tests/Tests/ORM/Proxy/ProxyFactoryTest.php:252
++
++247) Doctrine\Tests\ORM\Tools\Console\Command\SchemaTool\DropCommandTest::testItPrintsTheSql
++Doctrine\DBAL\Exception\DriverException: An exception occurred while executing a query: SQLSTATE[HY000]: General error: 6 database table is locked
++
++@ROOT@/vendor/doctrine/dbal/src/Driver/API/SQLite/ExceptionConverter.php:83
++@ROOT@/vendor/doctrine/dbal/src/Connection.php:1454
++@ROOT@/vendor/doctrine/dbal/src/Connection.php:1390
++@ROOT@/vendor/doctrine/dbal/src/Connection.php:909
++@ROOT@/tests/Tests/ORM/Tools/Console/Command/SchemaTool/DropCommandTest.php:20
++
++Caused by
++Doctrine\DBAL\Driver\PDO\Exception: SQLSTATE[HY000]: General error: 6 database table is locked
++
++@ROOT@/vendor/doctrine/dbal/src/Driver/PDO/Exception.php:24
++@ROOT@/vendor/doctrine/dbal/src/Driver/PDO/Connection.php:33
++@ROOT@/vendor/doctrine/dbal/src/Driver/Middleware/AbstractConnectionMiddleware.php:34
++@ROOT@/vendor/doctrine/dbal/src/Logging/Connection.php:46
++@ROOT@/vendor/doctrine/dbal/src/Connection.php:907
++@ROOT@/tests/Tests/ORM/Tools/Console/Command/SchemaTool/DropCommandTest.php:20
++
++Caused by
++PDOException: SQLSTATE[HY000]: General error: 6 database table is locked
++
++@ROOT@/vendor/doctrine/dbal/src/Driver/PDO/Connection.php:27
++@ROOT@/vendor/doctrine/dbal/src/Driver/Middleware/AbstractConnectionMiddleware.php:34
++@ROOT@/vendor/doctrine/dbal/src/Logging/Connection.php:46
++@ROOT@/vendor/doctrine/dbal/src/Connection.php:907
++@ROOT@/tests/Tests/ORM/Tools/Console/Command/SchemaTool/DropCommandTest.php:20
++
++248) Doctrine\Tests\ORM\Tools\ResolveTargetEntityListenerTest::testResolveTargetEntityListenerCanResolveTargetEntity
++Error: Cannot indirectly modify readonly property Doctrine\ORM\Mapping\AssociationMapping::$fieldName
++
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:94
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:74
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:250
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:318
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:187
++@ROOT@/tests/Tests/ORM/Tools/ResolveTargetEntityListenerTest.php:48
++
++249) Doctrine\Tests\ORM\Tools\ResolveTargetEntityListenerTest::testResolveTargetEntityListenerCanRetrieveTargetEntityByInterfaceName
++Error: Cannot indirectly modify readonly property Doctrine\ORM\Mapping\AssociationMapping::$fieldName
++
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:94
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:74
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:250
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:318
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:187
++@ROOT@/src/EntityManager.php:224
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:58
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:125
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:208
++@ROOT@/tests/Tests/ORM/Tools/ResolveTargetEntityListenerTest.php:68
++
++250) Doctrine\Tests\ORM\Tools\ResolveTargetEntityListenerTest::testAssertTableColumnsAreNotAddedInManyToMany
++Error: Cannot indirectly modify readonly property Doctrine\ORM\Mapping\AssociationMapping::$fieldName
++
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:94
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:74
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:250
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:318
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:187
++@ROOT@/tests/Tests/ORM/Tools/ResolveTargetEntityListenerTest.php:81
++
++251) Doctrine\Tests\ORM\Tools\ResolveTargetEntityListenerTest::testDoesResolveTargetEntitiesInDQLAlsoWithInterfaces
++Error: Cannot indirectly modify readonly property Doctrine\ORM\Mapping\AssociationMapping::$fieldName
++
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:94
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:74
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:250
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:318
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:187
++@ROOT@/src/EntityManager.php:224
++@ROOT@/src/Tools/ResolveTargetEntityListener.php:58
++@ROOT@/vendor/doctrine/event-manager/src/EventManager.php:34
++@ROOT@/src/Mapping/ClassMetadataFactory.php:125
++@ROOT@/vendor/doctrine/persistence/src/Mapping/AbstractClassMetadataFactory.php:208
++@ROOT@/src/EntityManager.php:224
++@ROOT@/src/Query/Parser.php:1709
++@ROOT@/src/Query/Parser.php:1537
++@ROOT@/src/Query/Parser.php:1306
++@ROOT@/src/Query/Parser.php:848
++@ROOT@/src/Query/Parser.php:819
++@ROOT@/src/Query/Parser.php:243
++@ROOT@/src/Query/Parser.php:335
++@ROOT@/src/Query.php:248
++@ROOT@/src/Query.php:717
++@ROOT@/src/Query.php:178
++@ROOT@/tests/Tests/ORM/Tools/ResolveTargetEntityListenerTest.php:102
++
++--
++
++There were 13 failures:
++
++1) Doctrine\Tests\ORM\Functional\DefaultTimeExpressionXmlTest::testUsingTimeRelatedDefaultExpressionCausesAnOrmDeprecationAndNoDbalDeprecation
++Expected deprecation with identifier 'https://github.com/doctrine/orm/issues/12252' was not triggered by code executed in test.
++Failed asserting that false is true.
++
++@ROOT@/vendor/doctrine/deprecations/src/PHPUnit/VerifyDeprecations.php:45
++
++2) Doctrine\Tests\ORM\Functional\QueryTest::testToIterableWithMultipleSelectElements
++Failed asserting that actual size 0 matches expected size 2.
++
++@ROOT@/tests/Tests/ORM/Functional/QueryTest.php:397
++
++3) Doctrine\Tests\ORM\Functional\QueryTest::testToIterableWithMixedResultEntityScalars
++Failed asserting that actual size 0 matches expected size 3.
++
++@ROOT@/tests/Tests/ORM/Functional/QueryTest.php:441
++
++4) Doctrine\Tests\ORM\Functional\QueryTest::testToIterableWithMixedResultArbitraryJoinsScalars
++Failed asserting that actual size 0 matches expected size 3.
++
++@ROOT@/tests/Tests/ORM/Functional/QueryTest.php:484
++
++5) Doctrine\Tests\ORM\Functional\SecondLevelCacheManyToManyTest::testReadOnlyCollection
++Failed asserting that exception of type "Error" matches expected exception "Doctrine\ORM\Cache\Exception\CacheException". Message was: "ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)" at
++@ROOT@/src/Proxy/ProxyFactory.php:217
++@ROOT@/src/EntityManager.php:404
++@ROOT@/src/Cache/DefaultEntityHydrator.php:148
++@ROOT@/src/Cache/Persister/Entity/AbstractEntityPersister.php:385
++@ROOT@/src/EntityManager.php:366
++@ROOT@/tests/Tests/ORM/Functional/SecondLevelCacheManyToManyTest.php:209
++.
++
++6) Doctrine\Tests\ORM\Hydration\AbstractHydratorTest::testToIterableIfYieldAndBreakBeforeFinishAlwaysCleansUp
++Failed asserting that actual size 1 matches expected size 0.
++
++@ROOT@/tests/Tests/ORM/Hydration/AbstractHydratorTest.php:138
++
++7) Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testEntityIndexFlagsAndPartialIndexes
++Failed asserting that two arrays are equal.
++--- Expected
+++++ Actual
++@@ @@
++         'columns' => [...]
++         'flags' => [...]
++         'options' => Array (
++-            'where' => 'content IS NOT NULL'
+++            0 => 'content IS NOT NULL'
++         )
++     )
++ )
++
++@ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:143
++
++8) Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testEntityUniqueConstraints
++Failed asserting that two arrays are equal.
++--- Expected
+++++ Actual
++@@ @@
++     'search_idx' => Array (
++         'columns' => [...]
++         'options' => Array (
++-            'where' => 'name IS NOT NULL'
+++            0 => 'name IS NOT NULL'
++         )
++     )
++     'phone_idx' => [...]
++ )
++
++@ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:164
++
++9) Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testEntityOptions
++Failed asserting that two arrays are equal.
++--- Expected
+++++ Actual
++@@ @@
++ Array (
++-    'foo' => 'bar'
++-    'baz' => [...]
+++    0 => 'bar'
+++    1 => [...]
++ )
++
++@ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:186
++
++10) Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testFieldOptions
++Failed asserting that two arrays are equal.
++--- Expected
+++++ Actual
++@@ @@
++ Array (
++-    'foo' => 'bar'
++-    'baz' => [...]
++-    'fixed' => false
+++    0 => 'bar'
+++    1 => [...]
+++    2 => 'false'
++ )
++
++@ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:311
++
++11) Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testIdFieldOptions
++Failed asserting that two arrays are equal.
++--- Expected
+++++ Actual
++@@ @@
++ Array (
++-    'foo' => 'bar'
++-    'unsigned' => false
+++    0 => 'bar'
+++    1 => 'false'
++ )
++
++@ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:319
++
++12) Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testBooleanValuesForOptionIsSetCorrectly
++Failed asserting that null is of type bool.
++
++@ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:339
++
++13) Doctrine\Tests\ORM\Tools\DebugTest::testExportObjectWithReference
++Failed asserting that two strings are equal.
++--- Expected
+++++ Actual
++@@ @@
++-'tab'
+++'bar'
++
++@ROOT@/tests/Tests/ORM/Tools/DebugTest.php:44
++
++--
++
++49 tests triggered 3 PHP warnings:
++
++1) @ROOT@/src/Mapping/ClassMetadata.php:2261
++Attempt to read property "options" on null
++
++Triggered by:
++
++* Doctrine\Tests\ORM\Functional\LifecycleCallbackTest::testLifecycleCallbacksGetInherited
++  @ROOT@/tests/Tests/ORM/Functional/LifecycleCallbackTest.php:336
++
++* Doctrine\Tests\ORM\Functional\MappedSuperclassTest::testCRUD (2 times)
++  @ROOT@/tests/Tests/ORM/Functional/MappedSuperclassTest.php:23
++
++* Doctrine\Tests\ORM\Functional\SchemaValidatorTest::testValidateModelSets#ddc3699
++  @ROOT@/tests/Tests/ORM/Functional/SchemaValidatorTest.php:62
++
++* Doctrine\Tests\ORM\Functional\Ticket\DDC2415Test::testTicket
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2415Test.php:31
++
++* Doctrine\Tests\ORM\Functional\Ticket\DDC2895Test::testPostLoadOneToManyInheritance
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/DDC2895Test.php:29
++
++* Doctrine\Tests\ORM\Functional\Ticket\DDC3303Test::testEmbeddedObjectsAreAlsoInherited
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/DDC3303Test.php:33
++
++* Doctrine\Tests\ORM\Functional\Ticket\DDC719Test::testIsEmptySqlGeneration
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/DDC719Test.php:31
++
++* Doctrine\Tests\ORM\Functional\Ticket\GH10049\GH10049Test::testInheritedReadOnlyPropertyValueCanBeSet
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/GH10049/GH10049Test.php:23
++
++* Doctrine\Tests\ORM\Functional\Ticket\GH10450Test::testDuplicatePrivateFieldsShallBeRejected#Entity class that redeclares a private field inherited from a mapped superclass
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/GH10450Test.php:17
++
++* Doctrine\Tests\ORM\Functional\Ticket\GH10450Test::testDuplicatePrivateFieldsShallBeRejected#Entity class that redeclares a protected field inherited from a mapped superclass
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/GH10450Test.php:17
++
++* Doctrine\Tests\ORM\Functional\Ticket\GH10454Test::testProtectedPropertyMustNotBeInheritedAndReconfigured#Entity class that redeclares a protected field inherited from a mapped superclass
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/GH10454Test.php:17
++
++* Doctrine\Tests\ORM\Functional\Ticket\GH11135Test::testOverrideInheritsDeclaringClass (2 times)
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/GH11135Test.php:23
++
++* Doctrine\Tests\ORM\Functional\Ticket\GH5998Test::testIssue (3 times)
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/GH5998Test.php:31
++
++* Doctrine\Tests\ORM\Functional\Ticket\GH8914Test::testDiscriminatorMapWithSeveralLevelsIsSupported
++  @ROOT@/tests/Tests/ORM/Functional/Ticket/GH8914Test.php:23
++
++* Doctrine\Tests\ORM\Functional\ValueObjectsTest::testCRUD
++  @ROOT@/tests/Tests/ORM/Functional/ValueObjectsTest.php:43
++
++* Doctrine\Tests\ORM\Mapping\AttributeDriverTest::testAssociationOverridesMapping (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:611
++
++* Doctrine\Tests\ORM\Mapping\AttributeDriverTest::testAttributeOverridesMapping (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:683
++
++* Doctrine\Tests\ORM\Mapping\AttributeDriverTest::testFetchOverrideMapping
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:601
++
++* Doctrine\Tests\ORM\Mapping\AttributeDriverTest::testIdentifierRequiredShouldMentionParentClasses
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:576
++
++* Doctrine\Tests\ORM\Mapping\AttributeDriverTest::testInversedByOverrideMapping
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:587
++
++* Doctrine\Tests\ORM\Mapping\AttributeDriverTest::testMappedSuperclassWithRepository (4 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:473
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testGetMetadataForSubclassWithMappedSuperclass
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:70
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testGetMetadataForSubclassWithMappedSuperclassWithRepository (3 times)
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:90
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testMappedSuperclassIndex
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:179
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testMappedSuperclassWithId
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:153
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testSerializationWithPrivateFieldsFromMappedSuperclass
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:115
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testUndeclaredHierarchyRejection#abstract Entity root and abstract child class, direct inheritance
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:191
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testUndeclaredHierarchyRejection#abstract Entity root and concrete child class, direct inheritance
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:191
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testUndeclaredHierarchyRejection#complex example (Entity Root -> Mapped Superclass -> transient class -> Entity) (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:191
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testUndeclaredHierarchyRejection#concrete Entity root and abstract child class, direct inheritance
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:191
++
++* Doctrine\Tests\ORM\Mapping\BasicInheritanceMappingTest::testUndeclaredHierarchyRejection#concrete Entity root and child class, direct inheritance
++  @ROOT@/tests/Tests/ORM/Mapping/BasicInheritanceMappingTest.php:191
++
++* Doctrine\Tests\ORM\Mapping\ClassMetadataTest::testDiscriminatorMapWithSameClassMultipleTimesDeprecated
++  @ROOT@/tests/Tests/ORM/Mapping/ClassMetadataTest.php:1169
++
++* Doctrine\Tests\ORM\Mapping\ClassMetadataTest::testSetDiscriminatorMapInGlobalNamespace
++  @ROOT@/tests/Tests/ORM/Mapping/ClassMetadataTest.php:316
++
++* Doctrine\Tests\ORM\Mapping\StaticPHPMappingDriverTest::testAssociationOverridesMapping (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:611
++
++* Doctrine\Tests\ORM\Mapping\StaticPHPMappingDriverTest::testAttributeOverridesMapping (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:683
++
++* Doctrine\Tests\ORM\Mapping\StaticPHPMappingDriverTest::testFetchOverrideMapping
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:601
++
++* Doctrine\Tests\ORM\Mapping\StaticPHPMappingDriverTest::testIdentifierRequiredShouldMentionParentClasses
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:576
++
++* Doctrine\Tests\ORM\Mapping\StaticPHPMappingDriverTest::testInversedByOverrideMapping
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:587
++
++* Doctrine\Tests\ORM\Mapping\StaticPHPMappingDriverTest::testMappedSuperclassWithRepository (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:473
++
++* Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testAssociationOverridesMapping (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:611
++
++* Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testAttributeOverridesMapping (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:683
++
++* Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testFetchOverrideMapping
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:601
++
++* Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testIdentifierRequiredShouldMentionParentClasses
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:576
++
++* Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testInversedByOverrideMapping
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:587
++
++* Doctrine\Tests\ORM\Mapping\XmlMappingDriverTest::testMappedSuperclassWithRepository (2 times)
++  @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:473
++
++* Doctrine\Tests\ORM\Query\SelectSqlGenerationTest::testMappedSuperclassAssociationJoin (2 times)
++  @ROOT@/tests/Tests/ORM/Query/SelectSqlGenerationTest.php:1115
++
++* Doctrine\Tests\ORM\Tools\Pagination\LimitSubqueryOutputWalkerTest::testLimitSubqueryOrderByFieldFromMappedSuperclass
++  @ROOT@/tests/Tests/ORM/Tools/Pagination/LimitSubqueryOutputWalkerTest.php:246
++
++2) @ROOT@/src/Query/Parser.php:1872
++Undefined property: Doctrine\ORM\Query\AST\GeneralCaseExpression::$field
++
++Triggered by:
++
++* Doctrine\Tests\ORM\Functional\NewOperatorTest::testExceptionIfFunctionHasNoAlias
++  @ROOT@/tests/Tests/ORM/Functional/NewOperatorTest.php:1965
++
++3) @ROOT@/tests/Tests/ORM/Mapping/MappingDriverTestCase.php:339
++Undefined array key "unsigned"
++
++ERRORS!
++Tests: 3485, Assertions: 10460, Errors: 251, Failures: 13, Warnings: 3, Skipped: 61, Incomplete: 2.
++@exit@ 2

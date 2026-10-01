@@ -1,0 +1,4 @@
+# The default configuration runs the whole suite -- unit and functional both -- against
+# an in-memory SQLite database, so this one step covers the driver, the platform SQL and
+# the schema manager that reads back what it wrote.
+phpunit	$PHL_VENDOR_ENGINE vendor/bin/phpunit --no-coverage

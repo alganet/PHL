@@ -1,0 +1,18 @@
+# doctrine/dbal -- picked for the DATABASE face. Nothing else in this directory opens a
+# PDO connection at all, so every claim about pdo_sqlite, prepared statements, bound
+# parameter types, the schema introspection that reads a driver's own metadata and the
+# platform code that builds SQL from it was, until this entry existed, measured by hand
+# and never again. Its own suite runs against in-memory SQLite with no configuration,
+# which is what makes it gateable here.
+REPO="https://github.com/doctrine/dbal.git"
+REF="4.4.4"
+# doctrine/coding-standard pulls squizlabs/php_codesniffer 4.0.x, which carries an open
+# advisory, and composer refuses to resolve a graph containing one. It is a dev-only
+# linter that no step here runs -- the suite below never loads it -- so the choice is
+# between installing it unexecuted and not measuring doctrine at all. The lock beside
+# this file records exactly what came in, and both engines get the same tree.
+COMPOSER_FLAGS="--no-blocking"
+# The suite prints the connection's temporary file names and PHPUnit mints a per-run
+# hash into every mock class it generates; a TypeError raised inside one prints it.
+NORMALIZE='s/Mock_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/Mock_\1_@HASH@/g
+s/MockObject_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/MockObject_\1_@HASH@/g'

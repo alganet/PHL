@@ -1,0 +1,14 @@
+# doctrine/orm -- picked for the WEIGHT of its metadata layer. It is the largest
+# reflection-driven consumer measured here: attributes read off classes, proxies
+# generated as PHP source and eval'd back in, a DQL parser with its own lexer, and an
+# identity map that leans on object identity and spl_object_id. Its suite runs against
+# in-memory SQLite by default, which is what makes it gateable without a server.
+REPO="https://github.com/doctrine/orm.git"
+REF="3.6.8"
+# PHPUnit's per-run mock hash, and the ORM's generated proxy classes, which carry the
+# hash of the directory they were written into.
+NORMALIZE='s/Mock_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/Mock_\1_@HASH@/g
+s/MockObject_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/MockObject_\1_@HASH@/g'
+# The suite is a few seconds under php and minutes under phl; the 600s default sits
+# inside the noise of a loaded box rather than above it.
+STEP_TIMEOUT=1800

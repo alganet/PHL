@@ -1,0 +1,3 @@
+# The dist configuration already pins pdo_sqlite in memory and excludes the performance
+# and locking groups, so the default invocation is the maintainers' own.
+phpunit	$PHL_VENDOR_ENGINE vendor/bin/phpunit --no-coverage
