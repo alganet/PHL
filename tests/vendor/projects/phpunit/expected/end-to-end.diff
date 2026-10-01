@@ -28,13 +28,13 @@
 +................................F.............................. 567 / 805 ( 70%)
 +.................................F................F.F.....F.... 630 / 805 ( 78%)
 +......F..........................................S.F.....S..... 693 / 805 ( 86%)
-+...............F...........F.......S..........FF...........F... 756 / 805 ( 93%)
++...............F...........F.......S.........FFF...........F... 756 / 805 ( 93%)
 +........S..F.....S...............................               805 / 805 (100%)
  
  Time: @TIME@
  
 -There were 2 failures:
-+There were 63 failures:
++There were 64 failures:
  
 -1) @ROOT@/tests/end-to-end/event/risky-code-coverage.phpt
 +1) @ROOT@/tests/end-to-end/baseline/generate-baseline-suppressed-with-ignored-suppression.phpt
@@ -670,15 +670,13 @@
 + Test Runner Execution Finished
 + Test Runner Finished
 + PHPUnit Finished (Shell Exit Code: 2)
- 
--@ROOT@/tests/end-to-end/event/risky-code-coverage.phpt:27
++
 +@ROOT@/tests/end-to-end/error-handler/user-error-php-84.phpt:29
- @ROOT@/src/Framework/TestSuite.php:374
- @ROOT@/src/Framework/TestSuite.php:374
- @ROOT@/src/TextUI/TestRunner.php:64
- @ROOT@/src/TextUI/Application.php:229
- 
--2) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
 +17) @ROOT@/tests/end-to-end/event/php-deprecated.phpt
 +Failed asserting that string matches format description.
 +--- Expected
@@ -768,18 +766,20 @@
 + Test Runner Execution Finished
 + Test Runner Finished
 + PHPUnit Finished (Shell Exit Code: 2)
-+
+ 
+-@ROOT@/tests/end-to-end/event/risky-code-coverage.phpt:27
 +@ROOT@/tests/end-to-end/event/user-error-php-84.phpt:29
-+@ROOT@/src/Framework/TestSuite.php:374
-+@ROOT@/src/Framework/TestSuite.php:374
-+@ROOT@/src/TextUI/TestRunner.php:64
-+@ROOT@/src/TextUI/Application.php:229
-+
+ @ROOT@/src/Framework/TestSuite.php:374
+ @ROOT@/src/Framework/TestSuite.php:374
+ @ROOT@/src/TextUI/TestRunner.php:64
+ @ROOT@/src/TextUI/Application.php:229
+ 
+-2) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
 +20) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -78,6 +755,2192 @@
+@@ -78,6 +755,2236 @@
  @ROOT@/src/TextUI/TestRunner.php:64
  @ROOT@/src/TextUI/Application.php:229
  
@@ -2869,48 +2869,92 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+60) @ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt
++60) @ROOT@/tests/end-to-end/regression/6294-display-errors-off.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
 +@@ @@
++
 + Runtime:       PHP 8.5.0
 +
++-Fatal error: Premature end of PHPUnit's PHP process. Use display_errors=On to see the error message.
+++E                                                                   1 / 1 (100%)
+++
+++Time: @TIME@, Memory: @MEM@
+++
+++There was 1 error:
+++
+++1) PHPUnit\TestFixture\IssueTest6294::testOne
+++Error: Failed opening required 'A.php' (include_path='.')
+++
+++@ROOT@/tests/end-to-end/regression/6294/IssueTest6294.php:18
+++
+++ERRORS!
+++Tests: 1, Assertions: 0, Errors: 1, Warnings: 1.
 +
-+-Fatal error: Access level to PHPUnit\TestFixture\B::someFunction() must be public (as in class PHPUnit\TestFixture\A) in %sB.php on line %i%A
-++Error: require_once(): Fatal IO error while importing: 'A.php' in @ROOT@/tests/end-to-end/regression/6294/IssueTest6294.php on line 18
-++Fatal error: Premature end of PHP process when running PHPUnit\TestFixture\IssueTest6294::testOne.
-+
-+@ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt:19
++@ROOT@/tests/end-to-end/regression/6294-display-errors-off.phpt:18
 +@ROOT@/src/Framework/TestSuite.php:374
 +@ROOT@/src/Framework/TestSuite.php:374
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+61) @ROOT@/tests/end-to-end/regression/6311.phpt
++61) @ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
 +@@ @@
 +
-+ Time: @TIME@, Memory: @MEM@
++ Runtime:       PHP 8.5.0
 +
-+-There was 1 PHPUnit test runner warning:
-+-
-+-1) SKIPIF section triggered a fatal error:
-+-Warning: require(%afile.php): Failed to open stream: No such file or directory in Standard input code on line %d
-+-
-+-Fatal error: Uncaught Error: Failed opening required%a
-+-%A
-++OK (1 test, 1 assertion)
+++E                                                                   1 / 1 (100%)
 +
-+@ROOT@/tests/end-to-end/regression/6311.phpt:21
++-Fatal error: Access level to PHPUnit\TestFixture\B::someFunction() must be public (as in class PHPUnit\TestFixture\A) in %sB.php on line %i%A
+++Time: @TIME@, Memory: @MEM@
+++
+++There was 1 error:
+++
+++1) PHPUnit\TestFixture\IssueTest6294::testOne
+++Error: Failed opening required 'A.php' (include_path='.')
+++
+++@ROOT@/tests/end-to-end/regression/6294/IssueTest6294.php:18
+++
+++ERRORS!
+++Tests: 1, Assertions: 0, Errors: 1, Warnings: 1.
++
++@ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt:1
 +@ROOT@/src/Framework/TestSuite.php:374
 +@ROOT@/src/Framework/TestSuite.php:374
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+62) @ROOT@/tests/end-to-end/regression/6465.phpt
++62) @ROOT@/tests/end-to-end/regression/6311.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ There was 1 PHPUnit test runner warning:
++
++ 1) SKIPIF section triggered a fatal error:
++-Warning: require(%afile.php): Failed to open stream: No such file or directory in Standard input code on line %d
+++Warning: require(@ROOT@/tests/end-to-end/_files/some/non/existing/file.php): Failed to open stream: No such file or directory in Command line code on line 2
++
++ Fatal error: Uncaught Error: Failed opening required '@ROOT@/tests/end-to-end/_files/some/non/existing/file.php' (include_path='.') in Command line code:2
++-Stack trace:
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 2
+++
+++
+++OK, but there were issues!
+++Tests: 1, Assertions: 1, PHPUnit Warnings: 1.
++
++@ROOT@/tests/end-to-end/regression/6311.phpt:24
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++63) @ROOT@/tests/end-to-end/regression/6465.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2933,7 +2977,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+63) @ROOT@/tests/end-to-end/regression/797.phpt
++64) @ROOT@/tests/end-to-end/regression/797.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2971,5 +3015,5 @@
 +
  FAILURES!
 -Tests: 805, Assertions: 780, Failures: 2, Skipped: 25.
-+Tests: 805, Assertions: 789, Failures: 63, Skipped: 16.
++Tests: 805, Assertions: 789, Failures: 64, Skipped: 16.
  @exit@ 1

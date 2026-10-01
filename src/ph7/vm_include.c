@@ -5,6 +5,7 @@
  */
 #include "ph7int.h"
 #include <stdlib.h> /* realpath, free */
+#include <errno.h>
 /*
  * Section:
  *    Dynamic code loading: VmEvalChunk, eval(), the include path
@@ -615,12 +616,16 @@ Install:
  * constructs for more information.
  */
 static sxi32 VmExecIncludedFile(
-	 ph7_context *pCtx, /* Call Context */
-	 SyString *pPath,   /* Script path or URL*/
-	 int IncludeOnce    /* TRUE if called from include_once() or require_once() */
+	 ph7_context *pCtx,   /* Call Context */
+	 SyString *pPath,     /* Script path or URL*/
+	 int IncludeOnce,     /* TRUE if called from include_once() or require_once() */
+	 const char **pzWhy   /* OUT: php's reason for a failed open, for the caller's warning */
 	 )
 {
 	sxi32 rc;
+	if( pzWhy ){
+		*pzWhy = "operation failed";
+	}
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 	const ph7_io_stream *pStream;
 	SyBlob sContents;
@@ -646,6 +651,12 @@ static sxi32 VmExecIncludedFile(
 		pHandle = PH7_StreamOpenHandle(pVm,pStream,zOpen,PH7_IO_OPEN_RDONLY,TRUE,0,TRUE,&isNew,ph7_function_name(pCtx));
 	}
 	if( pHandle == 0 ){
+		/* The reason belongs to THIS open and nothing else: read it before any
+		 * other stream operation can re-arm it. A wrapper that logged one of its
+		 * own wins; the plain-file wrapper logs none and reports its errno. */
+		if( pzWhy ){
+			*pzWhy = pVm->zOpenErr ? pVm->zOpenErr : PH7_VfsOpenStrerror(errno);
+		}
 		return SXERR_IO;
 	}
 	rc = SXRET_OK; /* Stupid cc warning */
@@ -655,6 +666,16 @@ static sxi32 VmExecIncludedFile(
 	}else{
 		/* Read the whole file contents */
 		rc = PH7_StreamReadWholeFile(pHandle,pStream,&sContents);
+		if( rc != SXRET_OK ){
+			/* php refuses a target that is not a REGULAR file -- a directory is
+			 * the one every script meets -- inside the open itself, so what a
+			 * script reads is the open's generic reason and not the read's
+			 * errno. `include '/etc'` says "No such file or directory" there
+			 * and "Is a directory" here. */
+			if( pzWhy ){
+				*pzWhy = PH7_VfsOpenStrerror(ENOENT);
+			}
+		}
 		if( rc == SXRET_OK ){
 			SyString sScript;
 			/* Compile and execute the script. A throw the included file raised — and the
@@ -925,6 +946,49 @@ PH7_PRIVATE int vm_builtin_get_included_files(ph7_context *pCtx,int nArg,ph7_val
 	return PH7_OK;
 }
 /*
+ * php raises TWO diagnostics for an include it could not open, and this engine
+ * raised one sentence of its own -- `include(): IO error while importing: 'x'`
+ * -- which names neither the reason the open failed nor the include_path that
+ * was searched, and which no handler written against php can recognise:
+ *
+ *   Warning: include(x.php): Failed to open stream: No such file or directory
+ *   Warning: include(): Failed opening 'x.php' for inclusion (include_path='.')
+ *
+ * The first is the stream layer's, and is the same sentence fopen() raises for
+ * the same failure; the second is the language construct's, and is the only one
+ * that says where it looked. Both name the path AS WRITTEN.
+ *
+ * require's second diagnostic is not a warning at all. php 8 THROWS an Error --
+ * `Failed opening required 'x.php' (include_path='.')`, no function prefix, no
+ * "for inclusion" -- so a script may catch a missing dependency and carry on.
+ * PHL reported it through the native fatal path, which ended the run and could
+ * not be caught at all.
+ */
+static sxi32 VmIncludeFailure(ph7_context *pCtx,SyString *pFile,const char *zWhy,int bRequire)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyString sPath;
+	SyBlob sIncPath;
+	sxi32 rc = PH7_OK;
+	/* The stream layer's sentence. Raised through the VM rather than the call
+	 * context, because the context's own prefix is `name(): ` and php's here
+	 * carries the path inside the parentheses. */
+	PH7_VmThrowWarningFmt(pVm,"%s(%z): Failed to open stream: %s",
+		ph7_function_name(pCtx),pFile,zWhy ? zWhy : "operation failed");
+	SyBlobInit(&sIncPath,&pVm->sAllocator);
+	PH7_VmGetIncludePath(pVm,&sIncPath);
+	SyStringInitFromBuf(&sPath,(const char *)SyBlobData(&sIncPath),SyBlobLength(&sIncPath));
+	if( bRequire ){
+		rc = PH7_VmThrowException(pCtx,"Error",
+			"Failed opening required '%z' (include_path='%z')",pFile,&sPath);
+	}else{
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"Failed opening '%z' for inclusion (include_path='%z')",pFile,&sPath);
+	}
+	SyBlobRelease(&sIncPath);
+	return rc;
+}
+/*
  * include:
  * According to the PHP reference manual.
  *  The include() function includes and evaluates the specified file.
@@ -947,6 +1011,7 @@ PH7_PRIVATE int vm_builtin_get_included_files(ph7_context *pCtx,int nArg,ph7_val
 PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SyString sFile;
+	const char *zWhy = 0;
 	sxi32 rc;
 	if( nArg < 1 ){
 		/* Nothing to evaluate,return NULL */
@@ -969,7 +1034,7 @@ PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
-	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE);
+	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE,&zWhy);
 	if( rc == PH7_EXCEPTION && !pCtx->pVm->bHaltRequested ){
 		/* The included file THREW and the including statement's own try caught it in
 		 * place: unwind the rest of that statement instead of resuming it, and say
@@ -978,8 +1043,7 @@ PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return rc;
 	}
 	if( rc != SXRET_OK ){
-		/* Emit a warning and return false */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"IO error while importing: '%z'",&sFile);
+		VmIncludeFailure(pCtx,&sFile,zWhy,FALSE);
 		ph7_result_bool(pCtx,0);
 	}
 	if( pCtx->pVm->bHaltRequested ){
@@ -1000,6 +1064,7 @@ PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SyString sFile;
+	const char *zWhy = 0;
 	sxi32 rc;
 	if( nArg < 1 ){
 		/* Nothing to evaluate,return NULL */
@@ -1022,7 +1087,7 @@ PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
-	rc = VmExecIncludedFile(&(*pCtx),&sFile,TRUE);
+	rc = VmExecIncludedFile(&(*pCtx),&sFile,TRUE,&zWhy);
 	if( rc == SXERR_EXISTS ){
 		/* File already included,return TRUE */
 		ph7_result_bool(pCtx,1);
@@ -1036,10 +1101,9 @@ PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **a
 		return rc;
 	}
 	if( rc != SXRET_OK ){
-		/* Emit a warning and return false */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"IO error while importing: '%z'",&sFile);
+		VmIncludeFailure(pCtx,&sFile,zWhy,FALSE);
 		ph7_result_bool(pCtx,0);
- 	}
+	}
 	if( pCtx->pVm->bHaltRequested ){
 		/* exit/die inside the included file: cascade the halt */
 		return PH7_ABORT;
@@ -1057,6 +1121,7 @@ PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **a
 PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SyString sFile;
+	const char *zWhy = 0;
 	sxi32 rc;
 	if( nArg < 1 ){
 		/* Nothing to evaluate,return NULL */
@@ -1079,7 +1144,7 @@ PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
-	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE);
+	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE,&zWhy);
 	if( rc == PH7_EXCEPTION && !pCtx->pVm->bHaltRequested ){
 		/* The included file THREW and the including statement's own try caught it in
 		 * place: unwind the rest of that statement instead of resuming it, and say
@@ -1088,10 +1153,10 @@ PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return rc;
 	}
 	if( rc != SXRET_OK ){
-		/* Fatal,abort VM execution immediately */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"Fatal IO error while importing: '%z'",&sFile);
+		/* php THROWS: the include is over, but the SCRIPT need not be. */
+		sxi32 rcThrow = VmIncludeFailure(pCtx,&sFile,zWhy,TRUE);
 		ph7_result_bool(pCtx,0);
-		return PH7_ABORT;
+		return rcThrow == PH7_OK ? PH7_EXCEPTION : rcThrow;
 	}
 	if( pCtx->pVm->bHaltRequested ){
 		/* exit/die inside the included file: cascade the halt */
@@ -1110,6 +1175,7 @@ PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SyString sFile;
+	const char *zWhy = 0;
 	sxi32 rc;
 	if( nArg < 1 ){
 		/* Nothing to evaluate,return NULL */
@@ -1132,7 +1198,7 @@ PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_EXCEPTION;
 	}
 	/* Open,compile and execute the desired script */
-	rc = VmExecIncludedFile(&(*pCtx),&sFile,TRUE);
+	rc = VmExecIncludedFile(&(*pCtx),&sFile,TRUE,&zWhy);
 	if( rc == SXERR_EXISTS ){
 		/* File already included,return TRUE */
 		ph7_result_bool(pCtx,1);
@@ -1146,10 +1212,10 @@ PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **a
 		return rc;
 	}
 	if( rc != SXRET_OK ){
-		/* Fatal,abort VM execution immediately */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"Fatal IO error while importing: '%z'",&sFile);
+		/* php THROWS: the include is over, but the SCRIPT need not be. */
+		sxi32 rcThrow = VmIncludeFailure(pCtx,&sFile,zWhy,TRUE);
 		ph7_result_bool(pCtx,0);
-		return PH7_ABORT;
+		return rcThrow == PH7_OK ? PH7_EXCEPTION : rcThrow;
 	}
 	if( pCtx->pVm->bHaltRequested ){
 		/* exit/die inside the included file: cascade the halt */
@@ -1516,7 +1582,7 @@ PH7_PRIVATE int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **a
 		SyBlobNullAppend(&sPath);
 		/* Try to include the file */
 		SyStringInitFromBuf(&sFile,(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
-		rc = VmExecIncludedFile(pCtx,&sFile,FALSE);
+		rc = VmExecIncludedFile(pCtx,&sFile,FALSE,0);
 		if( rc == SXRET_OK || rc == PH7_EXCEPTION ){
 			/* Included — or it threw, which ends the search too: the remaining
 			 * extensions are not tried after a file has already run. */

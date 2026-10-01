@@ -1315,6 +1315,13 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 			char zMsg[160];
 			pVm->pOpenCtx = 0;
 			pVm->zOpenMode[0] = 0;
+			/* Same shape as the allow_url_fopen arm above: php's directive check
+			 * lives in the WRAPPER LOOKUP, so the caller's own sentence has to
+			 * report an open that found no wrapper. Without this the include
+			 * printed the armed default, `operation failed`. */
+			if( pVm->nOpenDepth < 1 ){
+				pVm->zOpenErr = "no suitable wrapper could be found";
+			}
 			SyBufferFormat(zMsg,sizeof(zMsg),
 				"%s:// wrapper is disabled in the server configuration by allow_url_include=0",
 				pStream->zName);
