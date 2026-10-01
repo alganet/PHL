@@ -1066,7 +1066,7 @@ PH7_PRIVATE sxi32 HashmapInsertNode(ph7_hashmap *pMap,ph7_hashmap_node *pNode,in
  * of the [PH7_MemObjCmp()] function defined in memobj.c or the official
  * documenation.
  */
-PH7_PRIVATE sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict)
+PH7_PRIVATE sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict,int iNest)
 {
 	ph7_value sObj1,sObj2;
 	sxi32 rc;
@@ -1082,7 +1082,7 @@ PH7_PRIVATE sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRigh
 	PH7_MemObjInit(pLeft->pMap->pVm,&sObj2);
 	PH7_HashmapExtractNodeValue(pLeft,&sObj1,FALSE);
 	PH7_HashmapExtractNodeValue(pRight,&sObj2,FALSE);
-	rc = PH7_MemObjCmp(&sObj1,&sObj2,bStrict,0);
+	rc = PH7_MemObjCmp(&sObj1,&sObj2,bStrict,iNest);
 	PH7_MemObjRelease(&sObj1);
 	PH7_MemObjRelease(&sObj2);
 	return rc;
@@ -1361,22 +1361,21 @@ PH7_PRIVATE int HashmapFindStringValue(
  * string(6) "cherry"
  * }
  * Elements of arrays are equal for the comparison if they have the same key and value.
+ *
+ * This is the walk. PH7_HashmapCmp() below is the entry point every caller uses: it
+ * holds the identity shortcut and php's recursion mark, so that every `return` here
+ * can stay a plain `return`.
  */
-PH7_PRIVATE sxi32 PH7_HashmapCmp(
+static sxi32 HashmapCmpWalk(
 	ph7_hashmap *pLeft,  /* Left hashmap */
 	ph7_hashmap *pRight, /* Right hashmap */
-	int bStrict          /* TRUE for strict comparison */
+	int bStrict,         /* TRUE for strict comparison */
+	int iNest            /* Nesting depth counter */
 	)
 {
 	ph7_hashmap_node *pLe,*pRe;
 	sxi32 rc;
 	sxu32 n;
-	if( pLeft == pRight ){
-		/* Same hashmap instance. This can easily happen since hashmaps are passed by reference.
-		 * Unlike the zend engine.
-		 */
-		return 0;
-	}
 	if( pLeft->nEntry != pRight->nEntry ){
 		/* Must have the same number of entries */
 		return pLeft->nEntry > pRight->nEntry ? 1 : -1;
@@ -1409,7 +1408,7 @@ PH7_PRIVATE sxi32 PH7_HashmapCmp(
 				}
 			}
 			/* Values must be strictly identical */
-			if( HashmapNodeCmp(pLs,pRs,TRUE) != 0 ){
+			if( HashmapNodeCmp(pLs,pRs,TRUE,iNest+1) != 0 ){
 				return 1;
 			}
 			pLs = pLs->pPrev; /* Reverse link = insertion order */
@@ -1447,7 +1446,7 @@ PH7_PRIVATE sxi32 PH7_HashmapCmp(
 		}
 		if( !rc ){
 			/* Compare nodes */
-			rc = HashmapNodeCmp(pLe,pRe,bStrict);
+			rc = HashmapNodeCmp(pLe,pRe,bStrict,iNest+1);
 		}
 		if( rc != 0 ){
 			/* Nodes key/value differ */
@@ -1458,6 +1457,37 @@ PH7_PRIVATE sxi32 PH7_HashmapCmp(
 		n--;
 	}
 	return 0; /* Hashmaps are equals */
+}
+PH7_PRIVATE sxi32 PH7_HashmapCmp(
+	ph7_hashmap *pLeft,  /* Left hashmap */
+	ph7_hashmap *pRight, /* Right hashmap */
+	int bStrict,         /* TRUE for strict comparison */
+	int iNest            /* Nesting depth counter */
+	)
+{
+	sxi32 rc;
+	if( pLeft == pRight ){
+		/* Same hashmap instance. This can easily happen since hashmaps are passed by reference.
+		 * Unlike the zend engine.
+		 * php tests this FIRST too, above its own recursion guard, and that order is
+		 * observable: `$a[] = &$a; $a == $a` is TRUE, not a refusal.
+		 */
+		return 0;
+	}
+	if( (pLeft->iFlags & HASHMAP_COMPARING) || iNest > PH7_CMP_MAX_DEPTH ){
+		/* Either this map is its own descendant -- php's GC_IS_RECURSIVE(ht1) test, an
+		 * ANCESTOR question that a depth counter cannot answer: a counter refuses data
+		 * that is merely deep, and only notices a cycle once it has walked 31 levels of
+		 * it -- or the finite-nesting backstop tripped. Both are php's catchable
+		 * Error, recorded here and raised by whichever door onto the comparator can
+		 * throw (an operator, a switch arm, a builtin's own context). */
+		PH7_CmpRefusalNesting(pLeft->pVm);
+		return 1;
+	}
+	pLeft->iFlags |= HASHMAP_COMPARING;
+	rc = HashmapCmpWalk(&(*pLeft),&(*pRight),bStrict,iNest);
+	pLeft->iFlags &= ~HASHMAP_COMPARING;
+	return rc;
 }
 /*
  * Duplicate a hashmap node.

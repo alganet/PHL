@@ -5299,6 +5299,17 @@ PH7_PRIVATE int PH7_CmpRefusalPending(ph7_vm *pVm)
 {
 	return pVm->zCmpRefusalClass != 0;
 }
+PH7_PRIVATE void PH7_CmpRefusalNesting(ph7_vm *pVm)
+{
+	static const char zMsg[] = "Nesting level too deep - recursive dependency?";
+	if( pVm->zCmpRefusalClass != 0 ){
+		/* FIRST refusal wins, like every other writer of this record: a driver that
+		 * keeps comparing after one must not overwrite the message the script sees. */
+		return;
+	}
+	pVm->zCmpRefusalClass = "Error";
+	SyMemcpy(zMsg,pVm->zCmpRefusalMsg,sizeof(zMsg));
+}
 PH7_PRIVATE void PH7_CmpRefusalClear(ph7_vm *pVm)
 {
 	pVm->zCmpRefusalClass = 0;

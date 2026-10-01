@@ -2162,7 +2162,7 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 			return 1;
 		}
 		/* Perform the comparison */
-		rc = PH7_HashmapCmp((ph7_hashmap *)pObj1->x.pOther,(ph7_hashmap *)pObj2->x.pOther,bStrict);
+		rc = PH7_HashmapCmp((ph7_hashmap *)pObj1->x.pOther,(ph7_hashmap *)pObj2->x.pOther,bStrict,iNest+1);
 		return rc;
 	}else if(iComb & MEMOBJ_OBJ ){
 		/* Object comparison. Only a pair of objects can get here: a strict compare

@@ -3054,6 +3054,7 @@ PH7_PRIVATE void PH7_ClassInstanceUnref(ph7_class_instance *pThis)
 		PH7_GcPossibleRoot(pThis->pVm,(void *)pThis,0);
 	}
 }
+static sxi32 ClassInstanceCmpAttr(ph7_class_instance *pLeft,ph7_class_instance *pRight,int bStrict,int iNest);
 /*
  * Compare two class instances [i.e: Objects in the PHP jargon]
  * Note on objects comparison:
@@ -3133,14 +3134,7 @@ PH7_PRIVATE void PH7_ClassInstanceUnref(ph7_class_instance *pThis)
  */
 PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,int bStrict,int iNest)
 {
-	SyHashEntry *pEntry,*pEntry2;
-	ph7_value sV1,sV2;
 	sxi32 rc;
-	if( iNest > 31 ){
-		/* Nesting limit reached */
-		PH7_VmThrowError(pLeft->pVm,0,PH7_CTX_ERR,"Nesting limit reached: Infinite recursion?");
-		return 1;
-	}
 	/*
 	 * php's identity shortcut, and it comes FIRST -- before the same-class screen
 	 * and before any handler: `$i == $i` is 0 for a DateInterval, the one pair of
@@ -3196,6 +3190,31 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 	if( pLeft->hAttr.nEntry != pRight->hAttr.nEntry ){
 		return 1;
 	}
+	if( (pLeft->iFlags & VM_INSTANCE_COMPARING) || iNest > PH7_CMP_MAX_DEPTH ){
+		/* This object is its own descendant -- php's Z_IS_RECURSIVE_P(o1) test, asked
+		 * exactly here, below every screen that answers without walking and above the
+		 * property walk that recurses -- or the finite-nesting backstop tripped. Either
+		 * way php's catchable Error, recorded for whichever door onto the comparator
+		 * can throw. The old depth counter was neither: it refused a merely-deep graph
+		 * php compares fine, and reported a cycle only after walking 31 levels of it. */
+		PH7_CmpRefusalNesting(pLeft->pVm);
+		return 1;
+	}
+	pLeft->iFlags |= VM_INSTANCE_COMPARING;
+	rc = ClassInstanceCmpAttr(&(*pLeft),&(*pRight),bStrict,iNest);
+	pLeft->iFlags &= ~VM_INSTANCE_COMPARING;
+	return rc;
+}
+/*
+ * php's zend_std_compare_objects property walk: every non-static, non-constant, non-virtual
+ * attribute of the left instance against the RIGHT attribute of the same name. Split out of
+ * PH7_ClassInstanceCmp so the recursion mark that function sets is cleared on every exit.
+ */
+static sxi32 ClassInstanceCmpAttr(ph7_class_instance *pLeft,ph7_class_instance *pRight,int bStrict,int iNest)
+{
+	SyHashEntry *pEntry,*pEntry2;
+	ph7_value sV1,sV2;
+	sxi32 rc;
 	PH7_MemObjInit(pLeft->pVm,&sV1);
 	PH7_MemObjInit(pLeft->pVm,&sV2);
 	sV1.nIdx = sV2.nIdx = SXU32_HIGH;

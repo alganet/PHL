@@ -2,27 +2,29 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Object comparison recursion limit
---SKIPIF--
-<?php
-// Same engine-design difference as object_compare_nesting_limit: PHL's
-// comparison nesting guard fires where php recurses until memory exhaustion.
-if (function_exists('zend_version')) { echo 'skip PHL bounds comparison nesting; php recurses until memory exhaustion'; }
-?>
+Comparing two cyclic objects throws a catchable Error
 --FILE--
 <?php
-class TestObj {
-    public $ref;
+$a = new stdClass;
+$b = new stdClass;
+$a->r = $b;
+$b->r = $a;
+try {
+    $a == $b;
+    echo "no throw\n";
+} catch (Error $e) {
+    echo $e->getMessage() . "\n";
 }
-$a = new TestObj();
-$b = new TestObj();
-$a->ref = $b;
-$b->ref = $a;
-$result = $a == $b;
+try {
+    $a != $b;
+    echo "no throw\n";
+} catch (Error $e) {
+    echo $e->getMessage() . "\n";
+}
 ?>
 --EXPECT--
---EXPECT_STDERR--
-PHP Error:  Nesting limit reached: Infinite recursion? in %s on line %d
+Nesting level too deep - recursive dependency?
+Nesting level too deep - recursive dependency?
 --CLEAN--
 <?php
-unset($a, $b, $result);
+unset($a, $b);

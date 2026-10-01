@@ -29,7 +29,12 @@
  * the operator raises it here, where the expression's value would have landed:
  * both operands go, a null stands in for the result the way every other
  * mid-expression throw leaves one, and the status routes to the catching try.
- * Used by the four LOOSE comparison arms; the strict pair never asks a handler.
+ *
+ * The STRICT pair (`===`, `!==`) needs it too, though no compare handler is ever
+ * asked there: the recursion refusal a cyclic array or object records comes from
+ * the walk itself, and php throws out of `$a === $b` exactly as it does out of
+ * `$a == $b`. Without the route the record simply stayed pending and fired at the
+ * next host call, attributing the throw to an unrelated builtin.
  */
 #define VM_CMP_REFUSAL_ROUTE() \
 	if( PH7_CmpRefusalPending(pVm) ){ \
@@ -1063,6 +1068,7 @@ PH7_PRIVATE VmOpRc VmExecOpTne(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	}
 #endif
 	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
+	VM_CMP_REFUSAL_ROUTE()
 	rc = rc != 0;
 	VmPopOperand(&pTos,1);
 	if( !pInstr->iP2 ){
@@ -1104,6 +1110,7 @@ PH7_PRIVATE VmOpRc VmExecOpTeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	/* `NAN === NAN` is false in php, and the comparator says so: an unordered
 	 * pair is 1, never 0. */
 	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
+	VM_CMP_REFUSAL_ROUTE()
 	rc = rc == 0;
 	VmPopOperand(&pTos,1);
 	if( !pInstr->iP2 ){

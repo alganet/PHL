@@ -327,7 +327,7 @@ static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32
 	sxi32 rc;
 	if( base == 0 ){
 		/* SORT_REGULAR */
-		return HashmapNodeCmp(pA,pB,FALSE);
+		return HashmapNodeCmp(pA,pB,FALSE,0);
 	}
 	PH7_MemObjInit(pA->pMap->pVm,&sA);
 	PH7_MemObjInit(pA->pMap->pVm,&sB);
@@ -370,7 +370,7 @@ static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	sxi32 rc;
 	if( pCmpData == 0 ){
 		/* SORT_REGULAR fast path */
-		rc = HashmapNodeCmp(pA,pB,FALSE);
+		rc = HashmapNodeCmp(pA,pB,FALSE,0);
 	}else{
 		rc = HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 	}
@@ -464,7 +464,7 @@ static sxi32 HashmapCmpCallback3(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	sxi32 rc;
 	if( pCmpData == 0 ){
 		/* SORT_REGULAR fast path, reversed */
-		rc = -HashmapNodeCmp(pA,pB,FALSE);
+		rc = -HashmapNodeCmp(pA,pB,FALSE,0);
 	}else{
 		rc = -HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 	}

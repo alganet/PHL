@@ -798,6 +798,17 @@ struct ph7_hashmap
                                * recursing. One bit shared by var_dump, print_r and
                                * var_export, exactly as php shares its own. Read only
                                * through PH7_MemObjDumpIsRecursive(). */
+#define HASHMAP_COMPARING 0x04 /* php's GC_PROTECT_RECURSION for an array, worn by the
+                               * COMPARISON walk instead of the dump walk. Set on the LEFT
+                               * map while PH7_HashmapCmp is inside it, so a map that is
+                               * its own descendant is refused with php's
+                               * "Nesting level too deep - recursive dependency?" instead
+                               * of recursing forever. Only the left one is marked --
+                               * zend_hash_compare protects ht1 alone, because a map
+                               * reachable from BOTH sides is not a cycle and marking both
+                               * would report one. A separate bit from HASHMAP_DUMPING: a
+                               * comparison can run a __toString that dumps, and a dump can
+                               * run a __toString that compares. */
 /* An instance of the following structure is the context
  * for the FOREACH_STEP/FOREACH_INIT VM instructions.
  * Those instructions are used to implement the 'foreach'
@@ -2945,6 +2956,10 @@ PH7_PRIVATE void PH7_NativeHideAttr(ph7_class_instance *pObj,const char *zName);
  * at all (the public ph7_value_compare, a VM reset).
  */
 PH7_PRIVATE int PH7_CmpRefusalPending(ph7_vm *pVm);
+/* Record php's comparison-recursion refusal ("Nesting level too deep - recursive
+ * dependency?", an Error) through the same channel, for the two walks -- arrays and
+ * objects -- that find themselves inside a container they are already inside. */
+PH7_PRIVATE void PH7_CmpRefusalNesting(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_CmpRefusalRaise(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_CmpRefusalRaiseCtx(ph7_context *pCtx);
 PH7_PRIVATE void PH7_CmpRefusalClear(ph7_vm *pVm);
@@ -3098,6 +3113,15 @@ struct ph7_class_instance
  * of this same word, each on its own kind of object.
  */
 #define CLASS_INSTANCE_DTOR_CALLED 0x080
+/*
+ * ph7_class_instance::iFlags bit: php's GC_PROTECT_RECURSION for an object worn by the
+ * COMPARISON walk -- the instance counterpart of HASHMAP_COMPARING, set on the LEFT
+ * instance while PH7_ClassInstanceCmp walks its properties, exactly where
+ * zend_std_compare_objects protects o1. An object that is its own descendant is refused
+ * with php's "Nesting level too deep - recursive dependency?" instead of recursing
+ * forever. 0x100 because 0x001..0x080 are claimed by unrelated readers of this word.
+ */
+#define VM_INSTANCE_COMPARING 0x100
 /*
  * ph7_class_instance::iFlags bit set once this object's LAZY native properties
  * (PH7_CLASS_ATTR_NATIVE_LAZY) have been installed. It is the difference between
@@ -5409,6 +5433,16 @@ PH7_PRIVATE sxi32 PH7_MemObjDump(SyBlob *pOut,ph7_value *pObj,int ShowType,int n
 PH7_PRIVATE int PH7_MemObjDumpIsRecursive(ph7_value *pObj);
 PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal);
 PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore);
+/*
+ * Bound on how deep PH7_MemObjCmp() will walk. Like PH7_DUMP_MAX_DEPTH this is a
+ * backstop for pathological FINITE nesting, NOT the cycle guard: a container that is
+ * its own descendant is caught by HASHMAP_COMPARING / VM_INSTANCE_COMPARING, php's own
+ * mechanism. php has no depth limit here either -- it compares a 200-level graph and
+ * dies on the C stack, not on a count -- so this only has to sit above anything real.
+ * Each array level spends TWO counts (PH7_HashmapCmp, then HashmapNodeCmp) and roughly
+ * 400 bytes of C stack, so 4096 needs under 1 MB.
+ */
+#define PH7_CMP_MAX_DEPTH 4096
 PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,int iNest);
 PH7_PRIVATE sxi32 PH7_MemObjInitFromString(ph7_vm *pVm,ph7_value *pObj,const SyString *pVal);
 PH7_PRIVATE sxi32 PH7_MemObjInitFromArray(ph7_vm *pVm,ph7_value *pObj,ph7_hashmap *pArray);
@@ -7922,7 +7956,7 @@ PH7_PRIVATE void PH7_HashmapUnlinkNode(ph7_hashmap_node *pNode,int bRestore);
 PH7_PRIVATE sxi32 PH7_HashmapDup(ph7_hashmap *pSrc,ph7_hashmap *pDest);
 PH7_PRIVATE sxi32 PH7_HashmapDupMaterialized(ph7_hashmap *pSrc,ph7_hashmap *pDest);
 PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue);
-PH7_PRIVATE sxi32 PH7_HashmapCmp(ph7_hashmap *pLeft,ph7_hashmap *pRight,int bStrict);
+PH7_PRIVATE sxi32 PH7_HashmapCmp(ph7_hashmap *pLeft,ph7_hashmap *pRight,int bStrict,int iNest);
 PH7_PRIVATE void PH7_HashmapRegisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep);
 PH7_PRIVATE void PH7_HashmapUnregisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep);
 PH7_PRIVATE ph7_hashmap_node * PH7_HashmapGetNextEntry(ph7_hashmap *pMap);
@@ -7932,7 +7966,7 @@ PH7_PRIVATE void PH7_HashmapExtractNodeKey(ph7_hashmap_node *pNode,ph7_value *pK
 PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm);
 /* hashmap.c engine helpers shared with hashmap_sort.c / hashmap_builtin.c */
 PH7_PRIVATE ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode);
-PH7_PRIVATE sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict);
+PH7_PRIVATE sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict,int iNest);
 PH7_PRIVATE void HashmapRehashIntNode(ph7_hashmap_node *pEntry);
 PH7_PRIVATE sxi64 HashmapCount(ph7_hashmap *pMap,int bRecursive,int *pCycleDetected);
 PH7_PRIVATE sxi32 HashmapInsertNode(ph7_hashmap *pMap,ph7_hashmap_node *pNode,int bPreserve);
