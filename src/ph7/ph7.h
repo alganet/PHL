@@ -206,6 +206,18 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_INI_STOP_SECTION_STR  4  /* an unclosed `"` inside the name */
 #define PH7_INI_STOP_SECTION_VAR  5  /* an unclosed `${` inside the name */
 /*
+ * Not a directive at all: the text standing where php's scanner would read a
+ * directive NAME, handed over so the engine can say whether php reads a name
+ * there. php's ini scanner has a rule for each of its bool words ahead of the
+ * one that reads a LABEL, and a dozen bytes of its punctuation are tokens no
+ * statement of its grammar starts with, so `on = 1` and `x]y = 1` are refusals
+ * that take the whole source down where `onx = 1` and `x.y = 1` are entries.
+ * zName carries that text, zValue is ignored, and a source whose scanner reads
+ * a name there gets no diagnostic and no entry -- php's php.ini callback
+ * ignores a statement that carries no value.
+ */
+#define PH7_INI_STOP_STMT         6  /* zName is a statement's name text, to screen */
+/*
  * Virtual Machine Configuration Commands.
  *
  * The following set of constants are the available configuration verbs that can

@@ -5709,6 +5709,99 @@ static int VmIniVarNameStop(int c)
 	    || c == '"' || c == '[' || c == ']' || c == 0;
 }
 /*
+ * php's eight bool words. Its ini scanner has a rule for each of them, and
+ * that rule stands AHEAD of the one that reads a LABEL -- so the same word is
+ * a value's `1`/`""`/null and, at a statement position, a token no statement
+ * of php's grammar starts with. `on = 1` is `syntax error, unexpected
+ * BOOL_TRUE` where `onx = 1` is the entry "onx".
+ */
+static const struct {
+	const char *zWord;
+	sxu32 nWord;
+	const char *zText;   /* what the word reduces to inside a value */
+	const char *zTok;    /* how php's parser names it when it refuses one */
+} aVmIniBool[] = {
+	{ "on"  ,2,"1","BOOL_TRUE"  }, { "yes"  ,3,"1","BOOL_TRUE"  },
+	{ "true",4,"1","BOOL_TRUE"  }, { "off"  ,3,"" ,"BOOL_FALSE" },
+	{ "no"  ,2,"" ,"BOOL_FALSE" }, { "false",5,"" ,"BOOL_FALSE" },
+	{ "none",4,"" ,"BOOL_FALSE" }, { "null" ,4,"" ,"NULL_NULL"  }
+};
+/*
+ * Screen the text standing where php's scanner reads a directive NAME, for a
+ * host that walks a php.ini source itself (PH7_INI_STOP_STMT).
+ *
+ * php's INITIAL is not "everything up to the `=`": a `{LABEL}` run stops at
+ * every byte its operators, brackets and line ends are made of, and each of
+ * those has a rule of its own behind it. A TAB, a `;` and a `[` open another
+ * statement, a comment and an offset, so a name may legitimately be several
+ * runs -- but the twelve bytes below are tokens the grammar has no statement
+ * for, and meeting one refuses the source from here down whether it opens the
+ * name or sits in the middle of it. Three rules compete for the first run and
+ * flex ranks them by length, then by the order they are written in:
+ * `{LABEL}"["` outruns everything, the bool words come next, and `{LABEL}` is
+ * last. A word has to OPEN the run, and its `{TABS_AND_SPACES}*` tail is what
+ * lets it outrun a LABEL, which stops dead at a TAB -- so `on\t= 1` is
+ * BOOL_TRUE, `on x = 1` is the entry "on x", and `none = 1` is BOOL_FALSE
+ * only because the four-byte word outruns the two-byte one inside it.
+ *
+ * Answers 0 when php reads a name here, and otherwise the token it refuses
+ * the statement under: a bool word by name, or the byte itself in quotes,
+ * written into zBuf.
+ */
+static const char * VmIniStmtToken(const char *z,sxu32 nByte,char *zBuf)
+{
+	const char *zEnd = &z[nByte];
+	int bFirst = 1;
+	for(;;){
+		const char *zRun = z;
+		while( zRun < zEnd && !VmIniVarNameStop((unsigned char)zRun[0]) ){
+			zRun++;
+		}
+		if( bFirst && zRun > z && (zRun >= zEnd || zRun[0] != '[') ){
+			const char *zTok = 0;
+			int nBest = 0;
+			sxu32 i;
+			for( i = 0 ; i < SX_ARRAYSIZE(aVmIniBool) ; ++i ){
+				const char *zTail;
+				int nMatch;
+				if( (sxu32)(zEnd - z) < aVmIniBool[i].nWord
+				 || SyStrnicmp(z,aVmIniBool[i].zWord,aVmIniBool[i].nWord) != 0 ){
+					continue;
+				}
+				zTail = &z[aVmIniBool[i].nWord];
+				while( zTail < zEnd && (zTail[0] == ' ' || zTail[0] == '\t') ){
+					zTail++;
+				}
+				nMatch = (int)(zTail - z);
+				if( nMatch > nBest ){
+					nBest = nMatch;
+					zTok = aVmIniBool[i].zTok;
+				}
+			}
+			if( zTok && nBest >= (int)(zRun - z) ){
+				return zTok;
+			}
+		}
+		bFirst = 0;
+		z = zRun;
+		if( z >= zEnd || z[0] == 0 ){
+			return 0;   /* the statement ran out: nothing left to refuse */
+		}
+		if( z[0] == '\t' || z[0] == ' ' ){
+			z++;        /* blanks the LABEL rule left behind are thrown away */
+			continue;
+		}
+		if( z[0] == ';' || z[0] == '\n' || z[0] == '\r' || z[0] == '[' ){
+			return 0;   /* the comment, the newline and the offset own these */
+		}
+		zBuf[0] = '\'';
+		zBuf[1] = z[0];
+		zBuf[2] = '\'';
+		zBuf[3] = 0;
+		return zBuf;
+	}
+}
+/*
  * The first two steps of that lookup. FALSE means the name is nowhere, which
  * is what hands the question on to a fallback.
  */
@@ -6155,15 +6248,6 @@ static int VmIniExprEval(VmIniExpr *p,SyBlob *pOut,int nDepth)
  */
 static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,VmIniBad *pBad)
 {
-	static const struct {
-		const char *zWord;
-		sxu32 nWord;
-		const char *zText;
-	} aWord[] = {
-		{ "on"  ,2,"1" }, { "yes"  ,3,"1" }, { "true",4,"1" },
-		{ "off" ,3,""  }, { "no"   ,2,""  }, { "false",5,"" },
-		{ "none",4,""  }, { "null" ,4,""  }
-	};
 	VmIniExpr sIn;
 	sxu32 i;
 	pBad->bSet = 0;
@@ -6190,27 +6274,27 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 	 * whole run as one unresolved identifier instead), while `On|E_NOTICE`
 	 * IS "on" followed by a token the boolean production cannot take -- the
 	 * word still commits, the '|' is a separate, later syntax error. */
-	for( i = 0 ; i < SX_ARRAYSIZE(aWord) ; i++ ){
+	for( i = 0 ; i < SX_ARRAYSIZE(aVmIniBool) ; i++ ){
 		int c;
-		if( nVal < aWord[i].nWord
-		 || SyStrnicmp(zVal,aWord[i].zWord,aWord[i].nWord) != 0 ){
+		if( nVal < aVmIniBool[i].nWord
+		 || SyStrnicmp(zVal,aVmIniBool[i].zWord,aVmIniBool[i].nWord) != 0 ){
 			continue;
 		}
-		c = nVal == aWord[i].nWord ? -1 : (unsigned char)zVal[aWord[i].nWord];
+		c = nVal == aVmIniBool[i].nWord ? -1 : (unsigned char)zVal[aVmIniBool[i].nWord];
 		if( c < 0 || VmIniExprIsOp(c) || c == '(' || c == ')' || c == '~'
 		 || c == '!' || c == '"' || c == '\'' || c == '$' || c == ';'
 		 || c == ' ' || c == '\t' ){
 			if( c > 0 ){
 				/* The word production eats the blanks behind it, so what php
 				 * scans next starts at the first non-blank. */
-				const char *zRest = &zVal[aWord[i].nWord];
+				const char *zRest = &zVal[aVmIniBool[i].nWord];
 				const char *zStop = &zVal[nVal];
 				while( zRest < zStop && (zRest[0] == ' ' || zRest[0] == '\t') ){
 					zRest++;
 				}
 				VmIniBadToken(zRest,zStop,pBad);
 			}
-			SyBlobAppend(pOut,aWord[i].zText,(sxu32)SyStrlen(aWord[i].zText));
+			SyBlobAppend(pOut,aVmIniBool[i].zText,(sxu32)SyStrlen(aVmIniBool[i].zText));
 			return 1;
 		}
 	}
@@ -6320,6 +6404,29 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 	sxu32 nName,nValue;
 	if( pbBad ){
 		*pbBad = 0;
+	}
+	if( iStop == PH7_INI_STOP_STMT ){
+		/* Not a directive either: the text a host's scanner found where php
+		 * reads a directive NAME. php reads a name out of most of it and
+		 * needs nothing done -- its php.ini callback ignores a statement
+		 * carrying no value, and one carrying a value arrives on its own --
+		 * but where its scanner hands the parser a token instead, the source
+		 * is refused from here down. The table that decides is the ini value
+		 * grammar's own, one file away from here rather than copied into
+		 * every host that walks a source. */
+		char zTok[8];
+		const char *zBad = VmIniStmtToken(zName,(sxu32)SyStrlen(zName),zTok);
+		if( zBad == 0 ){
+			return SXRET_OK;
+		}
+		SyZero(&sBad,sizeof(sBad));
+		sBad.zTok = zBad;
+		SyStringInitFromBuf(&sFile,zFile,zFile ? SyStrlen(zFile) : 0);
+		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
+		if( pbBad ){
+			*pbBad = 1;
+		}
+		return SXRET_OK;
 	}
 	if( iStop >= PH7_INI_STOP_SECTION ){
 		/* Not a directive: a `[` the host's scanner never found a `]` for. php's

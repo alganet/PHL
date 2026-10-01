@@ -374,6 +374,36 @@ static void PHL_RefuseIniSource(ph7 *pEngine,const char *zFile,unsigned int nLin
 	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,"","",zFile,nLine,iStop);
 }
 /*
+ * Hand over the text standing where php's scanner reads a directive NAME,
+ * ahead of whatever is made of it. php's INITIAL is not "everything up to the
+ * `=`": it has a rule for each of its bool words in front of the one that
+ * reads a LABEL, and a dozen bytes of its punctuation are tokens no statement
+ * of its grammar starts with -- so `on = 1` and `x]y = 1` refuse the source
+ * from here down where `onx = 1` and `x.y = 1` are ordinary entries. The
+ * engine owns that table, next to the value grammar that shares its bool
+ * words; a second copy of it out here would drift away from it.
+ */
+static void PHL_ScreenIniStmt(ph7 *pEngine,const char *zStmt,size_t nStmt,
+	const char *zFile,unsigned int nLine)
+{
+	char zStack[512];
+	char *zText = zStack;
+	if( nStmt + 1 > sizeof(zStack) ){
+		zText = (char *)malloc(nStmt + 1);
+		if( zText == 0 ){
+			return;
+		}
+	}
+	if( nStmt > 0 ){
+		memcpy(zText,zStmt,nStmt);
+	}
+	zText[nStmt] = 0;
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zText,"",zFile,nLine,PH7_INI_STOP_STMT);
+	if( zText != zStack ){
+		free(zText);
+	}
+}
+/*
  * Walk one whole php.ini source -- a -c file's bytes, or the buffer php's CLI
  * builds out of every -d -- and apply the directives it holds. nLine is the line
  * the first byte sits on: 1 for a file, and 6 for the -d buffer (see the caller).
@@ -491,9 +521,20 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 				PHL_RefuseIniSource(pEngine,zFile,nSec,iBad);
 				return;
 			}
-			/* The rest of that line goes with the header: php reads neither a
-			 * directive nor a bare label out of `[sec] junk`. */
-			z = PHL_IniSkipEol(z,zEnd);
+			/* php's rule for the `]` that closes a header eats the blanks
+			 * behind it, eats a newline when one is there, and counts a line
+			 * either way. So a directive written on the header's own line is
+			 * read like any other -- `[s] precision=9` sets precision -- and
+			 * a refusal below a header that did not end its own line is dated
+			 * one line lower than it was typed. */
+			z++;
+			while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+				z++;
+			}
+			if( z < zEnd && (z[0] == '\n' || z[0] == '\r') ){
+				z = PHL_IniEatEol(z,zEnd);
+			}
+			nLine++;
 			continue;
 		}
 		nDir = nLine;
@@ -505,10 +546,16 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 		while( zNameEnd > zName && (zNameEnd[-1] == ' ' || zNameEnd[-1] == '\t') ){
 			zNameEnd--;
 		}
+		/* An `=` with nothing in front of it leaves the run empty, and php's
+		 * scanner has a token there all the same. */
+		PHL_ScreenIniStmt(pEngine,zName,
+			zNameEnd > zName ? (size_t)(zNameEnd - zName) : (size_t)(z < zEnd ? 1 : 0),
+			zFile,nDir);
 		if( z >= zEnd || z[0] != '=' ){
-			/* php: a bare name defines the entry with the value "1" */
-			PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),"1",1,zFile,nDir,
-				z < zEnd ? PH7_INI_STOP_EOL : PH7_INI_STOP_EOF);
+			/* php's php.ini callback ignores a statement that carries no
+			 * value, so a bare name neither defines the entry nor sets it to
+			 * "1" -- `parse_ini_string("precision")` is the empty array on
+			 * both sides of the fence for the same reason. */
 			continue;
 		}
 		z++;   /* past the '=' */
