@@ -5835,6 +5835,9 @@ PH7_PRIVATE int PH7_TzAt(int i);
 PH7_PRIVATE const char * PH7_TzName(int iZone,int *pnName,int *pbBackward);
 PH7_PRIVATE int PH7_TzGroup(int iZone);
 PH7_PRIVATE const char * PH7_TzCountry(int iZone);
+PH7_PRIVATE void PH7_TzLocation(int iZone,double *prLat,double *prLong,
+	const char **pzComment,int *pnComment);
+PH7_PRIVATE const char * PH7_TzVersion(void);
 PH7_PRIVATE int PH7_TzOffsetAt(int iZone,sxi64 iTs,sxi32 *piOff,int *pbDst,
 	const char **pzAbbr,int *pnAbbr);
 PH7_PRIVATE int PH7_TzTransCount(int iZone);

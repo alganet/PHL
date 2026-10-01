@@ -110,7 +110,10 @@ static const VmExtName aExtFunc[] = {
 	{"date_diff",PH7_EXT_DATE}, {"date_time_set",PH7_EXT_DATE}, {"date_date_set",PH7_EXT_DATE},
 	{"date_isodate_set",PH7_EXT_DATE}, {"date_timestamp_set",PH7_EXT_DATE},
 	{"date_timestamp_get",PH7_EXT_DATE}, {"timezone_open",PH7_EXT_DATE},
-	{"timezone_name_get",PH7_EXT_DATE}, {"timezone_offset_get",PH7_EXT_DATE},
+	{"timezone_name_get",PH7_EXT_DATE}, {"timezone_name_from_abbr",PH7_EXT_DATE},
+	{"timezone_offset_get",PH7_EXT_DATE}, {"timezone_transitions_get",PH7_EXT_DATE},
+	{"timezone_location_get",PH7_EXT_DATE}, {"timezone_identifiers_list",PH7_EXT_DATE},
+	{"timezone_abbreviations_list",PH7_EXT_DATE}, {"timezone_version_get",PH7_EXT_DATE},
 	{"date_interval_create_from_date_string",PH7_EXT_DATE}, {"date_interval_format",PH7_EXT_DATE},
 	{"date_default_timezone_set",PH7_EXT_DATE}, {"date_default_timezone_get",PH7_EXT_DATE},
 	/* pcre */

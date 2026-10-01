@@ -5072,7 +5072,7 @@ static int vm_builtin_timezone_identifiers_list(ph7_context *pCtx,int nArg,ph7_v
  */
 static int DtZoneAbbrListResult(ph7_context *pCtx)
 {
-	ph7_value *pArray,*pGroup,*pRow,*pVal,*pKey;
+	ph7_value *pArray,*pVal,*pKey;
 	int i,nAbbr = 0;
 	pArray = ph7_context_new_array(pCtx);
 	pVal = ph7_context_new_scalar(pCtx);
@@ -5087,6 +5087,7 @@ static int DtZoneAbbrListResult(ph7_context *pCtx)
 #ifdef PH7_ENABLE_TZDB
 		int nName = 0,nRow = 0,j;
 		const char *zName = PH7_TzAbbrAt(i,&nName,&nRow);
+		ph7_value *pGroup,*pRow;
 		char zLower[8];
 		if( zName == 0 || nName > (int)sizeof(zLower) ){
 			continue;
@@ -5411,6 +5412,91 @@ static int DtZoneTransitionsResult(ph7_context *pCtx,ph7_class_instance *pZone,
 #else
 	SXUNUSED(iBegin);
 	SXUNUSED(iEnd);
+#endif
+	return PH7_OK;
+}
+/*
+ * DateTimeZone::getLocation() and its timezone_location_get() twin -- the
+ * `zone.tab` row behind an identifier: its country, its point, and the note
+ * tzdata writes beside it.
+ *
+ * The gate is getTransitions()'s, and for the same reason: php answers FALSE
+ * for anything that is not a DATABASE zone, so a fixed offset and an
+ * abbreviation both decline. That is what puts the eleven names which are BOTH
+ * a zone file and an abbreviation -- `CET`, `EET`, `EST`, `GMT`, `GMT+0`,
+ * `GMT-0`, `HST`, `MET`, `MST`, `UCT`, `WET` -- on the `false` side while `UTC`,
+ * which is an identifier, answers a row.
+ *
+ * A zone the tab does not list still answers a row rather than false: `??`, the
+ * origin, and the literal comment `?`. 170 of the 599 read that way.
+ */
+static int DtZoneLocationResult(ph7_context *pCtx,ph7_class_instance *pZone)
+{
+	int iTz = -1;
+#ifdef PH7_ENABLE_TZDB
+	{
+		const char *zName;
+		int nName;
+		PH7_NativeAttrStr(pZone,DTZ_NAME,&zName,&nName);
+		if( DtZoneKindOf(pZone,DTZ_KIND,zName,nName) == DT_ZONE_ID ){
+			iTz = PH7_TzFind(zName,nName);
+		}
+	}
+#else
+	SXUNUSED(pZone);
+#endif
+	if( iTz < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+#ifdef PH7_ENABLE_TZDB
+	{
+		ph7_value *pArray = ph7_context_new_array(pCtx);
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		const char *zComment;
+		double rLat = 0.0,rLong = 0.0;
+		int nComment = 0;
+		if( pArray == 0 || pVal == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_TzLocation(iTz,&rLat,&rLong,&zComment,&nComment);
+		ph7_value_string(pVal,PH7_TzCountry(iTz),2);
+		ph7_array_add_strkey_elem(pArray,"country_code",pVal);
+		ph7_value_reset_string_cursor(pVal);
+		ph7_value_double(pVal,rLat);
+		ph7_array_add_strkey_elem(pArray,"latitude",pVal);
+		ph7_value_double(pVal,rLong);
+		ph7_array_add_strkey_elem(pArray,"longitude",pVal);
+		ph7_value_string(pVal,zComment,nComment);
+		ph7_array_add_strkey_elem(pArray,"comments",pVal);
+		ph7_result_value(pCtx,pArray);
+	}
+#endif
+	return PH7_OK;
+}
+/* DateTimeZone::getLocation() */
+static int vm_builtin_DateTimeZone_getLocation(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	return DtZoneLocationResult(pCtx,pThis);
+}
+/*
+ * timezone_version_get() -- timelib's spelling of the IANA release the embedded
+ * database was cut from. A build with no database has none to name.
+ */
+static int vm_builtin_timezone_version_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+#ifdef PH7_ENABLE_TZDB
+	ph7_result_string(pCtx,PH7_TzVersion(),-1);
+#else
+	ph7_result_string(pCtx,"0.system",-1);
 #endif
 	return PH7_OK;
 }
@@ -7789,6 +7875,15 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	return PH7_OK;
 }
+/* timezone_location_get(DateTimeZone $object) */
+static int vm_builtin_timezone_location_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
+	if( pObj == 0 ){
+		return PH7_OK;
+	}
+	return DtZoneLocationResult(pCtx,pObj);
+}
 static int vm_builtin_timezone_transitions_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
@@ -8918,10 +9013,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  "int $timezoneGroup = 2047, ?string $countryCode = null", "@array",
 		  vm_builtin_DateTimeZone_listIdentifiers },
 		{ "getTransitions", PH7_MOD_PUBLIC,
-		  "int $timestampBegin = 0, int $timestampEnd = 2147483647", "@array",
+		  "int $timestampBegin = PHP_INT_MIN, int $timestampEnd = 2147483647", "@array|false",
 		  vm_builtin_DateTimeZone_getTransitions },
 		{ "listAbbreviations", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "@array",
 		  vm_builtin_DateTimeZone_listAbbreviations },
+		{ "getLocation", PH7_MOD_PUBLIC, "", "@array|false",
+		  vm_builtin_DateTimeZone_getLocation },
 	};
 	/* php's group bitmask. ALL and ALL_WITH_BC are the two the reader compares
 	 * EXACTLY rather than masking (see DtZoneListResult). */
@@ -9124,6 +9221,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "timezone_transitions_get",     vm_builtin_timezone_transitions_get },
 		{ "timezone_abbreviations_list",  vm_builtin_timezone_abbreviations_list },
 		{ "timezone_name_from_abbr",      vm_builtin_timezone_name_from_abbr },
+		{ "timezone_location_get",        vm_builtin_timezone_location_get },
+		{ "timezone_version_get",         vm_builtin_timezone_version_get },
 	};
 	sxu32 n;
 	sxi32 rc;

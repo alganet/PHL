@@ -774,6 +774,39 @@ PH7_PRIVATE const char * PH7_TzCountry(int iZone)
 }
 
 /*
+ * The rest of getLocation(): the point tzdata's `zone.tab` puts the zone at and
+ * the note beside it. A zone the tab does not list reads 0/0 with the comment
+ * `?` -- a literal question mark, not the empty string a LISTED zone with no
+ * note carries, and the two are distinguishable from PHP.
+ */
+PH7_PRIVATE void PH7_TzLocation(int iZone,double *prLat,double *prLong,
+	const char **pzComment,int *pnComment)
+{
+	const PH7_TzZoneRow *pRow;
+	if( iZone < 0 || iZone >= PH7_TZDB_ZONE_COUNT ){
+		*prLat = 0.0;
+		*prLong = 0.0;
+		*pzComment = "?";
+		*pnComment = 1;
+		return;
+	}
+	pRow = &aTzZone[iZone];
+	*prLat = pRow->rLat;
+	*prLong = pRow->rLong;
+	*pzComment = pRow->zComment;
+	*pnComment = (int)pRow->nComment;
+}
+
+/*
+ * What `timezone_version_get()` answers -- timelib's spelling of the IANA
+ * release this table was cut from, not the release string itself.
+ */
+PH7_PRIVATE const char * PH7_TzVersion(void)
+{
+	return PH7_TZDB_PHP_VERSION;
+}
+
+/*
  * The offset, the is-DST flag and the abbreviation zone iZone is on at iTs.
  * The abbreviation points either into the payload or into the footer text, both
  * of which are static, so a caller may hold it.

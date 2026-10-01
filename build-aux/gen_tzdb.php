@@ -70,9 +70,20 @@ $all = array_flip(DateTimeZone::listIdentifiers(DateTimeZone::ALL));
  * getLocation(); a zone with no country -- every backward link, `UTC`, the
  * `Etc/` set -- reads `??` there and matches no country. Two bytes per zone. */
 $cc = [];
+$loc = [];
 foreach ($zones as $id => $_) {
     $l = (new DateTimeZone($id))->getLocation();
-    $cc[$id] = ($l === false || !isset($l['country_code'])) ? '??' : $l['country_code'];
+    /* The ten names that are ALSO abbreviations resolve to an abbreviation zone
+     * in the oracle and answer `false` there, so their row has to be read off
+     * the tab file the same way php would have -- through a name that is not in
+     * the abbreviation table. Every zone here is a file, and `zone.tab` keys on
+     * the file's name, so the fallback is the no-row answer php gives a zone
+     * the tab does not list at all. */
+    if ($l === false) {
+        $l = ['country_code' => '??', 'latitude' => 0.0, 'longitude' => 0.0, 'comments' => '?'];
+    }
+    $cc[$id]  = $l['country_code'];
+    $loc[$id] = $l;
 }
 
 /* --- The ABBREVIATION table -----------------------------------------------
@@ -138,6 +149,9 @@ foreach ($zones as $id => $data) {
         'byte'  => strlen($blk),
         'bc'    => !isset($all[$id]),
         'cc'    => $cc[$id],
+        'lat'   => (float) $loc[$id]['latitude'],
+        'lon'   => (float) $loc[$id]['longitude'],
+        'cmt'   => (string) $loc[$id]['comments'],
     ];
 }
 
@@ -229,8 +243,19 @@ $w(<<<HDR
  * cut from tzdata $version
 
 HDR);
+/* php does not print the IANA release string. `timezone_version_get()` answers
+ * timelib's own spelling of it -- the four-digit year, a dot, and the release
+ * LETTER as a 1-based number, so `2026c` prints `2026.3`. (A php built
+ * --with-system-tzdata answers the constant `0.system` instead, which is why
+ * the oracle on the build box cannot be asked this one.) */
+$phpVersion = $version;
+if (preg_match('/^(\d{4})([a-z])$/', $version, $m)) {
+    $phpVersion = $m[1] . '.' . (ord($m[2]) - ord('a') + 1);
+}
+
 $w(" */\n");
 $w("#define PH7_TZDB_VERSION \"$version\"\n");
+$w("#define PH7_TZDB_PHP_VERSION \"$phpVersion\"\n");
 $w("#define PH7_TZDB_ZONE_COUNT " . count($rows) . "\n\n");
 
 /* The payload. 16 bytes to a line keeps the generated source diffable. */
@@ -254,12 +279,24 @@ $w("\tsxu8 bBackward;      /* 1 = a compatibility LINK: out of ALL, in ALL_WITH_
 $w("\tchar zCc[2];         /* its ISO 3166-1 country, or `??` for a zone with none */\n");
 $w("\tsxu32 iOfst;         /* where its TZif block starts in aTzPayload */\n");
 $w("\tsxu32 nByte;\n");
+$w("\t/* getLocation()'s other three fields, out of tzdata's `zone.tab`. A zone\n");
+$w("\t * the tab does not list -- every backward link, `UTC`, the `Etc/` set --\n");
+$w("\t * reads 0/0 with the literal comment `?`, which is what php answers for\n");
+$w("\t * it and is NOT the empty comment a listed zone with no note carries. */\n");
+$w("\tdouble rLat;\n");
+$w("\tdouble rLong;\n");
+$w("\tconst char *zComment;\n");
+$w("\tsxu16 nComment;\n");
 $w("};\n");
 $w("static const PH7_TzZoneRow aTzZone[PH7_TZDB_ZONE_COUNT] = {\n");
 foreach ($rows as $r) {
-    $w(sprintf("\t{ \"%s\", %d, %d, { '%s', '%s' }, %d, %d },\n",
+    /* %.17g round-trips a double through the C compiler bit for bit, so the
+     * latitude PHL prints is the one the oracle printed. */
+    $w(sprintf("\t{ \"%s\", %d, %d, { '%s', '%s' }, %d, %d, %.17g, %.17g, \"%s\", %d },\n",
         $r['id'], strlen($r['id']), $r['bc'] ? 1 : 0,
-        $r['cc'][0], $r['cc'][1], $r['ofst'], $r['byte']));
+        $r['cc'][0], $r['cc'][1], $r['ofst'], $r['byte'],
+        $r['lat'], $r['lon'],
+        addcslashes($r['cmt'], "\"\\\\\0..\37\177..\377"), strlen($r['cmt'])));
 }
 $w("};\n\n");
 
