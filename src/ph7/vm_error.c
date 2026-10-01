@@ -70,6 +70,88 @@ static sxi32 VmWriteDiagnostic(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pM
 	return rc;
 }
 /*
+ * php's `error_log` ini destination, which used to be a directive this engine
+ * stored and NOTHING read. Every LOG copy went to the error stream whatever it
+ * was set to, so a program that pointed its log at a file -- which is what a
+ * framework's bootstrap does before it does anything else -- had its
+ * diagnostics written to the terminal instead and an empty log file to show
+ * for it. The diagnostic was not lost, but it was not where the program said
+ * to put it, and nothing on either end said so.
+ *
+ * php's routing, which is what this is: with a destination set, the LOG copy is
+ * APPENDED to that file behind php's own `[d-M-Y H:i:s e] ` timestamp; with it
+ * unset, and with a destination that will not open, it goes to the SAPI logger
+ * -- the error stream -- with no timestamp at all. Answers TRUE when the file
+ * took the write, so the caller knows the stream copy is not owed.
+ */
+PH7_PRIVATE int PH7_VmErrorLogToFile(ph7_vm *pVm,const char *zMsg,sxu32 nMsg)
+{
+#ifdef PH7_DISABLE_BUILTIN_FUNC
+	/* The tiny build has neither the stream layer that opens the destination nor
+	 * the date breakdown that timestamps it, so every LOG copy stays on the
+	 * stream -- which is where a build with no file functions wants it anyway. */
+	SXUNUSED(pVm); SXUNUSED(zMsg); SXUNUSED(nMsg);
+	return 0;
+#else
+	const ph7_io_stream *pStream;
+	const char *zPath;
+	SyBlob sLine;
+	void *pHandle;
+	int nPath, rc = 0;
+	nPath = (int)SyBlobLength(&pVm->sErrLogPath);
+	if( nPath < 1 ){
+		return 0;
+	}
+	/* The stream layer opens by C string, and the two doors that write this blob
+	 * reset it in place -- so an unterminated path inherits the TAIL of whatever
+	 * longer one preceded it, and `-d error_log=/no/such/dir/x.log` followed by
+	 * ini_set('error_log','/tmp/a.log') opened "/tmp/a.logh/x.log" and quietly
+	 * fell back to the stream. Both doors terminate; this reads the bytes before
+	 * the terminator. */
+	zPath = (const char *)SyBlobData(&pVm->sErrLogPath);
+	pStream = PH7_VmGetStreamDevice(pVm,&zPath,nPath);
+	if( pStream == 0 || pStream->xWrite == 0 ){
+		return 0;
+	}
+	/* No warning on the way in: php's logger is SILENT about a destination it
+	 * cannot open -- raising one here would be a diagnostic about a diagnostic,
+	 * and the recursion is not the only reason php does not. */
+	pHandle = PH7_StreamOpenHandle(pVm,pStream,zPath,
+		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_APPEND,FALSE,0,FALSE,0,0);
+	if( pHandle == 0 ){
+		return 0;
+	}
+	SyBlobInit(&sLine,&pVm->sAllocator);
+	PH7_VmLogTimestamp(pVm,&sLine);
+	SyBlobAppend(&sLine,zMsg,nMsg);
+#ifdef __WINNT__
+	SyBlobAppend(&sLine,"\r\n",sizeof("\r\n")-1);
+#else
+	SyBlobAppend(&sLine,"\n",sizeof(char));
+#endif
+	/* One write: php builds the whole line and hands it over in one go, which is
+	 * what keeps two processes appending to one log from interleaving mid-line. */
+	if( SyBlobLength(&sLine) > 0
+	 && pStream->xWrite(pHandle,SyBlobData(&sLine),(ph7_int64)SyBlobLength(&sLine)) > 0 ){
+		rc = 1;
+	}
+	SyBlobRelease(&sLine);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	return rc;
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
+}
+/*
+ * Hand a finished LOG copy to whichever sink `error_log` names. The file wins
+ * when it is set and takes the write; the error stream is what is left.
+ */
+static sxi32 VmWriteErrorLog(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pMsg)
+{
+	if( PH7_VmErrorLogToFile(pVm,(const char *)SyBlobData(pMsg),SyBlobLength(pMsg)) ){
+		return SXRET_OK;
+	}
+	return VmWriteDiagnostic(pVm,pCons,pMsg,0);
+}
+/*
  * Emit a fatal report as php's two copies, each behind its own ini gate -- the
  * same split VmEmitDiagnostic makes for a warning or a notice, which fatals did
  * not have. The caller hands over the LABEL and a header-less BODY (the sentence,
@@ -94,7 +176,7 @@ static sxi32 VmEmitFatalReport(ph7_vm *pVm,const char *zLabel,const char *zBody,
 		SyBlobInit(&sCopy,&pVm->sAllocator);
 		SyBlobFormat(&sCopy,"PHP %s:  ",zLabel);
 		SyBlobAppend(&sCopy,zBody,nBody);
-		rc = VmWriteDiagnostic(pVm,VmErrConsumer(pVm),&sCopy,0);
+		rc = VmWriteErrorLog(pVm,VmErrConsumer(pVm),&sCopy);
 		SyBlobRelease(&sCopy);
 	}
 	if( pVm->bDisplayErrors ){
@@ -403,7 +485,7 @@ static sxi32 VmEmitDiagnostic(ph7_vm *pVm,sxi32 iErr,
 		VmDiagnosticLogHeader(pWorker,iErr);
 		SyBlobAppend(pWorker,zBody,nBody);
 		VmDiagnosticLocation(pWorker,pFile,nLine);
-		rc = VmWriteDiagnostic(pVm,VmErrConsumer(pVm),pWorker,0);
+		rc = VmWriteErrorLog(pVm,VmErrConsumer(pVm),pWorker);
 	}
 	if( pVm->bDisplayErrors ){
 		sxi32 rc2;
@@ -3643,9 +3725,16 @@ PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,sxi32 iErr,const char 
 		SyBlobAppend(&sCopy,zBody,nBody);
 		/* Same order VmErrConsumer takes at run time: the error stream, then the
 		 * output one for an embedder that wired only that, then the engine's. */
-		rc = VmWriteCompileCopy(&(*pVm),
-			pVm->sVmErrConsumer.xConsumer ? &pVm->sVmErrConsumer : VmCompileDisplaySink(pVm),
-			&sCopy,0);
+		/* A compile diagnostic owes the `error_log` destination the same copy a
+		 * runtime one does: a bootstrap that sets the directive from php.ini has
+		 * it in hand before the unit compiles. */
+		if( PH7_VmErrorLogToFile(pVm,(const char *)SyBlobData(&sCopy),SyBlobLength(&sCopy)) ){
+			rc = SXRET_OK;
+		}else{
+			rc = VmWriteCompileCopy(&(*pVm),
+				pVm->sVmErrConsumer.xConsumer ? &pVm->sVmErrConsumer : VmCompileDisplaySink(pVm),
+				&sCopy,0);
+		}
 		SyBlobRelease(&sCopy);
 	}
 	if( pVm->bDisplayErrors ){

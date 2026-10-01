@@ -2948,6 +2948,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sSessId,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessName,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessPath,&pVm->sAllocator);
+	SyBlobInit(&pVm->sErrLogPath,&pVm->sAllocator);
 	SyBlobInit(&pVm->sOutStartFile,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessStartFile,&pVm->sAllocator);
 	SyBlobAppend(&pVm->sSessName,"PHPSESSID",sizeof("PHPSESSID")-1);
@@ -5396,6 +5397,18 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 		}else if( nName == sizeof("log_errors")-1
 		 && SyMemcmp(zName,"log_errors",nName) == 0 ){
 			pVm->bLogErrors = VmIniBool(zValue,nValue);
+		}else if( nName == sizeof("error_log")-1
+		 && SyMemcmp(zName,"error_log",nName) == 0 ){
+			/* The destination has to reach the VM here and not only through the
+			 * INI chunk, whose seed is lazy: `-d error_log=…` is set precisely so
+			 * that the diagnostics of a run that never touches the INI API land
+			 * in the file. Empty clears it back to the SAPI logger, which is what
+			 * php's unset destination means. */
+			SyBlobReset(&pVm->sErrLogPath);
+			if( nValue > 0 ){
+				SyBlobAppend(&pVm->sErrLogPath,zValue,nValue);
+			}
+			SyBlobNullAppend(&pVm->sErrLogPath);
 		}else if( nName == sizeof("include_path")-1
 		 && SyMemcmp(zName,"include_path",nName) == 0
 		 && nValue > 0 ){

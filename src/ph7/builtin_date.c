@@ -204,6 +204,29 @@ static void DtSytmOfTimestamp(ph7_vm *pVm,sxi64 iTs,Sytm *pOut)
 	pOut->tm_nabbr = nAbbr;
 }
 /*
+ * php's error-log timestamp, the `[d-M-Y H:i:s e] ` prefix php's own logger
+ * writes in front of every line it appends to the `error_log` destination.
+ *
+ * It lives here because the zone token is `e`, the timezone IDENTIFIER, and
+ * that is the script's current default -- `date.timezone`, or whatever
+ * date_default_timezone_set() moved it to since. The breakdown is the one the
+ * date() family takes, so a log line and a `date()` call in the same script
+ * never disagree about what time it is. Nothing is appended after the prefix:
+ * the caller owns the message and the newline.
+ */
+PH7_PRIVATE void PH7_VmLogTimestamp(ph7_vm *pVm,SyBlob *pOut)
+{
+	const char *zMon;
+	Sytm sTm;
+	time_t t;
+	time(&t);
+	DtSytmOfTimestamp(pVm,(sxi64)t,&sTm);
+	zMon = SyTimeGetMonth(sTm.tm_mon);
+	SyBlobFormat(pOut,"[%02d-%.3s-%04d %02d:%02d:%02d %.*s] ",
+		sTm.tm_mday,zMon,sTm.tm_year,sTm.tm_hour,sTm.tm_min,sTm.tm_sec,
+		(int)pVm->nDefTz,pVm->zDefTz);
+}
+/*
  * The same breakdown for the gm* doors, which are UTC whatever the script's
  * default zone is -- and whose zone FIELDS are not the default's either. php
  * names the zone `UTC` there and abbreviates it `GMT`, so `gmdate('e T')` is

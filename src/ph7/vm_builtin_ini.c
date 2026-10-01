@@ -500,6 +500,18 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 		pVm->bLogErrors = IniTruthy(zVal,nVal);
 		return;
 	}
+	if( IniNameIs(pSlot,"error_log") ){
+		/* Where the LOG copy goes. php re-reads the directive per message rather
+		 * than holding the file open, so a script that moves it mid-run moves the
+		 * next line -- and clearing it hands the rest of the run back to the
+		 * error stream. */
+		SyBlobReset(&pVm->sErrLogPath);
+		if( nVal > 0 ){
+			SyBlobAppend(&pVm->sErrLogPath,zVal,nVal);
+		}
+		SyBlobNullAppend(&pVm->sErrLogPath);
+		return;
+	}
 	if( IniNameIs(pSlot,"session.name") || IniNameIs(pSlot,"session.save_path") ){
 		int bPath = IniNameIs(pSlot,"session.save_path");
 		SyBlob *pDst = bPath ? &pVm->sSessPath : &pVm->sSessName;

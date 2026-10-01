@@ -4265,6 +4265,11 @@ struct ph7_vm
 	int bLogErrors;            /* log_errors ini gate: TRUE emits the LOG copy of a runtime
 	                            * diagnostic (`PHP Warning:  msg in F on line N`) to the error
 	                            * stream (stderr via sVmErrConsumer). php CLI default: on. */
+	SyBlob sErrLogPath;        /* `error_log` ini destination: the file every LOG copy and
+	                            * error_log()'s configured-logger types are appended to,
+	                            * timestamped. EMPTY means unset, which is php's SAPI logger
+	                            * -- the error stream. A path that will not open falls back
+	                            * to that stream too, exactly as php's logger does. */
 	int bGcEnabled;            /* gc_enable()/gc_disable(): whether the cycle collector may
 	                            * buffer a possible root at all. Off means PHL frees by
 	                            * reference count alone, which strands every cycle. */
@@ -5690,10 +5695,12 @@ PH7_PRIVATE sxi32 PH7_VmThrowExceptionTrace(ph7_context *pCtx,const char *zClass
 PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm);
+PH7_PRIVATE int PH7_VmErrorLogToFile(ph7_vm *pVm,const char *zMsg,sxu32 nMsg);
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /* Shared between builtin_date.c (procedural date functions) and
  * builtin_date_parse.c (the DateTime family) */
 PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int uSec);
+PH7_PRIVATE void PH7_VmLogTimestamp(ph7_vm *pVm,SyBlob *pOut);
 PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d);
 PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd);
 PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b);

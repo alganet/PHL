@@ -250,9 +250,10 @@ PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value 
  * verbatim to $destination (no newline added, no timestamp) and answers FALSE
  * with the open warning when it cannot; type 2 is php's ValueError; type 1 is
  * mail(), which this engine has no transport for, so it answers FALSE rather
- * than claiming a delivery; and every other value — 0, 4, and anything
- * unrecognised, all of which php sends to the SAPI logger — writes the message
- * plus a newline to the diagnostics stream. The embedder callback still wins
+ * than claiming a delivery; 0 and anything unrecognised go to the CONFIGURED
+ * logger (the `error_log` destination, timestamped, falling back to the
+ * diagnostics stream when it is unset or will not open); and 4 is the SAPI
+ * logger itself, which is the diagnostics stream and never the file. The embedder callback still wins
  * when one is installed: that is what it is for.
  */
 PH7_PRIVATE int vm_builtin_error_log(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -304,9 +305,23 @@ PH7_PRIVATE int vm_builtin_error_log(ph7_context *pCtx,int nArg,ph7_value **apAr
 		return PH7_OK;
 	}
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
-	/* 0 (the configured log), 4 (the SAPI logger) and every other value: the
-	 * diagnostics stream, message plus a newline — php's CLI shape with no
-	 * `error_log` ini set. */
+	/* 0 and every unrecognised value go to the CONFIGURED logger, which is the
+	 * `error_log` destination when one is set: php appends the message there
+	 * behind its `[d-M-Y H:i:s e] ` timestamp. Routing them to the diagnostics
+	 * stream unconditionally is what made a program's own log calls miss the file
+	 * it had just named. 4 is the SAPI logger by definition and never the file, so
+	 * `error_log($m, 4)` still reaches the stream with the destination set — that
+	 * is the whole difference between the two types.
+	 *
+	 * php answers TRUE either way, INCLUDING when the destination will not open:
+	 * the fallback to the stream is a successful log as far as the caller is
+	 * concerned, and only type 3, which names its own file, reports a failure. */
+	if( iType != 4 && PH7_VmErrorLogToFile(pVm,zMessage,(sxu32)nMsg) ){
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	/* The diagnostics stream, message plus a newline — php's CLI shape with no
+	 * `error_log` ini set, and the SAPI logger type 4 always takes. */
 	{
 		ph7_output_consumer *pCons = pVm->sVmErrConsumer.xConsumer
 			? &pVm->sVmErrConsumer : &pVm->sVmConsumer;
