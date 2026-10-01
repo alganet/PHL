@@ -7125,8 +7125,12 @@ CalleeByName:
 				}
 			}
 			if( nGenArgs > 0 ){
+				/* A named call binds each actual to the formal it NAMES and leaves the
+				 * formals BETWEEN two named ones on their defaults, so the reordered
+				 * list carries one entry per formal and can be LONGER than the number
+				 * of actuals. */
 				apCallArgs = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
-					nGenArgs * sizeof(ph7_value *));
+					((sxu32)nGenArgs + SySetUsed(&pVmFunc->aArgs)) * sizeof(ph7_value *));
 				if( apCallArgs == 0 ){
 					/* OOM: fall back to zero args rather than NULL-deref */
 					nGenArgs = 0;
@@ -7227,18 +7231,33 @@ CalleeByName:
 							}
 							/* Build apCallArgs in formal-parameter order, then
 							 * append overflow (variadic / positional beyond
-							 * formals) so downstream sees every argument. */
+							 * formals) so downstream sees every argument.
+							 *
+							 * A formal that no argument named keeps its place as a
+							 * NULL entry, which VmFiberSetupFrame reads as "not
+							 * passed" and answers with the declared default. Dropping
+							 * the hole instead shifted every later actual down one
+							 * formal, silently: `function g($a,$b=2,$c=3)` called
+							 * `g(a: 1, c: 9)` bound `$b = 9` and left `$c` on its
+							 * default, where php binds `1/2/9`. Trailing holes are
+							 * simply not passed. */
 							{
-								int nOut = 0;
+								int nOut = 0, nFilled = 0;
 								for( gi = 0; gi < nNV; gi++ ){
 									sxu32 gj;
+									ph7_value *pNamed = 0;
 									for( gj = 0; gj < (sxu32)nGenArgs; gj++ ){
 										if( aGSlot[gj] == (sxi32)gi ){
-											apCallArgs[nOut++] = &pArg[gj];
+											pNamed = &pArg[gj];
 											break;
 										}
 									}
+									apCallArgs[nOut++] = pNamed;
+									if( pNamed ){
+										nFilled = nOut;
+									}
 								}
+								nOut = nFilled;
 								for( gi = 0; gi < (sxu32)nGenArgs; gi++ ){
 									if( aGSlot[gi] == -1 || aGSlot[gi] == -2 ){
 										apCallArgs[nOut++] = &pArg[gi];

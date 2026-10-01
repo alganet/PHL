@@ -2991,6 +2991,9 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				nVariadicIdx = pObj->nIdx;
 				pMap = (ph7_hashmap *)pObj->x.pOther;
 				for( k = n; k < (sxu32)nArg; k++ ){
+					if( apArg[k] == 0 ){
+						continue; /* a named call's hole: the formal it names is not this one */
+					}
 					if( ((aFormalArg[n].iFlags & VM_FUNC_ARG_UNION)
 					   || (aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH)) ){
 						rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[k],bStrict,pSelfHint);
@@ -3014,8 +3017,12 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			}
 			break; /* All remaining actuals consumed */
 		}
-		if( n < (sxu32)nArg ){
+		if( n < (sxu32)nArg && apArg[n] != 0 ){
 			/* Argument provided — install with declared-type enforcement.
+			 * A NULL entry is a named call's HOLE: `g(a: 1, c: 9)` names the
+			 * first and third formals and says nothing about the second, so the
+			 * list arrives one entry per formal and the hole falls through to the
+			 * default branch below, exactly as php's binder does.
 			 * php binds and type-checks generator arguments EAGERLY at the
 			 * g(...) call site (and fiber arguments at Fiber::start()), so the
 			 * enforcement lives here, mirroring the OP_CALL install path via
