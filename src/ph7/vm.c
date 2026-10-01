@@ -5437,8 +5437,9 @@ static int VmIniBool(const char *zValue,sxu32 nValue)
  *     is what ini_get() shows and what ini_restore() re-applies, so it is what
  *     gets stored, not the number it happens to read as.
  *
- * The boolean words are a whole-value shape rather than an operand: `On` is 1,
- * and php refuses `On|E_NOTICE` outright.
+ * The boolean words are a whole-value shape rather than an operand: `On` is 1
+ * even in `On|E_NOTICE`, where the word itself still commits and the `|` is
+ * a separate syntax error over the leftover text (see VmIniEvalValue).
  */
 #define VM_INI_EXPR_MAX_DEPTH 32
 typedef struct VmIniExpr VmIniExpr;
@@ -5645,9 +5646,17 @@ static int VmIniExprEval(VmIniExpr *p,SyBlob *pOut,int nDepth)
 }
 /*
  * Evaluate one php.ini value into the text php would store for it. FALSE means
- * php's own parser would call it a syntax error, and php then leaves the
- * directive at its default rather than at zero: `error_reporting = E_ALL &`
- * keeps E_ALL there.
+ * nothing ever reduced to a complete value at all -- a dangling operator or an
+ * unmatched '(' -- and php leaves the directive at its default rather than at
+ * zero: `error_reporting = E_ALL &` keeps whatever was there before.
+ *
+ * A syntax error elsewhere does NOT mean FALSE: php's yacc grammar reduces
+ * `string_or_value` (and fires the assignment) as soon as the lookahead byte
+ * cannot extend it further, and only THEN discovers that byte cannot start
+ * anything either. `error_reporting = E_ALL)` stores 30719 and separately
+ * warns about the ')' -- the value most be committed even though the whole
+ * directive text was not clean. This function only answers the value; the
+ * warning is not raised here.
  */
 static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 {
@@ -5673,9 +5682,23 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 	if( nVal == 0 ){
 		return 1;   /* `-d name=` carries the empty value, not an expression */
 	}
+	/* A boolean word is its own token, taken whenever it is the longest match
+	 * AT THE FRONT of the value -- i.e. whenever the byte right behind it is
+	 * not one php's scanner would fold into the same run. `onx`/`ontology`
+	 * are not "on" at all (VALUE_CHARS+ outruns the word there and reads the
+	 * whole run as one unresolved identifier instead), while `On|E_NOTICE`
+	 * IS "on" followed by a token the boolean production cannot take -- the
+	 * word still commits, the '|' is a separate, later syntax error. */
 	for( i = 0 ; i < SX_ARRAYSIZE(aWord) ; i++ ){
-		if( nVal == aWord[i].nWord
-		 && SyStrnicmp(zVal,aWord[i].zWord,aWord[i].nWord) == 0 ){
+		int c;
+		if( nVal < aWord[i].nWord
+		 || SyStrnicmp(zVal,aWord[i].zWord,aWord[i].nWord) != 0 ){
+			continue;
+		}
+		c = nVal == aWord[i].nWord ? -1 : (unsigned char)zVal[aWord[i].nWord];
+		if( c < 0 || VmIniExprIsOp(c) || c == '(' || c == ')' || c == '~'
+		 || c == '!' || c == '"' || c == '\'' || c == '$' || c == ';'
+		 || c == ' ' || c == '\t' ){
 			SyBlobAppend(pOut,aWord[i].zText,(sxu32)SyStrlen(aWord[i].zText));
 			return 1;
 		}
@@ -5687,9 +5710,10 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 	if( !VmIniExprEval(&sIn,pOut,0) ){
 		return 0;
 	}
-	VmIniExprSpace(&sIn);
-	/* Anything left over is a byte no production can take -- `2)`, `1&&2`. */
-	return sIn.zCur >= sIn.zEnd || sIn.zCur[0] == ';';
+	/* Whatever is left -- `)`, `1&&2`'s second `&`, an unresolved `~` -- is a
+	 * separate token the grammar cannot take from here, but the expr already
+	 * reduced and its value already stands. */
+	return 1;
 }
 /*
  * Apply one php.ini directive to a VM: queue an allocator-owned copy for the INI
