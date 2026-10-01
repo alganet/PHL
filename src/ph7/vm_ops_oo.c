@@ -3062,14 +3062,43 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					/* Attribute access */
 					ph7_class_attr *pAttr = 0;
 					if( pInstr->iP2 == PH7_MEMBER_UNSET ){
-						/* unset(C::$x): PHP rejects unsetting a static property with a fatal Error.
-						 * Without this the iP2=unset tag falls through to a normal static read and the
-						 * trailing generic unset() would silently NULL (and de-type) the shared slot. */
-						char zMsg[256];
-						SyBufferFormat(zMsg,sizeof(zMsg),"Attempt to unset static property %.*s::$%.*s",
-							(int)pClass->sName.nByte,pClass->sName.zString,(int)sName.nByte,sName.zString);
-						VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
-						VM_EXIT_ABORT;
+						/* unset(C::$x): php refuses it, unconditionally and before any
+						 * lookup -- an undeclared name, a private one and one reached
+						 * through a subclass all read the same, and the class named is
+						 * whatever the `::` resolved to (so `parent::$b` says Base and
+						 * `Child::$b` says Child even when Base declares it). Only the
+						 * class NAME is resolved first, so an unknown one still answers
+						 * `Class "X" not found`.
+						 *
+						 * The refusal is php's CATCHABLE Error; PHL reported it uncaught
+						 * and ABORTED, so `try { unset(C::$s); } catch (Throwable)` never
+						 * ran its catch and everything after the try was dropped with exit
+						 * status 0. Parked on the boundary rail like the other refusals in
+						 * this arm, with the op completing as a NULL that carries no slot
+						 * index -- the trailing generic unset() then has nothing to clear,
+						 * which is what stops it silently NULLing (and de-typing) the
+						 * shared static slot on the way out.
+						 *
+						 * The name is the DISPLAY name: an anonymous class's identity
+						 * carries php's NUL-separated `class@anonymous\0file:line$hash`,
+						 * and formatting that through a C string truncated the message at
+						 * the NUL -- it lost `::$x` entirely. */
+						SyBlob sErrUn;
+						SyBlobInit(&sErrUn,&pVm->sAllocator);
+						SyBlobFormat(&sErrUn,"Attempt to unset static property %z::$%z",
+							&pClass->sDisp,&sName);
+						VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
+							sizeof("Error")-1,&sErrUn));
+						if( !pInstr->p3 ){
+							VmPopOperand(&pTos,1);
+						}
+						PH7_MemObjRelease(pTos);
+						MemObjSetType(pTos,MEMOBJ_NULL);
+						pTos->nIdx = SXU32_HIGH;
+						if( pThis ){
+							PH7_ClassInstanceUnref(pThis);
+						}
+						VM_EXIT_BREAK;
 					}
 					/* Check for special ::class pseudo-constant */
 					if( sName.nByte == sizeof("class")-1 &&
