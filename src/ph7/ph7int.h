@@ -3756,6 +3756,9 @@ struct ph7_vm
 	char zDefTz[68];            /* date_default_timezone_set() identifier, stored verbatim like php
 	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
 	sxu32 nDefTz;               /* zDefTz length in bytes */
+	sxu8 bDefTzExplicit;        /* a script called date_default_timezone_set(). php latches on
+	                             * that: a later ini_set('date.timezone') records the DIRECTIVE
+	                             * and no longer moves the default. */
 	phl_dt_lasterr sDtLastErr;  /* DateTime::getLastErrors()'s answer. Was a PHL-only
 	                             * `public static $__dtLastErr` on DateTime, a property php has
 	                             * no equivalent of; both date classes read this field now. */
@@ -5311,6 +5314,13 @@ PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd);
 PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b);
 PH7_PRIVATE void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm);
 PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec);
+/* The script default zone as the tz database sees it: an index or -1, and the
+ * offset/abbreviation/is-DST that index is on at an instant. Shared with
+ * builtin_date.c so the procedural doors ask the same question the DateTime
+ * family does. Both answer "no database zone" harmlessly with the flag off. */
+PH7_PRIVATE int DtDefaultTzIndex(ph7_vm *pVm);
+PH7_PRIVATE sxi32 DtTzOffsetOf(int iTz,sxi32 iFixed,sxi64 iTs,int *pbDst,
+	const char **pzAbbr,int *pnAbbr);
 #ifdef PH7_ENABLE_TZDB
 /* The embedded IANA database (builtin_date_tzdb.c). Absent from the tiny build
  * on purpose -- the payload is ~296 KB -- so every caller asks PH7_TzFind()
@@ -5323,6 +5333,8 @@ PH7_PRIVATE const char * PH7_TzName(int iZone,int *pnName,int *pbBackward);
 PH7_PRIVATE int PH7_TzOffsetAt(int iZone,sxi64 iTs,sxi32 *piOff,int *pbDst,
 	const char **pzAbbr,int *pnAbbr);
 PH7_PRIVATE int PH7_TzLocalToUtc(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff);
+PH7_PRIVATE int PH7_TzLocalToUtcSeed(int iZone,sxi64 iLocal,sxi32 iOffNow,int bDstNow,
+	sxi64 *piTs,sxi32 *piOff);
 #endif /* PH7_ENABLE_TZDB */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);

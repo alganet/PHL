@@ -185,12 +185,38 @@ PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec)
  * takes UTC/GMT only), so date() and gmdate() share this UTC breakdown exactly
  * as they already did through gmtime().
  */
-static void DtSytmOfTimestamp(sxi64 iTs,Sytm *pOut)
+static void DtSytmOfTimestamp(ph7_vm *pVm,sxi64 iTs,Sytm *pOut)
 {
 	/* A NULL tm_zone is what the date()-family fills mean by "the script's
 	 * default timezone" -- DateFormat's 'e'/'T' read pVm->zDefTz through it,
 	 * so naming the zone here would pin every one of them to UTC. */
-	DtFillSytm(iTs,0,0,pOut);
+	int iTz = DtDefaultTzIndex(pVm);
+	int bDst = 0,nAbbr = 0;
+	const char *zAbbr = 0;
+	sxi32 iOff = DtTzOffsetOf(iTz,0,iTs,&bDst,&zAbbr,&nAbbr);
+	DtFillSytm(iTs,iOff,0,pOut);
+	/* A DATABASE default carries what a fixed one cannot: an offset that
+	 * depends on the instant, the ABBREVIATION `T` prints there ("CEST", not
+	 * the identifier), and the flag `I` prints. With a fixed default all three
+	 * are the zero this always filled and every door answers as it did. */
+	pOut->tm_isdst = bDst;
+	pOut->tm_abbr = zAbbr;
+	pOut->tm_nabbr = nAbbr;
+}
+/*
+ * The same breakdown for the gm* doors, which are UTC whatever the script's
+ * default zone is -- and whose zone FIELDS are not the default's either. php
+ * names the zone `UTC` there and abbreviates it `GMT`, so `gmdate('e T')` is
+ * "UTC GMT" under every default; PHL answered "UTC UTC" because the abbreviation
+ * came from uppercasing the name, and would now have answered the default zone
+ * outright if these shared the door above.
+ */
+static void DtSytmOfTimestampUtc(sxi64 iTs,Sytm *pOut)
+{
+	static char zUtc[] = "UTC";
+	DtFillSytm(iTs,0,zUtc,pOut);
+	pOut->tm_abbr = "GMT";
+	pOut->tm_nabbr = 3;
 }
  /*
   * int64 time(void)
@@ -436,7 +462,7 @@ PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg
 		/* Use the given timestamp */
 		t = (time_t)ph7_value_to_int64(apArg[0]);
 	}
-	DtSytmOfTimestamp((sxi64)t,&sTm);
+	DtSytmOfTimestamp(pCtx->pVm,(sxi64)t,&sTm);
 	/* Element value */
 	pValue = ph7_context_new_scalar(pCtx);
 	if( pValue == 0 ){
@@ -989,7 +1015,7 @@ PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( nArg < 2 ){
 		time_t t;
 		time(&t);
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestamp(pCtx->pVm,(sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */
 		time_t t = 0;
@@ -1001,7 +1027,7 @@ PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( bUseNow ){
 			time(&t);
 		}
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestamp(pCtx->pVm,(sxi64)t,&sTm);
 	}
 	/* Format the given string */
 	DateFormat(pCtx,zFormat,nLen,&sTm,0);
@@ -1039,7 +1065,7 @@ PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( nArg < 2 ){
 		time_t t;
 		time(&t);
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestampUtc((sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */
 		time_t t = 0;
@@ -1051,7 +1077,7 @@ PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( bUseNow ){
 			time(&t);
 		}
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestampUtc((sxi64)t,&sTm);
 	}
 	/* Format the given string */
 	DateFormat(pCtx,zFormat,nLen,&sTm,0);
@@ -1089,7 +1115,7 @@ PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( nArg < 1 ){
 		time_t t;
 		time(&t);
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestamp(pCtx->pVm,(sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp */
 		time_t t;
@@ -1098,7 +1124,7 @@ PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apA
 		}else{
 			time(&t);
 		}
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestamp(pCtx->pVm,(sxi64)t,&sTm);
 	}
 	/* Element value */
 	pValue = ph7_context_new_scalar(pCtx);
@@ -1174,14 +1200,13 @@ PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apA
 	}else{
 		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);
 	}
-	/* isdst */
-#ifdef __WINNT__
-#ifdef _MSC_VER
-#ifndef _WIN32_WCE
-			_get_daylight(&sTm.tm_isdst);
-#endif
-#endif
-#endif
+	/* isdst -- the broken-down time's own, which DtSytmOfTimestamp() answered
+	 * from the zone. A Windows-only `_get_daylight()` override used to stand
+	 * here and it asked the wrong question: whether the HOST's timezone
+	 * observes daylight saving AT ALL, not whether this date is in it. Its twin
+	 * in DateFormat's `I` was removed when that was found; this one and idate's
+	 * survived, unseen because with no database no date was ever on daylight
+	 * time and the two answers only differ when one is. */
 	ph7_value_int(pValue,sTm.tm_isdst);
 	if( isAssoc ){
 		ph7_array_add_strkey_elem(pArray,"tm_isdst",pValue);
@@ -1244,7 +1269,7 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	if( nArg < 2 ){
 		time(&t);
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestamp(pCtx->pVm,(sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp */
 		if( ph7_value_is_int(apArg[1]) ){
@@ -1252,7 +1277,7 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}else{
 			time(&t);
 		}
-		DtSytmOfTimestamp((sxi64)t,&sTm);
+		DtSytmOfTimestamp(pCtx->pVm,(sxi64)t,&sTm);
 	}
 	/* Perform the requested operation */
 	switch(zFormat[0]){
@@ -1295,14 +1320,9 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		iVal = sTm.tm_min;
 		break;
 	case 'I':
-		/*	returns 1 if DST is activated, 0 otherwise */
-#ifdef __WINNT__
-#ifdef _MSC_VER
-#ifndef _WIN32_WCE
-			_get_daylight(&sTm.tm_isdst);
-#endif
-#endif
-#endif
+		/* returns 1 if DST is activated, 0 otherwise -- for THIS date, off the
+		 * broken-down time. See the note in localtime() above for the Windows
+		 * override that used to stand here. */
 		iVal = sTm.tm_isdst;
 		break;
 	case 'L':
@@ -1440,7 +1460,8 @@ PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zFunction;
 	ph7_int64 iVal;
 	sxi64 h,mi,s,mo,d,y,yAdj;
-	int moN;
+	int moN,bLocal,iTzDef = -1,bDstNow = 0;
+	sxi32 iOffDef = 0;
 	struct tm *pTm;
 	time_t t;
 	/* Extract function name */
@@ -1457,12 +1478,22 @@ PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"%s() expects at least 1 argument, 0 given",zFunction);
 	}
-	/* Missing components default from the current time in php's default
-	 * timezone. PHL's date_default_timezone_set() only accepts UTC/GMT (no tz
-	 * database), so mktime() and gmmktime() agree and both read gmtime(). */
+	/* Missing components default from the current time IN THE ZONE THIS DOOR
+	 * SPEAKS: php's default zone for mktime(), UTC for gmmktime(). With a fixed
+	 * default the two agree and both read the clock straight, which is why this
+	 * read gmtime() for both while there was no database. */
+	bLocal = SyStrncmp(zFunction,"gm",2) != 0;
 	time(&t);
+	if( bLocal ){
+		iTzDef = DtDefaultTzIndex(pCtx->pVm);
+		if( iTzDef >= 0 ){
+			int nAbbr;
+			const char *zAbbr;
+			iOffDef = DtTzOffsetOf(iTzDef,0,(sxi64)t,&bDstNow,&zAbbr,&nAbbr);
+		}
+	}
+	t = (time_t)((sxi64)t + iOffDef);
 	pTm = gmtime(&t);
-	SXUNUSED(zFunction);
 	h  = pTm->tm_hour;
 	mi = pTm->tm_min;
 	s  = pTm->tm_sec;
@@ -1497,6 +1528,22 @@ PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	yAdj = y + DtFloorDiv(mo - 1,12);
 	moN  = (int)(mo - 1 - DtFloorDiv(mo - 1,12) * 12) + 1;
 	iVal = (DtDaysFromCivil(yAdj,moN,1) + (d - 1)) * 86400 + h*3600 + mi*60 + s;
+	/* What the fields spell is a WALL CLOCK, and mktime() is the door that turns
+	 * one into an instant -- so it owes the zone the same search a constructor
+	 * does, ambiguous and skipped hours included. gmmktime() spells UTC and owes
+	 * nothing. */
+#ifdef PH7_ENABLE_TZDB
+	if( bLocal && iTzDef >= 0 ){
+		sxi64 iFixed = iVal;
+		sxi32 iOffAt = iOffDef;
+		/* bDstNow is php's seed: mktime() builds its struct from the CURRENT
+		 * moment and that moment's daylight flag decides an ambiguous hour.
+		 * See PH7_TzLocalToUtcDst(). */
+		if( PH7_TzLocalToUtcSeed(iTzDef,iVal,iOffDef,bDstNow,&iFixed,&iOffAt) ){
+			iVal = iFixed;
+		}
+	}
+#endif
 	/* Return the timestamp as a 64bit integer */
 	ph7_result_int64(pCtx,iVal);
 	return PH7_OK;
@@ -1517,9 +1564,9 @@ PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg
  * bool date_default_timezone_set(string $timezoneId)
  *  Sets the default timezone used by all date/time functions in a script.
  *  php validates against the tz database and stores the id verbatim (get()
- *  echoes back "utc" if that's what was set). PHL ships no tz database, so
- *  only UTC and GMT are accepted; every other id — including region names php
- *  would accept — is rejected with php's invalid-id notice (recorded scope cut).
+ *  echoes back "utc" if that's what was set). With PH7_ENABLE_TZDB off there is
+ *  no database to validate against and only UTC and GMT are accepted; every
+ *  other id is then rejected with php's invalid-id notice.
  */
 PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1531,10 +1578,32 @@ PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg
 		return PH7_OK;
 	}
 	zId = ph7_value_to_string(apArg[0],&nId);
+#ifdef PH7_ENABLE_TZDB
+	/* An IDENTIFIER and nothing else. This door does not share the zone grammar
+	 * DateTimeZone's constructor has: it skips no leading blank, reads no
+	 * `±HH:MM` and consults no abbreviation table, so `+05:00`, ` Europe/Paris`
+	 * and `CEST` are all "invalid" here while `new DateTimeZone` takes all
+	 * three. The ten names that are BOTH an abbreviation and a zone file are
+	 * where that shows: a `CET` default is the FILE, and switches to CEST every
+	 * summer, where `new DateTimeZone('CET')` is the fixed +01:00 abbreviation.
+	 *
+	 * The lookup folds case and the STORED name is the caller's own bytes, the
+	 * same rule an identifier has everywhere else -- get() echoes back
+	 * `europe/paris`. */
+	if( nId > 0 && (sxu32)nId < sizeof(pVm->zDefTz) && PH7_TzFind(zId,nId) >= 0 ){
+		SyMemcpy(zId,pVm->zDefTz,(sxu32)nId);
+		pVm->zDefTz[nId] = 0;
+		pVm->nDefTz = (sxu32)nId;
+		pVm->bDefTzExplicit = 1;
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+#endif
 	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 || SyStrnicmp(zId,"GMT",3) == 0) ){
 		SyMemcpy(zId,pVm->zDefTz,3);
 		pVm->zDefTz[3] = 0;
 		pVm->nDefTz = 3;
+		pVm->bDefTzExplicit = 1;
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}

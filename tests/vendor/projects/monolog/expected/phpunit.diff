@@ -32,7 +32,7 @@
 +............................................................... 441 / 734 ( 60%)
 +.......................................................SS...... 504 / 734 ( 68%)
 +.....................................SS........................ 567 / 734 ( 77%)
-+.......N.......F..........................S.................... 630 / 734 ( 85%)
++...............F..........................S.................... 630 / 734 ( 85%)
 +............................................................... 693 / 734 ( 94%)
 +.........................................                       734 / 734 (100%)
  
@@ -60,20 +60,13 @@
  There were 33 skipped tests:
  
  1) Monolog\Formatter\LineFormatterTest::testDefFormatWithSoapFaultException
-@@ -126,6 +138,13 @@
+@@ -126,6 +138,6 @@
  33) Monolog\Processor\MercurialProcessorTest::testProcessor
  hg is missing
  
 -OK, but there were issues!
 -Tests: 1153, Assertions: 2071, Deprecations: 2, PHPUnit Deprecations: 220, Skipped: 33.
 -@exit@ 0
-+--
-+
-+1 test triggered 1 PHP notice:
-+
-+1) @ROOT@/tests/Monolog/LoggerTest.php:585
-+date_default_timezone_set(): Timezone ID 'CET' is invalid
-+
 +ERRORS!
-+Tests: 734, Assertions: 1630, Errors: 1, Failures: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
++Tests: 734, Assertions: 1630, Errors: 1, Failures: 1, PHPUnit Deprecations: 220, Skipped: 33.
 +@exit@ 2

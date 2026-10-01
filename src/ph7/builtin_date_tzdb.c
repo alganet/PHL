@@ -699,4 +699,91 @@ PH7_PRIVATE int PH7_TzLocalToUtc(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff
 	return 1;
 }
 
+/*
+ * mktime()'s reading of the same thing, and it is NOT the same answer.
+ *
+ * An hour daylight saving repeated names two instants, and PH7_TzLocalToUtc()
+ * settles it the way php's parser does. php's mktime() settles it differently:
+ * it seeds its fields from the CURRENT moment -- offset and is-DST flag and all
+ * -- and that seed survives into the answer. So mktime() on an ambiguous hour
+ * picks by what the zone is doing TODAY, which makes its answer depend on the
+ * date the script RUNS. That is php's, not this engine's invention, and it is
+ * the reason no .phpt can pin it; it is swept against the oracle instead.
+ *
+ * The seed is read in TWO steps, and both are needed -- 170030 readings taken
+ * from around every transition since 2000 say so:
+ *
+ *   The DAYLIGHT FLAG first. `America/Dawson` keeps standard time all year now,
+ *   so mktime(1,30,0,11,7,2010) there is 1289122200 -- the standard-time
+ *   candidate -- where strtotime() of the same reading is 1289118600. London,
+ *   on daylight time today, takes the other one, and would swap in December.
+ *
+ *   The OFFSET when the flags TIE, which is the case for a switch that changes
+ *   the offset without changing the flag. Two zones in the whole database do
+ *   it: `America/Argentina/San_Luis` went -02:00 to -03:00 in January 2008 with
+ *   both sides marked daylight, and `Asia/Famagusta` went +03:00 to +02:00 in
+ *   October 2017 with neither. The daylight flag cannot tell those apart and
+ *   the seed offset can.
+ *
+ * A reading no switch touches has one candidate and ignores all of this; an
+ * hour a switch SKIPPED has none, and falls back to PH7_TzLocalToUtc(), which
+ * is why mktime() and the parser agree on every gap.
+ */
+PH7_PRIVATE int PH7_TzLocalToUtcSeed(int iZone,sxi64 iLocal,sxi32 iOffNow,int bDstNow,
+	sxi64 *piTs,sxi32 *piOff)
+{
+	/* The offsets in force around the reading. A switch is at most a few hours
+	 * wide, so an offset a day either side of the first guess is the whole set
+	 * a candidate can be drawn from. */
+	static const sxi64 aProbe[3] = { 0, -90000, 90000 };
+	sxi32 aOff[3];
+	int nOff = 0,i,j;
+	sxi64 iBest = 0;
+	sxi32 iBestOff = 0;
+	int iBestRank = -1;
+	sxi32 iSeed = 0;
+	int bDst,nAbbr;
+	const char *zAbbr;
+	if( !PH7_TzOffsetAt(iZone,iLocal,&iSeed,&bDst,&zAbbr,&nAbbr) ){
+		return 0;
+	}
+	for( i = 0 ; i < 3 ; ++i ){
+		sxi32 iOff = iSeed;
+		if( !PH7_TzOffsetAt(iZone,iLocal - iSeed + aProbe[i],&iOff,&bDst,&zAbbr,&nAbbr) ){
+			continue;
+		}
+		for( j = 0 ; j < nOff ; ++j ){
+			if( aOff[j] == iOff ){
+				break;
+			}
+		}
+		if( j == nOff ){
+			aOff[nOff++] = iOff;
+		}
+	}
+	/* A candidate is an offset the reading actually READS as: the instant it
+	 * produces must be on that same offset. Ambiguity is two of them; the seed
+	 * ranks them, 2 for a daylight-flag match and 1 for an offset match. */
+	for( i = 0 ; i < nOff ; ++i ){
+		sxi64 iTs = iLocal - aOff[i];
+		sxi32 iAt = aOff[i];
+		int iRank;
+		if( !PH7_TzOffsetAt(iZone,iTs,&iAt,&bDst,&zAbbr,&nAbbr) || iAt != aOff[i] ){
+			continue;
+		}
+		iRank = (bDst != 0) == (bDstNow != 0) ? 2 : (iAt == iOffNow ? 1 : 0);
+		if( iRank > iBestRank ){
+			iBest = iTs;
+			iBestOff = iAt;
+			iBestRank = iRank;
+		}
+	}
+	if( iBestRank >= 0 ){
+		*piTs = iBest;
+		*piOff = iBestOff;
+		return 1;
+	}
+	return PH7_TzLocalToUtc(iZone,iLocal,piTs,piOff);
+}
+
 #endif /* PH7_ENABLE_TZDB && !PH7_DISABLE_BUILTIN_FUNC */

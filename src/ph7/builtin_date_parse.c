@@ -4273,6 +4273,25 @@ static int DtZoneKindOf(ph7_class_instance *pObj,const char *zSlot,const char *z
 	}
 	return iKind;
 }
+/*
+ * The database index of the SCRIPT's default zone, or -1.
+ *
+ * date_default_timezone_set() takes an identifier and nothing else, so the
+ * default is always kind 3 and this is DtTzIndex() with that filled in. It is
+ * exported because the procedural doors -- date(), mktime(), strtotime() and
+ * the rest, which live in builtin_date.c -- have to ask the same question, and
+ * the answer must not be spelled twice.
+ */
+PH7_PRIVATE int DtDefaultTzIndex(ph7_vm *pVm)
+{
+	return DtTzIndex(pVm->zDefTz,(int)pVm->nDefTz,DT_ZONE_ID);
+}
+/* DtTzOffsetAt() under an exported name, for the same callers. */
+PH7_PRIVATE sxi32 DtTzOffsetOf(int iTz,sxi32 iFixed,sxi64 iTs,int *pbDst,
+	const char **pzAbbr,int *pnAbbr)
+{
+	return DtTzOffsetAt(iTz,iFixed,iTs,pbDst,pzAbbr,pnAbbr);
+}
 /* The same question asked of an instance's own name/kind slots. */
 static int DtTzIndexOf(ph7_class_instance *pObj,const char *zNameSlot,const char *zKindSlot)
 {
@@ -5800,8 +5819,9 @@ static int vm_builtin_strtotime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int nIn;
 	sxi64 iBase;
 	sxi64 iTs = 0;
-	sxi32 iOff = 0;
-	int bOffSet = 0,uSec = 0;
+	sxi32 iOff = 0,iZoneOff = 0;
+	int bOffSet = 0,uSec = 0,iTz,bDst,nAbbr;
+	const char *zAbbr;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -5816,10 +5836,29 @@ static int vm_builtin_strtotime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}else{
 		DtNowUs(pCtx->pVm,&iBase,0);
 	}
-	if( DtParse(zIn,nIn,iBase,0,0,&iTs,&iOff,&bOffSet,&uSec) != 0 ){
+	/* The default zone is the constructor's rule, and it is the same two-step: a
+	 * DATABASE zone has no offset until an instant picks one, so the scan runs
+	 * against the offset at the BASE moment -- which is what fills in every
+	 * field the string leaves out -- and the wall-clock reading it produces is
+	 * then re-solved against the zone. A string that named its own offset keeps
+	 * it and skips all of this. */
+	iTz = DtDefaultTzIndex(pCtx->pVm);
+	if( iTz >= 0 ){
+		iZoneOff = DtTzOffsetOf(iTz,0,iBase,&bDst,&zAbbr,&nAbbr);
+	}
+	if( DtParse(zIn,nIn,iBase,iZoneOff,0,&iTs,&iOff,&bOffSet,&uSec) != 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+#ifdef PH7_ENABLE_TZDB
+	if( iTz >= 0 && !bOffSet ){
+		sxi64 iFixed = iTs;
+		sxi32 iOffAt = iZoneOff;
+		if( PH7_TzLocalToUtc(iTz,iTs + iZoneOff,&iFixed,&iOffAt) ){
+			iTs = iFixed;
+		}
+	}
+#endif
 	ph7_result_int64(pCtx,iTs);
 	return PH7_OK;
 }

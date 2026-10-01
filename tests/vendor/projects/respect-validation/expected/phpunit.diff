@@ -1,6 +1,6 @@
 --- php
 +++ phl
-@@ -3,72 +3,102 @@
+@@ -3,72 +3,81 @@
  Runtime: @RUNTIME@
  Configuration: @ROOT@/phpunit.xml.dist
  
@@ -87,7 +87,7 @@
 +............................................................. 1037 / 3865 ( 26%)
 +............................................................. 1098 / 3865 ( 28%)
 +............................................................. 1159 / 3865 ( 29%)
-+..........................N.N.N.N............................ 1220 / 3865 ( 31%)
++............................................................. 1220 / 3865 ( 31%)
 +............................................................. 1281 / 3865 ( 33%)
 +............................................................. 1342 / 3865 ( 34%)
 +............................................................. 1403 / 3865 ( 36%)
@@ -145,27 +145,6 @@
 +
 +@ROOT@/tests/src/RuleTestCase.php:45
 +
-+--
-+
-+4 tests triggered 1 PHP notice:
-+
-+1) @ROOT@/tests/unit/Validators/DateTimeTest.php:37
-+date_default_timezone_set(): Timezone ID 'Europe/Amsterdam' is invalid
-+
-+Triggered by:
-+
-+* Respect\Validation\Validators\DateTimeTest::shouldValidateNoMatterTimezone#0
-+  @ROOT@/tests/unit/Validators/DateTimeTest.php:33
-+
-+* Respect\Validation\Validators\DateTimeTest::shouldValidateNoMatterTimezone#2
-+  @ROOT@/tests/unit/Validators/DateTimeTest.php:33
-+
-+* Respect\Validation\Validators\DateTimeTest::shouldValidateNoMatterTimezone#4
-+  @ROOT@/tests/unit/Validators/DateTimeTest.php:33
-+
-+* Respect\Validation\Validators\DateTimeTest::shouldValidateNoMatterTimezone#6
-+  @ROOT@/tests/unit/Validators/DateTimeTest.php:33
-+
 +ERRORS!
-+Tests: 3865, Assertions: 4053, Errors: 1, Notices: 1.
++Tests: 3865, Assertions: 4053, Errors: 1.
 +@exit@ 2

@@ -5590,12 +5590,25 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 				PH7_VmApplyMemoryLimit(&(*pVm),zValue,nValue);
 #endif
 			}else if( nName == sizeof("date.timezone")-1
-			 && SyMemcmp(zName,"date.timezone",nName) == 0
-			 && nValue == 3
-			 && (SyStrnicmp(zValue,"UTC",3) == 0 || SyStrnicmp(zValue,"GMT",3) == 0) ){
-				SyMemcpy(zValue,pVm->zDefTz,3);
-				pVm->zDefTz[3] = 0;
-				pVm->nDefTz = 3;
+			 && SyMemcmp(zName,"date.timezone",nName) == 0 ){
+				/* `-d date.timezone=...` takes what the directive takes: a
+				 * tz-database identifier, or UTC/GMT when there is no database.
+				 * Anything else leaves the default at UTC, silently, which is
+				 * php's answer for an ini value it cannot resolve at startup. */
+#ifdef PH7_ENABLE_TZDB
+				if( nValue > 0 && (sxu32)nValue < sizeof(pVm->zDefTz)
+				 && PH7_TzFind(zValue,nValue) >= 0 ){
+					SyMemcpy(zValue,pVm->zDefTz,(sxu32)nValue);
+					pVm->zDefTz[nValue] = 0;
+					pVm->nDefTz = (sxu32)nValue;
+				}else
+#endif
+				if( nValue == 3
+				 && (SyStrnicmp(zValue,"UTC",3) == 0 || SyStrnicmp(zValue,"GMT",3) == 0) ){
+					SyMemcpy(zValue,pVm->zDefTz,3);
+					pVm->zDefTz[3] = 0;
+					pVm->nDefTz = 3;
+				}
 			}else if( nName == sizeof("zend.assertions")-1
 			 && SyMemcmp(zName,"zend.assertions",nName) == 0 ){
 				/* zend.assertions is a compile-time switch: 1 makes assert()

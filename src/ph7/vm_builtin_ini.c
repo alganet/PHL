@@ -519,12 +519,18 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 		return;
 	}
 	if( IniNameIs(pSlot,"date.timezone") ){
-		/* Only UTC/GMT exist here (no tz database), matching the engine's own
-		 * date_default_timezone_set(). */
-		if( nVal == 3 && (SyStrnicmp(zVal,"UTC",3) == 0 || SyStrnicmp(zVal,"GMT",3) == 0) ){
-			SyMemcpy(zVal,pVm->zDefTz,3);
-			pVm->zDefTz[3] = 0;
-			pVm->nDefTz = 3;
+		/* Validated already (IniValueAccepted), so what arrives here is a name
+		 * that resolves. It moves the default UNLESS a script has already named
+		 * one outright: php latches on date_default_timezone_set(), after which
+		 * the directive still records what it is handed and the default no
+		 * longer follows it. The stored spelling is the caller's own bytes. */
+		if( pVm->bDefTzExplicit ){
+			return;
+		}
+		if( nVal > 0 && nVal < sizeof(pVm->zDefTz) ){
+			SyMemcpy(zVal,pVm->zDefTz,nVal);
+			pVm->zDefTz[nVal] = 0;
+			pVm->nDefTz = nVal;
 		}
 		return;
 	}
@@ -587,6 +593,29 @@ static int IniValueAccepted(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 
 		 * idempotent -- an ACCEPTED value is then written and re-applied through
 		 * IniLiveSet with the same bytes, and a refused one is never written. */
 		return PH7_VmApplyMemoryLimit(pVm,zVal,nVal);
+	}
+	if( IniNameIs(pSlot,"date.timezone") ){
+		/* The directive and date_default_timezone_set() are one rule, and this is
+		 * the place php enforces it on every write: a name neither table resolves
+		 * is REFUSED, with a warning that names the value it kept instead, and
+		 * the directive is left alone. Same shape as memory_limit above -- the
+		 * validator owns it so `ini_set()` and the `-d` startup path cannot
+		 * drift apart. */
+		int bOk = (nVal == 3
+		        && (SyStrnicmp(zVal,"UTC",3) == 0 || SyStrnicmp(zVal,"GMT",3) == 0));
+#ifdef PH7_ENABLE_TZDB
+		if( !bOk ){
+			bOk = nVal > 0 && nVal < sizeof(pVm->zDefTz) && PH7_TzFind(zVal,(int)nVal) >= 0;
+		}
+#endif
+		if( !bOk ){
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"%s: Invalid date.timezone value '%.*s', using '%.*s' instead",
+				zWho,(int)nVal,zVal,(int)pVm->nDefTz,pVm->zDefTz);
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+			return 0;
+		}
+		return 1;
 	}
 	if( IniNameIs(pSlot,"syslog.filter")
 	 && !(nVal == 3 && SyMemcmp(zVal,"all",3) == 0)
