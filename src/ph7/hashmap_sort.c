@@ -11,116 +11,162 @@
  * Status:
  *    Stable.
  */
-/* SPDX-SnippetBegin */
-/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
-/* SPDX-License-Identifier: blessing */
 /*
  * Merge sort.
- * The merge sort implementation is based on the one found in the SQLite3 source tree.
- * Status: Public domain
+ *
+ * php sorts a PRIVATE COPY of the array (zend_array_dup in php_usort and
+ * friends), so a comparator that reads the array being sorted always sees it
+ * exactly as it was at the call, and a write the comparator makes to it is
+ * discarded when the sorted copy is installed. PHL used to thread the merge
+ * through the nodes' own pPrev/pNext links, which are the map's ONLY list:
+ * while the sort ran, `pMap->pFirst` led into half-merged runs, so a comparator
+ * that so much as printed the array walked freed-looking garbage and the
+ * interpreter died -- `usort($a, function($x,$y) use (&$a){ ... $a ... })` is a
+ * segmentation fault, not a wrong answer.
+ *
+ * The order is decided over a VECTOR of node pointers instead, and the map's
+ * list is relinked once, after the last comparison. The array therefore stays
+ * fully walkable, in its pre-call order, for as long as user code can see it --
+ * which is php's answer -- and the nodes are never left in an inconsistent
+ * state for anything else to trip over.
+ *
+ * The merge is bottom-up and takes its LEFT operand on a tie, so it is stable:
+ * php's sorts have been stable since 8.0, and the vector is collected in
+ * iteration order, so equal elements keep their original order.
  */
-/* Node comparison callback signature */
-/*
-** Inputs:
-**   a:       A sorted, null-terminated linked list.  (May be null).
-**   b:       A sorted, null-terminated linked list.  (May be null).
-**   cmp:     A pointer to the comparison function.
-**
-** Return Value:
-**   A pointer to the head of a sorted list containing the elements
-**   of both a and b.
-**
-** Side effects:
-**   The "next","prev" pointers for elements in the lists a and b are
-**   changed.
-*/
-static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)
+static void HashmapVectorMerge(
+	ph7_hashmap_node **apSrc,   /* Runs [lo,mid) and [mid,hi), each already sorted */
+	ph7_hashmap_node **apDest,  /* Receives the merged run [lo,hi) */
+	sxu32 lo,sxu32 mid,sxu32 hi,
+	ProcNodeCmp xCmp,void *pCmpData
+	)
 {
-	ph7_hashmap_node result,*pTail;
-    /* Prevent compiler warning */
-	result.pNext = result.pPrev = 0;
-	pTail = &result;
-	while( pA && pB ){
-		if( xCmp(pA,pB,pCmpData) <= 0 ){
-			pTail->pPrev = pA;
-			pA->pNext = pTail;
-			pTail = pA;
-			pA = pA->pPrev;
+	sxu32 i = lo, j = mid, k = lo;
+	while( i < mid && j < hi ){
+		if( xCmp(apSrc[i],apSrc[j],pCmpData) <= 0 ){
+			apDest[k++] = apSrc[i++];
 		}else{
-			pTail->pPrev = pB;
-			pB->pNext = pTail;
-			pTail = pB;
-			pB = pB->pPrev;
+			apDest[k++] = apSrc[j++];
 		}
 	}
-	if( pA ){
-		pTail->pPrev = pA;
-		pA->pNext = pTail;
-	}else if( pB ){
-		pTail->pPrev = pB;
-		pB->pNext = pTail;
-	}else{
-		pTail->pPrev = pTail->pNext = 0;
+	while( i < mid ){
+		apDest[k++] = apSrc[i++];
 	}
-	return result.pPrev;
+	while( j < hi ){
+		apDest[k++] = apSrc[j++];
+	}
 }
 /*
 ** Inputs:
 **   Map:       Input hashmap
 **   cmp:       A comparison function.
 **
-** Return Value:
-**   Sorted hashmap.
-**
 ** Side effects:
-**   The "next" pointers for elements in list are changed.
+**   The node list of the given hashmap is relinked in sorted order, ONCE, after
+**   the last comparison. SXERR_MEM leaves the array untouched and unsorted (the
+**   comparison order cannot be decided without the vector).
 */
-#define N_SORT_BUCKET  32
 PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)
 {
-	ph7_hashmap_node *a[N_SORT_BUCKET], *p,*pIn;
-	sxu32 i;
-	SyZero(a,sizeof(a));
-	/* Point to the first inserted entry */
-	pIn = pMap->pFirst;
-	while( pIn ){
-		p = pIn;
-		pIn = p->pPrev;
-		p->pPrev = 0;
-		for(i=0; i<N_SORT_BUCKET-1; i++){
-			if( a[i]==0 ){
-				a[i] = p;
-				break;
-			}else{
-				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);
-				a[i] = 0;
+	ph7_hashmap_node **apVector,**apSrc,**apDest,**apSwap;
+	ph7_hashmap_node *pEntry;
+	sxu32 n,i,lo,mid,hi,width;
+	n = pMap->nEntry;
+	if( n < 2 ){
+		pMap->pCur = pMap->pFirst;
+		return SXRET_OK;
+	}
+	/* Two buffers: the merge alternates between them, so the winner of a pass
+	 * becomes the input of the next one without a copy back. */
+	apVector = (ph7_hashmap_node **)SyMemBackendAlloc(&pMap->pVm->sAllocator,
+		2 * n * sizeof(ph7_hashmap_node *));
+	if( apVector == 0 ){
+		return SXERR_MEM;
+	}
+	apSrc = apVector;
+	apDest = &apVector[n];
+	/* Collect the nodes in iteration order (pPrev is the FORWARD link here) */
+	i = 0;
+	for( pEntry = pMap->pFirst ; pEntry && i < n ; pEntry = pEntry->pPrev ){
+		apSrc[i++] = pEntry;
+	}
+	n = i; /* Defensive: honour the list, not the counter, if they disagree */
+	for( width = 1 ; width < n ; width <<= 1 ){
+		for( lo = 0 ; lo < n ; lo += width << 1 ){
+			mid = lo + width;
+			if( mid > n ){
+				mid = n;
 			}
+			hi = lo + (width << 1);
+			if( hi > n || hi < lo ){
+				hi = n;
+			}
+			HashmapVectorMerge(apSrc,apDest,lo,mid,hi,xCmp,pCmpData);
 		}
-		if( i==N_SORT_BUCKET-1 ){
-			/* To get here, there need to be 2^(N_SORT_BUCKET) elements in he input list.
-			 * But that is impossible.
-			 */
-			a[i] = HashmapNodeMerge(a[i], p,xCmp,pCmpData);
-		}
+		apSwap = apSrc;
+		apSrc = apDest;
+		apDest = apSwap;
 	}
-	p = a[0];
-	for(i=1; i<N_SORT_BUCKET; i++){
-		/* Higher-index buckets hold EARLIER-inserted (and larger) runs, so the
-		 * bucket must be the LEFT operand: HashmapNodeMerge favors its left arg on
-		 * a tie (cmp <= 0), and php's sorts are stable (PHP 8.0+) — equal elements
-		 * keep their original order. Passing p (the later elements) on the left
-		 * reversed equal runs (e.g. usort of five tie-keyed items moved the last to
-		 * the front). */
-		p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);
+	/* Relink the map's list from the decided order */
+	for( i = 0 ; i < n ; i++ ){
+		apSrc[i]->pPrev = ( i + 1 < n ) ? apSrc[i+1] : 0;
+		apSrc[i]->pNext = ( i > 0 ) ? apSrc[i-1] : 0;
 	}
-	p->pNext = 0;
-	/* Reflect the change */
-	pMap->pFirst = p;
-	/* Reset the loop cursor */
+	pMap->pFirst = apSrc[0];
+	pMap->pLast = apSrc[n-1];
+	/* php's sorts rewind the array's internal pointer */
 	pMap->pCur = pMap->pFirst;
+	SyMemBackendFree(&pMap->pVm->sAllocator,(void *)apVector);
 	return SXRET_OK;
 }
-/* SPDX-SnippetEnd */
+/*
+ * A sort LENDS the map to itself for the duration.
+ *
+ * php sorts a private copy, so a write the comparator makes to the array being
+ * sorted is discarded: `usort($a, function($x,$y) use (&$a){ $a[]=9; ... })`
+ * answers the sorted PRE-CALL array in php, with no 9 in it, and an
+ * `unset($a[0])` in there changes nothing either. PHL sorts the LIVE map --
+ * which is what keeps a comparator's reads php-exact (see HashmapMergeSort) --
+ * so it lends the map one extra reference first: a write through the variable
+ * then copy-on-write separates a map of its own and the sort's nodes are never
+ * relinked, or freed, underneath the vector it is deciding an order over.
+ *
+ * Taking the loan back installs the sorted map over whatever the comparator left
+ * behind, which is php's `ZVAL_ARR(array, arr)`. It also has to happen before the
+ * driver rehashes: nothing else may hold the map by then, so the plain unref
+ * would free it under the driver's feet.
+ */
+static void HashmapSortInstall(ph7_value *pVal,ph7_hashmap *pMap)
+{
+	if( (pVal->iFlags & MEMOBJ_HASHMAP) && (ph7_hashmap *)pVal->x.pOther == pMap ){
+		return; /* Untouched: the common case, and no work at all */
+	}
+	PH7_MemObjRelease(pVal);
+	MemObjSetType(pVal,MEMOBJ_HASHMAP);
+	pVal->x.pOther = pMap;
+	pMap->iRef++;
+}
+static void HashmapSortDrive(
+	ph7_vm *pVm,
+	ph7_value *pArray,        /* The by-reference array argument */
+	ph7_hashmap *pMap,        /* Its map, already COW-separated by the driver */
+	ProcNodeCmp xCmp,void *pCmpData
+	)
+{
+	ph7_value *pBacking = 0;
+	pMap->iRef++;
+	HashmapMergeSort(pMap,xCmp,pCmpData);
+	if( pArray->nIdx != SXU32_HIGH ){
+		/* The argument may be a stack copy of the caller's variable, and a
+		 * comparator's write lands on the variable: install into both. */
+		pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArray->nIdx);
+	}
+	if( pBacking && pBacking != pArray ){
+		HashmapSortInstall(pBacking,pMap);
+	}
+	HashmapSortInstall(pArray,pMap);
+	PH7_HashmapUnref(pMap);
+}
 /*
  * Coerce one operand of a STRING-flag comparison (SORT_STRING and friends), the
  * way php's zval_get_string() does. An ARRAY warns "Array to string conversion"
@@ -604,7 +650,7 @@ PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)
 	i = 0;
 	for( ;; ){
 		if( i >= pMap->nEntry ){
-			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */
+			pMap->pLast = pLast;
 			break;
 		}
 		if( p->iType == HASHMAP_BLOB_NODE ){
@@ -679,7 +725,7 @@ PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
 	}else if( pMap->nEntry == 1 ){
@@ -741,11 +787,7 @@ PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
-		/* Fix the last link broken by the merge */
-		while(pMap->pLast->pPrev){
-			pMap->pLast = pMap->pLast->pPrev;
-		}
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
 	}
 	{
 		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
@@ -803,7 +845,7 @@ PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg
 		 * word asort() forwards, so this is asort($a, SORT_NATURAL) exactly. */
 		sxi32 iCmpFlags = bFold ? (6|8) : 6;
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
 		while(pMap->pLast->pPrev){
 			pMap->pLast = pMap->pLast->pPrev;
 		}
@@ -862,11 +904,7 @@ PH7_PRIVATE int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
-		/* Fix the last link broken by the merge */
-		while(pMap->pLast->pPrev){
-			pMap->pLast = pMap->pLast->pPrev;
-		}
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
 	}
 	{
 		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
@@ -913,11 +951,7 @@ PH7_PRIVATE int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));
-		/* Fix the last link broken by the merge */
-		while(pMap->pLast->pPrev){
-			pMap->pLast = pMap->pLast->pPrev;
-		}
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));
 	}
 	{
 		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
@@ -964,11 +998,7 @@ PH7_PRIVATE int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));
-		/* Fix the last link broken by the merge */
-		while(pMap->pLast->pPrev){
-			pMap->pLast = pMap->pLast->pPrev;
-		}
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));
 	}
 	{
 		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
@@ -1015,7 +1045,7 @@ PH7_PRIVATE int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
 	}else if( pMap->nEntry == 1 ){
@@ -1080,7 +1110,7 @@ PH7_PRIVATE int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,xCmp,pCallback);
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCallback);
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
 		if( pCtx->pVm->iCmpCallbackExc ){
@@ -1147,11 +1177,7 @@ PH7_PRIVATE int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,xCmp,pCallback);
-		/* Fix the last link broken by the merge */
-		while(pMap->pLast->pPrev){
-			pMap->pLast = pMap->pLast->pPrev;
-		}
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCallback);
 		if( pCtx->pVm->iCmpCallbackExc ){
 			/* The comparison callback did not return: propagate its status so the
 			 * dispatcher unwinds. */
@@ -1213,11 +1239,7 @@ PH7_PRIVATE int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Do the merge sort */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapMergeSort(pMap,xCmp,pCallback);
-		/* Fix the last link broken by the merge */
-		while(pMap->pLast->pPrev){
-			pMap->pLast = pMap->pLast->pPrev;
-		}
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCallback);
 		if( pCtx->pVm->iCmpCallbackExc ){
 			/* The comparison callback did not return: propagate its status so the
 			 * dispatcher unwinds. */
