@@ -3549,6 +3549,25 @@ static void VmArgCallSite(ph7_vm *pVm,ph7_vm_func *pCallee,SyString **ppFile,sxu
 	}
 }
 /*
+ * TRUE when the callee's own activation was entered by an INTERNAL function reaching
+ * for a userland callback -- `array_map`, `usort`, `preg_replace_callback`, an
+ * autoloader, a shutdown function. php reads prev_execute_data and asks whether it is
+ * USER code, without walking past it, so such a callback's argument diagnostics carry
+ * no `, called in FILE on line N` tail at all. PHL walked to the nearest userland frame
+ * instead and so always found one -- the `array_map(...)` line, which php never prints.
+ *
+ * php's two callback FORWARDS are not exceptions to the rule: its compiler elides the
+ * frame for `call_user_func()`/`call_user_func_array()`, so the frame above the callee
+ * IS the userland caller and the tail belongs. The same latch that says so here says it
+ * for the binding mode and the too-few wording (VM_FRAME_NATIVE_CALLER).
+ */
+static int VmArgCallerIsNative(ph7_vm *pVm,ph7_vm_func *pCallee)
+{
+	VmFrame *pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+	return pCallee && pFrame && pFrame->pUserData == (void *)pCallee
+		&& (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) != 0;
+}
+/*
  * Throw a TypeError exception from within the VM execution loop.
  * Used for user-defined function type hint violations (e.g. object type hint).
  */
@@ -3621,9 +3640,11 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 	}
 ArgMsgBuilt:
 	/* php appends the CALL SITE to a userland callee's type error — internal
-	 * (hosted C) functions get the bare message. nCurLine is the line of the
-	 * call instruction being bound, which is exactly php's "called in". */
-	if( (pCallee->iFlags & VM_FUNC_INTERNAL) == 0 ){
+	 * (hosted C) functions get the bare message, and so does a callback an internal
+	 * function reached for, whose caller frame is that builtin's rather than user
+	 * code. nCurLine is the line of the call instruction being bound, which is
+	 * exactly php's "called in". */
+	if( (pCallee->iFlags & VM_FUNC_INTERNAL) == 0 && !VmArgCallerIsNative(pVm,pCallee) ){
 		SyString *pCallFile;
 		sxu32 nCallLine;
 		VmArgCallSite(pVm,pCallee,&pCallFile,&nCallLine);

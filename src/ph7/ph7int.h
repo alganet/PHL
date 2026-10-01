@@ -1284,6 +1284,23 @@ struct VmFrame
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
 #define VM_FRAME_CATCH      0x04 /* Catch frame */
+#define VM_FRAME_NATIVE_CALLER 0x08 /* This activation was entered by an INTERNAL function
+                                  * reaching for a userland callback (array_map, usort,
+                                  * array_walk, preg_replace_callback, a shutdown function,
+                                  * Reflection's invoke), so there is no userland call SITE
+                                  * above it. php asks the same question of
+                                  * prev_execute_data -- and it asks about the frame
+                                  * IMMEDIATELY above, never walking past an internal one --
+                                  * to decide whether an argument diagnostic ends with
+                                  * `, called in FILE on line N`.
+                                  *
+                                  * Set from the SAME latch (bCallbackWeak) that binds such
+                                  * a call's arguments weakly, and the two dispatches that
+                                  * do not set it are the two php also treats as userland:
+                                  * call_user_func()/call_user_func_array(), whose frame
+                                  * php's compiler elides, and the AUTOLOAD call, which php
+                                  * makes on behalf of the code that named the class and
+                                  * whose diagnostic names that code's file and line. */
 /*
  * One entry of a userland handler STACK (set_error_handler /
  * set_exception_handler). php's stack has no depth limit and every entry is a

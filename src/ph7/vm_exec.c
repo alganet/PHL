@@ -7322,6 +7322,15 @@ CalleeByName:
 		aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
 		/* Create a new VM frame  */
 		rc = VmEnterFrame(&(*pVm),pVmFunc,pThis,&pFrame);
+		if( rc == SXRET_OK && pFrame && bCallbackWeak ){
+			/* An INTERNAL function reached for this callback, so the frame above it
+			 * is that builtin's and not user code: php names no call site in an
+			 * argument diagnostic raised here. The same latch already decides the
+			 * binding mode and the too-few wording; this records it on the frame,
+			 * because the type error is raised further down the argument-binding
+			 * path than the latch survives. */
+			pFrame->iFlags |= VM_FRAME_NATIVE_CALLER;
+		}
 		if( rc == SXRET_OK ){
 			/* This activation now needs the function it is about to run. For a
 			 * run-time closure that is a hold on its per-instantiation copy, so the
