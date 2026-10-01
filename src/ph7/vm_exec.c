@@ -6104,6 +6104,12 @@ case PH7_OP_CALL_INIT: {
 	if( pInstr->nAux == pVm->nCallableGen ){
 		break;
 	}
+	if( pInstr->iP2 & PH7_CALLINIT_CONSTRUCT ){
+		/* A language construct's call: its callee is a host function hidden from every
+		 * name a script can spell, so the callability screen below would refuse the
+		 * engine's own dispatch. OP_CALL resolves it through the same mark. */
+		break;
+	}
 	bCallInitStamp = 0;
 	if( (pTos->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_MAGICCALL)) == 0
 	 && !VmValueIsClosure(pVm,pTos) ){
@@ -6146,7 +6152,7 @@ case PH7_OP_CALL_INIT: {
 			 * exactly this path, and it is the expensive one: two callability screens
 			 * and a temporary value for the shortened name. */
 			int bInitOk = 0;
-			if( pInstr->iP2 == 1 && (pTos->iFlags & MEMOBJ_STRING) ){
+			if( (pInstr->iP2 & PH7_CALLINIT_NAMESPACED) && (pTos->iFlags & MEMOBJ_STRING) ){
 				/* php's global fallback for an UNQUALIFIED name written inside a
 				 * namespace: the current namespace first, the global one after. OP_CALL
 				 * retries the same way from its argument map; this only has to agree
@@ -6271,12 +6277,13 @@ case PH7_OP_ROT_CALLEE: {
 	break;
 }
 case PH7_OP_CALL: {
-	/* iP2 = hasSpread (compile-time). Count only THIS call's own unpack
-	 * expansion (VmSpreadOwnExtra, derived from the captured runs on top of the
-	 * stack) — an INNER spread-bearing call evaluated inside this argument list
-	 * (`f(...$a, k: g(...$b))`) owns its own runs below the boundary and must not
+	/* iP2 is a compile-time bit SET (PH7_CALL_*). PH7_CALL_SPREAD: count only THIS
+	 * call's own unpack expansion (VmSpreadOwnExtra, derived from the captured runs on
+	 * top of the stack) — an INNER spread-bearing call evaluated inside this argument
+	 * list (`f(...$a, k: g(...$b))`) owns its own runs below the boundary and must not
 	 * be conflated, which a single shared accumulator could not express. */
-	sxi32 nCallArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);
+	sxi32 nCallArgs = pInstr->iP1
+		+ ((pInstr->iP2 & PH7_CALL_SPREAD) ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);
 	ph7_value *pArg;
 	/* Consume the engine's magic-dispatch latch here, at the head of the ONE call
 	 * it was set for, whatever path that call then takes. Left standing it would
@@ -6478,7 +6485,7 @@ case PH7_OP_CALL: {
 				}
 				if( !bCbScreened && (pCbMap == 0 || pCbMap->nEntry != 2 || zCbErr) ){
 					sxi32 rcCb;
-					if( pInstr->iP2 ){
+					if( pInstr->iP2 & PH7_CALL_SPREAD ){
 						VmSpreadConsume(pVm);
 					}
 					if( nCallArgs > 0 ){
@@ -6709,7 +6716,7 @@ case PH7_OP_CALL: {
 			}
 			/* Consume this call's captured spread runs — a non-callable target
 			 * (int/float/bool/null) reaches no dispatch build site. */
-			if( pInstr->iP2 ){
+			if( pInstr->iP2 & PH7_CALL_SPREAD ){
 				VmSpreadConsume(pVm);
 			}
 			/* Pop given arguments */
@@ -6865,7 +6872,8 @@ CalleeByName:
 				 * expansion against this corrected top: VmSpreadOwnExtra reconstructs
 				 * from run ends, which the extra target slot would otherwise offset,
 				 * undercounting a spread method's arguments (`$o->m(...$a, x: 1)`). */
-				nCallArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(&(*pVm),pInstr->iP1,pTos) : 0);
+				nCallArgs = pInstr->iP1 + ((pInstr->iP2 & PH7_CALL_SPREAD)
+					? VmSpreadOwnExtra(&(*pVm),pInstr->iP1,pTos) : 0);
 				pArg = &pTos[-nCallArgs];
 				/* TICKET 1433-50: This is a very very unlikely scenario that occurs when the 'genius'
 				 * user have already computed the random generated unique class method name
@@ -6933,7 +6941,7 @@ CalleeByName:
 								pMeth->iProtection,zMsg,sizeof(zMsg));
 							/* Consume this call's captured spread runs — this visibility
 							 * error exits before the pVmFunc build below. */
-							if( pInstr->iP2 ){
+							if( pInstr->iP2 & PH7_CALL_SPREAD ){
 								VmSpreadConsume(pVm);
 							}
 							/* Pop given arguments, and leave the call's NULL result behind. */
@@ -8359,7 +8367,13 @@ SkipFuncBody:
 			 * VmCallSite consult above the user-table lookup). */
 			pEntry = pSiteEntry;
 		}else{
-		pEntry = SyHashGet(&pVm->hHostFunction,(const void *)sName.zString,sName.nByte);
+		/* bConstruct: `isset`/`empty`/`unset`/`eval`/`print`/`include*`/`require*` are
+		 * registered host functions here and are no function at all in php, so the
+		 * registration answers only the call site the CONSTRUCT's codegen emitted
+		 * (PH7_CALL_CONSTRUCT). A program's own `$f = 'include'; $f($p);` misses and
+		 * gets php's `Call to undefined function include()`. */
+		int bConstructSite = (pInstr->iP2 & PH7_CALL_CONSTRUCT) != 0;
+		pEntry = PH7_VmGetHostFunction(pVm,(const void *)sName.zString,sName.nByte,bConstructSite);
 		{
 		VmCallArgMap *pCallMap2 = pEffCallMap;
 		if( pEntry == 0 && pCallMap2 && pCallMap2->bIsNamespaced ){
@@ -8373,7 +8387,7 @@ SkipFuncBody:
 			}
 			if( zShort != sName.zString ){
 				sxu32 nShort = (sxu32)(sName.nByte - (sxu32)(zShort - sName.zString));
-				pEntry = SyHashGet(&pVm->hHostFunction,(const void *)zShort,nShort);
+				pEntry = PH7_VmGetHostFunction(pVm,(const void *)zShort,nShort,bConstructSite);
 			}
 		}
 		} /* end VmCallArgMap namespace scope */
@@ -8408,7 +8422,7 @@ SkipFuncBody:
 				if( zSmErr ){
 					sxi32 rcSmErr;
 					int bSmRaised = PH7_VmClassLookupRaised(&(*pVm),nSmBrc,pSmRes);
-					if( pInstr->iP2 ){
+					if( pInstr->iP2 & PH7_CALL_SPREAD ){
 						VmSpreadConsume(pVm);
 					}
 					if( nCallArgs > 0 ){
@@ -8490,7 +8504,7 @@ SkipFuncBody:
 			SyBlobFormat(&sMsg,"Call to undefined function %z()",&sName);
 			/* Consume this call's captured spread runs so they don't leak into a
 			 * later call (this path never reaches VmBuildEffectiveArgMap). */
-			if( pInstr->iP2 ){
+			if( pInstr->iP2 & PH7_CALL_SPREAD ){
 				VmSpreadConsume(pVm);
 			}
 			/* Pop given arguments. nCallArgs (not iP1) — an unpack expanded the
@@ -8645,7 +8659,7 @@ NativeCall:
 			 * this builtin gets a frame of its own. Only the FRAME shape is affected --
 			 * the argument BINDING mode still travels the forward's own map, which is
 			 * php's rule and a separate latch (bCallbackWeak). */
-			if( bNsCallee || !bLiteralCallee || pInstr->iP2 /* hasSpread */ ){
+			if( bNsCallee || !bLiteralCallee || (pInstr->iP2 & PH7_CALL_SPREAD) ){
 				/* ...and two more shapes php cannot fold, for the same compile-time
 				 * reason. A name that is not a literal at all
 				 * (`$n = 'call_user_func'; $n($c)`), and an argument list carrying a

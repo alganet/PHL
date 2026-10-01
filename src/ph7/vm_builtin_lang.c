@@ -1352,40 +1352,6 @@ static sxi32 VmOutputArgToString(ph7_context *pCtx,ph7_value *pArg,const char **
 	return SXRET_OK;
 }
 /*
- * void echo($string...)
- *  Output one or more messages.
- * Parameters
- *  $string
- *   Message to output.
- * Return
- *  NULL.
- */
-PH7_PRIVATE int vm_builtin_echo(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	const char *zData;
-	int nDataLen = 0;
-	ph7_vm *pVm;
-	int i,rc;
-	/* Point to the target VM */
-	pVm = pCtx->pVm;
-	/* Output */
-	for( i = 0 ; i < nArg ; ++i ){
-		sxi32 rcSv = VmOutputArgToString(pCtx,apArg[i],&zData,&nDataLen);
-		if( rcSv != SXRET_OK ){
-			return rcSv;
-		}
-		if( nDataLen > 0 ){
-			rc = pVm->sVmConsumer.xConsumer((const void *)zData,(unsigned int)nDataLen,pVm->sVmConsumer.pUserData);
-			VmTrackOutput(pVm, (sxu32)nDataLen);
-			if( rc == SXERR_ABORT ){
-				/* Output consumer callback request an operation abort */
-				return PH7_ABORT;
-			}
-		}
-	}
-	return SXRET_OK;
-}
-/*
  * int print($string...)
  *  Output one or more messages.
  * Parameters

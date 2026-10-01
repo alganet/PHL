@@ -2669,7 +2669,7 @@ static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
 		pEntry = PH7_VmGetUserFunction(pVm, sName.zString, sName.nByte,
 			(pCallable->iFlags & MEMOBJ_AUX_ENGINEFN) != 0);
 		if( pEntry == 0 ){
-			*pzWhy = SyHashGet(&pVm->hHostFunction, sName.zString, sName.nByte)
+			*pzWhy = PH7_VmGetHostFunction(pVm, sName.zString, sName.nByte, FALSE)
 				? "callable is an internal function, which cannot be a fiber body here"
 				: "callable names no such function";
 			return 0;

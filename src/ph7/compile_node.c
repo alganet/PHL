@@ -1100,7 +1100,12 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 		}
 		/* Emit the call instruction */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,nArg,0,GenStateAttachStrictFlag(pGen,0),0);
+		/* PH7_CALL_CONSTRUCT: `print`, `include`, `include_once`, `require` and
+		 * `require_once` are dispatched as a host function of the same name, and php has
+		 * no such function -- the mark is what lets the hidden registration answer this
+		 * site and nothing a script spells (PH7_VmGetHostFunction). */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,nArg,PH7_CALL_CONSTRUCT,
+			GenStateAttachStrictFlag(pGen,0),0);
 	}
 	/* Node successfully compiled */
 	return SXRET_OK;

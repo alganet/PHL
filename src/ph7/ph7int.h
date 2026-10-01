@@ -601,6 +601,13 @@ struct ph7_user_func
 	                           * that table (and a second one) on every single builtin call.
 	                           * Both answers depend on the NAME alone, so they are worked out
 	                           * the first time this function is called and kept here. */
+	sxu8 bConstruct;          /* This name is a language CONSTRUCT, not a function: php has no
+	                           * `empty`, `isset`, `unset`, `eval`, `print`, `include`,
+	                           * `include_once`, `require` or `require_once` in its function
+	                           * table, and every door that answers about a name says so.
+	                           * The record stays -- the compiler dispatches the construct
+	                           * through it -- but PH7_VmGetHostFunction hides it from every
+	                           * SCRIPT-spelled lookup. See PH7_CALL_CONSTRUCT. */
 	sxu8 bSelfChecked;        /* This builtin words its own argument refusals and must not be
 	                           * pre-empted by the shared screen (php overloads it on arity, or
 	                           * its declared type and its refusal text disagree). */
@@ -4862,6 +4869,29 @@ enum ph7_vm_op {
                              * class from the receiver, the name from the top). A __call routing
                              * collapses that pair to ONE marked carrier slot at run time, which
                              * the handler detects rather than guessing. */
+/* CALL.iP2 — a bit SET, not the plain hasSpread boolean it started as. */
+#define PH7_CALL_SPREAD    0x1 /* This call unpacks (the ROT_SPREAD of the call itself). */
+#define PH7_CALL_CONSTRUCT 0x2 /* This call was emitted by a language CONSTRUCT's codegen --
+                                * `isset`, `empty`, `unset`, `eval`, `print`, `include`,
+                                * `include_once`, `require`, `require_once`. Each is dispatched
+                                * here as a host function of the same name, and php has no such
+                                * function: `function_exists('empty')` is false there and every
+                                * other name door agrees. The implementations stay registered and
+                                * stay hidden (ph7_user_func::bConstruct), and this bit is what
+                                * says the ENGINE spelled the name -- the exact counterpart of
+                                * MEMOBJ_AUX_ENGINEFN for the compiled-function table. A script
+                                * cannot produce a call site carrying it: every one of those
+                                * names is a lexer KEYWORD, so the only OP_CALL that can ever
+                                * name one comes from the construct codegen. */
+/* CALL_INIT.iP2 — the same two compile-time questions, asked one instruction earlier.
+ * (Its own bit names: the value is not a CALL's iP2 and the two never mix.) */
+#define PH7_CALLINIT_NAMESPACED 0x1 /* The callee name was written unqualified inside a namespace,
+                                     * so php's global fallback may still resolve it. */
+#define PH7_CALLINIT_CONSTRUCT  0x2 /* PH7_CALL_CONSTRUCT's twin: the call this screens is a
+                                     * language construct's, whose callee is a host function no
+                                     * script can name. The screen asks PH7_VmIsCallable, which
+                                     * (rightly) answers NO for those nine names, so it has to
+                                     * stand down here exactly as the OP_CALL lookup does. */
 /* MEMBER.iP2 — member-access context. 0=read is the default; the unset/isset/empty modes mirror the
  * array LOAD_IDX context modes so unset()/isset()/empty() on a property behave like on an array elem. */
 /* Two of PH7_OP_LOAD_IDX's own iP2 context codes (they do NOT line up with the
@@ -5429,6 +5459,8 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(ph7_vm *pVm,ph7_vm_func *pFunc,const char 
 	sxi32 iFlags,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(ph7_vm *pVm,ph7_vm_func *pFunc,SyString *pName);
 PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(ph7_vm *pVm,const void *pName,sxu32 nByte,int bEngineName);
+PH7_PRIVATE SyHashEntry * PH7_VmGetHostFunction(ph7_vm *pVm,const void *pName,sxu32 nByte,int bEngineName);
+PH7_PRIVATE void PH7_VmMarkLanguageConstructs(ph7_vm *pVm);
 PH7_PRIVATE SyHashEntry * PH7_VmCallSiteAnswer(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int *pbHost);
 PH7_PRIVATE void PH7_VmCallSiteRecord(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int bHost,SyHashEntry *pEntry);
 PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode);
@@ -6760,7 +6792,6 @@ PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_define(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_defined(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_echo(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_enum_cases(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_enum_exists(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_enum_from(ph7_context *pCtx,int nArg,ph7_value **apArg);

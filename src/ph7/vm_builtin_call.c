@@ -334,7 +334,7 @@ PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 	res = 0;
 	/* Perform the lookup */
 	if( PH7_VmGetUserFunction(pVm,(const void *)zName,(sxu32)nLen,FALSE) != 0 ||
-		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){
+		PH7_VmGetHostFunction(pVm,(const void *)zName,(sxu32)nLen,FALSE) != 0 ){
 			/* Function is defined */
 			res = 1;
 	}
@@ -725,7 +725,7 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		PH7_VmClassNameAnchor(&zFn,&nFn);
 		/* Perform the lookup */
 		if( PH7_VmGetUserFunction(&(*pVm),(const void *)zFn,nFn,FALSE) != 0 ||
-			SyHashGet(&pVm->hHostFunction,(const void *)zFn,nFn) != 0 ){
+			PH7_VmGetHostFunction(&(*pVm),(const void *)zFn,nFn,FALSE) != 0 ){
 				/* Function is callable */
 				res = 1;
 		}else if( nLen > 3 ){
@@ -1024,6 +1024,19 @@ static int VmHashUserFuncStep(SyHashEntry *pEntry,void *pUserData)
 	return VmHashFuncStep(pEntry,pUserData);
 }
 /*
+ * The HOST table's step. Its entries are ph7_user_func records, and the nine that are
+ * language CONSTRUCTS are not names php has at all (see PH7_VmGetHostFunction) -- this
+ * list was one of the doors that said they were.
+ */
+static int VmHashHostFuncStep(SyHashEntry *pEntry,void *pUserData)
+{
+	ph7_user_func *pHost = (ph7_user_func *)pEntry->pUserData;
+	if( pHost == 0 || pHost->bConstruct ){
+		return SXRET_OK;
+	}
+	return VmHashFuncStep(pEntry,pUserData);
+}
+/*
  * array get_defined_functions(void)
  *  Returns an array of all defined functions.
  * Parameter
@@ -1066,7 +1079,7 @@ PH7_PRIVATE int vm_builtin_get_defined_func(ph7_context *pCtx,int nArg,ph7_value
 	 * that is when they are compiled. */
 	sList.pArray = pEntry;
 	sList.bInternal = 1;
-	SyHashForEachReverse(&pCtx->pVm->hHostFunction,VmHashFuncStep,(void *)&sList);
+	SyHashForEachReverse(&pCtx->pVm->hHostFunction,VmHashHostFuncStep,(void *)&sList);
 	SyHashForEachReverse(&pCtx->pVm->hFunction,VmHashUserFuncStep,(void *)&sList);
 	/* Create the 'internal' index */
 	ph7_array_add_strkey_elem(pArray,"internal",pEntry); /* Will make it's own copy */

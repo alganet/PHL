@@ -1407,6 +1407,30 @@ static int GenStateCalleeIsIsset(ph7_expr_node *pCallee)
 	return pName->nByte == sizeof("isset")-1
 		&& SyStrnicmp(pName->zString,"isset",sizeof("isset")-1) == 0;
 }
+/*
+ * Is this callee the keyword of a language CONSTRUCT that compiles to a call --
+ * `isset`, `empty` or `eval`? (`unset`, `print` and the four file-inclusion words have
+ * their own codegen and mark their OP_CALL directly.)
+ *
+ * The answer rides the emitted call as PH7_CALL_CONSTRUCT, which is what lets the
+ * construct's hidden host function answer it and nothing else: see
+ * PH7_VmGetHostFunction. Read off the token's KEYWORD ID, never its text -- only a
+ * keyword token can produce one of these calls, and that is what makes the mark
+ * unforgeable by a program.
+ */
+static int GenStateCalleeIsConstruct(ph7_expr_node *pCallee)
+{
+	sxu32 nKw;
+	if( pCallee == 0 || pCallee->pOp != 0 || pCallee->pStart == 0 ){
+		return 0;
+	}
+	if( (pCallee->pStart->nType & PH7_TK_KEYWORD) == 0
+	 || (pCallee->pStart->nType & PH7_TK_MEMBER_NAME) ){
+		return 0;
+	}
+	nKw = (sxu32)SX_PTR_TO_INT(pCallee->pStart->pUserData);
+	return nKw == PH7_TKWRD_ISSET || nKw == PH7_TKWRD_EMPTY || nKw == PH7_TKWRD_EVAL;
+}
 static sxi32 GenStateEmitExprCode(
 	ph7_gen_state *pGen,  /* Code generator state */
 	ph7_expr_node *pNode, /* Root of the expression tree */
@@ -2075,7 +2099,10 @@ static sxi32 GenStateEmitExprCode(
 						sxu32 nCalleeLine = pNode->pStart
 							? pNode->pStart->nLine : (pInstr ? pInstr->nLine : 0);
 						PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL_INIT,0,
-							(p3 && ((VmCallArgMap *)p3)->bIsNamespaced) ? 1 : 0,0,0);
+							((p3 && ((VmCallArgMap *)p3)->bIsNamespaced)
+								? PH7_CALLINIT_NAMESPACED : 0)
+							| (GenStateCalleeIsConstruct(pNode->pLeft)
+								? PH7_CALLINIT_CONSTRUCT : 0),0,0);
 						if( nCalleeLine ){
 							VmInstr *pInitInstr = PH7_VmGetInstr(pGen->pVm,nInitIdx);
 							if( pInitInstr ){
@@ -2092,9 +2119,10 @@ static sxi32 GenStateEmitExprCode(
 				iP2 = sArgs.iP2;
 				p3  = sArgs.p3;
 				bFcc = sArgs.bFcc;
-				if( iP1 > 0 || iP2 ){
+				if( iP1 > 0 || (iP2 & PH7_CALL_SPREAD) ){
 					PH7_VmEmitInstr(pGen->pVm,PH7_OP_ROT_CALLEE,iP1,
-						(iP2 ? PH7_ROT_SPREAD : 0) | (bTwoSlot ? PH7_ROT_TWOSLOT : 0),0,0);
+						((iP2 & PH7_CALL_SPREAD) ? PH7_ROT_SPREAD : 0)
+						| (bTwoSlot ? PH7_ROT_TWOSLOT : 0),0,0);
 				}
 				if( bNewCallee && nNewClassInstr > 0 ){
 					if( p3 == 0 ){
@@ -2504,7 +2532,7 @@ static sxi32 GenStateEmitExprCode(
 					 * the hasSpread flag (OP_NEW consumes the spread
 					 * accumulator exactly like OP_CALL would have). */
 					iP1 = pInstr->iP1;
-					iP2 = pInstr->iP2;
+					iP2 = pInstr->iP2 & PH7_CALL_SPREAD;
 					if( pInstr->p3 ){
 						p3 = pInstr->p3; /* Transfer VmCallArgMap to NEW */
 					}
@@ -2690,6 +2718,7 @@ static sxi32 GenStateEmitCallArgs(
 	sxi32 nArgs;
 	sxi32 n;
 	int bAnySpread = 0;
+	int bConstruct = 0; /* the callee is a language construct's keyword -- PH7_CALL_CONSTRUCT */
 	/* Recurse and generate bytecodes for function arguments */
 	apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 	nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);
@@ -2750,6 +2779,10 @@ static sxi32 GenStateEmitCallArgs(
 			&& SyStrnicmp(pCallName->zString,"isset",5) == 0;
 		int bEmpty = pCallName->nByte == 5
 			&& SyStrnicmp(pCallName->zString,"empty",5) == 0;
+		/* `isset`, `empty` and `eval` reach the VM as a call to a host function of
+		 * their own name, and php has no such function -- so the SITE has to say that
+		 * the engine, not the program, spelled it (PH7_CALL_CONSTRUCT). */
+		bConstruct = GenStateCalleeIsConstruct(pNode->pLeft);
 		/* isset()/empty() are language CONSTRUCTS, not functions: php parses
 		 * their argument list in the grammar and a missing operand is a parse
 		 * error on the ')'. They compile through this ordinary call loop, which
@@ -2866,7 +2899,7 @@ static sxi32 GenStateEmitCallArgs(
 	}
 	/* Total number of given arguments */
 	iP1 = nArgs;
-	iP2 = hasSpread;
+	iP2 = (hasSpread ? PH7_CALL_SPREAD : 0) | (bConstruct ? PH7_CALL_CONSTRUCT : 0);
 	/* Build VmCallArgMap if named arguments are present.
 	 * Deep-copy name strings so they survive token stream cleanup. */
 	if( hasNamed ){
@@ -3311,9 +3344,12 @@ static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
 				return SXERR_ABORT;
 			}
 			if( rc != SXERR_EMPTY ){
-				/* Emit call for this single argument */
+				/* Emit call for this single argument. PH7_CALL_CONSTRUCT: `unset` is a
+				 * language construct, so the host function this dispatches to is hidden
+				 * from every name a script can spell (PH7_VmGetHostFunction). */
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,GenStateAttachStrictFlag(pGen,0),0);
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,PH7_CALL_CONSTRUCT,
+					GenStateAttachStrictFlag(pGen,0),0);
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 			}
 		}

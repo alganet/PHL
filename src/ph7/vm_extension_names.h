@@ -94,10 +94,7 @@ static const VmExtName aExtFunc[] = {
 	{"get_extension_funcs",PH7_EXT_CORE},
 	{"gc_mem_caches",PH7_EXT_CORE}, {"gc_collect_cycles",PH7_EXT_CORE},
 	{"gc_enabled",PH7_EXT_CORE}, {"gc_enable",PH7_EXT_CORE}, {"gc_disable",PH7_EXT_CORE},
-	{"gc_status",PH7_EXT_CORE}, {"echo",PH7_EXT_CORE}, {"print",PH7_EXT_CORE},
-	{"eval",PH7_EXT_CORE}, {"isset",PH7_EXT_CORE}, {"unset",PH7_EXT_CORE}, {"empty",PH7_EXT_CORE},
-	{"include",PH7_EXT_CORE}, {"include_once",PH7_EXT_CORE}, {"require",PH7_EXT_CORE},
-	{"require_once",PH7_EXT_CORE}, {"func_get_args_byref",PH7_EXT_CORE},
+	{"gc_status",PH7_EXT_CORE}, {"func_get_args_byref",PH7_EXT_CORE},
 	{"get_defined_classes",PH7_EXT_CORE}, {"debug_string_backtrace",PH7_EXT_CORE},
 	/* date */
 	{"strtotime",PH7_EXT_DATE}, {"date",PH7_EXT_DATE}, {"idate",PH7_EXT_DATE},

@@ -426,6 +426,43 @@ PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(
 	return pEntry;
 }
 /*
+ * Look a name up in the HOST function table as a script spells it -- the twin of
+ * PH7_VmGetUserFunction above, and for the same reason.
+ *
+ * Nine of the engine's host functions are php LANGUAGE CONSTRUCTS: `empty`, `isset`,
+ * `unset`, `eval`, `print`, `include`, `include_once`, `require` and `require_once`.
+ * php has none of them in its function table -- they are grammar, and the compiler emits
+ * an opcode -- so `function_exists('empty')` is false there, `is_callable('isset')` is
+ * false, `get_defined_functions()` lists neither, and `$f = 'include'; $f($p);` is
+ * `Call to undefined function include()`. Here the construct's codegen dispatches each
+ * one as an ordinary call to a host function of the same name, so a plain SyHashGet
+ * answered every one of those doors YES: phpstan's bundled better-reflection enumerates
+ * the internal function list, wrote `function empty() {}` into a stub, and its own parser
+ * refused the file.
+ *
+ * bEngineName is the construct codegen's own dispatch, marked at the call SITE with
+ * PH7_CALL_CONSTRUCT. Nothing a program wrote ever passes 1: all nine names are lexer
+ * keywords, so the construct compiler is the only thing that can emit an OP_CALL naming
+ * one. (`exit`, `die` and `clone` are NOT here -- php 8.5 really does have those three as
+ * functions.)
+ */
+PH7_PRIVATE SyHashEntry * PH7_VmGetHostFunction(
+	ph7_vm *pVm,        /* Target VM */
+	const void *pName,  /* Function name */
+	sxu32 nByte,        /* Name length */
+	int bEngineName     /* TRUE when the engine, not the script, spelled it */
+	)
+{
+	SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,pName,nByte);
+	if( pEntry && !bEngineName ){
+		ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;
+		if( pFunc == 0 || pFunc->bConstruct ){
+			return 0;
+		}
+	}
+	return pEntry;
+}
+/*
  * The one copy of a callee name that every call site spelling it shares, made on first
  * demand. 0 when it cannot be made, which just costs the caller its cache.
  */
@@ -3817,6 +3854,9 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	VmSetBuiltinArity(&(*pVm));
 	/* Attach PHP-style parameter signatures for reflection over builtins */
 	VmSetBuiltinSignatures(&(*pVm));
+	/* ...and hide the nine registrations that are language CONSTRUCTS rather than
+	 * functions, now every table that could hold one has been filled. */
+	PH7_VmMarkLanguageConstructs(&(*pVm));
 	/* Initialize and install static and constants class attributes.
 	 * NOTE: the per-exec object graph created from nSuperBaseline onward (the
 	 * global frame via VmEnterFrame above, the superglobals via CreateSuper, and
@@ -7701,8 +7741,12 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "uniqid",        vm_builtin_uniqid          },
 #endif /* PH7_DISABLE_HASH_FUNC */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
-	   /* Language constructs functions */
-	{ "echo",  vm_builtin_echo                    },
+	   /* Language constructs functions.
+	    *
+	    * `echo` is not among them: it is the one construct whose codegen emits an
+	    * OPCODE and no call at all (PH7_OP_CONSUME, PH7_CompileEcho), so the name was
+	    * a registration nothing could ever dispatch -- and one more row php has no
+	    * function for. The rest stay, hidden (PH7_VmGetHostFunction). */
 	{ "print", vm_builtin_print                   },
 	{ "exit",  vm_builtin_exit                    },
 	{ "die",   vm_builtin_exit                    },
@@ -7813,6 +7857,35 @@ static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm)
 		}
 	}
 	return SXRET_OK;
+}
+/*
+ * The nine host functions that are php LANGUAGE CONSTRUCTS. Their implementations stay
+ * registered -- each construct's codegen dispatches an OP_CALL to the name -- and the
+ * mark hides the name from every door a SCRIPT can ask through (PH7_VmGetHostFunction).
+ *
+ * `echo` is NOT here: it is the one construct with no call at all (PH7_CompileEcho emits
+ * OP_CONSUME), so its host function was simply dropped rather than hidden. `exit`, `die`
+ * and `clone` are not here either -- php 8.5 has all three as real internal functions.
+ */
+static const char * const azLangConstruct[] = {
+	"print", "isset", "unset", "empty", "eval",
+	"include", "include_once", "require", "require_once"
+};
+/*
+ * Stamp the mark. Runs once at VM init, after every registration pass: the nine live in
+ * two different tables (`empty` in builtin.c's, the rest in this file's), and one list
+ * walked at the end covers both without either table having to know.
+ */
+PH7_PRIVATE void PH7_VmMarkLanguageConstructs(ph7_vm *pVm)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azLangConstruct) ; ++n ){
+		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,
+			(const void *)azLangConstruct[n],SyStrlen(azLangConstruct[n]));
+		if( pEntry && pEntry->pUserData ){
+			((ph7_user_func *)pEntry->pUserData)->bConstruct = 1;
+		}
+	}
 }
 /*
  * Helper: Apply loadable filter to a class pointer.

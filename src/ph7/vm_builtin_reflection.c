@@ -814,7 +814,7 @@ static ph7_vm_func * ReflectResolveCallable(ph7_vm *pVm, ph7_value *pTarget,
 			pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
 			if( pEntry == 0 ){
 				/* A Closure over a host function (Closure::fromCallable('strlen')) */
-				pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+				pEntry = PH7_VmGetHostFunction(pVm, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob), FALSE);
 				if( pEntry && ppHost ){
 					*ppHost = (ph7_user_func *)pEntry->pUserData;
 					if( ppClosure ){ *ppClosure = pClo; }
@@ -833,7 +833,7 @@ static ph7_vm_func * ReflectResolveCallable(ph7_vm *pVm, ph7_value *pTarget,
 		if( pEntry ){
 			return (ph7_vm_func *)pEntry->pUserData;
 		}
-		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));
+		pEntry = PH7_VmGetHostFunction(pVm, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob), FALSE);
 		if( pEntry && ppHost ){
 			*ppHost = (ph7_user_func *)pEntry->pUserData;
 		}

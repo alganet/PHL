@@ -355,7 +355,7 @@ PH7_PRIVATE int PH7_VmInternalNameExists(ph7_vm *pVm,int iKind,const char *zName
 	/* A builtin is either a C host function or a prelude body the engine marks
 	 * internal -- the same pair function_exists() consults. */
 	return PH7_VmGetUserFunction(pVm,(const void *)zName,(sxu32)nName,FALSE) != 0
-		|| SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nName) != 0;
+		|| PH7_VmGetHostFunction(pVm,(const void *)zName,(sxu32)nName,FALSE) != 0;
 }
 /*
  * What one extension DECLARES about the others, which is what php's
