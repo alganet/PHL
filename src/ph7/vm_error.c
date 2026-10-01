@@ -132,6 +132,7 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 		ph7_value sResult;
 		ph7_value sRunning;
 		SyString sErr;
+		int bReport;
 		/* PH7_CTX_NOTICE is the engine's own severity token, 3 — a number php has no
 		 * E_* constant for. The reporting mask and the "Notice: " label already read
 		 * it as E_NOTICE; the handler was the one place it leaked, so a userland
@@ -190,19 +191,31 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 				return FALSE;
 			}
 		}
-		/* Check return value */
-		if( (sResult.iFlags & MEMOBJ_BOOL) == 0 ){
-			PH7_MemObjToBool(&sResult);
-		}
+		/* Does the engine still report this diagnostic itself?
+		 *
+		 * php's rule is IDENTITY, not truthiness: `zend_user_error_handler` falls
+		 * through to the built-in reporter only when the handler returned the
+		 * BOOLEAN false. EVERY other answer means handled -- including the two
+		 * commonest shapes there are, a bare `return;` and a handler with no return
+		 * statement at all, both of which arrive here as NULL.
+		 *
+		 * This coerced the answer to bool, so seven of php's fourteen answers
+		 * reported through: null, a bare return, 0, 0.0, "", "0" and []. Every
+		 * `set_error_handler(function () {})` in the world -- the idiom a library
+		 * uses to SILENCE a call it expects to fail -- printed the diagnostic
+		 * anyway. It is the single largest divergence in the ecosystem gate: 930 of
+		 * twig's 1949 accepted baseline lines are one `unserialize()` inside exactly
+		 * that idiom, in symfony/phpunit-bridge.
+		 *
+		 * Read before the release, and before any coercion. */
+		bReport = (sResult.iFlags & MEMOBJ_BOOL) != 0 && sResult.x.iVal == 0;
 		/* Release */
 		PH7_MemObjRelease(&apArg[0]);
 		PH7_MemObjRelease(&apArg[1]);
 		PH7_MemObjRelease(&apArg[2]);
 		PH7_MemObjRelease(&apArg[3]);
 		PH7_MemObjRelease(&sResult);
-		/* Return TRUE  (proceed to report error) if handler returned FALSE (he's reporting he couldn't catch the error)
-		          FALSE (proceed to omit error)   if handler returned TRUE (he's reporting he caught the error) */
-		return sResult.x.iVal == 0 ? TRUE : FALSE;
+		return bReport ? TRUE : FALSE;
 	}
 	/* No handler, always call error handler */
 	return TRUE;
