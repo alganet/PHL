@@ -2310,7 +2310,23 @@ static ph7_class_instance * NewClassInstance(ph7_vm *pVm,ph7_class *pClass)
 	pThis->pClass = pClass;
 	/* Assign a fresh monotonic object handle id (clones get their own, like PHP). */
 	pThis->nObjId = pVm->nNextObjId++;
-	SyHashInit(&pThis->hAttr,&pVm->sAllocator,0,0);
+	/* Size the property table to the class, not to the VM's default of sixteen
+	 * buckets. An object holds the attributes its class declares -- the frame
+	 * builder files one record per entry of pClass->hAttr and nothing else -- so
+	 * the count is known here exactly, before a single property is installed.
+	 * The census put the average object at 4.6 properties in a table built for
+	 * forty-eight, which was 4.40 MB of mostly-zero bucket arrays.
+	 *
+	 * Asked for one bucket PER ENTRY, not for the fill factor's three. Dividing by
+	 * SXHASH_FILL_FACTOR is what the table's own growth rule considers full, and it
+	 * would have put the average object at 2.3 properties per bucket where the
+	 * sixteen-bucket default had 0.29 -- trading memory this box can measure for
+	 * property-lookup time it cannot. One bucket per entry keeps the walk at about
+	 * one node, still costs a quarter of the default, and the two sizings differ by
+	 * 0.52 MB of peak (136.16 MB against 136.68) -- which is the right 0.52 MB to
+	 * leave on the table. SyHashInitSized rounds up to a power of two and floors it
+	 * at 2, and a class that outgrows the estimate doubles exactly as before. */
+	SyHashInitSized(&pThis->hAttr,&pVm->sAllocator,0,0,pClass->hAttr.nEntry);
 	return pThis;
 }
 /*

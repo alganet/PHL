@@ -8316,6 +8316,7 @@ PH7_PRIVATE SyHashEntry *SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen)
 PH7_PRIVATE sxu32 SyHashKey(SyHash *pHash,const void *pKey,sxu32 nKeyLen);
 PH7_PRIVATE SyHashEntry *SyHashGetHashed(SyHash *pHash,const void *pKey,sxu32 nKeyLen,sxu32 nHash);
 PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash);
+PH7_PRIVATE sxi32 SyHashInitSized(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHash,ProcCmp xCmp,sxu32 nBucket);
 PH7_PRIVATE sxi32 SyHashInit(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHash,ProcCmp xCmp);
 PH7_PRIVATE sxu32 SyStrHash(const void *pSrc,sxu32 nLen);
 PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen);

@@ -61,6 +61,7 @@ struct SyHash
 #define SyHashGetPool(HASH)    ((HASH)->pAllocator)
 
 /* Hashtable function prototypes */
+PH7_PRIVATE sxi32 SyHashInitSized(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHash,ProcCmp xCmp,sxu32 nBucket);
 PH7_PRIVATE sxi32 SyHashInit(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHash,ProcCmp xCmp);
 PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash);
 PH7_PRIVATE SyHashEntry *SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen);
