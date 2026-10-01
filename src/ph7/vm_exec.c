@@ -5355,7 +5355,14 @@ case PH7_OP_POP_EXCEPTION: {
 	 * so pVm->pFrame is the coroutine body itself — popping it would destroy the
 	 * coroutine (and defeat the bHasRet materialization just below, which must see the
 	 * body). Only leave a genuine exception frame. */
-	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
+	/* ...and never THIS exec's own entry frame. A catch body runs as a
+	 * mini-program entered on the transparent catch frame, which carries
+	 * VM_FRAME_EXCEPTION too; a try nested inside that catch body whose own
+	 * exception frame is already gone then popped the mini-program's entry
+	 * frame instead, and this body's terminal OP_DONE read it back (bHasRet)
+	 * after it had been freed. An exec never owns the teardown of the frame it
+	 * was entered on -- whoever entered it does. */
+	if( (pVm->pFrame->iFlags & VM_FRAME_EXCEPTION) && pVm->pFrame != sState.pEntryFrame ){
 		VmLeaveFrame(&(*pVm));
 	}
 	/* Execute the finally block if present and not already executed by the
