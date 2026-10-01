@@ -1408,6 +1408,30 @@ PH7_PRIVATE sxi32 SyBlobNullAppend(SyBlob *pBlob)
 	}
 	return rc;
 }
+/*
+ * Give a blob its own copy of the bytes it is only borrowing.
+ *
+ * SyBlobReadOnly leaves a blob pointing INTO somebody else's buffer, which is how a
+ * value copy avoids an allocation. That view is only good while the owner does not
+ * move or overwrite those bytes, so any holder that must survive a write to the owner
+ * calls this first. A blob that already owns its bytes is left alone, so this is
+ * cheap to ask.
+ */
+PH7_PRIVATE sxi32 SyBlobMakePrivate(SyBlob *pBlob)
+{
+	sxu32 nByte = 0;
+#ifdef UNTRUST
+	if( pBlob == 0 ){
+		return SXERR_EMPTY;
+	}
+#endif
+	if( (pBlob->nFlags & SXBLOB_RDONLY) == 0 ){
+		return SXRET_OK;
+	}
+	/* BlobPrepareGrow's read-only arm IS the copy: asking it for zero extra bytes
+	 * detaches the alias and nothing more. */
+	return BlobPrepareGrow(&(*pBlob),&nByte);
+}
 PH7_PRIVATE sxi32 SyBlobDup(SyBlob *pSrc,SyBlob *pDest)
 {
 	sxi32 rc = SXRET_OK;

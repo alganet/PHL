@@ -3460,6 +3460,7 @@ static int VmInstrStackEffect(VmInstr *pI, sxu32 pc, int *pPush, int *pN, sxu32 
 	case PH7_OP_CVT_INT: case PH7_OP_CVT_REAL: case PH7_OP_CVT_STR:
 	case PH7_OP_CVT_BOOL: case PH7_OP_CVT_NUMC:
 	case PH7_OP_NOOP:
+	case PH7_OP_SNAPSHOT:
 		aSucc[0] = pc + 1; aDelta[0] = 0; n = 1; break;
 	/* Stores: member (iP2) and name-from-stack (p3 == 0) pop 1; inline-name
 	 * (p3 != 0) pops 0. The rvalue is left as the expression result either way. */
@@ -7569,6 +7570,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_LOAD_FCC:
 		                    zOp = "LOAD_FCC   "; break;
 	case PH7_OP_NOOP:       zOp = "NOOP       "; break;
+	case PH7_OP_SNAPSHOT:   zOp = "SNAPSHOT   "; break;
 	case PH7_OP_JMP:        zOp = "JMP        "; break;
 	case PH7_OP_JZ:         zOp = "JZ         "; break;
 	case PH7_OP_JNZ:        zOp = "JNZ        "; break;

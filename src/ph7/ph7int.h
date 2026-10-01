@@ -4919,12 +4919,20 @@ enum ph7_vm_op {
                          * `if (!function_exists('f')) { function f(){} }` a no-op when `f`
                          * exists, and every symfony/polyfill-* package harmless beside a real
                          * mbstring. Redeclaring is php's runtime fatal, raised here. */
-  PH7_OP_CLASS_DEFER    /* Deferred class declaration: p3 = VmDeferredClass. Compile-time
+  PH7_OP_CLASS_DEFER,   /* Deferred class declaration: p3 = VmDeferredClass. Compile-time
                          * resolution of a parent/interface/trait failed (autoloader not yet
                          * REGISTERED — the declaring file's own statements had not run), so the
                          * whole declaration re-compiles here, at its execution point, where
                          * spl_autoload_register has taken effect. php's own model: classes with
                          * unresolved parents are declared in execution order, not hoisted. */
+  PH7_OP_SNAPSHOT       /* Give the top of the stack its own copy of the string bytes it was
+                         * loaded from. A value copy only BORROWS the source's bytes
+                         * (PH7_MemObjLoad), which is right while the source cannot change and
+                         * wrong the moment it can: an argument already pushed then reads a
+                         * LATER argument's assignment through the alias, with the length it
+                         * captured at the push. Emitted after a by-value argument that a later
+                         * argument in the same list could write to, and nowhere else, so an
+                         * ordinary call pays nothing for it. */
 };
 /*
  * PH7_OP_CATCH_JMP.iP1 payload. Both halves are nesting depths of the source, never

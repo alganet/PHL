@@ -108,6 +108,7 @@ PH7_PRIVATE sxi32 SyBlobReadOnly(SyBlob *pBlob,const void *pData,sxu32 nByte);
 PH7_PRIVATE sxi32 SyBlobAppend(SyBlob *pBlob,const void *pData,sxu32 nSize);
 PH7_PRIVATE sxi32 SyBlobNullAppend(SyBlob *pBlob);
 PH7_PRIVATE sxi32 SyBlobDup(SyBlob *pSrc,SyBlob *pDest);
+PH7_PRIVATE sxi32 SyBlobMakePrivate(SyBlob *pBlob);
 PH7_PRIVATE sxi32 SyBlobCmp(SyBlob *pLeft,SyBlob *pRight);
 PH7_PRIVATE sxi32 SyBlobReset(SyBlob *pBlob);
 PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob);

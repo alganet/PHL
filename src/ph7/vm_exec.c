@@ -2526,6 +2526,27 @@ case PH7_OP_JNZ:
 case PH7_OP_NOOP:
 	break;
 /*
+ * SNAPSHOT: * * *
+ *
+ * Give the top of the stack its own copy of the string bytes it is borrowing.
+ *
+ * A value copy aliases the source's buffer rather than duplicating it, so an argument
+ * pushed from `$x` is a pointer into `$x` plus the length `$x` had at the push. A later
+ * argument that assigns to `$x` overwrites those bytes in place, and the pushed argument
+ * then reads the NEW content through the OLD length -- `show($x, $x = 'second')` printed
+ * "secon" for an argument php had already copied as "first". The compiler emits this
+ * after a by-value argument only when a later argument in the same list can run code, so
+ * the copy is paid for exactly where php's own SEND_VAR pays for a reference.
+ */
+case PH7_OP_SNAPSHOT:
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	SyBlobMakePrivate(&pTos->sBlob);
+	break;
+/*
  * POP: P1 * *
  *
  * Pop P1 elements from the operand stack.

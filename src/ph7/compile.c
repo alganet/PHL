@@ -919,6 +919,45 @@ static int GenStateArgShape(ph7_expr_node *pNode)
 	}
 }
 /*
+ * Can evaluating this argument expression RUN anything?
+ *
+ * php materializes every by-value argument where it is written, so an argument already
+ * pushed cannot see what a later one does. PHL pushes an aliasing view of the source's
+ * bytes instead, which is only equivalent while nothing between the two pushes can write.
+ * This is the question that decides it, asked of every argument that FOLLOWS the one in
+ * hand: a plain `$var` read and a scalar literal execute nothing, so the alias is safe
+ * beside them; every other shape -- an assignment, a call, `new`, `++`, a property or
+ * element fetch (which may reach __get / offsetGet), an interpolated string, an array
+ * constructor, `match`, a closure with a by-reference `use` -- either writes or hands
+ * control to code that can, so the earlier arguments are copied first (PH7_OP_SNAPSHOT).
+ *
+ * Deliberately answered from the SHAPE and not from what the shape is likely to do: the
+ * cost of a false yes is one copy of an argument the callee was about to copy anyway,
+ * and the cost of a false no is a silent wrong value.
+ */
+static int GenStateArgRunsCode(ph7_expr_node *pNode)
+{
+	if( pNode == 0 ){
+		return 0;
+	}
+	if( pNode->pOp == 0 ){
+		/* A leaf. Only these read without running: `$x` (and `$$x`, whose name
+		 * comes off the stack and still runs nothing), a number, and a string with no
+		 * interpolation in it. A bare identifier is a constant lookup -- a table read
+		 * with no user code behind it in php either. */
+		return !( pNode->xCode == PH7_CompileVariable
+		       || pNode->xCode == PH7_CompileLiteral
+		       || pNode->xCode == PH7_CompileNumLiteral
+		       || pNode->xCode == PH7_CompileSimpleString
+		       || pNode->xCode == PH7_CompileNowDoc );
+	}
+	/* An operator node, and none of them is whitelisted: `.` and the arithmetic
+	 * operators reach __toString, the fetches reach __get and offsetGet, and the rest
+	 * write outright. Answering yes for the whole family also spares this a subtree
+	 * walk -- a nested call is an operator node at its own root. */
+	return 1;
+}
+/*
  * Recover the bare global-builtin name from a call's callee node.
  *
  * Handles the unqualified form `preg_match(...)` (a single PH7_TK_ID token) and
@@ -2718,6 +2757,7 @@ static sxi32 GenStateEmitCallArgs(
 	sxi32 nArgs;
 	sxi32 n;
 	int bAnySpread = 0;
+	sxi32 nLastRunner = 0;
 	int bConstruct = 0; /* the callee is a language construct's keyword -- PH7_CALL_CONSTRUCT */
 	/* Recurse and generate bytecodes for function arguments */
 	apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
@@ -2817,6 +2857,19 @@ static sxi32 GenStateEmitCallArgs(
 			byRefMask = GenStateByRefBuiltinMask(&sBuiltin);
 		}
 	}
+	/* The last argument position AFTER which nothing in this list can run code.
+	 * Every by-value argument before it is pushed as a view of somebody's bytes and
+	 * has to be given its own copy (PH7_OP_SNAPSHOT); at or after it, nothing between
+	 * the push and the call can write, so the view is exactly php's answer and costs
+	 * nothing. A list whose arguments are all plain variables and literals -- which is
+	 * most of them -- leaves this at 0 and emits nothing. */
+	nLastRunner = 0;
+	for( n = nArgs - 1 ; n >= 0 ; --n ){
+		if( GenStateArgRunsCode(apNode[n]) ){
+			nLastRunner = n;
+			break;
+		}
+	}
 	for( n = 0 ; n < nArgs ; ++n ){
 		sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
 		sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE
@@ -2882,6 +2935,12 @@ static sxi32 GenStateEmitCallArgs(
 		}
 		/* Each argument is an independent nullsafe scope. */
 		GenStatePatchNullsafeJumps(pGen, nArgNsBase);
+		if( n < nLastRunner && (apNode[n]->iFlags & EXPR_NODE_SPREAD) == 0 ){
+			/* Something later in this list can write to whatever this argument was
+			 * loaded from, so take the bytes now. A spread argument is an array,
+			 * which is reference-counted rather than aliased, and is skipped. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_SNAPSHOT,0,0,0,0);
+		}
 		if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
 			/* Emit spread opcode to unpack this array argument. iP1 marks a
 			 * source php will unpack BY REFERENCE: only a plain `$var` (php

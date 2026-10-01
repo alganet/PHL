@@ -11,36 +11,10 @@
  .............S.....................S..............SSSSSSS....  183 / 1153 ( 15%)
  .............................................................  244 / 1153 ( 21%)
  .....SSS.....................................................  305 / 1153 ( 26%)
-@@ -19,12 +19,21 @@
- .............................................................  854 / 1153 ( 74%)
- .............................................................  915 / 1153 ( 79%)
- .............................................................  976 / 1153 ( 84%)
--....................................................S........ 1037 / 1153 ( 89%)
-+.........................F..........................S........ 1037 / 1153 ( 89%)
- ............................................................. 1098 / 1153 ( 95%)
- .......................................................       1153 / 1153 (100%)
- 
- Time: @TIME@
- 
-+There was 1 failure:
-+
-+1) Monolog\LoggerTest::testReset
-+Failed asserting that two strings are not identical.
-+
-+@ROOT@/tests/Monolog/LoggerTest.php:762
-+
-+--
-+
- There were 33 skipped tests:
- 
- 1) Monolog\Formatter\LineFormatterTest::testDefFormatWithSoapFaultException
-@@ -126,6 +135,6 @@
- 33) Monolog\Processor\MercurialProcessorTest::testProcessor
+@@ -127,5 +127,5 @@
  hg is missing
  
--OK, but there were issues!
+ OK, but there were issues!
 -Tests: 1153, Assertions: 2071, Deprecations: 2, PHPUnit Deprecations: 220, Skipped: 33.
--@exit@ 0
-+FAILURES!
-+Tests: 1153, Assertions: 2049, Failures: 1, PHPUnit Deprecations: 220, Skipped: 33.
-+@exit@ 1
++Tests: 1153, Assertions: 2071, PHPUnit Deprecations: 220, Skipped: 33.
+ @exit@ 0
