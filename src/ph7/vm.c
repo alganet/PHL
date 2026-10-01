@@ -5271,6 +5271,133 @@ static int VmIniBool(const char *zValue,sxu32 nValue)
 	return iVal != 0;
 }
 /*
+ * Apply one php.ini directive to a VM: queue an allocator-owned copy for the INI
+ * chunk's lazy seed, then arm the C-side knobs that have to hold whether or not
+ * the script ever touches the INI API. Shared by PH7_VM_CONFIG_INI_ENTRY, which
+ * hands a directive to a VM that already exists, and by the engine-level replay a
+ * fresh VM runs before it compiles anything (PH7_VmApplyEngineIni).
+ */
+static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
+{
+	sxi32 rc = SXRET_OK;
+	VmIniEntry sEntry;
+	char *zDupN,*zDupV;
+	sxu32 nName,nValue;
+	if( SX_EMPTY_STR(zName) ){
+		return SXERR_EMPTY;
+	}
+	if( zValue == 0 ){
+		zValue = "";
+	}
+	nName = (sxu32)SyStrlen(zName);
+	nValue = (sxu32)SyStrlen(zValue);
+	zDupN = SyMemBackendStrDup(&pVm->sAllocator,zName,nName);
+	zDupV = SyMemBackendStrDup(&pVm->sAllocator,zValue,nValue);
+	if( zDupN == 0 || zDupV == 0 ){
+		return SXERR_MEM;
+	}
+	SyStringInitFromBuf(&sEntry.sName,zDupN,nName);
+	SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
+	rc = SySetPut(&pVm->aIniCli,(const void *)&sEntry);
+	if( rc == SXRET_OK ){
+		if( nName == sizeof("error_reporting")-1
+		 && SyMemcmp(zName,"error_reporting",nName) == 0 ){
+			sxi64 iLevel = 0;
+			SyStrToInt64(zValue,nValue,(void *)&iLevel,0);
+			pVm->bErrReport = iLevel != 0;
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+		}else if( nName == sizeof("memory_limit")-1
+		 && SyMemcmp(zName,"memory_limit",nName) == 0 ){
+			/* Arm the allocator ceiling now: `-d memory_limit=32M` has to hold
+			 * for the whole run, and the INI chunk that would otherwise carry it
+			 * is seeded lazily -- by which time a runaway script has already
+			 * taken the box.
+			 *
+			 * Guarded because the applier lives in vm_builtin_ini.c, which the
+			 * tiny build compiles away wholesale: an unguarded call here links
+			 * fine in `full` and fails ONLY in tiny, which is the one build the
+			 * ASan and Windows gates do not cover. */
+			PH7_VmApplyMemoryLimit(&(*pVm),zValue,nValue);
+#endif
+		}else if( nName == sizeof("date.timezone")-1
+		 && SyMemcmp(zName,"date.timezone",nName) == 0 ){
+			/* `-d date.timezone=...` takes what the directive takes: a
+			 * tz-database identifier, or UTC/GMT when there is no database.
+			 * Anything else leaves the default at UTC, silently, which is
+			 * php's answer for an ini value it cannot resolve at startup. */
+#ifdef PH7_ENABLE_TZDB
+			if( nValue > 0 && (sxu32)nValue < sizeof(pVm->zDefTz)
+			 && PH7_TzFind(zValue,nValue) >= 0 ){
+				SyMemcpy(zValue,pVm->zDefTz,(sxu32)nValue);
+				pVm->zDefTz[nValue] = 0;
+				pVm->nDefTz = (sxu32)nValue;
+			}else
+#endif
+			if( nValue == 3
+			 && (SyStrnicmp(zValue,"UTC",3) == 0 || SyStrnicmp(zValue,"GMT",3) == 0) ){
+				SyMemcpy(zValue,pVm->zDefTz,3);
+				pVm->zDefTz[3] = 0;
+				pVm->nDefTz = 3;
+			}
+		}else if( nName == sizeof("zend.assertions")-1
+		 && SyMemcmp(zName,"zend.assertions",nName) == 0 ){
+			/* zend.assertions is a compile-time switch: 1 makes assert()
+			 * active, 0 or -1 makes it a no-op. Applied here so it takes
+			 * effect even before the INI chunk is seeded. */
+			sxi64 iZend = 0;
+			SyStrToInt64(zValue,nValue,(void *)&iZend,0);
+			if( iZend >= 1 ){
+				pVm->iAssertFlags &= ~PH7_ASSERT_ZEND_OFF;
+			}else{
+				pVm->iAssertFlags |= PH7_ASSERT_ZEND_OFF;
+			}
+		}else if( nName == sizeof("display_errors")-1
+		 && SyMemcmp(zName,"display_errors",nName) == 0 ){
+			/* Mirror the display_errors gate C-side so it takes effect even
+			 * if the script never touches the INI API (ini_set keeps it in
+			 * sync at runtime via __ini_apply_err). */
+			pVm->bDisplayErrors = VmIniBool(zValue,nValue);
+		}else if( nName == sizeof("log_errors")-1
+		 && SyMemcmp(zName,"log_errors",nName) == 0 ){
+			pVm->bLogErrors = VmIniBool(zValue,nValue);
+		}else if( nName == sizeof("include_path")-1
+		 && SyMemcmp(zName,"include_path",nName) == 0
+		 && nValue > 0 ){
+			/* The path SET is the store this directive names, and the INI
+			 * chunk's seed is lazy -- so `-d include_path=…` has to reach it
+			 * here or a script that never touches the INI API keeps looking
+			 * in the default directory. Empty is refused, as php's
+			 * OnUpdateStringUnempty refuses it. */
+			PH7_VmSetIncludePath(pVm,zValue,nValue);
+		}
+	}
+	return rc;
+}
+/*
+ * Seed a brand-new VM from the ENGINE's configuration: the reporting level, then
+ * the php.ini directives the host handed over with PH7_CONFIG_INI_ENTRY. Called
+ * before the unit is compiled, because a compile diagnostic owes the same three
+ * gates a runtime one does and ph7_compile_file is what creates the VM -- a
+ * directive that only ever reached the FINISHED VM arrived after every diagnostic
+ * the unit's own compile could raise. The ini replay runs last so
+ * `-d error_reporting=0` still lowers what PH7_CONFIG_ERR_REPORT raised.
+ */
+PH7_PRIVATE void PH7_VmApplyEngineIni(ph7_vm *pVm)
+{
+	ph7_conf *pConf = &pVm->pEngine->xConf;
+	VmIniEntry *aEntry;
+	sxu32 i;
+	if( pConf->bErrReport ){
+		pVm->bErrReport = 1;
+		pVm->iErrMask = PH7_E_ALL_MASK;
+		pVm->bErrMaskSet = 1;
+	}
+	aEntry = (VmIniEntry *)SySetBasePtr(&pConf->aIniEntry);
+	for( i = 0 ; i < SySetUsed(&pConf->aIniEntry) ; ++i ){
+		VmSetIniEntry(pVm,aEntry[i].sName.zString,aEntry[i].sValue.zString);
+	}
+}
+/*
  * Configure a working virtual machine instance.
  *
  * This routine is used to configure a PH7 virtual machine obtained by a prior
@@ -5577,105 +5704,11 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		break;
 								  }
 	case PH7_VM_CONFIG_INI_ENTRY: {
-		/* A php.ini directive from the CLI (-d name=value or a -c file line).
-		 * Copies are queued for the INI chunk's lazy seed; engine-level knobs
-		 * apply immediately so they take effect even if the script never
-		 * touches the INI API. */
+		/* A php.ini directive handed to a VM that already exists (the CLI's -d/-c
+		 * queue reaches a fresh one through PH7_CONFIG_INI_ENTRY instead). */
 		const char *zName = va_arg(ap,const char *);
 		const char *zValue = va_arg(ap,const char *);
-		VmIniEntry sEntry;
-		char *zDupN,*zDupV;
-		sxu32 nName,nValue;
-		if( SX_EMPTY_STR(zName) ){
-			rc = SXERR_EMPTY;
-			break;
-		}
-		if( zValue == 0 ){
-			zValue = "";
-		}
-		nName = (sxu32)SyStrlen(zName);
-		nValue = (sxu32)SyStrlen(zValue);
-		zDupN = SyMemBackendStrDup(&pVm->sAllocator,zName,nName);
-		zDupV = SyMemBackendStrDup(&pVm->sAllocator,zValue,nValue);
-		if( zDupN == 0 || zDupV == 0 ){
-			rc = SXERR_MEM;
-			break;
-		}
-		SyStringInitFromBuf(&sEntry.sName,zDupN,nName);
-		SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
-		rc = SySetPut(&pVm->aIniCli,(const void *)&sEntry);
-		if( rc == SXRET_OK ){
-			if( nName == sizeof("error_reporting")-1
-			 && SyMemcmp(zName,"error_reporting",nName) == 0 ){
-				sxi64 iLevel = 0;
-				SyStrToInt64(zValue,nValue,(void *)&iLevel,0);
-				pVm->bErrReport = iLevel != 0;
-#ifndef PH7_DISABLE_BUILTIN_FUNC
-			}else if( nName == sizeof("memory_limit")-1
-			 && SyMemcmp(zName,"memory_limit",nName) == 0 ){
-				/* Arm the allocator ceiling now: `-d memory_limit=32M` has to hold
-				 * for the whole run, and the INI chunk that would otherwise carry it
-				 * is seeded lazily -- by which time a runaway script has already
-				 * taken the box.
-				 *
-				 * Guarded because the applier lives in vm_builtin_ini.c, which the
-				 * tiny build compiles away wholesale: an unguarded call here links
-				 * fine in `full` and fails ONLY in tiny, which is the one build the
-				 * ASan and Windows gates do not cover. */
-				PH7_VmApplyMemoryLimit(&(*pVm),zValue,nValue);
-#endif
-			}else if( nName == sizeof("date.timezone")-1
-			 && SyMemcmp(zName,"date.timezone",nName) == 0 ){
-				/* `-d date.timezone=...` takes what the directive takes: a
-				 * tz-database identifier, or UTC/GMT when there is no database.
-				 * Anything else leaves the default at UTC, silently, which is
-				 * php's answer for an ini value it cannot resolve at startup. */
-#ifdef PH7_ENABLE_TZDB
-				if( nValue > 0 && (sxu32)nValue < sizeof(pVm->zDefTz)
-				 && PH7_TzFind(zValue,nValue) >= 0 ){
-					SyMemcpy(zValue,pVm->zDefTz,(sxu32)nValue);
-					pVm->zDefTz[nValue] = 0;
-					pVm->nDefTz = (sxu32)nValue;
-				}else
-#endif
-				if( nValue == 3
-				 && (SyStrnicmp(zValue,"UTC",3) == 0 || SyStrnicmp(zValue,"GMT",3) == 0) ){
-					SyMemcpy(zValue,pVm->zDefTz,3);
-					pVm->zDefTz[3] = 0;
-					pVm->nDefTz = 3;
-				}
-			}else if( nName == sizeof("zend.assertions")-1
-			 && SyMemcmp(zName,"zend.assertions",nName) == 0 ){
-				/* zend.assertions is a compile-time switch: 1 makes assert()
-				 * active, 0 or -1 makes it a no-op. Applied here so it takes
-				 * effect even before the INI chunk is seeded. */
-				sxi64 iZend = 0;
-				SyStrToInt64(zValue,nValue,(void *)&iZend,0);
-				if( iZend >= 1 ){
-					pVm->iAssertFlags &= ~PH7_ASSERT_ZEND_OFF;
-				}else{
-					pVm->iAssertFlags |= PH7_ASSERT_ZEND_OFF;
-				}
-			}else if( nName == sizeof("display_errors")-1
-			 && SyMemcmp(zName,"display_errors",nName) == 0 ){
-				/* Mirror the display_errors gate C-side so it takes effect even
-				 * if the script never touches the INI API (ini_set keeps it in
-				 * sync at runtime via __ini_apply_err). */
-				pVm->bDisplayErrors = VmIniBool(zValue,nValue);
-			}else if( nName == sizeof("log_errors")-1
-			 && SyMemcmp(zName,"log_errors",nName) == 0 ){
-				pVm->bLogErrors = VmIniBool(zValue,nValue);
-			}else if( nName == sizeof("include_path")-1
-			 && SyMemcmp(zName,"include_path",nName) == 0
-			 && nValue > 0 ){
-				/* The path SET is the store this directive names, and the INI
-				 * chunk's seed is lazy -- so `-d include_path=…` has to reach it
-				 * here or a script that never touches the INI API keeps looking
-				 * in the default directory. Empty is refused, as php's
-				 * OnUpdateStringUnempty refuses it. */
-				PH7_VmSetIncludePath(pVm,zValue,nValue);
-			}
-		}
+		rc = VmSetIniEntry(pVm,zName,zValue);
 		break;
 								  }
 	case PH7_VM_CONFIG_ERR_LOG_HANDLER: {

@@ -3515,15 +3515,23 @@ PH7_PRIVATE sxi32 PH7_VmMaterializeClassStatics(ph7_vm *pVm,ph7_class *pClass)
  * written -- VmWriteDiagnostic's `\r\n` belongs to the runtime one and is not
  * borrowed here.
  */
-static sxi32 VmWriteCompileCopy(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pMsg,int bTrack)
+static sxi32 VmWriteCompileCopy(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pMsg,int bDisplay)
 {
 	SyBlobAppend(pMsg,"\n",sizeof(char));
 	if( pCons && pCons->xConsumer ){
 		sxi32 rc = pCons->xConsumer(SyBlobData(pMsg),SyBlobLength(pMsg),pCons->pUserData);
-		if( bTrack ){
+		if( bDisplay ){
 			VmTrackOutput(pVm,SyBlobLength(pMsg));
 		}
 		return rc;
+	}
+	/* No VM stream yet -- the main script's own compile. The DISPLAY copy is
+	 * program output and belongs on the host's output stream; falling through to
+	 * the compile-error consumer below put php's stdout text on stderr, so
+	 * `-d display_errors=1` moved nothing. */
+	if( bDisplay && pVm->pEngine && pVm->pEngine->xConf.xOut ){
+		return pVm->pEngine->xConf.xOut(SyBlobData(pMsg),SyBlobLength(pMsg),
+			pVm->pEngine->xConf.pOutData);
 	}
 	if( pVm->pEngine && pVm->pEngine->xConf.xErr ){
 		return pVm->pEngine->xConf.xErr(SyBlobData(pMsg),SyBlobLength(pMsg),
@@ -3618,13 +3626,12 @@ PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,sxi32 iErr,const char 
 		VmRecordLastError(&(*pVm),iErr,zBare,nBare,pFile,nLine);
 	}
 	/*
-	 * The MAIN script's own compile is the one window where the mask cannot be
-	 * asked: ph7_compile_file CREATES the VM, so a diagnostic raised there is
-	 * older than the host's first ph7_vm_config() call and iErrMask is still
-	 * zero -- which must not be read as `error_reporting(0)`. bErrMaskSet says
-	 * whether anybody has spoken yet; until somebody has, the pre-mask
-	 * behaviour (report it) stands. This is recorded, together with the
-	 * `-d error_reporting=0` divergence it leaves.
+	 * A host that has said nothing about the level leaves iErrMask at zero, which
+	 * must not be read as `error_reporting(0)`. bErrMaskSet says whether anybody
+	 * has spoken; until somebody has, the pre-mask behaviour (report it) stands.
+	 * The CLI speaks before it compiles -- PH7_CONFIG_ERR_REPORT and the -d/-c
+	 * queue are engine-level, so the main script's OWN compile is already gated --
+	 * and an embedder that configures nothing still gets the fallback.
 	 */
 	if( pVm->bErrMaskSet && !VmErrReportWants(pVm,iErr) ){
 		SyBlobRelease(&sHold);

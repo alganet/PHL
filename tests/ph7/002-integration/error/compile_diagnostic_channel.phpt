@@ -30,9 +30,11 @@ handed is the code generator's one-message buffer, and a handler that
 compiles anything -- an include, an eval, a FAILING eval -- resets exactly
 that buffer under it.
 
-One window is left, and it is structural: `ph7_compile_file` CREATES the VM,
-so the MAIN script's own compile runs before the host installs a reporting
-level and its diagnostics are reported unmasked.
+`ph7_compile_file` CREATES the VM, so the MAIN script's own compile has no VM
+to ask -- which is why the reporting level, and the two stream directives with
+it, are the ENGINE's and a fresh VM replays them before it compiles anything.
+A host that configures nothing at all still gets the old fallback: an unspoken
+level is reported unmasked rather than read as `error_reporting(0)`.
 --FILE--
 <?php
 $dir = sys_get_temp_dir() . '/phl-compile-diag-' . getmypid();

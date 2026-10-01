@@ -181,6 +181,9 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_CONFIG_MAX_ALLOC     4  /* ONE ARGUMENT: unsigned int nMaxByte (per-allocation cap in bytes; 0 = unlimited). Inherited by VMs created afterwards. */
 #define PH7_CONFIG_CLOCK         5  /* TWO ARGUMENTS: ph7_clock xClock, void *pUserData. Overrides the platform wall/sub-second clock used by microtime()/gettimeofday(); xClock fills *pSec (epoch seconds) and *pUsec (0..999999). NULL restores the default. Inherited by VMs created afterwards. */
 #define PH7_CONFIG_MAX_INPUT     6  /* ONE ARGUMENT: unsigned int nMaxByte (per-compile input cap in bytes; 0 = use compile-time default PH7_MAX_INPUT_SIZE). */
+#define PH7_CONFIG_ERR_REPORT    7  /* NO ARGUMENTS: seed the reporting level of VMs created afterwards, so the unit's OWN compile is already gated (the VM-level PH7_VM_CONFIG_ERR_REPORT arrives too late for that). */
+#define PH7_CONFIG_INI_ENTRY     8  /* TWO ARGUMENTS: const char *zName,const char *zValue. A php.ini directive applied to every VM at birth, BEFORE it compiles anything — which is where php reads php.ini. The VM-level PH7_VM_CONFIG_INI_ENTRY does the same for a VM that already exists. */
+#define PH7_CONFIG_OUTPUT       9  /* TWO ARGUMENTS: int (*xConsumer)(const void *pOut,unsigned int nLen,void *pUserData),void *pUserData. The PROGRAM-OUTPUT stream a diagnostic raised while a VM is still being compiled writes its display copy to (php puts that copy on stdout, not on the log channel). PH7_CONFIG_ERR_OUTPUT stays the log channel. */
 /*
  * Virtual Machine Configuration Commands.
  *

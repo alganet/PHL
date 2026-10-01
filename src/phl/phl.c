@@ -292,7 +292,7 @@ static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCe
  * -c file line). Trims surrounding whitespace and one layer of quotes off
  * the value, php.ini style.
  */
-static void PHL_ApplyIniPair(ph7_vm *pVm,const char *zPair)
+static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair)
 {
 	char zName[128];
 	char zValue[512];
@@ -336,14 +336,14 @@ static void PHL_ApplyIniPair(ph7_vm *pVm,const char *zPair)
 		zValue[0] = '1';
 		zValue[1] = 0;
 	}
-	ph7_vm_config(pVm,PH7_VM_CONFIG_INI_ENTRY,zName,zValue);
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zName,zValue);
 }
 /*
  * Load php.ini directives from a -c file: name=value lines; [sections],
  * empty lines and ;/# comments are ignored (enough of php's ini grammar
  * for CLI configuration).
  */
-static void PHL_LoadIniFile(ph7_vm *pVm,const char *zPath)
+static void PHL_LoadIniFile(ph7 *pEngine,const char *zPath)
 {
 	char zLine[768];
 	FILE *pFile = fopen(zPath,"r");
@@ -357,7 +357,7 @@ static void PHL_LoadIniFile(ph7_vm *pVm,const char *zPath)
 		if( *z == 0 || *z == ';' || *z == '#' || *z == '[' || *z == '\n' || *z == '\r' ){
 			continue;
 		}
-		PHL_ApplyIniPair(pVm,z);
+		PHL_ApplyIniPair(pEngine,z);
 	}
 	fclose(pFile);
 }
@@ -731,6 +731,33 @@ int main(int argc,char **argv)
 		Error_Consumer, /* Compile-time diagnostic consumer (STDERR) */
 		0 /* NULL: Callback Private data */
 		);
+	/* ...and the program-output stream the DISPLAY copy of that same diagnostic
+	 * takes, which php puts on STDOUT. Also a fallback: the VM's own output
+	 * consumer is installed below, and does not exist while the main script is
+	 * being compiled. */
+	ph7_config(pEngine,PH7_CONFIG_OUTPUT,
+		Output_Consumer, /* Compile-time DISPLAY copy consumer (STDOUT) */
+		0 /* NULL: Callback Private data */
+		);
+	/* Report script run-time errors (now default behavior), then the php.ini
+	 * directives, and all of it BEFORE anything is compiled -- which is where php
+	 * reads php.ini. These used to be applied to the finished VM, i.e. after the
+	 * main script's own compile had already raised every diagnostic it was going
+	 * to: `-d display_errors=1` never moved a parse error onto stdout, and
+	 * `-d log_errors=0` never took one off stderr, whatever php did. The -c file
+	 * comes first and -d overrides it in CLI order (php's precedence), and the
+	 * whole queue lands after the error-report default so `-d error_reporting=0`
+	 * can still lower it. */
+	ph7_config(pEngine,PH7_CONFIG_ERR_REPORT);
+	if( zIniFile ){
+		PHL_LoadIniFile(pEngine,zIniFile);
+	}
+	{
+		int i;
+		for( i = 0 ; i < nIniDefine ; i++ ){
+			PHL_ApplyIniPair(pEngine,azIniDefine[i]);
+		}
+	}
 	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to
 	 * deterministically exercise out-of-memory paths (see tests/ph7/003-stress).
 	 * Clamp to a floor above the pool bucket size (SXMEM_POOL_MAXALLOC, 32 KB)
@@ -934,20 +961,6 @@ int main(int argc,char **argv)
 			}
 		}
 #endif
-	}
-	/* Report script run-time errors (now default behavior) */
-	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);
-	/* Apply php.ini directives AFTER the error-report default so
-	 * `-d error_reporting=0` can lower it: the -c file first, then -d
-	 * overrides in CLI order (php's precedence). */
-	if( zIniFile ){
-		PHL_LoadIniFile(pVm,zIniFile);
-	}
-	{
-		int i;
-		for( i = 0 ; i < nIniDefine ; i++ ){
-			PHL_ApplyIniPair(pVm,azIniDefine[i]);
-		}
 	}
 	if( dump_vm ){
 		/* Dump PH7 byte-code instructions */

@@ -494,12 +494,24 @@ struct ph7_output_consumer
  */
 struct ph7_conf
 {
-	ProcConsumer xErr;   /* Compile-time error consumer callback */
+	ProcConsumer xErr;   /* Compile-time error consumer callback (the LOG channel) */
 	void *pErrData;      /* Third argument to xErr() */
+	ProcConsumer xOut;   /* Program-output consumer for a compile diagnostic's DISPLAY copy
+	                      * [PH7_CONFIG_OUTPUT]. The VM's own output consumer does not exist
+	                      * yet while the main script compiles, and the display copy is
+	                      * program output — falling back to xErr put it on the log stream. */
+	void *pOutData;      /* Third argument to xOut() */
 	SyBlob sErrConsumer; /* Default error consumer */
 	ph7_clock xClock;    /* Optional embedder clock [PH7_CONFIG_CLOCK]; NULL => platform default */
 	void *pClockData;    /* Third argument to xClock() */
 	sxu32 nMaxInput;     /* Per-compile input byte cap [PH7_CONFIG_MAX_INPUT]; 0 = PH7_MAX_INPUT_SIZE */
+	SySet aIniEntry;     /* php.ini directives applied to every VM at birth [PH7_CONFIG_INI_ENTRY]:
+	                      * VmIniEntry copies on the ENGINE allocator, replayed by ph7VmInit
+	                      * before the unit is compiled. A directive that only ever reached a
+	                      * finished VM could not gate that unit's own compile diagnostics:
+	                      * ph7_compile_file is what CREATES the VM. */
+	int bErrReport;      /* PH7_CONFIG_ERR_REPORT: seed a new VM's reporting mask to E_ALL,
+	                      * before the aIniEntry replay so `-d error_reporting=` still wins */
 };
 /*
  * Signature of the C function responsible of expanding constant values.
@@ -5539,6 +5551,7 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry
 PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8 bMain,sxi32 *pNew);
 PH7_PRIVATE int PH7_VmIncludePathSep(void);
 PH7_PRIVATE void PH7_VmSetIncludePath(ph7_vm *pVm,const char *zPath,sxu32 nByte);
+PH7_PRIVATE void PH7_VmApplyEngineIni(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmGetIncludePath(ph7_vm *pVm,SyBlob *pOut);
 PH7_PRIVATE int PH7_VmExecutingDir(ph7_vm *pVm,SyString *pOut);
 PH7_PRIVATE ph7_class * PH7_VmExtractClass(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable,sxi32 iNest);

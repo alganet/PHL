@@ -142,6 +142,55 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		pEngine->xConf.nMaxInput = (sxu32)nMax;
 		break;
 								}
+	case PH7_CONFIG_OUTPUT: {
+		/* The program-output stream a compile diagnostic's DISPLAY copy takes
+		 * while no VM output consumer exists yet -- the whole of the main
+		 * script's own compile. */
+		ProcConsumer xConsumer = va_arg(ap,ProcConsumer);
+		void *pUserData = va_arg(ap,void *);
+		pConf->xOut     = xConsumer;
+		pConf->pOutData = pUserData;
+		break;
+							}
+	case PH7_CONFIG_ERR_REPORT:
+		/* Seed the reporting level of VMs created afterwards. The VM-level verb
+		 * of the same name can only reach a VM that already exists, i.e. after
+		 * the unit it was meant to gate has finished compiling. */
+		pConf->bErrReport = 1;
+		break;
+	case PH7_CONFIG_INI_ENTRY: {
+		/* A php.ini directive applied to every VM at birth. php reads php.ini
+		 * before it compiles anything, so a directive a diagnostic is gated by
+		 * (display_errors, log_errors, error_reporting) has to be in hand before
+		 * ph7_compile_file -- which is the call that CREATES the VM. Copies live
+		 * on the ENGINE allocator: they outlive every VM replaying them. */
+		const char *zName = va_arg(ap,const char *);
+		const char *zValue = va_arg(ap,const char *);
+		VmIniEntry sEntry;
+		char *zDupN,*zDupV;
+		sxu32 nName,nValue;
+		if( SX_EMPTY_STR(zName) ){
+			rc = PH7_CORRUPT;
+			break;
+		}
+		if( zValue == 0 ){
+			zValue = "";
+		}
+		nName  = (sxu32)SyStrlen(zName);
+		nValue = (sxu32)SyStrlen(zValue);
+		zDupN = SyMemBackendStrDup(&pEngine->sAllocator,zName,nName);
+		zDupV = SyMemBackendStrDup(&pEngine->sAllocator,zValue,nValue);
+		if( zDupN == 0 || zDupV == 0 ){
+			rc = PH7_NOMEM;
+			break;
+		}
+		SyStringInitFromBuf(&sEntry.sName,zDupN,nName);
+		SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
+		if( SySetPut(&pConf->aIniEntry,(const void *)&sEntry) != SXRET_OK ){
+			rc = PH7_NOMEM;
+		}
+		break;
+								}
 	default:
 		/* Unknown configuration verb */
 		rc = PH7_CORRUPT;
@@ -636,6 +685,7 @@ int ph7_init(ph7 **ppEngine)
 #endif
 	/* Default configuration */
 	SyBlobInit(&pEngine->xConf.sErrConsumer,&pEngine->sAllocator);
+	SySetInit(&pEngine->xConf.aIniEntry,&pEngine->sAllocator,sizeof(VmIniEntry));
 	/* Install a default compile-time error consumer routine */
 	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,PH7_VmBlobConsumer,&pEngine->xConf.sErrConsumer);
 	/* Built-in vfs */
@@ -753,6 +803,11 @@ static sxi32 ProcessScript(
 		}
 		return PH7_VM_ERR;
 	}
+	/* The host's php.ini directives, BEFORE a line of the unit is compiled: a
+	 * compile diagnostic is gated by display_errors/log_errors/error_reporting
+	 * exactly as a runtime one is, and this is the only window in which they can
+	 * still be in hand for the main script's own compile. */
+	PH7_VmApplyEngineIni(pVm);
 	if( zFilePath ){
 		/* Push processed file path */
 		PH7_VmPushFilePath(pVm,zFilePath,-1,TRUE,0);
@@ -795,8 +850,13 @@ static sxi32 ProcessScript(
 	if( rc != PH7_OK ){
 		goto Release;
 	}
-	/* Install local import path which is the current directory */
-	ph7_vm_config(pVm,PH7_VM_CONFIG_IMPORT_PATH,"./");
+	/* Install local import path which is the current directory -- unless the host
+	 * already named one. IMPORT_PATH APPENDS, and a `-d include_path=` handed to
+	 * the engine is applied at VM birth, i.e. before this: the two together
+	 * answered `.:.` for a run started with `-d include_path=.`. */
+	if( SySetUsed(&pVm->aPaths) < 1 ){
+		ph7_vm_config(pVm,PH7_VM_CONFIG_IMPORT_PATH,"./");
+	}
 #if defined(PH7_ENABLE_THREADS)
 	if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE ){
 		 /* Associate a recursive mutex with this instance */
