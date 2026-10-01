@@ -4527,14 +4527,35 @@ static sxi32 GenStateScanDeferDeps(ph7_gen_state *pGen,int bAnon,int iSelfKind,
 	 * an autoload here loaded that file first and the require then declared
 	 * everything in it a second time. */
 	{
+		/* php LINKS a declaration in one order and asks for each dependency as it
+		 * links it: the parent, then the traits, then the interfaces -- so
+		 * `class C extends B implements I { use T; }` asks an autoloader for
+		 * `B, T, I`, with the trait ahead of the interface though the `use` is
+		 * written inside the body and the `implements` in the header. Reading the
+		 * collected names in source order asked `B, I, T`, which is user-visible
+		 * the moment an autoloader has a side effect (a log line, a file read, a
+		 * map lookup that fails differently) or when one dependency's loader
+		 * declares another. The three kinds are walked in link order instead;
+		 * within a kind the source order stands, and an interface's `extends`
+		 * list is recorded as interfaces, so it keeps its own written order. */
+		static const sxu8 aLinkOrder[] = {
+			PH7_DEFER_KIND_CLASS, PH7_DEFER_KIND_TRAIT, PH7_DEFER_KIND_INTERFACE
+		};
 		VmDeferredReq *aReq = (VmDeferredReq *)SySetBasePtr(&aNames);
 		sxu32 n;
-		for( n = 0 ; n < SySetUsed(&aNames) ; ++n ){
-			ph7_class *pFound = bNoAutoload
-				? GenStateFindDeclaredClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte)
-				: PH7_VmExtractClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte,FALSE,0);
-			if( pFound == 0 ){
-				SySetPut(pMissing,(const void *)&aReq[n]);
+		int iPass;
+		for( iPass = 0 ; iPass < (int)SX_ARRAYSIZE(aLinkOrder) ; ++iPass ){
+			for( n = 0 ; n < SySetUsed(&aNames) ; ++n ){
+				ph7_class *pFound;
+				if( aReq[n].cKind != aLinkOrder[iPass] ){
+					continue;
+				}
+				pFound = bNoAutoload
+					? GenStateFindDeclaredClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte)
+					: PH7_VmExtractClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte,FALSE,0);
+				if( pFound == 0 ){
+					SySetPut(pMissing,(const void *)&aReq[n]);
+				}
 			}
 		}
 	}
