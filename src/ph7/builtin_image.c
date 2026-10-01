@@ -2386,7 +2386,7 @@ static int ImgSizeCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFromS
 		if( PH7_VfsEmptyPathRefused(pCtx,nOrig) ){
 			return PH7_OK;
 		}
-		pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zName,nOrig);
+		pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zName,nOrig);
 		if( pStream == 0 ){
 			VfsThrowNoDeviceWarning(pCtx,zName,FALSE);
 			ph7_result_bool(pCtx,0);

@@ -398,6 +398,54 @@ PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUr
 	}
 }
 /*
+ * A scheme NOBODY is registered under is not a refusal in php: its lookup warns,
+ * FORGETS the protocol, and hands the whole uri -- scheme and all -- to the
+ * plain-files wrapper, which resolves it against the filesystem like any other
+ * relative name. So `file_get_contents('zzz://hit.php')` warns once and then
+ * READS ./zzz:/hit.php, and `scandir('zzz://')` lists that directory, where this
+ * engine warned twice and answered FALSE. Every door that opens a url wants that
+ * behaviour, and reading the lookup's NULL as "no wrapper will take this" left
+ * the fallback stated in the include door alone.
+ *
+ * Two cases keep the refusal, because php reaches no fallback for them either:
+ *
+ *   file://host/path  -- a wrapper WAS found and declined the name, which php
+ *                        words as its own sentence (see VfsThrowNoDeviceWarning).
+ *   file:// disabled  -- php's fallback branch IS the plain-files wrapper, so a
+ *                        configuration that switched it off has nothing to fall
+ *                        back to.
+ *
+ * A scheme that is merely SUPPRESSED falls back with the rest: php cannot tell an
+ * unregistered wrapper from one that never existed, and neither can a script.
+ *
+ * *pzUri is in/out exactly as PH7_VmGetStreamDevice leaves it -- advanced past a
+ * scheme some wrapper answered for, and left at the WHOLE uri when the fallback
+ * takes it, which is the string the plain-files wrapper is meant to see.
+ */
+PH7_PRIVATE const ph7_io_stream * PH7_VfsStreamDeviceOrFile(
+	ph7_context *pCtx,     /* Call context, for the warning's function name */
+	const char **pzUri,    /* IN: full uri. OUT: what the wrapper is handed */
+	int nByte              /* *pzUri length */
+	)
+{
+	const char *zUri = *pzUri;
+	const ph7_io_stream *pStream;
+	int nScheme = 0;
+	pStream = PH7_VmGetStreamDevice(pCtx->pVm,pzUri,nByte);
+	if( pStream != 0 ){
+		return pStream;
+	}
+	if( PH7_VmStreamDeviceIsRemoteHost(zUri,nByte,&nScheme) || nScheme < 1 ){
+		return 0;
+	}
+	if( PH7_VmStreamSchemeDisabled(pCtx->pVm,"file",(int)sizeof("file")-1) ){
+		return 0;
+	}
+	VfsThrowUnknownWrapperWarning(pCtx,zUri);
+	*pzUri = zUri;
+	return PH7_VmFindStreamDevice(pCtx->pVm,"file",(int)sizeof("file")-1);
+}
+/*
  * php's stat-failure warning: `filemtime(): stat failed for /nope`, and
  * `filetype(): Lstat failed for /nope` for the two members that LSTAT. php raises
  * it from php_stat() for the whole family and answers FALSE; PHL answered the
@@ -769,6 +817,20 @@ static int VfsUserStat(ph7_context *pCtx,const char *zPath,int eAsk)
 	SyBlobAppend(&sPath,"",1); /* NUL, for the %s below */
 	rc = PH7_VfsUserStatFields(pCtx,zPath,eAsk,aVal);
 	if( rc == PHL_URLSTAT_NOWRAP ){
+		/* php resolves the wrapper for a stat the same way it resolves one for an
+		 * open (php_stream_locate_url_wrapper), so a scheme nothing is registered
+		 * under is NAMED here too -- and then forgotten, the whole uri going on to
+		 * the plain-files path below. The family answered that path's verdict in
+		 * silence, so `file_exists('zzz://hit.php')` was TRUE with nothing said.
+		 *
+		 * NOWRAP is "no wrapper of its OWN answered", which a plain `file://` name
+		 * reaches too -- so the sentence is left to the same screen every open
+		 * door uses, which says nothing for a scheme somebody IS registered under.
+		 * The device it resolves is the plain-files one this path already takes. */
+		{
+			const char *zProbe = (const char *)SyBlobData(&sPath);
+			PH7_VfsStreamDeviceOrFile(pCtx,&zProbe,(int)SyStrlen(zProbe));
+		}
 		SyBlobRelease(&sPath);
 		return 0;
 	}
@@ -1321,7 +1383,17 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			 * comparison, the unplaced end counting as the plain-files wrapper --
 			 * so a plain path beside it renames (and fails on the path), while a
 			 * WRAPPER beside it is the across-types refusal below. */
-			VfsThrowUnknownWrapperWarning(pCtx,pA == 0 ? zOld : zNew);
+			{
+				/* `file://host` is not "nobody is registered": a wrapper answered
+				 * and declined the name, and php words that ONCE, from the
+				 * path-op door (VfsBuiltinWrapperRefuses) -- so this screen stays
+				 * quiet for it and speaks only for a scheme with no wrapper. */
+				const char *zBad = pA == 0 ? zOld : zNew;
+				int nScheme = 0;
+				if( !PH7_VmStreamDeviceIsRemoteHost(zBad,-1,&nScheme) ){
+					VfsThrowUnknownWrapperWarning(pCtx,zBad);
+				}
+			}
 			if( pA == 0 ){
 				pA = pCtx->pVm->pDefStream;
 			}
@@ -1662,6 +1734,33 @@ static int VfsBuiltinWrapperRefuses(ph7_context *pCtx,const char *zPath,const ch
 		return 0;
 	}
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zTail,(int)SyStrlen(zPath));
+	if( pStream == 0 ){
+		int nScheme = 0;
+		if( PH7_VmStreamDeviceIsRemoteHost(zPath,(int)SyStrlen(zPath),&nScheme) ){
+			/* `file://host/path` is the OTHER shape: a wrapper was found and
+			 * declined the name, so php refuses outright rather than falling
+			 * back. Its table is the one below with two sentences swapped --
+			 * unlink() and rename() name the LOOKUP rather than a wrapper label,
+			 * chmod() keeps its own, and mkdir()/rmdir() stay silent. */
+			if( eOp == VFS_POP_UNLINK || eOp == VFS_POP_RENAME ){
+				PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Unable to locate stream wrapper",
+					ph7_function_name(pCtx));
+			}else if( eOp == VFS_POP_CHMOD ){
+				PH7_VmThrowWarningFmt(pCtx->pVm,
+					"%s(): Cannot call %s() for a non-standard stream",
+					ph7_function_name(pCtx),ph7_function_name(pCtx));
+			}
+			ph7_result_bool(pCtx,0);
+			return 1;
+		}
+		/* A scheme nothing is registered under: php names it and then takes the
+		 * whole uri to the plain-files path below, which is what these ops run
+		 * on. Once per lookup the C body makes: rename() resolves BOTH of its
+		 * names and so says it twice, but its second is the wrapper-mismatch
+		 * screen's own (see the pA/pB compare below) and not this one's. */
+		VfsThrowUnknownWrapperWarning(pCtx,zPath);
+		return 0;
+	}
 	zLabel = PH7_StreamWrapperLabel(pCtx->pVm,pStream);
 	if( zLabel == 0 ){
 		return 0;

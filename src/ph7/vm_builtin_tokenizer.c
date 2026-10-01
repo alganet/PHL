@@ -1687,7 +1687,7 @@ static int PH7_builtin_php_strip_whitespace(ph7_context *pCtx,int nArg,ph7_value
 	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
 		return PH7_OK;
 	}
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_string(pCtx,"",0);

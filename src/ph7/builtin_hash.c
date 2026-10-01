@@ -1309,7 +1309,7 @@ static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
 	if( PH7_VfsEmptyPathRefused(pCtx,nFile) ){
 		return 0;
 	}
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nFile);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nFile);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		return 0;

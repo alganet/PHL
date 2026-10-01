@@ -2094,7 +2094,7 @@ static int FinfoReadPath(ph7_context *pCtx,const char *zPath,int nPath,SyBlob *p
 			VfsThrowUnknownWrapperWarning(pCtx,zPath);
 		}
 	}
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zName,nPath);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zName,nPath);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zName,FALSE);
 		return -1;

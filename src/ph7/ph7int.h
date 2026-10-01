@@ -6849,6 +6849,7 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
  * ENOTDIR, which belongs to the open and to no other file operation. */
 PH7_PRIVATE const char * PH7_VfsOpenStrerror(int iErr);
 PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri);
+PH7_PRIVATE const ph7_io_stream * PH7_VfsStreamDeviceOrFile(ph7_context *pCtx,const char **pzUri,int nByte);
 PH7_PRIVATE int PH7_VfsEmptyPathRefused(ph7_context *pCtx,int nPath);
 /* The separator php's own path expansion writes on this platform. */
 #ifdef __WINNT__

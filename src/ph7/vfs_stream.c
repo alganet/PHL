@@ -2252,7 +2252,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	 * and the device lookup advances zPath past that scheme. */
 	zAsked = zPath;
 	/* Try to extract a stream */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zPath,iLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zPath,iLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zPath,TRUE);
 		ph7_result_bool(pCtx,0);
@@ -2427,7 +2427,7 @@ PH7_PRIVATE int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apAr
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -2527,7 +2527,7 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 		}
 	}
 	/* Point to the target IO stream device */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -2724,7 +2724,7 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -2934,7 +2934,7 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -3124,7 +3124,7 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pDest = PH7_VmGetStreamDevice(pCtx->pVm,&zDest,nDest);
 	}
 	/* Point to the target IO stream device */
-	pSin = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pSin = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pSin == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -3180,7 +3180,7 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pSout = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pSout = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pSout == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -9245,7 +9245,7 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 	*piErr = PH7_STREAM_OPEN_OK;
 	*pzErrUri = zUri;
 	/* Try to extract a stream */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zUri,iLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zUri,iLen);
 	*pzErrUri = zUri;
 	if( pStream == 0 ){
 		*piErr = PH7_STREAM_OPEN_NODEVICE;
@@ -9495,7 +9495,7 @@ PH7_PRIVATE int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apAr
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -9569,7 +9569,7 @@ PH7_PRIVATE int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
@@ -9662,7 +9662,7 @@ PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value 
 			"parse_ini_file(): Argument #1 ($filename) must not be empty");
 	}
 	/* Point to the target IO stream device */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
+	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);

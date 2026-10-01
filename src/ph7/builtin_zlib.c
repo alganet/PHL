@@ -1600,7 +1600,7 @@ static io_private * ZlibOpenDevice(ph7_context *pCtx,ph7_value *pPath,
 		 * over it. */
 		const char *zTail = zUri;
 		iFlags = iForceFlags;
-		pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zTail,nUri);
+		pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zTail,nUri);
 		zUri = zTail;
 		if( pStream == 0 ){
 			VfsThrowNoDeviceWarning(pCtx,zUri,FALSE);
