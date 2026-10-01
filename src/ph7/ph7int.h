@@ -5513,11 +5513,24 @@ PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj);
  * The same reason SySetAt and PH7_MemObjAt are inline.
  */
 #define MEMOBJ_AUX_OWNED (MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_DEFPATH)
+/*
+ * The two markers that describe a value's place in ONE array literal under construction --
+ * "this key is ABSENT, auto-index it" and "this value is a SPREAD source" -- and that mean
+ * nothing once the LOAD_MAP they were written for has read them.
+ *
+ * They are the only flags whose lifetime is shorter than their slot's, and MemObjSetType
+ * keeps every AUX bit, so without this they SURVIVED the pop: a constant pushed onto a slot
+ * that had last held an absent-key nil came out marked absent, and `[E_USER_ERROR => 'x',
+ * E_USER_WARNING => 'y']` built `[256 => 'x', 257 => 'y']` -- a wrong array, silently.
+ * Cleared at the release every pop routes through, which is why they belong in the fast
+ * path's mask: a marked slot must not take its "owns nothing" return.
+ */
+#define MEMOBJ_AUX_STACKMARK (MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_SPREAD)
 PHL_VC_DOOR sxi32 PH7_MemObjRelease(ph7_value *pObj)
 {
 	PHL_VC_NOTE(PHL_VC_RELEASE,
-		(pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_AUX_OWNED)) != MEMOBJ_NULL);
-	if( (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_AUX_OWNED)) == MEMOBJ_NULL ){
+		(pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_AUX_OWNED|MEMOBJ_AUX_STACKMARK)) != MEMOBJ_NULL);
+	if( (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_AUX_OWNED|MEMOBJ_AUX_STACKMARK)) == MEMOBJ_NULL ){
 		return SXRET_OK;   /* Owns nothing -- 43.1% of every release the engine makes */
 	}
 	return PH7_MemObjReleaseSlow(pObj);

@@ -1865,6 +1865,11 @@ PH7_PRIVATE int PH7_ValuePeekBool(ph7_value *pVal)
  */
 PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj)
 {
+	/* The array-literal position markers die with the slot's contents: they describe
+	 * where this value sat in the literal LOAD_MAP has now read, and the next value to
+	 * occupy the slot sits somewhere else in some other literal. Cleared first, ahead of
+	 * every early return below -- see MEMOBJ_AUX_STACKMARK. */
+	pObj->iFlags &= ~MEMOBJ_AUX_STACKMARK;
 	if( pObj->iFlags & MEMOBJ_AUX_COALSTROFF ){
 		/* A `$s[k] ??= v` peek result OWNS the heap VmCoalStrOff holding its raw
 		 * offset. Free it HERE, before the MEMOBJ_NULL short-circuit below and for
