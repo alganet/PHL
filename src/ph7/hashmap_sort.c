@@ -91,6 +91,13 @@ PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmp
 		apSrc[i++] = pEntry;
 	}
 	n = i; /* Defensive: honour the list, not the counter, if they disagree */
+	if( n < 2 ){
+		/* An empty or single-node list has no order to decide, and the relink
+		 * below indexes the vector unconditionally. */
+		SyMemBackendFree(&pMap->pVm->sAllocator,(void *)apVector);
+		pMap->pCur = pMap->pFirst;
+		return SXRET_OK;
+	}
 	for( width = 1 ; width < n ; width <<= 1 ){
 		for( lo = 0 ; lo < n ; lo += width << 1 ){
 			mid = lo + width;
