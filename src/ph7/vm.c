@@ -6067,8 +6067,13 @@ static int VmIniExprVar(VmIniExpr *p,SyBlob *pOut,int nDepth)
 			}
 			if( c == '"' ){
 				if( !VmIniExprQuoted(p,&sFallback,nDepth) ){
+					/* The run reaches the end of the SOURCE, and what php
+					 * names there is its double-quote state's own expect-list
+					 * rather than the `}` the fallback around it still wants:
+					 * `${A:-"x` and `${A:-x"` both stop under it. */
 					SyBlobRelease(&sFallback);
-					VmIniExprStopAt(p,"end of file",0,"'}'");
+					VmIniExprStopAt(p,"end of file",0,
+						"TC_DOLLAR_CURLY or TC_QUOTED_STRING or '\"'");
 					return 0;
 				}
 				continue;
@@ -6527,6 +6532,45 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 		}
 		return SXRET_OK;
 	}
+	if( iStop == PH7_INI_STOP_SECTION_VAR ){
+		/* A `${` run written inside a section name or an offset. php's
+		 * ST_VARNAME and ST_VAR_FALLBACK are pushed from its section, offset
+		 * and value states alike, so the run is read by the value grammar's
+		 * own variable rule and refused under the same tokens -- a source that
+		 * writes `[${A:-x}]` is refused for the one-letter name php's scanner
+		 * loses to its fallback rule, exactly as `p = ${A:-x}` is. Where php
+		 * reads the substitution there is nothing to say and nothing to store:
+		 * the host walks a section header for its extent, not for a directive. */
+		VmIniExpr sVar;
+		SyBlob sOut;
+		int bRead;
+		nName = (sxu32)SyStrlen(zName);
+		if( nName < 2 ){
+			return SXRET_OK;
+		}
+		SyZero(&sVar,sizeof(sVar));
+		sVar.pVm = pVm;
+		sVar.zCur = zName;
+		sVar.zEnd = &zName[nName];
+		SyBlobInit(&sOut,&pVm->sAllocator);
+		bRead = VmIniExprVar(&sVar,&sOut,0);
+		SyBlobRelease(&sOut);
+		if( bRead ){
+			return SXRET_OK;
+		}
+		SyZero(&sBad,sizeof(sBad));
+		sBad.zTok = sVar.zTok;
+		sBad.cChar = sVar.cStop;
+		sBad.bExpect = sVar.bExpect;
+		sBad.zExpect = sVar.zExpect;
+		sBad.nLine = sVar.nLine;
+		SyStringInitFromBuf(&sFile,zFile,zFile ? SyStrlen(zFile) : 0);
+		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
+		if( pbBad ){
+			*pbBad = 1;
+		}
+		return SXRET_OK;
+	}
 	if( iStop >= PH7_INI_STOP_SECTION ){
 		/* Not a directive: a `[` the host's scanner never found a `]` for. php's
 		 * section name is one scanner run that ends at the `]` -- a newline is
@@ -6538,7 +6582,7 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 		sBad.zTok = "end of file";
 		sBad.zExpect = iStop == PH7_INI_STOP_SECTION_STR
 			? "TC_DOLLAR_CURLY or TC_QUOTED_STRING or '\"'"
-			: iStop == PH7_INI_STOP_SECTION_VAR ? "TC_VARNAME" : "']'";
+			: "']'";
 		SyStringInitFromBuf(&sFile,zFile,zFile ? SyStrlen(zFile) : 0);
 		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
 		if( pbBad ){

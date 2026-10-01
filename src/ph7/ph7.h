@@ -197,14 +197,24 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_INI_STOP_EOF          1  /* the source ran out: END_OF_LINE, the directive's own line */
 #define PH7_INI_STOP_COMMENT      2  /* ...inside a `;` comment no newline ever closed: "end of file" */
 /*
- * The three shapes of `[section` php's scanner never closes. Each refuses the
+ * The two shapes of `[section` php's scanner never closes. Each refuses the
  * whole source from that point down, so a host that finds one hands it over in
  * place of a directive: zName and zValue are ignored, and nLine is where the
  * refusal is dated.
  */
 #define PH7_INI_STOP_SECTION      3  /* end of file, expecting ']' */
 #define PH7_INI_STOP_SECTION_STR  4  /* an unclosed `"` inside the name */
-#define PH7_INI_STOP_SECTION_VAR  5  /* an unclosed `${` inside the name */
+/*
+ * Not a refusal on its own: a `${` run written inside a section name or an
+ * offset, handed over to be SCREENED. php pushes one variable state from its
+ * section, offset and value states alike, so the run is read by the value
+ * grammar's own rule and refused under the same tokens. zName carries the run
+ * from its `$` to the end of the source -- the rule stops at the `}` that
+ * closes it, and a double-quoted fallback inside it may cross newlines -- and
+ * nLine is the line the `$` is on. A run php reads gets no diagnostic and
+ * stores nothing; a run it refuses takes the source down from there.
+ */
+#define PH7_INI_STOP_SECTION_VAR  5  /* zName is a `${` run, to screen */
 /*
  * Not a directive at all: the text standing where php's scanner would read a
  * directive NAME, handed over so the engine can say whether php reads a name

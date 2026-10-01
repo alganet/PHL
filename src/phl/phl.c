@@ -404,6 +404,111 @@ static void PHL_ScreenIniStmt(ph7 *pEngine,const char *zStmt,size_t nStmt,
 	}
 }
 /*
+ * Hand over a `${` run found inside a section NAME, from its `$` to the end of
+ * the source. php's ST_VARNAME and ST_VAR_FALLBACK are reached from its section
+ * state and from its value state alike -- one run, one grammar, one set of
+ * refusals -- so the screen is the engine's own variable rule rather than a
+ * second reading of it out here. The engine answers nothing at all when php
+ * reads the substitution, and the source's refusal when it does not; either way
+ * the entry stands in the queue ahead of everything the header is followed by,
+ * so a refused `${` takes those down the way any other ini error does.
+ */
+static void PHL_ScreenIniVar(ph7 *pEngine,const char *zRun,size_t nRun,
+	const char *zFile,unsigned int nLine)
+{
+	char zStack[512];
+	char *zText = zStack;
+	if( nRun + 1 > sizeof(zStack) ){
+		zText = (char *)malloc(nRun + 1);
+		if( zText == 0 ){
+			return;
+		}
+	}
+	if( nRun > 0 ){
+		memcpy(zText,zRun,nRun);
+	}
+	zText[nRun] = 0;
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zText,"",zFile,nLine,
+		PH7_INI_STOP_SECTION_VAR);
+	if( zText != zStack ){
+		free(zText);
+	}
+}
+/*
+ * How far one `${` run reaches, with z on its `$`. Answers the byte behind the
+ * `}` that closes it, or 0 when nothing does. Only the EXTENT is decided here:
+ * whether php reads the run at all is the engine's answer (PHL_ScreenIniVar),
+ * and where the two readings could differ the engine has already refused the
+ * source -- so the walk only has to land on the same `}` for a run php accepts.
+ * That is the name run, which stops at a byte its LABEL cannot hold and carries
+ * no escapes, and then the fallback behind a `:-`, which keeps a `\<byte>` pair
+ * whole, takes a nested `${}` and a double-quoted run, and ends at anything
+ * else. Only the double-quoted run moves *pnLine, exactly as it does in a value.
+ */
+static const char * PHL_IniVarRun(const char *z,const char *zEnd,unsigned int *pnLine)
+{
+	z += 2;   /* `${` */
+	/* The name run's own end is the engine's table, but a run php ACCEPTS can
+	 * only end on the `}` that closes it or on the `:-` that opens a fallback:
+	 * every other byte that ends a LABEL is then standing where the grammar
+	 * wants one of those two, which is a refusal the engine has already named.
+	 * So the walk needs neither the table nor a copy of it. */
+	while( z < zEnd && z[0] != '}' ){
+		if( z[0] == ':' && &z[1] < zEnd && z[1] == '-' ){
+			break;
+		}
+		z++;
+	}
+	if( z < zEnd && z[0] == ':' && &z[1] < zEnd && z[1] == '-' ){
+		z += 2;
+		while( z < zEnd ){
+			int c = (unsigned char)z[0];
+			if( c == '}' ){
+				break;
+			}
+			if( c == '\\' && &z[1] < zEnd ){
+				z += 2;
+				continue;
+			}
+			if( c == '$' && &z[1] < zEnd && z[1] == '{' ){
+				z = PHL_IniVarRun(z,zEnd,pnLine);
+				if( z == 0 ){
+					return 0;
+				}
+				continue;
+			}
+			if( c == '"' ){
+				const char *zQ = &z[1];
+				while( zQ < zEnd && zQ[0] != '"' ){
+					if( zQ[0] == '\\' && &zQ[1] < zEnd ){
+						zQ += 2;
+						continue;
+					}
+					if( zQ[0] == '\n' || zQ[0] == '\r' ){
+						zQ = PHL_IniEatEol(zQ,zEnd);
+						(*pnLine)++;
+						continue;
+					}
+					zQ++;
+				}
+				if( zQ >= zEnd ){
+					return 0;
+				}
+				z = &zQ[1];
+				continue;
+			}
+			if( c == '\n' || c == '\r' || c == ';' || c == '\'' ){
+				break;
+			}
+			z++;
+		}
+	}
+	if( z >= zEnd || z[0] != '}' ){
+		return 0;
+	}
+	return &z[1];
+}
+/*
  * php's ST_SECTION_VALUE and ST_OFFSET are one run, and `[s]` and `a[s]` are
  * the two statements that open it: SECTION_VALUE_CHARS, a backslash carrying
  * whatever byte is behind it (a newline included), a raw `'` run, a
@@ -418,9 +523,13 @@ static void PHL_ScreenIniStmt(ph7 *pEngine,const char *zStmt,size_t nStmt,
  * that never touches the counter -- and it moves it whether or not the run is
  * the thing that fails, so a refusal below a name carrying a quoted newline is
  * dated where the counter got to.
+ *
+ * A `${` inside the name is handed to the engine as it is walked over, in the
+ * order the names hold them: php's substitution is one grammar wherever it is
+ * written, and reading it out here instead would be a second copy of it.
  */
-static const char * PHL_IniBracketRun(const char *z,const char *zEnd,
-	unsigned int *pnLine,int *piBad)
+static const char * PHL_IniBracketRun(ph7 *pEngine,const char *zFile,
+	const char *z,const char *zEnd,unsigned int *pnLine,int *piBad)
 {
 	*piBad = PH7_INI_STOP_SECTION;
 	while( z < zEnd ){
@@ -469,15 +578,17 @@ static const char * PHL_IniBracketRun(const char *z,const char *zEnd,
 			continue;
 		}
 		if( c == '$' && &z[1] < zEnd && z[1] == '{' ){
-			const char *zQ = &z[2];
-			while( zQ < zEnd && zQ[0] != '}' ){
-				zQ++;
-			}
-			if( zQ >= zEnd ){
-				*piBad = PH7_INI_STOP_SECTION_VAR;
+			unsigned int nAt = *pnLine;
+			const char *zAfter = PHL_IniVarRun(z,zEnd,pnLine);
+			PHL_ScreenIniVar(pEngine,z,(size_t)(zEnd - z),zFile,nAt);
+			if( zAfter == 0 ){
+				/* Nothing closed it, so the screen just queued is a refusal
+				 * whatever else the name holds: the `]` this run will not
+				 * reach is never reported, because the entry above takes the
+				 * source down before that one is applied. */
 				return 0;
 			}
-			z = &zQ[1];
+			z = zAfter;
 			continue;
 		}
 		if( c == '\\' && &z[1] < zEnd ){
@@ -571,7 +682,7 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 			const char *zAfter;
 			z++;
 			nSec = nLine;
-			zAfter = PHL_IniBracketRun(z,zEnd,&nSec,&iBad);
+			zAfter = PHL_IniBracketRun(pEngine,zFile,z,zEnd,&nSec,&iBad);
 			if( zAfter == 0 ){
 				PHL_RefuseIniSource(pEngine,zFile,nSec,iBad);
 				return;
@@ -633,7 +744,7 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 			const char *zAfter;
 			int iBad;
 			PHL_ScreenIniStmt(pEngine,zName,(size_t)(z + 1 - zName),zFile,nDir);
-			zAfter = PHL_IniBracketRun(&z[1],zEnd,&nOff,&iBad);
+			zAfter = PHL_IniBracketRun(pEngine,zFile,&z[1],zEnd,&nOff,&iBad);
 			if( zAfter == 0 ){
 				PHL_RefuseIniSource(pEngine,zFile,nOff,iBad);
 				return;
