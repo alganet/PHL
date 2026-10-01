@@ -3002,6 +3002,7 @@ static int VmIniValRunIsName(const char *z,sxu32 n)
  * twelve -- plus `=` and `[`, which have statements of their own. So `a.b`,
  * `a:b` and `a'b` are ordinary keys while `a&b` is not a key at all.
  */
+static int VmIniVarNameChar(int c);
 static int VmIniLabelStopIsToken(int c)
 {
 	return c == '&' || c == '|' || c == '^' || c == '$' || c == '~'
@@ -3023,17 +3024,100 @@ static int VmIniCommentEndsLine(const char *z,const char *zEnd)
 	return 0;
 }
 /*
- * Name the byte a label run stopped on the way php's parser names it. With
- * bAfterOffset the statement is already committed -- `TC_OFFSET option_offset
- * ']' '=' string_or_value` is the only shape an offset has -- so every name
- * carries php's `, expecting '='`, and a byte that would merely have ended a
- * bare-label statement is refused here too.
+ * php's INITIAL holds a rule for each of its bool words ahead of the one that
+ * reads a LABEL, and no statement of its grammar starts with the token they
+ * return: `on = 1` is a syntax error where `onx = 1` is the entry "onx". The
+ * word has to OPEN the run -- the rule carries no leading blanks of its own,
+ * so `  on = 1` is still the entry "on" -- and its `{TABS_AND_SPACES}*` tail
+ * is what lets it outrun a LABEL, which stops dead at a TAB. flex takes the
+ * longest match and, on a tie, the earliest rule, so `on\t= 1` is BOOL_TRUE,
+ * `on x = 1` is the entry "on x", and `none = 1` is BOOL_FALSE only because
+ * the four-byte word outruns the two-byte one inside it.
+ *
+ * nRun is the length of the `{LABEL}` run competing for the same bytes.
+ */
+static const char * VmIniStmtBoolTok(const char *z,const char *zEnd,int nRun)
+{
+	const char *zTok = 0;
+	int nBest = 0;
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(aIniBool) ; i++ ){
+		const char *zTail;
+		sxu32 nWord = aIniBool[i].nWord;
+		int nMatch;
+		if( (sxu32)(zEnd - z) < nWord || SyStrnicmp(z,aIniBool[i].zWord,nWord) != 0 ){
+			continue;
+		}
+		zTail = &z[nWord];
+		while( zTail < zEnd && (zTail[0] == ' ' || zTail[0] == '\t') ){
+			zTail++;
+		}
+		nMatch = (int)(zTail - z);
+		if( nMatch > nBest ){
+			nBest = nMatch;
+			zTok = aIniBool[i].zTok;
+		}
+	}
+	return nBest >= nRun ? zTok : 0;
+}
+/*
+ * Which rule eats the blank run standing at a statement position decides what
+ * the statement behind it IS, because a SPACE is a LABEL_CHAR and a TAB is
+ * not. `{TABS_AND_SPACES}*[=]`, the comment rule and the newline rule outrun
+ * everything; failing those, `{LABEL}` and `{LABEL}"["` swallow a SPACES-ONLY
+ * run and trim it back off the name, and only a run holding a TAB is left to
+ * `{TABS_AND_SPACES}+` and thrown away whole. So `  [s]` is the OFFSET
+ * `  `[s] where `\t[s]` is the section, and `  on = 1` is the entry "on"
+ * where `\ton = 1` opens with php's BOOL_TRUE.
+ *
+ * Answers the byte the next token starts at.
+ */
+static const char * VmIniStmtStart(const char *z,const char *zEnd)
+{
+	const char *zBlank = z;
+	int bTab = 0;
+	while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+		if( z[0] == '\t' ){
+			bTab = 1;
+		}
+		z++;
+	}
+	if( !bTab && z > zBlank && z < zEnd
+	 && z[0] != '=' && z[0] != ';' && z[0] != '\n' && z[0] != '\r' ){
+		return zBlank;   /* the label run owns the spaces */
+	}
+	return z;
+}
+/*
+ * Name the token php's INITIAL reads at this position the way its parser names
+ * it. Three rules overlap here and flex ranks them by length, then by the
+ * order they are written in: `{LABEL}"["` is TC_OFFSET (TC_SECTION when the
+ * run in front of the bracket is empty), the bool words come next, and
+ * `{LABEL}` is last -- which is why `a[x] [y]` is an unexpected TC_OFFSET and
+ * `a[x]\t[y]` an unexpected TC_SECTION. With bAfterOffset the statement is
+ * already committed -- `TC_OFFSET option_offset ']' '=' string_or_value` is
+ * the only shape an offset has -- so every name carries php's
+ * `, expecting '='`, and a byte that would merely have ended a bare-label
+ * statement is refused here too.
  */
 static const char * VmIniLabelStopTok(VmIniVal *p,const char *z,const char *zEnd,int bAfterOffset)
 {
 	const char *zName;
+	const char *zRun = z;
 	char *zOut = p->zOp;
-	if( z >= zEnd || z[0] == 0 ){
+	while( zRun < zEnd && VmIniVarNameChar((unsigned char)zRun[0]) ){
+		zRun++;
+	}
+	if( zRun > z ){
+		if( zRun < zEnd && zRun[0] == '[' ){
+			zName = "TC_OFFSET";
+		}else{
+			zName = VmIniStmtBoolTok(z,zEnd,(int)(zRun - z));
+			if( zName == 0 ){
+				zName = "TC_LABEL";
+			}
+		}
+	}else if( z >= zEnd || z[0] == 0 ){
 		zName = "end of file";
 	}else if( z[0] == '\n' || z[0] == '\r' ){
 		zName = "END_OF_LINE";
@@ -3763,6 +3847,7 @@ static void VmIniSyntaxError(ph7_context *pCtx,const char *zStart,const char *zF
 PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode,const char *zFile)
 {
 	ph7_value *pCur,*pArray,*pSection,*pWorker,*pValue;
+	ph7_value *pEmptyArr = 0;   /* the array of the "" option name, which SyHash cannot key */
 	const char *zStart = zIn;
 	const char *zCur,*zEnd = &zIn[nByte];
 	SyHashEntry *pEntry;
@@ -3785,9 +3870,14 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 	pCur = pArray;
 	/* Start the parse process */
 	for(;;){
-		/* Ignore leading white spaces */
-		while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0])){
-			zIn++;
+		/* Ignore leading white spaces -- all but the ones a LABEL claims */
+		for(;;){
+			zIn = VmIniStmtStart(zIn,zEnd);
+			if( zIn < zEnd && (zIn[0] == '\n' || zIn[0] == '\r') ){
+				zIn++;   /* END_OF_LINE, the one rule that eats a byte by itself */
+				continue;
+			}
+			break;
 		}
 		if( zIn >= zEnd ){
 			/* No more input to process */
@@ -3858,6 +3948,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					 * then `a[y]` is one `a` holding both. */
 					SyHashRelease(&sHash);
 					SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);
+					pEmptyArr = 0;
 				}
 			}
 			SyBlobRelease(&sSec);
@@ -3897,6 +3988,17 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 				zIn++;
 			}
 			iLen = (int)(zIn-zCur);
+			if( !(zIn < zEnd && zIn[0] == '[') ){
+				/* php reads a bool word here as the VALUE token it is, and no
+				 * statement of its grammar starts with one -- but `{LABEL}"["`
+				 * outruns the word, so an offset is still an offset. */
+				const char *zBool = VmIniStmtBoolTok(zCur,zEnd,iLen);
+				if( zBool ){
+					sVal.zErr = sVal.zCur = zCur;
+					sVal.zTok = zBool;
+					goto ini_syntax_error;
+				}
+			}
 			if( zIn < zEnd && zIn[0] == '[' ){
 				{
 					/* Array */
@@ -3946,16 +4048,11 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					}
 					zIn++;   /* ']' */
 				}
-				/* Only `{TABS_AND_SPACES}*[=]` may stand behind the bracket. A
-				 * TAB is thrown away on its own; a SPACE is a LABEL_CHAR and
-				 * starts a label unless an `=` closes the run, which is why
-				 * `a[x] ]` is an unexpected TC_LABEL and not an unexpected
-				 * `]`. */
-				while( zIn < zEnd && zIn[0] == '\t' ){
-					zIn++;
-				}
+				/* Only `{TABS_AND_SPACES}*[=]` may stand behind the bracket,
+				 * and that rule outruns every other reading of the blanks it
+				 * eats, mixed TABS and SPACES alike. */
 				zEq = zIn;
-				while( zEq < zEnd && zEq[0] == ' ' ){
+				while( zEq < zEnd && (zEq[0] == ' ' || zEq[0] == '\t') ){
 					zEq++;
 				}
 				if( zEq < zEnd && zEq[0] == '=' ){
@@ -3965,6 +4062,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					 * an offset has -- there is no bare `a[x]` the way there
 					 * is a bare `a` -- so whatever stands where the `=` was
 					 * due is named and the whole parse is discarded. */
+					zIn = VmIniStmtStart(zIn,zEnd);
 					sVal.zErr = sVal.zCur = zIn;
 					sVal.zTok = VmIniLabelStopTok(&sVal,zIn,zEnd,1);
 					if( zIn < zEnd && (zIn[0] == '\n' || zIn[0] == '\r'
@@ -4011,9 +4109,21 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					continue;
 				}
 			}
-			/* Trim the key */
+			/* Trim the key. php's EAT_LEADING_WHITESPACE eats a SPACE and a
+			 * TAB and nothing else, and its LABEL_CHAR set holds every other
+			 * blank there is, so `\v` and `\f` stay part of the name: `\va = 1`
+			 * is the entry "\va" and `\v = 1` the entry "\v". */
 			SyStringInitFromBuf(&sEntry,zCur,iLen);
-			SyStringFullTrim(&sEntry);
+			while( sEntry.nByte > 0
+			 && (sEntry.zString[0] == ' ' || sEntry.zString[0] == '\t') ){
+				sEntry.zString++;
+				sEntry.nByte--;
+			}
+			while( sEntry.nByte > 0
+			 && (sEntry.zString[sEntry.nByte-1] == ' '
+			  || sEntry.zString[sEntry.nByte-1] == '\t') ){
+				sEntry.nByte--;
+			}
 			if( sEntry.nByte < 1 && !is_array ){
 				/* php's grammar has no statement that starts with `=`, and
 				 * INITIAL hands the byte straight to the parser: a line whose
@@ -4022,19 +4132,32 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 				sVal.zTok = "'='";
 				goto ini_syntax_error;
 			}
-			if( sEntry.nByte > 0 ){
+			if( sEntry.nByte > 0 || is_array ){
 				if( is_array ){
 					ph7_value *pvArr = 0; /* cc warning */
-					/* Query the hashtable */
-					pEntry = SyHashGet(&sHash,(const void *)sEntry.zString,sEntry.nByte);
-					if( pEntry ){
-						pvArr = (ph7_value *)SyHashEntryGetUserData(pEntry);
+					/* Query the hashtable. An option name that came out EMPTY
+					 * -- ` [x] = 1`, where the leading SPACES were the whole
+					 * label -- is an entry under "" like any other and reuses
+					 * its array across lines, but SyHashGet answers no
+					 * zero-length key, so that one array is memoed apart. */
+					if( sEntry.nByte < 1 ){
+						pvArr = pEmptyArr;
 					}else{
+						pEntry = SyHashGet(&sHash,(const void *)sEntry.zString,sEntry.nByte);
+						if( pEntry ){
+							pvArr = (ph7_value *)SyHashEntryGetUserData(pEntry);
+						}
+					}
+					if( pvArr == 0 ){
 						/* Create an empty array */
 						pvArr = ph7_context_new_array(pCtx);
 						if( pvArr ){
 							/* Save the entry */
-							SyHashInsert(&sHash,(const void *)sEntry.zString,sEntry.nByte,pvArr);
+							if( sEntry.nByte > 0 ){
+								SyHashInsert(&sHash,(const void *)sEntry.zString,sEntry.nByte,pvArr);
+							}else{
+								pEmptyArr = pvArr;
+							}
 							/* Insert the entry */
 							ph7_value_reset_string_cursor(pWorker);
 							ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);
