@@ -1356,6 +1356,33 @@ struct VmFrame
 	const VmInstr *pCodeBase;             /* the body aLocalSlot is numbered for, 0 = none */
 	sxu32 aLocalSlot[PH7_VAR_SLOT_MAX];   /* slot index + 1, 0 = this name is unresolved here */
 };
+/*
+ * One INTERNAL function or method that is RUNNING right now.
+ *
+ * php gives every internal call an execute_data of its own, so a throw raised
+ * inside a C body leaves a trace frame naming that body -- `#0 file(line):
+ * str_repeat()`, `#0 file(line): SplFileObject->__construct()`. PHL pushes no
+ * VmFrame for a native call, so the trace started at the CALLER and a program
+ * reading it saw `#0 {main}` where php names the function that failed.
+ *
+ * The records live on the C stack of the dispatch that entered them (no
+ * allocation), chained newest-first through pVm->pNativeCall. pFrame is the
+ * userland activation that was current at entry, which is what says whether the
+ * caller was bytecode or another internal function: a record whose predecessor
+ * shares its pFrame was reached from inside that predecessor, and php prints
+ * such a frame with NO file and NO line at all (`#0 [internal function]:
+ * str_repeat()` under `array_map('str_repeat', ...)`).
+ */
+typedef struct VmNativeCall VmNativeCall;
+struct VmNativeCall
+{
+	SyString *pName;        /* the internal function's or method's own name */
+	ph7_class *pClass;      /* declaring class for a native METHOD, 0 for a function */
+	int bStatic;            /* a method declared static: php's separator is `::` */
+	sxu32 nLine;            /* the line the call was WRITTEN on (pVm->nCurLine at entry) */
+	void *pFrame;           /* VmFrame current at entry -- borrowed, never dereferenced */
+	VmNativeCall *pPrev;    /* the internal call this one was made from, or 0 */
+};
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
 #define VM_FRAME_CATCH      0x04 /* Catch frame */
@@ -4028,6 +4055,9 @@ struct ph7_vm
 	int bReflectBypass;         /* Consume-once: the next method OP_CALL skips the visibility
 	                             * check (ReflectionMethod::invoke bypasses protection like PHP
 	                             * 8.1+). Cleared by the check site; never survives past one call. */
+	VmNativeCall *pNativeCall;  /* The INTERNAL functions and methods running right now,
+	                             * newest first -- the frames php's trace carries for a
+	                             * throw raised inside a C body. See VmNativeCall. */
 	SyString *pNativeFrameName; /* Consume-once: the next OP_CALL's frame was entered by this
 	                             * INTERNAL function and so has no userland call site, even
 	                             * though its argument BINDING still follows the caller. Armed

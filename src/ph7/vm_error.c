@@ -5544,7 +5544,10 @@ PH7_PRIVATE sxi32 PH7_CmpRefusalRaiseCtx(ph7_context *pCtx)
  * stamp used to emit only the innermost frame, truncating every exception trace
  * to depth 1).
  *   iOptions bit1 = DEBUG_BACKTRACE_PROVIDE_OBJECT (attach the frame's $this as
- *   'object'); bit2 = DEBUG_BACKTRACE_IGNORE_ARGS (omit the 'args' list).
+ *   'object'); bit2 = DEBUG_BACKTRACE_IGNORE_ARGS (omit the 'args' list); bit8 =
+ *   lead with the INTERNAL functions and methods currently running, which is
+ *   php's exception trace and is NOT debug_backtrace() (php leaves its own
+ *   internal frame off the array it hands back).
  * php's exception trace passes IGNORE_ARGS and no PROVIDE_OBJECT -- its default
  * frame shape is file/line/function[/class/type], matching the default
  * zend.exception_ignore_args=On.
@@ -5560,6 +5563,62 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 		return;
 	}
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	/* The INTERNAL functions and methods running right now come first: php gives each
+	 * an execute_data of its own, so a throw raised inside a C body names that body as
+	 * frame #0 (`#0 file(line): str_repeat()`), and a native method names its class
+	 * too (`#0 file(line): SplFileObject->__construct()`). Only the run entered from
+	 * THIS activation is emitted here -- one entered from further out is reached by the
+	 * VM_FRAME_NATIVE_CALLER path below, which already renders it, and emitting it
+	 * twice would double every array_map() line. Off for debug_backtrace(), which php
+	 * leaves its own frame out of. */
+	if( (iOptions & 8) != 0 ){
+		VmNativeCall *pNat = pVm->pNativeCall;
+		while( pNat && pNat->pFrame == (void *)pVm->pFrame ){
+			ph7_value *pNatEntry;
+			if( iLimit != 0 && nDone >= iLimit ){
+				break;
+			}
+			pNatEntry = ph7_new_array(&(*pVm));
+			if( pNatEntry == 0 ){
+				break;
+			}
+			nDone++;
+			/* A call made from inside ANOTHER internal function has no source position
+			 * at all, and php omits both keys rather than inventing one -- that is the
+			 * `#0 [internal function]: str_repeat()` under `array_map('str_repeat',…)`.
+			 * The predecessor sharing this record's activation is exactly that case. */
+			if( pNat->pPrev == 0 || pNat->pPrev->pFrame != pNat->pFrame ){
+				SyString *pNatFile = PH7_VmExecutingUnitFile(&(*pVm));
+				if( pNatFile == 0 ){
+					pNatFile = pFile;
+				}
+				if( pNatFile ){
+					ph7_value_string(pValue,pNatFile->zString,(int)pNatFile->nByte);
+					ph7_array_add_strkey_elem(pNatEntry,"file",pValue);
+					ph7_value_reset_string_cursor(pValue);
+				}
+				ph7_value_int(pValue,(int)(pNat->nLine ? pNat->nLine : 1));
+				ph7_array_add_strkey_elem(pNatEntry,"line",pValue);
+			}
+			ph7_value_string(pValue,pNat->pName->zString,(int)pNat->pName->nByte);
+			ph7_array_add_strkey_elem(pNatEntry,"function",pValue);
+			ph7_value_reset_string_cursor(pValue);
+			if( pNat->pClass ){
+				ph7_value_string(pValue,pNat->pClass->sName.zString,
+					(int)pNat->pClass->sName.nByte);
+				ph7_array_add_strkey_elem(pNatEntry,"class",pValue);
+				ph7_value_reset_string_cursor(pValue);
+				ph7_value_string(pValue,pNat->bStatic ? "::" : "->",2);
+				ph7_array_add_strkey_elem(pNatEntry,"type",pValue);
+				ph7_value_reset_string_cursor(pValue);
+			}
+			/* No 'args' even when they were asked for: php has no zval vector to show
+			 * for an internal frame's arguments here, and no 'object' either. */
+			ph7_array_add_elem(pList,0,pNatEntry);
+			ph7_release_value(&(*pVm),pNatEntry);
+			pNat = pNat->pPrev;
+		}
+	}
 	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
 	while( pFrame ){
 		/* The include/require/eval activations started from THIS frame come first:
@@ -5868,7 +5927,7 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 			if( pList == 0 ){
 				continue;
 			}
-			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/,0,pList);
+			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/|8,0,pList);
 			/* Building the trace reserves new memobjs, which used to realloc
 			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO the pool,
 			 * from PH7_ClassInstanceExtractAttrValue above). Redundant since P1

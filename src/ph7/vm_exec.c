@@ -6487,6 +6487,20 @@ case PH7_OP_CALL: {
 	ph7_class_instance *pNativeOwned = 0;
 	ph7_class_instance *pNativeRecv = 0;
 	ph7_class *pNativeClass = 0;
+	/*   pNativeMethod / pNativeDeclClass — the method record and the class that
+	 *   DECLARES it, for the `class`/`type` keys of the trace frame php gives an
+	 *   internal call. Left 0 by the plain-builtin fallthrough, whose frame carries
+	 *   neither key. */
+	ph7_vm_func *pNativeMethod = 0;
+	ph7_class *pNativeDeclClass = 0;
+	/* php's compiler REWRITES a handful of calls into dedicated opcodes, and a
+	 * refusal raised by the opcode has no internal frame to name: `strlen($a)` on an
+	 * array reports the CALLER as frame #0 where `str_repeat($a,2)` reports
+	 * str_repeat. Which names fold is php's own list (ZEND_STRLEN, ZEND_COUNT,
+	 * ZEND_ARRAY_KEY_EXISTS, ZEND_GET_CLASS); the fold needs the exact arity and a
+	 * literal callee, so a dynamic name, a spread or a `name:` argument all take the
+	 * ordinary path and DO carry the frame. */
+	int bFoldedCallee = 0;
 	/* The engine's own __call/__callStatic routing: the OP_MEMBER immediately below this
 	 * call found a missing (or inaccessible) method on a class declaring the magic handler
 	 * and MARKED this callee slot, latching {receiver, class, original name} on the VM.
@@ -7202,6 +7216,13 @@ CalleeByName:
 			 * the body is gated on the declaration, not on what the fallback found. */
 			pNativeRecv = (pVmFunc->iFlags & VM_FUNC_NATIVE_STATIC) ? 0 : pThis;
 			pNativeClass = pSelf;
+			pNativeMethod = pVmFunc;
+			/* php's `class` key is the DECLARING class, which oo.c parks on the
+			 * method's pUserData -- an inherited native method reports the base,
+			 * not the receiver's class (SplTempFileObject->setMaxLineLen() is
+			 * `SplFileObject->setMaxLineLen` in php's trace). */
+			pNativeDeclClass = pVmFunc->pUserData ? (ph7_class *)pVmFunc->pUserData
+				: (pThis ? pThis->pClass : pSelf);
 			goto NativeCall;
 		}
 		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
@@ -8687,6 +8708,31 @@ SkipFuncBody:
 		 * pArg is the top base here (a builtin call pops no method-name slot). */
 		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
 			nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+		/* Does php's compiler rewrite THIS call into an opcode of its own? Only a
+		 * literal, unambiguous global name at the exact arity the rewrite covers --
+		 * the same three disqualifiers the call_user_func fold has (an unqualified
+		 * name inside a namespace, a name read from a variable, a spread), plus a
+		 * `name:` argument, which the rewrite cannot reorder. See bFoldedCallee. */
+		if( bLiteralCallee && !bNsCallee && (pInstr->iP2 & PH7_CALL_SPREAD) == 0
+		 && (pEffCallMap == 0 || !pEffCallMap->bHasNamed) ){
+			static const struct { const char *zName; int nLen; int nArg; } aFolded[] = {
+				{ "strlen",           sizeof("strlen")-1,           1 },
+				{ "count",            sizeof("count")-1,            1 },
+				{ "sizeof",           sizeof("sizeof")-1,           1 },
+				{ "array_key_exists", sizeof("array_key_exists")-1, 2 },
+				{ "get_class",        sizeof("get_class")-1,        1 },
+				{ "get_class",        sizeof("get_class")-1,        0 },
+			};
+			sxu32 iF;
+			for( iF = 0 ; iF < SX_ARRAYSIZE(aFolded) ; ++iF ){
+				if( (int)pFunc->sName.nByte == aFolded[iF].nLen
+				 && nCallArgs == aFolded[iF].nArg
+				 && SyStrnicmp(pFunc->sName.zString,aFolded[iF].zName,(sxu32)aFolded[iF].nLen) == 0 ){
+					bFoldedCallee = 1;
+					break;
+				}
+			}
+		}
 NativeCall:
 		/* A VM_FUNC_NATIVE method joins here, having done the two steps above for
 		 * itself: its by-ref mask comes from the same signature machinery, and its
@@ -8727,6 +8773,19 @@ NativeCall:
 		sCtx.pCalledClass = pNativeClass;
 		{
 		int nGiven = (int)SySetUsed(&aArg);
+		/* The trace frame php gives this internal call. Linked in below, AFTER the
+		 * two screens php answers from the caller's own frame (a named argument it
+		 * cannot bind, and a non-variable in a by-reference position -- neither
+		 * leaves an internal frame in php's trace), and unlinked unconditionally at
+		 * NativeCallDone: pPrev is seeded here so the restore is a no-op on the
+		 * paths that jump there before the link. */
+		VmNativeCall sNativeCall;
+		sNativeCall.pName = &pFunc->sName;
+		sNativeCall.pClass = 0;
+		sNativeCall.bStatic = 0;
+		sNativeCall.nLine = pVm->nCurLine;
+		sNativeCall.pFrame = (void *)pVm->pFrame;
+		sNativeCall.pPrev = pVm->pNativeCall;
 		/* Bind `name:` arguments to the callee's declared POSITIONS before anything
 		 * reads the vector — the arity screen, the ZPP screen and the C body all take
 		 * it positionally. A host function has no compiled parameter records for
@@ -8750,6 +8809,30 @@ NativeCall:
 			(ph7_value **)SySetBasePtr(&aArg));
 		if( rc != SXRET_OK ){
 			goto NativeCallDone;
+		}
+		/* From here down every refusal is one php raises from INSIDE the callee --
+		 * the arity screens, the argument-type screen and the C body itself -- so
+		 * the internal frame is on the trace for all of them. A native METHOD names
+		 * its DECLARING class, which is what php's `class` key holds (an inherited
+		 * one reports the base, not the receiver's class). */
+		if( pNativeMethod ){
+			/* php's `function` key is the BARE method name, with the class in its own
+			 * key -- the qualified `Class::method` spelling belongs to the diagnostic
+			 * text, and is what the host-function record carries. The method record
+			 * holds the name as it was declared. */
+			sNativeCall.pName = &pNativeMethod->sName;
+			sNativeCall.pClass = pNativeDeclClass;
+			sNativeCall.bStatic = (pNativeMethod->iFlags & VM_FUNC_NATIVE_STATIC) != 0;
+		}
+		/* A php LANGUAGE CONSTRUCT is dispatched here as a host function but is not a
+		 * call in php at all: `print`, `isset`, `unset` and `empty` are opcodes with
+		 * no frame, and include/require/eval have a frame of their own SHAPE, built
+		 * from the include stack further down the walk. Recording one here emitted
+		 * that frame twice -- an exception created at the top level of an included
+		 * unit listed `include()` once for the unit it was thrown in and once for
+		 * the file that loaded it. */
+		if( !bFoldedCallee && !pFunc->bConstruct ){
+			pVm->pNativeCall = &sNativeCall;
 		}
 		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum
 		 * argument count (aBuiltinArity[]) throws a catchable ArgumentCountError
@@ -8843,6 +8926,7 @@ NativeCall:
 		}
 NativeCallDone:
 		(void)nGiven; /* the named-arg binder's early exit lands here */
+		pVm->pNativeCall = sNativeCall.pPrev;
 		}
 		/* Release the call context */
 		VmReleaseCallContext(&sCtx);

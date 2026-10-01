@@ -1,6 +1,6 @@
 --- php
 +++ phl
-@@ -3,63 +3,735 @@
+@@ -3,63 +3,740 @@
  Runtime: @RUNTIME@
  Configuration: @ROOT@/phpunit.xml
  
@@ -285,11 +285,12 @@
 ++Message:  stripos(): Argument #1 ($haystack) must be of type string, false given
 ++Location: @ROOT@/src/Logging/TeamCity/TeamCityLogger.php:445
 ++
-++#0 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(63): PHPUnit\Logging\TeamCity\TeamCityLogger->setFlowId()
-++#1 @ROOT@/src/TextUI/Output/Facade.php(64): PHPUnit\Logging\TeamCity\TeamCityLogger->__construct()
-++#2 @ROOT@/src/TextUI/Application.php(159): PHPUnit\TextUI\Output\Facade::init()
-++#3 @ROOT@/phpunit(104): PHPUnit\TextUI\Application->run()
-++#4 {main}
+++#0 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(445): stripos()
+++#1 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(63): PHPUnit\Logging\TeamCity\TeamCityLogger->setFlowId()
+++#2 @ROOT@/src/TextUI/Output/Facade.php(64): PHPUnit\Logging\TeamCity\TeamCityLogger->__construct()
+++#3 @ROOT@/src/TextUI/Application.php(159): PHPUnit\TextUI\Output\Facade::init()
+++#4 @ROOT@/phpunit(104): PHPUnit\TextUI\Application->run()
+++#5 {main}
 +
 +@ROOT@/tests/end-to-end/cli/filter/filter-dataprovider-by-phpstorm-regex-number-key.phpt:57
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -323,11 +324,12 @@
 ++Message:  stripos(): Argument #1 ($haystack) must be of type string, false given
 ++Location: @ROOT@/src/Logging/TeamCity/TeamCityLogger.php:445
 ++
-++#0 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(63): PHPUnit\Logging\TeamCity\TeamCityLogger->setFlowId()
-++#1 @ROOT@/src/TextUI/Output/Facade.php(64): PHPUnit\Logging\TeamCity\TeamCityLogger->__construct()
-++#2 @ROOT@/src/TextUI/Application.php(159): PHPUnit\TextUI\Output\Facade::init()
-++#3 @ROOT@/phpunit(104): PHPUnit\TextUI\Application->run()
-++#4 {main}
+++#0 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(445): stripos()
+++#1 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(63): PHPUnit\Logging\TeamCity\TeamCityLogger->setFlowId()
+++#2 @ROOT@/src/TextUI/Output/Facade.php(64): PHPUnit\Logging\TeamCity\TeamCityLogger->__construct()
+++#3 @ROOT@/src/TextUI/Application.php(159): PHPUnit\TextUI\Output\Facade::init()
+++#4 @ROOT@/phpunit(104): PHPUnit\TextUI\Application->run()
+++#5 {main}
 +
 +@ROOT@/tests/end-to-end/cli/filter/filter-dataprovider-by-phpstorm-regex-string-key.phpt:57
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -480,7 +482,8 @@
 +-</testsuites>
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:17
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(17): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 17
 +
 +@ROOT@/tests/end-to-end/cli/no-log-no-cc.phpt:24
@@ -531,7 +534,8 @@
 +-</testsuites>
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:16
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(16): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 16
 +
 +@ROOT@/tests/end-to-end/data-provider/log-junit-isolation.phpt:23
@@ -589,7 +593,8 @@
 +-</testsuites>
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:18
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(18): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 18
 +
 +@ROOT@/tests/end-to-end/data-provider/log-junit.phpt:25
@@ -774,7 +779,7 @@
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -78,6 +750,2164 @@
+@@ -78,6 +755,2192 @@
  @ROOT@/src/TextUI/TestRunner.php:64
  @ROOT@/src/TextUI/Application.php:229
  
@@ -849,14 +854,15 @@
 ++Message:  strtr(): Argument #1 ($string) must be of type string, null given
 ++Location: @ROOT@/src/Util/GlobalState.php:211
 ++
-++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
-++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
-++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
-++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
-++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
-++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
-++#6 Command line code(8): PHPUnit\TextUI\Application->run()
-++#7 {main}
+++#0 @ROOT@/src/Util/GlobalState.php(211): strtr()
+++#1 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#3 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#4 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#5 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#6 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#7 Command line code(8): PHPUnit\TextUI\Application->run()
+++#8 {main}
 +
 +@ROOT@/tests/end-to-end/generic/ini-isolation-not-changeable-at-runtime.phpt:19
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -884,14 +890,15 @@
 ++Message:  strtr(): Argument #1 ($string) must be of type string, null given
 ++Location: @ROOT@/src/Util/GlobalState.php:211
 ++
-++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
-++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
-++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
-++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
-++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
-++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
-++#6 Command line code(10): PHPUnit\TextUI\Application->run()
-++#7 {main}
+++#0 @ROOT@/src/Util/GlobalState.php(211): strtr()
+++#1 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#3 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#4 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#5 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#6 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#7 Command line code(10): PHPUnit\TextUI\Application->run()
+++#8 {main}
 +
 +@ROOT@/tests/end-to-end/generic/ini-isolation.phpt:19
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1016,7 +1023,8 @@
 +-</testsuites>
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(15): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 15
 +
 +@ROOT@/tests/end-to-end/logging/junit/to-file.phpt:22
@@ -1063,7 +1071,8 @@
 +-</testsuites>
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(15): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 15
 +
 +@ROOT@/tests/end-to-end/logging/junit/with-progress-with-errors.phpt:1
@@ -1119,10 +1128,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-class-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1175,10 +1185,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-test-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1222,10 +1233,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-class-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1278,10 +1290,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-test-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1334,10 +1347,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-postcondition-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1390,10 +1404,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-precondition-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1618,10 +1633,11 @@
 +- </e:finished>
 +- <e:finished id="1" time="%s"/>
 +-</e:events>
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(17): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(17): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument-with-git-information.phpt:26
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -1842,10 +1858,11 @@
 +- </e:finished>
 +- <e:finished id="1" time="%s"/>
 +-</e:events>
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2070,10 +2087,11 @@
 +- <e:finished id="2" time="%s"/>
 +- <e:finished id="1" time="%s"/>
 +-</e:events>
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-suite-from-xml-configuration-file.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2128,10 +2146,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-class-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2184,10 +2203,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-test-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2231,10 +2251,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-class-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2287,10 +2308,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-test-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2331,10 +2353,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-class-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2384,10 +2407,11 @@
 ++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
 ++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
 ++
-++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
-++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
-++#2 Command line code(16): PHPUnit\TextUI\Application->run()
-++#3 {main}
+++#0 @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php(83): XMLWriter->openUri()
+++#1 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#3 Command line code(16): PHPUnit\TextUI\Application->run()
+++#4 {main}
 +
 +@ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-test-method.phpt:25
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2437,7 +2461,8 @@
 +-    </body>
 +-</html>
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(15): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 15
 +
 +@ROOT@/tests/end-to-end/logging/testdox/testdox-html-class-name-collision.phpt:23
@@ -2460,7 +2485,8 @@
 +-    </body>
 +-</html>
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(15): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 15
 +
 +@ROOT@/tests/end-to-end/logging/testdox/testdox-html-escaping.phpt:23
@@ -2536,7 +2562,8 @@
 +-</html>
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(15): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 15
 +
 +@ROOT@/tests/end-to-end/logging/testdox/testdox-html.phpt:22
@@ -2557,7 +2584,8 @@
 +- [x] From test foo test
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(15): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 15
 +
 +@ROOT@/tests/end-to-end/logging/testdox/testdox-text-class-name-collision.phpt:22
@@ -2576,7 +2604,8 @@
 +- [x] Balance cannot become negative
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(15): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 15
 +
 +@ROOT@/tests/end-to-end/logging/testdox/testdox-text.phpt:22
@@ -2709,14 +2738,15 @@
 ++Message:  strtr(): Argument #1 ($string) must be of type string, null given
 ++Location: @ROOT@/src/Util/GlobalState.php:211
 ++
-++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
-++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
-++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
-++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
-++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
-++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
-++#6 Command line code(9): PHPUnit\TextUI\Application->run()
-++#7 {main}
+++#0 @ROOT@/src/Util/GlobalState.php(211): strtr()
+++#1 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#3 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#4 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#5 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#6 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#7 Command line code(9): PHPUnit\TextUI\Application->run()
+++#8 {main}
 +
 +@ROOT@/tests/end-to-end/regression/1335.phpt:18
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2744,14 +2774,15 @@
 ++Message:  strtr(): Argument #1 ($string) must be of type string, null given
 ++Location: @ROOT@/src/Util/GlobalState.php:211
 ++
-++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
-++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
-++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
-++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
-++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
-++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
-++#6 Command line code(7): PHPUnit\TextUI\Application->run()
-++#7 {main}
+++#0 @ROOT@/src/Util/GlobalState.php(211): strtr()
+++#1 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#3 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#4 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#5 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#6 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#7 Command line code(7): PHPUnit\TextUI\Application->run()
+++#8 {main}
 +
 +@ROOT@/tests/end-to-end/regression/2158.phpt:16
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2787,7 +2818,8 @@
 ++
 ++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:14
 ++Stack trace:
-++#0 {main}
+++#0 Command line code(14): file_get_contents()
+++#1 {main}
 ++  thrown in Command line code on line 14
 +
 +@ROOT@/tests/end-to-end/regression/5258.phpt:29
@@ -2921,14 +2953,15 @@
 ++Message:  strtr(): Argument #1 ($string) must be of type string, null given
 ++Location: @ROOT@/src/Util/GlobalState.php:211
 ++
-++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
-++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
-++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
-++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
-++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
-++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
-++#6 Command line code(10): PHPUnit\TextUI\Application->run()
-++#7 {main}
+++#0 @ROOT@/src/Util/GlobalState.php(211): strtr()
+++#1 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#3 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#4 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#5 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#6 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#7 Command line code(10): PHPUnit\TextUI\Application->run()
+++#8 {main}
 +
 +@ROOT@/tests/end-to-end/regression/797.phpt:19
 +@ROOT@/src/Framework/TestSuite.php:374
