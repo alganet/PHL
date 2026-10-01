@@ -1095,6 +1095,11 @@ struct ph7_gen_state
 	                      *     all.
 	                      * A ONE-SHOT: the call sites that need a non-default set it just before
 	                      * raising, and PH7_GenCompileError consumes it. */
+	sxi8 bRefElemIsThis; /* One-shot, set by the array-literal `&` element validator: the
+	                      * element IS `$this`. php cannot take a reference to it (it is
+	                      * not a variable slot there), so the entry copies the object and
+	                      * a write through the entry leaves the receiver alone -- where
+	                      * an OP_LOAD_REF would alias the receiver and re-point it. */
 	int bParseThrows;    /* This unit's parse errors are the CALLER's to raise (include/require:
 	                      * php throws a ParseError there and prints nothing until it goes
 	                      * uncaught). A refusal of E_ERROR severity still prints at once. */
@@ -6356,6 +6361,14 @@ PH7_PRIVATE sxi32 PH7_ExprOperandNotAVariable(ph7_gen_state *pGen,ph7_expr_node 
                               * `$this++` compile and fail at RUN time on the operand
                               * types instead. The temporary and call rules still apply:
                               * `(new A)->p++` is refused exactly as `= 1` is. */
+#define PH7_WTC_THISSRC 0x08 /* an ARRAY LITERAL's `&$x` element. php compiles it in
+                              * write context -- `[&f()]` is its "Can't use function
+                              * return value in write context" -- but the element only
+                              * takes a REFERENCE to the slot, it never re-points it, so
+                              * `$this` is legal there and writing through the element
+                              * leaves the receiver alone. `[&$this, 'cmp']` is how the
+                              * pre-5.4 callable idiom is spelled and phpseclib's SFTP
+                              * still writes it. */
 PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pTarget,int iCtx);
 PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToken **ppMax);
 PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext);

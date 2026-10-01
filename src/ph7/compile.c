@@ -1173,7 +1173,7 @@ PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pT
 	if( pTarget == 0 ){
 		return SXRET_OK;
 	}
-	if( PH7_ExprNodeIsThis(pTarget) && (iCtx & (PH7_WTC_REFSRC|PH7_WTC_RMW)) == 0 ){
+	if( PH7_ExprNodeIsThis(pTarget) && (iCtx & (PH7_WTC_REFSRC|PH7_WTC_RMW|PH7_WTC_THISSRC)) == 0 ){
 		/* Only as the TARGET. php refuses `$this = …`, `$this =& …`, a
 		 * foreach/list target and `unset($this)` -- but the SOURCE of a `=&` is
 		 * compiled in write context WITHOUT zend_ensure_writable_variable, and

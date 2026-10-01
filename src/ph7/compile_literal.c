@@ -1343,9 +1343,15 @@ static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot
 			pRoot->pStart ? pRoot->pStart->nLine : 0,"Cannot use [] for reading");
 		return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 	}
-	rc = GenStateWriteTargetCheck(&(*pGen),pRoot,0);
+	rc = GenStateWriteTargetCheck(&(*pGen),pRoot,PH7_WTC_THISSRC);
 	if( rc != SXRET_OK ){
 		return rc;
+	}
+	if( PH7_ExprNodeIsThis(pRoot) ){
+		/* php has no slot to point at here, so `[&$this]` COPIES: `$a[0] = 5`
+		 * through the entry leaves `$this` an object. Tell the caller not to
+		 * emit the reference load. */
+		pGen->bRefElemIsThis = 1;
 	}
 	if( pRoot->pOp ){
 		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ &&
@@ -1601,6 +1607,7 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 		 * instead of a read-only load — which also keeps the undefined-key
 		 * warning (a read-only diagnostic) from false-firing here. A missing
 		 * PROPERTY (`[&$o->p]`) is created the same way (EXPR_FLAG_MEMBER_REFSRC). */
+		pGen->bRefElemIsThis = 0;
 		rc = GenStateCompileArrayEntry(&(*pGen),pCur,pGen->pIn,
 			iEmitRef ? (EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_REFSRC)
 			         : EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,
@@ -1611,10 +1618,11 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 		if( iSpread ){
 			/* Mark the value on TOS as a spread source; LOAD_MAP merges it. */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_FLAG_SPREAD,0,0,0,0);
-		}else if( iEmitRef ){
+		}else if( iEmitRef && !pGen->bRefElemIsThis ){
 			/* Emit the load reference instruction */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_REF,0,0,0,0);
 		}
+		pGen->bRefElemIsThis = 0;
 		xValidator = 0;
 		iEmitRef = 0;
 		iSpread = 0;
