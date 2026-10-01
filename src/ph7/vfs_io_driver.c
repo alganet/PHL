@@ -2067,15 +2067,36 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 			pNode = pEnvMap->pFirst;
 			for( i = 0 ; i < nCount && pNode ; ++i ){
 				ph7_value sKey, sVal; int nk, nv; const char *zk, *zv; char *zPair;
+				int bNamed;
 				PH7_MemObjInit(pVm,&sKey); PH7_MemObjInit(pVm,&sVal);
 				PH7_HashmapExtractNodeKey(pNode,&sKey);
 				PH7_HashmapExtractNodeValue(pNode,&sVal,FALSE);
 				zk = ph7_value_to_string(&sKey,&nk);
 				zv = ph7_value_to_string(&sVal,&nv);
-				zPair = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nk+nv+2));
+				/* php drops an entry whose stringified VALUE is empty rather than
+				 * exporting `NAME=`: the child's getenv() answers false for it and
+				 * $_ENV has no such key. Passing '' is how a caller UNSETS a name
+				 * the parent holds, so exporting it empty is a different child. */
+				if( nv < 1 ){
+					PH7_MemObjRelease(&sKey); PH7_MemObjRelease(&sVal);
+					pNode = pNode->pPrev;
+					continue;
+				}
+				/* Only a non-empty STRING key names the variable. php reads an
+				 * integer-keyed (or ''-keyed) entry as a ready-made `NAME=VALUE`
+				 * string and exports the value verbatim, so a list array like
+				 * ['PATH=/bin'] is a valid environment there -- where prefixing
+				 * the synthesised key made it `0=PATH=/bin`. */
+				bNamed = (pNode->iType == HASHMAP_BLOB_NODE && nk > 0);
+				zPair = (char *)SyMemBackendAlloc(&pVm->sAllocator,
+					(sxu32)(bNamed ? nk+nv+2 : nv+1));
 				if( zPair ){
-					SyMemcpy(zk,zPair,(sxu32)nk); zPair[nk] = '=';
-					SyMemcpy(zv,&zPair[nk+1],(sxu32)nv); zPair[nk+1+nv] = 0;
+					if( bNamed ){
+						SyMemcpy(zk,zPair,(sxu32)nk); zPair[nk] = '=';
+						SyMemcpy(zv,&zPair[nk+1],(sxu32)nv); zPair[nk+1+nv] = 0;
+					}else{
+						SyMemcpy(zv,zPair,(sxu32)nv); zPair[nv] = 0;
+					}
 					azEnv[nEnv++] = zPair;
 				}
 				PH7_MemObjRelease(&sKey); PH7_MemObjRelease(&sVal);
