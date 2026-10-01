@@ -5444,15 +5444,20 @@ static int VmIniBool(const char *zValue,sxu32 nValue)
 #define VM_INI_EXPR_MAX_DEPTH 32
 /*
  * What php's ini parser would report over one value, in the pieces its
- * ini_error() prints: cChar is the byte it could not take (0 => the value ran
- * out, which php names END_OF_LINE and dates to the next line), and bExpect
- * adds the token list it appends when the stop happened inside an unclosed
- * '('. bSet is the whole question "was this value a syntax error", which is
- * what decides both the warning and php's abort of the rest of the source.
+ * ini_error() prints. php names the token it could not take, and it has three
+ * ways of naming one: zTok is the SYMBOL its grammar declares for a token made
+ * of more than one shape (`TC_CONSTANT`, `TC_NUMBER`, `TC_STRING`, `TC_RAW`,
+ * `TC_DOLLAR_CURLY`), cChar is the byte itself for the tokens bison prints as
+ * a quoted character, and neither set means the value ran out -- which php
+ * names END_OF_LINE and dates to the line after the directive. bExpect adds
+ * the token list it appends when the stop happened inside an unclosed '('.
+ * bSet is the whole question "was this value a syntax error", which is what
+ * decides both the warning and php's abort of the rest of the source.
  */
 typedef struct VmIniBad VmIniBad;
 struct VmIniBad {
 	int bSet;
+	const char *zTok;
 	int cChar;
 	int bExpect;
 };
@@ -5497,20 +5502,135 @@ static int VmIniExprIsOp(int c)
 	return c == '|' || c == '&' || c == '^';
 }
 /*
- * A byte left standing where the grammar cannot take it, in one of the two
- * shapes VmIniEvalValue ever hands back as "committed, but here is what php
- * would separately warn about": the punctuation an operand run stops on
- * (`( ) ~ !`, verified against `/usr/bin/php` for `1)`, `1~2`, `On(`, ...)
- * and the three binary operators, reachable only right after a boolean word
- * short-circuits (`On|E_NOTICE`). `;` starts a comment, not an error, and an
- * alpha/digit/quote leftover -- only possible after a boolean word, since an
- * operand run swallows those itself -- names a token php's scanner has its
- * own symbol for (`TC_CONSTANT`, ...); neither is answered here yet.
+ * One VALUE_CHARS unit: php's value scanner takes any byte that is not one of
+ * its own delimiters, plus a `$` that does NOT open `${` -- which carries the
+ * byte behind it, and one more when that byte is a backslash. Answers how many
+ * bytes the unit spends, or 0 when the run stops here. A `$` at the very end
+ * of a value is still a unit: php is looking at the newline the CLI trimmed.
  */
-static int VmIniBadTokenChar(int c)
+static int VmIniValueCharLen(const char *zCur,const char *zEnd)
 {
-	return c == '(' || c == ')' || c == '~' || c == '!'
-	    || c == '|' || c == '&' || c == '^';
+	int c = (unsigned char)zCur[0];
+	if( c == '$' ){
+		if( &zCur[1] < zEnd && zCur[1] == '{' ){
+			return 0;
+		}
+		if( &zCur[1] >= zEnd ){
+			return 1;
+		}
+		return zCur[1] == '\\' && &zCur[2] < zEnd ? 3 : 2;
+	}
+	if( c == '=' || c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';'
+	 || c == '&' || c == '|' || c == '^' || c == '~' || c == '(' || c == ')'
+	 || c == '!' || c == '"' || c == '\'' || c == 0 ){
+		return 0;
+	}
+	return 1;
+}
+/*
+ * Name the token php's value scanner would make of the text left standing
+ * where the grammar cannot take it -- the two shapes VmIniEvalValue hands back
+ * as "committed, but here is what php would separately warn about": a leftover
+ * right after a boolean word short-circuits (`On X`, `On|E_NOTICE`) and one
+ * right after a parenthesised expression closes (`(1)x`, `(1)=`). Blanks are
+ * already behind zCur, and `;` opens a comment rather than a token.
+ *
+ * php's ST_VALUE rules compete by longest match and, on a tie, by the order
+ * they are written in: TC_CONSTANT, then TC_NUMBER, then the catch-all
+ * TC_STRING. Every byte those first two can take is also a VALUE_CHARS byte,
+ * so the longest run is always the catch-all's and the tie IS the test --
+ * `x1` is a constant, `1x` is a string, `-1` is a number and `-1x` is not.
+ */
+static void VmIniBadToken(const char *zCur,const char *zEnd,VmIniBad *pBad)
+{
+	const char *zWalk;
+	sxu32 nVal,nCons,nNum;
+	int c;
+	if( zCur >= zEnd ){
+		return;
+	}
+	c = (unsigned char)zCur[0];
+	if( c == ';' ){
+		return;   /* a comment, not a token */
+	}
+	/* The tokens bison prints as a quoted character: the operators and
+	 * parentheses of the value grammar itself, the `"` that opens a double
+	 * quoted run, and the `=` php hands back to statement position. */
+	if( c == '&' || c == '|' || c == '^' || c == '~' || c == '('
+	 || c == ')' || c == '!' || c == '"' || c == '=' ){
+		pBad->bSet = 1;
+		pBad->cChar = c;
+		return;
+	}
+	if( c == '\'' ){
+		/* A raw string is one token only when it closes, and it needs at least
+		 * one byte inside: `''` matches nothing at all and php reports no
+		 * error over it. */
+		for( zWalk = &zCur[1] ; zWalk < zEnd ; zWalk++ ){
+			if( zWalk[0] == '\'' ){
+				if( zWalk > &zCur[1] ){
+					pBad->bSet = 1;
+					pBad->zTok = "TC_RAW";
+				}
+				return;
+			}
+		}
+		return;
+	}
+	if( c == '$' && &zCur[1] < zEnd && zCur[1] == '{' ){
+		pBad->bSet = 1;
+		pBad->zTok = "TC_DOLLAR_CURLY";
+		return;
+	}
+	nVal = 0;
+	for( zWalk = zCur ; zWalk < zEnd ; ){
+		int nUnit = VmIniValueCharLen(zWalk,zEnd);
+		if( nUnit < 1 ){
+			break;
+		}
+		zWalk += nUnit;
+		nVal += (sxu32)nUnit;
+	}
+	if( nVal < 1 ){
+		return;
+	}
+	nCons = 0;
+	if( c < 0xc0 && (SyisAlpha(c) || c == '_') ){
+		for( zWalk = zCur ; zWalk < zEnd ; zWalk++ ){
+			if( (unsigned char)zWalk[0] >= 0xc0
+			 || (!SyisAlphaNum((unsigned char)zWalk[0]) && zWalk[0] != '_') ){
+				break;
+			}
+			nCons++;
+		}
+	}
+	/* php's NUMBER is `[-]?[0-9]+` or a decimal run with a dot on either side
+	 * of it; the sign belongs to the integer form alone. */
+	nNum = 0;
+	for( zWalk = c == '-' ? &zCur[1] : zCur ; zWalk < zEnd ; zWalk++ ){
+		if( !SyisDigit((unsigned char)zWalk[0]) ){
+			break;
+		}
+		nNum++;
+	}
+	if( nNum > 0 && c == '-' ){
+		nNum++;
+	}else if( c != '-' && zWalk < zEnd && zWalk[0] == '.' ){
+		sxu32 nFrac = 0;
+		const char *zFrac;
+		for( zFrac = &zWalk[1] ; zFrac < zEnd ; zFrac++ ){
+			if( !SyisDigit((unsigned char)zFrac[0]) ){
+				break;
+			}
+			nFrac++;
+		}
+		if( nNum > 0 || nFrac > 0 ){
+			nNum += nFrac + 1;
+		}
+	}
+	pBad->bSet = 1;
+	pBad->zTok = nCons == nVal ? "TC_CONSTANT"
+	           : (nNum == nVal ? "TC_NUMBER" : "TC_STRING");
 }
 /*
  * atoi() over an operand: php stops at the first byte that is not part of a
@@ -5740,6 +5860,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 	VmIniExpr sIn;
 	sxu32 i;
 	pBad->bSet = 0;
+	pBad->zTok = 0;
 	pBad->cChar = 0;
 	pBad->bExpect = 0;
 	SyBlobReset(pOut);
@@ -5770,9 +5891,15 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 		if( c < 0 || VmIniExprIsOp(c) || c == '(' || c == ')' || c == '~'
 		 || c == '!' || c == '"' || c == '\'' || c == '$' || c == ';'
 		 || c == ' ' || c == '\t' ){
-			if( c > 0 && VmIniBadTokenChar(c) ){
-				pBad->bSet = 1;
-				pBad->cChar = c;
+			if( c > 0 ){
+				/* The word production eats the blanks behind it, so what php
+				 * scans next starts at the first non-blank. */
+				const char *zRest = &zVal[aWord[i].nWord];
+				const char *zStop = &zVal[nVal];
+				while( zRest < zStop && (zRest[0] == ' ' || zRest[0] == '\t') ){
+					zRest++;
+				}
+				VmIniBadToken(zRest,zStop,pBad);
 			}
 			SyBlobAppend(pOut,aWord[i].zText,(sxu32)SyStrlen(aWord[i].zText));
 			return 1;
@@ -5791,13 +5918,11 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 		pBad->bExpect = sIn.bExpect;
 		return 0;
 	}
-	/* Whatever is left -- `)`, `1&&2`'s second `&`, an unresolved `~` -- is a
+	/* Whatever is left -- `)`, `1&&2`'s second `&`, an unresolved `~`, and
+	 * after a closing paren anything at all (`(1)x`, `(1)0`, `(1)'a'`) -- is a
 	 * separate token the grammar cannot take from here, but the expr already
 	 * reduced and its value already stands. */
-	if( sIn.zCur < sIn.zEnd && VmIniBadTokenChar((unsigned char)sIn.zCur[0]) ){
-		pBad->bSet = 1;
-		pBad->cChar = (unsigned char)sIn.zCur[0];
-	}
+	VmIniBadToken(sIn.zCur,sIn.zEnd,pBad);
 	return 1;
 }
 /*
@@ -5820,7 +5945,11 @@ static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,const VmI
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	SyBlobAppend(&sMsg,"PHP:  syntax error, unexpected ",sizeof("PHP:  syntax error, unexpected ")-1);
-	if( pBad->cChar != 0 ){
+	if( pBad->zTok ){
+		/* A token php's grammar declares under a symbol of its own prints as
+		 * that symbol, with no quotes around it. */
+		SyBlobAppend(&sMsg,pBad->zTok,(sxu32)SyStrlen(pBad->zTok));
+	}else if( pBad->cChar != 0 ){
 		SyBlobFormat(&sMsg,"'%c'",pBad->cChar);
 	}else{
 		/* A value that ran out: php's scanner has already taken the newline, so
