@@ -924,6 +924,36 @@ PH7_PRIVATE int PH7_TokenOpensArrowFunc(SyToken *pStart,SyToken *pTok,SyToken *p
 	return TRUE;
 }
 /*
+ * Step over an arrow function's HEAD, `fn [&] ( params ) [: [?] type]` and the
+ * `=>` after it, from the `fn` keyword at *ppIn. Boundary scanning only: a
+ * malformed head stops at the first token that does not fit, and the compile
+ * pass (PH7_CompileArrowFunc) reports php's error for it. Shared by the arrow
+ * assembler for its own head and for every arrow nested in its body.
+ */
+static void ExprSkipArrowHead(SyToken **ppIn,SyToken *pEnd)
+{
+	SyToken *pIn = *ppIn;
+	pIn++; /* Jump 'fn' */
+	/* Optional '&' for return-by-reference */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_AMPER) ){
+		pIn++;
+	}
+	if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+		pIn++; /* '(' */
+		PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pIn);
+		if( pIn < pEnd ){
+			pIn++; /* ')' */
+		}
+	}
+	/* Optional return type — shared skipper (unions/intersections/DNF) */
+	ExprSkipReturnType(&pIn,pEnd);
+	/* Consume '=>' if present; the compile pass diagnoses absence */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_ARRAY_OP) ){
+		pIn++;
+	}
+	*ppIn = pIn;
+}
+/*
  * Assemble a PHP 7.4 arrow function token range:
  *    [static] fn [&] ( params ) [: [?] type] => expression
  * On entry *ppCur points at 'static' or 'fn'. On exit *ppCur points just
@@ -933,6 +963,7 @@ PH7_PRIVATE int PH7_TokenOpensArrowFunc(SyToken *pStart,SyToken *pTok,SyToken *p
 static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd)
 {
 	SyToken *pIn = *ppCur;
+	SyToken *pBody;  /* first token of the body: bounds the nested-arrow look-back */
 	sxu32 nLine;
 	sxi32 rc;
 	int iNest;
@@ -949,30 +980,14 @@ static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *
 		rc = SXERR_SYNTAX;
 		goto Synchronize;
 	}
-	pIn++; /* Jump 'fn' */
 	SXUNUSED(nLine);
 	SXUNUSED(pGen);
-	/* Optional '&' for return-by-reference */
-	if( pIn < pEnd && (pIn->nType & PH7_TK_AMPER) ){
-		pIn++;
-	}
 	/* The compile phase (PH7_CompileArrowFunc) performs the authoritative
 	 * structural validation and emits PHP-compatible parse errors. Here we
 	 * just scan token boundaries so the expression node's pEnd covers the
 	 * whole `[static] fn(...) [:T] => body` range, even if malformed. */
-	if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
-		pIn++; /* '(' */
-		PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pIn);
-		if( pIn < pEnd ){
-			pIn++; /* ')' */
-		}
-	}
-	/* Optional return type — shared skipper (unions/intersections/DNF) */
-	ExprSkipReturnType(&pIn,pEnd);
-	/* Consume '=>' if present; the compile pass diagnoses absence */
-	if( pIn < pEnd && (pIn->nType & PH7_TK_ARRAY_OP) ){
-		pIn++;
-	}
+	ExprSkipArrowHead(&pIn,pEnd);
+	pBody = pIn;
 	/* Scan body until first top-level ',' ';' ')' ']' '}' -- or a ':' that belongs
 	 * to an enclosing TERNARY. php's grammar ends an arrow body there, which is
 	 * what makes `$c ? fn($v) => a : fn($v) => b` legal: the first body stops at
@@ -989,6 +1004,20 @@ static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *
 		if( iNest == 0 && (pIn->nType &
 			(PH7_TK_COMMA|PH7_TK_SEMI|PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB)) ){
 			break;
+		}
+		if( (pIn->nType & PH7_TK_KEYWORD) && PH7_TokenOpensArrowFunc(pBody,pIn,pEnd) ){
+			/* A NESTED arrow function: its body is the tail of this one, so the
+			 * scan simply continues into it -- but its HEAD must be stepped over
+			 * as a unit. Left to the loop, the colon of its return type read as
+			 * an enclosing ternary's and ended the outer body right there, so
+			 * `fn($t) => fn($v): string => $v` (doctrine/orm's DQL cookbook) was
+			 * `unexpected token "=>"`, and a `?` in `fn($v): ?string` would have
+			 * been counted as a ternary. */
+			if( SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_STATIC ){
+				pIn++; /* `static fn`: the head skipper starts at `fn` */
+			}
+			ExprSkipArrowHead(&pIn,pEnd);
+			continue;
 		}
 		if( iNest == 0 && (pIn->nType & PH7_TK_COLON) ){
 			if( iTern < 1 ){

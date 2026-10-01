@@ -927,21 +927,31 @@ PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			sArm.bDefault = 1;
 			bHasDefault = 1;
 			pGen->pIn++;
+			/* php's `default possible_comma =>`: one trailing comma is allowed */
+			if( pGen->pIn < pBodyEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
+				pGen->pIn++;
+			}
 			if( pGen->pIn >= pBodyEnd || (pGen->pIn->nType & PH7_TK_ARRAY_OP) == 0 ){
-				return GenStateMatchError(pGen,nArmLine,
-					"syntax error, expecting \"=>\" after 'default'");
+				rc = PH7_GenSyntaxError(pGen,pGen->pIn,"\"=>\"");
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 			}
 			pGen->pIn++; /* Jump '=>' */
 		}else{
-			/* Condition list: cond (',' cond)* '=>' */
+			/* Condition list: cond (',' cond)* [','] '=>'. The comma before the
+			 * arrow is php's `possible_comma` -- `'a', 'b', => …` is how
+			 * symfony/cache's RedisTrait lays a long list out one per line, and
+			 * it used to be refused here as an empty condition. */
 			pCondStart = pGen->pIn;
 			pArrow = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,
 				PH7_TK_ARRAY_OP|PH7_TK_COMMA);
 			while( pArrow < pBodyEnd && (pArrow->nType & PH7_TK_COMMA) ){
 				SySet sCondBc;
 				if( pCondStart >= pArrow ){
-					return GenStateMatchError(pGen,nArmLine,
-						"syntax error, empty match condition expression");
+					/* An arm opening on ',' is where php expects the closing
+					 * brace; one that runs ',' ',' is missing its arrow. */
+					rc = PH7_GenSyntaxError(pGen,pArrow,
+						pCondStart == pGen->pIn ? "\"}\"" : "\"=>\"");
+					return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 				}
 				SySetInit(&sCondBc,&pGen->pVm->sAllocator,sizeof(VmInstr));
 				rc = GenStateCompileMatchSubExpr(pGen,pCondStart,pArrow,&sCondBc);
@@ -950,18 +960,22 @@ PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)
 				}
 				SySetPut(&sArm.aConds,(const void *)&sCondBc);
 				pCondStart = &pArrow[1]; /* Skip ',' */
+				if( pCondStart < pBodyEnd && (pCondStart->nType & PH7_TK_ARRAY_OP) ){
+					pArrow = pCondStart; /* the trailing comma: `cond, =>` */
+					break;
+				}
 				pArrow = GenStateMatchScanTopLevel(pCondStart,pBodyEnd,
 					PH7_TK_ARRAY_OP|PH7_TK_COMMA);
 			}
 			if( pArrow >= pBodyEnd || (pArrow->nType & PH7_TK_ARRAY_OP) == 0 ){
-				return GenStateMatchError(pGen,nArmLine,
-					"syntax error, expecting \"=>\" in match arm");
+				rc = PH7_GenSyntaxError(pGen,pArrow,"\"=>\"");
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 			}
-			if( pCondStart >= pArrow ){
-				return GenStateMatchError(pGen,nArmLine,
-					"syntax error, empty match condition expression");
+			if( pCondStart >= pArrow && SySetUsed(&sArm.aConds) == 0 ){
+				rc = PH7_GenSyntaxError(pGen,pArrow,"\"}\""); /* `{ => …`: no condition at all */
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 			}
-			{
+			if( pCondStart < pArrow ){
 				SySet sCondBc;
 				SySetInit(&sCondBc,&pGen->pVm->sAllocator,sizeof(VmInstr));
 				rc = GenStateCompileMatchSubExpr(pGen,pCondStart,pArrow,&sCondBc);
@@ -976,8 +990,10 @@ PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		pResStart = pGen->pIn;
 		pResEnd = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,PH7_TK_COMMA);
 		if( pResStart >= pResEnd ){
-			return GenStateMatchError(pGen,nArmLine,
-				"syntax error, expected expression after \"=>\"");
+			/* php names the token that stands where the result should: the ','
+			 * of the next arm, or the body's '}' */
+			rc = PH7_GenSyntaxError(pGen,pResEnd,0);
+			return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 		}
 		rc = GenStateCompileMatchSubExpr(pGen,pResStart,pResEnd,&sArm.aResult);
 		if( rc == SXERR_ABORT ){
