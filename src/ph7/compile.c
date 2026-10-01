@@ -1492,6 +1492,99 @@ static int GenStateInstanceofFoldsLhs(ph7_gen_state *pGen,sxu32 nFirst)
 	return nLen > nFirst;
 }
 /*
+ * The child flags a subscript/property NAME is compiled under: whatever the access itself
+ * was given, minus every context that belongs to the ACCESS rather than to the expression
+ * that names it. Kept beside the LOAD_IDX arm that uses the same mask, since the two have
+ * to agree -- a name parked ahead of the assigned value is compiled here and read back
+ * there, and a difference between the two would compile one expression two ways.
+ */
+#define GEN_ACCESS_NAME_MASK  (~(EXPR_FLAG_LOAD_IDX_STORE \
+	|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET \
+	|EXPR_FLAG_LOAD_IDX_UNSET_BASE \
+	|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE \
+	|EXPR_FLAG_MEMBER_COALESCE \
+	|EXPR_FLAG_QUIET_VAR|EXPR_FLAG_RMW_LOAD|EXPR_FLAG_DEFER_ARG))
+/*
+ * The NAME expression of one access, or 0 when the access has none to run.
+ *
+ * A subscript names its element with its single index node; `->` and `?->` name their
+ * property with the right operand. `::` is left out on purpose: a static property's name
+ * is folded into the OP_MEMBER itself rather than pushed, and the append form `[]` names
+ * nothing.
+ */
+static ph7_expr_node * GenStateAccessNameNode(ph7_expr_node *pAccess)
+{
+	if( pAccess == 0 || pAccess->pOp == 0 ){
+		return 0;
+	}
+	if( pAccess->pOp->iOp == EXPR_OP_SUBSCRIPT ){
+		ph7_expr_node **apArg = (ph7_expr_node **)SySetBasePtr(&pAccess->aNodeArgs);
+		return SySetUsed(&pAccess->aNodeArgs) == 1 ? apArg[0] : 0;
+	}
+	if( pAccess->pOp->iOp == EXPR_OP_ARROW || pAccess->pOp->iOp == EXPR_OP_NULLSAFE_ARROW ){
+		return pAccess->pRight;
+	}
+	return 0;
+}
+/*
+ * Collect an assignment TARGET's dynamic names, in the order php evaluates them.
+ *
+ * php compiles `$a[k()][j()] = v()` as: the two subscript expressions, then the assigned
+ * value, and only then the fetches that use them -- so `k()` and `j()` run before `v()`
+ * does, while the array is still untouched by the write. PHL emits the value first and the
+ * whole target after it, which reverses every one of those side effects.
+ *
+ * Only a name that can RUN is collected. php reads a plain `$var` or a literal name off the
+ * fetch opline's own operand, at the fetch, which is AFTER the value: `$k = 'A'; $a[$k] =
+ * f();` with an `f()` that assigns `'B'` to `$k` stores under `B` there, and under `B` here
+ * for the same reason. Parking one of those would answer `A`, so the same shape test the
+ * operand-snapshot rule turns on decides this too.
+ *
+ * Returns the count (0 = nothing to park, compile as before), or -1 when more than
+ * PH7_STORE_KEY_MAX names in one target can run -- which compiles as before, in the old
+ * order. The ceiling is a real one and it is set well past anything written: it takes NINE
+ * running subscripts on a single assignment target to reach it.
+ */
+static int GenStateCollectStoreNames(ph7_expr_node *pTarget,ph7_expr_node **apOut)
+{
+	ph7_expr_node *apChain[32];
+	ph7_expr_node *p = pTarget;
+	int nChain = 0;
+	int nOut = 0;
+	int n;
+	while( p && p->pOp && (p->pOp->iOp == EXPR_OP_SUBSCRIPT
+	    || p->pOp->iOp == EXPR_OP_ARROW || p->pOp->iOp == EXPR_OP_NULLSAFE_ARROW) ){
+		if( nChain >= (int)SX_ARRAYSIZE(apChain) ){
+			return -1;
+		}
+		apChain[nChain++] = p;
+		p = p->pLeft;
+	}
+	/* The chain was walked outermost-first; php names them base-first. */
+	for( n = nChain - 1 ; n >= 0 ; --n ){
+		ph7_expr_node *pName = GenStateAccessNameNode(apChain[n]);
+		if( pName == 0 || !GenStateArgRunsCode(pName) ){
+			continue;
+		}
+		if( nOut >= PH7_STORE_KEY_MAX ){
+			return -1;
+		}
+		apOut[nOut++] = pName;
+	}
+	return nOut;
+}
+/*
+ * Where the parked name at index iSlot sits, counted down from the top of the stack, at the
+ * moment the access that owns it is emitted.
+ *
+ * Above the parked run the stack holds exactly two things by then: the assigned value, and
+ * the container this access is about to read -- every level of the chain consumes a
+ * container and a name and leaves one element in their place, so the shape is the same at
+ * every level. The parked names sit under that in push order, so the FIRST one parked is
+ * the deepest.
+ */
+#define GEN_STORE_KEY_DEPTH(nParked,iSlot)  ((sxi32)((nParked) + 1 - (iSlot)))
+/*
  * Generate bytecode for a given expression tree.
  * If something goes wrong while generating bytecode
  * for the expression tree (A very unlikely scenario)
@@ -1589,7 +1682,24 @@ static sxi32 GenStateEmitExprCode(
 	/* Consumed here so it describes THIS node only — the direct operand of a `new` —
 	 * and never travels down into the operand's own sub-expressions. */
 	int bNewCallee = (iFlags & EXPR_FLAG_NEW_CALLEE) != 0;
+	int nParked = 0;                          /* assignment target names parked on the stack */
+	int nOuterParked = 0;                     /* ...and what an enclosing emission had parked */
+	ph7_expr_node **apOuterParked = 0;
+	ph7_expr_node *apParked[PH7_STORE_KEY_MAX];
 	iFlags &= ~EXPR_FLAG_NEW_CALLEE;
+	if( pGen->nStoreKey > 0 ){
+		/* This node is a target name that was already compiled and parked, ahead of the
+		 * assigned value; its access is being emitted now, so read it back rather than
+		 * running it a second time. */
+		int iSlot;
+		for( iSlot = 0 ; iSlot < pGen->nStoreKey ; ++iSlot ){
+			if( pGen->apStoreKey[iSlot] == pNode ){
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_PICK,
+					GEN_STORE_KEY_DEPTH(pGen->nStoreKey,iSlot),0,0,0);
+				return SXRET_OK;
+			}
+		}
+	}
 	if( pNode->xCode ){
 		SyToken *pTmpIn,*pTmpEnd;
 		/* Compile node */
@@ -1868,6 +1978,49 @@ static sxi32 GenStateEmitExprCode(
 			}
 			SySetRelease(&sJz);
 			return rc;
+		}
+	}
+	/* php evaluates an assignment TARGET's dynamic subscript and property names before the
+	 * assigned value, and performs the fetches they belong to after it -- `$a[k()] = v()`
+	 * runs k() first, and the array it is about to write is untouched while v() runs, so a
+	 * recursive memoization (`$cache[$k] = compute()` whose compute() asks whether $k is
+	 * already there) sees the truth. PHL emitted the value first and the whole target after
+	 * it, which reversed every side effect in the target and answered `v k`.
+	 *
+	 * Both halves are wanted, and in a stack machine they need three pieces: the names are
+	 * compiled HERE, ahead of the value; the value lands on top of them; and the access
+	 * chain is emitted last, reading each name back from where it was parked (OP_PICK) so
+	 * nothing it creates is visible to the value. The names are snapshotted for the same
+	 * reason a call's earlier arguments are -- the value runs between the push and the
+	 * consumer, and a pushed value only borrows the bytes it was loaded from. */
+	if( pNode->pOp->iPrec == 18 && pNode->pOp->iOp != EXPR_OP_REF
+	 && pNode->pLeft && pNode->pRight
+	 && pNode->pRight->xCode != PH7_CompileList
+	 && pNode->pRight->xCode != PH7_CompileShortList ){
+		nParked = GenStateCollectStoreNames(pNode->pRight,apParked);
+		if( nParked > 0 ){
+			int nAt;
+			for( nAt = 0 ; nAt < nParked ; ++nAt ){
+				sxu32 nParkNsBase = SySetUsed(&pGen->aNullsafeJmp);
+				/* The same flags the access arm would have compiled this name under:
+				 * the access's own contexts masked off, and the reference-source
+				 * marker with them -- the target emission strips that before it
+				 * reaches a name too, since a name is never the source of a bind. */
+				rc = GenStateEmitExprCode(&(*pGen),apParked[nAt],
+					(iFlags & GEN_ACCESS_NAME_MASK & ~EXPR_FLAG_MEMBER_REFSRC)
+						|EXPR_FLAG_RDONLY_LOAD);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
+				/* Each name is its own nullsafe scope, exactly as it is where the
+				 * subscript arm compiles it. */
+				GenStatePatchNullsafeJumps(pGen, nParkNsBase);
+			}
+			if( GenStateArgRunsCode(pNode->pLeft) ){
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_SNAPSHOT,nParked,0,0,0);
+			}
+		}else{
+			nParked = 0; /* nothing to park, or a chain longer than the parking area */
 		}
 	}
 	bIsChainOp = GEN_IS_CHAIN_OP(pNode->pOp->iOp);
@@ -2278,12 +2431,7 @@ static sxi32 GenStateEmitExprCode(
 		}else if( iVmOp == PH7_OP_LOAD_IDX ){
 			ph7_expr_node **apNode;
 			sxi32 n;
-			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE
-				|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET
-				|EXPR_FLAG_LOAD_IDX_UNSET_BASE
-				|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE
-				|EXPR_FLAG_MEMBER_COALESCE
-				|EXPR_FLAG_QUIET_VAR|EXPR_FLAG_RMW_LOAD|EXPR_FLAG_DEFER_ARG);
+			sxi32 iChildMask = GEN_ACCESS_NAME_MASK;
 			/* Recurse and generate bytecodes for array index */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 			for( n = 0 ; n < (sxi32)SySetUsed(&pNode->aNodeArgs) ; ++n ){
@@ -2522,6 +2670,16 @@ static sxi32 GenStateEmitExprCode(
 		 * NAME -- and a name written as an expression (`$r =& $o->{$a->b}`) would
 		 * otherwise be compiled as a write-context fetch of its own. */
 		iRhsFlags = iFlags & ~EXPR_FLAG_MEMBER_REFSRC;
+		if( nParked > 0 ){
+			/* The target's own emission is the only place a PICK may stand in for a
+			 * name; a nested assignment inside the value has already been compiled
+			 * with nothing parked, and one inside the target's container answers for
+			 * itself through this save and the restore below. */
+			apOuterParked = pGen->apStoreKey;
+			nOuterParked = pGen->nStoreKey;
+			pGen->apStoreKey = apParked;
+			pGen->nStoreKey = nParked;
+		}
 		if( iVmOp == PH7_OP_STORE && pNode->pRight
 		 && (pNode->pRight->xCode == PH7_CompileList
 		  || pNode->pRight->xCode == PH7_CompileShortList) ){
@@ -2538,6 +2696,10 @@ static sxi32 GenStateEmitExprCode(
 			pGen->bListSrcNotRef = bSavedSrcRef;
 		}else{
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iRhsFlags|EXPR_FLAG_RDONLY_LOAD);
+		}
+		if( nParked > 0 ){
+			pGen->apStoreKey = apOuterParked;
+			pGen->nStoreKey = nOuterParked;
 		}
 		if( !bIsChainOp ){
 			/* Non-chain parent: RHS nullsafe chain ends here, before the
@@ -2851,6 +3013,16 @@ static sxi32 GenStateEmitExprCode(
 			if( pCallInstr ){
 				pCallInstr->nLine = pNode->pStart->nLine;
 			}
+		}
+	}
+	if( nParked > 0 ){
+		/* The store consumed the value and the target and left the assignment's own
+		 * result on top; the parked names are still under it. Lift the result over each
+		 * one and drop it -- php's temporaries are freed at the same point. */
+		int nAt;
+		for( nAt = 0 ; nAt < nParked ; ++nAt ){
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_SWAP,0,0,0,0);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}
 	}
 	if( nJmpIdx > 0 ){

@@ -1075,6 +1075,15 @@ struct ph7_gen_state
 	SySet aLabel;        /* Label table */
 	SySet aGoto;         /* Gotos table */
 	SySet aNullsafeJmp;  /* Pending NULLSAFE_JMP instruction indices (sxu32) */
+	/* An assignment whose TARGET carries dynamic subscript/property names evaluates them
+	 * before the assigned value (php's order) by pushing them first and emitting the access
+	 * chain last; while that chain is being emitted these nodes must not be compiled again,
+	 * they are read back off the stack with PH7_OP_PICK. Installed for exactly that emission
+	 * and saved/restored around it, so a nested assignment answers for itself. */
+#define PH7_STORE_KEY_MAX 8
+	ph7_expr_node **apStoreKey; /* the parked name expressions, in push order -- the emitting
+	                             * frame's own array, borrowed for the length of that emission */
+	int nStoreKey;       /* how many are parked (0 = no assignment target is being emitted) */
 	int nCommaExprOk;    /* > 0 while compiling a for() clause, the ONLY place php's grammar
 	                      * allows a comma-separated expression list (PH7's comma OPERATOR
 	                      * is otherwise a PH7-ism php rejects, and we remove) */
@@ -4967,6 +4976,14 @@ enum ph7_vm_op {
                          * a by-value argument before a later argument, an array literal's
                          * entries before a later entry, a binary operator's left operand before
                          * its right -- and nowhere else, so ordinary code pays nothing for it. */
+  ,PH7_OP_PICK          /* Push a copy of the stack slot P1 below the top (P1 = 0 is DUP).
+                         * php evaluates an assignment target's dynamic subscript and property
+                         * NAMES before the assigned value and performs the FETCHES after it, so
+                         * `$a[k()] = v()` runs k() first and only then vivifies. A stack machine
+                         * cannot emit that in one pass: the names are pushed first, the value
+                         * lands on top of them, and the access chain -- emitted last, so nothing
+                         * it creates is visible to the value -- reads each name back from where
+                         * it was parked. That read is this. */
 };
 /*
  * PH7_OP_CATCH_JMP.iP1 payload. Both halves are nesting depths of the source, never

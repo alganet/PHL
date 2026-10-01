@@ -3466,6 +3466,7 @@ static int VmInstrStackEffect(VmInstr *pI, sxu32 pc, int *pPush, int *pN, sxu32 
 	 * the name taken from the stack (p3 == 0) it reuses that slot -> net 0. */
 	case PH7_OP_LOADC:
 	case PH7_OP_DUP:
+	case PH7_OP_PICK:
 		push = 1; aSucc[0] = pc + 1; aDelta[0] = 1; n = 1; break;
 	case PH7_OP_LOAD:
 		if( pI->p3 ){ push = 1; d = 1; }else{ push = 0; d = 0; }
@@ -7648,6 +7649,7 @@ static const char * VmInstrToString(sxi32 nOp)
 		                    zOp = "STORE_IDX_R"; break;
 	case PH7_OP_PULL:       zOp = "PULL       "; break;
 	case PH7_OP_DUP:        zOp = "DUP        "; break;
+	case PH7_OP_PICK:       zOp = "PICK       "; break;
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
 	case PH7_OP_YIELD_FROM: zOp = "YIELD_FROM "; break;

@@ -2557,6 +2557,31 @@ case PH7_OP_SNAPSHOT: {
 	break;
 					   }
 /*
+ * PICK: P1 * *
+ *
+ * Push a copy of the stack slot P1 below the top (P1 = 0 duplicates the top, as DUP does).
+ *
+ * An assignment target's dynamic subscript and property NAMES are evaluated before the
+ * assigned value in php and the fetches they belong to run after it, so the compiler pushes
+ * those names first, puts the value on top of them, and emits the access chain last. Each
+ * access then reads its name back from the slot it was parked in -- which is at a depth the
+ * compiler knows exactly, since every level of the chain consumes a container and a name and
+ * leaves one element behind it.
+ */
+case PH7_OP_PICK: {
+	ph7_value *pPick;
+#ifdef UNTRUST
+	if( &pTos[-pInstr->iP1] < pStack ){
+		goto Abort;
+	}
+#endif
+	pPick = &pTos[-pInstr->iP1];
+	pTos++;
+	PH7_MemObjInit(pVm,pTos);
+	PH7_MemObjStore(pPick,pTos);
+	break;
+				 }
+/*
  * POP: P1 * *
  *
  * Pop P1 elements from the operand stack.
