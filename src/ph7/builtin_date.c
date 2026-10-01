@@ -781,8 +781,17 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 			 * TYPE, not on the offset's value, so a zone whose name is an offset
 			 * spelling — `new DateTime('@0')`, `new DateTimeZone('+00:00')` —
 			 * prints "GMT+0000" where PHL printed the name "+00:00". PHL has no
-			 * tz database, so the name path only ever sees UTC/GMT/Z. */
+			 * tz database, so the name path only ever sees UTC/GMT/Z.
+			 *
+			 * A DATABASE zone brings its own answer and neither branch below
+			 * applies: the abbreviation is whatever tzdata wrote for that
+			 * instant, which is a word for some zones ("EDT", "MSK") and an
+			 * offset spelling for others ("+0545", "-03"). */
 			const char *z;
+			if( pTm->tm_abbr ){
+				ph7_result_string(pCtx,pTm->tm_abbr,pTm->tm_nabbr);
+				break;
+			}
 			if( pTm->tm_gmtoff != 0
 			 || (pTm->tm_zone && (pTm->tm_zone[0] == '+' || pTm->tm_zone[0] == '-')) ){
 				long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;

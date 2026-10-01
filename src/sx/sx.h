@@ -86,7 +86,14 @@ struct Sytm
   int tm_wday;    /* day of week (Sunday = 0) */
   int tm_yday;    /* day of year (0 - 365) */
   int tm_isdst;   /* is summer time in effect? */
-  char *tm_zone;  /* abbreviation of timezone name */
+  char *tm_zone;  /* the zone's NAME -- an identifier or an offset spelling */
+  const char *tm_abbr; /* the zone's ABBREVIATION at this instant ("EDT"), or 0
+                   * when there is none. Only a database zone has one; with it
+                   * 0 the `T` specifier falls back to the rule it has always
+                   * had, which builds "GMT+0530" from the offset or uppercases
+                   * the name. */
+  int tm_nabbr;   /* its length, since it points into the tz payload rather than
+                   * at a NUL-terminated string */
   long tm_gmtoff; /* offset from UTC in seconds */
 };
 typedef struct Sytm Sytm;
@@ -103,7 +110,9 @@ typedef struct Sytm Sytm;
 	(pSYTM)->tm_wday = (pTM)->tm_wday;\
 	(pSYTM)->tm_isdst = (pTM)->tm_isdst;\
 	(pSYTM)->tm_gmtoff = 0;\
-	(pSYTM)->tm_zone = 0;
+	(pSYTM)->tm_zone = 0;\
+	(pSYTM)->tm_abbr = 0;\
+	(pSYTM)->tm_nabbr = 0;
 
 /* Convert a SYSTEMTIME structure (LPSYSTEMTIME: Windows Systems only ) to a Sytm structure */
 #define SYSTEMTIME_TO_SYTM(pSYSTIME,pSYTM) \
@@ -117,7 +126,9 @@ typedef struct Sytm Sytm;
 	 (pSYTM)->tm_wday = (pSYSTIME)->wDayOfWeek;\
 	 (pSYTM)->tm_gmtoff = 0;\
 	 (pSYTM)->tm_isdst = -1;\
-	 (pSYTM)->tm_zone = 0;
+	 (pSYTM)->tm_zone = 0;\
+	 (pSYTM)->tm_abbr = 0;\
+	 (pSYTM)->tm_nabbr = 0;
 
 /* Dynamic memory allocation methods */
 struct SyMemMethods

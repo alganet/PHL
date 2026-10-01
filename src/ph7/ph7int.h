@@ -5311,6 +5311,19 @@ PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd);
 PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b);
 PH7_PRIVATE void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm);
 PH7_PRIVATE void DtNowUs(ph7_vm *pVm,sxi64 *piSec,int *puSec);
+#ifdef PH7_ENABLE_TZDB
+/* The embedded IANA database (builtin_date_tzdb.c). Absent from the tiny build
+ * on purpose -- the payload is ~296 KB -- so every caller asks PH7_TzFind()
+ * first and keeps its fixed-offset path for the answer -1. */
+PH7_PRIVATE int PH7_TzFind(const char *zName,int nName);
+PH7_PRIVATE int PH7_TzAbbrFind(const char *zName,int nName,sxi32 *piOff,int *pbDst,
+	const char **pzCanon,int *pnCanon);
+PH7_PRIVATE int PH7_TzCount(void);
+PH7_PRIVATE const char * PH7_TzName(int iZone,int *pnName,int *pbBackward);
+PH7_PRIVATE int PH7_TzOffsetAt(int iZone,sxi64 iTs,sxi32 *piOff,int *pbDst,
+	const char **pzAbbr,int *pnAbbr);
+PH7_PRIVATE int PH7_TzLocalToUtc(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff);
+#endif /* PH7_ENABLE_TZDB */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal);

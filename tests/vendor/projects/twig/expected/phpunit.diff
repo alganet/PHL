@@ -6,353 +6,13 @@
  PHPUnit 9.6.36 by Sebastian Bergmann and contributors.
  
  Testing
-@@ -7,9 +5,838 @@
- .............................................................  122 / 1681 (  7%)
+@@ -8,8 +6,499 @@
  .............................................................  183 / 1681 ( 10%)
  .............................................................  244 / 1681 ( 14%)
--...............................................S.............  305 / 1681 ( 18%)
+ ...............................................S.............  305 / 1681 ( 18%)
 -.....................S.S.....................................  366 / 1681 ( 21%)
 -............................S................................  427 / 1681 ( 25%)
-+...............................................S.FCompiled templates that failed on case 1:
-+Template: index.twig
-+<?php
-+
-+use Twig\Environment;
-+use Twig\Error\LoaderError;
-+use Twig\Error\RuntimeError;
-+use Twig\Extension\CoreExtension;
-+use Twig\Extension\SandboxExtension;
-+use Twig\Markup;
-+use Twig\Sandbox\SecurityError;
-+use Twig\Sandbox\SecurityNotAllowedTagError;
-+use Twig\Sandbox\SecurityNotAllowedFilterError;
-+use Twig\Sandbox\SecurityNotAllowedFunctionError;
-+use Twig\Source;
-+use Twig\Template;
-+
-+/* index.twig */
-+class __TwigTemplate_@HASH@_024d90e049fc69c87dcff025580ad1c4 extends Template
-+{
-+    private $source;
-+    private $macros = [];
-+
-+    public function __construct(Environment $env)
-+    {
-+        parent::__construct($env);
-+
-+        $this->source = $this->getSourceContext();
-+
-+        $this->parent = false;
-+
-+        $this->blocks = [
-+        ];
-+        $this->sandbox = $this->env->getExtension('\Twig\Extension\SandboxExtension');
-+        $this->checkSecurity();
-+    }
-+
-+    protected function doDisplay(array $context, array $blocks = [])
-+    {
-+        $macros = $this->macros;
-+        // line 1
-+        yield "
-+";
-+        // line 2
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, Twig\Extension\CoreExtension::dateConverter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date"]) || array_key_exists("date", $context) ? $context["date"] : (function () { throw new RuntimeError('Variable "date" does not exist.', 2, $this->source); })()), 2, $this->source), "America/New_York"), "d/m/Y H:i:s P", false), "html", null, true);
-+        yield "
-+";
-+        // line 3
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, Twig\Extension\CoreExtension::dateConverter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date"]) || array_key_exists("date", $context) ? $context["date"] : (function () { throw new RuntimeError('Variable "date" does not exist.', 3, $this->source); })()), 3, $this->source), "America/New_York"), "d/m/Y H:i:s P", false), "html", null, true);
-+        return; yield '';
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function getTemplateName()
-+    {
-+        return "index.twig";
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function isTraitable()
-+    {
-+        return false;
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function getDebugInfo()
-+    {
-+        return array (  47 => 3,  43 => 2,  40 => 1,);
-+    }
-+
-+    public function getSourceContext()
-+    {
-+        return new Source("", "index.twig", "");
-+    }
-+
-+    public function checkSecurity()
-+    {
-+        static $tags = array();
-+        static $filters = array("escape" => 2, "date" => 2);
-+        static $functions = array("date" => 2);
-+
-+        try {
-+            $this->sandbox->checkSecurity(
-+                [],
-+                ['escape', 'date'],
-+                ['date'],
-+                $this->source
-+            );
-+        } catch (SecurityError $e) {
-+            $e->setSourceContext($this->source);
-+
-+            if ($e instanceof SecurityNotAllowedTagError && isset($tags[$e->getTagName()])) {
-+                $e->setTemplateLine($tags[$e->getTagName()]);
-+            } elseif ($e instanceof SecurityNotAllowedFilterError && isset($filters[$e->getFilterName()])) {
-+                $e->setTemplateLine($filters[$e->getFilterName()]);
-+            } elseif ($e instanceof SecurityNotAllowedFunctionError && isset($functions[$e->getFunctionName()])) {
-+                $e->setTemplateLine($functions[$e->getFunctionName()]);
-+            }
-+
-+            throw $e;
-+        }
-+
-+    }
-+}
-+...........  305 / 1681 ( 18%)
-+.......................................FCompiled templates that failed on case 1:
-+Template: index.twig
-+<?php
-+
-+use Twig\Environment;
-+use Twig\Error\LoaderError;
-+use Twig\Error\RuntimeError;
-+use Twig\Extension\CoreExtension;
-+use Twig\Extension\SandboxExtension;
-+use Twig\Markup;
-+use Twig\Sandbox\SecurityError;
-+use Twig\Sandbox\SecurityNotAllowedTagError;
-+use Twig\Sandbox\SecurityNotAllowedFilterError;
-+use Twig\Sandbox\SecurityNotAllowedFunctionError;
-+use Twig\Source;
-+use Twig\Template;
-+
-+/* index.twig */
-+class __TwigTemplate_@HASH@_4360e0675c5c37e62e3c6c559cba6010 extends Template
-+{
-+    private $source;
-+    private $macros = [];
-+
-+    public function __construct(Environment $env)
-+    {
-+        parent::__construct($env);
-+
-+        $this->source = $this->getSourceContext();
-+
-+        $this->parent = false;
-+
-+        $this->blocks = [
-+        ];
-+        $this->sandbox = $this->env->getExtension('\Twig\Extension\SandboxExtension');
-+        $this->checkSecurity();
-+    }
-+
-+    protected function doDisplay(array $context, array $blocks = [])
-+    {
-+        $macros = $this->macros;
-+        // line 1
-+        yield "
-+";
-+        // line 2
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date"]) || array_key_exists("date", $context) ? $context["date"] : (function () { throw new RuntimeError('Variable "date" does not exist.', 2, $this->source); })()), 2, $this->source), "d/m/Y H:i:s P", "America/Chicago"), "html", null, true);
-+        yield "
-+";
-+        // line 3
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date"]) || array_key_exists("date", $context) ? $context["date"] : (function () { throw new RuntimeError('Variable "date" does not exist.', 3, $this->source); })()), 3, $this->source), "d/m/Y H:i:s P", "America/Chicago"), "html", null, true);
-+        yield "
-+";
-+        // line 4
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date"]) || array_key_exists("date", $context) ? $context["date"] : (function () { throw new RuntimeError('Variable "date" does not exist.', 4, $this->source); })()), 4, $this->source), "d/m/Y H:i:s P", "America/Chicago"), "html", null, true);
-+        return; yield '';
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function getTemplateName()
-+    {
-+        return "index.twig";
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function isTraitable()
-+    {
-+        return false;
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function getDebugInfo()
-+    {
-+        return array (  51 => 4,  47 => 3,  43 => 2,  40 => 1,);
-+    }
-+
-+    public function getSourceContext()
-+    {
-+        return new Source("", "index.twig", "");
-+    }
-+
-+    public function checkSecurity()
-+    {
-+        static $tags = array();
-+        static $filters = array("escape" => 2, "date" => 2);
-+        static $functions = array();
-+
-+        try {
-+            $this->sandbox->checkSecurity(
-+                [],
-+                ['escape', 'date'],
-+                [],
-+                $this->source
-+            );
-+        } catch (SecurityError $e) {
-+            $e->setSourceContext($this->source);
-+
-+            if ($e instanceof SecurityNotAllowedTagError && isset($tags[$e->getTagName()])) {
-+                $e->setTemplateLine($tags[$e->getTagName()]);
-+            } elseif ($e instanceof SecurityNotAllowedFilterError && isset($filters[$e->getFilterName()])) {
-+                $e->setTemplateLine($filters[$e->getFilterName()]);
-+            } elseif ($e instanceof SecurityNotAllowedFunctionError && isset($functions[$e->getFunctionName()])) {
-+                $e->setTemplateLine($functions[$e->getFunctionName()]);
-+            }
-+
-+            throw $e;
-+        }
-+
-+    }
-+}
-+............FCompiled templates that failed on case 1:
-+Template: index.twig
-+<?php
-+
-+use Twig\Environment;
-+use Twig\Error\LoaderError;
-+use Twig\Error\RuntimeError;
-+use Twig\Extension\CoreExtension;
-+use Twig\Extension\SandboxExtension;
-+use Twig\Markup;
-+use Twig\Sandbox\SecurityError;
-+use Twig\Sandbox\SecurityNotAllowedTagError;
-+use Twig\Sandbox\SecurityNotAllowedFilterError;
-+use Twig\Sandbox\SecurityNotAllowedFunctionError;
-+use Twig\Source;
-+use Twig\Template;
-+
-+/* index.twig */
-+class __TwigTemplate_@HASH@_ca5cc2f65ec1c1df679a76d920956abb extends Template
-+{
-+    private $source;
-+    private $macros = [];
-+
-+    public function __construct(Environment $env)
-+    {
-+        parent::__construct($env);
-+
-+        $this->source = $this->getSourceContext();
-+
-+        $this->parent = false;
-+
-+        $this->blocks = [
-+        ];
-+        $this->sandbox = $this->env->getExtension('\Twig\Extension\SandboxExtension');
-+        $this->checkSecurity();
-+    }
-+
-+    protected function doDisplay(array $context, array $blocks = [])
-+    {
-+        $macros = $this->macros;
-+        // line 1
-+        yield "
-+";
-+        // line 2
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date1"]) || array_key_exists("date1", $context) ? $context["date1"] : (function () { throw new RuntimeError('Variable "date1" does not exist.', 2, $this->source); })()), 2, $this->source)), "html", null, true);
-+        yield "
-+";
-+        // line 3
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date1"]) || array_key_exists("date1", $context) ? $context["date1"] : (function () { throw new RuntimeError('Variable "date1" does not exist.', 3, $this->source); })()), 3, $this->source), "%d days %h hours"), "html", null, true);
-+        yield "
-+";
-+        // line 4
-+        yield Twig\Extension\EscaperExtension::escape($this->env, Twig\Extension\CoreExtension::dateFormatFilter($this->env, $this->sandbox->ensureToStringAllowed((isset($context["date1"]) || array_key_exists("date1", $context) ? $context["date1"] : (function () { throw new RuntimeError('Variable "date1" does not exist.', 4, $this->source); })()), 4, $this->source), "%d days %h hours", $this->sandbox->ensureToStringAllowed((isset($context["timezone1"]) || array_key_exists("timezone1", $context) ? $context["timezone1"] : (function () { throw new RuntimeError('Variable "timezone1" does not exist.', 4, $this->source); })()), 4, $this->source)), "html", null, true);
-+        return; yield '';
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function getTemplateName()
-+    {
-+        return "index.twig";
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function isTraitable()
-+    {
-+        return false;
-+    }
-+
-+    /**
-+     * @codeCoverageIgnore
-+     */
-+    public function getDebugInfo()
-+    {
-+        return array (  51 => 4,  47 => 3,  43 => 2,  40 => 1,);
-+    }
-+
-+    public function getSourceContext()
-+    {
-+        return new Source("", "index.twig", "");
-+    }
-+
-+    public function checkSecurity()
-+    {
-+        static $tags = array();
-+        static $filters = array("escape" => 2, "date" => 2);
-+        static $functions = array();
-+
-+        try {
-+            $this->sandbox->checkSecurity(
-+                [],
-+                ['escape', 'date'],
-+                [],
-+                $this->source
-+            );
-+        } catch (SecurityError $e) {
-+            $e->setSourceContext($this->source);
-+
-+            if ($e instanceof SecurityNotAllowedTagError && isset($tags[$e->getTagName()])) {
-+                $e->setTemplateLine($tags[$e->getTagName()]);
-+            } elseif ($e instanceof SecurityNotAllowedFilterError && isset($filters[$e->getFilterName()])) {
-+                $e->setTemplateLine($filters[$e->getFilterName()]);
-+            } elseif ($e instanceof SecurityNotAllowedFunctionError && isset($functions[$e->getFunctionName()])) {
-+                $e->setTemplateLine($functions[$e->getFunctionName()]);
-+            }
-+
-+            throw $e;
-+        }
-+
-+    }
-+}
-+FCompiled templates that failed on case 1:
++.....................................................FCompiled templates that failed on case 1:
 +Template: index.twig
 +<?php
 +
@@ -848,56 +508,15 @@
  .............................................................  488 / 1681 ( 29%)
  .............................................................  549 / 1681 ( 32%)
  .............................................................  610 / 1681 ( 36%)
-@@ -34,13 +861,141 @@
+@@ -34,13 +523,100 @@
  
  Time: @TIME@
  
 -OK, but incomplete, skipped, or risky tests!
 -Tests: 1681, Assertions: 4401, Skipped: 7.
-+There were 6 failures:
++There were 3 failures:
 +
-+1) Twig\Tests\IntegrationTest::testIntegration with data set #5 ('functions/date_namedargs.test', '"date" function', '', array('\n{{ date(date, "America/New_...se) }}'), false, array(array('--DATA--\ndate_default_timezo...-04:00', '\ndate_default_timezone_set('...10)]\n', '', '\n04/10/2010 09:45:00 -04:00\...-04:00')), '')
-+"date" function (in functions/date_namedargs.test)
-+Failed asserting that two strings are equal.
-+--- Expected
-++++ Actual
-+@@ @@
-+-'04/10/2010 09:45:00 -04:00\n
-+-04/10/2010 09:45:00 -04:00'
-++'Twig\Error\Error: Twig\Error\RuntimeError: An exception has been thrown during the rendering of a template ("DateTimeZone::__construct(): Unknown or bad timezone (America/New_York)") in "index.twig" at line 2.'
-+
-+@ROOT@/src/Test/IntegrationTestCase.php:253
-+@ROOT@/src/Test/IntegrationTestCase.php:82
-+
-+2) Twig\Tests\IntegrationTest::testIntegration with data set #56 ('filters/date_namedargs.test', '"date" filter', '', array('\n{{ date|date(format='d/m/Y ...o') }}'), false, array(array('--DATA--\ndate_default_timezo...-05:00', '\ndate_default_timezone_set('...10)]\n', '', '\n04/10/2010 08:45:00 -05:00\...-05:00')), '')
-+"date" filter (in filters/date_namedargs.test)
-+Failed asserting that two strings are equal.
-+--- Expected
-++++ Actual
-+@@ @@
-+-'04/10/2010 08:45:00 -05:00\n
-+-04/10/2010 08:45:00 -05:00\n
-+-04/10/2010 08:45:00 -05:00'
-++'Twig\Error\Error: Twig\Error\RuntimeError: An exception has been thrown during the rendering of a template ("DateTimeZone::__construct(): Unknown or bad timezone (America/Chicago)") in "index.twig" at line 2.'
-+
-+@ROOT@/src/Test/IntegrationTestCase.php:253
-+@ROOT@/src/Test/IntegrationTestCase.php:82
-+
-+3) Twig\Tests\IntegrationTest::testIntegration with data set #69 ('filters/date_interval.test', '"date" filter (interval support)', '', array('\n{{ date1|date }}\n{{ date1|...e1) }}'), false, array(array('--DATA--\ndate_default_timezo... hours', '\ndate_default_timezone_set('...,\n]\n', '', '\n2 days\n2 days 0 hours\n2 d... hours')), '')
-+"date" filter (interval support) (in filters/date_interval.test)
-+Failed asserting that two strings are equal.
-+--- Expected
-++++ Actual
-+@@ @@
-+-'2 days\n
-+-2 days 0 hours\n
-+-2 days 0 hours'
-++'Twig\Error\Error: DateInvalidTimeZoneException: DateTimeZone::__construct(): Unknown or bad timezone (America/New_York)'
-+
-+@ROOT@/src/Test/IntegrationTestCase.php:253
-+@ROOT@/src/Test/IntegrationTestCase.php:82
-+
-+4) Twig\Tests\IntegrationTest::testIntegration with data set #70 ('filters/date_immutable.test', '"date" filter', '', array('\n{{ date1|date }}\n{{ date1|...se) }}'), false, array(array('--DATA--\ndate_default_timezo...w_York', '\ndate_default_timezone_set('...,\n]\n', '', '\nOctober 4, 2010 13:45\n04/1...w_York')), '')
++1) Twig\Tests\IntegrationTest::testIntegration with data set #70 ('filters/date_immutable.test', '"date" filter', '', array('\n{{ date1|date }}\n{{ date1|...se) }}'), false, array(array('--DATA--\ndate_default_timezo...w_York', '\ndate_default_timezone_set('...,\n]\n', '', '\nOctober 4, 2010 13:45\n04/1...w_York')), '')
 +"date" filter (in filters/date_immutable.test)
 +Failed asserting that two strings are equal.
 +--- Expected
@@ -920,7 +539,7 @@
 +@ROOT@/src/Test/IntegrationTestCase.php:253
 +@ROOT@/src/Test/IntegrationTestCase.php:82
 +
-+5) Twig\Tests\IntegrationTest::testIntegration with data set #74 ('filters/date.test', '"date" filter', '', array('\n{{ date1|date }}\n{{ date1|...g") }}'), false, array(array('--DATA--\ndate_default_timezo... 22:00', '\ndate_default_timezone_set('...,\n]\n', '', '\nOctober 4, 2010 13:45\n04/1... 22:00')), '')
++2) Twig\Tests\IntegrationTest::testIntegration with data set #74 ('filters/date.test', '"date" filter', '', array('\n{{ date1|date }}\n{{ date1|...g") }}'), false, array(array('--DATA--\ndate_default_timezo... 22:00', '\ndate_default_timezone_set('...,\n]\n', '', '\nOctober 4, 2010 13:45\n04/1... 22:00')), '')
 +"date" filter (in filters/date.test)
 +Failed asserting that two strings are equal.
 +--- Expected
@@ -968,7 +587,7 @@
 +@ROOT@/src/Test/IntegrationTestCase.php:253
 +@ROOT@/src/Test/IntegrationTestCase.php:82
 +
-+6) Twig\Tests\IntegrationTest::testIntegration with data set #97 ('filters/convert_encoding.test', '"convert_encoding" filter', '', array('\n{{ "愛していますか？"|convert_encod...') }}*'), false, array(array('--DATA--\nreturn []\n--EXPECT...**\n**', '\nreturn []\n', '', '\n愛していますか？\n**\n**')), '')
++3) Twig\Tests\IntegrationTest::testIntegration with data set #97 ('filters/convert_encoding.test', '"convert_encoding" filter', '', array('\n{{ "愛していますか？"|convert_encod...') }}*'), false, array(array('--DATA--\nreturn []\n--EXPECT...**\n**', '\nreturn []\n', '', '\n愛していますか？\n**\n**')), '')
 +"convert_encoding" filter (in filters/convert_encoding.test)
 +Failed asserting that two strings are equal.
 +--- Expected
@@ -983,7 +602,7 @@
 +@ROOT@/src/Test/IntegrationTestCase.php:82
 +
 +FAILURES!
-+Tests: 1681, Assertions: 4404, Failures: 6, Skipped: 5.
++Tests: 1681, Assertions: 4404, Failures: 3, Skipped: 5.
  
 -Remaining self deprecation notices (463)
 +Remaining self deprecation notices (465)

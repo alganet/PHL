@@ -101,6 +101,11 @@ PH7_PRIVATE void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm)
 	pTm->tm_yday = (int)(days - DtDaysFromCivil(y,1,1));
 	pTm->tm_isdst = 0;
 	pTm->tm_zone = zZone;
+	/* No abbreviation and no DST unless a caller that KNOWS the zone fills them
+	 * in afterwards -- which only a database zone can. Every other caller gets
+	 * the answers this family has always given. */
+	pTm->tm_abbr = 0;
+	pTm->tm_nabbr = 0;
 	pTm->tm_gmtoff = (long)iOff;
 }
 static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)
@@ -894,6 +899,67 @@ static int DtZoneShape(const char *z,const char *zEnd,const char **pzName,int *p
 #define DT_ZONE_OFFSET 1
 #define DT_ZONE_ABBR   2
 #define DT_ZONE_ID     3
+
+/*
+ * ---------------------------------------------------------------------------
+ * The tz DATABASE, seen from the date family.
+ *
+ * Every fixed spelling this engine has always understood keeps its own path:
+ * the ±HH:MM:SS grammar, php's military letters, `GMT`, `Z` and `UTC` are
+ * decided before any of this is asked, so a build with PH7_ENABLE_TZDB off and
+ * one with it on answer those identically. The database can only ADD names.
+ *
+ * A zone is a DATABASE zone when its name resolves in the table AND its
+ * timezone_type is 3 -- the identifier kind. `UTC` is deliberately excluded
+ * even though the table holds it: it is already a fixed zone here, and routing
+ * it through the table would move a well-tested answer for no gain.
+ *
+ * The index is not STORED anywhere. It is re-derived from the name whenever it
+ * is needed, because the name is the object's state and a serialized date has
+ * to come back the same way. The lookup is a binary search over 599 rows.
+ */
+static int DtTzIndex(const char *zName,int nName,int iZoneKind)
+{
+#ifdef PH7_ENABLE_TZDB
+	if( iZoneKind != DT_ZONE_ID || zName == 0 || nName < 1 ){
+		return -1;
+	}
+	if( nName == 3 && SyStrnicmp(zName,"UTC",3) == 0 ){
+		return -1;
+	}
+	return PH7_TzFind(zName,nName);
+#else
+	SXUNUSED(zName);
+	SXUNUSED(nName);
+	SXUNUSED(iZoneKind);
+	return -1;
+#endif
+}
+/*
+ * The offset a zone is on at iTs. iTz is a database index or -1, and -1 means
+ * "the fixed offset the caller already has", which is every pre-database zone.
+ * pzAbbr/pnAbbr come back 0/0 for a fixed zone -- the marker DateFormat's `T`
+ * reads as "use the old rule".
+ */
+static sxi32 DtTzOffsetAt(int iTz,sxi32 iFixed,sxi64 iTs,int *pbDst,
+	const char **pzAbbr,int *pnAbbr)
+{
+#ifdef PH7_ENABLE_TZDB
+	if( iTz >= 0 ){
+		sxi32 iOff = iFixed;
+		if( PH7_TzOffsetAt(iTz,iTs,&iOff,pbDst,pzAbbr,pnAbbr) ){
+			return iOff;
+		}
+	}
+#else
+	SXUNUSED(iTz);
+	SXUNUSED(iTs);
+#endif
+	*pbDst = 0;
+	*pzAbbr = 0;
+	*pnAbbr = 0;
+	return iFixed;
+}
 /*
  * ...and what the letters spell, the spellings this engine has without a tz
  * database: `UTC` (an IDENTIFIER in that exact case, an abbreviation in any
@@ -2886,9 +2952,11 @@ struct dt_diff
  * settles the inverted case: |d| < 31 and the borrowed month has at least 28 days,
  * while a 28-day base month can only be reached from a day-of-month <= 29.
  */
-static void DtCivilDiff(sxi64 iTs1,int uSec1,sxi32 iOff,sxi64 iTs2,int uSec2,dt_diff *pOut)
+static void DtCivilDiff(sxi64 iTs1,int uSec1,sxi32 iOff1,sxi64 iTs2,int uSec2,sxi32 iOff2,
+	int bSameZone,dt_diff *pOut)
 {
 	sxi64 iA,iB,iLa,iLb,daysA,daysB,yA,yB;
+	sxi32 iOffA,iOffB;
 	int moA,dA,moB,dB,bInvert,usA,usB;
 	sxi64 sA,sB,y,m,d,h,i,s,us;
 	/* The MICROSECONDS are part of which date comes first -- `$a->diff($b)` on two
@@ -2907,8 +2975,28 @@ static void DtCivilDiff(sxi64 iTs1,int uSec1,sxi32 iOff,sxi64 iTs2,int uSec2,dt_
 		us += 1000000;
 		iB--;
 	}
-	iLa = iA + iOff;
-	iLb = iB + iOff;
+	/*
+	 * WHICH CLOCK the two instants are read on, and php has two answers.
+	 *
+	 * When both dates are in the SAME zone -- both identifiers, spelled the same
+	 * bytes -- each is read on its own, so `2010-01-01 00:00` and
+	 * `2010-08-01 00:00` in New York are seven months apart exactly, with the
+	 * hour daylight saving took not in the answer at all.
+	 *
+	 * Otherwise both are read on the EARLIER one's offset, which is timelib
+	 * subtracting `two->z - one->z` from a field-wise difference and comes to
+	 * the same thing. So the same pair with the second date spelled
+	 * `america/new_york` -- the same place, a different spelling, and to php a
+	 * different zone -- is seven months LESS AN HOUR. The comparison really is
+	 * byte-exact: `US/Eastern` is the same data and not the same zone either.
+	 *
+	 * With no database in the build no zone's offset can vary, so the two arms
+	 * agree and this is the single offset the code always applied.
+	 */
+	iOffA = bInvert ? iOff2 : iOff1;
+	iOffB = bInvert ? iOff1 : iOff2;
+	iLa = iA + iOffA;
+	iLb = iB + (bSameZone ? iOffB : iOffA);
 	daysA = DtFloorDiv(iLa,86400);
 	daysB = DtFloorDiv(iLb,86400);
 	sA = iLa - daysA*86400;
@@ -2947,7 +3035,9 @@ static void DtCivilDiff(sxi64 iTs1,int uSec1,sxi32 iOff,sxi64 iTs2,int uSec2,dt_
 	pOut->i = i;
 	pOut->s = s;
 	pOut->uSec = us;
-	pOut->nDays = (iB - iA) / 86400;
+	/* The day COUNT rides the same clock: two local noons a daylight switch
+	 * apart are one day, not a day less an hour rounded down to zero. */
+	pOut->nDays = (iLb - iLa) / 86400;
 	pOut->bInvert = bInvert;
 }
 /*
@@ -4183,6 +4273,14 @@ static int DtZoneKindOf(ph7_class_instance *pObj,const char *zSlot,const char *z
 	}
 	return iKind;
 }
+/* The same question asked of an instance's own name/kind slots. */
+static int DtTzIndexOf(ph7_class_instance *pObj,const char *zNameSlot,const char *zKindSlot)
+{
+	const char *zName;
+	int nName;
+	PH7_NativeAttrStr(pObj,zNameSlot,&zName,&nName);
+	return DtTzIndex(zName,nName,DtZoneKindOf(pObj,zKindSlot,zName,nName));
+}
 static void DtLoad(ph7_class_instance *pObj,dt_state *pOut)
 {
 	pOut->iTs  = PH7_NativeAttrInt(pObj,DT_TS);
@@ -4198,6 +4296,36 @@ static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)
 	PH7_NativeSetAttrInt(pVm,pObj,DT_US,pIn->uSec);
 	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);
 	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,pIn->iZoneKind);
+}
+/*
+ * Put DT_OFF back in step with DT_TS.
+ *
+ * A fixed zone's offset does not depend on the instant, so this was never
+ * needed and DT_OFF could be written once and left. A DATABASE zone's does, so
+ * every door that moves the timestamp on its own -- setTimestamp(), setDate(),
+ * setTime(), modify(), add()/sub(), the period walker -- has to say so, and
+ * they write DT_TS directly rather than through DtStore(). This is the one
+ * call each of them owes; with a fixed zone it reads the name, finds no
+ * database row and changes nothing.
+ *
+ * It re-derives the offset from the INSTANT, which is right for a door that
+ * names an instant (setTimestamp) and is only half the answer for one that
+ * names a WALL CLOCK -- php's setTime() and modify() work in local time and
+ * have to re-solve the reading, which is a separate matter from the offset
+ * being stale.
+ */
+static void DtRezone(ph7_vm *pVm,ph7_class_instance *pObj)
+{
+	int iTz = DtTzIndexOf(pObj,DT_NAME,DT_ZKIND);
+	int bDst,nAbbr;
+	const char *zAbbr;
+	sxi32 iOff;
+	if( iTz < 0 ){
+		return;
+	}
+	iOff = DtTzOffsetAt(iTz,(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
+		PH7_NativeAttrInt(pObj,DT_TS),&bDst,&zAbbr,&nAbbr);
+	PH7_NativeSetAttrInt(pVm,pObj,DT_OFF,iOff);
 }
 /*
  * modify()'s one zone rule. php copies the parsed FIELDS into the object and
@@ -4426,6 +4554,54 @@ static int DtZoneArgInit(ph7_context *pCtx,ph7_value *pArg)
 	return -1;
 }
 /*
+ * Write a WALL-CLOCK reading -- seconds since the epoch as the zone's own clock
+ * shows them -- into an object's timestamp, and put DT_OFF in step with it.
+ *
+ * For a fixed zone this is one subtraction, which is what these doors always
+ * did inline. For a DATABASE zone the reading may name two instants or none, so
+ * the zone decides; and the offset it lands on is not the one it started from,
+ * which is why `setTime()` across a spring-forward morning has to write both
+ * slots rather than keeping the offset it read the clock with.
+ */
+static void DtStoreLocalOf(ph7_vm *pVm,ph7_class_instance *pObj,sxi64 iLocal)
+{
+	sxi32 iOff = (sxi32)PH7_NativeAttrInt(pObj,DT_OFF);
+#ifdef PH7_ENABLE_TZDB
+	int iTz = DtTzIndexOf(pObj,DT_NAME,DT_ZKIND);
+	if( iTz >= 0 ){
+		sxi64 iTs = iLocal;
+		if( PH7_TzLocalToUtc(iTz,iLocal,&iTs,&iOff) ){
+			PH7_NativeSetAttrInt(pVm,pObj,DT_TS,iTs);
+			PH7_NativeSetAttrInt(pVm,pObj,DT_OFF,iOff);
+			return;
+		}
+	}
+#endif
+	/* Unsigned, because a reading at either end of php's clock overflows the
+	 * signed subtraction and every other arithmetic door here is written the
+	 * same way. */
+	PH7_NativeSetAttrInt(pVm,pObj,DT_TS,(sxi64)((sxu64)iLocal - (sxu64)iOff));
+}
+/*
+ * modify()'s timestamp write, shared with the procedural date_modify().
+ *
+ * The parse ran under DT_PARSE_KEEP_ZONE, so what it produced is the object's
+ * own wall clock less the offset it STARTED from -- and a modifier can walk
+ * that clock across a DST switch, where the offset it ends on is a different
+ * one. `@epoch` is the exception: it names an absolute instant, and
+ * DtEpochRezone moves the object to a fixed `+00:00` along with it, so there is
+ * no reading to re-solve.
+ */
+static void DtStoreModified(ph7_vm *pVm,ph7_class_instance *pObj,sxi64 iTs,
+	sxi32 iOffBase,const dt_parsed *pVec)
+{
+	if( pVec->bEpoch ){
+		PH7_NativeSetAttrInt(pVm,pObj,DT_TS,iTs);
+		return;
+	}
+	DtStoreLocalOf(pVm,pObj,(sxi64)((sxu64)iTs + (sxu64)iOffBase));
+}
+/*
  * Parse $datetime into a date object's state, php's constructor rules: an explicit
  * offset in the string wins over the $timezone argument, a literal "Z" keeps its
  * own name, and everything else takes the argument's (or the default) zone.
@@ -4439,11 +4615,22 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 	sxi64 iTs = 0,iNow = 0;
 	sxi32 iOff = 0;
 	int bOffSet = 0,uSec = 0,iErrPos,uNow = 0;
+	int iTz,bDst,nAbbr;
+	const char *zAbbr;
 	dt_parsed sVec;
 	/* php's base moment is the whole clock, microseconds included: a string that
 	 * names no time of day keeps them (`new DateTime()`, `+1 day`), and one that
 	 * does zeroes them along with the rest of the clock. */
 	DtNowUs(pCtx->pVm,&iNow,&uNow);
+	/* A DATABASE zone has no offset until an instant picks one, and the parse
+	 * below needs one BEFORE it has an instant -- the base moment is what fills
+	 * in every field the string leaves out, so reading it in the wrong offset
+	 * puts `today` on the wrong day. The offset at NOW is that answer, and the
+	 * reading the parse produces is re-solved against the zone afterwards. */
+	iTz = DtTzIndex(zZoneName,nZoneName,iZoneKind);
+	if( iTz >= 0 ){
+		iZoneOff = DtTzOffsetAt(iTz,iZoneOff,iNow,&bDst,&zAbbr,&nAbbr);
+	}
 	/* php's constructors pass the word `now` in place of an empty string, which
 	 * is why `new DateTime('')` is the current moment where `modify('')` is its
 	 * `Empty string` refusal. */
@@ -4480,6 +4667,22 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 		pOut->zName = zZoneName;
 		pOut->nName = nZoneName;
 		pOut->iZoneKind = iZoneKind;
+#ifdef PH7_ENABLE_TZDB
+		if( iTz >= 0 ){
+			/* The parse read the string against the offset at NOW, so what it
+			 * produced is a WALL-CLOCK reading in this zone, shifted by that
+			 * offset. Recover the reading and ask the zone which instant it
+			 * names -- the answer differs from the guess for every date on the
+			 * other side of a DST switch from today, which is most of the year.
+			 */
+			sxi64 iFixed = iTs;
+			sxi32 iOffAt = iZoneOff;
+			if( PH7_TzLocalToUtc(iTz,iTs + iZoneOff,&iFixed,&iOffAt) ){
+				pOut->iTs = iFixed;
+				pOut->iOff = iOffAt;
+			}
+		}
+#endif
 	}
 	return 0;
 }
@@ -4577,6 +4780,50 @@ static int DtZoneOffsetDigits(const char *z,int n,sxi32 *piOff,int *pnUsed)
 	return 0;
 }
 /*
+ * The two spellings that are NAMES rather than arithmetic, in php's own order:
+ * an ABBREVIATION first, then a tz-database IDENTIFIER. Reached only once every
+ * offset spelling has failed, and answers -1 when neither table has the name --
+ * which, with PH7_ENABLE_TZDB off, is always.
+ *
+ * The order is not a detail. Ten names are in both tables (`CET`, `EET`, `EST`,
+ * `GMT`, `HST`, `MET`, `MST`, `UCT`, `UTC`, `WET`) and php takes the
+ * abbreviation for every one of them, so `new DateTimeZone('CET')` is a FIXED
+ * +01:00 that never observes daylight time while the zone file of that name
+ * switches twice a year. Getting this backwards turns a loud refusal into a
+ * quietly wrong summer offset.
+ *
+ * The two also differ in what they NAME. An abbreviation answers the table's
+ * canonical upper-case spelling whatever the caller wrote; an identifier
+ * answers the caller's own bytes -- `new DateTimeZone('europe/paris')` is named
+ * `europe/paris` and still knows about Paris.
+ */
+static int DtZoneNamed(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
+	int *pnName,int *piKind)
+{
+#ifdef PH7_ENABLE_TZDB
+	int bDst = 0;
+	if( PH7_TzAbbrFind(zTz,nTz,piOff,&bDst,pzName,pnName) ){
+		*piKind = DT_ZONE_ABBR;
+		return 0;
+	}
+	if( PH7_TzFind(zTz,nTz) >= 0 ){
+		*piOff = 0;
+		*pzName = zTz;
+		*pnName = nTz;
+		*piKind = DT_ZONE_ID;
+		return 0;
+	}
+#else
+	SXUNUSED(zTz);
+	SXUNUSED(nTz);
+	SXUNUSED(piOff);
+	SXUNUSED(pzName);
+	SXUNUSED(pnName);
+	SXUNUSED(piKind);
+#endif
+	return -1;
+}
+/*
  * The timezone spellings PHL understands with no tz database: UTC, GMT, Z and a
  * fixed offset, optionally behind a `GMT` prefix and behind leading blanks.
  * Shared by DateTimeZone::__construct(), which throws on a miss, and
@@ -4611,26 +4858,38 @@ static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
 		*piKind = (bUtc && SyMemcmp(zTz,"UTC",3) == 0) ? DT_ZONE_ID : DT_ZONE_ABBR;
 		return 0;
 	}
-	if( nTz > 3 && SyMemcmp(zTz,"GMT",3) == 0 ){
+	{
 		/* `GMT+01:00` is php's offset, named for the offset alone. The prefix is
 		 * UPPERCASE only there (`gmt+1` is a refusal where the bare `gmt` is a
-		 * zone), no blank is allowed between the two halves, and `UTC+1` is not a
-		 * spelling at all. */
-		zTz += 3;
-		nTz -= 3;
-	}
-	if( nTz < 2 || (zTz[0] != '+' && zTz[0] != '-') ){
-		return -1;
-	}
-	rc = DtZoneOffsetDigits(zTz + 1,nTz - 1,piOff,&nUsed);
-	if( rc != 0 ){
-		return rc;
-	}
-	if( nUsed != nTz - 1 ){
-		return -1;   /* a tail the scanner did not read: not a zone at all */
-	}
-	if( zTz[0] == '-' ){
-		*piOff = -*piOff;
+		 * zone), no blank is allowed between the two halves, and `UTC+1` is not
+		 * a spelling at all.
+		 *
+		 * It is a prefix only when a SIGN follows it. `GMT0` and `gmt0` are not
+		 * "GMT plus nothing" -- they are tz-database identifiers, stored
+		 * verbatim like any other, and `GMT8` is neither and is refused. So the
+		 * stripped spelling is kept beside the original rather than replacing
+		 * it, and the name tables below are asked about what the caller wrote.
+		 */
+		const char *zNum = zTz;
+		int nNum = nTz;
+		if( nNum > 3 && SyMemcmp(zNum,"GMT",3) == 0
+		 && (zNum[3] == '+' || zNum[3] == '-') ){
+			zNum += 3;
+			nNum -= 3;
+		}
+		if( nNum < 2 || (zNum[0] != '+' && zNum[0] != '-') ){
+			return DtZoneNamed(zTz,nTz,piOff,pzName,pnName,piKind);
+		}
+		rc = DtZoneOffsetDigits(zNum + 1,nNum - 1,piOff,&nUsed);
+		if( rc != 0 ){
+			return rc;
+		}
+		if( nUsed != nNum - 1 ){
+			return -1;   /* a tail the scanner did not read: not a zone at all */
+		}
+		if( zNum[0] == '-' ){
+			*piOff = -*piOff;
+		}
 	}
 	/* php normalizes the NAME through the offset, so "-00:00" is "+00:00", and
 	 * carries the SECONDS field only when there is one. */
@@ -4678,17 +4937,37 @@ static int vm_builtin_DateTimeZone_getName(ph7_context *pCtx,int nArg,ph7_value 
 	ph7_result_string(pCtx,zName,nName);
 	return PH7_OK;
 }
+/*
+ * The offset a ZONE object is on at a given date -- DateTimeZone::getOffset()
+ * and its timezone_offset_get() alias.
+ *
+ * php screens the date it is handed even for a fixed zone, whose answer does
+ * not depend on it. A DATABASE zone's does, and the instant it is read at is
+ * the date's TIMESTAMP -- the date's own zone is irrelevant, since two
+ * expressions of one instant are the same instant.
+ */
+static void DtZoneOffsetResult(ph7_context *pCtx,ph7_class_instance *pZone,
+	ph7_class_instance *pDate)
+{
+	sxi32 iOff = (sxi32)PH7_NativeAttrInt(pZone,DTZ_OFF);
+	int iTz = DtTzIndexOf(pZone,DTZ_NAME,DTZ_KIND);
+	if( iTz >= 0 && pDate != 0 ){
+		int bDst,nAbbr;
+		const char *zAbbr;
+		iOff = DtTzOffsetAt(iTz,iOff,PH7_NativeAttrInt(pDate,DT_TS),&bDst,&zAbbr,&nAbbr);
+	}
+	ph7_result_int64(pCtx,iOff);
+}
 /* DateTimeZone::getOffset(DateTimeInterface $datetime) */
 static int vm_builtin_DateTimeZone_getOffset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
-	/* php screens the date it is handed even though a fixed offset does not
-	 * depend on the instant. */
 	if( pThis == 0 || (nArg > 0 && DtArgInit(pCtx,apArg[0]) != 0) ){
 		return PH7_OK;
 	}
-	/* Fixed-offset zones only, so the instant does not change the answer. */
-	ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,DTZ_OFF));
+	DtZoneOffsetResult(pCtx,pThis,
+		nArg > 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) ?
+			(ph7_class_instance *)apArg[0]->x.pOther : 0);
 	return PH7_OK;
 }
 /* DateTime::__construct(string $datetime = 'now', ?DateTimeZone $timezone = null) */
@@ -4745,6 +5024,54 @@ static void DtFormatOf(ph7_context *pCtx,ph7_class_instance *pObj,const char *zF
 	SyMemcpy(sState.zName,zZone,(sxu32)nName);
 	zZone[nName] = 0;
 	DtFillSytm(sState.iTs,sState.iOff,zZone,&sTm);
+	/*
+	 * What `T` prints, and what `I` prints.
+	 *
+	 * php decides `T` on the zone's TYPE. A type-1 fixed OFFSET is spelled
+	 * "GMT+0530"; a type-2 ABBREVIATION and a type-3 IDENTIFIER both print a
+	 * NAME -- the abbreviation itself for the first, and for the second the
+	 * abbreviation tzdata records for that instant, which is a different string
+	 * from the identifier ("EDT", not "America/New_York").
+	 *
+	 * Handing the name down as tm_abbr is how both say so. The specifier's
+	 * fallback -- build "GMT±HHMM" from the offset -- is then reached by
+	 * exactly the zones that want it, where it used to be reached by any zone
+	 * whose offset was not zero: a date in zone `T` printed "GMT-0700" for php's
+	 * "T", and so did every other military letter and every abbreviation with an
+	 * offset.
+	 */
+	if( sState.iZoneKind == DT_ZONE_ABBR ){
+		sTm.tm_abbr = zZone;
+		sTm.tm_nabbr = nName;
+#ifdef PH7_ENABLE_TZDB
+		{
+			/* `I` on an abbreviation is the table's own daylight flag, not
+			 * anything about the instant: a date in `EDT` reads 1 forever and
+			 * one in `EST` reads 0, because each names one side of the switch
+			 * rather than a place that crosses it. */
+			sxi32 iAbbrOff;
+			int bDst,nCanon;
+			const char *zCanon;
+			if( PH7_TzAbbrFind(zZone,nName,&iAbbrOff,&bDst,&zCanon,&nCanon) ){
+				sTm.tm_isdst = bDst;
+			}
+		}
+#endif
+	}else{
+		int iTz = DtTzIndex(sState.zName,sState.nName,sState.iZoneKind);
+		if( iTz >= 0 ){
+			int bDst = 0,nAbbr = 0;
+			const char *zAbbr = 0;
+			/* The offset is re-read with them rather than trusted: it is the
+			 * one field two states could disagree about, and this is the door
+			 * that prints it. */
+			sxi32 iOff = DtTzOffsetAt(iTz,sState.iOff,sState.iTs,&bDst,&zAbbr,&nAbbr);
+			DtFillSytm(sState.iTs,iOff,zZone,&sTm);
+			sTm.tm_isdst = bDst;
+			sTm.tm_abbr = zAbbr;
+			sTm.tm_nabbr = nAbbr;
+		}
+	}
 	DateFormat(pCtx,zFmt,nFmt,&sTm,sState.uSec);
 }
 /* DateTime::format(string $format) */
@@ -4840,6 +5167,25 @@ static int DtValueTruth(ph7_vm *pVm,ph7_value *pVal)
 	PH7_MemObjRelease(&sTmp);
 	return bRes;
 }
+/*
+ * Are two dates in the ONE zone, as diff() means it? php compares the loaded
+ * timezone STRUCTS, which are cached per spelling, so the test is: both are
+ * identifiers, and their names are the same bytes. `America/New_York` and
+ * `america/new_york` name one place and fail it; so do `America/New_York` and
+ * `US/Eastern`, which are the same data under two names.
+ */
+static int DtSameZone(ph7_class_instance *pA,ph7_class_instance *pB)
+{
+	const char *zA,*zB;
+	int nA,nB;
+	PH7_NativeAttrStr(pA,DT_NAME,&zA,&nA);
+	PH7_NativeAttrStr(pB,DT_NAME,&zB,&nB);
+	if( DtZoneKindOf(pA,DT_ZKIND,zA,nA) != DT_ZONE_ID
+	 || DtZoneKindOf(pB,DT_ZKIND,zB,nB) != DT_ZONE_ID ){
+		return 0;
+	}
+	return nA == nB && (nA == 0 || SyMemcmp(zA,zB,(sxu32)nA) == 0);
+}
 /* The DateInterval two dates differ by. Shared with the date_diff() alias. */
 static int DtDiffResult(ph7_context *pCtx,ph7_class_instance *pBase,
 	ph7_class_instance *pTarget,int bAbsolute)
@@ -4853,7 +5199,8 @@ static int DtDiffResult(ph7_context *pCtx,ph7_class_instance *pBase,
 	}
 	DtCivilDiff(PH7_NativeAttrInt(pBase,DT_TS),(int)PH7_NativeAttrInt(pBase,DT_US),
 		(sxi32)PH7_NativeAttrInt(pBase,DT_OFF),
-		PH7_NativeAttrInt(pTarget,DT_TS),(int)PH7_NativeAttrInt(pTarget,DT_US),&sDiff);
+		PH7_NativeAttrInt(pTarget,DT_TS),(int)PH7_NativeAttrInt(pTarget,DT_US),
+		(sxi32)PH7_NativeAttrInt(pTarget,DT_OFF),DtSameZone(pBase,pTarget),&sDiff);
 	pIv = DtNewInstance(pVm,pIvClass);
 	if( pIv == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -4917,7 +5264,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 			bImm ? "DateTimeImmutable" : "DateTime",DtCStrLen(zMod,nMod),zMod,iPos,cAt,zErr);
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	PH7_NativeSetAttrInt(pVm,pTarget,DT_TS,iTs);
+	DtStoreModified(pVm,pTarget,iTs,(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),&sVec);
 	/* The modifier may have moved the SUB-SECOND clock too (`+1 microsecond`,
 	 * `+250 ms`) or set it outright (a time of day with a fraction); the parse
 	 * started from the object's own, so this is the whole answer either way. */
@@ -4938,6 +5285,9 @@ static int vm_builtin_DateTime_setTimestamp(ph7_context *pCtx,int nArg,ph7_value
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
 	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_TS,ph7_value_to_int64(apArg[0]));
 	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_US,0);
+	/* This door names an INSTANT, so the zone keeps its name and the offset
+	 * follows the new timestamp. */
+	DtRezone(pCtx->pVm,pTarget);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -4986,19 +5336,21 @@ static int vm_builtin_DateTime_setTimezone(ph7_context *pCtx,int nArg,ph7_value 
 	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_OFF,iOff);
 	PH7_NativeSetAttrStr(pCtx->pVm,pTarget,DT_NAME,zName,nName);
 	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_ZKIND,iKind);
+	/* The instant does not move -- setTimezone() re-expresses it -- so the new
+	 * zone's offset is read at the timestamp already there. */
+	DtRezone(pCtx->pVm,pTarget);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
-/* Replace the DATE of an object, keeping its time of day (the offset it is
- * expressed in never changes). Shared with the date_date_set() alias. */
+/* Replace the DATE of an object, keeping its time of day. Shared with the
+ * date_date_set() alias. */
 static void DtSetDateOf(ph7_context *pCtx,ph7_class_instance *pObj,sxi64 y,int mo,int d)
 {
 	sxi64 iLocal = PH7_NativeAttrInt(pObj,DT_TS) + PH7_NativeAttrInt(pObj,DT_OFF);
 	sxi64 iDays = DtFloorDiv(iLocal,86400);
 	sxi64 iSecs = iLocal - iDays*86400;
-	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,
-		DtMakeTs(y,mo,d,(int)(iSecs / 3600),(int)((iSecs / 60) % 60),(int)(iSecs % 60),
-			(sxi32)PH7_NativeAttrInt(pObj,DT_OFF)));
+	DtStoreLocalOf(pCtx->pVm,pObj,
+		DtMakeTs(y,mo,d,(int)(iSecs / 3600),(int)((iSecs / 60) % 60),(int)(iSecs % 60),0));
 }
 /* Replace the TIME of day, keeping the date. Shared with date_time_set(). */
 static void DtSetTimeOf(ph7_context *pCtx,ph7_class_instance *pObj,int h,int mi,int s,sxi64 uSec)
@@ -5008,7 +5360,7 @@ static void DtSetTimeOf(ph7_context *pCtx,ph7_class_instance *pObj,int h,int mi,
 	sxi64 y;
 	int mo,d;
 	DtCivilFromDays(iDays,&y,&mo,&d);
-	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,DtMakeTs(y,mo,d,h,mi,s,(sxi32)PH7_NativeAttrInt(pObj,DT_OFF)));
+	DtStoreLocalOf(pCtx->pVm,pObj,DtMakeTs(y,mo,d,h,mi,s,0));
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_US,uSec);
 }
 /* DateTime::setDate(int $year, int $month, int $day) — the time of day is kept */
@@ -5052,10 +5404,15 @@ static int vm_builtin_DateTime_setISODate(ph7_context *pCtx,int nArg,ph7_value *
 		return PH7_OK;
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_TS,
-		DtIsoDate(PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
-			ph7_value_to_int64(apArg[0]),ph7_value_to_int64(apArg[1]),
-			nArg > 2 ? ph7_value_to_int64(apArg[2]) : 1));
+	{
+		/* Another civil-fields door: DtIsoDate puts the offset back on, and a
+		 * database zone re-solves the reading it produced. */
+		sxi32 iOff = (sxi32)PH7_NativeAttrInt(pThis,DT_OFF);
+		DtStoreLocalOf(pCtx->pVm,pTarget,
+			(sxi64)((sxu64)DtIsoDate(PH7_NativeAttrInt(pThis,DT_TS),iOff,
+				ph7_value_to_int64(apArg[0]),ph7_value_to_int64(apArg[1]),
+				nArg > 2 ? ph7_value_to_int64(apArg[2]) : 1) + (sxu64)iOff));
+	}
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -5089,11 +5446,22 @@ static void DtApplyInterval(ph7_vm *pVm,ph7_class_instance *pSrc,ph7_class_insta
 	}
 	iUs = (sxi64)((sxu64)PH7_NativeAttrInt(pSrc,DT_US) + (sxu64)iUsIv);
 	iCarry = DtFloorDiv(iUs,1000000);
-	PH7_NativeSetAttrInt(pVm,pDst,DT_TS,
-		(sxi64)((sxu64)DtCivilAdd(PH7_NativeAttrInt(pSrc,DT_TS),(sxi32)PH7_NativeAttrInt(pSrc,DT_OFF),
+	{
+		/* DtCivilAdd walks the CIVIL fields and hands back an instant, having
+		 * put the source's offset back on at the end. A database zone may not
+		 * still be on that offset where it landed -- adding six months to a
+		 * January date in New York crosses into daylight time -- so the offset
+		 * is peeled back off and the reading re-solved. php's arithmetic is
+		 * wall-clock arithmetic for exactly this reason: `+1 day` over a spring
+		 * forward is 23 hours of real time and the clock still reads the same.
+		 */
+		sxi32 iOffSrc = (sxi32)PH7_NativeAttrInt(pSrc,DT_OFF);
+		sxi64 iLocal = (sxi64)((sxu64)DtCivilAdd(PH7_NativeAttrInt(pSrc,DT_TS),iOffSrc,
 			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
 			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign)
-			+ (sxu64)iCarry));
+			+ (sxu64)iCarry + (sxu64)iOffSrc);
+		DtStoreLocalOf(pVm,pDst,iLocal);
+	}
 	PH7_NativeSetAttrInt(pVm,pDst,DT_US,
 		(sxi64)((sxu64)iUs - (sxu64)iCarry * 1000000));
 }
@@ -5190,7 +5558,7 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	int nZone;
 	sxi32 iZoneOff = 0;
 	const char *zFmt,*zIn;
-	int nFmt,nIn,iNowUs = 0,iResUs = 0;
+	int nFmt,nIn,iNowUs = 0,iResUs = 0,iTzFf;
 	sxi64 iNowFf = 0;
 	if( pClass == 0 || nArg < 2 ){
 		return PH7_OK;
@@ -5207,6 +5575,17 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 		DtZoneOf(apArg[2],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
 	DtNowUs(pCtx->pVm,&iNowFf,&iNowUs);
+	/* The same two-step a database zone owes the constructor's parse: read the
+	 * scan against the offset at NOW -- every field the format did not fill
+	 * comes from that moment -- then re-solve the WALL-CLOCK reading it
+	 * produced against the zone. Without it a format that reads a plain local
+	 * time answers the instant that reading names in UTC. */
+	iTzFf = DtTzIndex(zZone,nZone,iZoneKind);
+	if( iTzFf >= 0 ){
+		int bDstFf,nAbbrFf;
+		const char *zAbbrFf;
+		iZoneOff = DtTzOffsetAt(iTzFf,iZoneOff,iNowFf,&bDstFf,&zAbbrFf,&nAbbrFf);
+	}
 	if( DtFromFormat(zFmt,nFmt,zIn,nIn,&sRes) != 0 ){
 		DtLastErrFf(pVm,&sRes.sDiag);
 		ph7_result_bool(pCtx,0);
@@ -5221,6 +5600,16 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 		sState.zName = zZone;
 		sState.nName = nZone;
 		sState.iZoneKind = iZoneKind;
+#ifdef PH7_ENABLE_TZDB
+		if( iTzFf >= 0 ){
+			sxi64 iFixed = sState.iTs;
+			sxi32 iOffAt = iZoneOff;
+			if( PH7_TzLocalToUtc(iTzFf,sState.iTs + iZoneOff,&iFixed,&iOffAt) ){
+				sState.iTs = iFixed;
+				sState.iOff = iOffAt;
+			}
+		}
+#endif
 	}else if( sRes.iOffKind == DT_ZONE_OFFSET ){
 		sState.iOff = sRes.iOff;
 		sState.nName = DtOffNameSec(zNameBuf,sizeof(zNameBuf),sRes.iOff);
@@ -6442,7 +6831,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,iTs);
+	DtStoreModified(pCtx->pVm,pObj,iTs,(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),&sVec);
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_US,uSec);   /* see DateTime::modify() */
 	DtEpochRezone(pCtx->pVm,pObj,&sVec);
 	DtResultArg(pCtx,apArg);
@@ -6499,6 +6888,7 @@ static int vm_builtin_date_timestamp_set(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,ph7_value_to_int64(apArg[1]));
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_US,0);
+	DtRezone(pCtx->pVm,pObj);   /* see DateTime::setTimestamp() */
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
@@ -6562,10 +6952,13 @@ static int vm_builtin_date_isodate_set(ph7_context *pCtx,int nArg,ph7_value **ap
 	if( pObj == 0 || nArg < 3 ){
 		return PH7_OK;
 	}
-	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,
-		DtIsoDate(PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
-			ph7_value_to_int64(apArg[1]),ph7_value_to_int64(apArg[2]),
-			nArg > 3 ? ph7_value_to_int64(apArg[3]) : 1));
+	{
+		sxi32 iOff = (sxi32)PH7_NativeAttrInt(pObj,DT_OFF);
+		DtStoreLocalOf(pCtx->pVm,pObj,
+			(sxi64)((sxu64)DtIsoDate(PH7_NativeAttrInt(pObj,DT_TS),iOff,
+				ph7_value_to_int64(apArg[1]),ph7_value_to_int64(apArg[2]),
+				nArg > 3 ? ph7_value_to_int64(apArg[3]) : 1) + (sxu64)iOff));
+	}
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
@@ -6889,7 +7282,9 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 		return PH7_OK;
 	}
 	if( pObj ){
-		ph7_result_int64(pCtx,PH7_NativeAttrInt(pObj,DTZ_OFF));
+		DtZoneOffsetResult(pCtx,pObj,
+			nArg > 1 && (apArg[1]->iFlags & MEMOBJ_OBJ) ?
+				(ph7_class_instance *)apArg[1]->x.pOther : 0);
 	}
 	return PH7_OK;
 }

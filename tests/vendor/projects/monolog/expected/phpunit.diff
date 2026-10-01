@@ -1,6 +1,6 @@
 --- php
 +++ phl
-@@ -3,28 +3,59 @@
+@@ -3,28 +3,40 @@
  Runtime: @RUNTIME@
  Configuration: @ROOT@/phpunit.xml.dist
  
@@ -32,8 +32,8 @@
 +............................................................... 441 / 734 ( 60%)
 +.......................................................SS...... 504 / 734 ( 68%)
 +.....................................SS........................ 567 / 734 ( 77%)
-+......EE.......F..........................S.................... 630 / 734 ( 85%)
-+.....................E......................................... 693 / 734 ( 94%)
++.......N.......F..........................S.................... 630 / 734 ( 85%)
++............................................................... 693 / 734 ( 94%)
 +.........................................                       734 / 734 (100%)
  
  Time: @TIME@
@@ -45,25 +45,6 @@
 +Call to undefined method DateTimeZone::listIdentifiers()
 +
 +@ROOT@/tests/Monolog/LoggerTest.php:536
-+
-+--
-+
-+There were 3 errors:
-+
-+1) Monolog\LoggerTest::testTimezoneIsRespectedInUTC
-+DateInvalidTimeZoneException: DateTimeZone::__construct(): Unknown or bad timezone (America/New_York)
-+
-+@ROOT@/tests/Monolog/LoggerTest.php:566
-+
-+2) Monolog\LoggerTest::testTimezoneIsRespectedInOtherTimezone
-+DateInvalidTimeZoneException: DateTimeZone::__construct(): Unknown or bad timezone (America/New_York)
-+
-+@ROOT@/tests/Monolog/LoggerTest.php:589
-+
-+3) Monolog\PsrLogCompatTest::testContextCanContainAnything
-+DateInvalidTimeZoneException: DateTimeZone::__construct(): Unknown or bad timezone (Europe/London)
-+
-+@ROOT@/tests/Monolog/PsrLogCompatTest.php:136
 +
 +--
 +
@@ -79,7 +60,7 @@
  There were 33 skipped tests:
  
  1) Monolog\Formatter\LineFormatterTest::testDefFormatWithSoapFaultException
-@@ -126,6 +157,13 @@
+@@ -126,6 +138,13 @@
  33) Monolog\Processor\MercurialProcessorTest::testProcessor
  hg is missing
  
@@ -94,5 +75,5 @@
 +date_default_timezone_set(): Timezone ID 'CET' is invalid
 +
 +ERRORS!
-+Tests: 734, Assertions: 1621, Errors: 4, Failures: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
++Tests: 734, Assertions: 1630, Errors: 1, Failures: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
 +@exit@ 2
