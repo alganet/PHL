@@ -2135,6 +2135,854 @@ PH7_PRIVATE sxi32 PH7_PcreRegitApply(
 	return rc;
 }
 /* ===== Function registration table ===== */
+/* ======================================================================
+ * mbstring's regular expressions: mb_ereg*, mb_split, mb_regex_encoding
+ * and mb_regex_set_options.
+ *
+ * php runs this family on Oniguruma, not on PCRE2, and the two disagree in
+ * two places that matter and one that does not:
+ *
+ *  - Oniguruma's ONIG_OPTION_MULTILINE is PCRE2's DOTALL (dot matches a
+ *    newline), and its ONIG_OPTION_SINGLELINE is the ABSENCE of PCRE2's
+ *    MULTILINE (`^` is `\A` and `$` is `\Z`). mbstring's default option
+ *    string is "pr" -- both of those bits, ruby syntax -- so the family
+ *    starts out with a dot that crosses lines and anchors that do not,
+ *    which is the exact opposite of what the letters look like they say.
+ *  - `l` (find-longest) and `n` (find-not-empty) have no PCRE2 spelling.
+ *    They are ACCEPTED and reported back by mb_regex_set_options(), and
+ *    they do not change the match. So are the eight syntax letters: the
+ *    grammar is PCRE2's whichever one is named.
+ *  - a pattern that does not compile warns with PCRE2's message text where
+ *    php prints Oniguruma's. The diagnostic's shape -- a warning naming the
+ *    function, "mbregex compile err: ", and a false return -- is php's.
+ *
+ * The subject is matched as bytes; only UTF-8 is handed to PCRE2 as text
+ * (with UCP, so `\w` covers the same letters Oniguruma's does). Every
+ * offset this family reports or takes is a byte offset, which is php's.
+ * ====================================================================== */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+
+#define MBRE_OPT_SET         0x0100  /* "a script has set these", so 0 reads as the default */
+#define MBRE_OPT_IGNORECASE  0x0001
+#define MBRE_OPT_EXTEND      0x0002
+#define MBRE_OPT_MULTILINE   0x0004  /* onig: dot matches newline */
+#define MBRE_OPT_SINGLELINE  0x0008  /* onig: ^ is \A and $ is \Z */
+#define MBRE_OPT_LONGEST     0x0010  /* accepted, no PCRE2 spelling */
+#define MBRE_OPT_NOTEMPTY    0x0020  /* accepted, no PCRE2 spelling */
+
+#define MBRE_OPT_DEFAULT (MBRE_OPT_MULTILINE|MBRE_OPT_SINGLELINE)
+#define MBRE_SYNTAX_DEFAULT 'r'
+
+static sxu32 MbReOptOf(ph7_vm *pVm)
+{
+	return pVm->iMbReOpt ? (pVm->iMbReOpt & ~(sxu32)MBRE_OPT_SET) : (sxu32)MBRE_OPT_DEFAULT;
+}
+static int MbReSyntaxOf(ph7_vm *pVm)
+{
+	return pVm->iMbReSyntax ? (int)pVm->iMbReSyntax : MBRE_SYNTAX_DEFAULT;
+}
+/* Read an option string. The option bits are REPLACED wholesale (an empty
+ * string clears them all); the syntax letter is replaced only when one is
+ * present, which is why mb_regex_set_options('i') answers "ir". */
+static int MbReParseOpt(const char *z,int n,sxu32 *pOpt,int *pSyntax,unsigned char *pBad)
+{
+	sxu32 opt = 0;
+	int i;
+	for( i = 0 ; i < n ; ++i ){
+		switch( z[i] ){
+		case 'i': opt |= MBRE_OPT_IGNORECASE; break;
+		case 'x': opt |= MBRE_OPT_EXTEND; break;
+		case 'm': opt |= MBRE_OPT_MULTILINE; break;
+		case 's': opt |= MBRE_OPT_SINGLELINE; break;
+		case 'p': opt |= MBRE_OPT_MULTILINE|MBRE_OPT_SINGLELINE; break;
+		case 'l': opt |= MBRE_OPT_LONGEST; break;
+		case 'n': opt |= MBRE_OPT_NOTEMPTY; break;
+		/* The syntax letters: java, gnu, grep, emacs, ruby, perl and the two
+		 * POSIX grammars. PCRE2 answers all eight. */
+		case 'j': case 'u': case 'g': case 'c':
+		case 'r': case 'z': case 'b': case 'd':
+			*pSyntax = (unsigned char)z[i];
+			break;
+		default:
+			*pBad = (unsigned char)z[i];
+			return -1;
+		}
+	}
+	*pOpt = opt;
+	return 0;
+}
+/* ...and write one back. php's order is i, x, the line pair, l, n, syntax --
+ * and MULTILINE|SINGLELINE together collapse to the single letter 'p'. */
+static int MbReOptString(sxu32 opt,int iSyntax,char *zBuf)
+{
+	int n = 0;
+	if( opt & MBRE_OPT_IGNORECASE ){ zBuf[n++] = 'i'; }
+	if( opt & MBRE_OPT_EXTEND ){ zBuf[n++] = 'x'; }
+	if( (opt & (MBRE_OPT_MULTILINE|MBRE_OPT_SINGLELINE))
+		== (MBRE_OPT_MULTILINE|MBRE_OPT_SINGLELINE) ){
+		zBuf[n++] = 'p';
+	}else{
+		if( opt & MBRE_OPT_MULTILINE ){ zBuf[n++] = 'm'; }
+		if( opt & MBRE_OPT_SINGLELINE ){ zBuf[n++] = 's'; }
+	}
+	if( opt & MBRE_OPT_LONGEST ){ zBuf[n++] = 'l'; }
+	if( opt & MBRE_OPT_NOTEMPTY ){ zBuf[n++] = 'n'; }
+	zBuf[n++] = (char)iSyntax;
+	zBuf[n] = 0;
+	return n;
+}
+/* The optional $options argument every matcher carries. It does NOT touch the
+ * VM's own options -- mb_ereg_replace($p,$r,$s,'i') leaves
+ * mb_regex_set_options() reading what it read before. */
+static int MbReOptArg(ph7_context *pCtx,ph7_value *pArg,sxu32 *pOpt,int *pSyntax)
+{
+	const char *zOpt;
+	int nOpt;
+	unsigned char cBad = 0;
+	*pOpt = MbReOptOf(pCtx->pVm);
+	*pSyntax = MbReSyntaxOf(pCtx->pVm);
+	if( pArg == 0 || ph7_value_is_null(pArg) ){
+		return 0;
+	}
+	zOpt = ph7_value_to_string(pArg,&nOpt);
+	if( MbReParseOpt(zOpt,nOpt,pOpt,pSyntax,&cBad) != 0 ){
+		PH7_VmThrowException(pCtx,"ValueError","Option \"%c\" is not supported",(int)cBad);
+		return -1;
+	}
+	return 0;
+}
+/* One compiled pattern is kept, because mb_ereg_search() walks a subject one
+ * call at a time and would otherwise recompile per step. It is keyed on the
+ * pattern bytes AND the options they were read under, so the same pattern
+ * asked case-insensitively is a different entry. */
+static struct {
+	char *zKey;
+	sxu32 nKey;
+	pcre2_code *pCode;
+	sxu32 nCapture;
+} sMbReCache = { 0, 0, 0, 0 };
+
+static pcre2_code * MbReCompile(
+	ph7_context *pCtx,
+	const char *zPat,int nPat,
+	sxu32 iOpt,
+	const char *zFunc,
+	sxu32 *pCapture)
+{
+	uint32_t compileOpts = 0;
+	pcre2_code *pCode;
+	PCRE2_SIZE erroffset;
+	int errcode;
+	sxu32 nCapture, nKey;
+	char *zKey;
+	int bUtf8 = PH7_MbEncodingIsUtf8(pCtx->pVm->iMbReEnc);
+
+	/* key = the pattern, then the options and the framing */
+	nKey = (sxu32)nPat + 3;
+	if( sMbReCache.zKey && sMbReCache.nKey == nKey
+		&& SyMemcmp(sMbReCache.zKey,zPat,(sxu32)nPat) == 0
+		&& sMbReCache.zKey[nPat] == (char)(iOpt & 0xFF)
+		&& sMbReCache.zKey[nPat+1] == (char)((iOpt >> 8) & 0xFF)
+		&& sMbReCache.zKey[nPat+2] == (char)bUtf8 ){
+		*pCapture = sMbReCache.nCapture;
+		return sMbReCache.pCode;
+	}
+	if( bUtf8 ){
+		/* UCP so that \w, \d and the POSIX classes cover what Oniguruma's do
+		 * over UTF-8: mb_ereg('(\w+)','héllo') answers the whole word. */
+		compileOpts |= PCRE2_UTF | PCRE2_UCP;
+	}
+	if( iOpt & MBRE_OPT_IGNORECASE ){ compileOpts |= PCRE2_CASELESS; }
+	if( iOpt & MBRE_OPT_EXTEND ){ compileOpts |= PCRE2_EXTENDED; }
+	if( iOpt & MBRE_OPT_MULTILINE ){ compileOpts |= PCRE2_DOTALL; }
+	if( (iOpt & MBRE_OPT_SINGLELINE) == 0 ){ compileOpts |= PCRE2_MULTILINE; }
+	pCode = pcre2_compile((PCRE2_SPTR)zPat,(PCRE2_SIZE)nPat,compileOpts,
+		&errcode,&erroffset,NULL);
+	if( pCode == 0 ){
+		PCRE2_UCHAR errbuf[256];
+		pcre2_get_error_message(errcode,errbuf,sizeof(errbuf));
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"%s(): mbregex compile err: %s",zFunc,(const char *)errbuf);
+		return 0;
+	}
+	nCapture = 0;
+	pcre2_pattern_info(pCode,PCRE2_INFO_CAPTURECOUNT,&nCapture);
+	zKey = (char *)malloc(nKey);
+	if( zKey == 0 ){
+		/* No room to remember it; the caller still gets a usable pattern and the
+		 * next call compiles again. */
+		pcre2_code_free(pCode);
+		return 0;
+	}
+	SyMemcpy(zPat,zKey,(sxu32)nPat);
+	zKey[nPat]     = (char)(iOpt & 0xFF);
+	zKey[nPat + 1] = (char)((iOpt >> 8) & 0xFF);
+	zKey[nPat + 2] = (char)bUtf8;
+	if( sMbReCache.pCode ){
+		pcre2_code_free(sMbReCache.pCode);
+		free(sMbReCache.zKey);
+	}
+	sMbReCache.zKey = zKey;
+	sMbReCache.nKey = nKey;
+	sMbReCache.pCode = pCode;
+	sMbReCache.nCapture = nCapture;
+	*pCapture = nCapture;
+	return pCode;
+}
+/* An unmatched group is `false` here, not the empty string preg_match writes,
+ * and every group the pattern declares is present whether it participated or
+ * not. Named groups are appended AFTER the numbered ones -- preg_match
+ * interleaves them, mbstring does not. */
+static void MbRePopulate(
+	ph7_context *pCtx,
+	ph7_value *pArray,
+	const char *zSub,
+	const sxu32 *aOv,int nGroup,
+	pcre2_code *pCode)
+{
+	ph7_value *pVal = ph7_context_new_scalar(pCtx);
+	uint32_t namecount = 0, nameentrysize = 0;
+	PCRE2_SPTR nametable = 0;
+	int i;
+	for( i = 0 ; i < nGroup ; ++i ){
+		if( aOv[2*i] == SXU32_HIGH ){
+			ph7_value_bool(pVal,0);
+		}else{
+			ph7_value_string(pVal,&zSub[aOv[2*i]],(int)(aOv[2*i+1] - aOv[2*i]));
+		}
+		ph7_array_add_intkey_elem(pArray,i,pVal);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	pcre2_pattern_info(pCode,PCRE2_INFO_NAMECOUNT,&namecount);
+	if( namecount > 0 ){
+		uint32_t k;
+		pcre2_pattern_info(pCode,PCRE2_INFO_NAMETABLE,&nametable);
+		pcre2_pattern_info(pCode,PCRE2_INFO_NAMEENTRYSIZE,&nameentrysize);
+		for( k = 0 ; k < namecount ; ++k ){
+			PCRE2_SPTR entry = nametable + k * nameentrysize;
+			int iNum = (entry[0] << 8) | entry[1];
+			if( iNum >= nGroup ){
+				continue;
+			}
+			if( aOv[2*iNum] == SXU32_HIGH ){
+				ph7_value_bool(pVal,0);
+			}else{
+				ph7_value_string(pVal,&zSub[aOv[2*iNum]],
+					(int)(aOv[2*iNum+1] - aOv[2*iNum]));
+			}
+			ph7_array_add_strkey_elem(pArray,(const char *)(entry + 2),pVal);
+			ph7_value_reset_string_cursor(pVal);
+		}
+	}
+	ph7_context_release_value(pCtx,pVal);
+}
+/* Run one match and copy the offsets out as byte positions. Answers 1 on a
+ * match, 0 on no match, -1 on a PCRE2 error. *pnGroup is the pattern's own
+ * capture count plus one, so a trailing optional group that did not
+ * participate still gets a slot -- php reports it as false. */
+static int MbReMatch(
+	pcre2_code *pCode,sxu32 nCapture,
+	const char *zSub,int nSub,sxu32 iStart,
+	sxu32 *aOv,int *pnGroup)
+{
+	pcre2_match_data *pData;
+	PCRE2_SIZE *ov;
+	int rc,i,nGroup;
+
+	pData = pcre2_match_data_create_from_pattern(pCode,NULL);
+	if( pData == 0 ){
+		return -1;
+	}
+	rc = pcre2_match(pCode,(PCRE2_SPTR)zSub,(PCRE2_SIZE)nSub,
+		(PCRE2_SIZE)iStart,0,pData,NULL);
+	if( rc < 0 ){
+		pcre2_match_data_free(pData);
+		return rc == PCRE2_ERROR_NOMATCH ? 0 : -1;
+	}
+	ov = pcre2_get_ovector_pointer(pData);
+	nGroup = (int)nCapture + 1;
+	for( i = 0 ; i < nGroup ; ++i ){
+		if( i < rc && ov[2*i] != PCRE2_UNSET ){
+			aOv[2*i]     = (sxu32)ov[2*i];
+			aOv[2*i + 1] = (sxu32)ov[2*i + 1];
+		}else{
+			aOv[2*i] = aOv[2*i + 1] = SXU32_HIGH;
+		}
+	}
+	*pnGroup = nGroup;
+	pcre2_match_data_free(pData);
+	return 1;
+}
+/* mb_ereg / mb_eregi */
+static int MbEregCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bCase)
+{
+	const char *zPat,*zSub;
+	int nPat,nSub,nGroup = 0,rc;
+	sxu32 iOpt,nCapture = 0,*aOv;
+	int iSyntax;
+	pcre2_code *pCode;
+
+	zPat = ph7_value_to_string(apArg[0],&nPat);
+	if( nPat < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($pattern) must not be empty",
+			bCase ? "mb_eregi" : "mb_ereg");
+	}
+	zSub = ph7_value_to_string(apArg[1],&nSub);
+	if( MbReOptArg(pCtx,0,&iOpt,&iSyntax) != 0 ){
+		return PH7_OK;
+	}
+	if( bCase ){
+		iOpt |= MBRE_OPT_IGNORECASE;
+	}
+	pCode = MbReCompile(pCtx,zPat,nPat,iOpt,bCase ? "mb_eregi" : "mb_ereg",&nCapture);
+	if( pCode == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	aOv = (sxu32 *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+		(nCapture + 1) * 2 * sizeof(sxu32));
+	if( aOv == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	rc = MbReMatch(pCode,nCapture,zSub,nSub,0,aOv,&nGroup);
+	if( nArg > 2 ){
+		ph7_value *pArray = ph7_context_new_array(pCtx);
+		if( rc > 0 ){
+			MbRePopulate(pCtx,pArray,zSub,aOv,nGroup,pCode);
+		}
+		PH7_VmStoreArgByRef(pCtx->pVm,apArg[2],pArray);
+		ph7_context_release_value(pCtx,pArray);
+	}
+	SyMemBackendFree(&pCtx->pVm->sAllocator,aOv);
+	ph7_result_bool(pCtx,rc > 0);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_ereg(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return MbEregCommon(pCtx,nArg,apArg,0);
+}
+static int PH7_builtin_mb_eregi(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return MbEregCommon(pCtx,nArg,apArg,1);
+}
+/* mb_ereg_match: the pattern is anchored at the START of the subject, and only
+ * there -- it does NOT have to reach the end. */
+static int PH7_builtin_mb_ereg_match(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zPat,*zSub;
+	int nPat,nSub,iSyntax,nGroup = 0,rc;
+	sxu32 iOpt,nCapture = 0,*aOv;
+	pcre2_code *pCode;
+
+	zPat = ph7_value_to_string(apArg[0],&nPat);
+	zSub = ph7_value_to_string(apArg[1],&nSub);
+	if( MbReOptArg(pCtx,nArg > 2 ? apArg[2] : 0,&iOpt,&iSyntax) != 0 ){
+		return PH7_OK;
+	}
+	pCode = MbReCompile(pCtx,zPat,nPat,iOpt,"mb_ereg_match",&nCapture);
+	if( pCode == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	aOv = (sxu32 *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+		(nCapture + 1) * 2 * sizeof(sxu32));
+	if( aOv == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	rc = MbReMatch(pCode,nCapture,zSub,nSub,0,aOv,&nGroup);
+	/* Anchored: a match that did not begin at offset 0 is not one. */
+	ph7_result_bool(pCtx,rc > 0 && aOv[0] == 0);
+	SyMemBackendFree(&pCtx->pVm->sAllocator,aOv);
+	return PH7_OK;
+}
+/* Walk a subject one byte-character at a time -- used to step past a zero-width
+ * match without splitting a UTF-8 sequence down the middle. */
+static sxu32 MbReStep(const char *z,int n,sxu32 i,int bUtf8)
+{
+	sxu32 k = 1;
+	if( bUtf8 && i < (sxu32)n ){
+		unsigned char c = (unsigned char)z[i];
+		if( c >= 0xF0 ){ k = 4; }
+		else if( c >= 0xE0 ){ k = 3; }
+		else if( c >= 0xC0 ){ k = 2; }
+	}
+	return i + k;
+}
+/* mb_split. A zero-width match does not split -- an empty pattern answers the
+ * whole subject as one piece. $limit caps the number of PIECES: the last one
+ * holds everything that is left, and a limit below 1 is the whole subject. */
+static int PH7_builtin_mb_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zPat,*zSub;
+	int nPat,nSub,iSyntax,nGroup = 0,nPiece = 0,iLimit = -1;
+	sxu32 iOpt,nCapture = 0,*aOv,iStart = 0,iFrom = 0;
+	pcre2_code *pCode;
+	ph7_value *pArray,*pVal;
+	int bUtf8;
+
+	zPat = ph7_value_to_string(apArg[0],&nPat);
+	zSub = ph7_value_to_string(apArg[1],&nSub);
+	if( nArg > 2 ){
+		iLimit = ph7_value_to_int(apArg[2]);
+		if( iLimit == 0 ){
+			/* php reads a zero limit as one piece -- the whole subject. Only a
+			 * NEGATIVE limit is "no limit". */
+			iLimit = 1;
+		}
+	}
+	if( MbReOptArg(pCtx,0,&iOpt,&iSyntax) != 0 ){
+		return PH7_OK;
+	}
+	pCode = MbReCompile(pCtx,zPat,nPat,iOpt,"mb_split",&nCapture);
+	if( pCode == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	aOv = (sxu32 *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+		(nCapture + 1) * 2 * sizeof(sxu32));
+	if( aOv == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	bUtf8 = PH7_MbEncodingIsUtf8(pCtx->pVm->iMbReEnc);
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	while( iStart <= (sxu32)nSub ){
+		if( iLimit > 0 && nPiece + 1 >= iLimit ){
+			break;
+		}
+		if( MbReMatch(pCode,nCapture,zSub,nSub,iStart,aOv,&nGroup) <= 0 ){
+			break;
+		}
+		if( aOv[1] == aOv[0] ){
+			/* Zero-width: no split here, step over one character and retry. */
+			iStart = MbReStep(zSub,nSub,aOv[0],bUtf8);
+			if( iStart > (sxu32)nSub ){
+				break;
+			}
+			continue;
+		}
+		ph7_value_string(pVal,&zSub[iFrom],(int)(aOv[0] - iFrom));
+		ph7_array_add_elem(pArray,0,pVal);
+		ph7_value_reset_string_cursor(pVal);
+		nPiece++;
+		iFrom = iStart = aOv[1];
+	}
+	ph7_value_string(pVal,&zSub[iFrom],nSub - (int)iFrom);
+	ph7_array_add_elem(pArray,0,pVal);
+	ph7_context_release_value(pCtx,pVal);
+	SyMemBackendFree(&pCtx->pVm->sAllocator,aOv);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/* The replacement string's own grammar: `\` followed by a digit names a group,
+ * and a group the pattern does not declare -- or any other byte after the
+ * backslash -- is copied through with the backslash still attached. There is no
+ * `$1` here and no way to escape a `\1`. */
+static void MbReExpand(
+	SyBlob *pOut,
+	const char *zRepl,int nRepl,
+	const char *zSub,const sxu32 *aOv,int nGroup)
+{
+	int i;
+	for( i = 0 ; i < nRepl ; ++i ){
+		if( zRepl[i] == '\\' && i + 1 < nRepl
+			&& zRepl[i+1] >= '0' && zRepl[i+1] <= '9' ){
+			int iNum = zRepl[i+1] - '0';
+			if( iNum < nGroup ){
+				if( aOv[2*iNum] != SXU32_HIGH ){
+					SyBlobAppend(pOut,&zSub[aOv[2*iNum]],aOv[2*iNum+1] - aOv[2*iNum]);
+				}
+				i++;
+				continue;
+			}
+		}
+		SyBlobAppend(pOut,&zRepl[i],1);
+	}
+}
+/* mb_ereg_replace / mb_eregi_replace / mb_ereg_replace_callback */
+static int MbEregReplaceCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	int bCase,int bCallback)
+{
+	const char *zPat,*zSub,*zRepl = 0;
+	const char *zFunc = bCallback ? "mb_ereg_replace_callback"
+		: (bCase ? "mb_eregi_replace" : "mb_ereg_replace");
+	int nPat,nSub,nRepl = 0,iSyntax,nGroup = 0;
+	sxu32 iOpt,nCapture = 0,*aOv,iStart = 0,iFrom = 0;
+	pcre2_code *pCode;
+	SyBlob sOut;
+	int bUtf8;
+	sxi32 rcCb = SXRET_OK;
+
+	zPat = ph7_value_to_string(apArg[0],&nPat);
+	if( !bCallback ){
+		zRepl = ph7_value_to_string(apArg[1],&nRepl);
+	}
+	zSub = ph7_value_to_string(apArg[2],&nSub);
+	if( MbReOptArg(pCtx,nArg > 3 ? apArg[3] : 0,&iOpt,&iSyntax) != 0 ){
+		return PH7_OK;
+	}
+	if( bCase ){
+		iOpt |= MBRE_OPT_IGNORECASE;
+	}
+	pCode = MbReCompile(pCtx,zPat,nPat,iOpt,zFunc,&nCapture);
+	if( pCode == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	aOv = (sxu32 *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+		(nCapture + 1) * 2 * sizeof(sxu32));
+	if( aOv == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	bUtf8 = PH7_MbEncodingIsUtf8(pCtx->pVm->iMbReEnc);
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	while( iStart <= (sxu32)nSub ){
+		if( MbReMatch(pCode,nCapture,zSub,nSub,iStart,aOv,&nGroup) <= 0 ){
+			break;
+		}
+		if( aOv[0] > iFrom ){
+			SyBlobAppend(&sOut,&zSub[iFrom],aOv[0] - iFrom);
+		}
+		if( bCallback ){
+			ph7_value *pMatchArr = ph7_context_new_array(pCtx);
+			ph7_value *apCbArg[1];
+			ph7_value sResult;
+			const char *zCb;
+			int nCb;
+			MbRePopulate(pCtx,pMatchArr,zSub,aOv,nGroup,pCode);
+			PH7_MemObjInit(pCtx->pVm,&sResult);
+			apCbArg[0] = pMatchArr;
+			rcCb = PH7_VmCallCallbackByValue(pCtx->pVm,apArg[1],1,apCbArg,&sResult,0);
+			if( PH7_CALLBACK_UNWOUND(rcCb) ){
+				PH7_MemObjRelease(&sResult);
+				ph7_context_release_value(pCtx,pMatchArr);
+				SyBlobRelease(&sOut);
+				SyMemBackendFree(&pCtx->pVm->sAllocator,aOv);
+				return rcCb;
+			}
+			zCb = ph7_value_to_string(&sResult,&nCb);
+			SyBlobAppend(&sOut,zCb,(sxu32)nCb);
+			PH7_MemObjRelease(&sResult);
+			ph7_context_release_value(pCtx,pMatchArr);
+		}else{
+			MbReExpand(&sOut,zRepl,nRepl,zSub,aOv,nGroup);
+		}
+		iFrom = aOv[1];
+		if( aOv[1] == aOv[0] ){
+			/* A zero-width match: carry the character it sat on across and step
+			 * past it, or the scan never moves. */
+			sxu32 iNext = MbReStep(zSub,nSub,aOv[0],bUtf8);
+			if( iNext > (sxu32)nSub ){
+				iStart = iNext;
+				break;
+			}
+			SyBlobAppend(&sOut,&zSub[aOv[0]],iNext - aOv[0]);
+			iFrom = iStart = iNext;
+		}else{
+			iStart = aOv[1];
+		}
+	}
+	if( iFrom < (sxu32)nSub ){
+		SyBlobAppend(&sOut,&zSub[iFrom],(sxu32)nSub - iFrom);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	SyMemBackendFree(&pCtx->pVm->sAllocator,aOv);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_ereg_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return MbEregReplaceCommon(pCtx,nArg,apArg,0,0);
+}
+static int PH7_builtin_mb_eregi_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return MbEregReplaceCommon(pCtx,nArg,apArg,1,0);
+}
+static int PH7_builtin_mb_ereg_replace_callback(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return MbEregReplaceCommon(pCtx,nArg,apArg,0,1);
+}
+/* ----- the stateful search ----------------------------------------------
+ * mb_ereg_search_init() parks a subject and (optionally) a pattern; each of
+ * mb_ereg_search(), _pos() and _regs() runs ONE match from the cursor and
+ * leaves it just past what matched, while _getregs(), _getpos() and _setpos()
+ * only read and write the state. A call with no subject parked is an Error,
+ * and so is one with no pattern -- php checks the pattern first.
+ * -------------------------------------------------------------------- */
+static void MbReSearchDropRegs(ph7_vm *pVm)
+{
+	if( pVm->aMbReOv ){
+		SyMemBackendFree(&pVm->sAllocator,pVm->aMbReOv);
+		pVm->aMbReOv = 0;
+	}
+	pVm->nMbReOv = 0;
+}
+static int MbReSearchSetPattern(ph7_context *pCtx,const char *zPat,int nPat,
+	sxu32 iOpt,int iSyntax)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	char *zCopy = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)nPat + 1);
+	if( zCopy == 0 ){
+		return -1;
+	}
+	SyMemcpy(zPat,zCopy,(sxu32)nPat);
+	zCopy[nPat] = 0;
+	if( pVm->zMbRePat ){
+		SyMemBackendFree(&pVm->sAllocator,pVm->zMbRePat);
+	}
+	pVm->zMbRePat = zCopy;
+	pVm->nMbRePat = (sxu32)nPat;
+	pVm->iMbReOptCur = iOpt;
+	pVm->iMbReSynCur = (sxu8)iSyntax;
+	return 0;
+}
+static int PH7_builtin_mb_ereg_search_init(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zStr;
+	int nStr,iSyntax;
+	sxu32 iOpt;
+	char *zCopy;
+
+	zStr = ph7_value_to_string(apArg[0],&nStr);
+	if( MbReOptArg(pCtx,nArg > 2 ? apArg[2] : 0,&iOpt,&iSyntax) != 0 ){
+		return PH7_OK;
+	}
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		const char *zPat;
+		int nPat;
+		zPat = ph7_value_to_string(apArg[1],&nPat);
+		if( MbReSearchSetPattern(pCtx,zPat,nPat,iOpt,iSyntax) != 0 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+	zCopy = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)nStr + 1);
+	if( zCopy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyMemcpy(zStr,zCopy,(sxu32)nStr);
+	zCopy[nStr] = 0;
+	if( pVm->zMbReStr ){
+		SyMemBackendFree(&pVm->sAllocator,pVm->zMbReStr);
+	}
+	pVm->zMbReStr = zCopy;
+	pVm->nMbReStr = (sxu32)nStr;
+	pVm->iMbRePos = 0;
+	MbReSearchDropRegs(pVm);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* The one step behind mb_ereg_search(), _pos() and _regs(). Answers 1 on a
+ * match (the state now holds its offsets), 0 on no match, and -1 when it
+ * already threw. */
+static int MbReSearchStep(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	const char *zFunc,pcre2_code **ppCode)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	int iSyntax,nGroup = 0,rc;
+	sxu32 iOpt,nCapture = 0,*aOv;
+	pcre2_code *pCode;
+
+	if( MbReOptArg(pCtx,nArg > 1 ? apArg[1] : 0,&iOpt,&iSyntax) != 0 ){
+		return -1;
+	}
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		const char *zPat;
+		int nPat;
+		zPat = ph7_value_to_string(apArg[0],&nPat);
+		if( MbReSearchSetPattern(pCtx,zPat,nPat,iOpt,iSyntax) != 0 ){
+			return -1;
+		}
+	}
+	if( pVm->zMbRePat == 0 ){
+		PH7_VmThrowException(pCtx,"Error","No pattern was provided");
+		return -1;
+	}
+	if( pVm->zMbReStr == 0 ){
+		PH7_VmThrowException(pCtx,"Error","No string was provided");
+		return -1;
+	}
+	pCode = MbReCompile(pCtx,pVm->zMbRePat,(int)pVm->nMbRePat,pVm->iMbReOptCur,
+		zFunc,&nCapture);
+	if( pCode == 0 ){
+		return 0;
+	}
+	MbReSearchDropRegs(pVm);
+	if( pVm->iMbRePos > pVm->nMbReStr ){
+		return 0;
+	}
+	aOv = (sxu32 *)SyMemBackendAlloc(&pVm->sAllocator,
+		(nCapture + 1) * 2 * sizeof(sxu32));
+	if( aOv == 0 ){
+		return 0;
+	}
+	rc = MbReMatch(pCode,nCapture,pVm->zMbReStr,(int)pVm->nMbReStr,pVm->iMbRePos,
+		aOv,&nGroup);
+	if( rc <= 0 ){
+		SyMemBackendFree(&pVm->sAllocator,aOv);
+		return 0;
+	}
+	pVm->aMbReOv = aOv;
+	pVm->nMbReOv = nGroup;
+	pVm->iMbRePos = aOv[1];
+	*ppCode = pCode;
+	return 1;
+}
+static int PH7_builtin_mb_ereg_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	pcre2_code *pCode = 0;
+	int rc = MbReSearchStep(pCtx,nArg,apArg,"mb_ereg_search",&pCode);
+	if( rc < 0 ){
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,rc > 0);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_ereg_search_pos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	pcre2_code *pCode = 0;
+	ph7_value *pArray,*pVal;
+	int rc = MbReSearchStep(pCtx,nArg,apArg,"mb_ereg_search_pos",&pCode);
+	if( rc < 0 ){
+		return PH7_OK;
+	}
+	if( rc == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	ph7_value_int(pVal,(int)pCtx->pVm->aMbReOv[0]);
+	ph7_array_add_intkey_elem(pArray,0,pVal);
+	ph7_value_int(pVal,(int)(pCtx->pVm->aMbReOv[1] - pCtx->pVm->aMbReOv[0]));
+	ph7_array_add_intkey_elem(pArray,1,pVal);
+	ph7_context_release_value(pCtx,pVal);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_ereg_search_regs(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	pcre2_code *pCode = 0;
+	ph7_value *pArray;
+	int rc = MbReSearchStep(pCtx,nArg,apArg,"mb_ereg_search_regs",&pCode);
+	if( rc < 0 ){
+		return PH7_OK;
+	}
+	if( rc == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	MbRePopulate(pCtx,pArray,pCtx->pVm->zMbReStr,pCtx->pVm->aMbReOv,
+		pCtx->pVm->nMbReOv,pCode);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_ereg_search_getregs(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pArray;
+	pcre2_code *pCode;
+	sxu32 nCapture = 0;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+
+	if( pVm->nMbReOv < 1 || pVm->zMbReStr == 0 || pVm->zMbRePat == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pCode = MbReCompile(pCtx,pVm->zMbRePat,(int)pVm->nMbRePat,pVm->iMbReOptCur,
+		"mb_ereg_search_getregs",&nCapture);
+	if( pCode == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	MbRePopulate(pCtx,pArray,pVm->zMbReStr,pVm->aMbReOv,pVm->nMbReOv,pCode);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_ereg_search_getpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	ph7_result_int(pCtx,(int)pCtx->pVm->iMbRePos);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_ereg_search_setpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxi64 iOff;
+	SXUNUSED(nArg);
+
+	iOff = ph7_value_to_int64(apArg[0]);
+	/* php measures the offset against the subject that is parked -- and with
+	 * NONE parked there is nothing to measure against, so any non-negative
+	 * offset is taken and the next mb_ereg_search_init() resets it anyway. */
+	if( iOff < 0 || (pVm->zMbReStr != 0 && iOff > (sxi64)pVm->nMbReStr) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_ereg_search_setpos(): Argument #1 ($offset) is out of range");
+	}
+	pVm->iMbRePos = (sxu32)iOff;
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_regex_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zEnc;
+	int nEnc,iName;
+
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		zEnc = PH7_MbEncodingCanonical(pVm->iMbReEnc);
+		ph7_result_string(pCtx,zEnc,-1);
+		return PH7_OK;
+	}
+	zEnc = ph7_value_to_string(apArg[0],&nEnc);
+	iName = PH7_MbEncodingLookup(zEnc,nEnc);
+	if( iName < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_regex_encoding(): Argument #1 ($encoding) must be a valid encoding, "
+			"\"%.*s\" given",nEnc,zEnc);
+	}
+	pVm->iMbReEnc = iName;
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int PH7_builtin_mb_regex_set_options(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	char zBuf[16];
+	int nBuf;
+	const char *zOpt;
+	int nOpt,iSyntax;
+	sxu32 iOpt = 0;
+	unsigned char cBad = 0;
+
+	/* The answer is always the option string as it stood BEFORE this call. */
+	nBuf = MbReOptString(MbReOptOf(pVm),MbReSyntaxOf(pVm),zBuf);
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		ph7_result_string(pCtx,zBuf,nBuf);
+		return PH7_OK;
+	}
+	iSyntax = MbReSyntaxOf(pVm);
+	zOpt = ph7_value_to_string(apArg[0],&nOpt);
+	if( MbReParseOpt(zOpt,nOpt,&iOpt,&iSyntax,&cBad) != 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Option \"%c\" is not supported",(int)cBad);
+	}
+	pVm->iMbReOpt = iOpt | MBRE_OPT_SET;
+	pVm->iMbReSyntax = (sxu8)iSyntax;
+	ph7_result_string(pCtx,zBuf,nBuf);
+	return PH7_OK;
+}
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
+
 static const ph7_builtin_func aPcreFunc[] = {
 	{ "preg_match",              PH7_builtin_preg_match },
 	{ "preg_match_all",          PH7_builtin_preg_match_all },
@@ -2147,6 +2995,24 @@ static const ph7_builtin_func aPcreFunc[] = {
 	{ "preg_quote",              PH7_builtin_preg_quote },
 	{ "preg_last_error",         PH7_builtin_preg_last_error },
 	{ "preg_last_error_msg",     PH7_builtin_preg_last_error_msg },
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	{ "mb_ereg",                 PH7_builtin_mb_ereg },
+	{ "mb_eregi",                PH7_builtin_mb_eregi },
+	{ "mb_ereg_match",           PH7_builtin_mb_ereg_match },
+	{ "mb_ereg_replace",         PH7_builtin_mb_ereg_replace },
+	{ "mb_eregi_replace",        PH7_builtin_mb_eregi_replace },
+	{ "mb_ereg_replace_callback",PH7_builtin_mb_ereg_replace_callback },
+	{ "mb_split",                PH7_builtin_mb_split },
+	{ "mb_ereg_search_init",     PH7_builtin_mb_ereg_search_init },
+	{ "mb_ereg_search",          PH7_builtin_mb_ereg_search },
+	{ "mb_ereg_search_pos",      PH7_builtin_mb_ereg_search_pos },
+	{ "mb_ereg_search_regs",     PH7_builtin_mb_ereg_search_regs },
+	{ "mb_ereg_search_getregs",  PH7_builtin_mb_ereg_search_getregs },
+	{ "mb_ereg_search_getpos",   PH7_builtin_mb_ereg_search_getpos },
+	{ "mb_ereg_search_setpos",   PH7_builtin_mb_ereg_search_setpos },
+	{ "mb_regex_encoding",       PH7_builtin_mb_regex_encoding },
+	{ "mb_regex_set_options",    PH7_builtin_mb_regex_set_options },
+#endif
 };
 
 PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm)

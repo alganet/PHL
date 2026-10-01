@@ -4699,6 +4699,25 @@ struct ph7_vm
 	int bCoalesceArmed;
 #ifdef PH7_ENABLE_PCRE
 	int iPcreLastError;        /* preg_last_error() return value */
+	/* mbstring's regex family (vm_pcre.c). Every field reads as php's default
+	 * when it is ZERO, so a freshly zeroed VM already answers "UTF-8" and "pr"
+	 * and needs no init hook of its own: iMbReOpt carries MBRE_OPT_SET once a
+	 * script has set options, iMbReSyntax holds the syntax letter and 0 means
+	 * 'r', and iMbReEnc is an index into builtin_mb.c's encoding table whose
+	 * entry 0 is UTF-8. The search state is allocated out of the VM allocator,
+	 * so it goes away with the VM. */
+	sxu32 iMbReOpt;            /* mb_regex_set_options() bits, 0 = untouched */
+	sxu8 iMbReSyntax;          /* its syntax letter, 0 = 'r' */
+	int iMbReEnc;              /* mb_regex_encoding(), an encoding-table index */
+	char *zMbReStr;            /* mb_ereg_search_init()'s subject, 0 = none set */
+	sxu32 nMbReStr;
+	char *zMbRePat;            /* ...and its pattern, 0 = none set */
+	sxu32 nMbRePat;
+	sxu32 iMbReOptCur;         /* the options that pattern was set with */
+	sxu8 iMbReSynCur;
+	sxu32 iMbRePos;            /* the search cursor, a BYTE offset */
+	sxu32 *aMbReOv;            /* the last match's offsets, 2 per group */
+	int nMbReOv;               /* how many groups are in there; 0 = no match yet */
 #endif
 #ifdef PH7_ENABLE_LIBXML
 	SySet aLibxmlErr;          /* Queued phl_libxml_err entries (libxml_get_errors) */
@@ -5987,6 +6006,9 @@ PH7_PRIVATE void PH7_VmEmitCookie(ph7_vm *pVm,const char *zName,sxu32 nName,
 /* vm_pcre.c function prototypes */
 #ifdef PH7_ENABLE_PCRE
 PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm);
+PH7_PRIVATE int PH7_MbEncodingLookup(const char *z,int n);
+PH7_PRIVATE const char * PH7_MbEncodingCanonical(int iNameId);
+PH7_PRIVATE int PH7_MbEncodingIsUtf8(int iNameId);
 PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_PcreMatchQuiet(ph7_context *pCtx,const char *zPat,int nPat,
 	const char *zSub,int nSub,int *pMatched);

@@ -3230,4 +3230,18 @@ PH7_PRIVATE int PH7_builtin_mb_list_encodings_f(ph7_context *pCtx,int nArg,ph7_v
 PH7_PRIVATE int PH7_builtin_mb_encoding_aliases_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_encoding_aliases(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_convert_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_encoding(pCtx,nArg,apArg); }
 
+/* The regex family (vm_pcre.c) needs the encoding table this file owns: it must
+ * resolve mb_regex_encoding()'s argument by exactly the names mb_internal_encoding()
+ * takes, answer the canonical spelling back, and know whether the framing it landed
+ * on is UTF-8 -- the one PCRE2 can be told about. */
+PH7_PRIVATE int PH7_MbEncodingLookup(const char *z,int n){ return MbEncodingNameId(z,n); }
+PH7_PRIVATE const char * PH7_MbEncodingCanonical(int iNameId){ return MbEncodingName(iNameId); }
+PH7_PRIVATE int PH7_MbEncodingIsUtf8(int iNameId)
+{
+	if( iNameId < 0 || iNameId >= (int)SX_ARRAYSIZE(aMbEncName) ){
+		return 1;
+	}
+	return aMbEncName[iNameId].iEnc == MB_ENC_UTF8;
+}
+
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
