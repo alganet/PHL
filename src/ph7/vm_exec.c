@@ -8645,11 +8645,13 @@ NativeCall:
 			 * this builtin gets a frame of its own. Only the FRAME shape is affected --
 			 * the argument BINDING mode still travels the forward's own map, which is
 			 * php's rule and a separate latch (bCallbackWeak). */
-			if( bNsCallee || !bLiteralCallee ){
-				/* ...and a name that is not a compile-time literal at all
-				 * (`$n = 'call_user_func'; $n($c)`) is the other half of the same
-				 * rule: php's fold is a COMPILE-time special case on the written
-				 * name, so a variable holding it is an ordinary internal call. */
+			if( bNsCallee || !bLiteralCallee || pInstr->iP2 /* hasSpread */ ){
+				/* ...and two more shapes php cannot fold, for the same compile-time
+				 * reason. A name that is not a literal at all
+				 * (`$n = 'call_user_func'; $n($c)`), and an argument list carrying a
+				 * SPREAD (`call_user_func_array(...$pair)`) -- the fold rewrites the
+				 * call into a direct one and needs the arity at compile time, which a
+				 * runtime unpack does not give it. */
 				pVm->pNativeFrameName = &pFunc->sName;
 			}
 			/* Call the foreign function */

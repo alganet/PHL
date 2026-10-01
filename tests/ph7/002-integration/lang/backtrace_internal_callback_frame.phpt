@@ -46,6 +46,8 @@ $cb();                                        // a plain call
 call_user_func($cb);                          // unqualified INSIDE a namespace: not folded
 call_user_func_array($cb, $args);             // unqualified inside a namespace: not folded
 $n = '\call_user_func'; $n($cb);              // name in a variable: not folded
+$pair = [$cb, $args];
+\call_user_func_array(...$pair);              // SPREAD argument list: not folded
 \array_map($cb, [1]);                         // an ordinary callback builtin
 \array_filter([1], $cb);
 \preg_replace_callback('/a/', $cb, 'a');
@@ -69,6 +71,7 @@ x => AT:{closure}
 x => NOFILE:{closure} | AT:call_user_func
 x => NOFILE:{closure} | AT:call_user_func_array
 x => NOFILE:{closure} | AT:call_user_func
+x => NOFILE:{closure} | AT:call_user_func_array
 x => NOFILE:{closure} | AT:array_map
 x => NOFILE:{closure} | AT:array_filter
 x => NOFILE:{closure} | AT:preg_replace_callback
