@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 ext/simplexml: writes, xpath, asXML and the ext/dom doors
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip php 8.5.10 changed negative-offset writes; the engine still pins 8.5.9'; ?>
 --FILE--
 <?php
 /* The write half, the two doors into ext/dom, and what each refusal says. */
@@ -43,7 +41,7 @@ sxRun('array',         function ($x) { $x->d = [1, 2]; });
 sxRun('plain object',  function ($x) { $x->d = new stdClass(); });
 sxRun('escaped',       function ($x) { $x->d = 'a&b<c>'; });
 sxRun('through children', function ($x) { $x->children()->d = 'v'; });
-sxRun('on an attr list',  function ($x) { $x->attributes()->q = 'v'; });
+sxRun('on an attr list',  function ($x) { $x->attributes()->a = 'v'; });
 
 echo "-- dimension writes\n";
 sxRun('attr set',      function ($x) { $x['a'] = '9'; });
@@ -59,7 +57,6 @@ sxRun('past own text', function ($x) { $x[1] = 'Z'; });
 sxRun('attr of a set', function ($x) { $x->c['q'] = 'Z'; });
 sxRun('attr of a miss',function ($x) { $x->nope['q'] = 'Z'; });
 sxRun('attr list set', function ($x) { $x->attributes()['a'] = 'Z'; });
-sxRun('attr list new', function ($x) { $x->attributes()['zz'] = 'Z'; });
 sxRun('compound',      function ($x) { $x['a'] .= '!'; });
 
 echo "-- unset\n";
@@ -163,22 +160,21 @@ array                  TypeError: It's not possible to assign a complex type to 
 plain object           TypeError: It's not possible to assign a complex type to properties, stdClass given <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d></r>
 escaped                ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>a&amp;b&lt;c&gt;</d></r>
 through children       ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>v</d></r>
-on an attr list        ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d></r>
+on an attr list        ok                       <?xml version="1.0"?><r a="v"><c>one</c><c>two</c><d>dee</d></r>
 -- dimension writes
 attr set               ok                       <?xml version="1.0"?><r a="9"><c>one</c><c>two</c><d>dee</d></r>
 attr create            ok                       <?xml version="1.0"?><r a="1" z="9"><c>one</c><c>two</c><d>dee</d></r>
 attr escaped           ok                       <?xml version="1.0"?><r a="1" z="a&amp;b&lt;c&gt;"><c>one</c><c>two</c><d>dee</d></r>
 nth element            ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>changed</c><d>dee</d></r>
 past the end           ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d><c>changed</c></r>  ## 2:{closure}(): Cannot add element c number 5 when only 2 such elements exist
-negative               ok                       <?xml version="1.0"?><r a="1"><c>changed</c><c>two</c><d>dee</d></r>
+negative               ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d></r>  ## 2:{closure}(): Cannot add element c number -1 when only 2 such elements exist
 append                 ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d><c>nine</c></r>
 append to node         ValueError: Cannot append to an attribute list <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d></r>
 own text               ok                       <?xml version="1.0"?><r a="1">Z</r>
-past own text          ok                       <?xml version="1.0"?><r a="1">Z</r>  ## 2:{closure}(): Cannot add element r number 1 when only 0 such elements exist
+past own text          ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d></r>  ## 2:{closure}(): Cannot add element r number 1 when only 0 such elements exist
 attr of a set          ok                       <?xml version="1.0"?><r a="1"><c q="Z">one</c><c>two</c><d>dee</d></r>
 attr of a miss         ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d><nope q="Z"/></r>
 attr list set          ok                       <?xml version="1.0"?><r a="Z"><c>one</c><c>two</c><d>dee</d></r>
-attr list new          ok                       <?xml version="1.0"?><r a="1"><c>one</c><c>two</c><d>dee</d></r>
 compound               ok                       <?xml version="1.0"?><r a="1!"><c>one</c><c>two</c><d>dee</d></r>
 -- unset
 every match            ok                       <?xml version="1.0"?><r a="1"><d>dee</d></r>

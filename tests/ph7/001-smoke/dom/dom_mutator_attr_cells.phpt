@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 appendChild/insertBefore attach an ATTRIBUTE as a property; the level-2 doors' odd cells answer php's taxonomy (silent false, No Modification, Hierarchy, the sibling Error)
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip php 8.5.10 displaces on name AND namespace; the engine still pins 8.5.9'; ?>
 --FILE--
 <?php
 set_error_handler(function ($no, $str) { echo "W[$no]: $str\n"; return true; });
@@ -29,7 +27,7 @@ cell('ns lookup replaces', function() use ($d2) {
     $d2->documentElement->appendChild($na);
     return $d2->saveXML($d2->documentElement);
 });
-cell('plain name displaces the namespaced one', function() use ($d2) {
+cell('plain name leaves the namespaced one', function() use ($d2) {
     $pa = $d2->createAttribute('k'); $pa->value = 'plain';
     $d2->documentElement->appendChild($pa);
     return $d2->saveXML($d2->documentElement);
@@ -125,7 +123,7 @@ identity: true
 reorder own attr to tail: '<r k="new" j="1"><c b="2">t</c></r>'
 move between elements: '<r k="new"><c b="2" j="1">t</c></r>'
 ns lookup replaces: '<r xmlns:p="urn:x" p:k="new"/>'
-plain name displaces the namespaced one: '<r xmlns:p="urn:x" k="plain"/>'
+plain name leaves the namespaced one: '<r xmlns:p="urn:x" p:k="new" k="plain"/>'
 insertBefore(attr, null): '<r z="9" nA=""><c/></r>'
 insertBefore(attr, attr-ref): '<r first="" z="9" nA=""><c/></r>'
 insertBefore(attr, elem-ref) is the Error: 'Cannot add newnode as the previous sibling of refnode / attached: false'

@@ -968,13 +968,45 @@ static void SxeCallerWarn(ph7_vm *pVm,const char *zFormat,...)
 	SyBlobRelease(&sFn);
 }
 /*
+ * An attribute write by name: set where it exists, created where it does not.
+ * php has one handler for `$x['a'] = v` and `$x->attributes()->a = v`, so both
+ * doors land here.  The new attribute carries no namespace even when the
+ * object is filtered to one -- php's xmlNewProp, reproduced.
+ */
+static void SxeAttrStore(ph7_vm *pVm,ph7_class_instance *pThis,xmlNodePtr pBase,
+	const char *zName,int nName,ph7_value *pValue,const char **pzClass,char *zMsg,sxu32 nMsg)
+{
+	SyBlob sText;
+	xmlAttrPtr pAttr;
+	if( nName < 1 || !SxeValueText(pVm,pValue,1,&sText,pzClass,zMsg,nMsg) ){
+		return;
+	}
+	if( pBase == 0 || pBase->type != XML_ELEMENT_NODE ){
+		/* php refuses the value before it looks for a node to write it to. */
+		SyBlobRelease(&sText);
+		return;
+	}
+	pAttr = SxeFindAttr(pThis,pBase,zName,nName);
+	if( pAttr == 0 ){
+		/* An attribute list creates one too since php 8.5.11; 8.5.10 took the
+		 * list's first attribute for the element and created nothing. */
+		SyBlob sNm;
+		pAttr = xmlNewProp(pBase,
+			(const xmlChar *)SxeCopyZ(pVm,&sNm,zName,nName),(const xmlChar *)"");
+		SyBlobRelease(&sNm);
+	}
+	if( pAttr ){
+		SxeSetText((xmlNodePtr)pAttr,(const char *)SyBlobData(&sText));
+	}
+	SyBlobRelease(&sText);
+}
+/*
  * `$x->name = value` -- php's write_property.
  *
  * The write lands on the ONE child element of that name, creates it when there
  * is none, and REFUSES when there is more than one: php cannot tell which of a
- * set the program meant, and says so in a warning rather than picking.  An
- * attribute list has no children to write, and php's handler drops the write
- * without a word.
+ * set the program meant, and says so in a warning rather than picking.  On an
+ * attribute list the name is an ATTRIBUTE, written as `$x['name']` would be.
  */
 static void SxePropStore(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx *pCtx)
 {
@@ -984,8 +1016,12 @@ static void SxePropStore(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx
 	xmlNodePtr pWalk,pHit = 0;
 	int nHit = 0;
 	SyBlob sText;
-	if( SxeTypeOf(pThis) == SXE_ITER_ATTRLIST || pBase == 0
-	 || pBase->type != XML_ELEMENT_NODE ){
+	if( SxeTypeOf(pThis) == SXE_ITER_ATTRLIST ){
+		SxeAttrStore(pVm,pThis,pBase,SyStringData(pName),(int)SyStringLength(pName),
+			pValue,&pCtx->zThrowClass,pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg));
+		return;
+	}
+	if( pBase == 0 || pBase->type != XML_ELEMENT_NODE ){
 		return;
 	}
 	for( pWalk = pBase->children ; pWalk ; pWalk = pWalk->next ){
@@ -1098,8 +1134,10 @@ static int SxeDimIsInt(ph7_value *pOffset)
 		&& (pOffset->iFlags & MEMOBJ_STRING) == 0;
 }
 /* The node at a positional offset in this object's walk, or NULL. A negative
- * offset is php's first node: its loop counts UP to the offset and a negative
- * one never advances it. */
+ * offset reaches NOTHING: a read of it is empty, an unset a no-op and a write
+ * the "Cannot add element" warning with no write (php 8.5.10; up to 8.5.9 the
+ * loop counted UP to the offset and a negative one stopped on the first
+ * node). The count is still taken, for that warning. */
 static xmlNodePtr SxeNodeAtOffset(ph7_class_instance *pThis,sxi64 iOfs,sxi64 *pnCount)
 {
 	xmlNodePtr pNode = SxeFirstNode(pThis);
@@ -1109,10 +1147,10 @@ static xmlNodePtr SxeNodeAtOffset(ph7_class_instance *pThis,sxi64 iOfs,sxi64 *pn
 		if( pnCount ){
 			*pnCount = pNode ? 1 : 0;
 		}
-		return iOfs <= 0 ? pNode : 0;
+		return iOfs == 0 ? pNode : 0;
 	}
 	while( pNode ){
-		if( n == iOfs || (iOfs < 0 && n == 0) ){
+		if( n == iOfs ){
 			pHit = pNode;
 			if( pnCount == 0 ){
 				return pHit;
@@ -1210,28 +1248,8 @@ static void SxeDimWrite(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *
 		const char *zName = ph7_value_to_string(pDim->pOffset,&nName);
 		xmlNodePtr pBase = iType == SXE_ITER_ELEMENT
 			? SxeWriteBase(pVm,pThis,TRUE) : SxeAttrBase(pThis);
-		xmlAttrPtr pAttr;
-		if( pBase == 0 || pBase->type != XML_ELEMENT_NODE || nName < 1 ){
-			return;
-		}
-		if( !SxeValueText(pVm,pDim->pResult,1,&sText,&pDim->zThrowClass,
-			pDim->zThrowMsg,sizeof(pDim->zThrowMsg)) ){
-			return;
-		}
-		pAttr = SxeFindAttr(pThis,pBase,zName,nName);
-		if( pAttr == 0 && iType != SXE_ITER_ATTRLIST ){
-			/* An attribute list WRITES the ones it lists and creates none: php's
-			 * `$x->attributes()['zz'] = 'v'` is a silent no-op where
-			 * `$x['zz'] = 'v'` makes the attribute. */
-			SyBlob sNm;
-			pAttr = xmlNewProp(pBase,
-				(const xmlChar *)SxeCopyZ(pVm,&sNm,zName,nName),(const xmlChar *)"");
-			SyBlobRelease(&sNm);
-		}
-		if( pAttr ){
-			SxeSetText((xmlNodePtr)pAttr,(const char *)SyBlobData(&sText));
-		}
-		SyBlobRelease(&sText);
+		SxeAttrStore(pVm,pThis,pBase,zName,nName,pDim->pResult,&pDim->zThrowClass,
+			pDim->zThrowMsg,sizeof(pDim->zThrowMsg));
 		return;
 	}
 	if( iType == SXE_ITER_ATTRLIST ){
@@ -1260,10 +1278,13 @@ static void SxeDimWrite(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *
 				"Cannot append to an attribute list");
 			return;
 		}
-		if( iOfs > 0 ){
+		if( iOfs != 0 ){
+			/* Only offset 0 is this node's own text; any other position is the
+			 * warning and NO write (8.5.9 wrote the text anyway after warning). */
 			SxeCallerWarn(pVm,
 				"Cannot add element %s number %qd when only 0 such elements exist",
 				pNode->name ? (const char *)pNode->name : "",iOfs);
+			return;
 		}
 		if( SxeValueText(pVm,pDim->pResult,0,&sText,&pDim->zThrowClass,
 			pDim->zThrowMsg,sizeof(pDim->zThrowMsg)) ){
@@ -1278,10 +1299,15 @@ static void SxeDimWrite(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *
 		xmlNodePtr pHit = pDim->pOffset ? SxeNodeAtOffset(pThis,iOfs,&nCount) : 0;
 		int nNm = 0;
 		const char *zNm = SxeIterName(pThis,&nNm);
-		if( pHit == 0 && pDim->pOffset && iOfs > nCount ){
+		if( pHit == 0 && pDim->pOffset && (iOfs > nCount || iOfs < 0) ){
+			/* Past the end php warns and APPENDS anyway; a negative position
+			 * warns and writes nothing. */
 			SxeCallerWarn(pVm,
 				"Cannot add element %.*s number %qd when only %qd such elements exist",
 				nNm,zNm ? zNm : "",iOfs,nCount);
+			if( iOfs < 0 ){
+				return;
+			}
 		}
 		if( !SxeValueText(pVm,pDim->pResult,0,&sText,&pDim->zThrowClass,
 			pDim->zThrowMsg,sizeof(pDim->zThrowMsg)) ){

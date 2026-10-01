@@ -1138,9 +1138,9 @@ static int DomMutatorScreen(ph7_context *pCtx,xmlNodePtr pParent,xmlNodePtr pChi
  * splice (the chunk spliced it among the children and serialized `<r> k=""`,
  * bytes that are not XML). The receiver must be an ELEMENT: a document, a
  * fragment or an attribute answers the Hierarchy refusal. An existing
- * attribute of the same name (libxml's name-only match, so a plain `k`
- * displaces a namespaced one -- the setAttributeNode rule) is displaced
- * UNLESS it is the argument itself, and the argument always (re)enters at the
+ * attribute of the same name AND namespace (a plain `k` leaves a namespaced
+ * `p:k` alone -- php 8.5.10's rule, both spellings; 8.5.9 matched the name
+ * alone) is displaced UNLESS it is the argument itself, and the argument always (re)enters at the
  * tail of the property list, which is observable: appending an element's own
  * first attribute moves it last.
  *
@@ -1158,8 +1158,7 @@ static int DomMutatorAttrAttach(ph7_context *pCtx,phl_domnode *pPar,phl_domnode 
 	if( pElem->type != XML_ELEMENT_NODE ){
 		return DomThrow(pCtx,DOM_ERR_HIERARCHY);
 	}
-	pOld = pAttr->ns ? DomAttrByNs(pElem,pAttr->ns->href,(const char *)pAttr->name)
-	                 : DomAttrByLocal(pElem,(const char *)pAttr->name);
+	pOld = DomAttrByNs(pElem,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name);
 	if( pOld && pOld != pAttr ){
 		xmlUnlinkNode((xmlNodePtr)pOld);
 		DomOrphanAdd(pPar->pShell,(xmlNodePtr)pOld);
@@ -1395,9 +1394,7 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 		if( pAnchor == 0 ){
 			return DomMutatorAttrAttach(pCtx,pPar,pNew,apArg[0]);
 		}
-		pOld = pAttr->ns
-			? DomAttrByNs(pParent,pAttr->ns->href,(const char *)pAttr->name)
-			: DomAttrByLocal(pParent,(const char *)pAttr->name);
+		pOld = DomAttrByNs(pParent,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name);
 		if( pOld && pOld != pAttr ){
 			xmlUnlinkNode((xmlNodePtr)pOld);
 			DomOrphanAdd(pPar->pShell,(xmlNodePtr)pOld);
@@ -3934,9 +3931,9 @@ static xmlAttrPtr DomAttrArg(ph7_value *pVal)
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	return (pNode && pNode->type == XML_ATTRIBUTE_NODE) ? (xmlAttrPtr)pNode : 0;
 }
-/* The plain setAttributeNode spelling asks libxml's own name-only question --
- * php's does too, so an attribute named `b` displaces a namespaced `x:b`
- * there where the NS spelling would not. */
+/* libxml's own name-only question, which the getAttributeNode family asks.
+ * php 8.5.9's setAttributeNode asked it too; 8.5.10 matches the namespace as
+ * well, so the displacement doors no longer come here. */
 static xmlAttrPtr DomAttrByLocal(xmlNodePtr pElem,const char *zName)
 {
 	xmlAttrPtr pAttr = pElem ? xmlHasProp(pElem,(const xmlChar *)zName) : 0;
@@ -4030,10 +4027,10 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNodeNS)
 /*
  * DOMElement::setAttributeNode(DOMAttr $attr): ?DOMAttr and its NS spelling.
  *
- * php answers the attribute it DISPLACED (alive and ownerless) or null, and
- * the two spellings differ only in how they decide what "the same attribute"
- * is: the plain one matches on the local name alone, the NS one on the name
- * and the namespace URI together.  An attribute that already belongs to
+ * php answers the attribute it DISPLACED (alive and ownerless) or null. Since
+ * 8.5.10 both spellings decide "the same attribute" the same way, on the local
+ * name and the namespace URI together (8.5.9's plain spelling matched the name
+ * alone, so a plain `k` displaced a namespaced `p:k`).  An attribute that already belongs to
  * another element of the same document is MOVED, not copied.
  */
 static int DomSetAttrNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bNS)
@@ -4052,8 +4049,8 @@ static int DomSetAttrNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bNS)
 	 * door -- `$el->setAttributeNode(new DOMAttr('k','v'))` is how a built
 	 * attribute reaches a real document. */
 	DomAdoptIntoRecv(pCtx,apArg[0],DomObjArg(apArg[0]));
-	pOld = bNS ? DomAttrByNs(pElem,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name)
-	           : DomAttrByLocal(pElem,(const char *)pAttr->name);
+	pOld = DomAttrByNs(pElem,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name);
+	SXUNUSED(bNS);
 	if( pOld == pAttr ){
 		/* Already this element's, under this spelling: php does nothing at all
 		 * and answers null rather than handing the node back to itself. */
