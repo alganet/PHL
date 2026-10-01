@@ -2865,6 +2865,8 @@ PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex)
  * Initialize a freshly allocated PH7 Virtual Machine so that we can
  * start compiling the target PHP program.
  */
+/* Forward declaration */
+static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInit(
 	 ph7_vm *pVm, /* Initialize this */
 	 ph7 *pEngine /* Master engine */
@@ -3284,6 +3286,32 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 			ph7_create_function(&(*pVm),aZip[n].zName,aZip[n].xFunc,pVm);
 		}
 	}
+#endif
+	/* Register the C builtins, LAST so that the order every name was inserted in
+	 * is the order it was inserted in when these ran from PH7_VmMakeReady -- a hash
+	 * walk is reverse-insertion, and get_defined_functions() and Reflection's
+	 * extension surfaces both read one.
+	 *
+	 * They run HERE, and not after compilation as they used to, because the
+	 * declaration guard has to be able to see them: a program is compiled between
+	 * VM init and PH7_VmMakeReady, and `function strlen(){}` in it silently WON
+	 * while the ~650 core names arrived too late to be found. php has its whole
+	 * internal function table before it compiles anything, and now so does this.
+	 * Nothing else the compiler does reads hHostFunction.
+	 *
+	 * What still belongs to PH7_VmMakeReady is everything STAMPED on top of these
+	 * registrations -- arity, signatures, the deprecation marks and the
+	 * language-construct mark -- which needs every extension's own pass to have run
+	 * first, and the constants, which a compile-time constant expression resolves
+	 * through its own table. */
+	rc = VmRegisterSpecialFunction(&(*pVm));
+	if( rc != SXRET_OK ){
+		goto Err;
+	}
+	PH7_RegisterBuiltInFunction(&(*pVm));
+	PH7_RegisterHttpResponseFunctions(&(*pVm));
+#ifdef PH7_ENABLE_PCRE
+	PH7_RegisterPcreFunctions(&(*pVm));
 #endif
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
@@ -3784,8 +3812,6 @@ PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCa
 	pVm->nIdleOperandStacks++;
 	pVm->nIdleOperandSlots += nCap;
 }
-/* Forward declaration */
-static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm);
 /*
  * Prepare the Virtual Machine for byte-code execution.
  * This routine gets called by the PH7 engine after
@@ -3824,12 +3850,11 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	 * private data. */
 	pVm->sVmConsumer.xConsumer = PH7_VmBlobConsumer;
 	pVm->sVmConsumer.pUserData = &pVm->sConsumer;
-	/* Register special functions first [i.e: print, json_encode(), func_get_args(), die, etc.] */
-	rc = VmRegisterSpecialFunction(&(*pVm));
-	if( rc != SXRET_OK ){
-		/* Don't worry about freeing memory, everything will be released shortly */
-		return rc;
-	}
+	/* The host functions themselves -- the special ones, the core builtins, the HTTP
+	 * response verbs and PCRE's -- were registered by PH7_VmInit, which runs before
+	 * the program compiles; a declaration that shadows one has to be refused where
+	 * php refuses it, and that is at compile time. Their constants and the metadata
+	 * stamped onto them are still this routine's, below. */
 	/* Snapshot the runtime object-pool watermark. Everything reserved from this
 	 * index up (the $GLOBALS array, the superglobals, class static/const slots and
 	 * every object/variable created during execution) is per-exec state that
@@ -3857,13 +3882,8 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	 * away on Windows -- only the names that platform has no macro for are. */
 	PH7_RegisterSocketsConstants(&(*pVm));
 #endif
-	/* Register built-in functions [i.e: is_null(), array_diff(), strlen(), etc.] */
-	PH7_RegisterBuiltInFunction(&(*pVm));
-	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */
-	PH7_RegisterHttpResponseFunctions(&(*pVm));
 #ifdef PH7_ENABLE_PCRE
-	/* Register PCRE functions [i.e: preg_match(), preg_replace(), etc.] */
-	PH7_RegisterPcreFunctions(&(*pVm));
+	/* Register PCRE constants [i.e: PREG_SPLIT_NO_EMPTY, PREG_PATTERN_ORDER, etc.] */
 	PH7_RegisterPcreConstants(&(*pVm));
 #endif
 #ifdef PH7_ENABLE_LIBXML
@@ -7965,6 +7985,77 @@ PH7_PRIVATE void PH7_VmMarkLanguageConstructs(ph7_vm *pVm)
 			((ph7_user_func *)pEntry->pUserData)->bConstruct = 1;
 		}
 	}
+}
+/*
+ * The internal function names this engine carries that php has none of. They matter
+ * to exactly one question -- may a user function take this name? -- and the answer
+ * php gives is "no, the name is already taken", which is only true of a name php
+ * itself has. Shadowing one of these RUNS under php, so it has to run here.
+ *
+ * Each is a PH7 legacy verb kept for the embedding API, an engine introspection
+ * hook, or a name php REMOVED (each(), fgetss(), import_request_variables()) -- and
+ * every one of them is a name real code declares: size_format() is WordPress's, and
+ * each() is the classic php-5 polyfill.
+ *
+ * Re-derive after adding or removing a builtin, by diffing the internal half of
+ * get_defined_functions() between this engine and the oracle:
+ *
+ *   echo '<?php $f=get_defined_functions()["internal"]; sort($f);
+ *         echo implode("\n",$f),"\n";' > names.php
+ *   phl names.php | LC_ALL=C sort -u > phl.names
+ *   XDEBUG_MODE=off php names.php | LC_ALL=C sort -u > php.names
+ *   LC_ALL=C comm -23 phl.names php.names
+ *
+ * The nine LANGUAGE CONSTRUCTS above are not here and do not need to be: every one
+ * of them is a reserved word, so `function print(){}` never reaches this question --
+ * the parser refuses it first, under php and under this.
+ *
+ * __tempnam_in() is not here either, and is the one name this list still owes php:
+ * it is a builtin this engine writes in PHP, so it lives in the USER table, and
+ * letting the declaration through is not enough -- a call compiled against the
+ * engine's copy stays bound to it, so the user function installs, answers
+ * Reflection, and never runs. It needs the call site rebound, not a carve-out.
+ */
+static const char * const azEngineOnlyFunc[] = {
+	"array_copy", "array_erase", "array_same", "debug_string_backtrace",
+	"delete", "each", "fgetss", "func_get_args_byref", "get_defined_classes",
+	"getgid", "getpid", "getuid", "implode_recursive",
+	"import_request_variables", "join_recursive", "ph7_info", "ph7_uname",
+	"ph7copyright", "ph7credits", "ph7info", "ph7version", "rand_str",
+	"setenv", "size_format", "strglob"
+};
+/*
+ */
+/*
+ * Is this name already an INTERNAL function, in the sense php's redeclaration fatal
+ * means it? Both doors of a function declaration ask it -- the compiler for a
+ * top-level one, OP_FUNC_DECL for a conditional one -- so they refuse the same set.
+ *
+ * The engine's own extras above are excluded; everything else in hHostFunction is a
+ * name php has too, because the table this engine registers IS php's list minus what
+ * is not built yet. A name php has that this engine has not implemented is simply
+ * not here, and shadowing it stays allowed -- that is the capability gap, not this.
+ */
+static int VmNameIsEngineOnlyFunc(const char *zName,sxu32 nByte)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azEngineOnlyFunc) ; ++n ){
+		if( SyStrlen(azEngineOnlyFunc[n]) == nByte
+		 && SyStrnicmp(azEngineOnlyFunc[n],zName,nByte) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+PH7_PRIVATE int PH7_VmNameIsInternalFunc(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	if( nByte < 1 ){
+		return 0;
+	}
+	if( SyHashGet(&pVm->hHostFunction,(const void *)zName,nByte) == 0 ){
+		return 0;
+	}
+	return !VmNameIsEngineOnlyFunc(zName,nByte);
 }
 /*
  * Helper: Apply loadable filter to a class pointer.

@@ -2648,6 +2648,23 @@ case PH7_OP_FUNC_DECL: {
 	if( pDeclFunc ){
 		SyHashEntry *pDeclEntry = SyHashGet(&pVm->hFunction,
 			SyStringData(&pDeclFunc->sName),SyStringLength(&pDeclFunc->sName));
+		if( pInstr->iP1 == 0
+		 && PH7_VmNameIsInternalFunc(pVm,SyStringData(&pDeclFunc->sName),
+				SyStringLength(&pDeclFunc->sName)) ){
+			/* An INTERNAL function of this name. php refuses a conditional
+			 * declaration of one exactly as it refuses a top-level one -- being
+			 * reached at run time buys it nothing -- and names no previous
+			 * declaration, an internal function having no file and no line.
+			 *
+			 * A polyfill does not land here: it asks function_exists() first, and
+			 * for a name this engine carries that answers true and the body is
+			 * never reached. Where it answers false the name is not internal and
+			 * this test does not fire. */
+			PH7_VmFatalError(&(*pVm),"Cannot redeclare function %z()",&pDeclFunc->sName);
+			pVm->iExitStatus = 255;
+			pVm->bHaltRequested = 1;
+			goto Abort;
+		}
 		if( pDeclEntry && pInstr->iP1 == 0 ){
 			/* php's runtime redeclaration fatal -- the same sentence the compiler
 			 * raises for two top-level declarations of one name, and now in the same

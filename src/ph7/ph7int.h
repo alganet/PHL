@@ -5666,6 +5666,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(ph7_vm *pVm,ph7_vm_func *pFunc,SyStr
 PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(ph7_vm *pVm,const void *pName,sxu32 nByte,int bEngineName);
 PH7_PRIVATE SyHashEntry * PH7_VmGetHostFunction(ph7_vm *pVm,const void *pName,sxu32 nByte,int bEngineName);
 PH7_PRIVATE void PH7_VmMarkLanguageConstructs(ph7_vm *pVm);
+PH7_PRIVATE int PH7_VmNameIsInternalFunc(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE SyHashEntry * PH7_VmCallSiteAnswer(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int *pbHost);
 PH7_PRIVATE void PH7_VmCallSiteRecord(ph7_vm *pVm,VmInstr *pInstr,const SyString *pName,int bEngineName,int bHost,SyHashEntry *pEntry);
 PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode);
