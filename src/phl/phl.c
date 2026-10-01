@@ -288,120 +288,256 @@ static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCe
 	return 1;
 }
 /*
- * Apply one "name=value" php.ini directive to the VM (used by -d and each
- * -c file line). The value's TEXT is what travels: the engine runs php's ini
- * value grammar over it, which is what turns `E_ALL & ~E_NOTICE` into a number,
- * `On` into "1" and a quoted run into its literal bytes -- so unquoting here
- * would hand that grammar a constant name where php hands it four letters.
+ * php's ini scanner is not line-oriented, and a php.ini VALUE is not a line.
+ * A quoted run is a scanner STATE that keeps going past the newline, so where
+ * one directive's value ends -- and what line the next directive is on -- are
+ * properties of the whole SOURCE:
  *
- * The two doors differ in one rule, and it is php's own: `-d` takes the argument
- * verbatim from argv and QUOTES it whenever its first byte is not alphanumeric
- * and not already a quote, so `-d 'x=(E_ALL) ^ E_NOTICE'` and `-d 'x=~~2'` store
- * their own text where the same lines in a `-c` file are expressions. A file
- * line has no such rule and keeps only the blank-trimming the ini scanner does
- * around a value.
+ *   . `x = 'a<NL>b'` is one raw string carrying a newline, and the rest of the
+ *     file parses normally behind it. Reading a line at a time stored `'a` and
+ *     called it a syntax error.
+ *   . A quote with no partner runs to the end of the source and takes every
+ *     directive behind it down with it -- silently when the value in front of
+ *     it had already reduced (`x = (1)'`), as php's own parser does.
+ *   . Only the double-quoted run moves the line counter over the newlines it
+ *     ate; php's raw-string rule is a single regex match that never touches it.
+ *     So a refusal below `x = "a<NL>b"` is dated one line lower than the same
+ *     one below `x = 'a<NL>b'`.
  *
- * zFile/nLine locate this directive for php's own "syntax error, unexpected
- * ..." warning over a value the grammar above only partly takes (see
- * VmIniSyntaxWarning in vm.c): the real path and line for a -c file, or
- * "Unknown" and a virtual line for -d (see the caller in main()).
+ * So walk the source once and hand the engine each directive with the line it
+ * was written on. The value grammar itself lives in vm.c (VmIniEvalValue) and is
+ * handed exactly the bytes php's scanner would have given its parser: the value
+ * text with its quoted runs intact, without the comment or the newline that
+ * closes the directive, and running to the end of the source when a quote never
+ * closes.
  */
-static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair,int bDashD,
-	const char *zFile,unsigned int nLine)
+static const char * PHL_IniSkipEol(const char *z,const char *zEnd)
 {
-	char zName[128];
+	while( z < zEnd && z[0] != '\n' && z[0] != '\r' ){
+		z++;
+	}
+	return z;
+}
+static const char * PHL_IniEatEol(const char *z,const char *zEnd)
+{
+	if( z < zEnd && z[0] == '\r' ){
+		z++;
+	}
+	if( z < zEnd && z[0] == '\n' ){
+		z++;
+	}
+	return z;
+}
+/*
+ * Hand one directive over. The value's TEXT is what travels: the engine runs
+ * php's ini value grammar over it, which is what turns `E_ALL & ~E_NOTICE` into
+ * a number, `On` into "1" and a quoted run into its literal bytes -- so
+ * unquoting here would hand that grammar a constant name where php hands it
+ * four letters.
+ */
+static void PHL_ApplyIniValue(ph7 *pEngine,const char *zName,size_t nName,
+	const char *zVal,size_t nVal,const char *zFile,unsigned int nLine)
+{
+	char zNameBuf[128];
 	char zStack[512];
 	char *zValue = zStack;   /* heap-backed past what the stack buffer holds */
-	const char *zEq = strchr(zPair,'=');
-	const char *zEnd;
-	size_t n;
-	if( zEq == 0 ){
-		/* php: a bare -d name defines the entry with value "1" */
-		zEq = zPair + strlen(zPair);
-	}
-	/* name: trim */
-	while( *zPair == ' ' || *zPair == '\t' ){ zPair++; }
-	zEnd = zEq;
-	while( zEnd > zPair && (zEnd[-1] == ' ' || zEnd[-1] == '\t') ){ zEnd--; }
-	n = (size_t)(zEnd - zPair);
-	if( n == 0 || n >= sizeof(zName) ){
+	if( nName == 0 || nName >= sizeof(zNameBuf) ){
 		return;
 	}
-	memcpy(zName,zPair,n);
-	zName[n] = 0;
-	/* value */
-	if( *zEq == '=' ){
-		const char *zV = zEq + 1;
-		const char *zVEnd = zV + strlen(zV);
-		int bQuote = 0;
-		if( bDashD ){
-			/* php's rule, applied to the argv text before any trimming: an
-			 * empty value and one opening on a quote go through as they are. */
-			bQuote = zV[0] != 0 && zV[0] != '"' && zV[0] != '\''
-			      && !((zV[0] >= '0' && zV[0] <= '9')
-			        || (zV[0] >= 'a' && zV[0] <= 'z')
-			        || (zV[0] >= 'A' && zV[0] <= 'Z'));
-		}else{
-			while( *zV == ' ' || *zV == '\t' ){ zV++; }
-			while( zVEnd > zV && (zVEnd[-1] == ' ' || zVEnd[-1] == '\t'
-			    || zVEnd[-1] == '\r' || zVEnd[-1] == '\n') ){ zVEnd--; }
+	memcpy(zNameBuf,zName,nName);
+	zNameBuf[nName] = 0;
+	if( nVal + 1 > sizeof(zStack) ){
+		/* php has no ceiling on an ini value, and a real one can be long:
+		 * PHPUnit hands its child a ~700-byte redaction pattern. Truncating
+		 * at a fixed width stored half a value, and cutting one in the
+		 * middle of a quoted run made the whole directive a syntax error. */
+		zValue = (char *)malloc(nVal + 1);
+		if( zValue == 0 ){
+			return;
 		}
-		n = (size_t)(zVEnd - zV);
-		if( n + 3 > sizeof(zStack) ){
-			/* php has no ceiling on an ini value, and a real one can be long:
-			 * PHPUnit hands its child a ~700-byte redaction pattern. Truncating
-			 * at a fixed width stored half a value, and cutting one in the
-			 * middle of a quoted run made the whole directive a syntax error. */
-			zValue = (char *)malloc(n + 3);
-			if( zValue == 0 ){
-				return;
-			}
-		}
-		if( bQuote ){
-			zValue[0] = '"';
-			memcpy(zValue + 1,zV,n);
-			zValue[n+1] = '"';
-			zValue[n+2] = 0;
-		}else{
-			memcpy(zValue,zV,n);
-			zValue[n] = 0;
-		}
-	}else{
-		/* default "on" flag; avoid strcpy (MSVC C4996 under /WX) */
-		zValue[0] = '1';
-		zValue[1] = 0;
 	}
-	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zName,zValue,zFile,nLine);
+	if( nVal > 0 ){
+		memcpy(zValue,zVal,nVal);
+	}
+	zValue[nVal] = 0;
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zNameBuf,zValue,zFile,nLine);
 	if( zValue != zStack ){
 		free(zValue);
 	}
 }
 /*
- * Load php.ini directives from a -c file: name=value lines; [sections],
- * empty lines and ;/# comments are ignored (enough of php's ini grammar
- * for CLI configuration). Every fgets() is one real line, skipped or not,
- * so the counter handed to PHL_ApplyIniPair is the line a directive's own
- * text sits on -- what php's zend_parse_ini_file() would report too.
+ * Walk one whole php.ini source -- a -c file's bytes, or the buffer php's CLI
+ * builds out of every -d -- and apply the directives it holds. nLine is the line
+ * the first byte sits on: 1 for a file, and 6 for the -d buffer (see the caller).
+ */
+static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
+	const char *zFile,unsigned int nLine)
+{
+	const char *z = zSrc;
+	const char *zEnd = &zSrc[nSrc];
+	while( z < zEnd ){
+		const char *zName,*zNameEnd,*zVal,*zValEnd;
+		unsigned int nDir;
+		int bRunaway = 0;
+		while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+			z++;
+		}
+		if( z >= zEnd ){
+			break;
+		}
+		if( z[0] == '\n' || z[0] == '\r' ){
+			z = PHL_IniEatEol(z,zEnd);
+			nLine++;
+			continue;
+		}
+		if( z[0] == ';' || z[0] == '#' || z[0] == '[' ){
+			/* comments and [sections]: enough of php's grammar for CLI
+			 * configuration, and the newline behind them is counted above */
+			z = PHL_IniSkipEol(z,zEnd);
+			continue;
+		}
+		nDir = nLine;
+		zName = z;
+		while( z < zEnd && z[0] != '=' && z[0] != '\n' && z[0] != '\r' ){
+			z++;
+		}
+		zNameEnd = z;
+		while( zNameEnd > zName && (zNameEnd[-1] == ' ' || zNameEnd[-1] == '\t') ){
+			zNameEnd--;
+		}
+		if( z >= zEnd || z[0] != '=' ){
+			/* php: a bare name defines the entry with the value "1" */
+			PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),"1",1,zFile,nDir);
+			continue;
+		}
+		z++;   /* past the '=' */
+		zVal = z;
+		while( z < zEnd ){
+			int c = (unsigned char)z[0];
+			if( c == '\n' || c == '\r' || c == ';' ){
+				break;
+			}
+			if( c == '"' ){
+				const char *zQ = &z[1];
+				unsigned int nEat = 0;
+				while( zQ < zEnd && zQ[0] != '"' ){
+					if( zQ[0] == '\\' && &zQ[1] < zEnd ){
+						/* a tool that has to put a quote in a value writes `\"` */
+						zQ += 2;
+						continue;
+					}
+					if( zQ[0] == '\n' || zQ[0] == '\r' ){
+						zQ = PHL_IniEatEol(zQ,zEnd);
+						nEat++;
+						continue;
+					}
+					zQ++;
+				}
+				nLine += nEat;
+				if( zQ >= zEnd ){
+					bRunaway = 1;
+					z = zEnd;
+					break;
+				}
+				z = &zQ[1];
+				continue;
+			}
+			if( c == '\'' ){
+				const char *zQ = &z[1];
+				while( zQ < zEnd && zQ[0] != '\'' ){
+					zQ++;
+				}
+				if( zQ >= zEnd ){
+					bRunaway = 1;
+					z = zEnd;
+					break;
+				}
+				z = &zQ[1];   /* no line counting: the raw rule is one match */
+				continue;
+			}
+			z++;
+		}
+		zValEnd = z;
+		if( !bRunaway ){
+			/* the `;` comment, and the newline that closes the directive, are
+			 * the scanner's own tokens rather than part of the value */
+			z = PHL_IniSkipEol(z,zEnd);
+		}
+		PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),
+			zVal,(size_t)(zValEnd - zVal),zFile,nDir);
+	}
+}
+/*
+ * One -d, as php's ini builder writes it into that buffer: `name=value` and a
+ * newline, with the value wrapped in double quotes whenever its first byte is
+ * not alphanumeric and not already a quote -- php's own workaround, applied to
+ * the argv text before any trimming, and what makes `-d 'x=(E_ALL) ^ E_NOTICE'`
+ * and `-d 'x=~~2'` store their own text where the same lines in a -c file are
+ * expressions. A bare `-d name` is written `name=1`. Returns the bytes written.
+ */
+static size_t PHL_IniDefineLine(const char *zPair,char *zOut)
+{
+	const char *zEq = strchr(zPair,'=');
+	size_t n;
+	if( zEq == 0 ){
+		n = strlen(zPair);
+		memcpy(zOut,zPair,n);
+		memcpy(&zOut[n],"=1\n",sizeof("=1\n")-1);
+		return n + sizeof("=1\n") - 1;
+	}
+	{
+		const char *zV = &zEq[1];
+		size_t nHead = (size_t)(zEq - zPair) + 1;   /* the name and its '=' */
+		size_t nV = strlen(zV);
+		int bQuote = zV[0] != 0 && zV[0] != '"' && zV[0] != '\''
+		          && !((zV[0] >= '0' && zV[0] <= '9')
+		            || (zV[0] >= 'a' && zV[0] <= 'z')
+		            || (zV[0] >= 'A' && zV[0] <= 'Z'));
+		memcpy(zOut,zPair,nHead);
+		n = nHead;
+		if( bQuote ){
+			zOut[n++] = '"';
+		}
+		if( nV > 0 ){
+			memcpy(&zOut[n],zV,nV);
+			n += nV;
+		}
+		if( bQuote ){
+			zOut[n++] = '"';
+		}
+		zOut[n++] = '\n';
+		return n;
+	}
+}
+/*
+ * Load php.ini directives from a -c file. Read whole: a value may span lines
+ * (see PHL_ScanIniSource), so no line of it can be read on its own.
  */
 static void PHL_LoadIniFile(ph7 *pEngine,const char *zPath)
 {
-	char zLine[768];
-	unsigned int nLine = 0;
-	FILE *pFile = fopen(zPath,"r");
+	char *zSrc;
+	long nSize;
+	size_t nRead;
+	FILE *pFile = fopen(zPath,"rb");
 	if( pFile == 0 ){
 		fprintf(stderr,"Could not open php.ini file: %s\n",zPath);
 		return;
 	}
-	while( fgets(zLine,sizeof(zLine),pFile) ){
-		const char *z = zLine;
-		nLine++;
-		while( *z == ' ' || *z == '\t' ){ z++; }
-		if( *z == 0 || *z == ';' || *z == '#' || *z == '[' || *z == '\n' || *z == '\r' ){
-			continue;
-		}
-		PHL_ApplyIniPair(pEngine,z,0,zPath,nLine);
+	if( fseek(pFile,0,SEEK_END) != 0 || (nSize = ftell(pFile)) < 0
+	 || fseek(pFile,0,SEEK_SET) != 0 ){
+		fclose(pFile);
+		return;
 	}
+	zSrc = (char *)malloc((size_t)nSize + 1);
+	if( zSrc == 0 ){
+		fclose(pFile);
+		return;
+	}
+	nRead = fread(zSrc,1,(size_t)nSize,pFile);
 	fclose(pFile);
+	zSrc[nRead] = 0;
+	PHL_ScanIniSource(pEngine,zSrc,nRead,zPath,1);
+	free(zSrc);
 }
 /*
  * Return TRUE when standard input is a pipe/redirect rather than an interactive
@@ -794,20 +930,32 @@ int main(int argc,char **argv)
 	if( zIniFile ){
 		PHL_LoadIniFile(pEngine,zIniFile);
 	}
-	{
+	if( nIniDefine > 0 ){
 		/* php's CLI SAPI joins every -d into ONE buffer for zend_parse_ini_string(),
 		 * prefixed by five lines of its own hardcoded startup ini (php_cli.c's
 		 * HARDCODED_INI: html_errors, implicit_flush, output_buffering,
-		 * max_execution_time, max_input_time) -- so a directive's line in that
-		 * buffer, and in the "on line N" a refusal warns about, is 5 plus its
-		 * 1-based position among every -d php was given, not just the bad one.
-		 * PHL applies each -d independently rather than joining them, but the
-		 * line a given -d would have landed on does not depend on that: it is
-		 * fixed by its position alone. Verified against `/usr/bin/php` 8.5.10
-		 * with one, two and three -d's, good and bad in every slot. */
+		 * max_execution_time, max_input_time) -- so the first -d is on line 6 and
+		 * a directive's line, in the "on line N" a refusal warns about, is 5 plus
+		 * its 1-based position among every -d php was given.
+		 *
+		 * Join them the same way rather than applying each on its own: they are
+		 * ONE scanner input, so a quoted run one -d opens keeps going into the
+		 * next one's text exactly as it would inside a file. `-d "x='a" -d "y=b'"`
+		 * is a single raw string spanning both, and an unterminated `"` in the
+		 * first swallows every -d behind it. */
+		size_t nCap = 0, nUsed = 0;
+		char *zBuf;
 		int i;
 		for( i = 0 ; i < nIniDefine ; i++ ){
-			PHL_ApplyIniPair(pEngine,azIniDefine[i],1,"Unknown",5u + (unsigned int)i + 1u);
+			nCap += strlen(azIniDefine[i]) + sizeof("\"\"=1\n");
+		}
+		zBuf = (char *)malloc(nCap);
+		if( zBuf ){
+			for( i = 0 ; i < nIniDefine ; i++ ){
+				nUsed += PHL_IniDefineLine(azIniDefine[i],&zBuf[nUsed]);
+			}
+			PHL_ScanIniSource(pEngine,zBuf,nUsed,"Unknown",6);
+			free(zBuf);
 		}
 	}
 	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to

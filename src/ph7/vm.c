@@ -5464,13 +5464,27 @@ struct VmIniBad {
 	 * own (TC_VARNAME, and "TC_FALLBACK or '}'"), so the list is text here
 	 * rather than the single flag bExpect still carries. */
 	const char *zExpect;
+	/* How many lines below the directive's own the stop happened. A value is
+	 * one scanner input and a double-quoted run inside it crosses newlines,
+	 * so `x = "a\nb")` is dated to the line the `)` is written on and not to
+	 * the line `x` is. Only the double-quoted run moves it: php's raw-string
+	 * rule is a single match that never touches the line counter. */
+	sxu32 nLine;
 };
 typedef struct VmIniExpr VmIniExpr;
 struct VmIniExpr {
 	ph7_vm *pVm;
 	const char *zCur;
 	const char *zEnd;
-	int bErr;            /* a token php's scanner never completes: an unterminated quote */
+	/* Newlines a double-quoted run carried the scanner over before the stop --
+	 * php's ST_DOUBLE_QUOTES counts every one of them, and dates whatever it
+	 * reports next that many lines below the directive. */
+	sxu32 nLine;
+	/* A raw string with no closing quote: php's `['][^']*[']` is ONE match, so
+	 * it does not match at all and the scanner runs off the end of the source.
+	 * Whatever the value already holds still commits; only a value that had
+	 * nothing yet becomes an error, and php names that one end of file. */
+	int bRawEof;
 	/* Where a failed parse stopped, in the two pieces php's ini_error() prints.
 	 * cStop is the byte the grammar could not take, or 0 when the value simply
 	 * ran out -- php calls that one END_OF_LINE and dates it to the line AFTER
@@ -5758,6 +5772,17 @@ static int VmIniExprQuoted(VmIniExpr *p,SyBlob *pOut,int nDepth)
 	int c = (unsigned char)p->zCur[0];
 	p->zCur++;
 	while( p->zCur < p->zEnd && (unsigned char)p->zCur[0] != c ){
+		if( c == '"' && (p->zCur[0] == '\n' || p->zCur[0] == '\r') ){
+			/* ST_DOUBLE_QUOTES is the only quoted run that counts what it eats. */
+			if( p->zCur[0] == '\r' && &p->zCur[1] < p->zEnd && p->zCur[1] == '\n' ){
+				SyBlobAppend(pOut,p->zCur,sizeof(char));
+				p->zCur++;
+			}
+			p->nLine++;
+			SyBlobAppend(pOut,p->zCur,sizeof(char));
+			p->zCur++;
+			continue;
+		}
 		if( c == '"' && p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
 			int e = (unsigned char)p->zCur[1];
 			if( e == '"' || e == '\\' || e == '$' ){
@@ -5779,11 +5804,12 @@ static int VmIniExprQuoted(VmIniExpr *p,SyBlob *pOut,int nDepth)
 		p->zCur++;
 	}
 	if( p->zCur >= p->zEnd ){
-		/* php's ST_DOUBLE_QUOTES runs to the end of the INPUT, not to the end of
-		 * the line, so a quote with no partner is the end of file and the whole
-		 * value is refused. Dropping the quote and keeping the letters made
-		 * `a"b` the two bytes "ab". */
-		p->bErr = 1;
+		/* php's ST_DOUBLE_QUOTES runs to the end of the SOURCE, not to the end
+		 * of the line, so a quote with no partner is the end of file and the
+		 * whole value is refused. Dropping the quote and keeping the letters
+		 * made `a"b` the two bytes "ab". The caller names the token: this one is
+		 * also reached from inside `${NAME:-...}`, which has an expect-list of
+		 * its own. */
 		return 0;
 	}
 	p->zCur++;    /* the closing quote */
@@ -5953,8 +5979,28 @@ static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut,int nDepth)
 			bAny = 1;
 			continue;
 		}
+		if( c == '\'' ){
+			const char *zQ = &p->zCur[1];
+			while( zQ < p->zEnd && zQ[0] != '\'' ){
+				zQ++;
+			}
+			if( zQ >= p->zEnd ){
+				/* php's raw-string rule is one match spanning as many newlines
+				 * as it needs; with no closing quote it matches nothing and the
+				 * scanner leaves for the end of the source. The operand ends
+				 * here, and what it already holds is still a value: `x = A'b`
+				 * stores "A" and reports nothing at all. */
+				p->bRawEof = 1;
+				break;
+			}
+		}
 		if( c == '"' || c == '\'' ){
 			if( !VmIniExprQuoted(p,pOut,nDepth) ){
+				/* Only the double-quoted run can get here now, and php names its
+				 * refusal with the tokens ST_DOUBLE_QUOTES was still willing to
+				 * take. */
+				VmIniExprStopAt(p,"end of file",0,
+					"TC_DOLLAR_CURLY or TC_QUOTED_STRING or '\"'");
 				return 0;
 			}
 			bAny = 1;
@@ -6031,7 +6077,15 @@ static int VmIniExprUnary(VmIniExpr *p,SyBlob *pOut,int nDepth)
 		return 1;
 	}
 	if( !VmIniExprOperand(p,pOut,nDepth) ){
-		VmIniExprStop(p,(unsigned char)p->zCur[0],0);
+		if( p->bRawEof ){
+			/* Nothing had reduced yet, so the scanner's leap to the end of the
+			 * source is the token php's parser chokes on -- and it is the end of
+			 * the FILE, not the end of a line, so it does not move the line the
+			 * refusal is dated to. */
+			VmIniExprStopAt(p,"end of file",0,0);
+		}else{
+			VmIniExprStop(p,(unsigned char)p->zCur[0],0);
+		}
 		return 0;
 	}
 	return 1;
@@ -6106,6 +6160,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 	pBad->cChar = 0;
 	pBad->bExpect = 0;
 	pBad->zExpect = 0;
+	pBad->nLine = 0;
 	SyBlobReset(pOut);
 	while( nVal > 0 && (zVal[0] == ' ' || zVal[0] == '\t') ){
 		zVal++;
@@ -6151,7 +6206,8 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 	sIn.pVm = pVm;
 	sIn.zCur = zVal;
 	sIn.zEnd = &zVal[nVal];
-	sIn.bErr = 0;
+	sIn.nLine = 0;
+	sIn.bRawEof = 0;
 	sIn.bStop = 0;
 	sIn.cStop = 0;
 	sIn.bExpect = 0;
@@ -6163,6 +6219,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 		pBad->cChar = sIn.cStop;
 		pBad->bExpect = sIn.bExpect;
 		pBad->zExpect = sIn.zExpect;
+		pBad->nLine = sIn.nLine;
 		return 0;
 	}
 	/* Whatever is left -- `)`, `1&&2`'s second `&`, an unresolved `~`, and
@@ -6170,6 +6227,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 	 * separate token the grammar cannot take from here, but the expr already
 	 * reduced and its value already stands. */
 	VmIniBadToken(sIn.zCur,sIn.zEnd,pBad);
+	pBad->nLine = sIn.nLine;
 	return 1;
 }
 /*
@@ -6191,6 +6249,9 @@ static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,const VmI
 		return;
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
+	/* A value is one scanner input: a double-quoted run inside it may have
+	 * carried php's line counter past several newlines before the stop. */
+	nLine += pBad->nLine;
 	SyBlobAppend(&sMsg,"PHP:  syntax error, unexpected ",sizeof("PHP:  syntax error, unexpected ")-1);
 	if( pBad->zTok ){
 		/* A token php's grammar declares under a symbol of its own prints as
