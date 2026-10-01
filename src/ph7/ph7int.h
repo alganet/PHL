@@ -3602,6 +3602,14 @@ struct ph7_exception
 	                    * unwinds past the ERR_CTRL that would have closed the window, so
 	                    * the catch restores this snapshot instead of leaking the depth —
 	                    * and a try/catch nested INSIDE an `@` still stays suppressed. */
+	sxu32 nSelfDepth;/* pVm->aSelf depth when this try opened. php runs a catch and a
+					   * finally in the scope of the body that DECLARED the try; this
+					   * engine runs them at the THROW SITE, which can be several calls
+					   * deeper, so the late-static-binding stack still carries the class
+					   * of every call still open above the try. The handler parks that
+					   * slice back to this depth, and `static::` / `new static` /
+					   * get_called_class() inside it answer the try owner's called class
+					   * the way php's do. */
 	sxi32 iStackDepth;/* Operand-stack base (0-based TOS index = pTos-pStack, -1 when empty)
 					   * captured when this try opened at OP_LOAD_EXCEPTION. Used only by
 					   * Generator::throw() inject-at-yield to drain the abandoned

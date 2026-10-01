@@ -6272,6 +6272,69 @@ PH7_PRIVATE int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu
  * (the finally_return_cross_frame twin). Same-frame execution (the common
  * case) is unchanged: no wrapper.
  */
+/*
+ * php runs a catch body and a finally body in the scope of the function that
+ * DECLARED the try. This engine runs them AT THE THROW SITE (the in-place catch),
+ * and the throw site can be several calls deeper -- so pVm->aSelf, the
+ * late-static-binding stack that `static::`, `new static` and get_called_class()
+ * read, still carries the class of every call the throw left open above the try.
+ * A handler entered that way answered the THROWING method's class: for
+ * `try { (new T)->boom(); } catch (E $e) { new static(); }` php constructs the
+ * catching class and this engine constructed T.
+ *
+ * So park that slice for the duration of the handler and put it back after --
+ * the same treatment the exception stack beside it already gets. The depth to
+ * park back to is the one the try recorded when it opened (nSelfDepth).
+ */
+typedef struct VmParkedSelf VmParkedSelf;
+struct VmParkedSelf
+{
+	ph7_class **apSaved; /* Entries above the try's depth, or NULL when there are none */
+	sxu32 nSaved;        /* How many */
+	sxu32 nBase;         /* Depth the handler runs at */
+};
+static void VmParkSelfForHandler(ph7_vm *pVm,ph7_exception *pException,VmParkedSelf *pPark)
+{
+	sxu32 nUsed = SySetUsed(&pVm->aSelf);
+	pPark->apSaved = 0;
+	pPark->nSaved = 0;
+	pPark->nBase = nUsed;
+	if( pException == 0 || nUsed <= pException->nSelfDepth ){
+		/* The throw never left the try owner's activation (or a coroutine already
+		 * parked this slice): the top is the owner's class already. */
+		return;
+	}
+	pPark->nBase = pException->nSelfDepth;
+	pPark->nSaved = nUsed - pPark->nBase;
+	pPark->apSaved = (ph7_class **)SyMemBackendAlloc(&pVm->sAllocator,
+		pPark->nSaved * sizeof(ph7_class *));
+	if( pPark->apSaved == 0 ){
+		/* No room to remember them: leave the stack as it is rather than lose it. */
+		pPark->nSaved = 0;
+		pPark->nBase = nUsed;
+		return;
+	}
+	SyMemcpy((const void *)((ph7_class **)SySetBasePtr(&pVm->aSelf) + pPark->nBase),
+		(void *)pPark->apSaved,pPark->nSaved * sizeof(ph7_class *));
+	SySetTruncate(&pVm->aSelf,pPark->nBase);
+}
+static void VmUnparkSelfForHandler(ph7_vm *pVm,VmParkedSelf *pPark)
+{
+	sxu32 k;
+	if( pPark->apSaved == 0 ){
+		return;
+	}
+	/* Whatever the handler body pushed and did not pop is its own business and must
+	 * not sit under the entries that belong to the still-open calls above. */
+	if( SySetUsed(&pVm->aSelf) > pPark->nBase ){
+		SySetTruncate(&pVm->aSelf,pPark->nBase);
+	}
+	for( k = 0 ; k < pPark->nSaved ; ++k ){
+		SySetPut(&pVm->aSelf,(const void *)&pPark->apSaved[k]);
+	}
+	SyMemBackendFree(&pVm->sAllocator,(void *)pPark->apSaved);
+	pPark->apSaved = 0;
+}
 static sxi32 VmExecFinallyInOwner(ph7_vm *pVm,SySet *pByteCode,VmFrame *pOwner)
 {
 	VmFrame *pWrap = 0;
@@ -6455,6 +6518,9 @@ Rethrow:
 			sxu32 nExcBefore = SySetUsed(&pVm->aException);
 			ph7_class_instance *pSaveInflight = pVm->pInflightException;
 			sxu32 nSaveBase = pVm->nInflightExcBase;
+			/* Seeded at the declaration: cl cannot prove the helper below writes
+			 * every field through the pointer, and /WX turns C4701 into an error. */
+			VmParkedSelf sParkSelf = {0,0,0};
 			pException->iFinallyDone = 1;
 			/* Mark pThis in-flight (base = current exception-stack depth) so a throw
 			 * from the finally that leaves it chains pThis as $previous; restore after. */
@@ -6462,7 +6528,9 @@ Rethrow:
 			pVm->nInflightExcBase = nExcBefore;
 			/* Stage 2b: the finally runs in the try-OWNING body's scope (its own
 			 * variables; a `return` parks on the owning body), like the catch. */
+			VmParkSelfForHandler(&(*pVm),pException,&sParkSelf);
 			rc = VmExecFinallyInOwner(&(*pVm),&pException->sFinally,pException->pFrame);
+			VmUnparkSelfForHandler(&(*pVm),&sParkSelf);
 			pVm->pInflightException = pSaveInflight;
 			pVm->nInflightExcBase = nSaveBase;
 			if( rc == SXERR_ABORT ){
@@ -6590,6 +6658,8 @@ Rethrow:
 		VmFrame *pFrame = pVm->pFrame;
 		ph7_exception **apSaved = 0;
 		sxu32 nSavedCount;
+		/* Seeded at the declaration -- see the other one. */
+		VmParkedSelf sParkSelf = {0,0,0};
 		sxi32 rc;
 		/* Snapshot the resume target BEFORE running the catch/finally mini-programs
 		 * (which may push/pop nested exceptions): the body frame that owns this
@@ -6661,8 +6731,10 @@ Rethrow:
 				pObj->x.pOther = pThis;
 				MemObjSetType(pObj,MEMOBJ_OBJ);
 			}
-			/* Execute the catch block */
+			/* Execute the catch block, at the try owner's late-static-binding depth. */
+			VmParkSelfForHandler(&(*pVm),pException,&sParkSelf);
 			rc = VmLocalExec(&(*pVm),pCatch->pByteCode,0,TRUE);
+			VmUnparkSelfForHandler(&(*pVm),&sParkSelf);
 			/* Leave the frame (sets pVm->pFrame = pCatchBody via the re-parent), then
 			 * restore the real throw-site frame so the unwind continues normally.
 			 * Guarded like VmExecFinallyInOwner's wrapper teardown: a catch body
@@ -6713,7 +6785,9 @@ Rethrow:
 			pVm->pInflightException = pVm->pPendingException;
 			pVm->nInflightExcBase = nExcBefore;
 			/* Stage 2b: the finally runs in the owner's scope, like the catch. */
+			VmParkSelfForHandler(&(*pVm),pException,&sParkSelf);
 			rcf = VmExecFinallyInOwner(&(*pVm),&pException->sFinally,pCatchBody);
+			VmUnparkSelfForHandler(&(*pVm),&sParkSelf);
 			pVm->pInflightException = pSaveInflight;
 			pVm->nInflightExcBase = nSaveBase;
 			if( rcf == SXERR_ABORT ){

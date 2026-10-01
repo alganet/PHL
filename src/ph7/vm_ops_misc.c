@@ -531,6 +531,8 @@ PH7_PRIVATE VmOpRc VmExecOpLoadException(ph7_vm *pVm,VmExecState *pState,VmInstr
 	pException->iStackDepth = (sxi32)(pTos - pStack);
 	/* '@' depth at try entry — see ph7_exception.iErrSuppress */
 	pException->iErrSuppress = pVm->nErrSuppress;
+	/* Late-static-binding depth at try entry — see ph7_exception.nSelfDepth. */
+	pException->nSelfDepth = SySetUsed(&pVm->aSelf);
 	/* Point to the frame that trigger the exception */
 	pFrameLocal = pFrameLocal->pParent;
 	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
