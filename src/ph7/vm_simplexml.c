@@ -2424,7 +2424,8 @@ static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value 
 	PH7_MemObjInit(pCtx->pVm,&sRes);
 	sRes.x.pOther = pObj;
 	sRes.iFlags = MEMOBJ_OBJ;
-	ph7_result_value(pCtx,&sRes);   /* the cache owns pObj; borrowed */
+	ph7_result_value(pCtx,&sRes);   /* takes its own reference... */
+	PH7_ClassInstanceUnref(pObj);   /* ...and the wrap's goes back */
 	return PH7_OK;
 }
 

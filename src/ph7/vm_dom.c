@@ -31,11 +31,14 @@
  * Node identity: php guarantees $doc->documentElement === $doc->
  * documentElement.  Every wrap goes through DomWrap(), which keys a
  * per-document cache ($doc->__nodes) by the node POINTER, so the same
- * underlying node always yields the same object.  The cache owns the
- * wrappers, which is why DomWrap hands back a BORROWED instance: it stays
- * alive as long as its document does.  (The old shape allocated a fresh
- * phl_domnode on every navigation step even when the cache then threw the
- * result away; only a genuine cache MISS allocates one now.)
+ * underlying node always yields the same object.  The entry is a BORROWED
+ * pointer -- php's own shape, and the reason a wrapper can die at all: a
+ * cache that took a reference kept every node object a program ever touched
+ * until the document went, and with it the libxml node behind it.  So
+ * DomWrap hands back an instance the CALLER OWNS, and DomNodeRelease drops
+ * the entry.  (The old shape allocated a fresh phl_domnode on every
+ * navigation step even when the cache then threw the result away; only a
+ * genuine cache MISS allocates one now.)
  *
  * Tree surgery (append/insert/replace/remove) is done with manual pointer
  * splicing instead of xmlAddChild: xmlAddChild MERGES adjacent text nodes
@@ -370,14 +373,15 @@ static int DomNodeTypeOf(xmlNodePtr pNode)
  * answer anything other than DomClassOfKind's. */
 static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
 	SyBlob *pOut);
+/* Defined with the teardown machinery below: every wrap marks its node HELD. */
+static void DomNodeMarkHeld(xmlNodePtr pNode,ph7_class_instance *pObj);
 /*
  * The wrapper object for one node of pDoc's tree -- the same one every time,
  * which is what makes `$doc->documentElement === $doc->documentElement` true.
  *
- * BORROWED: the cache owns the returned instance. A caller that hands it to PHP
- * goes through DomResultWrap (ph7_result_value takes its own reference); a
- * caller that stores it uses PH7_NativeSetAttrObj, which does the same. Neither
- * unrefs.
+ * OWNED: the caller holds a reference and gives it back. A caller that hands
+ * the node to PHP goes through DomResultOwned; one that stores it takes its own
+ * reference (PH7_NativeSetAttrObj, ph7_array_add_elem) and then unrefs.
  */
 static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	phl_xmldoc *pShell,xmlNodePtr pNode)
@@ -395,6 +399,7 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	}
 	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
 		/* The document is its own wrapper: php answers the SAME DOMDocument. */
+		pDoc->iRef++;
 		return pDoc;
 	}
 	pCache = DomCache(&(*pVm),pDoc);
@@ -404,9 +409,11 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);
 	if( PH7_HashmapLookup(pCache,&sKey,&pEntry) == SXRET_OK && pEntry ){
 		ph7_value *pHit = HashmapExtractNodeValue(pEntry);
-		if( pHit && (pHit->iFlags & MEMOBJ_OBJ) ){
+		if( pHit && (pHit->iFlags & MEMOBJ_INT) ){
+			ph7_class_instance *pLive = (ph7_class_instance *)(sxuptr)pHit->x.iVal;
 			PH7_MemObjRelease(&sKey);
-			return (ph7_class_instance *)pHit->x.pOther;
+			pLive->iRef++;
+			return pLive;
 		}
 	}
 	/* php's class for the kind, unless this document has REGISTERED another
@@ -427,13 +434,14 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	}
 	DomSetRes(&(*pVm),pObj,pRes);
 	PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_DOC,pDoc);
-	PH7_MemObjInit(&(*pVm),&sVal);
-	sVal.x.pOther = pObj;
-	sVal.iFlags = MEMOBJ_OBJ;
-	PH7_HashmapInsert(pCache,&sKey,&sVal);   /* takes the cache's reference */
+	DomNodeMarkHeld(pNode,pObj);
+	/* The entry is the POINTER and no reference (an xmlNs handle, which shares
+	 * this table, is a MEMOBJ_RES: the two never key the same address). The
+	 * object's own release takes the entry back out. */
+	PH7_MemObjInitFromInt(&(*pVm),&sVal,(sxi64)(sxuptr)pObj);
+	PH7_HashmapInsert(pCache,&sKey,&sVal);
 	PH7_MemObjRelease(&sKey);
-	PH7_ClassInstanceUnref(pObj);            /* ...and the cache is now the owner */
-	return pObj;
+	return pObj;                             /* the constructor's reference: the caller's */
 }
 /*
  * The wrapper for one node of a tree whose DOCUMENT OBJECT the caller does not
@@ -444,7 +452,7 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
  * in a cache keyed on the document object, so a tree that has none yet gets one
  * built here and remembered on the shell; a tree that came from a DOMDocument
  * already names it, which is what makes an import back out of a SimpleXML made
- * from that document answer the document's own nodes. BORROWED, like DomWrap's.
+ * from that document answer the document's own nodes. OWNED, like DomWrap's.
  */
 PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShell,void *pNode)
 {
@@ -485,6 +493,16 @@ static int DomResultWrap(ph7_context *pCtx,ph7_class_instance *pObj)
 	ph7_result_value(pCtx,&sRes);   /* takes its own reference */
 	return PH7_OK;
 }
+/* The same, for an instance the caller OWNS: the result takes its own
+ * reference and this one goes back. */
+static int DomResultOwned(ph7_context *pCtx,ph7_class_instance *pObj)
+{
+	int rc = DomResultWrap(pCtx,pObj);
+	if( pObj ){
+		PH7_ClassInstanceUnref(pObj);
+	}
+	return rc;
+}
 /* The common tail: wrap a node of the RECEIVER's document and answer it. */
 static int DomResultNodeOf(ph7_context *pCtx,phl_domnode *pNd,xmlNodePtr pNode)
 {
@@ -492,7 +510,7 @@ static int DomResultNodeOf(ph7_context *pCtx,phl_domnode *pNd,xmlNodePtr pNode)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	return DomResultWrap(pCtx,DomWrap(pCtx->pVm,DomThisDoc(pCtx),pNd->pShell,pNode));
+	return DomResultOwned(pCtx,DomWrap(pCtx->pVm,DomThisDoc(pCtx),pNd->pShell,pNode));
 }
 /* The phl_domnode behind a DOMNode-typed ARGUMENT (already screened by ZPP). */
 static phl_domnode * DomObjArg(ph7_value *pVal)
@@ -558,6 +576,207 @@ static void DomDetach(phl_xmldoc *pShell,xmlNodePtr pNode)
 	}else{
 		DomOrphanRemove(pShell,pNode);
 	}
+}
+/*
+ * Mark a node as HELD by one wrapper, in libxml's own per-node binding slot --
+ * where php keeps its object too.
+ *
+ * That slot, and not the identity cache, is what a free walk asks: the cycle
+ * collector may reach a document before its nodes, and the cache is gone by
+ * then. A synthesized NOTATION stand-in is the exception -- its `_private`
+ * already carries the declaration it stands for, which is how a second lookup
+ * finds the same stand-in (DomNotationNode) -- and nothing frees one of those
+ * anyway.
+ */
+static void DomNodeMarkHeld(xmlNodePtr pNode,ph7_class_instance *pObj)
+{
+	if( pNode->type != XML_NOTATION_NODE ){
+		pNode->_private = (void *)pObj;
+	}
+}
+/* ...and is this node still that wrapper's? A notation stand-in always is. */
+static int DomNodeHeldBy(xmlNodePtr pNode,ph7_class_instance *pThis)
+{
+	return pNode->type == XML_NOTATION_NODE || pNode->_private == (void *)pThis;
+}
+/* The cache entry under one pointer -- a node's wrapper (MEMOBJ_INT) or an
+ * xmlNs handle (MEMOBJ_RES) -- or NULL when nothing holds it. */
+static ph7_value * DomCacheHit(ph7_vm *pVm,ph7_hashmap *pCache,const void *pKey)
+{
+	ph7_hashmap_node *pEntry = 0;
+	ph7_value sKey,*pHit = 0;
+	if( pCache == 0 || pKey == 0 ){
+		return 0;
+	}
+	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pKey);
+	if( PH7_HashmapLookup(pCache,&sKey,&pEntry) == SXRET_OK && pEntry ){
+		pHit = HashmapExtractNodeValue(pEntry);
+	}
+	PH7_MemObjRelease(&sKey);
+	return pHit;
+}
+/*
+ * The node kinds a detached-node free may take. Everything else -- a DTD, the
+ * declaration nodes inside one, the synthesized notation stand-ins vm_libxml.c
+ * frees its own way -- stays with the document: xmlFreeNode would read an
+ * xmlEntity's fields as a node's, and none of them is ever what a program
+ * drops in a loop.
+ */
+static int DomNodeIsFreeable(xmlNodePtr pNode)
+{
+	switch( pNode->type ){
+	case XML_ELEMENT_NODE:
+	case XML_ATTRIBUTE_NODE:
+	case XML_TEXT_NODE:
+	case XML_CDATA_SECTION_NODE:
+	case XML_COMMENT_NODE:
+	case XML_PI_NODE:
+	case XML_ENTITY_REF_NODE:
+	case XML_DOCUMENT_FRAG_NODE:
+		return 1;
+	default:
+		return 0;
+	}
+}
+/* A namespace DECLARATION on this element that PHP still holds a handle onto.
+ * xmlFreeNode frees the xmlNs under it, and the handle is shared by every
+ * DOMNameSpaceNode built from it, so such a node is kept instead. */
+static int DomNodeNsHeld(ph7_vm *pVm,ph7_hashmap *pCache,xmlNodePtr pNode)
+{
+	xmlNsPtr pNs;
+	if( pNode->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	for( pNs = pNode->nsDef ; pNs ; pNs = pNs->next ){
+		if( DomCacheHit(&(*pVm),pCache,pNs) ){
+			return 1;
+		}
+	}
+	return 0;
+}
+static void DomFreeDetached(ph7_vm *pVm,ph7_hashmap *pCache,phl_xmldoc *pShell,xmlNodePtr pNode);
+/*
+ * Is this handle's document still REGISTERED?
+ *
+ * At VM reset and release the whole registry goes first (vm_libxml.c frees every
+ * tree, its orphans and the shell itself) and the objects are torn down after.
+ * A wrapper released then must not free a node the shell already freed -- and
+ * must not read the shell to find out, which is why this compares pointers.
+ */
+static int DomShellLive(ph7_vm *pVm,const phl_xmldoc *pShell)
+{
+	const phl_xmldoc *pCur;
+	for( pCur = (const phl_xmldoc *)pVm->pXmlDocs ; pCur ; pCur = pCur->pNext ){
+		if( pCur == pShell ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * One child or attribute list of a node that is going. php's own rule
+ * (php_libxml_node_free_list): a descendant PHP still holds a wrapper for is
+ * UNLINKED and kept -- which is what makes `$child->parentNode` null once the
+ * parent object goes -- and freed later by its own release.
+ */
+static void DomFreeChildList(ph7_vm *pVm,ph7_hashmap *pCache,phl_xmldoc *pShell,
+	xmlNodePtr pList)
+{
+	xmlNodePtr pCur = pList,pNext;
+	while( pCur ){
+		pNext = pCur->next;
+		if( !DomNodeIsFreeable(pCur) ){
+			/* A declaration or a DTD: libxml's own free owns it, so it stays
+			 * linked and goes with the parent. */
+			pCur = pNext;
+			continue;
+		}
+		xmlUnlinkNode(pCur);
+		if( pCur->_private ){
+			DomOrphanAdd(pShell,pCur);   /* held: the document owns it until then */
+		}else{
+			DomFreeDetached(&(*pVm),pCache,pShell,pCur);
+		}
+		pCur = pNext;
+	}
+}
+/* Free a node with no parent, and everything under it nothing else holds. */
+static void DomFreeDetached(ph7_vm *pVm,ph7_hashmap *pCache,phl_xmldoc *pShell,
+	xmlNodePtr pNode)
+{
+	if( pNode == 0 ){
+		return;
+	}
+	if( !DomNodeIsFreeable(pNode) ){
+		/* A DTD, a declaration inside one, or one of the synthesized notation
+		 * stand-ins: the document owns each of those by another route, and
+		 * parking one on the orphan set would free it twice. */
+		return;
+	}
+	if( DomNodeNsHeld(&(*pVm),pCache,pNode) ){
+		DomOrphanAdd(pShell,pNode);
+		return;
+	}
+	/* An entity reference's children are the ENTITY's content and not its own;
+	 * libxml's own free walks past them for the same reason. */
+	if( pNode->type != XML_ENTITY_REF_NODE ){
+		DomFreeChildList(&(*pVm),pCache,pShell,pNode->children);
+	}
+	/* `properties` and `nsDef` live past an xmlAttr's end: elements only. */
+	if( pNode->type == XML_ELEMENT_NODE ){
+		DomFreeChildList(&(*pVm),pCache,pShell,(xmlNodePtr)pNode->properties);
+	}
+	DomOrphanRemove(pShell,pNode);
+	xmlFreeNode(pNode);
+}
+/*
+ * ph7_class::xRelease for every node class -- php's dom_object free.
+ *
+ * Two things happen when the last PHP reference to a wrapper goes. The
+ * document's identity cache holds a BORROWED pointer to it, so this is the only
+ * place that entry can be dropped, and it must be: the next node libxml puts at
+ * the same address would otherwise answer a dead object. And a node with no
+ * PARENT is this object's to free, as it is php's -- an attached one belongs to
+ * the tree and is never touched.
+ */
+static void DomNodeRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pVal = PH7_NativeAttr(pThis,DOM_RES);
+	phl_domnode *pNd = pVal && (pVal->iFlags & MEMOBJ_RES)
+		? (phl_domnode *)pVal->x.pOther : 0;
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	ph7_hashmap *pCache;
+	if( pNd == 0 ){
+		return;
+	}
+	pCache = DomCache(&(*pVm),PH7_NativeAttrObj(pThis,DOM_DOC));
+	if( pNode && DomShellLive(&(*pVm),pNd->pShell) && DomNodeHeldBy(pNode,pThis) ){
+		ph7_hashmap_node *pEntry = 0;
+		ph7_value sKey;
+		if( pNode->type != XML_NOTATION_NODE ){
+			pNode->_private = 0;
+		}
+		PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);
+		if( pCache && PH7_HashmapLookup(pCache,&sKey,&pEntry) == SXRET_OK && pEntry ){
+			ph7_value *pHit = HashmapExtractNodeValue(pEntry);
+			/* ...only when the entry is still THIS object. A document that has
+			 * been repointed (loadXML) drops its cache, and a node of the new
+			 * tree can land on the address a surviving old wrapper names. */
+			if( pHit && (pHit->iFlags & MEMOBJ_INT)
+			 && (ph7_class_instance *)(sxuptr)pHit->x.iVal == pThis ){
+				PH7_HashmapUnlinkNode(pEntry,TRUE);
+			}
+		}
+		PH7_MemObjRelease(&sKey);
+		/* A namespace handle is the document's and shared, so the nsDef screen
+		 * inside the walk needs a cache to read: with none, nothing is freed. */
+		if( pCache && pNode != (xmlNodePtr)pNd->pShell->pDoc && pNode->parent == 0 ){
+			DomFreeDetached(&(*pVm),pCache,pNd->pShell,pNode);
+		}
+	}
+	SyMemBackendFree(&pVm->sAllocator,pNd);
+	pVal->x.pOther = 0;
+	MemObjSetType(pVal,MEMOBJ_NULL);
 }
 /* Raw child-list splicing (no text-node merging -- DOM/php semantics) */
 static void DomLinkLast(xmlNodePtr pParent,xmlNodePtr pChild)
@@ -2349,7 +2568,7 @@ DOM_METHOD(vm_builtin_DOMNode_cloneNode)
 	return DomResultNodeOf(pCtx,pNd,pCopy);
 }
 /* Enter one wrapper into a holder's identity cache, keyed by the node pointer.
- * The cache takes its OWN reference; the caller keeps whatever it holds. */
+ * BORROWED, like every entry: the object's own release takes it back out. */
 static void DomCacheStore(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode,
 	ph7_class_instance *pObj)
 {
@@ -2359,11 +2578,10 @@ static void DomCacheStore(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode,
 		return;
 	}
 	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);
-	PH7_MemObjInit(&(*pVm),&sVal);
-	sVal.x.pOther = pObj;
-	sVal.iFlags = MEMOBJ_OBJ;
+	PH7_MemObjInitFromInt(&(*pVm),&sVal,(sxi64)(sxuptr)pObj);
 	PH7_HashmapInsert(pCache,&sKey,&sVal);
 	PH7_MemObjRelease(&sKey);
+	DomNodeMarkHeld(pNode,pObj);
 }
 /* Empty a slot the instance copied from its clone source: the null value. */
 static void DomSetSlotNull(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxu32 nName)
@@ -3444,7 +3662,13 @@ static ph7_class_instance * DomNewNsNode(ph7_vm *pVm,ph7_class_instance *pDoc,
 	}
 	DomSetRes(&(*pVm),pObj,pRes);
 	PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_DOC,pDoc);
-	PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_NS_OWNER,DomWrap(&(*pVm),pDoc,pShell,pElem));
+	{
+		ph7_class_instance *pOwn = DomWrap(&(*pVm),pDoc,pShell,pElem);
+		PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_NS_OWNER,pOwn);
+		if( pOwn ){
+			PH7_ClassInstanceUnref(pOwn);   /* the slot took its own */
+		}
+	}
 	return pObj;   /* the CALLER owns this reference */
 }
 /* Answer one from a native method (php hands back a fresh object every time). */
@@ -5291,8 +5515,8 @@ DOM_METHOD(vm_builtin_DOMDocument_importNode)
  * node, and its place in a document's identity cache is what makes
  * `$doc->documentElement === $doc->documentElement` true. All three move.
  *
- * The target cache takes its reference BEFORE the source lets go, so the object
- * cannot be freed in between.
+ * Both entries are borrowed pointers, so the move is two edits and no
+ * reference changes hands.
  */
 static void DomAdoptWrapper(ph7_vm *pVm,ph7_hashmap *pFrom,ph7_hashmap *pTo,
 	ph7_class_instance *pDstDoc,phl_xmldoc *pDstShell,xmlNodePtr pNode)
@@ -5306,13 +5530,12 @@ static void DomAdoptWrapper(ph7_vm *pVm,ph7_hashmap *pFrom,ph7_hashmap *pTo,
 		return;   /* PHP never asked for this node: nothing to move */
 	}
 	pHit = HashmapExtractNodeValue(pEntry);
-	pObj = (pHit && (pHit->iFlags & MEMOBJ_OBJ)) ? (ph7_class_instance *)pHit->x.pOther : 0;
+	pObj = (pHit && (pHit->iFlags & MEMOBJ_INT))
+		? (ph7_class_instance *)(sxuptr)pHit->x.iVal : 0;
 	if( pObj ){
 		phl_domnode *pRes = DomResOf(pObj);
 		ph7_value sVal;
-		PH7_MemObjInit(&(*pVm),&sVal);
-		sVal.x.pOther = pObj;
-		sVal.iFlags = MEMOBJ_OBJ;
+		PH7_MemObjInitFromInt(&(*pVm),&sVal,(sxi64)(sxuptr)pObj);
 		PH7_HashmapInsert(pTo,&sKey,&sVal);
 		if( pRes ){
 			pRes->pShell = pDstShell;
@@ -6362,8 +6585,11 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
 		if( pHit && (pHit->iFlags & MEMOBJ_OBJ) ){
 			/* A namespace:: axis entry holds the DOMNameSpaceNode ITSELF (a
 			 * fresh object per query, one object per list -- php's answer);
-			 * the snapshot owns it, so this stays a borrow like DomWrap's. */
-			return (ph7_class_instance *)pHit->x.pOther;
+			 * the snapshot owns it, so this one is borrowed and referenced
+			 * here to answer with the same contract DomWrap's does. */
+			ph7_class_instance *pNs = (ph7_class_instance *)pHit->x.pOther;
+			pNs->iRef++;
+			return pNs;
 		}
 		pRes = (pHit && (pHit->iFlags & MEMOBJ_RES)) ? (phl_domnode *)pHit->x.pOther : 0;
 		return pRes ? DomWrap(&(*pVm),pDoc,pRes->pShell,(xmlNodePtr)pRes->pNode) : 0;
@@ -6453,7 +6679,7 @@ DOM_METHOD(vm_builtin_DOMNodeList_item)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	return DomResultWrap(pCtx,DomListItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
+	return DomResultOwned(pCtx,DomListItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
 }
 /* php exposes `length` on both collections as a virtual property; the
  * property HOOK below turns each recognizer into php's read and has handlers. */
@@ -6628,7 +6854,7 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_item)
 			"DOMNamedNodeMap::item(): Argument #1 ($index) must be between 0 and %d",
 			DOM_INDEX_MAX);
 	}
-	return DomResultWrap(pCtx,DomMapItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
+	return DomResultOwned(pCtx,DomMapItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
 }
 /*
  * The by-NAME lookup, which `getNamedItem()` and the `$map['href']` subscript
@@ -6660,7 +6886,7 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItem)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	return DomResultWrap(pCtx,DomMapNamed(pCtx->pVm,pThis,zName));
+	return DomResultOwned(pCtx,DomMapNamed(pCtx->pVm,pThis,zName));
 }
 /* DOMNamedNodeMap::getNamedItemNS(?string $namespace, string $localName): ?DOMNode */
 DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
@@ -6686,7 +6912,7 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	return DomResultWrap(pCtx,DomWrap(pCtx->pVm,PH7_NativeAttrObj(pThis,DOM_DOC),
+	return DomResultOwned(pCtx,DomWrap(pCtx->pVm,PH7_NativeAttrObj(pThis,DOM_DOC),
 		pOwner->pShell,pHit));
 }
 static int DomMapProp(ph7_context *pCtx,const char *zName)
@@ -6746,22 +6972,27 @@ static int DomDimClassify(ph7_vm *pVm,ph7_value *pOffset,ph7_value *pScratch,sxi
 	return 0;
 }
 /* Hand the hook's answer back: the node, or nothing at all for a miss (which
- * the caller initialized NULL, and which isset() reads as false). */
+ * the caller initialized NULL, and which isset() reads as false). Consumes the
+ * reference DomWrap handed the caller. */
 static void DomDimAnswer(ph7_vm *pVm,PH7_NativeDimCtx *pCtx,ph7_class_instance *pHit)
 {
 	ph7_value sVal;
 	if( pCtx->iMode == PH7_NATIVE_DIM_ISSET ){
 		pCtx->pResult->x.iVal = pHit ? 1 : 0;
 		MemObjSetType(pCtx->pResult,MEMOBJ_BOOL);
+		if( pHit ){
+			PH7_ClassInstanceUnref(pHit);
+		}
 		return;
 	}
 	if( pHit == 0 ){
 		return;
 	}
 	PH7_MemObjInit(&(*pVm),&sVal);
-	sVal.x.pOther = pHit;      /* borrowed, like every DomWrap answer */
+	sVal.x.pOther = pHit;
 	sVal.iFlags = MEMOBJ_OBJ;
 	PH7_MemObjStore(&sVal,pCtx->pResult);   /* takes its own reference */
+	PH7_ClassInstanceUnref(pHit);           /* ...and ours goes back */
 }
 /* php's refusal for the keyless `$list[]` spelling, which reaches the handler
  * with no offset at all. */
@@ -6847,7 +7078,8 @@ static void DomIterSettle(ph7_vm *pVm,ph7_class_instance *pIt,int bNamed)
 		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 		return;
 	}
-	PH7_NativeSetAttrObj(&(*pVm),pIt,PH7_NATIVE_IT_CUR,pCur);  /* borrowed: no unref */
+	PH7_NativeSetAttrObj(&(*pVm),pIt,PH7_NATIVE_IT_CUR,pCur);
+	PH7_ClassInstanceUnref(pCur);   /* the slot took its own; pCur lives on it */
 	if( bNamed ){
 		phl_domnode *pNd = DomResOf(pCur);
 		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
@@ -7150,9 +7382,10 @@ static void DomXPathArgToValue(DomXPathFnCtx *pFn,xmlXPathObjectPtr pArg,int bAs
 				continue;
 			}
 			PH7_MemObjInit(pVm,&sElem);
-			sElem.x.pOther = pObj;   /* BORROWED from the cache; the insert refs it */
+			sElem.x.pOther = pObj;
 			sElem.iFlags = MEMOBJ_OBJ;
-			ph7_array_add_elem(pOut,0,&sElem);
+			ph7_array_add_elem(pOut,0,&sElem);   /* takes its own reference */
+			PH7_ClassInstanceUnref(pObj);        /* ...and ours goes back */
 		}
 		return;
 	}
@@ -10910,6 +11143,20 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",sizeof("DOMDocument")-1,FALSE,0);
 		if( pClass ){
 			pClass->xClone = DomInstanceCloneDoc;
+		}
+		/* And the teardown hook (ph7_class::xRelease), on the same rows for the
+		 * same reason: the document's identity cache borrows its wrappers, so
+		 * each node class has to take its own entry back out and free the
+		 * libxml node it was the last holder of. DOMDocument keeps its own,
+		 * which forgets the tree's back-pointer instead; DOMNameSpaceNode is
+		 * not a node class here (it is not a DOMNode in php either) and its
+		 * handle is the document's, shared. */
+		for( n = 0 ; n < SX_ARRAYSIZE(azNodeClone) ; ++n ){
+			pClass = PH7_VmExtractClass(&(*pVm),azNodeClone[n],
+				(sxu32)SyStrlen(azNodeClone[n]),FALSE,0);
+			if( pClass ){
+				pClass->xRelease = DomNodeRelease;
+			}
 		}
 		/* The dimension handlers (ph7_class::xDim, php's read_dimension /
 		 * has_dimension), assigned here for the same reason the clone hook is:
