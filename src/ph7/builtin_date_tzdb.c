@@ -700,6 +700,104 @@ PH7_PRIVATE int PH7_TzOffsetAt(int iZone,sxi64 iTs,sxi32 *piOff,int *pbDst,
 	return 1;
 }
 
+/* --- Transitions, one row at a time --------------------------------------- *
+ *
+ * getTransitions() wants the SWITCHES themselves rather than the offset at an
+ * instant, and its range may run past the last one a file carries, so it reads
+ * through two doors: the transition table for the explicit rows, and the
+ * footer rule for everything after them.
+ */
+
+/* How many explicit transitions zone iZone's block carries. */
+PH7_PRIVATE int PH7_TzTransCount(int iZone)
+{
+	tz_block sB;
+	if( !TzBlock(iZone,&sB) ){
+		return 0;
+	}
+	return (int)sB.nTime;
+}
+
+/* Row i of that table, 0-based, in the file's own order. */
+PH7_PRIVATE int PH7_TzTransAt(int iZone,int i,sxi64 *piTs,sxi32 *piOff,int *pbDst,
+	const char **pzAbbr,int *pnAbbr)
+{
+	tz_block sB;
+	sxu32 iType;
+	if( !TzBlock(iZone,&sB) || i < 0 || (sxu32)i >= sB.nTime ){
+		return 0;
+	}
+	iType = sB.aIdx[i];
+	if( iType >= sB.nType ){
+		iType = 0;
+	}
+	*piTs  = TzI64(sB.aTime + (sxu32)i * 8);
+	*piOff = TzI32(sB.aType + iType * 6);
+	*pbDst = sB.aType[iType * 6 + 4] != 0;
+	TzAbbr(&sB,iType,pzAbbr,pnAbbr);
+	return 1;
+}
+
+/*
+ * The first switch the FOOTER names strictly after iTs. The files stop in 2037,
+ * so a range running past them is answered from the rule instead: each year
+ * names two instants, and a caller walks this door until one lands beyond the
+ * end of what it was asked for.
+ *
+ * A zone whose footer carries no DST part -- `Asia/Tokyo` -- never switches
+ * again and says so with 0, which is also what a malformed or absent footer
+ * answers. Both are the caller's signal to stop.
+ */
+PH7_PRIVATE int PH7_TzTransNextPosix(int iZone,sxi64 iTs,sxi64 *piTs,sxi32 *piOff,
+	int *pbDst,const char **pzAbbr,int *pnAbbr)
+{
+	tz_block sB;
+	tz_posix sP;
+	sxi64 y,iBest = 0;
+	int m,d,i,bFound = 0;
+	if( !TzBlock(iZone,&sB) || sB.zPosix == 0
+	 || !TzPosixParse(sB.zPosix,sB.nPosix,&sP) || !sP.bHasDst ){
+		return 0;
+	}
+	/* Bounded before any arithmetic: the year is multiplied back up to seconds
+	 * below, and a caller walking towards PHP_INT_MAX would otherwise overflow
+	 * every term. Refusing is the same "no more switches" the caller already
+	 * handles. */
+	if( iTs > (sxi64)0x0FFFFFFFFFFFFFFF || iTs < -(sxi64)0x0FFFFFFFFFFFFFFF ){
+		return 0;
+	}
+	DtCivilFromDays(DtFloorDiv(iTs + sP.iStd,86400),&y,&m,&d);
+	if( y < -9999999 || y > 9999999 ){
+		return 0;
+	}
+	/* Both instants are LOCAL readings converted with the offset in force just
+	 * before each -- the pairing TzPosixAt() makes -- and the year iTs falls in
+	 * can name one that is already behind it, so this takes the smallest of the
+	 * two that is genuinely ahead and rolls into the next year when neither is.
+	 * A southern-hemisphere rule, whose two are in the other order, needs no
+	 * special case under a plain minimum. */
+	for( i = 0 ; i < 3 && !bFound ; ++i ){
+		sxi64 aCand[2];
+		int j;
+		aCand[0] = TzRuleInstant(sP.eStartKind,sP.iStartM,sP.iStartW,sP.iStartD,
+			sP.iStartSec,y + i) - sP.iStd;
+		aCand[1] = TzRuleInstant(sP.eEndKind,sP.iEndM,sP.iEndW,sP.iEndD,
+			sP.iEndSec,y + i) - sP.iDst;
+		for( j = 0 ; j < 2 ; ++j ){
+			if( aCand[j] > iTs && (!bFound || aCand[j] < iBest) ){
+				iBest = aCand[j];
+				bFound = 1;
+			}
+		}
+	}
+	if( !bFound ){
+		return 0;
+	}
+	TzPosixAt(&sP,iBest,piOff,pbDst,pzAbbr,pnAbbr);
+	*piTs = iBest;
+	return 1;
+}
+
 /*
  * The instant a WALL CLOCK reading names. iLocal is the reading expressed as if
  * it were UT, which is the shape every date parser here already produces.

@@ -5088,6 +5088,179 @@ static int vm_builtin_DateTimeZone_getOffset(ph7_context *pCtx,int nArg,ph7_valu
 			(ph7_class_instance *)apArg[0]->x.pOther : 0);
 	return PH7_OK;
 }
+/*
+ * DateTimeZone::getTransitions() and its timezone_transitions_get() twin.
+ *
+ * php answers FALSE for anything that is not a DATABASE zone. A fixed offset
+ * and an abbreviation each name one clock for all time, and php declines to
+ * describe that as a transition list rather than answering a one-row one -- so
+ * `(new DateTimeZone('+02:00'))->getTransitions()` and the same call on `CET`,
+ * which is an abbreviation here and never observes daylight time, are both
+ * `false` where `UTC` is an identifier and answers a single row.
+ *
+ * The FIRST row is synthesized at the range's start and is not a switch: it is
+ * what the clock was already doing when the range opened, which is why its `ts`
+ * is the caller's own bound and why a range that opens exactly ON a transition
+ * shows that transition once rather than twice.
+ *
+ * THE TWO BOUNDS ARE NOT SYMMETRIC, and both halves had to be measured:
+ *
+ *   the begin is EXCLUSIVE   a transition exactly at it is the synthesized row
+ *                            and is not repeated.
+ *   the end is EXCLUSIVE too a transition exactly at it is left out, so
+ *                            `getTransitions($t, $x)` and `getTransitions($t,
+ *                            $x + 1)` differ when a switch lands on `$x`.
+ *
+ * And the end DEFAULTS to 2147483647 rather than to PHP_INT_MAX -- timelib's
+ * 32-bit horizon, still visible in php 8.5. That one constant is why a
+ * no-argument call stops in 2037 for the American zones while an explicit end
+ * past 2038 keeps generating from the POSIX footer, and why php's own call with
+ * an explicit PHP_INT_MAX runs until it exhausts memory. Read as "the default
+ * is unbounded" it looks instead like the walk refuses to extrapolate, which is
+ * a rule that holds on every zone whose data happens to end before 2038 and
+ * fails on the ones that do not.
+ */
+#ifdef PH7_ENABLE_TZDB
+static int DtTransRow(ph7_context *pCtx,ph7_value *pArray,ph7_value *pVal,
+	sxi64 iTs,sxi32 iOff,int bDst,const char *zAbbr,int nAbbr)
+{
+	ph7_value *pRow = ph7_context_new_array(pCtx);
+	sxi64 y;
+	int m,d,nSec;
+	char zBuf[64];
+	int nBuf;
+	if( pRow == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* The seconds of the day as a FLOORED remainder, taken without ever
+	 * rebuilding the day in seconds: the nominal first row sits at PHP_INT_MIN,
+	 * and `iTs - iDay * 86400` overflows there long before it can be
+	 * subtracted. `%` cannot overflow for this divisor, and the correction
+	 * turns C's truncation towards zero into the floor the date wants. */
+	nSec = (int)(iTs % 86400);
+	if( nSec < 0 ){
+		nSec += 86400;
+	}
+	DtCivilFromDays(DtFloorDiv(iTs,86400),&y,&m,&d);
+	/* Always spelled in UT -- the `+00:00` is a constant, not the zone's own
+	 * offset, so the row carries the instant twice and the offset once. */
+	nBuf = (int)SyBufferFormat(zBuf,sizeof(zBuf),
+		"%04qd-%02d-%02dT%02d:%02d:%02d+00:00",
+		y,m,d,nSec / 3600,(nSec / 60) % 60,nSec % 60);
+	ph7_value_int64(pVal,iTs);
+	ph7_array_add_strkey_elem(pRow,"ts",pVal);
+	ph7_value_string(pVal,zBuf,nBuf);
+	ph7_array_add_strkey_elem(pRow,"time",pVal);
+	ph7_value_reset_string_cursor(pVal);
+	ph7_value_int64(pVal,iOff);
+	ph7_array_add_strkey_elem(pRow,"offset",pVal);
+	ph7_value_bool(pVal,bDst);
+	ph7_array_add_strkey_elem(pRow,"isdst",pVal);
+	ph7_value_string(pVal,zAbbr,nAbbr);
+	ph7_array_add_strkey_elem(pRow,"abbr",pVal);
+	ph7_value_reset_string_cursor(pVal);
+	ph7_array_add_elem(pArray,0,pRow);
+	/* The parent took a copy, so the row goes back to the context rather than
+	 * being held for the length of a walk that can run to hundreds of rows. */
+	ph7_context_release_value(pCtx,pRow);
+	return PH7_OK;
+}
+#endif /* PH7_ENABLE_TZDB */
+static int DtZoneTransitionsResult(ph7_context *pCtx,ph7_class_instance *pZone,
+	sxi64 iBegin,sxi64 iEnd)
+{
+	int iTz = DtTzIndexOf(pZone,DTZ_NAME,DTZ_KIND);
+#ifdef PH7_ENABLE_TZDB
+	if( iTz < 0 ){
+		const char *zName;
+		int nName;
+		PH7_NativeAttrStr(pZone,DTZ_NAME,&zName,&nName);
+		/* `UTC` is an IDENTIFIER, and php describes it like any other -- one
+		 * row, no switches. DtTzIndex() excludes it from the table only to keep
+		 * the fixed-offset path every other door is tested on, and that
+		 * exclusion is wrong for this one question. An abbreviation stays out:
+		 * `CET` is a fixed +01:00 here, not the file of that name, so it keeps
+		 * the `false` php gives it. */
+		if( DtZoneKindOf(pZone,DTZ_KIND,zName,nName) == DT_ZONE_ID ){
+			iTz = PH7_TzFind(zName,nName);
+		}
+	}
+#endif
+	if( iTz < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+#ifdef PH7_ENABLE_TZDB
+	{
+		ph7_value *pArray = ph7_context_new_array(pCtx);
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		sxi64 iTs = 0,iLast = iBegin,iFileEnd = iBegin;
+		sxi32 iOff = 0;
+		int bDst = 0,nAbbr = 0,i,nTrans;
+		const char *zAbbr = "";
+		if( pArray == 0 || pVal == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( PH7_TzOffsetAt(iTz,iBegin,&iOff,&bDst,&zAbbr,&nAbbr) ){
+			DtTransRow(pCtx,pArray,pVal,iBegin,iOff,bDst,zAbbr,nAbbr);
+		}
+		nTrans = PH7_TzTransCount(iTz);
+		for( i = 0 ; i < nTrans ; ++i ){
+			if( !PH7_TzTransAt(iTz,i,&iTs,&iOff,&bDst,&zAbbr,&nAbbr) ){
+				break;
+			}
+			iFileEnd = iTs;
+			if( iTs <= iBegin ){
+				continue;
+			}
+			if( iTs >= iEnd ){
+				/* The file has more rows, and iFileEnd must name the LAST of
+				 * them rather than the one this range stopped on: it is the
+				 * boundary the footer takes over at, not a position in the
+				 * walk. */
+				if( PH7_TzTransAt(iTz,nTrans - 1,&iTs,&iOff,&bDst,&zAbbr,&nAbbr) ){
+					iFileEnd = iTs;
+				}
+				break;
+			}
+			DtTransRow(pCtx,pArray,pVal,iTs,iOff,bDst,zAbbr,nAbbr);
+			iLast = iTs;
+		}
+		/* The footer governs only what comes AFTER the file's last row, so the
+		 * walk is seeded there rather than at the last row EMITTED. Seeded at
+		 * the latter it would re-derive from the rule inside territory the file
+		 * already describes, and answer the CURRENT switch dates for years that
+		 * ran on older ones -- an extra November row in 2004, and a decade of
+		 * invented ones in 1900. */
+		if( iLast < iFileEnd ){
+			iLast = iFileEnd;
+		}
+		while( PH7_TzTransNextPosix(iTz,iLast,&iTs,&iOff,&bDst,&zAbbr,&nAbbr) ){
+			if( iTs >= iEnd ){
+				break;
+			}
+			DtTransRow(pCtx,pArray,pVal,iTs,iOff,bDst,zAbbr,nAbbr);
+			iLast = iTs;
+		}
+		ph7_result_value(pCtx,pArray);
+	}
+#else
+	SXUNUSED(iBegin);
+	SXUNUSED(iEnd);
+#endif
+	return PH7_OK;
+}
+/* DateTimeZone::getTransitions(int $timestampBegin = PHP_INT_MIN, int $timestampEnd = 2147483647) */
+static int vm_builtin_DateTimeZone_getTransitions(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	return DtZoneTransitionsResult(pCtx,pThis,
+		nArg > 0 ? ph7_value_to_int64(apArg[0]) : (-(sxi64)0x7FFFFFFFFFFFFFFF - 1),
+		nArg > 1 ? ph7_value_to_int64(apArg[1]) : (sxi64)0x7FFFFFFF);
+}
 /* DateTime::__construct(string $datetime = 'now', ?DateTimeZone $timezone = null) */
 static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -7426,6 +7599,17 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	return PH7_OK;
 }
+static int vm_builtin_timezone_transitions_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
+	if( pObj == 0 ){
+		return PH7_OK;
+	}
+	/* The zone shifts every argument along by one. */
+	return DtZoneTransitionsResult(pCtx,pObj,
+		nArg > 1 ? ph7_value_to_int64(apArg[1]) : (-(sxi64)0x7FFFFFFFFFFFFFFF - 1),
+		nArg > 2 ? ph7_value_to_int64(apArg[2]) : (sxi64)0x7FFFFFFF);
+}
 /*
  * The four private slots a date object keeps its state in. Both classes declare
  * them: `trait __DtCoreT` had no native equivalent, and replaying the table is
@@ -8543,6 +8727,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "listIdentifiers", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "int $timezoneGroup = 2047, ?string $countryCode = null", "@array",
 		  vm_builtin_DateTimeZone_listIdentifiers },
+		{ "getTransitions", PH7_MOD_PUBLIC,
+		  "int $timestampBegin = 0, int $timestampEnd = 2147483647", "@array",
+		  vm_builtin_DateTimeZone_getTransitions },
 	};
 	/* php's group bitmask. ALL and ALL_WITH_BC are the two the reader compares
 	 * EXACTLY rather than masking (see DtZoneListResult). */
@@ -8742,6 +8929,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "timezone_name_get",            vm_builtin_timezone_name_get },
 		{ "timezone_offset_get",          vm_builtin_timezone_offset_get },
 		{ "timezone_identifiers_list",    vm_builtin_timezone_identifiers_list },
+		{ "timezone_transitions_get",     vm_builtin_timezone_transitions_get },
 	};
 	sxu32 n;
 	sxi32 rc;
