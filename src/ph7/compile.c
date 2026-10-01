@@ -4913,6 +4913,35 @@ static sxi32 PH7_CompilePHP(
 			pGen->bChunkAtEof = 0;
 		}
 		for( pTok = pGen->pIn ; pTok < pGen->pEnd ; pTok++ ){
+			if( pTok->nType & PH7_TK_ALIAS_CAST ){
+				/* php 8.5 announces the four alias SPELLINGS -- (integer), (boolean),
+				 * (double), (binary) -- from its SCANNER, not from the compiler: the
+				 * sentence comes out for `strlen(integer)`, where the token is never a
+				 * cast at all, and it comes out ahead of a parse error further down the
+				 * file. It is one line per OCCURRENCE in the source, not per execution:
+				 * a cast inside a function nobody calls still announces itself, and one
+				 * inside a loop announces itself once. Nothing about the cast changes --
+				 * the spelling is what is deprecated -- so this only reports, and the
+				 * walk carries on to the rest of the chunk.
+				 *
+				 * Each of the four is the only alias of its target, so the canonical
+				 * token text the lexer left behind names both halves of the sentence. */
+				static const struct { const char *zCanon; int nCanon; const char *zAlias; } aAlias[] = {
+					{ "(int)",    5, "integer" }, { "(bool)",   6, "boolean" },
+					{ "(float)",  7, "double"  }, { "(string)", 8, "binary"  }
+				};
+				sxu32 i;
+				for( i = 0 ; i < SX_ARRAYSIZE(aAlias) ; ++i ){
+					if( pTok->sData.nByte == (sxu32)aAlias[i].nCanon
+					 && SyMemcmp((const void *)pTok->sData.zString,
+					             (const void *)aAlias[i].zCanon,pTok->sData.nByte) == 0 ){
+						PH7_GenCompileError(pGen,8192 /* E_DEPRECATED */,pTok->nLine,
+							"Non-canonical cast (%s) is deprecated, use the %s cast instead",
+							aAlias[i].zAlias,aAlias[i].zCanon);
+						break;
+					}
+				}
+			}
 			if( (pTok->nType & PH7_TK_OP) && pTok->sData.nByte == sizeof("(real)")-1
 			 && SyMemcmp((const void *)pTok->sData.zString,(const void *)"(real)",sizeof("(real)")-1) == 0 ){
 				return PH7_GenCompileError(pGen,E_PARSE,pTok->nLine,
@@ -5654,11 +5683,23 @@ PH7_PRIVATE void PH7_GenAppendFatalTrace(ph7_vm *pVm,SyBlob *pOut,int iTraceKind
 PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...)
 {
 	SyBlob *pWorker = &pGen->sErrBuf;
+	SyBlob sLocal;
+	int bLocal = 0;
 	const char *zErr = "Error";
 	SyString *pFile;
 	va_list ap;
 	sxu32 nBare = 0;
 	sxi32 rc;
+	if( pGen->xErr == 0 && nErrType != E_ERROR && nErrType != E_PARSE ){
+		/* Nobody is logging -- an eval()'d chunk -- and this is NOT a refusal. The
+		 * generator's buffer is that chunk's one-message store, holding the text a
+		 * ParseError will carry, so a deprecation or a warning must neither displace
+		 * it nor append to it. php still prints these from inside an eval, so build
+		 * the sentence somewhere of our own and emit it. */
+		SyBlobInit(&sLocal,&pGen->pVm->sAllocator);
+		pWorker = &sLocal;
+		bLocal = 1;
+	}
 	/* Reset the working buffer. NOT when nobody is logging: there the buffer is a
 	 * one-message store eval() reads its ParseError text out of, and php stops at
 	 * the FIRST error where this generator carries on to a budget of fifteen -- so
@@ -5711,7 +5752,7 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		 * The caller (VmEvalChunk) raises it from sFirstErr. */
 		return SXRET_OK;
 	}
-	if( pGen->xErr == 0 ){
+	if( pGen->xErr == 0 && !bLocal ){
 		/* No consumer — but keep the BARE message in the error buffer so a caller
 		 * that needs the text can read it back. eval() compiles with logging off
 		 * (a parse error there is php's catchable ParseError, not a printed
@@ -5778,6 +5819,9 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		PH7_VmEmitCompileDiagnostic(pGen->pVm,iPhpErr,zErr,
 			(const char *)SyBlobData(pWorker),SyBlobLength(pWorker),
 			(const char *)SyBlobData(pWorker),nBare,nLine);
+	}
+	if( bLocal ){
+		SyBlobRelease(&sLocal);
 	}
 	return rc;
 }

@@ -49,18 +49,20 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken);
  *
  * Answers the CANONICAL spelling php reports the token by -- both aliases of a
  * pair report the primary name -- or 0 when this is an ordinary parenthesis.
+ * `*pbAlias` says whether the source spelled one of the four NON-CANONICAL names
+ * php 8.5 deprecates, which the canonical text on its own can no longer tell.
  */
 static const char * LexCastToken(const unsigned char *zIn,const unsigned char *zEnd,
-	const unsigned char **pzNext)
+	const unsigned char **pzNext,int *pbAlias)
 {
-	static const struct { const char *zName; int nName; const char *zCanon; } aCast[] = {
-		{ "int",     3, "(int)"    }, { "integer", 7, "(int)"    },
-		{ "bool",    4, "(bool)"   }, { "boolean", 7, "(bool)"   },
-		{ "float",   5, "(float)"  }, { "double",  6, "(float)"  },
-		{ "string",  6, "(string)" }, { "binary",  6, "(string)" },
-		{ "array",   5, "(array)"  }, { "object",  6, "(object)" },
-		{ "unset",   5, "(unset)"  }, { "real",    4, "(real)"   },
-		{ "void",    4, "(void)"   }
+	static const struct { const char *zName; int nName; const char *zCanon; int bAlias; } aCast[] = {
+		{ "int",     3, "(int)",    0 }, { "integer", 7, "(int)",    1 },
+		{ "bool",    4, "(bool)",   0 }, { "boolean", 7, "(bool)",   1 },
+		{ "float",   5, "(float)",  0 }, { "double",  6, "(float)",  1 },
+		{ "string",  6, "(string)", 0 }, { "binary",  6, "(string)", 1 },
+		{ "array",   5, "(array)",  0 }, { "object",  6, "(object)", 0 },
+		{ "unset",   5, "(unset)",  0 }, { "real",    4, "(real)",   0 },
+		{ "void",    4, "(void)",   0 }
 	};
 	const unsigned char *z = zIn,*zName;
 	sxu32 nName;
@@ -83,6 +85,7 @@ static const char * LexCastToken(const unsigned char *zIn,const unsigned char *z
 		if( nName == (sxu32)aCast[i].nName
 		 && SyStrnicmp((const char *)zName,aCast[i].zName,nName) == 0 ){
 			*pzNext = &z[1];
+			*pbAlias = aCast[i].bAlias;
 			return aCast[i].zCanon;
 		}
 	}
@@ -525,7 +528,8 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 			/* A type cast is recognised HERE, off the raw bytes, exactly as php's
 			 * scanner does it (LexCastToken above). */
 			const unsigned char *zNext = 0;
-			const char *zCanon = LexCastToken(pStream->zText,pStream->zEnd,&zNext);
+			int bAlias = 0;
+			const char *zCanon = LexCastToken(pStream->zText,pStream->zEnd,&zNext,&bAlias);
 			if( zCanon ){
 				pStream->zText = zNext;
 				SyStringInitFromBuf(&pToken->sData,zCanon,SyStrlen(zCanon));
@@ -536,6 +540,13 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 					pToken->pUserData = 0;
 				}else{
 					pToken->nType = PH7_TK_OP;
+					if( bAlias ){
+						/* php 8.5 deprecates the spelling, not the cast. Carry the fact to
+						 * the chunk's pre-scan, which announces it the way php's scanner
+						 * does -- ahead of the program, and ahead of a parse error further
+						 * down the file. */
+						pToken->nType |= PH7_TK_ALIAS_CAST;
+					}
 					pToken->pUserData = (void *)PH7_ExprExtractOperator(&pToken->sData,0);
 				}
 				return SXRET_OK;

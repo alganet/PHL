@@ -5237,6 +5237,13 @@ enum ph7_expr_id {
                                     * php's grammar has no place for one (`A \B`): php's scanner made it
                                     * ONE T_NAME_FULLY_QUALIFIED token and its parse error names it so.
                                     * The lexer takes the whole name into the token for that message. */
+#define PH7_TK_ALIAS_CAST 0x40000000 /* A cast written with one of php's four NON-CANONICAL spellings --
+                                      * (integer), (boolean), (double), (binary). The lexer hands the
+                                      * parser the canonical token text, so the alias is gone by the
+                                      * time anything downstream could report it; this bit is what
+                                      * remembers that the source said the other word, and the alias
+                                      * is recoverable from the canonical name because each of the
+                                      * four is the only alias of its target. */
 #define PH7_TK_MEMBER_NAME 0x4000000 /* Reserved word used as a member NAME right after -> / ?-> / ::
                                       * (Enum::Null, C::Array, $o->list()): a plain identifier, never
                                       * the literal value — GenStateLoadLiteral skips its value conversion. */
