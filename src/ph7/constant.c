@@ -642,6 +642,18 @@ static void PH7_E_RECOVERABLE_ERROR_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * E_STRICT
+ * Expands 2048. php 8.4 removed the error LEVEL but kept the constant, marked
+ * deprecated -- a program may still name it (and still gets 2048), it just says
+ * so. It is deliberately NOT part of E_ALL, which is why PH7_E_ALL_MASK is
+ * 30719 and not 32767.
+ */
+static void PH7_E_STRICT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,2048);
+	SXUNUSED(pUserData);
+}
+/*
  * E_DEPRECATED
  * Expands 8192
  */
@@ -3419,6 +3431,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"E_USER_ERROR",         PH7_E_USER_ERROR_Const    },
 	{"E_USER_WARNING",       PH7_E_USER_WARNING_Const  },
 	{"E_USER_NOTICE",        PH7_E_USER_NOTICE_Const   },
+	{"E_STRICT",             PH7_E_STRICT_Const        },
 	{"E_RECOVERABLE_ERROR",  PH7_E_RECOVERABLE_ERROR_Const  },
 	{"E_DEPRECATED",         PH7_E_DEPRECATED_Const    },
 	{"E_USER_DEPRECATED",    PH7_E_USER_DEPRECATED_Const  },
@@ -4031,6 +4044,7 @@ static const struct {
 	const char *zName;
 	const char *zWhy;
 } aDeprecatedConst[] = {
+	{ "E_STRICT",                "8.4, the error level was removed" },
 	{ "DATE_RFC7231",
 	  "8.5, as this format ignores the associated timezone and always uses GMT" },
 	{ "FILE_TEXT",               "8.1, as the constant has no effect" },

@@ -2,14 +2,14 @@
 A constant php deprecated the SYMBOL of says so when a program names it
 --FILE--
 <?php
-// Six of this engine's constants are ones php 8.x deprecated the SYMBOL of, and
-// five of them were SILENT: only MT_RAND_PHP announced itself, from a raise
-// hand-written into its own expander. They carry the mark now and the notice is
-// raised where every constant's is, so all six say what php says.
+// This engine's constants that php 8.x deprecated the SYMBOL of. Most were once
+// SILENT: only MT_RAND_PHP announced itself, from a raise hand-written into its
+// own expander. They carry the mark now and the notice is raised where every
+// constant's is, so each says what php says.
 $depcSeen = [];
 set_error_handler(function ($n, $s) use (&$depcSeen) { $depcSeen[] = "$n|$s"; return true; });
 foreach (['DATE_RFC7231', 'MT_RAND_PHP', 'FILE_TEXT', 'FILE_BINARY',
-          'DOM_PHP_ERR', 'PHP_EOL', 'SORT_STRING', 'M_PI'] as $depcName) {
+          'DOM_PHP_ERR', 'E_STRICT', 'PHP_EOL', 'SORT_STRING', 'M_PI'] as $depcName) {
     $depcBefore = count($depcSeen);
     if (!defined($depcName)) { echo $depcName, " ABSENT\n"; continue; }
     constant($depcName);
@@ -37,6 +37,7 @@ MT_RAND_PHP 8192|Constant MT_RAND_PHP is deprecated since 8.3, as it uses a bias
 FILE_TEXT 8192|Constant FILE_TEXT is deprecated since 8.1, as the constant has no effect
 FILE_BINARY 8192|Constant FILE_BINARY is deprecated since 8.1, as the constant has no effect
 DOM_PHP_ERR 8192|Constant DOM_PHP_ERR is deprecated since 8.4, as it is no longer used
+E_STRICT 8192|Constant E_STRICT is deprecated since 8.4, the error level was removed
 PHP_EOL (silent)
 SORT_STRING (silent)
 M_PI (silent)
