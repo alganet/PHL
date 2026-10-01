@@ -269,6 +269,13 @@ struct sock_private
 	void *pSsl;    /* SSL * */
 	void *pSslCtx; /* SSL_CTX *, one per stream: php builds a fresh context per
 	                * handle because every option below is per-connection. */
+	int iCryptoAccept; /* A LISTENING socket opened through a crypto transport
+	                    * carries the method its address named, because the
+	                    * handshake belongs to each connection it accepts and
+	                    * not to the listener -- which is why php's tls://
+	                    * server binds even with a `local_cert` that does not
+	                    * exist, and refuses the first accept instead. Zero on
+	                    * a plain listener and on every connected socket. */
 #endif
 };
 #endif
@@ -6201,6 +6208,7 @@ static io_private * SockWrapSocket(ph7_context *pCtx,ph7_socket sock,int bDgram,
 #if defined(PH7_ENABLE_OPENSSL)
 	pSock->pSsl = 0;
 	pSock->pSslCtx = 0;
+	pSock->iCryptoAccept = 0;
 #endif
 	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
 	/* php's feof() answers TRUE for a stream whose socket was never created. */
@@ -8031,14 +8039,22 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 		: (PH7_STREAM_SERVER_BIND|PH7_STREAM_SERVER_LISTEN);
 	rc = SockParseAddress(zAddr,nAddr,zHost,(int)sizeof(zHost),&iPort,&zTransport,&nTransport,
 		&zRest,&nRest,&bDgram,&iCrypto);
+#if defined(PH7_ENABLE_OPENSSL)
 	if( iCrypto != 0 ){
-		/* The crypto transports connect but do not yet LISTEN: a server side
-		 * negotiates on each accepted connection, needs `local_cert`, and is
-		 * its own piece of work. Until it exists a script asking for one is
-		 * told the transport is missing rather than handed a socket that would
-		 * speak plaintext to a peer expecting TLS. */
+		/* The listener itself is an ordinary bound TCP socket — php negotiates
+		 * per ACCEPTED connection, not here — so the transport only decides
+		 * which method each accept will hand the handshake. Dropping the client
+		 * bit is what turns the address's mask into the server one: php numbers
+		 * the two sides of a protocol as the same bits with and without it. */
+		iCrypto &= ~SOCK_CRYPTO_CLIENT;
+	}
+#else
+	if( iCrypto != 0 ){
+		/* No libssl under this build, so the address names a transport that is
+		 * genuinely not here. */
 		rc = SOCK_ADDR_TRANSPORT;
 	}
+#endif
 	if( (rc == SOCK_ADDR_PARSE || rc == SOCK_ADDR_IPV6)
 	 && (iFlags & PH7_STREAM_SERVER_BIND) == 0 ){
 		/* The server half of the same split: the bind() is what parses
@@ -8052,7 +8068,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 		char zMsg[512];
 		if( rc == SOCK_ADDR_TRANSPORT ){
 			/* php's own wording for a transport its build has not got, which is
-			 * what udp://, unix:// and ssl:// are here (recorded). */
+			 * what unix:// and udg:// are here (recorded). */
 			SyBufferFormat(zMsg,sizeof(zMsg),
 				"Unable to find the socket transport \"%.*s\" - did you forget to enable it when you configured PHP?",
 				nTransport,zTransport);
@@ -8144,6 +8160,9 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+#if defined(PH7_ENABLE_OPENSSL)
+	((sock_private *)pDev->pHandle)->iCryptoAccept = iCrypto;
+#endif
 	pDev->pCtxRes = (void *)pCtxRes;
 	StreamCtxHold(pCtxRes);
 	ph7_result_resource(pCtx,pDev);
@@ -8201,19 +8220,52 @@ PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( nArg > 2 ){
-		ph7_value *pTmp = ph7_context_new_scalar(pCtx);
-		if( pTmp ){
-			ph7_value_string(pTmp,zPeer,-1);
-			PH7_VmStoreArgByRef(pCtx->pVm,apArg[2],pTmp);
-		}
-	}
 	/* php reports no `uri` for an ACCEPTED connection: nothing opened it by
 	 * name, so stream_get_meta_data() has no address to answer with. */
 	pOut = SockWrapSocket(pCtx,sock,0,0,0);
 	if( pOut == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+#if defined(PH7_ENABLE_OPENSSL)
+	if( ((sock_private *)pDev->pHandle)->iCryptoAccept != 0 ){
+		/* A crypto listener negotiates HERE, once per connection, with the
+		 * method its address named — which is why php's tls:// server binds
+		 * happily on a `local_cert` that does not exist and refuses the first
+		 * accept instead. A handshake that fails is a failed ACCEPT: php answers
+		 * false and leaves `$peer_name` alone, so the connection is dropped
+		 * rather than handed back speaking plaintext. Run before the context is
+		 * attached below, so the abandoned handle owes it no reference. */
+		char zSslErr[512];
+		if( SockSslHandshake((sock_private *)pOut->pHandle,
+				((sock_private *)pDev->pHandle)->iCryptoAccept,
+				(phl_stream_ctx *)pDev->pCtxRes,0,zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
+			/* Two warnings, like php: the crypto layer says what went wrong and
+			 * the accept that asked then reports what it could not do. */
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zSslErr);
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Accept failed: Cannot enable crypto");
+			SockCloseWrapped(pCtx,pOut);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+#endif
+	/* The listener's context is the accepted connection's context, for a plain
+	 * tcp:// server as much as for a crypto one: php clones the ops AND the
+	 * context onto the new handle, which is why stream_context_get_options()
+	 * answers the same set on both ends of an accept, and why the `ssl` options
+	 * a tls:// listener was created with are the ones the handshake above
+	 * read. */
+	if( pDev->pCtxRes ){
+		pOut->pCtxRes = pDev->pCtxRes;
+		StreamCtxHold((phl_stream_ctx *)pOut->pCtxRes);
+	}
+	if( nArg > 2 ){
+		ph7_value *pTmp = ph7_context_new_scalar(pCtx);
+		if( pTmp ){
+			ph7_value_string(pTmp,zPeer,-1);
+			PH7_VmStoreArgByRef(pCtx->pVm,apArg[2],pTmp);
+		}
 	}
 	SockArmDefaultTimeout(pCtx,pOut);
 	ph7_result_resource(pCtx,pOut);
