@@ -397,6 +397,28 @@ function parse_env_section($phpt_env_text) {
     return $phpt_env;
 }
 
+// Caret-escape one cmd.exe metacharacter run for the Windows child command line.
+// Our popen() wraps the whole command as `cmd.exe /c "<cmd>"` and rewrites every
+// double quote as `^"`. Under the /c rule cmd strips the outer pair first, so
+// those `^"` are ESCAPED quotes: they reach the child as literal quote bytes for
+// its CRT to parse, but they never open a quoted region at cmd's own level. So a
+// `&`, `|`, `(` or `)` inside what looks like a quoted argument is still read by
+// cmd as a command separator, and the argument is torn in half before the child
+// ever sees it. Caret-escape them instead. `"` is deliberately NOT escaped here:
+// popen() owns that byte. `%` cannot be escaped with a caret at all, so a value
+// carrying one is beyond this path.
+function win_cmd_escape($phpt_text) {
+    $phpt_out = '';
+    for ($phpt_i = 0; $phpt_i < strlen($phpt_text); $phpt_i++) {
+        $phpt_ch = $phpt_text[$phpt_i];
+        if (strpos('^&|<>()', $phpt_ch) !== false) {
+            $phpt_out .= '^';
+        }
+        $phpt_out .= $phpt_ch;
+    }
+    return $phpt_out;
+}
+
 // Build the platform-appropriate command prefix that exports $env for a child
 // process (used for --ENV-- support). Values are quoted; keys are assumed sane.
 function build_env_prefix($phpt_env) {
@@ -408,7 +430,7 @@ function build_env_prefix($phpt_env) {
         if (PHP_OS === 'WINNT') {
             // set "KEY=VAL"&& — the quotes bound the value so a trailing space
             // before && is NOT captured into it (cmd.exe would otherwise keep it).
-            $phpt_prefix .= 'set "' . $phpt_env_key . '=' . $phpt_env_val . '"&& ';
+            $phpt_prefix .= 'set "' . $phpt_env_key . '=' . win_cmd_escape($phpt_env_val) . '"&& ';
         } else {
             $phpt_quoted = "'" . str_replace("'", "'\\''", $phpt_env_val) . "'";
             $phpt_prefix .= $phpt_env_key . '=' . $phpt_quoted . ' ';
@@ -431,7 +453,7 @@ function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = a
     foreach ($phpt_ini as $phpt_ini_key => $phpt_ini_val) {
         $phpt_ini_tok = $phpt_ini_key . '=' . $phpt_ini_val;
         if (PHP_OS === 'WINNT') {
-            $cmd .= ' -d "' . str_replace('"', '\\"', $phpt_ini_tok) . '"';
+            $cmd .= ' -d "' . win_cmd_escape(str_replace('"', '\\"', $phpt_ini_tok)) . '"';
         } else {
             $cmd .= ' -d ' . "'" . str_replace("'", "'\\''", $phpt_ini_tok) . "'";
         }

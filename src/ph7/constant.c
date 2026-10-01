@@ -3418,7 +3418,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"E_COMPILE_WARNING",    PH7_E_COMPILE_WARNING_Const  },
 	{"E_USER_ERROR",         PH7_E_USER_ERROR_Const    },
 	{"E_USER_WARNING",       PH7_E_USER_WARNING_Const  },
-	{"E_USER_NOTICE ",       PH7_E_USER_NOTICE_Const   },
+	{"E_USER_NOTICE",        PH7_E_USER_NOTICE_Const   },
 	{"E_RECOVERABLE_ERROR",  PH7_E_RECOVERABLE_ERROR_Const  },
 	{"E_DEPRECATED",         PH7_E_DEPRECATED_Const    },
 	{"E_USER_DEPRECATED",    PH7_E_USER_DEPRECATED_Const  },
