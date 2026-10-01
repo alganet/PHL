@@ -70,20 +70,48 @@ static sxi32 VmWriteDiagnostic(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pM
 	return rc;
 }
 /*
- * Route an already-formatted diagnostic blob (the uncaught-exception path builds
- * php's `PHP Fatal error:  Uncaught ...` LOG shape itself) to the error stream
- * when log_errors is on, else to the program-output stream when display_errors
- * is on, else drop it -- matching php's stock-CLI gate for fatals (stderr only).
+ * Emit a fatal report as php's two copies, each behind its own ini gate -- the
+ * same split VmEmitDiagnostic makes for a warning or a notice, which fatals did
+ * not have. The caller hands over the LABEL and a header-less BODY (the sentence,
+ * the location and the `Stack trace:` block):
+ *   - LOG copy     -> the error (stderr) stream when log_errors is on:
+ *                     `PHP LABEL:  BODY`
+ *   - DISPLAY copy -> the program-output (stdout) stream when display_errors is on:
+ *                     `\nLABEL: BODY`
+ * php prints BOTH when both are on, and the two are not the same bytes: the
+ * display copy has no `PHP ` prefix, ONE space after the colon and a leading blank
+ * line. Every fatal here used to be built as the log shape and then written to
+ * whichever channel was on, so `display_errors=1` printed the stderr wording to
+ * stdout and `display_errors=1 log_errors=1` printed one copy where php prints two.
+ * Stock CLI php (display_errors off, log_errors on) is the one setting where the
+ * old routing happened to be right, which is why it stood.
  */
-static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
+static sxi32 VmEmitFatalReport(ph7_vm *pVm,const char *zLabel,const char *zBody,sxu32 nBody)
 {
+	SyBlob sCopy;
+	sxi32 rc = SXRET_OK;
 	if( pVm->bLogErrors ){
-		return VmWriteDiagnostic(pVm,VmErrConsumer(pVm),pMsg,0);
+		SyBlobInit(&sCopy,&pVm->sAllocator);
+		SyBlobFormat(&sCopy,"PHP %s:  ",zLabel);
+		SyBlobAppend(&sCopy,zBody,nBody);
+		rc = VmWriteDiagnostic(pVm,VmErrConsumer(pVm),&sCopy,0);
+		SyBlobRelease(&sCopy);
 	}
 	if( pVm->bDisplayErrors ){
-		return VmWriteDiagnostic(pVm,&pVm->sVmConsumer,pMsg,1);
+		sxi32 rc2;
+		SyBlobInit(&sCopy,&pVm->sAllocator);
+		/* php's text-mode display copy is prefixed with a blank line */
+		SyBlobAppend(&sCopy,"\n",sizeof(char));
+		SyBlobFormat(&sCopy,"%s: ",zLabel);
+		SyBlobAppend(&sCopy,zBody,nBody);
+		rc2 = VmWriteDiagnostic(pVm,&pVm->sVmConsumer,&sCopy,1);
+		SyBlobRelease(&sCopy);
+		/* keep the first failure rather than letting a later successful write mask it */
+		if( rc == SXRET_OK ){
+			rc = rc2;
+		}
 	}
-	return SXRET_OK;
+	return rc;
 }
 /*
  * Throw a run-time error and invoke the supplied VM output consumer callback.
@@ -3470,11 +3498,11 @@ PH7_PRIVATE sxi32 PH7_VmFatalError(ph7_vm *pVm,const char *zFormat,...)
 		SyBlobLength(&sMsg),pFile,nLine);
 	if( pVm->bErrReport && (pVm->iErrMask & 1) != 0 ){
 		SyBlobInit(&sOut,&pVm->sAllocator);
-		SyBlobAppend(&sOut,"PHP Fatal error:  ",sizeof("PHP Fatal error:  ")-1);
 		SyBlobAppend(&sOut,SyBlobData(&sMsg),SyBlobLength(&sMsg));
 		VmDiagnosticLocation(&sOut,pFile,nLine);
 		PH7_GenAppendFatalTrace(&(*pVm),&sOut,PH7_FATAL_TRACE_RUNTIME);
-		VmCallErrorHandler(&(*pVm),&sOut);
+		VmEmitFatalReport(&(*pVm),"Fatal error",
+			(const char *)SyBlobData(&sOut),SyBlobLength(&sOut));
 		SyBlobRelease(&sOut);
 	}
 	SyBlobRelease(&sMsg);
@@ -4665,7 +4693,8 @@ static void VmRenderUncaughtEntry(
 	const char *zFuncName,int nFuncLen,int bFirst,int bLast,
 	sxu32 nThrowLine,  /* line the exception was raised at (0 -> the line running now) */
 	sxu32 nCallLine,   /* line of the call that entered the throwing frame (0 -> same) */
-	SyString *pThrowFile) /* file the exception was raised IN (0/empty -> derive it) */
+	SyString *pThrowFile, /* file the exception was raised IN (0/empty -> derive it) */
+	const char **pzLabel) /* OUT (head entry only): php's label for the report */
 {
 	SyString *pFile;
 	SyString *pCallFile;
@@ -4720,7 +4749,7 @@ static void VmRenderUncaughtEntry(
 		 * the line, with no "Uncaught", no stack trace and no "thrown in" trailer.
 		 * (A user SUBCLASS of either is an ordinary uncaught exception, which is why
 		 * this is a name match and not an instanceof.) */
-		SyBlobFormat(pOut,"PHP %s:  ",bParseErr ? "Parse error" : "Fatal error");
+		*pzLabel = bParseErr ? "Parse error" : "Fatal error";
 		if( zMsg && nMsg > 0 ){
 			SyBlobAppend(pOut,zMsg,nMsg);
 		}
@@ -4730,7 +4759,8 @@ static void VmRenderUncaughtEntry(
 		return;
 	}
 	if( bFirst ){
-		SyBlobAppend(pOut,"PHP Fatal error:  Uncaught ",sizeof("PHP Fatal error:  Uncaught ")-1);
+		*pzLabel = "Fatal error";
+		SyBlobAppend(pOut,"Uncaught ",sizeof("Uncaught ")-1);
 	}else{
 		SyBlobAppend(pOut,"\n\nNext ",sizeof("\n\nNext ")-1);
 	}
@@ -4780,6 +4810,7 @@ static void VmRenderUncaughtEntry(
 PH7_PRIVATE sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen)
 {
 	SyBlob sOut;
+	const char *zLabel = "Fatal error";
 	/* An uncaught exception is a fatal: php exits 255 whether or not the
 	 * report is displayed. Set the status before the bErrReport gate. */
 	pVm->iExitStatus = 255;
@@ -4787,8 +4818,8 @@ PH7_PRIVATE sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32
 		return PH7_OK;
 	}
 	SyBlobInit(&sOut,&pVm->sAllocator);
-	VmRenderUncaughtEntry(pVm,&sOut,0,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE,0,0,0);
-	VmCallErrorHandler(pVm,&sOut);
+	VmRenderUncaughtEntry(pVm,&sOut,0,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE,0,0,0,&zLabel);
+	VmEmitFatalReport(pVm,zLabel,(const char *)SyBlobData(&sOut),SyBlobLength(&sOut));
 	SyBlobRelease(&sOut);
 	return PH7_ABORT;
 }
@@ -4933,6 +4964,10 @@ static sxi32 VmReportUncaughtChain(ph7_vm *pVm,ph7_class_instance *pThis,const c
 	int nChain = 0;
 	int i;
 	SyBlob sOut;
+	/* The report's label is the HEAD entry's: only that one can be a bare
+	 * `Parse error` (an uncaught ParseError reports as the E_PARSE it stands
+	 * for), and a chain's head is always an ordinary `Fatal error`. */
+	const char *zLabel = "Fatal error";
 	/* Same rule as VmReportUncaughtException: an uncaught exception is a
 	 * fatal — php exits 255 whether or not the report is displayed. One rule
 	 * per report entry point, so a future direct caller can't miss it. */
@@ -4980,11 +5015,11 @@ static sxi32 VmReportUncaughtChain(ph7_vm *pVm,ph7_class_instance *pThis,const c
 			zFuncName,nFuncLen,
 			(i == nChain - 1) ? TRUE : FALSE,   /* bFirst: deepest entry */
 			(i == 0) ? TRUE : FALSE,            /* bLast: outermost entry */
-			nEntLine,0,&sThrowFile);
+			nEntLine,0,&sThrowFile,&zLabel);
 		SyBlobRelease(&sFile);
 		SyBlobRelease(&sMsg);
 	}
-	VmCallErrorHandler(pVm,&sOut);
+	VmEmitFatalReport(pVm,zLabel,(const char *)SyBlobData(&sOut),SyBlobLength(&sOut));
 	SyBlobRelease(&sOut);
 	return PH7_ABORT;
 }
