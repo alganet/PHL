@@ -107,6 +107,28 @@ jobs:
         artifacts_from: build
         artifacts_from_mode: full
 
+  # The php.ini matrix (`make test-ini-matrix`): the integration corpus re-taken
+  # at every display_errors x log_errors combination in BOTH engines, verdicts
+  # compared. Its own job rather than a cell of `qa`: it is eight passes over the
+  # corpus, and one platform answers the question -- the directives it exercises
+  # are engine state, not OS behaviour, and the Windows runner spawns processes
+  # far too slowly to pay for a second opinion.
+  ini-matrix:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v7
+    - uses: ./.github/actions/setup-action
+    - uses: ./.github/actions/make-action
+      with:
+        name: x86_64-linux-gnu
+        mode: full
+        make: test-ini-matrix
+        artifacts_from: build
+        artifacts_from_mode: full
+
   # OpenCppCoverage attaches to every child phl.exe the integration runner spawns
   # (one per test), so wall-time scales with the test count. Shard the integration
   # set across parallel Windows runners; smoke runs once in coverage-windows-smoke

@@ -24,6 +24,11 @@ $phpt_filter = "";
 $phpt_output_format = "tap";
 $phpt_shard_index = 0; // 1-based shard to run; 0 = no sharding (run all)
 $phpt_shard_total = 0; // total number of shards
+// --ini directives applied to EVERY child, under any the test itself declares.
+// Lets a whole corpus run be re-taken at another php.ini setting (the
+// display_errors x log_errors matrix), which is otherwise only ever exercised
+// at the one combination the host happens to start with.
+$phpt_ini_overrides = array();
 $phpt_curdir = getcwd();
 
 // Parse arguments
@@ -79,6 +84,19 @@ while (!empty($phpt_args)) {
                 exit(1);
             }
             break;
+        case '--ini':
+            // Repeatable: --ini name=value. Applied to every child as a `-d`
+            // flag, BENEATH the test's own --INI-- section, so a test that pins
+            // a directive still wins. Ignored by in-process runs, which share
+            // the runner's own already-started VM.
+            $phpt_ini_arg = array_shift($phpt_args);
+            if ($phpt_ini_arg === null || strpos($phpt_ini_arg, '=') === false) {
+                echo "Error: --ini requires a value of the form name=value\n";
+                exit(1);
+            }
+            list($phpt_ini_arg_k, $phpt_ini_arg_v) = explode('=', $phpt_ini_arg, 2);
+            $phpt_ini_overrides[trim($phpt_ini_arg_k)] = trim($phpt_ini_arg_v);
+            break;
         case '--shard':
             // Run only shard k of n (e.g. --shard 2/4). Deterministically
             // partitions the sorted test list so CI can fan a slow run across
@@ -109,6 +127,9 @@ while (!empty($phpt_args)) {
             echo "  --file-extension <ext>     File extension for test files (default: phpt)\n";
             echo "  --filter <pattern>         Filter test files by prefix (optional, runs all if not specified)\n";
             echo "  --output-format <format>   Output format: tap (default) or dot\n";
+            echo "  --ini <name=value>         php.ini directive applied to every child, under\n";
+            echo "                             any the test's own --INI-- section sets\n";
+            echo "                             (repeatable; needs --target-executable)\n";
             echo "  --shard <k/n>              Run only shard k of n (e.g. 2/4); partitions the\n";
             echo "                             sorted test list for parallel CI runs (default: all)\n";
             echo "  --help                     Show this help message\n";
@@ -517,6 +538,12 @@ foreach ($phpt_files as $phpt_file) {
     // (started without those -d flags), so such tests are skipped there.
     $phpt_ini = isset($phpt_sections['ini']) ? parse_env_section($phpt_sections['ini']) : array();
     $phpt_ini_unsupported = (!empty($phpt_ini) && empty($phpt_target_executable));
+    // Whether the run carries global --ini overrides is NOT part of the skip
+    // decision above: a test with no --INI-- section of its own still runs
+    // in-process. The union keeps the test's own directives on top of them.
+    if (!empty($phpt_ini_overrides)) {
+        $phpt_ini = $phpt_ini + $phpt_ini_overrides;
+    }
 
     // Optional --ARGS-- / --STDIN--: both shape the CHILD's invocation (argv tail,
     // redirected stdin), so like --ENV--/--INI-- they need a fresh process. The

@@ -156,6 +156,18 @@ TEST_INTEGRATION_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-dir tests/ph7/002-integration \
 	--output-format dot
 
+# The php.ini matrix: the 002-integration corpus re-taken at every
+# display_errors x log_errors combination, in BOTH engines, with the verdicts
+# compared. Every other instrument here runs the one combination a stock CLI
+# starts with, which is the single setting in which a diagnostic on the wrong
+# stream, in the wrong shape, or missing a whole copy still reads as correct.
+# Needs the oracle, so it belongs beside test-compat rather than in `make test`.
+TEST_INI_MATRIX_CMD = "$(PHL_BIN)" "tests/ini_matrix.php" \
+	--target-executable "$(PHL_BIN)" \
+	--oracle "$(PHP_BIN)" \
+	--target-dir tests/ph7/002-integration \
+	--work-dir "$(BUILD_DIR)/ini-matrix"
+
 # Stress / fault-injection tests (opt-in; NOT part of `make test`).
 # NOTE: PHL_MAX_INPUT caps EVERY input this command loads -- including
 # tests/phpt.php itself, which the parent PHL reads before any test runs. So the
@@ -207,6 +219,7 @@ test-smoke: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-smoke
 test-smoke-compat: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-smoke-compat
 test-integration: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-integration
 test-integration-compat: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-integration-compat
+test-ini-matrix: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-ini-matrix
 coverage-report: .ALWAYS $(PHL_BIN) $(BUILD_DIR)/coverage/coverage.info
 coverage-md: .ALWAYS $(PHL_BIN) $(BUILD_DIR)/coverage/markdown
 .ALWAYS:
@@ -240,6 +253,10 @@ $(BUILD_DIR)-test-integration-compat: $(PHL_BIN)
 	$(TEST_INTEGRATION_PHP_CMD)
 	"$(PHL_BIN)" --version
 	$(TEST_INTEGRATION_CMD)
+
+$(BUILD_DIR)-test-ini-matrix: $(PHL_BIN)
+	"$(PHL_BIN)" --version
+	$(TEST_INI_MATRIX_CMD)
 
 # Oracle-coverage gap report (POSIX shell): lists every test that SKIPS under
 # exactly one engine — the oracle-blind debt as a tracked, only-goes-down
