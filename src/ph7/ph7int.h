@@ -8351,8 +8351,12 @@ PH7_PRIVATE sxi32 PH7_CsvCharArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
 	const char *zName,int bAllowEmpty,int *pChar);
 PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen,int bTagSpaces);
 PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode);
-PH7_PRIVATE int PH7_VmQueryConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph7_value *pOut);
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
+/* Constant lookup by name: unguarded because the php.ini value grammar (vm.c,
+ * VmIniExprOperand) substitutes a constant for a bare identifier, and that runs
+ * in every build. [[tiny-build-disk-io-guard-fragility]] */
+PH7_PRIVATE int PH7_VmQueryConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph7_value *pOut);
+PH7_PRIVATE int PH7_ExpandBuiltinConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph7_value *pOut);
 /* Natural-order compare: unguarded because hashmap.c's SORT_NATURAL path (always
  * compiled) uses it, even in the tiny build. [[tiny-build-disk-io-guard-fragility]] */
 PH7_PRIVATE int PH7_StrNatCmp(const char *zA,int nA,const char *zB,int nB,int bFold);

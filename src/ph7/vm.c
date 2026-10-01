@@ -5417,6 +5417,246 @@ static int VmIniBool(const char *zValue,sxu32 nValue)
 	return iVal != 0;
 }
 /*
+ * php's php.ini VALUE grammar, over one directive's value.
+ *
+ * An ini value is not a literal. zend_ini_parser reads it as an expression over
+ * `|`, `&`, `^`, unary `~` and `!` and parentheses, in which a bare identifier
+ * stands for the constant of that name -- which is what makes
+ * `error_reporting = E_ALL & ~E_DEPRECATED` mean 22527 rather than 0. Three
+ * facts about it are not the C ones and were all read off php 8.5:
+ *
+ *   . The three binary operators share ONE precedence and associate left, so
+ *     `1 | 2 & 4` is `(1|2) & 4` = 0 where C reads it as 1. The unary pair binds
+ *     tighter and nests (`~~2` is 2).
+ *   . Operands are STRINGS. zend_ini_do_op() runs each side through atoi(),
+ *     computes in a 32-bit int, and writes the decimal text of the result back
+ *     as the value -- so an undefined constant is its own name (and therefore
+ *     0), a quoted "E_ALL" is four letters and not 30719, and adjacent pieces
+ *     concatenate: `E_NOTICE E_WARNING` is the string "8 2", which is 8.
+ *   . A value carrying no operator at all keeps its substituted TEXT. That text
+ *     is what ini_get() shows and what ini_restore() re-applies, so it is what
+ *     gets stored, not the number it happens to read as.
+ *
+ * The boolean words are a whole-value shape rather than an operand: `On` is 1,
+ * and php refuses `On|E_NOTICE` outright.
+ */
+#define VM_INI_EXPR_MAX_DEPTH 32
+typedef struct VmIniExpr VmIniExpr;
+struct VmIniExpr {
+	ph7_vm *pVm;
+	const char *zCur;
+	const char *zEnd;
+};
+static void VmIniExprSpace(VmIniExpr *p)
+{
+	while( p->zCur < p->zEnd && (p->zCur[0] == ' ' || p->zCur[0] == '\t') ){
+		p->zCur++;
+	}
+}
+static int VmIniExprIsOp(int c)
+{
+	return c == '|' || c == '&' || c == '^';
+}
+/*
+ * atoi() over an operand: php stops at the first byte that is not part of a
+ * number and answers 0 when there is none.
+ */
+static sxi32 VmIniExprInt(SyBlob *pVal)
+{
+	sxi32 iVal = 0;
+	if( SyBlobLength(pVal) > 0 ){
+		SyStrToInt32((const char *)SyBlobData(pVal),SyBlobLength(pVal),(void *)&iVal,0);
+	}
+	return iVal;
+}
+static void VmIniExprSetInt(SyBlob *pOut,sxi32 iVal)
+{
+	char zBuf[32];
+	int nBuf = SyBufferFormat(zBuf,sizeof(zBuf),"%d",(int)iVal);
+	SyBlobReset(pOut);
+	SyBlobAppend(pOut,zBuf,(sxu32)nBuf);
+}
+/*
+ * One operand: everything up to the next operator, parenthesis or `;` comment,
+ * with each bare identifier replaced by the constant of that name when one is
+ * defined and left standing as its own text when none is, and each quoted run
+ * taken literally. Trailing blanks are not part of the token, so `E_ALL ; x`
+ * stores "30719" and not "30719 ".
+ */
+static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut)
+{
+	const char *zPend = 0;   /* blanks held back: trailing ones are not part of the
+	                          * token, interior ones are ("E_NOTICE E_WARNING" is "8 2") */
+	sxu32 nPend = 0;
+	int bAny = 0;
+	SyBlobReset(pOut);
+	VmIniExprSpace(p);
+	while( p->zCur < p->zEnd ){
+		int c = (unsigned char)p->zCur[0];
+		if( VmIniExprIsOp(c) || c == '(' || c == ')'
+		 || c == '~' || c == '!' || c == ';' ){
+			break;
+		}
+		if( c == ' ' || c == '\t' ){
+			if( nPend == 0 ){
+				zPend = p->zCur;
+			}
+			nPend++;
+			p->zCur++;
+			continue;
+		}
+		if( nPend > 0 ){
+			SyBlobAppend(pOut,zPend,nPend);
+			nPend = 0;
+		}
+		if( c == '"' || c == '\'' ){
+			const char *zStr;
+			p->zCur++;
+			zStr = p->zCur;
+			while( p->zCur < p->zEnd && (unsigned char)p->zCur[0] != c ){
+				p->zCur++;
+			}
+			SyBlobAppend(pOut,zStr,(sxu32)(p->zCur - zStr));
+			if( p->zCur < p->zEnd ){
+				p->zCur++;    /* the closing quote */
+			}
+			bAny = 1;
+			continue;
+		}
+		if( c < 0xc0 && (SyisAlpha(c) || c == '_') ){
+			const char *zTok = p->zCur;
+			ph7_value sCons;
+			while( p->zCur < p->zEnd
+			 && (unsigned char)p->zCur[0] < 0xc0
+			 && (SyisAlphaNum((unsigned char)p->zCur[0]) || p->zCur[0] == '_') ){
+				p->zCur++;
+			}
+			PH7_MemObjInit(p->pVm,&sCons);
+			if( PH7_ExpandBuiltinConstant(p->pVm,zTok,(sxu32)(p->zCur - zTok),&sCons)
+			 || PH7_VmQueryConstant(p->pVm,zTok,(sxu32)(p->zCur - zTok),&sCons) ){
+				int nCons = 0;
+				const char *zCons = ph7_value_to_string(&sCons,&nCons);
+				SyBlobAppend(pOut,zCons,(sxu32)nCons);
+			}else{
+				SyBlobAppend(pOut,zTok,(sxu32)(p->zCur - zTok));
+			}
+			PH7_MemObjRelease(&sCons);
+			bAny = 1;
+			continue;
+		}
+		SyBlobAppend(pOut,p->zCur,(sxu32)sizeof(char));
+		p->zCur++;
+		bAny = 1;
+	}
+	return bAny;
+}
+static int VmIniExprEval(VmIniExpr *p,SyBlob *pOut,int nDepth);
+static int VmIniExprUnary(VmIniExpr *p,SyBlob *pOut,int nDepth)
+{
+	int c;
+	if( nDepth > VM_INI_EXPR_MAX_DEPTH ){
+		return 0;
+	}
+	VmIniExprSpace(p);
+	if( p->zCur >= p->zEnd ){
+		return 0;
+	}
+	c = p->zCur[0];
+	if( c == '~' || c == '!' ){
+		p->zCur++;
+		if( !VmIniExprUnary(p,pOut,nDepth+1) ){
+			return 0;
+		}
+		VmIniExprSetInt(pOut,c == '~' ? ~VmIniExprInt(pOut)
+		                              : (sxi32)(VmIniExprInt(pOut) == 0));
+		return 1;
+	}
+	if( c == '(' ){
+		p->zCur++;
+		if( !VmIniExprEval(p,pOut,nDepth+1) ){
+			return 0;
+		}
+		VmIniExprSpace(p);
+		if( p->zCur >= p->zEnd || p->zCur[0] != ')' ){
+			return 0;
+		}
+		p->zCur++;
+		return 1;
+	}
+	return VmIniExprOperand(p,pOut);
+}
+static int VmIniExprEval(VmIniExpr *p,SyBlob *pOut,int nDepth)
+{
+	if( nDepth > VM_INI_EXPR_MAX_DEPTH ){
+		return 0;
+	}
+	if( !VmIniExprUnary(p,pOut,nDepth) ){
+		return 0;
+	}
+	for(;;){
+		SyBlob sRhs;
+		sxi32 iLhs,iRhs,iRes;
+		int c;
+		VmIniExprSpace(p);
+		if( p->zCur >= p->zEnd || !VmIniExprIsOp(p->zCur[0]) ){
+			break;
+		}
+		c = p->zCur[0];
+		p->zCur++;
+		iLhs = VmIniExprInt(pOut);
+		SyBlobInit(&sRhs,&p->pVm->sAllocator);
+		if( !VmIniExprUnary(p,&sRhs,nDepth+1) ){
+			SyBlobRelease(&sRhs);
+			return 0;
+		}
+		iRhs = VmIniExprInt(&sRhs);
+		SyBlobRelease(&sRhs);
+		iRes = c == '|' ? (iLhs | iRhs) : (c == '&' ? (iLhs & iRhs) : (iLhs ^ iRhs));
+		VmIniExprSetInt(pOut,iRes);
+	}
+	return 1;
+}
+/*
+ * Evaluate one php.ini value into the text php would store for it. FALSE means
+ * php's own parser would call it a syntax error, and php then leaves the
+ * directive at its default rather than at zero: `error_reporting = E_ALL &`
+ * keeps E_ALL there.
+ */
+static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
+{
+	static const struct {
+		const char *zWord;
+		sxu32 nWord;
+		const char *zText;
+	} aWord[] = {
+		{ "on"  ,2,"1" }, { "yes"  ,3,"1" }, { "true",4,"1" },
+		{ "off" ,3,""  }, { "no"   ,2,""  }, { "false",5,"" },
+		{ "none",4,""  }, { "null" ,4,""  }
+	};
+	VmIniExpr sIn;
+	sxu32 i;
+	SyBlobReset(pOut);
+	if( nVal == 0 ){
+		return 1;   /* `-d name=` carries the empty value, not an expression */
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(aWord) ; i++ ){
+		if( nVal == aWord[i].nWord
+		 && SyStrnicmp(zVal,aWord[i].zWord,aWord[i].nWord) == 0 ){
+			SyBlobAppend(pOut,aWord[i].zText,(sxu32)SyStrlen(aWord[i].zText));
+			return 1;
+		}
+	}
+	sIn.pVm = pVm;
+	sIn.zCur = zVal;
+	sIn.zEnd = &zVal[nVal];
+	if( !VmIniExprEval(&sIn,pOut,0) ){
+		return 0;
+	}
+	VmIniExprSpace(&sIn);
+	/* Anything left over is a byte no production can take -- `2)`, `1&&2`. */
+	return sIn.zCur >= sIn.zEnd || sIn.zCur[0] == ';';
+}
+/*
  * Apply one php.ini directive to a VM: queue an allocator-owned copy for the INI
  * chunk's lazy seed, then arm the C-side knobs that have to hold whether or not
  * the script ever touches the INI API. Shared by PH7_VM_CONFIG_INI_ENTRY, which
@@ -5427,6 +5667,8 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 {
 	sxi32 rc = SXRET_OK;
 	VmIniEntry sEntry;
+	SyBlob sEval;
+	int bLevel = 0,bEval = 0;
 	char *zDupN,*zDupV;
 	sxu32 nName,nValue;
 	if( SX_EMPTY_STR(zName) ){
@@ -5437,8 +5679,22 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 	}
 	nName = (sxu32)SyStrlen(zName);
 	nValue = (sxu32)SyStrlen(zValue);
+	SyBlobInit(&sEval,&pVm->sAllocator);
+	bLevel = nName == sizeof("error_reporting")-1
+	      && SyMemcmp(zName,"error_reporting",nName) == 0;
+	if( bLevel && VmIniEvalValue(pVm,zValue,nValue,&sEval) ){
+		/* php stores what its ini parser MADE of the value, not what was typed:
+		 * ini_get() then shows "30711" for `E_ALL & ~E_NOTICE`, and ini_restore()
+		 * has a number to re-apply rather than an expression the runtime setter
+		 * would read as 0. Queue the evaluated text, so the INI chunk this seeds
+		 * and the C-side knob below can never name different levels. */
+		nValue = SyBlobLength(&sEval);
+		zValue = nValue > 0 ? (const char *)SyBlobData(&sEval) : "";
+		bEval = 1;
+	}
 	zDupN = SyMemBackendStrDup(&pVm->sAllocator,zName,nName);
 	zDupV = SyMemBackendStrDup(&pVm->sAllocator,zValue,nValue);
+	SyBlobRelease(&sEval);
 	if( zDupN == 0 || zDupV == 0 ){
 		return SXERR_MEM;
 	}
@@ -5446,11 +5702,21 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 	SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
 	rc = SySetPut(&pVm->aIniCli,(const void *)&sEntry);
 	if( rc == SXRET_OK ){
-		if( nName == sizeof("error_reporting")-1
-		 && SyMemcmp(zName,"error_reporting",nName) == 0 ){
-			sxi64 iLevel = 0;
-			SyStrToInt64(zValue,nValue,(void *)&iLevel,0);
-			pVm->bErrReport = iLevel != 0;
+		if( bLevel ){
+			/* The LEVEL, not an on/off gate. It used to move bErrReport alone, so
+			 * `-d error_reporting=2` left the mask at E_ALL and printed every
+			 * severity it was set to hide. A value php's ini parser refuses is
+			 * left unapplied, as php leaves it -- reading it as 0 silenced the
+			 * whole run over one stray operator. */
+			if( bEval ){
+				sxi64 iLevel = 0;
+				if( nValue > 0 ){
+					SyStrToInt64(zDupV,nValue,(void *)&iLevel,0);
+				}
+				pVm->iErrMask = (sxi32)iLevel;
+				pVm->bErrReport = pVm->iErrMask != 0;
+				pVm->bErrMaskSet = 1;
+			}
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 		}else if( nName == sizeof("memory_limit")-1
 		 && SyMemcmp(zName,"memory_limit",nName) == 0 ){

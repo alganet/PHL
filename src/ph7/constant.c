@@ -3966,6 +3966,43 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"__CLASS__",            PH7_class_magic_Const  }
 };
 /*
+ * Expand a built-in constant by name STRAIGHT OFF the table above, without
+ * asking hConstant.
+ *
+ * php.ini is read before a line of the script is compiled, and PHL's equivalent
+ * window -- PH7_VmApplyEngineIni -- opens between PH7_VmInit and
+ * PH7_VmMakeReady, which is where the table below is installed. So a directive
+ * that names a constant, and `error_reporting = E_ALL & ~E_DEPRECATED` is the
+ * one everybody writes, has no hash to look it up in yet and used to read every
+ * name as 0. php has the same window and answers it the same way: the constants
+ * that exist for an ini value are the engine's own, which is why `M_PI` there is
+ * the four letters and not 3.14159.
+ *
+ * Which constants php has by then was read off it directly, by asking an ini
+ * value for `1|X` and watching whether X moved the answer: the E_ and PHP_
+ * families resolve (E_USER_ERROR is 256, PHP_INT_SIZE is 8) and ext/standard's
+ * do not (SORT_ASC and M_E are their own names, hence 0). That is the line drawn
+ * here -- everything else in the table below belongs to an extension php starts
+ * after it has read the file, and answering it would be answering MORE than php.
+ * Returns TRUE when the name was one of those; pOut is the caller's, initialized.
+ */
+PH7_PRIVATE int PH7_ExpandBuiltinConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph7_value *pOut)
+{
+	sxu32 n;
+	if( !((nName > 2 && zName[0] == 'E' && zName[1] == '_')
+	   || (nName > 4 && SyMemcmp(zName,"PHP_",4) == 0)) ){
+		return 0;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){
+		if( SyStrlen(aBuiltIn[n].zName) == nName
+		 && SyMemcmp(aBuiltIn[n].zName,zName,nName) == 0 ){
+			aBuiltIn[n].xExpand(pOut,(void *)pVm);
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
  * Register the built-in constants defined above.
  */
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)
