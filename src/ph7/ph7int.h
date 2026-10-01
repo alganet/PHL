@@ -1248,6 +1248,12 @@ struct VmFrame
 	                   * top-level code it is whichever included unit was executing THEN --
 	                   * the include stack has moved on by the time a trace is taken. Aliases
 	                   * a VM-lifetime string (a function's sFile, or an aFiles entry). */
+	SyString *pNativeCaller;/* When VM_FRAME_NATIVE_CALLER is set: the name of the INTERNAL
+	                   * function that reached for this callback (pVm->pCalleeName at the
+	                   * dispatch, which aliases the host function's own sName and so lives
+	                   * as long as the VM). php shows that builtin as a FRAME OF ITS OWN in
+	                   * a backtrace, carrying the userland call site, while the callback's
+	                   * own frame carries no file or line at all -- see VmBuildBacktrace. */
 	ph7_foreach_step *pForeachSteps; /* Foreach steps this activation still owns, newest first.
 	                   * Every step OP_FOREACH_INIT pushes is linked here and unlinked by the one
 	                   * teardown door (VmForeachStepUnlink); whatever is left when the frame dies
@@ -3709,6 +3715,11 @@ struct ph7_vm
 	int bReflectBypass;         /* Consume-once: the next method OP_CALL skips the visibility
 	                             * check (ReflectionMethod::invoke bypasses protection like PHP
 	                             * 8.1+). Cleared by the check site; never survives past one call. */
+	SyString *pNativeFrameName; /* Consume-once: the next OP_CALL's frame was entered by this
+	                             * INTERNAL function and so has no userland call site, even
+	                             * though its argument BINDING still follows the caller. Armed
+	                             * only by a call_user_func/_array php's compiler could not
+	                             * elide (an unqualified one inside a namespace). */
 	int bCallbackWeak;          /* Consume-once: the next OP_CALL is an INTERNAL function invoking a
 	                             * userland callback (array_map, usort, an autoloader, a shutdown
 	                             * function, Reflection's invoke, Closure::call), which php runs in

@@ -6312,6 +6312,17 @@ case PH7_OP_CALL: {
 	 * not forward. The callee slot's nIdx says which spelling this is: a compiled
 	 * literal is marked constant, a variable read is not. */
 	int bLiteralCallee = (pTos->nIdx == SXU32_HIGH);
+	/* php ELIDES a `call_user_func()`/`call_user_func_array()` frame only when its
+	 * compiler can prove the name is the global function -- written in the global
+	 * namespace, or fully qualified, or imported. An UNQUALIFIED call inside a
+	 * namespace could still resolve to a namespace-local function, so php cannot
+	 * fold it and emits the real internal frame: the callback then has no userland
+	 * caller, exactly as under array_map. `bIsNamespaced` is that compile-time
+	 * question, already recorded on the call's argument map for the global-fallback
+	 * resolution. (Every probe behind this rule had been written in the global
+	 * namespace, which is why the forwards looked unconditionally elided; pest calls
+	 * one from inside `namespace Pest\Concerns`.) */
+	int bNsCallee = (pInstr->p3 && ((VmCallArgMap *)pInstr->p3)->bIsNamespaced) ? 1 : 0;
 	pVm->bDiscardCallback = 0;
 	pVm->bMagicDispatch = 0;
 	pVm->bClosureScreened = 0;
@@ -7338,7 +7349,7 @@ CalleeByName:
 		aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
 		/* Create a new VM frame  */
 		rc = VmEnterFrame(&(*pVm),pVmFunc,pThis,&pFrame);
-		if( rc == SXRET_OK && pFrame && bCallbackWeak ){
+		if( rc == SXRET_OK && pFrame && (bCallbackWeak || pVm->pNativeFrameName) ){
 			/* An INTERNAL function reached for this callback, so the frame above it
 			 * is that builtin's and not user code: php names no call site in an
 			 * argument diagnostic raised here. The same latch already decides the
@@ -7346,6 +7357,14 @@ CalleeByName:
 			 * because the type error is raised further down the argument-binding
 			 * path than the latch survives. */
 			pFrame->iFlags |= VM_FRAME_NATIVE_CALLER;
+			/* ...and WHICH builtin, because php gives it a backtrace frame of its own
+			 * (the callback's carries no file/line instead). pCalleeName is the host
+			 * function currently running, saved/restored around every dispatch. */
+			pFrame->pNativeCaller = pVm->pNativeFrameName
+				? pVm->pNativeFrameName : pVm->pCalleeName;
+			/* Consume: the latch describes ONE call, and a call the callback body
+			 * makes must not inherit it. */
+			pVm->pNativeFrameName = 0;
 		}
 		if( rc == SXRET_OK ){
 			/* This activation now needs the function it is about to run. For a
@@ -8618,12 +8637,26 @@ NativeCall:
 			 * the callback they drive; every other builtin ignores this. Saved and
 			 * restored for the same reason the callee name is. */
 			int bSavedHostDiscard = pVm->bHostDiscard;
+			SyString *pSavedNativeFrame = pVm->pNativeFrameName;
 			pVm->pCalleeName = &pFunc->sName;
 			pVm->bHostDiscard = bResultDropped && bLiteralCallee;
+			/* A forward php could not elide invokes its callback the way any other
+			 * internal function does: the callback's frame gets no file or line, and
+			 * this builtin gets a frame of its own. Only the FRAME shape is affected --
+			 * the argument BINDING mode still travels the forward's own map, which is
+			 * php's rule and a separate latch (bCallbackWeak). */
+			if( bNsCallee || !bLiteralCallee ){
+				/* ...and a name that is not a compile-time literal at all
+				 * (`$n = 'call_user_func'; $n($c)`) is the other half of the same
+				 * rule: php's fold is a COMPILE-time special case on the written
+				 * name, so a variable holding it is an ordinary internal call. */
+				pVm->pNativeFrameName = &pFunc->sName;
+			}
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
 			pVm->bHostDiscard = bSavedHostDiscard;
 			pVm->pCalleeName = pSavedCallee;
+			pVm->pNativeFrameName = pSavedNativeFrame;
 			if( PH7_CmpRefusalPending(pVm) ){
 				/* A native compare handler refused a pair this builtin compared
 				 * (in_array, sort, max and switch all drive the same comparator,

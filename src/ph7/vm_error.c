@@ -5364,23 +5364,27 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 		}
 		/* php's key order: file, line, function[, class, type][, object][, args]. */
 		{
-			/* The file the CALL SITE is in, captured when the frame was pushed
-			 * (VmEnterFrame). Deriving it here read the caller's function through
-			 * pParent -- which is a `try` block's own function-less frame for a call
-			 * written inside one, so it fell back to the include-stack TOP and blamed
-			 * the entry script -- and the include stack itself has moved on by now,
-			 * so a call made by an included file's top-level code was blamed on
-			 * whatever is being included at the moment of the trace. */
+			/* A callback an INTERNAL function reached for has no userland call site, and
+			 * php says so by OMITTING both keys -- `array_keys()` on such a frame answers
+			 * `['function']` alone, and the renderer prints `[internal function]: `. The
+			 * builtin that reached for it becomes a frame of its own, below. PHL gave the
+			 * callback the builtin's OWN call site and emitted no second frame, so a
+			 * program walking a trace saw one frame where php has two, and saw a file on
+			 * a frame php leaves fileless. (Respect\Validation's exception walks a trace
+			 * until a frame has no file; here it never stopped, and blamed an eval()'d
+			 * unit for a throw written in a test file.) */
 			SyString *pFrameFile = SyStringLength(&pFrame->sCallFile) > 0
 				? &pFrame->sCallFile : pFile;
-			if( pFrameFile ){
+			if( pFrameFile && (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) == 0 ){
 				ph7_value_string(pValue,pFrameFile->zString,(int)pFrameFile->nByte);
 				ph7_array_add_strkey_elem(pEntry,"file",pValue);
 				ph7_value_reset_string_cursor(pValue);
 			}
 		}
-		ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
-		ph7_array_add_strkey_elem(pEntry,"line",pValue);
+		if( (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) == 0 ){
+			ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
+			ph7_array_add_strkey_elem(pEntry,"line",pValue);
+		}
 		{
 			const char *zDisp = 0;
 			int nDisp = PH7_VmFuncDisplayName(&(*pVm),pFunc,&zDisp);
@@ -5455,6 +5459,47 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 		}
 		ph7_array_add_elem(pList,0/* Automatic index assign*/,pEntry);
 		ph7_release_value(&(*pVm),pEntry);
+		if( (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) != 0 && pFrame->pNativeCaller ){
+			/* php gives the INTERNAL function that reached for the callback a frame of
+			 * its own, and that one carries the userland call site the callback's frame
+			 * just declined. It has `file`, `line` and `function` and nothing else --
+			 * no class, no type, no object, and no args even when args were asked for
+			 * (php has no zval array to show for an internal frame's arguments here).
+			 *
+			 * Not every such dispatch gets one: php's two FORWARDS, call_user_func()
+			 * and call_user_func_array(), are ELIDED BY THE COMPILER when written
+			 * literally, so the callback's frame is the caller's own -- and those
+			 * spellings never reach here, because the forwards pass the caller's mode
+			 * through PH7_VmCallUserFunctionWithMap and set no latch. A `$n('cuf')($c)`
+			 * through a variable is NOT elided, does set the latch, and does get this
+			 * frame, exactly as php's does. */
+			ph7_value *pNat;
+			if( iLimit != 0 && nDone >= iLimit ){
+				break;
+			}
+			pNat = ph7_new_array(&(*pVm));
+			if( pNat == 0 ){
+				break;
+			}
+			nDone++;
+			{
+				SyString *pNatFile = SyStringLength(&pFrame->sCallFile) > 0
+					? &pFrame->sCallFile : pFile;
+				if( pNatFile ){
+					ph7_value_string(pValue,pNatFile->zString,(int)pNatFile->nByte);
+					ph7_array_add_strkey_elem(pNat,"file",pValue);
+					ph7_value_reset_string_cursor(pValue);
+				}
+			}
+			ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
+			ph7_array_add_strkey_elem(pNat,"line",pValue);
+			ph7_value_string(pValue,pFrame->pNativeCaller->zString,
+				(int)pFrame->pNativeCaller->nByte);
+			ph7_array_add_strkey_elem(pNat,"function",pValue);
+			ph7_value_reset_string_cursor(pValue);
+			ph7_array_add_elem(pList,0,pNat);
+			ph7_release_value(&(*pVm),pNat);
+		}
 		pFrame = pFrame->pParent ? VmSkipExceptionFrames(pFrame->pParent) : 0;
 	}
 	ph7_release_value(&(*pVm),pValue);
