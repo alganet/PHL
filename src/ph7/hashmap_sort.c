@@ -51,11 +51,6 @@
  * picks the comparator that consults it -- php's diff/intersect helpers sort
  * their operand lists with the UNSTABLE variants instead.
  */
-typedef struct HashmapSortEnt HashmapSortEnt;
-struct HashmapSortEnt {
-	ph7_hashmap_node *pNode; /* The entry being ordered */
-	sxu32 nOrd;              /* Its position before the sort: php's Z_EXTRA stamp */
-};
 typedef struct HashmapSortCtx HashmapSortCtx;
 struct HashmapSortCtx {
 	ProcNodeCmp xCmp;        /* The caller's node comparison */
@@ -343,6 +338,27 @@ PH7_PRIVATE sxi32 HashmapNodeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpD
 	pMap->pCur = pMap->pFirst;
 	SyMemBackendFree(&pMap->pVm->sAllocator,(void *)aEnt);
 	return SXRET_OK;
+}
+/*
+ * Order a caller's OWN vector of entries, leaving every map alone.
+ *
+ * php's diff/intersect helpers sort a private list of each argument array and
+ * merge the sorted lists; the lists are theirs, so nothing is relinked, and they
+ * pass the UNSTABLE comparators -- equal entries end up wherever the quicksort
+ * left them and nothing downstream asks which. Each entry still carries its
+ * position, because the caller needs it to put its answer back in the source
+ * array's order.
+ */
+PH7_PRIVATE void PH7_HashmapSortEntVector(HashmapSortEnt *aEnt,sxu32 n,ProcNodeCmp xCmp,void *pCmpData)
+{
+	HashmapSortCtx sCtx;
+	if( n < 2 ){
+		return;
+	}
+	sCtx.xCmp = xCmp;
+	sCtx.pCmpData = pCmpData;
+	sCtx.bStable = 0;
+	HashmapZendSort(aEnt,n,&sCtx);
 }
 /*
  * A sort LENDS the map to itself for the duration.

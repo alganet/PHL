@@ -2600,59 +2600,143 @@ static sxi32 HashmapUVarValueMatch(ph7_context *pCtx,ph7_hashmap_node *pEntry,ph
 	return SXRET_OK;
 }
 /*
- * Decide whether pMap holds a match for pEntry under the given key/value rules.
- * Sets *pFound; a non-OK return propagates out of the builtin (see above).
+ * Decide whether pMap holds an entry under pEntry's OWN key whose value matches.
+ *
+ * php answers array_udiff_assoc() and array_uintersect_assoc() through
+ * php_array_diff_key()/php_array_intersect_key(), which sort nothing: they walk
+ * $array1 in its own order and ask each other array's hash for that exact key,
+ * calling the value callback only where the key was found. So the callback sees
+ * $array1's insertion order, and an entry whose key is missing costs no
+ * comparison at all -- both of which a counting callback can read.
  */
-static sxi32 HashmapUVarFindMatch(ph7_context *pCtx,ph7_hashmap *pMap,ph7_hashmap_node *pEntry,int iKeyRule,int iValRule,ph7_value *pKeyCb,ph7_value *pValCb,int *pFound)
+static sxi32 HashmapUVarFindByKey(ph7_context *pCtx,ph7_hashmap *pMap,ph7_hashmap_node *pEntry,int iValRule,ph7_value *pValCb,int *pFound)
 {
+	ph7_hashmap_node *pCandidate = 0;
+	sxi32 rc;
 	*pFound = 0;
-	if( iKeyRule == HASHMAP_UVAR_KEY_EXACT ){
-		ph7_hashmap_node *pCandidate = 0;
-		sxi32 rc;
-		if( pEntry->iType == HASHMAP_INT_NODE ){
-			rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pCandidate);
-		}else{
-			rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pCandidate);
-		}
-		if( rc != SXRET_OK ){
-			return SXRET_OK; /* no such key: no match, no error */
-		}
-		return HashmapUVarValueMatch(pCtx,pEntry,pCandidate,iValRule,pValCb,pFound);
+	if( pEntry->iType == HASHMAP_INT_NODE ){
+		rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pCandidate);
+	}else{
+		rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pCandidate);
 	}
-	/* KEY_ANY / KEY_USER: linear scan — a callback-decided key cannot be hashed. */
-	{
-		ph7_hashmap_node *pIt = pMap->pFirst;
-		sxu32 n = pMap->nEntry;
-		while( n > 0 && pIt ){
-			sxi32 rc;
-			if( iKeyRule == HASHMAP_UVAR_KEY_USER ){
-				ph7_value sK1,sK2;
-				int iCmp = 0;
-				HashmapInitNodeKey(pCtx->pVm,pEntry,&sK1);
-				HashmapInitNodeKey(pCtx->pVm,pIt,&sK2);
-				rc = HashmapUserCmpCall(pCtx,pKeyCb,&sK1,&sK2,&iCmp);
-				PH7_MemObjRelease(&sK1);
-				PH7_MemObjRelease(&sK2);
-				if( rc != SXRET_OK ){
-					return rc;
-				}
-				if( iCmp != 0 ){
-					pIt = pIt->pPrev; /* Reverse link */
-					n--;
-					continue;
-				}
+	if( rc != SXRET_OK ){
+		return SXRET_OK; /* no such key: no match, no error */
+	}
+	return HashmapUVarValueMatch(pCtx,pEntry,pCandidate,iValRule,pValCb,pFound);
+}
+/*
+ * php answers the callback-taking members by SORTING a private list of every
+ * argument array once with the comparison the member is defined over, and then
+ * MERGING the sorted lists. PHL rescanned a whole comparand array for every
+ * source entry instead. The two agree on the ANSWER for every consistent
+ * comparator -- 1260 swept calls over ten members differed on no result at all
+ * -- and disagree on how many times the callback is entered and on which pairs
+ * it is handed: `array_udiff([1, 2, 3], [2, 3, 4], $f)` entered $f six times
+ * here and nine times in php, and 701 of those 1260 calls spent a different
+ * number. A comparator that counts, logs or throws is reading the engine's own
+ * decisions, so the sequence is contract; the merge is also O(n log n) where
+ * the rescan was O(n*m).
+ *
+ * The sorts use php's UNSTABLE comparators (php_array_user_compare_unstable and
+ * its neighbours): equal entries of a list end up wherever the quicksort left
+ * them, and nothing downstream asks which. Every entry still carries its
+ * position in the source array, because the answer comes out in THAT order.
+ *
+ * The merge holds pointers into the operand arrays while user code runs between
+ * comparisons, so each operand map is lent one reference for the duration: a
+ * write the callback makes through the caller's variable then copy-on-write
+ * separates a map of its own, and no node the merge is holding is relinked or
+ * freed underneath it. php gets the same protection by copying the buckets out.
+ */
+/* One operand array, flattened into the vector the merge walks. */
+typedef struct HashmapUVarList HashmapUVarList;
+struct HashmapUVarList {
+	ph7_hashmap *pMap;      /* Lent one reference for the duration, or 0 */
+	HashmapSortEnt *aEnt;   /* Its entries, sorted */
+	sxu32 nEntry;
+	sxu32 iCur;             /* php's ptrs[i]; iCur == nEntry is its UNDEF sentinel */
+};
+/*
+ * One of the two comparisons a member is defined over. php keeps the live one
+ * in BG(user_compare_fci) and swaps it as the merge alternates between key and
+ * data; PHL hands the merge whichever of the two structures it wants.
+ */
+typedef struct HashmapUVarCmp HashmapUVarCmp;
+struct HashmapUVarCmp {
+	ph7_context *pCtx;
+	ph7_value *pCb;   /* The user callback, or 0 for php's own value comparison */
+	int bKey;         /* Compare the entries' KEYS rather than their values */
+	sxi32 *pRc;       /* Shared latch: the first non-OK status either one raised */
+};
+/*
+ * The merge's and the sorts' comparison. A latched refusal answers 0 for the
+ * rest of the run without entering user code again, which is php's
+ * zend_call_function refusing to dispatch with an exception pending; the
+ * builtin is abandoned at the next safe point and answers the throw.
+ */
+static sxi32 HashmapUVarCmpNode(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pData)
+{
+	HashmapUVarCmp *pCmp = (HashmapUVarCmp *)pData;
+	sxi32 rc = SXRET_OK;
+	int iCmp = 0;
+	if( *pCmp->pRc != SXRET_OK ){
+		return 0;
+	}
+	if( pCmp->bKey ){
+		/* Only a member whose keys are decided by a CALLBACK reaches the merge
+		 * on a key comparison: php answers the two whose keys are its own
+		 * through the key-hash pair above, which sorts nothing. */
+		ph7_value sK1,sK2;
+		HashmapInitNodeKey(pCmp->pCtx->pVm,pA,&sK1);
+		HashmapInitNodeKey(pCmp->pCtx->pVm,pB,&sK2);
+		rc = HashmapUserCmpCall(pCmp->pCtx,pCmp->pCb,&sK1,&sK2,&iCmp);
+		PH7_MemObjRelease(&sK1);
+		PH7_MemObjRelease(&sK2);
+	}else{
+		ph7_value *pV1 = HashmapExtractNodeValue(pA);
+		ph7_value *pV2 = HashmapExtractNodeValue(pB);
+		if( pV1 == 0 || pV2 == 0 ){
+			return 0;
+		}
+		if( pCmp->pCb == 0 ){
+			/* php's (string)$a === (string)$b. Only the _assoc members reach
+			 * this one, and only ever to ask whether a key-matched pair is
+			 * EQUAL, so the non-zero answer's sign orders nothing. The coercion
+			 * is user-visible: an ARRAY warns, an object with no __toString()
+			 * raises php's catchable Error. */
+			sxi32 rcStr = SXRET_OK;
+			int bEq = HashmapValueStrEq(pV1,pV2,/*bUserVisible*/1,&rcStr);
+			if( rcStr != SXRET_OK ){
+				pCmp->pCtx->nThrowRc = rcStr;
+				*pCmp->pRc = rcStr;
+				return 0;
 			}
-			rc = HashmapUVarValueMatch(pCtx,pEntry,pIt,iValRule,pValCb,pFound);
-			if( rc != SXRET_OK || *pFound ){
-				return rc;
-			}
-			/* A key match whose VALUE differed: keep scanning — the callback
-			 * may equate this entry's key with a later candidate's too. */
-			pIt = pIt->pPrev; /* Reverse link */
-			n--;
+			return bEq ? 0 : 1;
+		}
+		rc = HashmapUserCmpCall(pCmp->pCtx,pCmp->pCb,pV1,pV2,&iCmp);
+	}
+	if( rc != SXRET_OK ){
+		*pCmp->pRc = rc;
+		return 0;
+	}
+	return (sxi32)iCmp;
+}
+/* Release the lent references and the vectors. */
+static void HashmapUVarRelease(ph7_vm *pVm,HashmapUVarList *aList,int nList)
+{
+	int i;
+	if( aList == 0 ){
+		return;
+	}
+	for( i = 0 ; i < nList ; i++ ){
+		if( aList[i].aEnt ){
+			SyMemBackendFree(&pVm->sAllocator,(void *)aList[i].aEnt);
+		}
+		if( aList[i].pMap ){
+			PH7_HashmapUnref(aList[i].pMap);
 		}
 	}
-	return SXRET_OK;
+	SyMemBackendFree(&pVm->sAllocator,(void *)aList);
 }
 /*
  * The shared worker: validation, the degenerate no-comparand shortcut, and the
@@ -2672,10 +2756,7 @@ static int HashmapUVariant(
 {
 	char zGiven[64];
 	ph7_value *pKeyCb = 0,*pValCb = 0;
-	ph7_hashmap_node *pEntry;
-	ph7_hashmap *pSrc;
 	ph7_value *pArray;
-	sxu32 n;
 	int nCb,i;
 
 	nCb = (iKeyRule == HASHMAP_UVAR_KEY_USER ? 1 : 0) + (iValRule == HASHMAP_UVAR_VAL_USER ? 1 : 0);
@@ -2725,38 +2806,328 @@ static int HashmapUVariant(
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Point to the internal representation of the source hashmap */
-	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
-	pEntry = pSrc->pFirst;
-	n = pSrc->nEntry;
-	while( n > 0 && pEntry ){
-		int bDrop = 0;
-		for( i = 1 ; i < nArg - nCb ; i++ ){
-			ph7_hashmap *pMap = (ph7_hashmap *)apArg[i]->x.pOther;
-			int bFound = 0;
-			sxi32 rc = HashmapUVarFindMatch(pCtx,pMap,pEntry,iKeyRule,iValRule,pKeyCb,pValCb,&bFound);
-			if( rc != SXRET_OK ){
-				/* A comparison raised (a throwing callback, a not-stringable
-				 * value): abandon the builtin before any spurious insertion. */
-				return rc;
-			}
-			if( bIntersect ){
-				if( !bFound ){
+	if( iKeyRule == HASHMAP_UVAR_KEY_EXACT ){
+		/* php's key-hash pair: no list, no sort, $array1 in its own order. */
+		ph7_hashmap *pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
+		ph7_hashmap_node *pEntry = pSrc->pFirst;
+		sxu32 n = pSrc->nEntry;
+		while( n > 0 && pEntry ){
+			int bDrop = 0;
+			for( i = 1 ; i < nArg - nCb ; i++ ){
+				ph7_hashmap *pMap = (ph7_hashmap *)apArg[i]->x.pOther;
+				int bFound = 0;
+				sxi32 rc = HashmapUVarFindByKey(pCtx,pMap,pEntry,iValRule,pValCb,&bFound);
+				if( rc != SXRET_OK ){
+					/* A comparison raised (a throwing callback, a not-stringable
+					 * value): abandon the builtin before any spurious insertion. */
+					return rc;
+				}
+				if( bIntersect ){
+					if( !bFound ){
+						bDrop = 1;
+						break;
+					}
+				}else if( bFound ){
 					bDrop = 1;
 					break;
 				}
-			}else if( bFound ){
-				bDrop = 1;
-				break;
+			}
+			if( !bDrop ){
+				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
+			}
+			pEntry = pEntry->pPrev; /* Reverse link */
+			n--;
+		}
+		ph7_result_value(pCtx,pArray);
+		return PH7_OK;
+	}
+	{
+		ph7_vm *pVm = pCtx->pVm;
+		HashmapUVarList *aList;
+		HashmapUVarCmp sKeyCmp,sDataCmp;
+		sxi32 rcLatch = SXRET_OK;
+		unsigned char *aKeep = 0;
+		int nList = nArg - nCb;
+		/* php's three behaviours in this family's vocabulary: NORMAL matches on
+		 * the VALUE alone and sorts every list by it; ASSOC and KEY match on the
+		 * KEY and sort by that, ASSOC then asking the VALUE of a key-matched
+		 * pair and KEY not asking at all. */
+		int bAssoc = ( iKeyRule != HASHMAP_UVAR_KEY_ANY );
+		int bKeyOnly = ( iValRule == HASHMAP_UVAR_VAL_NONE );
+		int iLast = 1,c = 1;
+		sxu32 j;
+		ph7_hashmap_node *pNode;
+		sKeyCmp.pCtx = pCtx;
+		sKeyCmp.pCb = ( iKeyRule == HASHMAP_UVAR_KEY_USER ) ? pKeyCb : 0;
+		sKeyCmp.bKey = 1;
+		sKeyCmp.pRc = &rcLatch;
+		sDataCmp.pCtx = pCtx;
+		sDataCmp.pCb = ( iValRule == HASHMAP_UVAR_VAL_USER ) ? pValCb : 0;
+		sDataCmp.bKey = 0;
+		sDataCmp.pRc = &rcLatch;
+		aList = (HashmapUVarList *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)nList * sizeof(HashmapUVarList));
+		if( aList == 0 ){
+			ph7_result_value(pCtx,pArray);
+			return PH7_OK;
+		}
+		SyZero(aList,(sxu32)nList * sizeof(HashmapUVarList));
+		/* Flatten and sort every operand, php's "create and sort list with
+		 * pointers to the hash buckets" pass. */
+		for( i = 0 ; i < nList ; i++ ){
+			ph7_hashmap *pMap = (ph7_hashmap *)apArg[i]->x.pOther;
+			sxu32 n = pMap->nEntry;
+			pMap->iRef++; /* Lent for the duration: see the note above */
+			aList[i].pMap = pMap;
+			if( n > 0 ){
+				aList[i].aEnt = (HashmapSortEnt *)SyMemBackendAlloc(&pVm->sAllocator,n * sizeof(HashmapSortEnt));
+				if( aList[i].aEnt == 0 ){
+					HashmapUVarRelease(pVm,aList,nList);
+					ph7_result_value(pCtx,pArray);
+					return PH7_OK;
+				}
+				j = 0;
+				for( pNode = pMap->pFirst ; pNode && j < n ; pNode = pNode->pPrev ){
+					aList[i].aEnt[j].pNode = pNode;
+					aList[i].aEnt[j].nOrd = j;
+					j++;
+				}
+				aList[i].nEntry = j;
+			}
+			PH7_HashmapSortEntVector(aList[i].aEnt,aList[i].nEntry,HashmapUVarCmpNode,
+				bAssoc ? (void *)&sKeyCmp : (void *)&sDataCmp);
+			if( rcLatch != SXRET_OK ){
+				goto uvar_done;
 			}
 		}
-		if( !bDrop ){
-			/* Perform the insertion */
-			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
+		/* Every entry of $array1 is kept until the merge drops it, which is
+		 * php's "copy the argument array, then delete from it". */
+		aKeep = (unsigned char *)SyMemBackendAlloc(&pVm->sAllocator,
+			( aList[0].nEntry > 0 ? aList[0].nEntry : 1 ) * sizeof(unsigned char));
+		if( aKeep == 0 ){
+			HashmapUVarRelease(pVm,aList,nList);
+			ph7_result_value(pCtx,pArray);
+			return PH7_OK;
 		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-		n--;
+		for( j = 0 ; j < aList[0].nEntry ; j++ ){
+			aKeep[j] = 1;
+		}
+		if( !bIntersect ){
+			/* php's php_array_diff() merge: walk $array1's sorted list and drop
+			 * every entry one of the others holds. */
+			while( aList[0].iCur < aList[0].nEntry ){
+				sxu32 iScan = 0;
+				c = 1;
+				for( i = 1 ; i < nList ; i++ ){
+					if( !bAssoc ){
+						while( aList[i].iCur < aList[i].nEntry
+						    && ( c = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur].pNode,
+						                                aList[i].aEnt[aList[i].iCur].pNode,&sDataCmp) ) > 0 ){
+							aList[i].iCur++;
+						}
+					}else{
+						/* php scans this one from the list's HEAD every time and
+						 * never advances the cursor: the keys are unique, so the
+						 * scan stops on the equal one or on nothing at all. */
+						iScan = aList[i].iCur;
+						while( iScan < aList[i].nEntry
+						    && ( c = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur].pNode,
+						                                aList[i].aEnt[iScan].pNode,&sKeyCmp) ) != 0 ){
+							iScan++;
+						}
+					}
+					if( rcLatch != SXRET_OK ){
+						goto uvar_done;
+					}
+					if( c == 0 ){
+						if( !bAssoc ){
+							if( aList[i].iCur < aList[i].nEntry ){
+								aList[i].iCur++;
+							}
+							break;
+						}else if( !bKeyOnly ){
+							if( iScan < aList[i].nEntry ){
+								sxi32 cData = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur].pNode,
+									aList[i].aEnt[iScan].pNode,&sDataCmp);
+								if( rcLatch != SXRET_OK ){
+									goto uvar_done;
+								}
+								if( cData != 0 ){
+									c = -1; /* the key matched and the value did not */
+								}else{
+									break;
+								}
+							}
+						}else{
+							break; /* the key alone decides */
+						}
+					}
+				}
+				if( c == 0 ){
+					/* In one of the others: drop it and the run the sort placed
+					 * alongside it. */
+					for(;;){
+						aKeep[aList[0].aEnt[aList[0].iCur].nOrd] = 0;
+						aList[0].iCur++;
+						if( aList[0].iCur >= aList[0].nEntry ){
+							goto uvar_done;
+						}
+						if( bAssoc ){
+							break; /* keys are unique: there is no run */
+						}else{
+							sxi32 cRun = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur - 1].pNode,
+								aList[0].aEnt[aList[0].iCur].pNode,&sDataCmp);
+							if( rcLatch != SXRET_OK ){
+								goto uvar_done;
+							}
+							if( cRun ){
+								break;
+							}
+						}
+					}
+				}else{
+					/* In none of them: keep it, and skip its run. */
+					for(;;){
+						aList[0].iCur++;
+						if( aList[0].iCur >= aList[0].nEntry ){
+							goto uvar_done;
+						}
+						if( bAssoc ){
+							break;
+						}else{
+							sxi32 cRun = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur - 1].pNode,
+								aList[0].aEnt[aList[0].iCur].pNode,&sDataCmp);
+							if( rcLatch != SXRET_OK ){
+								goto uvar_done;
+							}
+							if( cRun ){
+								break;
+							}
+						}
+					}
+				}
+			}
+		}else{
+			/* php's php_array_intersect() merge: every list advances in step and
+			 * an entry survives only where all of them meet. */
+			while( aList[0].iCur < aList[0].nEntry ){
+				/* php holds ONE live comparison callback and swaps it as the
+				 * merge alternates between key and value, restoring the key one
+				 * only where the value comparison answered UNEQUAL. So after a
+				 * key-and-value match, the NEXT operand's KEY comparison is made
+				 * with the VALUE callback -- array_uintersect_uassoc() hands the
+				 * value callback a pair of KEYS, and it is the only member that
+				 * can: the diff side leaves the loop there and every other member
+				 * has at most one user callback. Reproduced, not tidied: it is
+				 * what php 8.5 does and a counting callback can see it. */
+				if( iKeyRule == HASHMAP_UVAR_KEY_USER ){
+					sKeyCmp.pCb = pKeyCb;
+				}
+				for( i = 1 ; i < nList ; i++ ){
+					iLast = i;
+					while( aList[i].iCur < aList[i].nEntry
+					    && ( c = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur].pNode,
+					                                aList[i].aEnt[aList[i].iCur].pNode,
+					                                bAssoc ? &sKeyCmp : &sDataCmp) ) > 0 ){
+						aList[i].iCur++;
+					}
+					if( rcLatch != SXRET_OK ){
+						goto uvar_done;
+					}
+					if( bAssoc && !bKeyOnly && c == 0 && aList[i].iCur < aList[i].nEntry ){
+						sxi32 cData;
+						if( iValRule == HASHMAP_UVAR_VAL_USER ){
+							sKeyCmp.pCb = pValCb; /* php's live callback, see above */
+						}
+						cData = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur].pNode,
+							aList[i].aEnt[aList[i].iCur].pNode,&sDataCmp);
+						if( rcLatch != SXRET_OK ){
+							goto uvar_done;
+						}
+						if( cData != 0 ){
+							c = 1; /* the key met and the value did not */
+							if( iKeyRule == HASHMAP_UVAR_KEY_USER ){
+								sKeyCmp.pCb = pKeyCb;
+							}
+						}
+					}
+					if( aList[i].iCur >= aList[i].nEntry ){
+						/* This operand is spent: nothing left of $array1 can be
+						 * in it, so none of the rest survives either. */
+						while( aList[0].iCur < aList[0].nEntry ){
+							aKeep[aList[0].aEnt[aList[0].iCur].nOrd] = 0;
+							aList[0].iCur++;
+						}
+						goto uvar_done;
+					}
+					if( c ){
+						break;
+					}
+					aList[i].iCur++;
+				}
+				if( c ){
+					/* Not in all of them: drop it, and every entry that orders
+					 * BELOW the one the operand stopped on. */
+					for(;;){
+						aKeep[aList[0].aEnt[aList[0].iCur].nOrd] = 0;
+						aList[0].iCur++;
+						if( aList[0].iCur >= aList[0].nEntry ){
+							goto uvar_done;
+						}
+						if( bAssoc ){
+							break;
+						}else{
+							sxi32 cRun = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur].pNode,
+								aList[iLast].aEnt[aList[iLast].iCur].pNode,&sDataCmp);
+							if( rcLatch != SXRET_OK ){
+								goto uvar_done;
+							}
+							if( cRun >= 0 ){
+								break;
+							}
+						}
+					}
+				}else{
+					/* In all of them: keep it, and skip its run. */
+					for(;;){
+						aList[0].iCur++;
+						if( aList[0].iCur >= aList[0].nEntry ){
+							goto uvar_done;
+						}
+						if( bAssoc ){
+							break;
+						}else{
+							sxi32 cRun = HashmapUVarCmpNode(aList[0].aEnt[aList[0].iCur - 1].pNode,
+								aList[0].aEnt[aList[0].iCur].pNode,&sDataCmp);
+							if( rcLatch != SXRET_OK ){
+								goto uvar_done;
+							}
+							if( cRun ){
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+uvar_done:
+		if( rcLatch == SXRET_OK ){
+			/* php answers in $array1's own order, which is the order the drop
+			 * flags are indexed in. */
+			j = 0;
+			for( pNode = aList[0].pMap->pFirst ; pNode && j < aList[0].nEntry ; pNode = pNode->pPrev ){
+				if( aKeep[j] ){
+					HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pNode,TRUE);
+				}
+				j++;
+			}
+		}
+		if( aKeep ){
+			SyMemBackendFree(&pVm->sAllocator,(void *)aKeep);
+		}
+		HashmapUVarRelease(pVm,aList,nList);
+		if( rcLatch != SXRET_OK ){
+			return rcLatch;
+		}
 	}
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);

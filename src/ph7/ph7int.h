@@ -8001,6 +8001,16 @@ PH7_PRIVATE sxi32 PH7_HashmapInsertRawKey(ph7_hashmap *pMap,const char *zKey,sxu
  * Shared with hashmap.c (shuffle/array_unique/array_rand) and referenced from
  * the aHashmapFunc[] registration table; compiled in every mode. */
 typedef sxi32 (*ProcNodeCmp)(ph7_hashmap_node *,ph7_hashmap_node *,void *);
+/* One entry as an ordering sees it: the node, plus where it stood before the
+ * sort ran. php stamps every bucket the same way (Z_EXTRA), and the stamp is
+ * what makes a quicksort stable for the sort builtins and what lets the
+ * diff/intersect family answer in the source array's order. */
+typedef struct HashmapSortEnt HashmapSortEnt;
+struct HashmapSortEnt {
+	ph7_hashmap_node *pNode;
+	sxu32 nOrd;
+};
+PH7_PRIVATE void PH7_HashmapSortEntVector(HashmapSortEnt *aEnt,sxu32 n,ProcNodeCmp xCmp,void *pCmpData);
 PH7_PRIVATE sxi32 PH7_HashmapShuffle(ph7_hashmap *pMap);
 PH7_PRIVATE sxi32 HashmapNodeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData);
 PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap);
