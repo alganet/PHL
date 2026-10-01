@@ -1503,6 +1503,30 @@ PH7_PRIVATE int PH7_VmClassAttrAccess(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 	return PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,bLog);
 }
 /*
+ * Where in the inheritance chain a property was DECLARED, counted from the class
+ * being listed: 0 for its own declarations, 1 for its parent's, and so on. A
+ * property copied in from a TRAIT reports 0, because php compiles a trait's
+ * properties into the using class itself.
+ *
+ * php's property table is built own-declarations-first and then APPENDED to by
+ * each inheritance step, so this depth is the order get_class_vars() answers in.
+ * The engine's own table is keyed by name and carries the inherited entries
+ * first, which is why listing it has to sort rather than walk.
+ */
+static int VmClassAttrDeclDepth(ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	ph7_class *pCls = pClass;
+	int iDepth = 0;
+	while( pCls ){
+		if( pAttr->pDeclClass == pCls ){
+			return iDepth;
+		}
+		pCls = pCls->pBase;
+		++iDepth;
+	}
+	return 0;
+}
+/*
  * array get_class_vars(string/object $class_name)
  *   Get the default properties of the class
  * Parameters
@@ -1519,7 +1543,8 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 {
 	ph7_value *pName,*pArray,sValue;
 	SyHashEntry *pEntry;
-	ph7_class *pClass;
+	ph7_class *pClass,*pWalk;
+	int iPass,iDepth,iMaxDepth;
 	/* Extract the target class first */
 	pClass = 0;
 	if( nArg > 0 ){
@@ -1562,37 +1587,72 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Fill the array with the defined attribute visible from the current scope */
-	SyHashResetLoopCursor(&pClass->hAttr);
-	while((pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
-		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
-		if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
-			/* php 8.4: VIRTUAL hooked properties have no backing store —
-			 * get_class_vars() excludes them (raw surface) */
-			continue;
-		}
-		/* Check if the access is allowed */
-		if( PH7_VmClassMemberAccess(pCtx->pVm,pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
-			SyString *pAttrName = &pAttr->sName;
-			ph7_value *pValue = 0;
-			if( pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC) ){
-				/* Static slots are computed at mount; constants lazily */
-				PH7_VmMaterializeClassConst(pCtx->pVm,pClass,pAttr);
-				pValue = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
-			}else{
-				if( SySetUsed(&pAttr->aByteCode) > 0 ){
+	/* Fill the array with the defined attribute visible from the current scope.
+	 *
+	 * php walks the property table TWICE — every non-static first, then every
+	 * static — so the answer is the instance properties in declaration order
+	 * followed by the statics in declaration order, never the two interleaved
+	 * the way one pass over a single table produces them.
+	 *
+	 * And what a static contributes is its DEFAULT, read out of the class's
+	 * default table: php never looks at the live static slot here, so a
+	 * `C::$s = 'live'` before the call does not change the answer. The class
+	 * DEFAULT is the compiled initializer, which is what the non-static arm
+	 * has always evaluated, so both arms now go through the same one. */
+	iMaxDepth = 0;
+	for( pWalk = pClass ; pWalk ; pWalk = pWalk->pBase ){
+		++iMaxDepth;
+	}
+	for( iPass = 0 ; iPass < 2 ; ++iPass ){
+	  for( iDepth = 0 ; iDepth < iMaxDepth ; ++iDepth ){
+		SyHashResetLoopCursor(&pClass->hAttr);
+		while((pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+			ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+			int bStatic;
+			if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+				/* php 8.4: VIRTUAL hooked properties have no backing store —
+				 * get_class_vars() excludes them (raw surface) */
+				continue;
+			}
+			bStatic = (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) != 0;
+			if( bStatic != iPass || VmClassAttrDeclDepth(pClass,pAttr) != iDepth ){
+				continue;
+			}
+			/* A PRIVATE property is listed only by the class that DECLARED it.
+			 * The shared visibility screen answers the question a member ACCESS
+			 * asks — may this scope reach the name — and grants a subclass its
+			 * inherited copy of a base private, which is the right answer for a
+			 * read through the base's own methods and the wrong one here: php
+			 * compares the property's declaring class against the scope and
+			 * drops it, so a parent's private never appears in a subclass's
+			 * listing. */
+			if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+			 && pAttr->pDeclClass != 0
+			 && pAttr->pDeclClass != PH7_VmCallerScope(pCtx->pVm) ){
+				continue;
+			}
+			/* Check if the access is allowed */
+			if( PH7_VmClassMemberAccess(pCtx->pVm,pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
+				SyString *pAttrName = &pAttr->sName;
+				ph7_value *pValue = 0;
+				if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
+					/* Constants are materialized lazily and read from their slot */
+					PH7_VmMaterializeClassConst(pCtx->pVm,pClass,pAttr);
+					pValue = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
+				}else if( SySetUsed(&pAttr->aByteCode) > 0 ){
 					PH7_MemObjRelease(&sValue);
 					/* Compute default value (any complex expression) associated with this attribute */
 					VmLocalExec(pCtx->pVm,&pAttr->aByteCode,&sValue,FALSE);
 					pValue = &sValue;
 				}
+				/* Fill in the array */
+				ph7_value_string(pName,pAttrName->zString,pAttrName->nByte);
+				ph7_array_add_elem(pArray,pName,pValue); /* Will make it's own copy */
+				/* Reset the cursor */
+				ph7_value_reset_string_cursor(pName);
 			}
-			/* Fill in the array */
-			ph7_value_string(pName,pAttrName->zString,pAttrName->nByte);
-			ph7_array_add_elem(pArray,pName,pValue); /* Will make it's own copy */
-			/* Reset the cursor */
-			ph7_value_reset_string_cursor(pName);
 		}
+	  }
 	}
 	PH7_MemObjRelease(&sValue);
 	/* Return the created array */
