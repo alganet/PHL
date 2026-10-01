@@ -960,15 +960,22 @@ static sxi32 DtTzOffsetAt(int iTz,sxi32 iFixed,sxi64 iTs,int *pbDst,
 	*pnAbbr = 0;
 	return iFixed;
 }
+/* Forward: a name a date string spells is looked up in the very tables
+ * DateTimeZone reads, in the same order -- an abbreviation before an
+ * identifier, so `CET` in a string is the fixed +01:00 there too. */
+static int DtZoneNamed(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
+	int *pnName,int *piKind);
 /*
- * ...and what the letters spell, the spellings this engine has without a tz
- * database: `UTC` (an IDENTIFIER in that exact case, an abbreviation in any
- * other), `GMT`, and the military letters above. Answers 1 when the name is one
- * of them, 0 for every other shape php would look up and this build cannot.
+ * ...and what the letters spell: `UTC` (an IDENTIFIER in that exact case, an
+ * abbreviation in any other), `GMT`, the military letters above, and then
+ * whatever the tz database has. Answers 1 when the name resolved, 0 for a shape
+ * php would look up and this build cannot -- which, with PH7_ENABLE_TZDB off,
+ * is every name past the three fixed spellings.
  */
 static int DtZoneName(const char *z,int n,sxi32 *piOff,const char **pzName,
 	int *pnName,int *pbIdent)
 {
+	int iKind = 0;
 	if( n == 3 && (SyStrnicmp(z,"utc",3) == 0 || SyStrnicmp(z,"gmt",3) == 0) ){
 		int bUtc = (z[0] == 'u' || z[0] == 'U');
 		*piOff = 0;
@@ -980,6 +987,13 @@ static int DtZoneName(const char *z,int n,sxi32 *piOff,const char **pzName,
 	if( n == 1 && DtZoneMil(z[0],piOff,pzName) ){
 		*pnName = 1;
 		*pbIdent = 0;
+		return 1;
+	}
+	/* An IDENTIFIER carries no offset of its own -- the instant the rest of the
+	 * string names picks one, and DtParseEx re-solves the reading against the
+	 * zone once it has the whole vector. Zero is the placeholder until then. */
+	if( DtZoneNamed(z,n,piOff,pzName,pnName,&iKind) == 0 ){
+		*pbIdent = (iKind == DT_ZONE_ID);
 		return 1;
 	}
 	return 0;
@@ -2806,7 +2820,7 @@ static int DtParseEx(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int i
 	phl_dt_lasterr *pRec)
 {
 	dt_parsed sP;
-	int iErr;
+	int iErr,iTz;
 	DtFieldsInit(&sP,iBaseOff);
 	*pUs = iBaseUs;
 	if( pRec ){
@@ -2819,7 +2833,35 @@ static int DtParseEx(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int i
 	if( iErr != 0 ){
 		return iErr;
 	}
+	/* A DATABASE zone the string named governs the reading twice over. It is the
+	 * clock the base moment is read on -- `America/New_York` alone is now in New
+	 * York whatever the default zone is, where the fixed-offset `EST` is the
+	 * DEFAULT zone's wall clock wearing a different label -- and it is the zone
+	 * the finished reading is an instant in, which is a different offset from the
+	 * one at NOW for every date on the other side of a switch.
+	 *
+	 * modify() is excepted because it discards the zone it parses altogether
+	 * (DT_PARSE_KEEP_ZONE), and `@epoch` because an epoch is already an instant. */
+	iTz = (sP.bOffSet == 2 && sP.bZoneIdent && !sP.bEpoch
+	       && !(iFlags & DT_PARSE_KEEP_ZONE))
+		? DtTzIndex(sP.zZone,sP.nZone,DT_ZONE_ID) : -1;
+	if( iTz >= 0 ){
+		int bDst = 0,nAbbr = 0;
+		const char *zAbbr = 0;
+		iBaseOff = DtTzOffsetAt(iTz,0,iBaseTs,&bDst,&zAbbr,&nAbbr);
+		sP.iOff = iBaseOff;
+	}
 	*pTs = DtApplyFields(&sP,iBaseTs,iBaseOff,iBaseUs,iFlags,pUs);
+#ifdef PH7_ENABLE_TZDB
+	if( iTz >= 0 ){
+		sxi64 iFixed = *pTs;
+		sxi32 iOffAt = sP.iOff;
+		if( PH7_TzLocalToUtcFirst(iTz,*pTs + sP.iOff,&iFixed,&iOffAt) ){
+			*pTs = iFixed;
+			sP.iOff = iOffAt;
+		}
+	}
+#endif
 	*pOff = sP.iOff;
 	*pbOffSet = sP.bOffSet;
 	return 0;
@@ -5969,7 +6011,7 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	char zNameBuf[16];
 	const char *zZone;
 	int nZone;
-	sxi32 iZoneOff = 0;
+	sxi32 iZoneOff = 0,iFillOff;
 	const char *zFmt,*zIn;
 	int nFmt,nIn,iNowUs = 0,iResUs = 0,iTzFf;
 	sxi64 iNowFf = 0;
@@ -5999,13 +6041,29 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 		const char *zAbbrFf;
 		iZoneOff = DtTzOffsetAt(iTzFf,iZoneOff,iNowFf,&bDstFf,&zAbbrFf,&nAbbrFf);
 	}
+	iFillOff = iZoneOff;
 	if( DtFromFormat(zFmt,nFmt,zIn,nIn,&sRes) != 0 ){
 		DtLastErrFf(pVm,&sRes.sDiag);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	DtLastErrFf(pVm,&sRes.sDiag);
-	sState.iTs = DtFfResolve(&sRes,iNowFf,iNowUs,iZoneOff,&iResUs);
+	/* ...and again for a database zone the FORMAT itself read, which arrives with
+	 * no offset of its own: it displaces the call's zone as the clock every unset
+	 * field is filled from -- `createFromFormat('e','Pacific/Auckland')` is the
+	 * moment in Auckland whatever zone the call was made in -- and the reading it
+	 * produces is local time THERE. */
+	if( sRes.iOffKind == DT_ZONE_ID ){
+		int iTzRes = DtTzIndex(sRes.zName,sRes.nName,DT_ZONE_ID);
+		if( iTzRes >= 0 ){
+			int bDstRes,nAbbrRes;
+			const char *zAbbrRes;
+			iTzFf = iTzRes;
+			sRes.iOff = DtTzOffsetAt(iTzRes,0,iNowFf,&bDstRes,&zAbbrRes,&nAbbrRes);
+			iFillOff = sRes.iOff;
+		}
+	}
+	sState.iTs = DtFfResolve(&sRes,iNowFf,iNowUs,iFillOff,&iResUs);
 	sState.uSec = iResUs;
 	if( sRes.iOffKind == 0 ){
 		/* nothing the format read resolved, so the call's own zone stands */
@@ -6033,6 +6091,16 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 		sState.zName = sRes.zName;
 		sState.nName = sRes.nName;
 		sState.iZoneKind = sRes.iOffKind;
+#ifdef PH7_ENABLE_TZDB
+		if( sRes.iOffKind == DT_ZONE_ID && iTzFf >= 0 ){
+			sxi64 iFixed = sState.iTs;
+			sxi32 iOffAt = sRes.iOff;
+			if( PH7_TzLocalToUtcFirst(iTzFf,sState.iTs + sRes.iOff,&iFixed,&iOffAt) ){
+				sState.iTs = iFixed;
+				sState.iOff = iOffAt;
+			}
+		}
+#endif
 	}
 	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){

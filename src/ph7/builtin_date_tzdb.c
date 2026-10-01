@@ -1019,6 +1019,75 @@ PH7_PRIVATE int PH7_TzLocalToUtc(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff
  * hour a switch SKIPPED has none, and falls back to PH7_TzLocalToUtc(), which
  * is why mktime() and the parser agree on every gap.
  */
+/*
+ * The same reading, resolved php's OTHER way -- the FIRST of the two instants a
+ * repeated hour names, which is what a zone NAMED INSIDE A DATE STRING gets.
+ *
+ * php has two answers for one ambiguous reading and they are not the same. A
+ * zone handed to the constructor as an argument, or standing as the default,
+ * takes the SECOND instant (`new DateTime('2026-10-25 02:30:00', new
+ * DateTimeZone('Europe/Paris'))` is CET); the identifier the STRING spells takes
+ * the first (`new DateTime('2026-10-25 02:30:00 Europe/Paris')` is CEST). Swept
+ * over 30 fall-back switches in eleven zones, the string door was the first
+ * instant every time.
+ *
+ * "First" is the LARGER of the two offsets, not the earlier of the two guesses:
+ * a fall-back is a backward jump, so the offset ahead of it is the higher one.
+ * Reading it off the first guess is right in New York and wrong in Paris -- the
+ * local-as-if-UTC instant lands on the far side of the switch for a zone east of
+ * Greenwich and on the near side for one west of it -- which is the same
+ * asymmetry PH7_TzLocalToUtc's gap arm has to spell out.
+ *
+ * Candidates come from probing a day either side, as the seeded door does: a
+ * switch is at most a few hours wide, so that reaches every offset a reading can
+ * be read with. An offset counts only if it is a FIXED POINT -- the instant it
+ * produces must itself be on that offset -- so a SKIPPED hour has none at all,
+ * and falls through to the gap rule.
+ */
+PH7_PRIVATE int PH7_TzLocalToUtcFirst(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff)
+{
+	static const sxi64 aProbe[3] = { 0, -90000, 90000 };
+	sxi32 aOff[3];
+	int nOff = 0,i,j,bDst,nAbbr,bAny = 0;
+	const char *zAbbr;
+	sxi32 iSeed = 0,iBestOff = 0;
+	sxi64 iBest = 0;
+	if( !PH7_TzOffsetAt(iZone,iLocal,&iSeed,&bDst,&zAbbr,&nAbbr) ){
+		return 0;
+	}
+	for( i = 0 ; i < 3 ; ++i ){
+		sxi32 iOff = iSeed;
+		if( !PH7_TzOffsetAt(iZone,iLocal - iSeed + aProbe[i],&iOff,&bDst,&zAbbr,&nAbbr) ){
+			continue;
+		}
+		for( j = 0 ; j < nOff ; ++j ){
+			if( aOff[j] == iOff ){
+				break;
+			}
+		}
+		if( j == nOff ){
+			aOff[nOff++] = iOff;
+		}
+	}
+	for( i = 0 ; i < nOff ; ++i ){
+		sxi64 iTs = iLocal - aOff[i];
+		sxi32 iAt = aOff[i];
+		if( !PH7_TzOffsetAt(iZone,iTs,&iAt,&bDst,&zAbbr,&nAbbr) || iAt != aOff[i] ){
+			continue;
+		}
+		if( !bAny || iAt > iBestOff ){
+			iBest = iTs;
+			iBestOff = iAt;
+			bAny = 1;
+		}
+	}
+	if( bAny ){
+		*piTs = iBest;
+		*piOff = iBestOff;
+		return 1;
+	}
+	return PH7_TzLocalToUtc(iZone,iLocal,piTs,piOff);
+}
 PH7_PRIVATE int PH7_TzLocalToUtcSeed(int iZone,sxi64 iLocal,sxi32 iOffNow,int bDstNow,
 	sxi64 *piTs,sxi32 *piOff)
 {

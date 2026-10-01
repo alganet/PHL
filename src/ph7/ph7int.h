@@ -5843,6 +5843,7 @@ PH7_PRIVATE int PH7_TzTransAt(int iZone,int i,sxi64 *piTs,sxi32 *piOff,int *pbDs
 PH7_PRIVATE int PH7_TzTransNextPosix(int iZone,sxi64 iTs,sxi64 *piTs,sxi32 *piOff,
 	int *pbDst,const char **pzAbbr,int *pnAbbr);
 PH7_PRIVATE int PH7_TzLocalToUtc(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff);
+PH7_PRIVATE int PH7_TzLocalToUtcFirst(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff);
 PH7_PRIVATE int PH7_TzLocalToUtcSeed(int iZone,sxi64 iLocal,sxi32 iOffNow,int bDstNow,
 	sxi64 *piTs,sxi32 *piOff);
 #endif /* PH7_ENABLE_TZDB */
