@@ -455,6 +455,28 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 				z = &zQ[1];   /* no line counting: the raw rule is one match */
 				continue;
 			}
+			if( c == '$' ){
+				/* php's VALUE_CHARS unit `("$"[^{])` carries the byte behind
+				 * the `$` whatever that byte is -- the NEWLINE included -- and
+				 * one more when it is a backslash. So a value whose last byte
+				 * is `$` does not end at its own line: it eats the newline and
+				 * runs on into the text below, which is how `x=a$` reaches the
+				 * next directive's `=` and refuses the file there. The line
+				 * counter does NOT move for it: only php's own NEWLINE rule
+				 * counts, and this newline went to the value scanner instead,
+				 * so a refusal below a run-on is dated one line short of where
+				 * it was typed. A `$` with nothing behind it matches nothing at
+				 * all, and the value stops in front of it. */
+				if( &z[1] >= zEnd ){
+					break;
+				}
+				if( z[1] == '{' ){
+					z++;   /* `${NAME}` is its own production, not this unit */
+					continue;
+				}
+				z += z[1] == '\\' && &z[2] < zEnd ? 3 : 2;
+				continue;
+			}
 			z++;
 		}
 		zValEnd = z;

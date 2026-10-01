@@ -5543,18 +5543,17 @@ static int VmIniExprIsOp(int c)
  * One VALUE_CHARS unit: php's value scanner takes any byte that is not one of
  * its own delimiters, plus a `$` that does NOT open `${` -- which carries the
  * byte behind it, and one more when that byte is a backslash. Answers how many
- * bytes the unit spends, or 0 when the run stops here. A `$` at the very end
- * of a value is still a unit: php is looking at the newline the CLI trimmed.
+ * bytes the unit spends, or 0 when the run stops here. A `$` with NOTHING
+ * behind it matches nothing at all, so it is not a unit and the run stops in
+ * front of it -- a value that ends on `$` keeps the newline that followed it,
+ * because the reader hands the run-on over whole rather than trimming it.
  */
 static int VmIniValueCharLen(const char *zCur,const char *zEnd)
 {
 	int c = (unsigned char)zCur[0];
 	if( c == '$' ){
-		if( &zCur[1] < zEnd && zCur[1] == '{' ){
+		if( &zCur[1] >= zEnd || zCur[1] == '{' ){
 			return 0;
-		}
-		if( &zCur[1] >= zEnd ){
-			return 1;
 		}
 		return zCur[1] == '\\' && &zCur[2] < zEnd ? 3 : 2;
 	}
@@ -6033,9 +6032,21 @@ static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut,int nDepth)
 			bAny = 1;
 			continue;
 		}
-		SyBlobAppend(pOut,p->zCur,(sxu32)sizeof(char));
-		p->zCur++;
-		bAny = 1;
+		{
+			/* Everything else is VALUE_CHARS, and the run spends whole UNITS
+			 * of it: a byte that opens no unit is not part of the operand and
+			 * ends it. `=` and a bare newline are two of those, so a value
+			 * cannot walk down into the statement below on its own -- the one
+			 * way through is the `$` unit, which carries whatever byte follows
+			 * it and hands the run-on the next line's text. */
+			int nUnit = VmIniValueCharLen(p->zCur,p->zEnd);
+			if( nUnit < 1 ){
+				break;
+			}
+			SyBlobAppend(pOut,p->zCur,(sxu32)nUnit);
+			p->zCur += nUnit;
+			bAny = 1;
+		}
 	}
 	return bAny;
 }
