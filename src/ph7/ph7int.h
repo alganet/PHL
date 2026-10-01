@@ -5825,6 +5825,11 @@ PH7_PRIVATE sxi32 DtTzOffsetOf(int iTz,sxi32 iFixed,sxi64 iTs,int *pbDst,
 PH7_PRIVATE int PH7_TzFind(const char *zName,int nName);
 PH7_PRIVATE int PH7_TzAbbrFind(const char *zName,int nName,sxi32 *piOff,int *pbDst,
 	const char **pzCanon,int *pnCanon);
+PH7_PRIVATE int PH7_TzAbbrCount(void);
+PH7_PRIVATE const char * PH7_TzAbbrAt(int i,int *pnName,int *pnRow);
+PH7_PRIVATE int PH7_TzAbbrRowAt(int i,int j,sxi32 *piOff,int *pbDst,int *piZone);
+PH7_PRIVATE const char * PH7_TzAbbrZoneFind(const char *zName,int nName,sxi64 iOff,
+	sxi64 iDst,int *pnZone);
 PH7_PRIVATE int PH7_TzCount(void);
 PH7_PRIVATE int PH7_TzAt(int i);
 PH7_PRIVATE const char * PH7_TzName(int iZone,int *pnName,int *pbBackward);

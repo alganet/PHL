@@ -5016,6 +5016,128 @@ static int vm_builtin_timezone_identifiers_list(ph7_context *pCtx,int nArg,ph7_v
 		nArg > 0 ? ph7_value_to_int64(apArg[0]) : DT_TZ_GROUP_ALL,
 		nArg > 1 ? apArg[1] : 0,"timezone_identifiers_list");
 }
+/*
+ * ---------------------------------------------------------------------------
+ * DateTimeZone::listAbbreviations() and its timezone_abbreviations_list()
+ * twin -- every (daylight, offset, zone) triple the database wrote each of the
+ * 144 abbreviations for, keyed by the LOWER-CASE spelling. The canonical
+ * upper-case one getName() answers is the key of nothing: `CET` is stored
+ * upper-case and printed `cet`.
+ *
+ * A triple whose zone is unknown prints a null `timezone_id` rather than being
+ * left out, so a group's count is what the table says and not what it could
+ * name.
+ */
+static int DtZoneAbbrListResult(ph7_context *pCtx)
+{
+	ph7_value *pArray,*pGroup,*pRow,*pVal,*pKey;
+	int i,nAbbr = 0;
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	pKey = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 || pKey == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+#ifdef PH7_ENABLE_TZDB
+	nAbbr = PH7_TzAbbrCount();
+#endif
+	for( i = 0 ; i < nAbbr ; ++i ){
+#ifdef PH7_ENABLE_TZDB
+		int nName = 0,nRow = 0,j;
+		const char *zName = PH7_TzAbbrAt(i,&nName,&nRow);
+		char zLower[8];
+		if( zName == 0 || nName > (int)sizeof(zLower) ){
+			continue;
+		}
+		/* The names are letters only, so folding is a byte at a time. */
+		for( j = 0 ; j < nName ; ++j ){
+			zLower[j] = (char)SyCharToLower(zName[j]);
+		}
+		pGroup = ph7_context_new_array(pCtx);
+		if( pGroup == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		for( j = 0 ; j < nRow ; ++j ){
+			sxi32 iOff = 0;
+			int bDst = 0,iZone = -1,nZone = 0;
+			const char *zZone;
+			if( !PH7_TzAbbrRowAt(i,j,&iOff,&bDst,&iZone) ){
+				break;
+			}
+			pRow = ph7_context_new_array(pCtx);
+			if( pRow == 0 ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+			ph7_value_bool(pVal,bDst);
+			ph7_array_add_strkey_elem(pRow,"dst",pVal);
+			ph7_value_int64(pVal,(sxi64)iOff);
+			ph7_array_add_strkey_elem(pRow,"offset",pVal);
+			zZone = iZone < 0 ? 0 : PH7_TzName(iZone,&nZone,0);
+			if( zZone == 0 ){
+				ph7_value_null(pVal);
+			}else{
+				ph7_value_string(pVal,zZone,nZone);
+			}
+			ph7_array_add_strkey_elem(pRow,"timezone_id",pVal);
+			ph7_value_reset_string_cursor(pVal);
+			ph7_array_add_elem(pGroup,0,pRow);
+		}
+		ph7_value_string(pKey,zLower,nName);
+		ph7_array_add_elem(pArray,pKey,pGroup);
+		ph7_value_reset_string_cursor(pKey);
+#endif
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/* DateTimeZone::listAbbreviations() */
+static int vm_builtin_DateTimeZone_listAbbreviations(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DtZoneAbbrListResult(pCtx);
+}
+static int vm_builtin_timezone_abbreviations_list(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DtZoneAbbrListResult(pCtx);
+}
+/*
+ * timezone_name_from_abbr(string $abbr, int $utcOffset = -1, int $isDST = -1).
+ *
+ * There is no DateTimeZone method for this one -- it is a bare function and
+ * has been since php 5.1. The four rules it runs are in PH7_TzAbbrZoneFind();
+ * what belongs here is that `-1` is how php spells "no offset given", so the
+ * default argument and a caller who really means one second west of UTC are
+ * the same call. Answers false where nothing resolves.
+ */
+static int vm_builtin_timezone_name_from_abbr(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zAbbr;
+	int nAbbr = 0;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zAbbr = ph7_value_to_string(apArg[0],&nAbbr);
+#ifdef PH7_ENABLE_TZDB
+	{
+		sxi64 iOff = nArg > 1 ? ph7_value_to_int64(apArg[1]) : -1;
+		sxi64 iDst = nArg > 2 ? ph7_value_to_int64(apArg[2]) : -1;
+		int nZone = 0;
+		const char *zZone = PH7_TzAbbrZoneFind(zAbbr,nAbbr,iOff,iDst,&nZone);
+		if( zZone ){
+			ph7_result_string(pCtx,zZone,nZone);
+			return PH7_OK;
+		}
+	}
+#else
+	SXUNUSED(zAbbr);
+#endif
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
 /* DateTimeZone::__construct(string $timezone) */
 static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -8730,6 +8852,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "getTransitions", PH7_MOD_PUBLIC,
 		  "int $timestampBegin = 0, int $timestampEnd = 2147483647", "@array",
 		  vm_builtin_DateTimeZone_getTransitions },
+		{ "listAbbreviations", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "@array",
+		  vm_builtin_DateTimeZone_listAbbreviations },
 	};
 	/* php's group bitmask. ALL and ALL_WITH_BC are the two the reader compares
 	 * EXACTLY rather than masking (see DtZoneListResult). */
@@ -8930,6 +9054,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "timezone_offset_get",          vm_builtin_timezone_offset_get },
 		{ "timezone_identifiers_list",    vm_builtin_timezone_identifiers_list },
 		{ "timezone_transitions_get",     vm_builtin_timezone_transitions_get },
+		{ "timezone_abbreviations_list",  vm_builtin_timezone_abbreviations_list },
+		{ "timezone_name_from_abbr",      vm_builtin_timezone_name_from_abbr },
 	};
 	sxu32 n;
 	sxi32 rc;

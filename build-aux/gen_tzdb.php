@@ -88,8 +88,9 @@ foreach ($zones as $id => $_) {
  * upper-case spelling whatever case the caller wrote, which is where an
  * abbreviation differs from an identifier -- an identifier is stored verbatim.
  */
+$abbrList = DateTimeZone::listAbbreviations();
 $abbrRows = [];
-foreach (array_keys(DateTimeZone::listAbbreviations()) as $key) {
+foreach (array_keys($abbrList) as $key) {
     $z = new DateTimeZone($key);
     $d = new DateTime('@0');
     $d->setTimezone($z);
@@ -97,6 +98,8 @@ foreach (array_keys(DateTimeZone::listAbbreviations()) as $key) {
         'name'  => $z->getName(),
         'off'   => (int) $z->getOffset(new DateTime('@0')),
         'isdst' => $d->format('I') === '1' ? 1 : 0,
+        'key'   => $key,
+        'zones' => $abbrList[$key],
     ];
 }
 usort($abbrRows, static fn(array $a, array $b): int => strcmp($a['name'], $b['name']));
@@ -139,6 +142,65 @@ foreach ($zones as $id => $data) {
 }
 
 /* --- Emit ------------------------------------------------------------------ */
+/* --- What ONE abbreviation is a shorthand FOR -----------------------------
+ * The row above is what `new DateTimeZone('CET')` becomes: a single fixed
+ * offset. listAbbreviations() answers the other half -- every (daylight,
+ * offset, zone) triple the database ever wrote that abbreviation for, 1127 of
+ * them across the 144 names, and `cet` alone accounts for 52. The FIRST triple
+ * of a name is the row above, because the reverse lookup that resolves a bare
+ * `CET` returns the first match; the rest are only reachable by asking for a
+ * specific offset.
+ *
+ * The listing order is the flat table's own, which is neither the byte order
+ * aTzAbbr is sorted in nor anything derivable from the names -- so it is
+ * recorded as its own index (aTzAbbrOrder) rather than recomputed.
+ *
+ * A triple may name NO zone: 25 of the 1127 are military letters and other
+ * offsets the database never gave a canonical zone to, and those print null.
+ */
+$zoneIx = [];
+foreach ($rows as $i => $r) {
+    $zoneIx[$r['id']] = $i;
+}
+$order = [];
+foreach (array_keys($abbrList) as $key) {
+    foreach ($abbrRows as $i => $r) {
+        if ($r['key'] === $key) { $order[] = $i; break; }
+    }
+}
+if (count($order) !== count($abbrRows)) {
+    fwrite(STDERR, "gen_tzdb: abbreviation listing order is incomplete\n");
+    exit(1);
+}
+
+/* --- The offset-only fallback ---------------------------------------------
+ * When an abbreviation names nothing at all, php falls back to a second, much
+ * smaller table keyed on the (offset, daylight) pair alone and answers whatever
+ * zone it happens to list there -- which is how an unknown abbreviation at
+ * -18000 still resolves to `America/New_York`. The table is not reachable by
+ * name, so it is swept out of the oracle by asking for a name that cannot
+ * match and walking every minute of the legal offset range.
+ */
+$fallback = [];
+$absent = 'zzzzzzzz';
+if (isset($abbrList[$absent])) {
+    fwrite(STDERR, "gen_tzdb: the fallback sweep's sentinel is a real abbreviation\n");
+    exit(1);
+}
+for ($o = -14 * 3600; $o <= 14 * 3600; $o += 60) {
+    foreach ([0, 1] as $dst) {
+        $id = timezone_name_from_abbr($absent, $o, $dst);
+        if ($id === false) {
+            continue;
+        }
+        if (!isset($zoneIx[$id])) {
+            fwrite(STDERR, "gen_tzdb: fallback names an unknown zone $id\n");
+            exit(1);
+        }
+        $fallback[] = ['off' => $o, 'dst' => $dst, 'zone' => $zoneIx[$id]];
+    }
+}
+
 $fp = fopen($out, 'w');
 $w = static function (string $s) use ($fp): void { fwrite($fp, $s); };
 
@@ -222,16 +284,59 @@ $w("\tconst char *zName;   /* the canonical UPPER-CASE spelling getName() answer
 $w("\tsxu8 nName;\n");
 $w("\tsxu8 bDst;           /* what `I` prints; the offset is fixed either way */\n");
 $w("\tsxi32 iOff;\n");
+$w("\tsxu16 iZone;         /* where its triples start in aTzAbbrZone */\n");
+$w("\tsxu8 nZone;          /* how many -- 62 at most, for `cst` */\n");
 $w("};\n");
 $w("/* Sorted by name, upper-case and byte-wise, for the binary search. */\n");
 $w("static const PH7_TzAbbrRow aTzAbbr[PH7_TZDB_ABBR_COUNT] = {\n");
+$iRow = 0;
 foreach ($abbrRows as $r) {
-    $w(sprintf("\t{ \"%s\", %d, %d, %d },\n",
-        $r['name'], strlen($r['name']), $r['isdst'], $r['off']));
+    $w(sprintf("\t{ \"%s\", %d, %d, %d, %d, %d },\n",
+        $r['name'], strlen($r['name']), $r['isdst'], $r['off'],
+        $iRow, count($r['zones'])));
+    $iRow += count($r['zones']);
+}
+$w("};\n\n");
+
+$w("#define PH7_TZDB_ABBR_ZONE_COUNT $iRow\n");
+$w("#define PH7_TZ_NOZONE 0xFFFF   /* a triple php prints a null timezone_id for */\n");
+$w("typedef struct PH7_TzAbbrZoneRow PH7_TzAbbrZoneRow;\n");
+$w("struct PH7_TzAbbrZoneRow\n{\n");
+$w("\tsxi32 iOff;\n");
+$w("\tsxu16 iZone;         /* into aTzZone, or PH7_TZ_NOZONE */\n");
+$w("\tsxu8 bDst;\n");
+$w("};\n");
+$w("/* Grouped by aTzAbbr row, in php's own order WITHIN a group -- the first of\n");
+$w(" * a group is that abbreviation's own fixed offset. */\n");
+$w("static const PH7_TzAbbrZoneRow aTzAbbrZone[PH7_TZDB_ABBR_ZONE_COUNT] = {\n");
+foreach ($abbrRows as $r) {
+    foreach ($r['zones'] as $t) {
+        $w(sprintf("\t{ %d, %s, %d },\n", $t['offset'],
+            $t['timezone_id'] === null ? 'PH7_TZ_NOZONE' : (string) $zoneIx[$t['timezone_id']],
+            $t['dst'] ? 1 : 0));
+    }
+}
+$w("};\n\n");
+
+$w("/* aTzAbbr walked in the order listAbbreviations() PRINTS, which is the flat\n");
+$w(" * table's own and not the byte order aTzAbbr is stored in. */\n");
+$w("static const sxu8 aTzAbbrOrder[PH7_TZDB_ABBR_COUNT] = {\n");
+for ($i = 0, $n = count($order); $i < $n; $i += 16) {
+    $w("\t" . implode(',', array_slice($order, $i, 16)) . ",\n");
+}
+$w("};\n\n");
+
+$w("#define PH7_TZDB_ABBR_FALLBACK_COUNT " . count($fallback) . "\n");
+$w("/* Keyed on (offset, daylight) alone, for an abbreviation that names nothing. */\n");
+$w("static const PH7_TzAbbrZoneRow aTzAbbrFallback[PH7_TZDB_ABBR_FALLBACK_COUNT] = {\n");
+foreach ($fallback as $r) {
+    $w(sprintf("\t{ %d, %d, %d },\n", $r['off'], $r['zone'], $r['dst']));
 }
 $w("};\n");
 fclose($fp);
 
 fprintf(STDERR,
-    "gen_tzdb: %d zones, %d distinct blocks, %d payload bytes, %d abbreviations, tzdata %s -> %s\n",
-    count($rows), count($blobs), strlen($payload), count($abbrRows), $version, $out);
+    "gen_tzdb: %d zones, %d distinct blocks, %d payload bytes, %d abbreviations "
+    . "(%d triples, %d fallback rows), tzdata %s -> %s\n",
+    count($rows), count($blobs), strlen($payload), count($abbrRows),
+    $iRow, count($fallback), $version, $out);

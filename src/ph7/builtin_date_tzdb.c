@@ -585,6 +585,130 @@ PH7_PRIVATE int PH7_TzAbbrFind(const char *zName,int nName,sxi32 *piOff,int *pbD
 	return 0;
 }
 
+/*
+ * The OTHER half of the abbreviation table: not what `CET` resolves to, but
+ * everything the database ever wrote `CET` FOR. php prints it as
+ * listAbbreviations() -- 1127 (daylight, offset, zone) triples over the 144
+ * names -- and searches it as timezone_name_from_abbr().
+ *
+ * The triples of one name are contiguous and in php's own order, so the FIRST
+ * of a group is that abbreviation's fixed offset: the two tables agree on a
+ * bare `CET` by construction, and the rest of the group is reachable only by
+ * naming an offset. 25 triples name no zone at all and print null.
+ *
+ * The listing walks aTzAbbrOrder rather than aTzAbbr, because php prints the
+ * flat table's order and stores it sorted.
+ */
+PH7_PRIVATE int PH7_TzAbbrCount(void)
+{
+	return PH7_TZDB_ABBR_COUNT;
+}
+PH7_PRIVATE const char * PH7_TzAbbrAt(int i,int *pnName,int *pnRow)
+{
+	const PH7_TzAbbrRow *pRow;
+	if( i < 0 || i >= PH7_TZDB_ABBR_COUNT ){
+		return 0;
+	}
+	pRow = &aTzAbbr[aTzAbbrOrder[i]];
+	if( pnName ){
+		*pnName = (int)pRow->nName;
+	}
+	if( pnRow ){
+		*pnRow = (int)pRow->nZone;
+	}
+	return pRow->zName;
+}
+/* Triple j of listing position i. *piZone is -1 for the ones php prints null
+ * for, and an index into the zone table otherwise. */
+PH7_PRIVATE int PH7_TzAbbrRowAt(int i,int j,sxi32 *piOff,int *pbDst,int *piZone)
+{
+	const PH7_TzAbbrRow *pRow;
+	const PH7_TzAbbrZoneRow *pZone;
+	if( i < 0 || i >= PH7_TZDB_ABBR_COUNT ){
+		return 0;
+	}
+	pRow = &aTzAbbr[aTzAbbrOrder[i]];
+	if( j < 0 || j >= (int)pRow->nZone ){
+		return 0;
+	}
+	pZone = &aTzAbbrZone[pRow->iZone + j];
+	*piOff = pZone->iOff;
+	*pbDst = (int)pZone->bDst;
+	*piZone = pZone->iZone == PH7_TZ_NOZONE ? -1 : (int)pZone->iZone;
+	return 1;
+}
+
+/*
+ * timezone_name_from_abbr(): the zone one abbreviation stands for, which is
+ * FOUR rules in a fixed order and not the single lookup it reads like.
+ *
+ *   1. `utc` and `gmt`, either case, are answered `UTC` before any table is
+ *      consulted -- and the offset argument is ignored, so `gmt` at +02:00 is
+ *      still `UTC`.
+ *   2. The name's own triples. An offset of -1 means the caller named NO
+ *      offset, so the first triple wins; php spells "unspecified" as that
+ *      value and cannot tell it from a real -1 second, and neither can this.
+ *   3. The name matched but no triple carried that offset: the first triple
+ *      wins anyway.
+ *   4. The name matched NOTHING: a second table keyed on (offset, daylight)
+ *      alone decides, which is the only rule the daylight argument reaches.
+ *
+ * A triple that names no zone answers false at rule 2 or 3 rather than falling
+ * through to rule 4 -- the search SUCCEEDED, it just has no name to give.
+ */
+PH7_PRIVATE const char * PH7_TzAbbrZoneFind(const char *zName,int nName,sxi64 iOff,
+	sxi64 iDst,int *pnZone)
+{
+	const PH7_TzAbbrRow *pRow = 0;
+	int iLo = 0,iHi = PH7_TZDB_ABBR_COUNT - 1,j;
+	if( zName == 0 ){
+		return 0;
+	}
+	if( nName == 3 && (SyStrnicmp(zName,"UTC",3) == 0 || SyStrnicmp(zName,"GMT",3) == 0) ){
+		*pnZone = 3;
+		return "UTC";
+	}
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		const PH7_TzAbbrRow *p = &aTzAbbr[iMid];
+		int n = nName < p->nName ? nName : (int)p->nName;
+		int c = nName < 1 ? -1 : SyStrnicmp(zName,p->zName,(sxu32)n);
+		if( c == 0 ){
+			c = nName - (int)p->nName;
+		}
+		if( c == 0 ){
+			pRow = p;
+			break;
+		}
+		if( c < 0 ){
+			iHi = iMid - 1;
+		}else{
+			iLo = iMid + 1;
+		}
+	}
+	if( pRow ){
+		const PH7_TzAbbrZoneRow *pHit = &aTzAbbrZone[pRow->iZone];
+		if( iOff != -1 ){
+			for( j = 0 ; j < (int)pRow->nZone ; ++j ){
+				if( (sxi64)aTzAbbrZone[pRow->iZone + j].iOff == iOff ){
+					pHit = &aTzAbbrZone[pRow->iZone + j];
+					break;
+				}
+			}
+		}
+		if( pHit->iZone == PH7_TZ_NOZONE ){
+			return 0;
+		}
+		return PH7_TzName((int)pHit->iZone,pnZone,0);
+	}
+	for( j = 0 ; j < PH7_TZDB_ABBR_FALLBACK_COUNT ; ++j ){
+		if( (sxi64)aTzAbbrFallback[j].iOff == iOff && (sxi64)aTzAbbrFallback[j].bDst == iDst ){
+			return PH7_TzName((int)aTzAbbrFallback[j].iZone,pnZone,0);
+		}
+	}
+	return 0;
+}
+
 PH7_PRIVATE const char * PH7_TzName(int iZone,int *pnName,int *pbBackward)
 {
 	if( iZone < 0 || iZone >= PH7_TZDB_ZONE_COUNT ){
