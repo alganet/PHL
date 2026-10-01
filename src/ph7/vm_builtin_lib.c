@@ -80,12 +80,21 @@
 	"}"\
 	"function glob(string $pattern,int $flags = 0): array|false {"\
 	"/* php's glob() is the C library's glob(3) over the RAW pattern -- it is the one"\
-	"   directory reader php does not route through a stream wrapper, so a pattern"\
-	"   carrying a scheme names a directory that does not exist and matches nothing."\
+	"   directory reader php does not route through a stream wrapper, so `zzz://*` is"\
+	"   the directory named `zzz:` and the empty component after it: glob(3) lists"\
+	"   ./zzz:/ and keeps the pattern's slashes in every answer, `zzz://hit.php`."\
 	"   PHL globbed through the wrapper lookup opendir() uses, so glob('file://'.'/tmp/*')"\
-	"   listed /tmp where php answers [], and a userland wrapper's own listing would"\
-	"   have answered here too once its directory door opened. */"\
-	"if( preg_match('#^[A-Za-z][A-Za-z0-9+.\\\\-]*://#', $pattern) ){ return array(); }"\
+	"   listed /tmp where php answers [] (there is no directory `file:`), and later"\
+	"   answered [] for ANY scheme, where a directory that really carries that name"\
+	"   is listed. Glob the one-slash spelling, which no wrapper lookup answers for,"\
+	"   and put the pattern's own slashes back. */"\
+	"if( preg_match('#^([A-Za-z][A-Za-z0-9+.\\\\-]*:/)(/+)(.*)$#s', $pattern, $aScheme) ){"\
+	"  $pArray = array();"\
+	"  foreach( glob($aScheme[1] . $aScheme[3], $flags) as $zHit ){"\
+	"    $pArray[] = $aScheme[1] . $aScheme[2] . substr($zHit, strlen($aScheme[1]));"\
+	"  }"\
+	"  return $pArray;"\
+	"}"\
 	"/* php's Z_PARAM_PATH refusal (see scandir above). It precedes the flag check:"\
 	"   php's ZPP runs before the function body. Without it the NUL was simply the end"\
 	"   of the pattern and glob() answered for the truncated one. */"\
@@ -184,8 +193,10 @@
 	"/* php answers [] in SILENCE for a directory that cannot be opened — a"\
 	"   nonexistent path is simply zero matches (GLOB_ERR included; that flag is"\
 	"   about errors during the walk, not about the path). PHL used to let"\
-	"   opendir() warn and answered FALSE. */"\
-	"$pHandle = @opendir($zDir);"\
+	"   opendir() warn and answered FALSE. The stat comes first because glob(3)"\
+	"   raises NO diagnostic at all: a suppressed opendir() still reaches an error"\
+	"   handler that ignores error_reporting(), and php's glob has none to reach. */"\
+	"$pHandle = is_dir($zDir) ? @opendir($zDir) : FALSE;"\
 	"if( $pHandle != FALSE ){"\
 	"/* Loop throw available entries */"\
 	"while( FALSE !== ($pEntry = readdir($pHandle)) ){"\

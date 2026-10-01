@@ -2211,6 +2211,23 @@ PH7_PRIVATE int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apAr
 	return PH7_OK;
  }
 /*
+ * php's scandir() body reports a failed open TWICE: the opener's own warning, and
+ * then `scandir(): (errno 2): No such file or directory` from the errno it left
+ * behind -- whatever that errno is, so a wrapper's refusal reads a stale one. The
+ * prelude scandir() drives opendir() for its open, so the line is raised here,
+ * for the scandir frame only; opendir() and dir() say it once.
+ */
+static void OpenDirScandirErrno(ph7_context *pCtx,int iErr)
+{
+	char zFn[64];
+	const char *zName = PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn));
+	if( zName == 0 || SyStrncmp(zName,"scandir",sizeof("scandir")-1) != 0
+	 || zName[sizeof("scandir")-1] != 0 ){
+		return;
+	}
+	PH7_VmThrowWarningFmt(pCtx->pVm,"scandir(): (errno %d): %s",iErr,VfsStrerror(iErr));
+}
+/*
  * resource opendir(string $path[,resource $context])
  *  Open directory handle.
  * Parameters
@@ -2226,7 +2243,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	const ph7_io_stream *pStream;
 	const char *zPath,*zAsked;
 	io_private *pDev;
-	int iLen,rc,bThrew = 0;
+	int iLen,rc,iErr = 0,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a directory path");
@@ -2255,6 +2272,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zPath,iLen);
 	if( pStream == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zPath,TRUE);
+		OpenDirScandirErrno(pCtx,errno);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2266,6 +2284,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		char zFn[64];
 		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: not implemented",
 			PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),zAsked);
+		OpenDirScandirErrno(pCtx,errno);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2291,6 +2310,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 			pRes = &sDummy;
 		}
 		rc = pStream->xOpenDir(zPath,pRes,&pDev->pHandle);
+		iErr = errno;
 		if( pRes == &sDummy ){
 			PH7_MemObjRelease(&sDummy);
 		}
@@ -2307,19 +2327,17 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		char zWhy[160];
 		char zFn[64];
 		const char *zReason = PH7_StreamUserDirReason(pCtx->pVm,pStream,zWhy,(int)sizeof(zWhy))
-			? zWhy : VfsStrerror(errno);
+			? zWhy : VfsStrerror(iErr);
 #ifdef __WINNT__
 		if( pStream == &sWinFileStream ){
 			/* php's plain-files opener on Windows warns with the system's own
 			 * reason first, and only then fails the way every platform does. */
 			char zSys[256];
-			int iSaved = errno;
 			unsigned long nCode = PH7_WinOpenDirReason(zSys,(int)sizeof(zSys));
 			if( nCode ){
 				PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s (code: %lu)",
-					ph7_function_name(pCtx),zAsked,zSys,nCode);
+					PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),zAsked,zSys,nCode);
 			}
-			errno = iSaved;
 		}
 #endif
 		/* php names scandir() here, not the opendir() this engine writes its body
@@ -2327,6 +2345,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		 * builtin of its own and keeps its own name either way. */
 		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: %s",
 			PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),zAsked,zReason);
+		OpenDirScandirErrno(pCtx,iErr);
 		ReleaseIOPrivate(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
@@ -3050,16 +3069,40 @@ static int CopyIsPlainFileDevice(const ph7_io_stream *pStream)
 #endif
 }
 /*
- * The three fields the screen above asks for, or 0 when this end is not
- * statable. aOut receives dev, ino and mode in that order.
+ * The three fields the screen above asks for, as php's php_stream_stat_path_ex()
+ * answers them to copy(): the wrapper that owns the name answers (a userland
+ * url_stat -- which warns `not implemented` even for the QUIET destination ask --
+ * or the phar archive), the plain-files device stats the path, and anything else is
+ * php's "non-statable stream". A stat that FAILS is that too: php does not refuse
+ * a missing source here, it goes on to the open, whose warning is what the script
+ * reads. So 0 means "no record", never "no file"; 1 fills aOut; -1 is a wrapper
+ * that THREW, with the exception pending.
  */
 static int CopyStatPath(ph7_context *pCtx,const ph7_io_stream *pStream,
-	const char *zPath,ph7_int64 *aOut)
+	const char *zAsked,const char *zPath,int bQuiet,ph7_int64 *aOut)
 {
 	static const char * const azField[] = { "dev","ino","mode" };
 	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
 	ph7_value *pArray,*pWorker;
+	ph7_int64 aVal[13];
 	sxu32 i;
+	int rc;
+	if( zAsked == 0 || zAsked[0] == 0 ){
+		return 0;
+	}
+	rc = PH7_VfsUserStatFields(pCtx,zAsked,bQuiet ? PH7_STAT_ASK_EXISTS : PH7_STAT_ASK_STAT,aVal);
+	if( rc != PHL_URLSTAT_NOWRAP ){
+		if( rc == PHL_URLSTAT_FAIL ){
+			return 0;
+		}
+		if( rc != PHL_URLSTAT_OK ){
+			return -1;
+		}
+		for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){
+			aOut[i] = aVal[i];
+		}
+		return 1;
+	}
 	if( zPath == 0 || zPath[0] == 0 || !CopyIsPlainFileDevice(pStream)
 	 || pVfs == 0 || pVfs->xStat == 0 ){
 		return 0;
@@ -3098,7 +3141,7 @@ static int CopyStatPath(ph7_context *pCtx,const ph7_io_stream *pStream,
 PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const ph7_io_stream *pSin,*pSout,*pDest = 0;
-	const char *zFile,*zDest = 0;
+	const char *zFile,*zSrc,*zDest = 0;
 	char zBuf[8192];
 	void *pIn,*pOut;
 	phl_stream_ctx *pCtxRes;
@@ -3115,15 +3158,17 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
 		return PH7_OK;
 	}
-	/* The destination's device is resolved HERE, ahead of the source's, purely
-	 * so the source's is resolved LAST: resolving one records the URI a failed
-	 * open names, so peeking at the destination after the source would make the
-	 * source's own open warning name the destination. */
+	/* php resolves a name's wrapper EVERY time it touches the name -- the source
+	 * for its open_basedir screen, again to stat it, again to open it; the
+	 * destination to stat it and again to open it -- and a scheme nobody is
+	 * registered under warns on each resolution, so a script counts five
+	 * `Unable to find the wrapper` lines for two unknown schemes, three for an
+	 * unknown source alone, two for an unknown destination alone. Resolving once
+	 * per name counted one. The steps below are php's, in php's order; the
+	 * source's LAST resolution sits right before its open because resolving a
+	 * name records the URI a failed open names. */
+	zSrc = zFile;
 	zDest = ph7_value_to_string(apArg[1],&nDest);
-	if( nDest > 0 ){
-		pDest = PH7_VmGetStreamDevice(pCtx->pVm,&zDest,nDest);
-	}
-	/* Point to the target IO stream device */
 	pSin = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
 	if( pSin == 0 ){
 		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
@@ -3137,16 +3182,34 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( bThrew ){
 		return PH7_OK;
 	}
-	/* php's screen over the two paths, before either is opened. */
+	/* php's screen over the two paths, before either is opened. A source whose
+	 * stat FAILS is not refused here: php goes straight to the open, so a missing
+	 * source is the open's `Failed to open stream` and a directory DESTINATION
+	 * behind it is never looked at -- this engine refused the destination first. */
 	{
 	ph7_int64 aSrc[3],aDst[3];
-	int bSrc = CopyStatPath(pCtx,pSin,zFile,aSrc);
-	int bDst = pDest ? CopyStatPath(pCtx,pDest,zDest,aDst) : 0;
+	int bSrc,bDst = 0;
+	zFile = zSrc;
+	pSin = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
+	bSrc = pSin ? CopyStatPath(pCtx,pSin,zSrc,zFile,0,aSrc) : 0;
+	if( bSrc < 0 ){
+		return PH7_OK;
+	}
 	if( bSrc && (aSrc[2] & PH7_S_IFMT) == PH7_S_IFDIR ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
 			"The first argument to copy() function cannot be a directory");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( bSrc && nDest > 0 ){
+		/* php's QUIET stat of the destination: a wrapper that declines the name
+		 * (file://host/) is a non-statable stream here, and only its OPEN says why. */
+		const char *zDestPath = zDest;
+		pDest = PH7_VfsStreamDeviceOrFile(pCtx,&zDestPath,nDest);
+		bDst = pDest ? CopyStatPath(pCtx,pDest,zDest,zDestPath,1,aDst) : 0;
+		if( bDst < 0 ){
+			return PH7_OK;
+		}
 	}
 	if( bDst && (aDst[2] & PH7_S_IFMT) == PH7_S_IFDIR ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
@@ -3160,6 +3223,13 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	}
+	/* php's third resolution of the source: the open's own. */
+	zFile = zSrc;
+	pSin = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);
+	if( pSin == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to open the source file in a read-only mode */
