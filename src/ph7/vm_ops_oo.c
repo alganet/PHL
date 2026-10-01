@@ -25,6 +25,26 @@
  * OP_NEW: body moved verbatim from the OP_NEW arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
+/*
+ * php's abstract-method refusal for an ANONYMOUS class, raised where php raises
+ * it: at the `new`. Answers 1 (and has reported the fatal and requested the halt)
+ * when the class leaves one unimplemented, 0 when it does not.
+ */
+static int VmAnonAbstractGapFatal(ph7_vm *pVm,ph7_class *pClass)
+{
+	SyBlob sMsg;
+	int bGap;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	bGap = PH7_ClassAbstractGap(&(*pVm),pClass,&sMsg) != 0;
+	if( bGap ){
+		PH7_VmFatalError(&(*pVm),"%.*s",
+			(int)SyBlobLength(&sMsg),(const char *)SyBlobData(&sMsg));
+		pVm->iExitStatus = 255;
+		pVm->bHaltRequested = 1;
+	}
+	SyBlobRelease(&sMsg);
+	return bGap;
+}
 PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
 	ph7_value *pTos = pState->pTos;
@@ -47,6 +67,15 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	 * allocation and LEAVING the class name for the real pass that follows it — one code
 	 * path, so the two can never disagree about what a refusal is. */
 	int bScreenOnly = pInstr->iP1 < 0;
+	if( pInstr->iP1 == -2 ){
+		/* An anonymous class's DECLARATION screen: the class is in p3, the stack is
+		 * untouched and the constructor arguments have not run yet (see
+		 * PH7_CompileAnnonClass). */
+		if( pInstr->p3 && VmAnonAbstractGapFatal(&(*pVm),(ph7_class *)pInstr->p3) ){
+			VM_EXIT_ABORT;
+		}
+		VM_EXIT_BREAK;
+	}
 	sxi32 nCtorArgs = bScreenOnly ? 0
 		: pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);
 	ph7_value *pArg;
@@ -228,6 +257,16 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		PH7_MemObjRelease(pTos);
 		pTos->nIdx = SXU32_HIGH;
 		VM_EXIT_BREAK;
+	}else if( (pClass->iFlags & PH7_CLASS_ANON)
+	       && VmAnonAbstractGapFatal(&(*pVm),pClass) ){
+		/* An anonymous class's DECLARATION is an expression, so php asks whether it
+		 * leaves an abstract method unimplemented when the `new` RUNS -- not when the
+		 * unit compiles. The refusal therefore carries the frame chain that reached
+		 * it, and a `new` on a branch nothing takes is never asked at all. PHL mounts
+		 * the class at compile time and used to ask there, which failed the whole FILE
+		 * on a `new` php never performs. Uncatchable in php too, so nothing user
+		 * written depends on either timing. */
+		VM_EXIT_ABORT;
 	}else if( VmClassStaticDeferPending(pClass)
 	       && (rc = PH7_VmMaterializeClassStatics(&(*pVm),pClass)) != SXRET_OK ){
 		/* php materializes the static table at instantiation too, so a default

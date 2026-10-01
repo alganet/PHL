@@ -3680,22 +3680,30 @@ static ph7_class * GenStateIfaceDeclaringAt(ph7_class *pIface,const SyString *pM
 	}
 	return pDeepest;
 }
-static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
+/*
+ * Does [pClass] leave an abstract method unimplemented? Answers the COUNT, and
+ * on a non-zero one appends php's sentence to *pMsg (which the caller owns).
+ *
+ * php asks this question at two different MOMENTS and the answer has to be the
+ * same one, so it is a single routine: at link time for a named class, and when
+ * the `new` EXECUTES for an anonymous one -- whose declaration is an expression,
+ * so a `new` on a branch nothing takes is never asked at all.
+ */
+PH7_PRIVATE sxu32 PH7_ClassAbstractGap(ph7_vm *pVm,ph7_class *pClass,SyBlob *pMsg)
 {
 	ph7_class_method *pMeth;
 	SyHashEntry *pEntry;
 	sxu32 nAbstract;
 	SyBlob sMsg;
-	sxi32 rc;
 	/* Abstract classes, interfaces, and traits may have unimplemented methods */
 	if( pClass->iFlags & (PH7_CLASS_ABSTRACT|PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
-		return SXRET_OK;
+		return 0;
 	}
 	if( pClass->iFlags & PH7_CLASS_LINT_UNBOUND ){
 		/* A trait this lint could not see is exactly where the implementations
 		 * usually are (`class C implements ArrayAccess { use HasDataTrait; }`),
 		 * so the count would be of methods the class does have. */
-		return SXRET_OK;
+		return 0;
 	}
 	/* Count abstract methods */
 	nAbstract = 0;
@@ -3710,10 +3718,10 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 		}
 	}
 	if( nAbstract == 0 ){
-		return SXRET_OK;
+		return 0;
 	}
 	/* Build the error message listing all abstract methods with origins */
-	SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
+	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pClass->sDisp.nByte != pClass->sName.nByte ){
 		/* An ANONYMOUS class gets php's shorter wording -- it cannot be "declared
 		 * abstract", there being no declaration to put the word on. */
@@ -3832,6 +3840,28 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 		}
 	}
 	SyBlobAppend(&sMsg,")",1);
+	SyBlobAppend(pMsg,SyBlobData(&sMsg),SyBlobLength(&sMsg));
+	SyBlobRelease(&sMsg);
+	return nAbstract;
+}
+/*
+ * The link-time half: php refuses a NAMED class that leaves an abstract method
+ * unimplemented where the declaration stands, whether or not anything ever
+ * instantiates it. An ANONYMOUS one is not asked here -- see PH7_VmNewAnonAbstractGap,
+ * the OP_NEW half.
+ */
+static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	SyBlob sMsg;
+	sxi32 rc;
+	if( pClass->iFlags & PH7_CLASS_ANON ){
+		return SXRET_OK;
+	}
+	SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
+	if( PH7_ClassAbstractGap(pGen->pVm,pClass,&sMsg) == 0 ){
+		SyBlobRelease(&sMsg);
+		return SXRET_OK;
+	}
 	rc = PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,"%.*s",
 		(int)SyBlobLength(&sMsg),(const char *)SyBlobData(&sMsg));
 	SyBlobRelease(&sMsg);
@@ -5639,6 +5669,17 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 				if( pAnonClass
 				 && GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnonClass->aAttrs) == SXERR_ABORT ){
 					return SXERR_ABORT;
+				}
+				if( pAnonClass ){
+					/* php's DECLARE_ANON_CLASS runs BEFORE the constructor arguments, and
+					 * it is where an unimplemented abstract method is refused -- so
+					 * `new class(f()) extends Abs {}` never evaluates `f()`. The named
+					 * path spells that ordering as a screen OP_NEW ahead of its argument
+					 * list; this list is emitted from raw tokens with the class name
+					 * pushed after it, so the screen carries the class in p3 instead and
+					 * touches no stack (iP1 == -2). The check itself is the same routine
+					 * the instantiation runs, so the two can never disagree. */
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_NEW,-2,0,(void *)pAnonClass,0);
 				}
 			}
 		}
