@@ -79,6 +79,45 @@ function http_test_server_start(&$proc, $dir, $base = 19700, $pem = null)
     return null;
 }
 
+/** Spawn the CONNECT PROXY on a free port and wait until it accepts.
+ *
+ *  Same canned replies and same request log as the plain listener; what is
+ *  different is the door. A request that arrives as `CONNECT` is answered with
+ *  a tunnel -- 200, then TLS on the very socket the CONNECT came in on, so the
+ *  proxy stands in for the origin without a second process -- and anything else
+ *  is served in the clear, which is what a proxied http:// request looks like. */
+function http_test_proxy_start(&$proc, $dir, $pem, $base = 19860)
+{
+    $exe = getenv('PHPT_TARGET_EXECUTABLE');
+    if ($exe === false || $exe === '') {
+        $exe = PHP_BINARY;
+    }
+    $port = http_test_free_port($base);
+    $spec = array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w'));
+    $proc = proc_open(array($exe, __FILE__, '--proxy', (string) $port, $dir, $pem),
+        $spec, $pipes);
+    if (!is_resource($proc)) {
+        return null;
+    }
+    fclose($pipes[0]);
+    fclose($pipes[2]);
+    stream_set_blocking($pipes[1], false);
+    $seen = '';
+    for ($i = 0; $i < 200; $i++) {
+        $seen .= (string) fread($pipes[1], 64);
+        if (strpos($seen, "READY\n") !== false) {
+            fclose($pipes[1]);
+            return $port;
+        }
+        if (feof($pipes[1])) {
+            break;
+        }
+        usleep(25000);
+    }
+    fclose($pipes[1]);
+    return null;
+}
+
 /** A throwaway self-signed certificate and its key in one PEM, php's own shape
  *  for `local_cert`. Minted per run rather than committed, so nothing here has
  *  an expiry date a later clock can walk past. */
@@ -195,6 +234,88 @@ function http_test_scrub($raw)
 
 /* ===== the server half ===== */
 
+/** The proxy loop. Every request it is handed is logged, tunnelled or not. */
+function http_test_proxy_main($port, $dir, $pem)
+{
+    $ctx = stream_context_create(array('ssl' => array('local_cert' => $pem)));
+    $srv = @stream_socket_server("tcp://127.0.0.1:$port", $errno, $errstr,
+        STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $ctx);
+    if ($srv === false) {
+        fwrite(STDERR, "bind failed: $errstr\n");
+        exit(1);
+    }
+    /* The parent is blocked on this line; nothing else is written here. */
+    echo "READY\n";
+    flush();
+    for ($served = 0; $served < 64; $served++) {
+        $c = @stream_socket_accept($srv, 20);
+        if ($c === false) {
+            break;
+        }
+        stream_set_timeout($c, 20);
+        $head = '';
+        while (($line = fgets($c, 8192)) !== false) {
+            $head .= $line;
+            if ($line === "\r\n" || $line === "\n") {
+                break;
+            }
+        }
+        if (strncasecmp($head, 'CONNECT ', 8) !== 0) {
+            /* Not a tunnel: this is a proxied plain request, and the proxy is
+             * the only server it will ever reach. */
+            if ($head === '') {
+                fclose($c);
+                continue;
+            }
+            http_test_proxy_serve($c, $dir, $head);
+            fclose($c);
+            continue;
+        }
+        file_put_contents($dir . DIRECTORY_SEPARATOR . 'log',
+            bin2hex($head) . "\n", FILE_APPEND);
+        /* The tunnel a proxy REFUSES is asked for by name: a CONNECT is the
+         * one request that carries nothing of the script's own to key on. */
+        if (strncasecmp($head, 'CONNECT deny.', 13) === 0) {
+            fwrite($c, "HTTP/1.0 407 Proxy Authentication Required\r\n"
+                . "Proxy-Authenticate: Basic realm=\"p\"\r\n\r\n");
+            fclose($c);
+            continue;
+        }
+        fwrite($c, "HTTP/1.0 200 Connection established\r\n\r\n");
+        if (@stream_socket_enable_crypto($c, true, STREAM_CRYPTO_METHOD_TLS_SERVER) !== true) {
+            fclose($c);
+            continue;
+        }
+        $req = '';
+        while (($line = fgets($c, 8192)) !== false) {
+            $req .= $line;
+            if ($line === "\r\n" || $line === "\n") {
+                break;
+            }
+        }
+        http_test_proxy_serve($c, $dir, $req);
+        fclose($c);
+    }
+    fclose($srv);
+}
+
+/** Log one request and answer it exactly as the plain listener would. */
+function http_test_proxy_serve($c, $dir, $head)
+{
+    file_put_contents($dir . DIRECTORY_SEPARATOR . 'log', bin2hex($head) . "\n", FILE_APPEND);
+    $path = '/';
+    if (preg_match('#^\S+ (\S+)#', $head, $m)) {
+        $path = $m[1];
+    }
+    if (preg_match('#/canned/([A-Za-z0-9_.-]+)#', $path, $m)
+        && is_file($dir . DIRECTORY_SEPARATOR . $m[1])) {
+        fwrite($c, file_get_contents($dir . DIRECTORY_SEPARATOR . $m[1]));
+        return;
+    }
+    fwrite($c, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n"
+        . "Connection: close\r\n\r\nok");
+}
+
 function http_test_server_main($port, $dir, $pem = null)
 {
     if ($pem !== null) {
@@ -283,7 +404,13 @@ function http_test_server_serve($c, $dir)
  * the server loop runs.
  */
 if (isset($argv[0], $argv[1], $argv[2], $argv[3])
-    && $argv[1] === '--serve' && basename($argv[0]) === basename(__FILE__)) {
-    http_test_server_main((int) $argv[2], $argv[3], isset($argv[4]) ? $argv[4] : null);
-    exit(0);
+    && basename($argv[0]) === basename(__FILE__)) {
+    if ($argv[1] === '--serve') {
+        http_test_server_main((int) $argv[2], $argv[3], isset($argv[4]) ? $argv[4] : null);
+        exit(0);
+    }
+    if ($argv[1] === '--proxy' && isset($argv[4])) {
+        http_test_proxy_main((int) $argv[2], $argv[3], $argv[4]);
+        exit(0);
+    }
 }

@@ -225,6 +225,10 @@ static void HttpDisconnect(http_private *pH)
 	}
 }
 /* php's own redirect default, which the `max_redirects` option overrides. */
+/* php's whole vocabulary for a tunnel that did not come up: the CONNECT that
+ * could not be written and the handshake behind it share one sentence, and
+ * neither the proxy's own status line nor the TLS error reaches it. */
+#define HTTP_PROXY_TUNNEL_ERR "Cannot connect to HTTPS server through proxy"
 #define HTTP_MAX_REDIRECTS 20
 /* php reads the status line into `char tmp_line[128]`, which its line reader
  * fills to at most 126 bytes; everything past that is discarded with the rest
@@ -642,15 +646,125 @@ static int HttpUriPort(SyhttpUri *pUri,int bTls)
 	SyStrToInt32(pUri->sPort.zString,pUri->sPort.nByte,(void *)&iPort,0);
 	return iPort > 0 ? (int)iPort : HttpDefaultPort(bTls);
 }
+/*
+ * The one `Proxy-Authorization:` line among the script's own headers, as php
+ * copies it onto a CONNECT request.
+ *
+ * php scans the `header` option itself here rather than reusing the block it
+ * builds for the origin request: an ARRAY is walked entry by entry and the
+ * FIRST entry carrying one wins, a string is walked line by line, and the line
+ * is taken verbatim from its name to its terminator -- leading blanks skipped,
+ * nothing else touched. A name that merely STARTS with it does not count: the
+ * length up to the colon has to be the whole of `Proxy-Authorization:`.
+ */
+static int HttpProxyAuthLine(const char *zIn,sxu32 nIn,SyBlob *pOut)
+{
+	sxu32 i = 0;
+	static const sxu32 nName = sizeof("Proxy-Authorization:")-1;
+	while( i < nIn ){
+		sxu32 nStart,nColon,nEnd;
+		while( i < nIn && (zIn[i] == ' ' || zIn[i] == '\t') ){
+			i++;
+		}
+		nStart = i;
+		while( i < nIn && zIn[i] != ':' && zIn[i] != '\r' && zIn[i] != '\n' ){
+			i++;
+		}
+		nColon = i;
+		if( i < nIn && zIn[i] == ':' ){
+			i++;
+			while( i < nIn && zIn[i] != '\r' && zIn[i] != '\n' ){
+				i++;
+			}
+			nEnd = i;
+			if( nColon + 1 - nStart == nName
+			 && SyStrnicmp(&zIn[nStart],"Proxy-Authorization:",nName) == 0 ){
+				SyBlobAppend(pOut,&zIn[nStart],nEnd - nStart);
+				SyBlobAppend(pOut,"\r\n",sizeof("\r\n")-1);
+				return 1;
+			}
+		}
+		while( i < nIn && zIn[i] != '\r' && zIn[i] != '\n' ){
+			i++;
+		}
+		while( i < nIn && (zIn[i] == '\r' || zIn[i] == '\n') ){
+			i++;
+		}
+	}
+	return 0;
+}
+/* That line, wherever the `header` option keeps it. */
+static int HttpProxyAuth(ph7_value *pOpt,SyBlob *pOut)
+{
+	if( pOpt == 0 ){
+		return 0;
+	}
+	if( pOpt->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pOpt->x.pOther;
+		ph7_hashmap_node *pEntry;
+		pMap->pCur = pMap->pFirst;
+		while( (pEntry = PH7_HashmapGetNextEntry(pMap)) != 0 ){
+			ph7_value *pVal = HashmapExtractNodeValue(pEntry);
+			if( pVal && (pVal->iFlags & MEMOBJ_STRING)
+			 && HttpProxyAuthLine((const char *)SyBlobData(&pVal->sBlob),
+					SyBlobLength(&pVal->sBlob),pOut) ){
+				return 1;
+			}
+		}
+		return 0;
+	}
+	if( (pOpt->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	return HttpProxyAuthLine((const char *)SyBlobData(&pOpt->sBlob),
+		SyBlobLength(&pOpt->sBlob),pOut);
+}
+/*
+ * Drop the first `Proxy-Authorization:` line from a header block. It addressed
+ * the PROXY, and a tunnelled request is addressed to the origin -- php sends it
+ * on the CONNECT and takes it back out of everything behind the tunnel.
+ */
+static void HttpDropProxyAuth(ph7_vm *pVm,SyBlob *pHdrs)
+{
+	SyBlob sKeep;
+	const char *zIn = (const char *)SyBlobData(pHdrs);
+	sxu32 nIn = SyBlobLength(pHdrs),i = 0;
+	int bDropped = 0;
+	SyBlobInit(&sKeep,&pVm->sAllocator);
+	while( i < nIn ){
+		sxu32 nStart = i;
+		while( i < nIn && zIn[i] != '\n' ){
+			i++;
+		}
+		if( i < nIn ){
+			i++; /* the LF belongs to the line it ends */
+		}
+		if( !bDropped && i - nStart >= sizeof("proxy-authorization:")-1
+		 && SyStrnicmp(&zIn[nStart],"Proxy-Authorization:",
+				sizeof("Proxy-Authorization:")-1) == 0 ){
+			bDropped = 1;
+			continue;
+		}
+		SyBlobAppend(&sKeep,&zIn[nStart],i - nStart);
+	}
+	if( bDropped ){
+		SyBlobReset(pHdrs);
+		SyBlobAppend(pHdrs,SyBlobData(&sKeep),SyBlobLength(&sKeep));
+	}
+	SyBlobRelease(&sKeep);
+}
 static void HttpBuildRequest(ph7_vm *pVm,phl_stream_ctx *pCtx,SyhttpUri *pUri,int bTls,
 	const char *zTarget,int nTarget,SyBlob *pOut,const char *zMethod,int nMethod,
-	const char *zBody,int nBody)
+	const char *zBody,int nBody,int bTunnel)
 {
 	SyBlob sUser,sTmp;
 	ph7_value *pOptV;
 	SyBlobInit(&sUser,&pVm->sAllocator);
 	SyBlobInit(&sTmp,&pVm->sAllocator);
 	HttpCollectUserHeaders(pVm,HttpOpt(pCtx,"header"),&sUser);
+	if( bTunnel ){
+		HttpDropProxyAuth(pVm,&sUser);
+	}
 	/* Request line. */
 	SyBlobAppend(pOut,zMethod,(sxu32)nMethod);
 	SyBlobAppend(pOut," ",1);
@@ -1108,11 +1222,57 @@ static void HttpFree(http_private *pH)
 	SyBlobRelease(&pH->sHdrs);
 	SyMemBackendFree(&pH->pVm->sAllocator,pH);
 }
+/*
+ * Ask an already-dialled proxy to open a tunnel to the origin, and read its
+ * answer off.
+ *
+ * php's CONNECT is the shortest request it ever writes: the request LINE, an
+ * optional `Proxy-Authorization:` lifted out of the script's own headers, and
+ * the blank line. No Host, no User-Agent, no `http` context option of any kind,
+ * and the version is a fixed `HTTP/1.0` rather than the one the exchange behind
+ * the tunnel will use.
+ *
+ * The reply is read and DROPPED -- php looks at neither the status line nor the
+ * headers, so a proxy that refuses with 407 is told apart from one that agreed
+ * only by the handshake that follows failing. Answers PH7_OK once the reply's
+ * blank line has gone by, the caller naming the failure.
+ */
+static int HttpTunnel(http_private *pH,SyhttpUri *pOrigin,phl_stream_ctx *pCtx)
+{
+	SyBlob sReq,sLine;
+	int rc = PH7_OK;
+	SyBlobInit(&sReq,&pH->pVm->sAllocator);
+	SyBlobInit(&sLine,&pH->pVm->sAllocator);
+	SyBlobAppend(&sReq,"CONNECT ",sizeof("CONNECT ")-1);
+	SyBlobAppend(&sReq,pOrigin->sHost.zString,pOrigin->sHost.nByte);
+	SyBlobFormat(&sReq,":%d",HttpUriPort(pOrigin,1));
+	SyBlobAppend(&sReq," HTTP/1.0\r\n",sizeof(" HTTP/1.0\r\n")-1);
+	HttpProxyAuth(HttpOpt(pCtx,"header"),&sReq);
+	SyBlobAppend(&sReq,"\r\n",sizeof("\r\n")-1);
+	if( HttpSendAll(pH,SyBlobData(&sReq),(int)SyBlobLength(&sReq)) != PH7_OK ){
+		rc = -1;
+	}else{
+		while( HttpReadLine(pH,&sLine,0) == 1 ){
+			if( SyBlobLength(&sLine) < 1 ){
+				break; /* the blank line: everything after it is the tunnel */
+			}
+		}
+		/* Whatever the proxy wrote past that line is not this exchange's: the
+		 * bytes from here on are TLS records, and the reader must start on
+		 * them rather than on a leftover. */
+		SyBlobReset(&pH->sRaw);
+		pH->nRawOfft = 0;
+		pH->bEof = 0;
+	}
+	SyBlobRelease(&sLine);
+	SyBlobRelease(&sReq);
+	return rc;
+}
 /* The connection this exchange runs over, or php's own failure text. The URI
  * dialed is not always the one being ASKED for -- a proxy moves the connection
  * -- so the host TLS is negotiated against is passed separately. */
 static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx,
-	SyString *pPeer)
+	SyString *pPeer,SyhttpUri *pTunnel)
 {
 	SyBlob sHost;
 	const char *zHost;
@@ -1134,7 +1294,11 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx,
 		double rSec = HttpOptReal(pH->pVm,pOptV,0);
 		iTimeoutMs = rSec > 0 ? (int)(rSec * 1000) : 0;
 	}
-	sock = PH7_NetConnect(zHost,HttpUriPort(pUri,pH->bTls),iTimeoutMs,0,0,0,&iErrno,&zErr);
+	/* A proxy is dialled in the clear whatever the origin's scheme is -- the
+	 * TLS goes INSIDE the tunnel -- so its address defaults to the plain
+	 * port rather than to the origin scheme's. */
+	sock = PH7_NetConnect(zHost,HttpUriPort(pUri,pTunnel ? 0 : pH->bTls),
+		iTimeoutMs,0,0,0,&iErrno,&zErr);
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		if( iErrno == PH7_NET_ERR_RESOLVE ){
 			SyBlob sMsg;
@@ -1161,13 +1325,13 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx,
 		pH->sock = sock;
 		pH->bEof = 0;
 		rc = PH7_OK;
-		/* php reports the connection itself, per HOP -- and only for one that
-		 * was MADE: a refused dial and a name that does not resolve notify
-		 * nothing at all. */
-		PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_CONNECT,
-			PHL_STREAM_NOTIFY_SEVERITY_INFO,0,0,0,0,0);
+		if( pTunnel && HttpTunnel(pH,pTunnel,pCtx) != PH7_OK ){
+			HttpFail(pH->pVm,HTTP_PROXY_TUNNEL_ERR,-1);
+			HttpDisconnect(pH);
+			rc = -1;
+		}
 #ifdef PH7_ENABLE_OPENSSL
-		if( pH->bTls ){
+		if( rc == PH7_OK && pH->bTls ){
 			/* php opens `ssl://host:port` where this opens `tcp://`, so the
 			 * handshake -- the `ssl` context options, the name checked against
 			 * the certificate, the capture written back onto the context --
@@ -1182,7 +1346,10 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx,
 			if( PH7_SslClientHandshake(pH->pVm,pH->sock,pCtx,
 					(const char *)SyBlobData(&sPeer),&pH->pSsl,&pH->pSslCtx,
 					zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
-				HttpFail(pH->pVm,zSslErr,-1);
+				/* Inside a tunnel php names the PROXY rather than the
+				 * handshake: from the wrapper's side the whole hop through it
+				 * is the thing that did not come up. */
+				HttpFail(pH->pVm,pTunnel ? HTTP_PROXY_TUNNEL_ERR : zSslErr,-1);
 				HttpDisconnect(pH);
 				rc = -1;
 			}
@@ -1191,6 +1358,14 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx,
 #else
 		SXUNUSED(pPeer);
 #endif
+		if( rc == PH7_OK ){
+			/* php reports the connection itself, per HOP -- and only for one
+			 * that was MADE: a refused dial, a name that does not resolve, a
+			 * tunnel the proxy would not open and a handshake that failed
+			 * notify nothing at all. */
+			PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_CONNECT,
+				PHL_STREAM_NOTIFY_SEVERITY_INFO,0,0,0,0,0);
+		}
 	}
 	SyBlobRelease(&sHost);
 	return rc;
@@ -1264,7 +1439,7 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 	}
 	for(;;){
 		SyhttpUri sUri;
-		int iCode,bHasLoc = 0,bFullUri = 0;
+		int iCode,bHasLoc = 0,bFullUri = 0,bTunnel = 0;
 		if( PH7_VmHttpSplitURI(&sUri,(const char *)SyBlobData(&sUrl),
 				SyBlobLength(&sUrl)) != SXRET_OK
 		 || SyStringLength(&sUri.sHost) < 1 ){
@@ -1285,35 +1460,34 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 		 * alone: the request line and the Host header still describe the
 		 * origin server. The address is a transport URL of its own. */
 		pOptV = HttpOpt(pCtx,"proxy");
+		bTunnel = 0;
 		if( pOptV && (pOptV->iFlags & MEMOBJ_STRING) && SyBlobLength(&pOptV->sBlob) > 0 ){
 			SyhttpUri sProxy;
 			if( PH7_VmHttpSplitURI(&sProxy,(const char *)SyBlobData(&pOptV->sBlob),
 					SyBlobLength(&pOptV->sBlob)) == SXRET_OK
 			 && SyStringLength(&sProxy.sHost) > 0 ){
-				if( pH->bTls ){
-					/* php reaches an https:// origin through a proxy by
-					 * tunnelling: a CONNECT exchange first, and the handshake
-					 * inside the tunnel. Without that the bytes below would go
-					 * to the proxy in the clear, so this is a refusal rather
-					 * than a downgrade. */
-					HttpFail(pVm,"Unable to connect to the proxy: an https:// "
-						"origin needs a CONNECT tunnel",-1);
-					goto done;
-				}
-				if( HttpConnect(pH,&sProxy,pCtx,&sProxy.sHost) != PH7_OK ){
+				/* An https:// origin is reached by TUNNELLING: a CONNECT
+				 * exchange with the proxy first, and the handshake -- against
+				 * the ORIGIN's name, not the proxy's -- inside it. A plain
+				 * origin needs none of that; the proxy is simply where the
+				 * request goes. */
+				bTunnel = pH->bTls;
+				if( HttpConnect(pH,&sProxy,pCtx,&sUri.sHost,
+						bTunnel ? &sUri : 0) != PH7_OK ){
 					goto done;
 				}
 			}else{
 				HttpFail(pVm,"Unable to parse the proxy address",-1);
 				goto done;
 			}
-		}else if( HttpConnect(pH,&sUri,pCtx,&sUri.sHost) != PH7_OK ){
+		}else if( HttpConnect(pH,&sUri,pCtx,&sUri.sHost,0) != PH7_OK ){
 			goto done;
 		}
 		SyBlobReset(&sReq);
 		HttpBuildRequest(pVm,pCtx,&sUri,pH->bTls,(const char *)SyBlobData(&sTarget),
 			(int)SyBlobLength(&sTarget),&sReq,
-			(const char *)SyBlobData(&sMethod),(int)SyBlobLength(&sMethod),zBody,nBody);
+			(const char *)SyBlobData(&sMethod),(int)SyBlobLength(&sMethod),zBody,nBody,
+			bTunnel);
 		if( HttpSendAll(pH,SyBlobData(&sReq),(int)SyBlobLength(&sReq)) != PH7_OK ){
 			HttpFail(pVm,"Connection refused",-1);
 			goto done;
