@@ -2566,7 +2566,7 @@ case PH7_OP_FUNC_DECL: {
 	if( pDeclFunc ){
 		SyHashEntry *pDeclEntry = SyHashGet(&pVm->hFunction,
 			SyStringData(&pDeclFunc->sName),SyStringLength(&pDeclFunc->sName));
-		if( pDeclEntry ){
+		if( pDeclEntry && pInstr->iP1 == 0 ){
 			/* php's runtime redeclaration fatal -- the same sentence the compiler
 			 * raises for two top-level declarations of one name, and now in the same
 			 * SHAPE: `PHP Fatal error:  ` and a `Stack trace:` block, which the plain
@@ -2592,7 +2592,9 @@ case PH7_OP_FUNC_DECL: {
 			pVm->bHaltRequested = 1;
 			goto Abort;
 		}
-		PH7_VmInstallUserFunction(&(*pVm),pDeclFunc,0);
+		if( pDeclEntry == 0 || pDeclEntry->pUserData != (void *)pDeclFunc ){
+			PH7_VmInstallUserFunction(&(*pVm),pDeclFunc,0);
+		}
 	}
 	break;
 				}

@@ -2238,7 +2238,13 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 			 * builtin, and declared the body of an `if (false)` besides. The
 			 * redeclaration screen moves to the opcode with it: two branches may
 			 * each declare the name, and only the one that RUNS binds. */
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_FUNC_DECL,0,0,(void *)pFunc,0);
+			/* iP1 marks an ANONYMOUS function: `static function () {}` with no `use`
+			 * captures nothing, so it is not flagged a closure and lands here under a
+			 * synthesized `[lambda_N]` name -- a name no program wrote and that php has
+			 * no DECLARE_FUNCTION for at all. Running such a declaration twice is
+			 * ordinary (guzzle's `Middleware::redirect()` returns one), so the opcode
+			 * installs it and asks no redeclaration question. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_FUNC_DECL,bHandleClosure ? 1 : 0,0,(void *)pFunc,0);
 			return SXRET_OK;
 		}
 		/* Reject a php-fatal redeclaration before hoisting the function */
