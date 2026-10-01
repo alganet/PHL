@@ -4042,16 +4042,34 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->iMagic = IO_PRIVATE_MAGIC;
 }
 /*
- * Take one reference on a stream handle for a ph7_value that now names it.
- * Accepts any resource pointer: every resource this engine hands out shares the
- * io_private magic word, and only a LIVE one carries the count, so a curl
- * handle, a stream context or a closed stream simply falls through.
+ * The counted-resource header behind a raw resource pointer, or 0 when there is
+ * none. Every resource this engine hands out opens with an io_private header,
+ * so iHead is in bounds for all of them and iMagic then says WHICH kind; only
+ * the kinds whose LAST holder has something to release answer here, which is a
+ * live stream and a stream context. A closed stream, a process handle, a filter
+ * and a bucket brigade all fall through and stay uncounted.
+ */
+static void StreamCtxDestroy(phl_stream_ctx *pRes);
+static io_private * ResCountedHead(void *pResource)
+{
+	io_private *pDev = (io_private *)pResource;
+	if( pDev == 0 || pDev->iHead != IO_PRIVATE_HEAD_MAGIC ){
+		return 0;
+	}
+	if( pDev->iMagic == IO_PRIVATE_MAGIC || pDev->iMagic == STREAM_CTX_MAGIC ){
+		return pDev;
+	}
+	return 0;
+}
+/*
+ * Take one reference on a counted resource for a ph7_value that now names it.
+ * Accepts any resource pointer; anything that is not counted falls through and
+ * answers 0, which is how the value learns not to carry the mark.
  */
 PH7_PRIVATE int PH7_StreamValueRef(void *pResource)
 {
-	io_private *pDev = (io_private *)pResource;
-	if( pDev == 0 || pDev->iHead != IO_PRIVATE_HEAD_MAGIC
-	 || pDev->iMagic != IO_PRIVATE_MAGIC ){
+	io_private *pDev = ResCountedHead(pResource);
+	if( pDev == 0 ){
 		return 0;
 	}
 	pDev->nValRef++;
@@ -4072,9 +4090,8 @@ PH7_PRIVATE int PH7_StreamValueRef(void *pResource)
  */
 PH7_PRIVATE void PH7_StreamValueUnref(void *pResource)
 {
-	io_private *pDev = (io_private *)pResource;
-	if( pDev == 0 || pDev->iHead != IO_PRIVATE_HEAD_MAGIC
-	 || pDev->iMagic != IO_PRIVATE_MAGIC ){
+	io_private *pDev = ResCountedHead(pResource);
+	if( pDev == 0 ){
 		return;
 	}
 	if( pDev->nValRef < 1 ){
@@ -4085,7 +4102,19 @@ PH7_PRIVATE void PH7_StreamValueUnref(void *pResource)
 		return;
 	}
 	pDev->nValRef--;
-	if( pDev->nValRef > 0 || pDev->bPersist || pDev->pStream == 0 ){
+	if( pDev->nValRef > 0 ){
+		return;
+	}
+	if( pDev->iMagic == STREAM_CTX_MAGIC ){
+		/* A CONTEXT has no descriptor to close: what its last holder releases
+		 * is the context itself, which php frees the moment its refcount hits
+		 * zero. Nothing can still see it -- every holder there is takes a
+		 * count -- so the struct goes back rather than being stamped closed
+		 * the way a stream's is. */
+		StreamCtxDestroy((phl_stream_ctx *)pDev);
+		return;
+	}
+	if( pDev->bPersist || pDev->pStream == 0 ){
 		return;
 	}
 	/* The write chain gets its closing call while the device is still open, the
@@ -4736,7 +4765,11 @@ static phl_stream_ctx * StreamCtxNew(ph7_vm *pVm)
 		return 0;
 	}
 	SyZero(pRes,sizeof(phl_stream_ctx));
+	/* The header word every resource probe reads, and what tells the value
+	 * doors this pointer carries a count they may take. */
+	pRes->base.iHead = IO_PRIVATE_HEAD_MAGIC;
 	pRes->base.iMagic = STREAM_CTX_MAGIC;
+	pRes->base.nValRef = 0;
 	pRes->pVm = pVm;
 	pRes->pOptions = ph7_new_array(pVm);
 	if( pRes->pOptions == 0 ){
@@ -4744,8 +4777,57 @@ static phl_stream_ctx * StreamCtxNew(ph7_vm *pVm)
 		return 0;
 	}
 	pRes->pNext = (phl_stream_ctx *)pVm->pStreamCtx;
+	if( pRes->pNext ){
+		pRes->pNext->pPrev = pRes;
+	}
+	pRes->pPrev = 0;
 	pVm->pStreamCtx = (void *)pRes;
 	return pRes;
+}
+/*
+ * Take one count for a holder that is NOT a ph7_value: the VM's default
+ * context and a stream that carries one in io_private.pCtxRes both outlive
+ * every value the script has, and an uncounted holder cannot be told from the
+ * last one out.
+ */
+static void StreamCtxHold(phl_stream_ctx *pRes)
+{
+	if( pRes ){
+		pRes->base.nValRef++;
+	}
+}
+/*
+ * Free one context: unlink it from the VM registry, drop the two values it
+ * owns, and clear the magic so a pointer that somehow outlived it cannot read
+ * a live context out of freed memory. Called when the last holder goes.
+ */
+static void StreamCtxDestroy(phl_stream_ctx *pRes)
+{
+	ph7_vm *pVm;
+	if( pRes == 0 || pRes->pVm == 0 ){
+		return;
+	}
+	pVm = pRes->pVm;
+	if( pRes->pPrev ){
+		pRes->pPrev->pNext = pRes->pNext;
+	}else if( pVm->pStreamCtx == (void *)pRes ){
+		pVm->pStreamCtx = (void *)pRes->pNext;
+	}
+	if( pRes->pNext ){
+		pRes->pNext->pPrev = pRes->pPrev;
+	}
+	if( pVm->pOpenCtx == (void *)pRes ){
+		pVm->pOpenCtx = 0;
+	}
+	if( pRes->pOptions ){
+		ph7_release_value(pVm,pRes->pOptions);
+	}
+	if( pRes->pNotify ){
+		ph7_release_value(pVm,pRes->pNotify);
+	}
+	pRes->base.iMagic = 0;
+	pRes->base.iHead = 0;
+	SyMemBackendFree(&pVm->sAllocator,pRes);
 }
 /*
  * The context behind a ph7_value, or 0 when the value is not one. The magic
@@ -4775,6 +4857,9 @@ PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxDefault(ph7_vm *pVm)
 	}
 	if( pVm->pDefaultCtx == 0 ){
 		pVm->pDefaultCtx = (void *)StreamCtxNew(pVm);
+		/* The VM itself is a holder: the default context outlives every value
+		 * an opener was handed, and lives until the VM is reset. */
+		StreamCtxHold((phl_stream_ctx *)pVm->pDefaultCtx);
 	}
 	return (phl_stream_ctx *)pVm->pDefaultCtx;
 }
@@ -5010,6 +5095,8 @@ static phl_stream_ctx * StreamCtxArg(ph7_context *pCtx,ph7_value *pVal,int bCrea
 	*pbThrew = 0;
 	if( pDev->pCtxRes == 0 && bCreate ){
 		pDev->pCtxRes = (void *)StreamCtxNew(pCtx->pVm);
+		/* The HANDLE holds it, not any value the script has. */
+		StreamCtxHold((phl_stream_ctx *)pDev->pCtxRes);
 	}
 	return (phl_stream_ctx *)pDev->pCtxRes;
 }
@@ -7232,6 +7319,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 			return PH7_OK;
 		}
 		pDev->pCtxRes = (void *)pCtxRes;
+		StreamCtxHold(pCtxRes);
 		ph7_result_resource(pCtx,pDev);
 		return PH7_OK;
 	}
@@ -7296,6 +7384,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	 * else — which is why stream_context_get_options() answers for a socket and
 	 * answers the empty set for a file opened through the very same call. */
 	pDev->pCtxRes = (void *)pCtxRes;
+	StreamCtxHold(pCtxRes);
 	SockArmDefaultTimeout(pCtx,pDev);
 	if( bPersist ){
 		char zKey[320];
@@ -7389,6 +7478,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 			return PH7_OK;
 		}
 		pDev->pCtxRes = (void *)pCtxRes;
+		StreamCtxHold(pCtxRes);
 		SockAddressSuccess(pCtx,apArg,nArg,1,2);
 		ph7_result_resource(pCtx,pDev);
 		return PH7_OK;
@@ -7456,6 +7546,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 		return PH7_OK;
 	}
 	pDev->pCtxRes = (void *)pCtxRes;
+	StreamCtxHold(pCtxRes);
 	ph7_result_resource(pCtx,pDev);
 	return PH7_OK;
 }

@@ -6551,7 +6551,14 @@ struct phl_stream_ctx
 	sxi64 iProgressMax;     /* what the wrapper announced, or 0 for "unknown" */
 	int bProgress;          /* has an init armed the counter yet? */
 	int bNotifyDead;        /* the callback threw: php stops calling it */
-	phl_stream_ctx *pNext;  /* registry chain (pVm->pStreamCtx) */
+	/* Registry chain (pVm->pStreamCtx), DOUBLY linked: a context whose last
+	 * holder goes away is freed there and then, the way php's refcounted
+	 * `stream-context` resource is, so unlinking one may not walk the chain.
+	 * base.nValRef counts the holders -- every ph7_value naming it through the
+	 * three value doors, plus one for each NON-value holder (the VM's default
+	 * context, a stream that carries one in io_private.pCtxRes). */
+	phl_stream_ctx *pNext;
+	phl_stream_ctx *pPrev;
 };
 /* The context behind a ph7_value, or 0 when the value is not one. */
 PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromValue(ph7_value *pVal);
