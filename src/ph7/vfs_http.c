@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#ifdef PH7_ENABLE_OPENSSL
+#include <openssl/ssl.h>
+#endif
 /*
  * The http:// stream wrapper -- php's one built-in PROTOCOL wrapper, and the
  * device behind `file_get_contents('http://...')`, `fopen('http://...')`,
@@ -40,8 +43,10 @@
  *      is direct, and a Location of at most ONE byte, which is not joined at
  *      all but put under the root.
  *
- * What is NOT here is https://: php's is this wrapper over the ssl:// transport,
- * which this build has not got.
+ * https:// is this same wrapper with the ssl:// transport under it, which is
+ * exactly what php's is: one device per SCHEME, because the name a URL was
+ * found under is the only thing that says whether TLS is spoken, what port it
+ * defaults to, and which scheme a relative `Location:` is resolved against.
  */
 /*
  * The response headers of the LAST http exchange, kept on the VM because two
@@ -147,6 +152,11 @@ struct http_private
 	phl_stream_ctx *pCtx; /* the context this exchange runs under, for its
 	                       * `notification` callback; owned by the VM, so it
 	                       * outlives the handle */
+	sxu8 bTls;            /* this hop is speaking TLS (an https:// URL) */
+#ifdef PH7_ENABLE_OPENSSL
+	void *pSsl;           /* the negotiated session, when it is */
+	void *pSslCtx;        /* and the context it was built from */
+#endif
 	sxu8 bBody;           /* the headers are done: reads now carry the BODY */
 	sxu8 bNoFill;         /* the DRAIN below: decode what is in hand, read nothing */
 	sxi64 iFileSize;      /* the `Content-Length` this response announced, or 0 */
@@ -164,6 +174,56 @@ struct http_private
 };
 /* php reads a socket in blocks; 8K is the size every other reader here uses. */
 #define HTTP_CHUNK_READ 8192
+/*
+ * The two byte ops of the exchange. Under https:// the RECORD layer is the
+ * connection -- libssl owns the descriptor and the socket calls would read the
+ * ciphertext -- so every read and write below goes through the session when
+ * there is one. There are exactly two such sites, which is why the exchange
+ * itself is unchanged by TLS.
+ */
+static int HttpRecv(http_private *pH,char *zBuf,int nBuf)
+{
+#ifdef PH7_ENABLE_OPENSSL
+	if( pH->pSsl ){
+		int n = SSL_read((SSL *)pH->pSsl,zBuf,nBuf);
+		/* Anything that is not bytes ends this exchange: the wrapper reads a
+		 * response to its own end, and a session that cannot answer has no
+		 * more of one -- the same conclusion the socket reader draws from a
+		 * peer that closed. */
+		return n > 0 ? n : 0;
+	}
+#endif
+	return PH7_NetRecv(pH->sock,zBuf,nBuf,0);
+}
+static int HttpSendAll(http_private *pH,const void *pBuf,int nLen)
+{
+#ifdef PH7_ENABLE_OPENSSL
+	if( pH->pSsl ){
+		int nSent = 0;
+		while( nSent < nLen ){
+			int n = SSL_write((SSL *)pH->pSsl,&((const char *)pBuf)[nSent],nLen - nSent);
+			if( n < 1 ){
+				return -1;
+			}
+			nSent += n;
+		}
+		return PH7_OK;
+	}
+#endif
+	return PH7_NetSendAll(pH->sock,pBuf,nLen);
+}
+/* Close the connection, session first: the socket the session is reading
+ * through must outlive it. */
+static void HttpDisconnect(http_private *pH)
+{
+#ifdef PH7_ENABLE_OPENSSL
+	PH7_SslDropSession(&pH->pSsl,&pH->pSslCtx);
+#endif
+	if( pH->sock != PH7_NET_INVALID_SOCKET ){
+		PH7_NetClose(pH->sock);
+		pH->sock = PH7_NET_INVALID_SOCKET;
+	}
+}
 /* php's own redirect default, which the `max_redirects` option overrides. */
 #define HTTP_MAX_REDIRECTS 20
 /* php reads the status line into `char tmp_line[128]`, which its line reader
@@ -202,7 +262,7 @@ static int HttpFill(http_private *pH)
 	if( pH->bEof || pH->sock == PH7_NET_INVALID_SOCKET ){
 		return 0;
 	}
-	n = PH7_NetRecv(pH->sock,zBuf,(int)sizeof(zBuf),0);
+	n = HttpRecv(pH,zBuf,(int)sizeof(zBuf));
 	if( n == 0 ){
 		pH->bEof = 1;
 		/* php's notify_completed is not gated on the progress counter: a read
@@ -565,7 +625,24 @@ static sxi32 HttpB64Consumer(const void *pData,unsigned int nLen,void *pUserData
  * Content-Length, the script's own headers, and last the automatic
  * Content-Type. A body follows the blank line.
  */
-static void HttpBuildRequest(ph7_vm *pVm,phl_stream_ctx *pCtx,SyhttpUri *pUri,
+/* The port an unspelled URL of this scheme is asking for. */
+static int HttpDefaultPort(int bTls)
+{
+	return bTls ? 443 : 80;
+}
+/*
+ * php's port rule: whatever the URL spells, else the scheme's own default.
+ */
+static int HttpUriPort(SyhttpUri *pUri,int bTls)
+{
+	sxi32 iPort = 0;
+	if( SyStringLength(&pUri->sPort) < 1 ){
+		return HttpDefaultPort(bTls);
+	}
+	SyStrToInt32(pUri->sPort.zString,pUri->sPort.nByte,(void *)&iPort,0);
+	return iPort > 0 ? (int)iPort : HttpDefaultPort(bTls);
+}
+static void HttpBuildRequest(ph7_vm *pVm,phl_stream_ctx *pCtx,SyhttpUri *pUri,int bTls,
 	const char *zTarget,int nTarget,SyBlob *pOut,const char *zMethod,int nMethod,
 	const char *zBody,int nBody)
 {
@@ -607,12 +684,15 @@ static void HttpBuildRequest(ph7_vm *pVm,phl_stream_ctx *pCtx,SyhttpUri *pUri,
 		SyBlobAppend(pOut,"\r\n",sizeof("\r\n")-1);
 	}
 	if( !HttpUserHas(&sUser,"host:") ){
+		/* The port is named only when it is not the SCHEME's own -- so an
+		 * https:// URL on 443 is as bare as an http:// one on 80. php reads
+		 * the port as a NUMBER and prints that, which is why a URL spelling
+		 * `:0080` still names no port here. */
+		int iPort = HttpUriPort(pUri,bTls);
 		SyBlobAppend(pOut,"Host: ",sizeof("Host: ")-1);
 		SyBlobAppend(pOut,pUri->sHost.zString,pUri->sHost.nByte);
-		if( SyStringLength(&pUri->sPort) > 0
-		 && !(pUri->sPort.nByte == 2 && SyStrncmp(pUri->sPort.zString,"80",2) == 0) ){
-			SyBlobAppend(pOut,":",1);
-			SyBlobAppend(pOut,pUri->sPort.zString,pUri->sPort.nByte);
+		if( iPort != HttpDefaultPort(bTls) ){
+			SyBlobFormat(pOut,":%d",iPort);
 		}
 		SyBlobAppend(pOut,"\r\n",sizeof("\r\n")-1);
 	}
@@ -673,18 +753,6 @@ static void HttpFail(ph7_vm *pVm,const char *zText,int nText)
 	PH7_StreamSetOpenError(pVm,pVm->zOpenErrBuf);
 }
 /*
- * php's port rule: whatever the URL spells, else 80.
- */
-static int HttpUriPort(SyhttpUri *pUri)
-{
-	sxi32 iPort = 0;
-	if( SyStringLength(&pUri->sPort) < 1 ){
-		return 80;
-	}
-	SyStrToInt32(pUri->sPort.zString,pUri->sPort.nByte,(void *)&iPort,0);
-	return iPort > 0 ? (int)iPort : 80;
-}
-/*
  * The request TARGET: the URL's path and query, `/` when it has neither, and
  * the whole URL when `request_fulluri` says so (which is what a proxy that
  * insists on absolute-form gets).
@@ -719,7 +787,7 @@ static void HttpRequestTarget(SyhttpUri *pUri,const char *zUrl,int nUrl,
  * `x` is `/x` and an empty one is `/` (php 8.5.11 settled that last case, which
  * earlier builds answered from a read past the end of the header).
  */
-static void HttpResolveLocation(SyhttpUri *pUri,const char *zLoc,sxu32 nLoc,SyBlob *pOut)
+static void HttpResolveLocation(SyhttpUri *pUri,int bTls,const char *zLoc,sxu32 nLoc,SyBlob *pOut)
 {
 	sxu32 i;
 	SyBlobReset(pOut);
@@ -734,7 +802,10 @@ static void HttpResolveLocation(SyhttpUri *pUri,const char *zLoc,sxu32 nLoc,SyBl
 			break;
 		}
 	}
-	SyBlobAppend(pOut,"http://",sizeof("http://")-1);
+	/* The URL this hop was reached by keeps its scheme: php rebuilds a
+	 * relative Location against the CURRENT one, so a redirect inside an
+	 * https:// exchange stays on TLS. */
+	SyBlobAppend(pOut,bTls ? "https://" : "http://",bTls ? sizeof("https://")-1 : sizeof("http://")-1);
 	if( SyStringLength(&pUri->sUser) > 0 ){
 		SyBlobAppend(pOut,pUri->sUser.zString,pUri->sUser.nByte);
 		if( SyStringLength(&pUri->sPass) > 0 ){
@@ -744,9 +815,8 @@ static void HttpResolveLocation(SyhttpUri *pUri,const char *zLoc,sxu32 nLoc,SyBl
 		SyBlobAppend(pOut,"@",1);
 	}
 	SyBlobAppend(pOut,pUri->sHost.zString,pUri->sHost.nByte);
-	if( SyStringLength(&pUri->sPort) > 0 ){
-		SyBlobAppend(pOut,":",1);
-		SyBlobAppend(pOut,pUri->sPort.zString,pUri->sPort.nByte);
+	if( HttpUriPort(pUri,bTls) != HttpDefaultPort(bTls) ){
+		SyBlobFormat(pOut,":%d",HttpUriPort(pUri,bTls));
 	}
 	if( nLoc > 0 && zLoc[0] == '/' ){
 		SyBlobAppend(pOut,zLoc,nLoc);
@@ -1032,17 +1102,17 @@ static void HttpFree(http_private *pH)
 	if( pH == 0 ){
 		return;
 	}
-	if( pH->sock != PH7_NET_INVALID_SOCKET ){
-		PH7_NetClose(pH->sock);
-		pH->sock = PH7_NET_INVALID_SOCKET;
-	}
+	HttpDisconnect(pH);
 	SyBlobRelease(&pH->sRaw);
 	SyBlobRelease(&pH->sOut);
 	SyBlobRelease(&pH->sHdrs);
 	SyMemBackendFree(&pH->pVm->sAllocator,pH);
 }
-/* The connection this exchange runs over, or php's own failure text. */
-static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx)
+/* The connection this exchange runs over, or php's own failure text. The URI
+ * dialed is not always the one being ASKED for -- a proxy moves the connection
+ * -- so the host TLS is negotiated against is passed separately. */
+static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx,
+	SyString *pPeer)
 {
 	SyBlob sHost;
 	const char *zHost;
@@ -1064,7 +1134,7 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx)
 		double rSec = HttpOptReal(pH->pVm,pOptV,0);
 		iTimeoutMs = rSec > 0 ? (int)(rSec * 1000) : 0;
 	}
-	sock = PH7_NetConnect(zHost,HttpUriPort(pUri),iTimeoutMs,0,0,0,&iErrno,&zErr);
+	sock = PH7_NetConnect(zHost,HttpUriPort(pUri,pH->bTls),iTimeoutMs,0,0,0,&iErrno,&zErr);
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		if( iErrno == PH7_NET_ERR_RESOLVE ){
 			SyBlob sMsg;
@@ -1096,6 +1166,31 @@ static int HttpConnect(http_private *pH,SyhttpUri *pUri,phl_stream_ctx *pCtx)
 		 * nothing at all. */
 		PH7_StreamCtxNotify(pH->pCtx,PHL_STREAM_NOTIFY_CONNECT,
 			PHL_STREAM_NOTIFY_SEVERITY_INFO,0,0,0,0,0);
+#ifdef PH7_ENABLE_OPENSSL
+		if( pH->bTls ){
+			/* php opens `ssl://host:port` where this opens `tcp://`, so the
+			 * handshake -- the `ssl` context options, the name checked against
+			 * the certificate, the capture written back onto the context --
+			 * is the TRANSPORT's, and its refusal is the reason the failed
+			 * open reports. */
+			SyBlob sPeer;
+			char zSslErr[512];
+			zSslErr[0] = 0;
+			SyBlobInit(&sPeer,&pH->pVm->sAllocator);
+			SyBlobAppend(&sPeer,pPeer->zString,pPeer->nByte);
+			SyBlobNullAppend(&sPeer);
+			if( PH7_SslClientHandshake(pH->pVm,pH->sock,pCtx,
+					(const char *)SyBlobData(&sPeer),&pH->pSsl,&pH->pSslCtx,
+					zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
+				HttpFail(pH->pVm,zSslErr,-1);
+				HttpDisconnect(pH);
+				rc = -1;
+			}
+			SyBlobRelease(&sPeer);
+		}
+#else
+		SXUNUSED(pPeer);
+#endif
 	}
 	SyBlobRelease(&sHost);
 	return rc;
@@ -1176,6 +1271,12 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 			HttpFail(pVm,"Unable to parse the URL",-1);
 			goto done;
 		}
+		/* Every hop reads its own scheme: a redirect that crosses from
+		 * https:// to http:// (or back) changes the port default, the Host
+		 * header's rule and whether TLS is spoken at all -- php rebuilds the
+		 * whole request from the URL it is about to open, and so does this. */
+		pH->bTls = (SyStringLength(&sUri.sScheme) > 4
+			&& SyStrnicmp(sUri.sScheme.zString,"https",sizeof("https")-1) == 0) ? 1 : 0;
 		pOptV = HttpOpt(pCtx,"request_fulluri");
 		bFullUri = HttpOptBool(pVm,pOptV,0);
 		HttpRequestTarget(&sUri,(const char *)SyBlobData(&sUrl),
@@ -1189,21 +1290,31 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 			if( PH7_VmHttpSplitURI(&sProxy,(const char *)SyBlobData(&pOptV->sBlob),
 					SyBlobLength(&pOptV->sBlob)) == SXRET_OK
 			 && SyStringLength(&sProxy.sHost) > 0 ){
-				if( HttpConnect(pH,&sProxy,pCtx) != PH7_OK ){
+				if( pH->bTls ){
+					/* php reaches an https:// origin through a proxy by
+					 * tunnelling: a CONNECT exchange first, and the handshake
+					 * inside the tunnel. Without that the bytes below would go
+					 * to the proxy in the clear, so this is a refusal rather
+					 * than a downgrade. */
+					HttpFail(pVm,"Unable to connect to the proxy: an https:// "
+						"origin needs a CONNECT tunnel",-1);
+					goto done;
+				}
+				if( HttpConnect(pH,&sProxy,pCtx,&sProxy.sHost) != PH7_OK ){
 					goto done;
 				}
 			}else{
 				HttpFail(pVm,"Unable to parse the proxy address",-1);
 				goto done;
 			}
-		}else if( HttpConnect(pH,&sUri,pCtx) != PH7_OK ){
+		}else if( HttpConnect(pH,&sUri,pCtx,&sUri.sHost) != PH7_OK ){
 			goto done;
 		}
 		SyBlobReset(&sReq);
-		HttpBuildRequest(pVm,pCtx,&sUri,(const char *)SyBlobData(&sTarget),
+		HttpBuildRequest(pVm,pCtx,&sUri,pH->bTls,(const char *)SyBlobData(&sTarget),
 			(int)SyBlobLength(&sTarget),&sReq,
 			(const char *)SyBlobData(&sMethod),(int)SyBlobLength(&sMethod),zBody,nBody);
-		if( PH7_NetSendAll(pH->sock,SyBlobData(&sReq),(int)SyBlobLength(&sReq)) != PH7_OK ){
+		if( HttpSendAll(pH,SyBlobData(&sReq),(int)SyBlobLength(&sReq)) != PH7_OK ){
 			HttpFail(pVm,"Connection refused",-1);
 			goto done;
 		}
@@ -1231,7 +1342,7 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 			sxi64 iHop = pH->iFileSize;
 			SySetPut(&sHopSize,(const void *)&iHop);
 			SyBlobInit(&sNext,&pVm->sAllocator);
-			HttpResolveLocation(&sUri,(const char *)SyBlobData(&sLoc),
+			HttpResolveLocation(&sUri,pH->bTls,(const char *)SyBlobData(&sLoc),
 				SyBlobLength(&sLoc),&sNext);
 			SyBlobReset(&sUrl);
 			SyBlobAppend(&sUrl,SyBlobData(&sNext),SyBlobLength(&sNext));
@@ -1244,8 +1355,7 @@ static int HttpRun(http_private *pH,const char *zUrl,int nUrl,phl_stream_ctx *pC
 				zBody = 0;
 				nBody = 0;
 			}
-			PH7_NetClose(pH->sock);
-			pH->sock = PH7_NET_INVALID_SOCKET;
+			HttpDisconnect(pH);
 			SyBlobReset(&pH->sRaw);
 			pH->nRawOfft = 0;
 			SyBlobReset(&pH->sOut);
@@ -1323,7 +1433,8 @@ done:
 /* ------------------------------------------------------------------------- */
 /* The device                                                                  */
 /* ------------------------------------------------------------------------- */
-static int HttpStream_Open(const char *zName,int iMode,ph7_value *pResource,void **ppHandle)
+static int HttpOpenScheme(const char *zName,int iMode,ph7_value *pResource,
+	void **ppHandle,int bTls)
 {
 	ph7_vm *pVm = pResource ? pResource->pVm : 0;
 	http_private *pH;
@@ -1361,7 +1472,8 @@ static int HttpStream_Open(const char *zName,int iMode,ph7_value *pResource,void
 	/* PH7_VmGetStreamDevice() hands the wrapper what is left after the scheme;
 	 * every redirect below is resolved against a WHOLE url, so it goes back on. */
 	SyBlobInit(&sUrl,&pVm->sAllocator);
-	SyBlobAppend(&sUrl,"http://",sizeof("http://")-1);
+	SyBlobAppend(&sUrl,bTls ? "https://" : "http://",
+		bTls ? sizeof("https://")-1 : sizeof("http://")-1);
 	SyBlobAppend(&sUrl,zName,(sxu32)SyStrlen(zName));
 	rc = HttpRun(pH,(const char *)SyBlobData(&sUrl),(int)SyBlobLength(&sUrl),
 		(phl_stream_ctx *)pVm->pOpenCtx);
@@ -1373,6 +1485,16 @@ static int HttpStream_Open(const char *zName,int iMode,ph7_value *pResource,void
 	*ppHandle = (void *)pH;
 	return PH7_OK;
 }
+static int HttpStream_Open(const char *zName,int iMode,ph7_value *pResource,void **ppHandle)
+{
+	return HttpOpenScheme(zName,iMode,pResource,ppHandle,0);
+}
+#ifdef PH7_ENABLE_OPENSSL
+static int HttpsStream_Open(const char *zName,int iMode,ph7_value *pResource,void **ppHandle)
+{
+	return HttpOpenScheme(zName,iMode,pResource,ppHandle,1);
+}
+#endif
 static void HttpStream_Close(void *pHandle)
 {
 	HttpFree((http_private *)pHandle);
@@ -1442,10 +1564,38 @@ PH7_PRIVATE const ph7_io_stream sHTTP_Stream = {
 	0,                /* xSync */
 	0                 /* xStat */
 };
-/* Is this the http:// device? Asked by the metadata reader, which labels it
- * apart, and by feof(), which reads the handle's own end. */
+#ifdef PH7_ENABLE_OPENSSL
+/* php registers https:// as a device of its own over the SAME wrapper -- one
+ * scheme name per entry, and the ops behind them are these. */
+PH7_PRIVATE const ph7_io_stream sHTTPS_Stream = {
+	"https",
+	PH7_IO_STREAM_VERSION,
+	HttpsStream_Open, /* xOpen */
+	0,                /* xOpenDir */
+	HttpStream_Close, /* xClose */
+	0,                /* xCloseDir */
+	HttpStream_Read,  /* xRead */
+	0,                /* xReadDir */
+	HttpStream_Write, /* xWrite */
+	0,                /* xSeek */
+	0,                /* xLock */
+	0,                /* xRewindDir */
+	HttpStream_Tell,  /* xTell */
+	0,                /* xTrunc */
+	0,                /* xSync */
+	0                 /* xStat */
+};
+#endif
+/* Is this one of the http wrapper's devices? Asked by the metadata reader,
+ * which labels them apart, by feof(), which reads the handle's own end, and by
+ * the allow_url_fopen screen, which gates both schemes alike. */
 PH7_PRIVATE int PH7_HttpStreamIs(const ph7_io_stream *pStream)
 {
+#ifdef PH7_ENABLE_OPENSSL
+	if( pStream == &sHTTPS_Stream ){
+		return 1;
+	}
+#endif
 	return pStream == &sHTTP_Stream;
 }
 /*

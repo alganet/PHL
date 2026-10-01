@@ -81,7 +81,7 @@
  ............................................................. 3050 / 3258 ( 93%)
 -S............................................................ 3111 / 3258 ( 95%)
 -...............................S............................. 3172 / 3258 ( 97%)
-+SFFFF.FFFFFFFFF.F.......................................E.... 3111 / 3258 ( 95%)
++SFFFF.FFFFFFFFF.F............................................ 3111 / 3258 ( 95%)
 +.........................E..EE.S............................. 3172 / 3258 ( 97%)
  ............................................................. 3233 / 3258 ( 99%)
  ................S........                                     3258 / 3258 (100%)
@@ -89,7 +89,7 @@
  Time: @TIME@
  
 -There was 1 error:
-+There were 13 errors:
++There were 12 errors:
  
 -1) Composer\Test\Repository\PlatformRepositoryTest::testLibraryInformation with data set "intl" ('intl', '\nintl\n\nInternationalizatio...0 => 0', array('100', '32.0.1', '7.0.0', '2016.2'), array(array(array('ResourceBundle', 'create'), array('root', 'ICUDATA', false), Composer\Test\Repository\ResourceBundleStub Object ()), array(array('IntlChar', 'getUnicodeVersion'), array(), array(7, 0, 0, 0))), array(array('INTL_ICU_VERSION', null, '100')), array(array('ResourceBundle'), array('IntlChar')))
 +1) Composer\Test\Json\JsonFormatterTest::testUnicodeWithPrependedSlash
@@ -137,7 +137,7 @@
  TypeError: Mock_Runtime_@HASH@::invoke(): Argument #1 ($callable) must be of type callable, array given, called in @ROOT@/src/Composer/Repository/PlatformRepository.php on line 345
  
  @ROOT@/src/Composer/Repository/PlatformRepository.php:345
-@@ -69,98 +110,4206 @@
+@@ -69,98 +110,4198 @@
  @ROOT@/src/Composer/Repository/PlatformRepository.php:768
  @ROOT@/tests/Composer/Test/Repository/PlatformRepositoryTest.php:1280
  
@@ -154,27 +154,19 @@
 +@ROOT@/src/Composer/Util/Filesystem.php:352
 +@ROOT@/tests/Composer/Test/Util/FilesystemTest.php:394
 +
-+10) Composer\Test\Util\RemoteFilesystemTest::testBitBucketPublicDownload with data set #0 ('https://bitbucket.org/seldaek...me.txt', '1234')
-+Composer\Downloader\TransportException: The "https://bitbucket.org/seldaek/composer-live-test-repo/raw/master/composer-unit-test-download-me.txt" file could not be downloaded: Unable to find the wrapper "https" - did you forget to enable it when you configured PHP?
-+Failed to open stream: No such file or directory
-+
-+@ROOT@/src/Composer/Util/RemoteFilesystem.php:481
-+@ROOT@/src/Composer/Util/RemoteFilesystem.php:122
-+@ROOT@/tests/Composer/Test/Util/RemoteFilesystemTest.php:325
-+
-+11) Composer\Test\Util\TarTest::testReturnsNullIfTheTarIsEmpty
++10) Composer\Test\Util\TarTest::testReturnsNullIfTheTarIsEmpty
 +UnexpectedValueException: internal corruption of phar "@ROOT@/tests/Composer/Test/Util/Fixtures/Tar/empty.tar.gz" (truncated entry)
 +
 +@ROOT@/src/Composer/Util/Tar.php:25
 +@ROOT@/tests/Composer/Test/Util/TarTest.php:33
 +
-+12) Composer\Test\Util\TarTest::testReturnsComposerJsonInTarRoot
++11) Composer\Test\Util\TarTest::testReturnsComposerJsonInTarRoot
 +UnexpectedValueException: internal corruption of phar "@ROOT@/tests/Composer/Test/Util/Fixtures/Tar/root.tar.gz" (truncated entry)
 +
 +@ROOT@/src/Composer/Util/Tar.php:25
 +@ROOT@/tests/Composer/Test/Util/TarTest.php:51
 +
-+13) Composer\Test\Util\TarTest::testReturnsComposerJsonInFirstFolder
++12) Composer\Test\Util\TarTest::testReturnsComposerJsonInFirstFolder
 +UnexpectedValueException: internal corruption of phar "@ROOT@/tests/Composer/Test/Util/Fixtures/Tar/folder.tar.gz" (truncated entry)
 +
 +@ROOT@/src/Composer/Util/Tar.php:25
@@ -461,8 +453,7 @@
 ++''
 +
 +@ROOT@/tests/Composer/Test/Advisory/AuditorTest.php:784
- 
--1) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++
 +25) Composer\Test\Advisory\AuditorTest::testAuditWithFilter with data set "AUDIT_FAIL with matching entry returns STATUS_FAILED (plain)" (array(Composer\Package\Package Object (...)), array(array(Composer\FilterList\FilterListEntry Object (...))), 'fail', 'plain', 1, 'No security vulnerability adv...ernal.')
 +Failed asserting that two strings are identical.
 +--- Expected
@@ -744,13 +735,10 @@
 +@ROOT@/tests/Composer/Test/TestCase.php:84
 +
 +55) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "update-all-dry-run.test" ('update-all-dry-run.test', 'Updates updateable packages i...n mode', null, array(array(array('package', array(array('a/a', '1.0.0'), array('a/a', '1.0.1'), array('a/a', '1.1.0'), array('a/b', '1.0.0'), array('a/b', '1.0.1'), array('a/b', '2.0.0'), array('a/c', '1.0.0'), array('a/c', '2.0.0')))), array('1.0.*', '1.*'), array('*')), array(), array(array('a/a', '1.0.0'), array('a/c', '1.0.0'), array('a/b', '1.0.0')), 'update --dry-run', array(), null, 'Loading composer repositories...2.0.0)', null, '', 0)
- Failed asserting that string matches format description.
- --- Expected
- +++ Actual
- @@ @@
--   Problem 2
--     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
--   Problem 3
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Lock file operations: 3 installs, 0 updates, 0 removals
@@ -963,15 +951,19 @@
 +-    - Root composer.json requires some/dep dev-main -> satisfiable by some/dep[dev-main].
 +-    - conflictor/foo 1.0.0 conflicts with some/dep 1.3.x-dev.
 +-    - some/dep 1.3.x-dev is an alias of some/dep dev-main and must be installed with it.
-+
+ 
+-1) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +@ROOT@/tests/Composer/Test/InstallerTest.php:489
 +@ROOT@/tests/Composer/Test/InstallerTest.php:256
 +
 +68) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "provider-conflicts3.test" ('provider-conflicts3.test', 'Test that a replacer can not ...places', null, array(array(array('package', array(array('replacer/pkg', '2.0.0', array('self.version')), array('replacer/pkg', '2.0.1', array('self.version')), array('replacer/pkg', '2.0.2', array('self.version')), array('replacer/pkg', '2.0.3', array('self.version')), array('regular/pkg', '1.0.0'), array('regular/pkg', '1.0.1'), array('regular/pkg', '1.0.2'), array('regular/pkg', '1.0.3'), array('regular/pkg', '2.0.0'), array('regular/pkg', '2.0.1')))), array('1.*', '2.*')), array(), array(), 'update', array(), null, 'Loading composer repositories...th it.', 'Loading composer repositories...th it.', '', 2)
-+Failed asserting that string matches format description.
-+--- Expected
-++++ Actual
-+@@ @@
+ Failed asserting that string matches format description.
+ --- Expected
+ +++ Actual
+ @@ @@
+-   Problem 2
+-     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
+-   Problem 3
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Your requirements could not be resolved to an installable set of packages.
@@ -1192,19 +1184,15 @@
 +-Installing dependencies from lock file (including require-dev)
 +-Nothing to install, update or remove
 +-Generating autoload files
- 
- @ROOT@/tests/Composer/Test/InstallerTest.php:489
- @ROOT@/tests/Composer/Test/InstallerTest.php:256
- 
--2) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++
++@ROOT@/tests/Composer/Test/InstallerTest.php:489
++@ROOT@/tests/Composer/Test/InstallerTest.php:256
++
 +79) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "provider-packages-can-not-be-installed-unless-selected.test" ('provider-packages-can-not-be-...d.test', 'Test that providers can not b...lected', null, array(array(array('package', array(array('foo/polyfill', array('1.0.0'), '1.0.0'), array('foo/standard', array('1.0.0'), '1.0.0')))), array('1.0.0')), array(), array(), 'update', array(), null, 'Loading composer repositories...blems.', null, '\n', 2)
- Failed asserting that string matches format description.
- --- Expected
- +++ Actual
- @@ @@
--   Problem 5
--     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
--   Problem 6
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Your requirements could not be resolved to an installable set of packages.
@@ -1519,15 +1507,19 @@
 +-    - Root composer.json requires conflicter/pkg 1.0.0 -> satisfiable by conflicter/pkg[1.0.0].
 +-    - Root composer.json requires victim/pkg * -> satisfiable by victim/pkg[dev-master].
 +-    - conflicter/pkg 1.0.0 conflicts with victim/pkg dev-master.
-+
-+@ROOT@/tests/Composer/Test/InstallerTest.php:489
-+@ROOT@/tests/Composer/Test/InstallerTest.php:256
-+
+ 
+ @ROOT@/tests/Composer/Test/InstallerTest.php:489
+ @ROOT@/tests/Composer/Test/InstallerTest.php:256
+ 
+-2) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +98) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "update-package-present-in-lock-but-not-at-all-in-remote.test" ('update-package-present-in-loc...e.test', 'Update package which is in lo...rectly', null, array('dev', array(array('package', array(array('main/dep', '1.0.0', array('^2.1'))))), array('*')), array(array(array('main/dep', '1.0.0', array('^2.1'), 'library'), array('locked/dep', '2.1.0', 'library')), array(), array(), 'dev', array(), false, false, array(), array(), 'c50b292743d9665fea634443c8842c47'), array(), 'update main/dep --with-all-de...encies', array(), null, 'Loading composer repositories... file.', null, '', 2)
-+Failed asserting that string matches format description.
-+--- Expected
-++++ Actual
-+@@ @@
+ Failed asserting that string matches format description.
+ --- Expected
+ +++ Actual
+ @@ @@
+-   Problem 5
+-     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
+-   Problem 6
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Your requirements could not be resolved to an installable set of packages.
@@ -2289,11 +2281,10 @@
 +-  Problem 1
 +-    - Root composer.json requires requirer/pkg 1.* -> satisfiable by requirer/pkg[1.0.0].
 +-    - requirer/pkg 1.0.0 requires dependency/pkg 1.0.0 -> found dependency/pkg[1.0.0] but it conflicts with your root composer.json require (2.*).
- 
- @ROOT@/tests/Composer/Test/InstallerTest.php:489
- @ROOT@/tests/Composer/Test/InstallerTest.php:256
- 
--3) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++
++@ROOT@/tests/Composer/Test/InstallerTest.php:489
++@ROOT@/tests/Composer/Test/InstallerTest.php:256
++
 +140) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "update-ignore-platform-package-requirement-list-upper-bounds.test" ('update-ignore-platform-packag...s.test', 'Update with ignore-platform-r...ndency', null, array(array(array('package', array(array('a/a', '1.0.1', array('3.*')), array('b/b', '1.0.1', array('10.*')), array('c/c', '1.0.1', array('4.0.0 - 4.0.2', '3.0.*'))))), array('1.0.*', '1.0.*', '1.0.*', '^4.3', '9.0.0'), array('5.0.3')), array(), array(array('a/a', '1.0.0')), 'update --ignore-platform-req=...o-baz+', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
@@ -2313,10 +2304,11 @@
 +-__inilist__
 +-You can also run `php --ini` in a terminal to see which files are used by PHP in CLI mode.
 +-Alternatively, you can run Composer with `--ignore-platform-req=ext-foo-baz --ignore-platform-req=ext-foo-bar` to temporarily ignore these required extensions.
-+
-+@ROOT@/tests/Composer/Test/InstallerTest.php:489
-+@ROOT@/tests/Composer/Test/InstallerTest.php:256
-+
+ 
+ @ROOT@/tests/Composer/Test/InstallerTest.php:489
+ @ROOT@/tests/Composer/Test/InstallerTest.php:256
+ 
+-3) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +141) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "deduplicate-solver-problems.test" ('deduplicate-solver-problems.test', 'Test the error output of solv...cated.', null, array(array(array('package', array(array('package/a', '2.0.0', array('^1.0')), array('package/a', '2.0.1', array('^1.0')), array('package/a', '2.0.2', array('^1.0')), array('package/a', '2.0.3', array('^1.0')), array('package/a', '2.1.0', array('^1.0')), array('package/a', '2.2.0', array('^1.1')), array('package/a', '2.3.1', array('^1.1')), array('package/a', '2.3.2', array('^1.1')), array('package/a', '2.3.3', array('^1.1')), array('package/a', '2.3.4', array('^1.1')), array('package/a', '2.3.5', array('^1.1')), array('package/a', '2.4.0', array('^1.1')), array('package/a', '2.5.0', array('^1.1')), array('package/a', '2.6.0', array('^1.1')), array('missing/dep', '2.0.0')))), array('*')), array(), array(), 'update', array(), null, 'Loading composer repositories...raint.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
@@ -2417,10 +2409,13 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:272
 +
 +146) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "update-abandoned-package-required-but-blocked-via-audit-config.test" ('update-abandoned-package-requ...g.test', 'Security advisory matching di...pdate.', null, array('acme/project', '1.0.0', array('1.0.0'), array(array(true)), array(array('package', array(array('acme/library', '1.0.0', true, array('some.branch', 'git', '')))))), array(), array(), 'update -v', array(), null, 'Loading composer repositories... true.', null, '', 2)
-+Failed asserting that string matches format description.
-+--- Expected
-++++ Actual
-+@@ @@
+ Failed asserting that string matches format description.
+ --- Expected
+ +++ Actual
+ @@ @@
+-   Problem 2
+-     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
+-   Problem 3
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Your requirements could not be resolved to an installable set of packages.
@@ -2723,13 +2718,10 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:272
 +
 +164) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
- Failed asserting that string matches format description.
- --- Expected
- +++ Actual
- @@ @@
--   Problem 2
--     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
--   Problem 3
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Your requirements could not be resolved to an installable set of packages.
@@ -2776,19 +2768,15 @@
 +-__inilist__
 +-You can also run `php --ini` in a terminal to see which files are used by PHP in CLI mode.
 +-Alternatively, you can run Composer with `--ignore-platform-req=ext-foobar --ignore-platform-req=ext-pcre` to temporarily ignore these required extensions.
- 
- @ROOT@/tests/Composer/Test/InstallerTest.php:489
- @ROOT@/tests/Composer/Test/InstallerTest.php:272
- 
--4) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++
++@ROOT@/tests/Composer/Test/InstallerTest.php:489
++@ROOT@/tests/Composer/Test/InstallerTest.php:272
++
 +165) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "update-mirrors-changes-url.test" ('update-mirrors-changes-url.test', 'Update mirrors updates URLs f...ew ref', null, array(array(array('package', array(array('a/a', 'dev-master', array('^2.0.1'), array('22222222222222222222222222222...222222', 'https://github.com/a/newa', 'git', array(array('https://example.org/src/%pack...%type%', true))), array('22222222222222222222222222222...222222', 'https://api.github.com/repos/...222222', 'zip', array(array('https://example.org/dists/%pa...%type%', true))), '2021-03-27T14:32:16+00:00'), array('b/b', '2.0.3', array('22222222222222222222222222222...222222', 'https://github.com/b/newb', 'git'), array('22222222222222222222222222222...222222', 'https://api.github.com/repos/...222222', 'zip')), array('c/c', '1.0.0', array('22222222222222222222222222222...222222', 'https://github.com/c/newc', 'git'), array('22222222222222222222222222222...222222', 'https://api.github.com/repos/...222222', 'zip')), array('d/d', 'dev-master', array('22222222222222222222222222222...222222', 'https://github.com/d/newd', 'git'), array('22222222222222222222222222222...222222', 'https://api.github.com/repos/...222222', 'zip')), array('e/e', 'dev-master', array('22222222222222222222222222222...222222', 'https://github.com/e/newe', 'git'), array('22222222222222222222222222222...222222', 'https://api.github.com/repos/...222222', 'zip')), array('f/f', 'dev-master', array('22222222222222222222222222222...222222', 'https://github.com/f/newf', 'git'), array('22222222222222222222222222222...222222', 'https://api.github.com/repos/...222222', 'zip')), array('g/g', 'dev-master', array('22222222222222222222222222222...222222', 'https://github.com/g/newg', 'git'), array('22222222222222222222222222222...222222', 'https://api.github.com/repos/...222222', 'zip'))))), array('dev-master', '2.0.3', '1.0.0', 'dev-master#111111111111111111...111111', 'dev-master#111111111111111111...111111', 'dev-master', 'dev-master#111111111111111111...111111')), array(array(array('a/a', 'dev-master', array('^2'), array('11111111111111111111111111111...111111', 'https://github.com/a/a', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), '2021-03-14T16:24:37+00:00', 'library'), array('b/b', '2.0.3', array('11111111111111111111111111111...111111', 'https://github.com/b/b', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('c/c', '1.0.0', array('11111111111111111111111111111...111111', 'https://github.com/c/c', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('d/d', 'dev-master', array('11111111111111111111111111111...111111', 'https://github.com/d/d', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('f/f', 'dev-master', array('11111111111111111111111111111...111111', 'https://github.com/f/f', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('g/g', 'dev-master', array('00000000000000000000000000000...000000', 'https://github.com/g/g', 'git'), array('00000000000000000000000000000...000000', 'https://api.github.com/repos/...000000', 'zip'), 'library')), array(), array(), 'stable', array(), false, false, array(), array(), 'fd218b86c49d3fd0718aafae93c60420'), array(array('a/a', 'dev-master', array('^2'), array('11111111111111111111111111111...111111', 'https://github.com/a/a', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), '2021-03-14T16:24:37+00:00'), array('b/b', '2.0.3', array('11111111111111111111111111111...111111', 'https://github.com/b/b', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip')), array('c/c', '1.0.0', array('11111111111111111111111111111...111111', 'https://github.com/c/c', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip')), array('d/d', 'dev-master', array('11111111111111111111111111111...111111', 'https://github.com/d/d', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip')), array('f/f', 'dev-master', array('11111111111111111111111111111...111111', 'https://github.com/f/f', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip')), array('g/g', 'dev-master', array('00000000000000000000000000000...000000', 'https://github.com/g/g', 'git'), array('00000000000000000000000000000...000000', 'https://api.github.com/repos/...000000', 'zip'))), 'update mirrors', array(array(array('a/a', 'dev-master', array('^2'), array('11111111111111111111111111111...111111', 'https://github.com/a/newa', 'git', array(array('https://example.org/src/%pack...%type%', true))), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip', array(array('https://example.org/dists/%pa...%type%', true))), '2021-03-14T16:24:37+00:00', 'library'), array('b/b', '2.0.3', array('11111111111111111111111111111...111111', 'https://github.com/b/newb', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('c/c', '1.0.0', array('11111111111111111111111111111...111111', 'https://github.com/c/newc', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('d/d', 'dev-master', array('11111111111111111111111111111...111111', 'https://github.com/d/newd', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('f/f', 'dev-master', array('11111111111111111111111111111...111111', 'https://github.com/f/newf', 'git'), array('11111111111111111111111111111...111111', 'https://api.github.com/repos/...111111', 'zip'), 'library'), array('g/g', 'dev-master', array('00000000000000000000000000000...000000', 'https://github.com/g/newg', 'git'), array('00000000000000000000000000000...000000', 'https://api.github.com/repos/...000000', 'zip'), 'library')), array(), array(), 'stable', array(20, 20, 20, 20, 20), false, false, array(), array()), null, 'Loading composer repositories...iles\n', null, '', 0)
- Failed asserting that string matches format description.
- --- Expected
- +++ Actual
- @@ @@
--   Problem 5
--     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
--   Problem 6
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Lock file operations: 0 installs, 0 updates, 0 removals
@@ -3027,15 +3015,19 @@
 +-Installing dependencies from lock file (including require-dev)
 +-Package operations: 0 installs, 2 updates, 0 removals
 +-Generating autoload files
-+
-+@ROOT@/tests/Composer/Test/InstallerTest.php:489
-+@ROOT@/tests/Composer/Test/InstallerTest.php:272
-+
+ 
+ @ROOT@/tests/Composer/Test/InstallerTest.php:489
+ @ROOT@/tests/Composer/Test/InstallerTest.php:272
+ 
+-4) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +179) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "update-policy-advisory-matching-indirect-dependency.test" ('update-policy-advisory-matchi...y.test', 'Security advisory policy matc...pdate.', null, array('acme/project', '1.0.0', array('1.0.0'), array(array(array(true))), array(array('package', array(array('acme/library', '1.0.0', array('some.branch', 'git', ''), array('^1.0')), array('acme/library-dependency', '1.0.0', array('some.branch', 'git', ''))), array(array(array('PKSA-1234-abcd-1234', 'acme/library-dependency', 'test', 'Security Advisory', null, null, '>=1.0.0,<1.1.0', 'Tests', '2024-04-31 12:37:47', 'Package Repository', 'high', array(array('Security Advisory', 'test')))))))), array(), array(), 'update -v', array(), null, 'Loading composer repositories...false.', null, '', 2)
-+Failed asserting that string matches format description.
-+--- Expected
-++++ Actual
-+@@ @@
+ Failed asserting that string matches format description.
+ --- Expected
+ +++ Actual
+ @@ @@
+-   Problem 5
+-     - Root composer.json requires linked library lib-xml 1002.* but it has the wrong version installed or is missing from your system, make sure to load the extension providing it.
+-   Problem 6
 +-Loading composer repositories with package information
 +-Updating dependencies
 +-Your requirements could not be resolved to an installable set of packages.
@@ -4390,7 +4382,7 @@
 +
  ERRORS!
 -Tests: 3258, Assertions: 7262, Errors: 1, Failures: 4, Skipped: 6.
-+Tests: 3258, Assertions: 7138, Errors: 13, Failures: 271, Skipped: 6.
++Tests: 3258, Assertions: 7139, Errors: 12, Failures: 271, Skipped: 6.
  
  Unsilenced deprecation notices (1)
  

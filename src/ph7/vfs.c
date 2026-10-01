@@ -5325,6 +5325,11 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 	/* php's one built-in protocol wrapper. It speaks over the same sockets
 	 * tcp:// hands out, so it is in the build exactly when they are. */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sHTTP_Stream);
+#ifdef PH7_ENABLE_OPENSSL
+	/* ... and the same wrapper over TLS, which php registers exactly when its
+	 * ssl:// transport is in the build. */
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sHTTPS_Stream);
+#endif
 #endif
 	if( pFileStream ){
 		/* Install the file:// stream */

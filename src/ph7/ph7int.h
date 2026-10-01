@@ -6489,6 +6489,19 @@ PH7_PRIVATE void PH7_HttpInstallFuncs(ph7_vm *pVm);
 #if !defined(PH7_DISABLE_DISK_IO) && defined(PH7_ENABLE_NET)
 /* ... and the wrapper itself, which is where the store is filled. */
 extern const ph7_io_stream sHTTP_Stream;
+#ifdef PH7_ENABLE_OPENSSL
+/* The same wrapper over the ssl:// transport, which is all php's https:// is:
+ * a device of its own so the SCHEME a URL was opened under is known without
+ * re-reading it, since only the name it was found under says so. */
+extern const ph7_io_stream sHTTPS_Stream;
+/* The ssl:// transport's client handshake, for a socket that is not a stream
+ * handle: the http wrapper dials its own. */
+struct phl_stream_ctx;
+PH7_PRIVATE int PH7_SslClientHandshake(ph7_vm *pVm,ph7_socket sock,
+	struct phl_stream_ctx *pCtxRes,const char *zPeerName,void **ppSsl,void **ppSslCtx,
+	char *zErr,int nErr);
+PH7_PRIVATE void PH7_SslDropSession(void **ppSsl,void **ppSslCtx);
+#endif
 PH7_PRIVATE int PH7_HttpStreamIs(const ph7_io_stream *pStream);
 PH7_PRIVATE ph7_value * PH7_HttpStreamHeaderArray(ph7_vm *pVm,void *pHandle);
 PH7_PRIVATE ph7_socket * PH7_HttpStreamSocket(void *pHandle);

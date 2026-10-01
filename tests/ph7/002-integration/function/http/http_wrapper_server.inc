@@ -21,8 +21,11 @@
  * probed free first. Every wait is bounded.
  */
 
-/** Pick a free port, spawn the server on it, and wait until it accepts. */
-function http_test_server_start(&$proc, $dir, $base = 19700)
+/** Pick a free port, spawn the server on it, and wait until it accepts.
+ *
+ *  With $pem the listener is a TLS one, which is how the https:// wrapper is
+ *  tested: same canned replies, same request log, a handshake in front. */
+function http_test_server_start(&$proc, $dir, $base = 19700, $pem = null)
 {
     $exe = getenv('PHPT_TARGET_EXECUTABLE');
     if ($exe === false || $exe === '') {
@@ -30,8 +33,34 @@ function http_test_server_start(&$proc, $dir, $base = 19700)
     }
     $port = http_test_free_port($base);
     $spec = array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w'));
-    $proc = proc_open(array($exe, __FILE__, '--serve', (string) $port, $dir), $spec, $pipes);
+    $argv = array($exe, __FILE__, '--serve', (string) $port, $dir);
+    if ($pem !== null) {
+        $argv[] = $pem;
+    }
+    $proc = proc_open($argv, $spec, $pipes);
     if (!is_resource($proc)) {
+        return null;
+    }
+    if ($pem !== null) {
+        /* A TLS listener cannot be probed by connecting: the probe would BE
+         * the connection it accepts, and a peer that speaks no TLS spends the
+         * handshake the test needs. The child says when it is bound instead. */
+        fclose($pipes[0]);
+        fclose($pipes[2]);
+        stream_set_blocking($pipes[1], false);
+        $seen = '';
+        for ($i = 0; $i < 200; $i++) {
+            $seen .= (string) fread($pipes[1], 64);
+            if (strpos($seen, "READY\n") !== false) {
+                fclose($pipes[1]);
+                return $port;
+            }
+            if (feof($pipes[1])) {
+                break;
+            }
+            usleep(25000);
+        }
+        fclose($pipes[1]);
         return null;
     }
     foreach ($pipes as $p) {
@@ -50,10 +79,38 @@ function http_test_server_start(&$proc, $dir, $base = 19700)
     return null;
 }
 
-/** Ask the server to stop, then make sure the child is gone either way. */
-function http_test_server_stop($proc, $port)
+/** A throwaway self-signed certificate and its key in one PEM, php's own shape
+ *  for `local_cert`. Minted per run rather than committed, so nothing here has
+ *  an expiry date a later clock can walk past. */
+function http_test_make_pem($path)
 {
-    $c = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.5);
+    $key = openssl_pkey_new(array('private_key_bits' => 2048,
+        'private_key_type' => OPENSSL_KEYTYPE_RSA));
+    if ($key === false) {
+        return false;
+    }
+    $csr = openssl_csr_new(array('commonName' => 'localhost'), $key,
+        array('digest_alg' => 'sha256'));
+    if ($csr === false) {
+        return false;
+    }
+    $crt = openssl_csr_sign($csr, null, $key, 2, array('digest_alg' => 'sha256'));
+    if ($crt === false) {
+        return false;
+    }
+    $pem = '';
+    $pk = '';
+    if (!openssl_x509_export($crt, $pem) || !openssl_pkey_export($key, $pk)) {
+        return false;
+    }
+    return file_put_contents($path, $pem . $pk) !== false;
+}
+
+/** Ask the server to stop, then make sure the child is gone either way. */
+function http_test_server_stop($proc, $port, $tls = false)
+{
+    /* A TLS listener has no plain door to ask through: it is terminated. */
+    $c = $tls ? false : @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.5);
     if ($c !== false) {
         fwrite($c, "GET /quit HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         stream_set_timeout($c, 1);
@@ -138,12 +195,23 @@ function http_test_scrub($raw)
 
 /* ===== the server half ===== */
 
-function http_test_server_main($port, $dir)
+function http_test_server_main($port, $dir, $pem = null)
 {
-    $srv = @stream_socket_server("tcp://127.0.0.1:$port", $errno, $errstr);
+    if ($pem !== null) {
+        $ctx = stream_context_create(array('ssl' => array('local_cert' => $pem)));
+        $srv = @stream_socket_server("tls://127.0.0.1:$port", $errno, $errstr,
+            STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $ctx);
+    } else {
+        $srv = @stream_socket_server("tcp://127.0.0.1:$port", $errno, $errstr);
+    }
     if ($srv === false) {
         fwrite(STDERR, "bind failed: $errstr\n");
         exit(1);
+    }
+    if ($pem !== null) {
+        /* The parent is blocked on this line; nothing else is written here. */
+        echo "READY\n";
+        flush();
     }
     $n = 0;
     for ($served = 0; $served < 256; $served++) {
@@ -216,6 +284,6 @@ function http_test_server_serve($c, $dir)
  */
 if (isset($argv[0], $argv[1], $argv[2], $argv[3])
     && $argv[1] === '--serve' && basename($argv[0]) === basename(__FILE__)) {
-    http_test_server_main((int) $argv[2], $argv[3]);
+    http_test_server_main((int) $argv[2], $argv[3], isset($argv[4]) ? $argv[4] : null);
     exit(0);
 }

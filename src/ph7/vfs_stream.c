@@ -6061,7 +6061,19 @@ static int SockSslCheckFingerprint(ph7_context *pCtx,SSL *pSsl,phl_stream_ctx *p
 			bOk = 0;
 		}
 		if( zWarn ){
-			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,zWarn);
+			/* No calling context when the negotiation belongs to the http
+			 * wrapper's own socket: the sentence still belongs to whatever
+			 * function is doing the opening, which is the name the VM has
+			 * armed for it. */
+			if( pCtx ){
+				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,zWarn);
+			}else if( pCtxRes && pCtxRes->pVm ){
+				ph7_vm *pVm = pCtxRes->pVm;
+				SyString sCaller;
+				SyStringInitFromBuf(&sCaller,pVm->zOpenCaller ? pVm->zOpenCaller : "",
+					pVm->zOpenCaller ? SyStrlen(pVm->zOpenCaller) : 0);
+				PH7_VmThrowError(pVm,pVm->zOpenCaller ? &sCaller : 0,PH7_CTX_WARNING,zWarn);
+			}
 		}
 	}else{
 		int nHex;
@@ -6087,8 +6099,9 @@ static int SockSslCheckFingerprint(ph7_context *pCtx,SSL *pSsl,phl_stream_ctx *p
  * the loop is not reproduced -- the read/write ops below are what the handle's
  * blocking mode is really about.
  */
-static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
-	phl_stream_ctx *pCtxRes,const char *zPeerName,char *zErr,int nErr)
+static int SockSslHandshakeOn(ph7_vm *pVm,ph7_context *pCtx,ph7_socket sock,int iMethod,
+	phl_stream_ctx *pCtxRes,const char *zPeerName,void **ppSsl,void **ppSslCtx,
+	char *zErr,int nErr)
 {
 	SSL_CTX *pSslCtx;
 	SSL *pSsl;
@@ -6096,7 +6109,7 @@ static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
 	const char *z;
 	int bServer = (iMethod & SOCK_CRYPTO_CLIENT) == 0;
 	int iMin = 0,iMax = 0,rc;
-	if( pSock == 0 || pSock->sock == PH7_NET_INVALID_SOCKET ){
+	if( sock == PH7_NET_INVALID_SOCKET ){
 		SyBufferFormat(zErr,(sxu32)nErr,"This stream does not support SSL/crypto");
 		return -1;
 	}
@@ -6119,7 +6132,7 @@ static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
 	}
 	SSL_CTX_set_min_proto_version(pSslCtx,iMin);
 	SSL_CTX_set_max_proto_version(pSslCtx,iMax);
-	SyBlobInit(&sTmp,&pSock->pVm->sAllocator);
+	SyBlobInit(&sTmp,&pVm->sAllocator);
 	if( (z = SockSslOptStr(pCtxRes,"ciphers",&sTmp)) != 0 ){
 		SSL_CTX_set_cipher_list(pSslCtx,z);
 	}
@@ -6155,7 +6168,7 @@ static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
 	if( SockSslOptBool(pCtxRes,"verify_peer",1) ){
 		SyBlob sCa;
 		const char *zCaFile,*zCaPath;
-		SyBlobInit(&sCa,&pSock->pVm->sAllocator);
+		SyBlobInit(&sCa,&pVm->sAllocator);
 		zCaFile = SockSslOptStr(pCtxRes,"cafile",&sTmp);
 		zCaPath = SockSslOptStr(pCtxRes,"capath",&sCa);
 		if( zCaFile || zCaPath ){
@@ -6202,7 +6215,7 @@ static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
 			}
 		}
 	}
-	if( SSL_set_fd(pSsl,(int)pSock->sock) != 1 ){
+	if( SSL_set_fd(pSsl,(int)sock) != 1 ){
 		SockSslErrorText("Failed to attach the socket to the SSL handle",zErr,nErr);
 		SSL_free(pSsl);
 		goto fail_ctx;
@@ -6236,38 +6249,79 @@ static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
 	 * the pin below refuses still leaves the certificate it refused on the
 	 * context -- and why nothing is captured from a handshake the chain
 	 * verdict above already ended. */
-	SockSslCapture(pSock->pVm,pSsl,pCtxRes);
+	SockSslCapture(pVm,pSsl,pCtxRes);
 	if( SockSslCheckFingerprint(pCtx,pSsl,pCtxRes,zErr,nErr) != 0 ){
 		SSL_free(pSsl);
 		goto fail_ctx;
 	}
 	SyBlobRelease(&sTmp);
-	pSock->pSsl = (void *)pSsl;
-	pSock->pSslCtx = (void *)pSslCtx;
-	pSock->bSslSeen = 1;
+	*ppSsl = (void *)pSsl;
+	*ppSslCtx = (void *)pSslCtx;
 	return PH7_OK;
 fail_ctx:
 	SyBlobRelease(&sTmp);
 	SSL_CTX_free(pSslCtx);
 	return -1;
 }
+/*
+ * The socket handle's door onto the negotiation above: the session and the
+ * context it was built from are stored ON the handle, and `bSslSeen` is what
+ * makes a second stream_socket_enable_crypto() answer for a session that has
+ * already been negotiated.
+ */
+static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
+	phl_stream_ctx *pCtxRes,const char *zPeerName,char *zErr,int nErr)
+{
+	int rc;
+	if( pSock == 0 ){
+		SyBufferFormat(zErr,(sxu32)nErr,"This stream does not support SSL/crypto");
+		return -1;
+	}
+	rc = SockSslHandshakeOn(pSock->pVm,pCtx,pSock->sock,iMethod,pCtxRes,zPeerName,
+		&pSock->pSsl,&pSock->pSslCtx,zErr,nErr);
+	if( rc == PH7_OK ){
+		pSock->bSslSeen = 1;
+	}
+	return rc;
+}
+/*
+ * The same negotiation for a socket that is NOT a stream handle: the http
+ * wrapper dials one of its own and speaks TLS over it, exactly as php's does
+ * by opening `ssl://host:port` rather than `tcp://` for an https:// URL. The
+ * method is that transport's -- any TLS version, client side.
+ */
+PH7_PRIVATE int PH7_SslClientHandshake(ph7_vm *pVm,ph7_socket sock,
+	phl_stream_ctx *pCtxRes,const char *zPeerName,void **ppSsl,void **ppSslCtx,
+	char *zErr,int nErr)
+{
+	return SockSslHandshakeOn(pVm,0,sock,SOCK_CRYPTO_TLS_CLIENT,pCtxRes,zPeerName,
+		ppSsl,ppSslCtx,zErr,nErr);
+}
+/* Drop a session negotiated by either door, leaving the socket alone. */
+PH7_PRIVATE void PH7_SslDropSession(void **ppSsl,void **ppSslCtx)
+{
+	if( ppSsl == 0 || *ppSsl == 0 ){
+		return;
+	}
+	/* One shutdown, not the two-step wait for the peer's own close_notify: the
+	 * peer may be gone and php does not block a close on it either. */
+	SSL_shutdown((SSL *)*ppSsl);
+	SSL_free((SSL *)*ppSsl);
+	*ppSsl = 0;
+	if( ppSslCtx && *ppSslCtx ){
+		SSL_CTX_free((SSL_CTX *)*ppSslCtx);
+		*ppSslCtx = 0;
+	}
+}
 /* Tear the TLS session down without touching the socket: php's
  * stream_socket_enable_crypto($h, false) leaves a usable plain handle behind,
  * and the close path below runs the same teardown before closing the socket. */
 static void SockSslDrop(sock_private *pSock)
 {
-	if( pSock == 0 || pSock->pSsl == 0 ){
+	if( pSock == 0 ){
 		return;
 	}
-	/* One shutdown, not the two-step wait for the peer's own close_notify: the
-	 * peer may be gone and php does not block a close on it either. */
-	SSL_shutdown((SSL *)pSock->pSsl);
-	SSL_free((SSL *)pSock->pSsl);
-	pSock->pSsl = 0;
-	if( pSock->pSslCtx ){
-		SSL_CTX_free((SSL_CTX *)pSock->pSslCtx);
-		pSock->pSslCtx = 0;
-	}
+	PH7_SslDropSession(&pSock->pSsl,&pSock->pSslCtx);
 }
 #endif /* PH7_ENABLE_OPENSSL */
 static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)
