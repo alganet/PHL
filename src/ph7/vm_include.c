@@ -632,10 +632,12 @@ static sxi32 VmExecIncludedFile(
 	void *pHandle;
 	ph7_vm *pVm;
 	int isNew;
+	int bFellBack;
 	/* Initialize fields */
 	pVm = pCtx->pVm;
 	SyBlobInit(&sContents,&pVm->sAllocator);
 	isNew = 0;
+	bFellBack = 0;
 	/* Extract the associated stream. The lookup ADVANCES the pointer past the
 	 * scheme, so it walks a copy: advancing the caller's SyString left its nByte
 	 * describing the whole url and its zString seven bytes in, and the failure
@@ -644,6 +646,45 @@ static sxi32 VmExecIncludedFile(
 	{
 		const char *zOpen = pPath->zString;
 		pStream = PH7_VmGetStreamDevice(pVm,&zOpen,(int)pPath->nByte);
+		if( pStream == 0 ){
+			/* A scheme NOBODY is registered under is not a refusal in php: its
+			 * lookup warns, forgets the protocol, and hands the WHOLE uri --
+			 * scheme and all -- to the plain-files wrapper, which resolves it
+			 * against the include_path like any other relative name. So
+			 * `include 'zzz://hit.php'` warns once and then RUNS ./zzz:/hit.php,
+			 * where this engine reported `Invalid argument` and included
+			 * nothing. The two cases php words differently are excluded here and
+			 * keep the failing path below: a `file://` with an authority php
+			 * will not reach, and a `file://` the configuration switched off. */
+			int nScheme = 0;
+			if( PH7_VmStreamDeviceIsRemoteHost(pPath->zString,(int)pPath->nByte,&nScheme) ){
+				/* `file://host/path`. A wrapper WAS found and declined the name,
+				 * so php says so in its own sentence and gives the open a reason
+				 * of the lookup's rather than an errno nothing set. The failed
+				 * open's own line is the caller's, which is why only the first
+				 * half is raised here. */
+				PH7_VmThrowWarningFmt(pVm,"%s(): Remote host file access not supported, %.*s",
+					ph7_function_name(pCtx),(int)pPath->nByte,pPath->zString);
+				if( pzWhy ){
+					*pzWhy = "no suitable wrapper could be found";
+				}
+				return SXERR_IO;
+			}
+			if( nScheme > 0
+			 && !PH7_VmStreamSchemeDisabled(pVm,"file",(int)sizeof("file")-1) ){
+				/* One sentence per wrapper lookup that still SEES the scheme.
+				 * php resolves the path before it opens it -- and the _once
+				 * forms resolve it once more, to answer whether it has already
+				 * been included -- so a miss costs two sentences and a _once
+				 * miss three. A resolve that succeeds hands an absolute plain
+				 * path to everything after it, so a hit costs exactly one
+				 * whichever construct asked. */
+				VfsThrowUnknownWrapperWarning(pCtx,pPath->zString);
+				pStream = PH7_VmFindStreamDevice(pVm,"file",(int)sizeof("file")-1);
+				zOpen = pPath->zString;
+				bFellBack = 1;
+			}
+		}
 		/*
 		 * Open the file or the URL [i.e: http://ph7.symisc.net/example/hello.php"]
 		 * in a read-only mode.
@@ -654,6 +695,20 @@ static sxi32 VmExecIncludedFile(
 		/* The reason belongs to THIS open and nothing else: read it before any
 		 * other stream operation can re-arm it. A wrapper that logged one of its
 		 * own wins; the plain-file wrapper logs none and reports its errno. */
+		if( bFellBack ){
+			/* The lookups the failed resolve above did not spare: the open's
+			 * own, plus the _once forms' extra resolve. And the reason is the
+			 * plain-files wrapper's, not the scheme's -- php has stopped talking
+			 * about the wrapper by the time it words the failure. */
+			VfsThrowUnknownWrapperWarning(pCtx,pPath->zString);
+			if( IncludeOnce ){
+				VfsThrowUnknownWrapperWarning(pCtx,pPath->zString);
+			}
+			if( pzWhy ){
+				*pzWhy = PH7_VfsOpenStrerror(ENOENT);
+			}
+			return SXERR_IO;
+		}
 		if( pzWhy ){
 			*pzWhy = pVm->zOpenErr ? pVm->zOpenErr : PH7_VfsOpenStrerror(errno);
 		}
