@@ -269,6 +269,11 @@ struct sock_private
 	void *pSsl;    /* SSL * */
 	void *pSslCtx; /* SSL_CTX *, one per stream: php builds a fresh context per
 	                * handle because every option below is per-connection. */
+	int bSslSeen;  /* A session was set up on this handle at some point. php frees
+	                * nothing until the handle closes, so the SSL object outlives
+	                * the shutdown -- which is what makes every LATER
+	                * stream_socket_enable_crypto() on the same handle a refusal,
+	                * whether or not a session is live right now. */
 	int iCryptoAccept; /* A LISTENING socket opened through a crypto transport
 	                    * carries the method its address named, because the
 	                    * handshake belongs to each connection it accepts and
@@ -4784,6 +4789,59 @@ static void IoPrivateDataMeta(ph7_context *pCtx,io_private *pDev,ph7_value *pArr
 	ph7_value_bool(pV,bBase64);
 	ph7_array_add_strkey_elem(pArr,"base64",pV);
 }
+#if defined(PH7_ENABLE_NET) && defined(PH7_ENABLE_OPENSSL)
+/*
+ * php's `crypto` sub-array: what the handle's LIVE session settled on, and the
+ * only door a script has to it. It is present exactly while a session is
+ * active -- never on a plain socket, never on a listener, and gone again after
+ * stream_socket_enable_crypto($h, false) -- and php builds it FIRST, so it
+ * leads the key order that every other device starts with `timed_out`.
+ *
+ * `protocol` is php's spelling of the negotiated version rather than OpenSSL's,
+ * and anything php's build has no name for reads `UNKNOWN`; the other three are
+ * the cipher's own answers. php never checks that a cipher was settled at all,
+ * and neither does this -- SSL_CIPHER_get_name(0) is `(NONE)` and the two
+ * numbers are zero, which is what a script sees on a session that has none.
+ */
+static void SockSslMetaData(ph7_context *pCtx,io_private *pDev,ph7_value *pArr,ph7_value *pV)
+{
+	sock_private *pSock;
+	const SSL_CIPHER *pCipher;
+	ph7_value *pCrypto;
+	const char *zProto;
+	if( pDev->pStream != &sTCP_Stream || pDev->pHandle == 0 ){
+		return;
+	}
+	pSock = (sock_private *)pDev->pHandle;
+	if( pSock->pSsl == 0 ){
+		return;
+	}
+	pCrypto = ph7_context_new_array(pCtx);
+	if( pCrypto == 0 ){
+		return;
+	}
+	switch( SSL_version((SSL *)pSock->pSsl) ){
+		case TLS1_3_VERSION: zProto = "TLSv1.3"; break;
+		case TLS1_2_VERSION: zProto = "TLSv1.2"; break;
+		case TLS1_1_VERSION: zProto = "TLSv1.1"; break;
+		case TLS1_VERSION:   zProto = "TLSv1";   break;
+		default:             zProto = "UNKNOWN"; break;
+	}
+	pCipher = SSL_get_current_cipher((SSL *)pSock->pSsl);
+	ph7_value_string(pV,zProto,-1);
+	ph7_array_add_strkey_elem(pCrypto,"protocol",pV);
+	ph7_value_reset_string_cursor(pV);
+	ph7_value_string(pV,SSL_CIPHER_get_name(pCipher),-1);
+	ph7_array_add_strkey_elem(pCrypto,"cipher_name",pV);
+	ph7_value_reset_string_cursor(pV);
+	ph7_value_int64(pV,(ph7_int64)SSL_CIPHER_get_bits(pCipher,0));
+	ph7_array_add_strkey_elem(pCrypto,"cipher_bits",pV);
+	ph7_value_string(pV,SSL_CIPHER_get_version(pCipher),-1);
+	ph7_array_add_strkey_elem(pCrypto,"cipher_version",pV);
+	ph7_value_reset_string_cursor(pV);
+	ph7_array_add_strkey_elem(pArr,"crypto",pCrypto);
+}
+#endif /* PH7_ENABLE_NET && PH7_ENABLE_OPENSSL */
 /*
  * array stream_get_meta_data(resource $stream)
  *
@@ -4828,6 +4886,12 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 		 * what php counts here. */
 		nUnread += PH7_HttpStreamUnread(pDev->pHandle);
 	}
+#endif
+#if defined(PH7_ENABLE_NET) && defined(PH7_ENABLE_OPENSSL)
+	/* Before the three defaults below, because php's crypto layer adds its own
+	 * key first and then replaces them. */
+	SockSslMetaData(pCtx,pDev,pArr,pV);
+	ph7_value_reset_string_cursor(pV);
 #endif
 	if( is_data_stream(pDev->pStream) ){
 		/* A device that answers metadata of its OWN replaces php's three
@@ -5724,24 +5788,32 @@ static const char * SockSslOptStr(phl_stream_ctx *pCtxRes,const char *zName,SyBl
 	return (const char *)SyBlobData(pOut);
 }
 /*
- * php's error text for a failed TLS operation: the sentence, then OpenSSL's
- * own queue drained under an `OpenSSL Error messages:` heading. A handshake
+ * php's error text for a failed TLS HANDSHAKE: the sentence, then -- only when
+ * OpenSSL queued anything at all -- a single `OpenSSL Error messages:` heading
+ * with the queued lines under it, newline-separated. php drains the whole queue
+ * under ONE heading and puts nothing between the sentence and it; a handshake
  * that failed for a reason OpenSSL did not queue (the peer simply closed)
- * carries the sentence alone, which is what php answers too.
+ * carries the sentence alone.
+ *
+ * A context-SETUP failure is not this shape at all. php names the file it could
+ * not read in a sentence of its own and drops the queue unread, so the callers
+ * below format their own text and clear the queue rather than coming here --
+ * otherwise the next handshake's message inherits a stale error.
  */
 static void SockSslErrorText(const char *zWhat,char *zBuf,int nBuf)
 {
 	char zErr[256];
 	unsigned long uErr;
-	int n;
+	int n,bHead = 0;
 	n = (int)SyBufferFormat(zBuf,(sxu32)nBuf,"%s",zWhat);
 	while( (uErr = ERR_get_error()) != 0 ){
 		ERR_error_string_n(uErr,zErr,sizeof(zErr));
 		if( n + (int)SyStrlen(zErr) + 32 >= nBuf ){
 			break;
 		}
-		n += (int)SyBufferFormat(&zBuf[n],(sxu32)(nBuf - n),
-			"%sOpenSSL Error messages:\n%s","\n",zErr);
+		n += (int)SyBufferFormat(&zBuf[n],(sxu32)(nBuf - n),"%s%s",
+			bHead ? "\n" : "OpenSSL Error messages:\n",zErr);
+		bHead = 1;
 	}
 }
 /*
@@ -5796,18 +5868,27 @@ static int SockSslHandshake(sock_private *pSock,int iMethod,phl_stream_ctx *pCtx
 		 * one separately, the private key beside it -- which is why a single
 		 * combined PEM is the documented shape. */
 		if( SSL_CTX_use_certificate_chain_file(pSslCtx,z) != 1 ){
-			SockSslErrorText("Unable to set local cert chain file",zErr,nErr);
+			/* php's own sentence, naming the file and pointing at the two
+			 * options that would have supplied its issuer -- and NOT OpenSSL's
+			 * queue, which php reads only for a handshake. */
+			SyBufferFormat(zErr,(sxu32)nErr,
+				"Unable to set local cert chain file `%s'; Check that your "
+				"cafile/capath settings include details of your certificate "
+				"and its issuer",z);
+			ERR_clear_error();
 			goto fail_ctx;
 		}
 		if( SockSslOptStr(pCtxRes,"local_pk",&sTmp) == 0
 		 && SSL_CTX_use_PrivateKey_file(pSslCtx,z,SSL_FILETYPE_PEM) != 1 ){
-			SockSslErrorText("Unable to set private key file",zErr,nErr);
+			SyBufferFormat(zErr,(sxu32)nErr,"Unable to set private key file `%s'",z);
+			ERR_clear_error();
 			goto fail_ctx;
 		}
 	}
 	if( (z = SockSslOptStr(pCtxRes,"local_pk",&sTmp)) != 0 ){
 		if( SSL_CTX_use_PrivateKey_file(pSslCtx,z,SSL_FILETYPE_PEM) != 1 ){
-			SockSslErrorText("Unable to set private key file",zErr,nErr);
+			SyBufferFormat(zErr,(sxu32)nErr,"Unable to set private key file `%s'",z);
+			ERR_clear_error();
 			goto fail_ctx;
 		}
 	}
@@ -5869,13 +5950,11 @@ static int SockSslHandshake(sock_private *pSock,int iMethod,phl_stream_ctx *pCtx
 	ERR_clear_error();
 	rc = bServer ? SSL_accept(pSsl) : SSL_connect(pSsl);
 	if( rc != 1 ){
-		SyBufferFormat(zErr,(sxu32)nErr,"SSL operation failed with code %d. ",
-			SSL_get_error(pSsl,rc));
 		{
-			char zTail[384];
-			SockSslErrorText("",zTail,(int)sizeof(zTail));
-			SyBufferFormat(&zErr[SyStrlen(zErr)],
-				(sxu32)(nErr - (int)SyStrlen(zErr)),"%s",zTail);
+			char zHead[64];
+			SyBufferFormat(zHead,sizeof(zHead),"SSL operation failed with code %d. ",
+				SSL_get_error(pSsl,rc));
+			SockSslErrorText(zHead,zErr,nErr);
 		}
 		SSL_free(pSsl);
 		goto fail_ctx;
@@ -5896,6 +5975,7 @@ static int SockSslHandshake(sock_private *pSock,int iMethod,phl_stream_ctx *pCtx
 	SyBlobRelease(&sTmp);
 	pSock->pSsl = (void *)pSsl;
 	pSock->pSslCtx = (void *)pSslCtx;
+	pSock->bSslSeen = 1;
 	return PH7_OK;
 fail_ctx:
 	SyBlobRelease(&sTmp);
@@ -6120,6 +6200,8 @@ static int SockStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 #if defined(PH7_ENABLE_OPENSSL)
 	pSock->pSsl = 0;
 	pSock->pSslCtx = 0;
+	pSock->bSslSeen = 0;
+	pSock->iCryptoAccept = 0;
 #endif
 	*ppHandle = (void *)pSock;
 	return PH7_OK;
@@ -6208,6 +6290,7 @@ static io_private * SockWrapSocket(ph7_context *pCtx,ph7_socket sock,int bDgram,
 #if defined(PH7_ENABLE_OPENSSL)
 	pSock->pSsl = 0;
 	pSock->pSslCtx = 0;
+	pSock->bSslSeen = 0;
 	pSock->iCryptoAccept = 0;
 #endif
 	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
@@ -7964,17 +8047,19 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( iCrypto != 0 ){
 		/* php negotiates inside the connect for a crypto transport, so a
 		 * handshake that fails is a failed CONNECT: no handle at all rather
-		 * than a plaintext one. It reports the failure TWICE and asymmetrically
-		 * -- the crypto layer raises what went wrong, and the opener that asked
-		 * then says `Unable to connect to ... (Unknown error)` and leaves
-		 * $errstr EMPTY, because the text belonged to the layer below and php
-		 * never carried it up. The resolve failure above has the same shape
+		 * than a plaintext one. It reports the failure THREE times and
+		 * asymmetrically -- the crypto layer raises what went wrong, the connect
+		 * that asked for crypto says it could not get it, and the opener then
+		 * says `Unable to connect to ... (Unknown error)` and leaves $errstr
+		 * EMPTY, because the text belonged to the layer below and php never
+		 * carried it up. The resolve failure above has the same shape
 		 * with the text carried. Run before the context is attached, so the
 		 * abandoned handle owes it no reference. */
 		char zSslErr[512];
 		if( SockSslHandshake((sock_private *)pDev->pHandle,iCrypto,pCtxRes,zHost,
 				zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zSslErr);
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Failed to enable crypto");
 			SockAddressFailure(pCtx,apArg,nArg,iArgErrno,iArgErrstr,zShow,nShow,0,0);
 			SockCloseWrapped(pCtx,pDev);
 			ph7_result_bool(pCtx,0);
@@ -8240,9 +8325,11 @@ PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_
 		if( SockSslHandshake((sock_private *)pOut->pHandle,
 				((sock_private *)pDev->pHandle)->iCryptoAccept,
 				(phl_stream_ctx *)pDev->pCtxRes,0,zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
-			/* Two warnings, like php: the crypto layer says what went wrong and
-			 * the accept that asked then reports what it could not do. */
+			/* Three warnings, like php: the crypto layer says what went wrong,
+			 * the crypto step reports that it could not be switched on, and the
+			 * accept that asked then reports what it could not do. */
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zSslErr);
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Failed to enable crypto");
 			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Accept failed: Cannot enable crypto");
 			SockCloseWrapped(pCtx,pOut);
 			ph7_result_bool(pCtx,0);
@@ -9707,7 +9794,13 @@ PH7_PRIVATE int PH7_builtin_stream_socket_enable_crypto(ph7_context *pCtx,int nA
 			return PH7_OK;
 		}
 		SockSslDrop(pSock);
-		ph7_result_bool(pCtx,1);
+		/* FALSE even though the session really was torn down: php's crypto op
+		 * answers the shutdown by falling off the end of a function whose only
+		 * other exit is the handshake's, so the value that reaches the script
+		 * is the one that means "no handshake completed". Disabling therefore
+		 * never reports success on a socket -- the handle is plain afterwards
+		 * either way, and the return value says nothing about it. */
+		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	if( pSock == 0 ){
@@ -9719,10 +9812,19 @@ PH7_PRIVATE int PH7_builtin_stream_socket_enable_crypto(ph7_context *pCtx,int nA
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( pSock->pSsl ){
-		/* Already negotiated: php runs no second handshake and reports the
-		 * session it has. */
-		ph7_result_bool(pCtx,1);
+	if( pSock->pSsl || pSock->bSslSeen ){
+		/* A handle that has already carried a session is refused, and stays
+		 * refused after a disable: php frees nothing until the handle closes,
+		 * so its SSL object is still there for the setup step to trip over. The
+		 * WARNING is the blocking handle's alone -- on a non-blocking one php
+		 * treats the same state as "the handshake this loop is driving is
+		 * already up" and says nothing -- but the answer is FALSE either way,
+		 * because no handshake completed inside this call. */
+		if( pDev->bNonBlock == 0 ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"SSL/TLS already set-up for this stream");
+		}
+		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	pCtxRes = (phl_stream_ctx *)pDev->pCtxRes;
@@ -9754,9 +9856,11 @@ PH7_PRIVATE int PH7_builtin_stream_socket_enable_crypto(ph7_context *pCtx,int nA
 		}
 	}
 	if( SockSslHandshake(pSock,iMethod,pCtxRes,zHost,zErr,(int)sizeof(zErr)) != PH7_OK ){
-		/* php prefixes the crypto layer's text with `SSL: ` here where the
-		 * ssl:// opener does not -- the same failure, reported by two names. */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"SSL: %s",zErr);
+		/* One warning only. Unlike the ssl:// opener and the tls:// accept,
+		 * which each add their own sentence for the door that could not be
+		 * opened, this door reports nothing of its own: the crypto layer's text
+		 * IS the answer, and false is the rest of it. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zErr);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}

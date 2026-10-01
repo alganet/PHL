@@ -54,8 +54,9 @@ try {
 } catch (ValueError $sct_ex) {
     echo get_class($sct_ex), ': ', $sct_ex->getMessage(), "\n";
 }
-/* Disabling crypto on a handle that never had any is FALSE -- the return value
- * reports what CHANGED, not whether the handle is now plain. */
+/* Disabling crypto on a SOCKET is FALSE whether or not there was a session to
+ * tear down: the value that reaches the script is the one php's crypto op
+ * means by "no handshake completed", so it says nothing about the handle. */
 var_dump(stream_socket_enable_crypto($sct_cli, false));
 fclose($sct_cli);
 fclose($sct_srv);
