@@ -4013,6 +4013,7 @@ PH7_PRIVATE int PH7_StreamModeIsValid(const char *zMode,int nLen,int *piFlags)
  */
 PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut)
 {
+	pOut->iHead = IO_PRIVATE_HEAD_MAGIC;
 	pOut->pStream = pStream;
 	SyBlobInit(&pOut->sBuffer,&pVm->sAllocator);
 	pOut->nOfft = 0;
@@ -4034,8 +4035,70 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->pCtxRes = 0;
 	SyBlobInit(&pOut->sFilt,&pVm->sAllocator);
 	pOut->nFiltOfft = 0;
+	/* No ph7_value names it yet: the opener's own result value takes the first
+	 * count, and a handle a NON-value holder keeps takes one of its own. */
+	pOut->nValRef = 0;
 	/* Set the magic number */
 	pOut->iMagic = IO_PRIVATE_MAGIC;
+}
+/*
+ * Take one reference on a stream handle for a ph7_value that now names it.
+ * Accepts any resource pointer: every resource this engine hands out shares the
+ * io_private magic word, and only a LIVE one carries the count, so a curl
+ * handle, a stream context or a closed stream simply falls through.
+ */
+PH7_PRIVATE int PH7_StreamValueRef(void *pResource)
+{
+	io_private *pDev = (io_private *)pResource;
+	if( pDev == 0 || pDev->iHead != IO_PRIVATE_HEAD_MAGIC
+	 || pDev->iMagic != IO_PRIVATE_MAGIC ){
+		return 0;
+	}
+	pDev->nValRef++;
+	return 1;
+}
+/*
+ * Drop the reference a ph7_value held, and CLOSE the handle when it was the
+ * last: php's stream layer closes a stream whose refcount reaches zero, so
+ * `$h = fopen(...); $h = null;` releases the descriptor and a dropped
+ * stream_socket_server() frees its port. The struct itself stays alive and
+ * stamped closed, so a copy that outlives the close still reads
+ * "resource (closed)" rather than freed memory -- the same contract fclose()
+ * has always had here.
+ *
+ * A PERSISTENT stream is exempt: php keeps one open past its last holder, which
+ * is the whole point of pfsockopen(). So are the three standard handles and any
+ * device with no close entry point.
+ */
+PH7_PRIVATE void PH7_StreamValueUnref(void *pResource)
+{
+	io_private *pDev = (io_private *)pResource;
+	if( pDev == 0 || pDev->iHead != IO_PRIVATE_HEAD_MAGIC
+	 || pDev->iMagic != IO_PRIVATE_MAGIC ){
+		return;
+	}
+	if( pDev->nValRef < 1 ){
+		/* Nobody counted this handle IN, so no count can say it is the last one
+		 * out: a holder that writes a resource slot straight rather than through
+		 * ph7_value_resource() owns its handle and closes it itself. Leaving it
+		 * open is the answer this engine has always given. */
+		return;
+	}
+	pDev->nValRef--;
+	if( pDev->nValRef > 0 || pDev->bPersist || pDev->pStream == 0 ){
+		return;
+	}
+	/* The write chain gets its closing call while the device is still open, the
+	 * way fclose() does it. */
+	PH7_StreamFilterReleaseChains(pDev);
+	if( pDev->bDir ){
+		if( pDev->pStream->xCloseDir ){
+			pDev->pStream->xCloseDir(pDev->pHandle);
+		}
+	}else{
+		PH7_StreamCloseHandle(pDev->pStream,pDev->pHandle);
+	}
+	MarkIOPrivateClosed(pDev);
 }
 /*
  * Record what the opener was asked for, for stream_get_meta_data()'s `uri` and
@@ -4071,6 +4134,7 @@ static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)
 	SyBlobRelease(&pDev->sBuffer);
 	SyBlobRelease(&pDev->sFilt);
 	SyBlobRelease(&pDev->sUri);
+	pDev->iHead = 0;  /* the chunk goes back to the pool: no probe may trust it */
 	pDev->iMagic = 0x2126; /* Invalid magic number so we can detetct misuse */
 	/* Release the whole structure */
 	ph7_context_free_chunk(pCtx,pDev);
@@ -9460,5 +9524,16 @@ PH7_PRIVATE void PH7_StreamCtxVmReset(ph7_vm *pVm)
 PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm)
 {
 	SXUNUSED(pVm);
+}
+/* No stream handle exists to be counted, but the three value doors call these
+ * unconditionally -- they are on the hot path and cannot afford a build test. */
+PH7_PRIVATE int PH7_StreamValueRef(void *pResource)
+{
+	SXUNUSED(pResource);
+	return 0;
+}
+PH7_PRIVATE void PH7_StreamValueUnref(void *pResource)
+{
+	SXUNUSED(pResource);
 }
 #endif /* PH7_DISABLE_DISK_IO */

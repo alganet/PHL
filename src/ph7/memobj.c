@@ -1744,6 +1744,7 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 {
 	ph7_class_instance *pObj = 0;
 	ph7_hashmap *pMap = 0;
+	void *pRes = 0;
 	sxi32 rc;
 	PHL_VC_NOTE(PHL_VC_STORE,(pSrc->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) != 0);
 	if( pSrc->iFlags & MEMOBJ_HASHMAP ){
@@ -1752,11 +1753,17 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 	}else if( pSrc->iFlags & MEMOBJ_OBJ ){
 		/* Increment reference count */
 		((ph7_class_instance *)pSrc->x.pOther)->iRef++;
+	}else if( pSrc->iFlags & MEMOBJ_STREAMRES ){
+		/* One more holder of the stream handle -- see io_private.nValRef. Taken
+		 * BEFORE the destination drops its own, so `$h = $h` cannot close it. */
+		PH7_StreamValueRef(pSrc->x.pOther);
 	}
 	if( pDest->iFlags & MEMOBJ_HASHMAP ){
 		pMap = (ph7_hashmap *)pDest->x.pOther;
 	}else if( pDest->iFlags & MEMOBJ_OBJ ){
 		pObj = (ph7_class_instance *)pDest->x.pOther;
+	}else if( pDest->iFlags & MEMOBJ_STREAMRES ){
+		pRes = pDest->x.pOther;
 	}
 	PH7_MEMOBJ_COPY_SCALAR(pDest,pSrc);
 	pDest->iFlags &= ~MEMOBJ_AUX;
@@ -1773,6 +1780,9 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 		PH7_HashmapUnref(pMap);
 	}else if( pObj ){
 		PH7_ClassInstanceUnref(pObj);
+	}else if( pRes ){
+		/* The handle the destination used to name loses this value. */
+		PH7_StreamValueUnref(pRes);
 	}
 	if( rc == SXRET_OK && (pDest->iFlags & MEMOBJ_HASHMAP)
 	 && pDest->pVm
@@ -1903,6 +1913,9 @@ PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj)
 			PH7_HashmapUnref((ph7_hashmap *)pObj->x.pOther);
 		}else if( pObj->iFlags & MEMOBJ_OBJ ){
 			PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);
+		}else if( pObj->iFlags & MEMOBJ_STREAMRES ){
+			/* The last value naming a stream handle closes it, as php's does. */
+			PH7_StreamValueUnref(pObj->x.pOther);
 		}
 		/* Release the internal buffer */
 		SyBlobRelease(&pObj->sBlob);

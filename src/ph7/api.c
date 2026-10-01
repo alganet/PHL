@@ -2154,6 +2154,12 @@ int ph7_value_resource(ph7_value *pVal,void *pUserData)
 	/* Reflect the new type */
 	pVal->x.pOther = pUserData;
 	MemObjSetType(pVal,MEMOBJ_RES);
+	/* A STREAM handle is counted, and the value carries the mark that says so --
+	 * see MEMOBJ_STREAMRES. Asking the question HERE is safe because the pointer
+	 * has just been handed over; asking it at release time is not. */
+	if( PH7_StreamValueRef(pUserData) ){
+		pVal->iFlags |= MEMOBJ_STREAMRES;
+	}
 	return PH7_OK;
 }
 /*

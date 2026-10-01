@@ -12637,6 +12637,11 @@ static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPat
 	PH7_MemObjRelease(pSlot);
 	pSlot->x.pOther = pDev;
 	MemObjSetType(pSlot,MEMOBJ_RES);
+	/* The slot is written straight rather than through ph7_value_resource(), so
+	 * it takes the handle's first count here -- see io_private.nValRef. */
+	if( PH7_StreamValueRef(pDev) ){
+		pSlot->iFlags |= MEMOBJ_STREAMRES;
+	}
 	PH7_NativeSetAttrStr(pVm,pThis,SFO_M,zMode,nMode);
 	SfiSetName(pVm,pThis,zPath,nPath);
 	return PH7_OK;

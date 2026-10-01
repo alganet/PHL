@@ -1914,6 +1914,12 @@ static int PdoWriteBoundColumns(ph7_vm *pVm,phl_pdo_stmt *pSt)
 							PH7_MemObjRelease(&sVal);
 							sVal.x.pOther = pLobDev;
 							MemObjSetType(&sVal,MEMOBJ_RES);
+							/* Written straight rather than through
+							 * ph7_value_resource(), so this value takes the
+							 * handle's first count -- see io_private.nValRef. */
+							if( PH7_StreamValueRef(pLobDev) ){
+								sVal.iFlags |= MEMOBJ_STREAMRES;
+							}
 						}
 					}
 					break;

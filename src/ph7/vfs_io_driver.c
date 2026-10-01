@@ -2644,6 +2644,10 @@ PH7_PRIVATE void * PH7_ExportStdin(ph7_vm *pVm)
 		pIn->pHandle = PHPStreamDataInit(pVm,PH7_IO_STREAM_STDIN);
 		/* Install the STDIN stream */
 		pVm->pStdin = pIn;
+		/* The VM itself holds one: a script that does `$x = STDOUT; $x = null;`
+		 * must not close the process's own output -- php's standard handles
+		 * outlive every value that names them. */
+		PH7_StreamValueRef(pIn);
 		return pIn;
 	}else{
 		/* NULL or STDIN */
@@ -2673,6 +2677,10 @@ PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm)
 		pOut->pHandle = PHPStreamDataInit(pVm,PH7_IO_STREAM_STDOUT);
 		/* Install the STDOUT stream */
 		pVm->pStdout = pOut;
+		/* The VM itself holds one: a script that does `$x = STDOUT; $x = null;`
+		 * must not close the process's own output -- php's standard handles
+		 * outlive every value that names them. */
+		PH7_StreamValueRef(pOut);
 		return pOut;
 	}else{
 		/* NULL or STDOUT */
@@ -2702,6 +2710,10 @@ PH7_PRIVATE void * PH7_ExportStderr(ph7_vm *pVm)
 		pErr->pHandle = PHPStreamDataInit(pVm,PH7_IO_STREAM_STDERR);
 		/* Install the STDERR stream */
 		pVm->pStderr = pErr;
+		/* The VM itself holds one: a script that does `$x = STDOUT; $x = null;`
+		 * must not close the process's own output -- php's standard handles
+		 * outlive every value that names them. */
+		PH7_StreamValueRef(pErr);
 		return pErr;
 	}else{
 		/* NULL or STDERR */

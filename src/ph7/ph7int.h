@@ -333,6 +333,17 @@ struct VmDeferredPath {
                                       * instead of raising the "require a variable not a constant"
                                       * diagnostic — php binds `$r = &$i->f` to a temporary and says
                                       * nothing. Part of MEMOBJ_AUX, so a copy can never carry it. */
+#define MEMOBJ_STREAMRES 0x1000000 /* This MEMOBJ_RES names a STREAM HANDLE (an io_private),
+                                    * and the value holds one of that handle's counted
+                                    * references. It marks the VALUE rather than the object
+                                    * because the object is the one thing a release cannot
+                                    * look at: a Generator's context resource is FREED by its
+                                    * own destructor before the slot naming it is released, so
+                                    * a probe of the pointer -- at any offset -- is a
+                                    * use-after-free. Not part of MEMOBJ_AUX, so it survives a
+                                    * store the way the type bits do; MemObjSetType clears it
+                                    * with them, so a slot retyped to another resource kind
+                                    * cannot inherit it. */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
@@ -395,7 +406,7 @@ struct VmDeferredPath {
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
  */
-#define MemObjSetType(OBJ,TYPE) ((OBJ)->iFlags = ((OBJ)->iFlags&~MEMOBJ_ALL)|TYPE)
+#define MemObjSetType(OBJ,TYPE) ((OBJ)->iFlags = ((OBJ)->iFlags&~(MEMOBJ_ALL|MEMOBJ_STREAMRES))|TYPE)
 /*
  * Signed 64-bit arithmetic with overflow detection. PHP promotes an integer
  * operation that overflows sxi64 to a floating-point result, so the executor
@@ -5525,6 +5536,10 @@ PH7_PRIVATE void PH7_ValueCensusNote(void *pSite,sxu32 iKind,int bWork);
 #define PHL_VC_NOTE(K,W) ((void)0)
 #define PHL_VC_DOOR SX_STATIC_INLINE
 #endif
+/* Take/drop the reference a ph7_value holds on a stream handle. Both accept ANY
+ * resource pointer and do nothing unless it is a live io_private -- see nValRef. */
+PH7_PRIVATE int PH7_StreamValueRef(void *pResource);
+PH7_PRIVATE void PH7_StreamValueUnref(void *pResource);
 /*
  * Load an ALIASING copy of a value: the destination gets the scalar half verbatim, one
  * more reference on a container, and a READ-ONLY view of the source's string bytes. It is
@@ -5557,6 +5572,10 @@ PHL_VC_DOOR sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
 	}else if( pSrc->iFlags & MEMOBJ_OBJ ){
 		/* Increment reference count */
 		((ph7_class_instance *)pSrc->x.pOther)->iRef++;
+	}else if( pSrc->iFlags & MEMOBJ_STREAMRES ){
+		/* One more holder of the stream handle: php closes a stream when its
+		 * last value goes, and this door is how a variable reaches the stack. */
+		PH7_StreamValueRef(pSrc->x.pOther);
 	}
 	if( SyBlobLength(&pDest->sBlob) > 0 ){
 		SyBlobRelease(&pDest->sBlob);
@@ -6396,6 +6415,16 @@ PH7_PRIVATE sxi64 PH7_GlobStreamCount(void *pHandle);
  * vfs_stream.c and vfs_io_driver.c. */
 struct io_private
 {
+	/* THE FIRST WORD, and the only field a probe may read on a resource pointer
+	 * it has not identified yet. `iMagic` below sits ~240 bytes in, and a
+	 * resource that is not a stream can be much smaller than that -- a
+	 * Generator's context is 184 bytes -- so reading the tail magic to ask "is
+	 * this a stream?" reads past the end of the object. Offset zero is in bounds
+	 * for every allocation there is. Written by InitIOPrivate and by nothing
+	 * else, so it also says the layout below is real: the handles that are NOT
+	 * streams but open with an io_private header (a context, a filter, a bucket
+	 * brigade) build theirs by hand and leave this zero. */
+	sxu32 iHead;
 	const ph7_io_stream *pStream; /* Underlying IO device */
 	void *pHandle; /* IO handle */
 	/* Unbuffered IO */
@@ -6448,8 +6477,21 @@ struct io_private
 	                       * for a filtered stream counts what came OUT, which
 	                       * has nothing to do with the device's own offset */
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
+	/* How many ph7_values name this handle. php's stream is refcounted and its
+	 * last holder closes it: `$h = fopen(...); $h = null;` releases the
+	 * descriptor there and used to leak it here, because a handle was a bare
+	 * pointer nobody owned. Counted at the three value doors (Load, Store,
+	 * Release) exactly the way a hashmap and an instance already are; a holder
+	 * that is NOT a ph7_value -- the VM's own STDIN/STDOUT/STDERR, the
+	 * persistent-socket registry, a native object's handle slot -- takes its own
+	 * count so a script dropping its copy cannot close the handle underneath it.
+	 * Only a live io_private (iMagic == IO_PRIVATE_MAGIC) carries one: every
+	 * other resource kind shares this header's magic word and nothing else. */
+	sxi32 nValRef;
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
+/* io_private.iHead: "the bytes at this pointer really are an io_private". */
+#define IO_PRIVATE_HEAD_MAGIC 0x10DEA5
 /* proc_open()'s handle is an io_private with this magic in the same field, which
  * is what lets one probe tell the two apart — and what php names `process`. */
 #define PROC_PRIVATE_MAGIC 0x9C0DE5
