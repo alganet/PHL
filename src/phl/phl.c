@@ -404,6 +404,111 @@ static void PHL_ScreenIniStmt(ph7 *pEngine,const char *zStmt,size_t nStmt,
 	}
 }
 /*
+ * php's ST_SECTION_VALUE and ST_OFFSET are one run, and `[s]` and `a[s]` are
+ * the two statements that open it: SECTION_VALUE_CHARS, a backslash carrying
+ * whatever byte is behind it (a newline included), a raw `'` run, a
+ * double-quoted run and a `${}` -- closed by `]` and by nothing else. A newline
+ * does not close it and neither does a `;`: both leave the scanner with no rule
+ * to match at all, which is php's end of INPUT, so a `[` that never meets its
+ * bracket refuses the whole source from there down and a `]` written further
+ * down does not rescue it.
+ *
+ * Answers the byte behind the `]`, or 0 with *piBad naming the refusal. Only a
+ * double-quoted run moves *pnLine -- php's raw-string rule is one regex match
+ * that never touches the counter -- and it moves it whether or not the run is
+ * the thing that fails, so a refusal below a name carrying a quoted newline is
+ * dated where the counter got to.
+ */
+static const char * PHL_IniBracketRun(const char *z,const char *zEnd,
+	unsigned int *pnLine,int *piBad)
+{
+	*piBad = PH7_INI_STOP_SECTION;
+	while( z < zEnd ){
+		int c = (unsigned char)z[0];
+		if( c == ']' ){
+			return &z[1];
+		}
+		if( c == '\n' || c == '\r' || c == ';' ){
+			return 0;   /* out of rules, and the source with it */
+		}
+		if( c == '"' ){
+			const char *zQ = &z[1];
+			while( zQ < zEnd && zQ[0] != '"' ){
+				if( zQ[0] == '\\' && &zQ[1] < zEnd ){
+					zQ += 2;
+					continue;
+				}
+				if( zQ[0] == '\n' || zQ[0] == '\r' ){
+					zQ = PHL_IniEatEol(zQ,zEnd);
+					(*pnLine)++;
+					continue;
+				}
+				zQ++;
+			}
+			if( zQ >= zEnd ){
+				/* the quote is what ran out, and php names what it wanted
+				 * instead of the `]` it never reached */
+				*piBad = PH7_INI_STOP_SECTION_STR;
+				return 0;
+			}
+			z = &zQ[1];
+			continue;
+		}
+		if( c == '\'' ){
+			const char *zQ = &z[1];
+			while( zQ < zEnd && zQ[0] != '\'' ){
+				zQ++;
+			}
+			/* php's raw rule wants at least one byte inside the quotes, so an
+			 * empty `''` matches nothing at all and the run dies on the quote
+			 * itself -- still `expecting ']'`, on the line the counter is on. */
+			if( zQ >= zEnd || zQ == &z[1] ){
+				return 0;
+			}
+			z = &zQ[1];
+			continue;
+		}
+		if( c == '$' && &z[1] < zEnd && z[1] == '{' ){
+			const char *zQ = &z[2];
+			while( zQ < zEnd && zQ[0] != '}' ){
+				zQ++;
+			}
+			if( zQ >= zEnd ){
+				*piBad = PH7_INI_STOP_SECTION_VAR;
+				return 0;
+			}
+			z = &zQ[1];
+			continue;
+		}
+		if( c == '\\' && &z[1] < zEnd ){
+			z += 2;   /* whatever it is, a newline included, uncounted */
+			continue;
+		}
+		z++;
+	}
+	return 0;
+}
+/*
+ * Hand over an offset statement whose `]` was not followed by an `=`. zStmt is
+ * what stands where php's parser wants that `=`, to the end of its line; the
+ * engine owns the table that names the token in it.
+ */
+static void PHL_RefuseIniOffset(ph7 *pEngine,const char *zStmt,size_t nStmt,
+	const char *zFile,unsigned int nLine,int bEof)
+{
+	char zStack[512];
+	char *zText = zStack;
+	if( nStmt + 1 > sizeof(zStack) ){
+		nStmt = sizeof(zStack) - 1;   /* the token is at the front of it */
+	}
+	if( nStmt > 0 ){
+		memcpy(zText,zStmt,nStmt);
+	}
+	zText[nStmt] = 0;
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zText,"",zFile,nLine,
+		bEof ? PH7_INI_STOP_OFFSET_EOF : PH7_INI_STOP_OFFSET);
+}
+/*
  * Walk one whole php.ini source -- a -c file's bytes, or the buffer php's CLI
  * builds out of every -d -- and apply the directives it holds. nLine is the line
  * the first byte sits on: 1 for a file, and 6 for the -d buffer (see the caller).
@@ -418,7 +523,11 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 		unsigned int nDir;
 		int bRunaway = 0;
 		int iStop;
+		int bTab = 0;
+		int bOffset = 0;
+		const char *zBlank = z;
 		while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+			bTab = bTab || z[0] == '\t';
 			z++;
 		}
 		if( z >= zEnd ){
@@ -434,6 +543,17 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 			z = PHL_IniSkipEol(z,zEnd);
 			continue;
 		}
+		/* Which rule ate the blank run decides what statement this is. php's
+		 * `{TABS_AND_SPACES}*[=]` and its comment and newline rules outrun
+		 * everything, so a run in front of one of those is gone whatever it
+		 * held. Failing them, only a run holding a TAB reaches the rule that
+		 * throws a run away: a SPACES-only run is inside the `{LABEL}` or the
+		 * `{LABEL}"["` behind it, which then trims it back off the name. So
+		 * `\t[s]` is a section header and `  [s]` is the OFFSET `  `["s"] --
+		 * an entry when an `=` follows it, and a syntax error when none does. */
+		if( z[0] != '=' && !bTab ){
+			z = zBlank;
+		}
 		if( z[0] == '[' ){
 			/* A section NAME is one scanner run, and the only thing that closes
 			 * it is the `]`. A newline does not: php's rule has none, so a `[`
@@ -446,88 +566,24 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 			 * them, as it does in a value); a raw `'` run and a `${}` hide one
 			 * without counting; and a backslash carries the byte behind it,
 			 * the newline included. */
-			unsigned int nSec = nLine;
-			int iBad = PH7_INI_STOP_SECTION;
-			int bOpen = 1;
+			unsigned int nSec;
+			int iBad;
+			const char *zAfter;
 			z++;
-			while( z < zEnd ){
-				int c = (unsigned char)z[0];
-				if( c == ']' ){
-					bOpen = 0;
-					break;
-				}
-				if( c == '\n' || c == '\r' ){
-					break;   /* out of name, and the file with it */
-				}
-				if( c == '"' ){
-					const char *zQ = &z[1];
-					unsigned int nEat = 0;
-					while( zQ < zEnd && zQ[0] != '"' ){
-						if( zQ[0] == '\\' && &zQ[1] < zEnd ){
-							zQ += 2;
-							continue;
-						}
-						if( zQ[0] == '\n' || zQ[0] == '\r' ){
-							zQ = PHL_IniEatEol(zQ,zEnd);
-							nEat++;
-							continue;
-						}
-						zQ++;
-					}
-					nLine += nEat;
-					if( zQ >= zEnd ){
-						/* the quote is what ran out, and php names what it
-						 * wanted instead of the `]` it never reached */
-						nSec = nLine;
-						iBad = PH7_INI_STOP_SECTION_STR;
-						z = zEnd;
-						break;
-					}
-					z = &zQ[1];
-					continue;
-				}
-				if( c == '\'' ){
-					const char *zQ = &z[1];
-					while( zQ < zEnd && zQ[0] != '\'' ){
-						zQ++;
-					}
-					if( zQ >= zEnd ){
-						z = zEnd;
-						break;   /* still `expecting ']'`, on the `[`'s own line */
-					}
-					z = &zQ[1];
-					continue;
-				}
-				if( c == '$' && &z[1] < zEnd && z[1] == '{' ){
-					const char *zQ = &z[2];
-					while( zQ < zEnd && zQ[0] != '}' ){
-						zQ++;
-					}
-					if( zQ >= zEnd ){
-						iBad = PH7_INI_STOP_SECTION_VAR;
-						z = zEnd;
-						break;
-					}
-					z = &zQ[1];
-					continue;
-				}
-				if( c == '\\' && &z[1] < zEnd ){
-					z += 2;   /* whatever it is, a newline included, uncounted */
-					continue;
-				}
-				z++;
-			}
-			if( bOpen ){
+			nSec = nLine;
+			zAfter = PHL_IniBracketRun(z,zEnd,&nSec,&iBad);
+			if( zAfter == 0 ){
 				PHL_RefuseIniSource(pEngine,zFile,nSec,iBad);
 				return;
 			}
+			nLine = nSec;
+			z = zAfter;
 			/* php's rule for the `]` that closes a header eats the blanks
 			 * behind it, eats a newline when one is there, and counts a line
 			 * either way. So a directive written on the header's own line is
 			 * read like any other -- `[s] precision=9` sets precision -- and
 			 * a refusal below a header that did not end its own line is dated
 			 * one line lower than it was typed. */
-			z++;
 			while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
 				z++;
 			}
@@ -539,18 +595,79 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 		}
 		nDir = nLine;
 		zName = z;
-		while( z < zEnd && z[0] != '=' && z[0] != '\n' && z[0] != '\r' ){
+		/* php's `{LABEL}` is a run of LABEL_CHARs, and a TAB is not one: it
+		 * ends the name and the statement with it, so `xx\tprecision=9` is a
+		 * bare label php drops and then an ordinary entry. The bytes its
+		 * operators and brackets are made of are not LABEL_CHARs either, but
+		 * they travel INSIDE the text handed over below -- the engine owns the
+		 * table that says which of them refuse the source -- and only the
+		 * three that open a statement of their own stop the run out here. */
+		while( z < zEnd && z[0] != '=' && z[0] != '\n' && z[0] != '\r'
+		 && z[0] != '\t' && z[0] != ';' && z[0] != '[' ){
 			z++;
 		}
+		if( z < zEnd && z[0] == '\t' ){
+			/* `{TABS_AND_SPACES}*[=]` outruns the rule that throws a blank run
+			 * away, so a TAB with nothing but blanks between it and an `=` is
+			 * still this directive's; anything else behind it is a statement of
+			 * its own, and this one ends here carrying no value. */
+			const char *zPeek = z;
+			while( zPeek < zEnd && (zPeek[0] == ' ' || zPeek[0] == '\t') ){
+				zPeek++;
+			}
+			if( zPeek < zEnd && zPeek[0] == '=' ){
+				z = zPeek;
+			}
+		}
+		bOffset = z < zEnd && z[0] == '[';
 		zNameEnd = z;
 		while( zNameEnd > zName && (zNameEnd[-1] == ' ' || zNameEnd[-1] == '\t') ){
 			zNameEnd--;
 		}
+		if( bOffset ){
+			/* `{LABEL}"["` is one token, so the `[` goes to the engine WITH the
+			 * run in front of it: that is how it tells `on[x] = 1`, an entry
+			 * whose bool word the offset rule outran, from `x&y[z] = 1`, whose
+			 * `&` ended the LABEL long before any offset could form. */
+			unsigned int nOff = nLine;
+			const char *zAfter;
+			int iBad;
+			PHL_ScreenIniStmt(pEngine,zName,(size_t)(z + 1 - zName),zFile,nDir);
+			zAfter = PHL_IniBracketRun(&z[1],zEnd,&nOff,&iBad);
+			if( zAfter == 0 ){
+				PHL_RefuseIniSource(pEngine,zFile,nOff,iBad);
+				return;
+			}
+			nLine = nOff;
+			z = zAfter;
+			zNameEnd = z;
+			/* `TC_OFFSET option_offset ']' '='` is the only statement php's
+			 * grammar builds out of an offset. Its `]` eats no newline and
+			 * counts no line, so what follows is read at a statement position
+			 * on this very line -- and anything but an `=` there refuses the
+			 * source under the token that state makes of it. */
+			{
+				const char *zPeek = z;
+				while( zPeek < zEnd && (zPeek[0] == ' ' || zPeek[0] == '\t') ){
+					zPeek++;
+				}
+				if( zPeek >= zEnd || zPeek[0] != '=' ){
+					const char *zLine = PHL_IniSkipEol(z,zEnd);
+					PHL_RefuseIniOffset(pEngine,z,(size_t)(zLine - z),
+						zFile,nLine,zLine >= zEnd);
+					return;
+				}
+				z = zPeek;
+			}
+		}
 		/* An `=` with nothing in front of it leaves the run empty, and php's
-		 * scanner has a token there all the same. */
-		PHL_ScreenIniStmt(pEngine,zName,
-			zNameEnd > zName ? (size_t)(zNameEnd - zName) : (size_t)(z < zEnd ? 1 : 0),
-			zFile,nDir);
+		 * scanner has a token there all the same. An offset was screened above,
+		 * with the `[` that decides how its run is read. */
+		if( !bOffset ){
+			PHL_ScreenIniStmt(pEngine,zName,
+				zNameEnd > zName ? (size_t)(zNameEnd - zName) : (size_t)(z < zEnd ? 1 : 0),
+				zFile,nDir);
+		}
 		if( z >= zEnd || z[0] != '=' ){
 			/* php's php.ini callback ignores a statement that carries no
 			 * value, so a bare name neither defines the entry nor sets it to

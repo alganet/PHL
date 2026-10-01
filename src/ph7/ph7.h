@@ -218,6 +218,17 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
  */
 #define PH7_INI_STOP_STMT         6  /* zName is a statement's name text, to screen */
 /*
+ * `TC_OFFSET option_offset ']' '='` is the only statement php's grammar builds
+ * out of an offset, so the `]` that closes one puts its scanner back at a
+ * statement position where nothing but an `=` is acceptable. zName carries the
+ * text left standing there -- to the end of its line, blanks and all -- and the
+ * engine names whatever token php would read out of it. Text that names none is
+ * php's END_OF_LINE, dated one line down, unless the source ran out with no
+ * newline left to eat, which is the second code.
+ */
+#define PH7_INI_STOP_OFFSET       7  /* zName stands where an offset's '=' must be */
+#define PH7_INI_STOP_OFFSET_EOF   8  /* ...with no newline behind it */
+/*
  * Virtual Machine Configuration Commands.
  *
  * The following set of constants are the available configuration verbs that can

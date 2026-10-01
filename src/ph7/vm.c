@@ -5802,6 +5802,75 @@ static const char * VmIniStmtToken(const char *z,sxu32 nByte,char *zBuf)
 	}
 }
 /*
+ * Name the token php's parser finds where an offset statement's `=` has to be.
+ * The `]` that closes an offset pops the scanner back to INITIAL, and every
+ * token INITIAL can make there is a refusal because the grammar has no other
+ * statement to build: `foo[bar]]` is `']'`, `foo[bar]x` is TC_LABEL, and
+ * `foo[bar]on` is BOOL_TRUE even though the same word inside a value is a 1.
+ * The three INITIAL runs rank as they do at any other statement position --
+ * `{LABEL}"["` first, then the bool words, then `{LABEL}` -- so a second
+ * offset behind the first is TC_OFFSET rather than the label inside it.
+ *
+ * Answers 0 when the text names nothing, which is php's END_OF_LINE, and
+ * otherwise the token: a symbol by name, or the byte in quotes in zBuf.
+ */
+static const char * VmIniOffsetToken(const char *z,sxu32 nByte,char *zBuf)
+{
+	const char *zEnd = &z[nByte];
+	const char *zRun,*zTok = 0;
+	int nBest = 0;
+	sxu32 i;
+	while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+		z++;   /* every INITIAL rule that can match here eats its own blanks */
+	}
+	if( z >= zEnd || z[0] == '\n' || z[0] == '\r' ){
+		return 0;   /* the newline rule, which is an END_OF_LINE */
+	}
+	if( z[0] == ';' ){
+		return 0;   /* so is the comment rule: it ends on the same newline */
+	}
+	if( z[0] == '[' ){
+		return "TC_SECTION";
+	}
+	zRun = z;
+	while( zRun < zEnd && !VmIniVarNameStop((unsigned char)zRun[0]) ){
+		zRun++;
+	}
+	if( zRun == z ){
+		/* one of the bytes no run of php's takes: it reaches the parser as
+		 * itself, and bison prints it as a quoted character */
+		zBuf[0] = '\'';
+		zBuf[1] = z[0];
+		zBuf[2] = '\'';
+		zBuf[3] = 0;
+		return zBuf;
+	}
+	if( zRun < zEnd && zRun[0] == '[' ){
+		return "TC_OFFSET";
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(aVmIniBool) ; ++i ){
+		const char *zTail;
+		int nMatch;
+		if( (sxu32)(zEnd - z) < aVmIniBool[i].nWord
+		 || SyStrnicmp(z,aVmIniBool[i].zWord,aVmIniBool[i].nWord) != 0 ){
+			continue;
+		}
+		zTail = &z[aVmIniBool[i].nWord];
+		while( zTail < zEnd && (zTail[0] == ' ' || zTail[0] == '\t') ){
+			zTail++;
+		}
+		nMatch = (int)(zTail - z);
+		if( nMatch > nBest ){
+			nBest = nMatch;
+			zTok = aVmIniBool[i].zTok;
+		}
+	}
+	if( zTok && nBest >= (int)(zRun - z) ){
+		return zTok;
+	}
+	return "TC_LABEL";
+}
+/*
  * The first two steps of that lookup. FALSE means the name is nowhere, which
  * is what hands the question on to a fallback.
  */
@@ -6421,6 +6490,36 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 		}
 		SyZero(&sBad,sizeof(sBad));
 		sBad.zTok = zBad;
+		SyStringInitFromBuf(&sFile,zFile,zFile ? SyStrlen(zFile) : 0);
+		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
+		if( pbBad ){
+			*pbBad = 1;
+		}
+		return SXRET_OK;
+	}
+	if( iStop == PH7_INI_STOP_OFFSET || iStop == PH7_INI_STOP_OFFSET_EOF ){
+		/* Not a directive: an offset statement whose `]` was not followed by
+		 * the `=` its grammar demands. php refuses the source from here down
+		 * the way any other statement-position token does, and appends the one
+		 * thing it could have taken. */
+		char zTok[8];
+		const char *zBad = VmIniOffsetToken(zName,(sxu32)SyStrlen(zName),zTok);
+		SyZero(&sBad,sizeof(sBad));
+		if( zBad ){
+			if( zBad == zTok ){
+				sBad.cChar = (unsigned char)zTok[1];
+			}else{
+				sBad.zTok = zBad;
+			}
+		}else if( iStop == PH7_INI_STOP_OFFSET_EOF ){
+			/* nothing left to read at all: the newline rule the END_OF_LINE
+			 * comes from needs a newline, and there is none */
+			sBad.zTok = "end of file";
+		}else{
+			/* END_OF_LINE, and php's newline rule has already counted it */
+			sBad.nLine = 1;
+		}
+		sBad.zExpect = "'='";
 		SyStringInitFromBuf(&sFile,zFile,zFile ? SyStrlen(zFile) : 0);
 		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
 		if( pbBad ){
