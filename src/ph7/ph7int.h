@@ -3896,12 +3896,17 @@ struct VmDirHandle
 	                               * which SyHashInsert borrows rather than copies */
 };
 /* One -d/-c php.ini directive queued for the INI chunk (name/value are
- * allocator-owned copies; see PH7_VM_CONFIG_INI_ENTRY) */
+ * allocator-owned copies; see PH7_VM_CONFIG_INI_ENTRY). sFile/nLine are the
+ * host's source for the refusal warning ("Unknown" plus a virtual line for
+ * -d, the real path and line for a -c file) -- empty when the host never
+ * supplied one, which silences the warning rather than misattributing it. */
 typedef struct VmIniEntry VmIniEntry;
 struct VmIniEntry
 {
 	SyString sName;
 	SyString sValue;
+	SyString sFile;
+	sxu32 nLine;
 };
 /*
  * One live php.ini directive. The table was an embedded-PHP array on a private

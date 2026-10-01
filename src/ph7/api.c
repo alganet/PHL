@@ -166,9 +166,11 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		 * on the ENGINE allocator: they outlive every VM replaying them. */
 		const char *zName = va_arg(ap,const char *);
 		const char *zValue = va_arg(ap,const char *);
+		const char *zFile = va_arg(ap,const char *);
+		unsigned int nLine = va_arg(ap,unsigned int);
 		VmIniEntry sEntry;
-		char *zDupN,*zDupV;
-		sxu32 nName,nValue;
+		char *zDupN,*zDupV,*zDupF;
+		sxu32 nName,nValue,nFile;
 		if( SX_EMPTY_STR(zName) ){
 			rc = PH7_CORRUPT;
 			break;
@@ -176,16 +178,23 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		if( zValue == 0 ){
 			zValue = "";
 		}
+		if( zFile == 0 ){
+			zFile = "";
+		}
 		nName  = (sxu32)SyStrlen(zName);
 		nValue = (sxu32)SyStrlen(zValue);
+		nFile  = (sxu32)SyStrlen(zFile);
 		zDupN = SyMemBackendStrDup(&pEngine->sAllocator,zName,nName);
 		zDupV = SyMemBackendStrDup(&pEngine->sAllocator,zValue,nValue);
-		if( zDupN == 0 || zDupV == 0 ){
+		zDupF = nFile > 0 ? SyMemBackendStrDup(&pEngine->sAllocator,zFile,nFile) : 0;
+		if( zDupN == 0 || zDupV == 0 || (nFile > 0 && zDupF == 0) ){
 			rc = PH7_NOMEM;
 			break;
 		}
 		SyStringInitFromBuf(&sEntry.sName,zDupN,nName);
 		SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
+		SyStringInitFromBuf(&sEntry.sFile,zDupF,nFile);
+		sEntry.nLine = (sxu32)nLine;
 		if( SySetPut(&pConf->aIniEntry,(const void *)&sEntry) != SXRET_OK ){
 			rc = PH7_NOMEM;
 		}

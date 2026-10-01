@@ -5460,6 +5460,22 @@ static int VmIniExprIsOp(int c)
 	return c == '|' || c == '&' || c == '^';
 }
 /*
+ * A byte left standing where the grammar cannot take it, in one of the two
+ * shapes VmIniEvalValue ever hands back as "committed, but here is what php
+ * would separately warn about": the punctuation an operand run stops on
+ * (`( ) ~ !`, verified against `/usr/bin/php` for `1)`, `1~2`, `On(`, ...)
+ * and the three binary operators, reachable only right after a boolean word
+ * short-circuits (`On|E_NOTICE`). `;` starts a comment, not an error, and an
+ * alpha/digit/quote leftover -- only possible after a boolean word, since an
+ * operand run swallows those itself -- names a token php's scanner has its
+ * own symbol for (`TC_CONSTANT`, ...); neither is answered here yet.
+ */
+static int VmIniBadTokenChar(int c)
+{
+	return c == '(' || c == ')' || c == '~' || c == '!'
+	    || c == '|' || c == '&' || c == '^';
+}
+/*
  * atoi() over an operand: php stops at the first byte that is not part of a
  * number and answers 0 when there is none.
  */
@@ -5655,10 +5671,16 @@ static int VmIniExprEval(VmIniExpr *p,SyBlob *pOut,int nDepth)
  * cannot extend it further, and only THEN discovers that byte cannot start
  * anything either. `error_reporting = E_ALL)` stores 30719 and separately
  * warns about the ')' -- the value most be committed even though the whole
- * directive text was not clean. This function only answers the value; the
- * warning is not raised here.
+ * directive text was not clean.
+ *
+ * *pcBad is left 0 on a clean value and set to the leftover byte when one
+ * VmIniBadTokenChar() recognizes stands where php would separately warn
+ * about it (the caller prints php's "syntax error, unexpected '<c>'" over
+ * it; see VmSetIniEntry). A dangling construct that made this function
+ * return FALSE has no leftover of that shape -- nothing committed, nothing
+ * to point at yet -- and leaves *pcBad untouched.
  */
-static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
+static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,int *pcBad)
 {
 	static const struct {
 		const char *zWord;
@@ -5671,6 +5693,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 	};
 	VmIniExpr sIn;
 	sxu32 i;
+	*pcBad = 0;
 	SyBlobReset(pOut);
 	while( nVal > 0 && (zVal[0] == ' ' || zVal[0] == '\t') ){
 		zVal++;
@@ -5699,6 +5722,9 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 		if( c < 0 || VmIniExprIsOp(c) || c == '(' || c == ')' || c == '~'
 		 || c == '!' || c == '"' || c == '\'' || c == '$' || c == ';'
 		 || c == ' ' || c == '\t' ){
+			if( c > 0 && VmIniBadTokenChar(c) ){
+				*pcBad = c;
+			}
 			SyBlobAppend(pOut,aWord[i].zText,(sxu32)SyStrlen(aWord[i].zText));
 			return 1;
 		}
@@ -5713,21 +5739,53 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut)
 	/* Whatever is left -- `)`, `1&&2`'s second `&`, an unresolved `~` -- is a
 	 * separate token the grammar cannot take from here, but the expr already
 	 * reduced and its value already stands. */
+	if( sIn.zCur < sIn.zEnd && VmIniBadTokenChar((unsigned char)sIn.zCur[0]) ){
+		*pcBad = (unsigned char)sIn.zCur[0];
+	}
 	return 1;
+}
+/*
+ * php's own unbuffered ini-parser warning: `PHP:  syntax error, unexpected
+ * '<c>' in <file> on line <N>\n`, written straight to the engine's error
+ * consumer with none of error_reporting/display_errors/log_errors in the
+ * way. That is php's own rule (zend_ini_parser.c's ini_error(), the
+ * ini_parser_unbuffered_errors branch): those three knobs are not
+ * trustworthy gates here because the refusal may be setting one of them.
+ * Silent when the host never wired PH7_CONFIG_ERR_OUTPUT, or never supplied
+ * a file for this entry (an embedder that does not pass one gets nothing,
+ * same as it gets nothing from any other early diagnostic).
+ */
+static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,int cBad)
+{
+	SyBlob sMsg;
+	ProcConsumer xErr = pVm->pEngine->xConf.xErr;
+	if( xErr == 0 || pFile == 0 || pFile->nByte == 0 ){
+		return;
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"PHP:  syntax error, unexpected '%c' in %.*s on line %u\n",
+		cBad,(int)pFile->nByte,pFile->zString,(unsigned)nLine);
+	xErr(SyBlobData(&sMsg),SyBlobLength(&sMsg),pVm->pEngine->xConf.pErrData);
+	SyBlobRelease(&sMsg);
 }
 /*
  * Apply one php.ini directive to a VM: queue an allocator-owned copy for the INI
  * chunk's lazy seed, then arm the C-side knobs that have to hold whether or not
  * the script ever touches the INI API. Shared by PH7_VM_CONFIG_INI_ENTRY, which
  * hands a directive to a VM that already exists, and by the engine-level replay a
- * fresh VM runs before it compiles anything (PH7_VmApplyEngineIni).
+ * fresh VM runs before it compiles anything (PH7_VmApplyEngineIni). zFile/nLine
+ * locate the directive for VmIniSyntaxWarning; an empty zFile leaves a refusal
+ * silent, matching an embedder that never supplied one.
  */
-static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
+static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
+	const char *zFile,sxu32 nLine)
 {
 	sxi32 rc = SXRET_OK;
 	VmIniEntry sEntry;
 	SyBlob sEval;
+	SyString sFile;
 	int bLevel = 0;
+	int cBad = 0;
 	char *zDupN,*zDupV;
 	sxu32 nName,nValue;
 	if( SX_EMPTY_STR(zName) ){
@@ -5736,6 +5794,7 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 	if( zValue == 0 ){
 		zValue = "";
 	}
+	SyStringInitFromBuf(&sFile,zFile,zFile ? SyStrlen(zFile) : 0);
 	nName = (sxu32)SyStrlen(zName);
 	nValue = (sxu32)SyStrlen(zValue);
 	SyBlobInit(&sEval,&pVm->sAllocator);
@@ -5746,12 +5805,15 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 	 * `E_ALL & ~E_NOTICE` and "1" for `On` whatever the name in front of it, and
 	 * ini_restore() then has that text to re-apply rather than an expression the
 	 * runtime setter would read as 0. */
-	if( !VmIniEvalValue(pVm,zValue,nValue,&sEval) ){
+	if( !VmIniEvalValue(pVm,zValue,nValue,&sEval,&cBad) ){
 		/* php's ini parser calls this a syntax error, and a refused directive
 		 * never lands at all -- its default stands, rather than the raw text or
 		 * a zero standing in for it. */
 		SyBlobRelease(&sEval);
 		return SXRET_OK;
+	}
+	if( cBad != 0 ){
+		VmIniSyntaxWarning(pVm,&sFile,nLine,cBad);
 	}
 	nValue = SyBlobLength(&sEval);
 	zValue = nValue > 0 ? (const char *)SyBlobData(&sEval) : "";
@@ -5766,6 +5828,9 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 	}
 	SyStringInitFromBuf(&sEntry.sName,zDupN,nName);
 	SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
+	sEntry.sFile.zString = 0;
+	sEntry.sFile.nByte = 0;
+	sEntry.nLine = 0;
 	rc = SySetPut(&pVm->aIniCli,(const void *)&sEntry);
 	if( rc == SXRET_OK ){
 		if( bLevel ){
@@ -5883,7 +5948,8 @@ PH7_PRIVATE void PH7_VmApplyEngineIni(ph7_vm *pVm)
 	}
 	aEntry = (VmIniEntry *)SySetBasePtr(&pConf->aIniEntry);
 	for( i = 0 ; i < SySetUsed(&pConf->aIniEntry) ; ++i ){
-		VmSetIniEntry(pVm,aEntry[i].sName.zString,aEntry[i].sValue.zString);
+		VmSetIniEntry(pVm,aEntry[i].sName.zString,aEntry[i].sValue.zString,
+			aEntry[i].sFile.zString,aEntry[i].nLine);
 	}
 }
 /*
@@ -6197,7 +6263,9 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		 * queue reaches a fresh one through PH7_CONFIG_INI_ENTRY instead). */
 		const char *zName = va_arg(ap,const char *);
 		const char *zValue = va_arg(ap,const char *);
-		rc = VmSetIniEntry(pVm,zName,zValue);
+		const char *zFile = va_arg(ap,const char *);
+		unsigned int nLine = va_arg(ap,unsigned int);
+		rc = VmSetIniEntry(pVm,zName,zValue,zFile,(sxu32)nLine);
 		break;
 								  }
 	case PH7_VM_CONFIG_ERR_LOG_HANDLER: {

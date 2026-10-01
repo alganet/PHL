@@ -300,8 +300,14 @@ static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCe
  * their own text where the same lines in a `-c` file are expressions. A file
  * line has no such rule and keeps only the blank-trimming the ini scanner does
  * around a value.
+ *
+ * zFile/nLine locate this directive for php's own "syntax error, unexpected
+ * ..." warning over a value the grammar above only partly takes (see
+ * VmIniSyntaxWarning in vm.c): the real path and line for a -c file, or
+ * "Unknown" and a virtual line for -d (see the caller in main()).
  */
-static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair,int bDashD)
+static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair,int bDashD,
+	const char *zFile,unsigned int nLine)
 {
 	char zName[128];
 	char zStack[512];
@@ -365,7 +371,7 @@ static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair,int bDashD)
 		zValue[0] = '1';
 		zValue[1] = 0;
 	}
-	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zName,zValue);
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zName,zValue,zFile,nLine);
 	if( zValue != zStack ){
 		free(zValue);
 	}
@@ -373,11 +379,14 @@ static void PHL_ApplyIniPair(ph7 *pEngine,const char *zPair,int bDashD)
 /*
  * Load php.ini directives from a -c file: name=value lines; [sections],
  * empty lines and ;/# comments are ignored (enough of php's ini grammar
- * for CLI configuration).
+ * for CLI configuration). Every fgets() is one real line, skipped or not,
+ * so the counter handed to PHL_ApplyIniPair is the line a directive's own
+ * text sits on -- what php's zend_parse_ini_file() would report too.
  */
 static void PHL_LoadIniFile(ph7 *pEngine,const char *zPath)
 {
 	char zLine[768];
+	unsigned int nLine = 0;
 	FILE *pFile = fopen(zPath,"r");
 	if( pFile == 0 ){
 		fprintf(stderr,"Could not open php.ini file: %s\n",zPath);
@@ -385,11 +394,12 @@ static void PHL_LoadIniFile(ph7 *pEngine,const char *zPath)
 	}
 	while( fgets(zLine,sizeof(zLine),pFile) ){
 		const char *z = zLine;
+		nLine++;
 		while( *z == ' ' || *z == '\t' ){ z++; }
 		if( *z == 0 || *z == ';' || *z == '#' || *z == '[' || *z == '\n' || *z == '\r' ){
 			continue;
 		}
-		PHL_ApplyIniPair(pEngine,z,0);
+		PHL_ApplyIniPair(pEngine,z,0,zPath,nLine);
 	}
 	fclose(pFile);
 }
@@ -785,9 +795,19 @@ int main(int argc,char **argv)
 		PHL_LoadIniFile(pEngine,zIniFile);
 	}
 	{
+		/* php's CLI SAPI joins every -d into ONE buffer for zend_parse_ini_string(),
+		 * prefixed by five lines of its own hardcoded startup ini (php_cli.c's
+		 * HARDCODED_INI: html_errors, implicit_flush, output_buffering,
+		 * max_execution_time, max_input_time) -- so a directive's line in that
+		 * buffer, and in the "on line N" a refusal warns about, is 5 plus its
+		 * 1-based position among every -d php was given, not just the bad one.
+		 * PHL applies each -d independently rather than joining them, but the
+		 * line a given -d would have landed on does not depend on that: it is
+		 * fixed by its position alone. Verified against `/usr/bin/php` 8.5.10
+		 * with one, two and three -d's, good and bad in every slot. */
 		int i;
 		for( i = 0 ; i < nIniDefine ; i++ ){
-			PHL_ApplyIniPair(pEngine,azIniDefine[i],1);
+			PHL_ApplyIniPair(pEngine,azIniDefine[i],1,"Unknown",5u + (unsigned int)i + 1u);
 		}
 	}
 	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to
