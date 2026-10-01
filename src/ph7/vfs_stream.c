@@ -2263,8 +2263,9 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		 * open whose reason is `not implemented` -- the same sentence a missing
 		 * directory gets, so a caller's error handling does not have to know
 		 * that this one is about the WRAPPER. */
+		char zFn[64];
 		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: not implemented",
-			ph7_function_name(pCtx),zAsked);
+			PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),zAsked);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2304,6 +2305,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		 * called and whether the wrapper has one at all, the same way a failed
 		 * stream_open() is reported. */
 		char zWhy[160];
+		char zFn[64];
 		const char *zReason = PH7_StreamUserDirReason(pCtx->pVm,pStream,zWhy,(int)sizeof(zWhy))
 			? zWhy : VfsStrerror(errno);
 #ifdef __WINNT__
@@ -2320,8 +2322,11 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 			errno = iSaved;
 		}
 #endif
+		/* php names scandir() here, not the opendir() this engine writes its body
+		 * in terms of -- see PH7_CtxDiagFuncName. dir() reaches this door as a host
+		 * builtin of its own and keeps its own name either way. */
 		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: %s",
-			ph7_function_name(pCtx),zAsked,zReason);
+			PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),zAsked,zReason);
 		ReleaseIOPrivate(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{

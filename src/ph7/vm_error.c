@@ -488,6 +488,20 @@ static sxu32 VmDiagnosticWhere(ph7_vm *pVm,SyString **ppFile)
 		return 0;
 	}
 	{
+		/* A prelude builtin has no frame at all in php -- it is an INTERNAL
+		 * function there -- so a diagnostic raised under one is reported at the
+		 * call the program wrote, not inside the chunk (which is one line, so
+		 * every one of them said `on line 1`). */
+		SyString *pCallFile = 0;
+		sxu32 nCallLine = 0;
+		if( PH7_VmPreludeBuiltinFrame(&(*pVm),&pCallFile,&nCallLine) ){
+			if( pCallFile ){
+				*ppFile = pCallFile;
+			}
+			return nCallLine ? nCallLine : 1;
+		}
+	}
+	{
 		/* The file the RUNNING code is in, which is the defining file of the
 		 * innermost active function -- not the top of the include stack. The two
 		 * agree only while top-level code is running: once a call reaches a
@@ -5856,6 +5870,7 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 	ph7_class *pThrowable;
 	SyString *pFile;
 	SyString *pSiteFile;
+	sxu32 nPreLine;
 	sxu32 n;
 	if( pThis == 0 || pThis->pClass == 0 ){
 		return;
@@ -5876,6 +5891,22 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 	pSiteFile = PH7_VmExecutingUnitFile(&(*pVm));
 	if( pSiteFile == 0 ){
 		pSiteFile = pFile;
+	}
+	/* ...unless a prelude builtin is what is running: php has no frame for one,
+	 * so the throw it makes is reported at the call the program wrote. Without
+	 * this every exception these ~24 builtins raise answered getLine() 1 -- the
+	 * whole embedded chunk is a single source line. */
+	{
+		SyString *pPreFile = 0;
+		nPreLine = 0;
+		if( PH7_VmPreludeBuiltinFrame(&(*pVm),&pPreFile,&nPreLine) ){
+			if( pPreFile ){
+				pSiteFile = pPreFile;
+			}
+			if( nPreLine < 1 ){
+				nPreLine = 1;
+			}
+		}
 	}
 	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){
 		SyHashEntry *pEntry;
@@ -5913,7 +5944,8 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 			 * constant's evaluation — which report their own lines in both engines.
 			 * (Enum cases never set it: php reports the CASE's own line there, and
 			 * PHL already matches.) */
-			sxu32 nLine = (pVm->nLazyInitLine && pVm->nVmExecDepth == pVm->nLazyInitDepth)
+			sxu32 nLine = nPreLine ? nPreLine
+				: (pVm->nLazyInitLine && pVm->nVmExecDepth == pVm->nLazyInitDepth)
 				? pVm->nLazyInitLine
 				: (pVm->nCurLine ? pVm->nCurLine : 1);
 			PH7_MemObjRelease(pAttrValue);

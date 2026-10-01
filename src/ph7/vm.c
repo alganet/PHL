@@ -1024,6 +1024,95 @@ PH7_PRIVATE SyString * PH7_VmExecutingUnitFile(ph7_vm *pVm)
 	}
 	return (SyString *)SySetPeek(&pVm->aFiles);
 }
+/*
+ * The name a diagnostic raised from inside this builtin belongs to, php's way:
+ * the prelude builtin under whose body it is running when there is one, and
+ * otherwise the builtin's own name. `zBuf` is scratch the caller owns -- a
+ * compiled function's name aliases the chunk it was parsed from and is not
+ * NUL-terminated, and every one of these messages is built with `%s`.
+ *
+ * See PH7_VmPreludeBuiltinFrame for why the outer name is the right one.
+ */
+PH7_PRIVATE const char * PH7_CtxDiagFuncName(ph7_context *pCtx,char *zBuf,int nBuf)
+{
+	ph7_vm_func *pFunc = PH7_VmPreludeBuiltinFrame(pCtx->pVm,0,0);
+	int nName;
+	if( pFunc == 0 ){
+		return ph7_function_name(pCtx);
+	}
+	nName = (int)SyStringLength(&pFunc->sName);
+	if( nName < 1 || nName >= nBuf ){
+		return ph7_function_name(pCtx);
+	}
+	SyMemcpy(SyStringData(&pFunc->sName),zBuf,(sxu32)nName);
+	zBuf[nName] = 0;
+	return zBuf;
+}
+/*
+ * The prelude builtin whose body is RUNNING, or 0 -- and the call site the
+ * program wrote for it.
+ *
+ * ~24 builtins (scandir, glob, tempnam, tmpfile, hex2bin, checkdate, ...) are
+ * written as embedded PHP in the builtin chunk, so each one runs in a VM frame
+ * of its own. php has no such frame: every one of them is an INTERNAL function
+ * there, whose C body is not PHP code and carries no line at all. So everything
+ * a diagnostic asks about position has to be answered from the frame BELOW --
+ * the file and line of the call the program wrote -- and the builtin has to
+ * name ITSELF rather than whichever host builtin it reached for.
+ *
+ * Neither held. The whole chunk is one source line, so every diagnostic raised
+ * anywhere under one of these reported `on line 1`, and so did the getFile()/
+ * getLine() of every exception they throw: `scandir('')` said line 1 where php
+ * says the caller's. And scandir()'s failed open said `opendir(/nope): Failed
+ * to open directory` where php says `scandir(...)`, because the message names
+ * the host builtin that raised it.
+ *
+ * The walk skips `try`/`catch` frames, which carry no function, and stops at
+ * the first frame that is not a prelude builtin -- a user callback reached from
+ * one is ordinary user code and keeps its own position. It walks past a RUN of
+ * them (a prelude builtin calling another) so the site is always userland's,
+ * while the name reported is the innermost, which is the internal function php
+ * would have been inside.
+ *
+ * Only plain functions qualify. A method declared in a builtin chunk carries
+ * VM_FUNC_INTERNAL too, and so does a native class's method shell, but those
+ * have a receiver and php gives several of them real PHP frames.
+ */
+PH7_PRIVATE ph7_vm_func * PH7_VmPreludeBuiltinFrame(
+	ph7_vm *pVm,        /* Target VM */
+	SyString **ppFile,  /* OUT: file of the call the program wrote, or untouched */
+	sxu32 *pnLine       /* OUT: its line, or untouched */
+	)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	ph7_vm_func *pInner = 0;
+	for(;;){
+		ph7_vm_func *pFunc;
+		while( pFrame && pFrame->pParent
+		    && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
+			pFrame = pFrame->pParent;
+		}
+		if( pFrame == 0 || pFrame->pUserData == 0 ){
+			break;
+		}
+		pFunc = (ph7_vm_func *)pFrame->pUserData;
+		if( (pFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD|VM_FUNC_CLOSURE))
+			!= VM_FUNC_INTERNAL ){
+			break;
+		}
+		if( pInner == 0 ){
+			pInner = pFunc;
+		}
+		if( ppFile && SyStringLength(&pFrame->sCallFile) > 0 ){
+			*ppFile = &pFrame->sCallFile;
+		}
+		if( pnLine ){
+			*pnLine = pFrame->nCallLine;
+		}
+		pFrame = pFrame->pParent;
+	}
+	return pInner;
+}
 /* Defined with the variable-slot machinery below; VmEnterFrame is what arms it. */
 static void VmNumberLocals(VmInstr *aInstr,sxu32 nInstr,sxu16 *pnName);
 static void VmFrameNumberBody(VmFrame *pFrame,ph7_vm_func *pFunc);

@@ -312,13 +312,15 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	const char *zName = zFile ? zFile : "";
+	char zFn[64];
 	int nName = -1;
 	if( zFile != 0 && zFile == pVm->zOpenUriTail && pVm->zOpenUri != 0 ){
 		zName = pVm->zOpenUri;
 		nName = pVm->nOpenUri;
 	}
 	PH7_VmThrowWarningFmt(pVm,"%s(%.*s): Failed to open stream: %s",
-		ph7_function_name(pCtx),nName < 0 ? (int)SyStrlen(zName) : nName,zName,
+		PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),
+		nName < 0 ? (int)SyStrlen(zName) : nName,zName,
 		pVm->zOpenErr ? pVm->zOpenErr : PH7_VfsOpenStrerror(errno));
 }
 /*
@@ -334,7 +336,10 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
  */
 PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int bDir)
 {
-	const char *zFunc = ph7_function_name(pCtx);
+	char zFn[64];
+	/* php names the function the SCRIPT called: a prelude builtin's own name,
+	 * not the host builtin it delegated the open to (PH7_CtxDiagFuncName). */
+	const char *zFunc = PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn));
 	const char *zWhat = bDir ? "directory" : "stream";
 	int nScheme = 0;
 	if( zUri == 0 ){
@@ -380,6 +385,7 @@ PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int 
  */
 PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUri)
 {
+	char zFn[64];
 	int nScheme = 0;
 	if( zUri == 0 ){
 		zUri = "";
@@ -388,7 +394,7 @@ PH7_PRIVATE void VfsThrowUnknownWrapperWarning(ph7_context *pCtx,const char *zUr
 	if( nScheme > 0 ){
 		PH7_VmThrowWarningFmt(pCtx->pVm,
 			"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it when you configured PHP?",
-			ph7_function_name(pCtx),nScheme,zUri);
+			PH7_CtxDiagFuncName(pCtx,zFn,(int)sizeof(zFn)),nScheme,zUri);
 	}
 }
 /*

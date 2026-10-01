@@ -7678,6 +7678,8 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 PH7_PRIVATE sxi32 VmMountUserClass(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFlags,int bTrueReturn);
 PH7_PRIVATE SyString * PH7_VmExecutingUnitFile(ph7_vm *pVm);
+PH7_PRIVATE ph7_vm_func * PH7_VmPreludeBuiltinFrame(ph7_vm *pVm,SyString **ppFile,sxu32 *pnLine);
+PH7_PRIVATE const char * PH7_CtxDiagFuncName(ph7_context *pCtx,char *zBuf,int nBuf);
 PH7_PRIVATE void PH7_VmIncFramePush(ph7_vm *pVm,const char *zName,SyString *pPath);
 PH7_PRIVATE void PH7_VmIncFramePop(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDeferredReq **ppMissing);
