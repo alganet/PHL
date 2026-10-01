@@ -24,6 +24,10 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
+/* ext/openssl's private header, for the ONE thing this file borrows from it:
+ * php's `capture_peer_cert` hands a script an OpenSSLCertificate, and that is
+ * the extension's handle class rather than anything the transport owns. */
+#include "openssl_int.h"
 #endif
 #ifndef PH7_DISABLE_DISK_IO
 /*
@@ -5817,6 +5821,262 @@ static void SockSslErrorText(const char *zWhat,char *zBuf,int nBuf)
 	}
 }
 /*
+ * php's `capture_peer_cert` and `capture_peer_cert_chain`: the peer's
+ * certificate -- and the chain it arrived in -- written BACK into the `ssl`
+ * options of the CONTEXT the handshake read, as the OpenSSLCertificate objects
+ * openssl_x509_parse() and openssl_x509_fingerprint() already take.
+ *
+ * That the store is the context and not the handle is observable twice over: a
+ * context dialled a second time answers the SECOND peer's certificate, and the
+ * keys are there even after the fingerprint check below refused the very peer
+ * they describe. Nothing is written when the option is absent or false, and
+ * nothing is written when the peer sent no certificate at all -- a tls://
+ * listener that asked its client for none carries `capture_peer_cert` on its
+ * context with no `peer_certificate` beside it.
+ */
+static void SockSslStoreOption(phl_stream_ctx *pCtxRes,const char *zName,ph7_value *pVal)
+{
+	ph7_value sWrap,sName;
+	if( pCtxRes == 0 || pCtxRes->pOptions == 0 || pVal == 0 ){
+		return;
+	}
+	PH7_MemObjInit(pCtxRes->pVm,&sWrap);
+	PH7_MemObjInit(pCtxRes->pVm,&sName);
+	ph7_value_string(&sWrap,"ssl",sizeof("ssl")-1);
+	ph7_value_string(&sName,zName,-1);
+	StreamCtxSetOption(pCtxRes,&sWrap,&sName,pVal);
+	PH7_MemObjRelease(&sName);
+	PH7_MemObjRelease(&sWrap);
+}
+/*
+ * One X509 parked in pOut as php's OpenSSLCertificate. The certificate is
+ * CONSUMED -- freed here when the object cannot be built -- which is the same
+ * ownership rule ext/openssl's own result door states. Answers 0 on success.
+ */
+static int SockSslCertValue(ph7_vm *pVm,X509 *pCert,ph7_value *pOut)
+{
+	ph7_class_instance *pInst = 0;
+	if( pCert == 0 ){
+		return -1;
+	}
+	if( PH7_SslNewObject(pVm,PHL_SSL_KIND_CERT,(void *)pCert,&pInst) == 0 || pInst == 0 ){
+		X509_free(pCert);
+		return -1;
+	}
+	PH7_MemObjRelease(pOut);
+	pOut->x.pOther = (void *)pInst;
+	MemObjSetType(pOut,MEMOBJ_OBJ);
+	return 0;
+}
+/*
+ * Drop the value above once the array or the option table it was handed to has
+ * taken its own reference. The temporary BORROWS the instance -- it never took
+ * a reference of its own -- so it is blanked rather than released, and the
+ * CREATION reference is the one dropped here.
+ */
+static void SockSslCertValueDrop(ph7_value *pVal)
+{
+	if( pVal->iFlags & MEMOBJ_OBJ ){
+		PH7_ClassInstanceUnref((ph7_class_instance *)pVal->x.pOther);
+		pVal->x.pOther = 0;
+		pVal->iFlags = MEMOBJ_NULL;
+	}
+}
+static void SockSslCapture(ph7_vm *pVm,SSL *pSsl,phl_stream_ctx *pCtxRes)
+{
+	ph7_value sVal;
+	if( pCtxRes == 0 ){
+		return;
+	}
+	PH7_MemObjInit(pVm,&sVal);
+	if( SockSslOptBool(pCtxRes,"capture_peer_cert",0) ){
+		X509 *pPeer = SSL_get1_peer_certificate(pSsl);
+		if( pPeer && SockSslCertValue(pVm,pPeer,&sVal) == 0 ){
+			SockSslStoreOption(pCtxRes,"peer_certificate",&sVal);
+			SockSslCertValueDrop(&sVal);
+		}
+	}
+	if( SockSslOptBool(pCtxRes,"capture_peer_cert_chain",0) ){
+		STACK_OF(X509) *pChain = SSL_get_peer_cert_chain(pSsl);
+		int i,nCert = pChain ? sk_X509_num(pChain) : 0;
+		if( nCert > 0 ){
+			ph7_value *pArr = ph7_new_array(pVm);
+			if( pArr ){
+				for( i = 0 ; i < nCert ; ++i ){
+					X509 *pOne = sk_X509_value(pChain,i);
+					/* The stack belongs to the SESSION, and the script's
+					 * certificates outlive it, so each entry is duplicated
+					 * rather than parked. */
+					if( pOne == 0 || SockSslCertValue(pVm,X509_dup(pOne),&sVal) != 0 ){
+						continue;
+					}
+					ph7_array_add_elem(pArr,0,&sVal);
+					SockSslCertValueDrop(&sVal);
+				}
+				SockSslStoreOption(pCtxRes,"peer_certificate_chain",pArr);
+				ph7_release_value(pVm,pArr);
+			}
+		}
+	}
+	PH7_MemObjRelease(&sVal);
+}
+/* Compare a raw digest with the hex a script pinned. php's comparison is
+ * case-INSENSITIVE: an uppercase fingerprint matches. */
+static int SockSslHexEq(const unsigned char *aMd,unsigned int nMd,const char *zWant,int nWant)
+{
+	static const char zDigit[] = "0123456789abcdef";
+	unsigned int i;
+	if( zWant == 0 || (int)(nMd * 2) != nWant ){
+		return 0;
+	}
+	for( i = 0 ; i < nMd ; ++i ){
+		char c0 = zWant[i * 2],c1 = zWant[i * 2 + 1];
+		if( c0 >= 'A' && c0 <= 'F' ){ c0 = (char)(c0 - 'A' + 'a'); }
+		if( c1 >= 'A' && c1 <= 'F' ){ c1 = (char)(c1 - 'A' + 'a'); }
+		if( c0 != zDigit[(aMd[i] >> 4) & 0x0F] || c1 != zDigit[aMd[i] & 0x0F] ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/* Digest pCert under the named algorithm and compare. 1 on a match, 0 on a
+ * mismatch, and -1 when the name is not a digest at all -- php's own
+ * `Unknown digest algorithm`, which the caller raises. The lookup is OpenSSL's
+ * legacy name table, the one php asks, so `SHA1` and `sha1` are one name. */
+static int SockSslFpOne(X509 *pCert,const char *zAlgo,const char *zWant,int nWant)
+{
+	const EVP_MD *pMd;
+	unsigned char aMd[EVP_MAX_MD_SIZE];
+	unsigned int nMd = 0;
+	if( zAlgo == 0 || (pMd = EVP_get_digestbyname(zAlgo)) == 0 ){
+		return -1;
+	}
+	if( X509_digest(pCert,pMd,aMd,&nMd) != 1 ){
+		return 0;
+	}
+	return SockSslHexEq(aMd,nMd,zWant,nWant);
+}
+/* The bytes of a value that already IS a string, without converting it. */
+static const char * SockSslStrOf(ph7_value *pVal,int *pnByte)
+{
+	*pnByte = 0;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	return ph7_value_to_string(pVal,pnByte);
+}
+/*
+ * php's `peer_fingerprint`. It is a verification step of php's own rather than
+ * an OpenSSL setting: the peer's certificate is digested here and compared
+ * with what the script pinned, and a mismatch is php's refusal.
+ *
+ * The option's SHAPE picks the algorithm:
+ *
+ *   a STRING is the digest alone, and its LENGTH names the algorithm -- 32 hex
+ *     characters is md5, 40 is sha1, and no other length names anything. A
+ *     sha256 hex string is 64 characters, so it is a plain MISMATCH and never
+ *     an `Unknown digest algorithm`; php's string form cannot express sha256.
+ *   an ARRAY is [algo => hex] and EVERY entry must match -- one wrong digest
+ *     beside a right one refuses, whichever order the two are written in. A
+ *     non-string key or value, and an array with no entries at all, are the
+ *     shape complaint instead.
+ *   anything ELSE is refused before the session is asked for anything, and
+ *     that refusal is the only sentence: no match failure follows it.
+ *
+ * Answers 0 when the peer passed (`nothing was pinned` included), or -1 with
+ * php's sentence in zErr. The two SHAPE complaints are warnings of their own,
+ * raised here ahead of the sentence exactly as php raises them.
+ */
+static int SockSslCheckFingerprint(ph7_context *pCtx,SSL *pSsl,phl_stream_ctx *pCtxRes,
+	char *zErr,int nErr)
+{
+	ph7_value *pWant = pCtxRes ? PH7_StreamCtxOption(pCtxRes,"ssl","peer_fingerprint") : 0;
+	X509 *pCert;
+	int bOk = 0;
+	if( pWant == 0 ){
+		return 0;
+	}
+	if( (pWant->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP)) == 0 ){
+		SyBufferFormat(zErr,(sxu32)nErr,
+			"Expected peer fingerprint must be a string or an array");
+		return -1;
+	}
+	/* Every shape below needs the peer's certificate, and a session that
+	 * carries none -- a listener whose client was never asked for one -- is
+	 * php's `Could not get peer certificate` rather than a mismatch. */
+	pCert = SSL_get1_peer_certificate(pSsl);
+	if( pCert == 0 ){
+		SyBufferFormat(zErr,(sxu32)nErr,"Could not get peer certificate");
+		return -1;
+	}
+	if( pWant->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pWant->x.pOther;
+		ph7_hashmap_node *pEntry;
+		const char *zBad = "Invalid peer_fingerprint array; [algo => fingerprint] form required";
+		const char *zWarn = 0;
+		int bAny = 0;
+		bOk = 1;
+		pMap->pCur = pMap->pFirst;
+		while( (pEntry = PH7_HashmapGetNextEntry(pMap)) != 0 ){
+			ph7_value sKey;
+			ph7_value *pVal;
+			const char *zAlgo,*zHex;
+			char zName[64];
+			int nAlgo,nHex,iOne;
+			bAny = 1;
+			PH7_MemObjInit(pCtxRes->pVm,&sKey);
+			PH7_HashmapExtractNodeKey(pEntry,&sKey);
+			pVal = HashmapExtractNodeValue(pEntry);
+			zAlgo = SockSslStrOf(&sKey,&nAlgo);
+			zHex = SockSslStrOf(pVal,&nHex);
+			if( zAlgo == 0 || zHex == 0 ){
+				/* An INTEGER key has no algorithm name and a non-string value
+				 * is not a digest; php complains about the array's shape and
+				 * stops there. */
+				PH7_MemObjRelease(&sKey);
+				zWarn = zBad;
+				bOk = 0;
+				break;
+			}
+			if( nAlgo >= (int)sizeof(zName) ){
+				iOne = -1;
+			}else{
+				SyMemcpy((const void *)zAlgo,(void *)zName,(sxu32)nAlgo);
+				zName[nAlgo] = 0;
+				iOne = SockSslFpOne(pCert,zName,zHex,nHex);
+			}
+			PH7_MemObjRelease(&sKey);
+			if( iOne != 1 ){
+				if( iOne < 0 ){
+					zWarn = "Unknown digest algorithm";
+				}
+				bOk = 0;
+				break;
+			}
+		}
+		if( !bAny ){
+			/* php refuses an EMPTY array on its shape rather than treating
+			 * `nothing to check` as a pass. */
+			zWarn = zBad;
+			bOk = 0;
+		}
+		if( zWarn ){
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,zWarn);
+		}
+	}else{
+		int nHex;
+		const char *zHex = SockSslStrOf(pWant,&nHex);
+		const char *zAlgo = nHex == 32 ? "md5" : (nHex == 40 ? "sha1" : 0);
+		bOk = SockSslFpOne(pCert,zAlgo,zHex,nHex) == 1;
+	}
+	X509_free(pCert);
+	if( bOk ){
+		return 0;
+	}
+	SyBufferFormat(zErr,(sxu32)nErr,"peer_fingerprint match failure");
+	return -1;
+}
+/*
  * Turn php's method mask into the context OpenSSL wants, apply the `ssl`
  * context options, adopt the socket and run the handshake. Answers PH7_OK, or
  * -1 with *zErr carrying php's sentence for the failure.
@@ -5827,8 +6087,8 @@ static void SockSslErrorText(const char *zWhat,char *zBuf,int nBuf)
  * the loop is not reproduced -- the read/write ops below are what the handle's
  * blocking mode is really about.
  */
-static int SockSslHandshake(sock_private *pSock,int iMethod,phl_stream_ctx *pCtxRes,
-	const char *zPeerName,char *zErr,int nErr)
+static int SockSslHandshake(ph7_context *pCtx,sock_private *pSock,int iMethod,
+	phl_stream_ctx *pCtxRes,const char *zPeerName,char *zErr,int nErr)
 {
 	SSL_CTX *pSslCtx;
 	SSL *pSsl;
@@ -5971,6 +6231,15 @@ static int SockSslHandshake(sock_private *pSock,int iMethod,phl_stream_ctx *pCtx
 			SSL_free(pSsl);
 			goto fail_ctx;
 		}
+	}
+	/* php CAPTURES before it checks the fingerprint, which is why a session
+	 * the pin below refuses still leaves the certificate it refused on the
+	 * context -- and why nothing is captured from a handshake the chain
+	 * verdict above already ended. */
+	SockSslCapture(pSock->pVm,pSsl,pCtxRes);
+	if( SockSslCheckFingerprint(pCtx,pSsl,pCtxRes,zErr,nErr) != 0 ){
+		SSL_free(pSsl);
+		goto fail_ctx;
 	}
 	SyBlobRelease(&sTmp);
 	pSock->pSsl = (void *)pSsl;
@@ -8056,7 +8325,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 		 * with the text carried. Run before the context is attached, so the
 		 * abandoned handle owes it no reference. */
 		char zSslErr[512];
-		if( SockSslHandshake((sock_private *)pDev->pHandle,iCrypto,pCtxRes,zHost,
+		if( SockSslHandshake(pCtx,(sock_private *)pDev->pHandle,iCrypto,pCtxRes,zHost,
 				zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zSslErr);
 			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Failed to enable crypto");
@@ -8322,7 +8591,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_
 		 * rather than handed back speaking plaintext. Run before the context is
 		 * attached below, so the abandoned handle owes it no reference. */
 		char zSslErr[512];
-		if( SockSslHandshake((sock_private *)pOut->pHandle,
+		if( SockSslHandshake(pCtx,(sock_private *)pOut->pHandle,
 				((sock_private *)pDev->pHandle)->iCryptoAccept,
 				(phl_stream_ctx *)pDev->pCtxRes,0,zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
 			/* Three warnings, like php: the crypto layer says what went wrong,
@@ -9855,7 +10124,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_enable_crypto(ph7_context *pCtx,int nA
 			zHost[0] = 0;
 		}
 	}
-	if( SockSslHandshake(pSock,iMethod,pCtxRes,zHost,zErr,(int)sizeof(zErr)) != PH7_OK ){
+	if( SockSslHandshake(pCtx,pSock,iMethod,pCtxRes,zHost,zErr,(int)sizeof(zErr)) != PH7_OK ){
 		/* One warning only. Unlike the ssl:// opener and the tls:// accept,
 		 * which each add their own sentence for the door that could not be
 		 * opened, this door reports nothing of its own: the crypto layer's text
