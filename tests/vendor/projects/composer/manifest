@@ -1,0 +1,28 @@
+# composer/composer -- picked for the SOLVER. Nothing else measured here builds a
+# graph and searches it: the dependency resolver is a long-running pure-PHP
+# computation over hundreds of thousands of array operations, string comparisons and
+# recursive structures, and its tests assert an exact solution rather than "no error".
+# It is also the tool that installs every other project in this directory, so a wrong
+# answer here is a wrong answer under the whole gate.
+REPO="https://github.com/composer/composer.git"
+# The release this box's own `composer` is, so the resolver under test is the resolver
+# that produced every committed lock beside it.
+REF="2.10.2"
+# composer's own `test` script is `@php simple-phpunit`, and symfony/phpunit-bridge's
+# simple-phpunit DOWNLOADS and installs a PHPUnit on first use. That install is a build
+# step, not a measurement, so it runs once under the ORACLE; the steps below then run
+# the installed PHPUnit under each engine in turn.
+PREPARE='"$PHP_BIN" vendor/bin/simple-phpunit install'
+# Three things differ between two runs of the SAME engine here, and all three reach
+# the output: PHPUnit mints every mock's class name with a per-run hash
+# (Mock_Runtime_b215996f) that a TypeError raised inside one prints, and Composer's
+# own scratch directory and the target it extracts into carry fresh random names
+# that one test quotes as part of the command line it failed to run.
+NORMALIZE='s/Mock_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/Mock_\1_@HASH@/g
+s#composer-test-[0-9a-f]\{16,\}#composer-test-@TMP@#g
+s#composer-test-@TMP@/composer/[0-9a-f]\{8\}\b#composer-test-@TMP@/composer/@DIR@#g
+s#composer-test-@TMP@/composer/tmp-[0-9a-f]\{32\}#composer-test-@TMP@/composer/tmp-@NAME@#g'
+# The suite is 17s under php and roughly 7 minutes under phl on this box, so the
+# 600s default budget is inside the noise of a loaded machine rather than above it.
+# A timeout here would be read as a divergence, which is exactly the wrong answer.
+STEP_TIMEOUT=1800
