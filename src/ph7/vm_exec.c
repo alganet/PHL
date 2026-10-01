@@ -2526,26 +2526,36 @@ case PH7_OP_JNZ:
 case PH7_OP_NOOP:
 	break;
 /*
- * SNAPSHOT: * * *
+ * SNAPSHOT: P1 * *
  *
- * Give the top of the stack its own copy of the string bytes it is borrowing.
+ * Give the top P1 stack slots their own copy of the string bytes they are borrowing
+ * (P1 = 0 means the top slot alone).
  *
- * A value copy aliases the source's buffer rather than duplicating it, so an argument
- * pushed from `$x` is a pointer into `$x` plus the length `$x` had at the push. A later
- * argument that assigns to `$x` overwrites those bytes in place, and the pushed argument
- * then reads the NEW content through the OLD length -- `show($x, $x = 'second')` printed
- * "secon" for an argument php had already copied as "first". The compiler emits this
- * after a by-value argument only when a later argument in the same list can run code, so
- * the copy is paid for exactly where php's own SEND_VAR pays for a reference.
+ * A value copy aliases the source's buffer rather than duplicating it, so a value pushed
+ * from `$x` is a pointer into `$x` plus the length `$x` had at the push. Anything that
+ * runs before the push is consumed and assigns to `$x` overwrites those bytes in place,
+ * and the pushed value then reads the NEW content through the OLD length --
+ * `show($x, $x = 'second')` printed "secon" for an argument php had already copied as
+ * "first", and `[$x, $x = 'second']` built the same truncated element. The compiler emits
+ * this only where something that can run code still sits between a push and its consumer,
+ * so ordinary code pays for it exactly where php's own SEND_VAR pays for a reference.
  */
-case PH7_OP_SNAPSHOT:
+case PH7_OP_SNAPSHOT: {
+	sxi32 nSnap = pInstr->iP1 > 0 ? pInstr->iP1 : 1;
+	ph7_value *pSnap;
 #ifdef UNTRUST
 	if( pTos < pStack ){
 		goto Abort;
 	}
 #endif
-	SyBlobMakePrivate(&pTos->sBlob);
+	if( &pTos[-nSnap+1] < pStack ){
+		nSnap = (sxi32)(pTos - pStack) + 1;
+	}
+	for( pSnap = pTos ; nSnap > 0 ; --nSnap, --pSnap ){
+		SyBlobMakePrivate(&pSnap->sBlob);
+	}
 	break;
+					   }
 /*
  * POP: P1 * *
  *
@@ -2575,6 +2585,32 @@ case PH7_OP_DUP:
 	PH7_MemObjInit(pVm,pTos);
 	PH7_MemObjStore(pTos - 1,pTos);
 	break;
+/*
+ * SWAP: * * *
+ *
+ * Exchange the top two stack slots.
+ *
+ * Emitted for one shape only: a binary operator whose LEFT operand is a plain `$var` and
+ * whose RIGHT operand can run code. php never materializes a plain variable operand -- it
+ * reads the compiled variable AT the operator -- so `$n = 1; $n - ($n = 5)` is 0 there and
+ * the assignment's value is what BOTH sides see. Copying the left operand would answer the
+ * pre-assignment 1; the load has to MOVE instead, which puts it on the stack above the
+ * right operand and needs the two put back in the operator's order. The whole ph7_value
+ * moves, pVm included -- it is the same pointer in both -- and no jump can land between
+ * the two pushes and this, so nothing is holding either slot's address.
+ */
+case PH7_OP_SWAP: {
+	ph7_value sSwap;
+#ifdef UNTRUST
+	if( pTos < &pStack[1] ){
+		goto Abort;
+	}
+#endif
+	sSwap  = pTos[0];
+	pTos[0] = pTos[-1];
+	pTos[-1] = sSwap;
+	break;
+				  }
 /*
  * OP_FUNC_DECL * * P3
  *

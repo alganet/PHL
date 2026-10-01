@@ -1483,6 +1483,48 @@ PH7_PRIVATE SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd)
 	return pEnd;
 }
 /*
+ * Can this run of tokens RUN anything?
+ *
+ * The array literal is compiled entry by entry off the raw token stream -- there is no
+ * expression tree to ask -- so the question GenStateArgRunsCode answers for a call's
+ * arguments is answered here from the tokens. Only two shapes read without running: a
+ * plain `$name`, and one literal or constant token. A bare identifier is a constant
+ * lookup, which is a table read in php too. Everything else -- an operator, a call, a
+ * subscript, an interpolated string -- either writes or hands control to something that
+ * can, and is answered YES so the entries already pushed are copied first.
+ */
+static int GenStateArrayEntryRunsCode(SyToken *pStart,SyToken *pEnd)
+{
+	sxu32 nTok = (sxu32)(pEnd - pStart);
+	if( nTok == 2 ){
+		return !((pStart[0].nType & PH7_TK_DOLLAR)
+		      && (pStart[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)));
+	}
+	if( nTok == 1 ){
+		return (pStart[0].nType
+			& (PH7_TK_NUM|PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_SSTR|PH7_TK_NOWDOC)) == 0;
+	}
+	return 1;
+}
+/*
+ * Can this run of tokens leave a VIEW of storage user code can still write to?
+ *
+ * Every spelling that reads writable storage -- a variable, an element, a property, a
+ * static property -- carries a `$`. A constant, a class constant, an enum case and a
+ * literal are immutable, and a call hands back a value of its own; none of those can be
+ * written under an entry that is already pushed, so a literal-only list pays nothing.
+ */
+static int GenStateArrayEntryMayAlias(SyToken *pStart,SyToken *pEnd)
+{
+	while( pStart < pEnd ){
+		if( pStart->nType & PH7_TK_DOLLAR ){
+			return 1;
+		}
+		pStart++;
+	}
+	return 0;
+}
+/*
  * Compile the body of an array literal (shared by array() and short syntax []).
  * Assumes pGen->pIn points to the first content token and pGen->pEnd points
  * one past the last content token (i.e. the delimiters have been excluded).
@@ -1495,6 +1537,16 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 	sxi32 iSpread = 0;
 	sxi32 nPair = 0;
 	sxi32 rc;
+	/* An entry already pushed BORROWS its source's string bytes, so a later entry that
+	 * runs code -- an assignment, a call, `++` -- writes through it: `[$x, $x = 'second']`
+	 * gave element 0 the assignment's bytes read through the old length ("secon"), and
+	 * `[$x => 1, ($x = 'new') => 2]` gave both entries the same KEY and lost one of them.
+	 * php builds each element where it is written and never sees the later write. So make
+	 * everything pushed so far private before compiling an entry that can run something --
+	 * only when something pushed can actually be a view, which a literal-only list never
+	 * is. */
+	sxi32 nPushed = 0;   /* stack slots this literal has pushed */
+	int bAliasable = 0;  /* ...and whether any of them can be a view of live storage */
 	xValidator = 0;
 	for(;;){
 		/* Jump leading commas. Exactly ONE separates two entries; a second one (or a comma
@@ -1554,11 +1606,16 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 				return SXRET_OK;
 			}
 			/* Compile the expression holding the key */
+			if( nPushed > 0 && bAliasable && GenStateArrayEntryRunsCode(pKey,pCur) ){
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_SNAPSHOT,nPushed,0,0,0);
+			}
+			bAliasable = bAliasable || GenStateArrayEntryMayAlias(pKey,pCur);
 			rc = GenStateCompileArrayEntry(&(*pGen),pKey,pCur,
 				EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,0);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
+			nPushed++;
 			pCur++; /* Jump the '=>' operator */
 		}else{
 			/* Reset back the cursor and point to the entry value */
@@ -1568,6 +1625,7 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 			/* No key given: load the nil, TAGGED so LOAD_MAP knows this is an absent key
 			 * (auto-index) rather than an explicit `null =>` one, which php deprecates. */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,PH7_LOADC_NOKEY,0 /* nil index */,0,0);
+			nPushed++;
 		}
 		if( pCur->nType & PH7_TK_AMPER /*'&'*/){
 			/* Insertion by reference, [i.e: $a = array(&$x);] */
@@ -1610,6 +1668,10 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 		 * warning (a read-only diagnostic) from false-firing here. A missing
 		 * PROPERTY (`[&$o->p]`) is created the same way (EXPR_FLAG_MEMBER_REFSRC). */
 		pGen->bRefElemIsThis = 0;
+		if( nPushed > 0 && bAliasable && GenStateArrayEntryRunsCode(pCur,pGen->pIn) ){
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_SNAPSHOT,nPushed,0,0,0);
+		}
+		bAliasable = bAliasable || GenStateArrayEntryMayAlias(pCur,pGen->pIn);
 		rc = GenStateCompileArrayEntry(&(*pGen),pCur,pGen->pIn,
 			iEmitRef ? (EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_REFSRC)
 			         : EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,
@@ -1617,6 +1679,7 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		nPushed++;
 		if( iSpread ){
 			/* Mark the value on TOS as a spread source; LOAD_MAP merges it. */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_FLAG_SPREAD,0,0,0,0);

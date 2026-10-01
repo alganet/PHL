@@ -958,6 +958,102 @@ static int GenStateArgRunsCode(ph7_expr_node *pNode)
 	return 1;
 }
 /*
+ * Is this node the plain variable `$name`?
+ *
+ * `$$name`, `${expr}`, `$a[0]`, `$o->p` and `C::$s` are all excluded: php materializes
+ * every one of those where it is written and re-reads only a compiled variable, so the
+ * two halves of the operand rule below turn on exactly this question.
+ */
+static int GenStateNodeIsSimpleVar(ph7_expr_node *pNode)
+{
+	SyToken *pTok;
+	if( pNode == 0 || pNode->pOp != 0 || pNode->xCode != PH7_CompileVariable ){
+		return 0;
+	}
+	pTok = pNode->pStart;
+	if( pTok == 0 || pNode->pEnd != &pTok[2] ){
+		return 0;
+	}
+	return (pTok[0].nType & PH7_TK_DOLLAR) != 0
+	    && (pTok[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0;
+}
+/*
+ * Does this operator take the VALUE of both operands, with nothing between them?
+ *
+ * The concatenation, arithmetic, shift, bitwise, comparison and `xor` operators, which
+ * evaluate their left operand, then their right, and then read both. `&&`, `||` and `??`
+ * are excluded because they may not evaluate the right operand at all -- and when they do,
+ * the left one has already been consumed by the short-circuit test. Everything else here
+ * is either unary, an assignment (whose operands parse.c has swapped), or an access.
+ */
+static int GenStateBinOpReadsBothOperands(sxi32 iVmOp)
+{
+	switch( iVmOp ){
+	case PH7_OP_CAT:
+	case PH7_OP_ADD: case PH7_OP_SUB: case PH7_OP_MUL:
+	case PH7_OP_DIV: case PH7_OP_MOD: case PH7_OP_POW:
+	case PH7_OP_SHL: case PH7_OP_SHR:
+	case PH7_OP_BAND: case PH7_OP_BOR: case PH7_OP_BXOR: case PH7_OP_LXOR:
+	case PH7_OP_LT: case PH7_OP_LE: case PH7_OP_GT: case PH7_OP_GE:
+	case PH7_OP_EQ: case PH7_OP_NEQ: case PH7_OP_TEQ: case PH7_OP_TNE:
+	case PH7_OP_SPACESHIP:
+		return 1;
+	default:
+		return 0;
+	}
+}
+/*
+ * Can the value this expression leaves on the stack be a VIEW of storage user code can
+ * still write to?
+ *
+ * A variable read of any spelling -- `$x`, `$$x`, `$a[0]`, `$o->p`, `C::$s` -- pushes the
+ * source's own bytes (PH7_MemObjLoad sets SXBLOB_RDONLY and points at them), and so does
+ * anything that merely SELECTS one of those: a ternary, `??`, `@`, an assignment (which
+ * hands back what it stored), a short-circuit `&&`/`||` (whose jump keeps the operand
+ * itself), and a CAST, which for a string already a string is a no-op that keeps the view.
+ * An operator's own result, a call's or `new`'s return, a literal, an array constructor and
+ * a closure are values the expression owns and nobody can reach.
+ *
+ * Answered from the SHAPE, and the unknown shape answers YES: a needless copy costs one
+ * instruction, a missed one is a silently wrong value.
+ */
+static int GenStateNodeMayAliasStorage(ph7_expr_node *pNode)
+{
+	if( pNode == 0 ){
+		return 0;
+	}
+	if( pNode->pOp == 0 ){
+		return pNode->xCode == PH7_CompileVariable;
+	}
+	if( GenStateBinOpReadsBothOperands(pNode->pOp->iVmOp) ){
+		return 0;
+	}
+	switch( pNode->pOp->iVmOp ){
+	case PH7_OP_CALL: case PH7_OP_NEW: case PH7_OP_CLONE: case PH7_OP_IS_A:
+	case PH7_OP_UMINUS: case PH7_OP_UPLUS: case PH7_OP_BITNOT: case PH7_OP_LNOT:
+		return 0;
+	default:
+		return 1;
+	}
+}
+/*
+ * Re-emit an instruction that was popped, exactly as it stood.
+ *
+ * PH7_VmEmitInstr stamps the CURRENT token's line and strict_types mode, which for a
+ * moved instruction is the wrong position -- the codegen cursor has walked past the
+ * operand it belongs to. Overwriting the fresh entry with the saved one keeps the source
+ * line a diagnostic will name.
+ */
+static void GenStateReEmitInstr(ph7_gen_state *pGen,const VmInstr *pSaved)
+{
+	VmInstr *pNew;
+	PH7_VmEmitInstr(pGen->pVm,pSaved->iOp,pSaved->iP1,pSaved->iP2,pSaved->p3,0);
+	pNew = PH7_VmPeekInstr(pGen->pVm);
+	if( pNew ){
+		*pNew = *pSaved;
+	}
+}
+/*
  * Recover the bare global-builtin name from a call's callee node.
  *
  * Handles the unqualified form `preg_match(...)` (a single PH7_TK_ID token) and
@@ -1488,6 +1584,8 @@ static sxi32 GenStateEmitExprCode(
 	sxu32 nRhsNsBase = 0;
 	sxi32 iRhsFlags = 0; /* control flags the RIGHT operand is compiled under */
 	sxu32 nLhsFirst = 0; /* instruction index the LEFT operand starts at */
+	int bMoveLhs = 0;    /* the LEFT operand's load was lifted past the RIGHT one */
+	VmInstr sMovedLhs;   /* ...and this is it, verbatim */
 	/* Consumed here so it describes THIS node only — the direct operand of a `new` —
 	 * and never travels down into the operand's own sub-expressions. */
 	int bNewCallee = (iFlags & EXPR_FLAG_NEW_CALLEE) != 0;
@@ -2329,6 +2427,37 @@ static sxi32 GenStateEmitExprCode(
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,(sxi32)nFalseIdx,0,0);
 		return SXRET_OK;
 	}
+	/* An operand waiting on the stack BORROWS its source's string bytes: PH7_MemObjLoad
+	 * hands back a read-only view -- a pointer plus the length the source had at the push
+	 * -- so a right operand that can RUN (an assignment, a call, `++`, a fetch that may
+	 * reach __get) writes through a left operand that is already there. `$a[0] . ($a[0] =
+	 * 'new')` answered `newnew` for php's `oldnew`, and when the write REALLOCATES the
+	 * buffer instead of overwriting it the view is a use-after-free.
+	 *
+	 * php has no such window, and its rule has two halves that point opposite ways: it
+	 * materializes every operand where it is written EXCEPT a plain `$var`, which it never
+	 * pushes at all -- the operator reads the compiled variable itself, so `$x . ($x =
+	 * 'new')` is `newnew` there and `$n = 1; $n - ($n = 5)` is 0. A copy is the answer for
+	 * one half and the wrong answer for the other.
+	 *
+	 * So: copy the shapes php copies, and for the plain variable MOVE its load past the
+	 * right operand (OP_SWAP puts the two back in the operator's order), which is what
+	 * "read it at the operator" means in a stack machine. Both arms are gated on the right
+	 * operand being able to run something, so an ordinary `$a . $b` emits neither. */
+	if( GenStateBinOpReadsBothOperands(iVmOp) && pNode->pLeft && pNode->pRight
+	 && GenStateArgRunsCode(pNode->pRight) ){
+		if( GenStateNodeIsSimpleVar(pNode->pLeft) ){
+			VmInstr *pLhsLoad = PH7_VmPeekInstr(pGen->pVm);
+			if( pLhsLoad && pLhsLoad->iOp == PH7_OP_LOAD
+			 && PH7_VmInstrLength(pGen->pVm) == nLhsFirst + 1 ){
+				sMovedLhs = *pLhsLoad;
+				(void)PH7_VmPopInstr(pGen->pVm);
+				bMoveLhs = 1;
+			}
+		}else if( GenStateNodeMayAliasStorage(pNode->pLeft) ){
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_SNAPSHOT,0,0,0,0);
+		}
+	}
 	/* Generate code for the right tree */
 	if( pNode->pRight ){
 		if( iVmOp == PH7_OP_LAND ){
@@ -2485,6 +2614,14 @@ static sxi32 GenStateEmitExprCode(
 		/* `new class {…}`: PH7_CompileAnnonClass already emitted the args, the
 		 * class-name constant, and OP_NEW. Suppress this redundant OP_NEW. */
 		iVmOp = 0;
+	}
+	if( bMoveLhs ){
+		/* The left operand's load, lifted to here so it reads the variable AFTER the
+		 * right operand ran -- php's compiled-variable read. Unconditional, and ahead
+		 * of every branch below: the instruction was taken OUT of the stream, so there
+		 * is no path this may be skipped on. */
+		GenStateReEmitInstr(&(*pGen),&sMovedLhs);
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_SWAP,0,0,0,0);
 	}
 	if( iVmOp > 0 ){
 		if( iVmOp == PH7_OP_INCR || iVmOp == PH7_OP_DECR ){

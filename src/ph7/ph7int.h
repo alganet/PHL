@@ -4925,14 +4925,16 @@ enum ph7_vm_op {
                          * whole declaration re-compiles here, at its execution point, where
                          * spl_autoload_register has taken effect. php's own model: classes with
                          * unresolved parents are declared in execution order, not hoisted. */
-  PH7_OP_SNAPSHOT       /* Give the top of the stack its own copy of the string bytes it was
-                         * loaded from. A value copy only BORROWS the source's bytes
-                         * (PH7_MemObjLoad), which is right while the source cannot change and
-                         * wrong the moment it can: an argument already pushed then reads a
-                         * LATER argument's assignment through the alias, with the length it
-                         * captured at the push. Emitted after a by-value argument that a later
-                         * argument in the same list could write to, and nowhere else, so an
-                         * ordinary call pays nothing for it. */
+  PH7_OP_SNAPSHOT       /* Give the top P1 stack slots their own copy of the string bytes they
+                         * were loaded from (P1 = 0 means the top slot alone). A value copy only
+                         * BORROWS the source's bytes (PH7_MemObjLoad), which is right while the
+                         * source cannot change and wrong the moment it can: a value already
+                         * pushed then reads a LATER write to that source through the alias, with
+                         * the length it captured at the push. Emitted where something that can
+                         * RUN still sits between a push and the instruction that consumes it --
+                         * a by-value argument before a later argument, an array literal's
+                         * entries before a later entry, a binary operator's left operand before
+                         * its right -- and nowhere else, so ordinary code pays nothing for it. */
 };
 /*
  * PH7_OP_CATCH_JMP.iP1 payload. Both halves are nesting depths of the source, never
