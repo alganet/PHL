@@ -1018,6 +1018,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "mb_detect_encoding", PH7_builtin_mb_detect_encoding_f },
 	{ "mb_detect_order", PH7_builtin_mb_detect_order_f },
 	{ "mb_list_encodings", PH7_builtin_mb_list_encodings_f },
+	{ "mb_encoding_aliases", PH7_builtin_mb_encoding_aliases_f },
 	{ "mb_convert_encoding", PH7_builtin_mb_convert_encoding_f },
 	{ "iconv",        PH7_builtin_iconv_f    }, /* builtin_iconv.c */
 	{ "iconv_strlen", PH7_builtin_iconv_strlen_f },

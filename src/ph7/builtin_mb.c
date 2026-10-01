@@ -767,41 +767,72 @@ static int MbCp1252Encode(sxu32 cp)
  * them — "8bit" and "ISO-8859-1" — ask for the same behaviour here, which is
  * why the name and the behaviour are two different ids: mb_internal_encoding()
  * has to answer with the name it was given, canonicalised. */
-static const struct MbEncName {
+struct MbEncName {
 	const char *zName;
 	int iEnc;
-} aMbEncName[] = {
-	{ "UTF-8", MB_ENC_UTF8 },
-	{ "8bit", MB_ENC_LATIN1 },
-	{ "ISO-8859-1", MB_ENC_LATIN1 },
-	{ "ASCII", MB_ENC_ASCII },
-	{ "Windows-1252", MB_ENC_CP1252 }
+	/* php's own ALIAS list for this name, in php's own order -- what
+	 * mb_encoding_aliases() answers, and the set every encoding argument accepts
+	 * beside the canonical spelling. Taken from the oracle
+	 * (`mb_encoding_aliases()` over each of the five, php 8.5.9). NULL-terminated.
+	 *
+	 * One table for both faces on purpose: the door used to carry a hand-written
+	 * chain of the four or five spellings somebody had happened to need, so php
+	 * took `us`, `IBM367`, `csASCII` and six more ASCII aliases where this engine
+	 * raised its "must be a valid encoding" ValueError. A name php has an alias
+	 * row for is a name php accepts. */
+	const char *const *azAlias;
+};
+static const char *const azMbAliasUtf8[]   = { "utf8", 0 };
+static const char *const azMbAlias8bit[]   = { "binary", 0 };
+static const char *const azMbAliasLatin1[] = { "ISO8859-1", "latin1", 0 };
+static const char *const azMbAliasAscii[]  = {
+	"ANSI_X3.4-1968", "iso-ir-6", "ANSI_X3.4-1986", "ISO_646.irv:1991",
+	"US-ASCII", "ISO646-US", "us", "IBM367", "IBM-367", "cp367", "csASCII", 0
+};
+static const char *const azMbAliasCp1252[] = { "cp1252", 0 };
+static const struct MbEncName aMbEncName[] = {
+	{ "UTF-8", MB_ENC_UTF8, azMbAliasUtf8 },
+	{ "8bit", MB_ENC_LATIN1, azMbAlias8bit },
+	{ "ISO-8859-1", MB_ENC_LATIN1, azMbAliasLatin1 },
+	{ "ASCII", MB_ENC_ASCII, azMbAliasAscii },
+	/* php's second spelling for this one is an ALIAS (`cp1252`), not a name:
+	 * `1252` and `Windows1252` are neither, and stay refused (probed). */
+	{ "Windows-1252", MB_ENC_CP1252, azMbAliasCp1252 }
 };
 /* Resolve an encoding name to an aMbEncName[] index, or -1 when it is outside
- * PHL's modelled set. Surrounding ASCII whitespace is trimmed (php accepts
- * " UTF-8"). */
+ * PHL's modelled set. The canonical name and every alias above, case-insensitive.
+ *
+ * NO whitespace is trimmed here, and that is php's line: a name is a name. Only a
+ * STRING parsed as a comma-separated LIST trims its tokens (MbEncListBuild), which
+ * is why `mb_convert_encoding($s, "UTF-8", " utf8")` works in php and
+ * `mb_strlen($s, " utf8")` -- and the same list door given an ARRAY, `[" UTF-8"]` --
+ * do not. Trimming here made all twelve single-encoding arguments permissive and
+ * quoted the untrimmed token back in the list door's own diagnostic. */
 static int MbEncodingNameId(const char *z,int n)
 {
-	while( n > 0 && (z[0]==' '||z[0]=='\t'||z[0]=='\n'||z[0]=='\r') ){ z++; n--; }
-	while( n > 0 && (z[n-1]==' '||z[n-1]=='\t'||z[n-1]=='\n'||z[n-1]=='\r') ){ n--; }
-	if( (n==5 && SyStrnicmp(z,"UTF-8",5)==0) || (n==4 && SyStrnicmp(z,"UTF8",4)==0) ){
+	int i;
+	if( n < 1 ){
+		return -1;
+	}
+	for( i = 0 ; i < (int)SX_ARRAYSIZE(aMbEncName) ; i++ ){
+		const char *const *pz;
+		int nName = (int)SyStrlen(aMbEncName[i].zName);
+		if( n == nName && SyStrnicmp(z,aMbEncName[i].zName,(sxu32)n) == 0 ){
+			return i;
+		}
+		for( pz = aMbEncName[i].azAlias ; *pz ; pz++ ){
+			int nAlias = (int)SyStrlen(*pz);
+			if( n == nAlias && SyStrnicmp(z,*pz,(sxu32)n) == 0 ){
+				return i;
+			}
+		}
+	}
+	/* php also takes `UTF8` for `UTF-8`, which is not in its alias list: the name
+	 * itself is matched with the hyphen ignored (`mb_encoding_aliases("UTF8")`
+	 * answers, and does not list it). One name does this, so it is spelled out
+	 * rather than made a rule. */
+	if( n == 4 && SyStrnicmp(z,"UTF8",4) == 0 ){
 		return 0;
-	}
-	if( (n==4 && SyStrnicmp(z,"8bit",4)==0) || (n==6 && SyStrnicmp(z,"binary",6)==0) ){
-		return 1;
-	}
-	if( (n==10 && SyStrnicmp(z,"ISO-8859-1",10)==0) || (n==9 && SyStrnicmp(z,"ISO8859-1",9)==0)
-	 || (n==6 && SyStrnicmp(z,"latin1",6)==0) ){
-		return 2;
-	}
-	if( (n==5 && SyStrnicmp(z,"ASCII",5)==0) || (n==8 && SyStrnicmp(z,"US-ASCII",8)==0) ){
-		return 3;
-	}
-	/* php's two spellings, both canonicalised to `Windows-1252`. `1252` and
-	 * `Windows1252` are NOT names it knows (probed). */
-	if( (n==12 && SyStrnicmp(z,"Windows-1252",12)==0)
-	 || (n==6 && SyStrnicmp(z,"CP1252",6)==0) ){
-		return 4;
 	}
 	return -1;
 }
@@ -2374,34 +2405,24 @@ static int MbUtf8Errors(const unsigned char *z,int n)
 	return e;
 }
 /* Map an encoding name to PHL's detectable set: 0 = ASCII, 1 = UTF-8,
- * 2 = ISO-8859-1, MB_DETECT_NEVER = 8bit/binary, -1 = out of scope. Surrounding
- * ASCII whitespace is trimmed (php accepts "ASCII, UTF-8"). */
+ * 2 = ISO-8859-1, MB_DETECT_NEVER = 8bit/binary, -1 = out of scope.
+ *
+ * The NAMES are aMbEncName[]'s -- this door carried its own copy of the spelling
+ * chain, which is how `mb_convert_encoding($s,'UTF-8','us')` came to refuse an
+ * alias `mb_strlen($s,'us')` took. It only owns the id space, which is a different
+ * one (the detect candidates are ordered and 8bit is a row php never selects), so
+ * that is all it maps. */
+static const int aMbNameToDetect[] = {
+	1,                 /* UTF-8 */
+	MB_DETECT_NEVER,   /* 8bit / binary */
+	2,                 /* ISO-8859-1 */
+	0,                 /* ASCII */
+	4                  /* Windows-1252 */
+};
 static int MbDetectEncId(const char *z,int n)
 {
-	while( n > 0 && (z[0]==' '||z[0]=='\t'||z[0]=='\n'||z[0]=='\r') ){ z++; n--; }
-	while( n > 0 && (z[n-1]==' '||z[n-1]=='\t'||z[n-1]=='\n'||z[n-1]=='\r') ){ n--; }
-	if( (n == 5 && SyStrnicmp(z,"ASCII",5) == 0)
-	 || (n == 8 && SyStrnicmp(z,"US-ASCII",8) == 0) ){
-		return 0;
-	}
-	if( (n == 5 && SyStrnicmp(z,"UTF-8",5) == 0)
-	 || (n == 4 && SyStrnicmp(z,"UTF8",4) == 0) ){
-		return 1;
-	}
-	if( (n == 10 && SyStrnicmp(z,"ISO-8859-1",10) == 0)
-	 || (n == 9 && SyStrnicmp(z,"ISO8859-1",9) == 0)
-	 || (n == 6 && SyStrnicmp(z,"latin1",6) == 0) ){
-		return 2;
-	}
-	if( (n == 4 && SyStrnicmp(z,"8bit",4) == 0)
-	 || (n == 6 && SyStrnicmp(z,"binary",6) == 0) ){
-		return MB_DETECT_NEVER;
-	}
-	if( (n == 12 && SyStrnicmp(z,"Windows-1252",12) == 0)
-	 || (n == 6 && SyStrnicmp(z,"CP1252",6) == 0) ){
-		return 4;
-	}
-	return -1;
+	int iName = MbEncodingNameId(z,n);
+	return iName < 0 ? -1 : aMbNameToDetect[iName];
 }
 /* The canonical spelling php's `mb_detect_order()` answers for each of them --
  * `binary` reads back as `8bit`, `latin1` as `ISO-8859-1`, `UTF8` as `UTF-8`. */
@@ -2551,10 +2572,14 @@ static int MbEncListBuild(mb_enclist *p,ph7_value *pVal)
 		for( i = 0 ; i <= n ; i++ ){
 			if( i == n || z[i] == ',' ){
 				const char *zTok = &z[iStart];
-				int nTok = i - iStart, t = nTok;
-				/* ignore an empty / all-whitespace token */
+				int t = i - iStart;
+				/* THE list door's trim, and the only one: a token is trimmed at both
+				 * ends before it is looked up, and it is the trimmed spelling php
+				 * quotes back when it does not know the name. An empty or
+				 * all-whitespace token is ignored rather than refused. */
 				while( t > 0 && (zTok[0]==' '||zTok[0]=='\t'||zTok[0]=='\n'||zTok[0]=='\r') ){ zTok++; t--; }
-				if( t > 0 && MbEncListAdd(p,&z[iStart],nTok) == SXERR_ABORT ){
+				while( t > 0 && (zTok[t-1]==' '||zTok[t-1]=='\t'||zTok[t-1]=='\n'||zTok[t-1]=='\r') ){ t--; }
+				if( t > 0 && MbEncListAdd(p,zTok,t) == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
 				iStart = i + 1;
@@ -2664,6 +2689,49 @@ static int PH7_builtin_mb_list_encodings(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	for( i = 0 ; i < (int)SX_ARRAYSIZE(azList) ; i++ ){
 		ph7_value_string(pName,azList[i],-1);
+		ph7_array_add_elem(pArray,0,pName);
+		ph7_value_reset_string_cursor(pName);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * array mb_encoding_aliases(string $encoding)
+ *
+ * The OTHER aliases php knows for an encoding -- never its canonical name, and an
+ * empty array for one that has none. The lookup takes an alias too (`latin1`
+ * answers ISO-8859-1's list) and is case-insensitive; a name outside this engine's
+ * modelled set is the family's usual "must be a valid encoding" ValueError, which
+ * is what php raises for a name IT does not know.
+ *
+ * Something asks for it: every static analyser built on phpstan reads its supported
+ * encodings as `mb_list_encodings()` crossed with this, and treats a `false` as
+ * unreachable -- so with the name missing, symfony/polyfill-mbstring's stand-in ran
+ * instead and returned `false` against its own declared `: array`.
+ */
+static int PH7_builtin_mb_encoding_aliases(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zEnc;
+	int nEnc,iName;
+	ph7_value *pArray, *pName;
+	const char *const *pz;
+	if( nArg < 1 ){
+		return PH7_OK; /* the declared `string $encoding` screen already spoke */
+	}
+	zEnc = ph7_value_to_string(apArg[0],&nEnc);
+	iName = MbEncodingNameId(zEnc,nEnc);
+	if( iName < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_encoding_aliases(): Argument #1 ($encoding) must be a valid encoding, \"%.*s\" given",
+			nEnc,zEnc);
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pName = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pName == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( pz = aMbEncName[iName].azAlias ; *pz ; pz++ ){
+		ph7_value_string(pName,*pz,-1);
 		ph7_array_add_elem(pArray,0,pName);
 		ph7_value_reset_string_cursor(pName);
 	}
@@ -2895,6 +2963,7 @@ PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apAr
 PH7_PRIVATE int PH7_builtin_mb_detect_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_detect_encoding(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_detect_order_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_detect_order(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_list_encodings_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_list_encodings(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_encoding_aliases_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_encoding_aliases(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_convert_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_encoding(pCtx,nArg,apArg); }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */

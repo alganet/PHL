@@ -405,7 +405,8 @@ static const VmExtName aExtFunc[] = {
 	{"session_cache_expire",PH7_EXT_SESSION}, {"session_set_cookie_params",PH7_EXT_SESSION},
 	{"session_start",PH7_EXT_SESSION},
 	/* mbstring */
-	{"mb_internal_encoding",PH7_EXT_MBSTRING}, {"mb_substitute_character",PH7_EXT_MBSTRING},
+	{"mb_internal_encoding",PH7_EXT_MBSTRING}, {"mb_detect_order",PH7_EXT_MBSTRING},
+	{"mb_substitute_character",PH7_EXT_MBSTRING},
 	{"mb_str_split",PH7_EXT_MBSTRING}, {"mb_strlen",PH7_EXT_MBSTRING},
 	{"mb_strpos",PH7_EXT_MBSTRING}, {"mb_strrpos",PH7_EXT_MBSTRING},
 	{"mb_stripos",PH7_EXT_MBSTRING}, {"mb_strripos",PH7_EXT_MBSTRING},
@@ -418,6 +419,7 @@ static const VmExtName aExtFunc[] = {
 	{"mb_strtolower",PH7_EXT_MBSTRING}, {"mb_ucfirst",PH7_EXT_MBSTRING},
 	{"mb_lcfirst",PH7_EXT_MBSTRING}, {"mb_trim",PH7_EXT_MBSTRING}, {"mb_ltrim",PH7_EXT_MBSTRING},
 	{"mb_rtrim",PH7_EXT_MBSTRING}, {"mb_detect_encoding",PH7_EXT_MBSTRING},
+	{"mb_list_encodings",PH7_EXT_MBSTRING}, {"mb_encoding_aliases",PH7_EXT_MBSTRING},
 	{"mb_check_encoding",PH7_EXT_MBSTRING}, {"mb_scrub",PH7_EXT_MBSTRING},
 	{"mb_ord",PH7_EXT_MBSTRING}, {"mb_chr",PH7_EXT_MBSTRING}, {"mb_str_pad",PH7_EXT_MBSTRING},
 	/* fileinfo -- php's own order for the extension */
