@@ -5329,7 +5329,10 @@ PH7_PRIVATE int PH7_TzFind(const char *zName,int nName);
 PH7_PRIVATE int PH7_TzAbbrFind(const char *zName,int nName,sxi32 *piOff,int *pbDst,
 	const char **pzCanon,int *pnCanon);
 PH7_PRIVATE int PH7_TzCount(void);
+PH7_PRIVATE int PH7_TzAt(int i);
 PH7_PRIVATE const char * PH7_TzName(int iZone,int *pnName,int *pbBackward);
+PH7_PRIVATE int PH7_TzGroup(int iZone);
+PH7_PRIVATE const char * PH7_TzCountry(int iZone);
 PH7_PRIVATE int PH7_TzOffsetAt(int iZone,sxi64 iTs,sxi32 *piOff,int *pbDst,
 	const char **pzAbbr,int *pnAbbr);
 PH7_PRIVATE int PH7_TzLocalToUtc(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff);

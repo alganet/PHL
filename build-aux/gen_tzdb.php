@@ -15,9 +15,10 @@
  * copy.
  *
  * The METADATA -- which identifiers `listIdentifiers()` shows without
- * ALL_WITH_BC, and each zone's `getLocation()` -- is asked of the PHP running
- * this script, because it is php's own classification rather than anything the
- * TZif files carry. Run it under the oracle, against the same tzdata the oracle
+ * ALL_WITH_BC, each zone's COUNTRY (out of `getLocation()`), and the 144-row
+ * ABBREVIATION table php resolves ahead of the database -- is asked of the PHP
+ * running this script, because it is php's own classification rather than
+ * anything the TZif files carry. Run it under the oracle, against the same tzdata the oracle
  * reads. Which files are zones at all is decided HERE, by the `TZif` magic:
  * a php built --with-system-tzdata answers `listIdentifiers(ALL_WITH_BC)` off a
  * directory walk and hands back `leapseconds` and `tzdata.zi` beside the real
@@ -63,6 +64,16 @@ if (!$zones) {
 
 /* --- php's own classification --------------------------------------------- */
 $all = array_flip(DateTimeZone::listIdentifiers(DateTimeZone::ALL));
+
+/* Each zone's COUNTRY, which is what listIdentifiers(PER_COUNTRY, 'BR') sorts
+ * on. It comes from tzdata's zone.tab and php answers it through
+ * getLocation(); a zone with no country -- every backward link, `UTC`, the
+ * `Etc/` set -- reads `??` there and matches no country. Two bytes per zone. */
+$cc = [];
+foreach ($zones as $id => $_) {
+    $l = (new DateTimeZone($id))->getLocation();
+    $cc[$id] = ($l === false || !isset($l['country_code'])) ? '??' : $l['country_code'];
+}
 
 /* --- The ABBREVIATION table -----------------------------------------------
  * php resolves a zone name against this BEFORE the database, which is the only
@@ -123,7 +134,7 @@ foreach ($zones as $id => $data) {
         'ofst'  => $blobs[$blk],
         'byte'  => strlen($blk),
         'bc'    => !isset($all[$id]),
-
+        'cc'    => $cc[$id],
     ];
 }
 
@@ -144,10 +155,14 @@ $w(<<<HDR
  * the reader in builtin_date_tzdb.c is a TZif reader, so what this table says
  * is exactly what the platform's own zoneinfo said.
  *
- * aTzZone is sorted by identifier, byte-wise and case-SENSITIVELY, which is the
- * order the binary search and `timezone_identifiers_list()` both want. The
- * lookup itself folds case -- php resolves `europe/paris` and stores the
- * caller's spelling -- so it walks the range rather than comparing folded keys.
+ * aTzZone is in byte order, and NOTHING reads it in that order: both the lookup
+ * and the listing go through aTzFold, the same rows sorted case-INSENSITIVELY.
+ * That is one order for two reasons -- php resolves `europe/paris` and stores
+ * the caller's spelling, so the lookup folds case; and php PRINTS
+ * `listIdentifiers()` folded too, which only ALL_WITH_BC's odd-cased backward
+ * links reveal (`CET` between `Canada/Yukon` and `Chile/Continental`).
+ *
+ * aTzAbbr is php's abbreviation table, which it resolves BEFORE this one.
  *
  * cut from tzdata $version
 
@@ -174,13 +189,15 @@ $w("struct PH7_TzZoneRow\n{\n");
 $w("\tconst char *zName;   /* canonical identifier */\n");
 $w("\tsxu8 nName;\n");
 $w("\tsxu8 bBackward;      /* 1 = a compatibility LINK: out of ALL, in ALL_WITH_BC */\n");
+$w("\tchar zCc[2];         /* its ISO 3166-1 country, or `??` for a zone with none */\n");
 $w("\tsxu32 iOfst;         /* where its TZif block starts in aTzPayload */\n");
 $w("\tsxu32 nByte;\n");
 $w("};\n");
 $w("static const PH7_TzZoneRow aTzZone[PH7_TZDB_ZONE_COUNT] = {\n");
 foreach ($rows as $r) {
-    $w(sprintf("\t{ \"%s\", %d, %d, %d, %d },\n",
-        $r['id'], strlen($r['id']), $r['bc'] ? 1 : 0, $r['ofst'], $r['byte']));
+    $w(sprintf("\t{ \"%s\", %d, %d, { '%s', '%s' }, %d, %d },\n",
+        $r['id'], strlen($r['id']), $r['bc'] ? 1 : 0,
+        $r['cc'][0], $r['cc'][1], $r['ofst'], $r['byte']));
 }
 $w("};\n\n");
 

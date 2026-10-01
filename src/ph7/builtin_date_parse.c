@@ -4917,6 +4917,105 @@ static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
 	*piKind = DT_ZONE_OFFSET;
 	return 0;
 }
+/*
+ * ---------------------------------------------------------------------------
+ * DateTimeZone::listIdentifiers() and its timezone_identifiers_list() twin.
+ *
+ * The group argument is a BITMASK of the ten continents plus `UTC`, and the
+ * rule for reading it is not the plain mask it looks like -- two values are
+ * compared EXACTLY, which is why `-1` is ALL and not ALL_WITH_BC even though
+ * it has every bit:
+ *
+ *   == PER_COUNTRY (4096)     the country code decides, and a null or
+ *                             non-two-character one is a ValueError. Any two
+ *                             bytes are accepted and simply match nothing, so
+ *                             `12` and the lower-case `br` are empty arrays
+ *                             where `BR` is sixteen zones.
+ *   == ALL_WITH_BC (4095)     every identifier, backward links included.
+ *   anything else             `group & 2047` over the group bits, backward
+ *                             links excluded -- so `4097` is Africa alone and
+ *                             the country code beside it is ignored.
+ *
+ * The order is the table's, which is the identifiers' own byte order.
+ */
+#define DT_TZ_GROUP_ALL         2047
+#define DT_TZ_GROUP_ALL_W_BC    4095
+#define DT_TZ_GROUP_PER_COUNTRY 4096
+static int DtZoneListResult(ph7_context *pCtx,sxi64 iGroup,ph7_value *pCc,
+	const char *zWho)
+{
+	ph7_value *pArray,*pVal;
+	const char *zCc = 0;
+	int nCc = 0,i,nZone;
+	SXUNUSED(zWho);
+	if( iGroup == DT_TZ_GROUP_PER_COUNTRY ){
+		if( pCc != 0 && (pCc->iFlags & MEMOBJ_NULL) == 0 ){
+			zCc = ph7_value_to_string(pCc,&nCc);
+		}
+		if( nCc != 2 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #2 ($countryCode) must be a two-letter ISO 3166-1 "
+				"compatible country code when argument #1 ($timezoneGroup) is "
+				"DateTimeZone::PER_COUNTRY",zWho);
+		}
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	nZone = 0;
+#ifdef PH7_ENABLE_TZDB
+	nZone = PH7_TzCount();
+#else
+	/* No database, so no identifier to list -- the loop below runs zero times
+	 * and the country code the PER_COUNTRY screen above read goes unused. The
+	 * screen itself stays: its ValueError is about the ARGUMENTS, not about
+	 * what the build happens to carry. */
+	SXUNUSED(zCc);
+#endif
+	for( i = 0 ; i < nZone ; ++i ){
+#ifdef PH7_ENABLE_TZDB
+		/* Walked in php's own print order, which is case-INSENSITIVE: `CET`
+		 * sits between `Canada/Yukon` and `Chile/Continental`, and `localtime`
+		 * among the `L` names. The 419 canonical `Continent/City` names come out
+		 * the same either way, so only ALL_WITH_BC shows it. */
+		int iZone = PH7_TzAt(i);
+		int nName = 0,bBack = 0;
+		const char *zName = PH7_TzName(iZone,&nName,&bBack);
+		if( zName == 0 ){
+			continue;
+		}
+		if( iGroup == DT_TZ_GROUP_PER_COUNTRY ){
+			if( SyMemcmp(PH7_TzCountry(iZone),zCc,2) != 0 ){
+				continue;
+			}
+		}else if( iGroup != DT_TZ_GROUP_ALL_W_BC ){
+			if( bBack || (PH7_TzGroup(iZone) & (int)(iGroup & DT_TZ_GROUP_ALL)) == 0 ){
+				continue;
+			}
+		}
+		ph7_value_string(pVal,zName,nName);
+		ph7_array_add_elem(pArray,0,pVal);
+		ph7_value_reset_string_cursor(pVal);
+#endif
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/* DateTimeZone::listIdentifiers(int $timezoneGroup = ALL, ?string $countryCode = null) */
+static int vm_builtin_DateTimeZone_listIdentifiers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtZoneListResult(pCtx,
+		nArg > 0 ? ph7_value_to_int64(apArg[0]) : DT_TZ_GROUP_ALL,
+		nArg > 1 ? apArg[1] : 0,"DateTimeZone::listIdentifiers");
+}
+static int vm_builtin_timezone_identifiers_list(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtZoneListResult(pCtx,
+		nArg > 0 ? ph7_value_to_int64(apArg[0]) : DT_TZ_GROUP_ALL,
+		nArg > 1 ? apArg[1] : 0,"timezone_identifiers_list");
+}
 /* DateTimeZone::__construct(string $timezone) */
 static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -8441,6 +8540,27 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DateTimeZone_wakeup },
 		{ "__set_state",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "array $array", "@DateTimeZone",
 		  vm_builtin_DateTimeZone_setState },
+		{ "listIdentifiers", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "int $timezoneGroup = 2047, ?string $countryCode = null", "@array",
+		  vm_builtin_DateTimeZone_listIdentifiers },
+	};
+	/* php's group bitmask. ALL and ALL_WITH_BC are the two the reader compares
+	 * EXACTLY rather than masking (see DtZoneListResult). */
+	static const PH7_NativeConstDef aZoneConst[] = {
+		{ "AFRICA",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1,    0, 0.0 },
+		{ "AMERICA",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2,    0, 0.0 },
+		{ "ANTARCTICA",  PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4,    0, 0.0 },
+		{ "ARCTIC",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 8,    0, 0.0 },
+		{ "ASIA",        PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16,   0, 0.0 },
+		{ "ATLANTIC",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32,   0, 0.0 },
+		{ "AUSTRALIA",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 64,   0, 0.0 },
+		{ "EUROPE",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 128,  0, 0.0 },
+		{ "INDIAN",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 256,  0, 0.0 },
+		{ "PACIFIC",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 512,  0, 0.0 },
+		{ "UTC",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1024, 0, 0.0 },
+		{ "ALL",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, DT_TZ_GROUP_ALL, 0, 0.0 },
+		{ "ALL_WITH_BC", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, DT_TZ_GROUP_ALL_W_BC, 0, 0.0 },
+		{ "PER_COUNTRY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, DT_TZ_GROUP_PER_COUNTRY, 0, 0.0 }
 	};
 	static const PH7_NativePropDef aDtProp[] = { DT_NATIVE_STATE_PROPS };
 	static const PH7_NativeMethodDef aDtMethod[] = {
@@ -8573,7 +8693,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  aIfaceMethod, SX_ARRAYSIZE(aIfaceMethod),
 		  aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0, 0 },
 		{ "DateTimeZone", 0, 0, 0,
-		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp),
+		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), aZoneConst, SX_ARRAYSIZE(aZoneConst),
+		  aZoneProp, SX_ARRAYSIZE(aZoneProp),
 		  0, 0, DtPresentTimeZone },
 		{ "DateTime", 0, "DateTimeInterface", 0,
 		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),
@@ -8620,6 +8741,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "timezone_open",                vm_builtin_timezone_open },
 		{ "timezone_name_get",            vm_builtin_timezone_name_get },
 		{ "timezone_offset_get",          vm_builtin_timezone_offset_get },
+		{ "timezone_identifiers_list",    vm_builtin_timezone_identifiers_list },
 	};
 	sxu32 n;
 	sxi32 rc;

@@ -522,6 +522,24 @@ PH7_PRIVATE int PH7_TzCount(void)
 }
 
 /*
+ * The zone at position i of the order listIdentifiers() prints, which is
+ * case-INSENSITIVE -- `CET` sits between `Canada/Yukon` and `Chile/Continental`
+ * and `localtime` among the `L` names, not after every upper-case one. Asked of
+ * a bundled-timelib php rather than derived: the two lists coincide for the 419
+ * canonical `Continent/City` names, and only ALL_WITH_BC, which carries the
+ * odd-cased backward links, can tell the two orders apart.
+ *
+ * aTzFold is that order already -- it is what PH7_TzFind() binary-searches.
+ */
+PH7_PRIVATE int PH7_TzAt(int i)
+{
+	if( i < 0 || i >= PH7_TZDB_ZONE_COUNT ){
+		return -1;
+	}
+	return (int)aTzFold[i];
+}
+
+/*
  * php's ABBREVIATION table, which is asked BEFORE the database and is the whole
  * reason `new DateTimeZone('CET')` is a fixed +01:00 that never observes
  * daylight time while the zone FILE of that name switches twice a year. Ten
@@ -579,6 +597,56 @@ PH7_PRIVATE const char * PH7_TzName(int iZone,int *pnName,int *pbBackward)
 		*pbBackward = (int)aTzZone[iZone].bBackward;
 	}
 	return aTzZone[iZone].zName;
+}
+
+/*
+ * The GROUP bit listIdentifiers() sorts a zone into. It is the name's own
+ * continent prefix and nothing else -- so `EST5EDT`, `W-SU` and `Factory` are
+ * in no group at all and appear only under ALL_WITH_BC -- with one special
+ * case, `UTC`, which php gives a group of its own.
+ *
+ * Derived rather than stored: the prefix is already in the name, and a table
+ * would be one more thing the generator could get out of step with.
+ */
+PH7_PRIVATE int PH7_TzGroup(int iZone)
+{
+	static const struct { const char *zPrefix; int nPrefix; int iBit; } aGroup[] = {
+		{ "Africa/",     7, 0x0001 },
+		{ "America/",    8, 0x0002 },
+		{ "Antarctica/",11, 0x0004 },
+		{ "Arctic/",     7, 0x0008 },
+		{ "Asia/",       5, 0x0010 },
+		{ "Atlantic/",   9, 0x0020 },
+		{ "Australia/", 10, 0x0040 },
+		{ "Europe/",     7, 0x0080 },
+		{ "Indian/",     7, 0x0100 },
+		{ "Pacific/",    8, 0x0200 }
+	};
+	sxu32 i;
+	const PH7_TzZoneRow *pRow;
+	if( iZone < 0 || iZone >= PH7_TZDB_ZONE_COUNT ){
+		return 0;
+	}
+	pRow = &aTzZone[iZone];
+	if( pRow->nName == 3 && SyMemcmp(pRow->zName,"UTC",3) == 0 ){
+		return 0x0400;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(aGroup) ; ++i ){
+		if( (int)pRow->nName > aGroup[i].nPrefix
+		 && SyMemcmp(pRow->zName,aGroup[i].zPrefix,(sxu32)aGroup[i].nPrefix) == 0 ){
+			return aGroup[i].iBit;
+		}
+	}
+	return 0;
+}
+
+/* Its ISO 3166-1 country, two bytes, `??` when it has none. */
+PH7_PRIVATE const char * PH7_TzCountry(int iZone)
+{
+	if( iZone < 0 || iZone >= PH7_TZDB_ZONE_COUNT ){
+		return "??";
+	}
+	return aTzZone[iZone].zCc;
 }
 
 /*
