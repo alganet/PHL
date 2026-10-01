@@ -3100,6 +3100,12 @@ PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr
 					const ph7_expr_op *pOp = (const ph7_expr_op *)pGen->pIn->pUserData;
 					bOk = ( pOp && pOp->iOp == EXPR_OP_DC );
 				}
+				if( !bOk && pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COLON) ){
+					/* `f(static: true)` -- a NAMED ARGUMENT may carry any semi-reserved
+					 * word as its label, `static` included, and the label is the
+					 * keyword token followed by a single colon. */
+					bOk = 1;
+				}
 				if( !bOk && pPrev && pPrev->pOp
 				 && (pPrev->pOp->iOp == EXPR_OP_NEW || pPrev->pOp->iOp == EXPR_OP_INSTOF) ){
 					bOk = 1;

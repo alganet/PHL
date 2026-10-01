@@ -26,6 +26,7 @@ $cases = [
     'static variable'           => 'function f() { static $n = 0; return ++$n; }',
     'static property'           => 'class A { public static $p = 1; }',
     'a constant named STATIC'   => 'class A { const STATIC = 1; } echo A::STATIC;',
+    'as a named argument'       => 'function f(bool $static = false) {} f(static: true);',
     'assigned bare'             => '$x = static;',
     'returned bare'             => 'function f() { return static; }',
     'returned bare by a method' => 'class A { function f() { return static; } }',
@@ -57,6 +58,7 @@ static arrow function       accepted
 static variable             accepted
 static property             accepted
 a constant named STATIC     accepted
+as a named argument         accepted
 assigned bare               REFUSED
 returned bare               REFUSED
 returned bare by a method   REFUSED
