@@ -2,15 +2,7 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Object dump deep nesting limit
---SKIPIF--
-<?php
-// PHL bounds var_dump()/print_r() nesting depth and prints NESTING_LIMIT; php has no such
-// limit and walks the whole structure. An engine-design difference, not a fidelity gap:
-// the depth is an embedder knob (PH7_VM_CONFIG_RECURSION_DEPTH), and php's own failure
-// mode for unbounded nesting is resource exhaustion measured in BYTES, not a depth.
-if (function_exists('zend_version')) { echo 'skip PHL bounds var_dump nesting (embedder knob); php has no depth limit'; }
-?>
+Nesting with no cycle in it is walked to the leaf
 --FILE--
 <?php
 class ObjectDumpDeepNestingTest {
@@ -28,10 +20,16 @@ for ($i = 0; $i < 35; $i++) {
 ob_start();
 var_dump($root);
 $output = ob_get_clean();
-echo strpos($output, 'Nesting limit reached') !== false ? 'NESTING_LIMIT' : 'NO_LIMIT';
+
+// A depth counter used to stand in for a cycle guard and cut this off at 31.
+echo 'markers=', substr_count($output, '*RECURSION*'), "\n";
+echo 'objects=', substr_count($output, 'object(ObjectDumpDeepNestingTest)'), "\n";
+echo 'leaf=', substr_count($output, 'NULL'), "\n";
 ?>
 --EXPECT--
-NESTING_LIMIT
+markers=0
+objects=36
+leaf=1
 --CLEAN--
 <?php
 unset($root, $current, $next, $output);

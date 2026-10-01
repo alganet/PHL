@@ -3438,12 +3438,25 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	ph7_value *pValue;
 	sxi32 rc;
 	int i;
-	if( nDepth > 31 ){
+	if( nDepth > PH7_DUMP_MAX_DEPTH ){
 		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";
 		/* Nesting limit reached..halt immediately*/
 		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);
 		return SXERR_LIMIT;
 	}
+	if( pThis->iFlags & VM_INSTANCE_DUMPING ){
+		/* php's *RECURSION*: this instance is one the walk is already inside.
+		 * print_r prints the header and then the marker in place of the body,
+		 * and the entry line the caller is writing supplies the newline. Only
+		 * print_r arrives here marked -- var_dump's marker replaces the header
+		 * too, so PH7_MemObjDump (the only caller) never descends. */
+		if( !ShowType ){
+			DumpClassInstanceHeader(&(*pOut),pThis->pClass,pThis->nObjId,FALSE,0);
+			SyBlobAppend(&(*pOut)," *RECURSION*",sizeof(" *RECURSION*")-1);
+		}
+		return SXRET_OK;
+	}
+	pThis->iFlags |= VM_INSTANCE_DUMPING;
 	rc = SXRET_OK;
 	{
 		/* A native class's PRESENTATION (php's get_debug_info): the shape it shows
@@ -3481,6 +3494,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 				SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
 			}
 			PH7_MemObjRelease(&sPresent);
+			pThis->iFlags &= ~VM_INSTANCE_DUMPING;
 			return rc;
 		}
 		PH7_MemObjRelease(&sPresent);
@@ -3517,6 +3531,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 					SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
 				}
 				PH7_MemObjRelease(&sResult);
+				pThis->iFlags &= ~VM_INSTANCE_DUMPING;
 				return rc;
 			}
 			/* Non-array return: behave as if __debugInfo were absent. */
@@ -3626,6 +3641,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	}else{
 		SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
 	}
+	pThis->iFlags &= ~VM_INSTANCE_DUMPING;
 	return rc;
 }
 /*

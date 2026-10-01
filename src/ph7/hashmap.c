@@ -2562,7 +2562,7 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 {
 	sxi32 rc;
 	int i;
-	if( nDepth > 31 ){
+	if( nDepth > PH7_DUMP_MAX_DEPTH ){
 		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";
 		/* Nesting limit reached */
 		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);
@@ -2570,10 +2570,14 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 	}
 	if( ShowType ){
 		/* var_dump: `array(N) {\n … \n<nTab>}` — the caller adds the final
-		 * newline (a nested array is itself an entry value line). */
+		 * newline (a nested array is itself an entry value line). A map that is
+		 * its own descendant never reaches here: PH7_MemObjDump, the only caller,
+		 * prints php's marker in place of the whole value. */
 		SyBlobFormat(&(*pOut),"array(%u) {",pMap->nEntry);
 		SyBlobAppend(&(*pOut),"\n",sizeof(char));
+		pMap->iFlags |= HASHMAP_DUMPING;
 		rc = PH7_HashmapDumpEntries(&(*pOut),pMap,TRUE,nTab,nDepth,0);
+		pMap->iFlags &= ~HASHMAP_DUMPING;
 		for( i = 0 ; i < nTab ; i++ ){
 			SyBlobAppend(&(*pOut)," ",sizeof(char));
 		}
@@ -2582,11 +2586,19 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 	}
 	/* print_r: `Array\n<nTab>(\n … <nTab>)\n` */
 	SyBlobAppend(&(*pOut),"Array\n",sizeof("Array\n")-1);
+	if( pMap->iFlags & HASHMAP_DUMPING ){
+		/* php prints the header, then the marker in place of the body, and the
+		 * entry line the caller is writing supplies the newline after it. */
+		SyBlobAppend(&(*pOut)," *RECURSION*",sizeof(" *RECURSION*")-1);
+		return SXRET_OK;
+	}
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}
 	SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
+	pMap->iFlags |= HASHMAP_DUMPING;
 	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,FALSE,nTab,nDepth,0);
+	pMap->iFlags &= ~HASHMAP_DUMPING;
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}

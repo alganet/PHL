@@ -2554,6 +2554,27 @@ PH7_PRIVATE void PH7_MemObjPrintRInline(SyBlob *pOut,ph7_value *pObj)
 	}
 	MemObjStringValue(&(*pOut),&(*pObj),FALSE);
 }
+/*
+ * php's GC_PROTECT_RECURSION, read: TRUE when this value is a container the dump
+ * currently walking is already INSIDE. php carries one protection bit per
+ * array/object and every dumper -- var_dump, print_r, var_export -- consults the
+ * same one; PHL carries HASHMAP_DUMPING and VM_INSTANCE_DUMPING for that, so this
+ * is the single place that reads them.
+ *
+ * It is an ANCESTOR test, not a "seen before" test: an object reached twice down
+ * two sibling branches renders in full both times, and only a container that
+ * contains itself is replaced by the marker.
+ */
+PH7_PRIVATE int PH7_MemObjDumpIsRecursive(ph7_value *pObj)
+{
+	if( pObj->iFlags & MEMOBJ_HASHMAP ){
+		return (((ph7_hashmap *)pObj->x.pOther)->iFlags & HASHMAP_DUMPING) != 0;
+	}
+	if( (pObj->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
+		return (((ph7_class_instance *)pObj->x.pOther)->iFlags & VM_INSTANCE_DUMPING) != 0;
+	}
+	return 0;
+}
 PH7_PRIVATE sxi32 PH7_MemObjDump(
 	SyBlob *pOut,      /* Store the dump here */
 	ph7_value *pObj,   /* Dump this */
@@ -2584,6 +2605,14 @@ PH7_PRIVATE sxi32 PH7_MemObjDump(
 	 * string(N) "s", array(N) { … }, object(C)#id (n) { … }, &-references. */
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
+	}
+	if( PH7_MemObjDumpIsRecursive(pObj) ){
+		/* php replaces the WHOLE value -- header, body and the '&' a referenced
+		 * entry would otherwise carry -- with the marker, and never descends. This
+		 * is also why PH7_HashmapDump/PH7_ClassInstanceDump never see a marked
+		 * container in var_dump mode: they are reached only from here. */
+		SyBlobAppend(&(*pOut),"*RECURSION*\n",sizeof("*RECURSION*\n")-1);
+		return SXRET_OK;
 	}
 	if( isRef ){
 		SyBlobAppend(&(*pOut),"&",sizeof(char));

@@ -363,7 +363,7 @@ struct VmDeferredPath {
 #define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN|MEMOBJ_AUX_NATIVEPROP|MEMOBJ_AUX_REFRET)
 /* Closure-instance flags (ph7_class_instance.iFlags), shared by vm_exec.c's OP_LOAD_FCC
  * and vm_exec_ctx.c's closure machinery. Distinct from CLASS_INSTANCE_DESTROYED 0x001
- * (oo.c) and VM_INSTANCE_DUMPING 0x002 (vm_builtin_var.c), which share the same word. */
+ * (oo.c) and VM_INSTANCE_DUMPING 0x002, which share the same word. */
 /* ph7_class_instance.iFlags bit: this Closure is a bound/static first-class callable and
  * carries $__this/$__scope. Lets the hot plain-closure unwrap skip those attribute lookups.
  * (Distinct from CLASS_INSTANCE_DESTROYED 0x001 and VM_INSTANCE_DUMPING 0x002.) */
@@ -792,7 +792,12 @@ struct ph7_hashmap
  * Hashmap control flags.
  */
 #define HASHMAP_COUNTING 0x01 /* Set during recursive count to detect cycles */
-#define HASHMAP_DUMPING  0x02 /* Set during var_export recursion to detect cycles */
+#define HASHMAP_DUMPING  0x02 /* php's GC_PROTECT_RECURSION for an array: set while a
+                               * dump is INSIDE this map, so a map that is its own
+                               * descendant renders php's *RECURSION* marker instead of
+                               * recursing. One bit shared by var_dump, print_r and
+                               * var_export, exactly as php shares its own. Read only
+                               * through PH7_MemObjDumpIsRecursive(). */
 /* An instance of the following structure is the context
  * for the FOREACH_STEP/FOREACH_INIT VM instructions.
  * Those instructions are used to implement the 'foreach'
@@ -3079,6 +3084,9 @@ struct ph7_class_instance
 #define CLASS_INSTANCE_DESTROYED 0x001 /* Instance is released (oo.c's teardown latch;
                                         * read by the cycle collector, which must not
                                         * walk a table being torn down) */
+/* ph7_class_instance::iFlags bit: php's GC_PROTECT_RECURSION for an object -- the
+ * instance counterpart of HASHMAP_DUMPING, and read through the same predicate. */
+#define VM_INSTANCE_DUMPING 0x002
 #define VM_INSTANCE_CLONING 0x008
 /*
  * ph7_class_instance::iFlags bit: this object's __destruct has already been reached for
@@ -5385,7 +5393,20 @@ struct SyhttpHeader
 #define HTTP_PROTO_10 1 /* HTTP/1.0 */
 #define HTTP_PROTO_11 2 /* HTTP/1.1 */
 /* memobj.c function prototypes */
+/*
+ * Bound on how deep var_dump()/print_r()/var_export() will walk. php has NO limit:
+ * it recurses until the process runs out of memory (a 10,000-level array dumps 300 MB
+ * and a 100,000-level one dies on the allocator, not on a depth). PHL walks the same
+ * tree on the same C stack, so it needs one — this is a backstop for pathological
+ * FINITE nesting, not a cycle guard: a container that is its own descendant is caught
+ * by PH7_MemObjDumpIsRecursive() and rendered as php's *RECURSION*. Matches
+ * SERIALIZE_MAX_DEPTH, the bound the serializer walk has always used, and the one
+ * var_export has carried since it was written. Costs ~250 bytes of C stack per level,
+ * so a host that hands the engine less than ~2 MB of stack wants a lower one.
+ */
+#define PH7_DUMP_MAX_DEPTH 4096
 PH7_PRIVATE sxi32 PH7_MemObjDump(SyBlob *pOut,ph7_value *pObj,int ShowType,int nTab,int nDepth,int isRef);
+PH7_PRIVATE int PH7_MemObjDumpIsRecursive(ph7_value *pObj);
 PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal);
 PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore);
 PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,int iNest);

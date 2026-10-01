@@ -641,9 +641,8 @@ PH7_PRIVATE int vm_builtin_print_r(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * (2-space array entries; 3-space object property lines; a composite value always
  * opens at containerIndent+2) but deterministic; this matches it byte-for-byte.
  */
-/* Instance flag (distinct from oo.c's CLASS_INSTANCE_DESTROYED 0x001) marking an
- * object currently on the var_export recursion stack, for cycle detection. */
-#define VM_INSTANCE_DUMPING 0x002
+/* The recursion marks (HASHMAP_DUMPING / VM_INSTANCE_DUMPING, ph7int.h) are php's
+ * one GC_PROTECT_RECURSION bit, shared with var_dump and print_r. */
 typedef struct VmExportCtx VmExportCtx;
 struct VmExportCtx
 {
@@ -686,24 +685,29 @@ static void VmExportQuoted(SyBlob *pOut, const char *z, int n)
 	if( n > run ){ SyBlobAppend(pOut,&z[run],(sxu32)(n-run)); }
 	SyBlobAppend(pOut,"'",1);
 }
-/* True if the array/object is already on the var_export recursion stack. */
-static int VmExportIsCycle(ph7_value *pVal)
+/*
+ * A container that is its own ancestor. php cannot write an evaluable expression
+ * for one, so it warns -- once per cycle it meets, at E_WARNING and with no
+ * function prefix -- and emits NULL in its place, in BOTH the printing and the
+ * returning form. PHL emitted the NULL and stayed silent, so a `var_export()` of
+ * a cyclic structure looked like a faithful export of a structure that had a real
+ * NULL in it.
+ */
+static void VmExportCycleNull(SyBlob *pOut, ph7_value *pVal)
 {
-	if( ph7_value_is_array(pVal) ){
-		return (((ph7_hashmap *)pVal->x.pOther)->iFlags & HASHMAP_DUMPING) != 0;
+	if( pVal->pVm ){
+		PH7_VmThrowError(pVal->pVm,0,PH7_CTX_WARNING,
+			"var_export does not handle circular references");
 	}
-	if( ph7_value_is_object(pVal) ){
-		return (((ph7_class_instance *)pVal->x.pOther)->iFlags & VM_INSTANCE_DUMPING) != 0;
-	}
-	return 0;
+	SyBlobAppend(pOut,"NULL",4);
 }
 /* Emit " => " then the value: a scalar inline, a composite on its own line at
  * containerIndent+2. A circular reference renders inline as NULL (like PHP). */
 static void VmExportEntryValue(SyBlob *pOut, ph7_value *pVal, int nContainerIndent, int depth)
 {
 	SyBlobAppend(pOut," => ",4);
-	if( VmExportIsCycle(pVal) ){
-		SyBlobAppend(pOut,"NULL",4);
+	if( PH7_MemObjDumpIsRecursive(pVal) ){
+		VmExportCycleNull(pOut,pVal);
 	}else if( ph7_value_is_array(pVal) || ph7_value_is_object(pVal) ){
 		SyBlobAppend(pOut,"\n",1);
 		VmExportIndent(pOut,nContainerIndent+2);
@@ -737,7 +741,7 @@ static int VmExportArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData
 }
 static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 {
-	if( depth > 4096 ){ return; } /* backstop for pathological finite nesting */
+	if( depth > PH7_DUMP_MAX_DEPTH ){ return; } /* backstop for pathological finite nesting */
 	if( ph7_value_is_null(pVal) ){
 		SyBlobAppend(pOut,"NULL",4);
 	}else if( ph7_value_is_bool(pVal) ){
@@ -771,7 +775,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 	}else if( ph7_value_is_array(pVal) ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pVal->x.pOther;
 		if( pMap->iFlags & HASHMAP_DUMPING ){
-			SyBlobAppend(pOut,"NULL",4); /* circular reference -> NULL, like PHP */
+			VmExportCycleNull(pOut,pVal);
 		}else{
 			VmExportCtx ctx;
 			ctx.bPresented = 0;
@@ -796,7 +800,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 				SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
 			}
 		}else if( pThis->iFlags & VM_INSTANCE_DUMPING ){
-			SyBlobAppend(pOut,"NULL",4); /* circular reference -> NULL, like PHP */
+			VmExportCycleNull(pOut,pVal);
 		}else{
 			SyString *pClassName = &pThis->pClass->sName;
 			SyHashEntry *pEntry;

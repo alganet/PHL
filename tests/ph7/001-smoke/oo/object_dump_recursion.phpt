@@ -1,15 +1,8 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php
-// PHL detects a self-referencing object graph with a depth counter and prints
-// RECURSION_LIMIT; php marks the back-edge *RECURSION* instead. Different mechanism, so
-// the output cannot agree -- see the deep-nesting twin above for the rationale.
-if (function_exists('zend_version')) { echo 'skip PHL uses a depth counter where php marks *RECURSION*'; }
-?>
 --TEST--
-object dump recursion limit
+A cycle 35 objects long marks the back edge, and only the back edge
 --FILE--
 <?php
 class ObjectDumpRecursionTest {
@@ -25,16 +18,21 @@ for ($i = 0; $i < 35; $i++) {
     $current = $next;
 }
 
-// Create a cycle
+// Close the cycle back onto the root.
 $current->prop = $root;
 
 ob_start();
 var_dump($root);
 $output = ob_get_clean();
-echo strpos($output, 'Nesting limit reached') !== false ? 'RECURSION_LIMIT' : 'NO_LIMIT';
+
+// One marker, at the one edge that points back at a container being walked --
+// every link before it is a distinct object and renders in full.
+echo 'markers=', substr_count($output, '*RECURSION*'), "\n";
+echo 'objects=', substr_count($output, 'object(ObjectDumpRecursionTest)'), "\n";
 ?>
 --EXPECT--
-RECURSION_LIMIT
+markers=1
+objects=36
 --CLEAN--
 <?php
 unset($root, $current, $next, $output);
