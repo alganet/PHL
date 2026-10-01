@@ -9223,7 +9223,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	{"get_extension_funcs",   vm_builtin_get_extension_funcs   },
 	{"php_sapi_name",    vm_builtin_php_sapi_name },
 	{"php_ini_loaded_file",   vm_builtin_php_ini_loaded_file },
-	{"php_ini_scanned_files", vm_builtin_php_ini_loaded_file },
+	{"php_ini_scanned_files", vm_builtin_php_ini_scanned_files },
 	{"ph7credits",       vm_builtin_ph7_credits  },
 	{"ph7info",          vm_builtin_ph7_credits  },
 	{"ph7_info",         vm_builtin_ph7_credits  },

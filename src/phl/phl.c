@@ -37,6 +37,7 @@
 #endif
 #ifdef __UNIXES__
 #include <unistd.h>
+#include <sys/stat.h>  /* the -c door has to recognise a directory -- see PHL_OpenIniCandidate */
 #endif
 /* Make sure this header file is available.*/
 #include "ph7.h"
@@ -917,34 +918,140 @@ static size_t PHL_IniDefineLine(const char *zPair,char *zOut)
 	}
 }
 /*
- * Load php.ini directives from a -c file. Read whole: a value may span lines
+ * Expand one path to the absolute, canonical name php would quote for it.
+ * php runs the php.ini it opened through expand_filepath(), so `.`, `..` and a
+ * symlink are all resolved before the name reaches a diagnostic or
+ * php_ini_loaded_file(). Writes a heap string to *pzOut (caller frees) and
+ * returns TRUE; on failure leaves *pzOut alone and returns FALSE, and the raw
+ * argument is used instead -- the file is already open by then, so there is
+ * nothing to report and php has no answer for this case either.
+ */
+static int PHL_ExpandPath(const char *zPath,char **pzOut)
+{
+	char *zReal = 0;
+#ifdef __UNIXES__
+	zReal = realpath(zPath,0);    /* POSIX: malloc'd result */
+#endif
+#ifdef __WINNT__
+	zReal = _fullpath(0,zPath,0); /* MSVC CRT: malloc'd absolute path */
+#endif
+	if( zReal ){
+		*pzOut = zReal;
+		return 1;
+	}
+	(void)zPath;
+	return 0;
+}
+/*
+ * Open one php.ini candidate, refusing a directory the way php's loader does:
+ * it stats the name first and only ever fopen()s a non-directory. Without that,
+ * a `-c <dir>` would load no directives in silence -- an opened directory reads
+ * zero bytes -- where php loads the php.ini inside it.
+ * Returns the handle and writes the canonical name to *pzName.
+ */
+static FILE * PHL_OpenIniCandidate(const char *zPath,char **pzName)
+{
+	FILE *pFile;
+#ifdef __UNIXES__
+	/* Only POSIX needs asking: fopen() there OPENS a directory and then reads
+	 * nothing. The Windows CRT refuses one outright, which is the same answer. */
+	struct stat sBuf;
+	if( stat(zPath,&sBuf) != 0 || (sBuf.st_mode & S_IFMT) == S_IFDIR ){
+		return 0;
+	}
+#endif
+	/* MSVC deprecates fopen() in favour of fopen_s() under /W4 /WX. The CRT call
+	 * is what every other host here uses and its failure is handled right below,
+	 * so silence the one call rather than the file (builtin_date.c's precedent). */
+#if defined(_MSC_VER) && _MSC_VER >= 1400
+#pragma warning(push)
+#pragma warning(disable:4996)
+#endif
+	pFile = fopen(zPath,"rb");
+#if defined(_MSC_VER) && _MSC_VER >= 1400
+#pragma warning(pop)
+#endif
+	if( pFile == 0 ){
+		return 0;
+	}
+	if( !PHL_ExpandPath(zPath,pzName) ){
+		*pzName = 0;
+	}
+	return pFile;
+}
+/*
+ * Find the php.ini a -c argument names, exactly where php looks for it. The
+ * argument is first tried as a FILE; anything else -- a directory, a name that
+ * is not there -- makes php fall through to its ini SEARCH PATH, which under
+ * `-c` is the argument itself, and there it asks for `php-<sapi>.ini` and then
+ * `php.ini`. So `-c /etc/php` reads `/etc/php/php-cli.ini` if there is one.
+ * Nothing found is not an error: php starts on its built-in defaults and says
+ * nothing, on either stream.
+ */
+static FILE * PHL_FindIniFile(const char *zPath,char **pzName)
+{
+	static const char * const azInDir[] = { "php-cli.ini", "php.ini" };
+	size_t nPath = strlen(zPath);
+	FILE *pFile;
+	unsigned int i;
+	if( nPath < 1 ){
+		return 0;
+	}
+	pFile = PHL_OpenIniCandidate(zPath,pzName);
+	if( pFile ){
+		return pFile;
+	}
+	for( i = 0 ; i < sizeof(azInDir)/sizeof(azInDir[0]) ; ++i ){
+		size_t nTry = nPath + 1 + strlen(azInDir[i]) + 1;
+		char *zTry = (char *)malloc(nTry);
+		if( zTry == 0 ){
+			return 0;
+		}
+		snprintf(zTry,nTry,"%s/%s",zPath,azInDir[i]);
+		pFile = PHL_OpenIniCandidate(zTry,pzName);
+		free(zTry);
+		if( pFile ){
+			return pFile;
+		}
+	}
+	return 0;
+}
+/*
+ * Load php.ini directives from a -c argument. Read whole: a value may span lines
  * (see PHL_ScanIniSource), so no line of it can be read on its own.
  */
 static void PHL_LoadIniFile(ph7 *pEngine,const char *zPath)
 {
 	char *zSrc;
+	char *zName = 0;
 	long nSize;
 	size_t nRead;
-	FILE *pFile = fopen(zPath,"rb");
+	FILE *pFile = PHL_FindIniFile(zPath,&zName);
 	if( pFile == 0 ){
-		fprintf(stderr,"Could not open php.ini file: %s\n",zPath);
+		/* php reads no file and starts on its defaults, in silence. */
 		return;
 	}
 	if( fseek(pFile,0,SEEK_END) != 0 || (nSize = ftell(pFile)) < 0
 	 || fseek(pFile,0,SEEK_SET) != 0 ){
 		fclose(pFile);
+		free(zName);
 		return;
 	}
 	zSrc = (char *)malloc((size_t)nSize + 1);
 	if( zSrc == 0 ){
 		fclose(pFile);
+		free(zName);
 		return;
 	}
 	nRead = fread(zSrc,1,(size_t)nSize,pFile);
 	fclose(pFile);
 	zSrc[nRead] = 0;
-	PHL_ScanIniSource(pEngine,zSrc,nRead,zPath,1);
+	/* Every reader of this file's name -- a refusal the ini grammar dates, and
+	 * php_ini_loaded_file() -- gets the same canonical string. */
+	ph7_config(pEngine,PH7_CONFIG_INI_FILE,zName ? zName : zPath);
+	PHL_ScanIniSource(pEngine,zSrc,nRead,zName ? zName : zPath,1);
 	free(zSrc);
+	free(zName);
 }
 /*
  * Return TRUE when standard input is a pipe/redirect rather than an interactive

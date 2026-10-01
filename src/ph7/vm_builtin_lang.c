@@ -1495,17 +1495,39 @@ PH7_PRIVATE int vm_builtin_php_sapi_name(ph7_context *pCtx,int nArg,ph7_value **
 }
 /*
  * string|false php_ini_loaded_file(void)
- * string|false php_ini_scanned_files(void)
- *  Which php.ini this interpreter read, and which files it then scanned.
+ *  Which php.ini this interpreter read.
  * Return
- *  false from both, and that is php's OWN answer rather than a stub: a php
- *  started with `-n`, or built with no `--with-config-file-scan-dir`, answers
- *  exactly this. PHL reads no configuration FILE at all -- its directives come
- *  from the table in vm_builtin_ini.c and from `-d` -- so there is never a path
- *  to name. Composer's XdebugHandler asks both on its way to reporting where a
- *  directive came from, and takes "nowhere" for an answer.
+ *  The path of the file, under the name php quotes for it -- absolute and
+ *  canonical, which is what the CLI's `-c` door resolved its argument to and
+ *  the same string a refusal inside that file is dated by. FALSE when no file
+ *  was read at all: PHL has no configuration file of its own, so that is the
+ *  answer whenever `-c` was not given, and it is php's OWN answer rather than a
+ *  stub -- a php started with `-n`, or built with no php.ini in its search path,
+ *  answers exactly this. Composer's XdebugHandler asks on its way to reporting
+ *  where a directive came from, and takes "nowhere" for an answer.
  */
 PH7_PRIVATE int vm_builtin_php_ini_loaded_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SyString *pFile = &pCtx->pVm->pEngine->xConf.sIniFile;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pFile->nByte < 1 ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_string(pCtx,pFile->zString,(int)pFile->nByte);
+	}
+	return PH7_OK;
+}
+/*
+ * string|false php_ini_scanned_files(void)
+ *  Which files the scan directory contributed after php.ini itself.
+ * Return
+ *  FALSE, always, and this one is not paired with php_ini_loaded_file(): php
+ *  answers it from --with-config-file-scan-dir, a build-time directory PHL has
+ *  none of. A php built without one answers FALSE here while still naming a
+ *  loaded php.ini above.
+ */
+PH7_PRIVATE int vm_builtin_php_ini_scanned_files(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);

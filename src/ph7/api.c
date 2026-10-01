@@ -158,6 +158,26 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		 * the unit it was meant to gate has finished compiling. */
 		pConf->bErrReport = 1;
 		break;
+	case PH7_CONFIG_INI_FILE: {
+		/* Which php.ini file the host actually read, under the name php quotes
+		 * for it. The host resolves it; the engine only remembers the string, so
+		 * php_ini_loaded_file() can answer with it. Copied onto the ENGINE
+		 * allocator: it outlives every VM that asks. */
+		const char *zPath = va_arg(ap,const char *);
+		sxu32 nPath = zPath ? (sxu32)SyStrlen(zPath) : 0;
+		char *zDup;
+		if( nPath < 1 ){
+			SyStringInitFromBuf(&pConf->sIniFile,0,0);
+			break;
+		}
+		zDup = SyMemBackendStrDup(&pEngine->sAllocator,zPath,nPath);
+		if( zDup == 0 ){
+			rc = PH7_NOMEM;
+			break;
+		}
+		SyStringInitFromBuf(&pConf->sIniFile,zDup,nPath);
+		break;
+							  }
 	case PH7_CONFIG_INI_ENTRY: {
 		/* A php.ini directive applied to every VM at birth. php reads php.ini
 		 * before it compiles anything, so a directive a diagnostic is gated by
