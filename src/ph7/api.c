@@ -168,12 +168,18 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		const char *zValue = va_arg(ap,const char *);
 		const char *zFile = va_arg(ap,const char *);
 		unsigned int nLine = va_arg(ap,unsigned int);
+		int iStop = va_arg(ap,int);
 		VmIniEntry sEntry;
 		char *zDupN,*zDupV,*zDupF;
 		sxu32 nName,nValue,nFile;
-		if( SX_EMPTY_STR(zName) ){
+		/* An unclosed `[` is queued in place of a directive and carries no name:
+		 * it is the source refusing itself, not an entry to apply. */
+		if( SX_EMPTY_STR(zName) && iStop < PH7_INI_STOP_SECTION ){
 			rc = PH7_CORRUPT;
 			break;
+		}
+		if( zName == 0 ){
+			zName = "";
 		}
 		if( zValue == 0 ){
 			zValue = "";
@@ -195,6 +201,7 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
 		SyStringInitFromBuf(&sEntry.sFile,zDupF,nFile);
 		sEntry.nLine = (sxu32)nLine;
+		sEntry.iStop = iStop;
 		if( SySetPut(&pConf->aIniEntry,(const void *)&sEntry) != SXRET_OK ){
 			rc = PH7_NOMEM;
 		}

@@ -6252,7 +6252,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
  * a file for this entry (an embedder that does not pass one gets nothing,
  * same as it gets nothing from any other early diagnostic).
  */
-static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,const VmIniBad *pBad)
+static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,int iStop,const VmIniBad *pBad)
 {
 	SyBlob sMsg;
 	ProcConsumer xErr = pVm->pEngine->xConf.xErr;
@@ -6270,12 +6270,22 @@ static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,const VmI
 		SyBlobAppend(&sMsg,pBad->zTok,(sxu32)SyStrlen(pBad->zTok));
 	}else if( pBad->cChar != 0 ){
 		SyBlobFormat(&sMsg,"'%c'",pBad->cChar);
+	}else if( iStop == PH7_INI_STOP_COMMENT ){
+		/* A value that ran out inside a `;` comment no newline ever closed: the
+		 * comment rule wants that newline, so nothing matches at all and what
+		 * the parser is handed is the end of the input rather than a line's end.
+		 * It stays on the directive's own line. */
+		SyBlobAppend(&sMsg,"end of file",sizeof("end of file")-1);
 	}else{
 		/* A value that ran out: php's scanner has already taken the newline, so
 		 * its token is END_OF_LINE and it is dated to the line after the one the
-		 * directive was written on. */
+		 * directive was written on -- but only when there WAS a newline to take.
+		 * The last line of a source that ends without one is still refused under
+		 * END_OF_LINE, and stays where it was written. */
 		SyBlobAppend(&sMsg,"END_OF_LINE",sizeof("END_OF_LINE")-1);
-		nLine++;
+		if( iStop == PH7_INI_STOP_EOL ){
+			nLine++;
+		}
 	}
 	if( pBad->bExpect ){
 		SyBlobAppend(&sMsg,", expecting '^' or '|' or '&' or ')'",
@@ -6298,7 +6308,7 @@ static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,const VmI
  * silent, matching an embedder that never supplied one.
  */
 static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
-	const char *zFile,sxu32 nLine,int *pbBad)
+	const char *zFile,sxu32 nLine,int iStop,int *pbBad)
 {
 	sxi32 rc = SXRET_OK;
 	VmIniEntry sEntry;
@@ -6310,6 +6320,25 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 	sxu32 nName,nValue;
 	if( pbBad ){
 		*pbBad = 0;
+	}
+	if( iStop >= PH7_INI_STOP_SECTION ){
+		/* Not a directive: a `[` the host's scanner never found a `]` for. php's
+		 * section name is one scanner run that ends at the `]` -- a newline is
+		 * not an end, so the run reaches the end of the FILE and refuses it
+		 * there, dated to where the run stopped counting. The directives above
+		 * it stand, and everything below is inside a section header that never
+		 * closed, so nothing below is ever seen. */
+		SyZero(&sBad,sizeof(sBad));
+		sBad.zTok = "end of file";
+		sBad.zExpect = iStop == PH7_INI_STOP_SECTION_STR
+			? "TC_DOLLAR_CURLY or TC_QUOTED_STRING or '\"'"
+			: iStop == PH7_INI_STOP_SECTION_VAR ? "TC_VARNAME" : "']'";
+		SyStringInitFromBuf(&sFile,zFile,zFile ? SyStrlen(zFile) : 0);
+		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
+		if( pbBad ){
+			*pbBad = 1;
+		}
+		return SXRET_OK;
 	}
 	if( SX_EMPTY_STR(zName) ){
 		return SXERR_EMPTY;
@@ -6334,7 +6363,7 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 		 * a zero standing in for it. It is still an error it REPORTS, and one
 		 * that stops the rest of the source: `precision = 1 & )` leaves
 		 * precision alone, warns, and takes every later line down with it. */
-		VmIniSyntaxWarning(pVm,&sFile,nLine,&sBad);
+		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
 		if( pbBad ){
 			*pbBad = 1;
 		}
@@ -6342,7 +6371,7 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 		return SXRET_OK;
 	}
 	if( sBad.bSet ){
-		VmIniSyntaxWarning(pVm,&sFile,nLine,&sBad);
+		VmIniSyntaxWarning(pVm,&sFile,nLine,iStop,&sBad);
 		if( pbBad ){
 			*pbBad = 1;
 		}
@@ -6498,7 +6527,7 @@ PH7_PRIVATE void PH7_VmApplyEngineIni(ph7_vm *pVm)
 			continue;
 		}
 		VmSetIniEntry(pVm,aEntry[i].sName.zString,aEntry[i].sValue.zString,
-			aEntry[i].sFile.zString,aEntry[i].nLine,&bBad);
+			aEntry[i].sFile.zString,aEntry[i].nLine,aEntry[i].iStop,&bBad);
 		if( bBad && aEntry[i].sFile.nByte > 0 ){
 			sSkip = aEntry[i].sFile;
 		}
@@ -6817,7 +6846,8 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		const char *zValue = va_arg(ap,const char *);
 		const char *zFile = va_arg(ap,const char *);
 		unsigned int nLine = va_arg(ap,unsigned int);
-		rc = VmSetIniEntry(pVm,zName,zValue,zFile,(sxu32)nLine,0);
+		int iStop = va_arg(ap,int);
+		rc = VmSetIniEntry(pVm,zName,zValue,zFile,(sxu32)nLine,iStop,0);
 		break;
 								  }
 	case PH7_VM_CONFIG_ERR_LOG_HANDLER: {

@@ -182,8 +182,29 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_CONFIG_CLOCK         5  /* TWO ARGUMENTS: ph7_clock xClock, void *pUserData. Overrides the platform wall/sub-second clock used by microtime()/gettimeofday(); xClock fills *pSec (epoch seconds) and *pUsec (0..999999). NULL restores the default. Inherited by VMs created afterwards. */
 #define PH7_CONFIG_MAX_INPUT     6  /* ONE ARGUMENT: unsigned int nMaxByte (per-compile input cap in bytes; 0 = use compile-time default PH7_MAX_INPUT_SIZE). */
 #define PH7_CONFIG_ERR_REPORT    7  /* NO ARGUMENTS: seed the reporting level of VMs created afterwards, so the unit's OWN compile is already gated (the VM-level PH7_VM_CONFIG_ERR_REPORT arrives too late for that). */
-#define PH7_CONFIG_INI_ENTRY     8  /* FOUR ARGUMENTS: const char *zName,const char *zValue,const char *zFile,unsigned int nLine. A php.ini directive applied to every VM at birth, BEFORE it compiles anything — which is where php reads php.ini. zFile/nLine locate a value the ini grammar refuses for php's own "syntax error, unexpected ..." warning ("Unknown" plus a virtual line for -d, the real path/line for a -c file); pass 0/0 to leave a refusal silent. The VM-level PH7_VM_CONFIG_INI_ENTRY does the same for a VM that already exists. */
+#define PH7_CONFIG_INI_ENTRY     8  /* FIVE ARGUMENTS: const char *zName,const char *zValue,const char *zFile,unsigned int nLine,int iStop. A php.ini directive applied to every VM at birth, BEFORE it compiles anything — which is where php reads php.ini. zFile/nLine locate a value the ini grammar refuses for php's own "syntax error, unexpected ..." warning ("Unknown" plus a virtual line for -d, the real path/line for a -c file); pass 0/0 to leave a refusal silent. iStop is one of the PH7_INI_STOP_* codes below. The VM-level PH7_VM_CONFIG_INI_ENTRY does the same for a VM that already exists. */
 #define PH7_CONFIG_OUTPUT       9  /* TWO ARGUMENTS: int (*xConsumer)(const void *pOut,unsigned int nLen,void *pUserData),void *pUserData. The PROGRAM-OUTPUT stream a diagnostic raised while a VM is still being compiled writes its display copy to (php puts that copy on stdout, not on the log channel). PH7_CONFIG_ERR_OUTPUT stays the log channel. */
+/*
+ * How php's ini scanner stopped reading one directive -- the fifth argument to
+ * PH7_CONFIG_INI_ENTRY, and the whole of what the engine needs to date a refusal
+ * the way php's parser does. php's NEWLINE rule counts the line it has just
+ * eaten, so a value that merely ran out is reported one line BELOW the directive
+ * it was written on -- but only when there was a newline there to eat. A source
+ * whose last line has none gives the scanner the end of the input instead, and
+ * the same refusal stays on the directive's own line.
+ */
+#define PH7_INI_STOP_EOL          0  /* a newline closed the value: END_OF_LINE, one line down */
+#define PH7_INI_STOP_EOF          1  /* the source ran out: END_OF_LINE, the directive's own line */
+#define PH7_INI_STOP_COMMENT      2  /* ...inside a `;` comment no newline ever closed: "end of file" */
+/*
+ * The three shapes of `[section` php's scanner never closes. Each refuses the
+ * whole source from that point down, so a host that finds one hands it over in
+ * place of a directive: zName and zValue are ignored, and nLine is where the
+ * refusal is dated.
+ */
+#define PH7_INI_STOP_SECTION      3  /* end of file, expecting ']' */
+#define PH7_INI_STOP_SECTION_STR  4  /* an unclosed `"` inside the name */
+#define PH7_INI_STOP_SECTION_VAR  5  /* an unclosed `${` inside the name */
 /*
  * Virtual Machine Configuration Commands.
  *
@@ -224,7 +245,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_VM_CONFIG_RESPONSE_STATUS  22  /* ONE ARGUMENT: int *pStatusCode */
 #define PH7_VM_CONFIG_RESPONSE_HEADERS 23  /* TWO ARGUMENTS: int (*xCallback)(const char *zName,unsigned int nName,const char *zValue,unsigned int nValue,void *pUserData), void *pUserData */
 #define PH7_VM_CONFIG_NATIVE_DEPTH    24  /* ONE ARGUMENT: int nMaxNativeDepth (native VmByteCodeExec nesting: eval/include, callbacks, coroutine resume; default 256 host / 16 embedded) */
-#define PH7_VM_CONFIG_INI_ENTRY       25  /* FOUR ARGUMENTS: const char *zName,const char *zValue,const char *zFile,unsigned int nLine (a php.ini directive from -d/-c; zFile/nLine as PH7_CONFIG_INI_ENTRY) */
+#define PH7_VM_CONFIG_INI_ENTRY       25  /* FIVE ARGUMENTS: const char *zName,const char *zValue,const char *zFile,unsigned int nLine,int iStop (a php.ini directive from -d/-c; zFile/nLine/iStop as PH7_CONFIG_INI_ENTRY) */
 #define PH7_VM_CONFIG_SERVER_ARGV     26  /* NO ARGUMENTS: mirror $argv/$argc into $_SERVER['argv']/$_SERVER['argc'] */
 #define PH7_VM_CONFIG_ERR_STREAM      27  /* TWO ARGUMENTS: int (*xConsumer)(const void *pOut,unsigned int nLen,void *pUserData),void *pUserData (diagnostics/stderr stream) */
 /*

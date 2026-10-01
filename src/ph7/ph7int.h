@@ -3899,7 +3899,10 @@ struct VmDirHandle
  * allocator-owned copies; see PH7_VM_CONFIG_INI_ENTRY). sFile/nLine are the
  * host's source for the refusal warning ("Unknown" plus a virtual line for
  * -d, the real path and line for a -c file) -- empty when the host never
- * supplied one, which silences the warning rather than misattributing it. */
+ * supplied one, which silences the warning rather than misattributing it.
+ * iStop is the scanner's stop condition, which is what dates that warning and
+ * -- for the PH7_INI_STOP_SECTION* codes -- is the whole entry, an unclosed
+ * `[` standing in the queue where a directive would be. */
 typedef struct VmIniEntry VmIniEntry;
 struct VmIniEntry
 {
@@ -3907,6 +3910,7 @@ struct VmIniEntry
 	SyString sValue;
 	SyString sFile;
 	sxu32 nLine;
+	int iStop;           /* PH7_INI_STOP_*: how the host's scanner stopped on this one */
 };
 /*
  * One live php.ini directive. The table was an embedded-PHP array on a private

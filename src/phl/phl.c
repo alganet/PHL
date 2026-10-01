@@ -336,7 +336,7 @@ static const char * PHL_IniEatEol(const char *z,const char *zEnd)
  * four letters.
  */
 static void PHL_ApplyIniValue(ph7 *pEngine,const char *zName,size_t nName,
-	const char *zVal,size_t nVal,const char *zFile,unsigned int nLine)
+	const char *zVal,size_t nVal,const char *zFile,unsigned int nLine,int iStop)
 {
 	char zNameBuf[128];
 	char zStack[512];
@@ -360,10 +360,18 @@ static void PHL_ApplyIniValue(ph7 *pEngine,const char *zName,size_t nName,
 		memcpy(zValue,zVal,nVal);
 	}
 	zValue[nVal] = 0;
-	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zNameBuf,zValue,zFile,nLine);
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,zNameBuf,zValue,zFile,nLine,iStop);
 	if( zValue != zStack ){
 		free(zValue);
 	}
+}
+/*
+ * Hand over a `[` php's scanner never closes. It stands in the queue where a
+ * directive would, carries no name, and takes the whole source down with it.
+ */
+static void PHL_RefuseIniSource(ph7 *pEngine,const char *zFile,unsigned int nLine,int iStop)
+{
+	ph7_config(pEngine,PH7_CONFIG_INI_ENTRY,"","",zFile,nLine,iStop);
 }
 /*
  * Walk one whole php.ini source -- a -c file's bytes, or the buffer php's CLI
@@ -379,6 +387,7 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 		const char *zName,*zNameEnd,*zVal,*zValEnd;
 		unsigned int nDir;
 		int bRunaway = 0;
+		int iStop;
 		while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
 			z++;
 		}
@@ -390,9 +399,100 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 			nLine++;
 			continue;
 		}
-		if( z[0] == ';' || z[0] == '#' || z[0] == '[' ){
-			/* comments and [sections]: enough of php's grammar for CLI
-			 * configuration, and the newline behind them is counted above */
+		if( z[0] == ';' || z[0] == '#' ){
+			/* comments: the newline behind them is counted above */
+			z = PHL_IniSkipEol(z,zEnd);
+			continue;
+		}
+		if( z[0] == '[' ){
+			/* A section NAME is one scanner run, and the only thing that closes
+			 * it is the `]`. A newline does not: php's rule has none, so a `[`
+			 * with no `]` behind it on its own line runs out of source and
+			 * refuses the file -- `unexpected end of file, expecting ']'`,
+			 * dated where the run stopped, with every directive ABOVE it still
+			 * standing and every one below it inside a header that never closed.
+			 * A `]` written further down does not rescue it. Inside the name a
+			 * double-quoted run hides a `]` AND crosses newlines (counting
+			 * them, as it does in a value); a raw `'` run and a `${}` hide one
+			 * without counting; and a backslash carries the byte behind it,
+			 * the newline included. */
+			unsigned int nSec = nLine;
+			int iBad = PH7_INI_STOP_SECTION;
+			int bOpen = 1;
+			z++;
+			while( z < zEnd ){
+				int c = (unsigned char)z[0];
+				if( c == ']' ){
+					bOpen = 0;
+					break;
+				}
+				if( c == '\n' || c == '\r' ){
+					break;   /* out of name, and the file with it */
+				}
+				if( c == '"' ){
+					const char *zQ = &z[1];
+					unsigned int nEat = 0;
+					while( zQ < zEnd && zQ[0] != '"' ){
+						if( zQ[0] == '\\' && &zQ[1] < zEnd ){
+							zQ += 2;
+							continue;
+						}
+						if( zQ[0] == '\n' || zQ[0] == '\r' ){
+							zQ = PHL_IniEatEol(zQ,zEnd);
+							nEat++;
+							continue;
+						}
+						zQ++;
+					}
+					nLine += nEat;
+					if( zQ >= zEnd ){
+						/* the quote is what ran out, and php names what it
+						 * wanted instead of the `]` it never reached */
+						nSec = nLine;
+						iBad = PH7_INI_STOP_SECTION_STR;
+						z = zEnd;
+						break;
+					}
+					z = &zQ[1];
+					continue;
+				}
+				if( c == '\'' ){
+					const char *zQ = &z[1];
+					while( zQ < zEnd && zQ[0] != '\'' ){
+						zQ++;
+					}
+					if( zQ >= zEnd ){
+						z = zEnd;
+						break;   /* still `expecting ']'`, on the `[`'s own line */
+					}
+					z = &zQ[1];
+					continue;
+				}
+				if( c == '$' && &z[1] < zEnd && z[1] == '{' ){
+					const char *zQ = &z[2];
+					while( zQ < zEnd && zQ[0] != '}' ){
+						zQ++;
+					}
+					if( zQ >= zEnd ){
+						iBad = PH7_INI_STOP_SECTION_VAR;
+						z = zEnd;
+						break;
+					}
+					z = &zQ[1];
+					continue;
+				}
+				if( c == '\\' && &z[1] < zEnd ){
+					z += 2;   /* whatever it is, a newline included, uncounted */
+					continue;
+				}
+				z++;
+			}
+			if( bOpen ){
+				PHL_RefuseIniSource(pEngine,zFile,nSec,iBad);
+				return;
+			}
+			/* The rest of that line goes with the header: php reads neither a
+			 * directive nor a bare label out of `[sec] junk`. */
 			z = PHL_IniSkipEol(z,zEnd);
 			continue;
 		}
@@ -407,7 +507,8 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 		}
 		if( z >= zEnd || z[0] != '=' ){
 			/* php: a bare name defines the entry with the value "1" */
-			PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),"1",1,zFile,nDir);
+			PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),"1",1,zFile,nDir,
+				z < zEnd ? PH7_INI_STOP_EOL : PH7_INI_STOP_EOF);
 			continue;
 		}
 		z++;   /* past the '=' */
@@ -480,13 +581,22 @@ static void PHL_ScanIniSource(ph7 *pEngine,const char *zSrc,size_t nSrc,
 			z++;
 		}
 		zValEnd = z;
+		iStop = PH7_INI_STOP_EOF;
 		if( !bRunaway ){
 			/* the `;` comment, and the newline that closes the directive, are
 			 * the scanner's own tokens rather than part of the value */
+			int bComment = z < zEnd && z[0] == ';';
 			z = PHL_IniSkipEol(z,zEnd);
+			/* Which of the two php refuses a value that merely ran out under.
+			 * Its NEWLINE rule counts the line it eats, so a directive closed by
+			 * one is dated a line low; a source that ends without one has no
+			 * newline to give, and a comment left hanging there matches nothing
+			 * at all -- what the parser gets then is the end of the input. */
+			iStop = z < zEnd ? PH7_INI_STOP_EOL
+				: bComment ? PH7_INI_STOP_COMMENT : PH7_INI_STOP_EOF;
 		}
 		PHL_ApplyIniValue(pEngine,zName,(size_t)(zNameEnd - zName),
-			zVal,(size_t)(zValEnd - zVal),zFile,nDir);
+			zVal,(size_t)(zValEnd - zVal),zFile,nDir,iStop);
 	}
 }
 /*
