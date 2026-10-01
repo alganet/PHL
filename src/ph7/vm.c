@@ -5460,6 +5460,10 @@ struct VmIniBad {
 	const char *zTok;
 	int cChar;
 	int bExpect;
+	/* An expect-list that is not the value grammar's own: `${` has two of its
+	 * own (TC_VARNAME, and "TC_FALLBACK or '}'"), so the list is text here
+	 * rather than the single flag bExpect still carries. */
+	const char *zExpect;
 };
 typedef struct VmIniExpr VmIniExpr;
 struct VmIniExpr {
@@ -5479,6 +5483,10 @@ struct VmIniExpr {
 	int bStop;
 	int cStop;
 	int bExpect;
+	/* The `${` substitution names its own token and its own expect-list; every
+	 * other stop leaves both 0 and is described by cStop/bExpect alone. */
+	const char *zTok;
+	const char *zExpect;
 };
 static void VmIniExprStop(VmIniExpr *p,int cStop,int bExpect)
 {
@@ -5490,6 +5498,22 @@ static void VmIniExprStop(VmIniExpr *p,int cStop,int bExpect)
 	 * out as far as the grammar is concerned. */
 	p->cStop = cStop == ';' ? 0 : cStop;
 	p->bExpect = bExpect;
+}
+/*
+ * A stop php names itself rather than by the byte it choked on. zTok is the
+ * symbol printed with no quotes ("end of file", "TC_FALLBACK"), cStop the byte
+ * when there is one, and zExpect the list appended behind either.
+ */
+static void VmIniExprStopAt(VmIniExpr *p,const char *zTok,int cStop,const char *zExpect)
+{
+	if( p->bStop ){
+		return;
+	}
+	p->bStop = 1;
+	p->cStop = cStop;
+	p->bExpect = 0;
+	p->zTok = zTok;
+	p->zExpect = zExpect;
 }
 static void VmIniExprSpace(VmIniExpr *p)
 {
@@ -5652,13 +5676,248 @@ static void VmIniExprSetInt(SyBlob *pOut,sxi32 iVal)
 	SyBlobAppend(pOut,zBuf,(sxu32)nBuf);
 }
 /*
+ * php's `${NAME}` substitution, and php 8.5's `${NAME:-fallback}`. The name is
+ * answered in three steps (zend_ini_get_var): a directive ALREADY SET in this
+ * source wins -- `precision=77` then `${precision}` is "77" whatever the
+ * environment says -- then the environment, then the fallback, then the empty
+ * string. Only names that were set are visible: a directive left at its
+ * built-in default is not in the table, so `${memory_limit}` is empty.
+ *
+ * The name run is php's LABEL_CHAR: any byte that is not one of the value
+ * grammar's own delimiters, `{`/`}`/`[`/`]`, or the `:` of a `:-`. Blanks are
+ * IN the run and trimmed off both ends afterwards, so `${ FOO }` is FOO and
+ * `${F OO}` is the three-word name "F OO".
+ */
+static int VmIniVarNameStop(int c)
+{
+	return c == '=' || c == '\n' || c == '\r' || c == '\t' || c == ';'
+	    || c == '&' || c == '|' || c == '^' || c == '$' || c == '~'
+	    || c == '(' || c == ')' || c == '{' || c == '}' || c == '!'
+	    || c == '"' || c == '[' || c == ']' || c == 0;
+}
+/*
+ * The first two steps of that lookup. FALSE means the name is nowhere, which
+ * is what hands the question on to a fallback.
+ */
+static int VmIniVarLookup(ph7_vm *pVm,const char *zName,sxu32 nName,SyBlob *pOut)
+{
+	VmIniEntry *aEntry;
+	const char *zEnv;
+	char zName0[256];
+	sxu32 n;
+	if( nName < 1 ){
+		return 0;
+	}
+	aEntry = (VmIniEntry *)SySetBasePtr(&pVm->aIniCli);
+	/* Backwards: a directive written twice answers with the last one, which is
+	 * also the one that stands. */
+	for( n = SySetUsed(&pVm->aIniCli) ; n > 0 ; n-- ){
+		SyString *pName = &aEntry[n-1].sName;
+		if( pName->nByte == nName && SyMemcmp(pName->zString,zName,nName) == 0 ){
+			SyBlobAppend(pOut,aEntry[n-1].sValue.zString,aEntry[n-1].sValue.nByte);
+			return 1;
+		}
+	}
+	/* getenv() wants a C string and the name is a slice of the ini source. A
+	 * name longer than any real environment variable is simply absent.
+	 *
+	 * It also trips MSVC's C4996 "may be unsafe" deprecation under /WX -- the
+	 * same standard function used deliberately, suppressed the same way vfs.c
+	 * suppresses it for strerror(), and _MSC_VER-guarded so the GCC build never
+	 * sees an unknown pragma. */
+	if( nName >= sizeof(zName0) ){
+		return 0;
+	}
+	SyMemcpy(zName,zName0,nName);
+	zName0[nName] = 0;
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4996)
+#endif
+	zEnv = getenv(zName0);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+	if( zEnv == 0 ){
+		return 0;
+	}
+	SyBlobAppend(pOut,zEnv,(sxu32)SyStrlen(zEnv));
+	return 1;
+}
+static int VmIniExprVar(VmIniExpr *p,SyBlob *pOut,int nDepth);
+/*
+ * One quoted run. php collapses exactly three escapes inside a double-quoted
+ * run and keeps both bytes of every other one; a single-quoted run carries no
+ * escapes at all and no substitution either, so `'${FOO}'` is its own seven
+ * bytes. A tool that has to put a quote in an ini value writes `\"` -- PHPUnit's
+ * job runner does -- and reading that as the end of the run cut the value in
+ * half.
+ */
+static int VmIniExprQuoted(VmIniExpr *p,SyBlob *pOut,int nDepth)
+{
+	int c = (unsigned char)p->zCur[0];
+	p->zCur++;
+	while( p->zCur < p->zEnd && (unsigned char)p->zCur[0] != c ){
+		if( c == '"' && p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
+			int e = (unsigned char)p->zCur[1];
+			if( e == '"' || e == '\\' || e == '$' ){
+				SyBlobAppend(pOut,&p->zCur[1],sizeof(char));
+			}else{
+				SyBlobAppend(pOut,p->zCur,2*sizeof(char));
+			}
+			p->zCur += 2;
+			continue;
+		}
+		if( c == '"' && p->zCur[0] == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
+			/* ST_DOUBLE_QUOTES takes `${` too. */
+			if( !VmIniExprVar(p,pOut,nDepth+1) ){
+				return 0;
+			}
+			continue;
+		}
+		SyBlobAppend(pOut,p->zCur,sizeof(char));
+		p->zCur++;
+	}
+	if( p->zCur >= p->zEnd ){
+		/* php's ST_DOUBLE_QUOTES runs to the end of the INPUT, not to the end of
+		 * the line, so a quote with no partner is the end of file and the whole
+		 * value is refused. Dropping the quote and keeping the letters made
+		 * `a"b` the two bytes "ab". */
+		p->bErr = 1;
+		return 0;
+	}
+	p->zCur++;    /* the closing quote */
+	return 1;
+}
+/*
+ * `${` ... `}`, with p->zCur on the `$`. Everything it can refuse refuses the
+ * whole VALUE -- php's parser never reduces the directive -- so the directive
+ * keeps its default and the rest of the source is dropped, exactly as any other
+ * ini syntax error is.
+ *
+ * The three refusals are php's own, and the middle one is php's scanner being
+ * literal about a one-byte name: `<ST_VARNAME>{LABEL_CHAR}` matches ONE byte and
+ * then looks ahead, and when what follows is `:-` it jumps straight to the
+ * fallback state WITHOUT returning the name it just read. So `${NN:-x}` is
+ * "x" and `${N:-x}` is a syntax error over a token the parser never got.
+ */
+static int VmIniExprVar(VmIniExpr *p,SyBlob *pOut,int nDepth)
+{
+	const char *zName,*zRaw;
+	SyBlob sFallback;
+	sxu32 nName,nRaw;
+	int bFallback = 0;
+	if( nDepth > VM_INI_EXPR_MAX_DEPTH ){
+		VmIniExprStopAt(p,"end of file",0,"'}'");
+		return 0;
+	}
+	/* Seeded here rather than under the `:-` branch that fills it: MSVC cannot
+	 * prove bFallback gates every use and rejects the blob as possibly
+	 * uninitialised under /WX. */
+	SyBlobInit(&sFallback,&p->pVm->sAllocator);
+	p->zCur += 2;    /* `${` */
+	zRaw = p->zCur;
+	while( p->zCur < p->zEnd ){
+		int c = (unsigned char)p->zCur[0];
+		if( VmIniVarNameStop(c) ){
+			break;
+		}
+		if( c == ':' && &p->zCur[1] < p->zEnd && p->zCur[1] == '-' ){
+			break;
+		}
+		p->zCur++;
+	}
+	nRaw = (sxu32)(p->zCur - zRaw);
+	if( nRaw < 1 ){
+		/* Nothing the name rule could take at all. `${}` names the brace;
+		 * anything else -- a delimiter, or the source running out -- reaches
+		 * php's scanner with no rule left and reads as the end of file. */
+		if( p->zCur < p->zEnd && p->zCur[0] == '}' ){
+			VmIniExprStopAt(p,0,'}',"TC_VARNAME");
+		}else{
+			VmIniExprStopAt(p,"end of file",0,"TC_VARNAME");
+		}
+		SyBlobRelease(&sFallback);
+		return 0;
+	}
+	if( nRaw == 1 && p->zCur < p->zEnd && p->zCur[0] == ':' ){
+		VmIniExprStopAt(p,"TC_FALLBACK",0,"TC_VARNAME");
+		SyBlobRelease(&sFallback);
+		return 0;
+	}
+	zName = zRaw;
+	nName = nRaw;
+	while( nName > 0 && (zName[0] == ' ' || zName[0] == '\t') ){
+		zName++;
+		nName--;
+	}
+	while( nName > 0 && (zName[nName-1] == ' ' || zName[nName-1] == '\t') ){
+		nName--;
+	}
+	if( p->zCur < p->zEnd && p->zCur[0] == ':' ){
+		/* The fallback state takes text, `\<byte>` pairs kept WHOLE, nested
+		 * substitutions and double-quoted runs -- and nothing else: a newline,
+		 * a `;` or a raw quote leaves php with no rule and it reports the end
+		 * of file. Blanks here are content, so `${NN:- }` is one space. */
+		p->zCur += 2;
+		bFallback = 1;
+		while( p->zCur < p->zEnd ){
+			int c = (unsigned char)p->zCur[0];
+			if( c == '}' ){
+				break;
+			}
+			if( c == '\\' && &p->zCur[1] < p->zEnd ){
+				SyBlobAppend(&sFallback,p->zCur,2*sizeof(char));
+				p->zCur += 2;
+				continue;
+			}
+			if( c == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
+				if( !VmIniExprVar(p,&sFallback,nDepth+1) ){
+					SyBlobRelease(&sFallback);
+					return 0;
+				}
+				continue;
+			}
+			if( c == '"' ){
+				if( !VmIniExprQuoted(p,&sFallback,nDepth) ){
+					SyBlobRelease(&sFallback);
+					VmIniExprStopAt(p,"end of file",0,"'}'");
+					return 0;
+				}
+				continue;
+			}
+			if( c == '\n' || c == '\r' || c == ';' || c == '\'' ){
+				break;
+			}
+			SyBlobAppend(&sFallback,p->zCur,sizeof(char));
+			p->zCur++;
+		}
+		if( p->zCur >= p->zEnd || p->zCur[0] != '}' ){
+			SyBlobRelease(&sFallback);
+			VmIniExprStopAt(p,"end of file",0,"'}'");
+			return 0;
+		}
+	}
+	if( p->zCur >= p->zEnd || p->zCur[0] != '}' ){
+		SyBlobRelease(&sFallback);
+		VmIniExprStopAt(p,"end of file",0,"TC_FALLBACK or '}'");
+		return 0;
+	}
+	p->zCur++;    /* `}` */
+	if( !VmIniVarLookup(p->pVm,zName,nName,pOut) && bFallback ){
+		SyBlobAppend(pOut,SyBlobData(&sFallback),SyBlobLength(&sFallback));
+	}
+	SyBlobRelease(&sFallback);
+	return 1;
+}
+/*
  * One operand: everything up to the next operator, parenthesis or `;` comment,
  * with each bare identifier replaced by the constant of that name when one is
  * defined and left standing as its own text when none is, and each quoted run
  * taken literally. Trailing blanks are not part of the token, so `E_ALL ; x`
  * stores "30719" and not "30719 ".
  */
-static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut)
+static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut,int nDepth)
 {
 	const char *zPend = 0;   /* blanks held back: trailing ones are not part of the
 	                          * token, interior ones are ("E_NOTICE E_WARNING" is "8 2") */
@@ -5684,37 +5943,20 @@ static int VmIniExprOperand(VmIniExpr *p,SyBlob *pOut)
 			SyBlobAppend(pOut,zPend,nPend);
 			nPend = 0;
 		}
-		if( c == '"' || c == '\'' ){
-			p->zCur++;
-			while( p->zCur < p->zEnd && (unsigned char)p->zCur[0] != c ){
-				if( c == '"' && p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
-					/* php collapses exactly three escapes inside a double-quoted
-					 * run and keeps both bytes of every other one. A tool that
-					 * has to put a quote in an ini value writes it this way --
-					 * PHPUnit's job runner does -- and reading the `\"` as the
-					 * end of the run cut the value in half. Single quotes carry
-					 * no escapes at all. */
-					int e = (unsigned char)p->zCur[1];
-					if( e == '"' || e == '\\' || e == '$' ){
-						SyBlobAppend(pOut,&p->zCur[1],sizeof(char));
-					}else{
-						SyBlobAppend(pOut,p->zCur,2*sizeof(char));
-					}
-					p->zCur += 2;
-					continue;
-				}
-				SyBlobAppend(pOut,p->zCur,sizeof(char));
-				p->zCur++;
-			}
-			if( p->zCur >= p->zEnd ){
-				/* php's ST_DOUBLE_QUOTES runs to the end of the INPUT, not to the
-				 * end of the line, so a quote with no partner is the end of file
-				 * and the whole value is refused. Dropping the quote and keeping
-				 * the letters made `a"b` the two bytes "ab". */
-				p->bErr = 1;
+		if( c == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
+			if( !VmIniExprVar(p,pOut,nDepth) ){
 				return 0;
 			}
-			p->zCur++;    /* the closing quote */
+			/* A substitution that answered nothing still MADE a value: the
+			 * directive lands as the empty string rather than keeping its
+			 * default. */
+			bAny = 1;
+			continue;
+		}
+		if( c == '"' || c == '\'' ){
+			if( !VmIniExprQuoted(p,pOut,nDepth) ){
+				return 0;
+			}
 			bAny = 1;
 			continue;
 		}
@@ -5788,7 +6030,7 @@ static int VmIniExprUnary(VmIniExpr *p,SyBlob *pOut,int nDepth)
 		p->zCur++;
 		return 1;
 	}
-	if( !VmIniExprOperand(p,pOut) ){
+	if( !VmIniExprOperand(p,pOut,nDepth) ){
 		VmIniExprStop(p,(unsigned char)p->zCur[0],0);
 		return 0;
 	}
@@ -5863,6 +6105,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 	pBad->zTok = 0;
 	pBad->cChar = 0;
 	pBad->bExpect = 0;
+	pBad->zExpect = 0;
 	SyBlobReset(pOut);
 	while( nVal > 0 && (zVal[0] == ' ' || zVal[0] == '\t') ){
 		zVal++;
@@ -5912,10 +6155,14 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,V
 	sIn.bStop = 0;
 	sIn.cStop = 0;
 	sIn.bExpect = 0;
+	sIn.zTok = 0;
+	sIn.zExpect = 0;
 	if( !VmIniExprEval(&sIn,pOut,0) ){
 		pBad->bSet = 1;
+		pBad->zTok = sIn.zTok;
 		pBad->cChar = sIn.cStop;
 		pBad->bExpect = sIn.bExpect;
+		pBad->zExpect = sIn.zExpect;
 		return 0;
 	}
 	/* Whatever is left -- `)`, `1&&2`'s second `&`, an unresolved `~`, and
@@ -5961,6 +6208,8 @@ static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,const VmI
 	if( pBad->bExpect ){
 		SyBlobAppend(&sMsg,", expecting '^' or '|' or '&' or ')'",
 			sizeof(", expecting '^' or '|' or '&' or ')'")-1);
+	}else if( pBad->zExpect ){
+		SyBlobFormat(&sMsg,", expecting %s",pBad->zExpect);
 	}
 	SyBlobFormat(&sMsg," in %.*s on line %u\n",
 		(int)pFile->nByte,pFile->zString,(unsigned)nLine);
