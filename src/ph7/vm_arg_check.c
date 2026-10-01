@@ -1280,6 +1280,7 @@ static const struct VmBuiltinSig {
 	{ "fsockopen", "string $hostname, int $port = -1, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL", "" },
 	{ "pfsockopen", "string $hostname, int $port = -1, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL", "" },
 	{ "stream_socket_client", "string $address, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL, int $flags = STREAM_CLIENT_CONNECT, $context = NULL", "" },
+	{ "stream_socket_enable_crypto", "$stream, bool $enable, ?int $crypto_method = NULL, $session_stream = NULL", "int|bool" },
 	{ "stream_socket_server", "string $address, &$error_code = NULL, &$error_message = NULL, int $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $context = NULL", "" },
 	{ "stream_socket_accept", "$socket, ?float $timeout = NULL, &$peer_name = NULL", "" },
 	{ "stream_socket_get_name", "$socket, bool $remote", "string|false" },

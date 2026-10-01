@@ -14,6 +14,17 @@
 #include <fcntl.h>
 #include <signal.h>
 #endif
+#if defined(PH7_ENABLE_NET) && defined(PH7_ENABLE_OPENSSL)
+/* The ssl:// and tls:// transports are libssl DIRECTLY rather than a wrapper
+ * over ext/openssl's surface: SSL_set_fd() adopts a socket this file already
+ * connected, and php's own `ssl` context options are OpenSSL's vocabulary
+ * spelled in php's words, so most of them are one library call each. This is
+ * the same libssl ext/openssl links -- and, on Windows, still NOT the TLS
+ * ext/curl uses, which is Schannel through vcpkg. */
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509v3.h>
+#endif
 #ifndef PH7_DISABLE_DISK_IO
 /*
  * Section:
@@ -249,6 +260,16 @@ struct sock_private
 	                     * the ops from the DOMAIN as well as the type there, so an
 	                     * AF_UNIX datagram socket reports `udg_socket`, a label no
 	                     * URI this device stack opens can produce. Static storage. */
+#if defined(PH7_ENABLE_OPENSSL)
+	/* TLS, once a handshake has settled. A socket carries these from the moment
+	 * crypto is enabled -- by an ssl:// address, which negotiates during the
+	 * connect, or by stream_socket_enable_crypto() on a plain one -- and every
+	 * byte op below goes through libssl instead of the OS socket while they are
+	 * set. Held as void* so the struct compiles in a build without OpenSSL. */
+	void *pSsl;    /* SSL * */
+	void *pSslCtx; /* SSL_CTX *, one per stream: php builds a fresh context per
+	                * handle because every option below is per-connection. */
+#endif
 };
 #endif
 /*
@@ -5610,6 +5631,289 @@ PH7_PRIVATE int PH7_builtin_stream_context_set_default(ph7_context *pCtx,int nAr
  * small struct carrying the OS socket plus an EOF latch, so feof() works.
  */
 #ifdef PH7_ENABLE_NET
+#if defined(PH7_ENABLE_OPENSSL)
+/*
+ * ------------------------------------------------------------------------
+ * The ssl:// and tls:// transports
+ * ------------------------------------------------------------------------
+ *
+ * php's crypto METHOD is a bitmask of its own (see the STREAM_CRYPTO_METHOD_*
+ * constants): bit 0 says client, and one bit per protocol above it. OpenSSL
+ * has no such mask -- it takes a MINIMUM and a MAXIMUM version on the context
+ * -- so the set is turned into that pair here. A method naming no protocol
+ * OpenSSL 3 will negotiate (the SSLv2 and SSLv3 bits alone) leaves the pair
+ * unset, and the handshake refuses on its own terms rather than silently
+ * speaking TLS the caller did not ask for.
+ */
+#define SOCK_CRYPTO_CLIENT   0x01
+#define SOCK_CRYPTO_SSLv2    0x02
+#define SOCK_CRYPTO_SSLv3    0x04
+#define SOCK_CRYPTO_TLSv1_0  0x08
+#define SOCK_CRYPTO_TLSv1_1  0x10
+#define SOCK_CRYPTO_TLSv1_2  0x20
+#define SOCK_CRYPTO_TLSv1_3  0x40
+/* php's STREAM_CRYPTO_METHOD_TLS_CLIENT: every TLS version, client side. */
+#define SOCK_CRYPTO_TLS_CLIENT \
+	(SOCK_CRYPTO_CLIENT|SOCK_CRYPTO_TLSv1_0|SOCK_CRYPTO_TLSv1_1 \
+	 |SOCK_CRYPTO_TLSv1_2|SOCK_CRYPTO_TLSv1_3)
+/*
+ * The method an ADDRESS names. php registers one transport per protocol
+ * pin, so `tlsv1.2://` is not `tls://` with an option -- it is a different
+ * transport whose method is that one version. `ssl://` and `tls://` are the
+ * same any-TLS method in php 8: the `ssl` name kept its spelling and lost its
+ * protocol long ago. Answers 0 for a name that is not a crypto transport at
+ * all, so the caller can tell "plain tcp" from "TLS pinned to 1.0".
+ */
+static int SockCryptoTransport(const char *zName,int nName)
+{
+	struct { const char *zName; int nName; int iMethod; } aXport[] = {
+		{ "ssl",     3, SOCK_CRYPTO_TLS_CLIENT },
+		{ "tls",     3, SOCK_CRYPTO_TLS_CLIENT },
+		{ "tlsv1.0", 7, SOCK_CRYPTO_CLIENT|SOCK_CRYPTO_TLSv1_0 },
+		{ "tlsv1.1", 7, SOCK_CRYPTO_CLIENT|SOCK_CRYPTO_TLSv1_1 },
+		{ "tlsv1.2", 7, SOCK_CRYPTO_CLIENT|SOCK_CRYPTO_TLSv1_2 },
+		{ "tlsv1.3", 7, SOCK_CRYPTO_CLIENT|SOCK_CRYPTO_TLSv1_3 }
+	};
+	int i;
+	for( i = 0 ; i < (int)(sizeof(aXport)/sizeof(aXport[0])) ; i++ ){
+		if( nName == aXport[i].nName
+		 && SyStrncmp(zName,aXport[i].zName,(sxu32)nName) == 0 ){
+			return aXport[i].iMethod;
+		}
+	}
+	return 0;
+}
+/* The context's `ssl` options, each answered as php's own default when the
+ * script named none. php's defaults are not OpenSSL's: verify_peer and
+ * verify_peer_name are ON, which is the whole reason a self-signed peer needs
+ * a context at all. */
+static int SockSslOptBool(phl_stream_ctx *pCtxRes,const char *zName,int bDefault)
+{
+	ph7_value *pVal = pCtxRes ? PH7_StreamCtxOption(pCtxRes,"ssl",zName) : 0;
+	if( pVal == 0 ){
+		return bDefault;
+	}
+	return ph7_value_to_bool(pVal) ? 1 : 0;
+}
+static const char * SockSslOptStr(phl_stream_ctx *pCtxRes,const char *zName,SyBlob *pOut)
+{
+	ph7_value *pVal = pCtxRes ? PH7_StreamCtxOption(pCtxRes,"ssl",zName) : 0;
+	const char *z;
+	int n = 0;
+	if( pVal == 0 || ph7_value_is_null(pVal) ){
+		return 0;
+	}
+	z = ph7_value_to_string(pVal,&n);
+	if( n < 1 ){
+		return 0;
+	}
+	/* Every libssl door below takes a C string, and a VM blob is not one --
+	 * the same NUL rule the plain-file opener records. */
+	SyBlobReset(pOut);
+	if( SyBlobAppend(pOut,z,(sxu32)n) != SXRET_OK
+	 || SyBlobNullAppend(pOut) != SXRET_OK ){
+		return 0;
+	}
+	return (const char *)SyBlobData(pOut);
+}
+/*
+ * php's error text for a failed TLS operation: the sentence, then OpenSSL's
+ * own queue drained under an `OpenSSL Error messages:` heading. A handshake
+ * that failed for a reason OpenSSL did not queue (the peer simply closed)
+ * carries the sentence alone, which is what php answers too.
+ */
+static void SockSslErrorText(const char *zWhat,char *zBuf,int nBuf)
+{
+	char zErr[256];
+	unsigned long uErr;
+	int n;
+	n = (int)SyBufferFormat(zBuf,(sxu32)nBuf,"%s",zWhat);
+	while( (uErr = ERR_get_error()) != 0 ){
+		ERR_error_string_n(uErr,zErr,sizeof(zErr));
+		if( n + (int)SyStrlen(zErr) + 32 >= nBuf ){
+			break;
+		}
+		n += (int)SyBufferFormat(&zBuf[n],(sxu32)(nBuf - n),
+			"%sOpenSSL Error messages:\n%s","\n",zErr);
+	}
+}
+/*
+ * Turn php's method mask into the context OpenSSL wants, apply the `ssl`
+ * context options, adopt the socket and run the handshake. Answers PH7_OK, or
+ * -1 with *zErr carrying php's sentence for the failure.
+ *
+ * The socket is left BLOCKING for the duration whatever the handle's own mode
+ * is: php's handshake drives its own retry loop over a non-blocking socket and
+ * the observable end of both is the same completed (or refused) handshake, so
+ * the loop is not reproduced -- the read/write ops below are what the handle's
+ * blocking mode is really about.
+ */
+static int SockSslHandshake(sock_private *pSock,int iMethod,phl_stream_ctx *pCtxRes,
+	const char *zPeerName,char *zErr,int nErr)
+{
+	SSL_CTX *pSslCtx;
+	SSL *pSsl;
+	SyBlob sTmp;
+	const char *z;
+	int bServer = (iMethod & SOCK_CRYPTO_CLIENT) == 0;
+	int iMin = 0,iMax = 0,rc;
+	if( pSock == 0 || pSock->sock == PH7_NET_INVALID_SOCKET ){
+		SyBufferFormat(zErr,(sxu32)nErr,"This stream does not support SSL/crypto");
+		return -1;
+	}
+	if( iMethod & SOCK_CRYPTO_TLSv1_0 ){ iMin = iMin ? iMin : TLS1_VERSION; iMax = TLS1_VERSION; }
+	if( iMethod & SOCK_CRYPTO_TLSv1_1 ){ iMin = iMin ? iMin : TLS1_1_VERSION; iMax = TLS1_1_VERSION; }
+	if( iMethod & SOCK_CRYPTO_TLSv1_2 ){ iMin = iMin ? iMin : TLS1_2_VERSION; iMax = TLS1_2_VERSION; }
+	if( iMethod & SOCK_CRYPTO_TLSv1_3 ){ iMin = iMin ? iMin : TLS1_3_VERSION; iMax = TLS1_3_VERSION; }
+	if( iMin == 0 ){
+		/* SSLv2 or SSLv3 alone: php hands the mask to a method OpenSSL 3 has
+		 * removed, and the refusal is the handshake's. Said here instead,
+		 * because there is no context to build. */
+		SyBufferFormat(zErr,(sxu32)nErr,
+			"No SSL protocols are enabled and the client cannot continue");
+		return -1;
+	}
+	pSslCtx = SSL_CTX_new(bServer ? TLS_server_method() : TLS_client_method());
+	if( pSslCtx == 0 ){
+		SockSslErrorText("Failed to create an SSL context",zErr,nErr);
+		return -1;
+	}
+	SSL_CTX_set_min_proto_version(pSslCtx,iMin);
+	SSL_CTX_set_max_proto_version(pSslCtx,iMax);
+	SyBlobInit(&sTmp,&pSock->pVm->sAllocator);
+	if( (z = SockSslOptStr(pCtxRes,"ciphers",&sTmp)) != 0 ){
+		SSL_CTX_set_cipher_list(pSslCtx,z);
+	}
+	if( (z = SockSslOptStr(pCtxRes,"local_cert",&sTmp)) != 0 ){
+		/* php reads a PEM holding the certificate AND, unless `local_pk` names
+		 * one separately, the private key beside it -- which is why a single
+		 * combined PEM is the documented shape. */
+		if( SSL_CTX_use_certificate_chain_file(pSslCtx,z) != 1 ){
+			SockSslErrorText("Unable to set local cert chain file",zErr,nErr);
+			goto fail_ctx;
+		}
+		if( SockSslOptStr(pCtxRes,"local_pk",&sTmp) == 0
+		 && SSL_CTX_use_PrivateKey_file(pSslCtx,z,SSL_FILETYPE_PEM) != 1 ){
+			SockSslErrorText("Unable to set private key file",zErr,nErr);
+			goto fail_ctx;
+		}
+	}
+	if( (z = SockSslOptStr(pCtxRes,"local_pk",&sTmp)) != 0 ){
+		if( SSL_CTX_use_PrivateKey_file(pSslCtx,z,SSL_FILETYPE_PEM) != 1 ){
+			SockSslErrorText("Unable to set private key file",zErr,nErr);
+			goto fail_ctx;
+		}
+	}
+	if( SockSslOptBool(pCtxRes,"verify_peer",1) ){
+		SyBlob sCa;
+		const char *zCaFile,*zCaPath;
+		SyBlobInit(&sCa,&pSock->pVm->sAllocator);
+		zCaFile = SockSslOptStr(pCtxRes,"cafile",&sTmp);
+		zCaPath = SockSslOptStr(pCtxRes,"capath",&sCa);
+		if( zCaFile || zCaPath ){
+			if( SSL_CTX_load_verify_locations(pSslCtx,zCaFile,zCaPath) != 1 ){
+				SockSslErrorText("Unable to load the CA bundle",zErr,nErr);
+				SyBlobRelease(&sCa);
+				goto fail_ctx;
+			}
+		}else{
+			SSL_CTX_set_default_verify_paths(pSslCtx);
+		}
+		SyBlobRelease(&sCa);
+		/* `allow_self_signed` does not turn verification off -- it whitelists
+		 * the two verdicts a self-signed chain produces, so an EXPIRED
+		 * self-signed certificate is still refused. Reproduced by verifying and
+		 * reading the verdict after the handshake rather than by asking
+		 * OpenSSL to fail here. */
+		SSL_CTX_set_verify(pSslCtx,SSL_VERIFY_NONE,0);
+	}else{
+		SSL_CTX_set_verify(pSslCtx,SSL_VERIFY_NONE,0);
+	}
+	pSsl = SSL_new(pSslCtx);
+	if( pSsl == 0 ){
+		SockSslErrorText("Failed to create an SSL handle",zErr,nErr);
+		goto fail_ctx;
+	}
+	if( !bServer ){
+		const char *zHost = SockSslOptStr(pCtxRes,"peer_name",&sTmp);
+		if( zHost == 0 ){
+			zHost = zPeerName;
+		}
+		if( zHost && zHost[0] ){
+			if( SockSslOptBool(pCtxRes,"SNI_enabled",1) ){
+				/* An IP literal is not a server NAME, and OpenSSL refuses to
+				 * put one in the extension -- php sends SNI for a hostname
+				 * only, so the return value is deliberately not checked. */
+				SSL_set_tlsext_host_name(pSsl,zHost);
+			}
+			if( SockSslOptBool(pCtxRes,"verify_peer_name",1) ){
+				X509_VERIFY_PARAM *pParam = SSL_get0_param(pSsl);
+				X509_VERIFY_PARAM_set_hostflags(pParam,
+					X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+				X509_VERIFY_PARAM_set1_host(pParam,zHost,0);
+			}
+		}
+	}
+	if( SSL_set_fd(pSsl,(int)pSock->sock) != 1 ){
+		SockSslErrorText("Failed to attach the socket to the SSL handle",zErr,nErr);
+		SSL_free(pSsl);
+		goto fail_ctx;
+	}
+	ERR_clear_error();
+	rc = bServer ? SSL_accept(pSsl) : SSL_connect(pSsl);
+	if( rc != 1 ){
+		SyBufferFormat(zErr,(sxu32)nErr,"SSL operation failed with code %d. ",
+			SSL_get_error(pSsl,rc));
+		{
+			char zTail[384];
+			SockSslErrorText("",zTail,(int)sizeof(zTail));
+			SyBufferFormat(&zErr[SyStrlen(zErr)],
+				(sxu32)(nErr - (int)SyStrlen(zErr)),"%s",zTail);
+		}
+		SSL_free(pSsl);
+		goto fail_ctx;
+	}
+	if( !bServer && SockSslOptBool(pCtxRes,"verify_peer",1) ){
+		long iVerdict = SSL_get_verify_result(pSsl);
+		int bSelf = (iVerdict == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT
+		          || iVerdict == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN);
+		if( iVerdict != X509_V_OK
+		 && !(bSelf && SockSslOptBool(pCtxRes,"allow_self_signed",0)) ){
+			SyBufferFormat(zErr,(sxu32)nErr,
+				"Peer certificate did not match expected peer: %s",
+				X509_verify_cert_error_string(iVerdict));
+			SSL_free(pSsl);
+			goto fail_ctx;
+		}
+	}
+	SyBlobRelease(&sTmp);
+	pSock->pSsl = (void *)pSsl;
+	pSock->pSslCtx = (void *)pSslCtx;
+	return PH7_OK;
+fail_ctx:
+	SyBlobRelease(&sTmp);
+	SSL_CTX_free(pSslCtx);
+	return -1;
+}
+/* Tear the TLS session down without touching the socket: php's
+ * stream_socket_enable_crypto($h, false) leaves a usable plain handle behind,
+ * and the close path below runs the same teardown before closing the socket. */
+static void SockSslDrop(sock_private *pSock)
+{
+	if( pSock == 0 || pSock->pSsl == 0 ){
+		return;
+	}
+	/* One shutdown, not the two-step wait for the peer's own close_notify: the
+	 * peer may be gone and php does not block a close on it either. */
+	SSL_shutdown((SSL *)pSock->pSsl);
+	SSL_free((SSL *)pSock->pSsl);
+	pSock->pSsl = 0;
+	if( pSock->pSslCtx ){
+		SSL_CTX_free((SSL_CTX *)pSock->pSslCtx);
+		pSock->pSslCtx = 0;
+	}
+}
+#endif /* PH7_ENABLE_OPENSSL */
 static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)
 {
 	sock_private *pSock = (sock_private *)pHandle;
@@ -5622,6 +5926,41 @@ static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead
 	if( pSock->bEof ){
 		return 0;
 	}
+#if defined(PH7_ENABLE_OPENSSL)
+	if( pSock->pSsl ){
+		/* Under TLS the RECORD layer is the stream: libssl owns the socket, and
+		 * a read that answers nothing is told from a closed session by
+		 * SSL_get_error() rather than by errno -- WANT_READ/WANT_WRITE is the
+		 * EAGAIN a non-blocking handle sees, and a clean ZERO_RETURN is the
+		 * peer's close_notify, which IS this stream's end of file. */
+		n = SSL_read((SSL *)pSock->pSsl,pBuffer,(int)nRead);
+		if( n > 0 ){
+			return (ph7_int64)n;
+		}
+		switch( SSL_get_error((SSL *)pSock->pSsl,n) ){
+			case SSL_ERROR_ZERO_RETURN:
+				pSock->bEof = 1;
+				return 0;
+			case SSL_ERROR_WANT_READ:
+			case SSL_ERROR_WANT_WRITE:
+				errno = EAGAIN;
+				return -1;
+			case SSL_ERROR_SYSCALL:
+				/* The peer vanished without a close_notify. php reports the end
+				 * of the stream for it rather than an error, because the bytes
+				 * already handed over are the whole of what there was. */
+				if( n == 0 ){
+					pSock->bEof = 1;
+					return 0;
+				}
+				errno = errno != 0 ? errno : EIO;
+				return -1;
+			default:
+				errno = EIO;
+				return -1;
+		}
+	}
+#endif
 	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);
 	if( n == 0 ){
 		/* The peer closed: THIS is the end of the stream. */
@@ -5661,6 +6000,30 @@ static ph7_int64 SockStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 n
 	 * `fwrite($sock,$s)` answered 0 bytes written: the `=== strlen($s)` check
 	 * failed on a write that worked, a partial-write retry loop never advanced,
 	 * and stream_copy_to_stream() stopped after its first chunk. */
+#if defined(PH7_ENABLE_OPENSSL)
+	if( pSock->pSsl ){
+		while( nSent < nWrite ){
+			int n = SSL_write((SSL *)pSock->pSsl,&zBuf[nSent],(int)(nWrite - nSent));
+			if( n > 0 ){
+				nSent += n;
+				continue;
+			}
+			{
+				int iErr = SSL_get_error((SSL *)pSock->pSsl,n);
+				if( iErr == SSL_ERROR_WANT_READ || iErr == SSL_ERROR_WANT_WRITE ){
+					return nSent;
+				}
+				/* Same shape the plain socket answers: the COUNT moved, and
+				 * false only for a write that moved nothing at all. The errno
+				 * is what the socket notice reads, and a TLS failure has none
+				 * of its own -- libssl's queue is not php's `errno=`. */
+				pSock->iLastErr = errno != 0 ? errno : EIO;
+			}
+			return nSent > 0 ? nSent : -1;
+		}
+		return nSent;
+	}
+#endif
 	while( nSent < nWrite ){
 		int n = PH7_NetSend(pSock->sock,&zBuf[nSent],(int)(nWrite - nSent),0);
 		if( n > 0 ){
@@ -5685,6 +6048,12 @@ static void SockStreamData_Close(void *pHandle)
 	if( pSock == 0 ){
 		return;
 	}
+#if defined(PH7_ENABLE_OPENSSL)
+	/* The session goes down BEFORE the socket does: a close_notify has to reach
+	 * the peer over a descriptor that is still open, and libssl would otherwise
+	 * write it to a closed (or, worse, recycled) one. */
+	SockSslDrop(pSock);
+#endif
 	PH7_NetClose(pSock->sock);
 	SyMemBackendFree(&pSock->pVm->sAllocator,pSock);
 }
@@ -5737,6 +6106,14 @@ static int SockStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 	pSock->iLastErr = 0;
 	pSock->bGeneric = 0;
 	pSock->bDgram = 0;
+	/* Left unset until now, so a `tcp://host:port` opened through fopen() --
+	 * the one door that reaches this opener -- read an uninitialised pointer
+	 * the moment stream_get_meta_data() asked for its `stream_type`. */
+	pSock->zLabel = 0;
+#if defined(PH7_ENABLE_OPENSSL)
+	pSock->pSsl = 0;
+	pSock->pSslCtx = 0;
+#endif
 	*ppHandle = (void *)pSock;
 	return PH7_OK;
 }
@@ -5821,6 +6198,10 @@ static io_private * SockWrapSocket(ph7_context *pCtx,ph7_socket sock,int bDgram,
 	pSock->bDgram = bDgram;
 	/* Derived from the two flags above unless ext/sockets states one. */
 	pSock->zLabel = 0;
+#if defined(PH7_ENABLE_OPENSSL)
+	pSock->pSsl = 0;
+	pSock->pSslCtx = 0;
+#endif
 	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
 	/* php's feof() answers TRUE for a stream whose socket was never created. */
 	pDev->bEof = (sxu8)(sock == PH7_NET_INVALID_SOCKET ? 1 : 0);
@@ -7271,7 +7652,8 @@ static int SockParsePort(const char *z,int n)
 	return iSign * iVal;
 }
 static int SockParseAddress(const char *zAddr,int nAddr,char *zHost,int nHostBuf,int *pPort,
-	const char **pzTransport,int *pnTransport,const char **pzRest,int *pnRest,int *pbDgram)
+	const char **pzTransport,int *pnTransport,const char **pzRest,int *pnRest,int *pbDgram,
+	int *piCrypto)
 {
 	const char *zRest = zAddr;
 	int nRest = nAddr,i,nHost = -1;
@@ -7279,6 +7661,7 @@ static int SockParseAddress(const char *zAddr,int nAddr,char *zHost,int nHostBuf
 	*pzTransport = "tcp";
 	*pnTransport = 3;
 	*pbDgram = 0;
+	*piCrypto = 0;
 	for( i = 0 ; i + 2 < nAddr ; i++ ){
 		if( zAddr[i] == ':' && zAddr[i+1] == '/' && zAddr[i+2] == '/' ){
 			*pzTransport = zAddr;
@@ -7298,7 +7681,18 @@ static int SockParseAddress(const char *zAddr,int nAddr,char *zHost,int nHostBuf
 	if( *pnTransport == 3 && SyStrncmp(*pzTransport,"udp",3) == 0 ){
 		*pbDgram = 1;
 	}else if( *pnTransport != 3 || SyStrncmp(*pzTransport,"tcp",3) != 0 ){
+#if defined(PH7_ENABLE_OPENSSL)
+		/* A crypto transport is a STREAM one that negotiates as part of the
+		 * connect, so everything below -- the host:port split, the bind
+		 * options, the persistence key -- is the tcp:// path unchanged, and
+		 * only the handshake is added on top of the connected socket. */
+		*piCrypto = SockCryptoTransport(*pzTransport,*pnTransport);
+		if( *piCrypto == 0 ){
+			return SOCK_ADDR_TRANSPORT;
+		}
+#else
 		return SOCK_ADDR_TRANSPORT;
+#endif
 	}
 	if( nRest > 1 && zRest[0] == '[' ){
 		/* php reads the BRACKETED form before it looks for a port at all: a `]`
@@ -7361,7 +7755,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	char zHost[256],zAddrBuf[352],zShowBuf[384],zMsg[512];
 	const char *zShow;
 	int nRaw,nAddr,nShow,nTransport,nRest,iPortArg = -1,iPort = 0,iErrno = 0,iTimeoutMs = 0,rc;
-	int iFlags = PH7_STREAM_CLIENT_CONNECT,bPersist,bConnect,bDgram = 0;
+	int iFlags = PH7_STREAM_CLIENT_CONNECT,bPersist,bConnect,bDgram = 0,iCrypto = 0;
 	ph7_socket sock;
 	io_private *pDev;
 	int iArgErrno = bClientForm ? 1 : 2;
@@ -7424,7 +7818,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 		zShow = zShowBuf;
 	}
 	rc = SockParseAddress(zAddr,nAddr,zHost,(int)sizeof(zHost),&iPort,&zTransport,&nTransport,
-		&zRest,&nRest,&bDgram);
+		&zRest,&nRest,&bDgram,&iCrypto);
 	if( (rc == SOCK_ADDR_PARSE || rc == SOCK_ADDR_IPV6) && !bConnect ){
 		/* php splits the address in TWO places: the transport is looked up when
 		 * the stream is created and the host:port half is parsed by the
@@ -7558,6 +7952,28 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	/* php attaches the opener's context to a TRANSPORT stream and to nothing
 	 * else — which is why stream_context_get_options() answers for a socket and
 	 * answers the empty set for a file opened through the very same call. */
+#if defined(PH7_ENABLE_OPENSSL)
+	if( iCrypto != 0 ){
+		/* php negotiates inside the connect for a crypto transport, so a
+		 * handshake that fails is a failed CONNECT: no handle at all rather
+		 * than a plaintext one. It reports the failure TWICE and asymmetrically
+		 * -- the crypto layer raises what went wrong, and the opener that asked
+		 * then says `Unable to connect to ... (Unknown error)` and leaves
+		 * $errstr EMPTY, because the text belonged to the layer below and php
+		 * never carried it up. The resolve failure above has the same shape
+		 * with the text carried. Run before the context is attached, so the
+		 * abandoned handle owes it no reference. */
+		char zSslErr[512];
+		if( SockSslHandshake((sock_private *)pDev->pHandle,iCrypto,pCtxRes,zHost,
+				zSslErr,(int)sizeof(zSslErr)) != PH7_OK ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zSslErr);
+			SockAddressFailure(pCtx,apArg,nArg,iArgErrno,iArgErrstr,zShow,nShow,0,0);
+			SockCloseWrapped(pCtx,pDev);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+#endif
 	pDev->pCtxRes = (void *)pCtxRes;
 	StreamCtxHold(pCtxRes);
 	SockArmDefaultTimeout(pCtx,pDev);
@@ -7591,7 +8007,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 {
 	const char *zAddr,*zTransport,*zRest,*zErr = "";
 	char zHost[256];
-	int nAddr,nTransport,nRest,iPort = -1,iErrno = 0,iFlags,rc,bDgram = 0;
+	int nAddr,nTransport,nRest,iPort = -1,iErrno = 0,iFlags,rc,bDgram = 0,iCrypto = 0;
 	ph7_socket sock;
 	io_private *pDev;
 	phl_stream_ctx *pCtxRes;
@@ -7614,7 +8030,15 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 	iFlags = nArg > 3 ? (int)ph7_value_to_int64(apArg[3])
 		: (PH7_STREAM_SERVER_BIND|PH7_STREAM_SERVER_LISTEN);
 	rc = SockParseAddress(zAddr,nAddr,zHost,(int)sizeof(zHost),&iPort,&zTransport,&nTransport,
-		&zRest,&nRest,&bDgram);
+		&zRest,&nRest,&bDgram,&iCrypto);
+	if( iCrypto != 0 ){
+		/* The crypto transports connect but do not yet LISTEN: a server side
+		 * negotiates on each accepted connection, needs `local_cert`, and is
+		 * its own piece of work. Until it exists a script asking for one is
+		 * told the transport is missing rather than handed a socket that would
+		 * speak plaintext to a peer expecting TLS. */
+		rc = SOCK_ADDR_TRANSPORT;
+	}
 	if( (rc == SOCK_ADDR_PARSE || rc == SOCK_ADDR_IPV6)
 	 && (iFlags & PH7_STREAM_SERVER_BIND) == 0 ){
 		/* The server half of the same split: the bind() is what parses
@@ -9171,6 +9595,130 @@ PH7_PRIVATE int PH7_builtin_stream_select(ph7_context *pCtx,int nArg,ph7_value *
 	return PH7_OK;
 }
 /*
+ * bool|int stream_socket_enable_crypto(resource $stream, bool $enable,
+ *                                     ?int $crypto_method = null)
+ *
+ * Crypto on a socket that is already connected -- the second door to the same
+ * handshake ssl:// runs inside its connect, and the one a protocol that
+ * upgrades in place (SMTP's STARTTLS, IMAP's, a proxied CONNECT) needs. php
+ * answers TRUE for a settled handshake, FALSE for one that failed, and 0 for
+ * one that is not finished yet on a non-blocking handle; the blocking
+ * handshake here settles or fails, so 0 is unreachable.
+ *
+ * Two refusals are the whole of its screening, and both are php's: a stream
+ * with no socket under it "does not support SSL/crypto" -- a warning, false --
+ * and enabling with no method named anywhere is a ValueError, because php has
+ * no default to fall back on once the context carries none.
+ */
+PH7_PRIVATE int PH7_builtin_stream_socket_enable_crypto(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	int rc = PH7_OK,bEnable;
+#if defined(PH7_ENABLE_OPENSSL)
+	sock_private *pSock;
+	phl_stream_ctx *pCtxRes;
+	int iMethod = 0;
+	char zErr[512],zHost[256];
+#endif
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArgNamed(pCtx,apArg[0],1,"$stream",&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	bEnable = ph7_value_to_bool(apArg[1]) ? 1 : 0;
+#if defined(PH7_ENABLE_OPENSSL)
+	pSock = (pDev->pStream == &sTCP_Stream && pDev->pHandle
+	      && ((sock_private *)pDev->pHandle)->sock != PH7_NET_INVALID_SOCKET)
+		? (sock_private *)pDev->pHandle : 0;
+	if( !bEnable ){
+		/* The two halves are asymmetric, and measurably so. DISABLING on a
+		 * device that is not a transport at all -- a file, php://memory, a
+		 * userland wrapper -- warns like the enabling half does and then
+		 * answers TRUE anyway: the request reaches a stream with no crypto
+		 * option to answer it, and php reads the untouched success its own
+		 * call left behind. Disabling on a real
+		 * SOCKET is answered by the socket's own ops, and one carrying no
+		 * session says false. So the return value reports what CHANGED, not
+		 * whether the handle is now plain, and the two devices disagree about
+		 * a handle that has no crypto either way. */
+		if( pSock == 0 ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"This stream does not support SSL/crypto");
+			ph7_result_bool(pCtx,1);
+			return PH7_OK;
+		}
+		if( pSock->pSsl == 0 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		SockSslDrop(pSock);
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	if( pSock == 0 ){
+		/* ENABLING is the half that screens the device: php asks the stream to
+		 * set crypto up before it asks it to switch on, and a device with no
+		 * transport ops is refused there by name. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"This stream does not support SSL/crypto");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pSock->pSsl ){
+		/* Already negotiated: php runs no second handshake and reports the
+		 * session it has. */
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	pCtxRes = (phl_stream_ctx *)pDev->pCtxRes;
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		iMethod = (int)ph7_value_to_int64(apArg[2]);
+	}else{
+		ph7_value *pOpt = pCtxRes ? PH7_StreamCtxOption(pCtxRes,"ssl","crypto_method") : 0;
+		if( pOpt ){
+			iMethod = (int)ph7_value_to_int64(pOpt);
+		}
+	}
+	if( iMethod == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #3 ($crypto_method) must be specified when enabling encryption",
+			ph7_function_name(pCtx));
+	}
+	/* The name to verify the peer against, when the script named none: php uses
+	 * the host half of the address the handle was OPENED with, which is why a
+	 * connection made through fsockopen() verifies against the host it dialled
+	 * and an ACCEPTED one (opened by no name at all) has nothing to check. */
+	zHost[0] = 0;
+	if( SyBlobLength(&pDev->sUri) > 0 ){
+		const char *zUri = (const char *)SyBlobData(&pDev->sUri);
+		int nUri = (int)SyBlobLength(&pDev->sUri),iPort,nXport,nRest,bDgram,iXCrypto;
+		const char *zXport,*zRest;
+		if( SockParseAddress(zUri,nUri,zHost,(int)sizeof(zHost),&iPort,&zXport,&nXport,
+				&zRest,&nRest,&bDgram,&iXCrypto) != SOCK_ADDR_OK ){
+			zHost[0] = 0;
+		}
+	}
+	if( SockSslHandshake(pSock,iMethod,pCtxRes,zHost,zErr,(int)sizeof(zErr)) != PH7_OK ){
+		/* php prefixes the crypto layer's text with `SSL: ` here where the
+		 * ssl:// opener does not -- the same failure, reported by two names. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"SSL: %s",zErr);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+#else
+	SXUNUSED(bEnable);
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+		"This stream does not support SSL/crypto");
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+#endif
+}
+/*
  * array stream_get_transports(void)
  *
  * The transports a stream_socket_client()/fsockopen() address may name. php's
@@ -9191,11 +9739,25 @@ PH7_PRIVATE int PH7_builtin_stream_get_transports(ph7_context *pCtx,int nArg,ph7
 		return PH7_OK;
 	}
 #ifdef PH7_ENABLE_NET
-	ph7_value_string(pV,"tcp",-1);
-	ph7_array_add_elem(pArr,0,pV);
-	ph7_value_reset_string_cursor(pV);
-	ph7_value_string(pV,"udp",-1);
-	ph7_array_add_elem(pArr,0,pV);
+	{
+		/* php's REGISTRATION order, not an alphabetical one: tcp and udp first,
+		 * then the socket transports its build added, then ssl/tls. The
+		 * unix:// and udg:// pair php lists between them is a recorded scope
+		 * gap, and answering for transports that are not there would tell a
+		 * script a connection will work when it cannot. */
+		static const char * const azXport[] = {
+			"tcp", "udp"
+#if defined(PH7_ENABLE_OPENSSL)
+			, "ssl", "tls", "tlsv1.0", "tlsv1.1", "tlsv1.2", "tlsv1.3"
+#endif
+		};
+		int i;
+		for( i = 0 ; i < (int)(sizeof(azXport)/sizeof(azXport[0])) ; i++ ){
+			ph7_value_reset_string_cursor(pV);
+			ph7_value_string(pV,azXport[i],-1);
+			ph7_array_add_elem(pArr,0,pV);
+		}
+	}
 #endif
 	ph7_result_value(pCtx,pArr);
 	return PH7_OK;
