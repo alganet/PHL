@@ -180,7 +180,16 @@ PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)
 	}
 	/* Remove old reference links. The permanent pin is read BEFORE the unlink --
 	 * it is what decides whether the index goes back to the free pool, and the
-	 * unlink is what takes the answer away. */
+	 * unlink is what takes the answer away.
+	 *
+	 * A bare mark answers all three of those questions with one compare, and it is
+	 * what the overwhelming majority of the slots reaching here carry -- see
+	 * PH7_VmSlotDropIfBare. It has no permanent pin by construction, so the index
+	 * goes back to the pool whether or not the caller forced it. */
+	if( PH7_VmSlotDropIfBare(&(*pVm),nObjIdx) ){
+		VmMemPoolFreeSlot(&pVm->aMemObj,nObjIdx);
+		return SXRET_OK;
+	}
 	if( PH7_VmSlotRegistered(&(*pVm),nObjIdx) ){
 		int bKeep = PH7_VmSlotKeepPinned(&(*pVm),nObjIdx);
 		/* Unlink from the reference table */

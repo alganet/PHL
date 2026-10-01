@@ -6716,6 +6716,7 @@ PH7_PRIVATE SyHashEntry * PH7_VmSuperGet(ph7_vm *pVm,const char *zName,sxu32 nBy
 PH7_PRIVATE void PH7_VmSuperNote(ph7_vm *pVm,const char *zName,sxu32 nByte);
 /* The reference table asks its questions BY SLOT: a slot that answers from its word
  * has no record for a caller to hold, so there is no VmRefObjExtract any more. */
+PH7_PRIVATE int PH7_VmSlotDropIfBare(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxu32 PH7_VmSlotEntryCount(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxu32 PH7_VmSlotNodeCount(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxu32 PH7_VmSlotPinCount(ph7_vm *pVm,sxu32 nIdx);

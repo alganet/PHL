@@ -8384,6 +8384,37 @@ PH7_PRIVATE int PH7_VmSlotRegistered(ph7_vm *pVm,sxu32 nIdx)
 	}
 	return VmRefWord(&(*pVm),nIdx) != 0;
 }
+/*
+ * The BARE MARK -- the one word that decides a slot's whole teardown by itself.
+ *
+ * VM_REF_TAG_MARK with nothing above the tag means "registered, held by nothing,
+ * pinned by nothing", which is what a dropped holder leaves behind and therefore
+ * what an array element's slot looks like once its node has been unlinked. For
+ * that word all three of the questions below are already answered -- registered
+ * yes, keep no, holders none -- and PH7_VmSlotUnlink has nothing to unlink but the
+ * cell itself, so this empties it and says it did.
+ *
+ * A throwaway counter build over the ecosystem gate's phpcs step (PERF.md §7's
+ * fifth instrument; the table is in PERF.md §2.5) says it is not an edge case:
+ * 22,831,962 of the 23,016,949 slots PH7_VmReleaseUnheldSlot is handed carry
+ * exactly this word -- 99.20% -- and none of them carry a name or a node. The
+ * teardown of one of those used to ask the same cell seven separate loads across
+ * eight out-of-line calls.
+ *
+ * It cannot be confused with a real holder: a name or a node word is a pointer the
+ * allocator has kept 4-aligned, tagged with 1 or 2, so its low two bits are never
+ * 3; a record pointer's are 0; and a mark carrying a pin or a keep has bits set
+ * above the tag. Only the bare mark is the integer 3.
+ */
+PH7_PRIVATE int PH7_VmSlotDropIfBare(ph7_vm *pVm,sxu32 nIdx)
+{
+	if( nIdx >= pVm->nRefSize
+	 || SX_PTR_TO_INT(pVm->apRefObj[nIdx]) != VM_REF_TAG_MARK ){
+		return 0;
+	}
+	VmRefWordSet(&(*pVm),nIdx,0);
+	return 1;
+}
 /* The names bound to the slot. */
 PH7_PRIVATE sxu32 PH7_VmSlotEntryCount(ph7_vm *pVm,sxu32 nIdx)
 {
@@ -8917,7 +8948,12 @@ PH7_PRIVATE void PH7_VmReleaseUnheldSlot(ph7_vm *pVm,sxu32 nIdx)
 	if( nIdx == SXU32_HIGH ){
 		return;
 	}
-	if( PH7_VmSlotRegistered(&(*pVm),nIdx) ){
+	if( nIdx < pVm->nRefSize
+	 && SX_PTR_TO_INT(pVm->apRefObj[nIdx]) == VM_REF_TAG_MARK ){
+		/* A bare mark (PH7_VmSlotDropIfBare): registered, unpinned, unheld. The three
+		 * calls below would load this same word three more times to say so, and this
+		 * is 99.2% of the door. Fall through to the release. */
+	}else if( PH7_VmSlotRegistered(&(*pVm),nIdx) ){
 		if( PH7_VmSlotKeepPinned(&(*pVm),nIdx) ){
 			return; /* pinned past its frame — its holder is not in the table */
 		}
