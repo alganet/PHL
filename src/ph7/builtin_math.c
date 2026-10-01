@@ -550,31 +550,49 @@ PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * float log(float $arg,[int/float $base])
- *  Natural logarithm.
- * Parameter
- *  $arg: The number to process.
- *  $base: The optional logarithmic base to use. (only base-10 is supported)
- * Return
- *  The logarithm of arg to base, if given, or the natural logarithm.
- * Note:
- *  only Natural log and base-10 log are supported.
+ * float log(float $num, float $base = M_E)
+ *  Logarithm of $num to the given base, or the natural logarithm.
+ *
+ *  The base used to be read with ph7_value_to_int() and compared against 10, so
+ *  every base that was not exactly 10 -- 2 included -- silently answered the
+ *  NATURAL logarithm instead: log(8,2) was 2.0794415416798357 where php answers
+ *  3.0. A wrong number with no diagnostic on it.
+ *
+ *  php's rule, and the reason it is not just log(num)/log(base): the two bases
+ *  people actually write have exact libm primitives, and the division does not
+ *  reproduce them -- log(1e300)/log(10) is 299.99999999999994 where log10()
+ *  gives 300. So 10 and 2 are taken by log10()/log2() before anything else,
+ *  and that ordering is observable: base 2 and base 10 are answered even when
+ *  a general base of the same value would have to pass the screens below.
+ *  Then a base at or below zero is a ValueError, base 1 is NAN (the division
+ *  would be x/0), and everything else -- INF and NAN included -- divides.
  */
 PH7_PRIVATE int PH7_builtin_log(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	double r,x;
+	double r,x,base;
 	if( nArg < 1 ){
 		/* Missing argument,return 0 */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
 	x = ph7_value_to_double(apArg[0]);
-	/* Perform the requested operation */
-	if( nArg == 2 && ph7_value_is_numeric(apArg[1]) && ph7_value_to_int(apArg[1]) == 10 ){
-		/* Base-10 log */
+	if( nArg < 2 ){
+		/* The default base is M_E, and log(x)/log(M_E) is log(x) exactly. */
+		ph7_result_double(pCtx,log(x));
+		return PH7_OK;
+	}
+	base = ph7_value_to_double(apArg[1]);
+	if( base == 10.0 ){
 		r = log10(x);
+	}else if( base == 2.0 ){
+		r = log2(x);
+	}else if( base <= 0.0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"log(): Argument #2 ($base) must be greater than 0");
+	}else if( base == 1.0 ){
+		r = PH7_NAN_VALUE();
 	}else{
-		r = log(x);
+		r = log(x) / log(base);
 	}
 	/* store the result back */
 	ph7_result_double(pCtx,r);
