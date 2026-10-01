@@ -31,6 +31,59 @@ static void ResetIOPrivate(io_private *pDev);
  */
 static void ResetIOPrivate(io_private *pDev);
 static sxu32 StreamAheadBytes(io_private *pDev);
+static void StreamSeedPosition(io_private *pDev);
+static void StreamSeekLanded(io_private *pDev,ph7_int64 iOfft,int whence);
+static void StreamSeekRefused(io_private *pDev);
+/*
+ * Ask the device where this handle STARTS, once. php does it with a single
+ * lseek() as the stream is created and never asks again: from then on its own
+ * counter is the position, moved by what was read, written or seeked. A
+ * descriptor that cannot answer seeds the counter at -1, which is why php's
+ * ftell() on a fresh proc_open() pipe is false and becomes a (short) number
+ * once bytes have gone past it.
+ */
+static void StreamSeedPosition(io_private *pDev)
+{
+	if( pDev->bPosSeeded ){
+		return;
+	}
+	pDev->bPosSeeded = 1;
+	if( pDev->pStream && pDev->pStream->xTell && !pDev->bDir ){
+		pDev->iPos = pDev->pStream->xTell(pDev->pHandle);
+	}
+}
+/*
+ * Where a successful seek LANDED. php's device op hands the resulting absolute
+ * offset back to the stream layer, which stores it as the new position; the op
+ * here answers a status code instead, so an absolute seek is its own answer and
+ * anything else is read back off the device. A device with nothing to read back
+ * keeps the counter it had rather than inventing one.
+ */
+static void StreamSeekLanded(io_private *pDev,ph7_int64 iOfft,int whence)
+{
+	pDev->bPosSeeded = 1;
+	if( whence == 0 /* SEEK_SET */ ){
+		pDev->iPos = iOfft;
+	}else if( pDev->pStream && pDev->pStream->xTell ){
+		pDev->iPos = pDev->pStream->xTell(pDev->pHandle);
+	}
+}
+/*
+ * A seek the device REFUSED. php hands the device the same slot it writes a
+ * successful position into, so a device is free to declare, on failure, that it
+ * no longer knows where it is: PDO's blob handle does exactly that when asked
+ * for an offset past its own end, and ftell() then answers false until a seek
+ * succeeds again. A device that keeps its position -- a plain descriptor, whose
+ * lseek() leaves it alone when it fails -- leaves the counter alone too.
+ */
+static void StreamSeekRefused(io_private *pDev)
+{
+	pDev->bPosSeeded = 1;
+	if( pDev->pStream && pDev->pStream->xTell
+	 && pDev->pStream->xTell(pDev->pHandle) < 0 ){
+		pDev->iPos = -1;
+	}
+}
 /*
  * A write lands where the SCRIPT is, not where the device is. Everything the
  * readers pulled ahead — the line buffer and the filter chain's output alike —
@@ -43,6 +96,10 @@ static void StreamSeekBackForWrite(io_private *pDev)
 	if( nAhead > 0 && pDev->pStream && pDev->pStream->xSeek ){
 		pDev->pStream->xSeek(pDev->pHandle,-(ph7_int64)nAhead,1/*SEEK_CUR*/);
 		ResetIOPrivate(pDev);
+		/* The counter counted those bytes as consumed; stepping back over them
+		 * un-counts them, and the position the script sees does not move. */
+		StreamSeedPosition(pDev);
+		pDev->iPos -= (ph7_int64)nAhead;
 	}
 }
 PH7_PRIVATE ph7_int64 PH7_StreamLogicalTell(io_private *pDev)
@@ -68,13 +125,14 @@ PH7_PRIVATE ph7_int64 PH7_StreamLogicalTell(io_private *pDev)
 		 * nothing the device knows about. */
 		return pDev->iPos;
 	}
-	if( pDev->pStream == 0 || pDev->pStream->xTell == 0 ){
-		/* php's stream layer tracks a position for EVERY stream and only asks
-		 * the device when it seeks, so a pipe or a socket -- neither of which
-		 * can be asked -- still reports how far it has got. */
-		return pDev->iPos - (ph7_int64)StreamAheadBytes(pDev);
-	}
-	iOfft = pDev->pStream->xTell(pDev->pHandle);
+	/* php's stream layer tracks a position for EVERY stream and asks the device
+	 * only when it seeks, so this counter -- not the descriptor -- is the
+	 * answer. On an APPEND handle the descriptor is at the end of the file
+	 * after every write and the counter is at the bytes written, which is the
+	 * number php reports; on a pipe or a socket the descriptor cannot be asked
+	 * at all and the counter still says how far the stream has got. */
+	StreamSeedPosition(pDev);
+	iOfft = pDev->iPos;
 	if( iOfft < 0 ){
 		return iOfft;
 	}
@@ -99,6 +157,7 @@ PH7_PRIVATE int PH7_StreamSeekWrapped(io_private *pDev,ph7_int64 iOfft,int whenc
 	}
 	rc = pDev->pStream->xSeek(pDev->pHandle,iOfft,whence);
 	if( rc == PH7_OK ){
+		StreamSeekLanded(pDev,iOfft,whence);
 		SyBlobReset(&pDev->sBuffer);
 		pDev->nOfft = 0;
 		SyBlobReset(&pDev->sFilt);
@@ -464,33 +523,43 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		rc = pStream->xSeek(pDev->pHandle,iOfft,0/*SEEK_SET*/);
 		if( rc == PH7_OK ){
 			ResetIOPrivate(pDev);
+			StreamSeekLanded(pDev,iOfft,0/*SEEK_SET*/);
 			pDev->iFiltPos = iOfft;
-		}else if( rc == SXERR_NOTIMPLEMENTED ){
-			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
+		}else{
+			StreamSeekRefused(pDev);
+			if( rc == SXERR_NOTIMPLEMENTED ){
+				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
+			}
 		}
 		ph7_result_int(pCtx,rc == PH7_OK ? 0 : - 1);
 		return PH7_OK;
 	}
 	if( whence == 1 /* SEEK_CUR */ ){
-		/* The CURRENT position is the LOGICAL one: the device sits past the
-		 * read-ahead the line readers buffer, so seek relative to where the
-		 * SCRIPT is, not where the device is (StreamLogicalAdjust). Without
-		 * this, fseek($f,2,SEEK_CUR) after an fgets() that buffered ahead
-		 * skipped everything still sitting in the buffer. */
-		iOfft -= (ph7_int64)StreamAheadBytes(pDev);
+		/* A relative seek is resolved against the position the STREAM LAYER
+		 * holds and handed to the device as an absolute one -- php's own
+		 * conversion. Passing SEEK_CUR through to the descriptor instead moved
+		 * from wherever the descriptor happened to be: past the read-ahead the
+		 * line readers buffer, and on an APPEND handle at the end of the file
+		 * rather than at the bytes written. */
+		iOfft += PH7_StreamLogicalTell(pDev);
+		whence = 0; /* SEEK_SET */
 	}
 	/* Perform the requested operation */
 	rc = pStream->xSeek(pDev->pHandle,iOfft,whence);
 	if( rc == PH7_OK ){
 		/* Ignore buffered data */
 		ResetIOPrivate(pDev);
+		StreamSeekLanded(pDev,iOfft,whence);
 		if( pDev->pReadFilters ){
 			pDev->iFiltPos = pStream->xTell ? pStream->xTell(pDev->pHandle) : 0;
 		}
-	}else if( rc == SXERR_NOTIMPLEMENTED ){
-		/* The device HAS a seek and this handle cannot use it -- php's
-		 * php://stdout on a pipe or a terminal. Same sentence as no seek. */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
+	}else{
+		StreamSeekRefused(pDev);
+		if( rc == SXERR_NOTIMPLEMENTED ){
+			/* The device HAS a seek and this handle cannot use it -- php's
+			 * php://stdout on a pipe or a terminal. Same sentence as no seek. */
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
+		}
 	}
 	/* IO result */
 	ph7_result_int(pCtx,rc == PH7_OK ? 0 : - 1);
@@ -588,8 +657,12 @@ PH7_PRIVATE int PH7_builtin_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( rc == PH7_OK ){
 		/* Ignore buffered data */
 		ResetIOPrivate(pDev);
-	}else if( rc == SXERR_NOTIMPLEMENTED ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
+		StreamSeekLanded(pDev,0,0/*SEEK_SET*/);
+	}else{
+		StreamSeekRefused(pDev);
+		if( rc == SXERR_NOTIMPLEMENTED ){
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Stream does not support seeking");
+		}
 	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
@@ -853,6 +926,9 @@ static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 		 * the reader that comes next. */
 		return IoPrivateFilteredRead(pDev,pBuf,nLen);
 	}
+	/* Ask the device where it started BEFORE moving it: afterwards it answers
+	 * where the read left it, and the bytes just read would be counted twice. */
+	StreamSeedPosition(pDev);
 	errno = 0;
 	n = IoPrivateRawRead(pDev,pBuf,nLen);
 	if( n > 0 && is_php_stream(pDev->pStream)
@@ -865,7 +941,7 @@ static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 	}
 	if( n > 0 ){
 		/* Where the SCRIPT will be once it has taken these bytes: the counter
-		 * ftell() reads on a device that cannot be asked. */
+		 * ftell() reads, on every device. */
 		pDev->iPos += n;
 	}
 	if( n < 0 ){
@@ -983,6 +1059,7 @@ PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int
 	if( pDev->pStream == 0 || pDev->pStream->xWrite == 0 || pDev->bDir ){
 		return -1;
 	}
+	StreamSeedPosition(pDev);
 	if( pChain == 0 ){
 		ph7_int64 nRaw = pDev->pStream->xWrite(pDev->pHandle,pData,nLen);
 		if( nRaw > 0 ){
@@ -4033,6 +4110,8 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->bFiltDone = 0;
 	pOut->bFiltErr = 0;
 	pOut->iFiltPos = 0;
+	pOut->iPos = 0;
+	pOut->bPosSeeded = 0;
 	pOut->pCtxRes = 0;
 	SyBlobInit(&pOut->sFilt,&pVm->sAllocator);
 	pOut->nFiltOfft = 0;
@@ -4297,6 +4376,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 				 * the old position's leftovers and then continued from the new
 				 * one. */
 				ResetIOPrivate(pDev);
+				StreamSeekLanded(pDev,iOfft,0/*SEEK_SET*/);
 			}
 		}
 	}
@@ -8617,6 +8697,7 @@ PH7_PRIVATE int PH7_builtin_stream_copy_to_stream(ph7_context *pCtx,int nArg,ph7
 			return PH7_OK;
 		}
 		ResetIOPrivate(pFrom);
+		StreamSeekLanded(pFrom,nOfft,0/*SEEK_SET*/);
 	}
 	if( nWant == 0 ){
 		ph7_result_int(pCtx,0);

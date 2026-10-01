@@ -6454,8 +6454,17 @@ struct io_private
 	 * pipe answers the bytes that have gone past rather than failing; this is
 	 * that counter, and it is read only when the device has no xTell. A
 	 * directory handle steps it by one php_stream_dirent per entry read
-	 * (PHL_DIR_RECORD), which is the number php's own ftell() reports. */
+	 * (PHL_DIR_RECORD), which is the number php's own ftell() reports.
+	 *
+	 * It is the ONLY answer ftell() gives: php never asks the device again, and
+	 * on a handle opened for APPEND the two numbers part company on the first
+	 * write -- the descriptor jumps to the end of the file, php's counter moves
+	 * by the bytes written. bPosSeeded records that the device has been asked
+	 * once, which is php's own single lseek() at open time: it is 0 for a file
+	 * and -1 for a descriptor that cannot say (a proc_open() pipe), and ftell()
+	 * on the latter answers false until enough bytes have gone past. */
 	ph7_int64 iPos;
+	sxu8 bPosSeeded; /* the device was asked where it started */
 	sxu8 bPersist;   /* opened PERSISTENTLY: get_resource_type() names it apart */
 	/* The stream CONTEXT this handle carries (phl_stream_ctx*), owned by the VM
 	 * registry. php attaches the opener's context to a TRANSPORT stream and to
