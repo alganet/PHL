@@ -2796,42 +2796,57 @@ PH7_PRIVATE int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **ap
 * This function return an array holding parsed values on success.FALSE otherwise.
 */
 /*
- * The ini scanner's ${NAME} expansion: php answers a known ini OPTION first and
- * the process environment second (zend_ini_get_var), the empty string when
- * neither knows the name — a defined CONSTANT deliberately does NOT answer
- * here (that is the bare-identifier rule below). The VFS environment reader
- * answers through the call context's RESULT slot (it was written for
- * getenv()), so the read borrows pCtx->pRet around the call and empties it
- * again; the parse's own result is not written until the very end.
+ * The ini scanner's ${NAME} expansion, php's zend_ini_get_var(): a known ini
+ * OPTION answers first and the process environment second, then the
+ * `${NAME:-fallback}` text, then the empty string — a defined CONSTANT
+ * deliberately does NOT answer here (that is the bare-identifier rule below).
+ * Only an UNSET name reaches the fallback: one set to the EMPTY string answers
+ * that empty string, which is why the environment lookup is judged by its
+ * return code and not by what it wrote. The VFS environment reader answers
+ * through the call context's RESULT slot (it was written for getenv()), so the
+ * read borrows pCtx->pRet around the call and empties it again; the parse's own
+ * result is not written until the very end.
  */
-static void VmIniExpandDollarVar(ph7_context *pCtx,const char *zName,sxu32 nName,SyBlob *pOut)
+static void VmIniExpandDollarVar(ph7_context *pCtx,const char *zName,sxu32 nName,SyBlob *pOut,
+	const char *zFall,sxu32 nFall)
 {
 	char zVar[128];
 	SyBlob sVal;
-	if( nName < 1 || nName >= sizeof(zVar) ){
+	if( nName >= sizeof(zVar) ){
 		return; /* php answers "" for an unknown name; an unreasonable one is unknown */
 	}
-	SyMemcpy(zName,zVar,nName);
-	zVar[nName] = 0;
-	SyBlobInit(&sVal,&pCtx->pVm->sAllocator);
-	PH7_VmIniGetStr(pCtx->pVm,zVar,&sVal);
-	if( SyBlobLength(&sVal) > 0 ){
-		SyBlobAppend(pOut,SyBlobData(&sVal),SyBlobLength(&sVal));
-		SyBlobRelease(&sVal);
-		return;
+	if( nName > 0 ){
+		SyMemcpy(zName,zVar,nName);
 	}
-	SyBlobRelease(&sVal);
-	{
-		const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
-		ph7_value *pRet = pCtx->pRet;
-		sxu32 nBefore = SyBlobLength(&pRet->sBlob);
-		if( pVfs && pVfs->xGetenv ){
-			if( pVfs->xGetenv(zVar,pCtx) == PH7_OK && SyBlobLength(&pRet->sBlob) > nBefore ){
-				SyBlobAppend(pOut,(const char *)SyBlobData(&pRet->sBlob) + nBefore,
-					SyBlobLength(&pRet->sBlob) - nBefore);
-			}
-			ph7_value_reset_string_cursor(pRet);
+	zVar[nName] = 0;
+	if( nName > 0 ){
+		SyBlobInit(&sVal,&pCtx->pVm->sAllocator);
+		PH7_VmIniGetStr(pCtx->pVm,zVar,&sVal);
+		if( SyBlobLength(&sVal) > 0 ){
+			SyBlobAppend(pOut,SyBlobData(&sVal),SyBlobLength(&sVal));
+			SyBlobRelease(&sVal);
+			return;
 		}
+		SyBlobRelease(&sVal);
+		{
+			const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+			ph7_value *pRet = pCtx->pRet;
+			sxu32 nBefore = SyBlobLength(&pRet->sBlob);
+			if( pVfs && pVfs->xGetenv ){
+				if( pVfs->xGetenv(zVar,pCtx) == PH7_OK ){
+					if( SyBlobLength(&pRet->sBlob) > nBefore ){
+						SyBlobAppend(pOut,(const char *)SyBlobData(&pRet->sBlob) + nBefore,
+							SyBlobLength(&pRet->sBlob) - nBefore);
+					}
+					ph7_value_reset_string_cursor(pRet);
+					return;
+				}
+				ph7_value_reset_string_cursor(pRet);
+			}
+		}
+	}
+	if( nFall > 0 ){
+		SyBlobAppend(pOut,zFall,nFall);
 	}
 }
 /*
@@ -3079,20 +3094,81 @@ static void VmIniResSetInt(VmIniRes *pRes,sxi32 iVal)
 	pRes->bOp = 1;
 	pRes->bNumTok = 0;
 }
-static void VmIniValDollar(VmIniVal *p,SyBlob *pOut)
+static int VmIniValQuoted(VmIniVal *p,SyBlob *pOut);
+static int VmIniValRaw(VmIniVal *p,SyBlob *pOut);
+static int VmIniPieces(VmIniVal *p,SyBlob *pOut,int cClose,int bConst);
+/*
+ * php's LABEL_CHAR, the byte set ST_VARNAME reads a name out of. Everything an
+ * operator, a bracket or a line end could be is excluded, so `${a b}` is the
+ * name "a b" while `${a$b}` never finds a name at all.
+ */
+static int VmIniVarNameChar(int c)
+{
+	return c != '=' && c != '\n' && c != '\r' && c != '\t' && c != ';'
+		&& c != '&' && c != '|' && c != '^' && c != '$' && c != '~'
+		&& c != '(' && c != ')' && c != '{' && c != '}' && c != '!'
+		&& c != '"' && c != '[' && c != ']' && c != 0;
+}
+/*
+ * php's cfg_var_ref: `${NAME}` or `${NAME:-fallback}`. The name is trimmed on
+ * both sides by the scanner's own rule; the fallback is a var_string_list read
+ * in ST_VAR_FALLBACK, where a `\'` and a `;` have no rule at all and end the
+ * parse. Answers 0 for the syntax errors php's parser raises.
+ */
+static int VmIniValDollar(VmIniVal *p,SyBlob *pOut)
 {
 	const char *z = &p->zCur[2];
-	while( z < p->zEnd && z[0] != '}' ){
+	const char *zName = z;
+	SyString sName;
+	while( z < p->zEnd && VmIniVarNameChar((unsigned char)z[0]) ){
+		if( z[0] == ':' && &z[1] < p->zEnd && z[1] == '-' ){
+			break;
+		}
 		z++;
 	}
-	if( z >= p->zEnd ){
-		/* No closing brace: the bytes stand as written */
-		SyBlobAppend(pOut,p->zCur,(sxu32)(p->zEnd - p->zCur));
-		p->zCur = p->zEnd;
-		return;
+	if( z == zName ){
+		/* Nothing ST_VARNAME can read: php names whichever token it found */
+		p->zErr = p->zCur = z;
+		if( z < p->zEnd && z[0] == '}' ){
+			p->zTok = "'}', expecting TC_VARNAME";
+		}else if( z < p->zEnd && z[0] == ':' ){
+			p->zTok = "TC_FALLBACK, expecting TC_VARNAME";
+		}else{
+			p->zTok = "end of file, expecting TC_VARNAME";
+		}
+		return 0;
 	}
-	VmIniExpandDollarVar(p->pCtx,&p->zCur[2],(sxu32)(z - &p->zCur[2]),pOut);
-	p->zCur = &z[1];
+	SyStringInitFromBuf(&sName,zName,(int)(z - zName));
+	SyStringFullTrim(&sName);
+	if( z < p->zEnd && z[0] == '}' ){
+		p->zCur = &z[1];
+		VmIniExpandDollarVar(p->pCtx,sName.zString,sName.nByte,pOut,0,0);
+		return 1;
+	}
+	if( z < p->zEnd && z[0] == ':' ){
+		SyBlob sFall;
+		int rc;
+		p->zCur = &z[2];
+		SyBlobInit(&sFall,&p->pCtx->pVm->sAllocator);
+		rc = VmIniPieces(p,&sFall,'}',1);
+		if( rc && (p->zCur >= p->zEnd || p->zCur[0] != '}') ){
+			p->zErr = p->zCur;
+			p->zTok = "end of file, expecting '}'";
+			rc = 0;
+		}
+		if( !rc ){
+			SyBlobRelease(&sFall);
+			return 0;
+		}
+		p->zCur++;
+		VmIniExpandDollarVar(p->pCtx,sName.zString,sName.nByte,pOut,
+			(const char *)SyBlobData(&sFall),SyBlobLength(&sFall));
+		SyBlobRelease(&sFall);
+		return 1;
+	}
+	p->zErr = p->zCur = z;
+	p->zTok = "end of file, expecting TC_FALLBACK or '}'";
+	return 0;
 }
 /*
  * One double-quoted piece. php's closing-quote rule is `["]{TABS_AND_SPACES}*`,
@@ -3114,7 +3190,9 @@ static int VmIniValQuoted(VmIniVal *p,SyBlob *pOut)
 			break;
 		}
 		if( p->zCur[0] == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
-			VmIniValDollar(p,pOut);
+			if( !VmIniValDollar(p,pOut) ){
+				return 0;
+			}
 			continue;
 		}
 		if( p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
@@ -3155,72 +3233,102 @@ static int VmIniValRaw(VmIniVal *p,SyBlob *pOut)
 	return 1;
 }
 /*
- * php's SECTION_VALUE_CHARS, `[^$\n\r;"'\]\\]` -- the run rule an OFFSET is
- * made of. It is far wider than a value's: `=`, `#`, `|`, `(` and a blank are
- * all ordinary bytes here, which is why `a[1|2]` is the five-byte key "1|2"
- * and never the bitwise expression a VALUE of the same text would be.
+ * One element of php's SECTION_VALUE_CHARS / FALLBACK_CHARS run. Both sets are
+ * `[^$\n\r;"']` minus the byte that CLOSES the construct, plus a backslash and
+ * whatever follows it, plus a LITERAL_DOLLAR -- a `$` that does not open a
+ * `${`. All three stand for themselves, which is why `[a\]b]` is the five-byte
+ * section name `a\]b` and `[$]` swallows its own `]` and never finds another.
  */
-static int VmIniOffsetRunChar(int c)
+static int VmIniRunElem(const char *z,const char *zEnd,int cClose)
 {
-	return c != '$' && c != '\n' && c != '\r' && c != ';'
-		&& c != '"' && c != '\'' && c != ']' && c != '\\' && c != 0;
+	int c = (unsigned char)z[0];
+	if( c == '\\' ){
+		return &z[1] < zEnd ? 2 : 0;
+	}
+	if( c == '$' ){
+		if( &z[1] >= zEnd || z[1] == '{' ){
+			return 0;
+		}
+		if( z[1] == '\\' && &z[2] < zEnd ){
+			return 3;
+		}
+		return 2;
+	}
+	if( c == '\n' || c == '\r' || c == ';' || c == '"' || c == '\'' || c == cClose || c == 0 ){
+		return 0;
+	}
+	return 1;
 }
 /*
- * The text php's ST_OFFSET makes of the bytes between `[` and `]`: quoted
- * pieces, `${...}` expansions and runs, all concatenated.
+ * The text php builds in the three scanner states that share that run shape --
+ * ST_SECTION_VALUE, ST_OFFSET and ST_VAR_FALLBACK. They differ in two places
+ * only: the byte that ENDS the run (`]` for a section and an offset, `}` for a
+ * fallback), and whether a run that is exactly an identifier is looked up as a
+ * CONSTANT. php's grammar gives a section `constant_literal`, which keeps the
+ * name as written -- `[MYC]` is the section "MYC" even where MYC is defined --
+ * and gives the other two `constant_string`, which does not. A single-quoted
+ * raw string is a rule of the first two states and of neither the third, so a
+ * `'` inside a fallback ends the parse where inside a section it opens a piece.
  *
- * The blanks in FRONT of the offset are already gone -- they belong to the
- * scanner's own `{LABEL}"["{TABS_AND_SPACES}*` rule -- and the ones behind it
- * are not, so `a[ 4 ]` is the key "4 " and never the int 4.
- *
- * A run is looked up as a CONSTANT only when it is exactly an identifier:
- * both rules can match, and re2c takes the longest, so `x.y` is three literal
- * bytes while `PHP_INT_MAX` and `true` are the constants (the latter being
- * the string "1", which is then a key like any other numeric string). The
- * boolean WORDS never fire here -- ST_OFFSET is not one of the states that
- * rule names -- so `a[on]` stays the string "on" while `a[true]` does not.
+ * Stops at the first byte no production can take, leaving it for the caller;
+ * answers 0 only for a syntax error inside a piece.
  */
-static void VmIniOffsetText(ph7_context *pCtx,const char *z,const char *zEnd,SyBlob *pOut)
+static int VmIniPieces(VmIniVal *p,SyBlob *pOut,int cClose,int bConst)
 {
-	VmIniVal sVal;
-	sVal.pCtx = pCtx;
-	sVal.zCur = z;
-	sVal.zEnd = zEnd;
-	sVal.zErr = 0;
-	sVal.zTok = 0;
-	while( sVal.zCur < sVal.zEnd ){
-		int c = (unsigned char)sVal.zCur[0];
-		if( c == '$' && &sVal.zCur[1] < sVal.zEnd && sVal.zCur[1] == '{' ){
-			VmIniValDollar(&sVal,pOut);
+	while( p->zCur < p->zEnd ){
+		int c = (unsigned char)p->zCur[0];
+		int nLen;
+		if( c == ' ' || c == '\t' ){
+			/* php's opening-quote rule is `{TABS_AND_SPACES}*["]`, and re2c
+			 * takes the longest match, so blanks in FRONT of a quote belong to
+			 * the quote and are gone. Behind anything else they are the head of
+			 * an ordinary run -- and being inside one is what stops the name
+			 * that follows them being read as a constant. */
+			const char *zSave = p->zCur;
+			VmIniValBlanks(p);
+			if( p->zCur < p->zEnd && p->zCur[0] == '"' ){
+				continue;
+			}
+			p->zCur = zSave;
+		}
+		if( c == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
+			if( !VmIniValDollar(p,pOut) ){
+				return 0;
+			}
 			continue;
 		}
 		if( c == '"' ){
-			if( !VmIniValQuoted(&sVal,pOut) ){
-				return;
+			if( !VmIniValQuoted(p,pOut) ){
+				return 0;
 			}
 			continue;
 		}
-		if( c == '\'' ){
-			if( !VmIniValRaw(&sVal,pOut) ){
-				return;
+		if( c == '\'' && cClose == ']' ){
+			if( !VmIniValRaw(p,pOut) ){
+				return 0;
 			}
 			continue;
 		}
-		if( VmIniOffsetRunChar(c) ){
-			const char *zRun = sVal.zCur;
+		nLen = VmIniRunElem(p->zCur,p->zEnd,cClose);
+		if( nLen < 1 ){
+			break;
+		}
+		{
+			const char *zRun = p->zCur;
 			sxu32 nRun;
 			do {
-				sVal.zCur++;
-			}while( sVal.zCur < sVal.zEnd && VmIniOffsetRunChar((unsigned char)sVal.zCur[0]) );
-			nRun = (sxu32)(sVal.zCur - zRun);
-			if( VmIniValRunIsName(zRun,nRun) ){
+				p->zCur += nLen;
+			}while( p->zCur < p->zEnd
+			 && (nLen = VmIniRunElem(p->zCur,p->zEnd,cClose)) > 0 );
+			nRun = (sxu32)(p->zCur - zRun);
+			if( bConst && VmIniValRunIsName(zRun,nRun) ){
 				ph7_value sCons;
 				/* php's three case-insensitive constants are not in the
-				 * engine's constant table here, and the offset asks the
-				 * TABLE: `true` is the string "1" and `false` and `null` are
-				 * the empty one, which is the offset that takes an automatic
-				 * index. The boolean WORDS that are not constants -- `on`,
-				 * `yes`, `off`, `no`, `none` -- stay as they are written. */
+				 * engine's constant table here, and this asks the TABLE:
+				 * `true` is the string "1" and `false` and `null` are the
+				 * empty one, which as an offset takes an automatic index. The
+				 * boolean WORDS that are not constants -- `on`, `yes`, `off`,
+				 * `no`, `none` -- stay as they are written. */
 				if( nRun == 4 && SyStrnicmp(zRun,"true",4) == 0 ){
 					SyBlobAppend(pOut,"1",sizeof(char));
 					continue;
@@ -3229,8 +3337,8 @@ static void VmIniOffsetText(ph7_context *pCtx,const char *z,const char *zEnd,SyB
 				 || (nRun == 4 && SyStrnicmp(zRun,"null",4) == 0) ){
 					continue;
 				}
-				PH7_MemObjInit(pCtx->pVm,&sCons);
-				if( PH7_VmQueryConstant(pCtx->pVm,zRun,nRun,&sCons) ){
+				PH7_MemObjInit(p->pCtx->pVm,&sCons);
+				if( PH7_VmQueryConstant(p->pCtx->pVm,zRun,nRun,&sCons) ){
 					int nCons;
 					const char *zCons = ph7_value_to_string(&sCons,&nCons);
 					SyBlobAppend(pOut,zCons,(sxu32)nCons);
@@ -3241,12 +3349,27 @@ static void VmIniOffsetText(ph7_context *pCtx,const char *z,const char *zEnd,SyB
 			}else{
 				SyBlobAppend(pOut,zRun,nRun);
 			}
-			continue;
 		}
-		/* A `$` with no `{` behind it, or a lone backslash: one literal byte */
-		SyBlobAppend(pOut,sVal.zCur,sizeof(char));
-		sVal.zCur++;
 	}
+	return 1;
+}
+/*
+ * The key php's ST_OFFSET makes of the bytes between `[` and `]`. Its run set
+ * is far wider than a VALUE's -- `=`, `#`, `|`, `(` and a blank are all
+ * ordinary bytes here, which is why `a[1|2]` is the three-byte key "1|2" and
+ * never the bitwise expression a value of the same text would be. The blanks in
+ * FRONT of the offset are already gone -- they belong to the scanner's own
+ * `{LABEL}"["{TABS_AND_SPACES}*` rule -- and the ones behind it are not, so
+ * `a[ 4 ]` is the key "4 " and never the int 4.
+ */
+static void VmIniOffsetText(ph7_context *pCtx,const char *z,const char *zEnd,SyBlob *pOut)
+{
+	VmIniVal sVal;
+	SyZero(&sVal,sizeof(sVal));
+	sVal.pCtx = pCtx;
+	sVal.zCur = z;
+	sVal.zEnd = zEnd;
+	VmIniPieces(&sVal,pOut,']',1);
 }
 /*
  * php's var_string_list: one or more adjacent pieces, concatenated. Returns 0
@@ -3286,7 +3409,9 @@ static int VmIniValList(VmIniVal *p,VmIniRes *pRes)
 			continue;
 		}
 		if( c == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
-			VmIniValDollar(p,&pRes->sText);
+			if( !VmIniValDollar(p,&pRes->sText) ){
+				return 0;
+			}
 			bAny = 1;
 			continue;
 		}
@@ -3545,18 +3670,19 @@ static int VmIniInterpretValue(ph7_context *pCtx,const SyString *pRaw,int iMode,
  * FALSE for the whole call: one bad value discards every entry parsed so far.
  * parse_ini_string() has no file to name and says `Unknown`.
  */
-static void VmIniSyntaxError(ph7_context *pCtx,const char *zStart,const char *zFile,VmIniVal *p)
+static void VmIniSyntaxError(ph7_context *pCtx,const char *zStart,const char *zFile,VmIniVal *p,
+	int nLineBias)
 {
 	const char *z;
 	SyBlob sMsg;
-	int nLine = 1;
+	int nLine = 1 + nLineBias;
 	for( z = zStart ; z < p->zErr ; z++ ){
 		if( z[0] == '\n' ){
 			nLine++;
 		}
 	}
 	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
-	SyBlobFormat(&sMsg,"syntax error, unexpected %s in %s on line %d",
+	SyBlobFormat(&sMsg,"syntax error, unexpected %s in %s on line %d\n",
 		p->zTok,zFile ? zFile : "Unknown",nLine);
 	if( SyBlobNullAppend(&sMsg) == SXRET_OK ){
 		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
@@ -3572,6 +3698,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 	SyString sEntry;
 	SyHash sHash;
 	VmIniVal sVal;
+	int nLineBias = 0;
 	int c;
 	/* Create an empty array and worker variables */
 	pArray = ph7_context_new_array(pCtx);
@@ -3608,36 +3735,76 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 		/* Reset the string cursor of the working variable */
 		ph7_value_reset_string_cursor(pWorker);
 		if( zIn[0] == '[' ){
-			/* Section: Extract the section name */
+			/* Section. php reads the name with the same grammar an option
+			 * VALUE gets -- `${...}` expansions, double-quoted pieces and
+			 * single-quoted raw ones -- and with one difference: a bare
+			 * identifier is NOT looked up as a constant. Nothing is trimmed
+			 * either, so `[ a ]` is the section " a ". INI_SCANNER_RAW reads
+			 * `[^\]\n\r]` instead and interprets none of it. */
+			SyBlob sSec;
+			int rc;
 			zIn++;
-			zCur = zIn;
-			while( zIn < zEnd && zIn[0] != ']' ){
-				zIn++;
+			SyBlobInit(&sSec,&pCtx->pVm->sAllocator);
+			sVal.zCur = zIn;
+			sVal.zEnd = zEnd;
+			if( iScannerMode == PH7_INI_SCANNER_RAW ){
+				zCur = zIn;
+				while( sVal.zCur < zEnd && sVal.zCur[0] != ']'
+				 && sVal.zCur[0] != '\n' && sVal.zCur[0] != '\r' ){
+					sVal.zCur++;
+				}
+				SyBlobAppend(&sSec,zCur,(sxu32)(sVal.zCur - zCur));
+				rc = 1;
+			}else{
+				rc = VmIniPieces(&sVal,&sSec,']',0);
 			}
-			if( zIn > zCur && bProcessSection ){
-				/* Save the section name */
-				SyStringInitFromBuf(&sEntry,zCur,(int)(zIn-zCur));
-				SyStringFullTrim(&sEntry);
-				ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);
-				if( sEntry.nByte > 0 ){
-					/* Associate an array with the section */
-					pSection = ph7_context_new_array(pCtx);
-					if( pSection ){
-						ph7_array_add_elem(pArray,pWorker/*Section name*/,pSection);
-						pCur = pSection;
-						/* A section that is kept is a new option namespace, so
-						 * the memo of the arrays an offset has already opened
-						 * cannot outlive it: `a[x]` under [s] and `a[x]` under
-						 * [t] are two entries. Where the sections are NOT kept
-						 * every option shares the one array, and so does the
-						 * memo -- `a[x]`, a section, then `a[y]` is one `a`
-						 * holding both. */
-						SyHashRelease(&sHash);
-						SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);
-					}
+			if( rc && (sVal.zCur >= zEnd || sVal.zCur[0] != ']') ){
+				/* Nothing in either section state matches a newline, a `;` or
+				 * the end of input, so the scanner falls off the end and php
+				 * names the failure the same way every time. */
+				sVal.zErr = sVal.zCur;
+				sVal.zTok = "end of file, expecting ']'";
+				rc = 0;
+			}
+			if( !rc ){
+				SyBlobRelease(&sSec);
+				goto ini_syntax_error;
+			}
+			zIn = &sVal.zCur[1]; /* Trailing square bracket ']' */
+			if( bProcessSection ){
+				/* An EMPTY name is a section like any other: php stores it
+				 * under "" and every option behind it lands there. */
+				ph7_value_string(pWorker,(const char *)SyBlobData(&sSec),(int)SyBlobLength(&sSec));
+				pSection = ph7_context_new_array(pCtx);
+				if( pSection ){
+					ph7_array_add_elem(pArray,pWorker/*Section name*/,pSection);
+					pCur = pSection;
+					/* A section is a new option namespace, so the memo of the
+					 * arrays an offset has already opened cannot outlive it:
+					 * `a[x]` under [s] and `a[x]` under [t] are two entries.
+					 * Where the sections are NOT kept every option shares the
+					 * one array, and so does the memo -- `a[x]`, a section,
+					 * then `a[y]` is one `a` holding both. */
+					SyHashRelease(&sHash);
+					SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);
 				}
 			}
-			zIn++; /* Trailing square brackets ']' */
+			SyBlobRelease(&sSec);
+			/* php's `"]"{TABS_AND_SPACES}*{NEWLINE}?` rule counts a line
+			 * whether or not it ate a newline, so a statement AFTER the
+			 * bracket on the same line is reported one line further down
+			 * than it is written: `[] = 1` is an error "on line 2". */
+			while( zIn < zEnd && (zIn[0] == ' ' || zIn[0] == '\t') ){
+				zIn++;
+			}
+			if( zIn < zEnd && (zIn[0] == '\n' || zIn[0] == '\r') ){
+				if( zIn[0] == '\r' && &zIn[1] < zEnd && zIn[1] == '\n' ){
+					zIn++;
+				}
+				zIn++;
+			}else{
+				nLineBias++;
+			}
 		}else{
 			ph7_value *pOldCur;
 			ph7_value *pOffset;
@@ -3678,6 +3845,13 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					 * exactly as the pushed ST_DOUBLE_QUOTES state does */
 					while( zIn < zEnd && zIn[0] != ']' && zIn[0] != '\n'
 					 && zIn[0] != '\r' && zIn[0] != ';' ){
+						if( zIn[0] == '\\' && &zIn[1] < zEnd ){
+							/* SECTION_VALUE_CHARS takes a backslash and
+							 * whatever follows it as one piece, so `\]` is two
+							 * ordinary bytes and never the end of the offset */
+							zIn += 2;
+							continue;
+						}
 						if( zIn[0] == '"' || zIn[0] == '\'' ){
 							int q = zIn[0];
 							zIn++;
@@ -3719,6 +3893,14 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 			/* Trim the key */
 			SyStringInitFromBuf(&sEntry,zCur,iLen);
 			SyStringFullTrim(&sEntry);
+			if( sEntry.nByte < 1 && !is_array ){
+				/* php's grammar has no statement that starts with `=`, and
+				 * INITIAL hands the byte straight to the parser: a line whose
+				 * label is empty is a syntax error and not an empty key. */
+				sVal.zErr = sVal.zCur = zIn;
+				sVal.zTok = "'='";
+				goto ini_syntax_error;
+			}
 			if( sEntry.nByte > 0 ){
 				if( is_array ){
 					ph7_value *pvArr = 0; /* cc warning */
@@ -3853,7 +4035,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 						VmIniVal sErr;
 						if( !VmIniInterpretValue(pCtx,&sEntry,iScannerMode,pValue,&sErr) ){
 							/* php discards the whole parse over one bad value */
-							VmIniSyntaxError(pCtx,zStart,zFile,&sErr);
+							VmIniSyntaxError(pCtx,zStart,zFile,&sErr,nLineBias);
 							SyHashRelease(&sHash);
 							ph7_result_bool(pCtx,0);
 							return SXRET_OK;
@@ -3876,7 +4058,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 	return SXRET_OK;
 ini_syntax_error:
 	/* php discards the whole parse over one bad line */
-	VmIniSyntaxError(pCtx,zStart,zFile,&sVal);
+	VmIniSyntaxError(pCtx,zStart,zFile,&sVal,nLineBias);
 	SyHashRelease(&sHash);
 	ph7_result_bool(pCtx,0);
 	return SXRET_OK;
