@@ -5750,6 +5750,17 @@ PH7_PRIVATE int PH7_TzLocalToUtc(int iZone,sxi64 iLocal,sxi64 *piTs,sxi32 *piOff
 PH7_PRIVATE int PH7_TzLocalToUtcSeed(int iZone,sxi64 iLocal,sxi32 iOffNow,int bDstNow,
 	sxi64 *piTs,sxi32 *piOff);
 #endif /* PH7_ENABLE_TZDB */
+#ifdef PH7_ENABLE_JIS
+/* The Japanese legacy character sets (builtin_jis.c). Absent from the tiny
+ * build on purpose -- the table is ~31 KB -- so a framing that needs it is not
+ * a known encoding there at all, rather than a known one that answers wrong. */
+PH7_PRIVATE sxu32 PH7_JisX0208ToUni(int iRow,int iCell);
+PH7_PRIVATE int PH7_JisX0208FromUni(sxu32 cp,int *piRow,int *piCell);
+PH7_PRIVATE sxu32 PH7_JisX0201RomanToUni(int c);
+PH7_PRIVATE int PH7_JisX0201RomanFromUni(sxu32 cp,int *piByte);
+PH7_PRIVATE sxu32 PH7_JisX0201KanaToUni(int c);
+PH7_PRIVATE int PH7_JisX0201KanaFromUni(sxu32 cp,int *piByte);
+#endif /* PH7_ENABLE_JIS */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal);
