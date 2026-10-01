@@ -146,6 +146,8 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 	SyToken *pIn;  /* Token stream */
 	SyBlob sSig;         /* Function signature */
 	char *zDup;          /* Copy of argument name */
+	int bSeenVariadic = 0; /* a `...$x` was declared already: php refuses what follows */
+	sxu32 nArgLine;      /* the line the current parameter starts on */
 	sxi32 rc;
 
 	pIn = pGen->pIn;
@@ -156,6 +158,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 			/* No more arguments to process */
 			break;
 		}
+		nArgLine = pIn->nLine;
 		SyZero(&sArg,sizeof(ph7_vm_func_arg));
 		SySetInit(&sArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
 		SySetInit(&sArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
@@ -352,6 +355,50 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 		}
 		SyStringInitFromBuf(&sArg.sName,zDup,SyStringLength(&pIn->sData));
 		pIn++;
+		/* php's four refusals of a parameter LIST, made in php's order once the
+		 * name is known, and each reported on the line the parameter STARTS on
+		 * (its type or modifier, not its `$`): a name written twice, `$this`, a
+		 * parameter after a variadic one, and a variadic one with a default.
+		 * None of the four was checked at all: `function q(...$a, $b) {}`
+		 * compiled and ran here where php stops at compile time, which is a
+		 * program `php -l` refuses and `phl -l` passed. */
+		{
+			ph7_vm_func_arg *aPrev = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+			sxu32 nPrev = SySetUsed(&pFunc->aArgs);
+			int bRefused = 1;   /* MSVC cannot see that this implies rc was set: seed rc */
+			sxu32 n;
+			rc = SXRET_OK;
+			for( n = 0; n < nPrev; n++ ){
+				if( SyStringCmp(&aPrev[n].sName,&sArg.sName,SyMemcmp) == 0 ){
+					break;
+				}
+			}
+			if( n < nPrev ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,nArgLine,
+					"Redefinition of parameter $%z",&sArg.sName);
+			}else if( SyStringLength(&sArg.sName) == sizeof("this")-1
+				&& SyMemcmp(SyStringData(&sArg.sName),"this",sizeof("this")-1) == 0 ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,nArgLine,
+					"Cannot use $this as parameter");
+			}else if( bSeenVariadic ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,nArgLine,
+					"Only the last parameter can be variadic");
+			}else if( (sArg.iFlags & VM_FUNC_ARG_VARIADIC) && pIn < pEnd && (pIn->nType & PH7_TK_EQUAL) ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,nArgLine,
+					"Variadic parameter cannot have a default value");
+			}else{
+				bRefused = 0;
+				if( sArg.iFlags & VM_FUNC_ARG_VARIADIC ){
+					bSeenVariadic = 1;
+				}
+			}
+			if( bRefused ){
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				return SXERR_SYNTAX;
+			}
+		}
 		if( pIn < pEnd ){
 			if( pIn->nType & PH7_TK_EQUAL ){
 				SyToken *pDefend;
@@ -1702,8 +1749,10 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 					return SXERR_SYNTAX;
 				}
 				if( !bAllowVoid ){
+					/* php names the position when it is a parameter's type. */
 					PH7_GenCompileError(pGen, E_ERROR, nLine,
-						"void cannot be used here");
+						bParamCtx ? "void cannot be used as a parameter type"
+						          : "void cannot be used here");
 					return SXERR_SYNTAX;
 				}
 				if( bShortNullable ){
