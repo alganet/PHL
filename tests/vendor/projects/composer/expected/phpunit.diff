@@ -1623,7 +1623,7 @@
  -    - Root composer.json requires linked library lib-icu 1001.* but it has the wrong version installed, try upgrading the intl extension.
 -+    - Root composer.json requires linked library lib-icu 1001.* but it is missing from your system, make sure the intl extension is loaded.
 -   Problem 7
--     - Root composer.json requires PHP extension ext-xml 1002.* but it has the wrong version installed (8.5.9).
+-     - Root composer.json requires PHP extension ext-xml 1002.* but it has the wrong version installed (8.5.10).
 -   Problem 8
 +-  Problem 7
 +-    - Root composer.json requires PHP extension ext-xml 1002.* but it has the wrong version installed (%s).
@@ -3223,7 +3223,7 @@
  -    - Root composer.json requires linked library lib-icu 1001.* but it has the wrong version installed, try upgrading the intl extension.
 -+    - Root composer.json requires linked library lib-icu 1001.* but it is missing from your system, make sure the intl extension is loaded.
 -   Problem 7
--     - Root composer.json requires PHP extension ext-xml 1002.* but it has the wrong version installed (8.5.9).
+-     - Root composer.json requires PHP extension ext-xml 1002.* but it has the wrong version installed (8.5.10).
 -   Problem 8
 +-  Problem 7
 +-    - Root composer.json requires PHP extension ext-xml 1002.* but it has the wrong version installed (%s).
