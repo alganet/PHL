@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 4491/4756 lines (94.43%)
+Coverage: 4514/4756 lines (94.91%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -37,7 +37,7 @@ Coverage: 4491/4756 lines (94.43%)
 |      - |   27 | ` * algorithms): no time_t / libc dependence, correct far past 2038 and` |
 |      - |   28 | ` * before 1970 on every platform. Day 0 == 1970-01-01.` |
 |      - |   29 | ` */` |
-|  24134 |   30 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
+|  24164 |   30 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
 |      4 |   31 | `{` |
 |      - |   32 | `	sxi64 era;` |
 |      - |   33 | `	unsigned yoe,doy,doe;` |
@@ -45,42 +45,42 @@ Coverage: 4491/4756 lines (94.43%)
 |      - |   35 | `	 * whatever the string held, php's own answer for one past the clock is the` |
 |      - |   36 | `	 * WRAP below, and a signed overflow on the way to it is undefined (this` |
 |      - |   37 | `	 * build gates on UBSan). The bits are the same either way. */` |
-|  24138 |   38 | `	y = (sxi64)((sxu64)y - (sxu64)(m <= 2));` |
-|  24138 |   39 | `	era = (y >= 0 ? y : (sxi64)((sxu64)y - 399u)) / 400;` |
-|  24138 |   40 | `	yoe = (unsigned)((sxu64)y - (sxu64)era * 400u);` |
-|  24138 |   41 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
-|  24138 |   42 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
+|  24168 |   38 | `	y = (sxi64)((sxu64)y - (sxu64)(m <= 2));` |
+|  24168 |   39 | `	era = (y >= 0 ? y : (sxi64)((sxu64)y - 399u)) / 400;` |
+|  24168 |   40 | `	yoe = (unsigned)((sxu64)y - (sxu64)era * 400u);` |
+|  24168 |   41 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
+|  24168 |   42 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
 |      - |   43 | `	/* Unsigned tail: php's expanded ISO year has no width limit, and php's own` |
 |      - |   44 | `	 * answer for one past the clock is a WRAP of the seconds it converts to --` |
 |      - |   45 | ``	 * `new DateTime('-999999999999-01-01')` reads back as year 169108098508`` |
 |      - |   46 | `	 * there. Wrapping through sxu64 reproduces that instead of overflowing a` |
 |      - |   47 | `	 * signed product, which is undefined. */` |
-|  24138 |   48 | `	return (sxi64)((sxu64)era * 146097u + (sxu64)doe - 719468u);` |
+|  24168 |   48 | `	return (sxi64)((sxu64)era * 146097u + (sxu64)doe - 719468u);` |
 |      4 |   49 | `}` |
-|  19150 |   50 | `PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
+|  19156 |   50 | `PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
 |      4 |   51 | `{` |
 |      - |   52 | `	sxi64 era;` |
 |      - |   53 | `	unsigned doe,yoe,doy,mp;` |
-|  19154 |   54 | `	z = (sxi64)((sxu64)z + 719468u);` |
-|  19154 |   55 | `	era = (z >= 0 ? z : (sxi64)((sxu64)z - 146096u)) / 146097;` |
-|  19154 |   56 | `	doe = (unsigned)((sxu64)z - (sxu64)era * 146097u);` |
-|  19154 |   57 | `	yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;` |
-|  19154 |   58 | `	*py = (sxi64)((sxu64)yoe + (sxu64)era * 400u);` |
-|  19154 |   59 | `	doy = doe - (365 * yoe + yoe/4 - yoe/100);` |
-|  19154 |   60 | `	mp = (5 * doy + 2) / 153;` |
-|  19154 |   61 | `	*pd = (int)(doy - (153 * mp + 2) / 5 + 1);` |
-|  19154 |   62 | `	*pm = (int)(mp < 10 ? mp + 3 : mp - 9);` |
-|  19154 |   63 | `	if( *pm <= 2 ){` |
-|   6806 |   64 | `		*py = (sxi64)((sxu64)*py + 1u);` |
-|   3401 |   65 | `	}` |
-|  19154 |   66 | `}` |
-|  67308 |   67 | `PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b)` |
+|  19160 |   54 | `	z = (sxi64)((sxu64)z + 719468u);` |
+|  19160 |   55 | `	era = (z >= 0 ? z : (sxi64)((sxu64)z - 146096u)) / 146097;` |
+|  19160 |   56 | `	doe = (unsigned)((sxu64)z - (sxu64)era * 146097u);` |
+|  19160 |   57 | `	yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;` |
+|  19160 |   58 | `	*py = (sxi64)((sxu64)yoe + (sxu64)era * 400u);` |
+|  19160 |   59 | `	doy = doe - (365 * yoe + yoe/4 - yoe/100);` |
+|  19160 |   60 | `	mp = (5 * doy + 2) / 153;` |
+|  19160 |   61 | `	*pd = (int)(doy - (153 * mp + 2) / 5 + 1);` |
+|  19160 |   62 | `	*pm = (int)(mp < 10 ? mp + 3 : mp - 9);` |
+|  19160 |   63 | `	if( *pm <= 2 ){` |
+|   6809 |   64 | `		*py = (sxi64)((sxu64)*py + 1u);` |
+|   3403 |   65 | `	}` |
+|  19160 |   66 | `}` |
+|  67330 |   67 | `PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b)` |
 |      4 |   68 | `{` |
-|  67312 |   69 | `	sxi64 q = a / b;` |
-|  67312 |   70 | `	if( (a % b) != 0 && ((a < 0) != (b < 0)) ){` |
+|  67334 |   69 | `	sxi64 q = a / b;` |
+|  67334 |   70 | `	if( (a % b) != 0 && ((a < 0) != (b < 0)) ){` |
 |    315 |   71 | `		q--;` |
 |    157 |   72 | `	}` |
-|  67312 |   73 | `	return q;` |
+|  67334 |   73 | `	return q;` |
 |      4 |   74 | `}` |
 |      - |   75 | `/* Timestamp + offset -> Sytm (with zone metadata for DateFormat's T/e/O/P/Z).` |
 |      - |   76 | ` * Shared with builtin_date.c, whose procedural doors used to reach for the` |
@@ -113,15 +113,15 @@ Coverage: 4491/4756 lines (94.43%)
 |   4262 |  103 | `	pTm->tm_zone = zZone;` |
 |   4262 |  104 | `	pTm->tm_gmtoff = (long)iOff;` |
 |   4262 |  105 | `}` |
-|   4814 |  106 | `static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)` |
-|      4 |  107 | `{` |
+|   4816 |  106 | `static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)` |
+|      3 |  107 | `{` |
 |      - |  108 | `	/* Unsigned throughout: a year outside the clock's own range (the parser` |
 |      - |  109 | `	 * accepts php's expanded form, which has no width limit) would otherwise` |
 |      - |  110 | `	 * overflow this product, which is undefined rather than merely wrong. */` |
-|   4818 |  111 | `	sxu64 t = (sxu64)DtDaysFromCivil(y,mo,d) * 86400u;` |
-|   4818 |  112 | `	t += (sxu64)((sxi64)h*3600 + (sxi64)mi*60 + s - iOff);` |
-|   4818 |  113 | `	return (sxi64)t;` |
-|      4 |  114 | `}` |
+|   4819 |  111 | `	sxu64 t = (sxu64)DtDaysFromCivil(y,mo,d) * 86400u;` |
+|   4819 |  112 | `	t += (sxu64)((sxi64)h*3600 + (sxi64)mi*60 + s - iOff);` |
+|   4819 |  113 | `	return (sxi64)t;` |
+|      3 |  114 | `}` |
 |      - |  115 | `/*` |
 |      - |  116 | ` * php's date string parse is a FIELD parse. timelib fills a civil y/m/d/h/i/s/us` |
 |      - |  117 | ` * vector plus a SEPARATE relative one and applies NOTHING until the whole string` |
@@ -201,81 +201,81 @@ Coverage: 4491/4756 lines (94.43%)
 |      - |  191 | `/* Wrapping add: a relative vector holds whatever the string spelled, and php's` |
 |      - |  192 | ` * own answer past the int64 ceiling is garbage of its own -- but the OVERFLOW` |
 |      - |  193 | ` * would be undefined here, and this build gates on UBSan. */` |
-|  90436 |  194 | `static sxi64 DtWAdd(sxi64 a,sxi64 b)` |
-|      4 |  195 | `{` |
-|  90440 |  196 | `	return (sxi64)((sxu64)a + (sxu64)b);` |
-|      4 |  197 | `}` |
+|  90476 |  194 | `static sxi64 DtWAdd(sxi64 a,sxi64 b)` |
+|      3 |  195 | `{` |
+|  90479 |  196 | `	return (sxi64)((sxu64)a + (sxu64)b);` |
+|      3 |  197 | `}` |
 |    452 |  198 | `static sxi64 DtWMul(sxi64 a,sxi64 b)` |
 |      1 |  199 | `{` |
 |    453 |  200 | `	return (sxi64)((sxu64)a * (sxu64)b);` |
 |      1 |  201 | `}` |
-|   5268 |  202 | `static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)` |
-|      4 |  203 | `{` |
-|   5272 |  204 | `	p->y = p->m = p->d = DT_UNSET;` |
-|   5272 |  205 | `	p->h = p->i = p->s = p->us = DT_UNSET;` |
-|   5272 |  206 | `	p->ry = p->rm = p->rd = p->rh = p->ri = p->rs = p->rus = 0;` |
-|   5272 |  207 | `	p->bHaveDate = p->nTimeTok = 0;` |
-|   5272 |  208 | `	p->bWday = 0;` |
-|   5272 |  209 | `	p->iWday = 0;` |
-|   5272 |  210 | `	p->iWdayBehavior = 0;` |
-|   5272 |  211 | `	p->iFirstLast = 0;` |
-|   5272 |  212 | `	p->bWdayOf = 0;` |
-|   5272 |  213 | `	p->iWdayOfNext = 0;` |
-|   5272 |  214 | `	p->bWeekdays = 0;` |
-|   5272 |  215 | `	p->iWeekdays = 0;` |
-|   5272 |  216 | `	p->iOff = iBaseOff;` |
-|   5272 |  217 | `	p->bOffSet = 0;` |
-|   5272 |  218 | `	p->zZone = 0;` |
-|   5272 |  219 | `	p->nZone = 0;` |
-|   5272 |  220 | `	p->bZoneIdent = 0;` |
-|   5272 |  221 | `	p->nZoneTok = 0;` |
-|   5272 |  222 | `	p->bEpoch = 0;` |
-|   5272 |  223 | `	p->nWarnPend = 0;` |
-|   5272 |  224 | `	p->bHaveRel = 0;` |
-|   5272 |  225 | `	p->bUsUnset = 0;` |
-|   5272 |  226 | `}` |
+|   5270 |  202 | `static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)` |
+|      3 |  203 | `{` |
+|   5273 |  204 | `	p->y = p->m = p->d = DT_UNSET;` |
+|   5273 |  205 | `	p->h = p->i = p->s = p->us = DT_UNSET;` |
+|   5273 |  206 | `	p->ry = p->rm = p->rd = p->rh = p->ri = p->rs = p->rus = 0;` |
+|   5273 |  207 | `	p->bHaveDate = p->nTimeTok = 0;` |
+|   5273 |  208 | `	p->bWday = 0;` |
+|   5273 |  209 | `	p->iWday = 0;` |
+|   5273 |  210 | `	p->iWdayBehavior = 0;` |
+|   5273 |  211 | `	p->iFirstLast = 0;` |
+|   5273 |  212 | `	p->bWdayOf = 0;` |
+|   5273 |  213 | `	p->iWdayOfNext = 0;` |
+|   5273 |  214 | `	p->bWeekdays = 0;` |
+|   5273 |  215 | `	p->iWeekdays = 0;` |
+|   5273 |  216 | `	p->iOff = iBaseOff;` |
+|   5273 |  217 | `	p->bOffSet = 0;` |
+|   5273 |  218 | `	p->zZone = 0;` |
+|   5273 |  219 | `	p->nZone = 0;` |
+|   5273 |  220 | `	p->bZoneIdent = 0;` |
+|   5273 |  221 | `	p->nZoneTok = 0;` |
+|   5273 |  222 | `	p->bEpoch = 0;` |
+|   5273 |  223 | `	p->nWarnPend = 0;` |
+|   5273 |  224 | `	p->bHaveRel = 0;` |
+|   5273 |  225 | `	p->bUsUnset = 0;` |
+|   5273 |  226 | `}` |
 |      - |  227 | `/* php's TIMELIB_UNHAVE_TIME: the clock is ZEROED rather than unset, and the` |
 |      - |  228 | ``  * string still counts as carrying no time of its own -- which is why `tomorrow` `` |
 |      - |  229 | ` * lands on midnight even through modify(), whose other fields keep the` |
 |      - |  230 | ` * receiver's. */` |
-|    732 |  231 | `static void DtUnhaveTime(dt_parsed *p)` |
+|    734 |  231 | `static void DtUnhaveTime(dt_parsed *p)` |
 |      2 |  232 | `{` |
-|    734 |  233 | `	p->h = p->i = p->s = p->us = 0;` |
-|    734 |  234 | `	p->bUsUnset = 0;` |
-|    734 |  235 | `	p->nTimeTok = 0;` |
-|    734 |  236 | `}` |
-|  37656 |  237 | `static void DtCarry(sxi64 *pLo,sxi64 *pHi,sxi64 iUnit)` |
-|      4 |  238 | `{` |
-|  37660 |  239 | `	sxi64 c = DtFloorDiv(*pLo,iUnit);` |
-|  37660 |  240 | `	*pLo -= c * iUnit;` |
-|  37660 |  241 | `	*pHi = DtWAdd(*pHi,c);` |
-|  37660 |  242 | `}` |
+|    736 |  233 | `	p->h = p->i = p->s = p->us = 0;` |
+|    736 |  234 | `	p->bUsUnset = 0;` |
+|    736 |  235 | `	p->nTimeTok = 0;` |
+|    736 |  236 | `}` |
+|  37672 |  237 | `static void DtCarry(sxi64 *pLo,sxi64 *pHi,sxi64 iUnit)` |
+|      3 |  238 | `{` |
+|  37675 |  239 | `	sxi64 c = DtFloorDiv(*pLo,iUnit);` |
+|  37675 |  240 | `	*pLo -= c * iUnit;` |
+|  37675 |  241 | `	*pHi = DtWAdd(*pHi,c);` |
+|  37675 |  242 | `}` |
 |      - |  243 | `/*` |
 |      - |  244 | ` * php's timelib_do_normalize: carry the clock up into the days, fold the months` |
 |      - |  245 | ` * into the years, then let the civil day count absorb whatever the day field` |
 |      - |  246 | ` * holds. That formula is linear in d, so an out-of-range day simply lands in the` |
 |      - |  247 | `` * month after -- which is php's `2020-01-31 +1 month` == 2020-03-02.`` |
 |      - |  248 | ` */` |
-|   9928 |  249 | `static sxi64 DtDayCountOf(sxi64 y,sxi64 m,sxi64 d)` |
-|      4 |  250 | `{` |
-|   9932 |  251 | `	sxi64 c = DtFloorDiv(m - 1,12);` |
-|   9932 |  252 | `	sxi64 mm = (m - 1) - c*12 + 1;` |
-|   9932 |  253 | `	return DtWAdd(DtDaysFromCivil(DtWAdd(y,c),(int)mm,1),d - 1);` |
-|      4 |  254 | `}` |
-|   9414 |  255 | `static void DtNormalize(dt_parsed *p)` |
-|      4 |  256 | `{` |
+|   9932 |  249 | `static sxi64 DtDayCountOf(sxi64 y,sxi64 m,sxi64 d)` |
+|      3 |  250 | `{` |
+|   9935 |  251 | `	sxi64 c = DtFloorDiv(m - 1,12);` |
+|   9935 |  252 | `	sxi64 mm = (m - 1) - c*12 + 1;` |
+|   9935 |  253 | `	return DtWAdd(DtDaysFromCivil(DtWAdd(y,c),(int)mm,1),d - 1);` |
+|      3 |  254 | `}` |
+|   9418 |  255 | `static void DtNormalize(dt_parsed *p)` |
+|      3 |  256 | `{` |
 |      - |  257 | `	sxi64 days,yy;` |
 |      - |  258 | `	int mm,dd;` |
-|   9418 |  259 | `	DtCarry(&p->us,&p->s,1000000);` |
-|   9418 |  260 | `	DtCarry(&p->s,&p->i,60);` |
-|   9418 |  261 | `	DtCarry(&p->i,&p->h,60);` |
-|   9418 |  262 | `	DtCarry(&p->h,&p->d,24);` |
-|   9418 |  263 | `	days = DtDayCountOf(p->y,p->m,p->d);` |
-|   9418 |  264 | `	DtCivilFromDays(days,&yy,&mm,&dd);` |
-|   9418 |  265 | `	p->y = yy;` |
-|   9418 |  266 | `	p->m = mm;` |
-|   9418 |  267 | `	p->d = dd;` |
-|   9418 |  268 | `}` |
+|   9421 |  259 | `	DtCarry(&p->us,&p->s,1000000);` |
+|   9421 |  260 | `	DtCarry(&p->s,&p->i,60);` |
+|   9421 |  261 | `	DtCarry(&p->i,&p->h,60);` |
+|   9421 |  262 | `	DtCarry(&p->h,&p->d,24);` |
+|   9421 |  263 | `	days = DtDayCountOf(p->y,p->m,p->d);` |
+|   9421 |  264 | `	DtCivilFromDays(days,&yy,&mm,&dd);` |
+|   9421 |  265 | `	p->y = yy;` |
+|   9421 |  266 | `	p->m = mm;` |
+|   9421 |  267 | `	p->d = dd;` |
+|   9421 |  268 | `}` |
 |      - |  269 | `/* php's day of week, 0 = Sunday, from a day count (1970-01-01 was a Thursday). */` |
 |    608 |  270 | `static int DtDowOf(sxi64 days)` |
 |      1 |  271 | `{` |
@@ -360,15 +360,15 @@ Coverage: 4491/4756 lines (94.43%)
 |     79 |  350 | `}` |
 |      - |  351 | ``/* php's `first\|last day of`: the first is the day 1, the last is day 0 of the`` |
 |      - |  352 | ` * month AFTER -- which the normalizer then reads back as the month's own last. */` |
-|   8824 |  353 | `static void DtFirstLastDay(dt_parsed *p)` |
-|      4 |  354 | `{` |
-|   8828 |  355 | `	if( p->iFirstLast == 1 ){` |
+|   8828 |  353 | `static void DtFirstLastDay(dt_parsed *p)` |
+|      3 |  354 | `{` |
+|   8831 |  355 | `	if( p->iFirstLast == 1 ){` |
 |    113 |  356 | `		p->d = 1;` |
-|   8772 |  357 | `	}else if( p->iFirstLast == 2 ){` |
+|   8775 |  357 | `	}else if( p->iFirstLast == 2 ){` |
 |     57 |  358 | `		p->d = 0;` |
 |     57 |  359 | `		p->m = DtWAdd(p->m,1);` |
 |     28 |  360 | `	}` |
-|   8828 |  361 | `}` |
+|   8831 |  361 | `}` |
 |      - |  362 | `/*` |
 |      - |  363 | ` * php's timelib_fill_holes + timelib_update_ts over a parsed vector: fill what` |
 |      - |  364 | ` * the string left unset from the base moment, then apply in php's ORDER --` |
@@ -410,58 +410,58 @@ Coverage: 4491/4756 lines (94.43%)
 |     77 |  400 | `	p->d = 1;` |
 |     77 |  401 | `	DtNormalize(p);` |
 |     77 |  402 | `}` |
-|   4412 |  403 | `static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,` |
+|   4414 |  403 | `static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,` |
 |      - |  404 | `	int iFlags,int *pUs)` |
-|      4 |  405 | `{` |
-|   4416 |  406 | `	sxi64 days = DtFloorDiv(iBaseTs + iBaseOff,86400);` |
-|   4416 |  407 | `	sxi64 tod  = (iBaseTs + iBaseOff) - days*86400;` |
+|      3 |  405 | `{` |
+|   4417 |  406 | `	sxi64 days = DtFloorDiv(iBaseTs + iBaseOff,86400);` |
+|   4417 |  407 | `	sxi64 tod  = (iBaseTs + iBaseOff) - days*86400;` |
 |      - |  408 | `	sxi64 by;` |
 |      - |  409 | `	int bm,bd;` |
-|   4416 |  410 | `	DtCivilFromDays(days,&by,&bm,&bd);` |
-|   4416 |  411 | `	if( !(iFlags & DT_PARSE_OVERRIDE_TIME) && p->bHaveDate && !p->nTimeTok ){` |
-|    541 |  412 | `		p->h = p->i = p->s = p->us = 0;` |
+|   4417 |  410 | `	DtCivilFromDays(days,&by,&bm,&bd);` |
+|   4417 |  411 | `	if( !(iFlags & DT_PARSE_OVERRIDE_TIME) && p->bHaveDate && !p->nTimeTok ){` |
+|    540 |  412 | `		p->h = p->i = p->s = p->us = 0;` |
 |    269 |  413 | `	}` |
-|   4416 |  414 | `	if( p->y  == DT_UNSET ){ p->y  = by; }` |
-|   4416 |  415 | `	if( p->m  == DT_UNSET ){ p->m  = bm; }` |
-|   4416 |  416 | `	if( p->d  == DT_UNSET ){ p->d  = bd; }` |
-|   4416 |  417 | `	if( p->h  == DT_UNSET ){ p->h  = tod / 3600; }` |
-|   4416 |  418 | `	if( p->i  == DT_UNSET ){ p->i  = (tod / 60) % 60; }` |
-|   4416 |  419 | `	if( p->s  == DT_UNSET ){ p->s  = tod % 60; }` |
-|   4416 |  420 | `	if( p->us == DT_UNSET ){ p->us = iBaseUs; }` |
+|   4417 |  414 | `	if( p->y  == DT_UNSET ){ p->y  = by; }` |
+|   4417 |  415 | `	if( p->m  == DT_UNSET ){ p->m  = bm; }` |
+|   4417 |  416 | `	if( p->d  == DT_UNSET ){ p->d  = bd; }` |
+|   4417 |  417 | `	if( p->h  == DT_UNSET ){ p->h  = tod / 3600; }` |
+|   4417 |  418 | `	if( p->i  == DT_UNSET ){ p->i  = (tod / 60) % 60; }` |
+|   4417 |  419 | `	if( p->s  == DT_UNSET ){ p->s  = tod % 60; }` |
+|   4417 |  420 | `	if( p->us == DT_UNSET ){ p->us = iBaseUs; }` |
 |      - |  421 | `	/* php applies the flag TWICE, and both are visible: once here, so a weekday` |
 |      - |  422 | ``	 * hunt and a relative month start from the month's edge (`last monday first`` |
 |      - |  423 | ``	 * day of this month` never leaves January), and once at the end, which is what`` |
 |      - |  424 | `	 * makes it swallow the relative DAYS beside it. */` |
-|   4416 |  425 | `	if( p->bWdayOf ){` |
+|   4417 |  425 | `	if( p->bWdayOf ){` |
 |     77 |  426 | `		DtWeekdayOfMonth(p);` |
 |     38 |  427 | `	}` |
-|   4416 |  428 | `	DtFirstLastDay(p);` |
-|   4416 |  429 | `	DtNormalize(p);` |
-|   4416 |  430 | `	if( p->bWday ){` |
+|   4417 |  428 | `	DtFirstLastDay(p);` |
+|   4417 |  429 | `	DtNormalize(p);` |
+|   4417 |  430 | `	if( p->bWday ){` |
 |    359 |  431 | `		DtAdjustWeekday(p);` |
 |    359 |  432 | `		DtNormalize(p);` |
 |    179 |  433 | `	}` |
-|   4416 |  434 | `	p->us = DtWAdd(p->us,p->rus);` |
-|   4416 |  435 | `	p->s  = DtWAdd(p->s,p->rs);` |
-|   4416 |  436 | `	p->i  = DtWAdd(p->i,p->ri);` |
-|   4416 |  437 | `	p->h  = DtWAdd(p->h,p->rh);` |
-|   4416 |  438 | `	p->d  = DtWAdd(p->d,p->rd);` |
-|   4416 |  439 | `	p->m  = DtWAdd(p->m,p->rm);` |
-|   4416 |  440 | `	p->y  = DtWAdd(p->y,p->ry);` |
-|   4416 |  441 | `	DtFirstLastDay(p);` |
+|   4417 |  434 | `	p->us = DtWAdd(p->us,p->rus);` |
+|   4417 |  435 | `	p->s  = DtWAdd(p->s,p->rs);` |
+|   4417 |  436 | `	p->i  = DtWAdd(p->i,p->ri);` |
+|   4417 |  437 | `	p->h  = DtWAdd(p->h,p->rh);` |
+|   4417 |  438 | `	p->d  = DtWAdd(p->d,p->rd);` |
+|   4417 |  439 | `	p->m  = DtWAdd(p->m,p->rm);` |
+|   4417 |  440 | `	p->y  = DtWAdd(p->y,p->ry);` |
+|   4417 |  441 | `	DtFirstLastDay(p);` |
 |      - |  442 | `	/* php's business-day count runs AFTER the relative vector AND after the` |
 |      - |  443 | ``	 * `first\|last day of` flag, so `last weekday -8 months` walks back from the`` |
 |      - |  444 | ``	 * month it landed on and `first day of next month +9 weekdays` counts from`` |
 |      - |  445 | `	 * that 1st. */` |
-|   4416 |  446 | `	if( p->bWeekdays ){` |
+|   4417 |  446 | `	if( p->bWeekdays ){` |
 |    157 |  447 | `		DtNormalize(p);` |
 |    157 |  448 | `		DtAdjustWeekdays(p);` |
 |     78 |  449 | `	}` |
-|   4416 |  450 | `	DtNormalize(p);` |
-|   4416 |  451 | `	*pUs = (int)p->us;` |
-|   6622 |  452 | `	return DtMakeTs(p->y,(int)p->m,(int)p->d,(int)p->h,(int)p->i,(int)p->s,` |
-|   4412 |  453 | `		((iFlags & DT_PARSE_KEEP_ZONE) && !p->bEpoch) ? iBaseOff : p->iOff);` |
-|      4 |  454 | `}` |
+|   4417 |  450 | `	DtNormalize(p);` |
+|   4417 |  451 | `	*pUs = (int)p->us;` |
+|   6624 |  452 | `	return DtMakeTs(p->y,(int)p->m,(int)p->d,(int)p->h,(int)p->i,(int)p->s,` |
+|   4414 |  453 | `		((iFlags & DT_PARSE_KEEP_ZONE) && !p->bEpoch) ? iBaseOff : p->iOff);` |
+|      3 |  454 | `}` |
 |      - |  455 | `/*` |
 |      - |  456 | ` * How WIDE a run of digits may be, which php bounds per grammar and PHL did not` |
 |      - |  457 | ` * bound at all -- so a long run silently wrapped the int64 it was accumulated` |
@@ -498,13 +498,13 @@ Coverage: 4491/4756 lines (94.43%)
 |      - |  488 | `` * four-digit YEAR does not, which is why `1234 5678` is a year beside a clock.`` |
 |      - |  489 | ` */` |
 |   3144 |  490 | `static int DtMarkDate(dt_parsed *p,const char *zTok,const char *zIn)` |
-|      3 |  491 | `{` |
-|   3147 |  492 | `	if( p->bHaveDate ){` |
+|      2 |  491 | `{` |
+|   3146 |  492 | `	if( p->bHaveDate ){` |
 |     57 |  493 | `		return -((int)(zTok - zIn) + 1) - DT_ERR_DDATE;` |
 |      - |  494 | `	}` |
-|   3091 |  495 | `	p->bHaveDate = 1;` |
-|   3091 |  496 | `	return 0;` |
-|   1575 |  497 | `}` |
+|   3090 |  495 | `	p->bHaveDate = 1;` |
+|   3090 |  496 | `	return 0;` |
+|   1574 |  497 | `}` |
 |      - |  498 | `/*` |
 |      - |  499 | ` * Read a fractional-seconds part at z (which points at the '.'): up to 6 digits` |
 |      - |  500 | ` * become microseconds (right-padded to 6, extra digits ignored). Advances *pz.` |
@@ -700,23 +700,23 @@ Coverage: 4491/4756 lines (94.43%)
 |      - |  690 | ` *` |
 |      - |  691 | ` * zName NULL means a fixed OFFSET, whose name php builds from the offset itself.` |
 |      - |  692 | ` */` |
-|   1418 |  693 | `static int DtZoneCount(dt_parsed *p)` |
+|   1420 |  693 | `static int DtZoneCount(dt_parsed *p)` |
 |      2 |  694 | `{` |
-|   1420 |  695 | `	int n = p->nZoneTok;` |
-|   1420 |  696 | `	if( n < 2 ){` |
-|   1362 |  697 | `		p->nZoneTok = n + 1;` |
-|    680 |  698 | `	}` |
-|   1420 |  699 | `	return n == 0 ? 0 : (n == 1 ? 1 : -1);` |
+|   1422 |  695 | `	int n = p->nZoneTok;` |
+|   1422 |  696 | `	if( n < 2 ){` |
+|   1364 |  697 | `		p->nZoneTok = n + 1;` |
+|    681 |  698 | `	}` |
+|   1422 |  699 | `	return n == 0 ? 0 : (n == 1 ? 1 : -1);` |
 |      2 |  700 | `}` |
 |      - |  701 | `/* ...and the VALUE, written only for the token the rule above accepted. */` |
-|    940 |  702 | `static void DtZoneStore(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int bIdent)` |
+|    942 |  702 | `static void DtZoneStore(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int bIdent)` |
 |      2 |  703 | `{` |
-|    942 |  704 | `	p->iOff = iOff;` |
-|    942 |  705 | `	p->bOffSet = zName ? 2 : 1;` |
-|    942 |  706 | `	p->zZone = zName;` |
-|    942 |  707 | `	p->nZone = nName;` |
-|    942 |  708 | `	p->bZoneIdent = bIdent;` |
-|    942 |  709 | `}` |
+|    944 |  704 | `	p->iOff = iOff;` |
+|    944 |  705 | `	p->bOffSet = zName ? 2 : 1;` |
+|    944 |  706 | `	p->zZone = zName;` |
+|    944 |  707 | `	p->nZone = nName;` |
+|    944 |  708 | `	p->bZoneIdent = bIdent;` |
+|    944 |  709 | `}` |
 |      - |  710 | ``/* Exactly two digits whose value is <= iMax -- php's `minutelz`/`secondlz`, and`` |
 |      - |  711 | ` * the hour of its two-colon spelling. */` |
 |    580 |  712 | `static int DtZoneLz(const char *z,const char *zEnd,int iMax)` |
@@ -1039,11 +1039,11 @@ Coverage: 4491/4756 lines (94.43%)
 |     40 | 1029 | `}` |
 |      - | 1030 | `/* True if z points at a two-letter English ordinal suffix (st/nd/rd/th). */` |
 |   7890 | 1031 | `static int DtIsOrdinal(const char *z,const char *zEnd)` |
-|      4 | 1032 | `{` |
-|   7894 | 1033 | `	if( zEnd - z < 2 ){ return 0; }` |
+|      3 | 1032 | `{` |
+|   7893 | 1033 | `	if( zEnd - z < 2 ){ return 0; }` |
 |  13648 | 1034 | `	return SyStrnicmp(z,"st",2) == 0 \|\| SyStrnicmp(z,"nd",2) == 0` |
 |  10244 | 1035 | `		\|\| SyStrnicmp(z,"rd",2) == 0 \|\| SyStrnicmp(z,"th",2) == 0;` |
-|   3949 | 1036 | `}` |
+|   3948 | 1036 | `}` |
 |      - | 1037 | `/*` |
 |      - | 1038 | `` * Parse an OPTIONAL time-of-day suffix after a date component: a space or `T`,`` |
 |      - | 1039 | `` * then php's time of day, then a `Z` or a UTC offset. On entry *pz points just`` |
@@ -1053,9 +1053,9 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1043 | ` * absolute-date branch.` |
 |      - | 1044 | ` */` |
 |   2930 | 1045 | `static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,dt_parsed *p)` |
-|      3 | 1046 | `{` |
-|   2933 | 1047 | `	const char *z = *pz;` |
-|   2933 | 1048 | `	if( z < zEnd && (z[0]=='T' \|\| z[0]==' ' \|\| z[0]=='.') && z+1 < zEnd && SyisDigit(z[1]) ){` |
+|      2 | 1046 | `{` |
+|   2932 | 1047 | `	const char *z = *pz;` |
+|   2932 | 1048 | `	if( z < zEnd && (z[0]=='T' \|\| z[0]==' ' \|\| z[0]=='.') && z+1 < zEnd && SyisDigit(z[1]) ){` |
 |   2093 | 1049 | `		const char *zTime = &z[1];` |
 |      - | 1050 | `		int rc;` |
 |      - | 1051 | `		{` |
@@ -1115,9 +1115,9 @@ Coverage: 4491/4756 lines (94.43%)
 |      9 | 1105 | `			}` |
 |      - | 1106 | `		}` |
 |   1027 | 1107 | `	}` |
-|   2895 | 1108 | `	*pz = z;` |
-|   2895 | 1109 | `	return 0;` |
-|   1468 | 1110 | `}` |
+|   2894 | 1108 | `	*pz = z;` |
+|   2894 | 1109 | `	return 0;` |
+|   1467 | 1110 | `}` |
 |      - | 1111 | `/*` |
 |      - | 1112 | ` * Read one or two decimal digits at z (z<zEnd guaranteed by caller for the first).` |
 |      - | 1113 | ` * Returns the value; *pn = digits consumed (1 or 2).` |
@@ -1143,33 +1143,33 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1133 | ` * nothing pins that corner -- only the absence of undefined behaviour.` |
 |      - | 1134 | ` */` |
 |   5932 | 1135 | `static int DtTryIsoYear(const char *z,const char *zEnd,sxi64 *pY,int *pbRange)` |
-|      4 | 1136 | `{` |
+|      3 | 1136 | `{` |
 |      - | 1137 | `	static const sxu64 iCeil = (sxu64)0x7FFFFFFFFFFFFFFF;` |
-|   8902 | 1138 | `	int nSign = (z < zEnd && (z[0] == '+' \|\| z[0] == '-')) ? 1 : 0;` |
-|   5936 | 1139 | `	const char *zDig = &z[nSign];` |
-|   5936 | 1140 | `	const char *zScan = zDig;` |
-|   5936 | 1141 | `	sxu64 y = 0;` |
-|   5936 | 1142 | `	int bOver = 0;` |
+|   8901 | 1138 | `	int nSign = (z < zEnd && (z[0] == '+' \|\| z[0] == '-')) ? 1 : 0;` |
+|   5935 | 1139 | `	const char *zDig = &z[nSign];` |
+|   5935 | 1140 | `	const char *zScan = zDig;` |
+|   5935 | 1141 | `	sxu64 y = 0;` |
+|   5935 | 1142 | `	int bOver = 0;` |
 |      - | 1143 | `	/* php's own ceiling for the field: the magnitude an int64 holds, which is one` |
 |      - | 1144 | `	 * larger on the negative side. */` |
-|   5936 | 1145 | `	sxu64 iMax = (nSign && z[0] == '-') ? iCeil + 1 : iCeil;` |
-|  22576 | 1146 | `	while( zScan < zEnd && SyisDigit(zScan[0]) ){` |
-|  16644 | 1147 | `		sxu64 dig = (sxu64)(zScan[0] - '0');` |
-|  16644 | 1148 | `		if( bOver \|\| y > (iMax - dig) / 10 ){` |
+|   5935 | 1145 | `	sxu64 iMax = (nSign && z[0] == '-') ? iCeil + 1 : iCeil;` |
+|  22575 | 1146 | `	while( zScan < zEnd && SyisDigit(zScan[0]) ){` |
+|  16643 | 1147 | `		sxu64 dig = (sxu64)(zScan[0] - '0');` |
+|  16643 | 1148 | `		if( bOver \|\| y > (iMax - dig) / 10 ){` |
 |     62 | 1149 | `			bOver = 1;` |
 |     62 | 1150 | `			y = iMax;` |
 |     32 | 1151 | `		}else{` |
-|  16584 | 1152 | `			y = y * 10 + dig;` |
+|  16583 | 1152 | `			y = y * 10 + dig;` |
 |      - | 1153 | `		}` |
-|  16644 | 1154 | `		zScan++;` |
-|      4 | 1155 | `	}` |
-|   5936 | 1156 | `	if( zScan - zDig < 4 \|\| (nSign == 0 && zScan - zDig != 4) ){` |
+|  16643 | 1154 | `		zScan++;` |
+|      3 | 1155 | `	}` |
+|   5935 | 1156 | `	if( zScan - zDig < 4 \|\| (nSign == 0 && zScan - zDig != 4) ){` |
 |   3147 | 1157 | `		return 0;` |
 |      - | 1158 | `	}` |
-|   2792 | 1159 | `	if( zScan >= zEnd \|\| zScan[0] != '-' ){` |
+|   2791 | 1159 | `	if( zScan >= zEnd \|\| zScan[0] != '-' ){` |
 |    284 | 1160 | `		return 0;` |
 |      - | 1161 | `	}` |
-|   2509 | 1162 | `	if( nSign && zScan - zDig > 19 ){` |
+|   2508 | 1162 | `	if( nSign && zScan - zDig > 19 ){` |
 |      - | 1163 | `		/* php's EXPANDED year is at most nineteen digits; a wider run is not this` |
 |      - | 1164 | `		 * token at all and the string re-reads it with whatever else fits. */` |
 |     13 | 1165 | `		return 0;` |
@@ -1178,13 +1178,13 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1168 | `	 * REST of the token has matched too, so the caller is told rather than` |
 |      - | 1169 | ``	 * answered: `+9296228446195592075-1-1` is no expanded date at all there and`` |
 |      - | 1170 | `	 * reports the byte its re-reading trips on instead. */` |
-|   2497 | 1171 | `	*pbRange = bOver;` |
+|   2496 | 1171 | `	*pbRange = bOver;` |
 |      - | 1172 | `	/* the negative bound IS the int64's own, so the sign is applied in UNSIGNED` |
 |      - | 1173 | `	 * arithmetic: negating -9223372036854775808 as a signed value is undefined` |
 |      - | 1174 | `	 * and this build gates on UBSan. */` |
-|   2497 | 1175 | `	*pY = (nSign && z[0] == '-') ? (sxi64)((sxu64)0 - y) : (sxi64)y;` |
-|   2497 | 1176 | `	return (int)(zScan - z);` |
-|   2970 | 1177 | `}` |
+|   2496 | 1175 | `	*pY = (nSign && z[0] == '-') ? (sxi64)((sxu64)0 - y) : (sxi64)y;` |
+|   2496 | 1176 | `	return (int)(zScan - z);` |
+|   2969 | 1177 | `}` |
 |      - | 1178 | `/*` |
 |      - | 1179 | ` * php's ISO WEEK DATE, the spelling ISO 8601 gives a week rather than a day:` |
 |      - | 1180 | `` * `YYYY[-]Www` and `YYYY[-]Www[-]D`, with the year exactly four digits and`` |
@@ -1205,25 +1205,25 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1195 | ` */` |
 |   4210 | 1196 | `static int DtTryIsoWeek(const char *z,const char *zEnd,const char **pzOut,` |
 |      - | 1197 | `	dt_parsed *p,const char *zIn)` |
-|      4 | 1198 | `{` |
-|   4214 | 1199 | `	const char *zTok = z;` |
-|   4214 | 1200 | `	sxi64 y = 0;` |
-|   4214 | 1201 | `	int i,w,iDow = 1,dow1,rcT;` |
+|      3 | 1198 | `{` |
+|   4213 | 1199 | `	const char *zTok = z;` |
+|   4213 | 1200 | `	sxi64 y = 0;` |
+|   4213 | 1201 | `	int i,w,iDow = 1,dow1,rcT;` |
 |      - | 1202 | ``	/* the shortest spelling is the compact `2020W05` */`` |
-|   4214 | 1203 | `	if( zEnd - z < 7 ){` |
+|   4213 | 1203 | `	if( zEnd - z < 7 ){` |
 |    851 | 1204 | `		return 0;` |
 |      - | 1205 | `	}` |
-|  15280 | 1206 | `	for( i = 0 ; i < 4 ; i++ ){` |
-|  12538 | 1207 | `		if( !SyisDigit(z[i]) ){` |
+|  15279 | 1206 | `	for( i = 0 ; i < 4 ; i++ ){` |
+|  12537 | 1207 | `		if( !SyisDigit(z[i]) ){` |
 |    619 | 1208 | `			return 0;` |
 |      - | 1209 | `		}` |
-|  11920 | 1210 | `		y = y*10 + (z[i] - '0');` |
-|   5962 | 1211 | `	}` |
-|   2746 | 1212 | `	if( z[i] == '-' ){` |
-|   2475 | 1213 | `		i++;` |
+|  11919 | 1210 | `		y = y*10 + (z[i] - '0');` |
+|   5961 | 1211 | `	}` |
+|   2745 | 1212 | `	if( z[i] == '-' ){` |
+|   2474 | 1213 | `		i++;` |
 |   1236 | 1214 | `	}` |
-|   2746 | 1215 | `	if( &z[i+2] >= zEnd \|\| z[i] != 'W' ){` |
-|   2676 | 1216 | `		return 0;` |
+|   2745 | 1215 | `	if( &z[i+2] >= zEnd \|\| z[i] != 'W' ){` |
+|   2675 | 1216 | `		return 0;` |
 |      - | 1217 | `	}` |
 |     71 | 1218 | `	i++;` |
 |     71 | 1219 | `	if( !SyisDigit(z[i]) \|\| !SyisDigit(z[i+1]) ){` |
@@ -1263,7 +1263,7 @@ Coverage: 4491/4756 lines (94.43%)
 |     63 | 1253 | `	p->rd = (sxi64)(1 - (dow1 > 4 ? dow1 - 7 : dow1) + (w - 1)*7 + (iDow - 1));` |
 |     63 | 1254 | `	*pzOut = z;` |
 |     63 | 1255 | `	return 1;` |
-|   2109 | 1256 | `}` |
+|   2108 | 1256 | `}` |
 |      - | 1257 | `/*` |
 |      - | 1258 | ` * Try to read php's ISO date at z: [+-]YYYY-MM-DD plus an optional time suffix.` |
 |      - | 1259 | ` * Returns 0 when the text is not one (caller falls through), 1 on success, or an` |
@@ -1271,21 +1271,21 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1261 | ` */` |
 |   5932 | 1262 | `static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,` |
 |      - | 1263 | `	dt_parsed *p,const char *zIn)` |
-|      4 | 1264 | `{` |
+|      3 | 1264 | `{` |
 |      - | 1265 | `	const char *zRest;` |
-|   5936 | 1266 | `	const char *zTok = z;` |
-|   5936 | 1267 | `	sxi64 y = 0;` |
-|   5936 | 1268 | `	int nYr,mo = 0,d = 0,rcT,bRange = 0,bFull;` |
-|   5936 | 1269 | `	if( (nYr = DtTryIsoYear(z,zEnd,&y,&bRange)) == 0 ){` |
+|   5935 | 1266 | `	const char *zTok = z;` |
+|   5935 | 1267 | `	sxi64 y = 0;` |
+|   5935 | 1268 | `	int nYr,mo = 0,d = 0,rcT,bRange = 0,bFull;` |
+|   5935 | 1269 | `	if( (nYr = DtTryIsoYear(z,zEnd,&y,&bRange)) == 0 ){` |
 |   3441 | 1270 | `		return 0;` |
 |      - | 1271 | `	}` |
-|   2497 | 1272 | `	zRest = &z[nYr];   /* the '-' that closed the year */` |
-|   4895 | 1273 | `	bFull = !(zEnd-z < nYr + 6` |
+|   2496 | 1272 | `	zRest = &z[nYr];   /* the '-' that closed the year */` |
+|   4894 | 1273 | `	bFull = !(zEnd-z < nYr + 6` |
 |   2446 | 1274 | `	 \|\| !SyisDigit(zRest[1])\|\|!SyisDigit(zRest[2])\|\|zRest[3] != '-'` |
 |   2372 | 1275 | `	 \|\|!SyisDigit(zRest[4])\|\|!SyisDigit(zRest[5]));` |
-|   2497 | 1276 | `	if( bFull ){` |
-|   2361 | 1277 | `		mo = (zRest[1]-'0')*10 + (zRest[2]-'0');` |
-|   2361 | 1278 | `		d  = (zRest[4]-'0')*10 + (zRest[5]-'0');` |
+|   2496 | 1276 | `	if( bFull ){` |
+|   2360 | 1277 | `		mo = (zRest[1]-'0')*10 + (zRest[2]-'0');` |
+|   2360 | 1278 | `		d  = (zRest[4]-'0')*10 + (zRest[5]-'0');` |
 |      - | 1279 | `		/* php spells the ranges INSIDE the pattern, so a month past 12 or a day` |
 |      - | 1280 | `		 * past 31 means this spelling never matched at all -- the shorter rule` |
 |      - | 1281 | `		 * behind it did, and the digits it did not take are left to the string.` |
@@ -1295,11 +1295,11 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1285 | ``		 * read is what makes the next one a `Double date specification`.`` |
 |      - | 1286 | `		 * ("00" lexes fine and normalizes: month 0 is December of the year` |
 |      - | 1287 | `		 * before, which the field normalizer does on its own.) */` |
-|   2361 | 1288 | `		if( mo > 12 \|\| d > 31 ){` |
+|   2360 | 1288 | `		if( mo > 12 \|\| d > 31 ){` |
 |     37 | 1289 | `			bFull = 0;` |
 |     18 | 1290 | `		}` |
 |   1179 | 1291 | `	}` |
-|   2497 | 1292 | `	if( !bFull ){` |
+|   2496 | 1292 | `	if( !bFull ){` |
 |      - | 1293 | `		/* Not the full spelling. Two SHORTER ones stand behind it, both php's and` |
 |      - | 1294 | ``		 * both only after a plain four-digit year (`+12345-01` is neither): the`` |
 |      - | 1295 | ``		 * YEAR-MONTH `2020-01`, whose day is the 1st, and the ISO ORDINAL`` |
@@ -1371,32 +1371,32 @@ Coverage: 4491/4756 lines (94.43%)
 |    103 | 1361 | `		*pzOut = z;` |
 |    103 | 1362 | `		return 1;` |
 |      - | 1363 | `	}` |
-|   2325 | 1364 | `	if( bRange ){` |
+|   2324 | 1364 | `	if( bRange ){` |
 |      - | 1365 | ``		/* the whole `[+-]YYYY-MM-DD` matched and its year is past the int64 the`` |
 |      - | 1366 | `		 * field is kept in: php's "Number out of range", at the sign */` |
 |     11 | 1367 | `		*pzOut = &zRest[6];` |
 |     11 | 1368 | `		return -((int)(zTok - zIn) + 1) - DT_ERR_RANGE;` |
 |      - | 1369 | `	}` |
-|   2315 | 1370 | `	z = &zRest[6];` |
+|   2314 | 1370 | `	z = &zRest[6];` |
 |      - | 1371 | `	/* php's DAY carries an optional ordinal suffix wherever a day stands, this` |
 |      - | 1372 | ``	 * spelling included: `2020-01-02nd` is the 2nd. Only behind a plain`` |
 |      - | 1373 | `	 * four-digit year, though -- the EXPANDED form is a rule of its own, and` |
 |      - | 1374 | ``	 * `+12345-01-02nd` leaves the `nd` to the string as an unknown zone. */`` |
-|   2315 | 1375 | `	if( nYr == 4 && DtIsOrdinal(z,zEnd) ){` |
+|   2314 | 1375 | `	if( nYr == 4 && DtIsOrdinal(z,zEnd) ){` |
 |      7 | 1376 | `		z += 2;` |
 |      3 | 1377 | `	}` |
-|   2315 | 1378 | `	*pzOut = z;` |
-|   2315 | 1379 | `	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }` |
-|   2309 | 1380 | `	p->y = y;` |
-|   2309 | 1381 | `	p->m = mo;` |
-|   2309 | 1382 | `	p->d = d;` |
-|   2309 | 1383 | `	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){` |
+|   2314 | 1378 | `	*pzOut = z;` |
+|   2314 | 1379 | `	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }` |
+|   2308 | 1380 | `	p->y = y;` |
+|   2308 | 1381 | `	p->m = mo;` |
+|   2308 | 1382 | `	p->d = d;` |
+|   2308 | 1383 | `	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){` |
 |    ! 0 | 1384 | `		*pzOut = z;` |
 |    ! 0 | 1385 | `		return rcT;` |
 |      - | 1386 | `	}` |
-|   2309 | 1387 | `	*pzOut = z;` |
-|   2309 | 1388 | `	return 1;` |
-|   2970 | 1389 | `}` |
+|   2308 | 1387 | `	*pzOut = z;` |
+|   2308 | 1388 | `	return 1;` |
+|   2969 | 1389 | `}` |
 |      - | 1390 | `/*` |
 |      - | 1391 | `` * php's ISO ORDINAL date spelled with a FULL STOP, `YYYY.DDD` -- the same date`` |
 |      - | 1392 | ``  * `2020-102` gives, and the ONLY dotted form a four-digit year takes: `2020.1` `` |
@@ -1631,10 +1631,10 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1621 | ` * what lets a date string keep the newline of the file it was read from. The` |
 |      - | 1622 | ` * full stop is one too but only in places (DtIsSepAt below).` |
 |      - | 1623 | ` */` |
-|  13312 | 1624 | `static int DtIsSep(int c)` |
-|      4 | 1625 | `{` |
-|  13316 | 1626 | `	return c == ' ' \|\| c == '\t' \|\| c == '\n' \|\| c == '\0' \|\| c == ',';` |
-|      4 | 1627 | `}` |
+|  13316 | 1624 | `static int DtIsSep(int c)` |
+|      3 | 1625 | `{` |
+|  13319 | 1626 | `	return c == ' ' \|\| c == '\t' \|\| c == '\n' \|\| c == '\0' \|\| c == ',';` |
+|      3 | 1627 | `}` |
 |      - | 1628 | `/*` |
 |      - | 1629 | `` * php's `space` -- the run allowed INSIDE one token, between a count and its`` |
 |      - | 1630 | `` * unit, a sign and its digits, or `day` and the `of` behind it. It is narrower`` |
@@ -1652,13 +1652,13 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1642 | ``  * ever consulted, so nothing is lost by stepping over the rest: `20240102.2020` `` |
 |      - | 1643 | ` * is a date, a separator and a clock there.` |
 |      - | 1644 | ` */` |
-|  18574 | 1645 | `static int DtIsSepAt(const char *z,const char *zEnd)` |
-|      4 | 1646 | `{` |
-|  18578 | 1647 | `	if( z >= zEnd ){` |
-|   5168 | 1648 | `		return 0;` |
+|  18580 | 1645 | `static int DtIsSepAt(const char *z,const char *zEnd)` |
+|      3 | 1646 | `{` |
+|  18583 | 1647 | `	if( z >= zEnd ){` |
+|   5169 | 1648 | `		return 0;` |
 |      - | 1649 | `	}` |
-|  13414 | 1650 | `	return z[0] == '.' \|\| DtIsSep((unsigned char)z[0]);` |
-|   9291 | 1651 | `}` |
+|  13417 | 1650 | `	return z[0] == '.' \|\| DtIsSep((unsigned char)z[0]);` |
+|   9293 | 1651 | `}` |
 |      - | 1652 | `/*` |
 |      - | 1653 | ` * ...and the wider set php tolerates at the ENDS of the string, where a` |
 |      - | 1654 | ` * carriage return, a vertical tab and a form feed are allowed as well: a string` |
@@ -1667,11 +1667,11 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1657 | ` * the full stop go the other way -- they separate tokens but do not close the` |
 |      - | 1658 | `` * string, so `12:00,` parses and `3pm,` is not a meridian at all.`` |
 |      - | 1659 | ` */` |
-|   5166 | 1660 | `static int DtIsEdgeSep(int c)` |
-|      4 | 1661 | `{` |
-|   7751 | 1662 | `	return c == ' ' \|\| c == '\t' \|\| c == '\n' \|\| c == '\0'` |
-|   7749 | 1663 | `	    \|\| c == '\r' \|\| c == '\v' \|\| c == '\f';` |
-|      4 | 1664 | `}` |
+|   5168 | 1660 | `static int DtIsEdgeSep(int c)` |
+|      3 | 1661 | `{` |
+|   7753 | 1662 | `	return c == ' ' \|\| c == '\t' \|\| c == '\n' \|\| c == '\0'` |
+|   7752 | 1663 | `	    \|\| c == '\r' \|\| c == '\v' \|\| c == '\f';` |
+|      3 | 1664 | `}` |
 |      - | 1665 | `/*` |
 |      - | 1666 | ` * php's own first act on a date string is a TRIM -- timelib_strtotime walks` |
 |      - | 1667 | ` * isspace() off both ends and hands its scanner what is left -- so every` |
@@ -1682,20 +1682,20 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1672 | ` * those are separators the scanner steps over, and stepping over one is a byte` |
 |      - | 1673 | `` * gone by (`.xyz` refuses at 1).`` |
 |      - | 1674 | ` */` |
-|  14022 | 1675 | `static int DtIsCSpace(int c)` |
-|      4 | 1676 | `{` |
-|  20817 | 1677 | `	return c == ' ' \|\| c == '\t' \|\| c == '\n'` |
-|  20936 | 1678 | `	    \|\| c == '\v' \|\| c == '\f' \|\| c == '\r';` |
-|      4 | 1679 | `}` |
-|   6864 | 1680 | `static void DtTrimEnds(const char **pz,int *pn)` |
-|      4 | 1681 | `{` |
-|   6868 | 1682 | `	const char *z = *pz;` |
-|   6868 | 1683 | `	int n = *pn;` |
-|   7094 | 1684 | `	while( n > 0 && DtIsCSpace((unsigned char)z[0]) ){ z++; n--; }` |
-|   6940 | 1685 | `	while( n > 0 && DtIsCSpace((unsigned char)z[n-1]) ){ n--; }` |
-|   6868 | 1686 | `	*pz = z;` |
-|   6868 | 1687 | `	*pn = n;` |
-|   6868 | 1688 | `}` |
+|  14026 | 1675 | `static int DtIsCSpace(int c)` |
+|      3 | 1676 | `{` |
+|  20822 | 1677 | `	return c == ' ' \|\| c == '\t' \|\| c == '\n'` |
+|  20942 | 1678 | `	    \|\| c == '\v' \|\| c == '\f' \|\| c == '\r';` |
+|      3 | 1679 | `}` |
+|   6866 | 1680 | `static void DtTrimEnds(const char **pz,int *pn)` |
+|      3 | 1681 | `{` |
+|   6869 | 1682 | `	const char *z = *pz;` |
+|   6869 | 1683 | `	int n = *pn;` |
+|   7095 | 1684 | `	while( n > 0 && DtIsCSpace((unsigned char)z[0]) ){ z++; n--; }` |
+|   6941 | 1685 | `	while( n > 0 && DtIsCSpace((unsigned char)z[n-1]) ){ n--; }` |
+|   6869 | 1686 | `	*pz = z;` |
+|   6869 | 1687 | `	*pn = n;` |
+|   6869 | 1688 | `}` |
 |      - | 1689 | `/*` |
 |      - | 1690 | ` * ...and what the SENTENCE shows of it stops at the first NUL, because php` |
 |      - | 1691 | `` * hands the string to a C `%s`. A date string may well carry one -- the scanner`` |
@@ -1721,7 +1721,7 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1711 | ` * in the military zone S). Only the counted spellings pass it.` |
 |      - | 1712 | ` */` |
 |   7614 | 1713 | `static int DtMatchWeekdayEx(const char *z,const char *zEnd,int *pAdv,int bLoose)` |
-|      4 | 1714 | `{` |
+|      3 | 1714 | `{` |
 |      - | 1715 | `	static const struct { const char *z; int n; int dow; } aW[] = {` |
 |      - | 1716 | `		{ "sunday",6,0 },{ "monday",6,1 },{ "tuesday",7,2 },{ "wednesday",9,3 },` |
 |      - | 1717 | `		{ "thursday",8,4 },{ "friday",6,5 },{ "saturday",8,6 },` |
@@ -1729,10 +1729,10 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1719 | `		{ "fri",3,5 },{ "sat",3,6 }` |
 |      - | 1720 | `	};` |
 |      - | 1721 | `	sxu32 i;` |
-| 110184 | 1722 | `	for( i = 0 ; i < SX_ARRAYSIZE(aW) ; ++i ){` |
-| 102954 | 1723 | `		int n = aW[i].n;` |
-| 102954 | 1724 | `		if( zEnd - z < n \|\| SyStrnicmp(z,aW[i].z,(sxu32)n) != 0 ){` |
-| 102556 | 1725 | `			continue;` |
+| 110183 | 1722 | `	for( i = 0 ; i < SX_ARRAYSIZE(aW) ; ++i ){` |
+| 102953 | 1723 | `		int n = aW[i].n;` |
+| 102953 | 1724 | `		if( zEnd - z < n \|\| SyStrnicmp(z,aW[i].z,(sxu32)n) != 0 ){` |
+| 102555 | 1725 | `			continue;` |
 |      - | 1726 | `		}` |
 |      - | 1727 | ``		/* php spells the FULL names with an optional plural `s` and the`` |
 |      - | 1728 | ``		 * three-letter abbreviations without one, so `mondays` is a weekday where`` |
@@ -1750,8 +1750,8 @@ Coverage: 4491/4756 lines (94.43%)
 |    371 | 1740 | `			return aW[i].dow;` |
 |      - | 1741 | `		}` |
 |      8 | 1742 | `	}` |
-|   7234 | 1743 | `	return -1;` |
-|   3811 | 1744 | `}` |
+|   7233 | 1743 | `	return -1;` |
+|   3810 | 1744 | `}` |
 |      - | 1745 | `/*` |
 |      - | 1746 | `` * php's `americanshort`, `month "/" day` -- the American date with no year at`` |
 |      - | 1747 | `` * all (`4/20`, `12/31`, `10/2`), which this engine had only in its`` |
@@ -1949,7 +1949,7 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1939 | `` * `first week` is a refusal and `first weeks` seven ordinary days.`` |
 |      - | 1940 | ` */` |
 |  12802 | 1941 | `static int DtRelWord(const char *z,const char *zEnd,sxi64 *pVal,int *pbNav)` |
-|      4 | 1942 | `{` |
+|      3 | 1942 | `{` |
 |      - | 1943 | `	static const struct { const char *zWord; int nWord; int iVal; int bNav; } aWord[] = {` |
 |      - | 1944 | `		{ "previous", 8, -1, 1 }, { "next",     4,  1, 1 },` |
 |      - | 1945 | `		{ "last",     4, -1, 1 }, { "this",     4,  0, 1 },` |
@@ -1961,17 +1961,17 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 1951 | `		{ "eleventh", 8, 11, 0 }, { "twelfth",  7, 12, 0 }` |
 |      - | 1952 | `	};` |
 |      - | 1953 | `	int k;` |
-| 209150 | 1954 | `	for( k = 0 ; k < (int)SX_ARRAYSIZE(aWord) ; k++ ){` |
-| 196992 | 1955 | `		int n = aWord[k].nWord;` |
+| 209149 | 1954 | `	for( k = 0 ; k < (int)SX_ARRAYSIZE(aWord) ; k++ ){` |
+| 196991 | 1955 | `		int n = aWord[k].nWord;` |
 | 196988 | 1956 | `		if( zEnd - z >= n && SyStrnicmp(z,aWord[k].zWord,n) == 0` |
-|  73938 | 1957 | `		 && (zEnd - z == n \|\| !SyisAlpha(z[n])) ){` |
+|  73937 | 1957 | `		 && (zEnd - z == n \|\| !SyisAlpha(z[n])) ){` |
 |    645 | 1958 | `			*pVal  = (sxi64)aWord[k].iVal;` |
 |    645 | 1959 | `			*pbNav = aWord[k].bNav;` |
 |    645 | 1960 | `			return n;` |
 |      - | 1961 | `		}` |
-|  98176 | 1962 | `	}` |
-|  12162 | 1963 | `	return 0;` |
-|   6405 | 1964 | `}` |
+|  98175 | 1962 | `	}` |
+|  12161 | 1963 | `	return 0;` |
+|   6404 | 1964 | `}` |
 |      - | 1965 | `/*` |
 |      - | 1966 | ` * Apply php's relative UNIT word at z with the amount v, and answer the bytes it` |
 |      - | 1967 | ` * takes -- 0 when there is no unit word here. Shared by the two spellings that` |
@@ -2078,26 +2078,26 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2068 | ` * Advances *pz over what it took; answers 0 when this is not the token, 1 when` |
 |      - | 2069 | ` * it is, or an error code in DtParse's own convention.` |
 |      - | 2070 | ` */` |
-|   7132 | 2071 | `static int DtTryEpoch(const char **pz,const char *zEnd,dt_parsed *p,const char *zIn)` |
-|      4 | 2072 | `{` |
-|   7136 | 2073 | `	const char *z = *pz,*zAt = z;` |
-|   7136 | 2074 | `	sxi64 v = 0,us = 0;` |
-|   7136 | 2075 | `	int neg = 0,nDig = 0,bDot = 0,nFrac = 0,k,rc;` |
-|   7136 | 2076 | `	if( z >= zEnd \|\| z[0] != '@' ){` |
-|   6766 | 2077 | `		return 0;` |
+|   7134 | 2071 | `static int DtTryEpoch(const char **pz,const char *zEnd,dt_parsed *p,const char *zIn)` |
+|      3 | 2072 | `{` |
+|   7137 | 2073 | `	const char *z = *pz,*zAt = z;` |
+|   7137 | 2074 | `	sxi64 v = 0,us = 0;` |
+|   7137 | 2075 | `	int neg = 0,nDig = 0,bDot = 0,nFrac = 0,k,rc;` |
+|   7137 | 2076 | `	if( z >= zEnd \|\| z[0] != '@' ){` |
+|   6765 | 2077 | `		return 0;` |
 |      - | 2078 | `	}` |
-|    372 | 2079 | `	z++;` |
-|    372 | 2080 | `	if( z < zEnd && z[0] == '-' ){ neg = 1; z++; }` |
-|    372 | 2081 | `	if( z >= zEnd \|\| !SyisDigit(z[0]) ){` |
+|    374 | 2079 | `	z++;` |
+|    374 | 2080 | `	if( z < zEnd && z[0] == '-' ){ neg = 1; z++; }` |
+|    374 | 2081 | `	if( z >= zEnd \|\| !SyisDigit(z[0]) ){` |
 |      - | 2082 | ``		/* php's lexer never matched a token here at all: the `@` is the refusal */`` |
 |      9 | 2083 | `		return (int)(zAt - zIn) + 1;` |
 |      - | 2084 | `	}` |
-|   1502 | 2085 | `	while( z < zEnd && SyisDigit(z[0]) ){` |
-|   1140 | 2086 | `		if( nDig < DT_DIGITS_SAFE ){ v = v*10 + (z[0]-'0'); }` |
-|   1140 | 2087 | `		nDig++;` |
-|   1140 | 2088 | `		z++;` |
+|   1506 | 2085 | `	while( z < zEnd && SyisDigit(z[0]) ){` |
+|   1142 | 2086 | `		if( nDig < DT_DIGITS_SAFE ){ v = v*10 + (z[0]-'0'); }` |
+|   1142 | 2087 | `		nDig++;` |
+|   1142 | 2088 | `		z++;` |
 |      2 | 2089 | `	}` |
-|    364 | 2090 | `	if( z < zEnd && z[0] == '.' ){` |
+|    366 | 2090 | `	if( z < zEnd && z[0] == '.' ){` |
 |     45 | 2091 | `		bDot = 1;` |
 |     45 | 2092 | `		z++;` |
 |    129 | 2093 | `		while( nFrac < 6 && z < zEnd && SyisDigit(z[0]) ){` |
@@ -2107,45 +2107,45 @@ Coverage: 4491/4756 lines (94.43%)
 |      1 | 2097 | `		}` |
 |    225 | 2098 | `		for( k = nFrac ; k < 6 ; k++ ){ us *= 10; }` |
 |     22 | 2099 | `	}` |
-|    364 | 2100 | `	*pz = z;` |
-|    364 | 2101 | `	if( nDig > DT_DIGITS_EPOCH ){` |
+|    366 | 2100 | `	*pz = z;` |
+|    366 | 2101 | `	if( nDig > DT_DIGITS_EPOCH ){` |
 |      - | 2102 | ``		/* php reports it at the `@`, with its own reason. */`` |
 |      9 | 2103 | `		return -((int)(zAt - zIn) + 1) - DT_ERR_RANGE;` |
 |      - | 2104 | `	}` |
 |      - | 2105 | `	/* php's order: HAVE_RELATIVE, then UNHAVE_DATE and UNHAVE_TIME, then` |
 |      - | 2106 | `	 * HAVE_TZ -- so an epoch that bails on the zone has already marked the parse` |
 |      - | 2107 | `	 * relative, and date_parse() shows an all-zero block for it. */` |
-|    356 | 2108 | `	p->bHaveRel = 1;` |
-|    356 | 2109 | `	p->y = p->m = p->d = 0;` |
-|    356 | 2110 | `	p->bHaveDate = 0;` |
-|    356 | 2111 | `	DtUnhaveTime(p);` |
-|    356 | 2112 | `	rc = DtZoneCount(p);` |
-|    356 | 2113 | `	if( rc < 0 ){` |
+|    358 | 2108 | `	p->bHaveRel = 1;` |
+|    358 | 2109 | `	p->y = p->m = p->d = 0;` |
+|    358 | 2110 | `	p->bHaveDate = 0;` |
+|    358 | 2111 | `	DtUnhaveTime(p);` |
+|    358 | 2112 | `	rc = DtZoneCount(p);` |
+|    358 | 2113 | `	if( rc < 0 ){` |
 |    ! 0 | 2114 | `		return -((int)(zAt - zIn) + 1) - DT_ERR_DZONE;` |
 |      - | 2115 | `	}` |
-|    356 | 2116 | `	if( rc > 0 ){` |
+|    358 | 2116 | `	if( rc > 0 ){` |
 |     13 | 2117 | `		DtWarnPend(p,(int)(zAt - zIn),"Double timezone specification");` |
 |     13 | 2118 | `		return 1;   /* php returns from inside HAVE_TZ: nothing below runs */` |
 |      - | 2119 | `	}` |
-|    344 | 2120 | `	DtZoneStore(p,0,0,0,0);` |
-|    344 | 2121 | `	p->bEpoch = 1;` |
-|    344 | 2122 | `	p->y = 1970; p->m = 1; p->d = 1;` |
-|    344 | 2123 | `	p->h = p->i = p->s = p->us = 0;` |
-|    344 | 2124 | `	p->bUsUnset = 0;` |
-|    344 | 2125 | `	if( neg ){ v = -v; }` |
+|    346 | 2120 | `	DtZoneStore(p,0,0,0,0);` |
+|    346 | 2121 | `	p->bEpoch = 1;` |
+|    346 | 2122 | `	p->y = 1970; p->m = 1; p->d = 1;` |
+|    346 | 2123 | `	p->h = p->i = p->s = p->us = 0;` |
+|    346 | 2124 | `	p->bUsUnset = 0;` |
+|    346 | 2125 | `	if( neg ){ v = -v; }` |
 |      - | 2126 | `	/* php adds the fraction to the RELATIVE microseconds with the token's own` |
 |      - | 2127 | ``	 * sign rather than borrowing a second for it, so `@-1.5` is -1s and -500000us`` |
 |      - | 2128 | `	 * there -- the same instant, and the count date_parse() shows. Being relative` |
 |      - | 2129 | ``	 * is also what makes a later `tomorrow`, whose whole job is to zero the`` |
 |      - | 2130 | `	 * clock, leave it standing. */` |
-|    344 | 2131 | `	if( nFrac > 0 ){` |
+|    346 | 2131 | `	if( nFrac > 0 ){` |
 |     35 | 2132 | `		p->rus = neg ? -us : us;` |
 |     17 | 2133 | `	}` |
-|    344 | 2134 | `	p->rs = DtWAdd(p->rs,v);` |
-|    344 | 2135 | `	if( bDot && nFrac == 0 ){` |
+|    346 | 2134 | `	p->rs = DtWAdd(p->rs,v);` |
+|    346 | 2135 | `	if( bDot && nFrac == 0 ){` |
 |      9 | 2136 | `		return -((int)(zAt - zIn) + 1) - DT_ERR_UNEXPDATA;` |
 |      - | 2137 | `	}` |
-|    336 | 2138 | `	return 1;` |
+|    338 | 2138 | `	return 1;` |
 |   3570 | 2139 | `}` |
 |      - | 2140 | `/* Forward: the scan publishes what it collects, and words a refusal in php's` |
 |      - | 2141 | ` * own terms -- both live below, beside the record they write to. */` |
@@ -2154,32 +2154,32 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2144 | `static void DtRecWarn(phl_dt_lasterr *pRec,int iPos,const char *zMsg);` |
 |      - | 2145 | `static void DtRecReset(phl_dt_lasterr *pRec);` |
 |      - | 2146 | `static int DtDaysInMonth(sxi64 y,int m);` |
-|   5166 | 2147 | `static int DtParseFields(const char *zIn,int nLen,dt_parsed *p,phl_dt_lasterr *pRec)` |
-|      4 | 2148 | `{` |
+|   5168 | 2147 | `static int DtParseFields(const char *zIn,int nLen,dt_parsed *p,phl_dt_lasterr *pRec)` |
+|      3 | 2148 | `{` |
 |      - | 2149 | `	const char *z,*zEnd;` |
-|   5170 | 2150 | `	const char *zPrev = 0;` |
-|   5170 | 2151 | `	int bAny = 0;` |
-|   5170 | 2152 | `	int iRc,iFirst = 0,k;` |
+|   5171 | 2150 | `	const char *zPrev = 0;` |
+|   5171 | 2151 | `	int bAny = 0;` |
+|   5171 | 2152 | `	int iRc,iFirst = 0,k;` |
 |      - | 2153 | `	/* php refuses an EMPTY string before it does anything else, and the test is` |
 |      - | 2154 | `	 * on what the caller handed over rather than on what the trim leaves: a` |
 |      - | 2155 | ``	 * string of blanks parses as `now`. The constructors never see it, because`` |
 |      - | 2156 | ``	 * php hands THEM the word `now` in its place -- only modify() and the`` |
 |      - | 2157 | `	 * component readers do. */` |
-|   5170 | 2158 | `	if( nLen < 1 ){` |
+|   5171 | 2158 | `	if( nLen < 1 ){` |
 |      3 | 2159 | `		DtRecErr(pRec,0,"Empty string");` |
 |      3 | 2160 | `		return -1 - DT_ERR_EMPTY;` |
 |      - | 2161 | `	}` |
 |      - | 2162 | `	/* php's trim comes FIRST and the positions below are all measured from what` |
 |      - | 2163 | `	 * it leaves, so rebase on it here and every rule inherits the answer. */` |
-|   5168 | 2164 | `	DtTrimEnds(&zIn,&nLen);` |
-|   5168 | 2165 | `	z = zIn;` |
-|   5168 | 2166 | `	zEnd = &zIn[nLen];` |
+|   5169 | 2164 | `	DtTrimEnds(&zIn,&nLen);` |
+|   5169 | 2165 | `	z = zIn;` |
+|   5169 | 2166 | `	zEnd = &zIn[nLen];` |
 |      - | 2167 | `	/* The wider set php tolerates at the trailing END -- a carriage return, a` |
 |      - | 2168 | `	 * vertical tab, a form feed, a NUL -- closes the string; at the FRONT the` |
 |      - | 2169 | `	 * trim has taken what it takes and everything left is an ordinary token` |
 |      - | 2170 | `	 * separator, which DT_SKIP_WS below reads. Stepping over more than that` |
 |      - | 2171 | ``	 * loses a byte php refuses: `.\rjanuary` is an unexpected `\r` there. */`` |
-|   5172 | 2172 | `	while( zEnd > z && DtIsEdgeSep((unsigned char)zEnd[-1]) ){ zEnd--; }` |
+|   5173 | 2172 | `	while( zEnd > z && DtIsEdgeSep((unsigned char)zEnd[-1]) ){ zEnd--; }` |
 |      - | 2173 | `#define DT_SKIP_WS() while( DtIsSepAt(z,zEnd) ){ z++; }` |
 |      - | 2174 | ``/* ...and the run INSIDE one token, which is php's narrower `space`. */`` |
 |      - | 2175 | `#define DT_SPACE() while( z < zEnd && DtIsSpace((unsigned char)z[0]) ){ z++; }` |
@@ -2210,8 +2210,8 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2200 | `		if( z < &zIn[_p + 1] ){ z = &zIn[_p + 1]; } \` |
 |      - | 2201 | `		if( z > zEnd ){ z = zEnd; } \` |
 |      - | 2202 | `	}while(0)` |
-|   5218 | 2203 | `	DT_SKIP_WS();` |
-|   5168 | 2204 | `	if( z >= zEnd ){` |
+|   5219 | 2203 | `	DT_SKIP_WS();` |
+|   5169 | 2204 | `	if( z >= zEnd ){` |
 |      - | 2205 | `		/* php: the empty string is "now" */` |
 |      3 | 2206 | `		return 0;` |
 |      - | 2207 | `	}` |
@@ -2221,14 +2221,14 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2211 | `	 * spelled in LETTERS, so nothing they could claim reaches the date rules` |
 |      - | 2212 | `	 * behind them by another route.` |
 |      - | 2213 | `	 */` |
-|   2864 | 2214 | `	for(;;){` |
+|   2865 | 2214 | `	for(;;){` |
 |      - | 2215 | `		/* Every pass must CONSUME something. A shape rule that claims a token` |
 |      - | 2216 | `		 * without advancing the cursor would spin here forever -- and one did:` |
 |      - | 2217 | `		 * the ISO rule's refusal encodes the token's POSITION, and a token at` |
 |      - | 2218 | `		 * position 0 encodes as the same 1 that means "matched", so` |
 |      - | 2219 | ``		 * `new DateTime('2020-1-1 12:00')` hung the engine outright. The rule is`` |
 |      - | 2220 | `		 * fixed above; this makes the whole class of it a refusal instead. */` |
-|  12306 | 2221 | `		if( z == zPrev ){` |
+|  12309 | 2221 | `		if( z == zPrev ){` |
 |      9 | 2222 | `			DT_FAIL((int)(z - zIn) + 1);` |
 |      9 | 2223 | `			if( z == zPrev ){` |
 |      - | 2224 | `				/* Nothing could advance it -- stop rather than spin, which is the` |
@@ -2237,28 +2237,28 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2227 | `			}` |
 |      9 | 2228 | `			continue;` |
 |      - | 2229 | `		}` |
-|  12298 | 2230 | `		zPrev = z;` |
-|  13364 | 2231 | `		DT_SKIP_WS();` |
-|  12298 | 2232 | `		if( z >= zEnd ){` |
-|   5166 | 2233 | `			break;` |
+|  12301 | 2230 | `		zPrev = z;` |
+|  13367 | 2231 | `		DT_SKIP_WS();` |
+|  12301 | 2232 | `		if( z >= zEnd ){` |
+|   5167 | 2233 | `			break;` |
 |      - | 2234 | `		}` |
-|   7136 | 2235 | `		if( (iRc = DtTryEpoch(&z,zEnd,p,zIn)) != 0 ){` |
-|    372 | 2236 | `			if( iRc != 1 ){ DT_FAIL(iRc); continue; }` |
-|    356 | 2237 | `			bAny = 1;` |
-|    356 | 2238 | `			continue;` |
+|   7137 | 2235 | `		if( (iRc = DtTryEpoch(&z,zEnd,p,zIn)) != 0 ){` |
+|    374 | 2236 | `			if( iRc != 1 ){ DT_FAIL(iRc); continue; }` |
+|    358 | 2237 | `			bAny = 1;` |
+|    358 | 2238 | `			continue;` |
 |      - | 2239 | `		}` |
-|   6766 | 2240 | `		if( DT_LOWEQ("now",3) ){` |
+|   6765 | 2240 | `		if( DT_LOWEQ("now",3) ){` |
 |     39 | 2241 | `			z += 3;` |
 |     39 | 2242 | `			bAny = 1;` |
 |     39 | 2243 | `			continue;` |
 |      - | 2244 | `		}` |
-|   6728 | 2245 | `		if( DT_LOWEQ("today",5) \|\| DT_LOWEQ("midnight",8) ){` |
+|   6727 | 2245 | `		if( DT_LOWEQ("today",5) \|\| DT_LOWEQ("midnight",8) ){` |
 |     21 | 2246 | `			DtUnhaveTime(p);` |
 |     21 | 2247 | `			z += (SyToLower(z[0])=='t') ? 5 : 8;` |
 |     21 | 2248 | `			bAny = 1;` |
 |     21 | 2249 | `			continue;` |
 |      - | 2250 | `		}` |
-|   6708 | 2251 | `		if( DT_LOWEQ("noon",4) ){` |
+|   6707 | 2251 | `		if( DT_LOWEQ("noon",4) ){` |
 |     15 | 2252 | `			DtUnhaveTime(p);` |
 |     15 | 2253 | `			p->h = 12;` |
 |     15 | 2254 | `			p->nTimeTok = 1;` |
@@ -2269,7 +2269,7 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2259 | `		/* php SETS the relative day for these two rather than adding to it, so` |
 |      - | 2260 | ``		 * either one wipes whatever days came before it: `+3 days tomorrow` is one`` |
 |      - | 2261 | ``		 * day on, and `tomorrow yesterday` is yesterday. */`` |
-|   6694 | 2262 | `		if( DT_LOWEQ("tomorrow",8) ){` |
+|   6693 | 2262 | `		if( DT_LOWEQ("tomorrow",8) ){` |
 |     39 | 2263 | `			DtUnhaveTime(p);` |
 |     39 | 2264 | `			p->bHaveRel = 1;` |
 |     39 | 2265 | `			p->rd = 1;` |
@@ -2277,7 +2277,7 @@ Coverage: 4491/4756 lines (94.43%)
 |     39 | 2267 | `			bAny = 1;` |
 |     39 | 2268 | `			continue;` |
 |      - | 2269 | `		}` |
-|   6656 | 2270 | `		if( DT_LOWEQ("yesterday",9) ){` |
+|   6655 | 2270 | `		if( DT_LOWEQ("yesterday",9) ){` |
 |     31 | 2271 | `			DtUnhaveTime(p);` |
 |     31 | 2272 | `			p->bHaveRel = 1;` |
 |     31 | 2273 | `			p->rd = -1;` |
@@ -2289,7 +2289,7 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2279 | `		 * nothing else — whatever names the target month ("next month", "January` |
 |      - | 2280 | `		 * 2021", or nothing at all) is an ordinary token after it, and the flag is` |
 |      - | 2281 | `		 * applied LAST, which is what makes it swallow any relative days beside it. */` |
-|   6626 | 2282 | `		if( DT_LOWEQ("first",5) \|\| DT_LOWEQ("last",4) ){` |
+|   6625 | 2282 | `		if( DT_LOWEQ("first",5) \|\| DT_LOWEQ("last",4) ){` |
 |    229 | 2283 | `			const char *zSave = z;` |
 |    229 | 2284 | `			int bFirst = (SyToLower((unsigned char)z[0]) == 'f');` |
 |    229 | 2285 | `			z += bFirst ? 5 : 4;` |
@@ -2313,20 +2313,20 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2303 | `		 * "this" keeps it. The move itself happens in DtAdjustWeekday, BEFORE the` |
 |      - | 2304 | `		 * relative vector, which is php's order. */` |
 |      - | 2305 | `		{` |
-|   6530 | 2306 | `			const char *zSave = z;` |
-|   6530 | 2307 | `			sxi64 iCnt = 0;` |
-|   6530 | 2308 | `			int bNav = 0,bHavePrefix = 0,nWord;` |
+|   6529 | 2306 | `			const char *zSave = z;` |
+|   6529 | 2307 | `			sxi64 iCnt = 0;` |
+|   6529 | 2308 | `			int bNav = 0,bHavePrefix = 0,nWord;` |
 |      - | 2309 | `			int adv,dow;` |
-|   6530 | 2310 | `			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){` |
+|   6529 | 2310 | `			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){` |
 |    407 | 2311 | `				z += nWord;` |
 |    813 | 2312 | `				DT_SPACE();` |
 |    407 | 2313 | `				bHavePrefix = 1;` |
 |    203 | 2314 | `			}` |
-|   6530 | 2315 | `			dow = DtMatchWeekdayEx(z,zEnd,&adv,bHavePrefix);` |
-|   6530 | 2316 | `			if( dow >= 0 && DtRelUnitLen(z,zEnd,p) > adv ){` |
+|   6529 | 2315 | `			dow = DtMatchWeekdayEx(z,zEnd,&adv,bHavePrefix);` |
+|   6529 | 2316 | `			if( dow >= 0 && DtRelUnitLen(z,zEnd,p) > adv ){` |
 |     77 | 2317 | ``				dow = -1;   /* `next month` is the UNIT, not `mon` and a stray `th` */`` |
 |     38 | 2318 | `			}` |
-|   6530 | 2319 | `			if( dow >= 0 && bHavePrefix ){` |
+|   6529 | 2319 | `			if( dow >= 0 && bHavePrefix ){` |
 |      - | 2320 | ``				/* php's `first monday of`: a WORD count, a weekday and the word`` |
 |      - | 2321 | ``				 * `of` are one token, and what it names is a weekday inside a`` |
 |      - | 2322 | ``				 * MONTH. The digit spelling does not reach it -- `1 monday of` is`` |
@@ -2359,7 +2359,7 @@ Coverage: 4491/4756 lines (94.43%)
 |    165 | 2349 | `					continue;` |
 |      - | 2350 | `				}` |
 |     45 | 2351 | `			}` |
-|   6452 | 2352 | `			if( dow >= 0 ){` |
+|   6451 | 2352 | `			if( dow >= 0 ){` |
 |    173 | 2353 | `				DtUnhaveTime(p);` |
 |    173 | 2354 | `				p->bHaveRel = 1;` |
 |    173 | 2355 | `				p->bWday = 1;` |
@@ -2380,17 +2380,17 @@ Coverage: 4491/4756 lines (94.43%)
 |    173 | 2370 | `				bAny = 1;` |
 |    173 | 2371 | `				continue;` |
 |      - | 2372 | `			}` |
-|   6280 | 2373 | `			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */` |
+|   6279 | 2373 | `			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */` |
 |      - | 2374 | `		}` |
 |      - | 2375 | `		/* Standalone "this\|next\|last (month\|week)". php's month is an ordinary` |
 |      - | 2376 | `		 * relative month; its WEEK is a weekday-relative move to the Monday of the` |
 |      - | 2377 | `		 * week (behaviour 2) plus the whole weeks, which is why "next week" is that` |
 |      - | 2378 | `		 * Monday and not seven days from the base day. */` |
 |      - | 2379 | `		{` |
-|   6280 | 2380 | `			const char *zSave = z;` |
-|   6280 | 2381 | `			sxi64 iCnt = 0;` |
-|   6280 | 2382 | `			int bNav = 0,nWord;` |
-|   6280 | 2383 | `			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){` |
+|   6279 | 2380 | `			const char *zSave = z;` |
+|   6279 | 2381 | `			sxi64 iCnt = 0;` |
+|   6279 | 2382 | `			int bNav = 0,nWord;` |
+|   6279 | 2383 | `			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){` |
 |    239 | 2384 | `				z += nWord;` |
 |    477 | 2385 | `				DT_SPACE();` |
 |    239 | 2386 | `				if( bNav && DT_WEEKSING() ){` |
@@ -2424,12 +2424,12 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2414 | `					}` |
 |      1 | 2415 | `				}` |
 |      3 | 2416 | `			}` |
-|   6048 | 2417 | `			z = zSave;` |
+|   6047 | 2417 | `			z = zSave;` |
 |      - | 2418 | `		}` |
 |      - | 2419 | ``		/* A bare `weekday`, with no count in front of it, is not the business-day`` |
 |      - | 2420 | `		 * move at all in php but the MONDAY hunt -- the same answer a bare weekday` |
 |      - | 2421 | `		 * NAME gives. */` |
-|   6048 | 2422 | `		if( DT_LOWEQ("weekdays",8) \|\| DT_LOWEQ("weekday",7) ){` |
+|   6047 | 2422 | `		if( DT_LOWEQ("weekdays",8) \|\| DT_LOWEQ("weekday",7) ){` |
 |     13 | 2423 | `			DtUnhaveTime(p);` |
 |     13 | 2424 | `			p->bHaveRel = 1;` |
 |     13 | 2425 | `			p->bWday = 1;` |
@@ -2442,7 +2442,7 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2432 | ``		/* php's `ago` NEGATES the relative vector as it stands -- the weekday it`` |
 |      - | 2433 | ``		 * hunts for included, which is what makes `next monday ago` the Monday`` |
 |      - | 2434 | ``		 * before -- so a second `ago` puts it back. */`` |
-|   6036 | 2435 | `		if( DT_LOWEQ("ago",3) ){` |
+|   6035 | 2435 | `		if( DT_LOWEQ("ago",3) ){` |
 |     37 | 2436 | `			p->ry = -p->ry; p->rm = -p->rm; p->rd = -p->rd;` |
 |     37 | 2437 | `			p->rh = -p->rh; p->ri = -p->ri; p->rs = -p->rs;   /* NOT the micro-` |
 |      - | 2438 | ``				* seconds: php's `ago` leaves that one field standing */`` |
@@ -2457,15 +2457,15 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2447 | ``		 * "march 3" and the tail of `12345-01-01` (a compact time, then a date)`` |
 |      - | 2448 | `		 * all reach here. The dates go first so that the longest reading wins --` |
 |      - | 2449 | ``		 * `1.2.2020` is a date where a bare `1.2` is the time 01:02. */`` |
-|   6000 | 2450 | `		if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){` |
+|   5999 | 2450 | `		if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){` |
 |     65 | 2451 | `			if( iRc != 1 ){ DT_FAIL(iRc); continue; }` |
 |     63 | 2452 | `			bAny = 1;` |
 |     63 | 2453 | `			continue;` |
 |      - | 2454 | `		}` |
-|   5936 | 2455 | `		if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){` |
-|   2429 | 2456 | `			if( iRc != 1 ){ DT_FAIL(iRc); continue; }` |
-|   2411 | 2457 | `			bAny = 1;` |
-|   2411 | 2458 | `			continue;` |
+|   5935 | 2455 | `		if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){` |
+|   2428 | 2456 | `			if( iRc != 1 ){ DT_FAIL(iRc); continue; }` |
+|   2410 | 2457 | `			bAny = 1;` |
+|   2410 | 2458 | `			continue;` |
 |      - | 2459 | `		}` |
 |   3509 | 2460 | `		if( SyisDigit(z[0]) && (iRc = DtTryIsoOrdinalDot(z,zEnd,&z,p,zIn)) != 0 ){` |
 |     29 | 2461 | `			if( iRc != 1 ){ DT_FAIL(iRc); continue; }` |
@@ -2708,7 +2708,7 @@ Coverage: 4491/4756 lines (94.43%)
 |    567 | 2698 | `		DT_FAIL((int)(z - zIn) + 1);` |
 |      1 | 2699 | `	}` |
 |      - | 2700 | `	/* The warnings a RULE raised, in the order the scan met them ... */` |
-|   5306 | 2701 | `	for( k = 0 ; k < p->nWarnPend && k < PH7_DT_MAX_WARN ; k++ ){` |
+|   5307 | 2701 | `	for( k = 0 ; k < p->nWarnPend && k < PH7_DT_MAX_WARN ; k++ ){` |
 |    141 | 2702 | `		DtRecWarn(pRec,p->aWarnPos[k],p->azWarn[k]);` |
 |     71 | 2703 | `	}` |
 |      - | 2704 | `	/*` |
@@ -2719,22 +2719,22 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2709 | `	 * that otherwise succeeds. php asks the time first, and both land on the same` |
 |      - | 2710 | `	 * key -- so a string with both counts two and shows the date's.` |
 |      - | 2711 | `	 */` |
-|   5162 | 2712 | `	if( p->nTimeTok` |
+|   5164 | 2712 | `	if( p->nTimeTok` |
 |   3859 | 2713 | `	 && (p->h > 23 \|\| p->i > 59 \|\| p->s > 59 \|\| p->h < 0 \|\| p->i < 0 \|\| p->s < 0) ){` |
 |     23 | 2714 | `		DtRecWarn(pRec,nLen + 1,"The parsed time was invalid");` |
 |     11 | 2715 | `	}` |
-|   5162 | 2716 | `	if( p->bHaveDate` |
+|   5164 | 2716 | `	if( p->bHaveDate` |
 |   4103 | 2717 | `	 && (p->m < 1 \|\| p->m > 12 \|\| p->d < 1` |
 |   2974 | 2718 | `	     \|\| p->d > DtDaysInMonth(p->y,(int)p->m)) ){` |
 |    167 | 2719 | `		DtRecWarn(pRec,nLen + 1,"The parsed date was invalid");` |
 |     83 | 2720 | `	}` |
-|   5166 | 2721 | `	if( iFirst != 0 ){` |
+|   5167 | 2721 | `	if( iFirst != 0 ){` |
 |    754 | 2722 | `		return iFirst;` |
 |      - | 2723 | `	}` |
-|   4414 | 2724 | `	if( !bAny ){` |
+|   4415 | 2724 | `	if( !bAny ){` |
 |    ! 0 | 2725 | `		return 1;` |
 |      - | 2726 | `	}` |
-|   4414 | 2727 | `	return 0;` |
+|   4415 | 2727 | `	return 0;` |
 |      - | 2728 | `#undef DT_SKIP_WS` |
 |      - | 2729 | `#undef DT_LOWEQ` |
 |      - | 2730 | `#undef DT_WEEKSING` |
@@ -2745,28 +2745,28 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2735 | ` * vector the string filled is applied here (DtApplyFields), so nothing about the` |
 |      - | 2736 | ` * order the string spelled its units in reaches the clock.` |
 |      - | 2737 | ` */` |
-|   5166 | 2738 | `static int DtParseEx(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,` |
+|   5168 | 2738 | `static int DtParseEx(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,` |
 |      - | 2739 | `	int iFlags,sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs,dt_parsed *pVec,` |
 |      - | 2740 | `	phl_dt_lasterr *pRec)` |
-|      4 | 2741 | `{` |
+|      3 | 2741 | `{` |
 |      - | 2742 | `	dt_parsed sP;` |
 |      - | 2743 | `	int iErr;` |
-|   5170 | 2744 | `	DtFieldsInit(&sP,iBaseOff);` |
-|   5170 | 2745 | `	*pUs = iBaseUs;` |
-|   5170 | 2746 | `	if( pRec ){` |
-|   4284 | 2747 | `		DtRecReset(pRec);` |
-|   2140 | 2748 | `	}` |
-|   5170 | 2749 | `	iErr = DtParseFields(zIn,nLen,&sP,pRec);` |
-|   5170 | 2750 | `	if( pVec ){` |
-|   4470 | 2751 | `		*pVec = sP;` |
-|   2233 | 2752 | `	}` |
-|   5170 | 2753 | `	if( iErr != 0 ){` |
+|   5171 | 2744 | `	DtFieldsInit(&sP,iBaseOff);` |
+|   5171 | 2745 | `	*pUs = iBaseUs;` |
+|   5171 | 2746 | `	if( pRec ){` |
+|   4285 | 2747 | `		DtRecReset(pRec);` |
+|   2141 | 2748 | `	}` |
+|   5171 | 2749 | `	iErr = DtParseFields(zIn,nLen,&sP,pRec);` |
+|   5171 | 2750 | `	if( pVec ){` |
+|   4471 | 2751 | `		*pVec = sP;` |
+|   2234 | 2752 | `	}` |
+|   5171 | 2753 | `	if( iErr != 0 ){` |
 |    756 | 2754 | `		return iErr;` |
 |      - | 2755 | `	}` |
-|   4416 | 2756 | `	*pTs = DtApplyFields(&sP,iBaseTs,iBaseOff,iBaseUs,iFlags,pUs);` |
-|   4416 | 2757 | `	*pOff = sP.iOff;` |
-|   4416 | 2758 | `	*pbOffSet = sP.bOffSet;` |
-|   4416 | 2759 | `	return 0;` |
+|   4417 | 2756 | `	*pTs = DtApplyFields(&sP,iBaseTs,iBaseOff,iBaseUs,iFlags,pUs);` |
+|   4417 | 2757 | `	*pOff = sP.iOff;` |
+|   4417 | 2758 | `	*pbOffSet = sP.bOffSet;` |
+|   4417 | 2759 | `	return 0;` |
 |   2587 | 2760 | `}` |
 |    700 | 2761 | `static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,` |
 |      - | 2762 | `	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)` |
@@ -2847,13 +2847,13 @@ Coverage: 4491/4756 lines (94.43%)
 |    852 | 2837 | `}` |
 |      - | 2838 | `/* Days in a civil month (php's overflow rules use it during diff borrows) */` |
 |  12518 | 2839 | `static int DtDaysInMonth(sxi64 y,int m)` |
-|      3 | 2840 | `{` |
+|      2 | 2840 | `{` |
 |      - | 2841 | `	static const int aMonDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};` |
-|  12521 | 2842 | `	if( m == 2 && ((y % 4 == 0 && y % 100 != 0) \|\| y % 400 == 0) ){` |
+|  12520 | 2842 | `	if( m == 2 && ((y % 4 == 0 && y % 100 != 0) \|\| y % 400 == 0) ){` |
 |    295 | 2843 | `		return 29;` |
 |      - | 2844 | `	}` |
-|  12227 | 2845 | `	return aMonDays[(m - 1) % 12];` |
-|   6259 | 2846 | `}` |
+|  12226 | 2845 | `	return aMonDays[(m - 1) % 12];` |
+|   6258 | 2846 | `}` |
 |      - | 2847 | `/*` |
 |      - | 2848 | ` * php's DateTime::add/sub: month arithmetic with linear day/time overflow` |
 |      - | 2849 | ` * (Jan 31 + P1M == Mar 02), all in the instant's own fixed offset.` |
@@ -3002,13 +3002,13 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 2992 | ` * The error rows grow with the string (one per byte at worst), the warnings` |
 |      - | 2993 | ` * cannot exceed their own three rules, and every message is a static literal.` |
 |      - | 2994 | ` */` |
-|  10655 | 2995 | `static void DtRecReset(phl_dt_lasterr *pRec)` |
+|  11637 | 2995 | `static void DtRecReset(phl_dt_lasterr *pRec)` |
 |      5 | 2996 | `{` |
-|  10660 | 2997 | `	pRec->bSet = 0;` |
-|  10660 | 2998 | `	pRec->nWarn = pRec->nWarnKept = 0;` |
-|  10660 | 2999 | `	pRec->nErr = pRec->nErrKept = 0;` |
-|  10660 | 3000 | `	SyBlobReset(&pRec->sErr);` |
-|  10660 | 3001 | `}` |
+|  11642 | 2997 | `	pRec->bSet = 0;` |
+|  11642 | 2998 | `	pRec->nWarn = pRec->nWarnKept = 0;` |
+|  11642 | 2999 | `	pRec->nErr = pRec->nErrKept = 0;` |
+|  11642 | 3000 | `	SyBlobReset(&pRec->sErr);` |
+|  11642 | 3001 | `}` |
 |   1324 | 3002 | `static void DtRecErr(phl_dt_lasterr *pRec,int iPos,const char *zMsg)` |
 |      2 | 3003 | `{` |
 |      - | 3004 | `	phl_dt_diag_row sRow;` |
@@ -3036,10 +3036,10 @@ Coverage: 4491/4756 lines (94.43%)
 |    307 | 3026 | `		pRec->nWarnKept++;` |
 |    153 | 3027 | `	}` |
 |    191 | 3028 | `}` |
-|   5741 | 3029 | `static void DtLastErrClear(ph7_vm *pVm)` |
+|   6721 | 3029 | `static void DtLastErrClear(ph7_vm *pVm)` |
 |      5 | 3030 | `{` |
-|   5746 | 3031 | `	DtRecReset(&pVm->sDtLastErr);` |
-|   5746 | 3032 | `}` |
+|   6726 | 3031 | `	DtRecReset(&pVm->sDtLastErr);` |
+|   6726 | 3032 | `}` |
 |      - | 3033 | `typedef struct dt_ff_diag dt_ff_diag;` |
 |      - | 3034 | `struct dt_ff_diag` |
 |      - | 3035 | `{` |
@@ -4079,9 +4079,9 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 4069 | ``/* php's conversion of the `f` property to its stored count, cast contract and`` |
 |      - | 4070 | ` * all: it TRUNCATES toward zero, WRAPS what no int64 can hold, and answers 0 for` |
 |      - | 4071 | ` * a NaN or an infinity. */` |
-|    506 | 4072 | `static sxi64 DtIvUsecOfReal(double r)` |
+|    508 | 4072 | `static sxi64 DtIvUsecOfReal(double r)` |
 |      2 | 4073 | `{` |
-|    508 | 4074 | `	return PH7_RealToInt64(r * 1000000.0);` |
+|    510 | 4074 | `	return PH7_RealToInt64(r * 1000000.0);` |
 |      2 | 4075 | `}` |
 |      - | 4076 | `/* The interval's microseconds. */` |
 |    964 | 4077 | `static sxi64 DtIvUsec(ph7_class_instance *pIv)` |
@@ -4101,11 +4101,11 @@ Coverage: 4491/4756 lines (94.43%)
 |    484 | 4091 | `}` |
 |      - | 4092 | `/* Store a microsecond count and the float php shows for it -- the two halves of` |
 |      - | 4093 | ` * the same value, written together by every door that owns it. */` |
-|    454 | 4094 | `static void DtIvSetUsec(ph7_vm *pVm,ph7_class_instance *pIv,sxi64 us)` |
+|    462 | 4094 | `static void DtIvSetUsec(ph7_vm *pVm,ph7_class_instance *pIv,sxi64 us)` |
 |      3 | 4095 | `{` |
-|    457 | 4096 | `	PH7_NativeSetAttrInt(pVm,pIv,DT_IV_US,us);` |
-|    457 | 4097 | `	PH7_NativeSetAttrReal(pVm,pIv,"f",(ph7_real)((double)us / 1000000.0));` |
-|    457 | 4098 | `}` |
+|    465 | 4096 | `	PH7_NativeSetAttrInt(pVm,pIv,DT_IV_US,us);` |
+|    465 | 4097 | `	PH7_NativeSetAttrReal(pVm,pIv,"f",(ph7_real)((double)us / 1000000.0));` |
+|    465 | 4098 | `}` |
 |      - | 4099 | `/* One date object's state, as the bodies below pass it around. */` |
 |      - | 4100 | `typedef struct dt_state dt_state;` |
 |      - | 4101 | `struct dt_state` |
@@ -4118,11 +4118,11 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 4108 | `	int iZoneKind;       /* php's timezone_type: DT_ZONE_OFFSET / _ABBR / _ID */` |
 |      - | 4109 | `};` |
 |      - | 4110 | `/* php's name for a fixed offset: "+HH:MM" (and "+00:00" for zero, never "-00:00"). */` |
-|    702 | 4111 | `static int DtOffName(char *zBuf,sxu32 nBuf,sxi32 iOff)` |
+|    704 | 4111 | `static int DtOffName(char *zBuf,sxu32 nBuf,sxi32 iOff)` |
 |      2 | 4112 | `{` |
-|    704 | 4113 | `	sxi32 a = iOff < 0 ? -iOff : iOff;` |
-|   1055 | 4114 | `	return (int)SyBufferFormat(zBuf,nBuf,"%c%02d:%02d",` |
-|    702 | 4115 | `		iOff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
+|    706 | 4113 | `	sxi32 a = iOff < 0 ? -iOff : iOff;` |
+|   1058 | 4114 | `	return (int)SyBufferFormat(zBuf,nBuf,"%c%02d:%02d",` |
+|    704 | 4115 | `		iOff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));` |
 |      2 | 4116 | `}` |
 |      - | 4117 | `/*` |
 |      - | 4118 | ` * The same name with php's SECONDS field, which it appends only when there is` |
@@ -4131,29 +4131,29 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 4121 | ` * DtOffName above -- still stop at the minute there. So the two spellings are` |
 |      - | 4122 | ` * separate on purpose.` |
 |      - | 4123 | ` */` |
-|    686 | 4124 | `static int DtOffNameSec(char *zBuf,sxu32 nBuf,sxi32 iOff)` |
+|    688 | 4124 | `static int DtOffNameSec(char *zBuf,sxu32 nBuf,sxi32 iOff)` |
 |      2 | 4125 | `{` |
-|    688 | 4126 | `	sxi32 a = iOff < 0 ? -iOff : iOff;` |
+|    690 | 4126 | `	sxi32 a = iOff < 0 ? -iOff : iOff;` |
 |      - | 4127 | `	/* php renders this into a buffer sized for its own example -- "+05:00" or` |
 |      - | 4128 | `	 * "+05:00:01" -- so an offset whose hours want three digits comes back CUT.` |
 |      - | 4129 | `	 * Only a format can build one: every other door caps the offset below 100` |
 |      - | 4130 | ``	 * hours, and `e` on `+9999` is 100 hours 39 minutes, named "+100:3". */`` |
-|    688 | 4131 | `	int nMax = (a % 60 == 0) ? 6 : 9;` |
+|    690 | 4131 | `	int nMax = (a % 60 == 0) ? 6 : 9;` |
 |      - | 4132 | `	int n;` |
-|    688 | 4133 | `	if( a % 60 == 0 ){` |
-|    636 | 4134 | `		n = DtOffName(zBuf,nBuf,iOff);` |
-|    319 | 4135 | `	}else{` |
+|    690 | 4133 | `	if( a % 60 == 0 ){` |
+|    638 | 4134 | `		n = DtOffName(zBuf,nBuf,iOff);` |
+|    320 | 4135 | `	}else{` |
 |     53 | 4136 | `		n = (int)SyBufferFormat(zBuf,nBuf,"%c%02d:%02d:%02d",` |
 |     52 | 4137 | `			iOff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60),(int)(a % 60));` |
 |      - | 4138 | `	}` |
-|    688 | 4139 | `	if( n > nMax ){` |
+|    690 | 4139 | `	if( n > nMax ){` |
 |      - | 4140 | `		/* php's snprintf CUTS the text at the buffer and still answers the` |
 |      - | 4141 | `		 * length it WANTED, so the name a script reads back carries php's own` |
 |      - | 4142 | ``		 * terminator inside it: `+9999` is the seven bytes "+100:3\0". */`` |
 |      3 | 4143 | `		zBuf[nMax] = 0;` |
 |      3 | 4144 | `		if( n > nMax + 1 ){ n = nMax + 1; }` |
 |      1 | 4145 | `	}` |
-|    688 | 4146 | `	return n;` |
+|    690 | 4146 | `	return n;` |
 |      2 | 4147 | `}` |
 |      - | 4148 | `/*` |
 |      - | 4149 | ` * php's timezone_type read off a NAME alone -- the fallback for a zone that` |
@@ -4186,29 +4186,29 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 4176 | ` * still zero -- an object built by newInstanceWithoutConstructor, or one whose` |
 |      - | 4177 | ` * state predates the slot. */` |
 |   4872 | 4178 | `static int DtZoneKindOf(ph7_class_instance *pObj,const char *zSlot,const char *zName,int nName)` |
-|      4 | 4179 | `{` |
-|   4876 | 4180 | `	int iKind = (int)PH7_NativeAttrInt(pObj,zSlot);` |
-|   4876 | 4181 | `	if( iKind < DT_ZONE_OFFSET \|\| iKind > DT_ZONE_ID ){` |
+|      3 | 4179 | `{` |
+|   4875 | 4180 | `	int iKind = (int)PH7_NativeAttrInt(pObj,zSlot);` |
+|   4875 | 4181 | `	if( iKind < DT_ZONE_OFFSET \|\| iKind > DT_ZONE_ID ){` |
 |    ! 0 | 4182 | `		return DtZoneTypeOf(zName ? zName : "",nName);` |
 |      - | 4183 | `	}` |
-|   4876 | 4184 | `	return iKind;` |
-|   2440 | 4185 | `}` |
+|   4875 | 4184 | `	return iKind;` |
+|   2439 | 4185 | `}` |
 |   3542 | 4186 | `static void DtLoad(ph7_class_instance *pObj,dt_state *pOut)` |
-|      4 | 4187 | `{` |
-|   3546 | 4188 | `	pOut->iTs  = PH7_NativeAttrInt(pObj,DT_TS);` |
-|   3546 | 4189 | `	pOut->iOff = (sxi32)PH7_NativeAttrInt(pObj,DT_OFF);` |
-|   3546 | 4190 | `	pOut->uSec = (int)PH7_NativeAttrInt(pObj,DT_US);` |
-|   3546 | 4191 | `	PH7_NativeAttrStr(pObj,DT_NAME,&pOut->zName,&pOut->nName);` |
-|   3546 | 4192 | `	pOut->iZoneKind = DtZoneKindOf(pObj,DT_ZKIND,pOut->zName,pOut->nName);` |
-|   3546 | 4193 | `}` |
-|   2924 | 4194 | `static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)` |
-|      4 | 4195 | `{` |
-|   2928 | 4196 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_TS,pIn->iTs);` |
-|   2928 | 4197 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_OFF,pIn->iOff);` |
-|   2928 | 4198 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_US,pIn->uSec);` |
-|   2928 | 4199 | `	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);` |
-|   2928 | 4200 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,pIn->iZoneKind);` |
-|   2928 | 4201 | `}` |
+|      3 | 4187 | `{` |
+|   3545 | 4188 | `	pOut->iTs  = PH7_NativeAttrInt(pObj,DT_TS);` |
+|   3545 | 4189 | `	pOut->iOff = (sxi32)PH7_NativeAttrInt(pObj,DT_OFF);` |
+|   3545 | 4190 | `	pOut->uSec = (int)PH7_NativeAttrInt(pObj,DT_US);` |
+|   3545 | 4191 | `	PH7_NativeAttrStr(pObj,DT_NAME,&pOut->zName,&pOut->nName);` |
+|   3545 | 4192 | `	pOut->iZoneKind = DtZoneKindOf(pObj,DT_ZKIND,pOut->zName,pOut->nName);` |
+|   3545 | 4193 | `}` |
+|   2926 | 4194 | `static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)` |
+|      3 | 4195 | `{` |
+|   2929 | 4196 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_TS,pIn->iTs);` |
+|   2929 | 4197 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_OFF,pIn->iOff);` |
+|   2929 | 4198 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_US,pIn->uSec);` |
+|   2929 | 4199 | `	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);` |
+|   2929 | 4200 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,pIn->iZoneKind);` |
+|   2929 | 4201 | `}` |
 |      - | 4202 | `/*` |
 |      - | 4203 | ` * modify()'s one zone rule. php copies the parsed FIELDS into the object and` |
 |      - | 4204 | ` * leaves its zone alone -- so a modifier that names a zone moves nothing -- with` |
@@ -4228,9 +4228,9 @@ Coverage: 4491/4756 lines (94.43%)
 |     21 | 4218 | `	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,zBuf,nName);` |
 |     21 | 4219 | `	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,DT_ZONE_OFFSET);` |
 |    544 | 4220 | `}` |
-|  14522 | 4221 | `static ph7_class * DtClass(ph7_vm *pVm,const char *zName)` |
+|  16482 | 4221 | `static ph7_class * DtClass(ph7_vm *pVm,const char *zName)` |
 |      5 | 4222 | `{` |
-|  14527 | 4223 | `	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);` |
+|  16487 | 4223 | `	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);` |
 |      5 | 4224 | `}` |
 |      - | 4225 | `/* Is this instance an instance of the named date class? */` |
 |    538 | 4226 | `static int DtIsA(ph7_vm *pVm,ph7_class_instance *pObj,const char *zClass)` |
@@ -4244,16 +4244,16 @@ Coverage: 4491/4756 lines (94.43%)
 |    272 | 4234 | `}` |
 |      - | 4235 | `/* Has this object run a constructor (or been built whole by a C factory)? */` |
 |  10588 | 4236 | `static int DtIsInit(ph7_class_instance *pObj)` |
-|      4 | 4237 | `{` |
-|  10592 | 4238 | `	return pObj != 0 && PH7_NativeAttrInt(pObj,DT_INIT) != 0;` |
-|      4 | 4239 | `}` |
+|      3 | 4237 | `{` |
+|  10591 | 4238 | `	return pObj != 0 && PH7_NativeAttrInt(pObj,DT_INIT) != 0;` |
+|      3 | 4239 | `}` |
 |      - | 4240 | `/* Say so. Called by every constructor that SUCCEEDS -- a failing one leaves the` |
 |      - | 4241 | ` * object as it found it, which is php's answer too: an object whose` |
 |      - | 4242 | `` * `__construct()` threw is still an uninitialized one. */`` |
-|   4700 | 4243 | `static void DtSetInit(ph7_vm *pVm,ph7_class_instance *pObj)` |
-|      4 | 4244 | `{` |
-|   4704 | 4245 | `	PH7_NativeSetAttrInt(&(*pVm),pObj,DT_INIT,1);` |
-|   4704 | 4246 | `}` |
+|   4712 | 4243 | `static void DtSetInit(ph7_vm *pVm,ph7_class_instance *pObj)` |
+|      3 | 4244 | `{` |
+|   4715 | 4245 | `	PH7_NativeSetAttrInt(&(*pVm),pObj,DT_INIT,1);` |
+|   4715 | 4246 | `}` |
 |      - | 4247 | `/* A date object built from C rather than by a constructor: complete on arrival, so` |
 |      - | 4248 | ` * it is born initialized. Every factory in this file goes through here. */` |
 |    912 | 4249 | `static ph7_class_instance * DtNewInstance(ph7_vm *pVm,ph7_class *pClass)` |
@@ -4309,10 +4309,10 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 4299 | ` * which exist to initialize the object, and DatePeriod's two nullable getters --` |
 |      - | 4300 | ` * take DtThisRaw() instead.` |
 |      - | 4301 | ` */` |
-|  10686 | 4302 | `static ph7_class_instance * DtThisRaw(ph7_context *pCtx)` |
-|      4 | 4303 | `{` |
-|  10690 | 4304 | `	return PH7_ContextThis(pCtx);` |
-|      4 | 4305 | `}` |
+|  10700 | 4302 | `static ph7_class_instance * DtThisRaw(ph7_context *pCtx)` |
+|      3 | 4303 | `{` |
+|  10703 | 4304 | `	return PH7_ContextThis(pCtx);` |
+|      3 | 4305 | `}` |
 |   6268 | 4306 | `static ph7_class_instance * DtThis(ph7_context *pCtx)` |
 |      3 | 4307 | `{` |
 |   6271 | 4308 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);` |
@@ -4442,38 +4442,38 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 4432 | ` * Returns 0 on success; on failure the caller throws with the reason and position` |
 |      - | 4433 | ` * this reports.` |
 |      - | 4434 | ` */` |
-|   2806 | 4435 | `static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,` |
+|   2808 | 4435 | `static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,` |
 |      - | 4436 | `	const char *zZoneName,int nZoneName,int iZoneKind,dt_state *pOut,char *zNameBuf,` |
 |      - | 4437 | `	sxu32 nNameBuf,const char **pzErr,int *piPos,char *pcAt)` |
-|      4 | 4438 | `{` |
-|   2810 | 4439 | `	sxi64 iTs = 0,iNow = 0;` |
-|   2810 | 4440 | `	sxi32 iOff = 0;` |
-|   2810 | 4441 | `	int bOffSet = 0,uSec = 0,iErrPos,uNow = 0;` |
+|      3 | 4438 | `{` |
+|   2811 | 4439 | `	sxi64 iTs = 0,iNow = 0;` |
+|   2811 | 4440 | `	sxi32 iOff = 0;` |
+|   2811 | 4441 | `	int bOffSet = 0,uSec = 0,iErrPos,uNow = 0;` |
 |      - | 4442 | `	dt_parsed sVec;` |
 |      - | 4443 | `	/* php's base moment is the whole clock, microseconds included: a string that` |
 |      - | 4444 | ``	 * names no time of day keeps them (`new DateTime()`, `+1 day`), and one that`` |
 |      - | 4445 | `	 * does zeroes them along with the rest of the clock. */` |
-|   2810 | 4446 | `	DtNowUs(pCtx->pVm,&iNow,&uNow);` |
+|   2811 | 4446 | `	DtNowUs(pCtx->pVm,&iNow,&uNow);` |
 |      - | 4447 | ``	/* php's constructors pass the word `now` in place of an empty string, which`` |
 |      - | 4448 | ``	 * is why `new DateTime('')` is the current moment where `modify('')` is its`` |
 |      - | 4449 | ``	 * `Empty string` refusal. */`` |
-|   2810 | 4450 | `	if( nIn < 1 ){` |
+|   2811 | 4450 | `	if( nIn < 1 ){` |
 |      3 | 4451 | `		zIn = "now";` |
 |      3 | 4452 | `		nIn = 3;` |
 |      1 | 4453 | `	}` |
 |      - | 4454 | `	/* php publishes what this scan collected through getLastErrors(), whether or` |
 |      - | 4455 | ``	 * not it throws, and a clean parse puts the record back to `false`. */`` |
-|   4213 | 4456 | `	iErrPos = DtParseEx(zIn,nIn,iNow,iZoneOff,uNow,0,&iTs,&iOff,&bOffSet,&uSec,&sVec,` |
-|   2806 | 4457 | `		&pCtx->pVm->sDtLastErr);` |
-|   2810 | 4458 | `	if( iErrPos != 0 ){` |
+|   4215 | 4456 | `	iErrPos = DtParseEx(zIn,nIn,iNow,iZoneOff,uNow,0,&iTs,&iOff,&bOffSet,&uSec,&sVec,` |
+|   2808 | 4457 | `		&pCtx->pVm->sDtLastErr);` |
+|   2811 | 4458 | `	if( iErrPos != 0 ){` |
 |    293 | 4459 | `		*pzErr = DtParseErr(zIn,nIn,iErrPos,piPos,pcAt);` |
 |    293 | 4460 | `		return -1;` |
 |      - | 4461 | `	}` |
-|   2518 | 4462 | `	pOut->iTs = iTs;` |
-|   2518 | 4463 | `	pOut->uSec = uSec;` |
-|   2518 | 4464 | `	if( bOffSet ){` |
-|    538 | 4465 | `		pOut->iOff = iOff;` |
-|    538 | 4466 | `		if( bOffSet == 2 ){` |
+|   2519 | 4462 | `	pOut->iTs = iTs;` |
+|   2519 | 4463 | `	pOut->uSec = uSec;` |
+|   2519 | 4464 | `	if( bOffSet ){` |
+|    540 | 4465 | `		pOut->iOff = iOff;` |
+|    540 | 4466 | `		if( bOffSet == 2 ){` |
 |      - | 4467 | ``			/* a zone the STRING named -- php's `Z`, or a trailing UTC/GMT */`` |
 |    179 | 4468 | `			pOut->zName = sVec.zZone;` |
 |    179 | 4469 | `			pOut->nName = sVec.nZone;` |
@@ -4481,17 +4481,17 @@ Coverage: 4491/4756 lines (94.43%)
 |     90 | 4471 | `		}else{` |
 |      - | 4472 | `			/* ...Sec: an offset the string spelled with SECONDS is named with` |
 |      - | 4473 | ``			 * them (`+02:00:30`), which is the same name DateTimeZone gives it. */`` |
-|    360 | 4474 | `			pOut->nName = DtOffNameSec(zNameBuf,nNameBuf,iOff);` |
-|    360 | 4475 | `			pOut->zName = zNameBuf;` |
-|    360 | 4476 | `			pOut->iZoneKind = DT_ZONE_OFFSET;` |
+|    362 | 4474 | `			pOut->nName = DtOffNameSec(zNameBuf,nNameBuf,iOff);` |
+|    362 | 4475 | `			pOut->zName = zNameBuf;` |
+|    362 | 4476 | `			pOut->iZoneKind = DT_ZONE_OFFSET;` |
 |      - | 4477 | `		}` |
-|    270 | 4478 | `	}else{` |
-|   1981 | 4479 | `		pOut->iOff = iZoneOff;` |
-|   1981 | 4480 | `		pOut->zName = zZoneName;` |
-|   1981 | 4481 | `		pOut->nName = nZoneName;` |
-|   1981 | 4482 | `		pOut->iZoneKind = iZoneKind;` |
+|    271 | 4478 | `	}else{` |
+|   1980 | 4479 | `		pOut->iOff = iZoneOff;` |
+|   1980 | 4480 | `		pOut->zName = zZoneName;` |
+|   1980 | 4481 | `		pOut->nName = nZoneName;` |
+|   1980 | 4482 | `		pOut->iZoneKind = iZoneKind;` |
 |      - | 4483 | `	}` |
-|   2518 | 4484 | `	return 0;` |
+|   2519 | 4484 | `	return 0;` |
 |   1407 | 4485 | `}` |
 |      - | 4486 | `/*` |
 |      - | 4487 | ` * php's UTC-OFFSET spellings, the whole set of them. Reads the digits and colons` |
@@ -4593,33 +4593,33 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 4583 | ` * timezone_open(), which warns and answers false. Answers 0, -1 (unknown or bad)` |
 |      - | 4584 | ` * or -2 (an offset past php's range).` |
 |      - | 4585 | ` */` |
-|   1152 | 4586 | `static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,` |
+|   1154 | 4586 | `static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,` |
 |      - | 4587 | `	int *pnName,int *piKind,char *zBuf,sxu32 nBuf)` |
 |      2 | 4588 | `{` |
-|   1154 | 4589 | `	int rc,nUsed = 0;` |
+|   1156 | 4589 | `	int rc,nUsed = 0;` |
 |      - | 4590 | `	/* php's scanner skips leading blanks and nothing else -- a TRAILING one is a` |
 |      - | 4591 | `	 * refusal, and so is a newline before the sign. */` |
-|   1734 | 4592 | `	while( nTz > 0 && (zTz[0] == ' ' \|\| zTz[0] == '\t') ){` |
+|   1737 | 4592 | `	while( nTz > 0 && (zTz[0] == ' ' \|\| zTz[0] == '\t') ){` |
 |      5 | 4593 | `		zTz++;` |
 |      5 | 4594 | `		nTz--;` |
 |      1 | 4595 | `	}` |
 |      - | 4596 | `` 	/* A single letter is php's military zone here too -- `new DateTimeZone('t')` `` |
 |      - | 4597 | ``	 * is named `T` and answers -07:00 -- which is what lets a date carrying one`` |
 |      - | 4598 | `	 * round-trip through serialize()/__unserialize(). */` |
-|   1154 | 4599 | `	if( nTz == 1 && DtZoneMil(zTz[0],piOff,pzName) ){` |
+|   1156 | 4599 | `	if( nTz == 1 && DtZoneMil(zTz[0],piOff,pzName) ){` |
 |     35 | 4600 | `		*pnName = 1;` |
 |     35 | 4601 | `		*piKind = DT_ZONE_ABBR;` |
 |     35 | 4602 | `		return 0;` |
 |      - | 4603 | `	}` |
-|   1120 | 4604 | `	if( nTz == 3 && (SyStrnicmp(zTz,"UTC",3) == 0 \|\| SyStrnicmp(zTz,"GMT",3) == 0) ){` |
+|   1122 | 4604 | `	if( nTz == 3 && (SyStrnicmp(zTz,"UTC",3) == 0 \|\| SyStrnicmp(zTz,"GMT",3) == 0) ){` |
 |      - | 4605 | `		/* php answers the canonical spelling, whatever case the caller used --` |
 |      - | 4606 | `		 * and only the exact "UTC" is one of its tz-database IDENTIFIERS. */` |
-|    698 | 4607 | `		int bUtc = (zTz[0] == 'u' \|\| zTz[0] == 'U');` |
-|    698 | 4608 | `		*piOff = 0;` |
-|    698 | 4609 | `		*pzName = bUtc ? "UTC" : "GMT";` |
-|    698 | 4610 | `		*pnName = 3;` |
-|    698 | 4611 | `		*piKind = (bUtc && SyMemcmp(zTz,"UTC",3) == 0) ? DT_ZONE_ID : DT_ZONE_ABBR;` |
-|    698 | 4612 | `		return 0;` |
+|    700 | 4607 | `		int bUtc = (zTz[0] == 'u' \|\| zTz[0] == 'U');` |
+|    700 | 4608 | `		*piOff = 0;` |
+|    700 | 4609 | `		*pzName = bUtc ? "UTC" : "GMT";` |
+|    700 | 4610 | `		*pnName = 3;` |
+|    700 | 4611 | `		*piKind = (bUtc && SyMemcmp(zTz,"UTC",3) == 0) ? DT_ZONE_ID : DT_ZONE_ABBR;` |
+|    700 | 4612 | `		return 0;` |
 |      - | 4613 | `	}` |
 |    423 | 4614 | `	if( nTz > 3 && SyMemcmp(zTz,"GMT",3) == 0 ){` |
 |      - | 4615 | ``		/* `GMT+01:00` is php's offset, named for the offset alone. The prefix is`` |
@@ -4648,31 +4648,31 @@ Coverage: 4491/4756 lines (94.43%)
 |    283 | 4638 | `	*pzName = zBuf;` |
 |    283 | 4639 | `	*piKind = DT_ZONE_OFFSET;` |
 |    283 | 4640 | `	return 0;` |
-|    578 | 4641 | `}` |
+|    579 | 4641 | `}` |
 |      - | 4642 | `/* DateTimeZone::__construct(string $timezone) */` |
-|    988 | 4643 | `static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    990 | 4643 | `static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      2 | 4644 | `{` |
-|    990 | 4645 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */` |
+|    992 | 4645 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */` |
 |      - | 4646 | `	const char *zTz,*zName;` |
-|    990 | 4647 | `	int nTz,nName,iKind = DT_ZONE_ID,rc;` |
-|    990 | 4648 | `	sxi32 iOff = 0;` |
+|    992 | 4647 | `	int nTz,nName,iKind = DT_ZONE_ID,rc;` |
+|    992 | 4648 | `	sxi32 iOff = 0;` |
 |      - | 4649 | `	char zBuf[16];` |
-|    990 | 4650 | `	if( pThis == 0 \|\| nArg < 1 ){` |
+|    992 | 4650 | `	if( pThis == 0 \|\| nArg < 1 ){` |
 |    ! 0 | 4651 | `		return PH7_OK;` |
 |      - | 4652 | `	}` |
-|    990 | 4653 | `	zTz = ph7_value_to_string(apArg[0],&nTz);` |
-|    990 | 4654 | `	rc = DtZoneParse(zTz,nTz,&iOff,&zName,&nName,&iKind,zBuf,sizeof(zBuf));` |
-|    990 | 4655 | `	if( rc != 0 ){` |
+|    992 | 4653 | `	zTz = ph7_value_to_string(apArg[0],&nTz);` |
+|    992 | 4654 | `	rc = DtZoneParse(zTz,nTz,&iOff,&zName,&nName,&iKind,zBuf,sizeof(zBuf));` |
+|    992 | 4655 | `	if( rc != 0 ){` |
 |    109 | 4656 | `		return PH7_VmThrowException(pCtx,"DateInvalidTimeZoneException",` |
 |     36 | 4657 | `			rc == -2 ? "DateTimeZone::__construct(): Timezone offset is out of range (%.*s)"` |
 |     36 | 4658 | `			         : "DateTimeZone::__construct(): Unknown or bad timezone (%.*s)",nTz,zTz);` |
 |      - | 4659 | `	}` |
-|    918 | 4660 | `	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_OFF,iOff);` |
-|    918 | 4661 | `	PH7_NativeSetAttrStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);` |
-|    918 | 4662 | `	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_KIND,iKind);` |
-|    918 | 4663 | `	DtSetInit(pCtx->pVm,pThis);` |
-|    918 | 4664 | `	return PH7_OK;` |
-|    496 | 4665 | `}` |
+|    920 | 4660 | `	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_OFF,iOff);` |
+|    920 | 4661 | `	PH7_NativeSetAttrStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);` |
+|    920 | 4662 | `	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_KIND,iKind);` |
+|    920 | 4663 | `	DtSetInit(pCtx->pVm,pThis);` |
+|    920 | 4664 | `	return PH7_OK;` |
+|    497 | 4665 | `}` |
 |      - | 4666 | `/* DateTimeZone::getName() */` |
 |    326 | 4667 | `static int vm_builtin_DateTimeZone_getName(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      1 | 4668 | `{` |
@@ -4702,43 +4702,43 @@ Coverage: 4491/4756 lines (94.43%)
 |    123 | 4692 | `	return PH7_OK;` |
 |     64 | 4693 | `}` |
 |      - | 4694 | `/* DateTime::__construct(string $datetime = 'now', ?DateTimeZone $timezone = null) */` |
-|   2694 | 4695 | `static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 | 4696 | `{` |
-|   2698 | 4697 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   2698 | 4698 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */` |
-|   2698 | 4699 | `	const char *zIn = "now",*zZone;` |
-|   2698 | 4700 | `	int nIn = 3,nZone;` |
-|   2698 | 4701 | `	sxi32 iZoneOff = 0;` |
+|   2696 | 4695 | `static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 | 4696 | `{` |
+|   2699 | 4697 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   2699 | 4698 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */` |
+|   2699 | 4699 | `	const char *zIn = "now",*zZone;` |
+|   2699 | 4700 | `	int nIn = 3,nZone;` |
+|   2699 | 4701 | `	sxi32 iZoneOff = 0;` |
 |      - | 4702 | `	dt_state sState;` |
 |      - | 4703 | `	char zNameBuf[16];` |
 |      - | 4704 | `	const char *zErr;` |
 |      - | 4705 | `	int iPos;` |
 |      - | 4706 | `	char cAt;` |
 |      - | 4707 | `	int iZoneKind;` |
-|   2698 | 4708 | `	if( pThis == 0 ){` |
+|   2699 | 4708 | `	if( pThis == 0 ){` |
 |    ! 0 | 4709 | `		return PH7_OK;` |
 |      - | 4710 | `	}` |
-|   2698 | 4711 | `	zZone = pVm->zDefTz;` |
-|   2698 | 4712 | `	nZone = (int)pVm->nDefTz;` |
-|   2698 | 4713 | `	iZoneKind = DT_ZONE_DEFAULT_KIND;` |
-|   2698 | 4714 | `	if( nArg > 0 ){` |
-|   2674 | 4715 | `		zIn = ph7_value_to_string(apArg[0],&nIn);` |
-|   1335 | 4716 | `	}` |
-|   2698 | 4717 | `	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){` |
+|   2699 | 4711 | `	zZone = pVm->zDefTz;` |
+|   2699 | 4712 | `	nZone = (int)pVm->nDefTz;` |
+|   2699 | 4713 | `	iZoneKind = DT_ZONE_DEFAULT_KIND;` |
+|   2699 | 4714 | `	if( nArg > 0 ){` |
+|   2675 | 4715 | `		zIn = ph7_value_to_string(apArg[0],&nIn);` |
+|   1336 | 4716 | `	}` |
+|   2699 | 4717 | `	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){` |
 |    366 | 4718 | `		if( DtZoneArgInit(pCtx,apArg[1]) != 0 ){` |
 |      5 | 4719 | `			return PH7_OK;` |
 |      - | 4720 | `		}` |
 |    362 | 4721 | `		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone,&iZoneKind);` |
 |    180 | 4722 | `	}` |
-|   2690 | 4723 | `	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,` |
+|   2692 | 4723 | `	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,` |
 |   1349 | 4724 | `		sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0 ){` |
 |    427 | 4725 | `		return PH7_VmThrowException(pCtx,"DateMalformedStringException",` |
 |      - | 4726 | `			"Failed to parse time string (%.*s) at position %d (%c): %s",` |
 |    142 | 4727 | `			DtCStrLen(zIn,nIn),zIn,iPos,cAt,zErr);` |
 |      - | 4728 | `	}` |
-|   2410 | 4729 | `	DtStore(pVm,pThis,&sState);` |
-|   2410 | 4730 | `	DtSetInit(pVm,pThis);` |
-|   2410 | 4731 | `	return PH7_OK;` |
+|   2411 | 4729 | `	DtStore(pVm,pThis,&sState);` |
+|   2411 | 4730 | `	DtSetInit(pVm,pThis);` |
+|   2411 | 4731 | `	return PH7_OK;` |
 |   1351 | 4732 | `}` |
 |      - | 4733 | ``/* One date object's `format()`, shared with the date_format() alias. */`` |
 |   3086 | 4734 | `static void DtFormatOf(ph7_context *pCtx,ph7_class_instance *pObj,const char *zFmt,int nFmt)` |
@@ -5464,60 +5464,60 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 5454 | `/* Read an unsigned run of digits; returns the count consumed. Stops ACCUMULATING` |
 |      - | 5455 | ` * past DT_DIGITS_SAFE while still counting, so a caller that is about to refuse` |
 |      - | 5456 | ` * an over-wide run does not overflow measuring it (see DT_DIGITS_ISO). */` |
-|    354 | 5457 | `static int DtIvDigits(const char *z,const char *zEnd,sxi64 *pVal)` |
+|    360 | 5457 | `static int DtIvDigits(const char *z,const char *zEnd,sxi64 *pVal)` |
 |      3 | 5458 | `{` |
-|    357 | 5459 | `	int n = 0;` |
-|    357 | 5460 | `	sxi64 v = 0;` |
-|   1283 | 5461 | `	while( &z[n] < zEnd && SyisDigit(z[n]) ){` |
-|    929 | 5462 | `		if( n < DT_DIGITS_SAFE ){` |
-|    929 | 5463 | `			v = v*10 + (z[n] - '0');` |
-|    463 | 5464 | `		}` |
-|    929 | 5465 | `		n++;` |
+|    363 | 5459 | `	int n = 0;` |
+|    363 | 5460 | `	sxi64 v = 0;` |
+|   1295 | 5461 | `	while( &z[n] < zEnd && SyisDigit(z[n]) ){` |
+|    935 | 5462 | `		if( n < DT_DIGITS_SAFE ){` |
+|    935 | 5463 | `			v = v*10 + (z[n] - '0');` |
+|    466 | 5464 | `		}` |
+|    935 | 5465 | `		n++;` |
 |      3 | 5466 | `	}` |
-|    357 | 5467 | `	*pVal = v;` |
-|    357 | 5468 | `	return n;` |
+|    363 | 5467 | `	*pVal = v;` |
+|    363 | 5468 | `	return n;` |
 |      3 | 5469 | `}` |
 |      - | 5470 | `/*` |
 |      - | 5471 | ` * php's ISO-8601 duration grammar: P[nY][nM][nW][nD][T[nH][nM][nS]], every field` |
 |      - | 5472 | ` * an unsigned integer. A bare "P", a trailing "T" and a fractional second are all` |
 |      - | 5473 | ` * rejected, as php rejects them.` |
 |      - | 5474 | ` */` |
-|    260 | 5475 | `static int DtIvParseIso(const char *zIn,int nIn,sxi64 *aOut)` |
+|    266 | 5475 | `static int DtIvParseIso(const char *zIn,int nIn,sxi64 *aOut)` |
 |      3 | 5476 | `{` |
-|    263 | 5477 | `	const char *z = zIn,*zEnd = &zIn[nIn];` |
-|    263 | 5478 | `	int bTime = 0,bAny = 0;` |
+|    269 | 5477 | `	const char *z = zIn,*zEnd = &zIn[nIn];` |
+|    269 | 5478 | `	int bTime = 0,bAny = 0;` |
 |      - | 5479 | `	int k;` |
-|   2083 | 5480 | `	for( k = 0 ; k <= DT_IV_USLOT ; k++ ){` |
-|   1823 | 5481 | `		aOut[k] = 0;` |
-|    913 | 5482 | `	}` |
-|    263 | 5483 | `	if( nIn < 2 \|\| zIn[0] != 'P' \|\| zIn[nIn-1] == 'T' ){` |
+|   2131 | 5480 | `	for( k = 0 ; k <= DT_IV_USLOT ; k++ ){` |
+|   1865 | 5481 | `		aOut[k] = 0;` |
+|    934 | 5482 | `	}` |
+|    269 | 5483 | `	if( nIn < 2 \|\| zIn[0] != 'P' \|\| zIn[nIn-1] == 'T' ){` |
 |     11 | 5484 | `		return -1;` |
 |      - | 5485 | `	}` |
-|    253 | 5486 | `	z++;` |
-|    597 | 5487 | `	while( z < zEnd ){` |
+|    259 | 5486 | `	z++;` |
+|    613 | 5487 | `	while( z < zEnd ){` |
 |      - | 5488 | `		sxi64 v;` |
 |      - | 5489 | `		int n;` |
-|    367 | 5490 | `		if( z[0] == 'T' ){` |
-|     72 | 5491 | `			if( bTime ){` |
+|    377 | 5490 | `		if( z[0] == 'T' ){` |
+|     76 | 5491 | `			if( bTime ){` |
 |    ! 0 | 5492 | `				return -1;` |
 |      - | 5493 | `			}` |
-|     72 | 5494 | `			bTime = 1;` |
-|     72 | 5495 | `			z++;` |
-|     72 | 5496 | `			continue;` |
+|     76 | 5494 | `			bTime = 1;` |
+|     76 | 5495 | `			z++;` |
+|     76 | 5496 | `			continue;` |
 |      - | 5497 | `		}` |
-|    297 | 5498 | `		n = DtIvDigits(z,zEnd,&v);` |
-|    297 | 5499 | `		if( n == 0 \|\| n > DT_DIGITS_ISO \|\| z + n >= zEnd ){` |
+|    303 | 5498 | `		n = DtIvDigits(z,zEnd,&v);` |
+|    303 | 5499 | `		if( n == 0 \|\| n > DT_DIGITS_ISO \|\| z + n >= zEnd ){` |
 |      - | 5500 | ``			/* php's duration fields stop at twelve digits: `P999999999999D` is an`` |
 |      - | 5501 | ``			 * interval there and `P9999999999999D` is "Unknown or bad format". */`` |
 |     15 | 5502 | `			return -1;` |
 |      - | 5503 | `		}` |
-|    283 | 5504 | `		z += n;` |
-|    283 | 5505 | `		switch( z[0] ){` |
+|    289 | 5504 | `		z += n;` |
+|    289 | 5505 | `		switch( z[0] ){` |
 |     15 | 5506 | `			case 'Y': if( bTime ){ return -1; } aOut[0] += v; break;` |
 |      9 | 5507 | `			case 'W': if( bTime ){ return -1; } aOut[2] += v * 7; break;` |
-|    154 | 5508 | `			case 'D': if( bTime ){ return -1; } aOut[2] += v; break;` |
+|    156 | 5508 | `			case 'D': if( bTime ){ return -1; } aOut[2] += v; break;` |
 |     15 | 5509 | `			case 'H': if( !bTime ){ return -1; } aOut[3] += v; break;` |
-|     60 | 5510 | `			case 'S': if( !bTime ){ return -1; } aOut[5] += v; break;` |
+|     64 | 5510 | `			case 'S': if( !bTime ){ return -1; } aOut[5] += v; break;` |
 |     14 | 5511 | `			case 'M':` |
 |      - | 5512 | `				/* The one ambiguous designator: months before T, minutes after. */` |
 |     29 | 5513 | `				if( bTime ){ aOut[4] += v; }else{ aOut[1] += v; }` |
@@ -5525,11 +5525,11 @@ Coverage: 4491/4756 lines (94.43%)
 |      3 | 5515 | `			default:` |
 |      7 | 5516 | `				return -1;` |
 |      - | 5517 | `		}` |
-|    277 | 5518 | `		z++;` |
-|    277 | 5519 | `		bAny = 1;` |
+|    283 | 5518 | `		z++;` |
+|    283 | 5519 | `		bAny = 1;` |
 |      3 | 5520 | `	}` |
-|    233 | 5521 | `	return bAny ? 0 : -1;` |
-|    133 | 5522 | `}` |
+|    239 | 5521 | `	return bAny ? 0 : -1;` |
+|    136 | 5522 | `}` |
 |      - | 5523 | `/*` |
 |      - | 5524 | ` * php's relative-string interval. The string is VALIDATED by the same parser` |
 |      - | 5525 | ` * strtotime() uses -- which is where php's "at position N (c): reason" wording` |
@@ -5603,16 +5603,16 @@ Coverage: 4491/4756 lines (94.43%)
 |    551 | 5593 | `	}` |
 |    124 | 5594 | `}` |
 |      - | 5595 | `/* Write the six relative fields onto a DateInterval instance. */` |
-|    352 | 5596 | `static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)` |
+|    358 | 5596 | `static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)` |
 |      3 | 5597 | `{` |
 |      - | 5598 | `	int k;` |
-|   2467 | 5599 | `	for( k = 0 ; k < DT_IV_FIELDS ; k++ ){` |
-|   2115 | 5600 | `		PH7_NativeSetAttrInt(pVm,pObj,azDtIvField[k],aVal[k]);` |
-|   1059 | 5601 | `	}` |
+|   2509 | 5599 | `	for( k = 0 ; k < DT_IV_FIELDS ; k++ ){` |
+|   2151 | 5600 | `		PH7_NativeSetAttrInt(pVm,pObj,azDtIvField[k],aVal[k]);` |
+|   1077 | 5601 | `	}` |
 |      - | 5602 | ``	/* ...and the microseconds through the pair that owns them, so `f` and the`` |
 |      - | 5603 | `	 * hidden count stay one value. */` |
-|    355 | 5604 | `	DtIvSetUsec(pVm,pObj,aVal[DT_IV_USLOT]);` |
-|    355 | 5605 | `}` |
+|    361 | 5604 | `	DtIvSetUsec(pVm,pObj,aVal[DT_IV_USLOT]);` |
+|    361 | 5605 | `}` |
 |      - | 5606 | `/*` |
 |      - | 5607 | ` * php's date_interval_write_property: what a write to one of DateInterval's` |
 |      - | 5608 | ` * properties CONVERTS to, since every one of them is a field of php's own C` |
@@ -5690,24 +5690,24 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 5680 | `	}` |
 |    311 | 5681 | `}` |
 |      - | 5682 | `/* DateInterval::__construct(string $duration) */` |
-|    230 | 5683 | `static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    236 | 5683 | `static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      3 | 5684 | `{` |
-|    233 | 5685 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */` |
+|    239 | 5685 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */` |
 |      - | 5686 | `	const char *zDur;` |
 |      - | 5687 | `	int nDur;` |
 |      - | 5688 | `	sxi64 aVal[DT_IV_USLOT + 1];` |
-|    233 | 5689 | `	if( pThis == 0 \|\| nArg < 1 ){` |
+|    239 | 5689 | `	if( pThis == 0 \|\| nArg < 1 ){` |
 |    ! 0 | 5690 | `		return PH7_OK;` |
 |      - | 5691 | `	}` |
-|    233 | 5692 | `	zDur = ph7_value_to_string(apArg[0],&nDur);` |
-|    233 | 5693 | `	if( DtIvParseIso(zDur,nDur,aVal) != 0 ){` |
+|    239 | 5692 | `	zDur = ph7_value_to_string(apArg[0],&nDur);` |
+|    239 | 5693 | `	if( DtIvParseIso(zDur,nDur,aVal) != 0 ){` |
 |     46 | 5694 | `		return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",` |
 |     15 | 5695 | `			"Unknown or bad format (%.*s)",DtCStrLen(zDur,nDur),zDur);` |
 |      - | 5696 | `	}` |
-|    203 | 5697 | `	DtIvStore(pCtx->pVm,pThis,aVal);` |
-|    203 | 5698 | `	DtSetInit(pCtx->pVm,pThis);` |
-|    203 | 5699 | `	return PH7_OK;` |
-|    118 | 5700 | `}` |
+|    209 | 5697 | `	DtIvStore(pCtx->pVm,pThis,aVal);` |
+|    209 | 5698 | `	DtSetInit(pCtx->pVm,pThis);` |
+|    209 | 5699 | `	return PH7_OK;` |
+|    121 | 5700 | `}` |
 |      - | 5701 | `/*` |
 |      - | 5702 | ` * DateInterval::createFromDateString(string $datetime). Shared with the` |
 |      - | 5703 | ` * date_interval_create_from_date_string() alias, which WARNS and answers false` |
@@ -6963,18 +6963,18 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 6953 | ` * (zend_hash_add, not update), and a hidden engine slot is never a candidate:` |
 |      - | 6954 | ` * this is the one walk in the date family that must skip them.` |
 |      - | 6955 | ` */` |
-|    682 | 6956 | `static void DtAddCommonProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)` |
+|    684 | 6956 | `static void DtAddCommonProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)` |
 |      2 | 6957 | `{` |
-|    341 | 6958 | `	SXUNUSED(pVm);` |
-|    684 | 6959 | `	if( (pOut->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|    342 | 6958 | `	SXUNUSED(pVm);` |
+|    686 | 6959 | `	if( (pOut->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |    ! 0 | 6960 | `		return;` |
 |      - | 6961 | `	}` |
 |      - | 6962 | `	/* MANGLED, the way php mangles a non-public property everywhere it hands an` |
 |      - | 6963 | ``	 * object's own table out: a subclass's `protected $p` serializes as`` |
 |      - | 6964 | `	 * "\0*\0p" and casts to that key, and only the mangling keeps two same-named` |
 |      - | 6965 | `	 * members from different visibility levels apart. */` |
-|    684 | 6966 | `	PH7_ClassInstanceOwnPropsToHashmap(pThis,(ph7_hashmap *)pOut->x.pOther);` |
-|    343 | 6967 | `}` |
+|    686 | 6966 | `	PH7_ClassInstanceOwnPropsToHashmap(pThis,(ph7_hashmap *)pOut->x.pOther);` |
+|    344 | 6967 | `}` |
 |      - | 6968 | `/*` |
 |      - | 6969 | ` * The INTERNAL shape of a class whose state is its own public properties -- the` |
 |      - | 6970 | ` * ones the named class declares, in declared order, read off the instance.` |
@@ -7297,10 +7297,10 @@ Coverage: 4491/4756 lines (94.43%)
 |     59 | 7287 | `}` |
 |      - | 7288 | ``/* php's `Error: Invalid serialization data for <Class> object`, the one refusal all`` |
 |      - | 7289 | ` * four methods share. Named for the DECLARING class, not the receiver's. */` |
-|     40 | 7290 | `static int DtSerialError(ph7_context *pCtx,const char *zClass)` |
+|     42 | 7290 | `static int DtSerialError(ph7_context *pCtx,const char *zClass)` |
 |      1 | 7291 | `{` |
-|     61 | 7292 | `	return PH7_VmThrowException(pCtx,"Error",` |
-|     20 | 7293 | `		"Invalid serialization data for %s object",zClass);` |
+|     64 | 7292 | `	return PH7_VmThrowException(pCtx,"Error",` |
+|     21 | 7293 | `		"Invalid serialization data for %s object",zClass);` |
 |      1 | 7294 | `}` |
 |      - | 7295 | ``/* The `array $data` parameter's own screen: the shared ZPP does not judge a scalar`` |
 |      - | 7296 | `` * against a bare `array` (rule 18's §2 gap), so each caller words php's TypeError. */`` |
@@ -7321,17 +7321,17 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7311 | ` * is validated but never trusted, which is why a payload tagged 1 whose name is` |
 |      - | 7312 | ` * "UTC" restores a UTC zone rather than an offset one. Answers 0 on success.` |
 |      - | 7313 | ` */` |
-|     44 | 7314 | `static int DtZoneRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)` |
+|     46 | 7314 | `static int DtZoneRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)` |
 |      1 | 7315 | `{` |
 |      - | 7316 | `	ph7_value *pType,*pName;` |
 |      - | 7317 | `	const char *zTz,*zName;` |
-|     45 | 7318 | `	int nTz,nName,iKind = DT_ZONE_ID;` |
-|     45 | 7319 | `	sxi32 iOff = 0;` |
+|     47 | 7318 | `	int nTz,nName,iKind = DT_ZONE_ID;` |
+|     47 | 7319 | `	sxi32 iOff = 0;` |
 |      - | 7320 | `	sxi64 iType;` |
 |      - | 7321 | `	char zBuf[16];` |
-|     45 | 7322 | `	pType = ph7_array_fetch(pData,"timezone_type",(int)sizeof("timezone_type")-1);` |
-|     45 | 7323 | `	if( pType == 0 \|\| (pType->iFlags & MEMOBJ_INT) == 0 ){` |
-|      3 | 7324 | `		return -1;` |
+|     47 | 7322 | `	pType = ph7_array_fetch(pData,"timezone_type",(int)sizeof("timezone_type")-1);` |
+|     47 | 7323 | `	if( pType == 0 \|\| (pType->iFlags & MEMOBJ_INT) == 0 ){` |
+|      5 | 7324 | `		return -1;` |
 |      - | 7325 | `	}` |
 |     43 | 7326 | `	iType = pType->x.iVal;` |
 |     43 | 7327 | `	if( iType < 1 \|\| iType > 3 ){` |
@@ -7353,7 +7353,7 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7343 | `	 * type 3 on the way in. */` |
 |     41 | 7344 | `	PH7_NativeSetAttrInt(&(*pVm),pThis,DTZ_KIND,iKind);` |
 |     41 | 7345 | `	return 0;` |
-|     23 | 7346 | `}` |
+|     24 | 7346 | `}` |
 |      - | 7347 | `/*` |
 |      - | 7348 | `` * php's php_date_initialize_from_hash(): `date`, `timezone_type` and `timezone` must`` |
 |      - | 7349 | ` * all be present and well-typed, and the tag must be one php writes.` |
@@ -7531,38 +7531,38 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7521 | `` * object that has no such properties -- a plain `new DateTime` -- is exactly the`` |
 |      - | 7522 | ` * failure case, and php raises the same Error there.` |
 |      - | 7523 | ` */` |
-|      4 | 7524 | `static int DtWakeupMagic(ph7_context *pCtx,int bZoneOnly,const char *zClass)` |
+|      6 | 7524 | `static int DtWakeupMagic(ph7_context *pCtx,int bZoneOnly,const char *zClass)` |
 |      1 | 7525 | `{` |
 |      - | 7526 | `	/* Raw, for the reason __unserialize() is: php reads the object's own properties` |
 |      - | 7527 | ``	 * here and raises `Invalid serialization data` when they do not describe a`` |
 |      - | 7528 | `	 * date -- which is what an unconstructed object's empty set does. */` |
-|      5 | 7529 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);` |
+|      7 | 7529 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);` |
 |      - | 7530 | `	ph7_value sProps;` |
 |      - | 7531 | `	int rc;` |
-|      5 | 7532 | `	if( pThis == 0 ){` |
+|      7 | 7532 | `	if( pThis == 0 ){` |
 |    ! 0 | 7533 | `		return PH7_OK;` |
 |      - | 7534 | `	}` |
-|      5 | 7535 | `	PH7_MemObjInit(pCtx->pVm,&sProps);` |
-|      5 | 7536 | `	if( PH7_MemObjToHashmap(&sProps) != SXRET_OK ){` |
+|      7 | 7535 | `	PH7_MemObjInit(pCtx->pVm,&sProps);` |
+|      7 | 7536 | `	if( PH7_MemObjToHashmap(&sProps) != SXRET_OK ){` |
 |    ! 0 | 7537 | `		PH7_MemObjRelease(&sProps);` |
 |    ! 0 | 7538 | `		return PH7_ContextMemoryError(pCtx);` |
 |      - | 7539 | `	}` |
-|      5 | 7540 | `	DtAddCommonProps(pCtx->pVm,pThis,&sProps);` |
-|      3 | 7541 | `	rc = bZoneOnly ? DtZoneRestore(pCtx->pVm,pThis,&sProps)` |
-|      4 | 7542 | `	               : DtDateRestore(pCtx,pThis,&sProps);` |
-|      5 | 7543 | `	PH7_MemObjRelease(&sProps);` |
-|      5 | 7544 | `	if( rc != 0 ){` |
-|      5 | 7545 | `		return DtSerialError(pCtx,zClass);` |
+|      7 | 7540 | `	DtAddCommonProps(pCtx->pVm,pThis,&sProps);` |
+|      5 | 7541 | `	rc = bZoneOnly ? DtZoneRestore(pCtx->pVm,pThis,&sProps)` |
+|      5 | 7542 | `	               : DtDateRestore(pCtx,pThis,&sProps);` |
+|      7 | 7543 | `	PH7_MemObjRelease(&sProps);` |
+|      7 | 7544 | `	if( rc != 0 ){` |
+|      7 | 7545 | `		return DtSerialError(pCtx,zClass);` |
 |      - | 7546 | `	}` |
 |    ! 0 | 7547 | `	DtSetInit(pCtx->pVm,pThis);` |
 |    ! 0 | 7548 | `	return PH7_OK;` |
-|      3 | 7549 | `}` |
-|    ! 0 | 7550 | `static int vm_builtin_DateTimeZone_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    ! 0 | 7551 | `{` |
-|    ! 0 | 7552 | `	SXUNUSED(nArg);` |
-|    ! 0 | 7553 | `	SXUNUSED(apArg);` |
-|    ! 0 | 7554 | `	return DtWakeupMagic(pCtx,1,"DateTimeZone");` |
-|    ! 0 | 7555 | `}` |
+|      4 | 7549 | `}` |
+|      2 | 7550 | `static int vm_builtin_DateTimeZone_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7551 | `{` |
+|      1 | 7552 | `	SXUNUSED(nArg);` |
+|      1 | 7553 | `	SXUNUSED(apArg);` |
+|      3 | 7554 | `	return DtWakeupMagic(pCtx,1,"DateTimeZone");` |
+|      1 | 7555 | `}` |
 |      4 | 7556 | `static int vm_builtin_DateTime_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      1 | 7557 | `{` |
 |      2 | 7558 | `	SXUNUSED(nArg);` |
@@ -7675,45 +7675,45 @@ Coverage: 4491/4756 lines (94.43%)
 |     28 | 7665 | `}` |
 |      - | 7666 | `/* One payload field, with the value php gives an absent one. A container is not a` |
 |      - | 7667 | ` * number to php's reader either, so it counts as absent. */` |
-|    272 | 7668 | `static sxi64 DtIvRestoreInt(ph7_value *pData,const char *zKey,sxi64 iAbsent)` |
+|    286 | 7668 | `static sxi64 DtIvRestoreInt(ph7_value *pData,const char *zKey,sxi64 iAbsent)` |
 |      1 | 7669 | `{` |
-|    273 | 7670 | `	ph7_value *pVal = ph7_array_fetch(pData,zKey,-1);` |
-|    273 | 7671 | `	if( pVal == 0 \|\| (pVal->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL\|MEMOBJ_STRING)) == 0 ){` |
+|    287 | 7670 | `	ph7_value *pVal = ph7_array_fetch(pData,zKey,-1);` |
+|    287 | 7671 | `	if( pVal == 0 \|\| (pVal->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL\|MEMOBJ_STRING)) == 0 ){` |
 |    149 | 7672 | `		return iAbsent;` |
 |      - | 7673 | `	}` |
-|    125 | 7674 | `	return PH7_ValuePeekInt64(pVal);` |
-|    137 | 7675 | `}` |
+|    139 | 7674 | `	return PH7_ValuePeekInt64(pVal);` |
+|    144 | 7675 | `}` |
 |      - | 7676 | `/* php's date_interval_initialize_from_hash(), field by field. */` |
-|     36 | 7677 | `static void DtIvRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)` |
+|     38 | 7677 | `static void DtIvRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)` |
 |      1 | 7678 | `{` |
 |      - | 7679 | `	static const char * const azMinusOne[] = { "y","m","d","h","i","s" };` |
 |      - | 7680 | `	ph7_value *pVal;` |
 |      - | 7681 | `	sxu32 n;` |
-|    253 | 7682 | `	for( n = 0 ; n < SX_ARRAYSIZE(azMinusOne) ; ++n ){` |
-|    325 | 7683 | `		PH7_NativeSetAttrInt(&(*pVm),pThis,azMinusOne[n],` |
-|    216 | 7684 | `			DtIvRestoreInt(pData,azMinusOne[n],-1));` |
-|    109 | 7685 | `	}` |
-|     37 | 7686 | `	PH7_NativeSetAttrInt(&(*pVm),pThis,"invert",DtIvRestoreInt(pData,"invert",0));` |
+|    267 | 7682 | `	for( n = 0 ; n < SX_ARRAYSIZE(azMinusOne) ; ++n ){` |
+|    343 | 7683 | `		PH7_NativeSetAttrInt(&(*pVm),pThis,azMinusOne[n],` |
+|    228 | 7684 | `			DtIvRestoreInt(pData,azMinusOne[n],-1));` |
+|    115 | 7685 | `	}` |
+|     39 | 7686 | `	PH7_NativeSetAttrInt(&(*pVm),pThis,"invert",DtIvRestoreInt(pData,"invert",0));` |
 |      - | 7687 | ``	/* `days` is php's one field with two TYPES -- a day count, or false when the`` |
 |      - | 7688 | `	 * interval was not measured between two dates -- so a bool payload stays a` |
 |      - | 7689 | `	 * bool where every other field is narrowed to an int. */` |
-|     37 | 7690 | `	pVal = ph7_array_fetch(pData,"days",-1);` |
-|     37 | 7691 | `	if( pVal && (pVal->iFlags & MEMOBJ_BOOL) ){` |
-|     17 | 7692 | `		PH7_NativeSetAttrBool(&(*pVm),pThis,"days",pVal->x.iVal != 0);` |
-|      9 | 7693 | `	}else{` |
+|     39 | 7690 | `	pVal = ph7_array_fetch(pData,"days",-1);` |
+|     39 | 7691 | `	if( pVal && (pVal->iFlags & MEMOBJ_BOOL) ){` |
+|     19 | 7692 | `		PH7_NativeSetAttrBool(&(*pVm),pThis,"days",pVal->x.iVal != 0);` |
+|     10 | 7693 | `	}else{` |
 |     21 | 7694 | `		PH7_NativeSetAttrInt(&(*pVm),pThis,"days",DtIvRestoreInt(pData,"days",-1));` |
 |      - | 7695 | `	}` |
-|     37 | 7696 | `	pVal = ph7_array_fetch(pData,"f",-1);` |
-|     63 | 7697 | `	DtIvSetUsec(&(*pVm),pThis,` |
-|     26 | 7698 | `		pVal && (pVal->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL\|MEMOBJ_STRING))` |
-|     16 | 7699 | `			? DtIvUsecOfReal((double)PH7_ValuePeekReal(pVal)) : 0);` |
+|     39 | 7696 | `	pVal = ph7_array_fetch(pData,"f",-1);` |
+|     67 | 7697 | `	DtIvSetUsec(&(*pVm),pThis,` |
+|     28 | 7698 | `		pVal && (pVal->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL\|MEMOBJ_STRING))` |
+|     18 | 7699 | `			? DtIvUsecOfReal((double)PH7_ValuePeekReal(pVal)) : 0);` |
 |      - | 7700 | `	/* php's LAZY interval, and what it keys on is the STRING rather than the` |
 |      - | 7701 | ``	 * flag beside it: a payload carrying `date_string` comes back as an interval`` |
 |      - | 7702 | `	 * built from that string -- the ten fields parsed out of it and hidden behind` |
 |      - | 7703 | ``	 * the two names php shows -- while one carrying `from_string` alone is an`` |
 |      - | 7704 | `	 * ordinary interval whose fields the reader above already filled. */` |
-|     37 | 7705 | `	pVal = ph7_array_fetch(pData,"date_string",-1);` |
-|     37 | 7706 | `	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){` |
+|     39 | 7705 | `	pVal = ph7_array_fetch(pData,"date_string",-1);` |
+|     39 | 7706 | `	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){` |
 |      - | 7707 | `		sxi64 aVal[DT_IV_USLOT + 1];` |
 |      3 | 7708 | `		int nIn,iPos = 0;` |
 |      3 | 7709 | `		char cAt = ' ';` |
@@ -7733,8 +7733,8 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7723 | `	/* ...and a payload without one is an ordinary interval whatever its` |
 |      - | 7724 | ``	 * `from_string` says: php answers false there even for the `b:1` a hand-made`` |
 |      - | 7725 | `	 * payload carries. */` |
-|     35 | 7726 | `	PH7_NativeSetAttrBool(&(*pVm),pThis,"from_string",0);` |
-|     19 | 7727 | `}` |
+|     37 | 7726 | `	PH7_NativeSetAttrBool(&(*pVm),pThis,"from_string",0);` |
+|     20 | 7727 | `}` |
 |      - | 7728 | `/*` |
 |      - | 7729 | ` * php's date_period_initialize_from_hash(): the whole payload or nothing.` |
 |      - | 7730 | ` * Answers 0 when it restored, -1 when the caller must raise.` |
@@ -7789,28 +7789,28 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7779 | `	const char * const *azOwn;   /* the keys the class's own restore already read */` |
 |      - | 7780 | `	sxu32 nOwn;` |
 |      - | 7781 | `};` |
-|    236 | 7782 | `static int DtPropRestoreWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)` |
+|    256 | 7782 | `static int DtPropRestoreWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)` |
 |      1 | 7783 | `{` |
-|    237 | 7784 | `	dt_prop_restore *pRes = (dt_prop_restore *)pUserData;` |
+|    257 | 7784 | `	dt_prop_restore *pRes = (dt_prop_restore *)pUserData;` |
 |      - | 7785 | `	const char *zKey;` |
 |      - | 7786 | `	int nKey;` |
 |      - | 7787 | `	sxu32 n;` |
-|    237 | 7788 | `	if( !ph7_value_is_string(pKey) ){` |
+|    257 | 7788 | `	if( !ph7_value_is_string(pKey) ){` |
 |    ! 0 | 7789 | `		return PH7_OK;` |
 |      - | 7790 | `	}` |
-|    237 | 7791 | `	zKey = ph7_value_to_string(pKey,&nKey);` |
-|   1229 | 7792 | `	for( n = 0 ; n < pRes->nOwn ; ++n ){` |
-|   1228 | 7793 | `		if( (int)SyStrlen(pRes->azOwn[n]) == nKey` |
-|    910 | 7794 | `		 && SyMemcmp(pRes->azOwn[n],zKey,(sxu32)nKey) == 0 ){` |
-|    237 | 7795 | `			return PH7_OK;` |
+|    257 | 7791 | `	zKey = ph7_value_to_string(pKey,&nKey);` |
+|   1339 | 7792 | `	for( n = 0 ; n < pRes->nOwn ; ++n ){` |
+|   1338 | 7793 | `		if( (int)SyStrlen(pRes->azOwn[n]) == nKey` |
+|    996 | 7794 | `		 && SyMemcmp(pRes->azOwn[n],zKey,(sxu32)nKey) == 0 ){` |
+|    257 | 7795 | `			return PH7_OK;` |
 |      - | 7796 | `		}` |
-|    497 | 7797 | `	}` |
+|    542 | 7797 | `	}` |
 |    ! 0 | 7798 | `	PH7_NativeSetProp(pRes->pThis->pVm,pRes->pThis,zKey,(sxu32)nKey,pVal);` |
 |    ! 0 | 7799 | `	return PH7_OK;` |
-|    119 | 7800 | `}` |
+|    129 | 7800 | `}` |
 |      - | 7801 | `/* The shared body of __unserialize/__wakeup/__set_state for the two classes:` |
 |      - | 7802 | ` * bPeriod picks the rule, pThis is the object being filled. */` |
-|     64 | 7803 | `static int DtPropsRestoreInto(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pData,` |
+|     66 | 7803 | `static int DtPropsRestoreInto(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pData,` |
 |      - | 7804 | `	int bPeriod,const char *zClass)` |
 |      1 | 7805 | `{` |
 |      - | 7806 | `	static const char * const azIvOwn[] = {` |
@@ -7821,20 +7821,20 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7811 | `		"include_start_date","include_end_date"` |
 |      - | 7812 | `	};` |
 |      - | 7813 | `	dt_prop_restore sRes;` |
-|     65 | 7814 | `	if( bPeriod ){` |
+|     67 | 7814 | `	if( bPeriod ){` |
 |     29 | 7815 | `		if( DpRestore(pCtx->pVm,pThis,pData) != 0 ){` |
 |     21 | 7816 | `			return DtSerialError(pCtx,zClass);` |
 |      - | 7817 | `		}` |
 |      5 | 7818 | `	}else{` |
-|     37 | 7819 | `		DtIvRestore(pCtx->pVm,pThis,pData);` |
+|     39 | 7819 | `		DtIvRestore(pCtx->pVm,pThis,pData);` |
 |      - | 7820 | `	}` |
-|     45 | 7821 | `	sRes.pThis = pThis;` |
-|     45 | 7822 | `	sRes.azOwn = bPeriod ? azDpOwn : azIvOwn;` |
-|     45 | 7823 | `	sRes.nOwn = bPeriod ? SX_ARRAYSIZE(azDpOwn) : SX_ARRAYSIZE(azIvOwn);` |
-|     45 | 7824 | `	ph7_array_walk(pData,DtPropRestoreWalk,&sRes);` |
-|     45 | 7825 | `	DtSetInit(pCtx->pVm,pThis);` |
-|     45 | 7826 | `	return PH7_OK;` |
-|     33 | 7827 | `}` |
+|     47 | 7821 | `	sRes.pThis = pThis;` |
+|     47 | 7822 | `	sRes.azOwn = bPeriod ? azDpOwn : azIvOwn;` |
+|     47 | 7823 | `	sRes.nOwn = bPeriod ? SX_ARRAYSIZE(azDpOwn) : SX_ARRAYSIZE(azIvOwn);` |
+|     47 | 7824 | `	ph7_array_walk(pData,DtPropRestoreWalk,&sRes);` |
+|     47 | 7825 | `	DtSetInit(pCtx->pVm,pThis);` |
+|     47 | 7826 | `	return PH7_OK;` |
+|     34 | 7827 | `}` |
 |     54 | 7828 | `static int DtUnserializeProps(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPeriod,` |
 |      - | 7829 | `	const char *zClass)` |
 |      1 | 7830 | `{` |
@@ -7863,31 +7863,31 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7853 | ` * itself. An interval whose payload said nothing becomes php's all -1 interval;` |
 |      - | 7854 | `` * a period whose payload is incomplete is php's Error, `new DatePeriod` included.`` |
 |      - | 7855 | ` */` |
-|    ! 0 | 7856 | `static int DtWakeupProps(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPeriod,` |
+|      2 | 7856 | `static int DtWakeupProps(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPeriod,` |
 |      - | 7857 | `	const char *zClass)` |
-|    ! 0 | 7858 | `{` |
-|    ! 0 | 7859 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);` |
+|      1 | 7858 | `{` |
+|      3 | 7859 | `	ph7_class_instance *pThis = DtThisRaw(pCtx);` |
 |      - | 7860 | `	ph7_value sProps;` |
 |      - | 7861 | `	int rc;` |
-|    ! 0 | 7862 | `	SXUNUSED(nArg);` |
-|    ! 0 | 7863 | `	SXUNUSED(apArg);` |
-|    ! 0 | 7864 | `	if( pThis == 0 ){` |
+|      1 | 7862 | `	SXUNUSED(nArg);` |
+|      1 | 7863 | `	SXUNUSED(apArg);` |
+|      3 | 7864 | `	if( pThis == 0 ){` |
 |    ! 0 | 7865 | `		return PH7_OK;` |
 |      - | 7866 | `	}` |
-|    ! 0 | 7867 | `	PH7_MemObjInit(pCtx->pVm,&sProps);` |
-|    ! 0 | 7868 | `	if( PH7_MemObjToHashmap(&sProps) != SXRET_OK ){` |
+|      3 | 7867 | `	PH7_MemObjInit(pCtx->pVm,&sProps);` |
+|      3 | 7868 | `	if( PH7_MemObjToHashmap(&sProps) != SXRET_OK ){` |
 |    ! 0 | 7869 | `		PH7_MemObjRelease(&sProps);` |
 |    ! 0 | 7870 | `		return PH7_ContextMemoryError(pCtx);` |
 |      - | 7871 | `	}` |
-|    ! 0 | 7872 | `	PH7_ClassInstanceToHashmapRaw(pThis,(ph7_hashmap *)sProps.x.pOther);` |
-|    ! 0 | 7873 | `	rc = DtPropsRestoreInto(pCtx,pThis,&sProps,bPeriod,zClass);` |
-|    ! 0 | 7874 | `	PH7_MemObjRelease(&sProps);` |
-|    ! 0 | 7875 | `	return rc;` |
-|    ! 0 | 7876 | `}` |
-|    ! 0 | 7877 | `static int vm_builtin_DateInterval_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    ! 0 | 7878 | `{` |
-|    ! 0 | 7879 | `	return DtWakeupProps(pCtx,nArg,apArg,0,"DateInterval");` |
-|    ! 0 | 7880 | `}` |
+|      3 | 7872 | `	PH7_ClassInstanceToHashmapRaw(pThis,(ph7_hashmap *)sProps.x.pOther);` |
+|      3 | 7873 | `	rc = DtPropsRestoreInto(pCtx,pThis,&sProps,bPeriod,zClass);` |
+|      3 | 7874 | `	PH7_MemObjRelease(&sProps);` |
+|      3 | 7875 | `	return rc;` |
+|      2 | 7876 | `}` |
+|      2 | 7877 | `static int vm_builtin_DateInterval_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7878 | `{` |
+|      3 | 7879 | `	return DtWakeupProps(pCtx,nArg,apArg,0,"DateInterval");` |
+|      1 | 7880 | `}` |
 |    ! 0 | 7881 | `static int vm_builtin_DatePeriod_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    ! 0 | 7882 | `{` |
 |    ! 0 | 7883 | `	return DtWakeupProps(pCtx,nArg,apArg,1,"DatePeriod");` |
@@ -7941,375 +7941,405 @@ Coverage: 4491/4756 lines (94.43%)
 |      - | 7931 | `	{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_##CLS##_wakeup }, \` |
 |      - | 7932 | `	{ "__set_state",   PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "array $array", "@" #CLS, \` |
 |      - | 7933 | `	  vm_builtin_##CLS##_setState }` |
-|      - | 7934 | `/* php's DateTimeInterface constants, the whole of that interface's surface here` |
-|      - | 7935 | ` * (its abstract METHODS are deliberately not declared: PH7_ClassImplement installs` |
-|      - | 7936 | ` * a stub for every interface method an implementor lacks, so declaring them would` |
-|      - | 7937 | ` * make every implementor abstract before its native methods are attached). */` |
-|      - | 7938 | `#define DT_IFACE_CONST(NAME,VALUE) \` |
-|      - | 7939 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_STRING, 0, VALUE, 0.0 }` |
-|      - | 7940 | `/*` |
-|      - | 7941 | ` * Install the whole date family from C: the exceptions and DateTimeInterface, then` |
-|      - | 7942 | ` * DateTimeZone / DateTime / DateTimeImmutable, DateInterval and DatePeriod, then the` |
-|      - | 7943 | ` * procedural aliases. The InternalIterator its getIterator() answers is not declared` |
-|      - | 7944 | ` * here — it is shared native machinery (oo_native.c), reached through the vtable` |
-|      - | 7945 | ` * DatePeriod's spec row names.` |
-|      - | 7946 | ` *` |
-|      - | 7947 | ` * Called from PH7_VmInit inside the bCompilingBuiltin window, after the Reflection` |
-|      - | 7948 | ` * install (Exception must exist). IteratorAggregate is attached AFTER DatePeriod's` |
-|      - | 7949 | ` * methods exist, for the abstract-stub reason above; DateTimeInterface declares no` |
-|      - | 7950 | ` * method, so it can ride the spec table.` |
-|      - | 7951 | ` */` |
-|   5741 | 7952 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
-|      5 | 7953 | `{` |
-|      - | 7954 | `	static const PH7_NativeConstDef aIfaceConst[] = {` |
-|      - | 7955 | `		DT_IFACE_CONST("ATOM","Y-m-d\\TH:i:sP"),` |
-|      - | 7956 | `		DT_IFACE_CONST("COOKIE","l, d-M-Y H:i:s T"),` |
-|      - | 7957 | `		DT_IFACE_CONST("ISO8601","Y-m-d\\TH:i:sO"),` |
-|      - | 7958 | `		DT_IFACE_CONST("ISO8601_EXPANDED","X-m-d\\TH:i:sP"),` |
-|      - | 7959 | `		DT_IFACE_CONST("RFC822","D, d M y H:i:s O"),` |
-|      - | 7960 | `		DT_IFACE_CONST("RFC850","l, d-M-y H:i:s T"),` |
-|      - | 7961 | `		DT_IFACE_CONST("RFC1036","D, d M y H:i:s O"),` |
-|      - | 7962 | `		DT_IFACE_CONST("RFC1123","D, d M Y H:i:s O"),` |
-|      - | 7963 | `		DT_IFACE_CONST("RFC7231","D, d M Y H:i:s \\G\\M\\T"),` |
-|      - | 7964 | `		DT_IFACE_CONST("RFC2822","D, d M Y H:i:s O"),` |
-|      - | 7965 | `		DT_IFACE_CONST("RFC3339","Y-m-d\\TH:i:sP"),` |
-|      - | 7966 | `		DT_IFACE_CONST("RFC3339_EXTENDED","Y-m-d\\TH:i:s.vP"),` |
-|      - | 7967 | `		DT_IFACE_CONST("RSS","D, d M Y H:i:s O"),` |
-|      - | 7968 | `		DT_IFACE_CONST("W3C","Y-m-d\\TH:i:sP"),` |
-|      - | 7969 | `	};` |
-|      - | 7970 | `	static const PH7_NativePropDef aZoneProp[] = {` |
-|      - | 7971 | `		{ DTZ_OFF,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 7972 | `		{ DTZ_NAME, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 }, 0 },` |
-|      - | 7973 | `		{ DTZ_KIND, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN,` |
-|      - | 7974 | `		  { 0, 0, PH7_NATIVE_VAL_INT, DT_ZONE_ID, 0, 0.0 }, 0 },` |
-|      - | 7975 | `		{ DT_INIT,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|      - | 7976 | `	};` |
-|      - | 7977 | `	static const PH7_NativeMethodDef aZoneMethod[] = {` |
-|      - | 7978 | `		{ "__construct", PH7_MOD_PUBLIC, "string $timezone", "", vm_builtin_DateTimeZone_construct },` |
-|      - | 7979 | `		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_DateTimeZone_getName },` |
-|      - | 7980 | `		{ "getOffset",   PH7_MOD_PUBLIC, "DateTimeInterface $datetime", "@int",` |
-|      - | 7981 | `		  vm_builtin_DateTimeZone_getOffset },` |
-|      - | 7982 | `		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", vm_builtin_DateTimeZone_serialize },` |
-|      - | 7983 | `		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",` |
-|      - | 7984 | `		  vm_builtin_DateTimeZone_unserialize },` |
-|      - | 7985 | `		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DateTimeZone_wakeup },` |
-|      - | 7986 | `		{ "__set_state",   PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "array $array", "@DateTimeZone",` |
-|      - | 7987 | `		  vm_builtin_DateTimeZone_setState },` |
-|      - | 7988 | `	};` |
-|      - | 7989 | `	static const PH7_NativePropDef aDtProp[] = { DT_NATIVE_STATE_PROPS };` |
-|      - | 7990 | `	static const PH7_NativeMethodDef aDtMethod[] = {` |
-|      - | 7991 | `		DT_NATIVE_SHARED_METHODS("DateTime"),` |
-|      - | 7992 | `		{ "createFromFormat",    PH7_MOD_PUBLIC\|PH7_MOD_STATIC,` |
-|      - | 7993 | `		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "@DateTime\|false",` |
-|      - | 7994 | `		  vm_builtin_DateTime_createFromFormat },` |
-|      - | 7995 | `		{ "createFromImmutable", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTimeImmutable $object", "@static",` |
-|      - | 7996 | `		  vm_builtin_DateTime_copyOf },` |
-|      - | 7997 | `		{ "createFromTimestamp", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "int\|float $timestamp", "static",` |
-|      - | 7998 | `		  vm_builtin_DateTime_createFromTimestamp },` |
-|      - | 7999 | `		{ "createFromInterface", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTime",` |
-|      - | 8000 | `		  vm_builtin_DateTime_copyOf },` |
-|      - | 8001 | `		DT_NATIVE_SERIAL_METHODS(DateTime),` |
-|      - | 8002 | `	};` |
-|      - | 8003 | `	static const PH7_NativeMethodDef aImmMethod[] = {` |
-|      - | 8004 | `		DT_NATIVE_SHARED_METHODS("DateTimeImmutable"),` |
-|      - | 8005 | `		{ "createFromFormat",    PH7_MOD_PUBLIC\|PH7_MOD_STATIC,` |
-|      - | 8006 | `		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "@DateTimeImmutable\|false",` |
-|      - | 8007 | `		  vm_builtin_DateTimeImmutable_createFromFormat },` |
-|      - | 8008 | `		{ "createFromMutable",   PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTime $object", "@static",` |
-|      - | 8009 | `		  vm_builtin_DateTimeImmutable_copyOf },` |
-|      - | 8010 | `		{ "createFromTimestamp", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "int\|float $timestamp", "static",` |
-|      - | 8011 | `		  vm_builtin_DateTimeImmutable_createFromTimestamp },` |
-|      - | 8012 | `		{ "createFromInterface", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTimeImmutable",` |
-|      - | 8013 | `		  vm_builtin_DateTimeImmutable_copyOf },` |
-|      - | 8014 | `		DT_NATIVE_SERIAL_METHODS(DateTimeImmutable),` |
-|      - | 8015 | `	};` |
-|      - | 8016 | `	static const PH7_NativePropDef aIvProp[] = {` |
-|      - | 8017 | `		{ "y",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 8018 | `		{ "m",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 8019 | `		{ "d",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 8020 | `		{ "h",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 8021 | `		{ "i",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 8022 | `		{ "s",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 8023 | ``		/* php's `f` is a FLOAT; the chunk's `= 0` made it an int. */`` |
-|      - | 8024 | `		{ "f",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_DOUBLE, 0, 0, 0.0 }, 0 },` |
-|      - | 8025 | `		{ "invert",      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
-|      - | 8026 | `		{ "days",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },` |
-|      - | 8027 | `		{ "from_string", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },` |
-|      - | 8028 | ``		/* php's `date_string` is on an interval built from a STRING and on no`` |
-|      - | 8029 | `		 * other, so it is installed by the write that names it: an ordinary` |
-|      - | 8030 | ``		 * interval does not carry the name at all, and `isset()` says so. */`` |
-|      - | 8031 | `		{ "date_string", PH7_MOD_PUBLIC\|PH7_MOD_ONDEMAND,` |
-|      - | 8032 | `		  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
-|      - | 8033 | ``		/* php's timelib_rel_time.us, the count `f` renders: see DtIvUsec. */`` |
-|      - | 8034 | `		{ DT_IV_US,      PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|      - | 8035 | `		{ DT_INIT,       PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|      - | 8036 | `	};` |
-|      - | 8037 | `	static const PH7_NativeMethodDef aIvMethod[] = {` |
-|      - | 8038 | `		{ "__construct", PH7_MOD_PUBLIC, "string $duration", "",` |
-|      - | 8039 | `		  vm_builtin_DateInterval_construct },` |
-|      - | 8040 | `		{ "createFromDateString", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "string $datetime", "@DateInterval",` |
-|      - | 8041 | `		  vm_builtin_DateInterval_createFromDateString },` |
-|      - | 8042 | `		{ "format",      PH7_MOD_PUBLIC, "string $format", "@string", vm_builtin_DateInterval_format },` |
-|      - | 8043 | `		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", DtSerializeProps },` |
-|      - | 8044 | `		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",` |
-|      - | 8045 | `		  vm_builtin_DateInterval_unserialize },` |
-|      - | 8046 | `		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DateInterval_wakeup },` |
-|      - | 8047 | `		{ "__set_state",   PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "array $array", "@DateInterval",` |
-|      - | 8048 | `		  vm_builtin_DateInterval_setState },` |
-|      - | 8049 | `	};` |
-|      - | 8050 | `	/* php models all seven as VIRTUAL hooked properties, so it reports no default` |
-|      - | 8051 | `	 * for any of them; PHL's are real slots and keep theirs, because a read before` |
-|      - | 8052 | `	 * the first write must answer what php's getter answers rather than raise. The` |
-|      - | 8053 | `	 * TYPE is what a spec row can state exactly — the virtual half is PLAN §7.4. */` |
-|      - | 8054 | `	static const PH7_NativePropDef aDpProp[] = {` |
-|      - | 8055 | `		{ "start",              PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },` |
-|      - | 8056 | `		{ "current",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },` |
-|      - | 8057 | `		{ "end",                PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },` |
-|      - | 8058 | `		{ "interval",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateInterval" },` |
-|      - | 8059 | `		/* php FABRICATES these from its struct, so an object with no struct reads` |
-|      - | 8060 | `		 * them as the zeroed one: 0 and false, not the 1 and true a constructed` |
-|      - | 8061 | `		 * period ends up with. Every constructor path writes all three. */` |
-|      - | 8062 | `		{ "recurrences",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, "int" },` |
-|      - | 8063 | `		{ "include_start_date", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
-|      - | 8064 | `		{ "include_end_date",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
-|      - | 8065 | `		{ DT_INIT,              PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN,` |
-|      - | 8066 | `		  { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|      - | 8067 | `	};` |
-|      - | 8068 | `	static const PH7_NativeConstDef aDpConst[] = {` |
-|      - | 8069 | `		{ "EXCLUDE_START_DATE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },` |
-|      - | 8070 | `		{ "INCLUDE_END_DATE",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },` |
+|      - | 7934 | `/* php's DateTimeInterface constants. */` |
+|      - | 7935 | `#define DT_IFACE_CONST(NAME,VALUE) \` |
+|      - | 7936 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_STRING, 0, VALUE, 0.0 }` |
+|      - | 7937 | `/*` |
+|      - | 7938 | ` * Install the whole date family from C: the exceptions and DateTimeInterface, then` |
+|      - | 7939 | ` * DateTimeZone / DateTime / DateTimeImmutable, DateInterval and DatePeriod, then the` |
+|      - | 7940 | ` * procedural aliases. The InternalIterator its getIterator() answers is not declared` |
+|      - | 7941 | ` * here — it is shared native machinery (oo_native.c), reached through the vtable` |
+|      - | 7942 | ` * DatePeriod's spec row names.` |
+|      - | 7943 | ` *` |
+|      - | 7944 | ` * Called from PH7_VmInit inside the bCompilingBuiltin window, after the Reflection` |
+|      - | 7945 | ` * install (Exception must exist). IteratorAggregate is attached AFTER DatePeriod's` |
+|      - | 7946 | ` * methods exist, for the abstract-stub reason above; DateTimeInterface declares no` |
+|      - | 7947 | ` * method, so it can ride the spec table.` |
+|      - | 7948 | ` */` |
+|   6721 | 7949 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
+|      5 | 7950 | `{` |
+|      - | 7951 | `	static const PH7_NativeConstDef aIfaceConst[] = {` |
+|      - | 7952 | `		DT_IFACE_CONST("ATOM","Y-m-d\\TH:i:sP"),` |
+|      - | 7953 | `		DT_IFACE_CONST("COOKIE","l, d-M-Y H:i:s T"),` |
+|      - | 7954 | `		DT_IFACE_CONST("ISO8601","Y-m-d\\TH:i:sO"),` |
+|      - | 7955 | `		DT_IFACE_CONST("ISO8601_EXPANDED","X-m-d\\TH:i:sP"),` |
+|      - | 7956 | `		DT_IFACE_CONST("RFC822","D, d M y H:i:s O"),` |
+|      - | 7957 | `		DT_IFACE_CONST("RFC850","l, d-M-y H:i:s T"),` |
+|      - | 7958 | `		DT_IFACE_CONST("RFC1036","D, d M y H:i:s O"),` |
+|      - | 7959 | `		DT_IFACE_CONST("RFC1123","D, d M Y H:i:s O"),` |
+|      - | 7960 | `		DT_IFACE_CONST("RFC7231","D, d M Y H:i:s \\G\\M\\T"),` |
+|      - | 7961 | `		DT_IFACE_CONST("RFC2822","D, d M Y H:i:s O"),` |
+|      - | 7962 | `		DT_IFACE_CONST("RFC3339","Y-m-d\\TH:i:sP"),` |
+|      - | 7963 | `		DT_IFACE_CONST("RFC3339_EXTENDED","Y-m-d\\TH:i:s.vP"),` |
+|      - | 7964 | `		DT_IFACE_CONST("RSS","D, d M Y H:i:s O"),` |
+|      - | 7965 | `		DT_IFACE_CONST("W3C","Y-m-d\\TH:i:sP"),` |
+|      - | 7966 | `	};` |
+|      - | 7967 | `	/*` |
+|      - | 7968 | `	 * php's DateTimeInterface METHODS, which this engine did not declare at` |
+|      - | 7969 | ``	 * all -- so the nine it contracts for reported no `prototype` in the`` |
+|      - | 7970 | `	 * export (18 rows across DateTime and DateTimeImmutable), and the` |
+|      - | 7971 | `	 * interface itself answered isAbstract() false for want of a member.` |
+|      - | 7972 | `	 * Declared in php's own order, which is the order its export lists them.` |
+|      - | 7973 | `	 *` |
+|      - | 7974 | `	 * Safe on the spec table because PH7_InstallNativeClasses fills every` |
+|      - | 7975 | `	 * class's METHODS before it wires any interface: PH7_ClassImplement's` |
+|      - | 7976 | `	 * abstract stubbing then finds DateTime's own nine already there and` |
+|      - | 7977 | `	 * skips them, which is the same reason DatePeriod's IteratorAggregate is` |
+|      - | 7978 | `	 * attached by hand AFTER its methods (it is not in this table).` |
+|      - | 7979 | `	 */` |
+|      - | 7980 | `	static const PH7_NativeMethodDef aIfaceMethod[] = {` |
+|      - | 7981 | `		{ "format",        PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "string $format", "@string", 0 },` |
+|      - | 7982 | `		{ "getTimezone",   PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@DateTimeZone\|false", 0 },` |
+|      - | 7983 | `		{ "getOffset",     PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@int", 0 },` |
+|      - | 7984 | `		{ "getTimestamp",  PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@int", 0 },` |
+|      - | 7985 | `		{ "getMicrosecond",PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "int", 0 },` |
+|      - | 7986 | `		{ "diff",          PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT,` |
+|      - | 7987 | `		  "DateTimeInterface $targetObject, bool $absolute = false", "@DateInterval", 0 },` |
+|      - | 7988 | `		{ "__wakeup",      PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "@void", 0 },` |
+|      - | 7989 | `		{ "__serialize",   PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "array", 0 },` |
+|      - | 7990 | `		{ "__unserialize", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "array $data", "void", 0 },` |
+|      - | 7991 | `	};` |
+|      - | 7992 | `	static const PH7_NativePropDef aZoneProp[] = {` |
+|      - | 7993 | `		{ DTZ_OFF,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 7994 | `		{ DTZ_NAME, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 }, 0 },` |
+|      - | 7995 | `		{ DTZ_KIND, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN,` |
+|      - | 7996 | `		  { 0, 0, PH7_NATIVE_VAL_INT, DT_ZONE_ID, 0, 0.0 }, 0 },` |
+|      - | 7997 | `		{ DT_INIT,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|      - | 7998 | `	};` |
+|      - | 7999 | `	static const PH7_NativeMethodDef aZoneMethod[] = {` |
+|      - | 8000 | `		{ "__construct", PH7_MOD_PUBLIC, "string $timezone", "", vm_builtin_DateTimeZone_construct },` |
+|      - | 8001 | `		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_DateTimeZone_getName },` |
+|      - | 8002 | `		{ "getOffset",   PH7_MOD_PUBLIC, "DateTimeInterface $datetime", "@int",` |
+|      - | 8003 | `		  vm_builtin_DateTimeZone_getOffset },` |
+|      - | 8004 | `		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", vm_builtin_DateTimeZone_serialize },` |
+|      - | 8005 | `		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",` |
+|      - | 8006 | `		  vm_builtin_DateTimeZone_unserialize },` |
+|      - | 8007 | `		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DateTimeZone_wakeup },` |
+|      - | 8008 | `		{ "__set_state",   PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "array $array", "@DateTimeZone",` |
+|      - | 8009 | `		  vm_builtin_DateTimeZone_setState },` |
+|      - | 8010 | `	};` |
+|      - | 8011 | `	static const PH7_NativePropDef aDtProp[] = { DT_NATIVE_STATE_PROPS };` |
+|      - | 8012 | `	static const PH7_NativeMethodDef aDtMethod[] = {` |
+|      - | 8013 | `		DT_NATIVE_SHARED_METHODS("DateTime"),` |
+|      - | 8014 | `		{ "createFromFormat",    PH7_MOD_PUBLIC\|PH7_MOD_STATIC,` |
+|      - | 8015 | `		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "@DateTime\|false",` |
+|      - | 8016 | `		  vm_builtin_DateTime_createFromFormat },` |
+|      - | 8017 | `		{ "createFromImmutable", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTimeImmutable $object", "@static",` |
+|      - | 8018 | `		  vm_builtin_DateTime_copyOf },` |
+|      - | 8019 | `		{ "createFromTimestamp", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "int\|float $timestamp", "@static",` |
+|      - | 8020 | `		  vm_builtin_DateTime_createFromTimestamp },` |
+|      - | 8021 | `		{ "createFromInterface", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTime",` |
+|      - | 8022 | `		  vm_builtin_DateTime_copyOf },` |
+|      - | 8023 | `		DT_NATIVE_SERIAL_METHODS(DateTime),` |
+|      - | 8024 | `	};` |
+|      - | 8025 | `	static const PH7_NativeMethodDef aImmMethod[] = {` |
+|      - | 8026 | `		DT_NATIVE_SHARED_METHODS("DateTimeImmutable"),` |
+|      - | 8027 | `		{ "createFromFormat",    PH7_MOD_PUBLIC\|PH7_MOD_STATIC,` |
+|      - | 8028 | `		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "@DateTimeImmutable\|false",` |
+|      - | 8029 | `		  vm_builtin_DateTimeImmutable_createFromFormat },` |
+|      - | 8030 | `		{ "createFromMutable",   PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTime $object", "@static",` |
+|      - | 8031 | `		  vm_builtin_DateTimeImmutable_copyOf },` |
+|      - | 8032 | `		{ "createFromTimestamp", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "int\|float $timestamp", "@static",` |
+|      - | 8033 | `		  vm_builtin_DateTimeImmutable_createFromTimestamp },` |
+|      - | 8034 | `		{ "createFromInterface", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTimeImmutable",` |
+|      - | 8035 | `		  vm_builtin_DateTimeImmutable_copyOf },` |
+|      - | 8036 | `		DT_NATIVE_SERIAL_METHODS(DateTimeImmutable),` |
+|      - | 8037 | `	};` |
+|      - | 8038 | `	static const PH7_NativePropDef aIvProp[] = {` |
+|      - | 8039 | `		{ "y",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 8040 | `		{ "m",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 8041 | `		{ "d",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 8042 | `		{ "h",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 8043 | `		{ "i",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 8044 | `		{ "s",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 8045 | ``		/* php's `f` is a FLOAT; the chunk's `= 0` made it an int. */`` |
+|      - | 8046 | `		{ "f",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_DOUBLE, 0, 0, 0.0 }, 0 },` |
+|      - | 8047 | `		{ "invert",      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },` |
+|      - | 8048 | `		{ "days",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },` |
+|      - | 8049 | `		{ "from_string", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },` |
+|      - | 8050 | ``		/* php's `date_string` is on an interval built from a STRING and on no`` |
+|      - | 8051 | `		 * other, so it is installed by the write that names it: an ordinary` |
+|      - | 8052 | ``		 * interval does not carry the name at all, and `isset()` says so. */`` |
+|      - | 8053 | `		{ "date_string", PH7_MOD_PUBLIC\|PH7_MOD_ONDEMAND,` |
+|      - | 8054 | `		  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
+|      - | 8055 | ``		/* php's timelib_rel_time.us, the count `f` renders: see DtIvUsec. */`` |
+|      - | 8056 | `		{ DT_IV_US,      PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|      - | 8057 | `		{ DT_INIT,       PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|      - | 8058 | `	};` |
+|      - | 8059 | `	static const PH7_NativeMethodDef aIvMethod[] = {` |
+|      - | 8060 | `		{ "__construct", PH7_MOD_PUBLIC, "string $duration", "",` |
+|      - | 8061 | `		  vm_builtin_DateInterval_construct },` |
+|      - | 8062 | `		{ "createFromDateString", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "string $datetime", "@DateInterval",` |
+|      - | 8063 | `		  vm_builtin_DateInterval_createFromDateString },` |
+|      - | 8064 | `		{ "format",      PH7_MOD_PUBLIC, "string $format", "@string", vm_builtin_DateInterval_format },` |
+|      - | 8065 | `		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", DtSerializeProps },` |
+|      - | 8066 | `		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",` |
+|      - | 8067 | `		  vm_builtin_DateInterval_unserialize },` |
+|      - | 8068 | `		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DateInterval_wakeup },` |
+|      - | 8069 | `		{ "__set_state",   PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "array $array", "@DateInterval",` |
+|      - | 8070 | `		  vm_builtin_DateInterval_setState },` |
 |      - | 8071 | `	};` |
-|      - | 8072 | `	static const PH7_NativeMethodDef aDpMethod[] = {` |
-|      - | 8073 | `		/* php overloads this constructor three ways and rejects everything else with` |
-|      - | 8074 | `		 * ONE message, so the signature stays unenforced and the body decides. */` |
-|      - | 8075 | `		{ "__construct",     PH7_MOD_PUBLIC, 0, "", vm_builtin_DatePeriod_construct },` |
-|      - | 8076 | `		{ "createFromISO8601String", PH7_MOD_PUBLIC\|PH7_MOD_STATIC,` |
-|      - | 8077 | `		  "string $specification, int $options = 0", "static",` |
-|      - | 8078 | `		  vm_builtin_DatePeriod_createFromISO8601String },` |
-|      - | 8079 | `		{ "getStartDate",    PH7_MOD_PUBLIC, "", "@DateTimeInterface",` |
-|      - | 8080 | `		  vm_builtin_DatePeriod_getStartDate },` |
-|      - | 8081 | `		{ "getEndDate",      PH7_MOD_PUBLIC, "", "@?DateTimeInterface",` |
-|      - | 8082 | `		  vm_builtin_DatePeriod_getEndDate },` |
-|      - | 8083 | `		{ "getDateInterval", PH7_MOD_PUBLIC, "", "@DateInterval",` |
-|      - | 8084 | `		  vm_builtin_DatePeriod_getDateInterval },` |
-|      - | 8085 | `		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "@?int", vm_builtin_DatePeriod_getRecurrences },` |
-|      - | 8086 | `		{ "getIterator",     PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_DatePeriod_getIterator },` |
-|      - | 8087 | `		{ "__serialize",     PH7_MOD_PUBLIC, "", "array", DtSerializeProps },` |
-|      - | 8088 | `		{ "__unserialize",   PH7_MOD_PUBLIC, "array $data", "void",` |
-|      - | 8089 | `		  vm_builtin_DatePeriod_unserialize },` |
-|      - | 8090 | `		{ "__wakeup",        PH7_MOD_PUBLIC, "", "@void", vm_builtin_DatePeriod_wakeup },` |
-|      - | 8091 | `		{ "__set_state",     PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "array $array", "@DatePeriod",` |
-|      - | 8092 | `		  vm_builtin_DatePeriod_setState },` |
+|      - | 8072 | `	/* php models all seven as VIRTUAL hooked properties, so it reports no default` |
+|      - | 8073 | `	 * for any of them; PHL's are real slots and keep theirs, because a read before` |
+|      - | 8074 | `	 * the first write must answer what php's getter answers rather than raise. The` |
+|      - | 8075 | `	 * TYPE is what a spec row can state exactly — the virtual half is PLAN §7.4. */` |
+|      - | 8076 | `	static const PH7_NativePropDef aDpProp[] = {` |
+|      - | 8077 | `		{ "start",              PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },` |
+|      - | 8078 | `		{ "current",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },` |
+|      - | 8079 | `		{ "end",                PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },` |
+|      - | 8080 | `		{ "interval",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateInterval" },` |
+|      - | 8081 | `		/* php FABRICATES these from its struct, so an object with no struct reads` |
+|      - | 8082 | `		 * them as the zeroed one: 0 and false, not the 1 and true a constructed` |
+|      - | 8083 | `		 * period ends up with. Every constructor path writes all three. */` |
+|      - | 8084 | `		{ "recurrences",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, "int" },` |
+|      - | 8085 | `		{ "include_start_date", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
+|      - | 8086 | `		{ "include_end_date",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },` |
+|      - | 8087 | `		{ DT_INIT,              PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN,` |
+|      - | 8088 | `		  { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|      - | 8089 | `	};` |
+|      - | 8090 | `	static const PH7_NativeConstDef aDpConst[] = {` |
+|      - | 8091 | `		{ "EXCLUDE_START_DATE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },` |
+|      - | 8092 | `		{ "INCLUDE_END_DATE",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },` |
 |      - | 8093 | `	};` |
-|      - | 8094 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|      - | 8095 | `		/* Exceptions first: the classes below throw them. */` |
-|      - | 8096 | `		{ "DateException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8097 | `		{ "DateMalformedStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8098 | `		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8099 | `		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8100 | `		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8101 | `		{ "DateInvalidOperationException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8102 | `		/* php's date tree has an ERROR half beside the exception one -- what a` |
-|      - | 8103 | `		 * caller catches when an argument is out of RANGE (setMicrosecond) or the` |
-|      - | 8104 | `		 * object was never constructed. All three were undefined here, so` |
-|      - | 8105 | ``		 * `catch (DateRangeError $e)` could not be spelled at all. */`` |
-|      - | 8106 | `		{ "DateError", "Error", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8107 | `		{ "DateRangeError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8108 | `		{ "DateObjectError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
-|      - | 8109 | `		{ "DateTimeInterface", 0, 0, PH7_CLASS_INTERFACE,` |
-|      - | 8110 | `		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0, 0 },` |
-|      - | 8111 | `		{ "DateTimeZone", 0, 0, 0,` |
-|      - | 8112 | `		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp),` |
-|      - | 8113 | `		  0, 0, DtPresentTimeZone },` |
-|      - | 8114 | `		{ "DateTime", 0, "DateTimeInterface", 0,` |
-|      - | 8115 | `		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),` |
-|      - | 8116 | `		  0, 0, DtPresentDateTime },` |
-|      - | 8117 | `		{ "DateTimeImmutable", 0, "DateTimeInterface", 0,` |
-|      - | 8118 | `		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),` |
-|      - | 8119 | `		  0, 0, DtPresentDateTime },` |
-|      - | 8120 | `		{ "DateInterval", 0, 0, 0,` |
-|      - | 8121 | `		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp),` |
-|      - | 8122 | `		  0, 0, DtPresentProps },` |
-|      - | 8123 | `		{ "DatePeriod", 0, 0, 0,` |
-|      - | 8124 | `		  aDpMethod, SX_ARRAYSIZE(aDpMethod), aDpConst, SX_ARRAYSIZE(aDpConst),` |
-|      - | 8125 | `		  aDpProp, SX_ARRAYSIZE(aDpProp), 0, &sDpIterVtab, DtPresentProps },` |
-|      - | 8126 | `	};` |
-|      - | 8127 | `	/* php's procedural aliases. Each is a function in its own right, not a forward,` |
-|      - | 8128 | `	 * and each owes aBuiltinSig[] a row (vm_arg_check.c). */` |
-|      - | 8129 | `	static const struct {` |
-|      - | 8130 | `		const char *zName;` |
-|      - | 8131 | `		ProchHostFunction xFunc;` |
-|      - | 8132 | `	} aFunc[] = {` |
-|      - | 8133 | `		{ "strtotime",                    vm_builtin_strtotime },` |
-|      - | 8134 | `		{ "date_create",                  vm_builtin_date_create },` |
-|      - | 8135 | `		{ "date_create_immutable",        vm_builtin_date_create_immutable },` |
-|      - | 8136 | `		{ "date_create_from_format",      vm_builtin_date_create_from_format },` |
-|      - | 8137 | `		{ "date_create_immutable_from_format", vm_builtin_date_create_immutable_from_format },` |
-|      - | 8138 | `		{ "date_format",                  vm_builtin_date_format },` |
-|      - | 8139 | `		{ "date_modify",                  vm_builtin_date_modify },` |
-|      - | 8140 | `		{ "date_add",                     vm_builtin_date_add },` |
-|      - | 8141 | `		{ "date_sub",                     vm_builtin_date_sub },` |
-|      - | 8142 | `		{ "date_diff",                    vm_builtin_date_diff },` |
-|      - | 8143 | `		{ "date_timestamp_get",           vm_builtin_date_timestamp_get },` |
-|      - | 8144 | `		{ "date_timestamp_set",           vm_builtin_date_timestamp_set },` |
-|      - | 8145 | `		{ "date_timezone_get",            vm_builtin_date_timezone_get },` |
-|      - | 8146 | `		{ "date_timezone_set",            vm_builtin_date_timezone_set },` |
-|      - | 8147 | `		{ "date_offset_get",              vm_builtin_date_offset_get },` |
-|      - | 8148 | `		{ "date_date_set",                vm_builtin_date_date_set },` |
-|      - | 8149 | `		{ "date_time_set",                vm_builtin_date_time_set },` |
-|      - | 8150 | `		{ "date_isodate_set",             vm_builtin_date_isodate_set },` |
-|      - | 8151 | `		{ "date_interval_create_from_date_string", vm_builtin_date_interval_create_from_date_string },` |
-|      - | 8152 | `		{ "date_interval_format",         vm_builtin_date_interval_format },` |
-|      - | 8153 | `		{ "date_get_last_errors",         vm_builtin_date_get_last_errors },` |
-|      - | 8154 | `		{ "date_parse",                   vm_builtin_date_parse },` |
-|      - | 8155 | `		{ "date_parse_from_format",       vm_builtin_date_parse_from_format },` |
-|      - | 8156 | `		{ "timezone_open",                vm_builtin_timezone_open },` |
-|      - | 8157 | `		{ "timezone_name_get",            vm_builtin_timezone_name_get },` |
-|      - | 8158 | `		{ "timezone_offset_get",          vm_builtin_timezone_offset_get },` |
-|      - | 8159 | `	};` |
-|      - | 8160 | `	sxu32 n;` |
-|      - | 8161 | `	sxi32 rc;` |
-|      - | 8162 | `	/* php's date.timezone default */` |
-|   5746 | 8163 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|   5746 | 8164 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-|      - | 8165 | `	/* The error rows are allocated from the VM's own backend and released` |
-|      - | 8166 | `	 * wholesale with it, so this is the only lifetime call they need. */` |
-|   5746 | 8167 | `	SyBlobInit(&pVm->sDtLastErr.sErr,&pVm->sAllocator);` |
-|   5746 | 8168 | `	DtLastErrClear(&(*pVm));` |
-| 155012 | 8169 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-| 149271 | 8170 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|  74651 | 8171 | `	}` |
-|   5746 | 8172 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|   5746 | 8173 | `	if( rc != SXRET_OK ){` |
-|    ! 0 | 8174 | `		return rc;` |
-|      - | 8175 | `	}` |
-|      - | 8176 | `	/* php's write_property handler for DateInterval (ph7_class::xSet), assigned` |
-|      - | 8177 | `	 * here for the reason the DOM's clone and dimension hooks are: the spec table` |
-|      - | 8178 | `	 * carries no field for a hook. It also flags the class's properties, which is` |
-|      - | 8179 | ``	 * what makes `new` register their slots with the store filter. */`` |
-|   5746 | 8180 | `	rc = PH7_NativeClassInstallSetHook(&(*pVm),"DateInterval",DtIntervalSet);` |
-|   5746 | 8181 | `	if( rc != SXRET_OK ){` |
-|    ! 0 | 8182 | `		return rc;` |
-|      - | 8183 | `	}` |
-|      - | 8184 | `	/* php's compare handlers (ph7_class::xCmp), assigned here for the same reason` |
-|      - | 8185 | `	 * the write handler is. DatePeriod gets none: php has no handler for it, its` |
-|      - | 8186 | `	 * real property table is EMPTY (the seven it shows are fabricated), and the` |
-|      - | 8187 | `	 * ordinary walk over nothing is what makes any two of them equal -- which is` |
-|      - | 8188 | `	 * what marking those seven virtual reproduces. */` |
-|      - | 8189 | `	{` |
-|      - | 8190 | `		static const struct {` |
-|      - | 8191 | `			const char *zClass;` |
-|      - | 8192 | `			void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *);` |
-|      - | 8193 | `		} aCmp[] = {` |
-|      - | 8194 | `			{ "DateTime",          DtCmpDateTime },` |
-|      - | 8195 | `			{ "DateTimeImmutable", DtCmpDateTime },` |
-|      - | 8196 | `			{ "DateInterval",      DtCmpInterval },` |
-|      - | 8197 | `			{ "DateTimeZone",      DtCmpTimeZone },` |
-|      - | 8198 | `		};` |
-|  28710 | 8199 | `		for( n = 0 ; n < SX_ARRAYSIZE(aCmp) ; n++ ){` |
-|  22969 | 8200 | `			rc = PH7_NativeClassInstallCmpHook(&(*pVm),aCmp[n].zClass,aCmp[n].xCmp);` |
-|  22969 | 8201 | `			if( rc != SXRET_OK ){` |
-|    ! 0 | 8202 | `				return rc;` |
-|      - | 8203 | `			}` |
-|  11489 | 8204 | `		}` |
+|      - | 8094 | `	static const PH7_NativeMethodDef aDpMethod[] = {` |
+|      - | 8095 | `		/* php overloads this constructor three ways and rejects everything else with` |
+|      - | 8096 | `		 * ONE message, so the signature stays unenforced and the body decides. */` |
+|      - | 8097 | `		/* No signature ON PURPOSE, which is why Reflection reports no parameters` |
+|      - | 8098 | `		 * for it. php declares four and enforces NEITHER end of the arity: the` |
+|      - | 8099 | `		 * constructor has three shapes (start+interval+end, start+interval+count,` |
+|      - | 8100 | ``		 * and the ISO string), and both `new DatePeriod()` and a five-argument`` |
+|      - | 8101 | `		 * call reach the body and answer its own three-shape TypeError. A zSig` |
+|      - | 8102 | `		 * here would enforce both bounds, so the choice is php's DIAGNOSTIC or` |
+|      - | 8103 | `		 * php's parameter list, and the diagnostic wins. */` |
+|      - | 8104 | `		{ "__construct",     PH7_MOD_PUBLIC, 0, "", vm_builtin_DatePeriod_construct },` |
+|      - | 8105 | `		{ "createFromISO8601String", PH7_MOD_PUBLIC\|PH7_MOD_STATIC,` |
+|      - | 8106 | `		  "string $specification, int $options = 0", "static",` |
+|      - | 8107 | `		  vm_builtin_DatePeriod_createFromISO8601String },` |
+|      - | 8108 | `		{ "getStartDate",    PH7_MOD_PUBLIC, "", "@DateTimeInterface",` |
+|      - | 8109 | `		  vm_builtin_DatePeriod_getStartDate },` |
+|      - | 8110 | `		{ "getEndDate",      PH7_MOD_PUBLIC, "", "@?DateTimeInterface",` |
+|      - | 8111 | `		  vm_builtin_DatePeriod_getEndDate },` |
+|      - | 8112 | `		{ "getDateInterval", PH7_MOD_PUBLIC, "", "@DateInterval",` |
+|      - | 8113 | `		  vm_builtin_DatePeriod_getDateInterval },` |
+|      - | 8114 | `		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "@?int", vm_builtin_DatePeriod_getRecurrences },` |
+|      - | 8115 | `		{ "getIterator",     PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_DatePeriod_getIterator },` |
+|      - | 8116 | `		{ "__serialize",     PH7_MOD_PUBLIC, "", "array", DtSerializeProps },` |
+|      - | 8117 | `		{ "__unserialize",   PH7_MOD_PUBLIC, "array $data", "void",` |
+|      - | 8118 | `		  vm_builtin_DatePeriod_unserialize },` |
+|      - | 8119 | `		{ "__wakeup",        PH7_MOD_PUBLIC, "", "@void", vm_builtin_DatePeriod_wakeup },` |
+|      - | 8120 | `		{ "__set_state",     PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "array $array", "@DatePeriod",` |
+|      - | 8121 | `		  vm_builtin_DatePeriod_setState },` |
+|      - | 8122 | `	};` |
+|      - | 8123 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|      - | 8124 | `		/* Exceptions first: the classes below throw them. */` |
+|      - | 8125 | `		{ "DateException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8126 | `		{ "DateMalformedStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8127 | `		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8128 | `		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8129 | `		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8130 | `		{ "DateInvalidOperationException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8131 | `		/* php's date tree has an ERROR half beside the exception one -- what a` |
+|      - | 8132 | `		 * caller catches when an argument is out of RANGE (setMicrosecond) or the` |
+|      - | 8133 | `		 * object was never constructed. All three were undefined here, so` |
+|      - | 8134 | ``		 * `catch (DateRangeError $e)` could not be spelled at all. */`` |
+|      - | 8135 | `		{ "DateError", "Error", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8136 | `		{ "DateRangeError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8137 | `		{ "DateObjectError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
+|      - | 8138 | `		{ "DateTimeInterface", 0, 0, PH7_CLASS_INTERFACE,` |
+|      - | 8139 | `		  aIfaceMethod, SX_ARRAYSIZE(aIfaceMethod),` |
+|      - | 8140 | `		  aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0, 0 },` |
+|      - | 8141 | `		{ "DateTimeZone", 0, 0, 0,` |
+|      - | 8142 | `		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp),` |
+|      - | 8143 | `		  0, 0, DtPresentTimeZone },` |
+|      - | 8144 | `		{ "DateTime", 0, "DateTimeInterface", 0,` |
+|      - | 8145 | `		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),` |
+|      - | 8146 | `		  0, 0, DtPresentDateTime },` |
+|      - | 8147 | `		{ "DateTimeImmutable", 0, "DateTimeInterface", 0,` |
+|      - | 8148 | `		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),` |
+|      - | 8149 | `		  0, 0, DtPresentDateTime },` |
+|      - | 8150 | `		{ "DateInterval", 0, 0, 0,` |
+|      - | 8151 | `		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp),` |
+|      - | 8152 | `		  0, 0, DtPresentProps },` |
+|      - | 8153 | `		{ "DatePeriod", 0, 0, 0,` |
+|      - | 8154 | `		  aDpMethod, SX_ARRAYSIZE(aDpMethod), aDpConst, SX_ARRAYSIZE(aDpConst),` |
+|      - | 8155 | `		  aDpProp, SX_ARRAYSIZE(aDpProp), 0, &sDpIterVtab, DtPresentProps },` |
+|      - | 8156 | `	};` |
+|      - | 8157 | `	/* php's procedural aliases. Each is a function in its own right, not a forward,` |
+|      - | 8158 | `	 * and each owes aBuiltinSig[] a row (vm_arg_check.c). */` |
+|      - | 8159 | `	static const struct {` |
+|      - | 8160 | `		const char *zName;` |
+|      - | 8161 | `		ProchHostFunction xFunc;` |
+|      - | 8162 | `	} aFunc[] = {` |
+|      - | 8163 | `		{ "strtotime",                    vm_builtin_strtotime },` |
+|      - | 8164 | `		{ "date_create",                  vm_builtin_date_create },` |
+|      - | 8165 | `		{ "date_create_immutable",        vm_builtin_date_create_immutable },` |
+|      - | 8166 | `		{ "date_create_from_format",      vm_builtin_date_create_from_format },` |
+|      - | 8167 | `		{ "date_create_immutable_from_format", vm_builtin_date_create_immutable_from_format },` |
+|      - | 8168 | `		{ "date_format",                  vm_builtin_date_format },` |
+|      - | 8169 | `		{ "date_modify",                  vm_builtin_date_modify },` |
+|      - | 8170 | `		{ "date_add",                     vm_builtin_date_add },` |
+|      - | 8171 | `		{ "date_sub",                     vm_builtin_date_sub },` |
+|      - | 8172 | `		{ "date_diff",                    vm_builtin_date_diff },` |
+|      - | 8173 | `		{ "date_timestamp_get",           vm_builtin_date_timestamp_get },` |
+|      - | 8174 | `		{ "date_timestamp_set",           vm_builtin_date_timestamp_set },` |
+|      - | 8175 | `		{ "date_timezone_get",            vm_builtin_date_timezone_get },` |
+|      - | 8176 | `		{ "date_timezone_set",            vm_builtin_date_timezone_set },` |
+|      - | 8177 | `		{ "date_offset_get",              vm_builtin_date_offset_get },` |
+|      - | 8178 | `		{ "date_date_set",                vm_builtin_date_date_set },` |
+|      - | 8179 | `		{ "date_time_set",                vm_builtin_date_time_set },` |
+|      - | 8180 | `		{ "date_isodate_set",             vm_builtin_date_isodate_set },` |
+|      - | 8181 | `		{ "date_interval_create_from_date_string", vm_builtin_date_interval_create_from_date_string },` |
+|      - | 8182 | `		{ "date_interval_format",         vm_builtin_date_interval_format },` |
+|      - | 8183 | `		{ "date_get_last_errors",         vm_builtin_date_get_last_errors },` |
+|      - | 8184 | `		{ "date_parse",                   vm_builtin_date_parse },` |
+|      - | 8185 | `		{ "date_parse_from_format",       vm_builtin_date_parse_from_format },` |
+|      - | 8186 | `		{ "timezone_open",                vm_builtin_timezone_open },` |
+|      - | 8187 | `		{ "timezone_name_get",            vm_builtin_timezone_name_get },` |
+|      - | 8188 | `		{ "timezone_offset_get",          vm_builtin_timezone_offset_get },` |
+|      - | 8189 | `	};` |
+|      - | 8190 | `	sxu32 n;` |
+|      - | 8191 | `	sxi32 rc;` |
+|      - | 8192 | `	/* php's date.timezone default */` |
+|   6726 | 8193 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|   6726 | 8194 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+|      - | 8195 | `	/* The error rows are allocated from the VM's own backend and released` |
+|      - | 8196 | `	 * wholesale with it, so this is the only lifetime call they need. */` |
+|   6726 | 8197 | `	SyBlobInit(&pVm->sDtLastErr.sErr,&pVm->sAllocator);` |
+|   6726 | 8198 | `	DtLastErrClear(&(*pVm));` |
+| 181472 | 8199 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+| 174751 | 8200 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  87261 | 8201 | `	}` |
+|   6726 | 8202 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|   6726 | 8203 | `	if( rc != SXRET_OK ){` |
+|    ! 0 | 8204 | `		return rc;` |
 |      - | 8205 | `	}` |
-|   5746 | 8206 | `	rc = PH7_NativeClassMarkVirtualProps(&(*pVm),"DatePeriod");` |
-|   5746 | 8207 | `	if( rc != SXRET_OK ){` |
-|    ! 0 | 8208 | `		return rc;` |
-|      - | 8209 | `	}` |
-|      - | 8210 | `	/* php 8.5 marks every IMMUTABLE mutator #[\NoDiscard]: these nine answer a NEW` |
-|      - | 8211 | `	 * object and change nothing, so a caller who drops the answer wrote a` |
-|      - | 8212 | `	 * statement that does nothing at all -- the single most common way to misuse` |
-|      - | 8213 | `	 * DateTimeImmutable. The mutable DateTime twins are NOT marked (there the` |
-|      - | 8214 | `	 * object really did change), and neither is any other internal member: this is` |
-|      - | 8215 | `	 * php's whole internal NoDiscard set. The message is php's own wording, with` |
-|      - | 8216 | `	 * the method named in it. */` |
-|      - | 8217 | `	{` |
-|      - | 8218 | `		/* Nine rows, nine static literals: PH7_NativeMethodSetNoDiscard borrows the` |
-|      - | 8219 | `		 * argument record for the VM's lifetime. php's stub spells the message as a` |
-|      - | 8220 | `		 * NAMED argument, and getArguments() shows the key. */` |
-|      - | 8221 | `		static const PH7_NativeAttrArg aNdWhy[] = {` |
-|      - | 8222 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8223 | `			  "as DateTimeImmutable::modify() does not modify the object itself", 0.0 } },` |
-|      - | 8224 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8225 | `			  "as DateTimeImmutable::add() does not modify the object itself", 0.0 } },` |
-|      - | 8226 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8227 | `			  "as DateTimeImmutable::sub() does not modify the object itself", 0.0 } },` |
-|      - | 8228 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8229 | `			  "as DateTimeImmutable::setTimezone() does not modify the object itself", 0.0 } },` |
-|      - | 8230 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8231 | `			  "as DateTimeImmutable::setTime() does not modify the object itself", 0.0 } },` |
-|      - | 8232 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8233 | `			  "as DateTimeImmutable::setDate() does not modify the object itself", 0.0 } },` |
-|      - | 8234 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8235 | `			  "as DateTimeImmutable::setISODate() does not modify the object itself", 0.0 } },` |
-|      - | 8236 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8237 | `			  "as DateTimeImmutable::setTimestamp() does not modify the object itself", 0.0 } },` |
-|      - | 8238 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
-|      - | 8239 | `			  "as DateTimeImmutable::setMicrosecond() does not modify the object itself", 0.0 } },` |
-|      - | 8240 | `		};` |
-|      - | 8241 | `		static const char *const azNdMethod[] = {` |
-|      - | 8242 | `			"modify","add","sub","setTimezone","setTime","setDate","setISODate",` |
-|      - | 8243 | `			"setTimestamp","setMicrosecond"` |
-|      - | 8244 | `		};` |
-|   5746 | 8245 | `		ph7_class *pImm = PH7_VmExtractClass(&(*pVm),"DateTimeImmutable",` |
-|      - | 8246 | `			sizeof("DateTimeImmutable")-1,FALSE,0);` |
-|  57415 | 8247 | `		for( n = 0 ; n < SX_ARRAYSIZE(azNdMethod) ; n++ ){` |
-|  51674 | 8248 | `			rc = PH7_NativeMethodSetNoDiscard(&(*pVm),pImm,azNdMethod[n],&aNdWhy[n],1);` |
-|  51674 | 8249 | `			if( rc != SXRET_OK ){` |
-|    ! 0 | 8250 | `				return rc;` |
-|      - | 8251 | `			}` |
-|  25844 | 8252 | `		}` |
-|      - | 8253 | `	}` |
-|      - | 8254 | `	/* php's state for these two IS their properties, and the table is written FROM` |
-|      - | 8255 | `	 * the C struct its constructor allocates -- so an object nobody constructed has` |
-|      - | 8256 | ``	 * no such property at all. PHL declared them from `new`, so an unconstructed`` |
-|      - | 8257 | `	 * interval answered ten defaults to a read, ten to isset(), ten to` |
-|      - | 8258 | `	 * get_object_vars() and ten to a property foreach, beside the empty shape the` |
-|      - | 8259 | `	 * presentation hook was already showing. The two classes differ in what a read` |
-|      - | 8260 | `	 * of a still-absent slot answers, which is php's split between its two` |
-|      - | 8261 | `	 * handlers: DatePeriod reads its seven from the zeroed struct (null/0/false, in` |
-|      - | 8262 | `	 * silence), DateInterval has no such fallback and its ten really are undefined` |
-|      - | 8263 | `	 * until the constructor runs. */` |
-|   5746 | 8264 | `	rc = PH7_NativeClassMarkLazyProps(&(*pVm),"DateInterval",0);` |
-|   5746 | 8265 | `	if( rc != SXRET_OK ){` |
-|    ! 0 | 8266 | `		return rc;` |
-|      - | 8267 | `	}` |
-|   5746 | 8268 | `	rc = PH7_NativeClassMarkLazyProps(&(*pVm),"DatePeriod",1);` |
-|   5746 | 8269 | `	if( rc != SXRET_OK ){` |
-|    ! 0 | 8270 | `		return rc;` |
-|      - | 8271 | `	}` |
-|      - | 8272 | `	/* php's write_property handler for DatePeriod refuses OUTRIGHT: the seven are` |
-|      - | 8273 | `	 * a view of its struct and a script may only read them. PHL kept real slots a` |
-|      - | 8274 | ``	 * script could write, so `$p->recurrences = 99` and `$p->start = 5` landed and`` |
-|      - | 8275 | `	 * the period then iterated to a shape no constructor would have built --` |
-|      - | 8276 | ``	 * `unset($p->interval)` left one with no interval at all. */`` |
-|   5746 | 8277 | `	rc = PH7_NativeClassMarkNoWriteProps(&(*pVm),"DatePeriod");` |
-|   5746 | 8278 | `	if( rc != SXRET_OK ){` |
-|    ! 0 | 8279 | `		return rc;` |
-|      - | 8280 | `	}` |
-|      - | 8281 | `	/* IteratorAggregate declares a METHOD, so it is attached now that DatePeriod has` |
-|      - | 8282 | `	 * its own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would have` |
-|      - | 8283 | `	 * made the class uninstantiable. */` |
-|      - | 8284 | `	{` |
-|   5746 | 8285 | `		ph7_class *pPeriod = DtClass(&(*pVm),"DatePeriod");` |
-|   5746 | 8286 | `		ph7_class *pAggregate = DtClass(&(*pVm),"IteratorAggregate");` |
-|   5746 | 8287 | `		if( pPeriod == 0 \|\| pAggregate == 0 ){` |
-|    ! 0 | 8288 | `			return SXERR_NOTFOUND;` |
-|      - | 8289 | `		}` |
-|   5746 | 8290 | `		rc = PH7_ClassImplement(pPeriod,pAggregate);` |
-|      - | 8291 | `	}` |
-|   5746 | 8292 | `	return rc;` |
-|   2876 | 8293 | `}` |
-|      - | 8294 |  |
-|      - | 8295 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|      - | 8296 |  |
-|      - | 8297 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|      - | 8298 | `/* Tiny build: no DateTime family (builtin layer disabled) */` |
-|      - | 8299 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm){` |
-|      - | 8300 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|      - | 8301 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-|      - | 8302 | `	return SXRET_OK;` |
-|      - | 8303 | `}` |
-|      - | 8304 | `#endif` |
-|      - | 8305 |  |
+|      - | 8206 | `	/* php's write_property handler for DateInterval (ph7_class::xSet), assigned` |
+|      - | 8207 | `	 * here for the reason the DOM's clone and dimension hooks are: the spec table` |
+|      - | 8208 | `	 * carries no field for a hook. It also flags the class's properties, which is` |
+|      - | 8209 | ``	 * what makes `new` register their slots with the store filter. */`` |
+|   6726 | 8210 | `	rc = PH7_NativeClassInstallSetHook(&(*pVm),"DateInterval",DtIntervalSet);` |
+|   6726 | 8211 | `	if( rc != SXRET_OK ){` |
+|    ! 0 | 8212 | `		return rc;` |
+|      - | 8213 | `	}` |
+|      - | 8214 | `	/* php's compare handlers (ph7_class::xCmp), assigned here for the same reason` |
+|      - | 8215 | `	 * the write handler is. DatePeriod gets none: php has no handler for it, its` |
+|      - | 8216 | `	 * real property table is EMPTY (the seven it shows are fabricated), and the` |
+|      - | 8217 | `	 * ordinary walk over nothing is what makes any two of them equal -- which is` |
+|      - | 8218 | `	 * what marking those seven virtual reproduces. */` |
+|      - | 8219 | `	{` |
+|      - | 8220 | `		static const struct {` |
+|      - | 8221 | `			const char *zClass;` |
+|      - | 8222 | `			void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *);` |
+|      - | 8223 | `		} aCmp[] = {` |
+|      - | 8224 | `			{ "DateTime",          DtCmpDateTime },` |
+|      - | 8225 | `			{ "DateTimeImmutable", DtCmpDateTime },` |
+|      - | 8226 | `			{ "DateInterval",      DtCmpInterval },` |
+|      - | 8227 | `			{ "DateTimeZone",      DtCmpTimeZone },` |
+|      - | 8228 | `		};` |
+|  33610 | 8229 | `		for( n = 0 ; n < SX_ARRAYSIZE(aCmp) ; n++ ){` |
+|  26889 | 8230 | `			rc = PH7_NativeClassInstallCmpHook(&(*pVm),aCmp[n].zClass,aCmp[n].xCmp);` |
+|  26889 | 8231 | `			if( rc != SXRET_OK ){` |
+|    ! 0 | 8232 | `				return rc;` |
+|      - | 8233 | `			}` |
+|  13429 | 8234 | `		}` |
+|      - | 8235 | `	}` |
+|   6726 | 8236 | `	rc = PH7_NativeClassMarkVirtualProps(&(*pVm),"DatePeriod");` |
+|   6726 | 8237 | `	if( rc != SXRET_OK ){` |
+|    ! 0 | 8238 | `		return rc;` |
+|      - | 8239 | `	}` |
+|      - | 8240 | `	/* php 8.5 marks every IMMUTABLE mutator #[\NoDiscard]: these nine answer a NEW` |
+|      - | 8241 | `	 * object and change nothing, so a caller who drops the answer wrote a` |
+|      - | 8242 | `	 * statement that does nothing at all -- the single most common way to misuse` |
+|      - | 8243 | `	 * DateTimeImmutable. The mutable DateTime twins are NOT marked (there the` |
+|      - | 8244 | `	 * object really did change), and neither is any other internal member: this is` |
+|      - | 8245 | `	 * php's whole internal NoDiscard set. The message is php's own wording, with` |
+|      - | 8246 | `	 * the method named in it. */` |
+|      - | 8247 | `	{` |
+|      - | 8248 | `		/* Nine rows, nine static literals: PH7_NativeMethodSetNoDiscard borrows the` |
+|      - | 8249 | `		 * argument record for the VM's lifetime. php's stub spells the message as a` |
+|      - | 8250 | `		 * NAMED argument, and getArguments() shows the key. */` |
+|      - | 8251 | `		static const PH7_NativeAttrArg aNdWhy[] = {` |
+|      - | 8252 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8253 | `			  "as DateTimeImmutable::modify() does not modify the object itself", 0.0 } },` |
+|      - | 8254 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8255 | `			  "as DateTimeImmutable::add() does not modify the object itself", 0.0 } },` |
+|      - | 8256 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8257 | `			  "as DateTimeImmutable::sub() does not modify the object itself", 0.0 } },` |
+|      - | 8258 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8259 | `			  "as DateTimeImmutable::setTimezone() does not modify the object itself", 0.0 } },` |
+|      - | 8260 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8261 | `			  "as DateTimeImmutable::setTime() does not modify the object itself", 0.0 } },` |
+|      - | 8262 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8263 | `			  "as DateTimeImmutable::setDate() does not modify the object itself", 0.0 } },` |
+|      - | 8264 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8265 | `			  "as DateTimeImmutable::setISODate() does not modify the object itself", 0.0 } },` |
+|      - | 8266 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8267 | `			  "as DateTimeImmutable::setTimestamp() does not modify the object itself", 0.0 } },` |
+|      - | 8268 | `			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,` |
+|      - | 8269 | `			  "as DateTimeImmutable::setMicrosecond() does not modify the object itself", 0.0 } },` |
+|      - | 8270 | `		};` |
+|      - | 8271 | `		static const char *const azNdMethod[] = {` |
+|      - | 8272 | `			"modify","add","sub","setTimezone","setTime","setDate","setISODate",` |
+|      - | 8273 | `			"setTimestamp","setMicrosecond"` |
+|      - | 8274 | `		};` |
+|   6726 | 8275 | `		ph7_class *pImm = PH7_VmExtractClass(&(*pVm),"DateTimeImmutable",` |
+|      - | 8276 | `			sizeof("DateTimeImmutable")-1,FALSE,0);` |
+|  67215 | 8277 | `		for( n = 0 ; n < SX_ARRAYSIZE(azNdMethod) ; n++ ){` |
+|  60494 | 8278 | `			rc = PH7_NativeMethodSetNoDiscard(&(*pVm),pImm,azNdMethod[n],&aNdWhy[n],1);` |
+|  60494 | 8279 | `			if( rc != SXRET_OK ){` |
+|    ! 0 | 8280 | `				return rc;` |
+|      - | 8281 | `			}` |
+|  30209 | 8282 | `		}` |
+|      - | 8283 | `	}` |
+|      - | 8284 | `	/* php's state for these two IS their properties, and the table is written FROM` |
+|      - | 8285 | `	 * the C struct its constructor allocates -- so an object nobody constructed has` |
+|      - | 8286 | ``	 * no such property at all. PHL declared them from `new`, so an unconstructed`` |
+|      - | 8287 | `	 * interval answered ten defaults to a read, ten to isset(), ten to` |
+|      - | 8288 | `	 * get_object_vars() and ten to a property foreach, beside the empty shape the` |
+|      - | 8289 | `	 * presentation hook was already showing. The two classes differ in what a read` |
+|      - | 8290 | `	 * of a still-absent slot answers, which is php's split between its two` |
+|      - | 8291 | `	 * handlers: DatePeriod reads its seven from the zeroed struct (null/0/false, in` |
+|      - | 8292 | `	 * silence), DateInterval has no such fallback and its ten really are undefined` |
+|      - | 8293 | `	 * until the constructor runs. */` |
+|   6726 | 8294 | `	rc = PH7_NativeClassMarkLazyProps(&(*pVm),"DateInterval",0);` |
+|   6726 | 8295 | `	if( rc != SXRET_OK ){` |
+|    ! 0 | 8296 | `		return rc;` |
+|      - | 8297 | `	}` |
+|   6726 | 8298 | `	rc = PH7_NativeClassMarkLazyProps(&(*pVm),"DatePeriod",1);` |
+|   6726 | 8299 | `	if( rc != SXRET_OK ){` |
+|    ! 0 | 8300 | `		return rc;` |
+|      - | 8301 | `	}` |
+|      - | 8302 | `	/* php's write_property handler for DatePeriod refuses OUTRIGHT: the seven are` |
+|      - | 8303 | `	 * a view of its struct and a script may only read them. PHL kept real slots a` |
+|      - | 8304 | ``	 * script could write, so `$p->recurrences = 99` and `$p->start = 5` landed and`` |
+|      - | 8305 | `	 * the period then iterated to a shape no constructor would have built --` |
+|      - | 8306 | ``	 * `unset($p->interval)` left one with no interval at all. */`` |
+|   6726 | 8307 | `	rc = PH7_NativeClassMarkNoWriteProps(&(*pVm),"DatePeriod");` |
+|   6726 | 8308 | `	if( rc != SXRET_OK ){` |
+|    ! 0 | 8309 | `		return rc;` |
+|      - | 8310 | `	}` |
+|      - | 8311 | `	/* IteratorAggregate declares a METHOD, so it is attached now that DatePeriod has` |
+|      - | 8312 | `	 * its own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would have` |
+|      - | 8313 | `	 * made the class uninstantiable. */` |
+|      - | 8314 | `	{` |
+|   6726 | 8315 | `		ph7_class *pPeriod = DtClass(&(*pVm),"DatePeriod");` |
+|   6726 | 8316 | `		ph7_class *pAggregate = DtClass(&(*pVm),"IteratorAggregate");` |
+|   6726 | 8317 | `		if( pPeriod == 0 \|\| pAggregate == 0 ){` |
+|    ! 0 | 8318 | `			return SXERR_NOTFOUND;` |
+|      - | 8319 | `		}` |
+|   6726 | 8320 | `		rc = PH7_ClassImplement(pPeriod,pAggregate);` |
+|      - | 8321 | `	}` |
+|   6726 | 8322 | `	return rc;` |
+|   3361 | 8323 | `}` |
+|      - | 8324 |  |
+|      - | 8325 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|      - | 8326 |  |
+|      - | 8327 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|      - | 8328 | `/* Tiny build: no DateTime family (builtin layer disabled) */` |
+|      - | 8329 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm){` |
+|      - | 8330 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|      - | 8331 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+|      - | 8332 | `	return SXRET_OK;` |
+|      - | 8333 | `}` |
+|      - | 8334 | `#endif` |
+|      - | 8335 |  |

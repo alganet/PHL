@@ -1135,10 +1135,10 @@ Coverage: 1090/1185 lines (91.98%)
 |     41 | 1125 | `	}` |
 |     85 | 1126 | `}` |
 |      - | 1127 | `/* Registry sweep, called from PH7_LibxmlVmReset (VM reset AND release). */` |
-|   4974 | 1128 | `PH7_PRIVATE void PH7_XmlParserVmSweep(ph7_vm *pVm)` |
+|   5645 | 1128 | `PH7_PRIVATE void PH7_XmlParserVmSweep(ph7_vm *pVm)` |
 |      5 | 1129 | `{` |
-|   4979 | 1130 | `	phl_xmlparser *p = (phl_xmlparser *)pVm->pXmlParsers;` |
-|   5061 | 1131 | `	while( p ){` |
+|   5650 | 1130 | `	phl_xmlparser *p = (phl_xmlparser *)pVm->pXmlParsers;` |
+|   5732 | 1131 | `	while( p ){` |
 |     85 | 1132 | `		phl_xmlparser *pNext = p->pNext;` |
 |      - | 1133 | `		int i;` |
 |    905 | 1134 | `		for( i = 0 ; i < PHL_XML_H_COUNT ; ++i ){` |
@@ -1149,8 +1149,8 @@ Coverage: 1090/1185 lines (91.98%)
 |     85 | 1139 | `		SyMemBackendFree(&pVm->sAllocator,p);` |
 |     85 | 1140 | `		p = pNext;` |
 |      3 | 1141 | `	}` |
-|   4979 | 1142 | `	pVm->pXmlParsers = 0;` |
-|   4979 | 1143 | `}` |
+|   5650 | 1142 | `	pVm->pXmlParsers = 0;` |
+|   5650 | 1143 | `}` |
 |      - | 1144 | `/* The struct behind an XMLParser argument's hidden slot. The declared` |
 |      - | 1145 | `` * `XMLParser $parser` type has already refused everything else. */`` |
 |    270 | 1146 | `static phl_xmlparser * XmlParserOf(ph7_value *pArg,ph7_class_instance **ppObj)` |
@@ -1728,44 +1728,44 @@ Coverage: 1090/1185 lines (91.98%)
 |      - | 1718 | `		SXUNUSED(pUnused); \` |
 |      - | 1719 | `		ph7_value_int64(pVal,(ph7_int64)(VALUE)); \` |
 |      - | 1720 | `	}` |
-|     69 | 1721 | `XML_INT_CONST(XmlConst_ERROR_NONE,                          0)` |
-|     67 | 1722 | `XML_INT_CONST(XmlConst_ERROR_NO_MEMORY,                     1)` |
-|     67 | 1723 | `XML_INT_CONST(XmlConst_ERROR_SYNTAX,                        2)` |
-|     67 | 1724 | `XML_INT_CONST(XmlConst_ERROR_NO_ELEMENTS,                   3)` |
-|     65 | 1725 | `XML_INT_CONST(XmlConst_ERROR_INVALID_TOKEN,                 4)` |
-|     65 | 1726 | `XML_INT_CONST(XmlConst_ERROR_UNCLOSED_TOKEN,                5)` |
-|     65 | 1727 | `XML_INT_CONST(XmlConst_ERROR_PARTIAL_CHAR,                  6)` |
-|     67 | 1728 | `XML_INT_CONST(XmlConst_ERROR_TAG_MISMATCH,                  7)` |
-|     65 | 1729 | `XML_INT_CONST(XmlConst_ERROR_DUPLICATE_ATTRIBUTE,           8)` |
-|     65 | 1730 | `XML_INT_CONST(XmlConst_ERROR_JUNK_AFTER_DOC_ELEMENT,        9)` |
-|     65 | 1731 | `XML_INT_CONST(XmlConst_ERROR_PARAM_ENTITY_REF,             10)` |
-|     65 | 1732 | `XML_INT_CONST(XmlConst_ERROR_UNDEFINED_ENTITY,             11)` |
-|     65 | 1733 | `XML_INT_CONST(XmlConst_ERROR_RECURSIVE_ENTITY_REF,         12)` |
-|     65 | 1734 | `XML_INT_CONST(XmlConst_ERROR_ASYNC_ENTITY,                 13)` |
-|     65 | 1735 | `XML_INT_CONST(XmlConst_ERROR_BAD_CHAR_REF,                 14)` |
-|     65 | 1736 | `XML_INT_CONST(XmlConst_ERROR_BINARY_ENTITY_REF,            15)` |
-|     65 | 1737 | `XML_INT_CONST(XmlConst_ERROR_ATTRIBUTE_EXTERNAL_ENTITY_REF,16)` |
-|     65 | 1738 | `XML_INT_CONST(XmlConst_ERROR_MISPLACED_XML_PI,             17)` |
-|     67 | 1739 | `XML_INT_CONST(XmlConst_ERROR_UNKNOWN_ENCODING,             18)` |
-|     65 | 1740 | `XML_INT_CONST(XmlConst_ERROR_INCORRECT_ENCODING,           19)` |
-|     65 | 1741 | `XML_INT_CONST(XmlConst_ERROR_UNCLOSED_CDATA_SECTION,       20)` |
-|     67 | 1742 | `XML_INT_CONST(XmlConst_ERROR_EXTERNAL_ENTITY_HANDLING,     21)` |
-|     81 | 1743 | `XML_INT_CONST(XmlConst_OPTION_CASE_FOLDING,    PHL_XML_OPTION_CASE_FOLDING)` |
-|     85 | 1744 | `XML_INT_CONST(XmlConst_OPTION_TARGET_ENCODING, PHL_XML_OPTION_TARGET_ENCODING)` |
-|     81 | 1745 | `XML_INT_CONST(XmlConst_OPTION_SKIP_TAGSTART,   PHL_XML_OPTION_SKIP_TAGSTART)` |
-|     73 | 1746 | `XML_INT_CONST(XmlConst_OPTION_SKIP_WHITE,      PHL_XML_OPTION_SKIP_WHITE)` |
-|     69 | 1747 | `XML_INT_CONST(XmlConst_OPTION_PARSE_HUGE,      PHL_XML_OPTION_PARSE_HUGE)` |
-|     64 | 1748 | `static void XmlConst_SAX_IMPL(ph7_value *pVal,void *pUnused)` |
+|     75 | 1721 | `XML_INT_CONST(XmlConst_ERROR_NONE,                          0)` |
+|     73 | 1722 | `XML_INT_CONST(XmlConst_ERROR_NO_MEMORY,                     1)` |
+|     73 | 1723 | `XML_INT_CONST(XmlConst_ERROR_SYNTAX,                        2)` |
+|     73 | 1724 | `XML_INT_CONST(XmlConst_ERROR_NO_ELEMENTS,                   3)` |
+|     71 | 1725 | `XML_INT_CONST(XmlConst_ERROR_INVALID_TOKEN,                 4)` |
+|     71 | 1726 | `XML_INT_CONST(XmlConst_ERROR_UNCLOSED_TOKEN,                5)` |
+|     71 | 1727 | `XML_INT_CONST(XmlConst_ERROR_PARTIAL_CHAR,                  6)` |
+|     73 | 1728 | `XML_INT_CONST(XmlConst_ERROR_TAG_MISMATCH,                  7)` |
+|     71 | 1729 | `XML_INT_CONST(XmlConst_ERROR_DUPLICATE_ATTRIBUTE,           8)` |
+|     71 | 1730 | `XML_INT_CONST(XmlConst_ERROR_JUNK_AFTER_DOC_ELEMENT,        9)` |
+|     71 | 1731 | `XML_INT_CONST(XmlConst_ERROR_PARAM_ENTITY_REF,             10)` |
+|     71 | 1732 | `XML_INT_CONST(XmlConst_ERROR_UNDEFINED_ENTITY,             11)` |
+|     71 | 1733 | `XML_INT_CONST(XmlConst_ERROR_RECURSIVE_ENTITY_REF,         12)` |
+|     71 | 1734 | `XML_INT_CONST(XmlConst_ERROR_ASYNC_ENTITY,                 13)` |
+|     71 | 1735 | `XML_INT_CONST(XmlConst_ERROR_BAD_CHAR_REF,                 14)` |
+|     71 | 1736 | `XML_INT_CONST(XmlConst_ERROR_BINARY_ENTITY_REF,            15)` |
+|     71 | 1737 | `XML_INT_CONST(XmlConst_ERROR_ATTRIBUTE_EXTERNAL_ENTITY_REF,16)` |
+|     71 | 1738 | `XML_INT_CONST(XmlConst_ERROR_MISPLACED_XML_PI,             17)` |
+|     73 | 1739 | `XML_INT_CONST(XmlConst_ERROR_UNKNOWN_ENCODING,             18)` |
+|     71 | 1740 | `XML_INT_CONST(XmlConst_ERROR_INCORRECT_ENCODING,           19)` |
+|     71 | 1741 | `XML_INT_CONST(XmlConst_ERROR_UNCLOSED_CDATA_SECTION,       20)` |
+|     73 | 1742 | `XML_INT_CONST(XmlConst_ERROR_EXTERNAL_ENTITY_HANDLING,     21)` |
+|     87 | 1743 | `XML_INT_CONST(XmlConst_OPTION_CASE_FOLDING,    PHL_XML_OPTION_CASE_FOLDING)` |
+|     91 | 1744 | `XML_INT_CONST(XmlConst_OPTION_TARGET_ENCODING, PHL_XML_OPTION_TARGET_ENCODING)` |
+|     87 | 1745 | `XML_INT_CONST(XmlConst_OPTION_SKIP_TAGSTART,   PHL_XML_OPTION_SKIP_TAGSTART)` |
+|     79 | 1746 | `XML_INT_CONST(XmlConst_OPTION_SKIP_WHITE,      PHL_XML_OPTION_SKIP_WHITE)` |
+|     75 | 1747 | `XML_INT_CONST(XmlConst_OPTION_PARSE_HUGE,      PHL_XML_OPTION_PARSE_HUGE)` |
+|     70 | 1748 | `static void XmlConst_SAX_IMPL(ph7_value *pVal,void *pUnused)` |
 |      3 | 1749 | `{` |
-|     32 | 1750 | `	SXUNUSED(pUnused);` |
-|     67 | 1751 | `	ph7_value_string(pVal,"libxml",(int)sizeof("libxml")-1);` |
-|     67 | 1752 | `}` |
+|     35 | 1750 | `	SXUNUSED(pUnused);` |
+|     73 | 1751 | `	ph7_value_string(pVal,"libxml",(int)sizeof("libxml")-1);` |
+|     73 | 1752 | `}` |
 |      - | 1753 | `/*` |
 |      - | 1754 | ` * Install php's ext/xml surface: the XMLParser class, the 19 functions of` |
 |      - | 1755 | ` * its NON-deprecated half, and the XML_* constants. Called from PH7_VmInit` |
 |      - | 1756 | ` * inside the bCompilingBuiltin window, after PH7_VmInstallLibxml.` |
 |      - | 1757 | ` */` |
-|   5740 | 1758 | `PH7_PRIVATE sxi32 PH7_VmInstallXml(ph7_vm *pVm)` |
+|   6721 | 1758 | `PH7_PRIVATE sxi32 PH7_VmInstallXml(ph7_vm *pVm)` |
 |      5 | 1759 | `{` |
 |      - | 1760 | `	static const struct {` |
 |      - | 1761 | `		const char *zName;` |
@@ -1838,22 +1838,22 @@ Coverage: 1090/1185 lines (91.98%)
 |      - | 1828 | `	};` |
 |      - | 1829 | `	sxu32 n;` |
 |      - | 1830 | `	sxi32 rc;` |
-|   5745 | 1831 | `	pVm->pXmlParsers = 0;` |
-| 120545 | 1832 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-| 114805 | 1833 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|  57405 | 1834 | `	}` |
-| 166465 | 1835 | `	for( n = 0 ; n < SX_ARRAYSIZE(aConst) ; n++ ){` |
-| 160725 | 1836 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
-|  80365 | 1837 | `	}` |
-|   5745 | 1838 | `	rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
-|   5745 | 1839 | `	if( rc == SXRET_OK ){` |
-|   5745 | 1840 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"XMLParser",sizeof("XMLParser")-1,FALSE,0);` |
-|   5745 | 1841 | `		if( pClass ){` |
-|   5745 | 1842 | `			pClass->zNewRefusal =` |
+|   6726 | 1831 | `	pVm->pXmlParsers = 0;` |
+| 141146 | 1832 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+| 134425 | 1833 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  67125 | 1834 | `	}` |
+| 194914 | 1835 | `	for( n = 0 ; n < SX_ARRAYSIZE(aConst) ; n++ ){` |
+| 188193 | 1836 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
+|  93973 | 1837 | `	}` |
+|   6726 | 1838 | `	rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|   6726 | 1839 | `	if( rc == SXRET_OK ){` |
+|   6726 | 1840 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"XMLParser",sizeof("XMLParser")-1,FALSE,0);` |
+|   6726 | 1841 | `		if( pClass ){` |
+|   6726 | 1842 | `			pClass->zNewRefusal =` |
 |      - | 1843 | `				"Cannot directly construct XMLParser, use xml_parser_create() or xml_parser_create_ns() instead";` |
-|   2870 | 1844 | `		}` |
-|   2870 | 1845 | `	}` |
-|   5745 | 1846 | `	return rc;` |
+|   3356 | 1844 | `		}` |
+|   3356 | 1845 | `	}` |
+|   6726 | 1846 | `	return rc;` |
 |      5 | 1847 | `}` |
 |      - | 1848 |  |
 |      - | 1849 | `#else` |

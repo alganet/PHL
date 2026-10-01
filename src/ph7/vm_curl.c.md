@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1574/1814 lines (86.77%)
+Coverage: 1567/1815 lines (86.34%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -45,14 +45,14 @@ Coverage: 1574/1814 lines (86.77%)
 |       - |   35 | ` * whichever thread gets there first (the -S server pre-forks, and` |
 |       - |   36 | ` * PH7_ENABLE_THREADS builds share the process).` |
 |       - |   37 | ` */` |
-|    5742 |   38 | `PH7_PRIVATE void PH7_CurlGlobalInit(void)` |
+|    6723 |   38 | `PH7_PRIVATE void PH7_CurlGlobalInit(void)` |
 |       5 |   39 | `{` |
 |       - |   40 | `	static int bInit = 0;` |
-|    5747 |   41 | `	if( !bInit ){` |
-|    5745 |   42 | `		curl_global_init(CURL_GLOBAL_DEFAULT);` |
-|    5745 |   43 | `		bInit = 1;` |
-|    2870 |   44 | `	}` |
-|    5747 |   45 | `}` |
+|    6728 |   41 | `	if( !bInit ){` |
+|    6726 |   42 | `		curl_global_init(CURL_GLOBAL_DEFAULT);` |
+|    6726 |   43 | `		bInit = 1;` |
+|    3356 |   44 | `	}` |
+|    6728 |   45 | `}` |
 |       - |   46 |  |
 |       - |   47 | `/* ------------------------------------------------------------------------` |
 |       - |   48 | ` * Handle lifetime` |
@@ -70,17 +70,17 @@ Coverage: 1574/1814 lines (86.77%)
 |       - |   60 | `static void CurlCbPark(phl_curl *pCurl,sxi32 rc);` |
 |       - |   61 | `static int CurlSetPostFieldsArray(ph7_context *pCtx,phl_curl *pCurl,ph7_value *pVal,sxi32 *pRc);` |
 |       - |   62 |  |
-|     332 |   63 | `static phl_curl * CurlNewHandle(ph7_vm *pVm)` |
-|       2 |   64 | `{` |
-|     334 |   65 | `	phl_curl *pCurl = (phl_curl *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_curl));` |
-|     334 |   66 | `	if( pCurl == 0 ){` |
+|     338 |   63 | `static phl_curl * CurlNewHandle(ph7_vm *pVm)` |
+|       4 |   64 | `{` |
+|     342 |   65 | `	phl_curl *pCurl = (phl_curl *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_curl));` |
+|     342 |   66 | `	if( pCurl == 0 ){` |
 |     ! 0 |   67 | `		return 0;` |
 |       - |   68 | `	}` |
-|     334 |   69 | `	SyZero(pCurl,sizeof(phl_curl));` |
-|     334 |   70 | `	pCurl->pVm = pVm;` |
-|     334 |   71 | `	SyBlobInit(&pCurl->sBody,&pVm->sAllocator);` |
-|     334 |   72 | `	pCurl->pEasy = curl_easy_init();` |
-|     334 |   73 | `	if( pCurl->pEasy == 0 ){` |
+|     342 |   69 | `	SyZero(pCurl,sizeof(phl_curl));` |
+|     342 |   70 | `	pCurl->pVm = pVm;` |
+|     342 |   71 | `	SyBlobInit(&pCurl->sBody,&pVm->sAllocator);` |
+|     342 |   72 | `	pCurl->pEasy = curl_easy_init();` |
+|     342 |   73 | `	if( pCurl->pEasy == 0 ){` |
 |     ! 0 |   74 | `		SyMemBackendFree(&pVm->sAllocator,pCurl);` |
 |     ! 0 |   75 | `		return 0;` |
 |       - |   76 | `	}` |
@@ -89,11 +89,11 @@ Coverage: 1574/1814 lines (86.77%)
 |       - |   79 | `	 * what curl_error() reports -- not curl_easy_strerror() of the code. It` |
 |       - |   80 | `	 * has to be re-applied after curl_easy_reset(), which clears it.` |
 |       - |   81 | `	 */` |
-|     334 |   82 | `	curl_easy_setopt(pCurl->pEasy,CURLOPT_ERRORBUFFER,pCurl->zErrBuf);` |
-|     334 |   83 | `	pCurl->pNext = (phl_curl *)pVm->pCurlHandles;` |
-|     334 |   84 | `	pVm->pCurlHandles = pCurl;` |
-|     334 |   85 | `	return pCurl;` |
-|     168 |   86 | `}` |
+|     342 |   82 | `	curl_easy_setopt(pCurl->pEasy,CURLOPT_ERRORBUFFER,pCurl->zErrBuf);` |
+|     342 |   83 | `	pCurl->pNext = (phl_curl *)pVm->pCurlHandles;` |
+|     342 |   84 | `	pVm->pCurlHandles = pCurl;` |
+|     342 |   85 | `	return pCurl;` |
+|     173 |   86 | `}` |
 |       - |   87 | `/*` |
 |       - |   88 | ` * The slot a handle keeps one option's curl_slist in, created on first use.` |
 |       - |   89 | ` * Keyed by option, so setting CURLOPT_HTTPHEADER twice replaces one list` |
@@ -118,10 +118,10 @@ Coverage: 1574/1814 lines (86.77%)
 |      15 |  108 | `	pCurl->pSlists = pSlot;` |
 |      15 |  109 | `	return pSlot;` |
 |      16 |  110 | `}` |
-|     658 |  111 | `static void CurlFreeSlists(phl_curl *pCurl)` |
-|       2 |  112 | `{` |
-|     660 |  113 | `	phl_curl_slist *pSlot = pCurl->pSlists;` |
-|     674 |  114 | `	while( pSlot ){` |
+|     750 |  111 | `static void CurlFreeSlists(phl_curl *pCurl)` |
+|       4 |  112 | `{` |
+|     754 |  113 | `	phl_curl_slist *pSlot = pCurl->pSlists;` |
+|     768 |  114 | `	while( pSlot ){` |
 |      15 |  115 | `		phl_curl_slist *pNext = pSlot->pNext;` |
 |      15 |  116 | `		if( pSlot->pList ){` |
 |      15 |  117 | `			curl_slist_free_all(pSlot->pList);` |
@@ -129,40 +129,40 @@ Coverage: 1574/1814 lines (86.77%)
 |      15 |  119 | `		SyMemBackendFree(&pCurl->pVm->sAllocator,pSlot);` |
 |      15 |  120 | `		pSlot = pNext;` |
 |       1 |  121 | `	}` |
-|     660 |  122 | `	pCurl->pSlists = 0;` |
-|     660 |  123 | `}` |
-|     658 |  124 | `static void CurlDropCallbacks(phl_curl *pCurl)` |
-|       2 |  125 | `{` |
+|     754 |  122 | `	pCurl->pSlists = 0;` |
+|     754 |  123 | `}` |
+|     750 |  124 | `static void CurlDropCallbacks(phl_curl *pCurl)` |
+|       4 |  125 | `{` |
 |       - |  126 | `	ph7_value **apCb[9];` |
 |       - |  127 | `	int i;` |
-|     660 |  128 | `	apCb[0] = &pCurl->pWriteCb;` |
-|     660 |  129 | `	apCb[1] = &pCurl->pHeaderCb;` |
-|     660 |  130 | `	apCb[2] = &pCurl->pXferCb;` |
-|     660 |  131 | `	apCb[3] = &pCurl->pReadCb;` |
-|     660 |  132 | `	apCb[4] = &pCurl->pDebugCb;` |
+|     754 |  128 | `	apCb[0] = &pCurl->pWriteCb;` |
+|     754 |  129 | `	apCb[1] = &pCurl->pHeaderCb;` |
+|     754 |  130 | `	apCb[2] = &pCurl->pXferCb;` |
+|     754 |  131 | `	apCb[3] = &pCurl->pReadCb;` |
+|     754 |  132 | `	apCb[4] = &pCurl->pDebugCb;` |
 |       - |  133 | `	/* The stream slots go with them: they are php-side state too, and` |
 |       - |  134 | `	 * curl_reset() puts every option back. */` |
-|     660 |  135 | `	apCb[5] = &pCurl->pWriteStream;` |
-|     660 |  136 | `	apCb[6] = &pCurl->pHeaderStream;` |
-|     660 |  137 | `	apCb[7] = &pCurl->pStderrStream;` |
-|     660 |  138 | `	apCb[8] = &pCurl->pPreReqCb;` |
-|    6582 |  139 | `	for( i = 0 ; i < 9 ; ++i ){` |
-|    5924 |  140 | `		if( *apCb[i] ){` |
+|     754 |  135 | `	apCb[5] = &pCurl->pWriteStream;` |
+|     754 |  136 | `	apCb[6] = &pCurl->pHeaderStream;` |
+|     754 |  137 | `	apCb[7] = &pCurl->pStderrStream;` |
+|     754 |  138 | `	apCb[8] = &pCurl->pPreReqCb;` |
+|    7504 |  139 | `	for( i = 0 ; i < 9 ; ++i ){` |
+|    6754 |  140 | `		if( *apCb[i] ){` |
 |     107 |  141 | `			ph7_release_value(pCurl->pVm,*apCb[i]);` |
 |     107 |  142 | `			*apCb[i] = 0;` |
 |      53 |  143 | `		}` |
-|    2963 |  144 | `	}` |
-|     660 |  145 | `	if( pCurl->pReadStream ){` |
+|    3379 |  144 | `	}` |
+|     754 |  145 | `	if( pCurl->pReadStream ){` |
 |       4 |  146 | `		ph7_release_value(pCurl->pVm,pCurl->pReadStream);` |
 |       4 |  147 | `		pCurl->pReadStream = 0;` |
 |       2 |  148 | `	}` |
-|     660 |  149 | `	if( pCurl->pShare ){` |
+|     754 |  149 | `	if( pCurl->pShare ){` |
 |       - |  150 | `		/* curl_easy_reset() has just dropped libcurl's own pointer to it. */` |
 |       3 |  151 | `		ph7_release_value(pCurl->pVm,pCurl->pShare);` |
 |       3 |  152 | `		pCurl->pShare = 0;` |
 |       1 |  153 | `	}` |
-|     660 |  154 | `	pCurl->iHeaderDest = PHL_CURL_HDR_IGNORE;` |
-|     660 |  155 | `}` |
+|     754 |  154 | `	pCurl->iHeaderDest = PHL_CURL_HDR_IGNORE;` |
+|     754 |  155 | `}` |
 |       - |  156 | `/*` |
 |       - |  157 | ` * Give a record its OWN copy of a stored value -- a retained callable, or the` |
 |       - |  158 | ` * one CURLOPT_PRIVATE keeps. The two handles must not share one ph7_value:` |
@@ -179,60 +179,60 @@ Coverage: 1574/1814 lines (86.77%)
 |      11 |  169 | `		PH7_MemObjStore(pFrom,*ppSlot);` |
 |       5 |  170 | `	}` |
 |     217 |  171 | `}` |
-|     642 |  172 | `static void CurlFreeHandle(phl_curl *pCurl)` |
-|       2 |  173 | `{` |
-|     644 |  174 | `	if( pCurl->pEasy ){` |
+|     734 |  172 | `static void CurlFreeHandle(phl_curl *pCurl)` |
+|       4 |  173 | `{` |
+|     738 |  174 | `	if( pCurl->pEasy ){` |
 |       - |  175 | `		/* The handle goes first: libcurl reads the lists during a transfer and` |
 |       - |  176 | `		 * must not be left pointing at freed memory even for an instant. */` |
-|     370 |  177 | `		curl_easy_cleanup(pCurl->pEasy);` |
-|     370 |  178 | `		pCurl->pEasy = 0;` |
-|     184 |  179 | `	}` |
-|     644 |  180 | `	CurlFreeSlists(pCurl);` |
-|     644 |  181 | `	CurlDropCallbacks(pCurl);` |
-|     644 |  182 | `	CurlFreeMime(pCurl);` |
-|     644 |  183 | `	SyBlobRelease(&pCurl->sBody);` |
-|     644 |  184 | `	if( pCurl->pPrivate ){` |
+|     378 |  177 | `		curl_easy_cleanup(pCurl->pEasy);` |
+|     378 |  178 | `		pCurl->pEasy = 0;` |
+|     187 |  179 | `	}` |
+|     738 |  180 | `	CurlFreeSlists(pCurl);` |
+|     738 |  181 | `	CurlDropCallbacks(pCurl);` |
+|     738 |  182 | `	CurlFreeMime(pCurl);` |
+|     738 |  183 | `	SyBlobRelease(&pCurl->sBody);` |
+|     738 |  184 | `	if( pCurl->pPrivate ){` |
 |       7 |  185 | `		ph7_release_value(pCurl->pVm,pCurl->pPrivate);` |
 |       7 |  186 | `		pCurl->pPrivate = 0;` |
 |       3 |  187 | `	}` |
-|     644 |  188 | `	if( pCurl->pShare ){` |
+|     738 |  188 | `	if( pCurl->pShare ){` |
 |     ! 0 |  189 | `		ph7_release_value(pCurl->pVm,pCurl->pShare);` |
 |     ! 0 |  190 | `		pCurl->pShare = 0;` |
 |     ! 0 |  191 | `	}` |
-|     644 |  192 | `}` |
+|     738 |  192 | `}` |
 |       - |  193 | `/*` |
 |       - |  194 | ` * Free every registered handle. Called from PH7_CurlVmReset (a reused VM --` |
 |       - |  195 | ` * the -S server's -- must not answer the next request through a connection the` |
 |       - |  196 | ` * previous one opened) and from PH7_CurlVmRelease before the allocator holding` |
 |       - |  197 | ` * the shells is torn down.` |
 |       - |  198 | ` */` |
-|    4974 |  199 | `static void CurlVmSweep(ph7_vm *pVm)` |
+|    5645 |  199 | `static void CurlVmSweep(ph7_vm *pVm)` |
 |       5 |  200 | `{` |
 |       - |  201 | `	phl_curl *pCurl;` |
 |       - |  202 | `	/* The multis first: one still holds the easy handles it was given, and` |
 |       - |  203 | `	 * curl_multi_remove_handle has to reach a CURL* that is still there. */` |
-|    4979 |  204 | `	PH7_CurlMultiVmSweep(&(*pVm));` |
-|    4979 |  205 | `	pCurl = (phl_curl *)pVm->pCurlHandles;` |
-|    5347 |  206 | `	while( pCurl ){` |
-|     370 |  207 | `		phl_curl *pNext = pCurl->pNext;` |
-|     370 |  208 | `		PH7_CurlBlankSlot(pCurl->pOwner);` |
-|     370 |  209 | `		CurlFreeHandle(pCurl);` |
-|     370 |  210 | `		SyMemBackendFree(&pVm->sAllocator,pCurl);` |
-|     370 |  211 | `		pCurl = pNext;` |
-|       2 |  212 | `	}` |
-|    4979 |  213 | `	pVm->pCurlHandles = 0;` |
+|    5650 |  204 | `	PH7_CurlMultiVmSweep(&(*pVm));` |
+|    5650 |  205 | `	pCurl = (phl_curl *)pVm->pCurlHandles;` |
+|    6024 |  206 | `	while( pCurl ){` |
+|     378 |  207 | `		phl_curl *pNext = pCurl->pNext;` |
+|     378 |  208 | `		PH7_CurlBlankSlot(pCurl->pOwner);` |
+|     378 |  209 | `		CurlFreeHandle(pCurl);` |
+|     378 |  210 | `		SyMemBackendFree(&pVm->sAllocator,pCurl);` |
+|     378 |  211 | `		pCurl = pNext;` |
+|       4 |  212 | `	}` |
+|    5650 |  213 | `	pVm->pCurlHandles = 0;` |
 |       - |  214 | `	/* And the shares last: one an easy handle was still attached to refuses to` |
 |       - |  215 | `	 * be cleaned up, so nothing may name it by now. */` |
-|    4979 |  216 | `	PH7_CurlShareVmSweep(&(*pVm));` |
-|    4979 |  217 | `}` |
+|    5650 |  216 | `	PH7_CurlShareVmSweep(&(*pVm));` |
+|    5650 |  217 | `}` |
 |      16 |  218 | `PH7_PRIVATE void PH7_CurlVmReset(ph7_vm *pVm)` |
 |     ! 0 |  219 | `{` |
 |      16 |  220 | `	CurlVmSweep(&(*pVm));` |
 |      16 |  221 | `}` |
-|    4958 |  222 | `PH7_PRIVATE void PH7_CurlVmRelease(ph7_vm *pVm)` |
+|    5629 |  222 | `PH7_PRIVATE void PH7_CurlVmRelease(ph7_vm *pVm)` |
 |       5 |  223 | `{` |
-|    4963 |  224 | `	CurlVmSweep(&(*pVm));` |
-|    4963 |  225 | `}` |
+|    5634 |  224 | `	CurlVmSweep(&(*pVm));` |
+|    5634 |  225 | `}` |
 |       - |  226 | `/*` |
 |       - |  227 | ` * Blank the hidden slot of the object whose record we are about to free, so` |
 |       - |  228 | ` * the object cannot outlive its record and then read freed memory to ask` |
@@ -243,67 +243,67 @@ Coverage: 1574/1814 lines (86.77%)
 |       - |  233 | `` * the same hidden `__res` slot, so the only thing that differs is what the`` |
 |       - |  234 | ` * pointer points AT.` |
 |       - |  235 | ` */` |
-|     416 |  236 | `PH7_PRIVATE void PH7_CurlBlankSlot(ph7_class_instance *pOwner)` |
-|       2 |  237 | `{` |
+|     426 |  236 | `PH7_PRIVATE void PH7_CurlBlankSlot(ph7_class_instance *pOwner)` |
+|       4 |  237 | `{` |
 |       - |  238 | `	SyString sAttr;` |
 |       - |  239 | `	ph7_value *pRes;` |
-|     418 |  240 | `	if( pOwner == 0 ){` |
-|     301 |  241 | `		return;` |
+|     430 |  240 | `	if( pOwner == 0 ){` |
+|     416 |  241 | `		return;` |
 |       - |  242 | `	}` |
-|     118 |  243 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
-|     118 |  244 | `	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);` |
-|     118 |  245 | `	if( pRes ){` |
-|     118 |  246 | `		PH7_MemObjRelease(pRes);` |
-|     118 |  247 | `		MemObjSetType(pRes,MEMOBJ_NULL);` |
-|      58 |  248 | `	}` |
-|     210 |  249 | `}` |
+|      16 |  243 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
+|      16 |  244 | `	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);` |
+|      16 |  245 | `	if( pRes ){` |
+|      16 |  246 | `		PH7_MemObjRelease(pRes);` |
+|      16 |  247 | `		MemObjSetType(pRes,MEMOBJ_NULL);` |
+|       7 |  248 | `	}` |
+|     217 |  249 | `}` |
 |       - |  250 | ``/* The record behind a `__res` slot value. */`` |
-|    2410 |  251 | `static void * CurlRecOfValue(ph7_value *pVal)` |
-|       1 |  252 | `{` |
-|    2411 |  253 | `	if( pVal == 0 \|\| !ph7_value_is_resource(pVal) ){` |
+|    2522 |  251 | `static void * CurlRecOfValue(ph7_value *pVal)` |
+|       4 |  252 | `{` |
+|    2526 |  253 | `	if( pVal == 0 \|\| !ph7_value_is_resource(pVal) ){` |
 |       3 |  254 | `		return 0;` |
 |       - |  255 | `	}` |
-|    2409 |  256 | `	return pVal->x.pOther;` |
-|    1216 |  257 | `}` |
-|    2410 |  258 | `PH7_PRIVATE void * PH7_CurlSlotOf(ph7_class_instance *pThis)` |
-|       1 |  259 | `{` |
+|    2524 |  256 | `	return pVal->x.pOther;` |
+|    1275 |  257 | `}` |
+|    2522 |  258 | `PH7_PRIVATE void * PH7_CurlSlotOf(ph7_class_instance *pThis)` |
+|       4 |  259 | `{` |
 |       - |  260 | `	SyString sAttr;` |
-|    2411 |  261 | `	if( pThis == 0 ){` |
+|    2526 |  261 | `	if( pThis == 0 ){` |
 |     ! 0 |  262 | `		return 0;` |
 |       - |  263 | `	}` |
-|    2411 |  264 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
-|    2411 |  265 | `	return CurlRecOfValue(PH7_ClassInstanceFetchAttr(pThis,&sAttr));` |
-|    1216 |  266 | `}` |
+|    2526 |  264 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
+|    2526 |  265 | `	return CurlRecOfValue(PH7_ClassInstanceFetchAttr(pThis,&sAttr));` |
+|    1275 |  266 | `}` |
 |       - |  267 | `/* Store one record in the receiver's hidden slot. */` |
-|     416 |  268 | `PH7_PRIVATE int PH7_CurlSlotAttach(ph7_class_instance *pThis,void *pRec)` |
-|       2 |  269 | `{` |
+|     426 |  268 | `PH7_PRIVATE int PH7_CurlSlotAttach(ph7_class_instance *pThis,void *pRec)` |
+|       4 |  269 | `{` |
 |       - |  270 | `	SyString sAttr;` |
 |       - |  271 | `	ph7_value *pRes;` |
-|     418 |  272 | `	if( pThis == 0 ){` |
+|     430 |  272 | `	if( pThis == 0 ){` |
 |     ! 0 |  273 | `		return -1;` |
 |       - |  274 | `	}` |
-|     418 |  275 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
-|     418 |  276 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
-|     418 |  277 | `	if( pRes == 0 ){` |
+|     430 |  275 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
+|     430 |  276 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
+|     430 |  277 | `	if( pRes == 0 ){` |
 |     ! 0 |  278 | `		return -1;` |
 |       - |  279 | `	}` |
-|     418 |  280 | `	PH7_MemObjRelease(pRes);` |
-|     418 |  281 | `	pRes->x.pOther = pRec;` |
-|     418 |  282 | `	MemObjSetType(pRes,MEMOBJ_RES);` |
-|     418 |  283 | `	return 0;` |
-|     210 |  284 | `}` |
-|    2014 |  285 | `static phl_curl * CurlOfInstance(ph7_class_instance *pThis)` |
-|       1 |  286 | `{` |
-|    2015 |  287 | `	return (phl_curl *)PH7_CurlSlotOf(pThis);` |
-|       1 |  288 | `}` |
-|     368 |  289 | `static int CurlAttach(ph7_class_instance *pThis,phl_curl *pCurl)` |
-|       2 |  290 | `{` |
-|     370 |  291 | `	if( PH7_CurlSlotAttach(pThis,(void *)pCurl) != 0 ){` |
+|     430 |  280 | `	PH7_MemObjRelease(pRes);` |
+|     430 |  281 | `	pRes->x.pOther = pRec;` |
+|     430 |  282 | `	MemObjSetType(pRes,MEMOBJ_RES);` |
+|     430 |  283 | `	return 0;` |
+|     217 |  284 | `}` |
+|    2100 |  285 | `static phl_curl * CurlOfInstance(ph7_class_instance *pThis)` |
+|       3 |  286 | `{` |
+|    2103 |  287 | `	return (phl_curl *)PH7_CurlSlotOf(pThis);` |
+|       3 |  288 | `}` |
+|     374 |  289 | `static int CurlAttach(ph7_class_instance *pThis,phl_curl *pCurl)` |
+|       4 |  290 | `{` |
+|     378 |  291 | `	if( PH7_CurlSlotAttach(pThis,(void *)pCurl) != 0 ){` |
 |     ! 0 |  292 | `		return -1;` |
 |       - |  293 | `	}` |
-|     370 |  294 | `	pCurl->pOwner = pThis;` |
-|     370 |  295 | `	return 0;` |
-|     186 |  296 | `}` |
+|     378 |  294 | `	pCurl->pOwner = pThis;` |
+|     378 |  295 | `	return 0;` |
+|     191 |  296 | `}` |
 |       - |  297 | `/*` |
 |       - |  298 | ` * The phl_curl behind a CurlHandle the multi unit was handed. The signature` |
 |       - |  299 | ` * table has already screened the class, so a miss is an engine-torn-down` |
@@ -319,16 +319,16 @@ Coverage: 1574/1814 lines (86.77%)
 |       - |  309 | ` * stays on the registry (the sweep frees it) because the slot is still` |
 |       - |  310 | ` * reachable while the instance is being torn down.` |
 |       - |  311 | ` */` |
-|     274 |  312 | `static void CurlInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|       1 |  313 | `{` |
-|     275 |  314 | `	phl_curl *pCurl = CurlOfInstance(pThis);` |
-|     137 |  315 | `	SXUNUSED(pVm);` |
-|     275 |  316 | `	if( pCurl == 0 \|\| pCurl->pOwner != pThis ){` |
+|     360 |  312 | `static void CurlInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|       3 |  313 | `{` |
+|     363 |  314 | `	phl_curl *pCurl = CurlOfInstance(pThis);` |
+|     180 |  315 | `	SXUNUSED(pVm);` |
+|     363 |  316 | `	if( pCurl == 0 \|\| pCurl->pOwner != pThis ){` |
 |     ! 0 |  317 | `		return;` |
 |       - |  318 | `	}` |
-|     275 |  319 | `	CurlFreeHandle(pCurl);` |
-|     275 |  320 | `	pCurl->pOwner = 0;` |
-|     138 |  321 | `}` |
+|     363 |  319 | `	CurlFreeHandle(pCurl);` |
+|     363 |  320 | `	pCurl->pOwner = 0;` |
+|     183 |  321 | `}` |
 |       - |  322 | `/*` |
 |       - |  323 | ` * php's clone_obj for CurlHandle: curl_easy_duphandle(). Every OPTION comes` |
 |       - |  324 | ` * across and nothing else does -- the copy starts with a clean error state` |
@@ -1192,19 +1192,19 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 1182 | `	{ "CURLOPT_SAFE_UPLOAD",                     -1 },` |
 |       - | 1183 | `};` |
 |       - | 1184 |  |
-|   44539 | 1185 | `static void CurlConstExpand(ph7_value *pVal,void *pUserData)` |
+|   48615 | 1185 | `static void CurlConstExpand(ph7_value *pVal,void *pUserData)` |
 |       3 | 1186 | `{` |
-|   44542 | 1187 | `	ph7_value_int64(pVal,((const struct CurlConstant *)pUserData)->iValue);` |
-|   44542 | 1188 | `}` |
+|   48618 | 1187 | `	ph7_value_int64(pVal,((const struct CurlConstant *)pUserData)->iValue);` |
+|   48618 | 1188 | `}` |
 |       - | 1189 |  |
-|    4962 | 1190 | `PH7_PRIVATE void PH7_RegisterCurlConstants(ph7_vm *pVm)` |
+|    5619 | 1190 | `PH7_PRIVATE void PH7_RegisterCurlConstants(ph7_vm *pVm)` |
 |       5 | 1191 | `{` |
 |       - | 1192 | `	sxu32 n;` |
-| 3374165 | 1193 | `	for( n = 0 ; n < SX_ARRAYSIZE(aCurlConst) ; ++n ){` |
-| 5053802 | 1194 | `		ph7_create_constant(&(*pVm),aCurlConst[n].zName,CurlConstExpand,` |
-| 3369198 | 1195 | `			(void *)&aCurlConst[n]);` |
-| 1684604 | 1196 | `	}` |
-|    4967 | 1197 | `}` |
+| 3820925 | 1193 | `	for( n = 0 ; n < SX_ARRAYSIZE(aCurlConst) ; ++n ){` |
+| 5719901 | 1194 | `		ph7_create_constant(&(*pVm),aCurlConst[n].zName,CurlConstExpand,` |
+| 3815301 | 1195 | `			(void *)&aCurlConst[n]);` |
+| 1904600 | 1196 | `	}` |
+|    5624 | 1197 | `}` |
 |       - | 1198 |  |
 |       - | 1199 | `/* ===== curl_version() ===== */` |
 |       - | 1200 |  |
@@ -1752,10 +1752,10 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 1742 | ` * A part's NAME reaches libcurl as a C string and stops at a NUL; its CONTENT` |
 |       - | 1743 | ` * does not, because the data calls carry a length. Both are php's answers.` |
 |       - | 1744 | ` */` |
-|     746 | 1745 | `static void CurlFreeParts(phl_curl *pCurl)` |
-|       2 | 1746 | `{` |
-|     748 | 1747 | `	phl_curl_part *pPart = pCurl->pParts;` |
-|     778 | 1748 | `	while( pPart ){` |
+|     838 | 1745 | `static void CurlFreeParts(phl_curl *pCurl)` |
+|       4 | 1746 | `{` |
+|     842 | 1747 | `	phl_curl_part *pPart = pCurl->pParts;` |
+|     872 | 1748 | `	while( pPart ){` |
 |      30 | 1749 | `		phl_curl_part *pNext = pPart->pNext;` |
 |      30 | 1750 | `		if( pPart->pHandle && pPart->pStream ){` |
 |      24 | 1751 | `			PH7_StreamCloseHandle(pPart->pStream,pPart->pHandle);` |
@@ -1763,25 +1763,25 @@ Coverage: 1574/1814 lines (86.77%)
 |      30 | 1753 | `		SyMemBackendFree(&pCurl->pVm->sAllocator,pPart);` |
 |      30 | 1754 | `		pPart = pNext;` |
 |     ! 0 | 1755 | `	}` |
-|     748 | 1756 | `	pCurl->pParts = 0;` |
-|     748 | 1757 | `}` |
+|     842 | 1756 | `	pCurl->pParts = 0;` |
+|     842 | 1757 | `}` |
 |       - | 1758 | `/*` |
 |       - | 1759 | ` * Drop the multipart body a handle carries: the mime first (libcurl reads the` |
 |       - | 1760 | ` * parts through it), then the streams those parts were reading, then the array` |
 |       - | 1761 | ` * kept for a rebuild.` |
 |       - | 1762 | ` */` |
-|     686 | 1763 | `static void CurlFreeMime(phl_curl *pCurl)` |
-|       2 | 1764 | `{` |
-|     688 | 1765 | `	if( pCurl->pMime ){` |
+|     778 | 1763 | `static void CurlFreeMime(phl_curl *pCurl)` |
+|       4 | 1764 | `{` |
+|     782 | 1765 | `	if( pCurl->pMime ){` |
 |      58 | 1766 | `		curl_mime_free(pCurl->pMime);` |
 |      58 | 1767 | `		pCurl->pMime = 0;` |
 |      29 | 1768 | `	}` |
-|     688 | 1769 | `	CurlFreeParts(pCurl);` |
-|     688 | 1770 | `	if( pCurl->pPostArray ){` |
+|     782 | 1769 | `	CurlFreeParts(pCurl);` |
+|     782 | 1770 | `	if( pCurl->pPostArray ){` |
 |      58 | 1771 | `		ph7_release_value(pCurl->pVm,pCurl->pPostArray);` |
 |      58 | 1772 | `		pCurl->pPostArray = 0;` |
 |      29 | 1773 | `	}` |
-|     688 | 1774 | `}` |
+|     782 | 1774 | `}` |
 |       - | 1775 | `/*` |
 |       - | 1776 | ` * The read side of a file part. A part whose stream never opened answers` |
 |       - | 1777 | ` * CURL_READFUNC_ABORT, which is php's answer for a missing or unreadable` |
@@ -1849,27 +1849,27 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 1839 | `	ph7_value *pArray,*pWorker,*pSize;` |
 |      24 | 1840 | `	curl_off_t nOut = -1;` |
 |      24 | 1841 | `	if( pStream == 0 \|\| pStream->xStat == 0 ){` |
-|       2 | 1842 | `		return -1;` |
+|     ! 0 | 1842 | `		return -1;` |
 |       - | 1843 | `	}` |
-|      22 | 1844 | `	pArray = ph7_new_array(pVm);` |
-|      22 | 1845 | `	pWorker = ph7_new_scalar(pVm);` |
-|      22 | 1846 | `	if( pArray == 0 \|\| pWorker == 0 ){` |
+|      24 | 1844 | `	pArray = ph7_new_array(pVm);` |
+|      24 | 1845 | `	pWorker = ph7_new_scalar(pVm);` |
+|      24 | 1846 | `	if( pArray == 0 \|\| pWorker == 0 ){` |
 |     ! 0 | 1847 | `		if( pArray ){ ph7_release_value(pVm,pArray); }` |
 |     ! 0 | 1848 | `		if( pWorker ){ ph7_release_value(pVm,pWorker); }` |
 |     ! 0 | 1849 | `		return -1;` |
 |       - | 1850 | `	}` |
-|      22 | 1851 | `	if( pStream->xStat(pHandle,pArray,pWorker) == PH7_OK ){` |
-|      22 | 1852 | `		pSize = ph7_array_fetch(pArray,"size",sizeof("size")-1);` |
-|      22 | 1853 | `		if( pSize ){` |
-|      22 | 1854 | `			ph7_int64 n = ph7_value_to_int64(pSize);` |
-|      22 | 1855 | `			if( n >= 0 ){` |
-|      22 | 1856 | `				nOut = (curl_off_t)n;` |
-|      11 | 1857 | `			}` |
-|      11 | 1858 | `		}` |
-|      11 | 1859 | `	}` |
-|      22 | 1860 | `	ph7_release_value(pVm,pArray);` |
-|      22 | 1861 | `	ph7_release_value(pVm,pWorker);` |
-|      22 | 1862 | `	return nOut;` |
+|      24 | 1851 | `	if( pStream->xStat(pHandle,pArray,pWorker) == PH7_OK ){` |
+|      24 | 1852 | `		pSize = ph7_array_fetch(pArray,"size",sizeof("size")-1);` |
+|      24 | 1853 | `		if( pSize ){` |
+|      24 | 1854 | `			ph7_int64 n = ph7_value_to_int64(pSize);` |
+|      24 | 1855 | `			if( n >= 0 ){` |
+|      24 | 1856 | `				nOut = (curl_off_t)n;` |
+|      12 | 1857 | `			}` |
+|      12 | 1858 | `		}` |
+|      12 | 1859 | `	}` |
+|      24 | 1860 | `	ph7_release_value(pVm,pArray);` |
+|      24 | 1861 | `	ph7_release_value(pVm,pWorker);` |
+|      24 | 1862 | `	return nOut;` |
 |      12 | 1863 | `}` |
 |       - | 1864 | `/*` |
 |       - | 1865 | ` * Open one CURLFile's name and hand libcurl a part that reads it.` |
@@ -1918,13 +1918,13 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 1908 | `			/* A wrapper with no stat of its own -- php://temp, data:// --` |
 |       - | 1909 | `			 * still knows where its end is, and php declares a length for` |
 |       - | 1910 | `			 * those too. Only a device that can do neither goes out chunked. */` |
-|       2 | 1911 | `			if( pStream->xSeek(pPart->pHandle,0,2/*SEEK_END*/) == PH7_OK ){` |
-|       2 | 1912 | `				ph7_int64 nEnd = pStream->xTell(pPart->pHandle);` |
-|       2 | 1913 | `				if( pStream->xSeek(pPart->pHandle,0,0/*SEEK_SET*/) == PH7_OK && nEnd >= 0 ){` |
-|       2 | 1914 | `					pPart->nSize = (curl_off_t)nEnd;` |
-|       1 | 1915 | `				}` |
-|       1 | 1916 | `			}` |
-|       1 | 1917 | `		}` |
+|     ! 0 | 1911 | `			if( pStream->xSeek(pPart->pHandle,0,2/*SEEK_END*/) == PH7_OK ){` |
+|     ! 0 | 1912 | `				ph7_int64 nEnd = pStream->xTell(pPart->pHandle);` |
+|     ! 0 | 1913 | `				if( pStream->xSeek(pPart->pHandle,0,0/*SEEK_SET*/) == PH7_OK && nEnd >= 0 ){` |
+|     ! 0 | 1914 | `					pPart->nSize = (curl_off_t)nEnd;` |
+|     ! 0 | 1915 | `				}` |
+|     ! 0 | 1916 | `			}` |
+|     ! 0 | 1917 | `		}` |
 |      12 | 1918 | `	}` |
 |      30 | 1919 | `	pPart->pNext = pCurl->pParts;` |
 |      30 | 1920 | `	pCurl->pParts = pPart;` |
@@ -2404,21 +2404,21 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 2394 | ` * (php's "Cannot directly construct ..."), and this is the door the refusal` |
 |       - | 2395 | ` * leaves open: the engine's own creation step, never the opcode's.` |
 |       - | 2396 | ` */` |
-|     408 | 2397 | `PH7_PRIVATE ph7_class_instance * PH7_CurlNewInstance(ph7_vm *pVm,const char *zName,int nName)` |
-|       2 | 2398 | `{` |
-|     410 | 2399 | `	ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,0,0);` |
-|     410 | 2400 | `	return pClass ? PH7_NewClassInstance(pVm,pClass) : 0;` |
-|       2 | 2401 | `}` |
+|     418 | 2397 | `PH7_PRIVATE ph7_class_instance * PH7_CurlNewInstance(ph7_vm *pVm,const char *zName,int nName)` |
+|       4 | 2398 | `{` |
+|     422 | 2399 | `	ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,0,0);` |
+|     422 | 2400 | `	return pClass ? PH7_NewClassInstance(pVm,pClass) : 0;` |
+|       4 | 2401 | `}` |
 |       - | 2402 |  |
 |       - | 2403 | `/* CurlHandle\|false curl_init(?string $url = null) */` |
-|     334 | 2404 | `static int vm_builtin_curl_init(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 | 2405 | `{` |
-|     336 | 2406 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     340 | 2404 | `static int vm_builtin_curl_init(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       4 | 2405 | `{` |
+|     344 | 2406 | `	ph7_vm *pVm = pCtx->pVm;` |
 |       - | 2407 | `	ph7_class_instance *pThis;` |
 |       - | 2408 | `	phl_curl *pCurl;` |
-|     336 | 2409 | `	const char *zUrl = 0;` |
-|     336 | 2410 | `	int nUrl = 0;` |
-|     336 | 2411 | `	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){` |
+|     344 | 2409 | `	const char *zUrl = 0;` |
+|     344 | 2410 | `	int nUrl = 0;` |
+|     344 | 2411 | `	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){` |
 |     252 | 2412 | `		zUrl = ph7_value_to_string(apArg[0],&nUrl);` |
 |       - | 2413 | `		/*` |
 |       - | 2414 | `		 * php screens the URL for an embedded NUL before libcurl sees it,` |
@@ -2435,22 +2435,22 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 2425 | `				"curl_init(): cURL option must not contain any null bytes");` |
 |       - | 2426 | `		}` |
 |     124 | 2427 | `	}` |
-|     334 | 2428 | `	pCurl = CurlNewHandle(pVm);` |
-|     334 | 2429 | `	if( pCurl == 0 ){` |
+|     342 | 2428 | `	pCurl = CurlNewHandle(pVm);` |
+|     342 | 2429 | `	if( pCurl == 0 ){` |
 |     ! 0 | 2430 | `		ph7_result_bool(pCtx,0);` |
 |     ! 0 | 2431 | `		return PH7_OK;` |
 |       - | 2432 | `	}` |
-|     334 | 2433 | `	pThis = PH7_CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);` |
-|     334 | 2434 | `	if( pThis == 0 \|\| CurlAttach(pThis,pCurl) != 0 ){` |
+|     342 | 2433 | `	pThis = PH7_CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);` |
+|     342 | 2434 | `	if( pThis == 0 \|\| CurlAttach(pThis,pCurl) != 0 ){` |
 |     ! 0 | 2435 | `		ph7_result_bool(pCtx,0);` |
 |     ! 0 | 2436 | `		return PH7_OK;` |
 |       - | 2437 | `	}` |
-|     334 | 2438 | `	if( zUrl ){` |
+|     342 | 2438 | `	if( zUrl ){` |
 |     250 | 2439 | `		curl_easy_setopt(pCurl->pEasy,CURLOPT_URL,zUrl);` |
 |     124 | 2440 | `	}` |
-|     334 | 2441 | `	PH7_NativeResultObject(pCtx,pThis);` |
-|     334 | 2442 | `	return PH7_OK;` |
-|     169 | 2443 | `}` |
+|     342 | 2441 | `	PH7_NativeResultObject(pCtx,pThis);` |
+|     342 | 2442 | `	return PH7_OK;` |
+|     174 | 2443 | `}` |
 |       - | 2444 | `/*` |
 |       - | 2445 | ` * void curl_close(CurlHandle $handle)` |
 |       - | 2446 | ` *` |
@@ -4055,7 +4055,7 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 4045 |  |
 |       - | 4046 | `/* ===== Installation ===== */` |
 |       - | 4047 |  |
-|    5740 | 4048 | `PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)` |
+|    6721 | 4048 | `PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)` |
 |       5 | 4049 | `{` |
 |       - | 4050 | `	static const struct {` |
 |       - | 4051 | `		const char *zName;` |
@@ -4139,46 +4139,51 @@ Coverage: 1574/1814 lines (86.77%)
 |       - | 4129 | `		  vm_builtin_CURLStringFile_construct }` |
 |       - | 4130 | `	};` |
 |       - | 4131 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|       - | 4132 | `		{ "CurlHandle", 0, 0,` |
-|       - | 4133 | `		  PH7_CLASS_FINAL\|PH7_CLASS_NOINSTANTIATE\|PH7_CLASS_NOSERIALIZE,` |
-|       - | 4134 | `		  0, 0, 0, 0,` |
-|       - | 4135 | `		  aProp, SX_ARRAYSIZE(aProp),` |
-|       - | 4136 | `		  CurlInstanceRelease, 0, 0 },` |
-|       - | 4137 | `		{ "CURLFile", 0, 0, PH7_CLASS_NOSERIALIZE,` |
-|       - | 4138 | `		  aFileMethod, SX_ARRAYSIZE(aFileMethod), 0, 0,` |
-|       - | 4139 | `		  aFileProp, SX_ARRAYSIZE(aFileProp), 0, 0, 0 },` |
-|       - | 4140 | `		{ "CURLStringFile", 0, 0, 0,` |
-|       - | 4141 | `		  aStrFileMethod, SX_ARRAYSIZE(aStrFileMethod), 0, 0,` |
-|       - | 4142 | `		  aStrFileProp, SX_ARRAYSIZE(aStrFileProp), 0, 0, 0 }` |
-|       - | 4143 | `	};` |
-|       - | 4144 | `	sxu32 n;` |
-|       - | 4145 | `	sxi32 rc;` |
-|    5745 | 4146 | `	PH7_CurlGlobalInit();` |
-|    5745 | 4147 | `	pVm->pCurlHandles = 0;` |
-|  114805 | 4148 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){` |
-|  109065 | 4149 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|   54535 | 4150 | `	}` |
-|    5745 | 4151 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|    5745 | 4152 | `	if( rc == SXRET_OK ){` |
-|    5745 | 4153 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlHandle",sizeof("CurlHandle")-1,FALSE,0);` |
-|    5745 | 4154 | `		if( pClass ){` |
-|    5745 | 4155 | `			pClass->zNewRefusal =` |
-|       - | 4156 | `				"Cannot directly construct CurlHandle, use curl_init() instead";` |
-|       - | 4157 | ``			/* php's clone_obj: `clone $h` is curl_easy_duphandle(), which is`` |
-|       - | 4158 | `			 * why this class alone is not PH7_CLASS_NOCLONE. Stated on the` |
-|       - | 4159 | `			 * MOUNTED class, like every other handler hook. */` |
-|    5745 | 4160 | `			pClass->xClone = CurlInstanceClone;` |
-|    2870 | 4161 | `		}` |
-|    2870 | 4162 | `	}` |
-|    5745 | 4163 | `	if( rc == SXRET_OK ){` |
-|       - | 4164 | `		/* The multi and share halves, in their own unit (vm_curl_multi.c). */` |
-|    5745 | 4165 | `		rc = PH7_VmInstallCurlMulti(&(*pVm));` |
-|    2870 | 4166 | `	}` |
-|    5745 | 4167 | `	return rc;` |
-|       5 | 4168 | `}` |
-|       - | 4169 |  |
-|       - | 4170 | `#else` |
-|       - | 4171 | `/* Ensure non-empty translation unit when curl is disabled (MSVC C4206) */` |
-|       - | 4172 | `typedef int vm_curl_unused;` |
-|       - | 4173 | `#endif /* PH7_ENABLE_CURL */` |
+|       - | 4132 | `		/* PH7_CLASS_HANDLE_ID: php's cast_object for this class answers the object` |
+|       - | 4133 | ``		 * handle for `(int)`, silently -- see the flag. */`` |
+|       - | 4134 | `		{ "CurlHandle", 0, 0,` |
+|       - | 4135 | `		  PH7_CLASS_FINAL\|PH7_CLASS_NOINSTANTIATE\|PH7_CLASS_NOSERIALIZE\|PH7_CLASS_HANDLE_ID,` |
+|       - | 4136 | `		  0, 0, 0, 0,` |
+|       - | 4137 | `		  aProp, SX_ARRAYSIZE(aProp),` |
+|       - | 4138 | `		  CurlInstanceRelease, 0, 0 },` |
+|       - | 4139 | `		{ "CURLFile", 0, 0, PH7_CLASS_NOSERIALIZE,` |
+|       - | 4140 | `		  aFileMethod, SX_ARRAYSIZE(aFileMethod), 0, 0,` |
+|       - | 4141 | `		  aFileProp, SX_ARRAYSIZE(aFileProp), 0, 0, 0 },` |
+|       - | 4142 | `		{ "CURLStringFile", 0, 0, 0,` |
+|       - | 4143 | `		  aStrFileMethod, SX_ARRAYSIZE(aStrFileMethod), 0, 0,` |
+|       - | 4144 | `		  aStrFileProp, SX_ARRAYSIZE(aStrFileProp), 0, 0, 0 }` |
+|       - | 4145 | `	};` |
+|       - | 4146 | `	sxu32 n;` |
+|       - | 4147 | `	sxi32 rc;` |
+|    6726 | 4148 | `	PH7_CurlGlobalInit();` |
+|    6726 | 4149 | `	pVm->pCurlHandles = 0;` |
+|  134425 | 4150 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){` |
+|  127704 | 4151 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|   63769 | 4152 | `	}` |
+|    6726 | 4153 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    6726 | 4154 | `	if( rc == SXRET_OK ){` |
+|    6726 | 4155 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlHandle",sizeof("CurlHandle")-1,FALSE,0);` |
+|    6726 | 4156 | `		if( pClass ){` |
+|    6726 | 4157 | `			pClass->zNewRefusal =` |
+|       - | 4158 | `				"Cannot directly construct CurlHandle, use curl_init() instead";` |
+|       - | 4159 | ``			/* php's clone_obj: `clone $h` is curl_easy_duphandle(), which is`` |
+|       - | 4160 | `			 * why this class alone is not PH7_CLASS_NOCLONE. Stated on the` |
+|       - | 4161 | `			 * MOUNTED class, like every other handler hook. */` |
+|    6726 | 4162 | `			pClass->xClone = CurlInstanceClone;` |
+|       - | 4163 | `			/* ...and php's compare handler, which recognizes nothing: a handle is` |
+|       - | 4164 | `			 * UNCOMPARABLE with everything but itself. */` |
+|    6726 | 4165 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|    3356 | 4166 | `		}` |
+|    3356 | 4167 | `	}` |
+|    6726 | 4168 | `	if( rc == SXRET_OK ){` |
+|       - | 4169 | `		/* The multi and share halves, in their own unit (vm_curl_multi.c). */` |
+|    6726 | 4170 | `		rc = PH7_VmInstallCurlMulti(&(*pVm));` |
+|    3356 | 4171 | `	}` |
+|    6726 | 4172 | `	return rc;` |
+|       5 | 4173 | `}` |
 |       - | 4174 |  |
+|       - | 4175 | `#else` |
+|       - | 4176 | `/* Ensure non-empty translation unit when curl is disabled (MSVC C4206) */` |
+|       - | 4177 | `typedef int vm_curl_unused;` |
+|       - | 4178 | `#endif /* PH7_ENABLE_CURL */` |
+|       - | 4179 |  |

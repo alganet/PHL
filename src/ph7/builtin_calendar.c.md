@@ -632,9 +632,9 @@ Coverage: 767/822 lines (93.31%)
 |       - |  622 | `` * past the Jewish maximum) still has a weekday, and why the `+ 8` is there: C`` |
 |       - |  623 | ` * gives a negative remainder for a negative operand.` |
 |       - |  624 | ` */` |
-|   10798 |  625 | `static int CalDayOfWeek(sxi64 sdn)` |
+|   10802 |  625 | `static int CalDayOfWeek(sxi64 sdn)` |
 |       1 |  626 | `{` |
-|   10799 |  627 | `	return (int)(sdn % 7 + 8) % 7;` |
+|   10803 |  627 | `	return (int)(sdn % 7 + 8) % 7;` |
 |       1 |  628 | `}` |
 |       - |  629 | `static const char * const azDayShort[7] = {` |
 |       - |  630 | `	"Sun","Mon","Tue","Wed","Thu","Fri","Sat"` |
@@ -1162,311 +1162,312 @@ Coverage: 767/822 lines (93.31%)
 |   10705 | 1152 | `	return PH7_OK;` |
 |    5356 | 1153 | `}` |
 |       - | 1154 | `/*` |
-|       - | 1155 | ` * int\|string jddayofweek(int $julian_day, int $mode = CAL_DOW_DAYNO)` |
+|       - | 1155 | ` * string\|int jddayofweek(int $julian_day, int $mode = CAL_DOW_DAYNO)` |
 |       - | 1156 | ` *  Only two modes answer a name; every other value -- negative, unknown, out` |
-|       - | 1157 | ` *  of range -- falls through to the day NUMBER.` |
-|       - | 1158 | ` */` |
-|     102 | 1159 | `PH7_PRIVATE int PH7_builtin_jddayofweek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1160 | `{` |
-|     103 | 1161 | `	sxi64 iMode = 0;` |
-|       - | 1162 | `	int dow;` |
-|     103 | 1163 | `	if( nArg < 1 ){` |
-|     ! 0 | 1164 | `		ph7_result_int(pCtx,0);` |
-|     ! 0 | 1165 | `		return PH7_OK;` |
-|       - | 1166 | `	}` |
-|     103 | 1167 | `	dow = CalDayOfWeek(ph7_value_to_int64(apArg[0]));` |
-|     103 | 1168 | `	if( nArg > 1 ){` |
-|      75 | 1169 | `		iMode = ph7_value_to_int64(apArg[1]);` |
-|      37 | 1170 | `	}` |
-|     103 | 1171 | `	if( iMode == 1 ){` |
-|      37 | 1172 | `		ph7_result_string(pCtx,azDayLong[dow],-1);` |
-|      85 | 1173 | `	}else if( iMode == 2 ){` |
-|      27 | 1174 | `		ph7_result_string(pCtx,azDayShort[dow],-1);` |
-|      14 | 1175 | `	}else{` |
-|      41 | 1176 | `		ph7_result_int(pCtx,dow);` |
-|       - | 1177 | `	}` |
-|     103 | 1178 | `	return PH7_OK;` |
-|      52 | 1179 | `}` |
-|       - | 1180 | `/*` |
-|       - | 1181 | ` * string jdmonthname(int $julian_day, int $mode)` |
-|       - | 1182 | ` *  $mode picks the CALENDAR as well as the spelling, and its six values are` |
-|       - | 1183 | ` *  not in the order the calendar ids are: 0/1 Gregorian short/long, 2/3` |
-|       - | 1184 | ` *  Julian, 4 Jewish, 5 French. Anything else is the Gregorian short name. A` |
-|       - | 1185 | ` *  day the chosen calendar cannot place lands on month slot 0, which is the` |
-|       - | 1186 | ` *  empty string in every table.` |
-|       - | 1187 | ` */` |
-|     122 | 1188 | `PH7_PRIVATE int PH7_builtin_jdmonthname(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1189 | `{` |
-|       - | 1190 | `	const char *zMonth;` |
-|       - | 1191 | `	sxi64 iJd,iMode;` |
-|       - | 1192 | `	int year,month,day;` |
-|     123 | 1193 | `	if( nArg < 2 ){` |
-|     ! 0 | 1194 | `		ph7_result_string(pCtx,"",0);` |
-|     ! 0 | 1195 | `		return PH7_OK;` |
-|       - | 1196 | `	}` |
-|     123 | 1197 | `	iJd = ph7_value_to_int64(apArg[0]);` |
-|     123 | 1198 | `	iMode = ph7_value_to_int64(apArg[1]);` |
-|     123 | 1199 | `	switch( iMode ){` |
-|      18 | 1200 | `		case 1:` |
-|      37 | 1201 | `			CalSdnToGregorian(iJd,&year,&month,&day);` |
-|      37 | 1202 | `			zMonth = azMonthLong[month];` |
-|      37 | 1203 | `			break;` |
-|       7 | 1204 | `		case 2:` |
-|      15 | 1205 | `			CalSdnToJulian(iJd,&year,&month,&day);` |
-|      15 | 1206 | `			zMonth = azMonthShort[month];` |
-|      15 | 1207 | `			break;` |
-|       7 | 1208 | `		case 3:` |
-|      15 | 1209 | `			CalSdnToJulian(iJd,&year,&month,&day);` |
-|      15 | 1210 | `			zMonth = azMonthLong[month];` |
-|      15 | 1211 | `			break;` |
-|      10 | 1212 | `		case 4:` |
-|      21 | 1213 | `			CalSdnToJewish(iJd,&year,&month,&day);` |
-|      21 | 1214 | `			zMonth = year > 0 ? CAL_JEWISH_MONTH_NAME(year)[month] : "";` |
-|      21 | 1215 | `			break;` |
-|       7 | 1216 | `		case 5:` |
-|      15 | 1217 | `			CalSdnToFrench(iJd,&year,&month,&day);` |
-|      15 | 1218 | `			zMonth = azFrenchMonth[month];` |
-|      15 | 1219 | `			break;` |
-|      12 | 1220 | `		default:` |
-|      25 | 1221 | `			CalSdnToGregorian(iJd,&year,&month,&day);` |
-|      25 | 1222 | `			zMonth = azMonthShort[month];` |
-|      24 | 1223 | `			break;` |
-|       - | 1224 | `	}` |
-|     123 | 1225 | `	ph7_result_string(pCtx,zMonth,-1);` |
-|     123 | 1226 | `	return PH7_OK;` |
-|      62 | 1227 | `}` |
-|       - | 1228 |  |
-|       - | 1229 | `/* ------------------------------------------------------------------ *` |
-|       - | 1230 | ` *  The clock                                                          *` |
-|       - | 1231 | ` * ------------------------------------------------------------------ */` |
-|       - | 1232 | `/*` |
-|       - | 1233 | ` * These four are the only doors this extension has onto a clock, and both of` |
-|       - | 1234 | ` * them are the C LIBRARY's rather than the engine's: php breaks a timestamp` |
-|       - | 1235 | ` * down with localtime() and builds one with mktime(), so unixtojd() and` |
-|       - | 1236 | `` * easter_date() read the PROCESS timezone and not `date.timezone`. Reproduced`` |
-|       - | 1237 | ` * that way here -- an engine-local UTC breakdown would answer differently from` |
-|       - | 1238 | ` * php on any box that is not set to UTC, which is a divergence nobody asked` |
-|       - | 1239 | ` * for.` |
-|       - | 1240 | ` */` |
-|       - | 1241 | `#define CAL_SECS_PER_DAY (24 * 3600)` |
-|       - | 1242 | `/* The serial day number of 1 January 1970. */` |
-|       - | 1243 | `#define CAL_UNIX_EPOCH_JD 2440588` |
-|       - | 1244 | `/* easter_days()/easter_date()'s four $mode policies, spelled here as well as` |
-|       - | 1245 | ` * in the constant table (constant.c) because the computation branches on them. */` |
-|       - | 1246 | `#define CAL_EASTER_DEFAULT          0` |
-|       - | 1247 | `#define CAL_EASTER_ROMAN            1` |
-|       - | 1248 | `#define CAL_EASTER_ALWAYS_GREGORIAN 2` |
-|       - | 1249 | `#define CAL_EASTER_ALWAYS_JULIAN    3` |
-|       - | 1250 | `/*` |
-|       - | 1251 | ` * localtime(3) into a caller-supplied buffer. The plain form is what php` |
-|       - | 1252 | ` * calls, but MSVC deprecates it and this tree builds with /WX, so the two` |
-|       - | 1253 | ` * reentrant spellings are used instead -- and they take their arguments in` |
-|       - | 1254 | ` * OPPOSITE orders, which is why this wrapper exists at all. Same split as` |
-|       - | 1255 | ` * src/phl/server.c.` |
-|       - | 1256 | ` */` |
-|   15340 | 1257 | `static struct tm *CalLocalTime(const time_t *pWhen,struct tm *pOut)` |
-|       1 | 1258 | `{` |
-|       - | 1259 | `#ifdef __WINNT__` |
-|       1 | 1260 | `	return localtime_s(pOut,pWhen) == 0 ? pOut : 0;` |
-|       - | 1261 | `#else` |
-|   15340 | 1262 | `	return localtime_r(pWhen,pOut);` |
-|       - | 1263 | `#endif` |
-|       1 | 1264 | `}` |
-|       - | 1265 | `/*` |
-|       - | 1266 | `` * `a + b` with php's own wrap. easter_days()'s year screen admits values up to`` |
-|       - | 1267 | `` * `LONG_MAX / 5 * 4`, which is exactly the headroom the GREGORIAN branch's`` |
-|       - | 1268 | `` * `year + year/4 - year/100 + year/400` needs -- but the JULIAN branch adds`` |
-|       - | 1269 | `` * `year + year/4 + 5`, i.e. 1.25 * year, and that overflows for the last two`` |
-|       - | 1270 | ` * years the screen lets through. php's answer for those two is built on the` |
-|       - | 1271 | `` * wrap (`easter_days(LONG_MAX/5*4, CAL_EASTER_ALWAYS_JULIAN)` is 4), so the`` |
-|       - | 1272 | ` * wrap is reproduced here in UNSIGNED arithmetic rather than left to signed` |
-|       - | 1273 | ` * overflow -- which is undefined, and which this tree's UBSan build traps.` |
-|       - | 1274 | ` */` |
-|     684 | 1275 | `static sxi64 CalWrapAdd(sxi64 a,sxi64 b)` |
-|       1 | 1276 | `{` |
-|     685 | 1277 | `	sxu64 u = (sxu64)a + (sxu64)b;` |
-|     685 | 1278 | `	if( u >= ((sxu64)1 << 63) ){` |
-|     ! 0 | 1279 | `		return (sxi64)(u - ((sxu64)1 << 63)) + SMALLEST_INT64;` |
-|       - | 1280 | `	}` |
-|     685 | 1281 | `	return (sxi64)u;` |
-|     343 | 1282 | `}` |
-|       - | 1283 | `/*` |
-|       - | 1284 | ` * int\|false unixtojd(?int $timestamp = null)` |
-|       - | 1285 | ` *  Not the plain inverse of jdtounix(): the timestamp is broken down into a` |
-|       - | 1286 | ` *  local calendar date first, and that date is what gets converted.` |
-|       - | 1287 | ` */` |
-|   15342 | 1288 | `PH7_PRIVATE int PH7_builtin_unixtojd(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1289 | `{` |
-|       - | 1290 | `	struct tm sTm,*pTm;` |
-|       - | 1291 | `	time_t ts;` |
-|   15343 | 1292 | `	if( nArg < 1 \|\| ph7_value_is_null(apArg[0]) ){` |
-|       5 | 1293 | `		time(&ts);` |
-|       3 | 1294 | `	}else{` |
-|   15339 | 1295 | `		sxi64 iTs = ph7_value_to_int64(apArg[0]);` |
-|   15339 | 1296 | `		if( iTs < 0 ){` |
-|       7 | 1297 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|       - | 1298 | `				"unixtojd(): Argument #1 ($timestamp) must be greater than or equal to 0");` |
-|       - | 1299 | `		}` |
-|   15333 | 1300 | `		ts = (time_t)iTs;` |
-|       - | 1301 | `	}` |
-|   15337 | 1302 | `	pTm = CalLocalTime(&ts,&sTm);` |
-|   15337 | 1303 | `	if( pTm == 0 ){` |
-|       - | 1304 | `		/* The one FALSE in this extension: a timestamp the platform's own` |
-|       - | 1305 | `		 * breakdown will not accept. */` |
-|     ! 0 | 1306 | `		ph7_result_bool(pCtx,0);` |
-|     ! 0 | 1307 | `		return PH7_OK;` |
-|       - | 1308 | `	}` |
-|   23005 | 1309 | `	ph7_result_int64(pCtx,` |
-|   15336 | 1310 | `		CalGregorianToSdn(pTm->tm_year + 1900,pTm->tm_mon + 1,pTm->tm_mday));` |
-|   15337 | 1311 | `	return PH7_OK;` |
-|    7672 | 1312 | `}` |
-|       - | 1313 | `/*` |
-|       - | 1314 | ` * int jdtounix(int $julian_day)` |
-|       - | 1315 | ` *  Pure arithmetic, so the answer is always midnight UTC. Its ValueError is` |
-|       - | 1316 | ` *  the only one in this extension that names neither the function nor the` |
-|       - | 1317 | ` *  argument -- php raises it with zend_value_error() rather than the argument` |
-|       - | 1318 | ` *  helper, and the wording says "jday" rather than "$julian_day".` |
-|       - | 1319 | ` */` |
-|    8026 | 1320 | `PH7_PRIVATE int PH7_builtin_jdtounix(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1321 | `{` |
-|       - | 1322 | `	sxi64 uday;` |
-|    8027 | 1323 | `	if( nArg < 1 ){` |
-|       - | 1324 | `		/* Arity is enforced from aBuiltinSig[] before the call. */` |
-|     ! 0 | 1325 | `		ph7_result_int(pCtx,0);` |
-|     ! 0 | 1326 | `		return PH7_OK;` |
-|       - | 1327 | `	}` |
-|    8027 | 1328 | `	uday = ph7_value_to_int64(apArg[0]);` |
-|       - | 1329 | `	/* The lower test runs first, so the subtraction below it cannot underflow. */` |
-|    8026 | 1330 | `	if( uday < CAL_UNIX_EPOCH_JD` |
-|    8023 | 1331 | `	 \|\| (uday - CAL_UNIX_EPOCH_JD) > (CAL_I64_MAX / CAL_SECS_PER_DAY) ){` |
-|      13 | 1332 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|       - | 1333 | `			"jday must be between %d and %qd",CAL_UNIX_EPOCH_JD,` |
-|       - | 1334 | `			CAL_I64_MAX / CAL_SECS_PER_DAY + CAL_UNIX_EPOCH_JD);` |
-|       - | 1335 | `	}` |
-|    8015 | 1336 | `	uday -= CAL_UNIX_EPOCH_JD;` |
-|    8015 | 1337 | `	ph7_result_int64(pCtx,uday * CAL_SECS_PER_DAY);` |
-|    8015 | 1338 | `	return PH7_OK;` |
-|    4014 | 1339 | `}` |
-|       - | 1340 | `/*` |
-|       - | 1341 | ` * The Easter computation both easter_days() and easter_date() run, from Simon` |
-|       - | 1342 | `` * Kershaw's by way of php. `bGm` picks which of the two answers comes out: the`` |
-|       - | 1343 | ` * number of days after 21 March, or the timestamp of midnight that morning.` |
-|       - | 1344 | ` *` |
-|       - | 1345 | ` * $mode is not a choice between two rules but between four POLICIES, and the` |
-|       - | 1346 | ` * default is date-dependent: Julian up to 1582, Julian again for 1583-1752` |
-|       - | 1347 | ` * (England kept the old calendar that long), Gregorian after that.` |
-|       - | 1348 | ` */` |
-|    2700 | 1349 | `static int CalEaster(ph7_context *pCtx,int nArg,ph7_value **apArg,int bGm)` |
-|       1 | 1350 | `{` |
-|    2701 | 1351 | `	const char *zFn = bGm ? "easter_date" : "easter_days";` |
-|    2701 | 1352 | `	const sxi64 maxYear = (CAL_I64_MAX / 5) * 4;` |
-|    2701 | 1353 | `	sxi64 year = 0,method = 0;` |
-|       - | 1354 | `	sxi64 golden,solar,lunar,pfm,dom,tmp,easter;` |
-|    2701 | 1355 | `	int bYearNull = 1;` |
-|    2701 | 1356 | `	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){` |
-|    2697 | 1357 | `		year = ph7_value_to_int64(apArg[0]);` |
-|    2697 | 1358 | `		bYearNull = 0;` |
-|    1348 | 1359 | `	}` |
-|    2701 | 1360 | `	if( nArg > 1 ){` |
-|      95 | 1361 | `		method = ph7_value_to_int64(apArg[1]);` |
-|      47 | 1362 | `	}` |
-|    2701 | 1363 | `	if( bYearNull ){` |
-|       - | 1364 | `		/* Default to the current year, read the same way php reads it. */` |
-|       - | 1365 | `		struct tm sNow,*pTm;` |
-|       - | 1366 | `		time_t now;` |
-|       5 | 1367 | `		time(&now);` |
-|       5 | 1368 | `		pTm = CalLocalTime(&now,&sNow);` |
-|       5 | 1369 | `		year = pTm == 0 ? 1900 : 1900 + pTm->tm_year;` |
-|       2 | 1370 | `	}` |
-|    2701 | 1371 | `	if( year <= 0 \|\| year > maxYear ){` |
-|      22 | 1372 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|       7 | 1373 | `			"%s(): Argument #1 ($year) must be between 1 and %qd",zFn,maxYear);` |
-|       - | 1374 | `	}` |
-|    2687 | 1375 | `	if( bGm ){` |
-|       - | 1376 | `		/* The timestamp form narrows the year twice more: there is no timestamp` |
-|       - | 1377 | `		 * before 1970, and php stops at the year two billion. */` |
-|     527 | 1378 | `		if( year < 1970 ){` |
-|       5 | 1379 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|       - | 1380 | `				"easter_date(): Argument #1 ($year) must be a year after 1970 (inclusive)");` |
-|       - | 1381 | `		}` |
-|     523 | 1382 | `		if( year > 2000000000 ){` |
-|       5 | 1383 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|       - | 1384 | `				"easter_date(): Argument #1 ($year) must be a year before 2.000.000.000 (inclusive)");` |
-|       - | 1385 | `		}` |
-|     259 | 1386 | `	}` |
-|    2679 | 1387 | `	golden = (year % 19) + 1;                       /* the Golden number */` |
-|    2678 | 1388 | `	if( (year <= 1582 && method != CAL_EASTER_ALWAYS_GREGORIAN)` |
-|    2673 | 1389 | `	 \|\| (year >= 1583 && year <= 1752 && method != CAL_EASTER_ROMAN` |
-|     327 | 1390 | `	     && method != CAL_EASTER_ALWAYS_GREGORIAN)` |
-|    2509 | 1391 | `	 \|\| method == CAL_EASTER_ALWAYS_JULIAN ){` |
-|       - | 1392 | `		/* JULIAN CALENDAR */` |
-|       - | 1393 | `		/* CalWrapAdd(): 1.25 * year overflows at the top of the year screen,` |
-|       - | 1394 | `		 * and php's answer there is the wrapped one. */` |
-|     343 | 1395 | `		dom = CalWrapAdd(CalWrapAdd(year,year / 4),5) % 7;  /* "Dominical number" */` |
-|     343 | 1396 | `		if( dom < 0 ){` |
-|     ! 0 | 1397 | `			dom += 7;` |
-|     ! 0 | 1398 | `		}` |
-|     343 | 1399 | `		pfm = (3 - (11 * golden) - 7) % 30;         /* the Paschal full moon */` |
-|     343 | 1400 | `		if( pfm < 0 ){` |
-|     327 | 1401 | `			pfm += 30;` |
-|     163 | 1402 | `		}` |
-|     172 | 1403 | `	}else{` |
-|       - | 1404 | `		/* GREGORIAN CALENDAR */` |
-|    2337 | 1405 | `		dom = (year + (year / 4) - (year / 100) + (year / 400)) % 7;` |
-|    2337 | 1406 | `		if( dom < 0 ){` |
-|     ! 0 | 1407 | `			dom += 7;` |
-|     ! 0 | 1408 | `		}` |
-|    2337 | 1409 | `		solar = (year - 1600) / 100 - (year - 1600) / 400;` |
-|    2337 | 1410 | `		lunar = (((year - 1400) / 100) * 8) / 25;` |
-|    2337 | 1411 | `		pfm = (3 - (11 * golden) + solar - lunar) % 30;` |
-|    2337 | 1412 | `		if( pfm < 0 ){` |
-|    2293 | 1413 | `			pfm += 30;` |
-|    1146 | 1414 | `		}` |
-|       - | 1415 | `	}` |
-|    2679 | 1416 | `	if( (pfm == 29) \|\| (pfm == 28 && golden > 11) ){` |
-|     179 | 1417 | `		pfm--;                                      /* corrected full moon */` |
-|      89 | 1418 | `	}` |
-|    2679 | 1419 | `	tmp = (4 - pfm - dom) % 7;` |
-|    2679 | 1420 | `	if( tmp < 0 ){` |
-|    2165 | 1421 | `		tmp += 7;` |
-|    1082 | 1422 | `	}` |
-|    2679 | 1423 | `	easter = pfm + tmp + 1;    /* Easter, as days after 21 March */` |
-|    2679 | 1424 | `	if( !bGm ){` |
-|    2161 | 1425 | `		ph7_result_int64(pCtx,easter);` |
-|    2161 | 1426 | `		return PH7_OK;` |
-|       - | 1427 | `	}` |
-|       - | 1428 | `	{` |
-|       - | 1429 | `		struct tm te;` |
-|     519 | 1430 | `		SyZero(&te,sizeof(te));` |
-|     519 | 1431 | `		te.tm_isdst = -1;` |
-|     519 | 1432 | `		te.tm_year = (int)(year - 1900);` |
-|     519 | 1433 | `		te.tm_sec = 0;` |
-|     519 | 1434 | `		te.tm_min = 0;` |
-|     519 | 1435 | `		te.tm_hour = 0;` |
-|     519 | 1436 | `		if( easter < 11 ){` |
-|     119 | 1437 | `			te.tm_mon = 2;                          /* March */` |
-|     119 | 1438 | `			te.tm_mday = (int)easter + 21;` |
-|      60 | 1439 | `		}else{` |
-|     401 | 1440 | `			te.tm_mon = 3;                          /* April */` |
-|     401 | 1441 | `			te.tm_mday = (int)easter - 10;` |
-|       - | 1442 | `		}` |
-|     519 | 1443 | `		ph7_result_int64(pCtx,(sxi64)mktime(&te));` |
-|       - | 1444 | `	}` |
-|     519 | 1445 | `	return PH7_OK;` |
-|    1351 | 1446 | `}` |
-|       - | 1447 | `/*` |
-|       - | 1448 | ` * int easter_days(?int $year = null, int $mode = CAL_EASTER_DEFAULT)` |
-|       - | 1449 | ` */` |
-|    2168 | 1450 | `PH7_PRIVATE int PH7_builtin_easter_days(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1451 | `{` |
-|    2169 | 1452 | `	return CalEaster(pCtx,nArg,apArg,0);` |
-|       1 | 1453 | `}` |
-|       - | 1454 | `/*` |
-|       - | 1455 | ` * int easter_date(?int $year = null, int $mode = CAL_EASTER_DEFAULT)` |
-|       - | 1456 | ` */` |
-|     532 | 1457 | `PH7_PRIVATE int PH7_builtin_easter_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 | 1458 | `{` |
-|     533 | 1459 | `	return CalEaster(pCtx,nArg,apArg,1);` |
-|       1 | 1460 | `}` |
-|       - | 1461 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|       - | 1462 |  |
+|       - | 1157 | ` *  of range -- falls through to the day NUMBER. The union prints in the STUB's` |
+|       - | 1158 | ` *  order, which puts the rarer answer first here.` |
+|       - | 1159 | ` */` |
+|     106 | 1160 | `PH7_PRIVATE int PH7_builtin_jddayofweek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1161 | `{` |
+|     107 | 1162 | `	sxi64 iMode = 0;` |
+|       - | 1163 | `	int dow;` |
+|     107 | 1164 | `	if( nArg < 1 ){` |
+|     ! 0 | 1165 | `		ph7_result_int(pCtx,0);` |
+|     ! 0 | 1166 | `		return PH7_OK;` |
+|       - | 1167 | `	}` |
+|     107 | 1168 | `	dow = CalDayOfWeek(ph7_value_to_int64(apArg[0]));` |
+|     107 | 1169 | `	if( nArg > 1 ){` |
+|      79 | 1170 | `		iMode = ph7_value_to_int64(apArg[1]);` |
+|      39 | 1171 | `	}` |
+|     107 | 1172 | `	if( iMode == 1 ){` |
+|      39 | 1173 | `		ph7_result_string(pCtx,azDayLong[dow],-1);` |
+|      88 | 1174 | `	}else if( iMode == 2 ){` |
+|      27 | 1175 | `		ph7_result_string(pCtx,azDayShort[dow],-1);` |
+|      14 | 1176 | `	}else{` |
+|      43 | 1177 | `		ph7_result_int(pCtx,dow);` |
+|       - | 1178 | `	}` |
+|     107 | 1179 | `	return PH7_OK;` |
+|      54 | 1180 | `}` |
+|       - | 1181 | `/*` |
+|       - | 1182 | ` * string jdmonthname(int $julian_day, int $mode)` |
+|       - | 1183 | ` *  $mode picks the CALENDAR as well as the spelling, and its six values are` |
+|       - | 1184 | ` *  not in the order the calendar ids are: 0/1 Gregorian short/long, 2/3` |
+|       - | 1185 | ` *  Julian, 4 Jewish, 5 French. Anything else is the Gregorian short name. A` |
+|       - | 1186 | ` *  day the chosen calendar cannot place lands on month slot 0, which is the` |
+|       - | 1187 | ` *  empty string in every table.` |
+|       - | 1188 | ` */` |
+|     122 | 1189 | `PH7_PRIVATE int PH7_builtin_jdmonthname(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1190 | `{` |
+|       - | 1191 | `	const char *zMonth;` |
+|       - | 1192 | `	sxi64 iJd,iMode;` |
+|       - | 1193 | `	int year,month,day;` |
+|     123 | 1194 | `	if( nArg < 2 ){` |
+|     ! 0 | 1195 | `		ph7_result_string(pCtx,"",0);` |
+|     ! 0 | 1196 | `		return PH7_OK;` |
+|       - | 1197 | `	}` |
+|     123 | 1198 | `	iJd = ph7_value_to_int64(apArg[0]);` |
+|     123 | 1199 | `	iMode = ph7_value_to_int64(apArg[1]);` |
+|     123 | 1200 | `	switch( iMode ){` |
+|      18 | 1201 | `		case 1:` |
+|      37 | 1202 | `			CalSdnToGregorian(iJd,&year,&month,&day);` |
+|      37 | 1203 | `			zMonth = azMonthLong[month];` |
+|      37 | 1204 | `			break;` |
+|       7 | 1205 | `		case 2:` |
+|      15 | 1206 | `			CalSdnToJulian(iJd,&year,&month,&day);` |
+|      15 | 1207 | `			zMonth = azMonthShort[month];` |
+|      15 | 1208 | `			break;` |
+|       7 | 1209 | `		case 3:` |
+|      15 | 1210 | `			CalSdnToJulian(iJd,&year,&month,&day);` |
+|      15 | 1211 | `			zMonth = azMonthLong[month];` |
+|      15 | 1212 | `			break;` |
+|      10 | 1213 | `		case 4:` |
+|      21 | 1214 | `			CalSdnToJewish(iJd,&year,&month,&day);` |
+|      21 | 1215 | `			zMonth = year > 0 ? CAL_JEWISH_MONTH_NAME(year)[month] : "";` |
+|      21 | 1216 | `			break;` |
+|       7 | 1217 | `		case 5:` |
+|      15 | 1218 | `			CalSdnToFrench(iJd,&year,&month,&day);` |
+|      15 | 1219 | `			zMonth = azFrenchMonth[month];` |
+|      15 | 1220 | `			break;` |
+|      12 | 1221 | `		default:` |
+|      25 | 1222 | `			CalSdnToGregorian(iJd,&year,&month,&day);` |
+|      25 | 1223 | `			zMonth = azMonthShort[month];` |
+|      24 | 1224 | `			break;` |
+|       - | 1225 | `	}` |
+|     123 | 1226 | `	ph7_result_string(pCtx,zMonth,-1);` |
+|     123 | 1227 | `	return PH7_OK;` |
+|      62 | 1228 | `}` |
+|       - | 1229 |  |
+|       - | 1230 | `/* ------------------------------------------------------------------ *` |
+|       - | 1231 | ` *  The clock                                                          *` |
+|       - | 1232 | ` * ------------------------------------------------------------------ */` |
+|       - | 1233 | `/*` |
+|       - | 1234 | ` * These four are the only doors this extension has onto a clock, and both of` |
+|       - | 1235 | ` * them are the C LIBRARY's rather than the engine's: php breaks a timestamp` |
+|       - | 1236 | ` * down with localtime() and builds one with mktime(), so unixtojd() and` |
+|       - | 1237 | `` * easter_date() read the PROCESS timezone and not `date.timezone`. Reproduced`` |
+|       - | 1238 | ` * that way here -- an engine-local UTC breakdown would answer differently from` |
+|       - | 1239 | ` * php on any box that is not set to UTC, which is a divergence nobody asked` |
+|       - | 1240 | ` * for.` |
+|       - | 1241 | ` */` |
+|       - | 1242 | `#define CAL_SECS_PER_DAY (24 * 3600)` |
+|       - | 1243 | `/* The serial day number of 1 January 1970. */` |
+|       - | 1244 | `#define CAL_UNIX_EPOCH_JD 2440588` |
+|       - | 1245 | `/* easter_days()/easter_date()'s four $mode policies, spelled here as well as` |
+|       - | 1246 | ` * in the constant table (constant.c) because the computation branches on them. */` |
+|       - | 1247 | `#define CAL_EASTER_DEFAULT          0` |
+|       - | 1248 | `#define CAL_EASTER_ROMAN            1` |
+|       - | 1249 | `#define CAL_EASTER_ALWAYS_GREGORIAN 2` |
+|       - | 1250 | `#define CAL_EASTER_ALWAYS_JULIAN    3` |
+|       - | 1251 | `/*` |
+|       - | 1252 | ` * localtime(3) into a caller-supplied buffer. The plain form is what php` |
+|       - | 1253 | ` * calls, but MSVC deprecates it and this tree builds with /WX, so the two` |
+|       - | 1254 | ` * reentrant spellings are used instead -- and they take their arguments in` |
+|       - | 1255 | ` * OPPOSITE orders, which is why this wrapper exists at all. Same split as` |
+|       - | 1256 | ` * src/phl/server.c.` |
+|       - | 1257 | ` */` |
+|   15340 | 1258 | `static struct tm *CalLocalTime(const time_t *pWhen,struct tm *pOut)` |
+|       1 | 1259 | `{` |
+|       - | 1260 | `#ifdef __WINNT__` |
+|       1 | 1261 | `	return localtime_s(pOut,pWhen) == 0 ? pOut : 0;` |
+|       - | 1262 | `#else` |
+|   15340 | 1263 | `	return localtime_r(pWhen,pOut);` |
+|       - | 1264 | `#endif` |
+|       1 | 1265 | `}` |
+|       - | 1266 | `/*` |
+|       - | 1267 | `` * `a + b` with php's own wrap. easter_days()'s year screen admits values up to`` |
+|       - | 1268 | `` * `LONG_MAX / 5 * 4`, which is exactly the headroom the GREGORIAN branch's`` |
+|       - | 1269 | `` * `year + year/4 - year/100 + year/400` needs -- but the JULIAN branch adds`` |
+|       - | 1270 | `` * `year + year/4 + 5`, i.e. 1.25 * year, and that overflows for the last two`` |
+|       - | 1271 | ` * years the screen lets through. php's answer for those two is built on the` |
+|       - | 1272 | `` * wrap (`easter_days(LONG_MAX/5*4, CAL_EASTER_ALWAYS_JULIAN)` is 4), so the`` |
+|       - | 1273 | ` * wrap is reproduced here in UNSIGNED arithmetic rather than left to signed` |
+|       - | 1274 | ` * overflow -- which is undefined, and which this tree's UBSan build traps.` |
+|       - | 1275 | ` */` |
+|     684 | 1276 | `static sxi64 CalWrapAdd(sxi64 a,sxi64 b)` |
+|       1 | 1277 | `{` |
+|     685 | 1278 | `	sxu64 u = (sxu64)a + (sxu64)b;` |
+|     685 | 1279 | `	if( u >= ((sxu64)1 << 63) ){` |
+|     ! 0 | 1280 | `		return (sxi64)(u - ((sxu64)1 << 63)) + SMALLEST_INT64;` |
+|       - | 1281 | `	}` |
+|     685 | 1282 | `	return (sxi64)u;` |
+|     343 | 1283 | `}` |
+|       - | 1284 | `/*` |
+|       - | 1285 | ` * int\|false unixtojd(?int $timestamp = null)` |
+|       - | 1286 | ` *  Not the plain inverse of jdtounix(): the timestamp is broken down into a` |
+|       - | 1287 | ` *  local calendar date first, and that date is what gets converted.` |
+|       - | 1288 | ` */` |
+|   15342 | 1289 | `PH7_PRIVATE int PH7_builtin_unixtojd(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1290 | `{` |
+|       - | 1291 | `	struct tm sTm,*pTm;` |
+|       - | 1292 | `	time_t ts;` |
+|   15343 | 1293 | `	if( nArg < 1 \|\| ph7_value_is_null(apArg[0]) ){` |
+|       5 | 1294 | `		time(&ts);` |
+|       3 | 1295 | `	}else{` |
+|   15339 | 1296 | `		sxi64 iTs = ph7_value_to_int64(apArg[0]);` |
+|   15339 | 1297 | `		if( iTs < 0 ){` |
+|       7 | 1298 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|       - | 1299 | `				"unixtojd(): Argument #1 ($timestamp) must be greater than or equal to 0");` |
+|       - | 1300 | `		}` |
+|   15333 | 1301 | `		ts = (time_t)iTs;` |
+|       - | 1302 | `	}` |
+|   15337 | 1303 | `	pTm = CalLocalTime(&ts,&sTm);` |
+|   15337 | 1304 | `	if( pTm == 0 ){` |
+|       - | 1305 | `		/* The one FALSE in this extension: a timestamp the platform's own` |
+|       - | 1306 | `		 * breakdown will not accept. */` |
+|     ! 0 | 1307 | `		ph7_result_bool(pCtx,0);` |
+|     ! 0 | 1308 | `		return PH7_OK;` |
+|       - | 1309 | `	}` |
+|   23005 | 1310 | `	ph7_result_int64(pCtx,` |
+|   15336 | 1311 | `		CalGregorianToSdn(pTm->tm_year + 1900,pTm->tm_mon + 1,pTm->tm_mday));` |
+|   15337 | 1312 | `	return PH7_OK;` |
+|    7672 | 1313 | `}` |
+|       - | 1314 | `/*` |
+|       - | 1315 | ` * int jdtounix(int $julian_day)` |
+|       - | 1316 | ` *  Pure arithmetic, so the answer is always midnight UTC. Its ValueError is` |
+|       - | 1317 | ` *  the only one in this extension that names neither the function nor the` |
+|       - | 1318 | ` *  argument -- php raises it with zend_value_error() rather than the argument` |
+|       - | 1319 | ` *  helper, and the wording says "jday" rather than "$julian_day".` |
+|       - | 1320 | ` */` |
+|    8026 | 1321 | `PH7_PRIVATE int PH7_builtin_jdtounix(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1322 | `{` |
+|       - | 1323 | `	sxi64 uday;` |
+|    8027 | 1324 | `	if( nArg < 1 ){` |
+|       - | 1325 | `		/* Arity is enforced from aBuiltinSig[] before the call. */` |
+|     ! 0 | 1326 | `		ph7_result_int(pCtx,0);` |
+|     ! 0 | 1327 | `		return PH7_OK;` |
+|       - | 1328 | `	}` |
+|    8027 | 1329 | `	uday = ph7_value_to_int64(apArg[0]);` |
+|       - | 1330 | `	/* The lower test runs first, so the subtraction below it cannot underflow. */` |
+|    8026 | 1331 | `	if( uday < CAL_UNIX_EPOCH_JD` |
+|    8023 | 1332 | `	 \|\| (uday - CAL_UNIX_EPOCH_JD) > (CAL_I64_MAX / CAL_SECS_PER_DAY) ){` |
+|      13 | 1333 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|       - | 1334 | `			"jday must be between %d and %qd",CAL_UNIX_EPOCH_JD,` |
+|       - | 1335 | `			CAL_I64_MAX / CAL_SECS_PER_DAY + CAL_UNIX_EPOCH_JD);` |
+|       - | 1336 | `	}` |
+|    8015 | 1337 | `	uday -= CAL_UNIX_EPOCH_JD;` |
+|    8015 | 1338 | `	ph7_result_int64(pCtx,uday * CAL_SECS_PER_DAY);` |
+|    8015 | 1339 | `	return PH7_OK;` |
+|    4014 | 1340 | `}` |
+|       - | 1341 | `/*` |
+|       - | 1342 | ` * The Easter computation both easter_days() and easter_date() run, from Simon` |
+|       - | 1343 | `` * Kershaw's by way of php. `bGm` picks which of the two answers comes out: the`` |
+|       - | 1344 | ` * number of days after 21 March, or the timestamp of midnight that morning.` |
+|       - | 1345 | ` *` |
+|       - | 1346 | ` * $mode is not a choice between two rules but between four POLICIES, and the` |
+|       - | 1347 | ` * default is date-dependent: Julian up to 1582, Julian again for 1583-1752` |
+|       - | 1348 | ` * (England kept the old calendar that long), Gregorian after that.` |
+|       - | 1349 | ` */` |
+|    2700 | 1350 | `static int CalEaster(ph7_context *pCtx,int nArg,ph7_value **apArg,int bGm)` |
+|       1 | 1351 | `{` |
+|    2701 | 1352 | `	const char *zFn = bGm ? "easter_date" : "easter_days";` |
+|    2701 | 1353 | `	const sxi64 maxYear = (CAL_I64_MAX / 5) * 4;` |
+|    2701 | 1354 | `	sxi64 year = 0,method = 0;` |
+|       - | 1355 | `	sxi64 golden,solar,lunar,pfm,dom,tmp,easter;` |
+|    2701 | 1356 | `	int bYearNull = 1;` |
+|    2701 | 1357 | `	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){` |
+|    2697 | 1358 | `		year = ph7_value_to_int64(apArg[0]);` |
+|    2697 | 1359 | `		bYearNull = 0;` |
+|    1348 | 1360 | `	}` |
+|    2701 | 1361 | `	if( nArg > 1 ){` |
+|      95 | 1362 | `		method = ph7_value_to_int64(apArg[1]);` |
+|      47 | 1363 | `	}` |
+|    2701 | 1364 | `	if( bYearNull ){` |
+|       - | 1365 | `		/* Default to the current year, read the same way php reads it. */` |
+|       - | 1366 | `		struct tm sNow,*pTm;` |
+|       - | 1367 | `		time_t now;` |
+|       5 | 1368 | `		time(&now);` |
+|       5 | 1369 | `		pTm = CalLocalTime(&now,&sNow);` |
+|       5 | 1370 | `		year = pTm == 0 ? 1900 : 1900 + pTm->tm_year;` |
+|       2 | 1371 | `	}` |
+|    2701 | 1372 | `	if( year <= 0 \|\| year > maxYear ){` |
+|      22 | 1373 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|       7 | 1374 | `			"%s(): Argument #1 ($year) must be between 1 and %qd",zFn,maxYear);` |
+|       - | 1375 | `	}` |
+|    2687 | 1376 | `	if( bGm ){` |
+|       - | 1377 | `		/* The timestamp form narrows the year twice more: there is no timestamp` |
+|       - | 1378 | `		 * before 1970, and php stops at the year two billion. */` |
+|     527 | 1379 | `		if( year < 1970 ){` |
+|       5 | 1380 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|       - | 1381 | `				"easter_date(): Argument #1 ($year) must be a year after 1970 (inclusive)");` |
+|       - | 1382 | `		}` |
+|     523 | 1383 | `		if( year > 2000000000 ){` |
+|       5 | 1384 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|       - | 1385 | `				"easter_date(): Argument #1 ($year) must be a year before 2.000.000.000 (inclusive)");` |
+|       - | 1386 | `		}` |
+|     259 | 1387 | `	}` |
+|    2679 | 1388 | `	golden = (year % 19) + 1;                       /* the Golden number */` |
+|    2678 | 1389 | `	if( (year <= 1582 && method != CAL_EASTER_ALWAYS_GREGORIAN)` |
+|    2673 | 1390 | `	 \|\| (year >= 1583 && year <= 1752 && method != CAL_EASTER_ROMAN` |
+|     327 | 1391 | `	     && method != CAL_EASTER_ALWAYS_GREGORIAN)` |
+|    2509 | 1392 | `	 \|\| method == CAL_EASTER_ALWAYS_JULIAN ){` |
+|       - | 1393 | `		/* JULIAN CALENDAR */` |
+|       - | 1394 | `		/* CalWrapAdd(): 1.25 * year overflows at the top of the year screen,` |
+|       - | 1395 | `		 * and php's answer there is the wrapped one. */` |
+|     343 | 1396 | `		dom = CalWrapAdd(CalWrapAdd(year,year / 4),5) % 7;  /* "Dominical number" */` |
+|     343 | 1397 | `		if( dom < 0 ){` |
+|     ! 0 | 1398 | `			dom += 7;` |
+|     ! 0 | 1399 | `		}` |
+|     343 | 1400 | `		pfm = (3 - (11 * golden) - 7) % 30;         /* the Paschal full moon */` |
+|     343 | 1401 | `		if( pfm < 0 ){` |
+|     327 | 1402 | `			pfm += 30;` |
+|     163 | 1403 | `		}` |
+|     172 | 1404 | `	}else{` |
+|       - | 1405 | `		/* GREGORIAN CALENDAR */` |
+|    2337 | 1406 | `		dom = (year + (year / 4) - (year / 100) + (year / 400)) % 7;` |
+|    2337 | 1407 | `		if( dom < 0 ){` |
+|     ! 0 | 1408 | `			dom += 7;` |
+|     ! 0 | 1409 | `		}` |
+|    2337 | 1410 | `		solar = (year - 1600) / 100 - (year - 1600) / 400;` |
+|    2337 | 1411 | `		lunar = (((year - 1400) / 100) * 8) / 25;` |
+|    2337 | 1412 | `		pfm = (3 - (11 * golden) + solar - lunar) % 30;` |
+|    2337 | 1413 | `		if( pfm < 0 ){` |
+|    2293 | 1414 | `			pfm += 30;` |
+|    1146 | 1415 | `		}` |
+|       - | 1416 | `	}` |
+|    2679 | 1417 | `	if( (pfm == 29) \|\| (pfm == 28 && golden > 11) ){` |
+|     179 | 1418 | `		pfm--;                                      /* corrected full moon */` |
+|      89 | 1419 | `	}` |
+|    2679 | 1420 | `	tmp = (4 - pfm - dom) % 7;` |
+|    2679 | 1421 | `	if( tmp < 0 ){` |
+|    2165 | 1422 | `		tmp += 7;` |
+|    1082 | 1423 | `	}` |
+|    2679 | 1424 | `	easter = pfm + tmp + 1;    /* Easter, as days after 21 March */` |
+|    2679 | 1425 | `	if( !bGm ){` |
+|    2161 | 1426 | `		ph7_result_int64(pCtx,easter);` |
+|    2161 | 1427 | `		return PH7_OK;` |
+|       - | 1428 | `	}` |
+|       - | 1429 | `	{` |
+|       - | 1430 | `		struct tm te;` |
+|     519 | 1431 | `		SyZero(&te,sizeof(te));` |
+|     519 | 1432 | `		te.tm_isdst = -1;` |
+|     519 | 1433 | `		te.tm_year = (int)(year - 1900);` |
+|     519 | 1434 | `		te.tm_sec = 0;` |
+|     519 | 1435 | `		te.tm_min = 0;` |
+|     519 | 1436 | `		te.tm_hour = 0;` |
+|     519 | 1437 | `		if( easter < 11 ){` |
+|     119 | 1438 | `			te.tm_mon = 2;                          /* March */` |
+|     119 | 1439 | `			te.tm_mday = (int)easter + 21;` |
+|      60 | 1440 | `		}else{` |
+|     401 | 1441 | `			te.tm_mon = 3;                          /* April */` |
+|     401 | 1442 | `			te.tm_mday = (int)easter - 10;` |
+|       - | 1443 | `		}` |
+|     519 | 1444 | `		ph7_result_int64(pCtx,(sxi64)mktime(&te));` |
+|       - | 1445 | `	}` |
+|     519 | 1446 | `	return PH7_OK;` |
+|    1351 | 1447 | `}` |
+|       - | 1448 | `/*` |
+|       - | 1449 | ` * int easter_days(?int $year = null, int $mode = CAL_EASTER_DEFAULT)` |
+|       - | 1450 | ` */` |
+|    2168 | 1451 | `PH7_PRIVATE int PH7_builtin_easter_days(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1452 | `{` |
+|    2169 | 1453 | `	return CalEaster(pCtx,nArg,apArg,0);` |
+|       1 | 1454 | `}` |
+|       - | 1455 | `/*` |
+|       - | 1456 | ` * int easter_date(?int $year = null, int $mode = CAL_EASTER_DEFAULT)` |
+|       - | 1457 | ` */` |
+|     532 | 1458 | `PH7_PRIVATE int PH7_builtin_easter_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       1 | 1459 | `{` |
+|     533 | 1460 | `	return CalEaster(pCtx,nArg,apArg,1);` |
+|       1 | 1461 | `}` |
+|       - | 1462 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|       - | 1463 |  |

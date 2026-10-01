@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1229/1292 lines (95.12%)
+Coverage: 1620/1707 lines (94.90%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -40,16 +40,16 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |   30 | `/*` |
 |       - |   31 | ` * Note: this code is harmless on little-endian machines.` |
 |       - |   32 | ` */` |
-|   35022 |   33 | `static void byteReverse (unsigned char *buf, unsigned longs)` |
+|   35050 |   33 | `static void byteReverse (unsigned char *buf, unsigned longs)` |
 |       4 |   34 | `{` |
 |       - |   35 | `	sxu32 t;` |
-|   17511 |   36 | `        do {` |
-|  500206 |   37 | `                t = (sxu32)((unsigned)buf[3]<<8 \| buf[2]) << 16 \|` |
-|  333468 |   38 | `                            ((unsigned)buf[1]<<8 \| buf[0]);` |
-|  333472 |   39 | `                *(sxu32*)buf = t;` |
-|  333472 |   40 | `                buf += 4;` |
-|  333472 |   41 | `        } while (--longs);` |
-|   35026 |   42 | `}` |
+|   17525 |   36 | `        do {` |
+|  500794 |   37 | `                t = (sxu32)((unsigned)buf[3]<<8 \| buf[2]) << 16 \|` |
+|  333860 |   38 | `                            ((unsigned)buf[1]<<8 \| buf[0]);` |
+|  333864 |   39 | `                *(sxu32*)buf = t;` |
+|  333864 |   40 | `                buf += 4;` |
+|  333864 |   41 | `        } while (--longs);` |
+|   35054 |   42 | `}` |
 |       - |   43 | `/* The four core functions - F1 is optimized somewhat */` |
 |       - |   44 |  |
 |       - |   45 | `/* #define F1(x, y, z) (x & y \| ~x & z) */` |
@@ -80,104 +80,104 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |   70 | ` * reflect the addition of 16 longwords of new data.MD5Update blocks` |
 |       - |   71 | ` * the data and converts bytes into longwords for this routine.` |
 |       - |   72 | ` */` |
-|   18816 |   73 | `static void MD5Transform(sxu32 buf[4], const sxu32 in[16])` |
+|   18840 |   73 | `static void MD5Transform(sxu32 buf[4], const sxu32 in[16])` |
 |       4 |   74 | `{` |
 |       - |   75 | `	register sxu32 a, b, c, d;` |
 |       - |   76 |  |
-|   18820 |   77 | `        a = buf[0];` |
-|   18820 |   78 | `        b = buf[1];` |
-|   18820 |   79 | `        c = buf[2];` |
-|   18820 |   80 | `        d = buf[3];` |
+|   18844 |   77 | `        a = buf[0];` |
+|   18844 |   78 | `        b = buf[1];` |
+|   18844 |   79 | `        c = buf[2];` |
+|   18844 |   80 | `        d = buf[3];` |
 |       - |   81 |  |
-|   18820 |   82 | `        SX_MD5STEP(F1, a, b, c, d, in[ 0]+0xd76aa478,  7);` |
-|   18820 |   83 | `        SX_MD5STEP(F1, d, a, b, c, in[ 1]+0xe8c7b756, 12);` |
-|   18820 |   84 | `        SX_MD5STEP(F1, c, d, a, b, in[ 2]+0x242070db, 17);` |
-|   18820 |   85 | `        SX_MD5STEP(F1, b, c, d, a, in[ 3]+0xc1bdceee, 22);` |
-|   18820 |   86 | `        SX_MD5STEP(F1, a, b, c, d, in[ 4]+0xf57c0faf,  7);` |
-|   18820 |   87 | `        SX_MD5STEP(F1, d, a, b, c, in[ 5]+0x4787c62a, 12);` |
-|   18820 |   88 | `        SX_MD5STEP(F1, c, d, a, b, in[ 6]+0xa8304613, 17);` |
-|   18820 |   89 | `        SX_MD5STEP(F1, b, c, d, a, in[ 7]+0xfd469501, 22);` |
-|   18820 |   90 | `        SX_MD5STEP(F1, a, b, c, d, in[ 8]+0x698098d8,  7);` |
-|   18820 |   91 | `        SX_MD5STEP(F1, d, a, b, c, in[ 9]+0x8b44f7af, 12);` |
-|   18820 |   92 | `        SX_MD5STEP(F1, c, d, a, b, in[10]+0xffff5bb1, 17);` |
-|   18820 |   93 | `        SX_MD5STEP(F1, b, c, d, a, in[11]+0x895cd7be, 22);` |
-|   18820 |   94 | `        SX_MD5STEP(F1, a, b, c, d, in[12]+0x6b901122,  7);` |
-|   18820 |   95 | `        SX_MD5STEP(F1, d, a, b, c, in[13]+0xfd987193, 12);` |
-|   18820 |   96 | `        SX_MD5STEP(F1, c, d, a, b, in[14]+0xa679438e, 17);` |
-|   18820 |   97 | `        SX_MD5STEP(F1, b, c, d, a, in[15]+0x49b40821, 22);` |
+|   18844 |   82 | `        SX_MD5STEP(F1, a, b, c, d, in[ 0]+0xd76aa478,  7);` |
+|   18844 |   83 | `        SX_MD5STEP(F1, d, a, b, c, in[ 1]+0xe8c7b756, 12);` |
+|   18844 |   84 | `        SX_MD5STEP(F1, c, d, a, b, in[ 2]+0x242070db, 17);` |
+|   18844 |   85 | `        SX_MD5STEP(F1, b, c, d, a, in[ 3]+0xc1bdceee, 22);` |
+|   18844 |   86 | `        SX_MD5STEP(F1, a, b, c, d, in[ 4]+0xf57c0faf,  7);` |
+|   18844 |   87 | `        SX_MD5STEP(F1, d, a, b, c, in[ 5]+0x4787c62a, 12);` |
+|   18844 |   88 | `        SX_MD5STEP(F1, c, d, a, b, in[ 6]+0xa8304613, 17);` |
+|   18844 |   89 | `        SX_MD5STEP(F1, b, c, d, a, in[ 7]+0xfd469501, 22);` |
+|   18844 |   90 | `        SX_MD5STEP(F1, a, b, c, d, in[ 8]+0x698098d8,  7);` |
+|   18844 |   91 | `        SX_MD5STEP(F1, d, a, b, c, in[ 9]+0x8b44f7af, 12);` |
+|   18844 |   92 | `        SX_MD5STEP(F1, c, d, a, b, in[10]+0xffff5bb1, 17);` |
+|   18844 |   93 | `        SX_MD5STEP(F1, b, c, d, a, in[11]+0x895cd7be, 22);` |
+|   18844 |   94 | `        SX_MD5STEP(F1, a, b, c, d, in[12]+0x6b901122,  7);` |
+|   18844 |   95 | `        SX_MD5STEP(F1, d, a, b, c, in[13]+0xfd987193, 12);` |
+|   18844 |   96 | `        SX_MD5STEP(F1, c, d, a, b, in[14]+0xa679438e, 17);` |
+|   18844 |   97 | `        SX_MD5STEP(F1, b, c, d, a, in[15]+0x49b40821, 22);` |
 |       - |   98 |  |
-|   18820 |   99 | `        SX_MD5STEP(F2, a, b, c, d, in[ 1]+0xf61e2562,  5);` |
-|   18820 |  100 | `        SX_MD5STEP(F2, d, a, b, c, in[ 6]+0xc040b340,  9);` |
-|   18820 |  101 | `        SX_MD5STEP(F2, c, d, a, b, in[11]+0x265e5a51, 14);` |
-|   18820 |  102 | `        SX_MD5STEP(F2, b, c, d, a, in[ 0]+0xe9b6c7aa, 20);` |
-|   18820 |  103 | `        SX_MD5STEP(F2, a, b, c, d, in[ 5]+0xd62f105d,  5);` |
-|   18820 |  104 | `        SX_MD5STEP(F2, d, a, b, c, in[10]+0x02441453,  9);` |
-|   18820 |  105 | `        SX_MD5STEP(F2, c, d, a, b, in[15]+0xd8a1e681, 14);` |
-|   18820 |  106 | `        SX_MD5STEP(F2, b, c, d, a, in[ 4]+0xe7d3fbc8, 20);` |
-|   18820 |  107 | `        SX_MD5STEP(F2, a, b, c, d, in[ 9]+0x21e1cde6,  5);` |
-|   18820 |  108 | `        SX_MD5STEP(F2, d, a, b, c, in[14]+0xc33707d6,  9);` |
-|   18820 |  109 | `        SX_MD5STEP(F2, c, d, a, b, in[ 3]+0xf4d50d87, 14);` |
-|   18820 |  110 | `        SX_MD5STEP(F2, b, c, d, a, in[ 8]+0x455a14ed, 20);` |
-|   18820 |  111 | `        SX_MD5STEP(F2, a, b, c, d, in[13]+0xa9e3e905,  5);` |
-|   18820 |  112 | `        SX_MD5STEP(F2, d, a, b, c, in[ 2]+0xfcefa3f8,  9);` |
-|   18820 |  113 | `        SX_MD5STEP(F2, c, d, a, b, in[ 7]+0x676f02d9, 14);` |
-|   18820 |  114 | `        SX_MD5STEP(F2, b, c, d, a, in[12]+0x8d2a4c8a, 20);` |
+|   18844 |   99 | `        SX_MD5STEP(F2, a, b, c, d, in[ 1]+0xf61e2562,  5);` |
+|   18844 |  100 | `        SX_MD5STEP(F2, d, a, b, c, in[ 6]+0xc040b340,  9);` |
+|   18844 |  101 | `        SX_MD5STEP(F2, c, d, a, b, in[11]+0x265e5a51, 14);` |
+|   18844 |  102 | `        SX_MD5STEP(F2, b, c, d, a, in[ 0]+0xe9b6c7aa, 20);` |
+|   18844 |  103 | `        SX_MD5STEP(F2, a, b, c, d, in[ 5]+0xd62f105d,  5);` |
+|   18844 |  104 | `        SX_MD5STEP(F2, d, a, b, c, in[10]+0x02441453,  9);` |
+|   18844 |  105 | `        SX_MD5STEP(F2, c, d, a, b, in[15]+0xd8a1e681, 14);` |
+|   18844 |  106 | `        SX_MD5STEP(F2, b, c, d, a, in[ 4]+0xe7d3fbc8, 20);` |
+|   18844 |  107 | `        SX_MD5STEP(F2, a, b, c, d, in[ 9]+0x21e1cde6,  5);` |
+|   18844 |  108 | `        SX_MD5STEP(F2, d, a, b, c, in[14]+0xc33707d6,  9);` |
+|   18844 |  109 | `        SX_MD5STEP(F2, c, d, a, b, in[ 3]+0xf4d50d87, 14);` |
+|   18844 |  110 | `        SX_MD5STEP(F2, b, c, d, a, in[ 8]+0x455a14ed, 20);` |
+|   18844 |  111 | `        SX_MD5STEP(F2, a, b, c, d, in[13]+0xa9e3e905,  5);` |
+|   18844 |  112 | `        SX_MD5STEP(F2, d, a, b, c, in[ 2]+0xfcefa3f8,  9);` |
+|   18844 |  113 | `        SX_MD5STEP(F2, c, d, a, b, in[ 7]+0x676f02d9, 14);` |
+|   18844 |  114 | `        SX_MD5STEP(F2, b, c, d, a, in[12]+0x8d2a4c8a, 20);` |
 |       - |  115 |  |
-|   18820 |  116 | `        SX_MD5STEP(F3, a, b, c, d, in[ 5]+0xfffa3942,  4);` |
-|   18820 |  117 | `        SX_MD5STEP(F3, d, a, b, c, in[ 8]+0x8771f681, 11);` |
-|   18820 |  118 | `        SX_MD5STEP(F3, c, d, a, b, in[11]+0x6d9d6122, 16);` |
-|   18820 |  119 | `        SX_MD5STEP(F3, b, c, d, a, in[14]+0xfde5380c, 23);` |
-|   18820 |  120 | `        SX_MD5STEP(F3, a, b, c, d, in[ 1]+0xa4beea44,  4);` |
-|   18820 |  121 | `        SX_MD5STEP(F3, d, a, b, c, in[ 4]+0x4bdecfa9, 11);` |
-|   18820 |  122 | `        SX_MD5STEP(F3, c, d, a, b, in[ 7]+0xf6bb4b60, 16);` |
-|   18820 |  123 | `        SX_MD5STEP(F3, b, c, d, a, in[10]+0xbebfbc70, 23);` |
-|   18820 |  124 | `        SX_MD5STEP(F3, a, b, c, d, in[13]+0x289b7ec6,  4);` |
-|   18820 |  125 | `        SX_MD5STEP(F3, d, a, b, c, in[ 0]+0xeaa127fa, 11);` |
-|   18820 |  126 | `        SX_MD5STEP(F3, c, d, a, b, in[ 3]+0xd4ef3085, 16);` |
-|   18820 |  127 | `        SX_MD5STEP(F3, b, c, d, a, in[ 6]+0x04881d05, 23);` |
-|   18820 |  128 | `        SX_MD5STEP(F3, a, b, c, d, in[ 9]+0xd9d4d039,  4);` |
-|   18820 |  129 | `        SX_MD5STEP(F3, d, a, b, c, in[12]+0xe6db99e5, 11);` |
-|   18820 |  130 | `        SX_MD5STEP(F3, c, d, a, b, in[15]+0x1fa27cf8, 16);` |
-|   18820 |  131 | `        SX_MD5STEP(F3, b, c, d, a, in[ 2]+0xc4ac5665, 23);` |
+|   18844 |  116 | `        SX_MD5STEP(F3, a, b, c, d, in[ 5]+0xfffa3942,  4);` |
+|   18844 |  117 | `        SX_MD5STEP(F3, d, a, b, c, in[ 8]+0x8771f681, 11);` |
+|   18844 |  118 | `        SX_MD5STEP(F3, c, d, a, b, in[11]+0x6d9d6122, 16);` |
+|   18844 |  119 | `        SX_MD5STEP(F3, b, c, d, a, in[14]+0xfde5380c, 23);` |
+|   18844 |  120 | `        SX_MD5STEP(F3, a, b, c, d, in[ 1]+0xa4beea44,  4);` |
+|   18844 |  121 | `        SX_MD5STEP(F3, d, a, b, c, in[ 4]+0x4bdecfa9, 11);` |
+|   18844 |  122 | `        SX_MD5STEP(F3, c, d, a, b, in[ 7]+0xf6bb4b60, 16);` |
+|   18844 |  123 | `        SX_MD5STEP(F3, b, c, d, a, in[10]+0xbebfbc70, 23);` |
+|   18844 |  124 | `        SX_MD5STEP(F3, a, b, c, d, in[13]+0x289b7ec6,  4);` |
+|   18844 |  125 | `        SX_MD5STEP(F3, d, a, b, c, in[ 0]+0xeaa127fa, 11);` |
+|   18844 |  126 | `        SX_MD5STEP(F3, c, d, a, b, in[ 3]+0xd4ef3085, 16);` |
+|   18844 |  127 | `        SX_MD5STEP(F3, b, c, d, a, in[ 6]+0x04881d05, 23);` |
+|   18844 |  128 | `        SX_MD5STEP(F3, a, b, c, d, in[ 9]+0xd9d4d039,  4);` |
+|   18844 |  129 | `        SX_MD5STEP(F3, d, a, b, c, in[12]+0xe6db99e5, 11);` |
+|   18844 |  130 | `        SX_MD5STEP(F3, c, d, a, b, in[15]+0x1fa27cf8, 16);` |
+|   18844 |  131 | `        SX_MD5STEP(F3, b, c, d, a, in[ 2]+0xc4ac5665, 23);` |
 |       - |  132 |  |
-|   18820 |  133 | `        SX_MD5STEP(F4, a, b, c, d, in[ 0]+0xf4292244,  6);` |
-|   18820 |  134 | `        SX_MD5STEP(F4, d, a, b, c, in[ 7]+0x432aff97, 10);` |
-|   18820 |  135 | `        SX_MD5STEP(F4, c, d, a, b, in[14]+0xab9423a7, 15);` |
-|   18820 |  136 | `        SX_MD5STEP(F4, b, c, d, a, in[ 5]+0xfc93a039, 21);` |
-|   18820 |  137 | `        SX_MD5STEP(F4, a, b, c, d, in[12]+0x655b59c3,  6);` |
-|   18820 |  138 | `        SX_MD5STEP(F4, d, a, b, c, in[ 3]+0x8f0ccc92, 10);` |
-|   18820 |  139 | `        SX_MD5STEP(F4, c, d, a, b, in[10]+0xffeff47d, 15);` |
-|   18820 |  140 | `        SX_MD5STEP(F4, b, c, d, a, in[ 1]+0x85845dd1, 21);` |
-|   18820 |  141 | `        SX_MD5STEP(F4, a, b, c, d, in[ 8]+0x6fa87e4f,  6);` |
-|   18820 |  142 | `        SX_MD5STEP(F4, d, a, b, c, in[15]+0xfe2ce6e0, 10);` |
-|   18820 |  143 | `        SX_MD5STEP(F4, c, d, a, b, in[ 6]+0xa3014314, 15);` |
-|   18820 |  144 | `        SX_MD5STEP(F4, b, c, d, a, in[13]+0x4e0811a1, 21);` |
-|   18820 |  145 | `        SX_MD5STEP(F4, a, b, c, d, in[ 4]+0xf7537e82,  6);` |
-|   18820 |  146 | `        SX_MD5STEP(F4, d, a, b, c, in[11]+0xbd3af235, 10);` |
-|   18820 |  147 | `        SX_MD5STEP(F4, c, d, a, b, in[ 2]+0x2ad7d2bb, 15);` |
-|   18820 |  148 | `        SX_MD5STEP(F4, b, c, d, a, in[ 9]+0xeb86d391, 21);` |
+|   18844 |  133 | `        SX_MD5STEP(F4, a, b, c, d, in[ 0]+0xf4292244,  6);` |
+|   18844 |  134 | `        SX_MD5STEP(F4, d, a, b, c, in[ 7]+0x432aff97, 10);` |
+|   18844 |  135 | `        SX_MD5STEP(F4, c, d, a, b, in[14]+0xab9423a7, 15);` |
+|   18844 |  136 | `        SX_MD5STEP(F4, b, c, d, a, in[ 5]+0xfc93a039, 21);` |
+|   18844 |  137 | `        SX_MD5STEP(F4, a, b, c, d, in[12]+0x655b59c3,  6);` |
+|   18844 |  138 | `        SX_MD5STEP(F4, d, a, b, c, in[ 3]+0x8f0ccc92, 10);` |
+|   18844 |  139 | `        SX_MD5STEP(F4, c, d, a, b, in[10]+0xffeff47d, 15);` |
+|   18844 |  140 | `        SX_MD5STEP(F4, b, c, d, a, in[ 1]+0x85845dd1, 21);` |
+|   18844 |  141 | `        SX_MD5STEP(F4, a, b, c, d, in[ 8]+0x6fa87e4f,  6);` |
+|   18844 |  142 | `        SX_MD5STEP(F4, d, a, b, c, in[15]+0xfe2ce6e0, 10);` |
+|   18844 |  143 | `        SX_MD5STEP(F4, c, d, a, b, in[ 6]+0xa3014314, 15);` |
+|   18844 |  144 | `        SX_MD5STEP(F4, b, c, d, a, in[13]+0x4e0811a1, 21);` |
+|   18844 |  145 | `        SX_MD5STEP(F4, a, b, c, d, in[ 4]+0xf7537e82,  6);` |
+|   18844 |  146 | `        SX_MD5STEP(F4, d, a, b, c, in[11]+0xbd3af235, 10);` |
+|   18844 |  147 | `        SX_MD5STEP(F4, c, d, a, b, in[ 2]+0x2ad7d2bb, 15);` |
+|   18844 |  148 | `        SX_MD5STEP(F4, b, c, d, a, in[ 9]+0xeb86d391, 21);` |
 |       - |  149 |  |
-|   18820 |  150 | `        buf[0] += a;` |
-|   18820 |  151 | `        buf[1] += b;` |
-|   18820 |  152 | `        buf[2] += c;` |
-|   18820 |  153 | `        buf[3] += d;` |
-|   18820 |  154 | `}` |
+|   18844 |  150 | `        buf[0] += a;` |
+|   18844 |  151 | `        buf[1] += b;` |
+|   18844 |  152 | `        buf[2] += c;` |
+|   18844 |  153 | `        buf[3] += d;` |
+|   18844 |  154 | `}` |
 |       - |  155 | `/*` |
 |       - |  156 | ` * Update context to reflect the concatenation of another buffer full` |
 |       - |  157 | ` * of bytes.` |
 |       - |  158 | ` */` |
-|   56826 |  159 | `PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len)` |
-|       4 |  160 | `{` |
+|   56832 |  159 | `PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len)` |
+|       3 |  160 | `{` |
 |       - |  161 | `	sxu32 t;` |
 |       - |  162 |  |
 |       - |  163 | `        /* Update bitcount */` |
-|   56830 |  164 | `        t = ctx->bits[0];` |
-|   56830 |  165 | `        if ((ctx->bits[0] = t + ((sxu32)len << 3)) < t)` |
+|   56835 |  164 | `        t = ctx->bits[0];` |
+|   56835 |  165 | `        if ((ctx->bits[0] = t + ((sxu32)len << 3)) < t)` |
 |     ! 0 |  166 | `                ctx->bits[1]++; /* Carry from low to high */` |
-|   56830 |  167 | `        ctx->bits[1] += len >> 29;` |
-|   56830 |  168 | `        t = (t >> 3) & 0x3f;    /* Bytes already in shsInfo->data */` |
+|   56835 |  167 | `        ctx->bits[1] += len >> 29;` |
+|   56835 |  168 | `        t = (t >> 3) & 0x3f;    /* Bytes already in shsInfo->data */` |
 |       - |  169 | `        /* Handle any leading odd-sized chunks */` |
-|   56830 |  170 | `        if ( t ) {` |
+|   56835 |  170 | `        if ( t ) {` |
 |   40571 |  171 | `                unsigned char *p = (unsigned char *)ctx->in + t;` |
 |       - |  172 |  |
 |   40571 |  173 | `                t = 64-t;` |
@@ -192,37 +192,37 @@ Coverage: 1229/1292 lines (95.12%)
 |     ! 0 |  182 | `                len -= t;` |
 |     ! 0 |  183 | `        }` |
 |       - |  184 | `        /* Process data in 64-byte chunks */` |
-|   18870 |  185 | `        while (len >= 64) {` |
-|    2612 |  186 | `                SyMemcpy(buf,ctx->in,64);` |
-|    2612 |  187 | `                byteReverse(ctx->in, 16);` |
-|    2612 |  188 | `                MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
-|    2612 |  189 | `                buf += 64;` |
-|    2612 |  190 | `                len -= 64;` |
-|       2 |  191 | `        }` |
+|   18895 |  185 | `        while (len >= 64) {` |
+|    2633 |  186 | `                SyMemcpy(buf,ctx->in,64);` |
+|    2633 |  187 | `                byteReverse(ctx->in, 16);` |
+|    2633 |  188 | `                MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
+|    2633 |  189 | `                buf += 64;` |
+|    2633 |  190 | `                len -= 64;` |
+|       3 |  191 | `        }` |
 |       - |  192 | `        /* Handle any remaining bytes of data.*/` |
-|   16260 |  193 | `        SyMemcpy(buf,ctx->in,len);` |
-|   28417 |  194 | `}` |
+|   16265 |  193 | `        SyMemcpy(buf,ctx->in,len);` |
+|   28419 |  194 | `}` |
 |       - |  195 | `/*` |
 |       - |  196 | ` * Final wrapup - pad to 64-byte boundary with the bit pattern` |
 |       - |  197 | ` * 1 0* (64-bit count of bits processed, MSB-first)` |
 |       - |  198 | ` */` |
-|   16210 |  199 | `PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){` |
+|   16214 |  199 | `PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){` |
 |       - |  200 | `        unsigned count;` |
 |       - |  201 | `        unsigned char *p;` |
 |       - |  202 |  |
 |       - |  203 | `        /* Compute number of bytes mod 64 */` |
-|   16210 |  204 | `        count = (ctx->bits[0] >> 3) & 0x3F;` |
+|   16214 |  204 | `        count = (ctx->bits[0] >> 3) & 0x3F;` |
 |       - |  205 |  |
 |       - |  206 | `        /* Set the first char of padding to 0x80.This is safe since there is` |
 |       - |  207 | `           always at least one byte free */` |
-|   16210 |  208 | `        p = ctx->in + count;` |
-|   16210 |  209 | `        *p++ = 0x80;` |
+|   16214 |  208 | `        p = ctx->in + count;` |
+|   16214 |  209 | `        *p++ = 0x80;` |
 |       - |  210 |  |
 |       - |  211 | `        /* Bytes of padding needed to make 64 bytes */` |
-|   16210 |  212 | `        count = 64 - 1 - count;` |
+|   16214 |  212 | `        count = 64 - 1 - count;` |
 |       - |  213 |  |
 |       - |  214 | `        /* Pad out to 56 mod 64 */` |
-|   16210 |  215 | `        if (count < 8) {` |
+|   16214 |  215 | `        if (count < 8) {` |
 |       - |  216 | `                /* Two lots of padding:  Pad the first block to 64 bytes */` |
 |     ! 0 |  217 | `               SyZero(p,count);` |
 |     ! 0 |  218 | `                byteReverse(ctx->in, 16);` |
@@ -232,42 +232,42 @@ Coverage: 1229/1292 lines (95.12%)
 |     ! 0 |  222 | `                SyZero(ctx->in,56);` |
 |     ! 0 |  223 | `        } else {` |
 |       - |  224 | `                /* Pad block to 56 bytes */` |
-|   16210 |  225 | `                SyZero(p,count-8);` |
+|   16214 |  225 | `                SyZero(p,count-8);` |
 |       - |  226 | `        }` |
-|   16210 |  227 | `        byteReverse(ctx->in, 14);` |
+|   16214 |  227 | `        byteReverse(ctx->in, 14);` |
 |       - |  228 |  |
 |       - |  229 | `        /* Append length in bits and transform */` |
-|   16210 |  230 | `        ((sxu32*)ctx->in)[ 14 ] = ctx->bits[0];` |
-|   16210 |  231 | `        ((sxu32*)ctx->in)[ 15 ] = ctx->bits[1];` |
+|   16214 |  230 | `        ((sxu32*)ctx->in)[ 14 ] = ctx->bits[0];` |
+|   16214 |  231 | `        ((sxu32*)ctx->in)[ 15 ] = ctx->bits[1];` |
 |       - |  232 |  |
-|   16210 |  233 | `        MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
-|   16210 |  234 | `        byteReverse((unsigned char *)ctx->buf, 4);` |
-|   16210 |  235 | `        SyMemcpy(ctx->buf,digest,0x10);` |
-|   16210 |  236 | `        SyZero(ctx,sizeof(ctx));    /* In case it's sensitive */` |
-|   16210 |  237 | `}` |
+|   16214 |  233 | `        MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
+|   16214 |  234 | `        byteReverse((unsigned char *)ctx->buf, 4);` |
+|   16214 |  235 | `        SyMemcpy(ctx->buf,digest,0x10);` |
+|   16214 |  236 | `        SyZero(ctx,sizeof(ctx));    /* In case it's sensitive */` |
+|   16214 |  237 | `}` |
 |       - |  238 | `#undef F1` |
 |       - |  239 | `#undef F2` |
 |       - |  240 | `#undef F3` |
 |       - |  241 | `#undef F4` |
-|   16216 |  242 | `PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)` |
+|   16222 |  242 | `PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)` |
 |       4 |  243 | `{` |
-|   16220 |  244 | `	pCtx->buf[0] = 0x67452301;` |
-|   16220 |  245 | `    pCtx->buf[1] = 0xefcdab89;` |
-|   16220 |  246 | `    pCtx->buf[2] = 0x98badcfe;` |
-|   16220 |  247 | `    pCtx->buf[3] = 0x10325476;` |
-|   16220 |  248 | `    pCtx->bits[0] = 0;` |
-|   16220 |  249 | `    pCtx->bits[1] = 0;` |
+|   16226 |  244 | `	pCtx->buf[0] = 0x67452301;` |
+|   16226 |  245 | `    pCtx->buf[1] = 0xefcdab89;` |
+|   16226 |  246 | `    pCtx->buf[2] = 0x98badcfe;` |
+|   16226 |  247 | `    pCtx->buf[3] = 0x10325476;` |
+|   16226 |  248 | `    pCtx->bits[0] = 0;` |
+|   16226 |  249 | `    pCtx->bits[1] = 0;` |
 |       - |  250 |  |
-|   16220 |  251 | `   return SXRET_OK;` |
+|   16226 |  251 | `   return SXRET_OK;` |
 |       4 |  252 | `}` |
 |      46 |  253 | `PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[16])` |
-|       3 |  254 | `{` |
+|       2 |  254 | `{` |
 |       - |  255 | `	MD5Context sCtx;` |
-|      49 |  256 | `	MD5Init(&sCtx);` |
-|      49 |  257 | `	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);` |
-|      49 |  258 | `	MD5Final(zDigest,&sCtx);` |
-|      49 |  259 | `	return SXRET_OK;` |
-|       3 |  260 | `}` |
+|      48 |  256 | `	MD5Init(&sCtx);` |
+|      48 |  257 | `	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);` |
+|      48 |  258 | `	MD5Final(zDigest,&sCtx);` |
+|      48 |  259 | `	return SXRET_OK;` |
+|       2 |  260 | `}` |
 |       - |  261 | `/*` |
 |       - |  262 | ` * SHA-1 in C` |
 |       - |  263 | ` * By Steve Reid <steve@edmweb.com>` |
@@ -331,13 +331,13 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |  321 | `#define d qq[3]` |
 |       - |  322 | `#define e qq[4]` |
 |       - |  323 |  |
-|   32888 |  324 | `static void SHA1Transform(unsigned int state[5], const unsigned char *buffer)` |
+|   32864 |  324 | `static void SHA1Transform(unsigned int state[5], const unsigned char *buffer)` |
 |       1 |  325 | `{` |
 |       - |  326 | `  unsigned int qq[5]; /* a, b, c, d, e; */` |
 |       - |  327 | `  static int one = 1;` |
 |       - |  328 | `  unsigned int block[16];` |
-|   32889 |  329 | `  SyMemcpy(buffer,(void *)block,64);` |
-|   32889 |  330 | `  SyMemcpy(state,qq,5*sizeof(unsigned int));` |
+|   32865 |  329 | `  SyMemcpy(buffer,(void *)block,64);` |
+|   32865 |  330 | `  SyMemcpy(state,qq,5*sizeof(unsigned int));` |
 |       - |  331 |  |
 |       - |  332 | `  /* Copy context->state[] to working vars */` |
 |       - |  333 | `  /*` |
@@ -349,41 +349,41 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |  339 | `  */` |
 |       - |  340 |  |
 |       - |  341 | `  /* 4 rounds of 20 operations each. Loop unrolled. */` |
-|   32889 |  342 | `  if( 1 == *(unsigned char*)&one ){` |
-|   32889 |  343 | `    Rl0(a,b,c,d,e, 0); Rl0(e,a,b,c,d, 1); Rl0(d,e,a,b,c, 2); Rl0(c,d,e,a,b, 3);` |
-|   32889 |  344 | `    Rl0(b,c,d,e,a, 4); Rl0(a,b,c,d,e, 5); Rl0(e,a,b,c,d, 6); Rl0(d,e,a,b,c, 7);` |
-|   32889 |  345 | `    Rl0(c,d,e,a,b, 8); Rl0(b,c,d,e,a, 9); Rl0(a,b,c,d,e,10); Rl0(e,a,b,c,d,11);` |
-|   32889 |  346 | `    Rl0(d,e,a,b,c,12); Rl0(c,d,e,a,b,13); Rl0(b,c,d,e,a,14); Rl0(a,b,c,d,e,15);` |
-|   16445 |  347 | `  }else{` |
+|   32865 |  342 | `  if( 1 == *(unsigned char*)&one ){` |
+|   32865 |  343 | `    Rl0(a,b,c,d,e, 0); Rl0(e,a,b,c,d, 1); Rl0(d,e,a,b,c, 2); Rl0(c,d,e,a,b, 3);` |
+|   32865 |  344 | `    Rl0(b,c,d,e,a, 4); Rl0(a,b,c,d,e, 5); Rl0(e,a,b,c,d, 6); Rl0(d,e,a,b,c, 7);` |
+|   32865 |  345 | `    Rl0(c,d,e,a,b, 8); Rl0(b,c,d,e,a, 9); Rl0(a,b,c,d,e,10); Rl0(e,a,b,c,d,11);` |
+|   32865 |  346 | `    Rl0(d,e,a,b,c,12); Rl0(c,d,e,a,b,13); Rl0(b,c,d,e,a,14); Rl0(a,b,c,d,e,15);` |
+|   16433 |  347 | `  }else{` |
 |     ! 0 |  348 | `    Rb0(a,b,c,d,e, 0); Rb0(e,a,b,c,d, 1); Rb0(d,e,a,b,c, 2); Rb0(c,d,e,a,b, 3);` |
 |     ! 0 |  349 | `    Rb0(b,c,d,e,a, 4); Rb0(a,b,c,d,e, 5); Rb0(e,a,b,c,d, 6); Rb0(d,e,a,b,c, 7);` |
 |     ! 0 |  350 | `    Rb0(c,d,e,a,b, 8); Rb0(b,c,d,e,a, 9); Rb0(a,b,c,d,e,10); Rb0(e,a,b,c,d,11);` |
 |     ! 0 |  351 | `    Rb0(d,e,a,b,c,12); Rb0(c,d,e,a,b,13); Rb0(b,c,d,e,a,14); Rb0(a,b,c,d,e,15);` |
 |       - |  352 | `  }` |
-|   32889 |  353 | `  R1(e,a,b,c,d,16); R1(d,e,a,b,c,17); R1(c,d,e,a,b,18); R1(b,c,d,e,a,19);` |
-|   32889 |  354 | `  R2(a,b,c,d,e,20); R2(e,a,b,c,d,21); R2(d,e,a,b,c,22); R2(c,d,e,a,b,23);` |
-|   32889 |  355 | `  R2(b,c,d,e,a,24); R2(a,b,c,d,e,25); R2(e,a,b,c,d,26); R2(d,e,a,b,c,27);` |
-|   32889 |  356 | `  R2(c,d,e,a,b,28); R2(b,c,d,e,a,29); R2(a,b,c,d,e,30); R2(e,a,b,c,d,31);` |
-|   32889 |  357 | `  R2(d,e,a,b,c,32); R2(c,d,e,a,b,33); R2(b,c,d,e,a,34); R2(a,b,c,d,e,35);` |
-|   32889 |  358 | `  R2(e,a,b,c,d,36); R2(d,e,a,b,c,37); R2(c,d,e,a,b,38); R2(b,c,d,e,a,39);` |
-|   32889 |  359 | `  R3(a,b,c,d,e,40); R3(e,a,b,c,d,41); R3(d,e,a,b,c,42); R3(c,d,e,a,b,43);` |
-|   32889 |  360 | `  R3(b,c,d,e,a,44); R3(a,b,c,d,e,45); R3(e,a,b,c,d,46); R3(d,e,a,b,c,47);` |
-|   32889 |  361 | `  R3(c,d,e,a,b,48); R3(b,c,d,e,a,49); R3(a,b,c,d,e,50); R3(e,a,b,c,d,51);` |
-|   32889 |  362 | `  R3(d,e,a,b,c,52); R3(c,d,e,a,b,53); R3(b,c,d,e,a,54); R3(a,b,c,d,e,55);` |
-|   32889 |  363 | `  R3(e,a,b,c,d,56); R3(d,e,a,b,c,57); R3(c,d,e,a,b,58); R3(b,c,d,e,a,59);` |
-|   32889 |  364 | `  R4(a,b,c,d,e,60); R4(e,a,b,c,d,61); R4(d,e,a,b,c,62); R4(c,d,e,a,b,63);` |
-|   32889 |  365 | `  R4(b,c,d,e,a,64); R4(a,b,c,d,e,65); R4(e,a,b,c,d,66); R4(d,e,a,b,c,67);` |
-|   32889 |  366 | `  R4(c,d,e,a,b,68); R4(b,c,d,e,a,69); R4(a,b,c,d,e,70); R4(e,a,b,c,d,71);` |
-|   32889 |  367 | `  R4(d,e,a,b,c,72); R4(c,d,e,a,b,73); R4(b,c,d,e,a,74); R4(a,b,c,d,e,75);` |
-|   32889 |  368 | `  R4(e,a,b,c,d,76); R4(d,e,a,b,c,77); R4(c,d,e,a,b,78); R4(b,c,d,e,a,79);` |
+|   32865 |  353 | `  R1(e,a,b,c,d,16); R1(d,e,a,b,c,17); R1(c,d,e,a,b,18); R1(b,c,d,e,a,19);` |
+|   32865 |  354 | `  R2(a,b,c,d,e,20); R2(e,a,b,c,d,21); R2(d,e,a,b,c,22); R2(c,d,e,a,b,23);` |
+|   32865 |  355 | `  R2(b,c,d,e,a,24); R2(a,b,c,d,e,25); R2(e,a,b,c,d,26); R2(d,e,a,b,c,27);` |
+|   32865 |  356 | `  R2(c,d,e,a,b,28); R2(b,c,d,e,a,29); R2(a,b,c,d,e,30); R2(e,a,b,c,d,31);` |
+|   32865 |  357 | `  R2(d,e,a,b,c,32); R2(c,d,e,a,b,33); R2(b,c,d,e,a,34); R2(a,b,c,d,e,35);` |
+|   32865 |  358 | `  R2(e,a,b,c,d,36); R2(d,e,a,b,c,37); R2(c,d,e,a,b,38); R2(b,c,d,e,a,39);` |
+|   32865 |  359 | `  R3(a,b,c,d,e,40); R3(e,a,b,c,d,41); R3(d,e,a,b,c,42); R3(c,d,e,a,b,43);` |
+|   32865 |  360 | `  R3(b,c,d,e,a,44); R3(a,b,c,d,e,45); R3(e,a,b,c,d,46); R3(d,e,a,b,c,47);` |
+|   32865 |  361 | `  R3(c,d,e,a,b,48); R3(b,c,d,e,a,49); R3(a,b,c,d,e,50); R3(e,a,b,c,d,51);` |
+|   32865 |  362 | `  R3(d,e,a,b,c,52); R3(c,d,e,a,b,53); R3(b,c,d,e,a,54); R3(a,b,c,d,e,55);` |
+|   32865 |  363 | `  R3(e,a,b,c,d,56); R3(d,e,a,b,c,57); R3(c,d,e,a,b,58); R3(b,c,d,e,a,59);` |
+|   32865 |  364 | `  R4(a,b,c,d,e,60); R4(e,a,b,c,d,61); R4(d,e,a,b,c,62); R4(c,d,e,a,b,63);` |
+|   32865 |  365 | `  R4(b,c,d,e,a,64); R4(a,b,c,d,e,65); R4(e,a,b,c,d,66); R4(d,e,a,b,c,67);` |
+|   32865 |  366 | `  R4(c,d,e,a,b,68); R4(b,c,d,e,a,69); R4(a,b,c,d,e,70); R4(e,a,b,c,d,71);` |
+|   32865 |  367 | `  R4(d,e,a,b,c,72); R4(c,d,e,a,b,73); R4(b,c,d,e,a,74); R4(a,b,c,d,e,75);` |
+|   32865 |  368 | `  R4(e,a,b,c,d,76); R4(d,e,a,b,c,77); R4(c,d,e,a,b,78); R4(b,c,d,e,a,79);` |
 |       - |  369 |  |
 |       - |  370 | `  /* Add the working vars back into context.state[] */` |
-|   32889 |  371 | `  state[0] += a;` |
-|   32889 |  372 | `  state[1] += b;` |
-|   32889 |  373 | `  state[2] += c;` |
-|   32889 |  374 | `  state[3] += d;` |
-|   32889 |  375 | `  state[4] += e;` |
-|   32889 |  376 | `}` |
+|   32865 |  371 | `  state[0] += a;` |
+|   32865 |  372 | `  state[1] += b;` |
+|   32865 |  373 | `  state[2] += c;` |
+|   32865 |  374 | `  state[3] += d;` |
+|   32865 |  375 | `  state[4] += e;` |
+|   32865 |  376 | `}` |
 |       - |  377 | `#undef a` |
 |       - |  378 | `#undef b` |
 |       - |  379 | `#undef c` |
@@ -392,59 +392,59 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |  382 | `/*` |
 |       - |  383 | ` * SHA1Init - Initialize new context` |
 |       - |  384 | ` */` |
-|   16477 |  385 | `PH7_PRIVATE void SHA1Init(SHA1Context *context){` |
+|   16453 |  385 | `PH7_PRIVATE void SHA1Init(SHA1Context *context){` |
 |       - |  386 | `    /* SHA1 initialization constants */` |
-|   16477 |  387 | `    context->state[0] = 0x67452301;` |
-|   16477 |  388 | `    context->state[1] = 0xEFCDAB89;` |
-|   16477 |  389 | `    context->state[2] = 0x98BADCFE;` |
-|   16477 |  390 | `    context->state[3] = 0x10325476;` |
-|   16477 |  391 | `    context->state[4] = 0xC3D2E1F0;` |
-|   16477 |  392 | `    context->count[0] = context->count[1] = 0;` |
-|   16477 |  393 | `}` |
+|   16453 |  387 | `    context->state[0] = 0x67452301;` |
+|   16453 |  388 | `    context->state[1] = 0xEFCDAB89;` |
+|   16453 |  389 | `    context->state[2] = 0x98BADCFE;` |
+|   16453 |  390 | `    context->state[3] = 0x10325476;` |
+|   16453 |  391 | `    context->state[4] = 0xC3D2E1F0;` |
+|   16453 |  392 | `    context->count[0] = context->count[1] = 0;` |
+|   16453 |  393 | `}` |
 |       - |  394 | `/*` |
 |       - |  395 | ` * Run your data through this.` |
 |       - |  396 | ` */` |
-|  643673 |  397 | `PH7_PRIVATE void SHA1Update(SHA1Context *context,const unsigned char *data,unsigned int len){` |
+|  642521 |  397 | `PH7_PRIVATE void SHA1Update(SHA1Context *context,const unsigned char *data,unsigned int len){` |
 |       - |  398 | `    unsigned int i, j;` |
 |       - |  399 |  |
-|  643673 |  400 | `    j = context->count[0];` |
-|  643673 |  401 | `    if ((context->count[0] += len << 3) < j)` |
+|  642521 |  400 | `    j = context->count[0];` |
+|  642521 |  401 | `    if ((context->count[0] += len << 3) < j)` |
 |     ! 0 |  402 | `	context->count[1] += (len>>29)+1;` |
-|  643673 |  403 | `    j = (j >> 3) & 63;` |
-|  643673 |  404 | `    if ((j + len) > 63) {` |
-|   32883 |  405 | `		(void)SyMemcpy(data,&context->buffer[j],  (i = 64-j));` |
-|   32883 |  406 | `	SHA1Transform(context->state, context->buffer);` |
+|  642521 |  403 | `    j = (j >> 3) & 63;` |
+|  642521 |  404 | `    if ((j + len) > 63) {` |
+|   32859 |  405 | `		(void)SyMemcpy(data,&context->buffer[j],  (i = 64-j));` |
+|   32859 |  406 | `	SHA1Transform(context->state, context->buffer);` |
 |       - |  407 | `          /* Ensure we only call SHA1Transform when at least 64 bytes remain. */` |
-|   32889 |  408 | `          for ( ; i + 64 <= len; i += 64)` |
+|   32865 |  408 | `          for ( ; i + 64 <= len; i += 64)` |
 |       7 |  409 | `	    SHA1Transform(context->state, &data[i]);` |
-|   32883 |  410 | `	j = 0;` |
-|   16442 |  411 | `    } else {` |
-|  610791 |  412 | `	i = 0;` |
+|   32859 |  410 | `	j = 0;` |
+|   16430 |  411 | `    } else {` |
+|  609663 |  412 | `	i = 0;` |
 |       - |  413 | `    }` |
-|  643673 |  414 | `	(void)SyMemcpy(&data[i],&context->buffer[j],len - i);` |
-|  643673 |  415 | `}` |
+|  642521 |  414 | `	(void)SyMemcpy(&data[i],&context->buffer[j],len - i);` |
+|  642521 |  415 | `}` |
 |       - |  416 | `/*` |
 |       - |  417 | ` * Add padding and return the message digest.` |
 |       - |  418 | ` */` |
-|   16477 |  419 | `PH7_PRIVATE void SHA1Final(SHA1Context *context, unsigned char digest[20]){` |
+|   16453 |  419 | `PH7_PRIVATE void SHA1Final(SHA1Context *context, unsigned char digest[20]){` |
 |       - |  420 | `    unsigned int i;` |
 |       - |  421 | `    unsigned char finalcount[8];` |
 |       - |  422 |  |
-|  148285 |  423 | `    for (i = 0; i < 8; i++) {` |
-|  197713 |  424 | `	finalcount[i] = (unsigned char)((context->count[(i >= 4 ? 0 : 1)]` |
-|  131808 |  425 | `	 >> ((3-(i & 3)) * 8) ) & 255);	 /* Endian independent */` |
-|   65905 |  426 | `    }` |
-|   16477 |  427 | `    SHA1Update(context, (const unsigned char *)"\200", 1);` |
-|  594217 |  428 | `    while ((context->count[0] & 504) != 448)` |
-|  577741 |  429 | `	SHA1Update(context, (const unsigned char *)"\0", 1);` |
-|   16477 |  430 | `    SHA1Update(context, finalcount, 8);  /* Should cause a SHA1Transform() */` |
+|  148069 |  423 | `    for (i = 0; i < 8; i++) {` |
+|  197425 |  424 | `	finalcount[i] = (unsigned char)((context->count[(i >= 4 ? 0 : 1)]` |
+|  131616 |  425 | `	 >> ((3-(i & 3)) * 8) ) & 255);	 /* Endian independent */` |
+|   65809 |  426 | `    }` |
+|   16453 |  427 | `    SHA1Update(context, (const unsigned char *)"\200", 1);` |
+|  593137 |  428 | `    while ((context->count[0] & 504) != 448)` |
+|  576685 |  429 | `	SHA1Update(context, (const unsigned char *)"\0", 1);` |
+|   16453 |  430 | `    SHA1Update(context, finalcount, 8);  /* Should cause a SHA1Transform() */` |
 |       - |  431 |  |
-|   16477 |  432 | `    if (digest) {` |
-|  345997 |  433 | `	for (i = 0; i < 20; i++)` |
-|  329521 |  434 | `	    digest[i] = (unsigned char)` |
-|  329520 |  435 | `		((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 255);` |
-|    8238 |  436 | `    }` |
-|   16477 |  437 | `}` |
+|   16453 |  432 | `    if (digest) {` |
+|  345493 |  433 | `	for (i = 0; i < 20; i++)` |
+|  329041 |  434 | `	    digest[i] = (unsigned char)` |
+|  329040 |  435 | `		((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 255);` |
+|    8226 |  436 | `    }` |
+|   16453 |  437 | `}` |
 |       - |  438 | `#undef Rl0` |
 |       - |  439 | `#undef Rb0` |
 |       - |  440 | `#undef R1` |
@@ -476,39 +476,39 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |  466 | `	0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,` |
 |       - |  467 | `	0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2` |
 |       - |  468 | `};` |
-|   60504 |  469 | `static void SHA256Transform(sxu32 state[8],const unsigned char block[64]){` |
+|   60776 |  469 | `static void SHA256Transform(sxu32 state[8],const unsigned char block[64]){` |
 |       - |  470 | `	sxu32 w[64],a,b,c,d,e,f,g,h,t1,t2;` |
 |       - |  471 | `	int i;` |
-| 1028536 |  472 | `	for( i = 0; i < 16; i++ ){` |
-| 1452050 |  473 | `		w[i] = ((sxu32)block[i*4] << 24) \| ((sxu32)block[i*4+1] << 16)` |
-|  968032 |  474 | `			 \| ((sxu32)block[i*4+2] << 8) \| ((sxu32)block[i*4+3]);` |
-|  484018 |  475 | `	}` |
-| 2964600 |  476 | `	for( i = 16; i < 64; i++ ){` |
-| 2904098 |  477 | `		sxu32 s0 = SHA2_ROTR32(w[i-15],7) ^ SHA2_ROTR32(w[i-15],18) ^ (w[i-15] >> 3);` |
-| 2904098 |  478 | `		sxu32 s1 = SHA2_ROTR32(w[i-2],17) ^ SHA2_ROTR32(w[i-2],19) ^ (w[i-2] >> 10);` |
-| 2904098 |  479 | `		w[i] = w[i-16] + s0 + w[i-7] + s1;` |
-| 1452050 |  480 | `	}` |
-|   60504 |  481 | `	a = state[0]; b = state[1]; c = state[2]; d = state[3];` |
-|   60504 |  482 | `	e = state[4]; f = state[5]; g = state[6]; h = state[7];` |
-| 3932632 |  483 | `	for( i = 0; i < 64; i++ ){` |
-| 3872130 |  484 | `		sxu32 S1 = SHA2_ROTR32(e,6) ^ SHA2_ROTR32(e,11) ^ SHA2_ROTR32(e,25);` |
-| 3872130 |  485 | `		sxu32 ch = (e & f) ^ ((~e) & g);` |
-| 3872130 |  486 | `		sxu32 S0 = SHA2_ROTR32(a,2) ^ SHA2_ROTR32(a,13) ^ SHA2_ROTR32(a,22);` |
-| 3872130 |  487 | `		sxu32 maj = (a & b) ^ (a & c) ^ (b & c);` |
-| 3872130 |  488 | `		t1 = h + S1 + ch + SHA256_K[i] + w[i];` |
-| 3872130 |  489 | `		t2 = S0 + maj;` |
-| 3872130 |  490 | `		h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;` |
-| 1936066 |  491 | `	}` |
-|   60504 |  492 | `	state[0] += a; state[1] += b; state[2] += c; state[3] += d;` |
-|   60504 |  493 | `	state[4] += e; state[5] += f; state[6] += g; state[7] += h;` |
-|   60504 |  494 | `}` |
-|   55378 |  495 | `PH7_PRIVATE void SHA256Init(SHA256Context *pCtx){` |
-|   55378 |  496 | `	pCtx->state[0] = 0x6a09e667; pCtx->state[1] = 0xbb67ae85;` |
-|   55378 |  497 | `	pCtx->state[2] = 0x3c6ef372; pCtx->state[3] = 0xa54ff53a;` |
-|   55378 |  498 | `	pCtx->state[4] = 0x510e527f; pCtx->state[5] = 0x9b05688c;` |
-|   55378 |  499 | `	pCtx->state[6] = 0x1f83d9ab; pCtx->state[7] = 0x5be0cd19;` |
-|   55378 |  500 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 32;` |
-|   55378 |  501 | `}` |
+| 1033160 |  472 | `	for( i = 0; i < 16; i++ ){` |
+| 1458514 |  473 | `		w[i] = ((sxu32)block[i*4] << 24) \| ((sxu32)block[i*4+1] << 16)` |
+|  972384 |  474 | `			 \| ((sxu32)block[i*4+2] << 8) \| ((sxu32)block[i*4+3]);` |
+|  486130 |  475 | `	}` |
+| 2977928 |  476 | `	for( i = 16; i < 64; i++ ){` |
+| 2917154 |  477 | `		sxu32 s0 = SHA2_ROTR32(w[i-15],7) ^ SHA2_ROTR32(w[i-15],18) ^ (w[i-15] >> 3);` |
+| 2917154 |  478 | `		sxu32 s1 = SHA2_ROTR32(w[i-2],17) ^ SHA2_ROTR32(w[i-2],19) ^ (w[i-2] >> 10);` |
+| 2917154 |  479 | `		w[i] = w[i-16] + s0 + w[i-7] + s1;` |
+| 1458386 |  480 | `	}` |
+|   60776 |  481 | `	a = state[0]; b = state[1]; c = state[2]; d = state[3];` |
+|   60776 |  482 | `	e = state[4]; f = state[5]; g = state[6]; h = state[7];` |
+| 3950312 |  483 | `	for( i = 0; i < 64; i++ ){` |
+| 3889538 |  484 | `		sxu32 S1 = SHA2_ROTR32(e,6) ^ SHA2_ROTR32(e,11) ^ SHA2_ROTR32(e,25);` |
+| 3889538 |  485 | `		sxu32 ch = (e & f) ^ ((~e) & g);` |
+| 3889538 |  486 | `		sxu32 S0 = SHA2_ROTR32(a,2) ^ SHA2_ROTR32(a,13) ^ SHA2_ROTR32(a,22);` |
+| 3889538 |  487 | `		sxu32 maj = (a & b) ^ (a & c) ^ (b & c);` |
+| 3889538 |  488 | `		t1 = h + S1 + ch + SHA256_K[i] + w[i];` |
+| 3889538 |  489 | `		t2 = S0 + maj;` |
+| 3889538 |  490 | `		h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;` |
+| 1944514 |  491 | `	}` |
+|   60776 |  492 | `	state[0] += a; state[1] += b; state[2] += c; state[3] += d;` |
+|   60776 |  493 | `	state[4] += e; state[5] += f; state[6] += g; state[7] += h;` |
+|   60776 |  494 | `}` |
+|   55443 |  495 | `PH7_PRIVATE void SHA256Init(SHA256Context *pCtx){` |
+|   55443 |  496 | `	pCtx->state[0] = 0x6a09e667; pCtx->state[1] = 0xbb67ae85;` |
+|   55443 |  497 | `	pCtx->state[2] = 0x3c6ef372; pCtx->state[3] = 0xa54ff53a;` |
+|   55443 |  498 | `	pCtx->state[4] = 0x510e527f; pCtx->state[5] = 0x9b05688c;` |
+|   55443 |  499 | `	pCtx->state[6] = 0x1f83d9ab; pCtx->state[7] = 0x5be0cd19;` |
+|   55443 |  500 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 32;` |
+|   55443 |  501 | `}` |
 |       9 |  502 | `PH7_PRIVATE void SHA224Init(SHA256Context *pCtx){` |
 |       9 |  503 | `	pCtx->state[0] = 0xc1059ed8; pCtx->state[1] = 0x367cd507;` |
 |       9 |  504 | `	pCtx->state[2] = 0x3070dd17; pCtx->state[3] = 0xf70e5939;` |
@@ -516,37 +516,37 @@ Coverage: 1229/1292 lines (95.12%)
 |       9 |  506 | `	pCtx->state[6] = 0x64f98fa7; pCtx->state[7] = 0xbefa4fa4;` |
 |       9 |  507 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 28;` |
 |       9 |  508 | `}` |
-| 1198320 |  509 | `PH7_PRIVATE void SHA256Update(SHA256Context *pCtx,const unsigned char *data,unsigned int len){` |
-| 1198320 |  510 | `	pCtx->nLen += len;` |
-| 2400420 |  511 | `	while( len > 0 ){` |
-| 1202102 |  512 | `		unsigned int n = 64 - pCtx->nIndex;` |
-| 1202102 |  513 | `		if( n > len ){ n = len; }` |
-| 1202102 |  514 | `		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);` |
-| 1202102 |  515 | `		pCtx->nIndex += n; data += n; len -= n;` |
-| 1202102 |  516 | `		if( pCtx->nIndex == 64 ){` |
-|   60504 |  517 | `			SHA256Transform(pCtx->state,pCtx->buffer);` |
-|   60504 |  518 | `			pCtx->nIndex = 0;` |
-|   30251 |  519 | `		}` |
+| 1201738 |  509 | `PH7_PRIVATE void SHA256Update(SHA256Context *pCtx,const unsigned char *data,unsigned int len){` |
+| 1201738 |  510 | `	pCtx->nLen += len;` |
+| 2407441 |  511 | `	while( len > 0 ){` |
+| 1205705 |  512 | `		unsigned int n = 64 - pCtx->nIndex;` |
+| 1205705 |  513 | `		if( n > len ){ n = len; }` |
+| 1205705 |  514 | `		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);` |
+| 1205705 |  515 | `		pCtx->nIndex += n; data += n; len -= n;` |
+| 1205705 |  516 | `		if( pCtx->nIndex == 64 ){` |
+|   60776 |  517 | `			SHA256Transform(pCtx->state,pCtx->buffer);` |
+|   60776 |  518 | `			pCtx->nIndex = 0;` |
+|   30383 |  519 | `		}` |
 |       2 |  520 | `	}` |
-| 1198320 |  521 | `}` |
-|   55384 |  522 | `PH7_PRIVATE void SHA256Final(SHA256Context *pCtx,unsigned char *digest){` |
-|   55384 |  523 | `	sxu64 nBits = pCtx->nLen << 3;` |
-|   55384 |  524 | `	unsigned char c = 0x80;` |
+| 1201738 |  521 | `}` |
+|   55449 |  522 | `PH7_PRIVATE void SHA256Final(SHA256Context *pCtx,unsigned char *digest){` |
+|   55449 |  523 | `	sxu64 nBits = pCtx->nLen << 3;` |
+|   55449 |  524 | `	unsigned char c = 0x80;` |
 |       - |  525 | `	int i;` |
-|   55384 |  526 | `	SHA256Update(pCtx,&c,1);` |
-|   55384 |  527 | `	c = 0x00;` |
-|  560604 |  528 | `	while( pCtx->nIndex != 56 ){` |
-|  505222 |  529 | `		SHA256Update(pCtx,&c,1);` |
+|   55449 |  526 | `	SHA256Update(pCtx,&c,1);` |
+|   55449 |  527 | `	c = 0x00;` |
+|  563437 |  528 | `	while( pCtx->nIndex != 56 ){` |
+|  507990 |  529 | `		SHA256Update(pCtx,&c,1);` |
 |       2 |  530 | `	}` |
-|  498440 |  531 | `	for( i = 7; i >= 0; i-- ){` |
-|  443058 |  532 | `		unsigned char b = (unsigned char)((nBits >> (i*8)) & 0xff);` |
-|  443058 |  533 | `		SHA256Update(pCtx,&b,1);` |
-|  221530 |  534 | `	}` |
+|  499025 |  531 | `	for( i = 7; i >= 0; i-- ){` |
+|  443578 |  532 | `		unsigned char b = (unsigned char)((nBits >> (i*8)) & 0xff);` |
+|  443578 |  533 | `		SHA256Update(pCtx,&b,1);` |
+|  221778 |  534 | `	}` |
 |       - |  535 | `	/* nIndex is now 0 (a final block was processed). Emit nDigestLen bytes. */` |
-| 1827576 |  536 | `	for( i = 0; i < pCtx->nDigestLen; i++ ){` |
-| 1772194 |  537 | `		digest[i] = (unsigned char)((pCtx->state[i>>2] >> ((3-(i&3))*8)) & 0xff);` |
-|  886098 |  538 | `	}` |
-|   55384 |  539 | `}` |
+| 1829721 |  536 | `	for( i = 0; i < pCtx->nDigestLen; i++ ){` |
+| 1774274 |  537 | `		digest[i] = (unsigned char)((pCtx->state[i>>2] >> ((3-(i&3))*8)) & 0xff);` |
+|  887090 |  538 | `	}` |
+|   55449 |  539 | `}` |
 |     ! 0 |  540 | `PH7_PRIVATE sxi32 SySha256Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[32]){` |
 |       - |  541 | `	SHA256Context sCtx;` |
 |     ! 0 |  542 | `	SHA256Init(&sCtx);` |
@@ -582,41 +582,41 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |  572 | `	0x28db77f523047d84ULL,0x32caab7b40c72493ULL,0x3c9ebe0a15c9bebcULL,0x431d67c49c100d4cULL,` |
 |       - |  573 | `	0x4cc5d4becb3e42b6ULL,0x597f299cfc657e2aULL,0x5fcb6fab3ad6faecULL,0x6c44198c4a475817ULL` |
 |       - |  574 | `};` |
-|   39045 |  575 | `static void SHA512Transform(sxu64 state[8],const unsigned char block[128]){` |
+|   39151 |  575 | `static void SHA512Transform(sxu64 state[8],const unsigned char block[128]){` |
 |       - |  576 | `	sxu64 w[80],a,b,c,d,e,f,g,h,t1,t2;` |
 |       - |  577 | `	int i;` |
-|  663749 |  578 | `	for( i = 0; i < 16; i++ ){` |
-|  937057 |  579 | `		w[i] = ((sxu64)block[i*8] << 56) \| ((sxu64)block[i*8+1] << 48)` |
-|  624704 |  580 | `			 \| ((sxu64)block[i*8+2] << 40) \| ((sxu64)block[i*8+3] << 32)` |
-|  624704 |  581 | `			 \| ((sxu64)block[i*8+4] << 24) \| ((sxu64)block[i*8+5] << 16)` |
-|  624704 |  582 | `			 \| ((sxu64)block[i*8+6] << 8) \| ((sxu64)block[i*8+7]);` |
-|  312353 |  583 | `	}` |
-| 2537861 |  584 | `	for( i = 16; i < 80; i++ ){` |
-| 2498817 |  585 | `		sxu64 s0 = SHA2_ROTR64(w[i-15],1) ^ SHA2_ROTR64(w[i-15],8) ^ (w[i-15] >> 7);` |
-| 2498817 |  586 | `		sxu64 s1 = SHA2_ROTR64(w[i-2],19) ^ SHA2_ROTR64(w[i-2],61) ^ (w[i-2] >> 6);` |
-| 2498817 |  587 | `		w[i] = w[i-16] + s0 + w[i-7] + s1;` |
-| 1249409 |  588 | `	}` |
-|   39045 |  589 | `	a = state[0]; b = state[1]; c = state[2]; d = state[3];` |
-|   39045 |  590 | `	e = state[4]; f = state[5]; g = state[6]; h = state[7];` |
-| 3162565 |  591 | `	for( i = 0; i < 80; i++ ){` |
-| 3123521 |  592 | `		sxu64 S1 = SHA2_ROTR64(e,14) ^ SHA2_ROTR64(e,18) ^ SHA2_ROTR64(e,41);` |
-| 3123521 |  593 | `		sxu64 ch = (e & f) ^ ((~e) & g);` |
-| 3123521 |  594 | `		sxu64 S0 = SHA2_ROTR64(a,28) ^ SHA2_ROTR64(a,34) ^ SHA2_ROTR64(a,39);` |
-| 3123521 |  595 | `		sxu64 maj = (a & b) ^ (a & c) ^ (b & c);` |
-| 3123521 |  596 | `		t1 = h + S1 + ch + SHA512_K[i] + w[i];` |
-| 3123521 |  597 | `		t2 = S0 + maj;` |
-| 3123521 |  598 | `		h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;` |
-| 1561761 |  599 | `	}` |
-|   39045 |  600 | `	state[0] += a; state[1] += b; state[2] += c; state[3] += d;` |
-|   39045 |  601 | `	state[4] += e; state[5] += f; state[6] += g; state[7] += h;` |
-|   39045 |  602 | `}` |
-|   38093 |  603 | `PH7_PRIVATE void SHA512Init(SHA512Context *pCtx){` |
-|   38093 |  604 | `	pCtx->state[0] = 0x6a09e667f3bcc908ULL; pCtx->state[1] = 0xbb67ae8584caa73bULL;` |
-|   38093 |  605 | `	pCtx->state[2] = 0x3c6ef372fe94f82bULL; pCtx->state[3] = 0xa54ff53a5f1d36f1ULL;` |
-|   38093 |  606 | `	pCtx->state[4] = 0x510e527fade682d1ULL; pCtx->state[5] = 0x9b05688c2b3e6c1fULL;` |
-|   38093 |  607 | `	pCtx->state[6] = 0x1f83d9abfb41bd6bULL; pCtx->state[7] = 0x5be0cd19137e2179ULL;` |
-|   38093 |  608 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 64;` |
-|   38093 |  609 | `}` |
+|  665551 |  578 | `	for( i = 0; i < 16; i++ ){` |
+|  939601 |  579 | `		w[i] = ((sxu64)block[i*8] << 56) \| ((sxu64)block[i*8+1] << 48)` |
+|  626400 |  580 | `			 \| ((sxu64)block[i*8+2] << 40) \| ((sxu64)block[i*8+3] << 32)` |
+|  626400 |  581 | `			 \| ((sxu64)block[i*8+4] << 24) \| ((sxu64)block[i*8+5] << 16)` |
+|  626400 |  582 | `			 \| ((sxu64)block[i*8+6] << 8) \| ((sxu64)block[i*8+7]);` |
+|  313201 |  583 | `	}` |
+| 2544751 |  584 | `	for( i = 16; i < 80; i++ ){` |
+| 2505601 |  585 | `		sxu64 s0 = SHA2_ROTR64(w[i-15],1) ^ SHA2_ROTR64(w[i-15],8) ^ (w[i-15] >> 7);` |
+| 2505601 |  586 | `		sxu64 s1 = SHA2_ROTR64(w[i-2],19) ^ SHA2_ROTR64(w[i-2],61) ^ (w[i-2] >> 6);` |
+| 2505601 |  587 | `		w[i] = w[i-16] + s0 + w[i-7] + s1;` |
+| 1252801 |  588 | `	}` |
+|   39151 |  589 | `	a = state[0]; b = state[1]; c = state[2]; d = state[3];` |
+|   39151 |  590 | `	e = state[4]; f = state[5]; g = state[6]; h = state[7];` |
+| 3171151 |  591 | `	for( i = 0; i < 80; i++ ){` |
+| 3132001 |  592 | `		sxu64 S1 = SHA2_ROTR64(e,14) ^ SHA2_ROTR64(e,18) ^ SHA2_ROTR64(e,41);` |
+| 3132001 |  593 | `		sxu64 ch = (e & f) ^ ((~e) & g);` |
+| 3132001 |  594 | `		sxu64 S0 = SHA2_ROTR64(a,28) ^ SHA2_ROTR64(a,34) ^ SHA2_ROTR64(a,39);` |
+| 3132001 |  595 | `		sxu64 maj = (a & b) ^ (a & c) ^ (b & c);` |
+| 3132001 |  596 | `		t1 = h + S1 + ch + SHA512_K[i] + w[i];` |
+| 3132001 |  597 | `		t2 = S0 + maj;` |
+| 3132001 |  598 | `		h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;` |
+| 1566001 |  599 | `	}` |
+|   39151 |  600 | `	state[0] += a; state[1] += b; state[2] += c; state[3] += d;` |
+|   39151 |  601 | `	state[4] += e; state[5] += f; state[6] += g; state[7] += h;` |
+|   39151 |  602 | `}` |
+|   38111 |  603 | `PH7_PRIVATE void SHA512Init(SHA512Context *pCtx){` |
+|   38111 |  604 | `	pCtx->state[0] = 0x6a09e667f3bcc908ULL; pCtx->state[1] = 0xbb67ae8584caa73bULL;` |
+|   38111 |  605 | `	pCtx->state[2] = 0x3c6ef372fe94f82bULL; pCtx->state[3] = 0xa54ff53a5f1d36f1ULL;` |
+|   38111 |  606 | `	pCtx->state[4] = 0x510e527fade682d1ULL; pCtx->state[5] = 0x9b05688c2b3e6c1fULL;` |
+|   38111 |  607 | `	pCtx->state[6] = 0x1f83d9abfb41bd6bULL; pCtx->state[7] = 0x5be0cd19137e2179ULL;` |
+|   38111 |  608 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 64;` |
+|   38111 |  609 | `}` |
 |       9 |  610 | `PH7_PRIVATE void SHA384Init(SHA512Context *pCtx){` |
 |       9 |  611 | `	pCtx->state[0] = 0xcbbb9d5dc1059ed8ULL; pCtx->state[1] = 0x629a292a367cd507ULL;` |
 |       9 |  612 | `	pCtx->state[2] = 0x9159015a3070dd17ULL; pCtx->state[3] = 0x152fecd8f70e5939ULL;` |
@@ -624,40 +624,40 @@ Coverage: 1229/1292 lines (95.12%)
 |       9 |  614 | `	pCtx->state[6] = 0xdb0c2e0d64f98fa7ULL; pCtx->state[7] = 0x47b5481dbefa4fa4ULL;` |
 |       9 |  615 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 48;` |
 |       9 |  616 | `}` |
-| 2157765 |  617 | `PH7_PRIVATE void SHA512Update(SHA512Context *pCtx,const unsigned char *data,unsigned int len){` |
-| 2157765 |  618 | `	pCtx->nLen += len;` |
-| 4316369 |  619 | `	while( len > 0 ){` |
-| 2158605 |  620 | `		unsigned int n = 128 - pCtx->nIndex;` |
-| 2158605 |  621 | `		if( n > len ){ n = len; }` |
-| 2158605 |  622 | `		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);` |
-| 2158605 |  623 | `		pCtx->nIndex += n; data += n; len -= n;` |
-| 2158605 |  624 | `		if( pCtx->nIndex == 128 ){` |
-|   39045 |  625 | `			SHA512Transform(pCtx->state,pCtx->buffer);` |
-|   39045 |  626 | `			pCtx->nIndex = 0;` |
-|   19522 |  627 | `		}` |
+| 2159537 |  617 | `PH7_PRIVATE void SHA512Update(SHA512Context *pCtx,const unsigned char *data,unsigned int len){` |
+| 2159537 |  618 | `	pCtx->nLen += len;` |
+| 4319993 |  619 | `	while( len > 0 ){` |
+| 2160457 |  620 | `		unsigned int n = 128 - pCtx->nIndex;` |
+| 2160457 |  621 | `		if( n > len ){ n = len; }` |
+| 2160457 |  622 | `		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);` |
+| 2160457 |  623 | `		pCtx->nIndex += n; data += n; len -= n;` |
+| 2160457 |  624 | `		if( pCtx->nIndex == 128 ){` |
+|   39151 |  625 | `			SHA512Transform(pCtx->state,pCtx->buffer);` |
+|   39151 |  626 | `			pCtx->nIndex = 0;` |
+|   19575 |  627 | `		}` |
 |       1 |  628 | `	}` |
-| 2157765 |  629 | `}` |
-|   38131 |  630 | `PH7_PRIVATE void SHA512Final(SHA512Context *pCtx,unsigned char *digest){` |
-|   38131 |  631 | `	sxu64 nBits = pCtx->nLen << 3;` |
-|   38131 |  632 | `	unsigned char c = 0x80;` |
+| 2159537 |  629 | `}` |
+|   38149 |  630 | `PH7_PRIVATE void SHA512Final(SHA512Context *pCtx,unsigned char *digest){` |
+|   38149 |  631 | `	sxu64 nBits = pCtx->nLen << 3;` |
+|   38149 |  632 | `	unsigned char c = 0x80;` |
 |       - |  633 | `	int i;` |
-|   38131 |  634 | `	SHA512Update(pCtx,&c,1);` |
-|   38131 |  635 | `	c = 0x00;` |
-| 1411741 |  636 | `	while( pCtx->nIndex != 112 ){` |
-| 1373611 |  637 | `		SHA512Update(pCtx,&c,1);` |
+|   38149 |  634 | `	SHA512Update(pCtx,&c,1);` |
+|   38149 |  635 | `	c = 0x00;` |
+| 1413207 |  636 | `	while( pCtx->nIndex != 112 ){` |
+| 1375059 |  637 | `		SHA512Update(pCtx,&c,1);` |
 |       1 |  638 | `	}` |
 |       - |  639 | `	/* 128-bit length: the high 64 bits are zero for realistic input. */` |
-|  343171 |  640 | `	for( i = 0; i < 8; i++ ){` |
-|  305041 |  641 | `		SHA512Update(pCtx,&c,1);` |
-|  152521 |  642 | `	}` |
-|  343171 |  643 | `	for( i = 7; i >= 0; i-- ){` |
-|  305041 |  644 | `		unsigned char b = (unsigned char)((nBits >> (i*8)) & 0xff);` |
-|  305041 |  645 | `		SHA512Update(pCtx,&b,1);` |
-|  152521 |  646 | `	}` |
-| 2477315 |  647 | `	for( i = 0; i < pCtx->nDigestLen; i++ ){` |
-| 2439185 |  648 | `		digest[i] = (unsigned char)((pCtx->state[i>>3] >> ((7-(i&7))*8)) & 0xff);` |
-| 1219593 |  649 | `	}` |
-|   38131 |  650 | `}` |
+|  343333 |  640 | `	for( i = 0; i < 8; i++ ){` |
+|  305185 |  641 | `		SHA512Update(pCtx,&c,1);` |
+|  152593 |  642 | `	}` |
+|  343333 |  643 | `	for( i = 7; i >= 0; i-- ){` |
+|  305185 |  644 | `		unsigned char b = (unsigned char)((nBits >> (i*8)) & 0xff);` |
+|  305185 |  645 | `		SHA512Update(pCtx,&b,1);` |
+|  152593 |  646 | `	}` |
+| 2478485 |  647 | `	for( i = 0; i < pCtx->nDigestLen; i++ ){` |
+| 2440337 |  648 | `		digest[i] = (unsigned char)((pCtx->state[i>>3] >> ((7-(i&7))*8)) & 0xff);` |
+| 1220169 |  649 | `	}` |
+|   38149 |  650 | `}` |
 |     ! 0 |  651 | `PH7_PRIVATE sxi32 SySha512Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[64]){` |
 |       - |  652 | `	SHA512Context sCtx;` |
 |     ! 0 |  653 | `	SHA512Init(&sCtx);` |
@@ -782,17 +782,17 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |  772 | `	0x82f63b78, 0x92a8fc17, 0xa24bb5a6, 0xb21572c9,` |
 |       - |  773 | `	0xc38d26c4, 0xd3d3e1ab, 0xe330a81a, 0xf36e6f75,` |
 |       - |  774 | `};` |
-|      90 |  775 | `PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind)` |
+|     263 |  775 | `PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind)` |
 |       1 |  776 | `{` |
-|      91 |  777 | `	pCtx->nKind = nKind;` |
-|      91 |  778 | `	pCtx->nS1 = 0;` |
-|      91 |  779 | `	pCtx->nPend = 0;` |
-|      91 |  780 | `	switch( nKind ){` |
-|      16 |  781 | `		case SUM_CRC32:` |
+|     264 |  777 | `	pCtx->nKind = nKind;` |
+|     264 |  778 | `	pCtx->nS1 = 0;` |
+|     264 |  779 | `	pCtx->nPend = 0;` |
+|     264 |  780 | `	switch( nKind ){` |
+|     104 |  781 | `		case SUM_CRC32:` |
 |       - |  782 | `		case SUM_CRC32B:` |
 |       - |  783 | `		case SUM_CRC32C:` |
-|      33 |  784 | `			pCtx->nS0 = 0xffffffff;` |
-|      33 |  785 | `			break;` |
+|     206 |  784 | `			pCtx->nS0 = 0xffffffff;` |
+|     206 |  785 | `			break;` |
 |       6 |  786 | `		case SUM_ADLER32:` |
 |      13 |  787 | `			pCtx->nS0 = 1;  /* a */` |
 |      13 |  788 | `			pCtx->nS1 = 0;  /* b */` |
@@ -810,13 +810,13 @@ Coverage: 1229/1292 lines (95.12%)
 |      13 |  800 | `			pCtx->nS0 = 0;` |
 |      12 |  801 | `			break;` |
 |       - |  802 | `	}` |
-|      91 |  803 | `}` |
-|     306 |  804 | `PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len)` |
+|     264 |  803 | `}` |
+|     479 |  804 | `PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len)` |
 |       1 |  805 | `{` |
 |       - |  806 | `	unsigned int i;` |
 |       - |  807 | `	sxu32 crc;` |
 |       - |  808 | `	sxu64 h;` |
-|     307 |  809 | `	switch( pCtx->nKind ){` |
+|     480 |  809 | `	switch( pCtx->nKind ){` |
 |       4 |  810 | `		case SUM_CRC32:` |
 |       9 |  811 | `			crc = (sxu32)pCtx->nS0;` |
 |      31 |  812 | `			for( i = 0 ; i < len ; ++i ){` |
@@ -826,13 +826,13 @@ Coverage: 1229/1292 lines (95.12%)
 |      12 |  816 | `			}` |
 |       9 |  817 | `			pCtx->nS0 = crc;` |
 |       9 |  818 | `			break;` |
-|      44 |  819 | `		case SUM_CRC32B:` |
-|      89 |  820 | `			crc = (sxu32)pCtx->nS0;` |
-|     299 |  821 | `			for( i = 0 ; i < len ; ++i ){` |
-|     211 |  822 | `				crc = crc32_table[(crc ^ data[i]) & 0xff] ^ (crc >> 8);` |
-|     106 |  823 | `			}` |
-|      89 |  824 | `			pCtx->nS0 = crc;` |
-|      89 |  825 | `			break;` |
+|     132 |  819 | `		case SUM_CRC32B:` |
+|     262 |  820 | `			crc = (sxu32)pCtx->nS0;` |
+|   13849 |  821 | `			for( i = 0 ; i < len ; ++i ){` |
+|   13588 |  822 | `				crc = crc32_table[(crc ^ data[i]) & 0xff] ^ (crc >> 8);` |
+|    6793 |  823 | `			}` |
+|     262 |  824 | `			pCtx->nS0 = crc;` |
+|     262 |  825 | `			break;` |
 |       4 |  826 | `		case SUM_CRC32C:` |
 |       9 |  827 | `			crc = (sxu32)pCtx->nS0;` |
 |      31 |  828 | `			for( i = 0 ; i < len ; ++i ){` |
@@ -898,13 +898,13 @@ Coverage: 1229/1292 lines (95.12%)
 |      85 |  888 | `			pCtx->nS0 = crc;` |
 |      84 |  889 | `			break;` |
 |       - |  890 | `	}` |
-|     307 |  891 | `}` |
-|      90 |  892 | `PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest)` |
+|     480 |  891 | `}` |
+|     263 |  892 | `PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest)` |
 |       1 |  893 | `{` |
 |       - |  894 | `	sxu32 v;` |
 |       - |  895 | `	sxu64 h;` |
 |       - |  896 | `	int i;` |
-|      91 |  897 | `	switch( pCtx->nKind ){` |
+|     264 |  897 | `	switch( pCtx->nKind ){` |
 |       4 |  898 | `		case SUM_CRC32:` |
 |       - |  899 | `			/* php emits this one's register in the reverse byte order of every` |
 |       - |  900 | `			 * other checksum here: hash('crc32','123456789') is "181989fc"` |
@@ -915,13 +915,13 @@ Coverage: 1229/1292 lines (95.12%)
 |       9 |  905 | `			digest[2] = (unsigned char)((v >> 16) & 0xff);` |
 |       9 |  906 | `			digest[3] = (unsigned char)((v >> 24) & 0xff);` |
 |       9 |  907 | `			break;` |
-|      12 |  908 | `		case SUM_CRC32B:` |
+|     100 |  908 | `		case SUM_CRC32B:` |
 |       - |  909 | `		case SUM_CRC32C:` |
-|      25 |  910 | `			v = (sxu32)(pCtx->nS0 ^ 0xffffffff);` |
-|     121 |  911 | `			for( i = 0 ; i < 4 ; ++i ){` |
-|      97 |  912 | `				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);` |
-|      49 |  913 | `			}` |
-|      25 |  914 | `			break;` |
+|     198 |  910 | `			v = (sxu32)(pCtx->nS0 ^ 0xffffffff);` |
+|     986 |  911 | `			for( i = 0 ; i < 4 ; ++i ){` |
+|     789 |  912 | `				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);` |
+|     389 |  913 | `			}` |
+|     198 |  914 | `			break;` |
 |       6 |  915 | `		case SUM_ADLER32:` |
 |      13 |  916 | `			v = (sxu32)(((pCtx->nS1 % 65521) << 16) \| (pCtx->nS0 % 65521));` |
 |      61 |  917 | `			for( i = 0 ; i < 4 ; ++i ){` |
@@ -956,7 +956,7 @@ Coverage: 1229/1292 lines (95.12%)
 |      33 |  946 | `			}` |
 |      16 |  947 | `			break;` |
 |       - |  948 | `	}` |
-|      91 |  949 | `}` |
+|     264 |  949 | `}` |
 |       - |  950 | `/*` |
 |       - |  951 | ` * MurmurHash3 and xxHash: the two SEEDED families. Both read their input as` |
 |       - |  952 | ` * little-endian words and both emit each finished word BIG-endian, which is` |
@@ -968,26 +968,26 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |  958 | ` */` |
 |       - |  959 | `#define SX_ROTL32(x,r) (((sxu32)(x) << (r)) \| ((sxu32)(x) >> (32 - (r))))` |
 |       - |  960 | `#define SX_ROTL64(x,r) (((sxu64)(x) << (r)) \| ((sxu64)(x) >> (64 - (r))))` |
-|   56376 |  961 | `static sxu32 SxGet32Le(const unsigned char *z)` |
-|       1 |  962 | `{` |
-|   56377 |  963 | `	return (sxu32)z[0] \| ((sxu32)z[1] << 8) \| ((sxu32)z[2] << 16) \| ((sxu32)z[3] << 24);` |
-|       1 |  964 | `}` |
-|   13934 |  965 | `static sxu64 SxGet64Le(const unsigned char *z)` |
-|       1 |  966 | `{` |
-|   13935 |  967 | `	return (sxu64)SxGet32Le(z) \| ((sxu64)SxGet32Le(&z[4]) << 32);` |
-|       1 |  968 | `}` |
-|     224 |  969 | `static void SxPut32Be(unsigned char *z,sxu32 v)` |
+|  446184 |  961 | `static sxu32 SxGet32Le(const unsigned char *z)` |
+|       2 |  962 | `{` |
+|  446186 |  963 | `	return (sxu32)z[0] \| ((sxu32)z[1] << 8) \| ((sxu32)z[2] << 16) \| ((sxu32)z[3] << 24);` |
+|       2 |  964 | `}` |
+|  208766 |  965 | `static sxu64 SxGet64Le(const unsigned char *z)` |
+|       2 |  966 | `{` |
+|  208768 |  967 | `	return (sxu64)SxGet32Le(z) \| ((sxu64)SxGet32Le(&z[4]) << 32);` |
+|       2 |  968 | `}` |
+|    5556 |  969 | `static void SxPut32Be(unsigned char *z,sxu32 v)` |
 |       2 |  970 | `{` |
-|     226 |  971 | `	z[0] = (unsigned char)((v >> 24) & 0xff);` |
-|     226 |  972 | `	z[1] = (unsigned char)((v >> 16) & 0xff);` |
-|     226 |  973 | `	z[2] = (unsigned char)((v >> 8) & 0xff);` |
-|     226 |  974 | `	z[3] = (unsigned char)(v & 0xff);` |
-|     226 |  975 | `}` |
-|      62 |  976 | `static void SxPut64Be(unsigned char *z,sxu64 v)` |
-|       1 |  977 | `{` |
-|      63 |  978 | `	SxPut32Be(z,(sxu32)(v >> 32));` |
-|      63 |  979 | `	SxPut32Be(&z[4],(sxu32)(v & 0xffffffffu));` |
-|      63 |  980 | `}` |
+|    5558 |  971 | `	z[0] = (unsigned char)((v >> 24) & 0xff);` |
+|    5558 |  972 | `	z[1] = (unsigned char)((v >> 16) & 0xff);` |
+|    5558 |  973 | `	z[2] = (unsigned char)((v >> 8) & 0xff);` |
+|    5558 |  974 | `	z[3] = (unsigned char)(v & 0xff);` |
+|    5558 |  975 | `}` |
+|    2728 |  976 | `static void SxPut64Be(unsigned char *z,sxu64 v)` |
+|       2 |  977 | `{` |
+|    2730 |  978 | `	SxPut32Be(z,(sxu32)(v >> 32));` |
+|    2730 |  979 | `	SxPut32Be(&z[4],(sxu32)(v & 0xffffffffu));` |
+|    2730 |  980 | `}` |
 |      72 |  981 | `static sxu32 SxFmix32(sxu32 h)` |
 |       2 |  982 | `{` |
 |      74 |  983 | `	h ^= h >> 16;` |
@@ -1215,30 +1215,30 @@ Coverage: 1229/1292 lines (95.12%)
 |      81 | 1205 | `	acc *= XXH64_P1;` |
 |      81 | 1206 | `	return acc;` |
 |       1 | 1207 | `}` |
-|     134 | 1208 | `static sxu32 XxhBlockLen(int nKind)` |
-|       1 | 1209 | `{` |
-|     135 | 1210 | `	return nKind == XXH_32 ? 16 : 32;` |
-|       1 | 1211 | `}` |
-|      62 | 1212 | `PH7_PRIVATE void XxhInit(XxhContext *pCtx,int nKind,sxu64 nSeed)` |
-|       1 | 1213 | `{` |
-|      63 | 1214 | `	pCtx->nKind = nKind;` |
-|      63 | 1215 | `	pCtx->nSeed = nKind == XXH_32 ? (sxu64)(sxu32)nSeed : nSeed;` |
-|      63 | 1216 | `	pCtx->nLen = 0;` |
-|      63 | 1217 | `	pCtx->nBlock = 0;` |
-|      63 | 1218 | `	if( nKind == XXH_32 ){` |
+|     136 | 1208 | `static sxu32 XxhBlockLen(int nKind)` |
+|       2 | 1209 | `{` |
+|     138 | 1210 | `	return nKind == XXH_32 ? 16 : 32;` |
+|       2 | 1211 | `}` |
+|      66 | 1212 | `PH7_PRIVATE void XxhInit(XxhContext *pCtx,int nKind,sxu64 nSeed)` |
+|       2 | 1213 | `{` |
+|      68 | 1214 | `	pCtx->nKind = nKind;` |
+|      68 | 1215 | `	pCtx->nSeed = nKind == XXH_32 ? (sxu64)(sxu32)nSeed : nSeed;` |
+|      68 | 1216 | `	pCtx->nLen = 0;` |
+|      68 | 1217 | `	pCtx->nBlock = 0;` |
+|      68 | 1218 | `	if( nKind == XXH_32 ){` |
 |      29 | 1219 | `		sxu32 s = (sxu32)pCtx->nSeed;` |
 |      29 | 1220 | `		pCtx->v[0] = (sxu32)(s + XXH32_P1 + XXH32_P2);` |
 |      29 | 1221 | `		pCtx->v[1] = (sxu32)(s + XXH32_P2);` |
 |      29 | 1222 | `		pCtx->v[2] = s;` |
 |      29 | 1223 | `		pCtx->v[3] = (sxu32)(s - XXH32_P1);` |
 |      15 | 1224 | `	}else{` |
-|      35 | 1225 | `		pCtx->v[0] = nSeed + XXH64_P1 + XXH64_P2;` |
-|      35 | 1226 | `		pCtx->v[1] = nSeed + XXH64_P2;` |
-|      35 | 1227 | `		pCtx->v[2] = nSeed;` |
-|      35 | 1228 | `		pCtx->v[3] = nSeed - XXH64_P1;` |
+|      40 | 1225 | `		pCtx->v[0] = nSeed + XXH64_P1 + XXH64_P2;` |
+|      40 | 1226 | `		pCtx->v[1] = nSeed + XXH64_P2;` |
+|      40 | 1227 | `		pCtx->v[2] = nSeed;` |
+|      40 | 1228 | `		pCtx->v[3] = nSeed - XXH64_P1;` |
 |       - | 1229 | `	}` |
-|      63 | 1230 | `	SyZero(pCtx->zBlock,sizeof(pCtx->zBlock));` |
-|      63 | 1231 | `}` |
+|      68 | 1230 | `	SyZero(pCtx->zBlock,sizeof(pCtx->zBlock));` |
+|      68 | 1231 | `}` |
 |      22 | 1232 | `static void XxhBlock(XxhContext *pCtx,const unsigned char *z)` |
 |       1 | 1233 | `{` |
 |       - | 1234 | `	int i;` |
@@ -1252,11 +1252,11 @@ Coverage: 1229/1292 lines (95.12%)
 |      17 | 1242 | `		}` |
 |       - | 1243 | `	}` |
 |      23 | 1244 | `}` |
-|     134 | 1245 | `PH7_PRIVATE void XxhUpdate(XxhContext *pCtx,const unsigned char *data,unsigned int len)` |
-|       1 | 1246 | `{` |
-|     135 | 1247 | `	sxu32 nBlk = XxhBlockLen(pCtx->nKind);` |
-|     135 | 1248 | `	pCtx->nLen += len;` |
-|     135 | 1249 | `	if( pCtx->nBlock > 0 ){` |
+|     136 | 1245 | `PH7_PRIVATE void XxhUpdate(XxhContext *pCtx,const unsigned char *data,unsigned int len)` |
+|       2 | 1246 | `{` |
+|     138 | 1247 | `	sxu32 nBlk = XxhBlockLen(pCtx->nKind);` |
+|     138 | 1248 | `	pCtx->nLen += len;` |
+|     138 | 1249 | `	if( pCtx->nBlock > 0 ){` |
 |      71 | 1250 | `		sxu32 n = nBlk - pCtx->nBlock;` |
 |      71 | 1251 | `		if( len < n ){` |
 |      69 | 1252 | `			SyMemcpy(data,&pCtx->zBlock[pCtx->nBlock],len);` |
@@ -1269,21 +1269,21 @@ Coverage: 1229/1292 lines (95.12%)
 |       3 | 1259 | `		data += n;` |
 |       3 | 1260 | `		len -= n;` |
 |       1 | 1261 | `	}` |
-|      87 | 1262 | `	while( len >= nBlk ){` |
+|      90 | 1262 | `	while( len >= nBlk ){` |
 |      21 | 1263 | `		XxhBlock(pCtx,data);` |
 |      21 | 1264 | `		data += nBlk;` |
 |      21 | 1265 | `		len -= nBlk;` |
 |       1 | 1266 | `	}` |
-|      67 | 1267 | `	if( len > 0 ){` |
-|      55 | 1268 | `		SyMemcpy(data,pCtx->zBlock,len);` |
-|      55 | 1269 | `		pCtx->nBlock = len;` |
-|      27 | 1270 | `	}` |
-|      68 | 1271 | `}` |
-|      62 | 1272 | `PH7_PRIVATE void XxhFinal(XxhContext *pCtx,unsigned char *digest)` |
-|       1 | 1273 | `{` |
-|      63 | 1274 | `	const unsigned char *t = pCtx->zBlock;` |
-|      63 | 1275 | `	sxu32 n = pCtx->nBlock;` |
-|      63 | 1276 | `	if( pCtx->nKind == XXH_32 ){` |
+|      70 | 1267 | `	if( len > 0 ){` |
+|      58 | 1268 | `		SyMemcpy(data,pCtx->zBlock,len);` |
+|      58 | 1269 | `		pCtx->nBlock = len;` |
+|      28 | 1270 | `	}` |
+|      70 | 1271 | `}` |
+|      64 | 1272 | `PH7_PRIVATE void XxhFinal(XxhContext *pCtx,unsigned char *digest)` |
+|       2 | 1273 | `{` |
+|      66 | 1274 | `	const unsigned char *t = pCtx->zBlock;` |
+|      66 | 1275 | `	sxu32 n = pCtx->nBlock;` |
+|      66 | 1276 | `	if( pCtx->nKind == XXH_32 ){` |
 |       - | 1277 | `		sxu32 h;` |
 |       - | 1278 | `		/* Below one whole block the accumulators were never fed, so the seed` |
 |       - | 1279 | `		 * itself opens the tail. */` |
@@ -1315,7 +1315,7 @@ Coverage: 1229/1292 lines (95.12%)
 |      15 | 1305 | `	}else{` |
 |       - | 1306 | `		sxu64 h;` |
 |       - | 1307 | `		int i;` |
-|      35 | 1308 | `		if( pCtx->nLen >= 32 ){` |
+|      38 | 1308 | `		if( pCtx->nLen >= 32 ){` |
 |      13 | 1309 | `			h = SX_ROTL64(pCtx->v[0],1) + SX_ROTL64(pCtx->v[1],7)` |
 |       8 | 1310 | `				+ SX_ROTL64(pCtx->v[2],12) + SX_ROTL64(pCtx->v[3],18);` |
 |      41 | 1311 | `			for( i = 0 ; i < 4 ; ++i ){` |
@@ -1323,35 +1323,35 @@ Coverage: 1229/1292 lines (95.12%)
 |      33 | 1313 | `				h = h * XXH64_P1 + XXH64_P4;` |
 |      17 | 1314 | `			}` |
 |       5 | 1315 | `		}else{` |
-|      27 | 1316 | `			h = pCtx->nSeed + XXH64_P5;` |
+|      30 | 1316 | `			h = pCtx->nSeed + XXH64_P5;` |
 |       - | 1317 | `		}` |
-|      35 | 1318 | `		h += pCtx->nLen;` |
-|      51 | 1319 | `		while( n >= 8 ){` |
+|      38 | 1318 | `		h += pCtx->nLen;` |
+|      54 | 1319 | `		while( n >= 8 ){` |
 |      17 | 1320 | `			h ^= Xxh64Round(0,SxGet64Le(t));` |
 |      17 | 1321 | `			h = SX_ROTL64(h,27) * XXH64_P1 + XXH64_P4;` |
 |      17 | 1322 | `			t += 8;` |
 |      17 | 1323 | `			n -= 8;` |
 |       1 | 1324 | `		}` |
-|      35 | 1325 | `		if( n >= 4 ){` |
+|      38 | 1325 | `		if( n >= 4 ){` |
 |      11 | 1326 | `			h ^= (sxu64)SxGet32Le(t) * XXH64_P1;` |
 |      11 | 1327 | `			h = SX_ROTL64(h,23) * XXH64_P2 + XXH64_P3;` |
 |      11 | 1328 | `			t += 4;` |
 |      11 | 1329 | `			n -= 4;` |
 |       5 | 1330 | `		}` |
-|      89 | 1331 | `		while( n > 0 ){` |
-|      55 | 1332 | `			h ^= (sxu64)t[0] * XXH64_P5;` |
-|      55 | 1333 | `			h = SX_ROTL64(h,11) * XXH64_P1;` |
-|      55 | 1334 | `			t++;` |
-|      55 | 1335 | `			n--;` |
-|       1 | 1336 | `		}` |
-|      35 | 1337 | `		h ^= h >> 33;` |
-|      35 | 1338 | `		h *= XXH64_P2;` |
-|      35 | 1339 | `		h ^= h >> 29;` |
-|      35 | 1340 | `		h *= XXH64_P3;` |
-|      35 | 1341 | `		h ^= h >> 32;` |
-|      35 | 1342 | `		SxPut64Be(digest,h);` |
+|      98 | 1331 | `		while( n > 0 ){` |
+|      62 | 1332 | `			h ^= (sxu64)t[0] * XXH64_P5;` |
+|      62 | 1333 | `			h = SX_ROTL64(h,11) * XXH64_P1;` |
+|      62 | 1334 | `			t++;` |
+|      62 | 1335 | `			n--;` |
+|       2 | 1336 | `		}` |
+|      38 | 1337 | `		h ^= h >> 33;` |
+|      38 | 1338 | `		h *= XXH64_P2;` |
+|      38 | 1339 | `		h ^= h >> 29;` |
+|      38 | 1340 | `		h *= XXH64_P3;` |
+|      38 | 1341 | `		h ^= h >> 32;` |
+|      38 | 1342 | `		SxPut64Be(digest,h);` |
 |       - | 1343 | `	}` |
-|      63 | 1344 | `}` |
+|      66 | 1344 | `}` |
 |       - | 1345 | `/*` |
 |       - | 1346 | ` * The cryptographic digests php registers that the SHA-2 four and md5/sha1 do` |
 |       - | 1347 | ` * not cover: MD4, MD2, the two TRUNCATED SHA-512 variants, SHA-3 and the` |
@@ -1882,7 +1882,7 @@ Coverage: 1229/1292 lines (95.12%)
 |     173 | 1872 | `	}` |
 |      53 | 1873 | `}` |
 |       - | 1874 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
-|    2184 | 1875 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
+|    4777 | 1875 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
 |       5 | 1876 | `{` |
 |       - | 1877 | `	static const unsigned char zHexTab[] = "0123456789abcdef";` |
 |       - | 1878 | `	const unsigned char *zIn,*zEnd;` |
@@ -1893,19 +1893,557 @@ Coverage: 1229/1292 lines (95.12%)
 |       - | 1883 | `		return SXERR_EMPTY;` |
 |       - | 1884 | `	}` |
 |       - | 1885 | `#endif` |
-|    2189 | 1886 | `	zIn   = (const unsigned char *)pIn;` |
-|    2189 | 1887 | `	zEnd  = &zIn[nLen];` |
-|   11839 | 1888 | `	for(;;){` |
-|   21981 | 1889 | `		if( zIn >= zEnd  ){` |
-|    2165 | 1890 | `			break;` |
+|    4782 | 1886 | `	zIn   = (const unsigned char *)pIn;` |
+|    4782 | 1887 | `	zEnd  = &zIn[nLen];` |
+|   24198 | 1888 | `	for(;;){` |
+|   48415 | 1889 | `		if( zIn >= zEnd  ){` |
+|    4782 | 1890 | `			break;` |
 |       - | 1891 | `		}` |
-|   19821 | 1892 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
-|   19821 | 1893 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
-|   19821 | 1894 | `		if( rc != SXRET_OK ){` |
-|      25 | 1895 | `			return rc;` |
+|   43638 | 1892 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
+|   43638 | 1893 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
+|   43638 | 1894 | `		if( rc != SXRET_OK ){` |
+|     ! 0 | 1895 | `			return rc;` |
 |       - | 1896 | `		}` |
-|   19797 | 1897 | `		zIn++;` |
+|   43638 | 1897 | `		zIn++;` |
 |       5 | 1898 | `	}` |
-|    2165 | 1899 | `        return SXRET_OK;` |
-|    1104 | 1900 | `}` |
-|       - | 1901 |  |
+|    4782 | 1899 | `        return SXRET_OK;` |
+|    2392 | 1900 | `}` |
+|       - | 1901 | `#ifndef PH7_DISABLE_HASH_FUNC` |
+|       - | 1902 | `/*` |
+|       - | 1903 | ` * ---------------------------------------------------------------------------` |
+|       - | 1904 | ` * XXH3 (64- and 128-bit)` |
+|       - | 1905 | ` * ---------------------------------------------------------------------------` |
+|       - | 1906 | ` * The third xxHash design, and a different algorithm from xxh64 rather than a` |
+|       - | 1907 | ` * wider one: short inputs are mixed directly against a 192-byte SECRET, and` |
+|       - | 1908 | ` * only past 240 bytes does an eight-lane accumulator loop run. php's ext/hash` |
+|       - | 1909 | ` * exposes both widths, and the 128-bit digest is the pair {high, low} written` |
+|       - | 1910 | ` * big-endian, whose low half IS the 64-bit answer for the same input.` |
+|       - | 1911 | ` *` |
+|       - | 1912 | ` * The secret is one of three things, and php lets a caller pick: the` |
+|       - | 1913 | ` * algorithm's own constant (below), one DERIVED from a 64-bit seed, or one the` |
+|       - | 1914 | ` * caller supplied whole (at least XXH3_SECRET_MIN bytes). A seed also enters` |
+|       - | 1915 | ` * the short paths directly, so a seeded digest of a 3-byte input differs from` |
+|       - | 1916 | ` * an unseeded one even though the derived secret is only read past 240 bytes.` |
+|       - | 1917 | ` */` |
+|       - | 1918 | `static const unsigned char zXxh3Secret[XXH3_SECRET_SIZE] = {` |
+|       - | 1919 | `	0xb8,0xfe,0x6c,0x39,0x23,0xa4,0x4b,0xbe,0x7c,0x01,0x81,0x2c,0xf7,0x21,0xad,0x1c,` |
+|       - | 1920 | `	0xde,0xd4,0x6d,0xe9,0x83,0x90,0x97,0xdb,0x72,0x40,0xa4,0xa4,0xb7,0xb3,0x67,0x1f,` |
+|       - | 1921 | `	0xcb,0x79,0xe6,0x4e,0xcc,0xc0,0xe5,0x78,0x82,0x5a,0xd0,0x7d,0xcc,0xff,0x72,0x21,` |
+|       - | 1922 | `	0xb8,0x08,0x46,0x74,0xf7,0x43,0x24,0x8e,0xe0,0x35,0x90,0xe6,0x81,0x3a,0x26,0x4c,` |
+|       - | 1923 | `	0x3c,0x28,0x52,0xbb,0x91,0xc3,0x00,0xcb,0x88,0xd0,0x65,0x8b,0x1b,0x53,0x2e,0xa3,` |
+|       - | 1924 | `	0x71,0x64,0x48,0x97,0xa2,0x0d,0xf9,0x4e,0x38,0x19,0xef,0x46,0xa9,0xde,0xac,0xd8,` |
+|       - | 1925 | `	0xa8,0xfa,0x76,0x3f,0xe3,0x9c,0x34,0x3f,0xf9,0xdc,0xbb,0xc7,0xc7,0x0b,0x4f,0x1d,` |
+|       - | 1926 | `	0x8a,0x51,0xe0,0x4b,0xcd,0xb4,0x59,0x31,0xc8,0x9f,0x7e,0xc9,0xd9,0x78,0x73,0x64,` |
+|       - | 1927 | `	0xea,0xc5,0xac,0x83,0x34,0xd3,0xeb,0xc3,0xc5,0x81,0xa0,0xff,0xfa,0x13,0x63,0xeb,` |
+|       - | 1928 | `	0x17,0x0d,0xdd,0x51,0xb7,0xf0,0xda,0x49,0xd3,0x16,0x55,0x26,0x29,0xd4,0x68,0x9e,` |
+|       - | 1929 | `	0x2b,0x16,0xbe,0x58,0x7d,0x47,0xa1,0xfc,0x8f,0xf8,0xb8,0xd1,0x7a,0xd0,0x31,0xce,` |
+|       - | 1930 | `	0x45,0xcb,0x3a,0x8f,0x95,0x16,0x04,0x28,0xaf,0xd7,0xfb,0xca,0xbb,0x4b,0x40,0x7e` |
+|       - | 1931 | `};` |
+|       - | 1932 | `#define XXH3_SECRET_CONSUME_RATE  8   /* secret bytes advanced per stripe */` |
+|       - | 1933 | `#define XXH3_SECRET_MERGEACCS     11  /* where the final merge reads the secret */` |
+|       - | 1934 | `#define XXH3_SECRET_LASTACC       7   /* ...and where the LAST stripe reads it */` |
+|       - | 1935 | `#define XXH3_MIDSIZE_STARTOFFSET  3` |
+|       - | 1936 | `#define XXH3_MIDSIZE_LASTOFFSET   17` |
+|       - | 1937 | `#define XXH3_BUFFER_STRIPES       (XXH3_BUFFER_SIZE / XXH3_STRIPE_LEN)` |
+|       - | 1938 |  |
+|      40 | 1939 | `static sxu32 Xxh3Swap32(sxu32 x)` |
+|       2 | 1940 | `{` |
+|      62 | 1941 | `	return ((x << 24) & 0xff000000u) \| ((x << 8) & 0x00ff0000u)` |
+|      40 | 1942 | `	     \| ((x >> 8) & 0x0000ff00u) \| ((x >> 24) & 0x000000ffu);` |
+|       2 | 1943 | `}` |
+|      32 | 1944 | `static sxu64 Xxh3Swap64(sxu64 x)` |
+|       1 | 1945 | `{` |
+|      49 | 1946 | `	return ((x << 56) & 0xff00000000000000ULL) \| ((x << 40) & 0x00ff000000000000ULL)` |
+|      32 | 1947 | `	     \| ((x << 24) & 0x0000ff0000000000ULL) \| ((x << 8)  & 0x000000ff00000000ULL)` |
+|      32 | 1948 | `	     \| ((x >> 8)  & 0x00000000ff000000ULL) \| ((x >> 24) & 0x0000000000ff0000ULL)` |
+|      32 | 1949 | `	     \| ((x >> 40) & 0x000000000000ff00ULL) \| ((x >> 56) & 0x00000000000000ffULL);` |
+|       1 | 1950 | `}` |
+|       - | 1951 | `/* The 64x64 -> 128 product, folded to 64 by xor. Written in 32-bit halves so it` |
+|       - | 1952 | ` * needs no 128-bit integer type -- MSVC has none. */` |
+|   10420 | 1953 | `static void Xxh3Mul128(sxu64 a,sxu64 b,sxu64 *pLow,sxu64 *pHigh)` |
+|       1 | 1954 | `{` |
+|   10421 | 1955 | `	sxu64 lo_lo = (sxu64)(sxu32)a * (sxu64)(sxu32)b;` |
+|   10421 | 1956 | `	sxu64 hi_lo = (a >> 32) * (sxu64)(sxu32)b;` |
+|   10421 | 1957 | `	sxu64 lo_hi = (sxu64)(sxu32)a * (b >> 32);` |
+|   10421 | 1958 | `	sxu64 hi_hi = (a >> 32) * (b >> 32);` |
+|   10421 | 1959 | `	sxu64 cross = (lo_lo >> 32) + (sxu64)(sxu32)hi_lo + lo_hi;` |
+|   10421 | 1960 | `	*pHigh = (cross >> 32) + (hi_lo >> 32) + hi_hi;` |
+|   10421 | 1961 | `	*pLow = (cross << 32) \| (sxu64)(sxu32)lo_lo;` |
+|   10421 | 1962 | `}` |
+|   10414 | 1963 | `static sxu64 Xxh3Fold(sxu64 a,sxu64 b)` |
+|       1 | 1964 | `{` |
+|       - | 1965 | `	sxu64 lo,hi;` |
+|   10415 | 1966 | `	Xxh3Mul128(a,b,&lo,&hi);` |
+|   10415 | 1967 | `	return lo ^ hi;` |
+|       1 | 1968 | `}` |
+|    2602 | 1969 | `static sxu64 Xxh3Avalanche(sxu64 h)` |
+|       1 | 1970 | `{` |
+|    2603 | 1971 | `	h ^= h >> 37;` |
+|    2603 | 1972 | `	h *= 0x165667919E3779F9ULL;` |
+|    2603 | 1973 | `	h ^= h >> 32;` |
+|    2603 | 1974 | `	return h;` |
+|       1 | 1975 | `}` |
+|     328 | 1976 | `static sxu64 Xxh64Avalanche(sxu64 h)` |
+|       2 | 1977 | `{` |
+|     330 | 1978 | `	h ^= h >> 33;` |
+|     330 | 1979 | `	h *= XXH64_P2;` |
+|     330 | 1980 | `	h ^= h >> 29;` |
+|     330 | 1981 | `	h *= XXH64_P3;` |
+|     330 | 1982 | `	h ^= h >> 32;` |
+|     330 | 1983 | `	return h;` |
+|       2 | 1984 | `}` |
+|      26 | 1985 | `static sxu64 Xxh3Rrmxmx(sxu64 h,sxu64 nLen)` |
+|       1 | 1986 | `{` |
+|      27 | 1987 | `	h ^= SX_ROTL64(h,49) ^ SX_ROTL64(h,24);` |
+|      27 | 1988 | `	h *= 0x9FB21C651E98DF25ULL;` |
+|      27 | 1989 | `	h ^= (h >> 35) + nLen;` |
+|      27 | 1990 | `	h *= 0x9FB21C651E98DF25ULL;` |
+|      27 | 1991 | `	return h ^ (h >> 28);` |
+|       1 | 1992 | `}` |
+|    3712 | 1993 | `static sxu64 Xxh3Mix16(const unsigned char *zIn,const unsigned char *zSecret,sxu64 nSeed)` |
+|       1 | 1994 | `{` |
+|    5569 | 1995 | `	return Xxh3Fold(SxGet64Le(zIn)     ^ (SxGet64Le(zSecret)     + nSeed),` |
+|    3712 | 1996 | `	                SxGet64Le(&zIn[8]) ^ (SxGet64Le(&zSecret[8]) - nSeed));` |
+|       1 | 1997 | `}` |
+|       - | 1998 | `/* ---- the short paths, 64-bit ---- */` |
+|      32 | 1999 | `static sxu64 Xxh3Len1to3(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)` |
+|       2 | 2000 | `{` |
+|      34 | 2001 | `	sxu32 c1 = z[0],c2 = z[n >> 1],c3 = z[n - 1];` |
+|      34 | 2002 | `	sxu32 nComb = (c1 << 16) \| (c2 << 24) \| c3 \| (n << 8);` |
+|      34 | 2003 | `	sxu64 nFlip = (sxu64)(SxGet32Le(zS) ^ SxGet32Le(&zS[4])) + nSeed;` |
+|      34 | 2004 | `	return Xxh64Avalanche((sxu64)nComb ^ nFlip);` |
+|       2 | 2005 | `}` |
+|      26 | 2006 | `static sxu64 Xxh3Len4to8(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)` |
+|       1 | 2007 | `{` |
+|       - | 2008 | `	sxu64 nIn,nFlip;` |
+|      27 | 2009 | `	nSeed ^= (sxu64)Xxh3Swap32((sxu32)nSeed) << 32;` |
+|      27 | 2010 | `	nIn = (sxu64)SxGet32Le(&z[n - 4]) + ((sxu64)SxGet32Le(z) << 32);` |
+|      27 | 2011 | `	nFlip = (SxGet64Le(&zS[8]) ^ SxGet64Le(&zS[16])) - nSeed;` |
+|      27 | 2012 | `	return Xxh3Rrmxmx(nIn ^ nFlip,(sxu64)n);` |
+|       1 | 2013 | `}` |
+|      30 | 2014 | `static sxu64 Xxh3Len9to16(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)` |
+|       1 | 2015 | `{` |
+|      31 | 2016 | `	sxu64 nFlip1 = (SxGet64Le(&zS[24]) ^ SxGet64Le(&zS[32])) + nSeed;` |
+|      31 | 2017 | `	sxu64 nFlip2 = (SxGet64Le(&zS[40]) ^ SxGet64Le(&zS[48])) - nSeed;` |
+|      31 | 2018 | `	sxu64 nLo = SxGet64Le(z) ^ nFlip1;` |
+|      31 | 2019 | `	sxu64 nHi = SxGet64Le(&z[n - 8]) ^ nFlip2;` |
+|      31 | 2020 | `	sxu64 nAcc = (sxu64)n + Xxh3Swap64(nLo) + nHi + Xxh3Fold(nLo,nHi);` |
+|      31 | 2021 | `	return Xxh3Avalanche(nAcc);` |
+|       1 | 2022 | `}` |
+|     100 | 2023 | `static sxu64 Xxh3Len0to16(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)` |
+|       2 | 2024 | `{` |
+|     102 | 2025 | `	if( n > 8 ){` |
+|      31 | 2026 | `		return Xxh3Len9to16(z,n,zS,nSeed);` |
+|       - | 2027 | `	}` |
+|      72 | 2028 | `	if( n >= 4 ){` |
+|      27 | 2029 | `		return Xxh3Len4to8(z,n,zS,nSeed);` |
+|       - | 2030 | `	}` |
+|      46 | 2031 | `	if( n > 0 ){` |
+|      34 | 2032 | `		return Xxh3Len1to3(z,n,zS,nSeed);` |
+|       - | 2033 | `	}` |
+|      13 | 2034 | `	return Xxh64Avalanche(nSeed ^ (SxGet64Le(&zS[56]) ^ SxGet64Le(&zS[64])));` |
+|      52 | 2035 | `}` |
+|      42 | 2036 | `static sxu64 Xxh3Len17to128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)` |
+|       1 | 2037 | `{` |
+|      43 | 2038 | `	sxu64 nAcc = (sxu64)n * XXH64_P1;` |
+|      43 | 2039 | `	if( n > 32 ){` |
+|      27 | 2040 | `		if( n > 64 ){` |
+|      17 | 2041 | `			if( n > 96 ){` |
+|       9 | 2042 | `				nAcc += Xxh3Mix16(&z[48],&zS[96],nSeed);` |
+|       9 | 2043 | `				nAcc += Xxh3Mix16(&z[n - 64],&zS[112],nSeed);` |
+|       4 | 2044 | `			}` |
+|      17 | 2045 | `			nAcc += Xxh3Mix16(&z[32],&zS[64],nSeed);` |
+|      17 | 2046 | `			nAcc += Xxh3Mix16(&z[n - 48],&zS[80],nSeed);` |
+|       8 | 2047 | `		}` |
+|      27 | 2048 | `		nAcc += Xxh3Mix16(&z[16],&zS[32],nSeed);` |
+|      27 | 2049 | `		nAcc += Xxh3Mix16(&z[n - 32],&zS[48],nSeed);` |
+|      13 | 2050 | `	}` |
+|      43 | 2051 | `	nAcc += Xxh3Mix16(z,zS,nSeed);` |
+|      43 | 2052 | `	nAcc += Xxh3Mix16(&z[n - 16],&zS[16],nSeed);` |
+|      43 | 2053 | `	return Xxh3Avalanche(nAcc);` |
+|       1 | 2054 | `}` |
+|      26 | 2055 | `static sxu64 Xxh3Len129to240(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed)` |
+|       1 | 2056 | `{` |
+|      27 | 2057 | `	sxu64 nAcc = (sxu64)n * XXH64_P1;` |
+|      27 | 2058 | `	sxu32 i,nRounds = n / 16;` |
+|     235 | 2059 | `	for( i = 0 ; i < 8 ; ++i ){` |
+|     209 | 2060 | `		nAcc += Xxh3Mix16(&z[16*i],&zS[16*i],nSeed);` |
+|     105 | 2061 | `	}` |
+|      27 | 2062 | `	nAcc = Xxh3Avalanche(nAcc);` |
+|     113 | 2063 | `	for( i = 8 ; i < nRounds ; ++i ){` |
+|      87 | 2064 | `		nAcc += Xxh3Mix16(&z[16*i],&zS[16*(i - 8) + XXH3_MIDSIZE_STARTOFFSET],nSeed);` |
+|      44 | 2065 | `	}` |
+|      27 | 2066 | `	nAcc += Xxh3Mix16(&z[n - 16],&zS[XXH3_SECRET_MIN - XXH3_MIDSIZE_LASTOFFSET],nSeed);` |
+|      27 | 2067 | `	return Xxh3Avalanche(nAcc);` |
+|       1 | 2068 | `}` |
+|       - | 2069 | `/* ---- the short paths, 128-bit ---- */` |
+|       6 | 2070 | `static void Xxh3Len1to3_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,` |
+|       - | 2071 | `	sxu64 *pLow,sxu64 *pHigh)` |
+|       2 | 2072 | `{` |
+|       8 | 2073 | `	sxu32 c1 = z[0],c2 = z[n >> 1],c3 = z[n - 1];` |
+|       8 | 2074 | `	sxu32 nCombL = (c1 << 16) \| (c2 << 24) \| c3 \| (n << 8);` |
+|       8 | 2075 | `	sxu32 nCombH = SX_ROTL32(Xxh3Swap32(nCombL),13);` |
+|       8 | 2076 | `	sxu64 nFlipL = (sxu64)(SxGet32Le(zS) ^ SxGet32Le(&zS[4])) + nSeed;` |
+|       8 | 2077 | `	sxu64 nFlipH = (sxu64)(SxGet32Le(&zS[8]) ^ SxGet32Le(&zS[12])) - nSeed;` |
+|       8 | 2078 | `	*pLow  = Xxh64Avalanche((sxu64)nCombL ^ nFlipL);` |
+|       8 | 2079 | `	*pHigh = Xxh64Avalanche((sxu64)nCombH ^ nFlipH);` |
+|       8 | 2080 | `}` |
+|       2 | 2081 | `static void Xxh3Len4to8_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,` |
+|       - | 2082 | `	sxu64 *pLow,sxu64 *pHigh)` |
+|       1 | 2083 | `{` |
+|       - | 2084 | `	sxu64 nIn,nFlip,nLo,nHi;` |
+|       3 | 2085 | `	nSeed ^= (sxu64)Xxh3Swap32((sxu32)nSeed) << 32;` |
+|       3 | 2086 | `	nIn = (sxu64)SxGet32Le(z) + ((sxu64)SxGet32Le(&z[n - 4]) << 32);` |
+|       3 | 2087 | `	nFlip = (SxGet64Le(&zS[16]) ^ SxGet64Le(&zS[24])) + nSeed;` |
+|       3 | 2088 | `	Xxh3Mul128(nIn ^ nFlip,XXH64_P1 + ((sxu64)n << 2),&nLo,&nHi);` |
+|       3 | 2089 | `	nHi += (nLo << 1);` |
+|       3 | 2090 | `	nLo ^= (nHi >> 3);` |
+|       3 | 2091 | `	nLo ^= nLo >> 35;` |
+|       3 | 2092 | `	nLo *= 0x9FB21C651E98DF25ULL;` |
+|       3 | 2093 | `	nLo ^= nLo >> 28;` |
+|       3 | 2094 | `	*pLow = nLo;` |
+|       3 | 2095 | `	*pHigh = Xxh3Avalanche(nHi);` |
+|       3 | 2096 | `}` |
+|       2 | 2097 | `static void Xxh3Len9to16_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,` |
+|       - | 2098 | `	sxu64 *pLow,sxu64 *pHigh)` |
+|       1 | 2099 | `{` |
+|       3 | 2100 | `	sxu64 nFlipL = (SxGet64Le(&zS[32]) ^ SxGet64Le(&zS[40])) - nSeed;` |
+|       3 | 2101 | `	sxu64 nFlipH = (SxGet64Le(&zS[48]) ^ SxGet64Le(&zS[56])) + nSeed;` |
+|       3 | 2102 | `	sxu64 nInLo = SxGet64Le(z);` |
+|       3 | 2103 | `	sxu64 nInHi = SxGet64Le(&z[n - 8]);` |
+|       - | 2104 | `	sxu64 mLo,mHi,hLo,hHi;` |
+|       3 | 2105 | `	Xxh3Mul128(nInLo ^ nInHi ^ nFlipL,XXH64_P1,&mLo,&mHi);` |
+|       3 | 2106 | `	mLo += (sxu64)(n - 1) << 54;` |
+|       3 | 2107 | `	nInHi ^= nFlipH;` |
+|       - | 2108 | `	/* The reference's 64-bit arm: the 32-bit halves are folded in by hand so a` |
+|       - | 2109 | `	 * platform without a 128-bit type answers the same. */` |
+|       3 | 2110 | `	mHi += nInHi + (sxu64)(sxu32)nInHi * (sxu64)(XXH32_P2 - 1);` |
+|       3 | 2111 | `	mLo ^= Xxh3Swap64(mHi);` |
+|       3 | 2112 | `	Xxh3Mul128(mLo,XXH64_P2,&hLo,&hHi);` |
+|       3 | 2113 | `	hHi += mHi * XXH64_P2;` |
+|       3 | 2114 | `	*pLow = Xxh3Avalanche(hLo);` |
+|       3 | 2115 | `	*pHigh = Xxh3Avalanche(hHi);` |
+|       3 | 2116 | `}` |
+|     146 | 2117 | `static void Xxh3Len0to16_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,` |
+|       - | 2118 | `	sxu64 *pLow,sxu64 *pHigh)` |
+|       2 | 2119 | `{` |
+|     148 | 2120 | `	if( n > 8 ){` |
+|       3 | 2121 | `		Xxh3Len9to16_128(z,n,zS,nSeed,pLow,pHigh);` |
+|       3 | 2122 | `		return;` |
+|       - | 2123 | `	}` |
+|     146 | 2124 | `	if( n >= 4 ){` |
+|       3 | 2125 | `		Xxh3Len4to8_128(z,n,zS,nSeed,pLow,pHigh);` |
+|       3 | 2126 | `		return;` |
+|       - | 2127 | `	}` |
+|     144 | 2128 | `	if( n > 0 ){` |
+|       8 | 2129 | `		Xxh3Len1to3_128(z,n,zS,nSeed,pLow,pHigh);` |
+|       8 | 2130 | `		return;` |
+|       - | 2131 | `	}` |
+|     137 | 2132 | `	*pLow  = Xxh64Avalanche(nSeed ^ (SxGet64Le(&zS[64]) ^ SxGet64Le(&zS[72])));` |
+|     137 | 2133 | `	*pHigh = Xxh64Avalanche(nSeed ^ (SxGet64Le(&zS[80]) ^ SxGet64Le(&zS[88])));` |
+|      75 | 2134 | `}` |
+|       - | 2135 | `/* The 128-bit mixer: two 16-byte halves, each folded into one accumulator and` |
+|       - | 2136 | ` * xored with the OTHER half's words. */` |
+|    1604 | 2137 | `static void Xxh3Mix32(sxu64 *pLow,sxu64 *pHigh,const unsigned char *z1,const unsigned char *z2,` |
+|       - | 2138 | `	const unsigned char *zS,sxu64 nSeed)` |
+|       1 | 2139 | `{` |
+|    1605 | 2140 | `	*pLow += Xxh3Mix16(z1,zS,nSeed);` |
+|    1605 | 2141 | `	*pLow ^= SxGet64Le(z2) + SxGet64Le(&z2[8]);` |
+|    1605 | 2142 | `	*pHigh += Xxh3Mix16(z2,&zS[16],nSeed);` |
+|    1605 | 2143 | `	*pHigh ^= SxGet64Le(z1) + SxGet64Le(&z1[8]);` |
+|    1605 | 2144 | `}` |
+|     134 | 2145 | `static void Xxh3Len17to128_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,` |
+|       - | 2146 | `	sxu64 *pLow,sxu64 *pHigh)` |
+|       1 | 2147 | `{` |
+|     135 | 2148 | `	sxu64 aLo = (sxu64)n * XXH64_P1,aHi = 0;` |
+|     135 | 2149 | `	if( n > 32 ){` |
+|     135 | 2150 | `		if( n > 64 ){` |
+|     133 | 2151 | `			if( n > 96 ){` |
+|     133 | 2152 | `				Xxh3Mix32(&aLo,&aHi,&z[48],&z[n - 64],&zS[96],nSeed);` |
+|      66 | 2153 | `			}` |
+|     133 | 2154 | `			Xxh3Mix32(&aLo,&aHi,&z[32],&z[n - 48],&zS[64],nSeed);` |
+|      66 | 2155 | `		}` |
+|     135 | 2156 | `		Xxh3Mix32(&aLo,&aHi,&z[16],&z[n - 32],&zS[32],nSeed);` |
+|      67 | 2157 | `	}` |
+|     135 | 2158 | `	Xxh3Mix32(&aLo,&aHi,z,&z[n - 16],zS,nSeed);` |
+|     135 | 2159 | `	*pLow = Xxh3Avalanche(aLo + aHi);` |
+|     269 | 2160 | `	*pHigh = (sxu64)0 - Xxh3Avalanche((aLo * XXH64_P1) + (aHi * XXH64_P4)` |
+|     134 | 2161 | `		+ (((sxu64)n - nSeed) * XXH64_P2));` |
+|     135 | 2162 | `}` |
+|     134 | 2163 | `static void Xxh3Len129to240_128(const unsigned char *z,sxu32 n,const unsigned char *zS,sxu64 nSeed,` |
+|       - | 2164 | `	sxu64 *pLow,sxu64 *pHigh)` |
+|       1 | 2165 | `{` |
+|     135 | 2166 | `	sxu64 aLo = (sxu64)n * XXH64_P1,aHi = 0;` |
+|     135 | 2167 | `	sxu32 i,nRounds = n / 32;` |
+|     671 | 2168 | `	for( i = 0 ; i < 4 ; ++i ){` |
+|     537 | 2169 | `		Xxh3Mix32(&aLo,&aHi,&z[32*i],&z[32*i + 16],&zS[32*i],nSeed);` |
+|     269 | 2170 | `	}` |
+|     135 | 2171 | `	aLo = Xxh3Avalanche(aLo);` |
+|     135 | 2172 | `	aHi = Xxh3Avalanche(aHi);` |
+|     537 | 2173 | `	for( i = 4 ; i < nRounds ; ++i ){` |
+|     604 | 2174 | `		Xxh3Mix32(&aLo,&aHi,&z[32*i],&z[32*i + 16],` |
+|     402 | 2175 | `			&zS[XXH3_MIDSIZE_STARTOFFSET + 32*(i - 4)],nSeed);` |
+|     202 | 2176 | `	}` |
+|     202 | 2177 | `	Xxh3Mix32(&aLo,&aHi,&z[n - 16],&z[n - 32],` |
+|      67 | 2178 | `		&zS[XXH3_SECRET_MIN - XXH3_MIDSIZE_LASTOFFSET - 16],(sxu64)0 - nSeed);` |
+|     135 | 2179 | `	*pLow = Xxh3Avalanche(aLo + aHi);` |
+|     269 | 2180 | `	*pHigh = (sxu64)0 - Xxh3Avalanche((aLo * XXH64_P1) + (aHi * XXH64_P4)` |
+|     134 | 2181 | `		+ (((sxu64)n - nSeed) * XXH64_P2));` |
+|     135 | 2182 | `}` |
+|       - | 2183 | `/* ---- the long path: the eight-lane accumulator ---- */` |
+|    9114 | 2184 | `static void Xxh3Accumulate512(sxu64 *acc,const unsigned char *z,const unsigned char *zS)` |
+|       1 | 2185 | `{` |
+|       - | 2186 | `	int i;` |
+|   82027 | 2187 | `	for( i = 0 ; i < XXH3_ACC_NB ; ++i ){` |
+|   72913 | 2188 | `		sxu64 nData = SxGet64Le(&z[8*i]);` |
+|   72913 | 2189 | `		sxu64 nKey = nData ^ SxGet64Le(&zS[8*i]);` |
+|   72913 | 2190 | `		acc[i ^ 1] += nData;   /* the adjacent lane, which is what makes it a mix */` |
+|   72913 | 2191 | `		acc[i] += (sxu64)(sxu32)nKey * (sxu64)(sxu32)(nKey >> 32);` |
+|   36457 | 2192 | `	}` |
+|    9115 | 2193 | `}` |
+|    2546 | 2194 | `static void Xxh3Accumulate(sxu64 *acc,const unsigned char *z,const unsigned char *zS,sxu32 nStripes)` |
+|       1 | 2195 | `{` |
+|       - | 2196 | `	sxu32 n;` |
+|   10791 | 2197 | `	for( n = 0 ; n < nStripes ; ++n ){` |
+|    8245 | 2198 | `		Xxh3Accumulate512(acc,&z[n * XXH3_STRIPE_LEN],&zS[n * XXH3_SECRET_CONSUME_RATE]);` |
+|    4123 | 2199 | `	}` |
+|    2547 | 2200 | `}` |
+|     198 | 2201 | `static void Xxh3Scramble(sxu64 *acc,const unsigned char *zS)` |
+|       1 | 2202 | `{` |
+|       - | 2203 | `	int i;` |
+|    1783 | 2204 | `	for( i = 0 ; i < XXH3_ACC_NB ; ++i ){` |
+|    1585 | 2205 | `		sxu64 v = acc[i];` |
+|    1585 | 2206 | `		v ^= v >> 47;` |
+|    1585 | 2207 | `		v ^= SxGet64Le(&zS[8*i]);` |
+|    1585 | 2208 | `		v *= XXH32_P1;` |
+|    1585 | 2209 | `		acc[i] = v;` |
+|     793 | 2210 | `	}` |
+|     199 | 2211 | `}` |
+|    1668 | 2212 | `static sxu64 Xxh3MergeAccs(const sxu64 *acc,const unsigned char *zS,sxu64 nStart)` |
+|       1 | 2213 | `{` |
+|    1669 | 2214 | `	sxu64 nRes = nStart;` |
+|       - | 2215 | `	int i;` |
+|    8341 | 2216 | `	for( i = 0 ; i < 4 ; ++i ){` |
+|    6673 | 2217 | `		nRes += Xxh3Fold(acc[2*i] ^ SxGet64Le(&zS[16*i]),acc[2*i + 1] ^ SxGet64Le(&zS[16*i + 8]));` |
+|    3337 | 2218 | `	}` |
+|    1669 | 2219 | `	return Xxh3Avalanche(nRes);` |
+|       1 | 2220 | `}` |
+|    1454 | 2221 | `static void Xxh3AccInit(sxu64 *acc)` |
+|       2 | 2222 | `{` |
+|    1456 | 2223 | `	acc[0] = XXH32_P3; acc[1] = XXH64_P1; acc[2] = XXH64_P2; acc[3] = XXH64_P3;` |
+|    1456 | 2224 | `	acc[4] = XXH64_P4; acc[5] = XXH32_P2; acc[6] = XXH64_P5; acc[7] = XXH32_P1;` |
+|    1456 | 2225 | `}` |
+|     ! 0 | 2226 | `static void Xxh3HashLongLoop(sxu64 *acc,const unsigned char *z,sxu64 nLen,` |
+|       - | 2227 | `	const unsigned char *zS,sxu32 nSecret)` |
+|     ! 0 | 2228 | `{` |
+|     ! 0 | 2229 | `	sxu32 nStripesPerBlock = (nSecret - XXH3_STRIPE_LEN) / XXH3_SECRET_CONSUME_RATE;` |
+|     ! 0 | 2230 | `	sxu64 nBlockLen = (sxu64)XXH3_STRIPE_LEN * nStripesPerBlock;` |
+|     ! 0 | 2231 | `	sxu64 nBlocks = (nLen - 1) / nBlockLen;` |
+|       - | 2232 | `	sxu64 n;` |
+|       - | 2233 | `	sxu32 nStripes;` |
+|     ! 0 | 2234 | `	for( n = 0 ; n < nBlocks ; ++n ){` |
+|     ! 0 | 2235 | `		Xxh3Accumulate(acc,&z[n * nBlockLen],zS,nStripesPerBlock);` |
+|     ! 0 | 2236 | `		Xxh3Scramble(acc,&zS[nSecret - XXH3_STRIPE_LEN]);` |
+|     ! 0 | 2237 | `	}` |
+|     ! 0 | 2238 | `	nStripes = (sxu32)(((nLen - 1) - (nBlockLen * nBlocks)) / XXH3_STRIPE_LEN);` |
+|     ! 0 | 2239 | `	Xxh3Accumulate(acc,&z[nBlocks * nBlockLen],zS,nStripes);` |
+|       - | 2240 | `	/* The last stripe is always the final 64 bytes, however they overlap. */` |
+|     ! 0 | 2241 | `	Xxh3Accumulate512(acc,&z[nLen - XXH3_STRIPE_LEN],` |
+|     ! 0 | 2242 | `		&zS[nSecret - XXH3_STRIPE_LEN - XXH3_SECRET_LASTACC]);` |
+|     ! 0 | 2243 | `}` |
+|       - | 2244 | `/* A seed with no caller secret means a DERIVED one: every 16-byte pair of the` |
+|       - | 2245 | ` * default secret moved by the seed, up then down. */` |
+|     500 | 2246 | `static void Xxh3DeriveSecret(unsigned char *zOut,sxu64 nSeed)` |
+|       1 | 2247 | `{` |
+|       - | 2248 | `	int i;` |
+|    6501 | 2249 | `	for( i = 0 ; i < XXH3_SECRET_SIZE / 16 ; ++i ){` |
+|    6001 | 2250 | `		sxu64 lo = SxGet64Le(&zXxh3Secret[16*i]) + nSeed;` |
+|    6001 | 2251 | `		sxu64 hi = SxGet64Le(&zXxh3Secret[16*i + 8]) - nSeed;` |
+|       - | 2252 | `		int k;` |
+|   54001 | 2253 | `		for( k = 0 ; k < 8 ; ++k ){` |
+|   48001 | 2254 | `			zOut[16*i + k] = (unsigned char)(lo >> (8*k));` |
+|   48001 | 2255 | `			zOut[16*i + 8 + k] = (unsigned char)(hi >> (8*k));` |
+|   24001 | 2256 | `		}` |
+|    3001 | 2257 | `	}` |
+|     501 | 2258 | `}` |
+|       - | 2259 | `/*` |
+|       - | 2260 | ` * The one-shot digest of a whole buffer, which is also what a STREAMED digest` |
+|       - | 2261 | ` * of 240 bytes or fewer runs at the end -- the accumulator loop never starts` |
+|       - | 2262 | ` * below that, so the staged bytes are simply hashed here.` |
+|       - | 2263 | ` */` |
+|     582 | 2264 | `static void Xxh3OneShot(const unsigned char *z,sxu32 n,int b128,sxu64 nSeed,` |
+|       - | 2265 | `	const unsigned char *zS,sxu32 nSecret,sxu64 *pLow,sxu64 *pHigh)` |
+|       2 | 2266 | `{` |
+|     584 | 2267 | `	if( n <= 16 ){` |
+|     248 | 2268 | `		if( b128 ){` |
+|     148 | 2269 | `			Xxh3Len0to16_128(z,n,zS,nSeed,pLow,pHigh);` |
+|      75 | 2270 | `		}else{` |
+|     102 | 2271 | `			*pLow = Xxh3Len0to16(z,n,zS,nSeed);` |
+|       - | 2272 | `		}` |
+|     248 | 2273 | `		return;` |
+|       - | 2274 | `	}` |
+|     337 | 2275 | `	if( n <= 128 ){` |
+|     177 | 2276 | `		if( b128 ){` |
+|     135 | 2277 | `			Xxh3Len17to128_128(z,n,zS,nSeed,pLow,pHigh);` |
+|      68 | 2278 | `		}else{` |
+|      43 | 2279 | `			*pLow = Xxh3Len17to128(z,n,zS,nSeed);` |
+|       - | 2280 | `		}` |
+|     177 | 2281 | `		return;` |
+|       - | 2282 | `	}` |
+|     161 | 2283 | `	if( n <= XXH3_MIDSIZE_MAX ){` |
+|     161 | 2284 | `		if( b128 ){` |
+|     135 | 2285 | `			Xxh3Len129to240_128(z,n,zS,nSeed,pLow,pHigh);` |
+|      68 | 2286 | `		}else{` |
+|      27 | 2287 | `			*pLow = Xxh3Len129to240(z,n,zS,nSeed);` |
+|       - | 2288 | `		}` |
+|     161 | 2289 | `		return;` |
+|       - | 2290 | `	}` |
+|       - | 2291 | `	{` |
+|       - | 2292 | `		sxu64 acc[XXH3_ACC_NB];` |
+|     ! 0 | 2293 | `		Xxh3AccInit(acc);` |
+|     ! 0 | 2294 | `		Xxh3HashLongLoop(acc,z,(sxu64)n,zS,nSecret);` |
+|     ! 0 | 2295 | `		*pLow = Xxh3MergeAccs(acc,&zS[XXH3_SECRET_MERGEACCS],(sxu64)n * XXH64_P1);` |
+|     ! 0 | 2296 | `		if( b128 ){` |
+|     ! 0 | 2297 | `			*pHigh = Xxh3MergeAccs(acc,&zS[nSecret - XXH3_ACC_NB*8 - XXH3_SECRET_MERGEACCS],` |
+|     ! 0 | 2298 | `				~((sxu64)n * XXH64_P2));` |
+|     ! 0 | 2299 | `		}` |
+|       - | 2300 | `	}` |
+|     293 | 2301 | `}` |
+|       - | 2302 | `/*` |
+|       - | 2303 | ` * Start a context. A caller SECRET is used as given (php has already screened` |
+|       - | 2304 | ` * its length); a seed with no secret derives one; neither means the algorithm's` |
+|       - | 2305 | ` * own constant. The seed is remembered either way, because the short paths read` |
+|       - | 2306 | ` * it directly and a digest below 241 bytes re-runs them.` |
+|       - | 2307 | ` */` |
+|    1454 | 2308 | `PH7_PRIVATE void Xxh3Init(Xxh3Context *pCtx,int b128,sxu64 nSeed,` |
+|       - | 2309 | `	const unsigned char *zSecret,sxu32 nSecret)` |
+|       2 | 2310 | `{` |
+|    1456 | 2311 | `	SyZero(pCtx,sizeof(*pCtx));` |
+|    1456 | 2312 | `	pCtx->b128 = b128;` |
+|    1456 | 2313 | `	pCtx->nSeed = nSeed;` |
+|    1456 | 2314 | `	Xxh3AccInit(pCtx->acc);` |
+|    1456 | 2315 | `	if( zSecret != 0 && nSecret >= XXH3_SECRET_MIN ){` |
+|     453 | 2316 | `		if( nSecret > XXH3_SECRET_SIZE ){` |
+|     ! 0 | 2317 | `			nSecret = XXH3_SECRET_SIZE;   /* php's own cap: the state holds 192 */` |
+|     ! 0 | 2318 | `		}` |
+|     453 | 2319 | `		SyMemcpy(zSecret,pCtx->zSecret,nSecret);` |
+|     453 | 2320 | `		pCtx->nSecret = nSecret;` |
+|    1230 | 2321 | `	}else if( nSeed != 0 ){` |
+|     501 | 2322 | `		Xxh3DeriveSecret(pCtx->zSecret,nSeed);` |
+|     501 | 2323 | `		pCtx->nSecret = XXH3_SECRET_SIZE;` |
+|     501 | 2324 | `		pCtx->bUseSeed = 1;` |
+|     251 | 2325 | `	}else{` |
+|     504 | 2326 | `		SyMemcpy(zXxh3Secret,pCtx->zSecret,XXH3_SECRET_SIZE);` |
+|     504 | 2327 | `		pCtx->nSecret = XXH3_SECRET_SIZE;` |
+|       - | 2328 | `	}` |
+|    1456 | 2329 | `	pCtx->nSecretLimit = pCtx->nSecret - XXH3_STRIPE_LEN;` |
+|    1456 | 2330 | `	pCtx->nStripesPerBlock = pCtx->nSecretLimit / XXH3_SECRET_CONSUME_RATE;` |
+|    1456 | 2331 | `}` |
+|       - | 2332 | `/* One buffer's worth of stripes, wrapping at the end of the secret's block. */` |
+|    2348 | 2333 | `static void Xxh3ConsumeStripes(Xxh3Context *pCtx,const unsigned char *z,sxu32 nStripes)` |
+|       1 | 2334 | `{` |
+|    2349 | 2335 | `	if( pCtx->nStripesPerBlock - pCtx->nStripesSoFar <= nStripes ){` |
+|     199 | 2336 | `		sxu32 nToEnd = pCtx->nStripesPerBlock - pCtx->nStripesSoFar;` |
+|     199 | 2337 | `		sxu32 nAfter = nStripes - nToEnd;` |
+|     298 | 2338 | `		Xxh3Accumulate(pCtx->acc,z,` |
+|     198 | 2339 | `			&pCtx->zSecret[pCtx->nStripesSoFar * XXH3_SECRET_CONSUME_RATE],nToEnd);` |
+|     199 | 2340 | `		Xxh3Scramble(pCtx->acc,&pCtx->zSecret[pCtx->nSecretLimit]);` |
+|     199 | 2341 | `		Xxh3Accumulate(pCtx->acc,&z[nToEnd * XXH3_STRIPE_LEN],pCtx->zSecret,nAfter);` |
+|     199 | 2342 | `		pCtx->nStripesSoFar = nAfter;` |
+|     100 | 2343 | `	}else{` |
+|    3226 | 2344 | `		Xxh3Accumulate(pCtx->acc,z,` |
+|    2150 | 2345 | `			&pCtx->zSecret[pCtx->nStripesSoFar * XXH3_SECRET_CONSUME_RATE],nStripes);` |
+|    2151 | 2346 | `		pCtx->nStripesSoFar += nStripes;` |
+|       - | 2347 | `	}` |
+|    2349 | 2348 | `}` |
+|   32282 | 2349 | `PH7_PRIVATE void Xxh3Update(Xxh3Context *pCtx,const unsigned char *data,unsigned int len)` |
+|       2 | 2350 | `{` |
+|   32284 | 2351 | `	const unsigned char *zEnd = &data[len];` |
+|   32284 | 2352 | `	if( len < 1 ){` |
+|      83 | 2353 | `		return;` |
+|       - | 2354 | `	}` |
+|   32202 | 2355 | `	pCtx->nTotal += len;` |
+|   32202 | 2356 | `	if( pCtx->nBuffered + len <= XXH3_BUFFER_SIZE ){` |
+|   31250 | 2357 | `		SyMemcpy(data,&pCtx->zBuf[pCtx->nBuffered],len);` |
+|   31250 | 2358 | `		pCtx->nBuffered += len;` |
+|   31250 | 2359 | `		return;` |
+|       - | 2360 | `	}` |
+|     953 | 2361 | `	if( pCtx->nBuffered > 0 ){` |
+|     583 | 2362 | `		sxu32 nLoad = XXH3_BUFFER_SIZE - pCtx->nBuffered;` |
+|     583 | 2363 | `		SyMemcpy(data,&pCtx->zBuf[pCtx->nBuffered],nLoad);` |
+|     583 | 2364 | `		data += nLoad;` |
+|     583 | 2365 | `		Xxh3ConsumeStripes(pCtx,pCtx->zBuf,XXH3_BUFFER_STRIPES);` |
+|     583 | 2366 | `		pCtx->nBuffered = 0;` |
+|     291 | 2367 | `	}` |
+|       - | 2368 | `	/* Strictly less at BOTH ends: a feed that ends exactly on a buffer boundary` |
+|       - | 2369 | `	 * leaves that whole buffer STAGED rather than consuming it, because the` |
+|       - | 2370 | `	 * final stripe is always accumulated separately (with its own secret` |
+|       - | 2371 | `	 * offset) by the digest. Consuming it here counts it twice, which shows up` |
+|       - | 2372 | `	 * only when the total is a multiple of the buffer -- 512, 1024, 2048. */` |
+|     953 | 2373 | `	if( &data[XXH3_BUFFER_SIZE] < zEnd ){` |
+|     371 | 2374 | `		const unsigned char *zLimit = zEnd - XXH3_BUFFER_SIZE;` |
+|     185 | 2375 | `		do {` |
+|     905 | 2376 | `			Xxh3ConsumeStripes(pCtx,data,XXH3_BUFFER_STRIPES);` |
+|     905 | 2377 | `			data += XXH3_BUFFER_SIZE;` |
+|     905 | 2378 | `		} while( data < zLimit );` |
+|       - | 2379 | `		/* The tail of the last consumed buffer is kept at the END of the staging` |
+|       - | 2380 | `		 * buffer: a digest with fewer than 64 bytes staged reads back into it for` |
+|       - | 2381 | `		 * the last stripe, which always spans the final 64 bytes of the input. */` |
+|     371 | 2382 | `		SyMemcpy(&data[-XXH3_STRIPE_LEN],&pCtx->zBuf[XXH3_BUFFER_SIZE - XXH3_STRIPE_LEN],` |
+|       - | 2383 | `			XXH3_STRIPE_LEN);` |
+|     185 | 2384 | `	}` |
+|     953 | 2385 | `	if( data < zEnd ){` |
+|     953 | 2386 | `		SyMemcpy(data,pCtx->zBuf,(sxu32)(zEnd - data));` |
+|     953 | 2387 | `		pCtx->nBuffered = (sxu32)(zEnd - data);` |
+|     476 | 2388 | `	}` |
+|   16143 | 2389 | `}` |
+|    1452 | 2390 | `PH7_PRIVATE void Xxh3Final(Xxh3Context *pCtx,unsigned char *digest)` |
+|       2 | 2391 | `{` |
+|    1454 | 2392 | `	sxu64 nLow = 0,nHigh = 0;` |
+|    1454 | 2393 | `	if( pCtx->nTotal > XXH3_MIDSIZE_MAX ){` |
+|       - | 2394 | `		sxu64 acc[XXH3_ACC_NB];` |
+|     871 | 2395 | `		SyMemcpy(pCtx->acc,acc,sizeof(acc));` |
+|     871 | 2396 | `		if( pCtx->nBuffered >= XXH3_STRIPE_LEN ){` |
+|     863 | 2397 | `			sxu32 nStripes = (pCtx->nBuffered - 1) / XXH3_STRIPE_LEN;` |
+|     863 | 2398 | `			sxu32 nSoFar = pCtx->nStripesSoFar;` |
+|       - | 2399 | `			Xxh3Context sTmp;` |
+|       - | 2400 | `			/* The consume walks a COPY's cursor: a digest must not move the` |
+|       - | 2401 | `			 * state, since php lets a context keep going afterwards. */` |
+|     863 | 2402 | `			SyMemcpy(pCtx,&sTmp,sizeof(sTmp));` |
+|     863 | 2403 | `			SyMemcpy(acc,sTmp.acc,sizeof(acc));` |
+|     863 | 2404 | `			sTmp.nStripesSoFar = nSoFar;` |
+|     863 | 2405 | `			Xxh3ConsumeStripes(&sTmp,sTmp.zBuf,nStripes);` |
+|     863 | 2406 | `			SyMemcpy(sTmp.acc,acc,sizeof(acc));` |
+|    1294 | 2407 | `			Xxh3Accumulate512(acc,&pCtx->zBuf[pCtx->nBuffered - XXH3_STRIPE_LEN],` |
+|     862 | 2408 | `				&pCtx->zSecret[pCtx->nSecretLimit - XXH3_SECRET_LASTACC]);` |
+|     432 | 2409 | `		}else{` |
+|       - | 2410 | `			unsigned char zLast[XXH3_STRIPE_LEN];` |
+|       9 | 2411 | `			sxu32 nCatchup = XXH3_STRIPE_LEN - pCtx->nBuffered;` |
+|       9 | 2412 | `			SyMemcpy(&pCtx->zBuf[XXH3_BUFFER_SIZE - nCatchup],zLast,nCatchup);` |
+|       9 | 2413 | `			SyMemcpy(pCtx->zBuf,&zLast[nCatchup],pCtx->nBuffered);` |
+|      13 | 2414 | `			Xxh3Accumulate512(acc,zLast,` |
+|       8 | 2415 | `				&pCtx->zSecret[pCtx->nSecretLimit - XXH3_SECRET_LASTACC]);` |
+|       - | 2416 | `		}` |
+|    1741 | 2417 | `		nLow = Xxh3MergeAccs(acc,&pCtx->zSecret[XXH3_SECRET_MERGEACCS],` |
+|     870 | 2418 | `			pCtx->nTotal * XXH64_P1);` |
+|     871 | 2419 | `		if( pCtx->b128 ){` |
+|    1198 | 2420 | `			nHigh = Xxh3MergeAccs(acc,` |
+|     798 | 2421 | `				&pCtx->zSecret[pCtx->nSecret - XXH3_ACC_NB*8 - XXH3_SECRET_MERGEACCS],` |
+|     798 | 2422 | `				~(pCtx->nTotal * XXH64_P2));` |
+|     399 | 2423 | `		}` |
+|     436 | 2424 | `	}else{` |
+|       - | 2425 | `		/* Everything fits in the staging buffer: the short paths decide, with the` |
+|       - | 2426 | `		 * SEED where one was given (a derived secret alone is not the same thing). */` |
+|    1166 | 2427 | `		Xxh3OneShot(pCtx->zBuf,(sxu32)pCtx->nTotal,pCtx->b128,` |
+|     582 | 2428 | `			pCtx->bUseSeed ? pCtx->nSeed : 0,` |
+|     582 | 2429 | `			pCtx->bUseSeed ? zXxh3Secret : pCtx->zSecret,pCtx->nSecret,&nLow,&nHigh);` |
+|       - | 2430 | `	}` |
+|    1454 | 2431 | `	if( pCtx->b128 ){` |
+|    1214 | 2432 | `		SxPut64Be(digest,nHigh);` |
+|    1214 | 2433 | `		SxPut64Be(&digest[8],nLow);` |
+|     608 | 2434 | `	}else{` |
+|     242 | 2435 | `		SxPut64Be(digest,nLow);` |
+|       - | 2436 | `	}` |
+|    1454 | 2437 | `}` |
+|       - | 2438 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
+|       - | 2439 |  |

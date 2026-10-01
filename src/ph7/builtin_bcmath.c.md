@@ -2572,7 +2572,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2562 | `/*` |
 |      - | 2563 | ` * Declare BcMath\Number.` |
 |      - | 2564 | ` */` |
-|   5742 | 2565 | `PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm)` |
+|   6721 | 2565 | `PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm)` |
 |      5 | 2566 | `{` |
 |      - | 2567 | `	static const PH7_NativePropDef aProp[] = {` |
 |      - | 2568 | `		{ "value", PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
@@ -2608,7 +2608,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2598 | `		  vm_builtin_BcNumber_sqrt },` |
 |      - | 2599 | `		{ "floor", PH7_MOD_PUBLIC, "", "BcMath\\Number", vm_builtin_BcNumber_floor },` |
 |      - | 2600 | `		{ "ceil", PH7_MOD_PUBLIC, "", "BcMath\\Number", vm_builtin_BcNumber_ceil },` |
-|      - | 2601 | `		{ "round", PH7_MOD_PUBLIC, "int $precision = 0, RoundingMode $mode = ?",` |
+|      - | 2601 | `		{ "round", PH7_MOD_PUBLIC, "int $precision = 0, RoundingMode $mode = RoundingMode::HalfAwayFromZero",` |
 |      - | 2602 | `		  "BcMath\\Number", vm_builtin_BcNumber_round },` |
 |      - | 2603 | `		{ "compare", PH7_MOD_PUBLIC, "~BcMath\\Number\|string\|int $num, ?int $scale = NULL",` |
 |      - | 2604 | `		  "int", vm_builtin_BcNumber_compare },` |
@@ -2625,19 +2625,19 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2615 | `		aProp, SX_ARRAYSIZE(aProp),` |
 |      - | 2616 | `		0, 0, 0` |
 |      - | 2617 | `	};` |
-|   5747 | 2618 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
-|   5747 | 2619 | `	if( rc != SXRET_OK ){` |
+|   6726 | 2618 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|   6726 | 2619 | `	if( rc != SXRET_OK ){` |
 |    ! 0 | 2620 | `		return rc;` |
 |      - | 2621 | `	}` |
 |      - | 2622 | `	/* php builds both properties out of its own struct rather than storing them,` |
 |      - | 2623 | ``	 * which is what `virtual` reports and what keeps the object comparator off`` |
 |      - | 2624 | `	 * them -- the compare handler below decides every pair. */` |
-|   5747 | 2625 | `	PH7_NativeClassMarkVirtualProps(&(*pVm),BC_NUMBER_CLASS);` |
-|   5747 | 2626 | `	PH7_NativeClassInstallCmpHook(&(*pVm),BC_NUMBER_CLASS,BcNumberCmp);` |
-|   5747 | 2627 | `	PH7_NativeClassInstallBoolHook(&(*pVm),BC_NUMBER_CLASS,BcNumberBool);` |
-|   5747 | 2628 | `	PH7_NativeClassInstallArithHook(&(*pVm),BC_NUMBER_CLASS,BcNumberArith);` |
-|   5747 | 2629 | `	return SXRET_OK;` |
-|   2877 | 2630 | `}` |
+|   6726 | 2625 | `	PH7_NativeClassMarkVirtualProps(&(*pVm),BC_NUMBER_CLASS);` |
+|   6726 | 2626 | `	PH7_NativeClassInstallCmpHook(&(*pVm),BC_NUMBER_CLASS,BcNumberCmp);` |
+|   6726 | 2627 | `	PH7_NativeClassInstallBoolHook(&(*pVm),BC_NUMBER_CLASS,BcNumberBool);` |
+|   6726 | 2628 | `	PH7_NativeClassInstallArithHook(&(*pVm),BC_NUMBER_CLASS,BcNumberArith);` |
+|   6726 | 2629 | `	return SXRET_OK;` |
+|   3361 | 2630 | `}` |
 |      - | 2631 | `#else` |
 |      - | 2632 | `/* The tiny build has no bc* functions, so it has no class for them either. */` |
 |      - | 2633 | `PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm){ SXUNUSED(pVm); return SXRET_OK; }` |

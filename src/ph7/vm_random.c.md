@@ -1259,21 +1259,21 @@ Coverage: 957/1177 lines (81.31%)
 |    53 | 1249 | `	}` |
 |   ! 0 | 1250 | `	return 0;` |
 |    59 | 1251 | `}` |
-|  5740 | 1252 | `static sxi32 RandInstallBoundary(ph7_vm *pVm)` |
+|  6721 | 1252 | `static sxi32 RandInstallBoundary(ph7_vm *pVm)` |
 |     5 | 1253 | `{` |
 |     - | 1254 | `	PH7_NativeEnumCase aCase[SX_ARRAYSIZE(aRandBoundary)];` |
 |     - | 1255 | `	sxu32 n;` |
-| 28705 | 1256 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRandBoundary) ; ++n ){` |
-| 22965 | 1257 | `		aCase[n].zName = aRandBoundary[n].zName;` |
-| 22965 | 1258 | `		aCase[n].sValue.zName = 0;` |
-| 22965 | 1259 | `		aCase[n].sValue.iMods = 0;` |
-| 22965 | 1260 | `		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;` |
-| 22965 | 1261 | `		aCase[n].sValue.iValue = 0;` |
-| 22965 | 1262 | `		aCase[n].sValue.zValue = 0;` |
-| 22965 | 1263 | `		aCase[n].sValue.rValue = 0.0;` |
-| 11485 | 1264 | `	}` |
-|  8615 | 1265 | `	return PH7_InstallNativeEnum(&(*pVm),RAND_BOUNDARY,0,` |
-|  2870 | 1266 | `		aCase,SX_ARRAYSIZE(aCase),0,0);` |
+| 33610 | 1256 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRandBoundary) ; ++n ){` |
+| 26889 | 1257 | `		aCase[n].zName = aRandBoundary[n].zName;` |
+| 26889 | 1258 | `		aCase[n].sValue.zName = 0;` |
+| 26889 | 1259 | `		aCase[n].sValue.iMods = 0;` |
+| 26889 | 1260 | `		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;` |
+| 26889 | 1261 | `		aCase[n].sValue.iValue = 0;` |
+| 26889 | 1262 | `		aCase[n].sValue.zValue = 0;` |
+| 26889 | 1263 | `		aCase[n].sValue.rValue = 0.0;` |
+| 13429 | 1264 | `	}` |
+| 10082 | 1265 | `	return PH7_InstallNativeEnum(&(*pVm),RAND_BOUNDARY,0,` |
+|  3356 | 1266 | `		aCase,SX_ARRAYSIZE(aCase),0,0);` |
 |     5 | 1267 | `}` |
 |     - | 1268 | `/*` |
 |     - | 1269 | ` * ---------------------------------------------------------------------------` |
@@ -1970,7 +1970,7 @@ Coverage: 957/1177 lines (81.31%)
 |     - | 1960 | ` * Declaration.` |
 |     - | 1961 | ` * ---------------------------------------------------------------------------` |
 |     - | 1962 | ` */` |
-|  5740 | 1963 | `PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm)` |
+|  6721 | 1963 | `PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm)` |
 |     5 | 1964 | `{` |
 |     - | 1965 | `	/* Random\Engine's return type is REAL, not one of php's tentative ones: the` |
 |     - | 1966 | `	 * interface arrived with 8.2 and never had a version whose implementations` |
@@ -1980,7 +1980,7 @@ Coverage: 957/1177 lines (81.31%)
 |     - | 1970 | `		{ "generate", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
 |     - | 1971 | `	};` |
 |     - | 1972 | `	static const PH7_NativeMethodDef aMt[] = {` |
-|     - | 1973 | `		{ "__construct", PH7_MOD_PUBLIC, "?int $seed = NULL, int $mode = 0", 0,` |
+|     - | 1973 | `		{ "__construct", PH7_MOD_PUBLIC, "?int $seed = NULL, int $mode = MT_RAND_MT19937", 0,` |
 |     - | 1974 | `		  vm_builtin_RandMt_construct },` |
 |     - | 1975 | `		{ "generate", PH7_MOD_PUBLIC, "", "string", vm_builtin_RandMt_generate },` |
 |     - | 1976 | `		{ "__serialize", PH7_MOD_PUBLIC, "", "array", vm_builtin_RandMt_serialize },` |
@@ -2026,7 +2026,7 @@ Coverage: 957/1177 lines (81.31%)
 |     - | 2016 | `#ifndef PH7_OMIT_FLOATING_POINT` |
 |     - | 2017 | `		{ "nextFloat", PH7_MOD_PUBLIC, "", "float", vm_builtin_Randomizer_nextFloat },` |
 |     - | 2018 | `		{ "getFloat", PH7_MOD_PUBLIC,` |
-|     - | 2019 | `		  "float $min, float $max, Random\\IntervalBoundary $boundary = ?", "float",` |
+|     - | 2019 | `		  "float $min, float $max, Random\\IntervalBoundary $boundary = Random\\IntervalBoundary::ClosedOpen", "float",` |
 |     - | 2020 | `		  vm_builtin_Randomizer_getFloat },` |
 |     - | 2021 | `#endif` |
 |     - | 2022 | `		{ "getBytesFromString", PH7_MOD_PUBLIC, "string $string, int $length", "string",` |
@@ -2074,13 +2074,13 @@ Coverage: 957/1177 lines (81.31%)
 |     - | 2064 | `		  aRandomizer, SX_ARRAYSIZE(aRandomizer), 0, 0,` |
 |     - | 2065 | `		  aRandomizerProp, SX_ARRAYSIZE(aRandomizerProp), 0, 0, 0 },` |
 |     - | 2066 | `	};` |
-|  5745 | 2067 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|  5745 | 2068 | `	if( rc != SXRET_OK ){` |
+|  6726 | 2067 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  6726 | 2068 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 2069 | `		return rc;` |
 |     - | 2070 | `	}` |
 |     - | 2071 | `	/* The enum after the classes: getFloat()'s default reads a case of it. */` |
-|  5745 | 2072 | `	return RandInstallBoundary(&(*pVm));` |
-|  2875 | 2073 | `}` |
+|  6726 | 2072 | `	return RandInstallBoundary(&(*pVm));` |
+|  3361 | 2073 | `}` |
 |     - | 2074 | `#else` |
 |     - | 2075 | `/* The tiny build ships no ext/random object surface: its consumers -- the` |
 |     - | 2076 | ` * Randomizer and the seeded engines -- are builtin-guarded like the rest. */` |
