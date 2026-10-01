@@ -30,14 +30,15 @@ static void VmReportCompileFatal(ph7_vm *pVm,SyBlob *pMsg,sxu32 nLine)
 		return;
 	}
 	SyBlobInit(&sOut,&pVm->sAllocator);
-	SyBlobAppend(&sOut,"PHP Fatal error:  ",sizeof("PHP Fatal error:  ")-1);
 	SyBlobAppend(&sOut,SyBlobData(pMsg),SyBlobLength(pMsg));
 	if( pFile ){
 		SyBlobFormat(&sOut," in %.*s on line %u",(int)pFile->nByte,pFile->zString,nLine);
 	}
 	PH7_GenAppendFatalTrace(&(*pVm),&sOut,PH7_FATAL_TRACE_COMPILE);
-	SyBlobAppend(&sOut,"\n",sizeof(char));
-	pVm->pEngine->xConf.xErr(SyBlobData(&sOut),SyBlobLength(&sOut),pVm->pEngine->xConf.pErrData);
+	/* The label and php's two copies are the shared compile-diagnostic emitter's,
+	 * so eval()'s fatal cannot drift from the compiler's own. */
+	PH7_VmEmitCompileDiagnostic(&(*pVm),"Fatal error",
+		(const char *)SyBlobData(&sOut),SyBlobLength(&sOut));
 	SyBlobRelease(&sOut);
 }
 /*

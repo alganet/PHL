@@ -720,11 +720,15 @@ int main(int argc,char **argv)
 		 */
 		Fatal("Error while allocating a new PH7 engine instance");
 	}
-	/* Set an error log consumer callback. This callback [Output_Consumer()] will
-	 * redirect all compile-time error messages to STDOUT.
-	 */
+	/* Compile-time diagnostics go to STDERR, where php's log copy goes. This used
+	 * to be Output_Consumer, i.e. STDOUT -- so `phl -l bad.php` printed the parse
+	 * error into program output, and anything capturing a script's stdout read
+	 * php's stderr text as data. It is a FALLBACK channel: once the VM's own
+	 * streams are wired below, the engine routes each copy to the right one, and
+	 * this only serves the window in which the main script's own compile creates
+	 * the VM. */
 	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,
-		Output_Consumer, /* Error log consumer */
+		Error_Consumer, /* Compile-time diagnostic consumer (STDERR) */
 		0 /* NULL: Callback Private data */
 		);
 	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to

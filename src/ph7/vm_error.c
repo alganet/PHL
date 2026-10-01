@@ -3477,6 +3477,98 @@ PH7_PRIVATE sxi32 PH7_VmMaterializeClassStatics(ph7_vm *pVm,ph7_class *pClass)
  * register_shutdown_function() callback can still read. Requesting the halt and the
  * exit status is the caller's, as it is at every other fatal site.
  */
+/*
+ * Write one copy of a COMPILE-time diagnostic.
+ *
+ * A compile-time refusal can happen before the host has wired the VM's streams
+ * at all -- the main script's own compile CREATES the VM, so a `phl bad.php`
+ * diagnostic is raised with `sVmConsumer`/`sVmErrConsumer` still empty. The
+ * engine-level compile-error consumer (PH7_CONFIG_ERR_OUTPUT) is the one channel
+ * that always exists, so it is the fallback for either copy.
+ *
+ * The terminator is `\n` on every platform, which is what this path has always
+ * written -- VmWriteDiagnostic's `\r\n` belongs to the runtime one and is not
+ * borrowed here.
+ */
+static sxi32 VmWriteCompileCopy(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pMsg,int bTrack)
+{
+	SyBlobAppend(pMsg,"\n",sizeof(char));
+	if( pCons && pCons->xConsumer ){
+		sxi32 rc = pCons->xConsumer(SyBlobData(pMsg),SyBlobLength(pMsg),pCons->pUserData);
+		if( bTrack ){
+			VmTrackOutput(pVm,SyBlobLength(pMsg));
+		}
+		return rc;
+	}
+	if( pVm->pEngine && pVm->pEngine->xConf.xErr ){
+		return pVm->pEngine->xConf.xErr(SyBlobData(pMsg),SyBlobLength(pMsg),
+			pVm->pEngine->xConf.pErrData);
+	}
+	return SXRET_OK;
+}
+/*
+ * A COMPILE-time diagnostic's two copies, the same pair and the same two ini
+ * gates a runtime one gets (VmEmitFatalReport). The compiler used to write ONE
+ * copy, in the log shape, to the engine's compile-error consumer -- which the CLI
+ * pointed at STDOUT, so `phl -l bad.php` and `phl bad.php` both put php's stderr
+ * text into program output, where anything capturing stdout reads it as data.
+ *
+ * The caller hands over the LABEL and a header-less BODY.
+ */
+/*
+ * The program-output stream to give a compile diagnostic's DISPLAY copy, or NULL
+ * when the host has not wired one yet.
+ *
+ * PH7_VmMakeReady installs PH7_VmBlobConsumer as the VM's output consumer, and
+ * MakeReady runs INSIDE ph7_compile_file -- before the host has replaced it. A
+ * diagnostic written there lands in an internal blob nobody reads, which is a
+ * silent LOSS, not a fallback: a typed class constant's mount-time fatal is
+ * raised in exactly that window and disappeared entirely. An output buffer
+ * (ob_start) also swaps this consumer and is NOT that case -- php buffers its
+ * display copy too -- so the test is the blob consumer by identity, not merely
+ * "something is installed".
+ */
+static ph7_output_consumer * VmCompileDisplaySink(ph7_vm *pVm)
+{
+	if( pVm->sVmConsumer.xConsumer && pVm->sVmConsumer.xConsumer != PH7_VmBlobConsumer ){
+		return &pVm->sVmConsumer;
+	}
+	return 0;
+}
+PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,const char *zLabel,
+	const char *zBody,sxu32 nBody)
+{
+	SyBlob sCopy;
+	sxi32 rc = SXRET_OK;
+	if( pVm == 0 ){
+		return SXRET_OK;
+	}
+	if( pVm->bLogErrors ){
+		SyBlobInit(&sCopy,&pVm->sAllocator);
+		SyBlobFormat(&sCopy,"PHP %s:  ",zLabel);
+		SyBlobAppend(&sCopy,zBody,nBody);
+		/* Same order VmErrConsumer takes at run time: the error stream, then the
+		 * output one for an embedder that wired only that, then the engine's. */
+		rc = VmWriteCompileCopy(&(*pVm),
+			pVm->sVmErrConsumer.xConsumer ? &pVm->sVmErrConsumer : VmCompileDisplaySink(pVm),
+			&sCopy,0);
+		SyBlobRelease(&sCopy);
+	}
+	if( pVm->bDisplayErrors ){
+		sxi32 rc2;
+		SyBlobInit(&sCopy,&pVm->sAllocator);
+		/* php's text-mode display copy is prefixed with a blank line */
+		SyBlobAppend(&sCopy,"\n",sizeof(char));
+		SyBlobFormat(&sCopy,"%s: ",zLabel);
+		SyBlobAppend(&sCopy,zBody,nBody);
+		rc2 = VmWriteCompileCopy(&(*pVm),VmCompileDisplaySink(pVm),&sCopy,1);
+		SyBlobRelease(&sCopy);
+		if( rc == SXRET_OK ){
+			rc = rc2;
+		}
+	}
+	return rc;
+}
 PH7_PRIVATE sxi32 PH7_VmFatalError(ph7_vm *pVm,const char *zFormat,...)
 {
 	SyBlob sMsg,sOut;

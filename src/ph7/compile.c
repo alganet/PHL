@@ -5303,9 +5303,11 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		break;
 	}
 	rc = SXRET_OK;
-	/* Format: PHP <severity>:  <message> in <file> on line <line> */
-	SyBlobAppend(pWorker,"PHP ",4);
-	SyBlobFormat(pWorker,"%s:  ",zErr);
+	/* The BODY only -- `<message> in <file> on line <line>` plus a fatal's trace.
+	 * The label and the two copies php wraps it in are the emitter's
+	 * (PH7_VmEmitCompileDiagnostic): a compile diagnostic owes the same log/display
+	 * pair a runtime one does, and this used to write a single log-shaped copy to
+	 * the engine's compile-error consumer whatever the ini said. */
 	va_start(ap,zFormat);
 	SyBlobFormatAp(pWorker,zFormat,ap);
 	va_end(ap);
@@ -5319,11 +5321,9 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	 * refusals sets it just before the call and this consumes it, so no site has to
 	 * remember to put it back and none of them can leak it onto a later refusal. */
 	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
-	/* Append a new line */
-	SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));
 	if( SyBlobLength(pWorker) > 0 ){
-		/* Consume the generated error message */
-		pGen->xErr(SyBlobData(pWorker),SyBlobLength(pWorker),pGen->pErrData);
+		PH7_VmEmitCompileDiagnostic(pGen->pVm,zErr,
+			(const char *)SyBlobData(pWorker),SyBlobLength(pWorker));
 	}
 	return rc;
 }
