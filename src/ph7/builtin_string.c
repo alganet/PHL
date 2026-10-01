@@ -1125,10 +1125,10 @@ PH7_PRIVATE int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **ap
 			"addslashes(): Argument #1 ($string) must be of type string, null given"
 			);
 	}
-	/* Arrays, objects and resources should raise a TypeError like PHP */
+	/* Arrays, resources and objects with no __toString() raise a TypeError like PHP */
 	if( ph7_value_is_array(apArg[0]) ||
-	    ph7_value_is_object(apArg[0]) ||
-	    ph7_value_is_resource(apArg[0]) ){
+	    ph7_value_is_resource(apArg[0]) ||
+	    PH7_ArgIsUnstringableObject(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addslashes(): Argument #1 ($string) must be of type string, %s given",
@@ -1262,8 +1262,8 @@ PH7_PRIVATE int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **a
 			"addcslashes(): Argument #1 ($string) must be of type string, null given"
 			);
 	} else if( ph7_value_is_array(apArg[0]) ||
-	          ph7_value_is_object(apArg[0]) ||
-	          ph7_value_is_resource(apArg[0]) ){
+	          ph7_value_is_resource(apArg[0]) ||
+	          PH7_ArgIsUnstringableObject(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addcslashes(): Argument #1 ($string) must be of type string, %s given",
@@ -1277,8 +1277,8 @@ PH7_PRIVATE int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **a
 			"addcslashes(): Argument #2 ($characters) must be of type string, null given"
 			);
 	} else if( ph7_value_is_array(apArg[1]) ||
-	          ph7_value_is_object(apArg[1]) ||
-	          ph7_value_is_resource(apArg[1]) ){
+	          ph7_value_is_resource(apArg[1]) ||
+	          PH7_ArgIsUnstringableObject(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addcslashes(): Argument #2 ($characters) must be of type string, %s given",
@@ -4549,10 +4549,10 @@ PH7_PRIVATE int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apA
 			nArg
 			);
 	}
-	/* Arrays, objects and resources should raise a TypeError like PHP */
+	/* Arrays, resources and objects with no __toString() raise a TypeError like PHP */
 	if( ph7_value_is_array(apArg[0]) ||
-	    ph7_value_is_object(apArg[0]) ||
-	    ph7_value_is_resource(apArg[0]) ){
+	    ph7_value_is_resource(apArg[0]) ||
+	    PH7_ArgIsUnstringableObject(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"str_split(): Argument #1 ($string) must be of type string, %s given",

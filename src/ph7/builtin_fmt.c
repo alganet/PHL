@@ -393,7 +393,8 @@ PH7_PRIVATE sxi32 PH7_CheckStreamArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
 }
 PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg)
 {
-	if( ph7_value_is_array(pArg) || ph7_value_is_object(pArg) || ph7_value_is_resource(pArg) ){
+	if( ph7_value_is_array(pArg) || ph7_value_is_resource(pArg)
+	 || PH7_ArgIsUnstringableObject(pArg) ){
 		char zBuf[64];
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #%d ($format) must be of type string, %s given",

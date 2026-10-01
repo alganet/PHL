@@ -7578,6 +7578,7 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(ph7_vm *pVm,ph7_value *pArg,ph7_valu
 	VmCallArgMap *pCallMap);
 PH7_PRIVATE void PH7_VmArgTempCallNotice(ph7_vm *pVm,VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal);
 PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg);
+PH7_PRIVATE int PH7_ArgIsUnstringableObject(ph7_value *pArg);
 PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass);
 PH7_PRIVATE void PH7_MarkDeprecatedFunctions(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmDeprecatedCallNotice(ph7_vm *pVm,const ph7_deprecated_name *pDep);

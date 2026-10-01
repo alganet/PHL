@@ -1605,7 +1605,8 @@ PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
-	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) || ph7_value_is_resource(apArg[0]) ){
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_resource(apArg[0])
+	 || PH7_ArgIsUnstringableObject(apArg[0]) ){
 		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */
 		char zBuf[64];
 		return PH7_VmThrowException(pCtx,"TypeError",
@@ -1638,7 +1639,8 @@ PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
-	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) || ph7_value_is_resource(apArg[0]) ){
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_resource(apArg[0])
+	 || PH7_ArgIsUnstringableObject(apArg[0]) ){
 		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */
 		char zBuf[64];
 		return PH7_VmThrowException(pCtx,"TypeError",
@@ -1669,7 +1671,8 @@ PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
-	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) || ph7_value_is_resource(apArg[0]) ){
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_resource(apArg[0])
+	 || PH7_ArgIsUnstringableObject(apArg[0]) ){
 		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */
 		char zBuf[64];
 		return PH7_VmThrowException(pCtx,"TypeError",

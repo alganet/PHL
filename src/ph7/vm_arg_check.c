@@ -1797,6 +1797,23 @@ PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg)
 	return 1;
 }
 /*
+ * Is pArg an OBJECT that a `string` parameter can never take -- one with no
+ * __toString()? The question a builtin screening its own arguments actually has:
+ * an object is the one kind whose acceptance depends on the class rather than on
+ * the type tag, so a guard written as `ph7_value_is_object()` refuses the
+ * Stringable php converts. str_split(), addslashes(), addcslashes(), bindec(),
+ * hexdec(), octdec() and the whole printf family all made that mistake, each
+ * turning three one-character strings into a TypeError.
+ *
+ * Says nothing about arrays, resources or null: those are the caller's, because
+ * a `string` parameter's null is refused here and coerced (with a deprecation)
+ * by php, and each builtin words that arm for itself.
+ */
+PH7_PRIVATE int PH7_ArgIsUnstringableObject(ph7_value *pArg)
+{
+	return (pArg->iFlags & MEMOBJ_OBJ) != 0 && !PH7_ArgSatisfiesString(pArg);
+}
+/*
  * Is the declared type exactly `int` — the only shape whose float argument the
  * screen below can decide? A union with a `float`, `string` or `bool` arm has its
  * own coercion rules per arm (and php words those refusals from the builtin), so
