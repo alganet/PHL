@@ -338,8 +338,10 @@ PH7_PRIVATE int vm_builtin_get_debug_type(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_value *pVal = apArg[0];
 		if( pVal->iFlags & MEMOBJ_OBJ ){
 			ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;
-			ph7_result_string(pCtx,SyStringData(&pThis->pClass->sName),
-				(int)SyStringLength(&pThis->pClass->sName));
+			/* php prints this one with the class name it SHOWS: an anonymous class
+			 * answers `Base@anonymous`, not the whole synthesized name. */
+			ph7_result_string(pCtx,SyStringData(&pThis->pClass->sDisp),
+				(int)SyStringLength(&pThis->pClass->sDisp));
 			return SXRET_OK;
 		}
 		if( pVal->iFlags & MEMOBJ_NULL ){

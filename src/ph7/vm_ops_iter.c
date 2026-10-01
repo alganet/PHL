@@ -259,7 +259,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				SyBlob sErrMsg;
 				SyBlobInit(&sErrMsg,&pVm->sAllocator);
 				SyBlobFormat(&sErrMsg,"Cannot create reference to property %z::$%z",
-					&pThis->pClass->sName,&pVmAttr->pAttr->sName);
+					&pThis->pClass->sDisp,&pVmAttr->pAttr->sName);
 				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
 				/* ...and with the binding gone, the frame's memo of it (see VmFrame). */
@@ -611,7 +611,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 							ph7_class *pBad = pAgg->pClass;
 							nMsg = (int)SyBufferFormat(zMsg,sizeof(zMsg),
 								"Objects returned by %.*s::getIterator() must be traversable or implement interface Iterator",
-								(int)SyStringLength(&pBad->sName),SyStringData(&pBad->sName));
+								(int)SyStringLength(&pBad->sDisp),SyStringData(&pBad->sDisp));
 							if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
 							SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 							pStep = 0; /* Signal: do not store this step */

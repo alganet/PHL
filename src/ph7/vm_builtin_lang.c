@@ -462,12 +462,12 @@ static int VmEnumFromCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bTr
 		char zVal[32];
 		SyBufferFormat(zVal,sizeof(zVal),"%qd",sNeedle.x.iVal);
 		rc = PH7_VmThrowException(pCtx,"ValueError",
-			"%s is not a valid backing value for enum %z",zVal,&pClass->sName);
+			"%s is not a valid backing value for enum %z",zVal,&pClass->sDisp);
 	}else{
 		rc = PH7_VmThrowException(pCtx,"ValueError",
 			"\"%.*s\" is not a valid backing value for enum %z",
 			(int)SyBlobLength(&sNeedle.sBlob),(const char *)SyBlobData(&sNeedle.sBlob),
-			&pClass->sName);
+			&pClass->sDisp);
 	}
 	PH7_MemObjRelease(&sNeedle);
 	return rc;

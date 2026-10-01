@@ -110,11 +110,11 @@ static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pCla
 					if( pPrev->sFile.nByte > 0 ){
 						PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
 							"Cannot redeclare %s %z (previously declared in %.*s:%u)",
-							GenStateClassKind(pPrev),&pClass->sName,
+							GenStateClassKind(pPrev),&pClass->sDisp,
 							pPrev->sFile.nByte,pPrev->sFile.zString,pPrev->nLine);
 					}else{
 						PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
-							"Cannot redeclare %s %z",GenStateClassKind(pPrev),&pClass->sName);
+							"Cannot redeclare %s %z",GenStateClassKind(pPrev),&pClass->sDisp);
 					}
 					return SXERR_ABORT;
 				}
@@ -153,11 +153,11 @@ static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pCla
 				if( pPrev->sFile.nByte > 0 ){
 					PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
 						"Cannot redeclare %s %z (previously declared in %.*s:%u)",
-						GenStateClassKind(pPrev),&pClass->sName,
+						GenStateClassKind(pPrev),&pClass->sDisp,
 						pPrev->sFile.nByte,pPrev->sFile.zString,pPrev->nLine);
 				}else{
 					PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
-						"Cannot redeclare %s %z",GenStateClassKind(pPrev),&pClass->sName);
+						"Cannot redeclare %s %z",GenStateClassKind(pPrev),&pClass->sDisp);
 				}
 				return SXERR_ABORT;
 			}
@@ -755,7 +755,7 @@ static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,
 			return SXERR_ABORT;
 		}else if( rc != SXRET_OK ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				"Invalid type for class constant inside class '%z'",&pClass->sName);
+				"Invalid type for class constant inside class '%z'",&pClass->sDisp);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -805,7 +805,7 @@ loop:
 		 * a multi-declaration too. */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Private constant %z::%z cannot be final as it is not visible to other classes",
-			&pClass->sName,pName);
+			&pClass->sDisp,pName);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -842,7 +842,7 @@ loop:
 		&& nType == MEMOBJ_INT && GenStateConstInitIsRealLiteral(pGen) ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Cannot use float as value for class constant %z::%z of type %z",
-			&pClass->sName,pName,&sTypeText);
+			&pClass->sDisp,pName,&sTypeText);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -868,7 +868,7 @@ loop:
 	 * so no collision — only a genuine constant redefinition is rejected below. */
 	if( GenStateExtractConstant(pClass,pName) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Cannot redefine class constant %z::%z",&pClass->sName,pName);
+			"Cannot redefine class constant %z::%z",&pClass->sDisp,pName);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -929,7 +929,7 @@ loop:
 			}
 			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z',expecting constant declaration inside class '%z'",
-				&pTok->sData,&pClass->sName);
+				&pTok->sData,&pClass->sDisp);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -1181,7 +1181,7 @@ PH7_PRIVATE sxi32 GenStateValidateMemberType(
 	}
 	rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 		zErrFmt,
-		&pClass->sName,pMemberName,pBad);
+		&pClass->sDisp,pMemberName,pBad);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -1319,7 +1319,7 @@ loop:
 			zAvErr = "Visibility of property %z::$%z must not be weaker than set visibility";
 		}
 		if( zAvErr ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,zAvErr,&pClass->sName,pName);
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,zAvErr,&pClass->sDisp,pName);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -1338,7 +1338,7 @@ loop:
 			zRoErr = "Readonly property %z::$%z cannot have default value";
 		}
 		if( zRoErr ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,zRoErr,&pClass->sName,pName);
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,zRoErr,&pClass->sDisp,pName);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -1364,7 +1364,7 @@ loop:
 	 * `const C` and `public $C` coexist (stored in disjoint hConst / hAttr tables). */
 	if( GenStateExtractProperty(pClass,pName->zString,pName->nByte) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Cannot redeclare %z::$%z",&pClass->sName,pName);
+			"Cannot redeclare %z::$%z",&pClass->sDisp,pName);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -1520,7 +1520,7 @@ loop:
 			}
 			rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
 				"Unexpected token '%z',expecting attribute declaration inside class '%z'",
-				&pTok->sData,&pClass->sName);
+				&pTok->sData,&pClass->sDisp);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -1658,10 +1658,10 @@ static sxi32 GenStateCheckMagicMethod(
 		if( nGiven != (sxu32)pRule->nArgs ){
 			if( pRule->nArgs == 0 ){
 				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot take arguments",
-					&pClass->sName,pName);
+					&pClass->sDisp,pName);
 			}else{
 				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() must take exactly %d argument%s",
-					&pClass->sName,pName,pRule->nArgs,pRule->nArgs == 1 ? "" : "s");
+					&pClass->sDisp,pName,pRule->nArgs,pRule->nArgs == 1 ? "" : "s");
 			}
 			return E_ERROR;
 		}
@@ -1676,7 +1676,7 @@ static sxi32 GenStateCheckMagicMethod(
 			}
 			if( pArg->iFlags & VM_FUNC_ARG_BY_REF ){
 				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot take arguments by reference",
-					&pClass->sName,pName);
+					&pClass->sDisp,pName);
 				return E_ERROR;
 			}
 		}
@@ -1691,7 +1691,7 @@ static sxi32 GenStateCheckMagicMethod(
 	 * why `static function __get($a,$b)` reports the count first. */
 	if( pRule->bStatic != ((pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0) ){
 		SyBufferFormat(zErr,nErrBuf,"Method %z::%z() %s be static",
-			&pClass->sName,pName,pRule->bStatic ? "must" : "cannot");
+			&pClass->sDisp,pName,pRule->bStatic ? "must" : "cannot");
 		return E_ERROR;
 	}
 	/* Visibility. This one is a WARNING: php names the declaration and then
@@ -1703,7 +1703,7 @@ static sxi32 GenStateCheckMagicMethod(
 	 * PH7_MagicMethodMustBePublic, read by the runtime visibility gate. */
 	if( pRule->bPublic && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
 		SyBufferFormat(zErr,nErrBuf,"The magic method %z::%z() must have public visibility",
-			&pClass->sName,pName);
+			&pClass->sDisp,pName);
 		return E_WARNING;
 	}
 	/* A return type on the two methods that have no return VALUE. `new C` is the
@@ -1720,7 +1720,7 @@ static sxi32 GenStateCheckMagicMethod(
 	  || SyStringLength(&pMeth->sFunc.sReturnClass) > 0
 	  || SySetUsed(&pMeth->sFunc.aReturnUnion) > 0) ){
 		SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot declare a return type",
-			&pClass->sName,pName);
+			&pClass->sDisp,pName);
 		return E_ERROR;
 	}
 	return 0;
@@ -1822,7 +1822,7 @@ static sxi32 GenStateCompileClassMethod(
 		 *    INTERFACE member (and which the interface path already spells). */
 		if( pClass->iFlags & PH7_CLASS_ENUM ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				"Enum method %z::%z() must not be abstract",&pClass->sName,pName);
+				"Enum method %z::%z() must not be abstract",&pClass->sDisp,pName);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -1830,7 +1830,7 @@ static sxi32 GenStateCompileClassMethod(
 		       && (pClass->iFlags & PH7_CLASS_TRAIT) == 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 				"Abstract function %z::%z() cannot be declared private",
-				&pClass->sName,pName);
+				&pClass->sDisp,pName);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -1986,7 +1986,7 @@ static sxi32 GenStateCompileClassMethod(
 				}
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"%z::%z(): Return type must be string when declared",
-					&pClass->sName,pName);
+					&pClass->sDisp,pName);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -2046,7 +2046,7 @@ SkipToStringType:
 			/* Reject duplicate property (explicit property declared earlier with same name). */
 			if( GenStateExtractProperty(pClass,SyStringData(&pArg->sName),SyStringLength(&pArg->sName)) != 0 ){
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-					"Cannot redeclare %z::$%z",&pClass->sName,&pArg->sName);
+					"Cannot redeclare %z::$%z",&pClass->sDisp,&pArg->sName);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -2066,7 +2066,7 @@ SkipToStringType:
 				 * readonly class (8.2) every promoted property is readonly too. */
 				if( (iAttrFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-						"Readonly property %z::$%z must have type",&pClass->sName,&pArg->sName);
+						"Readonly property %z::$%z must have type",&pClass->sDisp,&pArg->sName);
 					if( rc == SXERR_ABORT ){
 						return SXERR_ABORT;
 					}
@@ -2086,7 +2086,7 @@ SkipToStringType:
 				if( (iAttrFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 						"Property with asymmetric visibility %z::$%z must have type",
-						&pClass->sName,&pArg->sName);
+						&pClass->sDisp,&pArg->sName);
 					if( rc == SXERR_ABORT ){
 						return SXERR_ABORT;
 					}
@@ -2154,7 +2154,7 @@ SkipToStringType:
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"%s function %z::%z() cannot contain body",
 					(pClass->iFlags & PH7_CLASS_INTERFACE) ? "Interface" : "Abstract",
-					&pClass->sName,pName);
+					&pClass->sDisp,pName);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -2178,7 +2178,7 @@ SkipToStringType:
 	 && (pClass->iFlags & (PH7_CLASS_ABSTRACT|PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT)) == 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Class %z declares abstract method %z() and must therefore be declared abstract",
-			&pClass->sName,pName);
+			&pClass->sDisp,pName);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -2190,7 +2190,7 @@ SkipToStringType:
 	 * the SECOND site. */
 	if( PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Cannot redeclare %z::%z()",&pClass->sName,pName);
+			"Cannot redeclare %z::%z()",&pClass->sDisp,pName);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -2763,7 +2763,7 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 			/* by-reference get hook: not modeled (loud, recorded) */
 			rc = PH7_GenCompileError(pGen,E_ERROR,nHLine,
 				"By-reference property hooks are not supported for %z::$%z",
-				&pClass->sName,&pAttr->sName);
+				&pClass->sDisp,&pAttr->sName);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -3058,7 +3058,7 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 		if( SySetUsed(&pAttr->aByteCode) > 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 				"Cannot specify default value for virtual hooked property %z::$%z",
-				&pClass->sName,&pAttr->sName);
+				&pClass->sDisp,&pAttr->sName);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -3069,7 +3069,7 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 HookSyntax:
 	rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 		"Invalid property hook declaration for %z::$%z: expecting 'get' or 'set'",
-		&pClass->sName,&pAttr->sName);
+		&pClass->sDisp,&pAttr->sName);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -3415,7 +3415,7 @@ static sxi32 GenStateCheckInterfaceSignatures(ph7_gen_state *pGen,ph7_class *pCl
 			if( pImplMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
 				rc = PH7_GenCompileError(pGen,E_ERROR,pImplMeth->nLine,
 					"Access level to %z::%z() must be public (as in class %z)",
-					&pClass->sName,pMName,&pIface->sName);
+					&pClass->sDisp,pMName,&pIface->sDisp);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -3626,7 +3626,7 @@ static sxi32 GenStateCheckOverrides(ph7_gen_state *pGen,ph7_class *pClass,
 		if( !GenStateOverridesMethod(pClass,&pMeth->sFunc.sName) ){
 			return PH7_GenCompileError(&(*pGen),E_ERROR,pMeth->sFunc.nLine,
 				"%z::%z() has #[\\Override] attribute, but no matching parent method exists",
-				&pClass->sName,&pMeth->sFunc.sName);
+				&pClass->sDisp,&pMeth->sFunc.sName);
 		}
 	}
 	for( n = 0 ; n < SySetUsed(pProps) ; ++n ){
@@ -3634,7 +3634,7 @@ static sxi32 GenStateCheckOverrides(ph7_gen_state *pGen,ph7_class *pClass,
 			/* php reports the CLASS's line for a property, not the property's. */
 			return PH7_GenCompileError(&(*pGen),E_ERROR,pClass->nLine,
 				"%z::$%z has #[\\Override] attribute, but no matching parent property exists",
-				&pClass->sName,&apProp[n]->sName);
+				&pClass->sDisp,&apProp[n]->sName);
 		}
 	}
 	return SXRET_OK;
@@ -3714,11 +3714,18 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 	}
 	/* Build the error message listing all abstract methods with origins */
 	SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
-	SyBlobFormat(&sMsg,"Class %z contains %u abstract method%s and must therefore "
-		"be declared abstract or implement the remaining method%s (",
-		&pClass->sName,nAbstract,
-		(nAbstract > 1 ? "s" : ""),
-		(nAbstract > 1 ? "s" : ""));
+	if( pClass->sDisp.nByte != pClass->sName.nByte ){
+		/* An ANONYMOUS class gets php's shorter wording -- it cannot be "declared
+		 * abstract", there being no declaration to put the word on. */
+		SyBlobFormat(&sMsg,"Class %z must implement %u abstract method%s (",
+			&pClass->sDisp,nAbstract,(nAbstract > 1 ? "s" : ""));
+	}else{
+		SyBlobFormat(&sMsg,"Class %z contains %u abstract method%s and must therefore "
+			"be declared abstract or implement the remaining method%s (",
+			&pClass->sDisp,nAbstract,
+			(nAbstract > 1 ? "s" : ""),
+			(nAbstract > 1 ? "s" : ""));
+	}
 	/* Second pass: list methods with origins */
 	{
 		sxu32 nListed = 0;
@@ -3815,10 +3822,10 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 				}
 			}
 			if( pOrigin ){
-				SyBlobFormat(&sMsg,"%z::",&pOrigin->sName);
+				SyBlobFormat(&sMsg,"%z::",&pOrigin->sDisp);
 			}else{
 				/* Origin is the class itself (trait method adopted into class namespace) */
-				SyBlobFormat(&sMsg,"%z::",&pClass->sName);
+				SyBlobFormat(&sMsg,"%z::",&pClass->sDisp);
 			}
 			GenStateAppendAbstractMemberName(&sMsg,pMName);
 			nListed++;
@@ -3954,7 +3961,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 	pGen->pIn++; /* Jump the 'case' keyword */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Invalid enum case name inside enum '%z'",&pClass->sName);
+			"Invalid enum case name inside enum '%z'",&pClass->sDisp);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -3964,7 +3971,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 	/* Cases share the class-constant namespace (php: "Cannot redefine class constant") */
 	if( SyHashGet(&pClass->hConst,(const void *)pName->zString,pName->nByte) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-			"Cannot redefine class constant %z::%z",&pClass->sName,pName);
+			"Cannot redefine class constant %z::%z",&pClass->sDisp,pName);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -3987,7 +3994,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_EQUAL /* '=' */) ){
 		if( pClass->nEnumBacking == 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				"Case %z of non-backed enum %z must not have a value",pName,&pClass->sName);
+				"Case %z of non-backed enum %z must not have a value",pName,&pClass->sDisp);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -4013,7 +4020,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
 		if( rc == SXERR_EMPTY ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				"Empty value for enum case %z::%z",&pClass->sName,pName);
+				"Empty value for enum case %z::%z",&pClass->sDisp,pName);
 		}
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,1,0,0,0);
 		PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
@@ -4023,7 +4030,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 	}else{
 		if( pClass->nEnumBacking != 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				"Case %z of backed enum %z must have a value",pName,&pClass->sName);
+				"Case %z of backed enum %z must have a value",pName,&pClass->sDisp);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -4090,7 +4097,7 @@ static sxi32 GenStateEnumFinalize(ph7_gen_state *pGen,ph7_class *pClass,sxu32 nL
 		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
 		if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pAttr->nLine ? pAttr->nLine : nLine,
-				"Enum %z cannot include properties",&pClass->sName);
+				"Enum %z cannot include properties",&pClass->sDisp);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -4102,7 +4109,7 @@ static sxi32 GenStateEnumFinalize(ph7_gen_state *pGen,ph7_class *pClass,sxu32 nL
 		if( SyHashGet(&pClass->hMethod,(const void *)azEnumBannedMagic[n],
 			SyStrlen(azEnumBannedMagic[n])) != 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-				"Enum %z cannot include magic method %s",&pClass->sName,azEnumBannedMagic[n]);
+				"Enum %z cannot include magic method %s",&pClass->sDisp,azEnumBannedMagic[n]);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -5007,7 +5014,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			if( iFlags & PH7_CLASS_ENUM ){
 				/* php parse-fatals here (enums have no inheritance) */
 				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-					"Enum %z cannot extend a class",&pClass->sName);
+					"Enum %z cannot extend a class",&pClass->sDisp);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -5046,7 +5053,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			}else{
 				if( pBase->iFlags & PH7_CLASS_ENUM ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-						"Class %z cannot extend enum %z",pName,&pBase->sName);
+						"Class %z cannot extend enum %z",pName,&pBase->sDisp);
 					if( rc == SXERR_ABORT ){
 						SyBlobRelease(&sResolved);
 						return SXERR_ABORT;
@@ -5055,7 +5062,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				}else if( pBase->iFlags & PH7_CLASS_FINAL ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 						/* php's wording, unquoted: "Class B cannot extend final class A". */
-						"Class %z cannot extend final class %z",pName,&pBase->sName);
+						"Class %z cannot extend final class %z",pName,&pBase->sDisp);
 					if( rc == SXERR_ABORT ){
 						SyBlobRelease(&sResolved);
 						return SXERR_ABORT;
@@ -5122,7 +5129,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 						!bIsExceptionOrError ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 							"Class %z cannot implement interface Throwable, extend Exception or Error instead",
-							&pClass->sName);
+							&pClass->sDisp);
 						if( rc == SXERR_ABORT ){
 							SyBlobRelease(&sResolved);
 							return SXERR_ABORT;
@@ -5459,6 +5466,77 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 	return GenStateCompileClassEx(pGen,iFlags,0,0,0);
 }
 /*
+ * The PREFIX php puts in front of an anonymous class's `@anonymous`: the resolved
+ * parent class name, else the resolved name of the FIRST implemented interface,
+ * else the literal "class". Both are the name as WRITTEN, resolved through the
+ * file's namespace and `use` imports -- not the name of whatever class the
+ * reference turns out to bind to, which at this point may not be declared yet.
+ *
+ * Peeks: the cursor sits on the `class` keyword when this runs and has to still
+ * sit there when it returns, because GenStateCompileClassEx parses the same
+ * tokens for real straight afterwards.
+ */
+static void GenStateAnonClassPrefix(ph7_gen_state *pGen,SyToken *pKw,SyBlob *pOut)
+{
+	SyToken *pSaveIn = pGen->pIn;
+	SyToken *pIn = pKw;
+	int bGot = 0;
+	pIn++; /* Step over 'class' */
+	if( pIn < pGen->pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+		/* `new class(args) extends B {}` -- the constructor list sits between the
+		 * keyword and the inheritance clause. */
+		SyToken *pClose = 0;
+		PH7_DelimitNestedTokens(&pIn[1],pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pClose);
+		pIn = ( pClose && pClose < pGen->pEnd ) ? &pClose[1] : pGen->pEnd;
+	}
+	if( pIn < pGen->pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
+		sxi32 nKwrd = SX_PTR_TO_INT(pIn->pUserData);
+		if( nKwrd == PH7_TKWRD_EXTENDS || nKwrd == PH7_TKWRD_IMPLEMENTS ){
+			pGen->pIn = &pIn[1];
+			if( GenStateParseClassReference(pGen,pOut) == SXRET_OK ){
+				bGot = 1;
+			}
+		}
+	}
+	pGen->pIn = pSaveIn;
+	if( !bGot ){
+		SyBlobAppend(pOut,"class",sizeof("class")-1);
+	}
+}
+/*
+ * Synthesize php's name for an anonymous class into pOut:
+ *
+ *     <prefix>@anonymous \0 <file>:<line>$<hex>
+ *
+ * The NUL is php's, and it is the whole reason this name has two halves. php
+ * builds it with one snprintf and then gets the short form everywhere for free,
+ * because every diagnostic prints a class name with `%s` and stops there; only
+ * the surfaces that hand the name back as a VALUE -- get_class(), ::class,
+ * __CLASS__, ReflectionClass::getName() -- carry the whole thing. Libraries read
+ * it exactly that way: `strpos($class, "@anonymous\0") !== false` is monolog's
+ * Utils::getClass and symfony's idiom for "is this an anonymous class".
+ *
+ * The tail is what makes the name UNIQUE, which the prefix alone is not: two
+ * anonymous classes written on the same line share a file, a line and usually a
+ * parent, so php separates them with a request-wide counter in hex
+ * (CG(rtd_key_counter), bumped in compile order).
+ */
+static void GenStateAnonClassName(ph7_gen_state *pGen,SyToken *pKw,SyBlob *pOut)
+{
+	SyString *pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);
+	GenStateAnonClassPrefix(pGen,pKw,pOut);
+	SyBlobAppend(pOut,"@anonymous",sizeof("@anonymous")-1);
+	SyBlobAppend(pOut,"\0",1);
+	if( pFile && pFile->nByte > 0 ){
+		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
+	}else{
+		/* No file on the include stack: an :MEMORY: chunk, which is what the magic
+		 * __FILE__ constant answers in the same situation. */
+		SyBlobAppend(pOut,":MEMORY:",sizeof(":MEMORY:")-1);
+	}
+	SyBlobFormat(pOut,":%u$%x",pKw->nLine,pGen->pVm->nAnonSeq++);
+}
+/*
  * Compile an anonymous class expression: `new class(args) extends B implements I
  * { ... }` (PHP 7.0). Mirrors PH7_CompileAnnonFunc: synthesize a unique name,
  * compile + install the class body once (at compile time, like every other
@@ -5468,8 +5546,6 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
  */
 PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	char zName[128];         /* Synthesized class name */
-	static int iCnt = 1;     /* Single-threaded compile: no locking needed */
 	SyString sName;
 	SyToken *pArgStart,*pArgEnd;
 	SyToken *pTokKw;
@@ -5497,12 +5573,22 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		pGen->pVm->sDeferAnonName.zString = 0;
 		pGen->pVm->sDeferAnonName.nByte = 0;
 	}else{
-		/* Generate a unique anonymous-class name (collision-checked) */
-		nLen = SyBufferFormat(zName,sizeof(zName),"class@anonymous_%d",iCnt++);
-		while( PH7_VmExtractClass(pGen->pVm,zName,nLen,FALSE,0) != 0 && nLen < sizeof(zName) - 2 ){
-			nLen = SyBufferFormat(zName,sizeof(zName),"class@anonymous_%d",iCnt++);
+		/* Synthesize php's name. It carries a NUL and a path, so it does not fit a
+		 * stack buffer and cannot be built with the `%s` formatter; and it has to
+		 * outlive this function (the site's OP_NEW loads it as a literal), so it is
+		 * duplicated into the VM allocator exactly as the deferred path's copy is. */
+		SyBlob sAnon;
+		char *zDup;
+		SyBlobInit(&sAnon,&pGen->pVm->sAllocator);
+		GenStateAnonClassName(pGen,pTokKw,&sAnon);
+		nLen = (sxu32)SyBlobLength(&sAnon);
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,(const char *)SyBlobData(&sAnon),nLen);
+		SyBlobRelease(&sAnon);
+		if( zDup == 0 ){
+			PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+			return SXERR_ABORT;
 		}
-		SyStringInitFromBuf(&sName,zName,nLen);
+		SyStringInitFromBuf(&sName,zDup,nLen);
 	}
 	/* Compile + install the class body; capture the constructor '(args)' range.
 	 * On entry pGen->pIn sits on the 'class' keyword and pGen->pEnd bounds the

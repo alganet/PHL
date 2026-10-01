@@ -881,7 +881,7 @@ PH7_PRIVATE sxi32 VmConstCycleThrow(ph7_vm *pVm)
 	pVm->pConstCycleClass = 0;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	SyBlobFormat(&sMsg,"Cannot declare self-referencing constant %z::%z",
-		pOwner ? &pOwner->sName : &pAttr->sName,&pAttr->sName);
+		pOwner ? &pOwner->sDisp : &pAttr->sName,&pAttr->sName);
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
@@ -1001,7 +1001,7 @@ PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 				PH7_MemObjRelease(&sBacking);
 				SyBlobInit(&sMsg,&pVm->sAllocator);
 				SyBlobFormat(&sMsg,"Duplicate value in enum %z for cases %z and %z",
-					&pClass->sName,&pFirst->sName,&pSecond->sName);
+					&pClass->sDisp,&pFirst->sName,&pSecond->sName);
 				return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 			}
 		}
@@ -1012,7 +1012,7 @@ PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		PH7_MemObjRelease(&sBacking);
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 			"Cannot create enum case %z::%z due to a memory failure",
-			&pClass->sName,&pCase->sName);
+			&pClass->sDisp,&pCase->sName);
 		return PH7_ABORT;
 	}
 	PH7_MemObjInitFromString(pVm,&sPropVal,&pCase->sName);
@@ -1029,7 +1029,7 @@ PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		PH7_ClassInstanceUnref(pObj);
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 			"Cannot reserve a memory object for enum case %z::%z",
-			&pClass->sName,&pCase->sName);
+			&pClass->sDisp,&pCase->sName);
 		return PH7_ABORT;
 	}
 	pSlot->x.pOther = pObj;
@@ -1307,7 +1307,7 @@ static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const cha
 	 * inherited typed property reports its original owner, matching PHP. */
 	if( pOwner ){
 		SyBlobFormat(&sMsg,"Cannot assign %s to %s %z::$%z of type %s",
-			zGiven,zWhat,&pOwner->sName,&pAttr->sName,zTypeText);
+			zGiven,zWhat,&pOwner->sDisp,&pAttr->sName,zTypeText);
 	}else{
 		SyBlobFormat(&sMsg,"Cannot assign %s to %s $%z of type %s",
 			zGiven,zWhat,&pAttr->sName,zTypeText);
@@ -1374,7 +1374,7 @@ PH7_PRIVATE sxi32 VmThrowAutoInitArrayError(ph7_vm *pVm,VmClassAttr *pVmAttr)
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pOwner ){
 		SyBlobFormat(&sMsg,"Cannot auto-initialize an array inside property %z::$%z of type %s",
-			&pOwner->sName,&pAttr->sName,zTypeText);
+			&pOwner->sDisp,&pAttr->sName,zTypeText);
 	}else{
 		SyBlobFormat(&sMsg,"Cannot auto-initialize an array inside property $%z of type %s",
 			&pAttr->sName,zTypeText);
@@ -1448,7 +1448,7 @@ PH7_PRIVATE sxi32 VmRefUninitTypedProperty(ph7_vm *pVm,ph7_class *pClass,VmClass
 	pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	SyBlobFormat(&sMsg,"Cannot access uninitialized non-nullable property %z::$%z by reference",
-		pOwner ? &pOwner->sName : &pClass->sName,&pAttr->sName);
+		pOwner ? &pOwner->sDisp : &pClass->sDisp,&pAttr->sName);
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
@@ -1461,7 +1461,7 @@ PH7_PRIVATE sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClas
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	SyBlobFormat(&sMsg,"Typed %s %z::$%z must not be accessed before initialization",
-		zKind,&pOwner->sName,&pAttr->sName);
+		zKind,&pOwner->sDisp,&pAttr->sName);
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
@@ -1490,10 +1490,10 @@ static sxi32 VmThrowSetVisibilityErrorEx(ph7_vm *pVm,ph7_class *pClass,ph7_class
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pActive ){
 		SyBlobFormat(&sMsg,"Cannot %s %s property %z::$%z from scope %z",
-			zVerb,zVis,&pOwner->sName,&pAttr->sName,&pActive->sName);
+			zVerb,zVis,&pOwner->sDisp,&pAttr->sName,&pActive->sDisp);
 	}else{
 		SyBlobFormat(&sMsg,"Cannot %s %s property %z::$%z from global scope",
-			zVerb,zVis,&pOwner->sName,&pAttr->sName);
+			zVerb,zVis,&pOwner->sDisp,&pAttr->sName);
 	}
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
@@ -1537,7 +1537,7 @@ PH7_PRIVATE sxi32 VmThrowNativeNoWrite(ph7_vm *pVm,ph7_class *pClass,ph7_class_a
 	ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	SyBlobFormat(&sMsg,"Cannot modify readonly property %z::$%z",&pOwner->sName,&pAttr->sName);
+	SyBlobFormat(&sMsg,"Cannot modify readonly property %z::$%z",&pOwner->sDisp,&pAttr->sName);
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
@@ -1551,7 +1551,7 @@ PH7_PRIVATE sxi32 VmThrowNativeNoUnset(ph7_vm *pVm,ph7_class *pClass,ph7_class_a
 	/* The OBJECT's class, not the declaring one -- php's two refusals disagree
 	 * about which to print, and a subclass of DatePeriod shows it: the write says
 	 * `DatePeriod::$interval` and the unset says `SubDp::$interval`. */
-	SyBlobFormat(&sMsg,"Cannot unset %z::$%z",&pClass->sName,&pAttr->sName);
+	SyBlobFormat(&sMsg,"Cannot unset %z::$%z",&pClass->sDisp,&pAttr->sName);
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
@@ -1607,16 +1607,16 @@ PH7_PRIVATE sxi32 VmCheckReadonlyUnset(ph7_vm *pVm,ph7_class *pClass,VmClassAttr
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( bInit ){
-		SyBlobFormat(&sMsg,"Cannot unset readonly property %z::$%z",&pOwner->sName,&pAttr->sName);
+		SyBlobFormat(&sMsg,"Cannot unset readonly property %z::$%z",&pOwner->sDisp,&pAttr->sName);
 	}else{
 		const char *zWhat = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET)
 			? "private(set)" : "protected(set) readonly";
 		if( pActive ){
 			SyBlobFormat(&sMsg,"Cannot unset %s property %z::$%z from scope %z",
-				zWhat,&pOwner->sName,&pAttr->sName,&pActive->sName);
+				zWhat,&pOwner->sDisp,&pAttr->sName,&pActive->sDisp);
 		}else{
 			SyBlobFormat(&sMsg,"Cannot unset %s property %z::$%z from global scope",
-				zWhat,&pOwner->sName,&pAttr->sName);
+				zWhat,&pOwner->sDisp,&pAttr->sName);
 		}
 	}
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
@@ -1627,15 +1627,15 @@ static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( bModify ){
-		SyBlobFormat(&sMsg,"Cannot modify readonly property %z::$%z",&pOwner->sName,&pAttr->sName);
+		SyBlobFormat(&sMsg,"Cannot modify readonly property %z::$%z",&pOwner->sDisp,&pAttr->sName);
 	}else{
 		ph7_class *pActive = VmCurrentSelf(pVm);
 		if( pActive ){
 			SyBlobFormat(&sMsg,"Cannot modify protected(set) readonly property %z::$%z from scope %z",
-				&pOwner->sName,&pAttr->sName,&pActive->sName);
+				&pOwner->sDisp,&pAttr->sName,&pActive->sDisp);
 		}else{
 			SyBlobFormat(&sMsg,"Cannot modify protected(set) readonly property %z::$%z from global scope",
-				&pOwner->sName,&pAttr->sName);
+				&pOwner->sDisp,&pAttr->sName);
 		}
 	}
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
@@ -1683,7 +1683,7 @@ PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx)
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Cannot indirectly modify readonly property %z::$%z",
-			&pOwner->sName,&pAttr->sName);
+			&pOwner->sDisp,&pAttr->sName);
 		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 	}
 	/* An asymmetric set-visibility (PHP 8.4) gates the indirect write exactly as
@@ -2897,7 +2897,7 @@ PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Cannot update static property %z::$%z via clone()",
-			&pClass->sName,&pAttr->sName);
+			&pClass->sDisp,&pAttr->sName);
 		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 	}
 	/* Visibility: enforced against the current (calling) frame's scope. A public
@@ -2908,7 +2908,7 @@ PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
 		ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
-		SyBlobFormat(&sMsg,"Cannot access %s property %z::$%z",zProt,&pOwner->sName,&pAttr->sName);
+		SyBlobFormat(&sMsg,"Cannot access %s property %z::$%z",zProt,&pOwner->sDisp,&pAttr->sName);
 		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 	}
 	/* Typed + readonly (clone re-init) enforcement — may coerce pValue in place. */
@@ -2952,7 +2952,7 @@ static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *p
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Cannot assign %s to class constant %z::%z of type %s",
-			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
+			zGiven,&pOwner->sDisp,&pAttr->sName,zTypeText);
 		return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 	}
 	/* A class is normally mounted during the compile/VmMakeReady phase, where the
@@ -2965,11 +2965,11 @@ static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *p
 	if( pVm->sCodeGen.xErr ){
 		PH7_GenCompileError(&pVm->sCodeGen,E_ERROR,pAttr->nLine,
 			"Cannot use %s as value for class constant %z::%z of type %s",
-			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
+			zGiven,&pOwner->sDisp,&pAttr->sName,zTypeText);
 	}else{
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 			"Cannot use %s as value for class constant %z::%z of type %s",
-			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
+			zGiven,&pOwner->sDisp,&pAttr->sName,zTypeText);
 	}
 	pVm->iExitStatus = 255;
 	pVm->bHaltRequested = 1;
@@ -3082,7 +3082,7 @@ static sxi32 VmDefaultPropertyTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %s",
-		zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
+		zGiven,&pOwner->sDisp,&pAttr->sName,zTypeText);
 	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 }
 /*
@@ -3443,7 +3443,12 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
  * scope and PHL records at compile time. Appends `Name::` and answers 1 when there
  * is one.
  */
-static int VmArgOwnerPrefix(ph7_vm *pVm,SyBlob *pOut,ph7_class *pOwnerClass,ph7_vm_func *pCallee)
+/*
+ * The owner NAME an argument diagnostic prefixes the callee with, in FULL (an
+ * anonymous class's carries its NUL; the two callers below differ over what they
+ * do with it). NULL when the callee has no owner.
+ */
+static SyString * VmArgOwnerName(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_vm_func *pCallee)
 {
 	SyString *pName = 0;
 	if( pOwnerClass ){
@@ -3460,11 +3465,58 @@ static int VmArgOwnerPrefix(ph7_vm *pVm,SyBlob *pOut,ph7_class *pOwnerClass,ph7_
 			pName = &pCallee->sClosureScope;
 		}
 	}
+	return pName;
+}
+/* The name plus php's `::`, cut at the NUL an anonymous class carries -- this is the
+ * spelling of the family that prints the class and the method as SEPARATE `%s`
+ * (`Too few arguments to function class@anonymous::need()`). */
+static int VmArgOwnerPrefix(ph7_vm *pVm,SyBlob *pOut,ph7_class *pOwnerClass,ph7_vm_func *pCallee)
+{
+	SyString *pName = VmArgOwnerName(&(*pVm),pOwnerClass,pCallee);
+	sxu32 nPos;
 	if( pName == 0 ){
 		return 0;
 	}
-	SyBlobFormat(pOut,"%z::",pName);
+	if( SyByteFind(pName->zString,pName->nByte,0,&nPos) != SXRET_OK ){
+		nPos = pName->nByte;
+	}
+	SyBlobAppend(pOut,pName->zString,nPos);
+	SyBlobAppend(pOut,"::",sizeof("::")-1);
 	return 1;
+}
+/*
+ * php's name for the callee in the `Argument #N ...` family: `Class::method`, or the
+ * bare function/closure name when there is no owner class. php builds it as ONE
+ * string (get_active_function_or_method_name()) and then prints it with `%s`, so an
+ * ANONYMOUS owner's NUL cuts the `::method` off with it -- the message php really
+ * prints is `class@anonymous(): Argument #1 ($i) must be of type int, string given`,
+ * and it says exactly that for every method of that class, __invoke and a closure
+ * declared in one of its methods included.
+ *
+ * Reproduced rather than tidied: it is what php's output says, and a library's
+ * expected output has it. The neighbouring diagnostics that print the class and the
+ * method as SEPARATE `%s` keep both halves -- `Too few arguments to function
+ * class@anonymous::need()`, `class@anonymous::ret(): Return value must be of type` --
+ * which is why this is one family's helper and not a rule about class names.
+ */
+static void VmArgFuncLabel(ph7_vm *pVm,SyBlob *pOut,ph7_class *pOwnerClass,
+	ph7_vm_func *pCallee,const char *zShow,int nShow)
+{
+	SyString *pOwner = VmArgOwnerName(&(*pVm),pOwnerClass,pCallee);
+	sxu32 nPos;
+	if( pOwner && SyByteFind(pOwner->zString,pOwner->nByte,0,&nPos) == SXRET_OK ){
+		/* Anonymous owner: php's `%s` stops inside the class name, so the `::method`
+		 * it assembled behind the NUL is never printed. */
+		SyBlobAppend(pOut,pOwner->zString,nPos);
+		return;
+	}
+	if( pOwner ){
+		SyBlobAppend(pOut,pOwner->zString,pOwner->nByte);
+		SyBlobAppend(pOut,"::",sizeof("::")-1);
+	}
+	if( nShow > 0 ){
+		SyBlobAppend(pOut,zShow,(sxu32)nShow);
+	}
 }
 /*
  * The CALL SITE php names in an argument diagnostic: the `called in FILE on line
@@ -3545,24 +3597,26 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 			goto ArgMsgBuilt;
 		}
 		SyBlobRelease(&sHook);
+		VmArgFuncLabel(pVm,&sMsg,pOwnerClass,pCallee,
+			SyStringData(pFuncName),(int)SyStringLength(pFuncName));
 		if( pArgName ){
-			SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) must be of type %s, %s given",
-				&pOwnerClass->sName,pFuncName,nArg,pArgName,zExpected,zGiven);
+			SyBlobFormat(&sMsg,"(): Argument #%u ($%z) must be of type %s, %s given",
+				nArg,pArgName,zExpected,zGiven);
 		}else{
-			SyBlobFormat(&sMsg,"%z::%z(): Argument #%u must be of type %s, %s given",
-				&pOwnerClass->sName,pFuncName,nArg,zExpected,zGiven);
+			SyBlobFormat(&sMsg,"(): Argument #%u must be of type %s, %s given",
+				nArg,zExpected,zGiven);
 		}
 	}else{
 		/* A closure's internal lookup key ("[closure_3]") is not what php shows. */
 		const char *zShow = 0;
 		int nShow = PH7_VmFuncDisplayName(pVm,pCallee,&zShow);
-		VmArgOwnerPrefix(pVm,&sMsg,0,pCallee);
+		VmArgFuncLabel(pVm,&sMsg,0,pCallee,zShow,nShow);
 		if( pArgName ){
-			SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) must be of type %s, %s given",
-				nShow,zShow,nArg,pArgName,zExpected,zGiven);
+			SyBlobFormat(&sMsg,"(): Argument #%u ($%z) must be of type %s, %s given",
+				nArg,pArgName,zExpected,zGiven);
 		}else{
-			SyBlobFormat(&sMsg,"%.*s(): Argument #%u must be of type %s, %s given",
-				nShow,zShow,nArg,zExpected,zGiven);
+			SyBlobFormat(&sMsg,"(): Argument #%u must be of type %s, %s given",
+				nArg,zExpected,zGiven);
 		}
 	}
 ArgMsgBuilt:
@@ -3795,11 +3849,11 @@ PH7_PRIVATE void PH7_VmWarnByRefValueGiven(ph7_vm *pVm,ph7_class *pOwnerClass,
 	if( pOwnerClass && pArgName ){
 		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
 			"%z::%.*s(): Argument #%u ($%z) must be passed by reference, value given",
-			&pOwnerClass->sName,nShow,zShow,nArgPos,pArgName);
+			&pOwnerClass->sDisp,nShow,zShow,nArgPos,pArgName);
 	}else if( pOwnerClass ){
 		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
 			"%z::%.*s(): Argument #%u must be passed by reference, value given",
-			&pOwnerClass->sName,nShow,zShow,nArgPos);
+			&pOwnerClass->sDisp,nShow,zShow,nArgPos);
 	}else if( pArgName ){
 		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
 			"%.*s(): Argument #%u ($%z) must be passed by reference, value given",
@@ -3821,9 +3875,9 @@ PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyStrin
 		nShow = (int)SyStringLength(pFuncName);
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	VmArgOwnerPrefix(pVm,&sMsg,pOwnerClass,pCallee);
-	SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) could not be passed by reference",
-		nShow,zShow,nArgPos,pArgName);
+	VmArgFuncLabel(pVm,&sMsg,pOwnerClass,pCallee,zShow,nShow);
+	SyBlobFormat(&sMsg,"(): Argument #%u ($%z) could not be passed by reference",
+		nArgPos,pArgName);
 	/* VmThrowBuiltinError consumes (releases) sMsg */
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
@@ -3849,7 +3903,7 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,Sy
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pOwnerClass ){
 		SyBlobFormat(&sMsg,"%z::%z() expects %s %u argument%s, %u given",
-			&pOwnerClass->sName,pFuncName,zKind,nRequired,zPlural,nPassed);
+			&pOwnerClass->sDisp,pFuncName,zKind,nRequired,zPlural,nPassed);
 	}else{
 		SyBlobFormat(&sMsg,"%z() expects %s %u argument%s, %u given",
 			pFuncName,zKind,nRequired,zPlural,nPassed);
@@ -3875,7 +3929,7 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooManyArgs(ph7_vm *pVm,ph7_class *pOwnerClass,S
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pOwnerClass ){
 		SyBlobFormat(&sMsg,"%z::%z() expects %s %u argument%s, %u given",
-			&pOwnerClass->sName,pFuncName,zKind,nMax,zPlural,nPassed);
+			&pOwnerClass->sDisp,pFuncName,zKind,nMax,zPlural,nPassed);
 	}else{
 		SyBlobFormat(&sMsg,"%z() expects %s %u argument%s, %u given",
 			pFuncName,zKind,nMax,zPlural,nPassed);
@@ -3985,7 +4039,7 @@ PH7_PRIVATE int PH7_VmHookFuncName(ph7_class *pClass,ph7_vm_func *pFunc,SyBlob *
 	if( pClass == 0 || !PH7_VmHookSplitName(&pFunc->sName,&sProp,&zKind) ){
 		return 0;
 	}
-	SyBlobFormat(pOut,"%z::$%z::%s",&pClass->sName,&sProp,zKind);
+	SyBlobFormat(pOut,"%z::$%z::%s",&pClass->sDisp,&sProp,zKind);
 	return 1;
 }
 /*
@@ -4014,7 +4068,7 @@ static void VmReturnFuncName(ph7_vm *pVm,ph7_vm_func *pFunc,SyBlob *pOut)
 		if( PH7_VmHookFuncName(pOwner,pFunc,pOut) ){
 			return;
 		}
-		SyBlobFormat(pOut,"%z::%z",&pOwner->sName,&pFunc->sName);
+		SyBlobFormat(pOut,"%z::%z",&pOwner->sDisp,&pFunc->sName);
 		return;
 	}
 	{
@@ -5332,7 +5386,7 @@ PH7_PRIVATE void VmIncDecTypeErrorMsg(ph7_value *pVal,int bIncr,SyBlob *pMsgOut)
 	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
 		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
 		if( pInst && pInst->pClass ){
-			SyBlobFormat(pMsgOut,"Cannot %s %z",zVerb,&pInst->pClass->sName);
+			SyBlobFormat(pMsgOut,"Cannot %s %z",zVerb,&pInst->pClass->sDisp);
 			return;
 		}
 	}
@@ -5384,7 +5438,7 @@ PH7_PRIVATE void VmBitNotTypeErrorMsg(ph7_value *pVal,SyBlob *pMsgOut)
 	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
 		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
 		if( pInst && pInst->pClass ){
-			SyBlobFormat(pMsgOut,"Cannot perform bitwise not on %z",&pInst->pClass->sName);
+			SyBlobFormat(pMsgOut,"Cannot perform bitwise not on %z",&pInst->pClass->sDisp);
 			return;
 		}
 	}

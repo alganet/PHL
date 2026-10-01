@@ -547,7 +547,7 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 		}
 		if( pInst && pInst->pClass ){
 			VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
-				"Object of class %z could not be converted to int",&pInst->pClass->sName);
+				"Object of class %z could not be converted to int",&pInst->pClass->sDisp);
 		}
 		PH7_ClassInstanceUnref(pInst);
 		return 1;
@@ -618,7 +618,7 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 		}
 		if( pInst && pInst->pClass ){
 			VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
-				"Object of class %z could not be converted to float",&pInst->pClass->sName);
+				"Object of class %z could not be converted to float",&pInst->pClass->sDisp);
 		}
 		PH7_ClassInstanceUnref(pInst);
 		return (ph7_real)1.0;
@@ -1004,7 +1004,7 @@ static sxi32 MemObjThrowNotStringable(ph7_value *pObj)
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pObj->pVm->sAllocator);
 	SyBlobFormat(&sMsg,"Object of class %z could not be converted to string",
-		&pInst->pClass->sName);
+		&pInst->pClass->sDisp);
 	/* VmThrowBuiltinError consumes (releases) sMsg */
 	return VmThrowBuiltinError(pObj->pVm,"Error",sizeof("Error")-1,&sMsg);
 }
@@ -1970,7 +1970,7 @@ static int MemObjCmpCastObject(ph7_value *pSelf,ph7_value *pOther,ph7_value *pOu
 		if( pInst && pInst->pClass && pSelf->pVm ){
 			VmErrorFormat(pSelf->pVm,PH7_CTX_NOTICE,
 				"Object of class %z could not be converted to %s",
-				&pInst->pClass->sName,bReal ? "float" : "int");
+				&pInst->pClass->sDisp,bReal ? "float" : "int");
 		}
 		if( bReal ){
 			PH7_MemObjInitFromReal(pSelf->pVm,pOut,(ph7_real)1.0);
@@ -2588,7 +2588,7 @@ PH7_PRIVATE sxi32 PH7_MemObjDump(
 		if( pInst->pClass->iFlags & PH7_CLASS_ENUM ){
 			/* php 8.1: var_dump of an enum case prints `enum(S::A)` — no body */
 			ph7_value *pName = PH7_EnumCaseNameValue(pInst);
-			SyBlobFormat(&(*pOut),"enum(%z::",&pInst->pClass->sName);
+			SyBlobFormat(&(*pOut),"enum(%z::",&pInst->pClass->sDisp);
 			if( pName && SyBlobLength(&pName->sBlob) > 0 ){
 				SyBlobAppend(&(*pOut),SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
 			}

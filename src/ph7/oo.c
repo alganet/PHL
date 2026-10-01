@@ -30,6 +30,20 @@ PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 
 	}
 	/* Initialize fields */
 	SyStringInitFromBuf(&pClass->sName,zName,pName->nByte);
+	/* The DISPLAY name: sName up to its first NUL. Only an anonymous class has one
+	 * (PH7_CompileAnnonClass synthesizes php's `<prefix>@anonymous\0file:line$hex`),
+	 * so for every other class this aliases the whole name and costs one scan of it
+	 * at declaration time. */
+	{
+		sxu32 nCut = pName->nByte;
+		if( pName->nByte > 0 ){
+			sxu32 nPos = 0;
+			if( SyByteFind(zName,pName->nByte,0,&nPos) == SXRET_OK ){
+				nCut = nPos;
+			}
+		}
+		SyStringInitFromBuf(&pClass->sDisp,zName,nCut);
+	}
 	/* php method names are CASE-INSENSITIVE ($o->FOO() finds foo(), and declaring
 	 * both is a redeclaration), so the method table matches on them the same way
 	 * hClass does for class names. Properties and class constants ARE case
@@ -1338,7 +1352,7 @@ PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *p
 		PH7_ClassRenderDecl(pVm,pParentOwner,pPF,&sParent);
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pChild->nLine,
 			"Declaration of %z::%z%.*s must be compatible with %z::%z%.*s",
-			&pChildOwner->sName,pMName,
+			&pChildOwner->sDisp,pMName,
 			OoDeclCLen(&sChild),(const char *)SyBlobData(&sChild),
 			&pParentOwner->sName,&pParent->sFunc.sName,
 			OoDeclCLen(&sParent),(const char *)SyBlobData(&sParent));
@@ -1445,11 +1459,11 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		if( pBase->iFlags & PH7_CLASS_READONLY ){
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 				"Non-readonly class %z cannot extend readonly class %z",
-				&pSub->sName,&pBase->sName);
+				&pSub->sDisp,&pBase->sDisp);
 		}else{
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 				"Readonly class %z cannot extend non-readonly class %z",
-				&pSub->sName,&pBase->sName);
+				&pSub->sDisp,&pBase->sDisp);
 		}
 		if( rc == SXERR_ABORT ){
 			SySetRelease(&aInherited);
@@ -1504,7 +1518,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 					"%z::%z cannot override final constant %z::%z",
-					&pSub->sName,pName,&pOwner->sName,pName);
+					&pSub->sDisp,pName,&pOwner->sDisp,pName);
 				if( rc == SXERR_ABORT ){
 					SySetRelease(&aInherited);
 					return SXERR_ABORT;
@@ -1519,7 +1533,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				 * above. */
 				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
-					"Cannot override final property %z::$%z",&pOwner->sName,pName);
+					"Cannot override final property %z::$%z",&pOwner->sDisp,pName);
 				if( rc == SXERR_ABORT ){
 					SySetRelease(&aInherited);
 					return SXERR_ABORT;
@@ -1619,7 +1633,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 					"%z::%z cannot override final constant %z::%z",
-					&pSub->sName,pName,&pOwner->sName,pName);
+					&pSub->sDisp,pName,&pOwner->sDisp,pName);
 				if( rc == SXERR_ABORT ){
 					SySetRelease(&aInherited);
 					return SXERR_ABORT;
@@ -1687,7 +1701,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				/* php: "Cannot override final method A::test()" */
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pOwn->pUserData)->nLine,
 					"Cannot override final method %z::%z()",
-					&pBase->sName,pName);
+					&pBase->sDisp,pName);
 				(void)pSub;
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
@@ -1856,7 +1870,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 	/* Detect cyclic trait composition (e.g. trait A { use B; } trait B { use A; }) */
 	if( pTrait->iFlags & PH7_CLASS_TRAIT_VISITING ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,pTrait->nLine,
-			"Trait circular reference detected: %z is already being applied",&pTrait->sName);
+			"Trait circular reference detected: %z is already being applied",&pTrait->sDisp);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -1903,7 +1917,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 					"%z and %z define the same property ($%z) in the composition of %z. "
 					"However, the definition differs and is considered incompatible. "
 					"Class was composed",
-					&pHolder->sName,&pTrait->sName,pName,&pClass->sName);
+					&pHolder->sDisp,&pTrait->sDisp,pName,&pClass->sDisp);
 				if( rc == SXERR_ABORT ){
 					goto cleanup;
 				}
@@ -1977,7 +1991,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 					"%z and %z define the same constant (%z) in the composition of %z. "
 					"However, the definition differs and is considered incompatible. "
 					"Class was composed",
-					&pHolder->sName,&pTrait->sName,pName,&pClass->sName);
+					&pHolder->sDisp,&pTrait->sDisp,pName,&pClass->sDisp);
 				if( rc == SXERR_ABORT ){
 					goto cleanup;
 				}
@@ -2062,9 +2076,9 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 					rc = PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
 						"Trait method %z::%z has not been applied as %z::%z, "
 						"because of collision with %z::%z",
-						&pTrait->sName,pName,
-						&pClass->sName,pName,
-						&apUsedTraits[k]->sName,pName);
+						&pTrait->sDisp,pName,
+						&pClass->sDisp,pName,
+						&apUsedTraits[k]->sDisp,pName);
 					if( rc == SXERR_ABORT ){
 						goto cleanup;
 					}
@@ -2824,7 +2838,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis)
 				 * running program can still catch. */
 				SyBlobFormat(&sErrMsg,
 					"Call to %s %z::__destruct() from global scope during shutdown ignored",
-					zVis,&pClass->sName);
+					zVis,&pClass->sDisp);
 				SyBlobAppend(&sErrMsg,"\0",sizeof(char));
 				/* Raised between two destructor bodies, so there is no frame to name:
 				 * php reports it `in Unknown on line 0`. */
@@ -2836,10 +2850,10 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallDestructor(ph7_class_instance *pThis)
 			}
 			if( pScope ){
 				SyBlobFormat(&sErrMsg,"Call to %s %z::__destruct() from scope %z",
-					zVis,&pClass->sName,&pScope->sName);
+					zVis,&pClass->sDisp,&pScope->sDisp);
 			}else{
 				SyBlobFormat(&sErrMsg,"Call to %s %z::__destruct() from global scope",
-					zVis,&pClass->sName);
+					zVis,&pClass->sDisp);
 			}
 			/* Parked, not returned: this release has no channel back to the
 			 * executor (nothing "called" the destruct), and the dispatcher's own
@@ -3265,21 +3279,21 @@ static void DumpClassInstanceHeader(SyBlob *pOut,ph7_class *pClass,sxu32 nObjId,
 {
 	if( ShowType ){
 		/* var_dump: `object(C)#id (n) {` */
-		SyBlobFormat(&(*pOut),"object(%z)#%u (%u) {",&pClass->sName,nObjId,nCount);
+		SyBlobFormat(&(*pOut),"object(%z)#%u (%u) {",&pClass->sDisp,nObjId,nCount);
 		SyBlobAppend(&(*pOut),"\n",sizeof(char));
 		return;
 	}
 	/* print_r: `C Object` / `E Enum[:backing]` — the '(' line is emitted by
 	 * the body renderer at the container indent. */
 	if( pClass->iFlags & PH7_CLASS_ENUM ){
-		SyBlobFormat(&(*pOut),"%z Enum",&pClass->sName);
+		SyBlobFormat(&(*pOut),"%z Enum",&pClass->sDisp);
 		if( pClass->nEnumBacking == MEMOBJ_INT ){
 			SyBlobAppend(&(*pOut),":int",sizeof(":int")-1);
 		}else if( pClass->nEnumBacking == MEMOBJ_STRING ){
 			SyBlobAppend(&(*pOut),":string",sizeof(":string")-1);
 		}
 	}else{
-		SyBlobFormat(&(*pOut),"%z Object",&pClass->sName);
+		SyBlobFormat(&(*pOut),"%z Object",&pClass->sDisp);
 	}
 	SyBlobAppend(&(*pOut),"\n",sizeof(char));
 }
@@ -3369,7 +3383,7 @@ static void OoDumpPropKey(SyBlob *pOut,ph7_class_instance *pThis,ph7_class_attr 
 	SyBlobFormat(&(*pOut),"[%s%z%s",zQ,&pAttr->sName,zQ);
 	if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
 		ph7_class *pDecl = OoAttrDeclaringClass(pThis->pClass,pAttr);
-		SyBlobFormat(&(*pOut),":%s%z%s:private",zQ,&pDecl->sName,zQ);
+		SyBlobFormat(&(*pOut),":%s%z%s:private",zQ,&pDecl->sDisp,zQ);
 	}else if( pAttr->iProtection == PH7_CLASS_PROT_PROTECTED ){
 		SyBlobAppend(&(*pOut),":protected",sizeof(":protected")-1);
 	}

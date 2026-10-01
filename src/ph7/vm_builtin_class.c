@@ -1436,7 +1436,7 @@ dis:
 	if( bLog ){
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 			"Access to the class attribute '%z->%z' is forbidden",
-			&pClass->sName,pAttrName);
+			&pClass->sDisp,pAttrName);
 	}
 	return 0; /* Access is forbidden */
 }
@@ -1489,7 +1489,7 @@ PH7_PRIVATE int PH7_VmClassAttrAccess(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 			if( bLog ){
 				VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 					"Access to the class attribute '%z->%z' is forbidden",
-					&pClass->sName,&pAttr->sName);
+					&pClass->sDisp,&pAttr->sName);
 			}
 			return 0;
 		}
@@ -1992,7 +1992,7 @@ PH7_PRIVATE int vm_builtin_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( (pSrc->pClass->iFlags & PH7_CLASS_ENUM) || PH7_ClassIsUncloneable(pSrc->pClass)
 		|| pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
 		return PH7_VmThrowException(pCtx,"Error",
-			"Trying to clone an uncloneable object of class %z",&pSrc->pClass->sName);
+			"Trying to clone an uncloneable object of class %z",&pSrc->pClass->sDisp);
 	}
 	pClone = PH7_CloneClassInstance(pSrc);
 	if( pClone == 0 ){

@@ -555,7 +555,7 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 	ph7_class *pOwner;
 	SyString sDecl;
 	if( nMethod < 1 ){
-		SyBufferFormat(zBuf,nBuf,"class %z does not have a method \"\"",&pClass->sName);
+		SyBufferFormat(zBuf,nBuf,"class %z does not have a method \"\"",&pClass->sDisp);
 		return zBuf;
 	}
 	pMethod = PH7_ClassExtractMethod(pClass,zMethod,nMethod);
@@ -564,7 +564,7 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 			return 0; /* the catch-all answers for any name */
 		}
 		SyBufferFormat(zBuf,nBuf,"class %z does not have a method \"%.*s\"",
-			&pClass->sName,(int)nMethod,zMethod);
+			&pClass->sDisp,(int)nMethod,zMethod);
 		return zBuf;
 	}
 	/* Two different classes: the one that DECIDES and the one php NAMES. The decision is
@@ -578,7 +578,7 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 	PH7_ClassMethodRegisteredName(pClass,zMethod,nMethod,&sDecl);
 	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
 		SyBufferFormat(zBuf,nBuf,"cannot call abstract method %z::%.*s()",
-			&pClass->sName,(int)nMethod,zMethod);
+			&pClass->sDisp,(int)nMethod,zMethod);
 		return zBuf;
 	}
 	/* php's CALLBACK reason reports staticness BEFORE visibility — the reverse of the
@@ -586,7 +586,7 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
 	 && !VmCallerThisIsA(pVm,pClass) ){
 		SyBufferFormat(zBuf,nBuf,"non-static method %z::%z() cannot be called statically",
-			&pClass->sName,&sDecl);
+			&pClass->sDisp,&sDecl);
 		return zBuf;
 	}
 	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
@@ -596,7 +596,7 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 		}
 		SyBufferFormat(zBuf,nBuf,"cannot access %s method %z::%z()",
 			pMethod->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected",
-			&pClass->sName,&sDecl);
+			&pClass->sDisp,&sDecl);
 		return zBuf;
 	}
 	return 0;
@@ -1637,7 +1637,7 @@ PH7_PRIVATE sxi32 PH7_VmIteratorWalk(ph7_vm *pVm,ph7_value *pObj,ProcIterStep xS
 			ph7_class *pBad = pAggWalk->pClass;
 			nMsg = (int)SyBufferFormat(zMsg,sizeof(zMsg),
 				"Objects returned by %.*s::getIterator() must be traversable or implement interface Iterator",
-				(int)SyStringLength(&pBad->sName),SyStringData(&pBad->sName));
+				(int)SyStringLength(&pBad->sDisp),SyStringData(&pBad->sDisp));
 			if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }
 			rc = VmThrowFromVm(&(*pVm),"Exception",zMsg,(sxu32)nMsg);
 			return (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;

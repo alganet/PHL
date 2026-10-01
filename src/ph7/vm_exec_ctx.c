@@ -1458,7 +1458,7 @@ static int VmClosureBindAllowed(ph7_vm *pVm, ph7_class_instance *pClosure,
 				pFn ? SyBlobLength(&pFn->sBlob) : 0);
 			VmErrorFormat(pVm,PH7_CTX_WARNING,
 				"Cannot bind method %z::%z() to object of class %z, this will be an error in PHP 9",
-				&pOwn->sName,&sFn,&pNewThis->pClass->sName);
+				&pOwn->sDisp,&sFn,&pNewThis->pClass->sDisp);
 			return 0;
 		}
 	}else if( pOwn && !VmClosureIsStatic(pVm, pClosure) ){

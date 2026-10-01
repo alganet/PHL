@@ -2387,7 +2387,7 @@ static int vm_builtin_ReflectionAttribute_newInstance(ph7_context *pCtx, int nAr
 	}
 	if( !bDecl ){
 		return PH7_VmThrowException(pCtx, "Error",
-			"Attempting to use non-attribute class \"%z\" as attribute", &pClass->sName);
+			"Attempting to use non-attribute class \"%z\" as attribute", &pClass->sDisp);
 	}
 	/* Its argument is the target mask: positional, or named `flags:`. */
 	{
@@ -2443,7 +2443,7 @@ static int vm_builtin_ReflectionAttribute_newInstance(ph7_context *pCtx, int nAr
 			}
 		}
 		rc = PH7_VmThrowException(pCtx, "Error",
-			"Attribute \"%z\" cannot target %s (allowed targets: %s)", &pClass->sName,
+			"Attribute \"%z\" cannot target %s (allowed targets: %s)", &pClass->sDisp,
 			iBit < (int)SX_ARRAYSIZE(azReflectTarget) ? azReflectTarget[iBit] : "",
 			SyBlobData(&sAllowed));
 		SyBlobRelease(&sAllowed);
@@ -2451,7 +2451,7 @@ static int vm_builtin_ReflectionAttribute_newInstance(ph7_context *pCtx, int nAr
 	}
 	if( PH7_NativeAttrTruthy(pThis, RA_REP) && (iFlags & 128) == 0 ){
 		return PH7_VmThrowException(pCtx, "Error",
-			"Attribute \"%z\" must not be repeated", &pClass->sName);
+			"Attribute \"%z\" must not be repeated", &pClass->sDisp);
 	}
 	return ReflectAttrInstantiate(pCtx, pNameVal, ReflectAttrOwnArgs(pCtx, pThis));
 }
@@ -4029,14 +4029,15 @@ static int vm_builtin_ReflectionClass_inNamespace(ph7_context *pCtx, int nArg, p
 }
 static int vm_builtin_ReflectionClass_isAnonymous(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	const char *zName;
-	int nName;
-	static const char zAnon[] = "class@anonymous";
+	/* An anonymous class is the only one whose name has two halves: php synthesizes
+	 * `<prefix>@anonymous` + NUL + `file:line$hex`, and PH7_NewRawClass cuts sDisp at
+	 * the NUL, so a shorter display name IS the marker. The old test read the name
+	 * for a literal `class@anonymous` prefix, which php only ever writes when the
+	 * class has no parent and no interface. */
+	ph7_class *pClass = ReflectClassOf(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ReflectClassName(pCtx, &zName, &nName);
-	ph7_result_bool(pCtx, nName >= (int)sizeof(zAnon)-1
-		&& SyMemcmp(zName, zAnon, sizeof(zAnon)-1) == 0);
+	ph7_result_bool(pCtx, pClass != 0 && pClass->sDisp.nByte != pClass->sName.nByte);
 	return PH7_OK;
 }
 /* ---- shape ---- */
@@ -4193,7 +4194,7 @@ static int vm_builtin_ReflectionClass_implementsInterface(ph7_context *pCtx, int
 	}
 	if( (pTarget->iFlags & PH7_CLASS_INTERFACE) == 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"%z is not an interface", &pTarget->sName);
+			"%z is not an interface", &pTarget->sDisp);
 	}
 	if( pClass == pTarget ){
 		ph7_result_bool(pCtx, 1);
@@ -4371,17 +4372,17 @@ static int vm_builtin_ReflectionClass_isCloneable(ph7_context *pCtx, int nArg, p
 PH7_PRIVATE sxi32 PH7_VmCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
 {
 	if( pClass->iFlags & PH7_CLASS_INTERFACE ){
-		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate interface %z", &pClass->sName);
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate interface %z", &pClass->sDisp);
 	}
 	if( pClass->iFlags & PH7_CLASS_TRAIT ){
-		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate trait %z", &pClass->sName);
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate trait %z", &pClass->sDisp);
 	}
 	if( pClass->iFlags & PH7_CLASS_ENUM ){
 		/* php 8.1 names the enum rather than the FINAL class it also is. */
-		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate enum %z", &pClass->sName);
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate enum %z", &pClass->sDisp);
 	}
 	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){
-		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate abstract class %z", &pClass->sName);
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate abstract class %z", &pClass->sDisp);
 	}
 	if( pClass->iFlags & PH7_CLASS_NOINSTANTIATE ){
 		/* The `new` path's create_object refusal, which php raises here too —
@@ -4393,7 +4394,7 @@ PH7_PRIVATE sxi32 PH7_VmCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
 				"%s", pClass->zNewRefusal);
 		}
 		return PH7_VmThrowException(pCtx, "Error",
-			"Instantiation of class %z is not allowed", &pClass->sName);
+			"Instantiation of class %z is not allowed", &pClass->sDisp);
 	}
 	return PH7_OK;
 }
@@ -4422,12 +4423,12 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 	ReflectCtorCloneVis(pVm, pClass, &iCtorVis, &iCloneVis);
 	if( iCtorVis != 0 && iCtorVis != PH7_CLASS_PROT_PUBLIC ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Access to non-public constructor of class %z", &pClass->sName);
+			"Access to non-public constructor of class %z", &pClass->sDisp);
 	}
 	if( iCtorVis == 0 && nCtor > 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
 			"Class %z does not have a constructor, so you cannot pass any constructor arguments",
-			&pClass->sName);
+			&pClass->sDisp);
 	}
 	if( VmClassStaticDeferPending(pClass) ){
 		/* Instantiation materializes the static table (OP_NEW does it too), so a
@@ -4802,7 +4803,7 @@ static int vm_builtin_ReflectionClass_getMethod(ph7_context *pCtx, int nArg, ph7
 	pEntry = ReflectFindMethodEntry(pClass, zName, nName);
 	if( pEntry == 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Method %z::%.*s() does not exist", &pClass->sName, nName, zName);
+			"Method %z::%.*s() does not exist", &pClass->sDisp, nName, zName);
 	}
 	/* The reported name is the DECLARED spelling, whatever case was asked for. */
 	SyStringInitFromBuf(&sFound, (const char *)pEntry->pKey, pEntry->nKeyLen);
@@ -5037,7 +5038,7 @@ static int vm_builtin_ReflectionClass_getProperty(ph7_context *pCtx, int nArg, p
 		return rc;
 	}
 	return PH7_VmThrowException(pCtx, "ReflectionException",
-		"Property %z::$%.*s does not exist", &pClass->sName, nName, zName);
+		"Property %z::$%.*s does not exist", &pClass->sDisp, nName, zName);
 }
 static int vm_builtin_ReflectionClass_getReflectionConstant(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -5173,7 +5174,7 @@ static int vm_builtin_ReflectionClass_getStaticPropertyValue(ph7_context *pCtx, 
 			return PH7_OK;
 		}
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Property %z::$%.*s does not exist", &pClass->sName, nName, zName);
+			"Property %z::$%.*s does not exist", &pClass->sDisp, nName, zName);
 	}
 	{
 		/* Uninitialized typed static: the same Error the VM raises on read */
@@ -5187,7 +5188,7 @@ static int vm_builtin_ReflectionClass_getStaticPropertyValue(ph7_context *pCtx, 
 			ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 			return PH7_VmThrowException(pCtx, "Error",
 				"Typed property %z::$%z must not be accessed before initialization",
-				&pDecl->sName, &pAttr->sName);
+				&pDecl->sDisp, &pAttr->sName);
 		}
 		pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 		if( pVal ){
@@ -5218,7 +5219,7 @@ static int vm_builtin_ReflectionClass_setStaticPropertyValue(ph7_context *pCtx, 
 	pAttr = ReflectStaticAttr(pCtx, pClass, zName, nName);
 	if( pAttr == 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Class %z does not have a property named %.*s", &pClass->sName, nName, zName);
+			"Class %z does not have a property named %.*s", &pClass->sDisp, nName, zName);
 	}
 	pSlot = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pSlot == 0 ){
@@ -7070,7 +7071,7 @@ static int vm_builtin_ReflectionMethod_construct(ph7_context *pCtx, int nArg, ph
 	pEntry = ReflectFindMethodEntry(pClass, zMethod, nMethod);
 	if( pEntry == 0 ){
 		rc = PH7_VmThrowException(pCtx, "ReflectionException",
-			"Method %z::%.*s() does not exist", &pClass->sName, nMethod, zMethod);
+			"Method %z::%.*s() does not exist", &pClass->sDisp, nMethod, zMethod);
 		goto Done;
 	}
 	{
@@ -8329,7 +8330,7 @@ static int ReflectStaticSlotRead(ph7_context *pCtx, ph7_class *pClass, ph7_class
 		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
 		return PH7_VmThrowException(pCtx, "Error",
 			"Typed static property %z::$%z must not be accessed before initialization",
-			&pDecl->sName, &pAttr->sName);
+			&pDecl->sDisp, &pAttr->sName);
 	}
 	pVal = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pVal ){
@@ -8497,7 +8498,7 @@ static int vm_builtin_ReflectionProperty_construct(ph7_context *pCtx, int nArg, 
 		return PH7_OK;
 	}
 	return PH7_VmThrowException(pCtx, "ReflectionException",
-		"Property %z::$%.*s does not exist", &pClass->sName, nProp, zProp);
+		"Property %z::$%.*s does not exist", &pClass->sDisp, nProp, zProp);
 }
 static int vm_builtin_ReflectionProperty_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -8852,7 +8853,7 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 			 * php reads it the way `$o->p` does, and warns exactly the same:
 			 * `Undefined property: C::$p`, naming the OBJECT's class. */
 			VmErrorFormat(pCtx->pVm, PH7_CTX_WARNING, "Undefined property: %z::$%.*s",
-				&pObj->pClass->sName, sRef.nName, sRef.zName);
+				&pObj->pClass->sDisp, sRef.nName, sRef.zName);
 		}
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -8862,7 +8863,7 @@ static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, p
 			pVmAttr->pAttr ? pVmAttr->pAttr->pDeclClass : 0,pObj->pClass);
 		return PH7_VmThrowException(pCtx, "Error",
 			"Typed property %z::$%.*s must not be accessed before initialization",
-			&pDecl->sName, sRef.nName, sRef.zName);
+			&pDecl->sDisp, sRef.nName, sRef.zName);
 	}
 	pValue = PH7_ClassInstanceExtractAttrValue(pObj, pVmAttr);
 	if( pValue ){
@@ -9223,7 +9224,7 @@ static int vm_builtin_ReflectionClassConstant_construct(ph7_context *pCtx, int n
 	SySetRelease(&aMembers);
 	if( !bFound ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Constant %z::%.*s does not exist", &pClass->sName, nConst, zConst);
+			"Constant %z::%.*s does not exist", &pClass->sDisp, nConst, zConst);
 	}
 	/* php's $class is the DECLARING class, not the one asked about. */
 	pClass = pDecl;
@@ -9577,7 +9578,7 @@ static int vm_builtin_ReflectionEnum_construct(ph7_context *pCtx, int nArg, ph7_
 	pClass = ReflectClassOf(pCtx);
 	if( pClass && (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Class \"%z\" is not an enum", &pClass->sName);
+			"Class \"%z\" is not an enum", &pClass->sDisp);
 	}
 	return PH7_OK;
 }
@@ -9614,10 +9615,10 @@ static int vm_builtin_ReflectionEnum_getCase(ph7_context *pCtx, int nArg, ph7_va
 	if( pCase == 0 ){
 		if( nName > 0 && SyHashGet(&pClass->hConst, (const void *)zName, (sxu32)nName) ){
 			return PH7_VmThrowException(pCtx, "ReflectionException",
-				"%z::%.*s is not a case", &pClass->sName, nName, zName);
+				"%z::%.*s is not a case", &pClass->sDisp, nName, zName);
 		}
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Case %z::%.*s does not exist", &pClass->sName, nName, zName);
+			"Case %z::%.*s does not exist", &pClass->sDisp, nName, zName);
 	}
 	return ReflectResultObject(pCtx, ReflectEnumCaseNew(pCtx, pClass, &pCase->sName));
 }
@@ -9690,7 +9691,7 @@ static int vm_builtin_ReflectionEnumCase_construct(ph7_context *pCtx, int nArg, 
 	}
 	if( (sRef.pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) == 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Constant %z::%.*s is not a case", &sRef.pClass->sName, sRef.nName, sRef.zName);
+			"Constant %z::%.*s is not a case", &sRef.pClass->sDisp, sRef.nName, sRef.zName);
 	}
 	return PH7_OK;
 }
@@ -9709,7 +9710,7 @@ static int vm_builtin_ReflectionEnumBackedCase_construct(ph7_context *pCtx, int 
 	}
 	if( sRef.pClass->nEnumBacking == 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
-			"Enum case %z::%.*s is not a backed case", &sRef.pClass->sName,
+			"Enum case %z::%.*s is not a backed case", &sRef.pClass->sDisp,
 			sRef.nName, sRef.zName);
 	}
 	return PH7_OK;

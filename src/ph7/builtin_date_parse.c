@@ -5350,7 +5350,7 @@ static int DtCreateFromTimestamp(ph7_context *pCtx,int nArg,ph7_value **apArg,co
 			return PH7_VmThrowException(pCtx,"DateRangeError",
 				"%z::createFromTimestamp(): Argument #1 ($timestamp) must be a finite "
 				"number between -9223372036854775808 and 9223372036854775807.999999, "
-				"%s given",&pClass->sName,zVal);
+				"%s given",&pClass->sDisp,zVal);
 		}else{
 			/* floor(), by hand: <math.h> belongs to the optional math module and
 			 * the clock does not depend on it. The C cast truncates toward zero,

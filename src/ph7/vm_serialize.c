@@ -251,11 +251,13 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 	VmClassAttr *pVmAttr;
 	SyBlob sBody, *pSave;
 	sxu32 nCount = 0;
-	/* Anonymous classes cannot be serialized (PHP throws an Exception). Their
-	 * synthesized name contains '@', which no ordinary class name can. */
-	if( SyByteFind(pClassName->zString,pClassName->nByte,'@',0) == SXRET_OK ){
+	/* Anonymous classes cannot be serialized (PHP throws an Exception). php names
+	 * the class in the refusal, so an anonymous subclass of Base reports
+	 * `Base@anonymous` -- the DISPLAY half of the name, which is also what makes
+	 * the test below exact: only a synthesized name is shorter than its own. */
+	if( pThis->pClass->sDisp.nByte != pClassName->nByte ){
 		PH7_VmThrowException(pData->pCtx,"Exception",
-			"Serialization of 'class@anonymous' is not allowed");
+			"Serialization of '%z' is not allowed",&pThis->pClass->sDisp);
 		pData->exc = 1;
 		return PH7_EXCEPTION;
 	}
@@ -750,7 +752,7 @@ static sxi32 VmUnserializeDynamicProp(unserialize_data *ud,ph7_class_instance *p
 	if( (pClass->iFlags & PH7_CLASS_READONLY) != 0
 	 || !VmClassAllowsDynamicProps(pVm,pClass) ){
 		PH7_VmThrowException(ud->pCtx,"Error",
-			"Cannot create dynamic property %z::$%.*s",&pClass->sName,(int)nName,zName);
+			"Cannot create dynamic property %z::$%.*s",&pClass->sDisp,(int)nName,zName);
 		ud->exc = 1;
 		return SXERR_ABORT;
 	}
@@ -895,7 +897,7 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	 */
 	if( !bIncomplete && VmClassRefusesSerialize(pClass,PH7_CLASS_NOSERIALIZE) ){
 		PH7_VmThrowException(ud->pCtx,"Exception",
-			"Unserialization of '%z' is not allowed",&pClass->sName);
+			"Unserialization of '%z' is not allowed",&pClass->sDisp);
 		ud->exc = 1;
 		return 0;
 	}
@@ -904,7 +906,7 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	 && PH7_ClassExtractMethod(pClass,"__unserialize",sizeof("__unserialize")-1) == 0 ){
 		PH7_VmThrowException(ud->pCtx,"Exception",
 			"Unserialization of '%z' is not allowed, unless unserialization methods "
-			"are implemented in a subclass",&pClass->sName);
+			"are implemented in a subclass",&pClass->sDisp);
 		ud->exc = 1;
 		return 0;
 	}

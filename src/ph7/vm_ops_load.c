@@ -1419,7 +1419,7 @@ PH7_PRIVATE void PH7_VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_va
 	}
 	VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
 		"Indirect modification of overloaded element of %z has no effect",
-		&pClass->sName);
+		&pClass->sDisp);
 	if( pVal->iFlags & MEMOBJ_HASHMAP ){
 		PH7_HashmapCowSeparate(&(*pVm),pVal);
 	}

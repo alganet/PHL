@@ -2007,7 +2007,7 @@ static sxi32 VmMountUserClassAttrs(
 			if( pMemObj == 0 ){
 				VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 					"Cannot reserve a memory object for class attribute '%z->%z' due to a memory failure",
-					&pClass->sName,&pAttr->sName
+					&pClass->sDisp,&pAttr->sName
 					);
 				return SXERR_MEM;
 			}
@@ -6542,7 +6542,7 @@ PH7_PRIVATE sxi32 VmHookSetDispatch(ph7_vm *pVm,ph7_class_instance *pHThis,ph7_c
 		SyBlob sErrMsg;
 		SyBlobInit(&sErrMsg,&pVm->sAllocator);
 		SyBlobFormat(&sErrMsg,"Property %z::$%z is read-only",
-			&pHThis->pClass->sName,&pHAttr->sName);
+			&pHThis->pClass->sDisp,&pHAttr->sName);
 		VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 		return SXRET_OK;
 	}

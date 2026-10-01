@@ -404,7 +404,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 						const char *zSep = "";
 						SyString sCls = { "", 0 };
 						if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
-							sCls = ((ph7_class *)pFunc->pUserData)->sName;
+							sCls = ((ph7_class *)pFunc->pUserData)->sDisp;
 							zSep = "::";
 						}
 						PH7_GenCompileError(&(*pGen),E_ERROR,pIn->nLine,
@@ -1887,7 +1887,7 @@ PH7_PRIVATE sxi32 GenStateApplyNoDiscard(ph7_gen_state *pGen,ph7_vm_func *pFunc,
 		}
 		if( bCtor ){
 			return PH7_GenCompileError(&(*pGen),E_ERROR,pFunc->nLine,
-				"Method %z::%z cannot be #[\\NoDiscard]",&pClass->sName,&pFunc->sName);
+				"Method %z::%z cannot be #[\\NoDiscard]",&pClass->sDisp,&pFunc->sName);
 		}
 		if( pFunc->nReturnType == MEMOBJ_VOID ){
 			return PH7_GenCompileError(&(*pGen),E_ERROR,pFunc->nLine,

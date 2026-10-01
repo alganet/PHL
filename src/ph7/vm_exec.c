@@ -520,7 +520,7 @@ static sxi32 VmPrefetchByRefVerdict(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value 
 		sxi32 rcH;
 		SyBlobInit(&sErrMsg,&pVm->sAllocator);
 		SyBlobFormat(&sErrMsg,"Indirect modification of %z::$%z is not allowed",
-			&pPath->pOverClass->sName,&pPath->sOverName);
+			&pPath->pOverClass->sDisp,&pPath->sOverName);
 		rcH = VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg);
 		SyBlobRelease(&sErrMsg);
 		return (rcH == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
@@ -852,7 +852,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 			pAttr->pAttr->iProtection,FALSE) ){
 			VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
 				"Accessing static property %z::$%z as non static",
-				&pClass->sName,pName);
+				&pClass->sDisp,pName);
 		}
 		pAttr = 0;
 	}
@@ -877,7 +877,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 		if( pVirt == 0 || (pVirt->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) == 0 ){
 			VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
 				"Indirect modification of overloaded property %z::$%z has no effect",
-				&pClass->sName,pName);
+				&pClass->sDisp,pName);
 		}
 		*pbNoBind = 1;
 		if( pValOut && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
@@ -906,7 +906,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 			SyBlob sMsg;
 			sxi32 rcT;
 			SyBlobInit(&sMsg,&pVm->sAllocator);
-			SyBlobFormat(&sMsg,"Cannot create dynamic property %z::$%z",&pClass->sName,pName);
+			SyBlobFormat(&sMsg,"Cannot create dynamic property %z::$%z",&pClass->sDisp,pName);
 			rcT = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
 			SyBlobRelease(&sMsg);
 			*pbNoBind = 1;
@@ -1497,7 +1497,7 @@ static const char * VmCallableClassMethodError(
 	if( pMethod == 0 ){
 		if( bFallback ){
 			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%.*s() cannot be called statically",
-				&pClass->sName,(int)nMeth,zMeth);
+				&pClass->sDisp,(int)nMeth,zMeth);
 			return zBuf;
 		}
 		/* A class that answers for unknown names through the catch-all has nothing to
@@ -1508,7 +1508,7 @@ static const char * VmCallableClassMethodError(
 			return 0;
 		}
 		SyBufferFormat(zBuf,nBuf,"Call to undefined method %z::%.*s()",
-			&pClass->sName,(int)nMeth,zMeth);
+			&pClass->sDisp,(int)nMeth,zMeth);
 		return zBuf;
 	}
 	/* An ABSTRACT method (an interface's included) has no body to call — the same message
@@ -1516,7 +1516,7 @@ static const char * VmCallableClassMethodError(
 	 * mangled internal function name. */
 	SyStringInitFromBuf(&sMeth,zMeth,nMeth);
 	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
-		SyBufferFormat(zBuf,nBuf,"Cannot call abstract method %z::%z()",&pClass->sName,&sMeth);
+		SyBufferFormat(zBuf,nBuf,"Cannot call abstract method %z::%z()",&pClass->sDisp,&sMeth);
 		return zBuf;
 	}
 	/* Named through a class NAME, a non-static method is never callable: php refuses even
@@ -1534,7 +1534,7 @@ static const char * VmCallableClassMethodError(
 			/* Inaccessible goes the same way as missing: php never reports the visibility,
 			 * because the name resolved to the trampoline before visibility could matter. */
 			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%.*s() cannot be called statically",
-				&pClass->sName,(int)nMeth,zMeth);
+				&pClass->sDisp,(int)nMeth,zMeth);
 			return zBuf;
 		}
 		if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 && bAccessible ){
@@ -1560,10 +1560,10 @@ static const char * VmMethodVisibilityMsg(ph7_vm *pVm,ph7_class *pDecl,
 	ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
 	if( pScope ){
 		SyBufferFormat(zBuf,nBuf,"Call to %s method %z::%.*s() from scope %z",
-			zVis,&pDecl->sName,(int)nMeth,zMeth,&pScope->sName);
+			zVis,&pDecl->sDisp,(int)nMeth,zMeth,&pScope->sDisp);
 	}else{
 		SyBufferFormat(zBuf,nBuf,"Call to %s method %z::%.*s() from global scope",
-			zVis,&pDecl->sName,(int)nMeth,zMeth);
+			zVis,&pDecl->sDisp,(int)nMeth,zMeth);
 	}
 	return zBuf;
 }
@@ -1639,7 +1639,7 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 			return 0;
 		}
 		SyBufferFormat(zBuf,nBuf,"Call to undefined method %z::%.*s()",
-			&pClass->sName,(int)nMeth,zMeth);
+			&pClass->sDisp,(int)nMeth,zMeth);
 		return zBuf;
 	}
 	SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
@@ -1648,7 +1648,7 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 		/* Named through the CLASS only: an instance of an abstract class cannot exist, so
 		 * the object spelling never reaches an abstract body. */
 		SyBufferFormat(zBuf,nBuf,"Cannot call abstract method %z::%.*s()",
-			&pClass->sName,(int)nMeth,zMeth);
+			&pClass->sDisp,(int)nMeth,zMeth);
 		return zBuf;
 	}
 	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
@@ -1817,7 +1817,7 @@ static const char * VmFccValueError(ph7_vm *pVm,ph7_value *pValue,char *zBuf,int
 		if( PH7_ClassExtractMethod(pObj->pClass,"__invoke",sizeof("__invoke")-1) ){
 			return 0;
 		}
-		SyBufferFormat(zBuf,nBuf,"Object of type %z is not callable",&pObj->pClass->sName);
+		SyBufferFormat(zBuf,nBuf,"Object of type %z is not callable",&pObj->pClass->sDisp);
 		return zBuf;
 	}
 	if( pValue->iFlags & MEMOBJ_STRING ){

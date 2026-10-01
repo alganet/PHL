@@ -682,7 +682,7 @@ static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)
 		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;
 		if( pObj && pObj->pClass && (pObj->pClass->iFlags & PH7_CLASS_ENUM) ){
 			ph7_value *pName = PH7_NativeAttr(pObj,"name");
-			SyBlobFormat(pOut,"%z::",&pObj->pClass->sName);
+			SyBlobFormat(pOut,"%z::",&pObj->pClass->sDisp);
 			if( pName ){
 				SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
 			}
@@ -690,7 +690,7 @@ static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)
 		}
 		SyBlobAppend(pOut,"Object(",sizeof("Object(")-1);
 		if( pObj && pObj->pClass ){
-			SyBlobFormat(pOut,"%z",&pObj->pClass->sName);
+			SyBlobFormat(pOut,"%z",&pObj->pClass->sDisp);
 		}
 		SyBlobAppend(pOut,")",sizeof(")")-1);
 		return;
@@ -941,7 +941,7 @@ static int vm_builtin_Exception_toString(ph7_context *pCtx,int nArg,ph7_value **
 		 && VmExcBlobHas(&sMsg,", called in ",sizeof(", called in ")-1) ){
 			SyBlobAppend(&sMsg," and defined",sizeof(" and defined")-1);
 		}
-		SyBlobFormat(&sThis,"%z",&pExc->pClass->sName);
+		SyBlobFormat(&sThis,"%z",&pExc->pClass->sDisp);
 		if( SyBlobLength(&sMsg) > 0 ){
 			SyBlobAppend(&sThis,": ",sizeof(": ")-1);
 			SyBlobAppend(&sThis,SyBlobData(&sMsg),SyBlobLength(&sMsg));

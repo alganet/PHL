@@ -3555,7 +3555,7 @@ PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class
 	if( VmDeprecatedAttrExtract(pVm,&pFunc->aAttrs,&sMsg,&bMsg,&sSince,&bSince) ){
 		SyBlobInit(&sOut,&pVm->sAllocator);
 		if( pDeclClass ){
-			SyBlobFormat(&sOut,"Method %z::%z() is deprecated",&pDeclClass->sName,&pFunc->sName);
+			SyBlobFormat(&sOut,"Method %z::%z() is deprecated",&pDeclClass->sDisp,&pFunc->sName);
 		}else{
 			SyBlobFormat(&sOut,"Function %z() is deprecated",&pFunc->sName);
 		}
@@ -3592,7 +3592,7 @@ PH7_PRIVATE void VmNoDiscardWarn(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDecl
 	SyBlobInit(&sOut,&pVm->sAllocator);
 	if( pDeclClass ){
 		SyBlobFormat(&sOut,"The return value of method %z::%z() should either be used "
-			"or intentionally ignored by casting it as (void)",&pDeclClass->sName,pName);
+			"or intentionally ignored by casting it as (void)",&pDeclClass->sDisp,pName);
 	}else{
 		SyBlobFormat(&sOut,"The return value of function %z() should either be used "
 			"or intentionally ignored by casting it as (void)",pName);

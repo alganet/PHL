@@ -1842,7 +1842,7 @@ static int vm_builtin_PhpToken_tokenize(ph7_context *pCtx,int nArg,ph7_value **a
 	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){
 		/* php checks the construction precondition ONCE, before scanning. */
 		return PH7_VmThrowException(pCtx,"Error","Cannot instantiate abstract class %z",
-			&pClass->sName);
+			&pClass->sDisp);
 	}
 	zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";
 	SyZero(&ts,sizeof(ts));

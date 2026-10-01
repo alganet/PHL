@@ -767,8 +767,8 @@ PH7_PRIVATE sxu32 PH7_ClassNativeDimRefusal(ph7_class_instance *pThis,int iMode,
 		}
 	}
 	return SyBufferFormat(zMsg,nMsg,"Cannot use object of type %.*s as array",
-		pThis ? (int)pThis->pClass->sName.nByte : 0,
-		pThis ? pThis->pClass->sName.zString : "");
+		pThis ? (int)pThis->pClass->sDisp.nByte : 0,
+		pThis ? pThis->pClass->sDisp.zString : "");
 }
 /*
  * Offer a dimension WRITE, APPEND or UNSET to the class's own handler, with the

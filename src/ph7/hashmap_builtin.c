@@ -4099,7 +4099,7 @@ static void HashmapArithFold(ph7_context *pCtx,ph7_hashmap *pMap,int bProduct)
 			ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
 			if( pInst && pInst->pClass ){
 				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-					"%s is not supported on type %z",zOp,&pInst->pClass->sName);
+					"%s is not supported on type %z",zOp,&pInst->pClass->sDisp);
 			}else{
 				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 					"%s is not supported on type object",zOp);

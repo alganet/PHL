@@ -1390,7 +1390,7 @@ static const char * DomGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
 {
 	if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){
 		ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
-		SyBufferFormat(zBuf,nBuf,"%z",&pObj->pClass->sName);
+		SyBufferFormat(zBuf,nBuf,"%z",&pObj->pClass->sDisp);
 		return zBuf;
 	}
 	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
@@ -6255,7 +6255,7 @@ DOM_METHOD(vm_builtin_DOMNode_sleep)
 	}
 	return PH7_VmThrowException(pCtx,"Exception",
 		"Serialization of '%z' is not allowed, unless serialization methods "
-		"are implemented in a subclass",&pThis->pClass->sName);
+		"are implemented in a subclass",&pThis->pClass->sDisp);
 }
 DOM_METHOD(vm_builtin_DOMNode_wakeup)
 {
@@ -6267,7 +6267,7 @@ DOM_METHOD(vm_builtin_DOMNode_wakeup)
 	}
 	return PH7_VmThrowException(pCtx,"Exception",
 		"Unserialization of '%z' is not allowed, unless unserialization methods "
-		"are implemented in a subclass",&pThis->pClass->sName);
+		"are implemented in a subclass",&pThis->pClass->sDisp);
 }
 
 /* ===== DOMNodeList and DOMNamedNodeMap ===== */
@@ -8282,7 +8282,7 @@ DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
 			return PH7_VmThrowException(pCtx,"Error",
 				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "
 				"a class name derived from %z or null, %.*s given",
-				&pBase->sName,nExt,zExt);
+				&pBase->sDisp,nExt,zExt);
 		}
 		if( pExt->iFlags & PH7_CLASS_ABSTRACT ){
 			return PH7_VmThrowException(pCtx,"ValueError",
@@ -9187,7 +9187,7 @@ static int DomWriteText(ph7_context *pCtx,const char *zOwner,const char *zProp,
 		const char *zGiven = "null";
 		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){
 			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
-			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);
+			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sDisp);
 			zGiven = zBuf;
 		}else if( pVal ){
 			zGiven = ph7_type_name(pVal);
@@ -9223,7 +9223,7 @@ static int DomWriteBool(ph7_context *pCtx,const char *zOwner,const char *zProp,
 		const char *zGiven = "null";
 		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){
 			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
-			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);
+			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sDisp);
 			zGiven = zBuf;
 		}else if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 ){
 			zGiven = ph7_type_name(pVal);

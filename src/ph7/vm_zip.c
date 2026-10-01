@@ -1921,7 +1921,7 @@ static void ZipSetHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeSetCtx *p
 	SXUNUSED(pVm);
 	pCtx->zThrowClass = "Error";
 	SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
-		"Cannot write read-only property %z::$%z",&pThis->pClass->sName,pCtx->pName);
+		"Cannot write read-only property %z::$%z",&pThis->pClass->sDisp,pCtx->pName);
 }
 /* ------------------------------------------------------------------ */
 /* Errors                                                              */

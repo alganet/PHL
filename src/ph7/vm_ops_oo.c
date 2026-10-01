@@ -83,7 +83,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				 * before it ever gets here): php's wording, with the RESOLVED name. */
 				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot instantiate %s %z",
 					(pClass->iFlags & PH7_CLASS_INTERFACE) ? "interface" : "abstract class",
-					&pClass->sName);
+					&pClass->sDisp);
 				PH7_MemObjRelease(pTos);
 				if( nCtorArgs > 0 ){
 					VmPopOperand(&pTos,nCtorArgs);
@@ -144,7 +144,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			 * `new` whose refusal did not say why. */
 			const char *zKind = (pNotNew->iFlags & PH7_CLASS_INTERFACE) ? "interface"
 				: (pNotNew->iFlags & PH7_CLASS_TRAIT) ? "trait" : "abstract class";
-			SyBlobFormat(&sErrM,"Cannot instantiate %s %z",zKind,&pNotNew->sName);
+			SyBlobFormat(&sErrM,"Cannot instantiate %s %z",zKind,&pNotNew->sDisp);
 		}else if( (pTos->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
 			/* php refuses the OPERAND before it ever has a name to look up: a `new`
 			 * takes an object or a string and nothing else, and every other value --
@@ -186,7 +186,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			 * way to get one — so the spec's own sentence wins when it has one. */
 			SyBlobAppend(&sErrMsg,pClass->zNewRefusal,SyStrlen(pClass->zNewRefusal));
 		}else{
-			SyBlobFormat(&sErrMsg,"Instantiation of class %z is not allowed",&pClass->sName);
+			SyBlobFormat(&sErrMsg,"Instantiation of class %z is not allowed",&pClass->sDisp);
 		}
 		{
 			const char *zRefCls = pClass->zNewRefusalClass ? pClass->zNewRefusalClass : "Error";
@@ -204,7 +204,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		 * BEFORE any construction (no instance, no __destruct). */
 		SyBlob sErrMsg;
 		SyBlobInit(&sErrMsg,&pVm->sAllocator);
-		SyBlobFormat(&sErrMsg,"Cannot instantiate enum %z",&pClass->sName);
+		SyBlobFormat(&sErrMsg,"Cannot instantiate enum %z",&pClass->sDisp);
 		VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 		if( nCtorArgs > 0 ){
 			VmPopOperand(&pTos,nCtorArgs);
@@ -260,10 +260,10 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				SyBlobInit(&sErrMsg,&pVm->sAllocator);
 				if( pCtorScope ){
 					SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from scope %z",
-						zVis,&pClass->sName,&pCtorScope->sName);
+						zVis,&pClass->sDisp,&pCtorScope->sDisp);
 				}else{
 					SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from global scope",
-						zVis,&pClass->sName);
+						zVis,&pClass->sDisp);
 				}
 				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 				/* Pop ctor args + release the class-name operand, leave NULL
@@ -330,7 +330,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		if( pNew == 0 ){
 			VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 				"Cannot create new class '%z' instance due to a memory failure,PH7 is loading NULL",
-				&pClass->sName
+				&pClass->sDisp
 			);
 			PH7_MemObjRelease(pTos);
 			if( nCtorArgs > 0 ){
@@ -537,7 +537,7 @@ PH7_PRIVATE void PH7_VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const 
 	}
 	VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
 		"Indirect modification of overloaded property %z::$%z has no effect",
-		&pClass->sName,pName);
+		&pClass->sDisp,pName);
 	if( pVal->iFlags & MEMOBJ_HASHMAP ){
 		PH7_HashmapCowSeparate(&(*pVm),pVal);
 	}
@@ -929,7 +929,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							SyBlob sErrM;
 							sxi32 rcErr;
 							SyBlobInit(&sErrM,&pVm->sAllocator);
-							SyBlobFormat(&sErrM,"Call to undefined method %z::%z()",&pClass->sName,&sName);
+							SyBlobFormat(&sErrM,"Call to undefined method %z::%z()",&pClass->sDisp,&sName);
 							VmPopOperand(&pTos,1);
 							PH7_MemObjRelease(pTos);
 							pTos->nIdx = SXU32_HIGH;
@@ -1004,10 +1004,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						SyBlobInit(&sErrM,&pVm->sAllocator);
 						if( pScope ){
 							SyBlobFormat(&sErrM,"Call to %s method %z::%z() from scope %z",
-								zVis,&pOwner->sName,&sName,&pScope->sName);
+								zVis,&pOwner->sDisp,&sName,&pScope->sDisp);
 						}else{
 							SyBlobFormat(&sErrM,"Call to %s method %z::%z() from global scope",
-								zVis,&pOwner->sName,&sName);
+								zVis,&pOwner->sDisp,&sName);
 						}
 						VmPopOperand(&pTos,1);
 						PH7_MemObjRelease(pTos);
@@ -1168,7 +1168,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						if( PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic)) == 0 ){
 							VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
 								"Accessing static property %z::$%z as non static",
-								&pClass->sName,&pObjAttr->pAttr->sName);
+								&pClass->sDisp,&pObjAttr->pAttr->sName);
 						}
 					}
 					pEntry = 0;
@@ -1326,7 +1326,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						SyBlob sErrMsg;
 						SyBlobInit(&sErrMsg,&pVm->sAllocator);
 						SyBlobFormat(&sErrMsg,"Cannot unset hooked property %z::$%z",
-							&pThis->pClass->sName,&pObjAttr->pAttr->sName);
+							&pThis->pClass->sDisp,&pObjAttr->pAttr->sName);
 						VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 					}else if( pEntry && bUnsAccessible
 					       && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0
@@ -1376,7 +1376,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							SyBlob sErrMsg;
 							const char *zVis = pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 							SyBlobInit(&sErrMsg,&pVm->sAllocator);
-							SyBlobFormat(&sErrMsg,"Cannot access %s property %z::$%z",zVis,&pClass->sName,&sName);
+							SyBlobFormat(&sErrMsg,"Cannot access %s property %z::$%z",zVis,&pClass->sDisp,&sName);
 							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 						}
 						/* Missing property without __unset: silent no-op (php). */
@@ -1615,7 +1615,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
 								SyBlobFormat(&sErrMsg,"Cannot create dynamic property %z::$%z",
-									&pThis->pClass->sName,&sName);
+									&pThis->pClass->sDisp,&sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 							}else if( !VmClassAllowsDynamicProps(pVm,pThis->pClass) ){
 								/* php 8.2 only DEPRECATES creating a dynamic property on a
@@ -1624,7 +1624,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
 								SyBlobFormat(&sErrMsg,"Cannot create dynamic property %z::$%z",
-									&pThis->pClass->sName,&sName);
+									&pThis->pClass->sDisp,&sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 							}else{
 								PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
@@ -1639,7 +1639,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * a subscript-write base (`$o->arr[] = 1`) and a `??=` read
 							 * nothing, and php says nothing for either. */
 							VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
-								&pClass->sName,&sName);
+								&pClass->sDisp,&sName);
 						}
 					}
 				}
@@ -1877,7 +1877,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								? "private" : "protected";
 							SyBlobInit(&sErrMsg,&pVm->sAllocator);
 							SyBlobFormat(&sErrMsg,"Cannot access %s property %z::$%z",
-								zVis,&pClass->sName,&sName);
+								zVis,&pClass->sDisp,&sName);
 							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
 								sizeof("Error")-1,&sErrMsg));
 						}else if( pDeclAttr && (pDeclAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
@@ -1885,7 +1885,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								VmThrowUninitializedPropertyError(&(*pVm),pClass,pDeclAttr));
 						}else{
 							VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
-								&pClass->sName,&sName);
+								&pClass->sDisp,&sName);
 						}
 					}
 				}
@@ -2014,7 +2014,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
 								SyBlobFormat(&sErrMsg,"Indirect modification of %z::$%z is not allowed",
-									&pThis->pClass->sName,&pObjAttr->pAttr->sName);
+									&pThis->pClass->sDisp,&pObjAttr->pAttr->sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 								PH7_ClassInstanceUnref(pThis);
 								VM_EXIT_BREAK;
@@ -2029,7 +2029,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
 								SyBlobFormat(&sErrMsg,"Property %z::$%z is write-only",
-									&pThis->pClass->sName,&pObjAttr->pAttr->sName);
+									&pThis->pClass->sDisp,&pObjAttr->pAttr->sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 								PH7_ClassInstanceUnref(pThis);
 								VM_EXIT_BREAK;
@@ -2491,7 +2491,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						const char *zVis = pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 						SyBlobInit(&sErrMsg,&pVm->sAllocator);
 						SyBlobFormat(&sErrMsg,"Cannot access %s property %z::$%z",
-							zVis,&pClass->sName,&sName);
+							zVis,&pClass->sDisp,&sName);
 						PH7_ClassInstanceUnref(pThis);
 						VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 						SyBlobRelease(&sErrMsg);
@@ -2778,7 +2778,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							sxi32 rcErr;
 							SyBlobInit(&sErrM,&pVm->sAllocator);
 							SyBlobFormat(&sErrM,"Cannot call abstract method %z::%z()",
-								&pClass->sName,&sName);
+								&pClass->sDisp,&sName);
 							if( !pInstr->p3 ){
 								VmPopOperand(&pTos,1);
 							}
@@ -2832,7 +2832,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								sxi32 rcErr;
 								SyBlobInit(&sErrM,&pVm->sAllocator);
 								SyBlobFormat(&sErrM,"Call to undefined method %z::%z()",
-									&pClass->sName,&sName);
+									&pClass->sDisp,&sName);
 								if( !pInstr->p3 ){
 									VmPopOperand(&pTos,1);
 								}
@@ -2894,10 +2894,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							SyBlobInit(&sErrM,&pVm->sAllocator);
 							if( pScope ){
 								SyBlobFormat(&sErrM,"Call to %s method %z::%z() from scope %z",
-									zVis,&pOwner->sName,&sName,&pScope->sName);
+									zVis,&pOwner->sDisp,&sName,&pScope->sDisp);
 							}else{
 								SyBlobFormat(&sErrM,"Call to %s method %z::%z() from global scope",
-									zVis,&pOwner->sName,&sName);
+									zVis,&pOwner->sDisp,&sName);
 							}
 							if( !pInstr->p3 ){
 								VmPopOperand(&pTos,1);
@@ -2955,7 +2955,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								ph7_class *pOwner = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth);
 								SyBlobInit(&sErrM,&pVm->sAllocator);
 								SyBlobFormat(&sErrM,"Non-static method %z::%z() cannot be called statically",
-									&pOwner->sName,&pMeth->sFunc.sName);
+									&pOwner->sDisp,&pMeth->sFunc.sName);
 								if( !pInstr->p3 ){
 									VmPopOperand(&pTos,1);
 								}
@@ -3060,7 +3060,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							SyBlob sErrTr;
 							SyBlobInit(&sErrTr,&pVm->sAllocator);
 							SyBlobFormat(&sErrTr,"Cannot access trait constant %z::%z directly",
-								&pClass->sName,&pAttr->sName);
+								&pClass->sDisp,&pAttr->sName);
 							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
 								sizeof("Error")-1,&sErrTr));
 							pAttr = 0;
@@ -3089,7 +3089,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								SyBlobInit(&sErrVis,&pVm->sAllocator);
 								SyBlobFormat(&sErrVis,"Cannot access %s property %z::$%z",
 									pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected",
-									&pClass->sName,&pAttr->sName);
+									&pClass->sDisp,&pAttr->sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
 									sizeof("Error")-1,&sErrVis));
 								bStaticHidden = 1;
@@ -3111,10 +3111,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
 								if( bConstForm ){
 									SyBlobFormat(&sErrMsg,"Undefined constant %z::%z",
-										&pClass->sName,&sName);
+										&pClass->sDisp,&sName);
 								}else{
 									SyBlobFormat(&sErrMsg,"Access to undeclared static property %z::$%z",
-										&pClass->sName,&sName);
+										&pClass->sDisp,&sName);
 								}
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 							}
@@ -3361,10 +3361,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									SyBlobInit(&sErrVis,&pVm->sAllocator);
 									if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
 										SyBlobFormat(&sErrVis,"Cannot access %s constant %z::%z",
-											zVis,&pClass->sName,&pAttr->sName);
+											zVis,&pClass->sDisp,&pAttr->sName);
 									}else{
 										SyBlobFormat(&sErrVis,"Cannot access %s property %z::$%z",
-											zVis,&pClass->sName,&pAttr->sName);
+											zVis,&pClass->sDisp,&pAttr->sName);
 									}
 									VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
 										sizeof("Error")-1,&sErrVis));
@@ -3460,7 +3460,7 @@ PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Trying to clone an uncloneable object of class %z",
-			&pSrc->pClass->sName);
+			&pSrc->pClass->sDisp);
 		rc = VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 		PH7_MemObjRelease(pTos);
 		pTos->nIdx = SXU32_HIGH;

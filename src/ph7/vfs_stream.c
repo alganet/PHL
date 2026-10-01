@@ -2734,7 +2734,7 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 		if( pOwed ){
 			return PH7_VmThrowException(pCtx,"Error",
 				"Object of class %.*s could not be converted to string",
-				(int)pOwed->sName.nByte,pOwed->sName.zString);
+				(int)pOwed->sDisp.nByte,pOwed->sDisp.zString);
 		}
 		return PH7_OK;
 	}
@@ -2769,7 +2769,7 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	if( pOwed ){
 		return PH7_VmThrowException(pCtx,"Error",
 			"Object of class %.*s could not be converted to string",
-			(int)pOwed->sName.nByte,pOwed->sName.zString);
+			(int)pOwed->sDisp.nByte,pOwed->sDisp.zString);
 	}
 	return PH7_OK;
 }
@@ -3566,7 +3566,7 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		 * output in front of the row. */
 		return PH7_VmThrowException(pCtx,"Error",
 			"Object of class %.*s could not be converted to string",
-			(int)sCsv.pOwed->sName.nByte,sCsv.pOwed->sName.zString);
+			(int)sCsv.pOwed->sDisp.nByte,sCsv.pOwed->sDisp.zString);
 	}
 	return PH7_OK;
 }
@@ -5724,7 +5724,15 @@ struct uwrap_slot
 {
 	ph7_vm *pVm;              /* owning VM (0 = free slot) */
 	char zScheme[32];         /* protocol name */
-	char zClass[128];         /* userland wrapper class */
+	char zClass[512];         /* userland wrapper class, NUL-terminated for the `%s`
+	                           * diagnostics -- but an ANONYMOUS class's name has a
+	                           * NUL of its own inside it and a file path behind that,
+	                           * which is why the length is kept beside the buffer and
+	                           * why the buffer is not 128 bytes any more. Terminator
+	                           * and length together are php's two faces of the name:
+	                           * `%s` shows `class@anonymous`, the lookup wants all
+	                           * of it. */
+	int nClass;               /* zClass length, NUL bytes included */
 	int bIsUrl;               /* registered with STREAM_IS_URL: opening it is gated
 	                           * by allow_url_fopen, INCLUDING it by
 	                           * allow_url_include */
@@ -5985,7 +5993,7 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 	if( pVm == 0 || pSlot->pVm == 0 ){
 		return -1;
 	}
-	pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)SyStrlen(pSlot->zClass),TRUE,0);
+	pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)pSlot->nClass,TRUE,0);
 	if( pClass == 0 ){
 		return -1;
 	}
@@ -6118,7 +6126,7 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
  */
 static ph7_class_instance * UwrapNewInstance(ph7_vm *pVm,uwrap_slot *pSlot,void *pStreamCtx)
 {
-	ph7_class *pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)SyStrlen(pSlot->zClass),TRUE,0);
+	ph7_class *pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)pSlot->nClass,TRUE,0);
 	ph7_class_instance *pObj;
 	ph7_value *pCtxSlot;
 	if( pClass == 0 ){
@@ -6185,7 +6193,7 @@ PH7_PRIVATE void PH7_StreamUserCast(ph7_context *pCtx,const ph7_io_stream *pStre
 	pMeth = PH7_ClassExtractMethod(pH->pObj->pClass,"stream_cast",sizeof("stream_cast")-1);
 	if( pMeth == 0 ){
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"%z::stream_cast is not implemented!",&pH->pObj->pClass->sName);
+			"%z::stream_cast is not implemented!",&pH->pObj->pClass->sDisp);
 		return;
 	}
 	{
@@ -6534,7 +6542,7 @@ PH7_PRIVATE int PH7_StreamUserDirReason(ph7_vm *pVm,const ph7_io_stream *pStream
 			continue;
 		}
 		pClass = PH7_VmExtractClass(pVm,g_aUwrap[i].zClass,
-			(sxu32)SyStrlen(g_aUwrap[i].zClass),TRUE,0);
+			(sxu32)g_aUwrap[i].nClass,TRUE,0);
 		bHas = pClass != 0
 			&& PH7_ClassExtractMethod(pClass,"dir_opendir",sizeof("dir_opendir")-1) != 0;
 		SyBufferFormat(zBuf,(sxu32)nBuf,"\"%s::dir_opendir\" %s",g_aUwrap[i].zClass,
@@ -6624,6 +6632,7 @@ PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,p
 		pSlot->zScheme[nScheme] = 0;
 		SyMemcpy(zClass,pSlot->zClass,(sxu32)nClass);
 		pSlot->zClass[nClass] = 0;
+		pSlot->nClass = nClass;
 		pSlot->pVm = pCtx->pVm;
 		/* $flags: php defines exactly one bit for it, STREAM_IS_URL, and it is the
 		 * whole reason the argument exists — a wrapper that says it speaks to the

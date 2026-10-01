@@ -362,7 +362,7 @@ static int vm_builtin_WeakMap_offsetGet(ph7_context *pCtx,int nArg,ph7_value **a
 	}
 	if( WmNodeTarget(WmFind(pVm,WmStore(pVm,pThis,WM_REFS),iId)) != pObj ){
 		return PH7_VmThrowException(pCtx,"Error","Object %z#%d not contained in WeakMap",
-			&pObj->pClass->sName,(int)pObj->nObjId);
+			&pObj->pClass->sDisp,(int)pObj->nObjId);
 	}
 	pNode = WmFind(pVm,WmStore(pVm,pThis,WM_VALS),iId);
 	if( pNode ){
@@ -12492,7 +12492,7 @@ static int SfoReadLineEx(ph7_context *pCtx,int bSilent,sxi32 *pRc)
 			const char *zGot = PH7_MemObjTypeDump(&sRet);
 			*pRc = PH7_VmThrowException(pCtx,"TypeError",
 				"%z::getCurrentLine(): Return value must be of type string, %s returned",
-				&pThis->pClass->sName,zGot);
+				&pThis->pClass->sDisp,zGot);
 			PH7_MemObjRelease(&sRet);
 			return SFO_READ_THROW;
 		}

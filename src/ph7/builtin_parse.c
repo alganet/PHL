@@ -4516,7 +4516,7 @@ static void HttpQueryPair(http_query_state *p,
 			if( pBacking == 0 ){
 				p->rc = PH7_VmThrowException(p->pCtx,"ValueError",
 					"Unbacked enum %z cannot be converted to a string",
-					&pInst->pClass->sName);
+					&pInst->pClass->sDisp);
 				return;
 			}
 			HttpQueryScalar(p,bIntKey,iKey,zKey,nKey,pBacking,
@@ -4652,7 +4652,7 @@ PH7_PRIVATE int PH7_builtin_http_build_query(ph7_context *pCtx,int nArg,ph7_valu
 		if( pInst->pClass->iFlags & PH7_CLASS_ENUM ){
 			return PH7_VmThrowException(pCtx,"TypeError",
 				"http_build_query(): Argument #1 ($data) must not be an enum, %z given",
-				&pInst->pClass->sName);
+				&pInst->pClass->sDisp);
 		}
 	}
 	if( nArg > 1 ){

@@ -2095,6 +2095,17 @@ struct ph7_class
 	ph7_class *pBase;     /* Base class if any */
 	SyHash hDerived;      /* Derived [child] classes */
 	SyString sName;       /* Class full qualified name */
+	SyString sDisp;       /* The name a MESSAGE shows, aliasing sName's buffer. The two differ
+	                       * for an anonymous class alone: php names one
+	                       * `<parent-or-interface-or-"class">@anonymous` + a NUL byte +
+	                       * `file:line$hex`, and gets the short form everywhere for free
+	                       * because every diagnostic prints a class name with `%s`, which
+	                       * stops at the NUL. PHL prints names with the length-counted `%z`,
+	                       * so the truncation has to be a field: `sName` is the identity (the
+	                       * hash key, and what get_class()/::class/Reflection::getName() hand
+	                       * back), `sDisp` is what var_dump, print_r, get_debug_type and every
+	                       * diagnostic show. For every other class they are the same bytes and
+	                       * the same length. */
 	sxi32 iFlags;         /* Class configuration flags [i.e: final, interface, abstract, etc.]  */
 	sxu64 nShadowName;    /* One bit per PLAIN name this class holds a MANGLED slot for
 	                       * (OoShadowNameBit). PH7_CLASS_SHADOW_PROP says the class has at
@@ -4218,6 +4229,10 @@ struct ph7_vm
 								* so VmExecDeferredClass can tell whether ITS chunk failed even
 								* when the deferred declaration executes inside an outer compile
 								* (an autoload-during-compile require). */
+	sxu32 nAnonSeq;            /* Anonymous-class sequence number, appended to the synthesized
+								* name as `$%x`. php's CG(rtd_key_counter): one counter for the
+								* whole request, bumped in COMPILE order, which is what makes
+								* two anonymous classes written on the same line distinguishable. */
 	SyString sDeferAnonName;   /* One-shot synthesized-name override for the next anonymous-class
 								* compile: set by VmExecDeferredClass before re-compiling a
 								* deferred `new class ... {}` chunk so the runtime-installed
