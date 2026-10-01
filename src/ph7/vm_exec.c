@@ -2566,19 +2566,33 @@ case PH7_OP_FUNC_DECL: {
 	if( pDeclFunc ){
 		SyHashEntry *pDeclEntry = SyHashGet(&pVm->hFunction,
 			SyStringData(&pDeclFunc->sName),SyStringLength(&pDeclFunc->sName));
-		if( pDeclEntry && pDeclEntry->pUserData != (void *)pDeclFunc ){
+		if( pDeclEntry ){
 			/* php's runtime redeclaration fatal -- the same sentence the compiler
-			 * raises for two top-level declarations of one name. A BUILTIN of that
-			 * name is not in this table, so a polyfill body that reaches here beside
-			 * one is the `function_exists()` guard having answered false. */
-			VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot redeclare %z()",&pDeclFunc->sName);
+			 * raises for two top-level declarations of one name, and now in the same
+			 * SHAPE: `PHP Fatal error:  ` and a `Stack trace:` block, which the plain
+			 * diagnostic printer this used to go through gives neither of. A BUILTIN
+			 * of that name is not in this table, so a polyfill body that reaches here
+			 * beside one is the `function_exists()` guard having answered false.
+			 *
+			 * The name is taken whenever this statement RUNS, so running the same
+			 * declaration a second time collides with itself -- `function mk(){
+			 * function h(){} } mk(); mk();` is php's fatal, naming one line as both
+			 * the refusal and the previous declaration. Testing the installed entry
+			 * for IDENTITY instead made the second run a silent no-op. */
+			ph7_vm_func *pPrevDecl = (ph7_vm_func *)pDeclEntry->pUserData;
+			if( pPrevDecl && pPrevDecl->sFile.nByte > 0 ){
+				PH7_VmFatalError(&(*pVm),
+					"Cannot redeclare function %z() (previously declared in %.*s:%u)",
+					&pDeclFunc->sName,pPrevDecl->sFile.nByte,pPrevDecl->sFile.zString,
+					pPrevDecl->nLine);
+			}else{
+				PH7_VmFatalError(&(*pVm),"Cannot redeclare function %z()",&pDeclFunc->sName);
+			}
 			pVm->iExitStatus = 255;
 			pVm->bHaltRequested = 1;
 			goto Abort;
 		}
-		if( pDeclEntry == 0 ){
-			PH7_VmInstallUserFunction(&(*pVm),pDeclFunc,0);
-		}
+		PH7_VmInstallUserFunction(&(*pVm),pDeclFunc,0);
 	}
 	break;
 				}

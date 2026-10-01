@@ -3427,6 +3427,59 @@ PH7_PRIVATE sxi32 PH7_VmMaterializeClassStatics(ph7_vm *pVm,ph7_class *pClass)
  * Simple boring wrapper function.
  * ------------------------------------
  */
+/*
+ * php's RUNTIME fatal (E_ERROR), in the shape php prints it.
+ *
+ * PHL's COMPILE-time fatal has been php's for a long time -- the `PHP Fatal error:  `
+ * label, the sentence, ` in FILE on line N`, then the `Stack trace:` block and its
+ * `#N {main}` terminator (PH7_GenCompileError). Its RUNTIME one was not: the ordinary
+ * diagnostic printer behind VmErrorFormat(PH7_CTX_ERR, ...) labels the same event
+ * `PHP Error:  ` and stops at the location, so a refusal php reports with four lines
+ * and a frame chain came out here as one line and no chain at all.
+ *
+ * This is that renderer, and it borrows both halves rather than writing either: the
+ * label the compile-time path prints, and the trace builder the uncaught-exception
+ * path walks the frame chain with (PH7_FATAL_TRACE_RUNTIME, the kind that KEEPS the
+ * include/require that loaded the unit -- a runtime refusal happens with that
+ * activation live, where a compiler's does not).
+ *
+ * It is deliberately NOT the ordinary diagnostic path: php never runs a
+ * set_error_handler() for an E_ERROR, so no handler is consulted, and `@` does not
+ * suppress one either. error_get_last() DOES see it, which a
+ * register_shutdown_function() callback can still read. Requesting the halt and the
+ * exit status is the caller's, as it is at every other fatal site.
+ */
+PH7_PRIVATE sxi32 PH7_VmFatalError(ph7_vm *pVm,const char *zFormat,...)
+{
+	SyBlob sMsg,sOut;
+	SyString *pFile;
+	sxu32 nLine;
+	va_list ap;
+	if( pVm->nSpeculative > 0 ){
+		/* See PH7_VmThrowError: nothing a speculative evaluation raises is observable. */
+		pVm->nSpecDiag++;
+		return SXRET_OK;
+	}
+	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	nLine = VmDiagnosticWhere(&(*pVm),&pFile);
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	va_start(ap,zFormat);
+	SyBlobFormatAp(&sMsg,zFormat,ap);
+	va_end(ap);
+	VmRecordLastError(&(*pVm),1 /* E_ERROR */,(const char *)SyBlobData(&sMsg),
+		SyBlobLength(&sMsg),pFile,nLine);
+	if( pVm->bErrReport && (pVm->iErrMask & 1) != 0 ){
+		SyBlobInit(&sOut,&pVm->sAllocator);
+		SyBlobAppend(&sOut,"PHP Fatal error:  ",sizeof("PHP Fatal error:  ")-1);
+		SyBlobAppend(&sOut,SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		VmDiagnosticLocation(&sOut,pFile,nLine);
+		PH7_GenAppendFatalTrace(&(*pVm),&sOut,PH7_FATAL_TRACE_RUNTIME);
+		VmCallErrorHandler(&(*pVm),&sOut);
+		SyBlobRelease(&sOut);
+	}
+	SyBlobRelease(&sMsg);
+	return SXRET_OK;
+}
 PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
 {
 	va_list ap;
