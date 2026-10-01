@@ -20,11 +20,23 @@ class NwnC {
     public $p;
     public function m() { return 'v'; }
 }
+/* A FILE rather than `-r`: cmd.exe does not quote an inline program the way a
+ * POSIX shell does, and the message is reduced to a token so no path or line
+ * number reaches the expectation. No output is shell_exec()'s NULL in both
+ * engines, and PLAN.md §10 makes handing that to trim() a TypeError here. */
 function nwnRun($src) {
-    /* No output is shell_exec()'s NULL in both engines; PLAN.md §10 makes handing
-     * that to trim() a TypeError here where php only deprecates it. */
-    $out = trim((string) shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($src) . ' 2>&1'));
-    echo $out === '' ? "ok\n" : trim(explode("\n", $out)[0]) . "\n";
+    $f = sys_get_temp_dir() . '/phl_nwn_' . getmypid() . '.php';
+    file_put_contents($f, "<?php\n" . $src . "\n");
+    $out = trim((string) shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($f) . ' 2>&1'));
+    @unlink($f);
+    if ($out === '') { echo "ok\n"; return; }
+    if (strpos($out, "Can't use nullsafe operator in write context") !== false) {
+        echo "nullsafe-write\n";
+    } elseif (strpos($out, 'Cannot take reference of a nullsafe chain') !== false) {
+        echo "nullsafe-ref\n";
+    } else {
+        echo 'OTHER: ', trim(explode("\n", $out)[0]), "\n";
+    }
 }
 
 // The neighbour shapes, which must RUN.
@@ -63,17 +75,17 @@ bool(true)
 int(2)
 bool(true)
 int(3)
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Can't use nullsafe operator in write context in Command line code on line 1
-PHP Fatal error:  Cannot take reference of a nullsafe chain in Command line code on line 1
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-write
+nullsafe-ref
 ok
 ok

@@ -43,16 +43,24 @@ var_dump($arteO->sorted());
 function arteRef() { $x = 1; $a = [&$x]; $a[0] = 7; return $x; }
 var_dump(arteRef());
 
-// The refusals the array entry still owes.
-foreach (['$a = [&arteRef()];', 'class ArteD {} $a = [&(new ArteD)->p];'] as $arteSrc) {
-    $arteRc = 0;
-    $arteOut = shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($arteSrc) . ' 2>&1');
-    echo trim(explode("\n", trim($arteOut))[0]), "\n";
+// The refusals the array entry still owes. Through a FILE rather than `-r`:
+// cmd.exe does not quote an inline program the way a POSIX shell does.
+foreach (['function arteF() { return 1; } $a = [&arteF()];',
+          'class ArteD {} $a = [&(new ArteD)->p];'] as $arteSrc) {
+    $arteF = sys_get_temp_dir() . '/phl_arte_' . getmypid() . '.php';
+    file_put_contents($arteF, "<?php\n" . $arteSrc . "\n");
+    $arteOut = trim((string) shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($arteF) . ' 2>&1'));
+    @unlink($arteF);
+    foreach (["Can't use function return value in write context",
+              'Cannot use temporary expression in write context'] as $arteWant) {
+        if (strpos($arteOut, $arteWant) !== false) { echo $arteWant, "\n"; continue 2; }
+    }
+    echo 'OTHER: ', trim(explode("\n", $arteOut)[0]), "\n";
 }
 ?>
 --EXPECTF--
 string(%d) "ArteC|cmp|2|object|kept|2|9|integer|1"
 string(5) "1,2,3"
 int(7)
-%ACan't use function return value in write context%A
-%ACannot use temporary expression in write context%A
+Can't use function return value in write context
+Cannot use temporary expression in write context
