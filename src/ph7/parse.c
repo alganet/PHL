@@ -1582,6 +1582,43 @@ PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet)
  * (PHP 8.0 makes this a compile fatal:
  * "Can't use nullsafe operator in write context").
  */
+/*
+ * TRUE when this node's operator is a link of an ACCESS CHAIN -- `->`, `?->`,
+ * `::`, `[`, a call -- or one of the prefix unaries php hoists an assignment out
+ * of, so that `!$a?->b = 1` is `!($a?->b = 1)` and the `!` still stands over the
+ * target. Everything else (a comparison, `&&`, `+`) is a NEIGHBOUR of the target,
+ * not part of it.
+ */
+static int ExprIsAccessChainRoot(ph7_expr_node *pNode)
+{
+	if( pNode == 0 || pNode->pOp == 0 ){
+		return 0;
+	}
+	if( pNode->pOp->iOp == EXPR_OP_ARROW || pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+	 || pNode->pOp->iOp == EXPR_OP_DC || pNode->pOp->iOp == EXPR_OP_SUBSCRIPT
+	 || pNode->pOp->iOp == EXPR_OP_FUNC_CALL ){
+		return 1;
+	}
+	return (pNode->iFlags & EXPR_NODE_PARENS) == 0
+		&& (pNode->pOp->iPrec == 4 /* -, +, !, ~, @, (cast) */
+		 || pNode->pOp->iOp == EXPR_OP_CLONE);
+}
+/*
+ * TRUE when the ACCESS CHAIN this node roots contains a `?->`. Unlike
+ * PH7_ExprContainsNullsafe it stops at the first link that is not one, so a
+ * nullsafe standing in a NEIGHBOURING operand -- `$o?->m() !== null && $x = 1`,
+ * where php's target is `$x` alone -- is not mistaken for one in the target.
+ */
+static int ExprChainHasNullsafe(ph7_expr_node *pNode)
+{
+	while( ExprIsAccessChainRoot(pNode) ){
+		if( pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW ){
+			return 1;
+		}
+		pNode = pNode->pLeft;
+	}
+	return 0;
+}
 PH7_PRIVATE int PH7_ExprContainsNullsafe(ph7_expr_node *pNode)
 {
 	if( pNode == 0 ){
@@ -2835,8 +2872,16 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 			  * including deeper chains like $a?->b->c = 1 and
 			  * $a?->b[0] = 1 where the outer op is '->' or '[' but the
 			  * chain still contains a `?->` that cannot participate in
-			  * a write. */
-			 if( PH7_ExprContainsNullsafe(apNode[iLeft]) ){
+			  * a write.
+			  *
+			  * The ACCESS CHAIN only. php binds `A op $lv = B` as `A op ($lv = B)`,
+			  * so in `$o?->m() !== null && $x = 1` the target is `$x` and the
+			  * nullsafe belongs to a comparison that is merely READ -- a walk of the
+			  * whole left operand refused that shape, which aws-sdk-php writes and so
+			  * does anything that tests a nullsafe call and captures a value in one
+			  * condition. When the left operand is such a NEIGHBOUR the spine walk
+			  * below settles the target and asks the same question of it. */
+			 if( ExprChainHasNullsafe(apNode[iLeft]) ){
 				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 					 "Can't use nullsafe operator in write context");
 				 if( rc != SXERR_ABORT ){
@@ -2883,8 +2928,20 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					 ph7_expr_node *pHost = apNode[iLeft];
 					 ph7_expr_node *pParent = pHost;
 					 while( pParent->pRight && pParent->pRight->pOp && pParent->pRight->pRight
+						 && ExprIsAccessChainRoot(pParent->pRight) == FALSE
 						 && PH7_ExprIsModifiableValue(pParent->pRight) == FALSE ){
 						 pParent = pParent->pRight;
+					 }
+					 /* The spine ends on the target php would take. A `?->` in ITS chain
+					  * is the write refusal the head of this function makes for a target
+					  * standing alone -- `$q && $a?->b = 1` is `$q && ($a?->b = 1)`. */
+					 if( ExprChainHasNullsafe(pParent->pRight) ){
+						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+							 "Can't use nullsafe operator in write context");
+						 if( rc != SXERR_ABORT ){
+							 rc = SXERR_SYNTAX;
+						 }
+						 return rc;
 					 }
 					 /* The spine may end on a PREFIX unary rather than on the lvalue
 					  * itself -- `c && !$d = f()`, which php reads as
