@@ -2897,38 +2897,57 @@ PH7_PRIVATE const char * TokenTypeName(sxu32 nType)
 	/* php's parse errors call a reserved word a "token", never a "keyword" — the
 	 * word only ever appears in ITS vocabulary as `unexpected token "while"`. */
 	if( nType & PH7_TK_KEYWORD ){ return "token"; }
+	if( nType & PH7_TK_FQNAME ){ return "fully qualified name"; }
 	if( nType & PH7_TK_ID ){ return "identifier"; }
 	if( nType & PH7_TK_DOLLAR ){ return "variable"; }
 	return "token";
 }
 PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 {
+	SyBlob sName;
 	sxu32 nLine;
 	sxi32 rc;
+	int bBracket;
+	int bFirst;
 	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'namespace' keyword */
-	/* Reset namespace and clear previous use imports */
-	SyBlobReset(&pGen->sNamespace);
-	GenStateResetUseImports(&(*pGen),pGen->pVm);
-	if( pGen->pIn >= pGen->pEnd ){
-		return SXRET_OK; /* Global namespace (bare "namespace;") */
+	/* php's grammar has three shapes -- `namespace NAME;`, `namespace NAME { }`
+	 * and `namespace { }` -- and a bare `namespace;` is none of them. */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_SEMI) ){
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"{\"");
+		return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXRET_OK;
 	}
-	if( pGen->pIn->nType & PH7_TK_SEMI ){
-		return SXRET_OK; /* namespace; — switch to global namespace */
+	SyBlobInit(&sName,&pGen->pVm->sAllocator);
+	if( pGen->pIn->nType & PH7_TK_NSSEP ){
+		/* `namespace \A;` -- php lexed a fully-qualified name where its grammar
+		 * wants a plain one, and names the whole token. */
+		SyBlobAppend(&sName,"\\",1);
+		pGen->pIn++;
+		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID|PH7_TK_KEYWORD)) ){
+			if( pGen->pIn->nType & PH7_TK_NSSEP ){
+				SyBlobAppend(&sName,"\\",1);
+			}else{
+				SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+			}
+			pGen->pIn++;
+		}
+		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+			"syntax error, unexpected fully qualified name \"%.*s\", expecting \"{\"",
+			(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName));
+		SyBlobRelease(&sName);
+		return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXRET_OK;
 	}
-	if( pGen->pIn->nType & PH7_TK_OCB ){
-		return SXRET_OK; /* namespace { } — global namespace block */
-	}
-	/* Collect the namespace path: namespace Foo\Bar\Baz */
+	/* Collect the namespace path: namespace Foo\Bar\Baz. A `\` that is not glued
+	 * to a following segment is not a separator token any more (the lexer hands
+	 * it over as php's bare T_NS_SEPARATOR), so `namespace A\ B;` and `A\;` stop
+	 * here and are named below the way php names them. */
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID|PH7_TK_KEYWORD)) ){
 		if( pGen->pIn->nType & PH7_TK_NSSEP ){
-			/* Append backslash separator */
-			if( SyBlobLength(&pGen->sNamespace) > 0 ){
-				SyBlobAppend(&pGen->sNamespace,"\\",1);
+			if( SyBlobLength(&sName) > 0 ){
+				SyBlobAppend(&sName,"\\",1);
 			}
 		}else{
-			/* Append identifier */
-			SyBlobAppend(&pGen->sNamespace,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+			SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
 		}
 		pGen->pIn++;
 	}
@@ -2936,6 +2955,58 @@ PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
 			"syntax error, unexpected %s \"%z\", expecting \"{\"",
 			TokenTypeName(pGen->pIn->nType),&pGen->pIn->sData);
+		SyBlobRelease(&sName);
+		return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXRET_OK;
+	}
+	bBracket = ( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ) ? 1 : 0;
+	/* php's zend_compile_namespace, in its order: the two forms never mix in one
+	 * file, a block never nests, and the FIRST declaration of either form must be
+	 * the first statement -- declares and empty statements aside. */
+	rc = SXRET_OK;
+	if( !pGen->bNsBracketed ){
+		if( pGen->bNsNamed && bBracket ){
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+				"Cannot mix bracketed namespace declarations with unbracketed namespace declarations");
+		}
+	}else if( !bBracket ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Cannot mix bracketed namespace declarations with unbracketed namespace declarations");
+	}else if( pGen->bNsNamed || pGen->bInNsBlock ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Namespace declarations cannot be nested");
+	}
+	if( rc == SXERR_ABORT ){
+		SyBlobRelease(&sName);
+		return SXERR_ABORT;
+	}
+	bFirst = ( (!bBracket && !pGen->bNsNamed) || (bBracket && !pGen->bNsBracketed) );
+	if( bFirst && pGen->bStrictTypesLocked ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Namespace declaration statement has to be the very first statement or after any declare call in the script");
+		if( rc == SXERR_ABORT ){
+			SyBlobRelease(&sName);
+			return SXERR_ABORT;
+		}
+	}
+	/* Switch namespace and clear the previous imports */
+	SyBlobReset(&pGen->sNamespace);
+	GenStateResetUseImports(&(*pGen),pGen->pVm);
+	if( SyBlobLength(&sName) > 0 ){
+		SyBlobAppend(&pGen->sNamespace,SyBlobData(&sName),SyBlobLength(&sName));
+	}
+	pGen->bNsNamed = (sxi8)( SyBlobLength(&sName) > 0 );
+	SyBlobRelease(&sName);
+	/* A namespace statement is code for what follows: a declare after it is late. */
+	pGen->bStrictTypesLocked = 1;
+	if( bBracket ){
+		pGen->bNsBracketed = 1;
+		pGen->bInNsBlock = 1;
+		rc = PH7_CompileBlock(&(*pGen),0);
+		pGen->bInNsBlock = 0;
+		/* php's zend_end_namespace: the block's close ends the namespace, and
+		 * whatever comes after it outside a block is refused by the dispatcher. */
+		SyBlobReset(&pGen->sNamespace);
+		GenStateResetUseImports(&(*pGen),pGen->pVm);
+		pGen->bNsNamed = 0;
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -3456,6 +3527,7 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 	SyString sAlias;
 	SyToken *pLast;
 	int iUseType; /* 0=class, 1=function, 2=const */
+	int bGroup;
 	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'use' keyword */
 	/* Detect 'function' or 'const' keyword after 'use' (PHP 5.6+) */
@@ -3484,7 +3556,25 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 		}
 		/* Collect the full namespace path */
 		pLast = GenStateCollectNsPath(pGen,&sPath);
-		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) && SyBlobLength(&sPath) > 0 ){
+		/* php's group form is `NAME \ {`: the separator before the brace is the
+		 * one bare T_NS_SEPARATOR its grammar takes, a token of its own (spaces
+		 * on either side are fine), and `use A\B{C}` without it is refused. */
+		bGroup = 0;
+		if( pGen->pIn + 1 < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OTHER)
+		 && pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '\\'
+		 && (pGen->pIn[1].nType & PH7_TK_OCB) ){
+			pGen->pIn++;
+			bGroup = 1;
+		}else if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OTHER)
+		 && pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '\\' ){
+			/* `use A\ B;` -- php's parser is past the separator and wants the brace,
+			 * so it names what stood there instead. */
+			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn + 1 < pGen->pEnd ? &pGen->pIn[1] : 0,"\"{\"");
+			SyBlobRelease(&sPath);
+			GenStateSkipToStatementEnd(&(*pGen));
+			return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXRET_OK;
+		}
+		if( bGroup && SyBlobLength(&sPath) > 0 ){
 			/* GROUP declaration: what was collected is the shared prefix.  php
 			 * does not let a group be comma-combined with another declaration,
 			 * so the members close the statement. */

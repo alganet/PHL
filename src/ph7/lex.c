@@ -662,7 +662,61 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 			pStream->zText++;
 			return SXRET_OK;
 				  }
-		case '\\': pToken->nType = PH7_TK_NSSEP;  break;
+		case '\\':{
+			/* php's scanner never hands its parser a `\` from INSIDE a name: `A\B`
+			 * and `\A\B` are one token each (T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED,
+			 * matched as `{LABEL}("\\"{LABEL})+` so the backslash binds only to a
+			 * label glued to it), and a `\` reaches the grammar on its own
+			 * (T_NS_SEPARATOR) only when no label follows -- which the grammar
+			 * takes in exactly one place, before the `{` of a group `use`. The name
+			 * walkers here read a separator TOKEN between segments and none of them
+			 * looked at the bytes around it, so `A\ B`, `A \ B`, `A \B` and a
+			 * trailing `A\;` all compiled as the name `A\B`. The byte is classified
+			 * once, here:
+			 *  - glued to a label on its right: a name lexeme, PH7_TK_NSSEP, which
+			 *    the walkers read as before;
+			 *  - nothing glued on its right: php's bare separator, an ordinary
+			 *    token no walker takes and the group-use door recognizes by text;
+			 *  - a name HEAD (glued right, not left) straight after a plain
+			 *    identifier or a variable's name: a fully-qualified name where php's
+			 *    grammar has no room for a second name, which its parse error names
+			 *    whole -- so the whole name becomes this one token, marked for the
+			 *    noun. After a keyword (`echo \A`, `new \A`, `extends \A`) a name
+			 *    may START, and `readonly`, an identifier to this lexer, is a
+			 *    keyword there too (`public readonly \A $p`). */
+			const unsigned char *zNext = pStream->zText;
+			if( zNext >= pStream->zEnd || !LEX_LABEL_START(zNext[0]) ){
+				pToken->nType = PH7_TK_OTHER;
+				break;
+			}
+			pToken->nType = PH7_TK_NSSEP;
+			if( (const unsigned char *)pStr->zString > pStream->zInput
+			 && LEX_LABEL_BYTE(((const unsigned char *)pStr->zString)[-1]) ){
+				break; /* a segment separator */
+			}
+			{
+				SyToken *pPrev = (SyToken *)SySetPeek(pStream->pSet);
+				if( pPrev && (pPrev->nType & PH7_TK_ID) && (pPrev->nType & PH7_TK_OP) == 0
+				 && !( pPrev->sData.nByte == sizeof("readonly")-1
+					&& SyStrnicmp(pPrev->sData.zString,"readonly",sizeof("readonly")-1) == 0 ) ){
+					/* Take php's whole token: "\\"{LABEL}("\\"{LABEL})* */
+					for(;;){
+						zNext++;
+						while( zNext < pStream->zEnd && LEX_LABEL_BYTE(zNext[0]) ){
+							zNext++;
+						}
+						if( &zNext[1] < pStream->zEnd && zNext[0] == '\\' && LEX_LABEL_START(zNext[1]) ){
+							zNext++;
+							continue;
+						}
+						break;
+					}
+					pStream->zText = zNext;
+					pToken->nType = PH7_TK_OTHER|PH7_TK_FQNAME;
+				}
+			}
+			break;
+		}
 		case ':':
 			if( pStream->zText < pStream->zEnd && pStream->zText[0] == ':' ){
 				/* Current operator: '::' */

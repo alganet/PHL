@@ -1173,7 +1173,11 @@ struct ph7_gen_state
 	SyToken *pRawEnd;    /* Last raw token in the stream */
 	SySet   *pTokenSet;  /* Token containers */
 	sxi8 bStrictTypes;       /* Current file's strict_types mode (0 = weak/unset, 1 = strict) */
-	sxi8 bStrictTypesLocked; /* 1 once the current file has emitted any non-declare top-level statement */
+	sxi8 bStrictTypesLocked; /* 1 once the current file has emitted any non-declare, non-empty
+	                          * top-level statement (php's zend_is_first_statement with nops allowed) */
+	sxi8 bNsNamed;           /* php's FC(current_namespace): a NAMED namespace is in effect */
+	sxi8 bNsBracketed;       /* php's FC(has_bracketed_namespaces): this file used `namespace X { }` */
+	sxi8 bInNsBlock;         /* php's FC(in_namespace): the cursor is inside such a block */
 	sxi8 bChunkAtEof;        /* 1 when the PHP chunk being compiled ran into the end of the
 	                          * FILE rather than being closed by a `?>`. php reads the closing
 	                          * tag as a statement terminator, so only this chunk can leave one
@@ -5211,6 +5215,10 @@ enum ph7_expr_id {
                                      * delimiter: an unterminated quote, heredoc or block comment.
                                      * php refuses each of those; this engine used to consume them
                                      * up to EOF and run the program. */
+#define PH7_TK_FQNAME    0x20000000 /* A PH7_TK_OTHER whose text is a whole `\A\B` name standing where
+                                    * php's grammar has no place for one (`A \B`): php's scanner made it
+                                    * ONE T_NAME_FULLY_QUALIFIED token and its parse error names it so.
+                                    * The lexer takes the whole name into the token for that message. */
 #define PH7_TK_MEMBER_NAME 0x4000000 /* Reserved word used as a member NAME right after -> / ?-> / ::
                                       * (Enum::Null, C::Array, $o->list()): a plain identifier, never
                                       * the literal value — GenStateLoadLiteral skips its value conversion. */

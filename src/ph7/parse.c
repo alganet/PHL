@@ -3079,11 +3079,38 @@ PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr
 	{
 		int iLastWasTerm = 0;
 		int bAfterMemberOp = 0; /* TRUE iff the previous node was -> / ?-> / :: */
+		ph7_expr_node *pPrev = 0;
 		while( pGen->pIn < pGen->pEnd ){
 			rc = ExprExtractNode(&(*pGen),&pNode,iLastWasTerm,bAfterMemberOp);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
+			if( pNode->xCode == PH7_CompileLiteral && pNode->pEnd == &pNode->pStart[1]
+			 && (pNode->pStart->nType & PH7_TK_KEYWORD)
+			 && (pNode->pStart->nType & PH7_TK_MEMBER_NAME) == 0
+			 && SX_PTR_TO_INT(pNode->pStart->pUserData) == PH7_TKWRD_STATIC ){
+				/* php's grammar takes a bare `static` in an expression in three
+				 * places only: before `::`, and as the class of `new` and of
+				 * `instanceof` (the closure forms were taken above). Anywhere else
+				 * its parser names the token after it and asks for the `::` --
+				 * `$x = static;` is a parse error there, where this went on to run
+				 * and failed at runtime on an undefined constant "static". */
+				int bOk = 0;
+				if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OP) ){
+					const ph7_expr_op *pOp = (const ph7_expr_op *)pGen->pIn->pUserData;
+					bOk = ( pOp && pOp->iOp == EXPR_OP_DC );
+				}
+				if( !bOk && pPrev && pPrev->pOp
+				 && (pPrev->pOp->iOp == EXPR_OP_NEW || pPrev->pOp->iOp == EXPR_OP_INSTOF) ){
+					bOk = 1;
+				}
+				if( !bOk ){
+					rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"::\"");
+					SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+					return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXERR_SYNTAX;
+				}
+			}
+			pPrev = pNode;
 			/* Determine if this node is a term for short-array disambiguation */
 			if( pNode->xCode ){
 				/* Node with compile handler: variable, literal, string, array, etc. */

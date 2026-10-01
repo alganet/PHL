@@ -4626,6 +4626,8 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 	rc = SXRET_OK; /* Prevent compiler warning */
 	for(;;){
 		int bStmtIsDeclare = 0;
+		int bStmtIsNamespace = 0;
+		int bStmtIsNop;
 		/* Whether php's grammar wants a TERMINATOR after this statement: a block, a
 		 * declaration and a LABEL end themselves, everything else -- an expression
 		 * statement included, even one that ends in the `}` of a closure or a match
@@ -4676,12 +4678,32 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 			sxu32 nPeek = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
 			if( nPeek == PH7_TKWRD_DECLARE ){
 				bStmtIsDeclare = 1;
+			}else if( nPeek == PH7_TKWRD_NAMESPACE && !GenStateIsNsRelName(pGen->pIn,pGen->pEnd) ){
+				/* A namespace DECLARATION asks the lock itself -- php's rule is that
+				 * the first one must be the first statement, nops and declares
+				 * aside -- and then sets it, since it is code for the declares
+				 * after it. */
+				bStmtIsNamespace = 1;
 			}
 		}
-		if( !bStmtIsDeclare && pGen->pCurrent == &pGen->sGlobal ){
+		/* php's zend_is_first_statement walks past a null statement: an empty `;`
+		 * before `declare(strict_types=1)` or before `namespace` is not code. */
+		bStmtIsNop = (pGen->pIn->nType & PH7_TK_SEMI) != 0;
+		if( !bStmtIsDeclare && !bStmtIsNamespace && !bStmtIsNop && pGen->pCurrent == &pGen->sGlobal ){
 			/* Any non-declare top-level statement locks the strict_types
 			 * directive: it's now too late for declare(strict_types=1). */
 			pGen->bStrictTypesLocked = 1;
+		}
+		if( pGen->pCurrent == &pGen->sGlobal && pGen->bNsBracketed && !pGen->bInNsBlock
+		 && !bStmtIsNamespace && !bStmtIsNop && !GenStateIsHaltCompiler(pGen->pIn,pGen->pEnd) ){
+			/* php's zend_verify_namespace: once a file has used the bracketed form,
+			 * every statement outside a block but another `namespace` (or the halt)
+			 * is a compile fatal. */
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+				"No code may exist outside of namespace {}");
+			if( rc == SXERR_ABORT ){
+				break;
+			}
 		}
 		if( GenStateIsHaltCompiler(pGen->pIn,pGen->pEnd) ){
 			/* Everything from here on is DATA. php's own scanner stops in exactly
@@ -5022,6 +5044,7 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	int is_expr;
 	sxi8 bSavedStrict;
 	sxi8 bSavedStrictLocked;
+	sxi8 bSavedNsNamed,bSavedNsBracketed,bSavedInNsBlock;
 	sxi8 bSavedHalted,bSavedHaltSeen;
 	sxu32 nSavedHaltOffset;
 	const char *zSavedScriptBase;
@@ -5066,6 +5089,13 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	bSavedStrictLocked = pCodeGen->bStrictTypesLocked;
 	pCodeGen->bStrictTypes = 0;
 	pCodeGen->bStrictTypesLocked = 0;
+	/* The namespace placement state is per FILE as well (php's file_context). */
+	bSavedNsNamed = pCodeGen->bNsNamed;
+	bSavedNsBracketed = pCodeGen->bNsBracketed;
+	bSavedInNsBlock = pCodeGen->bInNsBlock;
+	pCodeGen->bNsNamed = 0;
+	pCodeGen->bNsBracketed = 0;
+	pCodeGen->bInNsBlock = 0;
 	/* The halt is per-FILE too, and an include compiles inside its includer. */
 	bSavedHalted = pCodeGen->bHalted;
 	bSavedHaltSeen = pCodeGen->bHaltSeen;
@@ -5180,6 +5210,9 @@ cleanup:
 	/* Restore outer file's strict_types scope */
 	pCodeGen->bStrictTypes = bSavedStrict;
 	pCodeGen->bStrictTypesLocked = bSavedStrictLocked;
+	pCodeGen->bNsNamed = bSavedNsNamed;
+	pCodeGen->bNsBracketed = bSavedNsBracketed;
+	pCodeGen->bInNsBlock = bSavedInNsBlock;
 	/* ...and its halt state. */
 	pCodeGen->bHalted = bSavedHalted;
 	pCodeGen->bHaltSeen = bSavedHaltSeen;
@@ -5342,6 +5375,9 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->bInGenerator = 0;
 	pGen->bStrictTypes = 0;
 	pGen->bStrictTypesLocked = 0;
+	pGen->bNsNamed = 0;
+	pGen->bNsBracketed = 0;
+	pGen->bInNsBlock = 0;
 	/* The nested unit is a fresh top-level compile: it is not lexically inside the
 	 * outer's class body nor its member default, so a __TRAIT__ in the nested file
 	 * must not inherit the outer's trait. (Restore below carries the outer's values
@@ -5498,7 +5534,9 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 			           : "syntax error, unexpected end of file",
 			zExpecting);
 	}
-	if( (pTok->nType & PH7_TK_ID) && (pTok->nType & PH7_TK_OP) == 0 ){
+	if( pTok->nType & PH7_TK_FQNAME ){
+		zNoun = "fully qualified name";
+	}else if( (pTok->nType & PH7_TK_ID) && (pTok->nType & PH7_TK_OP) == 0 ){
 		zNoun = "identifier";
 	}else if( pTok->nType & PH7_TK_DOLLAR ){
 		zNoun = "variable";
