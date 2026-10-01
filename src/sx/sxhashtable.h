@@ -75,6 +75,12 @@ PH7_PRIVATE sxi32 SyHashForEachReverse(SyHash *pHash,sxi32(*xStep)(SyHashEntry *
 PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData);
 PH7_PRIVATE SyHashEntry *SyHashFirstEntry(SyHash *pHash);
 PH7_PRIVATE SyHashEntry *SyHashEntryNext(SyHashEntry *pEntry);
+/* The declaration-order walk: SyHashInsert head-pushes, so pList/pNext is
+ * reverse-insertion (LIFO) and the tail is the FIRST entry inserted. Pair these
+ * two the way SyHashFirstEntry/SyHashEntryNext pair, when insertion order is
+ * what the caller means. */
+PH7_PRIVATE SyHashEntry *SyHashTailEntry(SyHash *pHash);
+PH7_PRIVATE SyHashEntry *SyHashEntryPrev(SyHashEntry *pEntry);
 PH7_PRIVATE SyHashEntry *SyHashLastEntry(SyHash *pHash);
 
 #endif /* __SXHASHTABLE_H__ */

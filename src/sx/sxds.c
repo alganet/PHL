@@ -784,6 +784,25 @@ PH7_PRIVATE SyHashEntry * SyHashEntryNext(SyHashEntry *pEntry)
 	}
 	return (SyHashEntry *)((SyHashEntry_Pr *)pEntry)->pNext;
 }
+PH7_PRIVATE SyHashEntry * SyHashTailEntry(SyHash *pHash)
+{
+#if defined(UNTRUST)
+	if( INVALID_HASH(pHash) ){
+		return 0;
+	}
+#endif
+	/* The tail of the head-pushed list, i.e. the FIRST entry inserted. Walk from
+	 * here with SyHashEntryPrev for declaration order (see SyHashForEachReverse,
+	 * which does the same thing with a callback). */
+	return (SyHashEntry *)pHash->pLast;
+}
+PH7_PRIVATE SyHashEntry * SyHashEntryPrev(SyHashEntry *pEntry)
+{
+	if( pEntry == 0 ){
+		return 0;
+	}
+	return (SyHashEntry *)((SyHashEntry_Pr *)pEntry)->pPrev;
+}
 PH7_PRIVATE SyHashEntry * SyHashLastEntry(SyHash *pHash)
 {
 #if defined(UNTRUST)

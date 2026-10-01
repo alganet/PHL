@@ -3681,6 +3681,95 @@ static ph7_class * GenStateIfaceDeclaringAt(ph7_class *pIface,const SyString *pM
 	return pDeepest;
 }
 /*
+ * Is this method-table name one of php's property HOOKS rather than a method?
+ * php verifies a class's abstract METHODS first and its abstract property hooks
+ * in a second pass, so the two groups do not interleave in the message however
+ * the source is written.
+ */
+static int GenStateIsHookName(const SyString *pMName)
+{
+	static const sxu32 nPfx = sizeof("__phl_hook_get_")-1;
+	return pMName->nByte > nPfx
+	 && (SyMemcmp((const void *)pMName->zString,(const void *)"__phl_hook_get_",nPfx) == 0
+	  || SyMemcmp((const void *)pMName->zString,(const void *)"__phl_hook_set_",nPfx) == 0);
+}
+/*
+ * php lists the unimplemented abstract methods in its own FUNCTION-TABLE order,
+ * which is the order it LINKS a class in: the class's own declarations, then
+ * inheritance, then the traits, then the interfaces -- each of those recursively.
+ * So `class C extends P implements I { use T; }` reads `P::pa, C::ta, I::ia`,
+ * with the trait's ahead of the interface's though the `use` is written inside
+ * the body and the `implements` in the header; and `interface K extends J
+ * extends I` reads `K::ka, J::ja, I::ia`. A walk of this engine's own method hash
+ * reads none of that: it is one flat table, in an order the hash decides. The
+ * sequence is rebuilt for the message rather than in hMethod itself, which
+ * get_class_methods() and Reflection also read.
+ *
+ * Appends every method DECLARED by pSrc that is still an unimplemented abstract
+ * of pClass and is not already in *pOrder, then recurses. bHooks selects which of
+ * php's two passes this is.
+ */
+static void GenStateOrderAbstractsFrom(ph7_class *pClass,ph7_class *pSrc,SySet *pOrder,
+	int bHooks,int iDepth)
+{
+	SyHashEntry *pEntry;
+	ph7_class **apSrc;
+	sxu32 n;
+	if( pSrc == 0 || iDepth > 32 ){
+		return;
+	}
+	/* Declaration order, not the hash's own LIFO walk: `abstract function pa();
+	 * abstract function pb();` must list pa first. (And this is a nested walk of
+	 * another class's table -- SyHash carries a single shared loop cursor, so the
+	 * cursor-based iterator could not be used here in any case.) */
+	for( pEntry = SyHashTailEntry(&pSrc->hMethod) ; pEntry ; pEntry = SyHashEntryPrev(pEntry) ){
+		ph7_class_method *pSrcMeth = (ph7_class_method *)pEntry->pUserData;
+		ph7_class_method *pMeth;
+		ph7_class_method **apSeen;
+		int bSeen = 0;
+		if( pSrcMeth->sFunc.pUserData != (void *)pSrc ){
+			/* Inherited into pSrc's table; the class that DECLARED it names it, and
+			 * the recursion below reaches that one in php's own link order. */
+			continue;
+		}
+		if( GenStateIsHookName(&pSrcMeth->sFunc.sName) != bHooks ){
+			continue;
+		}
+		pMeth = PH7_ClassExtractMethod(pClass,
+			SyStringData(&pSrcMeth->sFunc.sName),SyStringLength(&pSrcMeth->sFunc.sName));
+		if( pMeth == 0 || (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
+			continue;
+		}
+		if( GenStateAbstractHookSatisfied(pClass,&pMeth->sFunc.sName) ){
+			continue;
+		}
+		apSeen = (ph7_class_method **)SySetBasePtr(pOrder);
+		for( n = 0 ; n < SySetUsed(pOrder) ; ++n ){
+			if( apSeen[n] == pMeth ){
+				bSeen = 1;
+				break;
+			}
+		}
+		if( !bSeen ){
+			SySetPut(pOrder,(const void *)&pMeth);
+		}
+	}
+	GenStateOrderAbstractsFrom(pClass,pSrc->pBase,pOrder,bHooks,iDepth + 1);
+	apSrc = (ph7_class **)SySetBasePtr(&pSrc->aTrait);
+	for( n = 0 ; n < SySetUsed(&pSrc->aTrait) ; ++n ){
+		GenStateOrderAbstractsFrom(pClass,apSrc[n],pOrder,bHooks,iDepth + 1);
+	}
+	apSrc = (ph7_class **)SySetBasePtr(&pSrc->aInterface);
+	for( n = 0 ; n < SySetUsed(&pSrc->aInterface) ; ++n ){
+		GenStateOrderAbstractsFrom(pClass,apSrc[n],pOrder,bHooks,iDepth + 1);
+	}
+}
+/*
+ * php names at most THREE of them and then writes ", ..."; the COUNT in the
+ * sentence is still the whole number.
+ */
+#define GEN_ABSTRACT_LIST_MAX 3
+/*
  * Does [pClass] leave an abstract method unimplemented? Answers the COUNT, and
  * on a non-zero one appends php's sentence to *pMsg (which the caller owns).
  *
@@ -3734,21 +3823,26 @@ PH7_PRIVATE sxu32 PH7_ClassAbstractGap(ph7_vm *pVm,ph7_class *pClass,SyBlob *pMs
 			(nAbstract > 1 ? "s" : ""),
 			(nAbstract > 1 ? "s" : ""));
 	}
-	/* Second pass: list methods with origins */
+	/* Second pass: list methods with origins, in php's table order and capped */
 	{
 		sxu32 nListed = 0;
-		SyHashResetLoopCursor(&pClass->hMethod);
-		while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
+		sxu32 nOrder;
+		SySet aOrder; /* ph7_class_method * , php's function-table order */
+		ph7_class_method **apOrder;
+		SySetInit(&aOrder,&pVm->sAllocator,sizeof(ph7_class_method *));
+		/* Methods first, then property hooks: php's two verification passes. */
+		GenStateOrderAbstractsFrom(pClass,pClass,&aOrder,0,0);
+		GenStateOrderAbstractsFrom(pClass,pClass,&aOrder,1,0);
+		apOrder = (ph7_class_method **)SySetBasePtr(&aOrder);
+		for( nOrder = 0 ; nOrder < SySetUsed(&aOrder) ; ++nOrder ){
 			ph7_class *pOrigin = 0;
 			SyString *pMName;
-			pMeth = (ph7_class_method *)pEntry->pUserData;
-			if( (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
-				continue;
+			pMeth = apOrder[nOrder];
+			if( nListed >= GEN_ABSTRACT_LIST_MAX ){
+				SyBlobAppend(&sMsg,", ...",sizeof(", ...")-1);
+				break;
 			}
 			pMName = &pMeth->sFunc.sName;
-			if( GenStateAbstractHookSatisfied(pClass,pMName) ){
-				continue; /* hook requirement met by a plain property (php) */
-			}
 			if( nListed > 0 ){
 				SyBlobAppend(&sMsg,", ",2);
 			}
@@ -3794,8 +3888,12 @@ PH7_PRIVATE sxu32 PH7_ClassAbstractGap(ph7_vm *pVm,ph7_class *pClass,SyBlob *pMs
 								pAnc = pAnc->pBase;
 							}
 							if( !fromIface ){
+								/* php attributes the origin to the class that DECLARED the
+								 * method, so keep climbing: breaking at the first ancestor
+								 * that HAS it named the nearest one, and
+								 * `abstract class G { abstract ga } abstract class P extends G`
+								 * reported `P::ga` where php reports `G::ga`. */
 								pOrigin = pWalk;
-								break;
 							}
 						}
 						pWalk = pWalk->pBase;
@@ -3838,6 +3936,7 @@ PH7_PRIVATE sxu32 PH7_ClassAbstractGap(ph7_vm *pVm,ph7_class *pClass,SyBlob *pMs
 			GenStateAppendAbstractMemberName(&sMsg,pMName);
 			nListed++;
 		}
+		SySetRelease(&aOrder);
 	}
 	SyBlobAppend(&sMsg,")",1);
 	SyBlobAppend(pMsg,SyBlobData(&sMsg),SyBlobLength(&sMsg));
