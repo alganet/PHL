@@ -1,6 +1,6 @@
 --- php
 +++ phl
-@@ -3,28 +3,81 @@
+@@ -3,28 +3,61 @@
  Runtime: @RUNTIME@
  Configuration: @ROOT@/phpunit.xml.dist
  
@@ -35,7 +35,7 @@
 +.......................................................SS...... 504 / 734 ( 68%)
 +.....................................SS........................ 567 / 734 ( 77%)
 +......EE.......F..........................W.................... 630 / 734 ( 85%)
-+.....................E..............................FF......... 693 / 734 ( 94%)
++.....................E......................................... 693 / 734 ( 94%)
 +.........................................                       734 / 734 (100%)
  
  Time: @TIME@
@@ -69,39 +69,19 @@
 +
 +--
 +
-+There were 3 failures:
++There was 1 failure:
 +
 +1) Monolog\LoggerTest::testReset
 +Failed asserting that two strings are not identical.
 +
 +@ROOT@/tests/Monolog/LoggerTest.php:762
 +
-+2) Monolog\UtilsTest::testGetClass with data set #1 ('class@anonymous', class@anonymous_3 Object ())
-+Failed asserting that two strings are identical.
-+--- Expected
-++++ Actual
-+@@ @@
-+-'class@anonymous'
-++'class@anonymous_3'
-+
-+@ROOT@/tests/Monolog/UtilsTest.php:21
-+
-+3) Monolog\UtilsTest::testGetClass with data set #2 ('stdClass@anonymous', class@anonymous_4 Object ())
-+Failed asserting that two strings are identical.
-+--- Expected
-++++ Actual
-+@@ @@
-+-'stdClass@anonymous'
-++'class@anonymous_4'
-+
-+@ROOT@/tests/Monolog/UtilsTest.php:21
-+
 +--
 +
  There were 33 skipped tests:
  
  1) Monolog\Formatter\LineFormatterTest::testDefFormatWithSoapFaultException
-@@ -126,6 +179,20 @@
+@@ -126,6 +159,20 @@
  33) Monolog\Processor\MercurialProcessorTest::testProcessor
  hg is missing
  
@@ -123,5 +103,5 @@
 +date_default_timezone_set(): Timezone ID 'CET' is invalid
 +
 +ERRORS!
-+Tests: 734, Assertions: 1621, Errors: 4, Failures: 3, Warnings: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
++Tests: 734, Assertions: 1621, Errors: 4, Failures: 1, Warnings: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
 +@exit@ 2
