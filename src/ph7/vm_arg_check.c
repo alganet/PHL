@@ -291,6 +291,9 @@ static const struct VmBuiltinArity {
 	/* Date family */
 	{ "date",                      1, 1 },
 	{ "date_default_timezone_set", 1, 1 },
+	{ "date_sun_info",             3, 0 },
+	{ "date_sunrise",              1, 1 },
+	{ "date_sunset",               1, 1 },
 	{ "gmdate",                    1, 1 },
 	{ "gmmktime",                  1, 1 },
 	{ "idate",                     1, 1 },
@@ -793,6 +796,9 @@ static const struct VmBuiltinSig {
 	{ "timezone_version_get", "", "string" },
 	{ "date_default_timezone_get", "", "string" },
 	{ "date_default_timezone_set", "string $timezoneId", "bool" },
+	{ "date_sun_info", "int $timestamp, float $latitude, float $longitude", "array" },
+	{ "date_sunrise", "int $timestamp, int $returnFormat = SUNFUNCS_RET_STRING, ?float $latitude = null, ?float $longitude = null, ?float $zenith = null, ?float $utcOffset = null", "string|int|float|false" },
+	{ "date_sunset", "int $timestamp, int $returnFormat = SUNFUNCS_RET_STRING, ?float $latitude = null, ?float $longitude = null, ?float $zenith = null, ?float $utcOffset = null", "string|int|float|false" },
 	{ "debug_backtrace", "int $options = DEBUG_BACKTRACE_PROVIDE_OBJECT, int $limit = 0", "array" },
 	{ "debug_print_backtrace", "int $options = 0, int $limit = 0", "void" },
 	{ "decbin", "int $num", "string" },
@@ -3439,6 +3445,10 @@ static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
  */
 static const ph7_deprecated_name aDeprecatedFunc[] = {
 	{ "curl_close",        "8.5, as it has no effect since PHP 8.0" },
+	/* Deprecated together in 8.1: both are the single-answer face of the one
+	 * call that returns all nine. */
+	{ "date_sunrise",      "8.1, use date_sun_info() instead" },
+	{ "date_sunset",       "8.1, use date_sun_info() instead" },
 	/* ext/zip's whole procedural half, deprecated together in 8.0. php names a
 	 * replacement for seven of the ten and none for the other three. */
 	{ "zip_open",          "8.0, use ZipArchive::open() instead" },

@@ -116,6 +116,7 @@ static const VmExtName aExtFunc[] = {
 	{"timezone_abbreviations_list",PH7_EXT_DATE}, {"timezone_version_get",PH7_EXT_DATE},
 	{"date_interval_create_from_date_string",PH7_EXT_DATE}, {"date_interval_format",PH7_EXT_DATE},
 	{"date_default_timezone_set",PH7_EXT_DATE}, {"date_default_timezone_get",PH7_EXT_DATE},
+	{"date_sun_info",PH7_EXT_DATE}, {"date_sunrise",PH7_EXT_DATE}, {"date_sunset",PH7_EXT_DATE},
 	/* pcre */
 	{"preg_match",PH7_EXT_PCRE}, {"preg_match_all",PH7_EXT_PCRE}, {"preg_replace",PH7_EXT_PCRE},
 	{"preg_filter",PH7_EXT_PCRE}, {"preg_replace_callback",PH7_EXT_PCRE},

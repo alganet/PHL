@@ -54,6 +54,13 @@ static const struct {
 	 * $scale argument from, and the one slot bcscale() reads and writes. */
 	{ "bcmath.scale",             "0",          VM_INI_ALL },
 	{ "date.timezone",            "UTC",        VM_INI_ALL },
+	/* The four the sun trio defaults from. php ships this point (Jerusalem)
+	 * and this zenith (the sun's centre 50 arcminutes below the horizon,
+	 * which is refraction plus its own radius) as the stock values. */
+	{ "date.default_latitude",    "31.7667",    VM_INI_ALL },
+	{ "date.default_longitude",   "35.2333",    VM_INI_ALL },
+	{ "date.sunrise_zenith",      "90.833333",  VM_INI_ALL },
+	{ "date.sunset_zenith",       "90.833333",  VM_INI_ALL },
 	{ "default_charset",          "UTF-8",      VM_INI_ALL },
 	/* php bounds a socket wait by this rather than waiting forever, and it is
 	 * where stream_socket_accept() takes its default timeout from. */

@@ -1578,6 +1578,27 @@ static void PH7_M_EULER_Const(ph7_value *pVal,void *pUserData)
 }
 #endif /* PH7_DISABLE_BUILTIN_MATH */
 /*
+ * SUNFUNCS_RET_TIMESTAMP / SUNFUNCS_RET_STRING / SUNFUNCS_RET_DOUBLE
+ *  The three shapes date_sunrise() and date_sunset() can answer in: an
+ *  absolute Unix timestamp, an "H:i" clock face, or the hour as a float.
+ *  STRING is the default, which is why it is 1 rather than 0.
+ */
+static void PH7_SUNFUNCS_RET_TIMESTAMP_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,0);
+}
+static void PH7_SUNFUNCS_RET_STRING_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,1);
+}
+static void PH7_SUNFUNCS_RET_DOUBLE_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,2);
+}
+/*
  * DATE_ATOM
  *  Expand Atom (example: 2005-08-15T15:52:01+00:00)
  */
@@ -3603,6 +3624,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"NAN",                  PH7_NAN_Const          },
 	{"INF",                  PH7_INF_Const          },
 #endif /* PH7_ENABLE_MATH_FUNC */
+	{"SUNFUNCS_RET_TIMESTAMP", PH7_SUNFUNCS_RET_TIMESTAMP_Const },
+	{"SUNFUNCS_RET_STRING",  PH7_SUNFUNCS_RET_STRING_Const },
+	{"SUNFUNCS_RET_DOUBLE",  PH7_SUNFUNCS_RET_DOUBLE_Const },
 	{"DATE_ATOM",            PH7_DATE_ATOM_Const    },
 	{"DATE_COOKIE",          PH7_DATE_COOKIE_Const  },
 	{"DATE_ISO8601",         PH7_DATE_ISO8601_Const },

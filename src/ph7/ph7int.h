@@ -6411,6 +6411,9 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_date_sun_info(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_date_sunrise(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_date_sunset(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin_mb.c (UTF-8-only mb_* family) */
 /* Shared ZPP helper: resolve an `int`-typed parameter with php's full contract
  * (null deprecation, lossy float / float-string deprecations, TypeErrors for

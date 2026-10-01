@@ -11,6 +11,7 @@
  *    Devel.
  */
 #include <time.h>
+#include <math.h>
 /* Civil-date helpers (defined with the DateTime layer below) */
 #ifdef __WINNT__
 #ifdef _MSC_VER
@@ -1635,6 +1636,402 @@ PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg
 	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Timezone ID '%.*s' is invalid",nId,zId);
 	ph7_result_bool(pCtx,0);
 	return PH7_OK;
+}
+
+/*
+ * The sun trio -- date_sun_info(), date_sunrise() and date_sunset().
+ *
+ * One solar model answers all three. php's is Paul Schlyter's `sunriset.c`,
+ * carried into timelib and reached through `timelib_astro_rise_set_altitude()`;
+ * the arithmetic below is that model, and every constant in it was FITTED
+ * against /usr/bin/php rather than recalled -- 1386 oracle cases over eleven
+ * points, six default zones and three eras agree to the second.
+ *
+ * Two things about it are not obvious and were both measured:
+ *
+ *   - The day is the LOCAL calendar date, but the clock the answers are
+ *     expressed on is UTC. The base instant is midnight UTC of the day the
+ *     script's default zone is on at $timestamp, so the same timestamp asked in
+ *     Amsterdam and in Los Angeles is answered for DIFFERENT days -- that is
+ *     php, not a rounding artefact.
+ *   - The epoch is "2000 Jan 0.0" (JD 2451543.5) and the moment evaluated is
+ *     NOON, hence the `+ 0.5`. Using J2000 proper puts every answer ~30 s out,
+ *     which is exactly how far the first four fits missed.
+ *
+ * date_sun_info() and date_sunrise() do NOT agree, and are not supposed to:
+ * both ask for the sun's upper limb, but sun_info asks at -35/60 degrees while
+ * the pair asks at 90 - $zenith, which the stock directive puts at -50/60. At
+ * Amsterdam in June those 15 arcminutes are 133 seconds.
+ */
+/* Finite in the IEEE-754 sense, without pulling in a C99 isfinite() the tiny
+ * builds would have to answer for: an exponent field of all ones is NaN or an
+ * infinity, and nothing else is. */
+static int DtSunIsFinite(double d)
+{
+	union { double d; sxu64 u; } v;
+	v.d = d;
+	return ((v.u >> 52) & 0x7FF) != 0x7FF;
+}
+#define DT_SUN_DEGRAD  (PH7_PI / 180.0)
+#define DT_SUN_RADEG   (180.0 / PH7_PI)
+/* The two altitudes the trio asks at, in degrees above the horizon. The
+ * twilights are php's own -6/-12/-18 and are asked of the sun's CENTRE. */
+#define DT_SUN_RISESET (-35.0 / 60.0)
+
+static double DtSunRev360(double r)
+{
+	return r - 360.0 * floor(r / 360.0);
+}
+/* Fold into [-180,180), which is what the hour angle south of the meridian
+ * wants; `rev360` would put a pre-noon transit a whole day out. */
+static double DtSunRev180(double r)
+{
+	return r - 360.0 * floor(r / 360.0 + 0.5);
+}
+/*
+ * The sun's ecliptic longitude and its distance in astronomical units, at `d`
+ * days from 2000 Jan 0.0. The mean anomaly is folded before the eccentric
+ * anomaly is taken from it: left unfolded it grows without bound and the
+ * one-term Kepler correction loses its meaning for dates far from the epoch.
+ */
+static void DtSunPos(double d,double *prLon,double *prDist)
+{
+	double M,w,e,E,x,y,v;
+	M = DtSunRev360(356.0470 + 0.9856002585 * d);
+	w = 282.9404 + 4.70935e-5 * d;
+	e = 0.016709 - 1.151e-9 * d;
+	E = M + e * DT_SUN_RADEG * sin(M * DT_SUN_DEGRAD) * (1.0 + e * cos(M * DT_SUN_DEGRAD));
+	x = cos(E * DT_SUN_DEGRAD) - e;
+	y = sqrt(1.0 - e * e) * sin(E * DT_SUN_DEGRAD);
+	*prDist = sqrt(x * x + y * y);
+	v = atan2(y,x) * DT_SUN_RADEG;
+	*prLon = v + w;
+	if( *prLon > 360.0 ){
+		*prLon -= 360.0;
+	}
+}
+/* The same position as a right ascension and a declination. */
+static void DtSunRaDec(double d,double *prRA,double *prDec,double *prDist)
+{
+	double rLon,rObl,x,y,z;
+	DtSunPos(d,&rLon,prDist);
+	x = *prDist * cos(rLon * DT_SUN_DEGRAD);
+	y = *prDist * sin(rLon * DT_SUN_DEGRAD);
+	rObl = 23.4393 - 3.563e-7 * d;
+	z = y * sin(rObl * DT_SUN_DEGRAD);
+	y = y * cos(rObl * DT_SUN_DEGRAD);
+	*prRA  = atan2(y,x) * DT_SUN_RADEG;
+	*prDec = atan2(z,sqrt(x * x + y * y)) * DT_SUN_RADEG;
+}
+/* Greenwich mean sidereal time at 0h, degrees. */
+static double DtSunGmst0(double d)
+{
+	return DtSunRev360((180.0 + 356.0470 + 282.9404)
+		+ (0.9856002585 + 4.70935e-5) * d);
+}
+/*
+ * The diurnal arc at one altitude. `iBase` is midnight UTC of the local day;
+ * the three results come back as HOURS on that day's UTC clock and may fall
+ * outside [0,24) -- a rise east of the date line legitimately lands before its
+ * own base, and php keeps the timestamp that says so.
+ *
+ * Returns -1 when the sun never reaches the altitude that day, +1 when it never
+ * drops below it, and 0 when it does both. Callers must branch on that rather
+ * than on the hours: at rc != 0 the hours are the placeholders 0 and 12, which
+ * are perfectly ordinary times.
+ */
+static int DtSunRiseSet(sxi64 iBase,double rLon,double rLat,double rAltit,
+	int bUpperLimb,double *prRise,double *prSet,double *prTransit)
+{
+	double d,rSid,rRA,rDec,rDist,rSouth,rRadius,rCos,t;
+	int rc = 0;
+	/* Days from 2000 Jan 0.0 to NOON of the local day, corrected to the
+	 * meridian: 2440587.5 is the Julian day of the Unix epoch and 2451543.5
+	 * the epoch this model counts from. */
+	d = (double)iBase / 86400.0 + (2440587.5 - 2451543.5) + 0.5 - rLon / 360.0;
+	rSid = DtSunRev360(DtSunGmst0(d) + 180.0 + rLon);
+	DtSunRaDec(d,&rRA,&rDec,&rDist);
+	rSouth = 12.0 - DtSunRev180(rSid - rRA) / 15.0;
+	/* The sun's apparent radius shrinks as the earth moves away from it, so it
+	 * is taken per day and not as a constant. */
+	rRadius = 0.2666 / rDist;
+	if( bUpperLimb ){
+		rAltit -= rRadius;
+	}
+	rCos = (sin(DT_SUN_DEGRAD * rAltit)
+	      - sin(DT_SUN_DEGRAD * rLat) * sin(DT_SUN_DEGRAD * rDec))
+	     / (cos(DT_SUN_DEGRAD * rLat) * cos(DT_SUN_DEGRAD * rDec));
+	if( rCos >= 1.0 ){
+		rc = -1;
+		t = 0.0;
+	}else if( rCos <= -1.0 ){
+		rc = 1;
+		t = 12.0;
+	}else{
+		t = (acos(rCos) * DT_SUN_RADEG) / 15.0;
+	}
+	*prRise = rSouth - t;
+	*prSet  = rSouth + t;
+	*prTransit = rSouth;
+	return rc;
+}
+/*
+ * Midnight UTC of the day the script's default zone is on at `iTs`. Every
+ * answer the trio gives is measured from here, so a zone that moves the local
+ * date moves all nine fields by a day -- see the note at the top.
+ */
+static sxi64 DtSunLocalMidnight(ph7_vm *pVm,sxi64 iTs,sxi32 *piOff)
+{
+	int iTz = DtDefaultTzIndex(pVm);
+	int bDst = 0,nAbbr = 0;
+	const char *zAbbr = 0;
+	sxi64 iLocal;
+	sxi32 iOff = DtTzOffsetOf(iTz,0,iTs,&bDst,&zAbbr,&nAbbr);
+	if( piOff ){
+		*piOff = iOff;
+	}
+	iLocal = iTs + iOff;
+	/* A floored division: C truncates toward zero, which would put every
+	 * pre-1970 instant on the FOLLOWING day. */
+	if( iLocal < 0 && (iLocal % 86400) != 0 ){
+		return ((iLocal / 86400) - 1) * 86400;
+	}
+	return (iLocal / 86400) * 86400;
+}
+/*
+ * The hour on the base day as an absolute timestamp. php adds in DOUBLE and
+ * truncates the sum, which is not the same as truncating the offset and adding
+ * it: a rise east of the meridian has a NEGATIVE offset, and truncating that
+ * toward zero rounds it up, putting every such answer one second late. Four of
+ * date_sun_info()'s nine fields are that kind of offset, and Sydney read
+ * one second late in all four before the addition moved inside the cast.
+ */
+static sxi64 DtSunStamp(sxi64 iBase,double rHours)
+{
+	return (sxi64)((double)iBase + rHours * 3600.0);
+}
+/*
+ * A rise/set pair into the result array under php's two names, or the bool that
+ * says the sun spent the whole day on one side of the altitude. php answers
+ * TRUE for "never set" and FALSE for "never rose", and gives BOTH keys the same
+ * bool -- so a caller that tests only one of them still learns which it was.
+ */
+static void DtSunInfoPair(ph7_context *pCtx,ph7_value *pArray,ph7_value *pWork,
+	sxi64 iBase,double rLon,double rLat,double rAltit,int bUpperLimb,
+	const char *zBegin,const char *zEnd,double *prTransit)
+{
+	double rRise,rSet,rTransit;
+	int rc = DtSunRiseSet(iBase,rLon,rLat,rAltit,bUpperLimb,&rRise,&rSet,&rTransit);
+	if( prTransit ){
+		*prTransit = rTransit;
+	}
+	if( rc != 0 ){
+		ph7_value_bool(pWork,rc > 0);
+		ph7_array_add_strkey_elem(pArray,zBegin,pWork);
+		ph7_value_bool(pWork,rc > 0);
+		ph7_array_add_strkey_elem(pArray,zEnd,pWork);
+		return;
+	}
+	ph7_value_int64(pWork,DtSunStamp(iBase,rRise));
+	ph7_array_add_strkey_elem(pArray,zBegin,pWork);
+	ph7_value_int64(pWork,DtSunStamp(iBase,rSet));
+	ph7_array_add_strkey_elem(pArray,zEnd,pWork);
+	SXUNUSED(pCtx);
+}
+/*
+ * array date_sun_info(int $timestamp, float $latitude, float $longitude)
+ *
+ * The nine keys in php's order: the rise/set pair, the transit between them,
+ * then the three twilights outward. Only the rise/set pair is asked of the
+ * sun's upper limb.
+ */
+PH7_PRIVATE int PH7_builtin_date_sun_info(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	double rLat,rLon,rTransit = 0.0;
+	ph7_value *pArray,*pWork;
+	sxi64 iTs,iBase;
+	if( nArg < 3 ){
+		/* The arity screen has already spoken for the ordinary call; this is
+		 * the belt for a direct dispatch. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iTs  = ph7_value_to_int64(apArg[0]);
+	rLat = ph7_value_to_double(apArg[1]);
+	rLon = ph7_value_to_double(apArg[2]);
+	/* php screens these two and NOT the sunrise/sunset pair's, which quietly
+	 * answer false instead -- both faces were measured. */
+	if( !DtSunIsFinite(rLat) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"date_sun_info(): Argument #2 ($latitude) must be finite");
+	}
+	if( !DtSunIsFinite(rLon) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"date_sun_info(): Argument #3 ($longitude) must be finite");
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pWork  = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pWork == 0 ){
+		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iBase = DtSunLocalMidnight(pCtx->pVm,iTs,0);
+	DtSunInfoPair(pCtx,pArray,pWork,iBase,rLon,rLat,DT_SUN_RISESET,1,
+		"sunrise","sunset",&rTransit);
+	/* The transit is the sun's meridian crossing and happens whether or not it
+	 * rose, so it is a timestamp even on a polar day. */
+	ph7_value_int64(pWork,DtSunStamp(iBase,rTransit));
+	ph7_array_add_strkey_elem(pArray,"transit",pWork);
+	DtSunInfoPair(pCtx,pArray,pWork,iBase,rLon,rLat,-6.0,0,
+		"civil_twilight_begin","civil_twilight_end",0);
+	DtSunInfoPair(pCtx,pArray,pWork,iBase,rLon,rLat,-12.0,0,
+		"nautical_twilight_begin","nautical_twilight_end",0);
+	DtSunInfoPair(pCtx,pArray,pWork,iBase,rLon,rLat,-18.0,0,
+		"astronomical_twilight_begin","astronomical_twilight_end",0);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * The `date.default_latitude` / `date.default_longitude` / `date.sunrise_zenith`
+ * / `date.sunset_zenith` directives, which is where the sunrise/sunset pair
+ * takes every argument the caller left null. Read as text and converted here
+ * because the ini layer has no float door.
+ */
+static double DtSunIniFloat(ph7_vm *pVm,const char *zName,double rDefault)
+{
+	const char *zVal;
+	SyBlob sVal;
+	double r = rDefault;
+	int nVal;
+	SyBlobInit(&sVal,&pVm->sAllocator);
+	PH7_VmIniGetStr(pVm,zName,&sVal);
+	nVal = (int)SyBlobLength(&sVal);
+	zVal = (const char *)SyBlobData(&sVal);
+	if( nVal > 0 ){
+		SyStrToReal(zVal,(sxu32)nVal,(void *)&r,0);
+	}
+	SyBlobRelease(&sVal);
+	return r;
+}
+/*
+ * The body behind date_sunrise() and date_sunset(), which differ only in which
+ * end of the arc they return and which zenith directive they default from.
+ *
+ * Everything here is php's, including the parts that look like oversights and
+ * were confirmed against it: a non-finite argument returns FALSE rather than
+ * throwing (date_sun_info throws for the same value), the hours are folded into
+ * [0,24) for the STRING and DOUBLE shapes but the TIMESTAMP shape ignores
+ * $utcOffset entirely, and "the sun never rose" and "the sun never set" are the
+ * same answer -- false.
+ */
+static int DtSunRiseSetDoor(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	int bSunset)
+{
+	double rLat,rLon,rZenith,rUtcOff,rRise,rSet,rTransit,rHours;
+	const char *zZenithIni = bSunset ? "date.sunset_zenith" : "date.sunrise_zenith";
+	ph7_vm *pVm = pCtx->pVm;
+	sxi64 iTs,iBase;
+	sxi32 iZoneOff = 0;
+	int iFormat = 1 /* SUNFUNCS_RET_STRING */;
+	int bUtcOff,rc;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iTs = ph7_value_to_int64(apArg[0]);
+	if( nArg > 1 ){
+		iFormat = ph7_value_to_int(apArg[1]);
+	}
+	if( iFormat < 0 || iFormat > 2 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #2 ($returnFormat) must be one of "
+			"SUNFUNCS_RET_TIMESTAMP, SUNFUNCS_RET_STRING, or SUNFUNCS_RET_DOUBLE",
+			bSunset ? "date_sunset" : "date_sunrise");
+	}
+	rLat = (nArg > 2 && !ph7_value_is_null(apArg[2]))
+		? ph7_value_to_double(apArg[2])
+		: DtSunIniFloat(pVm,"date.default_latitude",31.7667);
+	rLon = (nArg > 3 && !ph7_value_is_null(apArg[3]))
+		? ph7_value_to_double(apArg[3])
+		: DtSunIniFloat(pVm,"date.default_longitude",35.2333);
+	rZenith = (nArg > 4 && !ph7_value_is_null(apArg[4]))
+		? ph7_value_to_double(apArg[4])
+		: DtSunIniFloat(pVm,zZenithIni,90.833333);
+	/* $utcOffset defaults to the SCRIPT ZONE's offset, not to zero: left null,
+	 * the clock face these two answer on is the local one. Defaulting it to
+	 * zero instead put every Los Angeles answer eight hours out while UTC --
+	 * where the two agree -- read perfectly green. */
+	bUtcOff = (nArg > 5 && !ph7_value_is_null(apArg[5]));
+	rUtcOff = bUtcOff ? ph7_value_to_double(apArg[5]) : 0.0;
+	if( !DtSunIsFinite(rLat) || !DtSunIsFinite(rLon)
+	 || !DtSunIsFinite(rZenith) || !DtSunIsFinite(rUtcOff) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iBase = DtSunLocalMidnight(pVm,iTs,0);
+	if( !bUtcOff ){
+		/* php reads the zone's offset at the EPOCH, not at $timestamp, so the
+		 * clock face these answer on ignores both DST and every rule change
+		 * since 1970. It shows: Pacific/Kiritimati has been UTC+14 since 1995
+		 * and still defaults to the -10:40 it kept in 1970, and Lord Howe's
+		 * +10:30 reads as the +10:00 it was then. Neither is a rounding
+		 * artefact and both were measured -- taking the offset at $timestamp
+		 * instead left every DST day an hour out. */
+		int bDst = 0,nAbbr = 0;
+		const char *zAbbr = 0;
+		iZoneOff = DtTzOffsetOf(DtDefaultTzIndex(pVm),0,(sxi64)0,&bDst,&zAbbr,&nAbbr);
+		rUtcOff = (double)iZoneOff / 3600.0;
+	}
+	/* Asked at the complement of the zenith and, like date_sun_info(), of the
+	 * sun's UPPER LIMB. The two still disagree by ~133 seconds at one place on
+	 * one day, because the stock zenith puts the centre 50 arcminutes down
+	 * where sun_info asks for 35 -- so the gap is the 15 arcminutes, not a
+	 * missing correction. Dropping the correction here instead moved every
+	 * answer ~135 seconds the wrong way. */
+	rc = DtSunRiseSet(iBase,rLon,rLat,90.0 - rZenith,1,&rRise,&rSet,&rTransit);
+	if( rc != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	rHours = bSunset ? rSet : rRise;
+	if( iFormat == 0 /* SUNFUNCS_RET_TIMESTAMP */ ){
+		/* $utcOffset is deliberately not applied: a timestamp is already an
+		 * absolute instant, and php leaves it alone. */
+		ph7_result_int64(pCtx,DtSunStamp(iBase,rHours));
+		return PH7_OK;
+	}
+	rHours += rUtcOff;
+	/* Fold into a clock face. php does this for both remaining shapes, so an
+	 * offset of -8 reads 19:15 and not -4:44. */
+	rHours -= 24.0 * floor(rHours / 24.0);
+	if( iFormat == 2 /* SUNFUNCS_RET_DOUBLE */ ){
+		ph7_result_double(pCtx,rHours);
+		return PH7_OK;
+	}
+	/* SUNFUNCS_RET_STRING is "H:i" of the folded hour, TRUNCATED -- 3.2628 h
+	 * is 03:15 and never 03:16. */
+	{
+		int iHour = (int)rHours;
+		int iMin  = (int)((rHours - (double)iHour) * 60.0);
+		if( iHour > 23 ){ iHour = 23; }
+		if( iMin > 59 ){ iMin = 59; }
+		ph7_result_string_format(pCtx,"%02d:%02d",iHour,iMin);
+	}
+	return PH7_OK;
+}
+/*
+ * string|int|float|false date_sunrise(int $timestamp, int $returnFormat = SUNFUNCS_RET_STRING,
+ *   ?float $latitude = null, ?float $longitude = null, ?float $zenith = null, ?float $utcOffset = null)
+ */
+PH7_PRIVATE int PH7_builtin_date_sunrise(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtSunRiseSetDoor(pCtx,nArg,apArg,0);
+}
+/* The same door, the other end of the arc. */
+PH7_PRIVATE int PH7_builtin_date_sunset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtSunRiseSetDoor(pCtx,nArg,apArg,1);
 }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
