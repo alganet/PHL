@@ -779,7 +779,7 @@
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -78,6 +755,2236 @@
+@@ -78,6 +755,2220 @@
  @ROOT@/src/TextUI/TestRunner.php:64
  @ROOT@/src/TextUI/Application.php:229
  
@@ -2878,19 +2878,11 @@
 + Runtime:       PHP 8.5.0
 +
 +-Fatal error: Premature end of PHPUnit's PHP process. Use display_errors=On to see the error message.
-++E                                                                   1 / 1 (100%)
+++.                                                                   1 / 1 (100%)
 ++
 ++Time: @TIME@, Memory: @MEM@
 ++
-++There was 1 error:
-++
-++1) PHPUnit\TestFixture\IssueTest6294::testOne
-++Error: Failed opening required 'A.php' (include_path='.')
-++
-++@ROOT@/tests/end-to-end/regression/6294/IssueTest6294.php:18
-++
-++ERRORS!
-++Tests: 1, Assertions: 0, Errors: 1, Warnings: 1.
+++OK (1 test, 1 assertion)
 +
 +@ROOT@/tests/end-to-end/regression/6294-display-errors-off.phpt:18
 +@ROOT@/src/Framework/TestSuite.php:374
@@ -2906,20 +2898,12 @@
 +
 + Runtime:       PHP 8.5.0
 +
-++E                                                                   1 / 1 (100%)
+++.                                                                   1 / 1 (100%)
 +
 +-Fatal error: Access level to PHPUnit\TestFixture\B::someFunction() must be public (as in class PHPUnit\TestFixture\A) in %sB.php on line %i%A
 ++Time: @TIME@, Memory: @MEM@
 ++
-++There was 1 error:
-++
-++1) PHPUnit\TestFixture\IssueTest6294::testOne
-++Error: Failed opening required 'A.php' (include_path='.')
-++
-++@ROOT@/tests/end-to-end/regression/6294/IssueTest6294.php:18
-++
-++ERRORS!
-++Tests: 1, Assertions: 0, Errors: 1, Warnings: 1.
+++OK (1 test, 1 assertion)
 +
 +@ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt:1
 +@ROOT@/src/Framework/TestSuite.php:374

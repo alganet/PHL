@@ -829,8 +829,20 @@ PH7_PRIVATE void PH7_VmSetIncludePath(ph7_vm *pVm,const char *zPath,sxu32 nByte)
  *
  *   cd / && phl /srv/app/main.php   with   include 'lib.php'   next to main.php
  *
- * failed on this engine and ran on php. aFiles is the include-nesting stack,
- * so its top is the innermost executing file -- which is what php uses too.
+ * failed on this engine and ran on php.
+ *
+ * WHICH file is executing is the whole question, and the include-nesting stack
+ * is the wrong answer to it. php reads the running op array's own filename
+ * (`zend_get_executed_filename_ex()`), which is the file the include statement
+ * is WRITTEN in -- so a method that says `require 'A.php'` looks beside the file
+ * that declared the method. The include stack only agrees with that while a
+ * unit's top-level code is running: it is popped as soon as an include returns,
+ * so by the time the library's own function is CALLED the stack's top is the
+ * entry script, and the fallback searched the caller's directory instead of the
+ * library's. That is exactly the shape a composer package has -- one bootstrap
+ * file, functions that pull siblings in by bare name -- and it is why a fixture
+ * requiring its own sibling failed here. PH7_VmExecutingUnitFile is the engine's
+ * answer to php's question, and every diagnostic's location already uses it.
  *
  * Answers 0 when that name has no directory part at all (`-r`'s "Command line
  * code"). php's own arithmetic degenerates to the bare, cwd-relative name
@@ -838,7 +850,7 @@ PH7_PRIVATE void PH7_VmSetIncludePath(ph7_vm *pVm,const char *zPath,sxu32 nByte)
  */
 PH7_PRIVATE int PH7_VmExecutingDir(ph7_vm *pVm,SyString *pOut)
 {
-	SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	SyString *pFile = PH7_VmExecutingUnitFile(&(*pVm));
 	sxu32 n;
 	if( pFile == 0 || pFile->nByte < 2 ){
 		return 0;
