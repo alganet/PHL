@@ -5442,13 +5442,50 @@ static int VmIniBool(const char *zValue,sxu32 nValue)
  * a separate syntax error over the leftover text (see VmIniEvalValue).
  */
 #define VM_INI_EXPR_MAX_DEPTH 32
+/*
+ * What php's ini parser would report over one value, in the pieces its
+ * ini_error() prints: cChar is the byte it could not take (0 => the value ran
+ * out, which php names END_OF_LINE and dates to the next line), and bExpect
+ * adds the token list it appends when the stop happened inside an unclosed
+ * '('. bSet is the whole question "was this value a syntax error", which is
+ * what decides both the warning and php's abort of the rest of the source.
+ */
+typedef struct VmIniBad VmIniBad;
+struct VmIniBad {
+	int bSet;
+	int cChar;
+	int bExpect;
+};
 typedef struct VmIniExpr VmIniExpr;
 struct VmIniExpr {
 	ph7_vm *pVm;
 	const char *zCur;
 	const char *zEnd;
 	int bErr;            /* a token php's scanner never completes: an unterminated quote */
+	/* Where a failed parse stopped, in the two pieces php's ini_error() prints.
+	 * cStop is the byte the grammar could not take, or 0 when the value simply
+	 * ran out -- php calls that one END_OF_LINE and dates it to the line AFTER
+	 * the directive, because its scanner has already eaten the newline. bExpect
+	 * is set at the one place php's parser has a complete expression in hand and
+	 * an unclosed '(' behind it, which is the whole of when it appends its
+	 * "expecting '^' or '|' or '&' or ')'" list -- `(E_ALL` and `(1~2)` both get
+	 * it, `~(` and `1 ^` do not. Only the FIRST stop is kept: the recursive
+	 * descent unwinds through every caller and php reports one error per parse. */
+	int bStop;
+	int cStop;
+	int bExpect;
 };
+static void VmIniExprStop(VmIniExpr *p,int cStop,int bExpect)
+{
+	if( p->bStop ){
+		return;
+	}
+	p->bStop = 1;
+	/* `;` opens a comment rather than a token, so a value that stops there ran
+	 * out as far as the grammar is concerned. */
+	p->cStop = cStop == ';' ? 0 : cStop;
+	p->bExpect = bExpect;
+}
 static void VmIniExprSpace(VmIniExpr *p)
 {
 	while( p->zCur < p->zEnd && (p->zCur[0] == ' ' || p->zCur[0] == '\t') ){
@@ -5603,6 +5640,7 @@ static int VmIniExprUnary(VmIniExpr *p,SyBlob *pOut,int nDepth)
 	}
 	VmIniExprSpace(p);
 	if( p->zCur >= p->zEnd ){
+		VmIniExprStop(p,0,0);
 		return 0;
 	}
 	c = p->zCur[0];
@@ -5622,12 +5660,19 @@ static int VmIniExprUnary(VmIniExpr *p,SyBlob *pOut,int nDepth)
 		}
 		VmIniExprSpace(p);
 		if( p->zCur >= p->zEnd || p->zCur[0] != ')' ){
+			/* A complete expression with an unclosed '(' behind it: php's parser
+			 * can still take an operator or the ')', and says so. */
+			VmIniExprStop(p,p->zCur >= p->zEnd ? 0 : (unsigned char)p->zCur[0],1);
 			return 0;
 		}
 		p->zCur++;
 		return 1;
 	}
-	return VmIniExprOperand(p,pOut);
+	if( !VmIniExprOperand(p,pOut) ){
+		VmIniExprStop(p,(unsigned char)p->zCur[0],0);
+		return 0;
+	}
+	return 1;
 }
 static int VmIniExprEval(VmIniExpr *p,SyBlob *pOut,int nDepth)
 {
@@ -5673,14 +5718,15 @@ static int VmIniExprEval(VmIniExpr *p,SyBlob *pOut,int nDepth)
  * warns about the ')' -- the value most be committed even though the whole
  * directive text was not clean.
  *
- * *pcBad is left 0 on a clean value and set to the leftover byte when one
- * VmIniBadTokenChar() recognizes stands where php would separately warn
- * about it (the caller prints php's "syntax error, unexpected '<c>'" over
- * it; see VmSetIniEntry). A dangling construct that made this function
- * return FALSE has no leftover of that shape -- nothing committed, nothing
- * to point at yet -- and leaves *pcBad untouched.
+ * *pBad is what php would REPORT over this value, and it is filled on both
+ * paths: a leftover byte over a value that committed, and, when the parse
+ * failed outright, wherever the expression walker stopped. Its bSet is the
+ * question "was this a syntax error at all" -- the caller prints php's
+ * warning over it AND stops feeding the rest of that ini source, which php
+ * does because it hands each source to its parser whole (see
+ * VmSetIniEntry and PH7_VmApplyEngineIni).
  */
-static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,int *pcBad)
+static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,VmIniBad *pBad)
 {
 	static const struct {
 		const char *zWord;
@@ -5693,7 +5739,9 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,i
 	};
 	VmIniExpr sIn;
 	sxu32 i;
-	*pcBad = 0;
+	pBad->bSet = 0;
+	pBad->cChar = 0;
+	pBad->bExpect = 0;
 	SyBlobReset(pOut);
 	while( nVal > 0 && (zVal[0] == ' ' || zVal[0] == '\t') ){
 		zVal++;
@@ -5723,7 +5771,8 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,i
 		 || c == '!' || c == '"' || c == '\'' || c == '$' || c == ';'
 		 || c == ' ' || c == '\t' ){
 			if( c > 0 && VmIniBadTokenChar(c) ){
-				*pcBad = c;
+				pBad->bSet = 1;
+				pBad->cChar = c;
 			}
 			SyBlobAppend(pOut,aWord[i].zText,(sxu32)SyStrlen(aWord[i].zText));
 			return 1;
@@ -5733,14 +5782,21 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,i
 	sIn.zCur = zVal;
 	sIn.zEnd = &zVal[nVal];
 	sIn.bErr = 0;
+	sIn.bStop = 0;
+	sIn.cStop = 0;
+	sIn.bExpect = 0;
 	if( !VmIniExprEval(&sIn,pOut,0) ){
+		pBad->bSet = 1;
+		pBad->cChar = sIn.cStop;
+		pBad->bExpect = sIn.bExpect;
 		return 0;
 	}
 	/* Whatever is left -- `)`, `1&&2`'s second `&`, an unresolved `~` -- is a
 	 * separate token the grammar cannot take from here, but the expr already
 	 * reduced and its value already stands. */
 	if( sIn.zCur < sIn.zEnd && VmIniBadTokenChar((unsigned char)sIn.zCur[0]) ){
-		*pcBad = (unsigned char)sIn.zCur[0];
+		pBad->bSet = 1;
+		pBad->cChar = (unsigned char)sIn.zCur[0];
 	}
 	return 1;
 }
@@ -5755,7 +5811,7 @@ static int VmIniEvalValue(ph7_vm *pVm,const char *zVal,sxu32 nVal,SyBlob *pOut,i
  * a file for this entry (an embedder that does not pass one gets nothing,
  * same as it gets nothing from any other early diagnostic).
  */
-static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,int cBad)
+static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,const VmIniBad *pBad)
 {
 	SyBlob sMsg;
 	ProcConsumer xErr = pVm->pEngine->xConf.xErr;
@@ -5763,8 +5819,22 @@ static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,int cBad)
 		return;
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	SyBlobFormat(&sMsg,"PHP:  syntax error, unexpected '%c' in %.*s on line %u\n",
-		cBad,(int)pFile->nByte,pFile->zString,(unsigned)nLine);
+	SyBlobAppend(&sMsg,"PHP:  syntax error, unexpected ",sizeof("PHP:  syntax error, unexpected ")-1);
+	if( pBad->cChar != 0 ){
+		SyBlobFormat(&sMsg,"'%c'",pBad->cChar);
+	}else{
+		/* A value that ran out: php's scanner has already taken the newline, so
+		 * its token is END_OF_LINE and it is dated to the line after the one the
+		 * directive was written on. */
+		SyBlobAppend(&sMsg,"END_OF_LINE",sizeof("END_OF_LINE")-1);
+		nLine++;
+	}
+	if( pBad->bExpect ){
+		SyBlobAppend(&sMsg,", expecting '^' or '|' or '&' or ')'",
+			sizeof(", expecting '^' or '|' or '&' or ')'")-1);
+	}
+	SyBlobFormat(&sMsg," in %.*s on line %u\n",
+		(int)pFile->nByte,pFile->zString,(unsigned)nLine);
 	xErr(SyBlobData(&sMsg),SyBlobLength(&sMsg),pVm->pEngine->xConf.pErrData);
 	SyBlobRelease(&sMsg);
 }
@@ -5778,16 +5848,19 @@ static void VmIniSyntaxWarning(ph7_vm *pVm,SyString *pFile,sxu32 nLine,int cBad)
  * silent, matching an embedder that never supplied one.
  */
 static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
-	const char *zFile,sxu32 nLine)
+	const char *zFile,sxu32 nLine,int *pbBad)
 {
 	sxi32 rc = SXRET_OK;
 	VmIniEntry sEntry;
 	SyBlob sEval;
 	SyString sFile;
 	int bLevel = 0;
-	int cBad = 0;
+	VmIniBad sBad;
 	char *zDupN,*zDupV;
 	sxu32 nName,nValue;
+	if( pbBad ){
+		*pbBad = 0;
+	}
 	if( SX_EMPTY_STR(zName) ){
 		return SXERR_EMPTY;
 	}
@@ -5805,15 +5878,24 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue,
 	 * `E_ALL & ~E_NOTICE` and "1" for `On` whatever the name in front of it, and
 	 * ini_restore() then has that text to re-apply rather than an expression the
 	 * runtime setter would read as 0. */
-	if( !VmIniEvalValue(pVm,zValue,nValue,&sEval,&cBad) ){
+	if( !VmIniEvalValue(pVm,zValue,nValue,&sEval,&sBad) ){
 		/* php's ini parser calls this a syntax error, and a refused directive
 		 * never lands at all -- its default stands, rather than the raw text or
-		 * a zero standing in for it. */
+		 * a zero standing in for it. It is still an error it REPORTS, and one
+		 * that stops the rest of the source: `precision = 1 & )` leaves
+		 * precision alone, warns, and takes every later line down with it. */
+		VmIniSyntaxWarning(pVm,&sFile,nLine,&sBad);
+		if( pbBad ){
+			*pbBad = 1;
+		}
 		SyBlobRelease(&sEval);
 		return SXRET_OK;
 	}
-	if( cBad != 0 ){
-		VmIniSyntaxWarning(pVm,&sFile,nLine,cBad);
+	if( sBad.bSet ){
+		VmIniSyntaxWarning(pVm,&sFile,nLine,&sBad);
+		if( pbBad ){
+			*pbBad = 1;
+		}
 	}
 	nValue = SyBlobLength(&sEval);
 	zValue = nValue > 0 ? (const char *)SyBlobData(&sEval) : "";
@@ -5940,16 +6022,36 @@ PH7_PRIVATE void PH7_VmApplyEngineIni(ph7_vm *pVm)
 {
 	ph7_conf *pConf = &pVm->pEngine->xConf;
 	VmIniEntry *aEntry;
+	SyString sSkip;
 	sxu32 i;
 	if( pConf->bErrReport ){
 		pVm->bErrReport = 1;
 		pVm->iErrMask = PH7_E_ALL_MASK;
 		pVm->bErrMaskSet = 1;
 	}
+	/* php hands each ini SOURCE to its parser whole -- the php.ini file is one
+	 * parse and the CLI's joined -d buffer is another -- so a syntax error does
+	 * not just drop its own directive: bison stops, and every directive still to
+	 * come in that source is never seen. A bad php.ini line therefore takes the
+	 * lines under it down while leaving -d alone, and a bad -d takes the -d's
+	 * behind it while leaving php.ini alone. The queue here is per directive, so
+	 * the source is the file it came from; an entry with no file is an embedder
+	 * handing over one directive at a time rather than a parsed source, and
+	 * nothing follows it into the skip. */
+	sSkip.zString = 0;
+	sSkip.nByte = 0;
 	aEntry = (VmIniEntry *)SySetBasePtr(&pConf->aIniEntry);
 	for( i = 0 ; i < SySetUsed(&pConf->aIniEntry) ; ++i ){
+		int bBad = 0;
+		if( sSkip.nByte > 0 && aEntry[i].sFile.nByte == sSkip.nByte
+		 && SyMemcmp(aEntry[i].sFile.zString,sSkip.zString,sSkip.nByte) == 0 ){
+			continue;
+		}
 		VmSetIniEntry(pVm,aEntry[i].sName.zString,aEntry[i].sValue.zString,
-			aEntry[i].sFile.zString,aEntry[i].nLine);
+			aEntry[i].sFile.zString,aEntry[i].nLine,&bBad);
+		if( bBad && aEntry[i].sFile.nByte > 0 ){
+			sSkip = aEntry[i].sFile;
+		}
 	}
 }
 /*
@@ -6265,7 +6367,7 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		const char *zValue = va_arg(ap,const char *);
 		const char *zFile = va_arg(ap,const char *);
 		unsigned int nLine = va_arg(ap,unsigned int);
-		rc = VmSetIniEntry(pVm,zName,zValue,zFile,(sxu32)nLine);
+		rc = VmSetIniEntry(pVm,zName,zValue,zFile,(sxu32)nLine,0);
 		break;
 								  }
 	case PH7_VM_CONFIG_ERR_LOG_HANDLER: {
