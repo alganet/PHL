@@ -2932,6 +2932,66 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * php's copy() stats BOTH ends before it opens either one, and the three
+ * refusals that screen comes to are the reason `copy($f,$f)` does not destroy
+ * $f: the destination is opened "wb", so reaching the open at all truncates the
+ * source to nothing and copies the empty result over itself.
+ *
+ * The screen is php_copy_file_ctx()'s own, in its order: a source that stats as
+ * a DIRECTORY, then a destination that does, then the two naming ONE file --
+ * which php decides on st_dev/st_ino, not on the spelling, so a hard link, a
+ * symlink to the source and `./f` against `f` are all refused. The identity
+ * refusal is SILENT; only the two directory arms say anything.
+ *
+ * A stat that fails is php's `safe_to_copy` -- a destination that does not exist
+ * yet is the ordinary case -- and so is a wrapper with no url_stat behind it
+ * (php://, data://, http://), which is what restricting the screen to the
+ * platform file device answers here.
+ */
+static int CopyIsPlainFileDevice(const ph7_io_stream *pStream)
+{
+#ifdef __WINNT__
+	return pStream == &sWinFileStream;
+#elif defined(__UNIXES__)
+	return pStream == &sUnixFileStream;
+#else
+	SXUNUSED(pStream);
+	return 0;
+#endif
+}
+/*
+ * The three fields the screen above asks for, or 0 when this end is not
+ * statable. aOut receives dev, ino and mode in that order.
+ */
+static int CopyStatPath(ph7_context *pCtx,const ph7_io_stream *pStream,
+	const char *zPath,ph7_int64 *aOut)
+{
+	static const char * const azField[] = { "dev","ino","mode" };
+	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+	ph7_value *pArray,*pWorker;
+	sxu32 i;
+	if( zPath == 0 || zPath[0] == 0 || !CopyIsPlainFileDevice(pStream)
+	 || pVfs == 0 || pVfs->xStat == 0 ){
+		return 0;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pWorker = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pWorker == 0 ){
+		return 0;
+	}
+	if( pVfs->xStat(zPath,pArray,pWorker) != PH7_OK ){
+		return 0;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){
+		ph7_value *pField = ph7_array_fetch(pArray,azField[i],-1);
+		if( pField == 0 ){
+			return 0;
+		}
+		aOut[i] = ph7_value_to_int64(pField);
+	}
+	return 1;
+}
+/*
  * bool copy(string $source,string $dest[,resource $context ] )
  *  Makes a copy of the file source to dest.
  * Parameters
@@ -2947,13 +3007,13 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pSin,*pSout;
-	const char *zFile;
+	const ph7_io_stream *pSin,*pSout,*pDest = 0;
+	const char *zFile,*zDest = 0;
 	char zBuf[8192];
 	void *pIn,*pOut;
 	phl_stream_ctx *pCtxRes;
 	ph7_int64 n;
-	int nLen,bThrew = 0;
+	int nLen,nDest = 0,bThrew = 0;
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1])){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a source and a destination path");
@@ -2964,6 +3024,14 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zFile = ph7_value_to_string(apArg[0],&nLen);
 	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){
 		return PH7_OK;
+	}
+	/* The destination's device is resolved HERE, ahead of the source's, purely
+	 * so the source's is resolved LAST: resolving one records the URI a failed
+	 * open names, so peeking at the destination after the source would make the
+	 * source's own open warning name the destination. */
+	zDest = ph7_value_to_string(apArg[1],&nDest);
+	if( nDest > 0 ){
+		pDest = PH7_VmGetStreamDevice(pCtx->pVm,&zDest,nDest);
 	}
 	/* Point to the target IO stream device */
 	pSin = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
@@ -2978,6 +3046,30 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
 	if( bThrew ){
 		return PH7_OK;
+	}
+	/* php's screen over the two paths, before either is opened. */
+	{
+	ph7_int64 aSrc[3],aDst[3];
+	int bSrc = CopyStatPath(pCtx,pSin,zFile,aSrc);
+	int bDst = pDest ? CopyStatPath(pCtx,pDest,zDest,aDst) : 0;
+	if( bSrc && (aSrc[2] & PH7_S_IFMT) == PH7_S_IFDIR ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
+			"The first argument to copy() function cannot be a directory");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( bDst && (aDst[2] & PH7_S_IFMT) == PH7_S_IFDIR ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
+			"The second argument to copy() function cannot be a directory");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( bSrc && bDst && aSrc[1] != 0 && aDst[1] != 0
+	 && aSrc[0] == aDst[0] && aSrc[1] == aDst[1] ){
+		/* One file under two names. php says nothing and answers FALSE. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	}
 	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to open the source file in a read-only mode */
