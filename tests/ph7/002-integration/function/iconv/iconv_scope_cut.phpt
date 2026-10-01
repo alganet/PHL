@@ -15,15 +15,27 @@ if (function_exists('zend_version')) {
  * knows is the platform's answer -- glibc has hundreds, musl has fewer, and
  * Windows' libiconv has a different set again. PHL converts with its own code
  * so a Windows build answers what a POSIX one does, and the scope cut fixes
- * that set at the three mb_ already models: UTF-8, ISO-8859-1 and US-ASCII.
- * Every other php-VALID name gets php's own "Wrong encoding" warning, which is
- * what php itself answers for a name its platform does not have. See the _zend
- * half for what glibc converts. */
+ * that set at UTF-8, ISO-8859-1, US-ASCII and ISO-2022-JP. Every other
+ * php-VALID name gets php's own "Wrong encoding" warning, which is what php
+ * itself answers for a name its platform does not have. See the _zend half for
+ * what glibc converts.
+ *
+ * ISO-2022-JP-2 and -3 are among them: glibc reaches those two names with
+ * SEPARATE converters over wider set repertoires -- JIS X 0212, GB 2312, KS X
+ * 1001 -- and answering them with the narrower one would convert a document it
+ * cannot actually hold. */
 set_error_handler(function ($no, $str) { echo "  W: $str\n"; return true; });
 foreach (["SJIS", "EUC-JP", "KOI8-R", "WINDOWS-1252", "ISO-8859-15", "UTF-16LE",
-          "UCS-2", "CP850", "MACINTOSH", "IBM903"] as $name) {
+          "UCS-2", "CP850", "MACINTOSH", "IBM903", "ISO-2022-JP-2",
+          "ISO-2022-JP-3"] as $name) {
     echo str_pad($name, 14), " ", var_export(iconv("UTF-8", $name, "abc"), true), "\n";
 }
+/* And the transliteration table is PHL's own, not glibc's decomposition data:
+ * glibc reaches a halfwidth katakana's fullwidth form through the compatibility
+ * decomposition it carries for every character, and //TRANSLIT here answers the
+ * '?' it answers for anything else the target cannot hold. See the _zend
+ * half. */
+echo bin2hex(iconv("UTF-8", "ISO-2022-JP//TRANSLIT", "\u{ff71}")), "\n";
 restore_error_handler();
 /* And what the extension says it IS. php reports the C library behind it
  * (`glibc`, its version); PHL reports itself and its own version, because a
@@ -66,6 +78,11 @@ MACINTOSH        W: iconv(): Wrong encoding, conversion from "UTF-8" to "MACINTO
 false
 IBM903           W: iconv(): Wrong encoding, conversion from "UTF-8" to "IBM903" is not allowed
 false
+ISO-2022-JP-2    W: iconv(): Wrong encoding, conversion from "UTF-8" to "ISO-2022-JP-2" is not allowed
+false
+ISO-2022-JP-3    W: iconv(): Wrong encoding, conversion from "UTF-8" to "ISO-2022-JP-3" is not allowed
+false
+3f
 string(3) "PHL"
 bool(false)
 int(1)

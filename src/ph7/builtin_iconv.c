@@ -65,9 +65,31 @@
 
 /* --- Encodings --------------------------------------------------------- */
 
-#define ICV_UTF8    0
-#define ICV_LATIN1  1
-#define ICV_ASCII   2
+#define ICV_UTF8       0
+#define ICV_LATIN1     1
+#define ICV_ASCII      2
+#define ICV_ISO2022JP  3
+
+/*
+ * ISO-2022-JP is the one code set here that is not a function of the bytes in
+ * front of the converter: an escape sequence shifts which set the following
+ * bytes are read in, and it stays shifted until the next one. So a decode may
+ * consume bytes and hand back NO character, and an encode has to know which
+ * set it is already in and return to ASCII before the string ends.
+ *
+ * Only the four shifts glibc's plain ISO-2022-JP converter answers are
+ * recognised -- ASCII, JIS X 0201 Roman, and the two spellings of JIS X 0208.
+ * ESC ( I (halfwidth katakana) is NOT one of them, which is why a halfwidth
+ * katakana is unconvertible in this direction, and every other escape is left
+ * to the pass-through arm below rather than refused.
+ */
+#define ICV_G0_ASCII  0
+#define ICV_G0_ROMAN  1
+#define ICV_G0_KANJI  2
+
+/* A decode that consumed a shift and produced nothing. Above every code point
+ * IcvDecode() can answer -- the six-byte UTF-8 form tops out at 0x7FFFFFFF. */
+#define ICV_NOCHAR    0xFFFFFFFF
 
 /*
  * php's own cap on an encoding NAME, checked before the name is looked at:
@@ -77,7 +99,7 @@
 #define ICV_CSNMAXLEN 64
 
 /*
- * The names glibc registers for the three code sets PHL models, minus its
+ * The names glibc registers for the code sets PHL models, minus its
  * numeric OSF/IBM aliases (`OSF00010020`, `IBM903`…), which are recorded as
  * refused rather than implemented. Compared after ICV normalisation, so the
  * spelling here is the canonical upper-case one.
@@ -112,7 +134,15 @@ static const struct IcvEncName {
 	{ "ISO-IR-6",         ICV_ASCII  },
 	{ "CP367",            ICV_ASCII  },
 	{ "IBM367",           ICV_ASCII  },
-	{ "CSASCII",          ICV_ASCII  }
+	{ "CSASCII",          ICV_ASCII  },
+#ifdef PH7_ENABLE_JIS
+	/* glibc registers exactly these three for the plain converter. Its
+	 * ISO-2022-JP-2 and -3 are separate converters with wider set repertoires,
+	 * so they stay unknown here rather than being answered by a narrower one. */
+	{ "ISO-2022-JP",      ICV_ISO2022JP },
+	{ "ISO2022JP",        ICV_ISO2022JP },
+	{ "CSISO2022JP",      ICV_ISO2022JP }
+#endif
 };
 
 /* Is c one of the characters the name normaliser KEEPS? */
@@ -305,8 +335,13 @@ static const icv_translit * IcvTranslitFind(const icv_translit *aTab,int nTab,sx
  * sequence earns. The UTF-8 accepted is the original six-byte encoding, minus
  * overlongs, the surrogate range and the C0/C1/FE/FF lead bytes -- glibc's set,
  * not Unicode's.
+ *
+ * *pG0 is the shift state ISO-2022-JP reads in and carries forward; every other
+ * code set leaves it alone. A shift consumes its three bytes and answers
+ * ICV_NOCHAR, so a caller counts characters by what it stores, not by how many
+ * times it went round.
  */
-static int IcvDecode(const unsigned char *z,int n,int iEnc,sxu32 *pCp,int *pErr)
+static int IcvDecode(const unsigned char *z,int n,int iEnc,sxu32 *pCp,int *pErr,int *pG0)
 {
 	static const struct { unsigned char iLow,iHigh; int nSeq; sxu32 iMin; } aLead[] = {
 		{ 0xC2,0xDF,2,0x80       },
@@ -329,6 +364,60 @@ static int IcvDecode(const unsigned char *z,int n,int iEnc,sxu32 *pCp,int *pErr)
 		*pCp = c;
 		return 1;
 	}
+#ifdef PH7_ENABLE_JIS
+	if( iEnc == ICV_ISO2022JP ){
+		sxu32 cp;
+		if( c == 0x1B ){
+			/* An escape needs three bytes before it can be told from an
+			 * unrecognised one, so two bytes at the end of the input are an
+			 * INCOMPLETE character rather than an illegal sequence -- which is
+			 * what makes a truncated shift refuse even under //IGNORE. */
+			if( n < 3 ){
+				*pErr = ICV_ILLEGAL_CHAR;
+				return 0;
+			}
+			if( z[1] == '(' && (z[2] == 'B' || z[2] == 'J') ){
+				*pG0 = z[2] == 'B' ? ICV_G0_ASCII : ICV_G0_ROMAN;
+				*pCp = ICV_NOCHAR;
+				return 3;
+			}
+			if( z[1] == '$' && (z[2] == 'B' || z[2] == '@') ){
+				/* The 1978 and 1983 spellings name the same cells. */
+				*pG0 = ICV_G0_KANJI;
+				*pCp = ICV_NOCHAR;
+				return 3;
+			}
+			/* Anything else is not a shift at all: 0x1B is below 0x21, so it
+			 * falls into the pass-through arm below and comes out as U+001B
+			 * with the two bytes after it read in whatever set is current. */
+		}
+		if( c > 0x7F ){
+			*pErr = ICV_ILLEGAL_SEQ;
+			return 0;
+		}
+		if( *pG0 == ICV_G0_ASCII || c < 0x21 || c == 0x7F ){
+			/* The controls, the space and DEL sit outside every shifted set
+			 * and are read as themselves wherever the converter stands. */
+			*pCp = c;
+			return 1;
+		}
+		if( *pG0 == ICV_G0_ROMAN ){
+			*pCp = PH7_JisX0201RomanToUni((int)c);
+			return 1;
+		}
+		if( n < 2 ){
+			*pErr = ICV_ILLEGAL_CHAR;
+			return 0;
+		}
+		cp = PH7_JisX0208ToUni((int)c,(int)z[1]);
+		if( cp == 0 ){
+			*pErr = ICV_ILLEGAL_SEQ;
+			return 0;
+		}
+		*pCp = cp;
+		return 2;
+	}
+#endif /* PH7_ENABLE_JIS */
 	if( c < 0x80 ){
 		*pCp = c;
 		return 1;
@@ -365,8 +454,12 @@ static int IcvDecode(const unsigned char *z,int n,int iEnc,sxu32 *pCp,int *pErr)
 	return 0;
 }
 
-/* Write cp in iEnc when the encoding can hold it; 0 when it cannot. */
-static int IcvEncodeDirect(SyBlob *pOut,sxu32 cp,int iEnc)
+/*
+ * Write cp in iEnc when the encoding can hold it; 0 when it cannot. *pG0 is
+ * the shift state, read and advanced for ISO-2022-JP and untouched by every
+ * other code set.
+ */
+static int IcvEncodeDirect(SyBlob *pOut,sxu32 cp,int iEnc,int *pG0)
 {
 	unsigned char zEnc[6];
 	int n = 0;
@@ -378,6 +471,51 @@ static int IcvEncodeDirect(SyBlob *pOut,sxu32 cp,int iEnc)
 		if( cp > 0xFF ){
 			return 0;
 		}
+#ifdef PH7_ENABLE_JIS
+	}else if( iEnc == ICV_ISO2022JP ){
+		int iRow,iCell,iByte;
+		if( cp < 0x80 ){
+			/* An ASCII character is written where it stands when the current
+			 * set spells it the same way. JIS X 0201 Roman covers 0x21..0x7E
+			 * and spells all but two of them the same way, so the backslash
+			 * and the tilde -- the two cells that set moved -- cost a shift
+			 * back, and so do the controls, the space and DEL, which sit
+			 * outside every shifted set in this direction too. */
+			if( *pG0 == ICV_G0_KANJI
+			 || (*pG0 == ICV_G0_ROMAN
+			  && (cp < 0x21 || cp == 0x7F || cp == 0x5C || cp == 0x7E)) ){
+				SyBlobAppend(pOut,"\033(B",3);
+				*pG0 = ICV_G0_ASCII;
+			}
+			zEnc[0] = (unsigned char)cp;
+			SyBlobAppend(pOut,zEnc,1);
+			return 1;
+		}
+		if( PH7_JisX0201RomanFromUni(cp,&iByte) ){
+			/* Only the yen sign and the overline reach here: everything else
+			 * this set holds is below 0x80 and was answered above. */
+			if( *pG0 != ICV_G0_ROMAN ){
+				SyBlobAppend(pOut,"\033(J",3);
+				*pG0 = ICV_G0_ROMAN;
+			}
+			zEnc[0] = (unsigned char)iByte;
+			SyBlobAppend(pOut,zEnc,1);
+			return 1;
+		}
+		if( PH7_JisX0208FromUni(cp,&iRow,&iCell) ){
+			if( *pG0 != ICV_G0_KANJI ){
+				SyBlobAppend(pOut,"\033$B",3);
+				*pG0 = ICV_G0_KANJI;
+			}
+			zEnc[0] = (unsigned char)iRow;
+			zEnc[1] = (unsigned char)iCell;
+			SyBlobAppend(pOut,zEnc,2);
+			return 1;
+		}
+		/* The halfwidth katakana land here, and so does everything JIS X 0208
+		 * has no cell for. */
+		return 0;
+#endif /* PH7_ENABLE_JIS */
 	}else{
 		/* The six-byte encoding, so every code point IcvDecode() produced can
 		 * be written back. */
@@ -418,20 +556,40 @@ static int IcvEncodeDirect(SyBlob *pOut,sxu32 cp,int iEnc)
 }
 
 /*
+ * Return a stateful target to ASCII. Every byte a caller is about to write
+ * outside IcvEncodeDirect() -- a transliteration, the '?' a miss produces, the
+ * tail of a finished string -- is ASCII, and ISO-2022-JP cannot carry one
+ * while it stands in another set.
+ */
+static void IcvEncodeShiftAscii(SyBlob *pOut,int iEnc,int *pG0)
+{
+#ifdef PH7_ENABLE_JIS
+	if( iEnc == ICV_ISO2022JP && *pG0 != ICV_G0_ASCII ){
+		SyBlobAppend(pOut,"\033(B",3);
+		*pG0 = ICV_G0_ASCII;
+	}
+#else
+	SXUNUSED(pOut); SXUNUSED(iEnc); SXUNUSED(pG0);
+#endif
+}
+
+/*
  * Write cp in iEnc, transliterating when bTranslit is set. Answers 0 only when
  * the encoding cannot hold cp and transliteration is off -- the '?' a
  * transliterated miss produces is glibc's own answer, and it is a SUCCESS, as
  * is the EMPTY replacement a combining mark transliterates to.
  */
-static int IcvEncode(SyBlob *pOut,sxu32 cp,int iEnc,int bTranslit)
+static int IcvEncode(SyBlob *pOut,sxu32 cp,int iEnc,int bTranslit,int *pG0)
 {
 	const icv_translit *pRow;
-	if( IcvEncodeDirect(pOut,cp,iEnc) ){
+	if( IcvEncodeDirect(pOut,cp,iEnc,pG0) ){
 		return 1;
 	}
 	if( !bTranslit ){
 		return 0;
 	}
+	/* Everything below writes bytes of its own, and they are ASCII. */
+	IcvEncodeShiftAscii(pOut,iEnc,pG0);
 	if( iEnc == ICV_LATIN1
 	 && (pRow = IcvTranslitFind(aIcvTranslit1,(int)SX_ARRAYSIZE(aIcvTranslit1),cp)) != 0 ){
 		SyBlobAppend(pOut,&zIcvTranslit1[pRow->iOfft],pRow->nByte);
@@ -468,19 +626,24 @@ static int IcvEncode(SyBlob *pOut,sxu32 cp,int iEnc,int bTranslit)
  * hard failure.
  */
 static int IcvConvertCall(SyBlob *pOut,const char *zIn,int nIn,int *pi,
-	int iFrom,const icv_cs *pTo,int *pbDropped)
+	int iFrom,const icv_cs *pTo,int *pbDropped,int *pG0In,int *pG0Out)
 {
 	const unsigned char *z = (const unsigned char *)zIn;
 	int i = *pi,rc = ICV_OK;
 	while( i < nIn ){
 		sxu32 cp = 0;
 		int err = ICV_OK;
-		int nSeq = IcvDecode(&z[i],nIn - i,iFrom,&cp,&err);
+		int nSeq = IcvDecode(&z[i],nIn - i,iFrom,&cp,&err,pG0In);
 		if( nSeq == 0 ){
 			rc = err;
 			break;
 		}
-		if( IcvEncode(pOut,cp,pTo->iEnc,pTo->bTranslit) ){
+		if( cp == ICV_NOCHAR ){
+			/* A shift: it moved the source's state and produced nothing. */
+			i += nSeq;
+			continue;
+		}
+		if( IcvEncode(pOut,cp,pTo->iEnc,pTo->bTranslit,pG0Out) ){
 			i += nSeq;
 			continue;
 		}
@@ -508,13 +671,19 @@ static int IcvConvertCall(SyBlob *pOut,const char *zIn,int nIn,int *pi,
 static int IcvConvert(SyBlob *pOut,const char *zIn,int nIn,int iFrom,const icv_cs *pTo,int bIgnore)
 {
 	int i = 0,bDropped = 0;
+	/* Both states live across the whole string and across every call the
+	 * //IGNORE loop makes: php reuses one conversion descriptor, so stepping
+	 * over a bad byte does not put the converter back in ASCII. */
+	int iG0In = ICV_G0_ASCII,iG0Out = ICV_G0_ASCII;
 	for(;;){
-		int rc = IcvConvertCall(pOut,zIn,nIn,&i,iFrom,pTo,&bDropped);
+		int rc = IcvConvertCall(pOut,zIn,nIn,&i,iFrom,pTo,&bDropped,&iG0In,&iG0Out);
 		if( rc == ICV_OK ){
+			IcvEncodeShiftAscii(pOut,pTo->iEnc,&iG0Out);
 			return ICV_OK;
 		}
 		if( bIgnore && rc == ICV_ILLEGAL_SEQ ){
 			if( nIn - i <= 1 ){
+				IcvEncodeShiftAscii(pOut,pTo->iEnc,&iG0Out);
 				return ICV_OK;
 			}
 			i++;
@@ -536,17 +705,28 @@ static int IcvConvertBounded(SyBlob *pOut,const char *zIn,int nIn,int *pi,
 {
 	const unsigned char *z = (const unsigned char *)zIn;
 	int i = *pi,nTook = 0;
+	int iG0In = ICV_G0_ASCII,iG0Out = ICV_G0_ASCII;
+	if( pTo->iEnc == ICV_ISO2022JP ){
+		/* The word has to end back in ASCII, so those three bytes are spoken
+		 * for before the first character is written. */
+		iRoom -= 3;
+	}
 	while( i < nIn ){
 		sxu32 cp = 0;
 		int err = ICV_OK;
 		sxu32 nBefore = SyBlobLength(pOut);
-		int nSeq = IcvDecode(&z[i],nIn - i,iFrom,&cp,&err);
+		int iG0Before = iG0Out;
+		int nSeq = IcvDecode(&z[i],nIn - i,iFrom,&cp,&err,&iG0In);
 		if( nSeq == 0 ){
 			*pi = i;
 			*pnTook = nTook;
 			return err;
 		}
-		if( !IcvEncode(pOut,cp,pTo->iEnc,pTo->bTranslit) ){
+		if( cp == ICV_NOCHAR ){
+			i += nSeq;
+			continue;
+		}
+		if( !IcvEncode(pOut,cp,pTo->iEnc,pTo->bTranslit,&iG0Out) ){
 			*pi = i;
 			*pnTook = nTook;
 			return ICV_ILLEGAL_SEQ;
@@ -554,11 +734,13 @@ static int IcvConvertBounded(SyBlob *pOut,const char *zIn,int nIn,int *pi,
 		if( (sxi64)SyBlobLength(pOut) > iRoom ){
 			/* One character too many: give the bytes back and stop here. */
 			SyBlobLength(pOut) = nBefore;
+			iG0Out = iG0Before;
 			break;
 		}
 		i += nSeq;
 		nTook++;
 	}
+	IcvEncodeShiftAscii(pOut,pTo->iEnc,&iG0Out);
 	*pi = i;
 	*pnTook = nTook;
 	return ICV_OK;
@@ -572,7 +754,7 @@ static int IcvConvertBounded(SyBlob *pOut,const char *zIn,int nIn,int *pi,
  * conversion that way (`norm_add_slashes (outcharset, "TRANSLIT")` in
  * loadmsgcat.c), which is why a translated string a narrower target cannot hold
  * comes back approximated rather than refused. Answers -1 when either name is
- * outside the three code sets PHL models, which is the case php answers the
+ * outside the code sets PHL models, which is the case php answers the
  * msgid UNTRANSLATED for -- the same thing its iconv_open() failure does.
  */
 PH7_PRIVATE int PH7_IconvTranslate(SyBlob *pOut,const char *zIn,int nIn,
@@ -774,7 +956,7 @@ static int IcvTextDecode(ph7_context *pCtx,icv_text *pText,const char *zIn,int n
 	int iEnc,int *pErr)
 {
 	const unsigned char *z = (const unsigned char *)zIn;
-	int i = 0,n = 0,nSlot;
+	int i = 0,n = 0,nSlot,iG0 = ICV_G0_ASCII;
 	pText->zIn = zIn;
 	pText->nByte = nByte;
 	pText->nChar = 0;
@@ -793,7 +975,7 @@ static int IcvTextDecode(ph7_context *pCtx,icv_text *pText,const char *zIn,int n
 	pText->aOfft = (int *)&pText->aCode[nSlot];
 	while( i < nByte ){
 		sxu32 cp = 0;
-		int nSeq = IcvDecode(&z[i],nByte - i,iEnc,&cp,pErr);
+		int nSeq = IcvDecode(&z[i],nByte - i,iEnc,&cp,pErr,&iG0);
 		if( nSeq == 0 ){
 			/* The good PREFIX is the answer here, not zero: php's own walk
 			 * stops at the bad character and everything before it has already
@@ -802,6 +984,12 @@ static int IcvTextDecode(ph7_context *pCtx,icv_text *pText,const char *zIn,int n
 			pText->aOfft[n] = i;
 			pText->nChar = n;
 			return PH7_OK;
+		}
+		if( cp == ICV_NOCHAR ){
+			/* A shift is not a character: it is not counted, and no offset
+			 * points at it. */
+			i += nSeq;
+			continue;
 		}
 		pText->aCode[n] = cp;
 		pText->aOfft[n] = i;
@@ -905,6 +1093,26 @@ static int PH7_builtin_iconv_substr(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( iOfft + iLen > sText.nChar ){
 		iLen = sText.nChar - iOfft;
 	}
+#ifdef PH7_ENABLE_JIS
+	if( sCs.iEnc == ICV_ISO2022JP ){
+		/* A slice of a SHIFTED encoding is not a slice of its bytes. php goes
+		 * through code points and back, so the answer carries the shifts it
+		 * needs of its own and none of the ones it inherited -- a substring
+		 * that starts inside a kanji run opens with the shift into it, and one
+		 * that ends there closes with the shift back out. */
+		SyBlob sOut;
+		int k,iG0 = ICV_G0_ASCII;
+		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+		for( k = 0 ; k < (int)iLen ; ++k ){
+			IcvEncodeDirect(&sOut,sText.aCode[iOfft + k],sCs.iEnc,&iG0);
+		}
+		IcvEncodeShiftAscii(&sOut,sCs.iEnc,&iG0);
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
+		IcvTextRelease(pCtx,&sText);
+		return PH7_OK;
+	}
+#endif /* PH7_ENABLE_JIS */
 	iStart = sText.aOfft[iOfft];
 	iStop = sText.aOfft[iOfft + iLen];
 	ph7_result_string(pCtx,&zIn[iStart],iStop - iStart);

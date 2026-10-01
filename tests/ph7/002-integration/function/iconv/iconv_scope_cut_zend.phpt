@@ -7,6 +7,9 @@ php: iconv() knows whatever the platform's iconv(3) knows (zend half of the twin
 <?php
 if (!function_exists('zend_version')) {
     echo "skip zend-pinned half of the twin pair";
+} elseif (!defined('ICONV_IMPL') || ICONV_IMPL !== 'glibc') {
+    // the ISO-2022-JP row is glibc's spelling; libiconv (macOS, Windows) refuses it
+    echo 'skip the oracle iconv is not glibc';
 }
 ?>
 --FILE--
@@ -27,6 +30,10 @@ foreach ($extra as $name) {
     }
 }
 var_dump($accepted > 0);
+/* And glibc's //TRANSLIT reaches a halfwidth katakana's fullwidth form through
+ * the compatibility decomposition it carries for every character, so it lands
+ * in JIS X 0208 rather than on the '?' PHL answers -- see the PHL half. */
+var_dump(bin2hex(iconv("UTF-8", "ISO-2022-JP//TRANSLIT", "\u{ff71}")));
 /* And the extension names the C library behind it, never the engine. */
 var_dump(ICONV_IMPL !== 'PHL', is_string(ICONV_IMPL), ICONV_VERSION === PHP_VERSION);
 /* The two $mode bits iconv_mime_decode() reads are php's numbers either way. */
@@ -48,6 +55,7 @@ restore_error_handler();
 ?>
 --EXPECT--
 bool(true)
+string(16) "1b244225221b2842"
 bool(true)
 bool(true)
 bool(false)
