@@ -2133,8 +2133,7 @@ static sxi32 VmMountUserClassAttrs(
 				pVmAttrS->pAttr = pAttr;
 				pVmAttrS->nIdx = pMemObj->nIdx;
 				pVmAttrS->iState = 0;
-				pVmAttrS->pOwner = pClass;
-				pVmAttrS->pInst = 0;   /* the class's own slot: no instance behind it */
+				PH7_VmAttrSetClass(pVmAttrS,pClass);   /* the class's own slot: no instance behind it */
 				/* Static typed property with no default starts uninitialized
 				 * (constants are already excluded by the enclosing condition). */
 				if( SySetUsed(&pAttr->aByteCode) == 0 ){
@@ -2279,8 +2278,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			}
 			pVmAttr->nIdx = pMemObj->nIdx;
 			pVmAttr->iState = 0;
-			pVmAttr->pOwner = pClass;
-			pVmAttr->pInst = pObj;
+			PH7_VmAttrSetInst(pVmAttr,pObj);
 			if( pAttr->pNativeValue ){
 				/* Native class, literal default: no initializer to execute, so none
 				 * of the throw/typed-default machinery below can apply either — a
@@ -2362,8 +2360,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			/* Install static/constant attribute */
 			pVmAttr->nIdx = pAttr->nIdx;
 			pVmAttr->iState = 0;
-			pVmAttr->pOwner = pClass;
-			pVmAttr->pInst = 0;   /* a static slot belongs to the class, not to this object */
+			PH7_VmAttrSetClass(pVmAttr,pClass);   /* a static slot belongs to the class, not to this object */
 			rc = SyHashInsertTail(&pObj->hAttr,pKey,nKeyLen,pVmAttr);
 			if( rc != SXRET_OK ){
 				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
@@ -2546,8 +2543,7 @@ PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *
 	pVmAttr->pAttr = pAttr;
 	pVmAttr->nIdx = pMemObj->nIdx;
 	pVmAttr->iState = 0;
-	pVmAttr->pOwner = pThis->pClass;
-	pVmAttr->pInst = pThis;
+	PH7_VmAttrSetInst(pVmAttr,pThis);
 	/* Tail-insert so iteration (json_encode/foreach/(array)/var_dump) follows
 	 * property-creation order, matching PHP. */
 	if( SyHashInsertTail(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr) != SXRET_OK ){
@@ -2597,8 +2593,7 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 	pVmAttr->pAttr = pAttr;
 	pVmAttr->nIdx = pMemObj->nIdx;
 	pVmAttr->iState = 0;
-	pVmAttr->pOwner = pThis->pClass;
-	pVmAttr->pInst = pThis;
+	PH7_VmAttrSetInst(pVmAttr,pThis);
 	/* Do NOT re-run the declared default initializer. A property recreated after unset() is a fresh
 	 * UNDEFINED property — PHP applies the class default only at construction, not on re-creation. The
 	 * reserved slot stays NULL, so a read-modify-write that triggered this (`$o->p += 1`, `.=`, `??=`)

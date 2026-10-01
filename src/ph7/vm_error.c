@@ -1346,7 +1346,7 @@ static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const cha
 	int bViaRef)
 {
 	ph7_class_attr *pAttr = pVmAttr->pAttr;
-	ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
+	ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
 	char zType[192];
 	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
 		VmHintScopeDeclared(pAttr->pDeclClass),zType,sizeof(zType));
@@ -1419,7 +1419,7 @@ static int VmAttrTypeAcceptsArray(ph7_class_attr *pAttr)
 PH7_PRIVATE sxi32 VmThrowAutoInitArrayError(ph7_vm *pVm,VmClassAttr *pVmAttr)
 {
 	ph7_class_attr *pAttr = pVmAttr->pAttr;
-	ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
+	ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
 	char zType[256];
 	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
 		VmHintScopeDeclared(pAttr->pDeclClass),zType,sizeof(zType));
@@ -1729,10 +1729,10 @@ PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx)
 		return SXRET_OK;
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE ){
-		return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pAttr);
+		return VmThrowNativeNoWrite(pVm,PH7_VmAttrOwner(pVmAttr),pAttr);
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
-		ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
+		ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Cannot indirectly modify readonly property %z::$%z",
@@ -1744,13 +1744,13 @@ PH7_PRIVATE sxi32 PH7_VmCheckIndirectModify(ph7_vm *pVm,sxu32 nIdx)
 	 * `public private(set) array $arr` is refused outside the declaring class.
 	 * Only readonly was screened here, so that write landed in SILENCE. */
 	if( pAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
-		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
+		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
 		ph7_class *pActive = VmCurrentSelf(pVm);
 		int bOk = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET)
 			? (pActive != 0 && pActive == pDecl)
 			: (pActive != 0 && pDecl != 0 && PH7_VmInstanceOf(pActive,pDecl));
 		if( !bOk ){
-			return VmThrowSetVisibilityErrorEx(pVm,pVmAttr->pOwner,pAttr,1);
+			return VmThrowSetVisibilityErrorEx(pVm,PH7_VmAttrOwner(pVmAttr),pAttr,1);
 		}
 	}
 	return SXRET_OK;
@@ -1777,15 +1777,15 @@ PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)
 	}
 	pVmAttr = (VmClassAttr *)pSlot->pUserData;
 	if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE) ){
-		return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pVmAttr->pAttr);
+		return VmThrowNativeNoWrite(pVm,PH7_VmAttrOwner(pVmAttr),pVmAttr->pAttr);
 	}
 	if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_READONLY) ){
-		return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pVmAttr->pAttr,1);
+		return VmThrowReadonlyError(pVm,PH7_VmAttrOwner(pVmAttr),pVmAttr->pAttr,1);
 	}
 	if( pVmAttr->pAttr
 	 && (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET)) ){
 		/* `++`/`--` is a write: enforce the asymmetric set-visibility (PHP 8.4) */
-		return VmCheckSetVisibility(pVm,pVmAttr->pOwner,pVmAttr->pAttr);
+		return VmCheckSetVisibility(pVm,PH7_VmAttrOwner(pVmAttr),pVmAttr->pAttr);
 	}
 	return SXRET_OK;
 }
@@ -2534,14 +2534,14 @@ PH7_PRIVATE const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu3
 static sxi32 VmRunNativeSet(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_value *pValue)
 {
 	PH7_NativeSetCtx sSet;
-	if( pVmAttr->pInst == 0 ){
+	if( PH7_VmAttrInst(pVmAttr) == 0 ){
 		return SXRET_OK;   /* a class static: no object for a handler to run on */
 	}
 	sSet.pName = &pVmAttr->pAttr->sName;
 	sSet.pValue = pValue;
 	sSet.zThrowClass = 0;
 	sSet.zThrowMsg[0] = 0;
-	if( PH7_ClassNativeSet(pVmAttr->pInst,&sSet) && sSet.zThrowClass ){
+	if( PH7_ClassNativeSet(PH7_VmAttrInst(pVmAttr),&sSet) && sSet.zThrowClass ){
 		return VmThrowFixedError(pVm,sSet.zThrowClass,sSet.zThrowMsg);
 	}
 	return SXRET_OK;
@@ -2678,7 +2678,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		 * sentence is the readonly one -- without the readonly FLAG, which is why
 		 * Reflection still reports isReadOnly() false for DatePeriod's seven. The
 		 * C bodies that fill them write the slot directly and never come here. */
-		return VmThrowNativeNoWrite(pVm,pVmAttr->pOwner,pAttr);
+		return VmThrowNativeNoWrite(pVm,PH7_VmAttrOwner(pVmAttr),pAttr);
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
 		sxi32 rcNat = VmRunNativeSet(pVm,pVmAttr,pValue);
@@ -2692,7 +2692,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	/* `self`/`parent` in the declared type resolve against the class that DECLARED
 	 * the property (a trait's members count as the composing class), not the
 	 * instance's runtime class — see VmHintScopeClass. */
-	pHintScope = VmHintScopeClass(pVm,pAttr->pDeclClass,pVmAttr->pOwner);
+	pHintScope = VmHintScopeClass(pVm,pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
 	/* readonly enforcement (PHP 8.1), checked before type coercion. A readonly
 	 * property may be written exactly once and only from within the declaring
 	 * class scope (its set-scope is protected). */
@@ -2711,30 +2711,30 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			VmFrame *pCloneFr = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
 			if( !(pCloneFr && pCloneFr->pThis
 				&& (pCloneFr->pThis->iFlags & VM_INSTANCE_CLONING)) ){
-				return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,1);
+				return VmThrowReadonlyError(pVm,PH7_VmAttrOwner(pVmAttr),pAttr,1);
 			}
 		}
 	}
 	if( pAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
 		/* Asymmetric set-visibility (PHP 8.4): EVERY write is scope-checked.
 		 * An explicit set-visibility replaces readonly's implicit protected(set). */
-		sxi32 rcVis = VmCheckSetVisibility(pVm,pVmAttr->pOwner,pAttr);
+		sxi32 rcVis = VmCheckSetVisibility(pVm,PH7_VmAttrOwner(pVmAttr),pAttr);
 		if( rcVis != SXRET_OK ){
 			return rcVis;
 		}
 	}else if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
 		/* First write (or a clone re-init) must come from within the declaring
 		 * class scope (readonly's set-scope is protected — a subclass may set). */
-		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
+		ph7_class *pDecl = PH7_VmMemberOwnerClass(pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
 		ph7_class *pActive = VmCurrentSelf(pVm);
 		/* A readonly property imported from a TRAIT is, per php, declared in the
 		 * USING class (traits are flattened in). The trait is not in any instanceof
-		 * hierarchy, so use the composing class (pVmAttr->pOwner) as the set-scope. */
-		if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) && pVmAttr->pOwner ){
-			pDecl = pVmAttr->pOwner;
+		 * hierarchy, so use the composing class (PH7_VmAttrOwner(pVmAttr)) as the set-scope. */
+		if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) && PH7_VmAttrOwner(pVmAttr) ){
+			pDecl = PH7_VmAttrOwner(pVmAttr);
 		}
 		if( pActive == 0 || pDecl == 0 || !PH7_VmInstanceOf(pActive,pDecl) ){
-			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,0);
+			return VmThrowReadonlyError(pVm,PH7_VmAttrOwner(pVmAttr),pAttr,0);
 		}
 	}
 	/* Union type: dispatch to the shared coercion helper, under the mode of the
@@ -2958,7 +2958,7 @@ PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
 	 * inside VmEnforcePropertyTypeOnStore below. */
 	if( !PH7_VmClassMemberAccess(pVm,pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
 		const char *zProt = (pAttr->iProtection == PH7_CLASS_PROT_PRIVATE) ? "private" : "protected";
-		ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pVmAttr->pOwner);
+		ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Cannot access %s property %z::$%z",zProt,&pOwner->sDisp,&pAttr->sName);
@@ -3259,7 +3259,7 @@ static sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass)
 							PH7_MemObjInit(&(*pVm),&sNull);
 							pValue = &sNull;
 						}
-						return VmDefaultPropertyTypeError(&(*pVm),pVmAttr->pOwner,pAttr,pValue);
+						return VmDefaultPropertyTypeError(&(*pVm),PH7_VmAttrOwner(pVmAttr),pAttr,pValue);
 					}
 				}
 			}
@@ -3433,7 +3433,7 @@ static sxi32 VmEvalDeferredStaticDefaults(ph7_vm *pVm,ph7_class *pClass,int *pbL
 			if( pSlot && VmCheckTypedDefault(&(*pVm),pOwner,pAttr,pMemObj) != SXRET_OK ){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pSlot->pUserData;
 				pVmAttr->iState |= VM_CLASS_ATTR_TYPE_DEFER;
-				rc = VmDefaultPropertyTypeError(&(*pVm),pVmAttr->pOwner,pAttr,pMemObj);
+				rc = VmDefaultPropertyTypeError(&(*pVm),PH7_VmAttrOwner(pVmAttr),pAttr,pMemObj);
 				break;
 			}
 		}

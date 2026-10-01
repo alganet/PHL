@@ -1977,7 +1977,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						/* A reference bind is a WRITE, and php's refusing handler answers
 						 * it with the same sentence a plain store gets. */
 						VmBoundaryPark(&(*pVm),
-							VmThrowNativeNoWrite(&(*pVm),pObjAttr->pOwner,pObjAttr->pAttr));
+							VmThrowNativeNoWrite(&(*pVm),PH7_VmAttrOwner(pObjAttr),pObjAttr->pAttr));
 						pVm->pRefTargetAttr = 0;
 						pVm->pRefTargetThis = 0;
 						pVm->pRefTargetStaticAttr = 0;

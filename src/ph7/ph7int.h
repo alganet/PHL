@@ -3254,18 +3254,42 @@ struct VmDeferredClass
  * of the following structure.
  */
 typedef struct VmClassAttr VmClassAttr;
+/*
+ * One property SLOT on one object -- the engine's per-instance record, and the
+ * engine's single most numerous heap object after the array node: 128,024 of them
+ * live at the peak of the ecosystem gate's phpcs step.
+ *
+ * It carries ONE holder pointer, not two. It used to name both the instance the
+ * slot belongs to and the class that owns the property, and the second was
+ * derivable from the first at every site that ever set it: an instance record is
+ * built by PH7_VmCreateClassInstanceFrame, whose `pClass` IS `pObj->pClass`, and
+ * the two dynamic-property doors write `pThis->pClass` beside `pThis`. The only
+ * records that are not an instance's are the class's own statics, which have no
+ * instance at all -- so one pointer says both, and VM_CLASS_ATTR_CLASSHELD says
+ * which kind it is.
+ *
+ * That is not a tidy-up, it is a bucket. The struct was 32 bytes, and a pool
+ * request of 32 needs 40 with its header and so lands in the 64-byte bucket --
+ * 7.81 MB at peak against 3.91 MB asked for, the census's only row of 100%
+ * rounding waste. At 24 it needs 32 exactly and lands in the 32-byte bucket.
+ * KEEP IT AT 24 BYTES: one more field of any size doubles this row again.
+ *
+ * Read it through PH7_VmAttrOwner / PH7_VmAttrInst below; nothing outside them
+ * should touch pHolder.
+ */
 struct VmClassAttr
 {
 	ph7_class_attr *pAttr; /* Class attribute */
+	void *pHolder;         /* The ph7_class_instance this slot belongs to, or -- when
+	                        * VM_CLASS_ATTR_CLASSHELD is set -- the ph7_class whose own
+	                        * static it is. The store filter reaches the instance for
+	                        * ph7_class::xSet, which is a handler ON AN OBJECT (php's
+	                        * write_property takes the object); DateInterval's writes its
+	                        * own microsecond slot from there. The record lives in the
+	                        * holder's hAttr and dies with it, so this never outlives
+	                        * what it names. */
 	sxu32 nIdx;            /* Memory object index */
 	sxi32 iState;          /* Per-instance state: VM_CLASS_ATTR_UNINIT */
-	ph7_class *pOwner;     /* Class that declares this attribute (for error msgs) */
-	ph7_class_instance *pInst; /* Instance this slot belongs to, or 0 for a class STATIC.
-	                       * The store filter reaches it for ph7_class::xSet, which is a
-	                       * handler ON AN OBJECT (php's write_property takes the object);
-	                       * DateInterval's writes its own microsecond slot from there.
-	                       * The record lives in the instance's own hAttr and dies with it,
-	                       * so the pointer never outlives what it names. */
 };
 #define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+); also the
                                     * write-once latch for readonly properties (cleared on
@@ -3300,6 +3324,12 @@ struct VmClassAttr
                                     * slot is SHARED with (and pinned by) the source variable, so
                                     * PH7_VmReleaseInstanceAttr must NOT release/recycle it — the
                                     * surviving alias would dangle. Mirrors the use(&$x) pin. */
+#define VM_CLASS_ATTR_CLASSHELD 0x40 /* pHolder is the ph7_class whose STATIC this slot is,
+                                     * not a ph7_class_instance. A static belongs to the class
+                                     * and is filed in every instance's hAttr as well, so the
+                                     * record has no instance behind it -- which is exactly
+                                     * what "no instance" used to be spelled as a NULL pInst
+                                     * beside a non-NULL pOwner. */
 #define VM_CLASS_ATTR_REFSRCPIN 0x20 /* Property is the SOURCE of a reference (`$r =& $o->p`,
                                      * `$q->p =& $o->p`, `foreach ($o->p as &$v)`): php makes both
                                      * ends references, and the other end pins the slot. A property
@@ -3308,7 +3338,43 @@ struct VmClassAttr
                                      * died, the unpin freed the value out from under THIS property,
                                      * which then read NULL. The bit says this property holds one
                                      * counted pin of its own, given back when it is released. */
- /* Forward reference */
+ /*
+ * The two questions the one holder pointer answers.
+ *
+ * PH7_VmAttrInst -- the object this slot sits on, or 0 for a class static, which is
+ * the NULL pInst every caller used to test for.
+ * PH7_VmAttrOwner -- the class that owns the property, for the diagnostics in
+ * vm_error.c. For an instance record that is the instance's own class, which is what
+ * the frame builder wrote there by hand (its `pClass` is `pObj->pClass`); for a
+ * static it is the holder itself.
+ */
+SX_STATIC_INLINE ph7_class_instance * PH7_VmAttrInst(const VmClassAttr *pVmAttr)
+{
+	if( pVmAttr->iState & VM_CLASS_ATTR_CLASSHELD ){
+		return 0;
+	}
+	return (ph7_class_instance *)pVmAttr->pHolder;
+}
+SX_STATIC_INLINE ph7_class * PH7_VmAttrOwner(const VmClassAttr *pVmAttr)
+{
+	if( pVmAttr->iState & VM_CLASS_ATTR_CLASSHELD ){
+		return (ph7_class *)pVmAttr->pHolder;
+	}
+	return pVmAttr->pHolder ? ((ph7_class_instance *)pVmAttr->pHolder)->pClass : 0;
+}
+/* The two ways a record is filed. Both leave iState's other bits alone, so a caller
+ * may set its state before or after saying who holds the slot. */
+SX_STATIC_INLINE void PH7_VmAttrSetInst(VmClassAttr *pVmAttr,ph7_class_instance *pInst)
+{
+	pVmAttr->pHolder = (void *)pInst;
+	pVmAttr->iState &= ~VM_CLASS_ATTR_CLASSHELD;
+}
+SX_STATIC_INLINE void PH7_VmAttrSetClass(VmClassAttr *pVmAttr,ph7_class *pClass)
+{
+	pVmAttr->pHolder = (void *)pClass;
+	pVmAttr->iState |= VM_CLASS_ATTR_CLASSHELD;
+}
+/* Forward reference */
 typedef struct VmSlot VmSlot;
 struct VmSlot
 {

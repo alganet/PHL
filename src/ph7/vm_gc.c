@@ -220,7 +220,7 @@ static void VmGcWalkChildren(VmGcCtx *pCtx,void *pCont,int bMap,ProcGcVisit xVis
 			 * every instance, so it appears in every instance's table and is not
 			 * this object's edge at all. Counting it once per instance would
 			 * subtract a reference per instance for a value held once. */
-			if( pVmAttr && pVmAttr->pInst == pThis && VmGcSlotOwned(&(*pVm),pVmAttr->nIdx,0) ){
+			if( pVmAttr && PH7_VmAttrInst(pVmAttr) == pThis && VmGcSlotOwned(&(*pVm),pVmAttr->nIdx,0) ){
 				ph7_value *pVal = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pVmAttr->nIdx);
 				pChild = VmGcValueTarget(pVal,&bChildMap);
 				if( pChild && VmGcCollectable(&(*pVm),pChild,bChildMap) ){

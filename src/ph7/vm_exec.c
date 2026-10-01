@@ -810,7 +810,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 				 * class's handler refuses every write: php's catchable Error, the
 				 * same sentence a plain store gets. */
 				*pbNoBind = 1;
-				return VmThrowNativeNoWrite(&(*pVm),pAttr->pOwner,pAttr->pAttr);
+				return VmThrowNativeNoWrite(&(*pVm),PH7_VmAttrOwner(pAttr),pAttr->pAttr);
 			}
 			if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
 				/* A native class's property is a field of php's own C struct, not
