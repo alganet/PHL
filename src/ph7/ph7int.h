@@ -4292,9 +4292,12 @@ struct ph7_vm
 	void *pStdout;             /* STDOUT IO stream */
 	void *pStderr;             /* STDERR IO stream */
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
-	int bDisplayErrors;        /* display_errors ini gate: TRUE emits the DISPLAY copy of a
-	                            * runtime diagnostic (`\nWarning: msg in F on line N`) to the
-	                            * program output stream (stdout). php CLI default: off. */
+	int iDisplayErrors;        /* display_errors ini DESTINATION, not a gate: OFF emits no
+	                            * DISPLAY copy, STDOUT emits `\nWarning: msg in F on line N`
+	                            * to the program output stream, STDERR emits the same sentence
+	                            * WITHOUT the leading blank line to the error stream, outside
+	                            * the output layer. php CLI default: off.
+	                            * See PH7_VmDisplayErrorsMode() for the value table. */
 	int bLogErrors;            /* log_errors ini gate: TRUE emits the LOG copy of a runtime
 	                            * diagnostic (`PHP Warning:  msg in F on line N`) to the error
 	                            * stream (stderr via sVmErrConsumer). php CLI default: on. */
@@ -5749,6 +5752,13 @@ PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm);
 PH7_PRIVATE int PH7_VmErrorLogToFile(ph7_vm *pVm,const char *zMsg,sxu32 nMsg);
+/* `display_errors` destinations -- php's PHP_DISPLAY_ERRORS_* numbering, which is
+ * observable: the directive accepts the numbers as well as the words, so `2` is
+ * the error stream and `1` the program output. */
+#define PH7_DISPLAY_ERRORS_OFF    0
+#define PH7_DISPLAY_ERRORS_STDOUT 1
+#define PH7_DISPLAY_ERRORS_STDERR 2
+PH7_PRIVATE int PH7_VmDisplayErrorsMode(const char *zVal,sxu32 nVal);
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /* Shared between builtin_date.c (procedural date functions) and
  * builtin_date_parse.c (the DateTime family) */

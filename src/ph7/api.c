@@ -808,6 +808,13 @@ static sxi32 ProcessScript(
 	 * exactly as a runtime one is, and this is the only window in which they can
 	 * still be in hand for the main script's own compile. */
 	PH7_VmApplyEngineIni(pVm);
+	/* A syntax-CHECK compile (phl -l) never runs what it compiles, which changes
+	 * what a class declaration whose base is missing has to do -- see the flag's
+	 * note in ph7int.h -- and it also changes how the unit is NAMED: php's lint
+	 * mode hands the argument straight to the compiler where a run expands it to
+	 * an absolute path first, so `phl -l ./x.php` must say `./x.php`. Set before
+	 * the path is pushed, which is what reads it. */
+	pVm->bSyntaxCheck = (iFlags & PH7_SYNTAX_CHECK) ? 1 : 0;
 	if( zFilePath ){
 		/* Push processed file path */
 		PH7_VmPushFilePath(pVm,zFilePath,-1,TRUE,0);
@@ -827,10 +834,6 @@ static sxi32 ProcessScript(
 				SyStringLength(pScript),nLimit);
 		}
 	}
-	/* A syntax-CHECK compile (phl -l) never runs what it compiles, which changes
-	 * what a class declaration whose base is missing has to do -- see the flag's
-	 * note in ph7int.h. */
-	pVm->bSyntaxCheck = (iFlags & PH7_SYNTAX_CHECK) ? 1 : 0;
 	/* Compile the script */
 	if( pVm->sCodeGen.nErr == 0 ){
 		PH7_CompileScript(pVm,&(*pScript),iFlags);

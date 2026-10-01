@@ -504,6 +504,16 @@ PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8
 	if( zDup == 0 ){
 		return SXERR_MEM;
 	}
+	/* php's lint mode (`phl -l`) hands the compiler the file handle it opened
+	 * under the name it was GIVEN -- it never runs the unit, so nothing needs the
+	 * canonical name -- where a run expands the main script's path first. That is
+	 * why a parse error names `./x.php` under `-l` and `/abs/dir/x.php` under a
+	 * run, and it is the file name a lint diagnostic is matched against.
+	 * Only the MAIN unit: an include compiled from a checked file would still
+	 * want the canonical name, and lint mode compiles no includes anyway. */
+	if( bMain && pVm->bSyntaxCheck ){
+		goto Install;
+	}
 #ifdef __UNIXES__
 	/* php records the REALPATH'd absolute path for __FILE__/__DIR__/getFileName
 	 * and include-once dedup: realpath() resolves '.', '..' and symlinks (e.g.
@@ -572,6 +582,7 @@ PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8
 		SyBlobRelease(&sPhar);
 	}
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
+Install:
 	/* Install the file path */
 	SyStringInitFromBuf(&sPath,zDup,nLen);
 	if( !bMain ){

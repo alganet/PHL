@@ -493,7 +493,7 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 		return;
 	}
 	if( IniNameIs(pSlot,"display_errors") ){
-		pVm->bDisplayErrors = IniTruthy(zVal,nVal);
+		pVm->iDisplayErrors = PH7_VmDisplayErrorsMode(zVal,nVal);
 		return;
 	}
 	if( IniNameIs(pSlot,"log_errors") ){

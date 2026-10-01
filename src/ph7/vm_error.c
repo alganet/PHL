@@ -48,6 +48,78 @@ static ph7_output_consumer * VmErrConsumer(ph7_vm *pVm)
 	return pVm->sVmErrConsumer.xConsumer ? &pVm->sVmErrConsumer : &pVm->sVmConsumer;
 }
 /*
+ * php's `display_errors` value table, which is not a boolean one: the directive
+ * names a DESTINATION. The words `on`, `yes`, `true` and `stdout` (matched
+ * case-insensitively against the WHOLE value, so a stray space defeats them) mean
+ * the program output stream and `stderr` means the error stream; anything else is
+ * read as a base-ten number the way strtol() reads one -- leading blanks skipped,
+ * an optional sign, trailing garbage ignored -- and then TRUNCATED TO EIGHT BITS.
+ * That truncation is observable and is why `256` is off, `257` is stdout, `258`
+ * is stderr and `-2` is stdout. A truncated value that is neither 0, 1 nor 2 is
+ * stdout.
+ *
+ * The engine read the directive with the plain truth test every other boolean
+ * directive gets. `stderr` and `stdout` are WORDS, so both read false and the
+ * display copy was switched OFF by the two spellings that ask for it; `2` read
+ * true and put on stdout what php puts on stderr; and the truth test trimmed the
+ * value, so `ini_set('display_errors','on ')` was on where php reads it as a
+ * number and gets off.
+ */
+PH7_PRIVATE int PH7_VmDisplayErrorsMode(const char *zVal,sxu32 nVal)
+{
+	sxu64 uAcc = 0;
+	sxu32 i = 0;
+	int bNeg = 0, bSat = 0;
+	unsigned int uMode;
+	if( zVal == 0 || nVal < 1 ){
+		return PH7_DISPLAY_ERRORS_OFF;
+	}
+	if( nVal == 2 && SyStrnicmp(zVal,"on",2) == 0 ){ return PH7_DISPLAY_ERRORS_STDOUT; }
+	if( nVal == 3 && SyStrnicmp(zVal,"yes",3) == 0 ){ return PH7_DISPLAY_ERRORS_STDOUT; }
+	if( nVal == 4 && SyStrnicmp(zVal,"true",4) == 0 ){ return PH7_DISPLAY_ERRORS_STDOUT; }
+	if( nVal == 6 && SyStrnicmp(zVal,"stderr",6) == 0 ){ return PH7_DISPLAY_ERRORS_STDERR; }
+	if( nVal == 6 && SyStrnicmp(zVal,"stdout",6) == 0 ){ return PH7_DISPLAY_ERRORS_STDOUT; }
+	/* strtol()'s own lead-in: the blanks it skips, then one optional sign */
+	while( i < nVal && (zVal[i] == ' ' || zVal[i] == '\t' || zVal[i] == '\n'
+	    || zVal[i] == '\v' || zVal[i] == '\f' || zVal[i] == '\r') ){
+		i++;
+	}
+	if( i < nVal && (zVal[i] == '+' || zVal[i] == '-') ){
+		bNeg = zVal[i] == '-';
+		i++;
+	}
+	while( i < nVal && zVal[i] >= '0' && zVal[i] <= '9' ){
+		/* strtol() saturates instead of wrapping, and the remaining digits cannot
+		 * move a saturated value: LONG_MAX's low byte is 0xFF and LONG_MIN's 0x00.
+		 * The two limits are not symmetric, which is exactly the difference
+		 * between `-9223372036854775808` (off) and `-9223372036854775809` (off by
+		 * saturation, not by truncation) -- and between the latter and
+		 * `9223372036854775808`, which saturates the other way and is stdout. */
+		sxu64 uLimit = bNeg ? (sxu64)9223372036854775808ULL : (sxu64)9223372036854775807ULL;
+		if( uAcc > uLimit / 10 ){
+			bSat = 1;
+			break;
+		}
+		uAcc = uAcc * 10 + (sxu64)(zVal[i] - '0');
+		if( uAcc > uLimit ){
+			bSat = 1;
+			break;
+		}
+		i++;
+	}
+	if( bSat ){
+		uMode = bNeg ? 0u : 255u;
+	}else{
+		uMode = (unsigned int)((bNeg ? (sxu64)(0 - uAcc) : uAcc) & 0xFF);
+	}
+	if( uMode != PH7_DISPLAY_ERRORS_OFF
+	 && uMode != PH7_DISPLAY_ERRORS_STDOUT
+	 && uMode != PH7_DISPLAY_ERRORS_STDERR ){
+		return PH7_DISPLAY_ERRORS_STDOUT;
+	}
+	return (int)uMode;
+}
+/*
  * Append the platform newline and hand a finished diagnostic blob to a consumer.
  * bTrack counts the bytes toward program output length (only the stdout DISPLAY
  * copy is program output; the stderr LOG copy is not, and must not perturb
@@ -158,8 +230,9 @@ static sxi32 VmWriteErrorLog(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pMsg
  * the location and the `Stack trace:` block):
  *   - LOG copy     -> the error (stderr) stream when log_errors is on:
  *                     `PHP LABEL:  BODY`
- *   - DISPLAY copy -> the program-output (stdout) stream when display_errors is on:
- *                     `\nLABEL: BODY`
+ *   - DISPLAY copy -> the stream display_errors NAMES: program output (stdout) with
+ *                     a leading blank line, `\nLABEL: BODY`, or -- for the `stderr`
+ *                     spelling -- the error stream with no blank line, `LABEL: BODY`.
  * php prints BOTH when both are on, and the two are not the same bytes: the
  * display copy has no `PHP ` prefix, ONE space after the colon and a leading blank
  * line. Every fatal here used to be built as the log shape and then written to
@@ -179,14 +252,18 @@ static sxi32 VmEmitFatalReport(ph7_vm *pVm,const char *zLabel,const char *zBody,
 		rc = VmWriteErrorLog(pVm,VmErrConsumer(pVm),&sCopy);
 		SyBlobRelease(&sCopy);
 	}
-	if( pVm->bDisplayErrors ){
+	if( pVm->iDisplayErrors != PH7_DISPLAY_ERRORS_OFF ){
+		int bErrStream = pVm->iDisplayErrors == PH7_DISPLAY_ERRORS_STDERR;
 		sxi32 rc2;
 		SyBlobInit(&sCopy,&pVm->sAllocator);
-		/* php's text-mode display copy is prefixed with a blank line */
-		SyBlobAppend(&sCopy,"\n",sizeof(char));
+		if( !bErrStream ){
+			/* php's text-mode display copy is prefixed with a blank line */
+			SyBlobAppend(&sCopy,"\n",sizeof(char));
+		}
 		SyBlobFormat(&sCopy,"%s: ",zLabel);
 		SyBlobAppend(&sCopy,zBody,nBody);
-		rc2 = VmWriteDiagnostic(pVm,&pVm->sVmConsumer,&sCopy,1);
+		rc2 = VmWriteDiagnostic(pVm,
+			bErrStream ? VmErrConsumer(pVm) : &pVm->sVmConsumer,&sCopy,!bErrStream);
 		SyBlobRelease(&sCopy);
 		/* keep the first failure rather than letting a later successful write mask it */
 		if( rc == SXRET_OK ){
@@ -467,8 +544,12 @@ static void VmDiagnosticQualify(SyBlob *pOut,SyString *pFuncName)
  * (the caller has already cleared the error_reporting() mask and the '@' gate):
  *   - LOG copy     -> the error (stderr) stream when log_errors is on:
  *                     `PHP LABEL:  BODY in FILE on line N`
- *   - DISPLAY copy -> the program-output (stdout) stream when display_errors is on:
- *                     `\nLABEL: BODY in FILE on line N`
+ *   - DISPLAY copy -> the stream display_errors NAMES: program output (stdout) with
+ *                     a leading blank line, `\nLABEL: BODY in FILE on line N`, or --
+ *                     for the `stderr` spelling -- the error stream with no blank
+ *                     line. php writes the stderr form with fprintf(), outside the
+ *                     output layer, so an ob_start() never captures it and it does
+ *                     not count toward the program's output length.
  * BODY already carries php's `func(): ` qualifier (VmDiagnosticQualify).
  * Stock CLI php (display_errors off, log_errors on) writes only the stderr copy,
  * keeping program stdout clean. BODY/location are shared; only the header and the
@@ -487,15 +568,19 @@ static sxi32 VmEmitDiagnostic(ph7_vm *pVm,sxi32 iErr,
 		VmDiagnosticLocation(pWorker,pFile,nLine);
 		rc = VmWriteErrorLog(pVm,VmErrConsumer(pVm),pWorker);
 	}
-	if( pVm->bDisplayErrors ){
+	if( pVm->iDisplayErrors != PH7_DISPLAY_ERRORS_OFF ){
+		int bErrStream = pVm->iDisplayErrors == PH7_DISPLAY_ERRORS_STDERR;
 		sxi32 rc2;
 		SyBlobReset(pWorker);
-		/* php's text-mode display copy is prefixed with a blank line */
-		SyBlobAppend(pWorker,"\n",sizeof(char));
+		if( !bErrStream ){
+			/* php's text-mode display copy is prefixed with a blank line */
+			SyBlobAppend(pWorker,"\n",sizeof(char));
+		}
 		VmDiagnosticHeader(pWorker,iErr);
 		SyBlobAppend(pWorker,zBody,nBody);
 		VmDiagnosticLocation(pWorker,pFile,nLine);
-		rc2 = VmWriteDiagnostic(pVm,&pVm->sVmConsumer,pWorker,1);
+		rc2 = VmWriteDiagnostic(pVm,
+			bErrStream ? VmErrConsumer(pVm) : &pVm->sVmConsumer,pWorker,!bErrStream);
 		/* keep the first failure (e.g. a PH7_ABORT from a broken stderr) rather
 		 * than letting a later successful write mask it */
 		if( rc == SXRET_OK ){
@@ -3737,14 +3822,23 @@ PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,sxi32 iErr,const char 
 		}
 		SyBlobRelease(&sCopy);
 	}
-	if( pVm->bDisplayErrors ){
+	if( pVm->iDisplayErrors != PH7_DISPLAY_ERRORS_OFF ){
+		int bErrStream = pVm->iDisplayErrors == PH7_DISPLAY_ERRORS_STDERR;
 		sxi32 rc2;
 		SyBlobInit(&sCopy,&pVm->sAllocator);
-		/* php's text-mode display copy is prefixed with a blank line */
-		SyBlobAppend(&sCopy,"\n",sizeof(char));
+		if( !bErrStream ){
+			/* php's text-mode display copy is prefixed with a blank line */
+			SyBlobAppend(&sCopy,"\n",sizeof(char));
+		}
 		SyBlobFormat(&sCopy,"%s: ",zLabel);
 		SyBlobAppend(&sCopy,zBody,nBody);
-		rc2 = VmWriteCompileCopy(&(*pVm),VmCompileDisplaySink(pVm),&sCopy,1);
+		/* `display_errors=stderr` sends the display copy down the SAME channel the
+		 * log copy takes, and it is not program output there: no output tracking. */
+		rc2 = VmWriteCompileCopy(&(*pVm),
+			bErrStream
+				? (pVm->sVmErrConsumer.xConsumer ? &pVm->sVmErrConsumer : (ph7_output_consumer *)0)
+				: VmCompileDisplaySink(pVm),
+			&sCopy,!bErrStream);
 		SyBlobRelease(&sCopy);
 		if( rc == SXRET_OK ){
 			rc = rc2;

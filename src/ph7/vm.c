@@ -2884,7 +2884,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* php CLI diagnostic-stream defaults: display_errors off (program stdout stays
 	 * clean), log_errors on (the log copy goes to stderr). -d/-c and ini_set()
 	 * override these; bErrReport is the separate master gate installed by the CLI. */
-	pVm->bDisplayErrors = 0;
+	pVm->iDisplayErrors = PH7_DISPLAY_ERRORS_OFF;
 	pVm->bLogErrors = 1;
 	/* mbstring's substitute character, php's default (the internal encoding
 	 * beside it is UTF-8, which is the zero the struct already holds) */
@@ -5410,10 +5410,10 @@ static sxi32 VmSetIniEntry(ph7_vm *pVm,const char *zName,const char *zValue)
 			}
 		}else if( nName == sizeof("display_errors")-1
 		 && SyMemcmp(zName,"display_errors",nName) == 0 ){
-			/* Mirror the display_errors gate C-side so it takes effect even
-			 * if the script never touches the INI API (ini_set keeps it in
+			/* Mirror the display_errors DESTINATION C-side so it takes effect
+			 * even if the script never touches the INI API (ini_set keeps it in
 			 * sync at runtime via __ini_apply_err). */
-			pVm->bDisplayErrors = VmIniBool(zValue,nValue);
+			pVm->iDisplayErrors = PH7_VmDisplayErrorsMode(zValue,nValue);
 		}else if( nName == sizeof("log_errors")-1
 		 && SyMemcmp(zName,"log_errors",nName) == 0 ){
 			pVm->bLogErrors = VmIniBool(zValue,nValue);
