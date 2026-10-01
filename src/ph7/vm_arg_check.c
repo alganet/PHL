@@ -2734,32 +2734,27 @@ static int VmSigParams(const char *zSig,VmSigParam *aOut,int nMax)
 	return n;
 }
 /*
- * Materialize a signature default's TEXT into pOut. php's own stub values, which is a
- * small set: null, true/false, an integer or float, a quoted string, and `[]`. A default
- * the table could not state (`= ?`, ~50 rows — §7.4) answers 0, and the caller then reports
- * the parameter as not passed rather than inventing a value.
+ * Materialize a signature default's TEXT into pOut, for a parameter a NAMED call
+ * skipped.
+ *
+ * The reduction itself is Reflection's (PH7_VmSigDefaultToValue): a default is
+ * read off the SAME signature string getDefaultValue() reads, so it has to mean
+ * the same thing at both doors, and this one used to carry a smaller reader of
+ * its own -- see the note over PH7_VmSigDefaultToValue for what the two
+ * disagreed about. Two cases stay here: `[]`, whose value is a hashmap rather
+ * than a scalar, and the `= ?` marker (~50 rows the table cannot state, §7.4),
+ * which answers 0 so the caller reports the parameter as not passed rather than
+ * inventing a value.
  */
-static int VmSigDefaultValue(ph7_vm *pVm,const VmSigParam *pParam,ph7_value *pOut)
+static int VmSigDefaultValue(ph7_context *pCtx,const VmSigParam *pParam,ph7_value *pOut)
 {
 	const char *z = pParam->zDef;
 	int n = pParam->nDef;
 	if( z == 0 || n < 1 || (n == 1 && z[0] == '?') ){
 		return 0;
 	}
-	if( n == 4 && (SyStrnicmp(z,"null",4) == 0) ){
-		PH7_MemObjRelease(pOut);
-		return 1; /* a released value IS null */
-	}
-	if( n == 4 && SyStrnicmp(z,"true",4) == 0 ){
-		PH7_MemObjInitFromBool(pVm,pOut,1);
-		return 1;
-	}
-	if( n == 5 && SyStrnicmp(z,"false",5) == 0 ){
-		PH7_MemObjInitFromBool(pVm,pOut,0);
-		return 1;
-	}
 	if( n == 2 && z[0] == '[' && z[1] == ']' ){
-		ph7_hashmap *pMap = PH7_NewHashmap(pVm,0,0);
+		ph7_hashmap *pMap = PH7_NewHashmap(pCtx->pVm,0,0);
 		if( pMap == 0 ){
 			return 0;
 		}
@@ -2768,22 +2763,7 @@ static int VmSigDefaultValue(ph7_vm *pVm,const VmSigParam *pParam,ph7_value *pOu
 		MemObjSetType(pOut,MEMOBJ_HASHMAP);
 		return 1;
 	}
-	if( z[0] == '\'' || z[0] == '"' ){
-		SyString sStr;
-		SyStringInitFromBuf(&sStr,z + 1,n >= 2 ? n - 2 : 0);
-		PH7_MemObjInitFromString(pVm,pOut,&sStr);
-		return 1;
-	}
-	if( z[0] == '-' || z[0] == '+' || (z[0] >= '0' && z[0] <= '9') ){
-		SyString sNum;
-		SyStringInitFromBuf(&sNum,z,(sxu32)n);
-		if( PH7_MemObjInitFromString(pVm,pOut,&sNum) != SXRET_OK ){
-			return 0;
-		}
-		PH7_MemObjToNumeric(pOut);
-		return 1;
-	}
-	return 0; /* a constant expression (M_PI, PHP_ROUND_HALF_UP, …): not evaluated here */
+	return PH7_VmSigDefaultToValue(pCtx,z,n,pOut);
 }
 /*
  * Bind a call's NAMED arguments to the callee's declared parameter POSITIONS.
@@ -2860,7 +2840,7 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 	for( i = 0 ; i <= nLast ; ++i ){
 		if( apBound[i] == 0 ){
 			ph7_value *pDef = ph7_context_new_scalar(pCtx);
-			if( pDef == 0 || !VmSigDefaultValue(pCtx->pVm,&aParam[i],pDef) ){
+			if( pDef == 0 || !VmSigDefaultValue(pCtx,&aParam[i],pDef) ){
 				SyString sName;
 				SyStringInitFromBuf(&sName,aParam[i].zName,(sxu32)aParam[i].nName);
 				return PH7_VmThrowException(pCtx,"ArgumentCountError",

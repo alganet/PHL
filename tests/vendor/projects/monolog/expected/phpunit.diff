@@ -34,7 +34,7 @@
 +............................................................... 441 / 734 ( 60%)
 +.......................................................SS...... 504 / 734 ( 68%)
 +.....................................SS........................ 567 / 734 ( 77%)
-+......EE.......F..........................W.................... 630 / 734 ( 85%)
++......EE.......F..........................S.................... 630 / 734 ( 85%)
 +.....................E......................................... 693 / 734 ( 94%)
 +.........................................                       734 / 734 (100%)
  
@@ -81,7 +81,7 @@
  There were 33 skipped tests:
  
  1) Monolog\Formatter\LineFormatterTest::testDefFormatWithSoapFaultException
-@@ -126,6 +159,20 @@
+@@ -126,6 +159,13 @@
  33) Monolog\Processor\MercurialProcessorTest::testProcessor
  hg is missing
  
@@ -90,18 +90,11 @@
 -@exit@ 0
 +--
 +
-+1 test triggered 1 PHP warning:
-+
-+1) @ROOT@/tests/Monolog/Processor/MercurialProcessorTest.php:27
-+chdir(): Permission denied (errno 13)
-+
-+--
-+
 +1 test triggered 1 PHP notice:
 +
 +1) @ROOT@/tests/Monolog/LoggerTest.php:585
 +date_default_timezone_set(): Timezone ID 'CET' is invalid
 +
 +ERRORS!
-+Tests: 734, Assertions: 1621, Errors: 4, Failures: 1, Warnings: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
++Tests: 734, Assertions: 1621, Errors: 4, Failures: 1, PHPUnit Deprecations: 220, Notices: 1, Skipped: 33.
 +@exit@ 2

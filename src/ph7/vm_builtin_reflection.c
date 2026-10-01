@@ -1264,6 +1264,30 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 	return 0;
 }
 /*
+ * The same reduction, for the door OUTSIDE this file that needs it.
+ *
+ * A declared signature's default is TEXT, and two places have to turn it into a
+ * value: getDefaultValue() above, and the named-argument binder in
+ * vm_arg_check.c, which materializes the parameters a named call SKIPPED
+ * (`mkdir($d, recursive: true)` has to supply `$permissions`). That binder
+ * carried a reader of its own -- null/true/false, `[]`, a quoted string and a
+ * DECIMAL number -- so the two doors onto one value disagreed on every default
+ * the small reader could not spell: `0777` bound as 777 (a directory created
+ * mode 01411, which the next chdir() could not enter), and any default written
+ * as a CONSTANT (`ENT_QUOTES | …`, `M_E`, `SORT_REGULAR`, `SplFileObject::class`,
+ * `2 * 1024 * 1024` -- ~180 parameters) bound as "not passed", so php's own
+ * `htmlspecialchars("<a>", encoding: 'UTF-8')` was an ArgumentCountError here.
+ * There is one reader now and this is its door; `[]` stays with the caller
+ * because the value it builds is a hashmap rather than a scalar.
+ */
+PH7_PRIVATE int PH7_VmSigDefaultToValue(ph7_context *pCtx,const char *z,int n,ph7_value *pOut)
+{
+	if( pCtx == 0 || z == 0 || n < 1 || pOut == 0 ){
+		return 0;
+	}
+	return ReflectSigScalar(pCtx,z,n,pOut);
+}
+/*
  * One parameter, described uniformly.
  *
  * A reflected function's parameters come from one of TWO places — a compiled
