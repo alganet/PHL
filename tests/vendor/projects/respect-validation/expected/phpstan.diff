@@ -1,17 +1,9 @@
 --- php
 +++ phl
-@@ -66,622 +66,48 @@
- @ROOT@/src/Validators/All.php
- @ROOT@/src/Validators/AllOf.php
- @ROOT@/src/Validators/Alnum.php
--@ROOT@/src/Validators/Alpha.php
--@ROOT@/src/Validators/AlwaysInvalid.php
--@ROOT@/src/Validators/AlwaysValid.php
--@ROOT@/src/Validators/AnyOf.php
--@ROOT@/src/Validators/ArrayType.php
--@ROOT@/src/Validators/ArrayVal.php
--@ROOT@/src/Validators/Attributes.php
--@ROOT@/src/Validators/Base.php
+@@ -74,614 +74,43 @@
+ @ROOT@/src/Validators/ArrayVal.php
+ @ROOT@/src/Validators/Attributes.php
+ @ROOT@/src/Validators/Base.php
 -@ROOT@/src/Validators/Base64.php
 -@ROOT@/src/Validators/Between.php
 -@ROOT@/src/Validators/BetweenExclusive.php
@@ -623,48 +615,43 @@
 - [OK] No errors
 -
 -@exit@ 0
-+Uncaught FiberError: Cannot suspend across an internal call boundary in phar://phpstan.phar/src/Analyser/Fiber/FiberScope.php:46
-+#0 phar://phpstan.phar/src/Analyser/TypeSpecifier.php(350): PHPStan\Analyser\Fiber\FiberScope->getType()
-+#1 [internal function]: {closure:{closure:PHPStan\Analyser\TypeSpecifier::specifyTypesFromAsserts():344}:350}()
-+#2 phar://phpstan.phar/src/Analyser/TypeSpecifier.php(350): array_map()
-+#3 phar://phpstan.phar/src/Type/TypeTraverser.php(52): {closure:PHPStan\Analyser\TypeSpecifier::specifyTypesFromAsserts():344}()
-+#4 phar://phpstan.phar/src/Type/TypeTraverser.php(38): PHPStan\Type\TypeTraverser->mapInternal()
-+#5 phar://phpstan.phar/src/Analyser/TypeSpecifier.php(344): PHPStan\Type\TypeTraverser::map()
-+#6 phar://phpstan.phar/src/Analyser/ExprHandler/FuncCallHandler.php(684): PHPStan\Analyser\TypeSpecifier->specifyTypesFromAsserts()
-+#7 phar://phpstan.phar/src/Analyser/TypeSpecifier.php(100): PHPStan\Analyser\ExprHandler\FuncCallHandler->specifyTypes()
-+#8 phar://phpstan.phar/src/Rules/Comparison/ImpossibleCheckTypeHelper.php(259): PHPStan\Analyser\TypeSpecifier->specifyTypesInCondition()
-+#9 phar://phpstan.phar/src/Rules/Comparison/ImpossibleCheckTypeHelper.php(68): PHPStan\Rules\Comparison\ImpossibleCheckTypeHelper->getSpecifiedType()
-+#10 phar://phpstan.phar/src/Rules/Comparison/ImpossibleCheckTypeFunctionCallRule.php(66): PHPStan\Rules\Comparison\ImpossibleCheckTypeHelper->findSpecifiedType()
-+#11 phar://phpstan.phar/src/Analyser/FileAnalyserCallback.php(139): PHPStan\Rules\Comparison\ImpossibleCheckTypeFunctionCallRule->processNode()
-+#12 phar://phpstan.phar/src/Node/ClassStatementsGatherer.php(120): PHPStan\Analyser\FileAnalyserCallback->__invoke()
-+#13 phar://phpstan.phar/src/Analyser/Fiber/FiberNodeScopeResolver.php(48): PHPStan\Node\ClassStatementsGatherer->__invoke()
-+#14 phar://phpstan.phar/src/Analyser/Fiber/FiberNodeScopeResolver.php(43): {closure:PHPStan\Analyser\Fiber\FiberNodeScopeResolver::callNodeCallback():45}()
-+#15 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(2299): PHPStan\Analyser\Fiber\FiberNodeScopeResolver->callNodeCallback()
-+#16 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(2222): PHPStan\Analyser\NodeScopeResolver->callNodeCallbackWithExpression()
-+#17 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(900): PHPStan\Analyser\NodeScopeResolver->processExprNode()
-+#18 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(609): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
-+#19 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(583): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternalWithoutFlushingPendingFibers()
-+#20 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(820): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternal()
-+#21 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(609): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
-+#22 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(583): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternalWithoutFlushingPendingFibers()
-+#23 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(1034): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternal()
-+#24 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(609): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
-+#25 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(583): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternalWithoutFlushingPendingFibers()
-+#26 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(972): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternal()
-+#27 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(458): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
-+#28 phar://phpstan.phar/src/Analyser/FileAnalyser.php(122): PHPStan\Analyser\NodeScopeResolver->processNodes()
-+#29 phar://phpstan.phar/src/Analyser/Analyser.php(81): PHPStan\Analyser\FileAnalyser->analyseFile()
-+#30 phar://phpstan.phar/src/Command/AnalyserRunner.php(70): PHPStan\Analyser\Analyser->analyse()
-+#31 phar://phpstan.phar/src/Command/AnalyseApplication.php(188): PHPStan\Command\AnalyserRunner->runAnalyser()
-+#32 phar://phpstan.phar/src/Command/AnalyseApplication.php(80): PHPStan\Command\AnalyseApplication->runAnalyser()
-+#33 phar://phpstan.phar/src/Command/AnalyseCommand.php(263): PHPStan\Command\AnalyseApplication->analyse()
-+#34 phar://phpstan.phar/vendor/symfony/console/Command/Command.php(259): PHPStan\Command\AnalyseCommand->execute()
-+#35 phar://phpstan.phar/vendor/symfony/console/Application.php(868): _PHPStan_b3f880679\Symfony\Component\Console\Command\Command->run()
-+#36 phar://phpstan.phar/vendor/symfony/console/Application.php(261): _PHPStan_b3f880679\Symfony\Component\Console\Application->doRunCommand()
-+#37 phar://phpstan.phar/vendor/symfony/console/Application.php(157): _PHPStan_b3f880679\Symfony\Component\Console\Application->doRun()
-+#38 phar://phpstan.phar/bin/phpstan(109): _PHPStan_b3f880679\Symfony\Component\Console\Application->run()
-+#39 phar://phpstan.phar/bin/phpstan(110): {closure:phar://phpstan.phar/bin/phpstan:16}()
-+#40 @ROOT@/vendor/phpstan/phpstan/phpstan(8): require('...')
-+#41 @ROOT@/vendor/bin/phpstan(119): include('...')
-+#42 {main}
++Uncaught TypeError: mb_encoding_aliases(): Return value must be of type array, false returned in phar://phpstan.phar/vendor/symfony/polyfill-mbstring/bootstrap80.php:42
++#0 phar://phpstan.phar/src/Type/Php/MbFunctionsReturnTypeExtensionTrait.php(33): mb_encoding_aliases()
++#1 phar://phpstan.phar/src/Type/Php/MbFunctionsReturnTypeExtensionTrait.php(22): PHPStan\Type\Php\MbStrlenFunctionReturnTypeExtension->getSupportedEncodings()
++#2 phar://phpstan.phar/src/Type/Php/MbStrlenFunctionReturnTypeExtension.php(67): PHPStan\Type\Php\MbStrlenFunctionReturnTypeExtension->isSupportedEncoding()
++#3 phar://phpstan.phar/src/Analyser/ExprHandler/FuncCallHandler.php(722): PHPStan\Type\Php\MbStrlenFunctionReturnTypeExtension->getTypeFromFunctionCall()
++#4 phar://phpstan.phar/src/Analyser/ExprHandler/FuncCallHandler.php(648): PHPStan\Analyser\ExprHandler\FuncCallHandler->getDynamicFunctionReturnType()
++#5 phar://phpstan.phar/src/Analyser/MutatingScope.php(777): PHPStan\Analyser\ExprHandler\FuncCallHandler->resolveType()
++#6 phar://phpstan.phar/src/Analyser/MutatingScope.php(704): PHPStan\Analyser\MutatingScope->resolveType()
++#7 phar://phpstan.phar/src/Analyser/ExprHandler/FuncCallHandler.php(430): PHPStan\Analyser\MutatingScope->getType()
++#8 phar://phpstan.phar/src/Analyser/ExprHandler/FuncCallHandler.php(290): PHPStan\Analyser\ExprHandler\FuncCallHandler->getFunctionThrowPoint()
++#9 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(2216): PHPStan\Analyser\ExprHandler\FuncCallHandler->processExpr()
++#10 phar://phpstan.phar/src/Analyser/ExprHandler/AssignHandler.php(261): PHPStan\Analyser\NodeScopeResolver->processExprNode()
++#11 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(2216): PHPStan\Analyser\ExprHandler\AssignHandler->processExpr()
++#12 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(939): PHPStan\Analyser\NodeScopeResolver->processExprNode()
++#13 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(609): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
++#14 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(583): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternalWithoutFlushingPendingFibers()
++#15 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(820): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternal()
++#16 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(609): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
++#17 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(583): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternalWithoutFlushingPendingFibers()
++#18 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(1034): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternal()
++#19 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(609): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
++#20 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(583): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternalWithoutFlushingPendingFibers()
++#21 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(972): PHPStan\Analyser\NodeScopeResolver->processStmtNodesInternal()
++#22 phar://phpstan.phar/src/Analyser/NodeScopeResolver.php(458): PHPStan\Analyser\NodeScopeResolver->processStmtNode()
++#23 phar://phpstan.phar/src/Analyser/FileAnalyser.php(122): PHPStan\Analyser\NodeScopeResolver->processNodes()
++#24 phar://phpstan.phar/src/Analyser/Analyser.php(81): PHPStan\Analyser\FileAnalyser->analyseFile()
++#25 phar://phpstan.phar/src/Command/AnalyserRunner.php(70): PHPStan\Analyser\Analyser->analyse()
++#26 phar://phpstan.phar/src/Command/AnalyseApplication.php(188): PHPStan\Command\AnalyserRunner->runAnalyser()
++#27 phar://phpstan.phar/src/Command/AnalyseApplication.php(80): PHPStan\Command\AnalyseApplication->runAnalyser()
++#28 phar://phpstan.phar/src/Command/AnalyseCommand.php(263): PHPStan\Command\AnalyseApplication->analyse()
++#29 phar://phpstan.phar/vendor/symfony/console/Command/Command.php(259): PHPStan\Command\AnalyseCommand->execute()
++#30 phar://phpstan.phar/vendor/symfony/console/Application.php(868): _PHPStan_b3f880679\Symfony\Component\Console\Command\Command->run()
++#31 phar://phpstan.phar/vendor/symfony/console/Application.php(261): _PHPStan_b3f880679\Symfony\Component\Console\Application->doRunCommand()
++#32 phar://phpstan.phar/vendor/symfony/console/Application.php(157): _PHPStan_b3f880679\Symfony\Component\Console\Application->doRun()
++#33 phar://phpstan.phar/bin/phpstan(109): _PHPStan_b3f880679\Symfony\Component\Console\Application->run()
++#34 phar://phpstan.phar/bin/phpstan(110): {closure:phar://phpstan.phar/bin/phpstan:16}()
++#35 @ROOT@/vendor/phpstan/phpstan/phpstan(8): require('...')
++#36 @ROOT@/vendor/bin/phpstan(119): include('...')
++#37 {main}
 +@exit@ 1

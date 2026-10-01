@@ -2,12 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-SCOPED DIVERGENCE (PLAN.md "Generators / fibers", PERMANENT until fibers move onto the inline-try machinery): the six ways a Fiber::suspend() can be reached. The four a call SITE spells are PHP->PHP calls and suspend; the two that go through a C callback (call_user_func, array_map) raise a catchable FiberError. php takes all six -- see the _zend twin.
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+The six ways a Fiber::suspend() can be reached: straight from the body, through a closure, a first-class callable, an __invoke object, call_user_func() and an array_map() callback. A fiber runs on a native stack of its own, so the two that go through a C callback park that builtin's own C frame along with the PHP one and suspend like the rest.
 --FILE--
 <?php
 function run(string $label, Closure $body): void
@@ -60,7 +55,7 @@ direct: 'R'
 closure: 'R'
 first-class callable: 'R'
 __invoke: 'R'
-call_user_func: FiberError: Cannot suspend across an internal call boundary
-array_map: FiberError: Cannot suspend across an internal call boundary
+call_user_func: 'R'
+array_map: 'R'
 --CLEAN--
 <?php

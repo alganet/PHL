@@ -2,12 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-SCOPED DIVERGENCE (BYTECODE.md stage 4, PERMANENT): Fiber::suspend() inside a C-callback (usort comparator) raises a catchable FiberError — PHL cannot suspend across a native frame without coroutine stacks. php suspends fine (full native-stack switch); its behavior is the permanent _zend twin. This twin pins PHL's loud, catchable failure (never the old silent sort corruption).
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+Fiber::suspend() inside a usort() comparator suspends and resumes mid-sort: the comparator's PHP frame and the sort's C frame park together on the fiber's own native stack.
 --FILE--
 <?php
 $f = new Fiber(function () {
@@ -19,18 +14,16 @@ $f = new Fiber(function () {
     echo "sorted:", implode(",", $a), "\n";
     return "done";
 });
-try {
-    $v = $f->start();
-    echo "start returned: ", ($v === null ? "NULL" : $v), "\n";
-    while ($f->isSuspended()) {
-        $f->resume();
-    }
-    echo "ret=", $f->getReturn(), "\n";
-} catch (FiberError $e) {
-    echo "FiberError: ", $e->getMessage(), "\n";
+$v = $f->start();
+echo "start returned: ", ($v === null ? "NULL" : $v), "\n";
+while ($f->isSuspended()) {
+    $f->resume();
 }
+echo "ret=", $f->getReturn(), "\n";
 ?>
 --EXPECT--
-FiberError: Cannot suspend across an internal call boundary
+start returned: in-comparator
+sorted:1,2,3
+ret=done
 --CLEAN--
 <?php

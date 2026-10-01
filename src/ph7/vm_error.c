@@ -6553,6 +6553,21 @@ Rethrow:
 				return SXRET_OK;
 			}
 		}
+#ifdef PH7_CORO_STACK
+		if( pVm->pCoroCtx && pThis && pVm->pCoroCtx->pEscaped == 0 ){
+			/* Not uncaught -- OUT OF A FIBER. A fiber running on its own native
+			 * stack owns its handler stack outright, so "nothing here matches" is
+			 * the end of the FIBER, not of the script: php terminates the fiber and
+			 * re-raises the exception at the start()/resume() that ran it, where the
+			 * resumer's own handlers are. Carry the instance out on the ctx (one
+			 * reference, given back by VmFiberRaiseEscaped) and unwind the body with
+			 * the status OP_THROW routes as an exception. */
+			pThis->iRef++;
+			pVm->pCoroCtx->pEscaped = pThis;
+			VmExcRelease(&(*pVm),pException);
+			return PH7_EXCEPTION;
+		}
+#endif
 		/* Truly uncaught */
 		rc = VmUncaughtException(&(*pVm),pThis);
 		if( rc == SXRET_OK && pException ){

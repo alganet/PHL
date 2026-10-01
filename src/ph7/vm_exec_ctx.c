@@ -3,6 +3,13 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
+/* Darwin declares the ucontext routines only when _XOPEN_SOURCE is defined
+ * before the first system header; _DARWIN_C_SOURCE keeps the rest of the libc
+ * visible, which _XOPEN_SOURCE alone would hide. */
+#if defined(__APPLE__) && !defined(_XOPEN_SOURCE)
+#define _XOPEN_SOURCE 600
+#define _DARWIN_C_SOURCE 1
+#endif
 #include "ph7int.h"
 /*
  * Section:
@@ -13,6 +20,616 @@
  * Status:
  *    Stable.
  */
+/*
+ * ---------------------------------------------------------------------------
+ * Real coroutine stacks: a fiber body on a native stack of its own.
+ * ---------------------------------------------------------------------------
+ * See the PH7_CORO_STACK block in ph7int.h for WHY. This is the machinery:
+ *
+ *   VmCoroNew / VmCoroFree        one switchable native stack
+ *   VmCoroEnter / VmCoroLeave     the switch itself, in both directions
+ *   VmCoroStateInit / Swap        the VM state that belongs to whichever runs
+ *   VmCoroRun                     the resumer's side of a start / resume / kill
+ *   VmCoroBody                    the fiber's side, entered once
+ *
+ * All of it compiles out where no stack-switch primitive exists, and a fiber
+ * that does not get a stack (an allocation failure; a generator, which never
+ * asks for one) falls back to the record-parking path. So the two models
+ * coexist and `pCtx->pCoro != 0` is the discriminator every caller tests.
+ */
+#ifdef PH7_CORO_STACK
+#ifdef PH7_CORO_UCONTEXT
+#include <ucontext.h>
+#if defined(__APPLE__) && defined(__clang__)
+/* ...and marks every one of them deprecated, which -Werror turns into a
+ * failed build. */
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+#endif
+#if defined(PH7_CORO_UCONTEXT) || defined(PH7_CORO_ASM_X64)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+#ifdef PH7_CORO_WIN32
+#include <windows.h>
+#endif
+/* ASan keeps its own idea of where the stack is, and moves locals whose address
+ * escapes onto a "fake stack" it tracks per stack. A switch it is not told
+ * about makes it read the other side's frames as use-after-return, so every
+ * switch is announced. The protocol is the documented one: start_switch_fiber
+ * names where we are GOING and hands back a token; finish_switch_fiber runs on
+ * ARRIVAL with the token of the switch that got us there -- which, for a switch
+ * that eventually comes back, is a local of the function that made it. */
+#if defined(__has_feature)
+# if __has_feature(address_sanitizer)
+#  define PH7_CORO_ASAN 1
+# endif
+#endif
+#if defined(__SANITIZE_ADDRESS__) && !defined(PH7_CORO_ASAN)
+# define PH7_CORO_ASAN 1
+#endif
+#ifdef PH7_CORO_ASAN
+#include <sanitizer/common_interface_defs.h>
+#endif
+/*
+ * How big a fiber's native stack is, and why it is not a constant.
+ *
+ * A fiber's stack holds what the trampoline does NOT flatten -- eval/include
+ * towers, C->PHP callbacks, nested coroutine starts -- which is exactly what
+ * nMaxNativeDepth counts, and a fiber's depth counter starts at zero on its own
+ * stack. So the stack has to be big enough that the ENGINE's clean fatal
+ * ("Maximum native nesting depth reached") always fires before the guard page
+ * does; otherwise a deep enough callback tower inside a fiber is a SIGSEGV
+ * where the same tower outside one is a diagnostic.
+ *
+ * Hence: bytes per allowed level, times the cap. The per-level figure was
+ * measured on the fattest thing in the tree -- a self-recursive `array_map`
+ * callback, which spends a builtin frame, a native VmByteCodeExec activation
+ * and an operand stack on every level: ~5.7 KB at -O3 and ~14 KB under
+ * ASan+UBSan at -O1 -g. 32 KB carries better than a 2x margin over the worse of
+ * the two. At the host default cap of 256 that is 8 MB of ADDRESS SPACE per live
+ * fiber; both platforms map it lazily, so an idle fiber's resident cost is the
+ * page it is parked on.
+ */
+#ifndef PH7_CORO_STACK_PER_LEVEL
+#define PH7_CORO_STACK_PER_LEVEL (32 * 1024)
+#endif
+#ifndef PH7_CORO_STACK_MIN
+#define PH7_CORO_STACK_MIN (256 * 1024)
+#endif
+#ifndef PH7_CORO_STACK_MAX
+#define PH7_CORO_STACK_MAX (32 * 1024 * 1024)
+#endif
+static sxu32 VmCoroStackBytes(ph7_vm *pVm)
+{
+	sxi64 nWant = (sxi64)(pVm->nMaxNativeDepth > 0 ? pVm->nMaxNativeDepth : 256)
+		* (sxi64)PH7_CORO_STACK_PER_LEVEL;
+	if( nWant < PH7_CORO_STACK_MIN ){
+		nWant = PH7_CORO_STACK_MIN;
+	}
+	if( nWant > PH7_CORO_STACK_MAX ){
+		nWant = PH7_CORO_STACK_MAX;
+	}
+	return (sxu32)nWant;
+}
+struct VmCoro
+{
+#ifdef PH7_CORO_UCONTEXT
+	ucontext_t sBack;       /* the resumer's context: where a switch-out goes */
+	ucontext_t sSelf;       /* the fiber's own */
+#endif
+#ifdef PH7_CORO_ASM_X64
+	void *pBackSp;          /* the resumer's saved stack pointer (switch-out target) */
+	void *pSelfSp;          /* the fiber's own */
+#endif
+#if defined(PH7_CORO_UCONTEXT) || defined(PH7_CORO_ASM_X64)
+	void *pMap;             /* mmap base: one guard page, then the stack */
+	sxu32 nMap;             /* its length, for munmap */
+#endif
+#ifdef PH7_CORO_WIN32
+	void *pFiber;           /* CreateFiber handle */
+	void *pBack;            /* the resumer's fiber handle, valid while we run */
+#endif
+	void *pStack;           /* usable stack, low address (0 where the platform owns it) */
+	sxu32 nStack;           /* usable stack bytes */
+#ifdef PH7_CORO_ASAN
+	const void *pHostStack; /* where the resumer's stack is: learned on arrival, */
+	sxu32 nHostStack;       /* and needed to announce the switch back to it */
+#endif
+};
+#ifdef PH7_CORO_ASAN
+/*
+ * Arriving on a stack. pTok closes the switch that brought us here (0 when the
+ * arrival is a fiber's FIRST entry: the enterer keeps its own token for its own
+ * return). The out-params say where we came from, which is the only way the
+ * fiber can learn the resumer's stack bounds to announce the switch back.
+ */
+static void VmCoroAsanArrive(VmCoro *pCoro, void *pTok)
+{
+	const void *pFrom = 0;
+	size_t nFrom = 0;
+	__sanitizer_finish_switch_fiber(pTok, &pFrom, &nFrom);
+	if( pCoro && pFrom ){
+		pCoro->pHostStack = pFrom;
+		pCoro->nHostStack = (sxu32)nFrom;
+	}
+}
+#define VM_CORO_ASAN_TOKEN            void *pTok = 0
+#define VM_CORO_ASAN_GO(TOK,BOT,SIZ)  __sanitizer_start_switch_fiber((TOK),(BOT),(size_t)(SIZ))
+#else
+#define VmCoroAsanArrive(C,T)         ((void)0)
+#define VM_CORO_ASAN_TOKEN            int iUnusedTok = 0; (void)iUnusedTok
+#define VM_CORO_ASAN_GO(TOK,BOT,SIZ)  ((void)0)
+#endif
+static void VmCoroBody(ph7_exec_ctx *pCtx);
+static ph7_vm_func * VmCtxEnforceRetFunc(ph7_exec_ctx *pCtx); /* defined below, with the rest of the shared coroutine epilogue */
+#ifdef PH7_CORO_ASM_X64
+/*
+ * The written switch, x86-64 System V.
+ *
+ * PH7_CoroSwitch(void **ppSave, void *pTarget) pushes the six callee-saved
+ * registers and the two floating-point control words, writes the resulting
+ * stack pointer through ppSave, adopts pTarget as the stack, and pops the
+ * mirror image -- so it "returns" wherever that other stack's saved frame says.
+ * That is the whole of a coroutine switch: everything else a C frame owns is
+ * already on the stack it lives on.
+ *
+ * PH7_CoroEntryStub is the address a FRESH stack's frame returns to. The seeded
+ * frame carries the ph7_exec_ctx in the r12 slot (a callee-saved register is
+ * the only place a value can ride through the switch), so the stub moves it
+ * into the first argument register and calls into C, which never comes back.
+ *
+ * `endbr64` on both so an IBT-enforcing loader is satisfied. A CET SHADOW stack
+ * is the case this cannot serve -- a return to a frame the shadow stack never
+ * saw -- and PH7_DISABLE_CORO_ASM is the way back to glibc's swapcontext, which
+ * knows about it.
+ */
+extern void PH7_CoroSwitch(void **ppSave, void *pTarget);
+extern void PH7_CoroEntryStub(void);
+PH7_PRIVATE void PH7_CoroEntryC(ph7_exec_ctx *pCtx); /* named by the stub, so not static */
+__asm__(
+	".text\n"
+	".globl PH7_CoroSwitch\n"
+	".hidden PH7_CoroSwitch\n"
+	".type PH7_CoroSwitch,@function\n"
+	".align 16\n"
+	"PH7_CoroSwitch:\n"
+	"	endbr64\n"
+	"	pushq %rbp\n"
+	"	pushq %rbx\n"
+	"	pushq %r15\n"
+	"	pushq %r14\n"
+	"	pushq %r13\n"
+	"	pushq %r12\n"
+	"	subq $8, %rsp\n"
+	"	stmxcsr (%rsp)\n"
+	"	fnstcw 4(%rsp)\n"
+	"	movq %rsp, (%rdi)\n"
+	"	movq %rsi, %rsp\n"
+	"	ldmxcsr (%rsp)\n"
+	"	fldcw 4(%rsp)\n"
+	"	addq $8, %rsp\n"
+	"	popq %r12\n"
+	"	popq %r13\n"
+	"	popq %r14\n"
+	"	popq %r15\n"
+	"	popq %rbx\n"
+	"	popq %rbp\n"
+	"	ret\n"
+	".size PH7_CoroSwitch,.-PH7_CoroSwitch\n"
+	".globl PH7_CoroEntryStub\n"
+	".hidden PH7_CoroEntryStub\n"
+	".type PH7_CoroEntryStub,@function\n"
+	".align 16\n"
+	"PH7_CoroEntryStub:\n"
+	"	endbr64\n"
+	"	movq %r12, %rdi\n"
+	"	andq $-16, %rsp\n"
+	"	call PH7_CoroEntryC\n"
+	"	hlt\n"
+	".size PH7_CoroEntryStub,.-PH7_CoroEntryStub\n"
+);
+PH7_PRIVATE void PH7_CoroEntryC(ph7_exec_ctx *pCtx)
+{
+	VmCoroBody(pCtx);
+}
+/* Where the seeded frame's eight words sit, counted from the fiber's saved sp:
+ * the control-word pair, then r12 (which carries the ctx), r13, r14, r15, rbx,
+ * rbp, and finally the address PH7_CoroSwitch's `ret` will take. */
+#define VM_CORO_X64_FRAME_WORDS  8
+#define VM_CORO_X64_SLOT_CTL     0
+#define VM_CORO_X64_SLOT_R12     1
+#define VM_CORO_X64_SLOT_RET     7
+#endif /* PH7_CORO_ASM_X64 */
+#ifdef PH7_CORO_UCONTEXT
+/*
+ * makecontext() passes int arguments only, so the context pointer travels as
+ * two of them -- the portable idiom, and the reason this is not a plain
+ * one-argument entry. A VM-wide "the fiber about to boot" field would be
+ * shorter and is not thread-safe, which PH7_ENABLE_THREADS builds care about.
+ */
+static void VmCoroUcEntry(unsigned int iHi, unsigned int iLo)
+{
+	sxu64 uPtr = (((sxu64)iHi) << 32) | (sxu64)iLo;
+	VmCoroBody((ph7_exec_ctx *)(size_t)uPtr);
+}
+#endif
+#ifdef PH7_CORO_WIN32
+static VOID CALLBACK VmCoroWinEntry(PVOID pArg)
+{
+	VmCoroBody((ph7_exec_ctx *)pArg);
+}
+#endif
+/*
+ * Allocate one switchable stack. NULL is not fatal: the caller runs the body on
+ * the shared stack instead, where a suspend across a C boundary keeps raising
+ * the FiberError it always raised.
+ */
+static VmCoro * VmCoroNew(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	VmCoro *pCoro = (VmCoro *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(VmCoro));
+	if( pCoro == 0 ){
+		return 0;
+	}
+	SyZero(pCoro, sizeof(VmCoro));
+#if defined(PH7_CORO_UCONTEXT) || defined(PH7_CORO_ASM_X64)
+	{
+		long nPage = sysconf(_SC_PAGESIZE);
+		sxu32 nGuard = (nPage > 0) ? (sxu32)nPage : 4096;
+		sxu32 nStack = VmCoroStackBytes(pVm);
+		void *pMap;
+		/* One PROT_NONE page below the stack turns an overflow into a clean fault
+		 * at the guard rather than a silent write into whatever the allocator put
+		 * next door. nMaxNativeDepth is the engine's own net; this is the floor
+		 * under it. */
+		pMap = mmap(0, (size_t)nGuard + (size_t)nStack, PROT_READ | PROT_WRITE,
+			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if( pMap == MAP_FAILED ){
+			SyMemBackendFree(&pVm->sAllocator, pCoro);
+			return 0;
+		}
+		(void)mprotect(pMap, (size_t)nGuard, PROT_NONE);
+		pCoro->pMap = pMap;
+		pCoro->nMap = nGuard + nStack;
+		pCoro->pStack = (void *)((char *)pMap + nGuard);
+		pCoro->nStack = nStack;
+	}
+#endif
+#ifdef PH7_CORO_ASM_X64
+	{
+		/* Seed the frame PH7_CoroSwitch will pop the first time this stack is
+		 * entered: the ctx in the r12 slot, the entry stub as the return address,
+		 * and THIS thread's floating-point control words so the fiber starts with
+		 * the rounding/precision modes its creator had. */
+		void **aTop = (void **)(((size_t)pCoro->pStack + pCoro->nStack) & ~(size_t)15);
+		void **aFrame = aTop - VM_CORO_X64_FRAME_WORDS;
+		unsigned int nMxcsr;
+		unsigned short nFcw;
+		sxu32 i;
+		__asm__ __volatile__("stmxcsr %0" : "=m"(nMxcsr));
+		__asm__ __volatile__("fnstcw %0" : "=m"(nFcw));
+		for( i = 0; i < VM_CORO_X64_FRAME_WORDS; i++ ){
+			aFrame[i] = 0;
+		}
+		SyMemcpy((const void *)&nMxcsr, (void *)&aFrame[VM_CORO_X64_SLOT_CTL], sizeof(nMxcsr));
+		SyMemcpy((const void *)&nFcw,
+			(void *)((char *)&aFrame[VM_CORO_X64_SLOT_CTL] + 4), sizeof(nFcw));
+		aFrame[VM_CORO_X64_SLOT_R12] = (void *)pCtx;
+		aFrame[VM_CORO_X64_SLOT_RET] = (void *)PH7_CoroEntryStub;
+		pCoro->pSelfSp = (void *)aFrame;
+	}
+#endif
+#ifdef PH7_CORO_UCONTEXT
+	{
+		sxu64 uPtr;
+		if( getcontext(&pCoro->sSelf) != 0 ){
+			munmap(pCoro->pMap, (size_t)pCoro->nMap);
+			SyMemBackendFree(&pVm->sAllocator, pCoro);
+			return 0;
+		}
+		pCoro->sSelf.uc_stack.ss_sp = pCoro->pStack;
+		pCoro->sSelf.uc_stack.ss_size = (size_t)pCoro->nStack;
+		/* uc_link stays NULL on purpose: the body never falls off its entry, it
+		 * makes the last switch itself (VmCoroBody), so that arrival is announced
+		 * to ASan like every other one. */
+		pCoro->sSelf.uc_link = 0;
+		uPtr = (sxu64)(size_t)pCtx;
+		makecontext(&pCoro->sSelf, (void (*)(void))VmCoroUcEntry, 2,
+			(unsigned int)(uPtr >> 32), (unsigned int)(uPtr & 0xFFFFFFFFu));
+	}
+#endif
+#ifdef PH7_CORO_WIN32
+	/* CreateFiber wants the calling THREAD to be a fiber before anything can be
+	 * switched to. That conversion is per-thread and is not undone: reversing it
+	 * is only safe with no fiber left alive anywhere, which one Fiber object
+	 * cannot know, and it costs an unconverted thread a few dozen bytes. */
+	if( !IsThreadAFiber() ){
+		if( ConvertThreadToFiber(0) == 0 ){
+			SyMemBackendFree(&pVm->sAllocator, pCoro);
+			return 0;
+		}
+	}
+	pCoro->nStack = VmCoroStackBytes(pVm);
+	/* RESERVE the whole thing, COMMIT nothing (the 0): Windows grows a fiber
+	 * stack on demand exactly like a thread's, so the size above is address
+	 * space. FIBER_FLAG_FLOAT_SWITCH is what makes the switch carry the
+	 * floating-point state, which the written x86-64 switch does by hand. */
+	pCoro->pFiber = (void *)CreateFiberEx((SIZE_T)0, (SIZE_T)pCoro->nStack,
+		FIBER_FLAG_FLOAT_SWITCH, VmCoroWinEntry, (LPVOID)pCtx);
+	if( pCoro->pFiber == 0 ){
+		SyMemBackendFree(&pVm->sAllocator, pCoro);
+		return 0;
+	}
+	/* Win32 owns the mapping, so there is no bottom address to hand out -- and
+	 * the MSVC build has no ASan fiber annotations to hand it to. */
+	pCoro->pStack = 0;
+#endif
+	return pCoro;
+}
+/*
+ * Give the stack back. Only ever reached with the fiber not running: its body
+ * ran off the end, or the teardown unwound it first (see the kill switch).
+ */
+static void VmCoroFree(ph7_vm *pVm, VmCoro *pCoro)
+{
+	if( pCoro == 0 ){
+		return;
+	}
+#if defined(PH7_CORO_UCONTEXT) || defined(PH7_CORO_ASM_X64)
+	if( pCoro->pMap ){
+		munmap(pCoro->pMap, (size_t)pCoro->nMap);
+	}
+#endif
+#ifdef PH7_CORO_WIN32
+	if( pCoro->pFiber ){
+		DeleteFiber((LPVOID)pCoro->pFiber);
+	}
+#endif
+	SyMemBackendFree(&pVm->sAllocator, pCoro);
+}
+/*
+ * Switch onto the fiber's stack. Returns when the fiber switches back, because
+ * it suspended or because its body finished.
+ */
+static void VmCoroEnter(VmCoro *pCoro)
+{
+	VM_CORO_ASAN_TOKEN;
+	VM_CORO_ASAN_GO(&pTok, pCoro->pStack, pCoro->nStack);
+#if defined(PH7_CORO_WIN32)
+	pCoro->pBack = GetCurrentFiber();
+	SwitchToFiber((LPVOID)pCoro->pFiber);
+#elif defined(PH7_CORO_ASM_X64)
+	PH7_CoroSwitch(&pCoro->pBackSp, pCoro->pSelfSp);
+#else
+	swapcontext(&pCoro->sBack, &pCoro->sSelf);
+#endif
+	VmCoroAsanArrive(0, pTok);
+}
+/*
+ * ...and back, from inside the fiber. Returns when the fiber is entered again.
+ */
+static void VmCoroLeave(VmCoro *pCoro)
+{
+	VM_CORO_ASAN_TOKEN;
+	VM_CORO_ASAN_GO(&pTok, pCoro->pHostStack, pCoro->nHostStack);
+#if defined(PH7_CORO_WIN32)
+	SwitchToFiber((LPVOID)pCoro->pBack);
+#elif defined(PH7_CORO_ASM_X64)
+	PH7_CoroSwitch(&pCoro->pSelfSp, pCoro->pBackSp);
+#else
+	swapcontext(&pCoro->sSelf, &pCoro->sBack);
+#endif
+	VmCoroAsanArrive(pCoro, pTok);
+}
+/*
+ * The last switch a fiber makes: the body is over, so the stack is spent and
+ * ASan is told to DISCARD this side's state rather than save it (the null
+ * token). Never returns.
+ */
+static void VmCoroLeaveFinal(VmCoro *pCoro)
+{
+	VM_CORO_ASAN_GO(0, pCoro->pHostStack, pCoro->nHostStack);
+#if defined(PH7_CORO_WIN32)
+	SwitchToFiber((LPVOID)pCoro->pBack);
+#elif defined(PH7_CORO_ASM_X64)
+	{
+		/* Nothing on this stack will ever be resumed, so the save slot is a
+		 * scratch word rather than pSelfSp -- writing that would leave a live
+		 * frame pointer on a dead stack. */
+		void *pDead = 0;
+		PH7_CoroSwitch(&pDead, pCoro->pBackSp);
+	}
+#else
+	setcontext(&pCoro->sBack);
+#endif
+}
+/*
+ * The VM state that belongs to whichever side is running (see VmCoroVmState).
+ * One list, used three ways, so a field can never be saved and not restored.
+ */
+#define VM_CORO_STATE_FIELDS(_) \
+	_(aException) _(aFinallyAction) _(aSelf) \
+	_(nVmExecDepth) _(nRecursionDepth) _(nCurLine) _(nBoundaryRc) \
+	_(pCalleeName) _(pNativeFrameName) _(bHostDiscard) _(nErrSuppress) \
+	_(nExceptDepth) _(nExcCtorDepth) _(nMuteThrow) _(nSpeculative) \
+	_(nConstEvalDepth) _(nLazyInitLine) _(nLazyInitDepth) \
+	_(nObDepth) _(nObActive) _(pObFrame) _(pCoroCtx)
+/*
+ * Seed the fiber side for a body that has not run yet: three empty stacks of
+ * its own, a C stack nothing is live on, and every other scalar inherited from
+ * the site that is starting it -- which is what running the body inline used to
+ * give it.
+ */
+static void VmCoroStateInit(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	VmCoroVmState *pS = &pCtx->sSaved;
+#define VM_CORO_INHERIT(F)  pS->F = pVm->F;
+	VM_CORO_STATE_FIELDS(VM_CORO_INHERIT)
+#undef VM_CORO_INHERIT
+	SySetInit(&pS->aException, &pVm->sAllocator, sizeof(ph7_exception *));
+	SySetInit(&pS->aFinallyAction, &pVm->sAllocator, sizeof(VmFinallyAction));
+	SySetInit(&pS->aSelf, &pVm->sAllocator, sizeof(ph7_class *));
+	/* A fresh C stack: no native activation is live on it and no PHP call is
+	 * open, so both guards start from zero and measure THIS stack. */
+	pS->nVmExecDepth = 0;
+	pS->nRecursionDepth = 0;
+	/* Nothing of the resumer's in-flight C state is the fiber's: the parked
+	 * boundary throw belongs to the interrupted exec, the two callee-name latches
+	 * are consumed by the next call the RESUMER makes, and the lazy-initializer
+	 * line override is keyed on the other stack's native depth. */
+	pS->nBoundaryRc = 0;
+	pS->pCalleeName = 0;
+	pS->pNativeFrameName = 0;
+	pS->bHostDiscard = 0;
+	pS->nLazyInitLine = 0;
+	pS->nLazyInitDepth = 0;
+	/* ...and this side IS the fiber. */
+	pS->pCoroCtx = pCtx;
+}
+/*
+ * Release what the fiber side owns. Its three stacks die with the body: at a
+ * clean end they are empty, but a body that ABORTED can still be holding an
+ * unconsumed finally action (a queued return's value, a rethrow's exception
+ * reference) and the per-activation exception clones stage 2b made.
+ */
+static void VmCoroStateRelease(ph7_vm *pVm, VmCoroVmState *pS)
+{
+	sxu32 n = SySetUsed(&pS->aFinallyAction);
+	if( n > 0 ){
+		VmFinallyAction *aA = (VmFinallyAction *)SySetBasePtr(&pS->aFinallyAction);
+		sxu32 i;
+		for( i = 0; i < n; i++ ){
+			if( aA[i].eKind == PH7_FA_RETURN ){
+				PH7_MemObjRelease(&aA[i].sRet);
+			}else if( aA[i].eKind == PH7_FA_RETHROW && aA[i].pExc ){
+				PH7_ClassInstanceUnref(aA[i].pExc);
+			}
+		}
+	}
+	SySetRelease(&pS->aFinallyAction);
+	VmExcReleaseAll(pVm, &pS->aException);
+	SySetRelease(&pS->aException);
+	SySetRelease(&pS->aSelf);  /* borrowed class pointers */
+	SyZero(pS, sizeof(*pS));
+}
+/*
+ * Swap sides: what the VM holds now goes to *pOut, what *pIn holds becomes
+ * live. Called only from the RESUMER's stack, on both sides of the switch, so
+ * the fiber never has to know it is being saved.
+ */
+static void VmCoroStateSwap(ph7_vm *pVm, VmCoroVmState *pOut, VmCoroVmState *pIn)
+{
+	VmCoroVmState sLive;
+#define VM_CORO_SAVE(F)  sLive.F = pVm->F;
+	VM_CORO_STATE_FIELDS(VM_CORO_SAVE)
+#undef VM_CORO_SAVE
+#define VM_CORO_LOAD(F)  pVm->F = pIn->F;
+	VM_CORO_STATE_FIELDS(VM_CORO_LOAD)
+#undef VM_CORO_LOAD
+	*pOut = sLive;
+}
+/*
+ * The resumer's side of one switch into the fiber: install the fiber's view of
+ * the VM, go, and take the resumer's back when control returns. PH7_SUSPEND
+ * when the fiber suspended again, else whatever its body returned.
+ */
+static sxi32 VmCoroRun(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	VmCoroStateSwap(pVm, &pCtx->sHost, &pCtx->sSaved);
+	VmCoroEnter(pCtx->pCoro);
+	VmCoroStateSwap(pVm, &pCtx->sSaved, &pCtx->sHost);
+	return pCtx->bCoroDone ? pCtx->iCoroRc : PH7_SUSPEND;
+}
+/*
+ * The fiber's side, entered exactly once. Every later resume comes back inside
+ * whatever Fiber::suspend() the stack is parked on, not here.
+ */
+static void VmCoroBody(ph7_exec_ctx *pCtx)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxi32 rc;
+	VmCoroAsanArrive(pCtx->pCoro, 0);
+	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
+		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
+		VmCtxEnforceRetFunc(pCtx), FALSE, 0, &pCtx->pStack, &pCtx->nStackCap,
+		pCtx->nStackOrig);
+	pCtx->iCoroRc = rc;
+	pCtx->bCoroDone = 1;
+	VmCoroLeaveFinal(pCtx->pCoro);
+}
+/*
+ * Suspend from inside the fiber. Returns PH7_OK with the resume value waiting
+ * in sSuspendValue, PH7_EXCEPTION when the fiber was resumed by Fiber::throw(),
+ * or PH7_ABORT when it was resumed only to be unwound (the kill switch).
+ */
+static sxi32 VmCoroSuspend(ph7_context *pCallCtx, ph7_exec_ctx *pCtx)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmCoroLeave(pCtx->pCoro);
+	/* Resumed. */
+	if( pCtx->bCoroKill ){
+		/* The Fiber object died while we were parked here. Unwinding is the whole
+		 * point of coming back: every C frame between here and the body entry gets
+		 * to run its own abort path and free what it owns, which is the only way a
+		 * builtin's half-built result (array_map's output array, an open handle)
+		 * is ever released -- nothing outside this stack can reach them. */
+		return PH7_ABORT;
+	}
+	if( pCtx->pInjected ){
+		/* Fiber::throw(): php raises AT the suspension point, so the throw happens
+		 * here rather than at a body-entry redirect (there is no body entry on this
+		 * path -- the resume lands inside this C call). Same shape as any builtin's
+		 * own throw: stamp the frame, raise, and report the status on the call
+		 * context so OP_CALL does not treat the call as a normal return. */
+		ph7_class_instance *pInj = pCtx->pInjected;
+		VmFrame *pFrame;
+		sxi32 rc;
+		pCtx->pInjected = 0;   /* one-shot */
+		pFrame = pVm->pFrame;
+		if( pFrame ){
+			pFrame = VmSkipExceptionFrames(pFrame);
+			pFrame->iFlags |= VM_FRAME_THROW;
+		}
+		rc = VmThrowException(pVm, pInj);
+		if( rc == SXERR_ABORT ){
+			pCallCtx->nThrowRc = PH7_ABORT;
+			return PH7_ABORT;
+		}
+		pCallCtx->nThrowRc = PH7_EXCEPTION;
+		return PH7_EXCEPTION;
+	}
+	return PH7_OK;
+}
+/*
+ * Re-raise, in the RESUMER's frame, the exception a fiber body let escape.
+ * Called at the three doors that run a body (start / resume / throw) whenever
+ * the run came back PH7_EXCEPTION with an instance parked on the ctx. Same
+ * shape as any builtin's own throw: stamp the frame, raise, and report the
+ * status on the call context so OP_CALL does not read the call as a normal
+ * return.
+ */
+static sxi32 VmFiberRaiseEscaped(ph7_context *pCtx, ph7_exec_ctx *pExecCtx)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pExc = pExecCtx->pEscaped;
+	VmFrame *pFrame;
+	sxi32 rc;
+	pExecCtx->pEscaped = 0;
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(pVm, pExc);
+	PH7_ClassInstanceUnref(pExc);
+	if( rc == SXERR_ABORT ){
+		pCtx->nThrowRc = PH7_ABORT;
+		return PH7_ABORT;
+	}
+	pCtx->nThrowRc = PH7_EXCEPTION;
+	return PH7_EXCEPTION;
+}
+#endif /* PH7_CORO_STACK */
 /*
  * Allocate and initialize a new execution context for a fiber.
  * The context is in CREATED state and ready to be started.
@@ -194,6 +811,24 @@ static void VmStampCoroutineCallSite(ph7_vm *pVm, ph7_exec_ctx *pCtx)
  */
 static void VmSuspendCtxDetach(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 {
+#ifdef PH7_CORO_STACK
+	if( pCtx->pCoro ){
+		/* Third form: the fiber has a stack of its own and is still standing on
+		 * it. Its frames -- body, nested callees, open-try wrappers alike -- stay
+		 * exactly as they are, because that C stack still points into them; all
+		 * this has to remember is which one was current, so the resume can make it
+		 * current again. Nothing is parked and no depth is deducted: the three
+		 * stacks and both counters travelled with the VM-state swap the moment the
+		 * switch happened. */
+		pCtx->pCoroTop = pVm->pFrame;
+		pVm->pFrame = pCtx->pFrame->pParent;
+		pCtx->pFrame->pParent = 0;
+		if( pResult ){
+			PH7_MemObjStore(&pCtx->sSuspendValue, pResult);
+		}
+		return;
+	}
+#endif
 	if( pCtx->pParkedSegment == 0 ){
 		VmFreeSuspendedExceptionFrames(pVm, pCtx);
 	}else{
@@ -237,6 +872,42 @@ static sxi32 VmFinishCtxRun(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_exec_ctx *pOldC
 	sxi32 rc, ph7_value *pResult)
 {
 	pVm->pActiveCtx = pOldCtx;
+#ifdef PH7_CORO_STACK
+	if( pCtx->pCoro ){
+		if( rc == PH7_SUSPEND ){
+			/* No saved pc or top-of-stack to record: the switch IS the state, and
+			 * VmSuspendCtx (which marks the ctx on the other path) never ran. */
+			pCtx->iState = PH7_CTX_STATE_SUSPENDED;
+			VmSuspendCtxDetach(pVm, pCtx, pResult);
+			return SXRET_OK;
+		}
+		/* The body is over, so the stack is spent: free it now rather than at the
+		 * Fiber object's death (a completed fiber has no use for megabytes of
+		 * mapping), and with it the three stacks that were only ever this body's.
+		 * The frame chain it left is the body frame plus any try wrappers an
+		 * escaping exception never closed -- the same two steps the shared tail
+		 * below takes, which the ctx-owned bases in it do not apply to here. */
+		VmFreeSuspendedExceptionFrames(pVm, pCtx);
+		if( pVm->pFrame == pCtx->pFrame ){
+			pVm->pFrame = pCtx->pFrame->pParent;
+			pCtx->pFrame->pParent = 0;
+		}
+		VmCoroFree(pVm, pCtx->pCoro);
+		pCtx->pCoro = 0;
+		VmCoroStateRelease(pVm, &pCtx->sSaved);
+		if( rc == PH7_ABORT ){
+			pCtx->iState = PH7_CTX_STATE_CLOSED;
+			return PH7_ABORT;
+		}
+		if( rc == PH7_EXCEPTION ){
+			pCtx->iState = PH7_CTX_STATE_CLOSED;
+			pCtx->bThrew = 1;
+			return PH7_EXCEPTION;
+		}
+		pCtx->iState = PH7_CTX_STATE_COMPLETED;
+		return SXRET_OK;
+	}
+#endif
 	if( rc == PH7_SUSPEND ){
 		/* Handles a deep RE-suspend too (a resumed segment parking a fresh one):
 		 * VmSuspendCtxDetach deactivates the new segment's recursion accounting,
@@ -296,6 +967,20 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	if( VmNativeNestingExceeded(pVm) ){
 		return VmNativeNestingFatal(pVm);
 	}
+#ifdef PH7_CORO_STACK
+	/* A FIBER gets a native stack of its own (pPrivate == 0 is what tells one from
+	 * a generator, which never needs one: `yield` is lexically inside the body, so
+	 * it can never have a C frame above it to park). Taken BEFORE anything below
+	 * mutates the VM, because the fiber's opening view of it is the resumer's.
+	 * A stack this build cannot give it leaves pCoro at 0 and the body runs inline
+	 * exactly as it did before. */
+	if( pCtx->pPrivate == 0 ){
+		pCtx->pCoro = VmCoroNew(pVm, pCtx);
+		if( pCtx->pCoro ){
+			VmCoroStateInit(pVm, pCtx);
+		}
+	}
+#endif
 	/* Attach the fiber's frame to the VM frame chain */
 	VmStampCoroutineCallSite(pVm, pCtx);
 	pCtx->pFrame->pParent = pVm->pFrame;
@@ -304,21 +989,45 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	pOldCtx = pVm->pActiveCtx;
 	pVm->pActiveCtx = pCtx;
 	pCtx->iState = PH7_CTX_STATE_RUNNING;
-	pCtx->nExceptionBase = SySetUsed(&pVm->aException);
-	pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);
-	pCtx->nSelfBase = SySetUsed(&pVm->aSelf);
-	/* Re-publish the creating call's late-static-binding class ABOVE that base, so the
-	 * body's `static::` resolves to what php resolves it to. It rides the ordinary
-	 * park/restore of this coroutine's own aSelf slice, so a suspend takes it off the
-	 * shared stack and a resume puts it back; VmFinishCtxRun truncates it away when the
-	 * body ends for good. */
-	if( pCtx->pLsbClass ){
-		SySetPut(&pVm->aSelf,(const void *)&pCtx->pLsbClass);
+#ifdef PH7_CORO_STACK
+	if( pCtx->pCoro ){
+		/* Its three stacks are its own and start empty, so every floor an
+		 * activation of this body records is measured from zero and stays true
+		 * however deep the resumer happens to be next time. */
+		pCtx->nExceptionBase = 0;
+		pCtx->nFinallyBase = 0;
+		pCtx->nSelfBase = 0;
+		if( pCtx->pLsbClass ){
+			SySetPut(&pCtx->sSaved.aSelf, (const void *)&pCtx->pLsbClass);
+		}
+	}else
+#endif
+	{
+		pCtx->nExceptionBase = SySetUsed(&pVm->aException);
+		pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);
+		pCtx->nSelfBase = SySetUsed(&pVm->aSelf);
+		/* Re-publish the creating call's late-static-binding class ABOVE that base, so
+		 * the body's `static::` resolves to what php resolves it to. It rides the
+		 * ordinary park/restore of this coroutine's own aSelf slice, so a suspend takes
+		 * it off the shared stack and a resume puts it back; VmFinishCtxRun truncates it
+		 * away when the body ends for good. */
+		if( pCtx->pLsbClass ){
+			SySetPut(&pVm->aSelf,(const void *)&pCtx->pLsbClass);
+		}
 	}
 	/* Native depth the body runs at (the VmByteCodeExec wrapper bumps +1): a
 	 * Fiber::suspend() at a deeper depth is inside a C->PHP callback and gets a
 	 * FiberError instead of parking across the native frame (stage 4). */
 	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1;
+#ifdef PH7_CORO_STACK
+	if( pCtx->pCoro ){
+		/* On its own stack the body starts at native depth zero, so it never reads
+		 * nBodyExecDepth again -- the suspend that used to consult it now simply
+		 * switches, from wherever it is. */
+		rc = VmCoroRun(pVm, pCtx);
+		return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);
+	}
+#endif
 	/* Execute from the beginning (no parked segment). An OP_SPREAD in the body may
 	 * realloc pCtx->pStack — pass &pCtx->pStack / &pCtx->nStackCap so the grown
 	 * buffer + capacity persist for the next resume and for ctx teardown. */
@@ -338,6 +1047,36 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
 		return SXERR_INVALID;
 	}
+#ifdef PH7_CORO_STACK
+	if( pCtx->pCoro ){
+		/* A fiber on its own stack: nothing to re-push, rebase or adopt. The whole
+		 * suspended activation chain is still standing on that stack, so a resume
+		 * is the frame re-attach plus one switch.
+		 *
+		 * The nesting guard above is skipped on purpose: this re-entry adds a
+		 * single frame to the RESUMER's stack and then leaves it for the fiber's,
+		 * which carries its own depth count -- and a teardown unwind (bCoroKill)
+		 * must go through even when the resumer is already at the cap, or the C
+		 * frames it is there to unwind are freed underneath instead.
+		 *
+		 * The resume value reaches the parked Fiber::suspend() through the ctx's
+		 * own slot rather than an operand stack: on this path the suspend is a C
+		 * call about to RETURN a value, not a saved pc with a hole above its top. */
+		if( pResumeValue ){
+			PH7_MemObjStore(pResumeValue, &pCtx->sSuspendValue);
+		}else{
+			PH7_MemObjRelease(&pCtx->sSuspendValue);
+		}
+		VmStampCoroutineCallSite(pVm, pCtx);
+		pCtx->pFrame->pParent = pVm->pFrame;
+		pVm->pFrame = pCtx->pCoroTop;
+		pOldCtx = pVm->pActiveCtx;
+		pVm->pActiveCtx = pCtx;
+		pCtx->iState = PH7_CTX_STATE_RUNNING;
+		rc = VmCoroRun(pVm, pCtx);
+		return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);
+	}
+#endif
 	/* A resume is a native VmByteCodeExec re-entry, bounded by nMaxNativeDepth.
 	 * Reject HERE, before re-attaching the (possibly deep) parked segment to the
 	 * frame chain and re-adding its nRecords to nRecursionDepth — a wrapper-level
@@ -580,6 +1319,34 @@ PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 		/* Cannot destroy a fiber that is currently executing */
 		return;
 	}
+#ifdef PH7_CORO_STACK
+	if( pCtx->pCoro && pCtx->iState == PH7_CTX_STATE_SUSPENDED && !pCtx->bCoroDone ){
+		/* A fiber abandoned while suspended still has live C frames on its own
+		 * stack -- a half-finished array_map, an open handle, an operand stack of
+		 * its own -- and nothing outside that stack can reach them. Switch back in
+		 * one last time with the kill flag set: the suspend it is parked on
+		 * returns PH7_ABORT, every frame between there and the body entry runs its
+		 * own abort path, and the body returns for good. VmFinishCtxRun then frees
+		 * the stack. (php unwinds a dropped fiber for the same reason; that its
+		 * unwind also runs the body's `finally` blocks and this one does not is
+		 * recorded separately -- an abort is not a return.) */
+		pCtx->bCoroKill = 1;
+		(void)VmResumeCtx(pVm, pCtx, 0, 0);
+	}
+	if( pCtx->pCoro ){
+		/* Never started, or the unwind above could not run it: the stack holds
+		 * nothing live either way. */
+		VmCoroFree(pVm, pCtx->pCoro);
+		pCtx->pCoro = 0;
+	}
+	if( pCtx->pEscaped ){
+		/* The body threw and nobody was left to re-raise it (the resumer aborted
+		 * between the two). Give the reference back. */
+		PH7_ClassInstanceUnref(pCtx->pEscaped);
+		pCtx->pEscaped = 0;
+	}
+	VmCoroStateRelease(pVm, &pCtx->sSaved);
+#endif
 	pCtx->iState = PH7_CTX_STATE_CLOSED;
 	/* ...and give back the hold VmNewExecCtx took on the function this coroutine runs. */
 	if( pCtx->pFunc ){
@@ -1709,6 +2476,29 @@ PH7_PRIVATE int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value 
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Cannot suspend outside of a fiber");
 	}
+#ifdef PH7_CORO_STACK
+	if( pVm->pActiveCtx->pCoro ){
+		/* The fiber has a stack of its own, so this is not a return code that has
+		 * to be threaded back out through every activation between here and the
+		 * body -- it is one switch, and everything above it (this builtin's own C
+		 * frame, the array_map/usort loop that called into PHP, the eval or catch
+		 * body the call sits in) stays standing where it is. */
+		ph7_exec_ctx *pFiber = pVm->pActiveCtx;
+		sxi32 rc;
+		if( nArg > 0 ){
+			PH7_MemObjStore(apArg[0], &pFiber->sSuspendValue);
+		}else{
+			PH7_MemObjRelease(&pFiber->sSuspendValue);
+		}
+		rc = VmCoroSuspend(pCtx, pFiber);
+		if( rc != PH7_OK ){
+			return rc;  /* resumed by Fiber::throw(), or unwound by the teardown */
+		}
+		/* php: Fiber::suspend() ANSWERS what resume() was given. */
+		ph7_result_value(pCtx, &pFiber->sSuspendValue);
+		return PH7_OK;
+	}
+#endif
 	/* Stage 4 scoped divergence: the trampoline only makes PHP->PHP CALLs
 	 * iterative. Every OTHER re-entry runs on a fresh native VmByteCodeExec
 	 * activation (nVmExecDepth bumped) that PH7_SUSPEND cannot unwind across
@@ -2413,6 +3203,11 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	}
 	if( rc == PH7_EXCEPTION ){
 		PH7_MemObjRelease(&sResult);
+#ifdef PH7_CORO_STACK
+		if( pExecCtx->pEscaped ){
+			return VmFiberRaiseEscaped(pCtx, pExecCtx);
+		}
+#endif
 		return PH7_EXCEPTION;
 	}
 	ph7_result_value(pCtx, &sResult);
@@ -2459,6 +3254,11 @@ PH7_PRIVATE int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value *
 	}
 	if( rc == PH7_EXCEPTION ){
 		PH7_MemObjRelease(&sResult);
+#ifdef PH7_CORO_STACK
+		if( pExecCtx->pEscaped ){
+			return VmFiberRaiseEscaped(pCtx, pExecCtx);
+		}
+#endif
 		return PH7_EXCEPTION;
 	}
 	ph7_result_value(pCtx, &sResult);
@@ -2518,6 +3318,11 @@ PH7_PRIVATE int vm_builtin_Fiber_throw(ph7_context *pCtx, int nArg, ph7_value **
 	}
 	if( rc == PH7_EXCEPTION ){
 		PH7_MemObjRelease(&sResult);
+#ifdef PH7_CORO_STACK
+		if( pExecCtx->pEscaped ){
+			return VmFiberRaiseEscaped(pCtx, pExecCtx);
+		}
+#endif
 		return PH7_EXCEPTION;
 	}
 	ph7_result_value(pCtx, &sResult);

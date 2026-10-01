@@ -1334,6 +1334,118 @@ typedef struct ph7_exec_ctx ph7_exec_ctx;
 #define PH7_CTX_STATE_SUSPENDED  2  /* Paused at suspend point */
 #define PH7_CTX_STATE_COMPLETED  3  /* Returned normally */
 #define PH7_CTX_STATE_CLOSED     4  /* Destroyed */
+/*
+ * REAL COROUTINE STACKS (ECOSYSTEM.md §3 R).
+ *
+ * A `Fiber::suspend()` reached through a C->PHP callback -- `array_map()`'s
+ * callback, a `usort()` comparator, `call_user_func()`, `preg_replace_callback()`
+ * -- has to park the C frame of the builtin's own loop along with the PHP one.
+ * The trampoline cannot: it flattens PHP->PHP calls into records inside ONE
+ * native VmByteCodeExec activation, and a builtin's loop is a real C activation
+ * above it. php switches native stacks; so does this. A fiber body runs on its
+ * OWN C stack, a suspend switches back to the resumer's, and everything between
+ * the two -- builtin frames, mini-programs, eval'd code, catch/finally bodies --
+ * simply stays where it is.
+ *
+ * Three ways to switch, in preference order:
+ *
+ *  - Win32 fibers on Windows. The OS owns the stack and the switch.
+ *  - A HAND-WRITTEN switch on x86-64 ELF: six callee-saved registers, the two
+ *    floating-point control words, and the stack pointer. It is preferred over
+ *    ucontext for a reason that is not speed: ASan intercepts `swapcontext` and
+ *    prints "ASan doesn't fully support makecontext/swapcontext functions"
+ *    unconditionally on the first call, which lands in the middle of every .phpt
+ *    an ASan build runs -- and the ASan corpora are a gate. Owning the switch
+ *    also drops the sigprocmask syscall glibc's swapcontext makes.
+ *  - `<ucontext.h>` on the other unixes. Correct everywhere it exists; only an
+ *    ASan build on such a platform sees that warning, and none is gated.
+ *
+ * Elsewhere (the ESP32 port; anything with no ucontext in its libc)
+ * PH7_CORO_STACK is undefined, fibers keep the record-parking path, and a
+ * suspend across a C boundary keeps raising the FiberError it raised before.
+ * PH7_DISABLE_CORO_STACK forces that fallback; PH7_DISABLE_CORO_ASM keeps the
+ * coroutine stacks but takes ucontext instead of the written switch (the escape
+ * hatch if a CET shadow stack is ever turned on by default -- glibc's
+ * swapcontext knows about it and a bare `ret` to a seeded frame does not).
+ */
+#if !defined(PH7_DISABLE_CORO_STACK)
+# if defined(__WINNT__)
+#  define PH7_CORO_STACK 1
+#  define PH7_CORO_WIN32 1
+# elif defined(__x86_64__) && defined(__ELF__) && !defined(PH7_DISABLE_CORO_ASM) \
+    && (defined(__GNUC__) || defined(__clang__))
+#  define PH7_CORO_STACK 1
+#  define PH7_CORO_ASM_X64 1
+# elif defined(__linux__) || defined(__GLIBC__) || defined(__APPLE__) \
+    || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+#  define PH7_CORO_STACK 1
+#  define PH7_CORO_UCONTEXT 1
+# endif
+#endif
+#ifdef PH7_CORO_STACK
+/* The switchable native stack itself (vm_exec_ctx.c owns the definition: a
+ * mapping plus whatever the chosen backend needs to point at it -- two saved
+ * stack pointers, a ucontext_t pair, or one Win32 fiber handle). */
+typedef struct VmCoro VmCoro;
+/*
+ * What "which side is running" means to the VM, swapped at every stack switch.
+ *
+ * A suspended fiber's C frames stay FROZEN, so every piece of VM state such a
+ * frame reaches for -- a scalar it saved a copy of and will restore when it
+ * eventually unwinds, or a stack it recorded an index into -- has to travel
+ * with the fiber instead of leaking into the resumer.
+ *
+ * Swapping is symmetric: switching in saves the resumer's set and installs the
+ * fiber's, switching out does the reverse, so a value the fiber never touches
+ * comes back to the resumer unchanged either way. A fresh fiber inherits the
+ * resumer's scalars, except the ones that describe the C STACK or the three
+ * stacks it owns privately -- it gets a new one of each (VmCoroStateInit).
+ *
+ * The frame CHAIN is deliberately not here: the ordinary attach/detach a body
+ * run already does (VmStartCtx / VmSuspendCtxDetach / VmFinishCtxRun) moves it,
+ * and pCoroTop alone records where inside the fiber to come back to.
+ */
+typedef struct VmCoroVmState VmCoroVmState;
+struct VmCoroVmState
+{
+	/* The three stacks a coroutine used to park SLICES of. With a real stack the
+	 * fiber owns them OUTRIGHT: its frozen C activations recorded absolute floors
+	 * into these sets (an activation's nExceptionBase, nFinallyActBase) as C
+	 * LOCALS on the fiber's own stack, which nothing can reach to rebase — so the
+	 * sets must never shift under them. A private set never does, and the fiber
+	 * resumes at whatever depth the resumer happens to be at with no rebasing at
+	 * all. An exception the fiber body does not catch therefore leaves the body
+	 * as a status rather than finding the RESUMER's handler from inside the
+	 * fiber's frames, which is php's model too (it is re-raised at start()/
+	 * resume()). */
+	SySet aException;            /* pVm->aException: this side's live try handlers */
+	SySet aFinallyAction;        /* ...its pending finally actions */
+	SySet aSelf;                 /* ...and its self::/static:: class stack */
+	/* Then every scalar a frozen C frame has a saved copy of. A suspended fiber's
+	 * frames stay put, so each of these has to travel with the fiber rather than
+	 * leak into the resumer -- and come back untouched when the fiber is resumed. */
+	int nVmExecDepth;            /* native activations live on THIS C stack */
+	int nRecursionDepth;         /* PHP call depth this side has open */
+	sxu32 nCurLine;              /* saved+restored per native activation (VmByteCodeExec) */
+	sxi32 nBoundaryRc;           /* likewise: the parked C-boundary throw status */
+	SyString *pCalleeName;       /* the three the OP_CALL native branch saves around xFunc */
+	SyString *pNativeFrameName;
+	int bHostDiscard;
+	int nErrSuppress;            /* '@' depth: a suspend inside `@f()` must not mute the resumer */
+	int nExceptDepth;
+	int nExcCtorDepth;
+	int nMuteThrow;              /* the muted / speculative / const-eval windows: all three are */
+	int nSpeculative;            /* C regions with a matched decrement the fiber has not reached */
+	sxi32 nConstEvalDepth;
+	sxu32 nLazyInitLine;         /* and the lazy-initializer line override, which is depth-keyed */
+	sxi32 nLazyInitDepth;        /* on nVmExecDepth and so is meaningless on the other stack */
+	int nObDepth;                /* "inside an output handler": the handler's C frame is on one
+	                              * stack only, so ob_get_level() must answer for the side asking */
+	sxu32 nObActive;
+	VmFrame *pObFrame;
+	ph7_exec_ctx *pCoroCtx;      /* which fiber's stack this side is (NULL for a resumer) */
+};
+#endif /* PH7_CORO_STACK */
 struct ph7_exec_ctx
 {
 	ph7_vm *pVm;              /* Owning VM */
@@ -1407,7 +1519,39 @@ struct ph7_exec_ctx
 	                                  * suspend at a DEEPER native depth is inside a C->PHP
 	                                  * callback (usort comparator, etc.) and cannot park
 	                                  * across the native frame — it raises a catchable
-	                                  * FiberError instead (the one scoped divergence). */
+	                                  * FiberError instead. Only meaningful on the fallback
+	                                  * path: a fiber running on its own stack (pCoro != 0)
+	                                  * suspends from any depth. */
+#ifdef PH7_CORO_STACK
+	VmCoro *pCoro;                   /* This fiber's own native stack, or NULL: generators never
+	                                  * take one (a `yield` is lexically in the body, so it never
+	                                  * crosses a C frame), and neither does a fiber on a build
+	                                  * with no stack-switch primitive. */
+	VmCoroVmState sSaved;            /* The fiber side's VM state while the resumer runs */
+	VmCoroVmState sHost;             /* The resumer's, while the fiber runs */
+	VmFrame *pCoroTop;               /* pVm->pFrame at the suspend the fiber is parked on --
+	                                  * its innermost callee or open-try wrapper, which the
+	                                  * resume makes current again so the frozen stack picks
+	                                  * up where it stopped. The frame chain itself is not
+	                                  * swapped: the ordinary attach/detach around a body run
+	                                  * already moves it. */
+	sxi32 iCoroRc;                   /* What the body invocation returned, read by the resumer
+	                                  * after the final switch back (SXRET_OK / PH7_ABORT /
+	                                  * PH7_EXCEPTION); PH7_SUSPEND is never stored — a suspend
+	                                  * is a switch, not a return. */
+	sxu8 bCoroDone;                  /* The body ran off its end: the stack is spent and must
+	                                  * not be switched into again. */
+	sxu8 bCoroKill;                  /* Set by the teardown before the last switch in: the
+	                                  * suspend the fiber is parked on returns PH7_ABORT instead
+	                                  * of a value, so its C frames unwind and free what they own
+	                                  * rather than being freed underneath. */
+	ph7_class_instance *pEscaped;    /* A throw the body did not catch. A fiber on its own stack
+	                                  * has its own handler stack, so an unmatched throw is not
+	                                  * "uncaught" -- it LEAVES the fiber, and php re-raises it
+	                                  * at the start()/resume() that ran the body. This carries
+	                                  * the instance across (holding a reference) for
+	                                  * VmFiberRaiseEscaped to re-throw in the resumer's frame. */
+#endif /* PH7_CORO_STACK */
 };
 /* Special return code from VmByteCodeExec signaling fiber suspension */
 #define PH7_SUSPEND  0x100
@@ -4276,6 +4420,14 @@ struct ph7_vm
 								* class carries the SAME name the site's OP_NEW loads; consumed
 								* (cleared) by PH7_CompileAnnonClass. {0,0} otherwise. */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
+#ifdef PH7_CORO_STACK
+	ph7_exec_ctx *pCoroCtx;    /* The fiber whose own native STACK is the one executing, or NULL.
+	                            * Unlike pActiveCtx this does not change when the fiber's body
+	                            * drives a generator, so it answers the one question the throw
+	                            * path asks: is there a fiber to leave? Travels with the
+	                            * VM-state swap, so nesting one fiber inside another restores
+	                            * the outer one by construction. */
+#endif
 	ph7_class_instance *pCurFiber; /* The Fiber whose body the running code is inside, or NULL --
 	                            * php's EG(active_fiber), which is what Fiber::getCurrent()
 	                            * answers. Distinct from pActiveCtx: that one is whatever
