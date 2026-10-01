@@ -680,6 +680,7 @@ PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	/* Allocate a private operand stack */
 	pStack = VmNewOperandStack(pVm, SySetUsed(&pFunc->aByteCode));
 	if( pStack == 0 ){
+		PH7_VmClosureFuncUnref(pVm, pFunc);
 		SyMemBackendPoolFree(&pVm->sAllocator, pCtx);
 		return 0;
 	}
@@ -690,9 +691,19 @@ PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	pFrame = VmNewFrame(pVm, pFunc, 0);
 	if( pFrame == 0 ){
 		SyMemBackendFree(&pVm->sAllocator, pStack);
+		PH7_VmClosureFuncUnref(pVm, pFunc);
 		SyMemBackendPoolFree(&pVm->sAllocator, pCtx);
 		return 0;
 	}
+	/* The frame's OWN hold, and not the one taken above. VmNewFrame stamps pFunc as
+	 * the frame's pUserData exactly as VmEnterFrame does, and this body frame's only
+	 * teardown -- VmFreeDetachedFrame, from VmCloseCtx -- gives that hold back the way
+	 * VmLeaveFrame does for a live frame. Without it one coroutine took one hold and
+	 * gave back two, so the first Generator or Fiber built from a run-time closure
+	 * freed the per-instantiation copy its own Closure object was still naming, and
+	 * calling that closure a second time said "Call to undefined function
+	 * [closure_N]()". */
+	PH7_VmClosureFuncRef(pFunc);
 	pCtx->pFrame = pFrame;
 	return pCtx;
 }
