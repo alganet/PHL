@@ -945,7 +945,15 @@ static phl_stream_filter * FilterNew(ph7_vm *pVm,const phl_filter_ops *pOps,
 		return 0;
 	}
 	SyZero(pFilter,sizeof(phl_stream_filter));
+	pFilter->base.iHead = IO_PRIVATE_HEAD_MAGIC;
 	pFilter->base.iMagic = STREAM_FILTER_MAGIC;
+	/* The two brigade handles are part of this allocation, so a value naming one
+	 * of them keeps the whole filter alive; they are counted from here rather
+	 * than from the call that hands them out. */
+	pFilter->sIn.base.iHead = IO_PRIVATE_HEAD_MAGIC;
+	pFilter->sOut.base.iHead = IO_PRIVATE_HEAD_MAGIC;
+	pFilter->sIn.pOwner = pFilter;
+	pFilter->sOut.pOwner = pFilter;
 	pFilter->pVm = pVm;
 	pFilter->pOps = pOps;
 	SyBlobInit(&pFilter->sName,&pVm->sAllocator);
@@ -958,11 +966,11 @@ static phl_stream_filter * FilterNew(ph7_vm *pVm,const phl_filter_ops *pOps,
 	return pFilter;
 }
 /*
- * Release one filter's own resources. The instance itself stays allocated until
- * the VM resets — a ph7_value the script still holds names this pointer, and a
- * probe of it has to stay in bounds — so the magic becomes the CLOSED one,
- * which is what makes `is_resource($f)` false after stream_filter_remove()
- * exactly as php reports it.
+ * Release one filter's own resources. The instance itself stays allocated while
+ * a ph7_value still names it — a probe of that value has to stay in bounds — so
+ * the magic becomes the CLOSED one, which is what makes `is_resource($f)` false
+ * after stream_filter_remove() exactly as php reports it. Once the last value
+ * lets go, FilterMaybeFree() hands the memory back.
  */
 static void FilterDispose(phl_stream_filter *pFilter)
 {
@@ -972,7 +980,58 @@ static void FilterDispose(phl_stream_filter *pFilter)
 	SyBlobRelease(&pFilter->sCarry);
 	pFilter->pDev = 0;
 	pFilter->pNext = 0;
-	pFilter->base.iMagic = IO_PRIVATE_CLOSED_MAGIC;
+	pFilter->base.iMagic = STREAM_FILTER_CLOSED_MAGIC;
+}
+/*
+ * A disposed filter's memory goes back the moment nothing can still reach it:
+ * it has left the chain that owned it, no value names its own handle, and no
+ * value names either brigade handle living inside the same allocation. php has
+ * no separate step here — its filter resource is refcounted and the last holder
+ * frees it — where this engine used to park every removed filter on the VM
+ * registry until reset, so a loop of append/remove pairs grew without bound.
+ */
+static void FilterMaybeFree(phl_stream_filter *pFilter)
+{
+	phl_stream_filter **ppSlot;
+	ph7_vm *pVm = pFilter->pVm;
+	if( pFilter->base.iMagic != STREAM_FILTER_CLOSED_MAGIC || pFilter->pDev != 0 ){
+		/* Still live, or still on a chain: the chain is an owner of its own. */
+		return;
+	}
+	if( pFilter->base.nValRef > 0
+	 || pFilter->sIn.base.nValRef > 0 || pFilter->sOut.base.nValRef > 0 ){
+		return;
+	}
+	/* Off the registry first: the reset walk must never meet a freed link. */
+	for( ppSlot = (phl_stream_filter **)&pVm->pStreamFilter ; *ppSlot ;
+	     ppSlot = &(*ppSlot)->pRegNext ){
+		if( *ppSlot == pFilter ){
+			*ppSlot = pFilter->pRegNext;
+			break;
+		}
+	}
+	SyBlobRelease(&pFilter->sName);
+	pFilter->base.iHead = 0;
+	pFilter->base.iMagic = 0;
+	pFilter->sIn.base.iHead = pFilter->sOut.base.iHead = 0;
+	pFilter->sIn.base.iMagic = pFilter->sOut.base.iMagic = 0;
+	SyMemBackendFree(&pVm->sAllocator,pFilter);
+}
+/*
+ * The value doors call in here through PH7_StreamValueUnref() when the last
+ * ph7_value naming a filter -- or one of its brigade handles -- goes away.
+ */
+PH7_PRIVATE void PH7_StreamFilterValueGone(void *pResource)
+{
+	io_private *pHead = (io_private *)pResource;
+	if( pHead->iMagic == STREAM_BRIGADE_MAGIC ){
+		phl_brigade_res *pRes = (phl_brigade_res *)pHead;
+		if( pRes->pOwner ){
+			FilterMaybeFree(pRes->pOwner);
+		}
+		return;
+	}
+	FilterMaybeFree((phl_stream_filter *)pHead);
 }
 /* --------------------------------------------------------------------------
  * Running a chain.
@@ -1155,12 +1214,15 @@ PH7_PRIVATE void PH7_StreamFilterReleaseChains(io_private *pDev)
 		if( iChain == PHL_STREAM_FILTER_WRITE && pFilter ){
 			FilterFlushTail(pFilter,PHL_PSFS_FLAG_FLUSH_CLOSE);
 		}
+		/* Emptied before the walk, not after: a filter the walk hands back must
+		 * not still be reachable from the handle it was attached to. */
+		*ppSlot = 0;
 		while( pFilter ){
 			phl_stream_filter *pNext = pFilter->pNext;
 			FilterDispose(pFilter);
+			FilterMaybeFree(pFilter);
 			pFilter = pNext;
 		}
-		*ppSlot = 0;
 	}
 }
 PH7_PRIVATE void PH7_StreamFilterRewound(io_private *pDev)
@@ -1202,6 +1264,7 @@ PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm)
 			FilterDispose(pFilter);
 		}
 		SyBlobRelease(&pFilter->sName);
+		pFilter->base.iHead = 0;
 		pFilter->base.iMagic = 0;
 		SyMemBackendFree(&pVm->sAllocator,pFilter);
 		pFilter = pNext;
@@ -1258,6 +1321,7 @@ PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_vm *pVm,io_private *p
 	}
 	if( pOps->xCreate && pOps->xCreate(pFilter,pParams) != PH7_OK ){
 		FilterDispose(pFilter);
+		FilterMaybeFree(pFilter);
 		FilterWarn(pVm,"Unable to create or locate filter \"%.*s\"",nName,zName);
 		return 0;
 	}
@@ -1392,6 +1456,7 @@ PH7_PRIVATE int PH7_builtin_stream_filter_remove(ph7_context *pCtx,int nArg,ph7_
 	FilterFlushTail(pFilter,PHL_PSFS_FLAG_NORMAL);
 	FilterUnlink(pFilter);
 	FilterDispose(pFilter);
+	FilterMaybeFree(pFilter);
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -1620,6 +1685,7 @@ static void UserFilterClose(phl_stream_filter *pFilter)
 /* Build a brigade handle for one filter() call. */
 static void UserBrigadeInit(phl_brigade_res *pRes,ph7_vm *pVm,phl_brigade *pBrig)
 {
+	pRes->base.iHead = IO_PRIVATE_HEAD_MAGIC;
 	pRes->base.iMagic = STREAM_BRIGADE_MAGIC;
 	pRes->pVm = pVm;
 	pRes->pBrig = pBrig;

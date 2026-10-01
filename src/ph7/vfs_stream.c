@@ -313,7 +313,8 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 PH7_PRIVATE int PH7_VfsResourceIsClosed(void *pResource)
 {
 	io_private *pDev = (io_private *)pResource;
-	return pDev != 0 && pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC;
+	return pDev != 0 && (pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC
+		|| pDev->iMagic == STREAM_FILTER_CLOSED_MAGIC);
 }
 /*
  * bool ftruncate(resource $handle,int64 $size)
@@ -4045,9 +4046,11 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
  * The counted-resource header behind a raw resource pointer, or 0 when there is
  * none. Every resource this engine hands out opens with an io_private header,
  * so iHead is in bounds for all of them and iMagic then says WHICH kind; only
- * the kinds whose LAST holder has something to release answer here, which is a
- * live stream and a stream context. A closed stream, a process handle, a filter
- * and a bucket brigade all fall through and stay uncounted.
+ * the kinds whose LAST holder has something to release answer here: a live
+ * stream, a stream context, a stream filter -- before or after it left its
+ * chain -- and the two brigade handles that live inside a filter. A closed
+ * stream, a process handle and a bucket token all fall through and stay
+ * uncounted.
  */
 static void StreamCtxDestroy(phl_stream_ctx *pRes);
 static io_private * ResCountedHead(void *pResource)
@@ -4056,7 +4059,9 @@ static io_private * ResCountedHead(void *pResource)
 	if( pDev == 0 || pDev->iHead != IO_PRIVATE_HEAD_MAGIC ){
 		return 0;
 	}
-	if( pDev->iMagic == IO_PRIVATE_MAGIC || pDev->iMagic == STREAM_CTX_MAGIC ){
+	if( pDev->iMagic == IO_PRIVATE_MAGIC || pDev->iMagic == STREAM_CTX_MAGIC
+	 || pDev->iMagic == STREAM_FILTER_MAGIC || pDev->iMagic == STREAM_FILTER_CLOSED_MAGIC
+	 || pDev->iMagic == STREAM_BRIGADE_MAGIC ){
 		return pDev;
 	}
 	return 0;
@@ -4112,6 +4117,14 @@ PH7_PRIVATE void PH7_StreamValueUnref(void *pResource)
 		 * count -- so the struct goes back rather than being stamped closed
 		 * the way a stream's is. */
 		StreamCtxDestroy((phl_stream_ctx *)pDev);
+		return;
+	}
+	if( pDev->iMagic == STREAM_FILTER_MAGIC || pDev->iMagic == STREAM_FILTER_CLOSED_MAGIC
+	 || pDev->iMagic == STREAM_BRIGADE_MAGIC ){
+		/* A filter has two owners -- the chain it sits on and the values naming
+		 * it -- so losing the last value is only half the question; the filter
+		 * half answers the other. */
+		PH7_StreamFilterValueGone(pDev);
 		return;
 	}
 	if( pDev->bPersist || pDev->pStream == 0 ){
@@ -9309,7 +9322,7 @@ PH7_PRIVATE int PH7_builtin_fclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* php: fclose() on an already-closed stream raises a catchable TypeError,
 	 * and the name in it is the one that was CALLED -- gzclose() is this same
 	 * body under another name and says gzclose(). */
-	if( pDev != 0 && pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC ){
+	if( PH7_VfsResourceIsClosed(pDev) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"%s(): Argument #1 ($stream) must be an open stream resource",
 			ph7_function_name(pCtx));

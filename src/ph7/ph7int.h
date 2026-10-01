@@ -6612,6 +6612,13 @@ PH7_PRIVATE void PH7_StreamCtxCompleted(phl_stream_ctx *pCtxRes);
 /* stream_filter_append()'s handle carries this magic in the io_private-compatible
  * header every PHL resource opens with; php names the resource "stream filter". */
 #define STREAM_FILTER_MAGIC 0xF117E4
+/* A filter that has been removed from its chain. A stream keeps its own closed
+ * magic because the struct outlives the close; a filter needs one of its own so
+ * the header can still say WHICH kind it is after the fact -- that is what lets
+ * the last ph7_value naming it hand the memory back instead of parking it on
+ * the VM registry until reset. Every probe that reports a closed resource
+ * treats it exactly like IO_PRIVATE_CLOSED_MAGIC. */
+#define STREAM_FILTER_CLOSED_MAGIC 0xF11DEA
 typedef struct phl_bucket phl_bucket;
 typedef struct phl_brigade phl_brigade;
 typedef struct phl_stream_filter phl_stream_filter;
@@ -6641,6 +6648,7 @@ struct phl_brigade_res
 	io_private base;      /* resource header (base.iMagic == STREAM_BRIGADE_MAGIC) */
 	ph7_vm *pVm;
 	phl_brigade *pBrig;   /* the brigade it stands for, 0 between calls */
+	phl_stream_filter *pOwner; /* the filter these bytes live inside */
 };
 /* What a built-in filter IS. A userland filter has no ops and runs its class. */
 struct phl_filter_ops
@@ -6696,6 +6704,10 @@ PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_vm *pVm,io_private *p
 PH7_PRIVATE phl_stream_filter * PH7_StreamFilterFromValue(ph7_value *pVal);
 /* Drop every filter this VM created (called from PH7_VmReset). */
 PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm);
+/* The last ph7_value naming a filter handle -- or one of the two brigade handles
+ * that live inside it -- has gone away. Hands the memory back when the chain has
+ * let go of it too. */
+PH7_PRIVATE void PH7_StreamFilterValueGone(void *pResource);
 /* The stream_filter_register()/php_user_filter half. */
 PH7_PRIVATE int PH7_builtin_stream_filter_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_bucket_make_writeable(ph7_context *pCtx,int nArg,ph7_value **apArg);
