@@ -79,7 +79,10 @@ die() { echo "run.sh: $*" >&2; exit 1; }
 note() { echo "== $*"; }
 
 # A gate holds build/.gate-lock and this suite is heavy enough to matter beside it.
-if [ -f "$ROOT/build/.gate-lock" ]; then
+# PHL_FORCE=1 overrides, as it does for build-aux/mk.sh and build-aux/probe.sh -- it is
+# how build-aux/gates.sh runs this as its own final phase (PHL_GATE_ECO=1), sequentially,
+# while still holding the lock against everything else.
+if [ -z "$PHL_FORCE" ] && [ -f "$ROOT/build/.gate-lock" ]; then
 	held=$(cat "$ROOT/build/.gate-lock" 2>/dev/null || true)
 	if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then
 		die "a gate is running (pid $held); this suite would compete with it for the box"
