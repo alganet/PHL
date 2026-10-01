@@ -2835,137 +2835,620 @@ static void VmIniExpandDollarVar(ph7_context *pCtx,const char *zName,sxu32 nName
 	}
 }
 /*
- * Interpret one UNQUOTED ini value the way php's INI_SCANNER_NORMAL and
- * INI_SCANNER_TYPED do (a QUOTED value is always its literal bytes, and RAW
- * never reaches here):
+ * php's ini VALUE grammar, derived from Zend/zend_ini_scanner.l and
+ * Zend/zend_ini_parser.y and re-derived against the running php.
  *
- *  - A whole-value word, case-insensitive: true/on/yes and false/off/no/none
- *    and null. NORMAL renders them "1" / "" / ""; TYPED renders true / false /
- *    NULL.
- *  - TYPED only: -?[0-9]+ is an int — a value int64 cannot hold falls back to
- *    the SOURCE text as a string — and [0-9]*\.[0-9]* with at least one digit
- *    is a float. php's typed grammar attaches '-' only to the INTEGER shape
- *    ("-1.5" stays a string); '+', hex, binary and exponents were never in it.
- *  - Everything else expands: ${NAME} answers an ini option or the
- *    environment, and a bare identifier token that names a DEFINED constant is
- *    replaced by that constant's value ("MYC and more" -> "someval and more").
+ * An unquoted value is NOT one literal token. The scanner cuts it up -- a
+ * maximal run of value bytes is ONE token, and `&`, `|`, `^`, `~`, `!`, `(`
+ * and `)` are operators of their own -- and the parser either CONCATENATES
+ * the pieces, when no operator appears, or evaluates them as a 32-bit
+ * bitwise expression:
+ *
+ *   . `foo bar`           -> "foo bar": two pieces joined, each looked up as
+ *                           a constant and left standing as its own name
+ *                           when none is defined.
+ *   . `E_ALL & ~E_NOTICE` -> "30711": every operand goes through atoi(), the
+ *                           whole thing is computed in an `int`, and the
+ *                           DECIMAL TEXT of that int is what gets stored.
+ *   . `foo|bar`           -> "0": the same rule, and neither name reads as a
+ *                           number.
+ *   . `something (note)`  -> a syntax error -- and one syntax error anywhere
+ *                           makes the WHOLE parse answer FALSE.
+ *
+ * A run is one token, so `MYC.x` is those five bytes and never the constant:
+ * the constant lookup fires only when the run is exactly an identifier, and
+ * the numeric shape INI_SCANNER_TYPED converts fires only when the run is
+ * exactly a number (`1e3` is a string, `007` is the int 7).
+ *
+ * The boolean words are tokens of their own, so they may stand as the whole
+ * value and nowhere else: `on x` and `x on` are both syntax errors.
+ */
+#define VM_INI_VAL_MAX_DEPTH 32
+typedef struct VmIniVal VmIniVal;
+struct VmIniVal {
+	ph7_context *pCtx;
+	const char *zCur;
+	const char *zEnd;
+	const char *zErr;    /* first byte of the offending token, 0 while all is well */
+	const char *zTok;    /* how php's parser names that token in its warning */
+	char zOp[4];         /* room for the `'X'` an operator is named by */
+};
+/*
+ * One parsed piece: the text php would store in INI_SCANNER_NORMAL, plus the
+ * two marks INI_SCANNER_TYPED needs -- whether an operator ran (the value is
+ * that int) and whether the leading token was a NUMBER (php's parser carries
+ * that mark through a concatenation and through parentheses, so `((1))` and
+ * `1 ` are ints while `(E_ALL)` and `1 2` are strings).
+ */
+typedef struct VmIniRes VmIniRes;
+struct VmIniRes {
+	SyBlob sText;
+	sxi32 iNum;
+	int bOp;
+	int bNumTok;
+};
+static const struct {
+	const char *zWord;
+	sxu32 nWord;
+	const char *zTok;
+	int iKind;           /* 1: true, 0: false, 2: null */
+} aIniBool[] = {
+	{ "true" ,4,"BOOL_TRUE" ,1 }, { "on"  ,2,"BOOL_TRUE" ,1 }, { "yes",3,"BOOL_TRUE",1 },
+	{ "false",5,"BOOL_FALSE",0 }, { "off" ,3,"BOOL_FALSE",0 }, { "no" ,2,"BOOL_FALSE",0 },
+	{ "none" ,4,"BOOL_FALSE",0 }, { "null",4,"NULL_NULL" ,2 }
+};
+static int VmIniValIsBinOp(int c)
+{
+	return c == '|' || c == '&' || c == '^';
+}
+static int VmIniValIsOperator(int c)
+{
+	return VmIniValIsBinOp(c) || c == '~' || c == '!' || c == '(' || c == ')';
+}
+/*
+ * php's VALUE_CHARS: every byte a run may hold. A `$` joins the run only when
+ * a byte that is not `{` follows it (php's LITERAL_DOLLAR), so `$x` is text
+ * and `${x}` is a variable.
+ */
+static int VmIniValRunChar(const char *z,const char *zEnd,int *pnLen)
+{
+	int c = (unsigned char)z[0];
+	if( c == '$' ){
+		if( &z[1] < zEnd && z[1] != '{' ){
+			*pnLen = (z[1] == '\\' && &z[2] < zEnd) ? 3 : 2;
+			return 1;
+		}
+		return 0;
+	}
+	if( c == '=' || c == ' ' || c == '\t' || c == '\n' || c == '\r'
+	 || c == ';' || c == '"' || c == '\'' || VmIniValIsOperator(c) ){
+		return 0;
+	}
+	*pnLen = 1;
+	return 1;
+}
+static int VmIniValBoolWord(const char *z,sxu32 n)
+{
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(aIniBool) ; i++ ){
+		if( n == aIniBool[i].nWord && SyStrnicmp(z,aIniBool[i].zWord,n) == 0 ){
+			return (int)i;
+		}
+	}
+	return -1;
+}
+/* php's NUMBER: `-?[0-9]+`, or a decimal with digits on at least one side and
+ * no sign at all (`-0.5` is therefore a string, not a number). */
+static int VmIniValRunIsNumber(const char *z,sxu32 n)
+{
+	sxu32 i = 0,nDig = 0,nDot = 0;
+	if( n < 1 ){
+		return 0;
+	}
+	if( z[0] == '-' ){
+		for( i = 1 ; i < n ; i++ ){
+			if( z[i] < '0' || z[i] > '9' ){
+				return 0;
+			}
+			nDig++;
+		}
+		return nDig > 0;
+	}
+	for( ; i < n ; i++ ){
+		if( z[i] >= '0' && z[i] <= '9' ){
+			nDig++;
+		}else if( z[i] == '.' ){
+			nDot++;
+		}else{
+			return 0;
+		}
+	}
+	return nDig > 0 && nDot < 2;
+}
+static int VmIniValRunIsName(const char *z,sxu32 n)
+{
+	sxu32 i;
+	if( n < 1 || (unsigned char)z[0] >= 0xc0 || (!SyisAlpha(z[0]) && z[0] != '_') ){
+		return 0;
+	}
+	for( i = 1 ; i < n ; i++ ){
+		if( (unsigned char)z[i] >= 0xc0 || (!SyisAlphaNum(z[i]) && z[i] != '_') ){
+			return 0;
+		}
+	}
+	return 1;
+}
+static void VmIniValBlanks(VmIniVal *p)
+{
+	while( p->zCur < p->zEnd && (p->zCur[0] == ' ' || p->zCur[0] == '\t') ){
+		p->zCur++;
+	}
+}
+/* Name the token sitting at the cursor the way php's parser names it in its
+ * `syntax error, unexpected ...` warning. */
+static const char * VmIniValTokName(VmIniVal *p)
+{
+	int nLen;
+	if( p->zCur >= p->zEnd ){
+		return "END_OF_LINE";
+	}
+	if( VmIniValIsOperator(p->zCur[0]) || p->zCur[0] == '"' ){
+		p->zOp[0] = '\'';
+		p->zOp[1] = p->zCur[0];
+		p->zOp[2] = '\'';
+		p->zOp[3] = 0;
+		return p->zOp;
+	}
+	if( p->zCur[0] == ' ' || p->zCur[0] == '\t' ){
+		return "TC_WHITESPACE";
+	}
+	if( p->zCur[0] == '\'' ){
+		return "TC_RAW";
+	}
+	if( VmIniValRunChar(p->zCur,p->zEnd,&nLen) ){
+		const char *z = p->zCur;
+		sxu32 nRun;
+		int iBool;
+		do {
+			z += nLen;
+		}while( z < p->zEnd && VmIniValRunChar(z,p->zEnd,&nLen) );
+		nRun = (sxu32)(z - p->zCur);
+		iBool = VmIniValBoolWord(p->zCur,nRun);
+		if( iBool >= 0 ){
+			return aIniBool[iBool].zTok;
+		}
+		if( VmIniValRunIsNumber(p->zCur,nRun) ){
+			return "TC_NUMBER";
+		}
+		return VmIniValRunIsName(p->zCur,nRun) ? "TC_CONSTANT" : "TC_STRING";
+	}
+	return "END_OF_LINE";
+}
+static void VmIniResInit(VmIniRes *pRes,ph7_context *pCtx)
+{
+	SyBlobInit(&pRes->sText,&pCtx->pVm->sAllocator);
+	pRes->iNum = 0;
+	pRes->bOp = 0;
+	pRes->bNumTok = 0;
+}
+static void VmIniResRelease(VmIniRes *pRes)
+{
+	SyBlobRelease(&pRes->sText);
+}
+/*
+ * php's get_int_val(): atoi() over the piece's text -- 0 when the text does
+ * not start with a number, and the LOW 32 BITS of what it reads when it does,
+ * because atoi() reads a long and hands back an int (`4294967296|0` is 0 and
+ * `2147483648|0` is -2147483648). A number too wide for the long saturates
+ * first, so `99999999999999999999|0` is -1.
+ */
+static sxi32 VmIniResInt(VmIniRes *pRes)
+{
+	const char *z,*zEnd;
+	sxi64 iVal = 0;
+	int bNeg = 0;
+	if( pRes->bOp ){
+		return pRes->iNum;
+	}
+	z = (const char *)SyBlobData(&pRes->sText);
+	zEnd = &z[SyBlobLength(&pRes->sText)];
+	while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+		z++;
+	}
+	if( z < zEnd && (z[0] == '-' || z[0] == '+') ){
+		bNeg = (z[0] == '-');
+		z++;
+	}
+	for( ; z < zEnd && z[0] >= '0' && z[0] <= '9' ; z++ ){
+		if( iVal > (SXI64_HIGH - (z[0] - '0')) / 10 ){
+			/* strtol() stops at its own ceiling, whose low 32 bits are -1;
+			 * at its floor, they are 0 */
+			return bNeg ? 0 : -1;
+		}
+		iVal = iVal * 10 + (z[0] - '0');
+	}
+	return (sxi32)(bNeg ? -iVal : iVal);
+}
+static void VmIniResSetInt(VmIniRes *pRes,sxi32 iVal)
+{
+	char zBuf[32];
+	int nBuf = SyBufferFormat(zBuf,sizeof(zBuf),"%d",(int)iVal);
+	SyBlobReset(&pRes->sText);
+	SyBlobAppend(&pRes->sText,zBuf,(sxu32)nBuf);
+	pRes->iNum = iVal;
+	pRes->bOp = 1;
+	pRes->bNumTok = 0;
+}
+static void VmIniValDollar(VmIniVal *p,SyBlob *pOut)
+{
+	const char *z = &p->zCur[2];
+	while( z < p->zEnd && z[0] != '}' ){
+		z++;
+	}
+	if( z >= p->zEnd ){
+		/* No closing brace: the bytes stand as written */
+		SyBlobAppend(pOut,p->zCur,(sxu32)(p->zEnd - p->zCur));
+		p->zCur = p->zEnd;
+		return;
+	}
+	VmIniExpandDollarVar(p->pCtx,&p->zCur[2],(sxu32)(z - &p->zCur[2]),pOut);
+	p->zCur = &z[1];
+}
+/*
+ * php's var_string_list: one or more adjacent pieces, concatenated. Returns 0
+ * when there is no piece here at all, or when a piece is a boolean word (a
+ * whole-value token that can never join a list).
+ */
+static int VmIniValList(VmIniVal *p,VmIniRes *pRes)
+{
+	int bAny = 0;
+	while( p->zCur < p->zEnd ){
+		int c = (unsigned char)p->zCur[0];
+		int nLen;
+		if( c == ' ' || c == '\t' ){
+			const char *zBlank = p->zCur;
+			VmIniValBlanks(p);
+			/* php's opening-quote rule eats the blanks in front of it, so
+			 * `x "y"` is "xy" and not "x y" */
+			if( p->zCur < p->zEnd && p->zCur[0] == '"' ){
+				continue;
+			}
+			SyBlobAppend(&pRes->sText,zBlank,(sxu32)(p->zCur - zBlank));
+			bAny = 1;
+			continue;
+		}
+		if( c == '"' ){
+			p->zCur++;
+			for(;;){
+				if( p->zCur >= p->zEnd ){
+					p->zErr = p->zCur;
+					p->zTok = "end of file, expecting TC_DOLLAR_CURLY or TC_QUOTED_STRING or '\"'";
+					return 0;
+				}
+				if( p->zCur[0] == '"' ){
+					p->zCur++;
+					break;
+				}
+				if( p->zCur[0] == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
+					VmIniValDollar(p,&pRes->sText);
+					continue;
+				}
+				if( p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
+					int e = (unsigned char)p->zCur[1];
+					/* php collapses exactly three escapes and keeps the rest */
+					if( e == '"' || e == '\\' || e == '$' ){
+						SyBlobAppend(&pRes->sText,&p->zCur[1],sizeof(char));
+					}else{
+						SyBlobAppend(&pRes->sText,p->zCur,2*sizeof(char));
+					}
+					p->zCur += 2;
+					continue;
+				}
+				SyBlobAppend(&pRes->sText,p->zCur,sizeof(char));
+				p->zCur++;
+			}
+			VmIniValBlanks(p);   /* the closing quote eats them too */
+			bAny = 1;
+			continue;
+		}
+		if( c == '\'' ){
+			const char *zRaw = &p->zCur[1];
+			const char *z = zRaw;
+			while( z < p->zEnd && z[0] != '\'' ){
+				z++;
+			}
+			if( z >= p->zEnd ){
+				p->zErr = p->zCur;
+				p->zTok = "end of file";
+				return 0;
+			}
+			SyBlobAppend(&pRes->sText,zRaw,(sxu32)(z - zRaw));
+			p->zCur = &z[1];
+			bAny = 1;
+			continue;
+		}
+		if( c == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
+			VmIniValDollar(p,&pRes->sText);
+			bAny = 1;
+			continue;
+		}
+		if( c == '$' && &p->zCur[1] >= p->zEnd ){
+			/* A `$` with nothing behind it is the one byte php's scanner
+			 * stops on without complaining: the value ends there, empty. */
+			p->zCur++;
+			bAny = 1;
+			continue;
+		}
+		if( VmIniValRunChar(p->zCur,p->zEnd,&nLen) ){
+			const char *zRun = p->zCur;
+			sxu32 nRun;
+			int iBool;
+			do {
+				p->zCur += nLen;
+			}while( p->zCur < p->zEnd && VmIniValRunChar(p->zCur,p->zEnd,&nLen) );
+			nRun = (sxu32)(p->zCur - zRun);
+			iBool = VmIniValBoolWord(zRun,nRun);
+			if( iBool >= 0 ){
+				p->zCur = zRun;
+				p->zErr = zRun;
+				p->zTok = aIniBool[iBool].zTok;
+				return 0;
+			}
+			if( VmIniValRunIsNumber(zRun,nRun) ){
+				if( !bAny ){
+					pRes->bNumTok = 1;
+				}
+				SyBlobAppend(&pRes->sText,zRun,nRun);
+			}else if( VmIniValRunIsName(zRun,nRun) ){
+				ph7_value sCons;
+				PH7_MemObjInit(p->pCtx->pVm,&sCons);
+				if( PH7_VmQueryConstant(p->pCtx->pVm,zRun,nRun,&sCons) ){
+					int nCons;
+					const char *zCons = ph7_value_to_string(&sCons,&nCons);
+					SyBlobAppend(&pRes->sText,zCons,(sxu32)nCons);
+				}else{
+					SyBlobAppend(&pRes->sText,zRun,nRun);
+				}
+				PH7_MemObjRelease(&sCons);
+			}else{
+				SyBlobAppend(&pRes->sText,zRun,nRun);
+			}
+			bAny = 1;
+			continue;
+		}
+		break;
+	}
+	return bAny;
+}
+static int VmIniValExpr(VmIniVal *p,VmIniRes *pRes,int nDepth);
+static int VmIniValUnary(VmIniVal *p,VmIniRes *pRes,int nDepth)
+{
+	int c;
+	if( nDepth > VM_INI_VAL_MAX_DEPTH ){
+		p->zErr = p->zCur;
+		p->zTok = "'('";
+		return 0;
+	}
+	if( p->zCur >= p->zEnd ){
+		p->zErr = p->zCur;
+		p->zTok = "END_OF_LINE";
+		return 0;
+	}
+	c = (unsigned char)p->zCur[0];
+	if( c == '~' || c == '!' ){
+		p->zCur++;
+		VmIniValBlanks(p);   /* php's operator rule eats its own trailing blanks */
+		if( !VmIniValUnary(p,pRes,nDepth+1) ){
+			return 0;
+		}
+		VmIniResSetInt(pRes,c == '~' ? ~VmIniResInt(pRes) : (sxi32)(VmIniResInt(pRes) == 0));
+		return 1;
+	}
+	if( c == '(' ){
+		p->zCur++;
+		VmIniValBlanks(p);
+		if( !VmIniValExpr(p,pRes,nDepth+1) ){
+			return 0;
+		}
+		if( p->zCur >= p->zEnd ){
+			p->zErr = p->zCur;
+			p->zTok = "END_OF_LINE, expecting '^' or '|' or '&' or ')'";
+			return 0;
+		}
+		if( p->zCur[0] != ')' ){
+			p->zErr = p->zCur;
+			p->zTok = VmIniValTokName(p);
+			return 0;
+		}
+		p->zCur++;
+		VmIniValBlanks(p);
+		return 1;
+	}
+	if( !VmIniValList(p,pRes) ){
+		if( p->zTok == 0 ){
+			p->zErr = p->zCur;
+			p->zTok = VmIniValTokName(p);
+		}
+		return 0;
+	}
+	return 1;
+}
+/* php gives `|`, `&` and `^` one precedence level and makes them left
+ * associative, so `1&2^3|4` is `((1&2)^3)|4`. */
+static int VmIniValExpr(VmIniVal *p,VmIniRes *pRes,int nDepth)
+{
+	if( nDepth > VM_INI_VAL_MAX_DEPTH ){
+		p->zErr = p->zCur;
+		p->zTok = "'('";
+		return 0;
+	}
+	if( !VmIniValUnary(p,pRes,nDepth) ){
+		return 0;
+	}
+	for(;;){
+		VmIniRes sRhs;
+		sxi32 iLhs,iRhs,iRes;
+		int c,rc;
+		if( p->zCur >= p->zEnd || !VmIniValIsBinOp(p->zCur[0]) ){
+			break;
+		}
+		c = (unsigned char)p->zCur[0];
+		p->zCur++;
+		VmIniValBlanks(p);
+		iLhs = VmIniResInt(pRes);
+		VmIniResInit(&sRhs,p->pCtx);
+		rc = VmIniValUnary(p,&sRhs,nDepth+1);
+		iRhs = rc ? VmIniResInt(&sRhs) : 0;
+		VmIniResRelease(&sRhs);
+		if( !rc ){
+			return 0;
+		}
+		iRes = c == '|' ? (iLhs | iRhs) : (c == '&' ? (iLhs & iRhs) : (iLhs ^ iRhs));
+		VmIniResSetInt(pRes,iRes);
+	}
+	return 1;
+}
+/*
+ * INI_SCANNER_TYPED's number: php re-reads the text of a NUMBER token and
+ * keeps it a string when it does not fit. `-?[0-9]+` is an int, a decimal is
+ * a float, and an int too wide for one stays the source text.
+ */
+static int VmIniValNormalize(SyBlob *pText,ph7_value *pValue)
+{
+	const char *z = (const char *)SyBlobData(pText);
+	sxu32 n = SyBlobLength(pText);
+	sxu32 i;
+	int bDot = 0;
+	while( n > 0 && (z[n-1] == ' ' || z[n-1] == '\t') ){
+		n--;
+	}
+	if( n < 1 || !VmIniValRunIsNumber(z,n) ){
+		/* the concatenation grew past the number token: `1 2` is a string */
+		return 0;
+	}
+	for( i = (z[0] == '-') ? 1 : 0 ; i < n ; i++ ){
+		if( z[i] == '.' ){
+			bDot = 1;
+		}
+	}
+	if( bDot ){
+		double rVal = 0;
+		SyStrToReal(z,n,(void *)&rVal,0);
+		ph7_value_double(pValue,rVal);
+		return 1;
+	}else{
+		sxi64 iVal = 0;
+		int iOverflow = 0;
+		SyStrToInt64Ex(z,n,(void *)&iVal,0,&iOverflow);
+		if( iOverflow ){
+			return 0;
+		}
+		ph7_value_int64(pValue,iVal);
+		return 1;
+	}
+}
+/*
+ * Interpret one ini value the way php's INI_SCANNER_NORMAL and
+ * INI_SCANNER_TYPED do (RAW never reaches here). Answers 0 for the syntax
+ * errors php's own parser raises, leaving the offending token in *p.
  *
  * pValue arrives as an empty string.
  */
-static void VmIniInterpretValue(ph7_context *pCtx,const SyString *pRaw,int iMode,ph7_value *pValue)
+static int VmIniInterpretValue(ph7_context *pCtx,const SyString *pRaw,int iMode,
+	ph7_value *pValue,VmIniVal *p)
 {
-	const char *zIn = pRaw->zString;
-	const char *zEnd = &zIn[pRaw->nByte];
-	sxu32 n = pRaw->nByte;
-	SyBlob sOut;
-	if( n == 0 ){
-		return; /* the empty string, both modes */
+	VmIniRes sRes;
+	int nLen;
+	p->pCtx = pCtx;
+	p->zCur = pRaw->zString;
+	p->zEnd = &pRaw->zString[pRaw->nByte];
+	p->zErr = 0;
+	p->zTok = 0;
+	if( pRaw->nByte == 0 ){
+		return 1;   /* the empty string, both modes */
 	}
-	if( (n == 4 && SyStrnicmp(zIn,"true",4) == 0)
-	 || (n == 2 && SyStrnicmp(zIn,"on",2) == 0)
-	 || (n == 3 && SyStrnicmp(zIn,"yes",3) == 0) ){
-		if( iMode == PH7_INI_SCANNER_TYPED ){
-			ph7_value_bool(pValue,1);
-		}else{
-			ph7_value_string(pValue,"1",1);
-		}
-		return;
-	}
-	if( (n == 5 && SyStrnicmp(zIn,"false",5) == 0)
-	 || (n == 3 && SyStrnicmp(zIn,"off",3) == 0)
-	 || (n == 2 && SyStrnicmp(zIn,"no",2) == 0)
-	 || (n == 4 && SyStrnicmp(zIn,"none",4) == 0) ){
-		if( iMode == PH7_INI_SCANNER_TYPED ){
-			ph7_value_bool(pValue,0);
-		}
-		/* NORMAL: the empty string pValue already holds */
-		return;
-	}
-	if( n == 4 && SyStrnicmp(zIn,"null",4) == 0 ){
-		if( iMode == PH7_INI_SCANNER_TYPED ){
-			ph7_value_null(pValue);
-		}
-		return;
-	}
-	if( iMode == PH7_INI_SCANNER_TYPED ){
-		sxu32 i = 0;
-		sxu32 nDig = 0,nDot = 0;
-		int bNeg = 0,bNum = 1;
-		if( zIn[0] == '-' ){
-			bNeg = 1;
-			i = 1;
-		}
-		for( ; i < n ; i++ ){
-			if( zIn[i] >= '0' && zIn[i] <= '9' ){
-				nDig++;
-			}else if( zIn[i] == '.' ){
-				nDot++;
-			}else{
-				bNum = 0;
-				break;
+	/* A boolean word is a token of its own: it stands as the whole value and
+	 * is a syntax error anywhere else. */
+	if( VmIniValRunChar(p->zCur,p->zEnd,&nLen) ){
+		const char *z = p->zCur;
+		int iBool;
+		do {
+			z += nLen;
+		}while( z < p->zEnd && VmIniValRunChar(z,p->zEnd,&nLen) );
+		iBool = VmIniValBoolWord(p->zCur,(sxu32)(z - p->zCur));
+		if( iBool >= 0 ){
+			while( z < p->zEnd && (z[0] == ' ' || z[0] == '\t') ){
+				z++;
 			}
-		}
-		if( bNum && nDig > 0 && nDot == 0 ){
-			sxi64 iVal = 0;
-			int iOverflow = 0;
-			SyStrToInt64Ex(zIn,n,(void *)&iVal,0,&iOverflow);
-			if( !iOverflow ){
-				ph7_value_int64(pValue,iVal);
-				return;
+			if( z < p->zEnd ){
+				p->zCur = z;
+				p->zErr = z;
+				p->zTok = VmIniValTokName(p);
+				return 0;
 			}
-			ph7_value_string(pValue,zIn,(int)n);
-			return;
-		}
-		if( bNum && nDig > 0 && nDot == 1 && !bNeg ){
-			double rVal = 0;
-			SyStrToReal(zIn,n,(void *)&rVal,0);
-			ph7_value_double(pValue,rVal);
-			return;
+			if( iMode == PH7_INI_SCANNER_TYPED ){
+				if( aIniBool[iBool].iKind == 2 ){
+					ph7_value_null(pValue);
+				}else{
+					ph7_value_bool(pValue,aIniBool[iBool].iKind);
+				}
+			}else if( aIniBool[iBool].iKind == 1 ){
+				ph7_value_string(pValue,"1",1);
+			}
+			/* NORMAL false/null: the empty string pValue already holds */
+			return 1;
 		}
 	}
-	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
-	while( zIn < zEnd ){
-		if( zIn[0] == '$' && &zIn[1] < zEnd && zIn[1] == '{' ){
-			const char *p = &zIn[2];
-			while( p < zEnd && p[0] != '}' ){
-				p++;
-			}
-			if( p < zEnd ){
-				VmIniExpandDollarVar(pCtx,&zIn[2],(sxu32)(p - &zIn[2]),&sOut);
-				zIn = &p[1];
-				continue;
-			}
-			/* No closing brace: the bytes stand as written */
-		}
-		if( ((unsigned char)zIn[0] < 0xc0 && SyisAlpha(zIn[0])) || zIn[0] == '_' ){
-			const char *pTok = zIn;
-			ph7_value sCons;
-			while( zIn < zEnd
-			 && (((unsigned char)zIn[0] < 0xc0 && SyisAlphaNum(zIn[0])) || zIn[0] == '_') ){
-				zIn++;
-			}
-			PH7_MemObjInit(pCtx->pVm,&sCons);
-			if( PH7_VmQueryConstant(pCtx->pVm,pTok,(sxu32)(zIn - pTok),&sCons) ){
-				int nCons;
-				const char *zCons = ph7_value_to_string(&sCons,&nCons);
-				SyBlobAppend(&sOut,zCons,(sxu32)nCons);
-			}else{
-				SyBlobAppend(&sOut,pTok,(sxu32)(zIn - pTok));
-			}
-			PH7_MemObjRelease(&sCons);
-			continue;
-		}
-		SyBlobAppend(&sOut,zIn,(sxu32)sizeof(char));
-		zIn++;
+	VmIniResInit(&sRes,pCtx);
+	if( !VmIniValExpr(p,&sRes,0) ){
+		VmIniResRelease(&sRes);
+		return 0;
 	}
-	if( SyBlobLength(&sOut) > 0 ){
-		ph7_value_string(pValue,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	if( p->zCur < p->zEnd ){
+		/* A byte no production can take: `2)`, `hello!`, `something (note)` */
+		p->zErr = p->zCur;
+		p->zTok = VmIniValTokName(p);
+		VmIniResRelease(&sRes);
+		return 0;
 	}
-	SyBlobRelease(&sOut);
+	if( iMode == PH7_INI_SCANNER_TYPED && sRes.bOp ){
+		ph7_value_int64(pValue,(sxi64)sRes.iNum);
+	}else if( iMode == PH7_INI_SCANNER_TYPED && sRes.bNumTok
+	 && VmIniValNormalize(&sRes.sText,pValue) ){
+		/* the int or the float php's normalize_value() makes of it */
+	}else if( SyBlobLength(&sRes.sText) > 0 ){
+		ph7_value_string(pValue,(const char *)SyBlobData(&sRes.sText),(int)SyBlobLength(&sRes.sText));
+	}
+	VmIniResRelease(&sRes);
+	return 1;
 }
-PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode)
+/*
+ * php's `syntax error, unexpected <token> in <file> on line <n>` warning, and
+ * FALSE for the whole call: one bad value discards every entry parsed so far.
+ * parse_ini_string() has no file to name and says `Unknown`.
+ */
+static void VmIniSyntaxError(ph7_context *pCtx,const char *zStart,const char *zFile,VmIniVal *p)
+{
+	const char *z;
+	SyBlob sMsg;
+	int nLine = 1;
+	for( z = zStart ; z < p->zErr ; z++ ){
+		if( z[0] == '\n' ){
+			nLine++;
+		}
+	}
+	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+	SyBlobFormat(&sMsg,"syntax error, unexpected %s in %s on line %d",
+		p->zTok,zFile ? zFile : "Unknown",nLine);
+	if( SyBlobNullAppend(&sMsg) == SXRET_OK ){
+		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+	}
+	SyBlobRelease(&sMsg);
+}
+PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode,const char *zFile)
 {
 	ph7_value *pCur,*pArray,*pSection,*pWorker,*pValue;
+	const char *zStart = zIn;
 	const char *zCur,*zEnd = &zIn[nByte];
 	SyHashEntry *pEntry;
 	SyString sEntry;
@@ -3099,7 +3582,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					zCur = zIn;
 					c = zIn[0];
 					bQuoted = (c == '"' || c == '\'');
-					if( bQuoted ){
+					if( bQuoted && iScannerMode == PH7_INI_SCANNER_RAW ){
 						zIn++;
 						/* Delimit the value */
 						while( zIn < zEnd ){
@@ -3112,7 +3595,26 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 							zIn++;
 						}
 					}else{
+						/* A quote pauses the `;` comment and the end of the
+						 * value, exactly as php's pushed ST_DOUBLE_QUOTES
+						 * state does: `a = "x" & "y"` is ONE value and not the
+						 * three bytes in front of its second quote. */
+						bQuoted = 0;
 						while( zIn < zEnd ){
+							if( zIn[0] == '"' || zIn[0] == '\'' ){
+								int q = zIn[0];
+								zIn++;
+								while( zIn < zEnd && zIn[0] != q ){
+									if( q == '"' && zIn[0] == '\\' && &zIn[1] < zEnd ){
+										zIn++;
+									}
+									zIn++;
+								}
+								if( zIn < zEnd ){
+									zIn++;
+								}
+								continue;
+							}
 							if( zIn[0] == '\n' ){
 								if( zIn[-1] != '\\' ){
 									break;
@@ -3131,15 +3633,20 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 						SyStringTrimLeadingChar(&sEntry,c);
 						SyStringTrimTrailingChar(&sEntry,c);
 					}
-					if( bQuoted || iScannerMode == PH7_INI_SCANNER_RAW ){
-						/* A quoted value is its literal bytes in EVERY mode
-						 * (php runs no expansion inside quotes), and RAW keeps
-						 * even a bare word uninterpreted. */
+					if( iScannerMode == PH7_INI_SCANNER_RAW ){
+						/* RAW keeps even a bare word uninterpreted. */
 						if( sEntry.nByte > 0 ){
 							ph7_value_string(pValue,sEntry.zString,(int)sEntry.nByte);
 						}
 					}else{
-						VmIniInterpretValue(pCtx,&sEntry,iScannerMode,pValue);
+						VmIniVal sErr;
+						if( !VmIniInterpretValue(pCtx,&sEntry,iScannerMode,pValue,&sErr) ){
+							/* php discards the whole parse over one bad value */
+							VmIniSyntaxError(pCtx,zStart,zFile,&sErr);
+							SyHashRelease(&sHash);
+							ph7_result_bool(pCtx,0);
+							return SXRET_OK;
+						}
 					}
 				}
 				/* Insert the key and it's value (an empty value included) */
@@ -3197,7 +3704,7 @@ PH7_PRIVATE int PH7_builtin_parse_ini_string(ph7_context *pCtx,int nArg,ph7_valu
 	/* Extract the raw INI buffer */
 	zIni = ph7_value_to_string(apArg[0],&nByte);
 	/* Process the INI buffer; propagate an OOM abort so the fatal actually halts */
-	return PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0,iMode);
+	return PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0,iMode,0);
 }
 #endif /* PH7_NEED_FMT_AND_INI */
 #ifdef PH7_NEED_BUILTIN_REG

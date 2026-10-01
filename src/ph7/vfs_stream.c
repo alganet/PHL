@@ -9754,7 +9754,7 @@ PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value 
 	}else{
 		/* Process the raw INI buffer; capture an OOM abort to propagate below */
 		rc = PH7_ParseIniString(pCtx,(const char *)SyBlobData(&sContents),SyBlobLength(&sContents),
-			nArg > 1 ? ph7_value_to_bool(apArg[1]) : 0,iMode);
+			nArg > 1 ? ph7_value_to_bool(apArg[1]) : 0,iMode,zFile);
 	}
 	/* Close the stream */
 	PH7_StreamCloseHandle(pStream,pHandle);

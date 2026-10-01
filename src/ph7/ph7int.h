@@ -8350,7 +8350,7 @@ PH7_PRIVATE sxi32 PH7_ProcessCsv(ph7_value *pArray,const char *zInput,int nByte,
 PH7_PRIVATE sxi32 PH7_CsvCharArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
 	const char *zName,int bAllowEmpty,int *pChar);
 PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen,int bTagSpaces);
-PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode);
+PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode,const char *zFile);
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* Constant lookup by name: unguarded because the php.ini value grammar (vm.c,
  * VmIniExprOperand) substitutes a constant for a bare identifier, and that runs
