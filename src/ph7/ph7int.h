@@ -7997,12 +7997,12 @@ PH7_PRIVATE sxi32 HashmapInsert(ph7_hashmap *pMap,ph7_value *pKey,ph7_value *pVa
 PH7_PRIVATE sxi32 HashmapLookupIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_hashmap_node **ppNode);
 PH7_PRIVATE sxi32 HashmapLookupBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,ph7_hashmap_node **ppNode);
 PH7_PRIVATE sxi32 PH7_HashmapInsertRawKey(ph7_hashmap *pMap,const char *zKey,sxu32 nKey,ph7_value *pVal);
-/* hashmap_sort.c: the SQLite-derived merge sort and the sort builtin family.
+/* hashmap_sort.c: the node ordering primitive and the sort builtin family.
  * Shared with hashmap.c (shuffle/array_unique/array_rand) and referenced from
  * the aHashmapFunc[] registration table; compiled in every mode. */
 typedef sxi32 (*ProcNodeCmp)(ph7_hashmap_node *,ph7_hashmap_node *,void *);
 PH7_PRIVATE sxi32 PH7_HashmapShuffle(ph7_hashmap *pMap);
-PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData);
+PH7_PRIVATE sxi32 HashmapNodeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData);
 PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap);
 PH7_PRIVATE int HashmapValueFlagEqual(ph7_vm *pVm,ph7_value *pA,ph7_value *pB,int base,int bFold);
 PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg);
