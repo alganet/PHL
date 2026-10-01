@@ -7244,6 +7244,7 @@ PH7_PRIVATE int VmMagicGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName,s
 PH7_PRIVATE void VmMagicGuardPush(ph7_vm *pVm,void *pThis,const SyString *pName,sxu8 cKind);
 PH7_PRIVATE void VmMagicGuardPop(ph7_vm *pVm);
 PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE void PH7_VmBindAttrRef(ph7_vm *pVm,VmClassAttr *pVmAttr,sxu32 nSrcIdx);
 PH7_PRIVATE void VmPinMemObjSlotCounted(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE void VmUnpinMemObjSlot(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmSpreadMergeStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData);

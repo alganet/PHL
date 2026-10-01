@@ -16,9 +16,13 @@
  *  Object property keys: public -> "name"; protected -> "\0*\0name";
  *  private -> "\0<DeclClass>\0name" (the s: length counts the NULs).
  *
+ *  Back-reference graph: every VALUE emitted takes the next number in php's own
+ *  count (keys take none, and neither does a repeated REFERENCE), so a second
+ *  sighting of the same object writes `r:<n>;` and a second sighting of the same
+ *  reference writes `R:<n>;`. That is what makes a shared object still shared
+ *  after a round trip -- and what lets a cyclic value be written at all.
+ *
  *  Documented divergences from PHP 8.5:
- *   - no back-reference graph (r:/R:); serialize depth-guards cycles -> false,
- *     unserialize rejects r:/R:.
  *   - the Serializable C: tag is not honored (such a class serializes by the
  *     default O: path).
  *   - an ALLOWED class's undeclared payload property is skipped (php creates a
@@ -31,6 +35,26 @@
 /* ----------------------------------------------------------------------------
  * Serializer
  * ------------------------------------------------------------------------- */
+/*
+ * php's `var_hash`: what has already been written, and under which number.
+ *
+ * Two identity spaces share the rule and nothing else, so they get a table each:
+ * an OBJECT is itself (the instance address), and a REFERENCE is the value slot
+ * its holders share. Open addressing over a power-of-two ring, because the only
+ * questions asked of it are "seen?" and "remember", the keys are machine words,
+ * and a serialize() of a large graph asks them once per value -- SyHash borrows
+ * its key bytes rather than copying them, which a key that lives in a local
+ * cannot satisfy. Key 0 marks a free slot, so every key is stored biased by one.
+ */
+typedef struct VmSerRefTab VmSerRefTab;
+struct VmSerRefTab
+{
+	SyMemBackend *pAlloc; /* Where the ring comes from */
+	sxu64 *aKey;          /* Biased key, 0 == free */
+	sxu32 *aNum;          /* The back-reference number recorded for it */
+	sxu32 nSlot;          /* Ring size (a power of two), 0 until the first insert */
+	sxu32 nUsed;          /* Occupied slots */
+};
 typedef struct serialize_data serialize_data;
 struct serialize_data
 {
@@ -40,8 +64,78 @@ struct serialize_data
 	int depth;            /* Current nesting level (cycle guard) */
 	int exc;              /* A magic method threw -> propagate the exception */
 	int err;              /* Recursion overflow or bad input -> serialize returns false */
+	sxu32 n;              /* php's counter: how many VALUES have been written */
+	VmSerRefTab sObj;     /* instance address -> its number */
+	VmSerRefTab sRef;     /* shared value slot -> its number */
 };
-static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData);
+static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData, int isRef, sxu32 nSlot);
+static void VmSerRefTabInit(VmSerRefTab *pTab, SyMemBackend *pAlloc)
+{
+	pTab->pAlloc = pAlloc;
+	pTab->aKey = 0;
+	pTab->aNum = 0;
+	pTab->nSlot = 0;
+	pTab->nUsed = 0;
+}
+static void VmSerRefTabRelease(VmSerRefTab *pTab)
+{
+	if( pTab->aKey ){ SyMemBackendFree(pTab->pAlloc,pTab->aKey); }
+	if( pTab->aNum ){ SyMemBackendFree(pTab->pAlloc,pTab->aNum); }
+	pTab->aKey = 0; pTab->aNum = 0; pTab->nSlot = 0; pTab->nUsed = 0;
+}
+/* The ring position a biased key belongs at: its own slot, or the first free one. */
+static sxu32 VmSerRefTabProbe(VmSerRefTab *pTab, sxu64 nKey)
+{
+	sxu32 i = (sxu32)((nKey ^ (nKey >> 32)) * 2654435761u) & (pTab->nSlot - 1);
+	while( pTab->aKey[i] != 0 && pTab->aKey[i] != nKey ){
+		i = (i + 1) & (pTab->nSlot - 1);
+	}
+	return i;
+}
+static int VmSerRefTabGrow(VmSerRefTab *pTab)
+{
+	sxu32 nNew = pTab->nSlot ? pTab->nSlot * 2 : 64;
+	sxu64 *aKey = (sxu64 *)SyMemBackendAlloc(pTab->pAlloc,nNew * (sxu32)sizeof(sxu64));
+	sxu32 *aNum = (sxu32 *)SyMemBackendAlloc(pTab->pAlloc,nNew * (sxu32)sizeof(sxu32));
+	sxu64 *aOldKey = pTab->aKey;
+	sxu32 *aOldNum = pTab->aNum;
+	sxu32 nOld = pTab->nSlot, i;
+	if( aKey == 0 || aNum == 0 ){
+		if( aKey ){ SyMemBackendFree(pTab->pAlloc,aKey); }
+		if( aNum ){ SyMemBackendFree(pTab->pAlloc,aNum); }
+		return 0;
+	}
+	SyZero(aKey,nNew * (sxu32)sizeof(sxu64));
+	pTab->aKey = aKey; pTab->aNum = aNum; pTab->nSlot = nNew;
+	for( i = 0 ; i < nOld ; ++i ){
+		if( aOldKey[i] != 0 ){
+			sxu32 j = VmSerRefTabProbe(pTab,aOldKey[i]);
+			pTab->aKey[j] = aOldKey[i];
+			pTab->aNum[j] = aOldNum[i];
+		}
+	}
+	if( aOldKey ){ SyMemBackendFree(pTab->pAlloc,aOldKey); }
+	if( aOldNum ){ SyMemBackendFree(pTab->pAlloc,aOldNum); }
+	return 1;
+}
+/* Answer the number this key was recorded under, or record the given one. */
+static int VmSerRefTabSeen(VmSerRefTab *pTab, sxu64 nRaw, sxu32 nNum, sxu32 *pnSeen)
+{
+	sxu64 nKey = nRaw + 1;
+	sxu32 i;
+	if( pTab->nSlot == 0 || (pTab->nUsed + 1) * 4 >= pTab->nSlot * 3 ){
+		if( !VmSerRefTabGrow(pTab) ){ return 0; }
+	}
+	i = VmSerRefTabProbe(pTab,nKey);
+	if( pTab->aKey[i] == nKey ){
+		*pnSeen = pTab->aNum[i];
+		return 1;
+	}
+	pTab->aKey[i] = nKey;
+	pTab->aNum[i] = nNum;
+	pTab->nUsed++;
+	return 0;
+}
 /*
  * Append the shortest decimal string that round-trips to the given double, in
  * PHP's gcvt/serialize style: uppercase 'E' exponent with no leading zeros and a
@@ -117,14 +211,49 @@ static void VmSerializeRawString(SyBlob *pOut, const char *z, int n)
 	if( n > 0 ){ SyBlobAppend(pOut,z,(sxu32)n); }
 	SyBlobAppend(pOut,"\";",2);
 }
-/* Array walker: serialize key then value. */
-static int VmSerializeArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)
+/* An array KEY, straight off the node. php writes it without a value's number:
+ * a key is never a back-reference target and never advances the counter. */
+static void VmSerializeNodeKey(SyBlob *pOut, ph7_hashmap_node *pNode)
 {
-	serialize_data *pData = (serialize_data *)pUserData;
-	if( pData->err || pData->exc ){ return PH7_OK; }
-	VmSerialize(pKey,pData);   /* an int or string key -> i:/s: */
-	VmSerialize(pValue,pData);
-	return PH7_OK;
+	if( pNode->iType == HASHMAP_INT_NODE ){
+		SyBlobFormat(pOut,"i:%qd;",pNode->xKey.iKey);
+	}else{
+		VmSerializeRawString(pOut,(const char *)SyBlobData(&pNode->xKey.sKey),
+			(int)SyBlobLength(&pNode->xKey.sKey));
+	}
+}
+/*
+ * Every `<key><value>` pair of a map, walked over the NODES rather than through
+ * ph7_array_walk: the walker hands out a copy of each value, and a copy has lost
+ * the two things the back-reference graph is made of -- which slot the element
+ * shares (php's `Z_ISREF`) and which slot that is.
+ *
+ * `$a[0] = &$a` is the one element whose slot has no other holder to count, so
+ * PH7_HashmapNodeIsRef answers no for it once the name `$a` is gone; it is still
+ * php's reference, and without the second test serialize() would walk it for
+ * ever instead of writing `R:`.
+ */
+static void VmSerializeMapEntries(ph7_hashmap *pMap, serialize_data *pData)
+{
+	ph7_hashmap_node *pEntry = pMap->pFirst;
+	sxu32 n = pMap->nEntry;
+	while( n > 0 && pEntry ){
+		ph7_value *pVal;
+		int isRef;
+		if( pData->err || pData->exc ){ return; }
+		VmSerializeNodeKey(pData->pOut,pEntry);
+		pVal = HashmapExtractNodeValue(pEntry);
+		isRef = PH7_HashmapNodeIsRef(pEntry)
+			|| (pVal && (pVal->iFlags & MEMOBJ_HASHMAP) && (ph7_hashmap *)pVal->x.pOther == pMap);
+		if( pVal ){
+			VmSerialize(pVal,pData,isRef,pEntry->nValIdx);
+		}else{
+			pData->n++;
+			SyBlobAppend(pData->pOut,"N;",2);
+		}
+		pEntry = pEntry->pPrev;   /* the map's linear order (see PH7_HashmapWalk) */
+		n--;
+	}
 }
 /* Emit an object property key with the proper visibility mangling. pOwner is the class
  * being serialized: a private key names the class that OWNS the property, and a trait's
@@ -203,7 +332,12 @@ static int VmSleepWalk(ph7_value *pKey, ph7_value *pName, void *pUserData)
 	if( !VmAttrIsProperty(pVmAttr) ){ return PH7_OK; }
 	VmSerializePropKey(pData->pOut,pVmAttr->pAttr,pS->pThis->pClass);
 	pVal = PH7_ClassInstanceExtractAttrValue(pS->pThis,pVmAttr);
-	if( pVal ){ VmSerialize(pVal,pData); } else { SyBlobAppend(pData->pOut,"N;",2); }
+	if( pVal ){
+		VmSerialize(pVal,pData,PH7_ClassAttrIsRef(pS->pThis,pVmAttr),pVmAttr->nIdx);
+	}else{
+		pData->n++;
+		SyBlobAppend(pData->pOut,"N;",2);
+	}
 	pS->nCount++;
 	SXUNUSED(pKey);
 	return PH7_OK;
@@ -324,7 +458,12 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 				/* The key is stored RAW (mangling bytes included): emit it as-is. */
 				VmSerializeRawString(&sBody,(const char *)pEntry->pKey,(int)pEntry->nKeyLen);
 				pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
-				if( pVal ){ VmSerialize(pVal,pData); } else { SyBlobAppend(&sBody,"N;",2); }
+				if( pVal ){
+					VmSerialize(pVal,pData,PH7_ClassAttrIsRef(pThis,pVmAttr),pVmAttr->nIdx);
+				}else{
+					pData->n++;
+					SyBlobAppend(&sBody,"N;",2);
+				}
 			}
 		}
 		pData->depth--;
@@ -348,7 +487,10 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		rc = PH7_VmCallMagicMethod(pVm,pThis,pMethod,&sRes,0,0);
 		if( rc == PH7_EXCEPTION ){ pData->exc = 1; }
 		else if( !ph7_value_is_array(&sRes) ){ pData->err = 1; }
-		else { nCount = ph7_array_count(&sRes); ph7_array_walk(&sRes,VmSerializeArrayWalk,pData); }
+		else {
+			nCount = ph7_array_count(&sRes);
+			VmSerializeMapEntries((ph7_hashmap *)sRes.x.pOther,pData);
+		}
 		PH7_MemObjRelease(&sRes);
 		goto done;
 	}
@@ -388,7 +530,12 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		if( !VmAttrIsProperty(pVmAttr) ){ continue; }
 		VmSerializePropKey(&sBody,pVmAttr->pAttr,pThis->pClass);
 		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
-		if( pVal ){ VmSerialize(pVal,pData); } else { SyBlobAppend(&sBody,"N;",2); }
+		if( pVal ){
+			VmSerialize(pVal,pData,PH7_ClassAttrIsRef(pThis,pVmAttr),pVmAttr->nIdx);
+		}else{
+			pData->n++;
+			SyBlobAppend(&sBody,"N;",2);
+		}
 		nCount++;
 	}
 done:
@@ -400,11 +547,38 @@ done:
 	SyBlobRelease(&sBody);
 	return pData->exc ? PH7_EXCEPTION : PH7_OK;
 }
-static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData)
+/*
+ * One value, and the number it takes.
+ *
+ * isRef says the SLOT this value was reached through is shared -- php's
+ * `Z_ISREF_P` -- and nSlot names it. php's rule, in the order it applies them:
+ * the counter advances for every value; only an object or a reference is
+ * remembered; a reference whose target is an OBJECT is remembered as that object
+ * (`['p' => $o, 'q' => &$r]` writes `R:` against the number `$o` already took);
+ * and a repeated reference gives its number back, so it costs nothing and the
+ * count stays in step with the reader's, which pushes nothing for an `R:` either.
+ */
+static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData, int isRef, sxu32 nSlot)
 {
 	SyBlob *pOut = pData->pOut;
 	if( pData->err || pData->exc ){ return PH7_OK; }
 	if( pData->depth > SERIALIZE_MAX_DEPTH ){ pData->err = 1; return PH7_OK; }
+	pData->n++;
+	if( isRef || ph7_value_is_object(pIn) ){
+		int bObj = ph7_value_is_object(pIn) != 0;
+		VmSerRefTab *pTab = bObj ? &pData->sObj : &pData->sRef;
+		sxu64 nKey = bObj ? (sxu64)(size_t)pIn->x.pOther : (sxu64)nSlot;
+		sxu32 nSeen = 0;
+		if( VmSerRefTabSeen(pTab,nKey,pData->n,&nSeen) ){
+			if( isRef ){
+				pData->n--;
+				SyBlobFormat(pOut,"R:%u;",nSeen);
+			}else{
+				SyBlobFormat(pOut,"r:%u;",nSeen);
+			}
+			return PH7_OK;
+		}
+	}
 	if( ph7_value_is_null(pIn) ){
 		SyBlobAppend(pOut,"N;",2);
 	}else if( ph7_value_is_bool(pIn) ){
@@ -422,7 +596,7 @@ static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData)
 	}else if( ph7_value_is_array(pIn) ){
 		SyBlobFormat(pOut,"a:%u:{",ph7_array_count(pIn));
 		pData->depth++;
-		ph7_array_walk(pIn,VmSerializeArrayWalk,pData);
+		VmSerializeMapEntries((ph7_hashmap *)pIn->x.pOther,pData);
 		pData->depth--;
 		SyBlobAppend(pOut,"}",1);
 	}else if( ph7_value_is_object(pIn) ){
@@ -449,7 +623,12 @@ PH7_PRIVATE int PH7_VmSerializeValue(ph7_context *pCtx,ph7_value *pIn,SyBlob *pO
 	sData.depth = 0;
 	sData.exc = 0;
 	sData.err = 0;
-	VmSerialize(pIn,&sData);
+	sData.n = 0;
+	VmSerRefTabInit(&sData.sObj,&pCtx->pVm->sAllocator);
+	VmSerRefTabInit(&sData.sRef,&pCtx->pVm->sAllocator);
+	VmSerialize(pIn,&sData,0,SXU32_HIGH);
+	VmSerRefTabRelease(&sData.sObj);
+	VmSerRefTabRelease(&sData.sRef);
 	return (sData.exc || sData.err) ? -1 : 0;
 }
 /*
@@ -471,7 +650,12 @@ PH7_PRIVATE int vm_builtin_serialize(ph7_context *pCtx, int nArg, ph7_value **ap
 	sData.depth = 0;
 	sData.exc = 0;
 	sData.err = 0;
-	VmSerialize(apArg[0],&sData);
+	sData.n = 0;
+	VmSerRefTabInit(&sData.sObj,&pCtx->pVm->sAllocator);
+	VmSerRefTabInit(&sData.sRef,&pCtx->pVm->sAllocator);
+	VmSerialize(apArg[0],&sData,0,SXU32_HIGH);
+	VmSerRefTabRelease(&sData.sObj);
+	VmSerRefTabRelease(&sData.sRef);
 	if( sData.exc ){
 		SyBlobRelease(&sOut);
 		return PH7_EXCEPTION;
@@ -504,8 +688,59 @@ struct unserialize_data
 	int exc;          /* A __wakeup()/__unserialize() threw -> propagate it */
 	int allowAll;     /* allowed_classes: TRUE unless the option said false or a list */
 	ph7_value *pAllowedList; /* ... the list, when one was given (else NULL) */
+	SySet aRef;       /* VmUnRef, one per value read: php's reading var_hash */
 };
-static ph7_value * VmUnserializeValue(unserialize_data *ud);
+/*
+ * The reading half of the back-reference graph: what the payload's Nth value
+ * turned out to be. `r:` wants the OBJECT, which exists as soon as the O: header
+ * has been read, so pVal is filled before the body is; `R:` wants the value SLOT
+ * the two holders are to share, which is the array node or the property the
+ * container reserved for it -- reserved BEFORE the value is parsed, because a
+ * cyclic payload names that number from inside the value it is about to read.
+ * A number with no slot (the outermost value; nothing owns it yet) can be named
+ * by `r:` and not by `R:`.
+ */
+typedef struct VmUnRef VmUnRef;
+struct VmUnRef
+{
+	sxu32 nSlot;         /* aMemObj slot this value lives in, or SXU32_HIGH */
+	ph7_value *pVal;     /* ... and the value itself, once it is known */
+	VmClassAttr *pAttr;  /* ... and the PROPERTY it is, when it is one */
+};
+static ph7_value * VmUnserializeValue(unserialize_data *ud,sxu32 nMe);
+/* Take the next number. php pushes nothing for an `R:` token, exactly as the
+ * writer's counter steps back when it emits one, so the two stay in step. */
+static sxu32 VmUnRefReserve(unserialize_data *ud)
+{
+	VmUnRef sRec;
+	sRec.nSlot = SXU32_HIGH;
+	sRec.pVal = 0;
+	sRec.pAttr = 0;
+	if( SySetPut(&ud->aRef,(const void *)&sRec) != SXRET_OK ){
+		return SXU32_HIGH;
+	}
+	return SySetUsed(&ud->aRef);   /* php's numbers are 1-based */
+}
+static void VmUnRefBind(unserialize_data *ud,sxu32 nMe,sxu32 nSlot,ph7_value *pVal,
+	VmClassAttr *pAttr)
+{
+	VmUnRef *pRec;
+	if( nMe == SXU32_HIGH || nMe < 1 || nMe > SySetUsed(&ud->aRef) ){
+		return;
+	}
+	pRec = (VmUnRef *)SySetAt(&ud->aRef,nMe-1);
+	if( pRec == 0 ){ return; }
+	if( nSlot != SXU32_HIGH ){ pRec->nSlot = nSlot; }
+	if( pVal ){ pRec->pVal = pVal; }
+	if( pAttr ){ pRec->pAttr = pAttr; }
+}
+static VmUnRef * VmUnRefAt(unserialize_data *ud,sxu32 nId)
+{
+	if( nId < 1 || nId > SySetUsed(&ud->aRef) ){
+		return 0;
+	}
+	return (VmUnRef *)SySetAt(&ud->aRef,nId-1);
+}
 /* Consume the single expected character; 0 on mismatch/EOF. */
 static int VmUnExpect(unserialize_data *ud, char c)
 {
@@ -623,8 +858,132 @@ static int VmUnserializeShortContainer(unserialize_data *ud)
 	}
 	return 1;
 }
+/* Is the next token an `R:` back-reference? Only a container can honour one --
+ * it is a bind, not a value -- so every container peeks for it itself. */
+static int VmUnPeekBackRef(unserialize_data *ud)
+{
+	return ud->zCur+1 < ud->zEnd && ud->zCur[0] == 'R' && ud->zCur[1] == ':';
+}
+/*
+ * `r:<digits>;` / `R:<digits>;`, and where php blames a bad one.
+ *
+ * php sets its cursor past the whole token BEFORE it looks at the number, so a
+ * well-formed token naming a number it cannot use reports where the parser
+ * stopped -- the byte after the `;` -- and only a token whose SHAPE did not
+ * match is blamed at its own start. A digit run past the range saturates
+ * instead of failing the shape (php's own reader clamps), so
+ * `R:99999999999999999999;` is a number out of range rather than a syntax error,
+ * and a SIGNED one (`r:-1;`) never matches the shape at all.
+ */
+static int VmUnParseRefToken(unserialize_data *ud,char c,sxu32 *pnId)
+{
+	const char *zStart = ud->zCur;
+	sxu32 nId = 0;
+	int nDigit = 0;
+	if( VmUnExpect(ud,c) && VmUnExpect(ud,':') ){
+		while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){
+			nId = nId > (SXU32_HIGH - 9)/10 ? SXU32_HIGH : nId*10 + (sxu32)(ud->zCur[0]-'0');
+			ud->zCur++;
+			nDigit++;
+		}
+		if( nDigit > 0 && VmUnExpect(ud,';') ){
+			*pnId = nId;
+			return 1;
+		}
+	}
+	/* A container parses its own `R:` with no VmUnserializeValue wrapper around
+	 * it, so the token's own start is latched here rather than by the caller. */
+	if( ud->zErr == 0 ){ ud->zErr = zStart; }
+	return 0;
+}
+/*
+ * Parse `R:<n>;` and answer the value slot it names. Fails on a number that was
+ * never pushed, on one that has no slot of its own (the outermost value), and on
+ * one that names nSelf -- the slot the bind is landing in, which php refuses as
+ * `rval_ref == rval`. A DUPLICATE KEY is how a payload asks for that:
+ * `a:2:{s:1:"k";i:1;s:1:"k";R:2;}` would rebind the element to itself. Naming a
+ * different slot from a duplicate key is fine and stays so.
+ */
+static int VmUnParseBackRef(unserialize_data *ud,sxu32 nSelf,sxu32 *pnSlot)
+{
+	VmUnRef *pRec;
+	sxu32 nId;
+	if( !VmUnParseRefToken(ud,'R',&nId) ){
+		return 0;   /* the shape is wrong: the caller blames the token's start */
+	}
+	pRec = VmUnRefAt(ud,nId);
+	if( pRec == 0 || pRec->nSlot == SXU32_HIGH || pRec->nSlot == nSelf ){
+		if( ud->zErr == 0 ){ ud->zErr = ud->zCur; }
+		return 0;
+	}
+	if( pRec->pAttr
+	 && (pRec->pAttr->iState & (VM_CLASS_ATTR_REFBOUND|VM_CLASS_ATTR_REFSRCPIN)) == 0 ){
+		/* The SOURCE end of a bind is a reference too, and the table cannot name a
+		 * property as a holder — so a property being referenced pins its own slot,
+		 * exactly as fetching `&$o->p` does. Without it the slot's only recorded
+		 * holder is the other end's pin, and neither end reads back as a reference. */
+		pRec->pAttr->iState |= VM_CLASS_ATTR_REFSRCPIN;
+		VmPinMemObjSlotCounted(ud->pVm,pRec->nSlot);
+	}
+	*pnSlot = pRec->nSlot;
+	return 1;
+}
+/*
+ * One `<key><value>` pair into a map.
+ *
+ * The element is created BEFORE its value is read, because the value's own
+ * number names the element's slot and a cyclic payload asks for that number from
+ * inside the value it is about to read: `[1, 2, &$self]` comes back as an array
+ * whose third element is `R:` at the number the third element itself took.
+ * An `R:` value is a bind rather than a store, so it goes in as a reference and
+ * takes no number at all.
+ */
+static int VmUnserializeMapEntry(unserialize_data *ud,ph7_value *pArray)
+{
+	ph7_hashmap *pMap = (ph7_hashmap *)pArray->x.pOther;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pKey, *pVal, *pSlot;
+	ph7_value sNull;
+	sxu32 nMe, nSlot;
+	pKey = VmUnserializeValue(ud,SXU32_HIGH);  /* a key takes no number */
+	if( pKey == 0 ){ return 0; }
+	if( VmUnPeekBackRef(ud) ){
+		/* An element already under this key (a duplicate) is the slot the bind
+		 * would land in, and php refuses one naming itself. */
+		ph7_hashmap_node *pOld = 0;
+		sxu32 nTarget, nSelf = SXU32_HIGH;
+		if( PH7_HashmapLookup(pMap,pKey,&pOld) == SXRET_OK && pOld ){
+			nSelf = pOld->nValIdx;
+		}
+		if( !VmUnParseBackRef(ud,nSelf,&nTarget) ){ return 0; }
+		return PH7_HashmapInsertByRef(pMap,pKey,nTarget) == SXRET_OK;
+	}
+	nMe = VmUnRefReserve(ud);
+	PH7_MemObjInit(ud->pVm,&sNull);
+	if( ph7_array_add_elem(pArray,pKey,&sNull) != PH7_OK ){
+		PH7_MemObjRelease(&sNull);
+		return 0;
+	}
+	PH7_MemObjRelease(&sNull);
+	if( PH7_HashmapLookup(pMap,pKey,&pNode) != SXRET_OK || pNode == 0 ){
+		return 0;
+	}
+	nSlot = pNode->nValIdx;
+	VmUnRefBind(ud,nMe,nSlot,(ph7_value *)PH7_MemObjAt(&ud->pVm->aMemObj,nSlot),0);
+	pVal = VmUnserializeValue(ud,nMe);
+	if( pVal == 0 ){ return 0; }
+	/* Re-read the slot rather than keeping the node: the value just parsed may
+	 * have bound a reference into this very map. */
+	pSlot = (ph7_value *)PH7_MemObjAt(&ud->pVm->aMemObj,nSlot);
+	if( pSlot ){ PH7_MemObjStore(pVal,pSlot); }
+	/* The pKey/pVal temporaries are intentionally NOT released per node:
+	 * ph7_context_release_value() linear-scans the context value set, which
+	 * would make a large unserialize O(N^2). They are reclaimed in bulk when
+	 * the call context is torn down. */
+	return 1;
+}
 /* Parse a:<count>:{ <key><val> ... } into a fresh array value. */
-static ph7_value * VmUnserializeArray(unserialize_data *ud)
+static ph7_value * VmUnserializeArray(unserialize_data *ud,sxu32 nMe)
 {
 	sxu32 count, i;
 	ph7_value *pArray;
@@ -633,20 +992,11 @@ static ph7_value * VmUnserializeArray(unserialize_data *ud)
 	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'{') ){ return 0; }
 	pArray = ph7_context_new_array(ud->pCtx);
 	if( pArray == 0 ){ return 0; }
+	VmUnRefBind(ud,nMe,SXU32_HIGH,pArray,0);
 	ud->depth++;
 	for( i = 0; i < count; i++ ){
-		ph7_value *pKey;
-		ph7_value *pVal;
 		if( VmUnserializeShortContainer(ud) ){ ud->depth--; return 0; }
-		pKey = VmUnserializeValue(ud);
-		if( pKey == 0 ){ ud->depth--; return 0; }
-		pVal = VmUnserializeValue(ud);
-		if( pVal == 0 ){ ph7_context_release_value(ud->pCtx,pKey); ud->depth--; return 0; }
-		ph7_array_add_elem(pArray,pKey,pVal); /* makes its own copies */
-		/* The pKey/pVal temporaries are intentionally NOT released per node:
-		 * ph7_context_release_value() linear-scans the context value set, which
-		 * would make a large unserialize O(N^2). They are reclaimed in bulk when
-		 * the call context is torn down. */
+		if( !VmUnserializeMapEntry(ud,pArray) ){ ud->depth--; return 0; }
 	}
 	ud->depth--;
 	if( !VmUnExpect(ud,'}') ){ return 0; }
@@ -725,45 +1075,76 @@ static void VmUnserializeIncompleteProp(unserialize_data *ud,ph7_class_instance 
 		PH7_MemObjStore(pVal,pSlot);
 	}
 }
+/* The property a payload key names on the INCOMPLETE carrier, whose keys stay
+ * RAW (mangling bytes and all) and whose properties are all dynamic. */
+static VmClassAttr * VmUnserializePropAttrRaw(unserialize_data *ud,ph7_class_instance *pThis,
+	const char *zKey,sxu32 nKey)
+{
+	SyHashEntry *pEntry = PH7_ClassInstanceAttrEntry(pThis,zKey,nKey);
+	VmClassAttr *pVmAttr = 0;
+	if( pEntry ){
+		return (VmClassAttr *)pEntry->pUserData;
+	}
+	PH7_VmCreateDynamicAttr(ud->pVm,pThis,zKey,nKey,&pVmAttr);
+	return pVmAttr;
+}
 /*
- * A payload property the class does not DECLARE. php creates it as a dynamic
- * property — and PHL used to drop it in silence, which lost the whole body of
- * the commonest payload there is: stdClass declares nothing, so
- * `unserialize(serialize($obj))` on a `(object)['a'=>1]` or a json_decode()
- * result came back EMPTY.
+ * The property a payload key names.
+ *
+ * The payload key is php's STORAGE name, so it is tried as WRITTEN first — that
+ * is how a base class's private lands in its own slot rather than over the
+ * same-named property of the object's own class — and demangled only when the
+ * object holds nothing under it (a `\0*\0` protected key, and a private of the
+ * object's OWN class, are both stored plain here).
+ *
+ * A payload property the class does not DECLARE becomes a dynamic one. PHL used
+ * to drop it in silence, which lost the whole body of the commonest payload
+ * there is: stdClass declares nothing, so `unserialize(serialize($obj))` on a
+ * `(object)['a'=>1]` or a json_decode() result came back EMPTY.
  *
  * Where php's own rule and PHL's differ, this is the engine's own dynamic-
  * property decision (VmClassAllowsDynamicProps / #[AllowDynamicProperties]), the
  * one the `$o->n = 1` write path makes: created on stdClass and on a class that
  * opts in, refused with `Cannot create dynamic property C::$n` otherwise. php
- * DEPRECATES that last case rather than refusing it (the scope policy rejects php's deprecated
- * surface loudly) and raises this exact Error itself for a readonly class. Either
- * way the value is no longer discarded without a word.
- *
- * The Error is a real throw, so it abandons the parse the way a throwing
- * __wakeup() does.
+ * DEPRECATES that last case rather than refusing it (the scope policy rejects
+ * php's deprecated surface loudly) and raises this exact Error itself for a
+ * readonly class. The Error is a real throw, so it abandons the parse the way a
+ * throwing __wakeup() does.
  */
-static sxi32 VmUnserializeDynamicProp(unserialize_data *ud,ph7_class_instance *pThis,
-	const char *zName,sxu32 nName,ph7_value *pVal)
+static VmClassAttr * VmUnserializeTargetAttr(unserialize_data *ud,ph7_class_instance *pThis,
+	const char *zKey,int nKey)
 {
 	ph7_vm *pVm = ud->pVm;
 	ph7_class *pClass = pThis->pClass;
-	ph7_value *pSlot;
-	if( (pClass->iFlags & PH7_CLASS_READONLY) != 0
-	 || !VmClassAllowsDynamicProps(pVm,pClass) ){
+	SyHashEntry *pAttrEntry = PH7_ClassInstanceAttrEntry(pThis,zKey,(sxu32)nKey);
+	VmClassAttr *pVmAttr = 0;
+	if( pAttrEntry == 0 ){
+		const char *zName; int nName;
+		VmUnstripKey(zKey,nKey,&zName,&nName);
+		pAttrEntry = PH7_ClassInstanceAttrEntry(pThis,zName,(sxu32)nName);
+	}
+	if( pAttrEntry && pAttrEntry->pUserData ){
+		pVmAttr = (VmClassAttr *)pAttrEntry->pUserData;
+		if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) != 0 ){
+			pVmAttr = 0;
+		}
+	}
+	if( pVmAttr ){
+		return pVmAttr;
+	}
+	if( (pClass->iFlags & PH7_CLASS_READONLY) != 0 || !VmClassAllowsDynamicProps(pVm,pClass) ){
 		PH7_VmThrowException(ud->pCtx,"Error",
-			"Cannot create dynamic property %z::$%.*s",&pClass->sDisp,(int)nName,zName);
+			"Cannot create dynamic property %z::$%.*s",&pClass->sDisp,nKey,zKey);
 		ud->exc = 1;
-		return SXERR_ABORT;
+		return 0;
 	}
-	pSlot = VmUnserializePropSlot(ud,pThis,zName,nName);
-	if( pSlot ){
-		PH7_MemObjStore(pVal,pSlot);
-	}
-	return SXRET_OK;
+	/* php creates the dynamic property under the key as WRITTEN, mangling bytes
+	 * included — only the declared-property lookup demangles. */
+	PH7_VmCreateDynamicAttr(pVm,pThis,zKey,(sxu32)nKey,&pVmAttr);
+	return pVmAttr;
 }
 /* Parse O:<namelen>:"<Class>":<count>:{ ... } into a fresh object value. */
-static ph7_value * VmUnserializeObject(unserialize_data *ud)
+static ph7_value * VmUnserializeObject(unserialize_data *ud,sxu32 nMe)
 {
 	sxu32 nLen, count, i;
 	const char *zClass;
@@ -928,6 +1309,9 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	if( pObjVal == 0 ){ PH7_ClassInstanceUnref(pThis); return 0; }
 	pObjVal->x.pOther = pThis;       /* take the instance's single reference */
 	MemObjSetType(pObjVal,MEMOBJ_OBJ);
+	/* Publish it under its number NOW: a payload whose object refers to itself
+	 * (`$o->self = $o`) writes `r:` at this number from inside the body below. */
+	VmUnRefBind(ud,nMe,SXU32_HIGH,pObjVal,0);
 	if( bStampName ){
 		/* The magic member comes first (php's property order), holding the name
 		 * the payload spelled — what get_class() lost and re-serialization needs. */
@@ -949,56 +1333,48 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	}
 	ud->depth++;
 	for( i = 0; i < count; i++ ){
-		ph7_value *pKey;
-		ph7_value *pVal;
+		ph7_value *pKey, *pVal, *pSlot;
+		VmClassAttr *pVmAttr;
+		sxu32 nPropMe, nSlot;
+		int nKey;
+		const char *zKey;
 		if( VmUnserializeShortContainer(ud) ){ goto fail; }
-		pKey = VmUnserializeValue(ud);
-		if( pKey == 0 ){ goto fail; }
-		pVal = VmUnserializeValue(ud);
-		if( pVal == 0 ){ ph7_context_release_value(ud->pCtx,pKey); goto fail; }
-		if( bIncomplete ){
-			/* The key stays RAW (mangling bytes included) on the carrier. */
-			int nKey; const char *zKey = ph7_value_to_string(pKey,&nKey);
-			VmUnserializeIncompleteProp(ud,pThis,zKey,(sxu32)nKey,pVal);
-		}else if( pArrVal ){
-			ph7_array_add_elem(pArrVal,pKey,pVal);
-		}else{
-			/* Set a declared property. The payload key is php's STORAGE name, so
-			 * try it as WRITTEN first — that is how a base class's private lands in
-			 * its own slot rather than over the same-named property of the object's
-			 * own class — and demangle only when the object holds nothing under it
-			 * (a `\0*\0` protected key, and a private of the object's OWN class,
-			 * are both stored plain here). */
-			int nKey; const char *zKey = ph7_value_to_string(pKey,&nKey);
-			const char *zName; int nName; ph7_value *pSlot = 0;
-			SyHashEntry *pAttrEntry = PH7_ClassInstanceAttrEntry(pThis,zKey,(sxu32)nKey);
-			if( pAttrEntry == 0 ){
-				VmUnstripKey(zKey,nKey,&zName,&nName);
-				pAttrEntry = PH7_ClassInstanceAttrEntry(pThis,zName,(sxu32)nName);
-			}
-			if( pAttrEntry && pAttrEntry->pUserData ){
-				VmClassAttr *pVmAttr = (VmClassAttr *)pAttrEntry->pUserData;
-				if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) == 0 ){
-					pSlot = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
-				}
-			}
-			if( pSlot ){
-				PH7_MemObjStore(pVal,pSlot);
-				/* php's unserialize() bypasses the property type-check but the
-				 * value IS now set, so a typed property must no longer read as
-				 * "uninitialized" — clear the per-instance UNINIT latch directly
-				 * (routing through VmEnforcePropertyTypeOnStore would wrongly
-				 * apply readonly/scope checks from global scope). */
-				((VmClassAttr *)pAttrEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;
-			}else if( VmUnserializeDynamicProp(ud,pThis,zKey,(sxu32)nKey,pVal) != SXRET_OK ){
-				/* No DECLARED property of that name: php creates the dynamic one
-				 * under the key as WRITTEN, mangling bytes included — only the
-				 * declared-property lookup demangles. */
-				goto fail;
-			}
+		if( pArrVal ){
+			/* __unserialize(): the pairs are an ARRAY's, not properties. */
+			if( !VmUnserializeMapEntry(ud,pArrVal) ){ goto fail; }
+			continue;
 		}
-		/* Not released per node (bulk-reclaimed at context teardown) — see the
-		 * O(N^2) note in VmUnserializeArray. */
+		pKey = VmUnserializeValue(ud,SXU32_HIGH);  /* a key takes no number */
+		if( pKey == 0 ){ goto fail; }
+		zKey = ph7_value_to_string(pKey,&nKey);
+		/* The property is resolved — and a dynamic one created — BEFORE the value
+		 * is read: its slot is what this value's back-reference number names. */
+		pVmAttr = bIncomplete ? VmUnserializePropAttrRaw(ud,pThis,zKey,(sxu32)nKey)
+		                      : VmUnserializeTargetAttr(ud,pThis,zKey,nKey);
+		if( pVmAttr == 0 || pVmAttr->nIdx == SXU32_HIGH ){ goto fail; }
+		if( VmUnPeekBackRef(ud) ){
+			/* Two properties that shared one reference when the payload was
+			 * written share one slot again. */
+			sxu32 nTarget;
+			if( !VmUnParseBackRef(ud,pVmAttr->nIdx,&nTarget) ){ goto fail; }
+			PH7_VmBindAttrRef(ud->pVm,pVmAttr,nTarget);
+			continue;
+		}
+		nSlot = pVmAttr->nIdx;
+		nPropMe = VmUnRefReserve(ud);
+		VmUnRefBind(ud,nPropMe,nSlot,(ph7_value *)PH7_MemObjAt(&ud->pVm->aMemObj,nSlot),pVmAttr);
+		pVal = VmUnserializeValue(ud,nPropMe);
+		if( pVal == 0 ){ goto fail; }
+		pSlot = (ph7_value *)PH7_MemObjAt(&ud->pVm->aMemObj,pVmAttr->nIdx);
+		if( pSlot ){ PH7_MemObjStore(pVal,pSlot); }
+		/* php's unserialize() bypasses the property type-check but the value IS
+		 * now set, so a typed property must no longer read as "uninitialized" —
+		 * clear the per-instance UNINIT latch directly (routing through
+		 * VmEnforcePropertyTypeOnStore would wrongly apply readonly/scope checks
+		 * from global scope). */
+		pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+		/* The pKey/pVal temporaries are not released per property (bulk-reclaimed
+		 * at context teardown) — see the O(N^2) note in VmUnserializeMapEntry. */
 	}
 	ud->depth--;
 	if( !VmUnExpect(ud,'}') ){ ph7_context_release_value(ud->pCtx,pObjVal); return 0; }
@@ -1092,17 +1468,17 @@ static ph7_value * VmUnserializeEnumCase(unserialize_data *ud)
  * went looking for). The first — innermost — failure to unwind wins, which is the
  * one php names.
  */
-static ph7_value * VmUnserializeValueBody(unserialize_data *ud);
-static ph7_value * VmUnserializeValue(unserialize_data *ud)
+static ph7_value * VmUnserializeValueBody(unserialize_data *ud,sxu32 nMe);
+static ph7_value * VmUnserializeValue(unserialize_data *ud,sxu32 nMe)
 {
 	const char *zStart = ud->zCur;
-	ph7_value *pOut = VmUnserializeValueBody(ud);
+	ph7_value *pOut = VmUnserializeValueBody(ud,nMe);
 	if( pOut == 0 && ud->zErr == 0 && !ud->exc ){
 		ud->zErr = zStart;
 	}
 	return pOut;
 }
-static ph7_value * VmUnserializeValueBody(unserialize_data *ud)
+static ph7_value * VmUnserializeValueBody(unserialize_data *ud,sxu32 nMe)
 {
 	ph7_value *pOut;
 	char c;
@@ -1187,13 +1563,38 @@ static ph7_value * VmUnserializeValueBody(unserialize_data *ud)
 		return pOut;
 	}
 	case 'a':
-		return VmUnserializeArray(ud);
+		return VmUnserializeArray(ud,nMe);
 	case 'O':
-		return VmUnserializeObject(ud);
+		return VmUnserializeObject(ud,nMe);
 	case 'E':
 		return VmUnserializeEnumCase(ud);
+	case 'r': { /* r:<n>; — the object written under that number */
+		VmUnRef *pRec;
+		sxu32 nId;
+		if( !VmUnParseRefToken(ud,'r',&nId) ){ return 0; }
+		pRec = VmUnRefAt(ud,nId);
+		if( pRec == 0 || pRec->pVal == 0 || !ph7_value_is_object(pRec->pVal) ){
+			/* php refuses an `r:` that does not name an object — including one
+			 * naming the value being read (`r:1;` on its own). */
+			if( ud->zErr == 0 ){ ud->zErr = ud->zCur; }
+			return 0;
+		}
+		pOut = ph7_context_new_scalar(ud->pCtx);
+		if( pOut ){ PH7_MemObjStore(pRec->pVal,pOut); } /* the SAME instance */
+		return pOut;
+	}
+	case 'R': {
+		/* A reference back-reference is a BIND, not a value: it needs the slot it
+		 * is landing in, so every container parses its own (VmUnPeekBackRef). One
+		 * reaching here is the OUTERMOST value, which nothing holds — php's
+		 * `rval_ref == rval` refusal, blamed past the token it did read. */
+		sxu32 nId;
+		if( VmUnParseRefToken(ud,'R',&nId) && ud->zErr == 0 ){
+			ud->zErr = ud->zCur;
+		}
+		return 0;
+	}
 	default:
-		/* r:/R: back-references and anything else are unsupported */
 		return 0;
 	}
 }
@@ -1331,7 +1732,9 @@ PH7_PRIVATE sxi32 PH7_VmUnserializeOne(ph7_context *pCtx,const char *zIn,int nBy
 	ud.exc = 0;
 	ud.allowAll = 1;
 	ud.pAllowedList = 0;
-	pVal = VmUnserializeValue(&ud);
+	SySetInit(&ud.aRef,&pCtx->pVm->sAllocator,sizeof(VmUnRef));
+	pVal = VmUnserializeValue(&ud,VmUnRefReserve(&ud));
+	SySetRelease(&ud.aRef);
 	if( ud.exc ){
 		return PH7_EXCEPTION;
 	}
@@ -1398,7 +1801,9 @@ PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **
 	ud.exc = 0;
 	ud.allowAll = bAllowAll;
 	ud.pAllowedList = pAllowedList;
-	pVal = VmUnserializeValue(&ud);
+	SySetInit(&ud.aRef,&pCtx->pVm->sAllocator,sizeof(VmUnRef));
+	pVal = VmUnserializeValue(&ud,VmUnRefReserve(&ud));
+	SySetRelease(&ud.aRef);
 	if( ud.exc ){
 		/* A __wakeup()/__unserialize() threw: let the exception unwind. */
 		return PH7_EXCEPTION;

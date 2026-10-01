@@ -2802,6 +2802,40 @@ PH7_PRIVATE sxi32 VmMemPoolTruncate(VmMemPool *pPool,sxu32 nNewSize)
 	return SXRET_OK;
 }
 /*
+ * Point an instance property at somebody else's value slot -- php's `$o->p =& $x`,
+ * and the same bind an `R:` back-reference asks for when unserialize() reads a
+ * payload whose two properties shared one reference.
+ *
+ * The property gives back whatever it was holding first: a slot it was already
+ * bound to gets its pin returned (which frees it when this property was the last
+ * holder), and its OWN slot is unset outright. Either way the typed-slot
+ * enforcement entry goes with the old slot -- a reference-bound property bypasses
+ * php's typed coercion -- and the new slot takes a counted pin so no frame
+ * teardown recycles it underneath the property.
+ */
+PH7_PRIVATE void PH7_VmBindAttrRef(ph7_vm *pVm,VmClassAttr *pVmAttr,sxu32 nSrcIdx)
+{
+	sxu32 nOldIdx = pVmAttr->nIdx;
+	if( nOldIdx == nSrcIdx ){
+		return;
+	}
+	if( pVmAttr->iState & (VM_CLASS_ATTR_REFBOUND|VM_CLASS_ATTR_REFSRCPIN) ){
+		/* A SOURCE (`$r =& $o->p; $o->p =& $y;`) still owns its declaration, so
+		 * its enforcement entry goes with the repoint. */
+		if( (pVmAttr->iState & VM_CLASS_ATTR_REFBOUND) == 0 ){
+			PH7_VmStoreFilterDrop(&(*pVm),pVmAttr->pAttr,nOldIdx);
+		}
+		VmUnpinMemObjSlot(&(*pVm),nOldIdx);
+	}else{
+		PH7_VmStoreFilterDrop(&(*pVm),pVmAttr->pAttr,nOldIdx);
+		PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
+	}
+	pVmAttr->nIdx = nSrcIdx;
+	pVmAttr->iState |= VM_CLASS_ATTR_REFBOUND;
+	pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_REFSRCPIN);
+	VmPinMemObjSlotCounted(&(*pVm),nSrcIdx);
+}
+/*
  * Reserve a memory object.
  * Return a pointer to the raw ph7_value on success. NULL on failure.
  */

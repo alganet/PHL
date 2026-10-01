@@ -94,29 +94,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		if( nSrcIdx == SXU32_HIGH ){
 			/* Reservation failed: nothing to bind to. */
 		}else if( pVmAttr ){
-			sxu32 nOldIdx = pVmAttr->nIdx;
-			if( nOldIdx != nSrcIdx ){
-				if( pVmAttr->iState & (VM_CLASS_ATTR_REFBOUND|VM_CLASS_ATTR_REFSRCPIN) ){
-					/* Already at one end of a reference: give that slot its pin back,
-					 * which releases it when this property was its last holder. A
-					 * SOURCE (`$r =& $o->p; $o->p =& $y;`) still owns its declaration,
-					 * so its typed-slot enforcement entry goes with the repoint. */
-					if( (pVmAttr->iState & VM_CLASS_ATTR_REFBOUND) == 0 ){
-						PH7_VmStoreFilterDrop(&(*pVm),pVmAttr->pAttr,nOldIdx);
-					}
-					VmUnpinMemObjSlot(&(*pVm),nOldIdx);
-				}else{
-					/* Release this property's own (unshared) slot before repointing.
-					 * A reference-bound property bypasses typed coercion in php, so
-					 * drop any typed-slot enforcement entry too. */
-					PH7_VmStoreFilterDrop(&(*pVm),pVmAttr->pAttr,nOldIdx);
-					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
-				}
-				pVmAttr->nIdx = nSrcIdx;
-				pVmAttr->iState |= VM_CLASS_ATTR_REFBOUND;
-				pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_REFSRCPIN);
-				VmPinMemObjSlotCounted(&(*pVm),nSrcIdx);
-			}
+			PH7_VmBindAttrRef(&(*pVm),pVmAttr,nSrcIdx);
 		}else if( pStAttr ){
 			sxu32 nOldIdx = pStAttr->nIdx;
 			if( nOldIdx != nSrcIdx ){
