@@ -60,6 +60,28 @@ $nspG2 = Closure::bind($nspF2, null, NspS::class);
 echo $nspG2(), "\n";
 // instanceof round trip
 echo NspB::mkStatic() instanceof NspB ? "T" : "F", NspB::mkSelf() instanceof NspB ? "T" : "F", "\n";
+// an abstract/interface class reached through self/static/parent is php's
+// catchable Error, the same one `new NamedAbstract()` raises -- and the ctor
+// argument is never evaluated, because php screens the `new` before them
+function nspArg($x) { echo "arg$x\n"; return $x; }
+abstract class NspU { public function __construct($a = null) {} abstract function z();
+    static function viaSelf() { return new self(nspArg(1)); }
+    static function viaStatic() { return new static(nspArg(2)); }
+}
+class NspV extends NspU { function z() {}
+    function viaParent() { return new parent(nspArg(3)); }
+}
+interface NspW {}
+abstract class NspX implements NspW { static function viaSelf() { return new self(); } }
+foreach ([
+    "self"   => fn() => NspU::viaSelf(),
+    "static" => fn() => NspU::viaStatic(),
+    "parent" => fn() => (new NspV())->viaParent(),
+    "iface"  => fn() => NspX::viaSelf(),
+] as $nspK => $nspFn) {
+    try { $nspR2 = $nspFn(); echo $nspK, " ok ", get_class($nspR2), "\n"; }
+    catch (\Throwable $nspE) { echo $nspK, " ", get_class($nspE), ": ", $nspE->getMessage(), "\n"; }
+}
 --EXPECT--
 NspANspA
 NspANspB
@@ -73,3 +95,7 @@ NspR
 NspI9
 s1
 TF
+self Error: Cannot instantiate abstract class NspU
+static Error: Cannot instantiate abstract class NspU
+parent Error: Cannot instantiate abstract class NspU
+iface Error: Cannot instantiate abstract class NspX

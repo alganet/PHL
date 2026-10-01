@@ -78,17 +78,33 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			/* new self() / new static() / new parent(): resolve against the live
 			 * class context (LSB for static), sharing the FCC resolver. */
 			pClass = VmFccResolveScope(&(*pVm),pTos);
-			if( pClass && (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT)) ){
+			if( pClass && (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT)) ){
 				/* Not new-able (the named path's iLoadable extract excludes these
-				 * before it ever gets here): php's wording, with the RESOLVED name. */
-				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot instantiate %s %z",
-					(pClass->iFlags & PH7_CLASS_INTERFACE) ? "interface" : "abstract class",
-					&pClass->sDisp);
-				PH7_MemObjRelease(pTos);
+				 * before it ever gets here): php's wording, with the RESOLVED name.
+				 *
+				 * It is the SAME refusal the named path makes a few lines below and it
+				 * is thrown the same way -- a catchable `Error`. This arm used to print
+				 * an uncatchable engine diagnostic and abort with exit status 0, so
+				 * `new parent()` on an abstract base could neither be caught nor even
+				 * be told apart from a clean run by the shell. */
+				SyBlob sErrAbs;
+				sxi32 rcAbs;
+				const char *zKindAbs = (pClass->iFlags & PH7_CLASS_INTERFACE) ? "interface"
+					: (pClass->iFlags & PH7_CLASS_TRAIT) ? "trait" : "abstract class";
+				SyBlobInit(&sErrAbs,&pVm->sAllocator);
+				SyBlobFormat(&sErrAbs,"Cannot instantiate %s %z",zKindAbs,&pClass->sDisp);
 				if( nCtorArgs > 0 ){
 					VmPopOperand(&pTos,nCtorArgs);
 				}
-				VM_EXIT_ABORT;
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				rcAbs = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrAbs),
+					SyBlobLength(&sErrAbs));
+				SyBlobRelease(&sErrAbs);
+				if( rcAbs == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcAbs;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 		}else{
 			/* Try to extract the desired class */
