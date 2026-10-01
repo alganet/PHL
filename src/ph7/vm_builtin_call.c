@@ -67,10 +67,28 @@ static sxu32 VmCountNamedVariadicArgs(ph7_vm *pVm, VmFrame *pFrame)
 	}
 	return nNamed;
 }
+/*
+ * php's zend_forbid_dynamic_call(): a function that answers from its CALLER's frame
+ * (the frame a dynamic call would have put an internal function's between) refuses
+ * to be reached through a computed name, a Closure, or a callback-driving builtin.
+ * The OP_CALL dispatcher decides which calls those are (PH7_CTX_CALL_DYNAMIC); each
+ * caller places this where php places its check, AFTER its own argument screens --
+ * `$n = 'compact'; $n()` is an ArgumentCountError there, not this refusal.
+ * Returns PH7_OK, or the throw's status for the caller to return as is.
+ */
+PH7_PRIVATE sxi32 PH7_VmForbidDynamicCall(ph7_context *pCtx)
+{
+	if( pCtx->iFlags & PH7_CTX_CALL_DYNAMIC ){
+		return PH7_VmThrowException(pCtx,"Error","Cannot call %z() dynamically",
+			&pCtx->pFunc->sName);
+	}
+	return PH7_OK;
+}
 PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	VmFrame *pFrame;
 	ph7_vm *pVm;
+	sxi32 rc;
 	/* Point to the target VM */
 	pVm = pCtx->pVm;
 	/* Current frame */
@@ -84,6 +102,9 @@ PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **
 		 * arithmetic on it quietly took the wrong branch instead of failing. */
 		return PH7_VmThrowException(pCtx,"Error",
 			"func_num_args() must be called from a function context");
+	}
+	if( (rc = PH7_VmForbidDynamicCall(pCtx)) != PH7_OK ){
+		return rc;
 	}
 	/* Total number of arguments passed to the enclosing function. The stamped
 	 * actual arity (band A #4) is php's answer — sArg over-counts (defaulted
@@ -118,14 +139,26 @@ PH7_PRIVATE int vm_builtin_func_get_arg(ph7_context *pCtx,int nArg,ph7_value **a
 	/* Current frame */
 	pFrame = pVm->pFrame;
 	pFrame = VmSkipExceptionFrames(pFrame);
+	/* php's order: the position's own screen, then the scope, then the dynamic
+	 * refusal, then the range. */
+	if( nArg >= 1 && ph7_value_to_int(apArg[0]) < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"func_get_arg(): Argument #1 ($position) must be greater than or equal to 0");
+	}
 	if( nArg < 1 || pFrame->pParent == 0 ){
 		/* php raises a catchable Error rather than warning and yielding FALSE. */
 		return PH7_VmThrowException(pCtx,"Error",
 			"func_get_arg() cannot be called from the global scope");
 	}
+	{
+		sxi32 rc = PH7_VmForbidDynamicCall(pCtx);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
 	/* Extract the desired index */
 	nArg = ph7_value_to_int(apArg[0]);
-	if( nArg < 0 || nArg >= (int)SySetUsed(&pFrame->sArg) ){
+	if( nArg >= (int)SySetUsed(&pFrame->sArg) ){
 		/* Out of range: php's ArgumentCountError-shaped Error, not a silent FALSE
 		 * (FALSE is indistinguishable from an argument that really is false). */
 		return PH7_VmThrowException(pCtx,"ValueError",
@@ -282,6 +315,7 @@ PH7_PRIVATE int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **
 {
 	ph7_value *pArray;
 	VmFrame *pFrame;
+	sxi32 rc;
 	/* Point to the current frame */
 	pFrame = pCtx->pVm->pFrame;
 	pFrame = VmSkipExceptionFrames(pFrame);
@@ -289,8 +323,9 @@ PH7_PRIVATE int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **
 		/* Global frame,return FALSE */
 		return PH7_VmThrowException(pCtx,"Error",
 			"func_get_args() cannot be called from the global scope");
-		ph7_result_bool(pCtx,0);
-		return SXRET_OK;
+	}
+	if( (rc = PH7_VmForbidDynamicCall(pCtx)) != PH7_OK ){
+		return rc;
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);

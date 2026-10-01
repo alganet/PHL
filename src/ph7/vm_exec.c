@@ -6436,6 +6436,19 @@ case PH7_OP_CALL: {
 	 * namespace, which is why the forwards looked unconditionally elided; pest calls
 	 * one from inside `namespace Pest\Concerns`.) */
 	int bNsCallee = (pInstr->p3 && ((VmCallArgMap *)pInstr->p3)->bIsNamespaced) ? 1 : 0;
+	/* php's ZEND_CALL_DYNAMIC, decided the way php's compiler decides it: a compiled
+	 * call is dynamic when its callee is not a literal name (`$n()`, `$c()`, an array
+	 * pair; the Closure branch below adds its own case, a temporary holds no slot
+	 * index to read). A SYNTHETIC call is one the C dispatcher built, and php's
+	 * zend_call_function always marks those -- except for the one forward its
+	 * compiler folded into a direct call (`call_user_func('f', ...)` on a literal,
+	 * global name), which reaches here with NEITHER latch armed. Read by the host
+	 * function's context (PH7_CTX_CALL_DYNAMIC): the six functions that answer from
+	 * their caller's frame refuse it. */
+	int bDynamicCall = (pInstr->nLine == 0)
+		? (bCallbackWeak || pVm->pNativeFrameName != 0 || pVm->bDynamicForward)
+		: !bLiteralCallee;
+	pVm->bDynamicForward = 0;
 	pVm->bDiscardCallback = 0;
 	pVm->bMagicDispatch = 0;
 	pVm->bClosureScreened = 0;
@@ -6534,6 +6547,9 @@ case PH7_OP_CALL: {
 			/* The plain-closure shape of the unwrap is the engine's own `[closure_N]`
 			 * name, which the lookup below refuses to a name a SCRIPT spelled. */
 			bEngineCallee = 1;
+			/* ...and a call THROUGH a Closure is dynamic whatever it wraps: php marks
+			 * a fake closure's invocation too (`compact(...)` then `$c('a')`). */
+			bDynamicCall = 1;
 		}
 		PH7_MemObjRelease(&sCallable);
 	}
@@ -8694,7 +8710,7 @@ NativeCall:
 		/* Assume a null return value */
 		PH7_MemObjInit(&(*pVm),&sRet);
 		/* Init the call context */
-		VmInitCallContext(&sCtx,&(*pVm),pFunc,&sRet,0);
+		VmInitCallContext(&sCtx,&(*pVm),pFunc,&sRet,bDynamicCall ? PH7_CTX_CALL_DYNAMIC : 0);
 		/* Hand the call-site named-argument map to the builtin so name-forwarding
 		 * helpers (call_user_func & friends) can relay name: arguments — and the
 		 * caller's strict_types mode — to the inner callback. Forwarded whole (not

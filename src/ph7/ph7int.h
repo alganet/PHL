@@ -672,7 +672,7 @@ struct ph7_context
 							 * [i.e: Garbage collection purposes.]
 							 */
 	ph7_vm *pVm;            /* Virtual machine that own this context */
-	sxi32 iFlags;           /* Call flags */
+	sxi32 iFlags;           /* Call flags (PH7_CTX_CALL_*) */
 	sxi32 nThrowRc;         /* Status of a throw this host function raised through
 	                         * PH7_VmThrowException (0 when it never threw). The
 	                         * OP_CALL boundary re-reads it: a builtin that threw and
@@ -704,6 +704,16 @@ struct ph7_context
 	                         * refusal helpers RECORD into the hook's context instead, and the
 	                         * opcode raises it where the access would have landed. */
 };
+/* ph7_context::iFlags */
+#define PH7_CTX_CALL_DYNAMIC 0x01 /* php's ZEND_CALL_DYNAMIC: this host function was reached
+                                   * through a name the program computed (`$n()`), a Closure
+                                   * (`compact(...)`, Closure::fromCallable), or an internal
+                                   * function driving a callback (array_map, usort,
+                                   * Reflection's invoke, a call_user_func php's compiler could
+                                   * not fold into a direct call). The six functions that read
+                                   * their CALLER's frame (compact, extract, get_defined_vars,
+                                   * func_get_args, func_num_args, func_get_arg) refuse such a
+                                   * call the way php does -- see PH7_VmForbidDynamicCall. */
 /*
  * Each hashmap entry [i.e: array(4,5,6)] is recorded in an instance
  * of the following structure.
@@ -4040,6 +4050,14 @@ struct ph7_vm
 	                             * `call_user_func('f');` warns for a #[\NoDiscard] `f` and
 	                             * `array_map('f', $a);` does not (php special-cases the same two
 	                             * names at compile time). Consumed at the head of OP_CALL. */
+	int bDynamicForward;        /* Consume-once, armed by the same two FORWARDS: the callback they
+	                             * are about to dispatch is a call php's compiler could NOT fold
+	                             * into a direct one, because the callable was not a literal
+	                             * string (`call_user_func($n)`), so php runs it as a DYNAMIC call
+	                             * (ZEND_INIT_USER_CALL). The folded shape,
+	                             * `call_user_func('compact', 'a')`, is a plain direct call there
+	                             * and leaves this clear. Read into PH7_CTX_CALL_DYNAMIC at the
+	                             * head of OP_CALL and cleared with the latches above. */
 	int bMagicDispatch;         /* Consume-once: the next method OP_CALL is the ENGINE reaching for
 	                             * a magic method (PH7_VmCallMagicMethod), so the visibility check
 	                             * lets a non-public one through — php only WARNS at such a
@@ -7657,6 +7675,7 @@ PH7_PRIVATE sxi32 VmCallClassMethodWithMap(ph7_vm *pVm,ph7_class_instance *pThis
 PH7_PRIVATE sxi32 VmCallObjectInvoke(ph7_vm *pVm,ph7_class_instance *pThis,
 	int nArg,ph7_value **apArg,ph7_value *pResult,VmCallArgMap *pMap);
 PH7_PRIVATE sxi32 VmRaiseNotCallable(ph7_vm *pVm,ph7_class_instance *pThis);
+PH7_PRIVATE sxi32 PH7_VmForbidDynamicCall(ph7_context *pCtx);
 PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_func_get_arg(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_func_get_args_byref(ph7_context *pCtx,int nArg,ph7_value **apArg);

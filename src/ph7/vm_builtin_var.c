@@ -296,6 +296,12 @@ PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pArray;
 	VmFrame *pFrame;
+	sxi32 rc;
+	/* php's one screen before the walk: the scope it would report is the CALLER's,
+	 * and a dynamic call has an internal frame where that caller should be. */
+	if( (rc = PH7_VmForbidDynamicCall(pCtx)) != PH7_OK ){
+		return rc;
+	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
  	if( pArray == 0 ){

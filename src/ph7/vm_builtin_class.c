@@ -2171,6 +2171,18 @@ PH7_PRIVATE int vm_builtin_is_subclass_of(ph7_context *pCtx,int nArg,ph7_value *
 	ph7_result_bool(pCtx,res);
 	return PH7_OK;
 }
+/*
+ * php folds `call_user_func('f', ...)` / `call_user_func_array('f', $a)` into a DIRECT
+ * call of f when the callable is a literal string naming a function its compiler can
+ * bind; any other callable (a variable, a Closure, an array pair) goes through
+ * ZEND_INIT_USER_CALL, which marks the call DYNAMIC. A literal reaches the C body as
+ * a constant-marked operand (nIdx == SXU32_HIGH, the mark OP_CALL reads for its own
+ * callee), so the same question is answerable here. See ph7_vm::bDynamicForward.
+ */
+static int VmForwardIsDynamic(const ph7_value *pCallable)
+{
+	return pCallable->nIdx != SXU32_HIGH || (pCallable->iFlags & MEMOBJ_STRING) == 0;
+}
 PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value sResult; /* Store callback return value here */
@@ -2217,6 +2229,7 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		 * f, so a DROPPED answer here is a dropped answer for the callback: hand
 		 * the bit on, one call deep. */
 		pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;
+		pCtx->pVm->bDynamicForward = VmForwardIsDynamic(apArg[0]);
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sInner);
 	}else{
 		/* call_user_func is one of php's two FORWARDS: the callback binds under the
@@ -2228,11 +2241,13 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		SyZero(&sFwd,sizeof(sFwd));
 		sFwd.bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
 		pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;   /* see above */
+		pCtx->pVm->bDynamicForward = VmForwardIsDynamic(apArg[0]);
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sFwd);
 	}
-	/* The latch is consumed by the OP_CALL the dispatch builds; clear it for the
-	 * paths that never reach one, so it cannot describe some later call. */
+	/* The latches are consumed by the OP_CALL the dispatch builds; clear them for
+	 * the paths that never reach one, so they cannot describe some later call. */
 	pCtx->pVm->bDiscardCallback = 0;
+	pCtx->pVm->bDynamicForward = 0;
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds
 		 * through the nearest try/catch instead of returning FALSE. */
@@ -2342,6 +2357,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	/* Try to invoke the callback. Like call_user_func, this is a php FORWARD: a
 	 * dropped answer here is a dropped answer for the callback. */
 	pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;
+	pCtx->pVm->bDynamicForward = VmForwardIsDynamic(apArg[0]);
 	if( aNames ){
 		VmCallArgMap sMap;
 		SyZero(&sMap,sizeof(sMap)); /* new map fields must read unset, not stack garbage */
@@ -2365,6 +2381,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 			(ph7_value **)SySetBasePtr(&aArg),&sResult,&sFwd);
 	}
 	pCtx->pVm->bDiscardCallback = 0;   /* see the call_user_func sibling */
+	pCtx->pVm->bDynamicForward = 0;
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds. */
 		PH7_MemObjRelease(&sResult);

@@ -2297,6 +2297,15 @@ PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
+	/* php screens the arity first (above, and the arity table before it), then the
+	 * call shape: the names are looked up in the CALLER's scope, which a dynamic
+	 * call does not have. */
+	{
+		sxi32 rc = PH7_VmForbidDynamicCall(pCtx);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
 	/* Create the array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
@@ -2545,6 +2554,11 @@ PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,"ValueError",
 				"extract(): Argument #3 ($prefix) must be a valid identifier");
 		}
+	}
+	/* Every argument screen above runs first in php too; the call shape is the last
+	 * refusal before the walk, because the walk writes into the CALLER's scope. */
+	if( (rc = PH7_VmForbidDynamicCall(pCtx)) != PH7_OK ){
+		return rc;
 	}
 	/* Point to the target hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
