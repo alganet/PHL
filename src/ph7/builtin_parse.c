@@ -3095,6 +3095,160 @@ static void VmIniValDollar(VmIniVal *p,SyBlob *pOut)
 	p->zCur = &z[1];
 }
 /*
+ * One double-quoted piece. php's closing-quote rule is `["]{TABS_AND_SPACES}*`,
+ * so the quote eats the blanks BEHIND it as well -- that is why a value that
+ * ends `"q"  ` at end of file keeps none of them while an unquoted one keeps
+ * all of them.
+ */
+static int VmIniValQuoted(VmIniVal *p,SyBlob *pOut)
+{
+	p->zCur++;
+	for(;;){
+		if( p->zCur >= p->zEnd ){
+			p->zErr = p->zCur;
+			p->zTok = "end of file, expecting TC_DOLLAR_CURLY or TC_QUOTED_STRING or '\"'";
+			return 0;
+		}
+		if( p->zCur[0] == '"' ){
+			p->zCur++;
+			break;
+		}
+		if( p->zCur[0] == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
+			VmIniValDollar(p,pOut);
+			continue;
+		}
+		if( p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
+			int e = (unsigned char)p->zCur[1];
+			/* php collapses exactly three escapes and keeps the rest */
+			if( e == '"' || e == '\\' || e == '$' ){
+				SyBlobAppend(pOut,&p->zCur[1],sizeof(char));
+			}else{
+				SyBlobAppend(pOut,p->zCur,2*sizeof(char));
+			}
+			p->zCur += 2;
+			continue;
+		}
+		SyBlobAppend(pOut,p->zCur,sizeof(char));
+		p->zCur++;
+	}
+	VmIniValBlanks(p);
+	return 1;
+}
+/*
+ * One single-quoted piece: SINGLE_QUOTED_CHARS is `[^']`, so nothing inside
+ * is interpreted at all.
+ */
+static int VmIniValRaw(VmIniVal *p,SyBlob *pOut)
+{
+	const char *zRaw = &p->zCur[1];
+	const char *z = zRaw;
+	while( z < p->zEnd && z[0] != '\'' ){
+		z++;
+	}
+	if( z >= p->zEnd ){
+		p->zErr = p->zCur;
+		p->zTok = "end of file";
+		return 0;
+	}
+	SyBlobAppend(pOut,zRaw,(sxu32)(z - zRaw));
+	p->zCur = &z[1];
+	return 1;
+}
+/*
+ * php's SECTION_VALUE_CHARS, `[^$\n\r;"'\]\\]` -- the run rule an OFFSET is
+ * made of. It is far wider than a value's: `=`, `#`, `|`, `(` and a blank are
+ * all ordinary bytes here, which is why `a[1|2]` is the five-byte key "1|2"
+ * and never the bitwise expression a VALUE of the same text would be.
+ */
+static int VmIniOffsetRunChar(int c)
+{
+	return c != '$' && c != '\n' && c != '\r' && c != ';'
+		&& c != '"' && c != '\'' && c != ']' && c != '\\' && c != 0;
+}
+/*
+ * The text php's ST_OFFSET makes of the bytes between `[` and `]`: quoted
+ * pieces, `${...}` expansions and runs, all concatenated.
+ *
+ * The blanks in FRONT of the offset are already gone -- they belong to the
+ * scanner's own `{LABEL}"["{TABS_AND_SPACES}*` rule -- and the ones behind it
+ * are not, so `a[ 4 ]` is the key "4 " and never the int 4.
+ *
+ * A run is looked up as a CONSTANT only when it is exactly an identifier:
+ * both rules can match, and re2c takes the longest, so `x.y` is three literal
+ * bytes while `PHP_INT_MAX` and `true` are the constants (the latter being
+ * the string "1", which is then a key like any other numeric string). The
+ * boolean WORDS never fire here -- ST_OFFSET is not one of the states that
+ * rule names -- so `a[on]` stays the string "on" while `a[true]` does not.
+ */
+static void VmIniOffsetText(ph7_context *pCtx,const char *z,const char *zEnd,SyBlob *pOut)
+{
+	VmIniVal sVal;
+	sVal.pCtx = pCtx;
+	sVal.zCur = z;
+	sVal.zEnd = zEnd;
+	sVal.zErr = 0;
+	sVal.zTok = 0;
+	while( sVal.zCur < sVal.zEnd ){
+		int c = (unsigned char)sVal.zCur[0];
+		if( c == '$' && &sVal.zCur[1] < sVal.zEnd && sVal.zCur[1] == '{' ){
+			VmIniValDollar(&sVal,pOut);
+			continue;
+		}
+		if( c == '"' ){
+			if( !VmIniValQuoted(&sVal,pOut) ){
+				return;
+			}
+			continue;
+		}
+		if( c == '\'' ){
+			if( !VmIniValRaw(&sVal,pOut) ){
+				return;
+			}
+			continue;
+		}
+		if( VmIniOffsetRunChar(c) ){
+			const char *zRun = sVal.zCur;
+			sxu32 nRun;
+			do {
+				sVal.zCur++;
+			}while( sVal.zCur < sVal.zEnd && VmIniOffsetRunChar((unsigned char)sVal.zCur[0]) );
+			nRun = (sxu32)(sVal.zCur - zRun);
+			if( VmIniValRunIsName(zRun,nRun) ){
+				ph7_value sCons;
+				/* php's three case-insensitive constants are not in the
+				 * engine's constant table here, and the offset asks the
+				 * TABLE: `true` is the string "1" and `false` and `null` are
+				 * the empty one, which is the offset that takes an automatic
+				 * index. The boolean WORDS that are not constants -- `on`,
+				 * `yes`, `off`, `no`, `none` -- stay as they are written. */
+				if( nRun == 4 && SyStrnicmp(zRun,"true",4) == 0 ){
+					SyBlobAppend(pOut,"1",sizeof(char));
+					continue;
+				}
+				if( (nRun == 5 && SyStrnicmp(zRun,"false",5) == 0)
+				 || (nRun == 4 && SyStrnicmp(zRun,"null",4) == 0) ){
+					continue;
+				}
+				PH7_MemObjInit(pCtx->pVm,&sCons);
+				if( PH7_VmQueryConstant(pCtx->pVm,zRun,nRun,&sCons) ){
+					int nCons;
+					const char *zCons = ph7_value_to_string(&sCons,&nCons);
+					SyBlobAppend(pOut,zCons,(sxu32)nCons);
+				}else{
+					SyBlobAppend(pOut,zRun,nRun);
+				}
+				PH7_MemObjRelease(&sCons);
+			}else{
+				SyBlobAppend(pOut,zRun,nRun);
+			}
+			continue;
+		}
+		/* A `$` with no `{` behind it, or a lone backslash: one literal byte */
+		SyBlobAppend(pOut,sVal.zCur,sizeof(char));
+		sVal.zCur++;
+	}
+}
+/*
  * php's var_string_list: one or more adjacent pieces, concatenated. Returns 0
  * when there is no piece here at all, or when a piece is a boolean word (a
  * whole-value token that can never join a list).
@@ -3118,52 +3272,16 @@ static int VmIniValList(VmIniVal *p,VmIniRes *pRes)
 			continue;
 		}
 		if( c == '"' ){
-			p->zCur++;
-			for(;;){
-				if( p->zCur >= p->zEnd ){
-					p->zErr = p->zCur;
-					p->zTok = "end of file, expecting TC_DOLLAR_CURLY or TC_QUOTED_STRING or '\"'";
-					return 0;
-				}
-				if( p->zCur[0] == '"' ){
-					p->zCur++;
-					break;
-				}
-				if( p->zCur[0] == '$' && &p->zCur[1] < p->zEnd && p->zCur[1] == '{' ){
-					VmIniValDollar(p,&pRes->sText);
-					continue;
-				}
-				if( p->zCur[0] == '\\' && &p->zCur[1] < p->zEnd ){
-					int e = (unsigned char)p->zCur[1];
-					/* php collapses exactly three escapes and keeps the rest */
-					if( e == '"' || e == '\\' || e == '$' ){
-						SyBlobAppend(&pRes->sText,&p->zCur[1],sizeof(char));
-					}else{
-						SyBlobAppend(&pRes->sText,p->zCur,2*sizeof(char));
-					}
-					p->zCur += 2;
-					continue;
-				}
-				SyBlobAppend(&pRes->sText,p->zCur,sizeof(char));
-				p->zCur++;
+			if( !VmIniValQuoted(p,&pRes->sText) ){
+				return 0;
 			}
-			VmIniValBlanks(p);   /* the closing quote eats them too */
 			bAny = 1;
 			continue;
 		}
 		if( c == '\'' ){
-			const char *zRaw = &p->zCur[1];
-			const char *z = zRaw;
-			while( z < p->zEnd && z[0] != '\'' ){
-				z++;
-			}
-			if( z >= p->zEnd ){
-				p->zErr = p->zCur;
-				p->zTok = "end of file";
+			if( !VmIniValRaw(p,&pRes->sText) ){
 				return 0;
 			}
-			SyBlobAppend(&pRes->sText,zRaw,(sxu32)(z - zRaw));
-			p->zCur = &z[1];
 			bAny = 1;
 			continue;
 		}
@@ -3453,6 +3571,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 	SyHashEntry *pEntry;
 	SyString sEntry;
 	SyHash sHash;
+	VmIniVal sVal;
 	int c;
 	/* Create an empty array and worker variables */
 	pArray = ph7_context_new_array(pCtx);
@@ -3463,6 +3582,8 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 		return PH7_ContextMemoryError(pCtx);
 	}
 	SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);
+	SyZero(&sVal,sizeof(sVal));
+	sVal.pCtx = pCtx;
 	pCur = pArray;
 	/* Start the parse process */
 	for(;;){
@@ -3474,8 +3595,10 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 			/* No more input to process */
 			break;
 		}
-		if( zIn[0] == ';' || zIn[0] == '#' ){
-			/* Comment til the end of line */
+		if( zIn[0] == ';' ){
+			/* Comment til the end of line. `#` is NOT one: php's scanner has
+			 * named `;` alone since the hash form was dropped, so `# a = 1`
+			 * is the entry "# a" and `a = 1 # tail` keeps its tail. */
 			zIn++;
 			while(zIn < zEnd && zIn[0] != '\n' ){
 				zIn++;
@@ -3502,51 +3625,83 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					if( pSection ){
 						ph7_array_add_elem(pArray,pWorker/*Section name*/,pSection);
 						pCur = pSection;
+						/* A section that is kept is a new option namespace, so
+						 * the memo of the arrays an offset has already opened
+						 * cannot outlive it: `a[x]` under [s] and `a[x]` under
+						 * [t] are two entries. Where the sections are NOT kept
+						 * every option shares the one array, and so does the
+						 * memo -- `a[x]`, a section, then `a[y]` is one `a`
+						 * holding both. */
+						SyHashRelease(&sHash);
+						SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);
 					}
 				}
 			}
 			zIn++; /* Trailing square brackets ']' */
 		}else{
 			ph7_value *pOldCur;
+			ph7_value *pOffset;
+			const char *zOff,*zOffEnd;
 			int is_array;
 			int iLen;
 			/* Properties */
 			is_array = 0;
 			zCur = zIn;
 			iLen = 0; /* cc warning */
+			zOff = zOffEnd = 0;
+			pOffset = 0;
 			pOldCur = pCur;
-			while( zIn < zEnd && zIn[0] != '=' ){
-				if( zIn[0] == '[' && !is_array ){
+			/* Scan the option name, and the offset when one is bracketed onto
+			 * it. Nothing is created yet: php's grammar has no statement for a
+			 * label with no `=`, so the line may still turn out to be dropped
+			 * whole -- and a stray `a[x]` must not leave an empty `a` behind. */
+			while( zIn < zEnd && zIn[0] != '=' && zIn[0] != '\n' && zIn[0] != '\r' ){
+				if( zIn[0] == '[' ){
+					if( is_array ){
+						/* php has no second offset: the `[` is read as the
+						 * start of a SECTION where an `=` was due */
+						sVal.zErr = sVal.zCur = zIn;
+						sVal.zTok = "TC_SECTION, expecting '='";
+						goto ini_syntax_error;
+					}
 					/* Array */
 					iLen = (int)(zIn-zCur);
 					is_array = 1;
-					if( iLen > 0 ){
-						ph7_value *pvArr = 0; /* cc warning */
-						/* Query the hashtable */
-						SyStringInitFromBuf(&sEntry,zCur,iLen);
-						SyStringFullTrim(&sEntry);
-						pEntry = SyHashGet(&sHash,(const void *)sEntry.zString,sEntry.nByte);
-						if( pEntry ){
-							pvArr = (ph7_value *)SyHashEntryGetUserData(pEntry);
-						}else{
-							/* Create an empty array */
-							pvArr = ph7_context_new_array(pCtx);
-							if( pvArr ){
-								/* Save the entry */
-								SyHashInsert(&sHash,(const void *)sEntry.zString,sEntry.nByte,pvArr);
-								/* Insert the entry */
-								ph7_value_reset_string_cursor(pWorker);
-								ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);
-								ph7_array_add_elem(pCur,pWorker,pvArr);
-								ph7_value_reset_string_cursor(pWorker);
+					zIn++;
+					/* The scanner's own rule eats the blanks in front of the
+					 * offset; the ones behind it are the offset's own */
+					while( zIn < zEnd && (zIn[0] == ' ' || zIn[0] == '\t') ){
+						zIn++;
+					}
+					zOff = zIn;
+					/* A quote inside the offset pauses the `]` that ends it,
+					 * exactly as the pushed ST_DOUBLE_QUOTES state does */
+					while( zIn < zEnd && zIn[0] != ']' && zIn[0] != '\n'
+					 && zIn[0] != '\r' && zIn[0] != ';' ){
+						if( zIn[0] == '"' || zIn[0] == '\'' ){
+							int q = zIn[0];
+							zIn++;
+							while( zIn < zEnd && zIn[0] != q && zIn[0] != '\n' ){
+								if( q == '"' && zIn[0] == '\\' && &zIn[1] < zEnd ){
+									zIn++;
+								}
+								zIn++;
+							}
+							if( zIn >= zEnd || zIn[0] == '\n' ){
+								break;
 							}
 						}
-						if( pvArr ){
-							pCur = pvArr;
-						}
-					}
-					while ( zIn < zEnd && zIn[0] != ']' ){
 						zIn++;
+					}
+					zOffEnd = zIn;
+					if( zIn >= zEnd || zIn[0] != ']' ){
+						/* Nothing in ST_OFFSET matches a newline, a `;` or the
+						 * end of input, so the scanner falls off the end and
+						 * php names the failure the same way every time --
+						 * whatever input is left behind the broken line. */
+						sVal.zErr = sVal.zCur = zOff;
+						sVal.zTok = "end of file, expecting ']'";
+						goto ini_syntax_error;
 					}
 				}
 				zIn++;
@@ -3554,11 +3709,58 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 			if( !is_array ){
 				iLen = (int)(zIn-zCur);
 			}
+			if( zIn >= zEnd || zIn[0] != '=' ){
+				/* No `=`: php drops the incomplete statement and goes on with
+				 * the next line, so `justaword` alone is neither an entry nor
+				 * an error, and never eats the line behind it. */
+				pCur = pOldCur;
+				continue;
+			}
 			/* Trim the key */
 			SyStringInitFromBuf(&sEntry,zCur,iLen);
 			SyStringFullTrim(&sEntry);
 			if( sEntry.nByte > 0 ){
-				if( !is_array ){
+				if( is_array ){
+					ph7_value *pvArr = 0; /* cc warning */
+					/* Query the hashtable */
+					pEntry = SyHashGet(&sHash,(const void *)sEntry.zString,sEntry.nByte);
+					if( pEntry ){
+						pvArr = (ph7_value *)SyHashEntryGetUserData(pEntry);
+					}else{
+						/* Create an empty array */
+						pvArr = ph7_context_new_array(pCtx);
+						if( pvArr ){
+							/* Save the entry */
+							SyHashInsert(&sHash,(const void *)sEntry.zString,sEntry.nByte,pvArr);
+							/* Insert the entry */
+							ph7_value_reset_string_cursor(pWorker);
+							ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);
+							ph7_array_add_elem(pCur,pWorker,pvArr);
+							ph7_value_reset_string_cursor(pWorker);
+						}
+					}
+					if( pvArr ){
+						pCur = pvArr;
+					}
+					/* The offset names the entry to write. An EMPTY one -- the
+					 * `a[]` form -- is the only one that takes the next
+					 * automatic index. */
+					if( zOffEnd > zOff ){
+						SyBlob sOff;
+						SyBlobInit(&sOff,&pCtx->pVm->sAllocator);
+						VmIniOffsetText(pCtx,zOff,zOffEnd,&sOff);
+						/* An offset whose TEXT came out empty is the automatic
+						 * index too: `a[false]` and `a[]` are the same entry */
+						if( SyBlobLength(&sOff) > 0 ){
+							pOffset = ph7_context_new_scalar(pCtx);
+							if( pOffset ){
+								ph7_value_string(pOffset,(const char *)SyBlobData(&sOff),
+									(int)SyBlobLength(&sOff));
+							}
+						}
+						SyBlobRelease(&sOff);
+					}
+				}else{
 					/* Save the key name */
 					ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);
 				}
@@ -3615,20 +3817,29 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 								}
 								continue;
 							}
-							if( zIn[0] == '\n' ){
-								if( zIn[-1] != '\\' ){
+							if( zIn[0] == '\n' || zIn[0] == '\r' ){
+								/* php's NEWLINE is ("\r"|"\n"|"\r\n") */
+								if( zIn[0] == '\r' || zIn[-1] != '\\' ){
 									break;
 								}
-							}else if( zIn[0] == ';' || zIn[0] == '#' ){
-								/* Inline comments */
+							}else if( zIn[0] == ';' ){
+								/* Inline comments -- `;` only */
 								break;
 							}
 							zIn++;
 						}
 					}
-					/* Trim the value */
+					/* Trim the value. The blanks BEHIND it belong to the rule
+					 * that ends it (`{TABS_AND_SPACES}*{NEWLINE}`, and the
+					 * comment rule likewise), so they are the newline's and
+					 * not the value's -- but a value that runs out at end of
+					 * file ends on a rule with no such run, and keeps them:
+					 * `b = ends   ` unterminated is the eight-byte "ends   ". */
 					SyStringInitFromBuf(&sEntry,zCur,(int)(zIn-zCur));
-					SyStringFullTrim(&sEntry);
+					SyStringLeftTrim(&sEntry);
+					if( zIn < zEnd ){
+						SyStringRightTrim(&sEntry);
+					}
 					if( bQuoted ){
 						SyStringTrimLeadingChar(&sEntry,c);
 						SyStringTrimTrailingChar(&sEntry,c);
@@ -3650,7 +3861,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					}
 				}
 				/* Insert the key and it's value (an empty value included) */
-				ph7_array_add_elem(pCur,is_array ? 0 /*Automatic index assign */: pWorker,pValue);
+				ph7_array_add_elem(pCur,is_array ? pOffset /*0: automatic index*/ : pWorker,pValue);
 			}else{
 				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && ( SyisSpace(zIn[0]) || zIn[0] == '=' ) ){
 					zIn++;
@@ -3662,6 +3873,12 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 	SyHashRelease(&sHash);
 	/* Return the parse of the INI string */
 	ph7_result_value(pCtx,pArray);
+	return SXRET_OK;
+ini_syntax_error:
+	/* php discards the whole parse over one bad line */
+	VmIniSyntaxError(pCtx,zStart,zFile,&sVal);
+	SyHashRelease(&sHash);
+	ph7_result_bool(pCtx,0);
 	return SXRET_OK;
 }
 /*
