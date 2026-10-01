@@ -10,3 +10,7 @@ REF="12.5.30"
 # mock class name carries a per-run hash that a failure message quotes back.
 NORMALIZE='s/Mock_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/Mock_\1_@HASH@/g
 s/MockObject_\([A-Za-z0-9_]*\)_[0-9a-f]\{8\}/MockObject_\1_@HASH@/g'
+# The end-to-end suite forks a child engine per case -- 805 of them -- which is ~46s
+# under php and roughly 12 minutes under phl on this box. The 600s default would be read
+# as a divergence rather than as the cost it is.
+STEP_TIMEOUT=1800

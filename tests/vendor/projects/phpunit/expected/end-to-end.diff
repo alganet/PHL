@@ -1,0 +1,2969 @@
+--- php
++++ phl
+@@ -3,63 +3,735 @@
+ Runtime: @RUNTIME@
+ Configuration: @ROOT@/phpunit.xml
+ 
+-.............S.S.........S.....................................  63 / 805 (  7%)
+-............................................................... 126 / 805 ( 15%)
+-............................................................... 189 / 805 ( 23%)
+-.........S...S....................................S............ 252 / 805 ( 31%)
+-.......................F...............S................S...... 315 / 805 ( 39%)
+-.........................................S..........F....S..... 378 / 805 ( 46%)
+-....................S...........SS............................. 441 / 805 ( 54%)
+-............................................................... 504 / 805 ( 62%)
+-............................................................... 567 / 805 ( 70%)
+-.....S.........................................SS...S.......... 630 / 805 ( 78%)
+-.................................................S..S....S.S... 693 / 805 ( 86%)
+-...................................S........................... 756 / 805 ( 93%)
+-........S.S......S...............................               805 / 805 (100%)
++..F..FFF..FFS.S...........S....................................  63 / 805 (  7%)
++..........................FF................................... 126 / 805 ( 15%)
++.................F.FF............................F.FF.......... 189 / 805 ( 23%)
++..F.....FS...S....................................S............ 252 / 805 ( 31%)
++..F.................S..S........F......................FS...... 315 / 805 ( 39%)
++.........................................S..........F....S...F. 378 / 805 ( 46%)
++FF.....FF......F.....F.....................F.FFFFFFFFFFFFFF.FF. 441 / 805 ( 54%)
++.................FFF..F..........F..F......................F... 504 / 805 ( 62%)
++................................F.............................. 567 / 805 ( 70%)
++.................................F................F.F.....F.... 630 / 805 ( 78%)
++......F..........................................S.F.....S..... 693 / 805 ( 86%)
++...............F...........F.......S..........FF...........F... 756 / 805 ( 93%)
++........S..F.....S...............................               805 / 805 (100%)
+ 
+ Time: @TIME@
+ 
+-There were 2 failures:
++There were 64 failures:
+ 
+-1) @ROOT@/tests/end-to-end/event/risky-code-coverage.phpt
++1) @ROOT@/tests/end-to-end/baseline/generate-baseline-suppressed-with-ignored-suppression.phpt
+ Failed asserting that string matches format description.
+ --- Expected
+ +++ Actual
+ @@ @@
+- Bootstrap Finished (@ROOT@/tests/end-to-end/event/_files/test-risky-code-coverage/src/autoload.php)
+- Event Facade Sealed
+- Test Suite Loaded (1 test)
+--Static Analysis for Code Coverage Started
+--Static Analysis for Code Coverage Finished (%d cache hits, %d cache misses)
++ Runtime:       PHP 8.5.0
++ Configuration: @ROOT@/tests/end-to-end/_files/baseline/generate-baseline-suppressed-with-ignored-suppression/phpunit.xml
++
++-DNWDW                                                               5 / 5 (100%)
+++DNW.W                                                               5 / 5 (100%)
++
++ Time: @TIME@, Memory: @MEM@
++
++ OK, but there were issues!
++-Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 2, Notices: 2.
+++Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 1, Notices: 2.
++
++ Baseline written to @ROOT@/tests/end-to-end/_files/baseline/generate-baseline-suppressed-with-ignored-suppression/baseline.xml.
++ <?xml version="1.0"?>
++@@ @@
++   </line>
++   <line number="57" hash="53788ca16bdbb84598d44aa0efc6c022e02e9525">
++    <issue><![CDATA[warning]]></issue>
++-  </line>
++-  <line number="62" hash="0c40db3a94679d19bdb71313ad8987f6a7df542f">
++-   <issue><![CDATA[Serializable@anonymous implements the Serializable interface, which is deprecated. Implement __serialize() and __unserialize() instead (or in addition, if support for old PHP versions is necessary)]]></issue>
++   </line>
++   <line number="81" hash="2c83752a707cb31226e122e9f697a7e69773903e">
++    <issue><![CDATA[Accessing static property class@anonymous::$a as non static]]></issue>
++
++@ROOT@/tests/end-to-end/baseline/generate-baseline-suppressed-with-ignored-suppression.phpt:28
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++2) @ROOT@/tests/end-to-end/baseline/generate-baseline.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Runtime:       PHP 8.5.0
++ Configuration: @ROOT@/tests/end-to-end/_files/baseline/generate-baseline/phpunit.xml
++
++-DNWDW                                                               5 / 5 (100%)
+++DNW.W                                                               5 / 5 (100%)
++
++ Time: @TIME@, Memory: @MEM@
++
++ OK, but there were issues!
++-Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 2, Notices: 2.
+++Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 1, Notices: 2.
++
++ Baseline written to @ROOT@/tests/end-to-end/_files/baseline/generate-baseline/baseline.xml.
++ <?xml version="1.0"?>
++@@ @@
++   </line>
++   <line number="57" hash="a5b91c0a182bedb089007e5bc0d0f462637bc904">
++    <issue><![CDATA[warning]]></issue>
++-  </line>
++-  <line number="62" hash="76474d8e27ebd1f5fd11fcf0cbb60a777576df9a">
++-   <issue><![CDATA[Serializable@anonymous implements the Serializable interface, which is deprecated. Implement __serialize() and __unserialize() instead (or in addition, if support for old PHP versions is necessary)]]></issue>
++   </line>
++   <line number="81" hash="653ed54b2a16d4fa980fde9f70c38edbab099477">
++    <issue><![CDATA[Accessing static property class@anonymous::$a as non static]]></issue>
++
++@ROOT@/tests/end-to-end/baseline/generate-baseline.phpt:28
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++3) @ROOT@/tests/end-to-end/baseline/ignore-baseline-testdox.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Runtime:       PHP 8.5.0
++ Configuration: @ROOT@/tests/end-to-end/_files/baseline/use-baseline/phpunit.xml
++
++-DNWDW                                                               5 / 5 (100%)
+++DNW.W                                                               5 / 5 (100%)
++
++ Time: @TIME@, Memory: @MEM@
++
++@@ @@
++  ⚠ Deprecation
++  ⚠ Notice
++  ⚠ Warning
++- ⚠ Php deprecation
+++ ✔ Php deprecation
++  ⚠ Php notice and warning
++
++ 1 test triggered 1 PHP warning:
++@@ @@
++
++ --
++
++-1 test triggered 1 PHP deprecation:
++-
++-1) %sSource.php:62
++-Serializable@anonymous implements the Serializable interface, which is deprecated. Implement __serialize() and __unserialize() instead (or in addition, if support for old PHP versions is necessary)
++-
++-Triggered by:
++-
++-* PHPUnit\TestFixture\Baseline\SourceTest::testPhpDeprecation
++-  %sSourceTest.php:37
++-
++---
++-
++ 1 test triggered 1 deprecation:
++
++-1) %sSource.php:47
+++1) @ROOT@/tests/end-to-end/_files/baseline/use-baseline/src/Source.php:47
++ deprecation
++
++ Triggered by:
++
++ * PHPUnit\TestFixture\Baseline\SourceTest::testDeprecation
++-  %sSourceTest.php:16
+++  @ROOT@/tests/end-to-end/_files/baseline/use-baseline/tests/SourceTest.php:16
++
++ OK, but there were issues!
++-Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 2, Notices: 2.
+++Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 1, Notices: 2.
++
++@ROOT@/tests/end-to-end/baseline/ignore-baseline-testdox.phpt:23
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++4) @ROOT@/tests/end-to-end/baseline/ignore-baseline.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Runtime:       PHP 8.5.0
++ Configuration: @ROOT@/tests/end-to-end/_files/baseline/use-baseline/phpunit.xml
++
++-DNWDW                                                               5 / 5 (100%)
+++DNW.W                                                               5 / 5 (100%)
++
++ Time: @TIME@, Memory: @MEM@
++
++@@ @@
++
++ --
++
++-1 test triggered 1 PHP deprecation:
++-
++-1) %sSource.php:62
++-Serializable@anonymous implements the Serializable interface, which is deprecated. Implement __serialize() and __unserialize() instead (or in addition, if support for old PHP versions is necessary)
++-
++-Triggered by:
++-
++-* PHPUnit\TestFixture\Baseline\SourceTest::testPhpDeprecation
++-  %sSourceTest.php:37
++-
++---
++-
++ 1 test triggered 1 deprecation:
++
++-1) %sSource.php:47
+++1) @ROOT@/tests/end-to-end/_files/baseline/use-baseline/src/Source.php:47
++ deprecation
++
++ Triggered by:
++
++ * PHPUnit\TestFixture\Baseline\SourceTest::testDeprecation
++-  %sSourceTest.php:16
+++  @ROOT@/tests/end-to-end/_files/baseline/use-baseline/tests/SourceTest.php:16
++
++ OK, but there were issues!
++-Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 2, Notices: 2.
+++Tests: 5, Assertions: 5, Warnings: 2, Deprecations: 1, Notices: 2.
++
++@ROOT@/tests/end-to-end/baseline/ignore-baseline.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++5) @ROOT@/tests/end-to-end/baseline/use-baseline-testdox.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ OK (5 tests, 5 assertions)
++
++-6 issues were ignored by baseline.
+++5 issues were ignored by baseline.
++
++@ROOT@/tests/end-to-end/baseline/use-baseline-testdox.phpt:32
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++6) @ROOT@/tests/end-to-end/baseline/use-baseline.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ OK (5 tests, 5 assertions)
++
++-6 issues were ignored by baseline.
+++5 issues were ignored by baseline.
++
++@ROOT@/tests/end-to-end/baseline/use-baseline.phpt:24
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++7) @ROOT@/tests/end-to-end/cli/filter/filter-dataprovider-by-phpstorm-regex-number-key.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-PHPUnit %s by Sebastian Bergmann and contributors.
+++Failed to find locationHint.
++
++-Runtime:       PHP %s
++
++-##teamcity[testCount count='1' flowId='%s']
++-##teamcity[testSuiteStarted name='CLI Arguments' flowId='%d']
++-##teamcity[testSuiteStarted name='PHPUnit\TestFixture\DataProviderFilterTest' locationHint='php_qn://%sDataProviderFilterTest.php::\PHPUnit\TestFixture\DataProviderFilterTest' flowId='%d']
++-##teamcity[testSuiteStarted name='testTrue' locationHint='php_qn://%sDataProviderFilterTest.php::\PHPUnit\TestFixture\DataProviderFilterTest::testTrue' flowId='%d']
++-##teamcity[testStarted name='testTrue with data set #1' locationHint='php_qn://%sDataProviderFilterTest.php::\PHPUnit\TestFixture\DataProviderFilterTest::testTrue with data set #1' flowId='%d']
++-##teamcity[testFinished name='testTrue with data set #1' duration='%s' flowId='%d']
++-##teamcity[testSuiteFinished name='testTrue' flowId='%d']
++-##teamcity[testSuiteFinished name='PHPUnit\TestFixture\DataProviderFilterTest' flowId='%d']
++-##teamcity[testSuiteFinished name='CLI Arguments' flowId='%d']
++-Time: %s, Memory: %s
+++An error occurred inside PHPUnit.
++
++-OK (1 test, 1 assertion)
+++Message:  stripos(): Argument #1 ($haystack) must be of type string, false given
+++Location: @ROOT@/src/Logging/TeamCity/TeamCityLogger.php:445
+++
+++#0 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(63): PHPUnit\Logging\TeamCity\TeamCityLogger->setFlowId()
+++#1 @ROOT@/src/TextUI/Output/Facade.php(64): PHPUnit\Logging\TeamCity\TeamCityLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(159): PHPUnit\TextUI\Output\Facade::init()
+++#3 @ROOT@/phpunit(104): PHPUnit\TextUI\Application->run()
+++#4 {main}
++
++@ROOT@/tests/end-to-end/cli/filter/filter-dataprovider-by-phpstorm-regex-number-key.phpt:57
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++8) @ROOT@/tests/end-to-end/cli/filter/filter-dataprovider-by-phpstorm-regex-string-key.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-PHPUnit %s by Sebastian Bergmann and contributors.
+++Failed to find locationHint.
++
++-Runtime:       PHP %s
++
++-##teamcity[testCount count='1' flowId='%s']
++-##teamcity[testSuiteStarted name='CLI Arguments' flowId='%d']
++-##teamcity[testSuiteStarted name='PHPUnit\TestFixture\DataProviderFilterTest' locationHint='php_qn://%sDataProviderFilterTest.php::\PHPUnit\TestFixture\DataProviderFilterTest' flowId='%d']
++-##teamcity[testSuiteStarted name='testFalse' locationHint='php_qn://%sDataProviderFilterTest.php::\PHPUnit\TestFixture\DataProviderFilterTest::testFalse' flowId='%d']
++-##teamcity[testStarted name='testFalse with data set "false test"' locationHint='php_qn://%sDataProviderFilterTest.php::\PHPUnit\TestFixture\DataProviderFilterTest::testFalse with data set "false test"' flowId='%d']
++-##teamcity[testFinished name='testFalse with data set "false test"' duration='%s' flowId='%d']
++-##teamcity[testSuiteFinished name='testFalse' flowId='%d']
++-##teamcity[testSuiteFinished name='PHPUnit\TestFixture\DataProviderFilterTest' flowId='%d']
++-##teamcity[testSuiteFinished name='CLI Arguments' flowId='%d']
++-Time: %s, Memory: %s
+++An error occurred inside PHPUnit.
++
++-OK (1 test, 1 assertion)
+++Message:  stripos(): Argument #1 ($haystack) must be of type string, false given
+++Location: @ROOT@/src/Logging/TeamCity/TeamCityLogger.php:445
+++
+++#0 @ROOT@/src/Logging/TeamCity/TeamCityLogger.php(63): PHPUnit\Logging\TeamCity\TeamCityLogger->setFlowId()
+++#1 @ROOT@/src/TextUI/Output/Facade.php(64): PHPUnit\Logging\TeamCity\TeamCityLogger->__construct()
+++#2 @ROOT@/src/TextUI/Application.php(159): PHPUnit\TextUI\Output\Facade::init()
+++#3 @ROOT@/phpunit(104): PHPUnit\TextUI\Application->run()
+++#4 {main}
++
++@ROOT@/tests/end-to-end/cli/filter/filter-dataprovider-by-phpstorm-regex-string-key.phpt:57
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++9) @ROOT@/tests/end-to-end/cli/log-events-text.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-PHPUnit Started (PHPUnit %s using %s)
++-Test Runner Configured
++-Event Facade Sealed
++-Test Suite Loaded (7 tests)
+ -Test Runner Started
+ -Test Suite Sorted
+--Test Runner Execution Started (1 test)
+--Test Suite Started (%sphpunit.xml, 1 test)
+--Test Suite Started (default, 1 test)
+--Test Suite Started (PHPUnit\TestFixture\Event\RiskyCodeCoverage\FooTest, 1 test)
+--Test Preparation Started (PHPUnit\TestFixture\Event\RiskyCodeCoverage\FooTest::testSomething)
+--Test Prepared (PHPUnit\TestFixture\Event\RiskyCodeCoverage\FooTest::testSomething)
+--Test Passed (PHPUnit\TestFixture\Event\RiskyCodeCoverage\FooTest::testSomething)
+--Test Considered Risky (PHPUnit\TestFixture\Event\RiskyCodeCoverage\FooTest::testSomething)
+--This test executed code that is not listed as code to be covered or used:
+--- PHPUnit\TestFixture\Event\RiskyCodeCoverage\Bar
+--Test Finished (PHPUnit\TestFixture\Event\RiskyCodeCoverage\FooTest::testSomething)
+--Test Suite Finished (PHPUnit\TestFixture\Event\RiskyCodeCoverage\FooTest, 1 test)
+--Test Suite Finished (default, 1 test)
+--Test Suite Finished (%sphpunit.xml, 1 test)
++-Test Runner Execution Started (7 tests)
++-Test Suite Started (CLI Arguments, 7 tests)
++-Test Suite Started (PHPUnit\TestFixture\LogEventsText\Test, 7 tests)
++-Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-Test Failed (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-Failed asserting that two variables reference the same object.
++-Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-Test Failed (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-Failed asserting that two variables reference the same resource.
++-Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-Test Suite Finished (PHPUnit\TestFixture\LogEventsText\Test, 7 tests)
++-Test Suite Finished (CLI Arguments, 7 tests)
+ -Test Runner Execution Finished
+ -Test Runner Finished
++-PHPUnit Finished (Shell Exit Code: 1)
+++PHPUnit 12.5.30 by Sebastian Bergmann and contributors.
+++
+++The path "" specified for the --log-events-text option could not be resolved
++
++@ROOT@/tests/end-to-end/cli/log-events-text.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++10) @ROOT@/tests/end-to-end/cli/log-events-verbose-text.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] PHPUnit Started (%s)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Configured
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Event Facade Sealed
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Loaded (7 tests)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Started
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Sorted
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Execution Started (7 tests)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Started (CLI Arguments, 7 tests)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Started (PHPUnit\TestFixture\LogEventsText\Test, 7 tests)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportNull)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportBool)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportInt)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportStr)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Passed (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportArray)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Failed (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-                                                         %sFailed asserting that two variables reference the same object.
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportObject)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Failed (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-                                                         %sFailed asserting that two variables reference the same resource.
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\LogEventsText\Test::testExportResource)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Finished (PHPUnit\TestFixture\LogEventsText\Test, 7 tests)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Finished (CLI Arguments, 7 tests)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Execution Finished
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Finished
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] PHPUnit Finished (Shell Exit Code: 1)
+++PHPUnit 12.5.30 by Sebastian Bergmann and contributors.
+++
+++The path "" specified for the --log-events-verbose-text option could not be resolved
++
++@ROOT@/tests/end-to-end/cli/log-events-verbose-text.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++11) @ROOT@/tests/end-to-end/cli/no-log-no-cc.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0" encoding="UTF-8"?>
++-<testsuites>
++-  <testsuite name="PHPUnit\TestFixture\NoLogNoCcTest" file="%sNoLogNoCcTest.php" tests="1" assertions="1" errors="0" failures="0" skipped="0" time="%f">
++-    <testcase name="testSuccess" file="%sNoLogNoCcTest.php" line="18" class="PHPUnit\TestFixture\NoLogNoCcTest" classname="PHPUnit.TestFixture.NoLogNoCcTest" assertions="1" time="%f"/>
++-  </testsuite>
++-</testsuites>
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:17
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 17
++
++@ROOT@/tests/end-to-end/cli/no-log-no-cc.phpt:24
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++12) @ROOT@/tests/end-to-end/data-provider/dependency-result.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ 1) PHPUnit\TestFixture\DataProviderDependencyResultTest::testAdd#2 with data (2, 0)
++ Error: Cannot use positional argument after named argument during unpacking
++
+++@ROOT@/tests/_files/DataProviderDependencyResultTest.php:1318
+++
++ ERRORS!
++ Tests: 4, Assertions: 5, Errors: 1.
++
++@ROOT@/tests/end-to-end/data-provider/dependency-result.phpt:23
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++13) @ROOT@/tests/end-to-end/data-provider/log-junit-isolation.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0" encoding="UTF-8"?>
++-<testsuites>
++-  <testsuite name="PHPUnit\TestFixture\DataProviderTest" file="%sDataProviderTest.php" tests="4" assertions="4" errors="0" failures="1" skipped="0" time="%f">
++-    <testsuite name="PHPUnit\TestFixture\DataProviderTest::testAdd" tests="4" assertions="4" errors="0" failures="1" skipped="0" time="%f">
++-      <testcase name="testAdd with data set #0" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%f"/>
++-      <testcase name="testAdd with data set #1" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%f"/>
++-      <testcase name="testAdd with data set #2" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%f">
++-        <failure type="PHPUnit\Framework\ExpectationFailedException">PHPUnit\TestFixture\DataProviderTest::testAdd with data set #2%A
++-Failed asserting that 2 matches expected 3.
++-%A
++-%s:%i</failure>
++-      </testcase>
++-      <testcase name="testAdd with data set #3" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%f"/>
++-    </testsuite>
++-  </testsuite>
++-</testsuites>
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:16
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 16
++
++@ROOT@/tests/end-to-end/data-provider/log-junit-isolation.phpt:23
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++14) @ROOT@/tests/end-to-end/data-provider/log-junit.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0" encoding="UTF-8"?>
++-<testsuites>
++-  <testsuite name="CLI Arguments" tests="10" assertions="10" errors="0" failures="3" skipped="0" time="%s">
++-    <testsuite name="PHPUnit\TestFixture\DataProviderTest" file="%sDataProviderTest.php" tests="4" assertions="4" errors="0" failures="1" skipped="0" time="%s">
++-      <testsuite name="PHPUnit\TestFixture\DataProviderTest::testAdd" tests="4" assertions="4" errors="0" failures="1" skipped="0" time="%s">
++-        <testcase name="testAdd with data set #0" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%s"/>
++-        <testcase name="testAdd with data set #1" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%s"/>
++-        <testcase name="testAdd with data set #2" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%s">
++-          <failure type="PHPUnit\Framework\ExpectationFailedException">PHPUnit\TestFixture\DataProviderTest::testAdd with data set #2%A
++-Failed asserting that 2 matches expected 3.
++-%A
++-%sDataProviderTest.php:%d</failure>
++-        </testcase>
++-        <testcase name="testAdd with data set #3" file="%sDataProviderTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderTest" classname="PHPUnit.TestFixture.DataProviderTest" assertions="1" time="%s"/>
++-      </testsuite>
++-    </testsuite>
++-    <testsuite name="PHPUnit\TestFixture\DataProviderWithStringKeysTest" file="%sDataProviderWithStringKeysTest.php" tests="4" assertions="4" errors="0" failures="1" skipped="0" time="%s">
++-      <testsuite name="PHPUnit\TestFixture\DataProviderWithStringKeysTest::testAdd" tests="4" assertions="4" errors="0" failures="1" skipped="0" time="%s">
++-        <testcase name="testAdd with data set &quot;0 + 0 = 0&quot;" file="%sDataProviderWithStringKeysTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderWithStringKeysTest" classname="PHPUnit.TestFixture.DataProviderWithStringKeysTest" assertions="1" time="%s"/>
++-        <testcase name="testAdd with data set &quot;0 + 1 = 1&quot;" file="%sDataProviderWithStringKeysTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderWithStringKeysTest" classname="PHPUnit.TestFixture.DataProviderWithStringKeysTest" assertions="1" time="%s"/>
++-        <testcase name="testAdd with data set &quot;1 + 1 = 3&quot;" file="%sDataProviderWithStringKeysTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderWithStringKeysTest" classname="PHPUnit.TestFixture.DataProviderWithStringKeysTest" assertions="1" time="%s">
++-          <failure type="PHPUnit\Framework\ExpectationFailedException">PHPUnit\TestFixture\DataProviderWithStringKeysTest::testAdd with data set "1 + 1 = 3"%A
++-Failed asserting that 2 matches expected 3.
++-%A
++-%sDataProviderWithStringKeysTest.php:%d</failure>
++-        </testcase>
++-        <testcase name="testAdd with data set &quot;1 + 0 = 1&quot;" file="%sDataProviderWithStringKeysTest.php" line="%d" class="PHPUnit\TestFixture\DataProviderWithStringKeysTest" classname="PHPUnit.TestFixture.DataProviderWithStringKeysTest" assertions="1" time="%s"/>
++-      </testsuite>
++-    </testsuite>
++-    <testcase name="success.phpt" file="%ssuccess.phpt" assertions="1" time="%s"/>
++-    <testcase name="failure.phpt" file="%sfailure.phpt" assertions="1" time="%s">
++-      <failure type="PHPUnit\Framework\PhptAssertionFailedError">failure.phptFailed asserting that two strings are equal.%A
++---- Expected
++-+++ Actual
++-@@ @@
++--'success'
++-+'failure'
++-%A
++-%s:%d</failure>
++-    </testcase>
++-  </testsuite>
++-</testsuites>
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:18
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 18
++
++@ROOT@/tests/end-to-end/data-provider/log-junit.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++15) @ROOT@/tests/end-to-end/error-handler/php-deprecation.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Suite Started (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest, 3 tests)
++ Test Preparation Started (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromTestCode)
++ Test Prepared (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromTestCode)
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromTestCode, issue triggered by test code calling into PHP runtime, suppressed using operator) in %s:%d
++-strlen(): Passing null to parameter #1 ($string) of type string is deprecated
++-Test Passed (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromTestCode)
+++Test Errored (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromTestCode)
+++strlen(): Argument #1 ($string) must be of type string, null given
++ Test Finished (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromTestCode)
++ Test Preparation Started (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromFirstParty)
++ Test Prepared (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromFirstParty)
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromFirstParty, issue triggered by first-party code calling into PHP runtime, suppressed using operator) in %sFirstPartyClass.php:%d
++-strlen(): Passing null to parameter #1 ($string) of type string is deprecated
++-Test Passed (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromFirstParty)
+++Test Errored (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromFirstParty)
+++strlen(): Argument #1 ($string) must be of type string, null given
++ Test Finished (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromFirstParty)
++ Test Preparation Started (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromThirdParty)
++ Test Prepared (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromThirdParty)
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromThirdParty, issue triggered by third-party code calling into PHP runtime, suppressed using operator) in %sThirdPartyClass.php:%d
++-strlen(): Passing null to parameter #1 ($string) of type string is deprecated
++-Test Passed (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromThirdParty)
+++Test Errored (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromThirdParty)
+++strlen(): Argument #1 ($string) must be of type string, null given
++ Test Finished (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest::testFromThirdParty)
++ Test Suite Finished (PHPUnit\TestFixture\ErrorHandler\PhpDeprecation\PhpDeprecationTest, 3 tests)
++ Test Suite Finished (default, 3 tests)
++-Test Suite Finished (%sphpunit.xml, 3 tests)
+++Test Suite Finished (@ROOT@/tests/end-to-end/error-handler/_files/php-deprecation/phpunit.xml, 3 tests)
++ Test Runner Execution Finished
++ Test Runner Finished
+ -PHPUnit Finished (Shell Exit Code: 0)
+-+Test Runner Triggered Warning (XDEBUG_MODE=coverage (environment variable) or xdebug.mode=coverage (PHP configuration setting) has to be set)
+-+PHPUnit Finished (Shell Exit Code: 1)
+++PHPUnit Finished (Shell Exit Code: 2)
++
++@ROOT@/tests/end-to-end/error-handler/php-deprecation.phpt:27
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++16) @ROOT@/tests/end-to-end/error-handler/user-error-php-84.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Suite Started (PHPUnit\TestFixture\ErrorHandler\UserErrorTest, 1 test)
++ Test Preparation Started (PHPUnit\TestFixture\ErrorHandler\UserErrorTest::testUserError)
++ Test Prepared (PHPUnit\TestFixture\ErrorHandler\UserErrorTest::testUserError)
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\ErrorHandler\UserErrorTest::testUserError, unknown if issue was triggered in first-party code or third-party code) in %s:%d
++-Passing E_USER_ERROR to trigger_error() is deprecated since 8.4, throw an exception or call exit with a string message instead
++-Test Triggered Error (PHPUnit\TestFixture\ErrorHandler\UserErrorTest::testUserError) in %s:%d
++-error message
++ Test Errored (PHPUnit\TestFixture\ErrorHandler\UserErrorTest::testUserError)
++-E_USER_ERROR was triggered
+++trigger_error(): Passing E_USER_ERROR is no longer supported, throw an exception or call exit() with a string message instead
++ Test Finished (PHPUnit\TestFixture\ErrorHandler\UserErrorTest::testUserError)
++ Test Suite Finished (PHPUnit\TestFixture\ErrorHandler\UserErrorTest, 1 test)
++ Test Runner Execution Finished
++ Test Runner Finished
++ PHPUnit Finished (Shell Exit Code: 2)
++
++@ROOT@/tests/end-to-end/error-handler/user-error-php-84.phpt:29
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++17) @ROOT@/tests/end-to-end/event/php-deprecated.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Suite Started (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest, 1 test)
++ Test Preparation Started (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest::testDeprecatedPhpFeature)
++ Test Prepared (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest::testDeprecatedPhpFeature)
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest::testDeprecatedPhpFeature, unknown if issue was triggered in first-party code or third-party code) in %s:%d
++-strlen(): Passing null to parameter #1 ($string) of type string is deprecated
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest::testDeprecatedPhpFeature, unknown if issue was triggered in first-party code or third-party code, suppressed using operator) in %s:%d
++-strlen(): Passing null to parameter #1 ($string) of type string is deprecated
++-Test Passed (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest::testDeprecatedPhpFeature)
+++Test Errored (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest::testDeprecatedPhpFeature)
+++strlen(): Argument #1 ($string) must be of type string, null given
++ Test Finished (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest::testDeprecatedPhpFeature)
++ Test Suite Finished (PHPUnit\TestFixture\Event\DeprecatedPhpFeatureTest, 1 test)
++ Test Runner Execution Finished
++ Test Runner Finished
++-PHPUnit Finished (Shell Exit Code: 1)
+++PHPUnit Finished (Shell Exit Code: 2)
++
++@ROOT@/tests/end-to-end/event/php-deprecated.phpt:27
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++18) @ROOT@/tests/end-to-end/event/success-verbose.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] PHPUnit Started (PHPUnit %s using %s)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Configured
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Event Facade Sealed
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Loaded (1 test)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Started
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Sorted
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Execution Started (1 test)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Started (PHPUnit\TestFixture\Event\SuccessTest, 1 test)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Preparation Started (PHPUnit\TestFixture\Event\SuccessTest::testSuccess)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Prepared (PHPUnit\TestFixture\Event\SuccessTest::testSuccess)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Passed (PHPUnit\TestFixture\Event\SuccessTest::testSuccess)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Finished (PHPUnit\TestFixture\Event\SuccessTest::testSuccess)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Suite Finished (PHPUnit\TestFixture\Event\SuccessTest, 1 test)
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Execution Finished
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] Test Runner Finished
++-[%s:%s:%s.%s / %s:%s:%s.%s] [%s bytes] PHPUnit Finished (Shell Exit Code: 0)
+++PHPUnit 12.5.30 by Sebastian Bergmann and contributors.
+++
+++The path "" specified for the --log-events-verbose-text option could not be resolved
++
++@ROOT@/tests/end-to-end/event/success-verbose.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++19) @ROOT@/tests/end-to-end/event/user-error-php-84.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Suite Started (PHPUnit\TestFixture\Event\UserErrorTest, 2 tests)
++ Test Preparation Started (PHPUnit\TestFixture\Event\UserErrorTest::testUserError)
++ Test Prepared (PHPUnit\TestFixture\Event\UserErrorTest::testUserError)
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\Event\UserErrorTest::testUserError, unknown if issue was triggered in first-party code or third-party code) in %s:%d
++-Passing E_USER_ERROR to trigger_error() is deprecated since 8.4, throw an exception or call exit with a string message instead
++-Test Triggered Error (PHPUnit\TestFixture\Event\UserErrorTest::testUserError) in %s:%d
++-message
++ Test Errored (PHPUnit\TestFixture\Event\UserErrorTest::testUserError)
++-E_USER_ERROR was triggered
+++trigger_error(): Passing E_USER_ERROR is no longer supported, throw an exception or call exit() with a string message instead
++ Test Finished (PHPUnit\TestFixture\Event\UserErrorTest::testUserError)
++ Test Preparation Started (PHPUnit\TestFixture\Event\UserErrorTest::testUserErrorMustAbortExecution)
++ Test Prepared (PHPUnit\TestFixture\Event\UserErrorTest::testUserErrorMustAbortExecution)
++-Test Triggered PHP Deprecation (PHPUnit\TestFixture\Event\UserErrorTest::testUserErrorMustAbortExecution, unknown if issue was triggered in first-party code or third-party code) in %s:%d
++-Passing E_USER_ERROR to trigger_error() is deprecated since 8.4, throw an exception or call exit with a string message instead
++-Test Triggered Error (PHPUnit\TestFixture\Event\UserErrorTest::testUserErrorMustAbortExecution) in %s:%d
++-message
++ Test Errored (PHPUnit\TestFixture\Event\UserErrorTest::testUserErrorMustAbortExecution)
++-E_USER_ERROR was triggered
+++trigger_error(): Passing E_USER_ERROR is no longer supported, throw an exception or call exit() with a string message instead
++ Test Finished (PHPUnit\TestFixture\Event\UserErrorTest::testUserErrorMustAbortExecution)
++ Test Suite Finished (PHPUnit\TestFixture\Event\UserErrorTest, 2 tests)
++ Test Runner Execution Finished
++ Test Runner Finished
++ PHPUnit Finished (Shell Exit Code: 2)
+ 
+-@ROOT@/tests/end-to-end/event/risky-code-coverage.phpt:27
++@ROOT@/tests/end-to-end/event/user-error-php-84.phpt:29
+ @ROOT@/src/Framework/TestSuite.php:374
+ @ROOT@/src/Framework/TestSuite.php:374
+ @ROOT@/src/TextUI/TestRunner.php:64
+ @ROOT@/src/TextUI/Application.php:229
+ 
+-2) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
++20) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
+ Failed asserting that string matches format description.
+ --- Expected
+ +++ Actual
+@@ -78,6 +750,2191 @@
+ @ROOT@/src/TextUI/TestRunner.php:64
+ @ROOT@/src/TextUI/Application.php:229
+ 
++21) @ROOT@/tests/end-to-end/generic/expect-error-log-fail-with-open_basedir.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Suite Started (PHPUnit\TestFixture\ExpectNoErrorLog\ExpectErrorLogFailTest, 1 test)
++ Test Preparation Started (PHPUnit\TestFixture\ExpectNoErrorLog\ExpectErrorLogFailTest::testOne)
++ Test Prepared (PHPUnit\TestFixture\ExpectNoErrorLog\ExpectErrorLogFailTest::testOne)
++-Test Errored (PHPUnit\TestFixture\ExpectNoErrorLog\ExpectErrorLogFailTest::testOne)
++-Could not create writable file for error_log()
+++Test Failed (PHPUnit\TestFixture\ExpectNoErrorLog\ExpectErrorLogFailTest::testOne)
+++error_log() was not called
+++Failed asserting that a string is not empty.
++ Test Finished (PHPUnit\TestFixture\ExpectNoErrorLog\ExpectErrorLogFailTest::testOne)
++ Test Suite Finished (PHPUnit\TestFixture\ExpectNoErrorLog\ExpectErrorLogFailTest, 1 test)
++ Test Runner Execution Finished
++ Test Runner Finished
++-PHPUnit Finished (Shell Exit Code: 2)
+++PHPUnit Finished (Shell Exit Code: 1)
++
++@ROOT@/tests/end-to-end/generic/expect-error-log-fail-with-open_basedir.phpt:36
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++22) @ROOT@/tests/end-to-end/generic/expect-error-log-with-open_basedir.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Preparation Started (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
++ Test Prepared (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
++ logged a side effect
++-Test Errored (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
++-Could not create writable file for error_log()
+++Test Failed (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
+++error_log() was not called
+++Failed asserting that a string is not empty.
++ Test Finished (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
++ Test Suite Finished (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest, 1 test)
++ Test Runner Execution Finished
++ Test Runner Finished
++-PHPUnit Finished (Shell Exit Code: 2)
+++PHPUnit Finished (Shell Exit Code: 1)
++
++@ROOT@/tests/end-to-end/generic/expect-error-log-with-open_basedir.phpt:27
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++23) @ROOT@/tests/end-to-end/generic/expect-error-log.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Suite Started (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest, 1 test)
++ Test Preparation Started (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
++ Test Prepared (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
++-Test Passed (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
+++logged a side effect
+++Test Failed (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
+++error_log() was not called
+++Failed asserting that a string is not empty.
++ Test Finished (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest::testOne)
++ Test Suite Finished (PHPUnit\TestFixture\ExpectErrorLog\ExpectErrorLogTest, 1 test)
++ Test Runner Execution Finished
++ Test Runner Finished
++-PHPUnit Finished (Shell Exit Code: 0)
+++PHPUnit Finished (Shell Exit Code: 1)
++
++@ROOT@/tests/end-to-end/generic/expect-error-log.phpt:24
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++24) @ROOT@/tests/end-to-end/generic/ini-isolation-not-changeable-at-runtime.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Runtime:       PHP 8.5.0
++
++-.                                                                   1 / 1 (100%)
++
++-Time: %s, Memory: %s
+++Warning: Undefined array key 0 in @ROOT@/src/Util/GlobalState.php on line 211
++
++-OK (1 test, 2 assertions)
+++
+++An error occurred inside PHPUnit.
+++
+++Message:  strtr(): Argument #1 ($string) must be of type string, null given
+++Location: @ROOT@/src/Util/GlobalState.php:211
+++
+++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#6 Command line code(8): PHPUnit\TextUI\Application->run()
+++#7 {main}
++
++@ROOT@/tests/end-to-end/generic/ini-isolation-not-changeable-at-runtime.phpt:19
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++25) @ROOT@/tests/end-to-end/generic/ini-isolation.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Runtime:       PHP 8.5.0
++
++-.                                                                   1 / 1 (100%)
++
++-Time: %s, Memory: %s
+++Warning: Undefined array key 0 in @ROOT@/src/Util/GlobalState.php on line 211
++
++-OK (1 test, 1 assertion)
+++
+++An error occurred inside PHPUnit.
+++
+++Message:  strtr(): Argument #1 ($string) must be of type string, null given
+++Location: @ROOT@/src/Util/GlobalState.php:211
+++
+++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#6 Command line code(10): PHPUnit\TextUI\Application->run()
+++#7 {main}
++
++@ROOT@/tests/end-to-end/generic/ini-isolation.phpt:19
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++26) @ROOT@/tests/end-to-end/generic/one-class-per-file-valid.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-PHPUnit %s by Sebastian Bergmann and contributors.
++-
++-Runtime: %s
++-
++-.                                                                   1 / 1 (100%)
++-
++-Time: %s, Memory: %s
++-
++-OK (1 test, 1 assertion)
+++Fatal error: Cannot redeclare class PHPUnit\TestFixture\TwoClassesValid (previously declared in @ROOT@/tests/_files/OneClassPerFile/TwoClassesValid.php:14) in @ROOT@/tests/_files/OneClassPerFile/TwoClassesValid.php on line 14
+++Stack trace:
+++#0 @ROOT@/src/Runner/TestSuiteLoader.php(116): require_once()
+++#1 @ROOT@/src/Runner/TestSuiteLoader.php(49): PHPUnit\Runner\TestSuiteLoader->loadSuiteClassFile()
+++#2 @ROOT@/src/TextUI/Configuration/TestSuiteBuilder.php(119): PHPUnit\Runner\TestSuiteLoader->load()
+++#3 @ROOT@/src/TextUI/Configuration/TestSuiteBuilder.php(58): PHPUnit\TextUI\Configuration\TestSuiteBuilder->testSuiteFromPath()
+++#4 @ROOT@/src/TextUI/Application.php(389): PHPUnit\TextUI\Configuration\TestSuiteBuilder->build()
+++#5 @ROOT@/src/TextUI/Application.php(196): PHPUnit\TextUI\Application->buildTestSuite()
+++#6 Command line code(8): PHPUnit\TextUI\Application->run()
+++#7 {main}
++
++@ROOT@/tests/end-to-end/generic/one-class-per-file-valid.phpt:14
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++27) @ROOT@/tests/end-to-end/generic/php-cli-d-forwarded-to-child-process.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Runtime:       PHP 8.5.0
++
++-.                                                                   1 / 1 (100%)
+++F                                                                   1 / 1 (100%)
++
++ Time: @TIME@, Memory: @MEM@
++
++-OK (1 test, 1 assertion)
+++There was 1 failure:
+++
+++1) PHPUnit\TestFixture\AutoPrependFileTest::testAutoPrependFileIsLoadedInChildProcess
+++Failed asserting that false is true.
+++
+++@ROOT@/tests/end-to-end/generic/_files/AutoPrependFileTest.php:21
+++
+++FAILURES!
+++Tests: 1, Assertions: 1, Failures: 1.
++
++@ROOT@/tests/end-to-end/generic/php-cli-d-forwarded-to-child-process.phpt:39
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++28) @ROOT@/tests/end-to-end/logging/junit/to-file.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0" encoding="UTF-8"?>
++-<testsuites>
++-  <testsuite name="PHPUnit\TestFixture\Basic\StatusTest" file="%sStatusTest.php" tests="13" assertions="4" errors="2" failures="2" skipped="5" time="%f">
++-    <testcase name="testSuccess" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="1" time="%f"/>
++-    <testcase name="testFailure" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="1" time="%f">
++-      <failure type="PHPUnit\Framework\ExpectationFailedException">PHPUnit\TestFixture\Basic\StatusTest::testFailure%A
++-Failed asserting that false is true.
++-%A
++-%sStatusTest.php:%d</failure>
++-    </testcase>
++-    <testcase name="testError" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f">
++-      <error type="RuntimeException">PHPUnit\TestFixture\Basic\StatusTest::testError%A
++-RuntimeException:%w
++-%A
++-%sStatusTest.php:%d</error>
++-    </testcase>
++-    <testcase name="testIncomplete" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f">
++-      <skipped/>
++-    </testcase>
++-    <testcase name="testSkipped" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f">
++-      <skipped/>
++-    </testcase>
++-    <testcase name="testRisky" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f"/>
++-    <testcase name="testSuccessWithMessage" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="1" time="%f"/>
++-    <testcase name="testFailureWithMessage" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="1" time="%f">
++-      <failure type="PHPUnit\Framework\ExpectationFailedException">PHPUnit\TestFixture\Basic\StatusTest::testFailureWithMessage%A
++-failure with custom message
++-Failed asserting that false is true.
++-%A
++-%sStatusTest.php:%d</failure>
++-    </testcase>
++-    <testcase name="testErrorWithMessage" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f">
++-      <error type="RuntimeException">PHPUnit\TestFixture\Basic\StatusTest::testErrorWithMessage%A
++-RuntimeException: error with custom message
++-%A
++-%sStatusTest.php:%d</error>
++-    </testcase>
++-    <testcase name="testIncompleteWithMessage" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f">
++-      <skipped/>
++-    </testcase>
++-    <testcase name="testSkippedByMetadata" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f">
++-      <skipped/>
++-    </testcase>
++-    <testcase name="testSkippedWithMessage" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f">
++-      <skipped/>
++-    </testcase>
++-    <testcase name="testRiskyWithMessage" file="%sStatusTest.php" line="%d" class="PHPUnit\TestFixture\Basic\StatusTest" classname="PHPUnit.TestFixture.Basic.StatusTest" assertions="0" time="%f"/>
++-  </testsuite>
++-</testsuites>
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 15
++
++@ROOT@/tests/end-to-end/logging/junit/to-file.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++29) @ROOT@/tests/end-to-end/logging/junit/with-progress-with-errors.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Time: @TIME@, Memory: @MEM@
++
+++There was 1 PHPUnit test runner warning:
+++
+++1) Cannot log test results in JUnit XML format to "": Directory "" does not exist and could not be created
+++
+++--
+++
++ There was 1 error:
++
++ 1) PHPUnit\TestFixture\TypeErrorTest::testMe
++ TypeError: Cannot assign DateTime to property PHPUnit\TestFixture\TypeErrorTest::$dateTime of type DateTimeImmutable
++
++-%sTypeErrorTest.php:%d
+++@ROOT@/tests/end-to-end/logging/_files/TypeErrorTest.php:22
++
++ ERRORS!
++-Tests: 1, Assertions: 0, Errors: 1.
++-<?xml version="1.0" encoding="UTF-8"?>
++-<testsuites>
++-  <testsuite name="PHPUnit\TestFixture\TypeErrorTest" file="%sTypeErrorTest.php" tests="1" assertions="0" errors="1" failures="0" skipped="0" time="%f">
++-    <testcase name="testMe" file="%sTypeErrorTest.php" line="%d" class="PHPUnit\TestFixture\TypeErrorTest" classname="PHPUnit.TestFixture.TypeErrorTest" assertions="0" time="%f">
++-      <error type="TypeError">PHPUnit\TestFixture\TypeErrorTest::testMe
++-TypeError: Cannot assign DateTime to property PHPUnit\TestFixture\TypeErrorTest::$dateTime of type DateTimeImmutable
+++Tests: 1, Assertions: 0, Errors: 1, PHPUnit Warnings: 1.
++
++-%sTypeErrorTest.php:%s</error>
++-    </testcase>
++-  </testsuite>
++-</testsuites>
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 15
++
++@ROOT@/tests/end-to-end/logging/junit/with-progress-with-errors.phpt:1
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++30) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-class-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\AssertionFailureInTearDownAfterClassTest" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInTearDownAfterClassTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\AssertionFailureInTearDownAfterClassTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInTearDownAfterClassTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\AssertionFailureInTearDownAfterClassTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:finished id="1" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sAssertionFailureInTearDownAfterClassTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-class-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++31) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-test-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\AssertionFailureInTearDownTest" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInTearDownTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\AssertionFailureInTearDownTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInTearDownTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\AssertionFailureInTearDownTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sAssertionFailureInTearDownTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-test-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++32) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-class-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\AssertionFailureInSetUpBeforeClassTest" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInSetUpBeforeClassTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\AssertionFailureInSetUpBeforeClassTest"/>
++-  </sources>
++- </e:started>
++- <e:finished id="1" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sAssertionFailureInSetUpBeforeClassTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-class-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++33) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-test-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\AssertionFailureInSetUpTest" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInSetUpTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\AssertionFailureInSetUpTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInSetUpTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\AssertionFailureInSetUpTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sAssertionFailureInSetUpTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-test-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++34) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-postcondition-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\AssertionFailureInPostConditionTest" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInPostConditionTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\AssertionFailureInPostConditionTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInPostConditionTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\AssertionFailureInPostConditionTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sAssertionFailureInPostConditionTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-postcondition-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++35) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-precondition-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\AssertionFailureInPreConditionTest" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInPreConditionTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\AssertionFailureInPreConditionTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sAssertionFailureInPreConditionTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\AssertionFailureInPreConditionTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sAssertionFailureInPreConditionTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-precondition-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++36) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument-with-git-information.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:git="https://schemas.opentest4j.org/reporting/git/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++-  <git:repository originUrl="%s"/>
++-  <git:branch>%s</git:branch>
++-  <git:commit>%s</git:commit>
++-  <git:status clean="%s"><![CDATA[%A]]></git:status>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Basic\StatusTest" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Basic\StatusTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testSuccess" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSuccess"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="3" parentId="1" name="testFailure" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testFailure"/>
++-  </sources>
++- </e:started>
++- <e:finished id="3" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="4" parentId="1" name="testError" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testError"/>
++-  </sources>
++- </e:started>
++- <e:finished id="4" time="%s">
++-  <result status="ERRORED">
++-   <reason></reason>
++-   <phpunit:throwable type="RuntimeException" assertionError="false"><![CDATA[RuntimeException:
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
++
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="5" parentId="1" name="testIncomplete" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testIncomplete"/>
++-  </sources>
++- </e:started>
++- <e:finished id="5" time="%s">
++-  <result status="ABORTED">
++-   <reason></reason>
++-   <phpunit:throwable type="PHPUnit\Framework\IncompleteTestError" assertionError="false"><![CDATA[
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="6" parentId="1" name="testSkipped" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkipped"/>
++-  </sources>
++- </e:started>
++- <e:finished id="6" time="%s">
++-  <result status="SKIPPED">
++-   <reason></reason>
++-  </result>
++- </e:finished>
++- <e:started id="7" parentId="1" name="testRisky" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testRisky"/>
++-  </sources>
++- </e:started>
++- <e:finished id="7" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="8" parentId="1" name="testSuccessWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSuccessWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="8" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="9" parentId="1" name="testFailureWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testFailureWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="9" time="%s">
++-  <result status="FAILED">
++-   <reason>failure with custom message
++-Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[failure with custom message
++-Failed asserting that false is true.
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="10" parentId="1" name="testErrorWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testErrorWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="10" time="%s">
++-  <result status="ERRORED">
++-   <reason>error with custom message</reason>
++-   <phpunit:throwable type="RuntimeException" assertionError="false"><![CDATA[RuntimeException: error with custom message
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="11" parentId="1" name="testIncompleteWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testIncompleteWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="11" time="%s">
++-  <result status="ABORTED">
++-   <reason>incomplete with custom message</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\IncompleteTestError" assertionError="false"><![CDATA[incomplete with custom message
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="12" parentId="1" name="testSkippedByMetadata" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkippedByMetadata"/>
++-  </sources>
++- </e:started>
++- <e:finished id="12" time="%s">
++-  <result status="SKIPPED">
++-   <reason>PHP &gt; 9000 is required.</reason>
++-  </result>
++- </e:finished>
++- <e:started id="13" parentId="1" name="testSkippedWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkippedWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="13" time="%s">
++-  <result status="SKIPPED">
++-   <reason>skipped with custom message</reason>
++-  </result>
++- </e:finished>
++- <e:started id="14" parentId="1" name="testRiskyWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testRiskyWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="14" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(17): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument-with-git-information.phpt:26
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++37) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Basic\StatusTest" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Basic\StatusTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testSuccess" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSuccess"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="3" parentId="1" name="testFailure" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testFailure"/>
++-  </sources>
++- </e:started>
++- <e:finished id="3" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="4" parentId="1" name="testError" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testError"/>
++-  </sources>
++- </e:started>
++- <e:finished id="4" time="%s">
++-  <result status="ERRORED">
++-   <reason></reason>
++-   <phpunit:throwable type="RuntimeException" assertionError="false"><![CDATA[RuntimeException:
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
++
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="5" parentId="1" name="testIncomplete" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testIncomplete"/>
++-  </sources>
++- </e:started>
++- <e:finished id="5" time="%s">
++-  <result status="ABORTED">
++-   <reason></reason>
++-   <phpunit:throwable type="PHPUnit\Framework\IncompleteTestError" assertionError="false"><![CDATA[
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="6" parentId="1" name="testSkipped" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkipped"/>
++-  </sources>
++- </e:started>
++- <e:finished id="6" time="%s">
++-  <result status="SKIPPED">
++-   <reason></reason>
++-  </result>
++- </e:finished>
++- <e:started id="7" parentId="1" name="testRisky" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testRisky"/>
++-  </sources>
++- </e:started>
++- <e:finished id="7" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="8" parentId="1" name="testSuccessWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSuccessWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="8" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="9" parentId="1" name="testFailureWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testFailureWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="9" time="%s">
++-  <result status="FAILED">
++-   <reason>failure with custom message
++-Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[failure with custom message
++-Failed asserting that false is true.
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="10" parentId="1" name="testErrorWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testErrorWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="10" time="%s">
++-  <result status="ERRORED">
++-   <reason>error with custom message</reason>
++-   <phpunit:throwable type="RuntimeException" assertionError="false"><![CDATA[RuntimeException: error with custom message
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="11" parentId="1" name="testIncompleteWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testIncompleteWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="11" time="%s">
++-  <result status="ABORTED">
++-   <reason>incomplete with custom message</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\IncompleteTestError" assertionError="false"><![CDATA[incomplete with custom message
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="12" parentId="1" name="testSkippedByMetadata" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkippedByMetadata"/>
++-  </sources>
++- </e:started>
++- <e:finished id="12" time="%s">
++-  <result status="SKIPPED">
++-   <reason>PHP &gt; 9000 is required.</reason>
++-  </result>
++- </e:finished>
++- <e:started id="13" parentId="1" name="testSkippedWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkippedWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="13" time="%s">
++-  <result status="SKIPPED">
++-   <reason>skipped with custom message</reason>
++-  </result>
++- </e:finished>
++- <e:started id="14" parentId="1" name="testRiskyWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testRiskyWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="14" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++38) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-suite-from-xml-configuration-file.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="%sphpunit.xml" time="%s"/>
++- <e:started id="2" parentId="1" name="default" time="%s"/>
++- <e:started id="3" parentId="2" name="PHPUnit\TestFixture\Basic\StatusTest" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Basic\StatusTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="4" parentId="3" name="testSuccess" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSuccess"/>
++-  </sources>
++- </e:started>
++- <e:finished id="4" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="5" parentId="3" name="testFailure" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testFailure"/>
++-  </sources>
++- </e:started>
++- <e:finished id="5" time="%s">
++-  <result status="FAILED">
++-   <reason>Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[Failed asserting that false is true.
+++An error occurred inside PHPUnit.
++
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="6" parentId="3" name="testError" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testError"/>
++-  </sources>
++- </e:started>
++- <e:finished id="6" time="%s">
++-  <result status="ERRORED">
++-   <reason></reason>
++-   <phpunit:throwable type="RuntimeException" assertionError="false"><![CDATA[RuntimeException:
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
++
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="7" parentId="3" name="testIncomplete" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testIncomplete"/>
++-  </sources>
++- </e:started>
++- <e:finished id="7" time="%s">
++-  <result status="ABORTED">
++-   <reason></reason>
++-   <phpunit:throwable type="PHPUnit\Framework\IncompleteTestError" assertionError="false"><![CDATA[
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="8" parentId="3" name="testSkipped" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkipped"/>
++-  </sources>
++- </e:started>
++- <e:finished id="8" time="%s">
++-  <result status="SKIPPED">
++-   <reason></reason>
++-  </result>
++- </e:finished>
++- <e:started id="9" parentId="3" name="testRisky" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testRisky"/>
++-  </sources>
++- </e:started>
++- <e:finished id="9" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="10" parentId="3" name="testSuccessWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSuccessWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="10" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:started id="11" parentId="3" name="testFailureWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testFailureWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="11" time="%s">
++-  <result status="FAILED">
++-   <reason>failure with custom message
++-Failed asserting that false is true.</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\ExpectationFailedException" assertionError="true"><![CDATA[failure with custom message
++-Failed asserting that false is true.
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="12" parentId="3" name="testErrorWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testErrorWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="12" time="%s">
++-  <result status="ERRORED">
++-   <reason>error with custom message</reason>
++-   <phpunit:throwable type="RuntimeException" assertionError="false"><![CDATA[RuntimeException: error with custom message
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="13" parentId="3" name="testIncompleteWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testIncompleteWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="13" time="%s">
++-  <result status="ABORTED">
++-   <reason>incomplete with custom message</reason>
++-   <phpunit:throwable type="PHPUnit\Framework\IncompleteTestError" assertionError="false"><![CDATA[incomplete with custom message
++-
++-%sStatusTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:started id="14" parentId="3" name="testSkippedByMetadata" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkippedByMetadata"/>
++-  </sources>
++- </e:started>
++- <e:finished id="14" time="%s">
++-  <result status="SKIPPED">
++-   <reason>PHP &gt; 9000 is required.</reason>
++-  </result>
++- </e:finished>
++- <e:started id="15" parentId="3" name="testSkippedWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testSkippedWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="15" time="%s">
++-  <result status="SKIPPED">
++-   <reason>skipped with custom message</reason>
++-  </result>
++- </e:finished>
++- <e:started id="16" parentId="3" name="testRiskyWithMessage" time="%s">
++-  <sources>
++-   <fileSource path="%sStatusTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Basic\StatusTest" methodName="testRiskyWithMessage"/>
++-  </sources>
++- </e:started>
++- <e:finished id="16" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:finished id="3" time="%s"/>
++- <e:finished id="2" time="%s"/>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-suite-from-xml-configuration-file.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++39) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-class-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\ExceptionInTearDownAfterClassTest" time="%s">
++-  <sources>
++-   <fileSource path="%sExceptionInTearDownAfterClassTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\ExceptionInTearDownAfterClassTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sExceptionInTearDownAfterClassTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\ExceptionInTearDownAfterClassTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="SUCCESSFUL"/>
++- </e:finished>
++- <e:finished id="1" time="%s">
++-  <result status="ERRORED">
++-   <reason></reason>
++-   <phpunit:throwable type="Exception" assertionError="false"><![CDATA[Exception:
+++An error occurred inside PHPUnit.
++
++-%sExceptionInTearDownAfterClassTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-class-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++40) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-test-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\ExceptionInTearDownTest" time="%s">
++-  <sources>
++-   <fileSource path="%sExceptionInTearDownTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\ExceptionInTearDownTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sExceptionInTearDownTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\ExceptionInTearDownTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="ERRORED">
++-   <reason></reason>
++-   <phpunit:throwable type="Exception" assertionError="false"><![CDATA[Exception:
+++An error occurred inside PHPUnit.
++
++-%sExceptionInTearDownTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-test-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++41) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-class-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\ExceptionInSetUpBeforeClassTest" time="%s">
++-  <sources>
++-   <fileSource path="%sExceptionInSetUpBeforeClassTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\ExceptionInSetUpBeforeClassTest"/>
++-  </sources>
++- </e:started>
++- <e:finished id="1" time="%s">
++-  <result status="ERRORED">
++-   <reason></reason>
++-   <phpunit:throwable type="Exception" assertionError="false"><![CDATA[Exception:
+++An error occurred inside PHPUnit.
++
++-%sExceptionInSetUpBeforeClassTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-class-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++42) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-test-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\ExceptionInSetUpTest" time="%s">
++-  <sources>
++-   <fileSource path="%sExceptionInSetUpTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\ExceptionInSetUpTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sExceptionInSetUpTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\ExceptionInSetUpTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="ERRORED">
++-   <reason></reason>
++-   <phpunit:throwable type="Exception" assertionError="false"><![CDATA[Exception:
+++An error occurred inside PHPUnit.
++
++-%sExceptionInSetUpTest.php:%d
++-]]></phpunit:throwable>
++-  </result>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-test-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++43) @ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-class-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\SkippedInSetupBeforeClassTest" time="%s">
++-  <sources>
++-   <fileSource path="%sSkippedInSetupBeforeClassTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\SkippedInSetupBeforeClassTest"/>
++-  </sources>
++- </e:started>
++- <e:finished id="1" time="%s">
++-  <result status="SKIPPED">
++-   <reason>message</reason>
++-  </result>
++- </e:finished>
++-</e:events>
+++An error occurred inside PHPUnit.
+++
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-class-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++44) @ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-test-method.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<?xml version="1.0"?>
++-<e:events xmlns="https://schemas.opentest4j.org/reporting/core/0.2.0" xmlns:e="https://schemas.opentest4j.org/reporting/events/0.2.0" xmlns:php="https://schema.phpunit.de/otr/php/0.0.1" xmlns:phpunit="https://schema.phpunit.de/otr/phpunit/0.0.1">
++- <infrastructure>
++-  <hostName>%s</hostName>
++-  <userName>%s</userName>
++-  <operatingSystem>%s</operatingSystem>
++-  <php:phpVersion>%s</php:phpVersion>
++-  <php:threadModel>%s</php:threadModel>
++- </infrastructure>
++- <e:started id="1" name="PHPUnit\TestFixture\Event\SkippedInSetupTest" time="%s">
++-  <sources>
++-   <fileSource path="%sSkippedInSetupTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:classSource className="PHPUnit\TestFixture\Event\SkippedInSetupTest"/>
++-  </sources>
++- </e:started>
++- <e:started id="2" parentId="1" name="testOne" time="%s">
++-  <sources>
++-   <fileSource path="%sSkippedInSetupTest.php">
++-    <filePosition line="%d"/>
++-   </fileSource>
++-   <phpunit:methodSource className="PHPUnit\TestFixture\Event\SkippedInSetupTest" methodName="testOne"/>
++-  </sources>
++- </e:started>
++- <e:finished id="2" time="%s">
++-  <result status="SKIPPED">
++-   <reason></reason>
++-  </result>
++- </e:finished>
++- <e:finished id="1" time="%s"/>
++-</e:events>
+++An error occurred inside PHPUnit.
+++
+++Message:  XMLWriter::openUri(): Argument #1 ($uri) must not be empty
+++Location: @ROOT@/src/Logging/OpenTestReporting/OtrXmlLogger.php:83
+++
+++#0 @ROOT@/src/TextUI/Application.php(628): PHPUnit\Logging\OpenTestReporting\OtrXmlLogger->__construct()
+++#1 @ROOT@/src/TextUI/Application.php(177): PHPUnit\TextUI\Application->registerLogfileWriters()
+++#2 Command line code(16): PHPUnit\TextUI\Application->run()
+++#3 {main}
++
++@ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-test-method.phpt:25
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++45) @ROOT@/tests/end-to-end/logging/testdox/testdox-case-with-dollar-sign.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Time: @TIME@, Memory: @MEM@
++
++ Case With Dollar Sign (PHPUnit\TestFixture\CaseWithDollarSign)
++- ✔ The "$12.34" is used for this test
++- ✔ The "Some text before the price $5.67" is used for this test
++- ✔ The "Dollar sign followed by letter $Q" is used for this test
++- ✔ The "Alone $ surrounded by spaces" is used for this test
+++ ✔ The "\2.34" is used for this test
+++ ✔ The "Some text before the price \.67" is used for this test
+++ ✔ The "Dollar sign followed by letter \$Q" is used for this test
+++ ✔ The "Alone \$ surrounded by spaces" is used for this test
++
++ OK (4 tests, 4 assertions)
++
++@ROOT@/tests/end-to-end/logging/testdox/testdox-case-with-dollar-sign.phpt:23
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++46) @ROOT@/tests/end-to-end/logging/testdox/testdox-html-class-name-collision.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
++-        <h2>Foo</h2>
++-        <ul>
++-            <li class="success">From foo test</li>
++-        </ul>
++-        <h2>Foo</h2>
++-        <ul>
++-            <li class="success">From test foo test</li>
++-        </ul>
++-    </body>
++-</html>
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 15
++
++@ROOT@/tests/end-to-end/logging/testdox/testdox-html-class-name-collision.phpt:23
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++47) @ROOT@/tests/end-to-end/logging/testdox/testdox-html-escaping.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
++-        <h2>&lt;script&gt;alert(1)&lt;/script&gt;</h2>
++-        <ul>
++-            <li class="success">&lt;b&gt;&quot;x&quot; &amp; &#039;y&#039;&lt;/b&gt;</li>
++-            <li class="success">Two with data set &quot;&lt;img src=x onerror=alert(2)&gt;&quot;</li>
++-        </ul>
++-    </body>
++-</html>
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 15
++
++@ROOT@/tests/end-to-end/logging/testdox/testdox-html-escaping.phpt:23
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++48) @ROOT@/tests/end-to-end/logging/testdox/testdox-html.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-<!doctype html>
++-<html lang="en">
++-    <head>
++-        <meta charset="utf-8"/>
++-        <title>Test Documentation</title>
++-        <style>
++-            body {
++-                text-rendering: optimizeLegibility;
++-                font-family: Source SansSerif Pro, Arial, sans-serif;
++-                font-variant-ligatures: common-ligatures;
++-                font-kerning: normal;
++-                margin-left: 2rem;
++-                background-color: #fff;
++-                color: #000;
++-            }
++-
++-            body > ul > li {
++-                font-size: larger;
++-            }
++-
++-            h2 {
++-                font-size: larger;
++-                text-decoration-line: underline;
++-                text-decoration-thickness: 2px;
++-                margin: 0;
++-                padding: 0.5rem 0;
++-            }
++-
++-            ul {
++-                list-style: none;
++-                margin: 0 0 2rem;
++-                padding: 0 0 0 1rem;
++-                text-indent: -1rem;
++-            }
++-
++-            .success:before {
++-                color: #4e9a06;
++-                content: '✓';
++-                padding-right: 0.5rem;
++-            }
++-
++-            .defect {
++-                color: #a40000;
++-            }
++-
++-            .defect:before {
++-                color: #a40000;
++-                content: '✗';
++-                padding-right: 0.5rem;
++-            }
++-        </style>
++-    </head>
++-    <body>
++-        <h2>Bank Account (PHPUnit\TestFixture\BankAccount)</h2>
++-        <ul>
++-            <li class="success">Balance is initially zero</li>
++-            <li class="success">Balance cannot become negative</li>
++-        </ul>
++-    </body>
++-</html>
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 15
++
++@ROOT@/tests/end-to-end/logging/testdox/testdox-html.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++49) @ROOT@/tests/end-to-end/logging/testdox/testdox-text-class-name-collision.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-Foo
++- [x] From foo test
++-
++-Foo
++- [x] From test foo test
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 15
++
++@ROOT@/tests/end-to-end/logging/testdox/testdox-text-class-name-collision.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++50) @ROOT@/tests/end-to-end/logging/testdox/testdox-text.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++-Bank Account (PHPUnit\TestFixture\BankAccount)
++- [x] Balance is initially zero
++- [x] Balance cannot become negative
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:15
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 15
++
++@ROOT@/tests/end-to-end/logging/testdox/testdox-text.phpt:22
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++51) @ROOT@/tests/end-to-end/metadata/with-environment-variable.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Runtime:       PHP 8.5.0
++ Configuration: @ROOT@/tests/end-to-end/_files/with_environment_variable/phpunit.xml
++
++-...............                                                   15 / 15 (100%)
+++..........F....                                                   15 / 15 (100%)
++
++ Time: @TIME@, Memory: @MEM@
++
++-OK (15 tests, 42 assertions)
+++There was 1 failure:
+++
+++1) PHPUnit\TestFixture\requires_environment_variable\WithEnvironmentVariableTest::testBAZShouldHaveBeenErased
+++Failed asserting that true is false.
+++
+++@ROOT@/tests/end-to-end/_files/with_environment_variable/WithEnvironmentVariableTest.php:93
+++
+++FAILURES!
+++Tests: 15, Assertions: 41, Failures: 1.
++
++@ROOT@/tests/end-to-end/metadata/with-environment-variable.phpt:19
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++52) @ROOT@/tests/end-to-end/mock-objects/generator/extendable_class_with_property_with_final_get_hook.phpt
++Failed asserting that two strings are equal.
++--- Expected
+++++ Actual
++@@ @@
++-'declare(strict_types=1);\n
++-\n
++-class TestStubFoo extends Foo implements PHPUnit\Framework\MockObject\StubInternal\n
++-{\n
++-    use PHPUnit\Framework\MockObject\StubApi;\n
++-    use PHPUnit\Framework\MockObject\Method;\n
++-    use PHPUnit\Framework\MockObject\DoubledCloneMethod;\n
++-}'
+++'Fatal error: Invalid property hook declaration for Foo::$bar: expecting 'get' or 'set' in Command line code on line 4\n
+++Stack trace:\n
+++#0 {main}'
++
++@ROOT@/tests/end-to-end/mock-objects/generator/extendable_class_with_property_with_final_get_hook.phpt:1
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++53) @ROOT@/tests/end-to-end/mock-objects/mock-method/with_argument_default_new_expression.phpt
++Failed asserting that two strings are equal.
++--- Expected
+++++ Actual
++@@ @@
++-'...thod(Foo $foo = new \Foo(1, 2, 3))\n
+++'...thod(Foo $foo = new \Foo())\n
++     {\n
++         $__phpun...'
++
++@ROOT@/tests/end-to-end/mock-objects/mock-method/with_argument_default_new_expression.phpt:1
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++54) @ROOT@/tests/end-to-end/phpt/phpt-clean-parse-error.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ There was 1 PHPUnit test runner warning:
++
++ 1) CLEAN section triggered a parse error:
++-Parse error: Unmatched '}' in Standard input code on line 3
+++Parse error: Unmatched '}' in Command line code on line 3
++
++
++ OK, but there were issues!
++ Tests: 1, Assertions: 1, PHPUnit Warnings: 1.
++
++@ROOT@/tests/end-to-end/phpt/phpt-clean-parse-error.phpt:24
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++55) @ROOT@/tests/end-to-end/phpt/phpt-env.phpt
++Failed asserting that two strings are equal.
++--- Expected
+++++ Actual
++@@ @@
++-'bar'
+++'Warning: Undefined array key "FOO" in Command line code on line 2'
++
++@ROOT@/tests/end-to-end/phpt/phpt-env.phpt:14
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++56) @ROOT@/tests/end-to-end/regression/1335.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Runtime:       PHP 8.5.0
++
++-............                                                      12 / 12 (100%)
++
++-Time: %s, Memory: %s
+++Warning: Undefined array key 0 in @ROOT@/src/Util/GlobalState.php on line 211
++
++-OK (12 tests, 12 assertions)
+++
+++An error occurred inside PHPUnit.
+++
+++Message:  strtr(): Argument #1 ($string) must be of type string, null given
+++Location: @ROOT@/src/Util/GlobalState.php:211
+++
+++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#6 Command line code(9): PHPUnit\TextUI\Application->run()
+++#7 {main}
++
++@ROOT@/tests/end-to-end/regression/1335.phpt:18
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++57) @ROOT@/tests/end-to-end/regression/2158.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Runtime:       PHP 8.5.0
++
++-..                                                                  2 / 2 (100%)
+++.
+++Warning: Undefined array key 0 in @ROOT@/src/Util/GlobalState.php on line 211
++
++-Time: %s, Memory: %s
++
++-OK (2 tests, 2 assertions)
+++An error occurred inside PHPUnit.
+++
+++Message:  strtr(): Argument #1 ($string) must be of type string, null given
+++Location: @ROOT@/src/Util/GlobalState.php:211
+++
+++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#6 Command line code(7): PHPUnit\TextUI\Application->run()
+++#7 {main}
++
++@ROOT@/tests/end-to-end/regression/2158.phpt:16
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++58) @ROOT@/tests/end-to-end/regression/5258.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Time: @TIME@, Memory: @MEM@
++
++-OK, but some tests were skipped!
++-Tests: 2, Assertions: 1, Skipped: 1.
++-<?xml version="1.0" encoding="UTF-8"?>
++-<testsuites>
++-  <testsuite name="PHPUnit\TestFixture\Issue5258\Issue5258Test" file="%sIssue5258Test.php" tests="2" assertions="1" errors="0" failures="0" skipped="1" time="%f">
++-    <testcase name="testOne" file="%sIssue5258Test.php" line="%d" class="PHPUnit\TestFixture\Issue5258\Issue5258Test" classname="PHPUnit.TestFixture.Issue5258.Issue5258Test" assertions="1" time="%f"/>
++-    <testcase name="testTwo" file="%sIssue5258Test.php" line="%d" class="PHPUnit\TestFixture\Issue5258\Issue5258Test" classname="PHPUnit.TestFixture.Issue5258.Issue5258Test" assertions="0" time="0.000000">
++-      <skipped/>
++-    </testcase>
++-  </testsuite>
++-</testsuites>
+++There was 1 PHPUnit test runner warning:
+++
+++1) Cannot log test results in JUnit XML format to "": Directory "" does not exist and could not be created
+++
+++OK, but there were issues!
+++Tests: 2, Assertions: 1, PHPUnit Warnings: 1, Skipped: 1.
+++
+++Fatal error: Uncaught TypeError: file_get_contents(): Argument #1 ($filename) must be of type string, false given in Command line code:14
+++Stack trace:
+++#0 {main}
+++  thrown in Command line code on line 14
++
++@ROOT@/tests/end-to-end/regression/5258.phpt:29
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++59) @ROOT@/tests/end-to-end/regression/5844.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Test Runner Execution Started (1 test)
++ Test Suite Started (PHPUnit\TestFixture\Issue5844\Issue5844Test, 1 test)
++ Test Preparation Started (PHPUnit\TestFixture\Issue5844\Issue5844Test::testOne)
++-Test Considered Risky (PHPUnit\TestFixture\Issue5844\Issue5844Test::testOne)
++-At least one error handler is not callable outside the scope it was registered in
++ Test Prepared (PHPUnit\TestFixture\Issue5844\Issue5844Test::testOne)
++ Test Passed (PHPUnit\TestFixture\Issue5844\Issue5844Test::testOne)
++ Test Finished (PHPUnit\TestFixture\Issue5844\Issue5844Test::testOne)
++
++@ROOT@/tests/end-to-end/regression/5844.phpt:26
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++60) @ROOT@/tests/end-to-end/regression/5991.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ There was 1 PHPUnit test runner warning:
++
++ 1) SKIPIF section triggered a parse error:
++-Parse error: Unmatched '}' in Standard input code on line 3
+++Parse error: Unmatched '}' in Command line code on line 3
++
++
++ OK, but there were issues!
++ Tests: 1, Assertions: 1, PHPUnit Warnings: 1.
++
++@ROOT@/tests/end-to-end/regression/5991.phpt:24
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++61) @ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++ Runtime:       PHP 8.5.0
++
++
++-Fatal error: Access level to PHPUnit\TestFixture\B::someFunction() must be public (as in class PHPUnit\TestFixture\A) in %sB.php on line %i%A
+++Error: require_once(): Fatal IO error while importing: 'A.php' in @ROOT@/tests/end-to-end/regression/6294/IssueTest6294.php on line 18
+++Fatal error: Premature end of PHP process when running PHPUnit\TestFixture\IssueTest6294::testOne.
++
++@ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt:19
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++62) @ROOT@/tests/end-to-end/regression/6311.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Time: @TIME@, Memory: @MEM@
++
++-There was 1 PHPUnit test runner warning:
++-
++-1) SKIPIF section triggered a fatal error:
++-Warning: require(%afile.php): Failed to open stream: No such file or directory in Standard input code on line %d
++-
++-Fatal error: Uncaught Error: Failed opening required%a
++-%A
+++OK (1 test, 1 assertion)
++
++@ROOT@/tests/end-to-end/regression/6311.phpt:21
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++63) @ROOT@/tests/end-to-end/regression/6465.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Runtime:       PHP 8.5.0
++
++-..                                                                  2 / 2 (100%)
+++W.                                                                  2 / 2 (100%)
++
++ Time: @TIME@, Memory: @MEM@
++
++-OK (2 tests, 3 assertions)
+++OK, but there were issues!
+++Tests: 2, Assertions: 3, Warnings: 1.
++
++@ROOT@/tests/end-to-end/regression/6465.phpt:20
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++64) @ROOT@/tests/end-to-end/regression/797.phpt
++Failed asserting that string matches format description.
++--- Expected
+++++ Actual
++@@ @@
++
++ Runtime:       PHP 8.5.0
++
++-.                                                                   1 / 1 (100%)
++
++-Time: %s, Memory: %s
+++Warning: Undefined array key 0 in @ROOT@/src/Util/GlobalState.php on line 211
++
++-OK (1 test, 1 assertion)
+++
+++An error occurred inside PHPUnit.
+++
+++Message:  strtr(): Argument #1 ($string) must be of type string, null given
+++Location: @ROOT@/src/Util/GlobalState.php:211
+++
+++#0 @ROOT@/src/Util/GlobalState.php(187): PHPUnit\Util\GlobalState::processIncludedFilesAsString()
+++#1 @ROOT@/src/Framework/TestRunner/SeparateProcessTestRunner.php(81): PHPUnit\Util\GlobalState::getIncludedFilesAsString()
+++#2 @ROOT@/src/Framework/TestCase.php(369): PHPUnit\Framework\SeparateProcessTestRunner->run()
+++#3 @ROOT@/src/Framework/TestSuite.php(374): PHPUnit\Framework\TestCase->run()
+++#4 @ROOT@/src/TextUI/TestRunner.php(64): PHPUnit\Framework\TestSuite->run()
+++#5 @ROOT@/src/TextUI/Application.php(229): PHPUnit\TextUI\TestRunner->run()
+++#6 Command line code(10): PHPUnit\TextUI\Application->run()
+++#7 {main}
++
++@ROOT@/tests/end-to-end/regression/797.phpt:19
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
+ FAILURES!
+-Tests: 805, Assertions: 780, Failures: 2, Skipped: 25.
++Tests: 805, Assertions: 789, Failures: 64, Skipped: 16.
+ @exit@ 1

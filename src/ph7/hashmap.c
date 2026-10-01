@@ -969,6 +969,27 @@ PH7_PRIVATE int PH7_HashmapNodeIsRef(ph7_hashmap_node *pNode)
 	return PH7_VmSlotHolderCount(pNode->pMap->pVm,pNode->nValIdx) >= 2;
 }
 /*
+ * Does this node point at the very map it lives in?
+ *
+ * `$a[0] = &$a` leaves exactly that, and it is the one reference an element can hold
+ * whose slot has no OTHER holder to count: once the name `$a` goes -- an unset, or the
+ * return that ends the function that built it -- the cycle IS the only holder, so
+ * PH7_HashmapNodeIsRef correctly answers "nobody else refers to this value" and a COPY
+ * acting on that answer flattens the element into a value copy of the same map. That
+ * copy contains the same node, so reading it makes one more level, for ever: a
+ * by-reference walk never revisits the same array, php's recursion guards (a marker
+ * pair written through a reference, `count()`'s detector) never fire, and a data
+ * provider that yields such an array hangs the interpreter instead of printing
+ * `*RECURSION*`. php keeps the element a reference regardless of the count, so the copy
+ * shares the cycle and the walk comes back round.
+ */
+static int HashmapNodeIsSelfCycle(ph7_hashmap_node *pNode)
+{
+	ph7_value *pVal = HashmapExtractNodeValue(&(*pNode));
+	return pVal != 0 && (pVal->iFlags & MEMOBJ_HASHMAP) != 0
+		&& (ph7_hashmap *)pVal->x.pOther == pNode->pMap;
+}
+/*
  * Extract node value.
  */
 PH7_PRIVATE ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode)
@@ -992,7 +1013,7 @@ PH7_PRIVATE sxi32 HashmapInsertNode(ph7_hashmap *pMap,ph7_hashmap_node *pNode,in
 	if( pObj == 0 ){
 		return SXERR_EMPTY;
 	}
-	if( PH7_HashmapNodeIsRef(&(*pNode)) ){
+	if( PH7_HashmapNodeIsRef(&(*pNode)) || HashmapNodeIsSelfCycle(&(*pNode)) ){
 		/* A referenced element keeps its reference through the copy (php: array_slice()
 		 * of an array holding `$r = &$a[1]` still var_dumps that element as &int(2)).
 		 * Same rule HashmapDuplicateNode applies for array_merge()/spread. */
@@ -1453,7 +1474,7 @@ static sxi32 HashmapDuplicateNode(
 	ph7_value sKey;
 	sxi32 rc;
 
-	if( PH7_HashmapNodeIsRef(&(*pEntry)) ){
+	if( PH7_HashmapNodeIsRef(&(*pEntry)) || HashmapNodeIsSelfCycle(&(*pEntry)) ){
 		/* The source node is a reference — either a FOREIGN one (`[&$x]`, the node points
 		 * at an outside slot) or, the case PH7 missed, an element somebody took a
 		 * reference TO (`$r = &$a[1]`). php carries an element's reference bit through

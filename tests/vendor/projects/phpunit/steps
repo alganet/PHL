@@ -1,12 +1,10 @@
 # The unit suite is the assertion, constraint, comparator, mock-object and metadata code
 # that every other project's verdict passes through.
 #
-# The other suite this project ships, `end-to-end`, is NOT here yet, and the reason is a
-# measurement rather than a preference: one of its 805 cases -- a test whose data
-# provider yields an array that contains itself -- does not terminate under this engine.
-# A self-referential array that leaves the function that built it comes back with its
-# cycle flattened into an unbounded nesting, so the exporter that prints the data set
-# descends for ever. A step that has to be killed on a timer answers a different question
-# on every run, which is the one thing a baseline cannot be. It goes in when that
-# terminates.
+# The end-to-end suite is 805 .phpt cases that each re-run PHPUnit as a CHILD of the
+# engine under test. It is the only place in this directory where the engine's own
+# PHP_BINARY, $_SERVER, exit status and diagnostics-stream text are what is being
+# asserted on, and it is the most expensive step here after composer's: ~46s under php
+# and ~12 minutes under phl.
 unit	$PHL_VENDOR_ENGINE phpunit --testsuite unit --no-coverage
+end-to-end	$PHL_VENDOR_ENGINE phpunit --testsuite end-to-end --no-coverage
