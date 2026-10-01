@@ -6,7 +6,7 @@ php: writing a base's private from below creates a dynamic property (zend half o
 --DESCRIPTION--
 php's answer to the same two writes: the base's private slot is untouched and a
 PUBLIC dynamic property of the same plain name is created beside it, behind an
-E_DEPRECATED masked here. §10 turns that surface into the Error the PHL half pins.
+E_DEPRECATED masked here. The scope policy turns that surface into the Error the PHL half pins.
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

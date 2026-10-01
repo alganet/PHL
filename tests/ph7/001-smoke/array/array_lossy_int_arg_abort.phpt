@@ -12,7 +12,7 @@ if (function_exists('zend_version')) {
 --FILE--
 <?php
 // php narrows the fractional value with a deprecation and still builds the array.
-// §10 rejects the lossy narrowing loudly, so the throw stops the builtin: $alia_r
+// the scope policy rejects the lossy narrowing loudly, so the throw stops the builtin: $alia_r
 // keeps its previous value and the echo after the call never runs. The refusal is
 // the aBuiltinSig[] `int` screen's, so it is worded like every other builtin's
 // (php's own ZPP text) rather than like the operators' deprecation.

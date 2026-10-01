@@ -2580,7 +2580,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm)
 		{ RA_NAME,   PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only, and PROTECTED so php code cannot reach them: the spec that
 		 * reopens the target. php holds the same state on the C struct behind the
-		 * object, invisible; PHL has no hidden-slot bit yet (§7.4 (e)), so these
+		 * object, invisible; PHL has no hidden-slot bit yet (recorded), so these
 		 * four still show up in a var_dump where php shows only $name. */
 		{ RA_SPEC,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0,  0.0 }, 0 },
 		{ RA_IDX,    PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0,  0.0 }, 0 },
@@ -3669,7 +3669,7 @@ static int vm_builtin_ReflectionReference_fromArrayElement(ph7_context *pCtx, in
 		 * unscreened (it only judges array/object/null/resource pairings and
 		 * scalars against class-typed ones), so the refusal php words from the
 		 * declared type is written here -- as the prelude's own is_array() check
-		 * did. Recorded in PLAN §2 with the rest of that gap. */
+		 * did. Recorded with the rest of that gap. */
 		return PH7_VmThrowException(pCtx, "TypeError",
 			"ReflectionReference::fromArrayElement(): Argument #1 ($array) "
 			"must be of type array, %s given", VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
@@ -4181,7 +4181,7 @@ REFLECT_CLASS_LIST(vm_builtin_ReflectionClass_getTraits,         1, 1)
 
 /* getTraitAliases(): php reports `use T { m as n; }` renames; PHL's compiler
  * installs the alias as a method and keeps no rename record, so the map is
- * empty (§7.4). */
+ * empty (recorded). */
 static int vm_builtin_ReflectionClass_getTraitAliases(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SXUNUSED(nArg);
@@ -5455,7 +5455,7 @@ static int vm_builtin_ReflectionClass_toString(ph7_context *pCtx, int nArg, ph7_
 	SXUNUSED(apArg);
 	return ReflectExportClassSelf(pCtx);
 }
-/* ---- lazy objects: PHL has none (§7.4) ---- */
+/* ---- lazy objects: PHL has none (recorded) ---- */
 static int ReflectNoLazy(ph7_context *pCtx, const char *zWho)
 {
 	return PH7_VmThrowException(pCtx, "Error",
@@ -5551,7 +5551,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 	static const PH7_NativePropDef aClassProp[] = {
 		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only: the instance a ReflectionObject was built over. php keeps it
-		 * out of sight; PHL has no hidden-slot bit yet (§7.4 (e)). */
+		 * out of sight; PHL has no hidden-slot bit yet (recorded). */
 		{ RC_OBJ,  PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aClassMethod[] = {
@@ -6660,7 +6660,7 @@ static void ClosurePresentAdd(ph7_vm *pVm, ph7_value *pOut, const char *zKey, ph
  * The non-debug half answers nothing: php's `get_properties` for a Closure is an
  * empty table, and `(array)$closure` never reaches it at all (php special-cases a
  * Closure in `convert_to_array` and wraps it as a SCALAR, `[0 => $closure]`; PHL
- * answers `[]` there — PLAN §4).
+ * answers `[]` there — recorded).
  */
 PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_value *pOut, int bDebug)
@@ -8277,7 +8277,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 	static const PH7_NativePropDef aAbstractProp[] = {
 		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only: the Closure being reflected. php reaches the same state from
-		 * the function record itself; PHL has no hidden-slot bit yet (§7.4 (e)). */
+		 * the function record itself; PHL has no hidden-slot bit yet (recorded). */
 		{ RF_CL,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aAbstractMethod[] = {
@@ -8381,7 +8381,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 	};
 	static const PH7_NativePropDef aParamProp[] = {
 		{ "name", PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
-		/* PHL-only, the three that identify the parameter (§7.4 (e)) */
+		/* PHL-only, the three that identify the parameter (recorded) */
 		{ RP_T,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ RP_M,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ RP_P,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, 0 },
@@ -8455,7 +8455,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 
 /* skipLazyInitialization() is a no-op on an object that is not lazy, which is
  * every object PHL can build — so it answers what php answers rather than
- * refusing (§7.4). */
+ * refusing (recorded). */
 static int vm_builtin_ReflectionProperty_noop(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SXUNUSED(pCtx);
@@ -9536,7 +9536,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 	static const PH7_NativePropDef aPropProp[] = {
 		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
-		/* PHL-only: the instance a DYNAMIC property was reached through (§7.4 (e)) */
+		/* PHL-only: the instance a DYNAMIC property was reached through (recorded) */
 		{ RP_DYNOBJ, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeConstDef aPropConst[] = {

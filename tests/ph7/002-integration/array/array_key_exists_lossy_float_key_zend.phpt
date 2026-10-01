@@ -2,11 +2,11 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: a LOSSY float array_key_exists() key deprecates and truncates (php half)
+POLICY DIVERGENCE the scope policy: a LOSSY float array_key_exists() key deprecates and truncates (php half)
 --DESCRIPTION--
 The php half of array_key_exists_lossy_float_key.phpt: php emits
 `Implicit conversion from float 5.7 to int loses precision` (E_DEPRECATED) and looks up the
-truncated key. PHL has no engine deprecation sites and rejects the lossy float instead (§10).
+truncated key. PHL has no engine deprecation sites and rejects the lossy float instead (the scope policy).
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

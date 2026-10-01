@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 A configured PHP call-depth cap raises a clean fatal and halts (not a silent NULL, not a panic)
 --DESCRIPTION--
 The host default is UNBOUNDED (PHP frames are heap-bound since the iterative
-executor — BYTECODE.md stage 5), so this test installs a cap via the
+executor), so this test installs a cap via the
 PHL_MAX_RECURSION knob (-> PH7_VM_CONFIG_RECURSION_DEPTH) and checks that
 exceeding it is a clean, non-catchable fatal that still runs shutdown handlers.
 phl-only: the cap is engine policy real php does not expose the same way.

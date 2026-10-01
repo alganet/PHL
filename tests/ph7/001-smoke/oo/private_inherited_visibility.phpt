@@ -12,7 +12,7 @@ is outside it too, and the name is on none of the subclass's listing surfaces.
 This engine answered "Cannot access private property" to every one of them.
 
 The one face left out is the WRITE, which php answers with dynamic-property
-creation behind a deprecation: PLAN.md §10 makes that an Error here, twin-paired
+creation behind a deprecation; the non-deprecated policy makes it an Error here, twinned
 in 002-integration/oo/private_inherited_dynamic_write{,_zend}.phpt.
 --FILE--
 <?php

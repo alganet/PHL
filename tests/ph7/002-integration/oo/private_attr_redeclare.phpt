@@ -8,8 +8,8 @@ A subclass may redeclare a base private attribute with no diagnostic
 // php emits NO diagnostic when a child redeclares a base private property;
 // the child instantiates and its own method reads its own value. (PHL cannot
 // yet keep the base's shadowed same-named private as a distinct member — see
-// NEWPLAN — so this checks only the child-visible value, which both engines
-// agree on, plus the absence of a warning.)
+// the recorded row — so this checks only the child-visible value, which both
+// engines agree on, plus the absence of a warning.)
 class A {
     private $attr = 1;
 }

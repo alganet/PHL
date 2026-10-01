@@ -13,7 +13,7 @@ if (function_exists('zend_version')) {
 <?php
 /* RECORDED SCOPE DIFFERENCE. php's list is whatever its build registered; this
  * one carries the two transports it can open, in php's own order (ssl://,
- * tls://, unix:// and udg:// are §7.4 slice-2 (a)), and this function exists so
+ * tls://, unix:// and udg:// are recorded), and this function exists so
  * a script can ASK. Naming a transport that is not there would answer that a
  * connection will work when it cannot, so the honest list is the short one. */
 var_dump(stream_get_transports());

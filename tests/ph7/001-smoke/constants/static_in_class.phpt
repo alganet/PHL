@@ -6,7 +6,7 @@ A bare `static` inside a method is rejected too (it is a keyword, not a constant
 --SKIPIF--
 <?php
 // Both engines REJECT it, at different stages: php at PARSE time, PHL at RUNTIME as an
-// undefined constant. Recorded in NEWPLAN section 7.
+// undefined constant. A recorded divergence.
 if (function_exists('zend_version')) echo 'skip php rejects bare static at parse time, PHL at runtime';
 ?>
 --FILE--

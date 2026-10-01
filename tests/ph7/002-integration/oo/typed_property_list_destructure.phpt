@@ -12,7 +12,7 @@ a plain store (coerce weak-mode, TypeError on mismatch — the property keeps it
 old value), the target member is compiled as a pure WRITE (no uninitialized-read
 Error, no __get consult, missing properties vivify), and a missing source key
 assigns null (warning + TypeError for a non-nullable type, both like php). The
-error handler matches warning BODIES on both engines regardless of prefix (§6).
+error handler matches warning BODIES on both engines regardless of prefix.
 --FILE--
 <?php
 set_error_handler(function ($no, $str) { echo "  [$no] $str\n"; return true; });

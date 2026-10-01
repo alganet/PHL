@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Generator created at 10k call depth, and resumed from a fresh 10k-deep chain (BYTECODE.md stage 3)
+Generator created at 10k call depth, and resumed from a fresh 10k-deep chain
 --DESCRIPTION--
 The ctx start/resume native re-entries must be indifferent to PHP call depth:
 the generator body runs as the bottom record of its own dispatch invocation

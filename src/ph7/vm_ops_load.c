@@ -360,7 +360,7 @@ PH7_PRIVATE void PH7_VmOffsetResourceWarn(ph7_vm *pVm,ph7_value *pKey)
  * the caller falls through to the ordinary lookup/insert, which already casts
  * NULL->"" (HashmapLookup / HashmapInsert). A LOSSY-FLOAT offset stays a rejected
  * TypeError: PHL deliberately targets php's NON-deprecated surface for the
- * float->int truncation (VmRejectFloatOperand policy, §2), so only the null case
+ * float->int truncation (VmRejectFloatOperand policy), so only the null case
  * is coerced here. Returns FALSE (no notice) for a non-null key.
  */
 PH7_PRIVATE int PH7_VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey)
@@ -426,7 +426,7 @@ PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int iWordi
 	if( (pKey->iFlags & MEMOBJ_REAL)
 	 && pKey->rVal != (ph7_real)(sxi64)pKey->rVal ){
 		/* php DEPRECATES the lossy float and truncates; PHL rejects it, here as
-		 * everywhere else (§10) — and with the SAME message `$a[5.7]` gives, so
+		 * everywhere else (the scope policy) — and with the SAME message `$a[5.7]` gives, so
 		 * the builtin and the subscript stay one rule. */
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"Cannot access offset of type float on array");
@@ -615,7 +615,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		 * auto-vivifies (`$x=null; $x[null]=v`) gets it too (the base is not yet a
 		 * hashmap at this point), and PH7_HashmapInsert / HashmapInsertByRef both cast
 		 * NULL->"". A lossy-FLOAT subscript stays a loud TypeError in BOTH forms (the
-		 * recorded non-deprecated-surface policy, §2). */
+		 * recorded non-deprecated-surface policy). */
 		if( pKey && (pTos->iFlags & MEMOBJ_HASHMAP) ){
 			SyBlob sTypeMsg;
 			/* An object/array key is php's TypeError; a resource key warns and
@@ -880,7 +880,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 				/* Force a string cast on the RHS (user-visible: an array warns
-				 * "Array to string conversion" before the offset write, §2, and a
+				 * "Array to string conversion" before the offset write, and a
 				 * not-stringable object throws — the target string is untouched) */
 				{
 					sxi32 rcSv = PH7_MemObjToStringUV(pTos);
@@ -1298,7 +1298,7 @@ static void VmDimRmwArm(
 	/* Address both slots by index from here on. This guarded a reservation
 	 * GROWING the aMemObj set under the pointer the first one handed back;
 	 * redundant since P1 -- the pool's segments are fixed, so a slot's address
-	 * never moves. Left for the harvest sweep (PERF.md P1). */
+	 * never moves. Left for the harvest sweep. */
 	if( pIdx ){
 		PH7_MemObjStore(pIdx,pSlot);
 	}
@@ -2343,7 +2343,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
 	/* php DEPRECATES both a null offset and a lossy-float subscript (then normalizes
 	 * "" / truncates). PHL now matches php on the NULL offset (deprecate + coerce to
-	 * the "" key, §2) but still rejects the lossy-FLOAT subscript with a TypeError on
+	 * the "" key) but still rejects the lossy-FLOAT subscript with a TypeError on
 	 * a READ or WRITE (iP2 0/1) — the recorded non-deprecated-surface policy. Both
 	 * stay lenient in isset()/empty()/`??`/unset(), where a throw would be wrong. */
 	/* An object/array key is rejected in EVERY context, including isset()/empty()/
@@ -2379,7 +2379,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			PH7_VmNullOffsetDeprecate(&(*pVm),pIdx);
 		}
 		/* A lossy-FLOAT subscript stays a rejected TypeError on a READ or WRITE
-		 * (iP2 0/1) — the recorded non-deprecated-surface policy (§2); the lenient
+		 * (iP2 0/1) — the recorded non-deprecated-surface policy; the lenient
 		 * contexts (isset/empty/??/unset) truncate quietly as php's value does. */
 		if( (iP2 == 0 || iP2 == 1)
 		 && (pIdx->iFlags & MEMOBJ_REAL)
@@ -2923,8 +2923,8 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 					}
 					/* Re-fetch AFTER the read: a userland offsetGet can reserve
 					 * slots, which used to relocate every pointer into the pool.
-					 * Redundant since P1 (fixed segments); left for the harvest
-					 * sweep (PERF.md P1). */
+					 * Redundant now the table is segmented; left for the harvest
+					 * sweep. */
 					pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nSlot);
 					if( pObj ){
 						PH7_MemObjStore(&sVal,pObj);

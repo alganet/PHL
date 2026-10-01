@@ -2,12 +2,12 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: iconv_set_encoding() deprecates on every successful call (php half)
+POLICY DIVERGENCE the scope policy: iconv_set_encoding() deprecates on every successful call (php half)
 --DESCRIPTION--
 The php half of iconv_set_encoding.phpt: each of the three $type values php
 accepts writes an ini directive php 8.5 deprecates, so a call that WORKS always
 emits one and a call that does not emits nothing. PHL removes the name outright
-(§10) and keeps only the non-deprecated getter.
+(the scope policy) and keeps only the non-deprecated getter.
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

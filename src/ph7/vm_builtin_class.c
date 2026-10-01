@@ -2032,7 +2032,7 @@ PH7_PRIVATE int vm_builtin_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				/* Snapshot the update value first: applying it may create a dynamic
 				 * property, whose slot reservation used to reallocate pVm->aMemObj
 				 * and dangle pVal. Redundant since P1 (fixed segments); left for the
-				 * harvest sweep (PERF.md P1). */
+				 * harvest sweep. */
 				PH7_MemObjInit(pVm,&sVal);
 				PH7_MemObjLoad(pVal,&sVal);
 				rc = VmCloneApplyUpdate(pVm,pClone,zName,nName,&sVal);

@@ -41,7 +41,7 @@
  *      all but put under the root.
  *
  * What is NOT here is https://: php's is this wrapper over the ssl:// transport,
- * which this build has not got (PLAN.md §5, and §10 for the crypto policy).
+ * which this build has not got.
  */
 /*
  * The response headers of the LAST http exchange, kept on the VM because two

@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PHL: a reference source creating a dynamic property meets §10's refusal (PHL half of the twin pair)
+PHL: a reference source creating a dynamic property meets the scope policy's refusal (PHL half of the twin pair)
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {

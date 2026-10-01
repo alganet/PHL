@@ -13,7 +13,7 @@ if (function_exists('zend_version')) {
 <?php
 /* A by-reference out-parameter reaching a property a class neither declares nor
  * opts into is php's E_DEPRECATED `Creation of dynamic property C::$m` and a
- * created property; §10 rejects that whole surface, so this raises the same
+ * created property; the scope policy rejects that whole surface, so this raises the same
  * Error `$o->m = 1` raises. stdClass and #[\AllowDynamicProperties] are
  * unaffected -- they really do allow one -- and so is a class with `__set` but
  * no `__get`, which is where php's fetch gives up and creates one. */

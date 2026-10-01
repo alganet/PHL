@@ -12,7 +12,7 @@ engine printed both and then carried on.
 <?php
 // Both engines stop here and word the refusal identically; php prints a
 // `Stack trace:` block under a compile-time FATAL that this engine does not
-// (ECOSYSTEM.md F30, behind F6's frame attribution).
+// (it needs the frame attribution first).
 if (function_exists('zend_version')) { echo 'skip php prints a Stack trace under a compile-time fatal'; }
 ?>
 --FILE--

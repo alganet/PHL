@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 ext/gettext: the two places PHL answers the RULE where glibc answers its implementation
 --DESCRIPTION--
-Both rows here are PLAN.md §7.4 records, and neither can carry a `_zend` twin.
+Both rows here are recorded divergences, and neither can carry a `_zend` twin.
 
 (1) A `Plural-Forms` expression that divides or takes a modulo by ZERO. glibc's
 `plural_eval` raises SIGFPE for it on purpose, so php does not answer at all --

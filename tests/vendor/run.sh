@@ -14,11 +14,12 @@
 # committed composer.lock, installed into build/tests-vendor/, and every source
 # change to what comes out of that install is a .patch file in projects/<name>/patches.
 #
-# Patches may ONLY remove a project's use of a surface PLAN.md §10 refuses because
-# php merely DEPRECATES it. That is the whole accepted patch strategy: it lets the
-# policy stand and still lets a suite run to the end. Every patch declares its reason
-# in a header this script validates, and a patch that CUTS coverage rather than
-# rewriting a spelling is counted and printed on every run so it cannot go quiet.
+# Patches may ONLY remove a project's use of a surface the non-deprecated policy
+# refuses because php merely DEPRECATES it. That is the whole accepted patch
+# strategy: it lets the policy stand and still lets a suite run to the end. Every
+# patch declares its reason in a header this script validates, and a patch that
+# CUTS coverage rather than rewriting a spelling is counted and printed on every
+# run so it cannot go quiet.
 #
 # Off the Makefile and off CI on purpose (it needs the network and a real composer).
 #
@@ -47,10 +48,11 @@ COMPOSER_BIN="${COMPOSER_BIN:-composer}"
 # PREPARE and the steps both need to name an engine explicitly.
 export PHP_BIN PHL_BIN
 
-# Every reason a patch is allowed to give. One per surface PLAN.md §10 removes or
-# rejects because php only deprecates it. Nothing else is a legal patch: an engine
-# defect gets FIXED, and a scope cut that is not a deprecation (the timezone
-# database, mb_*'s encodings, fileinfo's magic database) is measured, not patched.
+# Every reason a patch is allowed to give. One per surface the non-deprecated
+# policy removes or rejects because php only deprecates it. Nothing else is a legal
+# patch: an engine defect gets FIXED, and a scope cut that is not a deprecation (the
+# timezone database, mb_*'s encodings, fileinfo's magic database) is measured, not
+# patched.
 ALLOWED_REASONS="
 implicit-nullable-param
 null-to-non-nullable-param
@@ -171,7 +173,7 @@ validate_patch() {
 	for r in $ALLOWED_REASONS; do
 		[ "$r" = "$reason" ] && ok=1
 	done
-	[ "$ok" = 1 ] || die "$f: '$reason' is not a §10 deprecation surface.
+	[ "$ok" = 1 ] || die "$f: '$reason' is not a deprecation surface.
     A patch may only take a project OFF a surface php deprecates and PHL refuses.
     An engine defect is fixed in the engine; a non-deprecation scope cut is measured.
     Allowed:$(echo "$ALLOWED_REASONS" | tr '\n' ' ')"
@@ -323,8 +325,9 @@ for P in $WANTED; do
 			# Both engines must start from the SAME tree. A suite leaves state behind --
 			# PHPUnit writes .phpunit.result.cache, twig writes compiled templates -- and
 			# without this the second engine reads what the first one wrote, and the run
-			# after that reads both. (That is not hypothetical: it is how §3 N's crash
-			# hid, and it would make every measurement here depend on run order.)
+			# after that reads both. (That is not hypothetical: it is how a PHPUnit
+			# result-cache crash hid, and it would make every measurement here depend
+			# on run order.)
 			# vendor/ and our lock survive; everything else untracked or ignored goes.
 			git -C "$CHECKOUT" clean -qfdx -e vendor -e composer.lock
 			eng_t0=$(date +%s)

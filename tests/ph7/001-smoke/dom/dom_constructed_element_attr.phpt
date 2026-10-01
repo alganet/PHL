@@ -30,7 +30,7 @@ ce("elem '1:a' + ns is the OTHER refusal", fn() => new DOMElement('1:a', null, '
 ce('elem value parses entities', function() { $e = new DOMElement('a', 'x&amp;y&#65;'); return [$e->nodeValue, $e->childNodes->length]; });
 /* an UNTERMINATED reference ('v&x') is libxml's version's answer -- 2.9 warns
  * under this constructor's name and drops the whole value, 2.13 keeps 'vx' in
- * silence -- so the corpus leaves that cell unpinned (PLAN §7.4's class). */
+ * silence -- so the corpus leaves that cell unpinned (a recorded class). */
 ce('elem empty value has no child', function() { $e = new DOMElement('a', ''); return [$e->nodeValue, $e->firstChild]; });
 ce('attr value literal', function() { $a = new DOMAttr('k', '&amp;'); return [$a->value, $a->childNodes->length]; });
 ce('attr keeps a raw ampersand', fn() => (new DOMAttr('k', '&'))->value);

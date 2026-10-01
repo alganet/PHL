@@ -15,7 +15,7 @@ still refuses a non-readonly base.
 Found by linting the vendor trees: pest writes one in its parallel result
 printer (Plugins/Parallel/Paratest/ResultPrinter.php).
 The messages here are printed WITHOUT the class name on purpose — an anonymous
-class's name is a recorded divergence (ECOSYSTEM.md §3 G) and would make this
+class's name is a recorded divergence, and pinning it would make this
 test measure that instead.
 --FILE--
 <?php

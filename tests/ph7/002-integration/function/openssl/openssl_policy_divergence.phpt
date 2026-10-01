@@ -2,17 +2,17 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: ext/openssl's deprecated names and parameter are refused (PHL half)
+POLICY DIVERGENCE the scope policy: ext/openssl's deprecated names and parameter are refused (PHL half)
 --DESCRIPTION--
 php marks three of ext/openssl's functions `deprecated since 8.0` --
 openssl_x509_free(), openssl_pkey_free() and openssl_free_key(), all three
 no-ops since a certificate and a key became objects -- and deprecates
 openssl_pkey_derive()'s `$key_length` parameter, warning that it "is either
-ignored or truncates the key". PHL targets php's NON-deprecated surface (§10),
+ignored or truncates the key". PHL targets php's NON-deprecated surface (the scope policy),
 so the three names are not registered at all and the third parameter is not
 declared. php's half is the `_zend` twin.
 
-The passphrase PROMPT is here too, and it is not a §10 item but a refusal to
+The passphrase PROMPT is here too, and it is not a scope-policy item but a refusal to
 block: OpenSSL's default UI reads /dev/tty when a private key needs a
 passphrase it was not given, so php stops a non-interactive program dead
 waiting for a human. PHL installs a callback that answers what it has -- an

@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-A fiber suspended inside a nested method call does not leak its self:: context to the resumer (php-exact; BYTECODE.md stage 4 aSelf parking)
+A fiber suspended inside a nested method call does not leak its self:: context to the resumer (php-exact; aSelf parking)
 --FILE--
 <?php
 class Worker {

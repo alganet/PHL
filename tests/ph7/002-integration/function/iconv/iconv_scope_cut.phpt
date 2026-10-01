@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 /* php's iconv is a shell over the platform's iconv(3), so which code sets it
  * knows is the platform's answer -- glibc has hundreds, musl has fewer, and
  * Windows' libiconv has a different set again. PHL converts with its own code
- * so a Windows build answers what a POSIX one does, and §10's scope cut fixes
+ * so a Windows build answers what a POSIX one does, and the scope cut fixes
  * that set at the three mb_ already models: UTF-8, ISO-8859-1 and US-ASCII.
  * Every other php-VALID name gets php's own "Wrong encoding" warning, which is
  * what php itself answers for a name its platform does not have. See the _zend
@@ -31,7 +31,7 @@ restore_error_handler();
 var_dump(ICONV_IMPL, ICONV_VERSION === PHP_VERSION);
 /* The two $mode bits iconv_mime_decode() reads are php's numbers either way. */
 var_dump(ICONV_MIME_DECODE_STRICT, ICONV_MIME_DECODE_CONTINUE_ON_ERROR);
-/* And §10's standing refusals reach this family's int parameters: php only
+/* And the scope policy's standing refusals reach this family's int parameters: php only
  * DEPRECATES a null in a non-nullable scalar and a lossy float→int, so PHL
  * raises the TypeError php will eventually raise. See the _zend half. */
 foreach ([

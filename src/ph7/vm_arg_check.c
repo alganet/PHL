@@ -1268,7 +1268,7 @@ static const struct VmBuiltinSig {
 	/* php spells this default `INFO_ALL`, and this engine spells the NUMBER: the
 	 * INFO_* family has no consumer here, since phpinfo() ignores $flags and
 	 * prints the whole page whatever it is given. The names ship with the
-	 * section filter or not at all (§7.3). */
+	 * section filter or not at all (recorded). */
 	{ "phpinfo", "int $flags = 4294967295", "true" },
 	{ "phpversion", "?string $extension = NULL", "string|false" },
 	{ "pi", "", "float" },
@@ -1417,7 +1417,7 @@ static const struct VmBuiltinSig {
 	{ "stream_context_create", "?array $options = NULL, ?array $params = NULL", "" },
 	{ "stream_context_get_options", "$stream_or_context", "array" },
 	/* php's argument #2 is `array|string $wrapper_or_options` and the array form
-	 * — the two-argument spelling — is DEPRECATED in 8.3; §10 refuses what php
+	 * — the two-argument spelling — is DEPRECATED in 8.3; the scope policy refuses what php
 	 * deprecates, so this row declares the string and the whole-array form is
 	 * spelled stream_context_set_options(). */
 	{ "stream_context_set_option", "$context, string $wrapper_name, string $option_name, mixed $value", "true" },
@@ -1781,7 +1781,7 @@ static const char * VmArgTypeName(ph7_value *pVal)
  * (strtr(), whose expected type depends on the ARITY and so cannot be spelled in
  * one signature) decides identically instead of forking the logic. An array never
  * satisfies one; an object does only through __toString(); a resource does not;
- * null does under php, with a deprecation, but not under PHL's §10 null-strictness
+ * null does under php, with a deprecation, but not under PHL's the null-strictness policy
  * policy — the screen and this helper both report it as a mismatch.
  */
 PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg)
@@ -2262,7 +2262,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * word the two the same, so the builtin reproduces BOTH orders keyed on the
 	 * invoked name (see PH7_builtin_implode's header for the value-for-value
 	 * table against 8.5.8). php's own asymmetry between a target and its alias,
-	 * reproduced rather than smoothed over — parity is binding (§10).
+	 * reproduced rather than smoothed over — parity is binding (the scope policy).
 	 *
 	 * number_format() is here because php's DECLARED type and its REFUSAL text
 	 * disagree: the stub says `float $num` (which is what Reflection prints) while
@@ -2480,7 +2480,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * 64-bit range, NaN or an infinity. php refuses every one of them
 				 * (zend_parse_arg_long's ZEND_DOUBLE_FITS_LONG / is-integral pair,
 				 * the fractional case with a deprecation PHL rejects outright by
-				 * §10) and the refusal is this screen's own wording.
+				 * the scope policy) and the refusal is this screen's own wording.
 				 *
 				 * PH7_IntArgResolve has always said exactly this, but only for the
 				 * builtins that CALL it from their own body — so `dechex(1.5)`
@@ -2525,13 +2525,13 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * about them, from input php refuses outright.
 				 *
 				 * The NULL rule stays where it is: PHL rejects null for a
-				 * non-nullable parameter by policy (§10) where php deprecates. */
+				 * non-nullable parameter by the scope policy, where php deprecates. */
 				if( !PH7_MemObjStringIsNumeric(pArg) ){
 					zGiven = "string";
 				}else if( (nMask & VMSIG_INTONLY) && !VmNumStrFitsInt(pArg) ){
 					/* A NUMERIC string an int cannot hold — "1.5", "1e19",
 					 * "99999999999999999999". php refuses all three (the fractional
-					 * one after a deprecation §10 turns into the refusal), and PHL
+					 * one after a deprecation the scope policy turns into the refusal), and PHL
 					 * narrowed them silently: `dechex("1e19")` answered '1' and
 					 * `str_repeat("a","99999999999999999999")` took PHP_INT_MAX as
 					 * the count. Same wording, same position as the float arm above,
@@ -2561,7 +2561,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * models as objects are still resources here (xml_*'s XMLParser is the
 				 * one the signatures already declare php-8-style, for reflection). The
 				 * screen would otherwise reject the engine's own parser handle. Recorded
-				 * as a divergence in NEWPLAN §7 — it goes away when those handles become
+				 * as a recorded divergence — it goes away when those handles become
 				 * real objects. */
 				if( !(nMask & VMSIG_RESOURCE)
 				 && !(nMask & VMSIG_CLASS) ){
@@ -2744,7 +2744,7 @@ static int VmSigParams(const char *zSig,VmSigParam *aOut,int nMax)
  * the same thing at both doors, and this one used to carry a smaller reader of
  * its own -- see the note over PH7_VmSigDefaultToValue for what the two
  * disagreed about. Two cases stay here: `[]`, whose value is a hashmap rather
- * than a scalar, and the `= ?` marker (~50 rows the table cannot state, §7.4),
+ * than a scalar, and the `= ?` marker (~50 rows the table cannot state, recorded),
  * which answers 0 so the caller reports the parameter as not passed rather than
  * inventing a value.
  */
@@ -2896,7 +2896,7 @@ PH7_PRIVATE int PH7_VmSigParamName(const char *zSig,int nPos,SyString *pOut)
  * non-variable, and extract() answers `int(1)` for `extract(['q' => 1])`.
  *
  * array_multisort() is listed with it because it is php's other prefer-ref builtin and
- * PHL will need this the day it gains one (it is a MISSING builtin today, §5).
+ * PHL will need this the day it gains one (it is a MISSING builtin today).
  */
 PH7_PRIVATE int VmBuiltinPrefersRef(SyString *pName)
 {

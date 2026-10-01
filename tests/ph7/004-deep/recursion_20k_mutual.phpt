@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-20k-deep mutual recursion (function <-> method <-> closure) completes (BYTECODE.md stage 3)
+20k-deep mutual recursion (function <-> method <-> closure) completes
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip phl-only deep-recursion probe: depth exceeds the php oracle stack / xdebug nesting limit'; ?>
 --FILE--

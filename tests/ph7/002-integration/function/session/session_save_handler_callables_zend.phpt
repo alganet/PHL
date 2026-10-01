@@ -2,12 +2,12 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: session_set_save_handler()'s individual callbacks deprecate and are accepted (php half)
+POLICY DIVERGENCE the scope policy: session_set_save_handler()'s individual callbacks deprecate and are accepted (php half)
 --DESCRIPTION--
 The php half of session_save_handler_callables.phpt: php 8.4 emits
 "Providing individual callbacks instead of an object implementing
 SessionHandlerInterface is deprecated" and installs the handler anyway. PHL has no
-engine deprecation sites and refuses the spelling instead (§10).
+engine deprecation sites and refuses the spelling instead (the scope policy).
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

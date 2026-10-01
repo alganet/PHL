@@ -497,7 +497,7 @@ static ph7_value * MergeRecSeparateNode(ph7_vm *pVm,ph7_hashmap_node *pNode)
 	}
 	/* Shallow snapshot first: reserving used to grow (move) pVm->aMemObj, and
 	 * pOld points into it — the same rule HashmapInsertIntKey follows. Redundant
-	 * since P1 (fixed segments); left for the harvest sweep (PERF.md P1). */
+	 * now the table is segmented; left for the harvest sweep. */
 	sSafe = *pOld;
 	pNew = PH7_ReserveMemObj(pVm);
 	if( pNew == 0 ){
@@ -978,7 +978,7 @@ PH7_PRIVATE int ph7_hashmap_each(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   RANGE_IN_DIGIT       : single-byte numeric string — valid as both a char
  *                          and a number (php returns IS_ARRAY for this)
  * The RANGE_IN_* codes and RangeStrToNumber are declared in ph7int.h so the
- * stage-2 ZPP domain-error sweep can reuse the classifier (PLAN §3.9(a)).
+ * stage-2 ZPP domain-error sweep can reuse the classifier.
  */
 /* IEEE special-value tests: the engine-wide bit-pattern macros from
  * sxtypes.h (via ph7int.h) — same ones the printf/serialize paths use. */
@@ -4454,7 +4454,7 @@ PH7_PRIVATE int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			 * grammar (whole string, int or float): a non-numeric string
 			 * (incl. leading-numeric junk like "2abc" or "0x1A") is a TypeError,
 			 * a well-formed float-string ("1e3") coerces like a float value.
-			 * Reuses the range() ZPP number parser (§3.9 shared-helper note). */
+			 * Reuses the range() ZPP number parser. */
 			int len;
 			const char *zStr = ph7_value_to_string(pNum, &len);
 			sxi64 iLong; double dReal;
@@ -4637,7 +4637,7 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * not one of them: php coerces it like any other scalar an `int` parameter
 	 * is handed, so `array_chunk($a,true)` chunks by 1 and `false` falls
 	 * through to the "must be greater than 0" ValueError below. NULL stays
-	 * refused -- §10 rejects what php merely deprecates. */
+	 * refused -- the scope policy rejects what php merely deprecates. */
 	if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1]) ||
 		ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,

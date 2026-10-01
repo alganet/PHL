@@ -12,7 +12,7 @@ if (function_exists('zend_version')) {
 --FILE--
 <?php
 /* A payload property that a class neither declares nor opts into is php's
- * E_DEPRECATED `Creation of dynamic property C::$z`, which §10 rejects loudly
+ * E_DEPRECATED `Creation of dynamic property C::$z`, which the scope policy rejects loudly
  * wherever the engine meets it — so unserialize() raises the same Error its own
  * `$o->z = 1` write path raises, and php raises verbatim for a readonly class.
  * Because it is a throw, the parse is ABANDONED where php's deprecation carries

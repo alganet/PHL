@@ -2,17 +2,17 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-A lossy float reaching BcMath\Number is DEPRECATED and truncated (php half of the §10 twin)
+A lossy float reaching BcMath\Number is DEPRECATED and truncated (php half of the scope policy twin)
 --DESCRIPTION--
 php reaches BcMath\Number's `int` arm for a FLOAT through an implicit conversion
 it DEPRECATES when precision is lost, so `new Number(1.5)` is 1 there and
-`$n + 1.5` adds 1. §10 removes php's deprecated surface, so PHL refuses the
+`$n + 1.5` adds 1. The scope policy removes php's deprecated surface, so PHL refuses the
 conversion -- with the very wording php itself uses for the floats IT cannot
 convert either (NAN, INF, 1e20). An INTEGRAL float still converts, in both.
 In a COMPARISON, which cannot throw, the refusal takes php's own shape for a
 pair it will not order: uncomparable, which is 1 from either side.
 This half records what php does, so the divergence is a measured pair rather
-than an assertion. The deprecations are silenced: §10's point is the ANSWER.
+than an assertion. The deprecations are silenced: the scope policy's point is the ANSWER.
 --SKIPIF--
 <?php if (!function_exists('zend_version')) echo 'skip php-only half of the twin'; ?>
 --FILE--

@@ -286,7 +286,7 @@ PH7_PRIVATE sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func
 	 * in hHostFunction before any user code compiles, so they are caught. The ~650
 	 * core builtins (strlen, ...) register later, in PH7_VmMakeReady, which runs
 	 * AFTER compilation — hHostFunction has no entry for them yet, so shadowing one
-	 * remains the known divergence it has always been (php fatals; §7.2). Nothing
+	 * remains the known divergence it has always been (php fatals). Nothing
 	 * about their behaviour changes here.
 	 *
 	 * The bCompilingBuiltin early-return above keeps the prelude itself exempt. */
@@ -557,7 +557,7 @@ PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 			 * that does not enclose it reports the into-a-try wording instead of this
 			 * one. Both are fatal on the same line, and the two cannot be told apart
 			 * without a second walk outward from the LABEL — php accepts one of them
-			 * (`finally { goto L; try { L: … } }`), which is the §7.2 divergence, and
+			 * (`finally { goto L; try { L: … } }`), which is the recorded divergence, and
 			 * rejects the other. Not worth a second walk for a message on input that is
 			 * rejected either way. */
 			if( GenStateJumpOutOfFinally(&(*pGen),pJump->nLine) == SXERR_ABORT ){
@@ -1005,7 +1005,7 @@ static int GenStateInFunction(ph7_gen_state *pGen)
  *     a VAR and php does not refuse a write through it either;
  *   `in_array` and `array_slice` gate on the CONTENTS of a literal array
  *     argument and on a `func_get_args()`-shaped first argument — value-dependent
- *     shapes no program writes through, left out under §10. Leaving them out
+ *     shapes no program writes through, left out under the scope policy. Leaving them out
  *     ACCEPTS where php refuses, which is the direction that keeps running a
  *     program php runs.
  * Verified by sweeping every internal function of both engines at arities 0-3:
@@ -1315,7 +1315,7 @@ static sxi32 GenStateEmitCallArgs(ph7_gen_state *pGen,ph7_expr_node *pNode,sxi32
  * a constant, calls something or touches an object is not. php's own folder
  * reaches two shapes further -- an ENGINE constant (`PHP_EOL`) and a builtin
  * call it ct-evaluates (`strlen("a")`) -- where php answers false and this
- * refuses; PLAN.md §7.2 records the pair under the constant-folding family.
+ * refuses; the pair is recorded under the constant-folding family.
  */
 static int GenStateInstanceofFoldsLhs(ph7_gen_state *pGen,sxu32 nFirst)
 {
@@ -3058,7 +3058,7 @@ static sxi32 GenStateEmitCallArgs(
  * php 8 has no comma operator: its grammar only allows comma-separated
  * expression LISTS inside for(...) clauses (call arguments, array literals and
  * list() are split by the parser, never by this node). Accepting it changes the
- * meaning of source php rejects, which §10 classes as a bug — so every context
+ * meaning of source php rejects, which the scope policy classes as a bug — so every context
  * except for() now reports php's parse error.
  */
 static int GenStateTreeHasComma(ph7_expr_node *pNode)

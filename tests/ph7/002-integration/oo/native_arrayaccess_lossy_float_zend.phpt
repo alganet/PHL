@@ -2,11 +2,11 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: a LOSSY float offset on a native ArrayAccess deprecates (php half)
+POLICY DIVERGENCE the scope policy: a LOSSY float offset on a native ArrayAccess deprecates (php half)
 --DESCRIPTION--
 The php half of native_arrayaccess_lossy_float.phpt: php emits `Implicit conversion from float
 1.9 to int loses precision` (E_DEPRECATED) and uses the truncated offset. PHL has no engine
-deprecation sites and refuses the lossy float instead (§10).
+deprecation sites and refuses the lossy float instead (the scope policy).
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

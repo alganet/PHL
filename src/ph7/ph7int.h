@@ -433,7 +433,7 @@ typedef struct ph7_output_consumer ph7_output_consumer;
  * for a variadic '...', trim the type's trailing spaces and '&'. The screen did that
  * walk for every argument of every builtin call: 18,901,261 parameters on the
  * ecosystem gate's phpcs step, for an answer that is a property of the DECLARATION
- * and cannot change between two calls. (PERF.md P13.)
+ * and cannot change between two calls.
  */
 typedef struct VmArgScreenParam VmArgScreenParam;
 struct VmArgScreenParam
@@ -449,7 +449,7 @@ struct VmArgScreenParam
 	                      * ask was a split-on-'|' walk over the same text. The bits are
 	                      * SET by calling the very functions they replace (see
 	                      * VmArgScreenNext), so a bit cannot mean something the walk did
-	                      * not say. (PERF.md P13.) */
+	                      * not say. */
 };
 /* The arms VmArgScreenParam::nMask records. The first thirteen are VmSigTypeHas() tokens;
  * the last three are the three composite questions the screen asks about a whole type. */
@@ -630,7 +630,7 @@ struct ph7_user_func
 	                           * DECLARATION -- but the shared argument screen measured it on
 	                           * every call, which on the ecosystem gate's phpcs step was
 	                           * 425,987,828 bytes of strlen across 11,391,725 calls.
-	                           * (PERF.md P13.) Only meaningful once bScreenStamped. */
+	                           * Only meaningful once bScreenStamped. */
 };
 /*
  * The 'context' argument for an installable function. A pointer to an
@@ -706,7 +706,7 @@ struct ph7_context
  * on the ecosystem gate's phpcs step, that is 114,418,815 dereferences to a foreign cache
  * line in one run, for keys averaging 7.7 bytes -- while the three tests in front of them
  * (iType, nHash, length) all live in the node's first cache line. It also deletes one
- * allocation per string-keyed node. (PERF.md P9.)
+ * allocation per string-keyed node.
  *
  * A key LONGER than this keeps the old arrangement, so the size is a tuning constant and
  * not a limit. Nothing appends to a node's key after HashmapNewBlobNode builds it -- if
@@ -1049,7 +1049,7 @@ struct ph7_gen_state
 	SySet aNullsafeJmp;  /* Pending NULLSAFE_JMP instruction indices (sxu32) */
 	int nCommaExprOk;    /* > 0 while compiling a for() clause, the ONLY place php's grammar
 	                      * allows a comma-separated expression list (PH7's comma OPERATOR
-	                      * is otherwise a PH7-ism php rejects — §10) */
+	                      * is otherwise a PH7-ism php rejects, and we remove) */
 	const char *zClauseCloser; /* When an expression has a trailing token the grammar can't
 	                      * absorb, the tree builder names it and, if this is set, says what
 	                      * the enclosing construct expected: `;` after `return`, `,`/`;`
@@ -1060,7 +1060,7 @@ struct ph7_gen_state
 	int nExprEchoOk;     /* > 0 only while compiling the synthesized `echo` of a `<?= ... ?>`
 	                      * short tag, which is the one place an echo legitimately compiles
 	                      * as an EXPRESSION. Everywhere else `echo` in expression position
-	                      * is a php parse error (it was a Symisc extension — §10) */
+	                      * is a php parse error (it was a Symisc extension — the scope policy) */
 	sxu32 nLoopId;       /* Monotonic id handed to each loop/switch block as it is entered */
 	sxu32 nCurLoopId;    /* Innermost loop/switch currently open (0 = none) */
 	SySet aLoopParent;   /* aLoopParent[id-1] = enclosing loop id, so the ancestry of any loop
@@ -1283,7 +1283,7 @@ struct VmFrame
 	 * of reads on the ecosystem gate's phpcs step and whose misses were LUCK: the
 	 * entry a name landed in depended on where the compiler's pool happened to intern
 	 * it, so the same commit measured 343.6M, 349.4M and 414.0M frame lookups in three
-	 * builds (PERF.md §7). A number the bytecode carries has none of that in it.
+	 * builds. A number the bytecode carries has none of that in it.
 	 *
 	 * pCodeBase is what makes a number MEAN anything: it is the instruction array this
 	 * frame's numbers were assigned against, so a body sharing the frame but not the
@@ -1342,7 +1342,7 @@ typedef struct ph7_exec_ctx ph7_exec_ctx;
 #define PH7_CTX_STATE_COMPLETED  3  /* Returned normally */
 #define PH7_CTX_STATE_CLOSED     4  /* Destroyed */
 /*
- * REAL COROUTINE STACKS (ECOSYSTEM.md §3 R).
+ * REAL COROUTINE STACKS.
  *
  * A `Fiber::suspend()` reached through a C->PHP callback -- `array_map()`'s
  * callback, a `usort()` comparator, `call_user_func()`, `preg_replace_callback()`
@@ -2080,7 +2080,7 @@ struct PH7_NativeDimCtx
  * Refusing works the way the dimension hook's does: name an exception class in
  * zThrowClass and word it in zThrowMsg, and the filter raises it where the store
  * would have landed. A property php only lets a script write by CREATING a
- * deprecated dynamic one (DateInterval's `days`) is refused here, §10.
+ * deprecated dynamic one (DateInterval's `days`) is refused here, the scope policy.
  */
 typedef struct PH7_NativeSetCtx PH7_NativeSetCtx;
 struct PH7_NativeSetCtx
@@ -2645,7 +2645,7 @@ struct ph7_class_attr
                                             * PH7_MOD_HIDDEN on a PH7_NativePropDef. Use it for a slot
                                             * php shows NOTHING for (a handle, a cursor cache); a slot
                                             * php shows under a DIFFERENT name (ArrayObject's `storage`,
-                                            * DateTime's `date`) wants the presentation hook §7.4 (e)
+                                            * DateTime's `date`) wants the recorded presentation hook
                                             * still asks for, not this bit. */
 #define PH7_CLASS_ATTR_STATIC_DEFER 0x20000 /* STATIC property whose default initializer THREW when it
                                             * was evaluated at class mount. php never evaluates a static
@@ -3382,7 +3382,7 @@ struct VmSlot
 	void *pUserData; /* Upper-layer private data */
 };
 /*
- * The segmented memory-object table (PERF.md P1).
+ * The segmented memory-object table.
  *
  * aMemObj used to be one doubling SySet: every value pointer died on any growth,
  * the doubling realloc moved a whole 33 MB block, and the buffer never shrank.
@@ -3400,7 +3400,7 @@ struct VmSlot
  * that segmenting the table did not raise the per-VM floor. It matters in two
  * places that are not this box: the -S server caches PHL_VM_CACHE_SIZE (16) VMs,
  * so the floor is paid sixteen times, and on ESP32-S3 internal RAM dips to 32 KB
- * free (ESP32.md), where a 256 KB opening allocation is not a cost but a failure.
+ * free, where a 256 KB opening allocation is not a cost but a failure.
  * The price of a small segment is one direct block and one segment-table entry
  * per 256 slots: at the phpcs peak of record (~356K slots) that is ~1,400
  * segments, ~33 KB of allocator headers and a 2,048-entry pointer table -- under
@@ -3869,7 +3869,7 @@ struct ph7_vm
 	SyPRNGCtx sPrng;            /* PRNG context (engine-internal, OS-seeded entropy) */
 	SyMT19937Ctx sMt;           /* MT19937 backing rand()/mt_rand(); reset by srand()/mt_srand() */
 	sxi32 mtSeeded;             /* TRUE once sMt holds a seed (lazy: first draw seeds from the OS CSPRNG, like PHP) */
-	VmMemPool aMemObj;          /* Object allocation table (segmented, PERF.md P1) */
+	VmMemPool aMemObj;          /* Object allocation table (segmented) */
 	SySet aLitObj;              /* Literals allocation table */
 	ph7_value *aOps;            /* Operand stack */
 	SyHash hClass;              /* Compiled classes container */
@@ -5314,7 +5314,7 @@ enum json_err_code{
 #define PH7_INI_SCANNER_RAW     1
 #define PH7_INI_SCANNER_TYPED   2
 /* php's INI_SCANNER_TYPED is 2 — not defined here because PHL does not register the
- * constant (nor honour any scanner mode yet); §5 tracks it with the missing JSON_*. */
+ * constant (nor honour any scanner mode yet); it is tracked with the missing JSON_*. */
 /*
  * Each parsed URI is recorded and stored in an instance of the following structure.
  */
@@ -5386,7 +5386,7 @@ struct VmUrlParts
 };
 PH7_PRIVATE int PH7_VmUrlSplit(const char *z,int n,VmUrlParts *pOut);
 /*
- * PHL_VALUE_CENSUS -- the value-primitive census (PERF.md §7, memobj.c has the
+ * PHL_VALUE_CENSUS -- the value-primitive census (memobj.c has the
  * instrument and build-aux/valuecensus.sh drives it). Off in every shipping build.
  *
  * PHL_VC_DOOR is what makes a row a call SITE: the two hot doors below are inlined
@@ -5423,7 +5423,7 @@ PH7_PRIVATE void PH7_ValueCensusNote(void *pSite,sxu32 iKind,int bWork);
  * more reference on a container, and a READ-ONLY view of the source's string bytes. It is
  * how a variable, an element and a property all reach the operand stack, and it is the
  * engine's second-most-called function -- 1.34 BILLION times on the ecosystem gate's phpcs
- * step (counted, PERF.md §2), from only 62 call sites.
+ * step (counted), from only 62 call sites.
  *
  * Inline for the same reason SySetAt, PH7_MemObjAt and PH7_MemObjRelease are: the body is
  * a dozen instructions and it lived in memobj.c while every hot caller lived elsewhere, so
@@ -5469,7 +5469,7 @@ PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj);
 /*
  * Drop whatever a value owns. THE most-called function in the engine: 2.72 billion
  * times on the ecosystem gate's phpcs step, out of ~4.5 billion calls into the four
- * value primitives together (counted, PERF.md §2).
+ * value primitives together (counted).
  *
  * 43.1% of those calls -- 1.17 billion of them -- had NOTHING TO DO, and this test is
  * why they no longer make the call. A value already typed MEMOBJ_NULL owns no hashmap,
@@ -5895,7 +5895,7 @@ PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost,int iPort,int iBacklog);
  * The `socket` context options net.c can apply, php's own option names. A NULL
  * pointer means "none of them", which is what every internal opener passes.
  * so_broadcast and ipv6_v6only describe a datagram socket and an address family
- * this build has not got (§7.4 slice-2 (a)), so they are stored on the context
+ * this build has not got (recorded), so they are stored on the context
  * and never reach a socket.
  */
 typedef struct ph7_sockopts ph7_sockopts;
@@ -6953,7 +6953,7 @@ PH7_PRIVATE ph7_value * VmNewOperandStack(ph7_vm *pVm,sxu32 nInstr);
 /* Fiber/generator trampoline state (BYTECODE stages 2-4); shared between
  * vm.c's interpreter and vm_exec_ctx.c's park/resume machinery. */
 /*
- * Boundary state of one VmByteCodeExec activation (BYTECODE.md stage 1):
+ * Boundary state of one VmByteCodeExec activation:
  * everything the executor must restore to continue an activation after a
  * nested call returns. pc/pTos are authoritative here only at activation
  * boundaries — the dispatch loop keeps them in locals for the hot path and
@@ -8019,7 +8019,7 @@ PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int iLevel,sxi
 PH7_PRIVATE sxi32 VmStringOffsetWrite(ph7_vm *pVm,ph7_value *pStr,sxi64 iRawOfft,ph7_value *pVal);
 /* Numeric-string classifier — php's is_numeric_string() grammar — shared from
  * hashmap.c (range/array_rand) for the stage-2 ZPP domain-error sweep
- * (PLAN §3.9(a)). RangeStrToNumber only ever returns ERROR/LONG/DOUBLE; the
+ * RangeStrToNumber only ever returns ERROR/LONG/DOUBLE; the
  * STRING/DIGIT codes are range()-internal endpoint tags. range() and array_rand()
  * are core builtins compiled in every mode, so these must stay outside the
  * PH7_DISABLE_DISK_IO guard. */

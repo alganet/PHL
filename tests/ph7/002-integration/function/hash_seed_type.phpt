@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 /* php 8.4 DEPRECATED a seed of any other type "because it is the same as
  * setting the seed to 0", and still hashes with 0 — so `['seed' => $input]`
  * seeds nothing whenever the value arrived as a string, which is how a seed
- * read from a config file or a query string arrives. §10 rejects what php
+ * read from a config file or a query string arrives. The scope policy rejects what php
  * deprecates, so PHL refuses it where it is written. See the zend half.
  * The refusal is worded as php words a ZPP one, down to the `given` tail
  * naming a BOOL by its value. */

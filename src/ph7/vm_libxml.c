@@ -920,7 +920,7 @@ static int vm_builtin_libxml_set_streams_context(ph7_context *pCtx,int nArg,ph7_
 /*
  * The libxml PHP-visible surface: the LibXMLError class plus the seven
  * libxml_* functions (php's eighth, libxml_disable_entity_loader(), is
- * E_DEPRECATED since 8.0 and stays removed per the scope policy §10 --
+ * E_DEPRECATED since 8.0 and stays removed under the scope policy --
  * twin-paired in 002-integration/function/libxml/).
  */
 /* LibXMLError is declared from C below, and the four libxml_* functions ARE the

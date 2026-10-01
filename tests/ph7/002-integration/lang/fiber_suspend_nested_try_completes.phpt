@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Fiber suspended inside a nested call's try/finally resumes in place: the finally sees its own live locals and the callee returns normally (php-exact; BYTECODE.md stage 4)
+Fiber suspended inside a nested call's try/finally resumes in place: the finally sees its own live locals and the callee returns normally (php-exact)
 --FILE--
 <?php
 function inner() {

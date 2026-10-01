@@ -227,7 +227,7 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
  * PH7_CTX_ERR keeps the engine's native "Error" label: many CTX_ERR
  * diagnostics are PHL-specific continue-running notices php never prints, so
  * claiming php's "Fatal error" there would mislabel them — the per-diagnostic
- * severity reclassification is the remaining §6 audit tail. Note the raw
+ * severity reclassification is the remaining audit tail. Note the raw
  * errno reaches user handlers untouched (e.g. 8192 for E_DEPRECATED); this
  * only picks the DISPLAY label.
  */
@@ -300,7 +300,7 @@ static const char * VmDiagnosticLabel(sxi32 iErr)
 /*
  * Append php's display-shape diagnostic header/trailer around a message:
  * `LABEL: <func(): >message in FILE on line LINE`. The LINE is a fixed 1
- * pending the §6 runtime-line-tracking gate (correct for `-r` one-liners;
+ * pending the runtime-line-tracking gate (correct for `-r` one-liners;
  * cross-engine tests wildcard it with %d) — the SHAPE is php's, so tests can
  * be authored cross-engine with --EXPECTF--.
  */
@@ -517,7 +517,7 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
 /*
  * TRUE when reading pVal as an `int` would lose what it holds -- the event php
  * 8.1 only DEPRECATES (`Implicit conversion from float 1.9 / float-string "1.9"
- * to int loses precision`) and §10 refuses outright.
+ * to int loses precision`) and the scope policy refuses outright.
  *
  * Two kinds of value can lose something, and php treats them as one: a FLOAT,
  * and a numeric STRING whose bytes spell a double. Which strings those are is
@@ -575,7 +575,7 @@ PH7_PRIVATE int VmValueIsLossyToInt(ph7_value *pVal)
 	/* The bounds are tested in DOUBLE space, BEFORE the cast: (sxi64)r is
 	 * undefined outside them, and a test of an undefined cast's result is one an
 	 * optimiser is entitled to delete -- which is exactly how the printf family's
-	 * PHP_INT_MIN guard disappeared (§2). NaN fails both comparisons and either
+	 * PHP_INT_MIN guard disappeared. NaN fails both comparisons and either
 	 * infinity fails one, so all three are lossy without a libm predicate. */
 	/* The cast is a no-op wherever ph7_real is the double this screen is written
 	 * for. Under PH7_OMIT_FLOATING_POINT ph7_real is sxi64, and handing an
@@ -602,8 +602,8 @@ PH7_PRIVATE sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal)
 			: "Implicit conversion from float-string to int loses precision");
 }
 /*
- * Single source of truth for the PHP call-depth cap policy (BYTECODE.md stage
- * 5). Only OP_CALL tests this — a PHP->PHP call is the sole thing that grows
+ * Single source of truth for the PHP call-depth cap policy.
+ * Only OP_CALL tests this — a PHP->PHP call is the sole thing that grows
  * nRecursionDepth. Native re-entries (eval/include, coroutine start/resume,
  * C->PHP callbacks) are bounded separately by nMaxNativeDepth in the
  * VmByteCodeExec wrapper, since PHP recursion no longer grows the C stack.
@@ -1279,7 +1279,7 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 			 * memoized below. The check can THROW, and constructing that TypeError
 			 * runs php code that used to grow (and realloc) aMemObj — so the slot is
 			 * addressed by index from here on, never through pMemObj. Redundant
-			 * since P1 (fixed segments); left for the harvest sweep (PERF.md P1). */
+			 * now the table is segmented; left for the harvest sweep. */
 			sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj,1 /* lazy */);
 			if( rcType != SXRET_OK ){
 				VmRecycleMemObj(&(*pVm),nSlot);
@@ -1909,7 +1909,7 @@ PH7_PRIVATE ph7_class *VmHintScopeClass(ph7_vm *pVm, ph7_class *pDecl, ph7_class
  * `of type ?parent` in the assign TypeError, `self` from
  * ReflectionProperty::getType(). The CHECK still resolves against the composing
  * class, which is what VmHintScopeClass answers; this is its display twin, and
- * telling the two apart is what PLAN §7.1's R7 was waiting for.
+ * telling the two apart is what the recorded reference-property row was waiting for.
  */
 PH7_PRIVATE ph7_class *VmHintScopeDeclared(ph7_class *pDecl)
 {
@@ -2302,7 +2302,7 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 			}
 			if( pValue->iFlags & MEMOBJ_REAL ){
 				ph7_real r = pValue->rVal;
-				/* Range first: `(sxi64)r` is undefined outside it (§2), and NaN
+				/* Range first: `(sxi64)r` is undefined outside it, and NaN
 				 * and the infinities are not exact ints either way. */
 				/* (double)r: see VmValueIsLossyToInt -- a no-op where ph7_real
 				 * is double, and the narrowing MSVC turns into an error under
@@ -2414,7 +2414,7 @@ PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 	}
 	if( nType == MEMOBJ_INT && VmValueIsLossyToInt(pVal) ){
 		/* php 8.1 only DEPRECATES a lossy float(-string) -> int weak coercion;
-		 * PHL rejects it (§10). SXERR_INVALID routes to the caller's TypeError,
+		 * PHL rejects it (the scope policy). SXERR_INVALID routes to the caller's TypeError,
 		 * exactly like the null / non-numeric-string cases above. An INTEGRAL
 		 * float loses nothing and coerces normally. One predicate answers this
 		 * for the typed parameters and returns that reach here, for the typed
@@ -2868,7 +2868,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		}
 	}
 	/* An `int` slot takes the same lossy refusal a typed PARAMETER and a return
-	 * take (VmCoerceScalarWeak's own rule, §10) -- and it had none of it, so this
+	 * take (VmCoerceScalarWeak's own rule, the scope policy) -- and it had none of it, so this
 	 * one weak path was storing a number the script never wrote: `$o->i = 1.9`
 	 * stored 1 in silence, `$o->i = 1e20` stored PHP_INT_MIN, and
 	 * `$o->i = "99999999999999999999"` stored PHP_INT_MAX. php refuses the last
@@ -2919,7 +2919,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
  *     caller's scope could set it (else the readonly set-scope Error),
  *   - typed properties are coerced/validated exactly as a normal store, and
  *   - an unknown name creates a dynamic property (PHP still creates it; the 8.2
- *     deprecation notice is not emitted yet — PLAN §3.9 / band A #8).
+ *     deprecation notice is not emitted yet).
  * Returns SXRET_OK, or PH7_EXCEPTION/PH7_ABORT (already thrown) on failure.
  */
 PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
@@ -3623,7 +3623,7 @@ PH7_PRIVATE sxi32 PH7_VmEmitCompileDiagnostic(ph7_vm *pVm,sxi32 iErr,const char 
 	 * older than the host's first ph7_vm_config() call and iErrMask is still
 	 * zero -- which must not be read as `error_reporting(0)`. bErrMaskSet says
 	 * whether anybody has spoken yet; until somebody has, the pre-mask
-	 * behaviour (report it) stands. Recorded in PLAN.md with the
+	 * behaviour (report it) stands. This is recorded, together with the
 	 * `-d error_reporting=0` divergence it leaves.
 	 */
 	if( pVm->bErrMaskSet && !VmErrReportWants(pVm,iErr) ){
@@ -4063,7 +4063,7 @@ PH7_PRIVATE sxu32 VmFuncRequiredArgCount(ph7_vm_func *pFunc,sxu32 *pnNonVariadic
  *   Too few arguments to function C::f(), N passed in FILE on line L and
  *   {exactly|at least} M expected
  * php embeds the CALL SITE's file+line mid-message; VmInstr carries no line
- * info yet (the runtime line-tracking gate, NEWPLAN §6), so the line is a
+ * info yet (the runtime line-tracking gate), so the line is a
  * fixed 1 — the SHAPE stays php-exact for --EXPECTF-- tests and self-heals
  * when line tracking lands. bCallSite=FALSE omits the segment entirely,
  * matching php for Fiber::start() (no userland call site in the message).
@@ -5671,7 +5671,7 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 			/* Building the trace reserves new memobjs, which used to realloc
 			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO the pool,
 			 * from PH7_ClassInstanceExtractAttrValue above). Redundant since P1
-			 * (fixed segments); left for the harvest sweep (PERF.md P1). */
+			 * (fixed segments); left for the harvest sweep. */
 			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
 			if( pAttrValue ){
 				PH7_MemObjRelease(pAttrValue);

@@ -46,7 +46,7 @@ foreach (['UTC', 'CET', 'Europe/Paris', 'America/New_York', 'Australia/Sydney'] 
         echo '  getdate  ', $g['hours'], ':', $g['minutes'], ' ', $g[0], "\n";
     }
     /* Readings no daylight switch touches, so the answer does not depend on the
-     * day this test RUNS -- see the note on mktime()'s seed in PLAN.md. */
+     * day this test RUNS, which mktime()'s seed would otherwise make it do. */
     echo '  mktime   ', mktime(12, 0, 0, 7, 15, 2010), ' ', mktime(12, 0, 0, 1, 15, 2010), "\n";
     echo '  gmmktime ', gmmktime(12, 0, 0, 7, 15, 2010), "\n";
     foreach (['2010-07-15 12:00:00', '2010-01-15 12:00:00',

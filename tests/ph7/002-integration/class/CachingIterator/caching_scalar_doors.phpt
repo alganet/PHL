@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PHL: CachingIterator's untyped $key and int $flags take §10's scalar refusals (PHL half of the twin pair)
+PHL: CachingIterator's untyped $key and int $flags take the scope policy's scalar refusals (PHL half of the twin pair)
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {
@@ -13,7 +13,7 @@ if (function_exists('zend_version')) {
 <?php
 /* php's CachingIterator declares `$key` untyped and screens it as a STRING in
  * its body, and `$flags` as an int -- so php COERCES null to "" and a
- * fractional float to an int, both with a deprecation §10 does not carry. PHL
+ * fractional float to an int, both with a deprecation the scope policy does not carry. PHL
  * refuses the same two conversions everywhere else and refuses them here, which
  * is the only difference between the engines on this class. */
 $it = new CachingIterator(new ArrayIterator(['x' => 1]),

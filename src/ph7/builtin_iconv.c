@@ -48,13 +48,13 @@
  * point (3425 rows, 967 of them the EMPTY replacement that makes a combining
  * mark disappear, plus 55 whose ISO-8859-1 answer differs from their ASCII
  * one). A code point with no row is `?`. PHL models UTF-8, ISO-8859-1 and
- * US-ASCII only (§10's scope cut, the same one mb_ carries); a php-valid name
+ * US-ASCII only (the scope cut, the same one mb_ carries); a php-valid name
  * outside those three gets php's own "Wrong encoding" warning, which is what
  * php answers for a name the platform's iconv does not have either.
  *
  * Verified differentially against php 8.5 over 16000 randomized conversions
  * (every encoding pair, every suffix spelling, well-formed and malformed
- * input). The one recorded divergence is in §7.4: an IGNORE token that is NOT
+ * input). The one recorded divergence: an IGNORE token that is NOT
  * php's suffix (`ASCII//TRANSLIT,IGNORE`, `ASCII//ignore`) reaches the
  * library's error handler, whose skip-and-continue behaviour on MALFORMED input
  * is neither documented nor stable across iconv implementations; PHL answers
@@ -711,7 +711,7 @@ static int PH7_builtin_iconv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /*
  * The `?string $encoding = null` the string family shares. A missing or null
  * argument is php's INTERNAL encoding, which is `iconv.internal_encoding`
- * falling back to `default_charset` -- and since §10 removes the deprecated
+ * falling back to `default_charset` -- and since the scope policy removes the deprecated
  * `iconv.*` directives, `default_charset` is the whole of it here.
  *
  * Only php's LENGTH cap is a diagnostic at this point (answers 0 for it). An
@@ -984,7 +984,7 @@ static int IcvStrposBody(ph7_context *pCtx,int nArg,ph7_value **apArg,int bRever
 	}
 	if( !bReverse && nArg > 2
 	 && PH7_IntArgResolve(pCtx,apArg[2],"iconv_strpos",3,"$offset","int",&iOfft) != PH7_OK ){
-		/* $offset is php's plain `int`, so a null is the deprecation §10 turns
+		/* $offset is php's plain `int`, so a null is the deprecation the scope policy turns
 		 * into a TypeError -- and it has to be REFUSED here rather than skipped,
 		 * which is what treating a null argument as "not passed" would do. */
 		return PH7_OK;
@@ -1082,7 +1082,7 @@ static int PH7_builtin_iconv_strrpos(ph7_context *pCtx,int nArg,ph7_value **apAr
  * array|string|false iconv_get_encoding(string $type = "all")
  *
  * php answers `iconv.input_encoding` / `output_encoding` / `internal_encoding`,
- * each falling back to `default_charset`. §10 removes all three of those
+ * each falling back to `default_charset`. The scope policy removes all three of those
  * directives -- every one of them is deprecated, which is also why this
  * function's SETTER counterpart is not here at all (see the twin pair in
  * 002-integration) -- so `default_charset` is what all three answer, and
@@ -1757,8 +1757,8 @@ done:
  * not coerced, it is ignored -- so those need no conversion at all and the
  * array is never touched. The other two ARE coerced, and a coercion has to go
  * through a scratch copy: `ph7_value_to_xxx()` converts the value it is handed,
- * which would rewrite the caller's own array (the defect §2 records four
- * builtins sharing).
+ * which would rewrite the caller's own array (a recorded defect, four
+ * builtins share it).
  */
 static const char * IcvOptionRawStr(ph7_value *pOpt,const char *zKey,int *pnOut)
 {
@@ -1875,7 +1875,7 @@ static int PH7_builtin_iconv_mime_encode(ph7_context *pCtx,int nArg,ph7_value **
 	 * budget as a size_t, so a NEGATIVE `line-length` is a huge one there and it
 	 * dies in the allocator instead -- "Possible integer overflow in memory
 	 * allocation"; PHL compares signed, so it lands on the same refusal every
-	 * other impossible budget gets. §7.4.) */
+	 * other impossible budget gets. Recorded.) */
 	if( (sxi64)nName + 2 >= iMaxLine || (sxi64)nOut + 12 >= iMaxLine ){
 		err = ICV_TOO_BIG;
 		goto fail;

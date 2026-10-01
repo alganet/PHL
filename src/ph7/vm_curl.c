@@ -3410,7 +3410,7 @@ static int vm_builtin_curl_getinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * CURLE_OK.
  *
  * The one callback that is NOT on this rail is the READ one: php's own answer
- * there leaves the transfer waiting for the length it declared (§7.4), so it
+ * there leaves the transfer waiting for the length it declared (recorded), so it
  * keeps its own shape.
  */
 static int CurlCbParked(phl_curl *pCurl)

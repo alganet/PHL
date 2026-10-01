@@ -57,7 +57,7 @@ struct SyBlob
                               * The flag always describes the pointer CURRENTLY in pBlob:
                               * every path that replaces the buffer sets it or clears it,
                               * and none leaves it to mean something about a previous one.
-                              * (PERF.md P12; sxmem.c's BlobSetCapacity is the one place
+                              * (sxmem.c's BlobSetCapacity is the one place
                               * that chooses.) */
 
 /* SyBlob access macros */
@@ -89,7 +89,7 @@ PH7_PRIVATE void * SySetPop(SySet *pSet);
  * INLINE for a caller it no longer has: every array element the engine read went
  * through it to reach the value table, and a bounds test plus a multiply was 1.5%
  * of an ecosystem-gate phpcs run spent almost entirely on the call and return
- * around them. That caller is PH7_MemObjAt now (PERF.md P1) and inlines for the
+ * around them. That caller is PH7_MemObjAt now, and it inlines for the
  * same reason; the remaining callers here are the bytecode and literal sets, which
  * are read far less often but pay nothing for this.
  */

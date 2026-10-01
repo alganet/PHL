@@ -18,8 +18,8 @@
  * ---------------------------------------------------------------------------
  * PHL_MEM_CENSUS -- where the heap actually IS, at the high-water mark.
  * ---------------------------------------------------------------------------
- * Compiled out entirely unless PHL_MEM_CENSUS is defined; see PERF.md §7, which
- * this exists to stop a sixth session from hand-rolling. It records every LIVE
+ * Compiled out entirely unless PHL_MEM_CENSUS is defined; build-aux/census.sh
+ * drives it, and it exists to stop a sixth hand-rolled one. It records every LIVE
  * object handed out by the public doors of this file, each tagged with the
  * return address that asked for it, and dumps a ranked table the moment the
  * recorded live bytes first cross PHL_CENSUS_AT.
@@ -526,7 +526,7 @@ PH7_PRIVATE sxu32 SyMemcpy(const void *pSrc,void *pDest,sxu32 nLen)
  * to 16: a 16-byte string body asked 48 bytes and got a 64-byte chunk, and now
  * asks 40 and gets 48. Neither the heap census nor memory_get_peak_usage() can
  * see any of it -- both count what the BACKEND handed out, and this header was
- * underneath. (PERF.md P14.)
+ * underneath.
  *
  * Alignment: what the reference word's pointer tags need is FOUR bytes
  * (VM_REF_TAG_MASK, ph7int.h), and what a ph7_value needs is eight, for its
@@ -1263,10 +1263,10 @@ PH7_PRIVATE sxi32 SyBlobReadOnly(SyBlob *pBlob,const void *pData,sxu32 nByte)
  * pBlob->pBlob still 0, and 119,727,780 of those (99.9%) ask for 256 bytes or less.
  * 72,314,251 ask for 64 or less. The pool serves exactly that size in a free-list pop,
  * and was already serving 129 million requests a run of the same shape from hashmap
- * nodes, hash entries and class instances. (PERF.md P12.)
+ * nodes, hash entries and class instances.
  *
  * Why a CAP and not the pool's own 32 KB ceiling: the pool never returns memory to the
- * OS (PERF.md §6 -- a feature for a long-running device), so one big transient blob
+ * OS (deliberately -- a feature for a long-running device), so one big transient blob
  * routed through it would hold a 32 KB bucket block for the life of the VM. A large
  * blob keeps the tracked backend, where a free is a free, and keeps realloc's ability
  * to extend in place -- which matters for the output buffer and for string building,

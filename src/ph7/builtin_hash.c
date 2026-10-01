@@ -304,7 +304,7 @@ struct HashOpts {
  * for one key and uses it only when it is an INT; an unknown key is ignored by
  * both engines.
  *
- * A seed of any other type is where they part, and §10 decides it: php 8.4
+ * A seed of any other type is where they part, and the scope policy decides it: php 8.4
  * DEPRECATED that spelling ("it is the same as setting the seed to 0") and
  * still hashes with 0, so `['seed' => $userInput]` silently seeds nothing
  * whenever the input arrived as a string. PHL rejects what php deprecates, so

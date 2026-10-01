@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 GlobIterator walks a pattern's matches through the directory machinery
 --DESCRIPTION--
 `new GlobIterator('*.php')` was a `Class not found` fatal -- the last name of
-php's SPL file trio, and the last of §4's SPL surface. The class is the whole
+php's SPL file trio, and the last of the SPL surface. The class is the whole
 DirectoryIterator machinery over a `glob://` stream, so almost none of it is new
 code; what is its own is that the constructor PREFIXES the scheme (so the path
 slot always holds `glob://pattern`, which is what the `glob` debug key shows and

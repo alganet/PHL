@@ -12,7 +12,7 @@ if (!function_exists('zend_version')) {
 --FILE--
 <?php
 /* The coercions themselves: null becomes the "" key and 1.5 becomes the int 1,
- * each with a deprecation §10 keeps off this corpus. */
+ * each with a deprecation the scope policy keeps off this corpus. */
 error_reporting(E_ALL & ~E_DEPRECATED);
 $it = new CachingIterator(new ArrayIterator(['x' => 1]),
     CachingIterator::FULL_CACHE | CachingIterator::TOSTRING_USE_KEY);

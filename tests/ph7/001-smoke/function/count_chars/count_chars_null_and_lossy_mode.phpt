@@ -13,7 +13,7 @@ if (function_exists('zend_version')) {
 <?php
 // While count_chars() was embedded PHP its parameters were untyped, so null
 // reached a (string)/(int) cast and answered. It declares php's
-// `string $string, int $mode` now, and §10 turns php's two deprecations here
+// `string $string, int $mode` now, and the scope policy turns php's two deprecations here
 // into the TypeError php will eventually raise.
 foreach ([
     'null_string' => static fn() => count_chars(null, 3),

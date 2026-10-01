@@ -1,5 +1,5 @@
 #!/bin/sh
-# PERF.md §7 -- the heap census, run end to end.
+# The heap census, run end to end.
 #
 # Answers "where are the bytes at the high-water mark, and who asked for them".
 # Five sessions hand-rolled this before it lived in the tree; the instrument

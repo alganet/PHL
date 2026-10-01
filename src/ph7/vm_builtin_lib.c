@@ -1315,7 +1315,7 @@ static sxi32 VmInstallDirectory(ph7_vm *pVm)
  * question something else asks: `#[AllowDynamicProperties]` is read by the
  * dynamic-property decision at the write site, `#[SensitiveParameter]` by the
  * backtrace builder, `#[ReturnTypeWillChange]` by php's tentative-return-type
- * check (which the §10 non-deprecated policy removed, so nothing consults it
+ * check (which the scope policy non-deprecated policy removed, so nothing consults it
  * here). They still have to EXIST: a program that spells one and then asks
  * `getAttributes()[0]->newInstance()` gets php's object, not
  * `Attribute class "AllowDynamicProperties" not found`.

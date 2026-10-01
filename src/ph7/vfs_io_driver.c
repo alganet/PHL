@@ -1269,7 +1269,7 @@ static sxu32 ShellMaxCmdLen(void)
  *
  *   POSIX    php picks LC_CTYPE up from the environment at startup, so the
  *            everyday answer is a UTF-8 one — a well-formed sequence rides
- *            through and an ill-formed byte is dropped. PHL is UTF-8-only (§10)
+ *            through and an ill-formed byte is dropped. PHL is UTF-8-only (the scope policy)
  *            and has no setlocale, so PH7_Utf8ReadStrict IS that reader.
  *            (php in the "C" locale glibc falls back to drops every byte >= 0x80
  *            instead, which is why the corpus guards this half on the oracle's

@@ -5,8 +5,8 @@
 #include "ph7int.h"
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
- * mb_* multibyte string functions, UTF-8 only (NEWPLAN band D; the recorded
- * §10 scope cut — php's full encoding zoo is out). Codepoint semantics match
+ * mb_* multibyte string functions, UTF-8 only (the recorded
+ * scope cut — php's full encoding zoo is out). Codepoint semantics match
  * php 8.5 byte-for-byte for UTF-8 input; case mapping is algorithmic over
  * ASCII, Latin-1, Latin Extended-A, Greek and Cyrillic (full Unicode tables
  * recorded as a residual — unmapped codepoints pass through unchanged).
@@ -691,7 +691,7 @@ static int MbCodeWidth(sxu32 cp)
 /* --- Encodings and the character walk ---------------------------------- */
 
 /*
- * The three encodings PHL models (the §10 scope cut — php's full encoding zoo
+ * The three encodings PHL models (the scope cut — php's full encoding zoo
  * is out; a php-VALID name PHL does not model, e.g. SJIS, raises the same
  * ValueError php uses for a truly invalid name). They differ in exactly two
  * ways, and both matter to every function here: how many BYTES a character
@@ -2371,7 +2371,7 @@ static int PH7_builtin_mb_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * mb_detect_encoding(string $string, array|string|null $encodings = null,
  *                    bool $strict = false): string|false
  *
- * PHL's detectable set is ASCII, UTF-8 and ISO-8859-1 (the §10 scope cut).
+ * PHL's detectable set is ASCII, UTF-8 and ISO-8859-1 (the scope cut).
  * php's default detect order is exactly ASCII,UTF-8, so the null/default path
  * is byte-identical. A candidate encoding php supports but PHL does not (e.g.
  * SJIS) raises the same ValueError php uses for a truly invalid name — a
@@ -2672,7 +2672,7 @@ static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value *
 /*
  * array mb_list_encodings(): the encodings this engine models, in php's own
  * spelling and php's own order for the five they share. php answers 79 names;
- * this is the §10 scope cut, spelled out rather than hidden -- a program that asks
+ * this is the scope cut, spelled out rather than hidden -- a program that asks
  * (Respect\Validation's Charset validator does, to screen its argument) gets a
  * truthful list of what will actually work here.
  */
@@ -2789,7 +2789,7 @@ static int PH7_builtin_mb_detect_order(ph7_context *pCtx,int nArg,ph7_value **ap
  *                     array|string|null $from_encoding = null): array|string
  *
  * PHL's encoding scope is UTF-8, the byte encodings (8bit/binary/ASCII) and
- * ISO-8859-1 (the §10 scope cut — php's full encoding zoo is out; a php-valid
+ * ISO-8859-1 (the scope cut — php's full encoding zoo is out; a php-valid
  * name PHL does not model, e.g. SJIS, raises the same ValueError php uses for a
  * truly invalid name). ISO-8859-1 is carried because it is the documented
  * replacement path for the removed utf8_encode()/utf8_decode() builtins:

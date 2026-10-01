@@ -7,7 +7,7 @@ An `int` builtin parameter refuses a value no int can hold, whichever builtin it
 <?php
 // php's ZPP refuses a float (or float-string) outside the signed 64-bit range,
 // NaN, an infinity, and an integer string too wide to fit -- with a TypeError,
-// not a deprecation, so this half is php-exact rather than a §10 divergence.
+// not a deprecation, so this half is php-exact rather than a scope-policy divergence.
 // PHL only asked the question in the ~30 builtins that called the shared helper
 // from their own body, so the rest narrowed silently: dechex(1e19) answered the
 // hex of PHP_INT_MIN and array_fill(1e19,1,0) filled from it.

@@ -11,7 +11,7 @@ A generator's own trace frame names the site that RESUMED it, and its receiver
  * the include stack happened to top out at. php names the site the generator is
  * being RESUMED from, not where it was created: the `foreach` for the first
  * step and each one after it, the `yield from` line for a delegate. (A resume
- * driven by an explicit ->current()/->next() call is PLAN.md F40's shape
+ * driven by an explicit ->current()/->next() call is a different shape
  * instead — php interposes a frame for the internal method and leaves the body
  * frame locationless — so those spellings are not pinned here.) */
 function gtsShow($tag)
@@ -59,7 +59,7 @@ function gtsObjects()
     foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | DEBUG_BACKTRACE_PROVIDE_OBJECT) as $f) {
         if (($f['file'] ?? null) !== __FILE__ && isset($f['file'])) { continue; }
         /* php gives the INTERNAL Generator method its own frame and PHL has no
-         * frames for internal functions at all (PLAN.md F40) — a gap of its own,
+         * frames for internal functions at all — a gap of its own,
          * not this one, so leave those out. */
         if (($f['class'] ?? null) === 'Generator') { continue; }
         $out .= ' ' . ($f['class'] ?? '-') . '/' . $f['function']

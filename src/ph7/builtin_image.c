@@ -2305,7 +2305,7 @@ static int ImgReadAny(ph7_context *pCtx,ImgReader *p,const char *zInput,int nInp
 	case PH7_IMG_SWF:     bHave = ImgHandleSwf(p,&sInfo);           break;
 	case PH7_IMG_SWC:
 		/* php reads a compressed SWF through zlib and says so when the build it
-		 * runs on has none. This engine links no zlib (a §10 scope cut, so the
+		 * runs on has none. This engine links no zlib (a scope cut, so the
 		 * `compress.zlib` stream filter is absent for the same reason), which
 		 * makes php's own no-zlib sentence the honest answer rather than a
 		 * stub: the TYPE is still IMAGETYPE_SWC and the size is still refused. */

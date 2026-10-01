@@ -7,7 +7,7 @@ SPDX-License-Identifier: BSD-3-Clause
 <?php
 // Both engines REJECT a bare `static`, at different stages: php at PARSE time
 // ("syntax error, unexpected token ..., expecting \"::\""), PHL at RUNTIME as an
-// undefined constant. Recorded in NEWPLAN section 7.
+// undefined constant. A recorded divergence.
 if (function_exists('zend_version')) echo 'skip php rejects bare static at parse time, PHL at runtime';
 ?>
 --FILE--

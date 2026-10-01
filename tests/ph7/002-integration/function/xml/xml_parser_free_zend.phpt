@@ -2,11 +2,11 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: xml_parser_free() deprecates and answers true (php half)
+POLICY DIVERGENCE the scope policy: xml_parser_free() deprecates and answers true (php half)
 --DESCRIPTION--
 The php half of xml_parser_free.phpt: php 8.5 emits "Function xml_parser_free()
 is deprecated since 8.5, as it has no effect since PHP 8.0" and answers true.
-PHL removes the name outright (§10).
+PHL removes the name outright (the scope policy).
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

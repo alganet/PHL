@@ -238,7 +238,7 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 		 * (VmLocalExec -> VmByteCodeExec) — a native re-entry bounded by
 		 * nMaxNativeDepth in the wrapper, so a recursive include/eval hits the
 		 * native-nesting fatal instead of overflowing the C stack. The PHP
-		 * call-depth cap is OP_CALL-only (BYTECODE.md stage 5).
+		 * call-depth cap is OP_CALL-only.
 		 *
 		 * The nested exec shares the caller's VM frame, so a throw the CALLER's own
 		 * try catches runs that catch IN PLACE and comes back as a status — which was

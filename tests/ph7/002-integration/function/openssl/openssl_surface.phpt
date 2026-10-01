@@ -16,7 +16,7 @@ if (function_exists('openssl_password_hash')) {
 /* The API half of ext/openssl: what the extension IS. Its ANSWERS are the four
  * tests beside this one. Three names are filtered out of every listing below --
  * openssl_x509_free, openssl_pkey_free and openssl_free_key, which php
- * deprecates and §10 removes, so their absence is asserted in
+ * deprecates and the scope policy removes, so their absence is asserted in
  * openssl_policy_divergence.phpt rather than here; and openssl.libctx, whose
  * choice this build does not make. Nothing prints the LIBRARY's version or its
  * algorithm tables: both move with the OpenSSL a build links. */

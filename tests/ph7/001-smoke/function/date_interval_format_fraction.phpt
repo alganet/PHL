@@ -11,11 +11,11 @@ A DateInterval fraction is truncated into microseconds
  * range WRAPS the way every other cast does (a NaN or an infinity is 0).
  *
  * PHL rounded instead (0.1234567 printed 123457), saturated at PHP_INT_MIN for
- * everything out of range -- through a C cast that is undefined there, the §2
+ * everything out of range -- through a C cast that is undefined there, the recorded
  * hazard -- and %F narrowed the result to an `int`, so any microsecond count
  * past INT_MAX printed as "000000". The assignment is suppressed because php
  * raises the cast warning THERE, where it stores the microseconds; PHL keeps
- * the float and converts on format (§7.4). */
+ * the float and converts on format (recorded). */
 $i = new DateInterval('PT0S');
 foreach ([0.0, 0.000005, 0.00005, -0.000005, 0.5, -0.75, 0.999999, 0.1234567,
           5.0E-7, 12.5, 1.9999999, 1.0E+13, 1.0E+19, -1.0E+19, NAN, INF, -INF,

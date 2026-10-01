@@ -13,7 +13,7 @@ A float outside the int64 range wraps and warns at every cast site
  *
  * The warning is php's CAST diagnostic, not its lossy-conversion DEPRECATION:
  * an explicit cast never deprecates, and the implicit sites that do (`1e19|0`,
- * `$a[1e19]`) are §10's TypeError here, before any cast happens. */
+ * `$a[1e19]`) are the scope policy's TypeError here, before any cast happens. */
 set_error_handler(function ($n, $s) { echo "  W($n): $s\n"; return true; });
 $cases = [
     "2**63 exactly"   => 9.2233720368547758E+18,

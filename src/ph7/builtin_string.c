@@ -2401,7 +2401,7 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 	/* Extract the string representation of the entry value, USER-VISIBLY: an
 	 * element that is itself an array renders as "Array" and warns, and one that
 	 * is an object with no __toString() is php's catchable Error (it used to
-	 * render as the literal "Object", §2). The walk cannot return a status, so
+	 * render as the literal "Object"). The walk cannot return a status, so
 	 * park it on the context struct and abort. */
 	{
 		sxi32 rcSv = PH7_ValueToStringUV(pData->pCtx,pValue,&zData,&nLen);
@@ -2487,7 +2487,7 @@ PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( !ph7_value_is_array(apArg[0]) ){
 		if( apArg[0]->iFlags & MEMOBJ_NULL ){
 			/* php only DEPRECATES null for the union parameter and coerces it to
-			 * ""; PHL rejects it (§10 null-strictness), naming php's DECLARED type
+			 * ""; PHL rejects it (the null-strictness policy), naming php's DECLARED type
 			 * -- the one case where `array|string` is the right wording, because
 			 * php never narrows the union for a value it accepts. */
 			return PH7_VmThrowException(pCtx,"TypeError",
@@ -4650,11 +4650,11 @@ PH7_PRIVATE int PH7_builtin_count_chars(ph7_context *pCtx,int nArg,ph7_value **a
 		/* php declares `int $mode`; the shared screen refuses the values no
 		 * coercion can reach (array, object, resource, null), leaving the string
 		 * and float narrowing to the builtin -- both of which php only DEPRECATES
-		 * and PHL rejects (§10). */
+		 * and PHL rejects (the scope policy). */
 		if( ph7_value_is_string(apArg[1]) ){
 			/* php wants the WHOLE string to be numeric (surrounding whitespace
 			 * aside): "2abc" and "0x2" are TypeErrors, not 2. A float-shaped one
-			 * that would LOSE something is §10's refusal of a deprecation. */
+			 * that would LOSE something is the scope policy's refusal of a deprecation. */
 			double d;
 			if( !PH7_MemObjStringIsNumeric(apArg[1]) ){
 				return PH7_VmThrowException(pCtx,"TypeError",
@@ -5006,7 +5006,7 @@ PH7_PRIVATE int PH7_builtin_strpbrk(ph7_context *pCtx,int nArg,ph7_value **apArg
  *   - the input was walked as a NUL-terminated C string, so soundex("a\0b")
  *     stopped at the NUL (A000) where php walks the whole php string (A100).
  *
- *  Classification is ASCII-only, matching php's own A-Z table (§7's locale
+ *  Classification is ASCII-only, matching php's own A-Z table (the locale
  *  dependence family: the old code asked libc's isalpha() through SyisAlpha,
  *  which answers differently under a non-C LC_CTYPE).
  */
@@ -5096,7 +5096,7 @@ PH7_PRIVATE int PH7_builtin_str_rot13(ph7_context *pCtx,int nArg,ph7_value **apA
 static const char aMetaCode[26] = {
 	1,16,4,16,9,2,4,16,9,2,0,2,2,2,1,4,0,2,4,4,1,0,0,0,8,0
 };
-/* Classification is ASCII-only, php's own table (§7 locale-dependence family:
+/* Classification is ASCII-only, php's own table (the locale-dependence family:
  * libc's isalpha()/toupper() answer differently under a non-C LC_CTYPE). */
 #define META_IS_ALPHA(c) (((c) >= 'A' && (c) <= 'Z') || ((c) >= 'a' && (c) <= 'z'))
 #define META_UP(c)       (((c) >= 'a' && (c) <= 'z') ? (char)((c) - ('a' - 'A')) : (char)(c))

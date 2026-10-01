@@ -631,7 +631,7 @@ static int VmMagicRmwEligible(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *
  * __set with the computed value.
  *
  * BOTH accessors are required, which is php's own split: with only __get php
- * goes on to CREATE the property (PHL's §10 policy refuses a dynamic property),
+ * goes on to CREATE the property (PHL's scope policy refuses a dynamic property),
  * and with only __set it warns `Undefined property` and reads null — neither is
  * this path.
  *
@@ -1170,7 +1170,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				 * The name is hashed ONCE, here, and reused by both questions
 				 * underneath -- the scope's private-name screen and the slot probe
 				 * on this object -- because every property table shares one hash
-				 * function and hashing is what a lookup spends (PERF.md §5). */
+				 * function and hashing is what a lookup spends. */
 				pEntry = PH7_ClassInstanceScopedAttrEntry(&(*pVm),pThis,sName.zString,sName.nByte,
 					sName.nByte > 0 ? SyHashKey(&pThis->hAttr,(const void *)sName.zString,sName.nByte) : 0);
 				if( pEntry ){
@@ -1196,7 +1196,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * `Accessing static property C::$s as non static` — and then treats
 					 * the name as an ordinary MISSING property: a read warns and answers
 					 * null, isset() is false, a write goes to a dynamic property (which
-					 * PHL rejects by the §10 policy, like any other undeclared write).
+					 * PHL rejects by the scope policy, like any other undeclared write).
 					 * PHL's instance table carries an entry for every declared member
 					 * (statics share the class slot), so `$o->s` used to READ and — far
 					 * worse — WRITE the class's own static in silence. isset()/empty()
@@ -1473,7 +1473,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * without a struct, and nothing is created; otherwise php's
 							 * own write goes to the standard handler and CREATES a
 							 * dynamic property beside the struct, which PHL refuses
-							 * (§10) -- so fall through to the dynamic branch and let it.
+							 * (the scope policy) -- so fall through to the dynamic branch and let it.
 							 * Once the constructor has installed the set, an `unset()`
 							 * and a re-write are the ordinary declared path again. */
 							if( pDecl->iFlags & PH7_CLASS_ATTR_NATIVE_NOWRITE ){

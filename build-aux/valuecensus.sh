@@ -1,11 +1,11 @@
 #!/bin/sh
-# PERF.md §7 -- the value-primitive census, run end to end.
+# The value-primitive census, run end to end.
 #
 # Answers "which CALL SITE spends the engine's value primitives, and how many of
 # its calls had anything to DO". PH7_MemObjRelease is the most-called function in
 # the engine -- 2.72 billion calls on the phpcs step of record -- and it appears in
 # NEITHER of the other two censuses, because it allocates nothing and looks nothing
-# up. That is exactly why PERF.md P10 had no heading for three sessions.
+# up, which is why it stayed invisible to both for three sessions.
 #
 # The instrument is in src/ph7/memobj.c behind -DPHL_VALUE_CENSUS (the doors it
 # counts are in src/ph7/ph7int.h); this script builds it into its own target, runs
@@ -126,7 +126,7 @@ LC_ALL=C awk -v top="$TOP" -v caller="${CALLER_CFLAGS:+1}" '
 		}
 		printf "\n  work = the call had something to do: a release that owned something, a\n"
 		printf "  load/store that took a container reference. A large site at a low work\n"
-		printf "  rate is a slot that did not need to exist -- PERF.md P10 item 1.\n"
+		printf "  rate is a slot that did not need to exist.\n"
 		if (caller) printf "  Rows name the CALLER of the function that called (-c), not the line.\n"
 		printf "\n"
 	}

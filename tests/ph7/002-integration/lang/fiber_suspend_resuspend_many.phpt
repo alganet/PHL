@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Many deep re-suspend cycles from a nested call complete without leaking recursion depth (php-exact; BYTECODE.md stage 4 re-suspend accounting)
+Many deep re-suspend cycles from a nested call complete without leaking recursion depth (php-exact; re-suspend accounting)
 --FILE--
 <?php
 function worker() {

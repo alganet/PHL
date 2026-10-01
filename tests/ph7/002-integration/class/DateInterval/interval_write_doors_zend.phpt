@@ -13,7 +13,7 @@ if (!function_exists('zend_version')) {
 <?php
 /* the deprecated dynamic property the write really creates here: `days` still
  * reads false from the struct behind it, while `from_string` and any other name
- * answer the new one. The deprecation itself is muted -- §10 keeps E_DEPRECATED
+ * answer the new one. The deprecation itself is muted -- the scope policy keeps E_DEPRECATED
  * off this corpus, and the notice is not what the pair is pinning. */
 error_reporting(E_ALL & ~E_DEPRECATED);
 $i = new DateInterval('PT0S');

@@ -143,7 +143,7 @@ static int VmSpreadEnsureCapacity(ph7_vm *pVm, sxu32 nEntry,
 }
 /*
  * Terminal teardown of one VmByteCodeExec activation — the former
- * Done/Suspend/Abort/Exception label bodies, one home (BYTECODE.md stage 1).
+ * Done/Suspend/Abort/Exception label bodies, one home.
  *
  * SXRET_OK (Done): whenever the REAL body returns, its pending-return slot
  * must be empty — the materialize at OP_DONE/OP_POP_EXCEPTION already moved
@@ -209,7 +209,7 @@ static void VmDiscardFinallyActions(ph7_vm *pVm, sxu32 nBase)
  * activation: pop-time accounting (recursion depth, aSelf), by-ref-return
  * fixup, callee-threw routing (inline resume / recorded resume / propagate),
  * operand-stack free and frame teardown. Extracted verbatim from the OP_CALL
- * epilogue (BYTECODE.md stage 1) so the stage-2 trampoline can run the same
+ * epilogue so the trampoline that pops records can run the same
  * code when a record is popped at OP_DONE instead of after a native return.
  * pCaller->pc / pCaller->pTos are authoritative across this boundary; the
  * dispatch loop syncs its locals around the call. Returns PH7_OK (continue
@@ -239,7 +239,7 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 		 * php's own words -- see the terminal OP_DONE.
 		 * The pin is what a refcount would be: it never comes back, so a by-ref
 		 * return naming a fresh frame slot retains it for the run (~0.6 KB a call;
-		 * PLAN.md 7.1 measures it). A slot that already outlives the frame -- a
+		 * measured at ~0.6 KB). A slot that already outlives the frame -- a
 		 * static, a global, a property -- is pinned harmlessly: the flag only stops
 		 * its INDEX being recycled, and `unset($GLOBALS['G'])` still answers php's. */
 		if( pCallee->nLastRef != SXU32_HIGH ){
@@ -866,7 +866,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 		 * `__get` ALONE decides it, which is php's own test
 		 * (zend_std_get_property_ptr_ptr consults `ce->__get` and nothing else): a
 		 * class carrying only `__set` has no way to ANSWER the fetch, so php falls
-		 * through and creates an ordinary dynamic property instead — which is §10's
+		 * through and creates an ordinary dynamic property instead — which is the scope policy's
 		 * refusal here, not this notice.
 		 *
 		 * The notice is the OVERLOAD's, though, not the fetch's: a native class's
@@ -896,7 +896,7 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 				*pbNoBind = 1;
 				return VmThrowNativeNoWrite(&(*pVm),pClass,pDecl);
 			}
-			pDecl = 0;   /* never held: php creates a dynamic property, PHL refuses (§10) */
+			pDecl = 0;   /* never held: php creates a dynamic property, PHL refuses (the scope policy) */
 		}
 		if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 			VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pAttr);
@@ -1925,7 +1925,7 @@ static sxi32 VmByteCodeExecBody(
 	VmCallFrame *pCallTop = 0; /* Top of this invocation's in-loop call-record
 	                            * stack (BYTECODE stage 2); NULL = executing the
 	                            * bottom activation. */
-	VmExecState sState; /* This activation's boundary state (BYTECODE.md stage 1):
+	VmExecState sState; /* This activation's boundary state:
 	                     * everything a suspended/nested activation must restore.
 	                     * pc/pTos stay in locals for the hot loop and are synced
 	                     * into sState only around the call epilogue (stage 2 turns
@@ -2681,7 +2681,7 @@ case PH7_OP_CVT_STR:
 	}
 #endif
 	/* (string) cast + string interpolation "$arr": php's user-visible
-	 * array->string warning site, and the not-stringable-object throw (§2). */
+	 * array->string warning site, and the not-stringable-object throw. */
 	{
 		sxi32 rcSv = PH7_MemObjToStringUV(pTos);
 		PH7_DISPATCH_TOSTRING_RC(rcSv)
@@ -2986,7 +2986,7 @@ case PH7_OP_LOAD:{
 			goto Abort;
 		}
 #endif
-		/* Force a string cast — variable-variable name $$arr (user-visible, §2) */
+		/* Force a string cast — variable-variable name $$arr (user-visible) */
 		{
 			sxi32 rcSv = PH7_MemObjToStringUV(pTos);
 			PH7_DISPATCH_TOSTRING_RC(rcSv)
@@ -3460,7 +3460,7 @@ case PH7_OP_STORE: {
 		break;
 	}else if( pInstr->p3 == 0 ){
 		/* Take the variable name from the next on the stack (user-visible: a
-		 * variable-variable NAME $$arr warns on an array, §2) */
+		 * variable-variable NAME $$arr warns on an array) */
 		{
 			sxi32 rcSv = PH7_MemObjToStringUV(pTos);
 			PH7_DISPATCH_TOSTRING_RC(rcSv)
@@ -4346,7 +4346,7 @@ case PH7_OP_DIV_STORE:{
 		/* php's `/` answers an INT when both operands are ints and the division is
 		 * exact (`6/3 === 2`, not `2.0`), and `$x /= $y` is that same operator: php
 		 * has one division and the compound form only decides where the answer goes.
-		 * OP_DIV grew the rule (§2's int-boundary work) and this arm, a separate copy
+		 * OP_DIV grew the rule (the int-boundary work) and this arm, a separate copy
 		 * of it, did not — so `$x = 6; $x /= 3;` left a FLOAT where `$x = $x / 3` left
 		 * an int, visible through `===`, `var_dump`, `json_encode` and `is_int`.
 		 * The divisor is screened BEFORE `ia % ib`: x86 computes the overflowing
@@ -4651,7 +4651,7 @@ case PH7_OP_CAT:{
 		goto Abort;
 	}
 #endif
-	/* Force a string cast (user-visible: warns on an array operand, §2).
+	/* Force a string cast (user-visible: warns on an array operand).
 	 * php coerces the operands left to right, so the leftmost not-stringable
 	 * object is the one that throws. */
 	{
@@ -4701,7 +4701,7 @@ case PH7_OP_CAT_STORE:{
 #endif
 	/* php refuses a compound assignment THROUGH a string offset. */
 	PH7_REJECT_STROFFSET_ASSIGNOP()
-	/* The right operand must be a string to append it (user-visible, §2) */
+	/* The right operand must be a string to append it (user-visible) */
 	{
 		sxi32 rcSv = PH7_MemObjToStringUV(pNos);
 		PH7_DISPATCH_TOSTRING_RC(rcSv)
@@ -4760,7 +4760,7 @@ case PH7_OP_CAT_STORE:{
 		break;
 	}
 	/* Slow path: read-only/typed/constant-attribute/self-aliasing lvalues. */
-	/* Force a string cast (user-visible: warns if the lvalue is an array, §2) */
+	/* Force a string cast (user-visible: warns if the lvalue is an array) */
 	{
 		sxi32 rcSv = PH7_MemObjToStringUV(pTos);
 		PH7_DISPATCH_TOSTRING_RC(rcSv)
@@ -5265,7 +5265,7 @@ case PH7_OP_UPLINK: {
 		sxi32 rcSv = SXRET_OK;
 		/* Perform the link */
 		while( pLink <= pTos ){
-			/* Force a string cast — global $$arr link name (user-visible, §2) */
+			/* Force a string cast — global $$arr link name (user-visible) */
 			rcSv = PH7_MemObjToStringUV(pLink);
 			if( rcSv != SXRET_OK ){
 				break;
@@ -6602,8 +6602,8 @@ case PH7_OP_CALL: {
 			 *
 			 * call_user_func(), array_map() and the rest of the C-callback doors
 			 * still reach __invoke through VmCallObjectInvoke, and those ARE the
-			 * internal boundaries php's fibers cross and PHL's do not (PLAN.md,
-			 * "Generators / fibers"). This changes only the dispatch a call site
+			 * internal boundaries php's fibers cross and PHL's do not (a recorded
+			 * generator/fiber divergence). This changes only the dispatch a call site
 			 * SPELLS as `$o(...)`. */
 			ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
 			ph7_class_method *pInvMeth = pThis
@@ -6970,7 +6970,7 @@ CalleeByName:
 		 * consumed exactly once, against the correct base. */
 		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
 			nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
-		/* Check the PHP call-depth cap (the sole site — BYTECODE.md stage 5).
+		/* Check the PHP call-depth cap (the sole site).
 		 * Default is unbounded (heap-bound recursion, decoupled from the C stack
 		 * by the stage-2 trampoline); the C stack is guarded separately by
 		 * nMaxNativeDepth. This fires only when an embedder configures a cap, and
@@ -7588,7 +7588,7 @@ CalleeByName:
 					/* Type checking (union / class / pseudo / scalar, with weak-mode
 					 * coercion and whole-real materialization in place): the shared
 					 * per-argument helper — one implementation for both OP_CALL
-					 * paths and the generator/fiber binder (§7.1(f) fold). */
+					 * paths and the generator/fiber binder (a recorded fold). */
 					iArgPreFlags = pVal->iFlags; /* did the check COERCE it? (by-ref write-back) */
 					rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pVal,bCallIsStrict,pSelfHint);
 					if( rc != SXRET_OK ){
@@ -7743,7 +7743,7 @@ CalleeByName:
 					 * PH7_ReserveMemObj, which used to reallocate pVm->aMemObj and
 					 * dangle pObj. Redundant since P1 -- the pool's segments are
 					 * fixed, so a slot's address never moves. Left for the harvest
-					 * sweep (PERF.md P1). */
+					 * sweep. */
 					sxu32 nVariadicSlot;
 					PH7_MemObjToHashmap(pObj);
 					nVariadicSlot = pObj->nIdx;
@@ -7884,7 +7884,7 @@ CalleeByName:
 					/* Capture the slot index now: PH7_HashmapInsert below can PH7_ReserveMemObj,
 					 * which used to reallocate pVm->aMemObj and dangle pObj (a real UAF, masked by
 					 * the pool allocator). Redundant since P1 -- the pool's segments are fixed, so
-					 * a slot's address never moves. Left for the harvest sweep (PERF.md P1). */
+					 * a slot's address never moves. Left for the harvest sweep. */
 					sxu32 nVariadicIdx;
 					/* Initialize as empty array */
 					PH7_MemObjToHashmap(pObj);
@@ -7964,7 +7964,7 @@ CalleeByName:
 				 * coercion and whole-real materialization in place — nullable
 				 * types (?type) let null through): the shared per-argument
 				 * helper, one implementation for both OP_CALL paths and the
-				 * generator/fiber binder (§7.1(f) fold). */
+				 * generator/fiber binder (a recorded fold). */
 				iArgPreFlags = pArg->iFlags; /* did the check COERCE it? (by-ref write-back) */
 				rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pArg,bCallIsStrict,pSelfHint);
 				if( rc != SXRET_OK ){
@@ -8221,7 +8221,7 @@ CalleeByName:
 		pTos = &pTos[-nCallArgs];
 		/* Allocate an operand stack (via the recycling allocator) and evaluate the
 		 * function body. Size it to a tight static bound when the body is statically
-		 * modelable (BYTECODE.md stage 7) — the big memory win for deep recursion,
+		 * modelable — the big memory win for deep recursion,
 		 * where one such stack lives per frame — falling back to the safe
 		 * instruction-count bound otherwise.
 		 *
@@ -8300,7 +8300,7 @@ SkipFuncBody:
 			}
 			if( pRec == 0 ){
 				/* OOM: undo the push-time accounting, tear the call down and
-				 * raise the non-catchable fatal (the §3.1 OOM convention —
+				 * raise the non-catchable fatal (the OOM convention —
 				 * never a silent NULL). */
 				pVm->nRecursionDepth--;
 				if( pSelf ){
@@ -8846,7 +8846,7 @@ Suspend:
 			 * pc/nTos into the ctx, so the lossy body-level fallback would resume
 			 * the callee's pc against the body stack — silent corruption, exactly
 			 * what stage 4 removed. Take the non-catchable OOM fatal instead (the
-			 * §3.1 convention shared with the stage-2 record-alloc OOM site). */
+			 * the convention shared with the stage-2 record-alloc OOM site). */
 			PH7_VmMemoryError(&(*pVm));
 			rc = PH7_ABORT;
 			goto Unwind;

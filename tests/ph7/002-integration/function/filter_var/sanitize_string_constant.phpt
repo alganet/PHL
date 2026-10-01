@@ -12,7 +12,7 @@ if (function_exists('zend_version')) {
 --FILE--
 <?php
 /* php 8.1 deprecated the two CONSTANT names for filter id 513 ("use
- * htmlspecialchars() instead"); §10 rejects php's deprecated surface loudly, so
+ * htmlspecialchars() instead"); the scope policy rejects php's deprecated surface loudly, so
  * this engine does not define them. What php deprecated is the name, not the
  * filter, so the filter is here and answers exactly what php's does — by id,
  * and (once filter_id() exists) by name. See the zend half. */

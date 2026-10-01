@@ -12,7 +12,7 @@
  * doubles, ...). Naming one then costs a -Wdeprecated-declarations, which this
  * build turns into an error under -Werror / /WX -- and php defines every one of
  * them, so the table cannot simply drop them: they are the LIBRARY's
- * deprecations, not php's, and §10 only removes what PHP deprecates. This is
+ * deprecations, not php's, and the scope policy only removes what PHP deprecates. This is
  * libcurl's own documented opt-out, and it is portable across gcc, clang and
  * MSVC in a way a per-compiler pragma is not.
  */

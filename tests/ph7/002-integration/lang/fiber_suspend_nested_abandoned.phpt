@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-A fiber abandoned while suspended inside a nested call is cleaned up without leak or crash (php-exact output; BYTECODE.md stage 4 VmFreeParkedSegment)
+A fiber abandoned while suspended inside a nested call is cleaned up without leak or crash (php-exact output; VmFreeParkedSegment)
 --FILE--
 <?php
 function inner() {

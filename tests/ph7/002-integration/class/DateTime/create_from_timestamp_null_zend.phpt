@@ -11,7 +11,7 @@ if (!function_exists('zend_version')) {
 ?>
 --FILE--
 <?php
-/* php's own answer for the argument §10 refuses: an E_DEPRECATED (muted here,
+/* php's own answer for the argument the scope policy refuses: an E_DEPRECATED (muted here,
  * as everywhere in this corpus) and the epoch. */
 error_reporting(E_ALL & ~E_DEPRECATED);
 date_default_timezone_set('UTC');

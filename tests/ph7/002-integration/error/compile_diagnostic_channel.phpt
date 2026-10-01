@@ -32,7 +32,7 @@ that buffer under it.
 
 One window is left, and it is structural: `ph7_compile_file` CREATES the VM,
 so the MAIN script's own compile runs before the host installs a reporting
-level and its diagnostics are reported unmasked (PLAN.md).
+level and its diagnostics are reported unmasked.
 --FILE--
 <?php
 $dir = sys_get_temp_dir() . '/phl-compile-diag-' . getmypid();

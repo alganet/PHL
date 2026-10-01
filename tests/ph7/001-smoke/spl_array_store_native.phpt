@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 ArrayIterator and ArrayObject are C classes, and the PHL-only trait is gone
 --DESCRIPTION--
 The two shared one implementation through `trait __SplStoreT`, the last PHL-only
-trait and the last §4 name that was not a function. php shares nothing between
+trait and the last native-class name that was not a function. php shares nothing between
 them at the type level, so the C version does not either: one set of bodies,
 named by both classes, no common parent and the exact interface list php has.
 Converting DECLARED the parameters — `object|array $array`, `int $flags`,

@@ -8,7 +8,7 @@ php 8 makes an include/require whose compile fails throw a ParseError naming the
 OFFENDING file and line. This engine printed the diagnostic, answered false and
 CARRIED ON -- so the half-compiled unit stayed behind for later code to trip over,
 which is how a parse error deep in a class body surfaced as a wrong runtime answer
-somewhere else entirely (ECOSYSTEM.md F30/F14).
+somewhere else entirely.
 --FILE--
 <?php
 echo "before\n";

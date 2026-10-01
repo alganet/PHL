@@ -1690,7 +1690,7 @@ PH7_PRIVATE int PH7_builtin_bcscale(ph7_context *pCtx,int nArg,ph7_value **apArg
  *     ordinary `Unsupported operand types`.
  *
  * php reaches its `int` arm for a FLOAT operand through an implicit conversion
- * it DEPRECATES when precision is lost. §10 refuses that: an integral float
+ * it DEPRECATES when precision is lost. The scope policy refuses that: an integral float
  * converts (2.0 is 2), and every other one -- 1.5, NAN, INF, 1e20 -- is the
  * TypeError php itself raises for the three it cannot convert either.
  */
@@ -1767,7 +1767,7 @@ static int BcNumberOperand(ph7_vm *pVm,ph7_value *pVal,BcNum *pOut,
 	}else if( (pVal->iFlags & MEMOBJ_REAL) != 0 ){
 #ifndef PH7_OMIT_FLOATING_POINT
 		/* php's `int` arm, reached by an implicit conversion it deprecates when
-		 * anything is lost. An integral float in range converts; §10 refuses the
+		 * anything is lost. An integral float in range converts; the scope policy refuses the
 		 * rest, which is also what php does with NAN, INF and 1e20. */
 		double d = (double)pVal->rVal;
 		if( PH7_RealFitsInt64(d) && d == (double)(sxi64)d ){
@@ -2049,7 +2049,7 @@ static int BcNumberBool(ph7_vm *pVm,ph7_class_instance *pThis)
  * NULL and BOOL are left alone on purpose -- php decides those pairs BEFORE it
  * asks a handler, by converting both sides to bool, so `$n == true` is true for
  * every Number including zero. A FLOAT reaches php's int arm through the same
- * deprecated conversion the arithmetic uses; §10 refuses it, and the refusal's
+ * deprecated conversion the arithmetic uses; the scope policy refuses it, and the refusal's
  * shape in a comparison (which cannot throw) is php's own UNCOMPARABLE -- 1 from
  * either side, which leaves `==` false and every relational false.
  */
@@ -2077,7 +2077,7 @@ static void BcNumberCmp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *
 			pOther = 0;   /* php's own rule decides these */
 		}else if( pOther && (pOther->iFlags & MEMOBJ_REAL) != 0
 		       && (pOther->iFlags & MEMOBJ_OBJ) == 0 ){
-			/* A float: convertible only when nothing is lost (§10). Either way the
+			/* A float: convertible only when nothing is lost (the scope policy). Either way the
 			 * pair is ANSWERED here, so no cast-the-object rule runs behind it. */
 			pCtx->bAnswered = 1;
 			if( BcNumberOperand(pVm,pOther,&sB,&zClass,zMsg,(int)sizeof(zMsg),
@@ -2109,7 +2109,7 @@ static void BcNumberCmp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *
  * BcMath\Number::__construct(string|int $num)
  *
  * The type screen is hand-rolled (the row carries `~`) for one reason: php
- * reaches the `int` arm for a FLOAT through the conversion §10 refuses, and a
+ * reaches the `int` arm for a FLOAT through the conversion the scope policy refuses, and a
  * declared `string|int` would quietly take the string arm instead --
  * `new Number(1.5)` would be '1.5' where php answers '1'.
  */
@@ -2573,7 +2573,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aMethod[] = {
 		/* `~` on the first parameter of every one of these: php's stub declares a
 		 * UNION and its refusal words a different one ("int, string, or"), and the
-		 * float arm is the conversion §10 refuses -- both of which the generic
+		 * float arm is the conversion the scope policy refuses -- both of which the generic
 		 * screen cannot express, so each body raises its own. */
 		{ "__construct", PH7_MOD_PUBLIC, "~string|int $num", 0,
 		  vm_builtin_BcNumber_construct },

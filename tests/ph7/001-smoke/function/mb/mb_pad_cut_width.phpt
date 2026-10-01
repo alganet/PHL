@@ -28,7 +28,7 @@ echo mb_strimwidth("hello", 0, 2, "..."), "|", mb_strimwidth("hello", 0, 0, ".."
 // handed back raw
 echo bin2hex(mb_strimwidth("a\xffb", 0, 2, "")), "|", bin2hex(mb_strimwidth("á", 0, 4, "", "ASCII")), "|", bin2hex(mb_substr("á", 0, 1, "ASCII")), "\n";
 try { mb_strimwidth("hello", 9, 3); } catch (ValueError $mbp) { echo $mbp->getMessage(), "\n"; }
-// (@ silences php's deprecation for a negative width; PHL has no deprecation sites — §10)
+// (@ silences php's deprecation for a negative width; PHL has no deprecation sites — the scope policy)
 try { @mb_strimwidth("hello", 0, -6); } catch (ValueError $mbp) { echo $mbp->getMessage(), "\n"; }
 
 // mb_strwidth answers from Unicode's East Asian Width, which is where the emoji

@@ -2,12 +2,12 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: xml_set_object() and the method-name-string handlers are refused (PHL half)
+POLICY DIVERGENCE the scope policy: xml_set_object() and the method-name-string handlers are refused (PHL half)
 --DESCRIPTION--
 php 8.4 DEPRECATES xml_set_object() and the non-callable-string handler
 spelling it exists for ("provide a proper method callable to
 xml_set_*_handler() functions"). PHL targets php's non-deprecated surface
-(§10): xml_set_object() does not exist, and a string that does not resolve
+(the scope policy): xml_set_object() does not exist, and a string that does not resolve
 as a CALLABLE is refused with php's callback TypeError -- an ordinary
 callable string like "trim" still passes, and [$obj, 'method'] is the
 supported spelling for methods. php's half is the _zend twin.

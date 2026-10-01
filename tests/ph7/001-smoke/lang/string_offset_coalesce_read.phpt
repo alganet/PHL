@@ -53,7 +53,7 @@ socrTry('isset($s["0x1"])', function () { $s = "abc"; return isset($s["0x1"]); }
 socrTry('isset($s[[]])', function () { $s = "abc"; return isset($s[[]]); });
 socrTry('isset($s[$o])', function () { $s = "abc"; $o = new stdClass(); return isset($s[$o]); });
 // (an isset() over a LOSSY float offset — isset($s[1.7]) — is left out: php
-// emits E_DEPRECATED "Implicit conversion from float" there, and §10 removed
+// emits E_DEPRECATED "Implicit conversion from float" there, and the scope policy removed
 // every engine deprecation site, so only that pair diverges. An integral float
 // carries no loss and is silent in both.)
 socrTry('isset($s[1.0])', function () { $s = "abc"; return isset($s[1.0]); });

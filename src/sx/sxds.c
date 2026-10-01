@@ -309,7 +309,7 @@ PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash)
  * through the same SyHashGet. Building with PHL_HCENSUS_CALLER lifts every row one
  * frame, so it names the CALLER instead, and the two runs together decompose a large
  * row into the doors that actually make it. That is how the 146th session found that
- * 60% of the engine's lookups were six doors and not one (PERF.md §2).
+ * 60% of the engine's lookups were six doors and not one.
  *
  * It needs -fno-omit-frame-pointer (gcc will not walk up without one) and
  * -Wno-frame-address (gcc warns about a nonzero argument on principle); the script
@@ -324,7 +324,7 @@ PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash)
 /*
  * PHL_HASH_CENSUS -- which CALL SITE spends the engine's name hashing.
  * ---------------------------------------------------------------------------
- * Compiled out entirely unless PHL_HASH_CENSUS is defined; see PERF.md §7, and
+ * Compiled out entirely unless PHL_HASH_CENSUS is defined; see
  * build-aux/hashcensus.sh, which builds it and resolves what it prints.
  *
  * The heap census (src/sx/sxmem.c) answers "where are the bytes and who asked
@@ -332,7 +332,7 @@ PH7_PRIVATE sxi32 SyHashRelease(SyHash *pHash)
  * workload is the single largest subsystem in a profile and which the sampler
  * can only attribute one frame deep, for the samples that happened to land in
  * it. These counts are exact, and they do not care that this box is loaded
- * (PERF.md §7) -- a lookup either happened or it did not.
+ * at all -- a lookup either happened or it did not.
  *
  * One record per return address, so a site is a place in the SOURCE and not a
  * table: two lookups against the same hash table from two lines are two rows,
@@ -487,7 +487,7 @@ PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen
  *
  * A property access asks two -- does the executing scope declare a private of this
  * name, and where is the slot on this object -- and used to hash the same bytes for
- * each. Hashing is what a lookup spends (PERF.md §5), so the caller hashes once here
+ * each. Hashing is what a lookup spends, so the caller hashes once here
  * and hands the answer to SyHashGetHashed below.
  *
  * The hash belongs to the TABLE, not to the key: two tables with different xHash

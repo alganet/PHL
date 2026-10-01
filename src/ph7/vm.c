@@ -491,13 +491,13 @@ static const char * VmCallNameIntern(ph7_vm *pVm,const SyString *pName)
  * ecosystem gate's phpcs step: 42,994,248 guards averaging forty bytes, because a
  * namespaced function name is long. It was the second-largest SyMemcmp caller in the
  * engine, above the one inside SyHashGetHashed. Eight bytes at a time turns forty
- * comparisons into five and drops the call. (PERF.md P16.)
+ * comparisons into five and drops the call.
  *
  * The load is through memcpy rather than a cast: an unaligned sxu64 read through a
  * char pointer is what UBSan exists to catch, and every compiler in the matrix folds a
  * constant-size memcpy into the one load anyway.
  *
- * This is NOT a case for widening SyMemcmp itself. PERF.md §5 records that measuring
+ * This is NOT a case for widening SyMemcmp itself. It was measured, and widening it read
  * neutral, because most of its callers compare short property names where a word loop
  * never gets going -- the same reason glibc's memcmp measured 1.3% SLOWER there.
  */
@@ -1736,7 +1736,7 @@ PH7_PRIVATE ph7_vm_func * VmOverload(
  * The answer was to evaluate into a stable local and store into the slot
  * re-fetched by its index, which is what this does. Redundant since P1 -- the
  * pool's segments are fixed, so a slot's address never moves. Left for the
- * harvest sweep (PERF.md P1); the history above is why it was ever needed.
+ * harvest sweep; the history above is why it was ever needed.
  *
  * On return *ppMemObj points at the valid post-eval slot. PH7_MemObjStore
  * preserves the destination slot's nIdx (excluded from its memcpy), so the slot
@@ -2377,7 +2377,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
  *
  * The attribute half used to be spelled out at each caller, and one of the three
  * did not have it: the by-REFERENCE binder (VmBindPropByRef) asked this alone, so
- * an opted-in class refused `f($o->undeclared)` with §10's `Cannot create dynamic
+ * an opted-in class refused `f($o->undeclared)` with the scope policy's `Cannot create dynamic
  * property` on a write php performs -- while `$o->undeclared = 1` next to it
  * worked. One decision, one site.
  */
@@ -2385,7 +2385,7 @@ PH7_PRIVATE int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass)
 {
 	if( pVm->pStdClass != 0 ){
 		/* ...and stdClass's own permission is INHERITED, exactly as the attribute
-		 * is: php deprecates nothing for `class C extends stdClass`, so §10 must
+		 * is: php deprecates nothing for `class C extends stdClass`, so the scope policy must
 		 * refuse nothing there either. Only the class ITSELF was recognized, so a
 		 * subclass of the one class php lets a script build freely could not take a
 		 * property at all. */
@@ -2654,7 +2654,7 @@ PH7_PRIVATE ph7_value * PH7_ReserveConstObj(ph7_vm *pVm,sxu32 *pIndex)
 	return pObj;
 }
 /*
- * The segmented memory-object pool (PERF.md P1). See VmMemPool in ph7int.h.
+ * The segmented memory-object pool. See VmMemPool in ph7int.h.
  * A slot's ADDRESS never moves once it exists, which is the whole point: the
  * engine's standing "a pointer into aMemObj dangles across a reserve" hazard
  * (written down at pointers-die-across-a-user-callback) exists only because the
@@ -2998,7 +2998,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aExceptionCBSaved,&pVm->sAllocator,sizeof(VmHandlerSlot));
 	SySetInit(&pVm->aErrCBSaved,&pVm->sAllocator,sizeof(VmHandlerSlot));
 	PH7_MemObjInit(&(*pVm),&pVm->sAssertCallback);
-	/* Recursion policy (BYTECODE.md stage 5). PHP call depth is heap-bound since
+	/* Recursion policy. PHP call depth is heap-bound since
 	 * the iterative executor, so the host default is UNBOUNDED (0) — real PHP runs
 	 * deep userland recursion until memory_limit, and so must PHL; an embedder opts
 	 * back into a cap via PH7_VM_CONFIG_RECURSION_DEPTH. What still needs guarding
@@ -3012,7 +3012,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* Small-stack embedders (e.g. ESP32 16 KB task, 8 MB PSRAM): PHP recursion is
 	 * iterative/heap-bound, but a tiny device still wants a runaway-recursion
 	 * bound, so keep a PHP-depth default here (~3.5 KB/frame × 512 ≈ 1.8 MB PSRAM
-	 * at max depth — BYTECODE.md §6). The embedder tunes both via config verbs. */
+	 * at max depth). The embedder tunes both via config verbs. */
 	pVm->nMaxDepth = 512;
 	pVm->nMaxNativeDepth = 16;
 #endif
@@ -3374,7 +3374,7 @@ PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen)
 	}
 }
 /*
- * Static operand-stack depth analysis (BYTECODE.md stage 7).
+ * Static operand-stack depth analysis.
  *
  * The safe upper bound on a body's operand-stack depth is its instruction count
  * (no instruction pushes more than one net slot), and that is what
@@ -3599,7 +3599,7 @@ PH7_PRIVATE ph7_value * VmNewOperandStack(
 	return pStack;
 }
 /*
- * Operand-stack recycling (BYTECODE.md stage 7).
+ * Operand-stack recycling.
  *
  * After tight sizing, a PHP call still allocates + inits an operand stack on the
  * way in and frees it on the way out. For recursion and hot call loops the freed
@@ -3693,7 +3693,7 @@ PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)
  * thousand values, all of which live in the first handful of slots. The watermark
  * bounds the same sweep at 44.5 million slots (-95.7%) and finds every one of
  * those values; both corpora and the phpcs step agree that NOTHING above it is
- * ever dirty (PERF.md P10 item 1, and §7's fourth instrument is what found it).
+ * ever dirty (the value-primitive census is what found it).
  *
  * The bound has to be the watermark and not the final top: a call abandons its
  * argument slots by lowering the top past them (`pTos = &pTos[-nCallArgs]`), so a
@@ -8389,8 +8389,8 @@ PH7_PRIVATE int PH7_VmSlotRegistered(ph7_vm *pVm,sxu32 nIdx)
  * yes, keep no, holders none -- and PH7_VmSlotUnlink has nothing to unlink but the
  * cell itself, so this empties it and says it did.
  *
- * A throwaway counter build over the ecosystem gate's phpcs step (PERF.md §7's
- * fifth instrument; the table is in PERF.md §2.5) says it is not an edge case:
+ * A throwaway counter build over the ecosystem gate's phpcs step (built with the
+ * counter, read once, then reverted) says it is not an edge case:
  * 22,831,962 of the 23,016,949 slots PH7_VmReleaseUnheldSlot is handed carry
  * exactly this word -- 99.20% -- and none of them carry a name or a node. The
  * teardown of one of those used to ask the same cell seven separate loads across

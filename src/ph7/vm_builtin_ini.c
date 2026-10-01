@@ -110,9 +110,9 @@ static const struct {
 	 * here is an option php accepts and PHL reports as failed.
 	 * Six are absent on purpose: php 8.4 DEPRECATES session.sid_length,
 	 * session.sid_bits_per_character, session.referer_check, session.use_trans_sid,
-	 * session.trans_sid_tags and session.trans_sid_hosts, and §10 does not carry
+	 * session.trans_sid_tags and session.trans_sid_hosts, and the scope policy does not carry
 	 * php's deprecated surface. The session.upload_progress.* family goes with the
-	 * file uploads §10 excludes from a CLI-plus-`-S` engine. */
+	 * file uploads the scope policy excludes from a CLI-plus-`-S` engine. */
 	{ "session.auto_start",       "0",          VM_INI_PERDIR },
 	{ "session.cache_expire",     "180",        VM_INI_ALL },
 	{ "session.cache_limiter",    "nocache",    VM_INI_ALL },
@@ -439,7 +439,7 @@ static sxu32 IniParseBytes(const char *zVal,sxu32 nVal,int *pbUnlimited)
  * The one directive that reaches into the ALLOCATOR. php enforces a ceiling and
  * kills the script with a fatal when a request would cross it; PHL stored the
  * string and enforced nothing, so a runaway allocation -- a reference cycle nothing
- * reclaims is the usual way in (PLAN.md §5) -- had no ceiling below the kernel's, and
+ * reclaims is the usual way in -- had no ceiling below the kernel's, and
  * the OOM killer took the whole process instead of the script. On a shared box that
  * is not the script's problem any more: it is everything else's.
  *

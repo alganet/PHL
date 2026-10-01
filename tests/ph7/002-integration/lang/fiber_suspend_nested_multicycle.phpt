@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-A fiber that suspends repeatedly from inside the same nested call resumes in place each cycle (php-exact; BYTECODE.md stage 4 segment re-park)
+A fiber that suspends repeatedly from inside the same nested call resumes in place each cycle (php-exact; segment re-park)
 --FILE--
 <?php
 function worker() {

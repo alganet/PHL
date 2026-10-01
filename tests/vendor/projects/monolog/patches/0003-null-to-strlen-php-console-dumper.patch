@@ -1,6 +1,6 @@
 PHL-Patch-Reason: null-to-non-nullable-param
 PHL-Patch-Kind: rewrite
-PHL-Patch-Note: php-console's dumper hands null to strlen() at four sites -- its scalar branch explicitly skips var_export for null, so null reaches them by design. php 8.5 deprecates null to a non-nullable internal parameter and coerces it to "", PLAN.md §10 makes it a TypeError; `?? ''` is that coercion written down, and strlen("") is 0 either way.
+PHL-Patch-Note: php-console's dumper hands null to strlen() at four sites -- its scalar branch explicitly skips var_export for null, so null reaches them by design. php 8.5 deprecates null to a non-nullable internal parameter and coerces it to "", and PHL's non-deprecated policy makes it a TypeError; `?? ''` is that coercion written down, and strlen("") is 0 either way.
 
 diff -ruN a/vendor/php-console/php-console/src/PhpConsole/Dumper.php b/vendor/php-console/php-console/src/PhpConsole/Dumper.php
 --- a/vendor/php-console/php-console/src/PhpConsole/Dumper.php	2019-07-25 00:43:28.000000000 -0300

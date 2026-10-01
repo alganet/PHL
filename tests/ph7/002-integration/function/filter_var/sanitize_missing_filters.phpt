@@ -10,7 +10,7 @@ filter_var: the three sanitizers PHL never had (string/stripped, encoded, add_sl
  * FILTER_SANITIZE_ADD_SLASHES. FILTER_FLAG_EMPTY_STRING_NULL, which turns an
  * empty RESULT into null, was undefined beside them.
  *
- * §10: php DEPRECATED the two constant names for filter 513 in 8.1, so this
+ * the scope policy: php DEPRECATED the two constant names for filter 513 in 8.1, so this
  * engine does not define them — the filter itself is spellable by id, and by
  * name through filter_id('string'). See the _zend twin. */
 function sn($label, $value, $filter, $flags = 0)

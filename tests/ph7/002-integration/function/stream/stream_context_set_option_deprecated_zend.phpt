@@ -12,7 +12,7 @@ if (!function_exists('zend_version')) {
 --FILE--
 <?php
 /* php 8.3 keeps the array form working and emits E_DEPRECATED for it; PHL's
- * half of this pair refuses it outright (§10). The handler is here because a
+ * half of this pair refuses it outright (the scope policy). The handler is here because a
  * php.ini that masks E_DEPRECATED would otherwise hide the whole point. */
 set_error_handler(function ($n, $s) { echo "[", $n, "] ", $s, "\n"; return true; },
     E_ALL | E_DEPRECATED);

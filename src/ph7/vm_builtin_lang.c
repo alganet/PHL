@@ -371,7 +371,7 @@ PH7_PRIVATE int vm_builtin_enum_cases(ph7_context *pCtx,int nArg,ph7_value **apA
  * and " 2" as 2, and a string-backed one takes an int (or a bool, or a
  * non-lossy float) through the INT arm first: S::from(1.0) looks for "1", not
  * "1.0", and S::from(false) for "0". A LOSSY float and a null are php
- * DEPRECATIONS, so PH7_IntArgResolve refuses them (§10 scope policy) with the
+ * DEPRECATIONS, so PH7_IntArgResolve refuses them (the scope policy scope policy) with the
  * TypeError php will eventually raise.
  */
 static sxi32 VmEnumCoerceNeedle(ph7_context *pCtx,ph7_class *pClass,ph7_value *pArg,
@@ -1286,7 +1286,7 @@ PH7_PRIVATE double PH7_VmCombinedLcg(ph7_vm *pVm)
  * once in 1200 calls where php's, carrying the current epoch, effectively never
  * is. That last one is not cosmetic: Respect\Validation feeds a uniqid() through
  * `ctype_digit()`, and an all-digit id becomes an int on one side of a
- * comparison and stays a string on the other (ECOSYSTEM.md F69).
+ * comparison and stays a string on the other.
  *
  * php also SLEEPS a microsecond first when `$more_entropy` is false, so two
  * calls in a row cannot land in the same microsecond and the ids are strictly

@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Self-recursive C->PHP callback (usort in its own comparator) hits the native-nesting fatal at the shipped default (BYTECODE.md stage 5)
+Self-recursive C->PHP callback (usort in its own comparator) hits the native-nesting fatal at the shipped default
 --DESCRIPTION--
 Each C->PHP callback dispatch runs a fresh native VmByteCodeExec; a comparator
 that re-enters the same builtin nests native frames the trampoline does not

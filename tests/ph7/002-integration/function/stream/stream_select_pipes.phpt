@@ -10,7 +10,7 @@ if (DIRECTORY_SEPARATOR === '\\') {
      * HANDLE and select() takes only sockets, so PHL can represent none of them
      * — the call warns per stream and refuses. php emulates the wait with
      * WaitForMultipleObjects there. */
-    echo "skip POSIX descriptors: Windows selects only sockets in PHL (§7.4)";
+    echo "skip POSIX descriptors: Windows selects only sockets in PHL (recorded)";
 }
 if (!function_exists('proc_open')) {
     echo "skip needs proc_open for a pipe that becomes readable";

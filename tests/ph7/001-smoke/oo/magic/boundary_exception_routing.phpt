@@ -55,7 +55,7 @@ catch (Exception $e) { echo "caught-map\n"; }
 
 // 9. a throwing error handler supersedes the diagnostic (no Warning printed).
 // error_reporting must be live here: PHL only consults the handler when
-// reporting is on (php calls it regardless — recorded divergence, NEWPLAN §6),
+// reporting is on (php calls it regardless — a recorded divergence),
 // and an earlier suite test may leak error_reporting(0) into this shared
 // interpreter.
 error_reporting(E_ALL);

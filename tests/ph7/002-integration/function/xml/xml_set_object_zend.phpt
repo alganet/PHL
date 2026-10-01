@@ -2,11 +2,11 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: xml_set_object() + method-name strings deprecate and work (php half)
+POLICY DIVERGENCE the scope policy: xml_set_object() + method-name strings deprecate and work (php half)
 --DESCRIPTION--
 The php half of xml_set_object.phpt: php 8.4 deprecates both the function and
 the non-callable-string handler spelling, then runs them anyway. PHL removes
-the function and refuses the spelling (§10).
+the function and refuses the spelling (the scope policy).
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

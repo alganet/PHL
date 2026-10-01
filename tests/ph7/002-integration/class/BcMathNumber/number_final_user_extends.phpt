@@ -6,7 +6,7 @@ A user `final readonly` base is refused for being final too
 --DESCRIPTION--
 The other half of number_final_readonly_extends: the rule is not BcMath\Number's,
 it is `final readonly`'s, so a class the SCRIPT declares that way answers the same
-way. Its own file because a compile-time fatal ends the process (ECOSYSTEM.md F30),
+way. Its own file because a compile-time fatal ends the process,
 so one refusal is all a process can show.
 --FILE--
 <?php

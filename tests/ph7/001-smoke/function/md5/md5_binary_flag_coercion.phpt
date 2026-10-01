@@ -17,7 +17,7 @@ foreach ([true, 1, "1", "yes", 1.5, PHP_INT_MAX] as $truthy) {
     echo strlen(md5("a", $truthy)), " ", strlen(sha1("a", $truthy)), " ";
 }
 echo "\n";
-// (null is §10's null-to-a-non-nullable-scalar refusal, not this rule)
+// (null is the scope policy's null-to-a-non-nullable-scalar refusal, not this rule)
 foreach ([false, 0, "", "0", 0.0] as $falsy) {
     echo strlen(md5("a", $falsy)), " ", strlen(sha1("a", $falsy)), " ";
 }

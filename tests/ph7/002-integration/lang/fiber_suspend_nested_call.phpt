@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Fiber::suspend() from a nested userland call resumes INSIDE the callee (php-exact; BYTECODE.md stage 4 record-segment parking)
+Fiber::suspend() from a nested userland call resumes INSIDE the callee (php-exact; record-segment parking)
 --FILE--
 <?php
 function inner() {

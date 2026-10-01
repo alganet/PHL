@@ -201,7 +201,7 @@ static sxi32 HashmapScalarFlagCmp(ph7_value *pA,ph7_value *pB,int base,int bFold
 		 * "to float"), and integers above 2^53 were ordered EXACTLY where php's
 		 * doubles tie — `sort([PHP_INT_MAX, PHP_INT_MAX-1], SORT_NUMERIC)` left
 		 * php's stable sort's original order and PHL re-ordered them. Matching php
-		 * means adopting its precision loss, which is what parity is (§10).
+		 * means adopting its precision loss, which is what parity is (the scope policy).
 		 * The == / < shape is ZEND_THREEWAY_COMPARE's, so NaN — equal to nothing,
 		 * less than nothing — answers 1 in both engines. */
 		ph7_real rA,rB;
@@ -1277,7 +1277,7 @@ static sxi32 MultisortRowCmp(MultisortCol *aCol,sxu32 nCol,sxu32 iA,sxu32 iB)
 /*
  * Stable bottom-up merge sort over the row-index permutation. Iterative on
  * purpose — the recursive shape would put O(log n) frames on the native stack
- * (the §7 embedder C-stack family).
+ * (the embedder C-stack family).
  */
 static void MultisortSortIdx(MultisortCol *aCol,sxu32 nCol,sxu32 *aIdx,sxu32 *aTmp,sxu32 n)
 {

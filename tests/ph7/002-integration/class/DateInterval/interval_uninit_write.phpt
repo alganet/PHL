@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 /* An object with no struct has no property table either, so php's write handler
  * has nothing to convert and the standard one takes over: `$i->y = 1.5` on an
  * unconstructed interval CREATES a deprecated dynamic property holding the raw
- * 1.5, which the constructor then overwrites with the struct's 0. §10 refuses a
+ * 1.5, which the constructor then overwrites with the struct's 0. The scope policy refuses a
  * deprecation and PHL refuses a dynamic property outright, so every one of these
  * names meets the Error PHL raises for any other undeclared write.
  *

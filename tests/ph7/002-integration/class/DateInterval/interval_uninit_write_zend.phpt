@@ -14,7 +14,7 @@ if (!function_exists('zend_version')) {
 /* what the write really does here: the object has no struct, so php's write
  * handler has nothing to convert and the standard one creates a dynamic property
  * holding the RAW value -- 1.5 stays a float, where a constructed interval would
- * have taken the int cast. The deprecation itself is muted: §10 keeps
+ * have taken the int cast. The deprecation itself is muted: the scope policy keeps
  * E_DEPRECATED off this corpus, and the notice is not what the pair is pinning. */
 error_reporting(E_ALL & ~E_DEPRECATED);
 $i = (new ReflectionClass('DateInterval'))->newInstanceWithoutConstructor();

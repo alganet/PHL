@@ -421,8 +421,8 @@ static void tok_object(tok_state *ts,int iId,const char *z,int n,int iLine)
  *     that follows it, and otherwise after the token that does -- which is what
  *     makes `EOT;` come out as "EOT;\n", `EOT\n;` as "EOT\n; " and `EOT :` as
  *     "EOT\n: ".
- * Derived from php 8.5.9 over the 15,000 vendor files of the four ECOSYSTEM.md
- * projects: every one of them matches byte for byte.
+ * Derived from php 8.5.9 over the 15,000 vendor files of the four gated
+ * ecosystem projects: every one of them matches byte for byte.
  */
 static void tok_strip(tok_state *ts,int iId,const char *z,int n)
 {

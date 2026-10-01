@@ -21,8 +21,8 @@ outer throw then never landed and the script simply ENDED (monolog's `Handler::_
 is `try { $this->close(); } catch (Throwable) {}`, and its suite died on it).
 
 The ORDER of a swallow relative to the catch body is not asserted: php destroys a frame's
-locals as it unwinds, this engine after the in-place catch body (PLAN.md's in-place-catch
-ordering row), so the counter is only read where both have finished the same teardown.
+locals as it unwinds, this engine after the in-place catch body (a recorded ordering
+divergence), so the counter is only read where both have finished the same teardown.
 --FILE--
 <?php
 echo "== a constructor that throws leaves no object to destruct ==\n";
@@ -62,8 +62,8 @@ try { (new ReflectionClass('A'))->newInstanceArgs([true]); } catch (Throwable $e
 /* A destructor is user code that runs in the MIDDLE of somebody else's unwind. Its own
  * try/catch must not consume the landing the outer throw is still owed. The counter is
  * read only at points both engines have reached the same teardown (php destroys a frame's
- * locals as it unwinds, this engine after the in-place catch body -- see PLAN.md's
- * in-place-catch ordering row), so the ORDER of the swallow is not asserted here. */
+ * locals as it unwinds, this engine after the in-place catch body -- a recorded
+ * ordering divergence), so the ORDER of the swallow is not asserted here. */
 class Guard {
     public static int $swallowed = 0;
     public function close(): void { throw new RuntimeException('close failed'); }

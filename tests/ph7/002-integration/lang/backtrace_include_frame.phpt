@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 An include/require/eval is a trace frame of its own
 --DESCRIPTION--
-ECOSYSTEM.md F6's third companion. php shows the construct that loaded a unit as a
+The third companion of the frame-attribution fix. php shows a loading construct as a
 frame between that unit's frames and the caller's -- `#1 main.php(2): include('...')`
 -- and nothing in this engine recorded one: an include shares its caller's variable
 scope, so it pushes no frame to be found later. The activation is tracked explicitly

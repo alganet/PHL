@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Rewrites php 8.4's DEPRECATED implicitly-nullable parameter -- `T $x = null` -- into
- * the explicit `?T $x = null` that PLAN.md §10 requires, in place, over a directory.
+ * the explicit `?T $x = null` that PHL requires, in place, over a directory.
  *
  * This is the `implicit-nullable-param` patch generator for tests/vendor: it is the one
- * §10 surface a project hits by the dozen, and hand-editing it is how a "deprecation
+ * the scope policy surface a project hits by the dozen, and hand-editing it is how a "deprecation
  * patch" quietly turns into an edit nobody reviewed. The rewrite is php's own reading of
  * the same declaration, so the patch it produces changes NO behaviour under php.
  *

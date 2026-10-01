@@ -1165,7 +1165,7 @@ PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value *
 	/* Every refusal is worded here rather than by the shared screen: php's stub
 	 * declares `float $num` (which is what Reflection prints) but the ZPP macro
 	 * behind it is Z_PARAM_NUMBER, whose TypeError says `int|float`. An int stays
-	 * an INT, a numeric string takes the shape it looks like, and null is §10's
+	 * an INT, a numeric string takes the shape it looks like, and null is the scope policy's
 	 * refusal of a deprecation. */
 	if( !PH7_MemObjIsNumeric(apArg[0]) ){
 		char zBuf[64];
@@ -1176,7 +1176,7 @@ PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	if( nArg > 1 ){
 		/* php declares `int $decimals`; the string and float narrowings it only
-		 * DEPRECATES are rejected here (§10), as they are for count_chars(). */
+		 * DEPRECATES are rejected here (the scope policy), as they are for count_chars(). */
 		if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1])
 		 || ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ){
 			char zBuf[64];
@@ -1186,7 +1186,7 @@ PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value *
 		}
 		if( ph7_value_is_string(apArg[1]) ){
 			/* php wants the WHOLE string to be numeric ("2abc" is a TypeError,
-			 * not 2), and a float-shaped one that would LOSE something is §10's
+			 * not 2), and a float-shaped one that would LOSE something is the scope policy's
 			 * refusal of a deprecation. */
 			double dMode;
 			if( !PH7_MemObjStringIsNumeric(apArg[1]) ){
@@ -1194,7 +1194,7 @@ PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value *
 					"number_format(): Argument #2 ($decimals) must be of type int, string given");
 			}
 			dMode = ph7_value_to_double(apArg[1]);
-			/* Range first: `(sxi64)dMode` is undefined outside it (§2). */
+			/* Range first: `(sxi64)dMode` is undefined outside it. */
 			if( !PH7_RealFitsInt64(dMode) || dMode != (double)(sxi64)dMode ){
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"number_format(): Argument #2 ($decimals) must be of type int, string given");
@@ -1473,7 +1473,7 @@ PH7_PRIVATE int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *
  * Both were treated as invalid characters here, so `hexdec("0xff")` — the literal
  * a program hands back to the engine after reading it out of source, and exactly
- * what nikic/php-parser passes — raised the ValueError §10 keeps for php's
+ * what nikic/php-parser passes — raised the ValueError the scope policy keeps for php's
  * DEPRECATED skipping instead of answering 255.
  *
  * On return the two out-parameters name the digit run; the caller decides what a
@@ -1513,7 +1513,7 @@ static void MathBaseTrimPrefix(const char **pz,int *pn,int base)
  * A byte >= 0x80 (e.g. a UTF-8 continuation) matches none of the digit ranges and
  * is skipped, so leading/interior multibyte junk is ignored like php.
  * Note: php also raises E_DEPRECATED for skipped invalid characters; that notice
- * is not emitted here (a §3.7 deprecation-fidelity residual, value is correct).
+ * is not emitted here (a deprecation-fidelity residual, value is correct).
  */
 static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int base)
 {
@@ -1555,7 +1555,7 @@ static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int bas
 	}
 	if( bIgnored ){
 		/* php 8 skips characters that are not valid digits for this base and only
-		 * DEPRECATES the skipping; §10 rejects the deprecated surface loudly, so this
+		 * DEPRECATES the skipping; the scope policy rejects the deprecated surface loudly, so this
 		 * ValueError ABORTS the call (the result stored below never reaches the caller
 		 * — the OP_CALL boundary reports the throw for us, VmHostFuncThrowRc).
 		 * Twin-pinned by base_invalid_chars_abort{,_zend}.phpt. */
@@ -1785,7 +1785,7 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 		uNum = uNum * (sxu64)iFbase + (sxu64)d;
 	}
 	if( bIgnored ){
-		/* §10 rejects php's deprecated surface loudly, and a throw ABORTS the call —
+		/* the scope policy rejects php's deprecated surface loudly, and a throw ABORTS the call —
 		 * the conversion below is not reached. See MathBaseToNumber's twin. */
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"Invalid characters passed for attempted conversion");

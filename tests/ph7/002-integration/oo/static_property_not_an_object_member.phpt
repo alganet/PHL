@@ -49,7 +49,7 @@ echo "== writing through the instance leaves the CLASS static alone ==\n";
 try {
     $o->s = 'x';
 } catch (Error $e) {
-    /* PHL rejects dynamic-property creation that php only performs (policy §10);
+    /* PHL rejects dynamic-property creation that php only performs (scope policy);
      * either way the class's static must not move. */
 }
 var_dump(SnoBase::$s);
@@ -61,7 +61,7 @@ $r = new SnoRef;
 try {
     sno_byref($r->s);
 } catch (Error $e) {
-    /* §10 again: php binds a fresh dynamic property, PHL refuses to create one. */
+    /* the scope policy again: php binds a fresh dynamic property, PHL refuses to create one. */
 }
 var_dump(SnoRef::$s);
 

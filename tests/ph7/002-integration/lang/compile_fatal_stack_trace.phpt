@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 A compile-time fatal prints php's Stack trace, and which frames it has
 --DESCRIPTION--
-The half of ECOSYSTEM.md F30 that had to wait for F6: php prints a `Stack trace:`
+The half that had to wait for frame attribution: php prints a `Stack trace:`
 block under a compile-time FATAL (and none under a parse error, which is its
 parser's own refusal). Which frames it holds is php's three phases, and they answer
 differently -- so the trace is not one thing to print but three:

@@ -2,10 +2,10 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: number_format() deprecates and coerces a null / lossy-float argument (php half)
+POLICY DIVERGENCE the scope policy: number_format() deprecates and coerces a null / lossy-float argument (php half)
 --DESCRIPTION--
 The php half of number_format_argument_types_policy.phpt: php coerces null to 0 and truncates
-a lossy float, each with an E_DEPRECATED. PHL throws the ZPP TypeError instead (§10).
+a lossy float, each with an E_DEPRECATED. PHL throws the ZPP TypeError instead (the scope policy).
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

@@ -14,7 +14,7 @@ error_reporting=E_ALL & ~E_DEPRECATED
 --FILE--
 <?php
 /* php's answer to the same three payloads: the plain class creates the property
- * behind `Creation of dynamic property C::$z` (E_DEPRECATED, masked here — §10
+ * behind `Creation of dynamic property C::$z` (E_DEPRECATED, masked here — the scope policy
  * turns that whole surface into the Error the PHL half pins), a readonly class
  * raises the SAME Error PHL raises everywhere, and the deprecation being only a
  * deprecation is why the containing array parses on. */

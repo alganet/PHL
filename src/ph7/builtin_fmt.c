@@ -673,7 +673,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			if( pArg == 0 ){
 				length = 0;
 			}else if( PH7_MemObjIsNotStringable(pArg) ){
-				/* php's user-visible coercion for %s (§2), object half: a class with
+				/* php's user-visible coercion for %s, object half: a class with
 				 * no __toString() is the catchable "could not be converted to
 				 * string" Error — but php does NOT let it interrupt the format. The
 				 * conversion substitutes NOTHING, the format runs to the end, the
@@ -751,7 +751,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			 * "precision was given" flag set, so ANY explicit precision truncates
 			 * the digits to nothing and `%.1x` of 42 is the EMPTY string (padded
 			 * to $width, which is why "%5.1x" is five spaces). Reproduced rather
-			 * than smoothed over — parity is binding (§10). */
+			 * than smoothed over — parity is binding (the scope policy). */
 			bDropDigits = (bExplicitPrec && pInfo->base != 10);
 			if( precision >= 0 ){
 				precision = -1;

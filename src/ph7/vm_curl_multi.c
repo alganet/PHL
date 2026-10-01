@@ -601,7 +601,7 @@ static int vm_builtin_curl_multi_setopt(ph7_context *pCtx,int nArg,ph7_value **a
 		 * whose callback would have said CURL_PUSH_OK. Calling it needs a php
 		 * CurlHandle over an easy handle LIBCURL owns and hands out mid-push,
 		 * and only an HTTP/2 peer that actually pushes can derive what that
-		 * ownership is -- no corpus here has one. §7.4 carries it.
+		 * ownership is -- no corpus here has one. It is recorded.
 		 */
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;

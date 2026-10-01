@@ -136,7 +136,7 @@ echo "## a CONSTANT subject folds the whole instanceof away, class operand and a
 /* php's compiler answers FALSE for `<const> instanceof <anything>` without ever
  * compiling the class operand, so the refusal above never happens for one -- and
  * the operand's own side effects never happen either. (php's folder also reaches
- * a userland constant and a ct-evaluated call; PLAN.md §7.2 records those two.) */
+ * a userland constant and a ct-evaluated call; both are recorded.) */
 function dmnSide() { echo "    (class operand ran)\n"; return 'DmnBag'; }
 dmn('literal subject',   function () use ($arr) { return 5 instanceof $arr; });
 dmn('null subject',      function () use ($arr) { return null instanceof $arr; });

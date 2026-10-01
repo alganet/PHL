@@ -119,7 +119,7 @@ static int NetBindLocal(ph7_socket sock,int iFamily,const char *zHost,int iPort,
 	 * the socket that will carry it, so the answer describes THIS candidate and
 	 * not the address family net.c prefers. (php's bracketed spelling, and what
 	 * it does with a local address the candidate's family cannot take, is the
-	 * recorded gap §7.4 slice-1 (b)(iii) names.) */
+	 * recorded gap names.) */
 	if( iFamily == AF_INET6 ){
 		memset(&sin6,0,sizeof(sin6));
 		sin6.sin6_family = AF_INET6;
@@ -165,7 +165,7 @@ PH7_PRIVATE int PH7_NetLastError(void)
  * text expects; a Winsock code is not an errno at all, so the codes a stream
  * builtin can actually surface are worded here rather than handed to
  * strerror() (which would answer for a completely different errno) — the
- * FormatMessage() prose php's Windows build answers is its own (§7.4).
+ * FormatMessage() prose php's Windows build answers is its own (recorded).
  */
 PH7_PRIVATE const char * PH7_NetStrError(int iErr)
 {

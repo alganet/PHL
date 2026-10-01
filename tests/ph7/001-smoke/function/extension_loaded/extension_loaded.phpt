@@ -6,7 +6,7 @@ extension_loaded matches case-insensitively and declares its parameter
 --FILE--
 <?php
 // The name match is case-INSENSITIVE, and every extension listed here is one
-// both engines report (PHL's set is smaller than php's by design, §10, so the
+// both engines report (PHL's set is smaller than php's by design, the scope policy, so the
 // full list is not comparable).
 $common = ['Core', 'standard', 'pcre', 'json', 'ctype', 'date', 'SPL',
            'Reflection', 'mbstring', 'hash', 'filter', 'session'];

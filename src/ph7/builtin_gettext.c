@@ -18,7 +18,7 @@
  * libintl's -- and that is what is reproduced here, over PHL's own catalog
  * reader rather than the platform's, so a Windows build answers what a Linux
  * one does. php's own layer is thin and contributes only the argument screens
- * (§ "The php layer" below); everything else in this file is the library's
+ * (see "The php layer" below); everything else in this file is the library's
  * behaviour, measured against glibc 2.4x through php 8.5.9.
  *
  * WHICH FILE a lookup reads is the whole of it, and it is four rules:
@@ -75,7 +75,7 @@
  * The RESULT ENCODING is the last rule. glibc converts every answer from the
  * charset the header names to an output charset, with transliteration on: the
  * one bind_textdomain_codeset() set for the domain, or -- when nothing set one
- * -- the code set of the LC_CTYPE locale. Two cuts here, both §10's:
+ * -- the code set of the LC_CTYPE locale. Two cuts here, both the scope policy's:
  *
  *   - PHL models UTF-8, ISO-8859-1 and US-ASCII (the iconv/mbstring scope cut).
  *     A catalog or a bound codeset outside those three cannot be converted, and
@@ -84,7 +84,7 @@
  *   - a header with no charset is not converted at all, which is glibc's rule
  *     for the same case.
  *
- * Two RECORDED divergences, PLAN.md §7.4, both twin-less in the corpus because a
+ * Two RECORDED divergences, both twin-less in the corpus because a
  * php half of either would kill the runner or measure the cache. The first is
  * arithmetic: glibc's `plural_eval` RAISES SIGFPE for a division or a modulo by
  * zero in a plural rule, deliberately (`if (rightarg == 0) raise (SIGFPE);`), so
@@ -455,7 +455,7 @@ static int GtFindMsg(gt_cat *pCat,const char *zMsg,const char **pzOut,sxu32 *pnO
  * arithmetic has to be UNSIGNED because that is the type libintl evaluates it
  * in -- `plural=(n > 1)` with a count of -1 is the PLURAL form, not the
  * singular. Division and modulo by zero answer 0 rather than trapping -- glibc
- * raises SIGFPE there on purpose, which is the §7.4 record above: a catalog is
+ * raises SIGFPE there on purpose, which is the record above: a catalog is
  * DATA, and a typo in one must not take the process down.
  */
 typedef struct gt_plural gt_plural;
@@ -1085,7 +1085,7 @@ static gt_cat * GtResolve(ph7_vm *pVm,gt_dom *pDom,int iCat)
 /*
  * Hand back one answer, converted if the domain and the catalog disagree on
  * the encoding. A conversion that cannot be opened -- an unknown name, or one
- * of the code sets §10 leaves out -- gives php's own answer for the same case:
+ * of the code sets the scope policy leaves out -- gives php's own answer for the same case:
  * the msgid, untranslated.
  */
 static void GtResult(ph7_context *pCtx,gt_dom *pDom,gt_cat *pCat,

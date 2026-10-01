@@ -7,7 +7,7 @@
  * libsqlite3).  The compile_int.h pattern -- one header, no public surface.
  *
  * php splits this boundary with a driver vtable because ext/pdo carries many
- * drivers; §10 scopes PHL to one, so the connection record is a single struct
+ * drivers; the scope policy scopes PHL to one, so the connection record is a single struct
  * both units see and the "driver" is just the half of the code that talks to
  * sqlite3.
  */

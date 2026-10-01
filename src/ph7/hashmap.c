@@ -51,7 +51,7 @@ static sxu32 BinHash(const void *pSrc,sxu32 nLen)
  *
  * The test keeps the pointer meaningful rather than deleting it: a map built with its
  * own hash still uses it, and the branch is perfectly predicted because nothing in the
- * tree takes the other arm. This is NOT the devirtualization PERF.md §5 warns about --
+ * tree takes the other arm. This is NOT the devirtualization that was measured and rejected --
  * that one was SyHash's xHash, where BOTH implementations are live (SyStrHash folds
  * case, SyBinHash does not) and the branch it added was a real one.
  */
@@ -339,7 +339,7 @@ static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,
 		 * MOVING pVm->aMemObj under a pValue that points into the pool (e.g.
 		 * get_defined_vars/func_get_args/get_class_vars/get_object_vars all pass
 		 * a pool slot). Redundant since P1 -- the pool's segments are fixed, so a
-		 * slot's address never moves. Left for the harvest sweep (PERF.md P1). */
+		 * slot's address never moves. Left for the harvest sweep. */
 		if( pValue ){
 			sSafeVal = *pValue;
 			pValue = &sSafeVal;
@@ -401,7 +401,7 @@ static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyL
 		 * MOVING pVm->aMemObj under a pValue that points into the pool (e.g.
 		 * get_defined_vars/func_get_args/get_class_vars/get_object_vars all pass
 		 * a pool slot). Redundant since P1 -- the pool's segments are fixed, so a
-		 * slot's address never moves. Left for the harvest sweep (PERF.md P1). */
+		 * slot's address never moves. Left for the harvest sweep. */
 		if( pValue ){
 			sSafeVal = *pValue;
 			pValue = &sSafeVal;
@@ -532,7 +532,7 @@ PH7_PRIVATE sxi32 HashmapLookupBlobKey(
 			&& pNode->nHash == nHash
 			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen ){
 				/* The bytes, compared INLINE. SyMemcmp is the same loop (it is
-				 * SX_MACRO_FAST_CMP either way, PERF.md §5) plus a call and two
+				 * SX_MACRO_FAST_CMP either way) plus a call and two
 				 * null tests, and the keys here are four or five bytes: the call
 				 * costs more than the comparison it makes, tens of millions of
 				 * times a run. */
@@ -1754,7 +1754,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 			 * invalidate the pBacking pointer captured above; the stale pointer
 			 * was a hard SIGSEGV once the table was big enough to be mmap-backed.
 			 * Redundant since P1 -- the pool's segments are fixed, so a slot's
-			 * address never moves. Left for the harvest sweep (PERF.md P1). */
+			 * address never moves. Left for the harvest sweep. */
 			pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pValue->nIdx);
 			if( pBacking ){
 				pBacking->x.pOther = pNew;
@@ -1771,7 +1771,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	 * leave such a pValue dangling, so the slot identity is captured here and the
 	 * write-back re-resolves from the index. Redundant since P1 -- the pool's
 	 * segments are fixed, so a slot's address never moves. Left for the harvest
-	 * sweep (PERF.md P1). */
+	 * sweep. */
 	nValIdx = pValue->nIdx;
 	bValueInPool = ( nValIdx != SXU32_HIGH
 		&& (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nValIdx) == pValue );
@@ -1789,7 +1789,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	pMap->iRef--;
 	if( bValueInPool ){
 		/* Re-resolve pValue's slot. Redundant since P1 (see above): the dup can no
-		 * longer move it. Left for the harvest sweep (PERF.md P1). */
+		 * longer move it. Left for the harvest sweep. */
 		pValue = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,nValIdx);
 		if( pValue == 0 ){
 			return pNew;

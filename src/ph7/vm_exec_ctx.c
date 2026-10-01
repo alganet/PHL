@@ -963,7 +963,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	 * state, so the abort is clean — the wrapper's own check fires only after
 	 * this function has spliced the coroutine into the frame chain, which its
 	 * post-exec detach cannot fully unwind. The PHP call-depth cap belongs to
-	 * OP_CALL only (BYTECODE.md stage 5). */
+	 * OP_CALL only. */
 	if( VmNativeNestingExceeded(pVm) ){
 		return VmNativeNestingFatal(pVm);
 	}
@@ -1082,7 +1082,7 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 	 * frame chain and re-adding its nRecords to nRecursionDepth — a wrapper-level
 	 * abort past those mutations would leave pVm->pFrame pointing into the parked
 	 * callee and the depth accounting un-reverted. The PHP call-depth cap is
-	 * OP_CALL-only (BYTECODE.md stage 5). */
+	 * OP_CALL-only. */
 	if( VmNativeNestingExceeded(pVm) ){
 		return VmNativeNestingFatal(pVm);
 	}
@@ -2041,7 +2041,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
 {
 	/* php's own declaration ORDER, which is what get_class_methods() and
 	 * ReflectionClass::getMethods() answer in. One row still differs from php's
-	 * list and is recorded in PLAN.md: `__destruct` is the engine's teardown hook
+	 * list, and is recorded: `__destruct` is the engine's teardown hook
 	 * published as a method name php does not have (Generator's is the twin). */
 	static const PH7_NativeMethodDef aMethod[] = {
 		{ "__construct",  PH7_MOD_PUBLIC, "callable $callback",  "",       vm_builtin_Fiber_construct },
@@ -2535,7 +2535,7 @@ PH7_PRIVATE int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value 
 	/* Stage 4 scoped divergence: the trampoline only makes PHP->PHP CALLs
 	 * iterative. Every OTHER re-entry runs on a fresh native VmByteCodeExec
 	 * activation (nVmExecDepth bumped) that PH7_SUSPEND cannot unwind across
-	 * without real coroutine stacks (BYTECODE.md §2.4): a C->PHP callback
+	 * without real coroutine stacks: a C->PHP callback
 	 * (usort/array_map/preg_replace_callback comparator), and — because fibers
 	 * use the LEGACY (non-inline) try/catch machinery — a suspend inside a
 	 * fiber's catch/finally body, a match/switch arm, or eval()/include()'d
@@ -2617,7 +2617,7 @@ PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_valu
  * which is where the visibility rule lives, and why this asks for it. php does not
  * reach a private method through a callable, it reaches __call INSTEAD, so running
  * the private body would be a hole rather than a shortcut. Both shapes run on php,
- * whose fiber switches a real stack; here they are a loud refusal (§10 divergence,
+ * whose fiber switches a real stack; here they are a loud refusal (the scope policy divergence,
  * twin-paired). *pzWhy names the reason for the caller to report.
  */
 static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
@@ -2780,7 +2780,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
  * THE single implementation of the per-argument check, shared by the
  * generator/fiber initial-frame binder below (band A #2) and both OP_CALL
  * install paths (named-map and positional — they carried two verbatim copies
- * until the §7.1(f) fold): union types via VmCoerceToUnion, class and
+ * until the recorded(f) fold): union types via VmCoerceToUnion, class and
  * pseudo types (VmCheckPseudoType + VmResolveTypeClass + instanceof, so
  * interfaces/abstract classes and self/parent resolve), the bare `object`
  * hint, and scalars via VmEnforceScalarType (weak-mode coercion in place,
@@ -2976,7 +2976,7 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				PH7_MemObjToHashmap(pObj);
 				/* Capture the slot index now: PH7_HashmapInsert used to reallocate
 				 * pVm->aMemObj and dangle pObj (same hazard as OP_CALL's path).
-				 * Redundant since P1; left for the harvest sweep (PERF.md P1). */
+				 * Redundant now the table is segmented; left for the harvest sweep. */
 				nVariadicIdx = pObj->nIdx;
 				pMap = (ph7_hashmap *)pObj->x.pOther;
 				for( k = n; k < (sxu32)nArg; k++ ){
@@ -3206,7 +3206,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues,
 			0 /* weak-mode arg binding, like call_user_func */, 0,
 			FALSE/*Fiber::start(): php omits the call-site segment*/,
-			FALSE/*php's Fiber::start() passes by VALUE and warns (§7.1)*/);
+			FALSE/*php's Fiber::start() passes by VALUE and warns (recorded)*/);
 		/* Nothing to free: apValues aliases the operand stack now, it is not a
 		 * buffer this function allocated. */
 	}

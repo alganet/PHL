@@ -65,7 +65,7 @@
  * million is buffer for roots that cannot exist -- and it costs: engine-reported
  * peak went from 153.18 to 184.93 MB under php's ceiling and to 156.93 under this
  * one (those two figures are exact and repeatable; the wall-clock win that came
- * with them is not, this box is shared -- PERF.md §7). A hundred thousand is ~2 MB
+ * with them is not, this box is shared and cannot be timed). A hundred thousand is ~2 MB
  * and still turns that run's 523 collections into about fifty, which is the ratio
  * the choice actually rests on.
  */
@@ -512,7 +512,7 @@ static int VmGcVerifyDead(VmGcCtx *pCtx)
  * gate's phpcs step ran the collector 523 times, collected NOTHING, and finished
  * with the threshold still at 10000 (143rd session). Those three counters are the
  * evidence -- they are facts about the program, not about the machine, which is
- * shared here and cannot be timed (PERF.md §7).
+ * shared here and cannot be timed.
  */
 static void VmGcAdjustThreshold(ph7_vm *pVm,sxu32 nCollected,sxu32 nRoots)
 {

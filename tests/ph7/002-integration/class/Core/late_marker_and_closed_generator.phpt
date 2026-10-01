@@ -15,7 +15,7 @@ generator rather than raising it. A program may still name it, catch it and
 throw it, which is the whole of what declaring it buys -- and what a
 `Class "ClosedGeneratorException" not found` fatal cost before.
 
-With these two, §5's class inventory owes nothing: the last names of the
+With these two, the class inventory owes nothing: the last names of the
 `get_declared_classes()` diff against php 8.5.9 are declared.
 --FILE--
 <?php

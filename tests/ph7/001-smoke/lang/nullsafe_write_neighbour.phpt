@@ -23,7 +23,7 @@ class NwnC {
 /* A FILE rather than `-r`: cmd.exe does not quote an inline program the way a
  * POSIX shell does, and the message is reduced to a token so no path or line
  * number reaches the expectation. No output is shell_exec()'s NULL in both
- * engines, and PLAN.md §10 makes handing that to trim() a TypeError here. */
+ * engines, and the non-deprecated policy makes that a TypeError here. */
 function nwnRun($src) {
     $f = sys_get_temp_dir() . '/phl_nwn_' . getmypid() . '.php';
     file_put_contents($f, "<?php\n" . $src . "\n");

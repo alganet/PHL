@@ -2149,7 +2149,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	/* php refuses a resource that is not a stream-context. Nothing CONSUMES it
-	 * here — dir_opendir() over a userland wrapper is not dispatched (§7.4
+	 * here — dir_opendir() over a userland wrapper is not dispatched (recorded
 	 * slice-2 (e)) — but the refusal is the argument's contract. */
 	PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
 	if( bThrew ){
@@ -4681,7 +4681,7 @@ static int StreamCtxSetOption(phl_stream_ctx *pRes,ph7_value *pWrapper,ph7_value
 	/* Every insertion below can reserve a memory object, which used to GROW (and
 	 * therefore move) pVm->aMemObj — and all three arguments may point into it,
 	 * so the structs are snapshotted first. Redundant since P1 (fixed segments);
-	 * left for the harvest sweep (PERF.md P1). */
+	 * left for the harvest sweep. */
 	sKey = *pWrapper; pWrapper = &sKey;
 	sName = *pName;   pName = &sName;
 	sVal = *pValue;   pValue = &sVal;
@@ -5066,7 +5066,7 @@ PH7_PRIVATE int PH7_builtin_stream_context_get_options(ph7_context *pCtx,int nAr
  * true stream_context_set_option(resource $context, string $wrapper, string $option_name, mixed $value)
  *
  * php also accepts the two-argument (context, options-array) spelling and
- * DEPRECATES it in 8.3 — §10 refuses what php deprecates, so an array in
+ * DEPRECATES it in 8.3 — the scope policy refuses what php deprecates, so an array in
  * argument #2 is the ordinary string TypeError here and the whole-array form
  * is spelled stream_context_set_options().
  */
@@ -5481,7 +5481,7 @@ static int SockCtxOptions(phl_stream_ctx *pCtxRes,ph7_sockopts *pOut,char *zHost
 		 * (skip in silence, warn and connect anyway, abandon the candidate),
 		 * split by rules that are not the ones the wordings suggest -- so
 		 * parsing `[::1]:0` here without them would make PHL warn where php
-		 * says nothing. Measured and recorded in §7.4 slice-1 (b)(iii). */
+		 * says nothing. Measured and recorded. */
 		for( i = 0 ; i + 1 < nSpec ; i++ ){
 			if( zSpec[i] == ':' ){
 				nHost = i;
@@ -6888,7 +6888,7 @@ static int SockParseAddress(const char *zAddr,int nAddr,char *zHost,int nHostBuf
 		 * host is what the brackets hold. Anything else is a refusal of its own
 		 * wording -- not the "Failed to parse address" a missing port gets --
 		 * and `[]:9` is an EMPTY host, which the resolver is what refuses.
-		 * (What this build does with the address it parses is §10's IPv4-only
+		 * (What this build does with the address it parses is the scope policy's IPv4-only
 		 * cut: `::1` reaches the resolver and is refused there.) */
 		for( i = 1 ; i + 1 < nRest ; i++ ){
 			if( zRest[i] == ']' ){
@@ -7019,7 +7019,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( rc != SOCK_ADDR_OK ){
 		if( rc == SOCK_ADDR_TRANSPORT ){
 			/* php's own wording for a transport its build does not carry —
-			 * which is what this engine's missing ones ARE (§7.4), and what a
+			 * which is what this engine's missing ones ARE (recorded), and what a
 			 * script reading $errstr is written against. This used to spell a
 			 * message of PHL's own that no php ever answers. */
 			SyBufferFormat(zMsg,sizeof(zMsg),
@@ -7208,7 +7208,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 		char zMsg[512];
 		if( rc == SOCK_ADDR_TRANSPORT ){
 			/* php's own wording for a transport its build has not got, which is
-			 * what udp://, unix:// and ssl:// are here (§7.4). */
+			 * what udp://, unix:// and ssl:// are here (recorded). */
 			SyBufferFormat(zMsg,sizeof(zMsg),
 				"Unable to find the socket transport \"%.*s\" - did you forget to enable it when you configured PHP?",
 				nTransport,zTransport);
@@ -8458,7 +8458,7 @@ struct stream_select_ctx
  * What a select can WAIT on for this handle: the POSIX descriptor, or the
  * SOCKET, which is the only waitable thing a stream carries on Windows (the
  * file devices hold a HANDLE there, and select() cannot take one — a recorded
- * platform difference, §7.4). Answers -1 for a device with neither: a memory
+ * platform difference). Answers -1 for a device with neither: a memory
  * buffer, a data:// payload, a userland wrapper.
  */
 static ph7_int64 IoPrivateSelectHandle(io_private *pDev)
@@ -8753,7 +8753,7 @@ PH7_PRIVATE int PH7_builtin_stream_select(ph7_context *pCtx,int nArg,ph7_value *
  * The transports a stream_socket_client()/fsockopen() address may name. php's
  * own list is what its build registered, so this is what THIS engine can open,
  * in php's own registration order: the ssl/tls/unix set is a recorded scope gap
- * (§7.4), and answering for transports that are not there would tell a script a
+ * (recorded), and answering for transports that are not there would tell a script a
  * connection will work when it cannot.
  */
 PH7_PRIVATE int PH7_builtin_stream_get_transports(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -8838,7 +8838,7 @@ PH7_PRIVATE int PH7_builtin_stream_is_local(ph7_context *pCtx,int nArg,ph7_value
 			int nScheme = (int)SyStrlen(azUrlScheme[i]);
 			if( nLen >= nScheme && SyStrnicmp(zPath,azUrlScheme[i],(sxu32)nScheme) == 0 ){
 				/* php registers these as URL wrappers whether or not this
-				 * engine can OPEN them (http:// is a recorded gap, §7.4), and
+				 * engine can OPEN them (http:// is a recorded gap), and
 				 * "is this path local?" has to answer for the scheme rather
 				 * than for what happens to be implemented — the unsafe
 				 * direction is answering TRUE about a remote URL. */

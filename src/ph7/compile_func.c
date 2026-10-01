@@ -677,7 +677,7 @@ PH7_PRIVATE sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm
 	/* This validator runs at the end of GenStateCompileFuncBody, after the
 	 * body's tokens (>= the '{...}') were consumed, so pIn[-1] is always a
 	 * token of this stream — its line is the function's closing brace. php
-	 * reports the SIGNATURE line instead; the drift is the §3.7 error-
+	 * reports the SIGNATURE line instead; the drift is the error-
 	 * fidelity class (recorded), pending a decl-line field on ph7_vm_func. */
 	nLine = pGen->pIn[-1].nLine;
 	{

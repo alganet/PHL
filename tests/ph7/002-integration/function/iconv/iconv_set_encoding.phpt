@@ -2,13 +2,13 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: iconv_set_encoding() is removed (PHL half)
+POLICY DIVERGENCE the scope policy: iconv_set_encoding() is removed (PHL half)
 --DESCRIPTION--
 iconv_set_encoding() has exactly three things it can set, and php 8.5
 DEPRECATES all three: iconv.input_encoding, iconv.output_encoding and
 iconv.internal_encoding each emit "Use of iconv.<name> is deprecated" on every
 successful call. A function whose only successful outcome is a deprecation is
-deprecated surface, so §10 removes it: the name does not exist here and the
+deprecated surface, so the scope policy removes it: the name does not exist here and the
 call is a loud catchable Error. The GETTER is not deprecated and stays,
 answering default_charset for all three (iconv_get_encoding.phpt). php's half
 is the _zend twin.

@@ -18,7 +18,7 @@
  * php's own `could not find driver`.
  *
  * The class surface is DERIVED from the php 8.5 oracle rather than written
- * from the manual, and §10's non-deprecated rule removes part of it: php 8.5
+ * from the manual, and the non-deprecated rule removes part of it: php 8.5
  * still declares seven `PDO::SQLITE_*` constants that report
  * ReflectionClassConstant::isDeprecated(), superseded by the unprefixed
  * `Pdo\Sqlite::` spellings.  PHL declares only the successors.
@@ -2739,7 +2739,7 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_KEY_PAIR ){
 		/* php's own fetch() cannot do this mode: it builds a value var_dump
 		 * crashes on and json_encode refuses, and one spelling of the same call
-		 * aborts the process (§10 -- a php defect PHL does not reproduce). The
+		 * aborts the process (the scope policy -- a php defect PHL does not reproduce). The
 		 * honest answer is the one the mode NAMES and fetchAll() builds: the
 		 * row as a single key => value pair. */
 		ph7_value *pPair,*pRowVals,*pKey,*pVal;
@@ -4435,7 +4435,7 @@ static int PdoOpenParsed(ph7_context *pCtx,phl_pdo *pConn,const char *zDsn,int n
 	}
 	if( nDriver != (int)sizeof("sqlite")-1
 	 || SyMemcmp(zDsn,"sqlite",sizeof("sqlite")-1) != 0 ){
-		/* §10 scopes this build to one driver, so every other name -- and every
+		/* the scope policy scopes this build to one driver, so every other name -- and every
 		 * other SPELLING of this one -- is what a php without that driver says. */
 		return PH7_VmThrowException(pCtx,"PDOException","could not find driver");
 	}
@@ -4608,7 +4608,7 @@ static int vm_builtin_pdo_drivers(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 {
 	/* php's own constant values, in its own declaration order. The seven
-	 * deprecated PDO::SQLITE_* rows php still carries are absent by §10; their
+	 * deprecated PDO::SQLITE_* rows php still carries are absent by the scope policy; their
 	 * successors are declared on Pdo\Sqlite (vm_pdo_sqlite.c). */
 #define PDO_INT_CONST(NAME,VALUE) \
 	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (ph7_int64)(VALUE), 0, 0.0 }

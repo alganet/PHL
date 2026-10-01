@@ -1137,7 +1137,7 @@ static int SockReadLine(phl_socket *pSock,char *zBuf,int nMax,int *pErr)
 			/* Where php SPINS: its counter only advances on a 0-length read and
 			 * a would-block answers -1, so its loop never leaves. Answering
 			 * what has been read is what that dead guard was written to do --
-			 * a recorded, deliberate divergence (PLAN.md 2.1). */
+			 * a recorded, deliberate divergence. */
 			break;
 		}
 		*pErr = PH7_NetLastError();

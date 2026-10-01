@@ -6,7 +6,7 @@ php: a LOSSY float-string operand and a lossy typed int store deprecate and trun
 --DESCRIPTION--
 php 8.1 DEPRECATES an implicit float->int conversion that loses precision and performs it
 anyway, in two spellings: `Implicit conversion from float 1.9 to int loses precision` and
-`... from float-string "1.9" to int ...`. PHL targets php's NON-deprecated surface (§10) and
+`... from float-string "1.9" to int ...`. PHL targets php's NON-deprecated surface (the scope policy) and
 rejects it. It already did so for a real FLOAT operand of the integer-only operators and for a
 typed int parameter and return; the two sites this pins had been left out, so the same event
 was refused in one place and silently truncated in another. php's half is the `_zend` twin.

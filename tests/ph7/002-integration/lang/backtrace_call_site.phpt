@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 A backtrace frame names the file and line the CALL is written in
 --DESCRIPTION--
-ECOSYSTEM.md F6. A frame's file was derived when the trace was TAKEN, by reading the
+A frame's file used to be derived when the trace was TAKEN, by reading the
 caller's function through the parent frame -- which is a `try` block's own
 function-less frame for a call written inside one, so it fell back to the include
 stack's top and blamed the ENTRY script. The same fallback blamed a call made by an

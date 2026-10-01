@@ -2109,12 +2109,12 @@ static int vm_builtin_openssl_pkey_get_public(ph7_context *pCtx,int nArg,ph7_val
  * openssl_pkey_free(), openssl_free_key() and openssl_x509_free() are NOT
  * here, and their absence is deliberate. php 8 made all three no-ops (a key
  * and a certificate are objects now, freed with their last reference) and
- * marks each `deprecated since 8.0`; §10's rule is that what php merely
+ * marks each `deprecated since 8.0`; the scope policy's rule is that what php merely
  * deprecates this engine REMOVES, so a program that calls one fails loudly
  * instead of being quietly told it is doing nothing. The three names keep
  * their rows in the extension partition -- every reader filters against the
  * live VM, so they simply do not appear -- and the one call site any of the
- * four target projects reaches is recorded in ECOSYSTEM.md.
+ * four target projects reaches is recorded with the gate's baselines.
  */
 /* ---- openssl_pkey_get_details() ---- */
 static void SslDetailBn(ph7_context *pCtx,EVP_PKEY *pKey,ph7_value *pArray,ph7_value *pVal,
@@ -2811,7 +2811,7 @@ done:
  * than any particular value -- an explicit 0 raises "the $key_length parameter
  * is deprecated as it is either ignored or truncates the key" just as a 16
  * does -- because the exchange produces what it produces and asking for fewer
- * bytes hands back a PREFIX that is not a shorter shared secret. §10 refuses
+ * bytes hands back a PREFIX that is not a shorter shared secret. The scope policy refuses
  * the spelling, so the signature declares two parameters and a third argument
  * is `expects exactly 2 arguments, 3 given`.
  */

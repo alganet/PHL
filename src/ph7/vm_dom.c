@@ -925,7 +925,7 @@ static int DomMutatorScreen(ph7_context *pCtx,xmlNodePtr pParent,xmlNodePtr pChi
  * tail of the property list, which is observable: appending an element's own
  * first attribute moves it last.
  *
- * One deliberate divergence, recorded in §7.4: php FREES the displaced
+ * One deliberate divergence, recorded: php FREES the displaced
  * attribute, so a wrapper held across the call answers Invalid State from
  * every later read ("Couldn't fetch DOMAttr" from a method). PHL parks it
  * detached and alive -- the same after-state setAttributeNode leaves.
@@ -1210,7 +1210,7 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 		 * childNodes walk ever shows, whose exact shape is libxml's version's.
 		 * The bytes agree when PHL simply DETACHES the argument and answers
 		 * it; the one detail php answers differently afterwards is recorded in
-		 * §7.4 (the argument's `parentNode` reads the receiver there).
+		 * Recorded (the argument's `parentNode` reads the receiver there).
 		 */
 		DomDetach(pNew->pShell,pChild);
 		DomOrphanAdd(pNew->pShell,pChild);
@@ -6505,7 +6505,7 @@ static xmlHashTablePtr DomMapHash(ph7_class_instance *pMap,phl_domnode *pOwner)
  *
  * php builds a FRESH one per lookup and frees it with the object; PHL builds
  * one per declaration and keeps it on the document's shell, so the wrapper
- * identity every other node has holds here too (PLAN §7.4: `$map->item(0) ===
+ * identity every other node has holds here too (recorded: `$map->item(0) ===
  * $map->item(0)` is true here and false there).
  */
 static xmlNodePtr DomNotationNode(phl_xmldoc *pShell,xmlNotationPtr pNot)
@@ -8652,7 +8652,7 @@ static int DomNodeLess(ph7_context *pCtx,const char *zName)
  * not write is looked up in the class's READER by the property HOOK, which
  * decides between php's two refusals -- a property the table carries is
  * read-only, one it does not is nothing this class answers and goes back on
- * the ordinary path (where PHL's §10 policy meets a dynamic property).
+ * the ordinary path (where PHL's scope policy meets a dynamic property).
  */
 #define DOM_SET_UNKNOWN  0   /* not a property of this class */
 #define DOM_SET_DONE     1   /* written, or a refusal already raised into *pRc */
@@ -10255,7 +10255,7 @@ static sxi32 DomPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,in
 			/* An object with no node behind it (one built with `new`): every handler
 			 * would refuse, so the walk contributes nothing and the object shows its
 			 * real table alone. php's dump THROWS out of the debug handler here
-			 * instead, after printing the header -- see ECOSYSTEM.md F42. */
+			 * instead, after printing the header. */
 			return SXERR_NOTFOUND;
 		}
 	}
@@ -10350,7 +10350,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		/* php's declared type names DOMNameSpaceNode, a class PHL does not have;
 		 * the row states it anyway so Reflection reports php's, and nothing can
 		 * be handed one. (php's own zpp rejects a NON-object here with a
-		 * "?object" message instead -- PLAN §7.4, the error-format class.) */
+		 * "?object" message instead -- recorded, the error-format class.) */
 		{ "contains",       PH7_MOD_PUBLIC, "DOMNode|DOMNameSpaceNode|null $other", "bool",
 		  vm_builtin_DOMNode_contains },
 		{ "getRootNode",    PH7_MOD_PUBLIC, "?array $options = null", "DOMNode",

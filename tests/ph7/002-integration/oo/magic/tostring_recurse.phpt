@@ -7,7 +7,7 @@ Object __toString infinite recursion hits the native-nesting cap
 A magic method is invoked through a C->PHP callback trampoline (a native
 VmByteCodeExec re-entry), not the OP_CALL trampoline — so unbounded __toString
 recursion is bounded by the native-nesting cap (PH7_VM_CONFIG_NATIVE_DEPTH),
-lowered here to 32 for a fast, deterministic fatal (BYTECODE.md stage 5).
+lowered here to 32 for a fast, deterministic fatal.
 phl-only: an engine-internal cap real php does not express.
 
 The cap now HALTS the script (exit 255, nothing on stdout). It used to report

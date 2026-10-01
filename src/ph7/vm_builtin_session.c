@@ -97,7 +97,7 @@ static void VmSessFile(ph7_vm *pVm,SyBlob *pOut)
  * A fresh id: 32 characters over php's 4-bits-per-character alphabet, which is
  * lowercase hex. The two directives that would widen either number,
  * session.sid_length and session.sid_bits_per_character, are DEPRECATED in php 8.4
- * — §10 does not carry php's deprecated surface, so php's defaults are the only
+ * — the scope policy does not carry php's deprecated surface, so php's defaults are the only
  * shape here and an id made by either engine reads the same way to the other.
  */
 static void VmSessGenId(ph7_vm *pVm,SyBlob *pOut)
@@ -1927,7 +1927,7 @@ static int vm_builtin_session_set_save_handler(ph7_context *pCtx,int nArg,ph7_va
 	if( pThis == 0 || pIface == 0 || !PH7_VmInstanceOf(pThis->pClass,pIface) ){
 		/* php ALSO takes six-to-nine callables here and DEPRECATES that spelling
 		 * (8.4: "Providing individual callbacks instead of an object implementing
-		 * SessionHandlerInterface is deprecated"). §10 targets php's
+		 * SessionHandlerInterface is deprecated"). The scope policy targets php's
 		 * non-deprecated surface, so the callables form is refused rather than
 		 * carried — with php's own message for a first argument that is not a
 		 * handler, which is what each of those callables is. */

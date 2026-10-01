@@ -11,12 +11,12 @@ observable ways: an object warned `could not be converted to int` where php says
 and two integers a double cannot tell apart were ordered EXACTLY, so
 `sort([PHP_INT_MAX, PHP_INT_MAX-1], SORT_NUMERIC)` re-ordered a pair php's stable sort leaves
 alone. Matching php means adopting its precision loss above 2^53, which is what parity is
-(§10). NaN ordering is deliberately not asserted: `ZEND_THREEWAY_COMPARE` answers 1 for every
+(the scope policy). NaN ordering is deliberately not asserted: `ZEND_THREEWAY_COMPARE` answers 1 for every
 NaN comparison in both engines, so the resulting POSITION is whatever each sort algorithm does
 with a non-total order, and php does not define it.
 
 The error handler is used so the assertion matches the message BODY on both engines regardless
-of the log-copy prefix (§6).
+of the log-copy prefix.
 --FILE--
 <?php
 set_error_handler(function ($no, $str) { echo "  [$no] $str\n"; return true; });

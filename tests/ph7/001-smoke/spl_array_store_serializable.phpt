@@ -34,7 +34,7 @@ foreach (['', 'junk', 'x', 'xy', 'x:', 'x:i:0', 'x:i:0;', 'x:i:0;a:0:{}', 'x:i:0
           'x:s:1:"a";a:0:{};m:a:0:{}', 'x:i:0;i:5;m:a:0:{}', 'x:i:0;m:a:0:{}',
           'x:i:0;N;m:a:0:{}',
           // (an OBJECT backing array reads too, and is left out here: php 8.5
-          // deprecates it, which is a §7.3 policy item of its own)
+          // deprecates it, which is a policy item of its own)
           'x:i:0;a:0:{};m:a:0:{}extra'] as $splSPayload) {
     $splSD = new ArrayObject(['keep' => 1]);
     try {

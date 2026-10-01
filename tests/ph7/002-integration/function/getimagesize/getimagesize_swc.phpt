@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 A compressed SWF is refused with php's own no-zlib sentence (PHL half of the twin pair)
 --DESCRIPTION--
-RECORDED SCOPE DIFFERENCE (§10). "CWS" is the one container whose size lives
+RECORDED SCOPE DIFFERENCE (the scope policy). "CWS" is the one container whose size lives
 behind DEFLATE, and php reads it only when its build carries a STATIC zlib;
 a php without one still names the type IMAGETYPE_SWC, still refuses the size,
 and says exactly the sentence below. This engine links no zlib -- the same

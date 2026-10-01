@@ -2,11 +2,11 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: a LOSSY float array_key_exists() key is PHL's TypeError (PHL half)
+POLICY DIVERGENCE the scope policy: a LOSSY float array_key_exists() key is PHL's TypeError (PHL half)
 --DESCRIPTION--
 php DEPRECATES a lossy float used as an array offset and truncates it, so
 `array_key_exists(5.7, [5 => 'x'])` is true after `Implicit conversion from float 5.7 to int
-loses precision`. PHL targets php's NON-deprecated surface (§10) and rejects the lossy float
+loses precision`. PHL targets php's NON-deprecated surface (the scope policy) and rejects the lossy float
 everywhere -- and now with the same message the subscript gives, because the builtin and
 `$a[5.7]` share one rule (PH7_VmArrayKeyArg). A WHOLE float is a key in both engines; only the
 lossy one diverges. php's half is the `_zend` twin.

@@ -1,6 +1,6 @@
 PHL-Patch-Reason: e-strict
 PHL-Patch-Kind: rewrite
-PHL-Patch-Note: `E_ALL | E_STRICT` is `E_ALL` on every php 8 (E_STRICT is inside E_ALL and raises nothing since 8.0); §10 removes the constant, so the OR is dropped. Same error_reporting value under php.
+PHL-Patch-Note: `E_ALL | E_STRICT` is `E_ALL` on every php 8 (E_STRICT is inside E_ALL and raises nothing since 8.0); the scope policy removes the constant, so the OR is dropped. Same error_reporting value under php.
 
 diff -ruN a/vendor/php-console/php-console/src/PhpConsole/Handler.php b/vendor/php-console/php-console/src/PhpConsole/Handler.php
 --- a/vendor/php-console/php-console/src/PhpConsole/Handler.php	2019-07-25 00:43:28.000000000 -0300

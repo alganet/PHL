@@ -1,5 +1,5 @@
 /*
- * PERF.md §7 -- the time instrument, as an LD_PRELOAD shared object.
+ * The time instrument, as an LD_PRELOAD shared object.
  *
  * `perf` and `gdb -p` are both blocked on this box, and gprof's time column
  * lies about an -O3 build (its call COUNTS are still worth having). So: an

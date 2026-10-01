@@ -6,7 +6,7 @@
 #include <errno.h>   /* getLinkTarget names the errno text its readlink failed with */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
- * SPL iterators, slice 1 (NEWPLAN band D): SeekableIterator, ArrayIterator,
+ * SPL iterators, slice 1: SeekableIterator, ArrayIterator,
  * ArrayObject. (natsort()/natcasesort() used to be declared here as prelude
  * wrappers over uasort(...,'strnatcmp'); they are C builtins in hashmap_sort.c
  * now -- see ph7_hashmap_natsort -- and the methods below delegate to them.)
@@ -666,7 +666,7 @@ static void SplMembersLoad(ph7_class_instance *pThis,ph7_value *pMembers)
  * ArrayIterator / ArrayObject — the array STORE, in C.
  *
  * These two shared one implementation through `trait __SplStoreT`, the last PHL-only
- * TRAIT and the last name in the §4 ledger that was not a function. php shares nothing
+ * TRAIT and the last name in the native-class ledger that was not a function. php shares nothing
  * between them at the TYPE level: both have no parent and no common interface beyond
  * ArrayAccess/Countable, and the storage lives in ext/spl's own `spl_array_object` struct
  * behind handlers. The recorded decision follows php: no shared type at all —
@@ -763,7 +763,7 @@ PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_v
 	if( (pKey->iFlags & MEMOBJ_RES)
 	 || ((pKey->iFlags & MEMOBJ_REAL) && pKey->rVal != (ph7_real)(sxi64)pKey->rVal) ){
 		/* Same reason, for the two keys the accessor answers with a DIAGNOSTIC: a
-		 * resource is php's warning plus its integer id, and a lossy float is §10's
+		 * resource is php's warning plus its integer id, and a lossy float is the scope policy's
 		 * refusal. The raw lookup here would string-cast the resource to
 		 * "Resource id #N" -- a key nothing else writes -- and silently truncate the
 		 * float, both without a word. */
@@ -844,7 +844,7 @@ static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,
 		 * their plain names. php itself keeps the OBJECT and reads its property table
 		 * live (so getArrayCopy() answers the mangled private names and count() answers
 		 * the visible ones) — a divergence this conversion carries over unchanged rather
-		 * than widening, recorded in §7.4. */
+		 * than widening, recorded. */
 		ph7_class_instance *pObj = (ph7_class_instance *)pArray->x.pOther;
 		ph7_hashmap *pMap;
 		SyHashEntry *pEntry;
@@ -914,7 +914,7 @@ static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pEx
  *   NULL             php's `Using null as an array offset is deprecated` and the
  *                    "" key — except in offsetSet(), where a null key is php's
  *                    append form (`$ao[] = $v`) and says nothing.
- *   LOSSY FLOAT      §10: php deprecates and truncates, PHL refuses — but only
+ *   LOSSY FLOAT      the scope policy: php deprecates and truncates, PHL refuses — but only
  *                    where the ENGINE refuses it, which is a READ or a WRITE.
  *                    `isset($a[1.9])` and `unset($a[1.9])` truncate quietly on a
  *                    plain array, so they do here, or the store would answer
@@ -4503,7 +4503,7 @@ static int vm_builtin_RecursiveCachingIterator_getChildren(ph7_context *pCtx,int
  * here. Declaring them would print `Return [ bool ]` where php prints
  * `Tentative return [ bool ]` AND make getReturnType() disagree; leaving them off
  * costs only getTentativeReturnType(). PHL has no tentative-return concept at all
- * (§7.4) — DateTime and the reflectors already report a plain return type where php
+ * (recorded) — DateTime and the reflectors already report a plain return type where php
  * reports a tentative one.
  */
 static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
@@ -6186,7 +6186,7 @@ static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)
  * are the engine's OWN array builtins called with the slot (rule 7, and rule 39's
  * reference rule already lives inside them). php's element-POINTER cursor is not
  * modelled: a manual walk that mutates the list under itself resolves by position
- * here and by identity there. That is one probe line (§7.4) and the only one.
+ * here and by identity there. That is one probe line (recorded) and the only one.
  */
 #define DLL_Q  "__q"   /* php's llist, head -> tail */
 #define DLL_FL "__fl"  /* php's flags word, IT_FIX included */
@@ -7850,7 +7850,7 @@ static sxi32 VmInstallSplHeap(ph7_vm *pVm)
  * answer (php truncates, with a precision deprecation when it is lossy) but IS
  * PHL's engine-wide one — `$a[1.5]` on a plain array raises the same TypeError,
  * so the class stays consistent with the engine it lives in rather than uniquely
- * permissive (§10).
+ * permissive (the scope policy).
  */
 #define FA_A "__a"   /* the elements, 0..n-1 */
 #define FA_N "__n"   /* php's size */
@@ -9235,7 +9235,7 @@ static int vm_builtin_SplObjectStorage_unserializeMagic(ph7_context *pCtx,int nA
  * format is `x:` + the serialized COUNT, then one `<obj>,<inf>;` per element, then
  * `m:` + the serialized members -- and php writes it through ONE serializer state,
  * so an object that appears twice becomes an `r:` back-reference there and a
- * second copy here (§10; the DLL's legacy pair has the same shape).
+ * second copy here (the scope policy; the DLL's legacy pair has the same shape).
  */
 static int vm_builtin_SplObjectStorage_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -10979,7 +10979,7 @@ static int vm_builtin_SplFileInfo_badState(ph7_context *pCtx,int nArg,ph7_value 
 }
 /*
  * The declaration. Method ORDER is spl_directory.stub.php's; openFile() and
- * setFileClass() are absent because SplFileObject is (§7), and everything else is
+ * setFileClass() are absent because SplFileObject is (recorded), and everything else is
  * php's, tentative return types included.
  */
 static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
@@ -11066,7 +11066,7 @@ static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
  * and a clone — finding no entry of its own — re-opens on first use, which IS
  * php's clone handler, deferred. The one thing that deferral costs is a clone
  * whose directory is removed before it is first used: php has the stream open
- * already and answers, PHL raises "Object not initialized" (§7).
+ * already and answers, PHL raises "Object not initialized" (recorded).
  *
  * `file_name` is LAZY here as it is in php: the path, a slash and the current
  * entry, invalidated by every read and rebuilt on demand. That is php-visible

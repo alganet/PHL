@@ -15,7 +15,7 @@ writes, and for the object one a key php refuses to write at all. All three shar
 PH7_VmArrayKeyArg now, the rail array_key_exists() already used.
 
 The error handler is used so the assertions match the message BODY on both engines regardless
-of the log-copy prefix (§6). The LOSSY-FLOAT key is the one divergence and lives in its own
+of the log-copy prefix. The LOSSY-FLOAT key is the one divergence and lives in its own
 twin pair, traversable_key_lossy_float{,_zend}.phpt.
 --FILE--
 <?php

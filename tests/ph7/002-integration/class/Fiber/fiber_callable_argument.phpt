@@ -14,7 +14,7 @@ and nothing else. `[$obj, 'method']`, `['Class', 'stat']` and `"Class::stat"` �
 the everyday way to run an object's method as a coroutine — could not be spelled
 at all. The two resolvers (the PHP-level `start()` and the C API's) were two
 copies of one decision and only one of them ever grew a shape; they are one now.
-Three callables php runs and PHL refuses loudly are the `_zend`-twinned §10
+Three callables php runs and PHL refuses loudly are the `_zend`-twinned scope-policy
 divergence in fiber_callable_no_body{,_zend}.phpt.
 --FILE--
 <?php

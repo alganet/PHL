@@ -173,8 +173,8 @@ TEST_STRESS_CMD = PHL_MAX_ALLOC=1048576 PHL_MAX_INPUT=65536 "$(PHL_BIN)" "tests/
 	--target-dir tests/ph7/003-stress \
 	--output-format dot
 
-# Deep-recursion tier (BYTECODE.md stage 3+5): PHP call depth is heap-bound and
-# UNBOUNDED by default since stage 5, so these run at the stock host defaults —
+# Deep-recursion tier: PHP call depth is heap-bound and UNBOUNDED by default
+# under the iterative executor, so these run at the stock host defaults —
 # no PHL_MAX_RECURSION needed. Still WITHOUT the small per-allocation cap (deep
 # frames legitimately grow single slot-table allocations past 1 MB).
 TEST_DEEP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
@@ -242,7 +242,7 @@ $(BUILD_DIR)-test-integration-compat: $(PHL_BIN)
 	$(TEST_INTEGRATION_CMD)
 
 # Oracle-coverage gap report (POSIX shell): lists every test that SKIPS under
-# exactly one engine — the §6 oracle-blind debt as a tracked, only-goes-down
+# exactly one engine — the oracle-blind debt as a tracked, only-goes-down
 # number. Runs smoke + integration in TAP mode under both engines and compares
 # the skip sets; the skip REASONS printed by the runner say why each side skips.
 test-oracle-gap: .ALWAYS $(PHL_BIN)

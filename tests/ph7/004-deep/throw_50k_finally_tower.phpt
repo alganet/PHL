@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Throw from 50k deep unwinds 50k per-frame finallys to a top-level catch (BYTECODE.md stage 3)
+Throw from 50k deep unwinds 50k per-frame finallys to a top-level catch
 --DESCRIPTION--
 Every level opens its own try/finally (per-activation exception state, stage
 2b); the throw at the bottom must run each level's finally exactly once on

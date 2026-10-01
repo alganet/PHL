@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: a fiber over a callable with no PHP body runs (php half)
+POLICY DIVERGENCE the scope policy: a fiber over a callable with no PHP body runs (php half)
 --DESCRIPTION--
 The php half of fiber_callable_no_body.phpt: php's fiber switches a real machine
 stack, so an internal function and a `__call`/`__callStatic`-routed name are

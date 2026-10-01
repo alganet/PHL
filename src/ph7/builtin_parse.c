@@ -738,7 +738,7 @@ static void FvStripEncodeBlob(SyBlob *pOut,const char *z,int n,int flags,int bQu
 }
 /*
  * FILTER_SANITIZE_STRING (php's filter id 513, whose two CONSTANT names php
- * deprecated in 8.1 and §10 therefore does not define): strip, encode the
+ * deprecated in 8.1 and the scope policy therefore does not define): strip, encode the
  * quotes unless NO_ENCODE_QUOTES, then strip_tags -- and answer NULL rather
  * than "" for an empty result under FILTER_FLAG_EMPTY_STRING_NULL.
  */

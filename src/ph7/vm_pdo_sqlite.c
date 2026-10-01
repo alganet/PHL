@@ -13,7 +13,7 @@
  * sqlite-specific verbs (createFunction, createCollation, setAuthorizer, ...)
  * are declared.  The class library it extends lives in vm_pdo.c.
  *
- * §10's non-deprecated rule is what splits the constants: php still carries
+ * the non-deprecated rule is what splits the constants: php still carries
  * `PDO::SQLITE_OPEN_READONLY` and six siblings, all of them reporting
  * isDeprecated(), and declares the successors here without the prefix.  PHL
  * declares the successors only.  The three OPEN_* values and the three

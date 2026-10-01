@@ -22,7 +22,7 @@
  *   - the Serializable C: tag is not honored (such a class serializes by the
  *     default O: path).
  *   - an ALLOWED class's undeclared payload property is skipped (php creates a
- *     dynamic property behind a deprecation; PHL's §10 policy has no dynamic
+ *     dynamic property behind a deprecation; PHL's scope policy has no dynamic
  *     properties outside stdClass and the __PHP_Incomplete_Class carrier, whose
  *     properties are all dynamic and keep their RAW mangled keys).
  */
@@ -736,7 +736,7 @@ static void VmUnserializeIncompleteProp(unserialize_data *ud,ph7_class_instance 
  * property decision (VmClassAllowsDynamicProps / #[AllowDynamicProperties]), the
  * one the `$o->n = 1` write path makes: created on stdClass and on a class that
  * opts in, refused with `Cannot create dynamic property C::$n` otherwise. php
- * DEPRECATES that last case rather than refusing it (§10 rejects php's deprecated
+ * DEPRECATES that last case rather than refusing it (the scope policy rejects php's deprecated
  * surface loudly) and raises this exact Error itself for a readonly class. Either
  * way the value is no longer discarded without a word.
  *
@@ -1201,7 +1201,7 @@ static ph7_value * VmUnserializeValueBody(unserialize_data *ud)
  * php's "X given" name for an option value.
  *
  * VmValueGivenName() answers through ph7_type_name(), which reports a WHOLE REAL
- * (2.0) as `int` because PHL caches the integer form in the same slot (the §7
+ * (2.0) as `int` because PHL caches the integer form in the same slot (the recorded
  * dual-flag model, and why ph7_value_is_int() is lenient). The option checks need
  * php's DECLARED type, so a real is named `float` whatever it caches — and the
  * int check below tests MEMOBJ_REAL first for the same reason.

@@ -11,9 +11,9 @@ if (function_exists('zend_version')) {
 ?>
 --FILE--
 <?php
-/* RECORDED POLICY DIVERGENCE (§10). php 8.3 DEPRECATES the two-argument
+/* RECORDED POLICY DIVERGENCE (the scope policy). php 8.3 DEPRECATES the two-argument
  * spelling — stream_context_set_option($ctx, $options_array) — in favour of
- * stream_context_set_options(). §10 removes what php merely deprecates, so the
+ * stream_context_set_options(). The scope policy removes what php merely deprecates, so the
  * array form is not a form here at all: argument #2 is a string, and a call
  * that omits the option name and the value is short by two arguments. */
 $c = stream_context_create();

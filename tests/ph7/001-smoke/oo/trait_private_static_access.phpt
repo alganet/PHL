@@ -19,7 +19,7 @@ echo TpsaA::callStatics(), "\n";
 echo (new TpsaA)->callInst(), "\n";
 // NOTE: the deny path (calling TpsaA::tpsaSecret() from global scope) matches
 // php's message byte-for-byte but is uncatchable in PHL (the pre-frame OP_CALL
-// error family, NEWPLAN section 6) - asserted by probe, not here.
+// error family) - asserted by probe, not here.
 ?>
 --EXPECT--
 priv/prot

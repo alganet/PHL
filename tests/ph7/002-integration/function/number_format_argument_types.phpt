@@ -12,7 +12,7 @@ returned "0", and an object separator produced "Array"/an Error from the concate
 of a ZPP TypeError. The four rows are checked in the body now, in the shape php's ZPP reports
 them, through the same `__php_zpp_type` helper count_chars()/max()/min() use.
 
-The two §10 policy divergences (null and a lossy float, which php deprecates and coerces) are
+The two scope-policy divergences (null and a lossy float, which php deprecates and coerces) are
 in the number_format_argument_types_policy{,_zend}.phpt twin pair, not here.
 --FILE--
 <?php

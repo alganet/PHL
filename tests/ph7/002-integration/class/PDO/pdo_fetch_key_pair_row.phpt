@@ -7,7 +7,7 @@ PHL: fetch(PDO::FETCH_KEY_PAIR) answers one key => value pair, where php's own a
 PDO::FETCH_KEY_PAIR is documented for fetchAll(), and php's `fetch()` cannot do
 it at all: the value it builds there is one `var_dump()` crashes on and
 `json_encode()` refuses, and `PDO::query($sql, PDO::FETCH_KEY_PAIR)` followed by
-a fetch aborts the process outright (SIGILL out of pdo.so). §10 does not
+a fetch aborts the process outright (SIGILL out of pdo.so). The scope policy does not
 reproduce a php defect, and there is no answer to copy, so PHL gives the mode the
 meaning it NAMES and fetchAll() builds: the row as a single key => value pair,
 one per fetch, with the two-column requirement php checks for fetchAll() applying

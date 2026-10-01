@@ -2,10 +2,10 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: a LOSSY float offset on a native ArrayAccess is PHL's TypeError (PHL half)
+POLICY DIVERGENCE the scope policy: a LOSSY float offset on a native ArrayAccess is PHL's TypeError (PHL half)
 --DESCRIPTION--
 php DEPRECATES a lossy float used as an array offset and truncates it, ArrayObject and its
-neighbours included. PHL targets php's NON-deprecated surface (§10) and refuses it wherever an
+neighbours included. PHL targets php's NON-deprecated surface (the scope policy) and refuses it wherever an
 offset is decided -- the subscript, array_key_exists(), the value-keyed builtin doors, and now
 the native ArrayAccess classes, which had been the one place that truncated it in SILENCE (a
 different answer from the engine they live in AND from SplFixedArray next door, which already

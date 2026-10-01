@@ -1,5 +1,5 @@
 # Seldaek/monolog -- picked for SHAPE: two dozen handlers, each pulling a different
-# vendor package in, which is where a §10 policy row shows what it costs.
+# vendor package in, which is where a scope-policy row shows what it costs.
 REPO="https://github.com/Seldaek/monolog.git"
 REF="3.9.0"
 # ext-mongodb is a dev requirement of one handler's test double, and the php oracle on

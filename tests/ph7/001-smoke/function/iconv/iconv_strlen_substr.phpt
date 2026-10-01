@@ -16,7 +16,7 @@ if (function_exists('zend_version') && (!defined('ICONV_IMPL') || ICONV_IMPL !==
 <?php
 /* iconv_strlen() and iconv_substr() count and slice in CHARACTERS of a named
  * encoding. The `?string $encoding = null` all four of these share is php's
- * INTERNAL encoding, which is `default_charset` here (§10 removes the
+ * INTERNAL encoding, which is `default_charset` here (the scope policy removes the
  * deprecated `iconv.*` directives that would otherwise override it). */
 $icvSW = function ($no, $str) { echo "  W: $str\n"; return true; };
 set_error_handler($icvSW);

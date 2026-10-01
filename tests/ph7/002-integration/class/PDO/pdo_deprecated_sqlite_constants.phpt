@@ -6,7 +6,7 @@ PHL: the seven deprecated PDO::SQLITE_* constants are absent; only the Pdo\Sqlit
 --DESCRIPTION--
 php 8.5 still declares PDO::SQLITE_DETERMINISTIC and six siblings, every one of
 them reporting ReflectionClassConstant::isDeprecated() and pointing at an
-unprefixed Pdo\Sqlite spelling. §10's non-deprecated policy is to REMOVE what
+unprefixed Pdo\Sqlite spelling. The non-deprecated policy is to REMOVE what
 php merely deprecates, so PHL declares the successors only and a read of the old
 name is the engine's ordinary undefined-constant Error.
 --SKIPIF--

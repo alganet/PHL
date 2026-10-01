@@ -7,7 +7,7 @@ REF="b885ab8"
 # under phl. It used to be ~14 MINUTES, and the reason recorded here was wrong twice -- it
 # was not "real work" in phpdoc-parser's MARK alternation, it was a leaked `foreach` step
 # making OP_FOREACH_INIT quadratic, and then it was the reference table's rehash (both
-# fixed 26 Aug 2026; see DONE.md). Its MEMORY was the same story: 4205 MB against php's
+# both fixed 26 Aug 2026). Its MEMORY was the same story: 4205 MB against php's
 # 102 until the closure leak behind it was found, 283 MB now. The budget stays: it is per
 # STEP and both engines get it, so a timeout is a comparable answer rather than a hang,
 # and this is the step an engine performance regression would show up in first.

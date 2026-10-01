@@ -2,9 +2,9 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-50k-deep linear recursion completes on the heap (iterative executor; BYTECODE.md stage 3)
+50k-deep linear recursion completes on the heap (iterative executor)
 --DESCRIPTION--
-Runs at the stock uncapped host default (BYTECODE.md stage 5; the deep tier no
+Runs at the stock uncapped host default (the deep tier no
 longer needs PHL_MAX_RECURSION). Before the trampoline this depth overflowed the
 native stack at ~7.7k frames; now PHP call frames are heap records and depth is
 memory-bound. phl-only: this depth trips the php oracle's stack / xdebug

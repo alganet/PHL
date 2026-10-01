@@ -23,7 +23,7 @@ function excShow($label, $fn) {
 }
 /* The trace is normalized rather than printed raw: a frame NUMBER depends on how
    the runner reached this file (php records an `include` frame for the harness
-   and PHL does not — an engine-wide backtrace gap, PLAN §7.1), so only the
+   and PHL does not — an engine-wide backtrace gap), so only the
    frames belonging to this file and the closing {main} are compared. */
 function excNorm($s) {
     $out = [];

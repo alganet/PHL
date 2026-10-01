@@ -13,7 +13,7 @@
 /*
  * PHL_VALUE_CENSUS -- which CALL SITE spends the engine's value primitives.
  * ---------------------------------------------------------------------------
- * Compiled out entirely unless PHL_VALUE_CENSUS is defined; see PERF.md §7 and
+ * Compiled out entirely unless PHL_VALUE_CENSUS is defined; see
  * build-aux/valuecensus.sh, which builds it and resolves what it prints.
  *
  * The fourth instrument, and it exists because the other three cannot see this.
@@ -21,7 +21,7 @@
  * line hashes the names". PH7_MemObjRelease allocates nothing and looks nothing
  * up, so it appears in NEITHER -- and it is the most-called function in the
  * engine: 2.72 billion calls on the ecosystem gate's phpcs step, 43.1% of them on
- * a value that owned nothing (PERF.md §2, P10). A whole-program counter said that
+ * a value that owned nothing. A whole-program counter said that
  * much; it could not say WHICH of the ~700 call sites made those calls, which is
  * the question a design has to answer.
  *
@@ -222,7 +222,7 @@ PH7_PRIVATE int PH7_RealFitsInt64(double r)
  * `(int)1e30` is 5076964154930102272, `(int)1e100` is 0 because every one of
  * its low 64 bits is).
  *
- * PHL used to answer PHP_INT_MIN for all of them, in silence -- a recorded §2
+ * PHL used to answer PHP_INT_MIN for all of them, in silence -- a recorded
  * divergence, and a silent wrong answer wherever a program casts a computed
  * float. The warning php prints beside the value is the cast SITE's to raise:
  * this is also the conversion an int representation is speculatively cached
@@ -281,7 +281,7 @@ static sxi64 MemObjRealToInt(ph7_value *pObj)
  * subscript that reads an int out of its offset.
  *
  * Not a DEPRECATION: php's other float->int diagnostic (`Implicit conversion
- * from float %s to int loses precision`) is the E_DEPRECATED that §10 refuses
+ * from float %s to int loses precision`) is the E_DEPRECATED that the scope policy refuses
  * outright with a TypeError, and it fires at the sites this one does NOT --
  * the operators, the array key, the int parameter, none of which reach a cast
  * here because the refusal comes first. An explicit cast is never lossy in
@@ -526,7 +526,7 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 	}else if( iFlags & MEMOBJ_OBJ ){
 		/* php has NO __toInt(): casting an object to int warns and yields 1. PH7's
 		 * __toInt() was an extension that changed the meaning of valid php source
-		 * (§10), so `(int)$obj` silently returned user data where php diagnoses.
+		 * (the scope policy), so `(int)$obj` silently returned user data where php diagnoses.
 		 *
 		 * Two classes are php's own exception -- the curl easy and multi handles,
 		 * which answer their OBJECT HANDLE and say nothing, because they used to be
@@ -799,7 +799,7 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
  * the empty string "" and the string "0" (nothing else: "00", "0.0", " ",
  * and "false" are all TRUE in php — the historical PH7 zero-stream and
  * "false"/"on"/"yes" special cases changed the meaning of valid PHP source
- * and were removed under the §10 PH7-ism policy).
+ * and were removed under the scope policy PH7-ism policy).
  * an array with zero elements.
  */
 static sxi32 MemObjIsTruthy(ph7_value *pObj)

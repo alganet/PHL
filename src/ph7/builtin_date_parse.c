@@ -14,12 +14,12 @@
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 #include <time.h>
 /* ===========================================================================
- * DateTime family (NEWPLAN band D slice 1): DateTimeInterface, DateTime,
+ * DateTime family: DateTimeInterface, DateTime,
  * DateTimeImmutable, DateTimeZone (UTC + fixed offsets), date_create(),
  * date_create_immutable(). Embedded-PHP chunk + C thunks, following the
  * Reflection architecture (installed inside the bCompilingBuiltin window).
  * Timezone SCOPE: UTC and fixed "+HH:MM" offsets only — no tz database
- * (recorded §10 scope cut; named region zones throw like unknown zones).
+ * (recorded the scope policy scope cut; named region zones throw like unknown zones).
  * ======================================================================== */
 
 /*
@@ -466,7 +466,7 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
  *   an `@epoch`          18 digits, then "Number out of range"
  *   a RELATIVE number    13 digits (php's scanner answers gibberish past that --
  *                        a 14-digit run comes back as ten digits' worth -- so
- *                        PHL refuses instead of guessing, recorded in §7.4)
+ *                        PHL refuses instead of guessing, recorded)
  *   an ISO duration      12 digits, then "Unknown or bad format"
  *
  * The accumulators themselves stop adding past DT_DIGITS_SAFE so that COUNTING a
@@ -4150,7 +4150,7 @@ static sxi64 DtFfResolve(const dt_ff_res *pRes,sxi64 iNow,int iNowUs,
  * beside it in a hidden one. The two are written together by every door that
  * owns the value (the write handler, diff, the constructors); a write that
  * arrives from somewhere else — unserialize's raw property store, or one of the
- * §7.4 shapes php answers with a temporary — leaves only `f` behind, so the
+ * Recorded shapes php answers with a temporary — leaves only `f` behind, so the
  * count is trusted only while it still RENDERS to the float on show, and is
  * re-derived from the float when it does not.
  * ---------------------------------------------------------------------------
@@ -6145,7 +6145,7 @@ static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)
  * `days` and `from_string` are answered by php's read handler and refused by its
  * write one: a script that assigns them creates a deprecated DYNAMIC property
  * that never reaches the interval (`$i->days = 5` leaves `$i->days` false
- * there). §10 refuses a deprecation, and PHL refuses a dynamic property outright,
+ * there). The scope policy refuses a deprecation, and PHL refuses a dynamic property outright,
  * so the two meet at the Error PHL already raises for `$i->anythingElse = v`.
  */
 static void DtIntervalSet(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx)
@@ -6499,7 +6499,7 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		 * this one door words the refusal itself. (php reaches the INTERVAL
 		 * argument's state without a screen at all and segfaults on an
 		 * unconstructed one; PHL refuses it the way every other door does, which
-		 * is PLAN §10.) */
+		 * is the scope policy.) */
 		if( DtArgInitNamed(pCtx,apArg[0],"DateTimeInterface") != 0
 		 || DtArgInit(pCtx,apArg[1]) != 0
 		 || DtArgInitNamed(pCtx,apArg[2],"DateTimeInterface") != 0 ){
@@ -7826,7 +7826,7 @@ static int DtSerialError(ph7_context *pCtx,const char *zClass)
 		"Invalid serialization data for %s object",zClass);
 }
 /* The `array $data` parameter's own screen: the shared ZPP does not judge a scalar
- * against a bare `array` (rule 18's §2 gap), so each caller words php's TypeError. */
+ * against a bare `array` (a recorded gap), so each caller words php's TypeError. */
 static int DtCheckDataArg(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zClass)
 {
 	char zBuf[64];
@@ -7888,7 +7888,7 @@ static int DtZoneRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)
  * zone of its own, so nothing is left for the concatenated text to decide. It is also
  * the only spelling that works today -- PHL's parser accepts an offset only when it is
  * ATTACHED to the time ("…07+02:30", never "…07 +02:30") and accepts no trailing zone
- * NAME at all, so php's own round-trip string does not parse here (a §10 gap of its
+ * NAME at all, so php's own round-trip string does not parse here (a scope-policy gap of its
  * own, recorded rather than worked around).
  *
  * Reading the NAME rather than the tag is also what php ends up doing: a payload
@@ -8626,7 +8626,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	/* php models all seven as VIRTUAL hooked properties, so it reports no default
 	 * for any of them; PHL's are real slots and keep theirs, because a read before
 	 * the first write must answer what php's getter answers rather than raise. The
-	 * TYPE is what a spec row can state exactly — the virtual half is PLAN §7.4. */
+	 * TYPE is what a spec row can state exactly — the virtual half is recorded. */
 	static const PH7_NativePropDef aDpProp[] = {
 		{ "start",              PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },
 		{ "current",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?DateTimeInterface" },

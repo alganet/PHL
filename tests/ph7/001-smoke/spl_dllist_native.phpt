@@ -121,7 +121,7 @@ sdlShow('stack round trip', function () {
 
 /* php presents flags + dllist and shows NOTHING to the (array) cast. */
 /* php's debug keys are the MANGLED private form; PHL presents them unlabelled
- * (the visibility-labelled presented entry is §7.4's open item), so this pins the
+ * (the visibility-labelled presented entry is a recorded open item), so this pins the
  * shape both engines agree on: two entries, the flags then the elements. */
 sdlShow('debugInfo values', function () {
     $d = array_values(sdlList()->__debugInfo());

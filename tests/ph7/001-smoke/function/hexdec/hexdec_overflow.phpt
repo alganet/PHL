@@ -7,7 +7,7 @@ hexdec promotes to float once the value exceeds PHP_INT_MAX
 <?php
 // A value above PHP_INT_MAX is returned as a float (like PHP), not a wrapped or
 // saturated int. is_float()/comparison are used instead of var_dump to dodge the
-// var_dump float-precision divergence (a §3.7 fidelity item); the value itself is
+// var_dump float-precision divergence (a fidelity item); the value itself is
 // byte-exact with php.
 $v = hexdec("ffffffffffffffff");   // 2^64 - 1
 echo is_float($v) ? "float " : "int ";

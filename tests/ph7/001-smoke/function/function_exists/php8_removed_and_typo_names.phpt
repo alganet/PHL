@@ -2,10 +2,10 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-is_real() and the douleval typo are not defined (php-8 surface, §10)
+is_real() and the douleval typo are not defined (php-8 surface, the scope policy)
 --DESCRIPTION--
 The registration table used to carry two names php does not define: is_real(),
-which php REMOVED in 8.0 (§10 keeps no deprecated surface), and "douleval", a
+which php REMOVED in 8.0 (the scope policy keeps no deprecated surface), and "douleval", a
 misspelling of doubleval() — the real doubleval() lives in the prelude, so the
 typo was pure PHL-only surface. Their php-defined neighbours must stay.
 --FILE--

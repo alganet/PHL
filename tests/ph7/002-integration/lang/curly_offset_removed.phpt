@@ -6,7 +6,7 @@ php 8 removed curly-brace offsets: $a{0} is a parse error, not a subscript
 --SKIPIF--
 <?php
 // Both engines reject it; php's bison parser adds an "expecting ..." tail that a
-// recursive-descent parser cannot reproduce (NEWPLAN section 7), so the message text
+// recursive-descent parser cannot reproduce (recorded), so the message text
 // is only pinned under PHL.
 if (function_exists('zend_version')) echo 'skip PHL pins the message; php adds a bison expectation tail';
 ?>

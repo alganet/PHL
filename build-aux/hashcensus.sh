@@ -1,12 +1,12 @@
 #!/bin/sh
-# PERF.md §7 -- the name-lookup census, run end to end.
+# The name-lookup census, run end to end.
 #
 # Answers "which CALL SITE is spending the engine's name hashing, and on how
 # many bytes". The sampler says how large SyHashGet's subsystem is; it cannot
 # say which of its 273 call sites that is, because attribution costs a frame
 # per sample and a leaf-plus-caller table only reaches the loudest few. This
 # counts every lookup, exactly, and a count does not care that this box is
-# loaded (§7).
+# loaded.
 #
 # The instrument is in src/sx/sxds.c behind -DPHL_HASH_CENSUS; this script
 # builds it into its own target, runs the workload ONCE (unlike the heap
@@ -26,7 +26,7 @@
 # and the default view shows them as one 60%-of-everything row that no design can
 # be aimed at. Run both and the big rows decompose. It is how the 146th session
 # found that the largest door was a CACHE MISSING and not a lookup being made
-# (PERF.md §2).
+# was made.
 #
 # Env:
 #   PHL_HCENSUS_TOP  rows in the ranked table (default 30)
@@ -135,7 +135,7 @@ LC_ALL=C awk -v top="$TOP" -v caller="${CALLER_CFLAGS:+1}" '
 		}
 		printf "\n  ci = the table folds case (SyStrHash/SyStrnmicmp) rather than comparing bytes.\n"
 		printf "  A site with a low hit rate and a large key is the engine hashing a long name\n"
-		printf "  to learn that it is not there -- see PERF.md P4.\n"
+		printf "  to learn that it is not there.\n"
 		if (caller) printf "  Rows name the CALLER of the function that looked up (-c), not the line.\n"
 		printf "\n"
 	}

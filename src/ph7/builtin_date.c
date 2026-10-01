@@ -944,7 +944,7 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
  * Resolve a date()/gmdate() $timestamp argument under php 8's ?int weak ZPP:
  *   - null            -> *pbUseNow = 1 (caller uses the current time)
  *   - int/bool/float  -> coerce to a Unix timestamp (float truncates; php's
- *                        float->int precision E_DEPRECATED is not emitted, §3.7)
+ *                        float->int precision E_DEPRECATED is not emitted)
  *   - numeric string  -> coerce via php's is_numeric_string grammar
  *                        (RangeStrToNumber: " 100 "/"1e3"/".5"/"+5" ok)
  *   - anything else (non-numeric string, array, object, resource)

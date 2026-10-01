@@ -15,7 +15,7 @@ error_reporting=E_ALL & ~E_DEPRECATED
 <?php
 /* php's answer to the same six: an opted-in class and stdClass really do allow
  * the property, and every other class gets it too -- behind `Creation of dynamic
- * property C::$m` (E_DEPRECATED, masked here), which §10 turns into the Error the
+ * property C::$m` (E_DEPRECATED, masked here), which the scope policy turns into the Error the
  * PHL half pins. The `__set`-with-no-`__get` row is php's own fetch rule: only
  * `__get` can answer a W fetch, so `__set` alone falls through to this path. */
 #[\AllowDynamicProperties] class BdpOpen {}

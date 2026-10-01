@@ -13,7 +13,7 @@ set_error_handler(function ($n, $s) { echo "[$n] $s\n"; return true; });
 trim("abc", "z..a");
 unserialize("garbage");
 // A builtin that spells the qualifier into its own text is not double-prefixed.
-// (the errno TEXT is wildcarded: the Windows VFS leaves errno unset -- PLAN §7.4)
+// (the errno TEXT is wildcarded: the Windows VFS leaves errno unset -- recorded)
 $f = fopen("/nonexistent/dir/x", "r");
 restore_error_handler();
 

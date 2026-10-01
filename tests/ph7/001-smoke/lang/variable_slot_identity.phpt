@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 A variable name still means the right slot after every rebinding route
 --FILE--
 <?php
-/* A variable's slot is found by NUMBER (PERF.md P5 increment 1). Every route that
+/* A variable's slot is found by NUMBER, not by name. Every route that
  * can move a NAME to another slot has to be seen by the frame that numbered it. */
 
 /* unset() then re-create: the name means a different slot the second time. */

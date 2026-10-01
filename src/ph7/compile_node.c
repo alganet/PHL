@@ -1026,7 +1026,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 		/* A STATEMENT `echo` never reaches here — it dispatches through the statement
 		 * table. Arriving in expression position means source like
 		 * `fopen('f','r') or echo "IO error";`, which was a Symisc extension and is a
-		 * php parse error (§10: a PH7-ism that changes the meaning of valid source is a
+		 * php parse error (the scope policy: a PH7-ism that changes the meaning of valid source is a
 		 * bug). The one legitimate expression-echo is the token a `<?= ... ?>` short tag
 		 * synthesizes, which raises nExprEchoOk around its own compile. */
 		if( pGen->nExprEchoOk < 1 ){

@@ -2,11 +2,11 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: libxml_disable_entity_loader() deprecates and flips state (php half)
+POLICY DIVERGENCE the scope policy: libxml_disable_entity_loader() deprecates and flips state (php half)
 --DESCRIPTION--
 The php half of libxml_disable_entity_loader.phpt: php 8 emits the 8.0
 deprecation and answers the PREVIOUS state each call. PHL removes the name
-outright (§10).
+outright (the scope policy).
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

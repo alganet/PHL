@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-ob_start() from inside an output handler is refused (PHL member: the diagnostic carries this engine's "Error" label and no trace -- the standing §6 error-format class; the REFUSAL itself is php's)
+ob_start() from inside an output handler is refused (PHL member: the diagnostic carries this engine's "Error" label and no trace -- the standing error-format class; the REFUSAL itself is php's)
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {

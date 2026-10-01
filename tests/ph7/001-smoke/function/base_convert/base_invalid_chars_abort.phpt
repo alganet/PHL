@@ -12,7 +12,7 @@ if (function_exists('zend_version')) {
 --FILE--
 <?php
 // php skips the invalid digits, deprecates the skip, and still returns a value.
-// §10 rejects that surface loudly; the throw must stop the builtin, so $bica_r is
+// the scope policy rejects that surface loudly; the throw must stop the builtin, so $bica_r is
 // never assigned and nothing after the throwing call inside the try runs.
 $bica_r = "untouched";
 foreach ([

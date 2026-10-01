@@ -136,7 +136,7 @@ dtuninit_show('new DatePeriod(uninit end)',
     fn() => new DatePeriod(new DateTime('@0'), new DateInterval('P1D'), dtuninit_new('DateTime')));
 /* (php SEGFAULTS on an unconstructed INTERVAL in the same constructor -- it
  * screens the two dates and not the interval -- so that case is deliberately not
- * spelled here: PHL refuses it the way every other door does, PLAN §10.) */
+ * spelled here: PHL refuses it the way every other door does, the scope policy.) */
 
 /* --- what a constructor is not the only way to build --- */
 dtuninit_show('date_create is initialized', fn() => date_create('@5')->format('U'));

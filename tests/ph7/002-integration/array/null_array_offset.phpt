@@ -11,7 +11,7 @@ null-valued index, extremely common via `$a[$maybe ?? null]` — into a fatal. N
 E_DEPRECATED notice (errno 8192, routed through the installed handler) and coerces null to ""
 through the same cast path isset() already used, so a miss yields NULL with the usual
 `Undefined array key ""` warning and a hit returns the value. The error handler is used so the
-assertion matches the message BODY on both engines regardless of the log-copy prefix (§6).
+assertion matches the message BODY on both engines regardless of the log-copy prefix.
 --FILE--
 <?php
 set_error_handler(function ($no, $str) { echo "  [$no] $str\n"; return true; });

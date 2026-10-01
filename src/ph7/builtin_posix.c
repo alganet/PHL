@@ -121,7 +121,7 @@ static int PxFail(ph7_context *pCtx)
  * A descriptor argument: a php stream to take one from, or anything php's WEAK
  * int parse accepts. php's own helper is that parse, which is why a numeric
  * STRING is taken in silence and a non-numeric one is a warning; the two
- * refusals below are PHL's engine-wide policy (§10) where php only deprecates,
+ * refusals below are PHL's engine-wide scope policy where php only deprecates,
  * and they are the same TypeError every other int parameter answers with.
  *
  * Answers the descriptor, or -1 after raising the diagnostic. *pbTyped says

@@ -10,7 +10,7 @@ on: getChildren() over an object entry builds the child with that object as its
 backing array, and php answers `Using an object as a backing array for
 ArrayIterator is deprecated, as it allows violating class constraints and
 invariants`. The notice is invisible from php's CLI and loud under test-compat
-(§4 rule 23), so the probe cannot share a file with oracle-run expectations.
+(native-class rule 23), so the probe cannot share a file with oracle-run expectations.
 PHL emits nothing there yet; what it SHOULD do is a policy question still open
 — the 19 Jul non-deprecated-compatibility policy points at refusing
 the construction outright, which is a change to ArrayIterator, not to the
@@ -18,7 +18,7 @@ recursion this file probes.
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {
-    echo "skip php 8.5 deprecates an object backing array; the notice is a §7.3 policy item";
+    echo "skip php 8.5 deprecates an object backing array; the notice is a policy item";
 }
 --FILE--
 <?php

@@ -79,13 +79,14 @@ somebody decided to live with; read them, and prefer emptying one to growing it.
 
 ## The patch policy — the only accepted patch strategy
 
-PLAN.md §10 targets PHP 8.5's **non-deprecated** surface: what php merely deprecates, PHL
-removes or refuses, so it fails loudly instead of silently half-working. Real projects still
-write those spellings, and a project that dies on one is a project we cannot measure at all —
-which is how `doctrine/couchdb` cost monolog its whole suite past 17%, and how `chr()`'s
-codepoint cost php-parser four errors it could never pass.
+**The non-deprecated policy:** PHL targets PHP 8.5's **non-deprecated** surface — what php
+merely deprecates, PHL removes or refuses, so it fails loudly instead of silently
+half-working. Real projects still write those spellings, and a project that dies on one is a
+project we cannot measure at all — which is how `doctrine/couchdb` cost monolog its whole
+suite past 17%, and how `chr()`'s codepoint cost php-parser four errors it could never pass.
 
-**A patch may only take a project OFF a surface §10 refuses because php deprecates it.**
+**A patch may only take a project OFF a surface the non-deprecated policy refuses because
+php deprecates it.**
 That is the entire licence. It keeps the policy and still gets the suite to the end.
 
 Not allowed, ever:
@@ -97,7 +98,7 @@ Not allowed, ever:
 * making a suite quieter, faster, or greener for any other reason.
 
 `run.sh` enforces this mechanically. Every patch must begin with three headers before its
-diff, and a patch without them, or with a reason that is not a §10 deprecation surface, is a
+diff, and a patch without them, or with a reason that is not a deprecation surface, is a
 hard error:
 
 ```
@@ -125,7 +126,7 @@ appliable.
 `tools/fix-implicit-nullable.php` generates the `implicit-nullable-param` rewrite over a
 whole tree (`--dry-run` first to size it). It splices a `?` at the type's own byte offset
 rather than pretty-printing, so the diff is one character per parameter. Use it rather than
-hand-editing: this is the §10 surface projects hit by the dozen, and by hand is how a
+hand-editing: this is the deprecation surface projects hit by the dozen, and by hand is how a
 "deprecation patch" quietly becomes an edit nobody reviewed.
 
 ## Adding a project

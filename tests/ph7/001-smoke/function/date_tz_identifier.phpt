@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 A tz-database IDENTIFIER: case-folded lookup, verbatim name, GMT's two readings
 --FILE--
 <?php
-/* §10's timezone-database cut is lifted behind PH7_ENABLE_TZDB, and this is the
+/* the scope policy's timezone-database cut is lifted behind PH7_ENABLE_TZDB, and this is the
  * shape of what came in: a DateTimeZone can name a place. Four things about it
  * are not obvious and each was measured against php rather than assumed.
  *

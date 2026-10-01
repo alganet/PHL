@@ -13,7 +13,7 @@ if (function_exists('zend_version')) {
 <?php
 /* php answers `days` and `from_string` from its own struct and lets a write
  * create a DEPRECATED dynamic property beside them -- one that never reaches
- * the interval, so `$i->days = 5` leaves `$i->days` false there. §10 refuses a
+ * the interval, so `$i->days = 5` leaves `$i->days` false there. The scope policy refuses a
  * deprecation and PHL refuses a dynamic property outright, so both writes meet
  * at the Error PHL already raises for any other name. */
 $i = new DateInterval('PT0S');

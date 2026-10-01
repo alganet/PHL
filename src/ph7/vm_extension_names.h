@@ -571,7 +571,7 @@ static const VmExtName aExtFunc[] = {
 	 * listed HERE, in the position php lists them, rather than beside the
 	 * names they alias. php's three DEPRECATED names -- openssl_x509_free,
 	 * openssl_pkey_free and openssl_free_key, all no-ops since 8.0 -- are not
-	 * in this table at all, because §10 removes what php deprecates. */
+	 * in this table at all, because the scope policy removes what php deprecates. */
 	{"openssl_x509_export_to_file",PH7_EXT_OPENSSL}, {"openssl_x509_export",PH7_EXT_OPENSSL}, {"openssl_x509_fingerprint",PH7_EXT_OPENSSL},
 	{"openssl_x509_check_private_key",PH7_EXT_OPENSSL}, {"openssl_x509_verify",PH7_EXT_OPENSSL}, {"openssl_x509_parse",PH7_EXT_OPENSSL},
 	{"openssl_x509_checkpurpose",PH7_EXT_OPENSSL}, {"openssl_x509_read",PH7_EXT_OPENSSL}, 	{"openssl_pkcs12_export_to_file",PH7_EXT_OPENSSL}, {"openssl_pkcs12_export",PH7_EXT_OPENSSL}, {"openssl_pkcs12_read",PH7_EXT_OPENSSL},

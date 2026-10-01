@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Recursive eval() hits the native-nesting fatal at the shipped default, not a C-stack overflow (BYTECODE.md stage 5)
+Recursive eval() hits the native-nesting fatal at the shipped default, not a C-stack overflow
 --DESCRIPTION--
 eval/include recurse on the native C stack (VmEvalChunk -> VmByteCodeExec),
 a path the OP_CALL trampoline never flattened. PHP call depth is unbounded by

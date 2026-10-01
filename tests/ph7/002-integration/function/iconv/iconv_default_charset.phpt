@@ -16,7 +16,7 @@ if (function_exists('zend_version') && (!defined('ICONV_IMPL') || ICONV_IMPL !==
 <?php
 /* The `?string $encoding = null` the iconv string family shares is php's
  * INTERNAL encoding: `iconv.internal_encoding` falling back to
- * `default_charset`. §10 removes the three deprecated `iconv.*` directives, so
+ * `default_charset`. The scope policy removes the three deprecated `iconv.*` directives, so
  * `default_charset` is the whole of it here -- and it is settable at runtime,
  * which is the only way to move this family's default. Process-isolated
  * because it writes an engine-wide setting. */

@@ -40,7 +40,7 @@ PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	pCur = pOut;
 	/* Start the consume process  */
 	while( pOut <= pTos ){
-		/* Force a string cast (echo/print: user-visible array->string warning, §2).
+		/* Force a string cast (echo/print: user-visible array->string warning).
 		 * A not-stringable object throws HERE, mid-list: php compiles `echo a,b,c`
 		 * to one ECHO per operand, so everything left of the object is already
 		 * out. Release what is left so the abandoned operands don't outlive the

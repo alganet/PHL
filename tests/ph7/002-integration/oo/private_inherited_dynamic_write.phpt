@@ -6,7 +6,7 @@ PHL: writing a base's private from below is a dynamic property (PHL half of the 
 --DESCRIPTION--
 A base's private is invisible below it, so `$b->q = 5` names nothing the class
 declares and php CREATES a dynamic property beside the hidden slot, behind
-`Creation of dynamic property B::$q`. PLAN.md §10 rejects that whole surface
+`Creation of dynamic property B::$q`. The non-deprecated policy rejects it
 loudly, so the write is the Error every other undeclared write takes here. The
 read, the isset and the unset all match php and are pinned in
 001-smoke/oo/private_inherited_visibility.phpt.

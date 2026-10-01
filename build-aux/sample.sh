@@ -1,5 +1,5 @@
 #!/bin/sh
-# PERF.md §7 -- the CPU-time sampler, run end to end.
+# The CPU-time sampler, run end to end.
 #
 # Profiles the ORDINARY release binary (build/<target>/full/phl) by preloading
 # build-aux/sampler.c, so what is measured is what ships. `perf` and `gdb -p`

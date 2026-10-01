@@ -2,13 +2,13 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: ext/openssl's deprecated names and parameter exist and warn (php half)
+POLICY DIVERGENCE the scope policy: ext/openssl's deprecated names and parameter exist and warn (php half)
 --DESCRIPTION--
 The php half of openssl_policy_divergence.phpt: php still registers
 openssl_x509_free(), openssl_pkey_free() and openssl_free_key() as no-ops that
 raise E_DEPRECATED, and still takes openssl_pkey_derive()'s third parameter
 with a deprecation of its own. PHL has no engine deprecation sites and removes
-the spellings instead (§10). The passphrase PROMPT the PHL half covers is not
+the spellings instead (the scope policy). The passphrase PROMPT the PHL half covers is not
 exercised here: php reads /dev/tty for it, which a corpus cannot drive.
 --SKIPIF--
 <?php

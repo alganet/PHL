@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-POLICY DIVERGENCE §10: a fiber over a callable with no PHP body is refused (PHL half)
+POLICY DIVERGENCE the scope policy: a fiber over a callable with no PHP body is refused (PHL half)
 --DESCRIPTION--
 php's fiber switches a real machine stack, so ANY callable can be its body — an
 internal function, and a name it routes through `__call`/`__callStatic`. A fiber

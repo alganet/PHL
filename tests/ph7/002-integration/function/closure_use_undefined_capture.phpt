@@ -10,7 +10,7 @@ it to the capture's OWN source line — which differs from the closure keyword's
 use-clause wraps. The by-ref form `use (&$q)` stays silent because it creates the binding. The
 auto-captured $this of a method closure never warns, and an arrow function's implicit captures
 warn only when the body reads them, not at creation. PHL used to capture silently in every case.
-The warning prefix and stream differ across engines, so the handler normalizes them (see the §
+The warning prefix and stream differ across engines, so the handler normalizes them (the recorded
 stdout/stderr routing item); the 4th handler arg pins the line.
 --FILE--
 <?php

@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-10k-deep recursion running inside an include'd file (BYTECODE.md stage 3)
+10k-deep recursion running inside an include'd file
 --DESCRIPTION--
 include executes via VmEvalChunk/VmLocalExec (a native re-entry); the deep
 PHP recursion inside it must still be heap-bound, and a second 10k descent

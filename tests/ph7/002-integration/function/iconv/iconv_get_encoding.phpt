@@ -7,7 +7,7 @@ PH7 / PHP: iconv_get_encoding() answers default_charset for all three of php's i
 <?php
 /* iconv_get_encoding() answers php's three iconv encodings:
  * `iconv.input_encoding`, `output_encoding` and `internal_encoding`, each
- * falling back to `default_charset`. §10 removes all three directives — every
+ * falling back to `default_charset`. The scope policy removes all three directives — every
  * one of them is deprecated, which is also why the SETTER is not here at all
  * (see iconv_set_encoding_refused.phpt) — so `default_charset` is what all
  * three answer, and moving it moves them together, exactly as php does when

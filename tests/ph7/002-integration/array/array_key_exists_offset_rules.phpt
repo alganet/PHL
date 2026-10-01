@@ -16,7 +16,7 @@ VmOffsetResourceWarn. php words the illegal-type rejection differently in the al
 array_key_exists() (the engine's offset Error), and that asymmetry is reproduced.
 
 The error handler is used so the assertions match the message BODY on both engines regardless
-of the log-copy prefix (§6). The LOSSY-FLOAT key is the one divergence and lives in its own
+of the log-copy prefix. The LOSSY-FLOAT key is the one divergence and lives in its own
 twin pair, array_key_exists_lossy_float_key{,_zend}.phpt.
 --FILE--
 <?php
