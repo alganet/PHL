@@ -2886,7 +2886,8 @@ struct VmIniVal {
 	const char *zEnd;
 	const char *zErr;    /* first byte of the offending token, 0 while all is well */
 	const char *zTok;    /* how php's parser names that token in its warning */
-	char zOp[4];         /* room for the `'X'` an operator is named by */
+	char zOp[32];        /* room for the `'X'` an operator is named by, and for
+	                      * the `, expecting '='` an offset statement adds */
 };
 /*
  * One parsed piece: the text php would store in INI_SCANNER_NORMAL, plus the
@@ -2992,6 +2993,76 @@ static int VmIniValRunIsName(const char *z,sxu32 n)
 		}
 	}
 	return 1;
+}
+/*
+ * php's INITIAL TOKENS, narrowed to the bytes that can actually be met at the
+ * end of a label: the scanner hands any of its punctuation set (`:`, `.`, a
+ * quote, a paren, an arithmetic or bitwise sign, `%$!~<>?@{}`) to the parser
+ * as itself, but a `{LABEL_CHAR}+` run swallows all of them except these
+ * twelve -- plus `=` and `[`, which have statements of their own. So `a.b`,
+ * `a:b` and `a'b` are ordinary keys while `a&b` is not a key at all.
+ */
+static int VmIniLabelStopIsToken(int c)
+{
+	return c == '&' || c == '|' || c == '^' || c == '$' || c == '~'
+		|| c == '(' || c == ')' || c == '{' || c == '}' || c == '!'
+		|| c == '"' || c == ']';
+}
+/*
+ * php's comment rule is `[;][^\r\n]*{NEWLINE}`: it returns END_OF_LINE and
+ * takes the line with it -- but a comment running into the end of the input
+ * matches no rule at all, and the parser meets the end of file instead.
+ */
+static int VmIniCommentEndsLine(const char *z,const char *zEnd)
+{
+	for( ; z < zEnd ; z++ ){
+		if( z[0] == '\n' || z[0] == '\r' ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * Name the byte a label run stopped on the way php's parser names it. With
+ * bAfterOffset the statement is already committed -- `TC_OFFSET option_offset
+ * ']' '=' string_or_value` is the only shape an offset has -- so every name
+ * carries php's `, expecting '='`, and a byte that would merely have ended a
+ * bare-label statement is refused here too.
+ */
+static const char * VmIniLabelStopTok(VmIniVal *p,const char *z,const char *zEnd,int bAfterOffset)
+{
+	const char *zName;
+	char *zOut = p->zOp;
+	if( z >= zEnd || z[0] == 0 ){
+		zName = "end of file";
+	}else if( z[0] == '\n' || z[0] == '\r' ){
+		zName = "END_OF_LINE";
+	}else if( z[0] == ';' ){
+		zName = VmIniCommentEndsLine(z,zEnd) ? "END_OF_LINE" : "end of file";
+	}else if( z[0] == '[' ){
+		zName = "TC_SECTION";
+	}else if( VmIniLabelStopIsToken((unsigned char)z[0]) ){
+		zName = 0;   /* the byte names itself */
+	}else{
+		zName = "TC_LABEL";
+	}
+	if( zName ){
+		while( zName[0] ){
+			*zOut++ = *zName++;
+		}
+	}else{
+		*zOut++ = '\'';
+		*zOut++ = z[0];
+		*zOut++ = '\'';
+	}
+	if( bAfterOffset ){
+		const char *zWant = ", expecting '='";
+		while( zWant[0] ){
+			*zOut++ = *zWant++;
+		}
+	}
+	zOut[0] = 0;
+	return p->zOp;
 }
 static void VmIniValBlanks(VmIniVal *p)
 {
@@ -3808,7 +3879,7 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 		}else{
 			ph7_value *pOldCur;
 			ph7_value *pOffset;
-			const char *zOff,*zOffEnd;
+			const char *zOff,*zOffEnd,*zEq;
 			int is_array;
 			int iLen;
 			/* Properties */
@@ -3822,17 +3893,13 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 			 * it. Nothing is created yet: php's grammar has no statement for a
 			 * label with no `=`, so the line may still turn out to be dropped
 			 * whole -- and a stray `a[x]` must not leave an empty `a` behind. */
-			while( zIn < zEnd && zIn[0] != '=' && zIn[0] != '\n' && zIn[0] != '\r' ){
-				if( zIn[0] == '[' ){
-					if( is_array ){
-						/* php has no second offset: the `[` is read as the
-						 * start of a SECTION where an `=` was due */
-						sVal.zErr = sVal.zCur = zIn;
-						sVal.zTok = "TC_SECTION, expecting '='";
-						goto ini_syntax_error;
-					}
+			while( zIn < zEnd && VmIniVarNameChar((unsigned char)zIn[0]) ){
+				zIn++;
+			}
+			iLen = (int)(zIn-zCur);
+			if( zIn < zEnd && zIn[0] == '[' ){
+				{
 					/* Array */
-					iLen = (int)(zIn-zCur);
 					is_array = 1;
 					zIn++;
 					/* The scanner's own rule eats the blanks in front of the
@@ -3877,18 +3944,72 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 						sVal.zTok = "end of file, expecting ']'";
 						goto ini_syntax_error;
 					}
+					zIn++;   /* ']' */
 				}
-				zIn++;
-			}
-			if( !is_array ){
-				iLen = (int)(zIn-zCur);
-			}
-			if( zIn >= zEnd || zIn[0] != '=' ){
-				/* No `=`: php drops the incomplete statement and goes on with
-				 * the next line, so `justaword` alone is neither an entry nor
-				 * an error, and never eats the line behind it. */
-				pCur = pOldCur;
-				continue;
+				/* Only `{TABS_AND_SPACES}*[=]` may stand behind the bracket. A
+				 * TAB is thrown away on its own; a SPACE is a LABEL_CHAR and
+				 * starts a label unless an `=` closes the run, which is why
+				 * `a[x] ]` is an unexpected TC_LABEL and not an unexpected
+				 * `]`. */
+				while( zIn < zEnd && zIn[0] == '\t' ){
+					zIn++;
+				}
+				zEq = zIn;
+				while( zEq < zEnd && zEq[0] == ' ' ){
+					zEq++;
+				}
+				if( zEq < zEnd && zEq[0] == '=' ){
+					zIn = zEq;
+				}else{
+					/* `TC_OFFSET option_offset ']' '='` is the only statement
+					 * an offset has -- there is no bare `a[x]` the way there
+					 * is a bare `a` -- so whatever stands where the `=` was
+					 * due is named and the whole parse is discarded. */
+					sVal.zErr = sVal.zCur = zIn;
+					sVal.zTok = VmIniLabelStopTok(&sVal,zIn,zEnd,1);
+					if( zIn < zEnd && (zIn[0] == '\n' || zIn[0] == '\r'
+					 || (zIn[0] == ';' && VmIniCommentEndsLine(zIn,zEnd))) ){
+						/* php's END_OF_LINE rule counts the line it just ate
+						 * before its parser refuses the token, so the report
+						 * lands one line below the offset that caused it. */
+						nLineBias++;
+					}
+					goto ini_syntax_error;
+				}
+			}else if( zIn >= zEnd || zIn[0] != '=' ){
+				zEq = zIn;
+				while( zEq < zEnd && (zEq[0] == ' ' || zEq[0] == '\t') ){
+					zEq++;
+				}
+				if( zEq < zEnd && zEq[0] == '=' ){
+					/* php's `{TABS_AND_SPACES}*[=]{TABS_AND_SPACES}*` outruns
+					 * the rule that merely eats the blanks, so the TAB that
+					 * ended the label does not end the statement with it:
+					 * `b<TAB>= 1` is still the entry "b". */
+					zIn = zEq;
+				}else if( zIn < zEnd && VmIniLabelStopIsToken((unsigned char)zIn[0]) ){
+					/* A byte no statement can start with. php's LABEL run
+					 * stops dead at it and INITIAL hands it to the parser as
+					 * itself, so `a&b = 1` is the bare label `a` and then an
+					 * unexpected `&` -- never the three-byte key "a&b". */
+					sVal.zErr = sVal.zCur = zIn;
+					sVal.zTok = VmIniLabelStopTok(&sVal,zIn,zEnd,0);
+					goto ini_syntax_error;
+				}else{
+					/* No `=`: php's grammar has a statement that is a bare
+					 * TC_LABEL and does nothing, so `justaword` alone is
+					 * neither an entry nor an error, and never eats the line
+					 * behind it. The scan resumes at the byte that ended the
+					 * run, which is why `a<TAB>b = 1` is the entry "b" and
+					 * not "a<TAB>b". */
+					pCur = pOldCur;
+					if( zIn < zEnd && zIn[0] == 0 ){
+						/* php's scanner reads a NUL-terminated buffer and
+						 * never sees the byte behind one */
+						break;
+					}
+					continue;
+				}
 			}
 			/* Trim the key */
 			SyStringInitFromBuf(&sEntry,zCur,iLen);
