@@ -1682,22 +1682,22 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 1672 | ` * change to, so every archive is simply dropped. php's own shutdown commits` |
 |    - | 1673 | ` * one an object still holds, and the object's teardown is what does that here,` |
 |    - | 1674 | ` * running before this sweep. */` |
-| 5645 | 1675 | `static void ZipVmSweep(ph7_vm *pVm)` |
+| 6717 | 1675 | `static void ZipVmSweep(ph7_vm *pVm)` |
 |    5 | 1676 | `{` |
-| 5652 | 1677 | `	while( pVm->pZips ){` |
+| 6724 | 1677 | `	while( pVm->pZips ){` |
 |    3 | 1678 | `		phl_zip *pZip = (phl_zip *)pVm->pZips;` |
 |    3 | 1679 | `		pZip->nRef = 1;` |
 |    3 | 1680 | `		ZipRelease(pZip);` |
 |    1 | 1681 | `	}` |
-| 5650 | 1682 | `}` |
+| 6722 | 1682 | `}` |
 |   16 | 1683 | `PH7_PRIVATE void PH7_ZipVmReset(ph7_vm *pVm)` |
 |  ! 0 | 1684 | `{` |
 |   16 | 1685 | `	ZipVmSweep(&(*pVm));` |
 |   16 | 1686 | `}` |
-| 5629 | 1687 | `PH7_PRIVATE void PH7_ZipVmRelease(ph7_vm *pVm)` |
+| 6701 | 1687 | `PH7_PRIVATE void PH7_ZipVmRelease(ph7_vm *pVm)` |
 |    5 | 1688 | `{` |
-| 5634 | 1689 | `	ZipVmSweep(&(*pVm));` |
-| 5634 | 1690 | `}` |
+| 6706 | 1689 | `	ZipVmSweep(&(*pVm));` |
+| 6706 | 1690 | `}` |
 |    - | 1691 | `/*` |
 |    - | 1692 | ` * Write the archive back to the file it names.` |
 |    - | 1693 | ` *` |
@@ -1931,7 +1931,7 @@ Coverage: 2328/3006 lines (77.45%)
 |    1 | 1921 | `	SXUNUSED(pVm);` |
 |    3 | 1922 | `	pCtx->zThrowClass = "Error";` |
 |    4 | 1923 | `	SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),` |
-|    2 | 1924 | `		"Cannot write read-only property %z::$%z",&pThis->pClass->sName,pCtx->pName);` |
+|    2 | 1924 | `		"Cannot write read-only property %z::$%z",&pThis->pClass->sDisp,pCtx->pName);` |
 |    3 | 1925 | `}` |
 |    - | 1926 | `/* ------------------------------------------------------------------ */` |
 |    - | 1927 | `/* Errors                                                              */` |
@@ -4129,10 +4129,10 @@ Coverage: 2328/3006 lines (77.45%)
 |   15 | 4119 | `	pIo->bRead = 1;` |
 |   15 | 4120 | `	return nWant;` |
 |   14 | 4121 | `}` |
-|    2 | 4122 | `static ph7_int64 ZipStreamTell(void *pHandle)` |
+|   10 | 4122 | `static ph7_int64 ZipStreamTell(void *pHandle)` |
 |    1 | 4123 | `{` |
-|    3 | 4124 | `	phl_zip_io *pIo = (phl_zip_io *)pHandle;` |
-|    3 | 4125 | `	return pIo ? (ph7_int64)pIo->nCur : -1;` |
+|   11 | 4124 | `	phl_zip_io *pIo = (phl_zip_io *)pHandle;` |
+|   11 | 4125 | `	return pIo ? (ph7_int64)pIo->nCur : -1;` |
 |    1 | 4126 | `}` |
 |    - | 4127 | `/* php's zip stream is NOT seekable -- a member is decompressed forwards -- and` |
 |    - | 4128 | `` * a script sees that both in `stream_get_meta_data()` and in the warning an`` |
@@ -4155,9 +4155,9 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 4145 | `	0,               /* xSync */` |
 |    - | 4146 | `	0                /* xStat */` |
 |    - | 4147 | `};` |
-|   90 | 4148 | `PH7_PRIVATE int PH7_ZipStreamIs(const ph7_io_stream *pStream)` |
+|  110 | 4148 | `PH7_PRIVATE int PH7_ZipStreamIs(const ph7_io_stream *pStream)` |
 |    5 | 4149 | `{` |
-|   95 | 4150 | `	return pStream == &sZIP_Stream;` |
+|  115 | 4150 | `	return pStream == &sZIP_Stream;` |
 |    5 | 4151 | `}` |
 |    - | 4152 | ``/* Was this handle opened through the `zip://` wrapper, or handed out by`` |
 |    - | 4153 | `` * getStream()? php reports a `wrapper_type` for the first and none for the`` |
@@ -4305,20 +4305,20 @@ Coverage: 2328/3006 lines (77.45%)
 |   43 | 4295 | `	pRes = (phl_zip_res *)ph7_value_to_resource(pArg);` |
 |   43 | 4296 | `	return (pRes && pRes->base.iMagic == ZIP_ENT_MAGIC) ? pRes : 0;` |
 |   29 | 4297 | `}` |
-|   12 | 4298 | `PH7_PRIVATE const char * PH7_ZipResourceType(void *pResource)` |
-|    2 | 4299 | `{` |
-|   14 | 4300 | `	io_private *pDev = (io_private *)pResource;` |
-|   14 | 4301 | `	if( pDev == 0 ){` |
+|   14 | 4298 | `PH7_PRIVATE const char * PH7_ZipResourceType(void *pResource)` |
+|    3 | 4299 | `{` |
+|   17 | 4300 | `	io_private *pDev = (io_private *)pResource;` |
+|   17 | 4301 | `	if( pDev == 0 ){` |
 |  ! 0 | 4302 | `		return 0;` |
 |    - | 4303 | `	}` |
-|   14 | 4304 | `	if( pDev->iMagic == ZIP_DIR_MAGIC ){` |
+|   17 | 4304 | `	if( pDev->iMagic == ZIP_DIR_MAGIC ){` |
 |    5 | 4305 | `		return "Zip Directory";` |
 |    - | 4306 | `	}` |
-|   10 | 4307 | `	if( pDev->iMagic == ZIP_ENT_MAGIC ){` |
+|   13 | 4307 | `	if( pDev->iMagic == ZIP_ENT_MAGIC ){` |
 |    7 | 4308 | `		return "Zip Entry";` |
 |    - | 4309 | `	}` |
-|    3 | 4310 | `	return 0;` |
-|    8 | 4311 | `}` |
+|    6 | 4310 | `	return 0;` |
+|   10 | 4311 | `}` |
 |   10 | 4312 | `static int PH7_builtin_zip_open(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 | 4313 | `{` |
 |    - | 4314 | `	phl_zip *pZip;` |
@@ -4594,7 +4594,7 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 4584 | `/* ------------------------------------------------------------------ */` |
 |    - | 4585 | `#define ZIP_ICONST(NAME,VALUE) \` |
 |    - | 4586 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (VALUE), 0, 0.0 }` |
-| 6721 | 4587 | `PH7_PRIVATE sxi32 PH7_VmInstallZip(ph7_vm *pVm)` |
+| 7925 | 4587 | `PH7_PRIVATE sxi32 PH7_VmInstallZip(ph7_vm *pVm)` |
 |    5 | 4588 | `{` |
 |    - | 4589 | `	static const PH7_NativeMethodDef aMethod[] = {` |
 |    - | 4590 | `		{ "open", PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "@int\|bool",` |
@@ -4855,18 +4855,18 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 4845 | `		  aProp, SX_ARRAYSIZE(aProp), ZipInstanceRelease, 0, 0 }` |
 |    - | 4846 | `	};` |
 |    - | 4847 | `	sxi32 rc;` |
-| 6726 | 4848 | `	pVm->pZips = 0;` |
-| 6726 | 4849 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-| 6726 | 4850 | `	if( rc != SXRET_OK ){` |
+| 7930 | 4848 | `	pVm->pZips = 0;` |
+| 7930 | 4849 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+| 7930 | 4850 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 4851 | `		return rc;` |
 |    - | 4852 | `	}` |
-| 6726 | 4853 | `	rc = PH7_NativeClassInstallSetHook(&(*pVm),"ZipArchive",ZipSetHook);` |
-| 6726 | 4854 | `	if( rc != SXRET_OK ){` |
+| 7930 | 4853 | `	rc = PH7_NativeClassInstallSetHook(&(*pVm),"ZipArchive",ZipSetHook);` |
+| 7930 | 4854 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 4855 | `		return rc;` |
 |    - | 4856 | `	}` |
-| 6726 | 4857 | `	return PH7_NativeClassInstallNewHook(&(*pVm),"ZipArchive",ZipNewHook);` |
-| 3361 | 4858 | `}` |
-| 6721 | 4859 | `PH7_PRIVATE const ph7_builtin_func * PH7_ZipFuncTable(sxu32 *pnEntry)` |
+| 7930 | 4857 | `	return PH7_NativeClassInstallNewHook(&(*pVm),"ZipArchive",ZipNewHook);` |
+| 3962 | 4858 | `}` |
+| 7925 | 4859 | `PH7_PRIVATE const ph7_builtin_func * PH7_ZipFuncTable(sxu32 *pnEntry)` |
 |    5 | 4860 | `{` |
 |    - | 4861 | `	static const ph7_builtin_func aFunc[] = {` |
 |    - | 4862 | `		{ "zip_open",                     PH7_builtin_zip_open                     },` |
@@ -4880,8 +4880,8 @@ Coverage: 2328/3006 lines (77.45%)
 |    - | 4870 | `		{ "zip_entry_filesize",           PH7_builtin_zip_entry_filesize           },` |
 |    - | 4871 | `		{ "zip_entry_compressionmethod",  PH7_builtin_zip_entry_compressionmethod  }` |
 |    - | 4872 | `	};` |
-| 6726 | 4873 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
-| 6726 | 4874 | `	return aFunc;` |
+| 7930 | 4873 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
+| 7930 | 4874 | `	return aFunc;` |
 |    5 | 4875 | `}` |
 |    - | 4876 | `#else /* !PH7_ENABLE_ZLIB \|\| PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 4877 | `/* No zlib means no ext/zip, exactly as php's own build has none: the two VM` |

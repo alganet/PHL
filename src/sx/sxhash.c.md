@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1620/1707 lines (94.90%)
+Coverage: 1625/1707 lines (95.20%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -40,16 +40,16 @@ Coverage: 1620/1707 lines (94.90%)
 |       - |   30 | `/*` |
 |       - |   31 | ` * Note: this code is harmless on little-endian machines.` |
 |       - |   32 | ` */` |
-|   35050 |   33 | `static void byteReverse (unsigned char *buf, unsigned longs)` |
+|   35522 |   33 | `static void byteReverse (unsigned char *buf, unsigned longs)` |
 |       4 |   34 | `{` |
 |       - |   35 | `	sxu32 t;` |
-|   17525 |   36 | `        do {` |
-|  500794 |   37 | `                t = (sxu32)((unsigned)buf[3]<<8 \| buf[2]) << 16 \|` |
-|  333860 |   38 | `                            ((unsigned)buf[1]<<8 \| buf[0]);` |
-|  333864 |   39 | `                *(sxu32*)buf = t;` |
-|  333864 |   40 | `                buf += 4;` |
-|  333864 |   41 | `        } while (--longs);` |
-|   35054 |   42 | `}` |
+|   17761 |   36 | `        do {` |
+|  511576 |   37 | `                t = (sxu32)((unsigned)buf[3]<<8 \| buf[2]) << 16 \|` |
+|  341048 |   38 | `                            ((unsigned)buf[1]<<8 \| buf[0]);` |
+|  341052 |   39 | `                *(sxu32*)buf = t;` |
+|  341052 |   40 | `                buf += 4;` |
+|  341052 |   41 | `        } while (--longs);` |
+|   35526 |   42 | `}` |
 |       - |   43 | `/* The four core functions - F1 is optimized somewhat */` |
 |       - |   44 |  |
 |       - |   45 | `/* #define F1(x, y, z) (x & y \| ~x & z) */` |
@@ -80,104 +80,104 @@ Coverage: 1620/1707 lines (94.90%)
 |       - |   70 | ` * reflect the addition of 16 longwords of new data.MD5Update blocks` |
 |       - |   71 | ` * the data and converts bytes into longwords for this routine.` |
 |       - |   72 | ` */` |
-|   18840 |   73 | `static void MD5Transform(sxu32 buf[4], const sxu32 in[16])` |
+|   19286 |   73 | `static void MD5Transform(sxu32 buf[4], const sxu32 in[16])` |
 |       4 |   74 | `{` |
 |       - |   75 | `	register sxu32 a, b, c, d;` |
 |       - |   76 |  |
-|   18844 |   77 | `        a = buf[0];` |
-|   18844 |   78 | `        b = buf[1];` |
-|   18844 |   79 | `        c = buf[2];` |
-|   18844 |   80 | `        d = buf[3];` |
+|   19290 |   77 | `        a = buf[0];` |
+|   19290 |   78 | `        b = buf[1];` |
+|   19290 |   79 | `        c = buf[2];` |
+|   19290 |   80 | `        d = buf[3];` |
 |       - |   81 |  |
-|   18844 |   82 | `        SX_MD5STEP(F1, a, b, c, d, in[ 0]+0xd76aa478,  7);` |
-|   18844 |   83 | `        SX_MD5STEP(F1, d, a, b, c, in[ 1]+0xe8c7b756, 12);` |
-|   18844 |   84 | `        SX_MD5STEP(F1, c, d, a, b, in[ 2]+0x242070db, 17);` |
-|   18844 |   85 | `        SX_MD5STEP(F1, b, c, d, a, in[ 3]+0xc1bdceee, 22);` |
-|   18844 |   86 | `        SX_MD5STEP(F1, a, b, c, d, in[ 4]+0xf57c0faf,  7);` |
-|   18844 |   87 | `        SX_MD5STEP(F1, d, a, b, c, in[ 5]+0x4787c62a, 12);` |
-|   18844 |   88 | `        SX_MD5STEP(F1, c, d, a, b, in[ 6]+0xa8304613, 17);` |
-|   18844 |   89 | `        SX_MD5STEP(F1, b, c, d, a, in[ 7]+0xfd469501, 22);` |
-|   18844 |   90 | `        SX_MD5STEP(F1, a, b, c, d, in[ 8]+0x698098d8,  7);` |
-|   18844 |   91 | `        SX_MD5STEP(F1, d, a, b, c, in[ 9]+0x8b44f7af, 12);` |
-|   18844 |   92 | `        SX_MD5STEP(F1, c, d, a, b, in[10]+0xffff5bb1, 17);` |
-|   18844 |   93 | `        SX_MD5STEP(F1, b, c, d, a, in[11]+0x895cd7be, 22);` |
-|   18844 |   94 | `        SX_MD5STEP(F1, a, b, c, d, in[12]+0x6b901122,  7);` |
-|   18844 |   95 | `        SX_MD5STEP(F1, d, a, b, c, in[13]+0xfd987193, 12);` |
-|   18844 |   96 | `        SX_MD5STEP(F1, c, d, a, b, in[14]+0xa679438e, 17);` |
-|   18844 |   97 | `        SX_MD5STEP(F1, b, c, d, a, in[15]+0x49b40821, 22);` |
+|   19290 |   82 | `        SX_MD5STEP(F1, a, b, c, d, in[ 0]+0xd76aa478,  7);` |
+|   19290 |   83 | `        SX_MD5STEP(F1, d, a, b, c, in[ 1]+0xe8c7b756, 12);` |
+|   19290 |   84 | `        SX_MD5STEP(F1, c, d, a, b, in[ 2]+0x242070db, 17);` |
+|   19290 |   85 | `        SX_MD5STEP(F1, b, c, d, a, in[ 3]+0xc1bdceee, 22);` |
+|   19290 |   86 | `        SX_MD5STEP(F1, a, b, c, d, in[ 4]+0xf57c0faf,  7);` |
+|   19290 |   87 | `        SX_MD5STEP(F1, d, a, b, c, in[ 5]+0x4787c62a, 12);` |
+|   19290 |   88 | `        SX_MD5STEP(F1, c, d, a, b, in[ 6]+0xa8304613, 17);` |
+|   19290 |   89 | `        SX_MD5STEP(F1, b, c, d, a, in[ 7]+0xfd469501, 22);` |
+|   19290 |   90 | `        SX_MD5STEP(F1, a, b, c, d, in[ 8]+0x698098d8,  7);` |
+|   19290 |   91 | `        SX_MD5STEP(F1, d, a, b, c, in[ 9]+0x8b44f7af, 12);` |
+|   19290 |   92 | `        SX_MD5STEP(F1, c, d, a, b, in[10]+0xffff5bb1, 17);` |
+|   19290 |   93 | `        SX_MD5STEP(F1, b, c, d, a, in[11]+0x895cd7be, 22);` |
+|   19290 |   94 | `        SX_MD5STEP(F1, a, b, c, d, in[12]+0x6b901122,  7);` |
+|   19290 |   95 | `        SX_MD5STEP(F1, d, a, b, c, in[13]+0xfd987193, 12);` |
+|   19290 |   96 | `        SX_MD5STEP(F1, c, d, a, b, in[14]+0xa679438e, 17);` |
+|   19290 |   97 | `        SX_MD5STEP(F1, b, c, d, a, in[15]+0x49b40821, 22);` |
 |       - |   98 |  |
-|   18844 |   99 | `        SX_MD5STEP(F2, a, b, c, d, in[ 1]+0xf61e2562,  5);` |
-|   18844 |  100 | `        SX_MD5STEP(F2, d, a, b, c, in[ 6]+0xc040b340,  9);` |
-|   18844 |  101 | `        SX_MD5STEP(F2, c, d, a, b, in[11]+0x265e5a51, 14);` |
-|   18844 |  102 | `        SX_MD5STEP(F2, b, c, d, a, in[ 0]+0xe9b6c7aa, 20);` |
-|   18844 |  103 | `        SX_MD5STEP(F2, a, b, c, d, in[ 5]+0xd62f105d,  5);` |
-|   18844 |  104 | `        SX_MD5STEP(F2, d, a, b, c, in[10]+0x02441453,  9);` |
-|   18844 |  105 | `        SX_MD5STEP(F2, c, d, a, b, in[15]+0xd8a1e681, 14);` |
-|   18844 |  106 | `        SX_MD5STEP(F2, b, c, d, a, in[ 4]+0xe7d3fbc8, 20);` |
-|   18844 |  107 | `        SX_MD5STEP(F2, a, b, c, d, in[ 9]+0x21e1cde6,  5);` |
-|   18844 |  108 | `        SX_MD5STEP(F2, d, a, b, c, in[14]+0xc33707d6,  9);` |
-|   18844 |  109 | `        SX_MD5STEP(F2, c, d, a, b, in[ 3]+0xf4d50d87, 14);` |
-|   18844 |  110 | `        SX_MD5STEP(F2, b, c, d, a, in[ 8]+0x455a14ed, 20);` |
-|   18844 |  111 | `        SX_MD5STEP(F2, a, b, c, d, in[13]+0xa9e3e905,  5);` |
-|   18844 |  112 | `        SX_MD5STEP(F2, d, a, b, c, in[ 2]+0xfcefa3f8,  9);` |
-|   18844 |  113 | `        SX_MD5STEP(F2, c, d, a, b, in[ 7]+0x676f02d9, 14);` |
-|   18844 |  114 | `        SX_MD5STEP(F2, b, c, d, a, in[12]+0x8d2a4c8a, 20);` |
+|   19290 |   99 | `        SX_MD5STEP(F2, a, b, c, d, in[ 1]+0xf61e2562,  5);` |
+|   19290 |  100 | `        SX_MD5STEP(F2, d, a, b, c, in[ 6]+0xc040b340,  9);` |
+|   19290 |  101 | `        SX_MD5STEP(F2, c, d, a, b, in[11]+0x265e5a51, 14);` |
+|   19290 |  102 | `        SX_MD5STEP(F2, b, c, d, a, in[ 0]+0xe9b6c7aa, 20);` |
+|   19290 |  103 | `        SX_MD5STEP(F2, a, b, c, d, in[ 5]+0xd62f105d,  5);` |
+|   19290 |  104 | `        SX_MD5STEP(F2, d, a, b, c, in[10]+0x02441453,  9);` |
+|   19290 |  105 | `        SX_MD5STEP(F2, c, d, a, b, in[15]+0xd8a1e681, 14);` |
+|   19290 |  106 | `        SX_MD5STEP(F2, b, c, d, a, in[ 4]+0xe7d3fbc8, 20);` |
+|   19290 |  107 | `        SX_MD5STEP(F2, a, b, c, d, in[ 9]+0x21e1cde6,  5);` |
+|   19290 |  108 | `        SX_MD5STEP(F2, d, a, b, c, in[14]+0xc33707d6,  9);` |
+|   19290 |  109 | `        SX_MD5STEP(F2, c, d, a, b, in[ 3]+0xf4d50d87, 14);` |
+|   19290 |  110 | `        SX_MD5STEP(F2, b, c, d, a, in[ 8]+0x455a14ed, 20);` |
+|   19290 |  111 | `        SX_MD5STEP(F2, a, b, c, d, in[13]+0xa9e3e905,  5);` |
+|   19290 |  112 | `        SX_MD5STEP(F2, d, a, b, c, in[ 2]+0xfcefa3f8,  9);` |
+|   19290 |  113 | `        SX_MD5STEP(F2, c, d, a, b, in[ 7]+0x676f02d9, 14);` |
+|   19290 |  114 | `        SX_MD5STEP(F2, b, c, d, a, in[12]+0x8d2a4c8a, 20);` |
 |       - |  115 |  |
-|   18844 |  116 | `        SX_MD5STEP(F3, a, b, c, d, in[ 5]+0xfffa3942,  4);` |
-|   18844 |  117 | `        SX_MD5STEP(F3, d, a, b, c, in[ 8]+0x8771f681, 11);` |
-|   18844 |  118 | `        SX_MD5STEP(F3, c, d, a, b, in[11]+0x6d9d6122, 16);` |
-|   18844 |  119 | `        SX_MD5STEP(F3, b, c, d, a, in[14]+0xfde5380c, 23);` |
-|   18844 |  120 | `        SX_MD5STEP(F3, a, b, c, d, in[ 1]+0xa4beea44,  4);` |
-|   18844 |  121 | `        SX_MD5STEP(F3, d, a, b, c, in[ 4]+0x4bdecfa9, 11);` |
-|   18844 |  122 | `        SX_MD5STEP(F3, c, d, a, b, in[ 7]+0xf6bb4b60, 16);` |
-|   18844 |  123 | `        SX_MD5STEP(F3, b, c, d, a, in[10]+0xbebfbc70, 23);` |
-|   18844 |  124 | `        SX_MD5STEP(F3, a, b, c, d, in[13]+0x289b7ec6,  4);` |
-|   18844 |  125 | `        SX_MD5STEP(F3, d, a, b, c, in[ 0]+0xeaa127fa, 11);` |
-|   18844 |  126 | `        SX_MD5STEP(F3, c, d, a, b, in[ 3]+0xd4ef3085, 16);` |
-|   18844 |  127 | `        SX_MD5STEP(F3, b, c, d, a, in[ 6]+0x04881d05, 23);` |
-|   18844 |  128 | `        SX_MD5STEP(F3, a, b, c, d, in[ 9]+0xd9d4d039,  4);` |
-|   18844 |  129 | `        SX_MD5STEP(F3, d, a, b, c, in[12]+0xe6db99e5, 11);` |
-|   18844 |  130 | `        SX_MD5STEP(F3, c, d, a, b, in[15]+0x1fa27cf8, 16);` |
-|   18844 |  131 | `        SX_MD5STEP(F3, b, c, d, a, in[ 2]+0xc4ac5665, 23);` |
+|   19290 |  116 | `        SX_MD5STEP(F3, a, b, c, d, in[ 5]+0xfffa3942,  4);` |
+|   19290 |  117 | `        SX_MD5STEP(F3, d, a, b, c, in[ 8]+0x8771f681, 11);` |
+|   19290 |  118 | `        SX_MD5STEP(F3, c, d, a, b, in[11]+0x6d9d6122, 16);` |
+|   19290 |  119 | `        SX_MD5STEP(F3, b, c, d, a, in[14]+0xfde5380c, 23);` |
+|   19290 |  120 | `        SX_MD5STEP(F3, a, b, c, d, in[ 1]+0xa4beea44,  4);` |
+|   19290 |  121 | `        SX_MD5STEP(F3, d, a, b, c, in[ 4]+0x4bdecfa9, 11);` |
+|   19290 |  122 | `        SX_MD5STEP(F3, c, d, a, b, in[ 7]+0xf6bb4b60, 16);` |
+|   19290 |  123 | `        SX_MD5STEP(F3, b, c, d, a, in[10]+0xbebfbc70, 23);` |
+|   19290 |  124 | `        SX_MD5STEP(F3, a, b, c, d, in[13]+0x289b7ec6,  4);` |
+|   19290 |  125 | `        SX_MD5STEP(F3, d, a, b, c, in[ 0]+0xeaa127fa, 11);` |
+|   19290 |  126 | `        SX_MD5STEP(F3, c, d, a, b, in[ 3]+0xd4ef3085, 16);` |
+|   19290 |  127 | `        SX_MD5STEP(F3, b, c, d, a, in[ 6]+0x04881d05, 23);` |
+|   19290 |  128 | `        SX_MD5STEP(F3, a, b, c, d, in[ 9]+0xd9d4d039,  4);` |
+|   19290 |  129 | `        SX_MD5STEP(F3, d, a, b, c, in[12]+0xe6db99e5, 11);` |
+|   19290 |  130 | `        SX_MD5STEP(F3, c, d, a, b, in[15]+0x1fa27cf8, 16);` |
+|   19290 |  131 | `        SX_MD5STEP(F3, b, c, d, a, in[ 2]+0xc4ac5665, 23);` |
 |       - |  132 |  |
-|   18844 |  133 | `        SX_MD5STEP(F4, a, b, c, d, in[ 0]+0xf4292244,  6);` |
-|   18844 |  134 | `        SX_MD5STEP(F4, d, a, b, c, in[ 7]+0x432aff97, 10);` |
-|   18844 |  135 | `        SX_MD5STEP(F4, c, d, a, b, in[14]+0xab9423a7, 15);` |
-|   18844 |  136 | `        SX_MD5STEP(F4, b, c, d, a, in[ 5]+0xfc93a039, 21);` |
-|   18844 |  137 | `        SX_MD5STEP(F4, a, b, c, d, in[12]+0x655b59c3,  6);` |
-|   18844 |  138 | `        SX_MD5STEP(F4, d, a, b, c, in[ 3]+0x8f0ccc92, 10);` |
-|   18844 |  139 | `        SX_MD5STEP(F4, c, d, a, b, in[10]+0xffeff47d, 15);` |
-|   18844 |  140 | `        SX_MD5STEP(F4, b, c, d, a, in[ 1]+0x85845dd1, 21);` |
-|   18844 |  141 | `        SX_MD5STEP(F4, a, b, c, d, in[ 8]+0x6fa87e4f,  6);` |
-|   18844 |  142 | `        SX_MD5STEP(F4, d, a, b, c, in[15]+0xfe2ce6e0, 10);` |
-|   18844 |  143 | `        SX_MD5STEP(F4, c, d, a, b, in[ 6]+0xa3014314, 15);` |
-|   18844 |  144 | `        SX_MD5STEP(F4, b, c, d, a, in[13]+0x4e0811a1, 21);` |
-|   18844 |  145 | `        SX_MD5STEP(F4, a, b, c, d, in[ 4]+0xf7537e82,  6);` |
-|   18844 |  146 | `        SX_MD5STEP(F4, d, a, b, c, in[11]+0xbd3af235, 10);` |
-|   18844 |  147 | `        SX_MD5STEP(F4, c, d, a, b, in[ 2]+0x2ad7d2bb, 15);` |
-|   18844 |  148 | `        SX_MD5STEP(F4, b, c, d, a, in[ 9]+0xeb86d391, 21);` |
+|   19290 |  133 | `        SX_MD5STEP(F4, a, b, c, d, in[ 0]+0xf4292244,  6);` |
+|   19290 |  134 | `        SX_MD5STEP(F4, d, a, b, c, in[ 7]+0x432aff97, 10);` |
+|   19290 |  135 | `        SX_MD5STEP(F4, c, d, a, b, in[14]+0xab9423a7, 15);` |
+|   19290 |  136 | `        SX_MD5STEP(F4, b, c, d, a, in[ 5]+0xfc93a039, 21);` |
+|   19290 |  137 | `        SX_MD5STEP(F4, a, b, c, d, in[12]+0x655b59c3,  6);` |
+|   19290 |  138 | `        SX_MD5STEP(F4, d, a, b, c, in[ 3]+0x8f0ccc92, 10);` |
+|   19290 |  139 | `        SX_MD5STEP(F4, c, d, a, b, in[10]+0xffeff47d, 15);` |
+|   19290 |  140 | `        SX_MD5STEP(F4, b, c, d, a, in[ 1]+0x85845dd1, 21);` |
+|   19290 |  141 | `        SX_MD5STEP(F4, a, b, c, d, in[ 8]+0x6fa87e4f,  6);` |
+|   19290 |  142 | `        SX_MD5STEP(F4, d, a, b, c, in[15]+0xfe2ce6e0, 10);` |
+|   19290 |  143 | `        SX_MD5STEP(F4, c, d, a, b, in[ 6]+0xa3014314, 15);` |
+|   19290 |  144 | `        SX_MD5STEP(F4, b, c, d, a, in[13]+0x4e0811a1, 21);` |
+|   19290 |  145 | `        SX_MD5STEP(F4, a, b, c, d, in[ 4]+0xf7537e82,  6);` |
+|   19290 |  146 | `        SX_MD5STEP(F4, d, a, b, c, in[11]+0xbd3af235, 10);` |
+|   19290 |  147 | `        SX_MD5STEP(F4, c, d, a, b, in[ 2]+0x2ad7d2bb, 15);` |
+|   19290 |  148 | `        SX_MD5STEP(F4, b, c, d, a, in[ 9]+0xeb86d391, 21);` |
 |       - |  149 |  |
-|   18844 |  150 | `        buf[0] += a;` |
-|   18844 |  151 | `        buf[1] += b;` |
-|   18844 |  152 | `        buf[2] += c;` |
-|   18844 |  153 | `        buf[3] += d;` |
-|   18844 |  154 | `}` |
+|   19290 |  150 | `        buf[0] += a;` |
+|   19290 |  151 | `        buf[1] += b;` |
+|   19290 |  152 | `        buf[2] += c;` |
+|   19290 |  153 | `        buf[3] += d;` |
+|   19290 |  154 | `}` |
 |       - |  155 | `/*` |
 |       - |  156 | ` * Update context to reflect the concatenation of another buffer full` |
 |       - |  157 | ` * of bytes.` |
 |       - |  158 | ` */` |
-|   56832 |  159 | `PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len)` |
-|       3 |  160 | `{` |
+|   56858 |  159 | `PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len)` |
+|       4 |  160 | `{` |
 |       - |  161 | `	sxu32 t;` |
 |       - |  162 |  |
 |       - |  163 | `        /* Update bitcount */` |
-|   56835 |  164 | `        t = ctx->bits[0];` |
-|   56835 |  165 | `        if ((ctx->bits[0] = t + ((sxu32)len << 3)) < t)` |
+|   56862 |  164 | `        t = ctx->bits[0];` |
+|   56862 |  165 | `        if ((ctx->bits[0] = t + ((sxu32)len << 3)) < t)` |
 |     ! 0 |  166 | `                ctx->bits[1]++; /* Carry from low to high */` |
-|   56835 |  167 | `        ctx->bits[1] += len >> 29;` |
-|   56835 |  168 | `        t = (t >> 3) & 0x3f;    /* Bytes already in shsInfo->data */` |
+|   56862 |  167 | `        ctx->bits[1] += len >> 29;` |
+|   56862 |  168 | `        t = (t >> 3) & 0x3f;    /* Bytes already in shsInfo->data */` |
 |       - |  169 | `        /* Handle any leading odd-sized chunks */` |
-|   56835 |  170 | `        if ( t ) {` |
+|   56862 |  170 | `        if ( t ) {` |
 |   40571 |  171 | `                unsigned char *p = (unsigned char *)ctx->in + t;` |
 |       - |  172 |  |
 |   40571 |  173 | `                t = 64-t;` |
@@ -192,81 +192,81 @@ Coverage: 1620/1707 lines (94.90%)
 |     ! 0 |  182 | `                len -= t;` |
 |     ! 0 |  183 | `        }` |
 |       - |  184 | `        /* Process data in 64-byte chunks */` |
-|   18895 |  185 | `        while (len >= 64) {` |
-|    2633 |  186 | `                SyMemcpy(buf,ctx->in,64);` |
-|    2633 |  187 | `                byteReverse(ctx->in, 16);` |
-|    2633 |  188 | `                MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
-|    2633 |  189 | `                buf += 64;` |
-|    2633 |  190 | `                len -= 64;` |
-|       3 |  191 | `        }` |
+|   19340 |  185 | `        while (len >= 64) {` |
+|    3052 |  186 | `                SyMemcpy(buf,ctx->in,64);` |
+|    3052 |  187 | `                byteReverse(ctx->in, 16);` |
+|    3052 |  188 | `                MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
+|    3052 |  189 | `                buf += 64;` |
+|    3052 |  190 | `                len -= 64;` |
+|       4 |  191 | `        }` |
 |       - |  192 | `        /* Handle any remaining bytes of data.*/` |
-|   16265 |  193 | `        SyMemcpy(buf,ctx->in,len);` |
-|   28419 |  194 | `}` |
+|   16292 |  193 | `        SyMemcpy(buf,ctx->in,len);` |
+|   28433 |  194 | `}` |
 |       - |  195 | `/*` |
 |       - |  196 | ` * Final wrapup - pad to 64-byte boundary with the bit pattern` |
 |       - |  197 | ` * 1 0* (64-bit count of bits processed, MSB-first)` |
 |       - |  198 | ` */` |
-|   16214 |  199 | `PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){` |
+|   16240 |  199 | `PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){` |
 |       - |  200 | `        unsigned count;` |
 |       - |  201 | `        unsigned char *p;` |
 |       - |  202 |  |
 |       - |  203 | `        /* Compute number of bytes mod 64 */` |
-|   16214 |  204 | `        count = (ctx->bits[0] >> 3) & 0x3F;` |
+|   16240 |  204 | `        count = (ctx->bits[0] >> 3) & 0x3F;` |
 |       - |  205 |  |
 |       - |  206 | `        /* Set the first char of padding to 0x80.This is safe since there is` |
 |       - |  207 | `           always at least one byte free */` |
-|   16214 |  208 | `        p = ctx->in + count;` |
-|   16214 |  209 | `        *p++ = 0x80;` |
+|   16240 |  208 | `        p = ctx->in + count;` |
+|   16240 |  209 | `        *p++ = 0x80;` |
 |       - |  210 |  |
 |       - |  211 | `        /* Bytes of padding needed to make 64 bytes */` |
-|   16214 |  212 | `        count = 64 - 1 - count;` |
+|   16240 |  212 | `        count = 64 - 1 - count;` |
 |       - |  213 |  |
 |       - |  214 | `        /* Pad out to 56 mod 64 */` |
-|   16214 |  215 | `        if (count < 8) {` |
+|   16240 |  215 | `        if (count < 8) {` |
 |       - |  216 | `                /* Two lots of padding:  Pad the first block to 64 bytes */` |
-|     ! 0 |  217 | `               SyZero(p,count);` |
-|     ! 0 |  218 | `                byteReverse(ctx->in, 16);` |
-|     ! 0 |  219 | `                MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
+|       3 |  217 | `               SyZero(p,count);` |
+|       3 |  218 | `                byteReverse(ctx->in, 16);` |
+|       3 |  219 | `                MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
 |       - |  220 |  |
 |       - |  221 | `                /* Now fill the next block with 56 bytes */` |
-|     ! 0 |  222 | `                SyZero(ctx->in,56);` |
-|     ! 0 |  223 | `        } else {` |
+|       3 |  222 | `                SyZero(ctx->in,56);` |
+|       2 |  223 | `        } else {` |
 |       - |  224 | `                /* Pad block to 56 bytes */` |
-|   16214 |  225 | `                SyZero(p,count-8);` |
+|   16238 |  225 | `                SyZero(p,count-8);` |
 |       - |  226 | `        }` |
-|   16214 |  227 | `        byteReverse(ctx->in, 14);` |
+|   16240 |  227 | `        byteReverse(ctx->in, 14);` |
 |       - |  228 |  |
 |       - |  229 | `        /* Append length in bits and transform */` |
-|   16214 |  230 | `        ((sxu32*)ctx->in)[ 14 ] = ctx->bits[0];` |
-|   16214 |  231 | `        ((sxu32*)ctx->in)[ 15 ] = ctx->bits[1];` |
+|   16240 |  230 | `        ((sxu32*)ctx->in)[ 14 ] = ctx->bits[0];` |
+|   16240 |  231 | `        ((sxu32*)ctx->in)[ 15 ] = ctx->bits[1];` |
 |       - |  232 |  |
-|   16214 |  233 | `        MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
-|   16214 |  234 | `        byteReverse((unsigned char *)ctx->buf, 4);` |
-|   16214 |  235 | `        SyMemcpy(ctx->buf,digest,0x10);` |
-|   16214 |  236 | `        SyZero(ctx,sizeof(ctx));    /* In case it's sensitive */` |
-|   16214 |  237 | `}` |
+|   16240 |  233 | `        MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
+|   16240 |  234 | `        byteReverse((unsigned char *)ctx->buf, 4);` |
+|   16240 |  235 | `        SyMemcpy(ctx->buf,digest,0x10);` |
+|   16240 |  236 | `        SyZero(ctx,sizeof(ctx));    /* In case it's sensitive */` |
+|   16240 |  237 | `}` |
 |       - |  238 | `#undef F1` |
 |       - |  239 | `#undef F2` |
 |       - |  240 | `#undef F3` |
 |       - |  241 | `#undef F4` |
-|   16222 |  242 | `PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)` |
+|   16248 |  242 | `PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)` |
 |       4 |  243 | `{` |
-|   16226 |  244 | `	pCtx->buf[0] = 0x67452301;` |
-|   16226 |  245 | `    pCtx->buf[1] = 0xefcdab89;` |
-|   16226 |  246 | `    pCtx->buf[2] = 0x98badcfe;` |
-|   16226 |  247 | `    pCtx->buf[3] = 0x10325476;` |
-|   16226 |  248 | `    pCtx->bits[0] = 0;` |
-|   16226 |  249 | `    pCtx->bits[1] = 0;` |
+|   16252 |  244 | `	pCtx->buf[0] = 0x67452301;` |
+|   16252 |  245 | `    pCtx->buf[1] = 0xefcdab89;` |
+|   16252 |  246 | `    pCtx->buf[2] = 0x98badcfe;` |
+|   16252 |  247 | `    pCtx->buf[3] = 0x10325476;` |
+|   16252 |  248 | `    pCtx->bits[0] = 0;` |
+|   16252 |  249 | `    pCtx->bits[1] = 0;` |
 |       - |  250 |  |
-|   16226 |  251 | `   return SXRET_OK;` |
+|   16252 |  251 | `   return SXRET_OK;` |
 |       4 |  252 | `}` |
-|      46 |  253 | `PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[16])` |
+|      70 |  253 | `PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[16])` |
 |       2 |  254 | `{` |
 |       - |  255 | `	MD5Context sCtx;` |
-|      48 |  256 | `	MD5Init(&sCtx);` |
-|      48 |  257 | `	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);` |
-|      48 |  258 | `	MD5Final(zDigest,&sCtx);` |
-|      48 |  259 | `	return SXRET_OK;` |
+|      72 |  256 | `	MD5Init(&sCtx);` |
+|      72 |  257 | `	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);` |
+|      72 |  258 | `	MD5Final(zDigest,&sCtx);` |
+|      72 |  259 | `	return SXRET_OK;` |
 |       2 |  260 | `}` |
 |       - |  261 | `/*` |
 |       - |  262 | ` * SHA-1 in C` |
@@ -782,17 +782,17 @@ Coverage: 1620/1707 lines (94.90%)
 |       - |  772 | `	0x82f63b78, 0x92a8fc17, 0xa24bb5a6, 0xb21572c9,` |
 |       - |  773 | `	0xc38d26c4, 0xd3d3e1ab, 0xe330a81a, 0xf36e6f75,` |
 |       - |  774 | `};` |
-|     263 |  775 | `PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind)` |
-|       1 |  776 | `{` |
-|     264 |  777 | `	pCtx->nKind = nKind;` |
-|     264 |  778 | `	pCtx->nS1 = 0;` |
-|     264 |  779 | `	pCtx->nPend = 0;` |
-|     264 |  780 | `	switch( nKind ){` |
-|     104 |  781 | `		case SUM_CRC32:` |
+|     265 |  775 | `PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind)` |
+|       2 |  776 | `{` |
+|     267 |  777 | `	pCtx->nKind = nKind;` |
+|     267 |  778 | `	pCtx->nS1 = 0;` |
+|     267 |  779 | `	pCtx->nPend = 0;` |
+|     267 |  780 | `	switch( nKind ){` |
+|     105 |  781 | `		case SUM_CRC32:` |
 |       - |  782 | `		case SUM_CRC32B:` |
 |       - |  783 | `		case SUM_CRC32C:` |
-|     206 |  784 | `			pCtx->nS0 = 0xffffffff;` |
-|     206 |  785 | `			break;` |
+|     209 |  784 | `			pCtx->nS0 = 0xffffffff;` |
+|     209 |  785 | `			break;` |
 |       6 |  786 | `		case SUM_ADLER32:` |
 |      13 |  787 | `			pCtx->nS0 = 1;  /* a */` |
 |      13 |  788 | `			pCtx->nS1 = 0;  /* b */` |
@@ -810,13 +810,13 @@ Coverage: 1620/1707 lines (94.90%)
 |      13 |  800 | `			pCtx->nS0 = 0;` |
 |      12 |  801 | `			break;` |
 |       - |  802 | `	}` |
-|     264 |  803 | `}` |
-|     479 |  804 | `PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len)` |
-|       1 |  805 | `{` |
+|     267 |  803 | `}` |
+|     481 |  804 | `PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len)` |
+|       2 |  805 | `{` |
 |       - |  806 | `	unsigned int i;` |
 |       - |  807 | `	sxu32 crc;` |
 |       - |  808 | `	sxu64 h;` |
-|     480 |  809 | `	switch( pCtx->nKind ){` |
+|     483 |  809 | `	switch( pCtx->nKind ){` |
 |       4 |  810 | `		case SUM_CRC32:` |
 |       9 |  811 | `			crc = (sxu32)pCtx->nS0;` |
 |      31 |  812 | `			for( i = 0 ; i < len ; ++i ){` |
@@ -826,13 +826,13 @@ Coverage: 1620/1707 lines (94.90%)
 |      12 |  816 | `			}` |
 |       9 |  817 | `			pCtx->nS0 = crc;` |
 |       9 |  818 | `			break;` |
-|     132 |  819 | `		case SUM_CRC32B:` |
-|     262 |  820 | `			crc = (sxu32)pCtx->nS0;` |
-|   13849 |  821 | `			for( i = 0 ; i < len ; ++i ){` |
-|   13588 |  822 | `				crc = crc32_table[(crc ^ data[i]) & 0xff] ^ (crc >> 8);` |
-|    6793 |  823 | `			}` |
-|     262 |  824 | `			pCtx->nS0 = crc;` |
-|     262 |  825 | `			break;` |
+|     133 |  819 | `		case SUM_CRC32B:` |
+|     265 |  820 | `			crc = (sxu32)pCtx->nS0;` |
+|   13858 |  821 | `			for( i = 0 ; i < len ; ++i ){` |
+|   13595 |  822 | `				crc = crc32_table[(crc ^ data[i]) & 0xff] ^ (crc >> 8);` |
+|    6797 |  823 | `			}` |
+|     265 |  824 | `			pCtx->nS0 = crc;` |
+|     265 |  825 | `			break;` |
 |       4 |  826 | `		case SUM_CRC32C:` |
 |       9 |  827 | `			crc = (sxu32)pCtx->nS0;` |
 |      31 |  828 | `			for( i = 0 ; i < len ; ++i ){` |
@@ -898,13 +898,13 @@ Coverage: 1620/1707 lines (94.90%)
 |      85 |  888 | `			pCtx->nS0 = crc;` |
 |      84 |  889 | `			break;` |
 |       - |  890 | `	}` |
-|     480 |  891 | `}` |
-|     263 |  892 | `PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest)` |
-|       1 |  893 | `{` |
+|     483 |  891 | `}` |
+|     265 |  892 | `PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest)` |
+|       2 |  893 | `{` |
 |       - |  894 | `	sxu32 v;` |
 |       - |  895 | `	sxu64 h;` |
 |       - |  896 | `	int i;` |
-|     264 |  897 | `	switch( pCtx->nKind ){` |
+|     267 |  897 | `	switch( pCtx->nKind ){` |
 |       4 |  898 | `		case SUM_CRC32:` |
 |       - |  899 | `			/* php emits this one's register in the reverse byte order of every` |
 |       - |  900 | `			 * other checksum here: hash('crc32','123456789') is "181989fc"` |
@@ -915,13 +915,13 @@ Coverage: 1620/1707 lines (94.90%)
 |       9 |  905 | `			digest[2] = (unsigned char)((v >> 16) & 0xff);` |
 |       9 |  906 | `			digest[3] = (unsigned char)((v >> 24) & 0xff);` |
 |       9 |  907 | `			break;` |
-|     100 |  908 | `		case SUM_CRC32B:` |
+|     101 |  908 | `		case SUM_CRC32B:` |
 |       - |  909 | `		case SUM_CRC32C:` |
-|     198 |  910 | `			v = (sxu32)(pCtx->nS0 ^ 0xffffffff);` |
-|     986 |  911 | `			for( i = 0 ; i < 4 ; ++i ){` |
-|     789 |  912 | `				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);` |
-|     389 |  913 | `			}` |
-|     198 |  914 | `			break;` |
+|     201 |  910 | `			v = (sxu32)(pCtx->nS0 ^ 0xffffffff);` |
+|     997 |  911 | `			for( i = 0 ; i < 4 ; ++i ){` |
+|     798 |  912 | `				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);` |
+|     394 |  913 | `			}` |
+|     201 |  914 | `			break;` |
 |       6 |  915 | `		case SUM_ADLER32:` |
 |      13 |  916 | `			v = (sxu32)(((pCtx->nS1 % 65521) << 16) \| (pCtx->nS0 % 65521));` |
 |      61 |  917 | `			for( i = 0 ; i < 4 ; ++i ){` |
@@ -956,7 +956,7 @@ Coverage: 1620/1707 lines (94.90%)
 |      33 |  946 | `			}` |
 |      16 |  947 | `			break;` |
 |       - |  948 | `	}` |
-|     264 |  949 | `}` |
+|     267 |  949 | `}` |
 |       - |  950 | `/*` |
 |       - |  951 | ` * MurmurHash3 and xxHash: the two SEEDED families. Both read their input as` |
 |       - |  952 | ` * little-endian words and both emit each finished word BIG-endian, which is` |
@@ -1882,7 +1882,7 @@ Coverage: 1620/1707 lines (94.90%)
 |     173 | 1872 | `	}` |
 |      53 | 1873 | `}` |
 |       - | 1874 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
-|    4777 | 1875 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
+|    4989 | 1875 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
 |       5 | 1876 | `{` |
 |       - | 1877 | `	static const unsigned char zHexTab[] = "0123456789abcdef";` |
 |       - | 1878 | `	const unsigned char *zIn,*zEnd;` |
@@ -1893,21 +1893,21 @@ Coverage: 1620/1707 lines (94.90%)
 |       - | 1883 | `		return SXERR_EMPTY;` |
 |       - | 1884 | `	}` |
 |       - | 1885 | `#endif` |
-|    4782 | 1886 | `	zIn   = (const unsigned char *)pIn;` |
-|    4782 | 1887 | `	zEnd  = &zIn[nLen];` |
-|   24198 | 1888 | `	for(;;){` |
-|   48415 | 1889 | `		if( zIn >= zEnd  ){` |
-|    4782 | 1890 | `			break;` |
+|    4994 | 1886 | `	zIn   = (const unsigned char *)pIn;` |
+|    4994 | 1887 | `	zEnd  = &zIn[nLen];` |
+|   25497 | 1888 | `	for(;;){` |
+|   50445 | 1889 | `		if( zIn >= zEnd  ){` |
+|    4994 | 1890 | `			break;` |
 |       - | 1891 | `		}` |
-|   43638 | 1892 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
-|   43638 | 1893 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
-|   43638 | 1894 | `		if( rc != SXRET_OK ){` |
+|   45456 | 1892 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
+|   45456 | 1893 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
+|   45456 | 1894 | `		if( rc != SXRET_OK ){` |
 |     ! 0 | 1895 | `			return rc;` |
 |       - | 1896 | `		}` |
-|   43638 | 1897 | `		zIn++;` |
+|   45456 | 1897 | `		zIn++;` |
 |       5 | 1898 | `	}` |
-|    4782 | 1899 | `        return SXRET_OK;` |
-|    2392 | 1900 | `}` |
+|    4994 | 1899 | `        return SXRET_OK;` |
+|    2502 | 1900 | `}` |
 |       - | 1901 | `#ifndef PH7_DISABLE_HASH_FUNC` |
 |       - | 1902 | `/*` |
 |       - | 1903 | ` * ---------------------------------------------------------------------------` |

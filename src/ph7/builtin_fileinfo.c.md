@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1197/1606 lines (74.53%)
+Coverage: 1195/1606 lines (74.41%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -2027,23 +2027,23 @@ Coverage: 1197/1606 lines (74.53%)
 |     5 | 2017 | `	PH7_VmThrowException(pCtx,"Error","Invalid finfo object");` |
 |     5 | 2018 | `	return 0;` |
 |   348 | 2019 | `}` |
-|    34 | 2020 | `static int FinfoSetFlagsOf(ph7_class_instance *pThis,int iFlags)` |
-|     3 | 2021 | `{` |
+|    36 | 2020 | `static int FinfoSetFlagsOf(ph7_class_instance *pThis,int iFlags)` |
+|     4 | 2021 | `{` |
 |     - | 2022 | `	SyString sAttr;` |
 |     - | 2023 | `	ph7_value *pSlot;` |
-|    37 | 2024 | `	if( pThis == 0 ){` |
+|    40 | 2024 | `	if( pThis == 0 ){` |
 |   ! 0 | 2025 | `		return -1;` |
 |     - | 2026 | `	}` |
-|    37 | 2027 | `	SyStringInitFromBuf(&sAttr,FINFO_FLAGS_SLOT,sizeof(FINFO_FLAGS_SLOT)-1);` |
-|    37 | 2028 | `	pSlot = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
-|    37 | 2029 | `	if( pSlot == 0 ){` |
+|    40 | 2027 | `	SyStringInitFromBuf(&sAttr,FINFO_FLAGS_SLOT,sizeof(FINFO_FLAGS_SLOT)-1);` |
+|    40 | 2028 | `	pSlot = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
+|    40 | 2029 | `	if( pSlot == 0 ){` |
 |   ! 0 | 2030 | `		return -1;` |
 |     - | 2031 | `	}` |
-|    37 | 2032 | `	PH7_MemObjRelease(pSlot);` |
-|    37 | 2033 | `	pSlot->x.iVal = (ph7_int64)iFlags;` |
-|    37 | 2034 | `	MemObjSetType(pSlot,MEMOBJ_INT);` |
-|    37 | 2035 | `	return 0;` |
-|    20 | 2036 | `}` |
+|    40 | 2032 | `	PH7_MemObjRelease(pSlot);` |
+|    40 | 2033 | `	pSlot->x.iVal = (ph7_int64)iFlags;` |
+|    40 | 2034 | `	MemObjSetType(pSlot,MEMOBJ_INT);` |
+|    40 | 2035 | `	return 0;` |
+|    22 | 2036 | `}` |
 |     - | 2037 | `/* The finfo an argument names, with php's TypeError for anything else. The` |
 |     - | 2038 | ` * signature table has already screened the type, so a miss here can only be a` |
 |     - | 2039 | ` * SUBCLASS instance with nothing in its slot. */` |
@@ -2104,16 +2104,16 @@ Coverage: 1197/1606 lines (74.53%)
 |     3 | 2094 | `			VfsThrowUnknownWrapperWarning(pCtx,zPath);` |
 |     1 | 2095 | `		}` |
 |     - | 2096 | `	}` |
-|    31 | 2097 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zName,nPath);` |
+|    31 | 2097 | `	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zName,nPath);` |
 |    31 | 2098 | `	if( pStream == 0 ){` |
-|     3 | 2099 | `		VfsThrowNoDeviceWarning(pCtx,zName,FALSE);` |
-|     3 | 2100 | `		return -1;` |
+|   ! 0 | 2099 | `		VfsThrowNoDeviceWarning(pCtx,zName,FALSE);` |
+|   ! 0 | 2100 | `		return -1;` |
 |     - | 2101 | `	}` |
-|    43 | 2102 | `	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zName,PH7_IO_OPEN_RDONLY,` |
-|    14 | 2103 | `		FALSE,0,FALSE,0,ph7_function_name(pCtx));` |
-|    29 | 2104 | `	if( pHandle == 0 ){` |
-|     7 | 2105 | `		VfsThrowOpenWarning(pCtx,zName);` |
-|     7 | 2106 | `		return -1;` |
+|    46 | 2102 | `	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zName,PH7_IO_OPEN_RDONLY,` |
+|    15 | 2103 | `		FALSE,0,FALSE,0,ph7_function_name(pCtx));` |
+|    31 | 2104 | `	if( pHandle == 0 ){` |
+|     9 | 2105 | `		VfsThrowOpenWarning(pCtx,zName);` |
+|     9 | 2106 | `		return -1;` |
 |     - | 2107 | `	}` |
 |    31 | 2108 | `	for(;;){` |
 |     - | 2109 | `		ph7_int64 n;` |
@@ -2212,23 +2212,23 @@ Coverage: 1197/1606 lines (74.53%)
 |   ! 0 | 2202 | `	return PH7_OK;` |
 |   ! 0 | 2203 | `}` |
 |     - | 2204 | `/* finfo::__construct(int $flags = FILEINFO_NONE, ?string $magic_database = null) */` |
-|    20 | 2205 | `static int vm_builtin_finfo_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 | 2206 | `{` |
-|    23 | 2207 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    23 | 2208 | `	int iFlags = FINFO_NONE;` |
-|    23 | 2209 | `	if( nArg > 0 ){` |
-|    19 | 2210 | `		iFlags = (int)ph7_value_to_int(apArg[0]);` |
-|     8 | 2211 | `	}` |
-|    23 | 2212 | `	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){` |
+|    22 | 2205 | `static int vm_builtin_finfo_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     4 | 2206 | `{` |
+|    26 | 2207 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    26 | 2208 | `	int iFlags = FINFO_NONE;` |
+|    26 | 2209 | `	if( nArg > 0 ){` |
+|    22 | 2210 | `		iFlags = (int)ph7_value_to_int(apArg[0]);` |
+|     9 | 2211 | `	}` |
+|    26 | 2212 | `	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){` |
 |     - | 2213 | `		int nDb;` |
 |   ! 0 | 2214 | `		const char *zDb = ph7_value_to_string(apArg[1],&nDb);` |
 |   ! 0 | 2215 | `		if( nDb > 0 ){` |
 |   ! 0 | 2216 | `			return FinfoRefuseDatabase(pCtx,zDb,TRUE);` |
 |     - | 2217 | `		}` |
 |   ! 0 | 2218 | `	}` |
-|    23 | 2219 | `	FinfoSetFlagsOf(pThis,iFlags);` |
-|    23 | 2220 | `	return PH7_OK;` |
-|    13 | 2221 | `}` |
+|    26 | 2219 | `	FinfoSetFlagsOf(pThis,iFlags);` |
+|    26 | 2220 | `	return PH7_OK;` |
+|    15 | 2221 | `}` |
 |     - | 2222 | `/* finfo::file(string $filename, int $flags = FILEINFO_NONE, $context = null) */` |
 |    34 | 2223 | `static int vm_builtin_finfo_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     2 | 2224 | `{` |
@@ -2416,7 +2416,7 @@ Coverage: 1197/1606 lines (74.53%)
 |     - | 2406 | ` * serialize handler for it, which is what makes both refusals engine-level` |
 |     - | 2407 | ` * rather than a body's.` |
 |     - | 2408 | ` */` |
-|  6721 | 2409 | `PH7_PRIVATE sxi32 PH7_VmInstallFileinfo(ph7_vm *pVm)` |
+|  7925 | 2409 | `PH7_PRIVATE sxi32 PH7_VmInstallFileinfo(ph7_vm *pVm)` |
 |     5 | 2410 | `{` |
 |     - | 2411 | `	static const PH7_NativeMethodDef aMethod[] = {` |
 |     - | 2412 | `		{ "__construct", PH7_MOD_PUBLIC,` |
@@ -2439,7 +2439,7 @@ Coverage: 1197/1606 lines (74.53%)
 |     - | 2429 | `		aMethod, SX_ARRAYSIZE(aMethod), 0, 0,` |
 |     - | 2430 | `		aProp, SX_ARRAYSIZE(aProp), 0, 0, 0` |
 |     - | 2431 | `	};` |
-|  6726 | 2432 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|  7930 | 2432 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |     5 | 2433 | `}` |
 |     - | 2434 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |     - | 2435 |  |

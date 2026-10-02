@@ -142,73 +142,73 @@ Coverage: 1786/2219 lines (80.49%)
 |    ! 0 |  132 | `		MemObjSetType(pRes,MEMOBJ_NULL);` |
 |    ! 0 |  133 | `	}` |
 |    ! 0 |  134 | `}` |
-|    286 |  135 | `static phl_ssl_obj * SslRecOfInstance(ph7_class_instance *pThis)` |
+|    374 |  135 | `static phl_ssl_obj * SslRecOfInstance(ph7_class_instance *pThis)` |
 |      2 |  136 | `{` |
 |      - |  137 | `	SyString sAttr;` |
 |      - |  138 | `	ph7_value *pRes;` |
-|    288 |  139 | `	if( pThis == 0 ){` |
+|    376 |  139 | `	if( pThis == 0 ){` |
 |    ! 0 |  140 | `		return 0;` |
 |      - |  141 | `	}` |
-|    288 |  142 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
-|    288 |  143 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
-|    288 |  144 | `	if( pRes == 0 \|\| !ph7_value_is_resource(pRes) ){` |
+|    376 |  142 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
+|    376 |  143 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
+|    376 |  144 | `	if( pRes == 0 \|\| !ph7_value_is_resource(pRes) ){` |
 |    ! 0 |  145 | `		return 0;` |
 |      - |  146 | `	}` |
-|    288 |  147 | `	return (phl_ssl_obj *)pRes->x.pOther;` |
-|    145 |  148 | `}` |
-|     66 |  149 | `static int SslAttachSlot(ph7_class_instance *pThis,phl_ssl_obj *pRec)` |
+|    376 |  147 | `	return (phl_ssl_obj *)pRes->x.pOther;` |
+|    189 |  148 | `}` |
+|    102 |  149 | `static int SslAttachSlot(ph7_class_instance *pThis,phl_ssl_obj *pRec)` |
 |      2 |  150 | `{` |
 |      - |  151 | `	SyString sAttr;` |
 |      - |  152 | `	ph7_value *pRes;` |
-|     68 |  153 | `	if( pThis == 0 ){` |
+|    104 |  153 | `	if( pThis == 0 ){` |
 |    ! 0 |  154 | `		return -1;` |
 |      - |  155 | `	}` |
-|     68 |  156 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
-|     68 |  157 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
-|     68 |  158 | `	if( pRes == 0 ){` |
+|    104 |  156 | `	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);` |
+|    104 |  157 | `	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);` |
+|    104 |  158 | `	if( pRes == 0 ){` |
 |    ! 0 |  159 | `		return -1;` |
 |      - |  160 | `	}` |
-|     68 |  161 | `	PH7_MemObjRelease(pRes);` |
-|     68 |  162 | `	pRes->x.pOther = (void *)pRec;` |
-|     68 |  163 | `	MemObjSetType(pRes,MEMOBJ_RES);` |
-|     68 |  164 | `	return 0;` |
-|     35 |  165 | `}` |
+|    104 |  161 | `	PH7_MemObjRelease(pRes);` |
+|    104 |  162 | `	pRes->x.pOther = (void *)pRec;` |
+|    104 |  163 | `	MemObjSetType(pRes,MEMOBJ_RES);` |
+|    104 |  164 | `	return 0;` |
+|     53 |  165 | `}` |
 |      - |  166 | `/* Free the library object a record owns. The record itself lives in the VM's` |
 |      - |  167 | ` * allocator and is released with it. */` |
-|    130 |  168 | `PH7_PRIVATE void PH7_SslFreeObject(phl_ssl_obj *pObj)` |
+|    196 |  168 | `PH7_PRIVATE void PH7_SslFreeObject(phl_ssl_obj *pObj)` |
 |      2 |  169 | `{` |
-|    132 |  170 | `	if( pObj == 0 \|\| pObj->pHandle == 0 ){` |
-|     66 |  171 | `		return;` |
+|    198 |  170 | `	if( pObj == 0 \|\| pObj->pHandle == 0 ){` |
+|     96 |  171 | `		return;` |
 |      - |  172 | `	}` |
-|     68 |  173 | `	switch( pObj->iKind ){` |
-|      7 |  174 | `		case PHL_SSL_KIND_CERT: X509_free((X509 *)pObj->pHandle);         break;` |
-|      5 |  175 | `		case PHL_SSL_KIND_CSR:  X509_REQ_free((X509_REQ *)pObj->pHandle); break;` |
-|     58 |  176 | `		case PHL_SSL_KIND_KEY:  EVP_PKEY_free((EVP_PKEY *)pObj->pHandle); break;` |
+|    104 |  173 | `	switch( pObj->iKind ){` |
+|     23 |  174 | `		case PHL_SSL_KIND_CERT: X509_free((X509 *)pObj->pHandle);         break;` |
+|     15 |  175 | `		case PHL_SSL_KIND_CSR:  X509_REQ_free((X509_REQ *)pObj->pHandle); break;` |
+|     68 |  176 | `		case PHL_SSL_KIND_KEY:  EVP_PKEY_free((EVP_PKEY *)pObj->pHandle); break;` |
 |    ! 0 |  177 | `		default: break;` |
 |      - |  178 | `	}` |
-|     68 |  179 | `	pObj->pHandle = 0;` |
-|     67 |  180 | `}` |
+|    104 |  179 | `	pObj->pHandle = 0;` |
+|    100 |  180 | `}` |
 |      - |  181 | `/*` |
 |      - |  182 | ` * The object is going away: free its library handle now rather than at VM` |
 |      - |  183 | ` * reset, so a script that drops its last reference releases the key there.` |
 |      - |  184 | ` * The shell stays on the registry (the sweep frees it) because the slot is` |
 |      - |  185 | ` * still reachable while the instance is being torn down.` |
 |      - |  186 | ` */` |
-|     64 |  187 | `static void SslInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     94 |  187 | `static void SslInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |      2 |  188 | `{` |
-|     66 |  189 | `	phl_ssl_obj *pObj = SslRecOfInstance(pThis);` |
-|     32 |  190 | `	SXUNUSED(pVm);` |
-|     66 |  191 | `	if( pObj == 0 \|\| pObj->pOwner != pThis ){` |
+|     96 |  189 | `	phl_ssl_obj *pObj = SslRecOfInstance(pThis);` |
+|     47 |  190 | `	SXUNUSED(pVm);` |
+|     96 |  191 | `	if( pObj == 0 \|\| pObj->pOwner != pThis ){` |
 |    ! 0 |  192 | `		return;` |
 |      - |  193 | `	}` |
-|     66 |  194 | `	PH7_SslFreeObject(pObj);` |
-|     66 |  195 | `	pObj->pOwner = 0;` |
-|     34 |  196 | `}` |
+|     96 |  194 | `	PH7_SslFreeObject(pObj);` |
+|     96 |  195 | `	pObj->pOwner = 0;` |
+|     49 |  196 | `}` |
 |      - |  197 | `/*` |
 |      - |  198 | ` * Build one handle object: the instance, its record and the registry link.` |
 |      - |  199 | ` * Answers the record; *ppInst is the instance the caller hands back.` |
 |      - |  200 | ` */` |
-|     66 |  201 | `PH7_PRIVATE phl_ssl_obj * PH7_SslNewObject(ph7_vm *pVm,int iKind,void *pHandle,` |
+|    102 |  201 | `PH7_PRIVATE phl_ssl_obj * PH7_SslNewObject(ph7_vm *pVm,int iKind,void *pHandle,` |
 |      - |  202 | `	ph7_class_instance **ppInst)` |
 |      2 |  203 | `{` |
 |      - |  204 | `	static const char * const azClass[] = {` |
@@ -218,65 +218,65 @@ Coverage: 1786/2219 lines (80.49%)
 |      - |  208 | `	ph7_class *pClass;` |
 |      - |  209 | `	phl_ssl_obj *pObj;` |
 |      - |  210 | `	const char *zClass;` |
-|     68 |  211 | `	if( iKind < 0 \|\| iKind > PHL_SSL_KIND_KEY ){` |
+|    104 |  211 | `	if( iKind < 0 \|\| iKind > PHL_SSL_KIND_KEY ){` |
 |    ! 0 |  212 | `		return 0;` |
 |      - |  213 | `	}` |
-|     68 |  214 | `	zClass = azClass[iKind];` |
-|     68 |  215 | `	pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)SyStrlen(zClass),FALSE,0);` |
-|     68 |  216 | `	if( pClass == 0 ){` |
+|    104 |  214 | `	zClass = azClass[iKind];` |
+|    104 |  215 | `	pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)SyStrlen(zClass),FALSE,0);` |
+|    104 |  216 | `	if( pClass == 0 ){` |
 |    ! 0 |  217 | `		return 0;` |
 |      - |  218 | `	}` |
-|     68 |  219 | `	pInst = PH7_NewClassInstance(pVm,pClass);` |
-|     68 |  220 | `	if( pInst == 0 ){` |
+|    104 |  219 | `	pInst = PH7_NewClassInstance(pVm,pClass);` |
+|    104 |  220 | `	if( pInst == 0 ){` |
 |    ! 0 |  221 | `		return 0;` |
 |      - |  222 | `	}` |
-|     68 |  223 | `	pObj = (phl_ssl_obj *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_ssl_obj));` |
-|     68 |  224 | `	if( pObj == 0 ){` |
+|    104 |  223 | `	pObj = (phl_ssl_obj *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_ssl_obj));` |
+|    104 |  224 | `	if( pObj == 0 ){` |
 |    ! 0 |  225 | `		return 0;` |
 |      - |  226 | `	}` |
-|     68 |  227 | `	SyZero(pObj,sizeof(phl_ssl_obj));` |
-|     68 |  228 | `	pObj->iKind = iKind;` |
-|     68 |  229 | `	pObj->pHandle = pHandle;` |
-|     68 |  230 | `	pObj->pOwner = pInst;` |
-|     68 |  231 | `	pObj->pNext = (phl_ssl_obj *)pVm->pSslObjs;` |
-|     68 |  232 | `	pVm->pSslObjs = pObj;` |
-|     68 |  233 | `	if( SslAttachSlot(pInst,pObj) != 0 ){` |
+|    104 |  227 | `	SyZero(pObj,sizeof(phl_ssl_obj));` |
+|    104 |  228 | `	pObj->iKind = iKind;` |
+|    104 |  229 | `	pObj->pHandle = pHandle;` |
+|    104 |  230 | `	pObj->pOwner = pInst;` |
+|    104 |  231 | `	pObj->pNext = (phl_ssl_obj *)pVm->pSslObjs;` |
+|    104 |  232 | `	pVm->pSslObjs = pObj;` |
+|    104 |  233 | `	if( SslAttachSlot(pInst,pObj) != 0 ){` |
 |    ! 0 |  234 | `		SslBlankSlot(pInst);` |
 |    ! 0 |  235 | `		pObj->pOwner = 0;` |
 |    ! 0 |  236 | `		pObj->pHandle = 0;` |
 |    ! 0 |  237 | `		return 0;` |
 |      - |  238 | `	}` |
-|     68 |  239 | `	if( ppInst ){` |
-|     68 |  240 | `		*ppInst = pInst;` |
-|     33 |  241 | `	}` |
-|     68 |  242 | `	return pObj;` |
-|     35 |  243 | `}` |
+|    104 |  239 | `	if( ppInst ){` |
+|    104 |  240 | `		*ppInst = pInst;` |
+|     51 |  241 | `	}` |
+|    104 |  242 | `	return pObj;` |
+|     53 |  243 | `}` |
 |      - |  244 | `/* The library pointer behind a value that IS one of the three handle classes,` |
 |      - |  245 | ` * or 0 for anything else -- including a handle whose owner has been closed. */` |
-|    222 |  246 | `PH7_PRIVATE void * PH7_SslHandleOf(ph7_value *pVal,int iKind)` |
+|    280 |  246 | `PH7_PRIVATE void * PH7_SslHandleOf(ph7_value *pVal,int iKind)` |
 |      2 |  247 | `{` |
 |      - |  248 | `	phl_ssl_obj *pObj;` |
-|    224 |  249 | `	if( pVal == 0 \|\| !ph7_value_is_object(pVal) ){` |
+|    282 |  249 | `	if( pVal == 0 \|\| !ph7_value_is_object(pVal) ){` |
 |    ! 0 |  250 | `		return 0;` |
 |      - |  251 | `	}` |
-|    224 |  252 | `	pObj = SslRecOfInstance((ph7_class_instance *)pVal->x.pOther);` |
-|    224 |  253 | `	if( pObj == 0 \|\| pObj->iKind != iKind ){` |
+|    282 |  252 | `	pObj = SslRecOfInstance((ph7_class_instance *)pVal->x.pOther);` |
+|    282 |  253 | `	if( pObj == 0 \|\| pObj->iKind != iKind ){` |
 |      5 |  254 | `		return 0;` |
 |      - |  255 | `	}` |
-|    220 |  256 | `	return pObj->pHandle;` |
-|    113 |  257 | `}` |
+|    278 |  256 | `	return pObj->pHandle;` |
+|    142 |  257 | `}` |
 |      - |  258 | `/* Hand a freshly created library object back as this call's return value. The` |
 |      - |  259 | ` * handle is CONSUMED: on failure it is freed here rather than leaked. */` |
-|     66 |  260 | `PH7_PRIVATE int PH7_SslResultObject(ph7_context *pCtx,int iKind,void *pHandle)` |
+|     96 |  260 | `PH7_PRIVATE int PH7_SslResultObject(ph7_context *pCtx,int iKind,void *pHandle)` |
 |      2 |  261 | `{` |
-|     68 |  262 | `	ph7_class_instance *pInst = 0;` |
+|     98 |  262 | `	ph7_class_instance *pInst = 0;` |
 |      - |  263 | `	phl_ssl_obj *pObj;` |
-|     68 |  264 | `	if( pHandle == 0 ){` |
+|     98 |  264 | `	if( pHandle == 0 ){` |
 |    ! 0 |  265 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  266 | `		return PH7_OK;` |
 |      - |  267 | `	}` |
-|     68 |  268 | `	pObj = PH7_SslNewObject(pCtx->pVm,iKind,pHandle,&pInst);` |
-|     68 |  269 | `	if( pObj == 0 \|\| pInst == 0 ){` |
+|     98 |  268 | `	pObj = PH7_SslNewObject(pCtx->pVm,iKind,pHandle,&pInst);` |
+|     98 |  269 | `	if( pObj == 0 \|\| pInst == 0 ){` |
 |    ! 0 |  270 | `		switch( iKind ){` |
 |    ! 0 |  271 | `			case PHL_SSL_KIND_CERT: X509_free((X509 *)pHandle);         break;` |
 |    ! 0 |  272 | `			case PHL_SSL_KIND_CSR:  X509_REQ_free((X509_REQ *)pHandle); break;` |
@@ -286,23 +286,23 @@ Coverage: 1786/2219 lines (80.49%)
 |    ! 0 |  276 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  277 | `		return PH7_OK;` |
 |      - |  278 | `	}` |
-|     68 |  279 | `	PH7_NativeResultObject(pCtx,pInst);` |
-|     68 |  280 | `	return PH7_OK;` |
-|     35 |  281 | `}` |
+|     98 |  279 | `	PH7_NativeResultObject(pCtx,pInst);` |
+|     98 |  280 | `	return PH7_OK;` |
+|     50 |  281 | `}` |
 |      - |  282 | `/* Free every registered handle. Called from the VM reset (a reused VM must not` |
 |      - |  283 | ` * inherit the previous program's keys) and from the release before the` |
 |      - |  284 | ` * allocator holding the records goes away. */` |
-|   5645 |  285 | `static void SslFreeAllObjects(ph7_vm *pVm)` |
+|   6717 |  285 | `static void SslFreeAllObjects(ph7_vm *pVm)` |
 |      5 |  286 | `{` |
-|   5650 |  287 | `	phl_ssl_obj *pObj = (phl_ssl_obj *)pVm->pSslObjs;` |
-|   5716 |  288 | `	while( pObj ){` |
-|     68 |  289 | `		phl_ssl_obj *pNext = pObj->pNext;` |
-|     68 |  290 | `		PH7_SslFreeObject(pObj);` |
-|     68 |  291 | `		SyMemBackendFree(&pVm->sAllocator,pObj);` |
-|     68 |  292 | `		pObj = pNext;` |
+|   6722 |  287 | `	phl_ssl_obj *pObj = (phl_ssl_obj *)pVm->pSslObjs;` |
+|   6824 |  288 | `	while( pObj ){` |
+|    104 |  289 | `		phl_ssl_obj *pNext = pObj->pNext;` |
+|    104 |  290 | `		PH7_SslFreeObject(pObj);` |
+|    104 |  291 | `		SyMemBackendFree(&pVm->sAllocator,pObj);` |
+|    104 |  292 | `		pObj = pNext;` |
 |      2 |  293 | `	}` |
-|   5650 |  294 | `	pVm->pSslObjs = 0;` |
-|   5650 |  295 | `}` |
+|   6722 |  294 | `	pVm->pSslObjs = 0;` |
+|   6722 |  295 | `}` |
 |     16 |  296 | `PH7_PRIVATE void PH7_SslVmReset(ph7_vm *pVm)` |
 |    ! 0 |  297 | `{` |
 |     16 |  298 | `	SslFreeAllObjects(pVm);` |
@@ -311,12 +311,12 @@ Coverage: 1786/2219 lines (80.49%)
 |    ! 0 |  301 | `	}` |
 |     16 |  302 | `	ERR_clear_error();` |
 |     16 |  303 | `}` |
-|   5629 |  304 | `PH7_PRIVATE void PH7_SslVmRelease(ph7_vm *pVm)` |
+|   6701 |  304 | `PH7_PRIVATE void PH7_SslVmRelease(ph7_vm *pVm)` |
 |      5 |  305 | `{` |
-|   5634 |  306 | `	SslFreeAllObjects(pVm);` |
-|   5634 |  307 | `	pVm->pSslErrors = 0;   /* the allocator releases the ring with everything else */` |
-|   5634 |  308 | `	ERR_clear_error();` |
-|   5634 |  309 | `}` |
+|   6706 |  306 | `	SslFreeAllObjects(pVm);` |
+|   6706 |  307 | `	pVm->pSslErrors = 0;   /* the allocator releases the ring with everything else */` |
+|   6706 |  308 | `	ERR_clear_error();` |
+|   6706 |  309 | `}` |
 |      - |  310 |  |
 |      - |  311 | `/* ------------------------------------------------------------------------` |
 |      - |  312 | ` * Algorithm lookup` |
@@ -337,26 +337,26 @@ Coverage: 1786/2219 lines (80.49%)
 |      - |  327 | ` * A fetched digest is reference-counted and has to be freed; a legacy one must` |
 |      - |  328 | ` * not be. *ppFetched is the one the caller owns.` |
 |      - |  329 | ` */` |
-|    174 |  330 | `PH7_PRIVATE const EVP_MD * PH7_SslDigestOfValue(ph7_value *pVal,EVP_MD **ppFetched)` |
+|    206 |  330 | `PH7_PRIVATE const EVP_MD * PH7_SslDigestOfValue(ph7_value *pVal,EVP_MD **ppFetched)` |
 |      3 |  331 | `{` |
-|    177 |  332 | `	const EVP_MD *pMd = 0;` |
-|    177 |  333 | `	*ppFetched = 0;` |
-|    177 |  334 | `	if( pVal == 0 ){` |
+|    209 |  332 | `	const EVP_MD *pMd = 0;` |
+|    209 |  333 | `	*ppFetched = 0;` |
+|    209 |  334 | `	if( pVal == 0 ){` |
 |    ! 0 |  335 | `		return 0;` |
 |      - |  336 | `	}` |
-|    177 |  337 | `	if( ph7_value_is_string(pVal) ){` |
+|    209 |  337 | `	if( ph7_value_is_string(pVal) ){` |
 |      - |  338 | `		const char *zName;` |
-|    163 |  339 | `		int nName = 0;` |
-|    163 |  340 | `		zName = ph7_value_to_string(pVal,&nName);` |
-|    163 |  341 | `		if( nName < 1 ){` |
+|    195 |  339 | `		int nName = 0;` |
+|    195 |  340 | `		zName = ph7_value_to_string(pVal,&nName);` |
+|    195 |  341 | `		if( nName < 1 ){` |
 |    ! 0 |  342 | `			return 0;` |
 |      - |  343 | `		}` |
-|    163 |  344 | `		pMd = EVP_get_digestbyname(zName);` |
-|    163 |  345 | `		if( pMd == 0 ){` |
+|    195 |  344 | `		pMd = EVP_get_digestbyname(zName);` |
+|    195 |  345 | `		if( pMd == 0 ){` |
 |     69 |  346 | `			*ppFetched = EVP_MD_fetch(0,zName,0);` |
 |     69 |  347 | `			pMd = *ppFetched;` |
 |     33 |  348 | `		}` |
-|    163 |  349 | `		return pMd;` |
+|    195 |  349 | `		return pMd;` |
 |      - |  350 | `	}` |
 |      - |  351 | `	/* php's OPENSSL_ALGO_* numbering. The gap at 4/5 is php's own -- the two` |
 |      - |  352 | `	 * DSS entries it removed -- and a number outside the set is unknown` |
@@ -373,7 +373,7 @@ Coverage: 1786/2219 lines (80.49%)
 |    ! 0 |  363 | `		default: pMd = 0;               break;` |
 |      - |  364 | `	}` |
 |     15 |  365 | `	return pMd;` |
-|     90 |  366 | `}` |
+|    106 |  366 | `}` |
 |      - |  367 | `/*` |
 |      - |  368 | ` * The EVP_CIPHER behind a name. Two doors, because OpenSSL 3 has two: the` |
 |      - |  369 | ` * legacy OBJ table (EVP_get_cipherbyname, which knows "aes-256-cbc" and every` |
@@ -1378,59 +1378,59 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 1368 | ` * error, so the whole check runs between a MARK and a pop -- php's own answer` |
 |      - | 1369 | ` * comes from inspecting the structure and leaves the error ring alone.` |
 |      - | 1370 | ` */` |
-|    112 | 1371 | `static int SslKeyIsPrivate(EVP_PKEY *pKey)` |
+|    142 | 1371 | `static int SslKeyIsPrivate(EVP_PKEY *pKey)` |
 |      2 | 1372 | `{` |
-|    114 | 1373 | `	BIGNUM *pBn = 0;` |
-|    114 | 1374 | `	size_t nOct = 0;` |
-|    114 | 1375 | `	int bPriv = 0;` |
-|    114 | 1376 | `	if( pKey == 0 ){` |
+|    144 | 1373 | `	BIGNUM *pBn = 0;` |
+|    144 | 1374 | `	size_t nOct = 0;` |
+|    144 | 1375 | `	int bPriv = 0;` |
+|    144 | 1376 | `	if( pKey == 0 ){` |
 |    ! 0 | 1377 | `		return 0;` |
 |      - | 1378 | `	}` |
-|    114 | 1379 | `	ERR_set_mark();` |
-|    114 | 1380 | `	if( EVP_PKEY_get_bn_param(pKey,OSSL_PKEY_PARAM_RSA_D,&pBn) == 1 ){` |
-|    100 | 1381 | `		bPriv = 1;` |
-|     65 | 1382 | `	}else if( EVP_PKEY_get_bn_param(pKey,OSSL_PKEY_PARAM_PRIV_KEY,&pBn) == 1 ){` |
+|    144 | 1379 | `	ERR_set_mark();` |
+|    144 | 1380 | `	if( EVP_PKEY_get_bn_param(pKey,OSSL_PKEY_PARAM_RSA_D,&pBn) == 1 ){` |
+|    130 | 1381 | `		bPriv = 1;` |
+|     80 | 1382 | `	}else if( EVP_PKEY_get_bn_param(pKey,OSSL_PKEY_PARAM_PRIV_KEY,&pBn) == 1 ){` |
 |     10 | 1383 | `		bPriv = 1;` |
 |     11 | 1384 | `	}else if( EVP_PKEY_get_octet_string_param(pKey,OSSL_PKEY_PARAM_PRIV_KEY,0,0,&nOct) == 1 ){` |
 |    ! 0 | 1385 | `		bPriv = 1;` |
 |    ! 0 | 1386 | `	}` |
-|    114 | 1387 | `	if( pBn ){` |
-|    108 | 1388 | `		BN_clear_free(pBn);` |
-|     53 | 1389 | `	}` |
-|    114 | 1390 | `	ERR_pop_to_mark();` |
-|    114 | 1391 | `	return bPriv;` |
-|     58 | 1392 | `}` |
-|    174 | 1393 | `static const char * SslFilePrefix(const char *zStr,int nStr,int *pnRest)` |
+|    144 | 1387 | `	if( pBn ){` |
+|    138 | 1388 | `		BN_clear_free(pBn);` |
+|     68 | 1389 | `	}` |
+|    144 | 1390 | `	ERR_pop_to_mark();` |
+|    144 | 1391 | `	return bPriv;` |
+|     73 | 1392 | `}` |
+|    180 | 1393 | `static const char * SslFilePrefix(const char *zStr,int nStr,int *pnRest)` |
 |      2 | 1394 | `{` |
 |      - | 1395 | `	static const char zPfx[] = "file://";` |
-|    176 | 1396 | `	int nPfx = (int)(sizeof(zPfx) - 1);` |
-|    176 | 1397 | `	if( nStr <= nPfx \|\| SyStrnicmp(zStr,zPfx,(sxu32)nPfx) != 0 ){` |
-|    174 | 1398 | `		return 0;` |
+|    182 | 1396 | `	int nPfx = (int)(sizeof(zPfx) - 1);` |
+|    182 | 1397 | `	if( nStr <= nPfx \|\| SyStrnicmp(zStr,zPfx,(sxu32)nPfx) != 0 ){` |
+|    180 | 1398 | `		return 0;` |
 |      - | 1399 | `	}` |
 |      3 | 1400 | `	*pnRest = nStr - nPfx;` |
 |      3 | 1401 | `	return zStr + nPfx;` |
-|     89 | 1402 | `}` |
+|     92 | 1402 | `}` |
 |      - | 1403 | `/*` |
 |      - | 1404 | ` * The bytes behind a string argument: either the argument itself or, for a` |
 |      - | 1405 | `` * `file://` spelling, what that file holds. Reads through the engine's stream`` |
 |      - | 1406 | ` * layer, so a userland wrapper and a phar both answer.` |
 |      - | 1407 | ` */` |
-|    174 | 1408 | `PH7_PRIVATE int PH7_SslBytesOfValue(ph7_context *pCtx,ph7_value *pVal,SyBlob *pOut,` |
+|    180 | 1408 | `PH7_PRIVATE int PH7_SslBytesOfValue(ph7_context *pCtx,ph7_value *pVal,SyBlob *pOut,` |
 |      - | 1409 | `	const char **pzData,int *pnData)` |
 |      2 | 1410 | `{` |
 |      - | 1411 | `	const char *zStr,*zPath;` |
-|    176 | 1412 | `	int nStr = 0,nPath = 0;` |
+|    182 | 1412 | `	int nStr = 0,nPath = 0;` |
 |      - | 1413 | `	const ph7_io_stream *pStream;` |
 |      - | 1414 | `	void *pHandle;` |
-|    176 | 1415 | `	zStr = ph7_value_to_string(pVal,&nStr);` |
-|    176 | 1416 | `	if( zStr == 0 ){` |
+|    182 | 1415 | `	zStr = ph7_value_to_string(pVal,&nStr);` |
+|    182 | 1416 | `	if( zStr == 0 ){` |
 |    ! 0 | 1417 | `		zStr = "";` |
 |    ! 0 | 1418 | `	}` |
-|    176 | 1419 | `	zPath = SslFilePrefix(zStr,nStr,&nPath);` |
-|    176 | 1420 | `	if( zPath == 0 ){` |
-|    174 | 1421 | `		*pzData = zStr;` |
-|    174 | 1422 | `		*pnData = nStr;` |
-|    174 | 1423 | `		return 0;` |
+|    182 | 1419 | `	zPath = SslFilePrefix(zStr,nStr,&nPath);` |
+|    182 | 1420 | `	if( zPath == 0 ){` |
+|    180 | 1421 | `		*pzData = zStr;` |
+|    180 | 1422 | `		*pnData = nStr;` |
+|    180 | 1423 | `		return 0;` |
 |      - | 1424 | `	}` |
 |      3 | 1425 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zPath,nPath);` |
 |      3 | 1426 | `	pHandle = pStream ? PH7_StreamOpenHandle(pCtx->pVm,pStream,zPath,PH7_IO_OPEN_RDONLY,` |
@@ -1446,7 +1446,7 @@ Coverage: 1786/2219 lines (80.49%)
 |    ! 0 | 1436 | `		*pzData = "";` |
 |    ! 0 | 1437 | `	}` |
 |      3 | 1438 | `	return 0;` |
-|     89 | 1439 | `}` |
+|     92 | 1439 | `}` |
 |      - | 1440 | `/* The nth VALUE of an array, in insertion order -- what php's positional` |
 |      - | 1441 | `` * reads of `[$key, $passphrase]` and of openssl_seal()'s recipient list mean.`` |
 |      - | 1442 | ` * The engine has no by-index array accessor, so the walk is spelled here. */` |
@@ -1598,39 +1598,39 @@ Coverage: 1786/2219 lines (80.49%)
 |    120 | 1588 | `	BIO_free(pBio);` |
 |    120 | 1589 | `	return pKey;` |
 |     63 | 1590 | `}` |
-|    246 | 1591 | `PH7_PRIVATE EVP_PKEY * PH7_SslKeyOfValue(ph7_context *pCtx,ph7_value *pVal,int bPublic,int *pbOwn)` |
+|    276 | 1591 | `PH7_PRIVATE EVP_PKEY * PH7_SslKeyOfValue(ph7_context *pCtx,ph7_value *pVal,int bPublic,int *pbOwn)` |
 |      2 | 1592 | `{` |
 |      - | 1593 | `	SyBlob sFile;` |
-|    248 | 1594 | `	const char *zData = 0,*zPass = 0;` |
-|    248 | 1595 | `	int nData = 0,nPass = 0,rc;` |
-|    248 | 1596 | `	char *zPassZ = 0;` |
-|    248 | 1597 | `	EVP_PKEY *pKey = 0;` |
-|    248 | 1598 | `	ph7_value *pKeyVal = pVal;` |
-|    248 | 1599 | `	*pbOwn = 0;` |
-|    248 | 1600 | `	if( pVal == 0 ){` |
+|    278 | 1594 | `	const char *zData = 0,*zPass = 0;` |
+|    278 | 1595 | `	int nData = 0,nPass = 0,rc;` |
+|    278 | 1596 | `	char *zPassZ = 0;` |
+|    278 | 1597 | `	EVP_PKEY *pKey = 0;` |
+|    278 | 1598 | `	ph7_value *pKeyVal = pVal;` |
+|    278 | 1599 | `	*pbOwn = 0;` |
+|    278 | 1600 | `	if( pVal == 0 ){` |
 |    ! 0 | 1601 | `		return 0;` |
 |      - | 1602 | `	}` |
-|    248 | 1603 | `	if( ph7_value_is_object(pVal) ){` |
-|    118 | 1604 | `		void *pHandle = PH7_SslHandleOf(pVal,PHL_SSL_KIND_KEY);` |
-|    118 | 1605 | `		if( pHandle ){` |
+|    278 | 1603 | `	if( ph7_value_is_object(pVal) ){` |
+|    148 | 1604 | `		void *pHandle = PH7_SslHandleOf(pVal,PHL_SSL_KIND_KEY);` |
+|    148 | 1605 | `		if( pHandle ){` |
 |      - | 1606 | `			/* A key OBJECT carries its half with it, and php checks: a private` |
 |      - | 1607 | `			 * key at a public door and a public key at a private one are both` |
 |      - | 1608 | `			 * refusals, each with its own sentence, and each is followed by` |
 |      - | 1609 | `			 * the CALLER's own. A key STRING gets neither message -- it simply` |
 |      - | 1610 | `			 * fails to parse -- which is why these two live here rather than` |
 |      - | 1611 | `			 * in the byte reader. */` |
-|    114 | 1612 | `			int bPriv = SslKeyIsPrivate((EVP_PKEY *)pHandle);` |
-|    114 | 1613 | `			if( bPublic && bPriv ){` |
+|    144 | 1612 | `			int bPriv = SslKeyIsPrivate((EVP_PKEY *)pHandle);` |
+|    144 | 1613 | `			if( bPublic && bPriv ){` |
 |     11 | 1614 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1615 | `					"Don't know how to get public key from this private key");` |
 |     11 | 1616 | `				return 0;` |
 |      - | 1617 | `			}` |
-|    104 | 1618 | `			if( !bPublic && !bPriv ){` |
+|    134 | 1618 | `			if( !bPublic && !bPriv ){` |
 |      3 | 1619 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 1620 | `					"Supplied key param is a public key");` |
 |      3 | 1621 | `				return 0;` |
 |      - | 1622 | `			}` |
-|    102 | 1623 | `			return (EVP_PKEY *)pHandle;` |
+|    132 | 1623 | `			return (EVP_PKEY *)pHandle;` |
 |      - | 1624 | `		}` |
 |      5 | 1625 | `		pHandle = PH7_SslHandleOf(pVal,PHL_SSL_KIND_CERT);` |
 |      5 | 1626 | `		if( pHandle && bPublic ){` |
@@ -1687,7 +1687,7 @@ Coverage: 1786/2219 lines (80.49%)
 |     34 | 1677 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |      - | 1678 | `	}` |
 |    120 | 1679 | `	return pKey;` |
-|    125 | 1680 | `}` |
+|    140 | 1680 | `}` |
 |      - | 1681 | ``/* The private-key door with php's separate `$passphrase` argument (rather than`` |
 |      - | 1682 | ` * the array pair): openssl_pkey_get_private() and openssl_pkey_export(). */` |
 |     42 | 1683 | `static EVP_PKEY * SslPrivateKeyWithPass(ph7_context *pCtx,ph7_value *pVal,` |
@@ -1724,12 +1724,12 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 1714 | `	}` |
 |      5 | 1715 | `	return pKey;` |
 |     23 | 1716 | `}` |
-|    138 | 1717 | `static void SslReleaseKey(EVP_PKEY *pKey,int bOwn)` |
+|    148 | 1717 | `static void SslReleaseKey(EVP_PKEY *pKey,int bOwn)` |
 |      2 | 1718 | `{` |
-|    140 | 1719 | `	if( pKey && bOwn > 0 ){` |
+|    150 | 1719 | `	if( pKey && bOwn > 0 ){` |
 |     62 | 1720 | `		EVP_PKEY_free(pKey);` |
 |     30 | 1721 | `	}` |
-|    140 | 1722 | `}` |
+|    150 | 1722 | `}` |
 |      - | 1723 | `/* php's bare ValueError for a malformed key pair. Every door that takes a` |
 |      - | 1724 | `` * `$key` reports it, and none of them puts its own name in front. */`` |
 |     12 | 1725 | `PH7_PRIVATE int PH7_SslArrayShapeError(ph7_context *pCtx)` |
@@ -1786,30 +1786,30 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 1776 | ` * public key, which is the one thing a caller who reads the manual would get` |
 |      - | 1777 | ` * wrong.` |
 |      - | 1778 | ` */` |
-|     38 | 1779 | `static EVP_PKEY * SslKeyFromComponents(ph7_context *pCtx,ph7_value *pOpts)` |
+|     48 | 1779 | `static EVP_PKEY * SslKeyFromComponents(ph7_context *pCtx,ph7_value *pOpts)` |
 |      2 | 1780 | `{` |
 |      - | 1781 | `	static const struct { const char *zGroup; const char *zType; } aKind[] = {` |
 |      - | 1782 | `		{ "rsa", "RSA" }, { "dsa", "DSA" }, { "dh", "DH" }, { "ec", "EC" }` |
 |      - | 1783 | `	};` |
-|     40 | 1784 | `	ph7_value *pGroup = 0;` |
-|     40 | 1785 | `	const char *zType = 0;` |
+|     50 | 1784 | `	ph7_value *pGroup = 0;` |
+|     50 | 1785 | `	const char *zType = 0;` |
 |      - | 1786 | `	OSSL_PARAM_BLD *pBld;` |
-|     40 | 1787 | `	OSSL_PARAM *pParams = 0;` |
-|     40 | 1788 | `	EVP_PKEY_CTX *pKCtx = 0;` |
-|     40 | 1789 | `	EVP_PKEY *pKey = 0;` |
+|     50 | 1787 | `	OSSL_PARAM *pParams = 0;` |
+|     50 | 1788 | `	EVP_PKEY_CTX *pKCtx = 0;` |
+|     50 | 1789 | `	EVP_PKEY *pKey = 0;` |
 |      - | 1790 | `	BIGNUM *aBn[8];` |
-|     40 | 1791 | `	int nBn = 0,i,bOk = 0;` |
-|     40 | 1792 | `	unsigned char *zPoint = 0;` |
-|    174 | 1793 | `	for( i = 0 ; i < (int)SX_ARRAYSIZE(aKind) ; ++i ){` |
-|    142 | 1794 | `		pGroup = ph7_array_fetch(pOpts,aKind[i].zGroup,-1);` |
-|    142 | 1795 | `		if( pGroup && ph7_value_is_array(pGroup) ){` |
+|     50 | 1791 | `	int nBn = 0,i,bOk = 0;` |
+|     50 | 1792 | `	unsigned char *zPoint = 0;` |
+|    224 | 1793 | `	for( i = 0 ; i < (int)SX_ARRAYSIZE(aKind) ; ++i ){` |
+|    182 | 1794 | `		pGroup = ph7_array_fetch(pOpts,aKind[i].zGroup,-1);` |
+|    182 | 1795 | `		if( pGroup && ph7_value_is_array(pGroup) ){` |
 |      7 | 1796 | `			zType = aKind[i].zType;` |
 |      7 | 1797 | `			break;` |
 |      - | 1798 | `		}` |
-|    136 | 1799 | `		pGroup = 0;` |
-|     69 | 1800 | `	}` |
-|     40 | 1801 | `	if( zType == 0 ){` |
-|     34 | 1802 | `		return 0;` |
+|    176 | 1799 | `		pGroup = 0;` |
+|     89 | 1800 | `	}` |
+|     50 | 1801 | `	if( zType == 0 ){` |
+|     44 | 1802 | `		return 0;` |
 |      - | 1803 | `	}` |
 |      7 | 1804 | `	pBld = OSSL_PARAM_BLD_new();` |
 |      7 | 1805 | `	if( pBld == 0 ){` |
@@ -1920,7 +1920,7 @@ Coverage: 1786/2219 lines (80.49%)
 |      3 | 1910 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |      1 | 1911 | `	}` |
 |      7 | 1912 | `	return pKey;` |
-|     21 | 1913 | `}` |
+|     26 | 1913 | `}` |
 |      - | 1914 | `/*` |
 |      - | 1915 | `` * php's `private_key_type` covers all EIGHT of its OPENSSL_KEYTYPE_* numbers,`` |
 |      - | 1916 | ` * not just the four a reading of the manual suggests: 4..7 are X25519,` |
@@ -1932,10 +1932,10 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 1922 | ` * parameter, DSA and DH need their DOMAIN PARAMETERS generated first and the` |
 |      - | 1923 | ` * key generated from those, and EC/Edwards take a group name or nothing at all.` |
 |      - | 1924 | ` */` |
-|     32 | 1925 | `static const char * SslKeyTypeName(sxi64 iType)` |
+|     42 | 1925 | `static const char * SslKeyTypeName(sxi64 iType)` |
 |      2 | 1926 | `{` |
-|     34 | 1927 | `	switch( iType ){` |
-|     10 | 1928 | `		case 0: return "RSA";` |
+|     44 | 1927 | `	switch( iType ){` |
+|     20 | 1928 | `		case 0: return "RSA";` |
 |    ! 0 | 1929 | `		case 1: return "DSA";` |
 |    ! 0 | 1930 | `		case 2: return "DH";` |
 |     14 | 1931 | `		case 3: return "EC";` |
@@ -1945,7 +1945,7 @@ Coverage: 1786/2219 lines (80.49%)
 |      3 | 1935 | `		case 7: return "ED448";` |
 |      5 | 1936 | `		default: return 0;` |
 |      - | 1937 | `	}` |
-|     18 | 1938 | `}` |
+|     23 | 1938 | `}` |
 |    ! 0 | 1939 | `static EVP_PKEY * SslGenFfcKey(const char *zType,int nBits)` |
 |    ! 0 | 1940 | `{` |
 |      - | 1941 | `	EVP_PKEY_CTX *pCtx1,*pCtx2;` |
@@ -1980,22 +1980,22 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 1970 | ` * given" path, which php serves from the same code. Raises php's own warning` |
 |      - | 1971 | ` * for a refused size, type or curve and answers 0.` |
 |      - | 1972 | ` */` |
-|     32 | 1973 | `PH7_PRIVATE EVP_PKEY * PH7_SslGenerateKey(ph7_context *pCtx,sxi64 iBits,sxi64 iType,` |
+|     42 | 1973 | `PH7_PRIVATE EVP_PKEY * PH7_SslGenerateKey(ph7_context *pCtx,sxi64 iBits,sxi64 iType,` |
 |      - | 1974 | `	const char *zCurve,int nCurve)` |
 |      2 | 1975 | `{` |
-|     34 | 1976 | `	EVP_PKEY_CTX *pKCtx = 0;` |
-|     34 | 1977 | `	EVP_PKEY *pKey = 0;` |
-|     34 | 1978 | `	const char *zType = SslKeyTypeName(iType);` |
-|     34 | 1979 | `	if( zType == 0 ){` |
+|     44 | 1976 | `	EVP_PKEY_CTX *pKCtx = 0;` |
+|     44 | 1977 | `	EVP_PKEY *pKey = 0;` |
+|     44 | 1978 | `	const char *zType = SslKeyTypeName(iType);` |
+|     44 | 1979 | `	if( zType == 0 ){` |
 |      5 | 1980 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Unsupported private key type");` |
 |      5 | 1981 | `		return 0;` |
 |      - | 1982 | `	}` |
-|     30 | 1983 | `	if( iType <= 2 && iBits < 384 ){` |
+|     40 | 1983 | `	if( iType <= 2 && iBits < 384 ){` |
 |      4 | 1984 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      1 | 1985 | `			"Private key length must be at least 384 bits, configured to %d",(int)iBits);` |
 |      3 | 1986 | `		return 0;` |
 |      - | 1987 | `	}` |
-|     28 | 1988 | `	if( iType == 3 ){` |
+|     38 | 1988 | `	if( iType == 3 ){` |
 |      - | 1989 | `		int nid;` |
 |     14 | 1990 | `		if( zCurve == 0 \|\| nCurve < 1 ){` |
 |      - | 1991 | `			/* php has no default curve: the option is REQUIRED and its absence` |
@@ -2020,62 +2020,62 @@ Coverage: 1786/2219 lines (80.49%)
 |     10 | 2010 | `		if( pKCtx ){ EVP_PKEY_CTX_free(pKCtx); }` |
 |     10 | 2011 | `		return pKey;` |
 |      - | 2012 | `	}` |
-|     16 | 2013 | `	if( iType == 1 \|\| iType == 2 ){` |
+|     26 | 2013 | `	if( iType == 1 \|\| iType == 2 ){` |
 |    ! 0 | 2014 | `		return SslGenFfcKey(zType,(int)iBits);` |
 |      - | 2015 | `	}` |
-|     16 | 2016 | `	pKCtx = EVP_PKEY_CTX_new_from_name(0,zType,0);` |
-|     16 | 2017 | `	if( pKCtx && EVP_PKEY_keygen_init(pKCtx) > 0 ){` |
-|     16 | 2018 | `		if( iType == 0 ){` |
-|      8 | 2019 | `			EVP_PKEY_CTX_set_rsa_keygen_bits(pKCtx,(int)iBits);` |
-|      3 | 2020 | `		}` |
-|     16 | 2021 | `		if( EVP_PKEY_keygen(pKCtx,&pKey) <= 0 ){` |
+|     26 | 2016 | `	pKCtx = EVP_PKEY_CTX_new_from_name(0,zType,0);` |
+|     26 | 2017 | `	if( pKCtx && EVP_PKEY_keygen_init(pKCtx) > 0 ){` |
+|     26 | 2018 | `		if( iType == 0 ){` |
+|     18 | 2019 | `			EVP_PKEY_CTX_set_rsa_keygen_bits(pKCtx,(int)iBits);` |
+|      8 | 2020 | `		}` |
+|     26 | 2021 | `		if( EVP_PKEY_keygen(pKCtx,&pKey) <= 0 ){` |
 |    ! 0 | 2022 | `			pKey = 0;` |
 |    ! 0 | 2023 | `		}` |
-|      7 | 2024 | `	}` |
-|     16 | 2025 | `	if( pKCtx ){ EVP_PKEY_CTX_free(pKCtx); }` |
-|     16 | 2026 | `	return pKey;` |
-|     18 | 2027 | `}` |
-|     38 | 2028 | `static int vm_builtin_openssl_pkey_new(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     12 | 2024 | `	}` |
+|     26 | 2025 | `	if( pKCtx ){ EVP_PKEY_CTX_free(pKCtx); }` |
+|     26 | 2026 | `	return pKey;` |
+|     23 | 2027 | `}` |
+|     48 | 2028 | `static int vm_builtin_openssl_pkey_new(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      2 | 2029 | `{` |
-|     40 | 2030 | `	ph7_value *pOpts = 0,*pVal;` |
-|     40 | 2031 | `	EVP_PKEY *pKey = 0;` |
-|     40 | 2032 | `	sxi64 iBits = 2048,iType = 0;` |
-|     40 | 2033 | `	const char *zCurve = 0;` |
-|     40 | 2034 | `	int nCurve = 0;` |
-|     40 | 2035 | `	if( nArg > 0 && ph7_value_is_array(apArg[0]) ){` |
-|     40 | 2036 | `		pOpts = apArg[0];` |
-|     19 | 2037 | `	}` |
-|     40 | 2038 | `	if( pOpts ){` |
-|     40 | 2039 | `		pKey = SslKeyFromComponents(pCtx,pOpts);` |
-|     40 | 2040 | `		if( pKey ){` |
+|     50 | 2030 | `	ph7_value *pOpts = 0,*pVal;` |
+|     50 | 2031 | `	EVP_PKEY *pKey = 0;` |
+|     50 | 2032 | `	sxi64 iBits = 2048,iType = 0;` |
+|     50 | 2033 | `	const char *zCurve = 0;` |
+|     50 | 2034 | `	int nCurve = 0;` |
+|     50 | 2035 | `	if( nArg > 0 && ph7_value_is_array(apArg[0]) ){` |
+|     50 | 2036 | `		pOpts = apArg[0];` |
+|     24 | 2037 | `	}` |
+|     50 | 2038 | `	if( pOpts ){` |
+|     50 | 2039 | `		pKey = SslKeyFromComponents(pCtx,pOpts);` |
+|     50 | 2040 | `		if( pKey ){` |
 |      5 | 2041 | `			return PH7_SslResultObject(pCtx,PHL_SSL_KIND_KEY,(void *)pKey);` |
 |      - | 2042 | `		}` |
-|     34 | 2043 | `		if( ph7_array_fetch(pOpts,"rsa",-1) \|\| ph7_array_fetch(pOpts,"dsa",-1)` |
-|     34 | 2044 | `		 \|\| ph7_array_fetch(pOpts,"dh",-1) \|\| ph7_array_fetch(pOpts,"ec",-1) ){` |
+|     44 | 2043 | `		if( ph7_array_fetch(pOpts,"rsa",-1) \|\| ph7_array_fetch(pOpts,"dsa",-1)` |
+|     44 | 2044 | `		 \|\| ph7_array_fetch(pOpts,"dh",-1) \|\| ph7_array_fetch(pOpts,"ec",-1) ){` |
 |      3 | 2045 | `			ph7_result_bool(pCtx,0);` |
 |      3 | 2046 | `			return PH7_OK;` |
 |      - | 2047 | `		}` |
-|     34 | 2048 | `		pVal = ph7_array_fetch(pOpts,"private_key_bits",-1);` |
-|     34 | 2049 | `		if( pVal ){` |
-|     10 | 2050 | `			iBits = ph7_value_to_int64(pVal);` |
-|      4 | 2051 | `		}` |
-|     34 | 2052 | `		pVal = ph7_array_fetch(pOpts,"private_key_type",-1);` |
-|     34 | 2053 | `		if( pVal ){` |
-|     26 | 2054 | `			iType = ph7_value_to_int64(pVal);` |
-|     12 | 2055 | `		}` |
-|     34 | 2056 | `		pVal = ph7_array_fetch(pOpts,"curve_name",-1);` |
-|     34 | 2057 | `		if( pVal ){` |
+|     44 | 2048 | `		pVal = ph7_array_fetch(pOpts,"private_key_bits",-1);` |
+|     44 | 2049 | `		if( pVal ){` |
+|     20 | 2050 | `			iBits = ph7_value_to_int64(pVal);` |
+|      9 | 2051 | `		}` |
+|     44 | 2052 | `		pVal = ph7_array_fetch(pOpts,"private_key_type",-1);` |
+|     44 | 2053 | `		if( pVal ){` |
+|     36 | 2054 | `			iType = ph7_value_to_int64(pVal);` |
+|     17 | 2055 | `		}` |
+|     44 | 2056 | `		pVal = ph7_array_fetch(pOpts,"curve_name",-1);` |
+|     44 | 2057 | `		if( pVal ){` |
 |     12 | 2058 | `			zCurve = ph7_value_to_string(pVal,&nCurve);` |
 |      5 | 2059 | `		}` |
-|     16 | 2060 | `	}` |
-|     34 | 2061 | `	pKey = PH7_SslGenerateKey(pCtx,iBits,iType,zCurve,nCurve);` |
-|     34 | 2062 | `	if( pKey == 0 ){` |
+|     21 | 2060 | `	}` |
+|     44 | 2061 | `	pKey = PH7_SslGenerateKey(pCtx,iBits,iType,zCurve,nCurve);` |
+|     44 | 2062 | `	if( pKey == 0 ){` |
 |     11 | 2063 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |     11 | 2064 | `		ph7_result_bool(pCtx,0);` |
 |     11 | 2065 | `		return PH7_OK;` |
 |      - | 2066 | `	}` |
-|     24 | 2067 | `	return PH7_SslResultObject(pCtx,PHL_SSL_KIND_KEY,(void *)pKey);` |
-|     21 | 2068 | `}` |
+|     34 | 2067 | `	return PH7_SslResultObject(pCtx,PHL_SSL_KIND_KEY,(void *)pKey);` |
+|     26 | 2068 | `}` |
 |      - | 2069 | `/* ---- the two import doors ---- */` |
 |     64 | 2070 | `static int SslGetKeyDoor(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPublic)` |
 |      2 | 2071 | `{` |
@@ -2119,12 +2119,12 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 2109 | ` * openssl_pkey_free(), openssl_free_key() and openssl_x509_free() are NOT` |
 |      - | 2110 | ` * here, and their absence is deliberate. php 8 made all three no-ops (a key` |
 |      - | 2111 | ` * and a certificate are objects now, freed with their last reference) and` |
-|      - | 2112 | `` * marks each `deprecated since 8.0`; §10's rule is that what php merely`` |
+|      - | 2112 | `` * marks each `deprecated since 8.0`; the scope policy's rule is that what php merely`` |
 |      - | 2113 | ` * deprecates this engine REMOVES, so a program that calls one fails loudly` |
 |      - | 2114 | ` * instead of being quietly told it is doing nothing. The three names keep` |
 |      - | 2115 | ` * their rows in the extension partition -- every reader filters against the` |
 |      - | 2116 | ` * live VM, so they simply do not appear -- and the one call site any of the` |
-|      - | 2117 | ` * four target projects reaches is recorded in ECOSYSTEM.md.` |
+|      - | 2117 | ` * four target projects reaches is recorded with the gate's baselines.` |
 |      - | 2118 | ` */` |
 |      - | 2119 | `/* ---- openssl_pkey_get_details() ---- */` |
 |    132 | 2120 | `static void SslDetailBn(ph7_context *pCtx,EVP_PKEY *pKey,ph7_value *pArray,ph7_value *pVal,` |
@@ -2270,69 +2270,69 @@ Coverage: 1786/2219 lines (80.49%)
 |     34 | 2260 | `	return PH7_OK;` |
 |     18 | 2261 | `}` |
 |      - | 2262 | `/* ---- openssl_pkey_export() and its file twin ---- */` |
-|     10 | 2263 | `static int SslPkeyExport(ph7_context *pCtx,int nArg,ph7_value **apArg,int bToFile)` |
+|     20 | 2263 | `static int SslPkeyExport(ph7_context *pCtx,int nArg,ph7_value **apArg,int bToFile)` |
 |      2 | 2264 | `{` |
 |      - | 2265 | `	EVP_PKEY *pKey;` |
 |      - | 2266 | `	BIO *pBio;` |
-|     12 | 2267 | `	const EVP_CIPHER *pCipher = 0;` |
-|     12 | 2268 | `	const char *zPass = 0,*zOut = 0;` |
-|     12 | 2269 | `	int nPass = 0,bOwn = 0,rc = 0,iPassArg = bToFile ? 2 : 2;` |
+|     22 | 2267 | `	const EVP_CIPHER *pCipher = 0;` |
+|     22 | 2268 | `	const char *zPass = 0,*zOut = 0;` |
+|     22 | 2269 | `	int nPass = 0,bOwn = 0,rc = 0,iPassArg = bToFile ? 2 : 2;` |
 |      - | 2270 | `	long nOut;` |
-|     12 | 2271 | `	char *zMem = 0;` |
-|     12 | 2272 | `	if( nArg < 2 ){` |
+|     22 | 2271 | `	char *zMem = 0;` |
+|     22 | 2272 | `	if( nArg < 2 ){` |
 |    ! 0 | 2273 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2274 | `		return PH7_OK;` |
 |      - | 2275 | `	}` |
-|     12 | 2276 | `	pKey = PH7_SslKeyOfValue(pCtx,apArg[0],0,&bOwn);` |
-|     12 | 2277 | `	if( bOwn < 0 ){` |
+|     22 | 2276 | `	pKey = PH7_SslKeyOfValue(pCtx,apArg[0],0,&bOwn);` |
+|     22 | 2277 | `	if( bOwn < 0 ){` |
 |    ! 0 | 2278 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2279 | `		return PH7_SslArrayShapeError(pCtx);` |
 |      - | 2280 | `	}` |
-|     12 | 2281 | `	if( pKey == 0 ){` |
+|     22 | 2281 | `	if( pKey == 0 ){` |
 |      3 | 2282 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Cannot get key from parameter 1");` |
 |      3 | 2283 | `		ph7_result_bool(pCtx,0);` |
 |      3 | 2284 | `		return PH7_OK;` |
 |      - | 2285 | `	}` |
-|     10 | 2286 | `	if( nArg > iPassArg && !ph7_value_is_null(apArg[iPassArg]) ){` |
+|     20 | 2286 | `	if( nArg > iPassArg && !ph7_value_is_null(apArg[iPassArg]) ){` |
 |      6 | 2287 | `		zPass = ph7_value_to_string(apArg[iPassArg],&nPass);` |
 |      2 | 2288 | `	}` |
-|     10 | 2289 | `	if( zPass && nPass > 0 ){` |
+|     20 | 2289 | `	if( zPass && nPass > 0 ){` |
 |      6 | 2290 | `		pCipher = EVP_aes_256_cbc();` |
 |      2 | 2291 | `	}` |
-|     10 | 2292 | `	pBio = BIO_new(BIO_s_mem());` |
-|     10 | 2293 | `	if( pBio == 0 ){` |
+|     20 | 2292 | `	pBio = BIO_new(BIO_s_mem());` |
+|     20 | 2293 | `	if( pBio == 0 ){` |
 |    ! 0 | 2294 | `		SslReleaseKey(pKey,bOwn);` |
 |    ! 0 | 2295 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2296 | `		return PH7_OK;` |
 |      - | 2297 | `	}` |
-|     10 | 2298 | `	if( PEM_write_bio_PKCS8PrivateKey(pBio,pKey,pCipher,(char *)zPass,nPass,0,0) != 1 ){` |
+|     20 | 2298 | `	if( PEM_write_bio_PKCS8PrivateKey(pBio,pKey,pCipher,(char *)zPass,nPass,0,0) != 1 ){` |
 |    ! 0 | 2299 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |    ! 0 | 2300 | `		rc = -1;` |
 |    ! 0 | 2301 | `	}` |
-|     10 | 2302 | `	if( rc == 0 ){` |
-|     10 | 2303 | `		nOut = BIO_get_mem_data(pBio,&zMem);` |
-|     10 | 2304 | `		zOut = zMem;` |
-|     10 | 2305 | `		if( bToFile ){` |
+|     20 | 2302 | `	if( rc == 0 ){` |
+|     20 | 2303 | `		nOut = BIO_get_mem_data(pBio,&zMem);` |
+|     20 | 2304 | `		zOut = zMem;` |
+|     20 | 2305 | `		if( bToFile ){` |
 |      3 | 2306 | `			int nPath = 0;` |
 |      3 | 2307 | `			const char *zPath = ph7_value_to_string(apArg[1],&nPath);` |
 |      3 | 2308 | `			rc = PH7_SslWriteFileArg(pCtx,zPath,nPath,zOut,(sxu32)nOut);` |
 |      2 | 2309 | `		}else{` |
-|      8 | 2310 | `			ph7_value *pRes = ph7_context_new_scalar(pCtx);` |
-|      8 | 2311 | `			if( pRes ){` |
-|      8 | 2312 | `				ph7_value_string(pRes,zOut,(int)nOut);` |
-|      8 | 2313 | `				PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pRes);` |
-|      8 | 2314 | `				ph7_context_release_value(pCtx,pRes);` |
-|      3 | 2315 | `			}` |
+|     18 | 2310 | `			ph7_value *pRes = ph7_context_new_scalar(pCtx);` |
+|     18 | 2311 | `			if( pRes ){` |
+|     18 | 2312 | `				ph7_value_string(pRes,zOut,(int)nOut);` |
+|     18 | 2313 | `				PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pRes);` |
+|     18 | 2314 | `				ph7_context_release_value(pCtx,pRes);` |
+|      8 | 2315 | `			}` |
 |      - | 2316 | `		}` |
-|      4 | 2317 | `	}` |
-|     10 | 2318 | `	BIO_free(pBio);` |
-|     10 | 2319 | `	SslReleaseKey(pKey,bOwn);` |
-|     10 | 2320 | `	ph7_result_bool(pCtx,rc == 0);` |
-|     10 | 2321 | `	return PH7_OK;` |
-|      7 | 2322 | `}` |
-|      8 | 2323 | `static int vm_builtin_openssl_pkey_export(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      9 | 2317 | `	}` |
+|     20 | 2318 | `	BIO_free(pBio);` |
+|     20 | 2319 | `	SslReleaseKey(pKey,bOwn);` |
+|     20 | 2320 | `	ph7_result_bool(pCtx,rc == 0);` |
+|     20 | 2321 | `	return PH7_OK;` |
+|     12 | 2322 | `}` |
+|     18 | 2323 | `static int vm_builtin_openssl_pkey_export(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      2 | 2324 | `{` |
-|     10 | 2325 | `	return SslPkeyExport(pCtx,nArg,apArg,0);` |
+|     20 | 2325 | `	return SslPkeyExport(pCtx,nArg,apArg,0);` |
 |      2 | 2326 | `}` |
 |      2 | 2327 | `static int vm_builtin_openssl_pkey_export_to_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      1 | 2328 | `{` |
@@ -2821,7 +2821,7 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 2811 | ` * than any particular value -- an explicit 0 raises "the $key_length parameter` |
 |      - | 2812 | ` * is deprecated as it is either ignored or truncates the key" just as a 16` |
 |      - | 2813 | ` * does -- because the exchange produces what it produces and asking for fewer` |
-|      - | 2814 | ` * bytes hands back a PREFIX that is not a shorter shared secret. §10 refuses` |
+|      - | 2814 | ` * bytes hands back a PREFIX that is not a shorter shared secret. The scope policy refuses` |
 |      - | 2815 | ` * the spelling, so the signature declares two parameters and a third argument` |
 |      - | 2816 | `` * is `expects exactly 2 arguments, 3 given`.`` |
 |      - | 2817 | ` */` |
@@ -3111,7 +3111,7 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 3101 | `` * them. `(int)` on one is the object handle, silently, which is`` |
 |      - | 3102 | ` * PH7_CLASS_HANDLE_ID.` |
 |      - | 3103 | ` */` |
-|   6721 | 3104 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSsl(ph7_vm *pVm)` |
+|   7925 | 3104 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSsl(ph7_vm *pVm)` |
 |      5 | 3105 | `{` |
 |      - | 3106 | `	static const PH7_NativePropDef aProp[] = {` |
 |      - | 3107 | `		{ "__res", PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }` |
@@ -3140,25 +3140,25 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 3130 | `	};` |
 |      - | 3131 | `	sxi32 rc;` |
 |      - | 3132 | `	sxu32 n;` |
-|   6726 | 3133 | `	pVm->pSslObjs = 0;` |
-|   6726 | 3134 | `	pVm->pSslErrors = 0;` |
-|   6726 | 3135 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|   6726 | 3136 | `	if( rc != SXRET_OK ){` |
+|   7930 | 3133 | `	pVm->pSslObjs = 0;` |
+|   7930 | 3134 | `	pVm->pSslErrors = 0;` |
+|   7930 | 3135 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|   7930 | 3136 | `	if( rc != SXRET_OK ){` |
 |    ! 0 | 3137 | `		return rc;` |
 |      - | 3138 | `	}` |
-|  26889 | 3139 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRefusal) ; ++n ){` |
-|  30236 | 3140 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),aRefusal[n].zName,` |
-|  20163 | 3141 | `			(sxu32)SyStrlen(aRefusal[n].zName),FALSE,0);` |
-|  20168 | 3142 | `		if( pClass ){` |
-|  20168 | 3143 | `			pClass->zNewRefusal = aRefusal[n].zRefusal;` |
-|  20168 | 3144 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-|  10068 | 3145 | `		}` |
-|  10073 | 3146 | `	}` |
-|   6726 | 3147 | `	return PH7_VmInstallOpenSslX509(&(*pVm));` |
-|   3361 | 3148 | `}` |
+|  31705 | 3139 | `	for( n = 0 ; n < SX_ARRAYSIZE(aRefusal) ; ++n ){` |
+|  35651 | 3140 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),aRefusal[n].zName,` |
+|  23775 | 3141 | `			(sxu32)SyStrlen(aRefusal[n].zName),FALSE,0);` |
+|  23780 | 3142 | `		if( pClass ){` |
+|  23780 | 3143 | `			pClass->zNewRefusal = aRefusal[n].zRefusal;` |
+|  23780 | 3144 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|  11871 | 3145 | `		}` |
+|  11876 | 3146 | `	}` |
+|   7930 | 3147 | `	return PH7_VmInstallOpenSslX509(&(*pVm));` |
+|   3962 | 3148 | `}` |
 |      - | 3149 | `/* The functions this unit owns, in php's own registration order. The` |
 |      - | 3150 | ` * certificate half registers its own (vm_openssl_x509.c). */` |
-|   6721 | 3151 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslFuncTable(sxu32 *pnEntry)` |
+|   7925 | 3151 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslFuncTable(sxu32 *pnEntry)` |
 |      5 | 3152 | `{` |
 |      - | 3153 | `	static const ph7_builtin_func aFunc[] = {` |
 |      - | 3154 | `		{ "openssl_pbkdf2",               vm_builtin_openssl_pbkdf2               },` |
@@ -3196,8 +3196,8 @@ Coverage: 1786/2219 lines (80.49%)
 |      - | 3186 | `		{ "openssl_spki_export",          vm_builtin_openssl_spki_export          },` |
 |      - | 3187 | `		{ "openssl_spki_export_challenge",vm_builtin_openssl_spki_export_challenge}` |
 |      - | 3188 | `	};` |
-|   6726 | 3189 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
-|   6726 | 3190 | `	return aFunc;` |
+|   7930 | 3189 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
+|   7930 | 3190 | `	return aFunc;` |
 |      5 | 3191 | `}` |
 |      - | 3192 |  |
 |      - | 3193 | `#else` |

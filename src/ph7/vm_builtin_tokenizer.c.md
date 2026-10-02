@@ -256,19 +256,19 @@ Coverage: 1007/1185 lines (84.98%)
 |       - |  246 | ` * The expander shared by every registered T_* constant: pUserData carries the` |
 |       - |  247 | ` * integer value directly (SX_INT_TO_PTR at registration time).` |
 |       - |  248 | ` */` |
-|   11096 |  249 | `static void TokConstExpand(ph7_value *pVal,void *pUserData)` |
+|   11404 |  249 | `static void TokConstExpand(ph7_value *pVal,void *pUserData)` |
 |       3 |  250 | `{` |
-|   11099 |  251 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
-|   11099 |  252 | `}` |
+|   11407 |  251 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
+|   11407 |  252 | `}` |
 |       - |  253 |  |
-|    5619 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
+|    6691 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
 |       5 |  255 | `{` |
 |       - |  256 | `	sxu32 n;` |
-|  870950 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
-| 1297301 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
-|  865326 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
-|  431975 |  260 | `	}` |
-|    5624 |  261 | `}` |
+| 1037110 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
+| 1544779 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
+| 1030414 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
+|  514365 |  260 | `	}` |
+|    6696 |  261 | `}` |
 |       - |  262 |  |
 |       - |  263 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |       - |  264 |  |
@@ -431,8 +431,8 @@ Coverage: 1007/1185 lines (84.98%)
 |       - |  421 | ` *     that follows it, and otherwise after the token that does -- which is what` |
 |       - |  422 | `` *     makes `EOT;` come out as "EOT;\n", `EOT\n;` as "EOT\n; " and `EOT :` as`` |
 |       - |  423 | ` *     "EOT\n: ".` |
-|       - |  424 | ` * Derived from php 8.5.9 over the 15,000 vendor files of the four ECOSYSTEM.md` |
-|       - |  425 | ` * projects: every one of them matches byte for byte.` |
+|       - |  424 | ` * Derived from php 8.5.9 over the 15,000 vendor files of the four gated` |
+|       - |  425 | ` * ecosystem projects: every one of them matches byte for byte.` |
 |       - |  426 | ` */` |
 |     440 |  427 | `static void tok_strip(tok_state *ts,int iId,const char *z,int n)` |
 |       1 |  428 | `{` |
@@ -1697,7 +1697,7 @@ Coverage: 1007/1185 lines (84.98%)
 |      53 | 1687 | `	if( PH7_VfsEmptyPathRefused(pCtx,nLen) ){` |
 |       3 | 1688 | `		return PH7_OK;` |
 |       - | 1689 | `	}` |
-|      51 | 1690 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);` |
+|      51 | 1690 | `	pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zFile,nLen);` |
 |      51 | 1691 | `	if( pStream == 0 ){` |
 |     ! 0 | 1692 | `		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);` |
 |     ! 0 | 1693 | `		ph7_result_string(pCtx,"",0);` |
@@ -1852,7 +1852,7 @@ Coverage: 1007/1185 lines (84.98%)
 |      22 | 1842 | `	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){` |
 |       - | 1843 | `		/* php checks the construction precondition ONCE, before scanning. */` |
 |       4 | 1844 | `		return PH7_VmThrowException(pCtx,"Error","Cannot instantiate abstract class %z",` |
-|       1 | 1845 | `			&pClass->sName);` |
+|       1 | 1845 | `			&pClass->sDisp);` |
 |       - | 1846 | `	}` |
 |      20 | 1847 | `	zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";` |
 |      20 | 1848 | `	SyZero(&ts,sizeof(ts));` |
@@ -2036,7 +2036,7 @@ Coverage: 1007/1185 lines (84.98%)
 |       - | 2026 | ` * then the final constructor — and the four properties are declared with NO` |
 |       - | 2027 | ` * default, which is what makes them php's uninitialized typed slots.` |
 |       - | 2028 | ` */` |
-|    6721 | 2029 | `static sxi32 VmInstallPhpToken(ph7_vm *pVm)` |
+|    7925 | 2029 | `static sxi32 VmInstallPhpToken(ph7_vm *pVm)` |
 |       5 | 2030 | `{` |
 |       - | 2031 | `	static const PH7_NativePropDef aTokProp[] = {` |
 |       - | 2032 | `		{ "id",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },` |
@@ -2060,14 +2060,14 @@ Coverage: 1007/1185 lines (84.98%)
 |       - | 2050 | `		  aTokMethod, SX_ARRAYSIZE(aTokMethod), 0, 0,` |
 |       - | 2051 | `		  aTokProp, SX_ARRAYSIZE(aTokProp), 0, 0, 0 },` |
 |       - | 2052 | `	};` |
-|    6726 | 2053 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    7930 | 2053 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |       5 | 2054 | `}` |
 |       - | 2055 |  |
-|    6726 | 2056 | `PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){` |
-|    6726 | 2057 | `	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);` |
-|    6726 | 2058 | `	ph7_create_function(&(*pVm),"php_strip_whitespace",PH7_builtin_php_strip_whitespace,0);` |
-|    6726 | 2059 | `	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);` |
-|    6726 | 2060 | `	return VmInstallPhpToken(&(*pVm));` |
+|    7930 | 2056 | `PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){` |
+|    7930 | 2057 | `	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);` |
+|    7930 | 2058 | `	ph7_create_function(&(*pVm),"php_strip_whitespace",PH7_builtin_php_strip_whitespace,0);` |
+|    7930 | 2059 | `	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);` |
+|    7930 | 2060 | `	return VmInstallPhpToken(&(*pVm));` |
 |       5 | 2061 | `}` |
 |       - | 2062 |  |
 |       - | 2063 | `#else /* PH7_DISABLE_BUILTIN_FUNC */` |

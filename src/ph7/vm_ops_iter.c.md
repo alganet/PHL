@@ -37,65 +37,65 @@ Coverage: 337/389 lines (86.63%)
 |      - |   27 | ` * OP_FOREACH_STEP arm of VmByteCodeExecBody; arm-terminal breaks became` |
 |      - |   28 | ` * VM_EXIT_BREAK.` |
 |      - |   29 | ` */` |
-| 607244 |   30 | `PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 644129 |   30 | `PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |   31 | `{` |
-| 607249 |   32 | `	ph7_value *pTos = pState->pTos;` |
-| 607249 |   33 | `	ph7_value *pStack = pState->pStack;` |
-| 607249 |   34 | `	VmInstr *aInstr = pState->aInstr;` |
-| 607249 |   35 | `	sxi32 pc = pState->pc;` |
+| 644134 |   32 | `	ph7_value *pTos = pState->pTos;` |
+| 644134 |   33 | `	ph7_value *pStack = pState->pStack;` |
+| 644134 |   34 | `	VmInstr *aInstr = pState->aInstr;` |
+| 644134 |   35 | `	sxi32 pc = pState->pc;` |
 |      - |   36 | `	sxi32 rc;` |
-| 607249 |   37 | `	ph7_foreach_info *pInfo = (ph7_foreach_info *)pInstr->p3;` |
+| 644134 |   37 | `	ph7_foreach_info *pInfo = (ph7_foreach_info *)pInstr->p3;` |
 |      - |   38 | `	ph7_foreach_step **apStep,*pStep;` |
 |      - |   39 | `	ph7_value *pValue;` |
 |      - |   40 | `	VmFrame *pFrameLocal;` |
 |      - |   41 | `	sxu32 nStep;` |
-| 607249 |   42 | `	pFrameLocal = pVm->pFrame;` |
-| 607249 |   43 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
+| 644134 |   42 | `	pFrameLocal = pVm->pFrame;` |
+| 644134 |   43 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
 |      - |   44 | `	/* Select THIS activation's step. aStep is per-STATEMENT and shared by every` |
 |      - |   45 | `	 * activation, so peeking the last entry resumes onto a sibling's cursor when` |
 |      - |   46 | `	 * two instances of one generator/fiber are suspended in the same textual` |
 |      - |   47 | `	 * foreach. Scan from the top (most-recent push) for the step whose owning` |
 |      - |   48 | `	 * frame matches the running activation; top-down makes the current push win` |
 |      - |   49 | `	 * over any leaked older step that happens to share a recycled frame address. */` |
-| 607249 |   50 | `	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
-| 607249 |   51 | `	nStep = SySetUsed(&pInfo->aStep);` |
-| 607249 |   52 | `	if( nStep < 1 ){` |
+| 644134 |   50 | `	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
+| 644134 |   51 | `	nStep = SySetUsed(&pInfo->aStep);` |
+| 644134 |   52 | `	if( nStep < 1 ){` |
 |      - |   53 | `		/* Defensive: OP_FOREACH_INIT always pushes this activation's step before` |
 |      - |   54 | `		 * STEP runs (and jumps past the loop when the push fails), so an empty` |
 |      - |   55 | `		 * set is unreachable — guard the apStep[-1] read anyway. Jump out. */` |
 |      5 |   56 | `		pc = pInstr->iP2 - 1;` |
 |      5 |   57 | `		VM_EXIT_BREAK;` |
 |      - |   58 | `	}` |
-| 607245 |   59 | `	pStep = apStep[nStep - 1];` |
-| 607269 |   60 | `	while( nStep > 0 ){` |
-| 607269 |   61 | `		if( apStep[nStep - 1]->pFrame == pFrameLocal ){` |
-| 607245 |   62 | `			pStep = apStep[nStep - 1];` |
-| 607245 |   63 | `			break;` |
+| 644130 |   59 | `	pStep = apStep[nStep - 1];` |
+| 644154 |   60 | `	while( nStep > 0 ){` |
+| 644154 |   61 | `		if( apStep[nStep - 1]->pFrame == pFrameLocal ){` |
+| 644130 |   62 | `			pStep = apStep[nStep - 1];` |
+| 644130 |   63 | `			break;` |
 |      - |   64 | `		}` |
 |     25 |   65 | `		nStep--;` |
 |      1 |   66 | `	}` |
-| 607245 |   67 | `	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){` |
+| 644130 |   67 | `	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){` |
 |      - |   68 | `		ph7_hashmap_node *pNode;` |
 |      - |   69 | `		/* Extract the current node via this loop's PRIVATE cursor (php:` |
 |      - |   70 | `		 * nested foreach over the same array are independent iterations) */` |
-| 604036 |   71 | `		pNode = pStep->pCursor;` |
-| 604036 |   72 | `		if( pNode == 0 ){` |
+| 640793 |   71 | `		pNode = pStep->pCursor;` |
+| 640793 |   72 | `		if( pNode == 0 ){` |
 |      - |   73 | `			/* No more entry to process */` |
-|  40067 |   74 | `			pc = pInstr->iP2 - 1; /* Jump to this destination */` |
+|  42572 |   74 | `			pc = pInstr->iP2 - 1; /* Jump to this destination */` |
 |      - |   75 | `			/* php does NOT break the binding: the value variable stays a reference to the` |
 |      - |   76 | `` 			 * LAST element after the loop — that is what makes a second `foreach ($a as $v)` `` |
 |      - |   77 | ``			 * write through it (the famous gotcha), and what the `unset($v)` idiom exists to`` |
 |      - |   78 | `			 * undo. Deleting the name here left $v undefined instead. */` |
 |      - |   79 | `			/* Cleanup the mess left behind */` |
-|  40067 |   80 | `			VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,TRUE);` |
-|  20004 |   81 | `		}else{` |
+|  42572 |   80 | `			VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,TRUE);` |
+|  21254 |   81 | `		}else{` |
 |      - |   82 | `			/* Advance the private cursor */` |
-| 563974 |   83 | `			pStep->pCursor = pNode->pPrev; /* Reverse link */` |
+| 598226 |   83 | `			pStep->pCursor = pNode->pPrev; /* Reverse link */` |
 |      - |   84 | `			/* Bind the VALUE before the KEY: on the first iteration this is where` |
 |      - |   85 | `			 * both locals are created in the frame table, and php's symbol table` |
 |      - |   86 | `			 * lists the value ahead of the key (get_defined_vars() order). Only the` |
 |      - |   87 | `			 * creation ORDER matters here; the stored values are independent. */` |
-| 563974 |   88 | `			if( pStep->iFlags & PH7_4EACH_STEP_REF ){` |
+| 598226 |   88 | `			if( pStep->iFlags & PH7_4EACH_STEP_REF ){` |
 |      - |   89 | `				/* Pass by reference — a REGISTERED binding (PH7_VmBindVarSlot), so the element` |
 |      - |   90 | `				 * counts the loop variable as a holder for as long as it is bound, exactly as` |
 |      - |   91 | `				 * php's reference does. */` |
@@ -103,83 +103,83 @@ Coverage: 337/389 lines (86.63%)
 |     77 |   93 | `					SyStringLength(&pInfo->sValue),pNode->nValIdx);` |
 |     80 |   94 | `			}else{` |
 |      - |   95 | `				/* Make a copy of the entry value */` |
-| 563820 |   96 | `				pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
-| 563820 |   97 | `				if( pValue ){` |
-| 563820 |   98 | `					PH7_HashmapExtractNodeValue(pNode,pValue,TRUE);` |
-| 281532 |   99 | `				}` |
+| 598072 |   96 | `				pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
+| 598072 |   97 | `				if( pValue ){` |
+| 598072 |   98 | `					PH7_HashmapExtractNodeValue(pNode,pValue,TRUE);` |
+| 298655 |   99 | `				}` |
 |      - |  100 | `			}` |
-| 563974 |  101 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){` |
-|  22079 |  102 | `				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);` |
-|  22079 |  103 | `				if( pKey ){` |
-|  22079 |  104 | `					PH7_HashmapExtractNodeKey(pNode,pKey);` |
-|  10776 |  105 | `				}` |
-|  10776 |  106 | `			}` |
+| 598226 |  101 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){` |
+|  24095 |  102 | `				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);` |
+|  24095 |  103 | `				if( pKey ){` |
+|  24095 |  104 | `					PH7_HashmapExtractNodeKey(pNode,pKey);` |
+|  11783 |  105 | `				}` |
+|  11783 |  106 | `			}` |
 |      5 |  107 | `		}` |
-| 304822 |  108 | `	}else if( pStep->iFlags & PH7_4EACH_STEP_ITERATOR ){` |
+| 323323 |  108 | `	}else if( pStep->iFlags & PH7_4EACH_STEP_ITERATOR ){` |
 |      - |  109 | `		/* Iterator-based iteration.` |
 |      - |  110 | `		 * Sequence: on first call just check valid/current/key.` |
 |      - |  111 | `		 * On subsequent calls, advance with next() first, then check.` |
 |      - |  112 | `		 */` |
-|   2926 |  113 | `		ph7_class_instance *pThis = pStep->xIter.pThis;` |
+|   3054 |  113 | `		ph7_class_instance *pThis = pStep->xIter.pThis;` |
 |      - |  114 | `		ph7_class_method *pMethod;` |
 |      - |  115 | `		ph7_value sResult;` |
-|   2926 |  116 | `		int isValid = 0;` |
+|   3054 |  116 | `		int isValid = 0;` |
 |      - |  117 | `		/* Call next() to advance — but skip on the first iteration */` |
-|   2926 |  118 | `		if( pStep->iFlags & PH7_4EACH_STEP_FIRST ){` |
-|    735 |  119 | `			pStep->iFlags &= ~PH7_4EACH_STEP_FIRST;` |
-|    370 |  120 | `		}else{` |
-|   2196 |  121 | `			pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);` |
-|   2196 |  122 | `			if( pMethod ){` |
-|   2196 |  123 | `				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,0,0,0);` |
-|   2196 |  124 | `				if( VmIterCallThrew(rc) ){` |
+|   3054 |  118 | `		if( pStep->iFlags & PH7_4EACH_STEP_FIRST ){` |
+|    787 |  119 | `			pStep->iFlags &= ~PH7_4EACH_STEP_FIRST;` |
+|    396 |  120 | `		}else{` |
+|   2272 |  121 | `			pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);` |
+|   2272 |  122 | `			if( pMethod ){` |
+|   2272 |  123 | `				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,0,0,0);` |
+|   2272 |  124 | `				if( VmIterCallThrew(rc) ){` |
 |      - |  125 | `					/* next() threw (generator body / userland Iterator): tear the` |
 |      - |  126 | `					 * step down like exhaustion does, then route the exception —` |
 |      - |  127 | `					 * the loop must not silently end with execution continuing. */` |
 |     19 |  128 | `					VmForeachStepAbandon(pVm,pInfo,pStep,pThis);` |
 |     19 |  129 | `					PH7_DISPATCH_ITER_RC(rc,0)` |
 |    ! 0 |  130 | `				}` |
-|   1089 |  131 | `			}` |
+|   1127 |  131 | `			}` |
 |      - |  132 | `		}` |
 |      - |  133 | `		/* Call valid() */` |
-|   2912 |  134 | `		PH7_MemObjInit(pVm,&sResult);` |
-|   2912 |  135 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);` |
-|   2912 |  136 | `		if( pMethod ){` |
-|   2912 |  137 | `			rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);` |
-|   2912 |  138 | `			if( VmIterCallThrew(rc) ){` |
+|   3040 |  134 | `		PH7_MemObjInit(pVm,&sResult);` |
+|   3040 |  135 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);` |
+|   3040 |  136 | `		if( pMethod ){` |
+|   3040 |  137 | `			rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);` |
+|   3040 |  138 | `			if( VmIterCallThrew(rc) ){` |
 |      - |  139 | `				/* valid() threw: same teardown-and-route as next() above. */` |
 |    ! 0 |  140 | `				PH7_MemObjRelease(&sResult);` |
 |    ! 0 |  141 | `				VmForeachStepAbandon(pVm,pInfo,pStep,pThis);` |
 |    ! 0 |  142 | `				PH7_DISPATCH_ITER_RC(rc,0)` |
 |    ! 0 |  143 | `			}` |
-|   2912 |  144 | `			PH7_MemObjToBool(&sResult);` |
-|   2912 |  145 | `			isValid = (sResult.x.iVal != 0);` |
-|   1454 |  146 | `		}` |
-|   2912 |  147 | `		PH7_MemObjRelease(&sResult);` |
-|   2912 |  148 | `		if( !isValid ){` |
+|   3040 |  144 | `			PH7_MemObjToBool(&sResult);` |
+|   3040 |  145 | `			isValid = (sResult.x.iVal != 0);` |
+|   1518 |  146 | `		}` |
+|   3040 |  147 | `		PH7_MemObjRelease(&sResult);` |
+|   3040 |  148 | `		if( !isValid ){` |
 |      - |  149 | `			/* Iterator exhausted */` |
-|    699 |  150 | `			pc = pInstr->iP2 - 1;` |
+|    751 |  150 | `			pc = pInstr->iP2 - 1;` |
 |      - |  151 | `			/* Release the aggregate owner if this was an IteratorAggregate foreach */` |
-|    699 |  152 | `			VmForeachStepAbandon(pVm,pInfo,pStep,pThis);` |
-|    352 |  153 | `		}else{` |
+|    751 |  152 | `			VmForeachStepAbandon(pVm,pInfo,pStep,pThis);` |
+|    378 |  153 | `		}else{` |
 |      - |  154 | `			/* Call current() to get value */` |
-|   2218 |  155 | `			PH7_MemObjInit(pVm,&sResult);` |
-|   2218 |  156 | `			pMethod = PH7_ClassExtractMethod(pThis->pClass,"current",sizeof("current")-1);` |
-|   2218 |  157 | `			if( pMethod ){` |
-|   2218 |  158 | `				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);` |
-|   2218 |  159 | `				if( VmIterCallThrew(rc) ){` |
+|   2294 |  155 | `			PH7_MemObjInit(pVm,&sResult);` |
+|   2294 |  156 | `			pMethod = PH7_ClassExtractMethod(pThis->pClass,"current",sizeof("current")-1);` |
+|   2294 |  157 | `			if( pMethod ){` |
+|   2294 |  158 | `				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);` |
+|   2294 |  159 | `				if( VmIterCallThrew(rc) ){` |
 |      - |  160 | `					/* current() threw: same teardown-and-route as next() above. */` |
 |    ! 0 |  161 | `					PH7_MemObjRelease(&sResult);` |
 |    ! 0 |  162 | `					VmForeachStepAbandon(pVm,pInfo,pStep,pThis);` |
 |    ! 0 |  163 | `					PH7_DISPATCH_ITER_RC(rc,0)` |
 |    ! 0 |  164 | `				}` |
-|   1107 |  165 | `			}` |
-|   2218 |  166 | `			pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
-|   2218 |  167 | `			if( pValue ){` |
-|   2218 |  168 | `				PH7_MemObjStore(&sResult,pValue);` |
-|   1107 |  169 | `			}` |
-|   2218 |  170 | `			PH7_MemObjRelease(&sResult);` |
+|   1145 |  165 | `			}` |
+|   2294 |  166 | `			pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
+|   2294 |  167 | `			if( pValue ){` |
+|   2294 |  168 | `				PH7_MemObjStore(&sResult,pValue);` |
+|   1145 |  169 | `			}` |
+|   2294 |  170 | `			PH7_MemObjRelease(&sResult);` |
 |      - |  171 | `			/* Call key() if needed */` |
-|   2218 |  172 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){` |
+|   2294 |  172 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){` |
 |      - |  173 | `				ph7_value sKey;` |
 |    763 |  174 | `				PH7_MemObjInit(pVm,&sKey);` |
 |    763 |  175 | `				pMethod = PH7_ClassExtractMethod(pThis->pClass,"key",sizeof("key")-1);` |
@@ -199,66 +199,66 @@ Coverage: 337/389 lines (86.63%)
 |    763 |  189 | `				PH7_MemObjRelease(&sKey);` |
 |    379 |  190 | `			}` |
 |      - |  191 | `		}` |
-|   1459 |  192 | `	}else{` |
-|    292 |  193 | `		ph7_class_instance *pThis = pStep->xIter.pThis;` |
-|    292 |  194 | `		VmClassAttr *pVmAttr = 0; /* Stupid cc -06 warning */` |
+|   1523 |  192 | `	}else{` |
+|    293 |  193 | `		ph7_class_instance *pThis = pStep->xIter.pThis;` |
+|    293 |  194 | `		VmClassAttr *pVmAttr = 0; /* Stupid cc -06 warning */` |
 |      - |  195 | `		SyHashEntry *pEntry;` |
 |      - |  196 | `		/* Point to the next attribute (this loop's own cursor) */` |
-|    468 |  197 | `		while((pEntry = PH7_ClassInstanceIterNext(&pStep->sAttrIter)) != 0 ){` |
-|    364 |  198 | `			pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
-|    364 |  199 | `			if( PH7_ATTR_UNPRESENTED(pVmAttr) ){` |
+|    469 |  197 | `		while((pEntry = PH7_ClassInstanceIterNext(&pStep->sAttrIter)) != 0 ){` |
+|    365 |  198 | `			pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
+|    365 |  199 | `			if( PH7_ATTR_UNPRESENTED(pVmAttr) ){` |
 |      - |  200 | `				/* A static property belongs to the CLASS, never to an object: php` |
 |      - |  201 | `				 * iterates only the instance's own properties. PHL's instance` |
 |      - |  202 | `				 * attribute table carries an entry for every declared member` |
 |      - |  203 | `				 * (statics share the class slot), so it has to filter here — the` |
 |      - |  204 | `				 * same test var_dump/get_object_vars/json/serialize already make. */` |
-|    141 |  205 | `				continue;` |
+|    140 |  205 | `				continue;` |
 |      - |  206 | `			}` |
 |    222 |  207 | `			if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET\|PH7_CLASS_ATTR_HOOK_VIRTUAL))` |
-|    115 |  208 | `			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){` |
+|    116 |  208 | `			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){` |
 |      3 |  209 | `				continue; /* virtual set-only property: iteration skips it (php) */` |
 |      - |  210 | `			}` |
-|    224 |  211 | `			if( PH7_ClassAttrUninitializedForRead(pVmAttr) ){` |
+|    225 |  211 | `			if( PH7_ClassAttrUninitializedForRead(pVmAttr) ){` |
 |     24 |  212 | `				continue; /* typed, never written: not there yet (php) */` |
 |      - |  213 | `			}` |
 |      - |  214 | `			/* Check access permission */` |
-|    202 |  215 | `			if( PH7_ClassInstanceAttrShadowed(&(*pVm),pThis,pEntry) ){` |
+|    203 |  215 | `			if( PH7_ClassInstanceAttrShadowed(&(*pVm),pThis,pEntry) ){` |
 |      3 |  216 | `				continue; /* an earlier accessible slot already answers for this name */` |
 |      - |  217 | `			}` |
-|    200 |  218 | `			if( PH7_VmClassAttrAccess(&(*pVm),pThis->pClass,pVmAttr->pAttr,FALSE) ){` |
-|    188 |  219 | `					break; /* Access is granted */` |
+|    201 |  218 | `			if( PH7_VmClassAttrAccess(&(*pVm),pThis->pClass,pVmAttr->pAttr,FALSE) ){` |
+|    189 |  219 | `					break; /* Access is granted */` |
 |      - |  220 | `			}` |
-|      2 |  221 | `		}` |
-|    292 |  222 | `		if( pEntry == 0 ){` |
+|      3 |  221 | `		}` |
+|    293 |  222 | `		if( pEntry == 0 ){` |
 |      - |  223 | `			/* Clean up the mess left behind */` |
-|    108 |  224 | `			pc = pInstr->iP2 - 1; /* Jump to this destination */` |
+|    109 |  224 | `			pc = pInstr->iP2 - 1; /* Jump to this destination */` |
 |      - |  225 | `			/* The binding survives the loop (see the hashmap step) */` |
-|    108 |  226 | `			PH7_ClassInstanceIterClose(pThis,&pStep->sAttrIter);` |
-|    108 |  227 | `			VmForeachStepUnlink(pInfo,pStep);` |
-|    108 |  228 | `			SyMemBackendPoolFree(&pVm->sAllocator,pStep);` |
-|    108 |  229 | `			PH7_ClassInstanceUnref(pThis);` |
-|     56 |  230 | `		}else{` |
-|    188 |  231 | `			SyString *pAttrName = &pVmAttr->pAttr->sName;` |
+|    109 |  226 | `			PH7_ClassInstanceIterClose(pThis,&pStep->sAttrIter);` |
+|    109 |  227 | `			VmForeachStepUnlink(pInfo,pStep);` |
+|    109 |  228 | `			SyMemBackendPoolFree(&pVm->sAllocator,pStep);` |
+|    109 |  229 | `			PH7_ClassInstanceUnref(pThis);` |
+|     57 |  230 | `		}else{` |
+|    189 |  231 | `			SyString *pAttrName = &pVmAttr->pAttr->sName;` |
 |      - |  232 | `			ph7_value *pAttrValue;` |
-|    188 |  233 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0){` |
+|    189 |  233 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0){` |
 |      - |  234 | `				/* Fill with the current attribute name. A MANGLED name — only the` |
 |      - |  235 | `				 * __PHP_Incomplete_Class carrier stores those — yields its plain` |
 |      - |  236 | `				 * part: php's iterator unmangles the key it hands out. */` |
-|    184 |  237 | `				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);` |
-|    184 |  238 | `				if( pKey ){` |
+|    185 |  237 | `				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);` |
+|    185 |  238 | `				if( pKey ){` |
 |      - |  239 | `					SyString sUnmCls, sUnmName;` |
-|    184 |  240 | `					SyStringInitFromBuf(&sUnmName,pAttrName->zString,pAttrName->nByte);` |
-|    184 |  241 | `					if( pAttrName->nByte > 0 && pAttrName->zString[0] == 0 ){` |
+|    185 |  240 | `					SyStringInitFromBuf(&sUnmName,pAttrName->zString,pAttrName->nByte);` |
+|    185 |  241 | `					if( pAttrName->nByte > 0 && pAttrName->zString[0] == 0 ){` |
 |      5 |  242 | `						PH7_UnmangleAttrName(pAttrName->zString,pAttrName->nByte,&sUnmCls,&sUnmName);` |
 |      2 |  243 | `					}` |
-|    184 |  244 | `					SyBlobReset(&pKey->sBlob);` |
-|    184 |  245 | `					SyBlobAppend(&pKey->sBlob,sUnmName.zString,sUnmName.nByte);` |
-|    184 |  246 | `					MemObjSetType(pKey,MEMOBJ_STRING);` |
+|    185 |  244 | `					SyBlobReset(&pKey->sBlob);` |
+|    185 |  245 | `					SyBlobAppend(&pKey->sBlob,sUnmName.zString,sUnmName.nByte);` |
+|    185 |  246 | `					MemObjSetType(pKey,MEMOBJ_STRING);` |
 |     90 |  247 | `				}` |
 |     90 |  248 | `			}` |
 |    184 |  249 | `			if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET\|PH7_CLASS_ATTR_HOOK_SET))` |
 |     98 |  250 | `			 && (pStep->iFlags & PH7_4EACH_STEP_REF)` |
-|     11 |  251 | `			 && !VmHookGuardHeld(pVm,(void *)pThis,&pVmAttr->pAttr->sName) ){` |
+|     12 |  251 | `			 && !VmHookGuardHeld(pVm,(void *)pThis,&pVmAttr->pAttr->sName) ){` |
 |      - |  252 | `				/* php: a hooked property (virtual or backed) cannot be iterated` |
 |      - |  253 | `				 * by reference — catchable Error. Tear the step down like the` |
 |      - |  254 | `				 * exhausted-iteration path (break the by-ref binding, unlink,` |
@@ -269,7 +269,7 @@ Coverage: 337/389 lines (86.63%)
 |      - |  259 | `				SyBlob sErrMsg;` |
 |      3 |  260 | `				SyBlobInit(&sErrMsg,&pVm->sAllocator);` |
 |      3 |  261 | `				SyBlobFormat(&sErrMsg,"Cannot create reference to property %z::$%z",` |
-|      2 |  262 | `					&pThis->pClass->sName,&pVmAttr->pAttr->sName);` |
+|      2 |  262 | `					&pThis->pClass->sDisp,&pVmAttr->pAttr->sName);` |
 |      3 |  263 | `				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));` |
 |      3 |  264 | `				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);` |
 |      - |  265 | `				/* ...and with the binding gone, the frame's memo of it (see VmFrame). */` |
@@ -281,7 +281,7 @@ Coverage: 337/389 lines (86.63%)
 |      3 |  271 | `				VM_EXIT_BREAK;` |
 |      - |  272 | `			}` |
 |    182 |  273 | `			if( (pStep->iFlags & PH7_4EACH_STEP_REF) == 0` |
-|    180 |  274 | `			 && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET) != 0 ){` |
+|    181 |  274 | `			 && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET) != 0 ){` |
 |      - |  275 | `				/* PHP 8.4 property hooks: object iteration reads through the` |
 |      - |  276 | `				 * get hook (virtual properties included; the flag gate keeps` |
 |      - |  277 | `				 * hook-free classes on the raw zero-copy path below). The` |
@@ -309,44 +309,44 @@ Coverage: 337/389 lines (86.63%)
 |    ! 0 |  299 | `				PH7_MemObjRelease(&sHookVal);` |
 |    ! 0 |  300 | `			}` |
 |      - |  301 | `			/* Extract attribute value */` |
-|    176 |  302 | `			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);` |
-|    176 |  303 | `			if( pAttrValue ){` |
-|    176 |  304 | `				if( pStep->iFlags & PH7_4EACH_STEP_REF ){` |
+|    177 |  302 | `			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);` |
+|    177 |  303 | `			if( pAttrValue ){` |
+|    177 |  304 | `				if( pStep->iFlags & PH7_4EACH_STEP_REF ){` |
 |      - |  305 | `					/* Pass by reference (registered — see the hashmap step) */` |
 |     19 |  306 | `					PH7_VmBindVarSlot(&(*pVm),pFrameLocal,SyStringData(&pInfo->sValue),` |
 |      6 |  307 | `						SyStringLength(&pInfo->sValue),pVmAttr->nIdx);` |
 |      7 |  308 | `				}else{` |
 |      - |  309 | `					/* Make a copy of the attribute value */` |
-|    164 |  310 | `					pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
-|    164 |  311 | `					if( pValue ){` |
-|    164 |  312 | `						PH7_MemObjStore(pAttrValue,pValue);` |
+|    165 |  310 | `					pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
+|    165 |  311 | `					if( pValue ){` |
+|    165 |  312 | `						PH7_MemObjStore(pAttrValue,pValue);` |
 |     80 |  313 | `					}` |
 |      - |  314 | `				}` |
 |     86 |  315 | `			}` |
 |      - |  316 | `		}` |
 |      - |  317 | `	}` |
-| 607219 |  318 | `	VM_EXIT_BREAK;` |
-| 303220 |  319 | `}` |
+| 644104 |  318 | `	VM_EXIT_BREAK;` |
+| 321657 |  319 | `}` |
 |      - |  320 |  |
 |      - |  321 | `/*` |
 |      - |  322 | ` * OP_FOREACH_INIT: body moved verbatim from the OP_FOREACH_INIT arm of` |
 |      - |  323 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  324 | ` */` |
-|  41248 |  325 | `PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|  43887 |  325 | `PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  326 | `{` |
-|  41253 |  327 | `	ph7_value *pTos = pState->pTos;` |
-|  41253 |  328 | `	ph7_value *pStack = pState->pStack;` |
-|  41253 |  329 | `	VmInstr *aInstr = pState->aInstr;` |
-|  41253 |  330 | `	sxi32 pc = pState->pc;` |
+|  43892 |  327 | `	ph7_value *pTos = pState->pTos;` |
+|  43892 |  328 | `	ph7_value *pStack = pState->pStack;` |
+|  43892 |  329 | `	VmInstr *aInstr = pState->aInstr;` |
+|  43892 |  330 | `	sxi32 pc = pState->pc;` |
 |      - |  331 | `	sxi32 rc;` |
-|  41253 |  332 | `	ph7_foreach_info *pInfo = (ph7_foreach_info *)pInstr->p3;` |
+|  43892 |  332 | `	ph7_foreach_info *pInfo = (ph7_foreach_info *)pInstr->p3;` |
 |      - |  333 | `	void *pName;` |
 |      - |  334 | `#ifdef UNTRUST` |
 |      - |  335 | `	if( pTos < pStack ){` |
 |      - |  336 | `		VM_EXIT_ABORT;` |
 |      - |  337 | `	}` |
 |      - |  338 | `#endif` |
-|  41253 |  339 | `	if( SyStringLength(&pInfo->sValue) < 1 ){` |
+|  43892 |  339 | `	if( SyStringLength(&pInfo->sValue) < 1 ){` |
 |      - |  340 | `		/* Take the variable name from the top of the stack */` |
 |    ! 0 |  341 | `		if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){` |
 |      - |  342 | `			/* Force a string cast */` |
@@ -359,7 +359,7 @@ Coverage: 337/389 lines (86.63%)
 |    ! 0 |  349 | `		}` |
 |    ! 0 |  350 | `		VmPopOperand(&pTos,1);` |
 |    ! 0 |  351 | `	}` |
-|  41253 |  352 | `	if( (pInfo->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) < 1 ){` |
+|  43892 |  352 | `	if( (pInfo->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) < 1 ){` |
 |    ! 0 |  353 | `		if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){` |
 |      - |  354 | `			/* Force a string cast */` |
 |    ! 0 |  355 | `			PH7_MemObjToString(pTos);` |
@@ -371,7 +371,7 @@ Coverage: 337/389 lines (86.63%)
 |    ! 0 |  361 | `		}` |
 |    ! 0 |  362 | `		VmPopOperand(&pTos,1);` |
 |    ! 0 |  363 | `	}` |
-|  41253 |  364 | `	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && (pTos->iFlags & MEMOBJ_AUX_STROFFSET) ){` |
+|  43892 |  364 | `	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && (pTos->iFlags & MEMOBJ_AUX_STROFFSET) ){` |
 |      - |  365 | ``		/* `foreach ($s[0] as &$v)`: the subject is a string OFFSET and the loop wants`` |
 |      - |  366 | `		 * to ALIAS its elements. php screens that before it asks whether the subject is` |
 |      - |  367 | `		 * iterable at all, and a string offset is never a reference — same Error the` |
@@ -383,7 +383,7 @@ Coverage: 337/389 lines (86.63%)
 |      3 |  373 | `		if( rcSo == SXERR_ABORT ){ VM_EXIT_ABORT; }` |
 |      3 |  374 | `		PH7_THROW_ROUTE_MIDEXPR(rcSo)` |
 |      - |  375 | `	}` |
-|  41251 |  376 | `	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && SyStringLength(&pInfo->sValue) > 0 ){` |
+|  43890 |  376 | `	if( (pInfo->iFlags & PH7_4EACH_STEP_REF) && SyStringLength(&pInfo->sValue) > 0 ){` |
 |      - |  377 | ``		/* `foreach ($o->p as &$v)` on a property no write may reach: the loop hands`` |
 |      - |  378 | `		 * out an ALIAS of every element, so php screens the property where it` |
 |      - |  379 | `		 * screens a store -- and it screens it BEFORE deciding the subject is` |
@@ -397,7 +397,7 @@ Coverage: 337/389 lines (86.63%)
 |      - |  387 | `		}` |
 |     37 |  388 | `	}` |
 |      - |  389 | `	/* Make sure we are dealing with a hashmap aka 'array' or an object */` |
-|  41245 |  390 | `	if( (pTos->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ)) == 0 \|\| SyStringLength(&pInfo->sValue) < 1 ){` |
+|  43884 |  390 | `	if( (pTos->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ)) == 0 \|\| SyStringLength(&pInfo->sValue) < 1 ){` |
 |      - |  391 | `		/* Jump out of the loop */` |
 |      9 |  392 | `		if( SyStringLength(&pInfo->sValue) > 0 ){` |
 |      - |  393 | `			/* php warns for EVERY non-iterable, null included (PH7 exempted null). */` |
@@ -408,7 +408,7 @@ Coverage: 337/389 lines (86.63%)
 |      9 |  398 | `		pc = pInstr->iP2 - 1;` |
 |      5 |  399 | `	}else{` |
 |      - |  400 | `		ph7_foreach_step *pStep;` |
-|  41237 |  401 | `		VmFrame *pInitFrame = VmSkipExceptionFrames(pVm->pFrame);` |
+|  43876 |  401 | `		VmFrame *pInitFrame = VmSkipExceptionFrames(pVm->pFrame);` |
 |      - |  402 | `		/* Reclaim this activation's LEFTOVER step for this same foreach statement.` |
 |      - |  403 | `		 * A loop left through break/return/goto/an exception never reaches the` |
 |      - |  404 | `		 * "no more entries" arm that frees its step, so the step, its retain of` |
@@ -417,38 +417,38 @@ Coverage: 337/389 lines (86.63%)
 |      - |  407 | `		 * loop's body while it is executing INIT, so the step is stale by` |
 |      - |  408 | `		 * construction. */` |
 |      - |  409 | `		{` |
-|  41237 |  410 | `			ph7_foreach_step **apOld = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
-|  41237 |  411 | `			sxu32 nOld = SySetUsed(&pInfo->aStep);` |
-|  64753 |  412 | `			while( nOld > 0 ){` |
-|   2873 |  413 | `				ph7_foreach_step *pOld = apOld[--nOld];` |
-|   2873 |  414 | `				if( pOld->pFrame == pInitFrame ){` |
-|     18 |  415 | `					VmForeachStepRelease(&(*pVm),pInfo,pOld);` |
+|  43876 |  410 | `			ph7_foreach_step **apOld = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
+|  43876 |  411 | `			sxu32 nOld = SySetUsed(&pInfo->aStep);` |
+|  68728 |  412 | `			while( nOld > 0 ){` |
+|   2887 |  413 | `				ph7_foreach_step *pOld = apOld[--nOld];` |
+|   2887 |  414 | `				if( pOld->pFrame == pInitFrame ){` |
+|     20 |  415 | `					VmForeachStepRelease(&(*pVm),pInfo,pOld);` |
 |      - |  416 | `					/* The set shifted under us: restart the scan. */` |
-|     18 |  417 | `					apOld = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
-|     18 |  418 | `					nOld = SySetUsed(&pInfo->aStep);` |
-|      7 |  419 | `				}` |
+|     20 |  417 | `					apOld = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
+|     20 |  418 | `					nOld = SySetUsed(&pInfo->aStep);` |
+|      8 |  419 | `				}` |
 |      5 |  420 | `			}` |
 |      - |  421 | `		}` |
-|  41237 |  422 | `		pStep = (ph7_foreach_step *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_foreach_step));` |
-|  41237 |  423 | `		if( pStep == 0 ){` |
+|  43876 |  422 | `		pStep = (ph7_foreach_step *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_foreach_step));` |
+|  43876 |  423 | `		if( pStep == 0 ){` |
 |    ! 0 |  424 | `			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory while preparing the 'foreach' step");` |
 |      - |  425 | `			/* Jump out of the loop */` |
 |    ! 0 |  426 | `			pc = pInstr->iP2 - 1;` |
 |    ! 0 |  427 | `		}else{` |
 |      - |  428 | `			/* Zero the structure */` |
-|  41237 |  429 | `			SyZero(pStep,sizeof(ph7_foreach_step));` |
+|  43876 |  429 | `			SyZero(pStep,sizeof(ph7_foreach_step));` |
 |      - |  430 | `			/* Prepare the step */` |
-|  41237 |  431 | `			pStep->iFlags = pInfo->iFlags;` |
+|  43876 |  431 | `			pStep->iFlags = pInfo->iFlags;` |
 |      - |  432 | `			/* Record the owning activation so OP_FOREACH_STEP can pick THIS` |
 |      - |  433 | `			 * activation's step out of the per-statement stack — two suspended` |
 |      - |  434 | `			 * generator/fiber instances (or a recursive call) paused in the same` |
 |      - |  435 | `			 * textual foreach otherwise resume onto each other's cursor. */` |
-|  41237 |  436 | `			pStep->pFrame = pInitFrame;` |
-|  41237 |  437 | `			if( pTos->iFlags & MEMOBJ_HASHMAP ){` |
+|  43876 |  436 | `			pStep->pFrame = pInitFrame;` |
+|  43876 |  437 | `			if( pTos->iFlags & MEMOBJ_HASHMAP ){` |
 |      - |  438 | `				ph7_hashmap *pMap,*pIterMap;` |
 |      - |  439 | `				/* COW: For by-reference foreach, eagerly separate the` |
 |      - |  440 | `				 * source array so mutations don't affect other sharers. */` |
-|  40339 |  441 | `				if( (pStep->iFlags & PH7_4EACH_STEP_REF) && pTos->nIdx != SXU32_HIGH ){` |
+|  42926 |  441 | `				if( (pStep->iFlags & PH7_4EACH_STEP_REF) && pTos->nIdx != SXU32_HIGH ){` |
 |     61 |  442 | `					ph7_value *pBacking = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pTos->nIdx);` |
 |     61 |  443 | `					if( pBacking && (pBacking->iFlags & MEMOBJ_HASHMAP) ){` |
 |     61 |  444 | `						ph7_hashmap *pCur = (ph7_hashmap *)pTos->x.pOther;` |
@@ -466,9 +466,9 @@ Coverage: 337/389 lines (86.63%)
 |     29 |  456 | `						}` |
 |     29 |  457 | `					}` |
 |     29 |  458 | `				}` |
-|  40339 |  459 | `				pMap = (ph7_hashmap *)pTos->x.pOther;` |
-|  40339 |  460 | `				pIterMap = pMap;` |
-|  40339 |  461 | `				if( pMap == pVm->pGlobal && (pStep->iFlags & PH7_4EACH_STEP_REF) == 0 ){` |
+|  42926 |  459 | `				pMap = (ph7_hashmap *)pTos->x.pOther;` |
+|  42926 |  460 | `				pIterMap = pMap;` |
+|  42926 |  461 | `				if( pMap == pVm->pGlobal && (pStep->iFlags & PH7_4EACH_STEP_REF) == 0 ){` |
 |      - |  462 | `					/* php 8.1: foreach ($GLOBALS as ...) by value iterates a` |
 |      - |  463 | `					 * SNAPSHOT of the symbol table — globals created inside` |
 |      - |  464 | `					 * the loop body must not be visited (the live map would` |
@@ -482,21 +482,21 @@ Coverage: 337/389 lines (86.63%)
 |    ! 0 |  472 | `						PH7_HashmapUnref(pSnap);` |
 |    ! 0 |  473 | `					}` |
 |      2 |  474 | `				}` |
-|  40339 |  475 | `				pStep->iFlags \|= PH7_4EACH_STEP_HASHMAP;` |
-|  40339 |  476 | `				pStep->xIter.pMap = pIterMap;` |
-|  40339 |  477 | `				if( pIterMap == pMap ){` |
-|  40335 |  478 | `					pMap->iRef++;` |
-|  20133 |  479 | `				}` |
+|  42926 |  475 | `				pStep->iFlags \|= PH7_4EACH_STEP_HASHMAP;` |
+|  42926 |  476 | `				pStep->xIter.pMap = pIterMap;` |
+|  42926 |  477 | `				if( pIterMap == pMap ){` |
+|  42922 |  478 | `					pMap->iRef++;` |
+|  21424 |  479 | `				}` |
 |      - |  480 | `				/* Private cursor + registry (php: nested foreach over one` |
 |      - |  481 | `				 * array are independent; foreach never moves the internal` |
 |      - |  482 | `				 * pointer — see PH7_HashmapRegisterForeachStep) */` |
-|  40339 |  483 | `				PH7_HashmapRegisterForeachStep(pIterMap,pStep);` |
-|  20140 |  484 | `			}else{` |
-|    903 |  485 | `				ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;` |
+|  42926 |  483 | `				PH7_HashmapRegisterForeachStep(pIterMap,pStep);` |
+|  21431 |  484 | `			}else{` |
+|    955 |  485 | `				ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;` |
 |      - |  486 | `				ph7_class *pIteratorClass;` |
 |      - |  487 | `				/* Check if the object implements Iterator */` |
-|    903 |  488 | `				pIteratorClass = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,FALSE,0);` |
-|    903 |  489 | `				if( PH7_VmGeneratorIsClosed(&(*pVm),pThis) ){` |
+|    955 |  488 | `				pIteratorClass = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,FALSE,0);` |
+|    955 |  489 | `				if( PH7_VmGeneratorIsClosed(&(*pVm),pThis) ){` |
 |      - |  490 | `					/* php refuses to START a foreach over a generator that has already` |
 |      - |  491 | `					 * run to its end, and says so BEFORE the rewind that would report` |
 |      - |  492 | `					 * the coarser "already run". PHL walked an EMPTY loop instead, so a` |
@@ -507,16 +507,16 @@ Coverage: 337/389 lines (86.63%)
 |      - |  497 | `						"Cannot traverse an already closed generator",` |
 |      - |  498 | `						(sxu32)sizeof("Cannot traverse an already closed generator")-1);` |
 |     31 |  499 | `					PH7_DISPATCH_ITER_RC(rc,1)` |
-|   1141 |  500 | `				}else if( pIteratorClass && PH7_VmInstanceOf(pThis->pClass,pIteratorClass) ){` |
+|   1214 |  500 | `				}else if( pIteratorClass && PH7_VmInstanceOf(pThis->pClass,pIteratorClass) ){` |
 |      - |  501 | `					/* Iterator-based iteration: call rewind() */` |
 |      - |  502 | `					ph7_class_method *pRewind;` |
-|    515 |  503 | `					pStep->iFlags \|= PH7_4EACH_STEP_ITERATOR\|PH7_4EACH_STEP_FIRST;` |
-|    515 |  504 | `					pStep->xIter.pThis = pThis;` |
-|    515 |  505 | `					pThis->iRef++;` |
-|    515 |  506 | `					pRewind = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);` |
-|    515 |  507 | `					if( pRewind ){` |
-|    515 |  508 | `						rc = PH7_VmCallClassMethod(&(*pVm),pThis,pRewind,0,0,0);` |
-|    515 |  509 | `						if( VmIterCallThrew(rc) ){` |
+|    557 |  503 | `					pStep->iFlags \|= PH7_4EACH_STEP_ITERATOR\|PH7_4EACH_STEP_FIRST;` |
+|    557 |  504 | `					pStep->xIter.pThis = pThis;` |
+|    557 |  505 | `					pThis->iRef++;` |
+|    557 |  506 | `					pRewind = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);` |
+|    557 |  507 | `					if( pRewind ){` |
+|    557 |  508 | `						rc = PH7_VmCallClassMethod(&(*pVm),pThis,pRewind,0,0,0);` |
+|    557 |  509 | `						if( VmIterCallThrew(rc) ){` |
 |      - |  510 | `							/* rewind() threw (a generator body or userland Iterator):` |
 |      - |  511 | `							 * undo this step's retain, drop the step, and route the` |
 |      - |  512 | `							 * exception instead of silently starting the loop. */` |
@@ -525,13 +525,13 @@ Coverage: 337/389 lines (86.63%)
 |     36 |  515 | `							pStep = 0;` |
 |     42 |  516 | `							PH7_DISPATCH_ITER_RC(rc,1)` |
 |    ! 0 |  517 | `						}` |
-|    239 |  518 | `					}` |
-|    244 |  519 | `				}else{` |
+|    260 |  518 | `					}` |
+|    265 |  519 | `				}else{` |
 |      - |  520 | `					/* Check if the object implements IteratorAggregate */` |
 |      - |  521 | `					ph7_class *pIterAggClass;` |
-|    390 |  522 | `					pIterAggClass = PH7_VmExtractClass(&(*pVm),"IteratorAggregate",` |
+|    401 |  522 | `					pIterAggClass = PH7_VmExtractClass(&(*pVm),"IteratorAggregate",` |
 |      - |  523 | `						sizeof("IteratorAggregate")-1,FALSE,0);` |
-|    517 |  524 | `					if( pIterAggClass && PH7_VmInstanceOf(pThis->pClass,pIterAggClass) ){` |
+|    533 |  524 | `					if( pIterAggClass && PH7_VmInstanceOf(pThis->pClass,pIterAggClass) ){` |
 |      - |  525 | `						/* php resolves a CHAIN, not one hop: whatever getIterator()` |
 |      - |  526 | `						 * hands back is asked the same question, so an` |
 |      - |  527 | `						 * IteratorAggregate may return another one and only the` |
@@ -544,20 +544,20 @@ Coverage: 337/389 lines (86.63%)
 |      - |  534 | `						 * between two aggregates is php's stack overflow, and a` |
 |      - |  535 | `						 * bounded walk here (nothing real nests) so the engine` |
 |      - |  536 | `						 * answers instead of spinning. */` |
-|    282 |  537 | `						ph7_class_instance *pAgg = pThis;  /* whose getIterator() to ask */` |
-|    282 |  538 | `						ph7_class_instance *pAggHold = 0;  /* an intermediate this walk owns */` |
-|    282 |  539 | `						ph7_class_instance *pIterObj = 0;` |
+|    292 |  537 | `						ph7_class_instance *pAgg = pThis;  /* whose getIterator() to ask */` |
+|    292 |  538 | `						ph7_class_instance *pAggHold = 0;  /* an intermediate this walk owns */` |
+|    292 |  539 | `						ph7_class_instance *pIterObj = 0;` |
 |      - |  540 | `						ph7_class_method *pGetIter;` |
-|    282 |  541 | `						int iterAggOk = 0, nHop = 0;` |
-|    155 |  542 | `						for(;;){` |
+|    292 |  541 | `						int iterAggOk = 0, nHop = 0;` |
+|    160 |  542 | `						for(;;){` |
 |      - |  543 | `							ph7_value sResult;` |
-|    298 |  544 | `							pGetIter = PH7_ClassExtractMethod(pAgg->pClass,"getIterator",sizeof("getIterator")-1);` |
-|    298 |  545 | `							if( pGetIter == 0 ){` |
+|    308 |  544 | `							pGetIter = PH7_ClassExtractMethod(pAgg->pClass,"getIterator",sizeof("getIterator")-1);` |
+|    308 |  545 | `							if( pGetIter == 0 ){` |
 |    ! 0 |  546 | `								break;` |
 |      - |  547 | `							}` |
-|    298 |  548 | `							PH7_MemObjInit(&(*pVm),&sResult);` |
-|    298 |  549 | `							rc = PH7_VmCallClassMethod(&(*pVm),pAgg,pGetIter,&sResult,0,0);` |
-|    298 |  550 | `							if( VmIterCallThrew(rc) ){` |
+|    308 |  548 | `							PH7_MemObjInit(&(*pVm),&sResult);` |
+|    308 |  549 | `							rc = PH7_VmCallClassMethod(&(*pVm),pAgg,pGetIter,&sResult,0,0);` |
+|    308 |  550 | `							if( VmIterCallThrew(rc) ){` |
 |      - |  551 | `								/* getIterator() threw: drop the step and route the` |
 |      - |  552 | `								 * exception (don't pile the "must be traversable"` |
 |      - |  553 | `								 * error on top of it). */` |
@@ -567,14 +567,14 @@ Coverage: 337/389 lines (86.63%)
 |     15 |  557 | `								pStep = 0;` |
 |     15 |  558 | `								PH7_DISPATCH_ITER_RC(rc,1)` |
 |    ! 0 |  559 | `							}` |
-|    284 |  560 | `							pIterObj = ((sResult.iFlags & MEMOBJ_OBJ) && sResult.x.pOther)` |
-|    420 |  561 | `								? (ph7_class_instance *)sResult.x.pOther : 0;` |
-|    280 |  562 | `							if( pIterObj && pIteratorClass` |
-|    284 |  563 | `							 && PH7_VmInstanceOf(pIterObj->pClass,pIteratorClass) ){` |
-|    266 |  564 | `								pIterObj->iRef++; /* survive the release below */` |
-|    266 |  565 | `								PH7_MemObjRelease(&sResult);` |
-|    266 |  566 | `								iterAggOk = 1;` |
-|    266 |  567 | `								break;` |
+|    294 |  560 | `							pIterObj = ((sResult.iFlags & MEMOBJ_OBJ) && sResult.x.pOther)` |
+|    435 |  561 | `								? (ph7_class_instance *)sResult.x.pOther : 0;` |
+|    290 |  562 | `							if( pIterObj && pIteratorClass` |
+|    294 |  563 | `							 && PH7_VmInstanceOf(pIterObj->pClass,pIteratorClass) ){` |
+|    276 |  564 | `								pIterObj->iRef++; /* survive the release below */` |
+|    276 |  565 | `								PH7_MemObjRelease(&sResult);` |
+|    276 |  566 | `								iterAggOk = 1;` |
+|    276 |  567 | `								break;` |
 |      - |  568 | `							}` |
 |     18 |  569 | `							if( pIterObj == 0 \|\| pIterObj == pAgg` |
 |     17 |  570 | `							 \|\| !PH7_VmInstanceOf(pIterObj->pClass,pIterAggClass)` |
@@ -590,17 +590,17 @@ Coverage: 337/389 lines (86.63%)
 |     17 |  580 | `							pAgg = pIterObj;` |
 |     17 |  581 | `							PH7_MemObjRelease(&sResult);` |
 |      1 |  582 | `						}` |
-|    268 |  583 | `						if( iterAggOk ){` |
+|    278 |  583 | `						if( iterAggOk ){` |
 |      - |  584 | `							ph7_class_method *pRewind;` |
-|    266 |  585 | `							pStep->iFlags \|= PH7_4EACH_STEP_ITERATOR\|PH7_4EACH_STEP_FIRST;` |
-|    266 |  586 | `							pStep->xIter.pThis = pIterObj; /* ref taken in the walk */` |
+|    276 |  585 | `							pStep->iFlags \|= PH7_4EACH_STEP_ITERATOR\|PH7_4EACH_STEP_FIRST;` |
+|    276 |  586 | `							pStep->xIter.pThis = pIterObj; /* ref taken in the walk */` |
 |      - |  587 | `							/* Retain the aggregate so it lives for the duration of the foreach */` |
-|    266 |  588 | `							pStep->pOwner = pThis;` |
-|    266 |  589 | `							pThis->iRef++;` |
-|    266 |  590 | `							pRewind = PH7_ClassExtractMethod(pIterObj->pClass,"rewind",sizeof("rewind")-1);` |
-|    266 |  591 | `							if( pRewind ){` |
-|    266 |  592 | `								rc = PH7_VmCallClassMethod(&(*pVm),pIterObj,pRewind,0,0,0);` |
-|    266 |  593 | `								if( VmIterCallThrew(rc) ){` |
+|    276 |  588 | `							pStep->pOwner = pThis;` |
+|    276 |  589 | `							pThis->iRef++;` |
+|    276 |  590 | `							pRewind = PH7_ClassExtractMethod(pIterObj->pClass,"rewind",sizeof("rewind")-1);` |
+|    276 |  591 | `							if( pRewind ){` |
+|    276 |  592 | `								rc = PH7_VmCallClassMethod(&(*pVm),pIterObj,pRewind,0,0,0);` |
+|    276 |  593 | `								if( VmIterCallThrew(rc) ){` |
 |      - |  594 | `									/* The aggregate's iterator rewind() threw: undo` |
 |      - |  595 | `									 * both retains, drop the step, route the exception. */` |
 |     11 |  596 | `									pIterObj->iRef--;` |
@@ -610,9 +610,9 @@ Coverage: 337/389 lines (86.63%)
 |     11 |  600 | `									pStep = 0;` |
 |     11 |  601 | `									PH7_DISPATCH_ITER_RC(rc,1)` |
 |    ! 0 |  602 | `								}` |
-|    126 |  603 | `							}` |
-|    256 |  604 | `							if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }` |
-|    130 |  605 | `						}else{` |
+|    131 |  603 | `							}` |
+|    266 |  604 | `							if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }` |
+|    135 |  605 | `						}else{` |
 |      - |  606 | `							/* php's own wording, and php's own THROW: a catchable` |
 |      - |  607 | `							 * Exception naming the receiver that answered wrong, where` |
 |      - |  608 | `							 * PHL raised an uncatchable E_ERROR diagnostic. */` |
@@ -621,39 +621,39 @@ Coverage: 337/389 lines (86.63%)
 |      3 |  611 | `							ph7_class *pBad = pAgg->pClass;` |
 |      5 |  612 | `							nMsg = (int)SyBufferFormat(zMsg,sizeof(zMsg),` |
 |      - |  613 | `								"Objects returned by %.*s::getIterator() must be traversable or implement interface Iterator",` |
-|      2 |  614 | `								(int)SyStringLength(&pBad->sName),SyStringData(&pBad->sName));` |
+|      2 |  614 | `								(int)SyStringLength(&pBad->sDisp),SyStringData(&pBad->sDisp));` |
 |      3 |  615 | `							if( pAggHold ){ PH7_ClassInstanceUnref(pAggHold); }` |
 |      3 |  616 | `							SyMemBackendPoolFree(&pVm->sAllocator,pStep);` |
 |      3 |  617 | `							pStep = 0; /* Signal: do not store this step */` |
 |      3 |  618 | `							rc = VmThrowFromVm(&(*pVm),"Exception",zMsg,(sxu32)nMsg);` |
 |      3 |  619 | `							PH7_DISPATCH_ITER_RC(rc,1)` |
 |      - |  620 | `						}` |
-|    131 |  621 | `					}else{` |
+|    136 |  621 | `					}else{` |
 |      - |  622 | `						/* Plain object iteration via hAttr. A PRIVATE cursor,` |
 |      - |  623 | `						 * registered on the instance -- the table's embedded one` |
 |      - |  624 | `						 * is shared, so a nested loop over the same object rewound` |
 |      - |  625 | `						 * this one (an infinite loop) and an unset() in the body` |
 |      - |  626 | `						 * freed the entry it was parked on. */` |
-|    112 |  627 | `						pStep->iFlags \|= PH7_4EACH_STEP_OBJECT;` |
-|    112 |  628 | `						pStep->xIter.pThis = pThis;` |
-|    112 |  629 | `						pThis->iRef++;` |
-|    112 |  630 | `						PH7_ClassInstanceIterOpen(pThis,&pStep->sAttrIter);` |
+|    113 |  627 | `						pStep->iFlags \|= PH7_4EACH_STEP_OBJECT;` |
+|    113 |  628 | `						pStep->xIter.pThis = pThis;` |
+|    113 |  629 | `						pThis->iRef++;` |
+|    113 |  630 | `						PH7_ClassInstanceIterOpen(pThis,&pStep->sAttrIter);` |
 |      - |  631 | `					}` |
 |      - |  632 | `				}` |
 |      - |  633 | `			}` |
 |      - |  634 | `		}` |
-|  41181 |  635 | `		if( pStep ){` |
-|  41177 |  636 | `			if( SXRET_OK == SySetPut(&pInfo->aStep,(const void *)&pStep) ){` |
+|  43820 |  635 | `		if( pStep ){` |
+|  43816 |  636 | `			if( SXRET_OK == SySetPut(&pInfo->aStep,(const void *)&pStep) ){` |
 |      - |  637 | ``				/* Hand the step to its owning activation. Whatever a `break`, a`` |
 |      - |  638 | ``				 * `return`, a `goto` or an exception leaves behind is released when`` |
 |      - |  639 | `				 * that frame dies, so aStep only ever holds LIVE walks -- the scan` |
 |      - |  640 | `				 * above stays short instead of growing for the life of the VM. Linked` |
 |      - |  641 | `				 * only once the step is really on aStep, so the failure arm below has` |
 |      - |  642 | `				 * nothing to unlink. */` |
-|  41177 |  643 | `				pStep->pInfo = pInfo;` |
-|  41177 |  644 | `				pStep->pNextFrameStep = pInitFrame->pForeachSteps;` |
-|  41177 |  645 | `				pInitFrame->pForeachSteps = pStep;` |
-|  20559 |  646 | `			}else{` |
+|  43816 |  643 | `				pStep->pInfo = pInfo;` |
+|  43816 |  644 | `				pStep->pNextFrameStep = pInitFrame->pForeachSteps;` |
+|  43816 |  645 | `				pInitFrame->pForeachSteps = pStep;` |
+|  21876 |  646 | `			}else{` |
 |    ! 0 |  647 | `				PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory while preparing the 'foreach' step");` |
 |    ! 0 |  648 | `				if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){` |
 |    ! 0 |  649 | `					VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,FALSE/*never made it onto aStep*/);` |
@@ -669,10 +669,10 @@ Coverage: 337/389 lines (86.63%)
 |      - |  659 | `				/* Jump out of the loop */` |
 |    ! 0 |  660 | `				pc = pInstr->iP2 - 1;` |
 |      - |  661 | `			}` |
-|  20554 |  662 | `		}` |
+|  21871 |  662 | `		}` |
 |      - |  663 | `	}` |
-|  41189 |  664 | `	VmPopOperand(&pTos,1);` |
-|  41189 |  665 | `	VM_EXIT_BREAK;` |
+|  43828 |  664 | `	VmPopOperand(&pTos,1);` |
+|  43828 |  665 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  666 | `	VM_EXIT_BREAK;` |
-|  20597 |  667 | `}` |
+|  21914 |  667 | `}` |
 |      - |  668 |  |

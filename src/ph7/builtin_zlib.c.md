@@ -440,25 +440,25 @@ Coverage: 1147/1361 lines (84.28%)
 |    - |  430 | `/* Free every context this VM still holds. Runs on VM reset (a reused VM must` |
 |    - |  431 | ` * not see the previous run's state) and again at release, before the allocator` |
 |    - |  432 | ` * holding the shells goes. */` |
-| 5645 |  433 | `static void ZctxVmSweep(ph7_vm *pVm)` |
+| 6717 |  433 | `static void ZctxVmSweep(ph7_vm *pVm)` |
 |    5 |  434 | `{` |
-| 5650 |  435 | `	phl_zctx *p = (phl_zctx *)pVm->pZlibCtx;` |
-| 5672 |  436 | `	while( p ){` |
+| 6722 |  435 | `	phl_zctx *p = (phl_zctx *)pVm->pZlibCtx;` |
+| 6744 |  436 | `	while( p ){` |
 |   24 |  437 | `		phl_zctx *pNext = p->pNext;` |
 |   24 |  438 | `		ZctxFree(p);` |
 |   24 |  439 | `		SyMemBackendFree(&pVm->sAllocator,p);` |
 |   24 |  440 | `		p = pNext;` |
 |    2 |  441 | `	}` |
-| 5650 |  442 | `	pVm->pZlibCtx = 0;` |
-| 5650 |  443 | `}` |
+| 6722 |  442 | `	pVm->pZlibCtx = 0;` |
+| 6722 |  443 | `}` |
 |   16 |  444 | `PH7_PRIVATE void PH7_ZlibVmReset(ph7_vm *pVm)` |
 |  ! 0 |  445 | `{` |
 |   16 |  446 | `	ZctxVmSweep(&(*pVm));` |
 |   16 |  447 | `}` |
-| 5629 |  448 | `PH7_PRIVATE void PH7_ZlibVmRelease(ph7_vm *pVm)` |
+| 6701 |  448 | `PH7_PRIVATE void PH7_ZlibVmRelease(ph7_vm *pVm)` |
 |    5 |  449 | `{` |
-| 5634 |  450 | `	ZctxVmSweep(&(*pVm));` |
-| 5634 |  451 | `}` |
+| 6706 |  450 | `	ZctxVmSweep(&(*pVm));` |
+| 6706 |  451 | `}` |
 |   22 |  452 | `static phl_zctx * ZctxNew(ph7_vm *pVm,int bInflate)` |
 |    2 |  453 | `{` |
 |   24 |  454 | `	phl_zctx *p = (phl_zctx *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_zctx));` |
@@ -1025,10 +1025,10 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 1015 | ` * defaults.` |
 |    - | 1016 | ` */` |
 |  176 | 1017 | `PH7_PRIVATE void PH7_ZlibArmOpen(ph7_vm *pVm,int iLevel,int iStrategy)` |
-|    2 | 1018 | `{` |
-|  178 | 1019 | `	pVm->iZlibLevel = iLevel;` |
-|  178 | 1020 | `	pVm->iZlibStrategy = iStrategy;` |
-|  178 | 1021 | `}` |
+|    3 | 1018 | `{` |
+|  179 | 1019 | `	pVm->iZlibLevel = iLevel;` |
+|  179 | 1020 | `	pVm->iZlibStrategy = iStrategy;` |
+|  179 | 1021 | `}` |
 |    - | 1022 | `/* gzopen() and its two whole-file doors, which name a FILE rather than a url. */` |
 |   96 | 1023 | `PH7_PRIVATE void PH7_ZlibArmDirect(ph7_vm *pVm,int bDirect)` |
 |    2 | 1024 | `{` |
@@ -1323,10 +1323,10 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 1313 | `	}` |
 |  ! 0 | 1314 | `	return pZ->pInner->pStream->xLock(pZ->pInner->pHandle,iType);` |
 |  ! 0 | 1315 | `}` |
-|   22 | 1316 | `static ph7_int64 ZStreamTell(void *pHandle)` |
+|   38 | 1316 | `static ph7_int64 ZStreamTell(void *pHandle)` |
 |    1 | 1317 | `{` |
-|   23 | 1318 | `	phl_zstream *pZ = (phl_zstream *)pHandle;` |
-|   23 | 1319 | `	return pZ ? pZ->iPos : -1;` |
+|   39 | 1318 | `	phl_zstream *pZ = (phl_zstream *)pHandle;` |
+|   39 | 1319 | `	return pZ ? pZ->iPos : -1;` |
 |    1 | 1320 | `}` |
 |    - | 1321 | `/*` |
 |    - | 1322 | ` * php's ZLIB stream reports itself SEEKABLE and means it the way libz does:` |
@@ -1412,28 +1412,28 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 1402 | ` * reads exactly like one on disk.` |
 |    - | 1403 | ` */` |
 |  100 | 1404 | `static int ZStreamOpen(const char *zName,int iMode,ph7_value *pResource,void **ppHandle)` |
-|    2 | 1405 | `{` |
+|    3 | 1405 | `{` |
 |    - | 1406 | `	const ph7_io_stream *pInnerDev;` |
-|  102 | 1407 | `	ph7_vm *pVm = pResource ? pResource->pVm : 0;` |
+|  103 | 1407 | `	ph7_vm *pVm = pResource ? pResource->pVm : 0;` |
 |    - | 1408 | `	phl_zstream *pZ;` |
 |    - | 1409 | `	io_private *pInner;` |
-|  102 | 1410 | `	const char *zPath = zName;` |
+|  103 | 1410 | `	const char *zPath = zName;` |
 |    - | 1411 | `	int iInnerMode,rc,bRefuse;` |
-|  102 | 1412 | `	if( pVm == 0 ){` |
+|  103 | 1412 | `	if( pVm == 0 ){` |
 |  ! 0 | 1413 | `		return -1;` |
 |    - | 1414 | `	}` |
-|  102 | 1415 | `	pZ = (phl_zstream *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_zstream));` |
-|  102 | 1416 | `	if( pZ == 0 ){` |
+|  103 | 1415 | `	pZ = (phl_zstream *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_zstream));` |
+|  103 | 1416 | `	if( pZ == 0 ){` |
 |  ! 0 | 1417 | `		return -1;` |
 |    - | 1418 | `	}` |
-|  102 | 1419 | `	SyZero(pZ,sizeof(*pZ));` |
-|  102 | 1420 | `	pZ->pVm = pVm;` |
-|  102 | 1421 | `	SyBlobInit(&pZ->sOut,&pVm->sAllocator);` |
-|  102 | 1422 | `	SyBlobInit(&pZ->sUri,&pVm->sAllocator);` |
-|  102 | 1423 | `	pZ->iLevel = pVm->iZlibLevel;` |
-|  102 | 1424 | `	pZ->iStrategy = pVm->iZlibStrategy;` |
+|  103 | 1419 | `	SyZero(pZ,sizeof(*pZ));` |
+|  103 | 1420 | `	pZ->pVm = pVm;` |
+|  103 | 1421 | `	SyBlobInit(&pZ->sOut,&pVm->sAllocator);` |
+|  103 | 1422 | `	SyBlobInit(&pZ->sUri,&pVm->sAllocator);` |
+|  103 | 1423 | `	pZ->iLevel = pVm->iZlibLevel;` |
+|  103 | 1424 | `	pZ->iStrategy = pVm->iZlibStrategy;` |
 |    - | 1425 | `	/* The armed options describe THIS open and nothing after it. */` |
-|  102 | 1426 | `	PH7_ZlibArmOpen(pVm,-1,Z_DEFAULT_STRATEGY);` |
+|  103 | 1426 | `	PH7_ZlibArmOpen(pVm,-1,Z_DEFAULT_STRATEGY);` |
 |    - | 1427 | `	/*` |
 |    - | 1428 | `` 	 * php's zlib wrapper takes ONE direction and nothing else: `r`, `w` and `a` `` |
 |    - | 1429 | ``	 * with their b/t hints. A mode asking for both (`r+`, `w+`, `c+`) is refused`` |
@@ -1441,32 +1441,32 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 1431 | ``	 * opened the file underneath -- so a refused `x` still LEAVES the file it`` |
 |    - | 1432 | `	 * created. The refusal itself is the wrapper's flat one either way.` |
 |    - | 1433 | `	 */` |
-|  102 | 1434 | `	if( (iMode & PH7_IO_OPEN_RDWR) != 0 ){` |
+|  103 | 1434 | `	if( (iMode & PH7_IO_OPEN_RDWR) != 0 ){` |
 |    9 | 1435 | `		SyBlobRelease(&pZ->sOut);` |
 |    9 | 1436 | `		SyBlobRelease(&pZ->sUri);` |
 |    9 | 1437 | `		SyMemBackendFree(&pVm->sAllocator,pZ);` |
 |    9 | 1438 | `		return -1;` |
 |    - | 1439 | `	}` |
-|  184 | 1440 | `	bRefuse = (iMode & PH7_IO_OPEN_EXCL) != 0` |
+|  185 | 1440 | `	bRefuse = (iMode & PH7_IO_OPEN_EXCL) != 0` |
 |  124 | 1441 | `		\|\| ((iMode & PH7_IO_OPEN_CREATE) != 0` |
 |   60 | 1442 | `			&& (iMode & (PH7_IO_OPEN_TRUNC\|PH7_IO_OPEN_APPEND)) == 0);` |
-|   94 | 1443 | `	pZ->bWrite = (iMode & (PH7_IO_OPEN_WRONLY\|PH7_IO_OPEN_APPEND\|PH7_IO_OPEN_RDWR)) != 0;` |
-|  135 | 1444 | `	iInnerMode = bRefuse ? iMode` |
+|   95 | 1443 | `	pZ->bWrite = (iMode & (PH7_IO_OPEN_WRONLY\|PH7_IO_OPEN_APPEND\|PH7_IO_OPEN_RDWR)) != 0;` |
+|  136 | 1444 | `	iInnerMode = bRefuse ? iMode` |
 |  128 | 1445 | `		: (pZ->bWrite` |
 |   26 | 1446 | `			? (iMode & PH7_IO_OPEN_APPEND` |
 |    - | 1447 | `				? PH7_IO_OPEN_WRONLY\|PH7_IO_OPEN_CREATE\|PH7_IO_OPEN_APPEND` |
 |   13 | 1448 | `				: PH7_IO_OPEN_WRONLY\|PH7_IO_OPEN_CREATE\|PH7_IO_OPEN_TRUNC)` |
 |   54 | 1449 | `			: PH7_IO_OPEN_RDONLY);` |
-|   94 | 1450 | `	pInner = (io_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(io_private));` |
-|   94 | 1451 | `	if( pInner == 0 ){` |
+|   95 | 1450 | `	pInner = (io_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(io_private));` |
+|   95 | 1451 | `	if( pInner == 0 ){` |
 |  ! 0 | 1452 | `		SyBlobRelease(&pZ->sOut);` |
 |  ! 0 | 1453 | `		SyBlobRelease(&pZ->sUri);` |
 |  ! 0 | 1454 | `		SyMemBackendFree(&pVm->sAllocator,pZ);` |
 |  ! 0 | 1455 | `		return -1;` |
 |    - | 1456 | `	}` |
-|   94 | 1457 | `	SyZero(pInner,sizeof(*pInner));` |
-|   94 | 1458 | `	pInnerDev = PH7_VmGetStreamDevice(pVm,&zPath,(int)SyStrlen(zPath));` |
-|   94 | 1459 | `	InitIOPrivate(pVm,pInnerDev,pInner);` |
+|   95 | 1457 | `	SyZero(pInner,sizeof(*pInner));` |
+|   95 | 1458 | `	pInnerDev = PH7_VmGetStreamDevice(pVm,&zPath,(int)SyStrlen(zPath));` |
+|   95 | 1459 | `	InitIOPrivate(pVm,pInnerDev,pInner);` |
 |    - | 1460 | `	/*` |
 |    - | 1461 | `	 * gzopen() names a FILE, and the failure a script reads from it is that` |
 |    - | 1462 | `	 * file's own -- the errno for a path, "Connection refused" for an http://` |
@@ -1475,35 +1475,35 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 1465 | ``	 * caller will report. Through `compress.zlib://` the same open is a WRAPPER's`` |
 |    - | 1466 | `	 * and php answers every one of those with a flat "operation failed".` |
 |    - | 1467 | `	 */` |
-|   94 | 1468 | `	if( pVm->bZlibDirect ){` |
+|   95 | 1468 | `	if( pVm->bZlibDirect ){` |
 |   48 | 1469 | `		pVm->nOpenDepth--;` |
 |   23 | 1470 | `	}` |
-|   94 | 1471 | `	pInner->pHandle = pInnerDev` |
+|   95 | 1471 | `	pInner->pHandle = pInnerDev` |
 |   92 | 1472 | `		? PH7_StreamOpenHandle(pVm,pInnerDev,zPath,iInnerMode,FALSE,0,FALSE,0,0)` |
 |   46 | 1473 | `		: 0;` |
-|   94 | 1474 | `	if( pVm->bZlibDirect ){` |
+|   95 | 1474 | `	if( pVm->bZlibDirect ){` |
 |   48 | 1475 | `		pVm->nOpenDepth++;` |
 |   25 | 1476 | `	}else{` |
 |    - | 1477 | `		/* php's WRAPPER never repeats what the file underneath said. */` |
-|   48 | 1478 | `		PH7_StreamSetOpenError(pVm,"operation failed");` |
+|   49 | 1478 | `		PH7_StreamSetOpenError(pVm,"operation failed");` |
 |    - | 1479 | `	}` |
-|   94 | 1480 | `	if( pInner->pHandle == 0 ){` |
+|   95 | 1480 | `	if( pInner->pHandle == 0 ){` |
 |   18 | 1481 | `		SyMemBackendFree(&pVm->sAllocator,pInner);` |
 |   18 | 1482 | `		SyBlobRelease(&pZ->sOut);` |
 |   18 | 1483 | `		SyBlobRelease(&pZ->sUri);` |
 |   18 | 1484 | `		SyMemBackendFree(&pVm->sAllocator,pZ);` |
 |   18 | 1485 | `		return -1;` |
 |    - | 1486 | `	}` |
-|   78 | 1487 | `	if( bRefuse ){` |
+|   79 | 1487 | `	if( bRefuse ){` |
 |    - | 1488 | `		/* The file exists now, which is what php leaves behind; the stream does` |
 |    - | 1489 | `		 * not, because libz has no direction for the mode that made it. */` |
-|   11 | 1490 | `		PH7_StreamCloseHandle(pInnerDev,pInner->pHandle);` |
-|   11 | 1491 | `		SyMemBackendFree(&pVm->sAllocator,pInner);` |
-|   11 | 1492 | `		SyBlobRelease(&pZ->sOut);` |
-|   11 | 1493 | `		SyBlobRelease(&pZ->sUri);` |
-|   11 | 1494 | `		SyMemBackendFree(&pVm->sAllocator,pZ);` |
-|   11 | 1495 | `		PH7_StreamSetOpenError(pVm,"operation failed");` |
-|   11 | 1496 | `		return -1;` |
+|   12 | 1490 | `		PH7_StreamCloseHandle(pInnerDev,pInner->pHandle);` |
+|   12 | 1491 | `		SyMemBackendFree(&pVm->sAllocator,pInner);` |
+|   12 | 1492 | `		SyBlobRelease(&pZ->sOut);` |
+|   12 | 1493 | `		SyBlobRelease(&pZ->sUri);` |
+|   12 | 1494 | `		SyMemBackendFree(&pVm->sAllocator,pZ);` |
+|   12 | 1495 | `		PH7_StreamSetOpenError(pVm,"operation failed");` |
+|   12 | 1496 | `		return -1;` |
 |    - | 1497 | `	}` |
 |   68 | 1498 | `	SetIOPrivateOpenedAs(pInner,zName,(int)SyStrlen(zName),pZ->bWrite ? "wb" : "rb",2);` |
 |   68 | 1499 | `	pZ->pInner = pInner;` |
@@ -1520,7 +1520,7 @@ Coverage: 1147/1361 lines (84.28%)
 |   11 | 1510 | `	}` |
 |   68 | 1511 | `	*ppHandle = (void *)pZ;` |
 |   68 | 1512 | `	return PH7_OK;` |
-|   52 | 1513 | `}` |
+|   53 | 1513 | `}` |
 |    - | 1514 | `PH7_PRIVATE const ph7_io_stream sZLIB_Stream = {` |
 |    - | 1515 | `	"compress.zlib",` |
 |    - | 1516 | `	PH7_IO_STREAM_VERSION,` |
@@ -1539,9 +1539,9 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 1529 | `	0,             /* xSync */` |
 |    - | 1530 | `	ZStreamStat    /* xStat: php answers a flat false */` |
 |    - | 1531 | `};` |
-|  181 | 1532 | `PH7_PRIVATE int PH7_ZlibStreamIs(const ph7_io_stream *pStream)` |
+|  201 | 1532 | `PH7_PRIVATE int PH7_ZlibStreamIs(const ph7_io_stream *pStream)` |
 |    5 | 1533 | `{` |
-|  186 | 1534 | `	return pStream == &sZLIB_Stream;` |
+|  206 | 1534 | `	return pStream == &sZLIB_Stream;` |
 |    5 | 1535 | `}` |
 |    - | 1536 | `/* ------------------------------------------------------------------ */` |
 |    - | 1537 | `/* gzopen() and the two whole-file readers                            */` |
@@ -1610,7 +1610,7 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 1600 | `		 * over it. */` |
 |    3 | 1601 | `		const char *zTail = zUri;` |
 |    3 | 1602 | `		iFlags = iForceFlags;` |
-|    3 | 1603 | `		pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zTail,nUri);` |
+|    3 | 1603 | `		pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zTail,nUri);` |
 |    3 | 1604 | `		zUri = zTail;` |
 |    3 | 1605 | `		if( pStream == 0 ){` |
 |  ! 0 | 1606 | `			VfsThrowNoDeviceWarning(pCtx,zUri,FALSE);` |
@@ -2066,7 +2066,7 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 2056 | `` * unserializable, with NO method and NO property, and refuses `new` with a`` |
 |    - | 2057 | ` * sentence naming the factory -- exactly CurlHandle's shape.` |
 |    - | 2058 | ` */` |
-| 6721 | 2059 | `PH7_PRIVATE sxi32 PH7_VmInstallZlib(ph7_vm *pVm)` |
+| 7925 | 2059 | `PH7_PRIVATE sxi32 PH7_VmInstallZlib(ph7_vm *pVm)` |
 |    5 | 2060 | `{` |
 |    - | 2061 | `	static const PH7_NativePropDef aProp[] = {` |
 |    - | 2062 | `		{ ZCTX_SLOT, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN,` |
@@ -2081,33 +2081,33 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 2071 | `		  0, 0, 0, 0, aProp, SX_ARRAYSIZE(aProp), ZctxInstanceRelease, 0, 0 }` |
 |    - | 2072 | `	};` |
 |    - | 2073 | `	sxi32 rc;` |
-| 6726 | 2074 | `	pVm->pZlibCtx = 0;` |
-| 6726 | 2075 | `	pVm->iZlibLevel = -1;` |
-| 6726 | 2076 | `	pVm->iZlibStrategy = Z_DEFAULT_STRATEGY;` |
-| 6726 | 2077 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-| 6726 | 2078 | `	if( rc == SXRET_OK ){` |
-| 6726 | 2079 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"DeflateContext",` |
+| 7930 | 2074 | `	pVm->pZlibCtx = 0;` |
+| 7930 | 2075 | `	pVm->iZlibLevel = -1;` |
+| 7930 | 2076 | `	pVm->iZlibStrategy = Z_DEFAULT_STRATEGY;` |
+| 7930 | 2077 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+| 7930 | 2078 | `	if( rc == SXRET_OK ){` |
+| 7930 | 2079 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"DeflateContext",` |
 |    - | 2080 | `			sizeof("DeflateContext")-1,FALSE,0);` |
-| 6726 | 2081 | `		if( pClass ){` |
-| 6726 | 2082 | `			pClass->zNewRefusal =` |
+| 7930 | 2081 | `		if( pClass ){` |
+| 7930 | 2082 | `			pClass->zNewRefusal =` |
 |    - | 2083 | `				"Cannot directly construct DeflateContext, use deflate_init() instead";` |
-| 6726 | 2084 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-| 3356 | 2085 | `		}` |
-| 6726 | 2086 | `		pClass = PH7_VmExtractClass(&(*pVm),"InflateContext",` |
+| 7930 | 2084 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+| 3957 | 2085 | `		}` |
+| 7930 | 2086 | `		pClass = PH7_VmExtractClass(&(*pVm),"InflateContext",` |
 |    - | 2087 | `			sizeof("InflateContext")-1,FALSE,0);` |
-| 6726 | 2088 | `		if( pClass ){` |
-| 6726 | 2089 | `			pClass->zNewRefusal =` |
+| 7930 | 2088 | `		if( pClass ){` |
+| 7930 | 2089 | `			pClass->zNewRefusal =` |
 |    - | 2090 | `				"Cannot directly construct InflateContext, use inflate_init() instead";` |
-| 6726 | 2091 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-| 3356 | 2092 | `		}` |
-| 3356 | 2093 | `	}` |
-| 6726 | 2094 | `	return rc;` |
+| 7930 | 2091 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+| 3957 | 2092 | `		}` |
+| 3957 | 2093 | `	}` |
+| 7930 | 2094 | `	return rc;` |
 |    5 | 2095 | `}` |
 |    - | 2096 | `/* The functions this unit owns, in php's own registration order. The gz*` |
 |    - | 2097 | ` * handle verbs are NOT here: php registers them as ALIASES of the ordinary` |
 |    - | 2098 | ` * stream functions (which is why gzread() works on a plain fopen() handle and` |
 |    - | 2099 | ` * fread() works on a gzopen() one), and builtin.c registers them that way. */` |
-| 6721 | 2100 | `PH7_PRIVATE const ph7_builtin_func * PH7_ZlibFuncTable(sxu32 *pnEntry)` |
+| 7925 | 2100 | `PH7_PRIVATE const ph7_builtin_func * PH7_ZlibFuncTable(sxu32 *pnEntry)` |
 |    5 | 2101 | `{` |
 |    - | 2102 | `	static const ph7_builtin_func aFunc[] = {` |
 |    - | 2103 | `		{ "ob_gzhandler",          PH7_builtin_ob_gzhandler          },` |
@@ -2130,8 +2130,8 @@ Coverage: 1147/1361 lines (84.28%)
 |    - | 2120 | `		{ "inflate_get_status",    PH7_builtin_inflate_get_status    },` |
 |    - | 2121 | `		{ "inflate_get_read_len",  PH7_builtin_inflate_get_read_len  }` |
 |    - | 2122 | `	};` |
-| 6726 | 2123 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
-| 6726 | 2124 | `	return aFunc;` |
+| 7930 | 2123 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
+| 7930 | 2124 | `	return aFunc;` |
 |    5 | 2125 | `}` |
 |    - | 2126 | `#endif /* PH7_ENABLE_ZLIB && !PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 2127 |  |

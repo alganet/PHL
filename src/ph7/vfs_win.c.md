@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 762/876 lines (86.99%)
+Coverage: 764/876 lines (87.21%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -103,8 +103,8 @@ Coverage: 762/876 lines (86.99%)
 |    - |   93 | `		case ERROR_SHARING_VIOLATION:` |
 |    2 |   94 | `		case ERROR_LOCK_VIOLATION:    errno = EACCES; break;` |
 |    - |   95 | `		case ERROR_FILE_EXISTS:` |
-|    4 |   96 | `		case ERROR_ALREADY_EXISTS:    errno = EEXIST; break;` |
-|    2 |   97 | `		case ERROR_DIR_NOT_EMPTY:     errno = ENOTEMPTY; break;` |
+|    3 |   96 | `		case ERROR_ALREADY_EXISTS:    errno = EEXIST; break;` |
+|    1 |   97 | `		case ERROR_DIR_NOT_EMPTY:     errno = ENOTEMPTY; break;` |
 |    1 |   98 | `		default:                      errno = EIO; break;` |
 |    - |   99 | `	}` |
 |    5 |  100 | `}` |
@@ -391,16 +391,16 @@ Coverage: 762/876 lines (86.99%)
 |    - |  381 | ` * GetFileInformationByHandle needs, so this also works on a file another process` |
 |    - |  382 | ` * holds open for writing. */` |
 |    - |  383 | `static HANDLE OpenForStat(LPCWSTR pPath)` |
-|    4 |  384 | `{` |
+|    5 |  384 | `{` |
 |    - |  385 | `	HANDLE pHandle;` |
-|    4 |  386 | `	pHandle = CreateFileW(pPath,FILE_READ_ATTRIBUTES,` |
+|    5 |  386 | `	pHandle = CreateFileW(pPath,FILE_READ_ATTRIBUTES,` |
 |    - |  387 | `		FILE_SHARE_READ\|FILE_SHARE_WRITE\|FILE_SHARE_DELETE,0,OPEN_EXISTING,` |
 |    - |  388 | `		FILE_ATTRIBUTE_NORMAL\|FILE_FLAG_BACKUP_SEMANTICS,0);` |
-|    4 |  389 | `	if( pHandle == INVALID_HANDLE_VALUE ){` |
+|    5 |  389 | `	if( pHandle == INVALID_HANDLE_VALUE ){` |
 |    3 |  390 | `		return 0;` |
 |    - |  391 | `	}` |
 |    4 |  392 | `	return pHandle;` |
-|    4 |  393 | `}` |
+|    5 |  393 | `}` |
 |    - |  394 | `/* Open a file in a read-only mode */` |
 |    - |  395 | `static HANDLE OpenReadOnly(LPCWSTR pPath)` |
 |    5 |  396 | `{` |
@@ -427,24 +427,24 @@ Coverage: 762/876 lines (86.99%)
 |    - |  417 | ` * bScripts is which of the two lists is being asked.` |
 |    - |  418 | ` */` |
 |    - |  419 | `static int WinPathIsExec(const char *zPath,int bScripts)` |
-|    1 |  420 | `{` |
+|    2 |  420 | `{` |
 |    - |  421 | `	static const char * const azExt[] = { ".exe", ".com", ".bat", ".cmd" };` |
 |    - |  422 | `	sxu32 n,i,nExt;` |
-|    1 |  423 | `	if( zPath == 0 ){` |
+|    2 |  423 | `	if( zPath == 0 ){` |
 |    1 |  424 | `		return 0;` |
 |    - |  425 | `	}` |
-|    1 |  426 | `	n = SyStrlen(zPath);` |
-|    1 |  427 | `	if( n < 4 ){` |
+|    2 |  426 | `	n = SyStrlen(zPath);` |
+|    2 |  427 | `	if( n < 4 ){` |
 |  ! 0 |  428 | `		return 0;` |
 |    - |  429 | `	}` |
-|    1 |  430 | `	nExt = bScripts ? (sxu32)SX_ARRAYSIZE(azExt) : 2;` |
-|    1 |  431 | `	for( i = 0 ; i < nExt ; ++i ){` |
-|    1 |  432 | `		if( SyStrnicmp(&zPath[n-4],azExt[i],4) == 0 ){` |
+|    2 |  430 | `	nExt = bScripts ? (sxu32)SX_ARRAYSIZE(azExt) : 2;` |
+|    2 |  431 | `	for( i = 0 ; i < nExt ; ++i ){` |
+|    2 |  432 | `		if( SyStrnicmp(&zPath[n-4],azExt[i],4) == 0 ){` |
 |  ! 0 |  433 | `			return 1;` |
 |    - |  434 | `		}` |
-|    1 |  435 | `	}` |
-|    1 |  436 | `	return 0;` |
-|    1 |  437 | `}` |
+|    2 |  435 | `	}` |
+|    2 |  436 | `	return 0;` |
+|    2 |  437 | `}` |
 |    - |  438 | `/*` |
 |    - |  439 | `` * The `mode` of a Windows stat answer. Windows keeps no such field, so php`` |
 |    - |  440 | ` * SYNTHESISES one from the file ATTRIBUTES: a directory is S_IFDIR with the` |
@@ -462,19 +462,19 @@ Coverage: 762/876 lines (86.99%)
 |    - |  452 | ` * php's answer there carries no execute bit even for an .exe.` |
 |    - |  453 | ` */` |
 |    - |  454 | `static int WinStatMode(DWORD dwAttr,const char *zPath)` |
-|    1 |  455 | `{` |
+|    3 |  455 | `{` |
 |    - |  456 | `	int iMode;` |
-|    1 |  457 | `	if( dwAttr & FILE_ATTRIBUTE_DIRECTORY ){` |
-|    1 |  458 | `		iMode = 0040000 \| 0111;   /* S_IFDIR, and a directory is always enterable */` |
-|    1 |  459 | `	}else{` |
-|    1 |  460 | `		iMode = 0100000;          /* S_IFREG */` |
+|    3 |  457 | `	if( dwAttr & FILE_ATTRIBUTE_DIRECTORY ){` |
+|    3 |  458 | `		iMode = 0040000 \| 0111;   /* S_IFDIR, and a directory is always enterable */` |
+|    3 |  459 | `	}else{` |
+|    2 |  460 | `		iMode = 0100000;          /* S_IFREG */` |
 |    - |  461 | `	}` |
-|    1 |  462 | `	iMode \|= (dwAttr & FILE_ATTRIBUTE_READONLY) ? 0444 : 0666;` |
-|    1 |  463 | `	if( (dwAttr & FILE_ATTRIBUTE_DIRECTORY) == 0 && WinPathIsExec(zPath,TRUE) ){` |
+|    3 |  462 | `	iMode \|= (dwAttr & FILE_ATTRIBUTE_READONLY) ? 0444 : 0666;` |
+|    3 |  463 | `	if( (dwAttr & FILE_ATTRIBUTE_DIRECTORY) == 0 && WinPathIsExec(zPath,TRUE) ){` |
 |  ! 0 |  464 | `		iMode \|= 0111;` |
 |    - |  465 | `	}` |
-|    1 |  466 | `	return iMode;` |
-|    1 |  467 | `}` |
+|    3 |  466 | `	return iMode;` |
+|    3 |  467 | `}` |
 |    - |  468 | `/* ph7_int64 (*xFileSize)(const char *) */` |
 |    - |  469 | `static ph7_int64 WinVfs_FileSize(const char *zPath)` |
 |    4 |  470 | `{` |
@@ -495,12 +495,12 @@ Coverage: 762/876 lines (86.99%)
 |    4 |  485 | `	pHandle = OpenForStat((LPCWSTR)pConverted);` |
 |    4 |  486 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    4 |  487 | `	if( pHandle ){` |
-|    4 |  488 | `		dwLow = GetFileSize(pHandle,&dwHigh);` |
-|    4 |  489 | `		nSize = dwHigh;` |
-|    4 |  490 | `		nSize <<= 32;` |
-|    4 |  491 | `		nSize += dwLow;` |
-|    4 |  492 | `		CloseHandle(pHandle);` |
-|    4 |  493 | `	}else{` |
+|    3 |  488 | `		dwLow = GetFileSize(pHandle,&dwHigh);` |
+|    3 |  489 | `		nSize = dwHigh;` |
+|    3 |  490 | `		nSize <<= 32;` |
+|    3 |  491 | `		nSize += dwLow;` |
+|    3 |  492 | `		CloseHandle(pHandle);` |
+|    3 |  493 | `	}else{` |
 |    2 |  494 | `		nSize = -1;` |
 |    - |  495 | `	}` |
 |    4 |  496 | `	return nSize;` |
@@ -520,28 +520,28 @@ Coverage: 762/876 lines (86.99%)
 |    4 |  510 | `}` |
 |    - |  511 | `/* Convert UNIX timestamp to Windows timestamp */` |
 |    - |  512 | `static void convertUnixTimeToWindowsTime(ph7_int64 nUnixtime,LPFILETIME pOut)` |
-|    4 |  513 | `{` |
+|    3 |  513 | `{` |
 |    - |  514 | ``  /* The converted value has to be the one that is STORED: this computed `result` and`` |
 |    - |  515 | `   * then wrote the raw unix seconds into the FILETIME, so a requested 1000000000` |
 |    - |  516 | `   * landed as 100 seconds past the 1601 epoch and read back as -11644473500. */` |
-|    4 |  517 | `  ph7_int64 result = EPOCH_DIFFERENCE;` |
-|    4 |  518 | `  result += nUnixtime;` |
-|    4 |  519 | `  result *= TICKS_PER_SECOND;` |
-|    4 |  520 | `  pOut->dwHighDateTime = (DWORD)((sxu64)result >> 32);` |
-|    4 |  521 | `  pOut->dwLowDateTime = (DWORD)((sxu64)result & 0xFFFFFFFFu);` |
-|    4 |  522 | `}` |
+|    3 |  517 | `  ph7_int64 result = EPOCH_DIFFERENCE;` |
+|    3 |  518 | `  result += nUnixtime;` |
+|    3 |  519 | `  result *= TICKS_PER_SECOND;` |
+|    3 |  520 | `  pOut->dwHighDateTime = (DWORD)((sxu64)result >> 32);` |
+|    3 |  521 | `  pOut->dwLowDateTime = (DWORD)((sxu64)result & 0xFFFFFFFFu);` |
+|    3 |  522 | `}` |
 |    - |  523 | `/* int (*xTouch)(const char *,ph7_int64,ph7_int64) */` |
 |    - |  524 | `static int WinVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access_time)` |
-|    4 |  525 | `{` |
+|    3 |  525 | `{` |
 |    - |  526 | `	FILETIME sTouch,sAccess;` |
 |    - |  527 | `	void *pConverted;` |
 |    - |  528 | `	void *pHandle;` |
-|    4 |  529 | `	BOOL rc = 0;` |
+|    3 |  529 | `	BOOL rc = 0;` |
 |    - |  530 | `	/* Accept file:// like every other path-taking entry in this VFS (the POSIX` |
 |    - |  531 | `	 * driver already does) — this was the only one that skipped the mapping. */` |
-|    4 |  532 | `	zPath = WinVfsLocalPath(zPath);` |
-|    4 |  533 | `	pConverted = convertUtf8Filename(zPath);` |
-|    4 |  534 | `	if( pConverted == 0 ){` |
+|    3 |  532 | `	zPath = WinVfsLocalPath(zPath);` |
+|    3 |  533 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  534 | `	if( pConverted == 0 ){` |
 |  ! 0 |  535 | `		return -1;` |
 |    - |  536 | `	}` |
 |    - |  537 | `	/* php's touch() CREATES a missing file (OPEN_ALWAYS), and SetFileTime needs write` |
@@ -550,36 +550,36 @@ Coverage: 762/876 lines (86.99%)
 |    - |  540 | `	 * win32 utime passes it for the same reason, and the POSIX driver's utime() works` |
 |    - |  541 | `	 * on directories); it does not change what OPEN_ALWAYS creates for a missing path.` |
 |    - |  542 | `	 * Mirrors the POSIX driver's utime + open(O_CREAT) fallback. */` |
-|    4 |  543 | `	pHandle = CreateFileW((LPCWSTR)pConverted,FILE_WRITE_ATTRIBUTES,` |
+|    3 |  543 | `	pHandle = CreateFileW((LPCWSTR)pConverted,FILE_WRITE_ATTRIBUTES,` |
 |    - |  544 | `		FILE_SHARE_READ\|FILE_SHARE_WRITE\|FILE_SHARE_DELETE,0,OPEN_ALWAYS,` |
 |    - |  545 | `		FILE_ATTRIBUTE_NORMAL\|FILE_FLAG_BACKUP_SEMANTICS,0);` |
-|    4 |  546 | `	if( pHandle == INVALID_HANDLE_VALUE ){` |
+|    3 |  546 | `	if( pHandle == INVALID_HANDLE_VALUE ){` |
 |    - |  547 | `		/* The caller reports strerror(errno), and this API sets GetLastError()` |
 |    - |  548 | `		 * instead -- so a failed touch() read whatever errno already held` |
 |    - |  549 | `		 * ("No error" for a path that does not exist). */` |
 |    1 |  550 | `		WinVfsMapErrno();` |
 |    1 |  551 | `		pHandle = 0;` |
 |    - |  552 | `	}` |
-|    4 |  553 | `	if( pHandle ){` |
+|    3 |  553 | `	if( pHandle ){` |
 |    - |  554 | `		/* Both stamps are real values: the builtin resolves php's "now" default, so a` |
 |    - |  555 | `		 * NEGATIVE timestamp (legal to php) is no longer read as "not given". */` |
-|    4 |  556 | `		convertUnixTimeToWindowsTime(touch_time,&sTouch);` |
-|    4 |  557 | `		convertUnixTimeToWindowsTime(access_time,&sAccess);` |
+|    3 |  556 | `		convertUnixTimeToWindowsTime(touch_time,&sTouch);` |
+|    3 |  557 | `		convertUnixTimeToWindowsTime(access_time,&sAccess);` |
 |    - |  558 | `		/* SetFileTime(hFile, creation, lastAccess, lastWrite): the modification stamp` |
 |    - |  559 | `		 * belongs in the LAST slot. It used to be passed as the CREATION time with` |
 |    - |  560 | `		 * lastWrite left NULL, so touch($f, $mtime) changed a stamp nothing reads and` |
 |    - |  561 | `		 * left filemtime() reporting whatever the file already had. Creation stays` |
 |    - |  562 | `		 * untouched, like php. */` |
-|    4 |  563 | `		rc = SetFileTime(pHandle,0,&sAccess,&sTouch);` |
-|    4 |  564 | `		if( !rc ){` |
+|    3 |  563 | `		rc = SetFileTime(pHandle,0,&sAccess,&sTouch);` |
+|    3 |  564 | `		if( !rc ){` |
 |  ! 0 |  565 | `			WinVfsMapErrno();` |
 |    - |  566 | `		}` |
 |    - |  567 | `		/* Close the handle */` |
-|    4 |  568 | `		CloseHandle(pHandle);` |
+|    3 |  568 | `		CloseHandle(pHandle);` |
 |    - |  569 | `	}` |
-|    4 |  570 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    4 |  571 | `	return rc ? PH7_OK : -1;` |
-|    4 |  572 | `}` |
+|    3 |  570 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  571 | `	return rc ? PH7_OK : -1;` |
+|    3 |  572 | `}` |
 |    - |  573 | `/* ph7_int64 (*xFileAtime)(const char *) */` |
 |    - |  574 | `static ph7_int64 WinVfs_FileAtime(const char *zPath)` |
 |    1 |  575 | `{` |
@@ -611,33 +611,33 @@ Coverage: 762/876 lines (86.99%)
 |    1 |  601 | `}` |
 |    - |  602 | `/* ph7_int64 (*xFileMtime)(const char *) */` |
 |    - |  603 | `static ph7_int64 WinVfs_FileMtime(const char *zPath)` |
-|    4 |  604 | `{` |
-|    4 |  605 | `	zPath = WinVfsLocalPath(zPath);` |
+|    3 |  604 | `{` |
+|    3 |  605 | `	zPath = WinVfsLocalPath(zPath);` |
 |    - |  606 | `	BY_HANDLE_FILE_INFORMATION sInfo;` |
 |    - |  607 | `	void * pConverted;` |
 |    - |  608 | `	ph7_int64 mtime;` |
 |    - |  609 | `	HANDLE pHandle;` |
-|    4 |  610 | `	pConverted = convertUtf8Filename(zPath);` |
-|    4 |  611 | `	if( pConverted == 0 ){` |
+|    3 |  610 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  611 | `	if( pConverted == 0 ){` |
 |  ! 0 |  612 | `		return -1;` |
 |    - |  613 | `	}` |
 |    - |  614 | `	/* Open for a stat read (directories included) */` |
-|    4 |  615 | `	pHandle = OpenForStat((LPCWSTR)pConverted);` |
-|    4 |  616 | `	if( pHandle ){` |
+|    3 |  615 | `	pHandle = OpenForStat((LPCWSTR)pConverted);` |
+|    3 |  616 | `	if( pHandle ){` |
 |    - |  617 | `		BOOL rc;` |
-|    4 |  618 | `		rc = GetFileInformationByHandle(pHandle,&sInfo);` |
-|    4 |  619 | `		if( rc ){` |
-|    4 |  620 | `			mtime = convertWindowsTimeToUnixTime(&sInfo.ftLastWriteTime);` |
-|    4 |  621 | `		}else{` |
+|    3 |  618 | `		rc = GetFileInformationByHandle(pHandle,&sInfo);` |
+|    3 |  619 | `		if( rc ){` |
+|    3 |  620 | `			mtime = convertWindowsTimeToUnixTime(&sInfo.ftLastWriteTime);` |
+|    3 |  621 | `		}else{` |
 |  ! 0 |  622 | `			mtime = -1;` |
 |    - |  623 | `		}` |
-|    4 |  624 | `		CloseHandle(pHandle);` |
-|    4 |  625 | `	}else{` |
+|    3 |  624 | `		CloseHandle(pHandle);` |
+|    3 |  625 | `	}else{` |
 |    1 |  626 | `		mtime = -1;` |
 |    - |  627 | `	}` |
-|    4 |  628 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    4 |  629 | `	return mtime;` |
-|    4 |  630 | `}` |
+|    3 |  628 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  629 | `	return mtime;` |
+|    3 |  630 | `}` |
 |    - |  631 | `/* ph7_int64 (*xFileCtime)(const char *) */` |
 |    - |  632 | `static ph7_int64 WinVfs_FileCtime(const char *zPath)` |
 |    1 |  633 | `{` |
@@ -670,65 +670,65 @@ Coverage: 762/876 lines (86.99%)
 |    - |  660 | `/* int (*xStat)(const char *,ph7_value *,ph7_value *) */` |
 |    - |  661 | `/* int (*xlStat)(const char *,ph7_value *,ph7_value *) */` |
 |    - |  662 | `static int WinVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)` |
-|    2 |  663 | `{` |
-|    2 |  664 | `	zPath = WinVfsLocalPath(zPath);` |
+|    4 |  663 | `{` |
+|    4 |  664 | `	zPath = WinVfsLocalPath(zPath);` |
 |    - |  665 | `	BY_HANDLE_FILE_INFORMATION sInfo;` |
 |    - |  666 | `	void *pConverted;` |
 |    - |  667 | `	HANDLE pHandle;` |
 |    - |  668 | `	BOOL rc;` |
-|    2 |  669 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  670 | `	if( pConverted == 0 ){` |
+|    4 |  669 | `	pConverted = convertUtf8Filename(zPath);` |
+|    4 |  670 | `	if( pConverted == 0 ){` |
 |  ! 0 |  671 | `		return -1;` |
 |    - |  672 | `	}` |
 |    - |  673 | `	/* Through the STAT opener: a plain read-only open cannot get a handle to a` |
 |    - |  674 | `	 * DIRECTORY, so stat() answered FALSE for every one of them here -- and` |
 |    - |  675 | `	 * with it fileperms(), fileowner(), filegroup() and fileinode(). */` |
-|    2 |  676 | `	pHandle = OpenForStat((LPCWSTR)pConverted);` |
-|    2 |  677 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  678 | `	if( pHandle == 0 ){` |
-|    2 |  679 | `		return -1;` |
+|    4 |  676 | `	pHandle = OpenForStat((LPCWSTR)pConverted);` |
+|    4 |  677 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    4 |  678 | `	if( pHandle == 0 ){` |
+|    3 |  679 | `		return -1;` |
 |    - |  680 | `	}` |
-|    1 |  681 | `	rc = GetFileInformationByHandle(pHandle,&sInfo);` |
-|    1 |  682 | `	CloseHandle(pHandle);` |
-|    1 |  683 | `	if( !rc ){` |
+|    3 |  681 | `	rc = GetFileInformationByHandle(pHandle,&sInfo);` |
+|    3 |  682 | `	CloseHandle(pHandle);` |
+|    3 |  683 | `	if( !rc ){` |
 |  ! 0 |  684 | `		return -1;` |
 |    - |  685 | `	}` |
 |    - |  686 | `	/* dev */` |
-|    1 |  687 | `	ph7_value_int64(pWorker,(ph7_int64)sInfo.dwVolumeSerialNumber);` |
-|    1 |  688 | `	ph7_array_add_strkey_elem(pArray,"dev",pWorker); /* Will make it's own copy */` |
+|    3 |  687 | `	ph7_value_int64(pWorker,(ph7_int64)sInfo.dwVolumeSerialNumber);` |
+|    3 |  688 | `	ph7_array_add_strkey_elem(pArray,"dev",pWorker); /* Will make it's own copy */` |
 |    - |  689 | `	/* ino */` |
-|    1 |  690 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileIndexHigh << 32) \| sInfo.nFileIndexLow));` |
-|    1 |  691 | `	ph7_array_add_strkey_elem(pArray,"ino",pWorker); /* Will make it's own copy */` |
+|    3 |  690 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileIndexHigh << 32) \| sInfo.nFileIndexLow));` |
+|    3 |  691 | `	ph7_array_add_strkey_elem(pArray,"ino",pWorker); /* Will make it's own copy */` |
 |    - |  692 | `	/* mode */` |
-|    1 |  693 | `	ph7_value_int(pWorker,WinStatMode(sInfo.dwFileAttributes,zPath));` |
-|    1 |  694 | `	ph7_array_add_strkey_elem(pArray,"mode",pWorker);` |
+|    3 |  693 | `	ph7_value_int(pWorker,WinStatMode(sInfo.dwFileAttributes,zPath));` |
+|    3 |  694 | `	ph7_array_add_strkey_elem(pArray,"mode",pWorker);` |
 |    - |  695 | `	/* nlink */` |
-|    1 |  696 | `	ph7_value_int(pWorker,(int)sInfo.nNumberOfLinks);` |
-|    1 |  697 | `	ph7_array_add_strkey_elem(pArray,"nlink",pWorker); /* Will make it's own copy */` |
+|    3 |  696 | `	ph7_value_int(pWorker,(int)sInfo.nNumberOfLinks);` |
+|    3 |  697 | `	ph7_array_add_strkey_elem(pArray,"nlink",pWorker); /* Will make it's own copy */` |
 |    - |  698 | `	/* uid,gid,rdev */` |
-|    1 |  699 | `	ph7_value_int(pWorker,0);` |
-|    1 |  700 | `	ph7_array_add_strkey_elem(pArray,"uid",pWorker);` |
-|    1 |  701 | `	ph7_array_add_strkey_elem(pArray,"gid",pWorker);` |
-|    1 |  702 | `	ph7_array_add_strkey_elem(pArray,"rdev",pWorker);` |
+|    3 |  699 | `	ph7_value_int(pWorker,0);` |
+|    3 |  700 | `	ph7_array_add_strkey_elem(pArray,"uid",pWorker);` |
+|    3 |  701 | `	ph7_array_add_strkey_elem(pArray,"gid",pWorker);` |
+|    3 |  702 | `	ph7_array_add_strkey_elem(pArray,"rdev",pWorker);` |
 |    - |  703 | `	/* size */` |
-|    1 |  704 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileSizeHigh << 32) \| sInfo.nFileSizeLow));` |
-|    1 |  705 | `	ph7_array_add_strkey_elem(pArray,"size",pWorker); /* Will make it's own copy */` |
+|    3 |  704 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileSizeHigh << 32) \| sInfo.nFileSizeLow));` |
+|    3 |  705 | `	ph7_array_add_strkey_elem(pArray,"size",pWorker); /* Will make it's own copy */` |
 |    - |  706 | `	/* atime */` |
-|    1 |  707 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastAccessTime));` |
-|    1 |  708 | `	ph7_array_add_strkey_elem(pArray,"atime",pWorker); /* Will make it's own copy */` |
+|    3 |  707 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastAccessTime));` |
+|    3 |  708 | `	ph7_array_add_strkey_elem(pArray,"atime",pWorker); /* Will make it's own copy */` |
 |    - |  709 | `	/* mtime */` |
-|    1 |  710 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastWriteTime));` |
-|    1 |  711 | `	ph7_array_add_strkey_elem(pArray,"mtime",pWorker); /* Will make it's own copy */` |
+|    3 |  710 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastWriteTime));` |
+|    3 |  711 | `	ph7_array_add_strkey_elem(pArray,"mtime",pWorker); /* Will make it's own copy */` |
 |    - |  712 | `	/* ctime */` |
-|    1 |  713 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));` |
-|    1 |  714 | `	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */` |
+|    3 |  713 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));` |
+|    3 |  714 | `	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */` |
 |    - |  715 | `	/* blksize,blocks: php reports -1 for both on Windows -- on every file and` |
 |    - |  716 | `	 * every stream -- having neither field to fill them from. */` |
-|    1 |  717 | `	ph7_value_int(pWorker,-1);` |
-|    1 |  718 | `	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);` |
-|    1 |  719 | `	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);` |
-|    1 |  720 | `	return PH7_OK;` |
-|    2 |  721 | `}` |
+|    3 |  717 | `	ph7_value_int(pWorker,-1);` |
+|    3 |  718 | `	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);` |
+|    3 |  719 | `	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);` |
+|    3 |  720 | `	return PH7_OK;` |
+|    4 |  721 | `}` |
 |    - |  722 | `/* int (*xIsfile)(const char *) */` |
 |    - |  723 | `static int WinVfs_isfile(const char *zPath)` |
 |    5 |  724 | `{` |
@@ -922,11 +922,11 @@ Coverage: 762/876 lines (86.99%)
 |    5 |  912 | `	if( !n ){` |
 |    - |  913 | `		/* 0 is both "absent" and "empty": only the error code tells them apart,` |
 |    - |  914 | `		 * and php reports an empty variable as "" the way POSIX does. */` |
-|    1 |  915 | `		if( GetLastError() == ERROR_ENVVAR_NOT_FOUND ){` |
-|    1 |  916 | `			return -1;` |
+|    2 |  915 | `		if( GetLastError() == ERROR_ENVVAR_NOT_FOUND ){` |
+|    2 |  916 | `			return -1;` |
 |    - |  917 | `		}` |
-|    1 |  918 | `		ph7_result_string(pCtx,"",0);` |
-|    1 |  919 | `		return PH7_OK;` |
+|    2 |  918 | `		ph7_result_string(pCtx,"",0);` |
+|    2 |  919 | `		return PH7_OK;` |
 |    - |  920 | `	}` |
 |    5 |  921 | `	if( n >= sizeof(zValue) ){` |
 |  ! 0 |  922 | `		DWORD nWant = n;` |
@@ -945,13 +945,13 @@ Coverage: 762/876 lines (86.99%)
 |    5 |  935 | `}` |
 |    - |  936 | `/* int (*xSetenv)(const char *,const char *) */` |
 |    - |  937 | `static int WinVfs_Setenv(const char *zName,const char *zValue)` |
-|    3 |  938 | `{` |
+|    4 |  938 | `{` |
 |    - |  939 | `	BOOL rc;` |
 |    - |  940 | `	/* A NULL value REMOVES the variable, which is php's putenv("NAME") with no` |
 |    - |  941 | `	 * '='. An EMPTY value is a variable of its own, on Windows as elsewhere. */` |
-|    3 |  942 | `	rc = SetEnvironmentVariableA(zName,zValue);` |
-|    3 |  943 | `	return rc ? PH7_OK : -1;` |
-|    3 |  944 | `}` |
+|    4 |  942 | `	rc = SetEnvironmentVariableA(zName,zValue);` |
+|    4 |  943 | `	return rc ? PH7_OK : -1;` |
+|    4 |  944 | `}` |
 |    - |  945 | `/* int (*xEnviron)(ph7_context *) */` |
 |    - |  946 | `static int WinVfs_Environ(ph7_context *pCtx)` |
 |    1 |  947 | `{` |
@@ -1247,7 +1247,7 @@ Coverage: 762/876 lines (86.99%)
 |    - | 1237 | `	}` |
 |    5 | 1238 | `	if( iOpenMode & PH7_IO_OPEN_RDWR ){` |
 |    - | 1239 | `		/* Read+Write access */` |
-|    1 | 1240 | `		dwAccess \|= GENERIC_WRITE;` |
+|    2 | 1240 | `		dwAccess \|= GENERIC_WRITE;` |
 |    5 | 1241 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
 |    - | 1242 | `		/* Write only access */` |
 |    5 | 1243 | `		dwAccess = GENERIC_WRITE;` |
@@ -1305,34 +1305,34 @@ Coverage: 762/876 lines (86.99%)
 |    - | 1295 | ` * "The system cannot find the file specifi". 0 when there is nothing to say.` |
 |    - | 1296 | ` */` |
 |    - | 1297 | `PH7_PRIVATE unsigned long PH7_WinOpenDirReason(char *zBuf,int nBuf)` |
-|    5 | 1298 | `{` |
-|    5 | 1299 | `	WCHAR *zMsg = 0;` |
+|    3 | 1298 | `{` |
+|    3 | 1299 | `	WCHAR *zMsg = 0;` |
 |    - | 1300 | `	DWORD n;` |
 |    - | 1301 | `	int nOut;` |
-|    5 | 1302 | `	if( dwOpenDirErr == 0 \|\| nBuf < 1 ){` |
+|    3 | 1302 | `	if( dwOpenDirErr == 0 \|\| nBuf < 1 ){` |
 |  ! 0 | 1303 | `		return 0;` |
 |    - | 1304 | `	}` |
-|    5 | 1305 | `	n = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER\|FORMAT_MESSAGE_FROM_SYSTEM\|FORMAT_MESSAGE_IGNORE_INSERTS,` |
+|    3 | 1305 | `	n = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER\|FORMAT_MESSAGE_FROM_SYSTEM\|FORMAT_MESSAGE_IGNORE_INSERTS,` |
 |    - | 1306 | `		0,dwOpenDirErr,MAKELANGID(LANG_NEUTRAL,SUBLANG_NEUTRAL),(LPWSTR)&zMsg,0,0);` |
-|    5 | 1307 | `	zBuf[0] = 0;` |
-|    5 | 1308 | `	if( n > 0 && zMsg ){` |
-|    5 | 1309 | `		while( n > 0 && (zMsg[n-1] == L'\r' \|\| zMsg[n-1] == L'\n' \|\| zMsg[n-1] == L'.') ){` |
-|    5 | 1310 | `			n--;` |
-|    5 | 1311 | `		}` |
-|    5 | 1312 | `		nOut = WideCharToMultiByte(CP_UTF8,0,zMsg,(int)n,zBuf,nBuf-1,0,0);` |
-|    5 | 1313 | `		if( nOut < 0 ){` |
+|    3 | 1307 | `	zBuf[0] = 0;` |
+|    3 | 1308 | `	if( n > 0 && zMsg ){` |
+|    3 | 1309 | `		while( n > 0 && (zMsg[n-1] == L'\r' \|\| zMsg[n-1] == L'\n' \|\| zMsg[n-1] == L'.') ){` |
+|    3 | 1310 | `			n--;` |
+|    3 | 1311 | `		}` |
+|    3 | 1312 | `		nOut = WideCharToMultiByte(CP_UTF8,0,zMsg,(int)n,zBuf,nBuf-1,0,0);` |
+|    3 | 1313 | `		if( nOut < 0 ){` |
 |  ! 0 | 1314 | `			nOut = 0;` |
 |    - | 1315 | `		}` |
-|    5 | 1316 | `		zBuf[nOut] = 0;` |
-|    5 | 1317 | `		if( nOut >= 2 ){` |
-|    5 | 1318 | `			zBuf[nOut-2] = 0;` |
+|    3 | 1316 | `		zBuf[nOut] = 0;` |
+|    3 | 1317 | `		if( nOut >= 2 ){` |
+|    3 | 1318 | `			zBuf[nOut-2] = 0;` |
 |    - | 1319 | `		}` |
 |    - | 1320 | `	}` |
-|    5 | 1321 | `	if( zMsg ){` |
-|    5 | 1322 | `		LocalFree(zMsg);` |
+|    3 | 1321 | `	if( zMsg ){` |
+|    3 | 1322 | `		LocalFree(zMsg);` |
 |    - | 1323 | `	}` |
-|    5 | 1324 | `	return (unsigned long)dwOpenDirErr;` |
-|    5 | 1325 | `}` |
+|    3 | 1324 | `	return (unsigned long)dwOpenDirErr;` |
+|    3 | 1325 | `}` |
 |    - | 1326 | `/* int (*xOpenDir)(const char *,ph7_value *,void **) */` |
 |    - | 1327 | `static int WinDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)` |
 |    5 | 1328 | `{` |
@@ -1370,14 +1370,14 @@ Coverage: 762/876 lines (86.99%)
 |    - | 1360 | `			}` |
 |    5 | 1361 | `			hProbe = FindFirstFileW((LPCWSTR)pConverted,&sProbe);` |
 |    5 | 1362 | `			if( hProbe == INVALID_HANDLE_VALUE ){` |
-|    5 | 1363 | `				dwOpenDirErr = GetLastError();` |
-|    5 | 1364 | `			}else{` |
+|    4 | 1363 | `				dwOpenDirErr = GetLastError();` |
+|    4 | 1364 | `			}else{` |
 |    5 | 1365 | `				FindClose(hProbe);` |
 |    - | 1366 | `			}` |
 |    5 | 1367 | `			HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 | 1368 | `			if( dwOpenDirErr != 0 ){` |
-|    5 | 1369 | `				errno = ENOENT;` |
-|    5 | 1370 | `				return -1;` |
+|    4 | 1369 | `				errno = ENOENT;` |
+|    4 | 1370 | `				return -1;` |
 |    - | 1371 | `			}` |
 |    - | 1372 | `		}` |
 |    - | 1373 | `	}` |
@@ -1471,16 +1471,16 @@ Coverage: 762/876 lines (86.99%)
 |    5 | 1461 | `}` |
 |    - | 1462 | `/* void (*xRewindDir)(void *) */` |
 |    - | 1463 | `static void WinDir_RewindDir(void *pUserData)` |
-|    4 | 1464 | `{` |
-|    4 | 1465 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
-|    4 | 1466 | `	FindClose(pDirInfo->pDirHandle);` |
-|    4 | 1467 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pDirInfo->pPath,&pDirInfo->sInfo);` |
-|    4 | 1468 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
+|    3 | 1464 | `{` |
+|    3 | 1465 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
+|    3 | 1466 | `	FindClose(pDirInfo->pDirHandle);` |
+|    3 | 1467 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pDirInfo->pPath,&pDirInfo->sInfo);` |
+|    3 | 1468 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
 |  ! 0 | 1469 | `		pDirInfo->rc = SXERR_EOF;` |
 |  ! 0 | 1470 | `	}else{` |
-|    4 | 1471 | `		pDirInfo->rc = SXRET_OK;` |
+|    3 | 1471 | `		pDirInfo->rc = SXRET_OK;` |
 |    - | 1472 | `	}` |
-|    4 | 1473 | `}` |
+|    3 | 1473 | `}` |
 |    - | 1474 | `/* ph7_int64 (*xRead)(void *,void *,ph7_int64); */` |
 |    - | 1475 | `static ph7_int64 WinFile_Read(void *pOS,void *pBuffer,ph7_int64 nDatatoRead)` |
 |    5 | 1476 | `{` |
@@ -1526,29 +1526,29 @@ Coverage: 762/876 lines (86.99%)
 |    5 | 1516 | `}` |
 |    - | 1517 | `/* int (*xSeek)(void *,ph7_int64,int) */` |
 |    - | 1518 | `static int WinFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)` |
-|    4 | 1519 | `{` |
-|    4 | 1520 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    3 | 1519 | `{` |
+|    3 | 1520 | `	HANDLE pHandle = (HANDLE)pUserData;` |
 |    - | 1521 | `	DWORD dwMove,dwNew;` |
 |    - | 1522 | `	LONG nHighOfft;` |
-|    4 | 1523 | `	switch(whence){` |
+|    3 | 1523 | `	switch(whence){` |
 |    - | 1524 | `	case 1:/*SEEK_CUR*/` |
-|    1 | 1525 | `		dwMove = FILE_CURRENT;` |
-|    1 | 1526 | `		break;` |
+|    2 | 1525 | `		dwMove = FILE_CURRENT;` |
+|    2 | 1526 | `		break;` |
 |    - | 1527 | `	case 2: /* SEEK_END */` |
-|  ! 0 | 1528 | `		dwMove = FILE_END;` |
-|  ! 0 | 1529 | `		break;` |
+|    1 | 1528 | `		dwMove = FILE_END;` |
+|    1 | 1529 | `		break;` |
 |    - | 1530 | `	case 0: /* SEEK_SET */` |
 |    - | 1531 | `	default:` |
-|    4 | 1532 | `		dwMove = FILE_BEGIN;` |
+|    3 | 1532 | `		dwMove = FILE_BEGIN;` |
 |    - | 1533 | `		break;` |
 |    - | 1534 | `	}` |
-|    4 | 1535 | `	nHighOfft = (LONG)(iOfft >> 32);` |
-|    4 | 1536 | `	dwNew = SetFilePointer(pHandle,(LONG)iOfft,&nHighOfft,dwMove);` |
-|    4 | 1537 | `	if( dwNew == INVALID_SET_FILE_POINTER ){` |
+|    3 | 1535 | `	nHighOfft = (LONG)(iOfft >> 32);` |
+|    3 | 1536 | `	dwNew = SetFilePointer(pHandle,(LONG)iOfft,&nHighOfft,dwMove);` |
+|    3 | 1537 | `	if( dwNew == INVALID_SET_FILE_POINTER ){` |
 |  ! 0 | 1538 | `		return -1;` |
 |    - | 1539 | `	}` |
-|    4 | 1540 | `	return PH7_OK;` |
-|    4 | 1541 | `}` |
+|    3 | 1540 | `	return PH7_OK;` |
+|    3 | 1541 | `}` |
 |    - | 1542 | `/* int (*xLock)(void *,int) — see the lock_type value space in ph7.h */` |
 |    - | 1543 | `static int WinFile_Lock(void *pUserData,int lock_type)` |
 |    1 | 1544 | `{` |

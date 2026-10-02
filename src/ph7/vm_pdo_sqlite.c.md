@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 625/713 lines (87.66%)
+Coverage: 616/713 lines (86.40%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -23,7 +23,7 @@ Coverage: 625/713 lines (87.66%)
 |    - |   13 | ` * sqlite-specific verbs (createFunction, createCollation, setAuthorizer, ...)` |
 |    - |   14 | ` * are declared.  The class library it extends lives in vm_pdo.c.` |
 |    - |   15 | ` *` |
-|    - |   16 | ` * §10's non-deprecated rule is what splits the constants: php still carries` |
+|    - |   16 | ` * the non-deprecated rule is what splits the constants: php still carries` |
 |    - |   17 | `` * `PDO::SQLITE_OPEN_READONLY` and six siblings, all of them reporting`` |
 |    - |   18 | ` * isDeprecated(), and declares the successors here without the prefix.  PHL` |
 |    - |   19 | ` * declares the successors only.  The three OPEN_* values and the three` |
@@ -88,21 +88,21 @@ Coverage: 625/713 lines (87.66%)
 |    - |   78 | ` */` |
 |  162 |   79 | `PH7_PRIVATE sxi32 PH7_PdoSqliteOpen(ph7_context *pCtx,phl_pdo *pConn,const char *zPath,` |
 |    - |   80 | `	int nPath,int iFlags)` |
-|    5 |   81 | `{` |
+|    4 |   81 | `{` |
 |    - |   82 | `	char *zTerm;` |
 |    - |   83 | `	int rc;` |
 |    - |   84 | `	/* sqlite3_open_v2 wants a C string and the DSN slice is not one. */` |
-|  167 |   85 | `	zTerm = (char *)SyMemBackendAlloc(&pConn->pVm->sAllocator,(sxu32)nPath + 1);` |
-|  167 |   86 | `	if( zTerm == 0 ){` |
+|  166 |   85 | `	zTerm = (char *)SyMemBackendAlloc(&pConn->pVm->sAllocator,(sxu32)nPath + 1);` |
+|  166 |   86 | `	if( zTerm == 0 ){` |
 |  ! 0 |   87 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - |   88 | `	}` |
-|  167 |   89 | `	if( nPath > 0 ){` |
-|  165 |   90 | `		SyMemcpy(zPath,zTerm,(sxu32)nPath);` |
+|  166 |   89 | `	if( nPath > 0 ){` |
+|  164 |   90 | `		SyMemcpy(zPath,zTerm,(sxu32)nPath);` |
 |   80 |   91 | `	}` |
-|  167 |   92 | `	zTerm[nPath] = 0;` |
-|  167 |   93 | `	rc = sqlite3_open_v2(zTerm,&pConn->pDb,iFlags,0);` |
-|  167 |   94 | `	SyMemBackendFree(&pConn->pVm->sAllocator,zTerm);` |
-|  167 |   95 | `	if( rc != SQLITE_OK ){` |
+|  166 |   92 | `	zTerm[nPath] = 0;` |
+|  166 |   93 | `	rc = sqlite3_open_v2(zTerm,&pConn->pDb,iFlags,0);` |
+|  166 |   94 | `	SyMemBackendFree(&pConn->pVm->sAllocator,zTerm);` |
+|  166 |   95 | `	if( rc != SQLITE_OK ){` |
 |    - |   96 | `		/* sqlite3_open_v2 hands back a handle even on failure so the message can` |
 |    - |   97 | `		 * be read off it; take the message first, then close. */` |
 |    9 |   98 | `		const char *zMsg = pConn->pDb ? sqlite3_errmsg(pConn->pDb) : sqlite3_errstr(rc);` |
@@ -116,20 +116,20 @@ Coverage: 625/713 lines (87.66%)
 |    9 |  106 | `		PH7_PdoSqliteClose(pConn);` |
 |    9 |  107 | `		return rcThrow;` |
 |    - |  108 | `	}` |
-|  159 |  109 | `	return PH7_OK;` |
-|   86 |  110 | `}` |
+|  158 |  109 | `	return PH7_OK;` |
+|   85 |  110 | `}` |
 |    - |  111 | `/*` |
 |    - |  112 | ` * Close one database.  Every statement this connection prepared must already` |
 |    - |  113 | ` * be finalized (later slices own that); sqlite3_close_v2 is used so a leaked` |
 |    - |  114 | ` * one defers the close rather than leaking the handle itself.` |
 |    - |  115 | ` */` |
 |  286 |  116 | `PH7_PRIVATE void PH7_PdoSqliteClose(phl_pdo *pConn)` |
-|    5 |  117 | `{` |
-|  291 |  118 | `	if( pConn->pDb ){` |
-|  167 |  119 | `		sqlite3_close_v2(pConn->pDb);` |
-|  167 |  120 | `		pConn->pDb = 0;` |
+|    4 |  117 | `{` |
+|  290 |  118 | `	if( pConn->pDb ){` |
+|  166 |  119 | `		sqlite3_close_v2(pConn->pDb);` |
+|  166 |  120 | `		pConn->pDb = 0;` |
 |   81 |  121 | `	}` |
-|  291 |  122 | `}` |
+|  290 |  122 | `}` |
 |    - |  123 |  |
 |    - |  124 | `/*` |
 |    - |  125 | ` * PDO::exec()'s work: prepare, step and finalize every statement the string` |
@@ -140,21 +140,21 @@ Coverage: 625/713 lines (87.66%)
 |    - |  130 | ` * whatever the previous write answered rather than 0.` |
 |    - |  131 | ` */` |
 |  266 |  132 | `PH7_PRIVATE ph7_int64 PH7_PdoSqliteExec(phl_pdo *pConn,const char *zSql,int nSql)` |
-|    5 |  133 | `{` |
-|  271 |  134 | `	const char *zTail = zSql;` |
-|  271 |  135 | `	const char *zEnd = zSql + nSql;` |
-|  271 |  136 | `	if( pConn->pDb == 0 ){` |
+|    4 |  133 | `{` |
+|  270 |  134 | `	const char *zTail = zSql;` |
+|  270 |  135 | `	const char *zEnd = zSql + nSql;` |
+|  270 |  136 | `	if( pConn->pDb == 0 ){` |
 |  ! 0 |  137 | `		return -1;` |
 |    - |  138 | `	}` |
-|  523 |  139 | `	while( zTail < zEnd ){` |
-|  273 |  140 | `		sqlite3_stmt *pStmt = 0;` |
-|  273 |  141 | `		const char *zNext = 0;` |
-|  273 |  142 | `		int rc = sqlite3_prepare_v2(pConn->pDb,zTail,(int)(zEnd - zTail),&pStmt,&zNext);` |
-|  273 |  143 | `		if( rc != SQLITE_OK ){` |
+|  522 |  139 | `	while( zTail < zEnd ){` |
+|  272 |  140 | `		sqlite3_stmt *pStmt = 0;` |
+|  272 |  141 | `		const char *zNext = 0;` |
+|  272 |  142 | `		int rc = sqlite3_prepare_v2(pConn->pDb,zTail,(int)(zEnd - zTail),&pStmt,&zNext);` |
+|  272 |  143 | `		if( rc != SQLITE_OK ){` |
 |   11 |  144 | `			PH7_PdoSqliteTakeError(pConn);` |
 |   14 |  145 | `			return -1;` |
 |    - |  146 | `		}` |
-|  263 |  147 | `		if( pStmt == 0 ){` |
+|  262 |  147 | `		if( pStmt == 0 ){` |
 |    - |  148 | `			/* whitespace or a comment: nothing to run, and php answers the` |
 |    - |  149 | `			 * change count it already had rather than an error */` |
 |    5 |  150 | `			if( zNext == 0 \|\| zNext <= zTail ){` |
@@ -164,18 +164,18 @@ Coverage: 625/713 lines (87.66%)
 |    5 |  154 | `			continue;` |
 |    - |  155 | `		}` |
 |  127 |  156 | `		do{` |
-|  265 |  157 | `			rc = sqlite3_step(pStmt);` |
-|  265 |  158 | `		}while( rc == SQLITE_ROW );` |
-|  259 |  159 | `		if( rc != SQLITE_DONE ){` |
+|  264 |  157 | `			rc = sqlite3_step(pStmt);` |
+|  264 |  158 | `		}while( rc == SQLITE_ROW );` |
+|  258 |  159 | `		if( rc != SQLITE_DONE ){` |
 |    7 |  160 | `			PH7_PdoSqliteTakeError(pConn);` |
 |    7 |  161 | `			sqlite3_finalize(pStmt);` |
 |    7 |  162 | `			return -1;` |
 |    - |  163 | `		}` |
-|  253 |  164 | `		sqlite3_finalize(pStmt);` |
-|  253 |  165 | `		zTail = zNext ? zNext : zEnd;` |
-|    5 |  166 | `	}` |
-|  255 |  167 | `	return (ph7_int64)sqlite3_changes(pConn->pDb);` |
-|  138 |  168 | `}` |
+|  252 |  164 | `		sqlite3_finalize(pStmt);` |
+|  252 |  165 | `		zTail = zNext ? zNext : zEnd;` |
+|    4 |  166 | `	}` |
+|  254 |  167 | `	return (ph7_int64)sqlite3_changes(pConn->pDb);` |
+|  137 |  168 | `}` |
 |   10 |  169 | `PH7_PRIVATE ph7_int64 PH7_PdoSqliteLastInsertId(phl_pdo *pConn)` |
 |    1 |  170 | `{` |
 |   11 |  171 | `	return pConn->pDb ? (ph7_int64)sqlite3_last_insert_rowid(pConn->pDb) : 0;` |
@@ -279,24 +279,24 @@ Coverage: 625/713 lines (87.66%)
 |   13 |  269 | `	return nByte;` |
 |   10 |  270 | `}` |
 |    - |  271 | `/* Close one handle and take it off its connection's chain. */` |
-|    4 |  272 | `PH7_PRIVATE void PH7_PdoSqliteBlobClose(phl_pdo_blob *pBl)` |
+|    6 |  272 | `PH7_PRIVATE void PH7_PdoSqliteBlobClose(phl_pdo_blob *pBl)` |
 |    1 |  273 | `{` |
-|    5 |  274 | `	ph7_vm *pVm = pBl->pVm;` |
-|    5 |  275 | `	if( pBl->pBlob ){` |
-|    5 |  276 | `		sqlite3_blob_close(pBl->pBlob);` |
-|    5 |  277 | `		pBl->pBlob = 0;` |
-|    2 |  278 | `	}` |
-|    5 |  279 | `	if( pBl->pConn ){` |
+|    7 |  274 | `	ph7_vm *pVm = pBl->pVm;` |
+|    7 |  275 | `	if( pBl->pBlob ){` |
+|    7 |  276 | `		sqlite3_blob_close(pBl->pBlob);` |
+|    7 |  277 | `		pBl->pBlob = 0;` |
+|    3 |  278 | `	}` |
+|    7 |  279 | `	if( pBl->pConn ){` |
 |    - |  280 | `		phl_pdo_blob **ppSlot;` |
-|    5 |  281 | `		for( ppSlot = &pBl->pConn->pBlobs ; *ppSlot ; ppSlot = &(*ppSlot)->pNext ){` |
-|    5 |  282 | `			if( *ppSlot == pBl ){` |
-|    5 |  283 | `				*ppSlot = pBl->pNext;` |
-|    5 |  284 | `				break;` |
+|    7 |  281 | `		for( ppSlot = &pBl->pConn->pBlobs ; *ppSlot ; ppSlot = &(*ppSlot)->pNext ){` |
+|    7 |  282 | `			if( *ppSlot == pBl ){` |
+|    7 |  283 | `				*ppSlot = pBl->pNext;` |
+|    7 |  284 | `				break;` |
 |    - |  285 | `			}` |
 |  ! 0 |  286 | `		}` |
-|    2 |  287 | `	}` |
-|    5 |  288 | `	SyMemBackendFree(&pVm->sAllocator,pBl);` |
-|    5 |  289 | `}` |
+|    3 |  287 | `	}` |
+|    7 |  288 | `	SyMemBackendFree(&pVm->sAllocator,pBl);` |
+|    7 |  289 | `}` |
 |    - |  290 | `/*` |
 |    - |  291 | ` * The connection is going: sqlite will not close a database while a blob` |
 |    - |  292 | ` * handle is open, so every handle a script left behind is closed here and cut` |
@@ -304,20 +304,20 @@ Coverage: 625/713 lines (87.66%)
 |    - |  294 | ` * and answer empty from now on.` |
 |    - |  295 | ` */` |
 |  278 |  296 | `PH7_PRIVATE void PH7_PdoSqliteBlobSweep(phl_pdo *pConn)` |
-|    5 |  297 | `{` |
-|  283 |  298 | `	phl_pdo_blob *pBl = pConn->pBlobs;` |
-|  285 |  299 | `	while( pBl ){` |
-|    3 |  300 | `		phl_pdo_blob *pNext = pBl->pNext;` |
-|    3 |  301 | `		if( pBl->pBlob ){` |
-|    3 |  302 | `			sqlite3_blob_close(pBl->pBlob);` |
-|    3 |  303 | `			pBl->pBlob = 0;` |
-|    1 |  304 | `		}` |
-|    3 |  305 | `		pBl->pConn = 0;` |
-|    3 |  306 | `		pBl->pNext = 0;` |
-|    3 |  307 | `		pBl = pNext;` |
-|    1 |  308 | `	}` |
-|  283 |  309 | `	pConn->pBlobs = 0;` |
-|  283 |  310 | `}` |
+|    4 |  297 | `{` |
+|  282 |  298 | `	phl_pdo_blob *pBl = pConn->pBlobs;` |
+|  282 |  299 | `	while( pBl ){` |
+|  ! 0 |  300 | `		phl_pdo_blob *pNext = pBl->pNext;` |
+|  ! 0 |  301 | `		if( pBl->pBlob ){` |
+|  ! 0 |  302 | `			sqlite3_blob_close(pBl->pBlob);` |
+|  ! 0 |  303 | `			pBl->pBlob = 0;` |
+|  ! 0 |  304 | `		}` |
+|  ! 0 |  305 | `		pBl->pConn = 0;` |
+|  ! 0 |  306 | `		pBl->pNext = 0;` |
+|  ! 0 |  307 | `		pBl = pNext;` |
+|  ! 0 |  308 | `	}` |
+|  282 |  309 | `	pConn->pBlobs = 0;` |
+|  282 |  310 | `}` |
 |    2 |  311 | `PH7_PRIVATE void PH7_PdoSqliteExtendedCodes(phl_pdo *pConn,int bOn)` |
 |    1 |  312 | `{` |
 |    3 |  313 | `	if( pConn->pDb ){` |
@@ -334,13 +334,13 @@ Coverage: 625/713 lines (87.66%)
 |    - |  324 | ` * not executed.` |
 |    - |  325 | ` */` |
 |  930 |  326 | `PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql)` |
-|    4 |  327 | `{` |
+|    3 |  327 | `{` |
 |    - |  328 | `	int rc;` |
-|  934 |  329 | `	if( pSt->pConn->pDb == 0 ){` |
+|  933 |  329 | `	if( pSt->pConn->pDb == 0 ){` |
 |  ! 0 |  330 | `		return 0;` |
 |    - |  331 | `	}` |
-|  934 |  332 | `	rc = sqlite3_prepare_v2(pSt->pConn->pDb,zSql,nSql,&pSt->pStmt,0);` |
-|  934 |  333 | `	if( rc != SQLITE_OK \|\| pSt->pStmt == 0 ){` |
+|  933 |  332 | `	rc = sqlite3_prepare_v2(pSt->pConn->pDb,zSql,nSql,&pSt->pStmt,0);` |
+|  933 |  333 | `	if( rc != SQLITE_OK \|\| pSt->pStmt == 0 ){` |
 |    9 |  334 | `		PH7_PdoSqliteTakeError(pSt->pConn);` |
 |    9 |  335 | `		if( pSt->pStmt ){` |
 |  ! 0 |  336 | `			sqlite3_finalize(pSt->pStmt);` |
@@ -348,39 +348,39 @@ Coverage: 625/713 lines (87.66%)
 |  ! 0 |  338 | `		}` |
 |    9 |  339 | `		return 0;` |
 |    - |  340 | `	}` |
-|  926 |  341 | `	return 1;` |
-|  469 |  342 | `}` |
+|  925 |  341 | `	return 1;` |
+|  468 |  342 | `}` |
 |    - |  343 | `/*` |
 |    - |  344 | ` * One step of the cursor: 1 when a row is available, 0 when the walk is over,` |
 |    - |  345 | ` * -1 on failure (with the connection's error set).` |
 |    - |  346 | ` */` |
 | 1478 |  347 | `PH7_PRIVATE int PH7_PdoSqliteStep(phl_pdo_stmt *pSt)` |
-|    4 |  348 | `{` |
+|    3 |  348 | `{` |
 |    - |  349 | `	int rc;` |
-| 1482 |  350 | `	if( pSt->pStmt == 0 ){` |
+| 1481 |  350 | `	if( pSt->pStmt == 0 ){` |
 |  ! 0 |  351 | `		return 0;` |
 |    - |  352 | `	}` |
-| 1482 |  353 | `	rc = sqlite3_step(pSt->pStmt);` |
-| 1482 |  354 | `	if( rc == SQLITE_ROW ){` |
-| 1210 |  355 | `		return 1;` |
+| 1481 |  353 | `	rc = sqlite3_step(pSt->pStmt);` |
+| 1481 |  354 | `	if( rc == SQLITE_ROW ){` |
+| 1209 |  355 | `		return 1;` |
 |    - |  356 | `	}` |
 |  274 |  357 | `	if( rc == SQLITE_DONE ){` |
 |  270 |  358 | `		return 0;` |
 |    - |  359 | `	}` |
 |    5 |  360 | `	PH7_PdoSqliteTakeError(pSt->pConn);` |
 |    5 |  361 | `	return -1;` |
-|  743 |  362 | `}` |
+|  742 |  362 | `}` |
 | 1846 |  363 | `PH7_PRIVATE void PH7_PdoSqliteFinalize(phl_pdo_stmt *pSt)` |
-|    4 |  364 | `{` |
-| 1850 |  365 | `	if( pSt->pStmt ){` |
-|  926 |  366 | `		sqlite3_finalize(pSt->pStmt);` |
-|  926 |  367 | `		pSt->pStmt = 0;` |
+|    3 |  364 | `{` |
+| 1849 |  365 | `	if( pSt->pStmt ){` |
+|  925 |  366 | `		sqlite3_finalize(pSt->pStmt);` |
+|  925 |  367 | `		pSt->pStmt = 0;` |
 |  461 |  368 | `	}` |
-| 1850 |  369 | `}` |
+| 1849 |  369 | `}` |
 | 2048 |  370 | `PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt)` |
-|    4 |  371 | `{` |
-| 2052 |  372 | `	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;` |
-|    4 |  373 | `}` |
+|    3 |  371 | `{` |
+| 2051 |  372 | `	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;` |
+|    3 |  373 | `}` |
 |    - |  374 | `/*` |
 |    - |  375 | ` * Rewind a statement so it can run again.  The bindings go too: php re-binds` |
 |    - |  376 | ` * everything on every execute(), so a value bound for the previous run must` |
@@ -1091,7 +1091,7 @@ Coverage: 625/713 lines (87.66%)
 |    - | 1081 | `` * after PH7_VmInstallPdo -- `Pdo\Sqlite` extends PDO, so the parent must`` |
 |    - | 1082 | ` * already be mounted.` |
 |    - | 1083 | ` */` |
-| 6721 | 1084 | `PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm)` |
+| 7925 | 1084 | `PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm)` |
 |    5 | 1085 | `{` |
 |    - | 1086 | `#define PDO_SQLITE_INT_CONST(NAME,VALUE) \` |
 |    - | 1087 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (ph7_int64)(VALUE), 0, 0.0 }` |
@@ -1150,7 +1150,7 @@ Coverage: 625/713 lines (87.66%)
 |    - | 1140 | `		0, 0, 0` |
 |    - | 1141 | `	};` |
 |    - | 1142 | `#undef PDO_SQLITE_INT_CONST` |
-| 6726 | 1143 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+| 7930 | 1143 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |    5 | 1144 | `}` |
 |    - | 1145 |  |
 |    - | 1146 | `#else` |

@@ -297,11 +297,11 @@ Coverage: 111/162 lines (68.52%)
 |      - |  287 | ` * blob, which is about to be freed with the allocator; a Windows one holds an` |
 |      - |  288 | ` * event-source handle the process would otherwise leak.` |
 |      - |  289 | ` */` |
-|   5629 |  290 | `PH7_PRIVATE void PH7_SyslogVmRelease(ph7_vm *pVm)` |
+|   6701 |  290 | `PH7_PRIVATE void PH7_SyslogVmRelease(ph7_vm *pVm)` |
 |      5 |  291 | `{` |
-|   5634 |  292 | `	syslog_state *pS = (syslog_state *)pVm->pSyslog;` |
-|   5634 |  293 | `	if( pS == 0 ){` |
-|   5633 |  294 | `		return;` |
+|   6706 |  292 | `	syslog_state *pS = (syslog_state *)pVm->pSyslog;` |
+|   6706 |  293 | `	if( pS == 0 ){` |
+|   6705 |  294 | `		return;` |
 |      - |  295 | `	}` |
 |      1 |  296 | `	if( pS->bOpen ){` |
 |    ! 0 |  297 | `		SyslogClose(pVm);` |
@@ -309,7 +309,7 @@ Coverage: 111/162 lines (68.52%)
 |      1 |  299 | `	SyBlobRelease(&pS->sIdent);` |
 |      1 |  300 | `	pVm->pSyslog = 0;` |
 |      1 |  301 | `	SyMemBackendFree(&pVm->sAllocator,pS);` |
-|   2815 |  302 | `}` |
+|   3350 |  302 | `}` |
 |      - |  303 |  |
 |      - |  304 | `/* --- The three functions -------------------------------------------------- */` |
 |      - |  305 |  |
@@ -428,18 +428,18 @@ Coverage: 111/162 lines (68.52%)
 |      - |  418 | `	{ "LOG_NOWAIT",   PH7_LOG_NOWAIT },` |
 |      - |  419 | `	{ "LOG_PERROR",   PH7_LOG_PERROR },` |
 |      - |  420 | `};` |
-|   2339 |  421 | `static void SyslogConstExpand(ph7_value *pVal,void *pUserData)` |
+|   2405 |  421 | `static void SyslogConstExpand(ph7_value *pVal,void *pUserData)` |
 |      3 |  422 | `{` |
-|   2342 |  423 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
-|   2342 |  424 | `}` |
-|   5619 |  425 | `PH7_PRIVATE void PH7_RegisterSyslogConstants(ph7_vm *pVm)` |
+|   2408 |  423 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
+|   2408 |  424 | `}` |
+|   6691 |  425 | `PH7_PRIVATE void PH7_RegisterSyslogConstants(ph7_vm *pVm)` |
 |      5 |  426 | `{` |
 |      - |  427 | `	sxu32 n;` |
-| 191051 |  428 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSyslogConst) ; ++n ){` |
-| 277997 |  429 | `		ph7_create_constant(&(*pVm),aSyslogConst[n].zName,SyslogConstExpand,` |
-| 185427 |  430 | `			SX_INT_TO_PTR(aSyslogConst[n].iValue));` |
-|  92570 |  431 | `	}` |
-|   5624 |  432 | `}` |
+| 227499 |  428 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSyslogConst) ; ++n ){` |
+| 331028 |  429 | `		ph7_create_constant(&(*pVm),aSyslogConst[n].zName,SyslogConstExpand,` |
+| 220803 |  430 | `			SX_INT_TO_PTR(aSyslogConst[n].iValue));` |
+| 110225 |  431 | `	}` |
+|   6696 |  432 | `}` |
 |      - |  433 | `#else /* PH7_DISABLE_BUILTIN_FUNC */` |
 |      - |  434 | `PH7_PRIVATE void PH7_SyslogVmRelease(ph7_vm *pVm)` |
 |      - |  435 | `{` |

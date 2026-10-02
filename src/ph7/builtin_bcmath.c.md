@@ -1700,7 +1700,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 1690 | `` *     ordinary `Unsupported operand types`.`` |
 |      - | 1691 | ` *` |
 |      - | 1692 | `` * php reaches its `int` arm for a FLOAT operand through an implicit conversion`` |
-|      - | 1693 | ` * it DEPRECATES when precision is lost. §10 refuses that: an integral float` |
+|      - | 1693 | ` * it DEPRECATES when precision is lost. The scope policy refuses that: an integral float` |
 |      - | 1694 | ` * converts (2.0 is 2), and every other one -- 1.5, NAN, INF, 1e20 -- is the` |
 |      - | 1695 | ` * TypeError php itself raises for the three it cannot convert either.` |
 |      - | 1696 | ` */` |
@@ -1777,7 +1777,7 @@ Coverage: 1514/1695 lines (89.32%)
 |    420 | 1767 | `	}else if( (pVal->iFlags & MEMOBJ_REAL) != 0 ){` |
 |      - | 1768 | `#ifndef PH7_OMIT_FLOATING_POINT` |
 |      - | 1769 | ``		/* php's `int` arm, reached by an implicit conversion it deprecates when`` |
-|      - | 1770 | `		 * anything is lost. An integral float in range converts; §10 refuses the` |
+|      - | 1770 | `		 * anything is lost. An integral float in range converts; the scope policy refuses the` |
 |      - | 1771 | `		 * rest, which is also what php does with NAN, INF and 1e20. */` |
 |     43 | 1772 | `		double d = (double)pVal->rVal;` |
 |     43 | 1773 | `		if( PH7_RealFitsInt64(d) && d == (double)(sxi64)d ){` |
@@ -2059,7 +2059,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2049 | ` * NULL and BOOL are left alone on purpose -- php decides those pairs BEFORE it` |
 |      - | 2050 | `` * asks a handler, by converting both sides to bool, so `$n == true` is true for`` |
 |      - | 2051 | ` * every Number including zero. A FLOAT reaches php's int arm through the same` |
-|      - | 2052 | ` * deprecated conversion the arithmetic uses; §10 refuses it, and the refusal's` |
+|      - | 2052 | ` * deprecated conversion the arithmetic uses; the scope policy refuses it, and the refusal's` |
 |      - | 2053 | ` * shape in a comparison (which cannot throw) is php's own UNCOMPARABLE -- 1 from` |
 |      - | 2054 | `` * either side, which leaves `==` false and every relational false.`` |
 |      - | 2055 | ` */` |
@@ -2087,7 +2087,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      5 | 2077 | `			pOther = 0;   /* php's own rule decides these */` |
 |     41 | 2078 | `		}else if( pOther && (pOther->iFlags & MEMOBJ_REAL) != 0` |
 |     29 | 2079 | `		       && (pOther->iFlags & MEMOBJ_OBJ) == 0 ){` |
-|      - | 2080 | `			/* A float: convertible only when nothing is lost (§10). Either way the` |
+|      - | 2080 | `			/* A float: convertible only when nothing is lost (the scope policy). Either way the` |
 |      - | 2081 | `			 * pair is ANSWERED here, so no cast-the-object rule runs behind it. */` |
 |     17 | 2082 | `			pCtx->bAnswered = 1;` |
 |     16 | 2083 | `			if( BcNumberOperand(pVm,pOther,&sB,&zClass,zMsg,(int)sizeof(zMsg),` |
@@ -2119,7 +2119,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2109 | ` * BcMath\Number::__construct(string\|int $num)` |
 |      - | 2110 | ` *` |
 |      - | 2111 | `` * The type screen is hand-rolled (the row carries `~`) for one reason: php`` |
-|      - | 2112 | `` * reaches the `int` arm for a FLOAT through the conversion §10 refuses, and a`` |
+|      - | 2112 | `` * reaches the `int` arm for a FLOAT through the conversion the scope policy refuses, and a`` |
 |      - | 2113 | `` * declared `string\|int` would quietly take the string arm instead --`` |
 |      - | 2114 | `` * `new Number(1.5)` would be '1.5' where php answers '1'.`` |
 |      - | 2115 | ` */` |
@@ -2572,7 +2572,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2562 | `/*` |
 |      - | 2563 | ` * Declare BcMath\Number.` |
 |      - | 2564 | ` */` |
-|   6721 | 2565 | `PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm)` |
+|   7925 | 2565 | `PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm)` |
 |      5 | 2566 | `{` |
 |      - | 2567 | `	static const PH7_NativePropDef aProp[] = {` |
 |      - | 2568 | `		{ "value", PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
@@ -2583,7 +2583,7 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2573 | `	static const PH7_NativeMethodDef aMethod[] = {` |
 |      - | 2574 | ``		/* `~` on the first parameter of every one of these: php's stub declares a`` |
 |      - | 2575 | `		 * UNION and its refusal words a different one ("int, string, or"), and the` |
-|      - | 2576 | `		 * float arm is the conversion §10 refuses -- both of which the generic` |
+|      - | 2576 | `		 * float arm is the conversion the scope policy refuses -- both of which the generic` |
 |      - | 2577 | `		 * screen cannot express, so each body raises its own. */` |
 |      - | 2578 | `		{ "__construct", PH7_MOD_PUBLIC, "~string\|int $num", 0,` |
 |      - | 2579 | `		  vm_builtin_BcNumber_construct },` |
@@ -2625,19 +2625,19 @@ Coverage: 1514/1695 lines (89.32%)
 |      - | 2615 | `		aProp, SX_ARRAYSIZE(aProp),` |
 |      - | 2616 | `		0, 0, 0` |
 |      - | 2617 | `	};` |
-|   6726 | 2618 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
-|   6726 | 2619 | `	if( rc != SXRET_OK ){` |
+|   7930 | 2618 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|   7930 | 2619 | `	if( rc != SXRET_OK ){` |
 |    ! 0 | 2620 | `		return rc;` |
 |      - | 2621 | `	}` |
 |      - | 2622 | `	/* php builds both properties out of its own struct rather than storing them,` |
 |      - | 2623 | ``	 * which is what `virtual` reports and what keeps the object comparator off`` |
 |      - | 2624 | `	 * them -- the compare handler below decides every pair. */` |
-|   6726 | 2625 | `	PH7_NativeClassMarkVirtualProps(&(*pVm),BC_NUMBER_CLASS);` |
-|   6726 | 2626 | `	PH7_NativeClassInstallCmpHook(&(*pVm),BC_NUMBER_CLASS,BcNumberCmp);` |
-|   6726 | 2627 | `	PH7_NativeClassInstallBoolHook(&(*pVm),BC_NUMBER_CLASS,BcNumberBool);` |
-|   6726 | 2628 | `	PH7_NativeClassInstallArithHook(&(*pVm),BC_NUMBER_CLASS,BcNumberArith);` |
-|   6726 | 2629 | `	return SXRET_OK;` |
-|   3361 | 2630 | `}` |
+|   7930 | 2625 | `	PH7_NativeClassMarkVirtualProps(&(*pVm),BC_NUMBER_CLASS);` |
+|   7930 | 2626 | `	PH7_NativeClassInstallCmpHook(&(*pVm),BC_NUMBER_CLASS,BcNumberCmp);` |
+|   7930 | 2627 | `	PH7_NativeClassInstallBoolHook(&(*pVm),BC_NUMBER_CLASS,BcNumberBool);` |
+|   7930 | 2628 | `	PH7_NativeClassInstallArithHook(&(*pVm),BC_NUMBER_CLASS,BcNumberArith);` |
+|   7930 | 2629 | `	return SXRET_OK;` |
+|   3962 | 2630 | `}` |
 |      - | 2631 | `#else` |
 |      - | 2632 | `/* The tiny build has no bc* functions, so it has no class for them either. */` |
 |      - | 2633 | `PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm){ SXUNUSED(pVm); return SXRET_OK; }` |

@@ -46,25 +46,25 @@ Coverage: 1221/1679 lines (72.72%)
 |    - |   36 | `/* ------------------------------------------------------------------------` |
 |    - |   37 | ` * Reading a certificate or a request out of an argument` |
 |    - |   38 | ` * ------------------------------------------------------------------------ */` |
-|   32 |   39 | `static X509 * SslCertFromBytes(const char *zData,int nData)` |
+|   38 |   39 | `static X509 * SslCertFromBytes(const char *zData,int nData)` |
 |    1 |   40 | `{` |
 |    - |   41 | `	BIO *pBio;` |
 |    - |   42 | `	X509 *pCert;` |
-|   33 |   43 | `	if( nData < 1 ){` |
+|   39 |   43 | `	if( nData < 1 ){` |
 |  ! 0 |   44 | `		return 0;` |
 |    - |   45 | `	}` |
-|   33 |   46 | `	pBio = BIO_new_mem_buf(zData,nData);` |
-|   33 |   47 | `	if( pBio == 0 ){` |
+|   39 |   46 | `	pBio = BIO_new_mem_buf(zData,nData);` |
+|   39 |   47 | `	if( pBio == 0 ){` |
 |  ! 0 |   48 | `		return 0;` |
 |    - |   49 | `	}` |
 |    - |   50 | `	/* PEM ONLY, and that is php's contract rather than a shortcut: a string` |
 |    - |   51 | ``	 * holding a DER certificate is `error:0480006C:PEM routines::no start`` |
 |    - |   52 | ``	 * line` and false under php too. DER reaches these doors through a`` |
 |    - |   53 | ``	 * `file://` path, which OpenSSL's own reader sniffs. */`` |
-|   33 |   54 | `	pCert = PEM_read_bio_X509(pBio,0,0,0);` |
-|   33 |   55 | `	BIO_free(pBio);` |
-|   33 |   56 | `	return pCert;` |
-|   17 |   57 | `}` |
+|   39 |   54 | `	pCert = PEM_read_bio_X509(pBio,0,0,0);` |
+|   39 |   55 | `	BIO_free(pBio);` |
+|   39 |   56 | `	return pCert;` |
+|   20 |   57 | `}` |
 |   10 |   58 | `static X509_REQ * SslCsrFromBytes(const char *zData,int nData)` |
 |    1 |   59 | `{` |
 |    - |   60 | `	BIO *pBio;` |
@@ -91,50 +91,50 @@ Coverage: 1221/1679 lines (72.72%)
 |    - |   81 | `` * parse, while `openssl_x509_parse`, `check_private_key`, `verify`,`` |
 |    - |   82 | `` * `checkpurpose` and both ENCRYPT doors answer false or -1 in silence.`` |
 |    - |   83 | ` */` |
-|   82 |   84 | `static X509 * SslCertOfValue(ph7_context *pCtx,ph7_value *pVal,int *pbOwn,int bWarn)` |
+|  106 |   84 | `static X509 * SslCertOfValue(ph7_context *pCtx,ph7_value *pVal,int *pbOwn,int bWarn)` |
 |    1 |   85 | `{` |
 |    - |   86 | `	SyBlob sFile;` |
-|   83 |   87 | `	const char *zData = 0;` |
-|   83 |   88 | `	X509 *pCert = 0;` |
-|   83 |   89 | `	int nData = 0;` |
-|   83 |   90 | `	*pbOwn = 0;` |
-|   83 |   91 | `	if( pVal == 0 ){` |
+|  107 |   87 | `	const char *zData = 0;` |
+|  107 |   88 | `	X509 *pCert = 0;` |
+|  107 |   89 | `	int nData = 0;` |
+|  107 |   90 | `	*pbOwn = 0;` |
+|  107 |   91 | `	if( pVal == 0 ){` |
 |  ! 0 |   92 | `		return 0;` |
 |    - |   93 | `	}` |
-|   83 |   94 | `	if( ph7_value_is_object(pVal) ){` |
-|   51 |   95 | `		return (X509 *)PH7_SslHandleOf(pVal,PHL_SSL_KIND_CERT);` |
+|  107 |   94 | `	if( ph7_value_is_object(pVal) ){` |
+|   69 |   95 | `		return (X509 *)PH7_SslHandleOf(pVal,PHL_SSL_KIND_CERT);` |
 |    - |   96 | `	}` |
-|   33 |   97 | `	if( !ph7_value_is_string(pVal) ){` |
+|   39 |   97 | `	if( !ph7_value_is_string(pVal) ){` |
 |  ! 0 |   98 | `		return 0;` |
 |    - |   99 | `	}` |
-|   33 |  100 | `	SyBlobInit(&sFile,&pCtx->pVm->sAllocator);` |
-|   33 |  101 | `	if( PH7_SslBytesOfValue(pCtx,pVal,&sFile,&zData,&nData) == 0 ){` |
-|   33 |  102 | `		pCert = SslCertFromBytes(zData,nData);` |
-|   16 |  103 | `	}` |
-|   33 |  104 | `	SyBlobRelease(&sFile);` |
-|   33 |  105 | `	if( pCert ){` |
-|    9 |  106 | `		*pbOwn = 1;` |
-|    5 |  107 | `	}else{` |
+|   39 |  100 | `	SyBlobInit(&sFile,&pCtx->pVm->sAllocator);` |
+|   39 |  101 | `	if( PH7_SslBytesOfValue(pCtx,pVal,&sFile,&zData,&nData) == 0 ){` |
+|   39 |  102 | `		pCert = SslCertFromBytes(zData,nData);` |
+|   19 |  103 | `	}` |
+|   39 |  104 | `	SyBlobRelease(&sFile);` |
+|   39 |  105 | `	if( pCert ){` |
+|   15 |  106 | `		*pbOwn = 1;` |
+|    8 |  107 | `	}else{` |
 |   25 |  108 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |   25 |  109 | `		if( bWarn ){` |
 |   17 |  110 | `			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |    - |  111 | `				"X.509 Certificate cannot be retrieved");` |
 |    8 |  112 | `		}` |
 |    - |  113 | `	}` |
-|   33 |  114 | `	return pCert;` |
-|   42 |  115 | `}` |
-|   28 |  116 | `static X509_REQ * SslCsrOfValue(ph7_context *pCtx,ph7_value *pVal,int *pbOwn,int bWarn)` |
+|   39 |  114 | `	return pCert;` |
+|   54 |  115 | `}` |
+|   38 |  116 | `static X509_REQ * SslCsrOfValue(ph7_context *pCtx,ph7_value *pVal,int *pbOwn,int bWarn)` |
 |    1 |  117 | `{` |
 |    - |  118 | `	SyBlob sFile;` |
-|   29 |  119 | `	const char *zData = 0;` |
-|   29 |  120 | `	X509_REQ *pReq = 0;` |
-|   29 |  121 | `	int nData = 0;` |
-|   29 |  122 | `	*pbOwn = 0;` |
-|   29 |  123 | `	if( pVal == 0 ){` |
+|   39 |  119 | `	const char *zData = 0;` |
+|   39 |  120 | `	X509_REQ *pReq = 0;` |
+|   39 |  121 | `	int nData = 0;` |
+|   39 |  122 | `	*pbOwn = 0;` |
+|   39 |  123 | `	if( pVal == 0 ){` |
 |  ! 0 |  124 | `		return 0;` |
 |    - |  125 | `	}` |
-|   29 |  126 | `	if( ph7_value_is_object(pVal) ){` |
-|   19 |  127 | `		return (X509_REQ *)PH7_SslHandleOf(pVal,PHL_SSL_KIND_CSR);` |
+|   39 |  126 | `	if( ph7_value_is_object(pVal) ){` |
+|   29 |  127 | `		return (X509_REQ *)PH7_SslHandleOf(pVal,PHL_SSL_KIND_CSR);` |
 |    - |  128 | `	}` |
 |   11 |  129 | `	if( !ph7_value_is_string(pVal) ){` |
 |  ! 0 |  130 | `		return 0;` |
@@ -154,19 +154,19 @@ Coverage: 1221/1679 lines (72.72%)
 |    2 |  144 | `		}` |
 |    - |  145 | `	}` |
 |   11 |  146 | `	return pReq;` |
-|   15 |  147 | `}` |
-|   60 |  148 | `static void SslFreeCert(X509 *pCert,int bOwn)` |
+|   20 |  147 | `}` |
+|   94 |  148 | `static void SslFreeCert(X509 *pCert,int bOwn)` |
 |    1 |  149 | `{` |
-|   61 |  150 | `	if( pCert && bOwn ){` |
-|    7 |  151 | `		X509_free(pCert);` |
-|    3 |  152 | `	}` |
-|   61 |  153 | `}` |
-|   22 |  154 | `static void SslFreeCsr(X509_REQ *pReq,int bOwn)` |
+|   95 |  150 | `	if( pCert && bOwn ){` |
+|   13 |  151 | `		X509_free(pCert);` |
+|    6 |  152 | `	}` |
+|   95 |  153 | `}` |
+|   32 |  154 | `static void SslFreeCsr(X509_REQ *pReq,int bOwn)` |
 |    1 |  155 | `{` |
-|   23 |  156 | `	if( pReq && bOwn ){` |
+|   33 |  156 | `	if( pReq && bOwn ){` |
 |    3 |  157 | `		X509_REQ_free(pReq);` |
 |    1 |  158 | `	}` |
-|   23 |  159 | `}` |
+|   33 |  159 | `}` |
 |    - |  160 |  |
 |    - |  161 | `/* ------------------------------------------------------------------------` |
 |    - |  162 | ` * A distinguished name as php's array` |
@@ -177,40 +177,40 @@ Coverage: 1221/1679 lines (72.72%)
 |    - |  167 | `` * of every value in order. `$parsed['subject']['OU']` is therefore a string`` |
 |    - |  168 | ` * for one organizational unit and a list for two.` |
 |    - |  169 | ` */` |
-|   32 |  170 | `static void SslNameToArray(ph7_context *pCtx,X509_NAME *pName,int bShort,ph7_value *pArray)` |
+|   36 |  170 | `static void SslNameToArray(ph7_context *pCtx,X509_NAME *pName,int bShort,ph7_value *pArray)` |
 |    1 |  171 | `{` |
-|   33 |  172 | `	ph7_value *pVal = ph7_context_new_scalar(pCtx);` |
-|   33 |  173 | `	ph7_value *pKeep = ph7_context_new_scalar(pCtx);` |
-|   33 |  174 | `	ph7_value *pList = 0;` |
+|   37 |  172 | `	ph7_value *pVal = ph7_context_new_scalar(pCtx);` |
+|   37 |  173 | `	ph7_value *pKeep = ph7_context_new_scalar(pCtx);` |
+|   37 |  174 | `	ph7_value *pList = 0;` |
 |    - |  175 | `	int i,n;` |
-|   33 |  176 | `	if( pName == 0 \|\| pVal == 0 \|\| pKeep == 0 ){` |
+|   37 |  176 | `	if( pName == 0 \|\| pVal == 0 \|\| pKeep == 0 ){` |
 |  ! 0 |  177 | `		return;` |
 |    - |  178 | `	}` |
-|   33 |  179 | `	n = X509_NAME_entry_count(pName);` |
-|  191 |  180 | `	for( i = 0 ; i < n ; ++i ){` |
-|  159 |  181 | `		X509_NAME_ENTRY *pEntry = X509_NAME_get_entry(pName,i);` |
-|  159 |  182 | `		ASN1_OBJECT *pObj = X509_NAME_ENTRY_get_object(pEntry);` |
-|  159 |  183 | `		ASN1_STRING *pStr = X509_NAME_ENTRY_get_data(pEntry);` |
-|  159 |  184 | `		int nid = OBJ_obj2nid(pObj);` |
+|   37 |  179 | `	n = X509_NAME_entry_count(pName);` |
+|  211 |  180 | `	for( i = 0 ; i < n ; ++i ){` |
+|  175 |  181 | `		X509_NAME_ENTRY *pEntry = X509_NAME_get_entry(pName,i);` |
+|  175 |  182 | `		ASN1_OBJECT *pObj = X509_NAME_ENTRY_get_object(pEntry);` |
+|  175 |  183 | `		ASN1_STRING *pStr = X509_NAME_ENTRY_get_data(pEntry);` |
+|  175 |  184 | `		int nid = OBJ_obj2nid(pObj);` |
 |    - |  185 | `		const char *zKey;` |
 |    - |  186 | `		char zBuf[256];` |
 |    - |  187 | `		ph7_value *pOld;` |
-|  159 |  188 | `		if( nid != NID_undef ){` |
-|  159 |  189 | `			zKey = bShort ? OBJ_nid2sn(nid) : OBJ_nid2ln(nid);` |
-|   80 |  190 | `		}else{` |
+|  175 |  188 | `		if( nid != NID_undef ){` |
+|  175 |  189 | `			zKey = bShort ? OBJ_nid2sn(nid) : OBJ_nid2ln(nid);` |
+|   88 |  190 | `		}else{` |
 |  ! 0 |  191 | `			OBJ_obj2txt(zBuf,(int)sizeof(zBuf),pObj,1);` |
 |  ! 0 |  192 | `			zKey = zBuf;` |
 |    - |  193 | `		}` |
-|  159 |  194 | `		if( zKey == 0 ){` |
+|  175 |  194 | `		if( zKey == 0 ){` |
 |  ! 0 |  195 | `			continue;` |
 |    - |  196 | `		}` |
-|  159 |  197 | `		pOld = ph7_array_fetch(pArray,zKey,-1);` |
-|  159 |  198 | `		if( pOld == 0 ){` |
-|  238 |  199 | `			ph7_value_string(pVal,(const char *)ASN1_STRING_get0_data(pStr),` |
-|   79 |  200 | `				ASN1_STRING_length(pStr));` |
-|  159 |  201 | `			ph7_array_add_strkey_elem(pArray,zKey,pVal);` |
-|  159 |  202 | `			ph7_value_reset_string_cursor(pVal);` |
-|  159 |  203 | `			continue;` |
+|  175 |  197 | `		pOld = ph7_array_fetch(pArray,zKey,-1);` |
+|  175 |  198 | `		if( pOld == 0 ){` |
+|  262 |  199 | `			ph7_value_string(pVal,(const char *)ASN1_STRING_get0_data(pStr),` |
+|   87 |  200 | `				ASN1_STRING_length(pStr));` |
+|  175 |  201 | `			ph7_array_add_strkey_elem(pArray,zKey,pVal);` |
+|  175 |  202 | `			ph7_value_reset_string_cursor(pVal);` |
+|  175 |  203 | `			continue;` |
 |    - |  204 | `		}` |
 |    - |  205 | `		/* A second value under the same name: php replaces the string with a` |
 |    - |  206 | `		 * list holding both, and appends to that list from then on. */` |
@@ -244,7 +244,7 @@ Coverage: 1221/1679 lines (72.72%)
 |  ! 0 |  234 | `		ph7_value_reset_string_cursor(pVal);` |
 |  ! 0 |  235 | `		ph7_array_add_strkey_elem(pArray,zKey,pList);` |
 |  ! 0 |  236 | `	}` |
-|   17 |  237 | `}` |
+|   19 |  237 | `}` |
 |    - |  238 | `/*` |
 |    - |  239 | ` * An ASN.1 time, both ways php reports it: the RAW string the certificate` |
 |    - |  240 | ` * carries ("260824120000Z"), and the epoch second it means. The conversion is` |
@@ -252,182 +252,182 @@ Coverage: 1221/1679 lines (72.72%)
 |    - |  242 | ` * which Windows does not have -- and which would answer the LOCAL zone through` |
 |    - |  243 | ` * mktime() if it were substituted.` |
 |    - |  244 | ` */` |
-|   24 |  245 | `static sxi64 SslAsn1TimeToEpoch(const ASN1_TIME *pTime)` |
+|   28 |  245 | `static sxi64 SslAsn1TimeToEpoch(const ASN1_TIME *pTime)` |
 |    1 |  246 | `{` |
 |    - |  247 | `	struct tm sTm;` |
-|   25 |  248 | `	if( pTime == 0 ){` |
+|   29 |  248 | `	if( pTime == 0 ){` |
 |  ! 0 |  249 | `		return 0;` |
 |    - |  250 | `	}` |
-|   25 |  251 | `	SyZero(&sTm,sizeof(sTm));` |
-|   25 |  252 | `	if( ASN1_TIME_to_tm(pTime,&sTm) != 1 ){` |
+|   29 |  251 | `	SyZero(&sTm,sizeof(sTm));` |
+|   29 |  252 | `	if( ASN1_TIME_to_tm(pTime,&sTm) != 1 ){` |
 |  ! 0 |  253 | `		return 0;` |
 |    - |  254 | `	}` |
-|   37 |  255 | `	return DtDaysFromCivil((sxi64)sTm.tm_year + 1900,sTm.tm_mon + 1,sTm.tm_mday) * 86400` |
-|   24 |  256 | `		+ (sxi64)sTm.tm_hour * 3600 + (sxi64)sTm.tm_min * 60 + sTm.tm_sec;` |
-|   13 |  257 | `}` |
+|   43 |  255 | `	return DtDaysFromCivil((sxi64)sTm.tm_year + 1900,sTm.tm_mon + 1,sTm.tm_mday) * 86400` |
+|   28 |  256 | `		+ (sxi64)sTm.tm_hour * 3600 + (sxi64)sTm.tm_min * 60 + sTm.tm_sec;` |
+|   15 |  257 | `}` |
 |    - |  258 |  |
 |    - |  259 | `/* ------------------------------------------------------------------------` |
 |    - |  260 | ` * openssl_x509_parse()` |
 |    - |  261 | ` * ------------------------------------------------------------------------ */` |
-|  132 |  262 | `static void SslPutStr(ph7_context *pCtx,ph7_value *pArray,ph7_value *pVal,` |
+|  154 |  262 | `static void SslPutStr(ph7_context *pCtx,ph7_value *pArray,ph7_value *pVal,` |
 |    - |  263 | `	const char *zKey,const char *zStr,int nStr)` |
 |    1 |  264 | `{` |
-|   66 |  265 | `	SXUNUSED(pCtx);` |
-|  133 |  266 | `	ph7_value_string(pVal,zStr ? zStr : "",nStr);` |
-|  133 |  267 | `	ph7_array_add_strkey_elem(pArray,zKey,pVal);` |
-|  133 |  268 | `	ph7_value_reset_string_cursor(pVal);` |
-|  133 |  269 | `}` |
-|   14 |  270 | `static int vm_builtin_openssl_x509_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   77 |  265 | `	SXUNUSED(pCtx);` |
+|  155 |  266 | `	ph7_value_string(pVal,zStr ? zStr : "",nStr);` |
+|  155 |  267 | `	ph7_array_add_strkey_elem(pArray,zKey,pVal);` |
+|  155 |  268 | `	ph7_value_reset_string_cursor(pVal);` |
+|  155 |  269 | `}` |
+|   16 |  270 | `static int vm_builtin_openssl_x509_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  271 | `{` |
 |    - |  272 | `	X509 *pCert;` |
 |    - |  273 | `	ph7_value *pArray,*pVal,*pSub;` |
 |    - |  274 | `	BIO *pBio;` |
-|   15 |  275 | `	int bOwn = 0,bShort = 1,i,nPurpose;` |
+|   17 |  275 | `	int bOwn = 0,bShort = 1,i,nPurpose;` |
 |    - |  276 | `	char zBuf[512];` |
-|   15 |  277 | `	if( nArg < 1 ){` |
+|   17 |  277 | `	if( nArg < 1 ){` |
 |  ! 0 |  278 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  279 | `		return PH7_OK;` |
 |    - |  280 | `	}` |
-|   15 |  281 | `	if( nArg > 1 ){` |
+|   17 |  281 | `	if( nArg > 1 ){` |
 |    3 |  282 | `		bShort = ph7_value_to_bool(apArg[1]);` |
 |    1 |  283 | `	}` |
-|   15 |  284 | `	pCert = SslCertOfValue(pCtx,apArg[0],&bOwn,0);` |
-|   15 |  285 | `	if( pCert == 0 ){` |
+|   17 |  284 | `	pCert = SslCertOfValue(pCtx,apArg[0],&bOwn,0);` |
+|   17 |  285 | `	if( pCert == 0 ){` |
 |    3 |  286 | `		ph7_result_bool(pCtx,0);` |
 |    3 |  287 | `		return PH7_OK;` |
 |    - |  288 | `	}` |
-|   13 |  289 | `	pArray = ph7_context_new_array(pCtx);` |
-|   13 |  290 | `	pVal = ph7_context_new_scalar(pCtx);` |
-|   13 |  291 | `	if( pArray == 0 \|\| pVal == 0 ){` |
+|   15 |  289 | `	pArray = ph7_context_new_array(pCtx);` |
+|   15 |  290 | `	pVal = ph7_context_new_scalar(pCtx);` |
+|   15 |  291 | `	if( pArray == 0 \|\| pVal == 0 ){` |
 |  ! 0 |  292 | `		SslFreeCert(pCert,bOwn);` |
 |  ! 0 |  293 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  294 | `		return PH7_OK;` |
 |    - |  295 | `	}` |
 |    - |  296 | `	/* name: the one-line rendering, which is the SUBJECT's and always uses the` |
 |    - |  297 | `	 * short spelling whatever $short_names says. */` |
-|   13 |  298 | `	X509_NAME_oneline(X509_get_subject_name(pCert),zBuf,(int)sizeof(zBuf));` |
-|   13 |  299 | `	SslPutStr(pCtx,pArray,pVal,"name",zBuf,-1);` |
-|   13 |  300 | `	pSub = ph7_context_new_array(pCtx);` |
-|   13 |  301 | `	if( pSub ){` |
-|   13 |  302 | `		SslNameToArray(pCtx,X509_get_subject_name(pCert),bShort,pSub);` |
-|   13 |  303 | `		ph7_array_add_strkey_elem(pArray,"subject",pSub);` |
-|    6 |  304 | `	}` |
+|   15 |  298 | `	X509_NAME_oneline(X509_get_subject_name(pCert),zBuf,(int)sizeof(zBuf));` |
+|   15 |  299 | `	SslPutStr(pCtx,pArray,pVal,"name",zBuf,-1);` |
+|   15 |  300 | `	pSub = ph7_context_new_array(pCtx);` |
+|   15 |  301 | `	if( pSub ){` |
+|   15 |  302 | `		SslNameToArray(pCtx,X509_get_subject_name(pCert),bShort,pSub);` |
+|   15 |  303 | `		ph7_array_add_strkey_elem(pArray,"subject",pSub);` |
+|    7 |  304 | `	}` |
 |    - |  305 | `	/* hash: OpenSSL's subject-name hash -- the same EIGHT hex digits the` |
 |    - |  306 | `	 * c_rehash symlinks in a CA directory carry. The value is narrowed to 32` |
 |    - |  307 | `	 * bits before it is formatted, which is not cosmetic: the engine's own` |
 |    - |  308 | `` 	 * formatter reads a `%lx` argument as 64 bits, so a 32-bit `unsigned long` `` |
 |    - |  309 | `	 * (every Windows build) printed sixteen digits of half-garbage. */` |
-|   13 |  310 | `	SyBufferFormat(zBuf,sizeof(zBuf),"%08x",(unsigned int)X509_subject_name_hash(pCert));` |
-|   13 |  311 | `	SslPutStr(pCtx,pArray,pVal,"hash",zBuf,-1);` |
-|   13 |  312 | `	pSub = ph7_context_new_array(pCtx);` |
-|   13 |  313 | `	if( pSub ){` |
-|   13 |  314 | `		SslNameToArray(pCtx,X509_get_issuer_name(pCert),bShort,pSub);` |
-|   13 |  315 | `		ph7_array_add_strkey_elem(pArray,"issuer",pSub);` |
-|    6 |  316 | `	}` |
-|   13 |  317 | `	ph7_value_int64(pVal,(sxi64)X509_get_version(pCert));` |
-|   13 |  318 | `	ph7_array_add_strkey_elem(pArray,"version",pVal);` |
+|   15 |  310 | `	SyBufferFormat(zBuf,sizeof(zBuf),"%08x",(unsigned int)X509_subject_name_hash(pCert));` |
+|   15 |  311 | `	SslPutStr(pCtx,pArray,pVal,"hash",zBuf,-1);` |
+|   15 |  312 | `	pSub = ph7_context_new_array(pCtx);` |
+|   15 |  313 | `	if( pSub ){` |
+|   15 |  314 | `		SslNameToArray(pCtx,X509_get_issuer_name(pCert),bShort,pSub);` |
+|   15 |  315 | `		ph7_array_add_strkey_elem(pArray,"issuer",pSub);` |
+|    7 |  316 | `	}` |
+|   15 |  317 | `	ph7_value_int64(pVal,(sxi64)X509_get_version(pCert));` |
+|   15 |  318 | `	ph7_array_add_strkey_elem(pArray,"version",pVal);` |
 |    - |  319 | `	{` |
 |    - |  320 | `		/* The serial, twice: php gives the DECIMAL string and the HEX one, and` |
 |    - |  321 | `		 * the hex has no leading zero and no 0x. Both come out of the BIGNUM` |
 |    - |  322 | `		 * rather than the raw ASN.1 bytes, so a negative serial reads with a` |
 |    - |  323 | `		 * minus sign exactly as php's does. */` |
-|   13 |  324 | `		ASN1_INTEGER *pSerial = X509_get_serialNumber(pCert);` |
-|   13 |  325 | `		BIGNUM *pBn = pSerial ? ASN1_INTEGER_to_BN(pSerial,0) : 0;` |
-|   13 |  326 | `		char *zDec = pBn ? BN_bn2dec(pBn) : 0;` |
-|   13 |  327 | `		char *zHex = pBn ? BN_bn2hex(pBn) : 0;` |
-|   13 |  328 | `		SslPutStr(pCtx,pArray,pVal,"serialNumber",zDec ? zDec : "",-1);` |
-|   13 |  329 | `		SslPutStr(pCtx,pArray,pVal,"serialNumberHex",zHex ? zHex : "",-1);` |
-|   13 |  330 | `		if( zDec ){ OPENSSL_free(zDec); }` |
-|   13 |  331 | `		if( zHex ){ OPENSSL_free(zHex); }` |
-|   13 |  332 | `		if( pBn ){ BN_free(pBn); }` |
+|   15 |  324 | `		ASN1_INTEGER *pSerial = X509_get_serialNumber(pCert);` |
+|   15 |  325 | `		BIGNUM *pBn = pSerial ? ASN1_INTEGER_to_BN(pSerial,0) : 0;` |
+|   15 |  326 | `		char *zDec = pBn ? BN_bn2dec(pBn) : 0;` |
+|   15 |  327 | `		char *zHex = pBn ? BN_bn2hex(pBn) : 0;` |
+|   15 |  328 | `		SslPutStr(pCtx,pArray,pVal,"serialNumber",zDec ? zDec : "",-1);` |
+|   15 |  329 | `		SslPutStr(pCtx,pArray,pVal,"serialNumberHex",zHex ? zHex : "",-1);` |
+|   15 |  330 | `		if( zDec ){ OPENSSL_free(zDec); }` |
+|   15 |  331 | `		if( zHex ){ OPENSSL_free(zHex); }` |
+|   15 |  332 | `		if( pBn ){ BN_free(pBn); }` |
 |    - |  333 | `	}` |
 |    - |  334 | `	{` |
-|   13 |  335 | `		const ASN1_TIME *pFrom = X509_get0_notBefore(pCert);` |
-|   13 |  336 | `		const ASN1_TIME *pTo = X509_get0_notAfter(pCert);` |
-|   25 |  337 | `		SslPutStr(pCtx,pArray,pVal,"validFrom",` |
-|   12 |  338 | `			(const char *)ASN1_STRING_get0_data((const ASN1_STRING *)pFrom),` |
-|    6 |  339 | `			ASN1_STRING_length((const ASN1_STRING *)pFrom));` |
-|   25 |  340 | `		SslPutStr(pCtx,pArray,pVal,"validTo",` |
-|   12 |  341 | `			(const char *)ASN1_STRING_get0_data((const ASN1_STRING *)pTo),` |
-|    6 |  342 | `			ASN1_STRING_length((const ASN1_STRING *)pTo));` |
-|   13 |  343 | `		ph7_value_int64(pVal,SslAsn1TimeToEpoch(pFrom));` |
-|   13 |  344 | `		ph7_array_add_strkey_elem(pArray,"validFrom_time_t",pVal);` |
-|   13 |  345 | `		ph7_value_int64(pVal,SslAsn1TimeToEpoch(pTo));` |
-|   13 |  346 | `		ph7_array_add_strkey_elem(pArray,"validTo_time_t",pVal);` |
+|   15 |  335 | `		const ASN1_TIME *pFrom = X509_get0_notBefore(pCert);` |
+|   15 |  336 | `		const ASN1_TIME *pTo = X509_get0_notAfter(pCert);` |
+|   29 |  337 | `		SslPutStr(pCtx,pArray,pVal,"validFrom",` |
+|   14 |  338 | `			(const char *)ASN1_STRING_get0_data((const ASN1_STRING *)pFrom),` |
+|    7 |  339 | `			ASN1_STRING_length((const ASN1_STRING *)pFrom));` |
+|   29 |  340 | `		SslPutStr(pCtx,pArray,pVal,"validTo",` |
+|   14 |  341 | `			(const char *)ASN1_STRING_get0_data((const ASN1_STRING *)pTo),` |
+|    7 |  342 | `			ASN1_STRING_length((const ASN1_STRING *)pTo));` |
+|   15 |  343 | `		ph7_value_int64(pVal,SslAsn1TimeToEpoch(pFrom));` |
+|   15 |  344 | `		ph7_array_add_strkey_elem(pArray,"validFrom_time_t",pVal);` |
+|   15 |  345 | `		ph7_value_int64(pVal,SslAsn1TimeToEpoch(pTo));` |
+|   15 |  346 | `		ph7_array_add_strkey_elem(pArray,"validTo_time_t",pVal);` |
 |    - |  347 | `	}` |
 |    - |  348 | `	{` |
-|   13 |  349 | `		int nid = X509_get_signature_nid(pCert);` |
-|   13 |  350 | `		SslPutStr(pCtx,pArray,pVal,"signatureTypeSN",OBJ_nid2sn(nid),-1);` |
-|   13 |  351 | `		SslPutStr(pCtx,pArray,pVal,"signatureTypeLN",OBJ_nid2ln(nid),-1);` |
-|   13 |  352 | `		ph7_value_int(pVal,nid);` |
-|   13 |  353 | `		ph7_array_add_strkey_elem(pArray,"signatureTypeNID",pVal);` |
+|   15 |  349 | `		int nid = X509_get_signature_nid(pCert);` |
+|   15 |  350 | `		SslPutStr(pCtx,pArray,pVal,"signatureTypeSN",OBJ_nid2sn(nid),-1);` |
+|   15 |  351 | `		SslPutStr(pCtx,pArray,pVal,"signatureTypeLN",OBJ_nid2ln(nid),-1);` |
+|   15 |  352 | `		ph7_value_int(pVal,nid);` |
+|   15 |  353 | `		ph7_array_add_strkey_elem(pArray,"signatureTypeNID",pVal);` |
 |    - |  354 | `	}` |
 |    - |  355 | `	/* purposes: keyed by php's own X509_PURPOSE_* number, each a triple of` |
 |    - |  356 | `	 * "does it serve this purpose", "does it serve it as a CA" and the` |
 |    - |  357 | `	 * purpose's short name. */` |
-|   13 |  358 | `	pSub = ph7_context_new_array(pCtx);` |
-|   13 |  359 | `	nPurpose = X509_PURPOSE_get_count();` |
-|   13 |  360 | `	if( pSub ){` |
+|   15 |  358 | `	pSub = ph7_context_new_array(pCtx);` |
+|   15 |  359 | `	nPurpose = X509_PURPOSE_get_count();` |
+|   15 |  360 | `	if( pSub ){` |
 |    - |  361 | `		ph7_value *pTriple;` |
-|  127 |  362 | `		for( i = 0 ; i < nPurpose ; ++i ){` |
-|  115 |  363 | `			X509_PURPOSE *pPurpose = X509_PURPOSE_get0(i);` |
-|  115 |  364 | `			int id = X509_PURPOSE_get_id(pPurpose);` |
-|  115 |  365 | `			pTriple = ph7_context_new_array(pCtx);` |
-|  115 |  366 | `			if( pTriple == 0 ){` |
+|  148 |  362 | `		for( i = 0 ; i < nPurpose ; ++i ){` |
+|  134 |  363 | `			X509_PURPOSE *pPurpose = X509_PURPOSE_get0(i);` |
+|  134 |  364 | `			int id = X509_PURPOSE_get_id(pPurpose);` |
+|  134 |  365 | `			pTriple = ph7_context_new_array(pCtx);` |
+|  134 |  366 | `			if( pTriple == 0 ){` |
 |  ! 0 |  367 | `				continue;` |
 |    - |  368 | `			}` |
-|  115 |  369 | `			ph7_value_bool(pVal,X509_check_purpose(pCert,id,0) == 1);` |
-|  115 |  370 | `			ph7_array_add_elem(pTriple,0,pVal);` |
-|  115 |  371 | `			ph7_value_bool(pVal,X509_check_purpose(pCert,id,1) == 1);` |
-|  115 |  372 | `			ph7_array_add_elem(pTriple,0,pVal);` |
-|  115 |  373 | `			ph7_value_string(pVal,X509_PURPOSE_get0_sname(pPurpose),-1);` |
-|  115 |  374 | `			ph7_array_add_elem(pTriple,0,pVal);` |
-|  115 |  375 | `			ph7_value_reset_string_cursor(pVal);` |
-|  115 |  376 | `			ph7_value_int(pVal,id);` |
-|  115 |  377 | `			ph7_array_add_elem(pSub,pVal,pTriple);` |
-|   61 |  378 | `		}` |
-|   13 |  379 | `		ph7_array_add_strkey_elem(pArray,"purposes",pSub);` |
-|    6 |  380 | `	}` |
+|  134 |  369 | `			ph7_value_bool(pVal,X509_check_purpose(pCert,id,0) == 1);` |
+|  134 |  370 | `			ph7_array_add_elem(pTriple,0,pVal);` |
+|  134 |  371 | `			ph7_value_bool(pVal,X509_check_purpose(pCert,id,1) == 1);` |
+|  134 |  372 | `			ph7_array_add_elem(pTriple,0,pVal);` |
+|  134 |  373 | `			ph7_value_string(pVal,X509_PURPOSE_get0_sname(pPurpose),-1);` |
+|  134 |  374 | `			ph7_array_add_elem(pTriple,0,pVal);` |
+|  134 |  375 | `			ph7_value_reset_string_cursor(pVal);` |
+|  134 |  376 | `			ph7_value_int(pVal,id);` |
+|  134 |  377 | `			ph7_array_add_elem(pSub,pVal,pTriple);` |
+|   71 |  378 | `		}` |
+|   15 |  379 | `		ph7_array_add_strkey_elem(pArray,"purposes",pSub);` |
+|    7 |  380 | `	}` |
 |    - |  381 | `	/* extensions: the extension's name against the TEXT rendering OpenSSL` |
 |    - |  382 | `	 * gives it -- not its DER. An extension that cannot be printed comes back` |
 |    - |  383 | `	 * as its raw bytes, which is php's fallback too. */` |
-|   13 |  384 | `	pSub = ph7_context_new_array(pCtx);` |
-|   13 |  385 | `	if( pSub ){` |
-|   13 |  386 | `		int nExt = X509_get_ext_count(pCert);` |
-|   49 |  387 | `		for( i = 0 ; i < nExt ; ++i ){` |
-|   37 |  388 | `			X509_EXTENSION *pExt = X509_get_ext(pCert,i);` |
-|   37 |  389 | `			ASN1_OBJECT *pObj = X509_EXTENSION_get_object(pExt);` |
-|   37 |  390 | `			int nid = OBJ_obj2nid(pObj);` |
+|   15 |  384 | `	pSub = ph7_context_new_array(pCtx);` |
+|   15 |  385 | `	if( pSub ){` |
+|   15 |  386 | `		int nExt = X509_get_ext_count(pCert);` |
+|   57 |  387 | `		for( i = 0 ; i < nExt ; ++i ){` |
+|   43 |  388 | `			X509_EXTENSION *pExt = X509_get_ext(pCert,i);` |
+|   43 |  389 | `			ASN1_OBJECT *pObj = X509_EXTENSION_get_object(pExt);` |
+|   43 |  390 | `			int nid = OBJ_obj2nid(pObj);` |
 |    - |  391 | `			const char *zKey;` |
 |    - |  392 | `			char zOid[128];` |
-|   37 |  393 | `			char *zMem = 0;` |
-|   37 |  394 | `			long nMem = 0;` |
-|   37 |  395 | `			if( nid != NID_undef ){` |
-|   37 |  396 | `				zKey = OBJ_nid2sn(nid);` |
-|   19 |  397 | `			}else{` |
+|   43 |  393 | `			char *zMem = 0;` |
+|   43 |  394 | `			long nMem = 0;` |
+|   43 |  395 | `			if( nid != NID_undef ){` |
+|   43 |  396 | `				zKey = OBJ_nid2sn(nid);` |
+|   22 |  397 | `			}else{` |
 |  ! 0 |  398 | `				OBJ_obj2txt(zOid,(int)sizeof(zOid),pObj,1);` |
 |  ! 0 |  399 | `				zKey = zOid;` |
 |    - |  400 | `			}` |
-|   37 |  401 | `			pBio = BIO_new(BIO_s_mem());` |
-|   37 |  402 | `			if( pBio == 0 ){` |
+|   43 |  401 | `			pBio = BIO_new(BIO_s_mem());` |
+|   43 |  402 | `			if( pBio == 0 ){` |
 |  ! 0 |  403 | `				continue;` |
 |    - |  404 | `			}` |
-|   37 |  405 | `			if( X509V3_EXT_print(pBio,pExt,0,0) ){` |
-|   37 |  406 | `				nMem = BIO_get_mem_data(pBio,&zMem);` |
-|   19 |  407 | `			}else{` |
+|   43 |  405 | `			if( X509V3_EXT_print(pBio,pExt,0,0) ){` |
+|   43 |  406 | `				nMem = BIO_get_mem_data(pBio,&zMem);` |
+|   22 |  407 | `			}else{` |
 |  ! 0 |  408 | `				ASN1_STRING *pData = X509_EXTENSION_get_data(pExt);` |
 |  ! 0 |  409 | `				BIO_write(pBio,ASN1_STRING_get0_data(pData),ASN1_STRING_length(pData));` |
 |  ! 0 |  410 | `				nMem = BIO_get_mem_data(pBio,&zMem);` |
 |    - |  411 | `			}` |
-|   37 |  412 | `			SslPutStr(pCtx,pSub,pVal,zKey,zMem,(int)nMem);` |
-|   37 |  413 | `			BIO_free(pBio);` |
-|   19 |  414 | `		}` |
-|   13 |  415 | `		ph7_array_add_strkey_elem(pArray,"extensions",pSub);` |
-|    6 |  416 | `	}` |
-|   13 |  417 | `	SslFreeCert(pCert,bOwn);` |
-|   13 |  418 | `	ph7_result_value(pCtx,pArray);` |
-|   13 |  419 | `	return PH7_OK;` |
-|    8 |  420 | `}` |
+|   43 |  412 | `			SslPutStr(pCtx,pSub,pVal,zKey,zMem,(int)nMem);` |
+|   43 |  413 | `			BIO_free(pBio);` |
+|   22 |  414 | `		}` |
+|   15 |  415 | `		ph7_array_add_strkey_elem(pArray,"extensions",pSub);` |
+|    7 |  416 | `	}` |
+|   15 |  417 | `	SslFreeCert(pCert,bOwn);` |
+|   15 |  418 | `	ph7_result_value(pCtx,pArray);` |
+|   15 |  419 | `	return PH7_OK;` |
+|    9 |  420 | `}` |
 |    - |  421 | `/* ------------------------------------------------------------------------` |
 |    - |  422 | ` * The rest of the certificate surface` |
 |    - |  423 | ` * ------------------------------------------------------------------------ */` |
@@ -451,42 +451,42 @@ Coverage: 1221/1679 lines (72.72%)
 |    - |  441 | `	}` |
 |    3 |  442 | `	return PH7_SslResultObject(pCtx,PHL_SSL_KIND_CERT,(void *)pCert);` |
 |    4 |  443 | `}` |
-|    6 |  444 | `static int SslX509Export(ph7_context *pCtx,int nArg,ph7_value **apArg,int bToFile)` |
+|   16 |  444 | `static int SslX509Export(ph7_context *pCtx,int nArg,ph7_value **apArg,int bToFile)` |
 |    1 |  445 | `{` |
 |    - |  446 | `	X509 *pCert;` |
 |    - |  447 | `	BIO *pBio;` |
-|    7 |  448 | `	char *zMem = 0;` |
+|   17 |  448 | `	char *zMem = 0;` |
 |    - |  449 | `	long nMem;` |
-|    7 |  450 | `	int bOwn = 0,bNoText = 1,rc = 0;` |
-|    7 |  451 | `	if( nArg < 2 ){` |
+|   17 |  450 | `	int bOwn = 0,bNoText = 1,rc = 0;` |
+|   17 |  451 | `	if( nArg < 2 ){` |
 |  ! 0 |  452 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  453 | `		return PH7_OK;` |
 |    - |  454 | `	}` |
-|    7 |  455 | `	if( nArg > 2 ){` |
+|   17 |  455 | `	if( nArg > 2 ){` |
 |  ! 0 |  456 | `		bNoText = ph7_value_to_bool(apArg[2]);` |
 |  ! 0 |  457 | `	}` |
-|    7 |  458 | `	pCert = SslCertOfValue(pCtx,apArg[0],&bOwn,1);` |
-|    7 |  459 | `	if( pCert == 0 ){` |
+|   17 |  458 | `	pCert = SslCertOfValue(pCtx,apArg[0],&bOwn,1);` |
+|   17 |  459 | `	if( pCert == 0 ){` |
 |    5 |  460 | `		ph7_result_bool(pCtx,0);` |
 |    5 |  461 | `		return PH7_OK;` |
 |    - |  462 | `	}` |
-|    3 |  463 | `	pBio = BIO_new(BIO_s_mem());` |
-|    3 |  464 | `	if( pBio == 0 ){` |
+|   13 |  463 | `	pBio = BIO_new(BIO_s_mem());` |
+|   13 |  464 | `	if( pBio == 0 ){` |
 |  ! 0 |  465 | `		SslFreeCert(pCert,bOwn);` |
 |  ! 0 |  466 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  467 | `		return PH7_OK;` |
 |    - |  468 | `	}` |
 |    - |  469 | ``	/* `$no_text = false` asks for the human-readable dump BEFORE the PEM, which`` |
 |    - |  470 | ``	 * is what `openssl x509 -text` prints. */`` |
-|    3 |  471 | `	if( !bNoText ){` |
+|   13 |  471 | `	if( !bNoText ){` |
 |  ! 0 |  472 | `		X509_print(pBio,pCert);` |
 |  ! 0 |  473 | `	}` |
-|    3 |  474 | `	if( PEM_write_bio_X509(pBio,pCert) != 1 ){` |
+|   13 |  474 | `	if( PEM_write_bio_X509(pBio,pCert) != 1 ){` |
 |  ! 0 |  475 | `		rc = -1;` |
 |  ! 0 |  476 | `	}` |
-|    3 |  477 | `	if( rc == 0 ){` |
-|    3 |  478 | `		nMem = BIO_get_mem_data(pBio,&zMem);` |
-|    3 |  479 | `		if( bToFile ){` |
+|   13 |  477 | `	if( rc == 0 ){` |
+|   13 |  478 | `		nMem = BIO_get_mem_data(pBio,&zMem);` |
+|   13 |  479 | `		if( bToFile ){` |
 |  ! 0 |  480 | `			int nPath = 0;` |
 |  ! 0 |  481 | `			const char *zPath = ph7_value_to_string(apArg[1],&nPath);` |
 |  ! 0 |  482 | `			rc = PH7_SslWriteFileArg(pCtx,zPath,nPath,zMem,(sxu32)nMem);` |
@@ -495,87 +495,87 @@ Coverage: 1221/1679 lines (72.72%)
 |  ! 0 |  485 | `					"Error opening file %.*s",nPath,zPath ? zPath : "");` |
 |  ! 0 |  486 | `			}` |
 |  ! 0 |  487 | `		}else{` |
-|    3 |  488 | `			ph7_value *pRes = ph7_context_new_scalar(pCtx);` |
-|    3 |  489 | `			if( pRes ){` |
-|    3 |  490 | `				ph7_value_string(pRes,zMem,(int)nMem);` |
-|    3 |  491 | `				PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pRes);` |
-|    3 |  492 | `				ph7_context_release_value(pCtx,pRes);` |
-|    1 |  493 | `			}` |
+|   13 |  488 | `			ph7_value *pRes = ph7_context_new_scalar(pCtx);` |
+|   13 |  489 | `			if( pRes ){` |
+|   13 |  490 | `				ph7_value_string(pRes,zMem,(int)nMem);` |
+|   13 |  491 | `				PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pRes);` |
+|   13 |  492 | `				ph7_context_release_value(pCtx,pRes);` |
+|    6 |  493 | `			}` |
 |    - |  494 | `		}` |
-|    1 |  495 | `	}` |
-|    3 |  496 | `	BIO_free(pBio);` |
-|    3 |  497 | `	SslFreeCert(pCert,bOwn);` |
-|    3 |  498 | `	if( rc != 0 ){` |
+|    6 |  495 | `	}` |
+|   13 |  496 | `	BIO_free(pBio);` |
+|   13 |  497 | `	SslFreeCert(pCert,bOwn);` |
+|   13 |  498 | `	if( rc != 0 ){` |
 |  ! 0 |  499 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |  ! 0 |  500 | `	}` |
-|    3 |  501 | `	ph7_result_bool(pCtx,rc == 0);` |
-|    3 |  502 | `	return PH7_OK;` |
-|    4 |  503 | `}` |
-|    4 |  504 | `static int vm_builtin_openssl_x509_export(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   13 |  501 | `	ph7_result_bool(pCtx,rc == 0);` |
+|   13 |  502 | `	return PH7_OK;` |
+|    9 |  503 | `}` |
+|   14 |  504 | `static int vm_builtin_openssl_x509_export(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  505 | `{` |
-|    5 |  506 | `	return SslX509Export(pCtx,nArg,apArg,0);` |
+|   15 |  506 | `	return SslX509Export(pCtx,nArg,apArg,0);` |
 |    1 |  507 | `}` |
 |    2 |  508 | `static int vm_builtin_openssl_x509_export_to_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  509 | `{` |
 |    3 |  510 | `	return SslX509Export(pCtx,nArg,apArg,1);` |
 |    1 |  511 | `}` |
-|   16 |  512 | `static int vm_builtin_openssl_x509_fingerprint(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   28 |  512 | `static int vm_builtin_openssl_x509_fingerprint(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  513 | `{` |
 |    - |  514 | `	X509 *pCert;` |
 |    - |  515 | `	const EVP_MD *pMd;` |
-|   17 |  516 | `	EVP_MD *pFetched = 0;` |
+|   29 |  516 | `	EVP_MD *pFetched = 0;` |
 |    - |  517 | `	unsigned char aOut[EVP_MAX_MD_SIZE];` |
-|   17 |  518 | `	unsigned int nOut = 0;` |
-|   17 |  519 | `	int bOwn = 0,bRaw = 0;` |
-|   17 |  520 | `	if( nArg < 1 ){` |
+|   29 |  518 | `	unsigned int nOut = 0;` |
+|   29 |  519 | `	int bOwn = 0,bRaw = 0;` |
+|   29 |  520 | `	if( nArg < 1 ){` |
 |  ! 0 |  521 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  522 | `		return PH7_OK;` |
 |    - |  523 | `	}` |
-|   17 |  524 | `	if( nArg > 2 ){` |
+|   29 |  524 | `	if( nArg > 2 ){` |
 |    3 |  525 | `		bRaw = ph7_value_to_bool(apArg[2]);` |
 |    1 |  526 | `	}` |
 |    - |  527 | ``	/* The certificate is read FIRST: `openssl_x509_fingerprint('junk',`` |
 |    - |  528 | ``	 * 'nosuchdigest')` is `X.509 Certificate cannot be retrieved` under php,`` |
 |    - |  529 | ``	 * not `Unknown digest algorithm`. */`` |
-|   17 |  530 | `	pCert = SslCertOfValue(pCtx,apArg[0],&bOwn,1);` |
-|   17 |  531 | `	if( pCert == 0 ){` |
+|   29 |  530 | `	pCert = SslCertOfValue(pCtx,apArg[0],&bOwn,1);` |
+|   29 |  531 | `	if( pCert == 0 ){` |
 |    5 |  532 | `		ph7_result_bool(pCtx,0);` |
 |    5 |  533 | `		return PH7_OK;` |
 |    - |  534 | `	}` |
-|   13 |  535 | `	if( nArg > 1 ){` |
-|    7 |  536 | `		pMd = PH7_SslDigestOfValue(apArg[1],&pFetched);` |
-|    4 |  537 | `	}else{` |
+|   25 |  535 | `	if( nArg > 1 ){` |
+|   19 |  536 | `		pMd = PH7_SslDigestOfValue(apArg[1],&pFetched);` |
+|   10 |  537 | `	}else{` |
 |    7 |  538 | `		pMd = EVP_sha1();` |
 |    - |  539 | `	}` |
-|   13 |  540 | `	if( pMd == 0 ){` |
+|   25 |  540 | `	if( pMd == 0 ){` |
 |    3 |  541 | `		SslFreeCert(pCert,bOwn);` |
 |    3 |  542 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Unknown digest algorithm");` |
 |    3 |  543 | `		ph7_result_bool(pCtx,0);` |
 |    3 |  544 | `		return PH7_OK;` |
 |    - |  545 | `	}` |
-|   11 |  546 | `	if( X509_digest(pCert,pMd,aOut,&nOut) != 1 ){` |
+|   23 |  546 | `	if( X509_digest(pCert,pMd,aOut,&nOut) != 1 ){` |
 |  ! 0 |  547 | `		SslFreeCert(pCert,bOwn);` |
 |  ! 0 |  548 | `		if( pFetched ){ EVP_MD_free(pFetched); }` |
 |  ! 0 |  549 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |  ! 0 |  550 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  551 | `		return PH7_OK;` |
 |    - |  552 | `	}` |
-|   11 |  553 | `	SslFreeCert(pCert,bOwn);` |
-|   11 |  554 | `	if( pFetched ){ EVP_MD_free(pFetched); }` |
-|   11 |  555 | `	if( bRaw ){` |
+|   23 |  553 | `	SslFreeCert(pCert,bOwn);` |
+|   23 |  554 | `	if( pFetched ){ EVP_MD_free(pFetched); }` |
+|   23 |  555 | `	if( bRaw ){` |
 |    3 |  556 | `		ph7_result_string(pCtx,(const char *)aOut,(int)nOut);` |
 |    2 |  557 | `	}else{` |
 |    - |  558 | `		static const char zDigit[] = "0123456789abcdef";` |
 |    - |  559 | `		char zHex[EVP_MAX_MD_SIZE * 2];` |
 |    - |  560 | `		unsigned int i;` |
-|  193 |  561 | `		for( i = 0 ; i < nOut ; ++i ){` |
-|  185 |  562 | `			zHex[i * 2]     = zDigit[(aOut[i] >> 4) & 0x0F];` |
-|  185 |  563 | `			zHex[i * 2 + 1] = zDigit[aOut[i] & 0x0F];` |
-|   93 |  564 | `		}` |
-|    9 |  565 | `		ph7_result_string(pCtx,zHex,(int)(nOut * 2));` |
+|  461 |  561 | `		for( i = 0 ; i < nOut ; ++i ){` |
+|  441 |  562 | `			zHex[i * 2]     = zDigit[(aOut[i] >> 4) & 0x0F];` |
+|  441 |  563 | `			zHex[i * 2 + 1] = zDigit[aOut[i] & 0x0F];` |
+|  221 |  564 | `		}` |
+|   21 |  565 | `		ph7_result_string(pCtx,zHex,(int)(nOut * 2));` |
 |    - |  566 | `	}` |
-|   11 |  567 | `	return PH7_OK;` |
-|    9 |  568 | `}` |
+|   23 |  567 | `	return PH7_OK;` |
+|   15 |  568 | `}` |
 |    6 |  569 | `static int vm_builtin_openssl_x509_check_private_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  570 | `{` |
 |    - |  571 | `	X509 *pCert;` |
@@ -775,176 +775,176 @@ Coverage: 1221/1679 lines (72.72%)
 |    - |  765 | `	int nCurve;` |
 |    - |  766 | `	int bEncryptKey;` |
 |    - |  767 | `};` |
-|   40 |  768 | `static const char * SslConfValue(SslReqConf *pReq,const char *zSection,const char *zName)` |
+|  120 |  768 | `static const char * SslConfValue(SslReqConf *pReq,const char *zSection,const char *zName)` |
 |    1 |  769 | `{` |
-|   41 |  770 | `	return pReq->pConf ? NCONF_get_string(pReq->pConf,zSection,zName) : 0;` |
+|  121 |  770 | `	return pReq->pConf ? NCONF_get_string(pReq->pConf,zSection,zName) : 0;` |
 |    1 |  771 | `}` |
-|   10 |  772 | `static void SslReqConfLoad(ph7_context *pCtx,ph7_value *pOpts,SslReqConf *pReq)` |
+|   30 |  772 | `static void SslReqConfLoad(ph7_context *pCtx,ph7_value *pOpts,SslReqConf *pReq)` |
 |    1 |  773 | `{` |
 |    - |  774 | `	ph7_value *pVal;` |
-|   11 |  775 | `	char *zFile = 0;` |
-|   11 |  776 | `	const char *zPath = 0;` |
-|   11 |  777 | `	int nPath = 0;` |
-|   11 |  778 | `	SyZero(pReq,sizeof(*pReq));` |
-|   11 |  779 | `	pReq->zDnSection = "req_distinguished_name";` |
-|   11 |  780 | `	pReq->iBits = 2048;` |
-|   11 |  781 | `	pReq->iType = 0;` |
-|   11 |  782 | `	pReq->bEncryptKey = -1;` |
-|   11 |  783 | `	if( pOpts && ph7_value_is_array(pOpts) ){` |
-|    9 |  784 | `		pVal = ph7_array_fetch(pOpts,"config",-1);` |
-|    9 |  785 | `		if( pVal && ph7_value_is_string(pVal) ){` |
+|   31 |  775 | `	char *zFile = 0;` |
+|   31 |  776 | `	const char *zPath = 0;` |
+|   31 |  777 | `	int nPath = 0;` |
+|   31 |  778 | `	SyZero(pReq,sizeof(*pReq));` |
+|   31 |  779 | `	pReq->zDnSection = "req_distinguished_name";` |
+|   31 |  780 | `	pReq->iBits = 2048;` |
+|   31 |  781 | `	pReq->iType = 0;` |
+|   31 |  782 | `	pReq->bEncryptKey = -1;` |
+|   31 |  783 | `	if( pOpts && ph7_value_is_array(pOpts) ){` |
+|   29 |  784 | `		pVal = ph7_array_fetch(pOpts,"config",-1);` |
+|   29 |  785 | `		if( pVal && ph7_value_is_string(pVal) ){` |
 |  ! 0 |  786 | `			zPath = ph7_value_to_string(pVal,&nPath);` |
 |  ! 0 |  787 | `		}` |
-|    4 |  788 | `	}` |
-|   11 |  789 | `	if( zPath && nPath > 0 ){` |
+|   14 |  788 | `	}` |
+|   31 |  789 | `	if( zPath && nPath > 0 ){` |
 |  ! 0 |  790 | `		zFile = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)(nPath + 1));` |
 |  ! 0 |  791 | `		if( zFile ){` |
 |  ! 0 |  792 | `			SyMemcpy(zPath,zFile,(sxu32)nPath);` |
 |  ! 0 |  793 | `			zFile[nPath] = 0;` |
 |  ! 0 |  794 | `		}` |
 |  ! 0 |  795 | `	}else{` |
-|   11 |  796 | `		zFile = CONF_get1_default_config_file();` |
+|   31 |  796 | `		zFile = CONF_get1_default_config_file();` |
 |    - |  797 | `	}` |
-|   11 |  798 | `	if( zFile ){` |
-|   11 |  799 | `		pReq->pConf = NCONF_new(0);` |
-|   11 |  800 | `		if( pReq->pConf && NCONF_load(pReq->pConf,zFile,0) <= 0 ){` |
+|   31 |  798 | `	if( zFile ){` |
+|   31 |  799 | `		pReq->pConf = NCONF_new(0);` |
+|   31 |  800 | `		if( pReq->pConf && NCONF_load(pReq->pConf,zFile,0) <= 0 ){` |
 |  ! 0 |  801 | `			NCONF_free(pReq->pConf);` |
 |  ! 0 |  802 | `			pReq->pConf = 0;` |
 |  ! 0 |  803 | `			ERR_clear_error();` |
 |  ! 0 |  804 | `		}` |
-|    5 |  805 | `	}` |
-|   11 |  806 | `	if( zPath && nPath > 0 ){` |
+|   15 |  805 | `	}` |
+|   31 |  806 | `	if( zPath && nPath > 0 ){` |
 |  ! 0 |  807 | `		if( zFile ){ SyMemBackendFree(&pCtx->pVm->sAllocator,zFile); }` |
-|   11 |  808 | `	}else if( zFile ){` |
-|   11 |  809 | `		OPENSSL_free(zFile);` |
-|    5 |  810 | `	}` |
-|   11 |  811 | `	if( pReq->pConf ){` |
-|   11 |  812 | `		const char *z = SslConfValue(pReq,"req","distinguished_name");` |
-|   11 |  813 | `		if( z ){` |
-|   11 |  814 | `			pReq->zDnSection = z;` |
-|    5 |  815 | `		}` |
-|   11 |  816 | `		pReq->zReqExts = SslConfValue(pReq,"req","req_extensions");` |
-|   11 |  817 | `		pReq->zX509Exts = SslConfValue(pReq,"req","x509_extensions");` |
-|   11 |  818 | `		z = SslConfValue(pReq,"req","default_bits");` |
-|   11 |  819 | `		if( z ){` |
-|   11 |  820 | `			pReq->iBits = (sxi64)SyStrToInt32(z,(sxu32)SyStrlen(z),0,0);` |
-|   11 |  821 | `			if( pReq->iBits < 1 ){` |
-|   11 |  822 | `				pReq->iBits = 2048;` |
-|    5 |  823 | `			}` |
-|    5 |  824 | `		}` |
-|   11 |  825 | `		ERR_clear_error();` |
-|    5 |  826 | `	}` |
-|   11 |  827 | `	if( pOpts == 0 \|\| !ph7_value_is_array(pOpts) ){` |
+|   31 |  808 | `	}else if( zFile ){` |
+|   31 |  809 | `		OPENSSL_free(zFile);` |
+|   15 |  810 | `	}` |
+|   31 |  811 | `	if( pReq->pConf ){` |
+|   31 |  812 | `		const char *z = SslConfValue(pReq,"req","distinguished_name");` |
+|   31 |  813 | `		if( z ){` |
+|   31 |  814 | `			pReq->zDnSection = z;` |
+|   15 |  815 | `		}` |
+|   31 |  816 | `		pReq->zReqExts = SslConfValue(pReq,"req","req_extensions");` |
+|   31 |  817 | `		pReq->zX509Exts = SslConfValue(pReq,"req","x509_extensions");` |
+|   31 |  818 | `		z = SslConfValue(pReq,"req","default_bits");` |
+|   31 |  819 | `		if( z ){` |
+|   31 |  820 | `			pReq->iBits = (sxi64)SyStrToInt32(z,(sxu32)SyStrlen(z),0,0);` |
+|   31 |  821 | `			if( pReq->iBits < 1 ){` |
+|   31 |  822 | `				pReq->iBits = 2048;` |
+|   15 |  823 | `			}` |
+|   15 |  824 | `		}` |
+|   31 |  825 | `		ERR_clear_error();` |
+|   15 |  826 | `	}` |
+|   31 |  827 | `	if( pOpts == 0 \|\| !ph7_value_is_array(pOpts) ){` |
 |    3 |  828 | `		return;` |
 |    - |  829 | `	}` |
-|    9 |  830 | `	pVal = ph7_array_fetch(pOpts,"digest_alg",-1);` |
-|    9 |  831 | `	if( pVal ){` |
-|    9 |  832 | `		pReq->pDigest = PH7_SslDigestOfValue(pVal,&pReq->pFetched);` |
-|    4 |  833 | `	}` |
-|    9 |  834 | `	pVal = ph7_array_fetch(pOpts,"private_key_bits",-1);` |
-|    9 |  835 | `	if( pVal ){` |
+|   29 |  830 | `	pVal = ph7_array_fetch(pOpts,"digest_alg",-1);` |
+|   29 |  831 | `	if( pVal ){` |
+|   29 |  832 | `		pReq->pDigest = PH7_SslDigestOfValue(pVal,&pReq->pFetched);` |
+|   14 |  833 | `	}` |
+|   29 |  834 | `	pVal = ph7_array_fetch(pOpts,"private_key_bits",-1);` |
+|   29 |  835 | `	if( pVal ){` |
 |  ! 0 |  836 | `		pReq->iBits = ph7_value_to_int64(pVal);` |
 |  ! 0 |  837 | `	}` |
-|    9 |  838 | `	pVal = ph7_array_fetch(pOpts,"private_key_type",-1);` |
-|    9 |  839 | `	if( pVal ){` |
+|   29 |  838 | `	pVal = ph7_array_fetch(pOpts,"private_key_type",-1);` |
+|   29 |  839 | `	if( pVal ){` |
 |  ! 0 |  840 | `		pReq->iType = ph7_value_to_int64(pVal);` |
 |  ! 0 |  841 | `	}` |
-|    9 |  842 | `	pVal = ph7_array_fetch(pOpts,"curve_name",-1);` |
-|    9 |  843 | `	if( pVal ){` |
+|   29 |  842 | `	pVal = ph7_array_fetch(pOpts,"curve_name",-1);` |
+|   29 |  843 | `	if( pVal ){` |
 |  ! 0 |  844 | `		pReq->zCurve = ph7_value_to_string(pVal,&pReq->nCurve);` |
 |  ! 0 |  845 | `	}` |
-|    9 |  846 | `	pVal = ph7_array_fetch(pOpts,"encrypt_key",-1);` |
-|    9 |  847 | `	if( pVal ){` |
+|   29 |  846 | `	pVal = ph7_array_fetch(pOpts,"encrypt_key",-1);` |
+|   29 |  847 | `	if( pVal ){` |
 |  ! 0 |  848 | `		pReq->bEncryptKey = ph7_value_to_bool(pVal);` |
 |  ! 0 |  849 | `	}` |
-|    9 |  850 | `	pVal = ph7_array_fetch(pOpts,"req_extensions",-1);` |
-|    9 |  851 | `	if( pVal && ph7_value_is_string(pVal) ){` |
+|   29 |  850 | `	pVal = ph7_array_fetch(pOpts,"req_extensions",-1);` |
+|   29 |  851 | `	if( pVal && ph7_value_is_string(pVal) ){` |
 |  ! 0 |  852 | `		int n = 0;` |
 |  ! 0 |  853 | `		pReq->zReqExts = ph7_value_to_string(pVal,&n);` |
 |  ! 0 |  854 | `	}` |
-|    9 |  855 | `	pVal = ph7_array_fetch(pOpts,"x509_extensions",-1);` |
-|    9 |  856 | `	if( pVal && ph7_value_is_string(pVal) ){` |
+|   29 |  855 | `	pVal = ph7_array_fetch(pOpts,"x509_extensions",-1);` |
+|   29 |  856 | `	if( pVal && ph7_value_is_string(pVal) ){` |
 |  ! 0 |  857 | `		int n = 0;` |
 |  ! 0 |  858 | `		pReq->zX509Exts = ph7_value_to_string(pVal,&n);` |
 |  ! 0 |  859 | `	}` |
-|    6 |  860 | `}` |
-|   10 |  861 | `static void SslReqConfRelease(SslReqConf *pReq)` |
+|   16 |  860 | `}` |
+|   30 |  861 | `static void SslReqConfRelease(SslReqConf *pReq)` |
 |    1 |  862 | `{` |
-|   11 |  863 | `	if( pReq->pFetched ){` |
+|   31 |  863 | `	if( pReq->pFetched ){` |
 |  ! 0 |  864 | `		EVP_MD_free(pReq->pFetched);` |
 |  ! 0 |  865 | `		pReq->pFetched = 0;` |
 |  ! 0 |  866 | `	}` |
-|   11 |  867 | `	if( pReq->pConf ){` |
-|   11 |  868 | `		NCONF_free(pReq->pConf);` |
-|   11 |  869 | `		pReq->pConf = 0;` |
-|    5 |  870 | `	}` |
-|   11 |  871 | `}` |
+|   31 |  867 | `	if( pReq->pConf ){` |
+|   31 |  868 | `		NCONF_free(pReq->pConf);` |
+|   31 |  869 | `		pReq->pConf = 0;` |
+|   15 |  870 | `	}` |
+|   31 |  871 | `}` |
 |    - |  872 | `/*` |
 |    - |  873 | ` * The SUBJECT php builds: the caller's fields first, in their own order, then` |
 |    - |  874 | `` * every `<name>_default` the config declares for a field the caller did NOT`` |
 |    - |  875 | `` * give. A name the object table has never heard of is `dn: %s is not a`` |
 |    - |  876 | `` * recognized name` and is skipped rather than fatal.`` |
 |    - |  877 | ` */` |
-|    4 |  878 | `static int SslBuildSubject(ph7_context *pCtx,X509_NAME *pName,ph7_value *pDn,SslReqConf *pReq)` |
+|   14 |  878 | `static int SslBuildSubject(ph7_context *pCtx,X509_NAME *pName,ph7_value *pDn,SslReqConf *pReq)` |
 |    1 |  879 | `{` |
 |    - |  880 | `	ph7_hashmap *pMap;` |
 |    - |  881 | `	ph7_hashmap_node *pEntry;` |
 |    - |  882 | `	sxu32 i;` |
-|    5 |  883 | `	if( pDn == 0 \|\| !ph7_value_is_array(pDn) ){` |
+|   15 |  883 | `	if( pDn == 0 \|\| !ph7_value_is_array(pDn) ){` |
 |  ! 0 |  884 | `		return 0;` |
 |    - |  885 | `	}` |
-|    5 |  886 | `	pMap = (ph7_hashmap *)pDn->x.pOther;` |
-|    5 |  887 | `	pEntry = pMap->pFirst;` |
-|   17 |  888 | `	for( i = 0 ; i < pMap->nEntry ; ++i ){` |
+|   15 |  886 | `	pMap = (ph7_hashmap *)pDn->x.pOther;` |
+|   15 |  887 | `	pEntry = pMap->pFirst;` |
+|   37 |  888 | `	for( i = 0 ; i < pMap->nEntry ; ++i ){` |
 |    - |  889 | `		ph7_value sKey;` |
-|   13 |  890 | `		ph7_value *pData = HashmapExtractNodeValue(pEntry);` |
+|   23 |  890 | `		ph7_value *pData = HashmapExtractNodeValue(pEntry);` |
 |    - |  891 | `		const char *zKey,*zVal;` |
-|   13 |  892 | `		int nKey = 0,nVal = 0,nid;` |
+|   23 |  892 | `		int nKey = 0,nVal = 0,nid;` |
 |    - |  893 | `		char zName[128];` |
-|   13 |  894 | `		PH7_MemObjInit(pCtx->pVm,&sKey);` |
-|   13 |  895 | `		PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|   13 |  896 | `		pEntry = pEntry->pPrev;` |
-|   13 |  897 | `		zKey = ph7_value_to_string(&sKey,&nKey);` |
-|   13 |  898 | `		if( zKey == 0 \|\| nKey < 1 \|\| nKey >= (int)sizeof(zName) \|\| pData == 0 ){` |
+|   23 |  894 | `		PH7_MemObjInit(pCtx->pVm,&sKey);` |
+|   23 |  895 | `		PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|   23 |  896 | `		pEntry = pEntry->pPrev;` |
+|   23 |  897 | `		zKey = ph7_value_to_string(&sKey,&nKey);` |
+|   23 |  898 | `		if( zKey == 0 \|\| nKey < 1 \|\| nKey >= (int)sizeof(zName) \|\| pData == 0 ){` |
 |  ! 0 |  899 | `			PH7_MemObjRelease(&sKey);` |
 |  ! 0 |  900 | `			continue;` |
 |    - |  901 | `		}` |
-|   13 |  902 | `		SyMemcpy(zKey,zName,(sxu32)nKey);` |
-|   13 |  903 | `		zName[nKey] = 0;` |
-|   13 |  904 | `		PH7_MemObjRelease(&sKey);` |
-|   13 |  905 | `		nid = OBJ_txt2nid(zName);` |
-|   13 |  906 | `		if( nid == NID_undef ){` |
+|   23 |  902 | `		SyMemcpy(zKey,zName,(sxu32)nKey);` |
+|   23 |  903 | `		zName[nKey] = 0;` |
+|   23 |  904 | `		PH7_MemObjRelease(&sKey);` |
+|   23 |  905 | `		nid = OBJ_txt2nid(zName);` |
+|   23 |  906 | `		if( nid == NID_undef ){` |
 |    4 |  907 | `			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |    1 |  908 | `				"dn: %s is not a recognized name",zName);` |
 |    3 |  909 | `			continue;` |
 |    - |  910 | `		}` |
-|   11 |  911 | `		zVal = ph7_value_to_string(pData,&nVal);` |
-|   11 |  912 | `		if( zVal == 0 ){` |
+|   21 |  911 | `		zVal = ph7_value_to_string(pData,&nVal);` |
+|   21 |  912 | `		if( zVal == 0 ){` |
 |  ! 0 |  913 | `			zVal = "";` |
 |  ! 0 |  914 | `			nVal = 0;` |
 |  ! 0 |  915 | `		}` |
-|   15 |  916 | `		if( X509_NAME_add_entry_by_NID(pName,nid,MBSTRING_UTF8,` |
-|   11 |  917 | `				(const unsigned char *)zVal,nVal,-1,0) != 1 ){` |
+|   30 |  916 | `		if( X509_NAME_add_entry_by_NID(pName,nid,MBSTRING_UTF8,` |
+|   21 |  917 | `				(const unsigned char *)zVal,nVal,-1,0) != 1 ){` |
 |  ! 0 |  918 | `			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |    - |  919 | `				"dn: add_entry_by_NID %d -> %s (failed; check error queue and value of string_mask OpenSSL option if illegal characters are reported)",` |
 |  ! 0 |  920 | `				nid,zVal);` |
 |  ! 0 |  921 | `			return -1;` |
 |    - |  922 | `		}` |
-|    6 |  923 | `	}` |
+|   11 |  923 | `	}` |
 |    - |  924 | `	/* Then the config's own defaults, for every field the caller left out. */` |
-|    5 |  925 | `	if( pReq->pConf ){` |
+|   15 |  925 | `	if( pReq->pConf ){` |
 |    - |  926 | `		STACK_OF(CONF_VALUE) *pSec;` |
 |    - |  927 | `		/* A missing section or key pushes an error of its own. Mark and pop` |
 |    - |  928 | `		 * around the whole walk rather than clearing the queue: the caller's` |
 |    - |  929 | ``		 * `dn: %s is not a recognized name` left an `unknown object name` in`` |
 |    - |  930 | `		 * it a moment ago, and php hands that one to openssl_error_string(). */` |
-|    5 |  931 | `		ERR_set_mark();` |
-|    5 |  932 | `		pSec = NCONF_get_section(pReq->pConf,pReq->zDnSection);` |
-|    5 |  933 | `		int n = pSec ? sk_CONF_VALUE_num(pSec) : 0;` |
+|   15 |  931 | `		ERR_set_mark();` |
+|   15 |  932 | `		pSec = NCONF_get_section(pReq->pConf,pReq->zDnSection);` |
+|   15 |  933 | `		int n = pSec ? sk_CONF_VALUE_num(pSec) : 0;` |
 |    - |  934 | `		int j;` |
-|   61 |  935 | `		for( j = 0 ; j < n ; ++j ){` |
-|   57 |  936 | `			CONF_VALUE *pV = sk_CONF_VALUE_value(pSec,j);` |
-|   57 |  937 | `			const char *zField = pV->name;` |
+|  211 |  935 | `		for( j = 0 ; j < n ; ++j ){` |
+|  197 |  936 | `			CONF_VALUE *pV = sk_CONF_VALUE_value(pSec,j);` |
+|  197 |  937 | `			const char *zField = pV->name;` |
 |    - |  938 | `			const char *zDot;` |
 |    - |  939 | `			char zBuf[192];` |
 |    - |  940 | `			const char *zDefault;` |
@@ -952,58 +952,58 @@ Coverage: 1221/1679 lines (72.72%)
 |    - |  942 | `			/* The config numbers repeatable fields ("0.organizationName"); the` |
 |    - |  943 | `			 * NAME is what follows the dot. */` |
 |    - |  944 | `			{` |
-|   57 |  945 | `				sxu32 nPos = 0;` |
-|   57 |  946 | `				zDot = SyByteFind(zField,(sxu32)SyStrlen(zField),'.',&nPos) == SXRET_OK` |
-|   32 |  947 | `					? zField + nPos : 0;` |
+|  197 |  945 | `				sxu32 nPos = 0;` |
+|  197 |  946 | `				zDot = SyByteFind(zField,(sxu32)SyStrlen(zField),'.',&nPos) == SXRET_OK` |
+|  112 |  947 | `					? zField + nPos : 0;` |
 |    - |  948 | `			}` |
-|   57 |  949 | `			if( zDot ){` |
-|    9 |  950 | `				zField = zDot + 1;` |
-|    4 |  951 | `			}` |
+|  197 |  949 | `			if( zDot ){` |
+|   29 |  950 | `				zField = zDot + 1;` |
+|   14 |  951 | `			}` |
 |    - |  952 | `			{` |
-|   57 |  953 | `				sxu32 nField = (sxu32)SyStrlen(pV->name);` |
-|   57 |  954 | `				if( nField + 9 >= sizeof(zBuf) ){` |
+|  197 |  953 | `				sxu32 nField = (sxu32)SyStrlen(pV->name);` |
+|  197 |  954 | `				if( nField + 9 >= sizeof(zBuf) ){` |
 |  ! 0 |  955 | `					continue;` |
 |    - |  956 | `				}` |
-|   57 |  957 | `				if( nField > 8 && SyStrncmp(pV->name + nField - 8,"_default",8) == 0 ){` |
-|   13 |  958 | `					continue;   /* the default row itself, not a field */` |
+|  197 |  957 | `				if( nField > 8 && SyStrncmp(pV->name + nField - 8,"_default",8) == 0 ){` |
+|   43 |  958 | `					continue;   /* the default row itself, not a field */` |
 |    - |  959 | `				}` |
 |    - |  960 | `			}` |
-|   45 |  961 | `			nid = OBJ_txt2nid(zField);` |
-|   45 |  962 | `			if( nid == NID_undef ){` |
-|   17 |  963 | `				continue;` |
+|  155 |  961 | `			nid = OBJ_txt2nid(zField);` |
+|  155 |  962 | `			if( nid == NID_undef ){` |
+|   57 |  963 | `				continue;` |
 |    - |  964 | `			}` |
-|   29 |  965 | `			if( X509_NAME_get_index_by_NID(pName,nid,-1) >= 0 ){` |
-|   11 |  966 | `				continue;   /* the caller gave it */` |
+|   99 |  965 | `			if( X509_NAME_get_index_by_NID(pName,nid,-1) >= 0 ){` |
+|   21 |  966 | `				continue;   /* the caller gave it */` |
 |    - |  967 | `			}` |
-|   19 |  968 | `			SyBufferFormat(zBuf,sizeof(zBuf),"%s_default",pV->name);` |
-|   19 |  969 | `			zDefault = NCONF_get_string(pReq->pConf,pReq->zDnSection,zBuf);` |
-|   19 |  970 | `			if( zDefault == 0 \|\| zDefault[0] == 0 ){` |
-|   11 |  971 | `				continue;` |
+|   79 |  968 | `			SyBufferFormat(zBuf,sizeof(zBuf),"%s_default",pV->name);` |
+|   79 |  969 | `			zDefault = NCONF_get_string(pReq->pConf,pReq->zDnSection,zBuf);` |
+|   79 |  970 | `			if( zDefault == 0 \|\| zDefault[0] == 0 ){` |
+|   41 |  971 | `				continue;` |
 |    - |  972 | `			}` |
-|   13 |  973 | `			X509_NAME_add_entry_by_NID(pName,nid,MBSTRING_UTF8,` |
-|    4 |  974 | `				(const unsigned char *)zDefault,-1,-1,0);` |
-|    5 |  975 | `		}` |
-|    5 |  976 | `		ERR_pop_to_mark();` |
-|    2 |  977 | `	}` |
-|    5 |  978 | `	return 0;` |
-|    3 |  979 | `}` |
+|   58 |  973 | `			X509_NAME_add_entry_by_NID(pName,nid,MBSTRING_UTF8,` |
+|   19 |  974 | `				(const unsigned char *)zDefault,-1,-1,0);` |
+|   20 |  975 | `		}` |
+|   15 |  976 | `		ERR_pop_to_mark();` |
+|    7 |  977 | `	}` |
+|   15 |  978 | `	return 0;` |
+|    8 |  979 | `}` |
 |    - |  980 |  |
 |    - |  981 | `/* ------------------------------------------------------------------------` |
 |    - |  982 | ` * Signing requests` |
 |    - |  983 | ` * ------------------------------------------------------------------------ */` |
-|    4 |  984 | `static int vm_builtin_openssl_csr_new(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   14 |  984 | `static int vm_builtin_openssl_csr_new(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  985 | `{` |
 |    - |  986 | `	SslReqConf sReq;` |
-|    5 |  987 | `	X509_REQ *pCsr = 0;` |
+|   15 |  987 | `	X509_REQ *pCsr = 0;` |
 |    - |  988 | `	X509_NAME *pName;` |
-|    5 |  989 | `	EVP_PKEY *pKey = 0;` |
-|    5 |  990 | `	int bOwnKey = 0,rc = -1;` |
-|    5 |  991 | `	if( nArg < 2 ){` |
+|   15 |  989 | `	EVP_PKEY *pKey = 0;` |
+|   15 |  990 | `	int bOwnKey = 0,rc = -1;` |
+|   15 |  991 | `	if( nArg < 2 ){` |
 |  ! 0 |  992 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  993 | `		return PH7_OK;` |
 |    - |  994 | `	}` |
-|    5 |  995 | `	SslReqConfLoad(pCtx,nArg > 2 ? apArg[2] : 0,&sReq);` |
-|    5 |  996 | `	if( ph7_value_is_null(apArg[1]) ){` |
+|   15 |  995 | `	SslReqConfLoad(pCtx,nArg > 2 ? apArg[2] : 0,&sReq);` |
+|   15 |  996 | `	if( ph7_value_is_null(apArg[1]) ){` |
 |    - |  997 | `		/* php GENERATES the key when the by-reference argument is null, and` |
 |    - |  998 | `` 		 * writes it back -- which is the only way `openssl_csr_new($dn, $k)` `` |
 |    - |  999 | `		 * on an unset $k can work at all. */` |
@@ -1025,31 +1025,31 @@ Coverage: 1221/1679 lines (72.72%)
 |    - | 1015 | `		}` |
 |  ! 0 | 1016 | `		PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pCtx->pRet);` |
 |  ! 0 | 1017 | `	}else{` |
-|    5 | 1018 | `		pKey = PH7_SslKeyOfValue(pCtx,apArg[1],0,&bOwnKey);` |
-|    5 | 1019 | `		if( bOwnKey < 0 ){` |
+|   15 | 1018 | `		pKey = PH7_SslKeyOfValue(pCtx,apArg[1],0,&bOwnKey);` |
+|   15 | 1019 | `		if( bOwnKey < 0 ){` |
 |  ! 0 | 1020 | `			SslReqConfRelease(&sReq);` |
 |  ! 0 | 1021 | `			ph7_result_bool(pCtx,0);` |
 |  ! 0 | 1022 | `			return PH7_SslArrayShapeError(pCtx);` |
 |    - | 1023 | `		}` |
-|    5 | 1024 | `		if( pKey == 0 ){` |
+|   15 | 1024 | `		if( pKey == 0 ){` |
 |  ! 0 | 1025 | `			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |    - | 1026 | `				"Unable to coerce parameter 2 into a private key");` |
 |  ! 0 | 1027 | `			goto done;` |
 |    - | 1028 | `		}` |
 |    - | 1029 | `	}` |
-|    5 | 1030 | `	pCsr = X509_REQ_new();` |
-|    5 | 1031 | `	if( pCsr == 0 ){` |
+|   15 | 1030 | `	pCsr = X509_REQ_new();` |
+|   15 | 1031 | `	if( pCsr == 0 ){` |
 |  ! 0 | 1032 | `		goto done;` |
 |    - | 1033 | `	}` |
-|    5 | 1034 | `	X509_REQ_set_version(pCsr,0);` |
-|    5 | 1035 | `	pName = X509_REQ_get_subject_name(pCsr);` |
-|    5 | 1036 | `	if( SslBuildSubject(pCtx,pName,apArg[0],&sReq) != 0 ){` |
+|   15 | 1034 | `	X509_REQ_set_version(pCsr,0);` |
+|   15 | 1035 | `	pName = X509_REQ_get_subject_name(pCsr);` |
+|   15 | 1036 | `	if( SslBuildSubject(pCtx,pName,apArg[0],&sReq) != 0 ){` |
 |  ! 0 | 1037 | `		goto done;` |
 |    - | 1038 | `	}` |
-|    5 | 1039 | `	if( X509_REQ_set_pubkey(pCsr,pKey) != 1 ){` |
+|   15 | 1039 | `	if( X509_REQ_set_pubkey(pCsr,pKey) != 1 ){` |
 |  ! 0 | 1040 | `		goto done;` |
 |    - | 1041 | `	}` |
-|    5 | 1042 | `	if( sReq.zReqExts && sReq.pConf ){` |
+|   15 | 1042 | `	if( sReq.zReqExts && sReq.pConf ){` |
 |    - | 1043 | `		X509V3_CTX sExtCtx;` |
 |  ! 0 | 1044 | `		X509V3_set_ctx(&sExtCtx,0,0,pCsr,0,0);` |
 |  ! 0 | 1045 | `		X509V3_set_nconf(&sExtCtx,sReq.pConf);` |
@@ -1059,23 +1059,23 @@ Coverage: 1221/1679 lines (72.72%)
 |  ! 0 | 1049 | `			goto done;` |
 |    - | 1050 | `		}` |
 |  ! 0 | 1051 | `	}` |
-|    5 | 1052 | `	if( X509_REQ_sign(pCsr,pKey,sReq.pDigest ? sReq.pDigest : EVP_sha256()) <= 0 ){` |
+|   15 | 1052 | `	if( X509_REQ_sign(pCsr,pKey,sReq.pDigest ? sReq.pDigest : EVP_sha256()) <= 0 ){` |
 |  ! 0 | 1053 | `		goto done;` |
 |    - | 1054 | `	}` |
-|    5 | 1055 | `	rc = 0;` |
-|    2 | 1056 | `done:` |
-|    5 | 1057 | `	if( bOwnKey > 0 && pKey ){` |
+|   15 | 1055 | `	rc = 0;` |
+|    7 | 1056 | `done:` |
+|   15 | 1057 | `	if( bOwnKey > 0 && pKey ){` |
 |  ! 0 | 1058 | `		EVP_PKEY_free(pKey);` |
 |  ! 0 | 1059 | `	}` |
-|    5 | 1060 | `	SslReqConfRelease(&sReq);` |
-|    5 | 1061 | `	if( rc != 0 ){` |
+|   15 | 1060 | `	SslReqConfRelease(&sReq);` |
+|   15 | 1061 | `	if( rc != 0 ){` |
 |  ! 0 | 1062 | `		if( pCsr ){ X509_REQ_free(pCsr); }` |
 |  ! 0 | 1063 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |  ! 0 | 1064 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 | 1065 | `		return PH7_OK;` |
 |    - | 1066 | `	}` |
-|    5 | 1067 | `	return PH7_SslResultObject(pCtx,PHL_SSL_KIND_CSR,(void *)pCsr);` |
-|    3 | 1068 | `}` |
+|   15 | 1067 | `	return PH7_SslResultObject(pCtx,PHL_SSL_KIND_CSR,(void *)pCsr);` |
+|    8 | 1068 | `}` |
 |    8 | 1069 | `static int SslCsrExport(ph7_context *pCtx,int nArg,ph7_value **apArg,int bToFile)` |
 |    1 | 1070 | `{` |
 |    - | 1071 | `	X509_REQ *pCsr;` |
@@ -1198,64 +1198,64 @@ Coverage: 1221/1679 lines (72.72%)
 |    - | 1188 | ` * may be given as an integer or -- since php 8.3 -- as a HEX string, which is` |
 |    - | 1189 | ` * the only way to express one that does not fit in an int.` |
 |    - | 1190 | ` */` |
-|    6 | 1191 | `static int vm_builtin_openssl_csr_sign(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   16 | 1191 | `static int vm_builtin_openssl_csr_sign(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 | 1192 | `{` |
 |    - | 1193 | `	SslReqConf sReq;` |
-|    7 | 1194 | `	X509_REQ *pCsr = 0;` |
-|    7 | 1195 | `	X509 *pCa = 0,*pOut = 0;` |
-|    7 | 1196 | `	EVP_PKEY *pKey = 0,*pPub = 0;` |
-|    7 | 1197 | `	ASN1_INTEGER *pSerial = 0;` |
-|    7 | 1198 | `	int bOwnCsr = 0,bOwnCa = 0,bOwnKey = 0,rc = -1;` |
+|   17 | 1194 | `	X509_REQ *pCsr = 0;` |
+|   17 | 1195 | `	X509 *pCa = 0,*pOut = 0;` |
+|   17 | 1196 | `	EVP_PKEY *pKey = 0,*pPub = 0;` |
+|   17 | 1197 | `	ASN1_INTEGER *pSerial = 0;` |
+|   17 | 1198 | `	int bOwnCsr = 0,bOwnCa = 0,bOwnKey = 0,rc = -1;` |
 |    - | 1199 | `	sxi64 iDays;` |
-|    7 | 1200 | `	if( nArg < 4 ){` |
+|   17 | 1200 | `	if( nArg < 4 ){` |
 |  ! 0 | 1201 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 | 1202 | `		return PH7_OK;` |
 |    - | 1203 | `	}` |
-|    7 | 1204 | `	SslReqConfLoad(pCtx,nArg > 4 ? apArg[4] : 0,&sReq);` |
-|    7 | 1205 | `	iDays = ph7_value_to_int64(apArg[3]);` |
-|    7 | 1206 | `	pCsr = SslCsrOfValue(pCtx,apArg[0],&bOwnCsr,1);` |
-|    7 | 1207 | `	if( pCsr == 0 ){` |
+|   17 | 1204 | `	SslReqConfLoad(pCtx,nArg > 4 ? apArg[4] : 0,&sReq);` |
+|   17 | 1205 | `	iDays = ph7_value_to_int64(apArg[3]);` |
+|   17 | 1206 | `	pCsr = SslCsrOfValue(pCtx,apArg[0],&bOwnCsr,1);` |
+|   17 | 1207 | `	if( pCsr == 0 ){` |
 |    3 | 1208 | `		goto done;` |
 |    - | 1209 | `	}` |
-|    5 | 1210 | `	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){` |
+|   15 | 1210 | `	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){` |
 |  ! 0 | 1211 | `		pCa = SslCertOfValue(pCtx,apArg[1],&bOwnCa,1);` |
 |  ! 0 | 1212 | `		if( pCa == 0 ){` |
 |  ! 0 | 1213 | `			goto done;` |
 |    - | 1214 | `		}` |
 |  ! 0 | 1215 | `	}` |
-|    5 | 1216 | `	pKey = PH7_SslKeyOfValue(pCtx,apArg[2],0,&bOwnKey);` |
-|    5 | 1217 | `	if( bOwnKey < 0 ){` |
+|   15 | 1216 | `	pKey = PH7_SslKeyOfValue(pCtx,apArg[2],0,&bOwnKey);` |
+|   15 | 1217 | `	if( bOwnKey < 0 ){` |
 |  ! 0 | 1218 | `		SslReqConfRelease(&sReq);` |
 |  ! 0 | 1219 | `		SslFreeCsr(pCsr,bOwnCsr);` |
 |  ! 0 | 1220 | `		SslFreeCert(pCa,bOwnCa);` |
 |  ! 0 | 1221 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 | 1222 | `		return PH7_SslArrayShapeError(pCtx);` |
 |    - | 1223 | `	}` |
-|    5 | 1224 | `	if( pKey == 0 ){` |
+|   15 | 1224 | `	if( pKey == 0 ){` |
 |  ! 0 | 1225 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |    - | 1226 | `			"cannot get private key from parameter 3");` |
 |  ! 0 | 1227 | `		goto done;` |
 |    - | 1228 | `	}` |
-|    5 | 1229 | `	if( pCa && X509_check_private_key(pCa,pKey) != 1 ){` |
+|   15 | 1229 | `	if( pCa && X509_check_private_key(pCa,pKey) != 1 ){` |
 |  ! 0 | 1230 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |    - | 1231 | `			"private key does not correspond to signing cert");` |
 |  ! 0 | 1232 | `		goto done;` |
 |    - | 1233 | `	}` |
-|    5 | 1234 | `	pPub = X509_REQ_get_pubkey(pCsr);` |
-|    5 | 1235 | `	if( pPub == 0 \|\| X509_REQ_verify(pCsr,pPub) != 1 ){` |
+|   15 | 1234 | `	pPub = X509_REQ_get_pubkey(pCsr);` |
+|   15 | 1235 | `	if( pPub == 0 \|\| X509_REQ_verify(pCsr,pPub) != 1 ){` |
 |  ! 0 | 1236 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |    - | 1237 | `			"Signature verification problem");` |
 |  ! 0 | 1238 | `		goto done;` |
 |    - | 1239 | `	}` |
-|    5 | 1240 | `	pOut = X509_new();` |
-|    5 | 1241 | `	if( pOut == 0 ){` |
+|   15 | 1240 | `	pOut = X509_new();` |
+|   15 | 1241 | `	if( pOut == 0 ){` |
 |  ! 0 | 1242 | `		goto done;` |
 |    - | 1243 | `	}` |
-|    5 | 1244 | `	pSerial = ASN1_INTEGER_new();` |
-|    5 | 1245 | `	if( pSerial == 0 ){` |
+|   15 | 1244 | `	pSerial = ASN1_INTEGER_new();` |
+|   15 | 1245 | `	if( pSerial == 0 ){` |
 |  ! 0 | 1246 | `		goto done;` |
 |    - | 1247 | `	}` |
-|    6 | 1248 | `	if( nArg > 6 && !ph7_value_is_null(apArg[6]) ){` |
+|   16 | 1248 | `	if( nArg > 6 && !ph7_value_is_null(apArg[6]) ){` |
 |    3 | 1249 | `		int nHex = 0;` |
 |    3 | 1250 | `		const char *zHex = ph7_value_to_string(apArg[6],&nHex);` |
 |    3 | 1251 | `		BIGNUM *pBn = 0;` |
@@ -1284,44 +1284,44 @@ Coverage: 1221/1679 lines (72.72%)
 |    3 | 1274 | `		BN_to_ASN1_INTEGER(pBn,pSerial);` |
 |    3 | 1275 | `		BN_free(pBn);` |
 |    2 | 1276 | `	}else{` |
-|    3 | 1277 | `		ASN1_INTEGER_set_int64(pSerial,nArg > 5 ? ph7_value_to_int64(apArg[5]) : 0);` |
+|   13 | 1277 | `		ASN1_INTEGER_set_int64(pSerial,nArg > 5 ? ph7_value_to_int64(apArg[5]) : 0);` |
 |    - | 1278 | `	}` |
-|    5 | 1279 | `	X509_set_version(pOut,2);` |
-|    5 | 1280 | `	X509_set_serialNumber(pOut,pSerial);` |
-|    5 | 1281 | `	X509_set_subject_name(pOut,X509_REQ_get_subject_name(pCsr));` |
-|    5 | 1282 | `	X509_set_issuer_name(pOut,pCa ? X509_get_subject_name(pCa) : X509_REQ_get_subject_name(pCsr));` |
-|    5 | 1283 | `	X509_gmtime_adj(X509_getm_notBefore(pOut),0);` |
-|    5 | 1284 | `	X509_gmtime_adj(X509_getm_notAfter(pOut),(long)(iDays * 24 * 60 * 60));` |
-|    5 | 1285 | `	X509_set_pubkey(pOut,pPub);` |
-|    5 | 1286 | `	if( sReq.zX509Exts && sReq.pConf ){` |
+|   15 | 1279 | `	X509_set_version(pOut,2);` |
+|   15 | 1280 | `	X509_set_serialNumber(pOut,pSerial);` |
+|   15 | 1281 | `	X509_set_subject_name(pOut,X509_REQ_get_subject_name(pCsr));` |
+|   15 | 1282 | `	X509_set_issuer_name(pOut,pCa ? X509_get_subject_name(pCa) : X509_REQ_get_subject_name(pCsr));` |
+|   15 | 1283 | `	X509_gmtime_adj(X509_getm_notBefore(pOut),0);` |
+|   15 | 1284 | `	X509_gmtime_adj(X509_getm_notAfter(pOut),(long)(iDays * 24 * 60 * 60));` |
+|   15 | 1285 | `	X509_set_pubkey(pOut,pPub);` |
+|   15 | 1286 | `	if( sReq.zX509Exts && sReq.pConf ){` |
 |    - | 1287 | `		X509V3_CTX sExtCtx;` |
-|    5 | 1288 | `		X509V3_set_ctx(&sExtCtx,pCa ? pCa : pOut,pOut,pCsr,0,0);` |
-|    5 | 1289 | `		X509V3_set_nconf(&sExtCtx,sReq.pConf);` |
-|    5 | 1290 | `		if( !X509V3_EXT_add_nconf(sReq.pConf,&sExtCtx,(char *)sReq.zX509Exts,pOut) ){` |
+|   15 | 1288 | `		X509V3_set_ctx(&sExtCtx,pCa ? pCa : pOut,pOut,pCsr,0,0);` |
+|   15 | 1289 | `		X509V3_set_nconf(&sExtCtx,sReq.pConf);` |
+|   15 | 1290 | `		if( !X509V3_EXT_add_nconf(sReq.pConf,&sExtCtx,(char *)sReq.zX509Exts,pOut) ){` |
 |  ! 0 | 1291 | `			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |  ! 0 | 1292 | `				"Error loading extension section %s",sReq.zX509Exts);` |
 |  ! 0 | 1293 | `			goto done;` |
 |    - | 1294 | `		}` |
-|    2 | 1295 | `	}` |
-|    5 | 1296 | `	if( X509_sign(pOut,pKey,sReq.pDigest ? sReq.pDigest : EVP_sha256()) <= 0 ){` |
+|    7 | 1295 | `	}` |
+|   15 | 1296 | `	if( X509_sign(pOut,pKey,sReq.pDigest ? sReq.pDigest : EVP_sha256()) <= 0 ){` |
 |  ! 0 | 1297 | `		goto done;` |
 |    - | 1298 | `	}` |
-|    5 | 1299 | `	rc = 0;` |
-|    3 | 1300 | `done:` |
-|    7 | 1301 | `	if( pSerial ){ ASN1_INTEGER_free(pSerial); }` |
-|    7 | 1302 | `	if( pPub ){ EVP_PKEY_free(pPub); }` |
-|    7 | 1303 | `	if( bOwnKey > 0 && pKey ){ EVP_PKEY_free(pKey); }` |
-|    7 | 1304 | `	SslFreeCert(pCa,bOwnCa);` |
-|    7 | 1305 | `	SslFreeCsr(pCsr,bOwnCsr);` |
-|    7 | 1306 | `	SslReqConfRelease(&sReq);` |
-|    7 | 1307 | `	if( rc != 0 ){` |
+|   15 | 1299 | `	rc = 0;` |
+|    8 | 1300 | `done:` |
+|   17 | 1301 | `	if( pSerial ){ ASN1_INTEGER_free(pSerial); }` |
+|   17 | 1302 | `	if( pPub ){ EVP_PKEY_free(pPub); }` |
+|   17 | 1303 | `	if( bOwnKey > 0 && pKey ){ EVP_PKEY_free(pKey); }` |
+|   17 | 1304 | `	SslFreeCert(pCa,bOwnCa);` |
+|   17 | 1305 | `	SslFreeCsr(pCsr,bOwnCsr);` |
+|   17 | 1306 | `	SslReqConfRelease(&sReq);` |
+|   17 | 1307 | `	if( rc != 0 ){` |
 |    3 | 1308 | `		if( pOut ){ X509_free(pOut); }` |
 |    3 | 1309 | `		PH7_SslStoreErrors(pCtx->pVm);` |
 |    3 | 1310 | `		ph7_result_bool(pCtx,0);` |
 |    3 | 1311 | `		return PH7_OK;` |
 |    - | 1312 | `	}` |
-|    5 | 1313 | `	return PH7_SslResultObject(pCtx,PHL_SSL_KIND_CERT,(void *)pOut);` |
-|    4 | 1314 | `}` |
+|   15 | 1313 | `	return PH7_SslResultObject(pCtx,PHL_SSL_KIND_CERT,(void *)pOut);` |
+|    9 | 1314 | `}` |
 |    - | 1315 |  |
 |    - | 1316 | `/* ------------------------------------------------------------------------` |
 |    - | 1317 | ` * PKCS#12` |
@@ -2210,15 +2210,15 @@ Coverage: 1221/1679 lines (72.72%)
 |    - | 2200 | `/* ------------------------------------------------------------------------` |
 |    - | 2201 | ` * Installation` |
 |    - | 2202 | ` * ------------------------------------------------------------------------ */` |
-| 6721 | 2203 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSslX509(ph7_vm *pVm)` |
+| 7925 | 2203 | `PH7_PRIVATE sxi32 PH7_VmInstallOpenSslX509(ph7_vm *pVm)` |
 |    5 | 2204 | `{` |
 |    - | 2205 | `	/* The three handle classes are installed by the other unit, which mounts` |
 |    - | 2206 | `	 * this one; there is nothing of its own to declare here. */` |
-| 3356 | 2207 | `	SXUNUSED(pVm);` |
-| 6726 | 2208 | `	return SXRET_OK;` |
+| 3957 | 2207 | `	SXUNUSED(pVm);` |
+| 7930 | 2208 | `	return SXRET_OK;` |
 |    5 | 2209 | `}` |
 |    - | 2210 | `/* The functions this unit owns, in php's own registration order. */` |
-| 6721 | 2211 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslX509FuncTable(sxu32 *pnEntry)` |
+| 7925 | 2211 | `PH7_PRIVATE const ph7_builtin_func * PH7_OpenSslX509FuncTable(sxu32 *pnEntry)` |
 |    5 | 2212 | `{` |
 |    - | 2213 | `	static const ph7_builtin_func aFunc[] = {` |
 |    - | 2214 | `		{ "openssl_x509_export_to_file",    vm_builtin_openssl_x509_export_to_file    },` |
@@ -2249,8 +2249,8 @@ Coverage: 1221/1679 lines (72.72%)
 |    - | 2239 | `		{ "openssl_cms_decrypt",            vm_builtin_openssl_cms_decrypt            },` |
 |    - | 2240 | `		{ "openssl_cms_read",               vm_builtin_openssl_cms_read               }` |
 |    - | 2241 | `	};` |
-| 6726 | 2242 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
-| 6726 | 2243 | `	return aFunc;` |
+| 7930 | 2242 | `	*pnEntry = (sxu32)SX_ARRAYSIZE(aFunc);` |
+| 7930 | 2243 | `	return aFunc;` |
 |    5 | 2244 | `}` |
 |    - | 2245 |  |
 |    - | 2246 | `#else` |

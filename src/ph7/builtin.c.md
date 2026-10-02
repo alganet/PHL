@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 413/469 lines (88.06%)
+Coverage: 420/469 lines (89.55%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -26,7 +26,7 @@ Coverage: 413/469 lines (88.06%)
 |       - |   16 | ``/* Shared ZPP helper for `int` parameters — defined OUTSIDE the`` |
 |       - |   17 | ` * PH7_DISABLE_BUILTIN_FUNC guard because hashmap.c (array_slice) and` |
 |       - |   18 | ` * builtin_math.c (intdiv) call it and both compile in the tiny build. */` |
-| 1209199 |   19 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
+| 1285718 |   19 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
 |       - |   20 | `	ph7_context *pCtx,` |
 |       - |   21 | `	ph7_value *pArg,` |
 |       - |   22 | `	const char *zFunc,` |
@@ -35,7 +35,7 @@ Coverage: 413/469 lines (88.06%)
 |       - |   25 | `	const char *zTypeStr,` |
 |       - |   26 | `	sxi64 *pOut` |
 |       5 |   27 | `){` |
-| 1209204 |   28 | `	if( ph7_value_is_null(pArg) ){` |
+| 1285723 |   28 | `	if( ph7_value_is_null(pArg) ){` |
 |       - |   29 | `		/* php only DEPRECATES passing null to a non-nullable internal param; PHL` |
 |       - |   30 | `		 * targets php's non-deprecated surface and rejects it with the TypeError` |
 |       - |   31 | `		 * php will eventually raise. */` |
@@ -45,7 +45,7 @@ Coverage: 413/469 lines (88.06%)
 |     ! 0 |   35 | `			zFunc,iArgNum,zParamName,zTypeStr` |
 |       - |   36 | `			);` |
 |       - |   37 | `	}` |
-| 1209204 |   38 | `	if( ph7_value_is_float(pArg) ){` |
+| 1285723 |   38 | `	if( ph7_value_is_float(pArg) ){` |
 |      27 |   39 | `		double dVal = ph7_value_to_double(pArg);` |
 |       - |   40 | `		sxi64 iVal;` |
 |       - |   41 | `		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */` |
@@ -69,7 +69,7 @@ Coverage: 413/469 lines (88.06%)
 |      27 |   59 | `		*pOut = iVal;` |
 |      27 |   60 | `		return PH7_OK;` |
 |       - |   61 | `	}` |
-| 1209180 |   62 | `	if( ph7_value_is_string(pArg) ){` |
+| 1285699 |   62 | `	if( ph7_value_is_string(pArg) ){` |
 |       - |   63 | `		const char *zNum;` |
 |       - |   64 | `		int nSlen;` |
 |      58 |   65 | `		int i,bFloat = 0;` |
@@ -113,7 +113,7 @@ Coverage: 413/469 lines (88.06%)
 |      34 |  103 | `		*pOut = ph7_value_to_int64(pArg);` |
 |      34 |  104 | `		return PH7_OK;` |
 |       - |  105 | `	}` |
-| 1209124 |  106 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
+| 1285643 |  106 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
 |       - |  107 | `		/* Arrays, resources and objects: php names the class for objects */` |
 |     ! 0 |  108 | `		const char *zType = ph7_type_name(pArg);` |
 |     ! 0 |  109 | `		if( ph7_value_is_object(pArg) ){` |
@@ -128,9 +128,9 @@ Coverage: 413/469 lines (88.06%)
 |     ! 0 |  118 | `			zFunc,iArgNum,zParamName,zTypeStr,zType` |
 |       - |  119 | `			);` |
 |       - |  120 | `	}` |
-| 1209124 |  121 | `	*pOut = ph7_value_to_int64(pArg);` |
-| 1209124 |  122 | `	return PH7_OK;` |
-|  605272 |  123 | `}` |
+| 1285643 |  121 | `	*pOut = ph7_value_to_int64(pArg);` |
+| 1285643 |  122 | `	return PH7_OK;` |
+|  643849 |  123 | `}` |
 |       - |  124 |  |
 |       - |  125 | `/* This file implement built-in 'foreign' functions for the PH7 engine */` |
 |       - |  126 | `/*` |
@@ -186,19 +186,19 @@ Coverage: 413/469 lines (88.06%)
 |       - |  176 | ` * Return` |
 |       - |  177 | ` *  TRUE if var is an integer. False otherwise.` |
 |       - |  178 | ` */` |
-|    1148 |  179 | `static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       3 |  180 | `{` |
-|    1151 |  181 | `	int res = 0; /* Assume false by default */` |
-|    1151 |  182 | `	if( nArg > 0 ){` |
+|    1150 |  179 | `static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  180 | `{` |
+|    1155 |  181 | `	int res = 0; /* Assume false by default */` |
+|    1155 |  182 | `	if( nArg > 0 ){` |
 |       - |  183 | `		/* Strict PHP identity: a float is never an int, even when it holds an` |
 |       - |  184 | `		 * integer value (1.0). An integer-valued real carries both MEMOBJ_INT` |
 |       - |  185 | `		 * (cached) and MEMOBJ_REAL, so REAL must be excluded here. */` |
-|    1151 |  186 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
-|     556 |  187 | `	}` |
+|    1155 |  186 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
+|     557 |  187 | `	}` |
 |       - |  188 | `	/* Query result */` |
-|    1151 |  189 | `	ph7_result_bool(pCtx,res);` |
-|    1151 |  190 | `	return PH7_OK;` |
-|       3 |  191 | `}` |
+|    1155 |  189 | `	ph7_result_bool(pCtx,res);` |
+|    1155 |  190 | `	return PH7_OK;` |
+|       5 |  191 | `}` |
 |       - |  192 | `/*` |
 |       - |  193 | ` * bool is_string($var)` |
 |       - |  194 | ` *  Finds out whether a variable is a string.` |
@@ -207,15 +207,15 @@ Coverage: 413/469 lines (88.06%)
 |       - |  197 | ` * Return` |
 |       - |  198 | ` *  TRUE if var is string. False otherwise.` |
 |       - |  199 | ` */` |
-|    1558 |  200 | `static int PH7_builtin_is_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1592 |  200 | `static int PH7_builtin_is_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  201 | `{` |
-|    1563 |  202 | `	int res = 0; /* Assume false by default */` |
-|    1563 |  203 | `	if( nArg > 0 ){` |
-|    1563 |  204 | `		res = ph7_value_is_string(apArg[0]);` |
-|     778 |  205 | `	}` |
+|    1597 |  202 | `	int res = 0; /* Assume false by default */` |
+|    1597 |  203 | `	if( nArg > 0 ){` |
+|    1597 |  204 | `		res = ph7_value_is_string(apArg[0]);` |
+|     795 |  205 | `	}` |
 |       - |  206 | `	/* Query result */` |
-|    1563 |  207 | `	ph7_result_bool(pCtx,res);` |
-|    1563 |  208 | `	return PH7_OK;` |
+|    1597 |  207 | `	ph7_result_bool(pCtx,res);` |
+|    1597 |  208 | `	return PH7_OK;` |
 |       5 |  209 | `}` |
 |       - |  210 | `/*` |
 |       - |  211 | ` * bool is_null($var)` |
@@ -286,16 +286,16 @@ Coverage: 413/469 lines (88.06%)
 |       - |  276 | ` * Return` |
 |       - |  277 | ` *  True if var is an array. False otherwise.` |
 |       - |  278 | ` */` |
-|    8706 |  279 | `static int PH7_builtin_is_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       4 |  280 | `{` |
-|    8710 |  281 | `	int res = 0; /* Assume false by default */` |
-|    8710 |  282 | `	if( nArg > 0 ){` |
-|    8710 |  283 | `		res = ph7_value_is_array(apArg[0]);` |
-|    4351 |  284 | `	}` |
+|    8810 |  279 | `static int PH7_builtin_is_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       5 |  280 | `{` |
+|    8815 |  281 | `	int res = 0; /* Assume false by default */` |
+|    8815 |  282 | `	if( nArg > 0 ){` |
+|    8815 |  283 | `		res = ph7_value_is_array(apArg[0]);` |
+|    4403 |  284 | `	}` |
 |       - |  285 | `	/* Query result */` |
-|    8710 |  286 | `	ph7_result_bool(pCtx,res);` |
-|    8710 |  287 | `	return PH7_OK;` |
-|       4 |  288 | `}` |
+|    8815 |  286 | `	ph7_result_bool(pCtx,res);` |
+|    8815 |  287 | `	return PH7_OK;` |
+|       5 |  288 | `}` |
 |       - |  289 | `/*` |
 |       - |  290 | ` * bool is_object($var)` |
 |       - |  291 | ` *  Find out whether a variable is an object.` |
@@ -304,16 +304,16 @@ Coverage: 413/469 lines (88.06%)
 |       - |  294 | ` * Return` |
 |       - |  295 | ` *  True if var is an object. False otherwise.` |
 |       - |  296 | ` */` |
-|    1256 |  297 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 |  298 | `{` |
-|    1261 |  299 | `	int res = 0; /* Assume false by default */` |
-|    1261 |  300 | `	if( nArg > 0 ){` |
-|    1261 |  301 | `		res = ph7_value_is_object(apArg[0]);` |
-|     628 |  302 | `	}` |
+|    1300 |  297 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       4 |  298 | `{` |
+|    1304 |  299 | `	int res = 0; /* Assume false by default */` |
+|    1304 |  300 | `	if( nArg > 0 ){` |
+|    1304 |  301 | `		res = ph7_value_is_object(apArg[0]);` |
+|     650 |  302 | `	}` |
 |       - |  303 | `	/* Query result */` |
-|    1261 |  304 | `	ph7_result_bool(pCtx,res);` |
-|    1261 |  305 | `	return PH7_OK;` |
-|       5 |  306 | `}` |
+|    1304 |  304 | `	ph7_result_bool(pCtx,res);` |
+|    1304 |  305 | `	return PH7_OK;` |
+|       4 |  306 | `}` |
 |       - |  307 | `/*` |
 |       - |  308 | ` * bool is_resource($var)` |
 |       - |  309 | ` *  Find out whether a variable is a resource.` |
@@ -322,16 +322,16 @@ Coverage: 413/469 lines (88.06%)
 |       - |  312 | ` * Return` |
 |       - |  313 | ` *  True if a resource. False otherwise.` |
 |       - |  314 | ` */` |
-|     806 |  315 | `static int PH7_builtin_is_resource(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1170 |  315 | `static int PH7_builtin_is_resource(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  316 | `{` |
-|     811 |  317 | `	int res = 0; /* Assume false by default */` |
-|     811 |  318 | `	if( nArg > 0 && ph7_value_is_resource(apArg[0]) ){` |
+|    1175 |  317 | `	int res = 0; /* Assume false by default */` |
+|    1175 |  318 | `	if( nArg > 0 && ph7_value_is_resource(apArg[0]) ){` |
 |       - |  319 | `		/* A handle closed via fclose()/closedir()/pclose() is no longer a` |
 |       - |  320 | `		 * live resource — php's is_resource() returns false for it. */` |
-|     579 |  321 | `		res = !PH7_VfsResourceIsClosed(apArg[0]->x.pOther);` |
-|     288 |  322 | `	}` |
-|     811 |  323 | `	ph7_result_bool(pCtx,res);` |
-|     811 |  324 | `	return PH7_OK;` |
+|     915 |  321 | `		res = !PH7_VfsResourceIsClosed(apArg[0]->x.pOther);` |
+|     455 |  322 | `	}` |
+|    1175 |  323 | `	ph7_result_bool(pCtx,res);` |
+|    1175 |  324 | `	return PH7_OK;` |
 |       5 |  325 | `}` |
 |       - |  326 | `/*` |
 |       - |  327 | ` * float floatval($var)` |
@@ -584,14 +584,14 @@ Coverage: 413/469 lines (88.06%)
 |       - |  574 | ` * Return` |
 |       - |  575 | ` *  0 if var has a non-empty and non-zero value.1 otherwise.` |
 |       - |  576 | ` */` |
-|   55843 |  577 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   67414 |  577 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  578 | `{` |
-|   55848 |  579 | `	int res = 1; /* Assume empty by default */` |
-|   55848 |  580 | `	if( nArg > 0 ){` |
-|   55848 |  581 | `		res = ph7_value_is_empty(apArg[0]);` |
-|   27914 |  582 | `	}` |
-|   55848 |  583 | `	ph7_result_bool(pCtx,res);` |
-|   55848 |  584 | `	return PH7_OK;` |
+|   67419 |  579 | `	int res = 1; /* Assume empty by default */` |
+|   67419 |  580 | `	if( nArg > 0 ){` |
+|   67419 |  581 | `		res = ph7_value_is_empty(apArg[0]);` |
+|   33698 |  582 | `	}` |
+|   67419 |  583 | `	ph7_result_bool(pCtx,res);` |
+|   67419 |  584 | `	return PH7_OK;` |
 |       - |  585 |  |
 |       5 |  586 | `}` |
 |       - |  587 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
@@ -756,13 +756,13 @@ Coverage: 413/469 lines (88.06%)
 |       - |  746 | ` *  $real_usage flag has no effect here (php's non-real figure would be smaller,` |
 |       - |  747 | ` *  reflecting Zend's emalloc bookkeeping — recorded divergence).` |
 |       - |  748 | ` */` |
-|     ! 0 |  749 | `static int PH7_builtin_memory_get_usage(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     ! 0 |  750 | `{` |
-|     ! 0 |  751 | `	SXUNUSED(nArg);` |
-|     ! 0 |  752 | `	SXUNUSED(apArg);` |
-|     ! 0 |  753 | `	ph7_result_int64(pCtx,(ph7_int64)pCtx->pVm->sAllocator.nMemUsed);` |
-|     ! 0 |  754 | `	return PH7_OK;` |
-|     ! 0 |  755 | `}` |
+|      12 |  749 | `static int PH7_builtin_memory_get_usage(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       2 |  750 | `{` |
+|       6 |  751 | `	SXUNUSED(nArg);` |
+|       6 |  752 | `	SXUNUSED(apArg);` |
+|      14 |  753 | `	ph7_result_int64(pCtx,(ph7_int64)pCtx->pVm->sAllocator.nMemUsed);` |
+|      14 |  754 | `	return PH7_OK;` |
+|       2 |  755 | `}` |
 |       - |  756 | `/*` |
 |       - |  757 | ` * int memory_get_peak_usage([bool $real_usage = false])` |
 |       - |  758 | ` *  High-water mark of memory_get_usage() over the script's lifetime.` |
@@ -815,14 +815,14 @@ Coverage: 413/469 lines (88.06%)
 |       7 |  805 | `	ph7_result_bool(pCtx,pCtx->pVm->bGcEnabled);` |
 |       7 |  806 | `	return PH7_OK;` |
 |       1 |  807 | `}` |
-|       2 |  808 | `static int PH7_builtin_gc_collect_cycles(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       1 |  809 | `{` |
+|       4 |  808 | `static int PH7_builtin_gc_collect_cycles(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       2 |  809 | `{` |
 |       - |  810 | `	/* php: the number of collected CYCLES. Run one now, whatever the buffer holds --` |
 |       - |  811 | `	 * an explicit call is a demand, not a hint. */` |
-|       1 |  812 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|       3 |  813 | `	ph7_result_int(pCtx,(sxi64)PH7_GcCollect(pCtx->pVm));` |
-|       3 |  814 | `	return PH7_OK;` |
-|       1 |  815 | `}` |
+|       2 |  812 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|       6 |  813 | `	ph7_result_int(pCtx,(sxi64)PH7_GcCollect(pCtx->pVm));` |
+|       6 |  814 | `	return PH7_OK;` |
+|       2 |  815 | `}` |
 |     ! 0 |  816 | `static int PH7_builtin_gc_mem_caches(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     ! 0 |  817 | `{` |
 |     ! 0 |  818 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
@@ -1028,446 +1028,450 @@ Coverage: 413/469 lines (88.06%)
 |       - | 1018 | `	{ "mb_detect_encoding", PH7_builtin_mb_detect_encoding_f },` |
 |       - | 1019 | `	{ "mb_detect_order", PH7_builtin_mb_detect_order_f },` |
 |       - | 1020 | `	{ "mb_list_encodings", PH7_builtin_mb_list_encodings_f },` |
-|       - | 1021 | `	{ "mb_convert_encoding", PH7_builtin_mb_convert_encoding_f },` |
-|       - | 1022 | `	{ "iconv",        PH7_builtin_iconv_f    }, /* builtin_iconv.c */` |
-|       - | 1023 | `	{ "iconv_strlen", PH7_builtin_iconv_strlen_f },` |
-|       - | 1024 | `	{ "iconv_substr", PH7_builtin_iconv_substr_f },` |
-|       - | 1025 | `	{ "iconv_strpos", PH7_builtin_iconv_strpos_f },` |
-|       - | 1026 | `	{ "iconv_strrpos",PH7_builtin_iconv_strrpos_f },` |
-|       - | 1027 | `	{ "iconv_get_encoding", PH7_builtin_iconv_get_encoding_f },` |
-|       - | 1028 | `	{ "iconv_mime_encode", PH7_builtin_iconv_mime_encode_f },` |
-|       - | 1029 | `	{ "iconv_mime_decode", PH7_builtin_iconv_mime_decode_f },` |
-|       - | 1030 | `	{ "iconv_mime_decode_headers", PH7_builtin_iconv_mime_decode_headers_f },` |
-|       - | 1031 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
-|       - | 1032 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
-|       - | 1033 | `	{ "ord",          PH7_builtin_ord        },` |
-|       - | 1034 | `	{ "chr",          PH7_builtin_chr        },` |
-|       - | 1035 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
-|       - | 1036 | `	{ "strstr",       PH7_builtin_strstr     },` |
-|       - | 1037 | `	{ "stristr",      PH7_builtin_stristr    },` |
-|       - | 1038 | `	{ "strchr",       PH7_builtin_strstr     },` |
-|       - | 1039 | `	{ "strpos",       PH7_builtin_strpos     },` |
-|       - | 1040 | `	{ "stripos",      PH7_builtin_stripos    },` |
-|       - | 1041 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
-|       - | 1042 | `	{ "strripos",     PH7_builtin_strripos   },` |
-|       - | 1043 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
-|       - | 1044 | `	{ "strrev",       PH7_builtin_strrev     },` |
-|       - | 1045 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
-|       - | 1046 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
-|       - | 1047 | `	{ "str_contains", PH7_builtin_str_contains },` |
-|       - | 1048 | `	{ "str_starts_with", PH7_builtin_str_starts_with },` |
-|       - | 1049 | `	{ "str_ends_with", PH7_builtin_str_ends_with },` |
-|       - | 1050 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
-|       - | 1051 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|       - | 1052 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|       - | 1053 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
-|       - | 1054 | `	{ "printf",       PH7_builtin_printf     },` |
-|       - | 1055 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
-|       - | 1056 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
-|       - | 1057 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|       - | 1058 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|       - | 1059 | `	{ "size_format",  PH7_builtin_size_format},` |
-|       - | 1060 | `	     /* ext/standard's syslog trio, in php's own order. Not an extension --` |
-|       - | 1061 | `	      * these are here on every platform php has them on, Windows included. */` |
-|       - | 1062 | `	{ "openlog",      PH7_builtin_openlog   },` |
-|       - | 1063 | `	{ "closelog",     PH7_builtin_closelog  },` |
-|       - | 1064 | `	{ "syslog",       PH7_builtin_syslog    },` |
-|       - | 1065 |  |
+|       - | 1021 | `	{ "mb_encoding_aliases", PH7_builtin_mb_encoding_aliases_f },` |
+|       - | 1022 | `	{ "mb_convert_encoding", PH7_builtin_mb_convert_encoding_f },` |
+|       - | 1023 | `	{ "iconv",        PH7_builtin_iconv_f    }, /* builtin_iconv.c */` |
+|       - | 1024 | `	{ "iconv_strlen", PH7_builtin_iconv_strlen_f },` |
+|       - | 1025 | `	{ "iconv_substr", PH7_builtin_iconv_substr_f },` |
+|       - | 1026 | `	{ "iconv_strpos", PH7_builtin_iconv_strpos_f },` |
+|       - | 1027 | `	{ "iconv_strrpos",PH7_builtin_iconv_strrpos_f },` |
+|       - | 1028 | `	{ "iconv_get_encoding", PH7_builtin_iconv_get_encoding_f },` |
+|       - | 1029 | `	{ "iconv_mime_encode", PH7_builtin_iconv_mime_encode_f },` |
+|       - | 1030 | `	{ "iconv_mime_decode", PH7_builtin_iconv_mime_decode_f },` |
+|       - | 1031 | `	{ "iconv_mime_decode_headers", PH7_builtin_iconv_mime_decode_headers_f },` |
+|       - | 1032 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
+|       - | 1033 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
+|       - | 1034 | `	{ "ord",          PH7_builtin_ord        },` |
+|       - | 1035 | `	{ "chr",          PH7_builtin_chr        },` |
+|       - | 1036 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
+|       - | 1037 | `	{ "strstr",       PH7_builtin_strstr     },` |
+|       - | 1038 | `	{ "stristr",      PH7_builtin_stristr    },` |
+|       - | 1039 | `	{ "strchr",       PH7_builtin_strstr     },` |
+|       - | 1040 | `	{ "strpos",       PH7_builtin_strpos     },` |
+|       - | 1041 | `	{ "stripos",      PH7_builtin_stripos    },` |
+|       - | 1042 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
+|       - | 1043 | `	{ "strripos",     PH7_builtin_strripos   },` |
+|       - | 1044 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
+|       - | 1045 | `	{ "strrev",       PH7_builtin_strrev     },` |
+|       - | 1046 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
+|       - | 1047 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
+|       - | 1048 | `	{ "str_contains", PH7_builtin_str_contains },` |
+|       - | 1049 | `	{ "str_starts_with", PH7_builtin_str_starts_with },` |
+|       - | 1050 | `	{ "str_ends_with", PH7_builtin_str_ends_with },` |
+|       - | 1051 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
+|       - | 1052 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|       - | 1053 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|       - | 1054 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
+|       - | 1055 | `	{ "printf",       PH7_builtin_printf     },` |
+|       - | 1056 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
+|       - | 1057 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
+|       - | 1058 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|       - | 1059 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|       - | 1060 | `	{ "size_format",  PH7_builtin_size_format},` |
+|       - | 1061 | `	     /* ext/standard's syslog trio, in php's own order. Not an extension --` |
+|       - | 1062 | `	      * these are here on every platform php has them on, Windows included. */` |
+|       - | 1063 | `	{ "openlog",      PH7_builtin_openlog   },` |
+|       - | 1064 | `	{ "closelog",     PH7_builtin_closelog  },` |
+|       - | 1065 | `	{ "syslog",       PH7_builtin_syslog    },` |
 |       - | 1066 |  |
-|       - | 1067 | `#ifndef PH7_DISABLE_HASH_FUNC` |
-|       - | 1068 | `	{ "md5",          PH7_builtin_md5       },` |
-|       - | 1069 | `	{ "sha1",         PH7_builtin_sha1      },` |
-|       - | 1070 | `	{ "crc32",        PH7_builtin_crc32     },` |
-|       - | 1071 | `	{ "hash",         PH7_builtin_hash      },` |
-|       - | 1072 | `	{ "hash_hmac",    PH7_builtin_hash_hmac },` |
-|       - | 1073 | `	{ "hash_equals",  PH7_builtin_hash_equals },` |
-|       - | 1074 | `	{ "hash_algos",   PH7_builtin_hash_algos },` |
-|       - | 1075 | `	{ "hash_hmac_algos", PH7_builtin_hash_hmac_algos },` |
-|       - | 1076 | `	{ "hash_init",    PH7_builtin_hash_init },` |
-|       - | 1077 | `	{ "hash_update",  PH7_builtin_hash_update },` |
-|       - | 1078 | `	{ "hash_final",   PH7_builtin_hash_final },` |
-|       - | 1079 | `	{ "hash_copy",    PH7_builtin_hash_copy },` |
-|       - | 1080 | `	{ "hash_pbkdf2",  PH7_builtin_hash_pbkdf2 },` |
-|       - | 1081 | `	{ "hash_hkdf",    PH7_builtin_hash_hkdf },` |
-|       - | 1082 | `	{ "crypt",        PH7_builtin_crypt     },` |
-|       - | 1083 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
-|       - | 1084 | `	{ "password_hash",         PH7_builtin_password_hash },` |
-|       - | 1085 | `	{ "password_verify",       PH7_builtin_password_verify },` |
-|       - | 1086 | `	{ "password_get_info",     PH7_builtin_password_get_info },` |
-|       - | 1087 | `	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },` |
-|       - | 1088 | `	{ "password_algos",        PH7_builtin_password_algos },` |
-|       - | 1089 | `	{ "filter_var",            PH7_builtin_filter_var },` |
-|       - | 1090 | `	{ "filter_input",          PH7_builtin_filter_input },` |
-|       - | 1091 | `	{ "filter_list",           PH7_builtin_filter_list },` |
-|       - | 1092 | `	{ "filter_id",             PH7_builtin_filter_id },` |
-|       - | 1093 | `	{ "filter_has_var",        PH7_builtin_filter_has_var },` |
-|       - | 1094 | `	{ "filter_var_array",      PH7_builtin_filter_var_array },` |
-|       - | 1095 | `	{ "filter_input_array",    PH7_builtin_filter_input_array },` |
-|       - | 1096 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|       - | 1097 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|       - | 1098 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
-|       - | 1099 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
-|       - | 1100 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|       - | 1101 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|       - | 1102 |  |
-|       - | 1103 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
-|       - | 1104 | `	{ "str_split",    PH7_builtin_str_split  },` |
-|       - | 1105 | `	{ "count_chars",  PH7_builtin_count_chars},` |
-|       - | 1106 | `	{ "strspn",       PH7_builtin_strspn     },` |
-|       - | 1107 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
-|       - | 1108 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
-|       - | 1109 | `	{ "soundex",      PH7_builtin_soundex    },` |
-|       - | 1110 | `	{ "str_rot13",    PH7_builtin_str_rot13  },` |
-|       - | 1111 | `	{ "metaphone",    PH7_builtin_metaphone  },` |
-|       - | 1112 | `	{ "pack",         PH7_builtin_pack       },` |
-|       - | 1113 | `	{ "unpack",       PH7_builtin_unpack     },` |
-|       - | 1114 | `	{ "sscanf",       PH7_builtin_sscanf     },` |
-|       - | 1115 | `	     /* ext/bcmath: arbitrary-precision decimal arithmetic over strings */` |
-|       - | 1116 | `	{ "bcadd",        PH7_builtin_bcadd      },` |
-|       - | 1117 | `	{ "bcsub",        PH7_builtin_bcsub      },` |
-|       - | 1118 | `	{ "bcmul",        PH7_builtin_bcmul      },` |
-|       - | 1119 | `	{ "bccomp",       PH7_builtin_bccomp     },` |
-|       - | 1120 | `	{ "bcdiv",        PH7_builtin_bcdiv      },` |
-|       - | 1121 | `	{ "bcmod",        PH7_builtin_bcmod      },` |
-|       - | 1122 | `	{ "bcdivmod",     PH7_builtin_bcdivmod   },` |
-|       - | 1123 | `	{ "bcpow",        PH7_builtin_bcpow      },` |
-|       - | 1124 | `	{ "bcpowmod",     PH7_builtin_bcpowmod   },` |
-|       - | 1125 | `	{ "bcsqrt",       PH7_builtin_bcsqrt     },` |
-|       - | 1126 | `	{ "bcround",      PH7_builtin_bcround    },` |
-|       - | 1127 | `	{ "bcfloor",      PH7_builtin_bcfloor    },` |
-|       - | 1128 | `	{ "bcceil",       PH7_builtin_bcceil     },` |
-|       - | 1129 | `	{ "bcscale",      PH7_builtin_bcscale    },` |
-|       - | 1130 | `	     /* ext/calendar: the serial day number and its four calendars */` |
-|       - | 1131 | `	{ "gregoriantojd",PH7_builtin_gregoriantojd },` |
-|       - | 1132 | `	{ "jdtogregorian",PH7_builtin_jdtogregorian },` |
-|       - | 1133 | `	{ "juliantojd",   PH7_builtin_juliantojd    },` |
-|       - | 1134 | `	{ "jdtojulian",   PH7_builtin_jdtojulian    },` |
-|       - | 1135 | `	{ "frenchtojd",   PH7_builtin_frenchtojd    },` |
-|       - | 1136 | `	{ "jdtofrench",   PH7_builtin_jdtofrench    },` |
-|       - | 1137 | `	{ "jewishtojd",   PH7_builtin_jewishtojd    },` |
-|       - | 1138 | `	{ "jdtojewish",   PH7_builtin_jdtojewish    },` |
-|       - | 1139 | `	{ "cal_info",     PH7_builtin_cal_info      },` |
-|       - | 1140 | `	{ "cal_days_in_month", PH7_builtin_cal_days_in_month },` |
-|       - | 1141 | `	{ "cal_to_jd",    PH7_builtin_cal_to_jd     },` |
-|       - | 1142 | `	{ "cal_from_jd",  PH7_builtin_cal_from_jd   },` |
-|       - | 1143 | `	{ "jddayofweek",  PH7_builtin_jddayofweek   },` |
-|       - | 1144 | `	{ "jdmonthname",  PH7_builtin_jdmonthname   },` |
-|       - | 1145 | `	{ "unixtojd",     PH7_builtin_unixtojd      },` |
-|       - | 1146 | `	{ "jdtounix",     PH7_builtin_jdtounix      },` |
-|       - | 1147 | `	{ "easter_days",  PH7_builtin_easter_days   },` |
-|       - | 1148 | `	{ "easter_date",  PH7_builtin_easter_date   },` |
-|       - | 1149 | `	     /* ext/gettext: php's own order for the extension */` |
-|       - | 1150 | `	{ "textdomain",              PH7_builtin_textdomain              },` |
-|       - | 1151 | `	{ "gettext",                 PH7_builtin_gettext                 },` |
-|       - | 1152 | `	{ "_",                       PH7_builtin_gettext                 },` |
-|       - | 1153 | `	{ "dgettext",                PH7_builtin_dgettext                },` |
-|       - | 1154 | `	{ "dcgettext",               PH7_builtin_dcgettext               },` |
-|       - | 1155 | `	{ "bindtextdomain",          PH7_builtin_bindtextdomain          },` |
-|       - | 1156 | `	{ "ngettext",                PH7_builtin_ngettext                },` |
-|       - | 1157 | `	{ "dngettext",               PH7_builtin_dngettext               },` |
-|       - | 1158 | `	{ "dcngettext",              PH7_builtin_dcngettext              },` |
-|       - | 1159 | `	{ "bind_textdomain_codeset", PH7_builtin_bind_textdomain_codeset },` |
-|       - | 1160 | `	     /* ext/fileinfo: php's own order for the extension */` |
-|       - | 1161 | `	{ "finfo_open",              PH7_builtin_finfo_open              },` |
-|       - | 1162 | `	{ "finfo_close",             PH7_builtin_finfo_close             },` |
-|       - | 1163 | `	{ "finfo_set_flags",         PH7_builtin_finfo_set_flags         },` |
-|       - | 1164 | `	{ "finfo_file",              PH7_builtin_finfo_file              },` |
-|       - | 1165 | `	{ "finfo_buffer",            PH7_builtin_finfo_buffer            },` |
-|       - | 1166 | `	{ "mime_content_type",       PH7_builtin_mime_content_type       },` |
-|       - | 1167 | `#ifndef __WINNT__` |
-|       - | 1168 | `	     /* ext/posix, in php's own order. php builds none of this on Windows,` |
-|       - | 1169 | ``	      * so `function_exists('posix_kill')` is FALSE there -- which is what a`` |
-|       - | 1170 | `	      * program guarding its use of them looks for. */` |
-|       - | 1171 | `	{ "posix_kill",              PH7_builtin_posix_kill              },` |
-|       - | 1172 | `	{ "posix_getpid",            PH7_builtin_posix_getpid            },` |
-|       - | 1173 | `	{ "posix_getppid",           PH7_builtin_posix_getppid           },` |
-|       - | 1174 | `	{ "posix_getuid",            PH7_builtin_posix_getuid            },` |
-|       - | 1175 | `	{ "posix_setuid",            PH7_builtin_posix_setuid            },` |
-|       - | 1176 | `	{ "posix_geteuid",           PH7_builtin_posix_geteuid           },` |
-|       - | 1177 | `	{ "posix_seteuid",           PH7_builtin_posix_seteuid           },` |
-|       - | 1178 | `	{ "posix_getgid",            PH7_builtin_posix_getgid            },` |
-|       - | 1179 | `	{ "posix_setgid",            PH7_builtin_posix_setgid            },` |
-|       - | 1180 | `	{ "posix_getegid",           PH7_builtin_posix_getegid           },` |
-|       - | 1181 | `	{ "posix_setegid",           PH7_builtin_posix_setegid           },` |
-|       - | 1182 | `	{ "posix_getgroups",         PH7_builtin_posix_getgroups         },` |
-|       - | 1183 | `	{ "posix_getlogin",          PH7_builtin_posix_getlogin          },` |
-|       - | 1184 | `	{ "posix_getpgrp",           PH7_builtin_posix_getpgrp           },` |
-|       - | 1185 | `	{ "posix_setsid",            PH7_builtin_posix_setsid            },` |
-|       - | 1186 | `	{ "posix_setpgid",           PH7_builtin_posix_setpgid           },` |
-|       - | 1187 | `	{ "posix_getpgid",           PH7_builtin_posix_getpgid           },` |
-|       - | 1188 | `	{ "posix_getsid",            PH7_builtin_posix_getsid            },` |
-|       - | 1189 | `	{ "posix_uname",             PH7_builtin_posix_uname             },` |
-|       - | 1190 | `	{ "posix_times",             PH7_builtin_posix_times             },` |
-|       - | 1191 | `	{ "posix_ctermid",           PH7_builtin_posix_ctermid           },` |
-|       - | 1192 | `	{ "posix_ttyname",           PH7_builtin_posix_ttyname           },` |
-|       - | 1193 | `	{ "posix_isatty",            PH7_builtin_posix_isatty            },` |
-|       - | 1194 | `	{ "posix_getcwd",            PH7_builtin_posix_getcwd            },` |
-|       - | 1195 | `	{ "posix_mkfifo",            PH7_builtin_posix_mkfifo            },` |
-|       - | 1196 | `	{ "posix_mknod",             PH7_builtin_posix_mknod             },` |
-|       - | 1197 | `	{ "posix_access",            PH7_builtin_posix_access            },` |
-|       - | 1198 | `	{ "posix_eaccess",           PH7_builtin_posix_eaccess           },` |
-|       - | 1199 | `	{ "posix_getgrnam",          PH7_builtin_posix_getgrnam          },` |
-|       - | 1200 | `	{ "posix_getgrgid",          PH7_builtin_posix_getgrgid          },` |
-|       - | 1201 | `	{ "posix_getpwnam",          PH7_builtin_posix_getpwnam          },` |
-|       - | 1202 | `	{ "posix_getpwuid",          PH7_builtin_posix_getpwuid          },` |
-|       - | 1203 | `	{ "posix_getrlimit",         PH7_builtin_posix_getrlimit         },` |
-|       - | 1204 | `	{ "posix_setrlimit",         PH7_builtin_posix_setrlimit         },` |
-|       - | 1205 | `	{ "posix_get_last_error",    PH7_builtin_posix_get_last_error    },` |
-|       - | 1206 | `	{ "posix_errno",             PH7_builtin_posix_get_last_error    },` |
-|       - | 1207 | `	{ "posix_strerror",          PH7_builtin_posix_strerror          },` |
-|       - | 1208 | `	{ "posix_initgroups",        PH7_builtin_posix_initgroups        },` |
-|       - | 1209 | `	{ "posix_sysconf",           PH7_builtin_posix_sysconf           },` |
-|       - | 1210 | `	{ "posix_pathconf",          PH7_builtin_posix_pathconf          },` |
-|       - | 1211 | `	{ "posix_fpathconf",         PH7_builtin_posix_fpathconf         },` |
-|       - | 1212 | `	     /* ext/pcntl, in php's own order. php builds none of this on Windows` |
-|       - | 1213 | `	      * either, which is exactly what monolog's SignalHandler and` |
-|       - | 1214 | `	      * symfony/console's SignalRegistry check before calling anything. */` |
-|       - | 1215 | `	{ "pcntl_fork",               PH7_builtin_pcntl_fork               },` |
-|       - | 1216 | `	{ "pcntl_waitpid",            PH7_builtin_pcntl_waitpid            },` |
-|       - | 1217 | `	{ "pcntl_waitid",             PH7_builtin_pcntl_waitid             },` |
-|       - | 1218 | `	{ "pcntl_wait",               PH7_builtin_pcntl_wait               },` |
-|       - | 1219 | `	{ "pcntl_signal",             PH7_builtin_pcntl_signal             },` |
-|       - | 1220 | `	{ "pcntl_signal_get_handler", PH7_builtin_pcntl_signal_get_handler },` |
-|       - | 1221 | `	{ "pcntl_signal_dispatch",    PH7_builtin_pcntl_signal_dispatch    },` |
-|       - | 1222 | `	{ "pcntl_sigprocmask",        PH7_builtin_pcntl_sigprocmask        },` |
-|       - | 1223 | `#ifndef __APPLE__` |
-|       - | 1224 | `	/* php builds these two only where the system has them; macOS has neither. */` |
-|       - | 1225 | `	{ "pcntl_sigwaitinfo",        PH7_builtin_pcntl_sigwaitinfo        },` |
-|       - | 1226 | `	{ "pcntl_sigtimedwait",       PH7_builtin_pcntl_sigtimedwait       },` |
-|       - | 1227 | `#endif` |
-|       - | 1228 | `	{ "pcntl_wifexited",          PH7_builtin_pcntl_wifexited          },` |
-|       - | 1229 | `	{ "pcntl_wifstopped",         PH7_builtin_pcntl_wifstopped         },` |
-|       - | 1230 | `	{ "pcntl_wifcontinued",       PH7_builtin_pcntl_wifcontinued       },` |
-|       - | 1231 | `	{ "pcntl_wifsignaled",        PH7_builtin_pcntl_wifsignaled        },` |
-|       - | 1232 | `	{ "pcntl_wexitstatus",        PH7_builtin_pcntl_wexitstatus        },` |
-|       - | 1233 | `	{ "pcntl_wtermsig",           PH7_builtin_pcntl_wtermsig           },` |
-|       - | 1234 | `	{ "pcntl_wstopsig",           PH7_builtin_pcntl_wstopsig           },` |
-|       - | 1235 | `	{ "pcntl_exec",               PH7_builtin_pcntl_exec               },` |
-|       - | 1236 | `	{ "pcntl_alarm",              PH7_builtin_pcntl_alarm              },` |
-|       - | 1237 | `	{ "pcntl_get_last_error",     PH7_builtin_pcntl_get_last_error     },` |
-|       - | 1238 | `	{ "pcntl_errno",              PH7_builtin_pcntl_get_last_error     },` |
-|       - | 1239 | `	{ "pcntl_getpriority",        PH7_builtin_pcntl_getpriority        },` |
-|       - | 1240 | `	{ "pcntl_setpriority",        PH7_builtin_pcntl_setpriority        },` |
-|       - | 1241 | `	{ "pcntl_strerror",           PH7_builtin_pcntl_strerror           },` |
-|       - | 1242 | `	{ "pcntl_async_signals",      PH7_builtin_pcntl_async_signals      },` |
-|       - | 1243 | `#ifdef __linux__` |
-|       - | 1244 | `	/* php builds these four only where the kernel has them, so a php on a` |
-|       - | 1245 | `	 * non-Linux unix answers false to function_exists('pcntl_unshare'). */` |
-|       - | 1246 | `	{ "pcntl_unshare",            PH7_builtin_pcntl_unshare            },` |
-|       - | 1247 | `	{ "pcntl_getcpuaffinity",     PH7_builtin_pcntl_getcpuaffinity     },` |
-|       - | 1248 | `	{ "pcntl_setcpuaffinity",     PH7_builtin_pcntl_setcpuaffinity     },` |
-|       - | 1249 | `	{ "pcntl_getcpu",             PH7_builtin_pcntl_getcpu             },` |
-|       - | 1250 | `#endif /* __linux__ */` |
-|       - | 1251 | `#endif /* __WINNT__ */` |
-|       - | 1252 | `	     /* ext/standard: the image container surface */` |
-|       - | 1253 | `	{ "image_type_to_mime_type", PH7_builtin_image_type_to_mime_type },` |
-|       - | 1254 | `	{ "image_type_to_extension", PH7_builtin_image_type_to_extension },` |
-|       - | 1255 | `	{ "getimagesize",            PH7_builtin_getimagesize            },` |
-|       - | 1256 | `	{ "getimagesizefromstring",  PH7_builtin_getimagesizefromstring  },` |
-|       - | 1257 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
-|       - | 1258 | `	{ "strtok",       PH7_builtin_strtok     },` |
-|       - | 1259 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
-|       - | 1260 | `	{ "str_replace",  PH7_builtin_str_replace},` |
-|       - | 1261 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
-|       - | 1262 | `	{ "strtr",        PH7_builtin_strtr      },` |
-|       - | 1263 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|       - | 1264 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|       - | 1265 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
-|       - | 1266 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|       - | 1267 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|       - | 1268 |  |
-|       - | 1269 | `	         /* Ctype functions */` |
-|       - | 1270 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
-|       - | 1271 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
-|       - | 1272 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
-|       - | 1273 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
-|       - | 1274 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
-|       - | 1275 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
-|       - | 1276 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
-|       - | 1277 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
-|       - | 1278 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
-|       - | 1279 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
-|       - | 1280 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
-|       - | 1281 | `	         /* Time functions */` |
-|       - | 1282 | `	{ "time"    ,    PH7_builtin_time         },` |
-|       - | 1283 | `	{ "microtime",   PH7_builtin_microtime    },` |
-|       - | 1284 | `	{ "hrtime",      PH7_builtin_hrtime       },` |
-|       - | 1285 | `	{ "getrusage",   PH7_builtin_getrusage    },` |
-|       - | 1286 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
-|       - | 1287 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
-|       - | 1288 | `	{ "date",        PH7_builtin_date         },` |
-|       - | 1289 | `	{ "idate",       PH7_builtin_idate        },` |
-|       - | 1290 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
-|       - | 1291 | `	{ "localtime",   PH7_builtin_localtime    },` |
-|       - | 1292 | `	{ "mktime",      PH7_builtin_mktime       },` |
-|       - | 1293 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
-|       - | 1294 | `	{ "date_default_timezone_get", PH7_builtin_date_default_timezone_get },` |
-|       - | 1295 | `	{ "date_default_timezone_set", PH7_builtin_date_default_timezone_set },` |
-|       - | 1296 | `	        /* URL functions */` |
-|       - | 1297 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
-|       - | 1298 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
-|       - | 1299 | `	{ "convert_uuencode",PH7_builtin_convert_uuencode },` |
-|       - | 1300 | `	{ "convert_uudecode",PH7_builtin_convert_uudecode },` |
-|       - | 1301 | `	{ "urlencode",    PH7_builtin_urlencode },` |
-|       - | 1302 | `	{ "urldecode",    PH7_builtin_urldecode },` |
-|       - | 1303 | `	{ "rawurlencode", PH7_builtin_rawurlencode },` |
-|       - | 1304 | `	{ "http_build_query", PH7_builtin_http_build_query },` |
-|       - | 1305 | `	{ "parse_str",    PH7_builtin_parse_str  },` |
-|       - | 1306 | `	{ "rawurldecode", PH7_builtin_rawurldecode },` |
-|       - | 1307 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|       - | 1308 | `};` |
-|       - | 1309 | `/*` |
-|       - | 1310 | ` * Register the built-in functions defined above,the array functions` |
-|       - | 1311 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
-|       - | 1312 | ` */` |
-|    5619 | 1313 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
-|       5 | 1314 | `{` |
-|       - | 1315 | `	sxu32 n;` |
-| 2157728 | 1316 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
-| 2152109 | 1317 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
-| 1065905 | 1318 | `	}` |
-|       - | 1319 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
-|    5624 | 1320 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
-|       - | 1321 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
-|    5624 | 1322 | `	PH7_RegisterIORoutine(&(*pVm));` |
-|    5624 | 1323 | `}` |
-|       - | 1324 |  |
-|       - | 1325 | `/*` |
-|       - | 1326 | ` * UTF-8 codepoint reader shared by the glob/fnmatch matcher in vfs.c.` |
-|       - | 1327 | ` * Relocated here from the removed vm_xml.c when the legacy xml_* API was` |
-|       - | 1328 | ` * dropped; the utf8_encode()/utf8_decode() builtins it once served were` |
-|       - | 1329 | ` * removed in turn (superseded by mb_convert_encoding()),` |
-|       - | 1330 | ` * leaving only this public-domain SQLite reader.` |
-|       - | 1331 | ` */` |
-|       - | 1332 | `/* SPDX-SnippetBegin */` |
-|       - | 1333 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
-|       - | 1334 | `/* SPDX-License-Identifier: blessing */` |
-|       - | 1335 | `/*` |
-|       - | 1336 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
-|       - | 1337 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
-|       - | 1338 | ` * Status: Public Domain` |
-|       - | 1339 | ` */` |
-|       - | 1340 | `/*` |
-|       - | 1341 | `** This lookup table is used to help decode the first byte of` |
-|       - | 1342 | `** a multi-byte UTF8 character.` |
-|       - | 1343 | `*/` |
-|       - | 1344 | `static const unsigned char UtfTrans1[] = {` |
-|       - | 1345 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|       - | 1346 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
-|       - | 1347 | `  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
-|       - | 1348 | `  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
+|       - | 1067 |  |
+|       - | 1068 | `#ifndef PH7_DISABLE_HASH_FUNC` |
+|       - | 1069 | `	{ "md5",          PH7_builtin_md5       },` |
+|       - | 1070 | `	{ "sha1",         PH7_builtin_sha1      },` |
+|       - | 1071 | `	{ "crc32",        PH7_builtin_crc32     },` |
+|       - | 1072 | `	{ "hash",         PH7_builtin_hash      },` |
+|       - | 1073 | `	{ "hash_hmac",    PH7_builtin_hash_hmac },` |
+|       - | 1074 | `	{ "hash_equals",  PH7_builtin_hash_equals },` |
+|       - | 1075 | `	{ "hash_algos",   PH7_builtin_hash_algos },` |
+|       - | 1076 | `	{ "hash_hmac_algos", PH7_builtin_hash_hmac_algos },` |
+|       - | 1077 | `	{ "hash_init",    PH7_builtin_hash_init },` |
+|       - | 1078 | `	{ "hash_update",  PH7_builtin_hash_update },` |
+|       - | 1079 | `	{ "hash_final",   PH7_builtin_hash_final },` |
+|       - | 1080 | `	{ "hash_copy",    PH7_builtin_hash_copy },` |
+|       - | 1081 | `	{ "hash_pbkdf2",  PH7_builtin_hash_pbkdf2 },` |
+|       - | 1082 | `	{ "hash_hkdf",    PH7_builtin_hash_hkdf },` |
+|       - | 1083 | `	{ "crypt",        PH7_builtin_crypt     },` |
+|       - | 1084 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
+|       - | 1085 | `	{ "password_hash",         PH7_builtin_password_hash },` |
+|       - | 1086 | `	{ "password_verify",       PH7_builtin_password_verify },` |
+|       - | 1087 | `	{ "password_get_info",     PH7_builtin_password_get_info },` |
+|       - | 1088 | `	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },` |
+|       - | 1089 | `	{ "password_algos",        PH7_builtin_password_algos },` |
+|       - | 1090 | `	{ "filter_var",            PH7_builtin_filter_var },` |
+|       - | 1091 | `	{ "filter_input",          PH7_builtin_filter_input },` |
+|       - | 1092 | `	{ "filter_list",           PH7_builtin_filter_list },` |
+|       - | 1093 | `	{ "filter_id",             PH7_builtin_filter_id },` |
+|       - | 1094 | `	{ "filter_has_var",        PH7_builtin_filter_has_var },` |
+|       - | 1095 | `	{ "filter_var_array",      PH7_builtin_filter_var_array },` |
+|       - | 1096 | `	{ "filter_input_array",    PH7_builtin_filter_input_array },` |
+|       - | 1097 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|       - | 1098 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|       - | 1099 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
+|       - | 1100 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
+|       - | 1101 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|       - | 1102 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|       - | 1103 |  |
+|       - | 1104 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
+|       - | 1105 | `	{ "str_split",    PH7_builtin_str_split  },` |
+|       - | 1106 | `	{ "count_chars",  PH7_builtin_count_chars},` |
+|       - | 1107 | `	{ "strspn",       PH7_builtin_strspn     },` |
+|       - | 1108 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
+|       - | 1109 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
+|       - | 1110 | `	{ "soundex",      PH7_builtin_soundex    },` |
+|       - | 1111 | `	{ "str_rot13",    PH7_builtin_str_rot13  },` |
+|       - | 1112 | `	{ "metaphone",    PH7_builtin_metaphone  },` |
+|       - | 1113 | `	{ "pack",         PH7_builtin_pack       },` |
+|       - | 1114 | `	{ "unpack",       PH7_builtin_unpack     },` |
+|       - | 1115 | `	{ "sscanf",       PH7_builtin_sscanf     },` |
+|       - | 1116 | `	     /* ext/bcmath: arbitrary-precision decimal arithmetic over strings */` |
+|       - | 1117 | `	{ "bcadd",        PH7_builtin_bcadd      },` |
+|       - | 1118 | `	{ "bcsub",        PH7_builtin_bcsub      },` |
+|       - | 1119 | `	{ "bcmul",        PH7_builtin_bcmul      },` |
+|       - | 1120 | `	{ "bccomp",       PH7_builtin_bccomp     },` |
+|       - | 1121 | `	{ "bcdiv",        PH7_builtin_bcdiv      },` |
+|       - | 1122 | `	{ "bcmod",        PH7_builtin_bcmod      },` |
+|       - | 1123 | `	{ "bcdivmod",     PH7_builtin_bcdivmod   },` |
+|       - | 1124 | `	{ "bcpow",        PH7_builtin_bcpow      },` |
+|       - | 1125 | `	{ "bcpowmod",     PH7_builtin_bcpowmod   },` |
+|       - | 1126 | `	{ "bcsqrt",       PH7_builtin_bcsqrt     },` |
+|       - | 1127 | `	{ "bcround",      PH7_builtin_bcround    },` |
+|       - | 1128 | `	{ "bcfloor",      PH7_builtin_bcfloor    },` |
+|       - | 1129 | `	{ "bcceil",       PH7_builtin_bcceil     },` |
+|       - | 1130 | `	{ "bcscale",      PH7_builtin_bcscale    },` |
+|       - | 1131 | `	     /* ext/calendar: the serial day number and its four calendars */` |
+|       - | 1132 | `	{ "gregoriantojd",PH7_builtin_gregoriantojd },` |
+|       - | 1133 | `	{ "jdtogregorian",PH7_builtin_jdtogregorian },` |
+|       - | 1134 | `	{ "juliantojd",   PH7_builtin_juliantojd    },` |
+|       - | 1135 | `	{ "jdtojulian",   PH7_builtin_jdtojulian    },` |
+|       - | 1136 | `	{ "frenchtojd",   PH7_builtin_frenchtojd    },` |
+|       - | 1137 | `	{ "jdtofrench",   PH7_builtin_jdtofrench    },` |
+|       - | 1138 | `	{ "jewishtojd",   PH7_builtin_jewishtojd    },` |
+|       - | 1139 | `	{ "jdtojewish",   PH7_builtin_jdtojewish    },` |
+|       - | 1140 | `	{ "cal_info",     PH7_builtin_cal_info      },` |
+|       - | 1141 | `	{ "cal_days_in_month", PH7_builtin_cal_days_in_month },` |
+|       - | 1142 | `	{ "cal_to_jd",    PH7_builtin_cal_to_jd     },` |
+|       - | 1143 | `	{ "cal_from_jd",  PH7_builtin_cal_from_jd   },` |
+|       - | 1144 | `	{ "jddayofweek",  PH7_builtin_jddayofweek   },` |
+|       - | 1145 | `	{ "jdmonthname",  PH7_builtin_jdmonthname   },` |
+|       - | 1146 | `	{ "unixtojd",     PH7_builtin_unixtojd      },` |
+|       - | 1147 | `	{ "jdtounix",     PH7_builtin_jdtounix      },` |
+|       - | 1148 | `	{ "easter_days",  PH7_builtin_easter_days   },` |
+|       - | 1149 | `	{ "easter_date",  PH7_builtin_easter_date   },` |
+|       - | 1150 | `	     /* ext/gettext: php's own order for the extension */` |
+|       - | 1151 | `	{ "textdomain",              PH7_builtin_textdomain              },` |
+|       - | 1152 | `	{ "gettext",                 PH7_builtin_gettext                 },` |
+|       - | 1153 | `	{ "_",                       PH7_builtin_gettext                 },` |
+|       - | 1154 | `	{ "dgettext",                PH7_builtin_dgettext                },` |
+|       - | 1155 | `	{ "dcgettext",               PH7_builtin_dcgettext               },` |
+|       - | 1156 | `	{ "bindtextdomain",          PH7_builtin_bindtextdomain          },` |
+|       - | 1157 | `	{ "ngettext",                PH7_builtin_ngettext                },` |
+|       - | 1158 | `	{ "dngettext",               PH7_builtin_dngettext               },` |
+|       - | 1159 | `	{ "dcngettext",              PH7_builtin_dcngettext              },` |
+|       - | 1160 | `	{ "bind_textdomain_codeset", PH7_builtin_bind_textdomain_codeset },` |
+|       - | 1161 | `	     /* ext/fileinfo: php's own order for the extension */` |
+|       - | 1162 | `	{ "finfo_open",              PH7_builtin_finfo_open              },` |
+|       - | 1163 | `	{ "finfo_close",             PH7_builtin_finfo_close             },` |
+|       - | 1164 | `	{ "finfo_set_flags",         PH7_builtin_finfo_set_flags         },` |
+|       - | 1165 | `	{ "finfo_file",              PH7_builtin_finfo_file              },` |
+|       - | 1166 | `	{ "finfo_buffer",            PH7_builtin_finfo_buffer            },` |
+|       - | 1167 | `	{ "mime_content_type",       PH7_builtin_mime_content_type       },` |
+|       - | 1168 | `#ifndef __WINNT__` |
+|       - | 1169 | `	     /* ext/posix, in php's own order. php builds none of this on Windows,` |
+|       - | 1170 | ``	      * so `function_exists('posix_kill')` is FALSE there -- which is what a`` |
+|       - | 1171 | `	      * program guarding its use of them looks for. */` |
+|       - | 1172 | `	{ "posix_kill",              PH7_builtin_posix_kill              },` |
+|       - | 1173 | `	{ "posix_getpid",            PH7_builtin_posix_getpid            },` |
+|       - | 1174 | `	{ "posix_getppid",           PH7_builtin_posix_getppid           },` |
+|       - | 1175 | `	{ "posix_getuid",            PH7_builtin_posix_getuid            },` |
+|       - | 1176 | `	{ "posix_setuid",            PH7_builtin_posix_setuid            },` |
+|       - | 1177 | `	{ "posix_geteuid",           PH7_builtin_posix_geteuid           },` |
+|       - | 1178 | `	{ "posix_seteuid",           PH7_builtin_posix_seteuid           },` |
+|       - | 1179 | `	{ "posix_getgid",            PH7_builtin_posix_getgid            },` |
+|       - | 1180 | `	{ "posix_setgid",            PH7_builtin_posix_setgid            },` |
+|       - | 1181 | `	{ "posix_getegid",           PH7_builtin_posix_getegid           },` |
+|       - | 1182 | `	{ "posix_setegid",           PH7_builtin_posix_setegid           },` |
+|       - | 1183 | `	{ "posix_getgroups",         PH7_builtin_posix_getgroups         },` |
+|       - | 1184 | `	{ "posix_getlogin",          PH7_builtin_posix_getlogin          },` |
+|       - | 1185 | `	{ "posix_getpgrp",           PH7_builtin_posix_getpgrp           },` |
+|       - | 1186 | `	{ "posix_setsid",            PH7_builtin_posix_setsid            },` |
+|       - | 1187 | `	{ "posix_setpgid",           PH7_builtin_posix_setpgid           },` |
+|       - | 1188 | `	{ "posix_getpgid",           PH7_builtin_posix_getpgid           },` |
+|       - | 1189 | `	{ "posix_getsid",            PH7_builtin_posix_getsid            },` |
+|       - | 1190 | `	{ "posix_uname",             PH7_builtin_posix_uname             },` |
+|       - | 1191 | `	{ "posix_times",             PH7_builtin_posix_times             },` |
+|       - | 1192 | `	{ "posix_ctermid",           PH7_builtin_posix_ctermid           },` |
+|       - | 1193 | `	{ "posix_ttyname",           PH7_builtin_posix_ttyname           },` |
+|       - | 1194 | `	{ "posix_isatty",            PH7_builtin_posix_isatty            },` |
+|       - | 1195 | `	{ "posix_getcwd",            PH7_builtin_posix_getcwd            },` |
+|       - | 1196 | `	{ "posix_mkfifo",            PH7_builtin_posix_mkfifo            },` |
+|       - | 1197 | `	{ "posix_mknod",             PH7_builtin_posix_mknod             },` |
+|       - | 1198 | `	{ "posix_access",            PH7_builtin_posix_access            },` |
+|       - | 1199 | `	{ "posix_eaccess",           PH7_builtin_posix_eaccess           },` |
+|       - | 1200 | `	{ "posix_getgrnam",          PH7_builtin_posix_getgrnam          },` |
+|       - | 1201 | `	{ "posix_getgrgid",          PH7_builtin_posix_getgrgid          },` |
+|       - | 1202 | `	{ "posix_getpwnam",          PH7_builtin_posix_getpwnam          },` |
+|       - | 1203 | `	{ "posix_getpwuid",          PH7_builtin_posix_getpwuid          },` |
+|       - | 1204 | `	{ "posix_getrlimit",         PH7_builtin_posix_getrlimit         },` |
+|       - | 1205 | `	{ "posix_setrlimit",         PH7_builtin_posix_setrlimit         },` |
+|       - | 1206 | `	{ "posix_get_last_error",    PH7_builtin_posix_get_last_error    },` |
+|       - | 1207 | `	{ "posix_errno",             PH7_builtin_posix_get_last_error    },` |
+|       - | 1208 | `	{ "posix_strerror",          PH7_builtin_posix_strerror          },` |
+|       - | 1209 | `	{ "posix_initgroups",        PH7_builtin_posix_initgroups        },` |
+|       - | 1210 | `	{ "posix_sysconf",           PH7_builtin_posix_sysconf           },` |
+|       - | 1211 | `	{ "posix_pathconf",          PH7_builtin_posix_pathconf          },` |
+|       - | 1212 | `	{ "posix_fpathconf",         PH7_builtin_posix_fpathconf         },` |
+|       - | 1213 | `	     /* ext/pcntl, in php's own order. php builds none of this on Windows` |
+|       - | 1214 | `	      * either, which is exactly what monolog's SignalHandler and` |
+|       - | 1215 | `	      * symfony/console's SignalRegistry check before calling anything. */` |
+|       - | 1216 | `	{ "pcntl_fork",               PH7_builtin_pcntl_fork               },` |
+|       - | 1217 | `	{ "pcntl_waitpid",            PH7_builtin_pcntl_waitpid            },` |
+|       - | 1218 | `	{ "pcntl_waitid",             PH7_builtin_pcntl_waitid             },` |
+|       - | 1219 | `	{ "pcntl_wait",               PH7_builtin_pcntl_wait               },` |
+|       - | 1220 | `	{ "pcntl_signal",             PH7_builtin_pcntl_signal             },` |
+|       - | 1221 | `	{ "pcntl_signal_get_handler", PH7_builtin_pcntl_signal_get_handler },` |
+|       - | 1222 | `	{ "pcntl_signal_dispatch",    PH7_builtin_pcntl_signal_dispatch    },` |
+|       - | 1223 | `	{ "pcntl_sigprocmask",        PH7_builtin_pcntl_sigprocmask        },` |
+|       - | 1224 | `#ifndef __APPLE__` |
+|       - | 1225 | `	/* php builds these two only where the system has them; macOS has neither. */` |
+|       - | 1226 | `	{ "pcntl_sigwaitinfo",        PH7_builtin_pcntl_sigwaitinfo        },` |
+|       - | 1227 | `	{ "pcntl_sigtimedwait",       PH7_builtin_pcntl_sigtimedwait       },` |
+|       - | 1228 | `#endif` |
+|       - | 1229 | `	{ "pcntl_wifexited",          PH7_builtin_pcntl_wifexited          },` |
+|       - | 1230 | `	{ "pcntl_wifstopped",         PH7_builtin_pcntl_wifstopped         },` |
+|       - | 1231 | `	{ "pcntl_wifcontinued",       PH7_builtin_pcntl_wifcontinued       },` |
+|       - | 1232 | `	{ "pcntl_wifsignaled",        PH7_builtin_pcntl_wifsignaled        },` |
+|       - | 1233 | `	{ "pcntl_wexitstatus",        PH7_builtin_pcntl_wexitstatus        },` |
+|       - | 1234 | `	{ "pcntl_wtermsig",           PH7_builtin_pcntl_wtermsig           },` |
+|       - | 1235 | `	{ "pcntl_wstopsig",           PH7_builtin_pcntl_wstopsig           },` |
+|       - | 1236 | `	{ "pcntl_exec",               PH7_builtin_pcntl_exec               },` |
+|       - | 1237 | `	{ "pcntl_alarm",              PH7_builtin_pcntl_alarm              },` |
+|       - | 1238 | `	{ "pcntl_get_last_error",     PH7_builtin_pcntl_get_last_error     },` |
+|       - | 1239 | `	{ "pcntl_errno",              PH7_builtin_pcntl_get_last_error     },` |
+|       - | 1240 | `	{ "pcntl_getpriority",        PH7_builtin_pcntl_getpriority        },` |
+|       - | 1241 | `	{ "pcntl_setpriority",        PH7_builtin_pcntl_setpriority        },` |
+|       - | 1242 | `	{ "pcntl_strerror",           PH7_builtin_pcntl_strerror           },` |
+|       - | 1243 | `	{ "pcntl_async_signals",      PH7_builtin_pcntl_async_signals      },` |
+|       - | 1244 | `#ifdef __linux__` |
+|       - | 1245 | `	/* php builds these four only where the kernel has them, so a php on a` |
+|       - | 1246 | `	 * non-Linux unix answers false to function_exists('pcntl_unshare'). */` |
+|       - | 1247 | `	{ "pcntl_unshare",            PH7_builtin_pcntl_unshare            },` |
+|       - | 1248 | `	{ "pcntl_getcpuaffinity",     PH7_builtin_pcntl_getcpuaffinity     },` |
+|       - | 1249 | `	{ "pcntl_setcpuaffinity",     PH7_builtin_pcntl_setcpuaffinity     },` |
+|       - | 1250 | `	{ "pcntl_getcpu",             PH7_builtin_pcntl_getcpu             },` |
+|       - | 1251 | `#endif /* __linux__ */` |
+|       - | 1252 | `#endif /* __WINNT__ */` |
+|       - | 1253 | `	     /* ext/standard: the image container surface */` |
+|       - | 1254 | `	{ "image_type_to_mime_type", PH7_builtin_image_type_to_mime_type },` |
+|       - | 1255 | `	{ "image_type_to_extension", PH7_builtin_image_type_to_extension },` |
+|       - | 1256 | `	{ "getimagesize",            PH7_builtin_getimagesize            },` |
+|       - | 1257 | `	{ "getimagesizefromstring",  PH7_builtin_getimagesizefromstring  },` |
+|       - | 1258 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
+|       - | 1259 | `	{ "strtok",       PH7_builtin_strtok     },` |
+|       - | 1260 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
+|       - | 1261 | `	{ "str_replace",  PH7_builtin_str_replace},` |
+|       - | 1262 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
+|       - | 1263 | `	{ "strtr",        PH7_builtin_strtr      },` |
+|       - | 1264 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|       - | 1265 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|       - | 1266 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
+|       - | 1267 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|       - | 1268 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|       - | 1269 |  |
+|       - | 1270 | `	         /* Ctype functions */` |
+|       - | 1271 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
+|       - | 1272 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
+|       - | 1273 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
+|       - | 1274 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
+|       - | 1275 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
+|       - | 1276 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
+|       - | 1277 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
+|       - | 1278 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
+|       - | 1279 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
+|       - | 1280 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
+|       - | 1281 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
+|       - | 1282 | `	         /* Time functions */` |
+|       - | 1283 | `	{ "time"    ,    PH7_builtin_time         },` |
+|       - | 1284 | `	{ "microtime",   PH7_builtin_microtime    },` |
+|       - | 1285 | `	{ "hrtime",      PH7_builtin_hrtime       },` |
+|       - | 1286 | `	{ "getrusage",   PH7_builtin_getrusage    },` |
+|       - | 1287 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
+|       - | 1288 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
+|       - | 1289 | `	{ "date",        PH7_builtin_date         },` |
+|       - | 1290 | `	{ "idate",       PH7_builtin_idate        },` |
+|       - | 1291 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
+|       - | 1292 | `	{ "localtime",   PH7_builtin_localtime    },` |
+|       - | 1293 | `	{ "mktime",      PH7_builtin_mktime       },` |
+|       - | 1294 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
+|       - | 1295 | `	{ "date_default_timezone_get", PH7_builtin_date_default_timezone_get },` |
+|       - | 1296 | `	{ "date_default_timezone_set", PH7_builtin_date_default_timezone_set },` |
+|       - | 1297 | `	{ "date_sun_info", PH7_builtin_date_sun_info },` |
+|       - | 1298 | `	{ "date_sunrise",  PH7_builtin_date_sunrise  },` |
+|       - | 1299 | `	{ "date_sunset",   PH7_builtin_date_sunset   },` |
+|       - | 1300 | `	        /* URL functions */` |
+|       - | 1301 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
+|       - | 1302 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
+|       - | 1303 | `	{ "convert_uuencode",PH7_builtin_convert_uuencode },` |
+|       - | 1304 | `	{ "convert_uudecode",PH7_builtin_convert_uudecode },` |
+|       - | 1305 | `	{ "urlencode",    PH7_builtin_urlencode },` |
+|       - | 1306 | `	{ "urldecode",    PH7_builtin_urldecode },` |
+|       - | 1307 | `	{ "rawurlencode", PH7_builtin_rawurlencode },` |
+|       - | 1308 | `	{ "http_build_query", PH7_builtin_http_build_query },` |
+|       - | 1309 | `	{ "parse_str",    PH7_builtin_parse_str  },` |
+|       - | 1310 | `	{ "rawurldecode", PH7_builtin_rawurldecode },` |
+|       - | 1311 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|       - | 1312 | `};` |
+|       - | 1313 | `/*` |
+|       - | 1314 | ` * Register the built-in functions defined above,the array functions` |
+|       - | 1315 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
+|       - | 1316 | ` */` |
+|    7925 | 1317 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
+|       5 | 1318 | `{` |
+|       - | 1319 | `	sxu32 n;` |
+| 3074938 | 1320 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
+| 3067013 | 1321 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
+| 1519493 | 1322 | `	}` |
+|       - | 1323 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
+|    7930 | 1324 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
+|       - | 1325 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
+|    7930 | 1326 | `	PH7_RegisterIORoutine(&(*pVm));` |
+|    7930 | 1327 | `}` |
+|       - | 1328 |  |
+|       - | 1329 | `/*` |
+|       - | 1330 | ` * UTF-8 codepoint reader shared by the glob/fnmatch matcher in vfs.c.` |
+|       - | 1331 | ` * Relocated here from the removed vm_xml.c when the legacy xml_* API was` |
+|       - | 1332 | ` * dropped; the utf8_encode()/utf8_decode() builtins it once served were` |
+|       - | 1333 | ` * removed in turn (superseded by mb_convert_encoding()),` |
+|       - | 1334 | ` * leaving only this public-domain SQLite reader.` |
+|       - | 1335 | ` */` |
+|       - | 1336 | `/* SPDX-SnippetBegin */` |
+|       - | 1337 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
+|       - | 1338 | `/* SPDX-License-Identifier: blessing */` |
+|       - | 1339 | `/*` |
+|       - | 1340 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
+|       - | 1341 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
+|       - | 1342 | ` * Status: Public Domain` |
+|       - | 1343 | ` */` |
+|       - | 1344 | `/*` |
+|       - | 1345 | `** This lookup table is used to help decode the first byte of` |
+|       - | 1346 | `** a multi-byte UTF8 character.` |
+|       - | 1347 | `*/` |
+|       - | 1348 | `static const unsigned char UtfTrans1[] = {` |
 |       - | 1349 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
 |       - | 1350 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
-|       - | 1351 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|       - | 1352 | `  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,` |
-|       - | 1353 | `};` |
-|       - | 1354 | `/*` |
-|       - | 1355 | `** Translate a single UTF-8 character.  Return the unicode value.` |
-|       - | 1356 | `**` |
-|       - | 1357 | `** During translation, assume that the byte that zTerm points` |
-|       - | 1358 | `** is a 0x00.` |
-|       - | 1359 | `**` |
-|       - | 1360 | `** Write a pointer to the next unread byte back into *pzNext.` |
-|       - | 1361 | `**` |
-|       - | 1362 | `** Notes On Invalid UTF-8:` |
+|       - | 1351 | `  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
+|       - | 1352 | `  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
+|       - | 1353 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|       - | 1354 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|       - | 1355 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|       - | 1356 | `  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,` |
+|       - | 1357 | `};` |
+|       - | 1358 | `/*` |
+|       - | 1359 | `** Translate a single UTF-8 character.  Return the unicode value.` |
+|       - | 1360 | `**` |
+|       - | 1361 | `** During translation, assume that the byte that zTerm points` |
+|       - | 1362 | `** is a 0x00.` |
 |       - | 1363 | `**` |
-|       - | 1364 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
-|       - | 1365 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
-|       - | 1366 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
+|       - | 1364 | `** Write a pointer to the next unread byte back into *pzNext.` |
+|       - | 1365 | `**` |
+|       - | 1366 | `** Notes On Invalid UTF-8:` |
 |       - | 1367 | `**` |
-|       - | 1368 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
-|       - | 1369 | `**     If a multi-byte character attempts to encode a value between` |
-|       - | 1370 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
+|       - | 1368 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
+|       - | 1369 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
+|       - | 1370 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
 |       - | 1371 | `**` |
-|       - | 1372 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
-|       - | 1373 | `**     byte of a character are interpreted as single-byte characters` |
-|       - | 1374 | `**     and rendered as themselves even though they are technically` |
-|       - | 1375 | `**     invalid characters.` |
-|       - | 1376 | `**` |
-|       - | 1377 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
-|       - | 1378 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
-|       - | 1379 | `**     encodings to 0xfffd as some systems recommend.` |
-|       - | 1380 | `*/` |
-|       - | 1381 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
-|       - | 1382 | `  c = *(zIn++);                                            \` |
-|       - | 1383 | `  if( c>=0xc0 ){                                           \` |
-|       - | 1384 | `    c = UtfTrans1[c-0xc0];                                 \` |
-|       - | 1385 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
-|       - | 1386 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
-|       - | 1387 | `    }                                                      \` |
-|       - | 1388 | `    if( c<0x80                                             \` |
-|       - | 1389 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
-|       - | 1390 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
-|       - | 1391 | `  }` |
-|   10106 | 1392 | `PH7_PRIVATE int PH7_Utf8Read(` |
-|       - | 1393 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
-|       - | 1394 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
-|       - | 1395 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
-|       4 | 1396 | `){` |
-|       - | 1397 | `  int c;` |
-|   10110 | 1398 | `  READ_UTF8(z, zTerm, c);` |
-|   10110 | 1399 | `  *pzNext = z;` |
-|   10110 | 1400 | `  return c;` |
-|       4 | 1401 | `}` |
-|       - | 1402 | `/* SPDX-SnippetEnd */` |
-|       - | 1403 | `/*` |
-|       - | 1404 | ` * Read one STRICTLY well-formed UTF-8 sequence from z[0..n-1].` |
-|       - | 1405 | ` *` |
-|       - | 1406 | ` * Unlike PH7_Utf8Read above (the lenient SQLite reader, which renders anything` |
-|       - | 1407 | ` * dubious as U+FFFD and happily accepts over-long forms), this one implements` |
-|       - | 1408 | ` * the RFC 3629 / Unicode "Table 3-7 well-formed byte sequences" rule php uses` |
-|       - | 1409 | ` * wherever it has to decide whether a php string really is UTF-8:` |
-|       - | 1410 | ` *` |
-|       - | 1411 | ` *   00..7F                          one byte` |
-|       - | 1412 | ` *   C2..DF  80..BF                  (C0/C1 are over-long two-byte forms)` |
-|       - | 1413 | ` *   E0      A0..BF  80..BF          (E0 80..9F is over-long)` |
-|       - | 1414 | ` *   E1..EC  80..BF  80..BF` |
-|       - | 1415 | ` *   ED      80..9F  80..BF          (ED A0..BF is a UTF-16 surrogate)` |
-|       - | 1416 | ` *   EE..EF  80..BF  80..BF` |
-|       - | 1417 | ` *   F0      90..BF  80..BF  80..BF  (F0 80..8F is over-long)` |
-|       - | 1418 | ` *   F1..F3  80..BF  80..BF  80..BF` |
-|       - | 1419 | ` *   F4      80..8F  80..BF  80..BF  (past U+10FFFF)` |
-|       - | 1420 | ` *` |
-|       - | 1421 | ` * Returns the code point and writes the sequence length to *pLen. On an` |
-|       - | 1422 | ` * ill-formed sequence it returns -1 and writes 1, so a caller can apply its own` |
-|       - | 1423 | ` * php policy to the single offending byte (json_encode: JSON_ERROR_UTF8 or the` |
-|       - | 1424 | ` * JSON_INVALID_UTF8_* substitution; mb_strtolower: '?') and resume at the next` |
-|       - | 1425 | ` * byte exactly like php does. n must be >= 1.` |
-|       - | 1426 | ` */` |
-|   55749 | 1427 | `PH7_PRIVATE sxi32 PH7_Utf8ReadStrict(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
-|       2 | 1428 | `{` |
-|   55751 | 1429 | `	sxu32 c = z[0];` |
-|   55751 | 1430 | `	*pLen = 1;` |
-|   55751 | 1431 | `	if( c < 0x80 ){` |
-|   52782 | 1432 | `		return (sxi32)c;` |
-|       - | 1433 | `	}` |
-|    2970 | 1434 | `	if( c >= 0xC2 && c <= 0xDF ){` |
-|    1886 | 1435 | `		if( n < 2 \|\| (z[1] & 0xC0) != 0x80 ){` |
-|     123 | 1436 | `			return -1;` |
-|       - | 1437 | `		}` |
-|    1764 | 1438 | `		*pLen = 2;` |
-|    1764 | 1439 | `		return (sxi32)(((c & 0x1F) << 6) \| (z[1] & 0x3F));` |
-|       - | 1440 | `	}` |
-|    1085 | 1441 | `	if( c >= 0xE0 && c <= 0xEF ){` |
-|     491 | 1442 | `		sxu32 iLow = (c == 0xE0) ? 0xA0 : 0x80;` |
-|     491 | 1443 | `		sxu32 iHigh = (c == 0xED) ? 0x9F : 0xBF;` |
-|     491 | 1444 | `		if( n < 3 \|\| z[1] < iLow \|\| z[1] > iHigh \|\| (z[2] & 0xC0) != 0x80 ){` |
-|     103 | 1445 | `			return -1;` |
-|       - | 1446 | `		}` |
-|     389 | 1447 | `		*pLen = 3;` |
-|     389 | 1448 | `		return (sxi32)(((c & 0x0F) << 12) \| ((z[1] & 0x3F) << 6) \| (z[2] & 0x3F));` |
-|       - | 1449 | `	}` |
-|     595 | 1450 | `	if( c >= 0xF0 && c <= 0xF4 ){` |
-|     103 | 1451 | `		sxu32 iLow = (c == 0xF0) ? 0x90 : 0x80;` |
-|     103 | 1452 | `		sxu32 iHigh = (c == 0xF4) ? 0x8F : 0xBF;` |
-|     102 | 1453 | `		if( n < 4 \|\| z[1] < iLow \|\| z[1] > iHigh` |
-|      79 | 1454 | `		 \|\| (z[2] & 0xC0) != 0x80 \|\| (z[3] & 0xC0) != 0x80 ){` |
-|      31 | 1455 | `			return -1;` |
-|       - | 1456 | `		}` |
-|      73 | 1457 | `		*pLen = 4;` |
-|     109 | 1458 | `		return (sxi32)(((c & 0x07) << 18) \| ((z[1] & 0x3F) << 12)` |
-|      72 | 1459 | `			\| ((z[2] & 0x3F) << 6) \| (z[3] & 0x3F));` |
-|       - | 1460 | `	}` |
-|     493 | 1461 | `	return -1; /* 80..C1 as a lead byte, or F5..FF */` |
-|   33175 | 1462 | `}` |
-|       - | 1463 |  |
+|       - | 1372 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
+|       - | 1373 | `**     If a multi-byte character attempts to encode a value between` |
+|       - | 1374 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
+|       - | 1375 | `**` |
+|       - | 1376 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
+|       - | 1377 | `**     byte of a character are interpreted as single-byte characters` |
+|       - | 1378 | `**     and rendered as themselves even though they are technically` |
+|       - | 1379 | `**     invalid characters.` |
+|       - | 1380 | `**` |
+|       - | 1381 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
+|       - | 1382 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
+|       - | 1383 | `**     encodings to 0xfffd as some systems recommend.` |
+|       - | 1384 | `*/` |
+|       - | 1385 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
+|       - | 1386 | `  c = *(zIn++);                                            \` |
+|       - | 1387 | `  if( c>=0xc0 ){                                           \` |
+|       - | 1388 | `    c = UtfTrans1[c-0xc0];                                 \` |
+|       - | 1389 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
+|       - | 1390 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
+|       - | 1391 | `    }                                                      \` |
+|       - | 1392 | `    if( c<0x80                                             \` |
+|       - | 1393 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
+|       - | 1394 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
+|       - | 1395 | `  }` |
+|   10388 | 1396 | `PH7_PRIVATE int PH7_Utf8Read(` |
+|       - | 1397 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
+|       - | 1398 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
+|       - | 1399 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
+|       4 | 1400 | `){` |
+|       - | 1401 | `  int c;` |
+|   10392 | 1402 | `  READ_UTF8(z, zTerm, c);` |
+|   10392 | 1403 | `  *pzNext = z;` |
+|   10392 | 1404 | `  return c;` |
+|       4 | 1405 | `}` |
+|       - | 1406 | `/* SPDX-SnippetEnd */` |
+|       - | 1407 | `/*` |
+|       - | 1408 | ` * Read one STRICTLY well-formed UTF-8 sequence from z[0..n-1].` |
+|       - | 1409 | ` *` |
+|       - | 1410 | ` * Unlike PH7_Utf8Read above (the lenient SQLite reader, which renders anything` |
+|       - | 1411 | ` * dubious as U+FFFD and happily accepts over-long forms), this one implements` |
+|       - | 1412 | ` * the RFC 3629 / Unicode "Table 3-7 well-formed byte sequences" rule php uses` |
+|       - | 1413 | ` * wherever it has to decide whether a php string really is UTF-8:` |
+|       - | 1414 | ` *` |
+|       - | 1415 | ` *   00..7F                          one byte` |
+|       - | 1416 | ` *   C2..DF  80..BF                  (C0/C1 are over-long two-byte forms)` |
+|       - | 1417 | ` *   E0      A0..BF  80..BF          (E0 80..9F is over-long)` |
+|       - | 1418 | ` *   E1..EC  80..BF  80..BF` |
+|       - | 1419 | ` *   ED      80..9F  80..BF          (ED A0..BF is a UTF-16 surrogate)` |
+|       - | 1420 | ` *   EE..EF  80..BF  80..BF` |
+|       - | 1421 | ` *   F0      90..BF  80..BF  80..BF  (F0 80..8F is over-long)` |
+|       - | 1422 | ` *   F1..F3  80..BF  80..BF  80..BF` |
+|       - | 1423 | ` *   F4      80..8F  80..BF  80..BF  (past U+10FFFF)` |
+|       - | 1424 | ` *` |
+|       - | 1425 | ` * Returns the code point and writes the sequence length to *pLen. On an` |
+|       - | 1426 | ` * ill-formed sequence it returns -1 and writes 1, so a caller can apply its own` |
+|       - | 1427 | ` * php policy to the single offending byte (json_encode: JSON_ERROR_UTF8 or the` |
+|       - | 1428 | ` * JSON_INVALID_UTF8_* substitution; mb_strtolower: '?') and resume at the next` |
+|       - | 1429 | ` * byte exactly like php does. n must be >= 1.` |
+|       - | 1430 | ` */` |
+|   78634 | 1431 | `PH7_PRIVATE sxi32 PH7_Utf8ReadStrict(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
+|       4 | 1432 | `{` |
+|   78638 | 1433 | `	sxu32 c = z[0];` |
+|   78638 | 1434 | `	*pLen = 1;` |
+|   78638 | 1435 | `	if( c < 0x80 ){` |
+|   75513 | 1436 | `		return (sxi32)c;` |
+|       - | 1437 | `	}` |
+|    3127 | 1438 | `	if( c >= 0xC2 && c <= 0xDF ){` |
+|    1915 | 1439 | `		if( n < 2 \|\| (z[1] & 0xC0) != 0x80 ){` |
+|     123 | 1440 | `			return -1;` |
+|       - | 1441 | `		}` |
+|    1793 | 1442 | `		*pLen = 2;` |
+|    1793 | 1443 | `		return (sxi32)(((c & 0x1F) << 6) \| (z[1] & 0x3F));` |
+|       - | 1444 | `	}` |
+|    1214 | 1445 | `	if( c >= 0xE0 && c <= 0xEF ){` |
+|     604 | 1446 | `		sxu32 iLow = (c == 0xE0) ? 0xA0 : 0x80;` |
+|     604 | 1447 | `		sxu32 iHigh = (c == 0xED) ? 0x9F : 0xBF;` |
+|     604 | 1448 | `		if( n < 3 \|\| z[1] < iLow \|\| z[1] > iHigh \|\| (z[2] & 0xC0) != 0x80 ){` |
+|     103 | 1449 | `			return -1;` |
+|       - | 1450 | `		}` |
+|     502 | 1451 | `		*pLen = 3;` |
+|     502 | 1452 | `		return (sxi32)(((c & 0x0F) << 12) \| ((z[1] & 0x3F) << 6) \| (z[2] & 0x3F));` |
+|       - | 1453 | `	}` |
+|     612 | 1454 | `	if( c >= 0xF0 && c <= 0xF4 ){` |
+|     112 | 1455 | `		sxu32 iLow = (c == 0xF0) ? 0x90 : 0x80;` |
+|     112 | 1456 | `		sxu32 iHigh = (c == 0xF4) ? 0x8F : 0xBF;` |
+|     110 | 1457 | `		if( n < 4 \|\| z[1] < iLow \|\| z[1] > iHigh` |
+|      80 | 1458 | `		 \|\| (z[2] & 0xC0) != 0x80 \|\| (z[3] & 0xC0) != 0x80 ){` |
+|      40 | 1459 | `			return -1;` |
+|       - | 1460 | `		}` |
+|      73 | 1461 | `		*pLen = 4;` |
+|     109 | 1462 | `		return (sxi32)(((c & 0x07) << 18) \| ((z[1] & 0x3F) << 12)` |
+|      72 | 1463 | `			\| ((z[2] & 0x3F) << 6) \| (z[3] & 0x3F));` |
+|       - | 1464 | `	}` |
+|     502 | 1465 | `	return -1; /* 80..C1 as a lead byte, or F5..FF */` |
+|   46908 | 1466 | `}` |
+|       - | 1467 |  |

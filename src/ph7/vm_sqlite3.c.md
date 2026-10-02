@@ -318,14 +318,14 @@ Coverage: 1660/1898 lines (87.46%)
 |    ! 0 |  308 | `	}` |
 |    176 |  309 | `	SyMemBackendFree(&pVm->sAllocator,pConn);` |
 |    176 |  310 | `}` |
-|   5645 |  311 | `static void Sq3VmSweep(ph7_vm *pVm)` |
+|   6717 |  311 | `static void Sq3VmSweep(ph7_vm *pVm)` |
 |      5 |  312 | `{` |
-|   5822 |  313 | `	while( pVm->pSq3Conns ){` |
+|   6894 |  313 | `	while( pVm->pSq3Conns ){` |
 |    176 |  314 | `		phl_sq3 *pConn = (phl_sq3 *)pVm->pSq3Conns;` |
 |    176 |  315 | `		Sq3BlankSlot(pConn->pOwner);` |
 |    176 |  316 | `		Sq3FreeConn(pConn);` |
 |      4 |  317 | `	}` |
-|   5650 |  318 | `}` |
+|   6722 |  318 | `}` |
 |      - |  319 | `/*` |
 |      - |  320 | ` * A reused VM (the -S server's) must not answer the next request through a` |
 |      - |  321 | ` * handle this one opened, and a sqlite3 handle lives outside SyMemBackend, so` |
@@ -335,10 +335,10 @@ Coverage: 1660/1898 lines (87.46%)
 |    ! 0 |  325 | `{` |
 |     16 |  326 | `	Sq3VmSweep(&(*pVm));` |
 |     16 |  327 | `}` |
-|   5629 |  328 | `PH7_PRIVATE void PH7_Sqlite3VmRelease(ph7_vm *pVm)` |
+|   6701 |  328 | `PH7_PRIVATE void PH7_Sqlite3VmRelease(ph7_vm *pVm)` |
 |      5 |  329 | `{` |
-|   5634 |  330 | `	Sq3VmSweep(&(*pVm));` |
-|   5634 |  331 | `}` |
+|   6706 |  330 | `	Sq3VmSweep(&(*pVm));` |
+|   6706 |  331 | `}` |
 |      - |  332 |  |
 |      - |  333 | `/* ------------------------------------------------------------------------` |
 |      - |  334 | ` * The object and its hidden slot` |
@@ -1274,28 +1274,28 @@ Coverage: 1660/1898 lines (87.46%)
 |      - | 1264 | `	                               * what php calls eof here and a SEEK to the end is not */` |
 |      - | 1265 | `	phl_sq3_blob *pNext;` |
 |      - | 1266 | `};` |
-|      4 | 1267 | `static void Sq3BlobClose(phl_sq3_blob *pBl)` |
+|     40 | 1267 | `static void Sq3BlobClose(phl_sq3_blob *pBl)` |
 |      1 | 1268 | `{` |
-|      5 | 1269 | `	phl_sq3 *pConn = pBl->pConn;` |
-|      5 | 1270 | `	if( pBl->pBlob ){` |
-|      5 | 1271 | `		sqlite3_blob_close(pBl->pBlob);` |
-|      5 | 1272 | `		pBl->pBlob = 0;` |
-|      2 | 1273 | `	}` |
-|      5 | 1274 | `	if( pConn ){` |
-|      5 | 1275 | `		phl_sq3_blob *pCur,*pPrev = 0;` |
-|      5 | 1276 | `		for( pCur = pConn->pBlobs ; pCur ; pPrev = pCur, pCur = pCur->pNext ){` |
-|      5 | 1277 | `			if( pCur == pBl ){` |
-|      5 | 1278 | `				if( pPrev ){` |
+|     41 | 1269 | `	phl_sq3 *pConn = pBl->pConn;` |
+|     41 | 1270 | `	if( pBl->pBlob ){` |
+|      9 | 1271 | `		sqlite3_blob_close(pBl->pBlob);` |
+|      9 | 1272 | `		pBl->pBlob = 0;` |
+|      4 | 1273 | `	}` |
+|     41 | 1274 | `	if( pConn ){` |
+|      9 | 1275 | `		phl_sq3_blob *pCur,*pPrev = 0;` |
+|      9 | 1276 | `		for( pCur = pConn->pBlobs ; pCur ; pPrev = pCur, pCur = pCur->pNext ){` |
+|      9 | 1277 | `			if( pCur == pBl ){` |
+|      9 | 1278 | `				if( pPrev ){` |
 |    ! 0 | 1279 | `					pPrev->pNext = pCur->pNext;` |
 |    ! 0 | 1280 | `				}else{` |
-|      5 | 1281 | `					pConn->pBlobs = pCur->pNext;` |
+|      9 | 1281 | `					pConn->pBlobs = pCur->pNext;` |
 |      - | 1282 | `				}` |
-|      5 | 1283 | `				break;` |
+|      9 | 1283 | `				break;` |
 |      - | 1284 | `			}` |
 |    ! 0 | 1285 | `		}` |
-|      2 | 1286 | `	}` |
-|      5 | 1287 | `	SyMemBackendFree(&pBl->pVm->sAllocator,pBl);` |
-|      5 | 1288 | `}` |
+|      4 | 1286 | `	}` |
+|     41 | 1287 | `	SyMemBackendFree(&pBl->pVm->sAllocator,pBl);` |
+|     41 | 1288 | `}` |
 |      - | 1289 | `/*` |
 |      - | 1290 | ` * Close every handle a script left open and CUT them loose. Only the teardown` |
 |      - | 1291 | ` * paths do this: a script's own close() is refused while one is open rather` |
@@ -1303,15 +1303,15 @@ Coverage: 1660/1898 lines (87.46%)
 |      - | 1293 | ` */` |
 |    350 | 1294 | `static void Sq3BlobSweep(phl_sq3 *pConn)` |
 |      4 | 1295 | `{` |
-|    565 | 1296 | `	while( pConn->pBlobs ){` |
-|     37 | 1297 | `		phl_sq3_blob *pBl = pConn->pBlobs;` |
-|     37 | 1298 | `		pConn->pBlobs = pBl->pNext;` |
-|     37 | 1299 | `		pBl->pNext = 0;` |
-|     37 | 1300 | `		pBl->pConn = 0;` |
-|     37 | 1301 | `		if( pBl->pBlob ){` |
-|     37 | 1302 | `			sqlite3_blob_close(pBl->pBlob);` |
-|     37 | 1303 | `			pBl->pBlob = 0;` |
-|     18 | 1304 | `		}` |
+|    561 | 1296 | `	while( pConn->pBlobs ){` |
+|     33 | 1297 | `		phl_sq3_blob *pBl = pConn->pBlobs;` |
+|     33 | 1298 | `		pConn->pBlobs = pBl->pNext;` |
+|     33 | 1299 | `		pBl->pNext = 0;` |
+|     33 | 1300 | `		pBl->pConn = 0;` |
+|     33 | 1301 | `		if( pBl->pBlob ){` |
+|     33 | 1302 | `			sqlite3_blob_close(pBl->pBlob);` |
+|     33 | 1303 | `			pBl->pBlob = 0;` |
+|     16 | 1304 | `		}` |
 |      1 | 1305 | `	}` |
 |    354 | 1306 | `}` |
 |     20 | 1307 | `static ph7_int64 Sq3BlobStream_Read(void *pHandle,void *pBuf,ph7_int64 nDatatoRead)` |
@@ -1391,10 +1391,10 @@ Coverage: 1660/1898 lines (87.46%)
 |     15 | 1381 | `	pBl->iOfft = iNew;` |
 |     15 | 1382 | `	return PH7_OK;` |
 |      9 | 1383 | `}` |
-|     18 | 1384 | `static ph7_int64 Sq3BlobStream_Tell(void *pHandle)` |
+|     36 | 1384 | `static ph7_int64 Sq3BlobStream_Tell(void *pHandle)` |
 |      1 | 1385 | `{` |
-|     19 | 1386 | `	phl_sq3_blob *pBl = (phl_sq3_blob *)pHandle;` |
-|     19 | 1387 | `	return pBl->bBadPos ? -1 : pBl->iOfft;` |
+|     37 | 1386 | `	phl_sq3_blob *pBl = (phl_sq3_blob *)pHandle;` |
+|     37 | 1387 | `	return pBl->bBadPos ? -1 : pBl->iOfft;` |
 |      1 | 1388 | `}` |
 |      - | 1389 | `/*` |
 |      - | 1390 | ` * php's stat for a blob handle: the whole thirteen-field shape with a SIZE and` |
@@ -1416,10 +1416,10 @@ Coverage: 1660/1898 lines (87.46%)
 |     27 | 1406 | `	}` |
 |      5 | 1407 | `	return PH7_OK;` |
 |      1 | 1408 | `}` |
-|      4 | 1409 | `static void Sq3BlobStream_Close(void *pHandle)` |
+|     40 | 1409 | `static void Sq3BlobStream_Close(void *pHandle)` |
 |      1 | 1410 | `{` |
-|      5 | 1411 | `	Sq3BlobClose((phl_sq3_blob *)pHandle);` |
-|      5 | 1412 | `}` |
+|     41 | 1411 | `	Sq3BlobClose((phl_sq3_blob *)pHandle);` |
+|     41 | 1412 | `}` |
 |      - | 1413 | `static const ph7_io_stream sSq3BlobStream = {` |
 |      - | 1414 | `	"SQLite3",                  /* what stream_get_meta_data() reports */` |
 |      - | 1415 | `	PH7_IO_STREAM_VERSION,` |
@@ -3192,19 +3192,19 @@ Coverage: 1660/1898 lines (87.46%)
 |      - | 3182 | `	{ "SQLITE3_OPEN_CREATE",    SQLITE_OPEN_CREATE },` |
 |      - | 3183 | `	{ "SQLITE3_DETERMINISTIC",  SQLITE_DETERMINISTIC },` |
 |      - | 3184 | `};` |
-|    930 | 3185 | `static void Sq3ConstExpand(ph7_value *pVal,void *pUserData)` |
+|    954 | 3185 | `static void Sq3ConstExpand(ph7_value *pVal,void *pUserData)` |
 |      4 | 3186 | `{` |
-|    934 | 3187 | `	ph7_value_int64(pVal,((const struct Sq3Constant *)pUserData)->iValue);` |
-|    934 | 3188 | `}` |
-|   6721 | 3189 | `PH7_PRIVATE void PH7_RegisterSqlite3Constants(ph7_vm *pVm)` |
+|    958 | 3187 | `	ph7_value_int64(pVal,((const struct Sq3Constant *)pUserData)->iValue);` |
+|    958 | 3188 | `}` |
+|   7925 | 3189 | `PH7_PRIVATE void PH7_RegisterSqlite3Constants(ph7_vm *pVm)` |
 |      5 | 3190 | `{` |
 |      - | 3191 | `	sxu32 n;` |
-|  87378 | 3192 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSq3Const) ; ++n ){` |
-| 120929 | 3193 | `		ph7_create_constant(&(*pVm),aSq3Const[n].zName,Sq3ConstExpand,` |
-|  80652 | 3194 | `			(void *)&aSq3Const[n]);` |
-|  40277 | 3195 | `	}` |
-|   6726 | 3196 | `}` |
-|   6721 | 3197 | `PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)` |
+| 103030 | 3192 | `	for( n = 0 ; n < SX_ARRAYSIZE(aSq3Const) ; ++n ){` |
+| 142589 | 3193 | `		ph7_create_constant(&(*pVm),aSq3Const[n].zName,Sq3ConstExpand,` |
+|  95100 | 3194 | `			(void *)&aSq3Const[n]);` |
+|  47489 | 3195 | `	}` |
+|   7930 | 3196 | `}` |
+|   7925 | 3197 | `PH7_PRIVATE sxi32 PH7_VmInstallSqlite3(ph7_vm *pVm)` |
 |      5 | 3198 | `{` |
 |      - | 3199 | `#define SQ3_INT_CONST(NAME,VALUE) \` |
 |      - | 3200 | `	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, (ph7_int64)(VALUE), 0, 0.0 }` |
@@ -3403,9 +3403,9 @@ Coverage: 1660/1898 lines (87.46%)
 |      - | 3393 | `		  Sq3ResInstanceRelease, 0, 0 },` |
 |      - | 3394 | `	};` |
 |      - | 3395 | `#undef SQ3_INT_CONST` |
-|   6726 | 3396 | `	pVm->pSq3Conns = 0;` |
-|   6726 | 3397 | `	PH7_RegisterSqlite3Constants(&(*pVm));` |
-|   6726 | 3398 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|   7930 | 3396 | `	pVm->pSq3Conns = 0;` |
+|   7930 | 3397 | `	PH7_RegisterSqlite3Constants(&(*pVm));` |
+|   7930 | 3398 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |      5 | 3399 | `}` |
 |      - | 3400 |  |
 |      - | 3401 | `#else` |

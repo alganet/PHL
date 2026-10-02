@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1373/1531 lines (89.68%)
+Coverage: 1370/1531 lines (89.48%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -2315,7 +2315,7 @@ Coverage: 1373/1531 lines (89.68%)
 |     9 | 2305 | `	case PH7_IMG_SWF:     bHave = ImgHandleSwf(p,&sInfo);           break;` |
 |     1 | 2306 | `	case PH7_IMG_SWC:` |
 |     - | 2307 | `		/* php reads a compressed SWF through zlib and says so when the build it` |
-|     - | 2308 | `		 * runs on has none. This engine links no zlib (a §10 scope cut, so the` |
+|     - | 2308 | `		 * runs on has none. This engine links no zlib (a scope cut, so the` |
 |     - | 2309 | ``		 * `compress.zlib` stream filter is absent for the same reason), which`` |
 |     - | 2310 | `		 * makes php's own no-zlib sentence the honest answer rather than a` |
 |     - | 2311 | `		 * stub: the TYPE is still IMAGETYPE_SWC and the size is still refused. */` |
@@ -2396,17 +2396,17 @@ Coverage: 1373/1531 lines (89.68%)
 |    15 | 2386 | `		if( PH7_VfsEmptyPathRefused(pCtx,nOrig) ){` |
 |     2 | 2387 | `			return PH7_OK;` |
 |     - | 2388 | `		}` |
-|    13 | 2389 | `		pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zName,nOrig);` |
+|    13 | 2389 | `		pStream = PH7_VfsStreamDeviceOrFile(pCtx,&zName,nOrig);` |
 |    13 | 2390 | `		if( pStream == 0 ){` |
-|     3 | 2391 | `			VfsThrowNoDeviceWarning(pCtx,zName,FALSE);` |
-|     3 | 2392 | `			ph7_result_bool(pCtx,0);` |
-|     2 | 2393 | `		}else{` |
-|    16 | 2394 | `			pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zName,PH7_IO_OPEN_RDONLY,` |
-|     5 | 2395 | `				FALSE,0,FALSE,0,ph7_function_name(pCtx));` |
-|    11 | 2396 | `			if( pHandle == 0 ){` |
-|     3 | 2397 | `				VfsThrowOpenWarning(pCtx,zName);` |
-|     3 | 2398 | `				ph7_result_bool(pCtx,0);` |
-|     2 | 2399 | `			}else{` |
+|   ! 0 | 2391 | `			VfsThrowNoDeviceWarning(pCtx,zName,FALSE);` |
+|   ! 0 | 2392 | `			ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2393 | `		}else{` |
+|    19 | 2394 | `			pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zName,PH7_IO_OPEN_RDONLY,` |
+|     6 | 2395 | `				FALSE,0,FALSE,0,ph7_function_name(pCtx));` |
+|    13 | 2396 | `			if( pHandle == 0 ){` |
+|     5 | 2397 | `				VfsThrowOpenWarning(pCtx,zName);` |
+|     5 | 2398 | `				ph7_result_bool(pCtx,0);` |
+|     3 | 2399 | `			}else{` |
 |     9 | 2400 | `				sReader.pStream = pStream;` |
 |     9 | 2401 | `				sReader.pHandle = pHandle;` |
 |     9 | 2402 | `				rc = ImgReadAny(pCtx,&sReader,zOrig,nOrig,pInfo);` |

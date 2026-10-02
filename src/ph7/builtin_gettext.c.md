@@ -28,7 +28,7 @@ Coverage: 811/926 lines (87.58%)
 |    - |   18 | ` * libintl's -- and that is what is reproduced here, over PHL's own catalog` |
 |    - |   19 | ` * reader rather than the platform's, so a Windows build answers what a Linux` |
 |    - |   20 | ` * one does. php's own layer is thin and contributes only the argument screens` |
-|    - |   21 | ` * (§ "The php layer" below); everything else in this file is the library's` |
+|    - |   21 | ` * (see "The php layer" below); everything else in this file is the library's` |
 |    - |   22 | ` * behaviour, measured against glibc 2.4x through php 8.5.9.` |
 |    - |   23 | ` *` |
 |    - |   24 | ` * WHICH FILE a lookup reads is the whole of it, and it is four rules:` |
@@ -85,7 +85,7 @@ Coverage: 811/926 lines (87.58%)
 |    - |   75 | ` * The RESULT ENCODING is the last rule. glibc converts every answer from the` |
 |    - |   76 | ` * charset the header names to an output charset, with transliteration on: the` |
 |    - |   77 | ` * one bind_textdomain_codeset() set for the domain, or -- when nothing set one` |
-|    - |   78 | ` * -- the code set of the LC_CTYPE locale. Two cuts here, both §10's:` |
+|    - |   78 | ` * -- the code set of the LC_CTYPE locale. Two cuts here, both the scope policy's:` |
 |    - |   79 | ` *` |
 |    - |   80 | ` *   - PHL models UTF-8, ISO-8859-1 and US-ASCII (the iconv/mbstring scope cut).` |
 |    - |   81 | ` *     A catalog or a bound codeset outside those three cannot be converted, and` |
@@ -94,7 +94,7 @@ Coverage: 811/926 lines (87.58%)
 |    - |   84 | ` *   - a header with no charset is not converted at all, which is glibc's rule` |
 |    - |   85 | ` *     for the same case.` |
 |    - |   86 | ` *` |
-|    - |   87 | ` * Two RECORDED divergences, PLAN.md §7.4, both twin-less in the corpus because a` |
+|    - |   87 | ` * Two RECORDED divergences, both twin-less in the corpus because a` |
 |    - |   88 | ` * php half of either would kill the runner or measure the cache. The first is` |
 |    - |   89 | `` * arithmetic: glibc's `plural_eval` RAISES SIGFPE for a division or a modulo by`` |
 |    - |   90 | `` * zero in a plural rule, deliberately (`if (rightarg == 0) raise (SIGFPE);`), so`` |
@@ -465,7 +465,7 @@ Coverage: 811/926 lines (87.58%)
 |    - |  455 | ` * arithmetic has to be UNSIGNED because that is the type libintl evaluates it` |
 |    - |  456 | `` * in -- `plural=(n > 1)` with a count of -1 is the PLURAL form, not the`` |
 |    - |  457 | ` * singular. Division and modulo by zero answer 0 rather than trapping -- glibc` |
-|    - |  458 | ` * raises SIGFPE there on purpose, which is the §7.4 record above: a catalog is` |
+|    - |  458 | ` * raises SIGFPE there on purpose, which is the record above: a catalog is` |
 |    - |  459 | ` * DATA, and a typo in one must not take the process down.` |
 |    - |  460 | ` */` |
 |    - |  461 | `typedef struct gt_plural gt_plural;` |
@@ -1095,7 +1095,7 @@ Coverage: 811/926 lines (87.58%)
 |    - | 1085 | `/*` |
 |    - | 1086 | ` * Hand back one answer, converted if the domain and the catalog disagree on` |
 |    - | 1087 | ` * the encoding. A conversion that cannot be opened -- an unknown name, or one` |
-|    - | 1088 | ` * of the code sets §10 leaves out -- gives php's own answer for the same case:` |
+|    - | 1088 | ` * of the code sets the scope policy leaves out -- gives php's own answer for the same case:` |
 |    - | 1089 | ` * the msgid, untranslated.` |
 |    - | 1090 | ` */` |
 |   73 | 1091 | `static void GtResult(ph7_context *pCtx,gt_dom *pDom,gt_cat *pCat,` |

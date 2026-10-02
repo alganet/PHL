@@ -131,7 +131,7 @@ Coverage: 351/558 lines (62.90%)
 |    - |  121 | ` * A descriptor argument: a php stream to take one from, or anything php's WEAK` |
 |    - |  122 | ` * int parse accepts. php's own helper is that parse, which is why a numeric` |
 |    - |  123 | ` * STRING is taken in silence and a non-numeric one is a warning; the two` |
-|    - |  124 | ` * refusals below are PHL's engine-wide policy (§10) where php only deprecates,` |
+|    - |  124 | ` * refusals below are PHL's engine-wide scope policy where php only deprecates,` |
 |    - |  125 | ` * and they are the same TypeError every other int parameter answers with.` |
 |    - |  126 | ` *` |
 |    - |  127 | ` * Answers the descriptor, or -1 after raising the diagnostic. *pbTyped says` |

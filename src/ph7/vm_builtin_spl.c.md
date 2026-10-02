@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 7583/8435 lines (89.90%)
+Coverage: 7586/8438 lines (89.90%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -16,7 +16,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |     6 | `#include <errno.h>   /* getLinkTarget names the errno text its readlink failed with */` |
 |     - |     7 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |     - |     8 | `/*` |
-|     - |     9 | ` * SPL iterators, slice 1 (NEWPLAN band D): SeekableIterator, ArrayIterator,` |
+|     - |     9 | ` * SPL iterators, slice 1: SeekableIterator, ArrayIterator,` |
 |     - |    10 | ` * ArrayObject. (natsort()/natcasesort() used to be declared here as prelude` |
 |     - |    11 | ` * wrappers over uasort(...,'strnatcmp'); they are C builtins in hashmap_sort.c` |
 |     - |    12 | ` * now -- see ph7_hashmap_natsort -- and the methods below delegate to them.)` |
@@ -372,7 +372,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   362 | `	}` |
 |     5 |   363 | `	if( WmNodeTarget(WmFind(pVm,WmStore(pVm,pThis,WM_REFS),iId)) != pObj ){` |
 |     7 |   364 | `		return PH7_VmThrowException(pCtx,"Error","Object %z#%d not contained in WeakMap",` |
-|     4 |   365 | `			&pObj->pClass->sName,(int)pObj->nObjId);` |
+|     4 |   365 | `			&pObj->pClass->sDisp,(int)pObj->nObjId);` |
 |     - |   366 | `	}` |
 |   ! 0 |   367 | `	pNode = WmFind(pVm,WmStore(pVm,pThis,WM_VALS),iId);` |
 |   ! 0 |   368 | `	if( pNode ){` |
@@ -511,7 +511,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   501 | ` * attached only once its own exist -- PH7_ClassImplement stubs a missing one as` |
 |     - |   502 | ` * ABSTRACT, which would leave the class uninstantiable.` |
 |     - |   503 | ` */` |
-|  6721 |   504 | `static sxi32 VmInstallWeak(ph7_vm *pVm)` |
+|  7925 |   504 | `static sxi32 VmInstallWeak(ph7_vm *pVm)` |
 |     5 |   505 | `{` |
 |     - |   506 | `	static const PH7_NativePropDef aRefProp[] = {` |
 |     - |   507 | `		/* The shared cell, as a pointer. Private to a final class and never handed` |
@@ -554,27 +554,27 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   544 | `	static const char *azMapIface[] = { "ArrayAccess", "Countable", "IteratorAggregate" };` |
 |     - |   545 | `	ph7_class *pMap;` |
 |     - |   546 | `	sxu32 n;` |
-|  6726 |   547 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|  6726 |   548 | `	if( rc != SXRET_OK ){` |
+|  7930 |   547 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |   548 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |   549 | `		return rc;` |
 |     - |   550 | `	}` |
-|  6726 |   551 | `	pMap = PH7_VmExtractClass(&(*pVm),"WeakMap",sizeof("WeakMap")-1,FALSE,0);` |
-|  6726 |   552 | `	if( pMap == 0 ){` |
+|  7930 |   551 | `	pMap = PH7_VmExtractClass(&(*pVm),"WeakMap",sizeof("WeakMap")-1,FALSE,0);` |
+|  7930 |   552 | `	if( pMap == 0 ){` |
 |   ! 0 |   553 | `		return SXERR_NOTFOUND;` |
 |     - |   554 | `	}` |
-| 26889 |   555 | `	for( n = 0 ; n < SX_ARRAYSIZE(azMapIface) ; n++ ){` |
-| 30236 |   556 | `		ph7_class *pIface = PH7_VmExtractClass(&(*pVm),azMapIface[n],` |
-| 20163 |   557 | `			(sxu32)SyStrlen(azMapIface[n]),FALSE,0);` |
-| 20168 |   558 | `		if( pIface == 0 ){` |
+| 31705 |   555 | `	for( n = 0 ; n < SX_ARRAYSIZE(azMapIface) ; n++ ){` |
+| 35651 |   556 | `		ph7_class *pIface = PH7_VmExtractClass(&(*pVm),azMapIface[n],` |
+| 23775 |   557 | `			(sxu32)SyStrlen(azMapIface[n]),FALSE,0);` |
+| 23780 |   558 | `		if( pIface == 0 ){` |
 |   ! 0 |   559 | `			return SXERR_NOTFOUND;` |
 |     - |   560 | `		}` |
-| 20168 |   561 | `		rc = PH7_ClassImplement(pMap,pIface);` |
-| 20168 |   562 | `		if( rc != SXRET_OK ){` |
+| 23780 |   561 | `		rc = PH7_ClassImplement(pMap,pIface);` |
+| 23780 |   562 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |   563 | `			return rc;` |
 |     - |   564 | `		}` |
-| 10073 |   565 | `	}` |
-|  6726 |   566 | `	return SXRET_OK;` |
-|  3361 |   567 | `}` |
+| 11876 |   565 | `	}` |
+|  7930 |   566 | `	return SXRET_OK;` |
+|  3962 |   567 | `}` |
 |     - |   568 |  |
 |     - |   569 | `/*` |
 |     - |   570 | ` * ---------------------------------------------------------------------------` |
@@ -676,7 +676,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   666 | ` * ArrayIterator / ArrayObject — the array STORE, in C.` |
 |     - |   667 | ` *` |
 |     - |   668 | `` * These two shared one implementation through `trait __SplStoreT`, the last PHL-only`` |
-|     - |   669 | ` * TRAIT and the last name in the §4 ledger that was not a function. php shares nothing` |
+|     - |   669 | ` * TRAIT and the last name in the native-class ledger that was not a function. php shares nothing` |
 |     - |   670 | ` * between them at the TYPE level: both have no parent and no common interface beyond` |
 |     - |   671 | `` * ArrayAccess/Countable, and the storage lives in ext/spl's own `spl_array_object` struct`` |
 |     - |   672 | ` * behind handlers. The recorded decision follows php: no shared type at all —` |
@@ -718,27 +718,27 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   708 | ` * goes through the attribute by NAME, which is also what survives the property being` |
 |     - |   709 | ` * unset and re-created underneath (VmRecreateDeclaredAttr).` |
 |     - |   710 | ` */` |
-|  9226 |   711 | `static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     4 |   712 | `{` |
-|  9230 |   713 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
-|  9230 |   714 | `	if( pSlot == 0 ){` |
+|  9316 |   711 | `static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     5 |   712 | `{` |
+|  9321 |   713 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
+|  9321 |   714 | `	if( pSlot == 0 ){` |
 |   ! 0 |   715 | `		return 0;` |
 |     - |   716 | `	}` |
-|  9230 |   717 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|  9321 |   717 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |   ! 0 |   718 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
 |   ! 0 |   719 | `			return 0;` |
 |     - |   720 | `		}` |
 |   ! 0 |   721 | `	}` |
-|  9230 |   722 | `	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){` |
+|  9321 |   722 | `	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){` |
 |   ! 0 |   723 | `		return 0;` |
 |     - |   724 | `	}` |
-|  9230 |   725 | `	return PH7_NativeAttr(pThis,SPL_D);` |
-|  4617 |   726 | `}` |
-|  5452 |   727 | `static ph7_hashmap * SplStore(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     4 |   728 | `{` |
-|  5456 |   729 | `	ph7_value *pSlot = SplStoreSlot(pVm,pThis);` |
-|  5456 |   730 | `	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;` |
-|     4 |   731 | `}` |
+|  9321 |   725 | `	return PH7_NativeAttr(pThis,SPL_D);` |
+|  4663 |   726 | `}` |
+|  5504 |   727 | `static ph7_hashmap * SplStore(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     5 |   728 | `{` |
+|  5509 |   729 | `	ph7_value *pSlot = SplStoreSlot(pVm,pThis);` |
+|  5509 |   730 | `	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;` |
+|     5 |   731 | `}` |
 |     - |   732 | `/*` |
 |     - |   733 | `` * php's `spl_array_read_dimension` / `zend_weakmap_read_dimension` FAST PATH: a fetch on`` |
 |     - |   734 | ` * one of these containers answers with the store's OWN element, not with a copy of it.` |
@@ -759,21 +759,21 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   749 | ` * creates one — its missing key is an Error, raised by the accessor below.` |
 |     - |   750 | ` */` |
 |   154 |   751 | `PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate)` |
-|     4 |   752 | `{` |
-|   158 |   753 | `	ph7_hashmap_node *pNode = 0;` |
-|   158 |   754 | `	if( pThis == 0 \|\| pKey == 0 ){` |
+|     3 |   752 | `{` |
+|   157 |   753 | `	ph7_hashmap_node *pNode = 0;` |
+|   157 |   754 | `	if( pThis == 0 \|\| pKey == 0 ){` |
 |   ! 0 |   755 | `		return SXU32_HIGH;` |
 |     - |   756 | `	}` |
-|   158 |   757 | `	if( pKey->iFlags & MEMOBJ_NULL ){` |
+|   157 |   757 | `	if( pKey->iFlags & MEMOBJ_NULL ){` |
 |     - |   758 | `		/* PH7_HashmapLookup folds a NULL key to "" IN PLACE, and a declined fast path` |
 |     - |   759 | `		 * has to hand the accessor the key it was written with (php deprecates the null` |
 |     - |   760 | `		 * offset there). Cheaper to stand down than to probe on a copy. */` |
 |     9 |   761 | `		return SXU32_HIGH;` |
 |     - |   762 | `	}` |
 |   146 |   763 | `	if( (pKey->iFlags & MEMOBJ_RES)` |
-|   146 |   764 | `	 \|\| ((pKey->iFlags & MEMOBJ_REAL) && pKey->rVal != (ph7_real)(sxi64)pKey->rVal) ){` |
+|   145 |   764 | `	 \|\| ((pKey->iFlags & MEMOBJ_REAL) && pKey->rVal != (ph7_real)(sxi64)pKey->rVal) ){` |
 |     - |   765 | `		/* Same reason, for the two keys the accessor answers with a DIAGNOSTIC: a` |
-|     - |   766 | `		 * resource is php's warning plus its integer id, and a lossy float is §10's` |
+|     - |   766 | `		 * resource is php's warning plus its integer id, and a lossy float is the scope policy's` |
 |     - |   767 | `		 * refusal. The raw lookup here would string-cast the resource to` |
 |     - |   768 | `		 * "Resource id #N" -- a key nothing else writes -- and silently truncate the` |
 |     - |   769 | `		 * float, both without a word. */` |
@@ -812,7 +812,7 @@ Coverage: 7583/8435 lines (89.90%)
 |    24 |   802 | `		return pNode ? pNode->nValIdx : SXU32_HIGH;` |
 |     - |   803 | `	}` |
 |     3 |   804 | `	return SXU32_HIGH;` |
-|    81 |   805 | `}` |
+|    80 |   805 | `}` |
 |     - |   806 | `/*` |
 |     - |   807 | `` * `$this->__d = $array` for the constructor and exchangeArray(), with php's refusal.`` |
 |     - |   808 | ` *` |
@@ -821,16 +821,16 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   811 | ` * shape) and the check is written here. An OBJECT contributes its properties, as the PHP` |
 |     - |   812 | ` * did through get_object_vars().` |
 |     - |   813 | ` */` |
-|  1508 |   814 | `static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,` |
+|  1514 |   814 | `static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,` |
 |     - |   815 | `	ph7_value *pArray,const char *zOwner)` |
-|     4 |   816 | `{` |
+|     5 |   816 | `{` |
 |     - |   817 | `	char zGiven[64];` |
-|  1512 |   818 | `	ph7_vm *pVm = pCtx->pVm;` |
-|  1512 |   819 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
-|  1512 |   820 | `	if( pSlot == 0 ){` |
+|  1519 |   818 | `	ph7_vm *pVm = pCtx->pVm;` |
+|  1519 |   819 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
+|  1519 |   820 | `	if( pSlot == 0 ){` |
 |   ! 0 |   821 | `		return PH7_OK;` |
 |     - |   822 | `	}` |
-|  1512 |   823 | `	if( pArray == 0 ){` |
+|  1519 |   823 | `	if( pArray == 0 ){` |
 |     - |   824 | ``		/* No argument at all: php's `$array = []` default. A native method has no compiled`` |
 |     - |   825 | `		 * parameter records for the defaults to live in (rule 33's neighbour), so the body` |
 |     - |   826 | `		 * applies it — and an EXPLICIT null still has to reach the refusal below, which is` |
@@ -844,17 +844,17 @@ Coverage: 7583/8435 lines (89.90%)
 |   175 |   834 | `		MemObjSetType(pSlot,MEMOBJ_HASHMAP);` |
 |   175 |   835 | `		return PH7_OK;` |
 |     - |   836 | `	}` |
-|  1340 |   837 | `	if( pArray->iFlags & MEMOBJ_HASHMAP ){` |
-|  1324 |   838 | `		PH7_MemObjRelease(pSlot);` |
-|  1324 |   839 | `		PH7_MemObjStore(pArray,pSlot); /* a copy: the store is the object's own */` |
-|  1324 |   840 | `		return PH7_OK;` |
+|  1347 |   837 | `	if( pArray->iFlags & MEMOBJ_HASHMAP ){` |
+|  1331 |   838 | `		PH7_MemObjRelease(pSlot);` |
+|  1331 |   839 | `		PH7_MemObjStore(pArray,pSlot); /* a copy: the store is the object's own */` |
+|  1331 |   840 | `		return PH7_OK;` |
 |     - |   841 | `	}` |
 |    17 |   842 | `	if( pArray->iFlags & MEMOBJ_OBJ ){` |
 |     - |   843 | `		/* The PHP read get_object_vars($array): the properties this scope can see, by` |
 |     - |   844 | `		 * their plain names. php itself keeps the OBJECT and reads its property table` |
 |     - |   845 | `		 * live (so getArrayCopy() answers the mangled private names and count() answers` |
 |     - |   846 | `		 * the visible ones) — a divergence this conversion carries over unchanged rather` |
-|     - |   847 | `		 * than widening, recorded in §7.4. */` |
+|     - |   847 | `		 * than widening, recorded. */` |
 |     5 |   848 | `		ph7_class_instance *pObj = (ph7_class_instance *)pArray->x.pOther;` |
 |     - |   849 | `		ph7_hashmap *pMap;` |
 |     - |   850 | `		SyHashEntry *pEntry;` |
@@ -895,20 +895,20 @@ Coverage: 7583/8435 lines (89.90%)
 |    19 |   885 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
 |     - |   886 | `		"%s(): Argument #1 ($array) must be of type array, %s given",` |
 |     6 |   887 | `		zOwner,VmValueGivenName(pArray,zGiven,sizeof(zGiven)));` |
-|   758 |   888 | `}` |
+|   762 |   888 | `}` |
 |     - |   889 | `/* Hand one of the engine's own array builtins the instance's storage slot. */` |
-|  3464 |   890 | `static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pExtra)` |
-|     4 |   891 | `{` |
-|  3468 |   892 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|  3502 |   890 | `static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pExtra)` |
+|     5 |   891 | `{` |
+|  3507 |   892 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |   893 | `	ph7_value *apCall[2];` |
-|  3468 |   894 | `	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,pThis);` |
-|  3468 |   895 | `	if( pSlot == 0 ){` |
+|  3507 |   894 | `	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,pThis);` |
+|  3507 |   895 | `	if( pSlot == 0 ){` |
 |   ! 0 |   896 | `		return PH7_OK;` |
 |     - |   897 | `	}` |
-|  3468 |   898 | `	apCall[0] = pSlot;` |
-|  3468 |   899 | `	apCall[1] = pExtra;` |
-|  3468 |   900 | `	return xFunc(pCtx,pExtra ? 2 : 1,apCall);` |
-|  1736 |   901 | `}` |
+|  3507 |   898 | `	apCall[0] = pSlot;` |
+|  3507 |   899 | `	apCall[1] = pExtra;` |
+|  3507 |   900 | `	return xFunc(pCtx,pExtra ? 2 : 1,apCall);` |
+|  1756 |   901 | `}` |
 |     - |   902 | `/*` |
 |     - |   903 | ` * The ARRAY-OFFSET rules for the store's four offset methods. php's ArrayObject /` |
 |     - |   904 | `` * ArrayIterator hand the key to the same machinery `$a[$k]` uses, so all five of`` |
@@ -924,7 +924,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   914 | `` *   NULL             php's `Using null as an array offset is deprecated` and the`` |
 |     - |   915 | ` *                    "" key — except in offsetSet(), where a null key is php's` |
 |     - |   916 | `` *                    append form (`$ao[] = $v`) and says nothing.`` |
-|     - |   917 | ` *   LOSSY FLOAT      §10: php deprecates and truncates, PHL refuses — but only` |
+|     - |   917 | ` *   LOSSY FLOAT      the scope policy: php deprecates and truncates, PHL refuses — but only` |
 |     - |   918 | ` *                    where the ENGINE refuses it, which is a READ or a WRITE.` |
 |     - |   919 | `` *                    `isset($a[1.9])` and `unset($a[1.9])` truncate quietly on a`` |
 |     - |   920 | ` *                    plain array, so they do here, or the store would answer` |
@@ -944,31 +944,31 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |   934 | `#define SPL_OFF_UNSET  2` |
 |     - |   935 | `#define SPL_OFF_SET    3   /* offsetSet: a NULL key is the append form, not a key */` |
 |   318 |   936 | `static int SplOffsetKeyArg(ph7_context *pCtx,ph7_value *pKey,int iKind,int *pRc)` |
-|     3 |   937 | `{` |
-|   321 |   938 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   321 |   939 | `	SyString *pOwner = pThis ? &pThis->pClass->sName : 0;` |
-|   321 |   940 | `	SyString *pClass = 0;` |
-|   321 |   941 | `	const char *zType = 0;` |
-|   321 |   942 | `	*pRc = PH7_OK;` |
-|   321 |   943 | `	if( pKey->iFlags & MEMOBJ_OBJ ){` |
+|     4 |   937 | `{` |
+|   322 |   938 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   322 |   939 | `	SyString *pOwner = pThis ? &pThis->pClass->sName : 0;` |
+|   322 |   940 | `	SyString *pClass = 0;` |
+|   322 |   941 | `	const char *zType = 0;` |
+|   322 |   942 | `	*pRc = PH7_OK;` |
+|   322 |   943 | `	if( pKey->iFlags & MEMOBJ_OBJ ){` |
 |    62 |   944 | `		ph7_class_instance *pInst = (ph7_class_instance *)pKey->x.pOther;` |
 |    62 |   945 | `		if( pInst && pInst->pClass ){` |
 |    62 |   946 | `			pClass = &pInst->pClass->sName;` |
 |    30 |   947 | `		}` |
 |    62 |   948 | `		zType = "object";` |
-|   291 |   949 | `	}else if( pKey->iFlags & MEMOBJ_HASHMAP ){` |
+|   292 |   949 | `	}else if( pKey->iFlags & MEMOBJ_HASHMAP ){` |
 |    60 |   950 | `		zType = "array";` |
 |   231 |   951 | `	}else if( (pKey->iFlags & MEMOBJ_REAL)` |
 |   110 |   952 | `	       && pKey->rVal != (ph7_real)(sxi64)pKey->rVal` |
-|    21 |   953 | `	       && (iKind == SPL_OFF_ACCESS \|\| iKind == SPL_OFF_SET) ){` |
+|    22 |   953 | `	       && (iKind == SPL_OFF_ACCESS \|\| iKind == SPL_OFF_SET) ){` |
 |    11 |   954 | `		zType = "float";` |
 |     5 |   955 | `	}` |
-|   321 |   956 | `	if( zType == 0 ){` |
-|   193 |   957 | `		PH7_VmOffsetResourceWarn(pCtx->pVm,pKey);` |
-|   193 |   958 | `		if( iKind != SPL_OFF_SET ){` |
-|   117 |   959 | `			PH7_VmNullOffsetDeprecate(pCtx->pVm,pKey);` |
+|   322 |   956 | `	if( zType == 0 ){` |
+|   194 |   957 | `		PH7_VmOffsetResourceWarn(pCtx->pVm,pKey);` |
+|   194 |   958 | `		if( iKind != SPL_OFF_SET ){` |
+|   118 |   959 | `			PH7_VmNullOffsetDeprecate(pCtx->pVm,pKey);` |
 |    57 |   960 | `		}` |
-|   193 |   961 | `		return 0;` |
+|   194 |   961 | `		return 0;` |
 |     - |   962 | `	}` |
 |   131 |   963 | `	if( iKind == SPL_OFF_ISSET ){` |
 |    46 |   964 | `		*pRc = pClass` |
@@ -985,33 +985,33 @@ Coverage: 7583/8435 lines (89.90%)
 |    25 |   975 | `				"%s offset of type %s on %z",zVerb,zType,pOwner);` |
 |     - |   976 | `	}` |
 |   131 |   977 | `	return 1;` |
-|   162 |   978 | `}` |
+|   163 |   978 | `}` |
 |    80 |   979 | `static int vm_builtin_SplStore_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |   980 | `{` |
-|    83 |   981 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
-|    83 |   982 | `	ph7_hashmap_node *pNode = 0;` |
-|    83 |   983 | `	int bFound = 0, rc;` |
-|    83 |   984 | `	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_ISSET,&rc) ){` |
+|     4 |   980 | `{` |
+|    84 |   981 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|    84 |   982 | `	ph7_hashmap_node *pNode = 0;` |
+|    84 |   983 | `	int bFound = 0, rc;` |
+|    84 |   984 | `	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_ISSET,&rc) ){` |
 |    46 |   985 | `		return rc;` |
 |     - |   986 | `	}` |
-|    39 |   987 | `	if( pMap && nArg > 0 ){` |
+|    40 |   987 | `	if( pMap && nArg > 0 ){` |
 |     - |   988 | `		/* array_key_exists(), not isset(): php's offsetExists() answers true for a key` |
 |     - |   989 | `		 * holding NULL (the PHP said array_key_exists too). */` |
-|    39 |   990 | `		bFound = PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK;` |
+|    40 |   990 | `		bFound = PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK;` |
 |    18 |   991 | `	}` |
-|    39 |   992 | `	ph7_result_bool(pCtx,bFound);` |
-|    39 |   993 | `	return PH7_OK;` |
-|    43 |   994 | `}` |
+|    40 |   992 | `	ph7_result_bool(pCtx,bFound);` |
+|    40 |   993 | `	return PH7_OK;` |
+|    44 |   994 | `}` |
 |    86 |   995 | `static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |   996 | `{` |
-|    89 |   997 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    89 |   998 | `	ph7_hashmap *pMap = SplStore(pVm,PH7_ContextThis(pCtx));` |
-|    89 |   999 | `	ph7_hashmap_node *pNode = 0;` |
+|     4 |   996 | `{` |
+|    90 |   997 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    90 |   998 | `	ph7_hashmap *pMap = SplStore(pVm,PH7_ContextThis(pCtx));` |
+|    90 |   999 | `	ph7_hashmap_node *pNode = 0;` |
 |     - |  1000 | `	int rcKey;` |
-|    89 |  1001 | `	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_ACCESS,&rcKey) ){` |
+|    90 |  1001 | `	if( nArg > 0 && SplOffsetKeyArg(pCtx,apArg[0],SPL_OFF_ACCESS,&rcKey) ){` |
 |    34 |  1002 | `		return rcKey;` |
 |     - |  1003 | `	}` |
-|    56 |  1004 | `	if( pMap == 0 \|\| nArg < 1 \|\| PH7_HashmapLookup(pMap,apArg[0],&pNode) != SXRET_OK ){` |
+|    57 |  1004 | `	if( pMap == 0 \|\| nArg < 1 \|\| PH7_HashmapLookup(pMap,apArg[0],&pNode) != SXRET_OK ){` |
 |     - |  1005 | `		/* php warns "Undefined array key" for a missing offset, with the key rendered` |
 |     - |  1006 | `		 * the way the LOOKUP folded it (an integer bare, a string quoted) — the same` |
 |     - |  1007 | `		 * pair OP_LOAD_IDX prints. This one now reports the CALLER's line, where the` |
@@ -1037,9 +1037,9 @@ Coverage: 7583/8435 lines (89.90%)
 |     3 |  1027 | `		ph7_result_null(pCtx);` |
 |     3 |  1028 | `		return PH7_OK;` |
 |     - |  1029 | `	}` |
-|    54 |  1030 | `	ph7_result_value(pCtx,(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx));` |
-|    54 |  1031 | `	return PH7_OK;` |
-|    46 |  1032 | `}` |
+|    55 |  1030 | `	ph7_result_value(pCtx,(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx));` |
+|    55 |  1031 | `	return PH7_OK;` |
+|    47 |  1032 | `}` |
 |     - |  1033 | `/*` |
 |     - |  1034 | ` * Insert into the store, keeping php's cursor rule.` |
 |     - |  1035 | ` *` |
@@ -1096,15 +1096,15 @@ Coverage: 7583/8435 lines (89.90%)
 |     9 |  1086 | `	return PH7_OK;` |
 |     1 |  1087 | `}` |
 |   126 |  1088 | `static int vm_builtin_SplStore_getArrayCopy(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     4 |  1089 | `{` |
-|   130 |  1090 | `	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|     3 |  1089 | `{` |
+|   129 |  1090 | `	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,PH7_ContextThis(pCtx));` |
 |    63 |  1091 | `	SXUNUSED(nArg);` |
 |    63 |  1092 | `	SXUNUSED(apArg);` |
-|   130 |  1093 | `	if( pSlot ){` |
-|   130 |  1094 | `		ph7_result_value(pCtx,pSlot); /* a COPY: the caller must not alias the store */` |
+|   129 |  1093 | `	if( pSlot ){` |
+|   129 |  1094 | `		ph7_result_value(pCtx,pSlot); /* a COPY: the caller must not alias the store */` |
 |    63 |  1095 | `	}` |
-|   130 |  1096 | `	return PH7_OK;` |
-|     4 |  1097 | `}` |
+|   129 |  1096 | `	return PH7_OK;` |
+|     3 |  1097 | `}` |
 |    28 |  1098 | `static int vm_builtin_SplStore_count(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  1099 | `{` |
 |    29 |  1100 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
@@ -1177,48 +1177,48 @@ Coverage: 7583/8435 lines (89.90%)
 |     6 |  1167 | `	return SplNatSort(pCtx,1);` |
 |     2 |  1168 | `}` |
 |     - |  1169 | `/* ArrayIterator's cursor: the stored array's own internal pointer, as the PHP had it. */` |
-|  1000 |  1170 | `static int vm_builtin_ArrayIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  1171 | `{` |
-|  1003 |  1172 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
-|   500 |  1173 | `	SXUNUSED(nArg);` |
-|   500 |  1174 | `	SXUNUSED(apArg);` |
-|  1003 |  1175 | `	if( pMap == 0 \|\| pMap->pCur == 0 ){` |
+|  1010 |  1170 | `static int vm_builtin_ArrayIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     4 |  1171 | `{` |
+|  1014 |  1172 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|   505 |  1173 | `	SXUNUSED(nArg);` |
+|   505 |  1174 | `	SXUNUSED(apArg);` |
+|  1014 |  1175 | `	if( pMap == 0 \|\| pMap->pCur == 0 ){` |
 |     - |  1176 | `		/* Past the end php answers NULL, where current() the FUNCTION answers false. */` |
 |     7 |  1177 | `		ph7_result_null(pCtx);` |
 |     7 |  1178 | `		return PH7_OK;` |
 |     - |  1179 | `	}` |
-|   997 |  1180 | `	return SplArrayCall(pCtx,ph7_hashmap_current,0);` |
-|   503 |  1181 | `}` |
-|   954 |  1182 | `static int vm_builtin_ArrayIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  1008 |  1180 | `	return SplArrayCall(pCtx,ph7_hashmap_current,0);` |
+|   509 |  1181 | `}` |
+|   964 |  1182 | `static int vm_builtin_ArrayIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  1183 | `{` |
-|   477 |  1184 | `	SXUNUSED(nArg);` |
-|   477 |  1185 | `	SXUNUSED(apArg);` |
-|   957 |  1186 | `	return SplArrayCall(pCtx,ph7_hashmap_simple_key,0);` |
+|   482 |  1184 | `	SXUNUSED(nArg);` |
+|   482 |  1185 | `	SXUNUSED(apArg);` |
+|   967 |  1186 | `	return SplArrayCall(pCtx,ph7_hashmap_simple_key,0);` |
 |     3 |  1187 | `}` |
-|   900 |  1188 | `static int vm_builtin_ArrayIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   912 |  1188 | `static int vm_builtin_ArrayIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  1189 | `{` |
-|   450 |  1190 | `	SXUNUSED(nArg);` |
-|   450 |  1191 | `	SXUNUSED(apArg);` |
-|   903 |  1192 | `	SplArrayCall(pCtx,ph7_hashmap_next,0);` |
-|   903 |  1193 | `	ph7_result_null(pCtx); /* next() the METHOD returns void */` |
-|   903 |  1194 | `	return PH7_OK;` |
+|   456 |  1190 | `	SXUNUSED(nArg);` |
+|   456 |  1191 | `	SXUNUSED(apArg);` |
+|   915 |  1192 | `	SplArrayCall(pCtx,ph7_hashmap_next,0);` |
+|   915 |  1193 | `	ph7_result_null(pCtx); /* next() the METHOD returns void */` |
+|   915 |  1194 | `	return PH7_OK;` |
 |     3 |  1195 | `}` |
-|   586 |  1196 | `static int vm_builtin_ArrayIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  1197 | `{` |
-|   293 |  1198 | `	SXUNUSED(nArg);` |
-|   293 |  1199 | `	SXUNUSED(apArg);` |
-|   589 |  1200 | `	SplArrayCall(pCtx,ph7_hashmap_reset,0);` |
-|   589 |  1201 | `	ph7_result_null(pCtx);` |
-|   589 |  1202 | `	return PH7_OK;` |
-|     3 |  1203 | `}` |
-|  1956 |  1204 | `static int vm_builtin_ArrayIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  1205 | `{` |
-|  1959 |  1206 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
-|   978 |  1207 | `	SXUNUSED(nArg);` |
-|   978 |  1208 | `	SXUNUSED(apArg);` |
-|  1959 |  1209 | `	ph7_result_bool(pCtx,pMap && pMap->pCur ? 1 : 0);` |
-|  1959 |  1210 | `	return PH7_OK;` |
-|     3 |  1211 | `}` |
+|   592 |  1196 | `static int vm_builtin_ArrayIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     4 |  1197 | `{` |
+|   296 |  1198 | `	SXUNUSED(nArg);` |
+|   296 |  1199 | `	SXUNUSED(apArg);` |
+|   596 |  1200 | `	SplArrayCall(pCtx,ph7_hashmap_reset,0);` |
+|   596 |  1201 | `	ph7_result_null(pCtx);` |
+|   596 |  1202 | `	return PH7_OK;` |
+|     4 |  1203 | `}` |
+|  1982 |  1204 | `static int vm_builtin_ArrayIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     4 |  1205 | `{` |
+|  1986 |  1206 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|   991 |  1207 | `	SXUNUSED(nArg);` |
+|   991 |  1208 | `	SXUNUSED(apArg);` |
+|  1986 |  1209 | `	ph7_result_bool(pCtx,pMap && pMap->pCur ? 1 : 0);` |
+|  1986 |  1210 | `	return PH7_OK;` |
+|     4 |  1211 | `}` |
 |    34 |  1212 | `static int vm_builtin_ArrayIterator_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  1213 | `{` |
 |    35 |  1214 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
@@ -1237,25 +1237,25 @@ Coverage: 7583/8435 lines (89.90%)
 |    19 |  1227 | `	}` |
 |    29 |  1228 | `	return PH7_OK;` |
 |    18 |  1229 | `}` |
-|  1082 |  1230 | `static int vm_builtin_ArrayIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     4 |  1231 | `{` |
-|  1086 |  1232 | `	ph7_vm *pVm = pCtx->pVm;` |
-|  1086 |  1233 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|  1088 |  1230 | `static int vm_builtin_ArrayIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     5 |  1231 | `{` |
+|  1093 |  1232 | `	ph7_vm *pVm = pCtx->pVm;` |
+|  1093 |  1233 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  1234 | `	ph7_hashmap *pMap;` |
-|  1086 |  1235 | `	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,` |
+|  1093 |  1235 | `	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,` |
 |     - |  1236 | `		"ArrayIterator::__construct");` |
-|  1086 |  1237 | `	if( rc != PH7_OK ){` |
+|  1093 |  1237 | `	if( rc != PH7_OK ){` |
 |    11 |  1238 | `		return rc;` |
 |     - |  1239 | `	}` |
-|  1076 |  1240 | `	if( pThis && nArg > 1 ){` |
-|   167 |  1241 | `		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(apArg[1]) & SPL_FLAG_MASK);` |
-|    83 |  1242 | `	}` |
-|  1076 |  1243 | `	pMap = SplStore(pVm,pThis);` |
-|  1076 |  1244 | `	if( pMap ){` |
-|  1076 |  1245 | `		pMap->pCur = pMap->pFirst; /* reset($this->__d) */` |
-|   536 |  1246 | `	}` |
-|  1076 |  1247 | `	return PH7_OK;` |
-|   545 |  1248 | `}` |
+|  1083 |  1240 | `	if( pThis && nArg > 1 ){` |
+|   170 |  1241 | `		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(apArg[1]) & SPL_FLAG_MASK);` |
+|    84 |  1242 | `	}` |
+|  1083 |  1243 | `	pMap = SplStore(pVm,pThis);` |
+|  1083 |  1244 | `	if( pMap ){` |
+|  1083 |  1245 | `		pMap->pCur = pMap->pFirst; /* reset($this->__d) */` |
+|   539 |  1246 | `	}` |
+|  1083 |  1247 | `	return PH7_OK;` |
+|   549 |  1248 | `}` |
 |     - |  1249 | `/* ArrayObject */` |
 |     - |  1250 | `/*` |
 |     - |  1251 | `` * The iterator class, taken by two doors: `setIteratorClass()` and the`` |
@@ -1304,23 +1304,23 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  1294 | `		"ArrayObject::setIteratorClass(): Argument #1 ($iteratorClass)");` |
 |     1 |  1295 | `}` |
 |   396 |  1296 | `static int vm_builtin_ArrayObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     4 |  1297 | `{` |
-|   400 |  1298 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   400 |  1299 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   400 |  1300 | `	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,` |
+|     5 |  1297 | `{` |
+|   401 |  1298 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   401 |  1299 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   401 |  1300 | `	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,` |
 |     - |  1301 | `		"ArrayObject::__construct");` |
-|   400 |  1302 | `	if( rc != PH7_OK ){` |
+|   401 |  1302 | `	if( rc != PH7_OK ){` |
 |     3 |  1303 | `		return rc;` |
 |     - |  1304 | `	}` |
-|   398 |  1305 | `	if( pThis && nArg > 1 ){` |
+|   399 |  1305 | `	if( pThis && nArg > 1 ){` |
 |    39 |  1306 | `		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(apArg[1]) & SPL_FLAG_MASK);` |
 |    19 |  1307 | `	}` |
-|   398 |  1308 | `	if( nArg > 2 ){` |
+|   399 |  1308 | `	if( nArg > 2 ){` |
 |    19 |  1309 | `		return SplSetIteratorClass(pCtx,apArg[2],` |
 |     - |  1310 | `			"ArrayObject::__construct(): Argument #3 ($iteratorClass)");` |
 |     - |  1311 | `	}` |
-|   380 |  1312 | `	return PH7_OK;` |
-|   202 |  1313 | `}` |
+|   381 |  1312 | `	return PH7_OK;` |
+|   203 |  1313 | `}` |
 |     4 |  1314 | `static int vm_builtin_ArrayObject_exchangeArray(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  1315 | `{` |
 |     5 |  1316 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -1910,7 +1910,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  1900 | ` * therefore cannot wait for the chunk. RecursiveArrayIterator still lives there and extends` |
 |     - |  1901 | ` * ArrayIterator, so this install has to run BEFORE the chunk is evaluated.` |
 |     - |  1902 | ` */` |
-|  6721 |  1903 | `static sxi32 VmInstallSplStore(ph7_vm *pVm)` |
+|  7925 |  1903 | `static sxi32 VmInstallSplStore(ph7_vm *pVm)` |
 |     5 |  1904 | `{` |
 |     - |  1905 | ``	/* php's `@tentative-return-type void`, as on the other SPL contracts`` |
 |     - |  1906 | `	 * (VmInstallSplDualIterators). */` |
@@ -2014,16 +2014,16 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  2004 | `		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),` |
 |     - |  2005 | `		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, SplStorePresent },` |
 |     - |  2006 | `	};` |
-|  6726 |  2007 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|  6726 |  2008 | `	if( rc == SXRET_OK ){` |
+|  7930 |  2007 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  2008 | `	if( rc == SXRET_OK ){` |
 |     - |  2009 | `		/* The property handler, assigned here for the same reason the clone and` |
 |     - |  2010 | `		 * dimension hooks are: PH7_NativeClassSpec carries no field for one. Both` |
 |     - |  2011 | `		 * roots wear it, and RecursiveArrayIterator reaches ArrayIterator's through` |
 |     - |  2012 | `		 * the engine's base-chain walk -- php's handler inheritance. */` |
-|  6726 |  2013 | `		PH7_NativeClassInstallPropHook(&(*pVm),"ArrayObject",SplArrayProp);` |
-|  6726 |  2014 | `		PH7_NativeClassInstallPropHook(&(*pVm),"ArrayIterator",SplArrayProp);` |
-|  3356 |  2015 | `	}` |
-|  6726 |  2016 | `	return rc;` |
+|  7930 |  2013 | `		PH7_NativeClassInstallPropHook(&(*pVm),"ArrayObject",SplArrayProp);` |
+|  7930 |  2014 | `		PH7_NativeClassInstallPropHook(&(*pVm),"ArrayIterator",SplArrayProp);` |
+|  3957 |  2015 | `	}` |
+|  7930 |  2016 | `	return rc;` |
 |     5 |  2017 | `}` |
 |     - |  2018 | `/*` |
 |     - |  2019 | ` * ---------------------------------------------------------------------------` |
@@ -2073,14 +2073,14 @@ Coverage: 7583/8435 lines (89.90%)
 |    35 |  2063 | `	return PH7_VmThrowException(pCtx,"Error",` |
 |     - |  2064 | `		"The object is in an invalid state as the parent constructor was not called");` |
 |     1 |  2065 | `}` |
-|  5060 |  2066 | `static ph7_class_instance * DualDriver(ph7_class_instance *pThis)` |
-|     3 |  2067 | `{` |
-|  5063 |  2068 | `	return pThis ? PH7_NativeAttrObj(pThis,IT_IT) : 0;` |
-|     3 |  2069 | `}` |
-|  1966 |  2070 | `static int DualFilled(ph7_class_instance *pThis)` |
-|     3 |  2071 | `{` |
-|  1969 |  2072 | `	return pThis && PH7_NativeAttrInt(pThis,IT_CF) != 0;` |
-|     3 |  2073 | `}` |
+|  5094 |  2066 | `static ph7_class_instance * DualDriver(ph7_class_instance *pThis)` |
+|     4 |  2067 | `{` |
+|  5098 |  2068 | `	return pThis ? PH7_NativeAttrObj(pThis,IT_IT) : 0;` |
+|     4 |  2069 | `}` |
+|  1984 |  2070 | `static int DualFilled(ph7_class_instance *pThis)` |
+|     4 |  2071 | `{` |
+|  1988 |  2072 | `	return pThis && PH7_NativeAttrInt(pThis,IT_CF) != 0;` |
+|     4 |  2073 | `}` |
 |     - |  2074 | `/*` |
 |     - |  2075 | `` * php's SPL_FETCH_AND_CHECK_DUAL_IT tests `dit_type`, which means "the constructor`` |
 |     - |  2076 | ` * ran" -- and for every decorator but one that is the same thing as "an inner` |
@@ -2088,11 +2088,11 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  2078 | ` * empty list and is immediately usable (valid() false, current()/key() null, no` |
 |     - |  2079 | ` * refusal), so its readiness lives in the list slot instead.` |
 |     - |  2080 | ` */` |
-|  2706 |  2081 | `static int DualReady(ph7_class_instance *pThis)` |
-|     3 |  2082 | `{` |
-|  4132 |  2083 | `	return pThis && (PH7_NativeAttrObj(pThis,IT_IT) != 0` |
-|  1423 |  2084 | `		\|\| PH7_NativeAttrObj(pThis,AP_LIST) != 0);` |
-|     3 |  2085 | `}` |
+|  2714 |  2081 | `static int DualReady(ph7_class_instance *pThis)` |
+|     4 |  2082 | `{` |
+|  4145 |  2083 | `	return pThis && (PH7_NativeAttrObj(pThis,IT_IT) != 0` |
+|  1427 |  2084 | `		\|\| PH7_NativeAttrObj(pThis,AP_LIST) != 0);` |
+|     4 |  2085 | `}` |
 |     - |  2086 | `/*` |
 |     - |  2087 | ` * Assign one of the instance's own slots. The slot is re-resolved BY NAME here on` |
 |     - |  2088 | ` * purpose: a call into user code (and every inner->current() is one) can unset and` |
@@ -2100,175 +2100,175 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  2090 | ` * to matter for a second reason as well -- the pool itself reallocated as the VM` |
 |     - |  2091 | ` * reserved objects -- and that one is gone since P1 (fixed segments).` |
 |     - |  2092 | ` */` |
-|  1464 |  2093 | `static void DualSetSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,ph7_value *pVal)` |
-|     3 |  2094 | `{` |
-|  1467 |  2095 | `	ph7_value *pSlot = PH7_NativeAttr(pThis,zName);` |
-|   732 |  2096 | `	SXUNUSED(pVm);` |
-|  1467 |  2097 | `	if( pSlot ){` |
-|  1467 |  2098 | `		PH7_MemObjStore(pVal,pSlot);` |
-|   732 |  2099 | `	}` |
-|  1467 |  2100 | `}` |
+|  1472 |  2093 | `static void DualSetSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,ph7_value *pVal)` |
+|     4 |  2094 | `{` |
+|  1476 |  2095 | `	ph7_value *pSlot = PH7_NativeAttr(pThis,zName);` |
+|   736 |  2096 | `	SXUNUSED(pVm);` |
+|  1476 |  2097 | `	if( pSlot ){` |
+|  1476 |  2098 | `		PH7_MemObjStore(pVal,pSlot);` |
+|   736 |  2099 | `	}` |
+|  1476 |  2100 | `}` |
 |     - |  2101 | `/* php's spl_dual_it_free: drop the cached pair. */` |
-|  1728 |  2102 | `static void DualFree(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     3 |  2103 | `{` |
+|  1740 |  2102 | `static void DualFree(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     4 |  2103 | `{` |
 |     - |  2104 | `	ph7_value *pSlot;` |
-|  1731 |  2105 | `	if( pThis == 0 ){` |
+|  1744 |  2105 | `	if( pThis == 0 ){` |
 |   ! 0 |  2106 | `		return;` |
 |     - |  2107 | `	}` |
-|  1731 |  2108 | `	pSlot = PH7_NativeAttr(pThis,IT_CD);` |
-|  1731 |  2109 | `	if( pSlot ){ PH7_MemObjRelease(pSlot); }` |
-|  1731 |  2110 | `	pSlot = PH7_NativeAttr(pThis,IT_CK);` |
-|  1731 |  2111 | `	if( pSlot ){ PH7_MemObjRelease(pSlot); }` |
-|  1731 |  2112 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CF,0);` |
-|   867 |  2113 | `}` |
+|  1744 |  2108 | `	pSlot = PH7_NativeAttr(pThis,IT_CD);` |
+|  1744 |  2109 | `	if( pSlot ){ PH7_MemObjRelease(pSlot); }` |
+|  1744 |  2110 | `	pSlot = PH7_NativeAttr(pThis,IT_CK);` |
+|  1744 |  2111 | `	if( pSlot ){ PH7_MemObjRelease(pSlot); }` |
+|  1744 |  2112 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CF,0);` |
+|   874 |  2113 | `}` |
 |     - |  2114 | `/* Call a zero-argument method on the driven iterator, propagating a throw (rule:` |
 |     - |  2115 | ` * a native body that answers PH7_OK with an exception in flight lets the caller` |
 |     - |  2116 | ` * carry on). A missing method is the foreach opcode's leniency, not an error. */` |
-|  3494 |  2117 | `static sxi32 DualCall(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,` |
+|  3514 |  2117 | `static sxi32 DualCall(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,` |
 |     - |  2118 | `	ph7_value *pResult)` |
-|     3 |  2119 | `{` |
-|  3497 |  2120 | `	ph7_class_instance *pIn = DualDriver(pThis);` |
-|  3497 |  2121 | `	if( pIn == 0 ){` |
+|     4 |  2119 | `{` |
+|  3518 |  2120 | `	ph7_class_instance *pIn = DualDriver(pThis);` |
+|  3518 |  2121 | `	if( pIn == 0 ){` |
 |    43 |  2122 | `		return SXRET_OK;` |
 |     - |  2123 | `	}` |
-|  3455 |  2124 | `	return VmIterCallMethod(pVm,pIn,zName,nLen,pResult);` |
-|  1750 |  2125 | `}` |
+|  3476 |  2124 | `	return VmIterCallMethod(pVm,pIn,zName,nLen,pResult);` |
+|  1761 |  2125 | `}` |
 |     - |  2126 | `/* php's spl_dual_it_valid: the INNER's valid(), not the cache's. */` |
-|  1234 |  2127 | `static sxi32 DualInnerValid(ph7_vm *pVm,ph7_class_instance *pThis,int *pbValid)` |
-|     3 |  2128 | `{` |
+|  1240 |  2127 | `static sxi32 DualInnerValid(ph7_vm *pVm,ph7_class_instance *pThis,int *pbValid)` |
+|     4 |  2128 | `{` |
 |     - |  2129 | `	ph7_value sVal;` |
 |     - |  2130 | `	sxi32 rc;` |
-|  1237 |  2131 | `	*pbValid = 0;` |
-|  1237 |  2132 | `	PH7_MemObjInit(pVm,&sVal);` |
-|  1237 |  2133 | `	rc = DualCall(pVm,pThis,"valid",sizeof("valid")-1,&sVal);` |
-|  1237 |  2134 | `	if( rc == SXRET_OK ){` |
-|  1237 |  2135 | `		PH7_MemObjToBool(&sVal);          /* a STATUS, not the answer */` |
-|  1237 |  2136 | `		*pbValid = sVal.x.iVal != 0;` |
-|   617 |  2137 | `	}` |
-|  1237 |  2138 | `	PH7_MemObjRelease(&sVal);` |
-|  1237 |  2139 | `	return rc;` |
-|     3 |  2140 | `}` |
+|  1244 |  2131 | `	*pbValid = 0;` |
+|  1244 |  2132 | `	PH7_MemObjInit(pVm,&sVal);` |
+|  1244 |  2133 | `	rc = DualCall(pVm,pThis,"valid",sizeof("valid")-1,&sVal);` |
+|  1244 |  2134 | `	if( rc == SXRET_OK ){` |
+|  1244 |  2135 | `		PH7_MemObjToBool(&sVal);          /* a STATUS, not the answer */` |
+|  1244 |  2136 | `		*pbValid = sVal.x.iVal != 0;` |
+|   620 |  2137 | `	}` |
+|  1244 |  2138 | `	PH7_MemObjRelease(&sVal);` |
+|  1244 |  2139 | `	return rc;` |
+|     4 |  2140 | `}` |
 |     - |  2141 | `/*` |
 |     - |  2142 | ``  * php's spl_dual_it_fetch: refill the cache from the inner iterator. `bCheckMore` `` |
 |     - |  2143 | ` * is php's check_more — false means "the caller already knows the inner is valid",` |
 |     - |  2144 | ` * which is how LimitIterator's seek and InfiniteIterator's wrap-around fetch.` |
 |     - |  2145 | ` */` |
-|   862 |  2146 | `static sxi32 DualFetch(ph7_vm *pVm,ph7_class_instance *pThis,int bCheckMore)` |
-|     3 |  2147 | `{` |
+|   868 |  2146 | `static sxi32 DualFetch(ph7_vm *pVm,ph7_class_instance *pThis,int bCheckMore)` |
+|     4 |  2147 | `{` |
 |     - |  2148 | `	ph7_value sVal;` |
 |     - |  2149 | `	sxi32 rc;` |
-|   865 |  2150 | `	int bValid = 1;` |
-|   865 |  2151 | `	DualFree(pVm,pThis);` |
-|   865 |  2152 | `	if( DualDriver(pThis) == 0 ){` |
+|   872 |  2150 | `	int bValid = 1;` |
+|   872 |  2151 | `	DualFree(pVm,pThis);` |
+|   872 |  2152 | `	if( DualDriver(pThis) == 0 ){` |
 |     5 |  2153 | `		return SXRET_OK;` |
 |     - |  2154 | `	}` |
-|   861 |  2155 | `	if( bCheckMore ){` |
-|   743 |  2156 | `		rc = DualInnerValid(pVm,pThis,&bValid);` |
-|   743 |  2157 | `		if( rc != SXRET_OK ){` |
+|   868 |  2155 | `	if( bCheckMore ){` |
+|   750 |  2156 | `		rc = DualInnerValid(pVm,pThis,&bValid);` |
+|   750 |  2157 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  2158 | `			return rc;` |
 |     - |  2159 | `		}` |
-|   370 |  2160 | `	}` |
-|   861 |  2161 | `	if( !bValid ){` |
-|   193 |  2162 | `		return SXRET_OK;` |
+|   373 |  2160 | `	}` |
+|   868 |  2161 | `	if( !bValid ){` |
+|   195 |  2162 | `		return SXRET_OK;` |
 |     - |  2163 | `	}` |
-|   671 |  2164 | `	PH7_MemObjInit(pVm,&sVal);` |
-|   671 |  2165 | `	rc = DualCall(pVm,pThis,"current",sizeof("current")-1,&sVal);` |
-|   671 |  2166 | `	if( rc != SXRET_OK ){` |
+|   676 |  2164 | `	PH7_MemObjInit(pVm,&sVal);` |
+|   676 |  2165 | `	rc = DualCall(pVm,pThis,"current",sizeof("current")-1,&sVal);` |
+|   676 |  2166 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  2167 | `		PH7_MemObjRelease(&sVal);` |
 |   ! 0 |  2168 | `		return rc;` |
 |     - |  2169 | `	}` |
-|   671 |  2170 | `	DualSetSlot(pVm,pThis,IT_CD,&sVal);` |
-|   671 |  2171 | `	PH7_MemObjRelease(&sVal);` |
-|   671 |  2172 | `	PH7_MemObjInit(pVm,&sVal);` |
-|   671 |  2173 | `	rc = DualCall(pVm,pThis,"key",sizeof("key")-1,&sVal);` |
-|   671 |  2174 | `	if( rc != SXRET_OK ){` |
+|   676 |  2170 | `	DualSetSlot(pVm,pThis,IT_CD,&sVal);` |
+|   676 |  2171 | `	PH7_MemObjRelease(&sVal);` |
+|   676 |  2172 | `	PH7_MemObjInit(pVm,&sVal);` |
+|   676 |  2173 | `	rc = DualCall(pVm,pThis,"key",sizeof("key")-1,&sVal);` |
+|   676 |  2174 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  2175 | `		PH7_MemObjRelease(&sVal);` |
 |   ! 0 |  2176 | `		DualFree(pVm,pThis);   /* php drops the half-filled pair when key() throws */` |
 |   ! 0 |  2177 | `		return rc;` |
 |     - |  2178 | `	}` |
-|   671 |  2179 | `	DualSetSlot(pVm,pThis,IT_CK,&sVal);` |
-|   671 |  2180 | `	PH7_MemObjRelease(&sVal);` |
-|   671 |  2181 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CF,1);` |
-|   671 |  2182 | `	return SXRET_OK;` |
-|   434 |  2183 | `}` |
+|   676 |  2179 | `	DualSetSlot(pVm,pThis,IT_CK,&sVal);` |
+|   676 |  2180 | `	PH7_MemObjRelease(&sVal);` |
+|   676 |  2181 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CF,1);` |
+|   676 |  2182 | `	return SXRET_OK;` |
+|   438 |  2183 | `}` |
 |     - |  2184 | `/* php's spl_dual_it_rewind: free, position back to zero, rewind the inner. */` |
-|   370 |  2185 | `static sxi32 DualRewindInner(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     3 |  2186 | `{` |
-|   373 |  2187 | `	DualFree(pVm,pThis);` |
-|   373 |  2188 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,0);` |
-|   373 |  2189 | `	return DualCall(pVm,pThis,"rewind",sizeof("rewind")-1,0);` |
-|     3 |  2190 | `}` |
+|   372 |  2185 | `static sxi32 DualRewindInner(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     4 |  2186 | `{` |
+|   376 |  2187 | `	DualFree(pVm,pThis);` |
+|   376 |  2188 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,0);` |
+|   376 |  2189 | `	return DualCall(pVm,pThis,"rewind",sizeof("rewind")-1,0);` |
+|     4 |  2190 | `}` |
 |     - |  2191 | `/*` |
 |     - |  2192 | ``  * php's spl_dual_it_next: free, advance the inner, count the step. Its `do_free` `` |
 |     - |  2193 | ` * is FALSE for exactly one caller — CachingIterator, which has just copied the` |
 |     - |  2194 | ` * pair it is standing on and steps the inner one ahead of it, so dropping the` |
 |     - |  2195 | ` * cache here would erase the very element the decorator answers.` |
 |     - |  2196 | ` */` |
-|   440 |  2197 | `static sxi32 DualNextInnerEx(ph7_vm *pVm,ph7_class_instance *pThis,int bFree)` |
+|   442 |  2197 | `static sxi32 DualNextInnerEx(ph7_vm *pVm,ph7_class_instance *pThis,int bFree)` |
 |     3 |  2198 | `{` |
 |     - |  2199 | `	sxi32 rc;` |
-|   443 |  2200 | `	if( bFree ){` |
-|   257 |  2201 | `		DualFree(pVm,pThis);` |
-|   128 |  2202 | `	}` |
-|   443 |  2203 | `	rc = DualCall(pVm,pThis,"next",sizeof("next")-1,0);` |
-|   443 |  2204 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,PH7_NativeAttrInt(pThis,IT_CP)+1);` |
-|   443 |  2205 | `	return rc;` |
+|   445 |  2200 | `	if( bFree ){` |
+|   260 |  2201 | `		DualFree(pVm,pThis);` |
+|   129 |  2202 | `	}` |
+|   445 |  2203 | `	rc = DualCall(pVm,pThis,"next",sizeof("next")-1,0);` |
+|   445 |  2204 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,PH7_NativeAttrInt(pThis,IT_CP)+1);` |
+|   445 |  2205 | `	return rc;` |
 |     3 |  2206 | `}` |
-|   256 |  2207 | `static sxi32 DualNextInner(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     1 |  2208 | `{` |
-|   257 |  2209 | `	return DualNextInnerEx(pVm,pThis,TRUE);` |
-|     1 |  2210 | `}` |
+|   258 |  2207 | `static sxi32 DualNextInner(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     2 |  2208 | `{` |
+|   260 |  2209 | `	return DualNextInnerEx(pVm,pThis,TRUE);` |
+|     2 |  2210 | `}` |
 |     - |  2211 | `/* Hand back a cached slot, or php's null for an empty cache. */` |
-|   738 |  2212 | `static int DualResultSlot(ph7_context *pCtx,const char *zName)` |
+|   742 |  2212 | `static int DualResultSlot(ph7_context *pCtx,const char *zName)` |
 |     3 |  2213 | `{` |
-|   741 |  2214 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   745 |  2214 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  2215 | `	ph7_value *pSlot;` |
-|   741 |  2216 | `	if( !DualReady(pThis) ){` |
+|   745 |  2216 | `	if( !DualReady(pThis) ){` |
 |   ! 0 |  2217 | `		return DualNotReady(pCtx);` |
 |     - |  2218 | `	}` |
-|   741 |  2219 | `	if( !DualFilled(pThis) ){` |
+|   745 |  2219 | `	if( !DualFilled(pThis) ){` |
 |    27 |  2220 | `		ph7_result_null(pCtx);` |
 |    27 |  2221 | `		return PH7_OK;` |
 |     - |  2222 | `	}` |
-|   715 |  2223 | `	pSlot = PH7_NativeAttr(pThis,zName);` |
-|   715 |  2224 | `	if( pSlot ){` |
-|   715 |  2225 | `		ph7_result_value(pCtx,pSlot);` |
-|   356 |  2226 | `	}` |
-|   715 |  2227 | `	return PH7_OK;` |
-|   372 |  2228 | `}` |
+|   719 |  2223 | `	pSlot = PH7_NativeAttr(pThis,zName);` |
+|   719 |  2224 | `	if( pSlot ){` |
+|   719 |  2225 | `		ph7_result_value(pCtx,pSlot);` |
+|   358 |  2226 | `	}` |
+|   719 |  2227 | `	return PH7_OK;` |
+|   374 |  2228 | `}` |
 |     - |  2229 | `/*` |
 |     - |  2230 | ` * The constructor every dual iterator shares. php words the "already built" refusal` |
 |     - |  2231 | ` * with the DECLARING class's name and with getIterator() rather than __construct(),` |
 |     - |  2232 | ` * so each class hands its own name in.` |
 |     - |  2233 | ` */` |
-|   442 |  2234 | `static sxi32 DualConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)` |
-|     3 |  2235 | `{` |
-|   445 |  2236 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   445 |  2237 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   444 |  2234 | `static sxi32 DualConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)` |
+|     4 |  2235 | `{` |
+|   448 |  2236 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   448 |  2237 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  2238 | `	ph7_class_instance *pObj;` |
 |     - |  2239 | `	ph7_class *pIterCls, *pAggCls, *pTravCls;` |
-|   445 |  2240 | `	ph7_class *pCast = 0;` |
-|   445 |  2241 | `	ph7_class_instance *pHold = 0;   /* the unwrapped iterator, kept alive across levels */` |
+|   448 |  2240 | `	ph7_class *pCast = 0;` |
+|   448 |  2241 | `	ph7_class_instance *pHold = 0;   /* the unwrapped iterator, kept alive across levels */` |
 |     - |  2242 | `	int nLevel;` |
-|   445 |  2243 | `	if( pThis == 0 ){` |
+|   448 |  2243 | `	if( pThis == 0 ){` |
 |   ! 0 |  2244 | `		return PH7_OK;` |
 |     - |  2245 | `	}` |
-|   445 |  2246 | `	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){` |
+|   448 |  2246 | `	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){` |
 |     4 |  2247 | `		return PH7_VmThrowException(pCtx,"BadMethodCallException",` |
 |     1 |  2248 | `			"%s::getIterator() must be called exactly once per instance",zOwner);` |
 |     - |  2249 | `	}` |
-|   443 |  2250 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|   446 |  2250 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
 |   ! 0 |  2251 | `		return PH7_OK;   /* the shared ZPP screen already refused a non-object */` |
 |     - |  2252 | `	}` |
-|   443 |  2253 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
-|   443 |  2254 | `	pIterCls = PH7_VmExtractClass(pVm,"Iterator",sizeof("Iterator")-1,FALSE,0);` |
-|   443 |  2255 | `	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);` |
-|   443 |  2256 | `	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);` |
-|   443 |  2257 | `	if( pIterCls && PH7_VmInstanceOf(pObj->pClass,pIterCls) ){` |
+|   446 |  2253 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|   446 |  2254 | `	pIterCls = PH7_VmExtractClass(pVm,"Iterator",sizeof("Iterator")-1,FALSE,0);` |
+|   446 |  2255 | `	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);` |
+|   446 |  2256 | `	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);` |
+|   446 |  2257 | `	if( pIterCls && PH7_VmInstanceOf(pObj->pClass,pIterCls) ){` |
 |     - |  2258 | `		/* Already an Iterator: php ignores $class entirely on this path. */` |
-|   433 |  2259 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pObj);` |
-|   433 |  2260 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IT,pObj);` |
-|   433 |  2261 | `		return PH7_OK;` |
+|   436 |  2259 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pObj);` |
+|   436 |  2260 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IT,pObj);` |
+|   436 |  2261 | `		return PH7_OK;` |
 |     - |  2262 | `	}` |
 |    11 |  2263 | `	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){` |
 |     - |  2264 | `		/* php's DOWNCAST: $class names the class whose getIterator() to run, which is` |
@@ -2339,7 +2339,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     7 |  2329 | `		PH7_ClassInstanceUnref(pHold);   /* both slots hold their own now */` |
 |     3 |  2330 | `	}` |
 |     7 |  2331 | `	return PH7_OK;` |
-|   224 |  2332 | `}` |
+|   226 |  2332 | `}` |
 |    44 |  2333 | `static int vm_builtin_IteratorIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  2334 | `{` |
 |    45 |  2335 | `	return DualConstruct(pCtx,"IteratorIterator",nArg,apArg);` |
@@ -2394,18 +2394,18 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  2384 | ` *` |
 |     - |  2385 | ` * Answers 1 with *ppInner / *ppMeth filled when the call should be re-targeted.` |
 |     - |  2386 | ` */` |
-|   116 |  2387 | `PH7_PRIVATE int PH7_SplOuterForward(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pName,` |
+|   120 |  2387 | `PH7_PRIVATE int PH7_SplOuterForward(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pName,` |
 |     - |  2388 | `	ph7_class_instance **ppInner,ph7_class_method **ppMeth)` |
-|     3 |  2389 | `{` |
+|     4 |  2389 | `{` |
 |     - |  2390 | `	ph7_class *pDual;` |
 |     - |  2391 | `	ph7_class_instance *pInner;` |
 |     - |  2392 | `	ph7_class_method *pMeth;` |
-|   119 |  2393 | `	if( pThis == 0 \|\| pName == 0 \|\| pName->nByte < 1 ){` |
+|   124 |  2393 | `	if( pThis == 0 \|\| pName == 0 \|\| pName->nByte < 1 ){` |
 |   ! 0 |  2394 | `		return 0;` |
 |     - |  2395 | `	}` |
-|   119 |  2396 | `	pDual = PH7_VmExtractClass(pVm,"IteratorIterator",sizeof("IteratorIterator")-1,TRUE,0);` |
-|   119 |  2397 | `	if( pDual == 0 \|\| pThis->pClass == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pDual) ){` |
-|    75 |  2398 | `		return 0;` |
+|   124 |  2396 | `	pDual = PH7_VmExtractClass(pVm,"IteratorIterator",sizeof("IteratorIterator")-1,TRUE,0);` |
+|   124 |  2397 | `	if( pDual == 0 \|\| pThis->pClass == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pDual) ){` |
+|    80 |  2398 | `		return 0;` |
 |     - |  2399 | `	}` |
 |     - |  2400 | ``	/* php forwards to `inner.zobject` -- what getInnerIterator() answers -- and an`` |
 |     - |  2401 | `	 * instance that has none (a fresh AppendIterator) forwards nothing. */` |
@@ -2422,7 +2422,7 @@ Coverage: 7583/8435 lines (89.90%)
 |    25 |  2412 | `	*ppInner = pInner;` |
 |    25 |  2413 | `	*ppMeth = pMeth;` |
 |    25 |  2414 | `	return 1;` |
-|    61 |  2415 | `}` |
+|    64 |  2415 | `}` |
 |    42 |  2416 | `static int vm_builtin_Dual_getInnerIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  2417 | `{` |
 |    43 |  2418 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -2440,29 +2440,29 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  2430 | `	}` |
 |    43 |  2431 | `	return PH7_OK;` |
 |    22 |  2432 | `}` |
-|   430 |  2433 | `static int vm_builtin_Dual_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  2434 | `{` |
-|   431 |  2435 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   215 |  2436 | `	SXUNUSED(nArg);` |
-|   215 |  2437 | `	SXUNUSED(apArg);` |
-|   431 |  2438 | `	if( !DualReady(pThis) ){` |
+|   434 |  2433 | `static int vm_builtin_Dual_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  2434 | `{` |
+|   436 |  2435 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   217 |  2436 | `	SXUNUSED(nArg);` |
+|   217 |  2437 | `	SXUNUSED(apArg);` |
+|   436 |  2438 | `	if( !DualReady(pThis) ){` |
 |     3 |  2439 | `		return DualNotReady(pCtx);` |
 |     - |  2440 | `	}` |
-|   429 |  2441 | `	ph7_result_bool(pCtx,DualFilled(pThis));` |
-|   429 |  2442 | `	return PH7_OK;` |
-|   216 |  2443 | `}` |
-|   400 |  2444 | `static int vm_builtin_Dual_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   434 |  2441 | `	ph7_result_bool(pCtx,DualFilled(pThis));` |
+|   434 |  2442 | `	return PH7_OK;` |
+|   219 |  2443 | `}` |
+|   402 |  2444 | `static int vm_builtin_Dual_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  2445 | `{` |
-|   200 |  2446 | `	SXUNUSED(nArg);` |
-|   200 |  2447 | `	SXUNUSED(apArg);` |
-|   403 |  2448 | `	return DualResultSlot(pCtx,IT_CD);` |
+|   201 |  2446 | `	SXUNUSED(nArg);` |
+|   201 |  2447 | `	SXUNUSED(apArg);` |
+|   405 |  2448 | `	return DualResultSlot(pCtx,IT_CD);` |
 |     3 |  2449 | `}` |
-|   274 |  2450 | `static int vm_builtin_Dual_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  2451 | `{` |
-|   137 |  2452 | `	SXUNUSED(nArg);` |
-|   137 |  2453 | `	SXUNUSED(apArg);` |
-|   275 |  2454 | `	return DualResultSlot(pCtx,IT_CK);` |
-|     1 |  2455 | `}` |
+|   276 |  2450 | `static int vm_builtin_Dual_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  2451 | `{` |
+|   138 |  2452 | `	SXUNUSED(nArg);` |
+|   138 |  2453 | `	SXUNUSED(apArg);` |
+|   278 |  2454 | `	return DualResultSlot(pCtx,IT_CK);` |
+|     2 |  2455 | `}` |
 |    22 |  2456 | `static int vm_builtin_IteratorIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  2457 | `{` |
 |    23 |  2458 | `	ph7_vm *pVm = pCtx->pVm;` |
@@ -2501,82 +2501,82 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  2491 | ` * element does not move current.pos. accept() is called on $this, so a user` |
 |     - |  2492 | ` * subclass's body is what decides.` |
 |     - |  2493 | ` */` |
-|   242 |  2494 | `static sxi32 DualAccept(ph7_vm *pVm,ph7_class_instance *pThis,int *pbAccept)` |
-|     1 |  2495 | `{` |
-|   243 |  2496 | `	ph7_class_method *pMethod = PH7_ClassExtractMethod(pThis->pClass,"accept",sizeof("accept")-1);` |
+|   246 |  2494 | `static sxi32 DualAccept(ph7_vm *pVm,ph7_class_instance *pThis,int *pbAccept)` |
+|     2 |  2495 | `{` |
+|   248 |  2496 | `	ph7_class_method *pMethod = PH7_ClassExtractMethod(pThis->pClass,"accept",sizeof("accept")-1);` |
 |     - |  2497 | `	ph7_value sRes;` |
 |     - |  2498 | `	sxi32 rc;` |
-|   243 |  2499 | `	*pbAccept = 0;` |
-|   243 |  2500 | `	if( pMethod == 0 ){` |
+|   248 |  2499 | `	*pbAccept = 0;` |
+|   248 |  2500 | `	if( pMethod == 0 ){` |
 |   ! 0 |  2501 | `		return SXRET_OK;` |
 |     - |  2502 | `	}` |
-|   243 |  2503 | `	PH7_MemObjInit(pVm,&sRes);` |
-|   243 |  2504 | `	rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRes,0,0);` |
-|   243 |  2505 | `	if( rc == SXRET_OK ){` |
-|   243 |  2506 | `		PH7_MemObjToBool(&sRes);` |
-|   243 |  2507 | `		*pbAccept = sRes.x.iVal != 0;` |
-|   121 |  2508 | `	}` |
-|   243 |  2509 | `	PH7_MemObjRelease(&sRes);` |
-|   243 |  2510 | `	return rc;` |
-|   122 |  2511 | `}` |
-|   246 |  2512 | `static sxi32 DualFilterFetch(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     1 |  2513 | `{` |
-|   211 |  2514 | `	for(;;){` |
-|   335 |  2515 | `		int bAccept = 0;` |
-|   335 |  2516 | `		sxi32 rc = DualFetch(pVm,pThis,TRUE);` |
-|   335 |  2517 | `		if( rc != SXRET_OK ){` |
+|   248 |  2503 | `	PH7_MemObjInit(pVm,&sRes);` |
+|   248 |  2504 | `	rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRes,0,0);` |
+|   248 |  2505 | `	if( rc == SXRET_OK ){` |
+|   248 |  2506 | `		PH7_MemObjToBool(&sRes);` |
+|   248 |  2507 | `		*pbAccept = sRes.x.iVal != 0;` |
+|   123 |  2508 | `	}` |
+|   248 |  2509 | `	PH7_MemObjRelease(&sRes);` |
+|   248 |  2510 | `	return rc;` |
+|   125 |  2511 | `}` |
+|   250 |  2512 | `static sxi32 DualFilterFetch(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     2 |  2513 | `{` |
+|   215 |  2514 | `	for(;;){` |
+|   342 |  2515 | `		int bAccept = 0;` |
+|   342 |  2516 | `		sxi32 rc = DualFetch(pVm,pThis,TRUE);` |
+|   342 |  2517 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  2518 | `			return rc;` |
 |     - |  2519 | `		}` |
-|   335 |  2520 | `		if( !DualFilled(pThis) ){` |
-|    93 |  2521 | `			break;` |
+|   342 |  2520 | `		if( !DualFilled(pThis) ){` |
+|    96 |  2521 | `			break;` |
 |     - |  2522 | `		}` |
-|   243 |  2523 | `		rc = DualAccept(pVm,pThis,&bAccept);` |
-|   243 |  2524 | `		if( rc != SXRET_OK ){` |
+|   248 |  2523 | `		rc = DualAccept(pVm,pThis,&bAccept);` |
+|   248 |  2524 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  2525 | `			return rc;` |
 |     - |  2526 | `		}` |
-|   243 |  2527 | `		if( bAccept ){` |
-|   155 |  2528 | `			return SXRET_OK;` |
+|   248 |  2527 | `		if( bAccept ){` |
+|   158 |  2528 | `			return SXRET_OK;` |
 |     - |  2529 | `		}` |
-|    89 |  2530 | `		rc = DualCall(pVm,pThis,"next",sizeof("next")-1,0);` |
-|    89 |  2531 | `		if( rc != SXRET_OK ){` |
+|    92 |  2530 | `		rc = DualCall(pVm,pThis,"next",sizeof("next")-1,0);` |
+|    92 |  2531 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  2532 | `			return rc;` |
 |     - |  2533 | `		}` |
-|     1 |  2534 | `	}` |
-|    93 |  2535 | `	DualFree(pVm,pThis);` |
-|    93 |  2536 | `	return SXRET_OK;` |
-|   124 |  2537 | `}` |
-|   108 |  2538 | `static int vm_builtin_FilterIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  2539 | `{` |
-|   109 |  2540 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   109 |  2541 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     2 |  2534 | `	}` |
+|    96 |  2535 | `	DualFree(pVm,pThis);` |
+|    96 |  2536 | `	return SXRET_OK;` |
+|   127 |  2537 | `}` |
+|   110 |  2538 | `static int vm_builtin_FilterIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  2539 | `{` |
+|   112 |  2540 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   112 |  2541 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  2542 | `	sxi32 rc;` |
-|    54 |  2543 | `	SXUNUSED(nArg);` |
-|    54 |  2544 | `	SXUNUSED(apArg);` |
-|   109 |  2545 | `	if( pThis == 0 \|\| DualDriver(pThis) == 0 ){` |
+|    55 |  2543 | `	SXUNUSED(nArg);` |
+|    55 |  2544 | `	SXUNUSED(apArg);` |
+|   112 |  2545 | `	if( pThis == 0 \|\| DualDriver(pThis) == 0 ){` |
 |   ! 0 |  2546 | `		return DualNotReady(pCtx);` |
 |     - |  2547 | `	}` |
-|   109 |  2548 | `	rc = DualRewindInner(pVm,pThis);` |
-|   109 |  2549 | `	if( rc != SXRET_OK ){` |
+|   112 |  2548 | `	rc = DualRewindInner(pVm,pThis);` |
+|   112 |  2549 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  2550 | `		return rc;` |
 |     - |  2551 | `	}` |
-|   109 |  2552 | `	return DualFilterFetch(pVm,pThis);` |
-|    55 |  2553 | `}` |
-|   138 |  2554 | `static int vm_builtin_FilterIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  2555 | `{` |
-|   139 |  2556 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   139 |  2557 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   112 |  2552 | `	return DualFilterFetch(pVm,pThis);` |
+|    57 |  2553 | `}` |
+|   140 |  2554 | `static int vm_builtin_FilterIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  2555 | `{` |
+|   142 |  2556 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   142 |  2557 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  2558 | `	sxi32 rc;` |
-|    69 |  2559 | `	SXUNUSED(nArg);` |
-|    69 |  2560 | `	SXUNUSED(apArg);` |
-|   139 |  2561 | `	if( pThis == 0 \|\| DualDriver(pThis) == 0 ){` |
+|    70 |  2559 | `	SXUNUSED(nArg);` |
+|    70 |  2560 | `	SXUNUSED(apArg);` |
+|   142 |  2561 | `	if( pThis == 0 \|\| DualDriver(pThis) == 0 ){` |
 |   ! 0 |  2562 | `		return DualNotReady(pCtx);` |
 |     - |  2563 | `	}` |
-|   139 |  2564 | `	rc = DualNextInner(pVm,pThis);` |
-|   139 |  2565 | `	if( rc != SXRET_OK ){` |
+|   142 |  2564 | `	rc = DualNextInner(pVm,pThis);` |
+|   142 |  2565 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  2566 | `		return rc;` |
 |     - |  2567 | `	}` |
-|   139 |  2568 | `	return DualFilterFetch(pVm,pThis);` |
-|    70 |  2569 | `}` |
+|   142 |  2568 | `	return DualFilterFetch(pVm,pThis);` |
+|    72 |  2569 | `}` |
 |     - |  2570 | `/* CallbackFilterIterator::accept(): the callback sees the CACHED pair and the inner` |
 |     - |  2571 | ` * iterator, and an empty cache is refused without calling it at all. */` |
 |    38 |  2572 | `static int vm_builtin_CallbackFilterIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
@@ -2992,82 +2992,82 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  2982 | ` * parameter rather than a literal -- and the ValueError still names the mode` |
 |     - |  2983 | ` * constants on RegexIterator, which is where php declares them.` |
 |     - |  2984 | ` */` |
-|    94 |  2985 | `static int RegitConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)` |
-|     1 |  2986 | `{` |
-|    95 |  2987 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    95 |  2988 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    96 |  2985 | `static int RegitConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)` |
+|     2 |  2986 | `{` |
+|    98 |  2987 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    98 |  2988 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  2989 | `	const char *zPat;` |
 |     - |  2990 | `	char zWhere[128];` |
 |     - |  2991 | `	int nPat;` |
-|    95 |  2992 | `	sxi64 iMode = PH7_REGIT_MATCH;` |
+|    98 |  2992 | `	sxi64 iMode = PH7_REGIT_MATCH;` |
 |     - |  2993 | `	char zErr[288];` |
 |     - |  2994 | `	sxi32 rc;` |
-|    95 |  2995 | `	if( pThis == 0 ){` |
+|    98 |  2995 | `	if( pThis == 0 ){` |
 |   ! 0 |  2996 | `		return PH7_OK;` |
 |     - |  2997 | `	}` |
-|    95 |  2998 | `	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){` |
+|    98 |  2998 | `	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){` |
 |     - |  2999 | `		/* php makes the "already built" refusal before it reads any argument, so` |
 |     - |  3000 | `		 * hand this straight to the shared constructor, which words it. */` |
 |   ! 0 |  3001 | `		return DualConstruct(pCtx,zOwner,nArg,apArg);` |
 |     - |  3002 | `	}` |
-|    95 |  3003 | `	if( nArg < 2 ){` |
+|    98 |  3003 | `	if( nArg < 2 ){` |
 |   ! 0 |  3004 | `		return PH7_OK;   /* the arity screen already refused */` |
 |     - |  3005 | `	}` |
-|    95 |  3006 | `	if( nArg > 2 ){` |
-|    49 |  3007 | `		iMode = ph7_value_to_int(apArg[2]);` |
-|    24 |  3008 | `	}` |
-|    95 |  3009 | `	if( iMode < PH7_REGIT_MATCH \|\| iMode > PH7_REGIT_REPLACE ){` |
+|    98 |  3006 | `	if( nArg > 2 ){` |
+|    52 |  3007 | `		iMode = ph7_value_to_int(apArg[2]);` |
+|    25 |  3008 | `	}` |
+|    98 |  3009 | `	if( iMode < PH7_REGIT_MATCH \|\| iMode > PH7_REGIT_REPLACE ){` |
 |     5 |  3010 | `		SyBufferFormat(zWhere,sizeof(zWhere),"%s::__construct(): Argument #3 ($mode)",zOwner);` |
 |     5 |  3011 | `		return RegitBadMode(pCtx,zWhere);` |
 |     - |  3012 | `	}` |
 |     - |  3013 | `	/* php compiles the pattern HERE and promotes pcre's warning to an` |
 |     - |  3014 | ``	 * InvalidArgumentException, so a bad pattern is refused by `new` rather than`` |
 |     - |  3015 | `	 * warning once per element from accept(). */` |
-|    91 |  3016 | `	zPat = ph7_value_to_string(apArg[1],&nPat);` |
-|    91 |  3017 | `	if( !PH7_PcrePatternCheck(pVm,zPat,nPat,zErr,sizeof(zErr)) ){` |
+|    94 |  3016 | `	zPat = ph7_value_to_string(apArg[1],&nPat);` |
+|    94 |  3017 | `	if( !PH7_PcrePatternCheck(pVm,zPat,nPat,zErr,sizeof(zErr)) ){` |
 |    10 |  3018 | `		return PH7_VmThrowException(pCtx,"InvalidArgumentException",` |
 |     3 |  3019 | `			"%s::__construct(): %s",zOwner,zErr);` |
 |     - |  3020 | `	}` |
-|    85 |  3021 | `	rc = DualConstruct(pCtx,zOwner,nArg,apArg);` |
-|    85 |  3022 | `	if( rc != PH7_OK ){` |
+|    88 |  3021 | `	rc = DualConstruct(pCtx,zOwner,nArg,apArg);` |
+|    88 |  3022 | `	if( rc != PH7_OK ){` |
 |   ! 0 |  3023 | `		return rc;` |
 |     - |  3024 | `	}` |
-|    85 |  3025 | `	PH7_NativeSetAttrStr(pVm,pThis,IT_RE,zPat,(sxu32)nPat);` |
-|    85 |  3026 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_RM,iMode);` |
-|    85 |  3027 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_RF,nArg > 3 ? ph7_value_to_int(apArg[3]) : 0);` |
-|    85 |  3028 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_RP,nArg > 4 ? ph7_value_to_int(apArg[4]) : 0);` |
-|    85 |  3029 | `	return PH7_OK;` |
-|    48 |  3030 | `}` |
-|    68 |  3031 | `static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  3032 | `{` |
-|    69 |  3033 | `	return RegitConstruct(pCtx,"RegexIterator",nArg,apArg);` |
-|     1 |  3034 | `}` |
-|   102 |  3035 | `static int vm_builtin_RegexIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  3036 | `{` |
-|   103 |  3037 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   103 |  3038 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    88 |  3025 | `	PH7_NativeSetAttrStr(pVm,pThis,IT_RE,zPat,(sxu32)nPat);` |
+|    88 |  3026 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_RM,iMode);` |
+|    88 |  3027 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_RF,nArg > 3 ? ph7_value_to_int(apArg[3]) : 0);` |
+|    88 |  3028 | `	PH7_NativeSetAttrInt(pVm,pThis,IT_RP,nArg > 4 ? ph7_value_to_int(apArg[4]) : 0);` |
+|    88 |  3029 | `	return PH7_OK;` |
+|    50 |  3030 | `}` |
+|    70 |  3031 | `static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  3032 | `{` |
+|    72 |  3033 | `	return RegitConstruct(pCtx,"RegexIterator",nArg,apArg);` |
+|     2 |  3034 | `}` |
+|   106 |  3035 | `static int vm_builtin_RegexIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  3036 | `{` |
+|   108 |  3037 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   108 |  3038 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  3039 | `	ph7_value sSubject,sPattern,sRepl,sOut,*pSlot;` |
-|   103 |  3040 | `	int iMode,iFlags,bUseKey,bOk = 0;` |
+|   108 |  3040 | `	int iMode,iFlags,bUseKey,bOk = 0;` |
 |     - |  3041 | `	sxi32 rc;` |
-|    51 |  3042 | `	SXUNUSED(nArg);` |
-|    51 |  3043 | `	SXUNUSED(apArg);` |
-|   103 |  3044 | `	if( pThis == 0 \|\| DualDriver(pThis) == 0 ){` |
+|    53 |  3042 | `	SXUNUSED(nArg);` |
+|    53 |  3043 | `	SXUNUSED(apArg);` |
+|   108 |  3044 | `	if( pThis == 0 \|\| DualDriver(pThis) == 0 ){` |
 |   ! 0 |  3045 | `		return DualNotReady(pCtx);` |
 |     - |  3046 | `	}` |
-|   103 |  3047 | `	if( !DualFilled(pThis) ){` |
+|   108 |  3047 | `	if( !DualFilled(pThis) ){` |
 |     - |  3048 | `		/* Nothing has been fetched: php answers false without touching the regex. */` |
 |     3 |  3049 | `		ph7_result_bool(pCtx,0);` |
 |     3 |  3050 | `		return PH7_OK;` |
 |     - |  3051 | `	}` |
-|   101 |  3052 | `	iMode = (int)PH7_NativeAttrInt(pThis,IT_RM);` |
-|   101 |  3053 | `	iFlags = (int)PH7_NativeAttrInt(pThis,IT_RF);` |
-|   101 |  3054 | `	bUseKey = (iFlags & REGIT_USE_KEY) != 0;` |
-|   101 |  3055 | `	pSlot = PH7_NativeAttr(pThis,bUseKey ? IT_CK : IT_CD);` |
-|   101 |  3056 | `	if( pSlot == 0 ){` |
+|   106 |  3052 | `	iMode = (int)PH7_NativeAttrInt(pThis,IT_RM);` |
+|   106 |  3053 | `	iFlags = (int)PH7_NativeAttrInt(pThis,IT_RF);` |
+|   106 |  3054 | `	bUseKey = (iFlags & REGIT_USE_KEY) != 0;` |
+|   106 |  3055 | `	pSlot = PH7_NativeAttr(pThis,bUseKey ? IT_CK : IT_CD);` |
+|   106 |  3056 | `	if( pSlot == 0 ){` |
 |   ! 0 |  3057 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  3058 | `		return PH7_OK;` |
 |     - |  3059 | `	}` |
-|   101 |  3060 | `	if( !bUseKey && (pSlot->iFlags & MEMOBJ_HASHMAP) ){` |
+|   106 |  3060 | `	if( !bUseKey && (pSlot->iFlags & MEMOBJ_HASHMAP) ){` |
 |     - |  3061 | ``		/* php's `Z_TYPE(current.data) == IS_ARRAY -> RETURN_FALSE`, ahead of every`` |
 |     - |  3062 | `		 * mode. The chunk's (string)$subject matched the word "Array" instead. */` |
 |     5 |  3063 | `		ph7_result_bool(pCtx,0);` |
@@ -3075,23 +3075,23 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  3065 | `	}` |
 |     - |  3066 | `	/* Take the subject as a VALUE: the slot pointer does not survive a call into` |
 |     - |  3067 | `	 * user code, and an object subject reaches __toString() below. */` |
-|    97 |  3068 | `	PH7_MemObjInit(pVm,&sSubject);` |
-|    97 |  3069 | `	PH7_MemObjStore(pSlot,&sSubject);` |
-|    97 |  3070 | `	rc = PH7_MemObjToStringUV(&sSubject);` |
-|    97 |  3071 | `	if( rc != SXRET_OK ){` |
+|   102 |  3068 | `	PH7_MemObjInit(pVm,&sSubject);` |
+|   102 |  3069 | `	PH7_MemObjStore(pSlot,&sSubject);` |
+|   102 |  3070 | `	rc = PH7_MemObjToStringUV(&sSubject);` |
+|   102 |  3071 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  3072 | `		PH7_MemObjRelease(&sSubject);` |
 |   ! 0 |  3073 | `		return rc;` |
 |     - |  3074 | `	}` |
-|    97 |  3075 | `	PH7_MemObjInit(pVm,&sPattern);` |
-|    97 |  3076 | `	PH7_MemObjInit(pVm,&sRepl);` |
-|    97 |  3077 | `	PH7_MemObjInit(pVm,&sOut);` |
+|   102 |  3075 | `	PH7_MemObjInit(pVm,&sPattern);` |
+|   102 |  3076 | `	PH7_MemObjInit(pVm,&sRepl);` |
+|   102 |  3077 | `	PH7_MemObjInit(pVm,&sOut);` |
 |     - |  3078 | `	{` |
-|    97 |  3079 | `		ph7_value *pRe = PH7_NativeAttr(pThis,IT_RE);` |
-|    97 |  3080 | `		if( pRe ){` |
-|    97 |  3081 | `			PH7_MemObjStore(pRe,&sPattern);` |
-|    48 |  3082 | `		}` |
+|   102 |  3079 | `		ph7_value *pRe = PH7_NativeAttr(pThis,IT_RE);` |
+|   102 |  3080 | `		if( pRe ){` |
+|   102 |  3081 | `			PH7_MemObjStore(pRe,&sPattern);` |
+|    50 |  3082 | `		}` |
 |     - |  3083 | `	}` |
-|    97 |  3084 | `	if( iMode == PH7_REGIT_REPLACE ){` |
+|   102 |  3084 | `	if( iMode == PH7_REGIT_REPLACE ){` |
 |     - |  3085 | `		/* php reads the public $replacement property, whose declared ?string makes` |
 |     - |  3086 | `		 * the read total: a null answers the empty string. */` |
 |    17 |  3087 | `		ph7_value *pRepl = PH7_NativeAttr(pThis,"replacement");` |
@@ -3100,24 +3100,24 @@ Coverage: 7583/8435 lines (89.90%)
 |     8 |  3090 | `		}` |
 |    17 |  3091 | `		PH7_MemObjToString(&sRepl);` |
 |     8 |  3092 | `	}` |
-|   145 |  3093 | `	rc = PH7_PcreRegitApply(pCtx,iMode,&sPattern,&sSubject,` |
-|    96 |  3094 | `		(int)PH7_NativeAttrInt(pThis,IT_RP),&sRepl,&sOut,&bOk);` |
-|    97 |  3095 | `	if( rc == PH7_OK && iMode != PH7_REGIT_MATCH ){` |
+|   152 |  3093 | `	rc = PH7_PcreRegitApply(pCtx,iMode,&sPattern,&sSubject,` |
+|   100 |  3094 | `		(int)PH7_NativeAttrInt(pThis,IT_RP),&sRepl,&sOut,&bOk);` |
+|   102 |  3095 | `	if( rc == PH7_OK && iMode != PH7_REGIT_MATCH ){` |
 |     - |  3096 | `		/* php writes the transformed value over the cached pair -- into the KEY when` |
 |     - |  3097 | `		 * a REPLACE is keyed, into current() otherwise -- so the inherited current()` |
 |     - |  3098 | `		 * and key() present it. */` |
 |    47 |  3099 | `		DualSetSlot(pVm,pThis,(iMode == PH7_REGIT_REPLACE && bUseKey) ? IT_CK : IT_CD,&sOut);` |
 |    23 |  3100 | `	}` |
-|    97 |  3101 | `	PH7_MemObjRelease(&sSubject);` |
-|    97 |  3102 | `	PH7_MemObjRelease(&sPattern);` |
-|    97 |  3103 | `	PH7_MemObjRelease(&sRepl);` |
-|    97 |  3104 | `	PH7_MemObjRelease(&sOut);` |
-|    97 |  3105 | `	if( rc != PH7_OK ){` |
+|   102 |  3101 | `	PH7_MemObjRelease(&sSubject);` |
+|   102 |  3102 | `	PH7_MemObjRelease(&sPattern);` |
+|   102 |  3103 | `	PH7_MemObjRelease(&sRepl);` |
+|   102 |  3104 | `	PH7_MemObjRelease(&sOut);` |
+|   102 |  3105 | `	if( rc != PH7_OK ){` |
 |   ! 0 |  3106 | `		return rc;` |
 |     - |  3107 | `	}` |
-|    97 |  3108 | `	ph7_result_bool(pCtx,(iFlags & REGIT_INVERTED) ? !bOk : bOk);` |
-|    97 |  3109 | `	return PH7_OK;` |
-|    52 |  3110 | `}` |
+|   102 |  3108 | `	ph7_result_bool(pCtx,(iFlags & REGIT_INVERTED) ? !bOk : bOk);` |
+|   102 |  3109 | `	return PH7_OK;` |
+|    55 |  3110 | `}` |
 |     6 |  3111 | `static int vm_builtin_RegexIterator_getRegex(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  3112 | `{` |
 |     7 |  3113 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -3485,47 +3485,47 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  3475 | `#define RAI_CHILD_ARRAYS_ONLY 4` |
 |     - |  3476 | `/* The entry the store cursor is on, or 0 past the end (php's` |
 |     - |  3477 | ` * zend_hash_get_current_data_ex, which every one of these four bodies starts with). */` |
-|   598 |  3478 | `static ph7_value * RaiCurrentEntry(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     1 |  3479 | `{` |
-|   599 |  3480 | `	ph7_hashmap *pMap = SplStore(pVm,pThis);` |
-|   599 |  3481 | `	return (pMap && pMap->pCur) ? HashmapExtractNodeValue(pMap->pCur) : 0;` |
-|     1 |  3482 | `}` |
-|   436 |  3483 | `static int vm_builtin_RecursiveArrayIterator_hasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  3484 | `{` |
-|   437 |  3485 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   437 |  3486 | `	ph7_value *pEntry = RaiCurrentEntry(pCtx->pVm,pThis);` |
-|   437 |  3487 | `	int bHas = 0;` |
-|   218 |  3488 | `	SXUNUSED(nArg);` |
-|   218 |  3489 | `	SXUNUSED(apArg);` |
-|   437 |  3490 | `	if( pEntry ){` |
-|   435 |  3491 | `		if( pEntry->iFlags & MEMOBJ_HASHMAP ){` |
-|   165 |  3492 | `			bHas = 1;` |
-|   353 |  3493 | `		}else if( pEntry->iFlags & MEMOBJ_OBJ ){` |
+|   608 |  3478 | `static ph7_value * RaiCurrentEntry(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     2 |  3479 | `{` |
+|   610 |  3480 | `	ph7_hashmap *pMap = SplStore(pVm,pThis);` |
+|   610 |  3481 | `	return (pMap && pMap->pCur) ? HashmapExtractNodeValue(pMap->pCur) : 0;` |
+|     2 |  3482 | `}` |
+|   444 |  3483 | `static int vm_builtin_RecursiveArrayIterator_hasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  3484 | `{` |
+|   446 |  3485 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   446 |  3486 | `	ph7_value *pEntry = RaiCurrentEntry(pCtx->pVm,pThis);` |
+|   446 |  3487 | `	int bHas = 0;` |
+|   222 |  3488 | `	SXUNUSED(nArg);` |
+|   222 |  3489 | `	SXUNUSED(apArg);` |
+|   446 |  3490 | `	if( pEntry ){` |
+|   444 |  3491 | `		if( pEntry->iFlags & MEMOBJ_HASHMAP ){` |
+|   168 |  3492 | `			bHas = 1;` |
+|   361 |  3493 | `		}else if( pEntry->iFlags & MEMOBJ_OBJ ){` |
 |     - |  3494 | `			/* php: an object is a child UNLESS the iterator was told arrays only. */` |
 |    13 |  3495 | `			bHas = (PH7_NativeAttrInt(pThis,SPL_F) & RAI_CHILD_ARRAYS_ONLY) == 0;` |
 |     6 |  3496 | `		}` |
-|   217 |  3497 | `	}` |
-|   437 |  3498 | `	ph7_result_bool(pCtx,bHas);` |
-|   437 |  3499 | `	return PH7_OK;` |
-|     1 |  3500 | `}` |
-|   162 |  3501 | `static int vm_builtin_RecursiveArrayIterator_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  3502 | `{` |
-|   163 |  3503 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   163 |  3504 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   163 |  3505 | `	ph7_value *pEntry = RaiCurrentEntry(pVm,pThis);` |
+|   221 |  3497 | `	}` |
+|   446 |  3498 | `	ph7_result_bool(pCtx,bHas);` |
+|   446 |  3499 | `	return PH7_OK;` |
+|     2 |  3500 | `}` |
+|   164 |  3501 | `static int vm_builtin_RecursiveArrayIterator_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  3502 | `{` |
+|   166 |  3503 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   166 |  3504 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   166 |  3505 | `	ph7_value *pEntry = RaiCurrentEntry(pVm,pThis);` |
 |     - |  3506 | `	ph7_class_instance *pChild;` |
 |     - |  3507 | `	ph7_class_method *pCons;` |
 |     - |  3508 | `	ph7_value sEntry,sFlags,*apCtor[2];` |
 |     - |  3509 | `	sxi64 iFlags;` |
 |     - |  3510 | `	sxi32 rc;` |
-|    81 |  3511 | `	SXUNUSED(nArg);` |
-|    81 |  3512 | `	SXUNUSED(apArg);` |
-|   163 |  3513 | `	if( pThis == 0 \|\| pEntry == 0 ){` |
+|    82 |  3511 | `	SXUNUSED(nArg);` |
+|    82 |  3512 | `	SXUNUSED(apArg);` |
+|   166 |  3513 | `	if( pThis == 0 \|\| pEntry == 0 ){` |
 |     3 |  3514 | `		ph7_result_null(pCtx);   /* php descends into nothing when nothing is current */` |
 |     3 |  3515 | `		return PH7_OK;` |
 |     - |  3516 | `	}` |
-|   161 |  3517 | `	iFlags = PH7_NativeAttrInt(pThis,SPL_F);` |
-|   161 |  3518 | `	if( pEntry->iFlags & MEMOBJ_OBJ ){` |
+|   164 |  3517 | `	iFlags = PH7_NativeAttrInt(pThis,SPL_F);` |
+|   164 |  3518 | `	if( pEntry->iFlags & MEMOBJ_OBJ ){` |
 |     9 |  3519 | `		ph7_class_instance *pObj = (ph7_class_instance *)pEntry->x.pOther;` |
 |     9 |  3520 | `		if( iFlags & RAI_CHILD_ARRAYS_ONLY ){` |
 |     3 |  3521 | `			ph7_result_null(pCtx);` |
@@ -3539,28 +3539,28 @@ Coverage: 7583/8435 lines (89.90%)
 |     2 |  3529 | `	}` |
 |     - |  3530 | `	/* php's spl_instantiate_child_arg: the CALLED class, constructed with the entry` |
 |     - |  3531 | `	 * AND the parent's flags -- which is what carries CHILD_ARRAYS_ONLY down. */` |
-|   157 |  3532 | `	pChild = PH7_NewClassInstance(pVm,pThis->pClass);` |
-|   157 |  3533 | `	if( pChild == 0 ){` |
+|   160 |  3532 | `	pChild = PH7_NewClassInstance(pVm,pThis->pClass);` |
+|   160 |  3533 | `	if( pChild == 0 ){` |
 |   ! 0 |  3534 | `		return PH7_ContextMemoryError(pCtx);` |
 |     - |  3535 | `	}` |
-|   157 |  3536 | `	pChild->iRef++;` |
-|   157 |  3537 | `	PH7_MemObjInit(pVm,&sEntry);` |
-|   157 |  3538 | `	PH7_MemObjStore(pEntry,&sEntry);` |
-|   157 |  3539 | `	PH7_MemObjInitFromInt(pVm,&sFlags,iFlags);` |
-|   157 |  3540 | `	apCtor[0] = &sEntry;` |
-|   157 |  3541 | `	apCtor[1] = &sFlags;` |
-|   157 |  3542 | `	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);` |
-|   157 |  3543 | `	rc = pCons ? PH7_VmCallClassMethod(pVm,pChild,pCons,0,2,apCtor) : SXRET_OK;` |
-|   157 |  3544 | `	PH7_MemObjRelease(&sEntry);` |
-|   157 |  3545 | `	PH7_MemObjRelease(&sFlags);` |
-|   157 |  3546 | `	if( rc != SXRET_OK ){` |
+|   160 |  3536 | `	pChild->iRef++;` |
+|   160 |  3537 | `	PH7_MemObjInit(pVm,&sEntry);` |
+|   160 |  3538 | `	PH7_MemObjStore(pEntry,&sEntry);` |
+|   160 |  3539 | `	PH7_MemObjInitFromInt(pVm,&sFlags,iFlags);` |
+|   160 |  3540 | `	apCtor[0] = &sEntry;` |
+|   160 |  3541 | `	apCtor[1] = &sFlags;` |
+|   160 |  3542 | `	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);` |
+|   160 |  3543 | `	rc = pCons ? PH7_VmCallClassMethod(pVm,pChild,pCons,0,2,apCtor) : SXRET_OK;` |
+|   160 |  3544 | `	PH7_MemObjRelease(&sEntry);` |
+|   160 |  3545 | `	PH7_MemObjRelease(&sFlags);` |
+|   160 |  3546 | `	if( rc != SXRET_OK ){` |
 |     7 |  3547 | `		PH7_ClassInstanceUnref(pChild);` |
 |     7 |  3548 | `		return rc;` |
 |     - |  3549 | `	}` |
-|   151 |  3550 | `	PH7_NativeResultObject(pCtx,pChild);` |
-|   151 |  3551 | `	PH7_ClassInstanceUnref(pChild);` |
-|   151 |  3552 | `	return PH7_OK;` |
-|    82 |  3553 | `}` |
+|   154 |  3550 | `	PH7_NativeResultObject(pCtx,pChild);` |
+|   154 |  3551 | `	PH7_ClassInstanceUnref(pChild);` |
+|   154 |  3552 | `	return PH7_OK;` |
+|    84 |  3553 | `}` |
 |     - |  3554 | `/* RecursiveFilterIterator forwards both methods to the object getInnerIterator()` |
 |     - |  3555 | ` * answers (php calls on inner.zobject), and wraps the children in ITS OWN class. */` |
 |    20 |  3556 | `static int vm_builtin_RecursiveFilterIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
@@ -3850,19 +3850,19 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  3840 | `#define CIT_VALID             0x00010000` |
 |     - |  3841 |  |
 |   942 |  3842 | `static sxi64 CitFlags(ph7_class_instance *pThis)` |
-|     3 |  3843 | `{` |
-|   945 |  3844 | `	return pThis ? PH7_NativeAttrInt(pThis,CIT_FL) : 0;` |
-|     3 |  3845 | `}` |
+|     4 |  3843 | `{` |
+|   946 |  3844 | `	return pThis ? PH7_NativeAttrInt(pThis,CIT_FL) : 0;` |
+|     4 |  3845 | `}` |
 |     - |  3846 | `/* php's spl_cit_check_flags: at most ONE of the four string spellings. */` |
 |   198 |  3847 | `static int CitCheckFlags(sxi64 iFlags)` |
-|     3 |  3848 | `{` |
-|   201 |  3849 | `	int n = 0;` |
-|   201 |  3850 | `	if( iFlags & CIT_CALL_TOSTRING ){ n++; }` |
-|   201 |  3851 | `	if( iFlags & CIT_TOSTRING_USE_KEY ){ n++; }` |
-|   201 |  3852 | `	if( iFlags & CIT_TOSTRING_USE_CUR ){ n++; }` |
-|   201 |  3853 | `	if( iFlags & CIT_TOSTRING_USE_INN ){ n++; }` |
-|   201 |  3854 | `	return n <= 1;` |
-|     3 |  3855 | `}` |
+|     4 |  3848 | `{` |
+|   202 |  3849 | `	int n = 0;` |
+|   202 |  3850 | `	if( iFlags & CIT_CALL_TOSTRING ){ n++; }` |
+|   202 |  3851 | `	if( iFlags & CIT_TOSTRING_USE_KEY ){ n++; }` |
+|   202 |  3852 | `	if( iFlags & CIT_TOSTRING_USE_CUR ){ n++; }` |
+|   202 |  3853 | `	if( iFlags & CIT_TOSTRING_USE_INN ){ n++; }` |
+|   202 |  3854 | `	return n <= 1;` |
+|     4 |  3855 | `}` |
 |     - |  3856 | `/* Both of this class's refusals name the RECEIVER's class and point at` |
 |     - |  3857 | ` * CachingIterator::__construct whatever that receiver is. */` |
 |    16 |  3858 | `static int CitRefuse(ph7_context *pCtx,ph7_class_instance *pThis,const char *zWhat)` |
@@ -4021,11 +4021,11 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4011 | ` * they share has to ask what it is standing on.` |
 |     - |  4012 | ` */` |
 |   272 |  4013 | `static int CitIsRecursive(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     3 |  4014 | `{` |
-|   275 |  4015 | `	ph7_class *pCls = PH7_VmExtractClass(pVm,"RecursiveCachingIterator",` |
+|     4 |  4014 | `{` |
+|   276 |  4015 | `	ph7_class *pCls = PH7_VmExtractClass(pVm,"RecursiveCachingIterator",` |
 |     - |  4016 | `		sizeof("RecursiveCachingIterator")-1,FALSE,0);` |
-|   275 |  4017 | `	return pThis && pCls && PH7_VmInstanceOf(pThis->pClass,pCls);` |
-|     3 |  4018 | `}` |
+|   276 |  4017 | `	return pThis && pCls && PH7_VmInstanceOf(pThis->pClass,pCls);` |
+|     4 |  4018 | `}` |
 |     - |  4019 | `/*` |
 |     - |  4020 | ` * php's spl_caching_it_next: fetch, record, and step the inner iterator on. The` |
 |     - |  4021 | ` * ORDER below is php's and is observable — a loud inner iterator sees` |
@@ -4033,36 +4033,36 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4023 | ` * next.` |
 |     - |  4024 | ` */` |
 |   272 |  4025 | `static sxi32 CitFetch(ph7_context *pCtx)` |
-|     3 |  4026 | `{` |
-|   275 |  4027 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   275 |  4028 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   275 |  4029 | `	int bRecursive = CitIsRecursive(pVm,pThis);` |
+|     4 |  4026 | `{` |
+|   276 |  4027 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   276 |  4028 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   276 |  4029 | `	int bRecursive = CitIsRecursive(pVm,pThis);` |
 |     - |  4030 | `	sxi64 iFlags;` |
 |     - |  4031 | `	sxi32 rc,rcStr;` |
 |     - |  4032 | `	/* php's spl_dual_it_free for this type drops the string and the children with` |
 |     - |  4033 | ``	 * the cached pair, which is what makes `(string)$it` empty and hasChildren()`` |
 |     - |  4034 | `	 * false once the walk has run off the end. */` |
 |     - |  4035 | `	{` |
-|   275 |  4036 | `		ph7_value *pStr = PH7_NativeAttr(pThis,CIT_STR);` |
-|   275 |  4037 | `		if( pStr ){` |
-|   275 |  4038 | `			PH7_MemObjRelease(pStr);` |
+|   276 |  4036 | `		ph7_value *pStr = PH7_NativeAttr(pThis,CIT_STR);` |
+|   276 |  4037 | `		if( pStr ){` |
+|   276 |  4038 | `			PH7_MemObjRelease(pStr);` |
 |   136 |  4039 | `		}` |
 |     - |  4040 | `	}` |
-|   275 |  4041 | `	PH7_NativeSetAttrObj(pVm,pThis,CIT_KIDS,0);` |
-|   275 |  4042 | `	rc = DualFetch(pVm,pThis,TRUE);` |
-|   275 |  4043 | `	if( rc != SXRET_OK ){` |
+|   276 |  4041 | `	PH7_NativeSetAttrObj(pVm,pThis,CIT_KIDS,0);` |
+|   276 |  4042 | `	rc = DualFetch(pVm,pThis,TRUE);` |
+|   276 |  4043 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  4044 | `		return rc;` |
 |     - |  4045 | `	}` |
-|   275 |  4046 | `	iFlags = CitFlags(pThis);` |
-|   275 |  4047 | `	if( !DualFilled(pThis) ){` |
+|   276 |  4046 | `	iFlags = CitFlags(pThis);` |
+|   276 |  4047 | `	if( !DualFilled(pThis) ){` |
 |    81 |  4048 | `		PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags & ~(sxi64)CIT_VALID);` |
 |    81 |  4049 | `		return SXRET_OK;` |
 |     - |  4050 | `	}` |
-|   197 |  4051 | `	PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags \| CIT_VALID);` |
-|   197 |  4052 | `	if( iFlags & CIT_FULL_CACHE ){` |
-|    35 |  4053 | `		ph7_value *pKey = PH7_NativeAttr(pThis,IT_CK);` |
-|    35 |  4054 | `		ph7_value *pCur = PH7_NativeAttr(pThis,IT_CD);` |
-|    35 |  4055 | `		if( pKey && pCur ){` |
+|   198 |  4051 | `	PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags \| CIT_VALID);` |
+|   198 |  4052 | `	if( iFlags & CIT_FULL_CACHE ){` |
+|    36 |  4053 | `		ph7_value *pKey = PH7_NativeAttr(pThis,IT_CK);` |
+|    36 |  4054 | `		ph7_value *pCur = PH7_NativeAttr(pThis,IT_CD);` |
+|    36 |  4055 | `		if( pKey && pCur ){` |
 |     - |  4056 | `			/* php's array_set_zval_key: the WHOLE array-key rule set, which is the` |
 |     - |  4057 | `			 * engine's own subscript rule set (PH7_VmArrayKeyArg) — an object or an` |
 |     - |  4058 | `			 * array key refused, a RESOURCE key warned about and cached under its` |
@@ -4074,12 +4074,12 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4064 | `			 * no borrowed ph7_value* survives — the cache slot included, which is` |
 |     - |  4065 | `			 * why it is fetched only once the screen is through. */` |
 |     - |  4066 | `			ph7_value sKey,sVal,*pCache;` |
-|    35 |  4067 | `			PH7_MemObjInit(pVm,&sKey);` |
-|    35 |  4068 | `			PH7_MemObjInit(pVm,&sVal);` |
-|    35 |  4069 | `			PH7_MemObjStore(pKey,&sKey);` |
-|    35 |  4070 | `			PH7_MemObjStore(pCur,&sVal);` |
-|    35 |  4071 | `			rc = PH7_VmArrayKeyArg(pCtx,&sKey,PH7_ARRAYKEY_OFFSET);` |
-|    35 |  4072 | `			if( rc != SXRET_OK ){` |
+|    36 |  4067 | `			PH7_MemObjInit(pVm,&sKey);` |
+|    36 |  4068 | `			PH7_MemObjInit(pVm,&sVal);` |
+|    36 |  4069 | `			PH7_MemObjStore(pKey,&sKey);` |
+|    36 |  4070 | `			PH7_MemObjStore(pCur,&sVal);` |
+|    36 |  4071 | `			rc = PH7_VmArrayKeyArg(pCtx,&sKey,PH7_ARRAYKEY_OFFSET);` |
+|    36 |  4072 | `			if( rc != SXRET_OK ){` |
 |     8 |  4073 | `				PH7_MemObjRelease(&sKey);` |
 |     8 |  4074 | `				PH7_MemObjRelease(&sVal);` |
 |     8 |  4075 | `				return rc;` |
@@ -4109,20 +4109,20 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4099 | `	 * where the walk really is, not from where the throw interrupted it. */` |
 |   187 |  4100 | `	rc = DualNextInnerEx(pVm,pThis,FALSE);` |
 |   187 |  4101 | `	return rcStr != SXRET_OK ? rcStr : rc;` |
-|   139 |  4102 | `}` |
+|   140 |  4102 | `}` |
 |   188 |  4103 | `static int CitConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)` |
-|     3 |  4104 | `{` |
-|   191 |  4105 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   191 |  4106 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   191 |  4107 | `	sxi64 iFlags = CIT_CALL_TOSTRING;` |
+|     4 |  4104 | `{` |
+|   192 |  4105 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   192 |  4106 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   192 |  4107 | `	sxi64 iFlags = CIT_CALL_TOSTRING;` |
 |     - |  4108 | `	sxi32 rc;` |
-|   191 |  4109 | `	if( pThis == 0 ){` |
+|   192 |  4109 | `	if( pThis == 0 ){` |
 |   ! 0 |  4110 | `		return PH7_OK;` |
 |     - |  4111 | `	}` |
-|   191 |  4112 | `	if( nArg > 1 ){` |
-|   153 |  4113 | `		iFlags = ph7_value_to_int64(apArg[1]);` |
+|   192 |  4112 | `	if( nArg > 1 ){` |
+|   154 |  4113 | `		iFlags = ph7_value_to_int64(apArg[1]);` |
 |    75 |  4114 | `	}` |
-|   191 |  4115 | `	if( !CitCheckFlags(iFlags) ){` |
+|   192 |  4115 | `	if( !CitCheckFlags(iFlags) ){` |
 |     4 |  4116 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |     - |  4117 | `			"%s::__construct(): Argument #2 ($flags) must contain only one of "` |
 |     - |  4118 | `			"CachingIterator::CALL_TOSTRING, CachingIterator::TOSTRING_USE_KEY, "` |
@@ -4131,17 +4131,17 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4121 | `	}` |
 |     - |  4122 | `	/* Only the ITERATOR reaches the shared constructor: its second argument is` |
 |     - |  4123 | ``	 * IteratorIterator's `$class` downcast, and this one's is an int. */`` |
-|   189 |  4124 | `	rc = DualConstruct(pCtx,zOwner,nArg > 0 ? 1 : 0,apArg);` |
-|   189 |  4125 | `	if( rc != PH7_OK ){` |
+|   190 |  4124 | `	rc = DualConstruct(pCtx,zOwner,nArg > 0 ? 1 : 0,apArg);` |
+|   190 |  4125 | `	if( rc != PH7_OK ){` |
 |   ! 0 |  4126 | `		return rc;` |
 |     - |  4127 | `	}` |
-|   189 |  4128 | `	PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags & CIT_PUBLIC);` |
-|   189 |  4129 | `	return PH7_OK;` |
-|    97 |  4130 | `}` |
+|   190 |  4128 | `	PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags & CIT_PUBLIC);` |
+|   190 |  4129 | `	return PH7_OK;` |
+|    98 |  4130 | `}` |
 |    80 |  4131 | `static int vm_builtin_CachingIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  4132 | `{` |
-|    83 |  4133 | `	return CitConstruct(pCtx,"CachingIterator",nArg,apArg);` |
-|     3 |  4134 | `}` |
+|     4 |  4132 | `{` |
+|    84 |  4133 | `	return CitConstruct(pCtx,"CachingIterator",nArg,apArg);` |
+|     4 |  4134 | `}` |
 |     - |  4135 | `/*` |
 |     - |  4136 | `` * php's stub DECLARES `Iterator $iterator` here and its body then asks for`` |
 |     - |  4137 | ` * spl_ce_RecursiveIterator, so Reflection reports the looser type while the` |
@@ -4167,29 +4167,29 @@ Coverage: 7583/8435 lines (89.90%)
 |   109 |  4157 | `	return CitConstruct(pCtx,"RecursiveCachingIterator",nArg,apArg);` |
 |    60 |  4158 | `}` |
 |   128 |  4159 | `static int vm_builtin_CachingIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  4160 | `{` |
-|   131 |  4161 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   131 |  4162 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     4 |  4160 | `{` |
+|   132 |  4161 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   132 |  4162 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  4163 | `	ph7_value *pCache;` |
 |     - |  4164 | `	sxi32 rc;` |
 |    64 |  4165 | `	SXUNUSED(nArg);` |
 |    64 |  4166 | `	SXUNUSED(apArg);` |
-|   131 |  4167 | `	if( !DualReady(pThis) ){` |
+|   132 |  4167 | `	if( !DualReady(pThis) ){` |
 |     3 |  4168 | `		return DualNotReady(pCtx);` |
 |     - |  4169 | `	}` |
-|   129 |  4170 | `	pCache = PH7_NativeAttr(pThis,CIT_CCH);` |
-|   129 |  4171 | `	if( pCache ){` |
+|   130 |  4170 | `	pCache = PH7_NativeAttr(pThis,CIT_CCH);` |
+|   130 |  4171 | `	if( pCache ){` |
 |     - |  4172 | `		/* php's zend_hash_clean: a rewind starts the cache over. */` |
-|   129 |  4173 | `		PH7_MemObjRelease(pCache);` |
-|   129 |  4174 | `		PH7_MemObjToHashmap(pCache);` |
+|   130 |  4173 | `		PH7_MemObjRelease(pCache);` |
+|   130 |  4174 | `		PH7_MemObjToHashmap(pCache);` |
 |    63 |  4175 | `	}` |
-|   129 |  4176 | `	rc = DualRewindInner(pVm,pThis);` |
-|   129 |  4177 | `	if( rc != SXRET_OK ){` |
+|   130 |  4176 | `	rc = DualRewindInner(pVm,pThis);` |
+|   130 |  4177 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  4178 | `		return rc;` |
 |     - |  4179 | `	}` |
-|   129 |  4180 | `	rc = CitFetch(pCtx);` |
-|   129 |  4181 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
-|    67 |  4182 | `}` |
+|   130 |  4180 | `	rc = CitFetch(pCtx);` |
+|   130 |  4181 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
+|    68 |  4182 | `}` |
 |   148 |  4183 | `static int vm_builtin_CachingIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  4184 | `{` |
 |   151 |  4185 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -4513,10 +4513,10 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4503 | `` * here. Declaring them would print `Return [ bool ]` where php prints`` |
 |     - |  4504 | `` * `Tentative return [ bool ]` AND make getReturnType() disagree; leaving them off`` |
 |     - |  4505 | ` * costs only getTentativeReturnType(). PHL has no tentative-return concept at all` |
-|     - |  4506 | ` * (§7.4) — DateTime and the reflectors already report a plain return type where php` |
+|     - |  4506 | ` * (recorded) — DateTime and the reflectors already report a plain return type where php` |
 |     - |  4507 | ` * reports a tentative one.` |
 |     - |  4508 | ` */` |
-|  6721 |  4509 | `static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)` |
+|  7925 |  4509 | `static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)` |
 |     5 |  4510 | `{` |
 |     - |  4511 | `	static const PH7_NativePropDef aDualProp[] = {` |
 |     - |  4512 | `		{ IT_IN, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -4801,7 +4801,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4791 | `		{ "EmptyIterator", 0, "Iterator", 0,` |
 |     - |  4792 | `		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0, 0 },` |
 |     - |  4793 | `	};` |
-|  6726 |  4794 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  4794 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 |  4795 | `}` |
 |     - |  4796 | `/*` |
 |     - |  4797 | ` * ---------------------------------------------------------------------------` |
@@ -4870,9 +4870,9 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4860 | ` * which is why the refusal is an Error naming the RUNTIME class and why even` |
 |     - |  4861 | ` * getDepth() raises it.` |
 |     - |  4862 | ` */` |
-|  3376 |  4863 | `static int RitReady(ph7_class_instance *pThis)` |
+|  3436 |  4863 | `static int RitReady(ph7_class_instance *pThis)` |
 |     3 |  4864 | `{` |
-|  3379 |  4865 | `	return pThis && PH7_NativeAttrInt(pThis,RIT_RD) != 0;` |
+|  3439 |  4865 | `	return pThis && PH7_NativeAttrInt(pThis,RIT_RD) != 0;` |
 |     3 |  4866 | `}` |
 |    20 |  4867 | `static sxi32 RitNotReady(ph7_context *pCtx)` |
 |     1 |  4868 | `{` |
@@ -4881,117 +4881,117 @@ Coverage: 7583/8435 lines (89.90%)
 |    31 |  4871 | `	return PH7_VmThrowException(pCtx,"Error",` |
 |    10 |  4872 | `		"The %z instance wasn't initialized properly",pName);` |
 |     1 |  4873 | `}` |
-|  4994 |  4874 | `static int RitInt(ph7_class_instance *pThis,const char *zSlot)` |
+|  5076 |  4874 | `static int RitInt(ph7_class_instance *pThis,const char *zSlot)` |
 |     3 |  4875 | `{` |
-|  4997 |  4876 | `	return (int)PH7_NativeAttrInt(pThis,zSlot);` |
+|  5079 |  4876 | `	return (int)PH7_NativeAttrInt(pThis,zSlot);` |
 |     3 |  4877 | `}` |
 |     - |  4878 | `/* One of the two level-indexed arrays, materialized on first use. */` |
-|  6476 |  4879 | `static ph7_hashmap * RitMap(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)` |
+|  6590 |  4879 | `static ph7_hashmap * RitMap(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)` |
 |     3 |  4880 | `{` |
-|  6479 |  4881 | `	ph7_value *pSlot = PH7_NativeAttr(pThis,zSlot);` |
-|  6479 |  4882 | `	if( pSlot == 0 ){` |
+|  6593 |  4881 | `	ph7_value *pSlot = PH7_NativeAttr(pThis,zSlot);` |
+|  6593 |  4882 | `	if( pSlot == 0 ){` |
 |   ! 0 |  4883 | `		return 0;` |
 |     - |  4884 | `	}` |
-|  6479 |  4885 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
-|   291 |  4886 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
+|  6593 |  4885 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|   295 |  4886 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
 |   ! 0 |  4887 | `			return 0;` |
 |     - |  4888 | `		}` |
-|   144 |  4889 | `	}` |
-|  6479 |  4890 | `	return PH7_HashmapCowSeparate(pVm,pSlot);` |
-|  3241 |  4891 | `}` |
-|  4314 |  4892 | `static ph7_value * RitAt(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel)` |
+|   146 |  4889 | `	}` |
+|  6593 |  4890 | `	return PH7_HashmapCowSeparate(pVm,pSlot);` |
+|  3298 |  4891 | `}` |
+|  4392 |  4892 | `static ph7_value * RitAt(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel)` |
 |     3 |  4893 | `{` |
-|  4317 |  4894 | `	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);` |
-|  4317 |  4895 | `	ph7_hashmap_node *pNode = 0;` |
-|  4317 |  4896 | `	if( pMap == 0 \|\| HashmapLookupIntKey(pMap,(sxi64)iLevel,&pNode) != SXRET_OK ){` |
+|  4395 |  4894 | `	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);` |
+|  4395 |  4895 | `	ph7_hashmap_node *pNode = 0;` |
+|  4395 |  4896 | `	if( pMap == 0 \|\| HashmapLookupIntKey(pMap,(sxi64)iLevel,&pNode) != SXRET_OK ){` |
 |   ! 0 |  4897 | `		return 0;` |
 |     - |  4898 | `	}` |
-|  4317 |  4899 | `	return HashmapExtractNodeValue(pNode);` |
-|  2160 |  4900 | `}` |
-|  1626 |  4901 | `static void RitPut(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel,ph7_value *pVal)` |
+|  4395 |  4899 | `	return HashmapExtractNodeValue(pNode);` |
+|  2199 |  4900 | `}` |
+|  1654 |  4901 | `static void RitPut(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel,ph7_value *pVal)` |
 |     3 |  4902 | `{` |
-|  1629 |  4903 | `	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);` |
+|  1657 |  4903 | `	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);` |
 |     - |  4904 | `	ph7_value sKey;` |
-|  1629 |  4905 | `	if( pMap == 0 ){` |
+|  1657 |  4905 | `	if( pMap == 0 ){` |
 |   ! 0 |  4906 | `		return;` |
 |     - |  4907 | `	}` |
-|  1629 |  4908 | `	PH7_MemObjInitFromInt(pVm,&sKey,(sxi64)iLevel);` |
-|  1629 |  4909 | `	PH7_HashmapInsert(pMap,&sKey,pVal);` |
-|  1629 |  4910 | `	PH7_MemObjRelease(&sKey);` |
-|   816 |  4911 | `}` |
-|   536 |  4912 | `static void RitErase(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel)` |
+|  1657 |  4908 | `	PH7_MemObjInitFromInt(pVm,&sKey,(sxi64)iLevel);` |
+|  1657 |  4909 | `	PH7_HashmapInsert(pMap,&sKey,pVal);` |
+|  1657 |  4910 | `	PH7_MemObjRelease(&sKey);` |
+|   830 |  4911 | `}` |
+|   544 |  4912 | `static void RitErase(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel)` |
 |     3 |  4913 | `{` |
-|   539 |  4914 | `	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);` |
-|   539 |  4915 | `	ph7_hashmap_node *pNode = 0;` |
-|   539 |  4916 | `	if( pMap && HashmapLookupIntKey(pMap,(sxi64)iLevel,&pNode) == SXRET_OK ){` |
-|   251 |  4917 | `		PH7_HashmapUnlinkNode(pNode,TRUE);` |
-|   124 |  4918 | `	}` |
-|   539 |  4919 | `}` |
+|   547 |  4914 | `	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);` |
+|   547 |  4915 | `	ph7_hashmap_node *pNode = 0;` |
+|   547 |  4916 | `	if( pMap && HashmapLookupIntKey(pMap,(sxi64)iLevel,&pNode) == SXRET_OK ){` |
+|   255 |  4917 | `		PH7_HashmapUnlinkNode(pNode,TRUE);` |
+|   126 |  4918 | `	}` |
+|   547 |  4919 | `}` |
 |     - |  4920 | `/*` |
 |     - |  4921 | ` * The sub-iterator at a level. Re-resolved on every use on purpose: every call into` |
 |     - |  4922 | ` * a user iterator can rewrite the level's own storage (rule 47). It used to matter` |
 |     - |  4923 | ` * for a second reason as well -- RitAt() hands back a pointer into pVm->aMemObj and` |
 |     - |  4924 | ` * the pool reallocated as the VM reserved objects -- and that one is gone since P1.` |
 |     - |  4925 | ` */` |
-|  3508 |  4926 | `static ph7_class_instance * RitSub(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel)` |
+|  3572 |  4926 | `static ph7_class_instance * RitSub(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel)` |
 |     3 |  4927 | `{` |
-|  3511 |  4928 | `	ph7_value *pVal = RitAt(pVm,pThis,RIT_ST,iLevel);` |
-|  3511 |  4929 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|  3575 |  4928 | `	ph7_value *pVal = RitAt(pVm,pThis,RIT_ST,iLevel);` |
+|  3575 |  4929 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_OBJ) == 0 ){` |
 |   ! 0 |  4930 | `		return 0;` |
 |     - |  4931 | `	}` |
-|  3511 |  4932 | `	return (ph7_class_instance *)pVal->x.pOther;` |
-|  1757 |  4933 | `}` |
-|   806 |  4934 | `static int RitState(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel)` |
+|  3575 |  4932 | `	return (ph7_class_instance *)pVal->x.pOther;` |
+|  1789 |  4933 | `}` |
+|   820 |  4934 | `static int RitState(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel)` |
 |     3 |  4935 | `{` |
-|   809 |  4936 | `	ph7_value *pVal = RitAt(pVm,pThis,RIT_SS,iLevel);` |
-|   809 |  4937 | `	return pVal ? (int)ph7_value_to_int64(pVal) : RS_START;` |
+|   823 |  4936 | `	ph7_value *pVal = RitAt(pVm,pThis,RIT_SS,iLevel);` |
+|   823 |  4937 | `	return pVal ? (int)ph7_value_to_int64(pVal) : RS_START;` |
 |     3 |  4938 | `}` |
-|  1358 |  4939 | `static void RitSetState(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel,int iState)` |
+|  1382 |  4939 | `static void RitSetState(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel,int iState)` |
 |     3 |  4940 | `{` |
 |     - |  4941 | `	ph7_value sVal;` |
-|  1361 |  4942 | `	PH7_MemObjInitFromInt(pVm,&sVal,(sxi64)iState);` |
-|  1361 |  4943 | `	RitPut(pVm,pThis,RIT_SS,iLevel,&sVal);` |
-|  1361 |  4944 | `	PH7_MemObjRelease(&sVal);` |
-|  1361 |  4945 | `}` |
+|  1385 |  4942 | `	PH7_MemObjInitFromInt(pVm,&sVal,(sxi64)iState);` |
+|  1385 |  4943 | `	RitPut(pVm,pThis,RIT_SS,iLevel,&sVal);` |
+|  1385 |  4944 | `	PH7_MemObjRelease(&sVal);` |
+|  1385 |  4945 | `}` |
 |     - |  4946 | ``/* php's `iterators = erealloc(…, ++level+1)` plus the two field writes. */`` |
-|   124 |  4947 | `static void RitPush(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_instance *pChild)` |
+|   126 |  4947 | `static void RitPush(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_instance *pChild)` |
 |     3 |  4948 | `{` |
-|   127 |  4949 | `	int iLevel = RitInt(pThis,RIT_LVL) + 1;` |
+|   129 |  4949 | `	int iLevel = RitInt(pThis,RIT_LVL) + 1;` |
 |     - |  4950 | `	ph7_value sObj;` |
-|   127 |  4951 | `	PH7_MemObjInit(pVm,&sObj);` |
-|   127 |  4952 | `	sObj.x.pOther = pChild;` |
-|   127 |  4953 | `	MemObjSetType(&sObj,MEMOBJ_OBJ);` |
+|   129 |  4951 | `	PH7_MemObjInit(pVm,&sObj);` |
+|   129 |  4952 | `	sObj.x.pOther = pChild;` |
+|   129 |  4953 | `	MemObjSetType(&sObj,MEMOBJ_OBJ);` |
 |     - |  4954 | `	/* The map takes its OWN reference through the store; the carrier is blanked` |
 |     - |  4955 | `	 * rather than released, because releasing a MEMOBJ_OBJ carrier would unref an` |
 |     - |  4956 | `	 * instance this frame never referenced (rule 16). */` |
-|   127 |  4957 | `	RitPut(pVm,pThis,RIT_ST,iLevel,&sObj);` |
-|   127 |  4958 | `	sObj.x.pOther = 0;` |
-|   127 |  4959 | `	MemObjSetType(&sObj,MEMOBJ_NULL);` |
-|   127 |  4960 | `	PH7_MemObjRelease(&sObj);` |
-|   127 |  4961 | `	RitSetState(pVm,pThis,iLevel,RS_START);` |
-|   127 |  4962 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,iLevel);` |
-|   127 |  4963 | `}` |
-|   124 |  4964 | `static void RitPop(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|   129 |  4957 | `	RitPut(pVm,pThis,RIT_ST,iLevel,&sObj);` |
+|   129 |  4958 | `	sObj.x.pOther = 0;` |
+|   129 |  4959 | `	MemObjSetType(&sObj,MEMOBJ_NULL);` |
+|   129 |  4960 | `	PH7_MemObjRelease(&sObj);` |
+|   129 |  4961 | `	RitSetState(pVm,pThis,iLevel,RS_START);` |
+|   129 |  4962 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,iLevel);` |
+|   129 |  4963 | `}` |
+|   126 |  4964 | `static void RitPop(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |     3 |  4965 | `{` |
-|   127 |  4966 | `	int iLevel = RitInt(pThis,RIT_LVL);` |
-|   127 |  4967 | `	if( iLevel <= 0 ){` |
+|   129 |  4966 | `	int iLevel = RitInt(pThis,RIT_LVL);` |
+|   129 |  4967 | `	if( iLevel <= 0 ){` |
 |   ! 0 |  4968 | `		return;` |
 |     - |  4969 | `	}` |
-|   127 |  4970 | `	RitErase(pVm,pThis,RIT_ST,iLevel);` |
-|   127 |  4971 | `	RitErase(pVm,pThis,RIT_SS,iLevel);` |
-|   127 |  4972 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,iLevel-1);` |
-|    65 |  4973 | `}` |
+|   129 |  4970 | `	RitErase(pVm,pThis,RIT_ST,iLevel);` |
+|   129 |  4971 | `	RitErase(pVm,pThis,RIT_SS,iLevel);` |
+|   129 |  4972 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,iLevel-1);` |
+|    66 |  4973 | `}` |
 |     - |  4974 | `/* Drop every level: php's spl_RecursiveIteratorIterator_free_iterators. */` |
-|   144 |  4975 | `static void RitClear(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|   146 |  4975 | `static void RitClear(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |     3 |  4976 | `{` |
-|   147 |  4977 | `	int iLevel = RitInt(pThis,RIT_LVL);` |
-|   291 |  4978 | `	while( iLevel >= 0 ){` |
-|   147 |  4979 | `		RitErase(pVm,pThis,RIT_ST,iLevel);` |
-|   147 |  4980 | `		RitErase(pVm,pThis,RIT_SS,iLevel);` |
-|   147 |  4981 | `		iLevel--;` |
+|   149 |  4977 | `	int iLevel = RitInt(pThis,RIT_LVL);` |
+|   295 |  4978 | `	while( iLevel >= 0 ){` |
+|   149 |  4979 | `		RitErase(pVm,pThis,RIT_ST,iLevel);` |
+|   149 |  4980 | `		RitErase(pVm,pThis,RIT_SS,iLevel);` |
+|   149 |  4981 | `		iLevel--;` |
 |     3 |  4982 | `	}` |
-|   147 |  4983 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,0);` |
-|   147 |  4984 | `}` |
+|   149 |  4983 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,0);` |
+|   149 |  4984 | `}` |
 |     - |  4985 | `/*` |
 |     - |  4986 | ` * Call a method, optionally SWALLOWING what it throws -- php clears the exception` |
 |     - |  4987 | ` * at four sites when RIT_CATCH_GET_CHILD is set, and PH7_VmCallMethodSwallow is` |
@@ -4999,99 +4999,99 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  4989 | ` * dispatched INLINE, so an enclosing user catch would run before this returns).` |
 |     - |  4990 | ` * *pbThrew reports a swallowed throw, which php reads back as "retval is UNDEF".` |
 |     - |  4991 | ` */` |
-|  3878 |  4992 | `static sxi32 RitCall(ph7_context *pCtx,ph7_class_instance *pObj,const char *zName,sxu32 nName,` |
+|  3956 |  4992 | `static sxi32 RitCall(ph7_context *pCtx,ph7_class_instance *pObj,const char *zName,sxu32 nName,` |
 |     - |  4993 | `	ph7_value *pOut,int bCatch,int *pbThrew)` |
 |     3 |  4994 | `{` |
-|  3881 |  4995 | `	ph7_class_method *pMethod = pObj ? PH7_ClassExtractMethod(pObj->pClass,zName,nName) : 0;` |
-|  3881 |  4996 | `	if( pbThrew ){` |
-|  1477 |  4997 | `		*pbThrew = FALSE;` |
-|   737 |  4998 | `	}` |
-|  3881 |  4999 | `	if( pMethod == 0 ){` |
+|  3959 |  4995 | `	ph7_class_method *pMethod = pObj ? PH7_ClassExtractMethod(pObj->pClass,zName,nName) : 0;` |
+|  3959 |  4996 | `	if( pbThrew ){` |
+|  1505 |  4997 | `		*pbThrew = FALSE;` |
+|   751 |  4998 | `	}` |
+|  3959 |  4999 | `	if( pMethod == 0 ){` |
 |   ! 0 |  5000 | `		return SXRET_OK;` |
 |     - |  5001 | `	}` |
-|  3881 |  5002 | `	if( bCatch ){` |
+|  3959 |  5002 | `	if( bCatch ){` |
 |    13 |  5003 | `		return PH7_VmCallMethodSwallow(pCtx->pVm,pObj,pMethod,pOut,0,0,pbThrew);` |
 |     - |  5004 | `	}` |
-|  3869 |  5005 | `	return PH7_VmCallClassMethod(pCtx->pVm,pObj,pMethod,pOut,0,0);` |
-|  1942 |  5006 | `}` |
+|  3947 |  5005 | `	return PH7_VmCallClassMethod(pCtx->pVm,pObj,pMethod,pOut,0,0);` |
+|  1981 |  5006 | `}` |
 |     - |  5007 | `/*` |
 |     - |  5008 | ` * A hook on $this. php caches which of the seven the SUBCLASS overrides and calls` |
 |     - |  5009 | ` * the sub-iterator directly when none does; dispatching through $this every time` |
 |     - |  5010 | ` * reaches the same body -- the base ones are the no-ops php would have skipped --` |
 |     - |  5011 | ` * with the override found automatically.` |
 |     - |  5012 | ` */` |
-|  1288 |  5013 | `static sxi32 RitHook(ph7_context *pCtx,const char *zName,sxu32 nName,ph7_value *pOut,` |
+|  1312 |  5013 | `static sxi32 RitHook(ph7_context *pCtx,const char *zName,sxu32 nName,ph7_value *pOut,` |
 |     - |  5014 | `	int bCatch,int *pbThrew)` |
 |     3 |  5015 | `{` |
-|  1291 |  5016 | `	return RitCall(pCtx,PH7_ContextThis(pCtx),zName,nName,pOut,bCatch,pbThrew);` |
+|  1315 |  5016 | `	return RitCall(pCtx,PH7_ContextThis(pCtx),zName,nName,pOut,bCatch,pbThrew);` |
 |     3 |  5017 | `}` |
-|   420 |  5018 | `static int RitCatches(ph7_class_instance *pThis)` |
+|   428 |  5018 | `static int RitCatches(ph7_class_instance *pThis)` |
 |     3 |  5019 | `{` |
-|   423 |  5020 | `	return (RitInt(pThis,RIT_FL) & RIT_CATCH_GET_CHILD) != 0;` |
+|   431 |  5020 | `	return (RitInt(pThis,RIT_FL) & RIT_CATCH_GET_CHILD) != 0;` |
 |     3 |  5021 | `}` |
 |     - |  5022 | `/*` |
 |     - |  5023 | ` * php's spl_recursive_it_move_forward_ex, transcribed. The switch's fallthroughs` |
 |     - |  5024 | ` * (RS_NEXT into RS_START into RS_TEST) are written as a sequential if-chain, and` |
 |     - |  5025 | `` * php's `goto next_step` is this loop's `continue`.`` |
 |     - |  5026 | ` */` |
-|   420 |  5027 | `static sxi32 RitMoveForward(ph7_context *pCtx)` |
+|   428 |  5027 | `static sxi32 RitMoveForward(ph7_context *pCtx)` |
 |     3 |  5028 | `{` |
-|   423 |  5029 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   423 |  5030 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   431 |  5029 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   431 |  5030 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  5031 | `	int bCatch;` |
-|   423 |  5032 | `	if( !RitReady(pThis) ){` |
+|   431 |  5032 | `	if( !RitReady(pThis) ){` |
 |   ! 0 |  5033 | `		return RitNotReady(pCtx);` |
 |     - |  5034 | `	}` |
-|   423 |  5035 | `	bCatch = RitCatches(pThis);` |
-|   465 |  5036 | `	for(;;){` |
+|   431 |  5035 | `	bCatch = RitCatches(pThis);` |
+|   473 |  5036 | `	for(;;){` |
 |     - |  5037 | `		ph7_class_instance *pSub;` |
-|   809 |  5038 | `		int iLevel = RitInt(pThis,RIT_LVL);` |
-|   809 |  5039 | `		int iState = RitState(pVm,pThis,iLevel);` |
-|   809 |  5040 | `		int bThrew = 0;` |
-|   809 |  5041 | `		int bExhausted = 0;` |
+|   823 |  5038 | `		int iLevel = RitInt(pThis,RIT_LVL);` |
+|   823 |  5039 | `		int iState = RitState(pVm,pThis,iLevel);` |
+|   823 |  5040 | `		int bThrew = 0;` |
+|   823 |  5041 | `		int bExhausted = 0;` |
 |     - |  5042 | `		sxi32 rc;` |
-|   809 |  5043 | `		pSub = RitSub(pVm,pThis,iLevel);` |
-|   809 |  5044 | `		if( pSub == 0 ){` |
+|   823 |  5043 | `		pSub = RitSub(pVm,pThis,iLevel);` |
+|   823 |  5044 | `		if( pSub == 0 ){` |
 |   ! 0 |  5045 | `			return PH7_OK;` |
 |     - |  5046 | `		}` |
-|   809 |  5047 | `		if( iState == RS_NEXT ){` |
-|   375 |  5048 | `			rc = RitCall(pCtx,pSub,"next",sizeof("next")-1,0,bCatch,&bThrew);` |
-|   375 |  5049 | `			if( rc != SXRET_OK ){` |
+|   823 |  5047 | `		if( iState == RS_NEXT ){` |
+|   383 |  5048 | `			rc = RitCall(pCtx,pSub,"next",sizeof("next")-1,0,bCatch,&bThrew);` |
+|   383 |  5049 | `			if( rc != SXRET_OK ){` |
 |   ! 0 |  5050 | `				return rc;` |
 |     - |  5051 | `			}` |
-|   375 |  5052 | `			pSub = RitSub(pVm,pThis,iLevel);   /* the call may have rewritten the level */` |
-|   375 |  5053 | `			if( pSub == 0 ){` |
+|   383 |  5052 | `			pSub = RitSub(pVm,pThis,iLevel);   /* the call may have rewritten the level */` |
+|   383 |  5053 | `			if( pSub == 0 ){` |
 |   ! 0 |  5054 | `				return PH7_OK;` |
 |     - |  5055 | `			}` |
-|   375 |  5056 | `			iState = RS_START;                 /* php's fallthrough */` |
-|   186 |  5057 | `		}` |
-|   809 |  5058 | `		if( iState == RS_START ){` |
+|   383 |  5056 | `			iState = RS_START;                 /* php's fallthrough */` |
+|   190 |  5057 | `		}` |
+|   823 |  5058 | `		if( iState == RS_START ){` |
 |     - |  5059 | `			ph7_value sValid;` |
-|   603 |  5060 | `			PH7_MemObjInit(pVm,&sValid);` |
-|   603 |  5061 | `			rc = RitCall(pCtx,pSub,"valid",sizeof("valid")-1,&sValid,FALSE,0);` |
-|   603 |  5062 | `			if( rc != SXRET_OK ){` |
+|   615 |  5060 | `			PH7_MemObjInit(pVm,&sValid);` |
+|   615 |  5061 | `			rc = RitCall(pCtx,pSub,"valid",sizeof("valid")-1,&sValid,FALSE,0);` |
+|   615 |  5062 | `			if( rc != SXRET_OK ){` |
 |   ! 0 |  5063 | `				PH7_MemObjRelease(&sValid);` |
 |   ! 0 |  5064 | `				return rc;` |
 |     - |  5065 | `			}` |
-|   603 |  5066 | `			bExhausted = !ph7_value_to_bool(&sValid);` |
-|   603 |  5067 | `			PH7_MemObjRelease(&sValid);` |
-|   603 |  5068 | `			if( !bExhausted ){` |
+|   615 |  5066 | `			bExhausted = !ph7_value_to_bool(&sValid);` |
+|   615 |  5067 | `			PH7_MemObjRelease(&sValid);` |
+|   615 |  5068 | `			if( !bExhausted ){` |
 |     - |  5069 | `				/* php re-reads the level here and returns outright when the valid()` |
 |     - |  5070 | `				 * call RE-ENTERED this iterator (a sub-iterator that drove the` |
 |     - |  5071 | `				 * decorator behind its back); the stack it was walking is gone. */` |
-|   395 |  5072 | `				if( RitInt(pThis,RIT_LVL) != iLevel \|\| RitSub(pVm,pThis,iLevel) != pSub ){` |
+|   403 |  5072 | `				if( RitInt(pThis,RIT_LVL) != iLevel \|\| RitSub(pVm,pThis,iLevel) != pSub ){` |
 |   ! 0 |  5073 | `					return PH7_OK;` |
 |     - |  5074 | `				}` |
-|   395 |  5075 | `				RitSetState(pVm,pThis,iLevel,RS_TEST);` |
-|   395 |  5076 | `				iState = RS_TEST;` |
-|   196 |  5077 | `			}` |
-|   300 |  5078 | `		}` |
-|   809 |  5079 | `		if( !bExhausted && iState == RS_TEST ){` |
+|   403 |  5075 | `				RitSetState(pVm,pThis,iLevel,RS_TEST);` |
+|   403 |  5076 | `				iState = RS_TEST;` |
+|   200 |  5077 | `			}` |
+|   306 |  5078 | `		}` |
+|   823 |  5079 | `		if( !bExhausted && iState == RS_TEST ){` |
 |     - |  5080 | `			ph7_value sHas;` |
-|   395 |  5081 | `			int bDescend = 0;` |
-|   395 |  5082 | `			PH7_MemObjInit(pVm,&sHas);` |
-|   395 |  5083 | `			rc = RitHook(pCtx,"callHasChildren",sizeof("callHasChildren")-1,&sHas,bCatch,&bThrew);` |
-|   395 |  5084 | `			if( rc != SXRET_OK ){` |
+|   403 |  5081 | `			int bDescend = 0;` |
+|   403 |  5082 | `			PH7_MemObjInit(pVm,&sHas);` |
+|   403 |  5083 | `			rc = RitHook(pCtx,"callHasChildren",sizeof("callHasChildren")-1,&sHas,bCatch,&bThrew);` |
+|   403 |  5084 | `			if( rc != SXRET_OK ){` |
 |     - |  5085 | `				/* php leaves the level on RS_NEXT so a caught-and-resumed traversal` |
 |     - |  5086 | `				 * moves on rather than re-asking the same element. */` |
 |   ! 0 |  5087 | `				RitSetState(pVm,pThis,iLevel,RS_NEXT);` |
@@ -5100,38 +5100,38 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  5090 | `			}` |
 |     - |  5091 | `			/* A SWALLOWED throw leaves php's retval UNDEF, which skips the` |
 |     - |  5092 | `			 * has-children test entirely and yields the element. */` |
-|   395 |  5093 | `			if( !bThrew && ph7_value_to_bool(&sHas) ){` |
-|   151 |  5094 | `				int iMax = RitInt(pThis,RIT_MX);` |
-|   151 |  5095 | `				int iMode = RitInt(pThis,RIT_MD);` |
-|   151 |  5096 | `				if( iMax == -1 \|\| iMax > iLevel ){` |
+|   403 |  5093 | `			if( !bThrew && ph7_value_to_bool(&sHas) ){` |
+|   153 |  5094 | `				int iMax = RitInt(pThis,RIT_MX);` |
+|   153 |  5095 | `				int iMode = RitInt(pThis,RIT_MD);` |
+|   153 |  5096 | `				if( iMax == -1 \|\| iMax > iLevel ){` |
 |     - |  5097 | `					/* php compares the mode EXACTLY: an unrecognized mode matches no` |
 |     - |  5098 | `					 * arm, falls out of the switch and yields without descending. */` |
-|   139 |  5099 | `					if( iMode == RIT_LEAVES_ONLY \|\| iMode == RIT_CHILD_FIRST ){` |
-|    76 |  5100 | `						RitSetState(pVm,pThis,iLevel,RS_CHILD);` |
-|    76 |  5101 | `						bDescend = 1;` |
-|   101 |  5102 | `					}else if( iMode == RIT_SELF_FIRST ){` |
+|   141 |  5099 | `					if( iMode == RIT_LEAVES_ONLY \|\| iMode == RIT_CHILD_FIRST ){` |
+|    79 |  5100 | `						RitSetState(pVm,pThis,iLevel,RS_CHILD);` |
+|    79 |  5101 | `						bDescend = 1;` |
+|   102 |  5102 | `					}else if( iMode == RIT_SELF_FIRST ){` |
 |    60 |  5103 | `						RitSetState(pVm,pThis,iLevel,RS_SELF);` |
 |    60 |  5104 | `						bDescend = 1;` |
 |    32 |  5105 | `					}` |
-|    81 |  5106 | `				}else if( iMode == RIT_LEAVES_ONLY ){` |
+|    82 |  5106 | `				}else if( iMode == RIT_LEAVES_ONLY ){` |
 |     - |  5107 | `					/* Too deep to recurse into and NOT a leaf, so php skips it —` |
 |     - |  5108 | `					 * the mode's defining rule, and the one the chunk dropped. */` |
 |     5 |  5109 | `					RitSetState(pVm,pThis,iLevel,RS_NEXT);` |
 |     5 |  5110 | `					bDescend = 1;` |
 |     2 |  5111 | `				}` |
-|    74 |  5112 | `			}` |
-|   395 |  5113 | `			PH7_MemObjRelease(&sHas);` |
-|   395 |  5114 | `			if( bDescend ){` |
-|   139 |  5115 | `				continue;                      /* php's goto next_step */` |
+|    75 |  5112 | `			}` |
+|   403 |  5113 | `			PH7_MemObjRelease(&sHas);` |
+|   403 |  5114 | `			if( bDescend ){` |
+|   141 |  5115 | `				continue;                      /* php's goto next_step */` |
 |     - |  5116 | `			}` |
-|   259 |  5117 | `			rc = RitHook(pCtx,"nextElement",sizeof("nextElement")-1,0,bCatch,&bThrew);` |
-|   259 |  5118 | `			RitSetState(pVm,pThis,iLevel,RS_NEXT);` |
-|   259 |  5119 | `			if( rc != SXRET_OK ){` |
+|   265 |  5117 | `			rc = RitHook(pCtx,"nextElement",sizeof("nextElement")-1,0,bCatch,&bThrew);` |
+|   265 |  5118 | `			RitSetState(pVm,pThis,iLevel,RS_NEXT);` |
+|   265 |  5119 | `			if( rc != SXRET_OK ){` |
 |   ! 0 |  5120 | `				return rc;` |
 |     - |  5121 | `			}` |
-|   259 |  5122 | `			return PH7_OK;                     /* yield this element */` |
+|   265 |  5122 | `			return PH7_OK;                     /* yield this element */` |
 |     - |  5123 | `		}` |
-|   417 |  5124 | `		if( !bExhausted && iState == RS_SELF ){` |
+|   423 |  5124 | `		if( !bExhausted && iState == RS_SELF ){` |
 |    78 |  5125 | `			int iMode = RitInt(pThis,RIT_MD);` |
 |    78 |  5126 | `			if( iMode == RIT_SELF_FIRST \|\| iMode == RIT_CHILD_FIRST ){` |
 |    78 |  5127 | `				rc = RitHook(pCtx,"nextElement",sizeof("nextElement")-1,0,bCatch,&bThrew);` |
@@ -5142,115 +5142,115 @@ Coverage: 7583/8435 lines (89.90%)
 |    78 |  5132 | `			RitSetState(pVm,pThis,iLevel,iMode == RIT_SELF_FIRST ? RS_CHILD : RS_NEXT);` |
 |    78 |  5133 | `			return PH7_OK;                     /* yield this element */` |
 |     - |  5134 | `		}` |
-|   341 |  5135 | `		if( !bExhausted && iState == RS_CHILD ){` |
+|   347 |  5135 | `		if( !bExhausted && iState == RS_CHILD ){` |
 |     - |  5136 | `			ph7_class *pRecCls;` |
 |     - |  5137 | `			ph7_class_instance *pChild;` |
 |     - |  5138 | `			ph7_value sChild;` |
-|   133 |  5139 | `			int iMode = RitInt(pThis,RIT_MD);` |
-|   133 |  5140 | `			PH7_MemObjInit(pVm,&sChild);` |
-|   133 |  5141 | `			rc = RitHook(pCtx,"callGetChildren",sizeof("callGetChildren")-1,&sChild,bCatch,&bThrew);` |
-|   133 |  5142 | `			if( rc != SXRET_OK ){` |
+|   135 |  5139 | `			int iMode = RitInt(pThis,RIT_MD);` |
+|   135 |  5140 | `			PH7_MemObjInit(pVm,&sChild);` |
+|   135 |  5141 | `			rc = RitHook(pCtx,"callGetChildren",sizeof("callGetChildren")-1,&sChild,bCatch,&bThrew);` |
+|   135 |  5142 | `			if( rc != SXRET_OK ){` |
 |     3 |  5143 | `				PH7_MemObjRelease(&sChild);` |
 |     4 |  5144 | `				return rc;` |
 |     - |  5145 | `			}` |
-|   131 |  5146 | `			if( bThrew ){` |
+|   133 |  5146 | `			if( bThrew ){` |
 |     - |  5147 | `				/* Caught: php drops the element and moves to the next one. */` |
 |     3 |  5148 | `				PH7_MemObjRelease(&sChild);` |
 |     3 |  5149 | `				RitSetState(pVm,pThis,iLevel,RS_NEXT);` |
-|    65 |  5150 | `				continue;` |
+|    66 |  5150 | `				continue;` |
 |     - |  5151 | `			}` |
-|   129 |  5152 | `			pRecCls = PH7_VmExtractClass(pVm,"RecursiveIterator",` |
+|   131 |  5152 | `			pRecCls = PH7_VmExtractClass(pVm,"RecursiveIterator",` |
 |     - |  5153 | `				sizeof("RecursiveIterator")-1,FALSE,0);` |
-|   192 |  5154 | `			pChild = (sChild.iFlags & MEMOBJ_OBJ) != 0` |
-|   125 |  5155 | `				? (ph7_class_instance *)sChild.x.pOther : 0;` |
-|   129 |  5156 | `			if( pChild == 0 \|\| (pRecCls && !PH7_VmInstanceOf(pChild->pClass,pRecCls)) ){` |
+|   195 |  5154 | `			pChild = (sChild.iFlags & MEMOBJ_OBJ) != 0` |
+|   127 |  5155 | `				? (ph7_class_instance *)sChild.x.pOther : 0;` |
+|   131 |  5156 | `			if( pChild == 0 \|\| (pRecCls && !PH7_VmInstanceOf(pChild->pClass,pRecCls)) ){` |
 |     3 |  5157 | `				PH7_MemObjRelease(&sChild);` |
 |     3 |  5158 | `				return PH7_VmThrowException(pCtx,"UnexpectedValueException",` |
 |     - |  5159 | `					"Objects returned by RecursiveIterator::getChildren() must implement RecursiveIterator");` |
 |     - |  5160 | `			}` |
-|   127 |  5161 | `			pChild->iRef++;                    /* survive the release of the call result */` |
-|   127 |  5162 | `			PH7_MemObjRelease(&sChild);` |
-|   127 |  5163 | `			RitSetState(pVm,pThis,iLevel,iMode == RIT_CHILD_FIRST ? RS_SELF : RS_NEXT);` |
-|   127 |  5164 | `			RitPush(pVm,pThis,pChild);` |
-|   127 |  5165 | `			PH7_ClassInstanceUnref(pChild);    /* the level's slot holds it now */` |
-|   127 |  5166 | `			rc = RitCall(pCtx,pChild,"rewind",sizeof("rewind")-1,0,FALSE,0);` |
-|   127 |  5167 | `			if( rc != SXRET_OK ){` |
+|   129 |  5161 | `			pChild->iRef++;                    /* survive the release of the call result */` |
+|   129 |  5162 | `			PH7_MemObjRelease(&sChild);` |
+|   129 |  5163 | `			RitSetState(pVm,pThis,iLevel,iMode == RIT_CHILD_FIRST ? RS_SELF : RS_NEXT);` |
+|   129 |  5164 | `			RitPush(pVm,pThis,pChild);` |
+|   129 |  5165 | `			PH7_ClassInstanceUnref(pChild);    /* the level's slot holds it now */` |
+|   129 |  5166 | `			rc = RitCall(pCtx,pChild,"rewind",sizeof("rewind")-1,0,FALSE,0);` |
+|   129 |  5167 | `			if( rc != SXRET_OK ){` |
 |   ! 0 |  5168 | `				return rc;` |
 |     - |  5169 | `			}` |
-|   127 |  5170 | `			rc = RitHook(pCtx,"beginChildren",sizeof("beginChildren")-1,0,bCatch,&bThrew);` |
-|   127 |  5171 | `			if( rc != SXRET_OK ){` |
+|   129 |  5170 | `			rc = RitHook(pCtx,"beginChildren",sizeof("beginChildren")-1,0,bCatch,&bThrew);` |
+|   129 |  5171 | `			if( rc != SXRET_OK ){` |
 |   ! 0 |  5172 | `				return rc;` |
 |     - |  5173 | `			}` |
-|   127 |  5174 | `			continue;                          /* php's goto next_step */` |
+|   129 |  5174 | `			continue;                          /* php's goto next_step */` |
 |     - |  5175 | `		}` |
 |     - |  5176 | `		/* No more elements at this level. */` |
-|   211 |  5177 | `		if( iLevel <= 0 ){` |
-|    87 |  5178 | `			return PH7_OK;                     /* done completely */` |
+|   215 |  5177 | `		if( iLevel <= 0 ){` |
+|    89 |  5178 | `			return PH7_OK;                     /* done completely */` |
 |     - |  5179 | `		}` |
 |     - |  5180 | `		/* php calls endChildren BEFORE the pop, so the hook sees the depth it is` |
 |     - |  5181 | `		 * leaving rather than the one it lands on. */` |
-|   127 |  5182 | `		rc = RitHook(pCtx,"endChildren",sizeof("endChildren")-1,0,bCatch,&bThrew);` |
-|   127 |  5183 | `		if( rc != SXRET_OK ){` |
+|   129 |  5182 | `		rc = RitHook(pCtx,"endChildren",sizeof("endChildren")-1,0,bCatch,&bThrew);` |
+|   129 |  5183 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  5184 | `			return rc;` |
 |     - |  5185 | `		}` |
-|   127 |  5186 | `		if( RitInt(pThis,RIT_LVL) > 0 && RitSub(pVm,pThis,RitInt(pThis,RIT_LVL)) == pSub ){` |
-|   127 |  5187 | `			RitPop(pVm,pThis);` |
-|    62 |  5188 | `		}` |
+|   129 |  5186 | `		if( RitInt(pThis,RIT_LVL) > 0 && RitSub(pVm,pThis,RitInt(pThis,RIT_LVL)) == pSub ){` |
+|   129 |  5187 | `			RitPop(pVm,pThis);` |
+|    63 |  5188 | `		}` |
 |     3 |  5189 | `	}` |
-|   213 |  5190 | `}` |
+|   217 |  5190 | `}` |
 |     - |  5191 | `/*` |
 |     - |  5192 | ` * php's spl_recursive_it_valid_ex: ASK the levels, walking down from the current` |
 |     - |  5193 | ` * one, and fire endIteration the first time the answer is no.` |
 |     - |  5194 | ` */` |
-|   402 |  5195 | `static sxi32 RitValidEx(ph7_context *pCtx,int *pbValid)` |
+|   410 |  5195 | `static sxi32 RitValidEx(ph7_context *pCtx,int *pbValid)` |
 |     3 |  5196 | `{` |
-|   405 |  5197 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   405 |  5198 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   405 |  5199 | `	int iLevel = RitInt(pThis,RIT_LVL);` |
+|   413 |  5197 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   413 |  5198 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   413 |  5199 | `	int iLevel = RitInt(pThis,RIT_LVL);` |
 |     - |  5200 | `	sxi32 rc;` |
-|   405 |  5201 | `	*pbValid = FALSE;` |
-|   491 |  5202 | `	while( iLevel >= 0 ){` |
-|   405 |  5203 | `		ph7_class_instance *pSub = RitSub(pVm,pThis,iLevel);` |
+|   413 |  5201 | `	*pbValid = FALSE;` |
+|   501 |  5202 | `	while( iLevel >= 0 ){` |
+|   413 |  5203 | `		ph7_class_instance *pSub = RitSub(pVm,pThis,iLevel);` |
 |     - |  5204 | `		ph7_value sValid;` |
 |     - |  5205 | `		int bOk;` |
-|   405 |  5206 | `		if( pSub == 0 ){` |
+|   413 |  5206 | `		if( pSub == 0 ){` |
 |   ! 0 |  5207 | `			iLevel--;` |
 |   ! 0 |  5208 | `			continue;` |
 |     - |  5209 | `		}` |
-|   405 |  5210 | `		PH7_MemObjInit(pVm,&sValid);` |
-|   405 |  5211 | `		rc = RitCall(pCtx,pSub,"valid",sizeof("valid")-1,&sValid,FALSE,0);` |
-|   405 |  5212 | `		if( rc != SXRET_OK ){` |
+|   413 |  5210 | `		PH7_MemObjInit(pVm,&sValid);` |
+|   413 |  5211 | `		rc = RitCall(pCtx,pSub,"valid",sizeof("valid")-1,&sValid,FALSE,0);` |
+|   413 |  5212 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  5213 | `			PH7_MemObjRelease(&sValid);` |
 |   ! 0 |  5214 | `			return rc;` |
 |     - |  5215 | `		}` |
-|   405 |  5216 | `		bOk = ph7_value_to_bool(&sValid);` |
-|   405 |  5217 | `		PH7_MemObjRelease(&sValid);` |
-|   405 |  5218 | `		if( bOk ){` |
-|   319 |  5219 | `			*pbValid = TRUE;` |
-|   319 |  5220 | `			return PH7_OK;` |
+|   413 |  5216 | `		bOk = ph7_value_to_bool(&sValid);` |
+|   413 |  5217 | `		PH7_MemObjRelease(&sValid);` |
+|   413 |  5218 | `		if( bOk ){` |
+|   325 |  5219 | `			*pbValid = TRUE;` |
+|   325 |  5220 | `			return PH7_OK;` |
 |     - |  5221 | `		}` |
-|    89 |  5222 | `		iLevel--;` |
+|    91 |  5222 | `		iLevel--;` |
 |     3 |  5223 | `	}` |
-|    89 |  5224 | `	if( RitInt(pThis,RIT_II) ){` |
-|    87 |  5225 | `		rc = RitHook(pCtx,"endIteration",sizeof("endIteration")-1,0,FALSE,0);` |
-|    87 |  5226 | `		PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);` |
-|    87 |  5227 | `		if( rc != SXRET_OK ){` |
+|    91 |  5224 | `	if( RitInt(pThis,RIT_II) ){` |
+|    89 |  5225 | `		rc = RitHook(pCtx,"endIteration",sizeof("endIteration")-1,0,FALSE,0);` |
+|    89 |  5226 | `		PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);` |
+|    89 |  5227 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  5228 | `			return rc;` |
 |     - |  5229 | `		}` |
-|    42 |  5230 | `	}` |
-|    89 |  5231 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);` |
-|    89 |  5232 | `	return PH7_OK;` |
-|   204 |  5233 | `}` |
-|   148 |  5234 | `static int vm_builtin_RecursiveIteratorIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    43 |  5230 | `	}` |
+|    91 |  5231 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);` |
+|    91 |  5232 | `	return PH7_OK;` |
+|   208 |  5233 | `}` |
+|   150 |  5234 | `static int vm_builtin_RecursiveIteratorIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5235 | `{` |
-|   151 |  5236 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   151 |  5237 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   153 |  5236 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   153 |  5237 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  5238 | `	ph7_class_instance *pObj;` |
-|   151 |  5239 | `	ph7_class_instance *pHold = 0;` |
+|   153 |  5239 | `	ph7_class_instance *pHold = 0;` |
 |     - |  5240 | `	ph7_class *pAggCls,*pRecCls,*pTravCls;` |
-|   151 |  5241 | `	sxi64 iMode = RIT_LEAVES_ONLY,iFlags = 0;` |
+|   153 |  5241 | `	sxi64 iMode = RIT_LEAVES_ONLY,iFlags = 0;` |
 |     - |  5242 | `	sxi32 rc;` |
-|   151 |  5243 | `	if( pThis == 0 ){` |
+|   153 |  5243 | `	if( pThis == 0 ){` |
 |   ! 0 |  5244 | `		return PH7_OK;` |
 |     - |  5245 | `	}` |
 |     - |  5246 | `	/*` |
@@ -5260,35 +5260,35 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  5250 | `	 * and this body words both refusals, which is why the method sits on` |
 |     - |  5251 | `	 * azSelfChecked[].` |
 |     - |  5252 | `	 */` |
-|   151 |  5253 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 \|\| apArg[0]->x.pOther == 0 ){` |
+|   153 |  5253 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 \|\| apArg[0]->x.pOther == 0 ){` |
 |     - |  5254 | `		char zGiven[64];` |
 |     5 |  5255 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |     - |  5256 | `			"RecursiveIteratorIterator::__construct(): Argument #1 ($iterator) "` |
 |     - |  5257 | `			"must be of type object, %s given",` |
 |     2 |  5258 | `			nArg < 1 ? "none" : VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));` |
 |     - |  5259 | `	}` |
-|   149 |  5260 | `	if( nArg > 1 ){` |
-|    82 |  5261 | `		rc = PH7_IntArgResolve(pCtx,apArg[1],"RecursiveIteratorIterator::__construct",2,"$mode","int",&iMode);` |
-|    82 |  5262 | `		if( rc != SXRET_OK ){` |
+|   151 |  5260 | `	if( nArg > 1 ){` |
+|    85 |  5261 | `		rc = PH7_IntArgResolve(pCtx,apArg[1],"RecursiveIteratorIterator::__construct",2,"$mode","int",&iMode);` |
+|    85 |  5262 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  5263 | `			return rc;` |
 |     - |  5264 | `		}` |
-|    40 |  5265 | `	}` |
-|   149 |  5266 | `	if( nArg > 2 ){` |
-|    63 |  5267 | `		rc = PH7_IntArgResolve(pCtx,apArg[2],"RecursiveIteratorIterator::__construct",3,"$flags","int",&iFlags);` |
-|    63 |  5268 | `		if( rc != SXRET_OK ){` |
+|    41 |  5265 | `	}` |
+|   151 |  5266 | `	if( nArg > 2 ){` |
+|    66 |  5267 | `		rc = PH7_IntArgResolve(pCtx,apArg[2],"RecursiveIteratorIterator::__construct",3,"$flags","int",&iFlags);` |
+|    66 |  5268 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  5269 | `			return rc;` |
 |     - |  5270 | `		}` |
-|    31 |  5271 | `	}` |
-|   149 |  5272 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
-|   149 |  5273 | `	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);` |
-|   149 |  5274 | `	pRecCls = PH7_VmExtractClass(pVm,"RecursiveIterator",sizeof("RecursiveIterator")-1,FALSE,0);` |
-|   149 |  5275 | `	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);` |
+|    32 |  5271 | `	}` |
+|   151 |  5272 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|   151 |  5273 | `	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);` |
+|   151 |  5274 | `	pRecCls = PH7_VmExtractClass(pVm,"RecursiveIterator",sizeof("RecursiveIterator")-1,FALSE,0);` |
+|   151 |  5275 | `	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);` |
 |     - |  5276 | `	/*` |
 |     - |  5277 | `	 * php's spl_get_iterator_from_aggregate: ONE getIterator() and no more. An` |
 |     - |  5278 | `	 * IteratorAggregate whose getIterator() answers another aggregate therefore` |
 |     - |  5279 | `	 * fails the RecursiveIterator test below rather than being unwrapped further.` |
 |     - |  5280 | `	 */` |
-|   149 |  5281 | `	if( pAggCls && PH7_VmInstanceOf(pObj->pClass,pAggCls) ){` |
+|   151 |  5281 | `	if( pAggCls && PH7_VmInstanceOf(pObj->pClass,pAggCls) ){` |
 |     3 |  5282 | `		ph7_class_method *pMethod = PH7_ClassExtractMethod(pObj->pClass,"getIterator",` |
 |     - |  5283 | `			sizeof("getIterator")-1);` |
 |     - |  5284 | `		ph7_value sInner;` |
@@ -5310,7 +5310,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     3 |  5300 | `		PH7_MemObjRelease(&sInner);` |
 |     3 |  5301 | `		pHold = pObj;` |
 |     1 |  5302 | `	}` |
-|   149 |  5303 | `	if( pRecCls == 0 \|\| !PH7_VmInstanceOf(pObj->pClass,pRecCls) ){` |
+|   151 |  5303 | `	if( pRecCls == 0 \|\| !PH7_VmInstanceOf(pObj->pClass,pRecCls) ){` |
 |     3 |  5304 | `		if( pHold ){` |
 |   ! 0 |  5305 | `			PH7_ClassInstanceUnref(pHold);` |
 |   ! 0 |  5306 | `		}` |
@@ -5319,132 +5319,132 @@ Coverage: 7583/8435 lines (89.90%)
 |     3 |  5309 | `		return PH7_VmThrowException(pCtx,"InvalidArgumentException",` |
 |     - |  5310 | `			"An instance of RecursiveIterator or IteratorAggregate creating it is required");` |
 |     - |  5311 | `	}` |
-|   147 |  5312 | `	RitClear(pVm,pThis);` |
-|   147 |  5313 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,0);` |
-|   147 |  5314 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_MD,iMode);` |
-|   147 |  5315 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_FL,iFlags);` |
-|   147 |  5316 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_MX,-1);` |
-|   147 |  5317 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);` |
+|   149 |  5312 | `	RitClear(pVm,pThis);` |
+|   149 |  5313 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,0);` |
+|   149 |  5314 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_MD,iMode);` |
+|   149 |  5315 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_FL,iFlags);` |
+|   149 |  5316 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_MX,-1);` |
+|   149 |  5317 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);` |
 |     - |  5318 | `	{` |
 |     - |  5319 | `		ph7_value sObj;` |
-|   147 |  5320 | `		PH7_MemObjInit(pVm,&sObj);` |
-|   147 |  5321 | `		sObj.x.pOther = pObj;` |
-|   147 |  5322 | `		MemObjSetType(&sObj,MEMOBJ_OBJ);` |
-|   147 |  5323 | `		RitPut(pVm,pThis,RIT_ST,0,&sObj);` |
-|   147 |  5324 | `		sObj.x.pOther = 0;` |
-|   147 |  5325 | `		MemObjSetType(&sObj,MEMOBJ_NULL);` |
-|   147 |  5326 | `		PH7_MemObjRelease(&sObj);` |
+|   149 |  5320 | `		PH7_MemObjInit(pVm,&sObj);` |
+|   149 |  5321 | `		sObj.x.pOther = pObj;` |
+|   149 |  5322 | `		MemObjSetType(&sObj,MEMOBJ_OBJ);` |
+|   149 |  5323 | `		RitPut(pVm,pThis,RIT_ST,0,&sObj);` |
+|   149 |  5324 | `		sObj.x.pOther = 0;` |
+|   149 |  5325 | `		MemObjSetType(&sObj,MEMOBJ_NULL);` |
+|   149 |  5326 | `		PH7_MemObjRelease(&sObj);` |
 |     - |  5327 | `	}` |
-|   147 |  5328 | `	RitSetState(pVm,pThis,0,RS_START);` |
+|   149 |  5328 | `	RitSetState(pVm,pThis,0,RS_START);` |
 |     - |  5329 | `	/* Level 0 exists from HERE, which is what makes getDepth() answer 0 and` |
 |     - |  5330 | `	 * getSubIterator() answer the root before any rewind(). */` |
-|   147 |  5331 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_RD,1);` |
-|   147 |  5332 | `	if( pHold ){` |
+|   149 |  5331 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_RD,1);` |
+|   149 |  5332 | `	if( pHold ){` |
 |     3 |  5333 | `		PH7_ClassInstanceUnref(pHold);` |
 |     1 |  5334 | `	}` |
-|    72 |  5335 | `	SXUNUSED(nArg);` |
-|   147 |  5336 | `	return PH7_OK;` |
-|    77 |  5337 | `}` |
-|   106 |  5338 | `static int vm_builtin_RecursiveIteratorIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    73 |  5335 | `	SXUNUSED(nArg);` |
+|   149 |  5336 | `	return PH7_OK;` |
+|    78 |  5337 | `}` |
+|   108 |  5338 | `static int vm_builtin_RecursiveIteratorIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5339 | `{` |
-|   109 |  5340 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   109 |  5341 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   111 |  5340 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   111 |  5341 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  5342 | `	ph7_class_instance *pRoot;` |
 |     - |  5343 | `	sxi32 rc;` |
-|    53 |  5344 | `	SXUNUSED(nArg);` |
-|    53 |  5345 | `	SXUNUSED(apArg);` |
-|   109 |  5346 | `	if( !RitReady(pThis) ){` |
+|    54 |  5344 | `	SXUNUSED(nArg);` |
+|    54 |  5345 | `	SXUNUSED(apArg);` |
+|   111 |  5346 | `	if( !RitReady(pThis) ){` |
 |     3 |  5347 | `		return RitNotReady(pCtx);` |
 |     - |  5348 | `	}` |
 |     - |  5349 | `	/* php pops the level FIRST and calls endChildren after, so the hook reports the` |
 |     - |  5350 | `	 * depth it has landed on -- the opposite order from the traversal's own pop. */` |
-|   107 |  5351 | `	while( RitInt(pThis,RIT_LVL) > 0 ){` |
+|   109 |  5351 | `	while( RitInt(pThis,RIT_LVL) > 0 ){` |
 |   ! 0 |  5352 | `		RitPop(pVm,pThis);` |
 |   ! 0 |  5353 | `		rc = RitHook(pCtx,"endChildren",sizeof("endChildren")-1,0,FALSE,0);` |
 |   ! 0 |  5354 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  5355 | `			return rc;` |
 |     - |  5356 | `		}` |
 |   ! 0 |  5357 | `	}` |
-|   107 |  5358 | `	RitSetState(pVm,pThis,0,RS_START);` |
-|   107 |  5359 | `	pRoot = RitSub(pVm,pThis,0);` |
-|   107 |  5360 | `	rc = RitCall(pCtx,pRoot,"rewind",sizeof("rewind")-1,0,FALSE,0);` |
-|   107 |  5361 | `	if( rc != SXRET_OK ){` |
+|   109 |  5358 | `	RitSetState(pVm,pThis,0,RS_START);` |
+|   109 |  5359 | `	pRoot = RitSub(pVm,pThis,0);` |
+|   109 |  5360 | `	rc = RitCall(pCtx,pRoot,"rewind",sizeof("rewind")-1,0,FALSE,0);` |
+|   109 |  5361 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  5362 | `		return rc;` |
 |     - |  5363 | `	}` |
 |     - |  5364 | `	/* php's in_iteration latch: a second rewind() does NOT re-announce the` |
 |     - |  5365 | `	 * iteration, which is the only reason the flag exists. */` |
-|   107 |  5366 | `	if( !RitInt(pThis,RIT_II) ){` |
-|   105 |  5367 | `		rc = RitHook(pCtx,"beginIteration",sizeof("beginIteration")-1,0,FALSE,0);` |
-|   105 |  5368 | `		if( rc != SXRET_OK ){` |
+|   109 |  5366 | `	if( !RitInt(pThis,RIT_II) ){` |
+|   107 |  5367 | `		rc = RitHook(pCtx,"beginIteration",sizeof("beginIteration")-1,0,FALSE,0);` |
+|   107 |  5368 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  5369 | `			PH7_NativeSetAttrInt(pVm,pThis,RIT_II,1);` |
 |   ! 0 |  5370 | `			return rc;` |
 |     - |  5371 | `		}` |
-|    51 |  5372 | `	}` |
-|   107 |  5373 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,1);` |
-|   107 |  5374 | `	return RitMoveForward(pCtx);` |
-|    56 |  5375 | `}` |
-|   404 |  5376 | `static int vm_builtin_RecursiveIteratorIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    52 |  5372 | `	}` |
+|   109 |  5373 | `	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,1);` |
+|   109 |  5374 | `	return RitMoveForward(pCtx);` |
+|    57 |  5375 | `}` |
+|   412 |  5376 | `static int vm_builtin_RecursiveIteratorIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5377 | `{` |
-|   407 |  5378 | `	int bValid = FALSE;` |
+|   415 |  5378 | `	int bValid = FALSE;` |
 |     - |  5379 | `	sxi32 rc;` |
-|   202 |  5380 | `	SXUNUSED(nArg);` |
-|   202 |  5381 | `	SXUNUSED(apArg);` |
-|   407 |  5382 | `	if( !RitReady(PH7_ContextThis(pCtx)) ){` |
+|   206 |  5380 | `	SXUNUSED(nArg);` |
+|   206 |  5381 | `	SXUNUSED(apArg);` |
+|   415 |  5382 | `	if( !RitReady(PH7_ContextThis(pCtx)) ){` |
 |     3 |  5383 | `		return RitNotReady(pCtx);` |
 |     - |  5384 | `	}` |
-|   405 |  5385 | `	rc = RitValidEx(pCtx,&bValid);` |
-|   405 |  5386 | `	if( rc != SXRET_OK ){` |
+|   413 |  5385 | `	rc = RitValidEx(pCtx,&bValid);` |
+|   413 |  5386 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  5387 | `		return rc;` |
 |     - |  5388 | `	}` |
-|   405 |  5389 | `	ph7_result_bool(pCtx,bValid);` |
-|   405 |  5390 | `	return PH7_OK;` |
-|   205 |  5391 | `}` |
+|   413 |  5389 | `	ph7_result_bool(pCtx,bValid);` |
+|   413 |  5390 | `	return PH7_OK;` |
+|   209 |  5391 | `}` |
 |     - |  5392 | `/* current() and key() read the CURRENT LEVEL live -- php keeps no cache here, the` |
 |     - |  5393 | ` * one place the recursive iterator differs from every dual iterator (rule 43). */` |
-|   462 |  5394 | `static sxi32 RitCurrentLevelCall(ph7_context *pCtx,const char *zName,sxu32 nName)` |
+|   474 |  5394 | `static sxi32 RitCurrentLevelCall(ph7_context *pCtx,const char *zName,sxu32 nName)` |
 |     3 |  5395 | `{` |
-|   465 |  5396 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   465 |  5397 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   477 |  5396 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   477 |  5397 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  5398 | `	ph7_class_instance *pSub;` |
 |     - |  5399 | `	ph7_value sRes;` |
 |     - |  5400 | `	sxi32 rc;` |
-|   465 |  5401 | `	if( !RitReady(pThis) ){` |
+|   477 |  5401 | `	if( !RitReady(pThis) ){` |
 |   ! 0 |  5402 | `		return RitNotReady(pCtx);` |
 |     - |  5403 | `	}` |
-|   465 |  5404 | `	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));` |
-|   465 |  5405 | `	if( pSub == 0 ){` |
+|   477 |  5404 | `	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));` |
+|   477 |  5405 | `	if( pSub == 0 ){` |
 |   ! 0 |  5406 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  5407 | `		return PH7_OK;` |
 |     - |  5408 | `	}` |
-|   465 |  5409 | `	PH7_MemObjInit(pVm,&sRes);` |
-|   465 |  5410 | `	rc = RitCall(pCtx,pSub,zName,nName,&sRes,FALSE,0);` |
-|   465 |  5411 | `	if( rc == SXRET_OK ){` |
-|   465 |  5412 | `		ph7_result_value(pCtx,&sRes);` |
-|   231 |  5413 | `	}` |
-|   465 |  5414 | `	PH7_MemObjRelease(&sRes);` |
-|   465 |  5415 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
-|   234 |  5416 | `}` |
-|   180 |  5417 | `static int vm_builtin_RecursiveIteratorIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     2 |  5418 | `{` |
-|    90 |  5419 | `	SXUNUSED(nArg);` |
-|    90 |  5420 | `	SXUNUSED(apArg);` |
-|   182 |  5421 | `	return RitCurrentLevelCall(pCtx,"key",sizeof("key")-1);` |
-|     2 |  5422 | `}` |
-|   220 |  5423 | `static int vm_builtin_RecursiveIteratorIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   477 |  5409 | `	PH7_MemObjInit(pVm,&sRes);` |
+|   477 |  5410 | `	rc = RitCall(pCtx,pSub,zName,nName,&sRes,FALSE,0);` |
+|   477 |  5411 | `	if( rc == SXRET_OK ){` |
+|   477 |  5412 | `		ph7_result_value(pCtx,&sRes);` |
+|   237 |  5413 | `	}` |
+|   477 |  5414 | `	PH7_MemObjRelease(&sRes);` |
+|   477 |  5415 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
+|   240 |  5416 | `}` |
+|   186 |  5417 | `static int vm_builtin_RecursiveIteratorIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 |  5418 | `{` |
+|    93 |  5419 | `	SXUNUSED(nArg);` |
+|    93 |  5420 | `	SXUNUSED(apArg);` |
+|   189 |  5421 | `	return RitCurrentLevelCall(pCtx,"key",sizeof("key")-1);` |
+|     3 |  5422 | `}` |
+|   226 |  5423 | `static int vm_builtin_RecursiveIteratorIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5424 | `{` |
-|   110 |  5425 | `	SXUNUSED(nArg);` |
-|   110 |  5426 | `	SXUNUSED(apArg);` |
-|   223 |  5427 | `	return RitCurrentLevelCall(pCtx,"current",sizeof("current")-1);` |
+|   113 |  5425 | `	SXUNUSED(nArg);` |
+|   113 |  5426 | `	SXUNUSED(apArg);` |
+|   229 |  5427 | `	return RitCurrentLevelCall(pCtx,"current",sizeof("current")-1);` |
 |     3 |  5428 | `}` |
-|   316 |  5429 | `static int vm_builtin_RecursiveIteratorIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   322 |  5429 | `static int vm_builtin_RecursiveIteratorIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5430 | `{` |
-|   158 |  5431 | `	SXUNUSED(nArg);` |
-|   158 |  5432 | `	SXUNUSED(apArg);` |
-|   319 |  5433 | `	if( !RitReady(PH7_ContextThis(pCtx)) ){` |
+|   161 |  5431 | `	SXUNUSED(nArg);` |
+|   161 |  5432 | `	SXUNUSED(apArg);` |
+|   325 |  5433 | `	if( !RitReady(PH7_ContextThis(pCtx)) ){` |
 |   ! 0 |  5434 | `		return RitNotReady(pCtx);` |
 |     - |  5435 | `	}` |
-|   319 |  5436 | `	return RitMoveForward(pCtx);` |
-|   161 |  5437 | `}` |
+|   325 |  5436 | `	return RitMoveForward(pCtx);` |
+|   164 |  5437 | `}` |
 |   124 |  5438 | `static int vm_builtin_RecursiveIteratorIterator_getDepth(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     2 |  5439 | `{` |
 |   126 |  5440 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -5507,67 +5507,67 @@ Coverage: 7583/8435 lines (89.90%)
 |     5 |  5497 | `}` |
 |     - |  5498 | `/* The five hooks php declares with empty bodies. They exist to be OVERRIDDEN and` |
 |     - |  5499 | ` * to be reachable through parent:: from an override. */` |
-|   740 |  5500 | `static int vm_builtin_RecursiveIteratorIterator_nop(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   754 |  5500 | `static int vm_builtin_RecursiveIteratorIterator_nop(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5501 | `{` |
-|   370 |  5502 | `	SXUNUSED(nArg);` |
-|   370 |  5503 | `	SXUNUSED(apArg);` |
-|   743 |  5504 | `	if( !RitReady(PH7_ContextThis(pCtx)) ){` |
+|   377 |  5502 | `	SXUNUSED(nArg);` |
+|   377 |  5503 | `	SXUNUSED(apArg);` |
+|   757 |  5504 | `	if( !RitReady(PH7_ContextThis(pCtx)) ){` |
 |   ! 0 |  5505 | `		return RitNotReady(pCtx);` |
 |     - |  5506 | `	}` |
-|   743 |  5507 | `	return PH7_OK;` |
-|   373 |  5508 | `}` |
+|   757 |  5507 | `	return PH7_OK;` |
+|   380 |  5508 | `}` |
 |     - |  5509 | `/* php's callHasChildren/callGetChildren ask the CURRENT LEVEL's iterator, which` |
 |     - |  5510 | ` * is what makes them the documented interception point for both. */` |
-|   396 |  5511 | `static int vm_builtin_RecursiveIteratorIterator_callHasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   404 |  5511 | `static int vm_builtin_RecursiveIteratorIterator_callHasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5512 | `{` |
-|   399 |  5513 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   399 |  5514 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   407 |  5513 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   407 |  5514 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  5515 | `	ph7_class_instance *pSub;` |
 |     - |  5516 | `	ph7_value sRes;` |
 |     - |  5517 | `	sxi32 rc;` |
-|   198 |  5518 | `	SXUNUSED(nArg);` |
-|   198 |  5519 | `	SXUNUSED(apArg);` |
-|   399 |  5520 | `	if( !RitReady(pThis) ){` |
+|   202 |  5518 | `	SXUNUSED(nArg);` |
+|   202 |  5519 | `	SXUNUSED(apArg);` |
+|   407 |  5520 | `	if( !RitReady(pThis) ){` |
 |     3 |  5521 | `		return RitNotReady(pCtx);` |
 |     - |  5522 | `	}` |
-|   397 |  5523 | `	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));` |
-|   397 |  5524 | `	if( pSub == 0 ){` |
+|   405 |  5523 | `	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));` |
+|   405 |  5524 | `	if( pSub == 0 ){` |
 |   ! 0 |  5525 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  5526 | `		return PH7_OK;` |
 |     - |  5527 | `	}` |
-|   397 |  5528 | `	PH7_MemObjInit(pVm,&sRes);` |
-|   397 |  5529 | `	rc = RitCall(pCtx,pSub,"hasChildren",sizeof("hasChildren")-1,&sRes,FALSE,0);` |
-|   397 |  5530 | `	if( rc == SXRET_OK ){` |
-|   397 |  5531 | `		ph7_result_bool(pCtx,ph7_value_to_bool(&sRes));` |
-|   197 |  5532 | `	}` |
-|   397 |  5533 | `	PH7_MemObjRelease(&sRes);` |
-|   397 |  5534 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
-|   201 |  5535 | `}` |
-|   132 |  5536 | `static int vm_builtin_RecursiveIteratorIterator_callGetChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   405 |  5528 | `	PH7_MemObjInit(pVm,&sRes);` |
+|   405 |  5529 | `	rc = RitCall(pCtx,pSub,"hasChildren",sizeof("hasChildren")-1,&sRes,FALSE,0);` |
+|   405 |  5530 | `	if( rc == SXRET_OK ){` |
+|   405 |  5531 | `		ph7_result_bool(pCtx,ph7_value_to_bool(&sRes));` |
+|   201 |  5532 | `	}` |
+|   405 |  5533 | `	PH7_MemObjRelease(&sRes);` |
+|   405 |  5534 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
+|   205 |  5535 | `}` |
+|   134 |  5536 | `static int vm_builtin_RecursiveIteratorIterator_callGetChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |  5537 | `{` |
-|   135 |  5538 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   135 |  5539 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   137 |  5538 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   137 |  5539 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  5540 | `	ph7_class_instance *pSub;` |
 |     - |  5541 | `	ph7_value sRes;` |
 |     - |  5542 | `	sxi32 rc;` |
-|    66 |  5543 | `	SXUNUSED(nArg);` |
-|    66 |  5544 | `	SXUNUSED(apArg);` |
-|   135 |  5545 | `	if( !RitReady(pThis) ){` |
+|    67 |  5543 | `	SXUNUSED(nArg);` |
+|    67 |  5544 | `	SXUNUSED(apArg);` |
+|   137 |  5545 | `	if( !RitReady(pThis) ){` |
 |   ! 0 |  5546 | `		return RitNotReady(pCtx);` |
 |     - |  5547 | `	}` |
-|   135 |  5548 | `	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));` |
-|   135 |  5549 | `	if( pSub == 0 ){` |
+|   137 |  5548 | `	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));` |
+|   137 |  5549 | `	if( pSub == 0 ){` |
 |   ! 0 |  5550 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  5551 | `		return PH7_OK;` |
 |     - |  5552 | `	}` |
-|   135 |  5553 | `	PH7_MemObjInit(pVm,&sRes);` |
-|   135 |  5554 | `	rc = RitCall(pCtx,pSub,"getChildren",sizeof("getChildren")-1,&sRes,FALSE,0);` |
-|   135 |  5555 | `	if( rc == SXRET_OK ){` |
-|   129 |  5556 | `		ph7_result_value(pCtx,&sRes);` |
-|    63 |  5557 | `	}` |
-|   135 |  5558 | `	PH7_MemObjRelease(&sRes);` |
-|   135 |  5559 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
-|    69 |  5560 | `}` |
+|   137 |  5553 | `	PH7_MemObjInit(pVm,&sRes);` |
+|   137 |  5554 | `	rc = RitCall(pCtx,pSub,"getChildren",sizeof("getChildren")-1,&sRes,FALSE,0);` |
+|   137 |  5555 | `	if( rc == SXRET_OK ){` |
+|   131 |  5556 | `		ph7_result_value(pCtx,&sRes);` |
+|    64 |  5557 | `	}` |
+|   137 |  5558 | `	PH7_MemObjRelease(&sRes);` |
+|   137 |  5559 | `	return rc == SXRET_OK ? PH7_OK : rc;` |
+|    70 |  5560 | `}` |
 |    18 |  5561 | `static int vm_builtin_RecursiveIteratorIterator_setMaxDepth(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  5562 | `{` |
 |    19 |  5563 | `	ph7_vm *pVm = pCtx->pVm;` |
@@ -6047,7 +6047,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  6037 | ` * because that is the order Reflection reports. Every return type is php's` |
 |     - |  6038 | `` * `@tentative-return-type` kind (rule 45).`` |
 |     - |  6039 | ` */` |
-|  6721 |  6040 | `static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)` |
+|  7925 |  6040 | `static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)` |
 |     5 |  6041 | `{` |
 |     - |  6042 | `	static const PH7_NativePropDef aRitProp[] = {` |
 |     - |  6043 | `		{ RIT_ST,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -6159,7 +6159,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  6149 | `		  aRtiConst, SX_ARRAYSIZE(aRtiConst),` |
 |     - |  6150 | `		  aRtiProp, SX_ARRAYSIZE(aRtiProp), 0, 0, 0 },` |
 |     - |  6151 | `	};` |
-|  6726 |  6152 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  6152 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 |  6153 | `}` |
 |     - |  6154 | `/*` |
 |     - |  6155 | ` * ---------------------------------------------------------------------------` |
@@ -6196,7 +6196,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  6186 | ` * are the engine's OWN array builtins called with the slot (rule 7, and rule 39's` |
 |     - |  6187 | ` * reference rule already lives inside them). php's element-POINTER cursor is not` |
 |     - |  6188 | ` * modelled: a manual walk that mutates the list under itself resolves by position` |
-|     - |  6189 | ` * here and by identity there. That is one probe line (§7.4) and the only one.` |
+|     - |  6189 | ` * here and by identity there. That is one probe line (recorded) and the only one.` |
 |     - |  6190 | ` */` |
 |     - |  6191 | `#define DLL_Q  "__q"   /* php's llist, head -> tail */` |
 |     - |  6192 | `#define DLL_FL "__fl"  /* php's flags word, IT_FIX included */` |
@@ -6970,7 +6970,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  6960 | ` * the flags slot -- which is exactly how php does it (the create handler stamps` |
 |     - |  6961 | ` * the flags; there is no constructor to run).` |
 |     - |  6962 | ` */` |
-|  6721 |  6963 | `static sxi32 VmInstallSplDllist(ph7_vm *pVm)` |
+|  7925 |  6963 | `static sxi32 VmInstallSplDllist(ph7_vm *pVm)` |
 |     5 |  6964 | `{` |
 |     - |  6965 | `	static const PH7_NativeMethodDef aDllMethod[] = {` |
 |     - |  6966 | `		{ "add",             PH7_MOD_PUBLIC, "int $index, mixed $value", "@void",` |
@@ -7047,7 +7047,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  7037 | `		  0, 0, 0, 0,` |
 |     - |  7038 | `		  aStackProp, SX_ARRAYSIZE(aStackProp), 0, 0, DllPresent },` |
 |     - |  7039 | `	};` |
-|  6726 |  7040 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  7040 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 |  7041 | `}` |
 |     - |  7042 | `/*` |
 |     - |  7043 | ` * ---------------------------------------------------------------------------` |
@@ -7747,7 +7747,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  7737 | ` * queue's default extract mode is EXTR_DATA, stamped as a property default the` |
 |     - |  7738 | ` * way the DLL family's fix bit is.` |
 |     - |  7739 | ` */` |
-|  6721 |  7740 | `static sxi32 VmInstallSplHeap(ph7_vm *pVm)` |
+|  7925 |  7740 | `static sxi32 VmInstallSplHeap(ph7_vm *pVm)` |
 |     5 |  7741 | `{` |
 |     - |  7742 | `	static const PH7_NativePropDef aHeapProp[] = {` |
 |     - |  7743 | `		{ HP_H,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -7833,7 +7833,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  7823 | `		{ "SplMaxHeap", "SplHeap", 0, 0,` |
 |     - |  7824 | `		  aMaxMethod, SX_ARRAYSIZE(aMaxMethod), 0, 0, 0, 0, 0, 0, HeapPresent },` |
 |     - |  7825 | `	};` |
-|  6726 |  7826 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  7826 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 |  7827 | `}` |
 |     - |  7828 | `/*` |
 |     - |  7829 | ` * ---------------------------------------------------------------------------` |
@@ -7860,7 +7860,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  7850 | ` * answer (php truncates, with a precision deprecation when it is lossy) but IS` |
 |     - |  7851 | `` * PHL's engine-wide one — `$a[1.5]` on a plain array raises the same TypeError,`` |
 |     - |  7852 | ` * so the class stays consistent with the engine it lives in rather than uniquely` |
-|     - |  7853 | ` * permissive (§10).` |
+|     - |  7853 | ` * permissive (the scope policy).` |
 |     - |  7854 | ` */` |
 |     - |  7855 | `#define FA_A "__a"   /* the elements, 0..n-1 */` |
 |     - |  7856 | `#define FA_N "__n"   /* php's size */` |
@@ -8359,7 +8359,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  8349 | ` * note that __construct, __serialize, __unserialize, getIterator and jsonSerialize` |
 |     - |  8350 | ` * are the FIVE methods php does NOT mark tentative here.` |
 |     - |  8351 | ` */` |
-|  6721 |  8352 | `static sxi32 VmInstallSplFixedArray(ph7_vm *pVm)` |
+|  7925 |  8352 | `static sxi32 VmInstallSplFixedArray(ph7_vm *pVm)` |
 |     5 |  8353 | `{` |
 |     - |  8354 | `	static const PH7_NativePropDef aFaProp[] = {` |
 |     - |  8355 | `		{ FA_A, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -8397,7 +8397,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  8387 | `		  aFaMethod, SX_ARRAYSIZE(aFaMethod), 0, 0,` |
 |     - |  8388 | `		  aFaProp, SX_ARRAYSIZE(aFaProp), 0, &sFaIterVtab, FaPresent },` |
 |     - |  8389 | `	};` |
-|  6726 |  8390 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  8390 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 |  8391 | `}` |
 |     - |  8392 | `/*` |
 |     - |  8393 | ` * ---------------------------------------------------------------------------` |
@@ -9245,7 +9245,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  9235 | `` * format is `x:` + the serialized COUNT, then one `<obj>,<inf>;` per element, then`` |
 |     - |  9236 | `` * `m:` + the serialized members -- and php writes it through ONE serializer state,`` |
 |     - |  9237 | `` * so an object that appears twice becomes an `r:` back-reference there and a`` |
-|     - |  9238 | ` * second copy here (§10; the DLL's legacy pair has the same shape).` |
+|     - |  9238 | ` * second copy here (the scope policy; the DLL's legacy pair has the same shape).` |
 |     - |  9239 | ` */` |
 |     4 |  9240 | `static int vm_builtin_SplObjectStorage_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  9241 | `{` |
@@ -9417,7 +9417,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  9407 | ` * interfaces are methodless-but-typed contracts php declares beside it, and` |
 |     - |  9408 | ` * seek() is the ONE method php does not mark tentative.` |
 |     - |  9409 | ` */` |
-|  6721 |  9410 | `static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)` |
+|  7925 |  9410 | `static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)` |
 |     5 |  9411 | `{` |
 |     - |  9412 | `	static const PH7_NativeMethodDef aObserverMethod[] = {` |
 |     - |  9413 | `		{ "update", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "SplSubject $subject", "@void", 0 },` |
@@ -9489,7 +9489,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  9479 | `		  aSosMethod, SX_ARRAYSIZE(aSosMethod), 0, 0,` |
 |     - |  9480 | `		  aSosProp, SX_ARRAYSIZE(aSosProp), 0, 0, SosPresent },` |
 |     - |  9481 | `	};` |
-|  6726 |  9482 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  9482 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 |  9483 | `}` |
 |     - |  9484 | `/*` |
 |     - |  9485 | ` * ---------------------------------------------------------------------------` |
@@ -9902,7 +9902,7 @@ Coverage: 7583/8435 lines (89.90%)
 |    14 |  9892 | `	SXUNUSED(apArg);` |
 |    29 |  9893 | `	return MitGetAll(pCtx,TRUE);` |
 |     1 |  9894 | `}` |
-|  6721 |  9895 | `static sxi32 VmInstallSplMultipleIterator(ph7_vm *pVm)` |
+|  7925 |  9895 | `static sxi32 VmInstallSplMultipleIterator(ph7_vm *pVm)` |
 |     5 |  9896 | `{` |
 |     - |  9897 | `	static const PH7_NativeConstDef aMitConst[] = {` |
 |     - |  9898 | `		{ "MIT_NEED_ANY",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, MIT_NEED_ANY, 0, 0.0 },` |
@@ -9944,7 +9944,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - |  9934 | `		  aMitMethod, SX_ARRAYSIZE(aMitMethod), aMitConst, SX_ARRAYSIZE(aMitConst),` |
 |     - |  9935 | `		  aMitProp, SX_ARRAYSIZE(aMitProp), 0, 0, 0 },` |
 |     - |  9936 | `	};` |
-|  6726 |  9937 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 |  9937 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 |  9938 | `}` |
 |     - |  9939 | `/*` |
 |     - |  9940 | ` * ---------------------------------------------------------------------------` |
@@ -10040,25 +10040,25 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 10030 | ` * with no slash before its final component keeps an EMPTY path, which is what` |
 |     - | 10031 | ` * makes getFilename() answer the whole thing.` |
 |     - | 10032 | ` */` |
-|   302 | 10033 | `static void SfiSetName(ph7_vm *pVm,ph7_class_instance *pThis,const char *zPath,int nPath)` |
-|     1 | 10034 | `{` |
-|   303 | 10035 | `	int nFile = nPath;` |
+|   306 | 10033 | `static void SfiSetName(ph7_vm *pVm,ph7_class_instance *pThis,const char *zPath,int nPath)` |
+|     3 | 10034 | `{` |
+|   309 | 10035 | `	int nFile = nPath;` |
 |     - | 10036 | `	int nDir;` |
-|   303 | 10037 | `	if( nFile > 1 && SFI_IS_SLASH(zPath[nFile-1]) ){` |
+|   309 | 10037 | `	if( nFile > 1 && SFI_IS_SLASH(zPath[nFile-1]) ){` |
 |     4 | 10038 | `		do{` |
 |     9 | 10039 | `			nFile--;` |
 |     9 | 10040 | `		}while( nFile > 1 && SFI_IS_SLASH(zPath[nFile-1]) );` |
 |     4 | 10041 | `	}` |
-|   303 | 10042 | `	nDir = nFile;` |
-|  4531 | 10043 | `	while( nDir > 1 && !SFI_IS_SLASH(zPath[nDir-1]) ){` |
-|  4229 | 10044 | `		nDir--;` |
-|     1 | 10045 | `	}` |
-|   303 | 10046 | `	if( nDir > 0 ){` |
-|   299 | 10047 | `		nDir--;` |
-|   149 | 10048 | `	}` |
-|   303 | 10049 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,zPath,nFile);` |
-|   303 | 10050 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_P,zPath,nDir);` |
-|   303 | 10051 | `}` |
+|   309 | 10042 | `	nDir = nFile;` |
+|  4596 | 10043 | `	while( nDir > 1 && !SFI_IS_SLASH(zPath[nDir-1]) ){` |
+|  4290 | 10044 | `		nDir--;` |
+|     3 | 10045 | `	}` |
+|   309 | 10046 | `	if( nDir > 0 ){` |
+|   305 | 10047 | `		nDir--;` |
+|   151 | 10048 | `	}` |
+|   309 | 10049 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,zPath,nFile);` |
+|   309 | 10050 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_P,zPath,nDir);` |
+|   309 | 10051 | `}` |
 |     - | 10052 | `/*` |
 |     - | 10053 | `` * php's `file_name`: the slot for a plain SplFileInfo, and the lazily rebuilt`` |
 |     - | 10054 | ` * path+slash+entry for a directory iterator. Every accessor that works on the` |
@@ -10989,10 +10989,10 @@ Coverage: 7583/8435 lines (89.90%)
 |     1 | 10979 | `}` |
 |     - | 10980 | `/*` |
 |     - | 10981 | ` * The declaration. Method ORDER is spl_directory.stub.php's; openFile() and` |
-|     - | 10982 | ` * setFileClass() are absent because SplFileObject is (§7), and everything else is` |
+|     - | 10982 | ` * setFileClass() are absent because SplFileObject is (recorded), and everything else is` |
 |     - | 10983 | ` * php's, tentative return types included.` |
 |     - | 10984 | ` */` |
-|  6721 | 10985 | `static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)` |
+|  7925 | 10985 | `static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)` |
 |     5 | 10986 | `{` |
 |     - | 10987 | `	static const PH7_NativePropDef aSfiProp[] = {` |
 |     - | 10988 | `		{ SFI_N,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
@@ -11055,7 +11055,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 11045 | `		  aSfiMethod, SX_ARRAYSIZE(aSfiMethod), 0, 0,` |
 |     - | 11046 | `		  aSfiProp, SX_ARRAYSIZE(aSfiProp), 0, 0, SfiPresent },` |
 |     - | 11047 | `	};` |
-|  6726 | 11048 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 | 11048 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 11049 | `}` |
 |     - | 11050 | `/*` |
 |     - | 11051 | ` * ---------------------------------------------------------------------------` |
@@ -11076,7 +11076,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 11066 | ` * and a clone — finding no entry of its own — re-opens on first use, which IS` |
 |     - | 11067 | ` * php's clone handler, deferred. The one thing that deferral costs is a clone` |
 |     - | 11068 | ` * whose directory is removed before it is first used: php has the stream open` |
-|     - | 11069 | ` * already and answers, PHL raises "Object not initialized" (§7).` |
+|     - | 11069 | ` * already and answers, PHL raises "Object not initialized" (recorded).` |
 |     - | 11070 | ` *` |
 |     - | 11071 | `` * `file_name` is LAZY here as it is in php: the path, a slash and the current`` |
 |     - | 11072 | ` * entry, invalidated by every read and rebuilt on demand. That is php-visible` |
@@ -11207,17 +11207,17 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 11197 | ` * glibc's opendir buffer, ~32KB per survivor). Called from PH7_VmRelease` |
 |     - | 11198 | ` * before the backend goes; the records themselves are backend memory.` |
 |     - | 11199 | ` */` |
-|  5629 | 11200 | `PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm)` |
+|  6701 | 11200 | `PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm)` |
 |     5 | 11201 | `{` |
 |     - | 11202 | `	SyHashEntry *pEntry;` |
-|  5634 | 11203 | `	SyHashResetLoopCursor(&pVm->hDirHandle);` |
-|  5634 | 11204 | `	while( (pEntry = SyHashGetNextEntry(&pVm->hDirHandle)) != 0 ){` |
+|  6706 | 11203 | `	SyHashResetLoopCursor(&pVm->hDirHandle);` |
+|  6706 | 11204 | `	while( (pEntry = SyHashGetNextEntry(&pVm->hDirHandle)) != 0 ){` |
 |   ! 0 | 11205 | `		VmDirHandle *pH = (VmDirHandle *)pEntry->pUserData;` |
 |   ! 0 | 11206 | `		if( pH && pH->pStream && pH->pStream->xCloseDir ){` |
 |   ! 0 | 11207 | `			pH->pStream->xCloseDir(pH->pHandle);` |
 |   ! 0 | 11208 | `		}` |
 |   ! 0 | 11209 | `	}` |
-|  5634 | 11210 | `}` |
+|  6706 | 11210 | `}` |
 |     - | 11211 | `/*` |
 |     - | 11212 | ` * php's spl_filesystem_dir_read: invalidate the lazy name, then take ONE entry` |
 |     - | 11213 | ` * from the stream; running out leaves the entry empty, which is what valid()` |
@@ -12068,7 +12068,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 12058 | ` * restates NOSERIALIZE and the presentation hook: a native subclass inherits` |
 |     - | 12059 | ` * neither (rule 29).` |
 |     - | 12060 | ` */` |
-|  6721 | 12061 | `static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)` |
+|  7925 | 12061 | `static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)` |
 |     5 | 12062 | `{` |
 |     - | 12063 | `	static const PH7_NativePropDef aDirProp[] = {` |
 |     - | 12064 | `		{ SDI_E, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
@@ -12167,7 +12167,7 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 12157 | `		  aGlobMethod, SX_ARRAYSIZE(aGlobMethod), 0, 0,` |
 |     - | 12158 | `		  0, 0, SplDirClose, 0, SfiPresent },` |
 |     - | 12159 | `	};` |
-|  6726 | 12160 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  7930 | 12160 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 12161 | `}` |
 |     - | 12162 | `/*` |
 |     - | 12163 | ` * ---------------------------------------------------------------------------` |
@@ -12222,35 +12222,35 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 12212 | ` * has to tell it apart from a subclass's override. */` |
 |     - | 12213 | `static int vm_builtin_SplFileObject_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg);` |
 |     - | 12214 | ``/* php's `!intern->u.file.stream`: the uninitialized object. */`` |
-|  1532 | 12215 | `static io_private * SfoDev(ph7_class_instance *pThis)` |
-|     1 | 12216 | `{` |
-|  1533 | 12217 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,SFO_H) : 0;` |
+|  1550 | 12215 | `static io_private * SfoDev(ph7_class_instance *pThis)` |
+|     3 | 12216 | `{` |
+|  1553 | 12217 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,SFO_H) : 0;` |
 |     - | 12218 | `	io_private *pDev;` |
-|  1533 | 12219 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_RES) == 0 ){` |
-|   351 | 12220 | `		return 0;` |
+|  1553 | 12219 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_RES) == 0 ){` |
+|   361 | 12220 | `		return 0;` |
 |     - | 12221 | `	}` |
-|  1183 | 12222 | `	pDev = (io_private *)pVal->x.pOther;` |
-|  1183 | 12223 | `	return IO_PRIVATE_INVALID(pDev) ? 0 : pDev;` |
-|   767 | 12224 | `}` |
+|  1195 | 12222 | `	pDev = (io_private *)pVal->x.pOther;` |
+|  1195 | 12223 | `	return IO_PRIVATE_INVALID(pDev) ? 0 : pDev;` |
+|   778 | 12224 | `}` |
 |     - | 12225 | ``/* Is this instance one of the classes php gives the `check` handlers to? Asked`` |
 |     - | 12226 | ` * as a CLASS question for the same reason SplDirIs() is: a user class may` |
 |     - | 12227 | ` * declare anything it likes. php gives them to TWO: SplFileObject and` |
 |     - | 12228 | ` * GlobIterator, which is why an unconstructed GlobIterator refuses every method` |
 |     - | 12229 | ` * with this sentence where an unconstructed FilesystemIterator answers` |
 |     - | 12230 | `` * `Object not initialized` -- and why neither of the two can be cloned. */`` |
-|  1523 | 12231 | `static int SfoIsChecked(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|  1525 | 12231 | `static int SfoIsChecked(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |     2 | 12232 | `{` |
 |     - | 12233 | `	ph7_class *pFile;` |
-|  1525 | 12234 | `	if( pThis == 0 ){` |
+|  1527 | 12234 | `	if( pThis == 0 ){` |
 |   ! 0 | 12235 | `		return 0;` |
 |     - | 12236 | `	}` |
-|  1525 | 12237 | `	pFile = PH7_VmExtractClass(pVm,"SplFileObject",sizeof("SplFileObject")-1,FALSE,0);` |
-|  1525 | 12238 | `	if( pFile && PH7_VmInstanceOf(pThis->pClass,pFile) ){` |
-|   345 | 12239 | `		return 1;` |
+|  1527 | 12237 | `	pFile = PH7_VmExtractClass(pVm,"SplFileObject",sizeof("SplFileObject")-1,FALSE,0);` |
+|  1527 | 12238 | `	if( pFile && PH7_VmInstanceOf(pThis->pClass,pFile) ){` |
+|   348 | 12239 | `		return 1;` |
 |     - | 12240 | `	}` |
 |  1181 | 12241 | `	pFile = PH7_VmExtractClass(pVm,"GlobIterator",sizeof("GlobIterator")-1,FALSE,0);` |
 |  1181 | 12242 | `	return pFile && PH7_VmInstanceOf(pThis->pClass,pFile) ? 1 : 0;` |
-|   767 | 12243 | `}` |
+|   768 | 12243 | `}` |
 |     - | 12244 | `/*` |
 |     - | 12245 | ` * php's spl_filesystem_object_get_method_check, as a guard the bodies call:` |
 |     - | 12246 | `` * an instance of a `check` class with nothing open answers NO method at all.`` |
@@ -12265,29 +12265,29 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 12255 | `` * `glob://pattern`, written by the open whether the pattern matched anything`` |
 |     - | 12256 | ` * or not, so an iterator over nothing is still a working object.` |
 |     - | 12257 | ` */` |
-|   378 | 12258 | `static int SfoCheckReady(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     1 | 12259 | `{` |
-|   379 | 12260 | `	int nPath = 0;` |
-|   379 | 12261 | `	if( SfoDev(pThis) != 0 ){` |
-|   213 | 12262 | `		return 1;` |
+|   380 | 12258 | `static int SfoCheckReady(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     2 | 12259 | `{` |
+|   382 | 12260 | `	int nPath = 0;` |
+|   382 | 12261 | `	if( SfoDev(pThis) != 0 ){` |
+|   216 | 12262 | `		return 1;` |
 |     - | 12263 | `	}` |
 |   167 | 12264 | `	if( !SplGlobIs(pVm,pThis) ){` |
 |    11 | 12265 | `		return 0;` |
 |     - | 12266 | `	}` |
 |   157 | 12267 | `	SfiStr(pThis,SFI_P,&nPath);` |
 |   157 | 12268 | `	return nPath > 0;` |
-|   190 | 12269 | `}` |
-|  1401 | 12270 | `static int SfoChecked(ph7_context *pCtx,sxi32 *pRc)` |
+|   192 | 12269 | `}` |
+|  1403 | 12270 | `static int SfoChecked(ph7_context *pCtx,sxi32 *pRc)` |
 |     2 | 12271 | `{` |
-|  1403 | 12272 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|  1403 | 12273 | `	*pRc = PH7_OK;` |
-|  1403 | 12274 | `	if( SfoIsChecked(pCtx->pVm,pThis) && !SfoCheckReady(pCtx->pVm,pThis) ){` |
+|  1405 | 12272 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|  1405 | 12273 | `	*pRc = PH7_OK;` |
+|  1405 | 12274 | `	if( SfoIsChecked(pCtx->pVm,pThis) && !SfoCheckReady(pCtx->pVm,pThis) ){` |
 |    31 | 12275 | `		*pRc = PH7_VmThrowException(pCtx,"Error",` |
 |     - | 12276 | `			"The parent constructor was not called: the object is in an invalid state");` |
 |    31 | 12277 | `		return 0;` |
 |     - | 12278 | `	}` |
-|  1373 | 12279 | `	return 1;` |
-|   706 | 12280 | `}` |
+|  1375 | 12279 | `	return 1;` |
+|   707 | 12280 | `}` |
 |   804 | 12281 | `static sxi64 SfoFlags(ph7_class_instance *pThis)` |
 |     1 | 12282 | `{` |
 |   805 | 12283 | `	return PH7_NativeAttrInt(pThis,SFO_FL);` |
@@ -12502,7 +12502,7 @@ Coverage: 7583/8435 lines (89.90%)
 |   ! 0 | 12492 | `			const char *zGot = PH7_MemObjTypeDump(&sRet);` |
 |   ! 0 | 12493 | `			*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
 |     - | 12494 | `				"%z::getCurrentLine(): Return value must be of type string, %s returned",` |
-|   ! 0 | 12495 | `				&pThis->pClass->sName,zGot);` |
+|   ! 0 | 12495 | `				&pThis->pClass->sDisp,zGot);` |
 |   ! 0 | 12496 | `			PH7_MemObjRelease(&sRet);` |
 |   ! 0 | 12497 | `			return SFO_READ_THROW;` |
 |     - | 12498 | `		}` |
@@ -12562,59 +12562,59 @@ Coverage: 7583/8435 lines (89.90%)
 |     - | 12552 | ` * (zend_replace_error_handling), so the text is the warning's -- worded from` |
 |     - | 12553 | ` * this context's own qualified name, which is what the caller reports.` |
 |     - | 12554 | ` */` |
-|   150 | 12555 | `static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPath,` |
+|   156 | 12555 | `static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPath,` |
 |     - | 12556 | `	const char *zMode,int nMode,int bUseInclude,ph7_value *pCtxArg,int iCtxArg)` |
-|     1 | 12557 | `{` |
-|   151 | 12558 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   151 | 12559 | `	const ph7_vfs *pVfs = pVm->pEngine->pVfs;` |
+|     3 | 12557 | `{` |
+|   159 | 12558 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   159 | 12559 | `	const ph7_vfs *pVfs = pVm->pEngine->pVfs;` |
 |     - | 12560 | `	phl_stream_ctx *pCtxRes;` |
 |     - | 12561 | `	io_private *pDev;` |
 |     - | 12562 | `	ph7_value *pSlot;` |
 |     - | 12563 | `	const char *zErrUri,*zPath;` |
 |     - | 12564 | `	ph7_value *apCtx[4];` |
-|   151 | 12565 | `	int nPath = 0,iErr = 0,bThrew = 0,i;` |
-|   151 | 12566 | `	zPath = ph7_value_to_string(pPath,&nPath);` |
+|   159 | 12565 | `	int nPath = 0,iErr = 0,bThrew = 0,i;` |
+|   159 | 12566 | `	zPath = ph7_value_to_string(pPath,&nPath);` |
 |     - | 12567 | `	/* PH7_StreamCtxFromArg words its refusal from an argument VECTOR position,` |
 |     - | 12568 | `	 * so the context is presented at the index php blames. */` |
-|   751 | 12569 | `	for( i = 0 ; i < (int)SX_ARRAYSIZE(apCtx) ; ++i ){` |
-|   601 | 12570 | `		apCtx[i] = pPath;` |
-|   301 | 12571 | `	}` |
-|   151 | 12572 | `	if( iCtxArg >= 1 && iCtxArg <= (int)SX_ARRAYSIZE(apCtx) ){` |
-|   127 | 12573 | `		apCtx[iCtxArg - 1] = pCtxArg;` |
-|    63 | 12574 | `	}` |
+|   783 | 12569 | `	for( i = 0 ; i < (int)SX_ARRAYSIZE(apCtx) ; ++i ){` |
+|   627 | 12570 | `		apCtx[i] = pPath;` |
+|   315 | 12571 | `	}` |
+|   159 | 12572 | `	if( iCtxArg >= 1 && iCtxArg <= (int)SX_ARRAYSIZE(apCtx) ){` |
+|   133 | 12573 | `		apCtx[iCtxArg - 1] = pCtxArg;` |
+|    65 | 12574 | `	}` |
 |     - | 12575 | `	/* php's order, and each step is observable from the one before it: the NUL` |
 |     - | 12576 | `	 * is ZPP's and comes first, then the already-open refusal, then the` |
 |     - | 12577 | `	 * directory stat, and only then the EMPTY path -- which is the stream` |
 |     - | 12578 | `	 * opener's ValueError rather than the constructor's. */` |
-|   151 | 12579 | `	if( SyByteFind(zPath,(sxu32)nPath,'\0',0) == SXRET_OK ){` |
+|   159 | 12579 | `	if( SyByteFind(zPath,(sxu32)nPath,'\0',0) == SXRET_OK ){` |
 |     4 | 12580 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |     - | 12581 | `			"%s(): Argument #1 ($filename) must not contain any null bytes",` |
 |     1 | 12582 | `			ph7_function_name(pCtx));` |
 |     - | 12583 | `	}` |
-|   149 | 12584 | `	if( SfoDev(pThis) != 0 ){` |
+|   157 | 12584 | `	if( SfoDev(pThis) != 0 ){` |
 |     5 | 12585 | `		return PH7_VmThrowException(pCtx,"Error","Cannot call constructor twice");` |
 |     - | 12586 | `	}` |
-|   145 | 12587 | `	if( pVfs && pVfs->xIsdir && nPath > 0 && nPath < 4096 ){` |
+|   153 | 12587 | `	if( pVfs && pVfs->xIsdir && nPath > 0 && nPath < 4096 ){` |
 |     - | 12588 | `		char zBuf[4096];` |
-|   141 | 12589 | `		SyMemcpy(zPath,zBuf,(sxu32)nPath);` |
-|   141 | 12590 | `		zBuf[nPath] = 0;` |
-|   141 | 12591 | `		if( pVfs->xIsdir(zBuf) == PH7_OK ){` |
+|   147 | 12589 | `		SyMemcpy(zPath,zBuf,(sxu32)nPath);` |
+|   147 | 12590 | `		zBuf[nPath] = 0;` |
+|   147 | 12591 | `		if( pVfs->xIsdir(zBuf) == PH7_OK ){` |
 |     5 | 12592 | `			return PH7_VmThrowException(pCtx,"LogicException",` |
 |     - | 12593 | `				"Cannot use SplFileObject with directories");` |
 |     - | 12594 | `		}` |
-|    68 | 12595 | `	}` |
-|   141 | 12596 | `	if( nPath < 1 ){` |
-|     5 | 12597 | `		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");` |
+|    70 | 12595 | `	}` |
+|   149 | 12596 | `	if( nPath < 1 ){` |
+|     8 | 12597 | `		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");` |
 |     - | 12598 | `	}` |
-|   137 | 12599 | `	pCtxRes = pCtxArg` |
+|   143 | 12599 | `	pCtxRes = pCtxArg` |
 |     6 | 12600 | `		? PH7_StreamCtxFromArg(pCtx,iCtxArg,apCtx,iCtxArg - 1,"$context",0,&bThrew)` |
-|   133 | 12601 | `		: PH7_StreamCtxDefault(pVm);` |
-|   137 | 12602 | `	if( bThrew ){` |
+|   137 | 12601 | `		: PH7_StreamCtxDefault(pVm);` |
+|   143 | 12602 | `	if( bThrew ){` |
 |     5 | 12603 | `		return PH7_OK;` |
 |     - | 12604 | `	}` |
-|   133 | 12605 | `	pDev = PH7_StreamOpenPath(pCtx,pPath,zMode,nMode,bUseInclude,pCtxRes,pCtxArg,` |
+|   139 | 12605 | `	pDev = PH7_StreamOpenPath(pCtx,pPath,zMode,nMode,bUseInclude,pCtxRes,pCtxArg,` |
 |     - | 12606 | `		&iErr,&zErrUri);` |
-|   133 | 12607 | `	if( pDev == 0 ){` |
+|   139 | 12607 | `	if( pDev == 0 ){` |
 |     7 | 12608 | `		if( iErr == PH7_STREAM_OPEN_NODEVICE ){` |
 |   ! 0 | 12609 | `			int nScheme = 0;` |
 |   ! 0 | 12610 | `			if( PH7_VmStreamDeviceIsRemoteHost(zPath,nPath,&nScheme) ){` |
@@ -12638,875 +12638,880 @@ Coverage: 7583/8435 lines (89.90%)
 |     2 | 12628 | `			"%s(%s): Failed to open stream: %s",ph7_function_name(pCtx),` |
 |     4 | 12629 | `			zErrUri ? zErrUri : "",VfsStrerror(errno));` |
 |     - | 12630 | `	}` |
-|   127 | 12631 | `	pSlot = PH7_NativeAttr(pThis,SFO_H);` |
-|   127 | 12632 | `	if( pSlot == 0 ){` |
+|   133 | 12631 | `	pSlot = PH7_NativeAttr(pThis,SFO_H);` |
+|   133 | 12632 | `	if( pSlot == 0 ){` |
 |   ! 0 | 12633 | `		PH7_StreamCloseHandle(pDev->pStream,pDev->pHandle);` |
 |   ! 0 | 12634 | `		MarkIOPrivateClosed(pDev);` |
 |   ! 0 | 12635 | `		return PH7_ContextMemoryError(pCtx);` |
 |     - | 12636 | `	}` |
-|   127 | 12637 | `	PH7_MemObjRelease(pSlot);` |
-|   127 | 12638 | `	pSlot->x.pOther = pDev;` |
-|   127 | 12639 | `	MemObjSetType(pSlot,MEMOBJ_RES);` |
-|   127 | 12640 | `	PH7_NativeSetAttrStr(pVm,pThis,SFO_M,zMode,nMode);` |
-|   127 | 12641 | `	SfiSetName(pVm,pThis,zPath,nPath);` |
-|   127 | 12642 | `	return PH7_OK;` |
-|    76 | 12643 | `}` |
-|     - | 12644 | `/* The class's teardown: php closes the stream with the OBJECT, which is when a` |
-|     - | 12645 | ` * file written through one gets its last bytes. */` |
-|   144 | 12646 | `static void SfoRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     1 | 12647 | `{` |
-|   145 | 12648 | `	io_private *pDev = SfoDev(pThis);` |
-|    72 | 12649 | `	SXUNUSED(pVm);` |
-|   145 | 12650 | `	if( pDev == 0 ){` |
-|    19 | 12651 | `		return;` |
-|     - | 12652 | `	}` |
-|   127 | 12653 | `	PH7_StreamFilterReleaseChains(pDev);` |
-|   127 | 12654 | `	PH7_StreamCloseHandle(pDev->pStream,pDev->pHandle);` |
-|   127 | 12655 | `	MarkIOPrivateClosed(pDev);` |
-|    73 | 12656 | `}` |
-|     - | 12657 | `/*` |
-|     - | 12658 | ` * SplFileObject::__construct(string $filename, string $mode = 'r',` |
-|     - | 12659 | ` *                            bool $useIncludePath = false, $context = null)` |
-|     - | 12660 | ` */` |
-|   100 | 12661 | `static int vm_builtin_SplFileObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12662 | `{` |
-|   101 | 12663 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   101 | 12664 | `	const char *zMode = "r";` |
-|   101 | 12665 | `	int nMode = 1;` |
-|   101 | 12666 | `	if( pThis == 0 \|\| nArg < 1 ){` |
-|   ! 0 | 12667 | `		return PH7_OK;` |
-|     - | 12668 | `	}` |
-|   101 | 12669 | `	if( nArg > 1 ){` |
-|    13 | 12670 | `		zMode = ph7_value_to_string(apArg[1],&nMode);` |
-|     6 | 12671 | `	}` |
-|   153 | 12672 | `	return SfoOpen(pCtx,pThis,apArg[0],zMode,nMode,` |
-|    51 | 12673 | `		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,` |
-|    51 | 12674 | `		nArg > 3 && (apArg[3]->iFlags & MEMOBJ_NULL) == 0 ? apArg[3] : 0,4);` |
-|    51 | 12675 | `}` |
-|     - | 12676 | `/*` |
-|     - | 12677 | ` * SplTempFileObject::__construct(int $maxMemory = 2097152)` |
-|     - | 12678 | ` *` |
-|     - | 12679 | `` * php builds a php:// URI from the argument and opens it `wb`, and the three`` |
-|     - | 12680 | ` * arms are visible from outside because getPathname() answers the URI: a` |
-|     - | 12681 | `` * NEGATIVE budget is `php://memory` (never spilled to disk), a budget NAMED is`` |
-|     - | 12682 | `` * `php://temp/maxmemory:N` -- including 0, which spills immediately -- and no`` |
-|     - | 12683 | `` * argument at all is a plain `php://temp` carrying php's own default. The path`` |
-|     - | 12684 | `` * is the EMPTY string rather than the `php:/` a URI's last slash would cut.`` |
-|     - | 12685 | ` */` |
-|    24 | 12686 | `static int vm_builtin_SplTempFileObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12687 | `{` |
-|    25 | 12688 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    25 | 12689 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    25 | 12690 | `	sxi64 iMax = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
-|     - | 12691 | `	ph7_value sUri;` |
-|     - | 12692 | `	sxi32 rc;` |
-|    25 | 12693 | `	if( pThis == 0 ){` |
-|   ! 0 | 12694 | `		return PH7_OK;` |
-|     - | 12695 | `	}` |
-|    25 | 12696 | `	PH7_MemObjInitFromString(pVm,&sUri,0);` |
-|    25 | 12697 | `	if( iMax < 0 ){` |
-|     3 | 12698 | `		PH7_MemObjStringAppend(&sUri,"php://memory",sizeof("php://memory")-1);` |
-|    24 | 12699 | `	}else if( nArg > 0 ){` |
-|     - | 12700 | `		char zBuf[64];` |
-|     5 | 12701 | `		int n = SyBufferFormat(zBuf,sizeof(zBuf),"php://temp/maxmemory:%qd",iMax);` |
-|     5 | 12702 | `		PH7_MemObjStringAppend(&sUri,zBuf,(sxu32)n);` |
-|     3 | 12703 | `	}else{` |
-|    19 | 12704 | `		PH7_MemObjStringAppend(&sUri,"php://temp",sizeof("php://temp")-1);` |
-|     - | 12705 | `	}` |
-|    25 | 12706 | `	rc = SfoOpen(pCtx,pThis,&sUri,"wb",2,FALSE,0,0);` |
-|    25 | 12707 | `	PH7_MemObjRelease(&sUri);` |
-|    25 | 12708 | `	if( rc == PH7_OK ){` |
-|    23 | 12709 | `		PH7_NativeSetAttrStr(pVm,pThis,SFI_P,"",0);` |
-|    11 | 12710 | `	}` |
-|    25 | 12711 | `	return rc;` |
-|    13 | 12712 | `}` |
-|     - | 12713 | `/* The guard every method below opens with: the handle, or the refusal. */` |
-|   466 | 12714 | `static io_private * SfoNeed(ph7_context *pCtx,sxi32 *pRc)` |
-|     1 | 12715 | `{` |
-|   467 | 12716 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   467 | 12717 | `	io_private *pDev = SfoDev(pThis);` |
-|   467 | 12718 | `	*pRc = PH7_OK;` |
-|   467 | 12719 | `	if( pDev == 0 ){` |
-|     5 | 12720 | `		*pRc = PH7_VmThrowException(pCtx,"Error",` |
-|     - | 12721 | `			"The parent constructor was not called: the object is in an invalid state");` |
-|     2 | 12722 | `	}` |
-|   467 | 12723 | `	return pDev;` |
-|     1 | 12724 | `}` |
-|    26 | 12725 | `static int vm_builtin_SplFileObject_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12726 | `{` |
-|     - | 12727 | `	sxi32 rc;` |
-|    13 | 12728 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|    27 | 12729 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 12730 | `		return rc;` |
-|     - | 12731 | `	}` |
-|    27 | 12732 | `	return SfoRewind(pCtx);` |
-|    14 | 12733 | `}` |
-|    18 | 12734 | `static int vm_builtin_SplFileObject_eof(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12735 | `{` |
-|     - | 12736 | `	sxi32 rc;` |
-|    19 | 12737 | `	io_private *pDev = SfoNeed(pCtx,&rc);` |
-|     9 | 12738 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|    19 | 12739 | `	if( pDev == 0 ){` |
-|   ! 0 | 12740 | `		return rc;` |
-|     - | 12741 | `	}` |
-|    19 | 12742 | `	ph7_result_bool(pCtx,PH7_StreamAtEof(pDev) != 0);` |
-|    19 | 12743 | `	return PH7_OK;` |
-|    10 | 12744 | `}` |
-|     - | 12745 | `/* php's valid(): the LINE decides under READ_AHEAD, the stream otherwise. */` |
-|   122 | 12746 | `static int vm_builtin_SplFileObject_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12747 | `{` |
-|   123 | 12748 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 12749 | `	sxi32 rc;` |
-|     - | 12750 | `	io_private *pDev;` |
-|    61 | 12751 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|   123 | 12752 | `	if( SfoIsChecked(pCtx->pVm,pThis) && SfoDev(pThis) == 0 ){` |
-|   ! 0 | 12753 | `		return PH7_VmThrowException(pCtx,"Error",` |
-|     - | 12754 | `			"The parent constructor was not called: the object is in an invalid state");` |
-|     - | 12755 | `	}` |
-|   123 | 12756 | `	if( SfoFlags(pThis) & SFO_READ_AHEAD ){` |
-|    25 | 12757 | `		ph7_result_bool(pCtx,PH7_NativeAttrInt(pThis,SFO_LS) != 0);` |
-|    25 | 12758 | `		return PH7_OK;` |
-|     - | 12759 | `	}` |
-|    99 | 12760 | `	pDev = SfoNeed(pCtx,&rc);` |
-|    99 | 12761 | `	if( pDev == 0 ){` |
-|   ! 0 | 12762 | `		return rc;` |
-|     - | 12763 | `	}` |
-|    99 | 12764 | `	ph7_result_bool(pCtx,PH7_StreamAtEof(pDev) == 0);` |
-|    99 | 12765 | `	return PH7_OK;` |
-|    62 | 12766 | `}` |
-|     - | 12767 | `/* php's fgets(), which is also this class's getCurrentLine(): a LOUD read that` |
-|     - | 12768 | ` * always advances the line number. */` |
-|    42 | 12769 | `static int vm_builtin_SplFileObject_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12770 | `{` |
-|    43 | 12771 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 12772 | `	sxi32 rc;` |
-|    43 | 12773 | `	int nLine = 0;` |
-|     - | 12774 | `	const char *zLine;` |
-|    21 | 12775 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|    43 | 12776 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|     3 | 12777 | `		return rc;` |
-|     - | 12778 | `	}` |
-|    41 | 12779 | `	if( SfoReadEx(pCtx,FALSE,1,FALSE,&rc) != SFO_READ_OK ){` |
-|     3 | 12780 | `		return rc;` |
-|     - | 12781 | `	}` |
-|    39 | 12782 | `	zLine = SfoLine(pThis,&nLine);` |
-|    39 | 12783 | `	ph7_result_string(pCtx,zLine,nLine);` |
-|    39 | 12784 | `	return PH7_OK;` |
-|    22 | 12785 | `}` |
-|     - | 12786 | `/*` |
-|     - | 12787 | ` * php's current(): read one line if nothing is held, then pick between the two` |
-|     - | 12788 | ` * current values -- the STRING wins unless READ_CSV has an array beside it.` |
-|     - | 12789 | ` */` |
-|   110 | 12790 | `static int vm_builtin_SplFileObject_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12791 | `{` |
-|   111 | 12792 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 12793 | `	sxi32 rc;` |
-|     - | 12794 | `	sxi64 iHas;` |
-|    55 | 12795 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|   111 | 12796 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|     3 | 12797 | `		return rc;` |
-|     - | 12798 | `	}` |
-|   109 | 12799 | `	if( PH7_NativeAttrInt(pThis,SFO_LS) == 0 ){` |
-|    87 | 12800 | `		if( SfoReadLine(pCtx,TRUE,&rc) == SFO_READ_THROW ){` |
-|   ! 0 | 12801 | `			return rc;` |
-|     - | 12802 | `		}` |
-|    43 | 12803 | `	}` |
-|   109 | 12804 | `	iHas = PH7_NativeAttrInt(pThis,SFO_LS);` |
-|   108 | 12805 | `	if( (iHas & SFO_HAS_LINE)` |
-|   147 | 12806 | `	 && (!(SfoFlags(pThis) & SFO_READ_CSV) \|\| (iHas & SFO_HAS_ZVAL) == 0) ){` |
-|    85 | 12807 | `		int nLine = 0;` |
-|    85 | 12808 | `		const char *zLine = SfoLine(pThis,&nLine);` |
-|    85 | 12809 | `		ph7_result_string(pCtx,zLine,nLine);` |
-|    67 | 12810 | `	}else if( iHas & SFO_HAS_ZVAL ){` |
-|    17 | 12811 | `		ph7_value *pZ = PH7_NativeAttr(pThis,SFO_Z);` |
-|    17 | 12812 | `		if( pZ ){` |
-|    17 | 12813 | `			ph7_result_value(pCtx,pZ);` |
-|     9 | 12814 | `		}else{` |
-|   ! 0 | 12815 | `			ph7_result_bool(pCtx,0);` |
-|     - | 12816 | `		}` |
-|     9 | 12817 | `	}else{` |
-|     9 | 12818 | `		ph7_result_bool(pCtx,0);` |
-|     - | 12819 | `	}` |
-|   109 | 12820 | `	return PH7_OK;` |
-|    56 | 12821 | `}` |
-|     - | 12822 | `/* php's key(): the stored count, deliberately WITHOUT reading ahead -- which is` |
-|     - | 12823 | ` * what lets fgetc() count newlines instead of lines. */` |
-|   126 | 12824 | `static int vm_builtin_SplFileObject_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12825 | `{` |
-|     - | 12826 | `	sxi32 rcChk;` |
-|    63 | 12827 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|   127 | 12828 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|     3 | 12829 | `		return rcChk;` |
-|     - | 12830 | `	}` |
-|   125 | 12831 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SFO_K));` |
-|   125 | 12832 | `	return PH7_OK;` |
-|    64 | 12833 | `}` |
-|   100 | 12834 | `static int vm_builtin_SplFileObject_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12835 | `{` |
-|   101 | 12836 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   101 | 12837 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 12838 | `	sxi32 rc;` |
-|    50 | 12839 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|   101 | 12840 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 12841 | `		return rc;` |
-|     - | 12842 | `	}` |
-|   101 | 12843 | `	SfoFreeLine(pVm,pThis);` |
-|   101 | 12844 | `	if( SfoFlags(pThis) & SFO_READ_AHEAD ){` |
-|    21 | 12845 | `		if( SfoReadLine(pCtx,TRUE,&rc) == SFO_READ_THROW ){` |
-|   ! 0 | 12846 | `			return rc;` |
-|     - | 12847 | `		}` |
-|    10 | 12848 | `	}` |
-|   101 | 12849 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);` |
-|   101 | 12850 | `	return PH7_OK;` |
-|    51 | 12851 | `}` |
-|    18 | 12852 | `static int vm_builtin_SplFileObject_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12853 | `{` |
-|     - | 12854 | `	sxi32 rcChk;` |
-|    19 | 12855 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 12856 | `		return rcChk;` |
-|     - | 12857 | `	}` |
-|     - | 12858 | `	/* php stores the WHOLE word and masks only on the way out. */` |
-|    37 | 12859 | `	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SFO_FL,` |
-|    18 | 12860 | `		nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0);` |
-|    19 | 12861 | `	return PH7_OK;` |
-|    10 | 12862 | `}` |
-|     4 | 12863 | `static int vm_builtin_SplFileObject_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12864 | `{` |
-|     - | 12865 | `	sxi32 rcChk;` |
-|     2 | 12866 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     5 | 12867 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 12868 | `		return rcChk;` |
-|     - | 12869 | `	}` |
-|     5 | 12870 | `	ph7_result_int64(pCtx,SfoFlags(PH7_ContextThis(pCtx)) & SFO_FLAGS_MASK);` |
-|     5 | 12871 | `	return PH7_OK;` |
-|     3 | 12872 | `}` |
-|     4 | 12873 | `static int vm_builtin_SplFileObject_setMaxLineLen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12874 | `{` |
-|     5 | 12875 | `	sxi64 iLen = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
-|     - | 12876 | `	sxi32 rcChk;` |
-|     5 | 12877 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 12878 | `		return rcChk;` |
-|     - | 12879 | `	}` |
-|     5 | 12880 | `	if( iLen < 0 ){` |
-|     4 | 12881 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - | 12882 | `			"%s(): Argument #1 ($maxLength) must be greater than or equal to 0",` |
-|     1 | 12883 | `			ph7_function_name(pCtx));` |
+|   133 | 12637 | `	PH7_MemObjRelease(pSlot);` |
+|   133 | 12638 | `	pSlot->x.pOther = pDev;` |
+|   133 | 12639 | `	MemObjSetType(pSlot,MEMOBJ_RES);` |
+|     - | 12640 | `	/* The slot is written straight rather than through ph7_value_resource(), so` |
+|     - | 12641 | `	 * it takes the handle's first count here -- see io_private.nValRef. */` |
+|   133 | 12642 | `	if( PH7_StreamValueRef(pDev) ){` |
+|   133 | 12643 | `		pSlot->iFlags \|= MEMOBJ_STREAMRES;` |
+|    65 | 12644 | `	}` |
+|   133 | 12645 | `	PH7_NativeSetAttrStr(pVm,pThis,SFO_M,zMode,nMode);` |
+|   133 | 12646 | `	SfiSetName(pVm,pThis,zPath,nPath);` |
+|   133 | 12647 | `	return PH7_OK;` |
+|    81 | 12648 | `}` |
+|     - | 12649 | `/* The class's teardown: php closes the stream with the OBJECT, which is when a` |
+|     - | 12650 | ` * file written through one gets its last bytes. */` |
+|   150 | 12651 | `static void SfoRelease(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     3 | 12652 | `{` |
+|   153 | 12653 | `	io_private *pDev = SfoDev(pThis);` |
+|    75 | 12654 | `	SXUNUSED(pVm);` |
+|   153 | 12655 | `	if( pDev == 0 ){` |
+|    22 | 12656 | `		return;` |
+|     - | 12657 | `	}` |
+|   133 | 12658 | `	PH7_StreamFilterReleaseChains(pDev);` |
+|   133 | 12659 | `	PH7_StreamCloseHandle(pDev->pStream,pDev->pHandle);` |
+|   133 | 12660 | `	MarkIOPrivateClosed(pDev);` |
+|    78 | 12661 | `}` |
+|     - | 12662 | `/*` |
+|     - | 12663 | ` * SplFileObject::__construct(string $filename, string $mode = 'r',` |
+|     - | 12664 | ` *                            bool $useIncludePath = false, $context = null)` |
+|     - | 12665 | ` */` |
+|   104 | 12666 | `static int vm_builtin_SplFileObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 | 12667 | `{` |
+|   107 | 12668 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   107 | 12669 | `	const char *zMode = "r";` |
+|   107 | 12670 | `	int nMode = 1;` |
+|   107 | 12671 | `	if( pThis == 0 \|\| nArg < 1 ){` |
+|   ! 0 | 12672 | `		return PH7_OK;` |
+|     - | 12673 | `	}` |
+|   107 | 12674 | `	if( nArg > 1 ){` |
+|    16 | 12675 | `		zMode = ph7_value_to_string(apArg[1],&nMode);` |
+|     7 | 12676 | `	}` |
+|   161 | 12677 | `	return SfoOpen(pCtx,pThis,apArg[0],zMode,nMode,` |
+|    53 | 12678 | `		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,` |
+|    53 | 12679 | `		nArg > 3 && (apArg[3]->iFlags & MEMOBJ_NULL) == 0 ? apArg[3] : 0,4);` |
+|    55 | 12680 | `}` |
+|     - | 12681 | `/*` |
+|     - | 12682 | ` * SplTempFileObject::__construct(int $maxMemory = 2097152)` |
+|     - | 12683 | ` *` |
+|     - | 12684 | `` * php builds a php:// URI from the argument and opens it `wb`, and the three`` |
+|     - | 12685 | ` * arms are visible from outside because getPathname() answers the URI: a` |
+|     - | 12686 | `` * NEGATIVE budget is `php://memory` (never spilled to disk), a budget NAMED is`` |
+|     - | 12687 | `` * `php://temp/maxmemory:N` -- including 0, which spills immediately -- and no`` |
+|     - | 12688 | `` * argument at all is a plain `php://temp` carrying php's own default. The path`` |
+|     - | 12689 | `` * is the EMPTY string rather than the `php:/` a URI's last slash would cut.`` |
+|     - | 12690 | ` */` |
+|    26 | 12691 | `static int vm_builtin_SplTempFileObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 12692 | `{` |
+|    28 | 12693 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    28 | 12694 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    28 | 12695 | `	sxi64 iMax = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
+|     - | 12696 | `	ph7_value sUri;` |
+|     - | 12697 | `	sxi32 rc;` |
+|    28 | 12698 | `	if( pThis == 0 ){` |
+|   ! 0 | 12699 | `		return PH7_OK;` |
+|     - | 12700 | `	}` |
+|    28 | 12701 | `	PH7_MemObjInitFromString(pVm,&sUri,0);` |
+|    28 | 12702 | `	if( iMax < 0 ){` |
+|     3 | 12703 | `		PH7_MemObjStringAppend(&sUri,"php://memory",sizeof("php://memory")-1);` |
+|    27 | 12704 | `	}else if( nArg > 0 ){` |
+|     - | 12705 | `		char zBuf[64];` |
+|     5 | 12706 | `		int n = SyBufferFormat(zBuf,sizeof(zBuf),"php://temp/maxmemory:%qd",iMax);` |
+|     5 | 12707 | `		PH7_MemObjStringAppend(&sUri,zBuf,(sxu32)n);` |
+|     3 | 12708 | `	}else{` |
+|    22 | 12709 | `		PH7_MemObjStringAppend(&sUri,"php://temp",sizeof("php://temp")-1);` |
+|     - | 12710 | `	}` |
+|    28 | 12711 | `	rc = SfoOpen(pCtx,pThis,&sUri,"wb",2,FALSE,0,0);` |
+|    28 | 12712 | `	PH7_MemObjRelease(&sUri);` |
+|    28 | 12713 | `	if( rc == PH7_OK ){` |
+|    26 | 12714 | `		PH7_NativeSetAttrStr(pVm,pThis,SFI_P,"",0);` |
+|    12 | 12715 | `	}` |
+|    28 | 12716 | `	return rc;` |
+|    15 | 12717 | `}` |
+|     - | 12718 | `/* The guard every method below opens with: the handle, or the refusal. */` |
+|   470 | 12719 | `static io_private * SfoNeed(ph7_context *pCtx,sxi32 *pRc)` |
+|     2 | 12720 | `{` |
+|   472 | 12721 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   472 | 12722 | `	io_private *pDev = SfoDev(pThis);` |
+|   472 | 12723 | `	*pRc = PH7_OK;` |
+|   472 | 12724 | `	if( pDev == 0 ){` |
+|     5 | 12725 | `		*pRc = PH7_VmThrowException(pCtx,"Error",` |
+|     - | 12726 | `			"The parent constructor was not called: the object is in an invalid state");` |
+|     2 | 12727 | `	}` |
+|   472 | 12728 | `	return pDev;` |
+|     2 | 12729 | `}` |
+|    26 | 12730 | `static int vm_builtin_SplFileObject_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12731 | `{` |
+|     - | 12732 | `	sxi32 rc;` |
+|    13 | 12733 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|    27 | 12734 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 12735 | `		return rc;` |
+|     - | 12736 | `	}` |
+|    27 | 12737 | `	return SfoRewind(pCtx);` |
+|    14 | 12738 | `}` |
+|    18 | 12739 | `static int vm_builtin_SplFileObject_eof(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12740 | `{` |
+|     - | 12741 | `	sxi32 rc;` |
+|    19 | 12742 | `	io_private *pDev = SfoNeed(pCtx,&rc);` |
+|     9 | 12743 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|    19 | 12744 | `	if( pDev == 0 ){` |
+|   ! 0 | 12745 | `		return rc;` |
+|     - | 12746 | `	}` |
+|    19 | 12747 | `	ph7_result_bool(pCtx,PH7_StreamAtEof(pDev) != 0);` |
+|    19 | 12748 | `	return PH7_OK;` |
+|    10 | 12749 | `}` |
+|     - | 12750 | `/* php's valid(): the LINE decides under READ_AHEAD, the stream otherwise. */` |
+|   122 | 12751 | `static int vm_builtin_SplFileObject_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12752 | `{` |
+|   123 | 12753 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 12754 | `	sxi32 rc;` |
+|     - | 12755 | `	io_private *pDev;` |
+|    61 | 12756 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|   123 | 12757 | `	if( SfoIsChecked(pCtx->pVm,pThis) && SfoDev(pThis) == 0 ){` |
+|   ! 0 | 12758 | `		return PH7_VmThrowException(pCtx,"Error",` |
+|     - | 12759 | `			"The parent constructor was not called: the object is in an invalid state");` |
+|     - | 12760 | `	}` |
+|   123 | 12761 | `	if( SfoFlags(pThis) & SFO_READ_AHEAD ){` |
+|    25 | 12762 | `		ph7_result_bool(pCtx,PH7_NativeAttrInt(pThis,SFO_LS) != 0);` |
+|    25 | 12763 | `		return PH7_OK;` |
+|     - | 12764 | `	}` |
+|    99 | 12765 | `	pDev = SfoNeed(pCtx,&rc);` |
+|    99 | 12766 | `	if( pDev == 0 ){` |
+|   ! 0 | 12767 | `		return rc;` |
+|     - | 12768 | `	}` |
+|    99 | 12769 | `	ph7_result_bool(pCtx,PH7_StreamAtEof(pDev) == 0);` |
+|    99 | 12770 | `	return PH7_OK;` |
+|    62 | 12771 | `}` |
+|     - | 12772 | `/* php's fgets(), which is also this class's getCurrentLine(): a LOUD read that` |
+|     - | 12773 | ` * always advances the line number. */` |
+|    42 | 12774 | `static int vm_builtin_SplFileObject_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12775 | `{` |
+|    43 | 12776 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 12777 | `	sxi32 rc;` |
+|    43 | 12778 | `	int nLine = 0;` |
+|     - | 12779 | `	const char *zLine;` |
+|    21 | 12780 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|    43 | 12781 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|     3 | 12782 | `		return rc;` |
+|     - | 12783 | `	}` |
+|    41 | 12784 | `	if( SfoReadEx(pCtx,FALSE,1,FALSE,&rc) != SFO_READ_OK ){` |
+|     3 | 12785 | `		return rc;` |
+|     - | 12786 | `	}` |
+|    39 | 12787 | `	zLine = SfoLine(pThis,&nLine);` |
+|    39 | 12788 | `	ph7_result_string(pCtx,zLine,nLine);` |
+|    39 | 12789 | `	return PH7_OK;` |
+|    22 | 12790 | `}` |
+|     - | 12791 | `/*` |
+|     - | 12792 | ` * php's current(): read one line if nothing is held, then pick between the two` |
+|     - | 12793 | ` * current values -- the STRING wins unless READ_CSV has an array beside it.` |
+|     - | 12794 | ` */` |
+|   110 | 12795 | `static int vm_builtin_SplFileObject_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12796 | `{` |
+|   111 | 12797 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 12798 | `	sxi32 rc;` |
+|     - | 12799 | `	sxi64 iHas;` |
+|    55 | 12800 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|   111 | 12801 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|     3 | 12802 | `		return rc;` |
+|     - | 12803 | `	}` |
+|   109 | 12804 | `	if( PH7_NativeAttrInt(pThis,SFO_LS) == 0 ){` |
+|    87 | 12805 | `		if( SfoReadLine(pCtx,TRUE,&rc) == SFO_READ_THROW ){` |
+|   ! 0 | 12806 | `			return rc;` |
+|     - | 12807 | `		}` |
+|    43 | 12808 | `	}` |
+|   109 | 12809 | `	iHas = PH7_NativeAttrInt(pThis,SFO_LS);` |
+|   108 | 12810 | `	if( (iHas & SFO_HAS_LINE)` |
+|   147 | 12811 | `	 && (!(SfoFlags(pThis) & SFO_READ_CSV) \|\| (iHas & SFO_HAS_ZVAL) == 0) ){` |
+|    85 | 12812 | `		int nLine = 0;` |
+|    85 | 12813 | `		const char *zLine = SfoLine(pThis,&nLine);` |
+|    85 | 12814 | `		ph7_result_string(pCtx,zLine,nLine);` |
+|    67 | 12815 | `	}else if( iHas & SFO_HAS_ZVAL ){` |
+|    17 | 12816 | `		ph7_value *pZ = PH7_NativeAttr(pThis,SFO_Z);` |
+|    17 | 12817 | `		if( pZ ){` |
+|    17 | 12818 | `			ph7_result_value(pCtx,pZ);` |
+|     9 | 12819 | `		}else{` |
+|   ! 0 | 12820 | `			ph7_result_bool(pCtx,0);` |
+|     - | 12821 | `		}` |
+|     9 | 12822 | `	}else{` |
+|     9 | 12823 | `		ph7_result_bool(pCtx,0);` |
+|     - | 12824 | `	}` |
+|   109 | 12825 | `	return PH7_OK;` |
+|    56 | 12826 | `}` |
+|     - | 12827 | `/* php's key(): the stored count, deliberately WITHOUT reading ahead -- which is` |
+|     - | 12828 | ` * what lets fgetc() count newlines instead of lines. */` |
+|   126 | 12829 | `static int vm_builtin_SplFileObject_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12830 | `{` |
+|     - | 12831 | `	sxi32 rcChk;` |
+|    63 | 12832 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|   127 | 12833 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|     3 | 12834 | `		return rcChk;` |
+|     - | 12835 | `	}` |
+|   125 | 12836 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SFO_K));` |
+|   125 | 12837 | `	return PH7_OK;` |
+|    64 | 12838 | `}` |
+|   100 | 12839 | `static int vm_builtin_SplFileObject_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12840 | `{` |
+|   101 | 12841 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   101 | 12842 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 12843 | `	sxi32 rc;` |
+|    50 | 12844 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|   101 | 12845 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 12846 | `		return rc;` |
+|     - | 12847 | `	}` |
+|   101 | 12848 | `	SfoFreeLine(pVm,pThis);` |
+|   101 | 12849 | `	if( SfoFlags(pThis) & SFO_READ_AHEAD ){` |
+|    21 | 12850 | `		if( SfoReadLine(pCtx,TRUE,&rc) == SFO_READ_THROW ){` |
+|   ! 0 | 12851 | `			return rc;` |
+|     - | 12852 | `		}` |
+|    10 | 12853 | `	}` |
+|   101 | 12854 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);` |
+|   101 | 12855 | `	return PH7_OK;` |
+|    51 | 12856 | `}` |
+|    18 | 12857 | `static int vm_builtin_SplFileObject_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12858 | `{` |
+|     - | 12859 | `	sxi32 rcChk;` |
+|    19 | 12860 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 12861 | `		return rcChk;` |
+|     - | 12862 | `	}` |
+|     - | 12863 | `	/* php stores the WHOLE word and masks only on the way out. */` |
+|    37 | 12864 | `	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SFO_FL,` |
+|    18 | 12865 | `		nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0);` |
+|    19 | 12866 | `	return PH7_OK;` |
+|    10 | 12867 | `}` |
+|     4 | 12868 | `static int vm_builtin_SplFileObject_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12869 | `{` |
+|     - | 12870 | `	sxi32 rcChk;` |
+|     2 | 12871 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     5 | 12872 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 12873 | `		return rcChk;` |
+|     - | 12874 | `	}` |
+|     5 | 12875 | `	ph7_result_int64(pCtx,SfoFlags(PH7_ContextThis(pCtx)) & SFO_FLAGS_MASK);` |
+|     5 | 12876 | `	return PH7_OK;` |
+|     3 | 12877 | `}` |
+|     6 | 12878 | `static int vm_builtin_SplFileObject_setMaxLineLen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 12879 | `{` |
+|     8 | 12880 | `	sxi64 iLen = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
+|     - | 12881 | `	sxi32 rcChk;` |
+|     8 | 12882 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 12883 | `		return rcChk;` |
 |     - | 12884 | `	}` |
-|     3 | 12885 | `	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SFO_ML,iLen);` |
-|     3 | 12886 | `	return PH7_OK;` |
-|     3 | 12887 | `}` |
-|     2 | 12888 | `static int vm_builtin_SplFileObject_getMaxLineLen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12889 | `{` |
-|     - | 12890 | `	sxi32 rcChk;` |
-|     1 | 12891 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     3 | 12892 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 12893 | `		return rcChk;` |
-|     - | 12894 | `	}` |
-|     3 | 12895 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SFO_ML));` |
-|     3 | 12896 | `	return PH7_OK;` |
-|     2 | 12897 | `}` |
-|     - | 12898 | `/* php's RecursiveIterator half: a file has no children and says so. */` |
-|     4 | 12899 | `static int vm_builtin_SplFileObject_hasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12900 | `{` |
-|     - | 12901 | `	sxi32 rcChk;` |
-|     2 | 12902 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     5 | 12903 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 12904 | `		return rcChk;` |
-|     - | 12905 | `	}` |
-|     5 | 12906 | `	ph7_result_bool(pCtx,0);` |
-|     5 | 12907 | `	return PH7_OK;` |
-|     3 | 12908 | `}` |
-|     4 | 12909 | `static int vm_builtin_SplFileObject_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12910 | `{` |
-|     - | 12911 | `	sxi32 rcChk;` |
-|     2 | 12912 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     5 | 12913 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 12914 | `		return rcChk;` |
-|     - | 12915 | `	}` |
-|     5 | 12916 | `	ph7_result_null(pCtx);` |
-|     5 | 12917 | `	return PH7_OK;` |
-|     3 | 12918 | `}` |
-|     - | 12919 | `/*` |
-|     - | 12920 | ` * php's fgetcsv(): the three arguments override this instance's settings for` |
-|     - | 12921 | ` * ONE call, and the argument NUMBERS are this spelling's own.` |
-|     - | 12922 | ` */` |
-|    12 | 12923 | `static int vm_builtin_SplFileObject_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12924 | `{` |
-|    13 | 12925 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 12926 | `	int delim,encl,escape;` |
-|     - | 12927 | `	sxi32 rc;` |
-|    13 | 12928 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 12929 | `		return rc;` |
-|     - | 12930 | `	}` |
-|    13 | 12931 | `	SfoCsvControl(pThis,&delim,&encl,&escape);` |
-|    13 | 12932 | `	if( nArg > 0 ){` |
-|    13 | 12933 | `		rc = PH7_CsvCharArg(pCtx,apArg[0],1,"separator",0,&delim);` |
-|    13 | 12934 | `		if( rc != PH7_OK ){` |
-|   ! 0 | 12935 | `			return rc;` |
-|     - | 12936 | `		}` |
-|     6 | 12937 | `	}` |
-|    13 | 12938 | `	if( nArg > 1 ){` |
-|    13 | 12939 | `		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"enclosure",0,&encl);` |
-|    13 | 12940 | `		if( rc != PH7_OK ){` |
-|     3 | 12941 | `			return rc;` |
-|     - | 12942 | `		}` |
-|     5 | 12943 | `	}` |
-|    11 | 12944 | `	if( nArg > 2 ){` |
-|    11 | 12945 | `		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"escape",1,&escape);` |
-|    11 | 12946 | `		if( rc != PH7_OK ){` |
-|   ! 0 | 12947 | `			return rc;` |
-|     - | 12948 | `		}` |
-|     5 | 12949 | `	}` |
-|     - | 12950 | `	{` |
-|     - | 12951 | `		ph7_value sOut;` |
-|     - | 12952 | `		int r;` |
-|    11 | 12953 | `		PH7_MemObjInit(pCtx->pVm,&sOut);` |
-|    11 | 12954 | `		r = SfoReadCsv(pCtx,delim,encl,escape,&sOut,TRUE,&rc);` |
-|    11 | 12955 | `		if( r == SFO_READ_OK ){` |
-|    11 | 12956 | `			ph7_result_value(pCtx,&sOut);` |
-|     5 | 12957 | `		}else if( r == SFO_READ_FAIL ){` |
-|   ! 0 | 12958 | `			ph7_result_bool(pCtx,0);` |
-|   ! 0 | 12959 | `		}` |
-|    11 | 12960 | `		PH7_MemObjRelease(&sOut);` |
-|    11 | 12961 | `		return r == SFO_READ_THROW ? rc : PH7_OK;` |
-|     - | 12962 | `	}` |
-|     7 | 12963 | `}` |
-|     - | 12964 | `/* php's fputcsv(): the same overrides, at the positions THIS method numbers. */` |
-|     4 | 12965 | `static int vm_builtin_SplFileObject_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 12966 | `{` |
-|     5 | 12967 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 12968 | `	ph7_value *apOut[6];` |
-|     - | 12969 | `	ph7_value sDelim,sEncl,sEsc;` |
-|     - | 12970 | `	int delim,encl,escape,nOut,r;` |
-|     - | 12971 | `	sxi32 rc;` |
-|     5 | 12972 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 12973 | `		return rc;` |
-|     - | 12974 | `	}` |
-|     5 | 12975 | `	if( nArg < 1 ){` |
-|   ! 0 | 12976 | `		return PH7_OK;` |
-|     - | 12977 | `	}` |
-|     5 | 12978 | `	SfoCsvControl(pThis,&delim,&encl,&escape);` |
-|     5 | 12979 | `	if( nArg > 1 ){` |
-|     5 | 12980 | `		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"separator",0,&delim);` |
-|     5 | 12981 | `		if( rc != PH7_OK ){` |
-|   ! 0 | 12982 | `			return rc;` |
-|     - | 12983 | `		}` |
-|     2 | 12984 | `	}` |
-|     5 | 12985 | `	if( nArg > 2 ){` |
-|     5 | 12986 | `		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"enclosure",0,&encl);` |
-|     5 | 12987 | `		if( rc != PH7_OK ){` |
-|     3 | 12988 | `			return rc;` |
-|     - | 12989 | `		}` |
-|     1 | 12990 | `	}` |
-|     3 | 12991 | `	if( nArg > 3 ){` |
-|     3 | 12992 | `		rc = PH7_CsvCharArg(pCtx,apArg[3],4,"escape",1,&escape);` |
-|     3 | 12993 | `		if( rc != PH7_OK ){` |
-|   ! 0 | 12994 | `			return rc;` |
-|     - | 12995 | `		}` |
-|     1 | 12996 | `	}` |
-|     - | 12997 | `	/* The writer lives in vfs_stream.c and takes the three as STRINGS, at` |
-|     - | 12998 | `	 * fputcsv()'s own positions; the settings resolved above are handed over in` |
-|     - | 12999 | `	 * that shape rather than re-parsed there. */` |
-|     3 | 13000 | `	PH7_MemObjInitFromString(pCtx->pVm,&sDelim,0);` |
-|     3 | 13001 | `	PH7_MemObjInitFromString(pCtx->pVm,&sEncl,0);` |
-|     3 | 13002 | `	PH7_MemObjInitFromString(pCtx->pVm,&sEsc,0);` |
-|     - | 13003 | `	{` |
-|     3 | 13004 | `		char c = (char)delim;` |
-|     3 | 13005 | `		PH7_MemObjStringAppend(&sDelim,&c,sizeof(char));` |
-|     3 | 13006 | `		c = (char)encl;` |
-|     3 | 13007 | `		PH7_MemObjStringAppend(&sEncl,&c,sizeof(char));` |
-|     3 | 13008 | `		if( escape != PH7_CSV_NO_ESCAPE ){` |
-|     3 | 13009 | `			c = (char)escape;` |
-|     3 | 13010 | `			PH7_MemObjStringAppend(&sEsc,&c,sizeof(char));` |
-|     1 | 13011 | `		}` |
-|     - | 13012 | `	}` |
-|     3 | 13013 | `	apOut[0] = PH7_NativeAttr(pThis,SFO_H);` |
-|     3 | 13014 | `	apOut[1] = apArg[0];` |
-|     3 | 13015 | `	apOut[2] = &sDelim;` |
-|     3 | 13016 | `	apOut[3] = &sEncl;` |
-|     3 | 13017 | `	apOut[4] = &sEsc;` |
-|     3 | 13018 | `	nOut = 5;` |
-|     3 | 13019 | `	if( nArg > 4 ){` |
-|     3 | 13020 | `		apOut[5] = apArg[4];` |
-|     3 | 13021 | `		nOut = 6;` |
-|     1 | 13022 | `	}` |
-|     3 | 13023 | `	r = PH7_builtin_fputcsv(pCtx,nOut,apOut);` |
-|     3 | 13024 | `	PH7_MemObjRelease(&sDelim);` |
-|     3 | 13025 | `	PH7_MemObjRelease(&sEncl);` |
-|     3 | 13026 | `	PH7_MemObjRelease(&sEsc);` |
-|     3 | 13027 | `	return r;` |
-|     3 | 13028 | `}` |
-|     4 | 13029 | `static int vm_builtin_SplFileObject_setCsvControl(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13030 | `{` |
-|     5 | 13031 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     5 | 13032 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     5 | 13033 | `	int delim = ',',encl = '"',escape = '\\';` |
-|     - | 13034 | `	sxi32 rc,rcChk;` |
-|     5 | 13035 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 13036 | `		return rcChk;` |
-|     - | 13037 | `	}` |
-|     5 | 13038 | `	if( nArg > 0 ){` |
-|     5 | 13039 | `		rc = PH7_CsvCharArg(pCtx,apArg[0],1,"separator",0,&delim);` |
-|     5 | 13040 | `		if( rc != PH7_OK ){` |
-|     3 | 13041 | `			return rc;` |
-|     - | 13042 | `		}` |
-|     1 | 13043 | `	}` |
-|     3 | 13044 | `	if( nArg > 1 ){` |
-|     3 | 13045 | `		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"enclosure",0,&encl);` |
-|     3 | 13046 | `		if( rc != PH7_OK ){` |
-|   ! 0 | 13047 | `			return rc;` |
-|     - | 13048 | `		}` |
-|     1 | 13049 | `	}` |
-|     3 | 13050 | `	if( nArg > 2 ){` |
-|     3 | 13051 | `		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"escape",1,&escape);` |
-|     3 | 13052 | `		if( rc != PH7_OK ){` |
-|   ! 0 | 13053 | `			return rc;` |
-|     - | 13054 | `		}` |
-|     - | 13055 | `		/* Naming the escape at all is what stops php's deprecation notice. */` |
-|     3 | 13056 | `		PH7_NativeSetAttrInt(pVm,pThis,SFO_ED,0);` |
-|     1 | 13057 | `	}` |
-|     3 | 13058 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_D,delim);` |
-|     3 | 13059 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_EN,encl);` |
-|     3 | 13060 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_ES,escape);` |
-|     3 | 13061 | `	return PH7_OK;` |
-|     3 | 13062 | `}` |
-|     4 | 13063 | `static int vm_builtin_SplFileObject_getCsvControl(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13064 | `{` |
-|     5 | 13065 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 13066 | `	ph7_value *pArr,*pVal;` |
-|     - | 13067 | `	int delim,encl,escape;` |
-|     - | 13068 | `	char c;` |
-|     - | 13069 | `	sxi32 rcChk;` |
-|     2 | 13070 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     5 | 13071 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 13072 | `		return rcChk;` |
-|     - | 13073 | `	}` |
-|     5 | 13074 | `	SfoCsvControl(pThis,&delim,&encl,&escape);` |
-|     5 | 13075 | `	pArr = ph7_context_new_array(pCtx);` |
-|     5 | 13076 | `	pVal = ph7_context_new_scalar(pCtx);` |
-|     5 | 13077 | `	if( pArr == 0 \|\| pVal == 0 ){` |
-|   ! 0 | 13078 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - | 13079 | `	}` |
-|     5 | 13080 | `	c = (char)delim;` |
-|     5 | 13081 | `	ph7_value_string(pVal,&c,1);` |
-|     5 | 13082 | `	ph7_array_add_elem(pArr,0,pVal);` |
-|     5 | 13083 | `	ph7_value_reset_string_cursor(pVal);` |
-|     5 | 13084 | `	c = (char)encl;` |
-|     5 | 13085 | `	ph7_value_string(pVal,&c,1);` |
-|     5 | 13086 | `	ph7_array_add_elem(pArr,0,pVal);` |
-|     5 | 13087 | `	ph7_value_reset_string_cursor(pVal);` |
-|     - | 13088 | `	/* A disabled escape is reported as the EMPTY string, not as a byte. */` |
-|     5 | 13089 | `	if( escape != PH7_CSV_NO_ESCAPE ){` |
-|     3 | 13090 | `		c = (char)escape;` |
-|     3 | 13091 | `		ph7_value_string(pVal,&c,1);` |
-|     2 | 13092 | `	}else{` |
-|     3 | 13093 | `		ph7_value_string(pVal,"",0);` |
-|     - | 13094 | `	}` |
-|     5 | 13095 | `	ph7_array_add_elem(pArr,0,pVal);` |
-|     5 | 13096 | `	ph7_result_value(pCtx,pArr);` |
-|     5 | 13097 | `	return PH7_OK;` |
-|     3 | 13098 | `}` |
-|     - | 13099 | `/*` |
-|     - | 13100 | ` * The eight methods that are the corresponding builtin over this object's own` |
-|     - | 13101 | ` * handle. Each pre-validates what php validates IN THE METHOD -- the argument` |
-|     - | 13102 | ` * numbers are the method's, one lower than the function's -- and then hands the` |
-|     - | 13103 | ` * work to the one implementation there is. Every diagnostic the builtin raises` |
-|     - | 13104 | ` * itself is worded from ph7_function_name(), which in here is the qualified` |
-|     - | 13105 | ` * method name php prints.` |
-|     - | 13106 | ` */` |
-|    32 | 13107 | `static int SfoDelegate(ph7_context *pCtx,int nArg,ph7_value **apArg,` |
-|     - | 13108 | `	int (*xFunc)(ph7_context *,int,ph7_value **))` |
-|     1 | 13109 | `{` |
-|     - | 13110 | `	ph7_value *apOut[8];` |
-|     - | 13111 | `	sxi32 rc;` |
-|     - | 13112 | `	int i;` |
-|    33 | 13113 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 13114 | `		return rc;` |
-|     - | 13115 | `	}` |
-|    33 | 13116 | `	if( nArg > (int)(SX_ARRAYSIZE(apOut) - 1) ){` |
-|   ! 0 | 13117 | `		nArg = (int)(SX_ARRAYSIZE(apOut) - 1);` |
-|   ! 0 | 13118 | `	}` |
-|    33 | 13119 | `	apOut[0] = PH7_NativeAttr(PH7_ContextThis(pCtx),SFO_H);` |
-|    61 | 13120 | `	for( i = 0 ; i < nArg ; ++i ){` |
-|    29 | 13121 | `		apOut[i+1] = apArg[i];` |
-|    15 | 13122 | `	}` |
-|    33 | 13123 | `	return xFunc(pCtx,nArg + 1,apOut);` |
-|    17 | 13124 | `}` |
-|   ! 0 | 13125 | `static int vm_builtin_SplFileObject_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|   ! 0 | 13126 | `{` |
-|   ! 0 | 13127 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fflush);` |
-|   ! 0 | 13128 | `}` |
-|     6 | 13129 | `static int vm_builtin_SplFileObject_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13130 | `{` |
-|     7 | 13131 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_ftell);` |
-|     1 | 13132 | `}` |
-|     2 | 13133 | `static int vm_builtin_SplFileObject_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13134 | `{` |
-|     3 | 13135 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fstat);` |
-|     1 | 13136 | `}` |
-|     2 | 13137 | `static int vm_builtin_SplFileObject_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13138 | `{` |
-|     3 | 13139 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fpassthru);` |
-|     1 | 13140 | `}` |
-|    14 | 13141 | `static int vm_builtin_SplFileObject_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13142 | `{` |
-|    15 | 13143 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fwrite);` |
-|     1 | 13144 | `}` |
-|     - | 13145 | `/* php validates the operation in the METHOD, so the refusal names argument #1. */` |
-|     6 | 13146 | `static int vm_builtin_SplFileObject_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13147 | `{` |
-|     - | 13148 | `	sxi32 rcChk;` |
-|     7 | 13149 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 13150 | `		return rcChk;` |
-|     - | 13151 | `	}` |
-|     7 | 13152 | `	if( nArg > 0 && (ph7_value_to_int(apArg[0]) & 3) == 0 ){` |
-|     4 | 13153 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - | 13154 | `			"%s(): Argument #1 ($operation) must be one of LOCK_SH, LOCK_EX, or LOCK_UN",` |
-|     1 | 13155 | `			ph7_function_name(pCtx));` |
+|     8 | 12885 | `	if( iLen < 0 ){` |
+|     8 | 12886 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - | 12887 | `			"%s(): Argument #1 ($maxLength) must be greater than or equal to 0",` |
+|     2 | 12888 | `			ph7_function_name(pCtx));` |
+|     - | 12889 | `	}` |
+|     3 | 12890 | `	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SFO_ML,iLen);` |
+|     3 | 12891 | `	return PH7_OK;` |
+|     5 | 12892 | `}` |
+|     2 | 12893 | `static int vm_builtin_SplFileObject_getMaxLineLen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12894 | `{` |
+|     - | 12895 | `	sxi32 rcChk;` |
+|     1 | 12896 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     3 | 12897 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 12898 | `		return rcChk;` |
+|     - | 12899 | `	}` |
+|     3 | 12900 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SFO_ML));` |
+|     3 | 12901 | `	return PH7_OK;` |
+|     2 | 12902 | `}` |
+|     - | 12903 | `/* php's RecursiveIterator half: a file has no children and says so. */` |
+|     4 | 12904 | `static int vm_builtin_SplFileObject_hasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12905 | `{` |
+|     - | 12906 | `	sxi32 rcChk;` |
+|     2 | 12907 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     5 | 12908 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 12909 | `		return rcChk;` |
+|     - | 12910 | `	}` |
+|     5 | 12911 | `	ph7_result_bool(pCtx,0);` |
+|     5 | 12912 | `	return PH7_OK;` |
+|     3 | 12913 | `}` |
+|     4 | 12914 | `static int vm_builtin_SplFileObject_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12915 | `{` |
+|     - | 12916 | `	sxi32 rcChk;` |
+|     2 | 12917 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     5 | 12918 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 12919 | `		return rcChk;` |
+|     - | 12920 | `	}` |
+|     5 | 12921 | `	ph7_result_null(pCtx);` |
+|     5 | 12922 | `	return PH7_OK;` |
+|     3 | 12923 | `}` |
+|     - | 12924 | `/*` |
+|     - | 12925 | ` * php's fgetcsv(): the three arguments override this instance's settings for` |
+|     - | 12926 | ` * ONE call, and the argument NUMBERS are this spelling's own.` |
+|     - | 12927 | ` */` |
+|    12 | 12928 | `static int vm_builtin_SplFileObject_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12929 | `{` |
+|    13 | 12930 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 12931 | `	int delim,encl,escape;` |
+|     - | 12932 | `	sxi32 rc;` |
+|    13 | 12933 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 12934 | `		return rc;` |
+|     - | 12935 | `	}` |
+|    13 | 12936 | `	SfoCsvControl(pThis,&delim,&encl,&escape);` |
+|    13 | 12937 | `	if( nArg > 0 ){` |
+|    13 | 12938 | `		rc = PH7_CsvCharArg(pCtx,apArg[0],1,"separator",0,&delim);` |
+|    13 | 12939 | `		if( rc != PH7_OK ){` |
+|   ! 0 | 12940 | `			return rc;` |
+|     - | 12941 | `		}` |
+|     6 | 12942 | `	}` |
+|    13 | 12943 | `	if( nArg > 1 ){` |
+|    13 | 12944 | `		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"enclosure",0,&encl);` |
+|    13 | 12945 | `		if( rc != PH7_OK ){` |
+|     3 | 12946 | `			return rc;` |
+|     - | 12947 | `		}` |
+|     5 | 12948 | `	}` |
+|    11 | 12949 | `	if( nArg > 2 ){` |
+|    11 | 12950 | `		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"escape",1,&escape);` |
+|    11 | 12951 | `		if( rc != PH7_OK ){` |
+|   ! 0 | 12952 | `			return rc;` |
+|     - | 12953 | `		}` |
+|     5 | 12954 | `	}` |
+|     - | 12955 | `	{` |
+|     - | 12956 | `		ph7_value sOut;` |
+|     - | 12957 | `		int r;` |
+|    11 | 12958 | `		PH7_MemObjInit(pCtx->pVm,&sOut);` |
+|    11 | 12959 | `		r = SfoReadCsv(pCtx,delim,encl,escape,&sOut,TRUE,&rc);` |
+|    11 | 12960 | `		if( r == SFO_READ_OK ){` |
+|    11 | 12961 | `			ph7_result_value(pCtx,&sOut);` |
+|     5 | 12962 | `		}else if( r == SFO_READ_FAIL ){` |
+|   ! 0 | 12963 | `			ph7_result_bool(pCtx,0);` |
+|   ! 0 | 12964 | `		}` |
+|    11 | 12965 | `		PH7_MemObjRelease(&sOut);` |
+|    11 | 12966 | `		return r == SFO_READ_THROW ? rc : PH7_OK;` |
+|     - | 12967 | `	}` |
+|     7 | 12968 | `}` |
+|     - | 12969 | `/* php's fputcsv(): the same overrides, at the positions THIS method numbers. */` |
+|     4 | 12970 | `static int vm_builtin_SplFileObject_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 12971 | `{` |
+|     5 | 12972 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 12973 | `	ph7_value *apOut[6];` |
+|     - | 12974 | `	ph7_value sDelim,sEncl,sEsc;` |
+|     - | 12975 | `	int delim,encl,escape,nOut,r;` |
+|     - | 12976 | `	sxi32 rc;` |
+|     5 | 12977 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 12978 | `		return rc;` |
+|     - | 12979 | `	}` |
+|     5 | 12980 | `	if( nArg < 1 ){` |
+|   ! 0 | 12981 | `		return PH7_OK;` |
+|     - | 12982 | `	}` |
+|     5 | 12983 | `	SfoCsvControl(pThis,&delim,&encl,&escape);` |
+|     5 | 12984 | `	if( nArg > 1 ){` |
+|     5 | 12985 | `		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"separator",0,&delim);` |
+|     5 | 12986 | `		if( rc != PH7_OK ){` |
+|   ! 0 | 12987 | `			return rc;` |
+|     - | 12988 | `		}` |
+|     2 | 12989 | `	}` |
+|     5 | 12990 | `	if( nArg > 2 ){` |
+|     5 | 12991 | `		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"enclosure",0,&encl);` |
+|     5 | 12992 | `		if( rc != PH7_OK ){` |
+|     3 | 12993 | `			return rc;` |
+|     - | 12994 | `		}` |
+|     1 | 12995 | `	}` |
+|     3 | 12996 | `	if( nArg > 3 ){` |
+|     3 | 12997 | `		rc = PH7_CsvCharArg(pCtx,apArg[3],4,"escape",1,&escape);` |
+|     3 | 12998 | `		if( rc != PH7_OK ){` |
+|   ! 0 | 12999 | `			return rc;` |
+|     - | 13000 | `		}` |
+|     1 | 13001 | `	}` |
+|     - | 13002 | `	/* The writer lives in vfs_stream.c and takes the three as STRINGS, at` |
+|     - | 13003 | `	 * fputcsv()'s own positions; the settings resolved above are handed over in` |
+|     - | 13004 | `	 * that shape rather than re-parsed there. */` |
+|     3 | 13005 | `	PH7_MemObjInitFromString(pCtx->pVm,&sDelim,0);` |
+|     3 | 13006 | `	PH7_MemObjInitFromString(pCtx->pVm,&sEncl,0);` |
+|     3 | 13007 | `	PH7_MemObjInitFromString(pCtx->pVm,&sEsc,0);` |
+|     - | 13008 | `	{` |
+|     3 | 13009 | `		char c = (char)delim;` |
+|     3 | 13010 | `		PH7_MemObjStringAppend(&sDelim,&c,sizeof(char));` |
+|     3 | 13011 | `		c = (char)encl;` |
+|     3 | 13012 | `		PH7_MemObjStringAppend(&sEncl,&c,sizeof(char));` |
+|     3 | 13013 | `		if( escape != PH7_CSV_NO_ESCAPE ){` |
+|     3 | 13014 | `			c = (char)escape;` |
+|     3 | 13015 | `			PH7_MemObjStringAppend(&sEsc,&c,sizeof(char));` |
+|     1 | 13016 | `		}` |
+|     - | 13017 | `	}` |
+|     3 | 13018 | `	apOut[0] = PH7_NativeAttr(pThis,SFO_H);` |
+|     3 | 13019 | `	apOut[1] = apArg[0];` |
+|     3 | 13020 | `	apOut[2] = &sDelim;` |
+|     3 | 13021 | `	apOut[3] = &sEncl;` |
+|     3 | 13022 | `	apOut[4] = &sEsc;` |
+|     3 | 13023 | `	nOut = 5;` |
+|     3 | 13024 | `	if( nArg > 4 ){` |
+|     3 | 13025 | `		apOut[5] = apArg[4];` |
+|     3 | 13026 | `		nOut = 6;` |
+|     1 | 13027 | `	}` |
+|     3 | 13028 | `	r = PH7_builtin_fputcsv(pCtx,nOut,apOut);` |
+|     3 | 13029 | `	PH7_MemObjRelease(&sDelim);` |
+|     3 | 13030 | `	PH7_MemObjRelease(&sEncl);` |
+|     3 | 13031 | `	PH7_MemObjRelease(&sEsc);` |
+|     3 | 13032 | `	return r;` |
+|     3 | 13033 | `}` |
+|     4 | 13034 | `static int vm_builtin_SplFileObject_setCsvControl(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13035 | `{` |
+|     5 | 13036 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     5 | 13037 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     5 | 13038 | `	int delim = ',',encl = '"',escape = '\\';` |
+|     - | 13039 | `	sxi32 rc,rcChk;` |
+|     5 | 13040 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 13041 | `		return rcChk;` |
+|     - | 13042 | `	}` |
+|     5 | 13043 | `	if( nArg > 0 ){` |
+|     5 | 13044 | `		rc = PH7_CsvCharArg(pCtx,apArg[0],1,"separator",0,&delim);` |
+|     5 | 13045 | `		if( rc != PH7_OK ){` |
+|     3 | 13046 | `			return rc;` |
+|     - | 13047 | `		}` |
+|     1 | 13048 | `	}` |
+|     3 | 13049 | `	if( nArg > 1 ){` |
+|     3 | 13050 | `		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"enclosure",0,&encl);` |
+|     3 | 13051 | `		if( rc != PH7_OK ){` |
+|   ! 0 | 13052 | `			return rc;` |
+|     - | 13053 | `		}` |
+|     1 | 13054 | `	}` |
+|     3 | 13055 | `	if( nArg > 2 ){` |
+|     3 | 13056 | `		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"escape",1,&escape);` |
+|     3 | 13057 | `		if( rc != PH7_OK ){` |
+|   ! 0 | 13058 | `			return rc;` |
+|     - | 13059 | `		}` |
+|     - | 13060 | `		/* Naming the escape at all is what stops php's deprecation notice. */` |
+|     3 | 13061 | `		PH7_NativeSetAttrInt(pVm,pThis,SFO_ED,0);` |
+|     1 | 13062 | `	}` |
+|     3 | 13063 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_D,delim);` |
+|     3 | 13064 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_EN,encl);` |
+|     3 | 13065 | `	PH7_NativeSetAttrInt(pVm,pThis,SFO_ES,escape);` |
+|     3 | 13066 | `	return PH7_OK;` |
+|     3 | 13067 | `}` |
+|     4 | 13068 | `static int vm_builtin_SplFileObject_getCsvControl(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13069 | `{` |
+|     5 | 13070 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 13071 | `	ph7_value *pArr,*pVal;` |
+|     - | 13072 | `	int delim,encl,escape;` |
+|     - | 13073 | `	char c;` |
+|     - | 13074 | `	sxi32 rcChk;` |
+|     2 | 13075 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     5 | 13076 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 13077 | `		return rcChk;` |
+|     - | 13078 | `	}` |
+|     5 | 13079 | `	SfoCsvControl(pThis,&delim,&encl,&escape);` |
+|     5 | 13080 | `	pArr = ph7_context_new_array(pCtx);` |
+|     5 | 13081 | `	pVal = ph7_context_new_scalar(pCtx);` |
+|     5 | 13082 | `	if( pArr == 0 \|\| pVal == 0 ){` |
+|   ! 0 | 13083 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - | 13084 | `	}` |
+|     5 | 13085 | `	c = (char)delim;` |
+|     5 | 13086 | `	ph7_value_string(pVal,&c,1);` |
+|     5 | 13087 | `	ph7_array_add_elem(pArr,0,pVal);` |
+|     5 | 13088 | `	ph7_value_reset_string_cursor(pVal);` |
+|     5 | 13089 | `	c = (char)encl;` |
+|     5 | 13090 | `	ph7_value_string(pVal,&c,1);` |
+|     5 | 13091 | `	ph7_array_add_elem(pArr,0,pVal);` |
+|     5 | 13092 | `	ph7_value_reset_string_cursor(pVal);` |
+|     - | 13093 | `	/* A disabled escape is reported as the EMPTY string, not as a byte. */` |
+|     5 | 13094 | `	if( escape != PH7_CSV_NO_ESCAPE ){` |
+|     3 | 13095 | `		c = (char)escape;` |
+|     3 | 13096 | `		ph7_value_string(pVal,&c,1);` |
+|     2 | 13097 | `	}else{` |
+|     3 | 13098 | `		ph7_value_string(pVal,"",0);` |
+|     - | 13099 | `	}` |
+|     5 | 13100 | `	ph7_array_add_elem(pArr,0,pVal);` |
+|     5 | 13101 | `	ph7_result_value(pCtx,pArr);` |
+|     5 | 13102 | `	return PH7_OK;` |
+|     3 | 13103 | `}` |
+|     - | 13104 | `/*` |
+|     - | 13105 | ` * The eight methods that are the corresponding builtin over this object's own` |
+|     - | 13106 | ` * handle. Each pre-validates what php validates IN THE METHOD -- the argument` |
+|     - | 13107 | ` * numbers are the method's, one lower than the function's -- and then hands the` |
+|     - | 13108 | ` * work to the one implementation there is. Every diagnostic the builtin raises` |
+|     - | 13109 | ` * itself is worded from ph7_function_name(), which in here is the qualified` |
+|     - | 13110 | ` * method name php prints.` |
+|     - | 13111 | ` */` |
+|    36 | 13112 | `static int SfoDelegate(ph7_context *pCtx,int nArg,ph7_value **apArg,` |
+|     - | 13113 | `	int (*xFunc)(ph7_context *,int,ph7_value **))` |
+|     2 | 13114 | `{` |
+|     - | 13115 | `	ph7_value *apOut[8];` |
+|     - | 13116 | `	sxi32 rc;` |
+|     - | 13117 | `	int i;` |
+|    38 | 13118 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 13119 | `		return rc;` |
+|     - | 13120 | `	}` |
+|    38 | 13121 | `	if( nArg > (int)(SX_ARRAYSIZE(apOut) - 1) ){` |
+|   ! 0 | 13122 | `		nArg = (int)(SX_ARRAYSIZE(apOut) - 1);` |
+|   ! 0 | 13123 | `	}` |
+|    38 | 13124 | `	apOut[0] = PH7_NativeAttr(PH7_ContextThis(pCtx),SFO_H);` |
+|    68 | 13125 | `	for( i = 0 ; i < nArg ; ++i ){` |
+|    32 | 13126 | `		apOut[i+1] = apArg[i];` |
+|    17 | 13127 | `	}` |
+|    38 | 13128 | `	return xFunc(pCtx,nArg + 1,apOut);` |
+|    20 | 13129 | `}` |
+|   ! 0 | 13130 | `static int vm_builtin_SplFileObject_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   ! 0 | 13131 | `{` |
+|   ! 0 | 13132 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fflush);` |
+|   ! 0 | 13133 | `}` |
+|     8 | 13134 | `static int vm_builtin_SplFileObject_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 13135 | `{` |
+|    10 | 13136 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_ftell);` |
+|     2 | 13137 | `}` |
+|     2 | 13138 | `static int vm_builtin_SplFileObject_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13139 | `{` |
+|     3 | 13140 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fstat);` |
+|     1 | 13141 | `}` |
+|     2 | 13142 | `static int vm_builtin_SplFileObject_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13143 | `{` |
+|     3 | 13144 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fpassthru);` |
+|     1 | 13145 | `}` |
+|    16 | 13146 | `static int vm_builtin_SplFileObject_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 13147 | `{` |
+|    18 | 13148 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fwrite);` |
+|     2 | 13149 | `}` |
+|     - | 13150 | `/* php validates the operation in the METHOD, so the refusal names argument #1. */` |
+|     6 | 13151 | `static int vm_builtin_SplFileObject_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13152 | `{` |
+|     - | 13153 | `	sxi32 rcChk;` |
+|     7 | 13154 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 13155 | `		return rcChk;` |
 |     - | 13156 | `	}` |
-|     5 | 13157 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_flock);` |
-|     4 | 13158 | `}` |
-|     2 | 13159 | `static int vm_builtin_SplFileObject_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13160 | `{` |
-|     - | 13161 | `	sxi32 rcChk;` |
-|     3 | 13162 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 13163 | `		return rcChk;` |
-|     - | 13164 | `	}` |
-|     3 | 13165 | `	if( nArg > 0 && ph7_value_to_int64(apArg[0]) < 0 ){` |
-|     4 | 13166 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - | 13167 | `			"%s(): Argument #1 ($size) must be greater than or equal to 0",` |
-|     1 | 13168 | `			ph7_function_name(pCtx));` |
+|     7 | 13157 | `	if( nArg > 0 && (ph7_value_to_int(apArg[0]) & 3) == 0 ){` |
+|     4 | 13158 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - | 13159 | `			"%s(): Argument #1 ($operation) must be one of LOCK_SH, LOCK_EX, or LOCK_UN",` |
+|     1 | 13160 | `			ph7_function_name(pCtx));` |
+|     - | 13161 | `	}` |
+|     5 | 13162 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_flock);` |
+|     4 | 13163 | `}` |
+|     2 | 13164 | `static int vm_builtin_SplFileObject_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13165 | `{` |
+|     - | 13166 | `	sxi32 rcChk;` |
+|     3 | 13167 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 13168 | `		return rcChk;` |
 |     - | 13169 | `	}` |
-|   ! 0 | 13170 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_ftruncate);` |
-|     2 | 13171 | `}` |
-|     4 | 13172 | `static int vm_builtin_SplFileObject_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13173 | `{` |
-|     - | 13174 | `	sxi32 rcChk;` |
-|     5 | 13175 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
-|   ! 0 | 13176 | `		return rcChk;` |
-|     - | 13177 | `	}` |
-|     5 | 13178 | `	if( nArg < 1 \|\| ph7_value_to_int64(apArg[0]) <= 0 ){` |
-|     4 | 13179 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - | 13180 | `			"%s(): Argument #1 ($length) must be greater than 0",` |
-|     1 | 13181 | `			ph7_function_name(pCtx));` |
+|     3 | 13170 | `	if( nArg > 0 && ph7_value_to_int64(apArg[0]) < 0 ){` |
+|     4 | 13171 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - | 13172 | `			"%s(): Argument #1 ($size) must be greater than or equal to 0",` |
+|     1 | 13173 | `			ph7_function_name(pCtx));` |
+|     - | 13174 | `	}` |
+|   ! 0 | 13175 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_ftruncate);` |
+|     2 | 13176 | `}` |
+|     4 | 13177 | `static int vm_builtin_SplFileObject_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13178 | `{` |
+|     - | 13179 | `	sxi32 rcChk;` |
+|     5 | 13180 | `	if( !SfoChecked(pCtx,&rcChk) ){` |
+|   ! 0 | 13181 | `		return rcChk;` |
 |     - | 13182 | `	}` |
-|     3 | 13183 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fread);` |
-|     3 | 13184 | `}` |
-|     - | 13185 | `/* php's fseek() drops the held line first: the position moved, so what was read` |
-|     - | 13186 | ` * ahead no longer describes it. */` |
-|     2 | 13187 | `static int vm_builtin_SplFileObject_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13188 | `{` |
-|     - | 13189 | `	sxi32 rc;` |
-|     3 | 13190 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 13191 | `		return rc;` |
-|     - | 13192 | `	}` |
-|     3 | 13193 | `	SfoFreeLine(pCtx->pVm,PH7_ContextThis(pCtx));` |
-|     3 | 13194 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fseek);` |
-|     2 | 13195 | `}` |
-|     - | 13196 | `/*` |
-|     - | 13197 | ` * php's fgetc(): one byte, the held line dropped, and the line number advanced` |
-|     - | 13198 | ` * only when the byte IS a newline.` |
-|     - | 13199 | ` */` |
-|     8 | 13200 | `static int vm_builtin_SplFileObject_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13201 | `{` |
-|     9 | 13202 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     9 | 13203 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 13204 | `	io_private *pDev;` |
-|     - | 13205 | `	char c;` |
-|     - | 13206 | `	sxi32 rc;` |
-|     4 | 13207 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     9 | 13208 | `	pDev = SfoNeed(pCtx,&rc);` |
-|     9 | 13209 | `	if( pDev == 0 ){` |
-|   ! 0 | 13210 | `		return rc;` |
-|     - | 13211 | `	}` |
-|     9 | 13212 | `	SfoFreeLine(pVm,pThis);` |
-|     9 | 13213 | `	if( PH7_StreamRead(pDev,&c,sizeof(char)) < 1 ){` |
-|   ! 0 | 13214 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 13215 | `		return PH7_OK;` |
+|     5 | 13183 | `	if( nArg < 1 \|\| ph7_value_to_int64(apArg[0]) <= 0 ){` |
+|     4 | 13184 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - | 13185 | `			"%s(): Argument #1 ($length) must be greater than 0",` |
+|     1 | 13186 | `			ph7_function_name(pCtx));` |
+|     - | 13187 | `	}` |
+|     3 | 13188 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fread);` |
+|     3 | 13189 | `}` |
+|     - | 13190 | `/* php's fseek() drops the held line first: the position moved, so what was read` |
+|     - | 13191 | ` * ahead no longer describes it. */` |
+|     2 | 13192 | `static int vm_builtin_SplFileObject_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13193 | `{` |
+|     - | 13194 | `	sxi32 rc;` |
+|     3 | 13195 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 13196 | `		return rc;` |
+|     - | 13197 | `	}` |
+|     3 | 13198 | `	SfoFreeLine(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|     3 | 13199 | `	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fseek);` |
+|     2 | 13200 | `}` |
+|     - | 13201 | `/*` |
+|     - | 13202 | ` * php's fgetc(): one byte, the held line dropped, and the line number advanced` |
+|     - | 13203 | ` * only when the byte IS a newline.` |
+|     - | 13204 | ` */` |
+|     8 | 13205 | `static int vm_builtin_SplFileObject_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13206 | `{` |
+|     9 | 13207 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     9 | 13208 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 13209 | `	io_private *pDev;` |
+|     - | 13210 | `	char c;` |
+|     - | 13211 | `	sxi32 rc;` |
+|     4 | 13212 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     9 | 13213 | `	pDev = SfoNeed(pCtx,&rc);` |
+|     9 | 13214 | `	if( pDev == 0 ){` |
+|   ! 0 | 13215 | `		return rc;` |
 |     - | 13216 | `	}` |
-|     9 | 13217 | `	if( c == '\n' ){` |
-|     3 | 13218 | `		PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);` |
-|     1 | 13219 | `	}` |
-|     9 | 13220 | `	ph7_result_string(pCtx,&c,sizeof(char));` |
-|     9 | 13221 | `	return PH7_OK;` |
-|     5 | 13222 | `}` |
-|     - | 13223 | `/* php's fscanf(): the format is run over the NEXT LINE, read loudly. */` |
-|     4 | 13224 | `static int vm_builtin_SplFileObject_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13225 | `{` |
-|     5 | 13226 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 13227 | `	const char *zFmt,*zLine;` |
-|     5 | 13228 | `	int nFmt = 0,nLine = 0;` |
-|     - | 13229 | `	SyBlob sLine;` |
-|     - | 13230 | `	sxi32 rc;` |
-|     5 | 13231 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 13232 | `		return rc;` |
-|     - | 13233 | `	}` |
-|     5 | 13234 | `	if( nArg < 1 ){` |
-|   ! 0 | 13235 | `		return PH7_OK;` |
-|     - | 13236 | `	}` |
-|     5 | 13237 | `	if( SfoReadOne(pCtx,FALSE,FALSE,&rc) != SFO_READ_OK ){` |
-|   ! 0 | 13238 | `		return rc;` |
-|     - | 13239 | `	}` |
-|     - | 13240 | `	/* The scan allocates, and allocating moves the slot the line lives in. The` |
-|     - | 13241 | `	 * length is read in its own statement: as one argument beside the call that` |
-|     - | 13242 | `	 * WRITES it, nothing orders the two. */` |
-|     5 | 13243 | `	zLine = SfoLine(pThis,&nLine);` |
-|     5 | 13244 | `	SyBlobInit(&sLine,&pCtx->pVm->sAllocator);` |
-|     5 | 13245 | `	SyBlobAppend(&sLine,zLine,(sxu32)nLine);` |
-|     5 | 13246 | `	zFmt = ph7_value_to_string(apArg[0],&nFmt);` |
-|     7 | 13247 | `	rc = PH7_ScanfRun(pCtx,(const char *)SyBlobData(&sLine),(int)SyBlobLength(&sLine),` |
-|     2 | 13248 | `		zFmt,nFmt,&apArg[1],nArg - 1);` |
-|     5 | 13249 | `	SyBlobRelease(&sLine);` |
-|     5 | 13250 | `	return (int)rc;` |
-|     3 | 13251 | `}` |
-|     - | 13252 | `/*` |
-|     - | 13253 | ` * php's seek(): rewind, then walk FORWARD through the object's own read -- so a` |
-|     - | 13254 | ` * subclass's getCurrentLine() is obeyed -- and, without READ_AHEAD, land one` |
-|     - | 13255 | ` * past with nothing held.` |
-|     - | 13256 | ` */` |
-|     6 | 13257 | `static int vm_builtin_SplFileObject_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13258 | `{` |
-|     7 | 13259 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     7 | 13260 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 13261 | `	sxi64 iLine,i;` |
-|     - | 13262 | `	sxi32 rc;` |
-|     7 | 13263 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 13264 | `		return rc;` |
-|     - | 13265 | `	}` |
-|     7 | 13266 | `	iLine = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
-|     7 | 13267 | `	if( iLine < 0 ){` |
-|     4 | 13268 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - | 13269 | `			"%s(): Argument #1 ($line) must be greater than or equal to 0",` |
-|     1 | 13270 | `			ph7_function_name(pCtx));` |
-|     - | 13271 | `	}` |
-|     5 | 13272 | `	rc = SfoRewind(pCtx);` |
-|     5 | 13273 | `	if( rc != PH7_OK ){` |
-|   ! 0 | 13274 | `		return rc;` |
-|     - | 13275 | `	}` |
-|    19 | 13276 | `	for( i = 0 ; i < iLine ; ++i ){` |
-|    17 | 13277 | `		int r = SfoReadLine(pCtx,TRUE,&rc);` |
-|    17 | 13278 | `		if( r == SFO_READ_THROW ){` |
-|   ! 0 | 13279 | `			return rc;` |
-|     - | 13280 | `		}` |
-|    17 | 13281 | `		if( r != SFO_READ_OK ){` |
-|     3 | 13282 | `			return PH7_OK;` |
-|     - | 13283 | `		}` |
-|     8 | 13284 | `	}` |
-|     3 | 13285 | `	if( iLine > 0 && (SfoFlags(pThis) & SFO_READ_AHEAD) == 0 ){` |
-|     3 | 13286 | `		PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);` |
-|     3 | 13287 | `		SfoFreeLine(pVm,pThis);` |
-|     1 | 13288 | `	}` |
-|     3 | 13289 | `	return PH7_OK;` |
-|     4 | 13290 | `}` |
-|     - | 13291 | `/* php's __toString(): the current line, read LOUDLY when there is none. */` |
-|     4 | 13292 | `static int vm_builtin_SplFileObject_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 13293 | `{` |
-|     5 | 13294 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     5 | 13295 | `	int nLine = 0;` |
-|     - | 13296 | `	const char *zLine;` |
-|     - | 13297 | `	sxi32 rc;` |
-|     2 | 13298 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|     5 | 13299 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
-|   ! 0 | 13300 | `		return rc;` |
-|     - | 13301 | `	}` |
-|     5 | 13302 | `	if( (PH7_NativeAttrInt(pThis,SFO_LS) & SFO_HAS_LINE) == 0 ){` |
-|     5 | 13303 | `		if( SfoReadLine(pCtx,FALSE,&rc) != SFO_READ_OK ){` |
-|   ! 0 | 13304 | `			return rc;` |
-|     - | 13305 | `		}` |
-|     2 | 13306 | `	}` |
-|     5 | 13307 | `	zLine = SfoLine(pThis,&nLine);` |
-|     5 | 13308 | `	ph7_result_string(pCtx,zLine,nLine);` |
-|     5 | 13309 | `	return PH7_OK;` |
-|     3 | 13310 | `}` |
-|     - | 13311 | `/*` |
-|     - | 13312 | ` * The declaration. Method ORDER, signatures and tentative return types are` |
-|     - | 13313 | ` * spl_directory.stub.php's. php gives this class NO clone handler at all, which` |
-|     - | 13314 | ` * is its "uncloneable" -- and the same @not-serializable SplFileInfo carries.` |
-|     - | 13315 | ` */` |
-|  6721 | 13316 | `static sxi32 VmInstallSplFileObject(ph7_vm *pVm)` |
-|     5 | 13317 | `{` |
-|     - | 13318 | `	static const PH7_NativePropDef aFileProp[] = {` |
-|     - | 13319 | `		{ SFO_H,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 13320 | `		{ SFO_M,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "r", 0.0 }, 0 },` |
-|     - | 13321 | `		{ SFO_FL, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|     - | 13322 | `		{ SFO_ML, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|     - | 13323 | `		{ SFO_D,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, ',', 0, 0.0 }, 0 },` |
-|     - | 13324 | `		{ SFO_EN, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, '"', 0, 0.0 }, 0 },` |
-|     - | 13325 | `		{ SFO_ES, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, '\\', 0, 0.0 }, 0 },` |
-|     - | 13326 | `		{ SFO_ED, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 }, 0 },` |
-|     - | 13327 | `		{ SFO_L,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
-|     - | 13328 | `		{ SFO_Z,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
-|     - | 13329 | `		{ SFO_LS, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|     - | 13330 | `		{ SFO_K,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|     - | 13331 | `	};` |
-|     - | 13332 | `	static const PH7_NativeConstDef aFileConst[] = {` |
-|     - | 13333 | `		{ "DROP_NEW_LINE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_DROP_NEW_LINE, 0, 0.0 },` |
-|     - | 13334 | `		{ "READ_AHEAD",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_READ_AHEAD, 0, 0.0 },` |
-|     - | 13335 | `		{ "SKIP_EMPTY",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_SKIP_EMPTY, 0, 0.0 },` |
-|     - | 13336 | `		{ "READ_CSV",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_READ_CSV, 0, 0.0 },` |
-|     - | 13337 | `	};` |
-|     - | 13338 | `	static const PH7_NativeMethodDef aFileMethod[] = {` |
-|     - | 13339 | `		{ "__construct",   PH7_MOD_PUBLIC,` |
-|     - | 13340 | `		  "string $filename, string $mode = \"r\", bool $useIncludePath = false, "` |
-|     - | 13341 | `		  "$context = null", 0, vm_builtin_SplFileObject_construct },` |
-|     - | 13342 | `		{ "rewind",        PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFileObject_rewind },` |
-|     - | 13343 | `		{ "eof",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_eof },` |
-|     - | 13344 | `		{ "valid",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_valid },` |
-|     - | 13345 | `		{ "fgets",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileObject_fgets },` |
-|     - | 13346 | `		{ "fread",         PH7_MOD_PUBLIC, "int $length", "@string\|false",` |
-|     - | 13347 | `		  vm_builtin_SplFileObject_fread },` |
-|     - | 13348 | `		{ "fgetcsv",       PH7_MOD_PUBLIC,` |
-|     - | 13349 | `		  "string $separator = \",\", string $enclosure = \"\\\"\", string $escape = \"\\\\\"",` |
-|     - | 13350 | `		  "@array\|false", vm_builtin_SplFileObject_fgetcsv },` |
-|     - | 13351 | `		{ "fputcsv",       PH7_MOD_PUBLIC,` |
-|     - | 13352 | `		  "array $fields, string $separator = \",\", string $enclosure = \"\\\"\", "` |
-|     - | 13353 | `		  "string $escape = \"\\\\\", string $eol = \"\n\"", "@int\|false",` |
-|     - | 13354 | `		  vm_builtin_SplFileObject_fputcsv },` |
-|     - | 13355 | `		{ "setCsvControl", PH7_MOD_PUBLIC,` |
-|     - | 13356 | `		  "string $separator = \",\", string $enclosure = \"\\\"\", string $escape = \"\\\\\"",` |
-|     - | 13357 | `		  "@void", vm_builtin_SplFileObject_setCsvControl },` |
-|     - | 13358 | `		{ "getCsvControl", PH7_MOD_PUBLIC, "", "@array",` |
-|     - | 13359 | `		  vm_builtin_SplFileObject_getCsvControl },` |
-|     - | 13360 | `		{ "flock",         PH7_MOD_PUBLIC, "int $operation, &$wouldBlock = null", "@bool",` |
-|     - | 13361 | `		  vm_builtin_SplFileObject_flock },` |
-|     - | 13362 | `		{ "fflush",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_fflush },` |
-|     - | 13363 | `		{ "ftell",         PH7_MOD_PUBLIC, "", "@int\|false", vm_builtin_SplFileObject_ftell },` |
-|     - | 13364 | `		{ "fseek",         PH7_MOD_PUBLIC, "int $offset, int $whence = SEEK_SET", "@int",` |
-|     - | 13365 | `		  vm_builtin_SplFileObject_fseek },` |
-|     - | 13366 | `		{ "fgetc",         PH7_MOD_PUBLIC, "", "@string\|false", vm_builtin_SplFileObject_fgetc },` |
-|     - | 13367 | `		{ "fpassthru",     PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_fpassthru },` |
-|     - | 13368 | `		{ "fscanf",        PH7_MOD_PUBLIC, "string $format, mixed &...$vars", "@array\|int\|null",` |
-|     - | 13369 | `		  vm_builtin_SplFileObject_fscanf },` |
-|     - | 13370 | `		{ "fwrite",        PH7_MOD_PUBLIC, "string $data, ?int $length = null", "@int\|false",` |
-|     - | 13371 | `		  vm_builtin_SplFileObject_fwrite },` |
-|     - | 13372 | `		{ "fstat",         PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFileObject_fstat },` |
-|     - | 13373 | `		{ "ftruncate",     PH7_MOD_PUBLIC, "int $size", "@bool",` |
-|     - | 13374 | `		  vm_builtin_SplFileObject_ftruncate },` |
-|     - | 13375 | `		{ "current",       PH7_MOD_PUBLIC, "", "@array\|string\|false",` |
-|     - | 13376 | `		  vm_builtin_SplFileObject_current },` |
-|     - | 13377 | `		{ "key",           PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_key },` |
-|     - | 13378 | `		{ "next",          PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFileObject_next },` |
-|     - | 13379 | `		{ "setFlags",      PH7_MOD_PUBLIC, "int $flags", "@void",` |
-|     - | 13380 | `		  vm_builtin_SplFileObject_setFlags },` |
-|     - | 13381 | `		{ "getFlags",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_getFlags },` |
-|     - | 13382 | `		{ "setMaxLineLen", PH7_MOD_PUBLIC, "int $maxLength", "@void",` |
-|     - | 13383 | `		  vm_builtin_SplFileObject_setMaxLineLen },` |
-|     - | 13384 | `		{ "getMaxLineLen", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_getMaxLineLen },` |
-|     - | 13385 | `		/* php types the two it answers CONSTANTLY with the constant itself:` |
-|     - | 13386 | ``		 * `false` and `null`, not `bool` and `?RecursiveIterator`. A file has no`` |
-|     - | 13387 | `		 * children, and both bodies say so on every path. */` |
-|     - | 13388 | `		{ "hasChildren",   PH7_MOD_PUBLIC, "", "@false", vm_builtin_SplFileObject_hasChildren },` |
-|     - | 13389 | `		{ "getChildren",   PH7_MOD_PUBLIC, "", "@null",` |
-|     - | 13390 | `		  vm_builtin_SplFileObject_getChildren },` |
-|     - | 13391 | `		{ "seek",          PH7_MOD_PUBLIC, "int $line", "@void", vm_builtin_SplFileObject_seek },` |
-|     - | 13392 | `		/* php aliases getCurrentLine() to fgets(); the override branch in` |
-|     - | 13393 | `		 * SfoReadLineEx() is what makes REPLACING it mean something. */` |
-|     - | 13394 | `		{ "getCurrentLine",PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileObject_fgets },` |
-|     - | 13395 | `		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileObject_toString },` |
-|     - | 13396 | `	};` |
-|     - | 13397 | `	static const PH7_NativeMethodDef aTempMethod[] = {` |
-|     - | 13398 | `		{ "__construct", PH7_MOD_PUBLIC, "int $maxMemory = 2 * 1024 * 1024", 0,` |
-|     - | 13399 | `		  vm_builtin_SplTempFileObject_construct },` |
-|     - | 13400 | `	};` |
-|     - | 13401 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|     - | 13402 | `		{ "SplFileObject", "SplFileInfo", "RecursiveIterator,SeekableIterator",` |
-|     - | 13403 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NOCLONE,` |
-|     - | 13404 | `		  aFileMethod, SX_ARRAYSIZE(aFileMethod), aFileConst, SX_ARRAYSIZE(aFileConst),` |
-|     - | 13405 | `		  aFileProp, SX_ARRAYSIZE(aFileProp), SfoRelease, 0, SfiPresent },` |
-|     - | 13406 | `		/* php gives SplTempFileObject no handlers of its own, so it INHERITS the` |
-|     - | 13407 | `		 * check pair -- uncloneable, and every method refused on an instance` |
-|     - | 13408 | `		 * whose parent constructor never ran. A native class here inherits` |
-|     - | 13409 | `		 * neither the refusals nor the hooks (rule 29), so both are restated. */` |
-|     - | 13410 | `		{ "SplTempFileObject", "SplFileObject", 0,` |
-|     - | 13411 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NOCLONE,` |
-|     - | 13412 | `		  aTempMethod, SX_ARRAYSIZE(aTempMethod), 0, 0,` |
-|     - | 13413 | `		  0, 0, SfoRelease, 0, SfiPresent },` |
-|     - | 13414 | `	};` |
-|  6726 | 13415 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|     5 | 13416 | `}` |
-|  6721 | 13417 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
-|     5 | 13418 | `{` |
-|  6726 | 13419 | `	sxi32 rc = VmInstallWeak(&(*pVm));` |
-|  6726 | 13420 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13421 | `		return rc;` |
-|     - | 13422 | `	}` |
-|     - | 13423 | `	/* Ordering, now that zSplLib is gone: the remaining PHP in this subsystem is` |
-|     - | 13424 | `	 * the tokenizer chunk's, so these only have to satisfy each OTHER. */` |
-|  6726 | 13425 | `	rc = VmInstallSplStore(&(*pVm));` |
-|  6726 | 13426 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13427 | `		return rc;` |
-|     - | 13428 | `	}` |
-|  6726 | 13429 | `	rc = VmInstallSplDualIterators(&(*pVm));` |
-|  6726 | 13430 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13431 | `		return rc;` |
-|     - | 13432 | `	}` |
-|     - | 13433 | `	/* After the dual iterators: RecursiveIteratorIterator names OuterIterator and` |
-|     - | 13434 | `	 * RecursiveIterator, both declared by that table. */` |
-|  6726 | 13435 | `	rc = VmInstallSplRecursiveIt(&(*pVm));` |
-|  6726 | 13436 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13437 | `		return rc;` |
-|     - | 13438 | `	}` |
-|  6726 | 13439 | `	rc = VmInstallSplDllist(&(*pVm));` |
-|  6726 | 13440 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13441 | `		return rc;` |
-|     - | 13442 | `	}` |
-|  6726 | 13443 | `	rc = VmInstallSplHeap(&(*pVm));` |
-|  6726 | 13444 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13445 | `		return rc;` |
-|     - | 13446 | `	}` |
-|  6726 | 13447 | `	rc = VmInstallSplFixedArray(&(*pVm));` |
-|  6726 | 13448 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13449 | `		return rc;` |
-|     - | 13450 | `	}` |
-|  6726 | 13451 | `	rc = VmInstallSplObjectStorage(&(*pVm));` |
-|  6726 | 13452 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13453 | `		return rc;` |
-|     - | 13454 | `	}` |
-|     - | 13455 | `	/* After SplObjectStorage: MultipleIterator holds the same storage and reaches` |
-|     - | 13456 | `	 * its attach/detach/debug routines. */` |
-|  6726 | 13457 | `	rc = VmInstallSplMultipleIterator(&(*pVm));` |
-|  6726 | 13458 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13459 | `		return rc;` |
-|     - | 13460 | `	}` |
-|  6726 | 13461 | `	rc = VmInstallSplFileInfo(&(*pVm));` |
-|  6726 | 13462 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13463 | `		return rc;` |
-|     - | 13464 | `	}` |
-|     - | 13465 | `	/* After SplFileInfo: DirectoryIterator extends it, and PH7_ClassInherit copies` |
-|     - | 13466 | `	 * the base's methods DOWN (rule 14). */` |
-|  6726 | 13467 | `	rc = VmInstallSplDirIterators(&(*pVm));` |
-|  6726 | 13468 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 13469 | `		return rc;` |
-|     - | 13470 | `	}` |
-|     - | 13471 | `	/* After SplFileInfo for the same reason; the dir iterators are ahead of it` |
-|     - | 13472 | `	 * only because they are declared together. */` |
-|  6726 | 13473 | `	return VmInstallSplFileObject(&(*pVm));` |
-|  3361 | 13474 | `}` |
-|     - | 13475 |  |
-|     - | 13476 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|     - | 13477 |  |
-|     - | 13478 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|     - | 13479 | `/* Tiny build: no SPL (builtin layer disabled) */` |
-|     - | 13480 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
-|     - | 13481 | `/* No directory iterators either, so shutdown has nothing to close. */` |
-|     - | 13482 | `PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm){ (void)pVm; }` |
-|     - | 13483 | `/* The writable-container fast path is called unconditionally by OP_LOAD_IDX, and its` |
-|     - | 13484 | ` * SXU32_HIGH answer already means "no slot available — take the ordinary offsetGet` |
-|     - | 13485 | ` * dispatch". With no SPL classes in this build that is the only answer there is, so the` |
-|     - | 13486 | ` * stub keeps the tiny target LINKING without a second #ifdef at the call site. */` |
-|     - | 13487 | `PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate)` |
-|     - | 13488 | `{` |
-|     - | 13489 | `	(void)pVm; (void)pThis; (void)pKey; (void)bCreate;` |
-|     - | 13490 | `	return SXU32_HIGH;` |
-|     - | 13491 | `}` |
-|     - | 13492 | `/* Same reasoning for the dual-iterator method forward: OP_MEMBER asks it on every` |
-|     - | 13493 | ` * missing method, and with no SPL classes in this build the answer is always "not` |
-|     - | 13494 | ` * one of mine". */` |
-|     - | 13495 | `PH7_PRIVATE int PH7_SplOuterForward(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pName,` |
-|     - | 13496 | `	ph7_class_instance **ppInner,ph7_class_method **ppMeth)` |
-|     - | 13497 | `{` |
-|     - | 13498 | `	(void)pVm; (void)pThis; (void)pName; (void)ppInner; (void)ppMeth;` |
-|     - | 13499 | `	return 0;` |
-|     - | 13500 | `}` |
-|     - | 13501 | `#endif` |
-|     - | 13502 |  |
+|     9 | 13217 | `	SfoFreeLine(pVm,pThis);` |
+|     9 | 13218 | `	if( PH7_StreamRead(pDev,&c,sizeof(char)) < 1 ){` |
+|   ! 0 | 13219 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 13220 | `		return PH7_OK;` |
+|     - | 13221 | `	}` |
+|     9 | 13222 | `	if( c == '\n' ){` |
+|     3 | 13223 | `		PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);` |
+|     1 | 13224 | `	}` |
+|     9 | 13225 | `	ph7_result_string(pCtx,&c,sizeof(char));` |
+|     9 | 13226 | `	return PH7_OK;` |
+|     5 | 13227 | `}` |
+|     - | 13228 | `/* php's fscanf(): the format is run over the NEXT LINE, read loudly. */` |
+|     4 | 13229 | `static int vm_builtin_SplFileObject_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13230 | `{` |
+|     5 | 13231 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 13232 | `	const char *zFmt,*zLine;` |
+|     5 | 13233 | `	int nFmt = 0,nLine = 0;` |
+|     - | 13234 | `	SyBlob sLine;` |
+|     - | 13235 | `	sxi32 rc;` |
+|     5 | 13236 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 13237 | `		return rc;` |
+|     - | 13238 | `	}` |
+|     5 | 13239 | `	if( nArg < 1 ){` |
+|   ! 0 | 13240 | `		return PH7_OK;` |
+|     - | 13241 | `	}` |
+|     5 | 13242 | `	if( SfoReadOne(pCtx,FALSE,FALSE,&rc) != SFO_READ_OK ){` |
+|   ! 0 | 13243 | `		return rc;` |
+|     - | 13244 | `	}` |
+|     - | 13245 | `	/* The scan allocates, and allocating moves the slot the line lives in. The` |
+|     - | 13246 | `	 * length is read in its own statement: as one argument beside the call that` |
+|     - | 13247 | `	 * WRITES it, nothing orders the two. */` |
+|     5 | 13248 | `	zLine = SfoLine(pThis,&nLine);` |
+|     5 | 13249 | `	SyBlobInit(&sLine,&pCtx->pVm->sAllocator);` |
+|     5 | 13250 | `	SyBlobAppend(&sLine,zLine,(sxu32)nLine);` |
+|     5 | 13251 | `	zFmt = ph7_value_to_string(apArg[0],&nFmt);` |
+|     7 | 13252 | `	rc = PH7_ScanfRun(pCtx,(const char *)SyBlobData(&sLine),(int)SyBlobLength(&sLine),` |
+|     2 | 13253 | `		zFmt,nFmt,&apArg[1],nArg - 1);` |
+|     5 | 13254 | `	SyBlobRelease(&sLine);` |
+|     5 | 13255 | `	return (int)rc;` |
+|     3 | 13256 | `}` |
+|     - | 13257 | `/*` |
+|     - | 13258 | ` * php's seek(): rewind, then walk FORWARD through the object's own read -- so a` |
+|     - | 13259 | ` * subclass's getCurrentLine() is obeyed -- and, without READ_AHEAD, land one` |
+|     - | 13260 | ` * past with nothing held.` |
+|     - | 13261 | ` */` |
+|     6 | 13262 | `static int vm_builtin_SplFileObject_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13263 | `{` |
+|     7 | 13264 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     7 | 13265 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 13266 | `	sxi64 iLine,i;` |
+|     - | 13267 | `	sxi32 rc;` |
+|     7 | 13268 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 13269 | `		return rc;` |
+|     - | 13270 | `	}` |
+|     7 | 13271 | `	iLine = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
+|     7 | 13272 | `	if( iLine < 0 ){` |
+|     4 | 13273 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - | 13274 | `			"%s(): Argument #1 ($line) must be greater than or equal to 0",` |
+|     1 | 13275 | `			ph7_function_name(pCtx));` |
+|     - | 13276 | `	}` |
+|     5 | 13277 | `	rc = SfoRewind(pCtx);` |
+|     5 | 13278 | `	if( rc != PH7_OK ){` |
+|   ! 0 | 13279 | `		return rc;` |
+|     - | 13280 | `	}` |
+|    19 | 13281 | `	for( i = 0 ; i < iLine ; ++i ){` |
+|    17 | 13282 | `		int r = SfoReadLine(pCtx,TRUE,&rc);` |
+|    17 | 13283 | `		if( r == SFO_READ_THROW ){` |
+|   ! 0 | 13284 | `			return rc;` |
+|     - | 13285 | `		}` |
+|    17 | 13286 | `		if( r != SFO_READ_OK ){` |
+|     3 | 13287 | `			return PH7_OK;` |
+|     - | 13288 | `		}` |
+|     8 | 13289 | `	}` |
+|     3 | 13290 | `	if( iLine > 0 && (SfoFlags(pThis) & SFO_READ_AHEAD) == 0 ){` |
+|     3 | 13291 | `		PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);` |
+|     3 | 13292 | `		SfoFreeLine(pVm,pThis);` |
+|     1 | 13293 | `	}` |
+|     3 | 13294 | `	return PH7_OK;` |
+|     4 | 13295 | `}` |
+|     - | 13296 | `/* php's __toString(): the current line, read LOUDLY when there is none. */` |
+|     4 | 13297 | `static int vm_builtin_SplFileObject_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 13298 | `{` |
+|     5 | 13299 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     5 | 13300 | `	int nLine = 0;` |
+|     - | 13301 | `	const char *zLine;` |
+|     - | 13302 | `	sxi32 rc;` |
+|     2 | 13303 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     5 | 13304 | `	if( SfoNeed(pCtx,&rc) == 0 ){` |
+|   ! 0 | 13305 | `		return rc;` |
+|     - | 13306 | `	}` |
+|     5 | 13307 | `	if( (PH7_NativeAttrInt(pThis,SFO_LS) & SFO_HAS_LINE) == 0 ){` |
+|     5 | 13308 | `		if( SfoReadLine(pCtx,FALSE,&rc) != SFO_READ_OK ){` |
+|   ! 0 | 13309 | `			return rc;` |
+|     - | 13310 | `		}` |
+|     2 | 13311 | `	}` |
+|     5 | 13312 | `	zLine = SfoLine(pThis,&nLine);` |
+|     5 | 13313 | `	ph7_result_string(pCtx,zLine,nLine);` |
+|     5 | 13314 | `	return PH7_OK;` |
+|     3 | 13315 | `}` |
+|     - | 13316 | `/*` |
+|     - | 13317 | ` * The declaration. Method ORDER, signatures and tentative return types are` |
+|     - | 13318 | ` * spl_directory.stub.php's. php gives this class NO clone handler at all, which` |
+|     - | 13319 | ` * is its "uncloneable" -- and the same @not-serializable SplFileInfo carries.` |
+|     - | 13320 | ` */` |
+|  7925 | 13321 | `static sxi32 VmInstallSplFileObject(ph7_vm *pVm)` |
+|     5 | 13322 | `{` |
+|     - | 13323 | `	static const PH7_NativePropDef aFileProp[] = {` |
+|     - | 13324 | `		{ SFO_H,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 13325 | `		{ SFO_M,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "r", 0.0 }, 0 },` |
+|     - | 13326 | `		{ SFO_FL, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|     - | 13327 | `		{ SFO_ML, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|     - | 13328 | `		{ SFO_D,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, ',', 0, 0.0 }, 0 },` |
+|     - | 13329 | `		{ SFO_EN, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, '"', 0, 0.0 }, 0 },` |
+|     - | 13330 | `		{ SFO_ES, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, '\\', 0, 0.0 }, 0 },` |
+|     - | 13331 | `		{ SFO_ED, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 }, 0 },` |
+|     - | 13332 | `		{ SFO_L,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
+|     - | 13333 | `		{ SFO_Z,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
+|     - | 13334 | `		{ SFO_LS, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|     - | 13335 | `		{ SFO_K,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|     - | 13336 | `	};` |
+|     - | 13337 | `	static const PH7_NativeConstDef aFileConst[] = {` |
+|     - | 13338 | `		{ "DROP_NEW_LINE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_DROP_NEW_LINE, 0, 0.0 },` |
+|     - | 13339 | `		{ "READ_AHEAD",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_READ_AHEAD, 0, 0.0 },` |
+|     - | 13340 | `		{ "SKIP_EMPTY",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_SKIP_EMPTY, 0, 0.0 },` |
+|     - | 13341 | `		{ "READ_CSV",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_READ_CSV, 0, 0.0 },` |
+|     - | 13342 | `	};` |
+|     - | 13343 | `	static const PH7_NativeMethodDef aFileMethod[] = {` |
+|     - | 13344 | `		{ "__construct",   PH7_MOD_PUBLIC,` |
+|     - | 13345 | `		  "string $filename, string $mode = \"r\", bool $useIncludePath = false, "` |
+|     - | 13346 | `		  "$context = null", 0, vm_builtin_SplFileObject_construct },` |
+|     - | 13347 | `		{ "rewind",        PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFileObject_rewind },` |
+|     - | 13348 | `		{ "eof",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_eof },` |
+|     - | 13349 | `		{ "valid",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_valid },` |
+|     - | 13350 | `		{ "fgets",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileObject_fgets },` |
+|     - | 13351 | `		{ "fread",         PH7_MOD_PUBLIC, "int $length", "@string\|false",` |
+|     - | 13352 | `		  vm_builtin_SplFileObject_fread },` |
+|     - | 13353 | `		{ "fgetcsv",       PH7_MOD_PUBLIC,` |
+|     - | 13354 | `		  "string $separator = \",\", string $enclosure = \"\\\"\", string $escape = \"\\\\\"",` |
+|     - | 13355 | `		  "@array\|false", vm_builtin_SplFileObject_fgetcsv },` |
+|     - | 13356 | `		{ "fputcsv",       PH7_MOD_PUBLIC,` |
+|     - | 13357 | `		  "array $fields, string $separator = \",\", string $enclosure = \"\\\"\", "` |
+|     - | 13358 | `		  "string $escape = \"\\\\\", string $eol = \"\n\"", "@int\|false",` |
+|     - | 13359 | `		  vm_builtin_SplFileObject_fputcsv },` |
+|     - | 13360 | `		{ "setCsvControl", PH7_MOD_PUBLIC,` |
+|     - | 13361 | `		  "string $separator = \",\", string $enclosure = \"\\\"\", string $escape = \"\\\\\"",` |
+|     - | 13362 | `		  "@void", vm_builtin_SplFileObject_setCsvControl },` |
+|     - | 13363 | `		{ "getCsvControl", PH7_MOD_PUBLIC, "", "@array",` |
+|     - | 13364 | `		  vm_builtin_SplFileObject_getCsvControl },` |
+|     - | 13365 | `		{ "flock",         PH7_MOD_PUBLIC, "int $operation, &$wouldBlock = null", "@bool",` |
+|     - | 13366 | `		  vm_builtin_SplFileObject_flock },` |
+|     - | 13367 | `		{ "fflush",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_fflush },` |
+|     - | 13368 | `		{ "ftell",         PH7_MOD_PUBLIC, "", "@int\|false", vm_builtin_SplFileObject_ftell },` |
+|     - | 13369 | `		{ "fseek",         PH7_MOD_PUBLIC, "int $offset, int $whence = SEEK_SET", "@int",` |
+|     - | 13370 | `		  vm_builtin_SplFileObject_fseek },` |
+|     - | 13371 | `		{ "fgetc",         PH7_MOD_PUBLIC, "", "@string\|false", vm_builtin_SplFileObject_fgetc },` |
+|     - | 13372 | `		{ "fpassthru",     PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_fpassthru },` |
+|     - | 13373 | `		{ "fscanf",        PH7_MOD_PUBLIC, "string $format, mixed &...$vars", "@array\|int\|null",` |
+|     - | 13374 | `		  vm_builtin_SplFileObject_fscanf },` |
+|     - | 13375 | `		{ "fwrite",        PH7_MOD_PUBLIC, "string $data, ?int $length = null", "@int\|false",` |
+|     - | 13376 | `		  vm_builtin_SplFileObject_fwrite },` |
+|     - | 13377 | `		{ "fstat",         PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFileObject_fstat },` |
+|     - | 13378 | `		{ "ftruncate",     PH7_MOD_PUBLIC, "int $size", "@bool",` |
+|     - | 13379 | `		  vm_builtin_SplFileObject_ftruncate },` |
+|     - | 13380 | `		{ "current",       PH7_MOD_PUBLIC, "", "@array\|string\|false",` |
+|     - | 13381 | `		  vm_builtin_SplFileObject_current },` |
+|     - | 13382 | `		{ "key",           PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_key },` |
+|     - | 13383 | `		{ "next",          PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFileObject_next },` |
+|     - | 13384 | `		{ "setFlags",      PH7_MOD_PUBLIC, "int $flags", "@void",` |
+|     - | 13385 | `		  vm_builtin_SplFileObject_setFlags },` |
+|     - | 13386 | `		{ "getFlags",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_getFlags },` |
+|     - | 13387 | `		{ "setMaxLineLen", PH7_MOD_PUBLIC, "int $maxLength", "@void",` |
+|     - | 13388 | `		  vm_builtin_SplFileObject_setMaxLineLen },` |
+|     - | 13389 | `		{ "getMaxLineLen", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_getMaxLineLen },` |
+|     - | 13390 | `		/* php types the two it answers CONSTANTLY with the constant itself:` |
+|     - | 13391 | ``		 * `false` and `null`, not `bool` and `?RecursiveIterator`. A file has no`` |
+|     - | 13392 | `		 * children, and both bodies say so on every path. */` |
+|     - | 13393 | `		{ "hasChildren",   PH7_MOD_PUBLIC, "", "@false", vm_builtin_SplFileObject_hasChildren },` |
+|     - | 13394 | `		{ "getChildren",   PH7_MOD_PUBLIC, "", "@null",` |
+|     - | 13395 | `		  vm_builtin_SplFileObject_getChildren },` |
+|     - | 13396 | `		{ "seek",          PH7_MOD_PUBLIC, "int $line", "@void", vm_builtin_SplFileObject_seek },` |
+|     - | 13397 | `		/* php aliases getCurrentLine() to fgets(); the override branch in` |
+|     - | 13398 | `		 * SfoReadLineEx() is what makes REPLACING it mean something. */` |
+|     - | 13399 | `		{ "getCurrentLine",PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileObject_fgets },` |
+|     - | 13400 | `		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileObject_toString },` |
+|     - | 13401 | `	};` |
+|     - | 13402 | `	static const PH7_NativeMethodDef aTempMethod[] = {` |
+|     - | 13403 | `		{ "__construct", PH7_MOD_PUBLIC, "int $maxMemory = 2 * 1024 * 1024", 0,` |
+|     - | 13404 | `		  vm_builtin_SplTempFileObject_construct },` |
+|     - | 13405 | `	};` |
+|     - | 13406 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|     - | 13407 | `		{ "SplFileObject", "SplFileInfo", "RecursiveIterator,SeekableIterator",` |
+|     - | 13408 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NOCLONE,` |
+|     - | 13409 | `		  aFileMethod, SX_ARRAYSIZE(aFileMethod), aFileConst, SX_ARRAYSIZE(aFileConst),` |
+|     - | 13410 | `		  aFileProp, SX_ARRAYSIZE(aFileProp), SfoRelease, 0, SfiPresent },` |
+|     - | 13411 | `		/* php gives SplTempFileObject no handlers of its own, so it INHERITS the` |
+|     - | 13412 | `		 * check pair -- uncloneable, and every method refused on an instance` |
+|     - | 13413 | `		 * whose parent constructor never ran. A native class here inherits` |
+|     - | 13414 | `		 * neither the refusals nor the hooks (rule 29), so both are restated. */` |
+|     - | 13415 | `		{ "SplTempFileObject", "SplFileObject", 0,` |
+|     - | 13416 | `		  PH7_CLASS_NOSERIALIZE\|PH7_CLASS_NOCLONE,` |
+|     - | 13417 | `		  aTempMethod, SX_ARRAYSIZE(aTempMethod), 0, 0,` |
+|     - | 13418 | `		  0, 0, SfoRelease, 0, SfiPresent },` |
+|     - | 13419 | `	};` |
+|  7930 | 13420 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|     5 | 13421 | `}` |
+|  7925 | 13422 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+|     5 | 13423 | `{` |
+|  7930 | 13424 | `	sxi32 rc = VmInstallWeak(&(*pVm));` |
+|  7930 | 13425 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13426 | `		return rc;` |
+|     - | 13427 | `	}` |
+|     - | 13428 | `	/* Ordering, now that zSplLib is gone: the remaining PHP in this subsystem is` |
+|     - | 13429 | `	 * the tokenizer chunk's, so these only have to satisfy each OTHER. */` |
+|  7930 | 13430 | `	rc = VmInstallSplStore(&(*pVm));` |
+|  7930 | 13431 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13432 | `		return rc;` |
+|     - | 13433 | `	}` |
+|  7930 | 13434 | `	rc = VmInstallSplDualIterators(&(*pVm));` |
+|  7930 | 13435 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13436 | `		return rc;` |
+|     - | 13437 | `	}` |
+|     - | 13438 | `	/* After the dual iterators: RecursiveIteratorIterator names OuterIterator and` |
+|     - | 13439 | `	 * RecursiveIterator, both declared by that table. */` |
+|  7930 | 13440 | `	rc = VmInstallSplRecursiveIt(&(*pVm));` |
+|  7930 | 13441 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13442 | `		return rc;` |
+|     - | 13443 | `	}` |
+|  7930 | 13444 | `	rc = VmInstallSplDllist(&(*pVm));` |
+|  7930 | 13445 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13446 | `		return rc;` |
+|     - | 13447 | `	}` |
+|  7930 | 13448 | `	rc = VmInstallSplHeap(&(*pVm));` |
+|  7930 | 13449 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13450 | `		return rc;` |
+|     - | 13451 | `	}` |
+|  7930 | 13452 | `	rc = VmInstallSplFixedArray(&(*pVm));` |
+|  7930 | 13453 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13454 | `		return rc;` |
+|     - | 13455 | `	}` |
+|  7930 | 13456 | `	rc = VmInstallSplObjectStorage(&(*pVm));` |
+|  7930 | 13457 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13458 | `		return rc;` |
+|     - | 13459 | `	}` |
+|     - | 13460 | `	/* After SplObjectStorage: MultipleIterator holds the same storage and reaches` |
+|     - | 13461 | `	 * its attach/detach/debug routines. */` |
+|  7930 | 13462 | `	rc = VmInstallSplMultipleIterator(&(*pVm));` |
+|  7930 | 13463 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13464 | `		return rc;` |
+|     - | 13465 | `	}` |
+|  7930 | 13466 | `	rc = VmInstallSplFileInfo(&(*pVm));` |
+|  7930 | 13467 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13468 | `		return rc;` |
+|     - | 13469 | `	}` |
+|     - | 13470 | `	/* After SplFileInfo: DirectoryIterator extends it, and PH7_ClassInherit copies` |
+|     - | 13471 | `	 * the base's methods DOWN (rule 14). */` |
+|  7930 | 13472 | `	rc = VmInstallSplDirIterators(&(*pVm));` |
+|  7930 | 13473 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 13474 | `		return rc;` |
+|     - | 13475 | `	}` |
+|     - | 13476 | `	/* After SplFileInfo for the same reason; the dir iterators are ahead of it` |
+|     - | 13477 | `	 * only because they are declared together. */` |
+|  7930 | 13478 | `	return VmInstallSplFileObject(&(*pVm));` |
+|  3962 | 13479 | `}` |
+|     - | 13480 |  |
+|     - | 13481 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|     - | 13482 |  |
+|     - | 13483 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|     - | 13484 | `/* Tiny build: no SPL (builtin layer disabled) */` |
+|     - | 13485 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
+|     - | 13486 | `/* No directory iterators either, so shutdown has nothing to close. */` |
+|     - | 13487 | `PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm){ (void)pVm; }` |
+|     - | 13488 | `/* The writable-container fast path is called unconditionally by OP_LOAD_IDX, and its` |
+|     - | 13489 | ` * SXU32_HIGH answer already means "no slot available — take the ordinary offsetGet` |
+|     - | 13490 | ` * dispatch". With no SPL classes in this build that is the only answer there is, so the` |
+|     - | 13491 | ` * stub keeps the tiny target LINKING without a second #ifdef at the call site. */` |
+|     - | 13492 | `PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate)` |
+|     - | 13493 | `{` |
+|     - | 13494 | `	(void)pVm; (void)pThis; (void)pKey; (void)bCreate;` |
+|     - | 13495 | `	return SXU32_HIGH;` |
+|     - | 13496 | `}` |
+|     - | 13497 | `/* Same reasoning for the dual-iterator method forward: OP_MEMBER asks it on every` |
+|     - | 13498 | ` * missing method, and with no SPL classes in this build the answer is always "not` |
+|     - | 13499 | ` * one of mine". */` |
+|     - | 13500 | `PH7_PRIVATE int PH7_SplOuterForward(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pName,` |
+|     - | 13501 | `	ph7_class_instance **ppInner,ph7_class_method **ppMeth)` |
+|     - | 13502 | `{` |
+|     - | 13503 | `	(void)pVm; (void)pThis; (void)pName; (void)ppInner; (void)ppMeth;` |
+|     - | 13504 | `	return 0;` |
+|     - | 13505 | `}` |
+|     - | 13506 | `#endif` |
+|     - | 13507 |  |

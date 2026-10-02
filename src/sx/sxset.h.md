@@ -67,7 +67,7 @@ Coverage: 6/6 lines (100.00%)
 |        - |   57 | `                              * The flag always describes the pointer CURRENTLY in pBlob:` |
 |        - |   58 | `                              * every path that replaces the buffer sets it or clears it,` |
 |        - |   59 | `                              * and none leaves it to mean something about a previous one.` |
-|        - |   60 | `                              * (PERF.md P12; sxmem.c's BlobSetCapacity is the one place` |
+|        - |   60 | `                              * (sxmem.c's BlobSetCapacity is the one place` |
 |        - |   61 | `                              * that chooses.) */` |
 |        - |   62 |  |
 |        - |   63 | `/* SyBlob access macros */` |
@@ -99,17 +99,17 @@ Coverage: 6/6 lines (100.00%)
 |        - |   89 | ` * INLINE for a caller it no longer has: every array element the engine read went` |
 |        - |   90 | ` * through it to reach the value table, and a bounds test plus a multiply was 1.5%` |
 |        - |   91 | ` * of an ecosystem-gate phpcs run spent almost entirely on the call and return` |
-|        - |   92 | ` * around them. That caller is PH7_MemObjAt now (PERF.md P1) and inlines for the` |
+|        - |   92 | ` * around them. That caller is PH7_MemObjAt now, and it inlines for the` |
 |        - |   93 | ` * same reason; the remaining callers here are the bytecode and literal sets, which` |
 |        - |   94 | ` * are read far less often but pay nothing for this.` |
 |        - |   95 | ` */` |
-| 22616032 |   96 | `SX_STATIC_INLINE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
+| 24618234 |   96 | `SX_STATIC_INLINE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
 |        5 |   97 | `{` |
-| 22616037 |   98 | `	if( nIdx >= pSet->nUsed ){` |
+| 24618239 |   98 | `	if( nIdx >= pSet->nUsed ){` |
 |       13 |   99 | `		return 0;   /* Out of range */` |
 |        - |  100 | `	}` |
-| 22616025 |  101 | `	return (void *)&((char *)pSet->pBase)[nIdx * pSet->eSize];` |
-| 11305099 |  102 | `}` |
+| 24618227 |  101 | `	return (void *)&((char *)pSet->pBase)[nIdx * pSet->eSize];` |
+| 12310128 |  102 | `}` |
 |        - |  103 |  |
 |        - |  104 | `/* SyBlob function prototypes */` |
 |        - |  105 | `PH7_PRIVATE sxi32 SyBlobInit(SyBlob *pBlob,SyMemBackend *pAllocator);` |
@@ -118,12 +118,13 @@ Coverage: 6/6 lines (100.00%)
 |        - |  108 | `PH7_PRIVATE sxi32 SyBlobAppend(SyBlob *pBlob,const void *pData,sxu32 nSize);` |
 |        - |  109 | `PH7_PRIVATE sxi32 SyBlobNullAppend(SyBlob *pBlob);` |
 |        - |  110 | `PH7_PRIVATE sxi32 SyBlobDup(SyBlob *pSrc,SyBlob *pDest);` |
-|        - |  111 | `PH7_PRIVATE sxi32 SyBlobCmp(SyBlob *pLeft,SyBlob *pRight);` |
-|        - |  112 | `PH7_PRIVATE sxi32 SyBlobReset(SyBlob *pBlob);` |
-|        - |  113 | `PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob);` |
-|        - |  114 | `#if !defined(PH7_DISABLE_BUILTIN_FUNC) \|\| !defined(PH7_DISABLE_DISK_IO)` |
-|        - |  115 | `PH7_PRIVATE sxi32 SyBlobSearch(const void *pBlob,sxu32 nLen,const void *pPattern,sxu32 pLen,sxu32 *pOfft);` |
-|        - |  116 | `#endif /* PH7_DISABLE_BUILTIN_FUNC \|\| PH7_DISABLE_DISK_IO */` |
-|        - |  117 |  |
-|        - |  118 | `#endif /* __SXSET_H__ */` |
-|        - |  119 |  |
+|        - |  111 | `PH7_PRIVATE sxi32 SyBlobMakePrivate(SyBlob *pBlob);` |
+|        - |  112 | `PH7_PRIVATE sxi32 SyBlobCmp(SyBlob *pLeft,SyBlob *pRight);` |
+|        - |  113 | `PH7_PRIVATE sxi32 SyBlobReset(SyBlob *pBlob);` |
+|        - |  114 | `PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob);` |
+|        - |  115 | `#if !defined(PH7_DISABLE_BUILTIN_FUNC) \|\| !defined(PH7_DISABLE_DISK_IO)` |
+|        - |  116 | `PH7_PRIVATE sxi32 SyBlobSearch(const void *pBlob,sxu32 nLen,const void *pPattern,sxu32 pLen,sxu32 *pOfft);` |
+|        - |  117 | `#endif /* PH7_DISABLE_BUILTIN_FUNC \|\| PH7_DISABLE_DISK_IO */` |
+|        - |  118 |  |
+|        - |  119 | `#endif /* __SXSET_H__ */` |
+|        - |  120 |  |

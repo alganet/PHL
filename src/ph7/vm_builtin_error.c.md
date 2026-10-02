@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 300/356 lines (84.27%)
+Coverage: 304/360 lines (84.44%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -138,34 +138,34 @@ Coverage: 300/356 lines (84.27%)
 |     - |  128 | ` * Return` |
 |     - |  129 | ` *  This function returns FALSE if wrong error_type is specified, TRUE otherwise.` |
 |     - |  130 | ` */` |
-|   114 |  131 | `PH7_PRIVATE int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   124 |  131 | `PH7_PRIVATE int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  132 | `{` |
-|   119 |  133 | `	int nErr = 1024; /* E_USER_NOTICE — php's default level */` |
-|   119 |  134 | `	if( nArg > 0 ){` |
+|   129 |  133 | `	int nErr = 1024; /* E_USER_NOTICE — php's default level */` |
+|   129 |  134 | `	if( nArg > 0 ){` |
 |     - |  135 | `		const char *zErr;` |
 |     - |  136 | `		int nLen;` |
 |     - |  137 | `		/* Extract the error message */` |
-|   119 |  138 | `		zErr = ph7_value_to_string(apArg[0],&nLen);` |
-|   119 |  139 | `		if( nArg > 1 ){` |
+|   129 |  138 | `		zErr = ph7_value_to_string(apArg[0],&nLen);` |
+|   129 |  139 | `		if( nArg > 1 ){` |
 |     - |  140 | `			/* php 8: only the E_USER_* levels are accepted — anything else is a` |
 |     - |  141 | `			 * catchable ValueError. The RAW errno flows to the display label map` |
 |     - |  142 | `			 * and to a user error handler (php hands the handler 1024, not a` |
 |     - |  143 | `			 * translated engine severity). */` |
-|   119 |  144 | `			nErr = ph7_value_to_int(apArg[1]);` |
-|   119 |  145 | `			if( nErr != 256 && nErr != 512 && nErr != 1024 && nErr != 16384 ){` |
+|   129 |  144 | `			nErr = ph7_value_to_int(apArg[1]);` |
+|   129 |  145 | `			if( nErr != 256 && nErr != 512 && nErr != 1024 && nErr != 16384 ){` |
 |   ! 0 |  146 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
 |     - |  147 | `					"trigger_error(): Argument #2 ($error_level) must be one of E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE, or E_USER_DEPRECATED");` |
 |     - |  148 | `			}` |
-|   119 |  149 | `			if( nErr == 256 /* E_USER_ERROR */ ){` |
+|   129 |  149 | `			if( nErr == 256 /* E_USER_ERROR */ ){` |
 |     - |  150 | `				/* php only DEPRECATES the user-fatal level; PHL rejects it. */` |
 |     3 |  151 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
 |     - |  152 | `					"trigger_error(): Passing E_USER_ERROR is no longer supported, throw an exception or call exit() with a string message instead");` |
 |     - |  153 | `			}` |
-|    56 |  154 | `		}` |
+|    61 |  154 | `		}` |
 |     - |  155 | `		/* Report error (consults an installed error handler, then displays) */` |
-|   117 |  156 | `		PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);` |
-|   112 |  157 | `		if( nErr == 256 /* E_USER_ERROR */` |
-|    61 |  158 | `		 && !ph7_value_is_callable(&pCtx->pVm->sErrCB) ){` |
+|   127 |  156 | `		PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);` |
+|   122 |  157 | `		if( nErr == 256 /* E_USER_ERROR */` |
+|    66 |  158 | `		 && !ph7_value_is_callable(&pCtx->pVm->sErrCB) ){` |
 |     - |  159 | `			/* php: an unhandled user fatal halts with exit 255 (pre-fix the` |
 |     - |  160 | `			 * PH7_ABORT here was overwritten by the throw's status, so` |
 |     - |  161 | `			 * E_USER_ERROR silently CONTINUED). With a handler installed the` |
@@ -176,13 +176,13 @@ Coverage: 300/356 lines (84.27%)
 |   ! 0 |  166 | `			return PH7_ABORT;` |
 |     - |  167 | `		}` |
 |     - |  168 | `		/* Return true */` |
-|   117 |  169 | `		ph7_result_bool(pCtx,1);` |
-|    61 |  170 | `	}else{` |
+|   127 |  169 | `		ph7_result_bool(pCtx,1);` |
+|    66 |  170 | `	}else{` |
 |     - |  171 | `		/* Missing arguments,return FALSE */` |
 |   ! 0 |  172 | `		ph7_result_bool(pCtx,0);` |
 |     - |  173 | `	}` |
-|   117 |  174 | `	return PH7_OK;` |
-|    62 |  175 | `}` |
+|   127 |  174 | `	return PH7_OK;` |
+|    67 |  175 | `}` |
 |     - |  176 | `/*` |
 |     - |  177 | ` * int error_reporting([int $level])` |
 |     - |  178 | ` *  Sets which PHP errors are reported.` |
@@ -198,606 +198,622 @@ Coverage: 300/356 lines (84.27%)
 |     - |  188 | ` *   Returns the old error_reporting level or the current level if no level` |
 |     - |  189 | ` *   parameter is given.` |
 |     - |  190 | ` */` |
-|   902 |  191 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  1082 |  191 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  192 | `{` |
-|   907 |  193 | `	ph7_vm *pVm = pCtx->pVm;` |
+|  1087 |  193 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  194 | `	int nOld;` |
 |     - |  195 | `	/* Extract the old reporting level */` |
-|   907 |  196 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
-|   907 |  197 | `	if( pVm->nErrSuppress > 0 ){` |
+|  1087 |  196 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
+|  1087 |  197 | `	if( pVm->nErrSuppress > 0 ){` |
 |     - |  198 | `		/* Inside the '@' silence operator php reports the level masked down to` |
 |     - |  199 | `		 * the errors '@' cannot suppress: E_ERROR\|E_PARSE\|E_CORE_ERROR\|` |
 |     - |  200 | `		 * E_COMPILE_ERROR\|E_USER_ERROR\|E_RECOVERABLE_ERROR (== 4437). A custom` |
 |     - |  201 | `		 * error handler (e.g. PHPUnit's) consults error_reporting() to honor` |
 |     - |  202 | `		 * '@', so a suppressed warning must fall outside the returned mask. */` |
-|   397 |  203 | `		nOld &= 4437;` |
-|   196 |  204 | `	}` |
-|   907 |  205 | `	if( nArg > 0 ){` |
+|   387 |  203 | `		nOld &= 4437;` |
+|   191 |  204 | `	}` |
+|  1087 |  205 | `	if( nArg > 0 ){` |
 |     - |  206 | `		int nNew;` |
 |     - |  207 | `		/* Keep the LEVEL, not just an on/off bit: php masks per-severity. */` |
-|   116 |  208 | `		nNew = ph7_value_to_int(apArg[0]);` |
-|   116 |  209 | `		pVm->iErrMask = (sxi32)nNew;` |
-|   116 |  210 | `		pVm->bErrReport = nNew != 0;` |
-|    55 |  211 | `	}` |
-|     - |  212 | `	/* Return the old level */` |
-|   907 |  213 | `	ph7_result_int(pCtx,nOld);` |
-|   907 |  214 | `	return PH7_OK;` |
-|     5 |  215 | `}` |
-|     - |  216 | `/*` |
-|     - |  217 | ` * bool error_log(string $message[,int $message_type = 0 [,string $destination[,string $extra_headers]]])` |
-|     - |  218 | ` *  Send an error message somewhere.` |
-|     - |  219 | ` * Parameter` |
-|     - |  220 | ` *  $message` |
-|     - |  221 | ` *   The error message that should be logged.` |
-|     - |  222 | ` *  $message_type` |
-|     - |  223 | ` *   Says where the error should go. The possible message types are as follows:` |
-|     - |  224 | ` *    0  message is sent to PHP's system logger, using the Operating System's system logging mechanism` |
-|     - |  225 | ` *       or a file, depending on what the error_log configuration directive is set to.` |
-|     - |  226 | ` *       This is the default option.` |
-|     - |  227 | ` *    1 message is sent by email to the address in the destination parameter.` |
-|     - |  228 | ` *      This is the only message type where the fourth parameter, extra_headers is used.` |
-|     - |  229 | ` *    2  No longer an option.` |
-|     - |  230 | ` *    3  message is appended to the file destination. A newline is not automatically added` |
-|     - |  231 | ` *       to the end of the message string.` |
-|     - |  232 | ` *    4  message is sent directly to the SAPI logging handler.` |
-|     - |  233 | ` *  $destination` |
-|     - |  234 | ` *   The destination. Its meaning depends on the message_type parameter as described above.` |
-|     - |  235 | ` *  $extra_headers` |
-|     - |  236 | ` *   The extra headers. It's used when the message_type parameter is set to 1` |
-|     - |  237 | ` * Return` |
-|     - |  238 | ` *  TRUE on success or FALSE on failure.` |
-|     - |  239 | ` *` |
-|     - |  240 | ` * This used to invoke the PH7_VM_CONFIG_ERR_LOG_HANDLER embedder callback and` |
-|     - |  241 | ` * NOTHING else: with no callback installed — which is every CLI run — the whole` |
-|     - |  242 | `` * function was a no-op that answered TRUE. `error_log($msg)` printed nothing,`` |
-|     - |  243 | `` * `error_log($msg, 3, $file)` wrote no file and still said it had, and a`` |
-|     - |  244 | ` * destination that could not be opened answered TRUE as well. Every "log this` |
-|     - |  245 | ` * and carry on" call in a program silently disappeared, which is the one thing` |
-|     - |  246 | ` * a logging call must not do.` |
-|     - |  247 | ` *` |
-|     - |  248 | ` * php's own routing, which is what it does now: type 3 APPENDS the message` |
-|     - |  249 | ` * verbatim to $destination (no newline added, no timestamp) and answers FALSE` |
-|     - |  250 | ` * with the open warning when it cannot; type 2 is php's ValueError; type 1 is` |
-|     - |  251 | ` * mail(), which this engine has no transport for, so it answers FALSE rather` |
-|     - |  252 | ` * than claiming a delivery; and every other value — 0, 4, and anything` |
-|     - |  253 | ` * unrecognised, all of which php sends to the SAPI logger — writes the message` |
-|     - |  254 | ` * plus a newline to the diagnostics stream. The embedder callback still wins` |
-|     - |  255 | ` * when one is installed: that is what it is for.` |
-|     - |  256 | ` */` |
-|    12 |  257 | `PH7_PRIVATE int vm_builtin_error_log(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     2 |  258 | `{` |
-|     - |  259 | `	const char *zMessage,*zDest,*zHeader;` |
-|    14 |  260 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    14 |  261 | `	int iType = 0, nMsg = 0, nDest = 0;` |
-|    14 |  262 | `	if( nArg < 1 ){` |
-|     - |  263 | `		/* Missing log message,return FALSE */` |
-|   ! 0 |  264 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  265 | `		return PH7_OK;` |
-|     - |  266 | `	}` |
-|    14 |  267 | `	zMessage = ph7_value_to_string(apArg[0],&nMsg);` |
-|    14 |  268 | `	zDest = zHeader = ""; /* Empty string */` |
-|    14 |  269 | `	if( nArg > 1 ){` |
-|    12 |  270 | `		iType = ph7_value_to_int(apArg[1]);` |
-|     5 |  271 | `	}` |
-|    14 |  272 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
-|     9 |  273 | `		zDest = ph7_value_to_string(apArg[2],&nDest);` |
-|     4 |  274 | `	}` |
-|    14 |  275 | `	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){` |
-|   ! 0 |  276 | `		zHeader = ph7_value_to_string(apArg[3],0);` |
-|   ! 0 |  277 | `	}` |
-|    14 |  278 | `	if( iType == 2 ){` |
-|     - |  279 | `		/* php removed the TCP/IP destination in 8.0 and refuses the type outright. */` |
-|     3 |  280 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     - |  281 | `			"TCP/IP option is not available for error logging");` |
-|     - |  282 | `	}` |
-|    12 |  283 | `	if( pVm->xErrLog ){` |
-|     - |  284 | `		/* An embedder took the routing over (PH7_VM_CONFIG_ERR_LOG_HANDLER). */` |
-|   ! 0 |  285 | `		pVm->xErrLog(zMessage,iType,zDest,zHeader);` |
-|   ! 0 |  286 | `		ph7_result_bool(pCtx,1);` |
-|   ! 0 |  287 | `		return PH7_OK;` |
-|     - |  288 | `	}` |
-|    12 |  289 | `	if( iType == 1 ){` |
-|     - |  290 | `		/* mail(): no transport in this engine, so the message did NOT go out.` |
-|     - |  291 | `		 * Answering TRUE for it was the old no-op's worst face. */` |
-|   ! 0 |  292 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 |  293 | `		return PH7_OK;` |
-|     - |  294 | `	}` |
-|     - |  295 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
-|    12 |  296 | `	if( iType == 3 ){` |
-|     - |  297 | `		/* Appended VERBATIM: php adds neither a newline nor a timestamp here. */` |
-|     7 |  298 | `		if( PH7_VfsAppendFile(pCtx,zDest,zMessage,nMsg) != PH7_OK ){` |
-|     3 |  299 | `			ph7_result_bool(pCtx,0);` |
-|     3 |  300 | `			return PH7_OK;` |
-|     - |  301 | `		}` |
-|     5 |  302 | `		ph7_result_bool(pCtx,1);` |
-|     5 |  303 | `		return PH7_OK;` |
-|     - |  304 | `	}` |
-|     - |  305 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|     - |  306 | `	/* 0 (the configured log), 4 (the SAPI logger) and every other value: the` |
-|     - |  307 | `	 * diagnostics stream, message plus a newline — php's CLI shape with no` |
-|     - |  308 | ``	 * `error_log` ini set. */`` |
-|     - |  309 | `	{` |
-|     7 |  310 | `		ph7_output_consumer *pCons = pVm->sVmErrConsumer.xConsumer` |
-|     4 |  311 | `			? &pVm->sVmErrConsumer : &pVm->sVmConsumer;` |
-|     - |  312 | `		SyBlob sOut;` |
-|     5 |  313 | `		SyBlobInit(&sOut,&pVm->sAllocator);` |
-|     5 |  314 | `		SyBlobAppend(&sOut,zMessage,(sxu32)nMsg);` |
-|     5 |  315 | `		SyBlobAppend(&sOut,"\n",sizeof(char));` |
-|     5 |  316 | `		pCons->xConsumer(SyBlobData(&sOut),SyBlobLength(&sOut),pCons->pUserData);` |
-|     5 |  317 | `		SyBlobRelease(&sOut);` |
-|     - |  318 | `	}` |
-|     5 |  319 | `	ph7_result_bool(pCtx,1);` |
-|     5 |  320 | `	return PH7_OK;` |
-|     8 |  321 | `}` |
-|     - |  322 | `/*` |
-|     - |  323 | ` * php's set_error_handler()/set_exception_handler() stack, both directions.` |
-|     - |  324 | ` *` |
-|     - |  325 | `` * PH7 kept ONE saved slot per handler, so a third `set` overwrote the first`` |
-|     - |  326 | `` * one's save and the matching `restore` could not find it again; and a NULL`` |
-|     - |  327 | ` * argument was treated as a failure instead of the ordinary stack entry php` |
-|     - |  328 | ` * pushes for it. Both routines below are shared by the error and the exception` |
-|     - |  329 | ` * handler because php implements them the same way.` |
-|     - |  330 | ` */` |
-| 15173 |  331 | `static sxi32 VmHandlerPush(` |
-|     - |  332 | `	ph7_vm *pVm,` |
-|     - |  333 | `	ph7_value *pActive,   /* the currently installed handler */` |
-|     - |  334 | `	sxi64 *piLevels,      /* its $error_levels (unused by the exception handler) */` |
-|     - |  335 | `	SySet *pStack,        /* the saved entries underneath it */` |
-|     - |  336 | ``	ph7_value *pNewCb,    /* the replacement, or 0 for the `null` reset */`` |
-|     - |  337 | `	sxi64 iLevels` |
-|     - |  338 | `	)` |
-|     5 |  339 | `{` |
-|     - |  340 | `	VmHandlerSlot sSlot;` |
-|     - |  341 | `	sxi32 rc;` |
-| 15178 |  342 | `	PH7_MemObjInit(pVm,&sSlot.sCb);` |
-| 15178 |  343 | `	PH7_MemObjStore(pActive,&sSlot.sCb);` |
-| 15178 |  344 | `	sSlot.iLevels = *piLevels;` |
-| 15178 |  345 | `	rc = SySetPut(pStack,(const void *)&sSlot);` |
-| 15178 |  346 | `	if( rc != SXRET_OK ){` |
-|   ! 0 |  347 | `		PH7_MemObjRelease(&sSlot.sCb);` |
-|   ! 0 |  348 | `		return rc;` |
-|     - |  349 | `	}` |
-| 15178 |  350 | `	PH7_MemObjRelease(pActive);` |
-| 15178 |  351 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
-| 15178 |  352 | `	if( pNewCb ){` |
-|  8708 |  353 | `		PH7_MemObjStore(pNewCb,pActive);` |
-|  4350 |  354 | `	}` |
-| 15178 |  355 | `	*piLevels = iLevels;` |
-| 15178 |  356 | `	return SXRET_OK;` |
-|  7590 |  357 | `}` |
-|  2038 |  358 | `static void VmHandlerPop(ph7_vm *pVm,ph7_value *pActive,sxi64 *piLevels,SySet *pStack)` |
-|     5 |  359 | `{` |
-|  2043 |  360 | `	VmHandlerSlot *pSlot = (VmHandlerSlot *)SySetPop(pStack);` |
-|  2043 |  361 | `	PH7_MemObjRelease(pActive);` |
-|  2043 |  362 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
-|  2043 |  363 | `	*piLevels = PH7_E_ALL_MASK;` |
-|  2043 |  364 | `	if( pSlot ){` |
-|  2039 |  365 | `		PH7_MemObjStore(&pSlot->sCb,pActive);` |
-|  2039 |  366 | `		*piLevels = pSlot->iLevels;` |
-|  2039 |  367 | `		PH7_MemObjRelease(&pSlot->sCb);` |
-|  1017 |  368 | `	}` |
-|  1019 |  369 | `	SXUNUSED(pVm);` |
-|  2043 |  370 | `}` |
-|     - |  371 | `/*` |
-|     - |  372 | ` * bool restore_exception_handler(void)` |
-|     - |  373 | ` *  Restores the previously defined exception handler function.` |
-|     - |  374 | ` * Parameter` |
-|     - |  375 | ` *  None` |
-|     - |  376 | ` * Return` |
-|     - |  377 | ` *  TRUE if the exception handler is restored.FALSE otherwise` |
-|     - |  378 | ` */` |
-|    12 |  379 | `PH7_PRIVATE int vm_builtin_restore_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  380 | `{` |
-|    13 |  381 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    13 |  382 | `	sxi64 iLevels = PH7_E_ALL_MASK;` |
-|     6 |  383 | `	SXUNUSED(nArg); /* cc warning */` |
-|     6 |  384 | `	SXUNUSED(apArg);` |
-|     - |  385 | `	/* An empty stack pops to NO handler: php answers TRUE either way, because the` |
-|     - |  386 | `	 * return value says "the call is valid", not "a handler was in place". */` |
-|    13 |  387 | `	VmHandlerPop(pVm,&pVm->sExceptionCB,&iLevels,&pVm->aExceptionCBSaved);` |
-|    13 |  388 | `	ph7_result_bool(pCtx,1);` |
-|    13 |  389 | `	return PH7_OK;` |
-|     1 |  390 | `}` |
-|     - |  391 | `/*` |
-|     - |  392 | ` * callable set_exception_handler(callable $exception_handler)` |
-|     - |  393 | ` *  Sets a user-defined exception handler function.` |
-|     - |  394 | ` *  Sets the default exception handler if an exception is not caught within a try/catch block.` |
-|     - |  395 | ` * NOTE` |
-|     - |  396 | ` *  Execution will NOT stop after the exception_handler calls for example die/exit unlike` |
-|     - |  397 | ` *  the satndard PHP engine.` |
-|     - |  398 | ` * Parameters` |
-|     - |  399 | ` *  $exception_handler` |
-|     - |  400 | ` *   Name of the function to be called when an uncaught exception occurs.` |
-|     - |  401 | ` *   This handler function needs to accept one parameter, which will be the exception object` |
-|     - |  402 | ` *   that was thrown.` |
-|     - |  403 | ` *  Note:` |
-|     - |  404 | ` *   NULL may be passed instead, to reset this handler to its default state.` |
-|     - |  405 | ` * Return` |
-|     - |  406 | ` *  Returns the name of the previously defined exception handler, or NULL on error.` |
-|     - |  407 | ` *  If no previous handler was defined, NULL is also returned. If NULL is passed` |
-|     - |  408 | ` *  resetting the handler to its default state, TRUE is returned.` |
-|     - |  409 | ` */` |
-|    16 |  410 | `PH7_PRIVATE int vm_builtin_set_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  411 | `{` |
-|    19 |  412 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    19 |  413 | `	sxi64 iLevels = PH7_E_ALL_MASK;` |
-|     - |  414 | `	/* php answers the handler this call REPLACES -- the active one, not the entry` |
-|     - |  415 | `	 * saved under it. */` |
-|    19 |  416 | `	if( ph7_value_is_callable(&pVm->sExceptionCB) ){` |
-|     5 |  417 | `		ph7_result_value(pCtx,&pVm->sExceptionCB); /* Will make it's own copy */` |
-|     3 |  418 | `	}else{` |
-|    15 |  419 | `		ph7_result_null(pCtx);` |
-|     - |  420 | `	}` |
-|    19 |  421 | `	if( nArg < 1 ){` |
-|   ! 0 |  422 | `		return PH7_OK;` |
-|     - |  423 | `	}` |
-|    19 |  424 | `	if( !ph7_value_is_null(apArg[0]) ){` |
-|     - |  425 | `		/* php REFUSES anything else that cannot be called, naming why. PH7` |
-|     - |  426 | `		 * answered TRUE and kept the old handler. */` |
-|    15 |  427 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);` |
-|    15 |  428 | `		if( rcCb != PH7_OK ){` |
-|     3 |  429 | `			return rcCb;` |
-|     - |  430 | `		}` |
-|     5 |  431 | `	}` |
-|    24 |  432 | `	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sExceptionCB,&iLevels,&pVm->aExceptionCBSaved,` |
-|    14 |  433 | `			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],PH7_E_ALL_MASK) ){` |
-|     - |  434 | `		/* Out of memory. Nothing was installed and nothing was saved, so answering` |
-|     - |  435 | `		 * the previous handler would claim a replacement that did not happen. */` |
-|   ! 0 |  436 | `		return PH7_VmThrowException(pCtx,"Error",` |
-|   ! 0 |  437 | `			"%s(): out of memory installing the handler",ph7_function_name(pCtx));` |
-|     - |  438 | `	}` |
-|    17 |  439 | `	return PH7_OK;` |
-|    11 |  440 | `}` |
-|     - |  441 | `/*` |
-|     - |  442 | ` * bool restore_error_handler(void)` |
-|     - |  443 | ` *  THIS FUNCTION IS A NO-OP IN THE CURRENT RELEASE OF THE PH7 ENGINE.` |
-|     - |  444 | ` * Parameters:` |
-|     - |  445 | ` *  None.` |
-|     - |  446 | ` * Return` |
-|     - |  447 | ` *  Always TRUE.` |
-|     - |  448 | ` */` |
-|  2026 |  449 | `PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     5 |  450 | `{` |
-|  2031 |  451 | `	ph7_vm *pVm = pCtx->pVm;` |
-|  1013 |  452 | `	SXUNUSED(nArg); /* cc warning */` |
-|  1013 |  453 | `	SXUNUSED(apArg);` |
-|     - |  454 | `	/* The popped handler's $error_levels comes back with it. An empty stack pops` |
-|     - |  455 | `	 * to NO handler; php answers TRUE either way, because the return value says` |
-|     - |  456 | `	 * "the call is valid", not "a handler was in place". */` |
-|  2031 |  457 | `	VmHandlerPop(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved);` |
-|  2031 |  458 | `	ph7_result_bool(pCtx,1);` |
-|  2031 |  459 | `	return PH7_OK;` |
-|     5 |  460 | `}` |
-|     - |  461 | `/*` |
-|     - |  462 | ` * value set_error_handler(callable $error_handler)` |
-|     - |  463 | ` *  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++` |
-|     - |  464 | ` *   THIS FUNCTION IS DISABLED IN THE CURRENT RELEASE OF THE PH7 ENGINE.` |
-|     - |  465 | ` *  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++` |
-|     - |  466 | ` *  Sets a user-defined error handler function.` |
-|     - |  467 | ` *  This function can be used for defining your own way of handling errors during` |
-|     - |  468 | ` *  runtime, for example in applications in which you need to do cleanup of data/files` |
-|     - |  469 | ` *  when a critical error happens, or when you need to trigger an error under certain` |
-|     - |  470 | ` *  conditions (using trigger_error()).` |
-|     - |  471 | ` * Parameters` |
-|     - |  472 | ` *  $error_handler` |
-|     - |  473 | ` *   The user function needs to accept two parameters: the error code, and a string` |
-|     - |  474 | ` *   describing the error.` |
-|     - |  475 | ` *   Then there are three optional parameters that may be supplied: the filename in which` |
-|     - |  476 | ` *   the error occurred, the line number in which the error occurred, and the context in which` |
-|     - |  477 | ` *   the error occurred (an array that points to the active symbol table at the point the error occurred).` |
-|     - |  478 | ` *   The function can be shown as:` |
-|     - |  479 | ` *    handler ( int $errno , string $errstr [, string $errfile])` |
-|     - |  480 | ` *     errno` |
-|     - |  481 | ` *       The first parameter, errno, contains the level of the error raised, as an integer.` |
-|     - |  482 | ` *   errstr` |
-|     - |  483 | ` *      The second parameter, errstr, contains the error message, as a string.` |
-|     - |  484 | ` *   errfile` |
-|     - |  485 | ` *      The third parameter is optional, errfile, which contains the filename that the error` |
-|     - |  486 | ` *     was raised in, as a string.` |
-|     - |  487 | ` *  Note:` |
-|     - |  488 | ` *   NULL may be passed instead, to reset this handler to its default state.` |
-|     - |  489 | ` * Return` |
-|     - |  490 | ` *  The handler that was ACTIVE before this call, or NULL when there was none --` |
-|     - |  491 | `` *  including for the `null` reset, which php pushes onto the handler stack like`` |
-|     - |  492 | ` *  any other value rather than treating as a failure.` |
-|     - |  493 | ` */` |
-| 15163 |  494 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     5 |  495 | `{` |
-| 15168 |  496 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - |  497 | `	sxi64 iLevels;` |
-|     - |  498 | `	/* php answers the handler this call REPLACES -- the active one, not the entry` |
-|     - |  499 | `	 * saved under it. Returning the saved entry answered the handler from one` |
-|     - |  500 | `	 * level further down (and NULL for the very first replacement of a handler` |
-|     - |  501 | `	 * that was really there). */` |
-| 15168 |  502 | `	if( ph7_value_is_callable(&pVm->sErrCB) ){` |
-|  8259 |  503 | `		ph7_result_value(pCtx,&pVm->sErrCB); /* Will make it's own copy */` |
-|  4131 |  504 | `	}else{` |
-|  6912 |  505 | `		ph7_result_null(pCtx);` |
-|     - |  506 | `	}` |
-| 15168 |  507 | `	if( nArg < 1 ){` |
-|   ! 0 |  508 | `		return PH7_OK;` |
-|     - |  509 | `	}` |
-|     - |  510 | `	/* $error_levels rides WITH the handler: it is read at full width (php ANDs` |
-|     - |  511 | `	 * a zend_long, so 2^32+1024 still selects E_USER_NOTICE) and is pushed and` |
-|     - |  512 | `	 * popped with it. */` |
-| 15168 |  513 | `	iLevels = nArg > 1 ? ph7_value_to_int64(apArg[1]) : PH7_E_ALL_MASK;` |
-| 15168 |  514 | `	if( !ph7_value_is_null(apArg[0]) ){` |
-|     - |  515 | `		/* php REFUSES anything else that cannot be called, naming why. PH7` |
-|     - |  516 | `		 * answered TRUE and kept the old handler, so a misspelled handler name` |
-|     - |  517 | `		 * left the program reporting through the engine's own path in silence. */` |
-|  8702 |  518 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);` |
-|  8702 |  519 | `		if( rcCb != PH7_OK ){` |
-|     5 |  520 | `			return rcCb;` |
-|     - |  521 | `		}` |
-|  4345 |  522 | `	}` |
-|     - |  523 | ``	/* A `null` argument is a real stack entry: it silences the handler until a`` |
-|     - |  524 | `	 * restore_error_handler() pops it and brings the previous one -- with ITS` |
-|     - |  525 | `	 * levels -- back. */` |
-| 22742 |  526 | `	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved,` |
-| 15159 |  527 | `			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],iLevels) ){` |
-|     - |  528 | `		/* Out of memory. Nothing was installed and nothing was saved, so answering` |
-|     - |  529 | `		 * the previous handler would claim a replacement that did not happen. */` |
-|   ! 0 |  530 | `		return PH7_VmThrowException(pCtx,"Error",` |
-|   ! 0 |  531 | `			"%s(): out of memory installing the handler",ph7_function_name(pCtx));` |
-|     - |  532 | `	}` |
-| 15164 |  533 | `	return PH7_OK;` |
-|  7585 |  534 | `}` |
-|     - |  535 | `/*` |
-|     - |  536 | ` * ?callable get_error_handler(void)     -- php 8.5` |
-|     - |  537 | ` * ?callable get_exception_handler(void) -- php 8.5` |
-|     - |  538 | ` *  Return the currently installed handler callable (the ACTIVE slot [1] that the` |
-|     - |  539 | ` *  dispatch paths call), or NULL when none is set.` |
-|     - |  540 | ` */` |
-|    34 |  541 | `PH7_PRIVATE int vm_builtin_get_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     2 |  542 | `{` |
-|    36 |  543 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    17 |  544 | `	SXUNUSED(nArg);` |
-|    17 |  545 | `	SXUNUSED(apArg);` |
-|    36 |  546 | `	if( ph7_value_is_callable(&pVm->sErrCB) ){` |
-|    24 |  547 | `		ph7_result_value(pCtx,&pVm->sErrCB);` |
-|    13 |  548 | `	}else{` |
-|    14 |  549 | `		ph7_result_null(pCtx);` |
-|     - |  550 | `	}` |
-|    36 |  551 | `	return PH7_OK;` |
-|     2 |  552 | `}` |
-|    16 |  553 | `PH7_PRIVATE int vm_builtin_get_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     2 |  554 | `{` |
-|    18 |  555 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     8 |  556 | `	SXUNUSED(nArg);` |
-|     8 |  557 | `	SXUNUSED(apArg);` |
-|    18 |  558 | `	if( ph7_value_is_callable(&pVm->sExceptionCB) ){` |
-|     8 |  559 | `		ph7_result_value(pCtx,&pVm->sExceptionCB);` |
-|     5 |  560 | `	}else{` |
-|    12 |  561 | `		ph7_result_null(pCtx);` |
-|     - |  562 | `	}` |
-|    18 |  563 | `	return PH7_OK;` |
-|     2 |  564 | `}` |
-|     - |  565 | `/*` |
-|     - |  566 | ` * array debug_backtrace([ int $options = DEBUG_BACKTRACE_PROVIDE_OBJECT [, int $limit = 0 ]] )` |
-|     - |  567 | ` *  Generates a backtrace.` |
-|     - |  568 | ` * Paramaeter` |
-|     - |  569 | ` *  $options` |
-|     - |  570 | ` *   DEBUG_BACKTRACE_PROVIDE_OBJECT: Whether or not to populate the "object" index.` |
-|     - |  571 | ` *   DEBUG_BACKTRACE_IGNORE_ARGS 	Whether or not to omit the "args" index, and thus` |
-|     - |  572 | ` *   all the function/method arguments, to save memory.` |
-|     - |  573 | ` * $limit` |
-|     - |  574 | ` *   (Not Used)` |
-|     - |  575 | ` * Return` |
-|     - |  576 | ` *  An array.The possible returned elements are as follows:` |
-|     - |  577 | ` *          Possible returned elements from debug_backtrace()` |
-|     - |  578 | ` *          Name        Type      Description` |
-|     - |  579 | ` *          ------      ------     -----------` |
-|     - |  580 | ` *          function    string    The current function name. See also __FUNCTION__.` |
-|     - |  581 | ` *          line        integer   The current line number. See also __LINE__.` |
-|     - |  582 | ` *          file 	    string 	  The current file name. See also __FILE__.` |
-|     - |  583 | ` *          class       string    The current class name. See also __CLASS__` |
-|     - |  584 | ` *          object      object    The current object.` |
-|     - |  585 | ` *          args        array     If inside a function, this lists the functions arguments.` |
-|     - |  586 | ` *                                If inside an included file, this lists the included file name(s).` |
-|     - |  587 | ` */` |
-|     - |  588 | `/*` |
-|     - |  589 | ` * array error_get_last()` |
-|     - |  590 | ` *  Return the last error that reached default processing, or NULL if there was none.` |
-|     - |  591 | ` *  PH7 registered debug_backtrace() under this name, so it answered with a stack trace` |
-|     - |  592 | ` *  and never reported an error at all.` |
-|     - |  593 | ` */` |
-|    38 |  594 | `PH7_PRIVATE int vm_builtin_error_get_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  595 | `{` |
-|    41 |  596 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - |  597 | `	ph7_value *pArray,*pValue;` |
-|    19 |  598 | `	SXUNUSED(nArg);` |
-|    19 |  599 | `	SXUNUSED(apArg);` |
-|    41 |  600 | `	if( pVm->nLastErrType == 0 ){` |
-|     - |  601 | `		/* No error yet */` |
-|     8 |  602 | `		ph7_result_null(pCtx);` |
-|     8 |  603 | `		return PH7_OK;` |
-|     - |  604 | `	}` |
-|    34 |  605 | `	pArray = ph7_context_new_array(pCtx);` |
-|    34 |  606 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|    34 |  607 | `	if( pArray == 0 \|\| pValue == 0 ){` |
-|   ! 0 |  608 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
-|   ! 0 |  609 | `		ph7_result_null(pCtx);` |
-|   ! 0 |  610 | `		return PH7_OK;` |
-|     - |  611 | `	}` |
-|    34 |  612 | `	ph7_value_int(pValue,(int)pVm->nLastErrType);` |
-|    34 |  613 | `	ph7_array_add_strkey_elem(pArray,"type",pValue);` |
-|    50 |  614 | `	ph7_value_string(pValue,(const char *)SyBlobData(&pVm->sLastErrMsg),` |
-|    32 |  615 | `		(int)SyBlobLength(&pVm->sLastErrMsg));` |
-|    34 |  616 | `	ph7_array_add_strkey_elem(pArray,"message",pValue);` |
-|    34 |  617 | `	ph7_value_reset_string_cursor(pValue);` |
-|    50 |  618 | `	ph7_value_string(pValue,(const char *)SyBlobData(&pVm->sLastErrFile),` |
-|    32 |  619 | `		(int)SyBlobLength(&pVm->sLastErrFile));` |
-|    34 |  620 | `	ph7_array_add_strkey_elem(pArray,"file",pValue);` |
-|    34 |  621 | `	ph7_value_reset_string_cursor(pValue);` |
-|    34 |  622 | `	ph7_value_int(pValue,(int)pVm->nLastErrLine);` |
-|    34 |  623 | `	ph7_array_add_strkey_elem(pArray,"line",pValue);` |
-|    34 |  624 | `	ph7_result_value(pCtx,pArray);` |
-|    34 |  625 | `	return PH7_OK;` |
-|    22 |  626 | `}` |
-|     - |  627 | `/*` |
-|     - |  628 | ` * void error_clear_last()` |
-|     - |  629 | ` *  Clear the most recent error so a subsequent error_get_last() returns NULL` |
-|     - |  630 | ` *  (php uses this to detect whether an operation itself raised an error).` |
-|     - |  631 | ` */` |
-|     6 |  632 | `PH7_PRIVATE int vm_builtin_error_clear_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  633 | `{` |
-|     7 |  634 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     3 |  635 | `	SXUNUSED(nArg);` |
-|     3 |  636 | `	SXUNUSED(apArg);` |
-|     7 |  637 | `	pVm->nLastErrType = 0;` |
-|     7 |  638 | `	pVm->nLastErrLine = 0;` |
-|     7 |  639 | `	SyBlobReset(&pVm->sLastErrMsg);` |
-|     7 |  640 | `	SyBlobReset(&pVm->sLastErrFile);` |
-|     7 |  641 | `	return PH7_OK;` |
-|     1 |  642 | `}` |
+|   186 |  208 | `		nNew = ph7_value_to_int(apArg[0]);` |
+|   186 |  209 | `		pVm->iErrMask = (sxi32)nNew;` |
+|   186 |  210 | `		pVm->bErrReport = nNew != 0;` |
+|   186 |  211 | `		pVm->bErrMaskSet = 1;` |
+|    90 |  212 | `	}` |
+|     - |  213 | `	/* Return the old level */` |
+|  1087 |  214 | `	ph7_result_int(pCtx,nOld);` |
+|  1087 |  215 | `	return PH7_OK;` |
+|     5 |  216 | `}` |
+|     - |  217 | `/*` |
+|     - |  218 | ` * bool error_log(string $message[,int $message_type = 0 [,string $destination[,string $extra_headers]]])` |
+|     - |  219 | ` *  Send an error message somewhere.` |
+|     - |  220 | ` * Parameter` |
+|     - |  221 | ` *  $message` |
+|     - |  222 | ` *   The error message that should be logged.` |
+|     - |  223 | ` *  $message_type` |
+|     - |  224 | ` *   Says where the error should go. The possible message types are as follows:` |
+|     - |  225 | ` *    0  message is sent to PHP's system logger, using the Operating System's system logging mechanism` |
+|     - |  226 | ` *       or a file, depending on what the error_log configuration directive is set to.` |
+|     - |  227 | ` *       This is the default option.` |
+|     - |  228 | ` *    1 message is sent by email to the address in the destination parameter.` |
+|     - |  229 | ` *      This is the only message type where the fourth parameter, extra_headers is used.` |
+|     - |  230 | ` *    2  No longer an option.` |
+|     - |  231 | ` *    3  message is appended to the file destination. A newline is not automatically added` |
+|     - |  232 | ` *       to the end of the message string.` |
+|     - |  233 | ` *    4  message is sent directly to the SAPI logging handler.` |
+|     - |  234 | ` *  $destination` |
+|     - |  235 | ` *   The destination. Its meaning depends on the message_type parameter as described above.` |
+|     - |  236 | ` *  $extra_headers` |
+|     - |  237 | ` *   The extra headers. It's used when the message_type parameter is set to 1` |
+|     - |  238 | ` * Return` |
+|     - |  239 | ` *  TRUE on success or FALSE on failure.` |
+|     - |  240 | ` *` |
+|     - |  241 | ` * This used to invoke the PH7_VM_CONFIG_ERR_LOG_HANDLER embedder callback and` |
+|     - |  242 | ` * NOTHING else: with no callback installed — which is every CLI run — the whole` |
+|     - |  243 | `` * function was a no-op that answered TRUE. `error_log($msg)` printed nothing,`` |
+|     - |  244 | `` * `error_log($msg, 3, $file)` wrote no file and still said it had, and a`` |
+|     - |  245 | ` * destination that could not be opened answered TRUE as well. Every "log this` |
+|     - |  246 | ` * and carry on" call in a program silently disappeared, which is the one thing` |
+|     - |  247 | ` * a logging call must not do.` |
+|     - |  248 | ` *` |
+|     - |  249 | ` * php's own routing, which is what it does now: type 3 APPENDS the message` |
+|     - |  250 | ` * verbatim to $destination (no newline added, no timestamp) and answers FALSE` |
+|     - |  251 | ` * with the open warning when it cannot; type 2 is php's ValueError; type 1 is` |
+|     - |  252 | ` * mail(), which this engine has no transport for, so it answers FALSE rather` |
+|     - |  253 | ` * than claiming a delivery; 0 and anything unrecognised go to the CONFIGURED` |
+|     - |  254 | `` * logger (the `error_log` destination, timestamped, falling back to the`` |
+|     - |  255 | ` * diagnostics stream when it is unset or will not open); and 4 is the SAPI` |
+|     - |  256 | ` * logger itself, which is the diagnostics stream and never the file. The embedder callback still wins` |
+|     - |  257 | ` * when one is installed: that is what it is for.` |
+|     - |  258 | ` */` |
+|    26 |  259 | `PH7_PRIVATE int vm_builtin_error_log(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 |  260 | `{` |
+|     - |  261 | `	const char *zMessage,*zDest,*zHeader;` |
+|    29 |  262 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    29 |  263 | `	int iType = 0, nMsg = 0, nDest = 0;` |
+|    29 |  264 | `	if( nArg < 1 ){` |
+|     - |  265 | `		/* Missing log message,return FALSE */` |
+|   ! 0 |  266 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  267 | `		return PH7_OK;` |
+|     - |  268 | `	}` |
+|    29 |  269 | `	zMessage = ph7_value_to_string(apArg[0],&nMsg);` |
+|    29 |  270 | `	zDest = zHeader = ""; /* Empty string */` |
+|    29 |  271 | `	if( nArg > 1 ){` |
+|    27 |  272 | `		iType = ph7_value_to_int(apArg[1]);` |
+|    12 |  273 | `	}` |
+|    29 |  274 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
+|    14 |  275 | `		zDest = ph7_value_to_string(apArg[2],&nDest);` |
+|     6 |  276 | `	}` |
+|    29 |  277 | `	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){` |
+|   ! 0 |  278 | `		zHeader = ph7_value_to_string(apArg[3],0);` |
+|   ! 0 |  279 | `	}` |
+|    29 |  280 | `	if( iType == 2 ){` |
+|     - |  281 | `		/* php removed the TCP/IP destination in 8.0 and refuses the type outright. */` |
+|     3 |  282 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     - |  283 | `			"TCP/IP option is not available for error logging");` |
+|     - |  284 | `	}` |
+|    27 |  285 | `	if( pVm->xErrLog ){` |
+|     - |  286 | `		/* An embedder took the routing over (PH7_VM_CONFIG_ERR_LOG_HANDLER). */` |
+|   ! 0 |  287 | `		pVm->xErrLog(zMessage,iType,zDest,zHeader);` |
+|   ! 0 |  288 | `		ph7_result_bool(pCtx,1);` |
+|   ! 0 |  289 | `		return PH7_OK;` |
+|     - |  290 | `	}` |
+|    27 |  291 | `	if( iType == 1 ){` |
+|     - |  292 | `		/* mail(): no transport in this engine, so the message did NOT go out.` |
+|     - |  293 | `		 * Answering TRUE for it was the old no-op's worst face. */` |
+|   ! 0 |  294 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 |  295 | `		return PH7_OK;` |
+|     - |  296 | `	}` |
+|     - |  297 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
+|    27 |  298 | `	if( iType == 3 ){` |
+|     - |  299 | `		/* Appended VERBATIM: php adds neither a newline nor a timestamp here. */` |
+|    12 |  300 | `		if( PH7_VfsAppendFile(pCtx,zDest,zMessage,nMsg) != PH7_OK ){` |
+|     3 |  301 | `			ph7_result_bool(pCtx,0);` |
+|     3 |  302 | `			return PH7_OK;` |
+|     - |  303 | `		}` |
+|    10 |  304 | `		ph7_result_bool(pCtx,1);` |
+|    10 |  305 | `		return PH7_OK;` |
+|     - |  306 | `	}` |
+|     - |  307 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|     - |  308 | `	/* 0 and every unrecognised value go to the CONFIGURED logger, which is the` |
+|     - |  309 | ``	 * `error_log` destination when one is set: php appends the message there`` |
+|     - |  310 | ``	 * behind its `[d-M-Y H:i:s e] ` timestamp. Routing them to the diagnostics`` |
+|     - |  311 | `	 * stream unconditionally is what made a program's own log calls miss the file` |
+|     - |  312 | `	 * it had just named. 4 is the SAPI logger by definition and never the file, so` |
+|     - |  313 | ``	 * `error_log($m, 4)` still reaches the stream with the destination set — that`` |
+|     - |  314 | `	 * is the whole difference between the two types.` |
+|     - |  315 | `	 *` |
+|     - |  316 | `	 * php answers TRUE either way, INCLUDING when the destination will not open:` |
+|     - |  317 | `	 * the fallback to the stream is a successful log as far as the caller is` |
+|     - |  318 | `	 * concerned, and only type 3, which names its own file, reports a failure. */` |
+|    16 |  319 | `	if( iType != 4 && PH7_VmErrorLogToFile(pVm,zMessage,(sxu32)nMsg) ){` |
+|     5 |  320 | `		ph7_result_bool(pCtx,1);` |
+|     5 |  321 | `		return PH7_OK;` |
+|     - |  322 | `	}` |
+|     - |  323 | `	/* The diagnostics stream, message plus a newline — php's CLI shape with no` |
+|     - |  324 | ``	 * `error_log` ini set, and the SAPI logger type 4 always takes. */`` |
+|     - |  325 | `	{` |
+|    17 |  326 | `		ph7_output_consumer *pCons = pVm->sVmErrConsumer.xConsumer` |
+|    10 |  327 | `			? &pVm->sVmErrConsumer : &pVm->sVmConsumer;` |
+|     - |  328 | `		SyBlob sOut;` |
+|    12 |  329 | `		SyBlobInit(&sOut,&pVm->sAllocator);` |
+|    12 |  330 | `		SyBlobAppend(&sOut,zMessage,(sxu32)nMsg);` |
+|    12 |  331 | `		SyBlobAppend(&sOut,"\n",sizeof(char));` |
+|    12 |  332 | `		pCons->xConsumer(SyBlobData(&sOut),SyBlobLength(&sOut),pCons->pUserData);` |
+|    12 |  333 | `		SyBlobRelease(&sOut);` |
+|     - |  334 | `	}` |
+|    12 |  335 | `	ph7_result_bool(pCtx,1);` |
+|    12 |  336 | `	return PH7_OK;` |
+|    16 |  337 | `}` |
+|     - |  338 | `/*` |
+|     - |  339 | ` * php's set_error_handler()/set_exception_handler() stack, both directions.` |
+|     - |  340 | ` *` |
+|     - |  341 | `` * PH7 kept ONE saved slot per handler, so a third `set` overwrote the first`` |
+|     - |  342 | `` * one's save and the matching `restore` could not find it again; and a NULL`` |
+|     - |  343 | ` * argument was treated as a failure instead of the ordinary stack entry php` |
+|     - |  344 | ` * pushes for it. Both routines below are shared by the error and the exception` |
+|     - |  345 | ` * handler because php implements them the same way.` |
+|     - |  346 | ` */` |
+| 15373 |  347 | `static sxi32 VmHandlerPush(` |
+|     - |  348 | `	ph7_vm *pVm,` |
+|     - |  349 | `	ph7_value *pActive,   /* the currently installed handler */` |
+|     - |  350 | `	sxi64 *piLevels,      /* its $error_levels (unused by the exception handler) */` |
+|     - |  351 | `	SySet *pStack,        /* the saved entries underneath it */` |
+|     - |  352 | ``	ph7_value *pNewCb,    /* the replacement, or 0 for the `null` reset */`` |
+|     - |  353 | `	sxi64 iLevels` |
+|     - |  354 | `	)` |
+|     5 |  355 | `{` |
+|     - |  356 | `	VmHandlerSlot sSlot;` |
+|     - |  357 | `	sxi32 rc;` |
+| 15378 |  358 | `	PH7_MemObjInit(pVm,&sSlot.sCb);` |
+| 15378 |  359 | `	PH7_MemObjStore(pActive,&sSlot.sCb);` |
+| 15378 |  360 | `	sSlot.iLevels = *piLevels;` |
+| 15378 |  361 | `	rc = SySetPut(pStack,(const void *)&sSlot);` |
+| 15378 |  362 | `	if( rc != SXRET_OK ){` |
+|   ! 0 |  363 | `		PH7_MemObjRelease(&sSlot.sCb);` |
+|   ! 0 |  364 | `		return rc;` |
+|     - |  365 | `	}` |
+| 15378 |  366 | `	PH7_MemObjRelease(pActive);` |
+| 15378 |  367 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
+| 15378 |  368 | `	if( pNewCb ){` |
+|  8872 |  369 | `		PH7_MemObjStore(pNewCb,pActive);` |
+|  4432 |  370 | `	}` |
+| 15378 |  371 | `	*piLevels = iLevels;` |
+| 15378 |  372 | `	return SXRET_OK;` |
+|  7690 |  373 | `}` |
+|  2134 |  374 | `static void VmHandlerPop(ph7_vm *pVm,ph7_value *pActive,sxi64 *piLevels,SySet *pStack)` |
+|     5 |  375 | `{` |
+|  2139 |  376 | `	VmHandlerSlot *pSlot = (VmHandlerSlot *)SySetPop(pStack);` |
+|  2139 |  377 | `	PH7_MemObjRelease(pActive);` |
+|  2139 |  378 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
+|  2139 |  379 | `	*piLevels = PH7_E_ALL_MASK;` |
+|  2139 |  380 | `	if( pSlot ){` |
+|  2135 |  381 | `		PH7_MemObjStore(&pSlot->sCb,pActive);` |
+|  2135 |  382 | `		*piLevels = pSlot->iLevels;` |
+|  2135 |  383 | `		PH7_MemObjRelease(&pSlot->sCb);` |
+|  1065 |  384 | `	}` |
+|  1067 |  385 | `	SXUNUSED(pVm);` |
+|  2139 |  386 | `}` |
+|     - |  387 | `/*` |
+|     - |  388 | ` * bool restore_exception_handler(void)` |
+|     - |  389 | ` *  Restores the previously defined exception handler function.` |
+|     - |  390 | ` * Parameter` |
+|     - |  391 | ` *  None` |
+|     - |  392 | ` * Return` |
+|     - |  393 | ` *  TRUE if the exception handler is restored.FALSE otherwise` |
+|     - |  394 | ` */` |
+|    12 |  395 | `PH7_PRIVATE int vm_builtin_restore_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  396 | `{` |
+|    13 |  397 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    13 |  398 | `	sxi64 iLevels = PH7_E_ALL_MASK;` |
+|     6 |  399 | `	SXUNUSED(nArg); /* cc warning */` |
+|     6 |  400 | `	SXUNUSED(apArg);` |
+|     - |  401 | `	/* An empty stack pops to NO handler: php answers TRUE either way, because the` |
+|     - |  402 | `	 * return value says "the call is valid", not "a handler was in place". */` |
+|    13 |  403 | `	VmHandlerPop(pVm,&pVm->sExceptionCB,&iLevels,&pVm->aExceptionCBSaved);` |
+|    13 |  404 | `	ph7_result_bool(pCtx,1);` |
+|    13 |  405 | `	return PH7_OK;` |
+|     1 |  406 | `}` |
+|     - |  407 | `/*` |
+|     - |  408 | ` * callable set_exception_handler(callable $exception_handler)` |
+|     - |  409 | ` *  Sets a user-defined exception handler function.` |
+|     - |  410 | ` *  Sets the default exception handler if an exception is not caught within a try/catch block.` |
+|     - |  411 | ` * NOTE` |
+|     - |  412 | ` *  Execution will NOT stop after the exception_handler calls for example die/exit unlike` |
+|     - |  413 | ` *  the satndard PHP engine.` |
+|     - |  414 | ` * Parameters` |
+|     - |  415 | ` *  $exception_handler` |
+|     - |  416 | ` *   Name of the function to be called when an uncaught exception occurs.` |
+|     - |  417 | ` *   This handler function needs to accept one parameter, which will be the exception object` |
+|     - |  418 | ` *   that was thrown.` |
+|     - |  419 | ` *  Note:` |
+|     - |  420 | ` *   NULL may be passed instead, to reset this handler to its default state.` |
+|     - |  421 | ` * Return` |
+|     - |  422 | ` *  Returns the name of the previously defined exception handler, or NULL on error.` |
+|     - |  423 | ` *  If no previous handler was defined, NULL is also returned. If NULL is passed` |
+|     - |  424 | ` *  resetting the handler to its default state, TRUE is returned.` |
+|     - |  425 | ` */` |
+|    16 |  426 | `PH7_PRIVATE int vm_builtin_set_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 |  427 | `{` |
+|    19 |  428 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    19 |  429 | `	sxi64 iLevels = PH7_E_ALL_MASK;` |
+|     - |  430 | `	/* php answers the handler this call REPLACES -- the active one, not the entry` |
+|     - |  431 | `	 * saved under it. */` |
+|    19 |  432 | `	if( ph7_value_is_callable(&pVm->sExceptionCB) ){` |
+|     5 |  433 | `		ph7_result_value(pCtx,&pVm->sExceptionCB); /* Will make it's own copy */` |
+|     3 |  434 | `	}else{` |
+|    15 |  435 | `		ph7_result_null(pCtx);` |
+|     - |  436 | `	}` |
+|    19 |  437 | `	if( nArg < 1 ){` |
+|   ! 0 |  438 | `		return PH7_OK;` |
+|     - |  439 | `	}` |
+|    19 |  440 | `	if( !ph7_value_is_null(apArg[0]) ){` |
+|     - |  441 | `		/* php REFUSES anything else that cannot be called, naming why. PH7` |
+|     - |  442 | `		 * answered TRUE and kept the old handler. */` |
+|    15 |  443 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);` |
+|    15 |  444 | `		if( rcCb != PH7_OK ){` |
+|     3 |  445 | `			return rcCb;` |
+|     - |  446 | `		}` |
+|     5 |  447 | `	}` |
+|    24 |  448 | `	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sExceptionCB,&iLevels,&pVm->aExceptionCBSaved,` |
+|    14 |  449 | `			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],PH7_E_ALL_MASK) ){` |
+|     - |  450 | `		/* Out of memory. Nothing was installed and nothing was saved, so answering` |
+|     - |  451 | `		 * the previous handler would claim a replacement that did not happen. */` |
+|   ! 0 |  452 | `		return PH7_VmThrowException(pCtx,"Error",` |
+|   ! 0 |  453 | `			"%s(): out of memory installing the handler",ph7_function_name(pCtx));` |
+|     - |  454 | `	}` |
+|    17 |  455 | `	return PH7_OK;` |
+|    11 |  456 | `}` |
+|     - |  457 | `/*` |
+|     - |  458 | ` * bool restore_error_handler(void)` |
+|     - |  459 | ` *  THIS FUNCTION IS A NO-OP IN THE CURRENT RELEASE OF THE PH7 ENGINE.` |
+|     - |  460 | ` * Parameters:` |
+|     - |  461 | ` *  None.` |
+|     - |  462 | ` * Return` |
+|     - |  463 | ` *  Always TRUE.` |
+|     - |  464 | ` */` |
+|  2122 |  465 | `PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     5 |  466 | `{` |
+|  2127 |  467 | `	ph7_vm *pVm = pCtx->pVm;` |
+|  1061 |  468 | `	SXUNUSED(nArg); /* cc warning */` |
+|  1061 |  469 | `	SXUNUSED(apArg);` |
+|     - |  470 | `	/* The popped handler's $error_levels comes back with it. An empty stack pops` |
+|     - |  471 | `	 * to NO handler; php answers TRUE either way, because the return value says` |
+|     - |  472 | `	 * "the call is valid", not "a handler was in place". */` |
+|  2127 |  473 | `	VmHandlerPop(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved);` |
+|  2127 |  474 | `	ph7_result_bool(pCtx,1);` |
+|  2127 |  475 | `	return PH7_OK;` |
+|     5 |  476 | `}` |
+|     - |  477 | `/*` |
+|     - |  478 | ` * value set_error_handler(callable $error_handler)` |
+|     - |  479 | ` *  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++` |
+|     - |  480 | ` *   THIS FUNCTION IS DISABLED IN THE CURRENT RELEASE OF THE PH7 ENGINE.` |
+|     - |  481 | ` *  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++` |
+|     - |  482 | ` *  Sets a user-defined error handler function.` |
+|     - |  483 | ` *  This function can be used for defining your own way of handling errors during` |
+|     - |  484 | ` *  runtime, for example in applications in which you need to do cleanup of data/files` |
+|     - |  485 | ` *  when a critical error happens, or when you need to trigger an error under certain` |
+|     - |  486 | ` *  conditions (using trigger_error()).` |
+|     - |  487 | ` * Parameters` |
+|     - |  488 | ` *  $error_handler` |
+|     - |  489 | ` *   The user function needs to accept two parameters: the error code, and a string` |
+|     - |  490 | ` *   describing the error.` |
+|     - |  491 | ` *   Then there are three optional parameters that may be supplied: the filename in which` |
+|     - |  492 | ` *   the error occurred, the line number in which the error occurred, and the context in which` |
+|     - |  493 | ` *   the error occurred (an array that points to the active symbol table at the point the error occurred).` |
+|     - |  494 | ` *   The function can be shown as:` |
+|     - |  495 | ` *    handler ( int $errno , string $errstr [, string $errfile])` |
+|     - |  496 | ` *     errno` |
+|     - |  497 | ` *       The first parameter, errno, contains the level of the error raised, as an integer.` |
+|     - |  498 | ` *   errstr` |
+|     - |  499 | ` *      The second parameter, errstr, contains the error message, as a string.` |
+|     - |  500 | ` *   errfile` |
+|     - |  501 | ` *      The third parameter is optional, errfile, which contains the filename that the error` |
+|     - |  502 | ` *     was raised in, as a string.` |
+|     - |  503 | ` *  Note:` |
+|     - |  504 | ` *   NULL may be passed instead, to reset this handler to its default state.` |
+|     - |  505 | ` * Return` |
+|     - |  506 | ` *  The handler that was ACTIVE before this call, or NULL when there was none --` |
+|     - |  507 | `` *  including for the `null` reset, which php pushes onto the handler stack like`` |
+|     - |  508 | ` *  any other value rather than treating as a failure.` |
+|     - |  509 | ` */` |
+| 15363 |  510 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     5 |  511 | `{` |
+| 15368 |  512 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - |  513 | `	sxi64 iLevels;` |
+|     - |  514 | `	/* php answers the handler this call REPLACES -- the active one, not the entry` |
+|     - |  515 | `	 * saved under it. Returning the saved entry answered the handler from one` |
+|     - |  516 | `	 * level further down (and NULL for the very first replacement of a handler` |
+|     - |  517 | `	 * that was really there). */` |
+| 15368 |  518 | `	if( ph7_value_is_callable(&pVm->sErrCB) ){` |
+|  8331 |  519 | `		ph7_result_value(pCtx,&pVm->sErrCB); /* Will make it's own copy */` |
+|  4168 |  520 | `	}else{` |
+|  7042 |  521 | `		ph7_result_null(pCtx);` |
+|     - |  522 | `	}` |
+| 15368 |  523 | `	if( nArg < 1 ){` |
+|   ! 0 |  524 | `		return PH7_OK;` |
+|     - |  525 | `	}` |
+|     - |  526 | `	/* $error_levels rides WITH the handler: it is read at full width (php ANDs` |
+|     - |  527 | `	 * a zend_long, so 2^32+1024 still selects E_USER_NOTICE) and is pushed and` |
+|     - |  528 | `	 * popped with it. */` |
+| 15368 |  529 | `	iLevels = nArg > 1 ? ph7_value_to_int64(apArg[1]) : PH7_E_ALL_MASK;` |
+| 15368 |  530 | `	if( !ph7_value_is_null(apArg[0]) ){` |
+|     - |  531 | `		/* php REFUSES anything else that cannot be called, naming why. PH7` |
+|     - |  532 | `		 * answered TRUE and kept the old handler, so a misspelled handler name` |
+|     - |  533 | `		 * left the program reporting through the engine's own path in silence. */` |
+|  8866 |  534 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);` |
+|  8866 |  535 | `		if( rcCb != PH7_OK ){` |
+|     5 |  536 | `			return rcCb;` |
+|     - |  537 | `		}` |
+|  4427 |  538 | `	}` |
+|     - |  539 | ``	/* A `null` argument is a real stack entry: it silences the handler until a`` |
+|     - |  540 | `	 * restore_error_handler() pops it and brings the previous one -- with ITS` |
+|     - |  541 | `	 * levels -- back. */` |
+| 23042 |  542 | `	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved,` |
+| 15359 |  543 | `			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],iLevels) ){` |
+|     - |  544 | `		/* Out of memory. Nothing was installed and nothing was saved, so answering` |
+|     - |  545 | `		 * the previous handler would claim a replacement that did not happen. */` |
+|   ! 0 |  546 | `		return PH7_VmThrowException(pCtx,"Error",` |
+|   ! 0 |  547 | `			"%s(): out of memory installing the handler",ph7_function_name(pCtx));` |
+|     - |  548 | `	}` |
+| 15364 |  549 | `	return PH7_OK;` |
+|  7685 |  550 | `}` |
+|     - |  551 | `/*` |
+|     - |  552 | ` * ?callable get_error_handler(void)     -- php 8.5` |
+|     - |  553 | ` * ?callable get_exception_handler(void) -- php 8.5` |
+|     - |  554 | ` *  Return the currently installed handler callable (the ACTIVE slot [1] that the` |
+|     - |  555 | ` *  dispatch paths call), or NULL when none is set.` |
+|     - |  556 | ` */` |
+|    34 |  557 | `PH7_PRIVATE int vm_builtin_get_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  558 | `{` |
+|    36 |  559 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    17 |  560 | `	SXUNUSED(nArg);` |
+|    17 |  561 | `	SXUNUSED(apArg);` |
+|    36 |  562 | `	if( ph7_value_is_callable(&pVm->sErrCB) ){` |
+|    24 |  563 | `		ph7_result_value(pCtx,&pVm->sErrCB);` |
+|    13 |  564 | `	}else{` |
+|    14 |  565 | `		ph7_result_null(pCtx);` |
+|     - |  566 | `	}` |
+|    36 |  567 | `	return PH7_OK;` |
+|     2 |  568 | `}` |
+|    16 |  569 | `PH7_PRIVATE int vm_builtin_get_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  570 | `{` |
+|    18 |  571 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     8 |  572 | `	SXUNUSED(nArg);` |
+|     8 |  573 | `	SXUNUSED(apArg);` |
+|    18 |  574 | `	if( ph7_value_is_callable(&pVm->sExceptionCB) ){` |
+|     8 |  575 | `		ph7_result_value(pCtx,&pVm->sExceptionCB);` |
+|     5 |  576 | `	}else{` |
+|    12 |  577 | `		ph7_result_null(pCtx);` |
+|     - |  578 | `	}` |
+|    18 |  579 | `	return PH7_OK;` |
+|     2 |  580 | `}` |
+|     - |  581 | `/*` |
+|     - |  582 | ` * array debug_backtrace([ int $options = DEBUG_BACKTRACE_PROVIDE_OBJECT [, int $limit = 0 ]] )` |
+|     - |  583 | ` *  Generates a backtrace.` |
+|     - |  584 | ` * Paramaeter` |
+|     - |  585 | ` *  $options` |
+|     - |  586 | ` *   DEBUG_BACKTRACE_PROVIDE_OBJECT: Whether or not to populate the "object" index.` |
+|     - |  587 | ` *   DEBUG_BACKTRACE_IGNORE_ARGS 	Whether or not to omit the "args" index, and thus` |
+|     - |  588 | ` *   all the function/method arguments, to save memory.` |
+|     - |  589 | ` * $limit` |
+|     - |  590 | ` *   (Not Used)` |
+|     - |  591 | ` * Return` |
+|     - |  592 | ` *  An array.The possible returned elements are as follows:` |
+|     - |  593 | ` *          Possible returned elements from debug_backtrace()` |
+|     - |  594 | ` *          Name        Type      Description` |
+|     - |  595 | ` *          ------      ------     -----------` |
+|     - |  596 | ` *          function    string    The current function name. See also __FUNCTION__.` |
+|     - |  597 | ` *          line        integer   The current line number. See also __LINE__.` |
+|     - |  598 | ` *          file 	    string 	  The current file name. See also __FILE__.` |
+|     - |  599 | ` *          class       string    The current class name. See also __CLASS__` |
+|     - |  600 | ` *          object      object    The current object.` |
+|     - |  601 | ` *          args        array     If inside a function, this lists the functions arguments.` |
+|     - |  602 | ` *                                If inside an included file, this lists the included file name(s).` |
+|     - |  603 | ` */` |
+|     - |  604 | `/*` |
+|     - |  605 | ` * array error_get_last()` |
+|     - |  606 | ` *  Return the last error that reached default processing, or NULL if there was none.` |
+|     - |  607 | ` *  PH7 registered debug_backtrace() under this name, so it answered with a stack trace` |
+|     - |  608 | ` *  and never reported an error at all.` |
+|     - |  609 | ` */` |
+|    80 |  610 | `PH7_PRIVATE int vm_builtin_error_get_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     4 |  611 | `{` |
+|    84 |  612 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - |  613 | `	ph7_value *pArray,*pValue;` |
+|    40 |  614 | `	SXUNUSED(nArg);` |
+|    40 |  615 | `	SXUNUSED(apArg);` |
+|    84 |  616 | `	if( pVm->nLastErrType == 0 ){` |
+|     - |  617 | `		/* No error yet */` |
+|     8 |  618 | `		ph7_result_null(pCtx);` |
+|     8 |  619 | `		return PH7_OK;` |
+|     - |  620 | `	}` |
+|    77 |  621 | `	pArray = ph7_context_new_array(pCtx);` |
+|    77 |  622 | `	pValue = ph7_context_new_scalar(pCtx);` |
+|    77 |  623 | `	if( pArray == 0 \|\| pValue == 0 ){` |
+|   ! 0 |  624 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
+|   ! 0 |  625 | `		ph7_result_null(pCtx);` |
+|   ! 0 |  626 | `		return PH7_OK;` |
+|     - |  627 | `	}` |
+|    77 |  628 | `	ph7_value_int(pValue,(int)pVm->nLastErrType);` |
+|    77 |  629 | `	ph7_array_add_strkey_elem(pArray,"type",pValue);` |
+|   114 |  630 | `	ph7_value_string(pValue,(const char *)SyBlobData(&pVm->sLastErrMsg),` |
+|    74 |  631 | `		(int)SyBlobLength(&pVm->sLastErrMsg));` |
+|    77 |  632 | `	ph7_array_add_strkey_elem(pArray,"message",pValue);` |
+|    77 |  633 | `	ph7_value_reset_string_cursor(pValue);` |
+|   114 |  634 | `	ph7_value_string(pValue,(const char *)SyBlobData(&pVm->sLastErrFile),` |
+|    74 |  635 | `		(int)SyBlobLength(&pVm->sLastErrFile));` |
+|    77 |  636 | `	ph7_array_add_strkey_elem(pArray,"file",pValue);` |
+|    77 |  637 | `	ph7_value_reset_string_cursor(pValue);` |
+|    77 |  638 | `	ph7_value_int(pValue,(int)pVm->nLastErrLine);` |
+|    77 |  639 | `	ph7_array_add_strkey_elem(pArray,"line",pValue);` |
+|    77 |  640 | `	ph7_result_value(pCtx,pArray);` |
+|    77 |  641 | `	return PH7_OK;` |
+|    44 |  642 | `}` |
 |     - |  643 | `/*` |
-|     - |  644 | ``  * php's $limit reaches the walk through zend_fetch_debug_backtrace's `int` `` |
-|     - |  645 | ` * parameter, a plain narrowing cast -- so PHP_INT_MAX arrives as -1 and reports` |
-|     - |  646 | ` * NO frames at all, while 2^32 arrives as 0 and reports every one. Spelled` |
-|     - |  647 | ` * through unsigned arithmetic because the two's-complement wrap of an` |
-|     - |  648 | ` * out-of-range signed conversion is implementation-defined.` |
-|     - |  649 | ` */` |
-|   130 |  650 | `static sxi32 VmBacktraceLimit(int nArg,ph7_value **apArg)` |
-|     3 |  651 | `{` |
-|     - |  652 | `	sxu32 uL;` |
-|   133 |  653 | `	if( nArg < 2 \|\| apArg[1] == 0 ){` |
-|    85 |  654 | `		return 0;` |
-|     - |  655 | `	}` |
-|    49 |  656 | `	uL = (sxu32)((sxu64)ph7_value_to_int64(apArg[1]) & 0xFFFFFFFF);` |
-|    49 |  657 | `	return (uL <= (sxu32)SXI32_HIGH) ? (sxi32)uL : -(sxi32)(SXU32_HIGH - uL) - 1;` |
-|    68 |  658 | `}` |
-|    88 |  659 | `PH7_PRIVATE int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  660 | `{` |
-|    91 |  661 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - |  662 | `	ph7_value *pList;` |
-|     - |  663 | `	/* $options (php default DEBUG_BACKTRACE_PROVIDE_OBJECT): bit 1 attaches the` |
-|     - |  664 | `	 * frame's $this as 'object', bit 2 (IGNORE_ARGS) suppresses the 'args' list. */` |
-|    91 |  665 | `	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 1 /*PROVIDE_OBJECT*/;` |
-|     - |  666 | `	/* $limit: how many frames to report, 0 meaning all of them. It was declared` |
-|     - |  667 | `	 * in aBuiltinSig[], screened as an int and then never read, so asking for the` |
-|     - |  668 | `	 * caller alone answered the WHOLE stack -- and a program that logs` |
-|     - |  669 | `	 * debug_backtrace(0, 1) per request logged the entire chain every time. */` |
-|    91 |  670 | `	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);` |
-|     - |  671 | `	/* php returns a LIST of frames, innermost first -- one entry per ACTIVE call, each` |
-|     - |  672 | `	 * describing the callee (function/class) and the position of the CALL SITE.` |
-|     - |  673 | `	 * VmBuildBacktrace walks the full frame chain (shared with the Throwable trace` |
-|     - |  674 | `	 * stamp); PH7 originally returned only the innermost frame here. */` |
-|    91 |  675 | `	pList = ph7_context_new_array(pCtx);` |
-|    91 |  676 | `	if( pList == 0 ){` |
-|   ! 0 |  677 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
-|   ! 0 |  678 | `		ph7_result_null(pCtx);` |
-|   ! 0 |  679 | `		SXUNUSED(nArg); /* cc warning */` |
-|   ! 0 |  680 | `		SXUNUSED(apArg);` |
-|   ! 0 |  681 | `		return PH7_OK;` |
-|     - |  682 | `	}` |
-|    91 |  683 | `	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);` |
-|     - |  684 | `	/* Return the freshly created list */` |
-|    91 |  685 | `	ph7_result_value(pCtx,pList);` |
-|     - |  686 | `	/*` |
-|     - |  687 | `	 * Don't worry about freeing memory, everything will be released automatically` |
-|     - |  688 | `	 * as soon we return from this function.` |
-|     - |  689 | `	 */` |
-|    91 |  690 | `	return PH7_OK;` |
-|    47 |  691 | `}` |
-|     - |  692 | `/*` |
-|     - |  693 | ` * Generate a small backtrace.` |
-|     - |  694 | ` * Store the generated dump in the given BLOB` |
-|     - |  695 | ` */` |
-|     2 |  696 | `static int VmMiniBacktrace(` |
-|     - |  697 | `	ph7_vm *pVm, /* Target VM */` |
-|     - |  698 | `	SyBlob *pOut /* Store Dump here */` |
-|     - |  699 | `	)` |
-|     1 |  700 | `{` |
-|     3 |  701 | `	VmFrame *pFrame = pVm->pFrame;` |
-|     - |  702 | `	ph7_vm_func *pFunc;` |
-|     - |  703 | `	ph7_class *pClass;` |
-|     - |  704 | `	SyString *pFile;` |
-|     - |  705 | `	/* Called function */` |
-|     3 |  706 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
-|     3 |  707 | `	pFunc = (ph7_vm_func *)pFrame->pUserData;` |
-|     3 |  708 | `	SyBlobAppend(pOut,"[",sizeof(char));` |
-|     3 |  709 | `	if( pFrame->pParent && pFunc ){` |
-|     3 |  710 | `		SyBlobAppend(pOut,"Called function: ",sizeof("Called function: ")-1);` |
-|     3 |  711 | `		SyBlobAppend(pOut,pFunc->sName.zString,pFunc->sName.nByte);` |
-|     2 |  712 | `	}else{` |
-|   ! 0 |  713 | `		SyBlobAppend(pOut,"Global scope",sizeof("Global scope") - 1);` |
-|     - |  714 | `	}` |
-|     3 |  715 | `	SyBlobAppend(pOut,"]",sizeof(char));` |
-|     - |  716 | `	/* Current processed script */` |
-|     3 |  717 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|     3 |  718 | `	if( pFile ){` |
-|     3 |  719 | `		SyBlobAppend(pOut,"[",sizeof(char));` |
-|     3 |  720 | `		SyBlobAppend(pOut,"Processed file: ",sizeof("Processed file: ")-1);` |
-|     3 |  721 | `		SyBlobAppend(pOut,pFile->zString,pFile->nByte);` |
-|     3 |  722 | `		SyBlobAppend(pOut,"]",sizeof(char));` |
-|     1 |  723 | `	}` |
-|     - |  724 | `	/* Top class */` |
-|     3 |  725 | `	pClass = PH7_VmPeekTopClass(pVm);` |
-|     3 |  726 | `	if( pClass ){` |
-|   ! 0 |  727 | `		SyBlobAppend(pOut,"[",sizeof(char));` |
-|   ! 0 |  728 | `		SyBlobAppend(pOut,"Class: ",sizeof("Class: ")-1);` |
-|   ! 0 |  729 | `		SyBlobAppend(pOut,pClass->sName.zString,pClass->sName.nByte);` |
-|   ! 0 |  730 | `		SyBlobAppend(pOut,"]",sizeof(char));` |
-|   ! 0 |  731 | `	}` |
-|     3 |  732 | `	SyBlobAppend(pOut,"\n",sizeof(char));` |
-|     - |  733 | `	/* All done */` |
-|     3 |  734 | `	return SXRET_OK;` |
-|     1 |  735 | `}` |
-|     - |  736 | `/*` |
-|     - |  737 | ` * void debug_print_backtrace(int $options = 0, int $limit = 0)` |
-|     - |  738 | ` *  Prints a backtrace.` |
-|     - |  739 | ` *` |
-|     - |  740 | ` *  Both arguments were declared in aBuiltinSig[] and read by nothing, and what` |
-|     - |  741 | ` *  the function PRINTED was not a backtrace at all: PH7's own` |
-|     - |  742 | `` *  `[Called function: f][Processed file: x]` line, describing ONE frame in a`` |
-|     - |  743 | ``  *  shape no php ever produced. php prints the same `#N file(line): func(args)` `` |
-|     - |  744 | `` *  body getTraceAsString() renders -- without the `#N {main}` marker, which is`` |
-|     - |  745 | ` *  the bottom of an exception's trace and not a frame -- and honours the same` |
-|     - |  746 | ` *  $options bits and $limit as debug_backtrace().` |
-|     - |  747 | ` */` |
-|    42 |  748 | `PH7_PRIVATE int vm_builtin_debug_print_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  749 | `{` |
-|    43 |  750 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - |  751 | `	SyBlob sDump;` |
-|     - |  752 | `	ph7_value *pList;` |
-|    43 |  753 | `	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 0;` |
-|    43 |  754 | `	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);` |
-|    43 |  755 | `	pList = ph7_context_new_array(pCtx);` |
-|    43 |  756 | `	if( pList == 0 ){` |
-|   ! 0 |  757 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
-|   ! 0 |  758 | `		return PH7_OK;` |
-|     - |  759 | `	}` |
-|    43 |  760 | `	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);` |
-|    43 |  761 | `	SyBlobInit(&sDump,&pVm->sAllocator);` |
-|    43 |  762 | `	PH7_VmTraceToString(pVm,pList,FALSE,&sDump);` |
-|     - |  763 | `	/* Output backtrace */` |
-|    43 |  764 | `	ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));` |
-|     - |  765 | `	/* All done,cleanup */` |
-|    43 |  766 | `	SyBlobRelease(&sDump);` |
-|    43 |  767 | `	return PH7_OK;` |
-|    22 |  768 | `}` |
-|     - |  769 | `/*` |
-|     - |  770 | ` * string debug_string_backtrace()` |
-|     - |  771 | ` *  Generate a backtrace` |
-|     - |  772 | ` * Parameters` |
-|     - |  773 | ` * None` |
-|     - |  774 | ` * Return` |
-|     - |  775 | ` *  A mini backtrace().` |
-|     - |  776 | ` * Note that this is a symisc extension.` |
-|     - |  777 | ` */` |
-|     2 |  778 | `PH7_PRIVATE int vm_builtin_debug_string_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  779 | `{` |
-|     3 |  780 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - |  781 | `	SyBlob sDump;` |
-|     3 |  782 | `	SyBlobInit(&sDump,&pVm->sAllocator);` |
-|     - |  783 | `	/* Generate the backtrace */` |
-|     3 |  784 | `	VmMiniBacktrace(pVm,&sDump);` |
-|     - |  785 | `	/* Return the backtrace */` |
-|     3 |  786 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump)); /* Will make it's own copy */` |
-|     - |  787 | `	/* All done,cleanup */` |
-|     3 |  788 | `	SyBlobRelease(&sDump);` |
-|     1 |  789 | `	SXUNUSED(nArg); /* cc warning */` |
-|     1 |  790 | `	SXUNUSED(apArg);` |
-|     3 |  791 | `	return PH7_OK;` |
-|     1 |  792 | `}` |
-|     - |  793 |  |
+|     - |  644 | ` * void error_clear_last()` |
+|     - |  645 | ` *  Clear the most recent error so a subsequent error_get_last() returns NULL` |
+|     - |  646 | ` *  (php uses this to detect whether an operation itself raised an error).` |
+|     - |  647 | ` */` |
+|     6 |  648 | `PH7_PRIVATE int vm_builtin_error_clear_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  649 | `{` |
+|     7 |  650 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     3 |  651 | `	SXUNUSED(nArg);` |
+|     3 |  652 | `	SXUNUSED(apArg);` |
+|     7 |  653 | `	pVm->nLastErrType = 0;` |
+|     7 |  654 | `	pVm->nLastErrLine = 0;` |
+|     7 |  655 | `	SyBlobReset(&pVm->sLastErrMsg);` |
+|     7 |  656 | `	SyBlobReset(&pVm->sLastErrFile);` |
+|     7 |  657 | `	return PH7_OK;` |
+|     1 |  658 | `}` |
+|     - |  659 | `/*` |
+|     - |  660 | ``  * php's $limit reaches the walk through zend_fetch_debug_backtrace's `int` `` |
+|     - |  661 | ` * parameter, a plain narrowing cast -- so PHP_INT_MAX arrives as -1 and reports` |
+|     - |  662 | ` * NO frames at all, while 2^32 arrives as 0 and reports every one. Spelled` |
+|     - |  663 | ` * through unsigned arithmetic because the two's-complement wrap of an` |
+|     - |  664 | ` * out-of-range signed conversion is implementation-defined.` |
+|     - |  665 | ` */` |
+|   154 |  666 | `static sxi32 VmBacktraceLimit(int nArg,ph7_value **apArg)` |
+|     4 |  667 | `{` |
+|     - |  668 | `	sxu32 uL;` |
+|   158 |  669 | `	if( nArg < 2 \|\| apArg[1] == 0 ){` |
+|   107 |  670 | `		return 0;` |
+|     - |  671 | `	}` |
+|    52 |  672 | `	uL = (sxu32)((sxu64)ph7_value_to_int64(apArg[1]) & 0xFFFFFFFF);` |
+|    52 |  673 | `	return (uL <= (sxu32)SXI32_HIGH) ? (sxi32)uL : -(sxi32)(SXU32_HIGH - uL) - 1;` |
+|    81 |  674 | `}` |
+|   112 |  675 | `PH7_PRIVATE int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     4 |  676 | `{` |
+|   116 |  677 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - |  678 | `	ph7_value *pList;` |
+|     - |  679 | `	/* $options (php default DEBUG_BACKTRACE_PROVIDE_OBJECT): bit 1 attaches the` |
+|     - |  680 | `	 * frame's $this as 'object', bit 2 (IGNORE_ARGS) suppresses the 'args' list. */` |
+|   116 |  681 | `	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 1 /*PROVIDE_OBJECT*/;` |
+|     - |  682 | `	/* $limit: how many frames to report, 0 meaning all of them. It was declared` |
+|     - |  683 | `	 * in aBuiltinSig[], screened as an int and then never read, so asking for the` |
+|     - |  684 | `	 * caller alone answered the WHOLE stack -- and a program that logs` |
+|     - |  685 | `	 * debug_backtrace(0, 1) per request logged the entire chain every time. */` |
+|   116 |  686 | `	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);` |
+|     - |  687 | `	/* php returns a LIST of frames, innermost first -- one entry per ACTIVE call, each` |
+|     - |  688 | `	 * describing the callee (function/class) and the position of the CALL SITE.` |
+|     - |  689 | `	 * VmBuildBacktrace walks the full frame chain (shared with the Throwable trace` |
+|     - |  690 | `	 * stamp); PH7 originally returned only the innermost frame here. */` |
+|   116 |  691 | `	pList = ph7_context_new_array(pCtx);` |
+|   116 |  692 | `	if( pList == 0 ){` |
+|   ! 0 |  693 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
+|   ! 0 |  694 | `		ph7_result_null(pCtx);` |
+|   ! 0 |  695 | `		SXUNUSED(nArg); /* cc warning */` |
+|   ! 0 |  696 | `		SXUNUSED(apArg);` |
+|   ! 0 |  697 | `		return PH7_OK;` |
+|     - |  698 | `	}` |
+|   116 |  699 | `	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);` |
+|     - |  700 | `	/* Return the freshly created list */` |
+|   116 |  701 | `	ph7_result_value(pCtx,pList);` |
+|     - |  702 | `	/*` |
+|     - |  703 | `	 * Don't worry about freeing memory, everything will be released automatically` |
+|     - |  704 | `	 * as soon we return from this function.` |
+|     - |  705 | `	 */` |
+|   116 |  706 | `	return PH7_OK;` |
+|    60 |  707 | `}` |
+|     - |  708 | `/*` |
+|     - |  709 | ` * Generate a small backtrace.` |
+|     - |  710 | ` * Store the generated dump in the given BLOB` |
+|     - |  711 | ` */` |
+|     2 |  712 | `static int VmMiniBacktrace(` |
+|     - |  713 | `	ph7_vm *pVm, /* Target VM */` |
+|     - |  714 | `	SyBlob *pOut /* Store Dump here */` |
+|     - |  715 | `	)` |
+|     1 |  716 | `{` |
+|     3 |  717 | `	VmFrame *pFrame = pVm->pFrame;` |
+|     - |  718 | `	ph7_vm_func *pFunc;` |
+|     - |  719 | `	ph7_class *pClass;` |
+|     - |  720 | `	SyString *pFile;` |
+|     - |  721 | `	/* Called function */` |
+|     3 |  722 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
+|     3 |  723 | `	pFunc = (ph7_vm_func *)pFrame->pUserData;` |
+|     3 |  724 | `	SyBlobAppend(pOut,"[",sizeof(char));` |
+|     3 |  725 | `	if( pFrame->pParent && pFunc ){` |
+|     3 |  726 | `		SyBlobAppend(pOut,"Called function: ",sizeof("Called function: ")-1);` |
+|     3 |  727 | `		SyBlobAppend(pOut,pFunc->sName.zString,pFunc->sName.nByte);` |
+|     2 |  728 | `	}else{` |
+|   ! 0 |  729 | `		SyBlobAppend(pOut,"Global scope",sizeof("Global scope") - 1);` |
+|     - |  730 | `	}` |
+|     3 |  731 | `	SyBlobAppend(pOut,"]",sizeof(char));` |
+|     - |  732 | `	/* Current processed script */` |
+|     3 |  733 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|     3 |  734 | `	if( pFile ){` |
+|     3 |  735 | `		SyBlobAppend(pOut,"[",sizeof(char));` |
+|     3 |  736 | `		SyBlobAppend(pOut,"Processed file: ",sizeof("Processed file: ")-1);` |
+|     3 |  737 | `		SyBlobAppend(pOut,pFile->zString,pFile->nByte);` |
+|     3 |  738 | `		SyBlobAppend(pOut,"]",sizeof(char));` |
+|     1 |  739 | `	}` |
+|     - |  740 | `	/* Top class */` |
+|     3 |  741 | `	pClass = PH7_VmPeekTopClass(pVm);` |
+|     3 |  742 | `	if( pClass ){` |
+|   ! 0 |  743 | `		SyBlobAppend(pOut,"[",sizeof(char));` |
+|   ! 0 |  744 | `		SyBlobAppend(pOut,"Class: ",sizeof("Class: ")-1);` |
+|   ! 0 |  745 | `		SyBlobAppend(pOut,pClass->sName.zString,pClass->sName.nByte);` |
+|   ! 0 |  746 | `		SyBlobAppend(pOut,"]",sizeof(char));` |
+|   ! 0 |  747 | `	}` |
+|     3 |  748 | `	SyBlobAppend(pOut,"\n",sizeof(char));` |
+|     - |  749 | `	/* All done */` |
+|     3 |  750 | `	return SXRET_OK;` |
+|     1 |  751 | `}` |
+|     - |  752 | `/*` |
+|     - |  753 | ` * void debug_print_backtrace(int $options = 0, int $limit = 0)` |
+|     - |  754 | ` *  Prints a backtrace.` |
+|     - |  755 | ` *` |
+|     - |  756 | ` *  Both arguments were declared in aBuiltinSig[] and read by nothing, and what` |
+|     - |  757 | ` *  the function PRINTED was not a backtrace at all: PH7's own` |
+|     - |  758 | `` *  `[Called function: f][Processed file: x]` line, describing ONE frame in a`` |
+|     - |  759 | ``  *  shape no php ever produced. php prints the same `#N file(line): func(args)` `` |
+|     - |  760 | `` *  body getTraceAsString() renders -- without the `#N {main}` marker, which is`` |
+|     - |  761 | ` *  the bottom of an exception's trace and not a frame -- and honours the same` |
+|     - |  762 | ` *  $options bits and $limit as debug_backtrace().` |
+|     - |  763 | ` */` |
+|    42 |  764 | `PH7_PRIVATE int vm_builtin_debug_print_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  765 | `{` |
+|    43 |  766 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - |  767 | `	SyBlob sDump;` |
+|     - |  768 | `	ph7_value *pList;` |
+|    43 |  769 | `	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 0;` |
+|    43 |  770 | `	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);` |
+|    43 |  771 | `	pList = ph7_context_new_array(pCtx);` |
+|    43 |  772 | `	if( pList == 0 ){` |
+|   ! 0 |  773 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
+|   ! 0 |  774 | `		return PH7_OK;` |
+|     - |  775 | `	}` |
+|    43 |  776 | `	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);` |
+|    43 |  777 | `	SyBlobInit(&sDump,&pVm->sAllocator);` |
+|    43 |  778 | `	PH7_VmTraceToString(pVm,pList,FALSE,&sDump);` |
+|     - |  779 | `	/* Output backtrace */` |
+|    43 |  780 | `	ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));` |
+|     - |  781 | `	/* All done,cleanup */` |
+|    43 |  782 | `	SyBlobRelease(&sDump);` |
+|    43 |  783 | `	return PH7_OK;` |
+|    22 |  784 | `}` |
+|     - |  785 | `/*` |
+|     - |  786 | ` * string debug_string_backtrace()` |
+|     - |  787 | ` *  Generate a backtrace` |
+|     - |  788 | ` * Parameters` |
+|     - |  789 | ` * None` |
+|     - |  790 | ` * Return` |
+|     - |  791 | ` *  A mini backtrace().` |
+|     - |  792 | ` * Note that this is a symisc extension.` |
+|     - |  793 | ` */` |
+|     2 |  794 | `PH7_PRIVATE int vm_builtin_debug_string_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 |  795 | `{` |
+|     3 |  796 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - |  797 | `	SyBlob sDump;` |
+|     3 |  798 | `	SyBlobInit(&sDump,&pVm->sAllocator);` |
+|     - |  799 | `	/* Generate the backtrace */` |
+|     3 |  800 | `	VmMiniBacktrace(pVm,&sDump);` |
+|     - |  801 | `	/* Return the backtrace */` |
+|     3 |  802 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump)); /* Will make it's own copy */` |
+|     - |  803 | `	/* All done,cleanup */` |
+|     3 |  804 | `	SyBlobRelease(&sDump);` |
+|     1 |  805 | `	SXUNUSED(nArg); /* cc warning */` |
+|     1 |  806 | `	SXUNUSED(apArg);` |
+|     3 |  807 | `	return PH7_OK;` |
+|     1 |  808 | `}` |
+|     - |  809 |  |

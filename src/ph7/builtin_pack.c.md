@@ -70,15 +70,15 @@ Coverage: 541/583 lines (92.80%)
 |     - |   60 | ` * whichever of the two the host uses -- which is what php's byte-map tables say.` |
 |     - |   61 | ` */` |
 |  4035 |   62 | `static void PackPutInt(char *zOut,sxu64 uVal,int nSize,int iOrder)` |
-|     5 |   63 | `{` |
-|  5614 |   64 | `	int bLittle = (iOrder == PACK_LITTLE) \|\|` |
+|     4 |   63 | `{` |
+|  5613 |   64 | `	int bLittle = (iOrder == PACK_LITTLE) \|\|` |
 |  1574 |   65 | `		(iOrder == PACK_MACHINE && PackHostIsLittle());` |
 |     - |   66 | `	int i;` |
-| 19642 |   67 | `	for( i = 0 ; i < nSize ; ++i ){` |
-| 15607 |   68 | `		int nShift = bLittle ? i : (nSize - 1 - i);` |
-| 15607 |   69 | `		zOut[i] = (char)((uVal >> (8 * nShift)) & 0xFF);` |
-|  7356 |   70 | `	}` |
-|  4040 |   71 | `}` |
+| 19641 |   67 | `	for( i = 0 ; i < nSize ; ++i ){` |
+| 15606 |   68 | `		int nShift = bLittle ? i : (nSize - 1 - i);` |
+| 15606 |   69 | `		zOut[i] = (char)((uVal >> (8 * nShift)) & 0xFF);` |
+|  7355 |   70 | `	}` |
+|  4039 |   71 | `}` |
 |     - |   72 | `/*` |
 |     - |   73 | ` * Read nSize bytes back out of zIn as an unsigned value in the given order --` |
 |     - |   74 | ` * PackPutInt's inverse, and the only reader unpack() uses. Nothing wider than a` |
@@ -138,9 +138,9 @@ Coverage: 541/583 lines (92.80%)
 |     - |  128 | ` * PHL builds for but asked rather than assumed.` |
 |     - |  129 | ` */` |
 | 15592 |  130 | `static int PackFixedWidth(int code,int *piOrder)` |
-|     5 |  131 | `{` |
-| 15597 |  132 | `	int nSize = 0, iOrder = PACK_MACHINE;` |
-| 15597 |  133 | `	switch( code ){` |
+|     4 |  131 | `{` |
+| 15596 |  132 | `	int nSize = 0, iOrder = PACK_MACHINE;` |
+| 15596 |  133 | `	switch( code ){` |
 |   280 |  134 | `		case 'c': case 'C': nSize = 1; break;` |
 |    29 |  135 | `		case 's': case 'S': nSize = 2; break;` |
 |  2788 |  136 | `		case 'n': nSize = 2; iOrder = PACK_BIG;    break;` |
@@ -148,7 +148,7 @@ Coverage: 541/583 lines (92.80%)
 |    21 |  138 | `		case 'i': case 'I': nSize = (int)sizeof(int); break;` |
 |    21 |  139 | `		case 'l': case 'L': nSize = 4; break;` |
 |  9048 |  140 | `		case 'N': nSize = 4; iOrder = PACK_BIG;    break;` |
-|  1248 |  141 | `		case 'V': nSize = 4; iOrder = PACK_LITTLE; break;` |
+|  1247 |  141 | `		case 'V': nSize = 4; iOrder = PACK_LITTLE; break;` |
 |    21 |  142 | `		case 'q': case 'Q': nSize = 8; break;` |
 |    35 |  143 | `		case 'J': nSize = 8; iOrder = PACK_BIG;    break;` |
 |  1260 |  144 | `		case 'P': nSize = 8; iOrder = PACK_LITTLE; break;` |
@@ -160,22 +160,22 @@ Coverage: 541/583 lines (92.80%)
 |    51 |  150 | `		case 'E': nSize = (int)sizeof(double); iOrder = PACK_BIG;    break;` |
 |    12 |  151 | `		default: break;` |
 |     - |  152 | `	}` |
-| 15597 |  153 | `	if( piOrder ){` |
-|  3984 |  154 | `		*piOrder = iOrder;` |
+| 15596 |  153 | `	if( piOrder ){` |
+|  3983 |  154 | `		*piOrder = iOrder;` |
 |  1942 |  155 | `	}` |
-| 15597 |  156 | `	return nSize;` |
-|     5 |  157 | `}` |
+| 15596 |  156 | `	return nSize;` |
+|     4 |  157 | `}` |
 |     - |  158 | `/* Does this code take its value as a STRING rather than as a number? */` |
 | 11929 |  159 | `static int PackCodeTakesString(int code)` |
-|     5 |  160 | `{` |
-| 17578 |  161 | `	return code == 'a' \|\| code == 'A' \|\| code == 'Z' \|\|` |
+|     4 |  160 | `{` |
+| 17577 |  161 | `	return code == 'a' \|\| code == 'A' \|\| code == 'Z' \|\|` |
 | 17968 |  162 | `		code == 'h' \|\| code == 'H';` |
-|     5 |  163 | `}` |
+|     4 |  163 | `}` |
 |     - |  164 | `/* Is this code one of the three that produce bytes out of no argument at all? */` |
 |  8130 |  165 | `static int PackCodeTakesNoArg(int code)` |
-|     5 |  166 | `{` |
-|  8135 |  167 | `	return code == 'x' \|\| code == 'X' \|\| code == '@';` |
-|     5 |  168 | `}` |
+|     4 |  166 | `{` |
+|  8134 |  167 | `	return code == 'x' \|\| code == 'X' \|\| code == '@';` |
+|     4 |  168 | `}` |
 |     - |  169 | `/*` |
 |     - |  170 | ``  * Read the repeater that follows a format code: a run of decimal digits, `*` `` |
 |     - |  171 | ` * (answered as -1), or nothing at all (answered as 1). *pzCur is advanced past` |
@@ -189,12 +189,12 @@ Coverage: 541/583 lines (92.80%)
 |     - |  179 | ` * overflow one step later. A count no int can hold is not a count.` |
 |     - |  180 | ` */` |
 |  4241 |  181 | `static sxi32 PackReadRepeat(const char **pzCur,const char *zEnd,sxi64 *piRepeat)` |
-|     5 |  182 | `{` |
-|  4246 |  183 | `	const char *zCur = *pzCur;` |
-|  4246 |  184 | `	sxi64 iVal = 0;` |
-|  4246 |  185 | `	*piRepeat = 1;` |
-|  4246 |  186 | `	if( zCur >= zEnd ){` |
-|  3716 |  187 | `		return SXRET_OK;` |
+|     4 |  182 | `{` |
+|  4245 |  183 | `	const char *zCur = *pzCur;` |
+|  4245 |  184 | `	sxi64 iVal = 0;` |
+|  4245 |  185 | `	*piRepeat = 1;` |
+|  4245 |  186 | `	if( zCur >= zEnd ){` |
+|  3715 |  187 | `		return SXRET_OK;` |
 |     - |  188 | `	}` |
 |   533 |  189 | `	if( zCur[0] == '*' ){` |
 |   177 |  190 | `		*pzCur = zCur + 1;` |
@@ -202,18 +202,18 @@ Coverage: 541/583 lines (92.80%)
 |   177 |  192 | `		return SXRET_OK;` |
 |     - |  193 | `	}` |
 |   357 |  194 | `	if( zCur[0] < '0' \|\| zCur[0] > '9' ){` |
-|   163 |  195 | `		return SXRET_OK;` |
+|   162 |  195 | `		return SXRET_OK;` |
 |     - |  196 | `	}` |
-|   694 |  197 | `	while( zCur < zEnd && zCur[0] >= '0' && zCur[0] <= '9' ){` |
-|   500 |  198 | `		if( iVal <= PACK_INT_MAX ){` |
-|   468 |  199 | `			iVal = iVal * 10 + (zCur[0] - '0');` |
+|   695 |  197 | `	while( zCur < zEnd && zCur[0] >= '0' && zCur[0] <= '9' ){` |
+|   501 |  198 | `		if( iVal <= PACK_INT_MAX ){` |
+|   469 |  199 | `			iVal = iVal * 10 + (zCur[0] - '0');` |
 |   233 |  200 | `		}` |
-|   500 |  201 | `		zCur++;` |
-|     2 |  202 | `	}` |
-|   196 |  203 | `	*pzCur = zCur;` |
-|   196 |  204 | `	*piRepeat = iVal;` |
-|   196 |  205 | `	return iVal > PACK_INT_MAX ? SXERR_OVERFLOW : SXRET_OK;` |
-|  2078 |  206 | `}` |
+|   501 |  201 | `		zCur++;` |
+|     3 |  202 | `	}` |
+|   197 |  203 | `	*pzCur = zCur;` |
+|   197 |  204 | `	*piRepeat = iVal;` |
+|   197 |  205 | `	return iVal > PACK_INT_MAX ? SXERR_OVERFLOW : SXRET_OK;` |
+|  2077 |  206 | `}` |
 |     - |  207 | `/*` |
 |     - |  208 | `` * One preprocessed format entry: the code and its repeater, with `*` already`` |
 |     - |  209 | ` * resolved into the count it stands for. php builds the same two arrays for the` |
@@ -289,52 +289,52 @@ Coverage: 541/583 lines (92.80%)
 |     - |  279 | ` * over bytes that have already been produced.` |
 |     - |  280 | ` */` |
 |  3947 |  281 | `PH7_PRIVATE int PH7_builtin_pack(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     5 |  282 | `{` |
+|     4 |  282 | `{` |
 |     - |  283 | `	const char *zFmt,*zCur,*zEnd;` |
-|  3952 |  284 | `	struct PackEntry *aEntry = 0;` |
-|  3952 |  285 | `	struct PackStrArg *aStr = 0;` |
-|  3952 |  286 | `	int nEntry = 0, nFmt = 0, nValue = 0, iValue = 0, i;` |
-|  3952 |  287 | `	sxi64 iPos = 0, iSize = 0;` |
-|  3952 |  288 | `	char *zOut = 0;` |
-|  3952 |  289 | `	sxi32 rc = PH7_OK;` |
-|  3952 |  290 | `	int iThrowArg = 0;  /* 1-based apArg index of the first unconvertible value */` |
-|  3952 |  291 | `	if( nArg < 1 ){` |
+|  3951 |  284 | `	struct PackEntry *aEntry = 0;` |
+|  3951 |  285 | `	struct PackStrArg *aStr = 0;` |
+|  3951 |  286 | `	int nEntry = 0, nFmt = 0, nValue = 0, iValue = 0, i;` |
+|  3951 |  287 | `	sxi64 iPos = 0, iSize = 0;` |
+|  3951 |  288 | `	char *zOut = 0;` |
+|  3951 |  289 | `	sxi32 rc = PH7_OK;` |
+|  3951 |  290 | `	int iThrowArg = 0;  /* 1-based apArg index of the first unconvertible value */` |
+|  3951 |  291 | `	if( nArg < 1 ){` |
 |     - |  292 | `		/* Arity is enforced from aBuiltinSig[] before the call. */` |
 |   ! 0 |  293 | `		ph7_result_string(pCtx,"",0);` |
 |   ! 0 |  294 | `		return PH7_OK;` |
 |     - |  295 | `	}` |
-|  3952 |  296 | `	zFmt = ph7_value_to_string(apArg[0],&nFmt);` |
-|  3952 |  297 | `	nValue = nArg - 1;` |
-|  3952 |  298 | `	if( (sxu32)nFmt > (sxu32)(PACK_INT_MAX / (int)sizeof(struct PackEntry)) ){` |
+|  3951 |  296 | `	zFmt = ph7_value_to_string(apArg[0],&nFmt);` |
+|  3951 |  297 | `	nValue = nArg - 1;` |
+|  3951 |  298 | `	if( (sxu32)nFmt > (sxu32)(PACK_INT_MAX / (int)sizeof(struct PackEntry)) ){` |
 |     - |  299 | `		/* One entry per format byte, so a format long enough to overflow the` |
 |     - |  300 | `		 * entry array's own size is refused rather than under-allocated. */` |
 |   ! 0 |  301 | `		return PH7_ContextMemoryError(pCtx);` |
 |     - |  302 | `	}` |
-|  3952 |  303 | `	if( nFmt > 0 ){` |
-|  5878 |  304 | `		aEntry = (struct PackEntry *)ph7_context_alloc_chunk(pCtx,` |
+|  3951 |  303 | `	if( nFmt > 0 ){` |
+|  5877 |  304 | `		aEntry = (struct PackEntry *)ph7_context_alloc_chunk(pCtx,` |
 |  3947 |  305 | `			(unsigned int)((sxu32)nFmt * sizeof(struct PackEntry)),TRUE,TRUE);` |
-|  3952 |  306 | `		if( aEntry == 0 ){` |
+|  3951 |  306 | `		if( aEntry == 0 ){` |
 |   ! 0 |  307 | `			return PH7_ContextMemoryError(pCtx);` |
 |     - |  308 | `		}` |
 |  1926 |  309 | `	}` |
-|  3952 |  310 | `	if( nValue > 0 ){` |
-|  5815 |  311 | `		aStr = (struct PackStrArg *)ph7_context_alloc_chunk(pCtx,` |
+|  3951 |  310 | `	if( nValue > 0 ){` |
+|  5814 |  311 | `		aStr = (struct PackStrArg *)ph7_context_alloc_chunk(pCtx,` |
 |  3905 |  312 | `			(unsigned int)((sxu32)nValue * sizeof(struct PackStrArg)),TRUE,TRUE);` |
-|  3910 |  313 | `		if( aStr == 0 ){` |
+|  3909 |  313 | `		if( aStr == 0 ){` |
 |   ! 0 |  314 | `			return PH7_ContextMemoryError(pCtx);` |
 |     - |  315 | `		}` |
 |  1905 |  316 | `	}` |
 |     - |  317 | `	/* Pass 1: read the format, resolve every repeater, consume every argument. */` |
-|  3952 |  318 | `	zCur = zFmt;` |
-|  3952 |  319 | `	zEnd = &zFmt[nFmt];` |
-|  7995 |  320 | `	while( zCur < zEnd ){` |
-|  4082 |  321 | `		int code = (unsigned char)zCur[0];` |
+|  3951 |  318 | `	zCur = zFmt;` |
+|  3951 |  319 | `	zEnd = &zFmt[nFmt];` |
+|  7994 |  320 | `	while( zCur < zEnd ){` |
+|  4081 |  321 | `		int code = (unsigned char)zCur[0];` |
 |     - |  322 | `		sxi64 iRepeat;` |
 |     - |  323 | `		int bOverflow;` |
-|  4082 |  324 | `		zCur++;` |
-|  4082 |  325 | `		bOverflow = PackReadRepeat(&zCur,zEnd,&iRepeat) != SXRET_OK;` |
+|  4081 |  324 | `		zCur++;` |
+|  4081 |  325 | `		bOverflow = PackReadRepeat(&zCur,zEnd,&iRepeat) != SXRET_OK;` |
 |  4077 |  326 | `		if( !PackCodeTakesNoArg(code) && !PackCodeTakesString(code)` |
-|  3943 |  327 | `		 && PackFixedWidth(code,0) < 1 ){` |
+|  3942 |  327 | `		 && PackFixedWidth(code,0) < 1 ){` |
 |     - |  328 | `			/* Whether the code EXISTS is decided before anything its repeater` |
 |     - |  329 | `			 * says, which is php's order: a format is validated left to right and` |
 |     - |  330 | `			 * an unknown letter is the first thing wrong with it. */` |
@@ -342,18 +342,18 @@ Coverage: 541/583 lines (92.80%)
 |     4 |  332 | `				"Type %c: unknown format code",code);` |
 |    22 |  333 | `			goto Done;` |
 |     - |  334 | `		}` |
-|  4074 |  335 | `		if( bOverflow ){` |
+|  4073 |  335 | `		if( bOverflow ){` |
 |    25 |  336 | `			rc = PH7_VmThrowException(pCtx,"ValueError",` |
 |     8 |  337 | `				"Type %c: integer overflow in format string",code);` |
 |    17 |  338 | `			goto Done;` |
 |     - |  339 | `		}` |
-|  4058 |  340 | `		if( PackCodeTakesNoArg(code) ){` |
+|  4057 |  340 | `		if( PackCodeTakesNoArg(code) ){` |
 |    75 |  341 | `			if( iRepeat < 0 ){` |
 |    13 |  342 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |     4 |  343 | `					"Type %c: '*' ignored",code);` |
 |     9 |  344 | `				iRepeat = 1;` |
 |     5 |  345 | `			}` |
-|  4021 |  346 | `		}else if( PackCodeTakesString(code) ){` |
+|  4020 |  346 | `		}else if( PackCodeTakesString(code) ){` |
 |   112 |  347 | `			if( iValue >= nValue ){` |
 |     7 |  348 | `				rc = PH7_VmThrowException(pCtx,"ValueError",` |
 |     2 |  349 | `					"Type %c: not enough arguments",code);` |
@@ -378,76 +378,76 @@ Coverage: 541/583 lines (92.80%)
 |    35 |  368 | `				iRepeat = (sxi64)nStr + (code == 'Z' ? 1 : 0);` |
 |    17 |  369 | `			}` |
 |   106 |  370 | `			iValue++;` |
-|  3926 |  371 | `		}else if( PackFixedWidth(code,0) > 0 ){` |
+|  3925 |  371 | `		}else if( PackFixedWidth(code,0) > 0 ){` |
 |     - |  372 | `			sxi64 iNext;` |
-|  3874 |  373 | `			if( iRepeat < 0 ){` |
+|  3873 |  373 | `			if( iRepeat < 0 ){` |
 |   101 |  374 | `				iRepeat = nValue - iValue;` |
 |     2 |  375 | `			}` |
-|  3874 |  376 | `			iNext = (sxi64)iValue + iRepeat;` |
-|  3874 |  377 | `			if( iNext > nValue ){` |
+|  3873 |  376 | `			iNext = (sxi64)iValue + iRepeat;` |
+|  3873 |  377 | `			if( iNext > nValue ){` |
 |     7 |  378 | `				rc = PH7_VmThrowException(pCtx,"ValueError",` |
 |     2 |  379 | `					"Type %c: too few arguments",code);` |
 |     5 |  380 | `				goto Done;` |
 |     - |  381 | `			}` |
-|  3870 |  382 | `			iValue = (int)iNext;` |
+|  3869 |  382 | `			iValue = (int)iNext;` |
 |  1885 |  383 | `		}` |
-|  4048 |  384 | `		aEntry[nEntry].code = code;` |
-|  4048 |  385 | `		aEntry[nEntry].iRepeat = iRepeat;` |
-|  4048 |  386 | `		nEntry++;` |
-|     5 |  387 | `	}` |
-|  3918 |  388 | `	if( iValue < nValue ){` |
+|  4047 |  384 | `		aEntry[nEntry].code = code;` |
+|  4047 |  385 | `		aEntry[nEntry].iRepeat = iRepeat;` |
+|  4047 |  386 | `		nEntry++;` |
+|     4 |  387 | `	}` |
+|  3917 |  388 | `	if( iValue < nValue ){` |
 |    10 |  389 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |     3 |  390 | `			"%d arguments unused",nValue - iValue);` |
 |     3 |  391 | `	}` |
 |     - |  392 | `	/* Pass 2: measure. The answer is the HIGHEST position the cursor reaches,` |
 |     - |  393 | ``	 * which is not the last one: `@8X4` ends at 4 having produced 8. */`` |
-|  7951 |  394 | `	for( i = 0 ; i < nEntry ; ++i ){` |
-|  4044 |  395 | `		int code = aEntry[i].code;` |
-|  4044 |  396 | `		sxi64 iRepeat = aEntry[i].iRepeat;` |
-|  4044 |  397 | `		if( code == 'X' ){` |
+|  7950 |  394 | `	for( i = 0 ; i < nEntry ; ++i ){` |
+|  4043 |  395 | `		int code = aEntry[i].code;` |
+|  4043 |  396 | `		sxi64 iRepeat = aEntry[i].iRepeat;` |
+|  4043 |  397 | `		if( code == 'X' ){` |
 |    23 |  398 | `			iPos -= iRepeat;` |
 |    23 |  399 | `			if( iPos < 0 ){` |
 |    10 |  400 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |     3 |  401 | `					"Type %c: outside of string",code);` |
 |     7 |  402 | `				iPos = 0;` |
 |     4 |  403 | `			}` |
-|  4033 |  404 | `		}else if( code == '@' ){` |
+|  4032 |  404 | `		}else if( code == '@' ){` |
 |    29 |  405 | `			iPos = iRepeat;` |
 |    15 |  406 | `		}else{` |
-|  3994 |  407 | `			sxi64 nUnit = 1, nCount = iRepeat;` |
-|  3994 |  408 | `			if( code == 'h' \|\| code == 'H' ){` |
+|  3993 |  407 | `			sxi64 nUnit = 1, nCount = iRepeat;` |
+|  3993 |  408 | `			if( code == 'h' \|\| code == 'H' ){` |
 |     - |  409 | `				/* Two hex digits to the byte, an odd count rounding up. */` |
 |    35 |  410 | `				nCount = iRepeat / 2 + (iRepeat % 2);` |
-|  3977 |  411 | `			}else if( !PackCodeTakesString(code) && code != 'x' ){` |
-|  3868 |  412 | `				nUnit = PackFixedWidth(code,0);` |
+|  3976 |  411 | `			}else if( !PackCodeTakesString(code) && code != 'x' ){` |
+|  3867 |  412 | `				nUnit = PackFixedWidth(code,0);` |
 |  1884 |  413 | `			}` |
-|  3994 |  414 | `			if( (PACK_INT_MAX - iPos) / nUnit < nCount ){` |
+|  3993 |  414 | `			if( (PACK_INT_MAX - iPos) / nUnit < nCount ){` |
 |    10 |  415 | `				rc = PH7_VmThrowException(pCtx,"ValueError",` |
 |     3 |  416 | `					"Type %c: integer overflow in format string",code);` |
 |     7 |  417 | `				goto Done;` |
 |     - |  418 | `			}` |
-|  3988 |  419 | `			iPos += nCount * nUnit;` |
+|  3987 |  419 | `			iPos += nCount * nUnit;` |
 |     - |  420 | `		}` |
-|  4038 |  421 | `		if( iSize < iPos ){` |
-|  3972 |  422 | `			iSize = iPos;` |
+|  4037 |  421 | `		if( iSize < iPos ){` |
+|  3971 |  422 | `			iSize = iPos;` |
 |  1936 |  423 | `		}` |
-|  1974 |  424 | `	}` |
-|  3912 |  425 | `	if( iSize > 0 ){` |
-|  3886 |  426 | `		zOut = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)iSize,TRUE,TRUE);` |
-|  3886 |  427 | `		if( zOut == 0 ){` |
+|  1973 |  424 | `	}` |
+|  3911 |  425 | `	if( iSize > 0 ){` |
+|  3885 |  426 | `		zOut = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)iSize,TRUE,TRUE);` |
+|  3885 |  427 | `		if( zOut == 0 ){` |
 |   ! 0 |  428 | `			rc = PH7_ContextMemoryError(pCtx);` |
 |   ! 0 |  429 | `			goto Done;` |
 |     - |  430 | `		}` |
 |  1893 |  431 | `	}` |
 |     - |  432 | `	/* Pass 3: write. */` |
-|  3912 |  433 | `	iPos = 0;` |
-|  3912 |  434 | `	iValue = 0;` |
-|  7939 |  435 | `	for( i = 0 ; i < nEntry ; ++i ){` |
-|  4032 |  436 | `		int code = aEntry[i].code;` |
-|  4032 |  437 | `		sxi64 iRepeat = aEntry[i].iRepeat;` |
-|  4032 |  438 | `		int iOrder = PACK_MACHINE, nWidth;` |
+|  3911 |  433 | `	iPos = 0;` |
+|  3911 |  434 | `	iValue = 0;` |
+|  7938 |  435 | `	for( i = 0 ; i < nEntry ; ++i ){` |
+|  4031 |  436 | `		int code = aEntry[i].code;` |
+|  4031 |  437 | `		sxi64 iRepeat = aEntry[i].iRepeat;` |
+|  4031 |  438 | `		int iOrder = PACK_MACHINE, nWidth;` |
 |     - |  439 | `		sxi64 n;` |
-|  4032 |  440 | `		switch( code ){` |
+|  4031 |  440 | `		switch( code ){` |
 |    35 |  441 | `			case 'a': case 'A': case 'Z': {` |
 |     - |  442 | `				/* One field of exactly iRepeat bytes: the value truncated to fit,` |
 |     - |  443 | ``				 * or padded out to the width. `A` pads with spaces, the other two`` |
@@ -558,36 +558,36 @@ Coverage: 541/583 lines (92.80%)
 |     - |  548 | `				 * cannot take that route: they are read twice, once to measure and` |
 |     - |  549 | `				 * once to write, and a second conversion would emit a second` |
 |     - |  550 | ``				 * `Array to string conversion`. */`` |
-|  3868 |  551 | `				nWidth = PackFixedWidth(code,&iOrder);` |
-|  7903 |  552 | `				for( n = 0 ; n < iRepeat ; ++n ){` |
-|  4040 |  553 | `					ph7_value *pVal = apArg[iValue + 1];` |
-|  4040 |  554 | `					if( code == 'f' \|\| code == 'g' \|\| code == 'G' ){` |
+|  3867 |  551 | `				nWidth = PackFixedWidth(code,&iOrder);` |
+|  7902 |  552 | `				for( n = 0 ; n < iRepeat ; ++n ){` |
+|  4039 |  553 | `					ph7_value *pVal = apArg[iValue + 1];` |
+|  4039 |  554 | `					if( code == 'f' \|\| code == 'g' \|\| code == 'G' ){` |
 |    17 |  555 | `						PackPutFloat(&zOut[iPos],(float)ph7_value_to_double(pVal),iOrder);` |
-|  4032 |  556 | `					}else if( code == 'd' \|\| code == 'e' \|\| code == 'E' ){` |
+|  4031 |  556 | `					}else if( code == 'd' \|\| code == 'e' \|\| code == 'E' ){` |
 |    21 |  557 | `						PackPutDouble(&zOut[iPos],ph7_value_to_double(pVal),iOrder);` |
 |    11 |  558 | `					}else{` |
-|  4004 |  559 | `						PackPutInt(&zOut[iPos],(sxu64)ph7_value_to_int64(pVal),nWidth,iOrder);` |
+|  4003 |  559 | `						PackPutInt(&zOut[iPos],(sxu64)ph7_value_to_int64(pVal),nWidth,iOrder);` |
 |     - |  560 | `					}` |
-|  4040 |  561 | `					iPos += nWidth;` |
-|  4040 |  562 | `					iValue++;` |
-|  1910 |  563 | `				}` |
+|  4039 |  561 | `					iPos += nWidth;` |
+|  4039 |  562 | `					iValue++;` |
+|  1909 |  563 | `				}` |
 |  3863 |  564 | `				break;` |
 |     - |  565 | `		}` |
-|  1971 |  566 | `	}` |
-|  3912 |  567 | `	ph7_result_string(pCtx,iPos > 0 ? zOut : "",(int)iPos);` |
-|  3914 |  568 | `	if( iThrowArg ){` |
+|  1970 |  566 | `	}` |
+|  3911 |  567 | `	ph7_result_string(pCtx,iPos > 0 ? zOut : "",(int)iPos);` |
+|  3913 |  568 | `	if( iThrowArg ){` |
 |     - |  569 | `		/* The format ran to completion and the result is in place; raise php's` |
 |     - |  570 | `		 * Error now. The unwind discards that result, exactly as php's does. */` |
 |     5 |  571 | `		rc = PH7_MemObjToStringUV(apArg[iThrowArg]);` |
 |     2 |  572 | `	}` |
 |  1999 |  573 | `Done:` |
-|  8125 |  574 | `	for( i = 0 ; i < nValue ; ++i ){` |
-|  4178 |  575 | `		if( aStr[i].bDone ){` |
+|  8124 |  574 | `	for( i = 0 ; i < nValue ; ++i ){` |
+|  4177 |  575 | `		if( aStr[i].bDone ){` |
 |   108 |  576 | `			PH7_MemObjRelease(&aStr[i].sVal);` |
 |    53 |  577 | `		}` |
-|  1979 |  578 | `	}` |
-|  3952 |  579 | `	return rc;` |
-|  1931 |  580 | `}` |
+|  1978 |  578 | `	}` |
+|  3951 |  579 | `	return rc;` |
+|  1930 |  580 | `}` |
 |     - |  581 | `/*` |
 |     - |  582 | ` * php truncates an unpack() element NAME at 200 bytes. The name is whatever` |
 |     - |  583 | ` * follows the repeater up to the next '/', so it is the format's own text and` |

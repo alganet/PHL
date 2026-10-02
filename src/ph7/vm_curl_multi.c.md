@@ -95,18 +95,18 @@ Coverage: 529/578 lines (91.52%)
 |      - |   85 | ` * PH7_CurlVmReset), because a live multi still points at the CURL*s it was` |
 |      - |   86 | ` * given and curl_multi_remove_handle has to reach them.` |
 |      - |   87 | ` */` |
-|   5645 |   88 | `PH7_PRIVATE void PH7_CurlMultiVmSweep(ph7_vm *pVm)` |
+|   6717 |   88 | `PH7_PRIVATE void PH7_CurlMultiVmSweep(ph7_vm *pVm)` |
 |      5 |   89 | `{` |
-|   5650 |   90 | `	phl_curlm *pMulti = (phl_curlm *)pVm->pCurlMultis;` |
-|   5678 |   91 | `	while( pMulti ){` |
+|   6722 |   90 | `	phl_curlm *pMulti = (phl_curlm *)pVm->pCurlMultis;` |
+|   6750 |   91 | `	while( pMulti ){` |
 |     30 |   92 | `		phl_curlm *pNext = pMulti->pNext;` |
 |     30 |   93 | `		PH7_CurlBlankSlot(pMulti->pOwner);` |
 |     30 |   94 | `		CurlMultiFree(pMulti);` |
 |     30 |   95 | `		SyMemBackendFree(&pVm->sAllocator,pMulti);` |
 |     30 |   96 | `		pMulti = pNext;` |
 |      2 |   97 | `	}` |
-|   5650 |   98 | `	pVm->pCurlMultis = 0;` |
-|   5650 |   99 | `}` |
+|   6722 |   98 | `	pVm->pCurlMultis = 0;` |
+|   6722 |   99 | `}` |
 |      - |  100 | `/*` |
 |      - |  101 | ` * The object is going away: tear the set down now rather than at VM reset, so` |
 |      - |  102 | ` * a script that drops its last reference releases the sockets there. The shell` |
@@ -611,7 +611,7 @@ Coverage: 529/578 lines (91.52%)
 |      - |  601 | `		 * whose callback would have said CURL_PUSH_OK. Calling it needs a php` |
 |      - |  602 | `		 * CurlHandle over an easy handle LIBCURL owns and hands out mid-push,` |
 |      - |  603 | `		 * and only an HTTP/2 peer that actually pushes can derive what that` |
-|      - |  604 | `		 * ownership is -- no corpus here has one. §7.4 carries it.` |
+|      - |  604 | `		 * ownership is -- no corpus here has one. It is recorded.` |
 |      - |  605 | `		 */` |
 |      5 |  606 | `		ph7_result_bool(pCtx,1);` |
 |      5 |  607 | `		return PH7_OK;` |
@@ -668,10 +668,10 @@ Coverage: 529/578 lines (91.52%)
 |      - |  658 | ` * refuses to clean up a share an easy handle is still attached to, so every` |
 |      - |  659 | ` * CURL* has to have been cleaned up first or this leaks the cache.` |
 |      - |  660 | ` */` |
-|   5645 |  661 | `PH7_PRIVATE void PH7_CurlShareVmSweep(ph7_vm *pVm)` |
+|   6717 |  661 | `PH7_PRIVATE void PH7_CurlShareVmSweep(ph7_vm *pVm)` |
 |      5 |  662 | `{` |
-|   5650 |  663 | `	phl_curlsh *pSh = (phl_curlsh *)pVm->pCurlShares;` |
-|   5674 |  664 | `	while( pSh ){` |
+|   6722 |  663 | `	phl_curlsh *pSh = (phl_curlsh *)pVm->pCurlShares;` |
+|   6746 |  664 | `	while( pSh ){` |
 |     26 |  665 | `		phl_curlsh *pNext = pSh->pNext;` |
 |     26 |  666 | `		PH7_CurlBlankSlot(pSh->pOwner);` |
 |     26 |  667 | `		if( pSh->pShare && pSh->bOwnsShare ){` |
@@ -680,8 +680,8 @@ Coverage: 529/578 lines (91.52%)
 |     26 |  670 | `		SyMemBackendFree(&pVm->sAllocator,pSh);` |
 |     26 |  671 | `		pSh = pNext;` |
 |      2 |  672 | `	}` |
-|   5650 |  673 | `	pVm->pCurlShares = 0;` |
-|   5650 |  674 | `}` |
+|   6722 |  673 | `	pVm->pCurlShares = 0;` |
+|   6722 |  674 | `}` |
 |      - |  675 | `/*` |
 |      - |  676 | ` * The object is going away. A PERSISTENT share is NOT torn down here: it is` |
 |      - |  677 | ` * the point of the class that it outlives the objects handed out for it, and` |
@@ -982,7 +982,7 @@ Coverage: 529/578 lines (91.52%)
 |      - |  972 |  |
 |      - |  973 | `/* ===== Installation ===== */` |
 |      - |  974 |  |
-|   6721 |  975 | `PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)` |
+|   7925 |  975 | `PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)` |
 |      5 |  976 | `{` |
 |      - |  977 | `	static const struct {` |
 |      - |  978 | `		const char *zName;` |
@@ -1059,37 +1059,37 @@ Coverage: 529/578 lines (91.52%)
 |      - | 1049 | `	};` |
 |      - | 1050 | `	sxu32 n;` |
 |      - | 1051 | `	sxi32 rc;` |
-|   6726 | 1052 | `	pVm->pCurlMultis = 0;` |
-|   6726 | 1053 | `	pVm->pCurlShares = 0;` |
-| 114262 | 1054 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){` |
-| 107541 | 1055 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|  53701 | 1056 | `	}` |
-|   6726 | 1057 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|   6726 | 1058 | `	if( rc == SXRET_OK ){` |
-|   6726 | 1059 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlMultiHandle",` |
+|   7930 | 1052 | `	pVm->pCurlMultis = 0;` |
+|   7930 | 1053 | `	pVm->pCurlShares = 0;` |
+| 134730 | 1054 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){` |
+| 126805 | 1055 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  63317 | 1056 | `	}` |
+|   7930 | 1057 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|   7930 | 1058 | `	if( rc == SXRET_OK ){` |
+|   7930 | 1059 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlMultiHandle",` |
 |      - | 1060 | `			sizeof("CurlMultiHandle")-1,FALSE,0);` |
-|   6726 | 1061 | `		if( pClass ){` |
-|   6726 | 1062 | `			pClass->zNewRefusal =` |
+|   7930 | 1061 | `		if( pClass ){` |
+|   7930 | 1062 | `			pClass->zNewRefusal =` |
 |      - | 1063 | `				"Cannot directly construct CurlMultiHandle, use curl_multi_init() instead";` |
-|   6726 | 1064 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-|   3356 | 1065 | `		}` |
-|   6726 | 1066 | `		pClass = PH7_VmExtractClass(&(*pVm),"CurlShareHandle",` |
+|   7930 | 1064 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|   3957 | 1065 | `		}` |
+|   7930 | 1066 | `		pClass = PH7_VmExtractClass(&(*pVm),"CurlShareHandle",` |
 |      - | 1067 | `			sizeof("CurlShareHandle")-1,FALSE,0);` |
-|   6726 | 1068 | `		if( pClass ){` |
-|   6726 | 1069 | `			pClass->zNewRefusal =` |
+|   7930 | 1068 | `		if( pClass ){` |
+|   7930 | 1069 | `			pClass->zNewRefusal =` |
 |      - | 1070 | `				"Cannot directly construct CurlShareHandle, use curl_share_init() instead";` |
-|   6726 | 1071 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-|   3356 | 1072 | `		}` |
-|   6726 | 1073 | `		pClass = PH7_VmExtractClass(&(*pVm),"CurlSharePersistentHandle",` |
+|   7930 | 1071 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|   3957 | 1072 | `		}` |
+|   7930 | 1073 | `		pClass = PH7_VmExtractClass(&(*pVm),"CurlSharePersistentHandle",` |
 |      - | 1074 | `			sizeof("CurlSharePersistentHandle")-1,FALSE,0);` |
-|   6726 | 1075 | `		if( pClass ){` |
-|   6726 | 1076 | `			pClass->zNewRefusal =` |
+|   7930 | 1075 | `		if( pClass ){` |
+|   7930 | 1076 | `			pClass->zNewRefusal =` |
 |      - | 1077 | `				"Cannot directly construct CurlSharePersistentHandle, "` |
 |      - | 1078 | `				"use curl_share_init_persistent() instead";` |
-|   6726 | 1079 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
-|   3356 | 1080 | `		}` |
-|   3356 | 1081 | `	}` |
-|   6726 | 1082 | `	return rc;` |
+|   7930 | 1079 | `			pClass->xCmp = PH7_NativeCmpOpaqueHandle;` |
+|   3957 | 1080 | `		}` |
+|   3957 | 1081 | `	}` |
+|   7930 | 1082 | `	return rc;` |
 |      5 | 1083 | `}` |
 |      - | 1084 |  |
 |      - | 1085 | `#else` |
