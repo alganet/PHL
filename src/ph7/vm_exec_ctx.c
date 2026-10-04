@@ -1852,8 +1852,9 @@ PH7_PRIVATE int PH7_VmSlotRefCount(ph7_vm *pVm,sxu32 nIdx)
  * `$v(...)` binds nothing (bBindCaller FALSE).
  */
 static ph7_class_instance * VmFccClassClosure(ph7_vm *pVm, ph7_class *pCls, SyString *pName,
-	int bBindCaller, int bStrForm)
+	int bBindCaller, int bStrForm, int bForward)
 {
+	ph7_class *pCalled;
 	int bDirect = PH7_VmFccMethodIsDirect(pVm, pCls, SyStringData(pName), SyStringLength(pName));
 	ph7_class_instance *pThis = bBindCaller ? PH7_VmCallerThisFor(pVm, pCls) : 0;
 	ph7_class_instance *pRecv = 0, *pFccObj;
@@ -1868,17 +1869,47 @@ static ph7_class_instance * VmFccClassClosure(ph7_vm *pVm, ph7_class *pCls, SySt
 	if( bDirect ){
 		pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
 	}
-	if( pRecv == 0 && pThis && pThis->pClass != pCls ){
+	/* `self::`/`parent::` FORWARD the called class even with no `$this`: from a static
+	 * D::st() inherited from B, `'self::s'` runs with static:: = D, where `'B::s'` spelled
+	 * out runs with B. */
+	pCalled = pThis ? pThis->pClass : (bBindCaller && bForward ? PH7_VmPeekTopClass(pVm) : 0);
+	if( pRecv == 0 && pCalled && pCalled != pCls ){
 		SyString sAttr;
 		ph7_value *pAttr;
 		SyStringInitFromBuf(&sAttr, "__called", 8);
 		pAttr = PH7_ClassInstanceFetchAttr(pFccObj, &sAttr);
 		if( pAttr ){
-			PH7_MemObjStringAppend(pAttr, SyStringData(&pThis->pClass->sName),
-				SyStringLength(&pThis->pClass->sName));
+			PH7_MemObjStringAppend(pAttr, SyStringData(&pCalled->sName),
+				SyStringLength(&pCalled->sName));
 		}
 	}
 	return pFccObj;
+}
+/* Is a callable's class half one of the two keywords that forward the called class? */
+static int VmFccNameForwards(const char *zCls, sxu32 nCls)
+{
+	return (nCls == 4 && SyMemcmp(zCls, "self", 4) == 0)
+		|| (nCls == 6 && SyMemcmp(zCls, "parent", 6) == 0);
+}
+/*
+ * The class a callable's target half names. A NAME is resolved the way the callback
+ * machinery resolves it -- `self`/`parent`/`static` against the calling frame, as
+ * PH7_VmIsCallable's gate already did -- so `'self::m'` and `['parent','m']` wrap the
+ * method they validated as. A plain class lookup found no class called `self` and left
+ * the whole string as a function name, which died `Class "self" not found` at the call.
+ * Only Closure::fromCallable() (bBindCaller) resolves them: `$cb(...)` is the direct
+ * dispatch, which php refuses the keywords in.
+ */
+static ph7_class * VmFccTargetClass(ph7_vm *pVm, ph7_value *pTarget, int bBindCaller)
+{
+	if( pTarget->iFlags & MEMOBJ_OBJ ){
+		return ((ph7_class_instance *)pTarget->x.pOther)->pClass;
+	}
+	if( !bBindCaller || (pTarget->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pTarget->sBlob) == 0 ){
+		return PH7_VmExtractClassFromValue(pVm, pTarget);
+	}
+	return PH7_VmResolveScopeName(pVm, (const char *)SyBlobData(&pTarget->sBlob),
+		SyBlobLength(&pTarget->sBlob));
 }
 PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, int bBindCaller)
 {
@@ -1910,10 +1941,13 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, 
 			ph7_class *pScopeCls;
 			SyString sCls;
 			SyStringInitFromBuf(&sCls, zName, nSep);
-			pScopeCls = PH7_VmExtractClass(pVm, SyStringData(&sCls), SyStringLength(&sCls), FALSE, 0);
+			pScopeCls = bBindCaller
+				? PH7_VmResolveScopeName(pVm, SyStringData(&sCls), SyStringLength(&sCls))
+				: PH7_VmExtractClass(pVm, SyStringData(&sCls), SyStringLength(&sCls), FALSE, 0);
 			if( pScopeCls ){
 				SyStringInitFromBuf(&sName, zName + nSep + 2, nName - (nSep + 2));
-				return VmFccClassClosure(pVm, pScopeCls, &sName, bBindCaller, TRUE);
+				return VmFccClassClosure(pVm, pScopeCls, &sName, bBindCaller, TRUE,
+					VmFccNameForwards(SyStringData(&sCls), SyStringLength(&sCls)));
 			}
 		}
 		SyStringInitFromBuf(&sName, zName, nName);
@@ -1936,9 +1970,7 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, 
 			/* A qualified method half (`[$b,'A::f']`) names the class the closure is scoped
 			 * to: the closure carries the method half and that class, so it runs A::f on $b
 			 * rather than looking `A::f` up as a method name of B's. */
-			ph7_class *pOrg = (pTarget->iFlags & MEMOBJ_OBJ)
-				? ((ph7_class_instance *)pTarget->x.pOther)->pClass
-				: PH7_VmExtractClassFromValue(pVm, pTarget);
+			ph7_class *pOrg = VmFccTargetClass(pVm, pTarget, bBindCaller);
 			ph7_class *pQual = 0;
 			const char *zQCls = 0, *zQMeth = 0, *zWhy = 0;
 			sxu32 nQCls = 0, nQMeth = 0;
@@ -1978,12 +2010,11 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, 
 			}
 			return pFccObj;
 		}else{
-			/* [class-name, method] static callable -> bind the resolved scope. A runtime array
-			 * callable carries a concrete class name (never self/static/parent), so a plain class
-			 * lookup is correct — unlike the syntactic `C::m(...)` path, which must resolve
-			 * self/static/parent via VmFccResolveScope. Matches PH7_VmIsCallable's own decode. */
-			ph7_class *pScopeCls = PH7_VmExtractClassFromValue(pVm, pTarget);
-			return pScopeCls ? VmFccClassClosure(pVm, pScopeCls, &sName, bBindCaller, FALSE) : 0;
+			/* [class-name, method] static callable -> bind the resolved scope. */
+			ph7_class *pScopeCls = VmFccTargetClass(pVm, pTarget, bBindCaller);
+			return pScopeCls ? VmFccClassClosure(pVm, pScopeCls, &sName, bBindCaller, FALSE,
+				(pTarget->iFlags & MEMOBJ_STRING) && VmFccNameForwards(
+					(const char *)SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob))) : 0;
 		}
 	}
 	if( pValue->iFlags & MEMOBJ_OBJ ){
