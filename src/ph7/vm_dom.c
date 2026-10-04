@@ -333,6 +333,14 @@ static void DomSetRes(ph7_vm *pVm,ph7_class_instance *pObj,phl_domnode *pRes)
 	 && (((xmlNodePtr)pRes->pNode)->type == XML_DOCUMENT_NODE
 	  || ((xmlNodePtr)pRes->pNode)->type == XML_HTML_DOCUMENT_NODE) ){
 		pRes->pShell->pDocObj = (void *)pObj;
+		/* A document of php 8.4's tree latches the whole tree into it for
+		 * ext/simplexml's import doors, and outlives this object: the latch is
+		 * the TREE's, so a `Dom\XMLDocument` that has since gone still makes
+		 * `dom_import_simplexml()` refuse. The 2004 document latches nothing --
+		 * it is the family you get when nobody chose one. */
+		if( DomDocFlag(pObj,DOM_F_MODERN) ){
+			pRes->pShell->iSxFamily = 2;
+		}
 	}
 }
 /* ph7_class::xRelease for DOMDocument: forget a document object its tree still
@@ -431,7 +439,7 @@ static int DomNodeTypeOf(xmlNodePtr pNode)
 /* Defined with registerNodeClass below, which is the only thing that makes the
  * answer anything other than DomClassOfKind's. */
 static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
-	SyBlob *pOut);
+	int bModern,SyBlob *pOut);
 /* Defined with the namespaced document's readers below: is the receiver's
  * document one of php 8.4's tree? Two of the shared readers answer differently
  * there. */
@@ -446,8 +454,8 @@ static void DomNodeMarkHeld(xmlNodePtr pNode,ph7_class_instance *pObj);
  * the node to PHP goes through DomResultOwned; one that stores it takes its own
  * reference (PH7_NativeSetAttrObj, ph7_array_add_elem) and then unrefs.
  */
-static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
-	phl_xmldoc *pShell,xmlNodePtr pNode)
+static ph7_class_instance * DomWrapAs(ph7_vm *pVm,ph7_class_instance *pDoc,
+	phl_xmldoc *pShell,xmlNodePtr pNode,int bModern)
 {
 	ph7_hashmap *pCache;
 	ph7_hashmap_node *pEntry = 0;
@@ -483,7 +491,7 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	 * one for it (registerNodeClass). The name may live in sName's buffer, so
 	 * the blob outlives the lookup. */
 	SyBlobInit(&sName,&pVm->sAllocator);
-	zClass = DomWrapClassName(&(*pVm),pDoc,(int)pNode->type,&sName);
+	zClass = DomWrapClassName(&(*pVm),pDoc,(int)pNode->type,bModern,&sName);
 	pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
 	SyBlobRelease(&sName);
 	pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
@@ -506,6 +514,13 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	PH7_MemObjRelease(&sKey);
 	return pObj;                             /* the constructor's reference: the caller's */
 }
+/* The same, in the document's own family -- which is every caller inside a
+ * node's own tree. */
+static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
+	phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	return DomWrapAs(&(*pVm),pDoc,pShell,pNode,DomDocFlag(pDoc,DOM_F_MODERN));
+}
 /*
  * The wrapper for one node of a tree whose DOCUMENT OBJECT the caller does not
  * have -- ext/simplexml's `dom_import_simplexml()`, which holds a shell and a
@@ -517,7 +532,8 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
  * already names it, which is what makes an import back out of a SimpleXML made
  * from that document answer the document's own nodes. OWNED, like DomWrap's.
  */
-PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShell,void *pNode)
+PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShell,void *pNode,
+	int bModern)
 {
 	ph7_class_instance *pDoc;
 	if( pShell == 0 || pShell->pDoc == 0 ){
@@ -525,8 +541,11 @@ PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShe
 	}
 	pDoc = (ph7_class_instance *)pShell->pDocObj;
 	if( pDoc == 0 ){
-		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",
-			sizeof("DOMDocument")-1,FALSE,0);
+		/* php's modern door mints `Dom\XMLDocument` even for a tree the 2004
+		 * loaders could have parsed: the family is the DOOR's, and the
+		 * namespaced producers are not the only way into that tree after all. */
+		const char *zDoc = bModern ? "Dom\\XMLDocument" : "DOMDocument";
+		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zDoc,(sxu32)SyStrlen(zDoc),FALSE,0);
 		phl_domnode *pRes;
 		pDoc = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
 		pRes = pDoc ? DomNewRes(&(*pVm),pShell,pShell->pDoc) : 0;
@@ -536,11 +555,12 @@ PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShe
 			}
 			return 0;
 		}
-		PH7_NativeSetAttrInt(&(*pVm),pDoc,DOM_DFLAGS,DOM_F_DEFAULT);
+		PH7_NativeSetAttrInt(&(*pVm),pDoc,DOM_DFLAGS,
+			bModern ? (DOM_F_DEFAULT|DOM_F_MODERN) : DOM_F_DEFAULT);
 		DomSetRes(&(*pVm),pDoc,pRes);          /* ...which records pShell->pDocObj */
 		PH7_NativeSetAttrObj(&(*pVm),pDoc,DOM_DOC,pDoc);
 	}
-	return DomWrap(&(*pVm),pDoc,pShell,(xmlNodePtr)pNode);
+	return DomWrapAs(&(*pVm),pDoc,pShell,(xmlNodePtr)pNode,bModern);
 }
 /* Answer a borrowed instance (or NULL) from a native method. */
 static int DomResultWrap(ph7_context *pCtx,ph7_class_instance *pObj)
@@ -10792,11 +10812,14 @@ static ph7_hashmap * DomNodeClassMap(ph7_vm *pVm,ph7_class_instance *pDoc,int bM
 	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
 }
 /* The class a node of pDoc's tree is wrapped in: the registered one when the
- * document names it, php's own otherwise. */
+ * document names it, php's own otherwise. bModern is the FAMILY to spell it in,
+ * which is the document's for every caller but ext/simplexml's import doors --
+ * those name their own, and a `Dom\\Element` over a DOMDocument's tree is a
+ * state php really does reach. */
 static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
-	SyBlob *pOut)
+	int bModern,SyBlob *pOut)
 {
-	const char *zBase = DomClassOfKind(DomDocFlag(pDoc,DOM_F_MODERN),iKind);
+	const char *zBase = DomClassOfKind(bModern,iKind);
 	ph7_hashmap *pMap = DomNodeClassMap(&(*pVm),pDoc,FALSE);
 	ph7_hashmap_node *pEntry = 0;
 	ph7_value sKey,*pHit;

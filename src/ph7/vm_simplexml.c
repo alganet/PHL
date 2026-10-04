@@ -2416,15 +2416,28 @@ static int vm_builtin_simplexml_import_dom(ph7_context *pCtx,int nArg,ph7_value 
 	return SxeResultObj(pCtx,SxeNew(pVm,pClass,pNd->pShell,pNode,SXE_ITER_NONE,0,0,0,0,0));
 }
 /*
- * dom_import_simplexml(object $node): DOMAttr|DOMElement -- ext/dom's half of
- * the same door, declared by that extension and bodied here because it is a
- * SimpleXML object it takes apart.
+ * dom_import_simplexml(object $node): DOMAttr|DOMElement   -- the 2004 tree
+ * Dom\import_simplexml(object $node): Dom\Attr|Dom\Element -- php 8.4's
+ *
+ * ext/dom's half of the same door, declared by that extension and bodied here
+ * because it is a SimpleXML object it takes apart. php 8.4 put a second class
+ * tree over the same libxml nodes and gave it its own door rather than a flag,
+ * so this is one body under two names.
  *
  * Unlike its opposite this one has an IDENTITY: two imports of the same node
  * are the same DOM object, because ext/dom caches its wrappers per document.
+ *
+ * And the two doors do not share a tree. The FIRST one to run over a document
+ * latches it, and the other then refuses that whole document -- every node of
+ * it, not the one asked about -- with `must not be already imported as a ...`.
+ * A document made by php 8.4's producers arrives latched; a `new DOMDocument`
+ * does not, so the modern door still answers there, and what it answers is a
+ * `Dom\Element` whose `ownerDocument` is that DOMDocument. The wrapper class is
+ * the door's choice and the owner is the cache's, and they really can disagree.
  */
-static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static int SxeDomImport(ph7_context *pCtx,int nArg,ph7_value **apArg,int bModern)
 {
+	const char *zFn = bModern ? "Dom\\import_simplexml" : "dom_import_simplexml";
 	ph7_class_instance *pArg;
 	phl_domnode *pNd;
 	xmlNodePtr pNode;
@@ -2432,7 +2445,7 @@ static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value 
 	ph7_value sRes;
 	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
 		return PH7_VmThrowException(pCtx,"TypeError",
-			"dom_import_simplexml(): Argument #1 ($node) is not a valid node type");
+			"%s(): Argument #1 ($node) is not a valid node type",zFn);
 	}
 	pArg = (ph7_class_instance *)apArg[0]->x.pOther;
 	pNd = pArg ? SxeResOf(pArg) : 0;
@@ -2440,9 +2453,21 @@ static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value 
 	if( pNd == 0 || pNode == 0
 	 || (pNode->type != XML_ELEMENT_NODE && pNode->type != XML_ATTRIBUTE_NODE) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
-			"dom_import_simplexml(): Argument #1 ($node) is not a valid node type");
+			"%s(): Argument #1 ($node) is not a valid node type",zFn);
 	}
-	pObj = PH7_DomWrapForeign(pCtx->pVm,pNd->pShell,pNode);
+	if( pNd->pShell ){
+		int iWant = bModern ? 2 : 1;
+		if( pNd->pShell->iSxFamily != 0 && pNd->pShell->iSxFamily != iWant ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #1 ($node) must not be already imported as a %s",
+				zFn,bModern ? "DOMNode" : "Dom\\Node");
+		}
+		/* The latch is taken even when the cache answers with the OTHER tree's
+		 * object: php sets it before it looks, so a modern import that hands
+		 * back a DOMElement still shuts the 2004 door behind it. */
+		pNd->pShell->iSxFamily = iWant;
+	}
+	pObj = PH7_DomWrapForeign(pCtx->pVm,pNd->pShell,pNode,bModern);
 	if( pObj == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -2453,6 +2478,14 @@ static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value 
 	ph7_result_value(pCtx,&sRes);   /* takes its own reference... */
 	PH7_ClassInstanceUnref(pObj);   /* ...and the wrap's goes back */
 	return PH7_OK;
+}
+static int vm_builtin_dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SxeDomImport(pCtx,nArg,apArg,0);
+}
+static int vm_builtin_Dom_import_simplexml(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SxeDomImport(pCtx,nArg,apArg,1);
 }
 
 /* ===== Install ===== */
@@ -2521,8 +2554,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallSimpleXml(ph7_vm *pVm)
 		{ "simplexml_load_file",   vm_builtin_simplexml_load_file   },
 		{ "simplexml_load_string", vm_builtin_simplexml_load_string },
 		{ "simplexml_import_dom",  vm_builtin_simplexml_import_dom  },
-		/* ext/dom's own name for the other direction. */
+		/* ext/dom's own names for the other direction: one per class tree. */
 		{ "dom_import_simplexml",  vm_builtin_dom_import_simplexml  },
+		{ "Dom\\import_simplexml", vm_builtin_Dom_import_simplexml  },
 	};
 	/*
 	 * The engine slots. php's SimpleXMLElement declares NO property -- Reflection

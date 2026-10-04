@@ -511,7 +511,7 @@ static const VmExtName aExtFunc[] = {
 	{"xml_get_current_column_number",PH7_EXT_XML}, {"xml_get_current_byte_index",PH7_EXT_XML},
 	{"xml_parser_set_option",PH7_EXT_XML}, {"xml_parser_get_option",PH7_EXT_XML},
 	/* dom */
-	{"dom_import_simplexml",PH7_EXT_DOM},
+	{"dom_import_simplexml",PH7_EXT_DOM}, {"Dom\\import_simplexml",PH7_EXT_DOM},
 	/* xmlwriter */
 	{"xmlwriter_open_uri",PH7_EXT_XMLWRITER}, {"xmlwriter_open_memory",PH7_EXT_XMLWRITER},
 	{"xmlwriter_set_indent",PH7_EXT_XMLWRITER}, {"xmlwriter_set_indent_string",PH7_EXT_XMLWRITER},

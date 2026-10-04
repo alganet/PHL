@@ -530,6 +530,7 @@ static const struct VmBuiltinSig {
 	{ "simplexml_import_dom",
 	  "object $node, ?string $class_name = SimpleXMLElement::class", "?SimpleXMLElement" },
 	{ "dom_import_simplexml", "object $node", "DOMAttr|DOMElement" },
+	{ "Dom\\import_simplexml", "object $node", "Dom\\Attr|Dom\\Element" },
 	/* ext/pdo's one function: the procedural spelling of
 	 * PDO::getAvailableDrivers(). */
 	{ "pdo_drivers", "", "array" },

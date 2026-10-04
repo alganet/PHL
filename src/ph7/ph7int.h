@@ -6084,6 +6084,16 @@ struct phl_xmldoc {
 	                     * answer that document's own nodes. Cleared by
 	                     * DOMDocument's xRelease when the object goes, so the
 	                     * pointer is never stale. */
+	/* Which of the two DOM class trees this document has been imported into by
+	 * ext/simplexml, and 0 while neither door has run. php latches it on the
+	 * TREE, not on a node: whichever of `dom_import_simplexml()` and
+	 * `Dom\\import_simplexml()` runs first decides, and the other then refuses
+	 * the whole document with `must not be already imported as a ...`. A modern
+	 * document object standing on the tree latches it the same way (its own
+	 * producer is the only door into that family), which is why a plain
+	 * `new DOMDocument` does NOT -- the 2004 tree is not a choice, it is what
+	 * you get when nobody chose. */
+	int iSxFamily;      /* 0 = neither, 1 = the 2004 tree, 2 = php 8.4's */
 	int bPreserveWS;    /* DOMDocument->preserveWhiteSpace */
 	int bFormatOutput;  /* DOMDocument->formatOutput */
 	phl_xmldoc *pNext;  /* Registry chain (pVm->pXmlDocs) */
@@ -6122,11 +6132,18 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm);
  * DOMDocument::load() wants. */
 PH7_PRIVATE int PH7_DomReadFile(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
 	SyBlob *pBody,SyBlob *pPath);
-/* The DOMDocument-cached wrapper for one node of pShell's tree, creating the
- * document object if this tree has none yet. ext/simplexml's
- * dom_import_simplexml() is the only caller: every other wrap already has a
- * document object in hand. */
-PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShell,void *pNode);
+/* The document-cached wrapper for one node of pShell's tree, creating the
+ * document object if this tree has none yet. ext/simplexml's two import doors
+ * are the only callers: every other wrap already has a document object in hand.
+ *
+ * bModern is the DOOR's family, and it decides only what is MINTED -- the class
+ * of a node this tree has not wrapped before, and the class of the document
+ * object when there is none. A node the cache already holds comes back as it
+ * was, so `Dom\\import_simplexml()` over a DOMDocument's tree answers a
+ * `Dom\\Element` for a fresh node and that document's own DOMElement for one it
+ * has already handed out. */
+PH7_PRIVATE ph7_class_instance * PH7_DomWrapForeign(ph7_vm *pVm,phl_xmldoc *pShell,void *pNode,
+	int bModern);
 /* vm_simplexml.c */
 PH7_PRIVATE sxi32 PH7_VmInstallSimpleXml(ph7_vm *pVm);
 /* vm_xmlwriter.c */
