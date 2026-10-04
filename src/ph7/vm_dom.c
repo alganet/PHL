@@ -5039,13 +5039,33 @@ static int DomLenEq(const xmlChar *zHave,const char *zWant,int nWant)
  * The local name is `*` for every name, and an exact match otherwise -- against
  * libxml's `name`, which is the LOCAL name, so a prefix never enters into it.
  */
+/*
+ * ...on the 2004 tree. php 8.4's `getElementsByTagName` asks the QUALIFIED name
+ * instead -- `a` finds only the unprefixed `a` there and `p:a` finds the
+ * prefixed one, where the 2004 query answers all three for `a` and nothing at
+ * all for `p:a`. Only the name-only query differs: `getElementsByTagNameNS`
+ * takes a LOCAL name on both trees, and `*` is the wildcard on both (a `p:*`
+ * is a name like any other and matches nothing).
+ */
+static int DomGebtnNameEq(xmlNodePtr pNode,const char *zName,int nName,int bQName)
+{
+	const xmlChar *zPrefix = (bQName && pNode->ns) ? pNode->ns->prefix : 0;
+	int nPrefix;
+	if( zPrefix == 0 ){
+		return DomLenEq(pNode->name,zName,nName);
+	}
+	nPrefix = (int)SyStrlen((const char *)zPrefix);
+	return nName > nPrefix + 1 && zName[nPrefix] == ':'
+		&& SyMemcmp((const void *)zPrefix,(const void *)zName,(sxu32)nPrefix) == 0
+		&& DomLenEq(pNode->name,zName+nPrefix+1,nName-nPrefix-1);
+}
 static int DomGebtnMatch(xmlNodePtr pNode,const char *zUri,int nUri,
-	const char *zName,int nName)
+	const char *zName,int nName,int bQName)
 {
 	if( pNode->type != XML_ELEMENT_NODE ){
 		return 0;
 	}
-	if( !(nName == 1 && zName[0] == '*') && !DomLenEq(pNode->name,zName,nName) ){
+	if( !(nName == 1 && zName[0] == '*') && !DomGebtnNameEq(pNode,zName,nName,bQName) ){
 		return 0;
 	}
 	if( nUri < 0 || (nUri == 1 && zUri[0] == '*') ){
@@ -5059,12 +5079,12 @@ static int DomGebtnMatch(xmlNodePtr pNode,const char *zUri,int nUri,
 /* The list is LIVE: nothing is snapshotted, both queries re-walk the subtree
  * every time DOMNodeList asks. Passing iWant < 0 counts instead of indexing. */
 static xmlNodePtr DomGebtnWalk(xmlNodePtr pRoot,const char *zUri,int nUri,
-	const char *zName,int nName,int iWant,int *pnCount)
+	const char *zName,int nName,int bQName,int iWant,int *pnCount)
 {
 	xmlNodePtr pCur = pRoot ? pRoot->children : 0;
 	int iCount = 0;
 	while( pCur ){
-		if( DomGebtnMatch(pCur,zUri,nUri,zName,nName) ){
+		if( DomGebtnMatch(pCur,zUri,nUri,zName,nName,bQName) ){
 			if( iWant >= 0 && iCount == iWant ){
 				return pCur;
 			}
@@ -7282,7 +7302,8 @@ static int DomListCount(ph7_class_instance *pList)
 	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
 		PH7_NativeAttrStr(pList,DNL_URI,&zUri,&nUri);
 	}
-	DomGebtnWalk((xmlNodePtr)pOwner->pNode,zUri,nUri,zName,nName,-1,&iCount);
+	DomGebtnWalk((xmlNodePtr)pOwner->pNode,zUri,nUri,zName,nName,
+		nUri < 0 && DomDocFlag(PH7_NativeAttrObj(pList,DOM_DOC),DOM_F_MODERN),-1,&iCount);
 	return iCount;
 }
 /* The wrapper at one index, or NULL past the end. BORROWED, like every wrap. */
@@ -7334,7 +7355,8 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
 		if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
 			PH7_NativeAttrStr(pList,DNL_URI,&zUri,&nUri);
 		}
-		pNode = DomGebtnWalk((xmlNodePtr)pOwner->pNode,zUri,nUri,zName,nName,iIndex,0);
+		pNode = DomGebtnWalk((xmlNodePtr)pOwner->pNode,zUri,nUri,zName,nName,
+			nUri < 0 && DomDocFlag(pDoc,DOM_F_MODERN),iIndex,0);
 	}
 	return DomWrap(&(*pVm),pDoc,pOwner->pShell,pNode);
 }
@@ -12676,6 +12698,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMElement_setAttributeNodeNS },
 		{ "removeAttributeNode", PH7_MOD_PUBLIC, "Dom\\Attr $attr", "Dom\\Attr",
 		  vm_builtin_DOMElement_removeAttributeNode },
+		/* The two live lookups, which the 2004 element has had all along: the
+		 * body already picks the collection class off the document's family, so
+		 * the same C answers a DOMNodeList there and a `Dom\HTMLCollection`
+		 * here. What the row states is the TYPE -- php's namespaced tree is
+		 * fully typed where the 2004 one is tentative, so no `@`. */
+		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName",
+		  "Dom\\HTMLCollection", vm_builtin_Dom_getElementsByTagName },
+		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC,
+		  "?string $namespace, string $localName", "Dom\\HTMLCollection",
+		  vm_builtin_Dom_getElementsByTagNameNS },
 		{ "setIdAttribute",   PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "void",
 		  vm_builtin_DOMElement_setIdAttribute },
 		{ "setIdAttributeNS", PH7_MOD_PUBLIC,
@@ -12708,6 +12740,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	 * namespaced one is a different factory rather than a retyped one, and the
 	 * one function carries both under DomThisModern. */
 	static const PH7_NativeMethodDef aMDocMethod[] = {
+		/* php declares the two lookups BEFORE the factory on this tree, where
+		 * the 2004 document declares them after it. */
+		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName",
+		  "Dom\\HTMLCollection", vm_builtin_Dom_getElementsByTagName },
+		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC,
+		  "?string $namespace, string $localName", "Dom\\HTMLCollection",
+		  vm_builtin_Dom_getElementsByTagNameNS },
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName", "Dom\\Element",
 		  vm_builtin_DOMDocument_createElement },
 		{ "createElementNS",      PH7_MOD_PUBLIC,
@@ -12728,6 +12767,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "createAttributeNS",    PH7_MOD_PUBLIC,
 		  "?string $namespace, string $qualifiedName", "Dom\\Attr",
 		  vm_builtin_DOMDocument_createAttributeNS },
+		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "?Dom\\Element",
+		  vm_builtin_DOMDocument_getElementById },
 		DOM_MPARENT_METHODS
 	};
 	/* php's return here is `Dom\Text` and not `Dom\Text|false`, which is what
