@@ -17460,6 +17460,7 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 #define DOM_ENC_CP1252   3
 #define DOM_ENC_XUSER    4
 #define DOM_ENC_SJIS    -3
+#define DOM_ENC_EUCKR   -4
 #define DOM_ENC_SBCS     5  /* + the index into aDomSbcs[] */
 /* windows-1252's 0x80..0x9F; 0xA0..0xFF is the code point of the same value. */
 static const unsigned short aDomCp1252[32] = {
@@ -17989,6 +17990,54 @@ static int DomSjisFromUni(sxu32 cp)
 	}
 	return -1;
 }
+#include "vm_dom_dbcs.h"
+/*
+ * A plain double-byte framing, EUC-KR today: a byte either stands for a
+ * character on its own or opens a pair, and the pair names a cell directly by
+ * its two bytes. Both faces are tables php was swept for -- including WHICH
+ * bytes open a pair, because php's lead set has already been caught not being
+ * the standard's on an encoding of this shape. Only a name whose every
+ * character is one cell or one byte belongs here: GBK's decoder is gb18030's
+ * and reads four-byte sequences, Big5 reaches past the BMP, EUC-JP has a
+ * second code set and ISO-2022-JP has shift states.
+ */
+#define DOM_DBCS_ROWS 126               /* the leads 0x81..0xFE */
+#define DOM_DBCS_COLS 191               /* the trails 0x40..0xFE */
+typedef struct dom_dbcs_tab dom_dbcs_tab;
+struct dom_dbcs_tab {
+	const sxu16 *aByte;                 /* what 0x80..0xFF answers alone */
+	const sxu16 *aCell;                 /* the pair table, row-major */
+	const sxu16 *aEncCp;                /* the encoder, by code point */
+	const sxu16 *aEncB;                 /* the byte, or lead<<8|trail */
+	int nEnc;
+};
+static const dom_dbcs_tab aDomDbcs[] = {
+	{ aDomEuckrByte,aDomEuckrCell,aDomEuckrEncCp,aDomEuckrEncB,PH7_DOM_EUCKR_ENC },
+};
+#define DOM_DBCS_TAB(e) (&aDomDbcs[-4 - (e)])
+/* The bytes a code point is written as, or -1 where the encoder has none. The
+ * table is ordered by code point and holds no duplicate key, so this is a
+ * binary search; an answer below 0x100 is a single byte. */
+static int DomDbcsFromUni(const dom_dbcs_tab *pTab,sxu32 cp)
+{
+	int iLo = 0,iHi = pTab->nEnc - 1;
+	if( cp > 0xFFFF ){
+		return -1;
+	}
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		sxu32 u = (sxu32)pTab->aEncCp[iMid];
+		if( u == cp ){
+			return (int)pTab->aEncB[iMid];
+		}
+		if( u < cp ){
+			iLo = iMid + 1;
+		}else{
+			iHi = iMid - 1;
+		}
+	}
+	return -1;
+}
 /* The converter behind a document's encoding: the label the document keeps
  * (a parsed one keeps the NAME, `createEmpty()` the program's spelling) is
  * resolved through the label table first, so `latin1` and `utf-16` reach the
@@ -18017,6 +18066,9 @@ static int DomEncConverter(const char *zEnc)
 	}
 	if( SyStrncmp(zCanon,"Shift_JIS",9) == 0 ){
 		return DOM_ENC_SJIS;
+	}
+	if( SyStrncmp(zCanon,"EUC-KR",6) == 0 ){
+		return DOM_ENC_EUCKR;
 	}
 	if( SyStrncmp(zCanon,"ISO-8859-8-I",12) == 0 ){
 		zCanon = "ISO-8859-8";
@@ -18116,6 +18168,24 @@ static void DomEncPut(SyBlob *pOut,int iEnc,sxu32 cp)
 			z[1] = (unsigned char)(r < 0x3F ? r + 0x40 : r + 0x41);
 			SyBlobAppend(pOut,z,2);
 			return;
+		}else{
+			z[0] = '?';
+		}
+		SyBlobAppend(pOut,z,1);
+		return;
+	}
+	case DOM_ENC_EUCKR: {
+		int iB;
+		if( cp < 0x80 ){
+			z[0] = (unsigned char)cp;
+		}else if( (iB = DomDbcsFromUni(DOM_DBCS_TAB(iEnc),cp)) >= 0 ){
+			if( iB >= 0x100 ){
+				z[0] = (unsigned char)(iB >> 8);
+				z[1] = (unsigned char)(iB & 0xFF);
+				SyBlobAppend(pOut,z,2);
+				return;
+			}
+			z[0] = (unsigned char)iB;
 		}else{
 			z[0] = '?';
 		}
@@ -18289,6 +18359,47 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 				iLead = b;
 			}else{
 				DomEncPutUtf8(pOut,0xFFFD);
+			}
+		}
+		if( iLead ){
+			DomEncPutUtf8(pOut,0xFFFD);
+		}
+		return 1;
+	}
+	case DOM_ENC_EUCKR: {
+		const dom_dbcs_tab *pTab = DOM_DBCS_TAB(iEnc);
+		int iLead = 0;
+		for( i = 0 ; i < n ; ++i ){
+			unsigned char b = z[i];
+			if( iLead ){
+				sxu32 cp = 0;
+				if( b >= 0x40 && b <= 0xFE ){
+					cp = (sxu32)pTab->aCell[(iLead - 0x81) * DOM_DBCS_COLS + b - 0x40];
+				}
+				iLead = 0;
+				if( cp ){
+					DomEncPutUtf8(pOut,cp);
+					continue;
+				}
+				/* The pair names no character. Only an ASCII byte opens the
+				 * next character of its own rather than being eaten with the
+				 * lead, so a stray lead costs one replacement, not two bytes
+				 * of text. */
+				DomEncPutUtf8(pOut,0xFFFD);
+				if( b < 0x80 ){
+					i--;
+				}
+				continue;
+			}
+			if( b < 0x80 ){
+				DomEncPutUtf8(pOut,b);
+			}else{
+				sxu16 v = pTab->aByte[b - 0x80];
+				if( v == 0xFFFF ){
+					iLead = (int)b;
+				}else{
+					DomEncPutUtf8(pOut,v ? (sxu32)v : 0xFFFD);
+				}
 			}
 		}
 		if( iLead ){
