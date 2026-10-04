@@ -3119,8 +3119,19 @@ DOM_METHOD(vm_builtin_DOMNode_lookupNamespaceURI)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = DomNsAnchor(pNd ? (xmlNodePtr)pNd->pNode : 0);
 	const char *zPrefix = DomArgStrOrNull(nArg,apArg,0);
-	xmlNsPtr pNs = pNode ? xmlSearchNs(pNode->doc,pNode,(const xmlChar *)zPrefix) : 0;
-	if( pNs && pNs->href ){
+	int bModern = DomThisModern(pCtx);
+	xmlNsPtr pNs;
+	if( zPrefix != 0 && zPrefix[0] == 0 && bModern ){
+		/* The same normalization on the PREFIX: php 8.4's tree reads `''` as
+		 * the null prefix and answers the DEFAULT namespace, where the 2004
+		 * tree looks for a prefix spelled with no characters and finds none. */
+		zPrefix = 0;
+	}
+	pNs = pNode ? xmlSearchNs(pNode->doc,pNode,(const xmlChar *)zPrefix) : 0;
+	if( pNs && pNs->href && (pNs->href[0] || !bModern) ){
+		/* `xmlns=""` is a declaration whose URI is empty, and it exists to put
+		 * its subtree back in NO namespace.  php 8.4's tree reads it that way
+		 * and answers null; the 2004 tree hands back the empty URI it found. */
 		ph7_result_string(pCtx,(const char *)pNs->href,-1);
 	}else{
 		ph7_result_null(pCtx);
@@ -3151,7 +3162,24 @@ DOM_METHOD(vm_builtin_DOMNode_isDefaultNamespace)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = DomNsAnchor(pNd ? (xmlNodePtr)pNd->pNode : 0);
 	const char *zUri = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	xmlNsPtr pNs = (pNode && zUri[0]) ? xmlSearchNs(pNode->doc,pNode,0) : 0;
+	xmlNsPtr pNs;
+	if( zUri[0] == 0 ){
+		/* "Is NOTHING the default here?" -- a question only php 8.4's tree
+		 * takes, and it takes it spelled either way: `''` and null are the
+		 * same argument there.  It is the one this asks of the scope rather
+		 * than of a URI, and it is true wherever `lookupNamespaceURI(null)`
+		 * answers null: an undeclared document, and any subtree an
+		 * `xmlns=""` has put back in no namespace.  The 2004 tree reads the
+		 * empty string as a URI, which nothing carries, and answers false. */
+		if( !DomThisModern(pCtx) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pNs = pNode ? xmlSearchNs(pNode->doc,pNode,0) : 0;
+		ph7_result_bool(pCtx,pNs == 0 || pNs->href == 0 || pNs->href[0] == 0);
+		return PH7_OK;
+	}
+	pNs = pNode ? xmlSearchNs(pNode->doc,pNode,0) : 0;
 	ph7_result_bool(pCtx,pNs != 0 && pNs->href != 0
 		&& xmlStrEqual(pNs->href,(const xmlChar *)zUri));
 	return PH7_OK;
@@ -4320,11 +4348,31 @@ static const xmlChar * DomArgUri(int nArg,ph7_value **apArg,int iArg)
 	const char *z = DomArgStrOrNull(nArg,apArg,iArg);
 	return (const xmlChar *)z;
 }
+/*
+ * The same argument read on php 8.4's tree, where "no namespace" is spelled
+ * two ways.  That tree's FACTORIES already normalize the empty string to null
+ * -- `setAttributeNS('', 'a', 'V')` puts `a` in no namespace, not in one whose
+ * URI is empty -- and its read side asks the question the same way, so
+ * `getAttributeNS('', 'a')` answers what `getAttributeNS(null, 'a')` answers.
+ * The 2004 tree does not normalize: there the empty string is a URI like any
+ * other and matches nothing a document carries, which is why this is asked of
+ * the document rather than applied to every namespace argument.  It is asked
+ * only of the doors that LOOK a namespace up; `setIdAttributeNS('', ...)` is
+ * Not Found on both trees and keeps the literal argument.
+ */
+static const xmlChar * DomArgUriLookup(ph7_context *pCtx,int nArg,ph7_value **apArg,int iArg)
+{
+	const xmlChar *zUri = DomArgUri(nArg,apArg,iArg);
+	if( zUri != 0 && zUri[0] == 0 && DomThisModern(pCtx) ){
+		return 0;
+	}
+	return zUri;
+}
 /* DOMElement::getAttributeNS(?string $namespace, string $localName): string */
 DOM_METHOD(vm_builtin_DOMElement_getAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
+	const xmlChar *zUri = DomArgUriLookup(pCtx,nArg,apArg,0);
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
 	xmlChar *zVal = pNd ? xmlGetNsProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zLocal,zUri) : 0;
 	if( zVal == 0 && pNd && DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI) ){
@@ -4517,7 +4565,7 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNodeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
-	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
+	const xmlChar *zUri = DomArgUriLookup(pCtx,nArg,apArg,0);
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	if( pElem && DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI) ){
 		/* Here the LOCAL name is the prefix being declared -- and the DEFAULT
@@ -4656,7 +4704,7 @@ DOM_METHOD(vm_builtin_DOMElement_hasAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
-	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
+	const xmlChar *zUri = DomArgUriLookup(pCtx,nArg,apArg,0);
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	if( pElem && DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI) ){
 		/*
@@ -4680,7 +4728,7 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
-	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUri(nArg,apArg,0),zLocal) : 0;
+	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUriLookup(pCtx,nArg,apArg,0),zLocal) : 0;
 	if( pAttr ){
 		xmlRemoveProp(pAttr);
 	}
