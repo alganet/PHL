@@ -2843,11 +2843,54 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 					/* Method call */
 					ph7_class_method *pMeth = 0;
+					/* A LITERAL `X::__construct()` (any case) is not a method lookup in php:
+					 * the compiler drops the name and the call asks for the class's
+					 * constructor itself. So no visibility screen and no __callStatic
+					 * fallback -- a class without one is "Cannot call constructor", and the
+					 * only refusal is a PRIVATE constructor called with a `$this` whose class
+					 * is not the constructor's own. That compares the OBJECT's class, not the
+					 * calling scope: `self::__construct()` in A's own method refuses on a
+					 * subclass instance, and a protected one is never refused here. Anything
+					 * else falls to the non-static rule below. A dynamic name is an ordinary
+					 * lookup and keeps the ordinary messages; the compiler marks the literal
+					 * (VmInstr::bRefSrc). */
+					int bCtorLiteral = pInstr->bRefSrc != 0;
 					if( sName.nByte > 0 ){
 						/* An INTERFACE's methods are looked up too: they are all abstract,
 						 * so the arm below reports php's "Cannot call abstract method
 						 * I::m()" rather than claiming the name does not exist. */
 						pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);
+					}
+					if( bCtorLiteral ){
+						ph7_class_instance *pRawThis = PH7_VmCallerThis(&(*pVm));
+						int bCtorRefused = pMeth == 0 || ( pRawThis
+							&& pMeth->iProtection == PH7_CLASS_PROT_PRIVATE
+							&& pRawThis->pClass != PH7_VmMethodScopeName(&(*pVm),pClass,pMeth) );
+						if( bCtorRefused ){
+							SyBlob sErrM;
+							sxi32 rcErr;
+							SyBlobInit(&sErrM,&pVm->sAllocator);
+							if( pMeth == 0 ){
+								SyBlobAppend(&sErrM,"Cannot call constructor",sizeof("Cannot call constructor")-1);
+							}else{
+								SyBlobFormat(&sErrM,"Cannot call private %z::__construct()",&pClass->sDisp);
+							}
+							if( !pInstr->p3 ){
+								VmPopOperand(&pTos,1);
+							}
+							PH7_MemObjRelease(pTos);
+							pTos->nIdx = SXU32_HIGH;
+							if( pThis ){
+								PH7_ClassInstanceUnref(pThis);
+								pThis = 0;
+							}
+							rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+								SyBlobLength(&sErrM));
+							SyBlobRelease(&sErrM);
+							if( rcErr == SXERR_ABORT ){ VM_EXIT_ABORT; }
+							rc = rcErr;
+							PH7_THROW_ROUTE_MIDEXPR(rc)
+						}
 					}
 					if( pMeth == 0 || (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){
 						if( pMeth ){
@@ -2941,7 +2984,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						ph7_class_method *pDeniedStatic = 0;
 						ph7_class_instance *pDeniedThis = 0;
 						int bDeniedStatic = 0;
-						if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
+						if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC && !bCtorLiteral ){
 							/* The OWNING class decides, as in the instance twin above: a
 							 * trait method's rules belong to the class that composed it. */
 							ph7_class *pOwnerCls = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth);

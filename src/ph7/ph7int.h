@@ -3259,7 +3259,11 @@ struct VmInstr
 	                * `[&$o->p]` element and a by-reference `foreach` make. It stays a
 	                * PH7_MEMBER_READ (a handler-backed property still hands back a COPY),
 	                * but a MISSING name is CREATED rather than warned about, exactly as a
-	                * write would create it. Padding after bDiscard, like bStrict itself. */
+	                * write would create it. Padding after bDiscard, like bStrict itself.
+	                * On a static METHOD member (iP1==1, iP2==PH7_MEMBER_METHOD) it means
+	                * something else, since no property is fetched there: the name was the
+	                * literal `__construct`, which php resolves as the class's constructor
+	                * rather than as a method (vm_ops_oo.c). */
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	sxu32 nAux; /* A per-instruction scratch word the RUNTIME owns, zero until it writes
@@ -5967,6 +5971,7 @@ PH7_PRIVATE sxi32 PH7_VmCallMethodUnchecked(ph7_vm *pVm,ph7_class_instance *pThi
 PH7_PRIVATE sxi32 PH7_VmCallUserFunction(ph7_vm *pVm,ph7_value *pFunc,int nArg,ph7_value **apArg,ph7_value *pResult);
 PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(ph7_vm *pVm,ph7_value *pFunc,int nArg,ph7_value **apArg,ph7_value *pResult,VmCallArgMap *pArgMap);
 PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pClass);
+PH7_PRIVATE ph7_class_instance * PH7_VmCallerThis(ph7_vm *pVm);
 PH7_PRIVATE ph7_class_instance * PH7_VmStaticFallbackThis(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,
 	const char *zName,sxu32 nName,ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pArgMap);

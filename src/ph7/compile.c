@@ -2310,6 +2310,23 @@ static sxi32 GenStateEmitExprCode(
 					 * [class, OP_LOAD $m -> value, OP_MEMBER(static, method)] so the
 					 * dynamic name is read off the stack, matching the instance
 					 * (`$o->$m()`) path. iP1==1 marks a static member. */
+					if( pInstr->iOp == PH7_OP_MEMBER && pInstr->iP1 == 1 && pInstr->p3 == 0 ){
+						/* A LITERAL `X::__construct()`, any case: php's compiler drops the
+						 * name and the call asks for the class's constructor itself, which
+						 * refuses differently from a method lookup. The name's LOADC is the
+						 * instruction just below; a dynamic `X::$m()` never reaches here
+						 * with one (see VmInstr::bRefSrc). */
+						VmInstr *pNameLit = PH7_VmPeekNextInstr(pGen->pVm);
+						if( pNameLit && pNameLit->iOp == PH7_OP_LOADC ){
+							ph7_value *pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,(sxu32)pNameLit->iP2);
+							if( pLit && (pLit->iFlags & MEMOBJ_STRING)
+							 && SyBlobLength(&pLit->sBlob) == sizeof("__construct")-1
+							 && SyStrnicmp((const char *)SyBlobData(&pLit->sBlob),"__construct",
+								sizeof("__construct")-1) == 0 ){
+								pInstr->bRefSrc = 1;
+							}
+						}
+					}
 					if( pInstr->iOp == PH7_OP_MEMBER && pInstr->iP1 == 1 && pInstr->p3 ){
 						void *pDynName = pInstr->p3;
 						(void)PH7_VmPopInstr(pGen->pVm);

@@ -459,6 +459,16 @@ static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
  */
 PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pClass)
 {
+	ph7_class_instance *pThis = PH7_VmCallerThis(&(*pVm));
+	return (pThis && PH7_VmInstanceOf(pThis->pClass,pClass)) ? pThis : 0;
+}
+/*
+ * The calling frame's `$this` whatever its class, 0 when it has none -- php's EX(This),
+ * which a `C::__construct()` refusal compares against the constructor's scope without
+ * asking whether it is a C at all.
+ */
+PH7_PRIVATE ph7_class_instance * PH7_VmCallerThis(ph7_vm *pVm)
+{
 	VmFrame *pFrame = pVm->pFrame;
 	ph7_class_instance *pThis = 0;
 	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
@@ -486,10 +496,7 @@ PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pCla
 			}
 		}
 	}
-	if( pThis == 0 ){
-		return 0;
-	}
-	return PH7_VmInstanceOf(pThis->pClass,pClass) ? pThis : 0;
+	return pThis;
 }
 static int VmCallerThisIsA(ph7_vm *pVm,ph7_class *pClass)
 {
