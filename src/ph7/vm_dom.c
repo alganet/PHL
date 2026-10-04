@@ -5563,6 +5563,117 @@ DOM_METHOD(vm_builtin_DOMAttr_isId)
 	return PH7_OK;
 }
 /*
+ * The namespace a RENAMED element carries.  Neither create rule fits: the
+ * create side keys on the URI and takes any binding already in scope for it,
+ * which would answer `xml:` for a rename into the XML namespace and `p:` for a
+ * rename that asked for `q:`.  php honours the prefix asked for exactly, so
+ * this one keys on the PREFIX -- a declaration in scope that already spells
+ * this URI that way is reused, and anything else is declared on the element
+ * itself, shadowing an outer binding of the same prefix when there is one.
+ */
+static xmlNsPtr DomNsForRename(xmlNodePtr pNode,const char *zUri,const xmlChar *zPrefix)
+{
+	xmlNsPtr pNs = xmlSearchNs(pNode->doc,pNode,zPrefix);
+	if( pNs && pNs->href && xmlStrEqual(pNs->href,(const xmlChar *)zUri) ){
+		return pNs;
+	}
+	pNs = xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
+	if( pNs == 0 ){
+		/* The element ALREADY declares this prefix, for another URI -- the one
+		 * case xmlNewNs refuses. The declaration is the element's own, and the
+		 * rename is what re-points it. */
+		for( pNs = pNode->nsDef ; pNs ; pNs = pNs->next ){
+			if( (pNs->prefix == 0) == (zPrefix == 0)
+			 && (zPrefix == 0 || xmlStrEqual(pNs->prefix,zPrefix)) ){
+				break;
+			}
+		}
+		return pNs;
+	}
+	DomNsMarkMinted(pNs);
+	return pNs;
+}
+/*
+ * Dom\Element::rename(?string $namespaceURI, string $qualifiedName): void
+ * Dom\Attr::rename(?string $namespaceURI, string $qualifiedName): void
+ *
+ * php 8.4's one way to change a node's name AND its namespace at once -- the
+ * 2004 tree has no door for it at all, which is why a program that wants one
+ * there rebuilds the node and moves every child by hand.
+ *
+ * The name is judged exactly as the namespaced attribute FACTORY judges one
+ * (DOM_QN_MATTR), on both receivers: a QName always, so `:z`, `z:` and `a:b:c`
+ * are the Invalid Character Error even on an element, where the namespaced
+ * element factory would have written `:z` literally; and every rule ABOUT a
+ * namespace -- a prefix with none, the `xml` prefix off its own URI, the xmlns
+ * pairing -- is still the Namespace Error.
+ *
+ * What the two receivers do NOT share is where the binding goes. An element
+ * DECLARES it (DomNsForRename), so a child renamed into a namespace re-points
+ * what its own descendants resolve. An attribute declares nothing: like the
+ * namespaced factory it carries a free-standing binding parked on the document
+ * (DomNsForCreateModernAttr), and the prefix a serializer writes is that
+ * serializer's decision -- `saveXml` takes an in-scope prefix for the URI or
+ * invents `ns1`, which is why renaming an attribute into a URI the document
+ * already binds comes out under the document's prefix and not the one asked
+ * for, while `prefix` still reads back the one asked for.
+ *
+ * An attribute is the only receiver that can COLLIDE, and php's refusal there
+ * is prose rather than one of the level-2 names: code 13 under a sentence. It
+ * is asked of the owner element, so a detached attribute never collides, and
+ * renaming an attribute to the name it already has is not a collision with
+ * itself.
+ */
+DOM_METHOD(vm_builtin_Dom_rename)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	const char *zUri = DomArgStrOrNull(nArg,apArg,0);
+	const char *zQname = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	xmlNsPtr pNs = 0;
+	dom_qname sQ;
+	int rc;
+	if( pNode == 0 ){
+		return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);
+	}
+	if( zUri != 0 && zUri[0] == 0 ){
+		zUri = 0;   /* the empty namespace is no namespace, as everywhere here */
+	}
+	rc = DomQNameParse(zQname,zUri,DOM_QN_MATTR,&sQ);
+	if( rc ){
+		return DomThrowAlways(pCtx,rc);
+	}
+	if( pNode->type == XML_ATTRIBUTE_NODE ){
+		if( pNode->parent ){
+			xmlAttrPtr pHave = zUri
+				? DomAttrByNs(pNode->parent,(const xmlChar *)zUri,(const char *)sQ.zLocal)
+				: DomAttrNoNs(pNode->parent,(const char *)sQ.zLocal);
+			if( pHave != 0 && pHave != (xmlAttrPtr)pNode ){
+				DomQNameRelease(&sQ);
+				return DomThrowSentence(pCtx,13,
+					"An attribute with the given name in the given namespace already exists");
+			}
+		}
+		if( zUri != 0 ){
+			pNs = DomNsForCreateModernAttr(pNode,zUri,sQ.zPrefix);
+			if( pNs == 0 ){
+				DomQNameRelease(&sQ);
+				return PH7_ContextMemoryError(pCtx);
+			}
+		}
+	}else if( zUri != 0 ){
+		pNs = DomNsForRename(pNode,zUri,sQ.zPrefix);
+		if( pNs == 0 ){
+			DomQNameRelease(&sQ);
+			return PH7_ContextMemoryError(pCtx);
+		}
+	}
+	xmlNodeSetName(pNode,sQ.zLocal);
+	xmlSetNs(pNode,pNs);
+	DomQNameRelease(&sQ);
+	return PH7_OK;
+}
+/*
  * DOMDocument::getElementById(string $elementId): ?DOMElement
  *
  * The other half of the ID three: what `setIdAttribute()` is FOR. libxml keeps
@@ -13664,7 +13775,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "setIdAttributeNode", PH7_MOD_PUBLIC, "Dom\\Attr $attr, bool $isId", "void",
 		  vm_builtin_DOMElement_setIdAttributeNode },
 		DOM_MCHILD_METHODS,
-		DOM_MPARENT_METHODS
+		DOM_MPARENT_METHODS,
+		/* php declares it LAST on this class, behind both mixins -- the one row
+		 * whose position the sorted sweeps could not have told us. */
+		{ "rename", PH7_MOD_PUBLIC, "?string $namespaceURI, string $qualifiedName", "void",
+		  vm_builtin_Dom_rename }
 	};
 	static const PH7_NativeMethodDef aMDocTypeMethod[] = {
 		DOM_MCHILD_METHODS
@@ -13730,6 +13845,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_MCHILD_VPROPS,
 		DOM_VPROP("data","string"),
 		DOM_VPROP("length","int")
+	};
+	/* php's namespaced attribute declares exactly two, in this order. `isId` is
+	 * the 2004 body unchanged -- the ID flag is libxml's and the tree asking
+	 * makes no difference to it. */
+	static const PH7_NativeMethodDef aMAttrMethod[] = {
+		{ "isId",   PH7_MOD_PUBLIC, "", "bool", vm_builtin_DOMAttr_isId },
+		{ "rename", PH7_MOD_PUBLIC, "?string $namespaceURI, string $qualifiedName", "void",
+		  vm_builtin_Dom_rename }
 	};
 	static const PH7_NativePropDef aMAttrProp[] = {
 		DOM_VPROP("namespaceURI","?string"),
@@ -13925,7 +14048,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  aMCharMethod, SX_ARRAYSIZE(aMCharMethod), 0, 0,
 		  aMCharProp, SX_ARRAYSIZE(aMCharProp), 0, 0, DomPresent },
 		{ "Dom\\Attr", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMAttrProp, SX_ARRAYSIZE(aMAttrProp), 0, 0, DomPresent },
+		  aMAttrMethod, SX_ARRAYSIZE(aMAttrMethod), 0, 0,
+		  aMAttrProp, SX_ARRAYSIZE(aMAttrProp), 0, 0, DomPresent },
 		{ "Dom\\Element", "Dom\\Node", "Dom\\ChildNode,Dom\\ParentNode",
 		  PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMElemMethod, SX_ARRAYSIZE(aMElemMethod), 0, 0,
