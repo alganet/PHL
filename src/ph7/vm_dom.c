@@ -8024,6 +8024,25 @@ static int DomInsertAdjacentOp(ph7_context *pCtx,phl_domnode *pRecv,const char *
 		DomThrowVoid(pCtx,DOM_ERR_HIERARCHY);
 		return -1;
 	}
+	if( DomRecvIsModern(pCtx) ){
+		/* The modern tree's document-child sentences, which the 2004 tree does
+		 * not carry AT ALL on this door: `insertAdjacentElement('beforebegin')`
+		 * on the root element gives a 2004 document a SECOND element child
+		 * without a word, and `insertAdjacentText` gives it a bare text child,
+		 * both measured. So the check is the receiver's family's, not the
+		 * door's -- and it runs AFTER the adopt, php's own order, which leaves
+		 * the refused argument detached in this document rather than back in
+		 * the one it came from. */
+		SySet sEmpty;
+		const char *zMsg;
+		SySetInit(&sEmpty,&pCtx->pVm->sAllocator,sizeof(xmlNodePtr));
+		zMsg = DomDocChildRefusal(pParent,pRef,pOther,&sEmpty);
+		SySetRelease(&sEmpty);
+		if( zMsg ){
+			DomThrowSentence(pCtx,DOM_ERR_HIERARCHY,zMsg);
+			return -1;
+		}
+	}
 	iErr = DomInsertValidity(pParent,pOther,0);
 	if( iErr ){
 		DomThrowVoid(pCtx,iErr);
@@ -8041,11 +8060,57 @@ static int DomInsertAdjacentOp(ph7_context *pCtx,phl_domnode *pRecv,const char *
 	DomNsOnInsertEx(pOther,0);
 	return 0;
 }
-DOM_METHOD(vm_builtin_DOMElement_insertAdjacentElement)
+/*
+ * The `Dom\AdjacentPosition` argument as the WORD the shared body takes.
+ *
+ * php reads the case's NAME off the enum object (`zend_enum_fetch_case_name`)
+ * and then runs the very same case-insensitive match the 2004 string door
+ * runs -- so "BeforeBegin" reaches "beforebegin" by the door's own rule and
+ * not by a second table. The name is a blob rather than a C string, so the
+ * match here is length-aware and the answer is one of the body's own literals.
+ *
+ * The signature's type screen has already refused everything that is not a
+ * case, so the empty answer is unreachable; it exists so the body's Syntax
+ * refusal stays the single place a word is rejected.
+ */
+static const char * DomAdjacentWhere(ph7_value *pVal)
+{
+	static const struct DomAdjacentPos {
+		const char *zCase;
+		const char *zWord;
+	} aPos[] = {
+		{ "BeforeBegin", "beforebegin" },
+		{ "AfterBegin",  "afterbegin"  },
+		{ "BeforeEnd",   "beforeend"   },
+		{ "AfterEnd",    "afterend"    }
+	};
+	ph7_class_instance *pObj;
+	const char *zName = 0;
+	int nName = 0;
+	sxu32 n;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVal->x.pOther == 0 ){
+		return "";
+	}
+	pObj = (ph7_class_instance *)pVal->x.pOther;
+	PH7_NativeAttrStr(pObj,"name",&zName,&nName);
+	for( n = 0 ; n < SX_ARRAYSIZE(aPos) ; ++n ){
+		int nCase = (int)SyStrlen(aPos[n].zCase);
+		if( nName == nCase && SyMemcmp(zName,aPos[n].zCase,(sxu32)nCase) == 0 ){
+			return aPos[n].zWord;
+		}
+	}
+	return "";
+}
+/*
+ * One body per door under both spellings of the position argument: the 2004
+ * tree words it as a string and php 8.4's as the enum, and nothing else about
+ * either door differs -- the same adopt, the same refusals, the same answer.
+ */
+static int DomInsertAdjacentElement(ph7_context *pCtx,const char *zWhere,
+	int nArg,ph7_value **apArg)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	phl_domnode *pOther = nArg > 1 ? DomObjArg(apArg[1]) : 0;
-	const char *zWhere = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	if( pNd == 0 || pOther == 0 ){
 		return PH7_OK;
 	}
@@ -8056,10 +8121,10 @@ DOM_METHOD(vm_builtin_DOMElement_insertAdjacentElement)
 	}
 	return PH7_OK;
 }
-DOM_METHOD(vm_builtin_DOMElement_insertAdjacentText)
+static int DomInsertAdjacentText(ph7_context *pCtx,const char *zWhere,
+	int nArg,ph7_value **apArg)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zWhere = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	const char *zData;
 	int nData = 0;
 	xmlNodePtr pText;
@@ -8081,6 +8146,26 @@ DOM_METHOD(vm_builtin_DOMElement_insertAdjacentText)
 	DomOrphanAdd(pNd->pShell,pText);
 	DomInsertAdjacentOp(pCtx,pNd,zWhere,pNd->pShell,pText,0);
 	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMElement_insertAdjacentElement)
+{
+	return DomInsertAdjacentElement(pCtx,
+		nArg > 0 ? ph7_value_to_string(apArg[0],0) : "",nArg,apArg);
+}
+DOM_METHOD(vm_builtin_DOMElement_insertAdjacentText)
+{
+	return DomInsertAdjacentText(pCtx,
+		nArg > 0 ? ph7_value_to_string(apArg[0],0) : "",nArg,apArg);
+}
+DOM_METHOD(vm_builtin_Dom_Element_insertAdjacentElement)
+{
+	return DomInsertAdjacentElement(pCtx,
+		nArg > 0 ? DomAdjacentWhere(apArg[0]) : "",nArg,apArg);
+}
+DOM_METHOD(vm_builtin_Dom_Element_insertAdjacentText)
+{
+	return DomInsertAdjacentText(pCtx,
+		nArg > 0 ? DomAdjacentWhere(apArg[0]) : "",nArg,apArg);
 }
 /* DOMDocument::createTextNode / createComment / createCDATASection(string $data) */
 static int DomDocCreateData(ph7_context *pCtx,int iKind,int nArg,ph7_value **apArg)
@@ -16783,6 +16868,22 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_Dom_getElementsByTagNameNS },
 		{ "getElementsByClassName", PH7_MOD_PUBLIC, "string $classNames",
 		  "Dom\\HTMLCollection", vm_builtin_Dom_getElementsByClassName },
+		/* The two adjacent-insertion doors, declared HERE -- between the live
+		 * lookups and the three id-attribute setters -- where the 2004 element
+		 * declares its pair LAST, after the whole mixin block. What the
+		 * namespaced tree changes is the position argument: `$where` is the
+		 * enum rather than a word, so a misspelling is a TypeError at the call
+		 * instead of the door's Syntax refusal, and the four positions are the
+		 * only ones nameable. `insertAdjacentHTML` is php's third door here and
+		 * is NOT declared, because it runs the fragment parser `innerHTML` and
+		 * `outerHTML` run and not this body -- a row without that parser behind
+		 * it would answer a name we cannot serve. */
+		{ "insertAdjacentElement", PH7_MOD_PUBLIC,
+		  "Dom\\AdjacentPosition $where, Dom\\Element $element", "?Dom\\Element",
+		  vm_builtin_Dom_Element_insertAdjacentElement },
+		{ "insertAdjacentText", PH7_MOD_PUBLIC,
+		  "Dom\\AdjacentPosition $where, string $data", "void",
+		  vm_builtin_Dom_Element_insertAdjacentText },
 		{ "setIdAttribute",   PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "void",
 		  vm_builtin_DOMElement_setIdAttribute },
 		{ "setIdAttributeNS", PH7_MOD_PUBLIC,
