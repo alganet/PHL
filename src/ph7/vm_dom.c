@@ -17412,6 +17412,419 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 	return 0;
 }
 /*
+ * The encoding a parse with NO override runs under: php's "BOM, then the
+ * meta prescan, then UTF-8", and every rule of it is lexbor's rather than
+ * the WHATWG text -- the two disagree in places a real page reaches, and
+ * the oracle is lexbor.
+ *
+ * A byte-order mark decides alone and is not part of the document: three
+ * bytes for UTF-8 and two for either UTF-16, stripped before the tokenizer
+ * sees them, so a diagnostic's column counts from the byte after it and a
+ * second mark is text. Without one, the first 1024 BYTES are prescanned for
+ * a `<meta>` naming a charset -- not the first 1024 bytes of markup, and a
+ * tag that straddles the cut is cut. The prescan is byte-level: it does not
+ * know `<script>` or `<title>` from anything else, it skips a comment only
+ * to the first `-->` (so `<!-->` and `<!--->` both close one), it skips a
+ * `<!`/`<?`/`</x` construct to its first `>`, and it walks the attributes
+ * of any other tag so a `<meta` quoted inside one is not seen.
+ *
+ * Within a `<meta>` -- `<meta` and then a space, newline, tab, form feed,
+ * carriage return or slash; `\v` is none of those -- the attributes are read
+ * with a grammar of their own: a duplicate NAME is ignored, only the first
+ * SEVEN letters of a name are compared (so `charsets=` and `contentious=`
+ * count), an unquoted value runs to whitespace or `>` (a slash is part of
+ * it), and an unclosed quote swallows the rest. `charset=X` wins outright;
+ * `content="…charset=X…"` wins only under an `http-equiv=content-type` on
+ * the same tag, and only the first `content` of a tag is read. When both
+ * are present the one written FIRST is the answer, whatever the pragma.
+ * The first tag that yields a name ends the search; a tag whose value is
+ * empty or spelled outside the label table yields nothing and the search
+ * goes on. The value is trimmed of ASCII whitespace and resolved through
+ * the same label table as an override, and a UTF-16 label stays UTF-16
+ * where the specification says UTF-8: lexbor keeps it, and php reports it.
+ *
+ * What is sniffed is the NAME. The bytes are still read as UTF-8 whatever
+ * the name says; that is the decoder's half, which is not here yet.
+ */
+#define DOM_PRESCAN_LIMIT 1024
+static int DomPrescanIsSpace(unsigned char c)
+{
+	return c == 0x09 || c == 0x0A || c == 0x0C || c == 0x0D || c == 0x20;
+}
+static int DomPrescanIsAlpha(unsigned char c)
+{
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+static const unsigned char * DomPrescanSkipSpaces(const unsigned char *z,const unsigned char *zEnd)
+{
+	while( z < zEnd && DomPrescanIsSpace(*z) ){
+		z++;
+	}
+	return z;
+}
+static const unsigned char * DomPrescanSkipName(const unsigned char *z,const unsigned char *zEnd)
+{
+	while( z < zEnd && !DomPrescanIsSpace(*z) && *z != '>' ){
+		z++;
+	}
+	return z;
+}
+static const unsigned char * DomPrescanTagEnd(const unsigned char *z,const unsigned char *zEnd)
+{
+	const unsigned char *p = (const unsigned char *)memchr(z,'>',(size_t)(zEnd - z));
+	return p ? p + 1 : zEnd;
+}
+/*
+ * One attribute of the prescan's grammar. `*pzName` is null when the tag is
+ * over; `*pzVal` is null when the attribute has no usable value -- absent,
+ * cut by the limit, or an unclosed quote.
+ */
+static const unsigned char * DomPrescanAttr(
+	const unsigned char *z,const unsigned char *zEnd,
+	const unsigned char **pzName,const unsigned char **pzNameEnd,
+	const unsigned char **pzVal,const unsigned char **pzValEnd)
+{
+	unsigned char cQuote;
+	*pzName = 0;
+	*pzVal = 0;
+	for( ; z < zEnd ; z++ ){
+		if( DomPrescanIsSpace(*z) || *z == '/' ){
+			continue;
+		}
+		if( *z == '>' ){
+			return z + 1;
+		}
+		break;
+	}
+	if( z == zEnd ){
+		return z;
+	}
+	*pzName = z;
+	while( z < zEnd ){
+		if( DomPrescanIsSpace(*z) ){
+			*pzNameEnd = z++;
+			goto spaces;
+		}
+		if( *z == '/' || *z == '>' ){
+			*pzNameEnd = z;
+			return z;
+		}
+		if( *z == '=' ){
+			*pzNameEnd = z++;
+			goto value;
+		}
+		z++;
+	}
+	*pzNameEnd = z;
+spaces:
+	z = DomPrescanSkipSpaces(z,zEnd);
+	if( z == zEnd || *z != '=' ){
+		return z;
+	}
+	z++;
+value:
+	z = DomPrescanSkipSpaces(z,zEnd);
+	if( z == zEnd ){
+		return z;
+	}
+	if( *z == '"' || *z == '\'' ){
+		cQuote = *z++;
+		if( z == zEnd ){
+			return z;
+		}
+		*pzVal = z;
+		for( ; z < zEnd ; z++ ){
+			if( *z == cQuote ){
+				*pzValEnd = z;
+				return z + 1;
+			}
+		}
+		*pzVal = 0;
+		return z;
+	}
+	if( *z == '>' ){
+		return z;
+	}
+	*pzVal = z++;
+	for( ; z < zEnd ; z++ ){
+		if( DomPrescanIsSpace(*z) || *z == '>' ){
+			*pzValEnd = z;
+			return z;
+		}
+	}
+	*pzVal = 0;
+	return z;
+}
+/*
+ * The charset named inside a `content` value: the first `charset` whose
+ * next non-space byte is `=`, then a quoted run or an unquoted run to `;`
+ * or whitespace -- one that meets a quote is refused, not cut.
+ */
+static const unsigned char * DomPrescanContent(
+	const unsigned char *z,const unsigned char *zEnd,const unsigned char **pzNameEnd)
+{
+	const unsigned char *zName;
+	for(;;){
+		for( ; z + 7 < zEnd ; z++ ){
+			if( SyStrnicmp((const char *)z,"charset",7) == 0 ){
+				break;
+			}
+		}
+		if( z + 7 >= zEnd ){
+			return 0;
+		}
+		z = DomPrescanSkipSpaces(z + 7,zEnd);
+		if( z >= zEnd ){
+			return 0;
+		}
+		if( *z != '=' ){
+			continue;
+		}
+		z = DomPrescanSkipSpaces(z + 1,zEnd);
+		if( z >= zEnd ){
+			return 0;
+		}
+		break;
+	}
+	if( *z == '\'' || *z == '"' ){
+		unsigned char cQuote = *z++;
+		zName = z;
+		for( ; z < zEnd ; z++ ){
+			if( *z == cQuote ){
+				*pzNameEnd = z;
+				return zName;
+			}
+		}
+		return 0;
+	}
+	zName = z;
+	for( ; z < zEnd ; z++ ){
+		if( *z == ';' || DomPrescanIsSpace(*z) ){
+			break;
+		}
+		if( *z == '"' || *z == '\'' ){
+			return 0;
+		}
+	}
+	if( z == zName ){
+		return 0;
+	}
+	*pzNameEnd = z;
+	return zName;
+}
+/*
+ * One `<meta>`'s attributes, `z` just past the byte that followed `meta`.
+ * The result list php reads only the head of is kept as that head plus a
+ * count: a tag pushes at most two entries and takes back at most one, so
+ * the head is intact whenever the count is.
+ */
+typedef struct dom_prescan_res dom_prescan_res;
+struct dom_prescan_res {
+	const unsigned char *zName;
+	const unsigned char *zNameEnd;
+	int nRes;
+};
+static void DomPrescanPush(dom_prescan_res *pRes,const unsigned char *z,const unsigned char *zEnd)
+{
+	if( pRes->nRes == 0 ){
+		pRes->zName = z;
+		pRes->zNameEnd = zEnd;
+	}
+	pRes->nRes++;
+}
+static const unsigned char * DomPrescanMeta(
+	dom_prescan_res *pRes,const unsigned char *z,const unsigned char *zEnd)
+{
+	const unsigned char *zName,*zNameEnd,*zVal,*zValEnd;
+	const unsigned char *azSeen[64];
+	int nSeen = 0;
+	int bGotPragma = 0,bHaveContent = 0;
+	int iNeedPragma = 0;
+	int nBefore = pRes->nRes;
+	while( z < zEnd ){
+		int i,n;
+		z = DomPrescanAttr(z,zEnd,&zName,&zNameEnd,&zVal,&zValEnd);
+		if( zName == 0 ){
+			break;
+		}
+		n = (int)(zNameEnd - zName);
+		if( n < 7 ){
+			continue;
+		}
+		for( i = 0 ; i < nSeen ; i += 2 ){
+			if( azSeen[i + 1] - azSeen[i] == n
+			 && SyStrnicmp((const char *)azSeen[i],(const char *)zName,(sxu32)n) == 0 ){
+				break;
+			}
+		}
+		if( i < nSeen ){
+			continue;
+		}
+		if( nSeen + 2 <= (int)SX_ARRAYSIZE(azSeen) ){
+			azSeen[nSeen++] = zName;
+			azSeen[nSeen++] = zNameEnd;
+		}
+		if( zVal == 0 ){
+			continue;
+		}
+		if( n == (int)sizeof("http-equiv") - 1 ){
+			if( SyStrnicmp("http-equiv",(const char *)zName,(sxu32)n) != 0 ){
+				continue;
+			}
+			if( zValEnd - zVal == (int)sizeof("content-type") - 1
+			 && SyStrnicmp("content-type",(const char *)zVal,(sxu32)(sizeof("content-type") - 1)) == 0 ){
+				bGotPragma = 1;
+			}
+			continue;
+		}
+		if( SyStrnicmp("content",(const char *)zName,7) == 0 ){
+			if( !bHaveContent ){
+				const unsigned char *zFound = DomPrescanContent(zVal,zValEnd,&zNameEnd);
+				if( zFound == 0 ){
+					continue;
+				}
+				DomPrescanPush(pRes,zFound,zNameEnd);
+				iNeedPragma = 2;
+				bHaveContent = 1;
+			}
+			continue;
+		}
+		if( SyStrnicmp("charset",(const char *)zName,7) == 0 ){
+			DomPrescanPush(pRes,zVal,zValEnd);
+			iNeedPragma = 1;
+		}
+	}
+	if( iNeedPragma == 0 || (iNeedPragma == 2 && !bGotPragma) ){
+		if( nBefore != pRes->nRes ){
+			pRes->nRes--;
+		}
+	}
+	return z;
+}
+/*
+ * The prescan over a byte range; answers the head of the result list, or
+ * null with no name found.
+ */
+static const unsigned char * DomPrescan(
+	const unsigned char *z,const unsigned char *zEnd,const unsigned char **pzNameEnd)
+{
+	dom_prescan_res sRes;
+	const unsigned char *zName,*zNameEnd,*zVal,*zValEnd;
+	sRes.nRes = 0;
+	sRes.zName = 0;
+	sRes.zNameEnd = 0;
+	while( z < zEnd ){
+		z = (const unsigned char *)memchr(z,'<',(size_t)(zEnd - z));
+		if( z == 0 || ++z == zEnd ){
+			break;
+		}
+		if( *z == '!' ){
+			if( z + 5 > zEnd ){
+				break;
+			}
+			if( z[1] != '-' || z[2] != '-' ){
+				z = DomPrescanTagEnd(z,zEnd);
+				continue;
+			}
+			while( z < zEnd ){
+				z = DomPrescanTagEnd(z,zEnd);
+				if( z[-3] == '-' && z[-2] == '-' ){
+					break;
+				}
+			}
+			continue;
+		}
+		if( *z == '?' ){
+			z = DomPrescanTagEnd(z,zEnd);
+			continue;
+		}
+		if( *z == '/' ){
+			z++;
+			if( z + 3 > zEnd ){
+				break;
+			}
+			if( !DomPrescanIsAlpha(*z) ){
+				z = DomPrescanTagEnd(z,zEnd);
+				continue;
+			}
+			/* An end tag's attributes are walked like a start tag's. */
+		}else{
+			if( !DomPrescanIsAlpha(*z) ){
+				continue;
+			}
+			if( z + 6 > zEnd ){
+				break;
+			}
+			if( SyStrnicmp((const char *)z,"meta",4) == 0 ){
+				if( DomPrescanIsSpace(z[4]) || z[4] == '/' ){
+					z = DomPrescanMeta(&sRes,z + 5,zEnd);
+					continue;
+				}
+				/* A `<meta>` with nothing after its name has that byte
+				 * consumed, so a bare `<meta>` swallows the NEXT tag's
+				 * attributes as its own and hides a charset written there. */
+				z += 5;
+			}
+		}
+		z = DomPrescanSkipName(z,zEnd);
+		if( z >= zEnd ){
+			break;
+		}
+		if( *z == '>' ){
+			z++;
+			continue;
+		}
+		while( z < zEnd ){
+			z = DomPrescanAttr(z,zEnd,&zName,&zNameEnd,&zVal,&zValEnd);
+			if( zName == 0 ){
+				break;
+			}
+		}
+	}
+	if( sRes.nRes == 0 ){
+		return 0;
+	}
+	*pzNameEnd = sRes.zNameEnd;
+	return sRes.zName;
+}
+/*
+ * The canonical name a parse with no override runs under, and how many
+ * leading bytes were a byte-order mark and are not the document's.
+ */
+static const char * DomHtml5SniffEncoding(const char *zSrc,int nSrc,int *pnBom)
+{
+	const unsigned char *z = (const unsigned char *)zSrc;
+	const unsigned char *zName,*zNameEnd;
+	const char *zCanon;
+	*pnBom = 0;
+	if( nSrc >= 3 && z[0] == 0xEF && z[1] == 0xBB && z[2] == 0xBF ){
+		*pnBom = 3;
+		return "UTF-8";
+	}
+	if( nSrc >= 2 ){
+		if( z[0] == 0xFE && z[1] == 0xFF ){
+			*pnBom = 2;
+			return "UTF-16BE";
+		}
+		if( z[0] == 0xFF && z[1] == 0xFE ){
+			*pnBom = 2;
+			return "UTF-16LE";
+		}
+	}
+	zName = DomPrescan(z,z + (nSrc > DOM_PRESCAN_LIMIT ? DOM_PRESCAN_LIMIT : nSrc),&zNameEnd);
+	if( zName == 0 ){
+		return "UTF-8";
+	}
+	while( zName < zNameEnd && DomPrescanIsSpace(*zName) ){
+		zName++;
+	}
+	while( zName < zNameEnd && DomPrescanIsSpace(zNameEnd[-1]) ){
+		zNameEnd--;
+	}
+	zCanon = DomEncCanonName((const char *)zName,(int)(zNameEnd - zName));
+	return zCanon ? zCanon : "UTF-8";
+}
+/*
  * The `Dom\HTMLDocument` twin of DomNewModernDoc: the same shell over the same
  * libxml document, in the third family. `standalone` is set on the document
  * itself rather than at serialization time, which is what makes the XML writer
@@ -17584,6 +17997,7 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 	 * label the caller spelled names it, and the document states the NAME. A
 	 * parse with no override is UTF-8's. */
 	const char *zCanon = "UTF-8";
+	int nBom = 0;
 	dom_html5_errctx sErr;
 	ph7_class_instance *pThis;
 	phl_domnode *pRes;
@@ -17637,12 +18051,18 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 	if( iOpts & (sxi64)DOM_HTML_NO_DEFAULT_NS ){
 		iFlags |= DOM_HTML5_NO_DEF_NS;
 	}
+	if( zEnc == 0 ){
+		/* No override: a byte-order mark or a `<meta>` names the encoding,
+		 * and the mark is not part of the document. */
+		zCanon = DomHtml5SniffEncoding((const char *)SyBlobData(&sBody),
+			(int)SyBlobLength(&sBody),&nBom);
+	}
 	sErr.pCtx = pCtx;
 	sErr.bQuiet = (iOpts & (sxi64)XML_PARSE_NOERROR) ? 1 : 0;
 	SyBlobInit(&sErr.sTok,&pVm->sAllocator);
 	SyBlobInit(&sErr.sTree,&pVm->sAllocator);
-	pDoc = PH7_Html5Parse(&pVm->sAllocator,(const char *)SyBlobData(&sBody),
-		(int)SyBlobLength(&sBody),iFlags,zCanon,DomHtml5Err,(void *)&sErr);
+	pDoc = PH7_Html5Parse(&pVm->sAllocator,(const char *)SyBlobData(&sBody) + nBom,
+		(int)SyBlobLength(&sBody) - nBom,iFlags,zCanon,DomHtml5Err,(void *)&sErr);
 	DomHtml5Flush(pCtx,&sErr.sTok);
 	DomHtml5Flush(pCtx,&sErr.sTree);
 	SyBlobRelease(&sErr.sTok);
