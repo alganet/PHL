@@ -5772,6 +5772,179 @@ static xmlNsPtr DomNsForRename(xmlNodePtr pNode,const char *zUri,const xmlChar *
 	return pNs;
 }
 /*
+ * ===== The namespaces in scope on an element =====
+ *
+ * php 8.4's two namespace walks -- and the only producers of
+ * `Dom\NamespaceInfo`, whose constructor is private and whose every field is
+ * readonly, so an instance a program holds came from one of these two. php's
+ * XPath evaluator points at them by name in place of the namespace axis the
+ * namespaced tree dropped.
+ *
+ * The set is XPath's "namespace nodes of an element": every declaration on the
+ * element and on its ancestors, the NEAREST binding of a prefix winning.
+ * `xmlGetNsList()` computes that same set and is still not usable here, because
+ * php's ORDER is neither libxml's nor a sorted one.
+ *
+ * php walks the element upward and, at each element, its declarations
+ * BACKWARDS, keeping the first record it meets per prefix, then emits the table
+ * in reverse. Read forwards that is: ancestors outermost-first, declarations in
+ * document order, and a re-declaration MOVES its prefix to the end of the list
+ * instead of overwriting it in place. So a child that re-binds a prefix its
+ * parent already bound reports that prefix last -- even when it re-binds it to
+ * the very same URI, which is a case no sorted comparison against php can see.
+ *
+ * Two entries never appear. `xmlns=""` un-declares the default namespace, and
+ * php drops it by name ("the value of the xmlns attribute for the nearest such
+ * element is non-empty"), so an element under one reports no default binding
+ * rather than a binding to "". And the implicit `xml` prefix is a declaration
+ * on nothing, so `xml:lang` adds no row to any list.
+ *
+ * `element` is the RECEIVER, never the ancestor a declaration was written on.
+ * That is what separates the two walks: `getDescendantNamespaces()` is this
+ * list for the element followed by this list for every descendant element in
+ * document order, and the inherited rows it repeats differ only in the element
+ * they name.
+ */
+static int DomNsPrefixIs(const xmlChar *zA,const xmlChar *zB)
+{
+	if( zA == 0 || *zA == '\0' ){
+		return zB == 0 || *zB == '\0';
+	}
+	if( zB == 0 || *zB == '\0' ){
+		return 0;
+	}
+	return xmlStrEqual(zA,zB) != 0;
+}
+/* Append pElem's in-scope namespace records to pOut, in php's order. */
+static void DomNsInScope(ph7_context *pCtx,ph7_value *pOut,phl_domnode *pNd,
+	xmlNodePtr pElem)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass;
+	SySet sChain,sDecl;
+	xmlNodePtr *apChain;
+	xmlNsPtr *apDecl;
+	xmlNodePtr pCur;
+	sxu32 n,i,j;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return;
+	}
+	pClass = PH7_VmExtractClass(pVm,"Dom\\NamespaceInfo",
+		sizeof("Dom\\NamespaceInfo")-1,FALSE,0);
+	if( pClass == 0 ){
+		return;
+	}
+	SySetInit(&sChain,&pVm->sAllocator,sizeof(xmlNodePtr));
+	SySetInit(&sDecl,&pVm->sAllocator,sizeof(xmlNsPtr));
+	for( pCur = pElem ; pCur ; pCur = pCur->parent ){
+		if( pCur->type == XML_ELEMENT_NODE ){
+			SySetPut(&sChain,(const void *)&pCur);
+		}
+	}
+	/* Outermost element first: the chain was collected bottom-up. */
+	apChain = (xmlNodePtr *)SySetBasePtr(&sChain);
+	for( n = SySetUsed(&sChain) ; n > 0 ; --n ){
+		xmlNsPtr pNs;
+		for( pNs = apChain[n-1]->nsDef ; pNs ; pNs = pNs->next ){
+			SySetPut(&sDecl,(const void *)&pNs);
+		}
+	}
+	apDecl = (xmlNsPtr *)SySetBasePtr(&sDecl);
+	for( i = 0 ; i < SySetUsed(&sDecl) ; ++i ){
+		xmlNsPtr pNs = apDecl[i];
+		ph7_class_instance *pInfo,*pOwner;
+		ph7_value sElem;
+		int bShadowed = 0;
+		/* A later row for the same prefix is the nearer binding, and it is
+		 * that row's POSITION the list reports the prefix at. */
+		for( j = i + 1 ; j < SySetUsed(&sDecl) ; ++j ){
+			if( DomNsPrefixIs(pNs->prefix,apDecl[j]->prefix) ){
+				bShadowed = 1;
+				break;
+			}
+		}
+		if( bShadowed ){
+			continue;
+		}
+		if( (pNs->prefix == 0 || *pNs->prefix == '\0')
+		 && (pNs->href == 0 || *pNs->href == '\0') ){
+			continue;                    /* `xmlns=""`: no default is in scope */
+		}
+		pInfo = PH7_NewClassInstance(pVm,pClass);
+		if( pInfo == 0 ){
+			break;
+		}
+		/* A prefix-less default binding reports `prefix` NULL, not "" -- and
+		 * php writes the same null for a prefix bound to an empty URI, which
+		 * only a hand-built tree can produce. The null goes in through the
+		 * object setter with no object: every slot is declared without a
+		 * default, so an unwritten one would read as uninitialized. */
+		if( pNs->prefix && *pNs->prefix ){
+			PH7_NativeSetAttrStr(pVm,pInfo,"prefix",(const char *)pNs->prefix,
+				(int)SyStrlen((const char *)pNs->prefix));
+		}else{
+			PH7_NativeSetAttrObj(pVm,pInfo,"prefix",0);
+		}
+		if( pNs->href && *pNs->href ){
+			PH7_NativeSetAttrStr(pVm,pInfo,"namespaceURI",(const char *)pNs->href,
+				(int)SyStrlen((const char *)pNs->href));
+		}else{
+			PH7_NativeSetAttrObj(pVm,pInfo,"namespaceURI",0);
+		}
+		pOwner = DomWrap(pVm,DomThisDoc(pCtx),pNd->pShell,pElem);
+		if( pOwner ){
+			PH7_NativeSetAttrObj(pVm,pInfo,"element",pOwner);
+			PH7_ClassInstanceUnref(pOwner);
+		}
+		PH7_MemObjInit(pVm,&sElem);
+		sElem.x.pOther = pInfo;
+		sElem.iFlags = MEMOBJ_OBJ;
+		ph7_array_add_elem(pOut,0,&sElem);   /* takes its own reference */
+		PH7_ClassInstanceUnref(pInfo);       /* ...and ours goes back */
+	}
+	SySetRelease(&sChain);
+	SySetRelease(&sDecl);
+}
+/* Dom\Element::getInScopeNamespaces(): array */
+DOM_METHOD(vm_builtin_Dom_getInScopeNamespaces)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	ph7_value *pArray = ph7_context_new_array(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pArray == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pNd ){
+		DomNsInScope(pCtx,pArray,pNd,(xmlNodePtr)pNd->pNode);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/* Dom\Element::getDescendantNamespaces(): array */
+DOM_METHOD(vm_builtin_Dom_getDescendantNamespaces)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	ph7_value *pArray = ph7_context_new_array(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pArray == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pNd ){
+		xmlNodePtr pRoot = (xmlNodePtr)pNd->pNode;
+		xmlNodePtr pCur;
+		DomNsInScope(pCtx,pArray,pNd,pRoot);
+		for( pCur = pRoot->children ; pCur ; pCur = DomWalkNext(pCur,pRoot) ){
+			if( pCur->type == XML_ELEMENT_NODE ){
+				DomNsInScope(pCtx,pArray,pNd,pCur);
+			}
+		}
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
  * Dom\Element::rename(?string $namespaceURI, string $qualifiedName): void
  * Dom\Attr::rename(?string $namespaceURI, string $qualifiedName): void
  *
@@ -15058,8 +15231,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMElement_setIdAttributeNode },
 		DOM_MCHILD_METHODS,
 		DOM_MPARENT_METHODS,
-		/* php declares it LAST on this class, behind both mixins -- the one row
-		 * whose position the sorted sweeps could not have told us. */
+		/* php declares these three LAST on this class, behind both mixins --
+		 * positions the sorted sweeps could not have told us. */
+		{ "getInScopeNamespaces", PH7_MOD_PUBLIC, "", "array",
+		  vm_builtin_Dom_getInScopeNamespaces },
+		{ "getDescendantNamespaces", PH7_MOD_PUBLIC, "", "array",
+		  vm_builtin_Dom_getDescendantNamespaces },
 		{ "rename", PH7_MOD_PUBLIC, "?string $namespaceURI, string $qualifiedName", "void",
 		  vm_builtin_Dom_rename }
 	};
@@ -15243,6 +15420,26 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	 * directives are still directives here, and DOM_F_MODERN rides in it. */
 	/* php 8.4's factory class. TWO doors, not the 2004 three: `hasFeature()` is
 	 * gone, and every argument that defaulted there is required here. */
+	/* php's namespace RECORD, which only the two element walks mint: a readonly
+	 * final class whose constructor is private, so `new Dom\\NamespaceInfo` is
+	 * the same refusal every node class states and a write to any field is
+	 * "Cannot modify readonly property". Unlike `BcMath\\Number`'s, these three
+	 * are real slots and not virtual -- php's Reflection prints no `virtual` on
+	 * them, and the C walk fills them in at `new`. */
+	static const PH7_NativeMethodDef aMNsInfoMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE, "", "", vm_builtin_DomNode_construct },
+	};
+	static const PH7_NativePropDef aMNsInfoProp[] = {
+		/* No default on any of the three -- php's stub states none, and a stated
+		 * `= NULL` is a default Reflection PRINTS. The walk fills all three at
+		 * `new`, writing a real null where there is nothing to say. */
+		{ "prefix", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },
+		{ "namespaceURI", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },
+		{ "element", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "Dom\\Element" },
+	};
 	static const PH7_NativeMethodDef aMImplMethod[] = {
 		{ "createDocumentType", PH7_MOD_PUBLIC,
 		  "string $qualifiedName, string $publicId, string $systemId",
@@ -15415,6 +15612,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "Dom\\Node", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMNodeMethod, SX_ARRAYSIZE(aMNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
 		  aMNodeProp, SX_ARRAYSIZE(aMNodeProp), 0, 0, DomPresent },
+		{ "Dom\\NamespaceInfo", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_READONLY,
+		  aMNsInfoMethod, SX_ARRAYSIZE(aMNsInfoMethod), 0, 0,
+		  aMNsInfoProp, SX_ARRAYSIZE(aMNsInfoProp), 0, 0, 0 },
 		{ "Dom\\CharacterData", "Dom\\Node", "Dom\\ChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMCharMethod, SX_ARRAYSIZE(aMCharMethod), 0, 0,
 		  aMCharProp, SX_ARRAYSIZE(aMCharProp), 0, 0, DomPresent },
