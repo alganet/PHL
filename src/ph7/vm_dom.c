@@ -118,8 +118,8 @@ static const char * DomCollClass(ph7_class_instance *pDoc,const char *zLegacy,
  * readers below; declared here because the attribute API is one set of C bodies
  * serving both trees, and several of its answers differ only by family. */
 static int DomThisModern(ph7_context *pCtx);
-/* Which of the two XPath classes a receiver is; defined with the property
- * readers, declared here because the evaluator names it in a diagnostic. */
+/* Which of the two XPath classes a diagnostic names; defined with the property
+ * readers, declared here because the evaluator names it in one. */
 static const char * DomXPathClassName(ph7_class_instance *pThis);
 
 /*
@@ -11988,14 +11988,22 @@ static int DomSetNotationProp(ph7_context *pCtx,const char *zName,ph7_value *pVa
  * because the slot is `readonly`, which is why php's isReadOnly() is false there)
  * and the write refusal is the reader's, exactly as it is for a node's `nodeName`.
  */
-/* Which of the two XPath classes the receiver is, for a diagnostic that has to
- * name it. The 2004 class and php 8.4's `Dom\\XPath` share every C body here --
- * one evaluator, one registration table -- and differ only in what they SAY and
- * in the family of the wrappers a result carries. */
+/* Which of the two XPath classes a diagnostic has to name. The 2004 class and
+ * php 8.4's `Dom\XPath` share every C body here -- one evaluator, one
+ * registration table -- and differ only in what they SAY and in the family of
+ * the wrappers a result carries.
+ *
+ * The DOCUMENT answers it, not the receiver's own name: php names the declaring
+ * SCOPE, so a user subclass of the 2004 class is still "DOMXPath" in its
+ * messages however it is spelled -- including one declared inside a `Dom\`
+ * namespace of its own, which a name test gets wrong. Each class can only ever
+ * hold its own tree's document, the constructors' signatures seeing to that, so
+ * the family flag IS the scope; `Dom\XPath` is final and has no subclass to
+ * confuse it. Before a constructor runs there is no document and the answer is
+ * the 2004 name, which is the only class reachable in that state. */
 static const char * DomXPathClassName(ph7_class_instance *pThis)
 {
-	return (pThis && pThis->pClass && pThis->pClass->sDisp.nByte > 0
-		&& SyMemcmp(SyStringData(&pThis->pClass->sDisp),"Dom\\",sizeof("Dom\\")-1) == 0)
+	return DomDocFlag(pThis ? PH7_NativeAttrObj(pThis,XP_DOC) : 0,DOM_F_MODERN)
 		? "Dom\\XPath" : "DOMXPath";
 }
 static int DomXPathProp(ph7_context *pCtx,const char *zName)
