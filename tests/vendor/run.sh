@@ -139,6 +139,47 @@ ERALL_PHL=$("$PHL_BIN" -r 'echo E_ALL;' 2>/dev/null)
     diagnostic in every step would diverge for that alone. Fix the engine or pin
     PHP_BIN to a php whose E_ALL matches."
 
+# The oracle's extension set is NOT pinned, and it moves under us: this box's php
+# gained pdo_mysql from its own container packaging. Every suite that ENUMERATES
+# database drivers then measures that asymmetry instead of the engines --
+# doctrine-dbal's php side ran 3907 tests where phl ran 3900, red on 190 diff lines
+# against a 76-line baseline, and no engine change could ever answer it.
+#
+# So the php side runs against a CURATED scan directory: a copy of the box's own
+# conf.d with the database drivers PHL does not ship left out. Note what this does
+# NOT do -- it adds nothing. An extension php has and we do not is still a real gap
+# and is still measured in full. What comes out is only the drivers, where shipping
+# sqlite alone is a standing decision and not a gap anyone intends to close.
+#
+# php.ini itself is untouched, so this pins the SCANNED set and nothing else; and
+# an oracle with no scan directory (a CI php built --without-config-file-scan-dir)
+# is left exactly as it is, because there is nothing to curate.
+ORACLE_SCAN=""
+ORACLE_SCAN_SRC=$("$PHP_BIN" -r 'echo PHP_CONFIG_FILE_SCAN_DIR;' 2>/dev/null || true)
+if [ -n "$ORACLE_SCAN_SRC" ] && [ -d "$ORACLE_SCAN_SRC" ]; then
+	ORACLE_SCAN="$WORK/oracle-conf.d"
+	rm -rf "$ORACLE_SCAN"
+	mkdir -p "$ORACLE_SCAN"
+	ORACLE_DROPPED=""
+	for ini in "$ORACLE_SCAN_SRC"/*.ini; do
+		[ -e "$ini" ] || continue
+		# Every PDO driver except sqlite, and the mysql client extension. NOT
+		# 10-pdo.ini (PDO itself ships here) and NOT 10-mysqlnd.ini, which is the
+		# client library and declares no driver and no function of its own once
+		# the two above are gone.
+		case "${ini##*/}" in
+			*pdo_mysql*|*pdo_pgsql*|*pdo_oci*|*pdo_odbc*|*pdo_firebird*|*pdo_dblib*|*sqlsrv*|*mysqli*)
+				ORACLE_DROPPED="$ORACLE_DROPPED ${ini##*/}"
+				continue ;;
+		esac
+		cp "$ini" "$ORACLE_SCAN/"
+	done
+	# Say it out loud. A measurement that quietly changes what the oracle IS
+	# would be worse than the asymmetry it removes.
+	[ -n "$ORACLE_DROPPED" ] && printf 'oracle scan dir pinned at %s (dropped:%s)\n' \
+		"$ORACLE_SCAN" "$ORACLE_DROPPED"
+fi
+
 
 # Composer may be a PATH binary or a phar; both are fine.
 composer_run() {
@@ -322,7 +363,13 @@ for P in $WANTED; do
 			# run reports php-correct deprecations as PHL divergences by the hundred.
 			# XDEBUG_MODE=off for the same reason: xdebug changes what php prints.
 			case $eng in
-				php) BIN="$PHP_BIN -d error_reporting=$ERALL"; ENV="XDEBUG_MODE=off" ;;
+				php) BIN="$PHP_BIN -d error_reporting=$ERALL"; ENV="XDEBUG_MODE=off"
+				     # Only when there IS one: an EMPTY PHP_INI_SCAN_DIR means
+				     # "scan nothing", which would unload every extension the
+				     # oracle has rather than the drivers we meant.
+				     if [ -n "$ORACLE_SCAN" ]; then
+					     ENV="$ENV PHP_INI_SCAN_DIR=$ORACLE_SCAN"
+				     fi ;;
 				phl) BIN="$PHL_BIN -d error_reporting=$ERALL"; ENV="" ;;
 			esac
 			# Both engines must start from the SAME tree. A suite leaves state behind --
