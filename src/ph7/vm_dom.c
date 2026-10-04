@@ -964,6 +964,61 @@ static void DomLinkBefore(xmlNodePtr pParent,xmlNodePtr pChild,xmlNodePtr pRef)
 
 /* ===== Node introspection: the readers behind __get ===== */
 
+/* Declared here because the name rules below are the FIRST thing that asks it;
+ * defined with the other namespace questions, beside the SVG one. */
+static int DomNodeIsHtmlNs(xmlNodePtr pNode);
+/*
+ * The names an HTML document folds.
+ *
+ * php's HTML document is the one document kind that cases names for the caller,
+ * and it cases them in ASCII alone -- a `pé` folds to `Pé` and the accented
+ * byte is left where it is -- across the WHOLE qualified name, prefix and all,
+ * because an HTML document has no prefixes to preserve. Three doors fold, and
+ * not all in the same direction:
+ *
+ *   createElement()             lowercases, so `createElement('P')` is a `p`
+ *   the by-NAME attribute doors lowercase, so `getAttribute('FOO')` finds `foo`
+ *   nodeName / tagName          UPPERcase, so that same `p` reads back as `P`
+ *
+ * The `*NS` twins of all three fold nothing: a caller who spelled a namespace
+ * spelled the name it meant, and `createElementNS($HTML_NS,'P')` is a `P`. Nor
+ * does `Dom\XMLDocument` or the 2004 `DOMDocument` fold, however it was
+ * loaded -- an HTML tree under `loadHTML()` is still an XML document wearing
+ * HTML's parse rules, and php cases nothing there.
+ *
+ * The chunk is the context's and auto-released with the call, which is what
+ * lets a door fold its name once at the top and then take any of its early
+ * returns without owning a buffer.
+ */
+static char * DomAsciiFold(ph7_context *pCtx,const char *zName,int bUpper)
+{
+	sxu32 nByte = SyStrlen(zName);
+	char *zOut = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)(nByte + 1),FALSE,TRUE);
+	sxu32 i;
+	if( zOut == 0 ){
+		return 0;
+	}
+	for( i = 0 ; i < nByte ; ++i ){
+		char c = zName[i];
+		if( bUpper ){
+			zOut[i] = (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c;
+		}else{
+			zOut[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+		}
+	}
+	zOut[nByte] = 0;
+	return zOut;
+}
+/* Does the RECEIVER read names under an HTML document's rules? Both halves are
+ * needed and neither is enough: an `<svg>` in an HTML document folds nothing,
+ * and an element in the HTML namespace sitting in a `Dom\XMLDocument` folds
+ * nothing either. php asks the node's CURRENT document, so a node adopted
+ * across starts folding (or stops) the moment it moves. */
+static int DomThisHtmlNames(ph7_context *pCtx,xmlNodePtr pNode)
+{
+	return DomNodeIsHtmlNs(pNode) && DomDocFlag(DomThisDoc(pCtx),DOM_F_HTML);
+}
+
 /* php's nodeName rules */
 static void DomNodeName(ph7_context *pCtx,xmlNodePtr pNode)
 {
@@ -979,11 +1034,26 @@ static void DomNodeName(ph7_context *pCtx,xmlNodePtr pNode)
 	case XML_DOCUMENT_NODE:      ph7_result_string(pCtx,"#document",(int)sizeof("#document")-1); break;
 	case XML_DOCUMENT_FRAG_NODE: ph7_result_string(pCtx,"#document-fragment",(int)sizeof("#document-fragment")-1); break;
 	default:
+		{
+		/* An ELEMENT alone uppercases, and only under an HTML document: the
+		 * ATTRIBUTE that shares this branch keeps the name it was stored
+		 * under, which is the folded-down one its own door wrote. */
+		int bUp = pNode->type == XML_ELEMENT_NODE && DomThisHtmlNames(pCtx,pNode);
+		const char *zName = pNode->name ? (const char *)pNode->name : "";
 		if( (pNode->type == XML_ELEMENT_NODE || pNode->type == XML_ATTRIBUTE_NODE)
 			&& pNode->ns && pNode->ns->prefix ){
-			ph7_result_string_format(pCtx,"%s:%s",(const char *)pNode->ns->prefix,(const char *)pNode->name);
+			const char *zPfx = (const char *)pNode->ns->prefix;
+			if( bUp ){
+				char *zU = DomAsciiFold(pCtx,zPfx,1);
+				char *zL = DomAsciiFold(pCtx,zName,1);
+				zPfx = zU ? zU : zPfx;
+				zName = zL ? zL : zName;
+			}
+			ph7_result_string_format(pCtx,"%s:%s",zPfx,zName);
 		}else{
-			ph7_result_string(pCtx,pNode->name ? (const char *)pNode->name : "",-1);
+			char *zU = bUp ? DomAsciiFold(pCtx,zName,1) : 0;
+			ph7_result_string(pCtx,zU ? zU : zName,-1);
+		}
 		}
 		break;
 	}
@@ -5085,6 +5155,18 @@ static xmlAttrPtr DomAttrByName(xmlNodePtr pElem,const char *zName,int bModern)
 {
 	return bModern ? DomAttrBySpec(pElem,zName) : DomAttr2004(pElem,zName);
 }
+/* ...and the name it comes through WITH. Every by-name attribute door folds its
+ * argument down before it looks anything up or writes anything, so an HTML
+ * document answers `getAttribute('FOO')` out of the `foo` it stored and
+ * `setAttribute('BAR')` writes a `bar`. The fold is the element's question, not
+ * the document's alone (DomThisHtmlNames), which is why an `<svg>` in the same
+ * document keeps `VIEWBOX` exactly as it was spelled. The `*NS` doors do not
+ * call this. */
+static const char * DomAttrFoldName(ph7_context *pCtx,xmlNodePtr pElem,const char *zName)
+{
+	char *zFold = DomThisHtmlNames(pCtx,pElem) ? DomAsciiFold(pCtx,zName,0) : 0;
+	return zFold ? zFold : zName;
+}
 static xmlAttrPtr DomAttrByNs(xmlNodePtr pElem,const xmlChar *zUri,const char *zLocal)
 {
 	xmlAttrPtr pAttr = pElem ? xmlHasNsProp(pElem,(const xmlChar *)zLocal,zUri) : 0;
@@ -5095,8 +5177,9 @@ static xmlAttrPtr DomAttrByNs(xmlNodePtr pElem,const xmlChar *zUri,const char *z
 DOM_METHOD(vm_builtin_DOMElement_getAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	const char *zName = DomAttrFoldName(pCtx,pElem,
+		nArg > 0 ? ph7_value_to_string(apArg[0],0) : "");
 	xmlNsPtr pDecl = DomNsDeclByName(pElem,zName);
 	xmlAttrPtr pAttr = pDecl ? 0 : DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	xmlChar *zVal = pAttr ? xmlNodeListGetString(pAttr->doc,pAttr->children,1) : 0;
@@ -5123,7 +5206,8 @@ DOM_METHOD(vm_builtin_DOMElement_getAttribute)
 DOM_METHOD(vm_builtin_DOMElement_hasAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zName = DomAttrFoldName(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0,
+		nArg > 0 ? ph7_value_to_string(apArg[0],0) : "");
 	ph7_result_bool(pCtx,pNd != 0
 		&& (DomAttrByName((xmlNodePtr)pNd->pNode,zName,DomThisModern(pCtx)) != 0
 		 || DomNsDeclByName((xmlNodePtr)pNd->pNode,zName) != 0));
@@ -5134,7 +5218,8 @@ DOM_METHOD(vm_builtin_DOMElement_hasAttribute)
 DOM_METHOD(vm_builtin_DOMElement_setAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zName = DomAttrFoldName(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0,
+		nArg > 1 ? ph7_value_to_string(apArg[0],0) : "");
 	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
 	xmlAttrPtr pAttr;
 	if( pNd == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
@@ -5178,8 +5263,9 @@ static void DomResultRemoved(ph7_context *pCtx,int bModern,int bRemoved)
 DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	const char *zName = DomAttrFoldName(pCtx,pElem,
+		nArg > 0 ? ph7_value_to_string(apArg[0],0) : "");
 	xmlAttrPtr pAttr = DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	xmlNsPtr pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
 	/* php 8.4 declares this one `void`, so every answer below is null there --
@@ -5431,8 +5517,9 @@ static void DomAttrDetach(phl_xmldoc *pShell,xmlAttrPtr pAttr)
 DOM_METHOD(vm_builtin_DOMElement_getAttributeNode)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	const char *zName = DomAttrFoldName(pCtx,pElem,
+		nArg > 0 ? ph7_value_to_string(apArg[0],0) : "");
 	xmlAttrPtr pAttr = DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	xmlNsPtr pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
 	if( pDecl ){
@@ -5688,10 +5775,11 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttributeNS)
 DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	const char *zName = DomAttrFoldName(pCtx,pElem,
+		nArg > 0 ? ph7_value_to_string(apArg[0],0) : "");
 	int bForceGiven = nArg > 1 && !ph7_value_is_null(apArg[1]);
 	int bForce = bForceGiven && ph7_value_to_bool(apArg[1]);
-	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	xmlAttrPtr pAttr;
 	xmlNsPtr pDecl;
 	if( pElem == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
@@ -7716,6 +7804,16 @@ static int DomDocCreate(ph7_context *pCtx,int iKind,const char *zName,const char
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	switch( iKind ){
 	case XML_ELEMENT_NODE:
+		/* An HTML document's factory folds the name DOWN before it makes
+		 * anything, so `createElement('P')` is a `p` whose tagName reads back
+		 * as `P`. The whole string folds -- the name is never split on a colon
+		 * here (see below) -- and `createElementNS` folds nothing. */
+		if( DomDocFlag(PH7_ContextThis(pCtx),DOM_F_HTML) ){
+			char *zFold = DomAsciiFold(pCtx,zName,0);
+			if( zFold ){
+				zName = zFold;
+			}
+		}
 		if( xmlValidateName((const xmlChar *)zName,0) != 0 ){
 			break; /* Invalid Character Error */
 		}
