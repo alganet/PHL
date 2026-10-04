@@ -237,6 +237,7 @@ struct html5_parser {
 	int bTextTok;                  /* the token is an armed element's TEXT     */
 	int bFoster;                   /* this token's content leaves the table    */
 	int bFramesetOk;               /* may a `<frameset>` still replace the body */
+	int bHtmlRules;  /* this token skips the namespace question exactly once */
 	sxu32 iTokLine,iTokCol,iTokCol2;  /* the NAME's span, which is what php prints */
 	void (*xErr)(void *,const char *,const char *,sxu32,sxu32,sxu32);
 	void *pErrUser;
@@ -1742,6 +1743,28 @@ static void Html5TrimLeadingSpace(html5_parser *p)
 		p->sBuf.nByte = n - i;
 	}
 }
+/*
+ * The head modes KEEP that whitespace rather than dropping it: the leading run
+ * is inserted where a run of nothing but whitespace would have gone, and only
+ * the rest is handed to the mode this token is about to walk into.  `before
+ * html` and `before head` ignore it instead, so they still trim without
+ * inserting -- which is why this is a second helper and not a flag on the
+ * first.
+ */
+static void Html5SplitLeadingSpace(html5_parser *p)
+{
+	const unsigned char *z = (const unsigned char *)SyBlobData(&p->sBuf);
+	sxu32 i = 0,n = SyBlobLength(&p->sBuf);
+	while( i < n && Html5IsSpace(z[i]) ){
+		i++;
+	}
+	if( i > 0 ){
+		p->sBuf.nByte = i;
+		Html5InsertText(p);
+		p->sBuf.nByte = n;
+	}
+	Html5TrimLeadingSpace(p);
+}
 static void Html5InsertComment(html5_parser *p,xmlNodePtr pParent)
 {
 	xmlNodePtr pC;
@@ -2084,6 +2107,7 @@ static int Html5ForeignDispatch(html5_parser *p)
 				return 0;
 			}
 			if( Html5NsKind(apStack[i]) == HTML5_NSK_HTML ){
+				p->bHtmlRules = 1;
 				return 1;
 			}
 		}
@@ -2401,7 +2425,17 @@ static int Html5Dispatch(html5_parser *p)
 	 * the current node's NAMESPACE that says which set of rules this token
 	 * meets.
 	 */
-	if( Html5UseForeign(p) ){
+	/*
+	 * ...unless the foreign end-tag walk has just said so.  Reaching an HTML
+	 * element on the way out of a foreign subtree hands THIS token to the
+	 * HTML rules without popping anything, so the namespace question has to
+	 * be skipped for one dispatch -- asking it again would send the token
+	 * straight back to the walk it just came out of, which is what used to
+	 * spin the reprocess guard and drop the token.
+	 */
+	if( p->bHtmlRules ){
+		p->bHtmlRules = 0;
+	}else if( Html5UseForeign(p) ){
 		return Html5ForeignDispatch(p);
 	}
 	switch( p->iMode ){
@@ -2494,7 +2528,7 @@ static int Html5Dispatch(html5_parser *p)
 				Html5InsertText(p);
 				return 0;
 			}
-			Html5TrimLeadingSpace(p);
+			Html5SplitLeadingSpace(p);
 		}
 		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") ){
 			return 0;
@@ -2554,7 +2588,7 @@ static int Html5Dispatch(html5_parser *p)
 				Html5InsertText(p);
 				return 0;
 			}
-			Html5TrimLeadingSpace(p);
+			Html5SplitLeadingSpace(p);
 		}
 		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") ){
 			/* `in body` rules, which for an `<html>` already open is the
@@ -2606,7 +2640,7 @@ static int Html5Dispatch(html5_parser *p)
 				Html5InsertText(p);
 				return 0;
 			}
-			Html5TrimLeadingSpace(p);
+			Html5SplitLeadingSpace(p);
 		}
 		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"body") ){
 			Html5OpenBody(p,TRUE);
@@ -2668,6 +2702,18 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_DOCTYPE ){
+			return 0;
+		}
+		/*
+		 * An end tag is where the handover stops: everything but
+		 * `</template>` is DROPPED here rather than re-run `in body`.  Only
+		 * an end tag written before the template holds any content can reach
+		 * this mode at all -- a start tag latches the mode to `in body` and
+		 * that is where the closes of what it opened are read -- and for
+		 * those the two readings differ by exactly one tag: `</br>`, which
+		 * `in body` answers with an ELEMENT.
+		 */
+		if( p->iTok == HTML5_TOK_END ){
 			return 0;
 		}
 		p->iMode = HTML5_M_IN_BODY;
@@ -2995,6 +3041,20 @@ static int Html5Dispatch(html5_parser *p)
 			p->iMode = HTML5_M_AFTER_BODY;
 			break;
 		}
+		/*
+		 * `</br>` is the one end tag that OPENS an element.  It is re-run as a
+		 * `<br>` START tag carrying none of the attributes it was written
+		 * with, so everything a `<br>` start tag owes -- the reconstruction,
+		 * the frameset flag, and being FOSTERED out of a table -- is owed by
+		 * this too, and asking the start tag rather than copying it is the
+		 * only way that stays true.
+		 */
+		if( Html5Eq(zName,"br") ){
+			p->iTok = HTML5_TOK_START;
+			SyBlobReset(&p->sAttrBuf);
+			SySetReset(&p->sAttr);
+			return 1;
+		}
 		if( !Html5Eq(zName,"colgroup") ){
 			Html5ColgroupImplied(p,zName);
 		}
@@ -3116,6 +3176,7 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	SyBlobInit(&sParser.sAttrBuf,pAlloc);
 	for(;;){
 		int nGuard = 0;
+		sParser.bHtmlRules = 0;
 		Html5NextToken(&sParser);
 		if( sParser.iTok == HTML5_TOK_EOF ){
 			break;
