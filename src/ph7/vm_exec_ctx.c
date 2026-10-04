@@ -2245,8 +2245,14 @@ static ph7_class_instance * VmCloneClosureInstance(ph7_class_instance *pClosure)
  * `static function(){}` declaration flag; for a METHOD callable it is the method's own
  * staticness, which the flag cannot see because `$__fn` names a method and not a function in
  * hFunction. `Base::stat(...)` is exactly as static as `static fn()` to php.
+ *
+ * A method callable that resolved to the class's catch-all rather than a method (no SCREENED
+ * mark) is php's call TRAMPOLINE, and php makes the `__callStatic` one static: the name it
+ * wraps is not a method to ask, and the only thing that decided between the two catch-alls
+ * was whether a receiver was bound. So `A::missing(...)` from outside A is static, and
+ * `Closure::bind($it, null, A::class)` keeps it where the method rule refused the unbind.
  */
-static int VmClosureIsStatic(ph7_vm *pVm, ph7_class_instance *pClosure)
+PH7_PRIVATE int PH7_VmClosureIsStatic(ph7_vm *pVm, ph7_class_instance *pClosure)
 {
 	SyString sAttr;
 	ph7_value *pFn;
@@ -2254,6 +2260,12 @@ static int VmClosureIsStatic(ph7_vm *pVm, ph7_class_instance *pClosure)
 	pFn = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
 	if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pFn->sBlob) == 0 ){
 		return 0;
+	}
+	if( (pClosure->iFlags & (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED)) == VM_INSTANCE_FCC_METHOD ){
+		ph7_value *pThis;
+		SyStringInitFromBuf(&sAttr, "__this", 6);
+		pThis = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+		return (pThis == 0 || (pThis->iFlags & MEMOBJ_OBJ) == 0) ? 1 : 0;
 	}
 	if( pClosure->iFlags & VM_INSTANCE_FCC_METHOD ){
 		ph7_class *pScope = PH7_VmClosureScopeClass(pVm, pClosure);
@@ -2285,7 +2297,7 @@ static int VmClosureBindAllowed(ph7_vm *pVm, ph7_class_instance *pClosure,
 	int bMethod = (pClosure->iFlags & VM_INSTANCE_FCC_METHOD) != 0;
 	ph7_class *pOwn = bMethod ? PH7_VmClosureScopeClass(pVm, pClosure) : 0;
 	if( pNewThis ){
-		if( VmClosureIsStatic(pVm, pClosure) ){
+		if( PH7_VmClosureIsStatic(pVm, pClosure) ){
 			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
 				"Cannot bind an instance to a static closure, this will be an error in PHP 9");
 			return 0;
@@ -2302,7 +2314,7 @@ static int VmClosureBindAllowed(ph7_vm *pVm, ph7_class_instance *pClosure,
 				&pOwn->sDisp,&sFn,&pNewThis->pClass->sDisp);
 			return 0;
 		}
-	}else if( pOwn && !VmClosureIsStatic(pVm, pClosure) ){
+	}else if( pOwn && !PH7_VmClosureIsStatic(pVm, pClosure) ){
 		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
 			"Cannot unbind $this of method, this will be an error in PHP 9");
 		return 0;

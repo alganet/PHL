@@ -6197,14 +6197,18 @@ static int vm_builtin_ReflectionFunc_isVariadic(ph7_context *pCtx, int nArg, ph7
 	ph7_result_bool(pCtx, bVariadic);
 	return PH7_OK;
 }
-/* isStatic(): a METHOD's own staticness, a closure's `static function () {}`. */
+/* isStatic(): a METHOD's own staticness, a closure's `static function () {}`, a trampoline's catch-all. */
 static int vm_builtin_ReflectionFunc_isStatic(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
-	if( sRef.pMeth ){
+	REFLECT_CLOSURE_OR(sRef, ph7_result_bool(pCtx, 0))
+	if( sRef.pClosure && (sRef.pClosure->iFlags
+			& (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED)) == VM_INSTANCE_FCC_METHOD ){
+		/* A catch-all trampoline: static exactly when it is __callStatic's */
+		ph7_result_bool(pCtx, PH7_VmClosureIsStatic(pCtx->pVm, sRef.pClosure));
+	}else if( sRef.pMeth ){
 		ph7_result_bool(pCtx, (sRef.pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
 	}else{
 		ph7_result_bool(pCtx, sRef.pFunc != 0 && (sRef.pFunc->iFlags & VM_FUNC_STATIC_CL) != 0);
