@@ -6,5 +6,9 @@
 # PHP_BINARY, $_SERVER, exit status and diagnostics-stream text are what is being
 # asserted on, and it is the most expensive step here after composer's: ~46s under php
 # and ~12 minutes under phl.
-unit	$PHL_VENDOR_ENGINE phpunit --testsuite unit --no-coverage
+# The unit step runs with NO network. One data-provider row, DefaultPrinterTest's
+# testFlush "socket", exists only when fsockopen('www.example.com', 80) connects at
+# provider time, so the test count followed this box's DNS and flipped between 4046
+# and 4047 per engine per run. Offline, both engines fail the connect at once.
+unit	unshare --map-current-user -n $PHL_VENDOR_ENGINE phpunit --testsuite unit --no-coverage
 end-to-end	$PHL_VENDOR_ENGINE phpunit --testsuite end-to-end --no-coverage

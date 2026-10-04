@@ -1,1 +1,4 @@
-phpunit	$PHL_VENDOR_ENGINE vendor/bin/.phpunit/phpunit-*/phpunit --no-coverage
+# Runs with NO network. AuditCommandTest asks packagist.org for advisories live, so it
+# passed or died on curl error 28 by this box's connection of the moment, per engine.
+# Offline, both engines fail the lookup the same way every run.
+phpunit	unshare --map-current-user -n $PHL_VENDOR_ENGINE vendor/bin/.phpunit/phpunit-*/phpunit --no-coverage

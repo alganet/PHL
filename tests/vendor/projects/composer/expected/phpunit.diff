@@ -3,12 +3,12 @@
 @@ -6,7 +6,7 @@
  .............................................................  183 / 3328 (  5%)
  .............................................................  244 / 3328 (  7%)
- .............................................................  305 / 3328 (  9%)
--.............................................................  366 / 3328 ( 10%)
-+..........F..................................................  366 / 3328 ( 10%)
+ .FF..........................................................  305 / 3328 (  9%)
+-.................FFF.........................................  366 / 3328 ( 10%)
++..........F......FFF.........................................  366 / 3328 ( 10%)
  .............................................................  427 / 3328 ( 12%)
- .............................................................  488 / 3328 ( 14%)
- .............................................................  549 / 3328 ( 16%)
+ .......................F..........EE.........................  488 / 3328 ( 14%)
+ ....................................EE.E......EE...EE....EE..  549 / 3328 ( 16%)
 @@ -23,16 +23,16 @@
  ............................................................. 1220 / 3328 ( 36%)
  ............................................................. 1281 / 3328 ( 38%)
@@ -43,7 +43,7 @@
  ............................................................. 2501 / 3328 ( 75%)
  .....................E....................................... 2562 / 3328 ( 76%)
  ............................................................. 2623 / 3328 ( 78%)
-@@ -48,20 +48,61 @@
+@@ -48,18 +48,18 @@
  ............................................................. 2745 / 3328 ( 82%)
  ............................................................. 2806 / 3328 ( 84%)
  ............................................................. 2867 / 3328 ( 86%)
@@ -53,7 +53,7 @@
  ............................................................. 3050 / 3328 ( 91%)
 -....................................S........................ 3111 / 3328 ( 93%)
 +....................................SFFFF...........F........ 3111 / 3328 ( 93%)
- ............................................................. 3172 / 3328 ( 95%)
+ ...............................E............................. 3172 / 3328 ( 95%)
 -......S...................................................... 3233 / 3328 ( 97%)
 +E..EE.S...................................................... 3233 / 3328 ( 97%)
  ............................................................. 3294 / 3328 ( 98%)
@@ -61,11 +61,17 @@
  
  Time: @TIME@
  
--There was 1 error:
-+There were 12 errors:
+-There were 14 errors:
++There were 25 errors:
  
--1) Composer\Test\Repository\PlatformRepositoryTest::testLibraryInformation with data set "intl" ('intl', '\nintl\n\nInternationalizatio...0 => 0', array('100', '32.0.1', '7.0.0', '2016.2'), array(array(array('ResourceBundle', 'create'), array('root', 'ICUDATA', false), Composer\Test\Repository\ResourceBundleStub Object ()), array(array('IntlChar', 'getUnicodeVersion'), array(), array(7, 0, 0, 0))), array(array('INTL_ICU_VERSION', null, '100')), array(array('ResourceBundle'), array('IntlChar')))
-+1) Composer\Test\Json\JsonFormatterTest::testUnicodeWithPrependedSlash
+ 1) Composer\Test\Command\AuditCommandTest::testAuditPackageWithNoSecurityVulnerabilities
+ Composer\Downloader\TransportException: curl error 6 while downloading https://repo.packagist.org/packages.json: Could not resolve host: repo.packagist.org
+@@ -293,7 +293,48 @@
+ @ROOT@/vendor/symfony/console/Tester/CommandCompletionTester.php:47
+ @ROOT@/tests/Composer/Test/CompletionFunctionalTest.php:136
+ 
+-13) Composer\Test\Repository\PlatformRepositoryTest::testLibraryInformation with data set "intl" ('intl', '\nintl\n\nInternationalizatio...0 => 0', array('100', '32.0.1', '7.0.0', '2016.2'), array(array(array('ResourceBundle', 'create'), array('root', 'ICUDATA', false), Composer\Test\Repository\ResourceBundleStub Object ()), array(array('IntlChar', 'getUnicodeVersion'), array(), array(7, 0, 0, 0))), array(array('INTL_ICU_VERSION', null, '100')), array(array('ResourceBundle'), array('IntlChar')))
++13) Composer\Test\Json\JsonFormatterTest::testUnicodeWithPrependedSlash
 +ValueError: mb_convert_encoding(): Argument #3 ($from_encoding) contains invalid encoding "UCS-2BE"
 +
 +@ROOT@/src/Composer/Json/JsonFormatter.php:81
@@ -73,73 +79,83 @@
 +@ROOT@/src/Composer/Json/JsonFormatter.php:70
 +@ROOT@/tests/Composer/Test/Json/JsonFormatterTest.php:33
 +
-+2) Composer\Test\Package\Archiver\ArchiveManagerTest::testArchiveTar
++14) Composer\Test\Package\Archiver\ArchiveManagerTest::testArchiveTar
 +ArgumentCountError: PharData::__construct() expects at most 3 arguments, 4 given
 +
 +@ROOT@/src/Composer/Package/Archiver/PharArchiver.php:59
 +@ROOT@/src/Composer/Package/Archiver/ArchiveManager.php:221
 +@ROOT@/tests/Composer/Test/Package/Archiver/ArchiveManagerTest.php:69
 +
-+3) Composer\Test\Package\Archiver\ArchiveManagerTest::testArchiveCustomFileName
++15) Composer\Test\Package\Archiver\ArchiveManagerTest::testArchiveCustomFileName
 +ArgumentCountError: PharData::__construct() expects at most 3 arguments, 4 given
 +
 +@ROOT@/src/Composer/Package/Archiver/PharArchiver.php:59
 +@ROOT@/src/Composer/Package/Archiver/ArchiveManager.php:221
 +@ROOT@/tests/Composer/Test/Package/Archiver/ArchiveManagerTest.php:90
 +
-+4) Composer\Test\Package\Archiver\PharArchiverTest::testTarArchive
++16) Composer\Test\Package\Archiver\PharArchiverTest::testTarArchive
 +ArgumentCountError: PharData::__construct() expects at most 3 arguments, 4 given
 +
 +@ROOT@/src/Composer/Package/Archiver/PharArchiver.php:59
 +@ROOT@/tests/Composer/Test/Package/Archiver/PharArchiverTest.php:29
 +
-+5) Composer\Test\Package\Archiver\PharArchiverTest::testZipArchive
++17) Composer\Test\Package\Archiver\PharArchiverTest::testZipArchive
 +ArgumentCountError: PharData::__construct() expects at most 3 arguments, 4 given
 +
 +@ROOT@/src/Composer/Package/Archiver/PharArchiver.php:59
 +@ROOT@/tests/Composer/Test/Package/Archiver/PharArchiverTest.php:44
 +
-+6) Composer\Test\Package\Archiver\ZipArchiverTest::testFolderWithBackslashes
++18) Composer\Test\Package\Archiver\ZipArchiverTest::testFolderWithBackslashes
 +ZipArchive::addFile(): No such file or directory
 +
 +@ROOT@/src/Composer/Package/Archiver/ZipArchiver.php:58
 +@ROOT@/tests/Composer/Test/Package/Archiver/ZipArchiverTest.php:86
 +@ROOT@/tests/Composer/Test/Package/Archiver/ZipArchiverTest.php:65
 +
-+7) Composer\Test\Repository\PlatformRepositoryTest::testLibraryInformation with data set "intl" ('intl', '\nintl\n\nInternationalizatio...0 => 0', array('100', '32.0.1', '7.0.0', '2016.2'), array(array(array('ResourceBundle', 'create'), array('root', 'ICUDATA', false), Composer\Test\Repository\ResourceBundleStub Object ()), array(array('IntlChar', 'getUnicodeVersion'), array(), array(7, 0, 0, 0))), array(array('INTL_ICU_VERSION', null, '100')), array(array('ResourceBundle'), array('IntlChar')))
++19) Composer\Test\Repository\PlatformRepositoryTest::testLibraryInformation with data set "intl" ('intl', '\nintl\n\nInternationalizatio...0 => 0', array('100', '32.0.1', '7.0.0', '2016.2'), array(array(array('ResourceBundle', 'create'), array('root', 'ICUDATA', false), Composer\Test\Repository\ResourceBundleStub Object ()), array(array('IntlChar', 'getUnicodeVersion'), array(), array(7, 0, 0, 0))), array(array('INTL_ICU_VERSION', null, '100')), array(array('ResourceBundle'), array('IntlChar')))
  TypeError: Mock_Runtime_@HASH@::invoke(): Argument #1 ($callable) must be of type callable, array given, called in @ROOT@/src/Composer/Repository/PlatformRepository.php on line 346
  
  @ROOT@/src/Composer/Repository/PlatformRepository.php:346
-@@ -70,11 +111,47 @@
+@@ -302,17 +343,48 @@
  @ROOT@/src/Composer/Repository/PlatformRepository.php:775
  @ROOT@/tests/Composer/Test/Repository/PlatformRepositoryTest.php:1354
  
-+8) Composer\Test\Util\FilesystemTest::testCopy
+-14) Composer\Test\Util\RemoteFilesystemTest::testBitBucketPublicDownload with data set #0 ('https://bitbucket.org/seldaek...me.txt', '1234')
++20) Composer\Test\Util\FilesystemTest::testCopy
 +Error: Call to undefined method RecursiveIteratorIterator::getSubPathname()
 +
 +@ROOT@/src/Composer/Util/Filesystem.php:410
 +@ROOT@/tests/Composer/Test/Util/FilesystemTest.php:366
 +
-+9) Composer\Test\Util\FilesystemTest::testCopyThenRemove
++21) Composer\Test\Util\FilesystemTest::testCopyThenRemove
 +Error: Call to undefined method RecursiveIteratorIterator::getSubPathname()
 +
 +@ROOT@/src/Composer/Util/Filesystem.php:410
 +@ROOT@/src/Composer/Util/Filesystem.php:358
 +@ROOT@/tests/Composer/Test/Util/FilesystemTest.php:394
 +
-+10) Composer\Test\Util\TarTest::testReturnsNullIfTheTarIsEmpty
++22) Composer\Test\Util\RemoteFilesystemTest::testBitBucketPublicDownload with data set #0 ('https://bitbucket.org/seldaek...me.txt', '1234')
+ Composer\Downloader\TransportException: The "https://bitbucket.org/seldaek/composer-live-test-repo/raw/master/composer-unit-test-download-me.txt" file could not be downloaded: php_network_getaddresses: getaddrinfo for bitbucket.org failed: Name or service not known
+-Failed to open stream: php_network_getaddresses: getaddrinfo for bitbucket.org failed: Name or service not known
++Failed to open stream: php_network_getaddresses: getaddrinfo for bitbucket.org failed: Name or service not know
+ 
+ @ROOT@/src/Composer/Util/RemoteFilesystem.php:481
+ @ROOT@/src/Composer/Util/RemoteFilesystem.php:122
+ @ROOT@/tests/Composer/Test/Util/RemoteFilesystemTest.php:325
+ 
++23) Composer\Test\Util\TarTest::testReturnsNullIfTheTarIsEmpty
 +UnexpectedValueException: internal corruption of phar "@ROOT@/tests/Composer/Test/Util/Fixtures/Tar/empty.tar.gz" (truncated entry)
 +
 +@ROOT@/src/Composer/Util/Tar.php:25
 +@ROOT@/tests/Composer/Test/Util/TarTest.php:33
 +
-+11) Composer\Test\Util\TarTest::testReturnsComposerJsonInTarRoot
++24) Composer\Test\Util\TarTest::testReturnsComposerJsonInTarRoot
 +UnexpectedValueException: internal corruption of phar "@ROOT@/tests/Composer/Test/Util/Fixtures/Tar/root.tar.gz" (truncated entry)
 +
 +@ROOT@/src/Composer/Util/Tar.php:25
 +@ROOT@/tests/Composer/Test/Util/TarTest.php:51
 +
-+12) Composer\Test\Util\TarTest::testReturnsComposerJsonInFirstFolder
++25) Composer\Test\Util\TarTest::testReturnsComposerJsonInFirstFolder
 +UnexpectedValueException: internal corruption of phar "@ROOT@/tests/Composer/Test/Util/Fixtures/Tar/folder.tar.gz" (truncated entry)
 +
 +@ROOT@/src/Composer/Util/Tar.php:25
@@ -147,20 +163,57 @@
 +
  --
  
--There were 4 failures:
-+There were 19 failures:
-+
-+1) Composer\Test\Command\InitCommandTest::testGetGitConfig
+-There were 10 failures:
++There were 25 failures:
+ 
+ 1) Composer\Test\Command\DiagnoseCommandTest::testCmdFail
+ Failed asserting that 2 is identical to 1.
+@@ -326,7 +398,12 @@
+ @ROOT@/vendor/symfony/console/Tester/TesterTrait.php:121
+ @ROOT@/tests/Composer/Test/Command/DiagnoseCommandTest.php:50
+ 
+-3) Composer\Test\Command\InstallCommandTest::testInstallFromEmptyVendor
++3) Composer\Test\Command\InitCommandTest::testGetGitConfig
 +Failed asserting that an array has the key 'user.name'.
 +
 +@ROOT@/tests/Composer/Test/Command/InitCommandTest.php:487
++
++4) Composer\Test\Command\InstallCommandTest::testInstallFromEmptyVendor
+ Failed asserting that two strings are identical.
+ --- Expected
+ +++ Actual
+@@ -342,7 +419,7 @@
  
--1) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
-+2) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
+ @ROOT@/tests/Composer/Test/Command/InstallCommandTest.php:121
+ 
+-4) Composer\Test\Command\InstallCommandTest::testInstallFromEmptyVendorNoDev
++5) Composer\Test\Command\InstallCommandTest::testInstallFromEmptyVendorNoDev
+ Failed asserting that two strings are identical.
+ --- Expected
+ +++ Actual
+@@ -357,7 +434,7 @@
+ 
+ @ROOT@/tests/Composer/Test/Command/InstallCommandTest.php:151
+ 
+-5) Composer\Test\Command\InstallCommandTest::testInstallNewPackagesWithExistingPartialVendor
++6) Composer\Test\Command\InstallCommandTest::testInstallNewPackagesWithExistingPartialVendor
+ Failed asserting that two strings are identical.
+ --- Expected
+ +++ Actual
+@@ -372,10 +449,10 @@
+ 
+ @ROOT@/tests/Composer/Test/Command/InstallCommandTest.php:178
+ 
+-6) Composer\Test\Command\ShowCommandTest::testNotExistingPackage with data set "package with --all option" ('not/existing', array(true), 'Package "not/existing" not found.')
++7) Composer\Test\Command\ShowCommandTest::testNotExistingPackage with data set "package with --all option" ('not/existing', array(true), 'Package "not/existing" not found.')
+ Failed asserting that exception message 'curl error 6 while downloading https://repo.packagist.org/packages.json: Could not resolve host: repo.packagist.org' matches '/^Package "not\/existing" not found\./'.
+ 
+-7) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++8) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -96,11 +173,20 @@
+@@ -397,11 +474,20 @@
     Problem 9
       - Root composer.json requires dependency/pkg5 1.* -> satisfiable by dependency/pkg5[1.0.0].
       - dependency/pkg5 1.0.0 requires ext-foobar 1.0.0 -> it is missing from your system. Install or enable PHP's foobar extension.
@@ -177,12 +230,12 @@
  @ROOT@/tests/Composer/Test/InstallerTest.php:489
  @ROOT@/tests/Composer/Test/InstallerTest.php:256
  
--2) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
-+3) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
+-8) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++9) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -111,13 +197,81 @@
+@@ -412,13 +498,81 @@
  -    - Root composer.json requires linked library lib-icu 1001.* but it has the wrong version installed, try upgrading the intl extension.
  +    - Root composer.json requires linked library lib-icu 1001.* but it is missing from your system, make sure the intl extension is loaded.
     Problem 7
@@ -204,8 +257,8 @@
  @ROOT@/tests/Composer/Test/InstallerTest.php:489
  @ROOT@/tests/Composer/Test/InstallerTest.php:256
  
--3) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
-+4) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "outdated-lock-file-with-new-platform-reqs-fails.test" ('outdated-lock-file-with-new-p...s.test', 'Test that install checks plat...-foo).', null, array(array('^25', '^10')), array('old', array(), array(), array(), 'stable', array(), false, false, array('^20', '^5'), array(), '0f4cfce7e30471e0536c19433591b80d'), array(), 'install', array(), null, 'Installing dependencies from ...sions.', null, '', 2)
+-9) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++10) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "outdated-lock-file-with-new-platform-reqs-fails.test" ('outdated-lock-file-with-new-p...s.test', 'Test that install checks plat...-foo).', null, array(array('^25', '^10')), array('old', array(), array(), array(), 'stable', array(), false, false, array('^20', '^5'), array(), '0f4cfce7e30471e0536c19433591b80d'), array(), 'install', array(), null, 'Installing dependencies from ...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -224,7 +277,7 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:489
 +@ROOT@/tests/Composer/Test/InstallerTest.php:256
 +
-+5) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "platform-ext-solver-problems.test" ('platform-ext-solver-problems.test', 'Test the error output of solv...config', null, array(array(array('package', array(array('a/a', '1.0.0', array('2.0.0'))))), array('*'), array(array('7.4.0'))), array(array(), array(), array(), 'dev', array(), false, false, array(), array(), '7d50e1233ebae868c4ac573e8c69b273'), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++11) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "platform-ext-solver-problems.test" ('platform-ext-solver-problems.test', 'Test the error output of solv...config', null, array(array(array('package', array(array('a/a', '1.0.0', array('2.0.0'))))), array('*'), array(array('7.4.0'))), array(array(), array(), array(), 'dev', array(), false, false, array(), array(), '7d50e1233ebae868c4ac573e8c69b273'), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -243,7 +296,7 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:489
 +@ROOT@/tests/Composer/Test/InstallerTest.php:256
 +
-+6) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "update-ignore-platform-package-requirement-list-upper-bounds.test" ('update-ignore-platform-packag...s.test', 'Update with ignore-platform-r...ndency', null, array(array(array('package', array(array('a/a', '1.0.1', array('3.*')), array('b/b', '1.0.1', array('10.*')), array('c/c', '1.0.1', array('4.0.0 - 4.0.2', '3.0.*'))))), array('1.0.*', '1.0.*', '1.0.*', '^4.3', '9.0.0'), array('5.0.3')), array(), array(array('a/a', '1.0.0')), 'update --ignore-platform-req=...o-baz+', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++12) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "update-ignore-platform-package-requirement-list-upper-bounds.test" ('update-ignore-platform-packag...s.test', 'Update with ignore-platform-r...ndency', null, array(array(array('package', array(array('a/a', '1.0.1', array('3.*')), array('b/b', '1.0.1', array('10.*')), array('c/c', '1.0.1', array('4.0.0 - 4.0.2', '3.0.*'))))), array('1.0.*', '1.0.*', '1.0.*', '^4.3', '9.0.0'), array('5.0.3')), array(), array(array('a/a', '1.0.0')), 'update --ignore-platform-req=...o-baz+', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -262,11 +315,11 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:489
 +@ROOT@/tests/Composer/Test/InstallerTest.php:256
 +
-+7) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++13) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -139,11 +293,20 @@
+@@ -440,11 +594,20 @@
     Problem 9
       - Root composer.json requires dependency/pkg5 1.* -> satisfiable by dependency/pkg5[1.0.0].
       - dependency/pkg5 1.0.0 requires ext-foobar 1.0.0 -> it is missing from your system. Install or enable PHP's foobar extension.
@@ -283,12 +336,12 @@
  @ROOT@/tests/Composer/Test/InstallerTest.php:489
  @ROOT@/tests/Composer/Test/InstallerTest.php:272
  
--4) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
-+8) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
+-10) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++14) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems.test" ('solver-problems.test', 'Test the error output of solv...blems.', null, array(array(array('package', array(array('package/found', '2.0.0', array('2.*')), array('package/found3', '2.0.0', array('2.*')), array('package/found4', '2.0.0', array('1.*')), array('package/found5', '2.0.0', array('1.*')), array('package/found6', '2.0.0', array('1.0.1')), array('package/found7', '2.0.0', array('1.0.1')), array('conflict/requirer', '2.0.0', array('1.0.0')), array('conflict/requirer2', '2.0.0', array('2.0.0')), array('conflict/dep', '1.0.0'), array('conflict/dep', '2.0.0'), array('unstable/package', '2.0.0-alpha'), array('unstable/package', '1.0.0'), array('unstable/package2', '2.0.0-alpha'), array('unstable/package2', '1.0.0'), array('requirer/pkg', '1.0.0', array('1.0.0', '1.0.0-dev')), array('dependency/pkg', '2.0.0'), array('dependency/pkg', '1.0.0'), array('dependency/unstable-pkg', '1.0.0-dev'), array('stable-requiree-excluded/pkg', '1.0.1'), array('stable-requiree-excluded/pkg', '1.0.0'), array('api/provider', 'Provides the missing API', '1.0.0', array('1.*'))))), array('2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '2.*', '1.*', '1.*', '2.*', '1.0.1', '1002.*', '1001.*', '1002.*', '1')), array(array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), array(), array(), 'dev', array(), false, false, array(), array(), '9edfe8438c7d08dac020e13381aa6528'), array(array('stable-requiree-excluded/pkg', '1.0.0'), array('stable-requiree-excluded/pkg2', '1.0.0')), 'update unstable/package requi...quirer', array(), null, 'Loading composer repositories...sions.', null, '', 2)
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -154,14 +317,170 @@
+@@ -455,14 +618,170 @@
  -    - Root composer.json requires linked library lib-icu 1001.* but it has the wrong version installed, try upgrading the intl extension.
  +    - Root composer.json requires linked library lib-icu 1001.* but it is missing from your system, make sure the intl extension is loaded.
     Problem 7
@@ -306,11 +359,11 @@
 ++
 +
 + Use the option --with-all-dependencies (-W) to allow upgrades, downgrades and removals for packages currently locked to specific versions.
- 
- @ROOT@/tests/Composer/Test/InstallerTest.php:489
- @ROOT@/tests/Composer/Test/InstallerTest.php:272
- 
-+9) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "outdated-lock-file-with-new-platform-reqs-fails.test" ('outdated-lock-file-with-new-p...s.test', 'Test that install checks plat...-foo).', null, array(array('^25', '^10')), array('old', array(), array(), array(), 'stable', array(), false, false, array('^20', '^5'), array(), '0f4cfce7e30471e0536c19433591b80d'), array(), 'install', array(), null, 'Installing dependencies from ...sions.', null, '', 2)
++
++@ROOT@/tests/Composer/Test/InstallerTest.php:489
++@ROOT@/tests/Composer/Test/InstallerTest.php:272
++
++15) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "outdated-lock-file-with-new-platform-reqs-fails.test" ('outdated-lock-file-with-new-p...s.test', 'Test that install checks plat...-foo).', null, array(array('^25', '^10')), array('old', array(), array(), array(), 'stable', array(), false, false, array('^20', '^5'), array(), '0f4cfce7e30471e0536c19433591b80d'), array(), 'install', array(), null, 'Installing dependencies from ...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -325,11 +378,11 @@
 +-You can also run `php --ini` in a terminal to see which files are used by PHP in CLI mode.
 +-Alternatively, you can run Composer with `--ignore-platform-req=ext-foo` to temporarily ignore these required extensions.
 ++    - Root composer.json requires php ^20 but your php version (8.5.0) does not satisfy that requirement.
-+
-+@ROOT@/tests/Composer/Test/InstallerTest.php:489
-+@ROOT@/tests/Composer/Test/InstallerTest.php:272
-+
-+10) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "platform-ext-solver-problems.test" ('platform-ext-solver-problems.test', 'Test the error output of solv...config', null, array(array(array('package', array(array('a/a', '1.0.0', array('2.0.0'))))), array('*'), array(array('7.4.0'))), array(array(), array(), array(), 'dev', array(), false, false, array(), array(), '7d50e1233ebae868c4ac573e8c69b273'), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
+ 
+ @ROOT@/tests/Composer/Test/InstallerTest.php:489
+ @ROOT@/tests/Composer/Test/InstallerTest.php:272
+ 
++16) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "platform-ext-solver-problems.test" ('platform-ext-solver-problems.test', 'Test the error output of solv...config', null, array(array(array('package', array(array('a/a', '1.0.0', array('2.0.0'))))), array('*'), array(array('7.4.0'))), array(array(), array(), array(), 'dev', array(), false, false, array(), array(), '7d50e1233ebae868c4ac573e8c69b273'), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -348,7 +401,7 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:489
 +@ROOT@/tests/Composer/Test/InstallerTest.php:272
 +
-+11) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "update-ignore-platform-package-requirement-list-upper-bounds.test" ('update-ignore-platform-packag...s.test', 'Update with ignore-platform-r...ndency', null, array(array(array('package', array(array('a/a', '1.0.1', array('3.*')), array('b/b', '1.0.1', array('10.*')), array('c/c', '1.0.1', array('4.0.0 - 4.0.2', '3.0.*'))))), array('1.0.*', '1.0.*', '1.0.*', '^4.3', '9.0.0'), array('5.0.3')), array(), array(array('a/a', '1.0.0')), 'update --ignore-platform-req=...o-baz+', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++17) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "update-ignore-platform-package-requirement-list-upper-bounds.test" ('update-ignore-platform-packag...s.test', 'Update with ignore-platform-r...ndency', null, array(array(array('package', array(array('a/a', '1.0.1', array('3.*')), array('b/b', '1.0.1', array('10.*')), array('c/c', '1.0.1', array('4.0.0 - 4.0.2', '3.0.*'))))), array('1.0.*', '1.0.*', '1.0.*', '^4.3', '9.0.0'), array('5.0.3')), array(), array(array('a/a', '1.0.0')), 'update --ignore-platform-req=...o-baz+', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -367,7 +420,7 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:489
 +@ROOT@/tests/Composer/Test/InstallerTest.php:272
 +
-+12) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit
++18) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -381,7 +434,7 @@
 +
 +@ROOT@/tests/Composer/Test/Json/JsonManipulatorTest.php:3036
 +
-+13) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit2
++19) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit2
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -394,7 +447,7 @@
 +
 +@ROOT@/tests/Composer/Test/Json/JsonManipulatorTest.php:3048
 +
-+14) Composer\Test\Repository\ArtifactRepositoryTest::testExtractsConfigsFromZipArchives
++20) Composer\Test\Repository\ArtifactRepositoryTest::testExtractsConfigsFromZipArchives
 +Failed asserting that two arrays are identical.
 +--- Expected
 ++++ Actual
@@ -413,7 +466,7 @@
 +
 +@ROOT@/tests/Composer/Test/Repository/ArtifactRepositoryTest.php:54
 +
-+15) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesOutput
++21) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesOutput
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -424,7 +477,7 @@
 +
 +@ROOT@/tests/Composer/Test/Util/ProcessExecutorTest.php:31
 +
-+16) Composer\Test\Util\ProcessExecutorTest::testExecuteOutputsIfNotCaptured
++22) Composer\Test\Util\ProcessExecutorTest::testExecuteOutputsIfNotCaptured
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -435,16 +488,16 @@
 +
 +@ROOT@/tests/Composer/Test/Util/ProcessExecutorTest.php:40
 +
-+17) Composer\Test\Util\ProcessExecutorTest::testUseIOIsNotNullAndIfNotCaptured
++23) Composer\Test\Util\ProcessExecutorTest::testUseIOIsNotNullAndIfNotCaptured
 +Expectation failed for method name is "writeRaw" when invoked 1 time(s).
 +Method was expected to be called 1 times, actually called 0 times.
 +
-+18) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesStderr
++24) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesStderr
 +Failed asserting that '' contains "foo: No such file or directory".
 +
 +@ROOT@/tests/Composer/Test/Util/ProcessExecutorTest.php:58
 +
-+19) Composer\Test\Util\ProcessExecutorTest::testConsoleIODoesNotFormatSymfonyConsoleStyle
++25) Composer\Test\Util\ProcessExecutorTest::testConsoleIODoesNotFormatSymfonyConsoleStyle
 +Failed asserting that two strings are identical.
 +--- Expected
 ++++ Actual
@@ -456,8 +509,8 @@
 +@ROOT@/tests/Composer/Test/Util/ProcessExecutorTest.php:117
 +
  ERRORS!
--Tests: 3328, Assertions: 7398, Errors: 1, Failures: 4, Skipped: 6.
-+Tests: 3328, Assertions: 7364, Errors: 12, Failures: 19, Skipped: 6.
+-Tests: 3328, Assertions: 7379, Errors: 14, Failures: 10, Skipped: 6.
++Tests: 3328, Assertions: 7345, Errors: 25, Failures: 25, Skipped: 6.
  
  Unsilenced deprecation notices (1)
  
