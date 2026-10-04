@@ -5468,6 +5468,21 @@ DOM_METHOD(vm_builtin_DOMElement_setAttribute)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( !DomThisModern(pCtx) && DomNameIs(zName,DOM_XMLNS_NAME) ){
+		/* The 2004 door reads the bare name as the DEFAULT declaration and
+		 * writes one, so `setAttribute('xmlns','urn:z')` puts an `xmlns=` on
+		 * the element and nothing on its attribute map -- and it answers a
+		 * plain true rather than the attribute node every other name gets,
+		 * because there is no attribute node to hand back.  The element does
+		 * not MOVE into what it declares (`namespaceURI` stays null, and a
+		 * child appended afterwards is in no namespace either); only the
+		 * binding is written.  A PREFIXED `xmlns:p` is not this door -- php
+		 * writes that one as an ordinary attribute, colon and all, which is
+		 * the asymmetry the modern tree drops. */
+		DomNsDeclare((xmlNodePtr)pNd->pNode,0,zVal);
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
 	xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName,(const xmlChar *)zVal);
 	if( DomThisModern(pCtx) ){
 		/* php 8.4 declares this one `void`: the write happens and the attribute
@@ -6028,10 +6043,15 @@ DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
 			int bXmlnsName = SyStrlen(zName) >= nXmlns
 				&& SyStrncmp(zName,DOM_XMLNS_NAME,nXmlns) == 0
 				&& (zName[nXmlns] == 0 || zName[nXmlns] == ':');
-			if( bXmlnsName ){
-				/* An xmlns name toggled ON becomes a DECLARATION bound to the
-				 * empty URI, not an attribute -- and it is written like one, so
-				 * it comes out where a written declaration comes out. */
+			if( bXmlnsName && !DomThisModern(pCtx) ){
+				/* On the 2004 tree an xmlns name toggled ON becomes a
+				 * DECLARATION bound to the empty URI, not an attribute -- and
+				 * it is written like one, so it comes out where a written
+				 * declaration comes out.  php 8.4's tree does NOT read the
+				 * name: `toggleAttribute('xmlns')` there writes an ordinary
+				 * attribute in NO namespace, the same one `setAttribute` on
+				 * that tree writes, so the two doors agree with each other and
+				 * the element declares nothing. */
 				DomNsDeclare(pElem,zName[nXmlns] == ':' ? (const xmlChar *)(zName+nXmlns+1) : 0,"");
 			}else{
 				xmlSetProp(pElem,(const xmlChar *)zName,(const xmlChar *)"");
