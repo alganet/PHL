@@ -19,6 +19,17 @@
 #include <libxml/HTMLtree.h>
 #include <libxml/chvalid.h>
 
+/* vm_dom_html5.c: the HTML5 tokenizer and tree constructor behind the two
+ * `Dom\HTMLDocument` parsing producers. */
+PH7_PRIVATE xmlDocPtr PH7_Html5Parse(SyMemBackend *pAlloc,const char *zSrc,int nSrc,
+	int iFlags,const char *zEnc,
+	void (*xErr)(void *,const char *,const char *,sxu32,sxu32,sxu32),void *pErrUser);
+/* `Dom\HTML_NO_DEFAULT_NS` is php's own bit, not one of libxml's, so there is
+ * no libxml symbol to bind it to; vm_libxml.c states the same number. */
+#define DOM_HTML_NO_DEFAULT_NS 2147483648LL
+#define DOM_HTML5_NOIMPLIED  0x01
+#define DOM_HTML5_NO_DEF_NS  0x02
+
 /*
  * ext/dom on libxml2: the DOM classes, declared and bodied in C.
  *
@@ -17013,6 +17024,190 @@ DOM_METHOD(vm_builtin_DomHTMLDocument_createEmpty)
 	return DomResultOwned(pCtx,pThis);
 }
 /*
+ * The two parsing producers, `Dom\HTMLDocument::createFromString(string $source,
+ * int $options = 0, ?string $overrideEncoding = null)` and its `createFromFile`
+ * twin.
+ *
+ * php parses HTML for this tree through lexbor, and the tree it answers is not
+ * the one libxml's HTML parser builds: an implied `<head>` and an implied
+ * `<tbody>` are both there, and neither is reachable from `htmlReadMemory` at
+ * any option setting. The algorithm is therefore ours -- PH7_Html5Parse --
+ * over the same libxml tree every other door of this family reads.
+ *
+ * Only FOUR of libxml's option bits are spellable here, and php names them in
+ * the refusal when a fifth is: this is not the 2004 parser's whole option word
+ * under a new name. The diagnostics are the algorithm's own, not libxml's, so
+ * they do not go through the structured channel -- they are plain warnings,
+ * which is what php prints for them, and `LIBXML_NOERROR` is what silences one.
+ */
+typedef struct dom_html5_errctx dom_html5_errctx;
+struct dom_html5_errctx {
+	ph7_context *pCtx;
+	int bQuiet;
+	/*
+	 * php prints every TOKENIZER diagnostic of a parse before any TREE one,
+	 * whatever order the source put them in -- lexbor hands it two lists and
+	 * it walks them in turn.  Both are collected as NUL-terminated runs and
+	 * flushed in that order once the parse is over.
+	 */
+	SyBlob sTok;
+	SyBlob sTree;
+};
+static void DomHtml5Err(void *pUser,const char *zKind,const char *zName,
+	sxu32 iLine,sxu32 iCol,sxu32 iCol2)
+{
+	dom_html5_errctx *pErr = (dom_html5_errctx *)pUser;
+	SyBlob *pOut = (zKind[0] == 't' && zKind[1] == 'o') ? &pErr->sTok : &pErr->sTree;
+	if( pErr->bQuiet ){
+		return;
+	}
+	/* php prints the span of the token's NAME, and a one-character span as a
+	 * single number rather than as `n-n`. */
+	if( iCol2 > iCol ){
+		SyBlobFormat(pOut,"%s error %s in Entity, line: %u, column: %u-%u",
+			zKind,zName,(unsigned int)iLine,
+			(unsigned int)iCol,(unsigned int)iCol2);
+	}else{
+		SyBlobFormat(pOut,"%s error %s in Entity, line: %u, column: %u",
+			zKind,zName,(unsigned int)iLine,(unsigned int)iCol);
+	}
+	SyBlobAppend(pOut,"",1);
+}
+/* Flush one collected run of diagnostics, in the order it was collected. */
+static void DomHtml5Flush(ph7_context *pCtx,SyBlob *pRun)
+{
+	const char *zCur = (const char *)SyBlobData(pRun);
+	const char *zEnd = zCur + SyBlobLength(pRun);
+	while( zCur < zEnd ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,zCur);
+		zCur += SyStrlen(zCur) + 1;
+	}
+}
+/*
+ * The HTML producers read their file through the STREAM layer, where the XML
+ * ones read it through libxml: php's HTML parser is lexbor, which never had a
+ * libxml I/O channel to fail in, so the refusal a missing path draws here is
+ * php's own `Failed to open stream` and not the `failed to load external
+ * entity` its XML twin prints for the same path.
+ */
+static int DomHtml5ReadFile(ph7_context *pCtx,const char *zFile,int nFile,SyBlob *pBody)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const ph7_io_stream *pStream;
+	void *pHandle;
+	SyBlobInit(pBody,&pVm->sAllocator);
+	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	pHandle = (pStream && pStream->xRead) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
+		PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx)) : 0;
+	if( pHandle == 0 ){
+		VfsThrowOpenWarning(pCtx,zFile);
+		return 0;
+	}
+	PH7_StreamReadWholeFile(pHandle,pStream,pBody);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	return 1;
+}
+static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zFn = bFile ? "Dom\\HTMLDocument::createFromFile"
+		: "Dom\\HTMLDocument::createFromString";
+	const sxi64 iAllowed = (sxi64)XML_PARSE_NOERROR | (sxi64)XML_PARSE_COMPACT
+		| (sxi64)HTML_PARSE_NOIMPLIED | (sxi64)DOM_HTML_NO_DEFAULT_NS;
+	sxi64 iOpts = nArg > 1 ? ph7_value_to_int64(apArg[1]) : 0;
+	const char *zSrc;
+	int nSrc = 0,nEnc = 0,iFlags = 0;
+	const char *zEnc = (nArg > 2 && !ph7_value_is_null(apArg[2]))
+		? ph7_value_to_string(apArg[2],&nEnc) : 0;
+	dom_html5_errctx sErr;
+	ph7_class_instance *pThis;
+	phl_domnode *pRes;
+	SyBlob sBody,sPath;
+	xmlDocPtr pDoc;
+	zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";
+	if( bFile && nSrc != (int)SyStrlen(zSrc) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($path) must not contain any null bytes",zFn);
+	}
+	if( (iOpts & ~iAllowed) != 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #2 ($options) contains invalid flags (allowed flags: "
+			"LIBXML_NOERROR, LIBXML_COMPACT, LIBXML_HTML_NOIMPLIED, "
+			"Dom\\HTML_NO_DEFAULT_NS)",zFn);
+	}
+	if( zEnc ){
+		if( nEnc != (int)SyStrlen(zEnc) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #3 ($overrideEncoding) must not contain any null bytes",zFn);
+		}
+		if( !DomEncIsLabel(zEnc,nEnc) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #3 ($overrideEncoding) must be a valid document encoding",zFn);
+		}
+	}
+	if( bFile && nSrc < 1 ){
+		/* The empty path is the ONE refusal on this class that does not name
+		 * the method it came from: php raises it from the stream layer. */
+		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
+	}
+	if( bFile ){
+		if( !DomHtml5ReadFile(pCtx,zSrc,nSrc,&sBody) ){
+			SyBlobRelease(&sBody);
+			return PH7_VmThrowException(pCtx,"Exception",
+				"Cannot open file '%.*s'",nSrc,zSrc);
+		}
+		SyBlobInit(&sPath,&pVm->sAllocator);
+		DomAbsPath(pCtx,zSrc,&sPath);
+	}else{
+		SyBlobInit(&sBody,&pVm->sAllocator);
+		SyBlobAppend(&sBody,zSrc,(sxu32)nSrc);
+		SyBlobInit(&sPath,&pVm->sAllocator);
+		SyBlobAppend(&sPath,"about:blank",sizeof("about:blank")-1);
+		SyBlobNullAppend(&sPath);
+	}
+	if( iOpts & (sxi64)HTML_PARSE_NOIMPLIED ){
+		iFlags |= DOM_HTML5_NOIMPLIED;
+	}
+	if( iOpts & (sxi64)DOM_HTML_NO_DEFAULT_NS ){
+		iFlags |= DOM_HTML5_NO_DEF_NS;
+	}
+	sErr.pCtx = pCtx;
+	sErr.bQuiet = (iOpts & (sxi64)XML_PARSE_NOERROR) ? 1 : 0;
+	SyBlobInit(&sErr.sTok,&pVm->sAllocator);
+	SyBlobInit(&sErr.sTree,&pVm->sAllocator);
+	pDoc = PH7_Html5Parse(&pVm->sAllocator,(const char *)SyBlobData(&sBody),
+		(int)SyBlobLength(&sBody),iFlags,"UTF-8",DomHtml5Err,(void *)&sErr);
+	DomHtml5Flush(pCtx,&sErr.sTok);
+	DomHtml5Flush(pCtx,&sErr.sTree);
+	SyBlobRelease(&sErr.sTok);
+	SyBlobRelease(&sErr.sTree);
+	if( pDoc == 0 ){
+		SyBlobRelease(&sBody);
+		SyBlobRelease(&sPath);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pDoc->URL = xmlStrdup((const xmlChar *)SyBlobData(&sPath));
+	SyBlobRelease(&sBody);
+	SyBlobRelease(&sPath);
+	pThis = DomNewHtmlDoc(pCtx,pDoc);
+	pRes = pThis ? DomResOf(pThis) : 0;
+	if( pRes == 0 ){
+		if( pThis ){
+			PH7_ClassInstanceUnref(pThis);
+		}
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return DomResultOwned(pCtx,pThis);
+}
+DOM_METHOD(vm_builtin_DomHTMLDocument_createFromString)
+{
+	return DomHtml5Create(pCtx,nArg,apArg,FALSE);
+}
+DOM_METHOD(vm_builtin_DomHTMLDocument_createFromFile)
+{
+	return DomHtml5Create(pCtx,nArg,apArg,TRUE);
+}
+/*
  * Dom\Implementation::createHTMLDocument(?string $title = null): Dom\HTMLDocument
  *
  * php's third producer, and an INSTANCE method where the two document-class
@@ -18495,6 +18690,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aMHtmlDocMethod[] = {
 		{ "createEmpty", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $encoding = 'UTF-8'",
 		  "Dom\\HTMLDocument", vm_builtin_DomHTMLDocument_createEmpty },
+		{ "createFromString", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "string $source, int $options = 0, ?string $overrideEncoding = null",
+		  "Dom\\HTMLDocument", vm_builtin_DomHTMLDocument_createFromString },
+		{ "createFromFile", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "string $path, int $options = 0, ?string $overrideEncoding = null",
+		  "Dom\\HTMLDocument", vm_builtin_DomHTMLDocument_createFromFile },
 		{ "saveHtml", PH7_MOD_PUBLIC, "?Dom\\Node $node = null", "string",
 		  vm_builtin_DomHTMLDocument_saveHtml },
 		{ "saveHtmlFile", PH7_MOD_PUBLIC, "string $filename", "@int|false",

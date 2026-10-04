@@ -117,6 +117,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_libxml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_dom$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_dom_html5$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xmlwriter$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_zip$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_simplexml$(OBJ_SUFFIX) \
