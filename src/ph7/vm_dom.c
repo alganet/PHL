@@ -6522,6 +6522,26 @@ static int DomC14NCollectPrefix(ph7_value *pKey,ph7_value *pVal,void *pUserData)
 	return PH7_OK;
 }
 /*
+ * Is the node reachable from its document, rather than merely made by one?
+ *
+ * php's namespaced tree asks this before it canonicalizes anything, and "made
+ * by" is not enough: a fresh node, a node lifted back out with removeChild, and
+ * a whole subtree hanging off a DocumentFragment all carry a `doc` pointer and
+ * none of them is in the document. Walking the parents to the document node is
+ * the same question libxml's own node set would answer with "visible from
+ * nowhere", only asked before the walk instead of after it.
+ */
+static int DomNodeIsAttached(xmlNodePtr pNode)
+{
+	xmlNodePtr p;
+	for( p = pNode ; p ; p = p->parent ){
+		if( p->type == XML_DOCUMENT_NODE || p->type == XML_HTML_DOCUMENT_NODE ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
  * Canonicalize the receiver into *pzOut (xmlFree'd by the caller) and answer
  * its byte count, or -1 when php answers false/"" instead. *pRc carries a
  * refusal php raises before anything is written.
@@ -6554,6 +6574,16 @@ static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos
 	SyBlobInit(&sPrefixes.sPool,&pVm->sAllocator);
 	SySetInit(&sPrefixes.aOfs,&pVm->sAllocator,sizeof(sxu32));
 	if( pNode == 0 ){
+		nOut = -1;
+		goto done;
+	}
+	/* php 8.4's tree refuses a detached node outright where the 2004 door
+	 * canonicalizes it to the empty string. The refusal comes FIRST, ahead of
+	 * every argument: a bad `$xpath` query and an inclusive-mode `$nsPrefixes`
+	 * list both reach it without their own complaint in front. */
+	if( DomThisModern(pCtx) && !DomNodeIsAttached(pNode) ){
+		*pRc = DomThrowSentence(pCtx,DOM_ERR_HIERARCHY,
+			"Canonicalization can only happen on nodes attached to a document.");
 		nOut = -1;
 		goto done;
 	}
