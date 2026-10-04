@@ -5966,19 +5966,44 @@ static int DomCharLength(xmlNodePtr pNode)
  * for every offset and every count. php's own split, kept because a program
  * handed a byte string that is not UTF-8 gets a value back from three of these
  * and an exception from the other two.
+ *
+ * php 8.4's namespaced tree drops the negative screen and takes the standard's
+ * UNSIGNED offset and count instead: both are read as 32-bit quantities, so a
+ * negative is not refused, it IS that bit pattern. `substringData(0,-1)` is the
+ * whole rest of the string there and an Index Size Error here, and
+ * `substringData(0,-4294967295)` is one character rather than the rest, because
+ * the low 32 bits of that count are 1. The screen still runs on the SIGNED
+ * value first, which is why a positive count above SXI32_HIGH is refused under
+ * both names while a negative one of far greater magnitude is not. The offset
+ * follows whichever bound its method already picks: the two that compare it
+ * unsigned read it unsigned, and the two that compare it signed keep php's
+ * refusal there too -- `deleteData(-1,1)` is an Index Size Error in both trees.
  */
-static int DomCharRange(ph7_context *pCtx,xmlNodePtr pNode,ph7_int64 iOffset,
-	ph7_int64 iCount,int bHasCount,int bUnsignedBound,int *pnLen,int *pRc)
+static int DomCharRange(ph7_context *pCtx,xmlNodePtr pNode,ph7_int64 *piOffset,
+	ph7_int64 *piCount,int bHasCount,int bUnsignedBound,int bModern,int *pnLen,int *pRc)
 {
+	ph7_int64 iOffset = *piOffset;
+	ph7_int64 iCount = *piCount;
 	int nLen = DomCharLength(pNode);
 	int bPastEnd = bUnsignedBound ? (sxu32)iOffset > (sxu32)nLen
 	                              : iOffset > (ph7_int64)nLen;
 	*pnLen = nLen;
-	if( iOffset < 0 || (bHasCount && iCount < 0)
+	if( (iOffset < 0 && !(bModern && bUnsignedBound))
+	 || (bHasCount && iCount < 0 && !bModern)
 	 || iOffset > (ph7_int64)SXI32_HIGH || iCount > (ph7_int64)SXI32_HIGH
 	 || bPastEnd ){
 		*pRc = DomThrow(pCtx,DOM_ERR_INDEX_SIZE);
 		return -1;
+	}
+	if( bModern ){
+		/* Past the screen, hand the caller back the unsigned reading so the
+		 * clamp and the cut below stay plain non-negative arithmetic. */
+		if( iOffset < 0 ){
+			*piOffset = (ph7_int64)(sxu32)iOffset;
+		}
+		if( bHasCount && iCount < 0 ){
+			*piCount = (ph7_int64)(sxu32)iCount;
+		}
 	}
 	return 0;
 }
@@ -5995,7 +6020,8 @@ DOM_METHOD(vm_builtin_DOMCharacterData_substringData)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( DomCharRange(pCtx,pNode,iOffset,iCount,TRUE,TRUE,&nLen,&rc) != 0 ){
+	if( DomCharRange(pCtx,pNode,&iOffset,&iCount,TRUE,TRUE,DomThisModern(pCtx),
+		&nLen,&rc) != 0 ){
 		return rc;
 	}
 	if( pNode->content == 0 ){
@@ -6005,8 +6031,13 @@ DOM_METHOD(vm_builtin_DOMCharacterData_substringData)
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	if( (sxu32)(iOffset+iCount) > (sxu32)nLen ){
-		iCount = (ph7_int64)nLen - iOffset;
+	/* The LIMIT keeps its unsigned reading -- a -1 length is malformed content
+	 * and means "no limit", which is what lets three of these five answer on such
+	 * a node at all -- but the SUM is compared in full rather than at 32 bits: an
+	 * unsigned count of 4294967295 at offset 10 wraps to 9 there, and a cut that
+	 * runs off the end reads as one that is already inside the string. */
+	if( iOffset + iCount > (ph7_int64)(sxu32)nLen ){
+		iCount = (ph7_int64)(sxu32)nLen - iOffset;
 	}
 	zSub = xmlUTF8Strsub(pNode->content,(int)iOffset,(int)iCount);
 	ph7_result_string(pCtx,zSub ? (const char *)zSub : "",-1);
@@ -6025,7 +6056,11 @@ DOM_METHOD(vm_builtin_DOMCharacterData_appendData)
 	if( pNd ){
 		xmlTextConcat((xmlNodePtr)pNd->pNode,(const xmlChar *)zData,nData);
 	}
-	ph7_result_bool(pCtx,1);
+	if( !DomThisModern(pCtx) ){
+		/* `Dom\\CharacterData::appendData()` is declared `void`; a native body
+		 * that sets a result keeps it, so the true is the 2004 name's alone. */
+		ph7_result_bool(pCtx,1);
+	}
 	return PH7_OK;
 }
 /*
@@ -6054,11 +6089,12 @@ static int DomCharSplice(ph7_context *pCtx,ph7_int64 iOffset,ph7_int64 iCount,
 	}
 	/* insertData has no count and takes the unsigned bound; the two that DO
 	 * take one take the signed bound. */
-	if( DomCharRange(pCtx,pNode,iOffset,iCount,bHasCount,!bHasCount,&nLen,&rc) != 0 ){
+	if( DomCharRange(pCtx,pNode,&iOffset,&iCount,bHasCount,!bHasCount,
+		DomThisModern(pCtx),&nLen,&rc) != 0 ){
 		return rc;
 	}
-	if( (sxu32)(iOffset+iCount) > (sxu32)nLen ){
-		iCount = (ph7_int64)nLen - iOffset;
+	if( iOffset + iCount > (ph7_int64)(sxu32)nLen ){
+		iCount = (ph7_int64)(sxu32)nLen - iOffset;
 	}
 	zHead = iOffset > 0 ? xmlUTF8Strndup(pNode->content,(int)iOffset)
 	                    : xmlStrdup((const xmlChar *)"");
@@ -6079,7 +6115,9 @@ static int DomCharSplice(ph7_context *pCtx,ph7_int64 iOffset,ph7_int64 iCount,
 	if( zTail ){
 		xmlFree(zTail);
 	}
-	ph7_result_bool(pCtx,1);
+	if( !DomThisModern(pCtx) ){
+		ph7_result_bool(pCtx,1);
+	}
 	return PH7_OK;
 }
 /* DOMCharacterData::insertData(int $offset, string $data): true */
@@ -6111,18 +6149,30 @@ DOM_METHOD(vm_builtin_DOMCharacterData_replaceData)
  * plain `false` where a negative one is a ValueError, and splitting a CDATA
  * section produces a TEXT node -- so `<![CDATA[abcdef]]>` split at 2 serializes
  * as `<![CDATA[ab]]>cdef`.
+ *
+ * php 8.4's `Dom\Text::splitText(int $offset): Dom\Text` returns a node or
+ * nothing, so its past-end answer cannot be `false`: it is an Index Size Error
+ * there. The negative one stays a ValueError in both trees, and the sentence
+ * names the class that DECLARED the method rather than the receiver's -- a
+ * `Dom\CDATASection` is told about `Dom\Text::splitText()` and a
+ * DOMCdataSection about `DOMText::splitText()`.
  */
 DOM_METHOD(vm_builtin_DOMText_splitText)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	ph7_int64 iOffset = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	int bModern = DomThisModern(pCtx);
 	xmlChar *zHead,*zTail;
 	xmlNodePtr pNew;
 	int nLen;
 	if( iOffset < 0 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"DOMText::splitText(): Argument #1 ($offset) must be greater than or equal to 0");
+			bModern
+			? "Dom\\Text::splitText(): Argument #1 ($offset) must be greater "
+			  "than or equal to 0"
+			: "DOMText::splitText(): Argument #1 ($offset) must be greater "
+			  "than or equal to 0");
 	}
 	if( pNode == 0
 	 || (pNode->type != XML_TEXT_NODE && pNode->type != XML_CDATA_SECTION_NODE) ){
@@ -6136,6 +6186,9 @@ DOM_METHOD(vm_builtin_DOMText_splitText)
 	}
 	nLen = DomCharLength(pNode);
 	if( iOffset > (ph7_int64)nLen ){
+		if( bModern ){
+			return DomThrow(pCtx,DOM_ERR_INDEX_SIZE);
+		}
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -10276,6 +10329,15 @@ static int DomPiProp(ph7_context *pCtx,const char *zName)
 		DomDataValue(pCtx,pNode);
 		return 1;
 	}
+	/* php 8.4 puts the processing instruction UNDER `Dom\\CharacterData`, where
+	 * the 2004 one sits directly under DOMNode -- so `$pi->length` and the two
+	 * element siblings are answers in that tree and undefined properties in
+	 * this one. The reader is the character data's own; nothing about a PI's
+	 * content differs, only where php filed the class. */
+	if( DomThisModern(pCtx)
+	 && (DomCharDataProp(pCtx,zName) || DomChildNodeProp(pCtx,zName)) ){
+		return 1;
+	}
 	return DomNodeProp(pCtx,zName);
 }
 /*
@@ -11887,10 +11949,34 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__sleep", PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },
 		{ "__wakeup", PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },
 	};
+	/* php's five, in its own declaration order -- the 2004 bodies again, because
+	 * the CUT is the same cut. What the rows carry that DOMCharacterData's do not
+	 * is a real return: the four writers are `void` where the old ones answer
+	 * `true`, so `$t->appendData('x')` is null under this name and true under the
+	 * other, and substringData's `string` is no longer tentative. */
+	static const PH7_NativeMethodDef aMCharMethod[] = {
+		{ "substringData", PH7_MOD_PUBLIC, "int $offset, int $count", "string",
+		  vm_builtin_DOMCharacterData_substringData },
+		{ "appendData",    PH7_MOD_PUBLIC, "string $data", "void",
+		  vm_builtin_DOMCharacterData_appendData },
+		{ "insertData",    PH7_MOD_PUBLIC, "int $offset, string $data", "void",
+		  vm_builtin_DOMCharacterData_insertData },
+		{ "deleteData",    PH7_MOD_PUBLIC, "int $offset, int $count", "void",
+		  vm_builtin_DOMCharacterData_deleteData },
+		{ "replaceData",   PH7_MOD_PUBLIC, "int $offset, int $count, string $data", "void",
+		  vm_builtin_DOMCharacterData_replaceData },
+	};
+	/* php's return here is `Dom\Text` and not `Dom\Text|false`, which is what
+	 * makes the past-end offset an Index Size Error rather than a false. A
+	 * `Dom\CDATASection` splits into a `Dom\Text` exactly as the 2004 pair do. */
+	static const PH7_NativeMethodDef aMTextMethod[] = {
+		{ "splitText", PH7_MOD_PUBLIC, "int $offset", "Dom\\Text",
+		  vm_builtin_DOMText_splitText },
+	};
 	static const PH7_NativePropDef aMCharProp[] = {
+		DOM_MCHILD_VPROPS,
 		DOM_VPROP("data","string"),
-		DOM_VPROP("length","int"),
-		DOM_MCHILD_VPROPS
+		DOM_VPROP("length","int")
 	};
 	static const PH7_NativePropDef aMAttrProp[] = {
 		DOM_VPROP("namespaceURI","?string"),
@@ -12071,7 +12157,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  aMNodeMethod, SX_ARRAYSIZE(aMNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
 		  aMNodeProp, SX_ARRAYSIZE(aMNodeProp), 0, 0, DomPresent },
 		{ "Dom\\CharacterData", "Dom\\Node", "Dom\\ChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMCharProp, SX_ARRAYSIZE(aMCharProp), 0, 0, DomPresent },
+		  aMCharMethod, SX_ARRAYSIZE(aMCharMethod), 0, 0,
+		  aMCharProp, SX_ARRAYSIZE(aMCharProp), 0, 0, DomPresent },
 		{ "Dom\\Attr", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, aMAttrProp, SX_ARRAYSIZE(aMAttrProp), 0, 0, DomPresent },
 		{ "Dom\\Element", "Dom\\Node", "Dom\\ChildNode,Dom\\ParentNode",
@@ -12082,7 +12169,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "Dom\\HTMLElement", "Dom\\Element", "Dom\\ChildNode,Dom\\ParentNode",
 		  PH7_CLASS_NOSERIALIZE_SUBOK, 0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
 		{ "Dom\\Text", "Dom\\CharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMTextProp, SX_ARRAYSIZE(aMTextProp), 0, 0, DomPresent },
+		  aMTextMethod, SX_ARRAYSIZE(aMTextMethod), 0, 0,
+		  aMTextProp, SX_ARRAYSIZE(aMTextProp), 0, 0, DomPresent },
 		{ "Dom\\CDATASection", "Dom\\Text", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
 		{ "Dom\\Comment", "Dom\\CharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
