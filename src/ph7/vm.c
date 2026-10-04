@@ -2372,8 +2372,8 @@ static sxi32 VmMountUserClassMethods(
 	SyHashEntry *pEntry;
 	sxi32 rc;
 	/* Install class methods */
-	if( pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
-		/* Do not mount interface/trait methods since they are not directly invocable.
+	if( pClass->iFlags & PH7_CLASS_TRAIT ){
+		/* Do not mount trait methods since they are not directly invocable.
 		 */
 		return SXRET_OK;
 	}
@@ -2386,7 +2386,12 @@ static sxi32 VmMountUserClassMethods(
 	SyHashResetLoopCursor(&pClass->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
 		pMeth = (ph7_class_method *)pEntry->pUserData;
-		if( (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
+		/* A DECLARED abstract method (an interface's included) is installed too: php
+		 * runs its EMPTY body through the two doors that do not refuse it, and every
+		 * other door refuses on the flag first. The compiler gave it that body; one the
+		 * engine synthesized has none and stays uninstalled. */
+		if( (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0
+		 || SySetUsed(&pMeth->sFunc.aByteCode) > 0 ){
 			rc = PH7_VmInstallUserFunction(&(*pVm),&pMeth->sFunc,&pMeth->sVmName);
 			if( rc != SXRET_OK ){
 				return rc;

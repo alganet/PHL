@@ -7412,6 +7412,20 @@ static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall,
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
+	if( sRef.pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+		/* php refuses an abstract method before it looks at the receiver, and names the
+		 * class and method the reflector was made for. getClosure() does not: its closure
+		 * runs php's empty abstract body. */
+		const char *zClass = "", *zName = "";
+		int nClass = 0, nName = 0;
+		ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+		if( pThis ){
+			PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+			PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+		}
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Trying to invoke abstract method %.*s::%.*s()", nClass, zClass, nName, zName);
+	}
 	rc = ReflectMethodReceiver(pCtx, &sRef, pObject, &pRecv, 0);
 	if( rc != PH7_OK ){
 		return rc;

@@ -2892,7 +2892,9 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							PH7_THROW_ROUTE_MIDEXPR(rc)
 						}
 					}
-					if( pMeth == 0 || (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){
+					/* The constructor request never asks whether the constructor is
+					 * abstract: php runs an abstract (or interface) one as its empty body. */
+					if( pMeth == 0 || ((pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) && !bCtorLiteral) ){
 						if( pMeth ){
 							SyBlob sErrM;
 							sxi32 rcErr;

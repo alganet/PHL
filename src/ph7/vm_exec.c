@@ -1699,12 +1699,6 @@ static const char * VmFccCtorError(ph7_vm *pVm,ph7_class *pClass,ph7_class_insta
 		SyBufferFormat(zBuf,nBuf,"Cannot call private %z::__construct()",&pClass->sDisp);
 		return zBuf;
 	}
-	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
-		/* php runs an abstract constructor reached this way as an empty body; PHL has no
-		 * body to run, and refuses it as the call does. */
-		SyBufferFormat(zBuf,nBuf,"Cannot call abstract method %z::__construct()",&pClass->sDisp);
-		return zBuf;
-	}
 	*ppRecv = PH7_VmCallerThisFor(&(*pVm),pClass);
 	if( *ppRecv == 0 ){
 		SyBufferFormat(zBuf,nBuf,"Non-static method %z::%z() cannot be called statically",

@@ -2149,6 +2149,17 @@ SkipToStringType:
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI /* ';'*/) ){
 			pMeth->sFunc.nEndLine = pGen->pIn->nLine;
 		}
+		{
+			/* php compiles an abstract method to an EMPTY body, and two doors run it
+			 * rather than refusing: a literal `X::__construct()` naming an abstract
+			 * (or interface) constructor, and a ReflectionMethod::getClosure() closure.
+			 * The parameters bind and check, and the call answers NULL. Every other
+			 * door refuses on the flag before it would reach this. */
+			SySet *pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+			PH7_VmSetByteCodeContainer(pGen->pVm,&pMeth->sFunc.aByteCode);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);
+			PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+		}
 		/* Only method signature is allowed */
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI /* ';'*/) == 0 ){
 			/* php words this as the declaration's problem rather than a missing
