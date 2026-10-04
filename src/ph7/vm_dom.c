@@ -11809,6 +11809,7 @@ DOM_METHOD(vm_builtin_DomXMLDocument_xinclude)
 
 /*
  * DOMDocument::registerNodeClass(string $baseClass, ?string $extendedClass): true
+ * Dom\Document::registerNodeClass(string $baseClass, ?string $extendedClass): void
  *
  * php lets a program say which class a node should be WRAPPED in, per
  * document: register `MyElement` against `DOMElement` and every element of
@@ -11866,8 +11867,18 @@ static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iK
 	PH7_MemObjRelease(&sKey);
 	return zBase;
 }
-DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
+/* The two doors' one body. bModern picks the tree the base must be derived
+ * from -- and with it the ROOT class name a refusal quotes -- while the name a
+ * diagnostic answers under is the class that DECLARES the method, which on the
+ * modern tree is the abstract `Dom\Document` and never the final document the
+ * call was made on. php's modern door returns void where the 2004 one returns
+ * true. */
+static int DomRegisterNodeClassRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	int bModern)
 {
+	const char *zFn = bModern ? "Dom\\Document::registerNodeClass"
+		: "DOMDocument::registerNodeClass";
+	const char *zRoot = bModern ? "Dom\\Node" : "DOMNode";
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	int nBase = 0,nExt = 0;
@@ -11878,31 +11889,38 @@ DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
 	ph7_hashmap *pMap;
 	ph7_value sKey,sVal;
 	pBase = PH7_VmExtractClass(pVm,zBase,(sxu32)nBase,FALSE,0);
-	pNode = PH7_VmExtractClass(pVm,"DOMNode",sizeof("DOMNode")-1,FALSE,0);
+	pNode = PH7_VmExtractClass(pVm,zRoot,(sxu32)SyStrlen(zRoot),FALSE,0);
 	if( pBase == 0 || pNode == 0 || !PH7_VmInstanceOf(pBase,pNode) ){
 		return PH7_VmThrowException(pCtx,"TypeError",
-			"DOMDocument::registerNodeClass(): Argument #1 ($baseClass) must be a "
-			"class name derived from DOMNode, %.*s given",nBase,zBase);
+			"%s(): Argument #1 ($baseClass) must be a class name derived from "
+			"%s, %.*s given",zFn,zRoot,nBase,zBase);
+	}
+	/* A base nothing can be instantiated as registers nothing: php screens it
+	 * on BOTH trees, and reaches the refusal on its own classes only here,
+	 * where `Dom\Document` itself is abstract. */
+	if( pBase->iFlags & PH7_CLASS_ABSTRACT ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($baseClass) must not be an abstract class",zFn);
 	}
 	if( zExt ){
 		pExt = PH7_VmExtractClass(pVm,zExt,(sxu32)nExt,FALSE,0);
 		if( pExt == 0 ){
 			return PH7_VmThrowException(pCtx,"TypeError",
-				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "
-				"a valid class name or null, %.*s given",nExt,zExt);
+				"%s(): Argument #2 ($extendedClass) must be "
+				"a valid class name or null, %.*s given",zFn,nExt,zExt);
 		}
 		if( !PH7_VmInstanceOf(pExt,pBase) ){
 			/* php's plain Error here, not a TypeError: the name IS a class, it
 			 * is simply the wrong one. */
 			return PH7_VmThrowException(pCtx,"Error",
-				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "
+				"%s(): Argument #2 ($extendedClass) must be "
 				"a class name derived from %z or null, %.*s given",
-				&pBase->sDisp,nExt,zExt);
+				zFn,&pBase->sDisp,nExt,zExt);
 		}
 		if( pExt->iFlags & PH7_CLASS_ABSTRACT ){
 			return PH7_VmThrowException(pCtx,"ValueError",
-				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must "
-				"not be an abstract class");
+				"%s(): Argument #2 ($extendedClass) must "
+				"not be an abstract class",zFn);
 		}
 	}
 	pMap = DomNodeClassMap(pVm,pThis,TRUE);
@@ -11922,8 +11940,18 @@ DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
 		}
 	}
 	PH7_MemObjRelease(&sKey);
-	ph7_result_bool(pCtx,1);
+	if( !bModern ){
+		ph7_result_bool(pCtx,1);
+	}
 	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
+{
+	return DomRegisterNodeClassRun(pCtx,nArg,apArg,FALSE);
+}
+DOM_METHOD(vm_builtin_DomDocument_registerNodeClass)
+{
+	return DomRegisterNodeClassRun(pCtx,nArg,apArg,TRUE);
 }
 
 /* ===== DOMImplementation ===== */
@@ -15553,6 +15581,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createAttributeNS },
 		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "?Dom\\Element",
 		  vm_builtin_DOMDocument_getElementById },
+		/* php declares the wrap table's door BETWEEN the lookup above and the
+		 * schema four below, and answers every one of its refusals under this
+		 * abstract class's name rather than the final document's. */
+		{ "registerNodeClass",    PH7_MOD_PUBLIC,
+		  "string $baseClass, ?string $extendedClass", "void",
+		  vm_builtin_DomDocument_registerNodeClass },
 		/* The schema four, declared HERE and not on either final document: the
 		 * name they answer under is this abstract class's. php states the option
 		 * word on the schema pair alone, exactly as it does on the 2004 tree. */
