@@ -3486,6 +3486,7 @@ static xmlNsPtr DomNsForCreate(xmlNodePtr pNode,const char *zUri,const xmlChar *
  * Only called when a write actually declared something, which is what keeps it
  * off the ordinary path.
  */
+static int DomNsIsParked(xmlDocPtr pDoc,xmlNsPtr pNs);
 static void DomNsRespell(xmlNodePtr pNode,int bAttr)
 {
 	xmlNsPtr pNs = pNode->ns,pAlt;
@@ -3493,6 +3494,12 @@ static void DomNsRespell(xmlNodePtr pNode,int bAttr)
 	 * itself, or the element an attribute belongs to. */
 	xmlNodePtr pSite = bAttr ? pNode->parent : pNode;
 	if( pNs == 0 || pNs->href == 0 || pSite == 0 ){
+		return;
+	}
+	if( pNs->prefix == 0 && DomNsIsParked(pNode->doc,pNs) ){
+		/* A binding the namespaced factory left declared NOWHERE has no
+		 * spelling to lose, and a declaration is the one thing it must not
+		 * acquire (DomNsForCreateModern). */
 		return;
 	}
 	if( xmlSearchNs(pNode->doc,pNode,pNs->prefix) == pNs ){
@@ -3562,6 +3569,182 @@ static void DomNsPark(xmlNodePtr pOwner,xmlNsPtr pNs)
 	for( pTail = pDoc->oldNs ; pTail->next ; pTail = pTail->next ){}
 	pTail->next = pNs;
 }
+/* Is pNs one of the document's PARKED bindings -- declared on no element, and
+ * so resolvable from nowhere? The list is short: libxml's own `xml`
+ * declaration, whatever a write removed, and the unprefixed bindings the
+ * namespaced factory hands out. */
+static int DomNsIsParked(xmlDocPtr pDoc,xmlNsPtr pNs)
+{
+	xmlNsPtr pCur;
+	if( pDoc == 0 || pNs == 0 ){
+		return 0;
+	}
+	for( pCur = pDoc->oldNs ; pCur ; pCur = pCur->next ){
+		if( pCur == pNs ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * A parked binding is the one thing libxml's reconciliation cannot cope with:
+ * finding a namespace it can resolve from nowhere, it mints a declaration for
+ * it on the spot under a generated prefix (`default`, then `default1`) -- and
+ * that declaration is exactly what the binding must never acquire. php never
+ * meets this because its namespaced tree does not reconcile at all; here the
+ * walk steps over those nodes instead, by taking the namespace off them for the
+ * duration and handing it back after. Nothing else about them changes: they are
+ * already spelled the only way they can be spelled.
+ */
+typedef struct DomNsHold DomNsHold;
+struct DomNsHold {
+	xmlNodePtr *apNode;    /* the nodes the namespace was taken from */
+	xmlNsPtr *apNs;        /* and what each one carried */
+	int nUsed;
+	int nAlloc;
+};
+static void DomNsHoldInit(DomNsHold *pHold)
+{
+	pHold->apNode = 0;
+	pHold->apNs = 0;
+	pHold->nUsed = 0;
+	pHold->nAlloc = 0;
+}
+/* Remember what pNode carries, so it can be handed back. 0 means the memory was
+ * not there: the caller stops collecting and leaves the rest of the walk alone,
+ * which costs a spelling rather than the tree. */
+static int DomNsHoldAdd(DomNsHold *pHold,xmlNodePtr pNode)
+{
+	if( pHold->nUsed == pHold->nAlloc ){
+		int nNew = pHold->nAlloc ? pHold->nAlloc * 2 : 8;
+		xmlNodePtr *apNode;
+		xmlNsPtr *apNs;
+		apNode = (xmlNodePtr *)xmlRealloc(pHold->apNode,
+			(size_t)nNew * sizeof(xmlNodePtr));
+		if( apNode == 0 ){
+			return 0;
+		}
+		pHold->apNode = apNode;
+		apNs = (xmlNsPtr *)xmlRealloc(pHold->apNs,(size_t)nNew * sizeof(xmlNsPtr));
+		if( apNs == 0 ){
+			return 0;
+		}
+		pHold->apNs = apNs;
+		pHold->nAlloc = nNew;
+	}
+	pHold->apNode[pHold->nUsed] = pNode;
+	pHold->apNs[pHold->nUsed] = pNode->ns;
+	pHold->nUsed++;
+	return 1;
+}
+static void DomNsHoldParked(DomNsHold *pHold,xmlNodePtr pRoot)
+{
+	xmlNodePtr pCur = pRoot;
+	DomNsHoldInit(pHold);
+	while( pCur ){
+		if( pCur->type == XML_ELEMENT_NODE && pCur->ns != 0 && pCur->ns->prefix == 0
+		 && DomNsIsParked(pCur->doc,pCur->ns) ){
+			if( !DomNsHoldAdd(pHold,pCur) ){
+				return;
+			}
+			pCur->ns = 0;
+		}
+		pCur = DomWalkNext(pCur,pRoot);
+	}
+}
+static void DomNsReleaseParked(DomNsHold *pHold)
+{
+	int i;
+	for( i = 0 ; i < pHold->nUsed ; ++i ){
+		pHold->apNode[i]->ns = pHold->apNs[i];
+	}
+	if( pHold->apNode ){
+		xmlFree(pHold->apNode);
+	}
+	if( pHold->apNs ){
+		xmlFree(pHold->apNs);
+	}
+}
+/* libxml's own reconciliation, with the parked bindings held out of its way. */
+static void DomReconciliateNs(xmlNodePtr pNode)
+{
+	DomNsHold sHold;
+	DomNsHoldParked(&sHold,pNode);
+	xmlReconciliateNs(pNode->doc,pNode);
+	DomNsReleaseParked(&sHold);
+}
+/*
+ * php's `dom_relink_ns_decls`, the DEFAULT-namespace half, which its namespaced
+ * tree runs over the whole document before canonicalizing it and undoes after.
+ *
+ * An element's default namespace is not what the element POINTS at, it is what
+ * the nearest `xmlns=` in scope says -- so php hands the canonicalizer the
+ * declaration it would find rather than the binding the node carries, and a
+ * binding declared nowhere becomes no namespace at all. Without it libxml
+ * canonicalizes from the pointer, which puts an `xmlns=` on the descendants of
+ * a node whose namespace the document never declares (and, for a descendant in
+ * NO namespace, one that says it is).
+ *
+ * A declaration that IS in scope answers itself here, so the pass is a no-op on
+ * every document that was parsed rather than built.
+ */
+static void DomC14NHoldDefaults(DomNsHold *pHold,xmlNodePtr pRoot)
+{
+	xmlNodePtr pCur = pRoot;
+	DomNsHoldInit(pHold);
+	while( pCur ){
+		if( pCur->type == XML_ELEMENT_NODE && pCur->ns != 0 && pCur->ns->prefix == 0 ){
+			xmlNsPtr pInScope = xmlSearchNs(pCur->doc,pCur,0);
+			if( pInScope != pCur->ns ){
+				if( !DomNsHoldAdd(pHold,pCur) ){
+					return;
+				}
+				pCur->ns = pInScope;
+			}
+		}
+		pCur = DomWalkNext(pCur,pRoot);
+	}
+}
+/*
+ * The namespace a node created through the NAMESPACED factory carries, which is
+ * a smaller rule than the 2004 one: php 8.4's tree binds exactly the prefix it
+ * was asked for and reuses nothing -- not a declaration of the same URI already
+ * in scope, and not libxml's own `xml` binding -- so on a document that binds
+ * $uri to `p`, `createElementNS($uri,'x')` comes back spelled `x` where the
+ * 2004 door spells it `p:x`, and `createElementNS($XML_NS,'x')` comes back
+ * spelled `x` where the 2004 door spells it `xml:x`.
+ *
+ * And an UNPREFIXED binding is declared NOWHERE. php's namespaced tree keeps
+ * its bindings off the elements entirely -- a per-document table hands them out
+ * and the canonicalizer mints the declarations it needs at output time -- so a
+ * default namespace out of this factory leaves no `xmlns=` behind: the element
+ * canonicalizes as `<s></s>` at the node, at every ancestor and after an insert,
+ * and whatever default declaration IS in scope is the one that names it. Here
+ * the binding rides on `doc->oldNs`, which is where a REMOVED declaration
+ * already goes: freed with the document, and resolvable from nothing.
+ */
+static xmlNsPtr DomNsForCreateModern(xmlNodePtr pNode,const char *zUri,
+	const xmlChar *zPrefix)
+{
+	xmlNsPtr pNs;
+	if( zPrefix != 0
+	 && ((xmlStrEqual(zPrefix,(const xmlChar *)"xml") && !DomUriIs(zUri,DOM_XML_NS_URI))
+	  || (xmlStrEqual(zPrefix,(const xmlChar *)"xmlns") && !DomUriIs(zUri,DOM_XMLNS_NS_URI))
+	  || (DomUriIs(zUri,DOM_XMLNS_NS_URI)
+	   && !xmlStrEqual(zPrefix,(const xmlChar *)"xmlns"))) ){
+		return 0;
+	}
+	if( zPrefix != 0 ){
+		return xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
+	}
+	/* Unowned: xmlNewNs() with no element allocates without linking, and the
+	 * park list owns it from there. */
+	pNs = xmlNewNs(0,(const xmlChar *)zUri,0);
+	if( pNs ){
+		DomNsPark(pNode,pNs);
+	}
+	return pNs;
+}
 /*
  * php's `dom_reconcile_ns`, which every mutator runs on the node it LINKED.
  * Without it a move wrote documents that are not XML in both directions:
@@ -3624,9 +3807,15 @@ static void DomNsStrip(xmlNodePtr pNode,xmlNodePtr pScopeAt)
  */
 static void DomNsOnInsertEx(xmlNodePtr pNode,int bDeep)
 {
+	DomNsHold sHold;
 	if( pNode == 0 || pNode->type != XML_ELEMENT_NODE ){
 		return;
 	}
+	/* Held BEFORE the strip, so that only bindings ALREADY unreachable are kept
+	 * out of the reconciliation. One the strip is about to park is a redundant
+	 * declaration, and the nodes under it must still be re-pointed at whatever
+	 * replaced it -- which is the reconciliation's whole job. */
+	DomNsHoldParked(&sHold,pNode);
 	if( bDeep ){
 		xmlNodePtr pCur = pNode,pAt = pNode->parent;
 		while( pCur ){
@@ -3639,6 +3828,7 @@ static void DomNsOnInsertEx(xmlNodePtr pNode,int bDeep)
 		DomNsStrip(pNode,pNode->parent);
 	}
 	xmlReconciliateNs(pNode->doc,pNode);
+	DomNsReleaseParked(&sHold);
 }
 /*
  * The namespace an attribute NODE carries once it is linked onto pElem. Its own
@@ -3690,7 +3880,7 @@ static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr)
 	 * that needed no declaration leaves the subtree exactly as it was, which is
 	 * measurable both ways.
 	 */
-	xmlReconciliateNs(pElem->doc,pElem);
+	DomReconciliateNs(pElem);
 }
 /* A namespace DECLARATION on this element: php's setAttributeNS writes one
  * when the name is `xmlns` or its prefix is, and REBINDS the one already
@@ -5629,10 +5819,12 @@ DOM_METHOD(vm_builtin_DOMDocument_createElement)
  *     thing, it declares `xmlns=""` on the element and answers `''` for
  *     namespaceURI. Either with a PREFIXED name is a Namespace Error, since a
  *     prefix names a namespace.
- *   * The declaration lands on the NEW element, always: a fresh node has no
- *     parent, so nothing the document declares elsewhere is in scope yet. What
- *     the document already makes is settled later, when the element is linked
- *     in and the redundant declaration is stripped (DomNsOnInsertEx).
+ *   * On the 2004 door the declaration lands on the NEW element, always: a
+ *     fresh node has no parent, so nothing the document declares elsewhere is
+ *     in scope yet. What the document already makes is settled later, when the
+ *     element is linked in and the redundant declaration is stripped
+ *     (DomNsOnInsertEx). The namespaced one settles nothing later and declares
+ *     no default at all (DomNsForCreateModern).
  *   * The $value is not text -- php hands it to libxml, which entity-parses it,
  *     so `&amp;` becomes `&`, an undefined entity is a warning and `<` is
  *     escaped. The same quirk createElement already carries.
@@ -5674,7 +5866,8 @@ DOM_METHOD(vm_builtin_DOMDocument_createElementNS)
 		return PH7_ContextMemoryError(pCtx);
 	}
 	if( zUri != 0 ){
-		xmlNsPtr pNs = DomNsForCreate(pNode,zUri,sQ.zPrefix);
+		xmlNsPtr pNs = bModern ? DomNsForCreateModern(pNode,zUri,sQ.zPrefix)
+		                       : DomNsForCreate(pNode,zUri,sQ.zPrefix);
 		if( pNs == 0 ){
 			DomQNameRelease(&sQ);
 			xmlFreeNode(pNode);   /* never handed out, never an orphan */
@@ -6681,6 +6874,9 @@ static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos
 	{
 		xmlBufferPtr pBuf = xmlBufferCreate();
 		xmlOutputBufferPtr pOut = pBuf ? xmlOutputBufferCreateBuffer(pBuf,0) : 0;
+		xmlNodePtr pRoot = xmlDocGetRootElement(pNode->doc);
+		DomNsHold sDefaults;
+		DomNsHoldInit(&sDefaults);
 		if( pOut == 0 ){
 			if( pBuf ){
 				xmlBufferFree(pBuf);
@@ -6688,11 +6884,17 @@ static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos
 			nOut = -1;
 			goto done;
 		}
+		/* Only php's namespaced tree resolves the default namespace this way;
+		 * the 2004 one canonicalizes the declarations exactly as they stand. */
+		if( DomThisModern(pCtx) && pRoot ){
+			DomC14NHoldDefaults(&sDefaults,pRoot);
+		}
 		nMark = PH7_LibxmlCaptureBegin(pVm);
 		nOut = xmlC14NDocSaveTo(pNode->doc,pSet,
 			bExclusive ? XML_C14N_EXCLUSIVE_1_0 : XML_C14N_1_0,
 			sPrefixes.apPrefix,bComments,pOut);
 		PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+		DomNsReleaseParked(&sDefaults);
 		xmlOutputBufferFlush(pOut);
 		if( nOut >= 0 ){
 			const xmlChar *zBuf = xmlBufferContent(pBuf);
