@@ -7085,7 +7085,23 @@ CalleeByName:
 						/* TICKET-1433-52: Make sure the '$this' variable is available to the current scope */
 						pThis = pFrameLocal->pThis;
 						if( pThis ){
-							pThis->iRef++;
+							/* ...but only a NON-static method runs on it. `self::run()`
+							 * from an instance method reaches a static run() with no
+							 * `$this` in php: isset($this) is false there, and a
+							 * callback it builds ('parent::im') has no receiver. */
+							ph7_class *pDecl = pVmFunc->pUserData ? (ph7_class *)pVmFunc->pUserData : pSelf;
+							ph7_class_method *pCallee = PH7_ClassExtractMethod(pDecl,
+								pVmFunc->sName.zString,pVmFunc->sName.nByte);
+							if( pCallee == 0 && pDecl != pSelf ){
+								pCallee = PH7_ClassExtractMethod(pSelf,
+									pVmFunc->sName.zString,pVmFunc->sName.nByte);
+							}
+							if( pCallee && &pCallee->sFunc == pVmFunc
+							 && (pCallee->iFlags & PH7_CLASS_ATTR_STATIC) ){
+								pThis = 0;
+							}else{
+								pThis->iRef++;
+							}
 						}
 					}
 				}
