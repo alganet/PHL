@@ -17465,6 +17465,7 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 #define DOM_ENC_SJIS    -3
 #define DOM_ENC_BIG5    -4
 #define DOM_ENC_EUCKR   -5
+#define DOM_ENC_EUCJP   -6
 #define DOM_ENC_SBCS     5  /* + the index into aDomSbcs[] */
 /* windows-1252's 0x80..0x9F; 0xA0..0xFF is the code point of the same value. */
 static const unsigned short aDomCp1252[32] = {
@@ -17995,14 +17996,20 @@ static int DomSjisFromUni(sxu32 cp)
 	return -1;
 }
 #include "vm_dom_dbcs.h"
+#include "vm_dom_eucjp.h"
 /*
- * A plain double-byte framing, EUC-KR today: a byte either stands for a
- * character on its own or opens a pair, and the pair names a cell directly by
- * its two bytes. Both faces are tables php was swept for -- including WHICH
- * bytes open a pair, because php's lead set has already been caught not being
- * the standard's on an encoding of this shape. Only a name whose every
- * character is one cell or one byte belongs here: GBK's decoder is gb18030's
- * and reads four-byte sequences, EUC-JP has a second code set and ISO-2022-JP
+ * A byte-indexed framing: a byte either stands for a character on its own or
+ * opens a longer sequence, and that sequence names a cell directly by its
+ * bytes. EUC-KR is the plain two-byte case; EUC-JP adds a THIRD byte behind
+ * one lead (0x8F, `iWide`), whose cell comes out of a second table indexed the
+ * same way by the second and third bytes. Both faces are tables php was swept
+ * for -- including WHICH bytes open a sequence, because php's lead set has
+ * already been caught not being the standard's on an encoding of this shape,
+ * and including the two directions separately, because EUC-JP decodes 6067
+ * cells it cannot encode one of.
+ *
+ * Only a name whose every character is one cell or one byte belongs here:
+ * GBK's decoder is gb18030's and reads four-byte sequences, and ISO-2022-JP
  * has shift states. Big5 is a pair table too but not this one -- its cells
  * reach past the BMP -- so it is cut and read separately, below.
  */
@@ -18012,12 +18019,19 @@ typedef struct dom_dbcs_tab dom_dbcs_tab;
 struct dom_dbcs_tab {
 	const sxu16 *aByte;                 /* what 0x80..0xFF answers alone */
 	const sxu16 *aCell;                 /* the pair table, row-major */
+	const sxu16 *aAux;                  /* the three-byte table, or null */
+	int iWide;                          /* the lead aAux sits behind, or 0 */
+	int iRow0,iRow1;                    /* the middle bytes that lead accepts */
 	const sxu16 *aEncCp;                /* the encoder, by code point */
 	const sxu16 *aEncB;                 /* the byte, or lead<<8|trail */
 	int nEnc;
 };
 static const dom_dbcs_tab aDomDbcs[] = {
-	{ aDomEuckrByte,aDomEuckrCell,aDomEuckrEncCp,aDomEuckrEncB,PH7_DOM_EUCKR_ENC },
+	{ aDomEuckrByte,aDomEuckrCell,0,0,0,0,
+	  aDomEuckrEncCp,aDomEuckrEncB,PH7_DOM_EUCKR_ENC },
+	{ aDomEucjpByte,aDomEucjpCell,aDomEucjpAux,PH7_DOM_EUCJP_WIDE,
+	  PH7_DOM_EUCJP_ROW0,PH7_DOM_EUCJP_ROW1,
+	  aDomEucjpEncCp,aDomEucjpEncB,PH7_DOM_EUCJP_ENC },
 };
 #define DOM_DBCS_TAB(e) (&aDomDbcs[DOM_ENC_EUCKR - (e)])
 /* The bytes a code point is written as, or -1 where the encoder has none. The
@@ -18135,6 +18149,9 @@ static int DomEncConverter(const char *zEnc)
 	}
 	if( SyStrncmp(zCanon,"EUC-KR",6) == 0 ){
 		return DOM_ENC_EUCKR;
+	}
+	if( SyStrncmp(zCanon,"EUC-JP",6) == 0 ){
+		return DOM_ENC_EUCJP;
 	}
 	if( SyStrncmp(zCanon,"Big5",4) == 0 ){
 		return DOM_ENC_BIG5;
@@ -18260,7 +18277,8 @@ static void DomEncPut(SyBlob *pOut,int iEnc,sxu32 cp)
 		SyBlobAppend(pOut,z,1);
 		return;
 	}
-	case DOM_ENC_EUCKR: {
+	case DOM_ENC_EUCKR:
+	case DOM_ENC_EUCJP: {
 		int iB;
 		if( cp < 0x80 ){
 			z[0] = (unsigned char)cp;
@@ -18507,25 +18525,43 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 		}
 		return 1;
 	}
-	case DOM_ENC_EUCKR: {
+	case DOM_ENC_EUCKR:
+	case DOM_ENC_EUCJP: {
 		const dom_dbcs_tab *pTab = DOM_DBCS_TAB(iEnc);
-		int iLead = 0;
+		int iLead = 0;                  /* the byte that names the row, or 0 */
+		int bAux  = 0;                  /* that row is the auxiliary table's */
+		int bWide = 0;                  /* the row byte itself is still due */
 		for( i = 0 ; i < n ; ++i ){
 			unsigned char b = z[i];
-			if( iLead ){
+			if( iLead || bWide ){
 				sxu32 cp = 0;
-				if( b >= 0x40 && b <= 0xFE ){
-					cp = (sxu32)pTab->aCell[(iLead - 0x81) * DOM_DBCS_COLS + b - 0x40];
+				if( bWide ){
+					/* The middle byte of a three-byte sequence names the row
+					 * of the auxiliary table; the character is one byte away
+					 * still, so nothing is written yet. A byte the lead does
+					 * not accept ends the sequence HERE, which is not what an
+					 * accepted byte naming an empty row does: the third byte
+					 * is left to open a character of its own. */
+					bWide = 0;
+					if( b >= pTab->iRow0 && b <= pTab->iRow1 ){
+						iLead = (int)b;
+						bAux = 1;
+						continue;
+					}
+				}else if( b >= 0x40 && b <= 0xFE ){
+					const sxu16 *aCell = bAux ? pTab->aAux : pTab->aCell;
+					cp = (sxu32)aCell[(iLead - 0x81) * DOM_DBCS_COLS + b - 0x40];
 				}
 				iLead = 0;
+				bAux = 0;
 				if( cp ){
 					DomEncPutUtf8(pOut,cp);
 					continue;
 				}
-				/* The pair names no character. Only an ASCII byte opens the
-				 * next character of its own rather than being eaten with the
-				 * lead, so a stray lead costs one replacement, not two bytes
-				 * of text. */
+				/* The sequence names no character. Only an ASCII byte opens
+				 * the next character of its own rather than being eaten with
+				 * what came before it, so a stray lead costs one replacement,
+				 * not the bytes that follow it as text. */
 				DomEncPutUtf8(pOut,0xFFFD);
 				if( b < 0x80 ){
 					i--;
@@ -18537,13 +18573,17 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 			}else{
 				sxu16 v = pTab->aByte[b - 0x80];
 				if( v == 0xFFFF ){
-					iLead = (int)b;
+					if( (int)b == pTab->iWide ){
+						bWide = 1;
+					}else{
+						iLead = (int)b;
+					}
 				}else{
 					DomEncPutUtf8(pOut,v ? (sxu32)v : 0xFFFD);
 				}
 			}
 		}
-		if( iLead ){
+		if( iLead || bWide ){
 			DomEncPutUtf8(pOut,0xFFFD);
 		}
 		return 1;
