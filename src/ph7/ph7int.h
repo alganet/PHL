@@ -4117,6 +4117,10 @@ struct ph7_vm
 	                             * `call_user_func('f');` warns for a #[\NoDiscard] `f` and
 	                             * `array_map('f', $a);` does not (php special-cases the same two
 	                             * names at compile time). Consumed at the head of OP_CALL. */
+	int bDirectCallable;        /* Consume-once: the next PH7_VmCallUserFunctionWithMap is a
+	                             * DIRECT `$cb()` of a "C::m" string or ['C','m'] pair, not a
+	                             * callback. php binds a class-name callback to the caller's
+	                             * compatible `$this`; the direct spelling calls through C. */
 	int bDynamicForward;        /* Consume-once, armed by the same two FORWARDS: the callback they
 	                             * are about to dispatch is a call php's compiler could NOT fold
 	                             * into a direct one, because the callable was not a literal

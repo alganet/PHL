@@ -448,13 +448,28 @@ static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
  * The class `static::` answers inside a static callback whose target resolved to pClass.
  * `self` and `parent` FORWARD, as the `self::m()` / `parent::m()` syntax does: php keeps
  * the caller's called class when it is a pClass, and only falls back to pClass itself.
- * `static` already resolved to the called class, and a class NAME is not forwarding.
+ * `static` already resolved to the called class.
+ *
+ * A class NAME does not forward, but it answers to the caller's `$this` instead (php's
+ * zend_is_callable_check_class): when the running code's scope is a pClass and `$this`
+ * is an instance of that scope, the callable is bound to that object, so `static::` is
+ * the object's class — `call_user_func('A::sm')` from a C method (C extends A) on a D
+ * answers D. A static caller, or a scope outside pClass's line, keeps pClass.
  */
-static ph7_class * VmCallbackCalledClass(ph7_vm *pVm,const char *zCls,sxu32 nCls,ph7_class *pClass)
+static ph7_class * VmCallbackCalledClass(ph7_vm *pVm,const char *zCls,sxu32 nCls,ph7_class *pClass,
+	int bDirect)
 {
 	ph7_class *pTop;
+	if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
+		return pClass;
+	}
 	if( !((nCls == 4 && SyMemcmp(zCls,"self",4) == 0)
 	   || (nCls == 6 && SyMemcmp(zCls,"parent",6) == 0)) ){
+		ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
+		ph7_class_instance *pThis = (pScope && !bDirect) ? PH7_VmCallerThis(&(*pVm)) : 0;
+		if( pThis && PH7_VmInstanceOf(pThis->pClass,pScope) && PH7_VmInstanceOf(pScope,pClass) ){
+			return pThis->pClass;
+		}
 		return pClass;
 	}
 	pTop = PH7_VmPeekTopClass(&(*pVm));
@@ -2474,7 +2489,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 {
 	ph7_value *aStack;
 	VmInstr aInstr[2];
+	int bDirect = pVm->bDirectCallable; /* consumed here, before any user code can run */
 	int i;
+	pVm->bDirectCallable = 0;
 	if( VmValueIsClosure(pVm,pFunc) ){
 		/* A Closure object: unwrap to its underlying string/array callable and dispatch
 		 * that (call_user_func / array_map / usort / the C API all funnel here). Forward the
@@ -2564,7 +2581,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			pThis = (ph7_class_instance *)pValue->x.pOther;
 		}
 		pCalled = pThis ? pClass : VmCallbackCalledClass(&(*pVm),
-			(const char *)SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob),pClass);
+			(const char *)SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob),pClass,bDirect);
 		if( pVm->pClosureMethodCls ){
 			/* The pair came out of a method closure resolved in a class of its own
 			 * (`parent::m(...)`, ReflectionMethod::getClosure): look the name up THERE,
@@ -2628,7 +2645,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			ph7_class_method *pCmMethod = pCmClass
 				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
 			ph7_class *pCmCalled = pCmClass
-				? VmCallbackCalledClass(&(*pVm),zCmCls,nCmCls,pCmClass) : 0;
+				? VmCallbackCalledClass(&(*pVm),zCmCls,nCmCls,pCmClass,bDirect) : 0;
 			if( pCmClass && (pCmMethod == 0
 				|| !PH7_VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
 				/* Same catch-all routing as the ['Class','method'] pair, receiver rule

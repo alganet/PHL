@@ -6489,6 +6489,7 @@ case PH7_OP_CALL: {
 	 * below; the closure branch adds its own case further down. It is what lets
 	 * PH7_VmGetUserFunction refuse those keys to a SCRIPT that spells one. */
 	int bEngineCallee = (pTos->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)) != 0;
+	int bViaClosure = 0; /* the target was a Closure, unwrapped below: not a DIRECT spelling */
 	/* ...and the internal-callback latch, for the same reason: it describes THIS call
 	 * (an internal function invoking a userland callback binds its arguments weakly),
 	 * and a call the callback body makes must not inherit it. */
@@ -6648,6 +6649,7 @@ case PH7_OP_CALL: {
 			/* ...and a call THROUGH a Closure is dynamic whatever it wraps: php marks
 			 * a fake closure's invocation too (`compact(...)` then `$c('a')`). */
 			bDynamicCall = 1;
+			bViaClosure = 1;
 		}
 		PH7_MemObjRelease(&sCallable);
 	}
@@ -6766,6 +6768,7 @@ case PH7_OP_CALL: {
 			 * reached through an array callable, a "C::m" string or __invoke
 			 * warns exactly as a directly-spelled one does. */
 			pVm->bDiscardCallback = bResultDropped;
+			pVm->bDirectCallable = !bViaClosure;
 			rcArr = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
 			/* Both latches are consumed by the method OP_CALL this dispatch builds;
 			 * clear them here for the paths that never reach one. */
@@ -8733,6 +8736,7 @@ SkipFuncBody:
 				}
 				PH7_MemObjInit(pVm,&sResult);
 				pVm->bDiscardCallback = bResultDropped;   /* see the sibling site */
+				pVm->bDirectCallable = !bViaClosure;
 				rcSm = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),
 					(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
 				pVm->bDiscardCallback = 0;
