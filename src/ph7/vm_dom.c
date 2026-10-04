@@ -7129,6 +7129,73 @@ DOM_METHOD(vm_builtin_Dom_getIterator)
 	return PH7_OK;
 }
 
+/* ===== php 8.4's Dom\ namespace: the collection half =====
+ *
+ * php 8.4 re-faces ext/dom under a `Dom\` namespace whose classes are declared,
+ * typed and named the way the DOM standard writes them rather than the way the
+ * 2004 binding did. The node classes are the bulk of it; the three names here
+ * are the ones that stand on their own -- two pure interfaces, and a collection
+ * whose bare instance is a complete object in php:
+ *
+ *     var_dump(new Dom\HTMLCollection());   // object(Dom\HTMLCollection)#1 (1) { ["length"]=> int(0) }
+ *
+ * `Dom\HTMLCollection` therefore ships whole: it wears DOMNodeList's slot layout
+ * (rule: a live view is of an $__owner, wrapped against a $__doc), so the walk
+ * that fills it is the one the node classes bring with them, and an instance with
+ * no owner -- the only one obtainable until they land -- answers 0/null/empty,
+ * which is exactly what php answers for the same object.
+ *
+ * The two interfaces state php's abstract signatures verbatim. Their parameter
+ * and return types name `Dom\Node`, `Dom\Element` and `Dom\NodeList`, which do
+ * not exist yet; that is not a forward declaration problem in either engine,
+ * because a type in a signature is resolved when a call is checked against it
+ * and an interface method is never called.
+ */
+/*
+ * Dom\HTMLCollection::namedItem(): the standard's rule, which is not
+ * DOMNamedNodeMap's -- a *collection* is keyed by the `id` attribute of the
+ * elements in it, and falls back to `name`. It walks the collection rather than
+ * a node's attribute list, so it is its own reader.
+ */
+static ph7_class_instance * DomCollectionNamed(ph7_vm *pVm,ph7_class_instance *pColl,
+	const char *zKey)
+{
+	int nItem,i;
+	if( pColl == 0 || zKey == 0 || zKey[0] == 0 ){
+		return 0;
+	}
+	nItem = DomListCount(pColl);
+	for( i = 0 ; i < nItem ; ++i ){
+		ph7_class_instance *pItem = DomListItem(&(*pVm),pColl,i);
+		phl_domnode *pNd = pItem ? DomResOf(pItem) : 0;
+		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+		xmlChar *zVal;
+		if( pNode == 0 || pNode->type != XML_ELEMENT_NODE ){
+			continue;
+		}
+		zVal = xmlGetNoNsProp(pNode,(const xmlChar *)"id");
+		if( zVal == 0 ){
+			zVal = xmlGetNoNsProp(pNode,(const xmlChar *)"name");
+		}
+		if( zVal ){
+			sxu32 nKey = (sxu32)SyStrlen(zKey);
+			int bHit = SyStrlen((const char *)zVal) == nKey
+				&& SyStrncmp((const char *)zVal,zKey,nKey) == 0;
+			xmlFree(zVal);
+			if( bHit ){
+				return pItem;
+			}
+		}
+	}
+	return 0;
+}
+DOM_METHOD(vm_builtin_DomHTMLCollection_namedItem)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zKey = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	return DomResultOwned(pCtx,DomCollectionNamed(pCtx->pVm,pThis,zKey));
+}
+
 /* ===== DOMXPath ===== */
 
 /* The prefix => URI table registerNamespace() feeds, replayed onto the fresh
@@ -10295,6 +10362,10 @@ static const DomPropSpec aDomProp[] = {
 	  azDomNotationDebug, SX_ARRAYSIZE(azDomNotationDebug), 1 },
 	{ "DOMNodeList", DomListProp, DomSetNothing, DomListProp,
 	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
+	/* php's 8.4 collection declares the same single virtual `length`, over the
+	 * same count, so it names DOMNodeList's reader rather than a copy of it. */
+	{ "Dom\\HTMLCollection", DomListProp, DomSetNothing, DomListProp,
+	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
 	{ "DOMNamedNodeMap", DomMapProp, DomSetNothing, DomMapProp,
 	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
 	{ "DOMNameSpaceNode", DomNsNodeProp, DomSetNothing, DomNsNodeProp,
@@ -10887,6 +10958,35 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * (array), get_object_vars, foreach, json_encode and Reflection. */
 		{ DNL_SNAP_SLOT, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },
 	};
+	/* php 8.4's Dom\ChildNode and Dom\ParentNode: the standard's own two mixins,
+	 * stated as php states them. Neither is the old DOMChildNode/DOMParentNode --
+	 * those keep the 2004 names and the 2004 signatures, and php declares both
+	 * pairs side by side. */
+	static const PH7_NativeMethodDef aDomChildNodeIf[] = {
+		{ "remove",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "void", 0 },
+		{ "before",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "Dom\\Node|string ...$nodes", "void", 0 },
+		{ "after",       PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "Dom\\Node|string ...$nodes", "void", 0 },
+		{ "replaceWith", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "Dom\\Node|string ...$nodes", "void", 0 },
+	};
+	static const PH7_NativeMethodDef aDomParentNodeIf[] = {
+		{ "append",          PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "Dom\\Node|string ...$nodes", "void", 0 },
+		{ "prepend",         PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "Dom\\Node|string ...$nodes", "void", 0 },
+		{ "replaceChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "Dom\\Node|string ...$nodes", "void", 0 },
+		{ "querySelector",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $selectors", "?Dom\\Element", 0 },
+		{ "querySelectorAll",PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $selectors", "Dom\\NodeList", 0 },
+	};
+	/* The collection's four, in php's declaration order. `count` and `item` are
+	 * DOMNodeList's bodies -- the count and the index walk are the same -- under
+	 * the new API's own return types, which are not tentative the way the 2004
+	 * class's `count(): int` still is. */
+	static const PH7_NativeMethodDef aDomCollMethod[] = {
+		{ "item",        PH7_MOD_PUBLIC, "int $index", "?Dom\\Element",
+		  vm_builtin_DOMNodeList_item },
+		{ "namedItem",   PH7_MOD_PUBLIC, "string $key", "?Dom\\Element",
+		  vm_builtin_DomHTMLCollection_namedItem },
+		{ "count",       PH7_MOD_PUBLIC, "", "int", vm_builtin_DOMNodeList_count },
+		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
+	};
 	static const PH7_NativeMethodDef aListMethod[] = {
 		{ "count",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNodeList_count },
 		{ "item",        PH7_MOD_PUBLIC, "int $index", "", vm_builtin_DOMNodeList_item },
@@ -11111,6 +11211,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "DOMNameSpaceNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aNsNodeMethod, SX_ARRAYSIZE(aNsNodeMethod), 0, 0,
 		  aNsNodeProp, SX_ARRAYSIZE(aNsNodeProp), 0, 0, DomPresent },
+		/* php 8.4's namespaced API. The two interfaces carry no property; the
+		 * collection shares DOMNodeList's slot layout, its iterator vtable and
+		 * its clone refusal, because it is the same live view under a new name. */
+		{ "Dom\\ChildNode", 0, 0, PH7_CLASS_INTERFACE,
+		  aDomChildNodeIf, SX_ARRAYSIZE(aDomChildNodeIf), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Dom\\ParentNode", 0, 0, PH7_CLASS_INTERFACE,
+		  aDomParentNodeIf, SX_ARRAYSIZE(aDomParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Dom\\HTMLCollection", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
+		  aDomCollMethod, SX_ARRAYSIZE(aDomCollMethod), 0, 0,
+		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
 		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp),
 		  0, 0, DomPresent },
@@ -11174,7 +11284,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * aDomProp[] -- so a subclass of DOMElement reaches DOMElement's. */
 		{
 			static const char * const azPropRoot[] = {
-				"DOMNode", "DOMNodeList", "DOMNamedNodeMap", "DOMNameSpaceNode", "DOMXPath"
+				"DOMNode", "DOMNodeList", "DOMNamedNodeMap", "DOMNameSpaceNode", "DOMXPath",
+				"Dom\\HTMLCollection"
 			};
 			for( n = 0 ; n < SX_ARRAYSIZE(azPropRoot) ; ++n ){
 				PH7_NativeClassInstallPropHook(&(*pVm),azPropRoot[n],DomPropHook);
