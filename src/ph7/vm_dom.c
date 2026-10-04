@@ -17412,6 +17412,285 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 	return 0;
 }
 /*
+ * The BYTES of an HTML document, as distinct from its NAME. php decodes the
+ * source with the encoding the name resolves to and re-encodes at the
+ * document dump -- `saveHtml()`, `saveHtmlFile()` and `saveHtml($node)`, but
+ * not `innerHTML`, which is UTF-8 whatever the document says -- so a UTF-16
+ * source reads as text and writes back as UTF-16, and a latin-1 byte is one
+ * character in the tree and one byte again on the way out. Both halves are
+ * the WHATWG encoding standard as lexbor runs it, and both are one unit: a
+ * decoder alone would break the dump of every legacy-encoded document.
+ *
+ * Decoding is byte-exact to lexbor's, with a U+FFFD per error: a malformed
+ * UTF-8 sequence is replaced at its MAXIMAL SUBPART (a truncated three-byte
+ * prefix is one replacement, an overlong lead or a stray continuation byte one
+ * each), a lone UTF-16 surrogate or an odd trailing byte is one, and a
+ * windows-1252 byte the standard leaves undefined (`0x81`, `0x8D`, `0x8F`,
+ * `0x90`, `0x9D`) is its own C1 control. Encoding writes a code point the
+ * target cannot spell as `?` -- lexbor's fallback, which php installs for
+ * every non-UTF-8 target -- and a UTF-8 target writes U+FFFD for tree bytes
+ * that are not UTF-8, which is what the fast path does for a `textContent` a
+ * program assigned raw bytes to. A byte-order mark is stripped only by the
+ * sniff, never under an override: php decodes U+FEFF as text there.
+ *
+ * FIVE of the table's forty encodings have a converter: UTF-8, both UTF-16s,
+ * windows-1252 (the name `iso-8859-1`, `latin1`, `ascii` and eighteen other
+ * labels resolve to) and x-user-defined. The rest still pass through in both
+ * directions, name right and bytes untouched, until their tables are ported.
+ */
+#define DOM_ENC_PASS    -1
+#define DOM_ENC_UTF8     0
+#define DOM_ENC_UTF16LE  1
+#define DOM_ENC_UTF16BE  2
+#define DOM_ENC_CP1252   3
+#define DOM_ENC_XUSER    4
+/* windows-1252's 0x80..0x9F; 0xA0..0xFF is the code point of the same value. */
+static const unsigned short aDomCp1252[32] = {
+	0x20AC,0x0081,0x201A,0x0192,0x201E,0x2026,0x2020,0x2021,
+	0x02C6,0x2030,0x0160,0x2039,0x0152,0x008D,0x017D,0x008F,
+	0x0090,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,
+	0x02DC,0x2122,0x0161,0x203A,0x0153,0x009D,0x017E,0x0178
+};
+/* The converter behind a document's encoding: the label the document keeps
+ * (a parsed one keeps the NAME, `createEmpty()` the program's spelling) is
+ * resolved through the label table first, so `latin1` and `utf-16` reach the
+ * converter their name owns. */
+static int DomEncConverter(const char *zEnc)
+{
+	const char *zCanon = zEnc ? DomEncCanonName(zEnc,(int)SyStrlen(zEnc)) : 0;
+	if( zCanon == 0 || SyStrncmp(zCanon,"UTF-8",5) == 0 ){
+		return DOM_ENC_UTF8;
+	}
+	if( SyStrncmp(zCanon,"UTF-16LE",8) == 0 ){
+		return DOM_ENC_UTF16LE;
+	}
+	if( SyStrncmp(zCanon,"UTF-16BE",8) == 0 ){
+		return DOM_ENC_UTF16BE;
+	}
+	if( SyStrncmp(zCanon,"windows-1252",12) == 0 ){
+		return DOM_ENC_CP1252;
+	}
+	if( SyStrncmp(zCanon,"x-user-defined",14) == 0 ){
+		return DOM_ENC_XUSER;
+	}
+	return DOM_ENC_PASS;
+}
+static void DomEncPutUtf8(SyBlob *pOut,sxu32 cp)
+{
+	unsigned char z[4];
+	int n;
+	if( cp < 0x80 ){
+		z[0] = (unsigned char)cp;
+		n = 1;
+	}else if( cp < 0x800 ){
+		z[0] = (unsigned char)(0xC0 | (cp >> 6));
+		z[1] = (unsigned char)(0x80 | (cp & 0x3F));
+		n = 2;
+	}else if( cp < 0x10000 ){
+		z[0] = (unsigned char)(0xE0 | (cp >> 12));
+		z[1] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+		z[2] = (unsigned char)(0x80 | (cp & 0x3F));
+		n = 3;
+	}else{
+		z[0] = (unsigned char)(0xF0 | (cp >> 18));
+		z[1] = (unsigned char)(0x80 | ((cp >> 12) & 0x3F));
+		z[2] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+		z[3] = (unsigned char)(0x80 | (cp & 0x3F));
+		n = 4;
+	}
+	SyBlobAppend(pOut,z,(sxu32)n);
+}
+/* Write one code point in the target encoding; `?` for one it cannot spell. */
+static void DomEncPut(SyBlob *pOut,int iEnc,sxu32 cp)
+{
+	unsigned char z[4];
+	switch( iEnc ){
+	case DOM_ENC_UTF16LE:
+	case DOM_ENC_UTF16BE:
+		if( cp >= 0x10000 ){
+			sxu32 hi = 0xD800 + ((cp - 0x10000) >> 10);
+			sxu32 lo = 0xDC00 + ((cp - 0x10000) & 0x3FF);
+			DomEncPut(pOut,iEnc,hi);
+			DomEncPut(pOut,iEnc,lo);
+			return;
+		}
+		if( iEnc == DOM_ENC_UTF16LE ){
+			z[0] = (unsigned char)(cp & 0xFF);
+			z[1] = (unsigned char)(cp >> 8);
+		}else{
+			z[0] = (unsigned char)(cp >> 8);
+			z[1] = (unsigned char)(cp & 0xFF);
+		}
+		SyBlobAppend(pOut,z,2);
+		return;
+	case DOM_ENC_CP1252:
+		if( cp < 0x80 || (cp >= 0xA0 && cp <= 0xFF) ){
+			z[0] = (unsigned char)cp;
+		}else{
+			int i;
+			z[0] = '?';
+			for( i = 0 ; i < 32 ; ++i ){
+				if( aDomCp1252[i] == cp ){
+					z[0] = (unsigned char)(0x80 + i);
+					break;
+				}
+			}
+		}
+		SyBlobAppend(pOut,z,1);
+		return;
+	case DOM_ENC_XUSER:
+		if( cp < 0x80 ){
+			z[0] = (unsigned char)cp;
+		}else if( cp >= 0xF780 && cp <= 0xF7FF ){
+			z[0] = (unsigned char)(cp - 0xF780 + 0x80);
+		}else{
+			z[0] = '?';
+		}
+		SyBlobAppend(pOut,z,1);
+		return;
+	default:
+		DomEncPutUtf8(pOut,cp);
+		return;
+	}
+}
+/*
+ * UTF-8 in, code points out through DomEncPut() in the target encoding, with
+ * the standard's replacement at each maximal subpart. This one walk is both
+ * the decoder for a UTF-8 source (target UTF-8) and the first half of every
+ * dump: the tree is UTF-8, or is supposed to be.
+ */
+static void DomEncFromUtf8(SyBlob *pOut,int iTarget,const unsigned char *z,int n)
+{
+	sxu32 cp = 0;
+	int nNeed = 0,nSeen = 0,i;
+	unsigned char lo = 0x80,hi = 0xBF;
+	for( i = 0 ; i < n ; ++i ){
+		unsigned char b = z[i];
+		if( nNeed == 0 ){
+			if( b < 0x80 ){
+				DomEncPut(pOut,iTarget,b);
+			}else if( b >= 0xC2 && b <= 0xDF ){
+				nNeed = 1;
+				cp = b & 0x1F;
+			}else if( b >= 0xE0 && b <= 0xEF ){
+				lo = (b == 0xE0) ? 0xA0 : 0x80;
+				hi = (b == 0xED) ? 0x9F : 0xBF;
+				nNeed = 2;
+				cp = b & 0x0F;
+			}else if( b >= 0xF0 && b <= 0xF4 ){
+				lo = (b == 0xF0) ? 0x90 : 0x80;
+				hi = (b == 0xF4) ? 0x8F : 0xBF;
+				nNeed = 3;
+				cp = b & 0x07;
+			}else{
+				DomEncPut(pOut,iTarget,0xFFFD);
+			}
+			continue;
+		}
+		if( b < lo || b > hi ){
+			/* The sequence ends here and this byte opens the next one. */
+			nNeed = nSeen = 0;
+			lo = 0x80;
+			hi = 0xBF;
+			DomEncPut(pOut,iTarget,0xFFFD);
+			i--;
+			continue;
+		}
+		lo = 0x80;
+		hi = 0xBF;
+		cp = (cp << 6) | (b & 0x3F);
+		if( ++nSeen == nNeed ){
+			DomEncPut(pOut,iTarget,cp);
+			nNeed = nSeen = 0;
+		}
+	}
+	if( nNeed ){
+		DomEncPut(pOut,iTarget,0xFFFD);
+	}
+}
+static void DomEncFromUtf16(SyBlob *pOut,int bLe,const unsigned char *z,int n)
+{
+	sxu32 iLead = 0;
+	int i;
+	for( i = 0 ; i + 1 < n ; i += 2 ){
+		sxu32 cu = bLe ? (sxu32)(z[i] | (z[i + 1] << 8)) : (sxu32)((z[i] << 8) | z[i + 1]);
+		if( iLead ){
+			sxu32 hi = iLead;
+			iLead = 0;
+			if( cu >= 0xDC00 && cu <= 0xDFFF ){
+				DomEncPutUtf8(pOut,0x10000 + ((hi - 0xD800) << 10) + (cu - 0xDC00));
+				continue;
+			}
+			/* A high surrogate with no low one is an error, and the unit
+			 * that broke the pair is read again on its own. */
+			DomEncPutUtf8(pOut,0xFFFD);
+		}
+		if( cu >= 0xD800 && cu <= 0xDBFF ){
+			iLead = cu;
+		}else if( cu >= 0xDC00 && cu <= 0xDFFF ){
+			DomEncPutUtf8(pOut,0xFFFD);
+		}else{
+			DomEncPutUtf8(pOut,cu);
+		}
+	}
+	if( iLead || (n & 1) ){
+		DomEncPutUtf8(pOut,0xFFFD);
+	}
+}
+/* Decode a source in `iEnc` to the UTF-8 the parser reads. Answers 0 when the
+ * encoding has no converter yet and the bytes must pass through. */
+static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
+{
+	int i;
+	switch( iEnc ){
+	case DOM_ENC_UTF8:
+		DomEncFromUtf8(pOut,DOM_ENC_UTF8,z,n);
+		return 1;
+	case DOM_ENC_UTF16LE:
+	case DOM_ENC_UTF16BE:
+		DomEncFromUtf16(pOut,iEnc == DOM_ENC_UTF16LE,z,n);
+		return 1;
+	case DOM_ENC_CP1252:
+		for( i = 0 ; i < n ; ++i ){
+			unsigned char b = z[i];
+			DomEncPutUtf8(pOut,b < 0x80 ? b : b < 0xA0 ? aDomCp1252[b - 0x80] : b);
+		}
+		return 1;
+	case DOM_ENC_XUSER:
+		for( i = 0 ; i < n ; ++i ){
+			unsigned char b = z[i];
+			DomEncPutUtf8(pOut,b < 0x80 ? b : 0xF780 + (b - 0x80));
+		}
+		return 1;
+	default:
+		return 0;
+	}
+}
+/* Re-encode a UTF-8 dump into the document's encoding, in place. A
+ * pass-through encoding and a UTF-8 dump that is plain ASCII are untouched. */
+static void DomEncEncodeDump(SyBlob *pOut,SyMemBackend *pAlloc,int iEnc)
+{
+	SyBlob sTmp;
+	const unsigned char *z = (const unsigned char *)SyBlobData(pOut);
+	int n = (int)SyBlobLength(pOut),i;
+	if( iEnc == DOM_ENC_PASS ){
+		return;
+	}
+	if( iEnc == DOM_ENC_UTF8 ){
+		for( i = 0 ; i < n && z[i] < 0x80 ; ++i ){
+			;
+		}
+		if( i == n ){
+			return;
+		}
+	}
+	SyBlobInit(&sTmp,pAlloc);
+	DomEncFromUtf8(&sTmp,iEnc,z,n);
+	SyBlobReset(pOut);
+	SyBlobAppend(pOut,SyBlobData(&sTmp),SyBlobLength(&sTmp));
+	SyBlobRelease(&sTmp);
+}
+/*
  * The encoding a parse with NO override runs under: php's "BOM, then the
  * meta prescan, then UTF-8", and every rule of it is lexbor's rather than
  * the WHATWG text -- the two disagree in places a real page reaches, and
@@ -17443,8 +17722,8 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
  * the same label table as an override, and a UTF-16 label stays UTF-16
  * where the specification says UTF-8: lexbor keeps it, and php reports it.
  *
- * What is sniffed is the NAME. The bytes are still read as UTF-8 whatever
- * the name says; that is the decoder's half, which is not here yet.
+ * What is sniffed is the NAME; the bytes are then decoded under it by the
+ * converters above, or passed through where none exists yet.
  */
 #define DOM_PRESCAN_LIMIT 1024
 static int DomPrescanIsSpace(unsigned char c)
@@ -18001,7 +18280,7 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 	dom_html5_errctx sErr;
 	ph7_class_instance *pThis;
 	phl_domnode *pRes;
-	SyBlob sBody,sPath;
+	SyBlob sBody,sText,sPath;
 	xmlDocPtr pDoc;
 	zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";
 	if( bFile && nSrc != (int)SyStrlen(zSrc) ){
@@ -18061,8 +18340,18 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 	sErr.bQuiet = (iOpts & (sxi64)XML_PARSE_NOERROR) ? 1 : 0;
 	SyBlobInit(&sErr.sTok,&pVm->sAllocator);
 	SyBlobInit(&sErr.sTree,&pVm->sAllocator);
-	pDoc = PH7_Html5Parse(&pVm->sAllocator,(const char *)SyBlobData(&sBody) + nBom,
-		(int)SyBlobLength(&sBody) - nBom,iFlags,zCanon,DomHtml5Err,(void *)&sErr);
+	/* The bytes are decoded under the name, so the parser reads UTF-8 and
+	 * the tree holds it; an encoding with no converter yet passes through. */
+	SyBlobInit(&sText,&pVm->sAllocator);
+	if( DomEncDecode(&sText,DomEncConverter(zCanon),
+		(const unsigned char *)SyBlobData(&sBody) + nBom,(int)SyBlobLength(&sBody) - nBom) ){
+		pDoc = PH7_Html5Parse(&pVm->sAllocator,(const char *)SyBlobData(&sText),
+			(int)SyBlobLength(&sText),iFlags,zCanon,DomHtml5Err,(void *)&sErr);
+	}else{
+		pDoc = PH7_Html5Parse(&pVm->sAllocator,(const char *)SyBlobData(&sBody) + nBom,
+			(int)SyBlobLength(&sBody) - nBom,iFlags,zCanon,DomHtml5Err,(void *)&sErr);
+	}
+	SyBlobRelease(&sText);
 	DomHtml5Flush(pCtx,&sErr.sTok);
 	DomHtml5Flush(pCtx,&sErr.sTree);
 	SyBlobRelease(&sErr.sTok);
@@ -18200,6 +18489,10 @@ static int DomSaveHtml5(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile)
 	SyBlobInit(&sOut,&pVm->sAllocator);
 	DomHtmlDumpNode(&sOut,(xmlNodePtr)((pTgt && pTgt->pNode != pDocNd->pNode)
 		? pTgt->pNode : pDocNd->pNode));
+	/* The walk writes the tree's UTF-8; the document's encoding is what the
+	 * bytes go out in, for a node's dump as much as the whole document's. */
+	DomEncEncodeDump(&sOut,&pVm->sAllocator,
+		DomEncConverter((const char *)((xmlDocPtr)pDocNd->pNode)->encoding));
 	nOut = (int)SyBlobLength(&sOut);
 	if( !bFile ){
 		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),nOut);
