@@ -312,13 +312,21 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				/* php NAMES the calling scope when there is one (see the method twin in
 				 * OP_CALL); "global scope" is only for code outside every class. */
 				ph7_class *pCtorScope = PH7_VmCallerScope(&(*pVm));
+				/* And it names the constructor's DECLARING class, not the class the
+				 * `new` asked for: `new Child()` on a private constructor inherited
+				 * from Base reports Base::__construct(). The method twin says this
+				 * through PH7_VmMethodScopeName, which is also the door that turns a
+				 * trait declarer into the class that COMPOSED it — php names the using
+				 * class, never the trait. The access test above still asks pCtorDecl,
+				 * the raw declarer, because the trait grants are decided there. */
+				ph7_class *pCtorName = PH7_VmMethodScopeName(&(*pVm),pClass,pCons);
 				SyBlobInit(&sErrMsg,&pVm->sAllocator);
 				if( pCtorScope ){
 					SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from scope %z",
-						zVis,&pClass->sDisp,&pCtorScope->sDisp);
+						zVis,&pCtorName->sDisp,&pCtorScope->sDisp);
 				}else{
 					SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from global scope",
-						zVis,&pClass->sDisp);
+						zVis,&pCtorName->sDisp);
 				}
 				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 				/* Pop ctor args + release the class-name operand, leave NULL
