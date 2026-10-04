@@ -33,9 +33,9 @@ $ENC = ['EUC-KR' => 'EUCKR'];
  * EUC-KR is the only CJK name of php's that is one. GBK is not: its decoder is
  * gb18030's, so a lead followed by a DIGIT opens a four-byte sequence rather
  * than naming a cell, and no two-byte table can answer that. Big5's cells
- * reach outside the BMP and four of them are spelled with two code points;
- * EUC-JP has a second code set behind its 0x8F lead; ISO-2022-JP has shift
- * states. Each of those is another shape, and a table cut here for one of them
+ * reach outside the BMP and four of them are spelled with two code points, so
+ * it is cut by gen_domenc_big5.php instead; EUC-JP has a second code set
+ * behind its 0x8F lead; ISO-2022-JP has shift states. Each of those is another shape, and a table cut here for one of them
  * would be quietly wrong rather than obviously missing. */
 
 function cps(string $s): array {

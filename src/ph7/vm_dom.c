@@ -17433,15 +17433,18 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
  * program assigned raw bytes to. A byte-order mark is stripped only by the
  * sniff, never under an override: php decodes U+FEFF as text there.
  *
- * Thirty-three of the table's forty encodings have a converter: UTF-8, both
+ * Thirty-six of the table's forty encodings have a converter: UTF-8, both
  * UTF-16s, windows-1252 (the name `iso-8859-1`, `latin1`, `ascii` and
- * eighteen other labels resolve to), x-user-defined, and the twenty-seven
- * other single-byte encodings, ISO-8859-8-I sharing ISO-8859-8's table as
- * the standard says. Their cells are the oracle's: every high byte of every
- * name decoded through php 8.5.10, and every code point that came out
- * encoded back. An undefined cell decodes to U+FFFD, and nothing encodes to
- * it. The seven multi-byte CJK encodings still pass through in both
- * directions, name right and bytes untouched.
+ * eighteen other labels resolve to), x-user-defined, the twenty-seven other
+ * single-byte encodings, ISO-8859-8-I sharing ISO-8859-8's table as the
+ * standard says, and three of the double-byte CJK names -- Shift_JIS, EUC-KR
+ * and Big5. Their cells are the oracle's: every high byte of every name
+ * decoded through php 8.5.10, and every code point that came out encoded
+ * back. An undefined cell decodes to U+FFFD, and nothing encodes to it. Four
+ * names still pass through in both directions, name right and bytes
+ * untouched: GBK and gb18030, whose shared decoder reads a four-byte
+ * sequence, EUC-JP, which has a second code set behind its 0x8F lead, and
+ * ISO-2022-JP, which has shift states.
  *
  * `replacement` is the standard's mitigation rather than a converter, and it
  * is both faces at once: the decoder answers the EMPTY string for any source
@@ -17460,7 +17463,8 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 #define DOM_ENC_CP1252   3
 #define DOM_ENC_XUSER    4
 #define DOM_ENC_SJIS    -3
-#define DOM_ENC_EUCKR   -4
+#define DOM_ENC_BIG5    -4
+#define DOM_ENC_EUCKR   -5
 #define DOM_ENC_SBCS     5  /* + the index into aDomSbcs[] */
 /* windows-1252's 0x80..0x9F; 0xA0..0xFF is the code point of the same value. */
 static const unsigned short aDomCp1252[32] = {
@@ -17998,8 +18002,9 @@ static int DomSjisFromUni(sxu32 cp)
  * bytes open a pair, because php's lead set has already been caught not being
  * the standard's on an encoding of this shape. Only a name whose every
  * character is one cell or one byte belongs here: GBK's decoder is gb18030's
- * and reads four-byte sequences, Big5 reaches past the BMP, EUC-JP has a
- * second code set and ISO-2022-JP has shift states.
+ * and reads four-byte sequences, EUC-JP has a second code set and ISO-2022-JP
+ * has shift states. Big5 is a pair table too but not this one -- its cells
+ * reach past the BMP -- so it is cut and read separately, below.
  */
 #define DOM_DBCS_ROWS 126               /* the leads 0x81..0xFE */
 #define DOM_DBCS_COLS 191               /* the trails 0x40..0xFE */
@@ -18014,7 +18019,7 @@ struct dom_dbcs_tab {
 static const dom_dbcs_tab aDomDbcs[] = {
 	{ aDomEuckrByte,aDomEuckrCell,aDomEuckrEncCp,aDomEuckrEncB,PH7_DOM_EUCKR_ENC },
 };
-#define DOM_DBCS_TAB(e) (&aDomDbcs[-4 - (e)])
+#define DOM_DBCS_TAB(e) (&aDomDbcs[DOM_ENC_EUCKR - (e)])
 /* The bytes a code point is written as, or -1 where the encoder has none. The
  * table is ordered by code point and holds no duplicate key, so this is a
  * binary search; an answer below 0x100 is a single byte. */
@@ -18029,6 +18034,67 @@ static int DomDbcsFromUni(const dom_dbcs_tab *pTab,sxu32 cp)
 		sxu32 u = (sxu32)pTab->aEncCp[iMid];
 		if( u == cp ){
 			return (int)pTab->aEncB[iMid];
+		}
+		if( u < cp ){
+			iLo = iMid + 1;
+		}else{
+			iHi = iMid - 1;
+		}
+	}
+	return -1;
+}
+#include "vm_dom_big5.h"
+/*
+ * Big5, which is neither of the two framings above. Every byte of 0x81..0xFE
+ * opens a pair and nothing above ASCII stands for a character alone, so there
+ * is no byte table; but 1717 of its cells do not fit the plain index's sxu16,
+ * 1713 standing for a supplementary code point and four for TWO code points,
+ * and those live in a side table the cell marks with 0xFFFF. The encoder is
+ * two tables for the same reason -- and it is the swept one, not an inversion
+ * of the decoder: 1713 cells decode to a supplementary code point where only
+ * 291 of them encode back.
+ */
+static int DomBig5Ex(int k)
+{
+	int iLo = 0,iHi = PH7_DOM_BIG5_EX - 1;
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		int x = (int)aDomBig5ExIdx[iMid];
+		if( x == k ){
+			return iMid;
+		}
+		if( x < k ){
+			iLo = iMid + 1;
+		}else{
+			iHi = iMid - 1;
+		}
+	}
+	return -1;
+}
+/* The pair a code point is written as, or -1 where the encoder has none. Both
+ * halves are ordered by code point and hold no duplicate key, so each is a
+ * binary search; which half answers is the code point's plane. */
+static int DomBig5FromUni(sxu32 cp)
+{
+	const sxu32 *aCp = 0;
+	const sxu16 *aB = 0;
+	int iLo = 0,iHi;
+	if( cp > 0xFFFF ){
+		if( cp > 0x10FFFF ){
+			return -1;
+		}
+		iHi = PH7_DOM_BIG5_SUP - 1;
+		aCp = aDomBig5SupCp;
+		aB  = aDomBig5SupB;
+	}else{
+		iHi = PH7_DOM_BIG5_ENC - 1;
+		aB  = aDomBig5EncB;
+	}
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		sxu32 u = aCp ? aCp[iMid] : (sxu32)aDomBig5EncCp[iMid];
+		if( u == cp ){
+			return (int)aB[iMid];
 		}
 		if( u < cp ){
 			iLo = iMid + 1;
@@ -18069,6 +18135,9 @@ static int DomEncConverter(const char *zEnc)
 	}
 	if( SyStrncmp(zCanon,"EUC-KR",6) == 0 ){
 		return DOM_ENC_EUCKR;
+	}
+	if( SyStrncmp(zCanon,"Big5",4) == 0 ){
+		return DOM_ENC_BIG5;
 	}
 	if( SyStrncmp(zCanon,"ISO-8859-8-I",12) == 0 ){
 		zCanon = "ISO-8859-8";
@@ -18169,6 +18238,23 @@ static void DomEncPut(SyBlob *pOut,int iEnc,sxu32 cp)
 			SyBlobAppend(pOut,z,2);
 			return;
 		}else{
+			z[0] = '?';
+		}
+		SyBlobAppend(pOut,z,1);
+		return;
+	}
+	case DOM_ENC_BIG5: {
+		int iB;
+		if( cp < 0x80 ){
+			z[0] = (unsigned char)cp;
+		}else if( (iB = DomBig5FromUni(cp)) >= 0 ){
+			z[0] = (unsigned char)(iB >> 8);
+			z[1] = (unsigned char)(iB & 0xFF);
+			SyBlobAppend(pOut,z,2);
+			return;
+		}else{
+			/* Including each half of the four cells php spells with two code
+			 * points: neither is in the encoder, so the pair writes "??". */
 			z[0] = '?';
 		}
 		SyBlobAppend(pOut,z,1);
@@ -18357,6 +18443,61 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 				 * a trail. Most of the second-level kanji is unreachable
 				 * through this door because of it. */
 				iLead = b;
+			}else{
+				DomEncPutUtf8(pOut,0xFFFD);
+			}
+		}
+		if( iLead ){
+			DomEncPutUtf8(pOut,0xFFFD);
+		}
+		return 1;
+	}
+	case DOM_ENC_BIG5: {
+		int iLead = 0;
+		for( i = 0 ; i < n ; ++i ){
+			unsigned char b = z[i];
+			if( iLead ){
+				sxu32 cp = 0;
+				int k = -1;
+				if( b >= 0x40 && b <= 0xFE ){
+					k = (iLead - 0x81) * DOM_DBCS_COLS + b - 0x40;
+					cp = (sxu32)aDomBig5Cell[k];
+				}
+				iLead = 0;
+				if( cp == 0xFFFF ){
+					/* The cell is in the side table: a supplementary code
+					 * point, or one of the four written with two. */
+					int iEx = DomBig5Ex(k);
+					cp = 0;
+					if( iEx >= 0 ){
+						DomEncPutUtf8(pOut,aDomBig5ExA[iEx]);
+						if( aDomBig5ExB[iEx] ){
+							DomEncPutUtf8(pOut,(sxu32)aDomBig5ExB[iEx]);
+						}
+						continue;
+					}
+				}
+				if( cp ){
+					DomEncPutUtf8(pOut,cp);
+					continue;
+				}
+				/* The pair names no character. Only an ASCII byte opens the
+				 * next character of its own rather than being eaten with the
+				 * lead, so a stray lead costs one replacement, not two bytes
+				 * of text. */
+				DomEncPutUtf8(pOut,0xFFFD);
+				if( b < 0x80 ){
+					i--;
+				}
+				continue;
+			}
+			if( b < 0x80 ){
+				DomEncPutUtf8(pOut,b);
+			}else if( b >= 0x81 && b <= 0xFE ){
+				/* Every one of them opens a pair, and 0x80 and 0xFF are an
+				 * error on their own: this index has no single-byte character
+				 * above ASCII. */
+				iLead = (int)b;
 			}else{
 				DomEncPutUtf8(pOut,0xFFFD);
 			}
