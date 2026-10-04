@@ -3562,7 +3562,7 @@ static xmlNsPtr DomNsForCreate(xmlNodePtr pNode,const char *zUri,const xmlChar *
  */
 static int DomNsIsParked(xmlDocPtr pDoc,xmlNsPtr pNs);
 static int DomNsIsFactory(xmlNsPtr pNs);
-static void DomNsRespell(xmlNodePtr pNode,int bAttr)
+static void DomNsRespell(xmlNodePtr pNode,int bAttr,int bModern,int bWrite)
 {
 	xmlNsPtr pNs = pNode->ns,pAlt;
 	/* php declares what it needs on the node that NEEDS it -- the element
@@ -3571,22 +3571,43 @@ static void DomNsRespell(xmlNodePtr pNode,int bAttr)
 	if( pNs == 0 || pNs->href == 0 || pSite == 0 ){
 		return;
 	}
-	if( pNs->prefix == 0 && DomNsIsParked(pNode->doc,pNs) ){
-		/* A binding the namespaced factory left declared NOWHERE has no
-		 * spelling to lose, and a declaration is the one thing it must not
-		 * acquire (DomNsForCreateModern). */
+	if( bModern && pNs->prefix == 0 && DomNsIsParked(pNode->doc,pNs) ){
+		/* php's namespaced tree re-declares no DEFAULT: a binding it left
+		 * declared nowhere -- one the factory minted (DomNsForCreateModern), or
+		 * one a write removed -- has no spelling to lose, and its serializer
+		 * writes nothing for it.  The 2004 tree gives every removed binding
+		 * back, which is the whole difference between the two here.  A PREFIXED
+		 * one is respelled on both: there the serializer must name the prefix,
+		 * so php's own output carries the declaration too. */
 		return;
 	}
-	if( xmlSearchNs(pNode->doc,pNode,pNs->prefix) == pNs ){
+	pAlt = xmlSearchNs(pNode->doc,pNode,pNs->prefix);
+	if( pAlt == pNs ){
 		return;   /* the prefix still names this very binding */
 	}
-	/* An attribute needs a PREFIXED binding; an element is happy with the
-	 * default one. */
-	pAlt = bAttr ? DomNsReuse(pNode,(const char *)pNs->href)
-	             : xmlSearchNsByHref(pNode->doc,pNode,pNs->href);
+	/* The two doors settle a broken spelling differently, and php's answers
+	 * only line up when they are asked apart.
+	 *
+	 * A WRITE that rebinds a prefix takes any binding of the URI still in
+	 * scope, whatever its prefix -- an attribute a PREFIXED one (DomNsReuse),
+	 * an element the default one as happily.
+	 *
+	 * A REMOVAL re-declares the node's OWN prefix instead, and reuses only a
+	 * binding that is that same prefix bound to that same URI -- which is how
+	 * a declaration an ancestor already makes absorbs the node, and how one
+	 * that merely binds the URI under ANOTHER prefix does not. Reusing by URI
+	 * there re-prefixed nodes php leaves spelled as they were written:
+	 * `<r xmlns="urn:d" xmlns:q="urn:d">` losing its default read back as
+	 * `<q:r>`, and its whole subtree with it. */
+	if( bWrite ){
+		pAlt = bAttr ? DomNsReuse(pNode,(const char *)pNs->href)
+		             : xmlSearchNsByHref(pNode->doc,pNode,pNs->href);
+	}else if( pAlt != 0 && !xmlStrEqual(pAlt->href,pNs->href) ){
+		pAlt = 0;
+	}
 	if( pAlt == 0 ){
-		/* Its own prefix first -- a declaration that was REMOVED leaves that
-		 * prefix free again, and php re-declares it unchanged there. */
+		/* A declaration that was REMOVED leaves that prefix free again, and php
+		 * re-declares it unchanged on the node that still needs it. */
 		pAlt = xmlNewNs(pSite,pNs->href,pNs->prefix);
 		if( pAlt && !DomNsIsSpelt(pNs) ){
 			DomNsMarkMinted(pAlt);   /* a re-declaration of an invented binding */
@@ -3613,16 +3634,16 @@ static int DomNsDefCount(xmlNodePtr pElem)
 	}
 	return n;
 }
-static void DomNsReconcile(xmlNodePtr pElem)
+static void DomNsReconcile(xmlNodePtr pElem,int bModern,int bWrite)
 {
 	xmlNodePtr pCur = pElem;
 	while( pCur ){
 		xmlAttrPtr pAttr;
 		if( pCur->type == XML_ELEMENT_NODE ){
-			DomNsRespell(pCur,0);
+			DomNsRespell(pCur,0,bModern,bWrite);
 			for( pAttr = pCur->properties ; pAttr ; pAttr = pAttr->next ){
 				if( pAttr->type == XML_ATTRIBUTE_NODE ){
-					DomNsRespell((xmlNodePtr)pAttr,1);
+					DomNsRespell((xmlNodePtr)pAttr,1,bModern,bWrite);
 				}
 			}
 		}
@@ -4907,10 +4928,13 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
 	 * including the absent one, which is NOT a refusal in either tree. */
 	int bModern = DomThisModern(pCtx);
 	if( pDecl ){
-		/* The declaration goes, and whatever still needs it gets it back: php
-		 * answers TRUE either way, and a binding nothing uses simply vanishes. */
+		/* The declaration goes, and on the 2004 tree whatever still needs it
+		 * gets it back -- php answers TRUE either way, and a binding nothing
+		 * uses simply vanishes. php 8.4's tree gives back a PREFIXED one only:
+		 * a node left pointing at an unprefixed binding declared nowhere still
+		 * ANSWERS the namespace there, and the serializer writes nothing. */
 		DomNsDeclRemove(pElem,pDecl);
-		DomNsReconcile(pElem);
+		DomNsReconcile(pElem,bModern,0);
 		DomResultRemoved(pCtx,bModern,1);
 		return PH7_OK;
 	}
@@ -5049,7 +5073,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 	/* Either path may have declared something here -- and a declaration, new or
 	 * rebound, can take the spelling away from what is already below it. */
 	if( bDecl || DomNsDefCount(pNode) != nOldDefs ){
-		DomNsReconcile(pNode);
+		DomNsReconcile(pNode,DomThisModern(pCtx),1);
 	}
 	DomQNameRelease(&sQ);
 	return PH7_OK;
@@ -5361,7 +5385,7 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttributeNS)
 			/* The declaration goes and whatever still needs it gets it back,
 			 * exactly as removing it under its written name does. */
 			DomNsDeclRemove(pElem,pDecl);
-			DomNsReconcile(pElem);
+			DomNsReconcile(pElem,1,0);
 			return PH7_OK;
 		}
 	}else{
@@ -5426,7 +5450,7 @@ DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
 		xmlRemoveProp(pAttr);
 	}else if( pDecl ){
 		DomNsDeclRemove(pElem,pDecl);
-		DomNsReconcile(pElem);
+		DomNsReconcile(pElem,DomThisModern(pCtx),0);
 	}
 	ph7_result_bool(pCtx,0);
 	return PH7_OK;
