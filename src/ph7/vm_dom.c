@@ -4218,6 +4218,101 @@ static xmlAttrPtr DomNsAttr(phl_xmldoc *pShell,xmlNodePtr pElem,xmlNsPtr pNs)
 	}
 	return pAttr;
 }
+/* Whether pNode IS one of those stand-ins: an attribute whose psvi names a
+ * declaration the shell parked it for. A real attribute's psvi is libxml's
+ * own and never answers this. */
+static xmlNsPtr DomNsAttrStandIn(phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	xmlNsPtr pNs;
+	if( pShell == 0 || pNode == 0 || pNode->type != XML_ATTRIBUTE_NODE
+	 || ((xmlAttrPtr)pNode)->psvi == 0 ){
+		return 0;
+	}
+	pNs = (xmlNsPtr)((xmlAttrPtr)pNode)->psvi;
+	return DomNsAttrFind(pShell,pNs) == (xmlAttrPtr)pNode ? pNs : 0;
+}
+/*
+ * ===== The one sibling chain the two halves of the map share =====
+ *
+ * php walks an element's declarations and its attributes as a SINGLE list --
+ * `xmlns:p` -> `xmlns` -> `a` -> `p:b` -- so the last declaration's
+ * `nextSibling` is the first attribute and that attribute's `previousSibling`
+ * is the last declaration. libxml keeps declarations off `pElem->properties`
+ * entirely, and the stand-ins are deliberately parked on the shell so that
+ * nothing which walks or serializes an element ever meets one; splicing them
+ * in would break every one of those walks. So the two READERS branch instead,
+ * and the chain exists only where it is asked for.
+ *
+ * Only the modern tree lists declarations on the attribute map at all: the
+ * 2004 tree answers one through DOMNameSpaceNode, which declares no sibling
+ * property and warns on the read, so its chain is libxml's untouched.
+ */
+static xmlNsPtr DomNsMapStep(xmlNodePtr pElem,xmlNsPtr pFrom,int bBack)
+{
+	xmlNsPtr pNs, pPrev = 0;
+	int bSeen = 0;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( pNs == pFrom ){
+			if( bBack ){
+				return pPrev;
+			}
+			bSeen = 1;
+			continue;
+		}
+		if( !DomNsIsSpelt(pNs) ){
+			continue;
+		}
+		if( !bBack && (bSeen || pFrom == 0) ){
+			return pNs;
+		}
+		pPrev = pNs;
+	}
+	/* Backwards from no declaration is the LAST one -- what the first real
+	 * attribute reads. Forwards from one not on this chain is nothing. */
+	return (bBack && pFrom == 0) ? pPrev : 0;
+}
+static xmlNodePtr DomAttrSiblingNext(int bModern,phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	xmlNsPtr pDecl;
+	xmlNodePtr pElem;
+	if( pNode == 0 ){
+		return 0;
+	}
+	if( !bModern || pNode->type != XML_ATTRIBUTE_NODE ){
+		return pNode->next;
+	}
+	pDecl = DomNsAttrStandIn(pShell,pNode);
+	if( pDecl == 0 ){
+		return pNode->next;              /* a real attribute: libxml's own chain */
+	}
+	pElem = pNode->parent;
+	pDecl = DomNsMapStep(pElem,pDecl,0);
+	return pDecl ? (xmlNodePtr)DomNsAttr(pShell,pElem,pDecl)
+	             : (xmlNodePtr)DomAttrList(pElem);
+}
+static xmlNodePtr DomAttrSiblingPrev(int bModern,phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	xmlNsPtr pDecl;
+	xmlNodePtr pElem;
+	if( pNode == 0 ){
+		return 0;
+	}
+	if( !bModern || pNode->type != XML_ATTRIBUTE_NODE || pNode->prev ){
+		return pNode->prev;
+	}
+	pElem = pNode->parent;
+	pDecl = DomNsAttrStandIn(pShell,pNode);
+	if( pDecl == 0 && DomAttrList(pElem) != (xmlAttrPtr)pNode ){
+		/* An attribute with no predecessor that is not the element's first --
+		 * a detached one, or one whose parent is not an element. */
+		return 0;
+	}
+	pDecl = DomNsMapStep(pElem,pDecl,1);
+	return pDecl ? (xmlNodePtr)DomNsAttr(pShell,pElem,pDecl) : 0;
+}
 /* How many of them the attribute map lists, and the one at that position, in
  * the order the element makes them: only the declarations the document SPELLS,
  * never a binding the engine minted to name something it was asked to make. */
@@ -10155,9 +10250,11 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	}else if( DomNameIs(zName,"lastChild") ){
 		DomResultNodeOf(pCtx,pNd,DomNodeChildLast(pNode));
 	}else if( DomNameIs(zName,"nextSibling") ){
-		DomResultNodeOf(pCtx,pNd,pNode ? pNode->next : 0);
+		DomResultNodeOf(pCtx,pNd,
+			DomAttrSiblingNext(DomThisModern(pCtx),pNd ? pNd->pShell : 0,pNode));
 	}else if( DomNameIs(zName,"previousSibling") ){
-		DomResultNodeOf(pCtx,pNd,pNode ? pNode->prev : 0);
+		DomResultNodeOf(pCtx,pNd,
+			DomAttrSiblingPrev(DomThisModern(pCtx),pNd ? pNd->pShell : 0,pNode));
 	}else if( DomNameIs(zName,"ownerDocument") ){
 		/* A document has no owner document, which is also why DomWrap answers
 		 * the document itself rather than a second wrapper for it. The NODE's
@@ -10968,7 +11065,6 @@ static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNod
  * instead, so the same two strings store what they say. Every other node kind
  * takes its content literally either way.
  */
-static xmlAttrPtr DomNsAttrFind(phl_xmldoc *pShell,xmlNsPtr pNs);
 static void DomSetContent(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode,
 	const char *zText,int bParseEntities)
 {
@@ -10977,9 +11073,8 @@ static void DomSetContent(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode,
 	/* A write to the stand-in attribute php 8.4's map answers a namespace
 	 * DECLARATION through goes to the DECLARATION: the stand-in is a view of
 	 * the xmlNs and nothing else reads its text child. */
-	if( pNode->type == XML_ATTRIBUTE_NODE && ((xmlAttrPtr)pNode)->psvi != 0
-	 && DomNsAttrFind(pShell,(xmlNsPtr)((xmlAttrPtr)pNode)->psvi) == (xmlAttrPtr)pNode ){
-		xmlNsPtr pNs = (xmlNsPtr)((xmlAttrPtr)pNode)->psvi;
+	xmlNsPtr pNs = DomNsAttrStandIn(pShell,pNode);
+	if( pNs ){
 		if( pNs->href ){
 			xmlFree((xmlChar *)pNs->href);
 		}
