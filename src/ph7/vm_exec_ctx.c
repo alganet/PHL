@@ -1840,7 +1840,47 @@ PH7_PRIVATE int PH7_VmSlotRefCount(ph7_vm *pVm,sxu32 nIdx)
  * "callable value -> Closure" primitive: the body is FCC-agnostic and self-contained, so the future
  * Closure::bind/fromCallable work (Increment 2) can call it directly.
  */
-PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
+/*
+ * A closure over a method named through a CLASS (`'C::m'`, `[C, 'm']`). With bBindCaller --
+ * Closure::fromCallable() -- php binds what zend_is_callable_ex resolves at creation, against
+ * the calling frame: a non-static method keeps the caller's `$this` when that is an instance
+ * of C, as `C::m(...)` does, so the closure still runs on it once it leaves the method that
+ * made it; and whenever such a `$this` exists the called class is ITS class, which a static
+ * method sees as `static::`. The string spelling never reaches __call: php resolves its
+ * trampoline through the static-method lookup from fromCallable's own frame, which has no
+ * `$this`, so a name only a catch-all answers is __callStatic there, unbound. A dynamic
+ * `$v(...)` binds nothing (bBindCaller FALSE).
+ */
+static ph7_class_instance * VmFccClassClosure(ph7_vm *pVm, ph7_class *pCls, SyString *pName,
+	int bBindCaller, int bStrForm)
+{
+	int bDirect = PH7_VmFccMethodIsDirect(pVm, pCls, SyStringData(pName), SyStringLength(pName));
+	ph7_class_instance *pThis = bBindCaller ? PH7_VmCallerThisFor(pVm, pCls) : 0;
+	ph7_class_instance *pRecv = 0, *pFccObj;
+	if( pThis && (bDirect || !bStrForm) ){
+		pRecv = PH7_VmFccClassReceiver(pVm, pCls, SyStringData(pName), SyStringLength(pName));
+	}
+	pFccObj = VmCreateClosure(pVm, pName, pRecv, &pCls->sName);
+	if( pFccObj == 0 ){
+		return 0;
+	}
+	pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
+	if( bDirect ){
+		pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
+	}
+	if( pRecv == 0 && pThis && pThis->pClass != pCls ){
+		SyString sAttr;
+		ph7_value *pAttr;
+		SyStringInitFromBuf(&sAttr, "__called", 8);
+		pAttr = PH7_ClassInstanceFetchAttr(pFccObj, &sAttr);
+		if( pAttr ){
+			PH7_MemObjStringAppend(pAttr, SyStringData(&pThis->pClass->sName),
+				SyStringLength(&pThis->pClass->sName));
+		}
+	}
+	return pFccObj;
+}
+PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, int bBindCaller)
 {
 	/* A Closure is already callable; never double-wrap it (this also stops the __invoke branch
 	 * below from binding a closure to its OWN __invoke). The OP_LOAD_FCC caller intercepts a
@@ -1872,17 +1912,8 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 			SyStringInitFromBuf(&sCls, zName, nSep);
 			pScopeCls = PH7_VmExtractClass(pVm, SyStringData(&sCls), SyStringLength(&sCls), FALSE, 0);
 			if( pScopeCls ){
-				ph7_class_instance *pFccObj;
 				SyStringInitFromBuf(&sName, zName + nSep + 2, nName - (nSep + 2));
-				pFccObj = VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName);
-				if( pFccObj ){
-					pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
-					if( PH7_VmFccMethodIsDirect(pVm,pScopeCls,
-							SyStringData(&sName),SyStringLength(&sName)) ){
-						pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
-					}
-				}
-				return pFccObj;
+				return VmFccClassClosure(pVm, pScopeCls, &sName, bBindCaller, TRUE);
 			}
 		}
 		SyStringInitFromBuf(&sName, zName, nName);
@@ -1952,16 +1983,7 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 			 * lookup is correct — unlike the syntactic `C::m(...)` path, which must resolve
 			 * self/static/parent via VmFccResolveScope. Matches PH7_VmIsCallable's own decode. */
 			ph7_class *pScopeCls = PH7_VmExtractClassFromValue(pVm, pTarget);
-			ph7_class_instance *pFccObj = pScopeCls
-				? VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName) : 0;
-			if( pFccObj ){
-				pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
-				if( PH7_VmFccMethodIsDirect(pVm,pScopeCls,
-						SyStringData(&sName),SyStringLength(&sName)) ){
-					pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
-				}
-			}
-			return pFccObj;
+			return pScopeCls ? VmFccClassClosure(pVm, pScopeCls, &sName, bBindCaller, FALSE) : 0;
 		}
 	}
 	if( pValue->iFlags & MEMOBJ_OBJ ){
@@ -2578,7 +2600,7 @@ PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7
 		ph7_result_value(pCtx, apArg[0]); /* already a Closure: idempotent */
 		return PH7_OK;
 	}
-	pClosure = VmFccWrapValue(pVm, apArg[0]);
+	pClosure = VmFccWrapValue(pVm, apArg[0], TRUE);
 	if( pClosure == 0 ){
 		/* php says WHY, with the same reason taxonomy every callback argument uses —
 		 * `Failed to create closure from callable: class P does not have a method "zz"`.

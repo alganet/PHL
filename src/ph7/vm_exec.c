@@ -1681,6 +1681,23 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 	return 0;
 }
 /*
+ * The receiver a callable VALUE naming a method through a class (`'C::m'`, `['C','m']`)
+ * binds when Closure::fromCallable() turns it into a closure: the same one the syntactic
+ * `C::m(...)` binds, so the closure keeps the caller's `$this` after it leaves the method
+ * that made it. 0 for a static method, or when there is no compatible receiver.
+ */
+PH7_PRIVATE ph7_class_instance * PH7_VmFccClassReceiver(ph7_vm *pVm,ph7_class *pClass,
+	const char *zMeth,sxu32 nMeth)
+{
+	ph7_class_instance *pRecv = 0;
+	char zBuf[160];
+	if( pClass == 0 || VmFccMemberError(&(*pVm),pClass,0,0,zMeth,nMeth,TRUE,
+			&pRecv,zBuf,(int)sizeof(zBuf)) != 0 ){
+		return 0;
+	}
+	return pRecv;
+}
+/*
  * The same resolution for a LITERAL `X::__construct(...)`, which php's compiler turns into a
  * request for the class's constructor rather than a method lookup -- the call's own rule
  * (vm_ops_oo.c, the static OP_MEMBER): a class with none is "Cannot call constructor" with
@@ -3405,7 +3422,7 @@ case PH7_OP_LOAD_FCC:{
 		 * THAT exception and never reports the callable bad, exactly as at the OP_CALL sites. */
 		nFccBrc = pVm->nBoundaryRc;
 		pFccRes = (const void *)pVm->pResumeFrame;
-		pCloObj = VmFccWrapValue(pVm, pTos);
+		pCloObj = VmFccWrapValue(pVm, pTos, FALSE);
 		if( pCloObj ){
 			pCloObj->iFlags |= VM_INSTANCE_FCC_SYNTAX;
 			PH7_MemObjRelease(pTos);
