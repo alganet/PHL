@@ -3464,6 +3464,13 @@ static xmlNodePtr DomWalkNext(xmlNodePtr pCur,xmlNodePtr pRoot)
  * NULL namespace emitted `xmlns:q=""`.  php refuses all three with a Namespace
  * Error before the element is touched.
  */
+/* The HTML namespace: what `name=` keying is confined to, what an HTML
+ * document's element factory mints into, and what makes an element a
+ * `Dom\HTMLElement`. */
+#define DOM_XHTML_NS "http://www.w3.org/1999/xhtml"
+/* ...and the SVG one, which the document's `title` asks about: the WHATWG rule
+ * reads a DIFFERENT title element when the document element is an SVG root. */
+#define DOM_SVG_NS "http://www.w3.org/2000/svg"
 #define DOM_XML_NS_URI   "http://www.w3.org/XML/1998/namespace"
 #define DOM_XMLNS_NS_URI "http://www.w3.org/2000/xmlns/"
 
@@ -7715,6 +7722,17 @@ static int DomDocCreate(ph7_context *pCtx,int iKind,const char *zName,const char
 		/* php passes the value through xmlNewDocNode, which entity-parses
 		 * it (quirk preserved: bad entities warn and drop the content). */
 		pNode = xmlNewDocNode(pDoc,0,(const xmlChar *)zName,nVal ? (const xmlChar *)zVal : 0);
+		/* An HTML document's factory mints IN THE HTML NAMESPACE -- the one
+		 * document kind whose no-namespace factory has a namespace. It is what
+		 * makes a MADE element the same class as a PARSED one there
+		 * (`Dom\HTMLElement`, not `Dom\Element`), and what lets the element be
+		 * handed back to a door that demands that class. The name is never
+		 * split on a colon for this: `createElement('x:y')` is an element
+		 * literally called `x:y` in the HTML namespace, not a prefix binding.
+		 * `Dom\XMLDocument` and the 2004 document mint no namespace at all. */
+		if( pNode && DomDocFlag(PH7_ContextThis(pCtx),DOM_F_HTML) ){
+			xmlSetNs(pNode,DomNsForCreateModern(pNode,DOM_XHTML_NS,0));
+		}
 		break;
 	case XML_TEXT_NODE:
 		pNode = xmlNewDocText(pDoc,(const xmlChar *)zVal);
@@ -10562,8 +10580,6 @@ DOM_METHOD(vm_builtin_Dom_getIterator)
  * because a type in a signature is resolved when a call is checked against it
  * and an interface method is never called.
  */
-/* The HTML namespace, which `name=` keying is confined to (see below). */
-#define DOM_XHTML_NS "http://www.w3.org/1999/xhtml"
 /* An element is "in the HTML namespace" only when it carries a namespace whose
  * URI is that one. A no-namespace element is NOT in it -- an unprefixed <a> in
  * a plain XML document answers false here, and that is the whole reason a
@@ -10572,6 +10588,12 @@ static int DomNodeIsHtmlNs(xmlNodePtr pNode)
 {
 	return pNode && pNode->ns && pNode->ns->href
 		&& xmlStrEqual(pNode->ns->href,(const xmlChar *)DOM_XHTML_NS);
+}
+/* The same question about the SVG namespace. */
+static int DomNodeIsSvgNs(xmlNodePtr pNode)
+{
+	return pNode && pNode->ns && pNode->ns->href
+		&& xmlStrEqual(pNode->ns->href,(const xmlChar *)DOM_SVG_NS);
 }
 /* Does one element answer to `zKey` under the collection rule? */
 static int DomNamedAttrHit(xmlNodePtr pNode,const char *zAttr,const char *zKey)
@@ -13130,6 +13152,137 @@ static int DomThisModern(ph7_context *pCtx)
  * `body`, `head` and `title` are the HTML document's, and an XML one answers the
  * empty shape for each rather than refusing: null, null and "".
  */
+/*
+ * php's `body` and `head`, which are questions about the DOCUMENT ELEMENT and
+ * not searches: both answer null unless the root is an `html` element IN THE
+ * HTML NAMESPACE, and then it is the first CHILD of that root -- again in the
+ * HTML namespace -- whose name matches. `head` matches `head` alone; `body`
+ * matches `body` OR `frameset`, so a frameset document answers its frameset
+ * through `body`. Nothing below the root is looked at, so a `<body>` nested
+ * inside a `<div>` is not the document's body.
+ *
+ * An XML document is asked the same way rather than refusing, which is why a
+ * `Dom\XMLDocument` over an xhtml `<html>` root answers its two elements too.
+ */
+static xmlNodePtr DomHtmlDocRootChild(xmlDocPtr pDoc,int bBody)
+{
+	xmlNodePtr pRoot = pDoc ? xmlDocGetRootElement(pDoc) : 0;
+	xmlNodePtr pCur;
+	if( pRoot == 0 || !DomNodeIsHtmlNs(pRoot)
+	 || !xmlStrEqual(pRoot->name,(const xmlChar *)"html") ){
+		return 0;
+	}
+	for( pCur = pRoot->children ; pCur ; pCur = pCur->next ){
+		if( pCur->type != XML_ELEMENT_NODE || !DomNodeIsHtmlNs(pCur) ){
+			continue;
+		}
+		if( bBody ){
+			if( xmlStrEqual(pCur->name,(const xmlChar *)"body")
+			 || xmlStrEqual(pCur->name,(const xmlChar *)"frameset") ){
+				return pCur;
+			}
+		}else if( xmlStrEqual(pCur->name,(const xmlChar *)"head") ){
+			return pCur;
+		}
+	}
+	return 0;
+}
+/* Pre-order tree walk, stopping when the climb reaches pTop. */
+static xmlNodePtr DomTreeNext(xmlNodePtr pNode,xmlNodePtr pTop)
+{
+	if( pNode->children ){
+		return pNode->children;
+	}
+	while( pNode && pNode != pTop ){
+		if( pNode->next ){
+			return pNode->next;
+		}
+		pNode = pNode->parent;
+	}
+	return 0;
+}
+/*
+ * "The title element" is the first `title` in the HTML namespace anywhere in
+ * the document in TREE ORDER -- not a child of `head`, and not confined to it:
+ * a document whose only `<title>` sits in the body answers that one.
+ */
+static xmlNodePtr DomHtmlTitleElem(xmlDocPtr pDoc)
+{
+	xmlNodePtr pCur = pDoc ? pDoc->children : 0;
+	while( pCur ){
+		if( pCur->type == XML_ELEMENT_NODE && DomNodeIsHtmlNs(pCur)
+		 && xmlStrEqual(pCur->name,(const xmlChar *)"title") ){
+			return pCur;
+		}
+		pCur = DomTreeNext(pCur,(xmlNodePtr)pDoc);
+	}
+	return 0;
+}
+/* The SVG rule is the narrower one: a direct CHILD of the root, in the SVG
+ * namespace, and no walk at all. */
+static xmlNodePtr DomSvgTitleChild(xmlNodePtr pRoot)
+{
+	xmlNodePtr pCur;
+	for( pCur = pRoot ? pRoot->children : 0 ; pCur ; pCur = pCur->next ){
+		if( pCur->type == XML_ELEMENT_NODE && DomNodeIsSvgNs(pCur)
+		 && xmlStrEqual(pCur->name,(const xmlChar *)"title") ){
+			return pCur;
+		}
+	}
+	return 0;
+}
+/* Is the document element an SVG `<svg>`? The two title rules split on it. */
+static int DomRootIsSvg(xmlNodePtr pRoot)
+{
+	return pRoot && DomNodeIsSvgNs(pRoot)
+		&& xmlStrEqual(pRoot->name,(const xmlChar *)"svg");
+}
+/*
+ * "Child text content": the TEXT and CDATA children only, concatenated. An
+ * element child contributes nothing, so a `<title>o<b>u</b>ter</title>` built
+ * by hand reads "oter" -- while the same source PARSED as HTML reads
+ * "o<b>u</b>ter", because `title` is raw text there and the markup never
+ * became an element.
+ */
+static void DomChildTextContent(xmlNodePtr pNode,SyBlob *pOut)
+{
+	xmlNodePtr pCur;
+	for( pCur = pNode ? pNode->children : 0 ; pCur ; pCur = pCur->next ){
+		if( (pCur->type == XML_TEXT_NODE || pCur->type == XML_CDATA_SECTION_NODE)
+		 && pCur->content ){
+			SyBlobAppend(pOut,pCur->content,
+				(sxu32)SyStrlen((const char *)pCur->content));
+		}
+	}
+}
+/* WHATWG's five ASCII whitespace characters. The vertical tab is NOT one of
+ * them, so a title built around one keeps it. */
+static int DomAsciiSpace(int c)
+{
+	return c == 0x09 || c == 0x0A || c == 0x0C || c == 0x0D || c == 0x20;
+}
+/* "Strip and collapse ASCII whitespace": leading and trailing runs go, and
+ * every interior run becomes ONE space whatever it was made of. */
+static void DomStripCollapse(SyBlob *pIn,SyBlob *pOut)
+{
+	const unsigned char *zIn = (const unsigned char *)SyBlobData(pIn);
+	sxu32 n = SyBlobLength(pIn),i = 0;
+	int bGap = 0;
+	while( i < n && DomAsciiSpace(zIn[i]) ){
+		++i;
+	}
+	for( ; i < n ; ++i ){
+		if( DomAsciiSpace(zIn[i]) ){
+			bGap = 1;
+			continue;
+		}
+		if( bGap ){
+			SyBlobAppend(pOut," ",sizeof(char));
+			bGap = 0;
+		}
+		SyBlobAppend(pOut,&zIn[i],sizeof(char));
+	}
+}
 static int DomModernDocProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)
 {
 	if( DomNameIs(zName,"implementation") ){
@@ -13167,11 +13320,23 @@ static int DomModernDocProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)
 		return 1;
 	}
 	if( DomNameIs(zName,"title") ){
-		ph7_result_string(pCtx,"",0);
+		xmlNodePtr pRoot = pDoc ? xmlDocGetRootElement(pDoc) : 0;
+		xmlNodePtr pTitle = DomRootIsSvg(pRoot) ? DomSvgTitleChild(pRoot)
+			: (pRoot ? DomHtmlTitleElem(pDoc) : 0);
+		SyBlob sRaw,sOut;
+		SyBlobInit(&sRaw,&pCtx->pVm->sAllocator);
+		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+		DomChildTextContent(pTitle,&sRaw);
+		DomStripCollapse(&sRaw,&sOut);
+		ph7_result_string(pCtx,SyBlobLength(&sOut) ? (const char *)SyBlobData(&sOut) : "",
+			(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sRaw);
+		SyBlobRelease(&sOut);
 		return 1;
 	}
 	if( DomNameIs(zName,"body") || DomNameIs(zName,"head") ){
-		ph7_result_null(pCtx);
+		DomResultNodeOf(pCtx,DomThisNode(pCtx),
+			DomHtmlDocRootChild(pDoc,DomNameIs(zName,"body")));
 		return 1;
 	}
 	return 0;
@@ -14180,6 +14345,150 @@ static int DomSetPiProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int 
  * because two of them are deprecated and php's readonly Error comes without the
  * deprecation notice a read would have raised.
  */
+/*
+ * The declared-type screen for `body`, the one document property php types by
+ * CLASS. `?Dom\HTMLElement` takes null and an instance of that class and
+ * nothing else, and the TypeError names the DECLARING class -- `Dom\Document`,
+ * never the HTML document the write was made on. It is what lets the writer
+ * below skip a namespace test of its own: a `<body>` minted in the SVG
+ * namespace wraps as a plain `Dom\Element` and is refused here.
+ */
+static int DomWriteBodyType(ph7_context *pCtx,ph7_value *pVal,int *pRc)
+{
+	char zBuf[128];
+	const char *zGiven;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) != 0 ){
+		return 1;   /* null passes the TYPE; the writer refuses it as a shape */
+	}
+	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+		ph7_class *pWant = PH7_VmExtractClass(pCtx->pVm,"Dom\\HTMLElement",
+			sizeof("Dom\\HTMLElement")-1,FALSE,0);
+		if( pWant && PH7_VmInstanceOf(pObj->pClass,pWant) ){
+			return 1;
+		}
+		SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sDisp);
+		zGiven = zBuf;
+	}else{
+		zGiven = ph7_type_name(pVal);
+	}
+	*pRc = DomPropThrow(pCtx,"TypeError",0,
+		"Cannot assign %s to property Dom\\Document::$body of type ?Dom\\HTMLElement",
+		zGiven);
+	return 0;
+}
+/* The namespace a `title` minted by the writer below is born into: the root's
+ * own when that is unprefixed, and a fresh default declaration otherwise --
+ * php's rule, and the reason a prefixed root grows an `xmlns=` on the title
+ * rather than borrowing the prefix. */
+static xmlNsPtr DomTitleNs(xmlDocPtr pDoc,xmlNodePtr pRoot,xmlNodePtr pTitle)
+{
+	if( pRoot->ns == 0 || pRoot->ns->prefix == 0 ){
+		return pRoot->ns;
+	}
+	(void)pDoc;
+	return xmlNewNs(pTitle,pRoot->ns->href,0);
+}
+/*
+ * The HTML document's two WRITABLE doors. `head` states no writer at all and
+ * lands on the readonly Error, which is php's answer for it.
+ *
+ * Both are declared on php's abstract base, so an XML document takes the same
+ * two writes -- and answers the same refusals, because each is worded off the
+ * document element rather than off the class.
+ */
+static int DomSetModernDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,
+	xmlDocPtr pDoc,int *pRc)
+{
+	xmlNodePtr pRoot = pDoc ? xmlDocGetRootElement(pDoc) : 0;
+	phl_domnode *pNd = DomThisNode(pCtx);
+	if( DomNameIs(zName,"body") ){
+		phl_domnode *pNewNd;
+		xmlNodePtr pNew,pOld;
+		if( DomWriteBodyType(pCtx,pVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		pNewNd = DomObjArg(pVal);
+		pNew = pNewNd ? (xmlNodePtr)pNewNd->pNode : 0;
+		if( pNew == 0 || pNew->type != XML_ELEMENT_NODE
+		 || !(xmlStrEqual(pNew->name,(const xmlChar *)"body")
+		   || xmlStrEqual(pNew->name,(const xmlChar *)"frameset")) ){
+			/* Including null, which the declared type let through: php's
+			 * writer reaches the same refusal for it. */
+			*pRc = DomPropThrow(pCtx,"DOMException",DOM_ERR_HIERARCHY,
+				"The new body must either be a body or a frameset tag");
+			return DOM_SET_DONE;
+		}
+		pOld = DomHtmlDocRootChild(pDoc,TRUE);
+		if( pOld == pNew ){
+			return DOM_SET_DONE;   /* already the body: nothing moves */
+		}
+		if( pOld == 0 && pRoot == 0 ){
+			*pRc = DomPropThrow(pCtx,"DOMException",DOM_ERR_HIERARCHY,
+				"A body can only be set if there is a document element");
+			return DOM_SET_DONE;
+		}
+		DomAdoptIntoRecv(pCtx,pVal,pNewNd);
+		DomDetach(pNewNd->pShell,pNew);
+		if( pOld ){
+			/* The displaced body is parked detached and alive rather than
+			 * freed: php frees it only when no wrapper holds it, and a node no
+			 * wrapper holds is one no program can tell the difference about. */
+			xmlReplaceNode(pOld,pNew);
+			DomOrphanAdd(pNewNd->pShell,pOld);
+		}else{
+			xmlAddChild(pRoot,pNew);
+		}
+		return DOM_SET_DONE;
+	}
+	if( DomNameIs(zName,"title") ){
+		xmlNodePtr pTitle = 0;
+		SyBlob sVal;
+		if( DomWriteText(pCtx,"Dom\\Document","title","string",pVal,&sVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		if( pRoot == 0 || pNd == 0 ){
+			/* No document element, nothing to hang a title on, and php says
+			 * nothing about it. */
+			SyBlobRelease(&sVal);
+			return DOM_SET_DONE;
+		}
+		if( DomRootIsSvg(pRoot) ){
+			pTitle = DomSvgTitleChild(pRoot);
+			if( pTitle == 0 ){
+				pTitle = xmlNewDocNode(pDoc,0,(const xmlChar *)"title",0);
+				if( pTitle ){
+					/* FIRST child of the root, where the HTML one goes last
+					 * inside `head`. */
+					xmlSetNs(pTitle,DomTitleNs(pDoc,pRoot,pTitle));
+					if( pRoot->children ){
+						xmlAddPrevSibling(pRoot->children,pTitle);
+					}else{
+						xmlAddChild(pRoot,pTitle);
+					}
+				}
+			}
+		}else if( DomNodeIsHtmlNs(pRoot) ){
+			xmlNodePtr pHead = DomHtmlDocRootChild(pDoc,FALSE);
+			pTitle = DomHtmlTitleElem(pDoc);
+			if( pTitle == 0 && pHead ){
+				pTitle = xmlNewDocNode(pDoc,0,(const xmlChar *)"title",0);
+				if( pTitle ){
+					xmlSetNs(pTitle,DomTitleNs(pDoc,pRoot,pTitle));
+					xmlAddChild(pHead,pTitle);
+				}
+			}
+			/* An HTML root with neither a title nor a head takes the write and
+			 * drops it: there is no place the title would belong. */
+		}
+		if( pTitle ){
+			DomSetContent(pCtx,pNd->pShell,pTitle,(const char *)SyBlobData(&sVal),FALSE);
+		}
+		SyBlobRelease(&sVal);
+		return DOM_SET_DONE;
+	}
+	return DOM_SET_UNKNOWN;
+}
 static int DomSetDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
@@ -14191,6 +14500,14 @@ static int DomSetDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int
 	 || DomNameIs(zName,"xmlEncoding") ){
 		*pRc = DomRefuseWrite(pCtx,zName);
 		return DOM_SET_DONE;
+	}
+	if( DomThisModern(pCtx) ){
+		/* php 8.4's document has three names the 2004 one does not declare at
+		 * all, and two of them write. */
+		int rcM = DomSetModernDocProp(pCtx,zName,pVal,pDoc,pRc);
+		if( rcM != DOM_SET_UNKNOWN ){
+			return rcM;
+		}
 	}
 	if( bVersion || bUri || DomNameIs(zName,"encoding") ){
 		const char *zNew;
@@ -16673,7 +16990,6 @@ DOM_METHOD(vm_builtin_DomXMLDocument_createEmpty)
  * `<template></template>`, dropping what was appended. That is php's answer and
  * not a gap here.
  */
-#define DOM_SVG_NS    "http://www.w3.org/2000/svg"
 #define DOM_MATHML_NS "http://www.w3.org/1998/Math/MathML"
 #define DOM_XML_NS    "http://www.w3.org/XML/1998/namespace"
 #define DOM_XMLNS_NS  "http://www.w3.org/2000/xmlns/"
