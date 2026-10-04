@@ -1104,8 +1104,19 @@ static xmlNodePtr Html5FosterBefore(html5_parser *p)
  * halves: the token has to be one the table modes hand to `in body`, and the
  * place it would land has to still be the table itself -- a second formatting
  * clone in one reconstruction nests inside the first, which is no longer a
- * table.  xmlAddPrevSibling merges a text node into whatever text already sits
- * before the table, which is the rule the ordinary path gets from xmlAddChild.
+ * table.
+ *
+ * Both insertion paths owe the same invariant -- no two adjacent text nodes --
+ * and only the ordinary one gets it for free.  xmlAddChild merges a text node
+ * into the parent's last child; xmlAddPrevSibling merges only when the node it
+ * inserts BEFORE is itself text, because it compares `cur->name` against
+ * `cur->prev->name`.  The foster target is always the open TABLE element, so
+ * that test never fires here and every run fostered out past a table landed as
+ * its own node: `<table>a<td>b</td>c</table>` left `a` and `c` side by side
+ * where the spec -- which merges on the insertion POSITION, appending to the
+ * node immediately before it when that node is text -- leaves `ac`.  The text
+ * already sitting before the table is the same position, so `<div>d<table>a`
+ * merges into `d` rather than opening a second node beside it.
  */
 static void Html5Attach(html5_parser *p,xmlNodePtr pNode)
 {
@@ -1117,6 +1128,15 @@ static void Html5Attach(html5_parser *p,xmlNodePtr pNode)
 		pBefore = Html5FosterBefore(p);
 	}
 	if( pBefore ){
+		if( pNode->type == XML_TEXT_NODE && pBefore->prev
+		 && pBefore->prev->type == XML_TEXT_NODE ){
+			/* libxml's own merge, which is what xmlAddPrevSibling runs when it
+			 * does decide to merge -- so the dict-allocated content case is
+			 * handled the way every other text append in this tree handles it. */
+			xmlNodeAddContent(pBefore->prev,pNode->content);
+			xmlFreeNode(pNode);
+			return;
+		}
 		xmlAddPrevSibling(pBefore,pNode);
 	}else{
 		xmlAddChild(Html5Target(p),pNode);
@@ -1587,8 +1607,9 @@ static void Html5InsertText(html5_parser *p)
 		return;
 	}
 	/*
-	 * xmlAddChild merges a text node into a preceding text sibling, which is
-	 * exactly the spec's rule, so the tree never carries two adjacent ones.
+	 * Html5Attach merges a text node into a preceding text sibling on BOTH of
+	 * its paths, which is exactly the spec's rule, so the tree never carries
+	 * two adjacent ones.
 	 */
 	Html5Attach(p,xmlNewDocTextLen(p->pDoc,
 		(const xmlChar *)SyBlobData(&p->sBuf),(int)n));
