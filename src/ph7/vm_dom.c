@@ -17441,9 +17441,14 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
  * Big5 and the two that share one decoder, GBK and gb18030. Their cells are
  * the oracle's: every high byte of every name decoded through php 8.5.10, and
  * every code point that came out encoded back. An undefined cell decodes to
- * U+FFFD, and nothing encodes to it. ISO-2022-JP alone still passes through in
- * both directions, name right and bytes untouched: it has shift states, so it
- * is not a table lookup at all.
+ * U+FFFD, and nothing encodes to it. ISO-2022-JP is the fortieth and the only one
+ * that is not a table lookup: an ESCAPE SEQUENCE selects a code set and every
+ * byte after it is read in that set until the next escape, so it carries a
+ * state on both faces -- three single-byte sets and one of pairs on the way in,
+ * and on the way out the shift INTO the pair set before a character that needs
+ * it, the shift back out before an ASCII one, and a last shift at the end of
+ * the stream. `vm_dom_iso2022jp.h` holds its one table and its generator holds
+ * the sweep for everything about it that is a law instead.
  *
  * `replacement` is the standard's mitigation rather than a converter, and it
  * is both faces at once: the decoder answers the EMPTY string for any source
@@ -17467,6 +17472,7 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 #define DOM_ENC_EUCJP   -6
 #define DOM_ENC_GBK     -7
 #define DOM_ENC_GB18030 -8
+#define DOM_ENC_JIS     -9
 #define DOM_ENC_SBCS     5  /* + the index into aDomSbcs[] */
 /* windows-1252's 0x80..0x9F; 0xA0..0xFF is the code point of the same value. */
 static const unsigned short aDomCp1252[32] = {
@@ -17998,6 +18004,55 @@ static int DomSjisFromUni(sxu32 cp)
 }
 #include "vm_dom_dbcs.h"
 #include "vm_dom_eucjp.h"
+#include "vm_dom_iso2022jp.h"
+/*
+ * The code sets ISO-2022-JP's escapes select. Three of them hold single bytes
+ * and the fourth holds pairs; the decoder reads all four and the encoder writes
+ * only three, because nothing makes it choose the katakana set -- a half-width
+ * katakana character is spelled as its full-width cell in the pair set instead.
+ */
+#define DOM_JIS_ASCII 0
+#define DOM_JIS_ROMAN 1
+#define DOM_JIS_PAIR  2
+#define DOM_JIS_KATA  3
+#define DOM_JIS_L0    0x21              /* the pair set's lead and trail */
+#define DOM_JIS_L1    0x7E              /* window, swept rather than assumed */
+#define DOM_JIS_COLS  (DOM_JIS_L1 - DOM_JIS_L0 + 1)
+/* The character a pair names, or 0 where php answers U+FFFD for it. */
+static sxu32 DomJisCell(int iLead,int iTrail)
+{
+	if( iLead < DOM_JIS_L0 || iLead > DOM_JIS_L1
+	 || iTrail < DOM_JIS_L0 || iTrail > DOM_JIS_L1 ){
+		return 0;
+	}
+	return (sxu32)aDomJisCell[(iLead - DOM_JIS_L0) * DOM_JIS_COLS
+		+ iTrail - DOM_JIS_L0];
+}
+/* The pair a code point is written as, or -1 where php has none. The table is
+ * ordered by code point and holds no duplicate key, so this is a binary
+ * search; more code points reach a cell than the cell table has cells,
+ * because php folds the half-width katakana and a second minus sign onto
+ * cells of their own. */
+static int DomJisFromUni(sxu32 cp)
+{
+	int iLo = 0,iHi = PH7_DOM_JIS_ENC - 1;
+	if( cp > 0xFFFF ){
+		return -1;
+	}
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		sxu32 u = (sxu32)aDomJisEncCp[iMid];
+		if( u == cp ){
+			return (int)aDomJisEncB[iMid];
+		}
+		if( u < cp ){
+			iLo = iMid + 1;
+		}else{
+			iHi = iMid - 1;
+		}
+	}
+	return -1;
+}
 /*
  * A byte-indexed framing: a byte either stands for a character on its own or
  * opens a longer sequence, and that sequence names a cell directly by its
@@ -18236,6 +18291,9 @@ static int DomEncConverter(const char *zEnc)
 	if( SyStrncmp(zCanon,"EUC-JP",6) == 0 ){
 		return DOM_ENC_EUCJP;
 	}
+	if( SyStrncmp(zCanon,"ISO-2022-JP",11) == 0 ){
+		return DOM_ENC_JIS;
+	}
 	if( SyStrncmp(zCanon,"Big5",4) == 0 ){
 		return DOM_ENC_BIG5;
 	}
@@ -18456,16 +18514,83 @@ static void DomEncPut(SyBlob *pOut,int iEnc,sxu32 cp)
  * the decoder for a UTF-8 source (target UTF-8) and the first half of every
  * dump: the tree is UTF-8, or is supposed to be.
  */
+/*
+ * One code point into ISO-2022-JP, which is the one target that carries a
+ * state: `*pSet` is the code set the stream is in, read and advanced here. The
+ * order of the rules is php's rather than the standard's in one place, and it
+ * is observable: U+000E, U+000F and U+001B are refused, but only when the
+ * stream is ALREADY in the ASCII or Roman set. Reached from the pair set the
+ * shift out happens first and the byte is then written RAW, because the refusal
+ * is not re-asked after a shift.
+ */
+static void DomEncPutJis(SyBlob *pOut,int *pSet,sxu32 cp)
+{
+	unsigned char z[2];
+	int iB;
+	if( (*pSet == DOM_JIS_ASCII || *pSet == DOM_JIS_ROMAN)
+	 && (cp == 0x0E || cp == 0x0F || cp == 0x1B) ){
+		SyBlobAppend(pOut,"?",1);
+		return;
+	}
+	if( cp == 0x00A5 || cp == 0x203E ){
+		/* The two characters the Roman set redefines its own 0x5C and 0x7E to
+		 * be. Nothing else enters that set, and an ordinary ASCII character
+		 * does not leave it. */
+		if( *pSet != DOM_JIS_ROMAN ){
+			SyBlobAppend(pOut,"\x1B(J",3);
+			*pSet = DOM_JIS_ROMAN;
+		}
+		z[0] = (unsigned char)(cp == 0x00A5 ? 0x5C : 0x7E);
+		SyBlobAppend(pOut,z,1);
+		return;
+	}
+	if( cp < 0x80 ){
+		/* 0x5C and 0x7E are the two bytes the Roman set spends on the
+		 * characters above, so the backslash and the tilde themselves need the
+		 * ASCII set back; every other ASCII character is written where it is. */
+		if( *pSet == DOM_JIS_PAIR
+		 || (*pSet == DOM_JIS_ROMAN && (cp == 0x5C || cp == 0x7E)) ){
+			SyBlobAppend(pOut,"\x1B(B",3);
+			*pSet = DOM_JIS_ASCII;
+		}
+		z[0] = (unsigned char)cp;
+		SyBlobAppend(pOut,z,1);
+		return;
+	}
+	if( (iB = DomJisFromUni(cp)) < 0 ){
+		/* Written where the stream stands: the refusal does not shift. */
+		SyBlobAppend(pOut,"?",1);
+		return;
+	}
+	if( *pSet != DOM_JIS_PAIR ){
+		SyBlobAppend(pOut,"\x1B$B",3);
+		*pSet = DOM_JIS_PAIR;
+	}
+	z[0] = (unsigned char)(iB >> 8);
+	z[1] = (unsigned char)(iB & 0xFF);
+	SyBlobAppend(pOut,z,2);
+}
+/* One code point in the target encoding, carrying the state the one stateful
+ * target needs and the others have no use for. */
+static void DomEncPutSt(SyBlob *pOut,int iTarget,int *pSet,sxu32 cp)
+{
+	if( iTarget == DOM_ENC_JIS ){
+		DomEncPutJis(pOut,pSet,cp);
+		return;
+	}
+	DomEncPut(pOut,iTarget,cp);
+}
 static void DomEncFromUtf8(SyBlob *pOut,int iTarget,const unsigned char *z,int n)
 {
 	sxu32 cp = 0;
 	int nNeed = 0,nSeen = 0,i;
+	int iSet = DOM_JIS_ASCII;           /* ISO-2022-JP's, unused by the rest */
 	unsigned char lo = 0x80,hi = 0xBF;
 	for( i = 0 ; i < n ; ++i ){
 		unsigned char b = z[i];
 		if( nNeed == 0 ){
 			if( b < 0x80 ){
-				DomEncPut(pOut,iTarget,b);
+				DomEncPutSt(pOut,iTarget,&iSet,b);
 			}else if( b >= 0xC2 && b <= 0xDF ){
 				nNeed = 1;
 				cp = b & 0x1F;
@@ -18480,7 +18605,7 @@ static void DomEncFromUtf8(SyBlob *pOut,int iTarget,const unsigned char *z,int n
 				nNeed = 3;
 				cp = b & 0x07;
 			}else{
-				DomEncPut(pOut,iTarget,0xFFFD);
+				DomEncPutSt(pOut,iTarget,&iSet,0xFFFD);
 			}
 			continue;
 		}
@@ -18489,7 +18614,7 @@ static void DomEncFromUtf8(SyBlob *pOut,int iTarget,const unsigned char *z,int n
 			nNeed = nSeen = 0;
 			lo = 0x80;
 			hi = 0xBF;
-			DomEncPut(pOut,iTarget,0xFFFD);
+			DomEncPutSt(pOut,iTarget,&iSet,0xFFFD);
 			i--;
 			continue;
 		}
@@ -18497,12 +18622,17 @@ static void DomEncFromUtf8(SyBlob *pOut,int iTarget,const unsigned char *z,int n
 		hi = 0xBF;
 		cp = (cp << 6) | (b & 0x3F);
 		if( ++nSeen == nNeed ){
-			DomEncPut(pOut,iTarget,cp);
+			DomEncPutSt(pOut,iTarget,&iSet,cp);
 			nNeed = nSeen = 0;
 		}
 	}
 	if( nNeed ){
-		DomEncPut(pOut,iTarget,0xFFFD);
+		DomEncPutSt(pOut,iTarget,&iSet,0xFFFD);
+	}
+	if( iTarget == DOM_ENC_JIS && iSet != DOM_JIS_ASCII ){
+		/* A stream never ends in another code set: the last thing php writes
+		 * is the shift back, whatever the document's last character was. */
+		SyBlobAppend(pOut,"\x1B(B",3);
 	}
 }
 static void DomEncFromUtf16(SyBlob *pOut,int bLe,const unsigned char *z,int n)
@@ -18645,6 +18775,103 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 			}
 		}
 		if( iLead ){
+			DomEncPutUtf8(pOut,0xFFFD);
+		}
+		return 1;
+	}
+	case DOM_ENC_JIS: {
+		/* Three pieces of state, and every one of them is observable. `iSet` is
+		 * the code set an escape selected. `iLead` is a pair's first byte, due
+		 * its second. And `bMark` is php's output flag: an escape SETS it and a
+		 * character emitted clears it, so a second escape arriving with nothing
+		 * between it and the first is one U+FFFD -- and still selects its set. */
+		int iSet = DOM_JIS_ASCII,iOut = DOM_JIS_ASCII;
+		int iLead = 0,bMark = 0,iEsc = 0;
+		for( i = 0 ; i < n ; ++i ){
+			unsigned char b = z[i];
+			if( iEsc ){
+				int iNew = -1;
+				if( iEsc == 0x28 && b == 0x42 ){
+					iNew = DOM_JIS_ASCII;
+				}else if( iEsc == 0x28 && b == 0x4A ){
+					iNew = DOM_JIS_ROMAN;
+				}else if( iEsc == 0x28 && b == 0x49 ){
+					iNew = DOM_JIS_KATA;
+				}else if( iEsc == 0x24 && (b == 0x40 || b == 0x42) ){
+					iNew = DOM_JIS_PAIR;
+				}
+				if( iNew < 0 ){
+					/* No set is named. The escape is one replacement, its first
+					 * byte is then read as a character of the set the stream was
+					 * already in, and so is this one. */
+					iEsc = 0;
+					iSet = iOut;
+					bMark = 0;
+					DomEncPutUtf8(pOut,0xFFFD);
+					i -= 2;
+					continue;
+				}
+				iEsc = 0;
+				iSet = iOut = iNew;
+				if( bMark ){
+					DomEncPutUtf8(pOut,0xFFFD);
+				}
+				bMark = 1;
+				continue;
+			}
+			if( b == 0x1B ){
+				/* An escape interrupts a pair: the lead is a replacement and
+				 * the escape is then read whole. */
+				if( iLead ){
+					iLead = 0;
+					bMark = 0;
+					DomEncPutUtf8(pOut,0xFFFD);
+				}
+				if( i + 1 < n && (z[i + 1] == 0x24 || z[i + 1] == 0x28) ){
+					iEsc = (int)z[++i];
+					continue;
+				}
+				/* The byte behind it names no set, so the escape is one
+				 * replacement and that byte is read again on its own. */
+				iSet = iOut;
+				bMark = 0;
+				DomEncPutUtf8(pOut,0xFFFD);
+				continue;
+			}
+			if( iLead ){
+				sxu32 cp = DomJisCell(iLead,(int)b);
+				iLead = 0;
+				bMark = 0;
+				/* Every byte but the escape completes the pair, whether or not
+				 * it names a cell: nothing is handed back here. */
+				DomEncPutUtf8(pOut,cp ? cp : 0xFFFD);
+				continue;
+			}
+			bMark = 0;
+			if( iSet == DOM_JIS_PAIR ){
+				if( b >= DOM_JIS_L0 && b <= DOM_JIS_L1 ){
+					iLead = (int)b;
+					continue;
+				}
+				DomEncPutUtf8(pOut,0xFFFD);
+				continue;
+			}
+			if( iSet == DOM_JIS_KATA ){
+				DomEncPutUtf8(pOut,(b >= 0x21 && b <= 0x5F)
+					? 0xFF61 + (sxu32)(b - 0x21) : 0xFFFD);
+				continue;
+			}
+			if( iSet == DOM_JIS_ROMAN && (b == 0x5C || b == 0x7E) ){
+				/* The two bytes this set moves off ASCII. */
+				DomEncPutUtf8(pOut,b == 0x5C ? 0x00A5 : 0x203E);
+				continue;
+			}
+			/* The shift bytes JIS X 0201 reserves are refused in every set. */
+			DomEncPutUtf8(pOut,(b < 0x80 && b != 0x0E && b != 0x0F)
+				? (sxu32)b : 0xFFFD);
+		}
+		if( iLead || iEsc ){
+			/* A pair or an escape that ran out of input is one replacement. */
 			DomEncPutUtf8(pOut,0xFFFD);
 		}
 		return 1;
