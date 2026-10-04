@@ -3221,6 +3221,12 @@ static int DomUriIs(const char *zUri,const char *zWant)
  *                spec's pairing (the xmlns namespace may only be spelled by an
  *                xmlns name and an xmlns name may name nothing else) and the
  *                `xml` prefix's own URI.
+ *   DOM_QN_MELEM php 8.4's `Dom\\Document::createElementNS` -- DOM_QN_ELEM with
+ *                the same split: every grammar failure is the Invalid Character
+ *                Error, so `createElementNS('urn:u', '1:x')` refuses with 5
+ *                where the 2004 factory answers 14. A prefix with no namespace
+ *                is still the Namespace Error, because that is a rule and not
+ *                a spelling.
  *   DOM_QN_ELEM  createElementNS -- a QName when a namespace came with it, and
  *                the SET side's split when none did (so `createElementNS(null,
  *                'x y')` is the Invalid Character Error where the attribute
@@ -3233,22 +3239,26 @@ static int DomUriIs(const char *zUri,const char *zWant)
  *
  * Answers 0, or the DOM error code to raise.
  */
-#define DOM_QN_SET  0
-#define DOM_QN_ATTR 1
-#define DOM_QN_ELEM 2
+#define DOM_QN_SET   0
+#define DOM_QN_ATTR  1
+#define DOM_QN_ELEM  2
+#define DOM_QN_MELEM 3
 static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname *pOut)
 {
 	int bHasUri = zUri != 0 && zUri[0] != 0;
+	int bAnyElem = iMode == DOM_QN_ELEM || iMode == DOM_QN_MELEM;
+	/* Which code a GRAMMAR failure takes -- the only thing the 2004 element
+	 * mode and its namespaced twin disagree about. */
+	int iBadName = iMode == DOM_QN_MELEM ? DOM_ERR_INVALID_CHAR : DOM_ERR_NAMESPACE;
 	int bXmlnsName;
 	pOut->zPrefix = pOut->zLocal = 0;
 	if( zQname == 0 || zQname[0] == 0 ){
-		return DOM_ERR_NAMESPACE;
+		return iBadName;
 	}
-	if( iMode == DOM_QN_ATTR || (iMode == DOM_QN_ELEM && bHasUri) ){
-		/* A created name that names a namespace has to be a QName, and every
-		 * failure there is the Namespace Error. */
+	if( iMode == DOM_QN_ATTR || (bAnyElem && bHasUri) ){
+		/* A created name that names a namespace has to be a QName. */
 		if( xmlValidateQName((const xmlChar *)zQname,0) != 0 ){
-			return DOM_ERR_NAMESPACE;
+			return iBadName;
 		}
 	}
 	pOut->zLocal = xmlSplitQName2((const xmlChar *)zQname,&pOut->zPrefix);
@@ -3261,7 +3271,7 @@ static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname
 			return DOM_ERR_NAMESPACE;
 		}
 	}
-	if( iMode == DOM_QN_SET || (iMode == DOM_QN_ELEM && !bHasUri) ){
+	if( iMode == DOM_QN_SET || (bAnyElem && !bHasUri) ){
 		/* The SET side separates the two failures php separates. A name with a
 		 * PREFIX is judged as two NCNames and every failure there is the
 		 * Namespace Error; an unprefixed one is judged as a plain Name, and a
@@ -3272,7 +3282,7 @@ static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname
 			if( xmlValidateNCName(pOut->zPrefix,0) != 0
 			 || xmlValidateNCName(pOut->zLocal,0) != 0 ){
 				DomQNameRelease(pOut);
-				return DOM_ERR_NAMESPACE;
+				return iBadName;
 			}
 		}else if( xmlValidateName((const xmlChar *)zQname,0) != 0 ){
 			DomQNameRelease(pOut);
@@ -5562,10 +5572,16 @@ static int DomDocCreate(ph7_context *pCtx,int iKind,const char *zName,const char
 		if( xmlValidateName((const xmlChar *)zName,0) != 0 ){
 			break;
 		}
-		/* Empty data stays a NULL content pointer, matching php's node state:
-		 * `<?bare?>` serializes with no separator space, `nodeValue` reads
-		 * null -- and `data` reads "", because THAT getter coerces. */
-		pNode = xmlNewDocPI(pDoc,(const xmlChar *)zName,nVal ? (const xmlChar *)zVal : 0);
+		/* An ABSENT data argument stays a NULL content pointer, matching php's
+		 * node state: `<?bare?>` serializes with no separator space,
+		 * `nodeValue` reads null -- and `data` reads "", because THAT getter
+		 * coerces. An argument that was PASSED and is empty is a different
+		 * node: php gives it an empty content string, `nodeValue` reads "" and
+		 * the serializer writes the separator space (`<?bare ?>`). nVal is
+		 * negative for the absent one; a length alone cannot tell them apart,
+		 * and conflating them is what php's namespaced factory would have
+		 * inherited on every call, its `$data` being required there. */
+		pNode = xmlNewDocPI(pDoc,(const xmlChar *)zName,nVal >= 0 ? (const xmlChar *)zVal : 0);
 		break;
 	case XML_ENTITY_REF_NODE:
 		if( xmlValidateName((const xmlChar *)zName,0) != 0 ){
@@ -5629,6 +5645,12 @@ DOM_METHOD(vm_builtin_DOMDocument_createElementNS)
 	const char *zQname = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
 	int nVal = 0;
 	const char *zVal = nArg > 2 ? ph7_value_to_string(apArg[2],&nVal) : "";
+	/* php 8.4's factory differs from the 2004 one twice over: a grammar failure
+	 * is the Invalid Character Error rather than the Namespace Error, and an
+	 * EMPTY-STRING namespace is simply no namespace. The 2004 one keeps ''
+	 * apart from null -- it declares `xmlns=""` on the element and answers ''
+	 * for namespaceURI -- and the namespaced one answers null for both. */
+	int bModern = DomThisModern(pCtx);
 	xmlNodePtr pNode;
 	dom_qname sQ;
 	sxu32 nMark;
@@ -5636,7 +5658,10 @@ DOM_METHOD(vm_builtin_DOMDocument_createElementNS)
 	if( pDocNd == 0 ){
 		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
 	}
-	rc = DomQNameParse(zQname,zUri,DOM_QN_ELEM,&sQ);
+	if( bModern && zUri != 0 && zUri[0] == 0 ){
+		zUri = 0;
+	}
+	rc = DomQNameParse(zQname,zUri,bModern ? DOM_QN_MELEM : DOM_QN_ELEM,&sQ);
 	if( rc ){
 		return DomThrow(pCtx,rc);
 	}
@@ -6015,7 +6040,7 @@ DOM_METHOD(vm_builtin_DOMDocument_createTextNode)
 DOM_METHOD(vm_builtin_DOMDocument_createPI)
 {
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int nVal = 0;
+	int nVal = -1;   /* the sentinel for "no data argument came at all" */
 	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],&nVal) : "";
 	return DomDocCreate(pCtx,XML_PI_NODE,zName,zVal,nVal);
 }
@@ -6034,8 +6059,25 @@ DOM_METHOD(vm_builtin_DOMDocument_createComment)
 {
 	return DomDocCreateData(pCtx,XML_COMMENT_NODE,nArg,apArg);
 }
+/*
+ * php 8.4's `createCDATASection` screens the one sequence a CDATA section
+ * cannot contain, and says which one it was rather than raising the bare
+ * sentence. The 2004 factory takes `]]>` without a word and writes a document
+ * that will not parse back, so the screen is the namespaced tree's alone.
+ */
 DOM_METHOD(vm_builtin_DOMDocument_createCDATASection)
 {
+	if( DomThisModern(pCtx) && nArg > 0 ){
+		int nData = 0;
+		const char *zData = ph7_value_to_string(apArg[0],&nData);
+		int i;
+		for( i = 0 ; i + 2 < nData ; ++i ){
+			if( zData[i] == ']' && zData[i+1] == ']' && zData[i+2] == '>' ){
+				return DomThrowSentence(pCtx,DOM_ERR_INVALID_CHAR,
+					"Invalid character sequence \"]]>\" in CDATA section");
+			}
+		}
+	}
 	return DomDocCreateData(pCtx,XML_CDATA_SECTION_NODE,nArg,apArg);
 }
 /*
@@ -12238,8 +12280,39 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_MPARENT_METHODS
 	};
 	/* On the ABSTRACT document, not on its two final subclasses: php declares
-	 * them once and both documents inherit the one declaration. */
+	 * them once and both documents inherit the one declaration.
+	 *
+	 * The factory, in php's own declaration order, is the 2004 bodies under the
+	 * new API's signatures -- the node a factory builds is wrapped by family
+	 * already (DomWrapClassName reads the document's own flag), so
+	 * `$doc->createElement('x')` answers a `Dom\Element` here and a DOMElement
+	 * there without the bodies knowing. What the signatures change is real:
+	 * `createElement` has no `$value` second parameter at all, so the entity
+	 * parse the 2004 one carries is unreachable from this tree, and
+	 * `createProcessingInstruction`'s `$data` is REQUIRED, which is what makes
+	 * the empty-versus-absent distinction observable on every call.
+	 * `createAttributeNS` is NOT here: php's namespaced one is a different
+	 * factory, not a retyped one -- it declares nothing on the document's root
+	 * and lets the binding ride on the attribute -- and it lands with the
+	 * insert-side reconciliation that a null-prefixed one needs. */
 	static const PH7_NativeMethodDef aMDocMethod[] = {
+		{ "createElement",        PH7_MOD_PUBLIC, "string $localName", "Dom\\Element",
+		  vm_builtin_DOMDocument_createElement },
+		{ "createElementNS",      PH7_MOD_PUBLIC,
+		  "?string $namespace, string $qualifiedName", "Dom\\Element",
+		  vm_builtin_DOMDocument_createElementNS },
+		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "Dom\\DocumentFragment",
+		  vm_builtin_DOMDocument_createFragment },
+		{ "createTextNode",       PH7_MOD_PUBLIC, "string $data", "Dom\\Text",
+		  vm_builtin_DOMDocument_createTextNode },
+		{ "createCDATASection",   PH7_MOD_PUBLIC, "string $data", "Dom\\CDATASection",
+		  vm_builtin_DOMDocument_createCDATASection },
+		{ "createComment",        PH7_MOD_PUBLIC, "string $data", "Dom\\Comment",
+		  vm_builtin_DOMDocument_createComment },
+		{ "createProcessingInstruction", PH7_MOD_PUBLIC, "string $target, string $data",
+		  "Dom\\ProcessingInstruction", vm_builtin_DOMDocument_createPI },
+		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "Dom\\Attr",
+		  vm_builtin_DOMDocument_createAttribute },
 		DOM_MPARENT_METHODS
 	};
 	/* php's return here is `Dom\Text` and not `Dom\Text|false`, which is what
@@ -12332,6 +12405,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "createFromString", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "string $source, int $options = 0, ?string $overrideEncoding = null",
 		  "Dom\\XMLDocument", vm_builtin_DomXMLDocument_createFromString },
+		/* The entity reference is the XML document's alone -- php declares it
+		 * here and not on the abstract document above, because an HTML document
+		 * has no entity declarations to refer to. */
+		{ "createEntityReference", PH7_MOD_PUBLIC, "string $name", "Dom\\EntityReference",
+		  vm_builtin_DOMDocument_createEntityRef },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "DOMException", "Exception", 0, PH7_CLASS_FINAL, 0, 0, 0, 0,
