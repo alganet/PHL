@@ -11564,6 +11564,48 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 				PH7_NativeClassInstallPropHook(&(*pVm),azPropRoot[n],DomPropHook);
 			}
 		}
+		/*
+		 * php 8.4's `Dom\AdjacentPosition` -- the four insertion points
+		 * `Dom\Element::insertAdjacentElement()` and its two siblings name.
+		 *
+		 * It is STRING-backed, and the backing values are the HTML standard's
+		 * lowercase spellings and not the case names: `from('beforebegin')` is
+		 * the case and `from('BeforeBegin')` is a ValueError. A program that
+		 * spells the position by hand is reading the standard, not the enum, so
+		 * getting that pairing wrong would fail exactly the call the enum exists
+		 * to type.
+		 *
+		 * The case table is `static` because the installer keeps a POINTER to
+		 * each backing literal for the life of the class. A stack array is safe
+		 * only for a PURE enum, which carries no literal at all -- which is why
+		 * the engine's other two native enums build theirs on the stack.
+		 */
+		if( rc == SXRET_OK ){
+			static const PH7_NativeEnumCase aAdjacent[] = {
+				{ "BeforeBegin", { 0, 0, PH7_NATIVE_VAL_STRING, 0, "beforebegin", 0.0 } },
+				{ "AfterBegin",  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "afterbegin",  0.0 } },
+				{ "BeforeEnd",   { 0, 0, PH7_NATIVE_VAL_STRING, 0, "beforeend",   0.0 } },
+				{ "AfterEnd",    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "afterend",    0.0 } }
+			};
+			rc = PH7_InstallNativeEnum(&(*pVm),"Dom\\AdjacentPosition",MEMOBJ_STRING,
+				aAdjacent,SX_ARRAYSIZE(aAdjacent),0,0);
+		}
+		/*
+		 * `Dom\DOMException` is php's 2004 DOMException under a second name, not
+		 * a class of its own: `get_class()` on one caught as `Dom\DOMException`
+		 * answers `DOMException`, and `catch (DOMException)` catches what the
+		 * namespaced surface throws. So it is an ALIAS -- a second key over the
+		 * same class -- and php's own listing shows the key folded, which is the
+		 * spelling entered here.
+		 */
+		if( rc == SXRET_OK ){
+			static const char zAlias[] = "dom\\domexception";
+			pClass = PH7_VmExtractClass(&(*pVm),"DOMException",sizeof("DOMException")-1,FALSE,0);
+			if( pClass && SyHashGet(&pVm->hClass,(const void *)zAlias,
+				sizeof(zAlias)-1) == 0 ){
+				SyHashInsert(&pVm->hClass,(const void *)zAlias,sizeof(zAlias)-1,pClass);
+			}
+		}
 	}
 	return rc;
 }
