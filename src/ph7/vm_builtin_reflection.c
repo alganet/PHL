@@ -6133,7 +6133,23 @@ REFLECT_FUNC_NAMEPART(vm_builtin_ReflectionFunc_inNamespace, 0)
 REFLECT_FUNC_NAMEPART(vm_builtin_ReflectionFunc_getNamespaceName, 1)
 REFLECT_FUNC_NAMEPART(vm_builtin_ReflectionFunc_getShortName, 2)
 
+/*
+ * isClosure() is php's ZEND_ACC_CLOSURE: EVERY function a Closure object holds
+ * carries it -- `strlen(...)`, `fromCallable([$o,'m'])` and a __call
+ * trampoline included -- and nothing reached by name does. A ReflectionMethod
+ * never does either, not even `Closure::__invoke`, which php fabricates as a
+ * plain internal method. isAnonymous() is the narrower `{closure}` question.
+ */
 static int vm_builtin_ReflectionFunc_isClosure(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, pThis != 0 && PH7_NativeAttrObj(pThis, RF_CL) != 0
+		&& !ReflectIsMethodReflector(pCtx, pThis));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunction_isAnonymous(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
 	int bAnon = 0;
@@ -7129,10 +7145,6 @@ static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, 
 	PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sRef.pHost->sName),
 		(int)SyStringLength(&sRef.pHost->sName));
 	return PH7_OK;
-}
-static int vm_builtin_ReflectionFunction_isAnonymous(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	return vm_builtin_ReflectionFunc_isClosure(pCtx, nArg, apArg);
 }
 static int vm_builtin_ReflectionFunction_isDisabled(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
