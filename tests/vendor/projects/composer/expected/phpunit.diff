@@ -25,7 +25,7 @@
 -............................................................. 1769 / 3328 ( 53%)
 +.......F.....F.......................F....................... 1647 / 3328 ( 49%)
 +...........................F................................. 1708 / 3328 ( 51%)
-+..................FF.F...F.......F..................E........ 1769 / 3328 ( 53%)
++....................................................E........ 1769 / 3328 ( 53%)
  ............................................................. 1830 / 3328 ( 54%)
 -............................................................. 1891 / 3328 ( 56%)
 -............................................................. 1952 / 3328 ( 58%)
@@ -148,7 +148,7 @@
  --
  
 -There were 4 failures:
-+There were 24 failures:
++There were 19 failures:
 +
 +1) Composer\Test\Command\InitCommandTest::testGetGitConfig
 +Failed asserting that an array has the key 'user.name'.
@@ -200,10 +200,11 @@
 ++
 +
 + Use the option --with-all-dependencies (-W) to allow upgrades, downgrades and removals for packages currently locked to specific versions.
-+
-+@ROOT@/tests/Composer/Test/InstallerTest.php:489
-+@ROOT@/tests/Composer/Test/InstallerTest.php:256
-+
+ 
+ @ROOT@/tests/Composer/Test/InstallerTest.php:489
+ @ROOT@/tests/Composer/Test/InstallerTest.php:256
+ 
+-3) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +4) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "outdated-lock-file-with-new-platform-reqs-fails.test" ('outdated-lock-file-with-new-p...s.test', 'Test that install checks plat...-foo).', null, array(array('^25', '^10')), array('old', array(), array(), array(), 'stable', array(), false, false, array('^20', '^5'), array(), '0f4cfce7e30471e0536c19433591b80d'), array(), 'install', array(), null, 'Installing dependencies from ...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
@@ -238,11 +239,10 @@
 +-You can also run `php --ini` in a terminal to see which files are used by PHP in CLI mode.
 +-Alternatively, you can run Composer with `--ignore-platform-req=ext-filter` to temporarily ignore these required extensions.
 ++    - a/a 1.0.0 requires ext-filter 2.0.0 -> it has the wrong version installed (7.4.0; overridden via config.platform, actual: 8.5.0).
- 
- @ROOT@/tests/Composer/Test/InstallerTest.php:489
- @ROOT@/tests/Composer/Test/InstallerTest.php:256
- 
--3) Composer\Test\InstallerTest::testIntegrationWithRawPool with data set "solver-problems-with-disabled-platform.test" ('solver-problems-with-disabled...m.test', 'Test the error output of solv...mplex.', null, array(array(array('package', array(array('dependency/pkg', '1.0.0', array('^8')), array('dependency/pkg2', '1.0.0', array('^8')), array('dependency/pkg3', '1.0.0', array('1002.*')), array('dependency/pkg4', '1.0.0', array('1001.*')), array('dependency/pkg5', '1.0.0', array('1.0.0')), array('dependency/pkg6', '1.0.0', array('^8'))))), array('1.*', '1.*', '1.*', '1.*', '1.*', '1.*', '^8', '^8', '1002.*', '1001.*', '1.0.0', '^8'), array(array(false, '8.0.3', false, false, false, false))), array(), array(), 'update', array(), null, 'Loading composer repositories...sions.', null, '', 2)
++
++@ROOT@/tests/Composer/Test/InstallerTest.php:489
++@ROOT@/tests/Composer/Test/InstallerTest.php:256
++
 +6) Composer\Test\InstallerTest::testIntegrationWithPoolOptimizer with data set "update-ignore-platform-package-requirement-list-upper-bounds.test" ('update-ignore-platform-packag...s.test', 'Update with ignore-platform-r...ndency', null, array(array(array('package', array(array('a/a', '1.0.1', array('3.*')), array('b/b', '1.0.1', array('10.*')), array('c/c', '1.0.1', array('4.0.0 - 4.0.2', '3.0.*'))))), array('1.0.*', '1.0.*', '1.0.*', '^4.3', '9.0.0'), array('5.0.3')), array(), array(array('a/a', '1.0.0')), 'update --ignore-platform-req=...o-baz+', array(), null, 'Loading composer repositories...sions.', null, '', 2)
 +Failed asserting that string matches format description.
 +--- Expected
@@ -288,7 +288,7 @@
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -154,14 +317,262 @@
+@@ -154,14 +317,170 @@
  -    - Root composer.json requires linked library lib-icu 1001.* but it has the wrong version installed, try upgrading the intl extension.
  +    - Root composer.json requires linked library lib-icu 1001.* but it is missing from your system, make sure the intl extension is loaded.
     Problem 7
@@ -367,99 +367,7 @@
 +@ROOT@/tests/Composer/Test/InstallerTest.php:489
 +@ROOT@/tests/Composer/Test/InstallerTest.php:272
 +
-+12) Composer\Test\Json\JsonFileTest::testParseErrorDetectExtraComma
-+Parsing should have failed but didn't.
-+Expected:
-+"Parse error on line 2"
-+For:
-+"{
-+        "foo": "bar",
-+}"
-+Got:
-+"array (
-+  'foo' => 'bar',
-+)"
-+
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:476
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:27
-+
-+13) Composer\Test\Json\JsonFileTest::testParseErrorDetectExtraCommaInArray
-+Parsing should have failed but didn't.
-+Expected:
-+"Parse error on line 3"
-+For:
-+"{
-+        "foo": [
-+            "bar",
-+        ]
-+}"
-+Got:
-+"array (
-+  'foo' =>
-+  array (
-+    0 => 'bar',
-+  ),
-+)"
-+
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:476
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:37
-+
-+14) Composer\Test\Json\JsonFileTest::testParseErrorSkipsEscapedBackslash
-+Parsing should have failed but didn't.
-+Expected:
-+"Parse error on line 2"
-+For:
-+"{
-+        "fo\\o": "bar"
-+        "a": "b"
-+}"
-+Got:
-+"array (
-+  'fo\\o' => 'bar',
-+  'a' => 'b',
-+)"
-+
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:476
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:54
-+
-+15) Composer\Test\Json\JsonFileTest::testParseErrorDetectMissingComma
-+Parsing should have failed but didn't.
-+Expected:
-+"Parse error on line 2"
-+For:
-+"{
-+        "foo": "bar"
-+        "bar": "foo"
-+}"
-+Got:
-+"array (
-+  'foo' => 'bar',
-+  'bar' => 'foo',
-+)"
-+
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:476
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:90
-+
-+16) Composer\Test\Json\JsonFileTest::testParseErrorDetectMissingCommaMultiline
-+Parsing should have failed but didn't.
-+Expected:
-+"Parse error on line 2"
-+For:
-+"{
-+        "foo": "barbar"
-+
-+        "bar": "foo"
-+}"
-+Got:
-+"array (
-+  'foo' => 'barbar',
-+  'bar' => 'foo',
-+)"
-+
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:476
-+@ROOT@/tests/Composer/Test/Json/JsonFileTest.php:267
-+
-+17) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit
++12) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -473,7 +381,7 @@
 +
 +@ROOT@/tests/Composer/Test/Json/JsonManipulatorTest.php:3036
 +
-+18) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit2
++13) Composer\Test\Json\JsonManipulatorTest::testAddMainKeyWithContentHavingDollarSignFollowedByDigit2
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -486,7 +394,7 @@
 +
 +@ROOT@/tests/Composer/Test/Json/JsonManipulatorTest.php:3048
 +
-+19) Composer\Test\Repository\ArtifactRepositoryTest::testExtractsConfigsFromZipArchives
++14) Composer\Test\Repository\ArtifactRepositoryTest::testExtractsConfigsFromZipArchives
 +Failed asserting that two arrays are identical.
 +--- Expected
 ++++ Actual
@@ -505,7 +413,7 @@
 +
 +@ROOT@/tests/Composer/Test/Repository/ArtifactRepositoryTest.php:54
 +
-+20) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesOutput
++15) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesOutput
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -516,7 +424,7 @@
 +
 +@ROOT@/tests/Composer/Test/Util/ProcessExecutorTest.php:31
 +
-+21) Composer\Test\Util\ProcessExecutorTest::testExecuteOutputsIfNotCaptured
++16) Composer\Test\Util\ProcessExecutorTest::testExecuteOutputsIfNotCaptured
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -527,16 +435,16 @@
 +
 +@ROOT@/tests/Composer/Test/Util/ProcessExecutorTest.php:40
 +
-+22) Composer\Test\Util\ProcessExecutorTest::testUseIOIsNotNullAndIfNotCaptured
++17) Composer\Test\Util\ProcessExecutorTest::testUseIOIsNotNullAndIfNotCaptured
 +Expectation failed for method name is "writeRaw" when invoked 1 time(s).
 +Method was expected to be called 1 times, actually called 0 times.
 +
-+23) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesStderr
++18) Composer\Test\Util\ProcessExecutorTest::testExecuteCapturesStderr
 +Failed asserting that '' contains "foo: No such file or directory".
 +
 +@ROOT@/tests/Composer/Test/Util/ProcessExecutorTest.php:58
 +
-+24) Composer\Test\Util\ProcessExecutorTest::testConsoleIODoesNotFormatSymfonyConsoleStyle
++19) Composer\Test\Util\ProcessExecutorTest::testConsoleIODoesNotFormatSymfonyConsoleStyle
 +Failed asserting that two strings are identical.
 +--- Expected
 ++++ Actual
@@ -549,7 +457,7 @@
 +
  ERRORS!
 -Tests: 3328, Assertions: 7398, Errors: 1, Failures: 4, Skipped: 6.
-+Tests: 3328, Assertions: 7364, Errors: 12, Failures: 24, Skipped: 6.
++Tests: 3328, Assertions: 7364, Errors: 12, Failures: 19, Skipped: 6.
  
  Unsilenced deprecation notices (1)
  

@@ -1484,6 +1484,7 @@ static sxi32 VmJsonDecode(
 	}else if( pDecoder->pIn->nType & JSON_TK_OSB /*'[' */) {
 		ProcJsonConsumer xOld;
 		void *pOld;
+		int bFirst;
 		/* php's $depth counts CONTAINERS: a '[' opening at 1-based nesting
 		 * level L is JSON_ERROR_DEPTH when L >= $depth, an EMPTY container
 		 * included ("[]" at $depth 1 already fails), while a scalar never
@@ -1508,13 +1509,8 @@ static sxi32 VmJsonDecode(
 		pDecoder->xConsumer = VmJsonArrayDecoder;
 		pDecoder->pUserData = pWorker;
 		/* Decode the array */
+		bFirst = 1;
 		for(;;){
-			/* Jump trailing comma. Note that the standard PHP engine will not let you
-			 * do this.
-			 */
-			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){
-				pDecoder->pIn++;
-			}
 			if( pDecoder->pIn >= pDecoder->pEnd ){
 				/* Ran out of tokens before the closing ']': php rejects an
 				 * unterminated array as a syntax error. */
@@ -1525,6 +1521,33 @@ static sxi32 VmJsonDecode(
 				pDecoder->pIn++; /* Jump the trailing ']' */
 				break;
 			}
+			/* php's grammar has exactly ONE comma between two elements and a
+			 * comma nowhere else -- not before the first, not doubled, and not
+			 * in front of the closing bracket. PH7 skipped a whole RUN of them
+			 * here instead ("the standard PHP engine will not let you do this"),
+			 * which let `[1,2,]`, `[1,,2]`, `[,1]` and `[,]` all decode, and the
+			 * container loop below never required one at all, so `{"a":1 "b":2}`
+			 * decoded too. json_validate() is the same parser, so it answered
+			 * true for every one of them -- a program using it to screen input
+			 * was accepting malformed JSON. */
+			if( bFirst ){
+				if( pDecoder->pIn->nType & JSON_TK_COMMA ){
+					*pDecoder->pErr = JSON_ERROR_SYNTAX;
+					return SXERR_ABORT;
+				}
+			}else{
+				if( (pDecoder->pIn->nType & JSON_TK_COMMA) == 0 ){
+					*pDecoder->pErr = JSON_ERROR_SYNTAX;
+					return SXERR_ABORT;
+				}
+				pDecoder->pIn++;   /* the one separator */
+				if( pDecoder->pIn >= pDecoder->pEnd
+				 || (pDecoder->pIn->nType & (JSON_TK_COMMA|JSON_TK_CSB/*']'*/)) ){
+					*pDecoder->pErr = JSON_ERROR_SYNTAX;
+					return SXERR_ABORT;
+				}
+			}
+			bFirst = 0;
 			/* Recurse and decode the entry */
 			pDecoder->rec_count++;
 			rc = VmJsonDecode(pDecoder,0);
@@ -1533,13 +1556,9 @@ static sxi32 VmJsonDecode(
 				/* Abort processing immediately */
 				return SXERR_ABORT;
 			}
-			/*The cursor is automatically advanced by the VmJsonDecode() function */
-			if( (pDecoder->pIn < pDecoder->pEnd) &&
-				((pDecoder->pIn->nType & (JSON_TK_CSB/*']'*/|JSON_TK_COMMA/*','*/))==0) ){
-					/* Unexpected token,abort immediatley */
-					*pDecoder->pErr = JSON_ERROR_SYNTAX;
-					return SXERR_ABORT;
-			}
+			/* The cursor is automatically advanced by VmJsonDecode(). What may
+			 * stand here now is only `,` or `]`, and the top of the loop is
+			 * where that is said. */
 		}
 		/* Restore the old consumer */
 		pDecoder->xConsumer = xOld;
@@ -1550,6 +1569,7 @@ static sxi32 VmJsonDecode(
 		ProcJsonConsumer xOld;
 		ph7_value *pKey;
 		void *pOld;
+		int bFirst;
 		/* Same container rule as '[' above. */
 		if( pDecoder->rec_count + 1 >= pDecoder->rec_depth ){
 			*pDecoder->pErr = JSON_ERROR_DEPTH;
@@ -1574,13 +1594,8 @@ static sxi32 VmJsonDecode(
 		pDecoder->xConsumer = VmJsonArrayDecoder;
 		pDecoder->pUserData = pWorker;
 		/* Decode the object */
+		bFirst = 1;
 		for(;;){
-			/* Jump trailing comma. Note that the standard PHP engine will not let you
-			 * do this.
-			 */
-			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){
-				pDecoder->pIn++;
-			}
 			if( pDecoder->pIn >= pDecoder->pEnd ){
 				/* Ran out of tokens before the closing '}': php rejects an
 				 * unterminated object as a syntax error. */
@@ -1591,6 +1606,33 @@ static sxi32 VmJsonDecode(
 				pDecoder->pIn++; /* Jump the trailing '}' */
 				break;
 			}
+			/* php's grammar has exactly ONE comma between two elements and a
+			 * comma nowhere else -- not before the first, not doubled, and not
+			 * in front of the closing bracket. PH7 skipped a whole RUN of them
+			 * here instead ("the standard PHP engine will not let you do this"),
+			 * which let `[1,2,]`, `[1,,2]`, `[,1]` and `[,]` all decode, and the
+			 * container loop below never required one at all, so `{"a":1 "b":2}`
+			 * decoded too. json_validate() is the same parser, so it answered
+			 * true for every one of them -- a program using it to screen input
+			 * was accepting malformed JSON. */
+			if( bFirst ){
+				if( pDecoder->pIn->nType & JSON_TK_COMMA ){
+					*pDecoder->pErr = JSON_ERROR_SYNTAX;
+					return SXERR_ABORT;
+				}
+			}else{
+				if( (pDecoder->pIn->nType & JSON_TK_COMMA) == 0 ){
+					*pDecoder->pErr = JSON_ERROR_SYNTAX;
+					return SXERR_ABORT;
+				}
+				pDecoder->pIn++;   /* the one separator */
+				if( pDecoder->pIn >= pDecoder->pEnd
+				 || (pDecoder->pIn->nType & (JSON_TK_COMMA|JSON_TK_CCB/*'}'*/)) ){
+					*pDecoder->pErr = JSON_ERROR_SYNTAX;
+					return SXERR_ABORT;
+				}
+			}
+			bFirst = 0;
 			if( (pDecoder->pIn->nType & JSON_TK_STR) == 0 || &pDecoder->pIn[1] >= pDecoder->pEnd
 				|| (pDecoder->pIn[1].nType & JSON_TK_COLON) == 0){
 					/* Syntax error,return immediately */
