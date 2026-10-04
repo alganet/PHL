@@ -12,11 +12,24 @@ cd /d %~dp0
 
 set "dev_cmd=%~n0.cmd"
 
-:: Reuse cached dev.cmd if it exists
-if exist "%~dp0%dev_cmd%" (
-    call "%~dp0%dev_cmd%" %*
-    exit /b %errorlevel%
-)
+:: Reuse cached dev.cmd if it exists.
+::
+:: NOT written as `if exist (...)`: cmd expands %errorlevel% when it PARSES a
+:: parenthesised block, before anything in the block runs, so `exit /b
+:: %errorlevel%` there reports the status from BEFORE the call -- 0 -- and this
+:: branch exited GREEN over a failed build. A bare `exit /b` is not the fix
+:: either; it sets 0 rather than preserving the errorlevel. Read outside any
+:: block, on its own line, it is expanded when that line executes.
+::
+:: CI never saw this: dev.cmd is gitignored and each job runs dev.bat once on a
+:: fresh runner, so the detection branch below -- whose `exit /b %errorlevel%`
+:: was already outside any block -- is the one that runs there. What did see it
+:: is every second build on one tree, which is what dev.sh and any local
+:: rebuild do.
+if not exist "%~dp0%dev_cmd%" goto :no_cached_cmd
+call "%~dp0%dev_cmd%" %*
+exit /b %errorlevel%
+:no_cached_cmd
 
 :: Locate vcvarsall.bat. Try in order:
 ::   (1) nmake already in PATH (developer prompt)
