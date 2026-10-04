@@ -598,6 +598,15 @@ LIBXML_INT_CONST(LibxmlConst_INVALID_MODIFICATION_ERR,13)
 LIBXML_INT_CONST(LibxmlConst_NAMESPACE_ERR,           14)
 LIBXML_INT_CONST(LibxmlConst_INVALID_ACCESS_ERR,      15)
 LIBXML_INT_CONST(LibxmlConst_VALIDATION_ERR,          16)
+/*
+ * php 8.4's Dom\ namespace re-exports the same numbering under short names --
+ * no PHP_ERR and no INVALID_ACCESS_ERR, and DOMSTRING_SIZE_ERR's 2 is spelt
+ * STRING_SIZE_ERR -- so every code below is the expand function already written
+ * above.  HTML_NO_DEFAULT_NS is the one name that is not a DOMException code:
+ * it is the html parser option that leaves the document element in no
+ * namespace, and it does not fit a signed 32-bit int.
+ */
+LIBXML_INT_CONST(LibxmlConst_HTML_NO_DEFAULT_NS, 2147483648LL)
 
 static void LibxmlConst_DOTTED_VERSION(ph7_value *pVal,void *pUnused)
 {
@@ -690,6 +699,22 @@ PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm)
 		{ "DOM_NAMESPACE_ERR",              LibxmlConst_NAMESPACE_ERR              },
 		{ "DOM_INVALID_ACCESS_ERR",         LibxmlConst_INVALID_ACCESS_ERR         },
 		{ "DOM_VALIDATION_ERR",             LibxmlConst_VALIDATION_ERR             },
+		{ "Dom\\INDEX_SIZE_ERR",                  LibxmlConst_INDEX_SIZE_ERR                         },
+		{ "Dom\\STRING_SIZE_ERR",                 LibxmlConst_DOMSTRING_SIZE_ERR                     },
+		{ "Dom\\HIERARCHY_REQUEST_ERR",           LibxmlConst_HIERARCHY_REQUEST_ERR                  },
+		{ "Dom\\WRONG_DOCUMENT_ERR",              LibxmlConst_WRONG_DOCUMENT_ERR                     },
+		{ "Dom\\INVALID_CHARACTER_ERR",           LibxmlConst_INVALID_CHARACTER_ERR                  },
+		{ "Dom\\NO_DATA_ALLOWED_ERR",             LibxmlConst_NO_DATA_ALLOWED_ERR                    },
+		{ "Dom\\NO_MODIFICATION_ALLOWED_ERR",     LibxmlConst_NO_MODIFICATION_ALLOWED_ERR            },
+		{ "Dom\\NOT_FOUND_ERR",                   LibxmlConst_NOT_FOUND_ERR                          },
+		{ "Dom\\NOT_SUPPORTED_ERR",               LibxmlConst_NOT_SUPPORTED_ERR                      },
+		{ "Dom\\INUSE_ATTRIBUTE_ERR",             LibxmlConst_INUSE_ATTRIBUTE_ERR                    },
+		{ "Dom\\INVALID_STATE_ERR",               LibxmlConst_INVALID_STATE_ERR                      },
+		{ "Dom\\SYNTAX_ERR",                      LibxmlConst_SYNTAX_ERR                             },
+		{ "Dom\\INVALID_MODIFICATION_ERR",        LibxmlConst_INVALID_MODIFICATION_ERR               },
+		{ "Dom\\NAMESPACE_ERR",                   LibxmlConst_NAMESPACE_ERR                          },
+		{ "Dom\\VALIDATION_ERR",                  LibxmlConst_VALIDATION_ERR                         },
+		{ "Dom\\HTML_NO_DEFAULT_NS",              LibxmlConst_HTML_NO_DEFAULT_NS                     },
 	};
 	sxu32 n;
 	for( n = 0 ; n < sizeof(aConst)/sizeof(aConst[0]) ; n++ ){
