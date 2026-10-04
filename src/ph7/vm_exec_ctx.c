@@ -1686,6 +1686,18 @@ PH7_PRIVATE ph7_class * PH7_VmClosureScopeClass(ph7_vm *pVm, ph7_class_instance 
 		if( pMeth ){
 			return PH7_VmMethodScopeName(pVm, pClass, pMeth);
 		}
+		/* No method answers the name: php's call TRAMPOLINE, whose function is the
+		 * catch-all itself, so its scope is the class that declared __callStatic (no
+		 * receiver) or __call -- `B::miss(...)` is scoped to A when A declares it. */
+		if( pClosure->iFlags & VM_INSTANCE_FCC_SCREENED ){
+			return pClass;
+		}
+		pMeth = PH7_VmClosureIsStatic(pVm, pClosure)
+			? PH7_ClassExtractMethod(pClass, "__callStatic", sizeof("__callStatic")-1)
+			: PH7_ClassExtractMethod(pClass, "__call", sizeof("__call")-1);
+		if( pMeth ){
+			return PH7_VmMethodScopeName(pVm, pClass, pMeth);
+		}
 	}
 	return pClass;
 }
