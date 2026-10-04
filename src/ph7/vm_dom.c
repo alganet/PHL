@@ -6316,7 +6316,47 @@ static int DomSaveFlags(int bFormat,int iOpts,int bDoc)
  * Serialize a whole document (pNode == 0) or one node the way php's savers do.
  * Answers the bytes in *pzOut (xmlFree'd by the caller) and their count, or -1.
  */
-static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,xmlChar **pzOut)
+/*
+ * php 8.4's documents do not go through libxml's document saver: they run php's
+ * own serializer, which writes the declaration and then each child back to
+ * back. libxml's saver separates the document's top-level children with a
+ * newline and ends the document with one, so the two disagree on every document
+ * that has a prolog PI, a trailing comment, or nothing after its root at all.
+ *
+ * The declaration is still libxml's -- php gets it by emptying the document's
+ * child list and asking the document saver for what is left, which is the
+ * declaration and the newline behind it -- and so is every child's own dump.
+ * Only the joins between them are php's, and a DTD is the one child it does
+ * write a newline after.
+ */
+static int DomSaveModernDoc(xmlSaveCtxtPtr pSave,xmlBufferPtr pBuf,xmlDocPtr pDoc)
+{
+	xmlNodePtr pChild = pDoc->children;
+	int rc;
+	pDoc->children = 0;
+	rc = xmlSaveDoc(pSave,pDoc);
+	pDoc->children = pChild;
+	if( rc < 0 ){
+		return -1;
+	}
+	while( pChild ){
+		if( xmlSaveTree(pSave,pChild) < 0 ){
+			return -1;
+		}
+		if( pChild->type == XML_DTD_NODE ){
+			/* Written past the save context, so it is flushed first: the
+			 * newline is the join, not part of the DTD's own dump. */
+			if( xmlSaveFlush(pSave) < 0
+			 || xmlBufferAdd(pBuf,(const xmlChar *)"\n",1) != 0 ){
+				return -1;
+			}
+		}
+		pChild = pChild->next;
+	}
+	return 0;
+}
+static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
+	xmlChar **pzOut)
 {
 	xmlBufferPtr pBuf = xmlBufferCreate();
 	xmlSaveCtxtPtr pSave;
@@ -6337,7 +6377,15 @@ static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,xml
 		xmlBufferFree(pBuf);
 		return -1;
 	}
-	if( (pNode ? xmlSaveTree(pSave,pNode) : xmlSaveDoc(pSave,pDoc)) < 0 ){
+	if( pNode ){
+		if( xmlSaveTree(pSave,pNode) < 0 ){
+			nOut = -1;
+		}
+	}else if( bModern ){
+		if( DomSaveModernDoc(pSave,pBuf,pDoc) < 0 ){
+			nOut = -1;
+		}
+	}else if( xmlSaveDoc(pSave,pDoc) < 0 ){
 		nOut = -1;
 	}
 	if( xmlSaveClose(pSave) < 0 ){
@@ -6353,8 +6401,14 @@ static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,xml
 	xmlBufferFree(pBuf);
 	return nOut;
 }
-/* DOMDocument::saveXML(?DOMNode $node = null, int $options = 0): string|false */
-DOM_METHOD(vm_builtin_DOMDocument_saveXML)
+/*
+ * DOMDocument::saveXML(?DOMNode $node = null, int $options = 0): string|false
+ *
+ * php 8.4's namespaced document declares this one AGAIN under its own name
+ * rather than inheriting it, so the bytes are shared and only the name a
+ * libxml diagnostic carries is per-class; `zWho` is that name.
+ */
+static int DomSaveXml(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zWho)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -6379,8 +6433,8 @@ DOM_METHOD(vm_builtin_DOMDocument_saveXML)
 	bWhole = pTgt == 0 || pTgt->pNode == pDocNd->pNode;
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,bWhole ? 0 : (xmlNodePtr)pTgt->pNode,
-		bFormat,iOpts,&zOut);
-	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::saveXML");
+		bFormat,iOpts,DomDocFlag(pThis,DOM_F_MODERN),&zOut);
+	PH7_LibxmlCaptureEnd(pVm,nMark,zWho);
 	if( nOut < 0 ){
 		/* php says so rather than answering an empty document: the encoding the
 		 * declaration names has no converter and nothing was written. */
@@ -6527,7 +6581,7 @@ DOM_METHOD(vm_builtin_DOMDocument_saveHTMLFile)
  * and a document whose declared encoding has no converter is a silent `false`
  * here where saveXML says "Could not save document".
  */
-DOM_METHOD(vm_builtin_DOMDocument_save)
+static int DomSaveXmlFile(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zWho)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -6544,18 +6598,19 @@ DOM_METHOD(vm_builtin_DOMDocument_save)
 	zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
 	if( nFile != (int)SyStrlen(zFile) ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"DOMDocument::save(): Argument #1 ($filename) must not contain any null bytes");
+			"%s(): Argument #1 ($filename) must not contain any null bytes",zWho);
 	}
 	if( nFile < 1 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"DOMDocument::save(): Argument #1 ($filename) must not be empty");
+			"%s(): Argument #1 ($filename) must not be empty",zWho);
 	}
 	if( pDocNd == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
-	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,0,bFormat,iOpts & ~DOM_SAVE_NOXMLDECL,&zOut);
+	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,0,bFormat,iOpts & ~DOM_SAVE_NOXMLDECL,
+		DomDocFlag(pThis,DOM_F_MODERN),&zOut);
 	/* php reports this failure through the return value alone. */
 	PH7_LibxmlDropErrors(pVm,nMark);
 	if( nOut < 0 ){
@@ -6583,6 +6638,26 @@ DOM_METHOD(vm_builtin_DOMDocument_save)
 	}
 	ph7_result_int(pCtx,nOut);
 	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocument_saveXML)
+{
+	return DomSaveXml(pCtx,nArg,apArg,"DOMDocument::saveXML");
+}
+DOM_METHOD(vm_builtin_DOMDocument_save)
+{
+	return DomSaveXmlFile(pCtx,nArg,apArg,"DOMDocument::save");
+}
+/* And php 8.4's pair, whose file writer takes the option word the 2004 one
+ * takes and drops `LIBXML_NOXMLDECL` from it for the same reason: the option
+ * is read on the way to a string only, so a saved document always carries its
+ * declaration. */
+DOM_METHOD(vm_builtin_DomXMLDocument_saveXml)
+{
+	return DomSaveXml(pCtx,nArg,apArg,"Dom\\XMLDocument::saveXml");
+}
+DOM_METHOD(vm_builtin_DomXMLDocument_saveXmlFile)
+{
+	return DomSaveXmlFile(pCtx,nArg,apArg,"Dom\\XMLDocument::saveXmlFile");
 }
 /*
  * The four DOMDocument::create* methods, which differ only in the node kind
@@ -12621,6 +12696,17 @@ DOM_METHOD(vm_builtin_DomXMLDocument_createEmpty)
 	return DomResultOwned(pCtx,pThis);
 }
 /*
+ * php's namespaced parsers name an encoding on a document that declared none:
+ * the override if one was given, else UTF-8. The 2004 loaders leave it NULL,
+ * and the difference is visible in the declaration the writers emit.
+ */
+static void DomModernDefaultEncoding(xmlDocPtr pDoc,const char *zEnc)
+{
+	if( pDoc->encoding == 0 ){
+		pDoc->encoding = xmlStrdup((const xmlChar *)(zEnc ? zEnc : "UTF-8"));
+	}
+}
+/*
  * Dom\XMLDocument::createFromString(string $source, int $options = 0,
  *                                   ?string $overrideEncoding = null)
  *
@@ -12659,6 +12745,7 @@ DOM_METHOD(vm_builtin_DomXMLDocument_createFromString)
 			"XML fragment is not well-formed");
 	}
 	DomStampCwd(pCtx,pDoc);
+	DomModernDefaultEncoding(pDoc,zEnc);
 	pThis = DomNewModernDoc(pCtx,pDoc);
 	if( pThis == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -12711,6 +12798,7 @@ DOM_METHOD(vm_builtin_DomXMLDocument_createFromFile)
 		return PH7_VmThrowExceptionCode(pCtx,"DOMException",DOM_ERR_SYNTAX,
 			"XML fragment is not well-formed");
 	}
+	DomModernDefaultEncoding(pDoc,zEnc);
 	pThis = DomNewModernDoc(pCtx,pDoc);
 	if( pThis == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -13613,6 +13701,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * has no entity declarations to refer to. */
 		{ "createEntityReference", PH7_MOD_PUBLIC, "string $name", "Dom\\EntityReference",
 		  vm_builtin_DOMDocument_createEntityRef },
+		/* The writers. php declares them on each final document rather than on
+		 * the abstract one above, so the name they answer under is the final
+		 * class's -- and the HTML document states two more beside these. */
+		{ "saveXml", PH7_MOD_PUBLIC, "?Dom\\Node $node = null, int $options = 0",
+		  "@string|false", vm_builtin_DomXMLDocument_saveXml },
+		{ "saveXmlFile", PH7_MOD_PUBLIC, "string $filename, int $options = 0",
+		  "@int|false", vm_builtin_DomXMLDocument_saveXmlFile },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "DOMException", "Exception", 0, PH7_CLASS_FINAL, 0, 0, 0, 0,
