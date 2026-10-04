@@ -92,6 +92,13 @@
  * about the node, so the answer rides in the document's flag word beside the
  * parser directives -- carried by a clone with the slot, exactly as they are. */
 #define DOM_F_MODERN         0x80
+/* Not a directive either: WHICH of the two final documents under the abstract
+ * `Dom\\Document` this one is. An HTML document refuses `createCDATASection`,
+ * declares `standalone="yes"` where the XML one declares nothing, and answers
+ * two writers the XML one does not -- so the serializers and the refusals ask
+ * for it by name rather than inferring it from the class, which a clone would
+ * not carry. Implies DOM_F_MODERN; there is no 2004 HTML document. */
+#define DOM_F_HTML           0x100
 /* php's defaults: nothing is validated, expanded, defaulted or recovered unless
  * the program asks, whitespace is kept, and a refusal is an exception. */
 #define DOM_F_DEFAULT (DOM_F_PRESERVE_WS|DOM_F_STRICT_ERR)
@@ -8830,6 +8837,12 @@ DOM_METHOD(vm_builtin_DOMDocument_createComment)
  */
 DOM_METHOD(vm_builtin_DOMDocument_createCDATASection)
 {
+	/* An HTML document has no CDATA sections to make: php refuses the factory
+	 * outright there, before it looks at the data at all. */
+	if( DomDocFlag(PH7_ContextThis(pCtx),DOM_F_HTML) ){
+		return DomThrowSentence(pCtx,DOM_ERR_NOT_SUPPORTED,
+			"This operation is not supported for HTML documents");
+	}
 	if( DomThisModern(pCtx) && nArg > 0 ){
 		int nData = 0;
 		const char *zData = ph7_value_to_string(apArg[0],&nData);
@@ -13259,6 +13272,16 @@ static int DomChildNodeProp(ph7_context *pCtx,const char *zName)
 static int DomDocPropEx(ph7_context *pCtx,const char *zName,int bDepr)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
+	if( DomDocFlag(PH7_ContextThis(pCtx),DOM_F_HTML)
+	 && (DomNameIs(zName,"xmlEncoding") || DomNameIs(zName,"xmlVersion")
+	  || DomNameIs(zName,"xmlStandalone")) ){
+		/* php states all three on `Dom\\XMLDocument` and none of them on the
+		 * HTML document beside it, so reading one there is an undefined
+		 * property -- warning and all -- and not the tree's own answer. The
+		 * screen is here rather than beside each reader because `xmlEncoding`
+		 * is answered by the namespaced reader ahead of the shared one. */
+		return 0;
+	}
 	if( DomNameIs(zName,"documentElement") ){
 		DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);
 		return 1;
@@ -16589,6 +16612,559 @@ DOM_METHOD(vm_builtin_DomXMLDocument_createEmpty)
 	}
 	return DomResultOwned(pCtx,pThis);
 }
+
+/*
+ * ===== The HTML5 writers of php 8.4's namespaced tree =====
+ *
+ * `Dom\HTMLDocument` serializes through rules that are NOT libxml's HTML
+ * dumper: php writes its own walk over the WHATWG fragment-serialization
+ * algorithm, and every table below was swept out of it rather than assumed.
+ * The four that a differential decides:
+ *
+ *   the TAG NAME    is the element's LOCAL name when it is in the HTML, SVG or
+ *                   MathML namespace -- a prefix on an HTML-namespace element
+ *                   is dropped, so `createElementNS(XHTML,'p:div')` writes
+ *                   `<div>` -- and its QUALIFIED name anywhere else, where
+ *                   `createElementNS('urn:x','p:thing')` stays `<p:thing>`.
+ *   a VOID element  opens and never closes, and its children are not written at
+ *                   all; the test is the HTML namespace plus one of eighteen
+ *                   names, so a `<p:br>` in another namespace closes normally.
+ *   RAW children    are written unescaped under seven HTML-namespace parents
+ *                   (script, style, xmp, iframe, noembed, noframes, plaintext)
+ *                   -- and NOT under `noscript`, `title` or `textarea`, which
+ *                   the 2004 dumper also treats as raw. An SVG `<script>` is
+ *                   escaped, because the test is namespaced.
+ *   NO DECLARATION  is minted for anything: an attribute prints its qualified
+ *                   name and the element's `xmlns` never appears, which is what
+ *                   makes this writer's output smaller than the XML one's over
+ *                   the same tree.
+ *
+ * Three names are re-spelled from the namespace rather than from the prefix the
+ * program wrote, exactly as the WHATWG table states them: an attribute in the
+ * XML namespace prints `xml:<local>`, one in the XMLNS namespace `xmlns:<local>`
+ * and one in the XLink namespace `xlink:<local>`, whatever prefix it was created
+ * under -- `setAttributeNS(XML_NS,'foo:lang','en')` writes `xml:lang="en"`.
+ *
+ * Escaping is two tables, not one: TEXT turns `&`, `<`, `>` and U+00A0 into
+ * `&amp;`, `&lt;`, `&gt;` and `&nbsp;` and leaves both quotes alone, while an
+ * ATTRIBUTE VALUE turns only `&`, `"` and U+00A0 and leaves `<`, `>` and `'`.
+ * Neither escapes a carriage return, where the XML writer spells one `&#13;`.
+ *
+ * A comment, a processing instruction and a doctype are raw: `<!--<data>-->`,
+ * `<?target data>` (one space, and no `?` before the `>`) and `<!DOCTYPE name>`
+ * with the public and system identifiers DROPPED -- a parsed
+ * `<!DOCTYPE html PUBLIC "..." "...">` writes `<!DOCTYPE html>` here and keeps
+ * both ids under `saveXml`. An ATTRIBUTE node handed in on its own writes
+ * nothing at all.
+ *
+ * `template` writes its CONTENT rather than its children, and a template built
+ * by hand has none -- so `saveHtml()` on one that a program appended to writes
+ * `<template></template>`, dropping what was appended. That is php's answer and
+ * not a gap here.
+ */
+#define DOM_SVG_NS    "http://www.w3.org/2000/svg"
+#define DOM_MATHML_NS "http://www.w3.org/1998/Math/MathML"
+#define DOM_XML_NS    "http://www.w3.org/XML/1998/namespace"
+#define DOM_XMLNS_NS  "http://www.w3.org/2000/xmlns/"
+#define DOM_XLINK_NS  "http://www.w3.org/1999/xlink"
+/* The eighteen HTML elements that open and never close. php's list is the
+ * WHATWG one plus the four legacy names (basefont, bgsound, frame, keygen) its
+ * serializer still carries. */
+static const char *azDomHtmlVoid[] = {
+	"area","base","basefont","bgsound","br","col","embed","frame","hr","img",
+	"input","keygen","link","meta","param","source","track","wbr"
+};
+/* The seven HTML elements whose character children are written unescaped. */
+static const char *azDomHtmlRaw[] = {
+	"iframe","noembed","noframes","plaintext","script","style","xmp"
+};
+static int DomHtmlNameIn(const char **apList,int nList,const xmlChar *zName)
+{
+	int i;
+	if( zName == 0 ){
+		return 0;
+	}
+	for( i = 0 ; i < nList ; ++i ){
+		if( xmlStrEqual(zName,(const xmlChar *)apList[i]) ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Is this element's namespace one whose elements print their LOCAL name? */
+static int DomHtmlBareName(xmlNodePtr pNode)
+{
+	const xmlChar *zHref = (pNode && pNode->ns) ? pNode->ns->href : 0;
+	return zHref == 0
+		|| xmlStrEqual(zHref,(const xmlChar *)DOM_XHTML_NS)
+		|| xmlStrEqual(zHref,(const xmlChar *)DOM_SVG_NS)
+		|| xmlStrEqual(zHref,(const xmlChar *)DOM_MATHML_NS);
+}
+/* The two escapes. `bAttr` picks the table: a value escapes the quote and not
+ * the angle brackets, text the other way about. U+00A0 is `&nbsp;` in both and
+ * is the only non-ASCII byte either one touches. */
+static void DomHtmlEscape(SyBlob *pOut,const xmlChar *zIn,int bAttr)
+{
+	const unsigned char *z = (const unsigned char *)zIn;
+	sxu32 n,i,iRun = 0;
+	if( z == 0 ){
+		return;
+	}
+	n = (sxu32)SyStrlen((const char *)z);
+	for( i = 0 ; i < n ; ++i ){
+		const char *zRep = 0;
+		sxu32 nSkip = 1;
+		if( z[i] == '&' ){
+			zRep = "&amp;";
+		}else if( z[i] == 0xC2 && i + 1 < n && z[i+1] == 0xA0 ){
+			zRep = "&nbsp;";                 /* the one multi-byte row */
+			nSkip = 2;
+		}else if( bAttr ){
+			if( z[i] == '"' ){
+				zRep = "&quot;";
+			}
+		}else if( z[i] == '<' ){
+			zRep = "&lt;";
+		}else if( z[i] == '>' ){
+			zRep = "&gt;";
+		}
+		if( zRep == 0 ){
+			continue;
+		}
+		if( i > iRun ){
+			SyBlobAppend(pOut,(const void *)&z[iRun],i - iRun);
+		}
+		SyBlobAppend(pOut,(const void *)zRep,SyStrlen(zRep));
+		i += nSkip - 1;
+		iRun = i + 1;
+	}
+	if( n > iRun ){
+		SyBlobAppend(pOut,(const void *)&z[iRun],n - iRun);
+	}
+}
+static void DomHtmlPut(SyBlob *pOut,const char *zStr)
+{
+	SyBlobAppend(pOut,(const void *)zStr,SyStrlen(zStr));
+}
+static void DomHtmlPutX(SyBlob *pOut,const xmlChar *zStr)
+{
+	if( zStr ){
+		SyBlobAppend(pOut,(const void *)zStr,SyStrlen((const char *)zStr));
+	}
+}
+/* The name an attribute prints under: the namespace decides for the three the
+ * WHATWG table names, the authored prefix for everything else. */
+static void DomHtmlAttrName(SyBlob *pOut,xmlAttrPtr pAttr)
+{
+	const xmlChar *zHref = pAttr->ns ? pAttr->ns->href : 0;
+	const char *zFixed = 0;
+	if( zHref ){
+		if( xmlStrEqual(zHref,(const xmlChar *)DOM_XML_NS) ){
+			zFixed = "xml:";
+		}else if( xmlStrEqual(zHref,(const xmlChar *)DOM_XMLNS_NS) ){
+			zFixed = xmlStrEqual(pAttr->name,(const xmlChar *)"xmlns") ? "" : "xmlns:";
+		}else if( xmlStrEqual(zHref,(const xmlChar *)DOM_XLINK_NS) ){
+			zFixed = "xlink:";
+		}
+	}
+	if( zFixed ){
+		DomHtmlPut(pOut,zFixed);
+	}else if( pAttr->ns && pAttr->ns->prefix ){
+		DomHtmlPutX(pOut,pAttr->ns->prefix);
+		DomHtmlPut(pOut,":");
+	}
+	DomHtmlPutX(pOut,pAttr->name);
+}
+static void DomHtmlDumpNode(SyBlob *pOut,xmlNodePtr pNode);
+static void DomHtmlDumpKids(SyBlob *pOut,xmlNodePtr pNode)
+{
+	xmlNodePtr pKid;
+	for( pKid = pNode->children ; pKid ; pKid = pKid->next ){
+		DomHtmlDumpNode(pOut,pKid);
+	}
+}
+static void DomHtmlDumpNode(SyBlob *pOut,xmlNodePtr pNode)
+{
+	if( pNode == 0 ){
+		return;
+	}
+	switch(pNode->type){
+	case XML_ELEMENT_NODE: {
+		int bHtml = DomNodeIsHtmlNs(pNode) || pNode->ns == 0;
+		xmlAttrPtr pAttr;
+		DomHtmlPut(pOut,"<");
+		if( !DomHtmlBareName(pNode) && pNode->ns->prefix ){
+			DomHtmlPutX(pOut,pNode->ns->prefix);
+			DomHtmlPut(pOut,":");
+		}
+		DomHtmlPutX(pOut,pNode->name);
+		for( pAttr = pNode->properties ; pAttr ; pAttr = pAttr->next ){
+			xmlChar *zVal = xmlNodeListGetString(pNode->doc,pAttr->children,1);
+			DomHtmlPut(pOut," ");
+			DomHtmlAttrName(pOut,pAttr);
+			DomHtmlPut(pOut,"=\"");
+			DomHtmlEscape(pOut,zVal ? zVal : (const xmlChar *)"",1);
+			DomHtmlPut(pOut,"\"");
+			if( zVal ){
+				xmlFree(zVal);
+			}
+		}
+		DomHtmlPut(pOut,">");
+		if( bHtml && DomHtmlNameIn(azDomHtmlVoid,SX_ARRAYSIZE(azDomHtmlVoid),pNode->name) ){
+			/* Opened and done: a void element's children are not written, and
+			 * neither is a closing tag. */
+			return;
+		}
+		/* A template writes its CONTENT, which a hand-built one has none of. */
+		if( !(bHtml && xmlStrEqual(pNode->name,(const xmlChar *)"template")) ){
+			DomHtmlDumpKids(pOut,pNode);
+		}
+		DomHtmlPut(pOut,"</");
+		if( !DomHtmlBareName(pNode) && pNode->ns->prefix ){
+			DomHtmlPutX(pOut,pNode->ns->prefix);
+			DomHtmlPut(pOut,":");
+		}
+		DomHtmlPutX(pOut,pNode->name);
+		DomHtmlPut(pOut,">");
+		break;
+	}
+	case XML_TEXT_NODE:
+	case XML_CDATA_SECTION_NODE: {
+		xmlNodePtr pUp = pNode->parent;
+		int bRaw = pUp && pUp->type == XML_ELEMENT_NODE
+			&& (DomNodeIsHtmlNs(pUp) || pUp->ns == 0)
+			&& DomHtmlNameIn(azDomHtmlRaw,SX_ARRAYSIZE(azDomHtmlRaw),pUp->name);
+		if( bRaw ){
+			DomHtmlPutX(pOut,pNode->content);
+		}else{
+			DomHtmlEscape(pOut,pNode->content,0);
+		}
+		break;
+	}
+	case XML_COMMENT_NODE:
+		DomHtmlPut(pOut,"<!--");
+		DomHtmlPutX(pOut,pNode->content);
+		DomHtmlPut(pOut,"-->");
+		break;
+	case XML_PI_NODE:
+		DomHtmlPut(pOut,"<?");
+		DomHtmlPutX(pOut,pNode->name);
+		DomHtmlPut(pOut," ");
+		DomHtmlPutX(pOut,pNode->content);
+		DomHtmlPut(pOut,">");
+		break;
+	case XML_DTD_NODE:
+		DomHtmlPut(pOut,"<!DOCTYPE ");
+		DomHtmlPutX(pOut,pNode->name);
+		DomHtmlPut(pOut,">");
+		break;
+	case XML_DOCUMENT_NODE:
+	case XML_HTML_DOCUMENT_NODE:
+	case XML_DOCUMENT_FRAG_NODE:
+		DomHtmlDumpKids(pOut,pNode);
+		break;
+	default:
+		/* An attribute handed in on its own writes nothing, and so does every
+		 * declaration node a document may carry. */
+		break;
+	}
+}
+/*
+ * The WHATWG encoding LABELS, which is the table php screens an HTML
+ * document's encoding against -- not libxml's converter list and not iconv's.
+ * The difference is visible in both directions: `l1`, `macintosh` and
+ * `ANSI_X3.4-1968` are labels and pass, while `UCS-4`, `EBCDIC` and
+ * `csUnicode` are converters libxml has and are refused here.
+ *
+ * Only MEMBERSHIP is asked. The document keeps the encoding the program
+ * SPELLED -- `createEmpty('utf8')` reads back `utf8` and `createEmpty('iso-8859-1')`
+ * declares `encoding="iso-8859-1"` -- so nothing here canonicalizes.
+ */
+static const char *azDomEncLabel[] = {
+	"unicode-1-1-utf-8","utf-8","utf8",
+	"866","cp866","csibm866","ibm866","csisolatin2",
+	"iso-8859-2","iso-ir-101","iso8859-2","iso88592","iso_8859-2",
+	"iso_8859-2:1987","l2","latin2","csisolatin3","iso-8859-3","iso-ir-109",
+	"iso8859-3","iso88593","iso_8859-3","iso_8859-3:1988","l3","latin3",
+	"csisolatin4","iso-8859-4","iso-ir-110","iso8859-4","iso88594","iso_8859-4",
+	"iso_8859-4:1988","l4","latin4","csisolatincyrillic","cyrillic",
+	"iso-8859-5","iso-ir-144","iso8859-5","iso88595","iso_8859-5",
+	"iso_8859-5:1988","arabic","asmo-708","csiso88596e","csiso88596i",
+	"csisolatinarabic","ecma-114","iso-8859-6","iso-8859-6-e","iso-8859-6-i",
+	"iso-ir-127","iso8859-6","iso88596","iso_8859-6","iso_8859-6:1987",
+	"csisolatingreek","ecma-118","elot_928","greek","greek8","iso-8859-7",
+	"iso-ir-126","iso8859-7","iso88597","iso_8859-7","iso_8859-7:1987",
+	"sun_eu_greek","csiso88598e","csisolatinhebrew","hebrew","iso-8859-8",
+	"iso-8859-8-e","iso-ir-138","iso8859-8","iso88598","iso_8859-8",
+	"iso_8859-8:1988","visual","csiso88598i","iso-8859-8-i","logical",
+	"csisolatin6","iso-8859-10","iso-ir-157","iso8859-10","iso885910","l6",
+	"latin6","iso-8859-13","iso8859-13","iso885913","iso-8859-14","iso8859-14",
+	"iso885914","csisolatin9","iso-8859-15","iso8859-15","iso885915",
+	"iso_8859-15","l9","iso-8859-16","cskoi8r","koi","koi8","koi8-r","koi8_r",
+	"koi8-ru","koi8-u","csmacintosh","mac","macintosh","x-mac-roman",
+	"dos-874","iso-8859-11","iso8859-11","iso885911","tis-620","windows-874",
+	"cp1250","windows-1250","x-cp1250","cp1251","windows-1251","x-cp1251",
+	"ansi_x3.4-1968","ascii","cp1252","cp819","csisolatin1","ibm819",
+	"iso-8859-1","iso-ir-100","iso8859-1","iso88591","iso_8859-1",
+	"iso_8859-1:1987","l1","latin1","us-ascii","windows-1252","x-cp1252",
+	"cp1253","windows-1253","x-cp1253","cp1254","csisolatin5","iso-8859-9",
+	"iso-ir-148","iso8859-9","iso88599","iso_8859-9","iso_8859-9:1989","l5",
+	"latin5","windows-1254","x-cp1254","cp1255","windows-1255","x-cp1255",
+	"cp1256","windows-1256","x-cp1256","cp1257","windows-1257","x-cp1257",
+	"cp1258","windows-1258","x-cp1258","x-mac-cyrillic","x-mac-ukrainian",
+	"chinese","csgb2312","csiso58gb231280","gb2312","gb_2312","gb_2312-80",
+	"gbk","iso-ir-58","x-gbk","gb18030","big5","big5-hkscs","cn-big5",
+	"csbig5","x-x-big5","cseucpkdfmtjapanese","euc-jp","x-euc-jp",
+	"csiso2022jp","iso-2022-jp","csshiftjis","ms932","ms_kanji","shift-jis",
+	"shift_jis","sjis","windows-31j","x-sjis","cseuckr","csksc56011987",
+	"euc-kr","iso-ir-149","korean","ks_c_5601-1987","ks_c_5601-1989","ksc5601",
+	"ksc_5601","windows-949","csiso2022kr","hz-gb-2312","iso-2022-cn",
+	"iso-2022-cn-ext","iso-2022-kr","replacement","utf-16be",
+	"utf-16",
+	"utf-16le","x-user-defined"
+};
+
+static int DomEncIsLabel(const char *zEnc,int nEnc)
+{
+	int i;
+	if( nEnc < 1 ){
+		return 0;
+	}
+	for( i = 0 ; i < (int)SX_ARRAYSIZE(azDomEncLabel) ; ++i ){
+		const char *z = azDomEncLabel[i];
+		if( (int)SyStrlen(z) == nEnc
+		 && SyStrnicmp(z,zEnc,(sxu32)nEnc) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * The `Dom\HTMLDocument` twin of DomNewModernDoc: the same shell over the same
+ * libxml document, in the third family. `standalone` is set on the document
+ * itself rather than at serialization time, which is what makes the XML writer
+ * -- unchanged, and shared with `Dom\XMLDocument` -- print the
+ * `standalone="yes"` php prints for an HTML document and omit it for an XML one.
+ */
+static ph7_class_instance * DomNewHtmlDoc(ph7_context *pCtx,xmlDocPtr pDoc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = PH7_VmExtractClass(pVm,"Dom\\HTMLDocument",
+		sizeof("Dom\\HTMLDocument")-1,FALSE,0);
+	ph7_class_instance *pThis = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+	phl_xmldoc *pShell = pThis ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;
+	phl_domnode *pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;
+	if( pRes == 0 ){
+		if( pShell == 0 ){
+			xmlFreeDoc(pDoc);
+		}
+		if( pThis ){
+			PH7_ClassInstanceUnref(pThis);
+		}
+		return 0;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,DOM_DFLAGS,DOM_F_DEFAULT|DOM_F_MODERN|DOM_F_HTML);
+	DomSetRes(pVm,pThis,pRes);
+	PH7_NativeSetAttrObj(pVm,pThis,DOM_DOC,pThis);
+	return pThis;
+}
+/* The empty HTML document both producers start from: no children at all, the
+ * encoding the caller spelled, and `about:blank` for a document that came from
+ * nowhere -- the same URI `Dom\XMLDocument::createEmpty()` states. */
+static ph7_class_instance * DomBuildHtmlDoc(ph7_context *pCtx,const char *zEnc)
+{
+	xmlDocPtr pDoc = xmlNewDoc((const xmlChar *)"1.0");
+	if( pDoc == 0 ){
+		return 0;
+	}
+	pDoc->encoding = xmlStrdup((const xmlChar *)zEnc);
+	pDoc->URL = xmlStrdup((const xmlChar *)"about:blank");
+	pDoc->standalone = 1;
+	return DomNewHtmlDoc(pCtx,pDoc);
+}
+/*
+ * Dom\HTMLDocument::createEmpty(string $encoding = 'UTF-8'): Dom\HTMLDocument
+ *
+ * A document with NOTHING in it -- no doctype, no `<html>`, `childNodes` empty
+ * -- which is what separates it from `Dom\Implementation::createHTMLDocument()`
+ * below. There is no `$version` here: an HTML document has no XML version to
+ * state, and `xmlVersion` is not even a property of one.
+ */
+DOM_METHOD(vm_builtin_DomHTMLDocument_createEmpty)
+{
+	int nEnc = 0;
+	const char *zEnc = nArg > 0 ? ph7_value_to_string(apArg[0],&nEnc) : "UTF-8";
+	ph7_class_instance *pThis;
+	if( nArg < 1 ){
+		nEnc = (int)SyStrlen(zEnc);
+	}
+	if( nEnc != (int)SyStrlen(zEnc) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Dom\\HTMLDocument::createEmpty(): Argument #1 ($encoding) must not contain any null bytes");
+	}
+	if( !DomEncIsLabel(zEnc,nEnc) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Dom\\HTMLDocument::createEmpty(): Argument #1 ($encoding) must be a valid document encoding");
+	}
+	pThis = DomBuildHtmlDoc(pCtx,zEnc);
+	if( pThis == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return DomResultOwned(pCtx,pThis);
+}
+/*
+ * Dom\Implementation::createHTMLDocument(?string $title = null): Dom\HTMLDocument
+ *
+ * php's third producer, and an INSTANCE method where the two document-class
+ * producers beside it are static. It builds the skeleton the HTML5 spec states
+ * -- `<!DOCTYPE html><html><head></head><body></body></html>` -- with a
+ * `<title>` in the head only when the argument is non-null, so a `''` title is
+ * an EMPTY title element and a null one is no element at all.
+ *
+ * Every element is minted in the HTML namespace, which is why `saveXml()` on
+ * the result carries `xmlns="http://www.w3.org/1999/xhtml"` on the root where
+ * `saveHtml()` -- minting no declarations at all -- does not.
+ */
+DOM_METHOD(vm_builtin_Dom_Implementation_createHTMLDocument)
+{
+	int nTitle = 0;
+	const char *zTitle = (nArg > 0 && !ph7_value_is_null(apArg[0]))
+		? ph7_value_to_string(apArg[0],&nTitle) : 0;
+	ph7_class_instance *pThis = DomBuildHtmlDoc(pCtx,"UTF-8");
+	phl_domnode *pRes = pThis ? DomResOf(pThis) : 0;
+	xmlDocPtr pDoc = pRes ? (xmlDocPtr)pRes->pNode : 0;
+	xmlNodePtr pHtml,pHead,pBody;
+	xmlNsPtr pNs;
+	if( pDoc == 0 ){
+		if( pThis ){
+			PH7_ClassInstanceUnref(pThis);
+		}
+		return PH7_ContextMemoryError(pCtx);
+	}
+	xmlCreateIntSubset(pDoc,(const xmlChar *)"html",0,0);
+	pHtml = xmlNewDocNode(pDoc,0,(const xmlChar *)"html",0);
+	pNs = pHtml ? xmlNewNs(pHtml,(const xmlChar *)DOM_XHTML_NS,0) : 0;
+	pHead = pHtml ? xmlNewDocNode(pDoc,pNs,(const xmlChar *)"head",0) : 0;
+	pBody = pHead ? xmlNewDocNode(pDoc,pNs,(const xmlChar *)"body",0) : 0;
+	if( pBody == 0 ){
+		if( pHead ){
+			xmlFreeNode(pHead);
+		}
+		if( pHtml ){
+			xmlFreeNode(pHtml);
+		}
+		PH7_ClassInstanceUnref(pThis);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	xmlSetNs(pHtml,pNs);
+	xmlDocSetRootElement(pDoc,pHtml);
+	xmlAddChild(pHtml,pHead);
+	if( zTitle ){
+		xmlNodePtr pTitle = xmlNewDocNode(pDoc,pNs,(const xmlChar *)"title",0);
+		if( pTitle ){
+			xmlAddChild(pHead,pTitle);
+			if( nTitle > 0 ){
+				xmlNodePtr pTxt = xmlNewDocTextLen(pDoc,(const xmlChar *)zTitle,nTitle);
+				if( pTxt ){
+					xmlAddChild(pTitle,pTxt);
+				}
+			}
+		}
+	}
+	xmlAddChild(pHtml,pBody);
+	return DomResultOwned(pCtx,pThis);
+}
+/*
+ * Dom\HTMLDocument::saveHtml(?Dom\Node $node = null): string
+ * Dom\HTMLDocument::saveHtmlFile(string $filename): int|false
+ *
+ * The HTML5 walk above, over the whole document or over one node of it. Unlike
+ * the 2004 `saveHTML()` these take no save options and read no `formatOutput`
+ * -- php declares neither on this class -- and unlike the 2004 file saver this
+ * one stamps NO `http-equiv` meta into the document on its way out, so the
+ * bytes a file gets are exactly the bytes the string door answers.
+ *
+ * A node belonging to another document is the Wrong Document Error, which is
+ * the only refusal either one has. `saveHtmlFile` on a path that will not open
+ * warns and answers `false`, where the XML file saver answers the count.
+ */
+static int DomSaveHtml5(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	phl_domnode *pTgt = (!bFile && nArg > 0 && !ph7_value_is_null(apArg[0])) ? DomObjArg(apArg[0]) : 0;
+	const ph7_io_stream *pStream;
+	const char *zFile = "";
+	int nFile = 0,nOut;
+	void *pHandle;
+	SyBlob sOut;
+	if( bFile ){
+		zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
+		if( nFile != (int)SyStrlen(zFile) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"Dom\\HTMLDocument::saveHtmlFile(): Argument #1 ($filename) must not contain any null bytes");
+		}
+		if( nFile < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"Dom\\HTMLDocument::saveHtmlFile(): Argument #1 ($filename) must not be empty");
+		}
+	}
+	if( pDocNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pTgt && pTgt->pShell != pDocNd->pShell ){
+		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
+	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	DomHtmlDumpNode(&sOut,(xmlNodePtr)((pTgt && pTgt->pNode != pDocNd->pNode)
+		? pTgt->pNode : pDocNd->pNode));
+	nOut = (int)SyBlobLength(&sOut);
+	if( !bFile ){
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),nOut);
+		SyBlobRelease(&sOut);
+		return PH7_OK;
+	}
+	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	pHandle = (pStream && pStream->xWrite) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
+		PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC,FALSE,0,FALSE,0,
+		ph7_function_name(pCtx)) : 0;
+	if( pHandle == 0 ){
+		SyBlobRelease(&sOut);
+		VfsThrowOpenWarning(pCtx,zFile);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nOut > 0 && pStream->xWrite(pHandle,SyBlobData(&sOut),nOut) < 0 ){
+		nOut = -1;
+	}
+	PH7_StreamCloseHandle(pStream,pHandle);
+	SyBlobRelease(&sOut);
+	if( nOut < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int(pCtx,nOut);
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DomHTMLDocument_saveHtml)
+{
+	return DomSaveHtml5(pCtx,nArg,apArg,FALSE);
+}
+DOM_METHOD(vm_builtin_DomHTMLDocument_saveHtmlFile)
+{
+	return DomSaveHtml5(pCtx,nArg,apArg,TRUE);
+}
+/* The XML writers are the XML document's own bodies under the HTML document's
+ * NAME: one tree, one serializer, and only the diagnostic differs. */
+DOM_METHOD(vm_builtin_DomHTMLDocument_saveXml)
+{
+	return DomSaveXml(pCtx,nArg,apArg,"Dom\\HTMLDocument::saveXml");
+}
+DOM_METHOD(vm_builtin_DomHTMLDocument_saveXmlFile)
+{
+	return DomSaveXmlFile(pCtx,nArg,apArg,"Dom\\HTMLDocument::saveXmlFile");
+}
 /*
  * php 8.4's `Dom\Implementation`, reached as `$document->implementation` or by
  * `new Dom\Implementation` -- the 2004 DOMImplementation's two XML doors under
@@ -17881,6 +18457,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  "?string $namespace, string $qualifiedName, "
 		  "?Dom\\DocumentType $doctype = null", "Dom\\XMLDocument",
 		  vm_builtin_Dom_Implementation_createDocument },
+		/* php's HTML5 producer, an instance method like the two above it --
+		 * `Dom\\Implementation::createHTMLDocument('x')` called statically is the
+		 * engine's own "cannot be called statically" Error, not ours. */
+		{ "createHTMLDocument", PH7_MOD_PUBLIC, "?string $title = null",
+		  "Dom\\HTMLDocument", vm_builtin_Dom_Implementation_createHTMLDocument },
 	};
 	static const PH7_NativePropDef aMDocProp[] = {
 		DOM_MPARENT_VPROPS,
@@ -17906,6 +18487,22 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_VPROP("xmlStandalone","bool"),
 		DOM_VPROP("xmlVersion","string"),
 		DOM_VPROP("formatOutput","bool")
+	};
+	/* The HTML document's own doors. php declares the two XML writers on each
+	 * final document rather than on the abstract one, so they are named here
+	 * too -- and `createEmpty` takes only an ENCODING, where the XML document's
+	 * takes a version before it. */
+	static const PH7_NativeMethodDef aMHtmlDocMethod[] = {
+		{ "createEmpty", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $encoding = 'UTF-8'",
+		  "Dom\\HTMLDocument", vm_builtin_DomHTMLDocument_createEmpty },
+		{ "saveHtml", PH7_MOD_PUBLIC, "?Dom\\Node $node = null", "string",
+		  vm_builtin_DomHTMLDocument_saveHtml },
+		{ "saveHtmlFile", PH7_MOD_PUBLIC, "string $filename", "@int|false",
+		  vm_builtin_DomHTMLDocument_saveHtmlFile },
+		{ "saveXml", PH7_MOD_PUBLIC, "?Dom\\Node $node = null, int $options = 0",
+		  "@string|false", vm_builtin_DomHTMLDocument_saveXml },
+		{ "saveXmlFile", PH7_MOD_PUBLIC, "string $filename, int $options = 0",
+		  "@int|false", vm_builtin_DomHTMLDocument_saveXmlFile },
 	};
 	/* The three static producers, which are the whole door into the tree. */
 	static const PH7_NativeMethodDef aMXmlDocMethod[] = {
@@ -17998,7 +18595,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  DomDocRelease, 0, DomPresent },
 		{ "Dom\\HTMLDocument", "Dom\\Document", "Dom\\ParentNode",
 		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, 0, 0, DomDocRelease, 0, DomPresent },
+		  aMHtmlDocMethod, SX_ARRAYSIZE(aMHtmlDocMethod), 0, 0, 0, 0,
+		  DomDocRelease, 0, DomPresent },
 		{ "Dom\\XMLDocument", "Dom\\Document", "Dom\\ParentNode",
 		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMXmlDocMethod, SX_ARRAYSIZE(aMXmlDocMethod), 0, 0,
