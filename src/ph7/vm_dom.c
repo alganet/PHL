@@ -17295,71 +17295,118 @@ static void DomHtmlDumpNode(SyBlob *pOut,xmlNodePtr pNode)
 	}
 }
 /*
- * The WHATWG encoding LABELS, which is the table php screens an HTML
- * document's encoding against -- not libxml's converter list and not iconv's.
- * The difference is visible in both directions: `l1`, `macintosh` and
- * `ANSI_X3.4-1968` are labels and pass, while `UCS-4`, `EBCDIC` and
- * `csUnicode` are converters libxml has and are refused here.
+ * The WHATWG encoding LABELS, grouped under the encoding NAME each one is a
+ * label of. This is the table php screens an HTML document's encoding against
+ * -- not libxml's converter list and not iconv's. The difference is visible in
+ * both directions: `l1`, `macintosh` and `ANSI_X3.4-1968` are labels and pass,
+ * while `UCS-4`, `EBCDIC` and `csUnicode` are converters libxml has and are
+ * refused here.
  *
- * Only MEMBERSHIP is asked. The document keeps the encoding the program
- * SPELLED -- `createEmpty('utf8')` reads back `utf8` and `createEmpty('iso-8859-1')`
- * declares `encoding="iso-8859-1"` -- so nothing here canonicalizes.
+ * Both faces are asked of it, and they are not the same face. `createEmpty()`
+ * asks MEMBERSHIP only and keeps the encoding the program SPELLED --
+ * `createEmpty('utf8')` reads back `utf8` and `createEmpty('iso-8859-1')`
+ * declares `encoding="iso-8859-1"`. The two PARSING producers canonicalize:
+ * an `$overrideEncoding` of `iso-8859-1` makes a document whose `charset` is
+ * `windows-1252`, because the label names an encoding and it is the ENCODING
+ * the parse is run under.
+ *
+ * One flat list rather than forty arrays: the first entry of a run is the
+ * canonical name, the rest are its other labels, and a null ends the run. The
+ * name is a label of itself, so it is not repeated inside its own run. The
+ * whole table is the oracle's answer -- every label swept through
+ * `Dom\HTMLDocument::createFromString(..., $label)->charset`, php 8.5.10.
  */
 static const char *azDomEncLabel[] = {
-	"unicode-1-1-utf-8","utf-8","utf8",
-	"866","cp866","csibm866","ibm866","csisolatin2",
-	"iso-8859-2","iso-ir-101","iso8859-2","iso88592","iso_8859-2",
-	"iso_8859-2:1987","l2","latin2","csisolatin3","iso-8859-3","iso-ir-109",
-	"iso8859-3","iso88593","iso_8859-3","iso_8859-3:1988","l3","latin3",
-	"csisolatin4","iso-8859-4","iso-ir-110","iso8859-4","iso88594","iso_8859-4",
-	"iso_8859-4:1988","l4","latin4","csisolatincyrillic","cyrillic",
-	"iso-8859-5","iso-ir-144","iso8859-5","iso88595","iso_8859-5",
-	"iso_8859-5:1988","arabic","asmo-708","csiso88596e","csiso88596i",
-	"csisolatinarabic","ecma-114","iso-8859-6","iso-8859-6-e","iso-8859-6-i",
+	"UTF-8","unicode-1-1-utf-8","utf8",0,
+	"IBM866","866","cp866","csibm866",0,
+	"ISO-8859-2","csisolatin2","iso-ir-101","iso8859-2","iso88592",
+	"iso_8859-2","iso_8859-2:1987","l2","latin2",0,
+	"ISO-8859-3","csisolatin3","iso-ir-109","iso8859-3","iso88593",
+	"iso_8859-3","iso_8859-3:1988","l3","latin3",0,
+	"ISO-8859-4","csisolatin4","iso-ir-110","iso8859-4","iso88594",
+	"iso_8859-4","iso_8859-4:1988","l4","latin4",0,
+	"ISO-8859-5","csisolatincyrillic","cyrillic","iso-ir-144",
+	"iso8859-5","iso88595","iso_8859-5","iso_8859-5:1988",0,
+	"ISO-8859-6","arabic","asmo-708","csiso88596e","csiso88596i",
+	"csisolatinarabic","ecma-114","iso-8859-6-e","iso-8859-6-i",
 	"iso-ir-127","iso8859-6","iso88596","iso_8859-6","iso_8859-6:1987",
-	"csisolatingreek","ecma-118","elot_928","greek","greek8","iso-8859-7",
-	"iso-ir-126","iso8859-7","iso88597","iso_8859-7","iso_8859-7:1987",
-	"sun_eu_greek","csiso88598e","csisolatinhebrew","hebrew","iso-8859-8",
+	0,
+	"ISO-8859-7","csisolatingreek","ecma-118","elot_928","greek",
+	"greek8","iso-ir-126","iso8859-7","iso88597","iso_8859-7",
+	"iso_8859-7:1987","sun_eu_greek",0,
+	"ISO-8859-8","csiso88598e","csisolatinhebrew","hebrew",
 	"iso-8859-8-e","iso-ir-138","iso8859-8","iso88598","iso_8859-8",
-	"iso_8859-8:1988","visual","csiso88598i","iso-8859-8-i","logical",
-	"csisolatin6","iso-8859-10","iso-ir-157","iso8859-10","iso885910","l6",
-	"latin6","iso-8859-13","iso8859-13","iso885913","iso-8859-14","iso8859-14",
-	"iso885914","csisolatin9","iso-8859-15","iso8859-15","iso885915",
-	"iso_8859-15","l9","iso-8859-16","cskoi8r","koi","koi8","koi8-r","koi8_r",
-	"koi8-ru","koi8-u","csmacintosh","mac","macintosh","x-mac-roman",
-	"dos-874","iso-8859-11","iso8859-11","iso885911","tis-620","windows-874",
-	"cp1250","windows-1250","x-cp1250","cp1251","windows-1251","x-cp1251",
-	"ansi_x3.4-1968","ascii","cp1252","cp819","csisolatin1","ibm819",
-	"iso-8859-1","iso-ir-100","iso8859-1","iso88591","iso_8859-1",
-	"iso_8859-1:1987","l1","latin1","us-ascii","windows-1252","x-cp1252",
-	"cp1253","windows-1253","x-cp1253","cp1254","csisolatin5","iso-8859-9",
-	"iso-ir-148","iso8859-9","iso88599","iso_8859-9","iso_8859-9:1989","l5",
-	"latin5","windows-1254","x-cp1254","cp1255","windows-1255","x-cp1255",
-	"cp1256","windows-1256","x-cp1256","cp1257","windows-1257","x-cp1257",
-	"cp1258","windows-1258","x-cp1258","x-mac-cyrillic","x-mac-ukrainian",
-	"chinese","csgb2312","csiso58gb231280","gb2312","gb_2312","gb_2312-80",
-	"gbk","iso-ir-58","x-gbk","gb18030","big5","big5-hkscs","cn-big5",
-	"csbig5","x-x-big5","cseucpkdfmtjapanese","euc-jp","x-euc-jp",
-	"csiso2022jp","iso-2022-jp","csshiftjis","ms932","ms_kanji","shift-jis",
-	"shift_jis","sjis","windows-31j","x-sjis","cseuckr","csksc56011987",
-	"euc-kr","iso-ir-149","korean","ks_c_5601-1987","ks_c_5601-1989","ksc5601",
-	"ksc_5601","windows-949","csiso2022kr","hz-gb-2312","iso-2022-cn",
-	"iso-2022-cn-ext","iso-2022-kr","replacement","utf-16be",
-	"utf-16",
-	"utf-16le","x-user-defined"
+	"iso_8859-8:1988","visual",0,
+	"ISO-8859-8-I","csiso88598i","logical",0,
+	"ISO-8859-10","csisolatin6","iso-ir-157","iso8859-10","iso885910",
+	"l6","latin6",0,
+	"ISO-8859-13","iso8859-13","iso885913",0,
+	"ISO-8859-14","iso8859-14","iso885914",0,
+	"ISO-8859-15","csisolatin9","iso8859-15","iso885915","iso_8859-15",
+	"l9",0,
+	"ISO-8859-16",0,
+	"KOI8-R","cskoi8r","koi","koi8","koi8_r",0,
+	"KOI8-U","koi8-ru",0,
+	"macintosh","csmacintosh","mac","x-mac-roman",0,
+	"windows-874","dos-874","iso-8859-11","iso8859-11","iso885911",
+	"tis-620",0,
+	"windows-1250","cp1250","x-cp1250",0,
+	"windows-1251","cp1251","x-cp1251",0,
+	"windows-1252","ansi_x3.4-1968","ascii","cp1252","cp819",
+	"csisolatin1","ibm819","iso-8859-1","iso-ir-100","iso8859-1",
+	"iso88591","iso_8859-1","iso_8859-1:1987","l1","latin1","us-ascii",
+	"x-cp1252",0,
+	"windows-1253","cp1253","x-cp1253",0,
+	"windows-1254","cp1254","csisolatin5","iso-8859-9","iso-ir-148",
+	"iso8859-9","iso88599","iso_8859-9","iso_8859-9:1989","l5",
+	"latin5","x-cp1254",0,
+	"windows-1255","cp1255","x-cp1255",0,
+	"windows-1256","cp1256","x-cp1256",0,
+	"windows-1257","cp1257","x-cp1257",0,
+	"windows-1258","cp1258","x-cp1258",0,
+	"x-mac-cyrillic","x-mac-ukrainian",0,
+	"GBK","chinese","csgb2312","csiso58gb231280","gb2312","gb_2312",
+	"gb_2312-80","iso-ir-58","x-gbk",0,
+	"gb18030",0,
+	"Big5","big5-hkscs","cn-big5","csbig5","x-x-big5",0,
+	"EUC-JP","cseucpkdfmtjapanese","x-euc-jp",0,
+	"ISO-2022-JP","csiso2022jp",0,
+	"Shift_JIS","csshiftjis","ms932","ms_kanji","shift-jis","sjis",
+	"windows-31j","x-sjis",0,
+	"EUC-KR","cseuckr","csksc56011987","iso-ir-149","korean",
+	"ks_c_5601-1987","ks_c_5601-1989","ksc5601","ksc_5601",
+	"windows-949",0,
+	"replacement","csiso2022kr","hz-gb-2312","iso-2022-cn",
+	"iso-2022-cn-ext","iso-2022-kr",0,
+	"UTF-16BE",0,
+	"UTF-16LE","utf-16",0,
+	"x-user-defined",0,
+	0
 };
-
-static int DomEncIsLabel(const char *zEnc,int nEnc)
+/*
+ * The canonical NAME the WHATWG table gives this label, or null when the label
+ * is outside it. Membership is `DomEncCanonName(...) != 0`.
+ */
+static const char * DomEncCanonName(const char *zEnc,int nEnc)
 {
+	const char *zName = 0;
 	int i;
 	if( nEnc < 1 ){
 		return 0;
 	}
 	for( i = 0 ; i < (int)SX_ARRAYSIZE(azDomEncLabel) ; ++i ){
 		const char *z = azDomEncLabel[i];
+		if( z == 0 ){
+			/* A run ended: the next entry opens the next one. */
+			zName = 0;
+			continue;
+		}
+		if( zName == 0 ){
+			zName = z;
+		}
 		if( (int)SyStrlen(z) == nEnc
 		 && SyStrnicmp(z,zEnc,(sxu32)nEnc) == 0 ){
-			return 1;
+			return zName;
 		}
 	}
 	return 0;
@@ -17427,7 +17474,7 @@ DOM_METHOD(vm_builtin_DomHTMLDocument_createEmpty)
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"Dom\\HTMLDocument::createEmpty(): Argument #1 ($encoding) must not contain any null bytes");
 	}
-	if( !DomEncIsLabel(zEnc,nEnc) ){
+	if( DomEncCanonName(zEnc,nEnc) == 0 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"Dom\\HTMLDocument::createEmpty(): Argument #1 ($encoding) must be a valid document encoding");
 	}
@@ -17533,6 +17580,10 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 	int nSrc = 0,nEnc = 0,iFlags = 0;
 	const char *zEnc = (nArg > 2 && !ph7_value_is_null(apArg[2]))
 		? ph7_value_to_string(apArg[2],&nEnc) : 0;
+	/* The encoding the parse runs under, and the one the document keeps: the
+	 * label the caller spelled names it, and the document states the NAME. A
+	 * parse with no override is UTF-8's. */
+	const char *zCanon = "UTF-8";
 	dom_html5_errctx sErr;
 	ph7_class_instance *pThis;
 	phl_domnode *pRes;
@@ -17554,7 +17605,8 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 			return PH7_VmThrowException(pCtx,"ValueError",
 				"%s(): Argument #3 ($overrideEncoding) must not contain any null bytes",zFn);
 		}
-		if( !DomEncIsLabel(zEnc,nEnc) ){
+		zCanon = DomEncCanonName(zEnc,nEnc);
+		if( zCanon == 0 ){
 			return PH7_VmThrowException(pCtx,"ValueError",
 				"%s(): Argument #3 ($overrideEncoding) must be a valid document encoding",zFn);
 		}
@@ -17590,7 +17642,7 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 	SyBlobInit(&sErr.sTok,&pVm->sAllocator);
 	SyBlobInit(&sErr.sTree,&pVm->sAllocator);
 	pDoc = PH7_Html5Parse(&pVm->sAllocator,(const char *)SyBlobData(&sBody),
-		(int)SyBlobLength(&sBody),iFlags,"UTF-8",DomHtml5Err,(void *)&sErr);
+		(int)SyBlobLength(&sBody),iFlags,zCanon,DomHtml5Err,(void *)&sErr);
 	DomHtml5Flush(pCtx,&sErr.sTok);
 	DomHtml5Flush(pCtx,&sErr.sTree);
 	SyBlobRelease(&sErr.sTok);
