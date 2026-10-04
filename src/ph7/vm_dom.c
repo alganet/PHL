@@ -15892,13 +15892,13 @@ DOM_METHOD(vm_builtin_Dom_closest)
 static const char * const azDomNodeDebug[] = { DOM_NODE_DEBUG };
 static const char * const azDomMNodeDebug[] = { DOM_MNODE_DEBUG };
 static const char * const azDomMDocDebug[] = {
-	"URL", "documentURI", "characterSet", "charset", "inputEncoding",
+	"implementation", "URL", "documentURI", "characterSet", "charset", "inputEncoding",
 	"doctype", "documentElement", DOM_MPARENT_DEBUG, "body", "head", "title",
 	DOM_MNODE_DEBUG
 };
 static const char * const azDomMXmlDocDebug[] = {
 	"xmlEncoding", "xmlStandalone", "xmlVersion", "formatOutput",
-	"URL", "documentURI", "characterSet", "charset", "inputEncoding",
+	"implementation", "URL", "documentURI", "characterSet", "charset", "inputEncoding",
 	"doctype", "documentElement", DOM_MPARENT_DEBUG, "body", "head", "title",
 	DOM_MNODE_DEBUG
 };
@@ -15981,6 +15981,9 @@ static const char * const azDomXPathDebug[] = { "document", "registerNodeNamespa
  */
 #define DOM_VPROP(NAME,TYPE) \
 	{ NAME, PH7_MOD_PUBLIC|PH7_MOD_VIRTUAL, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, TYPE }
+/* ...and the three php declares as REAL slots it fills on the first read. */
+#define DOM_LPROP(NAME,TYPE) \
+	{ NAME, PH7_MOD_PUBLIC|PH7_MOD_LAZYSLOT, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, TYPE }
 #define DOM_NODE_VPROPS \
 	DOM_VPROP("nodeName","string"), \
 	DOM_VPROP("nodeValue","?string"), \
@@ -16048,7 +16051,7 @@ static const char * const azDomXPathDebug[] = { "document", "registerNodeNamespa
  * classes that declare `children` need somewhere to remember it.
  */
 #define DOM_MPARENT_VPROPS \
-	DOM_VPROP("children","Dom\\HTMLCollection"), \
+	DOM_LPROP("children","Dom\\HTMLCollection"), \
 	DOM_VPROP("firstElementChild","?Dom\\Element"), \
 	DOM_VPROP("lastElementChild","?Dom\\Element"), \
 	DOM_VPROP("childElementCount","int"), \
@@ -16323,7 +16326,8 @@ static void DomPropHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx 
 		 * asks this before the value exists, and the deprecated names would raise
 		 * their notice on a read the program has not made. */
 		ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,zName,nName);
-		if( pDecl && (pDecl->iFlags & PH7_CLASS_ATTR_NATIVE_NOSLOT) != 0 ){
+		if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_NATIVE_NOSLOT
+		                              |PH7_CLASS_ATTR_NATIVE_LAZYSLOT)) != 0 ){
 			pCtx->bAnswered = 1;
 		}
 		return;
@@ -16373,6 +16377,16 @@ static void DomPropHook(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativePropCtx 
 	}
 	bKnown = pSpec->xRead(&sCtx,zName) != 0;
 	if( bKnown && pCtx->zThrowClass == 0 ){
+		/* php's three lazily-filled REAL slots (`children`, `classList`,
+		 * `implementation`): the handler answers the first access and FILLS the
+		 * declared slot, which is why `get_object_vars()` shows the name only
+		 * afterwards -- and why every access after this one is the slot's, not
+		 * this hook's. isset() fills it too: php's has_property reads the value
+		 * through the same reader, and the slot it caches into is the same one. */
+		ph7_class_attr *pLazy = PH7_ClassExtractAttribute(pThis->pClass,zName,nName);
+		if( pLazy && (pLazy->iFlags & PH7_CLASS_ATTR_NATIVE_LAZYSLOT) != 0 ){
+			PH7_NativeSetProp(pVm,pThis,zName,nName,&sVal);
+		}
 		pCtx->bAnswered = 1;
 		if( pCtx->iMode == PH7_NATIVE_PROP_READ ){
 			PH7_MemObjStore(&sVal,pCtx->pResult);
@@ -16455,6 +16469,18 @@ static sxi32 DomPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,in
 		PH7_MemObjInit(pVm,&sVal);
 		if( pSpec->xDebug(&sCtx,zName) == 0 ){
 			continue;
+		}
+		{
+			/* php's debug walk reads a LAZY slot through the same handler an
+			 * ordinary access does, so dumping an element FILLS its `children`
+			 * and `classList` -- which is why get_object_vars() answers them
+			 * after a var_dump() nobody else followed, and why a second dump
+			 * prints them first, out of the object's own table. */
+			sxu32 nLazy = (sxu32)SyStrlen(zName);
+			ph7_class_attr *pLazy = PH7_ClassExtractAttribute(pThis->pClass,zName,nLazy);
+			if( pLazy && (pLazy->iFlags & PH7_CLASS_ATTR_NATIVE_LAZYSLOT) != 0 ){
+				PH7_NativeSetProp(pVm,pThis,zName,nLazy,&sVal);
+			}
 		}
 		if( sVal.iFlags & MEMOBJ_OBJ ){
 			/* php prints the literal rather than the object: a document would
@@ -17743,7 +17769,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_MCHILD_VPROPS,
 		DOM_VPROP("id","string"),
 		DOM_VPROP("className","string"),
-		DOM_VPROP("classList","Dom\\TokenList"),
+		DOM_LPROP("classList","Dom\\TokenList"),
 		DOM_VPROP("attributes","Dom\\NamedNodeMap"),
 		DOM_VPROP("innerHTML","string"),
 		DOM_VPROP("outerHTML","string"),
@@ -17841,7 +17867,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	};
 	static const PH7_NativePropDef aMDocProp[] = {
 		DOM_MPARENT_VPROPS,
-		DOM_VPROP("implementation","Dom\\Implementation"),
+		DOM_LPROP("implementation","Dom\\Implementation"),
 		DOM_VPROP("URL","string"),
 		DOM_VPROP("documentURI","string"),
 		DOM_VPROP("characterSet","string"),

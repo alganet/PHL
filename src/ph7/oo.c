@@ -2637,6 +2637,13 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 		if( pSrcAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
 			continue;
 		}
+		/* A LAZILY-FILLED slot goes back to unfilled: php's clone handler builds the
+		 * new object and its own read fills the name again, so a cloned element whose
+		 * `children` had been read carries the name uninitialized -- absent from
+		 * get_object_vars() until the clone is asked for it. */
+		if( pSrcAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZYSLOT ){
+			continue;
+		}
 		/* By the source's own KEY: a private property of a BASE class is filed under
 		 * php's mangled storage name, and matching on the attribute's plain name
 		 * would copy it over the same-named slot of the object's own class. */

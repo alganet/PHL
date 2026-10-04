@@ -549,6 +549,14 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	if( pDef->iMods & PH7_MOD_ONDEMAND ){
 		iFlags |= PH7_CLASS_ATTR_NATIVE_ONDEMAND;
 	}
+	/* php's lazily-filled REAL slot: the object carries the name from `new`, in its
+	 * declared position and uninitialized, and the class's handler fills it on the
+	 * first read. NOWRITE rides with it because the handler owns the write too --
+	 * these are the names php refuses with the readonly WORDING while Reflection
+	 * still reports them writable. */
+	if( pDef->iMods & PH7_MOD_LAZYSLOT ){
+		iFlags |= PH7_CLASS_ATTR_NATIVE_LAZYSLOT|PH7_CLASS_ATTR_NATIVE_NOWRITE;
+	}
 	/* php's VIRTUAL property: declared, and answered by the class's own handlers
 	 * rather than by a slot. NATIVE_VIRTUAL rides with it because that is exactly
 	 * what the name means to Reflection (modifiers 512) and to the object

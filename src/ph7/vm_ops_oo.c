@@ -1237,6 +1237,20 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					pEntry = 0;
 					pObjAttr = 0;
 				}
+				/* ...and a LAZY SLOT is the second door into the same handler: the
+				 * name IS on the object from `new`, in its declared position and
+				 * uninitialized, so the miss test above would never fire for it and
+				 * the read would raise the uninitialized-typed Error instead of
+				 * asking the class. php fills such a slot from its own read_property
+				 * (`Dom\Element::$children`), so the first read goes to the handler
+				 * and every read after it is answered by the filled slot. */
+				if( pObjAttr != 0
+				 && (pObjAttr->iState & VM_CLASS_ATTR_UNINIT) != 0
+				 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZYSLOT) != 0
+				 && pInstr->iP2 != PH7_MEMBER_UNSET ){
+					pEntry = 0;
+					pObjAttr = 0;
+				}
 				if( pObjAttr == 0 && PH7_ClassHasNativeProp(pClass)
 				 && !VmMemberCoalOwned(pThis,pInstr,&sName) ){
 					/* php's read_property / has_property / write_property /

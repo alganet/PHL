@@ -2805,6 +2805,17 @@ struct ph7_class_attr
                                             * `date_string` is the case -- it exists on an
                                             * interval built from a STRING and on no other, and
                                             * `isset()`/`property_exists()` answer false there. */
+#define PH7_CLASS_ATTR_NATIVE_LAZYSLOT 0x20000000 /* A NATIVE class's property php declares as a real
+                                            * slot it fills on the FIRST read: the object carries
+                                            * the name from `new` in its declared position and
+                                            * uninitialized, so every presentation surface leaves
+                                            * it out until something reads it, and the read routes
+                                            * to the class's own handler rather than raising the
+                                            * uninitialized-typed Error. php's `Dom\Element::$children`,
+                                            * `$classList` and `Dom\Document::$implementation` are the
+                                            * case -- Reflection reports them NOT virtual, and
+                                            * `get_object_vars()` answers them only after the read.
+                                            * Rides with NATIVE_NOWRITE: the handler owns the write. */
 #define PH7_CLASS_ATTR_FABRICATED   0x10000000 /* METHOD php builds on demand instead of keeping in
                                  * the class's function table. See PH7_MOD_FABRICATED for the five
                                  * doors and how each of them answers. */
@@ -2863,6 +2874,10 @@ struct ph7_class_attr
 #define PH7_MOD_VIRTUAL    0x400 /* PROPERTY only: php's VIRTUAL native property -- declared on the
                                   * class and answered by its own handlers, with NO slot on the
                                   * object (PH7_CLASS_ATTR_NATIVE_NOSLOT) */
+#define PH7_MOD_LAZYSLOT   0x1000 /* PROPERTY only: php's lazily-filled REAL slot -- declared and
+                                  * carried uninitialized from `new`, filled by the class's own
+                                  * property handler on the first read
+                                  * (PH7_CLASS_ATTR_NATIVE_LAZYSLOT). */
 #define PH7_MOD_FABRICATED 0x800 /* METHOD only: php does not keep this one in the class's function
                                   * table -- it BUILDS it when something asks (Closure::__invoke is
                                   * the whole set). Present to method_exists(), hasMethod(),
