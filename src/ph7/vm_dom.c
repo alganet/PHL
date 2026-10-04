@@ -3440,11 +3440,11 @@ static xmlNsPtr DomFindPrefixedNs(xmlNodePtr pNode,const char *zUri)
  * declaration written here would shadow it and re-point every node under it.
  */
 static xmlNsPtr DomNsGenerateEx(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zBase,
-	int bScope)
+	int bScope,int iFirst)
 {
 	xmlNsPtr pNs = 0;
 	int i;
-	for( i = 0 ; i < 1000 ; i++ ){
+	for( i = iFirst ; i < 1000 + iFirst ; i++ ){
 		char zGen[256];
 		const char *zB = zBase ? (const char *)zBase : "default";
 		if( SyStrlen(zB) > sizeof(zGen)-16 ){
@@ -3470,7 +3470,7 @@ static xmlNsPtr DomNsGenerateEx(xmlNodePtr pAnchor,const char *zUri,const xmlCha
 }
 static xmlNsPtr DomNsGenerate(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zBase)
 {
-	return DomNsGenerateEx(pAnchor,zUri,zBase,0);
+	return DomNsGenerateEx(pAnchor,zUri,zBase,0,0);
 }
 /* A binding of this URI an ATTRIBUTE can use: one that carries a prefix. */
 static xmlNsPtr DomNsReuse(xmlNodePtr pAnchor,const char *zUri)
@@ -3483,7 +3483,8 @@ static xmlNsPtr DomNsReuse(xmlNodePtr pAnchor,const char *zUri)
 	 * prefixed binding of the same URI further out still does. */
 	return pNs ? DomFindPrefixedNs(pAnchor,zUri) : 0;
 }
-static xmlNsPtr DomNsResolve(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zPrefix,int bNeedPrefix)
+static xmlNsPtr DomNsResolve(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zPrefix,
+	int bNeedPrefix,int bModern)
 {
 	xmlNsPtr pNs;
 	if( !bNeedPrefix ){
@@ -3522,7 +3523,14 @@ static xmlNsPtr DomNsResolve(xmlNodePtr pAnchor,const char *zUri,const xmlChar *
 			return pNs;
 		}
 	}
-	return DomNsGenerate(pAnchor,zUri,0);
+	/* The invented prefix is spelt differently by the two trees: the 2004 one
+	 * writes `default`, `default1`, ... and php 8.4's writes `ns1`, `ns2`, ...
+	 * -- numbered from ONE there, and only against the declarations this very
+	 * element makes, so an `ns1` an ANCESTOR binds is shadowed rather than
+	 * stepped over. */
+	return bModern
+		? DomNsGenerateEx(pAnchor,zUri,(const xmlChar *)"ns",0,1)
+		: DomNsGenerate(pAnchor,zUri,0);
 }
 /*
  * The namespace a node CREATED in zUri carries, which is a different rule from
@@ -4187,7 +4195,7 @@ static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr)
 		pAttr->ns = pNs;
 		return;
 	}
-	pNs = DomNsGenerateEx(pElem,(const char *)pAttr->ns->href,pAttr->ns->prefix,1);
+	pNs = DomNsGenerateEx(pElem,(const char *)pAttr->ns->href,pAttr->ns->prefix,1,0);
 	if( pNs == 0 ){
 		return;
 	}
@@ -5023,6 +5031,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 	const char *zQname = nArg > 2 ? ph7_value_to_string(apArg[1],0) : "";
 	const char *zVal = nArg > 2 ? ph7_value_to_string(apArg[2],0) : "";
 	int bHasUri = zUri != 0 && zUri[0] != 0;
+	int bModern = DomThisModern(pCtx);
 	xmlNodePtr pNode;
 	xmlNsPtr pNs = 0;
 	dom_qname sQ;
@@ -5030,12 +5039,25 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 	if( pNd == 0 ){
 		return DomThrowVoid(pCtx,DOM_ERR_NAMESPACE);
 	}
-	if( zQname[0] == 0 ){
-		/* php screens the EMPTY name at the parameter, before the DOM sees it. */
+	if( zQname[0] == 0 && !bModern ){
+		/* php screens the EMPTY name at the parameter, before the DOM sees it --
+		 * on the 2004 tree only, where the namespaced one lets the grammar
+		 * refuse it like any other name it cannot read. */
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"DOMElement::setAttributeNS(): Argument #2 ($qualifiedName) must not be empty");
 	}
-	rc = DomQNameParse(zQname,zUri,DOM_QN_SET,&sQ);
+	/*
+	 * The name is judged by the tree's own rules, and php 8.4's are the ones it
+	 * judges a CREATED attribute by rather than the 2004 SET side's: the name
+	 * must be a QName whatever namespace came with it (`:x` and the empty name
+	 * are refusals here and writable names there), every grammar failure is the
+	 * Invalid Character Error rather than the Namespace Error, and the DOM
+	 * spec's two reserved rules -- the xmlns pairing, and the `xml` prefix's own
+	 * URI -- are checked on the name instead of at the resolution, so
+	 * `setAttributeNS('urn:u','xml:id',..)` is refused here even on a document
+	 * that already binds `urn:u`, which the 2004 tree writes as `p:id`.
+	 */
+	rc = DomQNameParse(zQname,zUri,bModern ? DOM_QN_MATTR : DOM_QN_SET,&sQ);
 	if( rc ){
 		return DomThrowVoid(pCtx,rc);
 	}
@@ -5060,7 +5082,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 			DomQNameRelease(&sQ);
 			return DomThrowVoid(pCtx,DOM_ERR_NAMESPACE);
 		}
-		pNs = DomNsResolve(pNode,zUri,sQ.zPrefix,0);
+		pNs = DomNsResolve(pNode,zUri,sQ.zPrefix,bModern,bModern);
 		if( pNs == 0 ){
 			DomQNameRelease(&sQ);
 			return DomThrowVoid(pCtx,DOM_ERR_NAMESPACE);
@@ -5656,7 +5678,7 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 		return PH7_ContextMemoryError(pCtx);
 	}
 	if( zUri && zUri[0] && sQ.zPrefix ){
-		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,sQ.zPrefix,1));
+		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,sQ.zPrefix,1,0));
 	}else if( zUri && zUri[0]
 	 && xmlStrEqual(sQ.zLocal,(const xmlChar *)DOM_XMLNS_NAME) ){
 		/*
@@ -5681,7 +5703,7 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 			xmlSetNs((xmlNodePtr)pAttr,pNs);
 		}
 	}else if( zUri && zUri[0] ){
-		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,0,1));
+		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,0,1,0));
 	}
 	DomQNameRelease(&sQ);
 	DomOrphanAdd(pNd->pShell,(xmlNodePtr)pAttr);
@@ -6883,7 +6905,7 @@ DOM_METHOD(vm_builtin_DOMDocument_importNode)
 	if( pCopy->type == XML_ATTRIBUTE_NODE && pNode->ns != 0 && pNode->ns->href != 0 ){
 		xmlNodePtr pRoot = xmlDocGetRootElement(pDoc);
 		xmlNsPtr pNs = pRoot
-			? DomNsResolve(pRoot,(const char *)pNode->ns->href,pNode->ns->prefix,1) : 0;
+			? DomNsResolve(pRoot,(const char *)pNode->ns->href,pNode->ns->prefix,1,0) : 0;
 		if( pNs == 0 ){
 			/* No root element to declare on. php answers an attribute that IS in
 			 * the namespace anyway, through a declaration no element makes; the
