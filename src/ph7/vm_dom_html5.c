@@ -167,7 +167,12 @@ static sxu32 Html5EntLookup(const char *zName)
 #define HTML5_TOK_COMMENT  4
 #define HTML5_TOK_DOCTYPE  5
 
-/* Insertion modes.  Everything past IN_BODY is decided by the open stack. */
+/*
+ * Insertion modes.  The table modes past IN_BODY are decided by the open
+ * stack, but the three frameset ones cannot be: a frameset document has no
+ * body at all, and what it accepts is a closed list rather than a question
+ * about what is open.
+ */
 #define HTML5_M_INITIAL      0
 #define HTML5_M_BEFORE_HTML  1
 #define HTML5_M_BEFORE_HEAD  2
@@ -175,6 +180,9 @@ static sxu32 Html5EntLookup(const char *zName)
 #define HTML5_M_AFTER_HEAD   4
 #define HTML5_M_IN_BODY      5
 #define HTML5_M_AFTER_BODY   6
+#define HTML5_M_IN_FRAMESET  7
+#define HTML5_M_AFTER_FRAMESET 8
+#define HTML5_M_AFTER_AFTER_FRAMESET 9
 
 /* Text-only element flavours the tree constructor arms the tokenizer with. */
 #define HTML5_TEXT_NONE    0
@@ -214,6 +222,7 @@ struct html5_parser {
 	int bSelfClose;
 	int bTextTok;                  /* the token is an armed element's TEXT     */
 	int bFoster;                   /* this token's content leaves the table    */
+	int bFramesetOk;               /* may a `<frameset>` still replace the body */
 	sxu32 iTokLine,iTokCol,iTokCol2;  /* the NAME's span, which is what php prints */
 	void (*xErr)(void *,const char *,const char *,sxu32,sxu32,sxu32);
 	void *pErrUser;
@@ -243,6 +252,20 @@ static const char * const azHtml5ClosesP[] = {
 	"div","dl","fieldset","figcaption","figure","footer","form","h1","h2","h3",
 	"h4","h5","h6","header","hgroup","hr","li","main","menu","nav","ol","p",
 	"plaintext","pre","search","section","summary","table","ul","xmp"
+};
+/*
+ * The start tags that make a later `<frameset>` unwritable -- the spec's
+ * frameset-ok flag, swept out of php rather than read off the list, because
+ * the two disagree in one place: php clears the flag for `<input type=HIDDEN>`
+ * where the spec asks for an ASCII case-INSENSITIVE match, so the comparison
+ * below is the byte one php makes.  `<body>` is here too, but only its
+ * explicit spelling clears the flag, so it is handled where a body is opened
+ * rather than by name.
+ */
+static const char * const azHtml5NoFrameset[] = {
+	"applet","area","br","button","dd","dt","embed","hr","iframe","image",
+	"img","keygen","li","listing","marquee","object","plaintext","pre",
+	"select","table","textarea","wbr","xmp"
 };
 /* The elements the head collects, wherever in the source they are spelled. */
 static const char * const azHtml5Head[] = {
@@ -1540,6 +1563,24 @@ static void Html5InsertText(html5_parser *p)
 	Html5Attach(p,xmlNewDocTextLen(p->pDoc,
 		(const xmlChar *)SyBlobData(&p->sBuf),(int)n));
 }
+/*
+ * The frameset modes keep the whitespace of a character run and drop the rest
+ * of it, so a run that is a mixture is inserted with its other bytes removed
+ * rather than kept whole or dropped whole.
+ */
+static void Html5InsertSpaceOnly(html5_parser *p)
+{
+	const unsigned char *z = (const unsigned char *)SyBlobData(&p->sBuf);
+	sxu32 i,n = SyBlobLength(&p->sBuf),nKeep = 0;
+	unsigned char *zKeep = (unsigned char *)SyBlobData(&p->sBuf);
+	for( i = 0 ; i < n ; ++i ){
+		if( Html5IsSpace(z[i]) ){
+			zKeep[nKeep++] = z[i];
+		}
+	}
+	p->sBuf.nByte = nKeep;
+	Html5InsertText(p);
+}
 static int Html5TextIsSpace(html5_parser *p)
 {
 	const unsigned char *z = (const unsigned char *)SyBlobData(&p->sBuf);
@@ -2134,7 +2175,14 @@ static void Html5OpenBody(html5_parser *p,int bWithAttrs)
 		return;
 	}
 	if( bWithAttrs ){
+		/*
+		 * A body the SOURCE spelled clears the frameset-ok flag; one the
+		 * parser minted because content needed somewhere to go does not, and
+		 * that is the whole difference between a `<frameset>` after `<body>`
+		 * being dropped and one after `<p>` replacing the tree.
+		 */
 		Html5AddAttrs(p,pBody);
+		p->bFramesetOk = 0;
 	}
 	Html5Push(p,pBody);
 	p->iMode = HTML5_M_IN_BODY;
@@ -2299,6 +2347,12 @@ static int Html5Dispatch(html5_parser *p)
 			Html5OpenBody(p,TRUE);
 			return 0;
 		}
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"frameset") ){
+			/* No body is minted at all: the frameset IS the document's. */
+			Html5InsertStart(p);
+			p->iMode = HTML5_M_IN_FRAMESET;
+			return 0;
+		}
 		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") ){
 			return 0;
 		}
@@ -2332,6 +2386,106 @@ static int Html5Dispatch(html5_parser *p)
 		}
 		p->iMode = HTML5_M_IN_BODY;
 		return 1;
+	case HTML5_M_IN_FRAMESET:
+		if( p->iTok == HTML5_TOK_TEXT ){
+			Html5InsertSpaceOnly(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_COMMENT ){
+			Html5InsertComment(p,Html5Target(p));
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START ){
+			if( Html5Eq(zName,"frameset") || Html5Eq(zName,"frame")
+			 || Html5Eq(zName,"noframes") ){
+				/*
+				 * `<frame>` is void, so `Html5InsertStart` inserts it without
+				 * pushing it, and `<noframes>` is raw text the same way it is
+				 * in the head.
+				 */
+				Html5InsertStart(p);
+				return 0;
+			}
+			if( Html5Eq(zName,"html") && p->pHtml ){
+				Html5AddAttrs(p,p->pHtml);
+				return 0;
+			}
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"noframes") ){
+			/* The one element besides a frameset these modes leave open. */
+			if( Html5Top(p) && Html5Eq((const char *)Html5Top(p)->name,
+					"noframes") ){
+				Html5Pop(p);
+			}
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"frameset") ){
+			/*
+			 * The root `<html>` is never popped by an end tag, so a stray
+			 * `</frameset>` past the outermost one is ignored; closing the
+			 * outermost is what leaves the mode.
+			 */
+			if( Html5Top(p) == p->pHtml ){
+				return 0;
+			}
+			Html5Pop(p);
+			if( Html5Top(p) == 0
+			 || !Html5Eq((const char *)Html5Top(p)->name,"frameset") ){
+				p->iMode = HTML5_M_AFTER_FRAMESET;
+			}
+			return 0;
+		}
+		return 0;
+	case HTML5_M_AFTER_FRAMESET:
+		if( p->iTok == HTML5_TOK_TEXT ){
+			Html5InsertSpaceOnly(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_COMMENT ){
+			Html5InsertComment(p,Html5Target(p));
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"noframes") ){
+			Html5InsertStart(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") && p->pHtml ){
+			Html5AddAttrs(p,p->pHtml);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"noframes")
+		 && Html5Top(p)
+		 && Html5Eq((const char *)Html5Top(p)->name,"noframes") ){
+			Html5Pop(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"html") ){
+			p->iMode = HTML5_M_AFTER_AFTER_FRAMESET;
+			return 0;
+		}
+		return 0;
+	case HTML5_M_AFTER_AFTER_FRAMESET:
+		/* Past `</html>`: a comment is the document's, beside the root. */
+		if( p->iTok == HTML5_TOK_COMMENT ){
+			Html5InsertComment(p,(xmlNodePtr)p->pDoc);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"noframes") ){
+			Html5InsertStart(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") && p->pHtml ){
+			Html5AddAttrs(p,p->pHtml);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"noframes")
+		 && Html5Top(p)
+		 && Html5Eq((const char *)Html5Top(p)->name,"noframes") ){
+			Html5Pop(p);
+			return 0;
+		}
+		return 0;
 	default:
 		break;
 	}
@@ -2351,6 +2505,9 @@ static int Html5Dispatch(html5_parser *p)
 		 */
 		p->bFoster = !Html5TextIsSpace(p);
 		if( p->bFoster ){
+			/* Any byte that is not whitespace is content a frameset
+			 * would have to throw away, so it may no longer replace it. */
+			p->bFramesetOk = 0;
 			Html5ColgroupImplied(p,0);
 		}
 		Html5Reconstruct(p);
@@ -2365,8 +2522,54 @@ static int Html5Dispatch(html5_parser *p)
 	case HTML5_TOK_START: {
 		xmlNodePtr pEl;
 		int bTableForm;
-		if( Html5Eq(zName,"html") || Html5Eq(zName,"body") ){
+		if( Html5Eq(zName,"frameset") ){
+			/*
+			 * A frameset written where content already is REPLACES the body
+			 * rather than joining it -- but only while nothing has gone into
+			 * the document that a frameset cannot hold.  The body is the
+			 * second element on the stack; anything the source opened inside
+			 * it goes away with it.
+			 */
+			xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+			xmlNodePtr pBody;
+			if( SySetUsed(&p->sOpen) < 2 || p->bFramesetOk == 0
+			 || !Html5Eq((const char *)apStack[1]->name,"body") ){
+				break;
+			}
+			pBody = apStack[1];
+			/*
+			 * Pop first, then free: the formatting list may still name an
+			 * element inside the body, and popping past its marker is what
+			 * clears it before the subtree goes.
+			 */
+			while( SySetUsed(&p->sOpen) > 1 ){
+				Html5Pop(p);
+			}
+			SySetTruncate(&p->sFmt,0);
+			xmlUnlinkNode(pBody);
+			xmlFreeNode(pBody);
+			Html5InsertStart(p);
+			p->iMode = HTML5_M_IN_FRAMESET;
 			break;
+		}
+		if( Html5Eq(zName,"html") || Html5Eq(zName,"body") ){
+			/* A second `<body>` merges its attributes and shuts the door. */
+			if( Html5Eq(zName,"body") ){
+				p->bFramesetOk = 0;
+			}
+			break;
+		}
+		/*
+		 * A `<frame>` belongs to a frameset and nowhere else: written in the
+		 * body -- which is where one written after an IGNORED `<frameset>`
+		 * arrives -- it is dropped rather than inserted.
+		 */
+		if( Html5Eq(zName,"frame") ){
+			break;
+		}
+		if( HTML5_IN(azHtml5NoFrameset,zName)
+		 || (Html5Eq(zName,"input") && !Html5TableOwns(p,zName)) ){
+			p->bFramesetOk = 0;
 		}
 		if( Html5Eq(zName,"head") ){
 			break;
@@ -2558,6 +2761,7 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	sParser.pDoc = pDoc;
 	sParser.iFlags = iFlags;
 	sParser.iMode = HTML5_M_INITIAL;
+	sParser.bFramesetOk = 1;
 	sParser.xErr = xErr;
 	sParser.pErrUser = pErrUser;
 	SySetInit(&sParser.sOpen,pAlloc,sizeof(xmlNodePtr));
@@ -2596,7 +2800,12 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 			}
 			Html5OpenHead(&sParser,FALSE);
 		}
-		if( sParser.pHtml && Html5ChildNamed(sParser.pHtml,"body") == 0 ){
+		/*
+		 * A frameset document owes no body -- it is the one shape where the
+		 * root holds `head` and a sibling that is not `body`.
+		 */
+		if( sParser.pHtml && Html5ChildNamed(sParser.pHtml,"body") == 0
+		 && Html5ChildNamed(sParser.pHtml,"frameset") == 0 ){
 			while( Html5Top(&sParser) && Html5Top(&sParser) != sParser.pHtml ){
 				Html5Pop(&sParser);
 			}
