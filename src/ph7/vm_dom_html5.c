@@ -232,6 +232,11 @@ struct html5_parser {
 	int iTok;
 	SyBlob sName;                  /* tag or doctype name, folded, NUL-ended  */
 	SyBlob sBuf;                   /* text or comment data                    */
+	SyBlob sPubId;                 /* the doctype's public identifier         */
+	SyBlob sSysId;                 /* ... and its system identifier           */
+	int bDocSys;                   /* was a system identifier spelled at all? */
+	int bForceQuirks;              /* THIS doctype's force-quirks flag        */
+	int bQuirks;                   /* the DOCUMENT is in quirks mode          */
 	SyBlob sAttrBuf;
 	SySet sAttr;
 	int bSelfClose;
@@ -278,6 +283,11 @@ static const char * const azHtml5HeadNoscript[] = {
  * A start tag that closes an open `<p>`.  This is the spec's list verbatim: it
  * is the one piece of `in body` that cannot be derived from the stack, because
  * it is a property of the tag being opened rather than of what is open.
+ *
+ * `table` is the one row with a condition on it -- it closes a `<p>` only when
+ * the document is NOT in quirks mode -- and it is the only thing quirks mode
+ * decides in this parser.  Swept: of the whole list, `table` under
+ * `<body><p>a<NAME>` is the only name whose answer moves with the doctype.
  */
 static const char * const azHtml5ClosesP[] = {
 	"address","article","aside","blockquote","center","details","dialog","dir",
@@ -285,6 +295,96 @@ static const char * const azHtml5ClosesP[] = {
 	"h4","h5","h6","header","hgroup","hr","li","main","menu","nav","ol","p",
 	"plaintext","pre","search","section","summary","table","ul","xmp"
 };
+/*
+ * A doctype that puts the document in QUIRKS mode.  The three lists below are
+ * matched against the identifiers LOWERCASED, because every comparison the
+ * question makes is ASCII case-insensitive -- `-//w3c//dtd html 4.01
+ * transitional//en` is the same answer as the spelling with capitals, and the
+ * IBM system identifier answers under `HTTP://WWW.IBM.COM/...` too.
+ *
+ * `azHtml5QuirksPubPfx` is matched as a PREFIX, so a public identifier that
+ * carries a trailing `//EN` still answers; the other two are matched whole.
+ * Swept out of php rather than read off the spec: all 55 prefixes were asked
+ * with and without a system identifier, in both cases, and the near misses
+ * (`-//IETF//DTD HTML 4.0//EN`, `-//W3C//DTD HTML 3.3//EN`, a leading space)
+ * were asked too, to prove the list is not merely a substring test.
+ */
+static const char * const azHtml5QuirksPubPfx[] = {
+	"+//silmaril//dtd html pro v0r11 19970101//",
+	"-//as//dtd html 3.0 aswedit + extensions//",
+	"-//advasoft ltd//dtd html 3.0 aswedit + extensions//",
+	"-//ietf//dtd html 2.0 level 1//",
+	"-//ietf//dtd html 2.0 level 2//",
+	"-//ietf//dtd html 2.0 strict level 1//",
+	"-//ietf//dtd html 2.0 strict level 2//",
+	"-//ietf//dtd html 2.0 strict//",
+	"-//ietf//dtd html 2.0//",
+	"-//ietf//dtd html 2.1e//",
+	"-//ietf//dtd html 3.0//",
+	"-//ietf//dtd html 3.2 final//",
+	"-//ietf//dtd html 3.2//",
+	"-//ietf//dtd html 3//",
+	"-//ietf//dtd html level 0//",
+	"-//ietf//dtd html level 1//",
+	"-//ietf//dtd html level 2//",
+	"-//ietf//dtd html level 3//",
+	"-//ietf//dtd html strict level 0//",
+	"-//ietf//dtd html strict level 1//",
+	"-//ietf//dtd html strict level 2//",
+	"-//ietf//dtd html strict level 3//",
+	"-//ietf//dtd html strict//",
+	"-//ietf//dtd html//",
+	"-//metrius//dtd metrius presentational//",
+	"-//microsoft//dtd internet explorer 2.0 html strict//",
+	"-//microsoft//dtd internet explorer 2.0 html//",
+	"-//microsoft//dtd internet explorer 2.0 tables//",
+	"-//microsoft//dtd internet explorer 3.0 html strict//",
+	"-//microsoft//dtd internet explorer 3.0 html//",
+	"-//microsoft//dtd internet explorer 3.0 tables//",
+	"-//netscape comm. corp.//dtd html//",
+	"-//netscape comm. corp.//dtd strict html//",
+	"-//o'reilly and associates//dtd html 2.0//",
+	"-//o'reilly and associates//dtd html extended 1.0//",
+	"-//o'reilly and associates//dtd html extended relaxed 1.0//",
+	"-//sq//dtd html 2.0 hotmetal + extensions//",
+	"-//softquad software//dtd hotmetal pro 6.0::19990601::extensions to html 4.0//",
+	"-//softquad//dtd hotmetal pro 4.0::19971010::extensions to html 4.0//",
+	"-//spyglass//dtd html 2.0 extended//",
+	"-//sun microsystems corp.//dtd hotjava html//",
+	"-//sun microsystems corp.//dtd hotjava strict html//",
+	"-//w3c//dtd html 3 1995-03-24//",
+	"-//w3c//dtd html 3.2 draft//",
+	"-//w3c//dtd html 3.2 final//",
+	"-//w3c//dtd html 3.2//",
+	"-//w3c//dtd html 3.2s draft//",
+	"-//w3c//dtd html 4.0 frameset//",
+	"-//w3c//dtd html 4.0 transitional//",
+	"-//w3c//dtd html experimental 19960712//",
+	"-//w3c//dtd html experimental 970421//",
+	"-//w3c//dtd w3 html//",
+	"-//w3o//dtd w3 html 3.0//",
+	"-//webtechs//dtd mozilla html 2.0//",
+	"-//webtechs//dtd mozilla html//"
+};
+/* The public identifiers that answer only when spelled WHOLE. */
+static const char * const azHtml5QuirksPubEq[] = {
+	"-//w3o//dtd w3 html strict 3.0//en//",
+	"-/w3c/dtd html 4.0 transitional/en",
+	"html"
+};
+/*
+ * The two prefixes that answer only when NO system identifier was spelled.
+ * Spelling one turns them into the spec's LIMITED quirks, which is not quirks
+ * for the one question this parser asks -- so nothing here has to name it.
+ */
+static const char * const azHtml5QuirksPubNoSys[] = {
+	"-//w3c//dtd html 4.01 frameset//",
+	"-//w3c//dtd html 4.01 transitional//"
+};
+/* The one system identifier that answers by itself. */
+#define HTML5_QUIRKS_SYS \
+	"http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd"
+
 /*
  * The start tags that make a later `<frameset>` unwritable -- the spec's
  * frameset-ok flag, swept out of php rather than read off the list, because
@@ -715,6 +815,178 @@ static void Html5ReadAttrs(html5_parser *p)
 	}
 }
 /* The comment states: everything to `-->`, or to the end of the source. */
+/*
+ * One quoted doctype identifier.  Answers 0 when the source ENDED it rather
+ * than closed it -- either at end of input or at a `>`, both of which the spec
+ * calls abrupt and both of which set the force-quirks flag.  What was read
+ * before the abrupt end is KEPT: php answers `<!DOCTYPE html PUBLIC "abc>def`
+ * with the public identifier `abc` and the rest of the line as content, so
+ * neither the bytes nor the `>` may be given back.
+ */
+static int Html5ReadDoctypeId(html5_parser *p,SyBlob *pOut,int cQuote)
+{
+	for(;;){
+		int c = Html5Peek(p,0);
+		if( c < 0 ){
+			return 0;
+		}
+		if( c == '>' ){
+			Html5Read(p);
+			return 0;
+		}
+		if( c == cQuote ){
+			Html5Read(p);
+			return 1;
+		}
+		Html5PutByte(pOut,Html5Read(p));
+	}
+}
+/* Everything to the doctype's `>`, kept by nobody. */
+static void Html5BogusDoctype(html5_parser *p)
+{
+	for(;;){
+		int c = Html5Peek(p,0);
+		if( c < 0 ){
+			return;
+		}
+		Html5Read(p);
+		if( c == '>' ){
+			return;
+		}
+	}
+}
+/*
+ * Past the system identifier.  Junk here is a parse error and nothing more:
+ * php answers `<!DOCTYPE HTML SYSTEM "b" extra>` with the system identifier
+ * intact and the document NOT in quirks mode.
+ */
+static void Html5AfterDoctypeSysId(html5_parser *p)
+{
+	for(;;){
+		int c = Html5Peek(p,0);
+		if( c < 0 ){
+			p->bForceQuirks = 1;
+			return;
+		}
+		if( c == '>' ){
+			Html5Read(p);
+			return;
+		}
+		if( !Html5IsSpace(c) ){
+			Html5BogusDoctype(p);
+			return;
+		}
+		Html5Read(p);
+	}
+}
+/*
+ * The doctype's public and system identifiers, read from just past its name.
+ * php keeps both on the node -- `$doctype->publicId` and `->systemId` answer
+ * them -- and asks the pair one further question of its own: whether the
+ * document is in QUIRKS mode, which is the one thing that decides whether a
+ * `<table>` closes an open `<p>`.  Neither may be dropped.
+ *
+ * The force-quirks flag is set exactly where the spec sets it, and the one
+ * place that is easy to get wrong is the bogus tail: reached from after the
+ * SYSTEM identifier it sets nothing, reached from anywhere earlier it sets the
+ * flag.  php agrees -- `PUBLIC "a" junk` is quirks and `SYSTEM "b" extra` is
+ * not -- so the two exits below are deliberately not shared.
+ */
+static void Html5ReadDoctypeIds(html5_parser *p)
+{
+	int c,bPublic;
+	for(;;){
+		c = Html5Peek(p,0);
+		if( c < 0 ){
+			p->bForceQuirks = 1;
+			return;
+		}
+		if( c == '>' ){
+			Html5Read(p);
+			return;
+		}
+		if( !Html5IsSpace(c) ){
+			break;
+		}
+		Html5Read(p);
+	}
+	if( Html5LookWord(p,"PUBLIC") ){
+		bPublic = 1;
+		Html5Skip(p,6);
+	}else if( Html5LookWord(p,"SYSTEM") ){
+		bPublic = 0;
+		Html5Skip(p,6);
+	}else{
+		/* A word that is neither keyword: the rest is bogus and quirks. */
+		p->bForceQuirks = 1;
+		Html5BogusDoctype(p);
+		return;
+	}
+	/*
+	 * The keyword and its identifier need no whitespace between them: php
+	 * reads `PUBLIC"a""b"` as the pair, a parse error that changes nothing
+	 * else -- in particular it does NOT force quirks.
+	 */
+	while( Html5IsSpace(Html5Peek(p,0)) ){
+		Html5Read(p);
+	}
+	c = Html5Peek(p,0);
+	if( c != '"' && c != '\'' ){
+		/* No identifier where one was promised. */
+		p->bForceQuirks = 1;
+		if( c == '>' ){
+			Html5Read(p);
+		}else if( c >= 0 ){
+			Html5BogusDoctype(p);
+		}
+		return;
+	}
+	Html5Read(p);
+	if( !Html5ReadDoctypeId(p,bPublic ? &p->sPubId : &p->sSysId,c) ){
+		p->bForceQuirks = 1;
+		p->bDocSys = !bPublic;
+		return;
+	}
+	if( !bPublic ){
+		p->bDocSys = 1;
+		Html5AfterDoctypeSysId(p);
+		return;
+	}
+	/*
+	 * Between the two identifiers.  A quote reached with no whitespace before
+	 * it is again only a parse error; anything else that is not the close is
+	 * bogus AND quirks, which is where this path differs from the one after a
+	 * system identifier.
+	 */
+	for(;;){
+		c = Html5Peek(p,0);
+		if( c < 0 ){
+			p->bForceQuirks = 1;
+			return;
+		}
+		if( c == '>' ){
+			Html5Read(p);
+			return;
+		}
+		if( !Html5IsSpace(c) ){
+			break;
+		}
+		Html5Read(p);
+	}
+	if( c != '"' && c != '\'' ){
+		p->bForceQuirks = 1;
+		Html5BogusDoctype(p);
+		return;
+	}
+	Html5Read(p);
+	if( !Html5ReadDoctypeId(p,&p->sSysId,c) ){
+		p->bForceQuirks = 1;
+		p->bDocSys = 1;
+		return;
+	}
+	p->bDocSys = 1;
+	Html5AfterDoctypeSysId(p);
+}
 static void Html5ReadComment(html5_parser *p)
 {
 	for(;;){
@@ -889,6 +1161,10 @@ static void Html5NextToken(html5_parser *p)
 		}
 		if( Html5LookWord(p,"DOCTYPE") ){
 			Html5Skip(p,7);
+			SyBlobReset(&p->sPubId);
+			SyBlobReset(&p->sSysId);
+			p->bDocSys = 0;
+			p->bForceQuirks = 0;
 			while( Html5IsSpace(Html5Peek(p,0)) ){
 				Html5Read(p);
 			}
@@ -900,19 +1176,9 @@ static void Html5NextToken(html5_parser *p)
 				Html5PutByte(&p->sName,Html5Lower(Html5Read(p)));
 			}
 			SyBlobNullAppend(&p->sName);
-			/* The public and system identifiers are read but not kept: php
-			 * prints neither for an HTML document, and the doctype node it
-			 * builds carries only the name. */
-			for(;;){
-				int d = Html5Peek(p,0);
-				if( d < 0 || d == '>' ){
-					if( d == '>' ){
-						Html5Read(p);
-					}
-					break;
-				}
-				Html5Read(p);
-			}
+			Html5ReadDoctypeIds(p);
+			SyBlobNullAppend(&p->sPubId);
+			SyBlobNullAppend(&p->sSysId);
 			p->iTok = HTML5_TOK_DOCTYPE;
 			return;
 		}
@@ -2232,6 +2498,7 @@ static void Html5BodyImplied(html5_parser *p,const char *zName)
 	 * closes the p under it rather than giving up.
 	 */
 	if( !bSelect && HTML5_IN(azHtml5ClosesP,zName)
+	 && !(p->bQuirks && Html5Eq(zName,"table"))
 	 && Html5NameInScopeEx(p,"p",TRUE) ){
 		Html5PopTo(p,"p");
 	}
@@ -2449,6 +2716,56 @@ static void Html5OpenBody(html5_parser *p,int bWithAttrs)
  * mints what the spec says is missing and asks to be handed it again, which is
  * the `bAgain` answer.
  */
+/*
+ * Does this doctype put the document in quirks mode?  The identifiers are
+ * compared ASCII case-insensitively, which is why the tables hold them folded
+ * and this walks the source spelling through `Html5Lower` rather than folding
+ * a copy.
+ */
+static int Html5LowerPrefix(const char *zStr,const char *zPfx)
+{
+	sxu32 i;
+	for( i = 0 ; zPfx[i] != 0 ; ++i ){
+		if( zStr[i] == 0 || Html5Lower((unsigned char)zStr[i])
+		 != (unsigned char)zPfx[i] ){
+			return 0;
+		}
+	}
+	return 1;
+}
+static int Html5LowerSame(const char *zStr,const char *zWord)
+{
+	return Html5LowerPrefix(zStr,zWord) && zStr[SyStrlen(zWord)] == 0;
+}
+static int Html5DoctypeQuirks(html5_parser *p,const char *zName,
+	const char *zPub,const char *zSys)
+{
+	int i;
+	if( p->bForceQuirks || !Html5Eq(zName,"html") ){
+		return 1;
+	}
+	if( p->bDocSys && Html5LowerSame(zSys,HTML5_QUIRKS_SYS) ){
+		return 1;
+	}
+	for( i = 0 ; i < (int)SX_ARRAYSIZE(azHtml5QuirksPubEq) ; ++i ){
+		if( Html5LowerSame(zPub,azHtml5QuirksPubEq[i]) ){
+			return 1;
+		}
+	}
+	for( i = 0 ; i < (int)SX_ARRAYSIZE(azHtml5QuirksPubPfx) ; ++i ){
+		if( Html5LowerPrefix(zPub,azHtml5QuirksPubPfx[i]) ){
+			return 1;
+		}
+	}
+	if( !p->bDocSys ){
+		for( i = 0 ; i < (int)SX_ARRAYSIZE(azHtml5QuirksPubNoSys) ; ++i ){
+			if( Html5LowerPrefix(zPub,azHtml5QuirksPubNoSys[i]) ){
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
 static int Html5Dispatch(html5_parser *p)
 {
 	const char *zName = Html5TokName(p);
@@ -2484,8 +2801,17 @@ static int Html5Dispatch(html5_parser *p)
 	switch( p->iMode ){
 	case HTML5_M_INITIAL:
 		if( p->iTok == HTML5_TOK_DOCTYPE ){
-			xmlCreateIntSubset(p->pDoc,(const xmlChar *)
-				(zName[0] ? zName : "html"),0,0);
+			const char *zPub = (const char *)SyBlobData(&p->sPubId);
+			const char *zSys = (const char *)SyBlobData(&p->sSysId);
+			/*
+			 * php keeps both identifiers on the node, and an empty NAME stays
+			 * empty there rather than becoming `html`: `<!DOCTYPE>` answers
+			 * `$doctype->name === ''` and serializes as `<!DOCTYPE >`.
+			 */
+			xmlCreateIntSubset(p->pDoc,(const xmlChar *)zName,
+				zPub[0] ? (const xmlChar *)zPub : 0,
+				p->bDocSys ? (const xmlChar *)zSys : 0);
+			p->bQuirks = Html5DoctypeQuirks(p,zName,zPub,zSys);
 			p->iMode = HTML5_M_BEFORE_HTML;
 			return 0;
 		}
@@ -3296,6 +3622,11 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	sParser.iFlags = iFlags;
 	sParser.iMode = HTML5_M_INITIAL;
 	sParser.bFramesetOk = 1;
+	/* A document that states no doctype at all is in quirks mode, so the flag
+	 * starts SET and only a doctype the initial mode accepts can clear it --
+	 * which is also why a second doctype, reaching a later mode, changes
+	 * nothing. */
+	sParser.bQuirks = 1;
 	sParser.xErr = xErr;
 	sParser.pErrUser = pErrUser;
 	SySetInit(&sParser.sOpen,pAlloc,sizeof(xmlNodePtr));
@@ -3305,6 +3636,8 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	SyBlobInit(&sParser.sName,pAlloc);
 	SyBlobInit(&sParser.sBuf,pAlloc);
 	SyBlobInit(&sParser.sAttrBuf,pAlloc);
+	SyBlobInit(&sParser.sPubId,pAlloc);
+	SyBlobInit(&sParser.sSysId,pAlloc);
 	for(;;){
 		int nGuard = 0;
 		sParser.bHtmlRules = 0;
@@ -3368,6 +3701,8 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	SyBlobRelease(&sParser.sName);
 	SyBlobRelease(&sParser.sBuf);
 	SyBlobRelease(&sParser.sAttrBuf);
+	SyBlobRelease(&sParser.sPubId);
+	SyBlobRelease(&sParser.sSysId);
 	SySetRelease(&sParser.sOpen);
 	SySetRelease(&sParser.sFmt);
 	SySetRelease(&sParser.sTmpl);
