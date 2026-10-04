@@ -4200,7 +4200,7 @@ static xmlAttrPtr DomAttrNoNs(xmlNodePtr pElem,const char *zName)
 	pAttr = xmlHasNsProp(pElem,(const xmlChar *)zName,0);
 	return (pAttr && pAttr->type == XML_ATTRIBUTE_NODE) ? pAttr : 0;
 }
-static xmlAttrPtr DomAttrByName(xmlNodePtr pElem,const char *zName)
+static xmlAttrPtr DomAttr2004(xmlNodePtr pElem,const char *zName)
 {
 	xmlAttrPtr pAttr = DomAttrNoNs(pElem,zName);
 	if( pAttr == 0 && pElem ){
@@ -4219,6 +4219,58 @@ static xmlAttrPtr DomAttrByName(xmlNodePtr pElem,const char *zName)
 	}
 	return (pAttr && pAttr->type == XML_ATTRIBUTE_NODE) ? pAttr : 0;
 }
+/*
+ * ...and php 8.4's rule, which resolves NOTHING.
+ *
+ * The namespaced tree matches the qualified name as WRITTEN: an attribute
+ * carrying a prefix answers only its own prefix and its own local name, spelled
+ * exactly, and one carrying none answers only its whole stored name. So two
+ * prefixes bound to the same URI are two different names here where the 2004
+ * rule -- which resolves the sought prefix and then matches by (local, URI) --
+ * makes them one, and that is the whole difference between the trees: on
+ * `<r xmlns:p="urn:x" xmlns:q="urn:x"><e p:b="1"/>`, `hasAttribute('q:b')` is
+ * true on the old tree and false on the new one.
+ *
+ * The walk is the property list in order, not a hash, because the question is
+ * about the prefix the attribute WEARS and libxml keys its table by the local
+ * name alone. php lowercases the sought name first when the element is HTML in
+ * an HTML document; that branch is unreachable until the HTML parser lands, so
+ * it belongs with the parser and not here.
+ */
+static int DomQNameIsSpec(const char *zName,xmlNodePtr pNode)
+{
+	const xmlChar *zLocal = pNode->name;
+	if( pNode->ns && pNode->ns->prefix ){
+		const char *zPrefix = (const char *)pNode->ns->prefix;
+		sxu32 nPrefix = SyStrlen(zPrefix);
+		/* The prefix compare stops at the sought name's own NUL when the two
+		 * lengths differ, so it never reads past it. */
+		if( SyMemcmp(zName,zPrefix,nPrefix) != 0 || zName[nPrefix] != ':' ){
+			return 0;
+		}
+		return xmlStrEqual((const xmlChar *)(zName + nPrefix + 1),zLocal);
+	}
+	return xmlStrEqual(zLocal,(const xmlChar *)zName);
+}
+static xmlAttrPtr DomAttrBySpec(xmlNodePtr pElem,const char *zName)
+{
+	xmlAttrPtr pAttr;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	for( pAttr = pElem->properties ; pAttr ; pAttr = pAttr->next ){
+		if( pAttr->type == XML_ATTRIBUTE_NODE && DomQNameIsSpec(zName,(xmlNodePtr)pAttr) ){
+			return pAttr;
+		}
+	}
+	return 0;
+}
+/* The door every by-name reader comes through: the receiver's tree picks the
+ * rule, exactly as php's own one helper branches on it. */
+static xmlAttrPtr DomAttrByName(xmlNodePtr pElem,const char *zName,int bModern)
+{
+	return bModern ? DomAttrBySpec(pElem,zName) : DomAttr2004(pElem,zName);
+}
 static xmlAttrPtr DomAttrByNs(xmlNodePtr pElem,const xmlChar *zUri,const char *zLocal)
 {
 	xmlAttrPtr pAttr = pElem ? xmlHasNsProp(pElem,(const xmlChar *)zLocal,zUri) : 0;
@@ -4232,7 +4284,7 @@ DOM_METHOD(vm_builtin_DOMElement_getAttribute)
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	xmlNsPtr pDecl = DomNsDeclByName(pElem,zName);
-	xmlAttrPtr pAttr = pDecl ? 0 : DomAttrByName(pElem,zName);
+	xmlAttrPtr pAttr = pDecl ? 0 : DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	xmlChar *zVal = pAttr ? xmlNodeListGetString(pAttr->doc,pAttr->children,1) : 0;
 	if( pDecl ){
 		/* A declaration's "value" is the URI it binds. */
@@ -4259,7 +4311,7 @@ DOM_METHOD(vm_builtin_DOMElement_hasAttribute)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	ph7_result_bool(pCtx,pNd != 0
-		&& (DomAttrByName((xmlNodePtr)pNd->pNode,zName) != 0
+		&& (DomAttrByName((xmlNodePtr)pNd->pNode,zName,DomThisModern(pCtx)) != 0
 		 || DomNsDeclByName((xmlNodePtr)pNd->pNode,zName) != 0));
 	return PH7_OK;
 }
@@ -4292,7 +4344,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttribute)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	pAttr = DomAttrByName((xmlNodePtr)pNd->pNode,zName);
+	pAttr = DomAttrByName((xmlNodePtr)pNd->pNode,zName,DomThisModern(pCtx));
 	if( pAttr == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -4314,7 +4366,7 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
-	xmlAttrPtr pAttr = DomAttrByName(pElem,zName);
+	xmlAttrPtr pAttr = DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	xmlNsPtr pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
 	/* php 8.4 declares this one `void`, so every answer below is null there --
 	 * including the absent one, which is NOT a refusal in either tree. */
@@ -4543,7 +4595,7 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNode)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
-	xmlAttrPtr pAttr = DomAttrByName(pElem,zName);
+	xmlAttrPtr pAttr = DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	xmlNsPtr pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
 	if( pDecl ){
 		return DomResultNsNode(pCtx,pNd,pDecl,pElem);
@@ -4755,7 +4807,7 @@ DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
 	if( pElem == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
 		return DomThrowAlways(pCtx,DOM_ERR_INVALID_CHAR);
 	}
-	pAttr = DomAttrByName(pElem,zName);
+	pAttr = DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
 	if( bForceGiven ? bForce : (pAttr == 0 && pDecl == 0) ){
 		if( pAttr == 0 && pDecl == 0 ){
@@ -7616,6 +7668,13 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_item)
  * namespaced `p:k` that `getAttribute('k')` does not. A DECLARATION table is
  * keyed by that name to begin with, so it is one lookup.
  */
+/* A collection is not a node, so it has no receiver to read the family off:
+ * the tree comes from the document it was made against, the way every other
+ * live view reads its own. */
+static int DomMapModern(ph7_class_instance *pMap)
+{
+	return pMap != 0 && DomDocFlag(PH7_NativeAttrObj(pMap,DOM_DOC),DOM_F_MODERN);
+}
 static ph7_class_instance * DomMapNamed(ph7_vm *pVm,ph7_class_instance *pMap,const char *zName)
 {
 	phl_domnode *pOwner = pMap ? DomListOwner(pMap) : 0;
@@ -7626,7 +7685,9 @@ static ph7_class_instance * DomMapNamed(ph7_vm *pVm,ph7_class_instance *pMap,con
 	pHit = DomMapIsTable(pMap)
 		? DomTablePayload(pMap,pOwner,
 			xmlHashLookup(DomMapHash(pMap,pOwner),(const xmlChar *)zName))
-		: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
+		: DomMapModern(pMap)
+			? (xmlNodePtr)DomAttrBySpec((xmlNodePtr)pOwner->pNode,zName)
+			: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
 	if( pHit == 0 ){
 		return 0;
 	}
@@ -7658,7 +7719,9 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
 			? DomTablePayload(pThis,pOwner,
 				xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zLocal))
 		: zUri ? (xmlNodePtr)DomAttrByNs((xmlNodePtr)pOwner->pNode,zUri,zLocal)
-		       : (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
+		       : DomMapModern(pThis)
+				? (xmlNodePtr)DomAttrBySpec((xmlNodePtr)pOwner->pNode,zLocal)
+				: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
 	if( pHit == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -8006,7 +8069,19 @@ static void DomIterSettle(ph7_vm *pVm,ph7_class_instance *pIt,int bNamed)
 		phl_domnode *pNd = DomResOf(pCur);
 		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
 		const char *zKey = (pNode && pNode->name) ? (const char *)pNode->name : "";
-		PH7_NativeSetAttrStr(&(*pVm),pIt,PH7_NATIVE_IT_KEY,zKey,(int)SyStrlen(zKey));
+		/* The key is the name the map is KEYED by, which is the tree's by-name
+		 * rule and not the node's identity: `p:b` walks past as `b` on the 2004
+		 * map and as `p:b` on php 8.4's. */
+		if( pNode && pNode->ns && pNode->ns->prefix && DomMapModern(pSrc) ){
+			SyBlob sQ;
+			SyBlobInit(&sQ,&pVm->sAllocator);
+			SyBlobFormat(&sQ,"%s:%s",(const char *)pNode->ns->prefix,zKey);
+			PH7_NativeSetAttrStr(&(*pVm),pIt,PH7_NATIVE_IT_KEY,
+				(const char *)SyBlobData(&sQ),(int)SyBlobLength(&sQ));
+			SyBlobRelease(&sQ);
+		}else{
+			PH7_NativeSetAttrStr(&(*pVm),pIt,PH7_NATIVE_IT_KEY,zKey,(int)SyStrlen(zKey));
+		}
 	}else{
 		PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,iPos);
 	}
