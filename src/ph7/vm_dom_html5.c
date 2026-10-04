@@ -331,6 +331,19 @@ static const char * const azHtml5TableOwn[] = {
 	"caption","col","colgroup","script","style","table","tbody","td","template",
 	"tfoot","th","thead","tr"
 };
+/*
+ * The table furniture, written where no table is open.  Each of these names
+ * belongs to a table's own insertion mode, and `in body` -- which is where one
+ * arrives when the source forgot the `<table>`, or put the tag inside a
+ * `<select>` or a `<p>` -- DROPS it and carries on, so the text after it lands
+ * in whatever was already open rather than inside an element nothing can nest.
+ *
+ * `head` and `frame` are the same refusal and are answered on their own, because
+ * they are dropped whether or not a table is open.
+ */
+static const char * const azHtml5NoTable[] = {
+	"caption","col","colgroup","tbody","td","tfoot","th","thead","tr"
+};
 
 /* sx has no NUL-terminated comparator; every name here is one. */
 /*
@@ -1051,6 +1064,23 @@ static int Html5InTableCtx(html5_parser *p)
 	z = (const char *)pTop->name;
 	return Html5Eq(z,"table") || Html5Eq(z,"tbody") || Html5Eq(z,"thead")
 		|| Html5Eq(z,"tfoot") || Html5Eq(z,"tr");
+}
+/*
+ * Is a table open ANYWHERE on the stack?  Html5InTableCtx asks only about the
+ * top, which is the right question for fostering and the wrong one here: inside
+ * a `<td>` the top is the cell, and a stray `<td>` written there opens the next
+ * cell rather than being dropped.
+ */
+static int Html5TableOpen(html5_parser *p)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	sxu32 n = SySetUsed(&p->sOpen);
+	while( n-- > 0 ){
+		if( Html5Eq((const char *)apStack[n]->name,"table") ){
+			return 1;
+		}
+	}
+	return 0;
 }
 /*
  * The node the fostered content goes immediately before: the innermost open
@@ -2565,6 +2595,13 @@ static int Html5Dispatch(html5_parser *p)
 		 * arrives -- it is dropped rather than inserted.
 		 */
 		if( Html5Eq(zName,"frame") ){
+			break;
+		}
+		/*
+		 * ...and the rest of the table furniture, which is dropped only when
+		 * there is no table anywhere for it to belong to.
+		 */
+		if( HTML5_IN(azHtml5NoTable,zName) && !Html5TableOpen(p) ){
 			break;
 		}
 		if( HTML5_IN(azHtml5NoFrameset,zName)
