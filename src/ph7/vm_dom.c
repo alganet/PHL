@@ -7235,6 +7235,90 @@ static void DomNsSaveRestore(dom_ns_fix *pFix)
 		pFix = pNext;
 	}
 }
+/*
+ * php 8.4's namespaced tree does not hand a NODE to libxml's saver the way the
+ * 2004 tree does: it walks the W3C serialization algorithm itself, and two node
+ * types come out with bytes libxml would never write.
+ *
+ * An ATTRIBUTE is one of them. libxml only ever writes an attribute from inside
+ * a start tag, so its dump carries the separating space that belongs to the tag
+ * -- `saveXML($attr)` on the 2004 tree really does answer ` y="2"`, and that
+ * stays. php's own writer starts at the name, takes the prefix from the
+ * attribute's BINDING rather than from its spelling, declares nothing (an
+ * attribute whose prefix only the document parks still comes out bare), and
+ * escapes `>` alongside `&`, `<` and `"` -- which libxml does not do in an
+ * attribute -- plus tab, newline and carriage return as numeric references. An
+ * entity reference inside the value is written back as the reference.
+ *
+ * A DOCTYPE is the other: php writes it through libxml and then adds a newline
+ * of its own, exactly as it does for an internal subset inside a whole-document
+ * dump (DomSaveModernDoc).
+ */
+static int DomModernPut(xmlBufferPtr pBuf,const xmlChar *zIn)
+{
+	int nIn = zIn ? xmlStrlen(zIn) : 0;
+	return (nIn > 0 && xmlBufferAdd(pBuf,zIn,nIn) != 0) ? -1 : 0;
+}
+static int DomModernPutAttrText(xmlBufferPtr pBuf,const xmlChar *zIn)
+{
+	const char *zRun = (const char *)zIn,*zCur = zRun;
+	if( zIn == 0 ){
+		return 0;
+	}
+	for( ; zCur[0] != 0 ; zCur++ ){
+		const char *zRep;
+		switch( zCur[0] ){
+			case '&':  zRep = "&amp;";  break;
+			case '<':  zRep = "&lt;";   break;
+			case '>':  zRep = "&gt;";   break;
+			case '"':  zRep = "&quot;"; break;
+			case '\t': zRep = "&#9;";   break;
+			case '\n': zRep = "&#10;";  break;
+			case '\r': zRep = "&#13;";  break;
+			default:   continue;
+		}
+		if( zCur > zRun
+		 && xmlBufferAdd(pBuf,(const xmlChar *)zRun,(int)(zCur - zRun)) != 0 ){
+			return -1;
+		}
+		if( DomModernPut(pBuf,(const xmlChar *)zRep) ){
+			return -1;
+		}
+		zRun = zCur + 1;
+	}
+	if( zCur > zRun
+	 && xmlBufferAdd(pBuf,(const xmlChar *)zRun,(int)(zCur - zRun)) != 0 ){
+		return -1;
+	}
+	return 0;
+}
+static int DomModernDumpAttr(xmlBufferPtr pBuf,xmlAttrPtr pAttr)
+{
+	xmlNodePtr pChild;
+	if( pAttr->ns && pAttr->ns->prefix
+	 && (DomModernPut(pBuf,pAttr->ns->prefix)
+	  || DomModernPut(pBuf,(const xmlChar *)":")) ){
+		return -1;
+	}
+	if( DomModernPut(pBuf,pAttr->name)
+	 || DomModernPut(pBuf,(const xmlChar *)"=\"") ){
+		return -1;
+	}
+	for( pChild = pAttr->children ; pChild ; pChild = pChild->next ){
+		if( pChild->type == XML_TEXT_NODE ){
+			if( DomModernPutAttrText(pBuf,pChild->content) ){
+				return -1;
+			}
+		}else if( pChild->type == XML_ENTITY_REF_NODE ){
+			if( DomModernPut(pBuf,(const xmlChar *)"&")
+			 || DomModernPutAttrText(pBuf,pChild->name)
+			 || DomModernPut(pBuf,(const xmlChar *)";") ){
+				return -1;
+			}
+		}
+	}
+	return DomModernPut(pBuf,(const xmlChar *)"\"");
+}
 static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
 	xmlChar **pzOut)
 {
@@ -7245,6 +7329,18 @@ static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int
 	*pzOut = 0;
 	if( pBuf == 0 ){
 		return -1;
+	}
+	if( bModern && pNode && pNode->type == XML_ATTRIBUTE_NODE ){
+		/* Ahead of the namespace reconcile, which has nothing to fix here: the
+		 * bytes declare no binding at all. */
+		if( DomModernDumpAttr(pBuf,(xmlAttrPtr)pNode) ){
+			xmlBufferFree(pBuf);
+			return -1;
+		}
+		nOut = (int)xmlBufferLength(pBuf);
+		*pzOut = xmlStrndup(xmlBufferContent(pBuf),nOut);
+		xmlBufferFree(pBuf);
+		return *pzOut ? nOut : -1;
 	}
 	if( bModern ){
 		/* A document's children are each their own scope root; a node dump is
@@ -7273,6 +7369,12 @@ static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int
 	if( pNode ){
 		if( xmlSaveTree(pSave,pNode) < 0 ){
 			nOut = -1;
+		}else if( bModern && pNode->type == XML_DTD_NODE ){
+			/* Written past the save context, so it is flushed first. */
+			if( xmlSaveFlush(pSave) < 0
+			 || xmlBufferAdd(pBuf,(const xmlChar *)"\n",1) != 0 ){
+				nOut = -1;
+			}
 		}
 	}else if( bModern ){
 		if( DomSaveModernDoc(pSave,pBuf,pDoc) < 0 ){
