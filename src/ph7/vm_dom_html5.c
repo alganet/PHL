@@ -184,11 +184,22 @@ static sxu32 Html5EntLookup(const char *zName)
 #define HTML5_M_AFTER_FRAMESET 8
 #define HTML5_M_AFTER_AFTER_FRAMESET 9
 #define HTML5_M_IN_TEMPLATE  10
+/*
+ * `in head noscript` cannot be answered from the open stack either: what it
+ * accepts is a closed list, and everything else CLOSES the noscript and is
+ * re-run one mode out.
+ */
+#define HTML5_M_IN_HEAD_NOSCRIPT 11
 
 /* Text-only element flavours the tree constructor arms the tokenizer with. */
 #define HTML5_TEXT_NONE    0
 #define HTML5_TEXT_RCDATA  1
 #define HTML5_TEXT_RAW     2
+/*
+ * `<plaintext>` has no end tag at all: the state it switches the tokenizer
+ * into is never left, so every remaining byte of the document is its text.
+ */
+#define HTML5_TEXT_PLAIN   3
 
 typedef struct html5_attr html5_attr;
 struct html5_attr {
@@ -241,9 +252,24 @@ static const char * const azHtml5Void[] = {
 };
 /* `<title>` and `<textarea>` take character references but no markup. */
 static const char * const azHtml5Rcdata[] = { "textarea","title" };
-/* These take neither: everything to the matching end tag is one text node. */
+/*
+ * These take neither: everything to the matching end tag is one text node.
+ * `<noscript>` is NOT here.  It is RAWTEXT only where the scripting flag is
+ * set, and this parser -- like php's -- parses with scripting DISABLED, so a
+ * `<noscript>` holds markup: in the body an ordinary element, in the head the
+ * insertion mode of its own below.
+ */
 static const char * const azHtml5Raw[] = {
-	"iframe","noembed","noframes","noscript","script","style","xmp"
+	"iframe","noembed","noframes","script","style","xmp"
+};
+/*
+ * The head elements `in head noscript` keeps INSIDE the noscript.  It is not
+ * azHtml5Head: a `<base>`, `<script>`, `<template>` or `<title>` written there
+ * is the mode's anything-else branch, so it closes the noscript and lands in
+ * the head beside it.
+ */
+static const char * const azHtml5HeadNoscript[] = {
+	"basefont","bgsound","link","meta","noframes","style"
 };
 /*
  * A start tag that closes an open `<p>`.  This is the spec's list verbatim: it
@@ -460,6 +486,22 @@ static void Html5PutUtf8(SyBlob *pOut,unsigned int c)
 	SyBlobAppend(pOut,(const void *)zBuf,(sxu32)n);
 }
 /*
+ * One source byte into a name, an attribute, a comment or a text-state run.
+ * Every state but the data one REPLACES a NUL rather than passing it on: the
+ * byte terminates a C string, so a tag name or a comment that kept one would
+ * be truncated at it rather than carry it, and php's answer everywhere here
+ * is the replacement character.
+ */
+static void Html5PutByte(SyBlob *pOut,int c)
+{
+	char zc = (char)c;
+	if( zc != 0 ){
+		SyBlobAppend(pOut,&zc,1);
+	}else{
+		Html5PutUtf8(pOut,0xFFFD);
+	}
+}
+/*
  * The numeric reference's replacement table: the C1 block is not what the
  * bytes say it is, and every other refused value is the replacement character.
  */
@@ -604,12 +646,7 @@ static void Html5ReadAttrs(html5_parser *p)
 			if( c < 0 || Html5IsSpace(c) || c == '>' || c == '=' || c == '/' ){
 				break;
 			}
-			{
-				char zc = (char)Html5Lower(Html5Read(p));
-				if( zc != 0 ){
-					SyBlobAppend(&p->sAttrBuf,&zc,1);
-				}
-			}
+			Html5PutByte(&p->sAttrBuf,Html5Lower(Html5Read(p)));
 		}
 		Html5EndStr(&p->sAttrBuf);
 		while( Html5IsSpace(Html5Peek(p,0)) ){
@@ -636,10 +673,7 @@ static void Html5ReadAttrs(html5_parser *p)
 					if( c == '&' ){
 						Html5CharRef(p,&p->sAttrBuf,TRUE);
 					}else{
-						char zc = (char)Html5Read(p);
-						if( zc != 0 ){
-							SyBlobAppend(&p->sAttrBuf,&zc,1);
-						}
+						Html5PutByte(&p->sAttrBuf,Html5Read(p));
 					}
 				}
 			}else{
@@ -651,10 +685,7 @@ static void Html5ReadAttrs(html5_parser *p)
 					if( c == '&' ){
 						Html5CharRef(p,&p->sAttrBuf,TRUE);
 					}else{
-						char zc = (char)Html5Read(p);
-						if( zc != 0 ){
-							SyBlobAppend(&p->sAttrBuf,&zc,1);
-						}
+						Html5PutByte(&p->sAttrBuf,Html5Read(p));
 					}
 				}
 			}
@@ -678,10 +709,7 @@ static void Html5ReadComment(html5_parser *p)
 			Html5Skip(p,3);
 			break;
 		}
-		{
-			char zc = (char)Html5Read(p);
-			SyBlobAppend(&p->sBuf,&zc,1);
-		}
+		Html5PutByte(&p->sBuf,Html5Read(p));
 	}
 	p->iTok = HTML5_TOK_COMMENT;
 }
@@ -697,16 +725,17 @@ static void Html5BogusComment(html5_parser *p)
 			Html5Read(p);
 			break;
 		}
-		{
-			char zc = (char)Html5Read(p);
-			SyBlobAppend(&p->sBuf,&zc,1);
-		}
+		Html5PutByte(&p->sBuf,Html5Read(p));
 	}
 	p->iTok = HTML5_TOK_COMMENT;
 }
 /*
  * The text-only tokenizer the tree constructor arms by name: one text token
- * running to the matching end tag, which is then the next token.
+ * running to the matching end tag, which is then the next token -- or, when
+ * zEnd is 0, to end of file, because `<plaintext>` has no end tag.
+ *
+ * Unlike the data state, these states do not DROP a NUL: the spec replaces it
+ * with U+FFFD here, and the byte is observable in the text node that results.
  */
 static void Html5ReadText(html5_parser *p,const char *zEnd,int bRcdata)
 {
@@ -715,7 +744,7 @@ static void Html5ReadText(html5_parser *p,const char *zEnd,int bRcdata)
 		if( c < 0 ){
 			break;
 		}
-		if( c == '<' && Html5Peek(p,1) == '/' ){
+		if( zEnd && c == '<' && Html5Peek(p,1) == '/' ){
 			sxu32 n = (sxu32)SyStrlen(zEnd);
 			sxu32 i;
 			int bMatch = 1;
@@ -737,12 +766,7 @@ static void Html5ReadText(html5_parser *p,const char *zEnd,int bRcdata)
 			Html5CharRef(p,&p->sBuf,FALSE);
 			continue;
 		}
-		{
-			char zc = (char)Html5Read(p);
-			if( zc != 0 ){
-				SyBlobAppend(&p->sBuf,&zc,1);
-			}
-		}
+		Html5PutByte(&p->sBuf,Html5Read(p));
 	}
 	p->iTok = HTML5_TOK_TEXT;
 }
@@ -763,14 +787,15 @@ static void Html5NextToken(html5_parser *p)
 		char zEnd[32];
 		int nEnd = (int)SyBlobLength(&p->sName);
 		int bRc = p->iText == HTML5_TEXT_RCDATA;
+		int bPlain = p->iText == HTML5_TEXT_PLAIN;
 		if( nEnd > (int)sizeof(zEnd) - 1 ){
 			nEnd = (int)sizeof(zEnd) - 1;
 		}
 		SyMemcpy(SyBlobData(&p->sName),zEnd,(sxu32)nEnd);
 		zEnd[nEnd] = 0;
 		p->iText = HTML5_TEXT_NONE;
-		if( SyBlobLength(&p->sName) > 0 ){
-			Html5ReadText(p,zEnd,bRc);
+		if( bPlain || SyBlobLength(&p->sName) > 0 ){
+			Html5ReadText(p,bPlain ? 0 : zEnd,bRc);
 			if( SyBlobLength(&p->sBuf) > 0 ){
 				p->bTextTok = 1;
 				return;
@@ -855,10 +880,7 @@ static void Html5NextToken(html5_parser *p)
 				if( d < 0 || Html5IsSpace(d) || d == '>' ){
 					break;
 				}
-				{
-					char zc = (char)Html5Lower(Html5Read(p));
-					SyBlobAppend(&p->sName,&zc,1);
-				}
+				Html5PutByte(&p->sName,Html5Lower(Html5Read(p)));
 			}
 			SyBlobNullAppend(&p->sName);
 			/* The public and system identifiers are read but not kept: php
@@ -922,10 +944,7 @@ static void Html5NextToken(html5_parser *p)
 		if( d < 0 || Html5IsSpace(d) || d == '>' || d == '/' ){
 			break;
 		}
-		{
-			char zc = (char)Html5Lower(Html5Read(p));
-			SyBlobAppend(&p->sName,&zc,1);
-		}
+		Html5PutByte(&p->sName,Html5Lower(Html5Read(p)));
 	}
 	p->iTokCol2 = p->iCol > p->iTokCol ? p->iCol - 1 : p->iTokCol;
 	SyBlobNullAppend(&p->sName);
@@ -1612,6 +1631,8 @@ static xmlNodePtr Html5InsertStart(html5_parser *p)
 		p->iText = HTML5_TEXT_RCDATA;
 	}else if( HTML5_IN(azHtml5Raw,zName) ){
 		p->iText = HTML5_TEXT_RAW;
+	}else if( Html5Eq(zName,"plaintext") ){
+		p->iText = HTML5_TEXT_PLAIN;
 	}
 	return pEl;
 }
@@ -2486,6 +2507,16 @@ static int Html5Dispatch(html5_parser *p)
 			Html5TemplateEnd(p);
 			return 0;
 		}
+		/*
+		 * With scripting disabled a head `<noscript>` holds MARKUP, so it
+		 * gets a mode of its own rather than the RAWTEXT arming: the head
+		 * elements it accepts stay inside it and everything else closes it.
+		 */
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"noscript") ){
+			Html5InsertStart(p);
+			p->iMode = HTML5_M_IN_HEAD_NOSCRIPT;
+			return 0;
+		}
 		if( p->iTok == HTML5_TOK_START && HTML5_IN(azHtml5Head,zName) ){
 			Html5InsertStart(p);
 			return 0;
@@ -2504,6 +2535,63 @@ static int Html5Dispatch(html5_parser *p)
 		}
 		Html5Pop(p);
 		p->iMode = HTML5_M_AFTER_HEAD;
+		return 1;
+	case HTML5_M_IN_HEAD_NOSCRIPT:
+		if( p->iTok == HTML5_TOK_DOCTYPE ){
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"noscript") ){
+			Html5Pop(p);
+			p->iMode = HTML5_M_IN_HEAD;
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_COMMENT ){
+			Html5InsertComment(p,Html5Target(p));
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_TEXT ){
+			if( Html5TextIsSpace(p) ){
+				Html5InsertText(p);
+				return 0;
+			}
+			Html5TrimLeadingSpace(p);
+		}
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") ){
+			/* `in body` rules, which for an `<html>` already open is the
+			 * attributes it did not have yet. */
+			if( p->pHtml ){
+				Html5AddAttrs(p,p->pHtml);
+			}
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START
+		 && HTML5_IN(azHtml5HeadNoscript,zName) ){
+			Html5InsertStart(p);
+			return 0;
+		}
+		/*
+		 * `</style>` closes the style this mode opened, not the noscript
+		 * holding it -- the same reading `in head` gives its own end tags,
+		 * and without it the close walked out of the head and minted a
+		 * second `<body>` inside it.
+		 */
+		if( p->iTok == HTML5_TOK_END && !Html5Eq(zName,"html")
+		 && Html5OpenDepth(p,zName) >= 0 && Html5Top(p)
+		 && !Html5Eq((const char *)Html5Top(p)->name,"noscript") ){
+			Html5EndTag(p,zName);
+			return 0;
+		}
+		/*
+		 * A `<head>` and a nested `<noscript>` are the two start tags this
+		 * mode DROPS; everything else -- a `<title>`, a `</br>`, any content
+		 * at all -- closes the noscript and is re-run one mode out.
+		 */
+		if( p->iTok == HTML5_TOK_START
+		 && (Html5Eq(zName,"head") || Html5Eq(zName,"noscript")) ){
+			return 0;
+		}
+		Html5Pop(p);
+		p->iMode = HTML5_M_IN_HEAD;
 		return 1;
 	case HTML5_M_AFTER_HEAD:
 		if( p->iTok == HTML5_TOK_DOCTYPE ){
@@ -2842,6 +2930,27 @@ static int Html5Dispatch(html5_parser *p)
 			Html5PopTo(p,"table");
 		}
 		Html5ColgroupImplied(p,zName);
+		/*
+		 * `<image>` names no element.  The spec renames the TOKEN to `img`,
+		 * so what lands is a VOID `<img>` carrying the token's attributes --
+		 * misnaming it also left it OPEN, swallowing the rest of the body.
+		 * The rename is an HTML rule alone: an `<image>` inside `<svg>` is an
+		 * SVG image, and foreign content is dispatched before this switch.
+		 * And php reaches the rename by RE-RUNNING the renamed token, which
+		 * a table's foster path has no re-run to hand it, so an `<image>`
+		 * written straight into a table is DROPPED there where the `<img>`
+		 * it would have become is fostered out -- the implied `</colgroup>`
+		 * above is why the question is asked here and not at the top.
+		 */
+		if( Html5Eq(zName,"image") ){
+			if( Html5InTableCtx(p) ){
+				break;
+			}
+			SyBlobReset(&p->sName);
+			SyBlobAppend(&p->sName,"img",sizeof("img") - 1);
+			Html5EndStr(&p->sName);
+			zName = Html5TokName(p);
+		}
 		p->bFoster = !Html5TableOwns(p,zName);
 		bTableForm = Html5Eq(zName,"form") && Html5InTableCtx(p);
 		Html5TableImplied(p,zName);
