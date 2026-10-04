@@ -10336,8 +10336,16 @@ static int DomAttrProp(ph7_context *pCtx,const char *zName)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	/* The two trees answer `name` differently, and only here: the 2004 tree
+	 * hands back libxml's node name, which for an attribute is the LOCAL name,
+	 * so `p:b` reads as `b` while `nodeName` still reads as `p:b`. The modern
+	 * tree answers the qualified name, so the two agree there. */
 	if( DomNameIs(zName,"name") ){
-		DomNodeName(pCtx,pNode);
+		if( DomThisModern(pCtx) ){
+			DomNodeName(pCtx,pNode);
+		}else{
+			ph7_result_string(pCtx,(pNode && pNode->name) ? (const char *)pNode->name : "",-1);
+		}
 		return 1;
 	}
 	if( DomNameIs(zName,"value") ){
