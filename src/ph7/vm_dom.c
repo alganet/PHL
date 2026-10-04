@@ -8655,12 +8655,37 @@ DOM_METHOD(vm_builtin_DOMDocument_createTextNode)
 	return DomDocCreateData(pCtx,XML_TEXT_NODE,nArg,apArg);
 }
 /* DOMDocument::createProcessingInstruction(string $target, string $data = '')
- * / createEntityReference(string $name) / createDocumentFragment() */
+ * / createEntityReference(string $name) / createDocumentFragment()
+ *
+ * php 8.4's factory screens the one sequence a processing instruction's DATA
+ * cannot contain -- `?>` ends the instruction, so a node holding one writes
+ * markup that will not parse back -- and names the sequence rather than raising
+ * the bare sentence. It is the twin of the `]]>` screen on createCDATASection,
+ * and like that one it is the namespaced tree's alone: the 2004 factory takes
+ * `?>` without a word. With it, the last way a document could hold a node the
+ * well-formed serializer then refuses to write is shut.
+ *
+ * The TARGET is screened first -- `createProcessingInstruction('a b','?>')` is
+ * php's bare Invalid Character Error, not the sentence -- so the data screen
+ * only runs once the name would pass, which is the same predicate
+ * DomDocCreate applies a moment later. Nothing screens a WRITE: php lets
+ * `$pi->data = 'a?>b'` through on both trees, and so do we.
+ */
 DOM_METHOD(vm_builtin_DOMDocument_createPI)
 {
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	int nVal = -1;   /* the sentinel for "no data argument came at all" */
 	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],&nVal) : "";
+	if( DomThisModern(pCtx) && nVal > 0 &&
+	    xmlValidateName((const xmlChar *)zName,0) == 0 ){
+		int i;
+		for( i = 0 ; i + 1 < nVal ; ++i ){
+			if( zVal[i] == '?' && zVal[i+1] == '>' ){
+				return DomThrowSentence(pCtx,DOM_ERR_INVALID_CHAR,
+					"Invalid character sequence \"?>\" in processing instruction");
+			}
+		}
+	}
 	return DomDocCreate(pCtx,XML_PI_NODE,zName,zVal,nVal);
 }
 DOM_METHOD(vm_builtin_DOMDocument_createEntityRef)

@@ -68,6 +68,19 @@ printf("ns=%s prefix=%s\n", sh($e->namespaceURI), sh($e->prefix));
 echo "\n== createCDATASection names the one sequence it refuses\n";
 t('cdata with ]]>',       fn() => $d->createCDATASection('c]]>d'));
 
+/* the PI factory carries the same screen over `?>`, the sequence that ends an
+ * instruction. The TARGET is screened first, so a bad one is still the bare
+ * sentence; a lone '?' or '>' is fine; and nothing screens a WRITE. */
+echo "\n== createProcessingInstruction names the one sequence it refuses\n";
+t('pi with ?>',           fn() => $d->createProcessingInstruction('t', 'a?>b'));
+t('pi data is only ?>',   fn() => $d->createProcessingInstruction('t', '?>'));
+t('pi target wins',       fn() => $d->createProcessingInstruction('a b', '?>'));
+t('pi lone ?',            fn() => $d->createProcessingInstruction('t', 'a?')->data);
+t('pi lone >',            fn() => $d->createProcessingInstruction('t', 'a>b')->data);
+t('pi split by newline',  fn() => str_replace("\n", '\\n', $d->createProcessingInstruction('t', "a?\n>b")->data));
+t('pi write unscreened',  function() use ($d) { $p = $d->createProcessingInstruction('t', 'ok'); $p->data = 'a?>b'; return $p->data; });
+t('2004 takes ?>',        fn() => (new DOMDocument())->createProcessingInstruction('t', 'a?>b')->data);
+
 echo "\n== an empty PI data is not an absent one\n";
 $p = $d->createProcessingInstruction('t', '');
 printf("nodeValue=%s data=%s\n", sh($p->nodeValue), sh($p->data));
@@ -129,6 +142,16 @@ ns=null prefix=null
 
 == createCDATASection names the one sequence it refuses
 cdata with ]]>                     DOMException(5) Invalid character sequence "]]>" in CDATA section
+
+== createProcessingInstruction names the one sequence it refuses
+pi with ?>                         DOMException(5) Invalid character sequence "?>" in processing instruction
+pi data is only ?>                 DOMException(5) Invalid character sequence "?>" in processing instruction
+pi target wins                     DOMException(5) Invalid Character Error
+pi lone ?                          'a?'
+pi lone >                          'a>b'
+pi split by newline                'a?\\n>b'
+pi write unscreened                'a?>b'
+2004 takes ?>                      'a?>b'
 
 == an empty PI data is not an absent one
 nodeValue='' data=''
