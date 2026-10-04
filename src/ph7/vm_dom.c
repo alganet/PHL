@@ -17459,6 +17459,7 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 #define DOM_ENC_UTF16BE  2
 #define DOM_ENC_CP1252   3
 #define DOM_ENC_XUSER    4
+#define DOM_ENC_SJIS    -3
 #define DOM_ENC_SBCS     5  /* + the index into aDomSbcs[] */
 /* windows-1252's 0x80..0x9F; 0xA0..0xFF is the code point of the same value. */
 static const unsigned short aDomCp1252[32] = {
@@ -17946,6 +17947,48 @@ static const unsigned short aDomSbcs[26][128] = {
 	0x0448,0x0449,0x044A,0x044B,0x044C,0x044D,0x044E,0x20AC,
 	},
 };
+#include "vm_dom_sjis.h"
+/*
+ * Shift_JIS, both framings of the one index. The cell a lead and a trail byte
+ * name is the standard's pointer arithmetic -- two lead ranges with an offset
+ * each, a trail numbering that steps over 0x7F -- and the tables it indexes are
+ * php's own, swept one direction at a time because php's two directions do not
+ * hold the same characters.
+ */
+static int DomSjisPtr(int iLead,int iTrail)
+{
+	int iOff,iLo;
+	if( iTrail < 0x40 || iTrail > 0xFC || iTrail == 0x7F ){
+		return -1;
+	}
+	iOff = iTrail < 0x7F ? 0x40 : 0x41;
+	iLo  = iLead < 0xA0 ? 0x81 : 0xC1;
+	return (iLead - iLo) * 188 + iTrail - iOff;
+}
+/* The cell a code point is written to, or -1 where the encoder has none.
+ * Ordered by code point, so this is a binary search over a table with no
+ * duplicate keys: where php's index carries a character in two cells it
+ * encodes to the first, and the generator asserts that before emitting. */
+static int DomSjisFromUni(sxu32 cp)
+{
+	int iLo = 0,iHi = PH7_DOM_SJIS_ENC - 1;
+	if( cp > 0xFFFF ){
+		return -1;
+	}
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		sxu32 u = (sxu32)aDomSjisEncCp[iMid];
+		if( u == cp ){
+			return (int)aDomSjisEncPtr[iMid];
+		}
+		if( u < cp ){
+			iLo = iMid + 1;
+		}else{
+			iHi = iMid - 1;
+		}
+	}
+	return -1;
+}
 /* The converter behind a document's encoding: the label the document keeps
  * (a parsed one keeps the NAME, `createEmpty()` the program's spelling) is
  * resolved through the label table first, so `latin1` and `utf-16` reach the
@@ -17971,6 +18014,9 @@ static int DomEncConverter(const char *zEnc)
 	}
 	if( SyStrncmp(zCanon,"replacement",11) == 0 ){
 		return DOM_ENC_REPL;
+	}
+	if( SyStrncmp(zCanon,"Shift_JIS",9) == 0 ){
+		return DOM_ENC_SJIS;
 	}
 	if( SyStrncmp(zCanon,"ISO-8859-8-I",12) == 0 ){
 		zCanon = "ISO-8859-8";
@@ -18050,6 +18096,32 @@ static void DomEncPut(SyBlob *pOut,int iEnc,sxu32 cp)
 		}
 		SyBlobAppend(pOut,z,2);
 		return;
+	case DOM_ENC_SJIS: {
+		int iPtr = -1;
+		if( cp <= 0x80 ){
+			z[0] = (unsigned char)cp;
+		}else if( cp == 0x00A5 ){
+			/* The yen sign and the overline take the two bytes JIS X 0201's
+			 * Roman set moved them onto -- and the backslash and the tilde keep
+			 * those same bytes, so the encoder is not that set, it merely folds
+			 * onto it. */
+			z[0] = 0x5C;
+		}else if( cp == 0x203E ){
+			z[0] = 0x7E;
+		}else if( cp >= 0xFF61 && cp <= 0xFF9F ){
+			z[0] = (unsigned char)(0xA1 + (cp - 0xFF61));
+		}else if( (iPtr = DomSjisFromUni(cp)) >= 0 ){
+			int q = iPtr / 188,r = iPtr % 188;
+			z[0] = (unsigned char)(q < 31 ? 0x81 + q : 0xC1 + q);
+			z[1] = (unsigned char)(r < 0x3F ? r + 0x40 : r + 0x41);
+			SyBlobAppend(pOut,z,2);
+			return;
+		}else{
+			z[0] = '?';
+		}
+		SyBlobAppend(pOut,z,1);
+		return;
+	}
 	case DOM_ENC_CP1252:
 		if( cp < 0x80 || (cp >= 0xA0 && cp <= 0xFF) ){
 			z[0] = (unsigned char)cp;
@@ -18180,6 +18252,50 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 	case DOM_ENC_UTF16BE:
 		DomEncFromUtf16(pOut,iEnc == DOM_ENC_UTF16LE,z,n);
 		return 1;
+	case DOM_ENC_SJIS: {
+		int iLead = 0;
+		for( i = 0 ; i < n ; ++i ){
+			unsigned char b = z[i];
+			if( iLead ){
+				int iPtr = DomSjisPtr(iLead,b);
+				sxu32 cp = (iPtr >= 0 && iPtr < PH7_DOM_SJIS_CELLS)
+					? (sxu32)aDomSjisUni[iPtr] : 0;
+				iLead = 0;
+				if( cp ){
+					DomEncPutUtf8(pOut,cp);
+					continue;
+				}
+				/* No character here. The byte that failed to complete the pair
+				 * opens the next one when it is ASCII rather than being eaten
+				 * with it, so a stray lead costs one replacement and not two
+				 * bytes of text. */
+				DomEncPutUtf8(pOut,0xFFFD);
+				if( b < 0x80 ){
+					i--;
+				}
+				continue;
+			}
+			if( b <= 0x80 ){
+				DomEncPutUtf8(pOut,b);
+			}else if( b >= 0xA1 && b <= 0xDF ){
+				DomEncPutUtf8(pOut,0xFF61 + (b - 0xA1));
+			}else if( (b >= 0x81 && b <= 0x9F) || b == 0xE0 || b == 0xFC ){
+				/* php's lead set, which is not the framing's: only 0xE0 and
+				 * 0xFC of the upper range open a pair, so the whole of
+				 * 0xE1..0xFB is an invalid byte on its own and the byte after
+				 * it starts a character of its own rather than being eaten as
+				 * a trail. Most of the second-level kanji is unreachable
+				 * through this door because of it. */
+				iLead = b;
+			}else{
+				DomEncPutUtf8(pOut,0xFFFD);
+			}
+		}
+		if( iLead ){
+			DomEncPutUtf8(pOut,0xFFFD);
+		}
+		return 1;
+	}
 	case DOM_ENC_CP1252:
 		for( i = 0 ; i < n ; ++i ){
 			unsigned char b = z[i];
