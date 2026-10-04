@@ -201,7 +201,7 @@ PH7_PRIVATE int vm_builtin_defined(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}
 	/* Perform the lookup */
-	if( nLen > 0 && SyHashGet(&pCtx->pVm->hConstant,(const void *)zName,(sxu32)nLen) != 0 ){
+	if( nLen > 0 && PH7_VmConstantFetch(pCtx->pVm,zName,(sxu32)nLen,1) != 0 ){
 		/* Already defined */
 		res = 1;
 	}
@@ -583,7 +583,7 @@ PH7_PRIVATE int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg
 		}
 	}
 	/* Perform the query */
-	pEntry = SyHashGet(&pCtx->pVm->hConstant,(const void *)zName,(sxu32)nLen);
+	pEntry = PH7_VmConstantFetch(pCtx->pVm,zName,(sxu32)nLen,1);
 	if( pEntry == 0 ){
 		/* php 8: a catchable Error, not a notice + NULL (band A #4) */
 		return PH7_VmThrowException(pCtx,"Error",
@@ -635,7 +635,9 @@ static sxi32 VmConstDumpEntry(ph7_value *pTarget,SyHashEntry *pEntry)
 	sxi32 rc;
 	/* Prepare the constant name for insertion */
 	PH7_MemObjInitFromString(pTarget->pVm,&sName,0);
-	PH7_MemObjStringAppend(&sName,(const char *)pEntry->pKey,pEntry->nKeyLen);
+	/* ...under the spelling it was DECLARED with. The entry KEY is the folded
+	 * one hConstant matches on (PH7_VmConstantFetch); php lists `Aa\Bb\DEE`. */
+	PH7_MemObjStringAppend(&sName,SyStringData(&pCons->sName),SyStringLength(&pCons->sName));
 	/* ...and its VALUE, through the SAME evaluate-once path an ordinary read
 	 * takes -- so a `const C = new Foo();` reported here is the object the
 	 * program itself sees, not a second one. The `#[\Deprecated]` NOTICE is what
@@ -684,7 +686,7 @@ static int VmConstBucketStep(const char *zName,int nName,void *pData)
 	if( !PH7_VmInternalNameExists(p->pVm,PH7_EXT_KIND_CONST,zName,nName) ){
 		return 0;
 	}
-	pEntry = SyHashGet(&p->pVm->hConstant,(const void *)zName,(sxu32)nName);
+	pEntry = PH7_VmConstantFetch(p->pVm,zName,(sxu32)nName,1);
 	if( pEntry == 0 ){
 		return 0;
 	}

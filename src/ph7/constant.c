@@ -4139,9 +4139,9 @@ PH7_PRIVATE void PH7_MarkDeprecatedConstants(ph7_vm *pVm)
 {
 	sxu32 n;
 	for( n = 0 ; n < SX_ARRAYSIZE(aDeprecatedConst) ; ++n ){
-		SyHashEntry *pEntry = SyHashGet(&pVm->hConstant,
-			(const void *)aDeprecatedConst[n].zName,
-			SyStrlen(aDeprecatedConst[n].zName));
+		SyHashEntry *pEntry = PH7_VmConstantFetch(pVm,
+			aDeprecatedConst[n].zName,
+			SyStrlen(aDeprecatedConst[n].zName),1);
 		if( pEntry ){
 			((ph7_constant *)pEntry->pUserData)->zDeprecated = aDeprecatedConst[n].zWhy;
 		}

@@ -540,7 +540,11 @@ typedef void (*ProcConstant)(ph7_value *,void *);
 typedef struct ph7_constant ph7_constant;
 struct ph7_constant
 {
-	SyString sName;        /* Constant name */
+	SyString sName;        /* Constant name, as it was DECLARED -- what
+	                        * get_defined_constants() and Reflection answer */
+	char *zKey;            /* hConstant key when it differs from sName's bytes
+	                        * (a namespaced name, folded -- PH7_VmConstantFetch);
+	                        * NULL when the key aliases sName and is freed with it */
 	ProcConstant xExpand;  /* Function responsible of expanding constant value */
 	void *pUserData;       /* Last argument to xExpand() */
 	SyString sFile;        /* Defining file (aliases the VM-lifetime dup in pVm->aFiles);
@@ -7174,6 +7178,7 @@ PH7_PRIVATE ph7_value * VmEnumCaseBackingValue(ph7_vm *pVm,ph7_class_attr *pCase
 PH7_PRIVATE sxi32 VmEnumMaterialize(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut);
 PH7_PRIVATE sxi32 VmExpandConstantOnce(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut);
+PH7_PRIVATE SyHashEntry * PH7_VmConstantFetch(ph7_vm *pVm,const char *zName,sxu32 nName,int bStripLead);
 PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen);
 PH7_PRIVATE int PH7_VmOutputOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine);
 PH7_PRIVATE int PH7_VmSessionOrigin(ph7_vm *pVm,SyString *pFile,sxu32 *pnLine);

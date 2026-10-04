@@ -1329,7 +1329,7 @@ int ph7_create_constant(ph7_vm *pVm,const char *zName,void (*xExpand)(ph7_value 
  */
 int ph7_delete_constant(ph7_vm *pVm,const char *zName)
 {
-	ph7_constant *pCons;
+	ph7_constant *pCons = 0;   /* cl cannot see that rc == PH7_OK implies it was set */
 	int rc;
 	/* Ticket 1433-002: NULL VM is harmless operation */
 	if ( PH7_VM_MISUSE(pVm) ){
@@ -1343,14 +1343,27 @@ int ph7_delete_constant(ph7_vm *pVm,const char *zName)
 			 return PH7_ABORT; /* Another thread have released this instance */
 	 }
 #endif
-	 /* Query the constant hashtable */
-	 rc = SyHashDeleteEntry(&pVm->hConstant,(const void *)zName,SyStrlen(zName),(void **)&pCons);
+	 /* Query the constant hashtable -- under php's matching rule, so a namespaced
+	  * name reaches the entry it was folded into (PH7_VmConstantFetch). */
+	 {
+		 SyHashEntry *pEntry = PH7_VmConstantFetch(pVm,zName,SyStrlen(zName),1);
+		 if( pEntry == 0 ){
+			 rc = SXERR_NOTFOUND;
+		 }else{
+			 pCons = (ph7_constant *)SyHashEntryGetUserData(pEntry);
+			 SyHashDeleteEntry2(pEntry);
+			 rc = PH7_OK;
+		 }
+	 }
 	 if( rc == PH7_OK ){
 		 /* A name that WAS a constant is not any more, and the entry every LOADC site
 		  * that resolved to it remembers is about to be freed (PH7_VmConstSiteAnswer). */
 		 pVm->nConstGen++;
 		 /* Perform the deletion */
 		 SyMemBackendFree(&pVm->sAllocator,(void *)SyStringData(&pCons->sName));
+		 if( pCons->zKey ){
+			 SyMemBackendFree(&pVm->sAllocator,pCons->zKey);
+		 }
 		 SyMemBackendPoolFree(&pVm->sAllocator,pCons);
 	 }
 #if defined(PH7_ENABLE_THREADS)

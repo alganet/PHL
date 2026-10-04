@@ -3335,7 +3335,7 @@ PH7_PRIVATE int PH7_VmQueryConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph
 {
 	SyHashEntry *pEntry;
 	ph7_constant *pCons;
-	pEntry = SyHashGet(&pVm->hConstant,(const void *)zName,nName);
+	pEntry = PH7_VmConstantFetch(pVm,zName,nName,1);
 	if( pEntry == 0 ){
 		return 0;
 	}

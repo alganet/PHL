@@ -156,6 +156,83 @@ PH7_PRIVATE int VmStringWantsPerlIncr(ph7_value *pVal)
  * (Windows,Linux,...) and so on.
  * Please refer to the official documentation for additional information.
  */
+/*
+ * php compares a constant name's NAMESPACE part without regard to case and its
+ * final segment byte for byte: with `Aa\Bb\DEE` defined, `aa\BB\DEE` answers
+ * and `Aa\Bb\dee` does not. A LOOKUP also drops one leading backslash, so
+ * `\Aa\Bb\DEE` answers -- while define() keeps whatever it was handed, which is
+ * why the constant `define('\X\Y')` makes can never be named again.
+ *
+ * hConstant is a plain byte hash, so a name is folded to that canonical key
+ * before it reaches the table -- everything up to and including the LAST
+ * backslash lowercased, the rest untouched -- at the insert door as well as at
+ * every read door, or the two sides would stop meeting. The declared spelling
+ * survives in ph7_constant.sName, which is what get_defined_constants() and
+ * Reflection report.
+ *
+ * Length of the leading run a name folds: past its last backslash, or 0 when it
+ * has none -- in which case the name IS its own key and nothing is copied.
+ */
+static sxu32 VmConstantFoldLen(const char *zName,sxu32 nName)
+{
+	sxu32 n = nName;
+	while( n > 0 && zName[n-1] != '\\' ){
+		--n;
+	}
+	return n;
+}
+/*
+ * Write zName's canonical key into zOut (nName bytes): ASCII-lowercase the
+ * first nFold, copy the rest. php folds with the ASCII table only.
+ */
+static void VmConstantFoldKey(char *zOut,const char *zName,sxu32 nName,sxu32 nFold)
+{
+	sxu32 i;
+	for( i = 0 ; i < nFold ; ++i ){
+		int c = zName[i];
+		zOut[i] = (char)( (c >= 'A' && c <= 'Z') ? (c - 'A' + 'a') : c );
+	}
+	for( ; i < nName ; ++i ){
+		zOut[i] = zName[i];
+	}
+}
+/*
+ * The hConstant entry a name resolves to under that rule, or NULL. Every read
+ * door goes through here. bStripLead drops one leading backslash, which is what
+ * a lookup does and an insert does not.
+ */
+PH7_PRIVATE SyHashEntry * PH7_VmConstantFetch(ph7_vm *pVm,const char *zName,sxu32 nName,int bStripLead)
+{
+	char zStack[128];
+	char *zKey;
+	sxu32 nFold;
+	SyHashEntry *pEntry;
+	if( bStripLead && nName > 0 && zName[0] == '\\' ){
+		zName++;
+		nName--;
+	}
+	if( nName < 1 ){
+		return 0;
+	}
+	nFold = VmConstantFoldLen(zName,nName);
+	if( nFold < 1 ){
+		/* No namespace part: the common case, matched byte for byte. */
+		return SyHashGet(&pVm->hConstant,(const void *)zName,nName);
+	}
+	zKey = zStack;
+	if( nName > (sxu32)sizeof(zStack) ){
+		zKey = (char *)SyMemBackendAlloc(&pVm->sAllocator,nName);
+		if( zKey == 0 ){
+			return 0;
+		}
+	}
+	VmConstantFoldKey(zKey,zName,nName,nFold);
+	pEntry = SyHashGet(&pVm->hConstant,(const void *)zKey,nName);
+	if( zKey != zStack ){
+		SyMemBackendFree(&pVm->sAllocator,zKey);
+	}
+	return pEntry;
+}
 PH7_PRIVATE sxi32 PH7_VmRegisterConstant(
 	ph7_vm *pVm,            /* Target VM */
 	const SyString *pName,  /* Constant name */
@@ -182,8 +259,22 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 	ph7_constant *pCons;
 	SyHashEntry *pEntry;
 	char *zDupName;
+	char *zKeyBuf = 0;   /* folded key, when the name has a namespace part */
 	sxi32 rc;
-	pEntry = SyHashGet(&pVm->hConstant,(const void *)pName->zString,pName->nByte);
+	/* Install under the canonical key, so a later `aa\bb\NAME` finds what
+	 * `Aa\Bb\NAME` declared -- and so php's refusal to redefine it fires. */
+	{
+		sxu32 nFold = VmConstantFoldLen(pName->zString,pName->nByte);
+		if( nFold > 0 ){
+			zKeyBuf = (char *)SyMemBackendAlloc(&pVm->sAllocator,pName->nByte);
+			if( zKeyBuf == 0 ){
+				return 0;
+			}
+			VmConstantFoldKey(zKeyBuf,pName->zString,pName->nByte,nFold);
+		}
+	}
+	pEntry = SyHashGet(&pVm->hConstant,
+		(const void *)(zKeyBuf ? zKeyBuf : pName->zString),pName->nByte);
 	if( pEntry ){
 		/* Overwrite the old definition and return immediately */
 		pCons = (ph7_constant *)pEntry->pUserData;
@@ -206,19 +297,29 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 		pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
 		pCons->zDeprecated = 0;     /* ...and its deprecation, which was the old symbol's */
 		SySetReset(&pCons->aAttrs); /* redefinition drops the old attributes */
+		if( zKeyBuf ){
+			SyMemBackendFree(&pVm->sAllocator,zKeyBuf);
+		}
 		return SXRET_OK;
 	}
 	/* Allocate a new constant instance */
 	pCons = (ph7_constant *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_constant));
 	if( pCons == 0 ){
+		if( zKeyBuf ){
+			SyMemBackendFree(&pVm->sAllocator,zKeyBuf);
+		}
 		return 0;
 	}
 	/* Duplicate constant name */
 	zDupName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);
 	if( zDupName == 0 ){
 		SyMemBackendPoolFree(&pVm->sAllocator,pCons);
+		if( zKeyBuf ){
+			SyMemBackendFree(&pVm->sAllocator,zKeyBuf);
+		}
 		return 0;
 	}
+	pCons->zKey = zKeyBuf;
 	SyStringInitFromBuf(&pCons->sFile,0,0);
 	if( pFile ){
 		SyStringDupPtr(&pCons->sFile,pFile);
@@ -231,13 +332,17 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 	pCons->xExpand = xExpand;
 	pCons->pUserData = pUserData;
 	SySetInit(&pCons->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));
-	rc = SyHashInsert(&pVm->hConstant,(const void *)zDupName,SyStringLength(&pCons->sName),pCons);
+	rc = SyHashInsert(&pVm->hConstant,(const void *)(zKeyBuf ? zKeyBuf : zDupName),
+		SyStringLength(&pCons->sName),pCons);
 	/* A name that was not a constant is one now, so every PH7_OP_LOADC site that
 	 * remembers what its name resolved to has to ask again -- including one whose
 	 * namespaced candidate used to MISS and fall through to the global literal. */
 	pVm->nConstGen++;
 	if( rc != SXRET_OK ){
 		SyMemBackendFree(&pVm->sAllocator,zDupName);
+		if( zKeyBuf ){
+			SyMemBackendFree(&pVm->sAllocator,zKeyBuf);
+		}
 		SyMemBackendPoolFree(&pVm->sAllocator,pCons);
 		return rc;
 	}

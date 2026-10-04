@@ -3006,12 +3006,12 @@ case PH7_OP_LOADC: {
 			pEntry = PH7_VmConstSiteAnswer(&(*pVm),pInstr);
 			if( pEntry == 0 ){
 				if( zCand ){
-					pEntry = SyHashGet(&pVm->hConstant,zCand,SyStrlen(zCand));
+					pEntry = PH7_VmConstantFetch(&(*pVm),zCand,SyStrlen(zCand),1);
 				}
 				/* The GLOBAL step — skipped when the candidate came from an import,
 				 * which php resolves without any fallback. */
 				if( pEntry == 0 && (pInstr->iP1 & PH7_LOADC_NOGLOBAL) == 0 ){
-					pEntry = SyHashGet(&pVm->hConstant,(const void *)zLit,nLit);
+					pEntry = PH7_VmConstantFetch(&(*pVm),zLit,nLit,1);
 				}
 				PH7_VmConstSiteRecord(&(*pVm),pInstr,pEntry);
 			}

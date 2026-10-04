@@ -193,8 +193,10 @@ Loop:
 		if( rc == SXRET_OK && SySetUsed(&pGen->aPendingAttrs) > 0 ){
 			/* php 8.5: attributes on `const` statements — attach the pending
 			 * groups to the registered constant record for Reflection. */
-			SyHashEntry *pCEntry = SyHashGet(&pGen->pVm->hConstant,
-				SyBlobData(&sFQN),SyBlobLength(&sFQN));
+			/* The name we just registered under -- an insert-side key, not a lookup:
+			 * a generated FQN never carries the leading backslash a lookup drops. */
+			SyHashEntry *pCEntry = PH7_VmConstantFetch(pGen->pVm,
+				(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN),0);
 			if( pCEntry ){
 				ph7_constant *pRegCons = (ph7_constant *)pCEntry->pUserData;
 				if( GenStateConsumeAttrs(&(*pGen),&pRegCons->aAttrs) == SXERR_ABORT ){

@@ -344,7 +344,7 @@ PH7_PRIVATE int PH7_VmInternalNameExists(ph7_vm *pVm,int iKind,const char *zName
 		case PH7_EXT_KIND_CLASS:
 			return PH7_VmExtractClass(pVm,zName,(sxu32)nName,FALSE,0) != 0;
 		case PH7_EXT_KIND_CONST: {
-			SyHashEntry *pEntry = SyHashGet(&pVm->hConstant,(const void *)zName,(sxu32)nName);
+			SyHashEntry *pEntry = PH7_VmConstantFetch(pVm,zName,(sxu32)nName,1);
 			return pEntry != 0;
 		}
 		case PH7_EXT_KIND_INI:

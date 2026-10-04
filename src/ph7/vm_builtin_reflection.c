@@ -1018,7 +1018,7 @@ static int ReflectSigGlobalConst(ph7_context *pCtx, const char *z, int n, ph7_va
 	if( !ReflectSigIsIdent(z, n) ){
 		return 0;
 	}
-	pEntry = SyHashGet(&pCtx->pVm->hConstant, (const void *)z, (sxu32)n);
+	pEntry = PH7_VmConstantFetch(pCtx->pVm, z, (sxu32)n, 1);
 	if( pEntry == 0 ){
 		return 0;
 	}
@@ -1511,7 +1511,7 @@ static ph7_value * ReflectAttrArgs(ph7_context *pCtx, ph7_value **apArg, sxu32 n
 		int nCName;
 		SyHashEntry *pCEntry;
 		zCName = ph7_value_to_string(apArg[1], &nCName);
-		pCEntry = nCName > 0 ? SyHashGet(&pVm->hConstant, (const void *)zCName, (sxu32)nCName) : 0;
+		pCEntry = nCName > 0 ? PH7_VmConstantFetch(pVm, zCName, (sxu32)nCName, 1) : 0;
 		if( pCEntry ){ pAttrs = &((ph7_constant *)pCEntry->pUserData)->aAttrs; }
 	}
 	if( pAttrs == 0 || (pAttrRec = (ph7_attribute *)SySetAt(pAttrs, nAttrIdx)) == 0
@@ -2899,7 +2899,7 @@ static int vm_builtin_ReflectionFiber_getCallable(ph7_context *pCtx, int nArg, p
 /* The engine's record for a global constant, or NULL when undefined. */
 static ph7_constant * ReflectConstEntry(ph7_vm *pVm, const char *zName, int nName)
 {
-	SyHashEntry *pEntry = nName > 0 ? SyHashGet(&pVm->hConstant, (const void *)zName, (sxu32)nName) : 0;
+	SyHashEntry *pEntry = nName > 0 ? PH7_VmConstantFetch(pVm, zName, (sxu32)nName, 1) : 0;
 	return pEntry ? (ph7_constant *)pEntry->pUserData : 0;
 }
 /* The receiver's constant record, resolved from its public $name. */
