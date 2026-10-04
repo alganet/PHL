@@ -2018,27 +2018,66 @@ static void Html5CloseListItem(html5_parser *p,const char *zOne,const char *zTwo
 		}
 	}
 }
+/*
+ * The rules an open `<select>` adds to a start tag.  A second `<select>` and
+ * an `<input>` both close it -- the `<select>` is then dropped where the
+ * `<input>` goes on to be inserted beside it -- and an `<hr>` or an
+ * `<optgroup>` closes the `<option>`, and then the `<optgroup>`, the source
+ * left open, so both land on the select rather than inside the option.
+ * Answers 1 when the token is spent and nothing is to be inserted for it.
+ */
+static int Html5SelectImplied(html5_parser *p,const char *zName)
+{
+	int bSelect = Html5Eq(zName,"select");
+	if( !Html5InSelect(p) ){
+		return 0;
+	}
+	if( bSelect || Html5Eq(zName,"input") ){
+		Html5PopTo(p,"select");
+		return bSelect;
+	}
+	if( Html5Eq(zName,"hr") || Html5Eq(zName,"optgroup") ){
+		xmlNodePtr pTop = Html5Top(p);
+		if( pTop && Html5Eq((const char *)pTop->name,"option") ){
+			Html5Pop(p);
+			pTop = Html5Top(p);
+		}
+		if( pTop && Html5Eq((const char *)pTop->name,"optgroup") ){
+			Html5Pop(p);
+		}
+	}
+	return 0;
+}
 /* The `in body` start-tag rules that are about what is ALREADY open. */
 static void Html5BodyImplied(html5_parser *p,const char *zName)
 {
+	/*
+	 * An open `<select>` answers for everything inside it, so none of the
+	 * implied closes below may reach past it: a `<p>` or an `<li>` the source
+	 * opened OUTSIDE the select stays open, and the tag that would have
+	 * closed it is inserted where it stands instead.  Only the `<option>`
+	 * rule, which never looks further than the current node, still applies.
+	 */
+	int bSelect = Html5InSelect(p);
 	/*
 	 * The `<p>` being closed need not be the innermost open element: a
 	 * formatting element left open inside it sits above it now, and the spec
 	 * closes the p under it rather than giving up.
 	 */
-	if( HTML5_IN(azHtml5ClosesP,zName) && Html5NameInScope(p,"p") ){
+	if( !bSelect && HTML5_IN(azHtml5ClosesP,zName) && Html5NameInScope(p,"p") ){
 		Html5PopTo(p,"p");
 	}
-	if( Html5Eq(zName,"li") ){
+	if( !bSelect && Html5Eq(zName,"li") ){
 		Html5CloseListItem(p,"li","li");
 	}
-	if( Html5Eq(zName,"dd") || Html5Eq(zName,"dt") ){
+	if( !bSelect && (Html5Eq(zName,"dd") || Html5Eq(zName,"dt")) ){
 		Html5CloseListItem(p,"dd","dt");
 	}
 	if( Html5Eq(zName,"option") && Html5OpenDepth(p,"option") == 0 ){
 		Html5Pop(p);
 	}
-	if( zName[0] == 'h' && zName[1] >= '1' && zName[1] <= '6' && zName[2] == 0 ){
+	if( !bSelect && zName[0] == 'h' && zName[1] >= '1' && zName[1] <= '6'
+	 && zName[2] == 0 ){
 		xmlNodePtr pTop = Html5Top(p);
 		if( pTop && pTop->name[0] == 'h' && pTop->name[1] >= '1'
 		 && pTop->name[1] <= '6' && pTop->name[2] == 0 ){
@@ -2609,6 +2648,9 @@ static int Html5Dispatch(html5_parser *p)
 			p->bFramesetOk = 0;
 		}
 		if( Html5Eq(zName,"head") ){
+			break;
+		}
+		if( Html5SelectImplied(p,zName) ){
 			break;
 		}
 		/*
