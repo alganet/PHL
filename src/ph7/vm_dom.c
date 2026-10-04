@@ -7000,6 +7000,177 @@ static void DomDimNoOffset(ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
 	SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
 		"Cannot access %.*s without offset",(int)pName->nByte,pName->zString);
 }
+/* The collection's by-NAME walk is the standard's id-then-name one and is
+ * written with `Dom\HTMLCollection` below; the handler here needs it. */
+static ph7_class_instance * DomCollectionNamed(ph7_vm *pVm,ph7_class_instance *pColl,
+	const char *zKey);
+/* ===== the namespaced collections' OWN dimension rules =====
+ *
+ * php 8.4 gave `Dom\NodeList`, `Dom\NamedNodeMap`, `Dom\DtdNamedNodeMap` and
+ * `Dom\HTMLCollection` handlers of their own rather than the 2004 classes', and
+ * the two differ in both directions -- swept over every offset type on both
+ * families:
+ *
+ *   - The 2004 classes take php's ordinary offset cast, so `null`, `false` and
+ *     `[1]` all become an integer index and answer null. The namespaced four
+ *     REFUSE every one of those: `Cannot access offset of type null on
+ *     Dom\NodeList`, and `... in isset or empty` for the isset face, which is
+ *     the one wording that does not name the class.
+ *   - `DOMNamedNodeMap[-1]` raises the ValueError its item() raises; the
+ *     namespaced maps answer null to the same subscript and keep the refusal on
+ *     the METHOD alone. `Dom\NamedNodeMap::item(-1)` still throws.
+ *
+ * What a namespaced offset may be: an int, a float (truncated, so `[1.9]` is
+ * index 1 and `[-1.9]` is -1 -> null), and for the three by-NAME collections a
+ * string. A LIST refuses a string outright unless it is php's canonical integer
+ * spelling -- `'12'` and `'-1'` are indices, while `'007'`, `'+1'`, `' 1'`,
+ * `'-0'` and `'9223372036854775808'` are refused as strings, which is
+ * _zend_handle_numeric_str_ex's rule and not a numeric-prefix one.
+ */
+static int DomModernIntStr(ph7_value *pOffset,sxi64 *piIndex)
+{
+	const char *zIn,*zEnd;
+	int nLen;
+	sxi64 iVal = 0;
+	int bNeg = 0;
+	zIn = ph7_value_to_string(pOffset,&nLen);
+	if( nLen < 1 ){
+		return 0;
+	}
+	zEnd = &zIn[nLen];
+	if( zIn[0] == '-' ){
+		bNeg = 1;
+		zIn++;
+	}
+	if( zIn >= zEnd ){
+		return 0;
+	}
+	/* A leading zero disqualifies unless the WHOLE key is "0" -- so "-0", "00"
+	 * and "007" stay strings, exactly as they stay string ARRAY keys. */
+	if( zIn[0] == '0' && nLen > 1 ){
+		return 0;
+	}
+	while( zIn < zEnd ){
+		if( !SyisDigit(zIn[0]) ){
+			return 0;
+		}
+		/* Overflow is a refusal, not a saturation: php's rule only says yes to
+		 * what fits, which is why '9223372036854775808' is a string. */
+		if( iVal > (SXI64_HIGH - 9) / 10 ){
+			return 0;
+		}
+		iVal = iVal * 10 + (zIn[0] - '0');
+		zIn++;
+	}
+	*piIndex = bNeg ? -iVal : iVal;
+	return 1;
+}
+/*
+ * Classify a namespaced collection's offset. Answers 1 for an INDEX (written to
+ * *piIndex), 2 for a NAME the caller reads out of *pScratch, and 0 when the
+ * offset's type is refused -- with the refusal already worded into pCtx.
+ */
+#define DOM_MODERN_INDEX 1
+#define DOM_MODERN_NAME  2
+static int DomModernDimClassify(ph7_vm *pVm,ph7_class_instance *pThis,
+	PH7_NativeDimCtx *pCtx,ph7_value *pScratch,sxi64 *piIndex,int bByName)
+{
+	ph7_value *pOffset = pCtx->pOffset;
+	SyString *pClass = &pThis->pClass->sName;
+	const char *zType;
+	*piIndex = 0;
+	if( pOffset->iFlags & MEMOBJ_INT ){
+		*piIndex = pOffset->x.iVal;
+		return DOM_MODERN_INDEX;
+	}
+	if( pOffset->iFlags & MEMOBJ_REAL ){
+		*piIndex = (sxi64)pOffset->rVal;
+		return DOM_MODERN_INDEX;
+	}
+	if( pOffset->iFlags & MEMOBJ_STRING ){
+		if( DomModernIntStr(pOffset,piIndex) ){
+			return DOM_MODERN_INDEX;
+		}
+		if( bByName ){
+			PH7_MemObjInit(&(*pVm),pScratch);
+			PH7_MemObjStore(pOffset,pScratch);
+			return DOM_MODERN_NAME;
+		}
+		zType = "string";
+	}else if( pOffset->iFlags & MEMOBJ_OBJ ){
+		/* php names the CLASS, as get_debug_type() does. */
+		ph7_class_instance *pInst = (ph7_class_instance *)pOffset->x.pOther;
+		SyString *pName = pInst && pInst->pClass ? &pInst->pClass->sName : 0;
+		pCtx->zThrowClass = "TypeError";
+		if( pCtx->iMode == PH7_NATIVE_DIM_ISSET ){
+			SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+				"Cannot access offset of type %z in isset or empty",pName);
+		}else{
+			SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+				"Cannot access offset of type %z on %z",pName,pClass);
+		}
+		return 0;
+	}else{
+		zType = ph7_type_name(pOffset);
+	}
+	pCtx->zThrowClass = "TypeError";
+	if( pCtx->iMode == PH7_NATIVE_DIM_ISSET ){
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot access offset of type %s in isset or empty",zType);
+	}else{
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot access offset of type %s on %z",zType,pClass);
+	}
+	return 0;
+}
+/* The namespaced LIST and COLLECTION: index-only and index-or-name, over the
+ * same two walks their 2004 counterparts use. */
+static void DomModernDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx,
+	int bByName,int bMapWalk)
+{
+	ph7_value sKey;
+	sxi64 iIndex;
+	int iKind;
+	if( pCtx->iMode != PH7_NATIVE_DIM_READ && pCtx->iMode != PH7_NATIVE_DIM_ISSET ){
+		return;   /* see DomListDim: the write side is php's generic sentence */
+	}
+	if( pCtx->pOffset == 0 ){
+		DomDimNoOffset(pThis,pCtx);
+		return;
+	}
+	iKind = DomModernDimClassify(&(*pVm),pThis,pCtx,&sKey,&iIndex,bByName);
+	if( iKind == 0 ){
+		return;   /* the offset's TYPE is refused, and the refusal is worded */
+	}
+	if( iKind == DOM_MODERN_NAME ){
+		ph7_class_instance *pHit = bMapWalk
+			? DomMapNamed(&(*pVm),pThis,ph7_value_to_string(&sKey,0))
+			: DomCollectionNamed(&(*pVm),pThis,ph7_value_to_string(&sKey,0));
+		DomDimAnswer(&(*pVm),pCtx,pHit);
+		PH7_MemObjRelease(&sKey);
+		return;
+	}
+	/* No range REFUSAL here, unlike DomMapDim: the namespaced maps answer null
+	 * to an out-of-range subscript and keep the ValueError on item(). */
+	if( iIndex < 0 || iIndex > DOM_INDEX_MAX ){
+		return;
+	}
+	DomDimAnswer(&(*pVm),pCtx,bMapWalk
+		? DomMapItem(&(*pVm),pThis,(int)iIndex)
+		: DomListItem(&(*pVm),pThis,(int)iIndex));
+}
+static void DomModernListDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	DomModernDim(&(*pVm),pThis,pCtx,0,0);
+}
+static void DomModernCollDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	DomModernDim(&(*pVm),pThis,pCtx,1,0);
+}
+static void DomModernMapDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	DomModernDim(&(*pVm),pThis,pCtx,1,1);
+}
 static void DomListDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
 {
 	ph7_value sKey;
@@ -7188,6 +7359,30 @@ static ph7_class_instance * DomCollectionNamed(ph7_vm *pVm,ph7_class_instance *p
 		}
 	}
 	return 0;
+}
+/*
+ * The namespaced maps' item(). php's ValueError names the DECLARING class --
+ * a userland subclass of Dom\DtdNamedNodeMap still reads
+ * `Dom\DtdNamedNodeMap::item()` -- so each row states its own name rather
+ * than reading it off $this.
+ */
+static int DomModernMapItem(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zClass)
+{
+	int iIndex;
+	if( !DomCollectionIndex(nArg,apArg,&iIndex) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::item(): Argument #1 ($index) must be between 0 and %d",
+			zClass,DOM_INDEX_MAX);
+	}
+	return DomResultOwned(pCtx,DomMapItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
+}
+DOM_METHOD(vm_builtin_DomNamedNodeMap_item)
+{
+	return DomModernMapItem(pCtx,nArg,apArg,"Dom\\NamedNodeMap");
+}
+DOM_METHOD(vm_builtin_DomDtdNamedNodeMap_item)
+{
+	return DomModernMapItem(pCtx,nArg,apArg,"Dom\\DtdNamedNodeMap");
 }
 DOM_METHOD(vm_builtin_DomHTMLCollection_namedItem)
 {
@@ -10366,6 +10561,14 @@ static const DomPropSpec aDomProp[] = {
 	 * same count, so it names DOMNodeList's reader rather than a copy of it. */
 	{ "Dom\\HTMLCollection", DomListProp, DomSetNothing, DomListProp,
 	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
+	/* Its three siblings: the same single virtual `length`, over the list walk
+	 * for the node list and the attribute/declaration walk for the two maps. */
+	{ "Dom\\NodeList", DomListProp, DomSetNothing, DomListProp,
+	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
+	{ "Dom\\NamedNodeMap", DomMapProp, DomSetNothing, DomMapProp,
+	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
+	{ "Dom\\DtdNamedNodeMap", DomMapProp, DomSetNothing, DomMapProp,
+	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
 	{ "DOMNamedNodeMap", DomMapProp, DomSetNothing, DomMapProp,
 	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
 	{ "DOMNameSpaceNode", DomNsNodeProp, DomSetNothing, DomNsNodeProp,
@@ -10987,6 +11190,39 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "count",       PH7_MOD_PUBLIC, "", "int", vm_builtin_DOMNodeList_count },
 		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
 	};
+	/* The namespaced list and the two namespaced maps, each in php's own
+	 * declaration order -- which is not the 2004 classes': the node list puts
+	 * `item` LAST and the maps put it first. Their `count(): int` is not
+	 * tentative the way DOMNodeList::count() still is, and every node type
+	 * they name is a `Dom\` one. */
+	static const PH7_NativeMethodDef aDomNodeListMethod[] = {
+		{ "count",       PH7_MOD_PUBLIC, "", "int", vm_builtin_DOMNodeList_count },
+		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
+		{ "item",        PH7_MOD_PUBLIC, "int $index", "?Dom\\Node",
+		  vm_builtin_DOMNodeList_item },
+	};
+	static const PH7_NativeMethodDef aDomMapMethod[] = {
+		{ "item",           PH7_MOD_PUBLIC, "int $index", "?Dom\\Attr",
+		  vm_builtin_DomNamedNodeMap_item },
+		{ "getNamedItem",   PH7_MOD_PUBLIC, "string $qualifiedName", "?Dom\\Attr",
+		  vm_builtin_DOMNamedNodeMap_getNamedItem },
+		{ "getNamedItemNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "?Dom\\Attr", vm_builtin_DOMNamedNodeMap_getNamedItemNS },
+		{ "count",          PH7_MOD_PUBLIC, "", "int", vm_builtin_DOMNamedNodeMap_count },
+		{ "getIterator",    PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
+	};
+	/* The DTD half's map answers ENTITIES and NOTATIONS, so php's three readers
+	 * carry a union return rather than the attribute one. */
+	static const PH7_NativeMethodDef aDomDtdMapMethod[] = {
+		{ "item",           PH7_MOD_PUBLIC, "int $index", "Dom\\Entity|Dom\\Notation|null",
+		  vm_builtin_DomDtdNamedNodeMap_item },
+		{ "getNamedItem",   PH7_MOD_PUBLIC, "string $qualifiedName",
+		  "Dom\\Entity|Dom\\Notation|null", vm_builtin_DOMNamedNodeMap_getNamedItem },
+		{ "getNamedItemNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "Dom\\Entity|Dom\\Notation|null", vm_builtin_DOMNamedNodeMap_getNamedItemNS },
+		{ "count",          PH7_MOD_PUBLIC, "", "int", vm_builtin_DOMNamedNodeMap_count },
+		{ "getIterator",    PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
+	};
 	static const PH7_NativeMethodDef aListMethod[] = {
 		{ "count",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNodeList_count },
 		{ "item",        PH7_MOD_PUBLIC, "int $index", "", vm_builtin_DOMNodeList_item },
@@ -11221,6 +11457,21 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "Dom\\HTMLCollection", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aDomCollMethod, SX_ARRAYSIZE(aDomCollMethod), 0, 0,
 		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
+		/* And its three siblings. Each is php's own class, unrelated to the
+		 * 2004 one it shadows -- `Dom\NodeList` is not a DOMNodeList and the two
+		 * trees never meet -- but the live view underneath is the same, so all
+		 * four wear DOMNodeList's slot layout and its iterator. php serializes a
+		 * bare one (`O:12:"Dom\NodeList":0:{}`) and refuses to clone it, which is
+		 * NOCLONE alone. */
+		{ "Dom\\NodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
+		  aDomNodeListMethod, SX_ARRAYSIZE(aDomNodeListMethod), 0, 0,
+		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
+		{ "Dom\\NamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
+		  aDomMapMethod, SX_ARRAYSIZE(aDomMapMethod), 0, 0,
+		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomMapIterVtab, DomPresent },
+		{ "Dom\\DtdNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
+		  aDomDtdMapMethod, SX_ARRAYSIZE(aDomDtdMapMethod), 0, 0,
+		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomMapIterVtab, DomPresent },
 		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp),
 		  0, 0, DomPresent },
@@ -11277,6 +11528,27 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		if( pClass ){
 			pClass->xDim = DomMapDim;
 		}
+		/* php gave the namespaced four handlers of THEIR own, and the offset
+		 * rules differ from the 2004 pair's in both directions -- see
+		 * DomModernDim. `Dom\HTMLCollection` had none at all and answered the
+		 * engine's `Cannot use object of type ... as array` to a subscript php
+		 * reads. */
+		{
+			static const struct { const char *zName; void (*xDim)(ph7_vm *,
+				ph7_class_instance *,PH7_NativeDimCtx *); } aModernDim[] = {
+				{ "Dom\\NodeList",         DomModernListDim },
+				{ "Dom\\HTMLCollection",   DomModernCollDim },
+				{ "Dom\\NamedNodeMap",     DomModernMapDim  },
+				{ "Dom\\DtdNamedNodeMap",  DomModernMapDim  }
+			};
+			for( n = 0 ; n < SX_ARRAYSIZE(aModernDim) ; ++n ){
+				pClass = PH7_VmExtractClass(&(*pVm),aModernDim[n].zName,
+					(sxu32)SyStrlen(aModernDim[n].zName),FALSE,0);
+				if( pClass ){
+					pClass->xDim = aModernDim[n].xDim;
+				}
+			}
+		}
 		/* The property handlers (ph7_class::xProp, php's read_property /
 		 * has_property / write_property), assigned for the same reason. One per
 		 * ROOT: the engine walks the base chain for the hook exactly as php's
@@ -11285,7 +11557,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{
 			static const char * const azPropRoot[] = {
 				"DOMNode", "DOMNodeList", "DOMNamedNodeMap", "DOMNameSpaceNode", "DOMXPath",
-				"Dom\\HTMLCollection"
+				"Dom\\HTMLCollection",
+				"Dom\\NodeList", "Dom\\NamedNodeMap", "Dom\\DtdNamedNodeMap"
 			};
 			for( n = 0 ; n < SX_ARRAYSIZE(azPropRoot) ; ++n ){
 				PH7_NativeClassInstallPropHook(&(*pVm),azPropRoot[n],DomPropHook);
