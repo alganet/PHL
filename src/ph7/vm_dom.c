@@ -9456,6 +9456,475 @@ DOM_METHOD(vm_builtin_DomHTMLCollection_namedItem)
 	return DomResultOwned(pCtx,DomCollectionNamed(pCtx->pVm,pThis,zKey));
 }
 
+/* ===== Dom\TokenList: an element's `class` attribute as an ordered set =====
+ *
+ * php 8.4's `Dom\Element::$classList` is a live view of ONE attribute, read
+ * and written through the DOM standard's "ordered set" grammar rather than as
+ * a string. Four rules, all measured against php and none of them guessable:
+ *
+ *   - The parse splits on ASCII whitespace, which is space, `\t`, `\n`, `\f`
+ *     and `\r` and NOTHING else -- a vertical tab is an ordinary token byte
+ *     and U+00A0 is too, so `class="\x0bx"` is the single token `\x0bx`.
+ *   - The set is UNIQUE: `class=" x  y x z "` has length 3, and `x` is at
+ *     index 0 alone.
+ *   - Every mutator re-SERIALIZES the whole set back over the attribute, so a
+ *     `remove()` of a token that was never there still rewrites ` a  a  b ` as
+ *     `a b`. The two exceptions are the ones the standard returns early from,
+ *     and they leave the raw bytes alone: `toggle($t, true)` on a token
+ *     already present, and a `replace()` whose token is not there.
+ *   - That rewrite does not CREATE the attribute: an element with no `class`
+ *     whose set ends up empty keeps none. `$list->value = ''` is the other
+ *     door and does create it, because the value setter writes bytes.
+ *
+ * The list is the ELEMENT's -- `$e->classList === $e->classList` in php --
+ * so the element parks the one it minted. It parks it BORROWED, the way the
+ * document's identity cache holds a wrapper: the list holds a reference to
+ * its element and the element holds only the address back, so the pair is
+ * not a cycle and the list's own release takes the entry out again.
+ */
+#define DOM_TLIST "__tlist"   /* on the element: the parked list's address */
+/* php's "ASCII whitespace", which is not C's isspace(): no vertical tab. */
+static int DomTokIsWs(int c)
+{
+	return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r';
+}
+/* One step of the ordered-set parser: settle on the token at or after *pOff.
+ * Answers 0 once the value holds no more. */
+static int DomTokNext(const char *zVal,int nVal,int *pOff,const char **pzTok,int *pnTok)
+{
+	int i = *pOff;
+	while( i < nVal && DomTokIsWs(zVal[i]) ){
+		++i;
+	}
+	if( i >= nVal ){
+		*pOff = i;
+		return 0;
+	}
+	*pzTok = &zVal[i];
+	while( i < nVal && !DomTokIsWs(zVal[i]) ){
+		++i;
+	}
+	*pnTok = (int)(&zVal[i] - *pzTok);
+	*pOff = i;
+	return 1;
+}
+/*
+ * The set is carried as its own serialization -- the tokens joined by single
+ * spaces -- because that is what a mutator has to write back anyway, and the
+ * membership test a unique append needs is the same walk the reader makes.
+ */
+static int DomTokHas(const char *zSet,int nSet,const char *zTok,int nTok)
+{
+	const char *zCur;
+	int nCur,iOff = 0;
+	while( DomTokNext(zSet,nSet,&iOff,&zCur,&nCur) ){
+		if( nCur == nTok && SyMemcmp(zCur,zTok,(sxu32)nTok) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Append a token to the set unless it is already in it. */
+static void DomTokAppend(SyBlob *pSet,const char *zTok,int nTok)
+{
+	if( DomTokHas((const char *)SyBlobData(pSet),(int)SyBlobLength(pSet),zTok,nTok) ){
+		return;
+	}
+	if( SyBlobLength(pSet) > 0 ){
+		SyBlobAppend(pSet," ",sizeof(char));
+	}
+	SyBlobAppend(pSet,zTok,(sxu32)nTok);
+}
+/* The element behind a list, and its `class` attribute's bytes. The attribute
+ * is read with libxml's no-namespace getter, so an `n:class` in some other
+ * namespace is not this list's attribute -- php's answer too. */
+static xmlNodePtr DomTokNode(ph7_class_instance *pThis)
+{
+	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,DNL_OWNER) : 0;
+	ph7_class_instance *pOwner = (pVal && (pVal->iFlags & MEMOBJ_OBJ))
+		? (ph7_class_instance *)pVal->x.pOther : 0;
+	phl_domnode *pNd = pOwner ? DomResOf(pOwner) : 0;
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	return (pNode && pNode->type == XML_ELEMENT_NODE) ? pNode : 0;
+}
+/* Is the attribute THERE at all? The update steps below turn on this and not
+ * on the value, which is why an empty `class=""` survives a remove(). */
+static int DomTokHasAttr(xmlNodePtr pNode)
+{
+	xmlAttrPtr pAttr;
+	for( pAttr = pNode ? pNode->properties : 0 ; pAttr ; pAttr = pAttr->next ){
+		if( pAttr->ns == 0 && pAttr->name
+		 && SyStrncmp((const char *)pAttr->name,"class",sizeof("class")) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* The raw attribute bytes into a blob; empty when the attribute is absent. */
+static void DomTokValue(ph7_vm *pVm,xmlNodePtr pNode,SyBlob *pOut)
+{
+	xmlChar *zVal = pNode ? xmlGetNoNsProp(pNode,(const xmlChar *)"class") : 0;
+	SyBlobInit(pOut,&pVm->sAllocator);
+	if( zVal ){
+		SyBlobAppend(pOut,(const char *)zVal,(sxu32)SyStrlen((const char *)zVal));
+		xmlFree(zVal);
+	}
+}
+/* The unique set of the element's tokens, serialized. */
+static void DomTokSet(ph7_vm *pVm,xmlNodePtr pNode,SyBlob *pSet)
+{
+	SyBlob sRaw;
+	const char *zTok;
+	int nTok,iOff = 0,nRaw;
+	const char *zRaw;
+	DomTokValue(&(*pVm),pNode,&sRaw);
+	zRaw = (const char *)SyBlobData(&sRaw);
+	nRaw = (int)SyBlobLength(&sRaw);
+	SyBlobInit(pSet,&pVm->sAllocator);
+	while( DomTokNext(zRaw,nRaw,&iOff,&zTok,&nTok) ){
+		DomTokAppend(pSet,zTok,nTok);
+	}
+	SyBlobRelease(&sRaw);
+}
+/*
+ * The standard's "update steps", which every mutator ends with: write the
+ * serialized set back -- unless the element never had the attribute and the
+ * set is empty, in which case nothing is written and none is created.
+ */
+static void DomTokUpdate(xmlNodePtr pNode,SyBlob *pSet)
+{
+	if( pNode == 0 ){
+		return;
+	}
+	if( SyBlobLength(pSet) < 1 && !DomTokHasAttr(pNode) ){
+		return;
+	}
+	SyBlobNullAppend(pSet);
+	xmlSetProp(pNode,(const xmlChar *)"class",(const xmlChar *)SyBlobData(pSet));
+}
+/*
+ * Every token a mutator is GIVEN is screened first, and the whole argument
+ * list before any of it is applied -- `add('ok','')` adds nothing. The two
+ * refusals are php's, under the level-2 codes its own DOMException carries.
+ */
+static int DomTokScreen(ph7_context *pCtx,int iFrom,int nArg,ph7_value **apArg)
+{
+	int i;
+	for( i = iFrom ; i < nArg ; ++i ){
+		int nTok = 0,j;
+		const char *zTok = ph7_value_to_string(apArg[i],&nTok);
+		if( nTok < 1 ){
+			return DomThrowSentence(pCtx,DOM_ERR_SYNTAX,
+				"The empty string is not a valid token");
+		}
+		for( j = 0 ; j < nTok ; ++j ){
+			if( DomTokIsWs(zTok[j]) ){
+				return DomThrowSentence(pCtx,DOM_ERR_INVALID_CHAR,
+					"The token must not contain any ASCII whitespace");
+			}
+		}
+	}
+	return PH7_OK;
+}
+/* Dom\TokenList::count(): int -- and the reader $length answers through it. */
+static int DomTokCount(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	SyBlob sSet;
+	const char *zTok;
+	int nTok,iOff = 0,nCount = 0;
+	DomTokSet(&(*pVm),DomTokNode(pThis),&sSet);
+	while( DomTokNext((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),
+		&iOff,&zTok,&nTok) ){
+		++nCount;
+	}
+	SyBlobRelease(&sSet);
+	return nCount;
+}
+DOM_METHOD(vm_builtin_DomTokenList_count)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int(pCtx,DomTokCount(pCtx->pVm,PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+/* Dom\TokenList::item(int $index): ?string. Out of range is null on either
+ * side -- this class states no ValueError, where the two named maps do. */
+static int DomTokItem(ph7_context *pCtx,ph7_int64 iWant)
+{
+	SyBlob sSet;
+	const char *zTok;
+	int nTok,iOff = 0;
+	ph7_int64 i = 0;
+	int bHit = 0;
+	DomTokSet(pCtx->pVm,DomTokNode(PH7_ContextThis(pCtx)),&sSet);
+	while( DomTokNext((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),
+		&iOff,&zTok,&nTok) ){
+		if( i == iWant ){
+			ph7_result_string(pCtx,zTok,nTok);
+			bHit = 1;
+			break;
+		}
+		++i;
+	}
+	SyBlobRelease(&sSet);
+	if( !bHit ){
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DomTokenList_item)
+{
+	return DomTokItem(pCtx,nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0);
+}
+/* Dom\TokenList::contains(string $token): bool -- no screen at all: the empty
+ * string and a token with a space in it are simply not members. */
+DOM_METHOD(vm_builtin_DomTokenList_contains)
+{
+	SyBlob sSet;
+	int nTok = 0;
+	const char *zTok = nArg > 0 ? ph7_value_to_string(apArg[0],&nTok) : "";
+	DomTokSet(pCtx->pVm,DomTokNode(PH7_ContextThis(pCtx)),&sSet);
+	ph7_result_bool(pCtx,nTok > 0
+		&& DomTokHas((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),zTok,nTok));
+	SyBlobRelease(&sSet);
+	return PH7_OK;
+}
+/* Dom\TokenList::add(string ...$tokens): void */
+DOM_METHOD(vm_builtin_DomTokenList_add)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	xmlNodePtr pNode = DomTokNode(pThis);
+	SyBlob sSet;
+	int i;
+	if( DomTokScreen(pCtx,0,nArg,apArg) != PH7_OK ){
+		return PH7_OK;
+	}
+	DomTokSet(pCtx->pVm,pNode,&sSet);
+	for( i = 0 ; i < nArg ; ++i ){
+		int nTok = 0;
+		const char *zTok = ph7_value_to_string(apArg[i],&nTok);
+		DomTokAppend(&sSet,zTok,nTok);
+	}
+	DomTokUpdate(pNode,&sSet);
+	SyBlobRelease(&sSet);
+	return PH7_OK;
+}
+/* Dom\TokenList::remove(string ...$tokens): void */
+DOM_METHOD(vm_builtin_DomTokenList_remove)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	xmlNodePtr pNode = DomTokNode(pThis);
+	SyBlob sRaw,sSet;
+	const char *zTok,*zRaw;
+	int nTok,iOff = 0,nRaw;
+	if( DomTokScreen(pCtx,0,nArg,apArg) != PH7_OK ){
+		return PH7_OK;
+	}
+	DomTokValue(pCtx->pVm,pNode,&sRaw);
+	zRaw = (const char *)SyBlobData(&sRaw);
+	nRaw = (int)SyBlobLength(&sRaw);
+	SyBlobInit(&sSet,&pCtx->pVm->sAllocator);
+	while( DomTokNext(zRaw,nRaw,&iOff,&zTok,&nTok) ){
+		int i,bDrop = 0;
+		for( i = 0 ; i < nArg && !bDrop ; ++i ){
+			int nDrop = 0;
+			const char *zDrop = ph7_value_to_string(apArg[i],&nDrop);
+			bDrop = nDrop == nTok && SyMemcmp(zDrop,zTok,(sxu32)nTok) == 0;
+		}
+		if( !bDrop ){
+			DomTokAppend(&sSet,zTok,nTok);
+		}
+	}
+	DomTokUpdate(pNode,&sSet);
+	SyBlobRelease(&sSet);
+	SyBlobRelease(&sRaw);
+	return PH7_OK;
+}
+/*
+ * Dom\TokenList::toggle(string $token, ?bool $force = null): bool
+ *
+ * The standard's four arms, and only two of them write. `toggle($t, true)` on
+ * a token already in the set returns true having touched nothing -- so the
+ * raw bytes keep their whitespace, where a toggle that DOES add re-serializes.
+ */
+DOM_METHOD(vm_builtin_DomTokenList_toggle)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	xmlNodePtr pNode = DomTokNode(pThis);
+	SyBlob sSet;
+	int nTok = 0,bHas,bForce = 0,bHasForce = 0;
+	const char *zTok;
+	if( DomTokScreen(pCtx,0,nArg > 1 ? 1 : nArg,apArg) != PH7_OK ){
+		return PH7_OK;
+	}
+	zTok = nArg > 0 ? ph7_value_to_string(apArg[0],&nTok) : "";
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		bHasForce = 1;
+		bForce = ph7_value_to_bool(apArg[1]) != 0;
+	}
+	DomTokSet(pCtx->pVm,pNode,&sSet);
+	bHas = DomTokHas((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),zTok,nTok);
+	if( bHas && (!bHasForce || !bForce) ){
+		/* Remove it: rebuild the set without it. */
+		SyBlob sKeep;
+		const char *zCur;
+		int nCur,iOff = 0;
+		SyBlobInit(&sKeep,&pCtx->pVm->sAllocator);
+		while( DomTokNext((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),
+			&iOff,&zCur,&nCur) ){
+			if( nCur != nTok || SyMemcmp(zCur,zTok,(sxu32)nTok) != 0 ){
+				DomTokAppend(&sKeep,zCur,nCur);
+			}
+		}
+		DomTokUpdate(pNode,&sKeep);
+		SyBlobRelease(&sKeep);
+		ph7_result_bool(pCtx,0);
+	}else if( !bHas && (!bHasForce || bForce) ){
+		DomTokAppend(&sSet,zTok,nTok);
+		DomTokUpdate(pNode,&sSet);
+		ph7_result_bool(pCtx,1);
+	}else{
+		/* The two early returns: nothing is written, not even a re-serialize. */
+		ph7_result_bool(pCtx,bHas);
+	}
+	SyBlobRelease(&sSet);
+	return PH7_OK;
+}
+/*
+ * Dom\TokenList::replace(string $token, string $newToken): bool
+ *
+ * In PLACE, and the set stays unique: `a b c` with `b` replaced by `c` is
+ * `a c`, because the substitution runs before the uniqueness does. A token
+ * that is not there is false and leaves the attribute's bytes alone.
+ */
+DOM_METHOD(vm_builtin_DomTokenList_replace)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	xmlNodePtr pNode = DomTokNode(pThis);
+	SyBlob sSet,sOut;
+	const char *zOld,*zNew,*zCur;
+	int nOld = 0,nNew = 0,nCur,iOff = 0;
+	if( DomTokScreen(pCtx,0,nArg > 2 ? 2 : nArg,apArg) != PH7_OK ){
+		return PH7_OK;
+	}
+	zOld = nArg > 0 ? ph7_value_to_string(apArg[0],&nOld) : "";
+	zNew = nArg > 1 ? ph7_value_to_string(apArg[1],&nNew) : "";
+	DomTokSet(pCtx->pVm,pNode,&sSet);
+	if( !DomTokHas((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),zOld,nOld) ){
+		SyBlobRelease(&sSet);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	while( DomTokNext((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),
+		&iOff,&zCur,&nCur) ){
+		if( nCur == nOld && SyMemcmp(zCur,zOld,(sxu32)nOld) == 0 ){
+			DomTokAppend(&sOut,zNew,nNew);
+		}else{
+			DomTokAppend(&sOut,zCur,nCur);
+		}
+	}
+	DomTokUpdate(pNode,&sOut);
+	SyBlobRelease(&sOut);
+	SyBlobRelease(&sSet);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * Dom\TokenList::supports(string $token): bool
+ *
+ * The standard asks the attribute for its "supported tokens" and `class` has
+ * none, so php's only answer here is the refusal -- a TypeError and not a
+ * DOMException, naming the attribute rather than the argument.
+ */
+DOM_METHOD(vm_builtin_DomTokenList_supports)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_VmThrowException(pCtx,"TypeError",
+		"Attribute \"class\" does not define any supported tokens");
+}
+/* The walk: index => token, over the unique set, re-read at every step so a
+ * mutation inside the loop shows -- php's live view. */
+static void DomTokIterSettle(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	ph7_class_instance *pSrc = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	ph7_int64 iPos = PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS);
+	SyBlob sSet;
+	const char *zTok;
+	int nTok,iOff = 0;
+	ph7_int64 i = 0;
+	int bHit = 0;
+	DomTokSet(&(*pVm),DomTokNode(pSrc),&sSet);
+	while( DomTokNext((const char *)SyBlobData(&sSet),(int)SyBlobLength(&sSet),
+		&iOff,&zTok,&nTok) ){
+		if( i == iPos ){
+			PH7_NativeSetAttrStr(&(*pVm),pIt,PH7_NATIVE_IT_CUR,zTok,nTok);
+			bHit = 1;
+			break;
+		}
+		++i;
+	}
+	SyBlobRelease(&sSet);
+	if( !bHit ){
+		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
+		return;
+	}
+	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,iPos);
+	PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);
+}
+static void DomTokRewind(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,0);
+	DomTokIterSettle(&(*pVm),pIt);
+}
+static void DomTokNextStep(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,
+		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);
+	DomTokIterSettle(&(*pVm),pIt);
+}
+static const PH7_NativeIterVtab sDomTokIterVtab = { DomTokRewind, DomTokNextStep, 0, 0 };
+/*
+ * The element's parked list, minted on the first read.
+ *
+ * The element holds the ADDRESS and not a reference, so the two objects are
+ * not a cycle; the list's release below takes the entry out again, and a read
+ * after that mints a fresh one -- which nothing can observe, because there is
+ * no surviving list to compare it against.
+ */
+static ph7_class_instance * DomTokListOf(ph7_vm *pVm,ph7_class_instance *pElem)
+{
+	ph7_class_instance *pList;
+	ph7_class *pClass;
+	ph7_value *pSlot = pElem ? PH7_NativeAttr(pElem,DOM_TLIST) : 0;
+	if( pSlot && (pSlot->iFlags & MEMOBJ_INT) && pSlot->x.iVal != 0 ){
+		pList = (ph7_class_instance *)(sxuptr)pSlot->x.iVal;
+		pList->iRef++;   /* the caller owns one, as it does of a fresh list */
+		return pList;
+	}
+	pClass = PH7_VmExtractClass(&(*pVm),"Dom\\TokenList",
+		(sxu32)SyStrlen("Dom\\TokenList"),FALSE,0);
+	pList = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
+	if( pList == 0 ){
+		return 0;
+	}
+	PH7_NativeSetAttrObj(&(*pVm),pList,DNL_OWNER,pElem);
+	PH7_NativeSetAttrInt(&(*pVm),pElem,DOM_TLIST,(sxi64)(sxuptr)pList);
+	return pList;
+}
+/* ph7_class::xRelease for the list: drop the element's borrowed entry. */
+static void DomTokRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class_instance *pOwner = PH7_NativeAttrObj(pThis,DNL_OWNER);
+	ph7_value *pSlot = pOwner ? PH7_NativeAttr(pOwner,DOM_TLIST) : 0;
+	SXUNUSED(pVm);
+	if( pSlot && (pSlot->iFlags & MEMOBJ_INT)
+	 && pSlot->x.iVal == (sxi64)(sxuptr)pThis ){
+		pSlot->x.iVal = 0;
+	}
+}
+
 /* ===== DOMXPath ===== */
 
 /* The prefix => URI table registerNamespace() feeds, replayed onto the fresh
@@ -11832,6 +12301,18 @@ static int DomElemProp(ph7_context *pCtx,const char *zName)
 	if( DomNameIs(zName,"schemaTypeInfo") ){
 		return DomSchemaTypeInfo(pCtx);
 	}
+	/* php 8.4's element alone: the `class` attribute as an ordered set. The
+	 * 2004 DOMElement never reaches here -- it declares no such name, so the
+	 * read is the ordinary undefined-property warning there, as in php. */
+	if( DomNameIs(zName,"classList") ){
+		ph7_class_instance *pList = DomTokListOf(pCtx->pVm,PH7_ContextThis(pCtx));
+		if( pList == 0 ){
+			ph7_result_null(pCtx);
+		}else{
+			PH7_NativeResultObject(pCtx,pList);
+		}
+		return 1;
+	}
 	if( DomParentNodeProp(pCtx,zName) || DomChildNodeProp(pCtx,zName) ){
 		return 1;
 	}
@@ -12810,8 +13291,10 @@ static const char * const azDomMXmlDocDebug[] = {
 };
 static const char * const azDomMElemDebug[] = {
 	"namespaceURI", "prefix", "localName", "tagName", "id", "className",
-	"attributes", DOM_MPARENT_DEBUG, DOM_MCHILD_DEBUG, DOM_MNODE_DEBUG
+	"classList", "attributes", DOM_MPARENT_DEBUG, DOM_MCHILD_DEBUG, DOM_MNODE_DEBUG
 };
+/* php dumps the list as its two virtual names, length before value. */
+static const char * const azDomTokDebug[] = { "length", "value" };
 static const char * const azDomMAttrDebug[] = {
 	"namespaceURI", "prefix", "localName", "name", "value", "ownerElement",
 	"specified", DOM_MNODE_DEBUG
@@ -12992,6 +13475,48 @@ struct DomPropSpec {
 	sxu32 nName;
 	int bNode;
 };
+/*
+ * Dom\TokenList's two: the count of the unique set, and the attribute's RAW
+ * bytes -- `value` is not the serialization, it is what is written there, so
+ * a list over `class=" x  y x z "` reads back all ten characters while its
+ * length is 3.
+ */
+static int DomTokProp(ph7_context *pCtx,const char *zName)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( DomNameIs(zName,"length") ){
+		ph7_result_int(pCtx,DomTokCount(pCtx->pVm,pThis));
+		return 1;
+	}
+	if( DomNameIs(zName,"value") ){
+		SyBlob sRaw;
+		DomTokValue(pCtx->pVm,DomTokNode(pThis),&sRaw);
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sRaw),(int)SyBlobLength(&sRaw));
+		SyBlobRelease(&sRaw);
+		return 1;
+	}
+	return 0;
+}
+/* Only `value` writes, and it writes BYTES: no ordered-set parse, no
+ * uniqueness, and it CREATES the attribute where a mutator would not --
+ * `$list->value = ''` leaves `class=""` behind. `length` states no writer
+ * and lands on the readonly Error, which is php's answer for it. */
+static int DomSetTokProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	xmlNodePtr pNode = DomTokNode(PH7_ContextThis(pCtx));
+	SyBlob sVal;
+	if( !DomNameIs(zName,"value") ){
+		return DOM_SET_UNKNOWN;
+	}
+	if( DomWriteText(pCtx,"Dom\\TokenList","value","string",pVal,&sVal,pRc) == 0 ){
+		return DOM_SET_DONE;
+	}
+	if( pNode ){
+		xmlSetProp(pNode,(const xmlChar *)"class",(const xmlChar *)SyBlobData(&sVal));
+	}
+	SyBlobRelease(&sVal);
+	return DOM_SET_DONE;
+}
 static const DomPropSpec aDomProp[] = {
 	{ "DOMDocument", DomDocProp, DomSetDocProp, DomDocPropQuiet,
 	  azDomDocDebug, SX_ARRAYSIZE(azDomDocDebug), 1 },
@@ -13024,6 +13549,10 @@ static const DomPropSpec aDomProp[] = {
 	 * same count, so it names DOMNodeList's reader rather than a copy of it. */
 	{ "Dom\\HTMLCollection", DomListProp, DomSetNothing, DomListProp,
 	  azDomListDebug, SX_ARRAYSIZE(azDomListDebug), 0 },
+	/* The token list is not a live view of NODES, so it shares none of the
+	 * collection's slots and states its own two readers. */
+	{ "Dom\\TokenList", DomTokProp, DomSetTokProp, DomTokProp,
+	  azDomTokDebug, SX_ARRAYSIZE(azDomTokDebug), 0 },
 	/* Its three siblings: the same single virtual `length`, over the list walk
 	 * for the node list and the attribute/declaration walk for the two maps. */
 	{ "Dom\\NodeList", DomListProp, DomSetNothing, DomListProp,
@@ -14528,9 +15057,45 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_VPROP("tagName","string"),
 		DOM_VPROP("id","string"),
 		DOM_VPROP("className","string"),
+		DOM_VPROP("classList","Dom\\TokenList"),
 		DOM_VPROP("attributes","Dom\\NamedNodeMap"),
 		DOM_MPARENT_VPROPS,
-		DOM_MCHILD_VPROPS
+		DOM_MCHILD_VPROPS,
+		/* The parked token list's ADDRESS, borrowed; see DomTokListOf. Hidden,
+		 * so it is on no dump, no cast, no walk and no Reflection listing. */
+		{ DOM_TLIST, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 }
+	};
+	/* php's list declares the two virtual names and holds nothing else; the
+	 * element it is OF is this engine's own slot, and a reference. */
+	static const PH7_NativePropDef aTokProp[] = {
+		DOM_VPROP("length","int"),
+		DOM_VPROP("value","string"),
+		{ DNL_OWNER, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }
+	};
+	/* php's declaration order, and its own types. The constructor is PRIVATE
+	 * and does nothing: `new Dom\TokenList()` is the engine's own
+	 * `Call to private ...::__construct()` Error, which is not a body's
+	 * refusal and needs none. */
+	static const PH7_NativeMethodDef aTokMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE, "", "", 0 },
+		{ "item",        PH7_MOD_PUBLIC, "int $index", "?string",
+		  vm_builtin_DomTokenList_item },
+		{ "contains",    PH7_MOD_PUBLIC, "string $token", "bool",
+		  vm_builtin_DomTokenList_contains },
+		{ "add",         PH7_MOD_PUBLIC, "string ...$tokens", "void",
+		  vm_builtin_DomTokenList_add },
+		{ "remove",      PH7_MOD_PUBLIC, "string ...$tokens", "void",
+		  vm_builtin_DomTokenList_remove },
+		{ "toggle",      PH7_MOD_PUBLIC, "string $token, ?bool $force = null", "bool",
+		  vm_builtin_DomTokenList_toggle },
+		{ "replace",     PH7_MOD_PUBLIC, "string $token, string $newToken", "bool",
+		  vm_builtin_DomTokenList_replace },
+		{ "supports",    PH7_MOD_PUBLIC, "string $token", "bool",
+		  vm_builtin_DomTokenList_supports },
+		{ "count",       PH7_MOD_PUBLIC, "", "int", vm_builtin_DomTokenList_count },
+		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
 	};
 	static const PH7_NativePropDef aMTextProp[] = { DOM_VPROP("wholeText","string") };
 	static const PH7_NativePropDef aMPiProp[] = { DOM_VPROP("target","string") };
@@ -14700,6 +15265,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "Dom\\HTMLCollection", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aDomCollMethod, SX_ARRAYSIZE(aDomCollMethod), 0, 0,
 		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
+		/* php's list is FINAL, refuses to clone, and refuses to serialize with
+		 * the HARD refusal -- `serialize()` of one is an Exception, where the
+		 * node classes' is the soft deny handler a subclass can lift. It has no
+		 * subclass to lift it: nothing can extend it. */
+		{ "Dom\\TokenList", 0, "IteratorAggregate,Countable",
+		  PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aTokMethod, SX_ARRAYSIZE(aTokMethod), 0, 0,
+		  aTokProp, SX_ARRAYSIZE(aTokProp), DomTokRelease, &sDomTokIterVtab, DomPresent },
 		/* And its three siblings. Each is php's own class, unrelated to the
 		 * 2004 one it shadows -- `Dom\NodeList` is not a DOMNodeList and the two
 		 * trees never meet -- but the live view underneath is the same, so all
@@ -14885,7 +15458,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{
 			static const char * const azPropRoot[] = {
 				"DOMNode", "DOMNodeList", "DOMNamedNodeMap", "DOMNameSpaceNode", "DOMXPath",
-				"Dom\\XPath", "Dom\\HTMLCollection",
+				"Dom\\XPath", "Dom\\HTMLCollection", "Dom\\TokenList",
 				"Dom\\NodeList", "Dom\\NamedNodeMap", "Dom\\DtdNamedNodeMap",
 				/* The namespaced tree's root. It is a root and not a branch of
 				 * DOMNode's: the two trees never meet, so the chain walk from a
