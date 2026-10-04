@@ -4702,6 +4702,13 @@ struct ph7_vm
 	                                   * the OP_CALL user-function frame setup. Owns one reference. */
 	ph7_class *pClosureScope; /* Transient: bound $__scope class for the same bound PLAIN closure
 	                           * (private/protected visibility override); consumed alongside pClosureThis. */
+	ph7_class *pClosureMethodCls; /* Consume-once: the class a METHOD closure's callee is looked up in
+	                               * when that is not its receiver's own -- `parent::m(...)`,
+	                               * `A::m(...)`, ReflectionMethod::getClosure(). php keeps the resolved
+	                               * function, so the call must not find the receiver's override. Armed
+	                               * by VmClosureUnwrap, read by the pair dispatch
+	                               * (PH7_VmCallUserFunctionWithMap) and the fiber body-finder, cleared
+	                               * with bClosureScreened. Owns no reference. */
 	ph7_class *pStdClass;      /* Cached stdClass pointer (target of (object) cast + dynamic props) */
 	ph7_class *pIncClass;      /* Cached __PHP_Incomplete_Class pointer: unserialize()'s carrier for a
 	                            * disallowed or unknown class. Every script-level property access or

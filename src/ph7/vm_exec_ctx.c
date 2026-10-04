@@ -1616,6 +1616,20 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 				 * pClosureThis/pClosureScope. */
 				pVm->bClosureScreened = 1;
 			}
+			if( bBoundObj && bScope && (pThis->iFlags & VM_INSTANCE_FCC_METHOD) ){
+				/* A method closure whose `$__scope` is not its receiver's class names the class
+				 * its callee was RESOLVED in: `parent::m(...)` and `A::m(...)` with a `$this`,
+				 * ReflectionMethod::getClosure(). php keeps that function, so the pair must not
+				 * be looked up on the receiver again -- that found the receiver's own override. */
+				ph7_class *pRecvCls = ((ph7_class_instance *)pBound->x.pOther)->pClass;
+				ph7_class *pFromCls = PH7_VmExtractClass(pVm,
+					(const char *)SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob), FALSE, 0);
+				if( pFromCls && pFromCls != pRecvCls && PH7_VmInstanceOf(pRecvCls,pFromCls)
+				 && PH7_ClassExtractMethod(pFromCls,
+						(const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob)) ){
+					pVm->pClosureMethodCls = pFromCls;
+				}
+			}
 			pOut->x.pOther = pMap;
 			MemObjSetType(pOut, MEMOBJ_HASHMAP);
 			return SXRET_OK;
@@ -2648,6 +2662,11 @@ static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
 			return 0;
 		}
 		pClass = PH7_VmExtractClassFromValue(pVm, pTarget);
+		if( pVm->pClosureMethodCls ){
+			/* A method closure's pair resolved in a class of its own (VmClosureUnwrap). */
+			pClass = pVm->pClosureMethodCls;
+			pVm->pClosureMethodCls = 0;
+		}
 		if( pClass ){
 			pMethod = PH7_ClassExtractMethod(pClass, (const char *)SyBlobData(&pName->sBlob),
 				SyBlobLength(&pName->sBlob));
@@ -2755,6 +2774,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				}
 				pVm->pClosureScope = 0;
 				pVm->bClosureScreened = 0;
+				pVm->pClosureMethodCls = 0;
 				return pUnwrapped;
 			}
 			if( pVm->pClosureThis ){
@@ -2765,6 +2785,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 			}
 			pVm->pClosureScope = 0;
 			pVm->bClosureScreened = 0;
+			pVm->pClosureMethodCls = 0;
 			PH7_VmThrowException(pCtx, "FiberError", zWhyClo
 				? "Fiber %s" : "Fiber callable closure could not be resolved", zWhyClo);
 			return 0;

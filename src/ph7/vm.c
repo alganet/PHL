@@ -3348,6 +3348,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
 	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */
 	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */
+	pVm->pClosureMethodCls = 0;
 	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
 	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
 	/* ... and unserialize()'s incomplete-object carrier, declared beside it. */
@@ -4515,6 +4516,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * object); unref'ing here would race the teardown below. */
 	pVm->pClosureThis = 0;
 	pVm->pClosureScope = 0;
+	pVm->pClosureMethodCls = 0;
 	/* Suppress user __destruct while we tear down the per-exec object pool: the
 	 * reference table is gone and $GLOBALS is nulled, so running arbitrary PHP
 	 * here is unsafe. Engine memory is still reclaimed. Mirrors prior behaviour

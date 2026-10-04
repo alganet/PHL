@@ -2979,6 +2979,11 @@ static sxi32 GenStateEmitExprCode(
 				 * was popped at the static-`::` codegen above). Re-load it so OP_LOAD_FCC
 				 * sees the [target, method-name] pair the iP1=2 handler expects. */
 				void *pMemberName = pInstr->p3;
+				if( pInstr->iP1 == 1 && pMemberName == 0 && pInstr->bRefSrc ){
+					/* A literal `X::__construct(...)`, marked above: the class's constructor
+					 * (iP2==2), not a method lookup. The namespace bit is a plain callee's. */
+					iP2 = 2;
+				}
 				(void)PH7_VmPopInstr(pGen->pVm);
 				if( pMemberName ){
 					PH7_VmEmitInstr(pGen->pVm, PH7_OP_LOAD, 0, 0, pMemberName, 0);

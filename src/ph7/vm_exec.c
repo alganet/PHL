@@ -1678,6 +1678,42 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 	return 0;
 }
 /*
+ * The same resolution for a LITERAL `X::__construct(...)`, which php's compiler turns into a
+ * request for the class's constructor rather than a method lookup -- the call's own rule
+ * (vm_ops_oo.c, the static OP_MEMBER): a class with none is "Cannot call constructor" with
+ * no catch-all, the only visibility refusal is a PRIVATE constructor reached with a `$this`
+ * whose class is not the constructor's own, and anything else needs a receiver that is an
+ * instance of the class, or it is the non-static Error.
+ */
+static const char * VmFccCtorError(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance **ppRecv,
+	char *zBuf,int nBuf)
+{
+	ph7_class_method *pMethod = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	ph7_class_instance *pRawThis = PH7_VmCallerThis(&(*pVm));
+	*ppRecv = 0;
+	if( pMethod == 0 ){
+		return "Cannot call constructor";
+	}
+	if( pRawThis && pMethod->iProtection == PH7_CLASS_PROT_PRIVATE
+	 && pRawThis->pClass != PH7_VmMethodScopeName(&(*pVm),pClass,pMethod) ){
+		SyBufferFormat(zBuf,nBuf,"Cannot call private %z::__construct()",&pClass->sDisp);
+		return zBuf;
+	}
+	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+		/* php runs an abstract constructor reached this way as an empty body; PHL has no
+		 * body to run, and refuses it as the call does. */
+		SyBufferFormat(zBuf,nBuf,"Cannot call abstract method %z::__construct()",&pClass->sDisp);
+		return zBuf;
+	}
+	*ppRecv = PH7_VmCallerThisFor(&(*pVm),pClass);
+	if( *ppRecv == 0 ){
+		SyBufferFormat(zBuf,nBuf,"Non-static method %z::%z() cannot be called statically",
+			&PH7_VmMethodScopeName(&(*pVm),pClass,pMethod)->sName,&pMethod->sFunc.sName);
+		return zBuf;
+	}
+	return 0;
+}
+/*
  * The same check for the ARRAY form, whose two members carry php's own shape messages
  * before anything is resolved: the target must be an object or a class-name string, the
  * method must be a string. php probes them in that order (`[5,5]` names the FIRST member,
@@ -3407,11 +3443,17 @@ case PH7_OP_LOAD_FCC:{
 			 * every refusal a call would raise is raised at CREATION, and a non-static
 			 * method named through a class binds the calling frame's own $this. */
 			ph7_class_instance *pRecvOut = 0;
-			zFccErr = VmFccMemberError(&(*pVm),pFccCls,
-				(const char *)SyBlobData(&pTarget->sBlob),SyBlobLength(&pTarget->sBlob),
-				SyStringData(&sName),SyStringLength(&sName),
-				(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE,
-				&pRecvOut,zFccMsg,sizeof(zFccMsg));
+			if( pInstr->iP2 == 2 && pFccCls ){
+				/* A LITERAL `X::__construct(...)`: the class's constructor, as for the call
+				 * (vm_ops_oo.c) -- not a method lookup. */
+				zFccErr = VmFccCtorError(&(*pVm),pFccCls,&pRecvOut,zFccMsg,sizeof(zFccMsg));
+			}else{
+				zFccErr = VmFccMemberError(&(*pVm),pFccCls,
+					(const char *)SyBlobData(&pTarget->sBlob),SyBlobLength(&pTarget->sBlob),
+					SyStringData(&sName),SyStringLength(&sName),
+					(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE,
+					&pRecvOut,zFccMsg,sizeof(zFccMsg));
+			}
 			if( pRecvOut ){
 				pFccRecv = pRecvOut; /* the receiver php binds into a `C::m(...)` callable */
 			}
@@ -3430,7 +3472,10 @@ case PH7_OP_LOAD_FCC:{
 		if( pFccCls == 0 ){
 			pCloObj = 0;
 		}else if( pFccRecv ){
-			pCloObj = VmCreateClosure(pVm, &sName, pFccRecv, &pFccRecv->pClass->sName);
+			/* The scope is the class the member was RESOLVED in, which for `parent::m(...)`
+			 * or `A::m(...)` is not the receiver's: php keeps that function, and the unwrap
+			 * reads this to call it rather than the receiver's override (VmClosureUnwrap). */
+			pCloObj = VmCreateClosure(pVm, &sName, pFccRecv, &pFccCls->sName);
 		}else{
 			pCloObj = VmCreateClosure(pVm, &sName, 0, &pFccCls->sName);
 		}
@@ -6452,6 +6497,7 @@ case PH7_OP_CALL: {
 	pVm->bDiscardCallback = 0;
 	pVm->bMagicDispatch = 0;
 	pVm->bClosureScreened = 0;
+	pVm->pClosureMethodCls = 0;
 	pVm->bCallbackWeak = 0;
 	pTos->iFlags &= ~MEMOBJ_AUX_MEMBERCALL;
 	pArg = &pTos[-nCallArgs];
@@ -6577,6 +6623,7 @@ case PH7_OP_CALL: {
 			 * can throw and jump out of this branch, and a latch left armed would stand the
 			 * visibility screen down for whatever call runs next. */
 			int bCbScreened;
+			ph7_class *pCbFromCls; /* ...and the class its method was resolved in, same lifetime */
 			{
 				/* php validates the SHAPE of an array callable first: it must hold exactly
 				 * two elements. PH7 handed any array to the dispatcher, which failed
@@ -6592,6 +6639,8 @@ case PH7_OP_CALL: {
 				 * `$this->priv(...)` php runs. */
 				bCbScreened = pVm->bClosureScreened;
 				pVm->bClosureScreened = 0; /* put back for the one dispatch that reads it */
+				pCbFromCls = pVm->pClosureMethodCls;
+				pVm->pClosureMethodCls = 0;
 				if( !bCbScreened && pCbMap && pCbMap->nEntry == 2 ){
 					/* Shape is right; now check it actually RESOLVES. The shared dispatcher
 					 * (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL result for
@@ -6672,6 +6721,7 @@ case PH7_OP_CALL: {
 			 * (pInstr->p3) so an FCC array callable invoked as `$c(name: …)` binds by name —
 			 * mirroring the __invoke-object branch below. */
 			pVm->bClosureScreened = bCbScreened; /* see the capture above */
+			pVm->pClosureMethodCls = pCbFromCls;
 			/* This call SITE is what decides the answer is dropped, and the
 			 * dispatch below builds a synthetic OP_CALL that has no site of its
 			 * own — hand the bit over on the latch, so a #[\NoDiscard] callee
@@ -6682,6 +6732,7 @@ case PH7_OP_CALL: {
 			/* Both latches are consumed by the method OP_CALL this dispatch builds;
 			 * clear them here for the paths that never reach one. */
 			pVm->bClosureScreened = 0;
+			pVm->pClosureMethodCls = 0;
 			pVm->bDiscardCallback = 0;
 			SySetReset(&aArg);
 			/* Pop given arguments */

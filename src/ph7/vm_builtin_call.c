@@ -1942,6 +1942,15 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 			pScope = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
 			if( pBound && (pBound->iFlags & MEMOBJ_OBJ) && pBound->x.pOther ){
 				pClass = ((ph7_class_instance *)pBound->x.pOther)->pClass;
+				if( (pThis->iFlags & VM_INSTANCE_FCC_METHOD) && pScope
+				 && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){
+					/* ...or the class its callee was resolved in (see VmClosureUnwrap). */
+					ph7_class *pFromCls = PH7_VmExtractClassFromValue(&(*pVm),pScope);
+					if( pFromCls && PH7_VmInstanceOf(pClass,pFromCls)
+					 && PH7_ClassExtractMethod(pFromCls,zName,nName) ){
+						pClass = pFromCls;
+					}
+				}
 			}else if( pScope && (pScope->iFlags & MEMOBJ_STRING)
 			 && SyBlobLength(&pScope->sBlob) > 0 ){
 				pClass = PH7_VmExtractClassFromValue(&(*pVm),pScope);
@@ -2476,6 +2485,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			 * dispatch that never reached one (unresolvable class, OOM) would leave it
 			 * standing and stand the visibility screen down for the NEXT call. */
 			pVm->bClosureScreened = 0;
+			pVm->pClosureMethodCls = 0;
 			PH7_MemObjRelease(&sCallable);
 			return rcClo;
 		}
@@ -2532,6 +2542,15 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		if( pValue->iFlags & MEMOBJ_OBJ ){
 			/* Point to the class instance */
 			pThis = (ph7_class_instance *)pValue->x.pOther;
+		}
+		if( pVm->pClosureMethodCls ){
+			/* The pair came out of a method closure resolved in a class of its own
+			 * (`parent::m(...)`, ReflectionMethod::getClosure): look the name up THERE,
+			 * and run it on the receiver, so the receiver's override is not what runs. */
+			if( pThis ){
+				pClass = pVm->pClosureMethodCls;
+			}
+			pVm->pClosureMethodCls = 0;
 		}
 		/* Try to extract the method (index 1) */
 		if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
