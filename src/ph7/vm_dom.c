@@ -225,6 +225,17 @@ static int DomThrowAlways(ph7_context *pCtx,int iCode)
 	}
 	return PH7_VmThrowExceptionCode(pCtx,"DOMException",(sxi32)iCode,"%s",DomErrText(iCode));
 }
+/* The same for a refusal that carries its OWN sentence rather than the level-2
+ * table's -- php 8.4's document-child rules, whose four messages are prose and
+ * not one of the eleven codes' names. Like DomThrowAlways it ignores
+ * strictErrorChecking, which the namespaced documents do not have. */
+static int DomThrowSentence(ph7_context *pCtx,int iCode,const char *zMsg)
+{
+	if( DomPropRefuse(pCtx,"DOMException",(sxi32)iCode,zMsg) ){
+		return PH7_OK;
+	}
+	return PH7_VmThrowExceptionCode(pCtx,"DOMException",(sxi32)iCode,"%s",zMsg);
+}
 static int DomThrowFor(ph7_context *pCtx,ph7_class_instance *pDoc,int iCode,int iAnswer)
 {
 	/* Only a DOCUMENT carries the flag: a constructed ownerless node's $__doc
@@ -1658,6 +1669,34 @@ static const char * DomGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
 	return ph7_type_name(pVal);
 }
 /*
+ * Which of the two node trees the receiver belongs to, as the base class every
+ * argument must be under.  php declares these methods TWICE -- once on the 2004
+ * classes taking `DOMNode|string`, once on the 8.4 ones taking `Dom\Node|string`
+ * -- and the two never mix: a DOMElement handed to `Dom\Element::before()` is
+ * refused by type, and a `Dom\Element` handed to `DOMElement::before()` is too.
+ * The receiver's own tree is the whole answer, so the family is read off $this
+ * and not off the document, which a fragment's receiver may not have.
+ */
+static ph7_class * DomModernNodeClass(ph7_context *pCtx)
+{
+	return PH7_VmExtractClass(pCtx->pVm,"Dom\\Node",sizeof("Dom\\Node")-1,FALSE,0);
+}
+static int DomRecvIsModern(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pModern = DomModernNodeClass(pCtx);
+	return pThis != 0 && pModern != 0 && PH7_VmInstanceOf(pThis->pClass,pModern);
+}
+static ph7_class * DomArgNodeBase(ph7_context *pCtx,const char **pzName)
+{
+	if( DomRecvIsModern(pCtx) ){
+		*pzName = "Dom\\Node";
+		return DomModernNodeClass(pCtx);
+	}
+	*pzName = "DOMNode";
+	return PH7_VmExtractClass(pCtx->pVm,"DOMNode",sizeof("DOMNode")-1,FALSE,0);
+}
+/*
  * php's variadic screen for the 8.0 insertion methods: every argument must be
  * a DOMNode or a STRING (nothing coerces -- an int is refused where an
  * ordinary `string $data` parameter would take it), the WHOLE list is checked
@@ -1669,7 +1708,8 @@ static const char * DomGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
  */
 static int DomNodesScreen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class *pNodeCls = PH7_VmExtractClass(pCtx->pVm,"DOMNode",sizeof("DOMNode")-1,FALSE,0);
+	const char *zBase = "DOMNode";
+	ph7_class *pNodeCls = DomArgNodeBase(pCtx,&zBase);
 	int i;
 	for( i = 0 ; i < nArg ; i++ ){
 		ph7_value *pVal = apArg[i];
@@ -1683,8 +1723,8 @@ static int DomNodesScreen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			continue;
 		}
 		PH7_VmThrowException(pCtx,"TypeError",
-			"%z(): Argument #%d must be of type DOMNode|string, %s given",
-			&pCtx->pFunc->sName,i+1,DomGivenName(pVal,zBuf,sizeof(zBuf)));
+			"%z(): Argument #%d must be of type %s|string, %s given",
+			&pCtx->pFunc->sName,i+1,zBase,DomGivenName(pVal,zBuf,sizeof(zBuf)));
 		return -1;
 	}
 	return 0;
@@ -1824,6 +1864,71 @@ static int DomInsertValidity(xmlNodePtr pParent,xmlNodePtr pSingle,SySet *pList)
 	return 0;
 }
 /*
+ * php 8.4's tree also enforces the WHATWG pre-insertion validity a DOCUMENT
+ * parent carries, which the 2004 one never has: `$doc->append($el)` on a
+ * document that already has a root is a Hierarchy refusal under `Dom\Document`
+ * and a silent second root under DOMDocument, and the two trees are measured
+ * side by side. Four prose sentences, none of them a level-2 code's name:
+ *
+ *   text (a CDATA section and a plain string argument included) -- never;
+ *   an element -- not when the document already has one, and not anywhere a
+ *     document type would end up FOLLOWING it;
+ *   a document type -- not when the document already has one, and not anywhere
+ *     an element already precedes.
+ *
+ * Every count is taken over the document's children AS THEY STAND, before
+ * replaceChildren drops them and before replaceWith unlinks its receiver, so
+ * replacing a document's only element with that same element is refused rather
+ * than being the no-op the tree shape would allow.
+ */
+static const char * DomDocChildRefusal(xmlNodePtr pDoc,xmlNodePtr pRef,
+	xmlNodePtr pSingle,SySet *pList)
+{
+	xmlNodePtr *apNode = (xmlNodePtr *)SySetBasePtr(pList);
+	sxu32 nNode = pSingle ? 1 : SySetUsed(pList);
+	int nElem = 0,nType = 0;
+	xmlNodePtr p;
+	sxu32 n;
+	if( pDoc->type != XML_DOCUMENT_NODE && pDoc->type != XML_HTML_DOCUMENT_NODE ){
+		return 0;
+	}
+	for( p = pDoc->children ; p ; p = p->next ){
+		if( p->type == XML_ELEMENT_NODE ){
+			nElem++;
+		}else if( p->type == XML_DTD_NODE ){
+			nType++;
+		}
+	}
+	for( n = 0 ; n < nNode ; ++n ){
+		xmlNodePtr pNode = pSingle ? pSingle : apNode[n];
+		if( pNode->type == XML_TEXT_NODE || pNode->type == XML_CDATA_SECTION_NODE ){
+			return "Cannot insert text as a child of a document";
+		}
+		if( pNode->type == XML_ELEMENT_NODE ){
+			if( nElem > 0 ){
+				return "Cannot have more than one element child in a document";
+			}
+			for( p = pRef ; p ; p = p->next ){
+				if( p->type == XML_DTD_NODE ){
+					return "Document types must be the first child in a document";
+				}
+			}
+			nElem++;
+		}else if( pNode->type == XML_DTD_NODE ){
+			if( nType > 0 ){
+				return "Cannot have more than one document type";
+			}
+			for( p = pDoc->children ; p && p != pRef ; p = p->next ){
+				if( p->type == XML_ELEMENT_NODE ){
+					return "Document types must be the first child in a document";
+				}
+			}
+			nType++;
+		}
+	}
+	return 0;
+}
+/*
  * The insertion itself (php's dom_insert_node_list_unchecked): everything in
  * pList goes before pRef -- at the end when NULL -- in order.  A list node
  * came through the conversion fragment, so its namespace reconcile is the
@@ -1885,6 +1990,17 @@ static int DomParentNodeInsert(ph7_context *pCtx,int nArg,ph7_value **apArg,int 
 	if( iErr ){
 		SySetRelease(&sList);
 		return DomThrowVoid(pCtx,iErr);
+	}
+	if( DomRecvIsModern(pCtx) ){
+		/* prepend lands before the first child; append and replaceChildren both
+		 * land at the end, the latter over an emptied document -- and the count
+		 * the rule asks for is still the one taken before the drop. */
+		const char *zMsg = DomDocChildRefusal(pParent,
+			iMode == DOM_PN_PREPEND ? pParent->children : 0,pSingle,&sList);
+		if( zMsg ){
+			SySetRelease(&sList);
+			return DomThrowSentence(pCtx,DOM_ERR_HIERARCHY,zMsg);
+		}
 	}
 	if( pOne ){
 		/* The single-node shortcut skipped the conversion, so it re-homes its
@@ -2019,6 +2135,19 @@ static int DomChildNodeOp(ph7_context *pCtx,int nArg,ph7_value **apArg,int iMode
 	if( iErr ){
 		SySetRelease(&sList);
 		return DomThrowVoid(pCtx,iErr);
+	}
+	if( DomRecvIsModern(pCtx) ){
+		/* before() lands where the viable previous sibling ends; after() and
+		 * replaceWith() both land at the viable next one -- replaceWith over a
+		 * receiver still linked, which is what refuses a root replaced by an
+		 * element. */
+		const char *zMsg = DomDocChildRefusal(pParent,
+			iMode == DOM_CN_BEFORE ? (pViable ? pViable->next : pParent->children)
+			                       : pViable,pSingle,&sList);
+		if( zMsg ){
+			SySetRelease(&sList);
+			return DomThrowSentence(pCtx,DOM_ERR_HIERARCHY,zMsg);
+		}
 	}
 	if( pOne ){
 		/* The single-node shortcut skipped the conversion's wrapper re-home:
@@ -10780,6 +10909,30 @@ static const char * const azDomXPathDebug[] = { "document", "registerNodeNamespa
 #define DOM_MCHILD_VPROPS \
 	DOM_VPROP("previousElementSibling","?Dom\\Element"), \
 	DOM_VPROP("nextElementSibling","?Dom\\Element")
+/* php declares the WHATWG mixins' methods on every class that carries them,
+ * not on the two interfaces -- `Dom\ChildNode` and `Dom\ParentNode` state
+ * them abstract and each implementing class restates them with a body. The
+ * bodies are the 2004 ones: `before()` on a `Dom\Element` and on a
+ * DOMElement do the same thing to the same libxml tree, and the only thing
+ * the family changes is the type an argument must be under, which the screen
+ * reads off the receiver. Both are variadic `Dom\Node|string`, so the
+ * DECLARED type is what refuses here -- the 2004 pair are untyped `...$nodes`
+ * screened inside the body, and php's namespaced pair are not. */
+#define DOM_MCHILD_METHODS \
+	{ "remove",      PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf }, \
+	{ "before",      PH7_MOD_PUBLIC, "Dom\\Node|string ...$nodes", "void", \
+	  vm_builtin_Dom_before }, \
+	{ "after",       PH7_MOD_PUBLIC, "Dom\\Node|string ...$nodes", "void", \
+	  vm_builtin_Dom_after }, \
+	{ "replaceWith", PH7_MOD_PUBLIC, "Dom\\Node|string ...$nodes", "void", \
+	  vm_builtin_Dom_replaceWith }
+#define DOM_MPARENT_METHODS \
+	{ "append",          PH7_MOD_PUBLIC, "Dom\\Node|string ...$nodes", "void", \
+	  vm_builtin_Dom_append }, \
+	{ "prepend",         PH7_MOD_PUBLIC, "Dom\\Node|string ...$nodes", "void", \
+	  vm_builtin_Dom_prepend }, \
+	{ "replaceChildren", PH7_MOD_PUBLIC, "Dom\\Node|string ...$nodes", "void", \
+	  vm_builtin_Dom_replaceChildren }
 
 /*
  * One row per class that HAS a property-handler table -- php's own
@@ -11965,6 +12118,24 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMCharacterData_deleteData },
 		{ "replaceData",   PH7_MOD_PUBLIC, "int $offset, int $count, string $data", "void",
 		  vm_builtin_DOMCharacterData_replaceData },
+		DOM_MCHILD_METHODS
+	};
+	/* `Dom\Element` carries BOTH mixins, child side first -- php's order, and
+	 * the reverse of the order its `implements` clause names them in. */
+	static const PH7_NativeMethodDef aMElemMethod[] = {
+		DOM_MCHILD_METHODS,
+		DOM_MPARENT_METHODS
+	};
+	static const PH7_NativeMethodDef aMDocTypeMethod[] = {
+		DOM_MCHILD_METHODS
+	};
+	static const PH7_NativeMethodDef aMFragMethod[] = {
+		DOM_MPARENT_METHODS
+	};
+	/* On the ABSTRACT document, not on its two final subclasses: php declares
+	 * them once and both documents inherit the one declaration. */
+	static const PH7_NativeMethodDef aMDocMethod[] = {
+		DOM_MPARENT_METHODS
 	};
 	/* php's return here is `Dom\Text` and not `Dom\Text|false`, which is what
 	 * makes the past-end offset an Index Size Error rather than a false. A
@@ -12163,7 +12334,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  0, 0, 0, 0, aMAttrProp, SX_ARRAYSIZE(aMAttrProp), 0, 0, DomPresent },
 		{ "Dom\\Element", "Dom\\Node", "Dom\\ChildNode,Dom\\ParentNode",
 		  PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMElemProp, SX_ARRAYSIZE(aMElemProp), 0, 0, DomPresent },
+		  aMElemMethod, SX_ARRAYSIZE(aMElemMethod), 0, 0,
+		  aMElemProp, SX_ARRAYSIZE(aMElemProp), 0, 0, DomPresent },
 		/* php's HTML element states nothing of its own; it is the class an HTML
 		 * document's elements wear, and the difference is the family. */
 		{ "Dom\\HTMLElement", "Dom\\Element", "Dom\\ChildNode,Dom\\ParentNode",
@@ -12180,9 +12352,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  0, 0, 0, 0, aMPiProp, SX_ARRAYSIZE(aMPiProp), 0, 0, DomPresent },
 		{ "Dom\\DocumentFragment", "Dom\\Node", "Dom\\ParentNode",
 		  PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMFragProp, SX_ARRAYSIZE(aMFragProp), 0, 0, DomPresent },
+		  aMFragMethod, SX_ARRAYSIZE(aMFragMethod), 0, 0,
+		  aMFragProp, SX_ARRAYSIZE(aMFragProp), 0, 0, DomPresent },
 		{ "Dom\\DocumentType", "Dom\\Node", "Dom\\ChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMDocTypeProp, SX_ARRAYSIZE(aMDocTypeProp), 0, 0, DomPresent },
+		  aMDocTypeMethod, SX_ARRAYSIZE(aMDocTypeMethod), 0, 0,
+		  aMDocTypeProp, SX_ARRAYSIZE(aMDocTypeProp), 0, 0, DomPresent },
 		{ "Dom\\Entity", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, aMEntityProp, SX_ARRAYSIZE(aMEntityProp), 0, 0, DomPresent },
 		{ "Dom\\EntityReference", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
@@ -12191,7 +12365,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  0, 0, 0, 0, aMNotationProp, SX_ARRAYSIZE(aMNotationProp), 0, 0, DomPresent },
 		{ "Dom\\Document", "Dom\\Node", "Dom\\ParentNode",
 		  PH7_CLASS_ABSTRACT|PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMDocProp, SX_ARRAYSIZE(aMDocProp), DomDocRelease, 0, DomPresent },
+		  aMDocMethod, SX_ARRAYSIZE(aMDocMethod), 0, 0,
+		  aMDocProp, SX_ARRAYSIZE(aMDocProp), DomDocRelease, 0, DomPresent },
 		{ "Dom\\XMLDocument", "Dom\\Document", "Dom\\ParentNode",
 		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMXmlDocMethod, SX_ARRAYSIZE(aMXmlDocMethod), 0, 0,
