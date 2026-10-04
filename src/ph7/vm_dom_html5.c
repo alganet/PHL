@@ -183,6 +183,7 @@ static sxu32 Html5EntLookup(const char *zName)
 #define HTML5_M_IN_FRAMESET  7
 #define HTML5_M_AFTER_FRAMESET 8
 #define HTML5_M_AFTER_AFTER_FRAMESET 9
+#define HTML5_M_IN_TEMPLATE  10
 
 /* Text-only element flavours the tree constructor arms the tokenizer with. */
 #define HTML5_TEXT_NONE    0
@@ -211,6 +212,8 @@ struct html5_parser {
 	SySet sOpen;                   /* xmlNodePtr, the open element stack      */
 	SySet sFmt;                    /* xmlNodePtr, the active formatting list;
 	                                * a 0 entry is the spec's MARKER          */
+	SySet sTmpl;                   /* int, the insertion mode each open
+	                                * `<template>` will be handed back        */
 	xmlNodePtr pHead;
 	xmlNodePtr pHtml;
 	/* the current token */
@@ -1076,6 +1079,15 @@ static int Html5TableOpen(html5_parser *p)
 	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
 	sxu32 n = SySetUsed(&p->sOpen);
 	while( n-- > 0 ){
+		/*
+		 * A template is a table context of its own: the spec answers a `<tr>`
+		 * or a `<td>` written inside one by pushing `in table body` or `in
+		 * row` whether or not a real table is anywhere, so the row survives
+		 * and is not dropped as a table-only tag written outside a table.
+		 */
+		if( Html5Eq((const char *)apStack[n]->name,"template") ){
+			return 1;
+		}
 		if( Html5Eq((const char *)apStack[n]->name,"table") ){
 			return 1;
 		}
@@ -1093,6 +1105,9 @@ static xmlNodePtr Html5FosterBefore(html5_parser *p)
 	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
 	sxu32 n = SySetUsed(&p->sOpen);
 	while( n-- > 0 ){
+		if( Html5Eq((const char *)apStack[n]->name,"template") ){
+			return 0;
+		}
 		if( Html5Eq((const char *)apStack[n]->name,"table") ){
 			return apStack[n]->parent ? apStack[n] : 0;
 		}
@@ -1599,6 +1614,50 @@ static xmlNodePtr Html5InsertStart(html5_parser *p)
 		p->iText = HTML5_TEXT_RAW;
 	}
 	return pEl;
+}
+/*
+ * A `<template>` is the one element whose content is parsed in a mode of its
+ * own.  Every mode that can meet the start tag hands it here: the element is
+ * inserted where the current mode would put it, the mode that was running is
+ * PARKED, and the parser switches to `in template` until the matching end tag
+ * hands the parked mode back.  Templates nest, so the parked modes are a
+ * stack rather than one slot -- without it a `<template>` written in the head
+ * fell through `in head`'s "anything else", which pops and re-runs the token
+ * in `after head`, minting a second `<body>` INSIDE the head to hold content
+ * that belongs in the template.
+ */
+static void Html5TemplateStart(html5_parser *p)
+{
+	int iSave = p->iMode;
+	Html5InsertStart(p);
+	Html5FmtMarker(p);
+	p->bFramesetOk = 0;
+	SySetPut(&p->sTmpl,(const void *)&iSave);
+	p->iMode = HTML5_M_IN_TEMPLATE;
+}
+/*
+ * The matching end tag, and the only way out short of the end of the document.
+ * An end tag with no template open is dropped where a bare `Html5EndTag` would
+ * have popped whatever else was open -- `</template>` written in a head with no
+ * template closed the HEAD and sent the rest of it into the body.
+ */
+static void Html5TemplateEnd(html5_parser *p)
+{
+	int *aMode;
+	sxu32 n;
+	if( Html5OpenDepth(p,"template") < 0 ){
+		return;
+	}
+	Html5PopTo(p,"template");
+	Html5FmtClearToMarker(p);
+	n = SySetUsed(&p->sTmpl);
+	aMode = (int *)SySetBasePtr(&p->sTmpl);
+	if( n > 0 ){
+		p->iMode = aMode[n - 1];
+		SySetPop(&p->sTmpl);
+	}else{
+		p->iMode = HTML5_M_IN_BODY;
+	}
 }
 static void Html5InsertText(html5_parser *p)
 {
@@ -2117,8 +2176,28 @@ static void Html5TableImplied(html5_parser *p,const char *zName)
 	int bRow = Html5Eq(zName,"tr");
 	int bGroup = Html5Eq(zName,"tbody") || Html5Eq(zName,"thead")
 		|| Html5Eq(zName,"tfoot");
-	if( Html5OpenDepth(p,"table") < 0 ){
-		return;
+	{
+		/*
+		 * The stack is cleared back to a `table`, a `template` or the root, so
+		 * a template written between the tag and the table under it IS the
+		 * context: the row belongs to the template, no row group is implied
+		 * for it, and the table below never sees it.
+		 */
+		xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+		sxu32 n = SySetUsed(&p->sOpen);
+		int bTable = 0;
+		while( n-- > 0 ){
+			if( Html5Eq((const char *)apStack[n]->name,"template") ){
+				return;
+			}
+			if( Html5Eq((const char *)apStack[n]->name,"table") ){
+				bTable = 1;
+				break;
+			}
+		}
+		if( !bTable ){
+			return;
+		}
 	}
 	if( Html5Eq(zName,"col") ){
 		/* A `<col>` needs a column group the way a `<td>` needs a row. */
@@ -2399,6 +2478,14 @@ static int Html5Dispatch(html5_parser *p)
 		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") ){
 			return 0;
 		}
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"template") ){
+			Html5TemplateStart(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"template") ){
+			Html5TemplateEnd(p);
+			return 0;
+		}
 		if( p->iTok == HTML5_TOK_START && HTML5_IN(azHtml5Head,zName) ){
 			Html5InsertStart(p);
 			return 0;
@@ -2451,6 +2538,14 @@ static int Html5Dispatch(html5_parser *p)
 		 * head, which is the one place the tree's shape is not the source's
 		 * order.
 		 */
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"template") ){
+			Html5TemplateStart(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"template") ){
+			Html5TemplateEnd(p);
+			return 0;
+		}
 		if( p->iTok == HTML5_TOK_START && HTML5_IN(azHtml5Head,zName)
 		 && p->pHead ){
 			Html5Push(p,p->pHead);
@@ -2462,6 +2557,32 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		Html5OpenBody(p,FALSE);
+		return 1;
+	case HTML5_M_IN_TEMPLATE:
+		/*
+		 * The content of a template is everything the body would take, so the
+		 * spec's rule for anything that is not a head element is to hand the
+		 * mode over to `in body` and reprocess there; `</template>` is then
+		 * reached from `in body` rather than from here.  The head elements
+		 * keep `in head`'s treatment, which is what arms `<title>` and
+		 * `<script>` for their raw text.
+		 */
+		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"template") ){
+			Html5TemplateStart(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"template") ){
+			Html5TemplateEnd(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START && HTML5_IN(azHtml5Head,zName) ){
+			Html5InsertStart(p);
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_DOCTYPE ){
+			return 0;
+		}
+		p->iMode = HTML5_M_IN_BODY;
 		return 1;
 	case HTML5_M_AFTER_BODY:
 		if( p->iTok == HTML5_TOK_COMMENT ){
@@ -2612,6 +2733,15 @@ static int Html5Dispatch(html5_parser *p)
 	case HTML5_TOK_START: {
 		xmlNodePtr pEl;
 		int bTableForm;
+		if( Html5Eq(zName,"template") ){
+			Html5TemplateStart(p);
+			break;
+		}
+		if( Html5Eq(zName,"body") && SySetUsed(&p->sTmpl) > 0 ){
+			/* A `<body>` start tag inside a template has no body to merge
+			 * its attributes into and does not open one; it is dropped. */
+			break;
+		}
 		if( Html5Eq(zName,"frameset") ){
 			/*
 			 * A frameset written where content already is REPLACES the body
@@ -2738,6 +2868,10 @@ static int Html5Dispatch(html5_parser *p)
 		break;
 	}
 	case HTML5_TOK_END:
+		if( Html5Eq(zName,"template") ){
+			Html5TemplateEnd(p);
+			break;
+		}
 		if( Html5Eq(zName,"body") ){
 			if( Html5OpenDepth(p,"body") >= 0 ){
 				Html5PopTo(p,"body");
@@ -2866,6 +3000,7 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	sParser.pErrUser = pErrUser;
 	SySetInit(&sParser.sOpen,pAlloc,sizeof(xmlNodePtr));
 	SySetInit(&sParser.sFmt,pAlloc,sizeof(xmlNodePtr));
+	SySetInit(&sParser.sTmpl,pAlloc,sizeof(int));
 	SySetInit(&sParser.sAttr,pAlloc,sizeof(html5_attr));
 	SyBlobInit(&sParser.sName,pAlloc);
 	SyBlobInit(&sParser.sBuf,pAlloc);
@@ -2921,6 +3056,7 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	SyBlobRelease(&sParser.sAttrBuf);
 	SySetRelease(&sParser.sOpen);
 	SySetRelease(&sParser.sFmt);
+	SySetRelease(&sParser.sTmpl);
 	SySetRelease(&sParser.sAttr);
 	return pDoc;
 }
