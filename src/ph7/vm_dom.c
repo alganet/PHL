@@ -2728,6 +2728,21 @@ static int DomNsIsSpelt(xmlNsPtr pNs);
 /* ...and, with them, where on the attribute map each spelt one sits: a copy
  * carries both over from the node it was made from. */
 static void DomNsCopyMarks(xmlNodePtr pSrc,xmlNodePtr pDst);
+/* The first declaration an element SPELLS, which is the one question every
+ * reader of the attribute surface asks before it walks anything. */
+static xmlNsPtr DomNsSpeltFirst(xmlNodePtr pElem)
+{
+	xmlNsPtr pNs;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( DomNsIsSpelt(pNs) ){
+			return pNs;
+		}
+	}
+	return 0;
+}
 /* The attribute list of an element (empty for anything else). */
 static xmlAttrPtr DomAttrList(xmlNodePtr pNode)
 {
@@ -2758,10 +2773,12 @@ DOM_METHOD(vm_builtin_DOMNode_hasAttributes)
 	SXUNUSED(apArg);
 	/* A namespace DECLARATION answers this question too, exactly as it already
 	 * answers getAttributeNames(): `<r xmlns:x="urn:x"/>` has attributes in php
-	 * and had none here. Only an element carries one. */
+	 * and had none here. Only an element carries one, and only a SPELT one --
+	 * a binding the engine minted is on no map, so it is no attribute here
+	 * either, and a bare `<svg>` answers false the way php's does. */
 	ph7_result_bool(pCtx,pNode != 0
 		&& (DomAttrCount(pNode) > 0
-		 || (pNode->type == XML_ELEMENT_NODE && pNode->nsDef != 0)));
+		 || (pNode->type == XML_ELEMENT_NODE && DomNsSpeltFirst(pNode) != 0)));
 	return PH7_OK;
 }
 DOM_METHOD(vm_builtin_DOMNode_getLineNo)
@@ -4412,6 +4429,19 @@ static void DomNsMarkMinted(xmlNsPtr pNs)
 		pNs->_private = (void *)&DomNsMintedTag;
 	}
 }
+/*
+ * The HTML parser mints bindings of its own for exactly the same reason, and
+ * php's parser does not spell them either: an `<html>` root is in the XHTML
+ * namespace, an `<svg>` subtree in SVG's and a `<math>` one in MathML's
+ * whether or not the source wrote an `xmlns=`, and an `xlink:href` inside a
+ * foreign element carries the xlink namespace with no `xmlns:xlink` anywhere.
+ * Those bindings answer `namespaceURI` and are minted onto the output by a
+ * serializer that needs them, and they are on no attribute map.
+ */
+PH7_PRIVATE void PH7_DomNsMarkUnspelt(xmlNsPtr pNs)
+{
+	DomNsMarkMinted(pNs);
+}
 /* Is this a declaration the document spells, and so one php's map lists? */
 static int DomNsIsSpelt(xmlNsPtr pNs)
 {
@@ -4731,6 +4761,13 @@ static void DomNsDeclare(xmlNodePtr pElem,const xmlChar *zPrefix,const char *zHr
 				xmlFree((xmlChar *)pNs->href);
 			}
 			pNs->href = zNew;
+			/* Writing one SPELLS it, even where the binding rebound is one the
+			 * engine had minted -- the HTML parser's implied XHTML or SVG
+			 * binding is the case, and after the write php lists it on the
+			 * attribute map like any other. */
+			if( !DomNsIsSpelt(pNs) ){
+				pNs->_private = 0;
+			}
 			return;   /* a REBIND keeps the position the declaration already had */
 		}
 	}
@@ -4758,7 +4795,15 @@ static void DomNsDeclare(xmlNodePtr pElem,const xmlChar *zPrefix,const char *zHr
  */
 #define DOM_XMLNS_NAME "xmlns"
 
-/* The declaration this element makes for zPrefix (NULL for the DEFAULT one). */
+/*
+ * The declaration this element makes for zPrefix (NULL for the DEFAULT one),
+ * and only one the document SPELLS -- every caller below is a door onto the
+ * attribute surface, and a binding the engine minted is on no attribute
+ * surface.  It is the HTML parser that makes the difference visible: its tree
+ * is namespaced whatever the source wrote, so a bare `<html>` carries a
+ * binding of the XHTML namespace and a bare `<svg>` one of SVG's, and php
+ * answers `hasAttribute('xmlns')` false on both.
+ */
 static xmlNsPtr DomNsDeclOf(xmlNodePtr pElem,const xmlChar *zPrefix)
 {
 	xmlNsPtr pNs;
@@ -4766,6 +4811,9 @@ static xmlNsPtr DomNsDeclOf(xmlNodePtr pElem,const xmlChar *zPrefix)
 		return 0;
 	}
 	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( !DomNsIsSpelt(pNs) ){
+			continue;
+		}
 		if( zPrefix == 0 ? pNs->prefix == 0
 		                 : (pNs->prefix != 0 && xmlStrEqual(pNs->prefix,zPrefix)) ){
 			return pNs;
@@ -5842,10 +5890,13 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNames)
 		return PH7_ContextMemoryError(pCtx);
 	}
 	/* php lists the element's own DECLARATIONS first, in the order it makes
-	 * them, and the attributes after. */
-	for( pNs = pNd && ((xmlNodePtr)pNd->pNode)->type == XML_ELEMENT_NODE
-			? ((xmlNodePtr)pNd->pNode)->nsDef : 0 ; pNs ; pNs = pNs->next ){
+	 * them, and the attributes after -- the ones the document SPELLS, so a
+	 * tree the HTML parser namespaced on its own lists nothing here. */
+	for( pNs = pNd ? DomNsSpeltFirst((xmlNodePtr)pNd->pNode) : 0 ; pNs ; pNs = pNs->next ){
 		SyBlob sName;
+		if( !DomNsIsSpelt(pNs) ){
+			continue;
+		}
 		SyBlobInit(&sName,&pCtx->pVm->sAllocator);
 		SyBlobAppend(&sName,(const void *)DOM_XMLNS_NAME,SyStrlen(DOM_XMLNS_NAME));
 		if( pNs->prefix ){

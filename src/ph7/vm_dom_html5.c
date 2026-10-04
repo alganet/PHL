@@ -6,6 +6,10 @@
 #include "ph7int.h"
 #include <libxml/tree.h>
 
+/* Defined beside the DOM's own namespace bookkeeping: a binding the ENGINE
+ * minted to name something, which no attribute map lists. */
+PH7_PRIVATE void PH7_DomNsMarkUnspelt(xmlNsPtr pNs);
+
 /*
  * The named character references, as php's own `get_html_translation_table()`
  * spells them for the HTML 4.01 document type: 253 names, sorted so a lookup
@@ -1349,6 +1353,11 @@ static xmlNsPtr Html5NsGet(html5_parser *p,xmlNodePtr pEl,const char *zHref,
 	xmlNsPtr pNs = xmlSearchNsByHref(p->pDoc,pEl,(const xmlChar *)zHref);
 	if( pNs == 0 ){
 		pNs = xmlNewNs(pEl,(const xmlChar *)zHref,(const xmlChar *)zPrefix);
+		/* The source did not write this one -- the tree construction rules
+		 * did, because an element or an attribute has to be in SOME namespace.
+		 * php spells such a binding nowhere: it is on no attribute map, and a
+		 * serializer that needs a declaration mints its own. */
+		PH7_DomNsMarkUnspelt(pNs);
 	}
 	return pNs;
 }
@@ -1482,6 +1491,7 @@ static xmlNodePtr Html5NewElemNs(html5_parser *p,const char *zName,const char *z
 		 */
 		if( pParent == (xmlNodePtr)p->pDoc || p->pNs == 0 ){
 			p->pNs = xmlNewNs(pEl,(const xmlChar *)HTML5_NS,0);
+			PH7_DomNsMarkUnspelt(p->pNs);
 		}
 		xmlSetNs(pEl,p->pNs);
 	}
