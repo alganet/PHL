@@ -699,14 +699,24 @@ static int DomNodeIsFreeable(xmlNodePtr pNode)
 /* A namespace DECLARATION on this element that PHP still holds a handle onto.
  * xmlFreeNode frees the xmlNs under it, and the handle is shared by every
  * DOMNameSpaceNode built from it, so such a node is kept instead. */
-static int DomNodeNsHeld(ph7_vm *pVm,ph7_hashmap *pCache,xmlNodePtr pNode)
+static xmlAttrPtr DomNsAttrFind(phl_xmldoc *pShell,xmlNsPtr pNs);
+static int DomNodeNsHeld(ph7_vm *pVm,ph7_hashmap *pCache,phl_xmldoc *pShell,
+	xmlNodePtr pNode)
 {
 	xmlNsPtr pNs;
 	if( pNode->type != XML_ELEMENT_NODE ){
 		return 0;
 	}
 	for( pNs = pNode->nsDef ; pNs ; pNs = pNs->next ){
+		xmlAttrPtr pStand;
 		if( DomCacheHit(&(*pVm),pCache,pNs) ){
+			return 1;
+		}
+		/* php 8.4's tree hands a declaration out as a stand-in ATTRIBUTE
+		 * instead, whose held marker is the attribute's own: freeing the
+		 * element would free the xmlNs the stand-in points at. */
+		pStand = DomNsAttrFind(pShell,pNs);
+		if( pStand && pStand->_private ){
 			return 1;
 		}
 	}
@@ -771,7 +781,7 @@ static void DomFreeDetached(ph7_vm *pVm,ph7_hashmap *pCache,phl_xmldoc *pShell,
 		 * parking one on the orphan set would free it twice. */
 		return;
 	}
-	if( DomNodeNsHeld(&(*pVm),pCache,pNode) ){
+	if( DomNodeNsHeld(&(*pVm),pCache,pShell,pNode) ){
 		DomOrphanAdd(pShell,pNode);
 		return;
 	}
@@ -2244,6 +2254,10 @@ DOM_METHOD(vm_builtin_DOMNode_hasChildNodes)
 	ph7_result_bool(pCtx,pNd && DomNodeChildFirst((xmlNodePtr)pNd->pNode) != 0);
 	return PH7_OK;
 }
+/* Defined with the namespace-parking machinery below: which declarations the
+ * engine MINTED to bind a name, rather than the document spelling one. */
+static void DomNsMarkMinted(xmlNsPtr pNs);
+static int DomNsIsSpelt(xmlNsPtr pNs);
 /* The attribute list of an element (empty for anything else). */
 static xmlAttrPtr DomAttrList(xmlNodePtr pNode)
 {
@@ -3019,6 +3033,7 @@ DOM_METHOD(vm_builtin_DOMElement_construct)
 		 * declares the binding. */
 		xmlNsPtr pNs = xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
 		if( pNs ){
+			DomNsMarkMinted(pNs);
 			xmlSetNs(pNode,pNs);
 		}
 	}
@@ -3427,6 +3442,7 @@ static xmlNsPtr DomNsGenerateEx(xmlNodePtr pAnchor,const char *zUri,const xmlCha
 		}
 		pNs = xmlNewNs(pAnchor,(const xmlChar *)zUri,(const xmlChar *)zGen);
 		if( pNs ){
+			DomNsMarkMinted(pNs);
 			return pNs;
 		}
 	}
@@ -3482,6 +3498,7 @@ static xmlNsPtr DomNsResolve(xmlNodePtr pAnchor,const char *zUri,const xmlChar *
 		}
 		pNs = xmlNewNs(pAnchor,(const xmlChar *)zUri,zPrefix);
 		if( pNs ){
+			DomNsMarkMinted(pNs);
 			return pNs;
 		}
 	}
@@ -3510,7 +3527,9 @@ static xmlNsPtr DomNsForCreate(xmlNodePtr pNode,const char *zUri,const xmlChar *
 	   && !xmlStrEqual(zPrefix,(const xmlChar *)"xmlns"))) ){
 		return 0;
 	}
-	return xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
+	pNs = xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
+	DomNsMarkMinted(pNs);
+	return pNs;
 }
 /*
  * A declaration that lands on pElem takes the SPELLING away from every node
@@ -3552,6 +3571,9 @@ static void DomNsRespell(xmlNodePtr pNode,int bAttr)
 		/* Its own prefix first -- a declaration that was REMOVED leaves that
 		 * prefix free again, and php re-declares it unchanged there. */
 		pAlt = xmlNewNs(pSite,pNs->href,pNs->prefix);
+		if( pAlt && !DomNsIsSpelt(pNs) ){
+			DomNsMarkMinted(pAlt);   /* a re-declaration of an invented binding */
+		}
 	}
 	if( pAlt == 0 ){
 		pAlt = DomNsGenerate(pSite,(const char *)pNs->href,pNs->prefix);
@@ -3560,10 +3582,15 @@ static void DomNsRespell(xmlNodePtr pNode,int bAttr)
 		pNode->ns = pAlt;
 	}
 }
+/* How many declarations this element makes. Only an element makes one, and
+ * php 8.4's attribute map counts them ahead of the attributes. */
 static int DomNsDefCount(xmlNodePtr pElem)
 {
 	xmlNsPtr pNs;
 	int n = 0;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
 	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
 		n++;
 	}
@@ -3790,7 +3817,9 @@ static xmlNsPtr DomNsForCreateModern(xmlNodePtr pNode,const char *zUri,
 		return 0;
 	}
 	if( zPrefix != 0 ){
-		return xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
+		pNs = xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
+		DomNsMarkMinted(pNs);
+		return pNs;
 	}
 	/* Unowned: xmlNewNs() with no element allocates without linking, and the
 	 * park list owns it from there. */
@@ -3813,6 +3842,31 @@ static xmlNsPtr DomNsForCreateModern(xmlNodePtr pNode,const char *zUri,
  * the minted ones are marked, in the one field an xmlNs has spare.
  */
 static const int DomNsFactoryTag = 0;
+/*
+ * ...and, beside it, which declarations the engine MINTED to bind a name
+ * rather than being asked for by a program.
+ *
+ * php 8.4 answers a declaration from the attribute map, but only one a
+ * document actually SPELLS: a parsed `xmlns:p`, or one written through the
+ * `xmlns` attribute door.  The binding `createElementNS('urn:q','q:c')` or
+ * `setAttributeNS('urn:p','p:z',..)` has to invent to name what it made is
+ * not in the map, though it serializes exactly like one.  Being on an
+ * element's nsDef does not tell the two apart, so the invented ones are
+ * marked -- with their own tag, since a parked factory binding is a narrower
+ * thing the reconciliation asks about by itself.
+ */
+static const int DomNsMintedTag = 0;
+static void DomNsMarkMinted(xmlNsPtr pNs)
+{
+	if( pNs && pNs->_private == 0 ){
+		pNs->_private = (void *)&DomNsMintedTag;
+	}
+}
+/* Is this a declaration the document spells, and so one php's map lists? */
+static int DomNsIsSpelt(xmlNsPtr pNs)
+{
+	return pNs != 0 && pNs->_private == 0;
+}
 static void DomNsMarkFactory(xmlNsPtr pNs)
 {
 	if( pNs ){
@@ -4065,6 +4119,150 @@ static xmlNsPtr DomNsDeclByName(xmlNodePtr pElem,const char *zName)
 		return 0;
 	}
 	return DomNsDeclOf(pElem,(const xmlChar *)(zName+n+1));
+}
+/*
+ * php 8.4's tree answers a namespace DECLARATION through the whole attribute
+ * map: `attributes` lists `xmlns:p` as a `Dom\Attr` of its own, `length` counts
+ * it, and every by-name door on the map finds it.  The 2004 tree lists none --
+ * it answers a declaration through DOMNameSpaceNode and nowhere else -- so this
+ * is the modern branch alone, and the two shapes never meet on one document.
+ *
+ * What php hands back is ATTRIBUTE-shaped and not DOMNameSpaceNode's: nodeType
+ * 2, `namespaceURI` the xmlns URI rather than the href being bound, `prefix`
+ * `xmlns` (null for the default declaration), `localName` the prefix being
+ * declared, and a `Dom\Text` child holding the URI.  libxml keeps a declaration
+ * in an xmlNs, which is not a node at all -- its `_private` sits where a node's
+ * `children` does, so it can never be cast to one -- so a STAND-IN attribute is
+ * built per declaration and parked on the shell, the way the notation stand-ins
+ * are.  It names the element as its parent but is NOT spliced into the property
+ * chain, so nothing that walks or serializes an element ever meets one, while
+ * every reader a wrapper asks -- name, prefix, namespaceURI, value, firstChild,
+ * ownerElement, parentNode -- reads a real attribute and needs no branch of its
+ * own.  One per declaration, so `$m->item(0) === $m->item(0)` holds here too.
+ *
+ * The declaration stays the live one, so the stand-in tracks it: an href that
+ * changed underneath is copied onto the text child IN PLACE rather than by
+ * rebuilding the child, which would drop a wrapper someone still holds.
+ */
+static xmlAttrPtr DomNsAttrFind(phl_xmldoc *pShell,xmlNsPtr pNs)
+{
+	xmlAttrPtr *apHave = (xmlAttrPtr *)SySetBasePtr(&pShell->aNsAttrs);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pShell->aNsAttrs) ; ++n ){
+		if( apHave[n]->psvi == (void *)pNs ){
+			return apHave[n];
+		}
+	}
+	return 0;
+}
+static xmlAttrPtr DomNsAttr(phl_xmldoc *pShell,xmlNodePtr pElem,xmlNsPtr pNs)
+{
+	xmlAttrPtr pAttr;
+	xmlNodePtr pTxt;
+	xmlNsPtr pOwn;
+	const xmlChar *zHref;
+	if( pShell == 0 || pElem == 0 || pNs == 0 ){
+		return 0;
+	}
+	zHref = pNs->href ? pNs->href : (const xmlChar *)"";
+	pAttr = DomNsAttrFind(pShell,pNs);
+	if( pAttr ){
+		/* Live: the URI may have been rewritten under it, and the element may
+		 * be a different one after an adopt. */
+		if( pAttr->children && !xmlStrEqual(pAttr->children->content,zHref) ){
+			xmlNodeSetContent(pAttr->children,zHref);
+		}
+		pAttr->parent = pElem;
+		pAttr->doc = pElem->doc;
+		return pAttr;
+	}
+	pAttr = (xmlAttrPtr)xmlMalloc(sizeof(xmlAttr));
+	pOwn = (xmlNsPtr)xmlMalloc(sizeof(xmlNs));
+	if( pAttr == 0 || pOwn == 0 ){
+		if( pAttr ){
+			xmlFree(pAttr);
+		}
+		if( pOwn ){
+			xmlFree(pOwn);
+		}
+		return 0;
+	}
+	SyZero(pAttr,sizeof(xmlAttr));
+	SyZero(pOwn,sizeof(xmlNs));
+	pOwn->type = XML_NAMESPACE_DECL;
+	pOwn->href = xmlStrdup((const xmlChar *)DOM_XMLNS_NS_URI);
+	/* php spells the DEFAULT declaration `xmlns` with NO prefix and a local
+	 * name of `xmlns`; a prefixed one is `xmlns:p`, prefix `xmlns`, local `p`. */
+	pOwn->prefix = pNs->prefix ? xmlStrdup((const xmlChar *)DOM_XMLNS_NAME) : 0;
+	pAttr->type = XML_ATTRIBUTE_NODE;
+	pAttr->name = xmlStrdup(pNs->prefix ? pNs->prefix : (const xmlChar *)DOM_XMLNS_NAME);
+	pAttr->ns = pOwn;
+	pAttr->doc = pElem->doc;
+	pAttr->parent = pElem;
+	pAttr->psvi = (void *)pNs;          /* the declaration this stands for */
+	pTxt = xmlNewDocText(pElem->doc,zHref);
+	if( pTxt ){
+		pTxt->parent = (xmlNodePtr)pAttr;
+		pAttr->children = pAttr->last = pTxt;
+	}
+	if( SySetPut(&pShell->aNsAttrs,(const void *)&pAttr) != SXRET_OK ){
+		if( pTxt ){
+			xmlFreeNode(pTxt);
+		}
+		xmlFreeNs(pOwn);
+		if( pAttr->name ){
+			xmlFree((xmlChar *)pAttr->name);
+		}
+		xmlFree(pAttr);
+		return 0;
+	}
+	return pAttr;
+}
+/* How many of them the attribute map lists, and the one at that position, in
+ * the order the element makes them: only the declarations the document SPELLS,
+ * never a binding the engine minted to name something it was asked to make. */
+static int DomNsMapCount(xmlNodePtr pElem)
+{
+	xmlNsPtr pNs;
+	int iCount = 0;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( DomNsIsSpelt(pNs) ){
+			iCount++;
+		}
+	}
+	return iCount;
+}
+static xmlNsPtr DomNsMapAt(xmlNodePtr pElem,int iWant)
+{
+	xmlNsPtr pNs;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( !DomNsIsSpelt(pNs) ){
+			continue;
+		}
+		if( iWant-- == 0 ){
+			return pNs;
+		}
+	}
+	return 0;
+}
+/* ...and the same screen on the by-name doors, which read the whole chain. */
+static xmlNsPtr DomNsMapSpelt(xmlNsPtr pNs)
+{
+	return DomNsIsSpelt(pNs) ? pNs : 0;
+}
+/* The declaration a modern by-(namespace, local name) lookup names: the local
+ * name IS the prefix being declared, and `xmlns` names the default one. */
+static xmlNsPtr DomNsDeclByLocal(xmlNodePtr pElem,const char *zLocal)
+{
+	return SyStrncmp(zLocal,DOM_XMLNS_NAME,sizeof(DOM_XMLNS_NAME)) == 0
+		? DomNsDeclOf(pElem,0)
+		: DomNsDeclOf(pElem,(const xmlChar *)zLocal);
 }
 /*
  * Dropping one: the declaration leaves the element's chain, but the xmlNs
@@ -4598,7 +4796,11 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNode)
 	xmlAttrPtr pAttr = DomAttrByName(pElem,zName,DomThisModern(pCtx));
 	xmlNsPtr pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
 	if( pDecl ){
-		return DomResultNsNode(pCtx,pNd,pDecl,pElem);
+		/* php 8.4 answers a declaration as an ATTRIBUTE, the same object its
+		 * attribute map lists; the 2004 tree answers a DOMNameSpaceNode. */
+		return DomThisModern(pCtx)
+			? DomResultNodeOf(pCtx,pNd,(xmlNodePtr)DomNsAttr(pNd->pShell,pElem,pDecl))
+			: DomResultNsNode(pCtx,pNd,pDecl,pElem);
 	}
 	if( pAttr == 0 ){
 		/* `DOMAttr|false` in 2004, `?Dom\Attr` in php 8.4 -- the NS spelling
@@ -4623,12 +4825,18 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNodeNS)
 		/* Here the LOCAL name is the prefix being declared -- and the DEFAULT
 		 * declaration, whose local name would be `xmlns`, is not reachable this
 		 * way at all. */
-		xmlNsPtr pDecl = DomNsDeclOf(pElem,(const xmlChar *)zLocal);
+		int bModern = DomThisModern(pCtx);
+		/* ...except in php 8.4's tree, where `xmlns` names the default
+		 * declaration and the answer is the map's attribute. */
+		xmlNsPtr pDecl = bModern ? DomNsDeclByLocal(pElem,zLocal)
+		                         : DomNsDeclOf(pElem,(const xmlChar *)zLocal);
 		if( pDecl == 0 ){
 			ph7_result_null(pCtx);
 			return PH7_OK;
 		}
-		return DomResultNsNode(pCtx,pNd,pDecl,pElem);
+		return bModern
+			? DomResultNodeOf(pCtx,pNd,(xmlNodePtr)DomNsAttr(pNd->pShell,pElem,pDecl))
+			: DomResultNsNode(pCtx,pNd,pDecl,pElem);
 	}
 	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)DomAttrByNs(pElem,zUri,zLocal));
 }
@@ -7502,6 +7710,9 @@ static int DomListProp(ph7_context *pCtx,const char *zName)
  */
 /* Is this map one of the DTD DECLARATION tables rather than an element's
  * attribute list? The two are walked with entirely different machinery. */
+/* Defined with the by-name lookup below: a collection has no receiver to read
+ * the family off, so it reads the document it was made against. */
+static int DomMapModern(ph7_class_instance *pMap);
 static int DomMapIsTable(ph7_class_instance *pMap)
 {
 	sxi64 iKind = pMap ? PH7_NativeAttrInt(pMap,DNL_KIND) : (sxi64)DNL_CHILD;
@@ -7627,9 +7838,18 @@ static ph7_class_instance * DomMapItem(ph7_vm *pVm,ph7_class_instance *pMap,int 
 	if( pOwner == 0 || iIndex < 0 ){
 		return 0;
 	}
-	pNode = DomMapIsTable(pMap)
-		? DomTablePayload(pMap,pOwner,DomHashAt(DomMapHash(pMap,pOwner),iIndex))
-		: (xmlNodePtr)DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex);
+	if( DomMapIsTable(pMap) ){
+		pNode = DomTablePayload(pMap,pOwner,DomHashAt(DomMapHash(pMap,pOwner),iIndex));
+	}else{
+		/* php 8.4's map answers the element's DECLARATIONS first, in the order
+		 * it makes them, then its attributes; the 2004 map lists no
+		 * declaration at all. */
+		int nDecl = DomMapModern(pMap) ? DomNsMapCount((xmlNodePtr)pOwner->pNode) : 0;
+		pNode = iIndex < nDecl
+			? (xmlNodePtr)DomNsAttr(pOwner->pShell,(xmlNodePtr)pOwner->pNode,
+				DomNsMapAt((xmlNodePtr)pOwner->pNode,iIndex))
+			: (xmlNodePtr)DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex - nDecl);
+	}
 	return DomWrap(&(*pVm),PH7_NativeAttrObj(pMap,DOM_DOC),pOwner->pShell,pNode);
 }
 static int DomMapCount(ph7_class_instance *pMap)
@@ -7639,7 +7859,11 @@ static int DomMapCount(ph7_class_instance *pMap)
 		xmlHashTablePtr pTab = DomMapHash(pMap,pOwner);
 		return pTab ? xmlHashSize(pTab) : 0;
 	}
-	return pOwner ? DomAttrCount((xmlNodePtr)pOwner->pNode) : 0;
+	if( pOwner == 0 ){
+		return 0;
+	}
+	return DomAttrCount((xmlNodePtr)pOwner->pNode)
+		+ (DomMapModern(pMap) ? DomNsMapCount((xmlNodePtr)pOwner->pNode) : 0);
 }
 DOM_METHOD(vm_builtin_DOMNamedNodeMap_count)
 {
@@ -7682,12 +7906,19 @@ static ph7_class_instance * DomMapNamed(ph7_vm *pVm,ph7_class_instance *pMap,con
 	if( pOwner == 0 ){
 		return 0;
 	}
-	pHit = DomMapIsTable(pMap)
-		? DomTablePayload(pMap,pOwner,
-			xmlHashLookup(DomMapHash(pMap,pOwner),(const xmlChar *)zName))
-		: DomMapModern(pMap)
-			? (xmlNodePtr)DomAttrBySpec((xmlNodePtr)pOwner->pNode,zName)
-			: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
+	if( DomMapIsTable(pMap) ){
+		pHit = DomTablePayload(pMap,pOwner,
+			xmlHashLookup(DomMapHash(pMap,pOwner),(const xmlChar *)zName));
+	}else if( DomMapModern(pMap) ){
+		/* A declaration is in this map under the name php spells it with, and
+		 * ahead of the attributes -- so it is asked first. */
+		xmlNsPtr pDecl = DomNsMapSpelt(DomNsDeclByName((xmlNodePtr)pOwner->pNode,zName));
+		pHit = pDecl
+			? (xmlNodePtr)DomNsAttr(pOwner->pShell,(xmlNodePtr)pOwner->pNode,pDecl)
+			: (xmlNodePtr)DomAttrBySpec((xmlNodePtr)pOwner->pNode,zName);
+	}else{
+		pHit = (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
+	}
 	if( pHit == 0 ){
 		return 0;
 	}
@@ -7714,14 +7945,33 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
 	 * A DECLARATION table has no namespaces at all and php reads right past
 	 * the argument there: the URI decides nothing, the name decides
 	 * everything. */
-	xmlNodePtr pHit = pOwner == 0 ? 0
-		: DomMapIsTable(pThis)
-			? DomTablePayload(pThis,pOwner,
-				xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zLocal))
-		: zUri ? (xmlNodePtr)DomAttrByNs((xmlNodePtr)pOwner->pNode,zUri,zLocal)
-		       : DomMapModern(pThis)
-				? (xmlNodePtr)DomAttrBySpec((xmlNodePtr)pOwner->pNode,zLocal)
-				: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
+	xmlNodePtr pHit;
+	if( pOwner == 0 ){
+		pHit = 0;
+	}else if( DomMapIsTable(pThis) ){
+		pHit = DomTablePayload(pThis,pOwner,
+			xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zLocal));
+	}else if( zUri && DomMapModern(pThis) && DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI) ){
+		/* In php 8.4's map the xmlns namespace names the DECLARATIONS, and the
+		 * local name is the prefix each declares -- `xmlns` naming the default
+		 * one, which the element's own getAttributeNodeNS cannot reach in the
+		 * 2004 tree. */
+		xmlNsPtr pDecl = DomNsMapSpelt(DomNsDeclByLocal((xmlNodePtr)pOwner->pNode,zLocal));
+		pHit = pDecl
+			? (xmlNodePtr)DomNsAttr(pOwner->pShell,(xmlNodePtr)pOwner->pNode,pDecl)
+			: 0;
+	}else if( zUri ){
+		pHit = (xmlNodePtr)DomAttrByNs((xmlNodePtr)pOwner->pNode,zUri,zLocal);
+	}else if( DomMapModern(pThis) ){
+		/* The map's ANY, which reads the whole QUALIFIED name -- so a
+		 * declaration answers here under `xmlns:p` as it does by name. */
+		xmlNsPtr pDecl = DomNsMapSpelt(DomNsDeclByName((xmlNodePtr)pOwner->pNode,zLocal));
+		pHit = pDecl
+			? (xmlNodePtr)DomNsAttr(pOwner->pShell,(xmlNodePtr)pOwner->pNode,pDecl)
+			: (xmlNodePtr)DomAttrBySpec((xmlNodePtr)pOwner->pNode,zLocal);
+	}else{
+		pHit = (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
+	}
 	if( pHit == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -10718,11 +10968,23 @@ static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNod
  * instead, so the same two strings store what they say. Every other node kind
  * takes its content literally either way.
  */
+static xmlAttrPtr DomNsAttrFind(phl_xmldoc *pShell,xmlNsPtr pNs);
 static void DomSetContent(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode,
 	const char *zText,int bParseEntities)
 {
 	int bTree = pNode->type == XML_ELEMENT_NODE || pNode->type == XML_ATTRIBUTE_NODE;
 	xmlNodePtr pText;
+	/* A write to the stand-in attribute php 8.4's map answers a namespace
+	 * DECLARATION through goes to the DECLARATION: the stand-in is a view of
+	 * the xmlNs and nothing else reads its text child. */
+	if( pNode->type == XML_ATTRIBUTE_NODE && ((xmlAttrPtr)pNode)->psvi != 0
+	 && DomNsAttrFind(pShell,(xmlNsPtr)((xmlAttrPtr)pNode)->psvi) == (xmlAttrPtr)pNode ){
+		xmlNsPtr pNs = (xmlNsPtr)((xmlAttrPtr)pNode)->psvi;
+		if( pNs->href ){
+			xmlFree((xmlChar *)pNs->href);
+		}
+		pNs->href = xmlStrdup((const xmlChar *)zText);
+	}
 	DomDropChildren(pCtx,pShell,pNode);
 	if( !bTree || (bParseEntities && zText[0]) ){
 		/* The parsing write is the one that can FAIL -- an unterminated entity

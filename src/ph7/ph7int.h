@@ -6062,6 +6062,14 @@ struct phl_xmldoc {
 	 * they need their own free (vm_libxml.c), since xmlFreeNode would read
 	 * an xmlEntity's length/etype pair as a node's property list. */
 	SySet aNotations;   /* synthesized XML_NOTATION_NODE xmlNodePtr's */
+	/* The stand-in ATTRIBUTES php 8.4's tree answers a namespace DECLARATION
+	 * through: that tree lists `xmlns:p` in the attribute map as an attribute
+	 * of its own, and libxml keeps a declaration in an xmlNs, which is not a
+	 * node.  One stand-in is built per declaration and kept here so the
+	 * wrapper identity every other node has holds for these too; each owns
+	 * the xmlns-namespace handle it points at, and neither is linked into the
+	 * element, so both need their own free (vm_libxml.c). */
+	SySet aNsAttrs;     /* synthesized XML_ATTRIBUTE_NODE xmlAttrPtr's */
 	ph7_vm *pVm;        /* Owning VM (error routing from libxml callbacks) */
 	void *pDocObj;      /* The DOMDocument wrapper for this tree, BORROWED, or 0.
 	                     * ext/dom keys its per-node wrapper cache on the document

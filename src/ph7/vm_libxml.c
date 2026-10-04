@@ -52,6 +52,7 @@ static void LibxmlFreeDoc(phl_xmldoc *pDoc)
 {
 	xmlNodePtr *apOrphan = (xmlNodePtr *)SySetBasePtr(&pDoc->aOrphans);
 	xmlEntityPtr *apNot;
+	xmlAttrPtr *apNsAttr;
 	sxu32 n;
 	for( n = 0 ; n < SySetUsed(&pDoc->aOrphans) ; ++n ){
 		xmlUnlinkNode(apOrphan[n]);
@@ -75,6 +76,22 @@ static void LibxmlFreeDoc(phl_xmldoc *pDoc)
 		xmlFree(apNot[n]);
 	}
 	SySetRelease(&pDoc->aNotations);
+	/* The stand-in attributes for this tree's namespace declarations. Each is
+	 * parented on its element but never spliced into its property chain, so
+	 * xmlFreeDoc below never reaches one; and each owns the xmlns-namespace
+	 * handle it carries, which xmlFreeProp does not free. */
+	apNsAttr = (xmlAttrPtr *)SySetBasePtr(&pDoc->aNsAttrs);
+	for( n = 0 ; n < SySetUsed(&pDoc->aNsAttrs) ; ++n ){
+		xmlAttrPtr pAttr = apNsAttr[n];
+		if( pAttr->ns ){
+			xmlFreeNs(pAttr->ns);
+			pAttr->ns = 0;
+		}
+		pAttr->parent = 0;
+		pAttr->psvi = 0;
+		xmlFreeProp(pAttr);
+	}
+	SySetRelease(&pDoc->aNsAttrs);
 	if( pDoc->pDoc ){
 		xmlFreeDoc((xmlDocPtr)pDoc->pDoc);
 		pDoc->pDoc = 0;
@@ -496,6 +513,7 @@ PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr)
 	SyZero(pDoc,sizeof(phl_xmldoc));
 	SySetInit(&pDoc->aOrphans,&pVm->sAllocator,sizeof(void *));
 	SySetInit(&pDoc->aNotations,&pVm->sAllocator,sizeof(void *));
+	SySetInit(&pDoc->aNsAttrs,&pVm->sAllocator,sizeof(void *));
 	pDoc->pDoc = pXmlDocPtr;
 	pDoc->pVm = &(*pVm);
 	pDoc->bPreserveWS = 1;  /* DOMDocument->preserveWhiteSpace default */
