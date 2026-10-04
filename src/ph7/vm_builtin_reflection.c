@@ -1387,7 +1387,19 @@ static void ReflectSigDescribe(const char *z, int n, int iPos, ReflectParamDesc 
 		n = iEq;
 		ReflectSigTrim(&z,&n);
 	}
-	if( zDef && nDef == 1 && zDef[0] == '?' ){
+	if( zDef && nDef == 1 && zDef[0] == '!' ){
+		/* `= !` is the mirror image of `= ?` below, and it is php's own
+		 * stub-versus-body mismatch in the argument COUNT rather than the type:
+		 * the parameter is DECLARED with no default -- Reflection reports it
+		 * required, and getNumberOfRequiredParameters() counts it -- while the
+		 * C body's own argument screen lets the call omit it.
+		 * `Dom\Node::insertBefore()`'s $child is the first: Reflection says two
+		 * required parameters and `$p->insertBefore($n)` runs. So the marker
+		 * vanishes HERE (no default, not optional) and is left standing for
+		 * VmDeriveArityFromSig, which reads the `=` and lowers the minimum. */
+		zDef = 0;
+		nDef = 0;
+	}else if( zDef && nDef == 1 && zDef[0] == '?' ){
 		/* `= ?` is the table's OPTIONAL-but-no-default marker, php's own shape
 		 * for a parameter like ReflectionClass::getStaticPropertyValue()'s
 		 * $default: isOptional() true, isDefaultValueAvailable() FALSE, so

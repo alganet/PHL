@@ -11814,8 +11814,78 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ DOM_DOC,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ DOM_NODES, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
+	/*
+	 * php 8.4's twenty-two, in its own declaration order -- and they are the
+	 * 2004 bodies, because the WALK is the same walk: what changed between the
+	 * two trees is the types on the outside, not the libxml underneath.
+	 *
+	 * Four differences the rows have to carry, none of them cosmetic:
+	 *
+	 *  - Every return type is REAL here where DOMNode's is tentative (`@`), and
+	 *    the three php never wrote down at all on the old class -- cloneNode,
+	 *    insertBefore's family -- are written down on this one. So a subclass
+	 *    that widens a return is a compile error under `Dom\` and merely a
+	 *    deprecation under `DOM`.
+	 *  - Four parameters gained a `?`: isSameNode, lookupPrefix and
+	 *    isDefaultNamespace take null where the 2004 pair took a bare string,
+	 *    which is the standard's own signature finally stated. The bodies were
+	 *    already null-tolerant -- they read an absent argument as the empty
+	 *    string and screen on that -- so no body changes.
+	 *  - `insertBefore`'s $child lost its default. php requires TWO arguments
+	 *    here and one there; passing one is an ArgumentCountError, not a null.
+	 *  - `getRootNode` takes a non-nullable `array $options = []` where the old
+	 *    one takes `?array = null`. The body ignores it in both trees, exactly
+	 *    as php's does.
+	 *
+	 * Two of DOMNode's rows are ABSENT: `hasAttributes` moved to `Dom\Element`,
+	 * where only an element can answer it, and `isSupported` -- DOM Level 1's
+	 * feature test -- was not carried forward at all.
+	 */
 	static const PH7_NativeMethodDef aMNodeMethod[] = {
 		{ "__construct", PH7_MOD_PRIVATE|PH7_MOD_FINAL, "", "", vm_builtin_DomNode_construct },
+		{ "getRootNode", PH7_MOD_PUBLIC, "array $options = []", "Dom\\Node",
+		  vm_builtin_DOMNode_getRootNode },
+		{ "hasChildNodes", PH7_MOD_PUBLIC, "", "bool", vm_builtin_DOMNode_hasChildNodes },
+		{ "normalize", PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMDocument_normalizeDocument },
+		{ "cloneNode", PH7_MOD_PUBLIC, "bool $deep = false", "Dom\\Node",
+		  vm_builtin_DOMNode_cloneNode },
+		{ "isEqualNode", PH7_MOD_PUBLIC, "?Dom\\Node $otherNode", "bool",
+		  vm_builtin_DOMNode_isEqualNode },
+		{ "isSameNode", PH7_MOD_PUBLIC, "?Dom\\Node $otherNode", "bool",
+		  vm_builtin_DOMNode_isSameNode },
+		{ "compareDocumentPosition", PH7_MOD_PUBLIC, "Dom\\Node $other", "int",
+		  vm_builtin_DOMNode_compareDocumentPosition },
+		{ "contains", PH7_MOD_PUBLIC, "?Dom\\Node $other", "bool",
+		  vm_builtin_DOMNode_contains },
+		{ "lookupPrefix", PH7_MOD_PUBLIC, "?string $namespace", "?string",
+		  vm_builtin_DOMNode_lookupPrefix },
+		{ "lookupNamespaceURI", PH7_MOD_PUBLIC, "?string $prefix", "?string",
+		  vm_builtin_DOMNode_lookupNamespaceURI },
+		{ "isDefaultNamespace", PH7_MOD_PUBLIC, "?string $namespace", "bool",
+		  vm_builtin_DOMNode_isDefaultNamespace },
+		/* `= !`: php declares $child with no default -- Reflection reports two
+		 * required parameters, where DOMNode's reports one -- and then lets the
+		 * call omit it anyway, so `$p->insertBefore($n)` appends under both
+		 * names and a no-argument call says "expects at least 1". */
+		{ "insertBefore", PH7_MOD_PUBLIC, "Dom\\Node $node, ?Dom\\Node $child = !", "Dom\\Node",
+		  vm_builtin_DOMNode_insertBefore },
+		{ "appendChild", PH7_MOD_PUBLIC, "Dom\\Node $node", "Dom\\Node",
+		  vm_builtin_DOMNode_appendChild },
+		{ "replaceChild", PH7_MOD_PUBLIC, "Dom\\Node $node, Dom\\Node $child", "Dom\\Node",
+		  vm_builtin_DOMNode_replaceChild },
+		{ "removeChild", PH7_MOD_PUBLIC, "Dom\\Node $child", "Dom\\Node",
+		  vm_builtin_DOMNode_removeChild },
+		{ "getLineNo", PH7_MOD_PUBLIC, "", "int", vm_builtin_DOMNode_getLineNo },
+		{ "getNodePath", PH7_MOD_PUBLIC, "", "string", vm_builtin_DOMNode_getNodePath },
+		{ "C14N", PH7_MOD_PUBLIC,
+		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "
+		  "?array $nsPrefixes = null", "string|false", vm_builtin_DOMNode_C14N },
+		{ "C14NFile", PH7_MOD_PUBLIC,
+		  "string $uri, bool $exclusive = false, bool $withComments = false, "
+		  "?array $xpath = null, ?array $nsPrefixes = null", "int|false",
+		  vm_builtin_DOMNode_C14NFile },
+		{ "__sleep", PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },
+		{ "__wakeup", PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },
 	};
 	static const PH7_NativePropDef aMCharProp[] = {
 		DOM_VPROP("data","string"),
