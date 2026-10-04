@@ -6013,6 +6013,9 @@ PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value
 PH7_PRIVATE int PH7_VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMethod);
 PH7_PRIVATE int PH7_VmCallableStringParts(const char *zName,sxu32 nName,
 	const char **pzCls,sxu32 *pnCls,const char **pzMeth,sxu32 *pnMeth);
+PH7_PRIVATE int PH7_VmQualifiedCallableMethod(ph7_vm *pVm,ph7_class *pOrg,const char *zName,sxu32 nName,
+	ph7_class **ppClass,const char **pzCls,sxu32 *pnCls,const char **pzMeth,sxu32 *pnMeth,
+	char *zBuf,int nBuf,const char **pzWhy);
 PH7_PRIVATE int PH7_VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeBefore);
 PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char *zBuf,int nBuf);
 PH7_PRIVATE void PH7_VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut);

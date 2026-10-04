@@ -476,6 +476,110 @@ static ph7_class * VmCallbackCalledClass(ph7_vm *pVm,const char *zCls,sxu32 nCls
 	return (pTop && PH7_VmInstanceOf(pTop,pClass)) ? pTop : pClass;
 }
 /*
+ * php's QUALIFIED method name inside an array callable: `[$obj,'A::f']`, `['B','parent::f']`
+ * (zend_is_callable_check_func). The name splits at its LAST colon when the byte before it
+ * is a colon too, so `'A:::f'` names class `A:` and `'A::f:'` is a plain (missing) method.
+ * The class half resolves against the TARGET's class pOrg, not the running scope: `self`
+ * is pOrg, `parent` is pOrg's parent, and only `static` asks the caller (its called class).
+ * Keywords fold case. The resolved class must be one pOrg descends from, and its method
+ * then runs on the target NON-virtually: `[$b,'A::f']` runs A::f on $b even though B
+ * overrides f.
+ *
+ * Answers 0 when the name is not qualified (the caller goes on with it as it is), 1 with
+ * *ppClass and the method half filled, and -1 with *pzWhy set to php's reason, built into
+ * zBuf. *pzCls is the class half as the callback's called-class rule wants it: the keyword
+ * canonically spelled, else the name as written.
+ */
+PH7_PRIVATE int PH7_VmQualifiedCallableMethod(ph7_vm *pVm,ph7_class *pOrg,const char *zName,sxu32 nName,
+	ph7_class **ppClass,const char **pzCls,sxu32 *pnCls,const char **pzMeth,sxu32 *pnMeth,
+	char *zBuf,int nBuf,const char **pzWhy)
+{
+	ph7_class *pClass;
+	const char *zCls;
+	sxu32 nCls,iColon;
+	*pzWhy = 0;
+	if( nName < 2 ){
+		return 0;
+	}
+	iColon = nName;
+	while( iColon > 0 && zName[iColon-1] != ':' ){
+		--iColon;
+	}
+	/* iColon is one past the last colon; the byte before that colon must be one too */
+	if( iColon < 2 || zName[iColon-2] != ':' ){
+		return 0;
+	}
+	zCls = zName;
+	nCls = iColon - 2;
+	*pzMeth = &zName[iColon];
+	*pnMeth = nName - iColon;
+	if( nCls == 0 ){
+		*pzWhy = "invalid function name";
+		return -1;
+	}
+	if( nCls == 4 && SyStrnicmp(zCls,"self",4) == 0 ){
+		zCls = "self";
+		pClass = pOrg;
+	}else if( nCls == 6 && SyStrnicmp(zCls,"parent",6) == 0 ){
+		zCls = "parent";
+		pClass = pOrg->pBase;
+		if( pClass == 0 ){
+			*pzWhy = "cannot access \"parent\" when current class scope has no parent";
+			return -1;
+		}
+	}else if( nCls == 6 && SyStrnicmp(zCls,"static",6) == 0 ){
+		zCls = "static";
+		pClass = PH7_VmPeekTopClass(&(*pVm));
+		if( pClass == 0 ){
+			*pzWhy = "cannot access \"static\" when no class scope is active";
+			return -1;
+		}
+	}else{
+		pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
+		if( pClass == 0 ){
+			SyBufferFormat(zBuf,nBuf,"class \"%.*s\" not found",(int)nCls,zCls);
+			*pzWhy = zBuf;
+			return -1;
+		}
+	}
+	if( !PH7_VmInstanceOf(pOrg,pClass) ){
+		SyBufferFormat(zBuf,nBuf,"class %z is not a subclass of %z",&pOrg->sDisp,&pClass->sDisp);
+		*pzWhy = zBuf;
+		return -1;
+	}
+	*ppClass = pClass;
+	*pzCls = zCls;
+	*pnCls = nCls;
+	return 1;
+}
+/*
+ * The class, method name and callability form (VmMethodIsCallable's bStaticForm) that an
+ * array callable's STRING method half names, given its target and the target's class: the
+ * pair as written, or what a qualified name resolves to. Answers
+ * PH7_VmQualifiedCallableMethod's verdict, so -1 carries php's refusal in *pzWhy.
+ */
+static int VmArrayCallableMethod(ph7_vm *pVm,ph7_value *pTarget,ph7_value *pName,ph7_class **ppClass,
+	const char **pzMeth,sxu32 *pnMeth,int *pForm,char *zBuf,int nBuf,const char **pzWhy)
+{
+	int bObj = (pTarget->iFlags & MEMOBJ_OBJ) ? TRUE : FALSE;
+	ph7_class *pRes = 0;
+	const char *zCls = 0;
+	sxu32 nCls = 0;
+	int rc;
+	*pzMeth = (const char *)SyBlobData(&pName->sBlob);
+	*pnMeth = SyBlobLength(&pName->sBlob);
+	*pForm = bObj ? 0 : 1;
+	rc = PH7_VmQualifiedCallableMethod(&(*pVm),*ppClass,*pzMeth,*pnMeth,&pRes,&zCls,&nCls,
+		pzMeth,pnMeth,zBuf,nBuf,pzWhy);
+	if( rc > 0 ){
+		if( bObj && pRes != *ppClass ){
+			*pForm = 2;
+		}
+		*ppClass = pRes;
+	}
+	return rc;
+}
+/*
  * The calling frame's `$this` when it is an instance of pClass, 0 otherwise (the boolean
  * form is the predicate below). Two rules want it: the callability one described here, and
  * php's `get_static_method_fallback` — a `C::m()` the class cannot answer directly routes
@@ -575,6 +679,10 @@ PH7_PRIVATE ph7_class_instance * PH7_VmStaticFallbackThis(ph7_vm *pVm,ph7_class 
  *     the same PH7_VmClassMemberAccess the call itself uses (so a private method is
  *     callable from inside its class and nowhere else);
  *   - through a class NAME, a non-static method needs a compatible caller `$this`.
+ *
+ * bStaticForm 2 is an OBJECT target whose method was named through another class
+ * (`[$b,'A::m']`, PH7_VmQualifiedCallableMethod): the object is there to run a non-static
+ * method on, but a missing name takes the class-name catch-all, as php's static lookup does.
  */
 static int VmMethodIsCallable(ph7_vm *pVm,ph7_class *pClass,const char *zMethod,sxu32 nMethod,int bStaticForm)
 {
@@ -605,10 +713,11 @@ static int VmMethodIsCallable(ph7_vm *pVm,ph7_class *pClass,const char *zMethod,
 			&sName,pMethod->iProtection,FALSE) ){
 			/* Inaccessible from here — but php still calls it callable when the class
 			 * routes inaccessible names through __call/__callStatic, exactly as the
-			 * dispatch path does. */
-			return PH7_ClassExtractMethod(pClass,zMagic,nMagic) ? TRUE : FALSE;
+			 * dispatch path does. An object target, however reached, asks __call. */
+			return PH7_ClassExtractMethod(pClass,bStaticForm == 1 ? "__callStatic" : "__call",
+				bStaticForm == 1 ? sizeof("__callStatic")-1 : sizeof("__call")-1) ? TRUE : FALSE;
 	}
-	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
+	if( bStaticForm == 1 && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
 		&& !VmCallerThisIsA(pVm,pClass) ){
 			return FALSE;
 	}
@@ -656,7 +765,7 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 	}
 	/* php's CALLBACK reason reports staticness BEFORE visibility — the reverse of the
 	 * direct dispatch, which answers "Call to private method" for the same pair. */
-	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
+	if( bStaticForm == 1 && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
 	 && !VmCallerThisIsA(pVm,pClass) ){
 		SyBufferFormat(zBuf,nBuf,"non-static method %z::%z() cannot be called statically",
 			&pClass->sDisp,&sDecl);
@@ -664,7 +773,8 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 	}
 	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
 	 && !PH7_VmClassMemberAccess(&(*pVm),pOwner,&sDecl,pMethod->iProtection,FALSE) ){
-		if( PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic)) ){
+		if( PH7_ClassExtractMethod(pClass,bStaticForm == 1 ? "__callStatic" : "__call",
+				bStaticForm == 1 ? sizeof("__callStatic")-1 : sizeof("__call")-1) ){
 			return 0; /* inaccessible, but the catch-all answers for it */
 		}
 		SyBufferFormat(zBuf,nBuf,"cannot access %s method %z::%z()",
@@ -717,9 +827,16 @@ PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char
 			SyBufferFormat(zBuf,nBuf,"class \"%.*s\" not found",(int)nCls,zCls);
 			return zBuf;
 		}
-		return VmMethodCallableReason(&(*pVm),pClass,
-			(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
-			(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE,zBuf,nBuf);
+		{
+			const char *zMeth = 0,*zWhy = 0;
+			sxu32 nMeth = 0;
+			int iForm = 0;
+			if( VmArrayCallableMethod(&(*pVm),pTarget,pName,&pClass,&zMeth,&nMeth,&iForm,
+					zBuf,nBuf,&zWhy) < 0 ){
+				return zWhy;
+			}
+			return VmMethodCallableReason(&(*pVm),pClass,zMeth,nMeth,iForm,zBuf,nBuf);
+		}
 	}
 	if( pValue->iFlags & MEMOBJ_STRING ){
 		const char *zCls,*zMeth;
@@ -776,8 +893,14 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 			if( pClass && (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
 				/* A class-NAME target names the method statically; an object target
 				 * carries its own $this, so the static/visibility rules differ. */
-				res = VmMethodIsCallable(pVm,pClass,(const char *)SyBlobData(&pName->sBlob),
-					SyBlobLength(&pName->sBlob),(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE);
+				const char *zMeth = 0,*zWhy = 0;
+				sxu32 nMeth = 0;
+				int iForm = 0;
+				char zWhyBuf[128];
+				if( VmArrayCallableMethod(pVm,pTarget,pName,&pClass,&zMeth,&nMeth,&iForm,
+						zWhyBuf,(int)sizeof(zWhyBuf),&zWhy) >= 0 ){
+					res = VmMethodIsCallable(pVm,pClass,zMeth,nMeth,iForm);
+				}
 			}
 		}
 	}else if( pValue->iFlags & MEMOBJ_STRING ){
@@ -2552,6 +2675,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		ph7_class *pClass = 0;
 		ph7_class *pCalled;   /* the class a static call goes through (`static::`) */
 		ph7_value *pValue, *pName;
+		const char *zMeth = 0; /* the method name, a qualified one's method half */
+		sxu32 nMeth = 0;
+		int bViaOther = FALSE; /* an object target's method named through another class */
 		sxi32 rc;
 		/* php reads the INTEGER indices 0 and 1, not the first two entries in insertion
 		 * order — the same decode the predicate uses, so `[1=>'m',0=>'C']` dispatches
@@ -2595,8 +2721,35 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		}
 		/* Try to extract the method (index 1) */
 		if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
-			pMethod = PH7_ClassExtractMethod(pClass,(const char *)SyBlobData(&pName->sBlob),
-				SyBlobLength(&pName->sBlob));
+			ph7_class *pQual = 0;
+			const char *zQCls = 0,*zWhy = 0;
+			sxu32 nQCls = 0;
+			char zWhyBuf[128];
+			int rcQual;
+			zMeth = (const char *)SyBlobData(&pName->sBlob);
+			nMeth = SyBlobLength(&pName->sBlob);
+			/* `[$b,'A::f']`, `['B','parent::f']`: the method half names its own class, and
+			 * the callers screened the refusals already (PH7_CheckCallbackArg). An object
+			 * target keeps its object; a class-name one asks the called-class rule for the
+			 * class half, as the plain pair asks it for the target. */
+			rcQual = PH7_VmQualifiedCallableMethod(&(*pVm),pClass,zMeth,nMeth,&pQual,&zQCls,&nQCls,
+				&zMeth,&nMeth,zWhyBuf,(int)sizeof(zWhyBuf),&zWhy);
+			if( rcQual < 0 ){
+				if( pResult ){
+					PH7_MemObjRelease(pResult);
+				}
+				return SXRET_OK;
+			}
+			if( rcQual > 0 ){
+				bViaOther = (pThis && pQual != pClass) ? TRUE : FALSE;
+				if( pThis == 0 ){
+					pCalled = VmCallbackCalledClass(&(*pVm),zQCls,nQCls,pQual,bDirect);
+				}
+				pClass = pQual;
+			}
+			if( nMeth > 0 ){
+				pMethod = PH7_ClassExtractMethod(pClass,zMeth,nMeth);
+			}
 		}
 		if( pMethod == 0
 		 || (!pVm->bClosureScreened && !PH7_VmCallableMethodAccessible(&(*pVm),pClass,pMethod)) ){
@@ -2606,11 +2759,12 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			 * $this, when that object is an instance of the class (php binds it into the
 			 * callable; PH7_VmStaticFallbackThis is the shared rule). Only a callback binds
 			 * it — the direct `$cb()` spelling is refused before it gets here. */
-			if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
+			if( nMeth > 0 ){
+				/* An object reached through ANOTHER class takes the class-name route for a
+				 * MISSING name; an inaccessible one still asks the object's __call. */
 				rc = PH7_VmDispatchMagicCall(&(*pVm),pClass,pCalled,
-					pThis ? pThis : PH7_VmStaticFallbackThis(&(*pVm),pClass),
-					(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
-					pResult,nArg,apArg,pArgMap);
+					(pThis && (!bViaOther || pMethod)) ? pThis : PH7_VmStaticFallbackThis(&(*pVm),pClass),
+					zMeth,nMeth,pResult,nArg,apArg,pArgMap);
 				if( rc != SXERR_NOTFOUND ){
 					return rc;
 				}

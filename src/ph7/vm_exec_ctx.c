@@ -1889,6 +1889,37 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 			return 0;
 		}
 		SyStringInitFromBuf(&sName, SyBlobData(&pMeth->sBlob), SyBlobLength(&pMeth->sBlob));
+		{
+			/* A qualified method half (`[$b,'A::f']`) names the class the closure is scoped
+			 * to: the closure carries the method half and that class, so it runs A::f on $b
+			 * rather than looking `A::f` up as a method name of B's. */
+			ph7_class *pOrg = (pTarget->iFlags & MEMOBJ_OBJ)
+				? ((ph7_class_instance *)pTarget->x.pOther)->pClass
+				: PH7_VmExtractClassFromValue(pVm, pTarget);
+			ph7_class *pQual = 0;
+			const char *zQCls = 0, *zQMeth = 0, *zWhy = 0;
+			sxu32 nQCls = 0, nQMeth = 0;
+			char zWhyBuf[128];
+			int rcQual = pOrg ? PH7_VmQualifiedCallableMethod(pVm, pOrg, sName.zString, sName.nByte,
+				&pQual, &zQCls, &nQCls, &zQMeth, &nQMeth, zWhyBuf, (int)sizeof(zWhyBuf), &zWhy) : 0;
+			if( rcQual < 0 ){
+				return 0;
+			}
+			if( rcQual > 0 ){
+				ph7_class_instance *pFccObj;
+				SyStringInitFromBuf(&sName, zQMeth, nQMeth);
+				pFccObj = VmCreateClosure(pVm, &sName,
+					(pTarget->iFlags & MEMOBJ_OBJ) ? (ph7_class_instance *)pTarget->x.pOther : 0,
+					&pQual->sName);
+				if( pFccObj ){
+					pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
+					if( PH7_VmFccMethodIsDirect(pVm, pQual, zQMeth, nQMeth) ){
+						pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
+					}
+				}
+				return pFccObj;
+			}
+		}
 		if( pTarget->iFlags & MEMOBJ_OBJ ){
 			ph7_class_instance *pBoundThis = (ph7_class_instance *)pTarget->x.pOther;
 			ph7_class_instance *pFccObj = VmCreateClosure(pVm, &sName, pBoundThis,
