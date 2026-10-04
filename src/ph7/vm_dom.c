@@ -118,6 +118,9 @@ static const char * DomCollClass(ph7_class_instance *pDoc,const char *zLegacy,
  * readers below; declared here because the attribute API is one set of C bodies
  * serving both trees, and several of its answers differ only by family. */
 static int DomThisModern(ph7_context *pCtx);
+/* Which of the two XPath classes a receiver is; defined with the property
+ * readers, declared here because the evaluator names it in a diagnostic. */
+static const char * DomXPathClassName(ph7_class_instance *pThis);
 
 /*
  * php's DOMException carries the DOM level-2 error CODE beside its sentence --
@@ -9562,6 +9565,20 @@ static int DomXPathResultList(ph7_context *pCtx,ph7_class_instance *pDoc,
 			}
 			if( pNode->type == XML_NAMESPACE_DECL ){
 				/*
+				 * php 8.4 REFUSES the axis rather than wrapping it: the living
+				 * DOM has no namespace node, so `Dom\XPath` throws where the
+				 * 2004 class answers a list of DOMNameSpaceNode. The refusal is
+				 * per RESULT and not per expression -- an axis step that selects
+				 * nothing evaluates to an empty list under both trees, and only
+				 * a declaration actually reaching the set raises.
+				 */
+				if( DomDocFlag(pDoc,DOM_F_MODERN) ){
+					return DomThrowSentence(pCtx,DOM_ERR_NOT_SUPPORTED,
+						"The namespace axis is not well-defined in the living DOM "
+						"specification. Use Dom\\Element::getInScopeNamespaces() or "
+						"Dom\\Element::getDescendantNamespaces() instead.");
+				}
+				/*
 				 * A namespace:: axis result. libxml hands the set a COPY that
 				 * dies with the XPath object (xmlXPathNodeSetDupNs, its `next`
 				 * pointing at the element the axis ran ON), so the snapshot
@@ -9608,7 +9625,8 @@ static int DomXPathResultList(ph7_context *pCtx,ph7_class_instance *pDoc,
 			ph7_array_add_elem(pSnap,0,pRes);
 		}
 	}
-	pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_SNAP,0,0,0,pSnap);
+	pList = DomNewCollection(pVm,DomCollClass(pDoc,"DOMNodeList","Dom\\NodeList"),
+		pDoc,DNL_SNAP,0,0,0,pSnap);
 	if( pList == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -9624,13 +9642,30 @@ static int DomXPathResultList(ph7_context *pCtx,ph7_class_instance *pDoc,
  * unknown function, unresolved prefix) answers false from both, with the
  * libxml diagnostics on the shared queue.
  */
+/* php 8.4's two evaluators DECLARE an answer -- `Dom\NodeList` for query(), a
+ * union without `false` for evaluate() -- so an evaluation that does not happen
+ * cannot be reported as `false` the way the 2004 pair reports it. php raises its
+ * own plain Error after the libxml warning it has already printed. */
+static int DomXPathNoAnswer(ph7_context *pCtx,int bModern)
+{
+	if( bModern ){
+		return PH7_VmThrowException(pCtx,"Error",
+			"Could not evaluate XPath expression");
+	}
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
 static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
-	const char *zMethod,int bTyped)
+	const char *zName,int bTyped)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class_instance *pDoc = pThis ? PH7_NativeAttrObj(pThis,XP_DOC) : 0;
 	phl_domnode *pDocNd = DomResOf(pDoc);
+	/* The diagnostic names the class the CALL was made on, and the answer shape
+	 * follows the document's family -- the same C body serving both trees. */
+	int bModern = DomDocFlag(pDoc,DOM_F_MODERN);
+	char zMethod[64];
 	const char *zExpr = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	phl_domnode *pCtxNd = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;
 	/* php's stub says `= true`, but the live default of the third argument is
@@ -9644,9 +9679,9 @@ static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
 	DomXPathFnCtx sFn;
 	sxu32 nMark;
 	sxi32 rc;
+	SyBufferFormat(zMethod,sizeof(zMethod),"%s::%s",DomXPathClassName(pThis),zName);
 	if( pDocNd == 0 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		return DomXPathNoAnswer(pCtx,bModern);
 	}
 	if( pCtxNd && pCtxNd->pNode
 	 && ((xmlNodePtr)pCtxNd->pNode)->doc != (xmlDocPtr)pDocNd->pNode ){
@@ -9656,8 +9691,7 @@ static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
 	}
 	aNodeNs = DomXPathCtxOpen(pCtx,pDocNd,pCtxNd,bRegNodeNs,&pXCtx);
 	if( pXCtx == 0 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		return DomXPathNoAnswer(pCtx,bModern);
 	}
 	/* The PHP-function bridge rides this one evaluation: the record lives on
 	 * THIS stack frame, and libxml carries a pointer to it as its lookup data. */
@@ -9698,8 +9732,7 @@ static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
 	SyBlobRelease(&sFn.sErrName);
 	if( pObj == 0 ){
 		xmlXPathFreeContext(pXCtx);
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		return DomXPathNoAnswer(pCtx,bModern);
 	}
 	if( !bTyped ){
 		rc = DomXPathResultList(pCtx,pDoc,pDocNd,pObj);
@@ -9736,7 +9769,7 @@ static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
  */
 DOM_METHOD(vm_builtin_DOMXPath_query)
 {
-	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::query",0);
+	return DomXPathEvalRun(pCtx,nArg,apArg,"query",0);
 }
 /*
  * DOMXPath::evaluate(string $expression, ?DOMNode $contextNode = null,
@@ -9744,7 +9777,7 @@ DOM_METHOD(vm_builtin_DOMXPath_query)
  */
 DOM_METHOD(vm_builtin_DOMXPath_evaluate)
 {
-	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::evaluate",1);
+	return DomXPathEvalRun(pCtx,nArg,apArg,"evaluate",1);
 }
 /* DOMXPath::__construct(DOMDocument $document, bool $registerNodeNS = true) */
 DOM_METHOD(vm_builtin_DOMXPath_construct)
@@ -9822,8 +9855,9 @@ static int DomXPathRestrictRow(ph7_value *pKey,ph7_value *pVal,void *pUserData)
 	zWhy = PH7_VmCallableReason(pVm,pVal,zBuf,(int)sizeof(zBuf));
 	if( zWhy ){
 		pWalk->rc = PH7_VmThrowException(pWalk->pCtx,"TypeError",
-			"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be an array "
-			"with valid callbacks as values, %s",zWhy);
+			"%s::registerPhpFunctions(): Argument #1 ($restrict) must be an array "
+			"with valid callbacks as values, %s",
+			DomXPathClassName(PH7_ContextThis(pWalk->pCtx)),zWhy);
 		return PH7_ABORT;
 	}
 	if( pKey && ph7_value_is_string(pKey) ){
@@ -9890,8 +9924,8 @@ DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctions)
 		const char *zName;
 		if( zWhy ){
 			return PH7_VmThrowException(pCtx,"TypeError",
-				"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be a callable, %s",
-				zWhy);
+				"%s::registerPhpFunctions(): Argument #1 ($restrict) must be a callable, %s",
+				DomXPathClassName(PH7_ContextThis(pCtx)),zWhy);
 		}
 		zName = ph7_value_to_string(apArg[0],&nName);
 		DomXPathMapPut(pVm,pMap,zName,nName,apArg[0]);
@@ -9943,18 +9977,19 @@ DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctionNS)
 	}
 	if( nUri == (int)sizeof(XP_PHPNS)-1 && SyMemcmp(zUri,XP_PHPNS,(sxu32)nUri) == 0 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"DOMXPath::registerPhpFunctionNS(): Argument #1 ($namespaceURI) must not be "
-			"\"%s\" because it is reserved by PHP",XP_PHPNS);
+			"%s::registerPhpFunctionNS(): Argument #1 ($namespaceURI) must not be "
+			"\"%s\" because it is reserved by PHP",DomXPathClassName(pThis),XP_PHPNS);
 	}
 	if( !DomXPathIsCallbackName(zName,nName) ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"DOMXPath::registerPhpFunctionNS(): Argument #2 ($name) must be a valid callback name");
+			"%s::registerPhpFunctionNS(): Argument #2 ($name) must be a valid callback name",
+			DomXPathClassName(pThis));
 	}
 	zWhy = PH7_VmCallableReason(pVm,apArg[2],zBuf,(int)sizeof(zBuf));
 	if( zWhy ){
 		return PH7_VmThrowException(pCtx,"TypeError",
-			"DOMXPath::registerPhpFunctionNS(): Argument #3 ($callable) must be a valid callback, %s",
-			zWhy);
+			"%s::registerPhpFunctionNS(): Argument #3 ($callable) must be a valid callback, %s",
+			DomXPathClassName(pThis),zWhy);
 	}
 	pMap = DomXPathSlotMap(pVm,pThis,XP_NSFN);
 	if( pMap == 0 ){
@@ -11953,6 +11988,16 @@ static int DomSetNotationProp(ph7_context *pCtx,const char *zName,ph7_value *pVa
  * because the slot is `readonly`, which is why php's isReadOnly() is false there)
  * and the write refusal is the reader's, exactly as it is for a node's `nodeName`.
  */
+/* Which of the two XPath classes the receiver is, for a diagnostic that has to
+ * name it. The 2004 class and php 8.4's `Dom\\XPath` share every C body here --
+ * one evaluator, one registration table -- and differ only in what they SAY and
+ * in the family of the wrappers a result carries. */
+static const char * DomXPathClassName(ph7_class_instance *pThis)
+{
+	return (pThis && pThis->pClass && pThis->pClass->sDisp.nByte > 0
+		&& SyMemcmp(SyStringData(&pThis->pClass->sDisp),"Dom\\",sizeof("Dom\\")-1) == 0)
+		? "Dom\\XPath" : "DOMXPath";
+}
 static int DomXPathProp(ph7_context *pCtx,const char *zName)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -11970,7 +12015,7 @@ static int DomSetXPathProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,i
 {
 	if( DomNameIs(zName,"registerNodeNamespaces") ){
 		ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-		if( DomWriteBool(pCtx,"DOMXPath",zName,pVal,pRc) == 0 ){
+		if( DomWriteBool(pCtx,DomXPathClassName(pThis),zName,pVal,pRc) == 0 ){
 			return DOM_SET_DONE;
 		}
 		if( pThis ){
@@ -12360,6 +12405,10 @@ static const DomPropSpec aDomProp[] = {
 	{ "DOMNameSpaceNode", DomNsNodeProp, DomSetNothing, DomNsNodeProp,
 	  azDomNsNodeDebug, SX_ARRAYSIZE(azDomNsNodeDebug), 0 },
 	{ "DOMXPath", DomXPathProp, DomSetXPathProp, DomXPathProp,
+	  azDomXPathDebug, SX_ARRAYSIZE(azDomXPathDebug), 0 },
+	/* php 8.4's XPath presents the same two names over the same two readers --
+	 * the class is not a DOMXPath and never meets it, so it names its own row. */
+	{ "Dom\\XPath", DomXPathProp, DomSetXPathProp, DomXPathProp,
 	  azDomXPathDebug, SX_ARRAYSIZE(azDomXPathDebug), 0 },
 	/* DOMComment, DOMCdataSection and DOMEntityReference name no row of their own:
 	 * they declare no property php's table does not already carry, so the base-chain
@@ -13267,6 +13316,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__sleep",  PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },
 		{ "__wakeup", PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },
 	};
+#define XP_HIDDEN_SLOTS \
+		{ XP_DOC,    PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }, \
+		{ XP_NSDEF,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, 0 }, \
+		{ XP_NSREG,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }, \
+		{ XP_FNMODE, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, \
+		  { 0, 0, PH7_NATIVE_VAL_INT, XP_MODE_NONE, 0, 0.0 }, 0 }, \
+		{ XP_FNREG,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }, \
+		{ XP_NSFN,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	static const PH7_NativePropDef aXPathProp[] = {
 		/* php models both as VIRTUAL: `document` is read-only because its handler
 		 * has no writer -- not because the slot is `readonly`, which is why php's
@@ -13274,13 +13331,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * the two hidden slots below. */
 		DOM_VPROP("document","DOMDocument"),
 		DOM_VPROP("registerNodeNamespaces","bool"),
-		{ XP_DOC,    PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
-		{ XP_NSDEF,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, 0 },
-		{ XP_NSREG,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
-		{ XP_FNMODE, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN,
-		  { 0, 0, PH7_NATIVE_VAL_INT, XP_MODE_NONE, 0, 0.0 }, 0 },
-		{ XP_FNREG,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
-		{ XP_NSFN,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		XP_HIDDEN_SLOTS
+	};
+	/* php's namespaced XPath declares the same two virtuals, over the same hidden
+	 * slots; only the document's declared type moves with the tree. */
+	static const PH7_NativePropDef aMXPathProp[] = {
+		DOM_VPROP("document","Dom\\Document"),
+		DOM_VPROP("registerNodeNamespaces","bool"),
+		XP_HIDDEN_SLOTS
 	};
 	static const PH7_NativeMethodDef aXPathMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "DOMDocument $document, bool $registerNodeNS = true", "",
@@ -13294,6 +13352,31 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "registerNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace", "@bool",
 		  vm_builtin_DOMXPath_registerNamespace },
 		{ "registerPhpFunctions", PH7_MOD_PUBLIC, "array|string|null $restrict = null", "@void",
+		  vm_builtin_DOMXPath_registerPhpFunctions },
+		{ "registerPhpFunctionNS", PH7_MOD_PUBLIC,
+		  "string $namespaceURI, string $name, callable $callable", "void",
+		  vm_builtin_DOMXPath_registerPhpFunctionNS },
+		{ "quote", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $str", "string",
+		  vm_builtin_DOMXPath_quote },
+	};
+	/* php 8.4's `Dom\XPath`: the same seven members over the same C bodies, and
+	 * the differences are all in what the signatures SAY. The document and the
+	 * context node are of the namespaced tree; query() promises a `Dom\NodeList`
+	 * where the 2004 one may answer false, and evaluate()'s union has no false
+	 * in it either -- so an evaluation that cannot happen raises there. */
+	static const PH7_NativeMethodDef aMXPathMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "Dom\\Document $document, bool $registerNodeNS = true", "",
+		  vm_builtin_DOMXPath_construct },
+		{ "evaluate",    PH7_MOD_PUBLIC,
+		  "string $expression, ?Dom\\Node $contextNode = null, bool $registerNodeNS = true",
+		  "Dom\\NodeList|string|float|bool|null", vm_builtin_DOMXPath_evaluate },
+		{ "query",       PH7_MOD_PUBLIC,
+		  "string $expression, ?Dom\\Node $contextNode = null, bool $registerNodeNS = true",
+		  "Dom\\NodeList", vm_builtin_DOMXPath_query },
+		{ "registerNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace", "bool",
+		  vm_builtin_DOMXPath_registerNamespace },
+		{ "registerPhpFunctions", PH7_MOD_PUBLIC, "array|string|null $restrict = null", "void",
 		  vm_builtin_DOMXPath_registerPhpFunctions },
 		{ "registerPhpFunctionNS", PH7_MOD_PUBLIC,
 		  "string $namespaceURI, string $name, callable $callable", "void",
@@ -13859,6 +13942,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp),
 		  0, 0, DomPresent },
+		/* php 8.4's evaluator over the namespaced tree. FINAL where the 2004 one
+		 * may be extended, and the same two refusals: `Serialization of
+		 * 'Dom\XPath' is not allowed`, and an uncloneable object. */
+		{ "Dom\\XPath", 0, 0,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
+		  aMXPathMethod, SX_ARRAYSIZE(aMXPathMethod), 0, 0,
+		  aMXPathProp, SX_ARRAYSIZE(aMXPathProp), 0, 0, DomPresent },
 	};
 	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 	if( rc == SXRET_OK ){
@@ -13962,7 +14052,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{
 			static const char * const azPropRoot[] = {
 				"DOMNode", "DOMNodeList", "DOMNamedNodeMap", "DOMNameSpaceNode", "DOMXPath",
-				"Dom\\HTMLCollection",
+				"Dom\\XPath", "Dom\\HTMLCollection",
 				"Dom\\NodeList", "Dom\\NamedNodeMap", "Dom\\DtdNamedNodeMap",
 				/* The namespaced tree's root. It is a root and not a branch of
 				 * DOMNode's: the two trees never meet, so the chain walk from a
