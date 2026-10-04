@@ -1097,6 +1097,22 @@ static xmlNodePtr DomChildAt(xmlNodePtr pNode,int iWant)
 	}
 	return pChild;
 }
+/* The same walk `children` indexes: the iWant'th ELEMENT child, skipping the
+ * text, comment and PI children `childNodes` counts. */
+static xmlNodePtr DomElemChildAt(xmlNodePtr pNode,int iWant)
+{
+	xmlNodePtr pChild = DomRefChildren(pNode);
+	for( ; pChild ; pChild = pChild->next ){
+		if( pChild->type != XML_ELEMENT_NODE ){
+			continue;
+		}
+		if( iWant == 0 ){
+			return pChild;
+		}
+		iWant--;
+	}
+	return 0;
+}
 
 /* ===== Tree surgery: DOMNode's four mutators ===== */
 
@@ -8801,6 +8817,9 @@ DOM_METHOD(vm_builtin_DOMNode_wakeup)
  * every other declaration, is not in `entities`. */
 #define DNL_ENTS  4   /* $doctype->entities */
 #define DNL_NOTS  5   /* $doctype->notations */
+/* ...and php 8.4's `children`, a third live view: the element-only half of
+ * childNodes, which is a `Dom\HTMLCollection` and not a node list. */
+#define DNL_ECHILD 6  /* $parent->children */
 #define DNL_KIND  "__kind"
 #define DNL_OWNER "__owner"
 #define DNL_NAME  "__name"
@@ -8838,6 +8857,9 @@ static int DomListCount(ph7_class_instance *pList)
 	}
 	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_CHILD ){
 		return DomChildCount((xmlNodePtr)pOwner->pNode,0);
+	}
+	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_ECHILD ){
+		return DomChildCount((xmlNodePtr)pOwner->pNode,1);
 	}
 	PH7_NativeAttrStr(pList,DNL_NAME,&zName,&nName);
 	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
@@ -8891,6 +8913,8 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
 	}
 	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_CHILD ){
 		pNode = DomChildAt((xmlNodePtr)pOwner->pNode,iIndex);
+	}else if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_ECHILD ){
+		pNode = DomElemChildAt((xmlNodePtr)pOwner->pNode,iIndex);
 	}else{
 		PH7_NativeAttrStr(pList,DNL_NAME,&zName,&nName);
 		if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
@@ -9776,6 +9800,7 @@ DOM_METHOD(vm_builtin_DomHTMLCollection_namedItem)
  * not a cycle and the list's own release takes the entry out again.
  */
 #define DOM_TLIST "__tlist"   /* on the element: the parked list's address */
+#define DOM_CLIST "__clist"   /* on a parent node: the parked `children`'s */
 /* php's "ASCII whitespace", which is not C's isspace(): no vertical tab. */
 static int DomTokIsWs(int c)
 {
@@ -10212,6 +10237,51 @@ static void DomTokRelease(ph7_vm *pVm,ph7_class_instance *pThis)
 	ph7_class_instance *pOwner = PH7_NativeAttrObj(pThis,DNL_OWNER);
 	ph7_value *pSlot = pOwner ? PH7_NativeAttr(pOwner,DOM_TLIST) : 0;
 	SXUNUSED(pVm);
+	if( pSlot && (pSlot->iFlags & MEMOBJ_INT)
+	 && pSlot->x.iVal == (sxi64)(sxuptr)pThis ){
+		pSlot->x.iVal = 0;
+	}
+}
+/*
+ * The parent's parked `children`, minted on the first read.
+ *
+ * php answers the SAME collection every time -- `$e->children === $e->children`
+ * is true where `$e->childNodes === $e->childNodes` is false, and
+ * getElementsByTagName mints a fresh list per call -- so this one is remembered
+ * on the node it is a view of. The parking is the token list's exactly: the
+ * parent holds the ADDRESS and not a reference, so the pair is not a cycle, and
+ * the release below takes the entry out again.
+ */
+static ph7_class_instance * DomChildrenOf(ph7_vm *pVm,ph7_class_instance *pThis,
+	ph7_class_instance *pDoc)
+{
+	ph7_class_instance *pList;
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,DOM_CLIST) : 0;
+	if( pSlot && (pSlot->iFlags & MEMOBJ_INT) && pSlot->x.iVal != 0 ){
+		pList = (ph7_class_instance *)(sxuptr)pSlot->x.iVal;
+		pList->iRef++;   /* the caller owns one, as it does of a fresh list */
+		return pList;
+	}
+	pList = DomNewCollection(&(*pVm),"Dom\\HTMLCollection",pDoc,DNL_ECHILD,
+		pThis,0,0,0);
+	if( pList == 0 ){
+		return 0;
+	}
+	PH7_NativeSetAttrInt(&(*pVm),pThis,DOM_CLIST,(sxi64)(sxuptr)pList);
+	return pList;
+}
+/* ph7_class::xRelease for the collection. Only a parked `children` has an entry
+ * to drop; getElementsByTagName's lists are minted per call and own none. */
+static void DomCollRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class_instance *pOwner;
+	ph7_value *pSlot;
+	SXUNUSED(pVm);
+	if( PH7_NativeAttrInt(pThis,DNL_KIND) != DNL_ECHILD ){
+		return;
+	}
+	pOwner = PH7_NativeAttrObj(pThis,DNL_OWNER);
+	pSlot = pOwner ? PH7_NativeAttr(pOwner,DOM_CLIST) : 0;
 	if( pSlot && (pSlot->iFlags & MEMOBJ_INT)
 	 && pSlot->x.iVal == (sxi64)(sxuptr)pThis ){
 		pSlot->x.iVal = 0;
@@ -12279,7 +12349,18 @@ static int DomDocStateProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc,in
  */
 static int DomParentNodeProp(ph7_context *pCtx,const char *zName)
 {
-	int bLast = DomNameIs(zName,"lastElementChild");
+	int bLast;
+	if( DomNameIs(zName,"children") ){
+		ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+		ph7_class_instance *pList = DomChildrenOf(pCtx->pVm,pThis,DomThisDoc(pCtx));
+		if( pList == 0 ){
+			PH7_ContextMemoryError(pCtx);
+		}else{
+			PH7_NativeResultObject(pCtx,pList);
+		}
+		return 1;
+	}
+	bLast = DomNameIs(zName,"lastElementChild");
 	if( bLast || DomNameIs(zName,"firstElementChild") ){
 		phl_domnode *pNd = DomThisNode(pCtx);
 		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
@@ -13564,7 +13645,7 @@ DOM_METHOD(vm_builtin_Dom_getElementsByTagNameNS)
 	"parentNode", "parentElement", "childNodes", "firstChild", "lastChild", \
 	"previousSibling", "nextSibling", "nodeValue", "textContent"
 #define DOM_MPARENT_DEBUG \
-	"firstElementChild", "lastElementChild", "childElementCount"
+	"children", "firstElementChild", "lastElementChild", "childElementCount"
 #define DOM_MCHILD_DEBUG \
 	"previousElementSibling", "nextElementSibling"
 #define DOM_CHARDATA_DEBUG \
@@ -13710,13 +13791,29 @@ static const char * const azDomXPathDebug[] = { "document", "registerNodeNamespa
 	DOM_VPROP("nextSibling","?Dom\\Node"), \
 	DOM_VPROP("nodeValue","?string"), \
 	DOM_VPROP("textContent","?string")
-/* The namespaced ParentNode trio, on the three classes that carry it. php's
- * `children` is a real declared SLOT there, not a virtual one, so it is not in
- * this macro -- see the note on each class's table. */
+/*
+ * The namespaced ParentNode group, on the three classes that carry it, in php's
+ * order: `children` first, and the whole group BEFORE the class's own names --
+ * `Dom\Element` states it after `tagName` and before `id`, and both documents
+ * state it before `implementation`, which Reflection and the debug walk show.
+ *
+ * php's `children` is a real declared slot rather than a virtual one, and a lazy
+ * one: it is uninitialized until first read, which is why `get_object_vars()`
+ * answers it only afterwards. It is declared virtual here for the same reason
+ * `classList` is -- the pair are the only two of these that are not virtual
+ * there, and every other face of both (the read, the type, the two refusals,
+ * the debug walk) is the same either way.
+ *
+ * The parked collection's address rides with the group, since exactly the three
+ * classes that declare `children` need somewhere to remember it.
+ */
 #define DOM_MPARENT_VPROPS \
+	DOM_VPROP("children","Dom\\HTMLCollection"), \
 	DOM_VPROP("firstElementChild","?Dom\\Element"), \
 	DOM_VPROP("lastElementChild","?Dom\\Element"), \
-	DOM_VPROP("childElementCount","int")
+	DOM_VPROP("childElementCount","int"), \
+	{ DOM_CLIST, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, \
+	  { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 }
 /* ...and its ChildNode pair. */
 #define DOM_MCHILD_VPROPS \
 	DOM_VPROP("previousElementSibling","?Dom\\Element"), \
@@ -15352,12 +15449,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_VPROP("prefix","?string"),
 		DOM_VPROP("localName","string"),
 		DOM_VPROP("tagName","string"),
+		DOM_MPARENT_VPROPS,
+		DOM_MCHILD_VPROPS,
 		DOM_VPROP("id","string"),
 		DOM_VPROP("className","string"),
 		DOM_VPROP("classList","Dom\\TokenList"),
 		DOM_VPROP("attributes","Dom\\NamedNodeMap"),
-		DOM_MPARENT_VPROPS,
-		DOM_MCHILD_VPROPS,
 		/* The parked token list's ADDRESS, borrowed; see DomTokListOf. Hidden,
 		 * so it is on no dump, no cast, no walk and no Reflection listing. */
 		{ DOM_TLIST, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN,
@@ -15450,6 +15547,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_Dom_Implementation_createDocument },
 	};
 	static const PH7_NativePropDef aMDocProp[] = {
+		DOM_MPARENT_VPROPS,
 		DOM_VPROP("implementation","Dom\\Implementation"),
 		DOM_VPROP("URL","string"),
 		DOM_VPROP("documentURI","string"),
@@ -15458,7 +15556,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_VPROP("inputEncoding","string"),
 		DOM_VPROP("doctype","?Dom\\DocumentType"),
 		DOM_VPROP("documentElement","?Dom\\Element"),
-		DOM_MPARENT_VPROPS,
 		DOM_VPROP("body","?Dom\\HTMLElement"),
 		DOM_VPROP("head","?Dom\\HTMLElement"),
 		DOM_VPROP("title","string"),
@@ -15595,7 +15692,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomMapIterVtab, DomPresent },
 		{ "Dom\\HTMLCollection", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aDomCollMethod, SX_ARRAYSIZE(aDomCollMethod), 0, 0,
-		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
+		  aListProp, SX_ARRAYSIZE(aListProp), DomCollRelease, &sDomListIterVtab,
+		  DomPresent },
 		{ "DOMCharacterData", "DOMNode", "DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, aCharProp, SX_ARRAYSIZE(aCharProp),
 		  0, 0, DomPresent },
