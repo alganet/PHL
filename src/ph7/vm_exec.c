@@ -1660,7 +1660,9 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 		if( *ppRecv ){
 			return 0;
 		}
-		if( !bStaticForm && PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) ){
+		if( bStaticForm
+			? PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1) != 0
+			: PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) != 0 ){
 			return 0;
 		}
 		/* The DECIDING class is the declaring one (its trait grants live there); the class

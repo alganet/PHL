@@ -5759,6 +5759,16 @@ static int ReflectFuncFill(ph7_vm *pVm, ph7_value *pTarget, ph7_value *pMethodAr
 	pOut->pVm = pVm;
 	pOut->pFunc = ReflectResolveCallable(pVm, pTarget, pMethodArg,
 		&pOut->pClass, &pOut->pMeth, &pOut->pHost, &pOut->pClosure);
+	/* A name the class DOES declare, but the creating scope could not reach, is a trampoline
+	 * as much as a missing one: the closure was never screened, so the method the lookup
+	 * finds here is not the function it runs. */
+	if( pOut->pClosure && pMethodArg == 0
+	 && (pOut->pClosure->iFlags & (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED))
+			== VM_INSTANCE_FCC_METHOD ){
+		pOut->pFunc = 0;
+		pOut->pHost = 0;
+		pOut->pMeth = 0;
+	}
 	if( pOut->pFunc == 0 && pOut->pHost == 0 ){
 		ph7_class_instance *pClo = pMethodArg ? 0 : ReflectValueClosure(pVm, pTarget);
 		if( pClo == 0 || (pClo->iFlags & (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED))
