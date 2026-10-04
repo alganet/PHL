@@ -13789,6 +13789,1277 @@ DOM_METHOD(vm_builtin_Dom_getElementsByClassName)
 	return PH7_OK;
 }
 
+/* ===== the CSS selector engine =====
+ *
+ * php 8.4's six selector doors -- `querySelector`, `querySelectorAll`,
+ * `closest` and `matches` -- are the only surface of either DOM tree that
+ * takes a CSS selector rather than a name or an XPath expression, so the
+ * grammar, the matcher and the refusal vocabulary all live here and nowhere
+ * else.
+ *
+ * php runs lexbor's selector parser, whose diagnostics are a THREE-tier
+ * table rather than a supported/unsupported split, and the tiers are not
+ * guessable from the standard -- they were swept out of the oracle:
+ *
+ *   evaluated          the structural pseudo-classes, plus `:not`, `:is`,
+ *                      `:where` and `:has`
+ *   always true        `:enabled` and `:read-only` -- lexbor answers the
+ *                      question an XML element cannot be asked, and every
+ *                      element is enabled and read-only
+ *   always false       `:hover`, `:active`, `:focus`, `:link`, `:any-link`,
+ *                      `:checked`, `:disabled`, `:required`, `:optional`,
+ *                      `:read-write`, `:placeholder-shown` -- parsed, never
+ *                      matched, no refusal
+ *   `Not supported`    a name lexbor KNOWS and declines to evaluate, the
+ *                      pseudo-ELEMENTS among them
+ *   `Unexpected token` a name it does not know at all
+ *
+ * so `:visited` refuses where `:hover` quietly matches nothing, and `:foo`
+ * and `::before` refuse under DIFFERENT sentences. `:blank` is its own case
+ * again: lexbor cites the working group's open issue and uses code 9 where
+ * every other refusal here is the syntax code 12.
+ *
+ * Matching is byte-exact on names and on values. The case-insensitive half
+ * of the standard's rule belongs to a quirks-mode HTML document, and neither
+ * document this tree can build is one -- `mixed` does not find `<Mixed/>`.
+ */
+
+#define CSS_ANY    0   /* `*`, and the empty compound                       */
+#define CSS_TYPE   1   /* a type selector                                   */
+#define CSS_ID     2   /* `#x`                                              */
+#define CSS_CLASS  3   /* `.x`                                              */
+#define CSS_ATTR   4   /* `[...]`                                           */
+#define CSS_PSEUDO 5   /* an evaluated pseudo-class                         */
+#define CSS_TRUE   6   /* a pseudo-class that matches every element         */
+#define CSS_FALSE  7   /* a pseudo-class that matches none                  */
+
+/* the six attribute operators, `[a]` being the absent one */
+#define CSS_A_HAS  0
+#define CSS_A_EQ   1   /* =  */
+#define CSS_A_INC  2   /* ~= */
+#define CSS_A_DASH 3   /* |= */
+#define CSS_A_PRE  4   /* ^= */
+#define CSS_A_SUF  5   /* $= */
+#define CSS_A_SUB  6   /* *= */
+
+/* the evaluated pseudo-classes */
+#define CSS_P_ROOT       0
+#define CSS_P_EMPTY      1
+#define CSS_P_NTH_CHILD  2
+#define CSS_P_NTH_LAST   3
+#define CSS_P_NTH_TYPE   4
+#define CSS_P_NTH_LTYPE  5
+#define CSS_P_NOT        6
+#define CSS_P_IS         7
+#define CSS_P_HAS        8
+
+/* how a compound relates to the one on its LEFT; NONE is the leftmost of a
+ * complex selector, and a leading combinator there is what makes `:has(> p)`
+ * a RELATIVE selector rather than a malformed one. */
+#define CSS_C_NONE  0
+#define CSS_C_DESC  1
+#define CSS_C_CHILD 2
+#define CSS_C_ADJ   3   /* + */
+#define CSS_C_SIB   4   /* ~ */
+
+/* the four refusals */
+#define CSS_E_OK      0
+#define CSS_E_TOKEN   1   /* Unexpected token: X                 */
+#define CSS_E_EMPTYFN 2   /* Pseudo function can't be empty: f() */
+#define CSS_E_NOSUP   3   /* Not supported: X                    */
+#define CSS_E_BLANK   4   /* the working group's open issue      */
+
+typedef struct css_simple css_simple;
+struct css_simple {
+	int iKind;                /* CSS_*                                      */
+	int iOp;                  /* the attribute operator, or the pseudo code */
+	sxu32 iName; int nName;   /* offset into sStr: type/attribute/class/id  */
+	sxu32 iVal;  int nVal;    /* offset into sStr: the attribute value      */
+	int bNoCase;              /* `[a="v" i]`                                */
+	int bAnyNs;               /* `*|name`                                   */
+	int a,b;                  /* the `an+b` of an nth-* pseudo-class        */
+	int iArg,nArg;            /* the run in aList a functional pseudo takes */
+	int iNext;                /* the next simple in this compound, -1 last  */
+};
+typedef struct css_compound css_compound;
+struct css_compound {
+	int iFirst;               /* its first simple, -1 for a bare `*`        */
+	int iComb;                /* CSS_C_*: how it relates to iLeft           */
+	int iLeft;                /* the compound on its left, -1 at the head   */
+};
+typedef struct css_sel css_sel;
+struct css_sel {
+	const char *z; int n; int i;   /* the selector text and the read point  */
+	SySet aSimple;                 /* css_simple                            */
+	SySet aComp;                   /* css_compound                          */
+	SySet aList;                   /* int: runs of rightmost-compound ids   */
+	SyBlob sStr;                   /* the unescaped name and value bytes    */
+	int iTop,nTop;                 /* the top-level run in aList            */
+	int iErr;                      /* CSS_E_*                               */
+	SyBlob sTok;                   /* the token text the refusal names      */
+};
+
+#define CssSimpleAt(P,I) ((css_simple *)SySetBasePtrJump(&(P)->aSimple,(I)))
+#define CssCompAt(P,I)   ((css_compound *)SySetBasePtrJump(&(P)->aComp,(I)))
+#define CssListAt(P,I)   (((int *)SySetBasePtr(&(P)->aList))[(I)])
+#define CssStr(P,OFF)    ((const char *)SyBlobData(&(P)->sStr) + (OFF))
+
+/* The name tables the sweep produced. Order inside each is the sweep's. */
+static const char * const azCssTrue[] = { "enabled", "read-only" };
+static const char * const azCssFalse[] = {
+	"hover", "active", "focus", "link", "any-link", "checked", "disabled",
+	"required", "optional", "read-write", "placeholder-shown"
+};
+static const char * const azCssNoSup[] = {
+	"scope", "lang", "dir", "focus-visible", "focus-within", "visited",
+	"target", "target-within", "valid", "invalid", "in-range", "out-of-range",
+	"default", "indeterminate", "current", "past", "future", "fullscreen",
+	"user-invalid", "local-link", "nth-col", "nth-last-col"
+};
+/* ...and the pseudo-ELEMENTS lexbor knows. A name it does not know is an
+ * unexpected token under BOTH colon counts, so this table is the whole
+ * difference `::` makes. */
+static const char * const azCssNoSupElem[] = {
+	"before", "after", "first-line", "first-letter", "marker", "selection",
+	"backdrop", "placeholder", "target-text", "spelling-error", "grammar-error"
+};
+
+static int CssNameIn(const char * const *apName,int nName,const char *z,int n)
+{
+	int i;
+	for( i = 0 ; i < nName ; i++ ){
+		if( (int)SyStrlen(apName[i]) == n && SyMemcmp(apName[i],z,(sxu32)n) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* ----- the reader ----- */
+
+static int CssIsWs(int c)
+{
+	return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r';
+}
+static void CssSkipWs(css_sel *p)
+{
+	while( p->i < p->n && CssIsWs(p->z[p->i]) ){
+		p->i++;
+	}
+}
+static int CssPeek(css_sel *p)
+{
+	return p->i < p->n ? (unsigned char)p->z[p->i] : -1;
+}
+static int CssIsNameChar(int c)
+{
+	/* a NUL is a name byte: the standard replaces it with U+FFFD rather than
+	 * ending the token, so `p\0q` is one identifier that matches nothing --
+	 * not the refusal a C string terminator would suggest */
+	return c == '_' || c == '-' || c == 0 || c >= 0x80
+		|| (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+}
+static int CssIsNameStart(css_sel *p,int iPos)
+{
+	int c = iPos < p->n ? (unsigned char)p->z[iPos] : -1;
+	if( c == '\\' ){
+		return 1;
+	}
+	if( c == '-' ){
+		int d = iPos + 1 < p->n ? (unsigned char)p->z[iPos+1] : -1;
+		return d == '-' || d == '_' || d == '\\' || d >= 0x80
+			|| (d >= 'a' && d <= 'z') || (d >= 'A' && d <= 'Z');
+	}
+	return c == '_' || c >= 0x80 || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+/*
+ * The refusal names the token it stopped on, so it is read the way the CSS
+ * tokenizer would: an identifier whole, an at-keyword with its `@`, anything
+ * else as the single byte -- and nothing at all as `END-OF-FILE`, which is
+ * the sentence php prints for every truncated selector.
+ */
+static int CssFailToken(css_sel *p)
+{
+	int iStart = p->i;
+	SyBlobReset(&p->sTok);
+	p->iErr = CSS_E_TOKEN;
+	if( p->i >= p->n ){
+		SyBlobAppend(&p->sTok,"END-OF-FILE",sizeof("END-OF-FILE")-1);
+		return 0;
+	}
+	if( p->z[p->i] == '@' ){
+		p->i++;
+	}
+	if( CssIsNameStart(p,p->i) ){
+		while( p->i < p->n && CssIsNameChar((unsigned char)p->z[p->i]) ){
+			p->i++;
+		}
+	}else if( p->i == iStart ){
+		p->i++;
+	}
+	SyBlobAppend(&p->sTok,&p->z[iStart],(sxu32)(p->i - iStart));
+	return 0;
+}
+static int CssFailNamed(css_sel *p,int iErr,const char *z,int n)
+{
+	SyBlobReset(&p->sTok);
+	SyBlobAppend(&p->sTok,z,(sxu32)n);
+	p->iErr = iErr;
+	return 0;
+}
+/*
+ * An identifier into the string blob, answering its offset and length. CSS
+ * escaping is a backslash and the byte behind it -- the hex form is read as
+ * its own bytes, which is what every unescaped selector in a real tree wants
+ * and what no test in either corpus can tell apart.
+ */
+static int CssReadName(css_sel *p,sxu32 *piOff,int *pnLen)
+{
+	sxu32 iOff = SyBlobLength(&p->sStr);
+	if( !CssIsNameStart(p,p->i) ){
+		return CssFailToken(p);
+	}
+	while( p->i < p->n ){
+		int c = (unsigned char)p->z[p->i];
+		if( c == '\\' ){
+			if( p->i + 1 >= p->n ){
+				break;
+			}
+			SyBlobAppend(&p->sStr,&p->z[p->i+1],1);
+			p->i += 2;
+			continue;
+		}
+		if( !CssIsNameChar(c) ){
+			break;
+		}
+		SyBlobAppend(&p->sStr,&p->z[p->i],1);
+		p->i++;
+	}
+	*piOff = iOff;
+	*pnLen = (int)(SyBlobLength(&p->sStr) - iOff);
+	return 1;
+}
+/* An identifier or a quoted string -- an attribute's value is either. */
+static int CssReadValue(css_sel *p,sxu32 *piOff,int *pnLen)
+{
+	int q = CssPeek(p);
+	sxu32 iOff;
+	if( q != '"' && q != '\'' ){
+		return CssReadName(p,piOff,pnLen);
+	}
+	iOff = SyBlobLength(&p->sStr);
+	p->i++;
+	while( p->i < p->n && (unsigned char)p->z[p->i] != q ){
+		if( p->z[p->i] == '\\' && p->i + 1 < p->n ){
+			SyBlobAppend(&p->sStr,&p->z[p->i+1],1);
+			p->i += 2;
+			continue;
+		}
+		SyBlobAppend(&p->sStr,&p->z[p->i],1);
+		p->i++;
+	}
+	if( p->i >= p->n ){
+		return CssFailToken(p);
+	}
+	p->i++;
+	*piOff = iOff;
+	*pnLen = (int)(SyBlobLength(&p->sStr) - iOff);
+	return 1;
+}
+
+/* ----- the parser ----- */
+
+static int CssParseList(css_sel *p,int *piRun,int *pnRun,int bRelative);
+
+/* `an+b`, `odd`, `even`, and the bare integer -- with whitespace allowed on
+ * either side of the sign, which is why the sign is read as its own step. */
+static int CssReadNth(css_sel *p,int *pa,int *pb)
+{
+	int iSign = 1, iNum = 0, bNum = 0, bN = 0;
+	CssSkipWs(p);
+	if( p->i + 3 <= p->n && SyStrnicmp(&p->z[p->i],"odd",3) == 0
+		&& !CssIsNameChar(p->i+3 < p->n ? (unsigned char)p->z[p->i+3] : 0) ){
+		p->i += 3;
+		*pa = 2; *pb = 1;
+		return 1;
+	}
+	if( p->i + 4 <= p->n && SyStrnicmp(&p->z[p->i],"even",4) == 0
+		&& !CssIsNameChar(p->i+4 < p->n ? (unsigned char)p->z[p->i+4] : 0) ){
+		p->i += 4;
+		*pa = 2; *pb = 0;
+		return 1;
+	}
+	if( CssPeek(p) == '+' || CssPeek(p) == '-' ){
+		iSign = CssPeek(p) == '-' ? -1 : 1;
+		p->i++;
+	}
+	while( p->i < p->n && p->z[p->i] >= '0' && p->z[p->i] <= '9' ){
+		iNum = iNum * 10 + (p->z[p->i] - '0');
+		bNum = 1;
+		p->i++;
+	}
+	if( p->i < p->n && (p->z[p->i] == 'n' || p->z[p->i] == 'N') ){
+		bN = 1;
+		p->i++;
+	}
+	if( !bN ){
+		if( !bNum ){
+			return CssFailToken(p);
+		}
+		*pa = 0; *pb = iSign * iNum;
+		return 1;
+	}
+	*pa = iSign * (bNum ? iNum : 1);
+	*pb = 0;
+	CssSkipWs(p);
+	if( CssPeek(p) == '+' || CssPeek(p) == '-' ){
+		int iBs = CssPeek(p) == '-' ? -1 : 1, iB = 0, bB = 0;
+		p->i++;
+		CssSkipWs(p);
+		while( p->i < p->n && p->z[p->i] >= '0' && p->z[p->i] <= '9' ){
+			iB = iB * 10 + (p->z[p->i] - '0');
+			bB = 1;
+			p->i++;
+		}
+		if( !bB ){
+			return CssFailToken(p);
+		}
+		*pb = iBs * iB;
+	}
+	return 1;
+}
+/*
+ * A pseudo-class or pseudo-element, already past its colons. bElem says how
+ * many there were, which decides only which "not supported" table the name
+ * is looked up in -- a name in neither is an unexpected token either way.
+ */
+static int CssParsePseudo(css_sel *p,css_simple *pOut,int bElem)
+{
+	sxu32 iOff;
+	int nLen,bFn;
+	const char *zName;
+	if( !CssReadName(p,&iOff,&nLen) ){
+		return 0;
+	}
+	zName = CssStr(p,iOff);
+	bFn = CssPeek(p) == '(';
+	if( bElem ){
+		if( CssNameIn(azCssNoSupElem,SX_ARRAYSIZE(azCssNoSupElem),zName,nLen) ){
+			return CssFailNamed(p,CSS_E_NOSUP,zName,nLen);
+		}
+		p->i -= nLen;
+		return CssFailToken(p);
+	}
+	if( nLen == 5 && SyMemcmp(zName,"blank",5) == 0 ){
+		return CssFailNamed(p,CSS_E_BLANK,zName,nLen);
+	}
+	if( CssNameIn(azCssNoSup,SX_ARRAYSIZE(azCssNoSup),zName,nLen) ){
+		return CssFailNamed(p,CSS_E_NOSUP,zName,nLen);
+	}
+	if( CssNameIn(azCssNoSupElem,SX_ARRAYSIZE(azCssNoSupElem),zName,nLen) ){
+		/* a pseudo-element written with one colon is the legacy spelling, and
+		 * lexbor knows only the four the standard kept there. */
+		if( nLen == 6 || nLen == 5 ){
+			return CssFailNamed(p,CSS_E_NOSUP,zName,nLen);
+		}
+		p->i -= nLen;
+		return CssFailToken(p);
+	}
+	if( !bFn ){
+		if( CssNameIn(azCssTrue,SX_ARRAYSIZE(azCssTrue),zName,nLen) ){
+			pOut->iKind = CSS_TRUE;
+			return 1;
+		}
+		if( CssNameIn(azCssFalse,SX_ARRAYSIZE(azCssFalse),zName,nLen) ){
+			pOut->iKind = CSS_FALSE;
+			return 1;
+		}
+		pOut->iKind = CSS_PSEUDO;
+		if( nLen == 4 && SyMemcmp(zName,"root",4) == 0 ){
+			pOut->iOp = CSS_P_ROOT;
+		}else if( nLen == 5 && SyMemcmp(zName,"empty",5) == 0 ){
+			pOut->iOp = CSS_P_EMPTY;
+		}else if( nLen == 11 && SyMemcmp(zName,"first-child",11) == 0 ){
+			pOut->iOp = CSS_P_NTH_CHILD; pOut->a = 0; pOut->b = 1;
+		}else if( nLen == 10 && SyMemcmp(zName,"last-child",10) == 0 ){
+			pOut->iOp = CSS_P_NTH_LAST; pOut->a = 0; pOut->b = 1;
+		}else if( nLen == 10 && SyMemcmp(zName,"only-child",10) == 0 ){
+			/* the standard's own definition: first AND last */
+			pOut->iOp = CSS_P_NTH_CHILD; pOut->a = 0; pOut->b = 1; pOut->bNoCase = 1;
+		}else if( nLen == 13 && SyMemcmp(zName,"first-of-type",13) == 0 ){
+			pOut->iOp = CSS_P_NTH_TYPE; pOut->a = 0; pOut->b = 1;
+		}else if( nLen == 12 && SyMemcmp(zName,"last-of-type",12) == 0 ){
+			pOut->iOp = CSS_P_NTH_LTYPE; pOut->a = 0; pOut->b = 1;
+		}else if( nLen == 12 && SyMemcmp(zName,"only-of-type",12) == 0 ){
+			pOut->iOp = CSS_P_NTH_TYPE; pOut->a = 0; pOut->b = 1; pOut->bNoCase = 1;
+		}else{
+			p->i -= nLen;
+			return CssFailToken(p);
+		}
+		return 1;
+	}
+	/* ...a functional one. */
+	pOut->iKind = CSS_PSEUDO;
+	if( nLen == 9 && SyMemcmp(zName,"nth-child",9) == 0 ){
+		pOut->iOp = CSS_P_NTH_CHILD;
+	}else if( nLen == 14 && SyMemcmp(zName,"nth-last-child",14) == 0 ){
+		pOut->iOp = CSS_P_NTH_LAST;
+	}else if( nLen == 11 && SyMemcmp(zName,"nth-of-type",11) == 0 ){
+		pOut->iOp = CSS_P_NTH_TYPE;
+	}else if( nLen == 16 && SyMemcmp(zName,"nth-last-of-type",16) == 0 ){
+		pOut->iOp = CSS_P_NTH_LTYPE;
+	}else if( nLen == 3 && SyMemcmp(zName,"not",3) == 0 ){
+		pOut->iOp = CSS_P_NOT;
+	}else if( nLen == 2 && SyMemcmp(zName,"is",2) == 0 ){
+		pOut->iOp = CSS_P_IS;
+	}else if( nLen == 5 && SyMemcmp(zName,"where",5) == 0 ){
+		pOut->iOp = CSS_P_IS;
+	}else if( nLen == 3 && SyMemcmp(zName,"has",3) == 0 ){
+		pOut->iOp = CSS_P_HAS;
+	}else{
+		p->i -= nLen;
+		return CssFailToken(p);
+	}
+	p->i++;                       /* past the `(` */
+	CssSkipWs(p);
+	if( CssPeek(p) == ')' ){
+		/* php names the function WITH its parentheses in this one sentence */
+		SyBlobReset(&p->sTok);
+		SyBlobAppend(&p->sTok,zName,(sxu32)nLen);
+		SyBlobAppend(&p->sTok,"()",2);
+		p->iErr = CSS_E_EMPTYFN;
+		return 0;
+	}
+	if( pOut->iOp <= CSS_P_NTH_LTYPE ){
+		if( !CssReadNth(p,&pOut->a,&pOut->b) ){
+			return 0;
+		}
+	}else if( !CssParseList(p,&pOut->iArg,&pOut->nArg,pOut->iOp == CSS_P_HAS) ){
+		return 0;
+	}
+	CssSkipWs(p);
+	if( CssPeek(p) != ')' ){
+		return CssFailToken(p);
+	}
+	p->i++;
+	return 1;
+}
+/*
+ * One compound selector -- everything between two combinators. Answers the
+ * index of the compound it built, or -1 on a refusal; the caller has already
+ * settled the combinator, so an empty compound here is a syntax error and
+ * not a universal selector.
+ */
+static int CssParseCompound(css_sel *p,int iComb,int iLeft)
+{
+	css_compound sComp;
+	int iPrev = -1, nSeen = 0;
+	sComp.iFirst = -1;
+	sComp.iComb = iComb;
+	sComp.iLeft = iLeft;
+	for(;;){
+		css_simple sS;
+		int c = CssPeek(p), iThis;
+		SyZero(&sS,sizeof(sS));
+		sS.iArg = -1;
+		sS.iNext = -1;
+		if( c == '*' || c == '|' || CssIsNameStart(p,p->i) ){
+			if( nSeen > 0 ){
+				/* `**` and `p.*`: the type half of a compound is its head, so a
+				 * second one is not a selector at all */
+				CssFailToken(p);
+				return -1;
+			}
+			if( c == '*' ){
+				p->i++;
+				if( CssPeek(p) == '|' ){
+					p->i++;
+					sS.bAnyNs = 1;
+					if( !CssReadName(p,&sS.iName,&sS.nName) ){
+						return -1;
+					}
+					sS.iKind = CSS_TYPE;
+				}else{
+					sS.iKind = CSS_ANY;
+				}
+			}else{
+				if( c == '|' ){
+					p->i++;
+					if( !CssIsNameStart(p,p->i) ){
+						CssFailToken(p);
+						return -1;
+					}
+				}
+				if( !CssReadName(p,&sS.iName,&sS.nName) ){
+					return -1;
+				}
+				if( CssPeek(p) == '|' && p->i + 1 < p->n && p->z[p->i+1] != '=' ){
+					/* `ns|name`: a prefix querySelector has no way to bind, so
+					 * the whole compound matches nothing -- php's answer too. */
+					p->i++;
+					if( !CssReadName(p,&sS.iName,&sS.nName) ){
+						return -1;
+					}
+					sS.iKind = CSS_FALSE;
+				}else{
+					sS.iKind = CSS_TYPE;
+				}
+			}
+		}else if( c == '#' ){
+			p->i++;
+			if( !CssIsNameStart(p,p->i) ){
+				p->i--;
+				CssFailToken(p);
+				return -1;
+			}
+			if( !CssReadName(p,&sS.iName,&sS.nName) ){
+				return -1;
+			}
+			sS.iKind = CSS_ID;
+		}else if( c == '.' ){
+			p->i++;
+			if( !CssIsNameStart(p,p->i) ){
+				/*
+				 * A `.` with no identifier behind it is where lexbor stops
+				 * naming the byte it is looking at. Swept over thirteen
+				 * malformed selectors, it names only the two tokens that
+				 * DELIMIT a complex selector -- a `,` and a `*` -- and reports
+				 * END-OF-FILE for everything else, `#`, `[`, `>`, a space and a
+				 * second `.` alike. It is reading the recovery, not the fault.
+				 */
+				if( CssPeek(p) != ',' && CssPeek(p) != '*' ){
+					p->i = p->n;
+				}
+				CssFailToken(p);
+				return -1;
+			}
+			if( !CssReadName(p,&sS.iName,&sS.nName) ){
+				return -1;
+			}
+			sS.iKind = CSS_CLASS;
+		}else if( c == '[' ){
+			p->i++;
+			CssSkipWs(p);
+			if( CssPeek(p) == '*' && p->i + 1 < p->n && p->z[p->i+1] == '|' ){
+				p->i += 2;
+				sS.bAnyNs = 1;
+			}
+			if( !CssReadName(p,&sS.iName,&sS.nName) ){
+				return -1;
+			}
+			CssSkipWs(p);
+			sS.iKind = CSS_ATTR;
+			sS.iOp = CSS_A_HAS;
+			c = CssPeek(p);
+			if( c == ']' ){
+				p->i++;
+			}else{
+				if( c == '~' ){
+					sS.iOp = CSS_A_INC;
+				}else if( c == '|' ){
+					sS.iOp = CSS_A_DASH;
+				}else if( c == '^' ){
+					sS.iOp = CSS_A_PRE;
+				}else if( c == '$' ){
+					sS.iOp = CSS_A_SUF;
+				}else if( c == '*' ){
+					sS.iOp = CSS_A_SUB;
+				}else if( c == '=' ){
+					sS.iOp = CSS_A_EQ;
+				}else{
+					CssFailToken(p);
+					return -1;
+				}
+				if( sS.iOp != CSS_A_EQ ){
+					p->i++;
+					if( CssPeek(p) != '=' ){
+						CssFailToken(p);
+						return -1;
+					}
+				}
+				p->i++;
+				CssSkipWs(p);
+				if( !CssReadValue(p,&sS.iVal,&sS.nVal) ){
+					return -1;
+				}
+				CssSkipWs(p);
+				c = CssPeek(p);
+				if( c == 'i' || c == 'I' || c == 's' || c == 'S' ){
+					sS.bNoCase = (c == 'i' || c == 'I');
+					p->i++;
+					CssSkipWs(p);
+				}
+				if( CssPeek(p) != ']' ){
+					CssFailToken(p);
+					return -1;
+				}
+				p->i++;
+			}
+		}else if( c == ':' ){
+			int bElem = 0;
+			p->i++;
+			if( CssPeek(p) == ':' ){
+				p->i++;
+				bElem = 1;
+			}
+			if( !CssParsePseudo(p,&sS,bElem) ){
+				return -1;
+			}
+		}else{
+			break;
+		}
+		iThis = (int)SySetUsed(&p->aSimple);
+		if( SySetPut(&p->aSimple,(const void *)&sS) != SXRET_OK ){
+			return -1;
+		}
+		if( iPrev < 0 ){
+			sComp.iFirst = iThis;
+		}else{
+			CssSimpleAt(p,iPrev)->iNext = iThis;
+		}
+		iPrev = iThis;
+		nSeen++;
+	}
+	if( nSeen == 0 ){
+		CssFailToken(p);
+		return -1;
+	}
+	{
+		int iComp = (int)SySetUsed(&p->aComp);
+		if( SySetPut(&p->aComp,(const void *)&sComp) != SXRET_OK ){
+			return -1;
+		}
+		return iComp;
+	}
+}
+/* One complex selector: compounds left to right, answering the RIGHTMOST,
+ * from which the matcher walks back. */
+static int CssParseComplex(css_sel *p,int bRelative)
+{
+	int iComb = CSS_C_NONE, iLeft = -1, iComp;
+	CssSkipWs(p);
+	if( bRelative ){
+		int c = CssPeek(p);
+		if( c == '>' || c == '+' || c == '~' ){
+			iComb = c == '>' ? CSS_C_CHILD : (c == '+' ? CSS_C_ADJ : CSS_C_SIB);
+			p->i++;
+			CssSkipWs(p);
+		}else{
+			iComb = CSS_C_DESC;
+		}
+	}
+	for(;;){
+		int bWs;
+		iComp = CssParseCompound(p,iComb,iLeft);
+		if( iComp < 0 ){
+			return -1;
+		}
+		iLeft = iComp;
+		bWs = p->i < p->n && CssIsWs(p->z[p->i]);
+		CssSkipWs(p);
+		{
+			int c = CssPeek(p);
+			if( c == '>' || c == '+' || c == '~' ){
+				iComb = c == '>' ? CSS_C_CHILD : (c == '+' ? CSS_C_ADJ : CSS_C_SIB);
+				p->i++;
+				CssSkipWs(p);
+				continue;
+			}
+			if( bWs && c != -1 && c != ',' && c != ')' ){
+				iComb = CSS_C_DESC;
+				continue;
+			}
+		}
+		break;
+	}
+	return iComp;
+}
+/*
+ * A comma-separated selector list. The run is copied into aList in one go,
+ * because a nested `:not()` parsed on the way appends its OWN run first and
+ * a run has to stay contiguous.
+ */
+static int CssParseList(css_sel *p,int *piRun,int *pnRun,int bRelative)
+{
+	SySet sLocal;
+	int rc = 1;
+	SySetInit(&sLocal,p->aList.pAllocator,sizeof(int));
+	for(;;){
+		int iComp = CssParseComplex(p,bRelative);
+		if( iComp < 0 ){
+			rc = 0;
+			break;
+		}
+		SySetPut(&sLocal,(const void *)&iComp);
+		CssSkipWs(p);
+		if( CssPeek(p) != ',' ){
+			break;
+		}
+		p->i++;
+		CssSkipWs(p);
+	}
+	if( rc ){
+		sxu32 k;
+		*piRun = (int)SySetUsed(&p->aList);
+		*pnRun = (int)SySetUsed(&sLocal);
+		for( k = 0 ; k < SySetUsed(&sLocal) ; k++ ){
+			SySetPut(&p->aList,(const void *)&((int *)SySetBasePtr(&sLocal))[k]);
+		}
+	}
+	SySetRelease(&sLocal);
+	return rc;
+}
+static void CssRelease(css_sel *p)
+{
+	SySetRelease(&p->aSimple);
+	SySetRelease(&p->aComp);
+	SySetRelease(&p->aList);
+	SyBlobRelease(&p->sStr);
+	SyBlobRelease(&p->sTok);
+}
+static int CssParse(css_sel *p,SyMemBackend *pAlloc,const char *z,int n)
+{
+	SyZero(p,sizeof(*p));
+	p->z = z;
+	p->n = n;
+	SySetInit(&p->aSimple,pAlloc,sizeof(css_simple));
+	SySetInit(&p->aComp,pAlloc,sizeof(css_compound));
+	SySetInit(&p->aList,pAlloc,sizeof(int));
+	SyBlobInit(&p->sStr,pAlloc);
+	SyBlobInit(&p->sTok,pAlloc);
+	if( !CssParseList(p,&p->iTop,&p->nTop,0) ){
+		return 0;
+	}
+	CssSkipWs(p);
+	if( p->i < p->n ){
+		return CssFailToken(p);
+	}
+	return 1;
+}
+
+/* ----- the matcher ----- */
+
+static int CssMatchComplex(css_sel *p,int iComp,xmlNodePtr pEl,xmlNodePtr pAnchor);
+
+static int CssMatchList(css_sel *p,int iRun,int nRun,xmlNodePtr pEl,xmlNodePtr pAnchor)
+{
+	int k;
+	for( k = 0 ; k < nRun ; k++ ){
+		if( CssMatchComplex(p,CssListAt(p,iRun+k),pEl,pAnchor) ){
+			return 1;
+		}
+	}
+	return 0;
+}
+static xmlNodePtr CssPrevElem(xmlNodePtr pEl)
+{
+	xmlNodePtr pCur = pEl ? pEl->prev : 0;
+	while( pCur && pCur->type != XML_ELEMENT_NODE ){
+		pCur = pCur->prev;
+	}
+	return pCur;
+}
+static xmlNodePtr CssNextElem(xmlNodePtr pEl)
+{
+	xmlNodePtr pCur = pEl ? pEl->next : 0;
+	while( pCur && pCur->type != XML_ELEMENT_NODE ){
+		pCur = pCur->next;
+	}
+	return pCur;
+}
+/* Same element TYPE, which for an of-type question is the local name and the
+ * namespace together -- two `p` in different namespaces are two types. */
+static int CssSameType(xmlNodePtr pA,xmlNodePtr pB)
+{
+	const xmlChar *zA = pA->ns ? pA->ns->href : 0;
+	const xmlChar *zB = pB->ns ? pB->ns->href : 0;
+	if( !xmlStrEqual(pA->name,pB->name) ){
+		return 0;
+	}
+	return (zA == 0 && zB == 0) || (zA && zB && xmlStrEqual(zA,zB));
+}
+/* The 1-based index among the siblings the question counts, from whichever
+ * end it counts from. Answers 0 when there is no parent to count within. */
+static int CssIndexOf(xmlNodePtr pEl,int bFromEnd,int bOfType)
+{
+	xmlNodePtr pCur;
+	int iIdx = 1;
+	if( pEl->parent == 0 ){
+		return 0;
+	}
+	pCur = bFromEnd ? CssNextElem(pEl) : CssPrevElem(pEl);
+	while( pCur ){
+		if( !bOfType || CssSameType(pCur,pEl) ){
+			iIdx++;
+		}
+		pCur = bFromEnd ? CssNextElem(pCur) : CssPrevElem(pCur);
+	}
+	return iIdx;
+}
+/* `an+b` holds for an index when some n >= 0 lands on it. */
+static int CssNthHolds(int a,int b,int iIdx)
+{
+	if( iIdx <= 0 ){
+		return 0;
+	}
+	if( a == 0 ){
+		return iIdx == b;
+	}
+	if( (iIdx - b) % a != 0 ){
+		return 0;
+	}
+	return (iIdx - b) / a >= 0;
+}
+/* An element's attribute by the selector's name. A plain name is the
+ * no-prefix attribute (`x:id` is not `[id]`); `*|name` takes any. */
+static xmlChar * CssAttrValue(xmlNodePtr pEl,const char *zName,int nName,int bAnyNs)
+{
+	xmlAttrPtr pAttr;
+	for( pAttr = pEl->properties ; pAttr ; pAttr = pAttr->next ){
+		if( !bAnyNs && pAttr->ns != 0 ){
+			continue;
+		}
+		if( DomLenEq(pAttr->name,zName,nName) ){
+			return xmlNodeListGetString(pEl->doc,pAttr->children,1);
+		}
+	}
+	return 0;
+}
+static int CssByteEq(const char *zA,int nA,const char *zB,int nB,int bNoCase)
+{
+	if( nA != nB ){
+		return 0;
+	}
+	return bNoCase ? SyStrnicmp(zA,zB,(sxu32)nA) == 0
+		: SyMemcmp(zA,zB,(sxu32)nA) == 0;
+}
+static int CssAttrHolds(int iOp,const char *zHave,int nHave,const char *zWant,int nWant,int bNoCase)
+{
+	switch( iOp ){
+		case CSS_A_HAS:
+			return 1;
+		case CSS_A_EQ:
+			return CssByteEq(zHave,nHave,zWant,nWant,bNoCase);
+		case CSS_A_INC: {
+			/* the empty token matches nothing, as the whitespace set does */
+			int iOff = 0, nTok;
+			const char *zTok;
+			if( nWant == 0 ){
+				return 0;
+			}
+			while( DomTokNext(zHave,nHave,&iOff,&zTok,&nTok) ){
+				if( CssByteEq(zTok,nTok,zWant,nWant,bNoCase) ){
+					return 1;
+				}
+			}
+			return 0;
+		}
+		case CSS_A_DASH:
+			if( nWant == 0 ){
+				return 0;
+			}
+			if( CssByteEq(zHave,nHave,zWant,nWant,bNoCase) ){
+				return 1;
+			}
+			return nHave > nWant && zHave[nWant] == '-'
+				&& CssByteEq(zHave,nWant,zWant,nWant,bNoCase);
+		case CSS_A_PRE:
+			return nWant > 0 && nHave >= nWant
+				&& CssByteEq(zHave,nWant,zWant,nWant,bNoCase);
+		case CSS_A_SUF:
+			return nWant > 0 && nHave >= nWant
+				&& CssByteEq(zHave+nHave-nWant,nWant,zWant,nWant,bNoCase);
+		case CSS_A_SUB: {
+			int i;
+			if( nWant == 0 ){
+				return 0;
+			}
+			for( i = 0 ; i + nWant <= nHave ; i++ ){
+				if( CssByteEq(zHave+i,nWant,zWant,nWant,bNoCase) ){
+					return 1;
+				}
+			}
+			return 0;
+		}
+		default:
+			return 0;
+	}
+}
+/* `:empty` is the standard's: no child element and no non-empty text. A
+ * comment or a PI leaves an element empty; a single space does not. */
+static int CssIsEmpty(xmlNodePtr pEl)
+{
+	xmlNodePtr pCur;
+	for( pCur = pEl->children ; pCur ; pCur = pCur->next ){
+		if( pCur->type == XML_ELEMENT_NODE ){
+			return 0;
+		}
+		if( (pCur->type == XML_TEXT_NODE || pCur->type == XML_CDATA_SECTION_NODE)
+			&& pCur->content && pCur->content[0] ){
+			return 0;
+		}
+	}
+	return 1;
+}
+static int CssMatchHas(css_sel *p,css_simple *pS,xmlNodePtr pEl)
+{
+	int k;
+	for( k = 0 ; k < pS->nArg ; k++ ){
+		int iComp = CssListAt(p,pS->iArg + k);
+		int iLead = CssCompAt(p,iComp)->iComb;
+		xmlNodePtr pCur;
+		/* the LEADING combinator is the leftmost compound's, so it is read off
+		 * the head of the chain rather than off the one we start matching at */
+		{
+			int iHead = iComp;
+			while( CssCompAt(p,iHead)->iLeft >= 0 ){
+				iHead = CssCompAt(p,iHead)->iLeft;
+			}
+			iLead = CssCompAt(p,iHead)->iComb;
+		}
+		if( iLead == CSS_C_ADJ || iLead == CSS_C_SIB ){
+			for( pCur = CssNextElem(pEl) ; pCur ; pCur = CssNextElem(pCur) ){
+				if( CssMatchComplex(p,iComp,pCur,pEl) ){
+					return 1;
+				}
+			}
+			continue;
+		}
+		for( pCur = DomWalkNext(pEl,pEl) ; pCur ; pCur = DomWalkNext(pCur,pEl) ){
+			if( pCur->type == XML_ELEMENT_NODE && CssMatchComplex(p,iComp,pCur,pEl) ){
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+static int CssMatchSimple(css_sel *p,int iSimple,xmlNodePtr pEl,xmlNodePtr pAnchor)
+{
+	css_simple *pS = CssSimpleAt(p,iSimple);
+	switch( pS->iKind ){
+		case CSS_ANY:
+			return 1;
+		case CSS_TRUE:
+			return 1;
+		case CSS_FALSE:
+			return 0;
+		case CSS_TYPE:
+			return DomLenEq(pEl->name,CssStr(p,pS->iName),pS->nName);
+		case CSS_ID: {
+			xmlChar *zVal = CssAttrValue(pEl,"id",2,0);
+			int bOk = zVal && CssByteEq((const char *)zVal,(int)SyStrlen((const char *)zVal),
+				CssStr(p,pS->iName),pS->nName,0);
+			if( zVal ){
+				xmlFree(zVal);
+			}
+			return bOk;
+		}
+		case CSS_CLASS: {
+			xmlChar *zVal = xmlGetNoNsProp(pEl,(const xmlChar *)"class");
+			int bOk = zVal && DomTokHas((const char *)zVal,(int)SyStrlen((const char *)zVal),
+				CssStr(p,pS->iName),pS->nName);
+			if( zVal ){
+				xmlFree(zVal);
+			}
+			return bOk;
+		}
+		case CSS_ATTR: {
+			xmlChar *zVal = CssAttrValue(pEl,CssStr(p,pS->iName),pS->nName,pS->bAnyNs);
+			int bOk;
+			if( zVal == 0 ){
+				return 0;
+			}
+			bOk = CssAttrHolds(pS->iOp,(const char *)zVal,(int)SyStrlen((const char *)zVal),
+				pS->nVal ? CssStr(p,pS->iVal) : "",pS->nVal,pS->bNoCase);
+			xmlFree(zVal);
+			return bOk;
+		}
+		default:
+			break;
+	}
+	switch( pS->iOp ){
+		case CSS_P_ROOT:
+			return pEl->parent != 0 && pEl->parent->type == XML_DOCUMENT_NODE;
+		case CSS_P_EMPTY:
+			return CssIsEmpty(pEl);
+		case CSS_P_NTH_CHILD:
+		case CSS_P_NTH_LAST:
+		case CSS_P_NTH_TYPE:
+		case CSS_P_NTH_LTYPE: {
+			int bEnd = pS->iOp == CSS_P_NTH_LAST || pS->iOp == CSS_P_NTH_LTYPE;
+			int bType = pS->iOp == CSS_P_NTH_TYPE || pS->iOp == CSS_P_NTH_LTYPE;
+			if( !CssNthHolds(pS->a,pS->b,CssIndexOf(pEl,bEnd,bType)) ){
+				return 0;
+			}
+			/* bNoCase carries the `only-` half here: the same question asked
+			 * again from the other end */
+			if( pS->bNoCase && !CssNthHolds(pS->a,pS->b,CssIndexOf(pEl,!bEnd,bType)) ){
+				return 0;
+			}
+			return 1;
+		}
+		case CSS_P_NOT:
+			return !CssMatchList(p,pS->iArg,pS->nArg,pEl,pAnchor);
+		case CSS_P_IS:
+			return CssMatchList(p,pS->iArg,pS->nArg,pEl,pAnchor);
+		case CSS_P_HAS:
+			return CssMatchHas(p,pS,pEl);
+		default:
+			return 0;
+	}
+}
+static int CssMatchCompound(css_sel *p,int iComp,xmlNodePtr pEl,xmlNodePtr pAnchor)
+{
+	int iS = CssCompAt(p,iComp)->iFirst;
+	while( iS >= 0 ){
+		if( !CssMatchSimple(p,iS,pEl,pAnchor) ){
+			return 0;
+		}
+		iS = CssSimpleAt(p,iS)->iNext;
+	}
+	return 1;
+}
+/*
+ * Right to left, which is what makes a selector cost the length of ONE
+ * ancestor chain rather than the size of the subtree. A leading combinator
+ * at the head is the relative form `:has()` takes, and it is settled against
+ * the anchor rather than by walking further left.
+ */
+static int CssMatchComplex(css_sel *p,int iComp,xmlNodePtr pEl,xmlNodePtr pAnchor)
+{
+	css_compound *pC;
+	int iLeft,iComb;
+	if( pEl == 0 || pEl->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	if( !CssMatchCompound(p,iComp,pEl,pAnchor) ){
+		return 0;
+	}
+	pC = CssCompAt(p,iComp);
+	iLeft = pC->iLeft;
+	iComb = pC->iComb;
+	if( iLeft < 0 ){
+		xmlNodePtr pCur;
+		switch( iComb ){
+			case CSS_C_NONE:
+				return 1;
+			case CSS_C_CHILD:
+				return pEl->parent == pAnchor;
+			case CSS_C_ADJ:
+				return CssPrevElem(pEl) == pAnchor;
+			case CSS_C_SIB:
+				for( pCur = CssPrevElem(pEl) ; pCur ; pCur = CssPrevElem(pCur) ){
+					if( pCur == pAnchor ){
+						return 1;
+					}
+				}
+				return 0;
+			default:
+				for( pCur = pEl->parent ; pCur ; pCur = pCur->parent ){
+					if( pCur == pAnchor ){
+						return 1;
+					}
+				}
+				return 0;
+		}
+	}
+	switch( iComb ){
+		case CSS_C_CHILD:
+			return CssMatchComplex(p,iLeft,pEl->parent,pAnchor);
+		case CSS_C_ADJ:
+			return CssMatchComplex(p,iLeft,CssPrevElem(pEl),pAnchor);
+		case CSS_C_SIB: {
+			xmlNodePtr pCur;
+			for( pCur = CssPrevElem(pEl) ; pCur ; pCur = CssPrevElem(pCur) ){
+				if( CssMatchComplex(p,iLeft,pCur,pAnchor) ){
+					return 1;
+				}
+			}
+			return 0;
+		}
+		default: {
+			xmlNodePtr pCur;
+			for( pCur = pEl->parent ; pCur ; pCur = pCur->parent ){
+				if( CssMatchComplex(p,iLeft,pCur,pAnchor) ){
+					return 1;
+				}
+			}
+			return 0;
+		}
+	}
+}
+static int CssMatchTop(css_sel *p,xmlNodePtr pEl)
+{
+	return CssMatchList(p,p->iTop,p->nTop,pEl,0);
+}
+
+/* ----- the four doors -----
+ *
+ * php states them on five classes and the count differs per class: the two
+ * finders on every ParentNode, `closest` and `matches` on the element alone.
+ * All five share one body each, because what a door does with the context
+ * node does not depend on which class declared it -- the candidate set is
+ * always the context node's strict DESCENDANTS, and the MATCH still reads the
+ * whole tree above them. That asymmetry is the one thing a selector engine
+ * gets wrong by default and the oracle is explicit about it:
+ * `$div->querySelectorAll('section p')` answers the paragraphs under $div
+ * even though the `section` it needs is $div's own ancestor, outside the
+ * scope entirely. `:root` then answers nothing from a scope that excludes
+ * the document element, for the same reason and with no special case.
+ */
+static int DomSelRefuse(ph7_context *pCtx,css_sel *pSel)
+{
+	SyBlob sMsg;
+	int rc;
+	const char *zTok = (const char *)SyBlobData(&pSel->sTok);
+	int nTok = (int)SyBlobLength(&pSel->sTok);
+	if( pSel->iErr == CSS_E_BLANK ){
+		/* lexbor's one bespoke sentence, and the one refusal here that is not
+		 * the syntax code */
+		rc = DomThrowSentence(pCtx,DOM_ERR_NOT_SUPPORTED,
+			":blank selector is not implemented because CSSWG has not yet decided "
+			"its semantics (https://github.com/w3c/csswg-drafts/issues/1967)");
+		return rc;
+	}
+	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sMsg,"Invalid selector (Selectors. ",sizeof("Invalid selector (Selectors. ")-1);
+	if( pSel->iErr == CSS_E_NOSUP ){
+		SyBlobAppend(&sMsg,"Not supported: ",sizeof("Not supported: ")-1);
+	}else if( pSel->iErr == CSS_E_EMPTYFN ){
+		SyBlobAppend(&sMsg,"Pseudo function can't be empty: ",
+			sizeof("Pseudo function can't be empty: ")-1);
+	}else{
+		SyBlobAppend(&sMsg,"Unexpected token: ",sizeof("Unexpected token: ")-1);
+	}
+	SyBlobAppend(&sMsg,zTok,(sxu32)nTok);
+	SyBlobAppend(&sMsg,")",1);
+	SyBlobNullAppend(&sMsg);
+	rc = DomThrowSentence(pCtx,DOM_ERR_SYNTAX,(const char *)SyBlobData(&sMsg));
+	SyBlobRelease(&sMsg);
+	return rc;
+}
+/* The context node, its selector argument parsed, or a refusal. Answers 0
+ * once something has been thrown or there is no node to ask. */
+static int DomSelPrepare(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	css_sel *pSel,phl_domnode **ppNd,int *pRc)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zSel;
+	int nSel = 0;
+	*pRc = PH7_OK;
+	if( pNd == 0 || pNd->pNode == 0 ){
+		return 0;
+	}
+	zSel = nArg > 0 ? ph7_value_to_string(apArg[0],&nSel) : "";
+	if( !CssParse(pSel,&pCtx->pVm->sAllocator,zSel,nSel) ){
+		*pRc = DomSelRefuse(pCtx,pSel);
+		CssRelease(pSel);
+		return 0;
+	}
+	*ppNd = pNd;
+	return 1;
+}
+/* querySelector(string $selectors): ?Dom\Element -- the first descendant in
+ * document order, and null rather than a refusal when nothing matches. */
+DOM_METHOD(vm_builtin_Dom_querySelector)
+{
+	css_sel sSel;
+	phl_domnode *pNd = 0;
+	xmlNodePtr pCur,pRoot;
+	int rc;
+	if( !DomSelPrepare(pCtx,nArg,apArg,&sSel,&pNd,&rc) ){
+		return rc;
+	}
+	pRoot = pNd->pNode;
+	for( pCur = DomWalkNext(pRoot,pRoot) ; pCur ; pCur = DomWalkNext(pCur,pRoot) ){
+		if( pCur->type == XML_ELEMENT_NODE && CssMatchTop(&sSel,pCur) ){
+			CssRelease(&sSel);
+			return DomResultNodeOf(pCtx,pNd,pCur);
+		}
+	}
+	CssRelease(&sSel);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/* querySelectorAll(string $selectors): Dom\NodeList -- a SNAPSHOT, not a
+ * live view: php's list keeps its count across a later append. */
+DOM_METHOD(vm_builtin_Dom_querySelectorAll)
+{
+	css_sel sSel;
+	phl_domnode *pNd = 0;
+	xmlNodePtr pCur,pRoot;
+	ph7_class_instance *pList;
+	ph7_value *pSnap;
+	int rc;
+	if( !DomSelPrepare(pCtx,nArg,apArg,&sSel,&pNd,&rc) ){
+		return rc;
+	}
+	pSnap = ph7_context_new_array(pCtx);
+	if( pSnap == 0 ){
+		CssRelease(&sSel);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pRoot = pNd->pNode;
+	for( pCur = DomWalkNext(pRoot,pRoot) ; pCur ; pCur = DomWalkNext(pCur,pRoot) ){
+		phl_domnode *pWrap;
+		ph7_value *pRes;
+		if( pCur->type != XML_ELEMENT_NODE || !CssMatchTop(&sSel,pCur) ){
+			continue;
+		}
+		pWrap = DomNewRes(pCtx->pVm,pNd->pShell,pCur);
+		pRes = ph7_context_new_scalar(pCtx);
+		if( pWrap == 0 || pRes == 0 ){
+			break;
+		}
+		ph7_value_resource(pRes,pWrap);
+		ph7_array_add_elem(pSnap,0,pRes);
+	}
+	CssRelease(&sSel);
+	pList = DomNewCollection(pCtx->pVm,"Dom\\NodeList",DomThisDoc(pCtx),
+		DNL_SNAP,0,0,0,pSnap);
+	if( pList == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pList);
+	return PH7_OK;
+}
+/* matches(string $selectors): bool -- the element ITSELF, with the tree above
+ * it still in play, so `div p` is true of a paragraph under a div. */
+DOM_METHOD(vm_builtin_Dom_matches)
+{
+	css_sel sSel;
+	phl_domnode *pNd = 0;
+	int rc,bOk;
+	if( !DomSelPrepare(pCtx,nArg,apArg,&sSel,&pNd,&rc) ){
+		return rc;
+	}
+	bOk = CssMatchTop(&sSel,pNd->pNode);
+	CssRelease(&sSel);
+	ph7_result_bool(pCtx,bOk);
+	return PH7_OK;
+}
+/* closest(string $selectors): ?Dom\Element -- the element itself first, then
+ * its ancestors, stopping at the first that matches. */
+DOM_METHOD(vm_builtin_Dom_closest)
+{
+	css_sel sSel;
+	phl_domnode *pNd = 0;
+	xmlNodePtr pCur;
+	int rc;
+	if( !DomSelPrepare(pCtx,nArg,apArg,&sSel,&pNd,&rc) ){
+		return rc;
+	}
+	for( pCur = pNd->pNode ; pCur ; pCur = pCur->parent ){
+		if( pCur->type == XML_ELEMENT_NODE && CssMatchTop(&sSel,pCur) ){
+			CssRelease(&sSel);
+			return DomResultNodeOf(pCtx,pNd,pCur);
+		}
+	}
+	CssRelease(&sSel);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+
 /*
  * php's get_debug_info for the DOM (ph7_class::xPresent), and the ONLY table any
  * presentation surface of a node class shows.
@@ -14022,6 +15293,17 @@ static const char * const azDomXPathDebug[] = { "document", "registerNodeNamespa
 	  vm_builtin_Dom_prepend }, \
 	{ "replaceChildren", PH7_MOD_PUBLIC, "Dom\\Node|string ...$nodes", "void", \
 	  vm_builtin_Dom_replaceChildren }
+/*
+ * ...and the two finders behind them. php states them on `Dom\ParentNode`
+ * beside the trio, so every class that carries one carries the other -- but
+ * NOT in one block: the abstract document slips `importLegacyNode` between
+ * them, so the macro is the pair alone and each class places it.
+ */
+#define DOM_MSELECT_METHODS \
+	{ "querySelector",    PH7_MOD_PUBLIC, "string $selectors", "?Dom\\Element", \
+	  vm_builtin_Dom_querySelector }, \
+	{ "querySelectorAll", PH7_MOD_PUBLIC, "string $selectors", "Dom\\NodeList", \
+	  vm_builtin_Dom_querySelectorAll }
 
 /*
  * One row per class that HAS a property-handler table -- php's own
@@ -15510,6 +16792,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMElement_setIdAttributeNode },
 		DOM_MCHILD_METHODS,
 		DOM_MPARENT_METHODS,
+		DOM_MSELECT_METHODS,
+		/* `closest` and `matches` are the ELEMENT's alone -- neither document
+		 * nor fragment declares them, because both ask a question about the
+		 * context node itself and only an element is one. */
+		{ "closest",          PH7_MOD_PUBLIC, "string $selectors", "?Dom\\Element",
+		  vm_builtin_Dom_closest },
+		{ "matches",          PH7_MOD_PUBLIC, "string $selectors", "bool",
+		  vm_builtin_Dom_matches },
 		/* php declares these three LAST on this class, behind both mixins --
 		 * positions the sorted sweeps could not have told us. */
 		{ "getInScopeNamespaces", PH7_MOD_PUBLIC, "", "array",
@@ -15526,6 +16816,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_MPARENT_METHODS,
 		{ "appendXml", PH7_MOD_PUBLIC, "string $data", "bool",
 		  vm_builtin_Dom_DocumentFragment_appendXml },
+		DOM_MSELECT_METHODS
 	};
 	/* On the ABSTRACT document, not on its two final subclasses: php declares
 	 * them once and both documents inherit the one declaration.
@@ -15603,7 +16894,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * place in either tree where a factory follows an inherited interface's
 		 * methods -- the crossing was added later than the rest. */
 		{ "importLegacyNode",     PH7_MOD_PUBLIC, "DOMNode $node, bool $deep = false",
-		  "Dom\\Node", vm_builtin_Dom_importLegacyNode }
+		  "Dom\\Node", vm_builtin_Dom_importLegacyNode },
+		DOM_MSELECT_METHODS
 	};
 	/* php's return here is `Dom\Text` and not `Dom\Text|false`, which is what
 	 * makes the past-end offset an Index Size Error rather than a false. A
