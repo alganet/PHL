@@ -12511,12 +12511,20 @@ static int DomSetXPathProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,i
 }
 /*
  * DOMDocumentFragment::appendXML(string $data): bool
+ * Dom\DocumentFragment::appendXml(string $data): bool
  *
  * php parses the chunk as a well-balanced FRAGMENT (no single root required,
  * bare text allowed) and appends what it produced; anything libxml refuses is
  * `false` with nothing appended.
+ *
+ * One body under two spellings: php's 8.4 tree renamed the trailing `XML` to
+ * `Xml` and made the tentative return type real, but the parse, the refusals
+ * and the empty-chunk `false` are the same. The name travels because it is
+ * what libxml's captured parser errors are worded with, and a reader who
+ * called the modern door must not be told about the 2004 one.
  */
-DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)
+static int DomFragAppendXml(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	const char *zWho)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zXml = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
@@ -12534,9 +12542,20 @@ DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)
 		 * receiver, where its append() takes the same chunk's nodes. */
 		return DomThrow(pCtx,DOM_ERR_NO_MOD);
 	}
+	if( zXml[0] == 0 ){
+		/* php refuses an empty chunk itself rather than parsing one, and the
+		 * refusal has to be OURS for the same reason: libxml does not agree
+		 * with itself across versions here. 2.9 answers a nonzero code for a
+		 * chunk with nothing in it, 2.13 answers 0 and an empty node list --
+		 * so leaving the question to the library makes the door's answer
+		 * depend on which libxml the binary was linked against, which is what
+		 * it did before this screen. Neither raises a diagnostic. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);
 	rc = xmlParseBalancedChunkMemory(pFrag->doc,0,0,0,(const xmlChar *)zXml,&pList);
-	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,"DOMDocumentFragment::appendXML");
+	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,zWho);
 	if( rc != 0 ){
 		if( pList ){
 			xmlFreeNodeList(pList);
@@ -12552,6 +12571,14 @@ DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)
 	}
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)
+{
+	return DomFragAppendXml(pCtx,nArg,apArg,"DOMDocumentFragment::appendXML");
+}
+DOM_METHOD(vm_builtin_Dom_DocumentFragment_appendXml)
+{
+	return DomFragAppendXml(pCtx,nArg,apArg,"Dom\\DocumentFragment::appendXml");
 }
 /* DOMDocument::getElementsByTagName / DOMElement::getElementsByTagName --
  * php declares it on those two, not on DOMNode, so both specs name it. */
@@ -14126,7 +14153,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_MCHILD_METHODS
 	};
 	static const PH7_NativeMethodDef aMFragMethod[] = {
-		DOM_MPARENT_METHODS
+		DOM_MPARENT_METHODS,
+		{ "appendXml", PH7_MOD_PUBLIC, "string $data", "bool",
+		  vm_builtin_Dom_DocumentFragment_appendXml },
 	};
 	/* On the ABSTRACT document, not on its two final subclasses: php declares
 	 * them once and both documents inherit the one declaration.
