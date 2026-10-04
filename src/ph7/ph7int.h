@@ -404,6 +404,12 @@ struct VmDeferredPath {
  * inaccessible name on a class that declares one) deliberately does NOT carry the bit — its
  * dispatch has to reach the catch-all, as php's does. */
 #define VM_INSTANCE_FCC_SCREENED 0x040
+/* ph7_class_instance.iFlags bit: this Closure was minted by the `(...)` SYNTAX -- `$o->m(...)`,
+ * `C::m(...)`, `$f(...)` -- rather than by Closure::fromCallable(). The two agree on everything
+ * but a call TRAMPOLINE's signature: php builds the syntax's one with a single variadic
+ * `...$arguments` and fromCallable's with none, and the debug dump and Reflection both show it.
+ * A rebind's clone keeps it. 0x200: 0x001..0x100 are claimed on this word. */
+#define VM_INSTANCE_FCC_SYNTAX 0x200
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.

@@ -3405,6 +3405,7 @@ case PH7_OP_LOAD_FCC:{
 		pFccRes = (const void *)pVm->pResumeFrame;
 		pCloObj = VmFccWrapValue(pVm, pTos);
 		if( pCloObj ){
+			pCloObj->iFlags |= VM_INSTANCE_FCC_SYNTAX;
 			PH7_MemObjRelease(pTos);
 			/* The fresh instance's own reference is this stack slot's (see OP_LOAD_CLOSURE) */
 			pTos->x.pOther = pCloObj;
@@ -3520,7 +3521,7 @@ case PH7_OP_LOAD_FCC:{
 			/* `$o->m(...)` / `C::m(...)` names a METHOD, whatever the class turns out to
 			 * declare: the unwrap must not go looking for a FUNCTION of that name, and a
 			 * name the class answers only through __call is still a method call. */
-			pCloObj->iFlags |= VM_INSTANCE_FCC_METHOD;
+			pCloObj->iFlags |= VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SYNTAX;
 			/* The screen above already ran, HERE, where php runs it — so record that this
 			 * closure's callee is settled and the invocation must not re-decide it. A name
 			 * that resolved to the catch-all instead keeps routing there. */

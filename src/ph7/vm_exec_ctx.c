@@ -2248,7 +2248,8 @@ static ph7_class_instance * VmCloneClosureInstance(ph7_class_instance *pClosure)
 	ph7_class_instance *pClone = PH7_CloneClassInstance(pClosure);
 	if( pClone ){
 		pClone->iFlags |= pClosure->iFlags
-			& (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED|VM_INSTANCE_FCC_INVOKE_OBJ);
+			& (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED|VM_INSTANCE_FCC_INVOKE_OBJ
+			   |VM_INSTANCE_FCC_SYNTAX);
 	}
 	return pClone;
 }

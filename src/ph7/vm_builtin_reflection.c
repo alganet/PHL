@@ -6682,6 +6682,54 @@ static void ClosurePresentAdd(ph7_vm *pVm, ph7_value *pOut, const char *zKey, ph
  * Closure in `convert_to_array` and wraps it as a SCALAR, `[0 => $closure]`; PHL
  * answers `[]` there — recorded).
  */
+/*
+ * A call TRAMPOLINE -- a callable over a name the class answers only through __call or
+ * __callStatic -- has no body for the reflector to resolve, and php still describes it: its
+ * function IS the catch-all, carrying the NAME that was asked for, so `function` is
+ * `DECLARING_CLASS::name`; `this` is the receiver the __call one binds; and `parameter` is the
+ * signature php gives the trampoline, which is one variadic `$arguments` when the `(...)`
+ * syntax minted it and none at all through Closure::fromCallable().
+ */
+static void ClosurePresentTrampoline(ph7_vm *pVm, ph7_class_instance *pThis, ph7_value *pOut)
+{
+	ph7_class *pScope = PH7_VmClosureScopeClass(pVm, pThis);
+	ph7_value *pFn, *pBound, sVal;
+	SyString sAttr;
+	SyStringInitFromBuf(&sAttr, "__fn", 4);
+	pFn = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+	if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromString(pVm, &sVal, 0);
+	if( pScope ){
+		PH7_MemObjStringAppend(&sVal, SyStringData(&pScope->sName), SyStringLength(&pScope->sName));
+		PH7_MemObjStringAppend(&sVal, "::", 2);
+	}
+	PH7_MemObjStringAppend(&sVal, (const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+	ClosurePresentAdd(pVm, pOut, "function", &sVal);
+	PH7_MemObjRelease(&sVal);
+	SyStringInitFromBuf(&sAttr, "__this", 6);
+	pBound = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+	if( pBound && (pBound->iFlags & MEMOBJ_OBJ) && pBound->x.pOther ){
+		ClosurePresentAdd(pVm, pOut, "this", pBound);
+	}
+	if( pThis->iFlags & VM_INSTANCE_FCC_SYNTAX ){
+		ph7_hashmap *pHm = PH7_NewHashmap(pVm, 0, 0);
+		if( pHm ){
+			ph7_value sMap, sKey, sWhat;
+			PH7_MemObjInitFromArray(pVm, &sMap, pHm);
+			PH7_MemObjInitFromString(pVm, &sKey, 0);
+			PH7_MemObjStringAppend(&sKey, "$arguments", sizeof("$arguments")-1);
+			PH7_MemObjInitFromString(pVm, &sWhat, 0);
+			PH7_MemObjStringAppend(&sWhat, "<optional>", sizeof("<optional>")-1);
+			ph7_array_add_elem(&sMap, &sKey, &sWhat);
+			PH7_MemObjRelease(&sKey);
+			PH7_MemObjRelease(&sWhat);
+			ClosurePresentAdd(pVm, pOut, "parameter", &sMap);
+			PH7_MemObjRelease(&sMap);
+		}
+	}
+}
 PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_value *pOut, int bDebug)
 {
@@ -6700,6 +6748,10 @@ PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 		sCarrier.x.pOther = 0;
 		sCarrier.iFlags = MEMOBJ_NULL;
 		PH7_MemObjRelease(&sCarrier);
+		if( (pThis->iFlags & (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED))
+				== VM_INSTANCE_FCC_METHOD ){
+			ClosurePresentTrampoline(pVm, pThis, pOut);
+		}
 		return SXRET_OK;
 	}
 	sCarrier.x.pOther = 0;
