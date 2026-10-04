@@ -3396,7 +3396,17 @@ DOM_METHOD(vm_builtin_DOMNode_isDefaultNamespace)
 /* Document-order successor within pRoot's subtree (pRoot excluded) */
 static xmlNodePtr DomWalkNext(xmlNodePtr pCur,xmlNodePtr pRoot)
 {
-	if( pCur->children ){
+	/* ...but NOT into an entity reference, and not into the DTD. Both hold
+	 * DECLARATIONS rather than content: an entity reference's `children` IS the
+	 * declaration, which sits in the internal subset and not below this node at
+	 * all, and the subset's own children are every declaration in it. A walk
+	 * that steps into either leaves the subtree it was given -- and from the
+	 * subset it comes back out at the document element, which it has already
+	 * seen, and walks the same ring for ever. php's element searches see
+	 * neither: an entity's replacement content holds no element they can find,
+	 * and its declarations are reachable only through `doctype`. */
+	if( pCur->children
+	 && pCur->type != XML_ENTITY_REF_NODE && pCur->type != XML_DTD_NODE ){
 		return pCur->children;
 	}
 	while( pCur && pCur != pRoot ){
@@ -7176,8 +7186,13 @@ static int DomNsSaveReconcile(xmlNodePtr pRoot,xmlNodePtr pStop,dom_ns_fix **ppF
 				pAttr->ns = pUse;
 			}
 		}
-		/* Iterative: a document deep enough to matter must not cost stack. */
-		if( pCur->children ){
+		/* Iterative: a document deep enough to matter must not cost stack. And
+		 * an entity reference is a LEAF here, for the reason DomWalkNext states:
+		 * its `children` is the declaration in the DTD, so descending leaves the
+		 * subtree and rings for ever. Nothing is lost by stopping -- the
+		 * replacement content carries no binding of this tree's, and the
+		 * serializer writes the reference by name rather than its content. */
+		if( pCur->children && pCur->type != XML_ENTITY_REF_NODE ){
 			pCur = pCur->children;
 			continue;
 		}
