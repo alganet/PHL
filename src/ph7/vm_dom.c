@@ -78,6 +78,15 @@
 #define DOM_F_SUBST_ENT      0x10
 #define DOM_F_RECOVER        0x20
 #define DOM_F_STRICT_ERR     0x40
+/* Not a directive: the document's FAMILY. php 8.4 put a second class tree over
+ * the same libxml nodes, and the two never meet -- `Dom\\Element` is not a
+ * DOMElement in either direction, `Dom\\ProcessingInstruction` sits under
+ * `Dom\\CharacterData` where the 2004 one sits under DOMNode, and
+ * `Dom\\Document` is abstract with two final documents under it. Which tree a
+ * node is wrapped in is a property of the DOCUMENT it belongs to, and of nothing
+ * about the node, so the answer rides in the document's flag word beside the
+ * parser directives -- carried by a clone with the slot, exactly as they are. */
+#define DOM_F_MODERN         0x80
 /* php's defaults: nothing is validated, expanded, defaulted or recovered unless
  * the program asks, whitespace is kept, and a refusal is an exception. */
 #define DOM_F_DEFAULT (DOM_F_PRESERVE_WS|DOM_F_STRICT_ERR)
@@ -95,6 +104,15 @@ static const struct { const char *zName; int iBit; } aDomDocFlag[] = {
 static int DomDocFlag(ph7_class_instance *pDoc,int iBit)
 {
 	return pDoc != 0 && (PH7_NativeAttrInt(pDoc,DOM_DFLAGS) & iBit) != 0;
+}
+/* The class a live view of THIS document's nodes is handed out as. One view, two
+ * families: `$el->childNodes` is a DOMNodeList under a DOMDocument and a
+ * `Dom\NodeList` under a `Dom\XMLDocument`, and the two are unrelated classes
+ * over the same walk. */
+static const char * DomCollClass(ph7_class_instance *pDoc,const char *zLegacy,
+	const char *zModern)
+{
+	return DomDocFlag(pDoc,DOM_F_MODERN) ? zModern : zLegacy;
 }
 
 /*
@@ -328,8 +346,29 @@ static ph7_hashmap * DomCache(ph7_vm *pVm,ph7_class_instance *pDoc)
 	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
 }
 /* php's class for a node type. Anything else is a plain DOMNode, as before. */
-static const char * DomClassOfKind(int iKind)
+static const char * DomClassOfKind(int bModern,int iKind)
 {
+	if( bModern ){
+		/* php's namespaced tree. Its CDATA section is spelled with both letters
+		 * capitalised where the 2004 name is not, and an ELEMENT declaration is
+		 * an entity here for the same reason it is there. */
+		switch( iKind ){
+		case XML_ELEMENT_NODE:       return "Dom\\Element";
+		case XML_ATTRIBUTE_NODE:     return "Dom\\Attr";
+		case XML_TEXT_NODE:          return "Dom\\Text";
+		case XML_CDATA_SECTION_NODE: return "Dom\\CDATASection";
+		case XML_COMMENT_NODE:       return "Dom\\Comment";
+		case XML_PI_NODE:            return "Dom\\ProcessingInstruction";
+		case XML_DOCUMENT_FRAG_NODE: return "Dom\\DocumentFragment";
+		case XML_ENTITY_REF_NODE:    return "Dom\\EntityReference";
+		case XML_DTD_NODE:
+		case XML_DOCUMENT_TYPE_NODE: return "Dom\\DocumentType";
+		case XML_ENTITY_DECL:
+		case XML_ELEMENT_DECL:       return "Dom\\Entity";
+		case XML_NOTATION_NODE:      return "Dom\\Notation";
+		default:                     return "Dom\\Node";
+		}
+	}
 	switch( iKind ){
 	case XML_ELEMENT_NODE:       return "DOMElement";
 	case XML_ATTRIBUTE_NODE:     return "DOMAttr";
@@ -373,6 +412,10 @@ static int DomNodeTypeOf(xmlNodePtr pNode)
  * answer anything other than DomClassOfKind's. */
 static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
 	SyBlob *pOut);
+/* Defined with the namespaced document's readers below: is the receiver's
+ * document one of php 8.4's tree? Two of the shared readers answer differently
+ * there. */
+static int DomThisModern(ph7_context *pCtx);
 /* Defined with the teardown machinery below: every wrap marks its node HELD. */
 static void DomNodeMarkHeld(xmlNodePtr pNode,ph7_class_instance *pObj);
 /*
@@ -8723,7 +8766,7 @@ static ph7_hashmap * DomNodeClassMap(ph7_vm *pVm,ph7_class_instance *pDoc,int bM
 static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
 	SyBlob *pOut)
 {
-	const char *zBase = DomClassOfKind(iKind);
+	const char *zBase = DomClassOfKind(DomDocFlag(pDoc,DOM_F_MODERN),iKind);
 	ph7_hashmap *pMap = DomNodeClassMap(&(*pVm),pDoc,FALSE);
 	ph7_hashmap_node *pEntry = 0;
 	ph7_value sKey,*pHit;
@@ -8819,7 +8862,7 @@ DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
  * caller owns the reference. */
 static ph7_class_instance * DomLimboWrap(ph7_vm *pVm,xmlNodePtr pNode)
 {
-	const char *zClass = DomClassOfKind((int)pNode->type);
+	const char *zClass = DomClassOfKind(0,(int)pNode->type);
 	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
 	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
 	phl_xmldoc *pShell = pObj ? DomLimboShell(&(*pVm)) : 0;
@@ -9034,11 +9077,32 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	if( DomNameIs(zName,"nodeName") ){
 		DomNodeName(pCtx,pNode);
 	}else if( DomNameIs(zName,"nodeValue") ){
-		DomNodeValue(pCtx,pNode);
+		/* The 2004 reader answers an ELEMENT's descendant text here, which is
+		 * what its `textContent` answers too. php 8.4 went back to the standard:
+		 * `nodeValue` is null for everything that is not character data, a
+		 * processing instruction or an attribute, and `textContent` is the only
+		 * one of the pair that walks the subtree. */
+		if( DomThisModern(pCtx) && pNode != 0
+		 && pNode->type != XML_TEXT_NODE && pNode->type != XML_CDATA_SECTION_NODE
+		 && pNode->type != XML_COMMENT_NODE && pNode->type != XML_PI_NODE
+		 && pNode->type != XML_ATTRIBUTE_NODE ){
+			ph7_result_null(pCtx);
+		}else{
+			DomNodeValue(pCtx,pNode);
+		}
 	}else if( DomNameIs(zName,"nodeType") ){
 		ph7_result_int(pCtx,DomNodeTypeOf(pNode));
 	}else if( DomNameIs(zName,"textContent") ){
-		DomTextContent(pCtx,pNode);
+		/* Null, in the new tree, for the two kinds the standard says have no
+		 * text at all -- a document and a doctype -- where the 2004 reader
+		 * answers "" for both. */
+		if( DomThisModern(pCtx) && pNode != 0
+		 && (pNode->type == XML_DTD_NODE || pNode->type == XML_DOCUMENT_TYPE_NODE
+		  || pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE) ){
+			ph7_result_null(pCtx);
+		}else{
+			DomTextContent(pCtx,pNode);
+		}
 	}else if( DomNameIs(zName,"parentNode") ){
 		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);
 	}else if( DomNameIs(zName,"firstChild") ){
@@ -9075,7 +9139,14 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	}else if( DomNameIs(zName,"namespaceURI") ){
 		DomNamespaceUri(pCtx,pNode);
 	}else if( DomNameIs(zName,"prefix") ){
-		DomPrefix(pCtx,pNode);
+		/* php 8.4 declares it `?string` on the element and the attribute, where
+		 * the 2004 DOMNode declares plain `string`: the same absent prefix reads
+		 * null in one tree and "" in the other. */
+		if( DomThisModern(pCtx) && (pNode == 0 || pNode->ns == 0 || pNode->ns->prefix == 0) ){
+			ph7_result_null(pCtx);
+		}else{
+			DomPrefix(pCtx,pNode);
+		}
 	}else if( DomNameIs(zName,"localName") ){
 		DomLocalName(pCtx,pNode);
 	}else if( DomNameIs(zName,"isConnected") ){
@@ -9094,7 +9165,8 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 			ph7_result_null(pCtx);
 		}
 	}else if( DomNameIs(zName,"childNodes") ){
-		ph7_class_instance *pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_CHILD,pThis,0,0,0);
+		ph7_class_instance *pList = DomNewCollection(pVm,
+			DomCollClass(pDoc,"DOMNodeList","Dom\\NodeList"),pDoc,DNL_CHILD,pThis,0,0,0);
 		if( pList == 0 ){
 			return -1;
 		}
@@ -9104,7 +9176,9 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 		if( pNode == 0 || pNode->type != XML_ELEMENT_NODE ){
 			ph7_result_null(pCtx);
 		}else{
-			ph7_class_instance *pMap = DomNewCollection(pVm,"DOMNamedNodeMap",pDoc,DNL_CHILD,pThis,0,0,0);
+			ph7_class_instance *pMap = DomNewCollection(pVm,
+				DomCollClass(pDoc,"DOMNamedNodeMap","Dom\\NamedNodeMap"),
+				pDoc,DNL_CHILD,pThis,0,0,0);
 			if( pMap == 0 ){
 				return -1;
 			}
@@ -9195,9 +9269,57 @@ static void DomResultXmlStr(ph7_context *pCtx,const xmlChar *zVal)
  * write, where the readonly refusal comes first and is raised by the writer
  * below without consulting this reader.
  */
+/* Is the receiver a document of php 8.4's tree? Only that tree's five extra
+ * names are answered, and only there does an absent encoding or URI read as ""
+ * rather than null -- the new declarations are plain `string` where the 2004
+ * ones are `?string`. */
+static int DomThisModern(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pDoc = pThis ? PH7_NativeAttr(pThis,DOM_DOC) : 0;
+	return pDoc != 0 && (pDoc->iFlags & MEMOBJ_OBJ) != 0
+		&& DomDocFlag((ph7_class_instance *)pDoc->x.pOther,DOM_F_MODERN);
+}
+/*
+ * The five names php 8.4's document has that the 2004 one does not: the WHATWG
+ * spellings of the two things a document knows about itself, and the three HTML
+ * ones. `characterSet`, `charset` and `inputEncoding` are one answer under three
+ * names, and it is the EFFECTIVE encoding -- a document parsed from source that
+ * carries no declaration still reads "UTF-8", where the 2004 `xmlEncoding`
+ * reads null for the same document.
+ *
+ * `body`, `head` and `title` are the HTML document's, and an XML one answers the
+ * empty shape for each rather than refusing: null, null and "".
+ */
+static int DomModernDocProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)
+{
+	if( DomNameIs(zName,"URL") || DomNameIs(zName,"documentURI") ){
+		const xmlChar *zUrl = pDoc ? pDoc->URL : 0;
+		ph7_result_string(pCtx,zUrl ? (const char *)zUrl : "",-1);
+		return 1;
+	}
+	if( DomNameIs(zName,"characterSet") || DomNameIs(zName,"charset")
+	 || DomNameIs(zName,"inputEncoding") || DomNameIs(zName,"xmlEncoding") ){
+		const xmlChar *zEnc = pDoc ? pDoc->encoding : 0;
+		ph7_result_string(pCtx,zEnc ? (const char *)zEnc : "UTF-8",-1);
+		return 1;
+	}
+	if( DomNameIs(zName,"title") ){
+		ph7_result_string(pCtx,"",0);
+		return 1;
+	}
+	if( DomNameIs(zName,"body") || DomNameIs(zName,"head") ){
+		ph7_result_null(pCtx);
+		return 1;
+	}
+	return 0;
+}
 static int DomDocStateProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc,int bDepr)
 {
 	int bDeprAe = DomNameIs(zName,"actualEncoding");
+	if( DomThisModern(pCtx) && DomModernDocProp(pCtx,zName,pDoc) ){
+		return 1;
+	}
 	if( bDeprAe || DomNameIs(zName,"config") ){
 		/* ...and NOT on the get_debug_info walk either: php marks the DECLARATION
 		 * deprecated and its debug handler reads the C function behind it, so
@@ -9419,7 +9541,11 @@ static int DomDocTypeProp(ph7_context *pCtx,const char *zName)
 		return 1;
 	}
 	if( DomNameIs(zName,"entities") || DomNameIs(zName,"notations") ){
-		ph7_class_instance *pMap = DomNewCollection(pCtx->pVm,"DOMNamedNodeMap",
+		/* The DTD half has its OWN map class in the new tree -- a second class
+		 * over the same declaration walk, so an entity table and an attribute
+		 * table are no longer the same type. */
+		ph7_class_instance *pMap = DomNewCollection(pCtx->pVm,
+			DomCollClass(DomThisDoc(pCtx),"DOMNamedNodeMap","Dom\\DtdNamedNodeMap"),
 			DomThisDoc(pCtx),DomNameIs(zName,"notations") ? DNL_NOTS : DNL_ENTS,
 			PH7_ContextThis(pCtx),0,0,0);
 		if( pMap ){
@@ -10360,7 +10486,9 @@ DOM_METHOD(vm_builtin_Dom_getElementsByTagName)
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTN,pThis,zName,0,0);
+	pList = DomNewCollection(pCtx->pVm,
+		DomCollClass(DomThisDoc(pCtx),"DOMNodeList","Dom\\HTMLCollection"),
+		DomThisDoc(pCtx),DNL_GEBTN,pThis,zName,0,0);
 	if( pList == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -10388,7 +10516,9 @@ DOM_METHOD(vm_builtin_Dom_getElementsByTagNameNS)
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTNNS,pThis,
+	pList = DomNewCollection(pCtx->pVm,
+		DomCollClass(DomThisDoc(pCtx),"DOMNodeList","Dom\\HTMLCollection"),
+		DomThisDoc(pCtx),DNL_GEBTNNS,pThis,
 		zName,zUri ? zUri : "",0);
 	if( pList == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -10428,9 +10558,57 @@ DOM_METHOD(vm_builtin_Dom_getElementsByTagNameNS)
 	"firstChild", "lastChild", "previousSibling", "nextSibling", "attributes", \
 	"isConnected", "ownerDocument", "namespaceURI", "prefix", "localName", \
 	"baseURI", "textContent"
+#define DOM_MNODE_DEBUG \
+	"nodeType", "nodeName", "baseURI", "isConnected", "ownerDocument", \
+	"parentNode", "parentElement", "childNodes", "firstChild", "lastChild", \
+	"previousSibling", "nextSibling", "nodeValue", "textContent"
+#define DOM_MPARENT_DEBUG \
+	"firstElementChild", "lastElementChild", "childElementCount"
+#define DOM_MCHILD_DEBUG \
+	"previousElementSibling", "nextElementSibling"
 #define DOM_CHARDATA_DEBUG \
 	"data", "length", "previousElementSibling", "nextElementSibling"
 static const char * const azDomNodeDebug[] = { DOM_NODE_DEBUG };
+static const char * const azDomMNodeDebug[] = { DOM_MNODE_DEBUG };
+static const char * const azDomMDocDebug[] = {
+	"URL", "documentURI", "characterSet", "charset", "inputEncoding",
+	"doctype", "documentElement", DOM_MPARENT_DEBUG, "body", "head", "title",
+	DOM_MNODE_DEBUG
+};
+static const char * const azDomMXmlDocDebug[] = {
+	"xmlEncoding", "xmlStandalone", "xmlVersion", "formatOutput",
+	"URL", "documentURI", "characterSet", "charset", "inputEncoding",
+	"doctype", "documentElement", DOM_MPARENT_DEBUG, "body", "head", "title",
+	DOM_MNODE_DEBUG
+};
+static const char * const azDomMElemDebug[] = {
+	"namespaceURI", "prefix", "localName", "tagName", "id", "className",
+	"attributes", DOM_MPARENT_DEBUG, DOM_MCHILD_DEBUG, DOM_MNODE_DEBUG
+};
+static const char * const azDomMAttrDebug[] = {
+	"namespaceURI", "prefix", "localName", "name", "value", "ownerElement",
+	"specified", DOM_MNODE_DEBUG
+};
+static const char * const azDomMCharDebug[] = {
+	"data", "length", DOM_MCHILD_DEBUG, DOM_MNODE_DEBUG
+};
+static const char * const azDomMTextDebug[] = {
+	"wholeText", "data", "length", DOM_MCHILD_DEBUG, DOM_MNODE_DEBUG
+};
+static const char * const azDomMPiDebug[] = {
+	"target", "data", "length", DOM_MCHILD_DEBUG, DOM_MNODE_DEBUG
+};
+static const char * const azDomMFragDebug[] = { DOM_MPARENT_DEBUG, DOM_MNODE_DEBUG };
+static const char * const azDomMDocTypeDebug[] = {
+	"name", "entities", "notations", "publicId", "systemId", "internalSubset",
+	DOM_MNODE_DEBUG
+};
+static const char * const azDomMEntityDebug[] = {
+	"publicId", "systemId", "notationName", DOM_MNODE_DEBUG
+};
+static const char * const azDomMNotationDebug[] = {
+	"publicId", "systemId", DOM_MNODE_DEBUG
+};
 static const char * const azDomDocDebug[] = {
 	"doctype", "implementation", "documentElement", "actualEncoding", "encoding",
 	"xmlEncoding", "standalone", "xmlStandalone", "version", "xmlVersion",
@@ -10508,6 +10686,40 @@ static const char * const azDomXPathDebug[] = { "document", "registerNodeNamespa
 	DOM_VPROP("previousElementSibling","?DOMElement"), \
 	DOM_VPROP("nextElementSibling","?DOMElement")
 /*
+ * php 8.4's tree states its OWN names, and they are not a rename of the 2004
+ * ones: `Dom\Node` has fourteen where DOMNode has eighteen (the four it drops --
+ * `attributes`, `prefix`, `localName`, `namespaceURI` -- moved DOWN onto the two
+ * classes that can answer them), every type names a `Dom\` class, and the order
+ * is php's own declaration order, which Reflection and the debug walk both show.
+ */
+#define DOM_MNODE_VPROPS \
+	DOM_VPROP("nodeType","int"), \
+	DOM_VPROP("nodeName","string"), \
+	DOM_VPROP("baseURI","string"), \
+	DOM_VPROP("isConnected","bool"), \
+	DOM_VPROP("ownerDocument","?Dom\\Document"), \
+	DOM_VPROP("parentNode","?Dom\\Node"), \
+	DOM_VPROP("parentElement","?Dom\\Element"), \
+	DOM_VPROP("childNodes","Dom\\NodeList"), \
+	DOM_VPROP("firstChild","?Dom\\Node"), \
+	DOM_VPROP("lastChild","?Dom\\Node"), \
+	DOM_VPROP("previousSibling","?Dom\\Node"), \
+	DOM_VPROP("nextSibling","?Dom\\Node"), \
+	DOM_VPROP("nodeValue","?string"), \
+	DOM_VPROP("textContent","?string")
+/* The namespaced ParentNode trio, on the three classes that carry it. php's
+ * `children` is a real declared SLOT there, not a virtual one, so it is not in
+ * this macro -- see the note on each class's table. */
+#define DOM_MPARENT_VPROPS \
+	DOM_VPROP("firstElementChild","?Dom\\Element"), \
+	DOM_VPROP("lastElementChild","?Dom\\Element"), \
+	DOM_VPROP("childElementCount","int")
+/* ...and its ChildNode pair. */
+#define DOM_MCHILD_VPROPS \
+	DOM_VPROP("previousElementSibling","?Dom\\Element"), \
+	DOM_VPROP("nextElementSibling","?Dom\\Element")
+
+/*
  * One row per class that HAS a property-handler table -- php's own
  * `dom_xxx_prop_handlers`, which is what its read_property / has_property /
  * write_property consult before anything else about the object.
@@ -10578,6 +10790,42 @@ static const DomPropSpec aDomProp[] = {
 	/* DOMComment, DOMCdataSection and DOMEntityReference name no row of their own:
 	 * they declare no property php's table does not already carry, so the base-chain
 	 * walk below reaches their parent's -- which is php's answer for them too. */
+	/* php 8.4's tree over the same nodes: the readers are the 2004 ones -- the
+	 * question "what is this node's first child" has one answer -- under the new
+	 * tree's own NAME LISTS, which are not the old ones. The wrap the readers
+	 * make is family-aware on its own (DOM_F_MODERN), so a `Dom\\Element`'s
+	 * `firstChild` is a `Dom\\Text` and never a DOMText.
+	 *
+	 * `Dom\\HTMLDocument`, `Dom\\HTMLElement`, `Dom\\CDATASection`,
+	 * `Dom\\Comment` and `Dom\\EntityReference` name no row: they declare
+	 * nothing their parent does not, so the base-chain walk reaches it -- php's
+	 * own answer for them too. */
+	{ "Dom\\XMLDocument", DomDocProp, DomSetDocProp, DomDocPropQuiet,
+	  azDomMXmlDocDebug, SX_ARRAYSIZE(azDomMXmlDocDebug), 1 },
+	{ "Dom\\Document", DomDocProp, DomSetDocProp, DomDocPropQuiet,
+	  azDomMDocDebug, SX_ARRAYSIZE(azDomMDocDebug), 1 },
+	{ "Dom\\Element", DomElemProp, DomSetElemProp, DomElemProp,
+	  azDomMElemDebug, SX_ARRAYSIZE(azDomMElemDebug), 1 },
+	{ "Dom\\Attr", DomAttrProp, DomSetAttrProp, DomAttrProp,
+	  azDomMAttrDebug, SX_ARRAYSIZE(azDomMAttrDebug), 1 },
+	{ "Dom\\Text", DomTextProp, DomSetCharProp, DomTextProp,
+	  azDomMTextDebug, SX_ARRAYSIZE(azDomMTextDebug), 1 },
+	/* The namespaced PI is a CharacterData, so its `data` and `length` are the
+	 * character reader's; only `target` is its own. */
+	{ "Dom\\ProcessingInstruction", DomPiProp, DomSetPiProp, DomPiProp,
+	  azDomMPiDebug, SX_ARRAYSIZE(azDomMPiDebug), 1 },
+	{ "Dom\\CharacterData", DomCharProp, DomSetCharProp, DomCharProp,
+	  azDomMCharDebug, SX_ARRAYSIZE(azDomMCharDebug), 1 },
+	{ "Dom\\DocumentFragment", DomFragProp, DomSetNodeProp, DomFragProp,
+	  azDomMFragDebug, SX_ARRAYSIZE(azDomMFragDebug), 1 },
+	{ "Dom\\DocumentType", DomDocTypeProp, DomSetNodeProp, DomDocTypeProp,
+	  azDomMDocTypeDebug, SX_ARRAYSIZE(azDomMDocTypeDebug), 1 },
+	{ "Dom\\Entity", DomEntityProp, DomSetEntityProp, DomEntityPropQuiet,
+	  azDomMEntityDebug, SX_ARRAYSIZE(azDomMEntityDebug), 1 },
+	{ "Dom\\Notation", DomNotationProp, DomSetNotationProp, DomNotationProp,
+	  azDomMNotationDebug, SX_ARRAYSIZE(azDomMNotationDebug), 1 },
+	{ "Dom\\Node", DomNodeProp, DomSetNodeProp, DomNodeProp,
+	  azDomMNodeDebug, SX_ARRAYSIZE(azDomMNodeDebug), 1 },
 	{ "DOMNode", DomNodeProp, DomSetNodeProp, DomNodeProp,
 	  azDomNodeDebug, SX_ARRAYSIZE(azDomNodeDebug), 1 }
 };
@@ -10812,6 +11060,178 @@ static sxi32 DomPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,in
  * bCompilingBuiltin window, after PH7_VmInstallLibxml (the capture plumbing must
  * exist) and after the Reflection install (DOMException needs Exception).
  */
+
+/* ===== php 8.4's namespaced tree ===== */
+
+/*
+ * The three static producers on `Dom\XMLDocument` are the ONLY door into that
+ * tree: `Dom\Document` is abstract, `Dom\Node::__construct()` is final private,
+ * and every node below is made by a document that already exists. So this is
+ * also the only place DOM_F_MODERN is ever set, and setting it there is what
+ * makes every wrapper the tree hands out afterwards a `Dom\` one.
+ *
+ * OWNED: the caller answers with DomResultOwned and the reference goes back.
+ */
+static ph7_class_instance * DomNewModernDoc(ph7_context *pCtx,xmlDocPtr pDoc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = PH7_VmExtractClass(pVm,"Dom\\XMLDocument",
+		sizeof("Dom\\XMLDocument")-1,FALSE,0);
+	ph7_class_instance *pThis = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+	phl_xmldoc *pShell = pThis ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;
+	phl_domnode *pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;
+	if( pRes == 0 ){
+		if( pShell == 0 ){
+			xmlFreeDoc(pDoc);
+		}
+		if( pThis ){
+			PH7_ClassInstanceUnref(pThis);
+		}
+		return 0;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,DOM_DFLAGS,DOM_F_DEFAULT|DOM_F_MODERN);
+	DomSetRes(pVm,pThis,pRes);
+	PH7_NativeSetAttrObj(pVm,pThis,DOM_DOC,pThis);
+	return pThis;
+}
+/*
+ * Dom\XMLDocument::createEmpty(string $version = '1.0', string $encoding = 'UTF-8')
+ *
+ * Unlike `new DOMDocument`, whose encoding defaults to NOTHING and whose URI is
+ * null, php gives this one a real encoding and the URI `about:blank` -- the
+ * WHATWG spelling for a document that came from nowhere, which is what its
+ * `$URL` and `$documentURI` both read.
+ */
+DOM_METHOD(vm_builtin_DomXMLDocument_createEmpty)
+{
+	const char *zVersion = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "1.0";
+	const char *zEncoding = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "UTF-8";
+	ph7_class_instance *pThis;
+	xmlDocPtr pDoc = xmlNewDoc((const xmlChar *)zVersion);
+	if( pDoc == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( zEncoding[0] ){
+		pDoc->encoding = xmlStrdup((const xmlChar *)zEncoding);
+	}
+	pDoc->URL = xmlStrdup((const xmlChar *)"about:blank");
+	pThis = DomNewModernDoc(pCtx,pDoc);
+	if( pThis == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return DomResultOwned(pCtx,pThis);
+}
+/*
+ * Dom\XMLDocument::createFromString(string $source, int $options = 0,
+ *                                   ?string $overrideEncoding = null)
+ *
+ * The 2004 loader answers `false` and leaves the receiver as it was; this one
+ * has no receiver to leave, so a parse that does not produce a document is a
+ * THROW -- php's DOMException 12 (SYNTAX_ERR), raised after the parser's own
+ * warnings have already been drained. The empty string never reaches libxml at
+ * all: php refuses it by argument, the way loadXML() does.
+ *
+ * `$overrideEncoding` is libxml's parse encoding, which is the third argument
+ * the memory parser has always taken and the 2004 API never exposed.
+ */
+DOM_METHOD(vm_builtin_DomXMLDocument_createFromString)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	int nLen = 0;
+	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nLen) : "";
+	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
+	const char *zEnc = (nArg > 2 && !ph7_value_is_null(apArg[2]))
+		? ph7_value_to_string(apArg[2],0) : 0;
+	ph7_class_instance *pThis;
+	phl_dom_errsave sErr;
+	xmlDocPtr pDoc;
+	sxu32 nMark;
+	if( nLen < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Dom\\XMLDocument::createFromString(): Argument #1 ($source) must not be empty");
+	}
+	sErr = DomForceWarnings(pVm,(iOpts & XML_PARSE_RECOVER) != 0);
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pDoc = xmlReadMemory(zSrc,nLen,0,zEnc,iOpts);
+	PH7_LibxmlCaptureEndOpts(pVm,nMark,"Dom\\XMLDocument::createFromString",iOpts);
+	DomRestoreWarnings(pVm,sErr);
+	if( pDoc == 0 ){
+		return PH7_VmThrowExceptionCode(pCtx,"DOMException",DOM_ERR_SYNTAX,
+			"XML fragment is not well-formed");
+	}
+	DomStampCwd(pCtx,pDoc);
+	pThis = DomNewModernDoc(pCtx,pDoc);
+	if( pThis == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return DomResultOwned(pCtx,pThis);
+}
+/*
+ * Dom\XMLDocument::createFromFile(string $path, int $options = 0,
+ *                                 ?string $overrideEncoding = null)
+ *
+ * The same parse from a file, and the two ways it can fail are two DIFFERENT
+ * refusals: a file that cannot be opened is a plain `Exception` naming the path
+ * (php's own, code 0 -- it is not a DOM error), and a file that opens but does
+ * not parse is the DOMException the string producer raises. Both come after the
+ * I/O or parse warning the reader has already emitted.
+ */
+DOM_METHOD(vm_builtin_DomXMLDocument_createFromFile)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zFile = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	int nFile = 0;
+	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
+	const char *zEnc = (nArg > 2 && !ph7_value_is_null(apArg[2]))
+		? ph7_value_to_string(apArg[2],0) : 0;
+	ph7_class_instance *pThis;
+	phl_dom_errsave sErr;
+	SyBlob sBody,sPath;
+	xmlDocPtr pDoc;
+	sxu32 nMark;
+	zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
+	if( nFile != (int)SyStrlen(zFile) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Dom\\XMLDocument::createFromFile(): Argument #1 ($path) must not contain "
+			"any null bytes");
+	}
+	if( !PH7_DomReadFile(pCtx,zFile,nFile,"Dom\\XMLDocument::createFromFile",
+			&sBody,&sPath) ){
+		return PH7_VmThrowException(pCtx,"Exception","Cannot open file '%.*s'",
+			nFile,zFile);
+	}
+	sErr = DomForceWarnings(pVm,(iOpts & XML_PARSE_RECOVER) != 0);
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pDoc = xmlReadMemory((const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody),
+		(const char *)SyBlobData(&sPath),zEnc,iOpts);
+	PH7_LibxmlCaptureEndOpts(pVm,nMark,"Dom\\XMLDocument::createFromFile",iOpts);
+	DomRestoreWarnings(pVm,sErr);
+	SyBlobRelease(&sBody);
+	SyBlobRelease(&sPath);
+	if( pDoc == 0 ){
+		return PH7_VmThrowExceptionCode(pCtx,"DOMException",DOM_ERR_SYNTAX,
+			"XML fragment is not well-formed");
+	}
+	pThis = DomNewModernDoc(pCtx,pDoc);
+	if( pThis == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return DomResultOwned(pCtx,pThis);
+}
+/*
+ * `Dom\Node::__construct()`, which php declares FINAL PRIVATE: the whole tree is
+ * unconstructible from PHP, `new Dom\Element` is "Call to private
+ * Dom\Node::__construct() from global scope", and no subclass can reopen it.
+ * The body can never run, and states so rather than pretending to build one.
+ */
+DOM_METHOD(vm_builtin_DomNode_construct)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;
+}
+
 PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 {
 	/* php's eighteen DOMNode properties -- all VIRTUAL there, so the object holds
@@ -11380,6 +11800,107 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	static const PH7_NativePropDef aExcProp[] = {
 		{ "code", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 }
 	};
+	/* php 8.4's node tree. Every property below is one php declares on that
+	 * class and on no other -- the four DOMNode carries that `Dom\Node` does
+	 * not (`attributes`, `prefix`, `localName`, `namespaceURI`) moved down onto
+	 * the element and the attribute, which are the two that can answer them.
+	 *
+	 * php declares `children`, `classList` and `implementation` as real typed
+	 * SLOTS rather than virtual ones; those three are not stated yet and are
+	 * the tree's open residual, together with its methods. */
+	static const PH7_NativePropDef aMNodeProp[] = {
+		DOM_MNODE_VPROPS,
+		{ DOM_RES,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ DOM_DOC,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ DOM_NODES, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aMNodeMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE|PH7_MOD_FINAL, "", "", vm_builtin_DomNode_construct },
+	};
+	static const PH7_NativePropDef aMCharProp[] = {
+		DOM_VPROP("data","string"),
+		DOM_VPROP("length","int"),
+		DOM_MCHILD_VPROPS
+	};
+	static const PH7_NativePropDef aMAttrProp[] = {
+		DOM_VPROP("namespaceURI","?string"),
+		DOM_VPROP("prefix","?string"),
+		DOM_VPROP("localName","string"),
+		DOM_VPROP("name","string"),
+		DOM_VPROP("value","string"),
+		DOM_VPROP("ownerElement","?Dom\\Element"),
+		DOM_VPROP("specified","bool")
+	};
+	static const PH7_NativePropDef aMElemProp[] = {
+		DOM_VPROP("namespaceURI","?string"),
+		DOM_VPROP("prefix","?string"),
+		DOM_VPROP("localName","string"),
+		DOM_VPROP("tagName","string"),
+		DOM_VPROP("id","string"),
+		DOM_VPROP("className","string"),
+		DOM_VPROP("attributes","Dom\\NamedNodeMap"),
+		DOM_MPARENT_VPROPS,
+		DOM_MCHILD_VPROPS
+	};
+	static const PH7_NativePropDef aMTextProp[] = { DOM_VPROP("wholeText","string") };
+	static const PH7_NativePropDef aMPiProp[] = { DOM_VPROP("target","string") };
+	static const PH7_NativePropDef aMFragProp[] = { DOM_MPARENT_VPROPS };
+	static const PH7_NativePropDef aMDocTypeProp[] = {
+		DOM_VPROP("name","string"),
+		DOM_VPROP("entities","Dom\\DtdNamedNodeMap"),
+		DOM_VPROP("notations","Dom\\DtdNamedNodeMap"),
+		DOM_VPROP("publicId","string"),
+		DOM_VPROP("systemId","string"),
+		DOM_VPROP("internalSubset","?string")
+	};
+	/* Three where DOMEntity states six: the new class drops the pair libxml
+	 * cannot answer for an entity and the XML-declaration echo beside them. */
+	static const PH7_NativePropDef aMEntityProp[] = {
+		DOM_VPROP("publicId","?string"),
+		DOM_VPROP("systemId","?string"),
+		DOM_VPROP("notationName","?string")
+	};
+	static const PH7_NativePropDef aMNotationProp[] = {
+		DOM_VPROP("publicId","string"),
+		DOM_VPROP("systemId","string")
+	};
+	/* The abstract document. Its flag word is DOMDocument's -- the parse
+	 * directives are still directives here, and DOM_F_MODERN rides in it. */
+	static const PH7_NativePropDef aMDocProp[] = {
+		DOM_VPROP("URL","string"),
+		DOM_VPROP("documentURI","string"),
+		DOM_VPROP("characterSet","string"),
+		DOM_VPROP("charset","string"),
+		DOM_VPROP("inputEncoding","string"),
+		DOM_VPROP("doctype","?Dom\\DocumentType"),
+		DOM_VPROP("documentElement","?Dom\\Element"),
+		DOM_MPARENT_VPROPS,
+		DOM_VPROP("body","?Dom\\HTMLElement"),
+		DOM_VPROP("head","?Dom\\HTMLElement"),
+		DOM_VPROP("title","string"),
+		{ DOM_DFLAGS, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, DOM_F_DEFAULT, 0, 0.0 }, 0 },
+		{ DOM_NODES,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ DOM_NCLS,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativePropDef aMXmlDocProp[] = {
+		DOM_VPROP("xmlEncoding","string"),
+		DOM_VPROP("xmlStandalone","bool"),
+		DOM_VPROP("xmlVersion","string"),
+		DOM_VPROP("formatOutput","bool")
+	};
+	/* The three static producers, which are the whole door into the tree. */
+	static const PH7_NativeMethodDef aMXmlDocMethod[] = {
+		{ "createEmpty", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "string $version = '1.0', string $encoding = 'UTF-8'", "Dom\\XMLDocument",
+		  vm_builtin_DomXMLDocument_createEmpty },
+		{ "createFromFile", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "string $path, int $options = 0, ?string $overrideEncoding = null",
+		  "Dom\\XMLDocument", vm_builtin_DomXMLDocument_createFromFile },
+		{ "createFromString", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "string $source, int $options = 0, ?string $overrideEncoding = null",
+		  "Dom\\XMLDocument", vm_builtin_DomXMLDocument_createFromString },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "DOMException", "Exception", 0, PH7_CLASS_FINAL, 0, 0, 0, 0,
 		  aExcProp, SX_ARRAYSIZE(aExcProp), 0, 0, 0 },
@@ -11472,6 +11993,55 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "Dom\\DtdNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aDomDtdMapMethod, SX_ARRAYSIZE(aDomDtdMapMethod), 0, 0,
 		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomMapIterVtab, DomPresent },
+		/* The namespaced NODE tree. php's shapes, which are not the 2004 ones:
+		 * the PI is a CharacterData, the fragment is a ParentNode and not a
+		 * ChildNode, `Dom\Document` is ABSTRACT with two final documents under
+		 * it, and no row here has a DOM* class anywhere in its chain. */
+		{ "Dom\\Node", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aMNodeMethod, SX_ARRAYSIZE(aMNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
+		  aMNodeProp, SX_ARRAYSIZE(aMNodeProp), 0, 0, DomPresent },
+		{ "Dom\\CharacterData", "Dom\\Node", "Dom\\ChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMCharProp, SX_ARRAYSIZE(aMCharProp), 0, 0, DomPresent },
+		{ "Dom\\Attr", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMAttrProp, SX_ARRAYSIZE(aMAttrProp), 0, 0, DomPresent },
+		{ "Dom\\Element", "Dom\\Node", "Dom\\ChildNode,Dom\\ParentNode",
+		  PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMElemProp, SX_ARRAYSIZE(aMElemProp), 0, 0, DomPresent },
+		/* php's HTML element states nothing of its own; it is the class an HTML
+		 * document's elements wear, and the difference is the family. */
+		{ "Dom\\HTMLElement", "Dom\\Element", "Dom\\ChildNode,Dom\\ParentNode",
+		  PH7_CLASS_NOSERIALIZE_SUBOK, 0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "Dom\\Text", "Dom\\CharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMTextProp, SX_ARRAYSIZE(aMTextProp), 0, 0, DomPresent },
+		{ "Dom\\CDATASection", "Dom\\Text", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "Dom\\Comment", "Dom\\CharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "Dom\\ProcessingInstruction", "Dom\\CharacterData", 0,
+		  PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMPiProp, SX_ARRAYSIZE(aMPiProp), 0, 0, DomPresent },
+		{ "Dom\\DocumentFragment", "Dom\\Node", "Dom\\ParentNode",
+		  PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMFragProp, SX_ARRAYSIZE(aMFragProp), 0, 0, DomPresent },
+		{ "Dom\\DocumentType", "Dom\\Node", "Dom\\ChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMDocTypeProp, SX_ARRAYSIZE(aMDocTypeProp), 0, 0, DomPresent },
+		{ "Dom\\Entity", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMEntityProp, SX_ARRAYSIZE(aMEntityProp), 0, 0, DomPresent },
+		{ "Dom\\EntityReference", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "Dom\\Notation", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMNotationProp, SX_ARRAYSIZE(aMNotationProp), 0, 0, DomPresent },
+		{ "Dom\\Document", "Dom\\Node", "Dom\\ParentNode",
+		  PH7_CLASS_ABSTRACT|PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMDocProp, SX_ARRAYSIZE(aMDocProp), DomDocRelease, 0, DomPresent },
+		{ "Dom\\XMLDocument", "Dom\\Document", "Dom\\ParentNode",
+		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aMXmlDocMethod, SX_ARRAYSIZE(aMXmlDocMethod), 0, 0,
+		  aMXmlDocProp, SX_ARRAYSIZE(aMXmlDocProp), DomDocRelease, 0, DomPresent },
+		{ "Dom\\HTMLDocument", "Dom\\Document", "Dom\\ParentNode",
+		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, DomDocRelease, 0, DomPresent },
+		{ "Dom\\Implementation", 0, 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp),
 		  0, 0, DomPresent },
@@ -11487,7 +12057,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		static const char * const azNodeClone[] = {
 			"DOMNode", "DOMElement", "DOMAttr", "DOMCharacterData", "DOMText",
 			"DOMComment", "DOMCdataSection", "DOMProcessingInstruction",
-			"DOMDocumentFragment", "DOMEntityReference", "DOMDocumentType"
+			"DOMDocumentFragment", "DOMEntityReference", "DOMDocumentType",
+			/* And the namespaced tree's own, for the same two reasons: a hook is
+			 * per-row and never inherited between native rows, and every node
+			 * here holds an entry in a document's identity cache that its
+			 * teardown has to take back out. */
+			"Dom\\Node", "Dom\\Element", "Dom\\HTMLElement", "Dom\\Attr",
+			"Dom\\CharacterData", "Dom\\Text", "Dom\\CDATASection",
+			"Dom\\Comment", "Dom\\ProcessingInstruction",
+			"Dom\\DocumentFragment", "Dom\\EntityReference",
+			"Dom\\DocumentType", "Dom\\Entity", "Dom\\Notation"
 		};
 		sxu32 n;
 		ph7_class *pClass;
@@ -11499,6 +12078,18 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 			}
 		}
 		pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",sizeof("DOMDocument")-1,FALSE,0);
+		if( pClass ){
+			pClass->xClone = DomInstanceCloneDoc;
+		}
+		/* php's two final namespaced documents copy the whole document the same
+		 * way; the abstract one between them can never be an instance. */
+		pClass = PH7_VmExtractClass(&(*pVm),"Dom\\XMLDocument",
+			sizeof("Dom\\XMLDocument")-1,FALSE,0);
+		if( pClass ){
+			pClass->xClone = DomInstanceCloneDoc;
+		}
+		pClass = PH7_VmExtractClass(&(*pVm),"Dom\\HTMLDocument",
+			sizeof("Dom\\HTMLDocument")-1,FALSE,0);
 		if( pClass ){
 			pClass->xClone = DomInstanceCloneDoc;
 		}
@@ -11558,7 +12149,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 			static const char * const azPropRoot[] = {
 				"DOMNode", "DOMNodeList", "DOMNamedNodeMap", "DOMNameSpaceNode", "DOMXPath",
 				"Dom\\HTMLCollection",
-				"Dom\\NodeList", "Dom\\NamedNodeMap", "Dom\\DtdNamedNodeMap"
+				"Dom\\NodeList", "Dom\\NamedNodeMap", "Dom\\DtdNamedNodeMap",
+				/* The namespaced tree's root. It is a root and not a branch of
+				 * DOMNode's: the two trees never meet, so the chain walk from a
+				 * `Dom\\Element` reaches nothing the 2004 one installed. */
+				"Dom\\Node"
 			};
 			for( n = 0 ; n < SX_ARRAYSIZE(azPropRoot) ; ++n ){
 				PH7_NativeClassInstallPropHook(&(*pVm),azPropRoot[n],DomPropHook);
