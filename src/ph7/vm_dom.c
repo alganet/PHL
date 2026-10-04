@@ -15505,66 +15505,40 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "saveXmlFile", PH7_MOD_PUBLIC, "string $filename, int $options = 0",
 		  "@int|false", vm_builtin_DomXMLDocument_saveXmlFile },
 	};
-	static const PH7_NativeClassSpec aSpec[] = {
-		{ "DOMException", "Exception", 0, PH7_CLASS_FINAL, 0, 0, 0, 0,
-		  aExcProp, SX_ARRAYSIZE(aExcProp), 0, 0, 0 },
+	/* php registers `Dom\\DOMException` as a second key over `DOMException`
+	 * IMMEDIATELY after the class itself, and its listing is registration order
+	 * -- so the alias has to go in between, and the table is split here to leave
+	 * it room. Everything above it is the four interfaces (invisible to
+	 * `get_declared_classes()`, and every implementor is below) plus the one
+	 * class the alias names. */
+	static const PH7_NativeClassSpec aHeadSpec[] = {
 		{ "DOMParentNode", 0, 0, PH7_CLASS_INTERFACE,
 		  aParentNodeIf, SX_ARRAYSIZE(aParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Dom\\ParentNode", 0, 0, PH7_CLASS_INTERFACE,
+		  aDomParentNodeIf, SX_ARRAYSIZE(aDomParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMChildNode", 0, 0, PH7_CLASS_INTERFACE,
 		  aChildNodeIf, SX_ARRAYSIZE(aChildNodeIf), 0, 0, 0, 0, 0, 0, 0 },
+		/* php 8.4's namespaced API. Its two interfaces carry no property. */
+		{ "Dom\\ChildNode", 0, 0, PH7_CLASS_INTERFACE,
+		  aDomChildNodeIf, SX_ARRAYSIZE(aDomChildNodeIf), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMException", "Exception", 0, PH7_CLASS_FINAL, 0, 0, 0, 0,
+		  aExcProp, SX_ARRAYSIZE(aExcProp), 0, 0, 0 },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "DOMImplementation", 0, 0, 0,
+		  aImplMethod, SX_ARRAYSIZE(aImplMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Dom\\Implementation", 0, 0, PH7_CLASS_NOCLONE,
+		  aMImplMethod, SX_ARRAYSIZE(aMImplMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
 		  aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, DomPresent },
-		{ "DOMDocument", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp),
-		  DomDocRelease, 0, DomPresent },
-		{ "DOMElement", "DOMNode", "DOMParentNode,DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, aElemProp, SX_ARRAYSIZE(aElemProp),
-		  0, 0, DomPresent },
-		{ "DOMAttr", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, aAttrProp, SX_ARRAYSIZE(aAttrProp),
-		  0, 0, DomPresent },
-		{ "DOMCharacterData", "DOMNode", "DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, aCharProp, SX_ARRAYSIZE(aCharProp),
-		  0, 0, DomPresent },
-		{ "DOMText", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, aTextProp, SX_ARRAYSIZE(aTextProp),
-		  0, 0, DomPresent },
-		{ "DOMComment", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aCommentMethod, SX_ARRAYSIZE(aCommentMethod), 0, 0, 0, 0, 0, 0, DomPresent },
-		{ "DOMCdataSection", "DOMText", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aCdataMethod, SX_ARRAYSIZE(aCdataMethod), 0, 0, 0, 0, 0, 0, DomPresent },
-		/* php declares the PI under DOMNode (its `data` is its own property, not
-		 * DOMCharacterData's), the fragment and the entity reference plainly. */
-		{ "DOMProcessingInstruction", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aPiMethod, SX_ARRAYSIZE(aPiMethod), 0, 0, aPiProp, SX_ARRAYSIZE(aPiProp),
-		  0, 0, DomPresent },
-		{ "DOMDocumentFragment", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, aFragProp, SX_ARRAYSIZE(aFragProp),
-		  0, 0, DomPresent },
-		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aEntRefMethod, SX_ARRAYSIZE(aEntRefMethod), 0, 0, 0, 0, 0, 0, DomPresent },
-		/* The DTD trio state no method of their own -- every name php declares on
-		 * them is a property, and the class's handler answers it. */
-		{ "DOMDocumentType", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aDocTypeProp,
-		  SX_ARRAYSIZE(aDocTypeProp), 0, 0, DomPresent },
-		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aEntityProp,
-		  SX_ARRAYSIZE(aEntityProp), 0, 0, DomPresent },
-		{ "DOMImplementation", 0, 0, 0,
-		  aImplMethod, SX_ARRAYSIZE(aImplMethod), 0, 0, 0, 0, 0, 0, 0 },
-		{ "DOMNotation", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aNotationProp,
-		  SX_ARRAYSIZE(aNotationProp), 0, 0, DomPresent },
-		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
-		 * list carry its own cursor) and Countable. */
-		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
-		  aListMethod, SX_ARRAYSIZE(aListMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
-		  0, &sDomListIterVtab, DomPresent },
-		{ "DOMNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
-		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
-		  0, &sDomMapIterVtab, DomPresent },
+		/* The namespaced NODE tree. php's shapes, which are not the 2004 ones:
+		 * the PI is a CharacterData, the fragment is a ParentNode and not a
+		 * ChildNode, `Dom\Document` is ABSTRACT with two final documents under
+		 * it, and no row here has a DOM* class anywhere in its chain. */
+		{ "Dom\\Node", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aMNodeMethod, SX_ARRAYSIZE(aMNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
+		  aMNodeProp, SX_ARRAYSIZE(aMNodeProp), 0, 0, DomPresent },
 		/* php's own: a class of its OWN, with no parent at all -- a namespace
 		 * declaration is not a DOMNode there, and `$ns instanceof DOMNode` is
 		 * false. Its refusal to serialize is the same soft kind the node
@@ -15572,24 +15546,35 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "DOMNameSpaceNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aNsNodeMethod, SX_ARRAYSIZE(aNsNodeMethod), 0, 0,
 		  aNsNodeProp, SX_ARRAYSIZE(aNsNodeProp), 0, 0, DomPresent },
-		/* php 8.4's namespaced API. The two interfaces carry no property; the
-		 * collection shares DOMNodeList's slot layout, its iterator vtable and
-		 * its clone refusal, because it is the same live view under a new name. */
-		{ "Dom\\ChildNode", 0, 0, PH7_CLASS_INTERFACE,
-		  aDomChildNodeIf, SX_ARRAYSIZE(aDomChildNodeIf), 0, 0, 0, 0, 0, 0, 0 },
-		{ "Dom\\ParentNode", 0, 0, PH7_CLASS_INTERFACE,
-		  aDomParentNodeIf, SX_ARRAYSIZE(aDomParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },
-		{ "Dom\\HTMLCollection", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
-		  aDomCollMethod, SX_ARRAYSIZE(aDomCollMethod), 0, 0,
-		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
-		/* php's list is FINAL, refuses to clone, and refuses to serialize with
-		 * the HARD refusal -- `serialize()` of one is an Exception, where the
-		 * node classes' is the soft deny handler a subclass can lift. It has no
-		 * subclass to lift it: nothing can extend it. */
-		{ "Dom\\TokenList", 0, "IteratorAggregate,Countable",
-		  PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
-		  aTokMethod, SX_ARRAYSIZE(aTokMethod), 0, 0,
-		  aTokProp, SX_ARRAYSIZE(aTokProp), DomTokRelease, &sDomTokIterVtab, DomPresent },
+		{ "Dom\\NamespaceInfo", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_READONLY,
+		  aMNsInfoMethod, SX_ARRAYSIZE(aMNsInfoMethod), 0, 0,
+		  aMNsInfoProp, SX_ARRAYSIZE(aMNsInfoProp), 0, 0, 0 },
+		{ "DOMDocumentFragment", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, aFragProp, SX_ARRAYSIZE(aFragProp),
+		  0, 0, DomPresent },
+		{ "Dom\\DocumentFragment", "Dom\\Node", "Dom\\ParentNode",
+		  PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aMFragMethod, SX_ARRAYSIZE(aMFragMethod), 0, 0,
+		  aMFragProp, SX_ARRAYSIZE(aMFragProp), 0, 0, DomPresent },
+		{ "Dom\\Document", "Dom\\Node", "Dom\\ParentNode",
+		  PH7_CLASS_ABSTRACT|PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aMDocMethod, SX_ARRAYSIZE(aMDocMethod), 0, 0,
+		  aMDocProp, SX_ARRAYSIZE(aMDocProp), DomDocRelease, 0, DomPresent },
+		{ "DOMDocument", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp),
+		  DomDocRelease, 0, DomPresent },
+		{ "Dom\\HTMLDocument", "Dom\\Document", "Dom\\ParentNode",
+		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, DomDocRelease, 0, DomPresent },
+		{ "Dom\\XMLDocument", "Dom\\Document", "Dom\\ParentNode",
+		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aMXmlDocMethod, SX_ARRAYSIZE(aMXmlDocMethod), 0, 0,
+		  aMXmlDocProp, SX_ARRAYSIZE(aMXmlDocProp), DomDocRelease, 0, DomPresent },
+		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
+		 * list carry its own cursor) and Countable. */
+		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
+		  aListMethod, SX_ARRAYSIZE(aListMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
+		  0, &sDomListIterVtab, DomPresent },
 		/* And its three siblings. Each is php's own class, unrelated to the
 		 * 2004 one it shadows -- `Dom\NodeList` is not a DOMNodeList and the two
 		 * trees never meet -- but the live view underneath is the same, so all
@@ -15599,29 +15584,34 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "Dom\\NodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aDomNodeListMethod, SX_ARRAYSIZE(aDomNodeListMethod), 0, 0,
 		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
+		{ "DOMNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
+		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
+		  0, &sDomMapIterVtab, DomPresent },
 		{ "Dom\\NamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aDomMapMethod, SX_ARRAYSIZE(aDomMapMethod), 0, 0,
 		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomMapIterVtab, DomPresent },
 		{ "Dom\\DtdNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aDomDtdMapMethod, SX_ARRAYSIZE(aDomDtdMapMethod), 0, 0,
 		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomMapIterVtab, DomPresent },
-		/* The namespaced NODE tree. php's shapes, which are not the 2004 ones:
-		 * the PI is a CharacterData, the fragment is a ParentNode and not a
-		 * ChildNode, `Dom\Document` is ABSTRACT with two final documents under
-		 * it, and no row here has a DOM* class anywhere in its chain. */
-		{ "Dom\\Node", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aMNodeMethod, SX_ARRAYSIZE(aMNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
-		  aMNodeProp, SX_ARRAYSIZE(aMNodeProp), 0, 0, DomPresent },
-		{ "Dom\\NamespaceInfo", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_READONLY,
-		  aMNsInfoMethod, SX_ARRAYSIZE(aMNsInfoMethod), 0, 0,
-		  aMNsInfoProp, SX_ARRAYSIZE(aMNsInfoProp), 0, 0, 0 },
+		{ "Dom\\HTMLCollection", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
+		  aDomCollMethod, SX_ARRAYSIZE(aDomCollMethod), 0, 0,
+		  aListProp, SX_ARRAYSIZE(aListProp), 0, &sDomListIterVtab, DomPresent },
+		{ "DOMCharacterData", "DOMNode", "DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, aCharProp, SX_ARRAYSIZE(aCharProp),
+		  0, 0, DomPresent },
 		{ "Dom\\CharacterData", "Dom\\Node", "Dom\\ChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMCharMethod, SX_ARRAYSIZE(aMCharMethod), 0, 0,
 		  aMCharProp, SX_ARRAYSIZE(aMCharProp), 0, 0, DomPresent },
+		{ "DOMAttr", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, aAttrProp, SX_ARRAYSIZE(aAttrProp),
+		  0, 0, DomPresent },
 		{ "Dom\\Attr", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMAttrMethod, SX_ARRAYSIZE(aMAttrMethod), 0, 0,
 		  aMAttrProp, SX_ARRAYSIZE(aMAttrProp), 0, 0, DomPresent },
-		{ "Dom\\Element", "Dom\\Node", "Dom\\ChildNode,Dom\\ParentNode",
+		{ "DOMElement", "DOMNode", "DOMParentNode,DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, aElemProp, SX_ARRAYSIZE(aElemProp),
+		  0, 0, DomPresent },
+		{ "Dom\\Element", "Dom\\Node", "Dom\\ParentNode,Dom\\ChildNode",
 		  PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMElemMethod, SX_ARRAYSIZE(aMElemMethod), 0, 0,
 		  aMElemProp, SX_ARRAYSIZE(aMElemProp), 0, 0, DomPresent },
@@ -15629,42 +15619,50 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * document's elements wear, and the difference is the family. */
 		{ "Dom\\HTMLElement", "Dom\\Element", "Dom\\ChildNode,Dom\\ParentNode",
 		  PH7_CLASS_NOSERIALIZE_SUBOK, 0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "DOMText", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, aTextProp, SX_ARRAYSIZE(aTextProp),
+		  0, 0, DomPresent },
 		{ "Dom\\Text", "Dom\\CharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMTextMethod, SX_ARRAYSIZE(aMTextMethod), 0, 0,
 		  aMTextProp, SX_ARRAYSIZE(aMTextProp), 0, 0, DomPresent },
-		{ "Dom\\CDATASection", "Dom\\Text", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "DOMComment", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aCommentMethod, SX_ARRAYSIZE(aCommentMethod), 0, 0, 0, 0, 0, 0, DomPresent },
 		{ "Dom\\Comment", "Dom\\CharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
-		{ "Dom\\ProcessingInstruction", "Dom\\CharacterData", 0,
-		  PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMPiProp, SX_ARRAYSIZE(aMPiProp), 0, 0, DomPresent },
-		{ "Dom\\DocumentFragment", "Dom\\Node", "Dom\\ParentNode",
-		  PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aMFragMethod, SX_ARRAYSIZE(aMFragMethod), 0, 0,
-		  aMFragProp, SX_ARRAYSIZE(aMFragProp), 0, 0, DomPresent },
+		{ "DOMCdataSection", "DOMText", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aCdataMethod, SX_ARRAYSIZE(aCdataMethod), 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "Dom\\CDATASection", "Dom\\Text", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		/* The DTD trio state no method of their own -- every name php declares on
+		 * them is a property, and the class's handler answers it. */
+		{ "DOMDocumentType", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aDocTypeProp,
+		  SX_ARRAYSIZE(aDocTypeProp), 0, 0, DomPresent },
 		{ "Dom\\DocumentType", "Dom\\Node", "Dom\\ChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aMDocTypeMethod, SX_ARRAYSIZE(aMDocTypeMethod), 0, 0,
 		  aMDocTypeProp, SX_ARRAYSIZE(aMDocTypeProp), 0, 0, DomPresent },
-		{ "Dom\\Entity", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, aMEntityProp, SX_ARRAYSIZE(aMEntityProp), 0, 0, DomPresent },
-		{ "Dom\\EntityReference", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "DOMNotation", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aNotationProp,
+		  SX_ARRAYSIZE(aNotationProp), 0, 0, DomPresent },
 		{ "Dom\\Notation", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, aMNotationProp, SX_ARRAYSIZE(aMNotationProp), 0, 0, DomPresent },
-		{ "Dom\\Document", "Dom\\Node", "Dom\\ParentNode",
-		  PH7_CLASS_ABSTRACT|PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aMDocMethod, SX_ARRAYSIZE(aMDocMethod), 0, 0,
-		  aMDocProp, SX_ARRAYSIZE(aMDocProp), DomDocRelease, 0, DomPresent },
-		{ "Dom\\XMLDocument", "Dom\\Document", "Dom\\ParentNode",
-		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aMXmlDocMethod, SX_ARRAYSIZE(aMXmlDocMethod), 0, 0,
-		  aMXmlDocProp, SX_ARRAYSIZE(aMXmlDocProp), DomDocRelease, 0, DomPresent },
-		{ "Dom\\HTMLDocument", "Dom\\Document", "Dom\\ParentNode",
-		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, 0, 0, DomDocRelease, 0, DomPresent },
-		{ "Dom\\Implementation", 0, 0, PH7_CLASS_NOCLONE,
-		  aMImplMethod, SX_ARRAYSIZE(aMImplMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aEntityProp,
+		  SX_ARRAYSIZE(aEntityProp), 0, 0, DomPresent },
+		{ "Dom\\Entity", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMEntityProp, SX_ARRAYSIZE(aMEntityProp), 0, 0, DomPresent },
+		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aEntRefMethod, SX_ARRAYSIZE(aEntRefMethod), 0, 0, 0, 0, 0, 0, DomPresent },
+		{ "Dom\\EntityReference", "Dom\\Node", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, 0, 0, DomPresent },
+		/* php declares the PI under DOMNode (its `data` is its own property, not
+		 * DOMCharacterData's), the fragment and the entity reference plainly. */
+		{ "DOMProcessingInstruction", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aPiMethod, SX_ARRAYSIZE(aPiMethod), 0, 0, aPiProp, SX_ARRAYSIZE(aPiProp),
+		  0, 0, DomPresent },
+		{ "Dom\\ProcessingInstruction", "Dom\\CharacterData", 0,
+		  PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, aMPiProp, SX_ARRAYSIZE(aMPiProp), 0, 0, DomPresent },
 		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp),
 		  0, 0, DomPresent },
@@ -15675,8 +15673,65 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aMXPathMethod, SX_ARRAYSIZE(aMXPathMethod), 0, 0,
 		  aMXPathProp, SX_ARRAYSIZE(aMXPathProp), 0, 0, DomPresent },
+		/* php's list is FINAL, refuses to clone, and refuses to serialize with
+		 * the HARD refusal -- `serialize()` of one is an Exception, where the
+		 * node classes' is the soft deny handler a subclass can lift. It has no
+		 * subclass to lift it: nothing can extend it. */
+		{ "Dom\\TokenList", 0, "IteratorAggregate,Countable",
+		  PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aTokMethod, SX_ARRAYSIZE(aTokMethod), 0, 0,
+		  aTokProp, SX_ARRAYSIZE(aTokProp), DomTokRelease, &sDomTokIterVtab, DomPresent },
 	};
-	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	/*
+	 * php 8.4's `Dom\AdjacentPosition` -- the four insertion points
+	 * `Dom\Element::insertAdjacentElement()` and its two siblings name.
+	 *
+	 * It is STRING-backed, and the backing values are the HTML standard's
+	 * lowercase spellings and not the case names: `from('beforebegin')` is
+	 * the case and `from('BeforeBegin')` is a ValueError. A program that
+	 * spells the position by hand is reading the standard, not the enum, so
+	 * getting that pairing wrong would fail exactly the call the enum exists
+	 * to type.
+	 *
+	 * It is installed FIRST because php's listing is registration order and
+	 * the enum is this extension's first name in it.
+	 *
+	 * The case table is `static` because the installer keeps a POINTER to
+	 * each backing literal for the life of the class. A stack array is safe
+	 * only for a PURE enum, which carries no literal at all -- which is why
+	 * the engine's other two native enums build theirs on the stack.
+	 */
+	static const PH7_NativeEnumCase aAdjacent[] = {
+		{ "BeforeBegin", { 0, 0, PH7_NATIVE_VAL_STRING, 0, "beforebegin", 0.0 } },
+		{ "AfterBegin",  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "afterbegin",  0.0 } },
+		{ "BeforeEnd",   { 0, 0, PH7_NATIVE_VAL_STRING, 0, "beforeend",   0.0 } },
+		{ "AfterEnd",    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "afterend",    0.0 } }
+	};
+	sxi32 rc = PH7_InstallNativeEnum(&(*pVm),"Dom\\AdjacentPosition",MEMOBJ_STRING,
+		aAdjacent,SX_ARRAYSIZE(aAdjacent),0,0);
+	if( rc == SXRET_OK ){
+		rc = PH7_InstallNativeClasses(&(*pVm),aHeadSpec,SX_ARRAYSIZE(aHeadSpec));
+	}
+	/*
+	 * `Dom\DOMException` is php's 2004 DOMException under a second name, not
+	 * a class of its own: `get_class()` on one caught as `Dom\DOMException`
+	 * answers `DOMException`, and `catch (DOMException)` catches what the
+	 * namespaced surface throws. So it is an ALIAS -- a second key over the
+	 * same class -- and php's own listing shows the key folded, which is the
+	 * spelling entered here, immediately after its target.
+	 */
+	if( rc == SXRET_OK ){
+		static const char zAlias[] = "dom\\domexception";
+		ph7_class *pExc = PH7_VmExtractClass(&(*pVm),"DOMException",
+			sizeof("DOMException")-1,FALSE,0);
+		if( pExc && SyHashGet(&pVm->hClass,(const void *)zAlias,
+			sizeof(zAlias)-1) == 0 ){
+			SyHashInsert(&pVm->hClass,(const void *)zAlias,sizeof(zAlias)-1,pExc);
+		}
+	}
+	if( rc == SXRET_OK ){
+		rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	}
 	if( rc == SXRET_OK ){
 		/* The clone hook (ph7_class::xClone, php's clone_obj): stated on every
 		 * node class -- rule 29, a hook is per-row and never inherited between
@@ -15787,48 +15842,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 			};
 			for( n = 0 ; n < SX_ARRAYSIZE(azPropRoot) ; ++n ){
 				PH7_NativeClassInstallPropHook(&(*pVm),azPropRoot[n],DomPropHook);
-			}
-		}
-		/*
-		 * php 8.4's `Dom\AdjacentPosition` -- the four insertion points
-		 * `Dom\Element::insertAdjacentElement()` and its two siblings name.
-		 *
-		 * It is STRING-backed, and the backing values are the HTML standard's
-		 * lowercase spellings and not the case names: `from('beforebegin')` is
-		 * the case and `from('BeforeBegin')` is a ValueError. A program that
-		 * spells the position by hand is reading the standard, not the enum, so
-		 * getting that pairing wrong would fail exactly the call the enum exists
-		 * to type.
-		 *
-		 * The case table is `static` because the installer keeps a POINTER to
-		 * each backing literal for the life of the class. A stack array is safe
-		 * only for a PURE enum, which carries no literal at all -- which is why
-		 * the engine's other two native enums build theirs on the stack.
-		 */
-		if( rc == SXRET_OK ){
-			static const PH7_NativeEnumCase aAdjacent[] = {
-				{ "BeforeBegin", { 0, 0, PH7_NATIVE_VAL_STRING, 0, "beforebegin", 0.0 } },
-				{ "AfterBegin",  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "afterbegin",  0.0 } },
-				{ "BeforeEnd",   { 0, 0, PH7_NATIVE_VAL_STRING, 0, "beforeend",   0.0 } },
-				{ "AfterEnd",    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "afterend",    0.0 } }
-			};
-			rc = PH7_InstallNativeEnum(&(*pVm),"Dom\\AdjacentPosition",MEMOBJ_STRING,
-				aAdjacent,SX_ARRAYSIZE(aAdjacent),0,0);
-		}
-		/*
-		 * `Dom\DOMException` is php's 2004 DOMException under a second name, not
-		 * a class of its own: `get_class()` on one caught as `Dom\DOMException`
-		 * answers `DOMException`, and `catch (DOMException)` catches what the
-		 * namespaced surface throws. So it is an ALIAS -- a second key over the
-		 * same class -- and php's own listing shows the key folded, which is the
-		 * spelling entered here.
-		 */
-		if( rc == SXRET_OK ){
-			static const char zAlias[] = "dom\\domexception";
-			pClass = PH7_VmExtractClass(&(*pVm),"DOMException",sizeof("DOMException")-1,FALSE,0);
-			if( pClass && SyHashGet(&pVm->hClass,(const void *)zAlias,
-				sizeof(zAlias)-1) == 0 ){
-				SyHashInsert(&pVm->hClass,(const void *)zAlias,sizeof(zAlias)-1,pClass);
 			}
 		}
 	}
