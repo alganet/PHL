@@ -13003,6 +13003,18 @@ static int DomElemProp(ph7_context *pCtx,const char *zName)
 		}
 		return 1;
 	}
+	/*
+	 * php 8.4's element alone again: the content walk `textContent` runs, under
+	 * a name that says what the walk already did -- every entity reference in
+	 * the subtree is read SUBSTITUTED, and its declaration's replacement text
+	 * is what lands in the string. The pair differ on the WRITE, not the read:
+	 * `textContent` stores its bytes literally, this one parses them.
+	 */
+	if( DomNameIs(zName,"substitutedNodeValue") ){
+		pNd = DomThisNode(pCtx);
+		DomTextContent(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);
+		return 1;
+	}
 	if( DomParentNodeProp(pCtx,zName) || DomChildNodeProp(pCtx,zName) ){
 		return 1;
 	}
@@ -13451,6 +13463,28 @@ static int DomSetElemProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 		if( pNd ){
 			xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)(bClass ? "class" : "id"),
 				(const xmlChar *)SyBlobData(&sVal));
+		}
+		SyBlobRelease(&sVal);
+		return DOM_SET_DONE;
+	}
+	/*
+	 * ...and the write side of the element's substituted value: the children go
+	 * and the bytes are PARSED, so `&amp;e;` under a declared entity leaves an
+	 * entity reference in the tree and `&amp;#x31;` leaves the character it
+	 * names. That is the one thing `textContent` does not do -- it stores the
+	 * same bytes as one raw text child -- and it is why a string libxml refuses
+	 * (`a&amp;b`) leaves the element EMPTY here and warns, where the literal
+	 * write cannot fail. An undeclared entity is not a refusal: libxml drops the
+	 * reference and keeps the text around it, which is php's answer too.
+	 */
+	if( DomNameIs(zName,"substitutedNodeValue") ){
+		if( DomWriteText(pCtx,"Dom\\Element","substitutedNodeValue","string",
+			pVal,&sVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		if( pNd ){
+			DomSetContent(pCtx,pNd->pShell,(xmlNodePtr)pNd->pNode,
+				(const char *)SyBlobData(&sVal),TRUE);
 		}
 		SyBlobRelease(&sVal);
 		return DOM_SET_DONE;
@@ -15280,7 +15314,8 @@ static const char * const azDomMXmlDocDebug[] = {
 };
 static const char * const azDomMElemDebug[] = {
 	"namespaceURI", "prefix", "localName", "tagName", "id", "className",
-	"classList", "attributes", DOM_MPARENT_DEBUG, DOM_MCHILD_DEBUG, DOM_MNODE_DEBUG
+	"classList", "attributes", DOM_MPARENT_DEBUG, DOM_MCHILD_DEBUG,
+	"substitutedNodeValue", DOM_MNODE_DEBUG
 };
 /* php dumps the list as its two virtual names, length before value. */
 static const char * const azDomTokDebug[] = { "length", "value" };
@@ -17117,6 +17152,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_VPROP("className","string"),
 		DOM_VPROP("classList","Dom\\TokenList"),
 		DOM_VPROP("attributes","Dom\\NamedNodeMap"),
+		DOM_VPROP("substitutedNodeValue","string"),
 		/* The parked token list's ADDRESS, borrowed; see DomTokListOf. Hidden,
 		 * so it is on no dump, no cast, no walk and no Reflection listing. */
 		{ DOM_TLIST, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN,
