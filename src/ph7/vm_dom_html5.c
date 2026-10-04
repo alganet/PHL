@@ -186,6 +186,8 @@ struct html5_parser {
 	int iMode;
 	int iText;                     /* armed text flavour for the next token   */
 	SySet sOpen;                   /* xmlNodePtr, the open element stack      */
+	SySet sFmt;                    /* xmlNodePtr, the active formatting list;
+	                                * a 0 entry is the spec's MARKER          */
 	xmlNodePtr pHead;
 	xmlNodePtr pHtml;
 	/* the current token */
@@ -230,6 +232,53 @@ static const char * const azHtml5ClosesP[] = {
 static const char * const azHtml5Head[] = {
 	"base","basefont","bgsound","link","meta","noframes","script","style",
 	"template","title"
+};
+/*
+ * The formatting elements: the ones an end tag does not simply close, because
+ * a document that leaves one open across a close has it REOPENED after it.
+ */
+static const char * const azHtml5Fmt[] = {
+	"a","b","big","code","em","font","i","nobr","s","small","strike","strong",
+	"tt","u"
+};
+/*
+ * The `special` category.  Only two questions ask it: which open element is
+ * the `furthest block` an adoption moves out of, and which start tags skip the
+ * reconstruction (everything here but the handful listed in Html5Reconstructs).
+ */
+static const char * const azHtml5Special[] = {
+	"address","applet","area","article","aside","base","basefont","bgsound",
+	"blockquote","body","br","button","caption","center","col","colgroup","dd",
+	"details","dir","div","dl","dt","embed","fieldset","figcaption","figure",
+	"footer","form","frame","frameset","h1","h2","h3","h4","h5","h6","head",
+	"header","hgroup","hr","html","iframe","img","input","keygen","li","link",
+	"listing","main","marquee","menu","meta","nav","noembed","noframes",
+	"noscript","object","ol","p","param","plaintext","pre","script","search",
+	"section","select","source","style","summary","table","tbody","td",
+	"template","textarea","tfoot","th","thead","title","tr","track","ul","wbr",
+	"xmp"
+};
+/* The elements a scope question stops at. */
+static const char * const azHtml5Scope[] = {
+	"applet","caption","html","marquee","object","table","td","template","th"
+};
+/*
+ * The elements whose contents are their own formatting world: opening one
+ * parks a MARKER on the list, and popping it clears back past that marker, so
+ * a `<b>` left open outside is not reopened inside -- nor the other way.
+ */
+static const char * const azHtml5FmtMark[] = {
+	"applet","caption","marquee","object","td","th"
+};
+/*
+ * The special elements whose start tag reconstructs anyway.  Everything NOT
+ * special reconstructs; these are the exceptions on the other side, and the
+ * rest of the special list (the block containers, the head elements and the
+ * table internals) does not.
+ */
+static const char * const azHtml5ReconSpecial[] = {
+	"applet","area","br","button","embed","img","input","keygen","marquee",
+	"object","select","wbr","xmp"
 };
 
 /* sx has no NUL-terminated comparator; every name here is one. */
@@ -807,9 +856,61 @@ static void Html5Push(html5_parser *p,xmlNodePtr pNode)
 {
 	SySetPut(&p->sOpen,(const void *)&pNode);
 }
+static void Html5FmtClearToMarker(html5_parser *p);
 static void Html5Pop(html5_parser *p)
 {
+	xmlNodePtr pTop = Html5Top(p);
 	SySetPop(&p->sOpen);
+	if( pTop && HTML5_IN(azHtml5FmtMark,(const char *)pTop->name) ){
+		Html5FmtClearToMarker(p);
+	}
+}
+/* Where `pEl` sits in the open stack, counted from the root, or -1. */
+static int Html5StackIndex(html5_parser *p,xmlNodePtr pEl)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	int i,n = (int)SySetUsed(&p->sOpen);
+	for( i = 0 ; i < n ; ++i ){
+		if( apStack[i] == pEl ){
+			return i;
+		}
+	}
+	return -1;
+}
+/*
+ * The adoption moves entries about in the middle of both lists, which is the
+ * one thing SySet has no verb for; its slots are contiguous, so a shift is the
+ * whole of it.
+ */
+static void Html5SetRemoveAt(SySet *pSet,int i)
+{
+	xmlNodePtr *ap = (xmlNodePtr *)SySetBasePtr(pSet);
+	int n = (int)SySetUsed(pSet);
+	if( i < 0 || i >= n ){
+		return;
+	}
+	for( ; i + 1 < n ; ++i ){
+		ap[i] = ap[i + 1];
+	}
+	pSet->nUsed = (sxu32)(n - 1);
+}
+static void Html5SetInsertAt(SySet *pSet,int i,xmlNodePtr pEl)
+{
+	xmlNodePtr *ap;
+	int j,n;
+	SySetPut(pSet,(const void *)&pEl);       /* grow by one, then shift */
+	ap = (xmlNodePtr *)SySetBasePtr(pSet);
+	n = (int)SySetUsed(pSet);
+	if( i < 0 ){
+		i = 0;
+	}
+	if( i > n - 1 ){
+		return;
+	}
+	for( j = n - 1 ; j > i ; --j ){
+		ap[j] = ap[j - 1];
+	}
+	ap[i] = pEl;
 }
 /* Is `zName` open?  Answers the depth from the top, or -1. */
 static int Html5OpenDepth(html5_parser *p,const char *zName)
@@ -873,6 +974,367 @@ static void Html5AddAttrs(html5_parser *p,xmlNodePtr pEl)
 		}
 		xmlNewProp(pEl,(const xmlChar *)zName,(const xmlChar *)zVal);
 	}
+}
+/*
+ * A detached copy of a formatting element: same name, same attributes, no
+ * children.  Both the reconstruction and the adoption mint one, because the
+ * spec builds them from the TOKEN the original was created for and the token
+ * is long gone by then -- the element it built is the only record of it.
+ */
+static xmlNodePtr Html5CloneFmt(html5_parser *p,xmlNodePtr pSrc)
+{
+	xmlNodePtr pEl = xmlNewDocNode(p->pDoc,0,pSrc->name,0);
+	xmlAttrPtr pAttr;
+	if( pEl == 0 ){
+		return 0;
+	}
+	if( (p->iFlags & HTML5_NO_DEF_NS) == 0 && p->pNs ){
+		xmlSetNs(pEl,p->pNs);
+	}
+	for( pAttr = pSrc->properties ; pAttr ; pAttr = pAttr->next ){
+		xmlChar *zVal = xmlNodeListGetString(p->pDoc,pAttr->children,1);
+		xmlNewProp(pEl,pAttr->name,zVal ? zVal : (const xmlChar *)"");
+		if( zVal ){
+			xmlFree(zVal);
+		}
+	}
+	return pEl;
+}
+/* ------------------------------------------------------------------ *
+ * The list of active formatting elements
+ * ------------------------------------------------------------------ */
+
+static int Html5FmtIndex(html5_parser *p,xmlNodePtr pEl)
+{
+	xmlNodePtr *apFmt = (xmlNodePtr *)SySetBasePtr(&p->sFmt);
+	int i,n = (int)SySetUsed(&p->sFmt);
+	for( i = 0 ; i < n ; ++i ){
+		if( apFmt[i] == pEl ){
+			return i;
+		}
+	}
+	return -1;
+}
+static void Html5FmtRemove(html5_parser *p,xmlNodePtr pEl)
+{
+	Html5SetRemoveAt(&p->sFmt,Html5FmtIndex(p,pEl));
+}
+static void Html5FmtMarker(html5_parser *p)
+{
+	xmlNodePtr pNull = 0;
+	SySetPut(&p->sFmt,(const void *)&pNull);
+}
+static void Html5FmtClearToMarker(html5_parser *p)
+{
+	xmlNodePtr *apFmt = (xmlNodePtr *)SySetBasePtr(&p->sFmt);
+	int n = (int)SySetUsed(&p->sFmt);
+	while( n-- > 0 ){
+		if( apFmt[n] == 0 ){
+			break;
+		}
+	}
+	if( n >= 0 ){
+		p->sFmt.nUsed = (sxu32)n;      /* the marker goes with them */
+	}
+}
+/* The innermost entry named `zName` after the last marker, or 0. */
+static xmlNodePtr Html5FmtLast(html5_parser *p,const char *zName)
+{
+	xmlNodePtr *apFmt = (xmlNodePtr *)SySetBasePtr(&p->sFmt);
+	int n = (int)SySetUsed(&p->sFmt);
+	while( n-- > 0 ){
+		if( apFmt[n] == 0 ){
+			break;
+		}
+		if( Html5Eq((const char *)apFmt[n]->name,zName) ){
+			return apFmt[n];
+		}
+	}
+	return 0;
+}
+/* Same name and same attributes -- the Noah's Ark clause asks both. */
+static int Html5SameFmt(xmlNodePtr pLeft,xmlNodePtr pRight)
+{
+	xmlAttrPtr pA,pB;
+	int nLeft = 0,nRight = 0;
+	if( !Html5Eq((const char *)pLeft->name,(const char *)pRight->name) ){
+		return 0;
+	}
+	for( pA = pLeft->properties ; pA ; pA = pA->next ){
+		nLeft++;
+	}
+	for( pB = pRight->properties ; pB ; pB = pB->next ){
+		nRight++;
+	}
+	if( nLeft != nRight ){
+		return 0;
+	}
+	for( pA = pLeft->properties ; pA ; pA = pA->next ){
+		xmlChar *zL,*zR;
+		int bSame;
+		if( xmlHasProp(pRight,pA->name) == 0 ){
+			return 0;
+		}
+		zL = xmlNodeListGetString(pLeft->doc,pA->children,1);
+		zR = xmlGetProp(pRight,pA->name);
+		bSame = zL && zR && Html5Eq((const char *)zL,(const char *)zR);
+		if( zL ){
+			xmlFree(zL);
+		}
+		if( zR ){
+			xmlFree(zR);
+		}
+		if( !bSame ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
+ * Push a formatting element, under the Noah's Ark clause: three entries that
+ * agree on name and attributes are the most the list may hold after its last
+ * marker, and a fourth evicts the outermost of them.
+ */
+static void Html5FmtPush(html5_parser *p,xmlNodePtr pEl)
+{
+	xmlNodePtr *apFmt = (xmlNodePtr *)SySetBasePtr(&p->sFmt);
+	int i,n = (int)SySetUsed(&p->sFmt);
+	int nSame = 0,iFirst = -1;
+	for( i = n - 1 ; i >= 0 ; --i ){
+		if( apFmt[i] == 0 ){
+			break;
+		}
+		if( Html5SameFmt(apFmt[i],pEl) ){
+			nSame++;
+			iFirst = i;
+		}
+	}
+	if( nSame >= 3 && iFirst >= 0 ){
+		Html5SetRemoveAt(&p->sFmt,iFirst);
+	}
+	SySetPut(&p->sFmt,(const void *)&pEl);
+}
+/*
+ * Reconstruct: every entry after the last one that is still open is reopened,
+ * innermost last, as a fresh element in the current position.  This is what
+ * puts the `<i>` back around the text after `<b><i>x</b>y`.
+ */
+/*
+ * An open `<select>` is the spec's own insertion mode, and that mode takes
+ * neither a reconstruction nor an adoption: everything it does not recognise
+ * is ignored where it stands.  This parser reads the stack instead of carrying
+ * the mode, so both doors ask here.
+ */
+static int Html5InSelect(html5_parser *p)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	int n = (int)SySetUsed(&p->sOpen);
+	while( n-- > 0 ){
+		if( Html5Eq((const char *)apStack[n]->name,"select") ){
+			return 1;
+		}
+	}
+	return 0;
+}
+static void Html5Reconstruct(html5_parser *p)
+{
+	xmlNodePtr *apFmt = (xmlNodePtr *)SySetBasePtr(&p->sFmt);
+	int i,n = (int)SySetUsed(&p->sFmt);
+	if( n < 1 || Html5InSelect(p) ){
+		return;
+	}
+	i = n - 1;
+	if( apFmt[i] == 0 || Html5StackIndex(p,apFmt[i]) >= 0 ){
+		return;
+	}
+	while( i > 0 ){
+		i--;
+		if( apFmt[i] == 0 || Html5StackIndex(p,apFmt[i]) >= 0 ){
+			i++;
+			break;
+		}
+	}
+	for( ; i < n ; ++i ){
+		xmlNodePtr pNew = Html5CloneFmt(p,apFmt[i]);
+		if( pNew == 0 ){
+			break;
+		}
+		xmlAddChild(Html5Target(p),pNew);
+		Html5Push(p,pNew);
+		apFmt[i] = pNew;
+	}
+}
+/* Is `pEl` open with no scope marker between it and the current node? */
+static int Html5InScope(html5_parser *p,xmlNodePtr pEl)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	int n = (int)SySetUsed(&p->sOpen);
+	while( n-- > 0 ){
+		if( apStack[n] == pEl ){
+			return 1;
+		}
+		if( HTML5_IN(azHtml5Scope,(const char *)apStack[n]->name) ){
+			return 0;
+		}
+	}
+	return 0;
+}
+/*
+ * The adoption agency algorithm.  Answers 0 when the name is not on the list
+ * at all, which is the caller's cue to treat the end tag as any other.
+ *
+ * The outer loop is not a formality: one pass moves ONE block out of the
+ * formatting element, and a `<b><div><i>x</b>` needs two -- the first to lift
+ * the `<div>` out and the second to retire the copy the first left behind.
+ */
+static int Html5Adoption(html5_parser *p,const char *zName)
+{
+	xmlNodePtr pTop = Html5Top(p);
+	int iOuter;
+	if( Html5InSelect(p) ){
+		return 1;
+	}
+	if( pTop && Html5Eq((const char *)pTop->name,zName)
+	 && Html5FmtIndex(p,pTop) < 0 ){
+		Html5Pop(p);
+		return 1;
+	}
+	for( iOuter = 0 ; iOuter < 8 ; ++iOuter ){
+		xmlNodePtr *apStack;
+		xmlNodePtr pFmt,pFurthest = 0,pAncestor,pNode,pLast,pNew,pChild;
+		int iFmtStack,iBookmark,iInner,iNode,i,n;
+		pFmt = Html5FmtLast(p,zName);
+		if( pFmt == 0 ){
+			return 0;
+		}
+		iFmtStack = Html5StackIndex(p,pFmt);
+		if( iFmtStack < 0 ){
+			Html5FmtRemove(p,pFmt);
+			return 1;
+		}
+		if( !Html5InScope(p,pFmt) ){
+			return 1;
+		}
+		apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+		n = (int)SySetUsed(&p->sOpen);
+		for( i = iFmtStack + 1 ; i < n ; ++i ){
+			if( HTML5_IN(azHtml5Special,(const char *)apStack[i]->name) ){
+				pFurthest = apStack[i];
+				break;
+			}
+		}
+		if( pFurthest == 0 ){
+			/* Nothing block-level is caught inside it: just close it. */
+			while( (int)SySetUsed(&p->sOpen) > iFmtStack ){
+				Html5Pop(p);
+			}
+			Html5FmtRemove(p,pFmt);
+			return 1;
+		}
+		pAncestor = iFmtStack > 0 ? apStack[iFmtStack - 1] : 0;
+		iBookmark = Html5FmtIndex(p,pFmt);
+		pLast = pFurthest;
+		iNode = Html5StackIndex(p,pFurthest);
+		for( iInner = 1 ; ; ++iInner ){
+			if( --iNode < 0 ){
+				break;
+			}
+			pNode = ((xmlNodePtr *)SySetBasePtr(&p->sOpen))[iNode];
+			if( pNode == pFmt ){
+				break;
+			}
+			if( iInner > 3 ){
+				Html5FmtRemove(p,pNode);
+			}
+			if( Html5FmtIndex(p,pNode) < 0 ){
+				Html5SetRemoveAt(&p->sOpen,iNode);
+				continue;
+			}
+			pNew = Html5CloneFmt(p,pNode);
+			if( pNew == 0 ){
+				break;
+			}
+			((xmlNodePtr *)SySetBasePtr(&p->sFmt))[Html5FmtIndex(p,pNode)] = pNew;
+			((xmlNodePtr *)SySetBasePtr(&p->sOpen))[iNode] = pNew;
+			if( pLast == pFurthest ){
+				iBookmark = Html5FmtIndex(p,pNew) + 1;
+			}
+			xmlUnlinkNode(pLast);
+			xmlAddChild(pNew,pLast);
+			pLast = pNew;
+		}
+		xmlUnlinkNode(pLast);
+		xmlAddChild(pAncestor ? pAncestor : (xmlNodePtr)p->pDoc,pLast);
+		pNew = Html5CloneFmt(p,pFmt);
+		if( pNew == 0 ){
+			return 1;
+		}
+		pChild = pFurthest->children;
+		while( pChild ){
+			xmlNodePtr pNext = pChild->next;
+			xmlUnlinkNode(pChild);
+			xmlAddChild(pNew,pChild);
+			pChild = pNext;
+		}
+		xmlAddChild(pFurthest,pNew);
+		i = Html5FmtIndex(p,pFmt);
+		if( i >= 0 ){
+			Html5SetRemoveAt(&p->sFmt,i);
+			if( iBookmark > i ){
+				iBookmark--;
+			}
+		}
+		Html5SetInsertAt(&p->sFmt,iBookmark,pNew);
+		i = Html5StackIndex(p,pFmt);
+		if( i >= 0 ){
+			Html5SetRemoveAt(&p->sOpen,i);
+		}
+		Html5SetInsertAt(&p->sOpen,Html5StackIndex(p,pFurthest) + 1,pNew);
+	}
+	return 1;
+}
+/* Does a start tag of this name reconstruct before it is inserted? */
+static int Html5Reconstructs(const char *zName)
+{
+	return !HTML5_IN(azHtml5Special,zName)
+		|| HTML5_IN(azHtml5ReconSpecial,zName);
+}
+/*
+ * The spec's `any other end tag`, which is where a formatting name lands when
+ * the list does not hold it: walk out from the current node, close the first
+ * element of that name, and STOP at the first special one -- a `</b>` spelled
+ * inside a `<td>` whose `<b>` is outside it closes nothing at all.
+ */
+static void Html5EndTagOther(html5_parser *p,const char *zName)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	int n = (int)SySetUsed(&p->sOpen);
+	while( n-- > 0 ){
+		if( Html5Eq((const char *)apStack[n]->name,zName) ){
+			while( (int)SySetUsed(&p->sOpen) > n ){
+				Html5Pop(p);
+			}
+			return;
+		}
+		if( HTML5_IN(azHtml5Special,(const char *)apStack[n]->name) ){
+			return;
+		}
+	}
+}
+/* Is an element of this name open, with no scope marker above it? */
+static int Html5NameInScope(html5_parser *p,const char *zName)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	int n = (int)SySetUsed(&p->sOpen);
+	while( n-- > 0 ){
+		if( Html5Eq((const char *)apStack[n]->name,zName) ){
+			return 1;
+		}
+		if( HTML5_IN(azHtml5Scope,(const char *)apStack[n]->name) ){
+			return 0;
+		}
+	}
+	return 0;
 }
 /* Insert the current start tag, pushing it unless it takes no children. */
 static xmlNodePtr Html5InsertStart(html5_parser *p)
@@ -947,18 +1409,47 @@ static void Html5InsertComment(html5_parser *p,xmlNodePtr pParent)
 		xmlAddChild(pParent,pC);
 	}
 }
+/*
+ * A list item's own start tag closes the one it is a sibling of -- which, with
+ * a formatting element left open inside that one, is no longer the innermost
+ * open element.  The walk is the spec's: out from the current node, closing
+ * the first `zOne`/`zTwo` it reaches, and stopping at a special element that
+ * is not one of the three a list item is allowed to sit inside.
+ */
+static void Html5CloseListItem(html5_parser *p,const char *zOne,const char *zTwo)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	int n = (int)SySetUsed(&p->sOpen);
+	while( n-- > 0 ){
+		const char *zTop = (const char *)apStack[n]->name;
+		if( Html5Eq(zTop,zOne) || Html5Eq(zTop,zTwo) ){
+			while( (int)SySetUsed(&p->sOpen) > n ){
+				Html5Pop(p);
+			}
+			return;
+		}
+		if( HTML5_IN(azHtml5Special,zTop) && !Html5Eq(zTop,"address")
+		 && !Html5Eq(zTop,"div") && !Html5Eq(zTop,"p") ){
+			return;
+		}
+	}
+}
 /* The `in body` start-tag rules that are about what is ALREADY open. */
 static void Html5BodyImplied(html5_parser *p,const char *zName)
 {
-	if( HTML5_IN(azHtml5ClosesP,zName) && Html5OpenDepth(p,"p") == 0 ){
-		Html5Pop(p);
+	/*
+	 * The `<p>` being closed need not be the innermost open element: a
+	 * formatting element left open inside it sits above it now, and the spec
+	 * closes the p under it rather than giving up.
+	 */
+	if( HTML5_IN(azHtml5ClosesP,zName) && Html5NameInScope(p,"p") ){
+		Html5PopTo(p,"p");
 	}
-	if( Html5Eq(zName,"li") && Html5OpenDepth(p,"li") == 0 ){
-		Html5Pop(p);
+	if( Html5Eq(zName,"li") ){
+		Html5CloseListItem(p,"li","li");
 	}
-	if( (Html5Eq(zName,"dd") || Html5Eq(zName,"dt"))
-	 && (Html5OpenDepth(p,"dd") == 0 || Html5OpenDepth(p,"dt") == 0) ){
-		Html5Pop(p);
+	if( Html5Eq(zName,"dd") || Html5Eq(zName,"dt") ){
+		Html5CloseListItem(p,"dd","dt");
 	}
 	if( Html5Eq(zName,"option") && Html5OpenDepth(p,"option") == 0 ){
 		Html5Pop(p);
@@ -1292,6 +1783,7 @@ static int Html5Dispatch(html5_parser *p)
 	/* `in body`, and every table mode with it. */
 	switch( p->iTok ){
 	case HTML5_TOK_TEXT:
+		Html5Reconstruct(p);
 		Html5InsertText(p);
 		break;
 	case HTML5_TOK_COMMENT:
@@ -1299,17 +1791,45 @@ static int Html5Dispatch(html5_parser *p)
 		break;
 	case HTML5_TOK_DOCTYPE:
 		break;
-	case HTML5_TOK_START:
+	case HTML5_TOK_START: {
+		xmlNodePtr pEl;
 		if( Html5Eq(zName,"html") || Html5Eq(zName,"body") ){
 			break;
 		}
 		if( Html5Eq(zName,"head") ){
 			break;
 		}
+		/*
+		 * Two formatting elements refuse to nest in themselves: a second `<a>`
+		 * closes the first wherever it is on the list, and a second `<nobr>`
+		 * closes the one in scope.  Both do it through the adoption, so what
+		 * was caught inside the first is carried out of it.
+		 */
+		if( Html5Eq(zName,"a") ){
+			xmlNodePtr pOpenA = Html5FmtLast(p,"a");
+			if( pOpenA ){
+				Html5Adoption(p,"a");
+				Html5FmtRemove(p,pOpenA);
+				Html5SetRemoveAt(&p->sOpen,Html5StackIndex(p,pOpenA));
+			}
+		}else if( Html5Eq(zName,"nobr") && Html5NameInScope(p,"nobr") ){
+			Html5Adoption(p,"nobr");
+		}
 		Html5TableImplied(p,zName);
 		Html5BodyImplied(p,zName);
-		Html5InsertStart(p);
+		if( Html5Reconstructs(zName) ){
+			Html5Reconstruct(p);
+		}
+		pEl = Html5InsertStart(p);
+		if( pEl ){
+			if( HTML5_IN(azHtml5Fmt,zName) ){
+				Html5FmtPush(p,pEl);
+			}else if( HTML5_IN(azHtml5FmtMark,zName) ){
+				Html5FmtMarker(p);
+			}
+		}
 		break;
+	}
 	case HTML5_TOK_END:
 		if( Html5Eq(zName,"body") ){
 			if( Html5OpenDepth(p,"body") >= 0 ){
@@ -1323,6 +1843,12 @@ static int Html5Dispatch(html5_parser *p)
 				Html5PopTo(p,"body");
 			}
 			p->iMode = HTML5_M_AFTER_BODY;
+			break;
+		}
+		if( HTML5_IN(azHtml5Fmt,zName) ){
+			if( Html5Adoption(p,zName) == 0 ){
+				Html5EndTagOther(p,zName);
+			}
 			break;
 		}
 		Html5EndTag(p,zName);
@@ -1389,6 +1915,7 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	sParser.xErr = xErr;
 	sParser.pErrUser = pErrUser;
 	SySetInit(&sParser.sOpen,pAlloc,sizeof(xmlNodePtr));
+	SySetInit(&sParser.sFmt,pAlloc,sizeof(xmlNodePtr));
 	SySetInit(&sParser.sAttr,pAlloc,sizeof(html5_attr));
 	SyBlobInit(&sParser.sName,pAlloc);
 	SyBlobInit(&sParser.sBuf,pAlloc);
@@ -1435,6 +1962,7 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 	SyBlobRelease(&sParser.sBuf);
 	SyBlobRelease(&sParser.sAttrBuf);
 	SySetRelease(&sParser.sOpen);
+	SySetRelease(&sParser.sFmt);
 	SySetRelease(&sParser.sAttr);
 	return pDoc;
 }
