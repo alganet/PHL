@@ -278,6 +278,30 @@ static int DomThrowVoid(ph7_context *pCtx,int iCode)
 {
 	return DomThrowFor(pCtx,DomThisDoc(pCtx),iCode,DOM_REFUSE_VOID);
 }
+/*
+ * A SENTENCE refusal that still consults the receiver document's strictness.
+ * The level-2 codes carry a fixed text DomErrText owns, but a few of php's
+ * refusals state a sentence of their own and are still governed by
+ * `strictErrorChecking`: `A document may only contain one document type` is a
+ * Hierarchy DOMException under the default and a warning plus `false` once the
+ * flag is off -- measured on both faces.
+ */
+static int DomThrowSentenceFor(ph7_context *pCtx,ph7_class_instance *pDoc,int iCode,
+	const char *zMsg)
+{
+	phl_domnode *pDocNd = pDoc ? DomResOf(pDoc) : 0;
+	xmlNodePtr pDocNode = pDocNd ? (xmlNodePtr)pDocNd->pNode : 0;
+	if( pDocNode
+	 && (pDocNode->type != XML_DOCUMENT_NODE && pDocNode->type != XML_HTML_DOCUMENT_NODE) ){
+		pDoc = 0;
+	}
+	if( pDoc && !DomDocFlag(pDoc,DOM_F_STRICT_ERR) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,zMsg);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	return DomThrowSentence(pCtx,iCode,zMsg);
+}
 /* Property names are byte-exact in php, and every name that reaches here is
  * NUL-terminated (ph7_value_to_string null-appends). */
 static int DomNameIs(const char *zName,const char *zWant)
@@ -1101,6 +1125,9 @@ static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr);
 static void DomAdoptWrappers(ph7_vm *pVm,ph7_class_instance *pSrcDoc,
 	ph7_class_instance *pDstDoc,phl_xmldoc *pDstShell,xmlNodePtr pNode);
 static xmlNodePtr DomWalkNext(xmlNodePtr pCur,xmlNodePtr pRoot);
+static int DomRecvIsModern(ph7_context *pCtx);
+static const char * DomDtdInsertRefusal(ph7_context *pCtx,xmlNodePtr pParent,
+	xmlNodePtr pChild);
 /*
  * An entity REFERENCE's children as php answers them. libxml's re-homing
  * CLEARS the raw link when a constructed reference is adopted -- and php's
@@ -1445,6 +1472,19 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 	 * constructed-node door -- wrappers, orphan entry and (for an owned
 	 * receiver) the document itself all move before the link. */
 	DomAdoptIntoRecv(pCtx,apArg[0],pChd);
+	/* The doctype refusal runs AFTER the adoption, and that ordering is
+	 * observable: an ownerless doctype refused here comes out of the call
+	 * owned by the receiver's document and still parentless, where the
+	 * attribute refusal above leaves its argument ownerless. */
+	{
+		const char *zMsg = DomDtdInsertRefusal(pCtx,(xmlNodePtr)pPar->pNode,
+			(xmlNodePtr)pChd->pNode);
+		if( zMsg ){
+			return DomRecvIsModern(pCtx)
+				? DomThrowSentence(pCtx,DOM_ERR_HIERARCHY,zMsg)
+				: DomThrowSentenceFor(pCtx,DomThisDoc(pCtx),DOM_ERR_HIERARCHY,zMsg);
+		}
+	}
 	if( ((xmlNodePtr)pChd->pNode)->type == XML_ATTRIBUTE_NODE ){
 		return DomMutatorAttrAttach(pCtx,pPar,pChd,apArg[0]);
 	}
@@ -2007,6 +2047,57 @@ static const char * DomDocChildRefusal(xmlNodePtr pDoc,xmlNodePtr pRef,
 				}
 			}
 			nType++;
+		}
+	}
+	return 0;
+}
+/*
+ * A DOCTYPE reaching appendChild.
+ *
+ * It is the only insertion door that refuses one: insertBefore and
+ * replaceChild take a second doctype without a word on BOTH trees, measured
+ * against php on all three doors.
+ *
+ * The two trees then ask different questions, and neither answer is the
+ * other's:
+ *
+ *   * The 2004 door asks whether the receiver's DOCUMENT already declares an
+ *     INTERNAL SUBSET. So it refuses from an ELEMENT receiver too -- the
+ *     receiver's kind is not part of the question, only its document's slot --
+ *     and a first doctype installed by insertBefore, which never writes that
+ *     slot (see DomDtdBecomeSubset), is invisible here and leaves a second one
+ *     accepted. Re-appending the document's OWN subset is not a second one.
+ *   * php 8.4's tree asks the WHATWG pre-insertion question over the
+ *     document's CHILDREN instead -- so the insertBefore-installed doctype
+ *     that the older door misses IS counted -- and states a sentence of its
+ *     own for a receiver that is no document at all.
+ */
+static const char * DomDtdInsertRefusal(ph7_context *pCtx,xmlNodePtr pParent,
+	xmlNodePtr pChild)
+{
+	int bDoc;
+	if( pChild->type != XML_DTD_NODE && pChild->type != XML_DOCUMENT_TYPE_NODE ){
+		return 0;
+	}
+	bDoc = (pParent->type == XML_DOCUMENT_NODE || pParent->type == XML_HTML_DOCUMENT_NODE);
+	if( DomRecvIsModern(pCtx) ){
+		SySet sEmpty;
+		const char *zMsg;
+		if( !bDoc ){
+			return "Cannot insert a document type into anything other than a document";
+		}
+		/* The variadic family's own rule, asked for a single node landing at
+		 * the END -- which is what makes a doctype appended after the root
+		 * element the "first child" refusal rather than the count's. */
+		SySetInit(&sEmpty,&pCtx->pVm->sAllocator,sizeof(xmlNodePtr));
+		zMsg = DomDocChildRefusal(pParent,0,pChild,&sEmpty);
+		SySetRelease(&sEmpty);
+		return zMsg;
+	}
+	{
+		xmlDocPtr pDoc = bDoc ? (xmlDocPtr)pParent : pParent->doc;
+		if( pDoc && pDoc->intSubset && (xmlNodePtr)pDoc->intSubset != pChild ){
+			return "A document may only contain one document type";
 		}
 	}
 	return 0;
@@ -7480,6 +7571,35 @@ static int DomAdoptNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bModern
 		 * node it was handed, so `$strict->adoptNode($lax)` warns and
 		 * `$lax->adoptNode($strict)` throws. */
 		return DomThrowFor(pCtx,pSrcDoc,DOM_ERR_NOT_SUPPORTED,DOM_REFUSE_FALSE);
+	}
+	if( pNode->type == XML_DTD_NODE || pNode->type == XML_DOCUMENT_TYPE_NODE ){
+		/* A DOCTYPE answers exactly as a DOCUMENT does, down to reading the
+		 * ARGUMENT's document for the strictness rather than the receiver's --
+		 * php refuses to re-home a DECLARATION, whose element, entity and
+		 * notation tables the document it belongs to owns outright. */
+		if( bModern ){
+			return DomThrowAlways(pCtx,DOM_ERR_NOT_SUPPORTED);
+		}
+		return DomThrowFor(pCtx,pSrcDoc,DOM_ERR_NOT_SUPPORTED,DOM_REFUSE_FALSE);
+	}
+	if( pNode->type == XML_NOTATION_NODE ){
+		/* A NOTATION is the refusal on BOTH trees and in EVERY mode: neither
+		 * document's strictErrorChecking is consulted, unlike the doctype's
+		 * one line up -- measured from each side.
+		 *
+		 * It is also the row that could not merely answer wrong. A notation
+		 * is reachable only through its DTD's notation table, which is a hash
+		 * the subset frees whole and which no child list holds; re-homing one
+		 * left the node owned by two documents at once, and tearing both down
+		 * freed it twice. */
+		return DomThrowAlways(pCtx,DOM_ERR_NOT_SUPPORTED);
+	}
+	if( pNode->type == XML_ENTITY_DECL && !bModern ){
+		/* An ENTITY declaration takes the FRAGMENT's answer, a bare false with
+		 * no error at all -- and, like the fragment, only on the 2004 door;
+		 * the namespaced one adopts it. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	if( pNode->type == XML_DOCUMENT_FRAG_NODE && !bModern ){
 		/* The 2004 door alone refuses a fragment, and silently: the namespaced
