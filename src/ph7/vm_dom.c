@@ -8816,8 +8816,24 @@ static int DomWellFormedSubtree(xmlNodePtr pRoot)
 	}
 	return 1;
 }
+static void DomHtmlDumpNode(SyBlob *pOut,xmlNodePtr pNode);
+static void DomHtmlDumpKids(SyBlob *pOut,xmlNodePtr pNode);
 /*
- * `innerHTML` and `outerHTML` read: the same serializer under two spans.
+ * `innerHTML` and `outerHTML` read: one serializer under two spans, and WHICH
+ * serializer is the node's CURRENT document's to say.
+ *
+ * In an HTML document these two are the HTML5 walk `saveHtml()` runs, not an
+ * XML dump: `<br>` and not `<br/>`, no `xmlns` minted on an element whose
+ * namespace the context already binds, a raw `<` inside `<script>`, and a
+ * `&nbsp;` for U+00A0. The document decides and not the node, so an `<svg>`
+ * in an HTML document writes HTML and a node adopted out of one starts
+ * writing XML the moment it moves -- the same question `DomThisHtmlNames`
+ * asks of a name.
+ *
+ * The well-formedness screen below is the XML serializer's alone. Under the
+ * HTML walk there is nothing to read back as XML and php raises nothing: a
+ * comment holding `--` and a processing instruction named `x:y` both write
+ * out verbatim.
  *
  * The refusal is php's own sentence and not the parser's, because nothing has
  * been parsed -- the bytes were about to be written and the flag says they
@@ -8828,6 +8844,7 @@ static int DomHtmlMixinRead(ph7_context *pCtx,int bInner)
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pNd = DomThisNode(pCtx);
 	int bModern = DomRecvIsModern(pCtx);
+	int bHtml = DomDocFlag(DomThisDoc(pCtx),DOM_F_HTML);
 	xmlNodePtr pNode,pPart,pFrag,pKids;
 	SyBlob sOut;
 	if( pNd == 0 ){
@@ -8840,7 +8857,7 @@ static int DomHtmlMixinRead(ph7_context *pCtx,int bInner)
 	 * writer may mint one on the way past. */
 	pFrag = DomTemplateContent(pNode);
 	pKids = pFrag ? pFrag->children : pNode->children;
-	for( pPart = bInner ? pKids : pNode ; pPart ; pPart = pPart->next ){
+	for( pPart = bHtml ? 0 : (bInner ? pKids : pNode) ; pPart ; pPart = pPart->next ){
 		if( !DomWellFormedSubtree(pPart) ){
 			/* Through the property channel: a read runs on the member opcode's
 			 * scratch context, where a throw made the ordinary way would run
@@ -8854,6 +8871,18 @@ static int DomHtmlMixinRead(ph7_context *pCtx,int bInner)
 		}
 	}
 	SyBlobInit(&sOut,&pVm->sAllocator);
+	if( bHtml ){
+		/* UTF-8 whatever the document declares: these two are the one HTML5
+		 * door that does NOT re-encode at the dump. */
+		if( bInner ){
+			DomHtmlDumpKids(&sOut,pFrag ? pFrag : pNode);
+		}else{
+			DomHtmlDumpNode(&sOut,pNode);
+		}
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
+		return 1;
+	}
 	for( pPart = bInner ? pKids : pNode ; pPart ; pPart = pPart->next ){
 		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
 		xmlChar *zPart = 0;
