@@ -59,6 +59,10 @@
 /* The base-class => user-class table registerNodeClass writes (defined here
  * because the document CLONE, far above it, carries the table across). */
 #define DOM_NCLS  "__ncls"
+/* The one `Dom\Implementation` a document hands out, made on the first read of
+ * its `implementation` and kept: php answers the SAME object every time there,
+ * where the 2004 `DOMDocument` mints a fresh one on each read. */
+#define DOM_IMPL  "__impl"
 
 /*
  * The DOCUMENT's own directives: php's seven boolean properties.  Their value is
@@ -3313,12 +3317,21 @@ static int DomUriIs(const char *zUri,const char *zWant)
  *                namespace -- a prefix with none, the xmlns pairing, the `xml`
  *                prefix's own URI -- is still the Namespace Error, because
  *                those are rules and not spellings.
- *   DOM_QN_MELEM php 8.4's `Dom\\Document::createElementNS` -- DOM_QN_ELEM with
- *                the same split: every grammar failure is the Invalid Character
- *                Error, so `createElementNS('urn:u', '1:x')` refuses with 5
- *                where the 2004 factory answers 14. A prefix with no namespace
- *                is still the Namespace Error, because that is a rule and not
- *                a spelling.
+ *   DOM_QN_MELEM php 8.4's `Dom\\Document::createElementNS` -- the same split,
+ *                so `createElementNS('urn:u', '1:x')` refuses with 5 where the
+ *                2004 factory answers 14, and a prefix with no namespace is
+ *                still the Namespace Error because that is a rule and not a
+ *                spelling. It is NOT DOM_QN_ELEM otherwise: php 8.4 runs the
+ *                DOM spec's own validate-and-extract on an element name, the
+ *                one the 2004 factory runs on an ATTRIBUTE name alone. So a
+ *                created element name is a QName whether or not a namespace
+ *                came with it (`:x` is the Invalid Character Error here and an
+ *                element named `:x` there), the xmlns pairing is checked (the
+ *                unprefixed `xmlns` names the xmlns namespace or nothing, so
+ *                `createElementNS(null, 'xmlns')` refuses where the 2004 one
+ *                builds a declaration-shaped element), and the `xml` prefix
+ *                demands its own URI (`createElementNS('urn:u', 'xml:y')`
+ *                refuses where the 2004 factory resolves it to a binding).
  *   DOM_QN_ELEM  createElementNS -- a QName when a namespace came with it, and
  *                the SET side's split when none did (so `createElementNS(null,
  *                'x y')` is the Invalid Character Error where the attribute
@@ -3341,6 +3354,9 @@ static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname
 	int bHasUri = zUri != 0 && zUri[0] != 0;
 	int bAnyElem = iMode == DOM_QN_ELEM || iMode == DOM_QN_MELEM;
 	int bAnyAttr = iMode == DOM_QN_ATTR || iMode == DOM_QN_MATTR;
+	/* The modes that run the DOM spec's validate-and-extract whole: both
+	 * attribute factories, and php 8.4's element one. */
+	int bSpec = bAnyAttr || iMode == DOM_QN_MELEM;
 	/* Which code a GRAMMAR failure takes -- the only thing each 2004 mode and
 	 * its namespaced twin disagree about. */
 	int iBadName = (iMode == DOM_QN_MELEM || iMode == DOM_QN_MATTR)
@@ -3350,8 +3366,10 @@ static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname
 	if( zQname == 0 || zQname[0] == 0 ){
 		return iBadName;
 	}
-	if( bAnyAttr || (bAnyElem && bHasUri) ){
-		/* A created name that names a namespace has to be a QName. */
+	if( bSpec || (bAnyElem && bHasUri) ){
+		/* A created name that names a namespace has to be a QName -- and under
+		 * validate-and-extract it has to be one whether or not a namespace came
+		 * with it. */
 		if( xmlValidateQName((const xmlChar *)zQname,0) != 0 ){
 			return iBadName;
 		}
@@ -3397,13 +3415,13 @@ static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname
 		DomQNameRelease(pOut);
 		return DOM_ERR_NAMESPACE;
 	}
-	if( bAnyAttr && pOut->zPrefix
+	if( bSpec && pOut->zPrefix
 	 && xmlStrEqual(pOut->zPrefix,(const xmlChar *)"xml")
 	 && !DomUriIs(zUri,DOM_XML_NS_URI) ){
 		DomQNameRelease(pOut);
 		return DOM_ERR_NAMESPACE;
 	}
-	if( bAnyAttr ){
+	if( bSpec ){
 		/* The DOM spec's pairing, which php applies to a created ATTRIBUTE: the
 		 * xmlns namespace may only be spelled by an xmlns name, and an xmlns
 		 * name may name nothing else. */
@@ -3888,6 +3906,15 @@ static xmlNsPtr DomNsForCreateModern(xmlNodePtr pNode,const char *zUri,
 		return 0;
 	}
 	if( zPrefix != 0 ){
+		if( xmlStrEqual(zPrefix,(const xmlChar *)"xml") ){
+			/* libxml will not MINT a binding for the reserved prefix -- it
+			 * answers NULL and the caller read that as php's refusal. php
+			 * reaches the document's own built-in one instead, which is why
+			 * `createElementNS($XML_NS, 'xml:y')` is an element there and was
+			 * the Namespace Error here. */
+			return xmlSearchNs(pNode->doc,(xmlNodePtr)pNode->doc,
+				(const xmlChar *)"xml");
+		}
 		pNs = xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
 		DomNsMarkMinted(pNs);
 		return pNs;
@@ -10913,9 +10940,9 @@ DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
 /* A node that belongs to NO document, wrapped and owned the way a constructed
  * one is: parked on the per-VM limbo shell, its own identity-cache holder. The
  * caller owns the reference. */
-static ph7_class_instance * DomLimboWrap(ph7_vm *pVm,xmlNodePtr pNode)
+static ph7_class_instance * DomLimboWrap(ph7_vm *pVm,int bModern,xmlNodePtr pNode)
 {
-	const char *zClass = DomClassOfKind(0,(int)pNode->type);
+	const char *zClass = DomClassOfKind(bModern,(int)pNode->type);
 	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
 	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
 	phl_xmldoc *pShell = pObj ? DomLimboShell(&(*pVm)) : 0;
@@ -10979,7 +11006,7 @@ DOM_METHOD(vm_builtin_DOMImplementation_createDocumentType)
 	if( pDtd == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	pObj = DomLimboWrap(pCtx->pVm,(xmlNodePtr)pDtd);
+	pObj = DomLimboWrap(pCtx->pVm,0,(xmlNodePtr)pDtd);
 	if( pObj == 0 ){
 		xmlFreeDtd(pDtd);
 		return PH7_ContextMemoryError(pCtx);
@@ -11348,6 +11375,29 @@ static int DomThisModern(ph7_context *pCtx)
  */
 static int DomModernDocProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)
 {
+	if( DomNameIs(zName,"implementation") ){
+		/* ONE object per document, minted on the first read and kept in a
+		 * hidden slot -- php's, and the visible difference from the 2004
+		 * document, whose reader answers a fresh DOMImplementation every time.
+		 * Two documents still answer two, so it is the DOCUMENT's and not the
+		 * request's. */
+		ph7_vm *pVm = pCtx->pVm;
+		ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+		ph7_class_instance *pImpl = pThis ? PH7_NativeAttrObj(pThis,DOM_IMPL) : 0;
+		if( pImpl == 0 && pThis ){
+			ph7_class *pClass = PH7_VmExtractClass(pVm,"Dom\\Implementation",
+				sizeof("Dom\\Implementation")-1,FALSE,0);
+			pImpl = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+			if( pImpl ){
+				/* The slot takes its own reference and this one goes back. */
+				PH7_NativeSetAttrObj(pVm,pThis,DOM_IMPL,pImpl);
+				PH7_ClassInstanceUnref(pImpl);
+				pImpl = PH7_NativeAttrObj(pThis,DOM_IMPL);
+			}
+		}
+		DomResultWrap(pCtx,pImpl);
+		return 1;
+	}
 	if( DomNameIs(zName,"URL") || DomNameIs(zName,"documentURI") ){
 		const xmlChar *zUrl = pDoc ? pDoc->URL : 0;
 		ph7_result_string(pCtx,zUrl ? (const char *)zUrl : "",-1);
@@ -11470,15 +11520,21 @@ static int DomDocPropEx(ph7_context *pCtx,const char *zName,int bDepr)
 		return 1;
 	}
 	if( DomNameIs(zName,"implementation") ){
-		/* A FRESH object on every read, which is php's: the class has no state
-		 * and nothing ties one to a document. */
-		ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,"DOMImplementation",
+		/* php 8.4's document keeps ONE and answers it every time; this reader is
+		 * shared, so the namespaced receiver is handed straight over. */
+		if( DomThisModern(pCtx) ){
+			return DomModernDocProp(pCtx,zName,pNd ? (xmlDocPtr)pNd->pNode : 0);
+		}
+		/* A FRESH object on every read, which is the 2004 document's: the class
+		 * has no state and nothing ties one to a document. */
+		{ ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,"DOMImplementation",
 			sizeof("DOMImplementation")-1,FALSE,0);
 		ph7_class_instance *pImpl = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
 		if( pImpl ){
 			PH7_NativeResultObject(pCtx,pImpl);
 		}else{
 			ph7_result_null(pCtx);
+		}
 		}
 		return 1;
 	}
@@ -13277,6 +13333,148 @@ DOM_METHOD(vm_builtin_DomXMLDocument_createEmpty)
 	return DomResultOwned(pCtx,pThis);
 }
 /*
+ * php 8.4's `Dom\Implementation`, reached as `$document->implementation` or by
+ * `new Dom\Implementation` -- the 2004 DOMImplementation's two XML doors under
+ * the namespaced tree's rules, which are NOT the same rules.
+ *
+ * `hasFeature()` is gone (the 2004 table it answered from went with the old
+ * API), `createHTMLDocument()` is the HTML5 producer and belongs with the rest
+ * of that stage, and both doors that DO exist here diverge from their 2004
+ * twins in what they refuse:
+ *
+ *   createDocumentType()  every argument is REQUIRED, and a name that is not a
+ *                         QName is the Namespace Error where the 2004 door
+ *                         takes any non-empty byte string at all. So `a:b` is a
+ *                         doctype on both, and `p:q:r`, `1bad` and `a b` are
+ *                         doctypes only on the old one.
+ *   createDocument()      the first two arguments are required, the name runs
+ *                         the namespaced element grammar (so a grammar failure
+ *                         is the Invalid Character Error, and a prefix with no
+ *                         namespace is the Namespace Error where the 2004 door
+ *                         silently DROPS such a prefix and builds `<root/>`),
+ *                         and a doctype that already belongs to a document is
+ *                         simply MOVED rather than refused -- the old door's
+ *                         Wrong Document Error is not raised here, so seeding a
+ *                         second document takes the doctype out of the first.
+ */
+DOM_METHOD(vm_builtin_Dom_Implementation_createDocumentType)
+{
+	int nName = 0;
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";
+	const char *zPub = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	const char *zSys = nArg > 2 ? ph7_value_to_string(apArg[2],0) : "";
+	ph7_class_instance *pObj;
+	xmlDtdPtr pDtd;
+	if( nName < 1 || xmlValidateQName((const xmlChar *)zName,0) != 0 ){
+		return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);
+	}
+	pDtd = xmlNewDtd(0,(const xmlChar *)zName,
+		zPub[0] ? (const xmlChar *)zPub : 0,
+		zSys[0] ? (const xmlChar *)zSys : 0);
+	if( pDtd == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pObj = DomLimboWrap(pCtx->pVm,1,(xmlNodePtr)pDtd);
+	if( pObj == 0 ){
+		xmlFreeDtd(pDtd);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_Dom_Implementation_createDocument)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zUri = DomArgStrOrNull(nArg,apArg,0);
+	int nName = 0;
+	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],&nName) : "";
+	phl_domnode *pDtdNd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? DomObjArg(apArg[2]) : 0;
+	xmlDtdPtr pDtd = pDtdNd ? (xmlDtdPtr)pDtdNd->pNode : 0;
+	ph7_class_instance *pThis;
+	phl_domnode *pRes;
+	xmlDocPtr pDoc;
+	xmlNodePtr pRoot;
+	xmlNsPtr pNs;
+	dom_qname sQ;
+	int rc;
+	/* The namespaced tree keeps no '' apart from null, here as everywhere. */
+	if( zUri != 0 && zUri[0] == 0 ){
+		zUri = 0;
+	}
+	sQ.zPrefix = sQ.zLocal = 0;
+	if( nName > 0 ){
+		/* An EMPTY name is a document with no root at all, which is what makes
+		 * the three-argument call carrying only a doctype meaningful -- so the
+		 * grammar is only asked about a name that was actually given. */
+		rc = DomQNameParse(zName,zUri,DOM_QN_MELEM,&sQ);
+		if( rc ){
+			return DomThrowAlways(pCtx,rc);
+		}
+	}
+	pDoc = xmlNewDoc((const xmlChar *)"1.0");
+	if( pDoc == 0 ){
+		DomQNameRelease(&sQ);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* Made from nowhere, so php's WHATWG spelling for exactly that -- the pair
+	 * `Dom\XMLDocument::createEmpty()` states for the same reason. */
+	pDoc->encoding = xmlStrdup((const xmlChar *)"UTF-8");
+	pDoc->URL = xmlStrdup((const xmlChar *)"about:blank");
+	pThis = DomNewModernDoc(pCtx,pDoc);
+	if( pThis == 0 ){
+		DomQNameRelease(&sQ);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pRes = DomResOf(pThis);
+	if( pDtd ){
+		/* The doctype MOVES: it leaves whatever held it -- the limbo shell it
+		 * was made on, or an EARLIER document seeded with it -- for this one,
+		 * and every wrapper of it re-homes on adoptNode's machinery, which is
+		 * what makes it answer this document as its `ownerDocument`. */
+		ph7_class_instance *pDtdObj = (ph7_class_instance *)apArg[2]->x.pOther;
+		/* Whatever the doctype answers TODAY as its document -- itself while it
+		 * sits in limbo, an earlier document once one has been seeded with it --
+		 * is the cache its wrappers have to be taken out of. */
+		ph7_class_instance *pSrcDoc = PH7_NativeAttrObj(pDtdObj,DOM_DOC);
+		if( pDtd->doc ){
+			if( pDtd->doc->intSubset == pDtd ){
+				pDtd->doc->intSubset = 0;
+			}
+			xmlUnlinkNode((xmlNodePtr)pDtd);
+		}else{
+			DomOrphanRemove(pDtdNd->pShell,(xmlNodePtr)pDtd);
+		}
+		pDtd->doc = pDoc;
+		pDoc->intSubset = pDtd;
+		DomLinkLast((xmlNodePtr)pDoc,(xmlNodePtr)pDtd);
+		DomAdoptWrappers(pVm,pSrcDoc,pThis,pRes ? pRes->pShell : 0,(xmlNodePtr)pDtd);
+	}
+	if( sQ.zLocal ){
+		pRoot = xmlNewDocNode(pDoc,0,sQ.zLocal,0);
+		if( pRoot ){
+			xmlDocSetRootElement(pDoc,pRoot);
+			if( zUri ){
+				/* php hangs the declaration on the root once the element
+				 * exists, so an unprefixed name under a URI takes the DEFAULT
+				 * namespace and a prefixed one binds its prefix -- the same
+				 * declaration a root element carries, and the writer emits it
+				 * from the node. The reserved prefix is the exception: libxml
+				 * will not MINT a binding for `xml`, so the document's own
+				 * built-in one is what an `xml:`-prefixed root takes. */
+				pNs = (sQ.zPrefix != 0
+					&& xmlStrEqual(sQ.zPrefix,(const xmlChar *)"xml"))
+					? xmlSearchNs(pDoc,(xmlNodePtr)pDoc,(const xmlChar *)"xml")
+					: xmlNewNs(pRoot,(const xmlChar *)zUri,sQ.zPrefix);
+				if( pNs ){
+					xmlSetNs(pRoot,pNs);
+				}
+			}
+		}
+	}
+	DomQNameRelease(&sQ);
+	return DomResultOwned(pCtx,pThis);
+}
+/*
  * php's namespaced parsers name an encoding on a document that declared none:
  * the override if one was given, else UTF-8. The 2004 loaders leave it NULL,
  * and the difference is visible in the declaration the writers emit.
@@ -14314,7 +14512,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	};
 	/* The abstract document. Its flag word is DOMDocument's -- the parse
 	 * directives are still directives here, and DOM_F_MODERN rides in it. */
+	/* php 8.4's factory class. TWO doors, not the 2004 three: `hasFeature()` is
+	 * gone, and every argument that defaulted there is required here. */
+	static const PH7_NativeMethodDef aMImplMethod[] = {
+		{ "createDocumentType", PH7_MOD_PUBLIC,
+		  "string $qualifiedName, string $publicId, string $systemId",
+		  "Dom\\DocumentType", vm_builtin_Dom_Implementation_createDocumentType },
+		{ "createDocument", PH7_MOD_PUBLIC,
+		  "?string $namespace, string $qualifiedName, "
+		  "?Dom\\DocumentType $doctype = null", "Dom\\XMLDocument",
+		  vm_builtin_Dom_Implementation_createDocument },
+	};
 	static const PH7_NativePropDef aMDocProp[] = {
+		DOM_VPROP("implementation","Dom\\Implementation"),
 		DOM_VPROP("URL","string"),
 		DOM_VPROP("documentURI","string"),
 		DOM_VPROP("characterSet","string"),
@@ -14330,6 +14540,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  { 0, 0, PH7_NATIVE_VAL_INT, DOM_F_DEFAULT, 0, 0.0 }, 0 },
 		{ DOM_NODES,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ DOM_NCLS,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ DOM_IMPL,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativePropDef aMXmlDocProp[] = {
 		DOM_VPROP("xmlEncoding","string"),
@@ -14515,7 +14726,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "Dom\\HTMLDocument", "Dom\\Document", "Dom\\ParentNode",
 		  PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, 0, 0, DomDocRelease, 0, DomPresent },
-		{ "Dom\\Implementation", 0, 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "Dom\\Implementation", 0, 0, PH7_CLASS_NOCLONE,
+		  aMImplMethod, SX_ARRAYSIZE(aMImplMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp),
 		  0, 0, DomPresent },
