@@ -6491,15 +6491,210 @@ static int DomSaveModernDoc(xmlSaveCtxtPtr pSave,xmlBufferPtr pBuf,xmlDocPtr pDo
 	}
 	return 0;
 }
+/*
+ * php 8.4's tree parks an attribute's binding on the DOCUMENT rather than
+ * declaring it (DomNsForCreateModernAttr), so an attribute made by
+ * `createAttributeNS`, or renamed into a URI, carries a prefix nothing on its
+ * element declares. libxml's saver writes that prefix literally and declares
+ * nothing, which is not namespace-well-formed -- our own parser refuses to read
+ * the bytes back with `Namespace prefix p for foo on r is not defined`. php
+ * mints the declaration as it writes, and the prefix it writes is the
+ * serializer's choice rather than the attribute's:
+ *
+ *   an in-scope PREFIXED binding of the URI      -- write under that prefix
+ *   else the attribute's own prefix, when this
+ *     element does not itself declare it         -- declare it here
+ *   else                                         -- declare `ns1`, `ns2`, ...
+ *
+ * A DEFAULT declaration is never reused and never satisfies one, on either
+ * side of the test: an unprefixed attribute name is in no namespace whatever is
+ * in scope, so an attribute in a URI the default binds still gets `ns1`. An
+ * ancestor's binding of the prefix is SHADOWED rather than stepped over -- the
+ * collision that forces `ns1` is one on this very element, which is exactly the
+ * only collision `xmlNewNs` itself refuses.
+ *
+ * "In scope" is counted from the node being DUMPED, not from the root: a
+ * `saveXml($node)` whose subtree binds nothing mints its own declaration even
+ * when an ancestor of $node binds that URI, and the same document saved whole
+ * writes the ancestor's prefix instead. That is why the search is bounded here
+ * rather than left to xmlSearchNs.
+ *
+ * The tree itself does not change -- `$attr->prefix` reads back the prefix it
+ * was made with whatever the bytes say -- so every retarget and every minted
+ * declaration is undone once the bytes are out.
+ */
+typedef struct dom_ns_fix dom_ns_fix;
+struct dom_ns_fix {
+	xmlAttrPtr pAttr;    /* the attribute whose binding was retargeted */
+	xmlNsPtr pOld;       /* what it was bound to before */
+	xmlNodePtr pElem;    /* element a declaration was minted on, or 0 */
+	xmlNsPtr pMint;      /* that declaration */
+	dom_ns_fix *pNext;
+};
+/* A declaration of zPrefix in scope at pElem, looking no further out than
+ * pStop (0 = as far as the tree goes). A prefix of 0 asks for the default. */
+static xmlNsPtr DomNsScopePrefix(xmlNodePtr pElem,xmlNodePtr pStop,const xmlChar *zPrefix)
+{
+	xmlNodePtr pCur;
+	for( pCur = pElem ; pCur && pCur->type == XML_ELEMENT_NODE ; pCur = pCur->parent ){
+		xmlNsPtr pNs;
+		for( pNs = pCur->nsDef ; pNs ; pNs = pNs->next ){
+			if( zPrefix == 0 ? pNs->prefix == 0
+			  : (pNs->prefix != 0 && xmlStrEqual(pNs->prefix,zPrefix)) ){
+				return pNs;
+			}
+		}
+		if( pCur == pStop ){
+			break;
+		}
+	}
+	return 0;
+}
+/* The nearest PREFIXED binding of zHref in that same scope -- the only kind an
+ * attribute can be written under. */
+static xmlNsPtr DomNsScopeHref(xmlNodePtr pElem,xmlNodePtr pStop,const xmlChar *zHref)
+{
+	xmlNodePtr pCur;
+	for( pCur = pElem ; pCur && pCur->type == XML_ELEMENT_NODE ; pCur = pCur->parent ){
+		xmlNsPtr pNs;
+		for( pNs = pCur->nsDef ; pNs ; pNs = pNs->next ){
+			if( pNs->prefix != 0 && pNs->href != 0 && xmlStrEqual(pNs->href,zHref) ){
+				return pNs;
+			}
+		}
+		if( pCur == pStop ){
+			break;
+		}
+	}
+	return 0;
+}
+static int DomNsFixRecord(dom_ns_fix **ppFix,xmlAttrPtr pAttr,xmlNsPtr pOld,
+	xmlNodePtr pElem,xmlNsPtr pMint)
+{
+	dom_ns_fix *pRec = (dom_ns_fix *)xmlMalloc(sizeof(dom_ns_fix));
+	if( pRec == 0 ){
+		return -1;
+	}
+	pRec->pAttr = pAttr;
+	pRec->pOld = pOld;
+	pRec->pElem = pMint ? pElem : 0;
+	pRec->pMint = pMint;
+	pRec->pNext = *ppFix;
+	*ppFix = pRec;
+	return 0;
+}
+/* Give every attribute under pRoot a prefix the bytes will actually declare. */
+static int DomNsSaveReconcile(xmlNodePtr pRoot,xmlNodePtr pStop,dom_ns_fix **ppFix)
+{
+	xmlNodePtr pCur = pRoot;
+	while( pCur ){
+		if( pCur->type == XML_ELEMENT_NODE ){
+			xmlAttrPtr pAttr;
+			for( pAttr = pCur->properties ; pAttr ; pAttr = pAttr->next ){
+				xmlNsPtr pNs = pAttr->ns, pUse, pMint = 0;
+				if( pNs == 0 || pNs->href == 0 ){
+					continue;
+				}
+				if( pNs->prefix != 0 ){
+					/* libxml writes pNs->prefix; when that prefix already binds
+					 * this URI here the bytes are right as they stand. The `xml`
+					 * prefix is bound everywhere and declared nowhere. */
+					xmlNsPtr pHave = DomNsScopePrefix(pCur,pStop,pNs->prefix);
+					if( pHave != 0 && xmlStrEqual(pHave->href,pNs->href) ){
+						continue;
+					}
+					if( xmlStrEqual(pNs->prefix,(const xmlChar *)"xml") ){
+						continue;
+					}
+				}
+				pUse = DomNsScopeHref(pCur,pStop,pNs->href);
+				if( pUse == 0 ){
+					if( pNs->prefix != 0 ){
+						/* Refused only by a declaration on THIS element, which
+						 * is the collision php spells `ns1` for. */
+						pMint = xmlNewNs(pCur,pNs->href,pNs->prefix);
+						if( pMint ){
+							DomNsMarkMinted(pMint);
+						}
+					}
+					if( pMint == 0 ){
+						pMint = DomNsGenerateEx(pCur,(const char *)pNs->href,
+							(const xmlChar *)"ns",0,1);
+					}
+					if( pMint == 0 ){
+						return -1;
+					}
+					pUse = pMint;
+				}
+				if( DomNsFixRecord(ppFix,pAttr,pNs,pCur,pMint) ){
+					return -1;
+				}
+				pAttr->ns = pUse;
+			}
+		}
+		/* Iterative: a document deep enough to matter must not cost stack. */
+		if( pCur->children ){
+			pCur = pCur->children;
+			continue;
+		}
+		while( pCur != pRoot && pCur->next == 0 ){
+			pCur = pCur->parent;
+		}
+		if( pCur == pRoot ){
+			break;
+		}
+		pCur = pCur->next;
+	}
+	return 0;
+}
+/* Put every attribute back on the binding it was made with and drop the
+ * declarations minted for the bytes -- retargets first, so nothing points at a
+ * declaration by the time it is freed. */
+static void DomNsSaveRestore(dom_ns_fix *pFix)
+{
+	dom_ns_fix *pRec;
+	for( pRec = pFix ; pRec ; pRec = pRec->pNext ){
+		pRec->pAttr->ns = pRec->pOld;
+	}
+	while( pFix ){
+		dom_ns_fix *pNext = pFix->pNext;
+		if( pFix->pMint ){
+			xmlNsPtr *ppNs = &pFix->pElem->nsDef;
+			while( *ppNs ){
+				if( *ppNs == pFix->pMint ){
+					*ppNs = pFix->pMint->next;
+					xmlFreeNs(pFix->pMint);
+					break;
+				}
+				ppNs = &(*ppNs)->next;
+			}
+		}
+		xmlFree(pFix);
+		pFix = pNext;
+	}
+}
 static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
 	xmlChar **pzOut)
 {
 	xmlBufferPtr pBuf = xmlBufferCreate();
 	xmlSaveCtxtPtr pSave;
+	dom_ns_fix *pFix = 0;
 	int nOut = 0;
 	*pzOut = 0;
 	if( pBuf == 0 ){
 		return -1;
+	}
+	if( bModern ){
+		/* A document's children are each their own scope root; a node dump is
+		 * scoped to the node, which is what makes those two disagree. */
+		xmlNodePtr pTop = pNode ? pNode : (xmlNodePtr)pDoc->children;
+		for( ; pTop ; pTop = pNode ? 0 : pTop->next ){
+			if( DomNsSaveReconcile(pTop,pNode,&pFix) ){
+				DomNsSaveRestore(pFix);
+				xmlBufferFree(pBuf);
+				return -1;
+			}
+		}
 	}
 	/* A NODE's dump is UTF-8 whatever the document declares, and naming that
 	 * encoding is also what keeps libxml from ESCAPING every non-ASCII character
@@ -6534,6 +6729,7 @@ static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int
 			nOut = -1;
 		}
 	}
+	DomNsSaveRestore(pFix);
 	xmlBufferFree(pBuf);
 	return nOut;
 }
