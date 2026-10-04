@@ -6089,6 +6089,18 @@ struct phl_xmldoc {
 	 * the xmlns-namespace handle it points at, and neither is linked into the
 	 * element, so both need their own free (vm_libxml.c). */
 	SySet aNsAttrs;     /* synthesized XML_ATTRIBUTE_NODE xmlAttrPtr's */
+	/* A `<template>` element's CONTENT, which is not its children. php's HTML
+	 * parser puts what it parsed between the tags into a DOCUMENT FRAGMENT of
+	 * the template's own and leaves the element childless, and both halves of
+	 * that are observable: the content is invisible to `childNodes`,
+	 * `firstChild`, `hasChildNodes()` and `textContent` and VISIBLE to the two
+	 * writers and to `innerHTML`, while a child a program APPENDS is the mirror
+	 * image. No rule that hides or shows ONE list answers both, so the storage
+	 * is the answer: the fragment lives here, keyed by the element it belongs
+	 * to, never linked into the tree. Each is freed with the document
+	 * (vm_libxml.c); nesting is flat, a template inside a fragment holding its
+	 * own entry here. */
+	SySet aTemplates;   /* phl_domtpl pairs: element -> its content fragment */
 	ph7_vm *pVm;        /* Owning VM (error routing from libxml callbacks) */
 	void *pDocObj;      /* The DOMDocument wrapper for this tree, BORROWED, or 0.
 	                     * ext/dom keys its per-node wrapper cache on the document
@@ -6112,6 +6124,13 @@ struct phl_xmldoc {
 	int bPreserveWS;    /* DOMDocument->preserveWhiteSpace */
 	int bFormatOutput;  /* DOMDocument->formatOutput */
 	phl_xmldoc *pNext;  /* Registry chain (pVm->pXmlDocs) */
+};
+/* One `<template>` element and the fragment holding what was parsed inside it.
+ * Both are xmlNodePtr; the fragment is never linked into the tree. */
+typedef struct phl_domtpl phl_domtpl;
+struct phl_domtpl {
+	void *pTpl;         /* the XML_ELEMENT_NODE named `template` */
+	void *pFrag;        /* its XML_DOCUMENT_FRAG_NODE, owned */
 };
 /* One PHP-visible DOM node handle: the MEMOBJ_RES payload behind every DOM
  * wrapper object.  pNode points into pShell's tree (or IS the xmlDoc); the

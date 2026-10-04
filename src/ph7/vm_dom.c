@@ -423,6 +423,190 @@ static ph7_hashmap * DomCache(ph7_vm *pVm,ph7_class_instance *pDoc)
 /* Is this node an element in the HTML namespace? Defined with the namespaced
  * element's readers below, where the same question decides `name=` keying. */
 static int DomNodeIsHtmlNs(xmlNodePtr pNode);
+/*
+ * A `<template>` element's content is NOT its children.
+ *
+ * php's HTML parser parks what it parsed between the tags in a DOCUMENT
+ * FRAGMENT of the element's own and leaves the element childless, and both
+ * halves of that split are observable from PHP: the parsed content is
+ * invisible to `childNodes`, `firstChild`, `hasChildNodes()` and
+ * `textContent` and VISIBLE to `saveHtml`, to `saveXml` and to `innerHTML`,
+ * while a child a program APPENDS is the mirror image -- counted by the
+ * accessors and written by neither writer. No rule that hides or shows ONE
+ * child list answers both faces, so the split itself is the answer, and the
+ * rest follows from it: `getElementsByTagName('template')` does not reach a
+ * template nested inside another's content, and `cloneNode(true)` answers an
+ * empty one because a fragment is not a child to copy.
+ *
+ * The fragment hangs off the element's `psvi`, which libxml reserves for
+ * schema information nothing here produces and which `xmlCopyNode` leaves
+ * behind -- that is what makes the clone empty for free. Ownership is the
+ * document's (`phl_xmldoc::aTemplates`): the fragment is linked into no tree,
+ * so `xmlFreeDoc` would never reach it.
+ *
+ * Only the NAMESPACED tree has them. A `<template>` the 2004 `loadHTML()`
+ * parsed carries no namespace, php's html-namespace test fails on it, and its
+ * content stays its children at every door there.
+ *
+ * A template that has NO fragment -- one a program built, or one an XML parse
+ * produced in the xhtml namespace -- writes nothing at either writer even when
+ * it has children, and that is measured, not assumed: php reads the fragment
+ * and writes what it finds, which is nothing. `innerHTML` is the one door that
+ * falls back to the child list, and minting a fragment is what `innerHTML =`
+ * does, so neither writer may mint one on the way past.
+ */
+static int DomIsTemplate(xmlNodePtr pNode)
+{
+	return pNode != 0 && pNode->type == XML_ELEMENT_NODE
+		&& DomNodeIsHtmlNs(pNode)
+		&& xmlStrEqual(pNode->name,(const xmlChar *)"template");
+}
+/* The content fragment of a template, or 0 when it has none. */
+static xmlNodePtr DomTemplateContent(xmlNodePtr pNode)
+{
+	return DomIsTemplate(pNode) ? (xmlNodePtr)pNode->psvi : 0;
+}
+/* The content fragment of a template, minted and registered on first ask.
+ * Only `innerHTML =` mints one; see the note above. */
+static xmlNodePtr DomTemplateEnsure(phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	phl_domtpl sEnt;
+	xmlNodePtr pFrag = DomTemplateContent(pNode);
+	if( pFrag || pShell == 0 || !DomIsTemplate(pNode) ){
+		return pFrag;
+	}
+	pFrag = xmlNewDocFragment(pNode->doc);
+	if( pFrag == 0 ){
+		return 0;
+	}
+	/* Parented on the template, so a namespace search from inside the content
+	 * still climbs out to the document, and unreachable from it: the element's
+	 * own child list never names the fragment. */
+	pFrag->parent = pNode;
+	sEnt.pTpl = (void *)pNode;
+	sEnt.pFrag = (void *)pFrag;
+	if( SySetPut(&pShell->aTemplates,(const void *)&sEnt) != SXRET_OK ){
+		xmlFreeNode(pFrag);
+		return 0;
+	}
+	pNode->psvi = (void *)pFrag;
+	return pFrag;
+}
+/* Move what the parser built inside every template of a freshly parsed tree
+ * into that template's own fragment. Depth first: a template's content can
+ * hold one of its own, and the inner one has to be emptied while it is still
+ * reachable through the child list the outer one is about to give up. */
+static void DomTemplateHarvest(phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	xmlNodePtr pKid;
+	if( pNode == 0 ){
+		return;
+	}
+	for( pKid = pNode->children ; pKid ; pKid = pKid->next ){
+		DomTemplateHarvest(pShell,pKid);
+	}
+	if( DomIsTemplate(pNode) && pNode->children ){
+		xmlNodePtr pFrag = DomTemplateEnsure(pShell,pNode);
+		xmlNodePtr pCur;
+		if( pFrag == 0 ){
+			return;
+		}
+		pFrag->children = pNode->children;
+		pFrag->last = pNode->last;
+		pNode->children = pNode->last = 0;
+		for( pCur = pFrag->children ; pCur ; pCur = pCur->next ){
+			pCur->parent = pFrag;
+		}
+	}
+}
+/* One template whose own child list was taken off for the duration of a dump,
+ * and where to put it back. */
+typedef struct dom_tpl_park dom_tpl_park;
+struct dom_tpl_park {
+	xmlNodePtr pTpl;
+	xmlNodePtr pFirst;
+	xmlNodePtr pLast;
+};
+typedef struct dom_tpl_swap dom_tpl_swap;
+struct dom_tpl_swap {
+	dom_tpl_park *aPark;
+	int nPark;
+	int nAlloc;
+	int bFail;
+};
+/* libxml's writer walks `children`, so the content has to stand there for the
+ * length of the dump: every template under the node being written gives up its
+ * own children and takes its fragment's, re-parented so a namespace search
+ * from inside still climbs to the element it was written under. Descends into
+ * the fragment as well as into the child list, because that is where a nested
+ * template is. */
+static void DomTemplateParkIn(dom_tpl_swap *pSwap,xmlNodePtr pNode)
+{
+	xmlNodePtr pKid,pFrag;
+	if( pNode == 0 || pSwap->bFail ){
+		return;
+	}
+	if( DomIsTemplate(pNode) ){
+		dom_tpl_park sPark;
+		pFrag = DomTemplateContent(pNode);
+		if( pSwap->nPark == pSwap->nAlloc ){
+			int nNew = pSwap->nAlloc ? pSwap->nAlloc * 2 : 8;
+			dom_tpl_park *aNew = (dom_tpl_park *)xmlRealloc(pSwap->aPark,
+				(size_t)nNew * sizeof(dom_tpl_park));
+			if( aNew == 0 ){
+				pSwap->bFail = 1;
+				return;
+			}
+			pSwap->aPark = aNew;
+			pSwap->nAlloc = nNew;
+		}
+		sPark.pTpl = pNode;
+		sPark.pFirst = pNode->children;
+		sPark.pLast = pNode->last;
+		pSwap->aPark[pSwap->nPark++] = sPark;
+		pNode->children = pFrag ? pFrag->children : 0;
+		pNode->last = pFrag ? pFrag->last : 0;
+		for( pKid = pNode->children ; pKid ; pKid = pKid->next ){
+			pKid->parent = pNode;
+		}
+	}
+	for( pKid = pNode->children ; pKid ; pKid = pKid->next ){
+		DomTemplateParkIn(pSwap,pKid);
+	}
+	pFrag = DomTemplateContent(pNode);
+	if( pFrag && pFrag->children != pNode->children ){
+		for( pKid = pFrag->children ; pKid ; pKid = pKid->next ){
+			DomTemplateParkIn(pSwap,pKid);
+		}
+	}
+}
+/* Put every parked child list back and re-parent the content on its fragment.
+ * Last in first out, so a template parked inside another's content is restored
+ * before the list holding it moves. */
+static void DomTemplateParkOut(dom_tpl_swap *pSwap)
+{
+	int n;
+	for( n = pSwap->nPark - 1 ; n >= 0 ; --n ){
+		xmlNodePtr pTpl = pSwap->aPark[n].pTpl;
+		xmlNodePtr pFrag = DomTemplateContent(pTpl);
+		xmlNodePtr pKid;
+		if( pFrag ){
+			pFrag->children = pTpl->children;
+			pFrag->last = pTpl->last;
+			for( pKid = pFrag->children ; pKid ; pKid = pKid->next ){
+				pKid->parent = pFrag;
+			}
+		}
+		pTpl->children = pSwap->aPark[n].pFirst;
+		pTpl->last = pSwap->aPark[n].pLast;
+		for( pKid = pTpl->children ; pKid ; pKid = pKid->next ){
+			pKid->parent = pTpl;
+		}
+	}
+	if( pSwap->aPark ){
+		xmlFree(pSwap->aPark);
+	}
+}
 /* php's class for a node. Anything else is a plain DOMNode, as before.
  *
  * The node itself is the argument and not just its type, because php's
@@ -7449,7 +7633,7 @@ static int DomModernDumpAttr(xmlBufferPtr pBuf,xmlAttrPtr pAttr)
 	}
 	return DomModernPut(pBuf,(const xmlChar *)"\"");
 }
-static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
+static int DomDumpTreeRaw(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
 	xmlChar **pzOut)
 {
 	xmlBufferPtr pBuf = xmlBufferCreate();
@@ -7534,6 +7718,23 @@ static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int
  * rather than inheriting it, so the bytes are shared and only the name a
  * libxml diagnostic carries is per-class; `zWho` is that name.
  */
+/* The one door every XML dump goes through, and where a `<template>`'s CONTENT
+ * is put in front of libxml's writer -- php writes the fragment there and
+ * writes nothing for a template that has none, children or no children. The
+ * park is undone before the bytes are handed back, so nothing the program can
+ * observe moved. */
+static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
+	xmlChar **pzOut)
+{
+	dom_tpl_swap sSwap;
+	int nOut;
+	sSwap.aPark = 0;
+	sSwap.nPark = sSwap.nAlloc = sSwap.bFail = 0;
+	DomTemplateParkIn(&sSwap,pNode ? pNode : (xmlNodePtr)pDoc);
+	nOut = DomDumpTreeRaw(pDoc,pNode,bFormat,iOpts,bModern,pzOut);
+	DomTemplateParkOut(&sSwap);
+	return nOut;
+}
 static int DomSaveXml(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zWho)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -8627,14 +8828,19 @@ static int DomHtmlMixinRead(ph7_context *pCtx,int bInner)
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pNd = DomThisNode(pCtx);
 	int bModern = DomRecvIsModern(pCtx);
-	xmlNodePtr pNode,pPart;
+	xmlNodePtr pNode,pPart,pFrag,pKids;
 	SyBlob sOut;
 	if( pNd == 0 ){
 		ph7_result_string(pCtx,"",0);
 		return 1;
 	}
 	pNode = (xmlNodePtr)pNd->pNode;
-	for( pPart = bInner ? pNode->children : pNode ; pPart ; pPart = pPart->next ){
+	/* A template reads its CONTENT, and falls back to its children when it has
+	 * no fragment -- the one door of the three that does, which is why neither
+	 * writer may mint one on the way past. */
+	pFrag = DomTemplateContent(pNode);
+	pKids = pFrag ? pFrag->children : pNode->children;
+	for( pPart = bInner ? pKids : pNode ; pPart ; pPart = pPart->next ){
 		if( !DomWellFormedSubtree(pPart) ){
 			/* Through the property channel: a read runs on the member opcode's
 			 * scratch context, where a throw made the ordinary way would run
@@ -8648,7 +8854,7 @@ static int DomHtmlMixinRead(ph7_context *pCtx,int bInner)
 		}
 	}
 	SyBlobInit(&sOut,&pVm->sAllocator);
-	for( pPart = bInner ? pNode->children : pNode ; pPart ; pPart = pPart->next ){
+	for( pPart = bInner ? pKids : pNode ; pPart ; pPart = pPart->next ){
 		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
 		xmlChar *zPart = 0;
 		int nPart = DomDumpTree(pNode->doc,pPart,0,0,bModern,&zPart);
@@ -14333,7 +14539,8 @@ static int DomHtmlMixinWrite(ph7_context *pCtx,int bInner,ph7_value *pVal,int *p
 		/* The chunk held no nodes -- and an empty `innerHTML` still drops the
 		 * children it replaced, where an empty `outerHTML` removes the node. */
 		if( bInner ){
-			DomDropChildren(pCtx,pNd->pShell,pNode);
+			xmlNodePtr pInto = DomTemplateEnsure(pNd->pShell,pNode);
+			DomDropChildren(pCtx,pNd->pShell,pInto ? pInto : pNode);
 		}else{
 			DomDetach(pNd->pShell,pNode);
 			DomOrphanAdd(pNd->pShell,pNode);
@@ -14341,8 +14548,15 @@ static int DomHtmlMixinWrite(ph7_context *pCtx,int bInner,ph7_value *pVal,int *p
 		return DOM_SET_DONE;
 	}
 	if( bInner ){
-		DomDropChildren(pCtx,pNd->pShell,pNode);
-		DomFragmentInsert(pNd->pShell,pNode,0,pList);
+		/* Into a template's CONTENT, minted here if it has none: the children
+		 * it was built with are not what this replaces, and stay counted by
+		 * every accessor afterwards. */
+		xmlNodePtr pInto = DomTemplateEnsure(pNd->pShell,pNode);
+		if( pInto == 0 ){
+			pInto = pNode;
+		}
+		DomDropChildren(pCtx,pNd->pShell,pInto);
+		DomFragmentInsert(pNd->pShell,pInto,0,pList);
 	}else{
 		DomFragmentInsert(pNd->pShell,pCtxNode,pNode,pList);
 		DomDetach(pNd->pShell,pNode);
@@ -17240,8 +17454,14 @@ static void DomHtmlDumpNode(SyBlob *pOut,xmlNodePtr pNode)
 			 * neither is a closing tag. */
 			return;
 		}
-		/* A template writes its CONTENT, which a hand-built one has none of. */
-		if( !(bHtml && xmlStrEqual(pNode->name,(const xmlChar *)"template")) ){
+		/* A template writes its CONTENT -- the fragment, never the children --
+		 * and a template that has no fragment writes nothing at all. */
+		if( DomIsTemplate(pNode) ){
+			xmlNodePtr pFrag = DomTemplateContent(pNode);
+			if( pFrag ){
+				DomHtmlDumpKids(pOut,pFrag);
+			}
+		}else{
 			DomHtmlDumpKids(pOut,pNode);
 		}
 		DomHtmlPut(pOut,"</");
@@ -19741,6 +19961,10 @@ static int DomHtml5Create(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile
 		}
 		return PH7_ContextMemoryError(pCtx);
 	}
+	/* What was parsed between a `<template>`'s tags is its CONTENT and not its
+	 * children; the tree the parser handed back keeps it as children, so the
+	 * split is made here, once, over the whole document. */
+	DomTemplateHarvest(pRes->pShell,(xmlNodePtr)pDoc);
 	return DomResultOwned(pCtx,pThis);
 }
 DOM_METHOD(vm_builtin_DomHTMLDocument_createFromString)

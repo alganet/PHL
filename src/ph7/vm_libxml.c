@@ -53,6 +53,7 @@ static void LibxmlFreeDoc(phl_xmldoc *pDoc)
 	xmlNodePtr *apOrphan = (xmlNodePtr *)SySetBasePtr(&pDoc->aOrphans);
 	xmlEntityPtr *apNot;
 	xmlAttrPtr *apNsAttr;
+	phl_domtpl *apTpl;
 	sxu32 n;
 	for( n = 0 ; n < SySetUsed(&pDoc->aOrphans) ; ++n ){
 		xmlUnlinkNode(apOrphan[n]);
@@ -92,6 +93,15 @@ static void LibxmlFreeDoc(phl_xmldoc *pDoc)
 		xmlFreeProp(pAttr);
 	}
 	SySetRelease(&pDoc->aNsAttrs);
+	/* The content fragments of this tree's `<template>` elements. None is
+	 * linked into the tree, so xmlFreeDoc below never reaches one; the entries
+	 * are flat, so a fragment holding a nested template frees that element
+	 * while the nested one's OWN fragment is freed by its own entry. */
+	apTpl = (phl_domtpl *)SySetBasePtr(&pDoc->aTemplates);
+	for( n = 0 ; n < SySetUsed(&pDoc->aTemplates) ; ++n ){
+		xmlFreeNode((xmlNodePtr)apTpl[n].pFrag);
+	}
+	SySetRelease(&pDoc->aTemplates);
 	if( pDoc->pDoc ){
 		xmlFreeDoc((xmlDocPtr)pDoc->pDoc);
 		pDoc->pDoc = 0;
@@ -514,6 +524,7 @@ PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr)
 	SySetInit(&pDoc->aOrphans,&pVm->sAllocator,sizeof(void *));
 	SySetInit(&pDoc->aNotations,&pVm->sAllocator,sizeof(void *));
 	SySetInit(&pDoc->aNsAttrs,&pVm->sAllocator,sizeof(void *));
+	SySetInit(&pDoc->aTemplates,&pVm->sAllocator,sizeof(phl_domtpl));
 	pDoc->pDoc = pXmlDocPtr;
 	pDoc->pVm = &(*pVm);
 	pDoc->bPreserveWS = 1;  /* DOMDocument->preserveWhiteSpace default */
