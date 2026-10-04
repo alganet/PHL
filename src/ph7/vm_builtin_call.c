@@ -445,6 +445,22 @@ static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
 		SyBlobLength(&pTarget->sBlob));
 }
 /*
+ * The class `static::` answers inside a static callback whose target resolved to pClass.
+ * `self` and `parent` FORWARD, as the `self::m()` / `parent::m()` syntax does: php keeps
+ * the caller's called class when it is a pClass, and only falls back to pClass itself.
+ * `static` already resolved to the called class, and a class NAME is not forwarding.
+ */
+static ph7_class * VmCallbackCalledClass(ph7_vm *pVm,const char *zCls,sxu32 nCls,ph7_class *pClass)
+{
+	ph7_class *pTop;
+	if( !((nCls == 4 && SyMemcmp(zCls,"self",4) == 0)
+	   || (nCls == 6 && SyMemcmp(zCls,"parent",6) == 0)) ){
+		return pClass;
+	}
+	pTop = PH7_VmPeekTopClass(&(*pVm));
+	return (pTop && PH7_VmInstanceOf(pTop,pClass)) ? pTop : pClass;
+}
+/*
  * The calling frame's `$this` when it is an instance of pClass, 0 otherwise (the boolean
  * form is the predicate below). Two rules want it: the callability one described here, and
  * php's `get_static_method_fallback` — a `C::m()` the class cannot answer directly routes
@@ -2547,7 +2563,8 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			/* Point to the class instance */
 			pThis = (ph7_class_instance *)pValue->x.pOther;
 		}
-		pCalled = pClass;
+		pCalled = pThis ? pClass : VmCallbackCalledClass(&(*pVm),
+			(const char *)SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob),pClass);
 		if( pVm->pClosureMethodCls ){
 			/* The pair came out of a method closure resolved in a class of its own
 			 * (`parent::m(...)`, ReflectionMethod::getClosure): look the name up THERE,
@@ -2610,11 +2627,13 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			ph7_class *pCmClass = PH7_VmResolveScopeName(&(*pVm),zCmCls,nCmCls);
 			ph7_class_method *pCmMethod = pCmClass
 				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
+			ph7_class *pCmCalled = pCmClass
+				? VmCallbackCalledClass(&(*pVm),zCmCls,nCmCls,pCmClass) : 0;
 			if( pCmClass && (pCmMethod == 0
 				|| !PH7_VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
 				/* Same catch-all routing as the ['Class','method'] pair, receiver rule
 				 * included: `"C::m"` from inside an instance of C reaches __call. */
-				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,0,
+				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,pCmCalled,
 					PH7_VmStaticFallbackThis(&(*pVm),pCmClass),zCmMeth,nCmMeth,
 					pResult,nArg,apArg,pArgMap);
 				if( rcMagic != SXERR_NOTFOUND ){
@@ -2629,7 +2648,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 				}
 				return SXRET_OK;
 			}
-			return VmCallClassMethodLsb(&(*pVm),pCmClass,0,pCmMethod,pResult,nArg,apArg,pArgMap);
+			return VmCallClassMethodLsb(&(*pVm),pCmCalled,0,pCmMethod,pResult,nArg,apArg,pArgMap);
 		}
 	}
 	/* Create a new operand stack */
