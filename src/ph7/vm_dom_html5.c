@@ -213,6 +213,7 @@ struct html5_parser {
 	SySet sAttr;
 	int bSelfClose;
 	int bTextTok;                  /* the token is an armed element's TEXT     */
+	int bFoster;                   /* this token's content leaves the table    */
 	sxu32 iTokLine,iTokCol,iTokCol2;  /* the NAME's span, which is what php prints */
 	void (*xErr)(void *,const char *,const char *,sxu32,sxu32,sxu32);
 	void *pErrUser;
@@ -294,6 +295,18 @@ static const char * const azHtml5FmtMark[] = {
 static const char * const azHtml5ReconSpecial[] = {
 	"applet","area","br","button","embed","img","input","keygen","marquee",
 	"object","select","wbr","xmp"
+};
+/*
+ * The start tags a table's own insertion modes handle.  Everything else
+ * spelled while a table, a row group or a row is the current node is content
+ * the table cannot hold, and is FOSTER PARENTED -- moved out to just before
+ * the table rather than left inside it.  `<form>` and a hidden `<input>` are
+ * on this list too but are asked for by name: `<input>` only qualifies when
+ * its `type` says `hidden`.
+ */
+static const char * const azHtml5TableOwn[] = {
+	"caption","col","colgroup","script","style","table","tbody","td","template",
+	"tfoot","th","thead","tr"
 };
 
 /* sx has no NUL-terminated comparator; every name here is one. */
@@ -998,6 +1011,64 @@ static xmlNsPtr Html5NsGet(html5_parser *p,xmlNodePtr pEl,const char *zHref,
 	}
 	return pNs;
 }
+/*
+ * Is one of the table's own insertion modes running?  The question is about
+ * the CURRENT node rather than about a table being open anywhere: content
+ * inside a `<td>` -- or inside an element already fostered out -- nests
+ * normally, and only what lands directly in a table, a row group or a row is
+ * misplaced.
+ */
+static int Html5InTableCtx(html5_parser *p)
+{
+	xmlNodePtr pTop = Html5Top(p);
+	const char *z;
+	if( pTop == 0 ){
+		return 0;
+	}
+	z = (const char *)pTop->name;
+	return Html5Eq(z,"table") || Html5Eq(z,"tbody") || Html5Eq(z,"thead")
+		|| Html5Eq(z,"tfoot") || Html5Eq(z,"tr");
+}
+/*
+ * The node the fostered content goes immediately before: the innermost open
+ * table.  A table with no parent has nowhere earlier to put anything, so the
+ * caller falls back to an ordinary insertion -- the spec reaches for the
+ * element under the table on the stack, which under NOIMPLIED may not exist.
+ */
+static xmlNodePtr Html5FosterBefore(html5_parser *p)
+{
+	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+	sxu32 n = SySetUsed(&p->sOpen);
+	while( n-- > 0 ){
+		if( Html5Eq((const char *)apStack[n]->name,"table") ){
+			return apStack[n]->parent ? apStack[n] : 0;
+		}
+	}
+	return 0;
+}
+/*
+ * Attach `pNode` where this token's content belongs.  Fostering needs BOTH
+ * halves: the token has to be one the table modes hand to `in body`, and the
+ * place it would land has to still be the table itself -- a second formatting
+ * clone in one reconstruction nests inside the first, which is no longer a
+ * table.  xmlAddPrevSibling merges a text node into whatever text already sits
+ * before the table, which is the rule the ordinary path gets from xmlAddChild.
+ */
+static void Html5Attach(html5_parser *p,xmlNodePtr pNode)
+{
+	xmlNodePtr pBefore = 0;
+	if( pNode == 0 ){
+		return;
+	}
+	if( p->bFoster && Html5InTableCtx(p) ){
+		pBefore = Html5FosterBefore(p);
+	}
+	if( pBefore ){
+		xmlAddPrevSibling(pBefore,pNode);
+	}else{
+		xmlAddChild(Html5Target(p),pNode);
+	}
+}
 static xmlNodePtr Html5NewElemNs(html5_parser *p,const char *zName,const char *zHref)
 {
 	xmlNodePtr pParent = Html5Target(p);
@@ -1008,7 +1079,7 @@ static xmlNodePtr Html5NewElemNs(html5_parser *p,const char *zName,const char *z
 	if( zHref ){
 		/* Attached first: the declaration in scope is only findable from a
 		 * node that is already under the element that states it. */
-		xmlAddChild(pParent,pEl);
+		Html5Attach(p,pEl);
 		xmlSetNs(pEl,Html5NsGet(p,pEl,zHref,0));
 		return pEl;
 	}
@@ -1024,7 +1095,7 @@ static xmlNodePtr Html5NewElemNs(html5_parser *p,const char *zName,const char *z
 		}
 		xmlSetNs(pEl,p->pNs);
 	}
-	xmlAddChild(pParent,pEl);
+	Html5Attach(p,pEl);
 	return pEl;
 }
 static xmlNodePtr Html5NewElem(html5_parser *p,const char *zName)
@@ -1233,7 +1304,7 @@ static void Html5Reconstruct(html5_parser *p)
 		if( pNew == 0 ){
 			break;
 		}
-		xmlAddChild(Html5Target(p),pNew);
+		Html5Attach(p,pNew);
 		Html5Push(p,pNew);
 		apFmt[i] = pNew;
 	}
@@ -1410,6 +1481,32 @@ static int Html5NameInScope(html5_parser *p,const char *zName)
 	}
 	return 0;
 }
+/* The current start tag's value for `zName`, or a NULL when it has none. */
+static const char * Html5TokAttr(html5_parser *p,const char *zName)
+{
+	html5_attr *aAttr = (html5_attr *)SySetBasePtr(&p->sAttr);
+	const char *zBuf = (const char *)SyBlobData(&p->sAttrBuf);
+	sxu32 i,n = SySetUsed(&p->sAttr);
+	for( i = 0 ; i < n ; ++i ){
+		if( Html5Eq(zBuf + aAttr[i].nNameOfs,zName) ){
+			return zBuf + aAttr[i].nValOfs;
+		}
+	}
+	return 0;
+}
+/*
+ * Does a table's own insertion mode handle this start tag, so that it stays
+ * inside the table?  `<input>` is the one answered by an attribute: a hidden
+ * one is table furniture, any other is content and leaves.
+ */
+static int Html5TableOwns(html5_parser *p,const char *zName)
+{
+	if( Html5Eq(zName,"input") ){
+		const char *zType = Html5TokAttr(p,"type");
+		return zType && Html5Eq(zType,"hidden");
+	}
+	return Html5Eq(zName,"form") || HTML5_IN(azHtml5TableOwn,zName);
+}
 /* Insert the current start tag, pushing it unless it takes no children. */
 static xmlNodePtr Html5InsertStart(html5_parser *p)
 {
@@ -1432,7 +1529,6 @@ static xmlNodePtr Html5InsertStart(html5_parser *p)
 }
 static void Html5InsertText(html5_parser *p)
 {
-	xmlNodePtr pParent = Html5Target(p);
 	sxu32 n = SyBlobLength(&p->sBuf);
 	if( n < 1 ){
 		return;
@@ -1441,7 +1537,7 @@ static void Html5InsertText(html5_parser *p)
 	 * xmlAddChild merges a text node into a preceding text sibling, which is
 	 * exactly the spec's rule, so the tree never carries two adjacent ones.
 	 */
-	xmlAddChild(pParent,xmlNewDocTextLen(p->pDoc,
+	Html5Attach(p,xmlNewDocTextLen(p->pDoc,
 		(const xmlChar *)SyBlobData(&p->sBuf),(int)n));
 }
 static int Html5TextIsSpace(html5_parser *p)
@@ -1893,30 +1989,46 @@ static void Html5TableImplied(html5_parser *p,const char *zName)
 	if( Html5OpenDepth(p,"table") < 0 ){
 		return;
 	}
-	if( bGroup || Html5Eq(zName,"caption")
-	 || Html5Eq(zName,"colgroup") || Html5Eq(zName,"col") ){
+	if( Html5Eq(zName,"col") ){
+		/* A `<col>` needs a column group the way a `<td>` needs a row. */
+		if( Html5Top(p) && Html5Eq((const char *)Html5Top(p)->name,"colgroup") ){
+			return;
+		}
+		while( Html5Top(p) && !Html5Eq((const char *)Html5Top(p)->name,"table") ){
+			Html5Pop(p);
+		}
+		if( Html5Top(p) ){
+			xmlNodePtr pGrp = Html5NewElem(p,"colgroup");
+			if( pGrp ){
+				Html5Push(p,pGrp);
+			}
+		}
+		return;
+	}
+	if( bGroup || Html5Eq(zName,"caption") || Html5Eq(zName,"colgroup") ){
 		while( Html5Top(p) && !Html5Eq((const char *)Html5Top(p)->name,"table") ){
 			Html5Pop(p);
 		}
 		return;
 	}
 	if( bRow || bCell ){
-		if( bCell ){
-			/* A cell beside an open one closes it. */
-			while( Html5Top(p)
-			 && (Html5Eq((const char *)Html5Top(p)->name,"td")
-			  || Html5Eq((const char *)Html5Top(p)->name,"th")) ){
-				Html5Pop(p);
+		/*
+		 * `Clear the stack back to a table context`, which is also what
+		 * closes a cell beside an open one.  Whatever was fostered out of the
+		 * table is still stacked ABOVE it, and a row or a cell belongs to the
+		 * table under all of it rather than to the content that left.
+		 */
+		while( Html5Top(p) ){
+			const char *zTop = (const char *)Html5Top(p)->name;
+			if( Html5Eq(zTop,"table") || Html5Eq(zTop,"tbody")
+			 || Html5Eq(zTop,"thead") || Html5Eq(zTop,"tfoot")
+			 || Html5Eq(zTop,"html") ){
+				break;
 			}
-		}
-		if( bRow ){
-			while( Html5Top(p)
-			 && !Html5Eq((const char *)Html5Top(p)->name,"table")
-			 && !Html5Eq((const char *)Html5Top(p)->name,"tbody")
-			 && !Html5Eq((const char *)Html5Top(p)->name,"thead")
-			 && !Html5Eq((const char *)Html5Top(p)->name,"tfoot") ){
-				Html5Pop(p);
+			if( bCell && Html5Eq(zTop,"tr") ){
+				break;
 			}
+			Html5Pop(p);
 		}
 		if( Html5Top(p) && Html5Eq((const char *)Html5Top(p)->name,"table") ){
 			xmlNodePtr pGrp = Html5NewElem(p,"tbody");
@@ -1932,6 +2044,23 @@ static void Html5TableImplied(html5_parser *p,const char *zName)
 			}
 		}
 	}
+}
+/*
+ * A column group holds nothing but `<col>`, so anything else written while one
+ * is open closes it first and is then reconsidered against the table under it
+ * -- usually to be fostered straight back out.  Whitespace stays, the way it
+ * does in the table itself.
+ */
+static void Html5ColgroupImplied(html5_parser *p,const char *zName)
+{
+	xmlNodePtr pTop = Html5Top(p);
+	if( pTop == 0 || !Html5Eq((const char *)pTop->name,"colgroup") ){
+		return;
+	}
+	if( zName && (Html5Eq(zName,"col") || Html5Eq(zName,"template")) ){
+		return;
+	}
+	Html5Pop(p);
 }
 /* The generic end tag: pop to it, or ignore it if it is not open. */
 static void Html5EndTag(html5_parser *p,const char *zName)
@@ -2206,19 +2335,36 @@ static int Html5Dispatch(html5_parser *p)
 	default:
 		break;
 	}
-	/* `in body`, and every table mode with it. */
+	/*
+	 * `in body`, and every table mode with it.  Fostering is armed per token
+	 * by the two cases that can be misplaced and is off for everything else,
+	 * including the implied row groups and rows the table modes mint.
+	 */
+	p->bFoster = 0;
 	switch( p->iTok ){
 	case HTML5_TOK_TEXT:
+		/*
+		 * A run that is nothing but whitespace stays inside the table; one
+		 * with any other byte in it leaves WHOLE, spaces and all.  The
+		 * reconstruction runs under the same arming, so a formatting element
+		 * reopened to hold the run is fostered with it.
+		 */
+		p->bFoster = !Html5TextIsSpace(p);
+		if( p->bFoster ){
+			Html5ColgroupImplied(p,0);
+		}
 		Html5Reconstruct(p);
 		Html5InsertText(p);
 		break;
 	case HTML5_TOK_COMMENT:
+		/* A comment is the one thing a table keeps wherever it is written. */
 		Html5InsertComment(p,Html5Target(p));
 		break;
 	case HTML5_TOK_DOCTYPE:
 		break;
 	case HTML5_TOK_START: {
 		xmlNodePtr pEl;
+		int bTableForm;
 		if( Html5Eq(zName,"html") || Html5Eq(zName,"body") ){
 			break;
 		}
@@ -2246,17 +2392,39 @@ static int Html5Dispatch(html5_parser *p)
 		 * elements like any other body content and then stop being HTML.
 		 */
 		if( Html5Eq(zName,"svg") || Html5Eq(zName,"math") ){
+			Html5ColgroupImplied(p,zName);
+			p->bFoster = 1;
 			Html5Reconstruct(p);
 			Html5InsertForeign(p,Html5Eq(zName,"svg")
 				? HTML5_NSK_SVG : HTML5_NSK_MATH);
 			break;
 		}
+		/*
+		 * A `<table>` written inside one is the source forgetting the close:
+		 * the open table is closed and the new one opens beside it rather
+		 * than within it.  The question is asked in SCOPE, so a table inside
+		 * a `<td>` is a real nested table and this does not fire.
+		 */
+		if( Html5Eq(zName,"table") && Html5NameInScope(p,"table") ){
+			Html5PopTo(p,"table");
+		}
+		Html5ColgroupImplied(p,zName);
+		p->bFoster = !Html5TableOwns(p,zName);
+		bTableForm = Html5Eq(zName,"form") && Html5InTableCtx(p);
 		Html5TableImplied(p,zName);
 		Html5BodyImplied(p,zName);
 		if( Html5Reconstructs(zName) ){
 			Html5Reconstruct(p);
 		}
 		pEl = Html5InsertStart(p);
+		if( pEl && bTableForm ){
+			/*
+			 * A `<form>` written straight into a table is inserted and popped
+			 * at once, so the table keeps the empty element and everything
+			 * after it is fostered out rather than filling the form.
+			 */
+			Html5Pop(p);
+		}
 		if( pEl ){
 			if( HTML5_IN(azHtml5Fmt,zName) ){
 				Html5FmtPush(p,pEl);
@@ -2280,6 +2448,9 @@ static int Html5Dispatch(html5_parser *p)
 			}
 			p->iMode = HTML5_M_AFTER_BODY;
 			break;
+		}
+		if( !Html5Eq(zName,"colgroup") ){
+			Html5ColgroupImplied(p,zName);
 		}
 		if( HTML5_IN(azHtml5Fmt,zName) ){
 			if( Html5Adoption(p,zName) == 0 ){
