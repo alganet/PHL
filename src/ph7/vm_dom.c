@@ -402,10 +402,27 @@ static ph7_hashmap * DomCache(ph7_vm *pVm,ph7_class_instance *pDoc)
 	}
 	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
 }
-/* php's class for a node type. Anything else is a plain DOMNode, as before. */
-static const char * DomClassOfKind(int bModern,int iKind)
+/* Is this node an element in the HTML namespace? Defined with the namespaced
+ * element's readers below, where the same question decides `name=` keying. */
+static int DomNodeIsHtmlNs(xmlNodePtr pNode);
+/* php's class for a node. Anything else is a plain DOMNode, as before.
+ *
+ * The node itself is the argument and not just its type, because php's
+ * namespaced tree has one class whose name is not a function of the type at
+ * all: an ELEMENT in the HTML namespace is a `Dom\HTMLElement` and any other
+ * element is a `Dom\Element`. That is a question about the node's NAMESPACE
+ * and about nothing else -- not about the document it sits in, so an
+ * `xmlns="http://www.w3.org/1999/xhtml"` root parsed into a `Dom\XMLDocument`
+ * is an HTML element too, and a `<circle>` in the SVG namespace inside an HTML
+ * document is not. The 2004 tree has no such class and asks nothing.
+ */
+static const char * DomClassOfKind(int bModern,xmlNodePtr pNode)
 {
+	int iKind = pNode ? (int)pNode->type : 0;
 	if( bModern ){
+		if( iKind == XML_ELEMENT_NODE && DomNodeIsHtmlNs(pNode) ){
+			return "Dom\\HTMLElement";
+		}
 		/* php's namespaced tree. Its CDATA section is spelled with both letters
 		 * capitalised where the 2004 name is not, and an ELEMENT declaration is
 		 * an entity here for the same reason it is there. */
@@ -467,7 +484,7 @@ static int DomNodeTypeOf(xmlNodePtr pNode)
 }
 /* Defined with registerNodeClass below, which is the only thing that makes the
  * answer anything other than DomClassOfKind's. */
-static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
+static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode,
 	int bModern,SyBlob *pOut);
 /* Defined with the namespaced document's readers below: is the receiver's
  * document one of php 8.4's tree? Two of the shared readers answer differently
@@ -520,7 +537,7 @@ static ph7_class_instance * DomWrapAs(ph7_vm *pVm,ph7_class_instance *pDoc,
 	 * one for it (registerNodeClass). The name may live in sName's buffer, so
 	 * the blob outlives the lookup. */
 	SyBlobInit(&sName,&pVm->sAllocator);
-	zClass = DomWrapClassName(&(*pVm),pDoc,(int)pNode->type,bModern,&sName);
+	zClass = DomWrapClassName(&(*pVm),pDoc,pNode,bModern,&sName);
 	pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
 	SyBlobRelease(&sName);
 	pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
@@ -12532,10 +12549,10 @@ static ph7_hashmap * DomNodeClassMap(ph7_vm *pVm,ph7_class_instance *pDoc,int bM
  * which is the document's for every caller but ext/simplexml's import doors --
  * those name their own, and a `Dom\\Element` over a DOMDocument's tree is a
  * state php really does reach. */
-static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
+static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode,
 	int bModern,SyBlob *pOut)
 {
-	const char *zBase = DomClassOfKind(bModern,iKind);
+	const char *zBase = DomClassOfKind(bModern,pNode);
 	ph7_hashmap *pMap = DomNodeClassMap(&(*pVm),pDoc,FALSE);
 	ph7_hashmap_node *pEntry = 0;
 	ph7_value sKey,*pHit;
@@ -12658,7 +12675,7 @@ DOM_METHOD(vm_builtin_DomDocument_registerNodeClass)
  * caller owns the reference. */
 static ph7_class_instance * DomLimboWrap(ph7_vm *pVm,int bModern,xmlNodePtr pNode)
 {
-	const char *zClass = DomClassOfKind(bModern,(int)pNode->type);
+	const char *zClass = DomClassOfKind(bModern,pNode);
 	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
 	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
 	phl_xmldoc *pShell = pObj ? DomLimboShell(&(*pVm)) : 0;
