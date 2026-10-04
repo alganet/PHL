@@ -4599,6 +4599,43 @@ static void DomNsDeclRemove(xmlNodePtr pElem,xmlNsPtr pNs)
 		return;
 	}
 }
+/*
+ * The 2004 tree's harsher way to drop one.  Removing a declaration by NAME
+ * leaves whatever still resolves through it a declaration closer to where it is
+ * used; removing it through `removeAttributeNS(<the URI it binds>, <prefix>)`
+ * does not -- the binding's own strings are freed, and every element and
+ * attribute below that resolved through it is left in NO namespace at all.  So
+ * `<a:c a:x="1"/>` under an eliminated `xmlns:a` reads back as `<c x="1"/>`,
+ * and a declaration handle still held answers nothing.  Elimination is by
+ * POINTER: a second prefix bound to the same URI is untouched.
+ */
+static void DomNsEliminate(xmlNodePtr pElem,xmlNsPtr pNs)
+{
+	xmlNodePtr pCur = pElem;
+	DomNsDeclRemove(pElem,pNs);
+	if( pNs->href ){
+		xmlFree((xmlChar *)pNs->href);
+		pNs->href = 0;
+	}
+	if( pNs->prefix ){
+		xmlFree((xmlChar *)pNs->prefix);
+		pNs->prefix = 0;
+	}
+	while( pCur ){
+		if( pCur->type == XML_ELEMENT_NODE ){
+			xmlAttrPtr pAttr;
+			if( pCur->ns == pNs ){
+				pCur->ns = 0;
+			}
+			for( pAttr = pCur->properties ; pAttr ; pAttr = pAttr->next ){
+				if( pAttr->ns == pNs ){
+					pAttr->ns = 0;
+				}
+			}
+		}
+		pCur = DomWalkNext(pCur,pElem);
+	}
+}
 
 /*
  * php's wrapper for one: DOMNameSpaceNode, a class of its own that does NOT
@@ -4929,8 +4966,13 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNS)
 	if( zVal == 0 && pNd && DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI) ){
 		/* The other door, the one hasAttributeNS already knew about: a
 		 * DECLARATION answers its URI here. `getAttributeNS($XMLNS, 'p')` was ""
-		 * on an element declaring `xmlns:p`, where php answers the namespace. */
-		xmlNsPtr pDecl = DomNsDeclOf((xmlNodePtr)pNd->pNode,(const xmlChar *)zLocal);
+		 * on an element declaring `xmlns:p`, where php answers the namespace.
+		 * The local name `xmlns` names the DEFAULT declaration, but only in php
+		 * 8.4's tree -- the 2004 one reads it as a prefix like any other and so
+		 * answers about no element that merely carries `xmlns="..."`. */
+		xmlNsPtr pDecl = DomThisModern(pCtx)
+			? DomNsDeclByLocal((xmlNodePtr)pNd->pNode,zLocal)
+			: DomNsDeclOf((xmlNodePtr)pNd->pNode,(const xmlChar *)zLocal);
 		if( pDecl && pDecl->href ){
 			ph7_result_string(pCtx,(const char *)pDecl->href,-1);
 			return PH7_OK;
@@ -5276,23 +5318,62 @@ DOM_METHOD(vm_builtin_DOMElement_hasAttributeNS)
 		 * DECLARATION, which is not an attribute in libxml at all, and a real
 		 * attribute in it -- which is what `createAttributeNS($XMLNS, ...)`
 		 * makes, and which this only asked the first door about. (A DEFAULT
-		 * declaration is not one of them: php answers false for the local name
-		 * `xmlns`, and the prefix comparison below never matches it.)
+		 * declaration is the third, and only in php 8.4's tree, where the local
+		 * name `xmlns` names it; the 2004 tree reads that name as a prefix and
+		 * answers false.)
 		 */
 		ph7_result_bool(pCtx,DomAttrByNs(pElem,zUri,zLocal) != 0
-			|| DomNsDeclOf(pElem,(const xmlChar *)zLocal) != 0);
+			|| (DomThisModern(pCtx) ? DomNsDeclByLocal(pElem,zLocal)
+			                        : DomNsDeclOf(pElem,(const xmlChar *)zLocal)) != 0);
 		return PH7_OK;
 	}
 	ph7_result_bool(pCtx,DomAttrByNs(pElem,zUri,zLocal) != 0);
 	return PH7_OK;
 }
-/* DOMElement::removeAttributeNS(?string $namespace, string $localName): void --
- * an absent one is silence, as php's is. */
+/*
+ * DOMElement::removeAttributeNS(?string $namespace, string $localName): void --
+ * an absent one is silence, as php's is.
+ *
+ * The two trees address a DECLARATION here by opposite halves of the pair.  php
+ * 8.4's element carries its declarations as attributes in the xmlns namespace,
+ * so it is named `($XMLNS, <prefix>)` -- and `($XMLNS, 'xmlns')` names the
+ * default one.  The 2004 element carries none, so the pair it answers to is
+ * `(<the URI the prefix binds>, <prefix>)`, with the EMPTY local name naming
+ * the default one; asking that tree for the xmlns namespace names nothing.
+ * There the lookup also SCREENS: a local name this element declares and a URI
+ * that is not what it binds stops the call dead, so the attribute the same pair
+ * names is left in place too.
+ */
 DOM_METHOD(vm_builtin_DOMElement_removeAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
-	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUriLookup(pCtx,nArg,apArg,0),zLocal) : 0;
+	const xmlChar *zUri = DomArgUriLookup(pCtx,nArg,apArg,0);
+	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	xmlAttrPtr pAttr = DomAttrByNs(pElem,zUri,zLocal);
+	if( pElem == 0 ){
+		return PH7_OK;
+	}
+	if( DomThisModern(pCtx) ){
+		xmlNsPtr pDecl = DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI)
+			? DomNsDeclByLocal(pElem,zLocal) : 0;
+		if( pDecl ){
+			/* The declaration goes and whatever still needs it gets it back,
+			 * exactly as removing it under its written name does. */
+			DomNsDeclRemove(pElem,pDecl);
+			DomNsReconcile(pElem);
+			return PH7_OK;
+		}
+	}else{
+		xmlNsPtr pDecl = zLocal[0] == 0 ? DomNsDeclOf(pElem,0)
+			: DomNsDeclOf(pElem,(const xmlChar *)zLocal);
+		if( pDecl ){
+			if( !xmlStrEqual(zUri,pDecl->href) ){
+				return PH7_OK;
+			}
+			DomNsEliminate(pElem,pDecl);
+		}
+	}
 	if( pAttr ){
 		DomAttrGoing((xmlNodePtr)pAttr);
 		xmlRemoveProp(pAttr);
