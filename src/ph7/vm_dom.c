@@ -17440,10 +17440,20 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
  * the standard says. Their cells are the oracle's: every high byte of every
  * name decoded through php 8.5.10, and every code point that came out
  * encoded back. An undefined cell decodes to U+FFFD, and nothing encodes to
- * it. The seven multi-byte CJK encodings and `replacement` still pass through
- * in both directions, name right and bytes untouched.
+ * it. The seven multi-byte CJK encodings still pass through in both
+ * directions, name right and bytes untouched.
+ *
+ * `replacement` is the standard's mitigation rather than a converter, and it
+ * is both faces at once: the decoder answers the EMPTY string for any source
+ * -- a page served under `iso-2022-kr`, `hz-gb-2312` or either `iso-2022-cn`
+ * parses to the bare `html`/`head`/`body` the tree builder mints from nothing,
+ * with not one character of its own -- and the encoder writes nothing at all,
+ * so `saveHtml()` answers `""` however much the program appended afterwards
+ * and `saveHtmlFile()` truncates its file and answers 0. The standard emits
+ * one U+FFFD here; lexbor, which is the oracle, emits none.
  */
 #define DOM_ENC_PASS    -1
+#define DOM_ENC_REPL    -2
 #define DOM_ENC_UTF8     0
 #define DOM_ENC_UTF16LE  1
 #define DOM_ENC_UTF16BE  2
@@ -17959,6 +17969,9 @@ static int DomEncConverter(const char *zEnc)
 	if( SyStrncmp(zCanon,"x-user-defined",14) == 0 ){
 		return DOM_ENC_XUSER;
 	}
+	if( SyStrncmp(zCanon,"replacement",11) == 0 ){
+		return DOM_ENC_REPL;
+	}
 	if( SyStrncmp(zCanon,"ISO-8859-8-I",12) == 0 ){
 		zCanon = "ISO-8859-8";
 	}
@@ -18157,6 +18170,9 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 {
 	int i;
 	switch( iEnc ){
+	case DOM_ENC_REPL:
+		/* Every source decodes to nothing; the parser is handed no bytes. */
+		return 1;
 	case DOM_ENC_UTF8:
 		DomEncFromUtf8(pOut,DOM_ENC_UTF8,z,n);
 		return 1;
@@ -18197,6 +18213,11 @@ static void DomEncEncodeDump(SyBlob *pOut,SyMemBackend *pAlloc,int iEnc)
 	const unsigned char *z = (const unsigned char *)SyBlobData(pOut);
 	int n = (int)SyBlobLength(pOut),i;
 	if( iEnc == DOM_ENC_PASS ){
+		return;
+	}
+	if( iEnc == DOM_ENC_REPL ){
+		/* Nothing is spellable here, so the dump is dropped whole. */
+		SyBlobReset(pOut);
 		return;
 	}
 	if( iEnc == DOM_ENC_UTF8 ){
