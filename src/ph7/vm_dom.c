@@ -17,6 +17,7 @@
 #include <libxml/encoding.h>
 #include <libxml/HTMLparser.h>
 #include <libxml/HTMLtree.h>
+#include <libxml/chvalid.h>
 
 /*
  * ext/dom on libxml2: the DOM classes, declared and bodied in C.
@@ -8246,6 +8247,402 @@ DOM_METHOD(vm_builtin_Dom_Element_insertAdjacentText)
 	return DomInsertAdjacentText(pCtx,
 		nArg > 0 ? DomAdjacentWhere(apArg[0]) : "",nArg,apArg);
 }
+/*
+ * php 8.4's `innerHTML`, `outerHTML` and `insertAdjacentHTML()` -- the three
+ * element doors that speak in MARKUP where every other one speaks in nodes.
+ *
+ * Reading is the XML serializer `saveXml($node)` already runs: `outerHTML` is
+ * that call's bytes for the element itself, `innerHTML` the same call for each
+ * child in turn. Two things the saver does differently, both measured: these
+ * two ignore `formatOutput` (a document with it on still answers unindented
+ * bytes through them, where `saveXml($node)` indents), and they run under
+ * php's "require well-formed" flag -- a subtree that could not be READ BACK is
+ * a refusal instead of output.
+ *
+ * Writing is php's XML fragment parsing algorithm, which is NOT the balanced
+ * chunk `appendXml` parses. The chunk goes inside a synthetic element that
+ * repeats the CONTEXT node's tag name and re-declares every namespace in scope
+ * where that node sits, so a bare `<q/>` inherits an ancestor's default
+ * namespace and a prefix bound three elements up resolves -- and a prefix
+ * bound nowhere is a NAMESPACE well-formedness error, which the balanced
+ * parser does not report at all. The context node is the receiver for
+ * `innerHTML` and for `insertAdjacentHTML`'s two inside positions, and the
+ * receiver's PARENT for `outerHTML` and the two outside ones, which is also
+ * the parent each of them inserts into.
+ */
+/* The character production XML 1.0 allows. libxml's own parsers can never
+ * produce a character outside it, but `createComment("a\x01b")` can, and php
+ * screens the content of every node kind it writes unescaped. */
+static int DomTextHas(const char *zText,sxu32 nText,const char *zWant)
+{
+	return SyBlobSearch((const void *)zText,nText,(const void *)zWant,
+		SyStrlen(zWant),0) == SXRET_OK;
+}
+static int DomWellFormedChars(const xmlChar *zText)
+{
+	const xmlChar *z = zText;
+	while( z && *z ){
+		int nLen = 4;
+		int c = xmlGetUTF8Char(z,&nLen);
+		if( c < 0 || !xmlIsCharQ(c) ){
+			return 0;
+		}
+		z += nLen;
+	}
+	return 1;
+}
+/*
+ * One node under the flag. Only the kinds whose content is written VERBATIM can
+ * trip it: a text node's `<` leaves as `&lt;`, but a comment's `--` and a
+ * processing instruction's `?>` would close the construct early and there is no
+ * escape for either. A CDATA section has no screen at all -- php's serializer
+ * takes the flag on three kinds and the element's own name, and its creator has
+ * already refused the one sequence that could end a section early.
+ */
+static int DomWellFormedNode(xmlNodePtr pNode)
+{
+	const char *zTxt;
+	sxu32 nTxt;
+	switch( pNode->type ){
+	case XML_TEXT_NODE:
+		return DomWellFormedChars(pNode->content);
+	case XML_COMMENT_NODE:
+		if( !DomWellFormedChars(pNode->content) ){
+			return 0;
+		}
+		zTxt = (const char *)pNode->content;
+		if( zTxt == 0 ){
+			return 1;
+		}
+		nTxt = SyStrlen(zTxt);
+		if( DomTextHas(zTxt,nTxt,"--") || (nTxt > 0 && zTxt[nTxt-1] == '-') ){
+			return 0;
+		}
+		return 1;
+	case XML_PI_NODE:
+		/* A target naming the XML declaration, or carrying a colon, cannot be
+		 * read back as a processing instruction whatever its data says. */
+		if( pNode->name == 0 || SyByteFind((const char *)pNode->name,
+				SyStrlen((const char *)pNode->name),':',0) == SXRET_OK
+		 || DomNameIsCi((const char *)pNode->name,"xml") ){
+			return 0;
+		}
+		if( !DomWellFormedChars(pNode->content) ){
+			return 0;
+		}
+		zTxt = (const char *)pNode->content;
+		return zTxt == 0 || !DomTextHas(zTxt,SyStrlen(zTxt),"?>");
+	case XML_ELEMENT_NODE:
+		return pNode->name != 0 && xmlValidateNCName(pNode->name,0) == 0;
+	default:
+		break;
+	}
+	return 1;
+}
+/* The same question over a subtree, walked rather than recursed: the depth of
+ * a parsed document is the user's to choose and this runs on every read. */
+static int DomWellFormedSubtree(xmlNodePtr pRoot)
+{
+	xmlNodePtr pCur = pRoot;
+	while( pCur ){
+		if( !DomWellFormedNode(pCur) ){
+			return 0;
+		}
+		if( pCur->children ){
+			pCur = pCur->children;
+			continue;
+		}
+		while( pCur != pRoot && pCur->next == 0 ){
+			pCur = pCur->parent;
+		}
+		if( pCur == pRoot ){
+			break;
+		}
+		pCur = pCur->next;
+	}
+	return 1;
+}
+/*
+ * `innerHTML` and `outerHTML` read: the same serializer under two spans.
+ *
+ * The refusal is php's own sentence and not the parser's, because nothing has
+ * been parsed -- the bytes were about to be written and the flag says they
+ * would not read back.
+ */
+static int DomHtmlMixinRead(ph7_context *pCtx,int bInner)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pNd = DomThisNode(pCtx);
+	int bModern = DomRecvIsModern(pCtx);
+	xmlNodePtr pNode,pPart;
+	SyBlob sOut;
+	if( pNd == 0 ){
+		ph7_result_string(pCtx,"",0);
+		return 1;
+	}
+	pNode = (xmlNodePtr)pNd->pNode;
+	for( pPart = bInner ? pNode->children : pNode ; pPart ; pPart = pPart->next ){
+		if( !DomWellFormedSubtree(pPart) ){
+			/* Through the property channel: a read runs on the member opcode's
+			 * scratch context, where a throw made the ordinary way would run
+			 * the enclosing catch before the access had settled. */
+			DomThrowSentence(pCtx,DOM_ERR_SYNTAX,
+				"The resulting XML serialization is not well-formed");
+			return 1;
+		}
+		if( !bInner ){
+			break;
+		}
+	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	for( pPart = bInner ? pNode->children : pNode ; pPart ; pPart = pPart->next ){
+		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
+		xmlChar *zPart = 0;
+		int nPart = DomDumpTree(pNode->doc,pPart,0,0,bModern,&zPart);
+		PH7_LibxmlDropErrors(pVm,nMark);
+		if( nPart > 0 ){
+			SyBlobAppend(&sOut,(const void *)zPart,(sxu32)nPart);
+		}
+		if( zPart ){
+			xmlFree(zPart);
+		}
+		if( !bInner ){
+			break;
+		}
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return 1;
+}
+/* The synthetic element's tag name, which is the context node's spelled back
+ * exactly -- prefix included, because the prefix is one of the bindings the
+ * wrapper is about to declare. */
+static void DomFragWrapName(SyBlob *pBuf,xmlNodePtr pCtxNode)
+{
+	if( pCtxNode->ns && pCtxNode->ns->prefix && pCtxNode->ns->prefix[0] ){
+		SyBlobAppend(pBuf,(const void *)pCtxNode->ns->prefix,
+			SyStrlen((const char *)pCtxNode->ns->prefix));
+		SyBlobAppend(pBuf,(const void *)":",sizeof(char));
+	}
+	if( pCtxNode->name ){
+		SyBlobAppend(pBuf,(const void *)pCtxNode->name,
+			SyStrlen((const char *)pCtxNode->name));
+	}
+}
+static void DomFragWrapAttr(SyBlob *pBuf,const char *zName,const xmlChar *zHref)
+{
+	SyBlobAppend(pBuf,(const void *)" ",sizeof(char));
+	SyBlobAppend(pBuf,(const void *)zName,SyStrlen(zName));
+	SyBlobAppend(pBuf,(const void *)"=\"",2*sizeof(char));
+	SyBlobAppend(pBuf,(const void *)zHref,SyStrlen((const char *)zHref));
+	SyBlobAppend(pBuf,(const void *)"\"",sizeof(char));
+}
+/*
+ * The wrapper's namespace declarations: every PREFIX bound anywhere up the
+ * ancestor chain, nearest binding winning, plus the default namespace in scope
+ * if there is one. A prefix declared twice on one element is itself a
+ * well-formedness error, so the nearer row is the only one written.
+ */
+static void DomFragWrapNs(ph7_vm *pVm,SyBlob *pBuf,xmlNodePtr pCtxNode)
+{
+	xmlNodePtr pCur;
+	xmlNsPtr pDef;
+	SySet sSeen;
+	SySetInit(&sSeen,&pVm->sAllocator,sizeof(xmlNsPtr));
+	for( pCur = pCtxNode ; pCur ; pCur = pCur->parent ){
+		xmlNsPtr pNs;
+		if( pCur->type != XML_ELEMENT_NODE ){
+			continue;
+		}
+		for( pNs = pCur->nsDef ; pNs ; pNs = pNs->next ){
+			xmlNsPtr *apSeen = (xmlNsPtr *)SySetBasePtr(&sSeen);
+			sxu32 i;
+			int bShadowed = 0;
+			if( pNs->prefix == 0 || pNs->prefix[0] == '\0' || pNs->href == 0 ){
+				continue;           /* the default binding, written separately */
+			}
+			for( i = 0 ; i < SySetUsed(&sSeen) ; ++i ){
+				if( xmlStrEqual(apSeen[i]->prefix,pNs->prefix) ){
+					bShadowed = 1;
+					break;
+				}
+			}
+			if( bShadowed ){
+				continue;
+			}
+			SySetPut(&sSeen,(const void *)&pNs);
+		}
+	}
+	{
+		xmlNsPtr *apSeen = (xmlNsPtr *)SySetBasePtr(&sSeen);
+		sxu32 i;
+		for( i = 0 ; i < SySetUsed(&sSeen) ; ++i ){
+			SyBlob sName;
+			SyBlobInit(&sName,&pVm->sAllocator);
+			SyBlobAppend(&sName,(const void *)"xmlns:",6*sizeof(char));
+			SyBlobAppend(&sName,(const void *)apSeen[i]->prefix,
+				SyStrlen((const char *)apSeen[i]->prefix));
+			SyBlobNullAppend(&sName);
+			DomFragWrapAttr(pBuf,(const char *)SyBlobData(&sName),apSeen[i]->href);
+			SyBlobRelease(&sName);
+		}
+	}
+	SySetRelease(&sSeen);
+	pDef = xmlSearchNs(pCtxNode->doc,pCtxNode,0);
+	if( pDef && pDef->href && pDef->href[0] ){
+		DomFragWrapAttr(pBuf,"xmlns",pDef->href);
+	}
+}
+/*
+ * php's XML fragment parsing algorithm. The answer is the chunk's nodes as a
+ * chain already re-homed into the context node's document, or NULL with the
+ * Syntax refusal raised.
+ *
+ * The adoption names the context node as the destination parent so that a
+ * binding already in scope there is REUSED rather than re-declared on the
+ * moved node -- `<x/>` written into a default-namespaced element comes out
+ * `<x/>` and not `<x xmlns="...">`, which is php's answer and the reason the
+ * wrapper is thrown away only after every child has left it.
+ */
+static xmlNodePtr DomParseFragment(ph7_context *pCtx,xmlNodePtr pCtxNode,
+	const char *zIn,int nIn,int *pbOk)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	xmlDocPtr pDst = pCtxNode->doc;
+	xmlParserCtxtPtr pParser;
+	xmlNodePtr pRoot,pKid,pFirst = 0,pLast = 0;
+	xmlDocPtr pTmp = 0;
+	SyBlob sBuf;
+	sxu32 nMark;
+	int bOk;
+	*pbOk = 0;
+	SyBlobInit(&sBuf,&pVm->sAllocator);
+	SyBlobAppend(&sBuf,(const void *)"<",sizeof(char));
+	DomFragWrapName(&sBuf,pCtxNode);
+	DomFragWrapNs(pVm,&sBuf,pCtxNode);
+	SyBlobAppend(&sBuf,(const void *)">",sizeof(char));
+	if( nIn > 0 ){
+		SyBlobAppend(&sBuf,(const void *)zIn,(sxu32)nIn);
+	}
+	SyBlobAppend(&sBuf,(const void *)"</",2*sizeof(char));
+	DomFragWrapName(&sBuf,pCtxNode);
+	SyBlobAppend(&sBuf,(const void *)">",sizeof(char));
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pParser = xmlNewParserCtxt();
+	if( pParser ){
+		pTmp = xmlCtxtReadMemory(pParser,(const char *)SyBlobData(&sBuf),
+			(int)SyBlobLength(&sBuf),0,0,
+			XML_PARSE_NOERROR|XML_PARSE_NOWARNING|XML_PARSE_NONET);
+		/* BOTH flags: an undeclared prefix leaves the parse WELL-FORMED and
+		 * only namespace-ill-formed -- the reader still hands back a document
+		 * there -- and php refuses on either one. */
+		bOk = pTmp != 0 && pParser->wellFormed && pParser->nsWellFormed;
+		xmlFreeParserCtxt(pParser);
+	}else{
+		bOk = 0;
+	}
+	PH7_LibxmlDropErrors(pVm,nMark);
+	SyBlobRelease(&sBuf);
+	pRoot = (bOk && pTmp) ? pTmp->children : 0;
+	/* The wrapper must be the document's ONLY child: anything the chunk put
+	 * beside it -- a second root, a stray declaration -- is php's refusal too. */
+	if( pRoot == 0 || pRoot->next != 0 ){
+		if( pTmp ){
+			xmlFreeDoc(pTmp);
+		}
+		DomThrowSentence(pCtx,DOM_ERR_SYNTAX,"XML fragment is not well-formed");
+		return 0;
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	for( pKid = pRoot->children ; pKid ; ){
+		xmlNodePtr pNext = pKid->next;
+		xmlUnlinkNode(pKid);
+		xmlDOMWrapAdoptNode(0,pTmp,pKid,pDst,pCtxNode,0);
+		pKid->parent = 0;
+		pKid->prev = pLast;
+		pKid->next = 0;
+		if( pLast ){
+			pLast->next = pKid;
+		}else{
+			pFirst = pKid;
+		}
+		pLast = pKid;
+		pKid = pNext;
+	}
+	PH7_LibxmlDropErrors(pVm,nMark);
+	xmlFreeDoc(pTmp);
+	*pbOk = 1;
+	return pFirst;
+}
+/* The chain, linked into pParent before pRef (or last when there is none) and
+ * parked in the receiver's shell on the way so a teardown between the two
+ * still owns it. */
+static void DomFragmentInsert(phl_xmldoc *pShell,xmlNodePtr pParent,xmlNodePtr pRef,
+	xmlNodePtr pList)
+{
+	while( pList ){
+		xmlNodePtr pNext = pList->next;
+		pList->next = pList->prev = 0;
+		DomOrphanAdd(pShell,pList);
+		DomDetach(pShell,pList);
+		if( pRef ){
+			DomLinkBefore(pParent,pList,pRef);
+		}else{
+			DomLinkLast(pParent,pList);
+		}
+		DomNsOnInsertEx(pList,0);
+		pList = pNext;
+	}
+}
+/*
+ * Dom\Element::insertAdjacentHTML(Dom\AdjacentPosition $where, string $string): void
+ *
+ * The third door, and the one that does NOT share the body its two siblings
+ * run: those adopt a node the caller already owns and this one parses. What it
+ * shares is only the position word. The two outside positions refuse a
+ * receiver whose parent is missing or is the document -- php's No Modification
+ * refusal, where `insertAdjacentElement` answers null on the same receiver --
+ * and they refuse BEFORE the chunk is parsed, so a malformed chunk on a
+ * parentless element is that refusal and not the Syntax one.
+ */
+DOM_METHOD(vm_builtin_Dom_Element_insertAdjacentHTML)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zWhere = nArg > 0 ? DomAdjacentWhere(apArg[0]) : "";
+	const char *zIn;
+	xmlNodePtr pNode,pCtxNode,pParent,pRef,pList;
+	int nIn = 0,bOutside,bOk;
+	if( pNd == 0 ){
+		return PH7_OK;
+	}
+	bOutside = DomNameIsCi(zWhere,"beforebegin") || DomNameIsCi(zWhere,"afterend");
+	if( !bOutside && !DomNameIsCi(zWhere,"afterbegin")
+	 && !DomNameIsCi(zWhere,"beforeend") ){
+		return DomThrow(pCtx,DOM_ERR_SYNTAX);
+	}
+	pNode = (xmlNodePtr)pNd->pNode;
+	pCtxNode = bOutside ? pNode->parent : pNode;
+	if( pCtxNode == 0 || pCtxNode->type == XML_DOCUMENT_NODE
+	 || pCtxNode->type == XML_HTML_DOCUMENT_NODE ){
+		return DomThrow(pCtx,DOM_ERR_NO_MOD);
+	}
+	zIn = nArg > 1 ? ph7_value_to_string(apArg[1],&nIn) : "";
+	pList = DomParseFragment(pCtx,pCtxNode,zIn,nIn,&bOk);
+	if( pList == 0 ){
+		return PH7_OK;            /* refused, or a chunk with nothing in it */
+	}
+	if( DomNameIsCi(zWhere,"beforebegin") ){
+		pParent = pNode->parent;  pRef = pNode;
+	}else if( DomNameIsCi(zWhere,"afterend") ){
+		pParent = pNode->parent;  pRef = pNode->next;
+	}else if( DomNameIsCi(zWhere,"afterbegin") ){
+		pParent = pNode;          pRef = pNode->children;
+	}else{
+		pParent = pNode;          pRef = 0;
+	}
+	DomFragmentInsert(pNd->pShell,pParent,pRef,pList);
+	return PH7_OK;
+}
 /* DOMDocument::createTextNode / createComment / createCDATASection(string $data) */
 static int DomDocCreateData(ph7_context *pCtx,int iKind,int nArg,ph7_value **apArg)
 {
@@ -13010,6 +13407,9 @@ static int DomElemProp(ph7_context *pCtx,const char *zName)
 	 * is what lands in the string. The pair differ on the WRITE, not the read:
 	 * `textContent` stores its bytes literally, this one parses them.
 	 */
+	if( DomNameIs(zName,"innerHTML") || DomNameIs(zName,"outerHTML") ){
+		return DomHtmlMixinRead(pCtx,DomNameIs(zName,"innerHTML"));
+	}
 	if( DomNameIs(zName,"substitutedNodeValue") ){
 		pNd = DomThisNode(pCtx);
 		DomTextContent(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);
@@ -13449,6 +13849,66 @@ static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 	}
 	return DOM_SET_UNKNOWN;
 }
+/* The two writers' shared body: `innerHTML` replaces the receiver's children,
+ * `outerHTML` replaces the receiver itself. */
+static int DomHtmlMixinWrite(ph7_context *pCtx,int bInner,ph7_value *pVal,int *pRc)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode,pCtxNode,pList;
+	SyBlob sVal;
+	int bOk;
+	if( DomWriteText(pCtx,"Dom\\Element",bInner ? "innerHTML" : "outerHTML","string",
+			pVal,&sVal,pRc) == 0 ){
+		return DOM_SET_DONE;
+	}
+	if( pNd == 0 ){
+		SyBlobRelease(&sVal);
+		return DOM_SET_DONE;
+	}
+	pNode = (xmlNodePtr)pNd->pNode;
+	pCtxNode = bInner ? pNode : pNode->parent;
+	/* php's outer writer returns on a parentless receiver BEFORE it parses --
+	 * so a malformed chunk written to one is silent -- and refuses a receiver
+	 * whose parent is the DOCUMENT, which has no markup context to parse in. */
+	if( !bInner ){
+		if( pCtxNode == 0 ){
+			SyBlobRelease(&sVal);
+			return DOM_SET_DONE;
+		}
+		if( pCtxNode->type == XML_DOCUMENT_NODE
+		 || pCtxNode->type == XML_HTML_DOCUMENT_NODE ){
+			SyBlobRelease(&sVal);
+			*pRc = DomThrowVoid(pCtx,DOM_ERR_INVALID_MOD);
+			return DOM_SET_DONE;
+		}
+	}
+	pList = DomParseFragment(pCtx,pCtxNode,(const char *)SyBlobData(&sVal),
+		(int)SyBlobLength(&sVal),&bOk);
+	SyBlobRelease(&sVal);
+	if( !bOk ){
+		return DOM_SET_DONE;      /* the Syntax refusal is raised; nothing moved */
+	}
+	if( pList == 0 ){
+		/* The chunk held no nodes -- and an empty `innerHTML` still drops the
+		 * children it replaced, where an empty `outerHTML` removes the node. */
+		if( bInner ){
+			DomDropChildren(pCtx,pNd->pShell,pNode);
+		}else{
+			DomDetach(pNd->pShell,pNode);
+			DomOrphanAdd(pNd->pShell,pNode);
+		}
+		return DOM_SET_DONE;
+	}
+	if( bInner ){
+		DomDropChildren(pCtx,pNd->pShell,pNode);
+		DomFragmentInsert(pNd->pShell,pNode,0,pList);
+	}else{
+		DomFragmentInsert(pNd->pShell,pCtxNode,pNode,pList);
+		DomDetach(pNd->pShell,pNode);
+		DomOrphanAdd(pNd->pShell,pNode);
+	}
+	return DOM_SET_DONE;
+}
 /* DOMElement adds className and id, both of them ATTRIBUTES under the name. */
 static int DomSetElemProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
 {
@@ -13477,6 +13937,9 @@ static int DomSetElemProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 	 * write cannot fail. An undeclared entity is not a refusal: libxml drops the
 	 * reference and keeps the text around it, which is php's answer too.
 	 */
+	if( DomNameIs(zName,"innerHTML") || DomNameIs(zName,"outerHTML") ){
+		return DomHtmlMixinWrite(pCtx,DomNameIs(zName,"innerHTML"),pVal,pRc);
+	}
 	if( DomNameIs(zName,"substitutedNodeValue") ){
 		if( DomWriteText(pCtx,"Dom\\Element","substitutedNodeValue","string",
 			pVal,&sVal,pRc) == 0 ){
@@ -15315,7 +15778,7 @@ static const char * const azDomMXmlDocDebug[] = {
 static const char * const azDomMElemDebug[] = {
 	"namespaceURI", "prefix", "localName", "tagName", "id", "className",
 	"classList", "attributes", DOM_MPARENT_DEBUG, DOM_MCHILD_DEBUG,
-	"substitutedNodeValue", DOM_MNODE_DEBUG
+	"innerHTML", "outerHTML", "substitutedNodeValue", DOM_MNODE_DEBUG
 };
 /* php dumps the list as its two virtual names, length before value. */
 static const char * const azDomTokDebug[] = { "length", "value" };
@@ -16988,16 +17451,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * namespaced tree changes is the position argument: `$where` is the
 		 * enum rather than a word, so a misspelling is a TypeError at the call
 		 * instead of the door's Syntax refusal, and the four positions are the
-		 * only ones nameable. `insertAdjacentHTML` is php's third door here and
-		 * is NOT declared, because it runs the fragment parser `innerHTML` and
-		 * `outerHTML` run and not this body -- a row without that parser behind
-		 * it would answer a name we cannot serve. */
+		 * only ones nameable. The third one, `insertAdjacentHTML`, is beside
+		 * them under its own body: it PARSES a chunk where these two adopt a
+		 * node the caller already owns, which is why its refusals are not
+		 * theirs. */
 		{ "insertAdjacentElement", PH7_MOD_PUBLIC,
 		  "Dom\\AdjacentPosition $where, Dom\\Element $element", "?Dom\\Element",
 		  vm_builtin_Dom_Element_insertAdjacentElement },
 		{ "insertAdjacentText", PH7_MOD_PUBLIC,
 		  "Dom\\AdjacentPosition $where, string $data", "void",
 		  vm_builtin_Dom_Element_insertAdjacentText },
+		{ "insertAdjacentHTML", PH7_MOD_PUBLIC,
+		  "Dom\\AdjacentPosition $where, string $string", "void",
+		  vm_builtin_Dom_Element_insertAdjacentHTML },
 		{ "setIdAttribute",   PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "void",
 		  vm_builtin_DOMElement_setIdAttribute },
 		{ "setIdAttributeNS", PH7_MOD_PUBLIC,
@@ -17152,6 +17618,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		DOM_VPROP("className","string"),
 		DOM_VPROP("classList","Dom\\TokenList"),
 		DOM_VPROP("attributes","Dom\\NamedNodeMap"),
+		DOM_VPROP("innerHTML","string"),
+		DOM_VPROP("outerHTML","string"),
 		DOM_VPROP("substitutedNodeValue","string"),
 		/* The parked token list's ADDRESS, borrowed; see DomTokListOf. Hidden,
 		 * so it is on no dump, no cast, no walk and no Reflection listing. */
