@@ -1303,6 +1303,35 @@ static int DomLinkRefusalPre(xmlNodePtr pParent,xmlNodePtr pChild)
 	}
 	return 0;
 }
+/*
+ * A DOCTYPE appended to a document becomes that document's INTERNAL SUBSET, and
+ * not merely a child of it.
+ *
+ * The two are different things to libxml, and which one a doctype is decides
+ * what it serializes as: the notation table is written only for the subset a
+ * document declares (`dtd->doc->intSubset == dtd`), so a doctype that is a
+ * child and nothing more loses its NOTATION declarations on the way out while
+ * keeping its entities and elements, which come off the child list.
+ *
+ * php sets it from `appendChild` alone -- measured against the notation, on all
+ * three insertion doors: `insertBefore` and `replaceChild` put the node in the
+ * child list and leave the document's subset slot as they found it, so a
+ * doctype installed by either really does serialize without its notations. And
+ * the slot is written only when it is empty: php refuses a second doctype
+ * outright, so the first one it accepted is the one that stays.
+ *
+ * Nothing has to clear this again -- xmlUnlinkNode empties the slot itself when
+ * the node leaving is the document's own subset, which is what keeps a removed
+ * doctype from being freed twice, once off the orphan set and once off the slot.
+ */
+static void DomDtdBecomeSubset(xmlNodePtr pParent,xmlNodePtr pChild)
+{
+	if( (pChild->type == XML_DTD_NODE || pChild->type == XML_DOCUMENT_TYPE_NODE)
+	 && (pParent->type == XML_DOCUMENT_NODE || pParent->type == XML_HTML_DOCUMENT_NODE)
+	 && ((xmlDocPtr)pParent)->intSubset == 0 ){
+		((xmlDocPtr)pParent)->intSubset = (xmlDtdPtr)pChild;
+	}
+}
 /* The ancestor-cycle walk. Walking UP from the parent also catches
  * pChild == pParent, so `$frag->appendChild($frag)` is Hierarchy even
  * for an EMPTY fragment -- the cycle answers before the empty warning. */
@@ -1426,6 +1455,7 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 	}
 	DomDetach(pChd->pShell,(xmlNodePtr)pChd->pNode);
 	DomLinkLast((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
+	DomDtdBecomeSubset((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
 	DomNsOnInsertEx((xmlNodePtr)pChd->pNode,0);
 	ph7_result_value(pCtx,apArg[0]);
 	return PH7_OK;
@@ -2677,14 +2707,22 @@ DOM_METHOD(vm_builtin_DOMNode_isEqualNode)
 /* ===== Copying: cloneNode ===== */
 
 /*
- * One node copied the way php copies it.
+ * One node copied the way php copies it, onto the document it is handed --
+ * which is the SOURCE's for a clone and the RECEIVER's for an import.
  *
  * libxml's generic copier has no case for a DTD node and answers NULL there, so
  * `$doc->doctype->cloneNode()` was `false` -- php reaches for xmlCopyDtd
  * instead, which carries the whole internal subset (its declarations, entities
- * and notations) across. The copy keeps the SOURCE's document in its `doc`
- * slot without being linked into it, which is what makes php's cloned doctype
- * still answer an `internalSubset` while its `parentNode` is null.
+ * and notations) across whatever depth was asked for, the subset not being a
+ * child in the ordinary sense. xmlCopyDtd leaves the copy document-less, so the
+ * re-home is this side's; it reaches the declarations under it as well, and it
+ * is safe on a fresh copy in a way it is not on a parsed node, whose name is
+ * still interned in the dictionary of the document it came from.
+ *
+ * Which document the copy lands in is the whole of `internalSubset`, since php
+ * reads that off the DOCUMENT's subset and not off the receiver's own children:
+ * a doctype cloned in place still answers the subset it was parsed with, and
+ * the same doctype imported into a fresh document answers null.
  */
 static xmlNodePtr DomCopyNode(xmlNodePtr pNode,xmlDocPtr pDoc,int iExtended)
 {
@@ -2692,7 +2730,7 @@ static xmlNodePtr DomCopyNode(xmlNodePtr pNode,xmlDocPtr pDoc,int iExtended)
 	if( pNode->type == XML_DTD_NODE || pNode->type == XML_DOCUMENT_TYPE_NODE ){
 		pCopy = (xmlNodePtr)xmlCopyDtd((xmlDtdPtr)pNode);
 		if( pCopy ){
-			pCopy->doc = pNode->doc;
+			xmlSetTreeDoc(pCopy,pDoc ? pDoc : pNode->doc);
 		}
 		return pCopy;
 	}
@@ -7222,6 +7260,11 @@ DOM_METHOD(vm_builtin_DOMDocument_createElementNS)
  *     binding of the same URI on the target's ROOT -- reusing one the root
  *     already has (so the prefix can change, `p:b` arriving as `z:b`) and
  *     declaring it there otherwise.
+ *   * A DOCTYPE crosses whole, and $deep does not reach it: the internal subset
+ *     rides along either way. It arrives as an orphan like any other import, so
+ *     the receiver still answers a null `doctype` until it is appended -- and
+ *     the copy's own `internalSubset` reads null meanwhile, that property being
+ *     the RECEIVER document's subset rather than the node's own declarations.
  */
 static int DomImportNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bModern)
 {
@@ -7256,9 +7299,10 @@ static int DomImportNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bModer
 	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	/* 2 is libxml's `node + namespaces + attributes, no children`, which is what
-	 * makes a shallow import carry the attributes; cloneNode asks the same way. */
-	pCopy = xmlDocCopyNode(pNode,pDoc,bDeep ? 1 : 2);
-	DomNsCopyMarks(pNode,pCopy);
+	 * makes a shallow import carry the attributes; cloneNode asks the same way,
+	 * and through the same copier -- which is what carries a DOCTYPE across, the
+	 * one node kind libxml's generic copier has no case for. */
+	pCopy = DomCopyNode(pNode,pDoc,bDeep ? 1 : 2);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::importNode");
 	if( pCopy == 0 ){
 		ph7_result_bool(pCtx,0);
