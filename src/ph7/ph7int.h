@@ -6024,6 +6024,7 @@ PH7_PRIVATE int PH7_VmQualifiedCallableMethod(ph7_vm *pVm,ph7_class *pOrg,const 
 	char *zBuf,int nBuf,const char **pzWhy);
 PH7_PRIVATE int PH7_VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeBefore);
 PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char *zBuf,int nBuf);
+PH7_PRIVATE void PH7_VmCallableDeprecation(ph7_vm *pVm,ph7_value *pValue);
 PH7_PRIVATE void PH7_VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut);
 PH7_PRIVATE ph7_value * PH7_VmExtractSuper(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 PH7_VmHashmapInsert(ph7_hashmap *pMap,const char *zKey,int nKeylen,const char *zData,int nLen);

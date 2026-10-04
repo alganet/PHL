@@ -3192,7 +3192,9 @@ PH7_PRIVATE sxi32 PH7_CheckCallbackArg(
 	)
 {
 	char zReason[256];
-	const char *zWhy = PH7_VmCallableReason(pCtx->pVm,pCb,zReason,sizeof(zReason));
+	const char *zWhy;
+	PH7_VmCallableDeprecation(pCtx->pVm,pCb);
+	zWhy = PH7_VmCallableReason(pCtx->pVm,pCb,zReason,sizeof(zReason));
 	if( zWhy == 0 ){
 		return PH7_OK;
 	}

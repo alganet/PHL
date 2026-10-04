@@ -14,6 +14,8 @@ callable made from such a value. Both halves are pinned here, since making one
 work is exactly what would break the other.
 --FILE--
 <?php
+// php deprecates the scope-relative spellings; the handler swallows that
+set_error_handler(fn($n) => $n === E_DEPRECATED);
 class CskBase {
     public static function s() { return 'CskBase::s'; }
     public function m() { return 'CskBase::m ' . (isset($this) ? get_class($this) : 'none'); }
@@ -72,6 +74,7 @@ foreach ((new CskChild)->directDispatch() as $k => $v) { echo $k, ' => ', var_ex
 echo 'global is_callable => ', var_export(is_callable('self::s'), true), "\n";
 echo 'global is_callable arr => ', var_export(is_callable(['self', 's']), true), "\n";
 echo "end\n";
+restore_error_handler();
 ?>
 --EXPECT--
 is_callable str self::s => true

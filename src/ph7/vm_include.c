@@ -1342,6 +1342,7 @@ PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_
 		return SXRET_OK;
 	}
 	/* Validate that the callback is callable */
+	PH7_VmCallableDeprecation(pVm,apArg[0]);
 	if( !PH7_VmIsCallable(pVm,apArg[0],TRUE) ){
 		int iThrow = 1; /* Default: throw on error */
 		if( nArg >= 2 ){
@@ -1411,6 +1412,7 @@ PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
+	PH7_VmCallableDeprecation(pVm,apArg[0]); /* php resolves its callable argument first */
 	nEntry = SySetUsed(&pVm->aAutoload);
 	for( n = 0 ; n < nEntry ; ++n ){
 		VmAutoloadCB *pEntry = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);

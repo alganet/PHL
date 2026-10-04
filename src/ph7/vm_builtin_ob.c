@@ -711,6 +711,7 @@ PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	 * so `if (!ob_start('my_filter'))` never fired on a misspelled name and the
 	 * output came out unfiltered. */
 	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
+		PH7_VmCallableDeprecation(pVm,apArg[0]);
 		if( !PH7_VmIsCallable(pVm,apArg[0],TRUE) ){
 			char zBuf[256];
 			const char *zReason = PH7_VmCallableReason(pVm,apArg[0],zBuf,(int)sizeof(zBuf));

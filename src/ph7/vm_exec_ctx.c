@@ -2631,6 +2631,7 @@ PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7
 		ph7_result_value(pCtx, apArg[0]); /* already a Closure: idempotent */
 		return PH7_OK;
 	}
+	PH7_VmCallableDeprecation(pVm, apArg[0]);
 	pClosure = VmFccWrapValue(pVm, apArg[0], TRUE);
 	if( pClosure == 0 ){
 		/* php says WHY, with the same reason taxonomy every callback argument uses —

@@ -2038,7 +2038,9 @@ PH7_PRIVATE int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString
 		 * inside. Same predicate the builtin answers with, so the type and
 		 * is_callable() can never disagree. (Parameters and return values only:
 		 * the compiler rejects `callable` on a property or class constant, as
-		 * php does.) */
+		 * php does.) A user declaration checks it the way is_callable() does, so it
+		 * raises the scope deprecation too. */
+		PH7_VmCallableDeprecation(pVm,pValue);
 		return PH7_VmIsCallable(pVm,pValue,TRUE) ? 1 : 0;
 	}
 	if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
@@ -2399,7 +2401,19 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 	/* Pseudo-type alternatives (true/false/iterable; `mixed` never unions) are
 	 * stored as SXU32_HIGH name atoms and need value-checking, not instanceof.
 	 * A match on any one accepts the value (handles e.g. `true|int`, `?true`,
-	 * `iterable|Foo`). Only singleton-group (ordinary union) atoms apply here. */
+	 * `iterable|Foo`). Only singleton-group (ordinary union) atoms apply here.
+	 * php takes a value its own type's arm names before it asks `callable`
+	 * anything, so `callable|string` given 'self::m' raises no callable
+	 * deprecation: accept a plain string or an array on that arm first. */
+	if( (pValue->iFlags & (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) == MEMOBJ_STRING
+	 || (pValue->iFlags & MEMOBJ_HASHMAP) ){
+		sxu32 nOwn = (pValue->iFlags & MEMOBJ_HASHMAP) ? MEMOBJ_HASHMAP : MEMOBJ_STRING;
+		for( i = 0; i < nAlts; i++ ){
+			if( aGroupCount[aAlts[i].nGroup] < 2 && aAlts[i].nType == nOwn ){
+				return SXRET_OK;
+			}
+		}
+	}
 	for( i = 0; i < nAlts; i++ ){
 		if( aGroupCount[aAlts[i].nGroup] >= 2 ) continue;
 		if( aAlts[i].nType == SXU32_HIGH

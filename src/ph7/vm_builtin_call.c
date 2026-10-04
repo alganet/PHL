@@ -553,6 +553,92 @@ PH7_PRIVATE int PH7_VmQualifiedCallableMethod(ph7_vm *pVm,ph7_class *pOrg,const 
 	return 1;
 }
 /*
+ * The canonical spelling of a scope keyword written in any case, or 0. php folds the
+ * class half of a callable before it compares it (zend_is_callable_check_class).
+ */
+static const char * VmCallableKeyword(const char *zCls,sxu32 nCls)
+{
+	if( nCls == 4 && SyStrnicmp(zCls,"self",4) == 0 ) return "self";
+	if( nCls == 6 && SyStrnicmp(zCls,"parent",6) == 0 ) return "parent";
+	if( nCls == 6 && SyStrnicmp(zCls,"static",6) == 0 ) return "static";
+	return 0;
+}
+/* php's "Use of "self" in callables is deprecated", when the keyword resolves here. */
+static void VmCallableKeywordDeprecation(ph7_vm *pVm,const char *zCls,sxu32 nCls)
+{
+	const char *zKw = VmCallableKeyword(zCls,nCls);
+	char zMsg[64];
+	if( zKw == 0 || PH7_VmResolveScopeName(&(*pVm),zKw,(sxu32)SyStrlen(zKw)) == 0 ){
+		return; /* no class scope: the callable is refused, and php says nothing more */
+	}
+	SyBufferFormat(zMsg,(int)sizeof(zMsg),"Use of \"%s\" in callables is deprecated",zKw);
+	PH7_VmThrowError(&(*pVm),0,E_DEPRECATED,zMsg);
+}
+/*
+ * The E_DEPRECATED php 8.2 raises every time a door checks a callable that leans on the
+ * calling scope: a `self`/`parent`/`static` class half (`'self::m'`, `['parent','m']`),
+ * and an array callable whose method half is itself qualified (`[$o,'parent::m']`,
+ * `['C','A::m']`), which is reported whole as `Callables of the form ["C", "A::m"]`
+ * with the target's class. The keyword inside a qualified method half says nothing of
+ * its own. Each door asks once, the way php's zend_is_callable_ex does -- is_callable(),
+ * a callback parameter, a `callable` declaration, Closure::fromCallable() -- whether or
+ * not the method then turns out to exist; only is_callable()'s syntax-only mode and
+ * the direct `$cb()` dispatch never resolve the scope, so never raise it.
+ */
+PH7_PRIVATE void PH7_VmCallableDeprecation(ph7_vm *pVm,ph7_value *pValue)
+{
+	if( pValue->iFlags & MEMOBJ_STRING ){
+		const char *zCls,*zMeth;
+		sxu32 nCls,nMeth;
+		if( PH7_VmCallableStringParts((const char *)SyBlobData(&pValue->sBlob),
+				SyBlobLength(&pValue->sBlob),&zCls,&nCls,&zMeth,&nMeth) ){
+			VmCallableKeywordDeprecation(&(*pVm),zCls,nCls);
+		}
+		return;
+	}
+	if( pValue->iFlags & MEMOBJ_HASHMAP ){
+		ph7_value *pTarget = 0,*pName = 0;
+		ph7_class *pOrg,*pRes = 0;
+		const char *zName,*zCls,*zMeth,*zWhy;
+		sxu32 nName,nCls,nMeth,i;
+		char zBuf[128];
+		if( !PH7_VmArrayCallableParts(&(*pVm),(ph7_hashmap *)pValue->x.pOther,&pTarget,&pName) ){
+			return;
+		}
+		if( (pTarget->iFlags & MEMOBJ_STRING) && (pTarget->iFlags & MEMOBJ_OBJ) == 0 ){
+			VmCallableKeywordDeprecation(&(*pVm),(const char *)SyBlobData(&pTarget->sBlob),
+				SyBlobLength(&pTarget->sBlob));
+		}
+		if( (pName->iFlags & MEMOBJ_STRING) == 0 ){
+			return;
+		}
+		zName = (const char *)SyBlobData(&pName->sBlob);
+		nName = SyBlobLength(&pName->sBlob);
+		for( i = 1 ; i < nName && !(zName[i-1] == ':' && zName[i] == ':') ; ++i ){}
+		if( i >= nName ){
+			return; /* a plain method name: the common case never resolves the target twice */
+		}
+		pOrg = VmCallbackTargetClass(&(*pVm),pTarget);
+		if( pOrg == 0 && (pTarget->iFlags & MEMOBJ_STRING) ){
+			const char *zKw = VmCallableKeyword((const char *)SyBlobData(&pTarget->sBlob),
+				SyBlobLength(&pTarget->sBlob));
+			if( zKw ){
+				pOrg = PH7_VmResolveScopeName(&(*pVm),zKw,(sxu32)SyStrlen(zKw));
+			}
+		}
+		if( pOrg && PH7_VmQualifiedCallableMethod(&(*pVm),pOrg,zName,nName,&pRes,&zCls,&nCls,
+				&zMeth,&nMeth,zBuf,(int)sizeof(zBuf),&zWhy) > 0 ){
+			SyBlob sMsg;
+			SyBlobInit(&sMsg,&pVm->sAllocator);
+			SyBlobFormat(&sMsg,"Callables of the form [\"%z\", \"%.*s\"] are deprecated",
+				&pOrg->sDisp,(int)nName,zName);
+			SyBlobNullAppend(&sMsg);
+			PH7_VmThrowError(&(*pVm),0,E_DEPRECATED,(const char *)SyBlobData(&sMsg));
+			SyBlobRelease(&sMsg);
+		}
+	}
+}
+/*
  * The class, method name and callability form (VmMethodIsCallable's bStaticForm) that an
  * array callable's STRING method half names, given its target and the target's class: the
  * pair as written, or what a qualified name resolves to. Answers
@@ -1143,6 +1229,7 @@ PH7_PRIVATE int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **ap
 	if( nArg > 1 && ph7_value_to_bool(apArg[1]) ){
 		res = VmIsCallableSyntaxOnly(pVm,apArg[0]);
 	}else{
+		PH7_VmCallableDeprecation(pVm,apArg[0]);
 		res = PH7_VmIsCallable(pVm,apArg[0],TRUE);
 	}
 	/* php always writes &$callable_name when it is passed — on a false answer too. */
@@ -1319,6 +1406,7 @@ PH7_PRIVATE int vm_builtin_register_shutdown_function(ph7_context *pCtx,int nArg
 		 * any __invoke object) callback; it is resolved/validated at shutdown. */
 		return PH7_OK;
 	}
+	PH7_VmCallableDeprecation(pCtx->pVm,apArg[0]);
 	/* Zero the Entry */
 	SyZero(&sEntry,sizeof(VmShutdownCB));
 	/* Initialize fields */

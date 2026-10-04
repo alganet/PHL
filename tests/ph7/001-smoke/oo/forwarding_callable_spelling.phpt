@@ -11,6 +11,8 @@ class is one of the resolved class's descendants. The same holds for a name the
 class answers only through __callStatic. An explicit class name does not forward.
 --FILE--
 <?php
+// php deprecates the scope-relative spellings; the handler swallows that
+set_error_handler(fn($n) => $n === E_DEPRECATED);
 class FcsA {
     public static function sm() { return "FcsA::sm " . static::class; }
     public static function __callStatic($n, $a) { return "FcsA::__callStatic($n) " . static::class; }
@@ -35,6 +37,7 @@ class FcsC extends FcsB {}
 echo "-- a FcsC instance\n", (new FcsC)->viaInstance();
 echo "-- FcsC::viaStatic()\n", FcsC::viaStatic();
 echo "-- FcsB::viaStatic()\n", FcsB::viaStatic();
+restore_error_handler();
 --EXPECT--
 -- a FcsC instance
 parent::sm => FcsA::sm FcsC
