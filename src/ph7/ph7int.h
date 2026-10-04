@@ -8633,6 +8633,11 @@ PH7_PRIVATE int PH7_StreamUserUrlStat(ph7_context *pCtx,const char *zPath,int iF
 PH7_PRIVATE void PH7_StreamUserCast(ph7_context *pCtx,const ph7_io_stream *pStream,void *pHandle);
 PH7_PRIVATE int PH7_StreamUserPathOp(ph7_context *pCtx,const char *zPath,const char *zMethod,void *pStreamCtx,ph7_value **apExtra,int nExtra,int *pbAnswer);
 PH7_PRIVATE void PH7_StreamArmOpenMode(ph7_vm *pVm,const char *zMode,int nMode);
+/* php's whole-string, case-sensitive question about a php://memory or php://temp
+ * mode: does it hold a `w`, an `a` or a `+` anywhere (writable), and does it hold
+ * an `a` (append)? Both the device's write permission and the mode it REPORTS
+ * come from this one answer. */
+PH7_PRIVATE void PH7_PhpMemoryMode(const char *zMode,int nMode,int *pbWrite,int *pbAppend);
 PH7_PRIVATE int PH7_StreamUserDirReason(ph7_vm *pVm,const ph7_io_stream *pStream,char *zBuf,int nBuf);
 PH7_PRIVATE int PH7_VfsUserStatFields(ph7_context *pCtx,const char *zPath,int eAsk,ph7_int64 *aVal);
 PH7_PRIVATE void PH7_VfsUserStatResult(ph7_context *pCtx,int eAsk,const ph7_int64 *aVal);

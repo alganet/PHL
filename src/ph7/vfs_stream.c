@@ -10423,14 +10423,12 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
 			/* php's memory streams do not keep the mode they were opened with:
 			 * a buffer is readable and writable either way, so php reports the
-			 * one it actually built. */
-			int i,bWrite = 0,bAppend = nMode > 0 && (zMode[0] == 'a' || zMode[0] == 'A');
-			for( i = 0 ; i < nMode ; i++ ){
-				if( zMode[i] == 'w' || zMode[i] == 'W' || zMode[i] == 'a'
-				 || zMode[i] == 'A' || zMode[i] == '+' ){
-					bWrite = 1;
-				}
-			}
+			 * one it actually built -- by the same whole-string, case-sensitive
+			 * question the device answered when it decided whether this buffer
+			 * accepts a write at all. Deciding it twice is how `"ra"` came back
+			 * `w+b` where php says `a+b`, and `"W"` writable where php says no. */
+			int bWrite = 0,bAppend = 0;
+			PH7_PhpMemoryMode(zMode,nMode,&bWrite,&bAppend);
 			zMeta = bWrite ? (bAppend ? "a+b" : "w+b") : "rb";
 			nMeta = (int)SyStrlen(zMeta);
 		}

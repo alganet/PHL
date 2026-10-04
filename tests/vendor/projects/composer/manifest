@@ -5,9 +5,14 @@
 # It is also the tool that installs every other project in this directory, so a wrong
 # answer here is a wrong answer under the whole gate.
 REPO="https://github.com/composer/composer.git"
-# The release this box's own `composer` is, so the resolver under test is the resolver
-# that produced every committed lock beside it.
-REF="2.10.2"
+# The pin tracks composer's own releases and NOT this box's installed composer, which
+# is what produced the locks beside it. 2.10.2 was both, until its `diagnose` command
+# started failing under the ORACLE: that command runs a LIVE audit of composer itself
+# against packagist's advisory feed, so a published advisory against the pinned release
+# reddens the step for a reason no engine can answer. 2.10.3 carries the fix. The step
+# is world-coupled by construction and will red again on the next advisory -- the pin
+# is the only lever, and it is an owner's.
+REF="2.10.3"
 # composer's own `test` script is `@php simple-phpunit`, and symfony/phpunit-bridge's
 # simple-phpunit DOWNLOADS and installs a PHPUnit on first use. That install is a build
 # step, not a measurement, so it runs once under the ORACLE; the steps below then run

@@ -255,6 +255,40 @@ static int PHPStreamFilterOpen(const char *zSpec,int nSpec,int iMode,ph7_vm *pVm
 	*ppData = pData;
 	return PH7_OK;
 }
+/*
+ * php's memory devices do not read a mode the way every other stream does.
+ * `php_stream_url_wrap_php` asks one question of the whole string --
+ * `strpbrk(mode, "wa+")` -- so a `w`, an `a` or a `+` ANYWHERE in it builds a
+ * writable buffer and nothing else does. Position is not part of it and neither
+ * is the ordinary first-character grammar: `"rw"`, `"+r"` and `"bw"` are all
+ * writable, and `"r"`, `"rb"`, `"x"` and `"c"` are all read-only even though
+ * two of those are write modes anywhere else. The test is case-SENSITIVE --
+ * `"W"` and `"A"` are read-only -- and the mode the stream then REPORTS is
+ * decided the same way: any lowercase `a` in the string makes it `a+b`, any
+ * other writable spelling `w+b`, and a read-only one `rb`.
+ *
+ * Both answers come from here so the two cannot drift: reading the parsed FLAG
+ * bits instead cost `"rw"` its writes -- composer's BufferIO opens exactly that
+ * and every line it captured came back empty.
+ */
+PH7_PRIVATE void PH7_PhpMemoryMode(const char *zMode,int nMode,int *pbWrite,int *pbAppend)
+{
+	int i,bWrite = 0,bAppend = 0;
+	for( i = 0 ; zMode && i < nMode && zMode[i] != 0 ; ++i ){
+		if( zMode[i] == 'a' ){
+			bAppend = 1;
+			bWrite = 1;
+		}else if( zMode[i] == 'w' || zMode[i] == '+' ){
+			bWrite = 1;
+		}
+	}
+	if( pbWrite ){
+		*pbWrite = bWrite;
+	}
+	if( pbAppend ){
+		*pbAppend = bAppend;
+	}
+}
 /* Does this php:// name say EXACTLY zWant? php matches its sub-stream names
  * whole (case-insensitively) rather than by prefix, and only `temp` may carry
  * anything after it. */
@@ -332,9 +366,21 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 		return -1;
 	}
 	pData->bTemp = bTemp;
-	pData->bReadOnly = iMode == PH7_IO_STREAM_INPUT
-		|| (iMode == PH7_IO_STREAM_MEMORY
-		 && (iOpenFlags & (PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_APPEND)) == 0);
+	pData->bReadOnly = iMode == PH7_IO_STREAM_INPUT;
+	if( iMode == PH7_IO_STREAM_MEMORY ){
+		/* The caller's own spelling, armed for the length of this open. Only an
+		 * opener that HAS one arms it; every other is C with fixed flags, and
+		 * for those the flag bits are the only thing there is to ask. */
+		const char *zAsk = (pResource && pResource->pVm) ? pResource->pVm->zOpenMode : 0;
+		if( zAsk && zAsk[0] ){
+			int bWrite = 0;
+			PH7_PhpMemoryMode(zAsk,(int)SyStrlen(zAsk),&bWrite,0);
+			pData->bReadOnly = !bWrite;
+		}else{
+			pData->bReadOnly =
+				(iOpenFlags & (PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_APPEND)) == 0;
+		}
+	}
 	/* Make the handle public */
 	*ppHandle = (void *)pData;
 	return PH7_OK;
