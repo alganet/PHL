@@ -7260,45 +7260,6 @@ static int DomSaveFlags(int bFormat,int iOpts,int bDoc)
  * Answers the bytes in *pzOut (xmlFree'd by the caller) and their count, or -1.
  */
 /*
- * php 8.4's documents do not go through libxml's document saver: they run php's
- * own serializer, which writes the declaration and then each child back to
- * back. libxml's saver separates the document's top-level children with a
- * newline and ends the document with one, so the two disagree on every document
- * that has a prolog PI, a trailing comment, or nothing after its root at all.
- *
- * The declaration is still libxml's -- php gets it by emptying the document's
- * child list and asking the document saver for what is left, which is the
- * declaration and the newline behind it -- and so is every child's own dump.
- * Only the joins between them are php's, and a DTD is the one child it does
- * write a newline after.
- */
-static int DomSaveModernDoc(xmlSaveCtxtPtr pSave,xmlBufferPtr pBuf,xmlDocPtr pDoc)
-{
-	xmlNodePtr pChild = pDoc->children;
-	int rc;
-	pDoc->children = 0;
-	rc = xmlSaveDoc(pSave,pDoc);
-	pDoc->children = pChild;
-	if( rc < 0 ){
-		return -1;
-	}
-	while( pChild ){
-		if( xmlSaveTree(pSave,pChild) < 0 ){
-			return -1;
-		}
-		if( pChild->type == XML_DTD_NODE ){
-			/* Written past the save context, so it is flushed first: the
-			 * newline is the join, not part of the DTD's own dump. */
-			if( xmlSaveFlush(pSave) < 0
-			 || xmlBufferAdd(pBuf,(const xmlChar *)"\n",1) != 0 ){
-				return -1;
-			}
-		}
-		pChild = pChild->next;
-	}
-	return 0;
-}
-/*
  * php 8.4's tree parks an attribute's binding on the DOCUMENT rather than
  * declaring it (DomNsForCreateModernAttr), so an attribute made by
  * `createAttributeNS`, or renamed into a URI, carries a prefix nothing on its
@@ -7550,30 +7511,69 @@ static void DomNsSaveRestore(dom_ns_fix *pFix)
 	}
 }
 /*
- * php 8.4's namespaced tree does not hand a NODE to libxml's saver the way the
- * 2004 tree does: it walks the W3C serialization algorithm itself, and two node
- * types come out with bytes libxml would never write.
+ * php 8.4's namespaced tree does not hand its tree to libxml's saver the way the
+ * 2004 tree does: it walks the W3C XML serialization algorithm itself. Every
+ * node type below is written here rather than by libxml, and the bytes differ
+ * from libxml's on three rows.
  *
- * An ATTRIBUTE is one of them. libxml only ever writes an attribute from inside
- * a start tag, so its dump carries the separating space that belongs to the tag
- * -- `saveXML($attr)` on the 2004 tree really does answer ` y="2"`, and that
- * stays. php's own writer starts at the name, takes the prefix from the
- * attribute's BINDING rather than from its spelling, declares nothing (an
- * attribute whose prefix only the document parks still comes out bare), and
- * escapes `>` alongside `&`, `<` and `"` -- which libxml does not do in an
- * attribute -- plus tab, newline and carriage return as numeric references. An
- * entity reference inside the value is written back as the reference.
+ * An EMPTY ELEMENT is the first, and it is three answers rather than one. An
+ * element in the XHTML namespace with no children whose local name is one of
+ * the nineteen VOID names writes `<br />` -- a space before the slash, which
+ * libxml never writes -- while one whose name is not void writes a real end tag,
+ * `<div></div>`. An element in any OTHER namespace, or in none, keeps libxml's
+ * `<path/>`. `LIBXML_NOEMPTYTAG` overrides all three and writes the end tag
+ * everywhere, void names included. The void list is NOT the HTML serializer's:
+ * it is those eighteen names plus `menuitem`, which php carries here and not
+ * there, so the two tables stay apart (azDomHtmlVoid is the other one).
  *
- * A DOCTYPE is the other: php writes it through libxml and then adds a newline
- * of its own, exactly as it does for an internal subset inside a whole-document
- * dump (DomSaveModernDoc).
+ * A TEXT node is the second: it escapes `&`, `<` and `>` and NOTHING else, so a
+ * carriage return in text goes out as the raw byte where libxml spells it
+ * `&#13;`. An ATTRIBUTE VALUE is the other face of that question and keeps all
+ * three as numeric references, so the two tables differ by exactly the rows a
+ * value must not lose to attribute-value normalisation.
+ *
+ * An ATTRIBUTE handed in on its own is the third. libxml only ever writes an
+ * attribute from inside a start tag, so its dump carries the separating space
+ * that belongs to the tag -- `saveXML($attr)` on the 2004 tree really does
+ * answer ` y="2"`, and that stays. php's own writer starts at the name, takes
+ * the prefix from the attribute's BINDING rather than from its spelling,
+ * declares nothing (an attribute whose prefix only the document parks still
+ * comes out bare), and escapes `>` alongside `&`, `<` and `"` -- which libxml
+ * does not do in an attribute. An entity reference inside the value is written
+ * back as the reference.
+ *
+ * Everything the algorithm does NOT name is still libxml's: a DOCTYPE and the
+ * declaration nodes inside one go out through the save context, and a DOCTYPE
+ * gains a newline of its own behind it. The DECLARATION is libxml's too -- it is
+ * got by emptying the document's child list and asking the document saver for
+ * what is left, which is the declaration and the newline behind it. Only the
+ * joins between the children are php's, and libxml's own joins are why the two
+ * disagree on every document with a prolog PI or a trailing comment.
+ *
+ * Both writers therefore share one sink, and each flushes before the other
+ * writes so the bytes keep their order. The sink carries the document's
+ * ENCODER: a node's dump goes out in the document's declared encoding here, not
+ * in UTF-8, which is the one place this tree differs from the 2004 one -- there
+ * a node's dump really is UTF-8 whatever the document declares.
  */
-static int DomModernPut(xmlBufferPtr pBuf,const xmlChar *zIn)
+/* The nineteen HTML elements this writer opens and never closes. */
+static const char *azDomXmlVoid[] = {
+	"area","base","basefont","bgsound","br","col","embed","frame","hr","img",
+	"input","keygen","link","menuitem","meta","param","source","track","wbr"
+};
+static int DomHtmlNameIn(const char **apList,int nList,const xmlChar *zName);
+static int DomModernPutRaw(xmlOutputBufferPtr pOut,const char *zIn,int nIn)
 {
-	int nIn = zIn ? xmlStrlen(zIn) : 0;
-	return (nIn > 0 && xmlBufferAdd(pBuf,zIn,nIn) != 0) ? -1 : 0;
+	return (nIn > 0 && xmlOutputBufferWrite(pOut,nIn,zIn) < 0) ? -1 : 0;
 }
-static int DomModernPutAttrText(xmlBufferPtr pBuf,const xmlChar *zIn)
+static int DomModernPut(xmlOutputBufferPtr pOut,const xmlChar *zIn)
+{
+	return DomModernPutRaw(pOut,(const char *)zIn,zIn ? xmlStrlen(zIn) : 0);
+}
+/* The two escape tables. `bAttr` picks: a value spells a tab, a newline and a
+ * carriage return as numeric references and escapes the quote, where TEXT keeps
+ * all four bytes and escapes `&`, `<` and `>` alone. */
+static int DomModernPutEscaped(xmlOutputBufferPtr pOut,const xmlChar *zIn,int bAttr)
 {
 	const char *zRun = (const char *)zIn,*zCur = zRun;
 	if( zIn == 0 ){
@@ -7591,54 +7591,266 @@ static int DomModernPutAttrText(xmlBufferPtr pBuf,const xmlChar *zIn)
 			case '\r': zRep = "&#13;";  break;
 			default:   continue;
 		}
-		if( zCur > zRun
-		 && xmlBufferAdd(pBuf,(const xmlChar *)zRun,(int)(zCur - zRun)) != 0 ){
-			return -1;
+		if( !bAttr && zCur[0] != '&' && zCur[0] != '<' && zCur[0] != '>' ){
+			continue;
 		}
-		if( DomModernPut(pBuf,(const xmlChar *)zRep) ){
+		if( DomModernPutRaw(pOut,zRun,(int)(zCur - zRun))
+		 || DomModernPut(pOut,(const xmlChar *)zRep) ){
 			return -1;
 		}
 		zRun = zCur + 1;
 	}
-	if( zCur > zRun
-	 && xmlBufferAdd(pBuf,(const xmlChar *)zRun,(int)(zCur - zRun)) != 0 ){
-		return -1;
-	}
-	return 0;
+	return DomModernPutRaw(pOut,zRun,(int)(zCur - zRun));
 }
-static int DomModernDumpAttr(xmlBufferPtr pBuf,xmlAttrPtr pAttr)
+static int DomModernPutAttrText(xmlOutputBufferPtr pOut,const xmlChar *zIn)
+{
+	return DomModernPutEscaped(pOut,zIn,1);
+}
+static int DomModernPutText(xmlOutputBufferPtr pOut,const xmlChar *zIn)
+{
+	return DomModernPutEscaped(pOut,zIn,0);
+}
+static int DomModernDumpAttr(xmlOutputBufferPtr pOut,xmlAttrPtr pAttr)
 {
 	xmlNodePtr pChild;
 	if( pAttr->ns && pAttr->ns->prefix
-	 && (DomModernPut(pBuf,pAttr->ns->prefix)
-	  || DomModernPut(pBuf,(const xmlChar *)":")) ){
+	 && (DomModernPut(pOut,pAttr->ns->prefix)
+	  || DomModernPut(pOut,(const xmlChar *)":")) ){
 		return -1;
 	}
-	if( DomModernPut(pBuf,pAttr->name)
-	 || DomModernPut(pBuf,(const xmlChar *)"=\"") ){
+	if( DomModernPut(pOut,pAttr->name)
+	 || DomModernPut(pOut,(const xmlChar *)"=\"") ){
 		return -1;
 	}
 	for( pChild = pAttr->children ; pChild ; pChild = pChild->next ){
 		if( pChild->type == XML_TEXT_NODE ){
-			if( DomModernPutAttrText(pBuf,pChild->content) ){
+			if( DomModernPutAttrText(pOut,pChild->content) ){
 				return -1;
 			}
 		}else if( pChild->type == XML_ENTITY_REF_NODE ){
-			if( DomModernPut(pBuf,(const xmlChar *)"&")
-			 || DomModernPutAttrText(pBuf,pChild->name)
-			 || DomModernPut(pBuf,(const xmlChar *)";") ){
+			if( DomModernPut(pOut,(const xmlChar *)"&")
+			 || DomModernPutAttrText(pOut,pChild->name)
+			 || DomModernPut(pOut,(const xmlChar *)";") ){
 				return -1;
 			}
 		}
 	}
-	return DomModernPut(pBuf,(const xmlChar *)"\"");
+	return DomModernPut(pOut,(const xmlChar *)"\"");
+}
+/*
+ * The walk itself. `pOut` is where its own bytes go and `pSave` is libxml's
+ * writer over the very same buffer, so each is flushed before the other writes.
+ */
+typedef struct dom_xml_ser dom_xml_ser;
+struct dom_xml_ser {
+	xmlOutputBufferPtr pOut;   /* this writer's sink, carrying the encoder */
+	xmlSaveCtxtPtr pSave;      /* libxml's, for the declaration and a DOCTYPE */
+	int bNoEmpty;              /* LIBXML_NOEMPTYTAG: an end tag everywhere */
+};
+static int DomXmlSerNode(dom_xml_ser *p,xmlNodePtr pNode,int iIndent);
+/* An element is laid out over lines only when every one of its children is an
+ * element -- one text, CDATA or entity-reference child and the whole content
+ * goes out on one line, because indenting it would change what it says. */
+static int DomXmlShouldFormat(xmlNodePtr pElem)
+{
+	xmlNodePtr pKid;
+	for( pKid = pElem->children ; pKid ; pKid = pKid->next ){
+		if( pKid->type == XML_TEXT_NODE
+		 || pKid->type == XML_ENTITY_REF_NODE
+		 || pKid->type == XML_CDATA_SECTION_NODE ){
+			return 0;
+		}
+	}
+	return 1;
+}
+static int DomXmlIndent(xmlOutputBufferPtr pOut,int iIndent)
+{
+	int i;
+	if( DomModernPut(pOut,(const xmlChar *)"\n") ){
+		return -1;
+	}
+	for( i = 0 ; i < iIndent ; ++i ){
+		if( DomModernPut(pOut,(const xmlChar *)"  ") ){
+			return -1;
+		}
+	}
+	return 0;
+}
+/* The name an element prints under. Every prefix the bytes name is one the
+ * reconcile pass has already declared, so this is the spelling and nothing
+ * more. */
+static int DomXmlQName(xmlOutputBufferPtr pOut,xmlNsPtr pNs,const xmlChar *zName)
+{
+	if( pNs && pNs->prefix
+	 && (DomModernPut(pOut,pNs->prefix)
+	  || DomModernPut(pOut,(const xmlChar *)":")) ){
+		return -1;
+	}
+	return DomModernPut(pOut,zName);
+}
+static int DomXmlSerElem(dom_xml_ser *p,xmlNodePtr pElem,int iIndent)
+{
+	int bFormat = iIndent >= 0 && pElem->children && DomXmlShouldFormat(pElem);
+	int bSkipEnd = 0;
+	xmlNodePtr pKid;
+	xmlNsPtr pNs;
+	xmlAttrPtr pAttr;
+	if( DomModernPut(p->pOut,(const xmlChar *)"<")
+	 || DomXmlQName(p->pOut,pElem->ns,pElem->name) ){
+		return -1;
+	}
+	/* The declarations this element carries, then its attributes -- libxml's
+	 * order, which is php's on every tree asked. */
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( DomModernPut(p->pOut,(const xmlChar *)" xmlns") ){
+			return -1;
+		}
+		if( pNs->prefix
+		 && (DomModernPut(p->pOut,(const xmlChar *)":")
+		  || DomModernPut(p->pOut,pNs->prefix)) ){
+			return -1;
+		}
+		if( DomModernPut(p->pOut,(const xmlChar *)"=\"")
+		 || DomModernPutAttrText(p->pOut,pNs->href)
+		 || DomModernPut(p->pOut,(const xmlChar *)"\"") ){
+			return -1;
+		}
+	}
+	for( pAttr = pElem->properties ; pAttr ; pAttr = pAttr->next ){
+		if( DomModernPut(p->pOut,(const xmlChar *)" ")
+		 || DomModernDumpAttr(p->pOut,pAttr) ){
+			return -1;
+		}
+	}
+	/* The three answers an element with no children has. A template asks this
+	 * of its OWN children, not of the content it will actually write -- so a
+	 * `<template>` an XML document parsed, which has children and no content
+	 * fragment, takes neither the self-closing form nor its children. */
+	if( pElem->children == 0 && !p->bNoEmpty ){
+		if( !DomNodeIsHtmlNs(pElem) ){
+			if( DomModernPut(p->pOut,(const xmlChar *)"/") ){
+				return -1;
+			}
+			bSkipEnd = 1;
+		}else if( DomHtmlNameIn(azDomXmlVoid,SX_ARRAYSIZE(azDomXmlVoid),pElem->name) ){
+			if( DomModernPut(p->pOut,(const xmlChar *)" /") ){
+				return -1;
+			}
+			bSkipEnd = 1;
+		}
+	}
+	if( DomModernPut(p->pOut,(const xmlChar *)">") ){
+		return -1;
+	}
+	if( bSkipEnd ){
+		return 0;
+	}
+	/* A template writes its CONTENT and never its children; one with no
+	 * fragment writes nothing at all, whatever it holds. */
+	pKid = pElem->children;
+	if( DomIsTemplate(pElem) ){
+		xmlNodePtr pFrag = DomTemplateContent(pElem);
+		pKid = pFrag ? pFrag->children : 0;
+	}
+	for( ; pKid ; pKid = pKid->next ){
+		if( bFormat && DomXmlIndent(p->pOut,iIndent + 1) ){
+			return -1;
+		}
+		if( DomXmlSerNode(p,pKid,bFormat ? iIndent + 1 : -1) ){
+			return -1;
+		}
+	}
+	if( bFormat && DomXmlIndent(p->pOut,iIndent) ){
+		return -1;
+	}
+	return DomModernPut(p->pOut,(const xmlChar *)"</")
+		|| DomXmlQName(p->pOut,pElem->ns,pElem->name)
+		|| DomModernPut(p->pOut,(const xmlChar *)">") ? -1 : 0;
+}
+/* A document is the declaration libxml writes for an EMPTY document -- which is
+ * the declaration and nothing behind it -- and then each child, joined by
+ * nothing at all. */
+static int DomXmlSerDoc(dom_xml_ser *p,xmlDocPtr pDoc,int iIndent)
+{
+	xmlNodePtr pKid = pDoc->children;
+	int rc;
+	pDoc->children = 0;
+	rc = (xmlOutputBufferFlush(p->pOut) < 0
+	   || xmlSaveDoc(p->pSave,pDoc) < 0
+	   || xmlSaveFlush(p->pSave) < 0) ? -1 : 0;
+	pDoc->children = pKid;
+	for( ; rc == 0 && pKid ; pKid = pKid->next ){
+		rc = DomXmlSerNode(p,pKid,iIndent);
+	}
+	return rc;
+}
+static int DomXmlSerNode(dom_xml_ser *p,xmlNodePtr pNode,int iIndent)
+{
+	xmlNodePtr pKid;
+	switch( pNode->type ){
+	case XML_ELEMENT_NODE:
+		return DomXmlSerElem(p,pNode,iIndent);
+	case XML_DOCUMENT_NODE:
+	case XML_HTML_DOCUMENT_NODE:
+		return DomXmlSerDoc(p,(xmlDocPtr)pNode,iIndent);
+	case XML_DOCUMENT_FRAG_NODE:
+		for( pKid = pNode->children ; pKid ; pKid = pKid->next ){
+			if( DomXmlSerNode(p,pKid,iIndent) ){
+				return -1;
+			}
+		}
+		return 0;
+	case XML_TEXT_NODE:
+		return DomModernPutText(p->pOut,pNode->content);
+	case XML_CDATA_SECTION_NODE:
+		return DomModernPut(p->pOut,(const xmlChar *)"<![CDATA[")
+			|| DomModernPut(p->pOut,pNode->content)
+			|| DomModernPut(p->pOut,(const xmlChar *)"]]>") ? -1 : 0;
+	case XML_COMMENT_NODE:
+		return DomModernPut(p->pOut,(const xmlChar *)"<!--")
+			|| DomModernPut(p->pOut,pNode->content)
+			|| DomModernPut(p->pOut,(const xmlChar *)"-->") ? -1 : 0;
+	case XML_PI_NODE:
+		return DomModernPut(p->pOut,(const xmlChar *)"<?")
+			|| DomModernPut(p->pOut,pNode->name)
+			|| DomModernPut(p->pOut,(const xmlChar *)" ")
+			|| DomModernPut(p->pOut,pNode->content)
+			|| DomModernPut(p->pOut,(const xmlChar *)"?>") ? -1 : 0;
+	case XML_ATTRIBUTE_NODE:
+		return DomModernDumpAttr(p->pOut,(xmlAttrPtr)pNode);
+	default:
+		/* Everything the algorithm does not name -- a DOCTYPE, an entity
+		 * reference, the declaration nodes inside a subset -- stays libxml's,
+		 * and a DOCTYPE takes a newline of its own behind it. */
+		if( xmlOutputBufferFlush(p->pOut) < 0
+		 || xmlSaveTree(p->pSave,pNode) < 0
+		 || xmlSaveFlush(p->pSave) < 0 ){
+			return -1;
+		}
+		if( pNode->type == XML_DTD_NODE ){
+			return DomModernPut(p->pOut,(const xmlChar *)"\n");
+		}
+		return 0;
+	}
+}
+/* The sink both writers share: the caller's buffer, wearing the encoder the
+ * document's declaration names. */
+static xmlOutputBufferPtr DomModernOutBuf(xmlBufferPtr pBuf,const char *zEnc)
+{
+	xmlCharEncodingHandlerPtr pEnc = zEnc ? xmlFindCharEncodingHandler(zEnc) : 0;
+	xmlOutputBufferPtr pOut = xmlOutputBufferCreateBuffer(pBuf,pEnc);
+	if( pOut == 0 && pEnc ){
+		xmlCharEncCloseFunc(pEnc);
+	}
+	return pOut;
 }
 static int DomDumpTreeRaw(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
-	xmlChar **pzOut)
+	const char *zForce,xmlChar **pzOut)
 {
 	xmlBufferPtr pBuf = xmlBufferCreate();
 	xmlSaveCtxtPtr pSave;
 	dom_ns_fix *pFix = 0;
+	const char *zEnc;
 	int nOut = 0;
 	*pzOut = 0;
 	if( pBuf == 0 ){
@@ -7646,8 +7858,17 @@ static int DomDumpTreeRaw(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,
 	}
 	if( bModern && pNode && pNode->type == XML_ATTRIBUTE_NODE ){
 		/* Ahead of the namespace reconcile, which has nothing to fix here: the
-		 * bytes declare no binding at all. */
-		if( DomModernDumpAttr(pBuf,(xmlAttrPtr)pNode) ){
+		 * bytes declare no binding at all. The reconcile is also what must not
+		 * see an attribute -- its walk would step through the SIBLING
+		 * attributes of the one asked for. */
+		xmlOutputBufferPtr pOut = DomModernOutBuf(pBuf,
+			zForce ? zForce : (const char *)pDoc->encoding);
+		if( pOut == 0 ){
+			xmlBufferFree(pBuf);
+			return -1;
+		}
+		nOut = DomModernDumpAttr(pOut,(xmlAttrPtr)pNode);
+		if( xmlOutputBufferClose(pOut) < 0 || nOut ){
 			xmlBufferFree(pBuf);
 			return -1;
 		}
@@ -7668,30 +7889,40 @@ static int DomDumpTreeRaw(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,
 			}
 		}
 	}
-	/* A NODE's dump is UTF-8 whatever the document declares, and naming that
-	 * encoding is also what keeps libxml from ESCAPING every non-ASCII character
-	 * (its no-encoding path writes `&#xE9;`, which is right for a document that
-	 * declares nothing and wrong for a node). A DOCUMENT's goes out in its own
-	 * declared encoding, or in that escaping form when it declares none -- which
-	 * is what php answers there. */
-	pSave = xmlSaveToBuffer(pBuf,pNode ? "UTF-8" : (const char *)pDoc->encoding,
-		DomSaveFlags(bFormat,iOpts,pNode == 0));
+	/* On the 2004 tree a NODE's dump is UTF-8 whatever the document declares,
+	 * and naming that encoding is also what keeps libxml from ESCAPING every
+	 * non-ASCII character (its no-encoding path writes `&#xE9;`, which is right
+	 * for a document that declares nothing and wrong for a node). php 8.4's
+	 * tree asks the same question once for both: a node's dump and its
+	 * document's go out in the encoding the document declares. */
+	zEnc = zForce ? zForce
+		: (bModern || pNode == 0) ? (const char *)pDoc->encoding : "UTF-8";
+	pSave = xmlSaveToBuffer(pBuf,zEnc,DomSaveFlags(bFormat,iOpts,pNode == 0));
 	if( pSave == 0 ){
 		xmlBufferFree(pBuf);
+		DomNsSaveRestore(pFix);
 		return -1;
 	}
-	if( pNode ){
-		if( xmlSaveTree(pSave,pNode) < 0 ){
+	if( bModern ){
+		/* php's own walk, with libxml's writer beside it over the same buffer
+		 * for the declaration and for a DOCTYPE. */
+		dom_xml_ser sSer;
+		sSer.pOut = DomModernOutBuf(pBuf,zEnc);
+		sSer.pSave = pSave;
+		sSer.bNoEmpty = (iOpts & DOM_SAVE_NOEMPTYTAG) != 0;
+		if( sSer.pOut == 0 ){
 			nOut = -1;
-		}else if( bModern && pNode->type == XML_DTD_NODE ){
-			/* Written past the save context, so it is flushed first. */
-			if( xmlSaveFlush(pSave) < 0
-			 || xmlBufferAdd(pBuf,(const xmlChar *)"\n",1) != 0 ){
+		}else{
+			if( DomXmlSerNode(&sSer,pNode ? pNode : (xmlNodePtr)pDoc,
+					bFormat ? 0 : -1) ){
+				nOut = -1;
+			}
+			if( xmlOutputBufferClose(sSer.pOut) < 0 ){
 				nOut = -1;
 			}
 		}
-	}else if( bModern ){
-		if( DomSaveModernDoc(pSave,pBuf,pDoc) < 0 ){
+	}else if( pNode ){
+		if( xmlSaveTree(pSave,pNode) < 0 ){
 			nOut = -1;
 		}
 	}else if( xmlSaveDoc(pSave,pDoc) < 0 ){
@@ -7719,19 +7950,25 @@ static int DomDumpTreeRaw(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,
  * libxml diagnostic carries is per-class; `zWho` is that name.
  */
 /* The one door every XML dump goes through, and where a `<template>`'s CONTENT
- * is put in front of libxml's writer -- php writes the fragment there and
+ * is put in front of LIBXML's writer -- php writes the fragment there and
  * writes nothing for a template that has none, children or no children. The
  * park is undone before the bytes are handed back, so nothing the program can
- * observe moved. */
+ * observe moved. php 8.4's own walk needs no park; it reads the fragment. */
 static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,int bModern,
-	xmlChar **pzOut)
+	const char *zForce,xmlChar **pzOut)
 {
 	dom_tpl_swap sSwap;
 	int nOut;
 	sSwap.aPark = 0;
 	sSwap.nPark = sSwap.nAlloc = sSwap.bFail = 0;
-	DomTemplateParkIn(&sSwap,pNode ? pNode : (xmlNodePtr)pDoc);
-	nOut = DomDumpTreeRaw(pDoc,pNode,bFormat,iOpts,bModern,pzOut);
+	if( !bModern ){
+		/* php 8.4's walk asks a template for its content itself, and asks its
+		 * emptiness of the children it is NOT going to write; parking the
+		 * content on the element first would answer both questions with the
+		 * same list and lose that. */
+		DomTemplateParkIn(&sSwap,pNode ? pNode : (xmlNodePtr)pDoc);
+	}
+	nOut = DomDumpTreeRaw(pDoc,pNode,bFormat,iOpts,bModern,zForce,pzOut);
 	DomTemplateParkOut(&sSwap);
 	return nOut;
 }
@@ -7760,7 +7997,7 @@ static int DomSaveXml(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *z
 	bWhole = pTgt == 0 || pTgt->pNode == pDocNd->pNode;
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,bWhole ? 0 : (xmlNodePtr)pTgt->pNode,
-		bFormat,iOpts,DomDocFlag(pThis,DOM_F_MODERN),&zOut);
+		bFormat,iOpts,DomDocFlag(pThis,DOM_F_MODERN),0,&zOut);
 	PH7_LibxmlCaptureEnd(pVm,nMark,zWho);
 	if( nOut < 0 ){
 		/* php says so rather than answering an empty document: the encoding the
@@ -7937,7 +8174,7 @@ static int DomSaveXmlFile(ph7_context *pCtx,int nArg,ph7_value **apArg,const cha
 	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,0,bFormat,iOpts & ~DOM_SAVE_NOXMLDECL,
-		DomDocFlag(pThis,DOM_F_MODERN),&zOut);
+		DomDocFlag(pThis,DOM_F_MODERN),0,&zOut);
 	/* php reports this failure through the return value alone. */
 	PH7_LibxmlDropErrors(pVm,nMark);
 	if( nOut < 0 ){
@@ -8886,7 +9123,9 @@ static int DomHtmlMixinRead(ph7_context *pCtx,int bInner)
 	for( pPart = bInner ? pKids : pNode ; pPart ; pPart = pPart->next ){
 		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
 		xmlChar *zPart = 0;
-		int nPart = DomDumpTree(pNode->doc,pPart,0,0,bModern,&zPart);
+		/* These two are UTF-8 whatever the document declares -- the one place
+		 * they part from the `saveXml($node)` they otherwise are. */
+		int nPart = DomDumpTree(pNode->doc,pPart,0,0,bModern,"UTF-8",&zPart);
 		PH7_LibxmlDropErrors(pVm,nMark);
 		if( nPart > 0 ){
 			SyBlobAppend(&sOut,(const void *)zPart,(sxu32)nPart);
