@@ -139,6 +139,21 @@ static sxu32 Html5EntLookup(const char *zName)
  */
 
 #define HTML5_NS "http://www.w3.org/1999/xhtml"
+/*
+ * The two namespaces a `<svg>` or a `<math>` start tag switches the tree into,
+ * and the two an adjusted attribute name is moved into.  A foreign element is
+ * namespaced whatever the document's options say: `HTML_NO_DEFAULT_NS` speaks
+ * about the HTML declaration alone, because an SVG subtree that lost its
+ * namespace would stop being SVG rather than stop being decorated.
+ */
+#define HTML5_SVG_NS   "http://www.w3.org/2000/svg"
+#define HTML5_MATH_NS  "http://www.w3.org/1998/Math/MathML"
+#define HTML5_XLINK_NS "http://www.w3.org/1999/xlink"
+#define HTML5_XML_NS   "http://www.w3.org/XML/1998/namespace"
+/* ...as the three answers to "which rules does this element parse under". */
+#define HTML5_NSK_HTML 0
+#define HTML5_NSK_SVG  1
+#define HTML5_NSK_MATH 2
 
 /* Parse flags; the door maps php's option bits onto these. */
 #define HTML5_NOIMPLIED    0x01   /* LIBXML_HTML_NOIMPLIED */
@@ -313,6 +328,10 @@ static int Html5NameIn(const char * const *apList,int nList,const char *zName)
 /* ------------------------------------------------------------------ *
  * The tokenizer
  * ------------------------------------------------------------------ */
+
+/* The tokenizer asks the tree exactly one question -- see the CDATA branch. */
+static xmlNodePtr Html5Top(html5_parser *p);
+static int Html5NsKind(xmlNodePtr pEl);
 
 static int Html5Peek(html5_parser *p,sxu32 nAhead)
 {
@@ -745,6 +764,35 @@ static void Html5NextToken(html5_parser *p)
 			Html5ReadComment(p);
 			return;
 		}
+		/*
+		 * `<![CDATA[` is a bogus COMMENT in HTML and a run of character data
+		 * in foreign content -- the one question the tokenizer has to ask the
+		 * tree, because the same bytes mean two different things depending on
+		 * what is open.  The run is raw: no character reference is resolved
+		 * inside it.
+		 */
+		if( Html5NsKind(Html5Top(p)) != HTML5_NSK_HTML
+		 && Html5Peek(p,0) == '[' && Html5Peek(p,1) == 'C'
+		 && Html5Peek(p,2) == 'D' && Html5Peek(p,3) == 'A'
+		 && Html5Peek(p,4) == 'T' && Html5Peek(p,5) == 'A'
+		 && Html5Peek(p,6) == '[' ){
+			Html5Skip(p,7);
+			for(;;){
+				int d = Html5Peek(p,0);
+				char zc;
+				if( d < 0 ){
+					break;
+				}
+				if( d == ']' && Html5Peek(p,1) == ']' && Html5Peek(p,2) == '>' ){
+					Html5Skip(p,3);
+					break;
+				}
+				zc = (char)Html5Read(p);
+				SyBlobAppend(&p->sBuf,&zc,1);
+			}
+			p->iTok = HTML5_TOK_TEXT;
+			return;
+		}
 		if( Html5LookWord(p,"DOCTYPE") ){
 			Html5Skip(p,7);
 			while( Html5IsSpace(Html5Peek(p,0)) ){
@@ -935,12 +983,34 @@ static void Html5PopTo(html5_parser *p,const char *zName)
 		Html5Pop(p);
 	}
 }
-static xmlNodePtr Html5NewElem(html5_parser *p,const char *zName)
+/*
+ * The declaration for `zHref` that `pEl` should carry: the innermost one
+ * already in scope above it, or a fresh one minted on the element itself.  A
+ * foreign subtree therefore states its namespace once, on the `<svg>` or
+ * `<math>` that opened it, and every descendant points at that same one.
+ */
+static xmlNsPtr Html5NsGet(html5_parser *p,xmlNodePtr pEl,const char *zHref,
+	const char *zPrefix)
+{
+	xmlNsPtr pNs = xmlSearchNsByHref(p->pDoc,pEl,(const xmlChar *)zHref);
+	if( pNs == 0 ){
+		pNs = xmlNewNs(pEl,(const xmlChar *)zHref,(const xmlChar *)zPrefix);
+	}
+	return pNs;
+}
+static xmlNodePtr Html5NewElemNs(html5_parser *p,const char *zName,const char *zHref)
 {
 	xmlNodePtr pParent = Html5Target(p);
 	xmlNodePtr pEl = xmlNewDocNode(p->pDoc,0,(const xmlChar *)zName,0);
 	if( pEl == 0 ){
 		return 0;
+	}
+	if( zHref ){
+		/* Attached first: the declaration in scope is only findable from a
+		 * node that is already under the element that states it. */
+		xmlAddChild(pParent,pEl);
+		xmlSetNs(pEl,Html5NsGet(p,pEl,zHref,0));
+		return pEl;
 	}
 	if( (p->iFlags & HTML5_NO_DEF_NS) == 0 ){
 		/*
@@ -956,6 +1026,10 @@ static xmlNodePtr Html5NewElem(html5_parser *p,const char *zName)
 	}
 	xmlAddChild(pParent,pEl);
 	return pEl;
+}
+static xmlNodePtr Html5NewElem(html5_parser *p,const char *zName)
+{
+	return Html5NewElemNs(p,zName,0);
 }
 static void Html5AddAttrs(html5_parser *p,xmlNodePtr pEl)
 {
@@ -1409,6 +1483,349 @@ static void Html5InsertComment(html5_parser *p,xmlNodePtr pParent)
 		xmlAddChild(pParent,pC);
 	}
 }
+/* ------------------------------------------------------------------ *
+ * Foreign content: the SVG and MathML subtrees
+ * ------------------------------------------------------------------ */
+
+/*
+ * Inside a `<svg>` or a `<math>` the tokenizer still lowercases every name it
+ * reads, because it has no idea what tree it is feeding.  These two tables are
+ * the spec's repair: the SVG names whose real spelling is mixed-case, and the
+ * SVG attributes likewise.  A name that is in neither keeps the lowercased
+ * spelling -- an unknown `<unknownThing>` is an `unknownthing` there too.
+ */
+typedef struct html5_fix html5_fix;
+struct html5_fix { const char *zLow; const char *zFix; };
+static const html5_fix aHtml5SvgTag[] = {
+	{"altglyph","altGlyph"},{"altglyphdef","altGlyphDef"},
+	{"altglyphitem","altGlyphItem"},{"animatecolor","animateColor"},
+	{"animatemotion","animateMotion"},{"animatetransform","animateTransform"},
+	{"clippath","clipPath"},{"feblend","feBlend"},
+	{"fecolormatrix","feColorMatrix"},
+	{"fecomponenttransfer","feComponentTransfer"},
+	{"fecomposite","feComposite"},{"feconvolvematrix","feConvolveMatrix"},
+	{"fediffuselighting","feDiffuseLighting"},
+	{"fedisplacementmap","feDisplacementMap"},
+	{"fedistantlight","feDistantLight"},{"fedropshadow","feDropShadow"},
+	{"feflood","feFlood"},{"fefunca","feFuncA"},{"fefuncb","feFuncB"},
+	{"fefuncg","feFuncG"},{"fefuncr","feFuncR"},
+	{"fegaussianblur","feGaussianBlur"},{"feimage","feImage"},
+	{"femerge","feMerge"},{"femergenode","feMergeNode"},
+	{"femorphology","feMorphology"},{"feoffset","feOffset"},
+	{"fepointlight","fePointLight"},
+	{"fespecularlighting","feSpecularLighting"},
+	{"fespotlight","feSpotLight"},{"fetile","feTile"},
+	{"feturbulence","feTurbulence"},{"foreignobject","foreignObject"},
+	{"glyphref","glyphRef"},{"lineargradient","linearGradient"},
+	{"radialgradient","radialGradient"},{"textpath","textPath"}
+};
+static const html5_fix aHtml5SvgAttr[] = {
+	{"attributename","attributeName"},{"attributetype","attributeType"},
+	{"basefrequency","baseFrequency"},{"baseprofile","baseProfile"},
+	{"calcmode","calcMode"},{"clippathunits","clipPathUnits"},
+	{"diffuseconstant","diffuseConstant"},{"edgemode","edgeMode"},
+	{"filterunits","filterUnits"},{"glyphref","glyphRef"},
+	{"gradienttransform","gradientTransform"},{"gradientunits","gradientUnits"},
+	{"kernelmatrix","kernelMatrix"},{"kernelunitlength","kernelUnitLength"},
+	{"keypoints","keyPoints"},{"keysplines","keySplines"},
+	{"keytimes","keyTimes"},{"lengthadjust","lengthAdjust"},
+	{"limitingconeangle","limitingConeAngle"},{"markerheight","markerHeight"},
+	{"markerunits","markerUnits"},{"markerwidth","markerWidth"},
+	{"maskcontentunits","maskContentUnits"},{"maskunits","maskUnits"},
+	{"numoctaves","numOctaves"},{"pathlength","pathLength"},
+	{"patterncontentunits","patternContentUnits"},
+	{"patterntransform","patternTransform"},{"patternunits","patternUnits"},
+	{"pointsatx","pointsAtX"},{"pointsaty","pointsAtY"},
+	{"pointsatz","pointsAtZ"},{"preservealpha","preserveAlpha"},
+	{"preserveaspectratio","preserveAspectRatio"},
+	{"primitiveunits","primitiveUnits"},{"refx","refX"},{"refy","refY"},
+	{"repeatcount","repeatCount"},{"repeatdur","repeatDur"},
+	{"requiredextensions","requiredExtensions"},
+	{"requiredfeatures","requiredFeatures"},
+	{"specularconstant","specularConstant"},
+	{"specularexponent","specularExponent"},{"spreadmethod","spreadMethod"},
+	{"startoffset","startOffset"},{"stddeviation","stdDeviation"},
+	{"stitchtiles","stitchTiles"},{"surfacescale","surfaceScale"},
+	{"systemlanguage","systemLanguage"},{"tablevalues","tableValues"},
+	{"targetx","targetX"},{"targety","targetY"},{"textlength","textLength"},
+	{"viewbox","viewBox"},{"viewtarget","viewTarget"},
+	{"xchannelselector","xChannelSelector"},
+	{"ychannelselector","yChannelSelector"},{"zoomandpan","zoomAndPan"}
+};
+/*
+ * The HTML start tags that give up on the foreign subtree entirely: they are
+ * so much more likely to be a page that forgot to close its `<svg>` than SVG
+ * content that the spec pops back out to HTML and reprocesses the tag there.
+ * `<font>` joins them only when it carries one of the three attributes that
+ * make it the HTML one.
+ */
+static const char * const azHtml5Breakout[] = {
+	"b","big","blockquote","body","br","center","code","dd","div","dl","dt",
+	"em","embed","h1","h2","h3","h4","h5","h6","head","hr","i","img","li",
+	"listing","menu","meta","nobr","ol","p","pre","ruby","s","small","span",
+	"strong","strike","sub","sup","table","tt","u","ul","var"
+};
+/* The local names of the attributes that carry a namespace of their own. */
+static const char * const azHtml5Xlink[] = {
+	"actuate","arcrole","href","role","show","title","type"
+};
+static const char * const azHtml5Xml[] = { "lang","space" };
+
+static int Html5LowerEq(const char *zLeft,const char *zRight)
+{
+	while( *zLeft != 0 && Html5Lower(*zLeft) == Html5Lower(*zRight) ){
+		zLeft++;
+		zRight++;
+	}
+	return *zLeft == 0 && *zRight == 0;
+}
+/* The namespace an open element is in.  Everything that is not one of the two
+ * foreign ones -- the HTML namespace, no namespace at all -- answers HTML, and
+ * that is what every rule below tests for. */
+static int Html5NsKind(xmlNodePtr pEl)
+{
+	const char *zHref;
+	if( pEl == 0 || pEl->ns == 0 || pEl->ns->href == 0 ){
+		return HTML5_NSK_HTML;
+	}
+	zHref = (const char *)pEl->ns->href;
+	if( Html5Eq(zHref,HTML5_SVG_NS) ){
+		return HTML5_NSK_SVG;
+	}
+	if( Html5Eq(zHref,HTML5_MATH_NS) ){
+		return HTML5_NSK_MATH;
+	}
+	return HTML5_NSK_HTML;
+}
+static const char * Html5NsHrefOf(int iKind)
+{
+	if( iKind == HTML5_NSK_SVG ){
+		return HTML5_SVG_NS;
+	}
+	return iKind == HTML5_NSK_MATH ? HTML5_MATH_NS : 0;
+}
+/* A MathML `<annotation-xml>` whose `encoding` names an HTML flavour, and the
+ * three SVG elements that hold HTML outright: inside one of these the HTML
+ * rules run again, so a `<b>` under a `<foreignObject>` is an HTML `<b>`. */
+static int Html5IsHtmlIp(xmlNodePtr pEl)
+{
+	int iKind = Html5NsKind(pEl);
+	const char *zName;
+	if( iKind == HTML5_NSK_HTML ){
+		return 0;
+	}
+	zName = (const char *)pEl->name;
+	if( iKind == HTML5_NSK_SVG ){
+		return Html5Eq(zName,"foreignObject") || Html5Eq(zName,"desc")
+			|| Html5Eq(zName,"title");
+	}
+	if( Html5Eq(zName,"annotation-xml") ){
+		xmlChar *zEnc = xmlGetNoNsProp(pEl,(const xmlChar *)"encoding");
+		int bHit = zEnc && (Html5LowerEq((const char *)zEnc,"text/html")
+			|| Html5LowerEq((const char *)zEnc,"application/xhtml+xml"));
+		if( zEnc ){
+			xmlFree(zEnc);
+		}
+		return bHit;
+	}
+	return 0;
+}
+/* The five MathML token elements: HTML rules for everything but the two tags
+ * that are genuinely MathML's own. */
+static int Html5IsMathIp(xmlNodePtr pEl)
+{
+	const char *zName = pEl ? (const char *)pEl->name : "";
+	return Html5NsKind(pEl) == HTML5_NSK_MATH
+		&& (Html5Eq(zName,"mi") || Html5Eq(zName,"mo") || Html5Eq(zName,"mn")
+		 || Html5Eq(zName,"ms") || Html5Eq(zName,"mtext"));
+}
+static const char * Html5TableFix(const char *zName,const html5_fix *aTab,int nTab)
+{
+	int i;
+	for( i = 0 ; i < nTab ; ++i ){
+		if( Html5Eq(aTab[i].zLow,zName) ){
+			return aTab[i].zFix;
+		}
+	}
+	return zName;
+}
+/*
+ * The attributes of a foreign start tag.  Three things happen to a name that
+ * do not happen in HTML: the SVG table restores its case, `definitionurl`
+ * becomes MathML's `definitionURL`, and the handful of `xlink:`/`xml:` names
+ * move into a real namespace instead of staying a name with a colon in it.
+ * Anything else -- `foo:bar` included -- is stored verbatim.
+ */
+static void Html5AddAttrsForeign(html5_parser *p,xmlNodePtr pEl,int iKind)
+{
+	html5_attr *aAttr = (html5_attr *)SySetBasePtr(&p->sAttr);
+	const char *zBuf = (const char *)SyBlobData(&p->sAttrBuf);
+	sxu32 i,n = SySetUsed(&p->sAttr);
+	for( i = 0 ; i < n ; ++i ){
+		const char *zName = zBuf + aAttr[i].nNameOfs;
+		const char *zVal = zBuf + aAttr[i].nValOfs;
+		const char *zLocal = 0;
+		const char *zHref = 0;
+		const char *zPfx = 0;
+		if( zName[0] == 0 ){
+			continue;
+		}
+		if( SyStrncmp(zName,"xlink:",sizeof("xlink:")-1) == 0
+		 && HTML5_IN(azHtml5Xlink,zName + sizeof("xlink:") - 1) ){
+			zLocal = zName + sizeof("xlink:") - 1;
+			zHref = HTML5_XLINK_NS;
+			zPfx = "xlink";
+		}else if( SyStrncmp(zName,"xml:",sizeof("xml:")-1) == 0
+		 && HTML5_IN(azHtml5Xml,zName + sizeof("xml:") - 1) ){
+			zLocal = zName + sizeof("xml:") - 1;
+			zHref = HTML5_XML_NS;
+			zPfx = "xml";
+		}else if( iKind == HTML5_NSK_SVG ){
+			zLocal = Html5TableFix(zName,aHtml5SvgAttr,
+				(int)SX_ARRAYSIZE(aHtml5SvgAttr));
+		}else if( Html5Eq(zName,"definitionurl") ){
+			zLocal = "definitionURL";
+		}else{
+			zLocal = zName;
+		}
+		if( zHref ){
+			xmlNsPtr pNs = Html5NsGet(p,pEl,zHref,zPfx);
+			if( xmlHasNsProp(pEl,(const xmlChar *)zLocal,(const xmlChar *)zHref) ){
+				continue;
+			}
+			xmlNewNsProp(pEl,pNs,(const xmlChar *)zLocal,(const xmlChar *)zVal);
+			continue;
+		}
+		if( xmlHasProp(pEl,(const xmlChar *)zLocal) ){
+			continue;
+		}
+		xmlNewProp(pEl,(const xmlChar *)zLocal,(const xmlChar *)zVal);
+	}
+}
+/*
+ * A foreign start tag.  There is no void-element list here and no armed text
+ * flavour: the ONLY thing that closes an element without an end tag is the
+ * `/>` the source wrote, which HTML ignores and foreign content honours.
+ */
+static xmlNodePtr Html5InsertForeign(html5_parser *p,int iKind)
+{
+	const char *zName = Html5TokName(p);
+	xmlNodePtr pEl;
+	if( iKind == HTML5_NSK_SVG ){
+		zName = Html5TableFix(zName,aHtml5SvgTag,(int)SX_ARRAYSIZE(aHtml5SvgTag));
+	}
+	pEl = Html5NewElemNs(p,zName,Html5NsHrefOf(iKind));
+	if( pEl == 0 ){
+		return 0;
+	}
+	Html5AddAttrsForeign(p,pEl,iKind);
+	if( !p->bSelfClose ){
+		Html5Push(p,pEl);
+	}
+	return pEl;
+}
+/* Does THIS token go through the foreign rules?  The question is asked of the
+ * current node for every token, which is what lets one `<b>` inside a
+ * `<foreignObject>` be HTML while its `<circle>` sibling is not. */
+static int Html5UseForeign(html5_parser *p)
+{
+	xmlNodePtr pCur = Html5Top(p);
+	const char *zTok = Html5TokName(p);
+	if( pCur == 0 || p->iTok == HTML5_TOK_EOF
+	 || Html5NsKind(pCur) == HTML5_NSK_HTML ){
+		return 0;
+	}
+	if( Html5IsMathIp(pCur) ){
+		if( p->iTok == HTML5_TOK_TEXT ){
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_START && !Html5Eq(zTok,"mglyph")
+		 && !Html5Eq(zTok,"malignmark") ){
+			return 0;
+		}
+	}
+	if( Html5NsKind(pCur) == HTML5_NSK_MATH
+	 && Html5Eq((const char *)pCur->name,"annotation-xml")
+	 && p->iTok == HTML5_TOK_START && Html5Eq(zTok,"svg") ){
+		return 0;
+	}
+	if( Html5IsHtmlIp(pCur)
+	 && (p->iTok == HTML5_TOK_START || p->iTok == HTML5_TOK_TEXT) ){
+		return 0;
+	}
+	return 1;
+}
+/* Is this the HTML tag that gives up on the subtree? */
+static int Html5IsBreakout(html5_parser *p,const char *zName)
+{
+	if( HTML5_IN(azHtml5Breakout,zName) ){
+		return 1;
+	}
+	if( Html5Eq(zName,"font") ){
+		html5_attr *aAttr = (html5_attr *)SySetBasePtr(&p->sAttr);
+		const char *zBuf = (const char *)SyBlobData(&p->sAttrBuf);
+		sxu32 i,n = SySetUsed(&p->sAttr);
+		for( i = 0 ; i < n ; ++i ){
+			const char *zAt = zBuf + aAttr[i].nNameOfs;
+			if( Html5Eq(zAt,"color") || Html5Eq(zAt,"face")
+			 || Html5Eq(zAt,"size") ){
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+/*
+ * The foreign tree constructor.  Answers 1 when the token has to be handed
+ * back to the HTML rules -- which is how both ways out of a foreign subtree
+ * work: a breakout tag pops to the nearest HTML element and reprocesses, and
+ * an end tag that matches nothing foreign walks down to an HTML element and
+ * lets that element's own rules answer it.
+ */
+static int Html5ForeignDispatch(html5_parser *p)
+{
+	const char *zName = Html5TokName(p);
+	switch( p->iTok ){
+	case HTML5_TOK_TEXT:
+		Html5InsertText(p);
+		return 0;
+	case HTML5_TOK_COMMENT:
+		Html5InsertComment(p,Html5Target(p));
+		return 0;
+	case HTML5_TOK_START:
+		if( Html5IsBreakout(p,zName) ){
+			while( Html5Top(p) && Html5NsKind(Html5Top(p)) != HTML5_NSK_HTML
+			 && !Html5IsHtmlIp(Html5Top(p)) && !Html5IsMathIp(Html5Top(p)) ){
+				Html5Pop(p);
+			}
+			return 1;
+		}
+		Html5InsertForeign(p,Html5NsKind(Html5Top(p)));
+		return 0;
+	case HTML5_TOK_END: {
+		xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
+		int i = (int)SySetUsed(&p->sOpen) - 1;
+		/* The comparison is case-INSENSITIVE, because the stack holds the
+		 * repaired spelling and the token holds the lowercased one: `</G>`
+		 * and `</clippath>` both close what they name. */
+		for( ; i >= 0 ; --i ){
+			if( Html5LowerEq((const char *)apStack[i]->name,zName) ){
+				while( (int)SySetUsed(&p->sOpen) > i ){
+					Html5Pop(p);
+				}
+				return 0;
+			}
+			if( Html5NsKind(apStack[i]) == HTML5_NSK_HTML ){
+				return 1;
+			}
+		}
+		return 0;
+	}
+	default:
+		break;
+	}
+	return 0;
+}
 /*
  * A list item's own start tag closes the one it is a sibling of -- which, with
  * a formatting element left open inside that one, is no longer the innermost
@@ -1610,6 +2027,15 @@ static int Html5Dispatch(html5_parser *p)
 	if( p->bTextTok ){
 		Html5InsertText(p);
 		return 0;
+	}
+	/*
+	 * Foreign content is decided before the insertion mode, not inside it: the
+	 * mode is still `in body` all the way through an `<svg>` subtree, and it is
+	 * the current node's NAMESPACE that says which set of rules this token
+	 * meets.
+	 */
+	if( Html5UseForeign(p) ){
+		return Html5ForeignDispatch(p);
 	}
 	switch( p->iMode ){
 	case HTML5_M_INITIAL:
@@ -1815,6 +2241,16 @@ static int Html5Dispatch(html5_parser *p)
 		}else if( Html5Eq(zName,"nobr") && Html5NameInScope(p,"nobr") ){
 			Html5Adoption(p,"nobr");
 		}
+		/*
+		 * The two tags that switch namespace.  They reconstruct the formatting
+		 * elements like any other body content and then stop being HTML.
+		 */
+		if( Html5Eq(zName,"svg") || Html5Eq(zName,"math") ){
+			Html5Reconstruct(p);
+			Html5InsertForeign(p,Html5Eq(zName,"svg")
+				? HTML5_NSK_SVG : HTML5_NSK_MATH);
+			break;
+		}
 		Html5TableImplied(p,zName);
 		Html5BodyImplied(p,zName);
 		if( Html5Reconstructs(zName) ){
@@ -1862,6 +2298,45 @@ static int Html5Dispatch(html5_parser *p)
 /* ------------------------------------------------------------------ *
  * The entry point
  * ------------------------------------------------------------------ */
+
+/*
+ * `HTML_NO_DEFAULT_NS` asks for a tree whose ELEMENTS carry no namespace, and
+ * that has to happen after the parse rather than during it: the foreign rules
+ * are chosen by the current node's namespace, so a `<svg>` that never got one
+ * would fold its names, miss its breakout tags and never leave the subtree.
+ * So the tree is built namespaced and stripped here.  An ATTRIBUTE keeps its
+ * namespace -- php answers the xlink URI for an `xlink:href` either way -- and
+ * so does the declaration behind it.
+ */
+static void Html5StripForeignNs(xmlNodePtr pNode)
+{
+	xmlNodePtr pCur;
+	for( pCur = pNode ; pCur ; pCur = pCur->next ){
+		xmlNsPtr *ppNs;
+		if( pCur->type != XML_ELEMENT_NODE ){
+			continue;
+		}
+		/* Children first: a declaration is only free to go once nothing
+		 * underneath it still points at it. */
+		Html5StripForeignNs(pCur->children);
+		if( Html5NsKind(pCur) != HTML5_NSK_HTML ){
+			pCur->ns = 0;
+		}
+		ppNs = &pCur->nsDef;
+		while( *ppNs ){
+			xmlNsPtr pNs = *ppNs;
+			if( pNs->href
+			 && (Html5Eq((const char *)pNs->href,HTML5_SVG_NS)
+			  || Html5Eq((const char *)pNs->href,HTML5_MATH_NS)) ){
+				*ppNs = pNs->next;
+				pNs->next = 0;
+				xmlFreeNs(pNs);
+			}else{
+				ppNs = &pNs->next;
+			}
+		}
+	}
+}
 
 /*
  * Normalize the source the way the spec's input stream does: a CRLF pair and a
@@ -1956,6 +2431,9 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 			}
 			Html5OpenBody(&sParser,FALSE);
 		}
+	}
+	if( iFlags & HTML5_NO_DEF_NS ){
+		Html5StripForeignNs(pDoc->children);
 	}
 	SyBlobRelease(&sIn);
 	SyBlobRelease(&sParser.sName);
