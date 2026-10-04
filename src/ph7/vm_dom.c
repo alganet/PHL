@@ -3221,6 +3221,13 @@ static int DomUriIs(const char *zUri,const char *zWant)
  *                spec's pairing (the xmlns namespace may only be spelled by an
  *                xmlns name and an xmlns name may name nothing else) and the
  *                `xml` prefix's own URI.
+ *   DOM_QN_MATTR php 8.4's `Dom\\Document::createAttributeNS` -- DOM_QN_ATTR with
+ *                the grammar split out the same way the namespaced element
+ *                factory splits it: `createAttributeNS('urn:u', '1:x')` refuses
+ *                with 5 where the 2004 factory answers 14. Every rule ABOUT a
+ *                namespace -- a prefix with none, the xmlns pairing, the `xml`
+ *                prefix's own URI -- is still the Namespace Error, because
+ *                those are rules and not spellings.
  *   DOM_QN_MELEM php 8.4's `Dom\\Document::createElementNS` -- DOM_QN_ELEM with
  *                the same split: every grammar failure is the Invalid Character
  *                Error, so `createElementNS('urn:u', '1:x')` refuses with 5
@@ -3243,19 +3250,22 @@ static int DomUriIs(const char *zUri,const char *zWant)
 #define DOM_QN_ATTR  1
 #define DOM_QN_ELEM  2
 #define DOM_QN_MELEM 3
+#define DOM_QN_MATTR 4
 static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname *pOut)
 {
 	int bHasUri = zUri != 0 && zUri[0] != 0;
 	int bAnyElem = iMode == DOM_QN_ELEM || iMode == DOM_QN_MELEM;
-	/* Which code a GRAMMAR failure takes -- the only thing the 2004 element
-	 * mode and its namespaced twin disagree about. */
-	int iBadName = iMode == DOM_QN_MELEM ? DOM_ERR_INVALID_CHAR : DOM_ERR_NAMESPACE;
+	int bAnyAttr = iMode == DOM_QN_ATTR || iMode == DOM_QN_MATTR;
+	/* Which code a GRAMMAR failure takes -- the only thing each 2004 mode and
+	 * its namespaced twin disagree about. */
+	int iBadName = (iMode == DOM_QN_MELEM || iMode == DOM_QN_MATTR)
+		? DOM_ERR_INVALID_CHAR : DOM_ERR_NAMESPACE;
 	int bXmlnsName;
 	pOut->zPrefix = pOut->zLocal = 0;
 	if( zQname == 0 || zQname[0] == 0 ){
 		return iBadName;
 	}
-	if( iMode == DOM_QN_ATTR || (bAnyElem && bHasUri) ){
+	if( bAnyAttr || (bAnyElem && bHasUri) ){
 		/* A created name that names a namespace has to be a QName. */
 		if( xmlValidateQName((const xmlChar *)zQname,0) != 0 ){
 			return iBadName;
@@ -3302,13 +3312,13 @@ static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname
 		DomQNameRelease(pOut);
 		return DOM_ERR_NAMESPACE;
 	}
-	if( iMode == DOM_QN_ATTR && pOut->zPrefix
+	if( bAnyAttr && pOut->zPrefix
 	 && xmlStrEqual(pOut->zPrefix,(const xmlChar *)"xml")
 	 && !DomUriIs(zUri,DOM_XML_NS_URI) ){
 		DomQNameRelease(pOut);
 		return DOM_ERR_NAMESPACE;
 	}
-	if( iMode == DOM_QN_ATTR ){
+	if( bAnyAttr ){
 		/* The DOM spec's pairing, which php applies to a created ATTRIBUTE: the
 		 * xmlns namespace may only be spelled by an xmlns name, and an xmlns
 		 * name may name nothing else. */
@@ -3487,6 +3497,7 @@ static xmlNsPtr DomNsForCreate(xmlNodePtr pNode,const char *zUri,const xmlChar *
  * off the ordinary path.
  */
 static int DomNsIsParked(xmlDocPtr pDoc,xmlNsPtr pNs);
+static int DomNsIsFactory(xmlNsPtr pNs);
 static void DomNsRespell(xmlNodePtr pNode,int bAttr)
 {
 	xmlNsPtr pNs = pNode->ns,pAlt;
@@ -3642,12 +3653,28 @@ static void DomNsHoldParked(DomNsHold *pHold,xmlNodePtr pRoot)
 	xmlNodePtr pCur = pRoot;
 	DomNsHoldInit(pHold);
 	while( pCur ){
-		if( pCur->type == XML_ELEMENT_NODE && pCur->ns != 0 && pCur->ns->prefix == 0
-		 && DomNsIsParked(pCur->doc,pCur->ns) ){
-			if( !DomNsHoldAdd(pHold,pCur) ){
-				return;
+		if( pCur->type == XML_ELEMENT_NODE ){
+			xmlAttrPtr pAttr;
+			if( pCur->ns != 0 && pCur->ns->prefix == 0
+			 && DomNsIsParked(pCur->doc,pCur->ns) ){
+				if( !DomNsHoldAdd(pHold,pCur) ){
+					return;
+				}
+				pCur->ns = 0;
 			}
-			pCur->ns = 0;
+			/* An attribute's binding needs holding for the same reason and
+			 * under any prefix -- the factory that minted it cannot declare it
+			 * anywhere, so libxml would mint the declaration on every insert
+			 * and php mints none, ever. Only a MINTED one: a binding parked
+			 * because a write removed it is still owed a declaration. */
+			for( pAttr = pCur->properties ; pAttr ; pAttr = pAttr->next ){
+				if( DomNsIsFactory(pAttr->ns) ){
+					if( !DomNsHoldAdd(pHold,(xmlNodePtr)pAttr) ){
+						return;
+					}
+					pAttr->ns = 0;
+				}
+			}
 		}
 		pCur = DomWalkNext(pCur,pRoot);
 	}
@@ -3742,6 +3769,58 @@ static xmlNsPtr DomNsForCreateModern(xmlNodePtr pNode,const char *zUri,
 	pNs = xmlNewNs(0,(const xmlChar *)zUri,0);
 	if( pNs ){
 		DomNsPark(pNode,pNs);
+	}
+	return pNs;
+}
+/*
+ * Which parked bindings came out of the namespaced factory.
+ *
+ * `doc->oldNs` holds two unrelated things: a declaration a write REMOVED from
+ * an element, which every reconciliation must still be free to re-declare
+ * somewhere, and a binding the namespaced factory minted, which must never
+ * acquire a declaration at all. Being parked does not tell them apart -- an
+ * adopted node's removed `xmlns:p` is parked exactly like a minted one -- and
+ * telling them apart by prefix stops working the moment an ATTRIBUTE is the
+ * one being minted, because that factory parks every prefix it is given. So
+ * the minted ones are marked, in the one field an xmlNs has spare.
+ */
+static const int DomNsFactoryTag = 0;
+static void DomNsMarkFactory(xmlNsPtr pNs)
+{
+	if( pNs ){
+		pNs->_private = (void *)&DomNsFactoryTag;
+	}
+}
+static int DomNsIsFactory(xmlNsPtr pNs)
+{
+	return pNs != 0 && pNs->_private == (void *)&DomNsFactoryTag;
+}
+/*
+ * The same rule for an ATTRIBUTE out of the namespaced factory, where it is not
+ * even a choice: an `xmlAttr` has no `nsDef`, so there is nowhere on the node to
+ * declare anything. The binding is minted free-standing and parked, whatever
+ * prefix it carries -- which is exactly what php's namespaced tree does, and
+ * what makes the three answers it gives fall out: a document with no ROOT
+ * ELEMENT still answers (the 2004 door declares on the root, so it cannot), the
+ * prefix asked for is the prefix reported, and nothing is reused until the
+ * attribute is written somewhere and a serializer resolves it.
+ *
+ * The `xml` prefix is the one binding that cannot be minted: libxml refuses to
+ * build a second declaration of its own reserved namespace and answers NULL, so
+ * ask the document for the implicit one instead.
+ */
+static xmlNsPtr DomNsForCreateModernAttr(xmlNodePtr pAttr,const char *zUri,
+	const xmlChar *zPrefix)
+{
+	xmlNsPtr pNs;
+	if( zPrefix != 0 && xmlStrEqual(zPrefix,(const xmlChar *)"xml")
+	 && DomUriIs(zUri,DOM_XML_NS_URI) ){
+		return xmlSearchNs(pAttr->doc,(xmlNodePtr)pAttr->doc,(const xmlChar *)"xml");
+	}
+	pNs = xmlNewNs(0,(const xmlChar *)zUri,zPrefix);
+	if( pNs ){
+		DomNsMarkFactory(pNs);
+		DomNsPark(pAttr,pNs);
 	}
 	return pNs;
 }
@@ -3856,6 +3935,13 @@ static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr)
 		/* An attribute in the xmlns namespace IS a declaration, and php resolves
 		 * nothing for it: `xmlns="urn:z"` stays spelled that way wherever it is
 		 * written, and never acquires a declaration of the xmlns namespace. */
+		return;
+	}
+	if( DomNsIsFactory(pNs) ){
+		/* Out of the namespaced factory, and declared nowhere on purpose: php
+		 * resolves nothing for it on arrival either, so the attribute keeps
+		 * answering the prefix it was ASKED for however the document spells
+		 * that URI, and each serializer settles the spelling its own way. */
 		return;
 	}
 	if( xmlSearchNs(pElem->doc,pElem,pNs->prefix) == pNs ){
@@ -4774,16 +4860,33 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttribute)
 }
 /*
  * DOMDocument::createAttributeNS(?string $namespace, string $qualifiedName): DOMAttr
+ * Dom\Document::createAttributeNS(?string $namespace, string $qualifiedName): Dom\Attr
  *
- * The namespace is declared on the document's ROOT ELEMENT, not on the
- * attribute -- which is why a document that has no root element yet cannot
- * answer at all, and says so with php's warning and a false.
+ * Two factories, not one retyped: php's namespaced tree keeps its bindings off
+ * the tree entirely, and that changes every answer this door gives.
+ *
+ * On the 2004 door the namespace is declared on the document's ROOT ELEMENT,
+ * not on the attribute -- which is why a document that has no root element yet
+ * cannot answer at all, and says so with php's warning and a false, and why the
+ * prefix asked for is replaced by any the root already binds to that URI.
+ *
+ * The namespaced one declares nothing (DomNsForCreateModernAttr): the binding
+ * rides on the attribute as a free-standing declaration parked on the document,
+ * so a rootless document answers, the prefix asked for is the prefix reported,
+ * and no reuse happens at all -- not on create and not on insert. What a
+ * serializer then writes is its own decision, and the two disagree: `saveXml`
+ * takes an in-scope prefix for that URI or invents `ns1`, while `C14N` puts the
+ * default declaration on it. Its grammar failures are the Invalid Character
+ * Error rather than the Namespace Error (DOM_QN_MATTR), and an EMPTY-STRING
+ * namespace is simply no namespace, both exactly as the element factory splits
+ * them.
  */
 DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zUri = DomArgStrOrNull(nArg,apArg,0);
 	const char *zQname = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	int bModern = DomThisModern(pCtx);
 	xmlNodePtr pRoot;
 	xmlAttrPtr pAttr;
 	dom_qname sQ;
@@ -4791,9 +4894,31 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 	if( pNd == 0 ){
 		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
 	}
-	rc = DomQNameParse(zQname,zUri,DOM_QN_ATTR,&sQ);
+	if( bModern && zUri != 0 && zUri[0] == 0 ){
+		zUri = 0;
+	}
+	rc = DomQNameParse(zQname,zUri,bModern ? DOM_QN_MATTR : DOM_QN_ATTR,&sQ);
 	if( rc ){
 		return DomThrow(pCtx,rc);
+	}
+	if( bModern ){
+		pAttr = xmlNewDocProp((xmlDocPtr)pNd->pNode,sQ.zLocal,0);
+		if( pAttr == 0 ){
+			DomQNameRelease(&sQ);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( zUri != 0 ){
+			xmlNsPtr pNs = DomNsForCreateModernAttr((xmlNodePtr)pAttr,zUri,sQ.zPrefix);
+			if( pNs == 0 ){
+				DomQNameRelease(&sQ);
+				xmlFreeProp(pAttr);   /* never handed out, never an orphan */
+				return PH7_ContextMemoryError(pCtx);
+			}
+			xmlSetNs((xmlNodePtr)pAttr,pNs);
+		}
+		DomQNameRelease(&sQ);
+		DomOrphanAdd(pNd->pShell,(xmlNodePtr)pAttr);
+		return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
 	}
 	pRoot = xmlDocGetRootElement((xmlDocPtr)pNd->pNode);
 	if( pRoot == 0 ){
@@ -12523,10 +12648,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	 * parse the 2004 one carries is unreachable from this tree, and
 	 * `createProcessingInstruction`'s `$data` is REQUIRED, which is what makes
 	 * the empty-versus-absent distinction observable on every call.
-	 * `createAttributeNS` is NOT here: php's namespaced one is a different
-	 * factory, not a retyped one -- it declares nothing on the document's root
-	 * and lets the binding ride on the attribute -- and it lands with the
-	 * insert-side reconciliation that a null-prefixed one needs. */
+	 * `createAttributeNS` is the one that is NOT a shared body: php's
+	 * namespaced one is a different factory rather than a retyped one, and the
+	 * one function carries both under DomThisModern. */
 	static const PH7_NativeMethodDef aMDocMethod[] = {
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName", "Dom\\Element",
 		  vm_builtin_DOMDocument_createElement },
@@ -12545,6 +12669,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  "Dom\\ProcessingInstruction", vm_builtin_DOMDocument_createPI },
 		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "Dom\\Attr",
 		  vm_builtin_DOMDocument_createAttribute },
+		{ "createAttributeNS",    PH7_MOD_PUBLIC,
+		  "?string $namespace, string $qualifiedName", "Dom\\Attr",
+		  vm_builtin_DOMDocument_createAttributeNS },
 		DOM_MPARENT_METHODS
 	};
 	/* php's return here is `Dom\Text` and not `Dom\Text|false`, which is what
