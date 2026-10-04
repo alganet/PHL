@@ -17433,18 +17433,17 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
  * program assigned raw bytes to. A byte-order mark is stripped only by the
  * sniff, never under an override: php decodes U+FEFF as text there.
  *
- * Thirty-six of the table's forty encodings have a converter: UTF-8, both
+ * Thirty-nine of the table's forty encodings have a converter: UTF-8, both
  * UTF-16s, windows-1252 (the name `iso-8859-1`, `latin1`, `ascii` and
  * eighteen other labels resolve to), x-user-defined, the twenty-seven other
  * single-byte encodings, ISO-8859-8-I sharing ISO-8859-8's table as the
- * standard says, and three of the double-byte CJK names -- Shift_JIS, EUC-KR
- * and Big5. Their cells are the oracle's: every high byte of every name
- * decoded through php 8.5.10, and every code point that came out encoded
- * back. An undefined cell decodes to U+FFFD, and nothing encodes to it. Four
- * names still pass through in both directions, name right and bytes
- * untouched: GBK and gb18030, whose shared decoder reads a four-byte
- * sequence, EUC-JP, which has a second code set behind its 0x8F lead, and
- * ISO-2022-JP, which has shift states.
+ * standard says, and all six of the CJK names -- Shift_JIS, EUC-KR, EUC-JP,
+ * Big5 and the two that share one decoder, GBK and gb18030. Their cells are
+ * the oracle's: every high byte of every name decoded through php 8.5.10, and
+ * every code point that came out encoded back. An undefined cell decodes to
+ * U+FFFD, and nothing encodes to it. ISO-2022-JP alone still passes through in
+ * both directions, name right and bytes untouched: it has shift states, so it
+ * is not a table lookup at all.
  *
  * `replacement` is the standard's mitigation rather than a converter, and it
  * is both faces at once: the decoder answers the EMPTY string for any source
@@ -17466,6 +17465,8 @@ static const char * DomEncCanonName(const char *zEnc,int nEnc)
 #define DOM_ENC_BIG5    -4
 #define DOM_ENC_EUCKR   -5
 #define DOM_ENC_EUCJP   -6
+#define DOM_ENC_GBK     -7
+#define DOM_ENC_GB18030 -8
 #define DOM_ENC_SBCS     5  /* + the index into aDomSbcs[] */
 /* windows-1252's 0x80..0x9F; 0xA0..0xFF is the code point of the same value. */
 static const unsigned short aDomCp1252[32] = {
@@ -18008,10 +18009,10 @@ static int DomSjisFromUni(sxu32 cp)
  * and including the two directions separately, because EUC-JP decodes 6067
  * cells it cannot encode one of.
  *
- * Only a name whose every character is one cell or one byte belongs here:
- * GBK's decoder is gb18030's and reads four-byte sequences, and ISO-2022-JP
- * has shift states. Big5 is a pair table too but not this one -- its cells
- * reach past the BMP -- so it is cut and read separately, below.
+ * Only a name whose every character is one cell or one byte belongs here.
+ * Big5 is a pair table too but not this one -- its cells reach past the BMP --
+ * and GBK and gb18030 add a FOUR-byte sequence to the pair, so both are cut
+ * and read separately, below.
  */
 #define DOM_DBCS_ROWS 126               /* the leads 0x81..0xFE */
 #define DOM_DBCS_COLS 191               /* the trails 0x40..0xFE */
@@ -18118,6 +18119,88 @@ static int DomBig5FromUni(sxu32 cp)
 	}
 	return -1;
 }
+#include "vm_dom_gbk.h"
+/*
+ * GBK and gb18030, the one framing here whose character is not always a byte
+ * or a pair: a lead may instead open a FOUR-byte sequence, whose ordinal in
+ * the four byte windows -- the pointer -- names a code point through a run
+ * table rather than a cell. The two names share every decode table, which the
+ * generator asserts by sweeping both, and share no encode table at all: GBK
+ * writes the euro as the single byte 0x80 and gb18030 as the pair 0xA2E3, and
+ * only gb18030 writes a four-byte sequence, so a character that only they
+ * spell is `?` under GBK.
+ *
+ * The four-byte form's TWO failures are different answers, and both are php's
+ * rather than the standard's. A sequence that is well framed but whose pointer
+ * names nothing consumes all four bytes for one U+FFFD. A sequence that is
+ * framed wrong -- a third byte outside 0x81..0xFE, a fourth outside the
+ * digits, or the source ending early -- consumes only the LEAD: the second
+ * byte is re-read, so `\x81\x30\x81\x41` is one replacement, the digit as
+ * text, and then the pair 0x8141, where the standard would push back two bytes
+ * and answer differently.
+ */
+#define DOM_GBK_N2   (PH7_DOM_GBK_B2HI - PH7_DOM_GBK_B2LO + 1)
+#define DOM_GBK_N3   (PH7_DOM_GBK_B3HI - PH7_DOM_GBK_B3LO + 1)
+/* The code point a four-byte pointer names, or 0 where it names none. The runs
+ * are ascending and do not overlap, so this is a binary search over them. */
+static sxu32 DomGbkFromPtr(sxu32 iPtr)
+{
+	int iLo = 0,iHi = PH7_DOM_GBK_DECRUN - 1;
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		sxu32 iFirst = aDomGbkDecPtr[iMid];
+		if( iPtr < iFirst ){
+			iHi = iMid - 1;
+		}else if( iPtr - iFirst < aDomGbkDecLen[iMid] ){
+			return aDomGbkDecCp[iMid] + (iPtr - iFirst);
+		}else{
+			iLo = iMid + 1;
+		}
+	}
+	return 0;
+}
+/* And the pointer gb18030 writes a code point as, or -1 where it writes none.
+ * This is not DomGbkFromPtr inverted: eighteen pointers decode to a character
+ * the encoder spells as a PAIR instead, and two code points write a pointer
+ * the decoder answers U+FFFD for. */
+static sxi64 DomGb18030ToPtr(sxu32 cp)
+{
+	int iLo = 0,iHi = PH7_DOM_GB18030_E4RUN - 1;
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		sxu32 iFirst = aDomGb18030E4Cp[iMid];
+		if( cp < iFirst ){
+			iHi = iMid - 1;
+		}else if( cp - iFirst < aDomGb18030E4Len[iMid] ){
+			return (sxi64)aDomGb18030E4Ptr[iMid] + (cp - iFirst);
+		}else{
+			iLo = iMid + 1;
+		}
+	}
+	return -1;
+}
+/* The byte or the lead<<8|trail a label's pair encoder writes, or -1. Ordered
+ * by code point and holding no duplicate key, so a binary search. */
+static int DomGbkPairFromUni(const sxu16 *aCp,const sxu16 *aB,int nEnc,sxu32 cp)
+{
+	int iLo = 0,iHi = nEnc - 1;
+	if( cp > 0xFFFF ){
+		return -1;
+	}
+	while( iLo <= iHi ){
+		int iMid = iLo + (iHi - iLo) / 2;
+		sxu32 u = (sxu32)aCp[iMid];
+		if( u == cp ){
+			return (int)aB[iMid];
+		}
+		if( u < cp ){
+			iLo = iMid + 1;
+		}else{
+			iHi = iMid - 1;
+		}
+	}
+	return -1;
+}
 /* The converter behind a document's encoding: the label the document keeps
  * (a parsed one keeps the NAME, `createEmpty()` the program's spelling) is
  * resolved through the label table first, so `latin1` and `utf-16` reach the
@@ -18155,6 +18238,12 @@ static int DomEncConverter(const char *zEnc)
 	}
 	if( SyStrncmp(zCanon,"Big5",4) == 0 ){
 		return DOM_ENC_BIG5;
+	}
+	if( SyStrncmp(zCanon,"GBK",3) == 0 ){
+		return DOM_ENC_GBK;
+	}
+	if( SyStrncmp(zCanon,"gb18030",7) == 0 ){
+		return DOM_ENC_GB18030;
 	}
 	if( SyStrncmp(zCanon,"ISO-8859-8-I",12) == 0 ){
 		zCanon = "ISO-8859-8";
@@ -18290,6 +18379,41 @@ static void DomEncPut(SyBlob *pOut,int iEnc,sxu32 cp)
 				return;
 			}
 			z[0] = (unsigned char)iB;
+		}else{
+			z[0] = '?';
+		}
+		SyBlobAppend(pOut,z,1);
+		return;
+	}
+	case DOM_ENC_GBK:
+	case DOM_ENC_GB18030: {
+		int bWide = iEnc == DOM_ENC_GB18030,iB;
+		sxi64 iPtr;
+		if( cp < 0x80 ){
+			z[0] = (unsigned char)cp;
+		}else if( (iB = bWide
+			? DomGbkPairFromUni(aDomGb18030EncCp,aDomGb18030EncB,PH7_DOM_GB18030_ENC,cp)
+			: DomGbkPairFromUni(aDomGbkEncCp,aDomGbkEncB,PH7_DOM_GBK_ENC,cp)) >= 0 ){
+			/* The pair wins wherever the label has one -- which is why the
+			 * euro is 0x80 here and 0xA2E3 there, and why eighteen characters
+			 * a four-byte pointer decodes to are written as a pair. */
+			if( iB >= 0x100 ){
+				z[0] = (unsigned char)(iB >> 8);
+				z[1] = (unsigned char)(iB & 0xFF);
+				SyBlobAppend(pOut,z,2);
+				return;
+			}
+			z[0] = (unsigned char)iB;
+		}else if( bWide && (iPtr = DomGb18030ToPtr(cp)) >= 0 ){
+			/* GBK never reaches here: it has no four-byte encoder at all, so a
+			 * character only the wide form spells is `?` under that name. */
+			z[0] = (unsigned char)(0x81 + iPtr / (DOM_GBK_N2 * DOM_GBK_N3 * DOM_GBK_N2));
+			z[1] = (unsigned char)(PH7_DOM_GBK_B2LO
+				+ iPtr / (DOM_GBK_N3 * DOM_GBK_N2) % DOM_GBK_N2);
+			z[2] = (unsigned char)(PH7_DOM_GBK_B3LO + iPtr / DOM_GBK_N2 % DOM_GBK_N3);
+			z[3] = (unsigned char)(PH7_DOM_GBK_B2LO + iPtr % DOM_GBK_N2);
+			SyBlobAppend(pOut,z,4);
+			return;
 		}else{
 			z[0] = '?';
 		}
@@ -18588,6 +18712,72 @@ static int DomEncDecode(SyBlob *pOut,int iEnc,const unsigned char *z,int n)
 		}
 		return 1;
 	}
+	case DOM_ENC_GBK:
+	case DOM_ENC_GB18030:
+		/* One decoder for both names, and it is not a byte-at-a-time state
+		 * machine: a lead has to look three bytes ahead to know whether it
+		 * opened a pair or a four-byte sequence, and the two spend a different
+		 * number of bytes when they fail. */
+		for( i = 0 ; i < n ; ++i ){
+			unsigned char b = z[i],t;
+			sxu32 cp;
+			if( b < 0x80 ){
+				DomEncPutUtf8(pOut,b);
+				continue;
+			}
+			if( aDomGbkByte[b - 0x80] != 0xFFFF ){
+				/* A byte that stands for a character alone -- 0x80, the euro,
+				 * under BOTH names -- or for none. */
+				cp = (sxu32)aDomGbkByte[b - 0x80];
+				DomEncPutUtf8(pOut,cp ? cp : 0xFFFD);
+				continue;
+			}
+			if( i + 1 >= n ){
+				DomEncPutUtf8(pOut,0xFFFD);      /* the source ended on a lead */
+				continue;
+			}
+			t = z[i + 1];
+			if( t >= PH7_DOM_GBK_B2LO && t <= PH7_DOM_GBK_B2HI ){
+				if( i + 3 < n
+				 && z[i + 2] >= PH7_DOM_GBK_B3LO && z[i + 2] <= PH7_DOM_GBK_B3HI
+				 && z[i + 3] >= PH7_DOM_GBK_B2LO && z[i + 3] <= PH7_DOM_GBK_B2HI ){
+					/* The pointer is the sequence's ordinal in the four
+					 * windows, counted one window at a time. */
+					sxu32 iPtr = (sxu32)b - 0x81;
+					iPtr = iPtr * DOM_GBK_N2 + t - PH7_DOM_GBK_B2LO;
+					iPtr = iPtr * DOM_GBK_N3 + z[i + 2] - PH7_DOM_GBK_B3LO;
+					iPtr = iPtr * DOM_GBK_N2 + z[i + 3] - PH7_DOM_GBK_B2LO;
+					cp = DomGbkFromPtr(iPtr);
+					/* Framed right, all four bytes are one character whether
+					 * the pointer names one or not. */
+					DomEncPutUtf8(pOut,cp ? cp : 0xFFFD);
+					i += 3;
+					continue;
+				}
+				/* Framed wrong -- a third or fourth byte outside its window, or
+				 * a source that ended early. Only the LEAD is spent, so the
+				 * digit behind it is re-read as text and may open a pair of its
+				 * own: the standard pushes back two bytes here and answers
+				 * something else. */
+				DomEncPutUtf8(pOut,0xFFFD);
+				continue;
+			}
+			cp = t >= 0x40 && t <= 0xFE
+				? (sxu32)aDomGbkCell[((int)b - 0x81) * DOM_DBCS_COLS + t - 0x40]
+				: 0;
+			if( cp ){
+				DomEncPutUtf8(pOut,cp);
+				i++;
+				continue;
+			}
+			/* The pair names no character. Only an ASCII byte opens the next
+			 * character of its own rather than being eaten with the lead. */
+			DomEncPutUtf8(pOut,0xFFFD);
+			if( t >= 0x80 ){
+				i++;
+			}
+		}
+		return 1;
 	case DOM_ENC_CP1252:
 		for( i = 0 ; i < n ; ++i ){
 			unsigned char b = z[i];
