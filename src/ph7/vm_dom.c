@@ -9833,11 +9833,50 @@ DOM_METHOD(vm_builtin_Dom_getIterator)
  * because a type in a signature is resolved when a call is checked against it
  * and an interface method is never called.
  */
+/* The HTML namespace, which `name=` keying is confined to (see below). */
+#define DOM_XHTML_NS "http://www.w3.org/1999/xhtml"
+/* An element is "in the HTML namespace" only when it carries a namespace whose
+ * URI is that one. A no-namespace element is NOT in it -- an unprefixed <a> in
+ * a plain XML document answers false here, and that is the whole reason a
+ * `name=` on it is not a key. */
+static int DomNodeIsHtmlNs(xmlNodePtr pNode)
+{
+	return pNode && pNode->ns && pNode->ns->href
+		&& xmlStrEqual(pNode->ns->href,(const xmlChar *)DOM_XHTML_NS);
+}
+/* Does one element answer to `zKey` under the collection rule? */
+static int DomNamedAttrHit(xmlNodePtr pNode,const char *zAttr,const char *zKey)
+{
+	xmlChar *zVal = xmlGetNoNsProp(pNode,(const xmlChar *)zAttr);
+	int bHit = 0;
+	if( zVal ){
+		sxu32 nKey = (sxu32)SyStrlen(zKey);
+		bHit = SyStrlen((const char *)zVal) == nKey
+			&& SyStrncmp((const char *)zVal,zKey,nKey) == 0;
+		xmlFree(zVal);
+	}
+	return bHit;
+}
 /*
  * Dom\HTMLCollection::namedItem(): the standard's rule, which is not
  * DOMNamedNodeMap's -- a *collection* is keyed by the `id` attribute of the
  * elements in it, and falls back to `name`. It walks the collection rather than
- * a node's attribute list, so it is its own reader.
+ * a node's attribute list, so it is its own reader, and it is the single reader
+ * behind all three doors: the method, `$col[$key]` and `isset($col[$key])`.
+ *
+ * Two rules the phrase "falls back to `name`" hides, both swept from php:
+ *
+ *   - The fallback is on a MISMATCH, not on an absence. An element that has an
+ *     `id` which is not the key is still asked for its `name`; only an `id`
+ *     that MATCHES ends the walk. So <e id="x" name="y"> answers to both keys.
+ *   - `name` keys only an element in the HTML namespace. In an XML document
+ *     that is the prefixed one, so <d name="n"/> under no namespace answers to
+ *     nothing while <h:c name="n"/> answers -- and `id` keys either.
+ *
+ * php's own walk over `$element->children` does not terminate when the first
+ * child node is an element that does not match (its iterator refuses to advance
+ * off the head of the list), so that one collection hangs there and cannot be
+ * used as an oracle. Ours walks the collection by index and answers.
  */
 static ph7_class_instance * DomCollectionNamed(ph7_vm *pVm,ph7_class_instance *pColl,
 	const char *zKey)
@@ -9851,22 +9890,14 @@ static ph7_class_instance * DomCollectionNamed(ph7_vm *pVm,ph7_class_instance *p
 		ph7_class_instance *pItem = DomListItem(&(*pVm),pColl,i);
 		phl_domnode *pNd = pItem ? DomResOf(pItem) : 0;
 		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
-		xmlChar *zVal;
 		if( pNode == 0 || pNode->type != XML_ELEMENT_NODE ){
 			continue;
 		}
-		zVal = xmlGetNoNsProp(pNode,(const xmlChar *)"id");
-		if( zVal == 0 ){
-			zVal = xmlGetNoNsProp(pNode,(const xmlChar *)"name");
+		if( DomNamedAttrHit(pNode,"id",zKey) ){
+			return pItem;
 		}
-		if( zVal ){
-			sxu32 nKey = (sxu32)SyStrlen(zKey);
-			int bHit = SyStrlen((const char *)zVal) == nKey
-				&& SyStrncmp((const char *)zVal,zKey,nKey) == 0;
-			xmlFree(zVal);
-			if( bHit ){
-				return pItem;
-			}
+		if( DomNodeIsHtmlNs(pNode) && DomNamedAttrHit(pNode,"name",zKey) ){
+			return pItem;
 		}
 	}
 	return 0;
