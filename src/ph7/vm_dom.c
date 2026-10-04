@@ -1019,6 +1019,10 @@ static void DomTextContent(ph7_context *pCtx,xmlNodePtr pNode)
 		xmlFree(zContent);
 	}
 }
+/* Said before an ATTRIBUTE is unlinked from its element, wherever that is done:
+ * a declaration written after it has to be told, while the attribute before it
+ * can still be read. Anything else is a no-op. */
+static void DomAttrGoing(xmlNodePtr pNode);
 /* The two child counts childNodes->length and childElementCount read. */
 static xmlNodePtr DomRefChildren(xmlNodePtr pNode);
 static int DomChildCount(xmlNodePtr pNode,int bElementsOnly)
@@ -1228,6 +1232,7 @@ static int DomMutatorAttrAttach(ph7_context *pCtx,phl_domnode *pPar,phl_domnode 
 	}
 	pOld = DomAttrByNs(pElem,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name);
 	if( pOld && pOld != pAttr ){
+		DomAttrGoing((xmlNodePtr)pOld);
 		xmlUnlinkNode((xmlNodePtr)pOld);
 		DomOrphanAdd(pPar->pShell,(xmlNodePtr)pOld);
 	}
@@ -1464,6 +1469,7 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 		}
 		pOld = DomAttrByNs(pParent,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name);
 		if( pOld && pOld != pAttr ){
+			DomAttrGoing((xmlNodePtr)pOld);
 			xmlUnlinkNode((xmlNodePtr)pOld);
 			DomOrphanAdd(pPar->pShell,(xmlNodePtr)pOld);
 		}
@@ -1561,6 +1567,7 @@ DOM_METHOD(vm_builtin_DOMNode_removeChild)
 	if( DomNodeReadOnly((xmlNodePtr)pPar->pNode) ){
 		return DomThrow(pCtx,DOM_ERR_NO_MOD);
 	}
+	DomAttrGoing(pChild);
 	xmlUnlinkNode(pChild);
 	DomOrphanAdd(pChd->pShell,pChild);
 	ph7_result_value(pCtx,apArg[0]);
@@ -1638,6 +1645,7 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 		 * old child and inserts nothing, and answers it as any replaceChild
 		 * does. */
 		DomFragMove(pNew->pShell,pParent,pChild,pVictim);
+		DomAttrGoing(pVictim);
 		xmlUnlinkNode(pVictim);
 		DomOrphanAdd(pOld->pShell,pVictim);
 		ph7_result_value(pCtx,apArg[1]);
@@ -1650,12 +1658,14 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 		 * as-is, so a duplicate name is the caller's to answer for. */
 		DomAttrDetach(pNew->pShell,(xmlAttrPtr)pChild);
 		DomAttrLinkBefore(pParent,(xmlAttrPtr)pChild,(xmlAttrPtr)pVictim);
+		DomAttrGoing(pVictim);
 		xmlUnlinkNode(pVictim);
 		DomOrphanAdd(pOld->pShell,pVictim);
 		DomNsAttrArrive(pParent,(xmlAttrPtr)pChild);
 	}else if( pChild != pVictim ){
 		DomDetach(pNew->pShell,pChild);
 		DomLinkBefore(pParent,pChild,pVictim);
+		DomAttrGoing(pVictim);
 		xmlUnlinkNode(pVictim);
 		DomOrphanAdd(pOld->pShell,pVictim);
 		DomNsOnInsertEx(pChild,0);
@@ -2240,6 +2250,7 @@ DOM_METHOD(vm_builtin_Dom_removeSelf)
 	if( pNode->parent == 0 ){
 		return DomThrowVoid(pCtx,DOM_ERR_NOT_FOUND);
 	}
+	DomAttrGoing(pNode);
 	xmlUnlinkNode(pNode);
 	DomOrphanAdd(pNd->pShell,pNode);
 	return PH7_OK;
@@ -2258,6 +2269,9 @@ DOM_METHOD(vm_builtin_DOMNode_hasChildNodes)
  * engine MINTED to bind a name, rather than the document spelling one. */
 static void DomNsMarkMinted(xmlNsPtr pNs);
 static int DomNsIsSpelt(xmlNsPtr pNs);
+/* ...and, with them, where on the attribute map each spelt one sits: a copy
+ * carries both over from the node it was made from. */
+static void DomNsCopyMarks(xmlNodePtr pSrc,xmlNodePtr pDst);
 /* The attribute list of an element (empty for anything else). */
 static xmlAttrPtr DomAttrList(xmlNodePtr pNode)
 {
@@ -2653,7 +2667,9 @@ static xmlNodePtr DomCopyNode(xmlNodePtr pNode,xmlDocPtr pDoc,int iExtended)
 		}
 		return pCopy;
 	}
-	return xmlDocCopyNode(pNode,pDoc,iExtended);
+	pCopy = xmlDocCopyNode(pNode,pDoc,iExtended);
+	DomNsCopyMarks(pNode,pCopy);
+	return pCopy;
 }
 
 /*
@@ -2678,6 +2694,7 @@ static int DomCloneDocument(ph7_context *pCtx,phl_domnode *pNd,int bDeep)
 	xmlDocPtr pCopy;
 	sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
 	pCopy = xmlCopyDoc((xmlDocPtr)pNd->pNode,bDeep ? 1 : 0);
+	DomNsCopyMarks((xmlNodePtr)pNd->pNode,(xmlNodePtr)pCopy);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMNode::cloneNode");
 	if( pCopy == 0 ){
 		ph7_result_bool(pCtx,0);
@@ -3865,7 +3882,119 @@ static void DomNsMarkMinted(xmlNsPtr pNs)
 /* Is this a declaration the document spells, and so one php's map lists? */
 static int DomNsIsSpelt(xmlNsPtr pNs)
 {
-	return pNs != 0 && pNs->_private == 0;
+	return pNs != 0
+		&& pNs->_private != (void *)&DomNsFactoryTag
+		&& pNs->_private != (void *)&DomNsMintedTag;
+}
+/*
+ * ...and WHERE on the map a spelt one sits.
+ *
+ * php's namespaced tree keeps a declaration in the element's PROPERTY chain,
+ * beside the attributes, so a parsed `xmlns:p` comes before every attribute --
+ * the parser hands an element's declarations over first whatever the source
+ * order, which is why `<r a="1" xmlns:p="urn:p"/>` still reads `xmlns:p a` --
+ * while one WRITTEN through setAttributeNS lands where it was written: after
+ * the attributes the element already had, and before any written next.
+ * libxml has no such chain -- a declaration is an xmlNs off nsDef and carries
+ * no position at all -- so a written one remembers the attribute it was
+ * written AFTER, in the same spare field the marks above use. A value that is
+ * neither tag is that anchor, and no anchor is the HEAD of the map, which is
+ * both where the parser's declarations sit and where one written onto an
+ * element with no attributes yet sits.
+ */
+static void DomNsMapSetAfter(xmlNsPtr pNs,xmlAttrPtr pAttr)
+{
+	if( pNs && DomNsIsSpelt(pNs) ){
+		pNs->_private = (void *)pAttr;
+	}
+}
+/* The attribute a spelt declaration sits after, or NULL for the head of the
+ * map. An anchor whose attribute has left the element reads as the LAST one
+ * rather than as a wild pointer: every reader here asks this one question, so
+ * they cannot disagree, and the map stays walkable whatever happened to the
+ * attribute. */
+static xmlAttrPtr DomNsMapAfter(xmlNodePtr pElem,xmlNsPtr pNs)
+{
+	xmlAttrPtr pAnchor,pCur,pLast = 0;
+	if( pNs == 0 || pNs->_private == 0 || !DomNsIsSpelt(pNs) ){
+		return 0;
+	}
+	pAnchor = (xmlAttrPtr)pNs->_private;
+	for( pCur = DomAttrList(pElem) ; pCur ; pCur = pCur->next ){
+		if( pCur == pAnchor ){
+			return pAnchor;
+		}
+		pLast = pCur;
+	}
+	return pLast;
+}
+/* An attribute leaving its element takes no declaration with it: php's chain
+ * closes over the gap, so one written after this attribute is now written
+ * after the attribute before it. Every door that unlinks an attribute says so
+ * before the unlink, while the anchor's predecessor can still be read. */
+static void DomAttrGoing(xmlNodePtr pNode)
+{
+	xmlNodePtr pElem;
+	xmlNsPtr pNs;
+	if( pNode == 0 || pNode->type != XML_ATTRIBUTE_NODE ){
+		return;
+	}
+	pElem = pNode->parent;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return;
+	}
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( pNs->_private == (void *)pNode && DomNsIsSpelt(pNs) ){
+			DomNsMapSetAfter(pNs,((xmlAttrPtr)pNode)->prev);
+		}
+	}
+}
+/*
+ * A COPY carries the marks, and the positions, over.
+ *
+ * libxml builds every declaration on a copy with xmlNewNs, whose spare field is
+ * zero, so a copied element came back claiming the engine's minted bindings
+ * were spelt -- `$el->cloneNode()` listed an `xmlns:k` on the attribute map
+ * that the original never listed -- and stood a written declaration back at the
+ * head of the map. The copy's nsDef list is the source's, in order, with
+ * anything libxml had to invent for the copy appended after it: a copy of a
+ * marked declaration takes its mark, an anchor is re-read as the attribute at
+ * the same position in the COPY's property list, and an invented one is a
+ * binding no document spells, so it is minted.
+ *
+ * The children are walked in step for the same reason, and no deeper than
+ * libxml's own copier already went to build them.
+ */
+static void DomNsCopyMarks(xmlNodePtr pSrc,xmlNodePtr pDst)
+{
+	xmlNodePtr pS,pD;
+	if( pSrc == 0 || pDst == 0 ){
+		return;
+	}
+	if( pSrc->type == XML_ELEMENT_NODE && pDst->type == XML_ELEMENT_NODE ){
+		xmlNsPtr pSNs = pSrc->nsDef,pDNs = pDst->nsDef;
+		for( ; pSNs && pDNs ; pSNs = pSNs->next,pDNs = pDNs->next ){
+			if( !DomNsIsSpelt(pSNs) ){
+				pDNs->_private = pSNs->_private;
+				continue;
+			}
+			pDNs->_private = 0;
+			if( DomNsMapAfter(pSrc,pSNs) ){
+				xmlAttrPtr pAnchor = DomNsMapAfter(pSrc,pSNs),pCur;
+				int iAt = 0;
+				for( pCur = DomAttrList(pSrc) ; pCur && pCur != pAnchor ; pCur = pCur->next ){
+					iAt++;
+				}
+				DomNsMapSetAfter(pDNs,DomAttrAt(pDst,iAt));
+			}
+		}
+		for( ; pDNs ; pDNs = pDNs->next ){
+			DomNsMarkMinted(pDNs);
+		}
+	}
+	for( pS = pSrc->children,pD = pDst->children ; pS && pD ; pS = pS->next,pD = pD->next ){
+		DomNsCopyMarks(pS,pD);
+	}
 }
 static void DomNsMarkFactory(xmlNsPtr pNs)
 {
@@ -4056,6 +4185,7 @@ static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr)
 static void DomNsDeclare(xmlNodePtr pElem,const xmlChar *zPrefix,const char *zHref)
 {
 	xmlNsPtr pNs;
+	xmlAttrPtr pLast;
 	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
 		int bSame = zPrefix == 0 ? pNs->prefix == 0
 			: (pNs->prefix != 0 && xmlStrEqual(pNs->prefix,zPrefix));
@@ -4068,10 +4198,15 @@ static void DomNsDeclare(xmlNodePtr pElem,const xmlChar *zPrefix,const char *zHr
 				xmlFree((xmlChar *)pNs->href);
 			}
 			pNs->href = zNew;
-			return;
+			return;   /* a REBIND keeps the position the declaration already had */
 		}
 	}
-	xmlNewNs(pElem,(const xmlChar *)zHref,zPrefix);
+	/* A new one is written where the program writes it: after the attributes
+	 * the element carries now, and before whatever is written next. */
+	for( pLast = DomAttrList(pElem) ; pLast && pLast->next ; pLast = pLast->next ){
+		;
+	}
+	DomNsMapSetAfter(xmlNewNs(pElem,(const xmlChar *)zHref,zPrefix),pLast);
 }
 
 /*
@@ -4234,88 +4369,160 @@ static xmlNsPtr DomNsAttrStandIn(phl_xmldoc *pShell,xmlNodePtr pNode)
 /*
  * ===== The one sibling chain the two halves of the map share =====
  *
- * php walks an element's declarations and its attributes as a SINGLE list --
- * `xmlns:p` -> `xmlns` -> `a` -> `p:b` -- so the last declaration's
- * `nextSibling` is the first attribute and that attribute's `previousSibling`
- * is the last declaration. libxml keeps declarations off `pElem->properties`
- * entirely, and the stand-ins are deliberately parked on the shell so that
- * nothing which walks or serializes an element ever meets one; splicing them
- * in would break every one of those walks. So the two READERS branch instead,
- * and the chain exists only where it is asked for.
+ * php walks an element's declarations and its attributes as a SINGLE list, so
+ * a declaration's `nextSibling` can be an attribute and an attribute's
+ * `previousSibling` a declaration. The order is the one DomNsMapAfter records:
+ * the declarations the map lists at its head, then every attribute, each
+ * followed by the declarations written after it -- `xmlns:p` -> `a` -> `xmlns:w`
+ * for a document that spells the first and a program that writes the second.
+ *
+ * libxml keeps declarations off `pElem->properties` entirely, and the stand-ins
+ * are deliberately parked on the shell so that nothing which walks or
+ * serializes an element ever meets one; splicing them in would break every one
+ * of those walks. So the two READERS branch instead, and the chain exists only
+ * where it is asked for -- both of them stepping through the one walk below, so
+ * that the map's order and the sibling links can never disagree.
  *
  * Only the modern tree lists declarations on the attribute map at all: the
  * 2004 tree answers one through DOMNameSpaceNode, which declares no sibling
  * property and warns on the read, so its chain is libxml's untouched.
  */
-static xmlNsPtr DomNsMapStep(xmlNodePtr pElem,xmlNsPtr pFrom,int bBack)
+
+/* The declarations written after pAfter (NULL for the map's head), in the order
+ * the element makes them: the one after pFrom, or the first when pFrom is NULL. */
+static xmlNsPtr DomNsAnchoredNext(xmlNodePtr pElem,xmlAttrPtr pAfter,xmlNsPtr pFrom)
 {
-	xmlNsPtr pNs, pPrev = 0;
-	int bSeen = 0;
+	xmlNsPtr pNs;
+	int bSeen = pFrom == 0;
 	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
 		return 0;
 	}
 	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
 		if( pNs == pFrom ){
-			if( bBack ){
-				return pPrev;
-			}
 			bSeen = 1;
 			continue;
 		}
-		if( !DomNsIsSpelt(pNs) ){
+		if( !bSeen || !DomNsIsSpelt(pNs) ){
 			continue;
 		}
-		if( !bBack && (bSeen || pFrom == 0) ){
+		if( DomNsMapAfter(pElem,pNs) == pAfter ){
 			return pNs;
 		}
-		pPrev = pNs;
 	}
-	/* Backwards from no declaration is the LAST one -- what the first real
-	 * attribute reads. Forwards from one not on this chain is nothing. */
-	return (bBack && pFrom == 0) ? pPrev : 0;
+	return 0;
+}
+/* ...the one before pFrom in that same group, and the LAST of it -- what an
+ * attribute reads backwards, since the group sits between it and the attribute
+ * it follows. */
+static xmlNsPtr DomNsAnchoredPrev(xmlNodePtr pElem,xmlAttrPtr pAfter,xmlNsPtr pFrom)
+{
+	xmlNsPtr pNs,pPrev = 0;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		if( pNs == pFrom ){
+			break;
+		}
+		if( DomNsIsSpelt(pNs) && DomNsMapAfter(pElem,pNs) == pAfter ){
+			pPrev = pNs;
+		}
+	}
+	return pPrev;
+}
+static xmlNsPtr DomNsAnchoredLast(xmlNodePtr pElem,xmlAttrPtr pAfter)
+{
+	return DomNsAnchoredPrev(pElem,pAfter,0);
+}
+/* One step along the merged chain. The cursor is an attribute or a declaration,
+ * never both; both NULL is the end. */
+static void DomMapWalkFirst(xmlNodePtr pElem,xmlAttrPtr *ppAttr,xmlNsPtr *ppNs)
+{
+	*ppNs = DomNsAnchoredNext(pElem,0,0);
+	*ppAttr = *ppNs ? 0 : DomAttrList(pElem);
+}
+static void DomMapWalkNext(xmlNodePtr pElem,xmlAttrPtr *ppAttr,xmlNsPtr *ppNs)
+{
+	if( *ppNs ){
+		xmlAttrPtr pAfter = DomNsMapAfter(pElem,*ppNs);
+		xmlNsPtr pNext = DomNsAnchoredNext(pElem,pAfter,*ppNs);
+		*ppNs = pNext;
+		if( pNext == 0 ){
+			/* The group is spent: the attribute it follows hands over to the
+			 * next attribute, and the HEAD group to the first one. */
+			*ppAttr = pAfter ? pAfter->next : DomAttrList(pElem);
+		}
+		return;
+	}
+	if( *ppAttr ){
+		xmlNsPtr pNext = DomNsAnchoredNext(pElem,*ppAttr,0);
+		if( pNext ){
+			*ppNs = pNext;
+			*ppAttr = 0;
+			return;
+		}
+		*ppAttr = (*ppAttr)->next;
+	}
 }
 static xmlNodePtr DomAttrSiblingNext(int bModern,phl_xmldoc *pShell,xmlNodePtr pNode)
 {
-	xmlNsPtr pDecl;
+	xmlNsPtr pDecl,pNext;
 	xmlNodePtr pElem;
+	xmlAttrPtr pAnchor;
 	if( pNode == 0 ){
 		return 0;
 	}
 	if( !bModern || pNode->type != XML_ATTRIBUTE_NODE ){
 		return pNode->next;
 	}
+	pElem = pNode->parent;
 	pDecl = DomNsAttrStandIn(pShell,pNode);
 	if( pDecl == 0 ){
-		return pNode->next;              /* a real attribute: libxml's own chain */
+		/* A real attribute: whatever was written after it comes first. */
+		pNext = DomNsAnchoredNext(pElem,(xmlAttrPtr)pNode,0);
+		return pNext ? (xmlNodePtr)DomNsAttr(pShell,pElem,pNext) : pNode->next;
 	}
-	pElem = pNode->parent;
-	pDecl = DomNsMapStep(pElem,pDecl,0);
-	return pDecl ? (xmlNodePtr)DomNsAttr(pShell,pElem,pDecl)
-	             : (xmlNodePtr)DomAttrList(pElem);
+	pAnchor = DomNsMapAfter(pElem,pDecl);
+	pNext = DomNsAnchoredNext(pElem,pAnchor,pDecl);
+	if( pNext ){
+		return (xmlNodePtr)DomNsAttr(pShell,pElem,pNext);
+	}
+	return (xmlNodePtr)(pAnchor ? pAnchor->next : DomAttrList(pElem));
 }
 static xmlNodePtr DomAttrSiblingPrev(int bModern,phl_xmldoc *pShell,xmlNodePtr pNode)
 {
-	xmlNsPtr pDecl;
+	xmlNsPtr pDecl,pPrev;
 	xmlNodePtr pElem;
+	xmlAttrPtr pAnchor;
 	if( pNode == 0 ){
 		return 0;
 	}
-	if( !bModern || pNode->type != XML_ATTRIBUTE_NODE || pNode->prev ){
+	if( !bModern || pNode->type != XML_ATTRIBUTE_NODE ){
 		return pNode->prev;
 	}
 	pElem = pNode->parent;
 	pDecl = DomNsAttrStandIn(pShell,pNode);
-	if( pDecl == 0 && DomAttrList(pElem) != (xmlAttrPtr)pNode ){
-		/* An attribute with no predecessor that is not the element's first --
-		 * a detached one, or one whose parent is not an element. */
-		return 0;
+	if( pDecl == 0 ){
+		/* A real attribute, whose predecessor is the last declaration written
+		 * after the attribute BEFORE it -- and, for the element's first, the
+		 * last of the head group. A detached attribute has neither. */
+		pAnchor = ((xmlAttrPtr)pNode)->prev;
+		if( pAnchor == 0 && DomAttrList(pElem) != (xmlAttrPtr)pNode ){
+			return 0;
+		}
+		pPrev = DomNsAnchoredLast(pElem,pAnchor);
+		return pPrev ? (xmlNodePtr)DomNsAttr(pShell,pElem,pPrev) : (xmlNodePtr)pAnchor;
 	}
-	pDecl = DomNsMapStep(pElem,pDecl,1);
-	return pDecl ? (xmlNodePtr)DomNsAttr(pShell,pElem,pDecl) : 0;
+	pAnchor = DomNsMapAfter(pElem,pDecl);
+	pPrev = DomNsAnchoredPrev(pElem,pAnchor,pDecl);
+	if( pPrev ){
+		return (xmlNodePtr)DomNsAttr(pShell,pElem,pPrev);
+	}
+	return (xmlNodePtr)pAnchor;
 }
-/* How many of them the attribute map lists, and the one at that position, in
- * the order the element makes them: only the declarations the document SPELLS,
- * never a binding the engine minted to name something it was asked to make. */
+/* How many of them the attribute map lists, and the node at that position in
+ * the merged order: only the declarations the document SPELLS, never a binding
+ * the engine minted to name something it was asked to make. */
 static int DomNsMapCount(xmlNodePtr pElem)
 {
 	xmlNsPtr pNs;
@@ -4330,21 +4537,19 @@ static int DomNsMapCount(xmlNodePtr pElem)
 	}
 	return iCount;
 }
-static xmlNsPtr DomNsMapAt(xmlNodePtr pElem,int iWant)
+static xmlNodePtr DomMapNodeAt(phl_xmldoc *pShell,xmlNodePtr pElem,int iWant)
 {
+	xmlAttrPtr pAttr;
 	xmlNsPtr pNs;
-	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
-		return 0;
+	DomMapWalkFirst(pElem,&pAttr,&pNs);
+	while( iWant > 0 && (pAttr || pNs) ){
+		DomMapWalkNext(pElem,&pAttr,&pNs);
+		iWant--;
 	}
-	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
-		if( !DomNsIsSpelt(pNs) ){
-			continue;
-		}
-		if( iWant-- == 0 ){
-			return pNs;
-		}
+	if( pNs ){
+		return (xmlNodePtr)DomNsAttr(pShell,pElem,pNs);
 	}
-	return 0;
+	return (xmlNodePtr)pAttr;
 }
 /* ...and the same screen on the by-name doors, which read the whole chain. */
 static xmlNsPtr DomNsMapSpelt(xmlNsPtr pNs)
@@ -4677,6 +4882,7 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
 		DomResultRemoved(pCtx,bModern,0);
 		return PH7_OK;
 	}
+	DomAttrGoing((xmlNodePtr)pAttr);
 	xmlRemoveProp(pAttr);
 	DomResultRemoved(pCtx,bModern,1);
 	return PH7_OK;
@@ -4876,6 +5082,7 @@ static void DomAttrLinkBefore(xmlNodePtr pElem,xmlAttrPtr pAttr,xmlAttrPtr pRef)
 static void DomAttrDetach(phl_xmldoc *pShell,xmlAttrPtr pAttr)
 {
 	if( pAttr->parent ){
+		DomAttrGoing((xmlNodePtr)pAttr);
 		xmlUnlinkNode((xmlNodePtr)pAttr);
 	}else{
 		DomOrphanRemove(pShell,(xmlNodePtr)pAttr);
@@ -4969,6 +5176,7 @@ static int DomSetAttrNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bNS)
 		return PH7_OK;
 	}
 	if( pOld ){
+		DomAttrGoing((xmlNodePtr)pOld);
 		xmlUnlinkNode((xmlNodePtr)pOld);
 		DomOrphanAdd(pNd->pShell,(xmlNodePtr)pOld);
 	}
@@ -4995,6 +5203,7 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttributeNode)
 	if( pElem == 0 || pAttr == 0 || pAttr->parent != pElem ){
 		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
+	DomAttrGoing((xmlNodePtr)pAttr);
 	xmlUnlinkNode((xmlNodePtr)pAttr);
 	DomOrphanAdd(pNd->pShell,(xmlNodePtr)pAttr);
 	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
@@ -5085,6 +5294,7 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttributeNS)
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
 	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUriLookup(pCtx,nArg,apArg,0),zLocal) : 0;
 	if( pAttr ){
+		DomAttrGoing((xmlNodePtr)pAttr);
 		xmlRemoveProp(pAttr);
 	}
 	return PH7_OK;
@@ -5120,8 +5330,8 @@ DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
 				&& (zName[nXmlns] == 0 || zName[nXmlns] == ':');
 			if( bXmlnsName ){
 				/* An xmlns name toggled ON becomes a DECLARATION bound to the
-				 * empty URI, not an attribute -- which is why it comes out
-				 * before the attributes rather than after them. */
+				 * empty URI, not an attribute -- and it is written like one, so
+				 * it comes out where a written declaration comes out. */
 				DomNsDeclare(pElem,zName[nXmlns] == ':' ? (const xmlChar *)(zName+nXmlns+1) : 0,"");
 			}else{
 				xmlSetProp(pElem,(const xmlChar *)zName,(const xmlChar *)"");
@@ -5131,6 +5341,7 @@ DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
 		return PH7_OK;
 	}
 	if( pAttr ){
+		DomAttrGoing((xmlNodePtr)pAttr);
 		xmlRemoveProp(pAttr);
 	}else if( pDecl ){
 		DomNsDeclRemove(pElem,pDecl);
@@ -6480,6 +6691,7 @@ DOM_METHOD(vm_builtin_DOMDocument_importNode)
 	/* 2 is libxml's `node + namespaces + attributes, no children`, which is what
 	 * makes a shallow import carry the attributes; cloneNode asks the same way. */
 	pCopy = xmlDocCopyNode(pNode,pDoc,bDeep ? 1 : 2);
+	DomNsCopyMarks(pNode,pCopy);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::importNode");
 	if( pCopy == 0 ){
 		ph7_result_bool(pCtx,0);
@@ -7936,14 +8148,12 @@ static ph7_class_instance * DomMapItem(ph7_vm *pVm,ph7_class_instance *pMap,int 
 	if( DomMapIsTable(pMap) ){
 		pNode = DomTablePayload(pMap,pOwner,DomHashAt(DomMapHash(pMap,pOwner),iIndex));
 	}else{
-		/* php 8.4's map answers the element's DECLARATIONS first, in the order
-		 * it makes them, then its attributes; the 2004 map lists no
-		 * declaration at all. */
-		int nDecl = DomMapModern(pMap) ? DomNsMapCount((xmlNodePtr)pOwner->pNode) : 0;
-		pNode = iIndex < nDecl
-			? (xmlNodePtr)DomNsAttr(pOwner->pShell,(xmlNodePtr)pOwner->pNode,
-				DomNsMapAt((xmlNodePtr)pOwner->pNode,iIndex))
-			: (xmlNodePtr)DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex - nDecl);
+		/* php 8.4's map answers the element's declarations and its attributes
+		 * as one chain, each declaration where the element makes it; the 2004
+		 * map lists no declaration at all, so it is libxml's list alone. */
+		pNode = DomMapModern(pMap)
+			? DomMapNodeAt(pOwner->pShell,(xmlNodePtr)pOwner->pNode,iIndex)
+			: (xmlNodePtr)DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex);
 	}
 	return DomWrap(&(*pVm),PH7_NativeAttrObj(pMap,DOM_DOC),pOwner->pShell,pNode);
 }
