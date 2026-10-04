@@ -5741,6 +5741,9 @@ struct ReflectFuncRef
 	                               * function came FROM -- internal or user, file, lines, module --
 	                               * belongs to the fabricated method instead, which php builds as
 	                               * an internal one with no module at all. */
+	int bTrampoline;              /* a Closure over a name its class answers only through __call
+	                               * or __callStatic: no body at all, pClosure alone (see
+	                               * ReflectFuncFill). */
 };
 /*
  * Resolve a callable into the reference, and work out WHICH of the two
@@ -5757,7 +5760,20 @@ static int ReflectFuncFill(ph7_vm *pVm, ph7_value *pTarget, ph7_value *pMethodAr
 	pOut->pFunc = ReflectResolveCallable(pVm, pTarget, pMethodArg,
 		&pOut->pClass, &pOut->pMeth, &pOut->pHost, &pOut->pClosure);
 	if( pOut->pFunc == 0 && pOut->pHost == 0 ){
-		return 0;
+		ph7_class_instance *pClo = pMethodArg ? 0 : ReflectValueClosure(pVm, pTarget);
+		if( pClo == 0 || (pClo->iFlags & (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED))
+				!= VM_INSTANCE_FCC_METHOD ){
+			return 0;
+		}
+		/* A call TRAMPOLINE: php reflects the internal function it builds for the
+		 * catch-all, whose signature depends on the door that minted it -- one
+		 * variadic `mixed ...$arguments` through the `(...)` syntax, and none at all
+		 * through Closure::fromCallable() (no parameter information, which the export
+		 * prints as a block with no parameter section). */
+		pOut->pClosure = pClo;
+		pOut->bTrampoline = 1;
+		pOut->zSig = (pClo->iFlags & VM_INSTANCE_FCC_SYNTAX) ? "mixed ...$arguments" : "";
+		return 1;
 	}
 	if( pOut->pFunc == 0 ){
 		pOut->zSig = pOut->pHost->zSig;
@@ -6017,7 +6033,7 @@ static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *
 /* Is the reflected function internal (a C builtin or an embedded-chunk one)? */
 static int ReflectFuncIsInternal(const ReflectFuncRef *pRef)
 {
-	if( pRef->pHost || pRef->bFabricated ){
+	if( pRef->pHost || pRef->bFabricated || pRef->bTrampoline ){
 		return 1;
 	}
 	return pRef->pFunc != 0 && (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
@@ -6744,7 +6760,7 @@ PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 	PH7_MemObjInit(pVm, &sCarrier);
 	sCarrier.x.pOther = pThis;
 	MemObjSetType(&sCarrier, MEMOBJ_OBJ);
-	if( !ReflectFuncFill(pVm, &sCarrier, 0, &sRef) ){
+	if( !ReflectFuncFill(pVm, &sCarrier, 0, &sRef) || sRef.bTrampoline ){
 		sCarrier.x.pOther = 0;
 		sCarrier.iFlags = MEMOBJ_NULL;
 		PH7_MemObjRelease(&sCarrier);
@@ -6944,7 +6960,7 @@ PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
 static int ReflectFuncExtId(const ReflectFuncRef *pRef)
 {
 	const SyString *pName;
-	if( !ReflectFuncIsInternal(pRef) || pRef->bFabricated ){
+	if( !ReflectFuncIsInternal(pRef) || pRef->bFabricated || pRef->bTrampoline ){
 		/* A fabricated method belongs to no module: php answers false for
 		 * getExtensionName() and NULL for getExtension(), and prints a bare
 		 * `<internal>` in the export. */
@@ -7033,7 +7049,7 @@ static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, 
 		return PH7_OK;
 	}
 	pClo = ReflectValueClosure(pVm, apArg[0]);
-	if( !ReflectFuncFill(pCtx->pVm, apArg[0], 0, &sRef) ){
+	if( !ReflectFuncFill(pCtx->pVm, apArg[0], 0, &sRef) || sRef.bTrampoline ){
 		const char *zName;
 		int nName;
 		if( pClo ){
@@ -7044,9 +7060,8 @@ static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, 
 			 * carries in $__fn, and the scope is $__scope. Leaving `name`
 			 * uninitialized made every read of it a typed-property Error, and
 			 * `str_contains($r->name, '{closure')` is one line of twig's filter
-			 * compiler. The rest of the accessors still answer emptily: there is
-			 * no body to describe, which is php's answer too (0 parameters, no
-			 * file, no line). */
+			 * compiler. The accessors describe the internal record php builds for
+			 * it (ReflectFuncFill); there is no file and no line. */
 			SyString sAttr;
 			ph7_value *pFn;
 			PH7_NativeSetAttrObj(pVm, pThis, RF_CL, pClo);
@@ -8304,7 +8319,11 @@ static int vm_builtin_ReflectionParameter_getDeclaringClass(ph7_context *pCtx, i
 	ReflectFuncRef sRef;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( !ReflectParamOwner(pCtx, &sRef, 0) || sRef.pMeth == 0 ){
+	if( ReflectParamOwner(pCtx, &sRef, 0) && sRef.bTrampoline ){
+		/* The trampoline's `$arguments` belongs to the catch-all's class */
+		return ReflectResultClassOf(pCtx, PH7_VmClosureScopeClass(pCtx->pVm, sRef.pClosure));
+	}
+	if( sRef.pMeth == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -10459,6 +10478,21 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 			SyBlobAppend(&sBody, "static ", sizeof("static ")-1);
 		}
 		SyBlobFormat(&sBody, "%s method %z ]", ReflectExportVis(pRef->pMeth->iProtection), pName);
+	}else if( pRef->bTrampoline ){
+		/* php's trampoline is a METHOD record under the name that was asked for;
+		 * its only modifier is the catch-all's staticness. */
+		ph7_value *pFn = ReflectClosureAttr(pRef, "__fn");
+		SyBlobAppend(&sBody, "Closure [ <", sizeof("Closure [ <")-1);
+		ReflectExportKind(&sBody, bInternal, -1, bDeprecated);
+		SyBlobAppend(&sBody, "> ", sizeof("> ")-1);
+		if( PH7_VmClosureIsStatic(pCtx->pVm, pRef->pClosure) ){
+			SyBlobAppend(&sBody, "static ", sizeof("static ")-1);
+		}
+		SyBlobAppend(&sBody, "public method ", sizeof("public method ")-1);
+		if( pFn && (pFn->iFlags & MEMOBJ_STRING) ){
+			SyBlobAppend(&sBody, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+		}
+		SyBlobAppend(&sBody, " ]", sizeof(" ]")-1);
 	}else{
 		SyBlobAppend(&sBody, pRef->pClosure ? "Closure [ <" : "Function [ <",
 			pRef->pClosure ? sizeof("Closure [ <")-1 : sizeof("Function [ <")-1);
@@ -10485,7 +10519,8 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 	 * class-level `Closure::__invoke`: php fabricates it with no parameter
 	 * information at all (not an empty list), and prints neither section. */
 	if( (nParam > 0 || bHasRet || bInternal)
-	 && !(pRef->bFabricated && pRef->pClosure == 0) ){
+	 && !(pRef->bFabricated && pRef->pClosure == 0)
+	 && !(pRef->bTrampoline && nParam == 0) ){
 		int n;
 		SyBlobFormat(&sBody, "\n  - Parameters [%d] {\n", nParam);
 		for( n = 0 ; n < nParam ; n++ ){
