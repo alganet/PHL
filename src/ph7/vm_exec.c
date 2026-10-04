@@ -640,6 +640,7 @@ PH7_PRIVATE VmMagicCall * VmMagicCallNew(ph7_vm *pVm,ph7_class_instance *pRecv,
 	pPend->pAlloc = &pVm->sAllocator;
 	pPend->pRecv = pRecv;
 	pPend->pClass = pClass;
+	pPend->pLsb = 0;
 	SyBlobInit(&pPend->sName,&pVm->sAllocator);
 	if( pName && pName->nByte > 0 ){
 		SyBlobAppend(&pPend->sName,(const void *)pName->zString,pName->nByte);
@@ -1727,7 +1728,13 @@ static void VmFccForwardCalled(ph7_vm *pVm,ph7_class_instance *pCloObj,ph7_class
 		return;
 	}
 	pMethod = PH7_ClassExtractMethod(pFccCls,SyStringData(pName),SyStringLength(pName));
-	if( pMethod == 0 || (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+	if( !PH7_VmFccMethodIsDirect(&(*pVm),pFccCls,SyStringData(pName),SyStringLength(pName)) ){
+		/* A name only __callStatic answers is php's static trampoline, and it forwards
+		 * like any static method; the __call route on the caller's `$this` does not. */
+		if( PH7_VmStaticFallbackThis(&(*pVm),pFccCls) != 0 ){
+			return;
+		}
+	}else if( (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
 		return;
 	}
 	pCalled = PH7_VmPeekTopClass(&(*pVm));
@@ -6597,6 +6604,7 @@ case PH7_OP_CALL: {
 		pTos->x.pOther = 0;
 		pVm->pMagicCallThis = pPend ? pPend->pRecv : 0;
 		pVm->pMagicCallClass = pPend ? pPend->pClass : 0;
+		pVm->pMagicCallLsb = pPend ? pPend->pLsb : 0;
 		SyBlobReset(&pVm->sMagicCallName);
 		if( pPend && SyBlobLength(&pPend->sName) > 0 ){
 			SyBlobAppend(&pVm->sMagicCallName,SyBlobData(&pPend->sName),

@@ -3172,6 +3172,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aHookRmw,&pVm->sAllocator,sizeof(VmHookRmw));
 	pVm->pMagicCallThis = 0;
 	pVm->pMagicCallClass = 0;
+	pVm->pMagicCallLsb = 0;
 	SyBlobInit(&pVm->sMagicCallName,&pVm->sAllocator);
 	pVm->pIdleCallFrames = 0;
 	SyZero(pVm->apIdleOperandStack,sizeof(pVm->apIdleOperandStack));
@@ -3207,6 +3208,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 		pVm->pMagicCallThis = 0;
 	}
 	pVm->pMagicCallClass = 0;
+	pVm->pMagicCallLsb = 0;
 	SyBlobRelease(&pVm->sMagicCallName);
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
@@ -4633,6 +4635,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 		pVm->pMagicCallThis = 0;
 	}
 	pVm->pMagicCallClass = 0;
+	pVm->pMagicCallLsb = 0;
 	SyBlobRelease(&pVm->sMagicCallName);
 	pVm->nExceptDepth = 0;
 	/* spl_autoload_register() callbacks are per request */

@@ -180,6 +180,8 @@ struct VmMagicCall
 	SyMemBackend *pAlloc;
 	ph7_class_instance *pRecv; /* OWNED receiver reference; 0 for a static routing */
 	ph7_class *pClass;         /* the class whose handler answers */
+	ph7_class *pLsb;           /* `static::` inside __callStatic when the call FORWARDED it
+	                            * (self::/parent::/static::); 0 means pClass */
 	SyBlob sName;              /* the method name as the CALL SITE spelled it */
 };
 /*
@@ -4305,6 +4307,7 @@ struct ph7_vm
 	                             * (VmMagicCallDispatch) consumes this + the class + the original
 	                             * name. Holds a reference; NULL for __callStatic. */
 	ph7_class *pMagicCallClass; /* Pending __call/__callStatic declaring class */
+	ph7_class *pMagicCallLsb;   /* ...and its forwarded called class, or 0 (VmMagicCall.pLsb) */
 	ph7_class *pConstEvalClass; /* Transient: class whose constant/property initializer bytecode is
 	                             * being evaluated (VmLocalExec has no method frame, so self::/parent::
 	                             * inside an initializer resolve through this fallback — consulted by
@@ -5980,7 +5983,8 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(ph7_vm *pVm,ph7_value *pFunc,int
 PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE ph7_class_instance * PH7_VmCallerThis(ph7_vm *pVm);
 PH7_PRIVATE ph7_class_instance * PH7_VmStaticFallbackThis(ph7_vm *pVm,ph7_class *pClass);
-PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,
+PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_class *pLsb,
+	ph7_class_instance *pThis,
 	const char *zName,sxu32 nName,ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pArgMap);
 /* Per-element callback for PH7_VmIteratorWalk: return SXRET_OK to continue,
  * SXERR_EOF to stop early (not an error), or PH7_EXCEPTION/PH7_ABORT to propagate. */

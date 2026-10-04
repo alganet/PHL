@@ -2394,7 +2394,8 @@ PH7_PRIVATE int PH7_VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7
  * Returns SXERR_NOTFOUND when the class has no catch-all, leaving the caller's own
  * diagnostic in charge.
  */
-PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,
+PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_class *pLsb,
+	ph7_class_instance *pThis,
 	const char *zName,sxu32 nName,ph7_value *pResult,int nArg,ph7_value **apArg,
 	VmCallArgMap *pArgMap)
 {
@@ -2438,8 +2439,10 @@ PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_clas
 	apMagic[1] = &sArgs;
 	/* `static::` inside `__callStatic` is the class the call NAMED, not the one that
 	 * declared the handler — php's called scope, which an object receiver carries on its
-	 * own and a static one does not. */
-	rc = PH7_VmCallMagicMethodLsb(&(*pVm),pThis ? 0 : pClass,pThis,pMagic,pResult,2,apMagic);
+	 * own and a static one does not. A FORWARDING call (`parent::m()`) names the caller's
+	 * called class instead, pLsb, exactly as it does for a method that exists. */
+	rc = PH7_VmCallMagicMethodLsb(&(*pVm),pThis ? 0 : (pLsb ? pLsb : pClass),pThis,pMagic,
+		pResult,2,apMagic);
 	PH7_MemObjRelease(&sName);
 	PH7_MemObjRelease(&sArgs); /* frees the packed argument map */
 	return rc;
@@ -2570,7 +2573,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			 * callable; PH7_VmStaticFallbackThis is the shared rule). Only a callback binds
 			 * it — the direct `$cb()` spelling is refused before it gets here. */
 			if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
-				rc = PH7_VmDispatchMagicCall(&(*pVm),pClass,
+				rc = PH7_VmDispatchMagicCall(&(*pVm),pClass,pCalled,
 					pThis ? pThis : PH7_VmStaticFallbackThis(&(*pVm),pClass),
 					(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
 					pResult,nArg,apArg,pArgMap);
@@ -2611,7 +2614,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 				|| !PH7_VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
 				/* Same catch-all routing as the ['Class','method'] pair, receiver rule
 				 * included: `"C::m"` from inside an instance of C reaches __call. */
-				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,
+				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,0,
 					PH7_VmStaticFallbackThis(&(*pVm),pCmClass),zCmMeth,nCmMeth,
 					pResult,nArg,apArg,pArgMap);
 				if( rcMagic != SXERR_NOTFOUND ){

@@ -2934,6 +2934,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								if( pPend == 0 ){
 									VM_EXIT_ABORT;
 								}
+								/* `parent::missing()` forwards the caller's called class
+								 * into __callStatic, as the named-method twin below does. */
+								if( pMagicThis == 0 && bForwardingCall ){
+									pPend->pLsb = pForwardLsb;
+								}
 								if( !pInstr->p3 ){
 									VmPopOperand(&pTos,1);
 								}
@@ -3046,6 +3051,9 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								pDeniedThis ? pDeniedThis->pClass : pClass,&sName);
 							if( pPend == 0 ){
 								VM_EXIT_ABORT;
+							}
+							if( pDeniedThis == 0 && bForwardingCall ){
+								pPend->pLsb = pForwardLsb;
 							}
 							if( !pInstr->p3 ){
 								VmPopOperand(&pTos,1);

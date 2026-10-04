@@ -1689,12 +1689,14 @@ static int VmMagicCallDispatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pRecv = pVm->pMagicCallThis;
 	ph7_class *pClass = pVm->pMagicCallClass;
+	ph7_class *pLsb = pVm->pMagicCallLsb;
 	ph7_value sResult;
 	SyString sMethName;
 	sxi32 rc;
 	/* Consume the pending dispatch (one-shot) */
 	pVm->pMagicCallThis = 0;
 	pVm->pMagicCallClass = 0;
+	pVm->pMagicCallLsb = 0;
 	if( pClass == 0 ){
 		/* Defensive: the mark and the latch are set together by OP_MEMBER, so a
 		 * classless arrival is unreachable. It was reachable while this body wore a
@@ -1711,7 +1713,7 @@ static int VmMagicCallDispatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * visibility rule all live there. Two copies of this is how the syntax path and the
 	 * callable path came to disagree about the argument names in the first place.
 	 * SXERR_NOTFOUND is unreachable: OP_MEMBER verified the handler exists. */
-	rc = PH7_VmDispatchMagicCall(pVm,pClass,pRecv,SyStringData(&sMethName),
+	rc = PH7_VmDispatchMagicCall(pVm,pClass,pLsb,pRecv,SyStringData(&sMethName),
 		SyStringLength(&sMethName),&sResult,nArg,apArg,pCtx->pArgMap);
 	if( rc == SXRET_OK ){
 		ph7_result_value(pCtx,&sResult);
