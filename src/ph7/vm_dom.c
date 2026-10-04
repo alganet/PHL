@@ -7174,7 +7174,7 @@ DOM_METHOD(vm_builtin_DOMDocument_createElementNS)
  *     already has (so the prefix can change, `p:b` arriving as `z:b`) and
  *     declaring it there otherwise.
  */
-DOM_METHOD(vm_builtin_DOMDocument_importNode)
+static int DomImportNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bModern)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pDocNd = DomThisNode(pCtx);
@@ -7190,6 +7190,12 @@ DOM_METHOD(vm_builtin_DOMDocument_importNode)
 	pDoc = (xmlDocPtr)pDocNd->pNode;
 	pNode = (xmlNodePtr)pSrc->pNode;
 	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
+		if( bModern ){
+			/* The namespaced document answers `Dom\\Node` and cannot answer
+			 * false, so its refusal is the ordinary DOM exception -- the code-9
+			 * `Not Supported Error`, and never the 2004 warning below. */
+			return DomThrowAlways(pCtx,DOM_ERR_NOT_SUPPORTED);
+		}
 		/* The context prints php's `DOMDocument::importNode(): ` itself. */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Cannot import: Node Type Not Supported");
 		ph7_result_bool(pCtx,0);
@@ -7226,6 +7232,54 @@ DOM_METHOD(vm_builtin_DOMDocument_importNode)
 	}
 	DomOrphanAdd(pDocNd->pShell,pCopy);
 	return DomResultNodeOf(pCtx,pDocNd,pCopy);
+}
+DOM_METHOD(vm_builtin_DOMDocument_importNode)
+{
+	return DomImportNode(pCtx,nArg,apArg,0);
+}
+/*
+ * Dom\Document::importNode(?Dom\Node $node, bool $deep = false): Dom\Node
+ * Dom\Document::importLegacyNode(DOMNode $node, bool $deep = false): Dom\Node
+ *
+ * The same copy, under php 8.4's contract: the answer is a node and never a
+ * false, so the document refusal above throws; and the two trees are told apart
+ * by the DECLARED parameter type alone -- `importNode` takes this tree's nodes,
+ * `importLegacyNode` is the ONE door a 2004 node crosses into it, and each
+ * refuses the other's with the engine's own TypeError.
+ *
+ * The copy is wrapped by the RECEIVER's family (DomResultNodeOf reads the
+ * target document's flag), which is what makes a legacy DOMElement arrive as a
+ * `Dom\Element` with no work here.
+ *
+ * php declares `importNode`'s parameter nullable and then refuses null in its
+ * body, so the row wears the stub marker and screens its own argument.
+ */
+static int DomModernNodeArg(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pBase = DomModernNodeClass(pCtx);
+	ph7_value *pVal = nArg > 0 ? apArg[0] : 0;
+	char zBuf[128];
+	if( pVal && (pVal->iFlags & MEMOBJ_OBJ) && pBase ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+		if( PH7_VmInstanceOf(pObj->pClass,pBase) ){
+			return 0;
+		}
+	}
+	PH7_VmThrowException(pCtx,"TypeError",
+		"%z(): Argument #1 ($node) must be of type Dom\\Node, %s given",
+		&pCtx->pFunc->sName,DomGivenName(pVal,zBuf,sizeof(zBuf)));
+	return -1;
+}
+DOM_METHOD(vm_builtin_Dom_importNode)
+{
+	if( DomModernNodeArg(pCtx,nArg,apArg) ){
+		return PH7_OK;
+	}
+	return DomImportNode(pCtx,nArg,apArg,1);
+}
+DOM_METHOD(vm_builtin_Dom_importLegacyNode)
+{
+	return DomImportNode(pCtx,nArg,apArg,1);
 }
 /*
  * Re-home one node's WRAPPER. `adoptNode` moves the node itself between
@@ -7311,7 +7365,7 @@ static void DomAdoptWrappers(ph7_vm *pVm,ph7_class_instance *pSrcDoc,
  *     namespace and answers the same namespaceURI while carrying no declaration
  *     of it -- the declaration appears when it is LINKED, from the reconcile.
  */
-DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
+static int DomAdoptNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bModern)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pDocNd = DomThisNode(pCtx);
@@ -7324,13 +7378,19 @@ DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
 	}
 	pNode = (xmlNodePtr)pSrc->pNode;
 	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
+		if( bModern ){
+			/* No lax mode to consult on this tree, and no false to answer. */
+			return DomThrowAlways(pCtx,DOM_ERR_NOT_SUPPORTED);
+		}
 		/* The one refusal in this file that consults the ARGUMENT's document
 		 * rather than the receiver's: php reaches for the strictness of the
 		 * node it was handed, so `$strict->adoptNode($lax)` warns and
 		 * `$lax->adoptNode($strict)` throws. */
 		return DomThrowFor(pCtx,pSrcDoc,DOM_ERR_NOT_SUPPORTED,DOM_REFUSE_FALSE);
 	}
-	if( pNode->type == XML_DOCUMENT_FRAG_NODE ){
+	if( pNode->type == XML_DOCUMENT_FRAG_NODE && !bModern ){
+		/* The 2004 door alone refuses a fragment, and silently: the namespaced
+		 * one adopts it like any other node. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -7358,6 +7418,22 @@ DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
 	DomOrphanAdd(pDocNd->pShell,pNode);
 	ph7_result_value(pCtx,apArg[0]);
 	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
+{
+	return DomAdoptNode(pCtx,nArg,apArg,0);
+}
+/*
+ * Dom\Document::adoptNode(Dom\Node $node): Dom\Node
+ *
+ * The same move under php 8.4's contract: `Dom\Node` and never false, so both
+ * of the 2004 door's non-answers go -- the document is the code-9 exception
+ * whatever mode anything is in, and a FRAGMENT, which the older door refuses
+ * with a bare false, is adopted like any other node.
+ */
+DOM_METHOD(vm_builtin_Dom_adoptNode)
+{
+	return DomAdoptNode(pCtx,nArg,apArg,1);
 }
 /*
  * DOMElement::insertAdjacentElement(string $where, DOMElement $element): ?DOMElement
@@ -14021,6 +14097,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createComment },
 		{ "createProcessingInstruction", PH7_MOD_PUBLIC, "string $target, string $data",
 		  "Dom\\ProcessingInstruction", vm_builtin_DOMDocument_createPI },
+		/* php's stub declares the imported node NULLABLE and its body then
+		 * refuses a null, so the marker stands the engine's screen aside and the
+		 * body raises that TypeError itself. */
+		{ "importNode",           PH7_MOD_PUBLIC, "~?Dom\\Node $node, bool $deep = false",
+		  "Dom\\Node", vm_builtin_Dom_importNode },
+		{ "adoptNode",            PH7_MOD_PUBLIC, "Dom\\Node $node", "Dom\\Node",
+		  vm_builtin_Dom_adoptNode },
 		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "Dom\\Attr",
 		  vm_builtin_DOMDocument_createAttribute },
 		{ "createAttributeNS",    PH7_MOD_PUBLIC,
@@ -14028,7 +14111,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createAttributeNS },
 		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "?Dom\\Element",
 		  vm_builtin_DOMDocument_getElementById },
-		DOM_MPARENT_METHODS
+		DOM_MPARENT_METHODS,
+		/* php declares this one AFTER the parent-node trio, which is the only
+		 * place in either tree where a factory follows an inherited interface's
+		 * methods -- the crossing was added later than the rest. */
+		{ "importLegacyNode",     PH7_MOD_PUBLIC, "DOMNode $node, bool $deep = false",
+		  "Dom\\Node", vm_builtin_Dom_importLegacyNode }
 	};
 	/* php's return here is `Dom\Text` and not `Dom\Text|false`, which is what
 	 * makes the past-end offset an Index Size Error rather than a false. A
