@@ -6188,6 +6188,56 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
 }
 
+/* ===== the ordered-set parser =====
+ *
+ * Two surfaces read a whitespace-separated set of tokens out of one string:
+ * `Dom\TokenList`, which is the `class` attribute seen as a set, and
+ * `getElementsByClassName`, whose ARGUMENT is one. They agree on the split
+ * rule because it is one rule, so it is written once here rather than beside
+ * either of them.
+ */
+/* php's "ASCII whitespace", which is not C's isspace(): no vertical tab. */
+static int DomTokIsWs(int c)
+{
+	return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r';
+}
+/* One step of the ordered-set parser: settle on the token at or after *pOff.
+ * Answers 0 once the value holds no more. */
+static int DomTokNext(const char *zVal,int nVal,int *pOff,const char **pzTok,int *pnTok)
+{
+	int i = *pOff;
+	while( i < nVal && DomTokIsWs(zVal[i]) ){
+		++i;
+	}
+	if( i >= nVal ){
+		*pOff = i;
+		return 0;
+	}
+	*pzTok = &zVal[i];
+	while( i < nVal && !DomTokIsWs(zVal[i]) ){
+		++i;
+	}
+	*pnTok = (int)(&zVal[i] - *pzTok);
+	*pOff = i;
+	return 1;
+}
+/*
+ * Membership. The set is walked rather than indexed, which is what lets the
+ * same test run against a serialized unique set and against an element's raw
+ * attribute bytes -- neither has to be normalized first.
+ */
+static int DomTokHas(const char *zSet,int nSet,const char *zTok,int nTok)
+{
+	const char *zCur;
+	int nCur,iOff = 0;
+	while( DomTokNext(zSet,nSet,&iOff,&zCur,&nCur) ){
+		if( nCur == nTok && SyMemcmp(zCur,zTok,(sxu32)nTok) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /* ===== getElementsByTagName (live) ===== */
 
 /* Length-carrying: the name comes from a declared string SLOT, whose bytes are
@@ -6259,6 +6309,71 @@ static xmlNodePtr DomGebtnWalk(xmlNodePtr pRoot,const char *zUri,int nUri,
 	int iCount = 0;
 	while( pCur ){
 		if( DomGebtnMatch(pCur,zUri,nUri,zName,nName,bQName) ){
+			if( iWant >= 0 && iCount == iWant ){
+				return pCur;
+			}
+			iCount++;
+		}
+		pCur = DomWalkNext(pCur,pRoot);
+	}
+	if( pnCount ){
+		*pnCount = iCount;
+	}
+	return 0;
+}
+
+/* ===== getElementsByClassName (live) ===== */
+
+/*
+ * php 8.4's third live lookup, and the only one whose argument is a SET rather
+ * than a name: the query is split on ASCII whitespace and an element answers
+ * when its own `class` holds EVERY token -- in any order, and however many
+ * times each appears on either side. `"a b"`, `"b a"` and `"a  a  b"` are one
+ * question, and a query holding no token at all (`""`, or nothing but
+ * whitespace) matches NOTHING rather than everything.
+ *
+ * The attribute is the no-namespace `class`, which is where the rule stops
+ * being about names: an `x:class` bound elsewhere is not this query's
+ * attribute, while a namespaced ELEMENT carrying a plain `class` is found like
+ * any other. Matching is byte-exact -- `A` does not find `class="a"` -- because
+ * the case-insensitive half of the standard's rule belongs to a quirks-mode
+ * HTML document, and neither document this tree can build is one.
+ *
+ * The value is read through libxml's resolving getter, so a `class="&e;"`
+ * standing for two tokens is two tokens.
+ */
+static int DomGebcnMatch(xmlNodePtr pNode,const char *zQuery,int nQuery)
+{
+	xmlChar *zVal;
+	const char *zTok,*zSet;
+	int nTok,iOff = 0,nSeen = 0,bAll = 1,nSet;
+	if( pNode->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	zVal = xmlGetNoNsProp(pNode,(const xmlChar *)"class");
+	zSet = zVal ? (const char *)zVal : "";
+	nSet = zVal ? (int)SyStrlen(zSet) : 0;
+	while( DomTokNext(zQuery,nQuery,&iOff,&zTok,&nTok) ){
+		++nSeen;
+		if( !DomTokHas(zSet,nSet,zTok,nTok) ){
+			bAll = 0;
+			break;
+		}
+	}
+	if( zVal ){
+		xmlFree(zVal);
+	}
+	return nSeen > 0 && bAll;
+}
+/* Live, and the receiver is never in it -- the same subtree walk the two
+ * name lookups make. iWant < 0 counts instead of indexing. */
+static xmlNodePtr DomGebcnWalk(xmlNodePtr pRoot,const char *zQuery,int nQuery,
+	int iWant,int *pnCount)
+{
+	xmlNodePtr pCur = pRoot ? pRoot->children : 0;
+	int iCount = 0;
+	while( pCur ){
+		if( DomGebcnMatch(pCur,zQuery,nQuery) ){
 			if( iWant >= 0 && iCount == iWant ){
 				return pCur;
 			}
@@ -8820,6 +8935,9 @@ DOM_METHOD(vm_builtin_DOMNode_wakeup)
 /* ...and php 8.4's `children`, a third live view: the element-only half of
  * childNodes, which is a `Dom\HTMLCollection` and not a node list. */
 #define DNL_ECHILD 6  /* $parent->children */
+/* ...and the fourth live view, whose stored name is a whitespace-separated
+ * SET rather than one name (DomGebcnMatch above owns that reading). */
+#define DNL_GEBCN 7   /* getElementsByClassName($classNames) */
 #define DNL_KIND  "__kind"
 #define DNL_OWNER "__owner"
 #define DNL_NAME  "__name"
@@ -8861,7 +8979,14 @@ static int DomListCount(ph7_class_instance *pList)
 	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_ECHILD ){
 		return DomChildCount((xmlNodePtr)pOwner->pNode,1);
 	}
+	/* An empty declared string slot reads back as a NULL one, so the query
+	 * `""` arrives here as zName == 0 with nName == 0 -- which is the
+	 * no-token query, and matches nothing. */
 	PH7_NativeAttrStr(pList,DNL_NAME,&zName,&nName);
+	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBCN ){
+		DomGebcnWalk((xmlNodePtr)pOwner->pNode,zName,nName,-1,&iCount);
+		return iCount;
+	}
 	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
 		PH7_NativeAttrStr(pList,DNL_URI,&zUri,&nUri);
 	}
@@ -8917,6 +9042,10 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
 		pNode = DomElemChildAt((xmlNodePtr)pOwner->pNode,iIndex);
 	}else{
 		PH7_NativeAttrStr(pList,DNL_NAME,&zName,&nName);
+		if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBCN ){
+			pNode = DomGebcnWalk((xmlNodePtr)pOwner->pNode,zName,nName,iIndex,0);
+			return DomWrap(&(*pVm),pDoc,pOwner->pShell,pNode);
+		}
 		if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
 			PH7_NativeAttrStr(pList,DNL_URI,&zUri,&nUri);
 		}
@@ -9801,47 +9930,11 @@ DOM_METHOD(vm_builtin_DomHTMLCollection_namedItem)
  */
 #define DOM_TLIST "__tlist"   /* on the element: the parked list's address */
 #define DOM_CLIST "__clist"   /* on a parent node: the parked `children`'s */
-/* php's "ASCII whitespace", which is not C's isspace(): no vertical tab. */
-static int DomTokIsWs(int c)
-{
-	return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r';
-}
-/* One step of the ordered-set parser: settle on the token at or after *pOff.
- * Answers 0 once the value holds no more. */
-static int DomTokNext(const char *zVal,int nVal,int *pOff,const char **pzTok,int *pnTok)
-{
-	int i = *pOff;
-	while( i < nVal && DomTokIsWs(zVal[i]) ){
-		++i;
-	}
-	if( i >= nVal ){
-		*pOff = i;
-		return 0;
-	}
-	*pzTok = &zVal[i];
-	while( i < nVal && !DomTokIsWs(zVal[i]) ){
-		++i;
-	}
-	*pnTok = (int)(&zVal[i] - *pzTok);
-	*pOff = i;
-	return 1;
-}
 /*
  * The set is carried as its own serialization -- the tokens joined by single
  * spaces -- because that is what a mutator has to write back anyway, and the
  * membership test a unique append needs is the same walk the reader makes.
  */
-static int DomTokHas(const char *zSet,int nSet,const char *zTok,int nTok)
-{
-	const char *zCur;
-	int nCur,iOff = 0;
-	while( DomTokNext(zSet,nSet,&iOff,&zCur,&nCur) ){
-		if( nCur == nTok && SyMemcmp(zCur,zTok,(sxu32)nTok) == 0 ){
-			return 1;
-		}
-	}
-	return 0;
-}
 /* Append a token to the set unless it is already in it. */
 static void DomTokAppend(SyBlob *pSet,const char *zTok,int nTok)
 {
@@ -13610,6 +13703,34 @@ DOM_METHOD(vm_builtin_Dom_getElementsByTagNameNS)
 }
 
 /*
+ * Dom\Document::getElementsByClassName / Dom\Element::getElementsByClassName
+ * (string $classNames): Dom\HTMLCollection
+ *
+ * php 8.4's tree only -- the 2004 classes declare no such name, so this body
+ * never has to pick a collection family the way the two name lookups do.
+ *
+ * The whole query goes into the name slot as WRITTEN; splitting it here would
+ * have to be redone on every question anyway, because the list is live and the
+ * walk re-reads it each time DomListCount or DomListItem asks.
+ */
+DOM_METHOD(vm_builtin_Dom_getElementsByClassName)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zNames = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	ph7_class_instance *pList;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	pList = DomNewCollection(pCtx->pVm,"Dom\\HTMLCollection",
+		DomThisDoc(pCtx),DNL_GEBCN,pThis,zNames,0,0);
+	if( pList == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pList);
+	return PH7_OK;
+}
+
+/*
  * php's get_debug_info for the DOM (ph7_class::xPresent), and the ONLY table any
  * presentation surface of a node class shows.
  *
@@ -15319,6 +15440,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC,
 		  "?string $namespace, string $localName", "Dom\\HTMLCollection",
 		  vm_builtin_Dom_getElementsByTagNameNS },
+		{ "getElementsByClassName", PH7_MOD_PUBLIC, "string $classNames",
+		  "Dom\\HTMLCollection", vm_builtin_Dom_getElementsByClassName },
 		{ "setIdAttribute",   PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "void",
 		  vm_builtin_DOMElement_setIdAttribute },
 		{ "setIdAttributeNS", PH7_MOD_PUBLIC,
@@ -15368,6 +15491,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC,
 		  "?string $namespace, string $localName", "Dom\\HTMLCollection",
 		  vm_builtin_Dom_getElementsByTagNameNS },
+		{ "getElementsByClassName", PH7_MOD_PUBLIC, "string $classNames",
+		  "Dom\\HTMLCollection", vm_builtin_Dom_getElementsByClassName },
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName", "Dom\\Element",
 		  vm_builtin_DOMDocument_createElement },
 		{ "createElementNS",      PH7_MOD_PUBLIC,
