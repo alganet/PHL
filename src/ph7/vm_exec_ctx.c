@@ -1590,7 +1590,19 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 			if( bBoundObj ){
 				PH7_MemObjStore(pBound, &sTarget); /* bound object (iRef++) -> binds $this */
 			}else{
-				PH7_MemObjStringAppend(&sTarget, SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob));
+				ph7_value *pCalled;
+				SyStringInitFromBuf(&sAttr, "__called", 8);
+				pCalled = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+				if( pCalled && (pCalled->iFlags & MEMOBJ_STRING) && SyBlobLength(&pCalled->sBlob) > 0 ){
+					/* A forwarding `self::sf(...)`/`parent::sf(...)` (OP_LOAD_FCC): the call goes
+					 * THROUGH the caller's late-static-binding class, so `static::` answers it,
+					 * while the callee stays the one resolved in $__scope. */
+					pVm->pClosureMethodCls = PH7_VmExtractClass(pVm,
+						(const char *)SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob), FALSE, 0);
+					PH7_MemObjStringAppend(&sTarget, SyBlobData(&pCalled->sBlob), SyBlobLength(&pCalled->sBlob));
+				}else{
+					PH7_MemObjStringAppend(&sTarget, SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob));
+				}
 			}
 			PH7_MemObjStringAppend(&sMeth, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
 			rc = PH7_HashmapInsert(pMap, 0, &sTarget);
@@ -1977,6 +1989,12 @@ static void VmClosureRebind(ph7_class_instance *pClone,
 			if( pScope->nByte ){
 				PH7_MemObjStringAppend(pScopeAttr, pScope->zString, pScope->nByte);
 			}
+		}
+		/* A new scope is a new called class too: the forwarded one no longer applies. */
+		SyStringInitFromBuf(&sAttr, "__called", 8);
+		pScopeAttr = PH7_ClassInstanceFetchAttr(pClone, &sAttr);
+		if( pScopeAttr ){
+			PH7_MemObjRelease(pScopeAttr);
 		}
 	}
 	/* Refresh the FCC_BOUND fast-path flag from the resulting $__this/$__scope. pThisAttr already
@@ -2386,6 +2404,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
 		{ "__fn",    PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ "__this",  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ "__scope", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ "__called", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	/* php's get_debug_info for a Closure shows a SHAPE none of those three slots
 	 * is (name/file/line or function, static, this, parameter) — see

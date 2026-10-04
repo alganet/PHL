@@ -2514,6 +2514,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		ph7_class_method *pMethod = 0;
 		ph7_class_instance *pThis = 0;
 		ph7_class *pClass = 0;
+		ph7_class *pCalled;   /* the class a static call goes through (`static::`) */
 		ph7_value *pValue, *pName;
 		sxi32 rc;
 		/* php reads the INTEGER indices 0 and 1, not the first two entries in insertion
@@ -2543,11 +2544,14 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			/* Point to the class instance */
 			pThis = (ph7_class_instance *)pValue->x.pOther;
 		}
+		pCalled = pClass;
 		if( pVm->pClosureMethodCls ){
 			/* The pair came out of a method closure resolved in a class of its own
 			 * (`parent::m(...)`, ReflectionMethod::getClosure): look the name up THERE,
-			 * and run it on the receiver, so the receiver's override is not what runs. */
-			if( pThis ){
+			 * and run it on the receiver, so the receiver's override is not what runs.
+			 * A forwarding static one (`parent::sf(...)`) runs it through the class the
+			 * pair names instead, which is what `static::` answers inside it. */
+			if( PH7_VmInstanceOf(pClass,pVm->pClosureMethodCls) ){
 				pClass = pVm->pClosureMethodCls;
 			}
 			pVm->pClosureMethodCls = 0;
@@ -2584,7 +2588,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		}
 		/* Call the class method, forwarding the named-arg map (a `[obj,m]`/`[class,m]`
 		 * first-class-callable invoked as `$c(name: …)` must bind by name, like a direct call). */
-		rc = VmCallClassMethodLsb(&(*pVm),pThis ? 0 : pClass,pThis,pMethod,pResult,nArg,apArg,pArgMap);
+		rc = VmCallClassMethodLsb(&(*pVm),pThis ? 0 : pCalled,pThis,pMethod,pResult,nArg,apArg,pArgMap);
 		return rc;
 	}
 	{

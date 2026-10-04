@@ -1714,6 +1714,39 @@ static const char * VmFccCtorError(ph7_vm *pVm,ph7_class *pClass,ph7_class_insta
 	return 0;
 }
 /*
+ * A static `self::sf(...)` / `parent::sf(...)` is a FORWARDING call in php: it keeps the
+ * caller's late-static-binding class, so `static::` inside the closure (and
+ * getClosureCalledClass) answers that class rather than the one the keyword resolved to. An
+ * explicit class name does not forward, and `static::` already resolved to the caller's.
+ * Recorded beside $__scope, which stays the class the callee was resolved in.
+ */
+static void VmFccForwardCalled(ph7_vm *pVm,ph7_class_instance *pCloObj,ph7_class *pFccCls,
+	ph7_value *pTarget,const SyString *pName)
+{
+	const char *zKw = (const char *)SyBlobData(&pTarget->sBlob);
+	sxu32 nKw = SyBlobLength(&pTarget->sBlob);
+	ph7_class_method *pMethod;
+	ph7_class *pCalled;
+	ph7_value *pAttr;
+	SyString sAttr;
+	if( !((nKw == 4 && SyMemcmp(zKw,"self",4) == 0) || (nKw == 6 && SyMemcmp(zKw,"parent",6) == 0)) ){
+		return;
+	}
+	pMethod = PH7_ClassExtractMethod(pFccCls,SyStringData(pName),SyStringLength(pName));
+	if( pMethod == 0 || (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+		return;
+	}
+	pCalled = PH7_VmPeekTopClass(&(*pVm));
+	if( pCalled == 0 || pCalled == pFccCls || !PH7_VmInstanceOf(pCalled,pFccCls) ){
+		return;
+	}
+	SyStringInitFromBuf(&sAttr,"__called",8);
+	pAttr = PH7_ClassInstanceFetchAttr(pCloObj,&sAttr);
+	if( pAttr ){
+		PH7_MemObjStringAppend(pAttr,SyStringData(&pCalled->sName),SyStringLength(&pCalled->sName));
+	}
+}
+/*
  * The same check for the ARRAY form, whose two members carry php's own shape messages
  * before anything is resolved: the target must be an object or a class-name string, the
  * method must be a string. php probes them in that order (`[5,5]` names the FIRST member,
@@ -3478,6 +3511,9 @@ case PH7_OP_LOAD_FCC:{
 			pCloObj = VmCreateClosure(pVm, &sName, pFccRecv, &pFccCls->sName);
 		}else{
 			pCloObj = VmCreateClosure(pVm, &sName, 0, &pFccCls->sName);
+			if( pCloObj && (pTarget->iFlags & MEMOBJ_STRING) ){
+				VmFccForwardCalled(&(*pVm),pCloObj,pFccCls,pTarget,&sName);
+			}
 		}
 		if( pCloObj ){
 			/* `$o->m(...)` / `C::m(...)` names a METHOD, whatever the class turns out to

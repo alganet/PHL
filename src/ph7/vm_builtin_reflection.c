@@ -6286,7 +6286,11 @@ static int vm_builtin_ReflectionFunc_getClosureCalledClass(ph7_context *pCtx, in
 	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
 		return ReflectResultClassOf(pCtx, ((ph7_class_instance *)pAttr->x.pOther)->pClass);
 	}
-	pAttr = ReflectClosureAttr(&sRef, "__scope");
+	/* A forwarding `parent::sf(...)` goes through the caller's class, not $__scope's. */
+	pAttr = ReflectClosureAttr(&sRef, "__called");
+	if( pAttr == 0 || (pAttr->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pAttr->sBlob) == 0 ){
+		pAttr = ReflectClosureAttr(&sRef, "__scope");
+	}
 	if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
 		return ReflectResultClassOf(pCtx, PH7_VmExtractClass(pCtx->pVm,
 			(const char *)SyBlobData(&pAttr->sBlob), SyBlobLength(&pAttr->sBlob), FALSE, 0));
