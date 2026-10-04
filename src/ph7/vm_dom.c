@@ -114,6 +114,10 @@ static const char * DomCollClass(ph7_class_instance *pDoc,const char *zLegacy,
 {
 	return DomDocFlag(pDoc,DOM_F_MODERN) ? zModern : zLegacy;
 }
+/* Is the RECEIVER a node of php 8.4's tree? Defined with the document property
+ * readers below; declared here because the attribute API is one set of C bodies
+ * serving both trees, and several of its answers differ only by family. */
+static int DomThisModern(ph7_context *pCtx);
 
 /*
  * php's DOMException carries the DOM level-2 error CODE beside its sentence --
@@ -2265,9 +2269,15 @@ static xmlAttrPtr DomAttrAt(xmlNodePtr pNode,int iWant)
 DOM_METHOD(vm_builtin_DOMNode_hasAttributes)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ph7_result_bool(pCtx,pNd && DomAttrCount((xmlNodePtr)pNd->pNode) > 0);
+	/* A namespace DECLARATION answers this question too, exactly as it already
+	 * answers getAttributeNames(): `<r xmlns:x="urn:x"/>` has attributes in php
+	 * and had none here. Only an element carries one. */
+	ph7_result_bool(pCtx,pNode != 0
+		&& (DomAttrCount(pNode) > 0
+		 || (pNode->type == XML_ELEMENT_NODE && pNode->nsDef != 0)));
 	return PH7_OK;
 }
 DOM_METHOD(vm_builtin_DOMNode_getLineNo)
@@ -3915,6 +3925,14 @@ DOM_METHOD(vm_builtin_DOMElement_getAttribute)
 		ph7_result_string(pCtx,pDecl->href ? (const char *)pDecl->href : "",-1);
 		return PH7_OK;
 	}
+	if( pAttr == 0 && DomThisModern(pCtx) ){
+		/* php 8.4's element answers null for an attribute it does not carry,
+		 * where the 2004 one answers "" -- the whole difference between a
+		 * `string` return and a `?string` one, and the reason
+		 * `getAttribute('x') === null` is the modern absence test. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
 	ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);
 	if( zVal ){
 		xmlFree(zVal);
@@ -3946,16 +3964,35 @@ DOM_METHOD(vm_builtin_DOMElement_setAttribute)
 		/* php will not write THROUGH a declaration this element already makes:
 		 * the write is dropped and the answer is false. (A name that is not one
 		 * yet becomes an ordinary attribute, colon and all.) */
+		if( DomThisModern(pCtx) ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName,(const xmlChar *)zVal);
+	if( DomThisModern(pCtx) ){
+		/* php 8.4 declares this one `void`: the write happens and the attribute
+		 * node it wrote is not handed back. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
 	pAttr = DomAttrByName((xmlNodePtr)pNd->pNode,zName);
 	if( pAttr == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
 	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
+}
+/* The 2004 removal answers a bool; the modern one is `void`. */
+static void DomResultRemoved(ph7_context *pCtx,int bModern,int bRemoved)
+{
+	if( bModern ){
+		ph7_result_null(pCtx);
+	}else{
+		ph7_result_bool(pCtx,bRemoved);
+	}
 }
 /* DOMElement::removeAttribute(string $qualifiedName): bool */
 DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
@@ -3965,21 +4002,24 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	xmlAttrPtr pAttr = DomAttrByName(pElem,zName);
 	xmlNsPtr pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
+	/* php 8.4 declares this one `void`, so every answer below is null there --
+	 * including the absent one, which is NOT a refusal in either tree. */
+	int bModern = DomThisModern(pCtx);
 	if( pDecl ){
 		/* The declaration goes, and whatever still needs it gets it back: php
 		 * answers TRUE either way, and a binding nothing uses simply vanishes. */
 		DomNsDeclRemove(pElem,pDecl);
 		DomNsReconcile(pElem);
-		ph7_result_bool(pCtx,1);
+		DomResultRemoved(pCtx,bModern,1);
 		return PH7_OK;
 	}
 	if( pAttr == 0 ){
 		/* Absent (or a DTD default): php returns false */
-		ph7_result_bool(pCtx,0);
+		DomResultRemoved(pCtx,bModern,0);
 		return PH7_OK;
 	}
 	xmlRemoveProp(pAttr);
-	ph7_result_bool(pCtx,1);
+	DomResultRemoved(pCtx,bModern,1);
 	return PH7_OK;
 }
 /*
@@ -4010,6 +4050,10 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNS)
 			ph7_result_string(pCtx,(const char *)pDecl->href,-1);
 			return PH7_OK;
 		}
+	}
+	if( zVal == 0 && DomThisModern(pCtx) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
 	}
 	ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);
 	if( zVal ){
@@ -4171,7 +4215,13 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNode)
 		return DomResultNsNode(pCtx,pNd,pDecl,pElem);
 	}
 	if( pAttr == 0 ){
-		ph7_result_bool(pCtx,0);
+		/* `DOMAttr|false` in 2004, `?Dom\Attr` in php 8.4 -- the NS spelling
+		 * below already answered null in both. */
+		if( DomThisModern(pCtx) ){
+			ph7_result_null(pCtx);
+		}else{
+			ph7_result_bool(pCtx,0);
+		}
 		return PH7_OK;
 	}
 	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
@@ -4446,7 +4496,17 @@ DOM_METHOD(vm_builtin_DOMElement_setIdAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zLocal = nArg > 2 ? ph7_value_to_string(apArg[1],0) : "";
-	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUri(nArg,apArg,0),zLocal) : 0;
+	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
+	xmlAttrPtr pAttr;
+	/* Unlike getAttributeNS(), where a null namespace asks for the attribute in
+	 * NO namespace, php matches this one as a URI only: a null is the empty
+	 * URI, which nothing carries, so `setIdAttributeNS(null,'a',true)` is Not
+	 * Found even on an element that has `a`. php 8.4's row is the only one that
+	 * can ask -- the 2004 row still declares a plain `string`. */
+	if( zUri == 0 ){
+		zUri = (const xmlChar *)"";
+	}
+	pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,zUri,zLocal) : 0;
 	if( pAttr == 0 ){
 		return DomThrowVoid(pCtx,DOM_ERR_NOT_FOUND);
 	}
@@ -12122,7 +12182,52 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	};
 	/* `Dom\Element` carries BOTH mixins, child side first -- php's order, and
 	 * the reverse of the order its `implements` clause names them in. */
+	/* The attribute API, php's declaration order. It is the 2004 element's set
+	 * of C bodies over the same libxml attributes; what the new tree changed is
+	 * the SHAPE of four answers -- an absent attribute reads null rather than
+	 * "" or false, and the two writes that handed back the node they touched
+	 * are plain `void` here. Each body asks its receiver's family. */
 	static const PH7_NativeMethodDef aMElemMethod[] = {
+		{ "hasAttributes",    PH7_MOD_PUBLIC, "", "bool",
+		  vm_builtin_DOMNode_hasAttributes },
+		{ "getAttributeNames", PH7_MOD_PUBLIC, "", "array",
+		  vm_builtin_DOMElement_getAttributeNames },
+		{ "getAttribute",     PH7_MOD_PUBLIC, "string $qualifiedName", "?string",
+		  vm_builtin_DOMElement_getAttribute },
+		{ "getAttributeNS",   PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "?string", vm_builtin_DOMElement_getAttributeNS },
+		{ "setAttribute",     PH7_MOD_PUBLIC, "string $qualifiedName, string $value",
+		  "void", vm_builtin_DOMElement_setAttribute },
+		{ "setAttributeNS",   PH7_MOD_PUBLIC,
+		  "?string $namespace, string $qualifiedName, string $value", "void",
+		  vm_builtin_DOMElement_setAttributeNS },
+		{ "removeAttribute",  PH7_MOD_PUBLIC, "string $qualifiedName", "void",
+		  vm_builtin_DOMElement_removeAttribute },
+		{ "removeAttributeNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "void", vm_builtin_DOMElement_removeAttributeNS },
+		{ "toggleAttribute",  PH7_MOD_PUBLIC, "string $qualifiedName, ?bool $force = null",
+		  "bool", vm_builtin_DOMElement_toggleAttribute },
+		{ "hasAttribute",     PH7_MOD_PUBLIC, "string $qualifiedName", "bool",
+		  vm_builtin_DOMElement_hasAttribute },
+		{ "hasAttributeNS",   PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "bool", vm_builtin_DOMElement_hasAttributeNS },
+		{ "getAttributeNode", PH7_MOD_PUBLIC, "string $qualifiedName", "?Dom\\Attr",
+		  vm_builtin_DOMElement_getAttributeNode },
+		{ "getAttributeNodeNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "?Dom\\Attr", vm_builtin_DOMElement_getAttributeNodeNS },
+		{ "setAttributeNode", PH7_MOD_PUBLIC, "Dom\\Attr $attr", "?Dom\\Attr",
+		  vm_builtin_DOMElement_setAttributeNode },
+		{ "setAttributeNodeNS", PH7_MOD_PUBLIC, "Dom\\Attr $attr", "?Dom\\Attr",
+		  vm_builtin_DOMElement_setAttributeNodeNS },
+		{ "removeAttributeNode", PH7_MOD_PUBLIC, "Dom\\Attr $attr", "Dom\\Attr",
+		  vm_builtin_DOMElement_removeAttributeNode },
+		{ "setIdAttribute",   PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "void",
+		  vm_builtin_DOMElement_setIdAttribute },
+		{ "setIdAttributeNS", PH7_MOD_PUBLIC,
+		  "?string $namespace, string $qualifiedName, bool $isId", "void",
+		  vm_builtin_DOMElement_setIdAttributeNS },
+		{ "setIdAttributeNode", PH7_MOD_PUBLIC, "Dom\\Attr $attr, bool $isId", "void",
+		  vm_builtin_DOMElement_setIdAttributeNode },
 		DOM_MCHILD_METHODS,
 		DOM_MPARENT_METHODS
 	};
