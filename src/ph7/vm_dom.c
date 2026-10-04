@@ -138,6 +138,7 @@ static const char * DomXPathClassName(ph7_class_instance *pThis);
 #define DOM_ERR_NOT_SUPPORTED  9
 #define DOM_ERR_INVALID_STATE 11
 #define DOM_ERR_SYNTAX        12
+#define DOM_ERR_INVALID_MOD   13
 #define DOM_ERR_NAMESPACE     14
 /* The sentence php prints for each -- so a refusal that travels as a code can
  * be raised from one place. */
@@ -152,6 +153,7 @@ static const char * DomErrText(int iCode)
 	case DOM_ERR_NOT_SUPPORTED: return "Not Supported Error";
 	case DOM_ERR_INVALID_STATE: return "Invalid State Error";
 	case DOM_ERR_SYNTAX:       return "Syntax Error";
+	case DOM_ERR_INVALID_MOD:  return "Invalid Modification Error";
 	case DOM_ERR_NAMESPACE:    return "Namespace Error";
 	default:                   return "Not Found Error";
 	}
@@ -10601,20 +10603,48 @@ DOM_METHOD(vm_builtin_DOMDocument_relaxNGValidateSource)
 	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,FALSE,"DOMDocument::relaxNGValidateSource");
 }
 /*
+ * php 8.4 declares the same four on the namespaced tree, and declares them on
+ * `Dom\Document` -- the ABSTRACT document. A native method answers under the
+ * name of the class that DECLARED it and not under the receiver's, so every
+ * diagnostic these four raise reads `Dom\Document::` even though the only
+ * instance that can reach them is a `Dom\XMLDocument` or a `Dom\HTMLDocument`.
+ *
+ * The RelaxNG pair is spelled `relaxNg` here where the 2004 tree spells it
+ * `relaxNG`: method lookup folds case so the spelling changes no call, but it
+ * is what reflection lists and what a ValueError prints, so it is the new
+ * tree's own text and not a copy of the old one's.
+ */
+DOM_METHOD(vm_builtin_DomDocument_schemaValidate)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,TRUE,"Dom\\Document::schemaValidate");
+}
+DOM_METHOD(vm_builtin_DomDocument_schemaValidateSource)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,FALSE,
+		"Dom\\Document::schemaValidateSource");
+}
+DOM_METHOD(vm_builtin_DomDocument_relaxNgValidate)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,TRUE,"Dom\\Document::relaxNgValidate");
+}
+DOM_METHOD(vm_builtin_DomDocument_relaxNgValidateSource)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,FALSE,
+		"Dom\\Document::relaxNgValidateSource");
+}
+/*
  * DOMDocument::validate(): bool -- against the document's OWN DTD, which is
  * the one question of the five that takes no argument. libxml's validity
  * complaints ("no DTD found!", "root and DTD name do not match") reach the
  * caller through the same per-VM queue every other diagnostic here does.
  */
-DOM_METHOD(vm_builtin_DOMDocument_validate)
+static int DomValidateDtd(ph7_context *pCtx,const char *zFn)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pDocNd = DomThisNode(pCtx);
 	xmlValidCtxtPtr pValid;
 	sxu32 nMark;
 	int iRc;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
 	if( pDocNd == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -10622,15 +10652,33 @@ DOM_METHOD(vm_builtin_DOMDocument_validate)
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	pValid = xmlNewValidCtxt();
 	if( pValid == 0 ){
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");
+		PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	iRc = xmlValidateDocument(pValid,(xmlDocPtr)pDocNd->pNode);
 	xmlFreeValidCtxt(pValid);
-	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");
+	PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
 	ph7_result_bool(pCtx,iRc != 0);
 	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocument_validate)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DomValidateDtd(pCtx,"DOMDocument::validate");
+}
+/*
+ * php declares the DTD pass on `Dom\XMLDocument` and not on the abstract
+ * document above it, because an HTML document has no DTD of its own to be
+ * valid against -- so this one answers under the FINAL class's name where the
+ * schema four answer under the abstract one's.
+ */
+DOM_METHOD(vm_builtin_DomXMLDocument_validate)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DomValidateDtd(pCtx,"Dom\\XMLDocument::validate");
 }
 /*
  * The MARKERS libxml leaves around everything it substituted.
@@ -10665,7 +10713,8 @@ static void DomDropXIncludeMarks(phl_xmldoc *pShell,xmlNodePtr pNode)
  * failed -- and FALSE when there were none at all, which is not an error and
  * is the one answer a caller has to screen for separately.
  */
-DOM_METHOD(vm_builtin_DOMDocument_xinclude)
+static int DomXIncludeRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	const char *zFn,int bModern)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pDocNd = DomThisNode(pCtx);
@@ -10678,10 +10727,22 @@ DOM_METHOD(vm_builtin_DOMDocument_xinclude)
 	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	nDone = xmlXIncludeProcessFlags((xmlDocPtr)pDocNd->pNode,iOpts);
-	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::xinclude");
+	PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
 	if( nDone >= 0 ){
 		DomDropXIncludeMarks(pDocNd->pShell,
 			((xmlDocPtr)pDocNd->pNode)->children);
+	}
+	if( bModern ){
+		/* The namespaced door declares a plain `int`, so it has nowhere to put
+		 * either of the 2004 answers: a failed substitution is an `Invalid
+		 * Modification Error` rather than -1, and NO substitutions is the count
+		 * 0 rather than false. The warnings libxml queued still stand -- php
+		 * raises them and then throws over the top of them. */
+		if( nDone < 0 ){
+			return DomThrowAlways(pCtx,DOM_ERR_INVALID_MOD);
+		}
+		ph7_result_int(pCtx,nDone);
+		return PH7_OK;
 	}
 	if( nDone == 0 ){
 		ph7_result_bool(pCtx,0);
@@ -10689,6 +10750,14 @@ DOM_METHOD(vm_builtin_DOMDocument_xinclude)
 		ph7_result_int(pCtx,nDone);
 	}
 	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocument_xinclude)
+{
+	return DomXIncludeRun(pCtx,nArg,apArg,"DOMDocument::xinclude",FALSE);
+}
+DOM_METHOD(vm_builtin_DomXMLDocument_xinclude)
+{
+	return DomXIncludeRun(pCtx,nArg,apArg,"Dom\\XMLDocument::xinclude",TRUE);
 }
 
 /*
@@ -14111,6 +14180,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createAttributeNS },
 		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "?Dom\\Element",
 		  vm_builtin_DOMDocument_getElementById },
+		/* The schema four, declared HERE and not on either final document: the
+		 * name they answer under is this abstract class's. php states the option
+		 * word on the schema pair alone, exactly as it does on the 2004 tree. */
+		{ "schemaValidate",       PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "bool",
+		  vm_builtin_DomDocument_schemaValidate },
+		{ "schemaValidateSource", PH7_MOD_PUBLIC, "string $source, int $flags = 0", "bool",
+		  vm_builtin_DomDocument_schemaValidateSource },
+		{ "relaxNgValidate",      PH7_MOD_PUBLIC, "string $filename", "bool",
+		  vm_builtin_DomDocument_relaxNgValidate },
+		{ "relaxNgValidateSource", PH7_MOD_PUBLIC, "string $source", "bool",
+		  vm_builtin_DomDocument_relaxNgValidateSource },
 		DOM_MPARENT_METHODS,
 		/* php declares this one AFTER the parent-node trio, which is the only
 		 * place in either tree where a factory follows an inherited interface's
@@ -14221,6 +14301,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * has no entity declarations to refer to. */
 		{ "createEntityReference", PH7_MOD_PUBLIC, "string $name", "Dom\\EntityReference",
 		  vm_builtin_DOMDocument_createEntityRef },
+		/* The DTD pass and the XInclude pass, both the XML document's alone --
+		 * an HTML document has neither a DTD to be valid against nor an
+		 * `xi:include` grammar. php's XInclude count is a plain `int` here where
+		 * the 2004 one is `int|false`. */
+		{ "validate",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_DomXMLDocument_validate },
+		{ "xinclude",  PH7_MOD_PUBLIC, "int $options = 0", "int",
+		  vm_builtin_DomXMLDocument_xinclude },
 		/* The writers. php declares them on each final document rather than on
 		 * the abstract one above, so the name they answer under is the final
 		 * class's -- and the HTML document states two more beside these. */
