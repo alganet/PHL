@@ -7007,7 +7007,9 @@ static int DomSaveModernDoc(xmlSaveCtxtPtr pSave,xmlBufferPtr pBuf,xmlDocPtr pDo
  */
 typedef struct dom_ns_fix dom_ns_fix;
 struct dom_ns_fix {
-	xmlAttrPtr pAttr;    /* the attribute whose binding was retargeted */
+	xmlAttrPtr pAttr;    /* the attribute whose binding was retargeted, or 0 for a
+	                      * declaration minted for an ELEMENT's own binding, which
+	                      * is never retargeted */
 	xmlNsPtr pOld;       /* what it was bound to before */
 	xmlNodePtr pElem;    /* element a declaration was minted on, or 0 */
 	xmlNsPtr pMint;      /* that declaration */
@@ -7065,13 +7067,73 @@ static int DomNsFixRecord(dom_ns_fix **ppFix,xmlAttrPtr pAttr,xmlNsPtr pOld,
 	*ppFix = pRec;
 	return 0;
 }
-/* Give every attribute under pRoot a prefix the bytes will actually declare. */
+/* Give every element and every attribute under pRoot a prefix the bytes will
+ * actually declare. */
 static int DomNsSaveReconcile(xmlNodePtr pRoot,xmlNodePtr pStop,dom_ns_fix **ppFix)
 {
 	xmlNodePtr pCur = pRoot;
 	while( pCur ){
 		if( pCur->type == XML_ELEMENT_NODE ){
+			xmlNsPtr pOwn = pCur->ns;
 			xmlAttrPtr pAttr;
+			/* The element's OWN binding first. libxml writes the prefix the
+			 * node carries and declares nothing for it, so a subtree whose
+			 * root is bound by an ancestor OUTSIDE the dump goes out naming a
+			 * prefix the bytes never bind -- and re-parsing those bytes loses
+			 * the namespace the nodes came from. php materialises the binding
+			 * on whichever element needs it: the dumped root, and equally an
+			 * element deeper in whose only declaration is out of the dump.
+			 *
+			 * A DEFAULT binding is materialised the same way, as `xmlns=`;
+			 * `xml` is bound everywhere and declared nowhere. Unlike an
+			 * attribute nothing is RETARGETED here -- the element keeps the
+			 * very binding it was made with and only the bytes gain a
+			 * declaration -- so the element pass is also what lets the
+			 * attribute pass below reuse it rather than mint a second one. */
+			if( pOwn != 0 && pOwn->href != 0
+			 && !(pOwn->prefix != 0
+			   && xmlStrEqual(pOwn->prefix,(const xmlChar *)"xml")) ){
+				xmlNsPtr pHave = DomNsScopePrefix(pCur,pStop,pOwn->prefix);
+				if( pHave == 0 || !xmlStrEqual(pHave->href,pOwn->href) ){
+					/* xmlNewNs refuses only a prefix this very element already
+					 * declares, which is the shadowing collision -- and one
+					 * the tree hands over already re-spelt, so it needs
+					 * nothing here and the whole-document dump agrees. */
+					xmlNsPtr pMint = xmlNewNs(pCur,pOwn->href,pOwn->prefix);
+					if( pMint != 0 ){
+						DomNsMarkMinted(pMint);
+						if( DomNsFixRecord(ppFix,0,0,pCur,pMint) ){
+							return -1;
+						}
+					}
+				}
+			}else if( pOwn == 0 ){
+				/* The other face of the same question, and the one a WHOLE
+				 * document asks too: an element in NO namespace under bytes
+				 * whose default binding is somebody else's is read back INTO
+				 * that namespace unless the declaration is cancelled here.
+				 * php writes `xmlns=""` for it -- which is exactly what a
+				 * parsed one already carries on its own nsDef, so the two
+				 * arrive at the same bytes from opposite directions. */
+				xmlNsPtr pHave = DomNsScopePrefix(pCur,pStop,0);
+				/* ...from an ANCESTOR. xmlNewNs refuses a second default only
+				 * when it binds the same URI, so an element carrying a default
+				 * declaration of its own -- which only a written `xmlns` can
+				 * make, the parser having put the element IN it -- would take
+				 * a second one beside it and go out with two. That tree is
+				 * already saying two things and says them whole-document too;
+				 * cancelling here would only add a third. */
+				if( pHave != 0 && pHave->href != 0 && pHave->href[0] != 0
+				 && DomNsScopePrefix(pCur,pCur,0) == 0 ){
+					xmlNsPtr pMint = xmlNewNs(pCur,(const xmlChar *)"",0);
+					if( pMint != 0 ){
+						DomNsMarkMinted(pMint);
+						if( DomNsFixRecord(ppFix,0,0,pCur,pMint) ){
+							return -1;
+						}
+					}
+				}
+			}
 			for( pAttr = pCur->properties ; pAttr ; pAttr = pAttr->next ){
 				xmlNsPtr pNs = pAttr->ns, pUse, pMint = 0;
 				if( pNs == 0 || pNs->href == 0 ){
@@ -7136,7 +7198,9 @@ static void DomNsSaveRestore(dom_ns_fix *pFix)
 {
 	dom_ns_fix *pRec;
 	for( pRec = pFix ; pRec ; pRec = pRec->pNext ){
-		pRec->pAttr->ns = pRec->pOld;
+		if( pRec->pAttr ){
+			pRec->pAttr->ns = pRec->pOld;
+		}
 	}
 	while( pFix ){
 		dom_ns_fix *pNext = pFix->pNext;
