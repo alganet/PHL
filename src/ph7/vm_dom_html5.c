@@ -183,6 +183,7 @@ static sxu32 Html5EntLookup(const char *zName)
 #define HTML5_M_IN_FRAMESET  7
 #define HTML5_M_AFTER_FRAMESET 8
 #define HTML5_M_AFTER_AFTER_FRAMESET 9
+#define HTML5_M_AFTER_AFTER_BODY 12
 #define HTML5_M_IN_TEMPLATE  10
 /*
  * `in head noscript` cannot be answered from the open stack either: what it
@@ -238,6 +239,7 @@ struct html5_parser {
 	int bFoster;                   /* this token's content leaves the table    */
 	int bFramesetOk;               /* may a `<frameset>` still replace the body */
 	int bHtmlRules;  /* this token skips the namespace question exactly once */
+	int bCloseP;     /* a `</p>` minted a `<p>`; close it once the token is done */
 	sxu32 iTokLine,iTokCol,iTokCol2;  /* the NAME's span, which is what php prints */
 	void (*xErr)(void *,const char *,const char *,sxu32,sxu32,sxu32);
 	void *pErrUser;
@@ -434,6 +436,20 @@ static int Html5Read(html5_parser *p)
 static int Html5IsSpace(int c)
 {
 	return c == ' ' || c == '\n' || c == '\t' || c == '\f' || c == '\r';
+}
+/*
+ * The tree constructor's whitespace is not the tokenizer's.  A run reaching a
+ * mode that IGNORES whitespace -- or that keeps only the leading whitespace of
+ * a run and hands the rest one mode out -- stops at a form feed, which php
+ * reads as content there: `<head>\f<title>` closes the head where
+ * `<head> <title>` does not, and a `\f` before `<html>` is body text rather
+ * than nothing.  It is whitespace again wherever a run is KEPT rather than
+ * dropped, which is why the frameset modes and the table's foster question
+ * still ask `Html5IsSpace`.
+ */
+static int Html5IsIgnSpace(int c)
+{
+	return c != '\f' && Html5IsSpace(c);
 }
 static int Html5Lower(int c)
 {
@@ -1574,20 +1590,34 @@ static void Html5EndTagOther(html5_parser *p,const char *zName)
 		}
 	}
 }
-/* Is an element of this name open, with no scope marker above it? */
-static int Html5NameInScope(html5_parser *p,const char *zName)
+/*
+ * Is an element of this name open, with no scope marker above it?  `bButton`
+ * asks the spec's BUTTON scope instead, which is the same walk with `<button>`
+ * added to what stops it.  Only the `<p>` questions ask that one, and the two
+ * answers differ in exactly one shape: a `<p>` with a `<button>` open inside
+ * it is out of reach, so `<p><button><div>` leaves the div in the button
+ * rather than closing the paragraph, and a `</p>` there closes nothing and
+ * mints instead.
+ */
+static int Html5NameInScopeEx(html5_parser *p,const char *zName,int bButton)
 {
 	xmlNodePtr *apStack = (xmlNodePtr *)SySetBasePtr(&p->sOpen);
 	int n = (int)SySetUsed(&p->sOpen);
 	while( n-- > 0 ){
-		if( Html5Eq((const char *)apStack[n]->name,zName) ){
+		const char *zOpen = (const char *)apStack[n]->name;
+		if( Html5Eq(zOpen,zName) ){
 			return 1;
 		}
-		if( HTML5_IN(azHtml5Scope,(const char *)apStack[n]->name) ){
+		if( HTML5_IN(azHtml5Scope,zOpen)
+		 || (bButton && Html5Eq(zOpen,"button")) ){
 			return 0;
 		}
 	}
 	return 0;
+}
+static int Html5NameInScope(html5_parser *p,const char *zName)
+{
+	return Html5NameInScopeEx(p,zName,FALSE);
 }
 /* The current start tag's value for `zName`, or a NULL when it has none. */
 static const char * Html5TokAttr(html5_parser *p,const char *zName)
@@ -1724,6 +1754,18 @@ static int Html5TextIsSpace(html5_parser *p)
 	}
 	return 1;
 }
+/* The same question a mode that DROPS whitespace asks -- a form feed is not. */
+static int Html5TextIsIgnSpace(html5_parser *p)
+{
+	const unsigned char *z = (const unsigned char *)SyBlobData(&p->sBuf);
+	sxu32 i,n = SyBlobLength(&p->sBuf);
+	for( i = 0 ; i < n ; ++i ){
+		if( !Html5IsIgnSpace(z[i]) ){
+			return 0;
+		}
+	}
+	return 1;
+}
 /* Drop the leading whitespace of a text token, keeping the rest. */
 static void Html5TrimLeadingSpace(html5_parser *p)
 {
@@ -1732,7 +1774,7 @@ static void Html5TrimLeadingSpace(html5_parser *p)
 	if( n < 1 ){
 		return;
 	}
-	while( i < n && Html5IsSpace(z[i]) ){
+	while( i < n && Html5IsIgnSpace(z[i]) ){
 		i++;
 	}
 	if( i > 0 ){
@@ -1755,7 +1797,7 @@ static void Html5SplitLeadingSpace(html5_parser *p)
 {
 	const unsigned char *z = (const unsigned char *)SyBlobData(&p->sBuf);
 	sxu32 i = 0,n = SyBlobLength(&p->sBuf);
-	while( i < n && Html5IsSpace(z[i]) ){
+	while( i < n && Html5IsIgnSpace(z[i]) ){
 		i++;
 	}
 	if( i > 0 ){
@@ -2189,7 +2231,8 @@ static void Html5BodyImplied(html5_parser *p,const char *zName)
 	 * formatting element left open inside it sits above it now, and the spec
 	 * closes the p under it rather than giving up.
 	 */
-	if( !bSelect && HTML5_IN(azHtml5ClosesP,zName) && Html5NameInScope(p,"p") ){
+	if( !bSelect && HTML5_IN(azHtml5ClosesP,zName)
+	 && Html5NameInScopeEx(p,"p",TRUE) ){
 		Html5PopTo(p,"p");
 	}
 	if( !bSelect && Html5Eq(zName,"li") ){
@@ -2450,7 +2493,7 @@ static int Html5Dispatch(html5_parser *p)
 			Html5InsertComment(p,(xmlNodePtr)p->pDoc);
 			return 0;
 		}
-		if( p->iTok == HTML5_TOK_TEXT && Html5TextIsSpace(p) ){
+		if( p->iTok == HTML5_TOK_TEXT && Html5TextIsIgnSpace(p) ){
 			return 0;
 		}
 		/*
@@ -2474,7 +2517,7 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_TEXT ){
-			if( Html5TextIsSpace(p) ){
+			if( Html5TextIsIgnSpace(p) ){
 				return 0;
 			}
 			Html5TrimLeadingSpace(p);
@@ -2501,7 +2544,7 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_TEXT ){
-			if( Html5TextIsSpace(p) ){
+			if( Html5TextIsIgnSpace(p) ){
 				return 0;
 			}
 			Html5TrimLeadingSpace(p);
@@ -2511,6 +2554,21 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_START && Html5Eq(zName,"html") ){
+			return 0;
+		}
+		/*
+		 * The same four names `before html` lets through, dropped here for
+		 * the same reason and under php's own spelling of the diagnostic --
+		 * which is not the one the neighbouring modes use.  Nothing depended
+		 * on this screen while a dropped end tag did nothing anyway; a
+		 * `</p>` now MINTS an element one mode further on, so the tag has to
+		 * stop being handed onward.
+		 */
+		if( p->iTok == HTML5_TOK_END && !Html5Eq(zName,"head")
+		 && !Html5Eq(zName,"body") && !Html5Eq(zName,"html")
+		 && !Html5Eq(zName,"br") && (p->iFlags & HTML5_NOIMPLIED) == 0 ){
+			Html5Err(p,"tree","unexpected-closed_token-in-before-head-mode",
+				p->iTokLine,p->iTokCol,p->iTokCol2);
 			return 0;
 		}
 		Html5OpenHead(p,FALSE);
@@ -2524,7 +2582,7 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_TEXT ){
-			if( Html5TextIsSpace(p) ){
+			if( Html5TextIsIgnSpace(p) ){
 				Html5InsertText(p);
 				return 0;
 			}
@@ -2584,7 +2642,7 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_TEXT ){
-			if( Html5TextIsSpace(p) ){
+			if( Html5TextIsIgnSpace(p) ){
 				Html5InsertText(p);
 				return 0;
 			}
@@ -2636,7 +2694,7 @@ static int Html5Dispatch(html5_parser *p)
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_TEXT ){
-			if( Html5TextIsSpace(p) ){
+			if( Html5TextIsIgnSpace(p) ){
 				Html5InsertText(p);
 				return 0;
 			}
@@ -2676,6 +2734,21 @@ static int Html5Dispatch(html5_parser *p)
 				Html5Pop(p);
 			}
 			Html5Pop(p);
+			return 0;
+		}
+		/*
+		 * The end tags `before head` drops, minus one: the head is closed
+		 * already, so `</head>` is dropped with the rest and only `</body>`,
+		 * `</html>` and `</br>` are handed onward.  php spells this
+		 * diagnostic without naming the mode.  Nothing depended on the
+		 * screen while a dropped end tag did nothing anyway; a `</p>` now
+		 * MINTS an element in `in body`, so the tag has to stop here.
+		 */
+		if( p->iTok == HTML5_TOK_END && !Html5Eq(zName,"body")
+		 && !Html5Eq(zName,"html") && !Html5Eq(zName,"br")
+		 && (p->iFlags & HTML5_NOIMPLIED) == 0 ){
+			Html5Err(p,"tree","unexpected-closed-token",
+				p->iTokLine,p->iTokCol,p->iTokCol2);
 			return 0;
 		}
 		Html5OpenBody(p,FALSE);
@@ -2723,11 +2796,36 @@ static int Html5Dispatch(html5_parser *p)
 			Html5InsertComment(p,p->pHtml ? p->pHtml : (xmlNodePtr)p->pDoc);
 			return 0;
 		}
+		if( p->iTok == HTML5_TOK_DOCTYPE ){
+			return 0;
+		}
+		if( p->iTok == HTML5_TOK_END && Html5Eq(zName,"html") ){
+			p->iMode = HTML5_M_AFTER_AFTER_BODY;
+			return 0;
+		}
+		/*
+		 * Whitespace here is the BODY's, not the document's.  It is handed
+		 * to the `in body` rules without latching the mode -- falling out of
+		 * this switch is how a mode borrows another's rules without becoming
+		 * it -- so a comment written after it is still the html element's,
+		 * and a run reaching an open `<table>` is still the table's.
+		 */
 		if( p->iTok == HTML5_TOK_TEXT && Html5TextIsSpace(p) ){
+			break;
+		}
+		p->iMode = HTML5_M_IN_BODY;
+		return 1;
+	case HTML5_M_AFTER_AFTER_BODY:
+		/* Past `</html>`: a comment is the document's, beside the root. */
+		if( p->iTok == HTML5_TOK_COMMENT ){
+			Html5InsertComment(p,(xmlNodePtr)p->pDoc);
 			return 0;
 		}
 		if( p->iTok == HTML5_TOK_DOCTYPE ){
 			return 0;
+		}
+		if( p->iTok == HTML5_TOK_TEXT && Html5TextIsSpace(p) ){
+			break;
 		}
 		p->iMode = HTML5_M_IN_BODY;
 		return 1;
@@ -2853,6 +2951,15 @@ static int Html5Dispatch(html5_parser *p)
 			/* Any byte that is not whitespace is content a frameset
 			 * would have to throw away, so it may no longer replace it. */
 			p->bFramesetOk = 0;
+			Html5ColgroupImplied(p,0);
+		}else if( !Html5TextIsIgnSpace(p) ){
+			/*
+			 * A run a table keeps whole can still END an open `<colgroup>`:
+			 * that mode asks the IGNORABLE-space question, so a form feed
+			 * closes it where a space does not.  What was written before the
+			 * form feed is still the colgroup's, so the run splits.
+			 */
+			Html5SplitLeadingSpace(p);
 			Html5ColgroupImplied(p,0);
 		}
 		Html5Reconstruct(p);
@@ -3027,19 +3134,23 @@ static int Html5Dispatch(html5_parser *p)
 			Html5TemplateEnd(p);
 			break;
 		}
+		/*
+		 * Both of these only SWITCH the mode: the body element stays open,
+		 * and so does everything the source left open inside it, which is
+		 * where the whitespace and the stray content that follow keep
+		 * landing.  Popping the body here put a document's final newline
+		 * BESIDE the body instead of in it -- the shape every file ending
+		 * `</body>\n</html>` has -- and sent a `<div>` written after the
+		 * close into the html element.  `</html>` differs by being re-run in
+		 * the mode it switches to, which is what ends the document.
+		 */
 		if( Html5Eq(zName,"body") ){
-			if( Html5OpenDepth(p,"body") >= 0 ){
-				Html5PopTo(p,"body");
-			}
 			p->iMode = HTML5_M_AFTER_BODY;
 			break;
 		}
 		if( Html5Eq(zName,"html") ){
-			if( Html5OpenDepth(p,"body") >= 0 ){
-				Html5PopTo(p,"body");
-			}
 			p->iMode = HTML5_M_AFTER_BODY;
-			break;
+			return 1;
 		}
 		/*
 		 * `</br>` is the one end tag that OPENS an element.  It is re-run as a
@@ -3053,6 +3164,26 @@ static int Html5Dispatch(html5_parser *p)
 			p->iTok = HTML5_TOK_START;
 			SyBlobReset(&p->sAttrBuf);
 			SySetReset(&p->sAttr);
+			return 1;
+		}
+		/*
+		 * `</p>` is the other one, and it opens an element only when there is
+		 * no `<p>` in BUTTON scope to close -- which is why `</p>` written
+		 * alone leaves `<p></p>` behind, and why one written inside a
+		 * `<button>` mints a second paragraph rather than closing the one
+		 * outside.  The element is asked for the same way `</br>` asks, as a
+		 * START tag stripped of the attributes the end tag was written with,
+		 * so that the implied closes, the reconstruction and being FOSTERED
+		 * out of a table are all owed by it too.  Closing it is owed once
+		 * that whole token has been processed, not inside this dispatch: the
+		 * element is not on the stack until the start tag's own path has
+		 * run.
+		 */
+		if( Html5Eq(zName,"p") && !Html5NameInScopeEx(p,"p",TRUE) ){
+			p->iTok = HTML5_TOK_START;
+			SyBlobReset(&p->sAttrBuf);
+			SySetReset(&p->sAttr);
+			p->bCloseP = 1;
 			return 1;
 		}
 		if( !Html5Eq(zName,"colgroup") ){
@@ -3188,6 +3319,19 @@ PH7_PRIVATE xmlDocPtr PH7_Html5Parse(
 		 */
 		while( Html5Dispatch(&sParser) && ++nGuard < 16 ){
 			;
+		}
+		if( sParser.bCloseP ){
+			xmlNodePtr pTop = Html5Top(&sParser);
+			sParser.bCloseP = 0;
+			/*
+			 * Only if the minted `<p>` is really open: the start tag it was
+			 * re-run as can still be dropped -- inside a `<select>`, or by a
+			 * mode that answers end tags for itself -- and there is nothing
+			 * to close then.
+			 */
+			if( pTop && Html5Eq((const char *)pTop->name,"p") ){
+				Html5Pop(&sParser);
+			}
 		}
 	}
 	/*
