@@ -9249,6 +9249,11 @@ SkipFuncBody:
 				{ "array_key_exists", sizeof("array_key_exists")-1, 2 },
 				{ "get_class",        sizeof("get_class")-1,        1 },
 				{ "get_class",        sizeof("get_class")-1,        0 },
+				/* the casts: `strval($a)` warns and runs __toString with no strval frame */
+				{ "strval",           sizeof("strval")-1,           1 },
+				{ "intval",           sizeof("intval")-1,           1 },
+				{ "floatval",         sizeof("floatval")-1,         1 },
+				{ "boolval",          sizeof("boolval")-1,          1 },
 			};
 			sxu32 iF;
 			for( iF = 0 ; iF < SX_ARRAYSIZE(aFolded) ; ++iF ){

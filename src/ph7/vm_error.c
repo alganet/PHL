@@ -277,6 +277,24 @@ static sxi32 VmEmitFatalReport(ph7_vm *pVm,const char *zLabel,const char *zBody,
  * Refer to the implementation of [ph7_context_throw_error()] for additional
  * information.
  */
+/*
+ * Is the diagnostic being reported raised by an INTERNAL function -- one called from
+ * the activation now running, or a builtin whose body is embedded PHP? php calls the
+ * error handler from EG(current_execute_data), which is that function's frame when it
+ * has one; a folded call links no record (bFoldedCallee), and an opcode's own
+ * diagnostic has no function running at all.
+ */
+static int VmErrRaisedByInternal(ph7_vm *pVm)
+{
+	VmNativeCall *pNat = pVm->pNativeCall;
+	while( pNat && pNat->bElided ){
+		pNat = pNat->pPrev;
+	}
+	if( pNat && pNat->pFrame == (void *)pVm->pFrame ){
+		return 1;
+	}
+	return PH7_VmPreludeBuiltinFrame(pVm,0,0) != 0;
+}
 static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage, sxi32 nLen, SyString *pFile, sxi32 iLine)
 {
 	/* A handler is only called for the levels it was REGISTERED for. php ANDs
@@ -353,8 +371,16 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 				 * fetch-point router, as the user-call dispatcher does for a
 				 * handler that throws by itself. */
 				VmBoundaryPark(pVm,rcCb);
-			}else{
+			}else if( VmErrRaisedByInternal(pVm) ){
 				rcCb = PH7_VmCallUserFunction(pVm,&sRunning,4,apArgPtr,&sResult);
+			}else{
+				/* Raised by the running userland code itself -- an opcode, or a
+				 * call php's compiler folded into one (`sprintf('%s', $a)`,
+				 * `strval($a)`): php calls the handler from that frame, so it is
+				 * no internal callback. Its frame carries the call site and no
+				 * builtin sits above it, its arguments bind in that file's mode,
+				 * and a too-few error names where it was "passed in". */
+				rcCb = PH7_VmCallUserFunctionWithMap(pVm,&sRunning,4,apArgPtr,&sResult,0);
 			}
 			if( ph7_value_is_null(&pVm->sErrCB) ){
 				PH7_MemObjStore(&sRunning,&pVm->sErrCB);
