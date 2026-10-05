@@ -2516,38 +2516,6 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #define HASHMAP_UVAR_VAL_NONE   0 /* values ignored (key-only compare) */
 #define HASHMAP_UVAR_VAL_STRING 1 /* php's (string)$a === (string)$b (HashmapValueStrEq) */
 #define HASHMAP_UVAR_VAL_USER   2 /* values equal when the user value callback answers 0 */
-/*
- * Invoke a user comparison callback over two operands and reduce its result to
- * an int, the usort() convention. Returns the dispatch status verbatim when the
- * callback did not return (PH7_CALLBACK_UNWOUND) — the caller must abandon the
- * whole builtin so the enclosing catch runs with no spurious insertion
- * performed (the builtin-throw rail).
- */
-static sxi32 HashmapUserCmpCall(ph7_context *pCtx,ph7_value *pCallback,ph7_value *pA,ph7_value *pB,int *pCmp)
-{
-	ph7_value *apCbArg[2];
-	ph7_value sResult;
-	sxi32 rc;
-	PH7_MemObjInit(pCtx->pVm,&sResult);
-	apCbArg[0] = pA;
-	apCbArg[1] = pB;
-	rc = PH7_VmCallCallbackByValue(pCtx->pVm,pCallback,2,apCbArg,&sResult,0);
-	if( PH7_CALLBACK_UNWOUND(rc) ){
-		PH7_MemObjRelease(&sResult);
-		return rc;
-	}
-	*pCmp = -1; /* a failed dispatch compares unequal */
-	if( rc == SXRET_OK ){
-		if( (sResult.iFlags & MEMOBJ_INT) == 0 ){
-			PH7_MemObjToInteger(&sResult);
-		}
-		/* Reduce by SIGN on the full 64 bits: a bare (int) cast made a
-		 * callback answering 1<<32 count as "equal". */
-		*pCmp = (sResult.x.iVal < 0) ? -1 : (sResult.x.iVal > 0 ? 1 : 0);
-	}
-	PH7_MemObjRelease(&sResult);
-	return SXRET_OK;
-}
 /* Initialize pOut from a node's key (int or string), for handing to a key callback. */
 static void HashmapInitNodeKey(ph7_vm *pVm,ph7_hashmap_node *pNode,ph7_value *pOut)
 {
@@ -2595,7 +2563,8 @@ static sxi32 HashmapUVarValueMatch(ph7_context *pCtx,ph7_hashmap_node *pEntry,ph
 	}
 	{
 		int iCmp = 0;
-		sxi32 rc = HashmapUserCmpCall(pCtx,pValCb,pV1,pV2,&iCmp);
+		/* php's zval_user_compare(): no bool deprecation, no swapped retry */
+		sxi32 rc = PH7_HashmapUserCmp(pCtx,pValCb,pV1,pV2,FALSE,&iCmp);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
@@ -2693,7 +2662,7 @@ static sxi32 HashmapUVarCmpNode(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *
 		ph7_value sK1,sK2;
 		HashmapInitNodeKey(pCmp->pCtx->pVm,pA,&sK1);
 		HashmapInitNodeKey(pCmp->pCtx->pVm,pB,&sK2);
-		rc = HashmapUserCmpCall(pCmp->pCtx,pCmp->pCb,&sK1,&sK2,&iCmp);
+		rc = PH7_HashmapUserCmp(pCmp->pCtx,pCmp->pCb,&sK1,&sK2,TRUE,&iCmp);
 		PH7_MemObjRelease(&sK1);
 		PH7_MemObjRelease(&sK2);
 	}else{
@@ -2717,7 +2686,7 @@ static sxi32 HashmapUVarCmpNode(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *
 			}
 			return bEq ? 0 : 1;
 		}
-		rc = HashmapUserCmpCall(pCmp->pCtx,pCmp->pCb,pV1,pV2,&iCmp);
+		rc = PH7_HashmapUserCmp(pCmp->pCtx,pCmp->pCb,pV1,pV2,TRUE,&iCmp);
 	}
 	if( rc != SXRET_OK ){
 		*pCmp->pRc = rc;
@@ -2861,6 +2830,9 @@ static int HashmapUVariant(
 		int iLast = 1,c = 1;
 		sxu32 j;
 		ph7_hashmap_node *pNode;
+		/* php's compare_deprecation_thrown, cleared by the merge members only:
+		 * the key-hash pair above never raises it (see PH7_HashmapUserCmp) */
+		pVm->bCmpBoolRaised = 0;
 		sKeyCmp.pCtx = pCtx;
 		sKeyCmp.pCb = ( iKeyRule == HASHMAP_UVAR_KEY_USER ) ? pKeyCb : 0;
 		sKeyCmp.bKey = 1;

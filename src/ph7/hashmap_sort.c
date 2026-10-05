@@ -706,53 +706,136 @@ static sxi32 HashmapCmpCallback3(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	return rc;
 }
 /*
+ * One comparison asked of a user callback, reduced to -1/0/1 the way php's
+ * php_array_user_compare_unstable() does. Shared by the three sorts and by the
+ * diff/intersect family.
+ *
+ * The reduction is by SIGN over the full 64 bits: a bare (int) cast made a
+ * callback answering `($a <=> $b) << 32` compare every pair equal.
+ *
+ * With bBoolRetry, a callback answering a BOOL is php 8's deprecated
+ * `return $a > $b;` comparator. php raises "Returning bool from comparison
+ * function is deprecated" once per builtin call (bCmpBoolRaised), and because
+ * `false` cannot tell "less" from "equal" it asks again with the operands
+ * SWAPPED and answers the negation of that: true means greater, false-then-true
+ * means less, false-then-false means equal. Without the retry `false` read as
+ * equal, which every sort of this shape survives by luck and the merge in
+ * array_udiff() and its neighbours does not -- a whole diff came back empty.
+ * array_udiff_assoc() and array_uintersect_assoc() ask their value callback
+ * through php's zval_user_compare(), which does neither: they pass FALSE.
+ *
+ * Returns the dispatch status. A callback that did not return leaves *pCmp 0;
+ * a deprecation whose error handler threw leaves the pair's answer as php has
+ * it at that moment (the swapped call is never made with an exception
+ * pending) and returns that status for the caller to latch.
+ */
+PH7_PRIVATE sxi32 PH7_HashmapUserCmp(ph7_context *pCtx,ph7_value *pCallback,ph7_value *pA,ph7_value *pB,
+	int bBoolRetry,int *pCmp)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *apArg[2];
+	ph7_value sResult;
+	int bNegate = 0;
+	sxi32 rc;
+	*pCmp = 0;
+	PH7_MemObjInit(pVm,&sResult);
+	apArg[0] = pA;
+	apArg[1] = pB;
+	rc = PH7_VmCallCallbackByValue(pVm,pCallback,2,apArg,&sResult,0);
+	if( PH7_CALLBACK_UNWOUND(rc) ){
+		PH7_MemObjRelease(&sResult);
+		return rc;
+	}
+	if( rc == SXRET_OK && bBoolRetry && (sResult.iFlags & MEMOBJ_BOOL) ){
+		int bTrue = sResult.x.iVal != 0;
+		if( !pVm->bCmpBoolRaised ){
+			SyString sName;
+			pVm->bCmpBoolRaised = 1;
+			if( pVm->pNativeCall && pVm->pNativeCall->pName ){
+				/* ArrayObject::uasort() runs php's uasort(), which names itself */
+				sName = *pVm->pNativeCall->pName;
+			}else{
+				sName = pCtx->pFunc->sName;
+			}
+			rc = PH7_VmThrowError(pVm,&sName,8192 /* E_DEPRECATED */,
+				"Returning bool from comparison function is deprecated, "
+				"return an integer less than, equal to, or greater than zero");
+			if( !PH7_CALLBACK_UNWOUND(rc) && PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc) ){
+				/* an error handler's throw is parked, not returned */
+				rc = pVm->nBoundaryRc;
+			}
+			if( PH7_CALLBACK_UNWOUND(rc) ){
+				*pCmp = bTrue;
+				PH7_MemObjRelease(&sResult);
+				return rc;
+			}
+			rc = SXRET_OK;
+		}
+		if( !bTrue ){
+			PH7_MemObjRelease(&sResult);
+			PH7_MemObjInit(pVm,&sResult);
+			apArg[0] = pB;
+			apArg[1] = pA;
+			rc = PH7_VmCallCallbackByValue(pVm,pCallback,2,apArg,&sResult,0);
+			if( PH7_CALLBACK_UNWOUND(rc) ){
+				PH7_MemObjRelease(&sResult);
+				return rc;
+			}
+			bNegate = 1;
+		}
+	}
+	if( rc != SXRET_OK ){
+		*pCmp = -1; /* a failed dispatch compares unequal */
+	}else{
+		if( (sResult.iFlags & MEMOBJ_INT) == 0 ){
+			PH7_MemObjToInteger(&sResult);
+		}
+		*pCmp = (sResult.x.iVal < 0) ? -1 : (sResult.x.iVal > 0 ? 1 : 0);
+		if( bNegate ){
+			*pCmp = -*pCmp;
+		}
+	}
+	PH7_MemObjRelease(&sResult);
+	return SXRET_OK;
+}
+/*
+ * What usort()/uasort()/uksort() hand their node comparison: the callback and
+ * the context the deprecation above is raised from.
+ */
+typedef struct HashmapUserSort HashmapUserSort;
+struct HashmapUserSort {
+	ph7_context *pCtx;
+	ph7_value *pCallback;
+};
+/*
+ * The comparator did not RETURN (or its deprecation's handler threw): latch the
+ * STATUS so the sort driver aborts and propagates exactly it (an UNCAUGHT throw
+ * is PH7_ABORT, and testing only PH7_EXCEPTION left the sort running --
+ * re-entering the comparator, and the fatal report, for every remaining pair).
+ */
+static sxi32 HashmapUserSortCmp(ph7_vm *pVm,HashmapUserSort *pSort,ph7_value *pA,ph7_value *pB)
+{
+	int iCmp = 0;
+	sxi32 rc = PH7_HashmapUserCmp(pSort->pCtx,pSort->pCallback,pA,pB,TRUE,&iCmp);
+	if( rc != SXRET_OK ){
+		pVm->iCmpCallbackExc = rc;
+	}
+	return (sxi32)iCmp;
+}
+/*
  * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.
  * used-by: [usort(),uasort()]
  */
 static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
-	ph7_value sResult,*pCallback;
-	ph7_value *pV1,*pV2;
-	ph7_value *apArg[2];  /* Callback arguments */
-	sxi32 rc;
-	/* Point to the desired callback */
-	pCallback = (ph7_value *)pCmpData;
-	if( pA->pMap->pVm->iCmpCallbackExc ){
+	ph7_vm *pVm = pA->pMap->pVm;
+	if( pVm->iCmpCallbackExc ){
 		/* A previous comparison already raised: stop invoking the callback so
 		 * the exception is not thrown again, and let the sort wind down. */
 		return 0;
 	}
-	/* initialize the result value */
-	PH7_MemObjInit(pA->pMap->pVm,&sResult);
-	/* Extract nodes values */
-	pV1 = HashmapExtractNodeValue(pA);
-	pV2 = HashmapExtractNodeValue(pB);
-	apArg[0] = pV1;
-	apArg[1] = pV2;
-	/* Invoke the callback */
-	rc = PH7_VmCallCallbackByValue(pA->pMap->pVm,pCallback,2,apArg,&sResult,0);
-	if( PH7_CALLBACK_UNWOUND(rc) ){
-		/* The comparator did not RETURN: latch the STATUS so the sort driver
-		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and
-		 * testing only PH7_EXCEPTION left the sort running -- re-entering the
-		 * comparator, and the fatal report, for every remaining pair), and order
-		 * this pair arbitrarily for the rest of the run. */
-		pA->pMap->pVm->iCmpCallbackExc = rc;
-		rc = 0;
-	}else if( rc != SXRET_OK ){
-		/* An error occured while calling user defined function [i.e: not defined] */
-		rc = -1; /* Set a dummy result */
-	}else{
-		/* Extract callback result */
-		if((sResult.iFlags & MEMOBJ_INT) == 0 ){
-			/* Perform an int cast */
-			PH7_MemObjToInteger(&sResult);
-		}
-		rc = (sxi32)sResult.x.iVal;
-	}
-	PH7_MemObjRelease(&sResult);
-	/* Callback result */
-	return rc;
+	return HashmapUserSortCmp(pVm,(HashmapUserSort *)pCmpData,
+		HashmapExtractNodeValue(pA),HashmapExtractNodeValue(pB));
 }
 /*
  * Node comparison callback: Compare nodes by keys only.
@@ -771,54 +854,25 @@ static sxi32 HashmapCmpCallback5(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
  */
 static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
-	ph7_value sResult,*pCallback;
-	ph7_value *apArg[2];  /* Callback arguments */
+	ph7_vm *pVm = pA->pMap->pVm;
 	ph7_value sK1,sK2;
 	sxi32 rc;
-	/* Point to the desired callback */
-	pCallback = (ph7_value *)pCmpData;
-	if( pA->pMap->pVm->iCmpCallbackExc ){
+	if( pVm->iCmpCallbackExc ){
 		/* A previous comparison already raised: stop invoking the callback so
 		 * the exception is not thrown again, and let the sort wind down. */
 		return 0;
 	}
-	/* initialize the result value */
-	PH7_MemObjInit(pA->pMap->pVm,&sResult);
-	PH7_MemObjInit(pA->pMap->pVm,&sK1);
-	PH7_MemObjInit(pA->pMap->pVm,&sK2);
+	PH7_MemObjInit(pVm,&sK1);
+	PH7_MemObjInit(pVm,&sK2);
 	/* Extract nodes keys */
 	PH7_HashmapExtractNodeKey(pA,&sK1);
 	PH7_HashmapExtractNodeKey(pB,&sK2);
-	apArg[0] = &sK1;
-	apArg[1] = &sK2;
 	/* Mark keys as constants */
 	sK1.nIdx = SXU32_HIGH;
 	sK2.nIdx = SXU32_HIGH;
-	/* Invoke the callback */
-	rc = PH7_VmCallCallbackByValue(pA->pMap->pVm,pCallback,2,apArg,&sResult,0);
-	if( PH7_CALLBACK_UNWOUND(rc) ){
-		/* The comparator did not RETURN: latch the STATUS so the sort driver
-		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and
-		 * testing only PH7_EXCEPTION left the sort running -- re-entering the
-		 * comparator, and the fatal report, for every remaining pair), and order
-		 * this pair arbitrarily for the rest of the run. */
-		pA->pMap->pVm->iCmpCallbackExc = rc;
-		rc = 0;
-	}else if( rc != SXRET_OK ){
-		/* An error occured while calling user defined function [i.e: not defined] */
-		rc = -1; /* Set a dummy result */
-	}else{
-		/* Extract callback result */
-		if((sResult.iFlags & MEMOBJ_INT) == 0 ){
-			/* Perform an int cast */
-			PH7_MemObjToInteger(&sResult);
-		}
-		rc = (sxi32)sResult.x.iVal;
-	}
-	PH7_MemObjRelease(&sResult);
+	rc = HashmapUserSortCmp(pVm,(HashmapUserSort *)pCmpData,&sK1,&sK2);
 	PH7_MemObjRelease(&sK1);
 	PH7_MemObjRelease(&sK2);
-	/* Callback result */
 	return rc;
 }
 /*
@@ -1320,6 +1374,8 @@ PH7_PRIVATE int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
+	/* php's compare_deprecation_thrown, cleared by every entry (see PH7_HashmapUserCmp) */
+	pCtx->pVm->bCmpBoolRaised = 0;
 	/* Make sure we are dealing with a valid hashmap */
 	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -1339,19 +1395,22 @@ PH7_PRIVATE int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
-		ph7_value *pCallback = 0;
+		HashmapUserSort sSort;
+		void *pCmpData = 0;
 		ProcNodeCmp xCmp;
 		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */
 		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){
 			/* Point to the desired callback */
-			pCallback = apArg[1];
+			sSort.pCtx = pCtx;
+			sSort.pCallback = apArg[1];
+			pCmpData = (void *)&sSort;
 		}else{
 			/* Use the default comparison function */
 			xCmp = HashmapCmpCallback1;
 		}
 		/* Decide the order */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCallback);
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCmpData);
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
 		if( pCtx->pVm->iCmpCallbackExc ){
@@ -1387,6 +1446,8 @@ PH7_PRIVATE int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
+	/* php's compare_deprecation_thrown, cleared by every entry (see PH7_HashmapUserCmp) */
+	pCtx->pVm->bCmpBoolRaised = 0;
 	/* Make sure we are dealing with a valid hashmap */
 	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -1406,19 +1467,22 @@ PH7_PRIVATE int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
-		ph7_value *pCallback = 0;
+		HashmapUserSort sSort;
+		void *pCmpData = 0;
 		ProcNodeCmp xCmp;
 		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */
 		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){
 			/* Point to the desired callback */
-			pCallback = apArg[1];
+			sSort.pCtx = pCtx;
+			sSort.pCallback = apArg[1];
+			pCmpData = (void *)&sSort;
 		}else{
 			/* Use the default comparison function */
 			xCmp = HashmapCmpCallback1;
 		}
 		/* Decide the order */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCallback);
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCmpData);
 		if( pCtx->pVm->iCmpCallbackExc ){
 			/* The comparison callback did not return: propagate its status so the
 			 * dispatcher unwinds. */
@@ -1449,6 +1513,8 @@ PH7_PRIVATE int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
+	/* php's compare_deprecation_thrown, cleared by every entry (see PH7_HashmapUserCmp) */
+	pCtx->pVm->bCmpBoolRaised = 0;
 	/* Make sure we are dealing with a valid hashmap */
 	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -1468,19 +1534,22 @@ PH7_PRIVATE int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
-		ph7_value *pCallback = 0;
+		HashmapUserSort sSort;
+		void *pCmpData = 0;
 		ProcNodeCmp xCmp;
 		xCmp = HashmapCmpCallback6; /* User-defined function as the comparison callback */
 		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){
 			/* Point to the desired callback */
-			pCallback = apArg[1];
+			sSort.pCtx = pCtx;
+			sSort.pCallback = apArg[1];
+			pCmpData = (void *)&sSort;
 		}else{
 			/* Use the default comparison function */
 			xCmp = HashmapCmpCallback2;
 		}
 		/* Decide the order */
 		pCtx->pVm->iCmpCallbackExc = 0;
-		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCallback);
+		HashmapSortDrive(pCtx->pVm,apArg[0],pMap,xCmp,pCmpData);
 		if( pCtx->pVm->iCmpCallbackExc ){
 			/* The comparison callback did not return: propagate its status so the
 			 * dispatcher unwinds. */

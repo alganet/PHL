@@ -4741,6 +4741,11 @@ struct ph7_vm
 								* array_uintersect families) can abort and propagate exactly
 								* it. Zero when no comparison raised; a comparator has no
 								* status channel, so this latch is the only way out. */
+	int bCmpBoolRaised;        /* php's compare_deprecation_thrown: the "Returning bool from
+								* comparison function" deprecation was raised by the running
+								* sort or diff/intersect merge. Cleared at the ENTRY of every
+								* such builtin and never restored, so a comparator that runs
+								* another usort() re-arms the outer one, as php's does. */
 	int iMbEncoding;           /* mbstring's internal encoding, an MB_ENC_* id from
 								* builtin_mb.c; 0 is UTF-8, which is why zeroing the
 								* VM leaves php's default in place. */
@@ -8505,6 +8510,8 @@ struct HashmapSortEnt {
 	sxu32 nOrd;
 };
 PH7_PRIVATE void PH7_HashmapSortEntVector(HashmapSortEnt *aEnt,sxu32 n,ProcNodeCmp xCmp,void *pCmpData);
+PH7_PRIVATE sxi32 PH7_HashmapUserCmp(ph7_context *pCtx,ph7_value *pCallback,ph7_value *pA,ph7_value *pB,
+	int bBoolRetry,int *pCmp);
 PH7_PRIVATE sxi32 PH7_HashmapShuffle(ph7_hashmap *pMap);
 PH7_PRIVATE sxi32 HashmapNodeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData);
 PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap);
