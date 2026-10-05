@@ -1410,9 +1410,9 @@ loop:
 		if( GenStateConsumeAttrs(&(*pGen),&pAttr->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
-		if( GenStateCheckAttrPlacement(&(*pGen),&pAttr->aAttrs,nLine,8,8,0,0) == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
+		/* Their placement is judged once the declaration has compiled: php
+		 * validates a property's attributes LAST, after its hooks, and blames
+		 * whatever line the hooks left behind (GenStateCompilePropertyHooks). */
 	}
 	if( pAttr == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
@@ -1528,6 +1528,9 @@ loop:
 			return SXERR_ABORT;
 		}
 		goto Synchronize;
+	}
+	if( GenStateCheckAttrPlacement(&(*pGen),&pAttr->aAttrs,nLine,8,8,0,0) == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA /*','*/) ){
 		/* Multiple attribute declarations [i.e: public $var1,$var2=5<<1,$var3] */
@@ -2781,6 +2784,7 @@ static void GenStateHookSetSignature(ph7_gen_state *pGen,ph7_vm_func *pFunc,
 PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr)
 {
 	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nHookEnd = nLine;   /* the line that ends the last hook compiled */
 	sxi32 rc;
 	int bRefsSelf = 0;
 	pGen->pIn++; /* Jump '{' */
@@ -2872,6 +2876,7 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 				return SXERR_ABORT;
 			}
 			pAttr->iFlags |= bGet ? PH7_CLASS_ATTR_HOOK_GET : PH7_CLASS_ATTR_HOOK_SET;
+			nHookEnd = pGen->pIn->nLine;   /* the ';' */
 			continue; /* the loop consumes the ';' as a stray separator */
 		}
 		if( (pAttr->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0
@@ -3080,18 +3085,32 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 			return SXERR_ABORT;
 		}
 		pAttr->iFlags |= bGet ? PH7_CLASS_ATTR_HOOK_GET : PH7_CLASS_ATTR_HOOK_SET;
+		nHookEnd = pMeth->sFunc.nEndLine;   /* the body's '}' or the arrow's ';' */
 	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_CCB) == 0 ){
 		goto HookSyntax;
 	}
 	pGen->pIn++; /* Jump '}' */
+	/* php judges the property's attributes after compiling its hooks, at the
+	 * line compiling them left behind: each hook is a function whose implicit
+	 * return sits on its LAST line, so a refusal blames the end of the last
+	 * hook -- its body's '}', or the ';' of an arrow or abstract one -- not the
+	 * declaration. The virtual-default refusal below runs at the end of the
+	 * hooks in a class with no parent, before the attributes, but waits for
+	 * the class link in one that has a parent, after them. */
+	if( pGen->pCurBase
+	 && GenStateCheckAttrPlacement(&(*pGen),&pAttr->aAttrs,nHookEnd,8,8,0,0) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	if( !bRefsSelf ){
 		/* php 8.4 virtual-vs-backed: no hook body referenced `$this->NAME`, so
 		 * this property is VIRTUAL — php gives it no backing store and forbids
 		 * a default value (compile fatal, php's exact wording). */
 		pAttr->iFlags |= PH7_CLASS_ATTR_HOOK_VIRTUAL;
 		if( SySetUsed(&pAttr->aByteCode) > 0 ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			/* ...at the end of the last hook, or at the class link -- which
+			 * blames the class's own line -- when it has a parent. */
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pCurBase ? pClass->nLine : nHookEnd,
 				"Cannot specify default value for virtual hooked property %z::$%z",
 				&pClass->sDisp,&pAttr->sName);
 			if( rc == SXERR_ABORT ){
@@ -3099,6 +3118,10 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 			}
 			return SXERR_CORRUPT;
 		}
+	}
+	if( pGen->pCurBase == 0
+	 && GenStateCheckAttrPlacement(&(*pGen),&pAttr->aAttrs,nHookEnd,8,8,0,0) == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	return SXRET_OK;
 HookSyntax:
