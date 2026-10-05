@@ -4502,9 +4502,12 @@ PH7_PRIVATE sxi32 PH7_VmCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
  * newInstance()/newInstanceArgs(): the checks php runs, then the constructor.
  * apCtor/nCtor are already-collected arguments; pMap names them when the
  * caller wrote `name:` or handed an array with string keys (ReflectDoorArgMap).
+ * nCounted is how many of them the no-constructor refusal counts: php's
+ * newInstance() asks ZEND_NUM_ARGS(), which a `name:` never adds to, while
+ * newInstanceArgs() counts its array's every element.
  */
 static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
-	VmCallArgMap *pMap)
+	VmCallArgMap *pMap, int nCounted)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pClass = ReflectClassOf(pCtx);
@@ -4524,7 +4527,7 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 		return PH7_VmThrowException(pCtx, "ReflectionException",
 			"Access to non-public constructor of class %z", &pClass->sDisp);
 	}
-	if( iCtorVis == 0 && nCtor > 0 ){
+	if( iCtorVis == 0 && nCounted > 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
 			"Class %z does not have a constructor, so you cannot pass any constructor arguments",
 			&pClass->sDisp);
@@ -4560,7 +4563,14 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 static int vm_builtin_ReflectionClass_newInstance(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	VmCallArgMap sMap;
-	return ReflectNewInstance(pCtx, nArg, apArg, ReflectDoorArgMap(pCtx, 0, 0, 0, &sMap));
+	VmCallArgMap *pMap = ReflectDoorArgMap(pCtx, 0, 0, 0, &sMap);
+	int nPositional = 0;
+	/* Named arguments follow every positional one. */
+	while( nPositional < nArg && (pMap == 0 || (sxu32)nPositional >= pMap->nTotal
+			|| pMap->aNames[nPositional].nByte == 0) ){
+		nPositional++;
+	}
+	return ReflectNewInstance(pCtx, nArg, apArg, pMap, nPositional);
 }
 static int vm_builtin_ReflectionClass_newInstanceArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -4573,7 +4583,8 @@ static int vm_builtin_ReflectionClass_newInstanceArgs(ph7_context *pCtx, int nAr
 		ReflectCollectArgs(pCtx, apArg[0], &aArg, &aNames, 0);
 	}
 	rc = ReflectNewInstance(pCtx, (int)SySetUsed(&aArg), (ph7_value **)SySetBasePtr(&aArg),
-		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aArg), 0, &sMap) : 0);
+		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aArg), 0, &sMap) : 0,
+		(int)SySetUsed(&aArg));
 	if( aNames ){
 		SyMemBackendFree(&pCtx->pVm->sAllocator, aNames);
 	}
