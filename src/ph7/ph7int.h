@@ -3526,6 +3526,18 @@ struct VmDeferredClass
 	sxu8 bChecked;      /* 1 when the file's compile already ran the body's compile-time
 						 * refusals (bDeclCheck), so the re-compile prints no warning again */
 };
+/*
+ * PH7_OP_CONST_DECL's p3: what a global `const` statement declares once its
+ * initializer -- compiled inline just before it -- has left the value on the stack.
+ */
+typedef struct VmConstDecl VmConstDecl;
+struct VmConstDecl
+{
+	SyString sName;  /* Namespace-qualified name as written (VM-lifetime buffer) */
+	SyString sFile;  /* Declaring file */
+	sxu32 nLine;     /* The `const` keyword's line: php blames every name in the list on it */
+	SySet aAttrs;    /* #[...] groups (ph7_attribute), handed to the constant record */
+};
 /* Each active class instance attribute is represented by an instance
  * of the following structure.
  */
@@ -5334,6 +5346,11 @@ enum ph7_vm_op {
                          * lands on top of them, and the access chain -- emitted last, so nothing
                          * it creates is visible to the value -- reads each name back from where
                          * it was parked. That read is this. */
+  ,PH7_OP_CONST_DECL    /* Declare a global `const` here, where its statement RUNS: p3 =
+                         * VmConstDecl, the value on top of the stack (popped). php binds
+                         * one at ZEND_DECLARE_CONST, so a name read before the statement
+                         * is undefined and a second declaration of a taken name warns
+                         * and keeps the first value, exactly as define() does. */
 };
 /*
  * PH7_OP_CATCH_JMP.iP1 payload. Both halves are nesting depths of the source, never
@@ -6078,7 +6095,6 @@ PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmThrowGlobalsAppendError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nByte,ph7_value *pValue,sxu32 nRefIdx);
 PH7_PRIVATE sxi32 PH7_VmThrowExceptionTrace(ph7_context *pCtx,const char *zClass,const char *zFormat,...);
-PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm);
 PH7_PRIVATE int PH7_VmErrorLogToFile(ph7_vm *pVm,const char *zMsg,sxu32 nMsg);
@@ -7529,6 +7545,7 @@ PH7_PRIVATE VmMagicCall * VmMagicCallNew(ph7_vm *pVm,ph7_class_instance *pRecv,
 	ph7_class *pClass,const SyString *pName);
 PH7_PRIVATE void VmFreeMagicCall(VmMagicCall *pPend);
 PH7_PRIVATE void VmExpandUserConstant(ph7_value *pVal,void *pUserData);
+PH7_PRIVATE int PH7_VmConstantNameTaken(ph7_vm *pVm,const char *zName,sxu32 nLen);
 PH7_PRIVATE ph7_class * VmExtractEnumClass(ph7_vm *pVm,ph7_value *pName);
 PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg);

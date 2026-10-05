@@ -2,13 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-php evaluates a `const NAME = <expr>;` initializer AT THE STATEMENT (zend half of the twin pair — PHL evaluates at the first read, see const_initializer_lazy.phpt)
---SKIPIF--
-<?php
-if (!function_exists('zend_version')) {
-    echo "skip";
-}
-?>
+A `const NAME = <expr>;` initializer is evaluated AT THE STATEMENT, once, and a failure there is uncaught
 --FILE--
 <?php
 // The statement itself is where the work happens: the constructor has run

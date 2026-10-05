@@ -9214,6 +9214,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_MATCH:      zOp = "MATCH      "; break;
 	case PH7_OP_FUNC_DECL:  zOp = "FUNC_DECL  "; break;
 	case PH7_OP_CLASS_DEFER:zOp = "CLASS_DEFER"; break;
+	case PH7_OP_CONST_DECL: zOp = "CONST_DECL "; break;
 	case PH7_OP_LOAD_EXCEPTION:
 		                    zOp = "LOAD_EXCEP "; break;
 	case PH7_OP_POP_EXCEPTION:
@@ -9242,18 +9243,6 @@ PH7_PRIVATE sxi32 PH7_VmDump(
 	sxi32 rc;
 	rc = VmByteCodeDump(pVm->pByteContainer,xConsumer,pUserData);
 	return rc;
-}
-/*
- * Default constant expansion callback used by the 'const' statement if used
- * outside a class body [i.e: global or function scope].
- * Refer to the implementation of [PH7_CompileConstant()] defined
- * in 'compile.c' for additional information.
- */
-PH7_PRIVATE void PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData)
-{
-	SySet *pByteCode = (SySet *)pUserData;
-	/* Evaluate and expand constant value */
-	VmLocalExec((ph7_vm *)SySetGetUserData(pByteCode),pByteCode,(ph7_value *)pVal,FALSE);
 }
 /*
  * Section:

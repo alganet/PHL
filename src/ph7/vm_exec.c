@@ -3016,6 +3016,54 @@ case PH7_OP_FUNC_DECL: {
 	break;
 				}
 /*
+ * CONST_DECL * * P3
+ *
+ * Bind the global constant p3 (VmConstDecl) names to the value on top of the stack,
+ * here, where its `const` statement runs, and pop it. A name already taken is the
+ * warning define() raises, blamed on the `const` keyword's line, and the first value
+ * stays; the value just computed is dropped.
+ */
+case PH7_OP_CONST_DECL: {
+	VmConstDecl *pDecl = (VmConstDecl *)pInstr->p3;
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	if( pDecl ){
+		sxu32 nSavedLine = pVm->nCurLine;
+		pVm->nCurLine = pDecl->nLine;
+		if( !PH7_VmConstantNameTaken(&(*pVm),pDecl->sName.zString,pDecl->sName.nByte) ){
+			ph7_value *pKeep = (ph7_value *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_value));
+			if( pKeep ){
+				PH7_MemObjInit(&(*pVm),pKeep);
+				PH7_MemObjStore(pTos,pKeep);
+				if( PH7_VmRegisterConstantEx(&(*pVm),&pDecl->sName,VmExpandUserConstant,pKeep,
+						pDecl->sFile.nByte > 0 ? &pDecl->sFile : 0,pDecl->nLine,1) == SXRET_OK ){
+					if( SySetUsed(&pDecl->aAttrs) > 0 ){
+						SyHashEntry *pEntry = PH7_VmConstantFetch(&(*pVm),pDecl->sName.zString,
+							pDecl->sName.nByte,0);
+						if( pEntry ){
+							ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
+							ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(&pDecl->aAttrs);
+							sxu32 n;
+							for( n = 0 ; n < SySetUsed(&pDecl->aAttrs) ; ++n ){
+								SySetPut(&pCons->aAttrs,(const void *)&aAttr[n]);
+							}
+						}
+					}
+				}else{
+					PH7_MemObjRelease(pKeep);
+					SyMemBackendPoolFree(&pVm->sAllocator,pKeep);
+				}
+			}
+		}
+		pVm->nCurLine = nSavedLine;
+	}
+	VmPopOperand(&pTos,1);
+	break;
+				}
+/*
  * CLASS_DEFER: * * P3
  *
  * Execute a class declaration whose parent/interface/trait could not be

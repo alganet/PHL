@@ -62,7 +62,6 @@ static int GenStateConstNameKeywordOk(SyString *pName)
 }
 PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 {
-	SySet *pConsCode,*pInstrContainer;
 	sxu32 nLineLocal;
 	SyString *pName;
 	sxi32 rc;
@@ -140,29 +139,22 @@ Loop:
 			goto Synchronize;
 		}
 	}
-	/* Allocate a new constant value container */
-	pConsCode = (SySet *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(SySet));
-	if( pConsCode == 0 ){
-		PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Fatal, PH7 engine is running out of memory");
-		return SXERR_ABORT;
-	}
-	SySetInit(pConsCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
-	/* Swap bytecode container */
-	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
-	PH7_VmSetByteCodeContainer(pGen->pVm,pConsCode);
-	/* Compile constant value. php: a stray token after `const X = EXPR` is
-	 * `... expecting "," or ";"` (const supports a comma-separated list).
-	 * EXPR_FLAG_COMMA_STATEMENT stops this value at the first top-level comma so a
-	 * following declaration is left for the loop below. */
+	/* The initializer is compiled INLINE and the declaration emitted after it: php
+	 * evaluates the value where the statement runs and only then binds the name
+	 * (ZEND_DECLARE_CONST), so a throw in the initializer is an ordinary throw at
+	 * this statement and a name the table already holds is refused there. Binding
+	 * at compile time made the name readable before its statement ran and let a
+	 * second declaration replace the first in silence.
+	 * php: a stray token after `const X = EXPR` is `... expecting "," or ";"`
+	 * (const supports a comma-separated list). EXPR_FLAG_COMMA_STATEMENT stops this
+	 * value at the first top-level comma so a following declaration is left for the
+	 * loop below. */
 	{
 		const char *zSaveConst = pGen->zClauseCloser;
 		pGen->zClauseCloser = "\",\" or \";\"";
 		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
 		pGen->zClauseCloser = zSaveConst;
 	}
-	/* Emit the done instruction */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
-	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	if( rc == SXERR_ABORT ){
 		/* Don't worry about freeing memory, everything will be released shortly */
 		return SXERR_ABORT;
@@ -171,15 +163,29 @@ Loop:
 	 * the class-const path rejects it too. Reject loudly rather than silently
 	 * defining a NULL constant. (php's error KIND -- a parse error -- differs from
 	 * PHL's compile fatal, the recursive-descent-vs-bison family; both refuse.) */
-	if( rc == SXERR_EMPTY && PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
-			"Empty constant '%z' value",pName) == SXERR_ABORT ){
-		return SXERR_ABORT;
+	if( rc == SXERR_EMPTY ){
+		if( PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Empty constant '%z' value",pName)
+				== SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Next;
 	}
-	SySetSetUserData(pConsCode,pGen->pVm);
-	/* Register the constant with namespace-qualified name */
+	/* Declare the constant under its namespace-qualified name */
 	{
+		VmConstDecl *pDecl;
 		SyBlob sFQN;
 		SyString sFQNStr;
+		pDecl = (VmConstDecl *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(VmConstDecl));
+		if( pDecl == 0 ){
+			PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Fatal, PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
+		SyZero(pDecl,sizeof(VmConstDecl));
+		SySetInit(&pDecl->aAttrs,&pGen->pVm->sAllocator,sizeof(ph7_attribute));
+		pDecl->nLine = nLineLocal;
+		if( SySetUsed(&pGen->pVm->aFiles) > 0 ){
+			pDecl->sFile = *(SyString *)SySetPeek(&pGen->pVm->aFiles);
+		}
 		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
 		GenStateBuildFQN(pGen,pName,&sFQN);
 		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
@@ -188,34 +194,29 @@ Loop:
 			SyBlobRelease(&sFQN);
 			return SXERR_ABORT;
 		}
-		rc = PH7_VmRegisterConstantEx(pGen->pVm,&sFQNStr,PH7_VmExpandConstantValue,pConsCode,
-			(SyString *)SySetPeek(&pGen->pVm->aFiles),nLineLocal,1);
-		if( rc == SXRET_OK && SySetUsed(&pGen->aPendingAttrs) > 0 ){
-			/* php 8.5: attributes on `const` statements — attach the pending
-			 * groups to the registered constant record for Reflection. */
-			/* The name we just registered under -- an insert-side key, not a lookup:
-			 * a generated FQN never carries the leading backslash a lookup drops. */
-			SyHashEntry *pCEntry = PH7_VmConstantFetch(pGen->pVm,
-				(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN),0);
-			if( pCEntry ){
-				ph7_constant *pRegCons = (ph7_constant *)pCEntry->pUserData;
-				if( GenStateConsumeAttrs(&(*pGen),&pRegCons->aAttrs) == SXERR_ABORT ){
-					SyBlobRelease(&sFQN);
-					return SXERR_ABORT;
-				}
-				if( GenStateCheckAttrPlacement(&(*pGen),&pRegCons->aAttrs,64,64,0,0)
-					== SXERR_ABORT ){
-					SyBlobRelease(&sFQN);
-					return SXERR_ABORT;
-				}
+		/* The instruction outlives this blob: keep the name in VM-lifetime storage. */
+		{
+			char *zFQN = SyMemBackendStrDup(&pGen->pVm->sAllocator,sFQNStr.zString,sFQNStr.nByte);
+			SyBlobRelease(&sFQN);
+			if( zFQN == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			SyStringInitFromBuf(&pDecl->sName,zFQN,sFQNStr.nByte);
+		}
+		if( SySetUsed(&pGen->aPendingAttrs) > 0 ){
+			/* php 8.5: attributes on `const` statements -- kept for the record the
+			 * declaration installs, which is what Reflection reads. */
+			if( GenStateConsumeAttrs(&(*pGen),&pDecl->aAttrs) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			if( GenStateCheckAttrPlacement(&(*pGen),&pDecl->aAttrs,64,64,0,0) == SXERR_ABORT ){
+				return SXERR_ABORT;
 			}
 		}
-		SyBlobRelease(&sFQN);
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CONST_DECL,0,0,(void *)pDecl,0);
 	}
-	if( rc != SXRET_OK ){
-		SySetRelease(pConsCode);
-		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pConsCode);
-	}
+Next:
 	/* Another declaration in the same statement: `const A = 1, B = 2;`. */
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA /* ',' */) ){
 		if( bHadAttrs ){

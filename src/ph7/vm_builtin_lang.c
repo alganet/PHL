@@ -226,13 +226,13 @@ PH7_PRIVATE void VmExpandUserConstant(ph7_value *pVal,void *pUserData)
 	PH7_MemObjStore(pConstantValue,pVal);
 }
 /*
- * Whether define() must refuse zName, raising php's warning when it must. php
- * refuses the three keyword constants and __COMPILER_HALT_OFFSET__ by spelling,
- * then any name the table already holds; the message names the folded key,
- * namespace part lowercased. A define() a reused VM's EARLIER run made is not a
- * redefinition: each run is a fresh php request.
+ * Whether define() or a `const` statement must refuse zName, raising php's warning
+ * when it must. php refuses the three keyword constants and __COMPILER_HALT_OFFSET__
+ * by spelling, then any name the table already holds; the message names the folded
+ * key, namespace part lowercased. A user constant a reused VM's EARLIER run made is
+ * not a redefinition: each run is a fresh php request.
  */
-static int VmDefineNameTaken(ph7_vm *pVm,const char *zName,sxu32 nLen)
+PH7_PRIVATE int PH7_VmConstantNameTaken(ph7_vm *pVm,const char *zName,sxu32 nLen)
 {
 	SyHashEntry *pEntry;
 	ph7_constant *pCons = 0;
@@ -247,7 +247,7 @@ static int VmDefineNameTaken(ph7_vm *pVm,const char *zName,sxu32 nLen)
 		return 0;
 	}
 	pCons = (ph7_constant *)pEntry->pUserData;
-	if( pCons->xExpand == VmExpandUserConstant && pCons->nRunGen != pVm->nRunGen ){
+	if( pCons->bUserDefined && pCons->nRunGen != pVm->nRunGen ){
 		return 0;
 	}
 	if( pCons->zKey ){
@@ -309,7 +309,7 @@ PH7_PRIVATE int vm_builtin_define(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Argument #3 ($case_insensitive) is ignored "
 			"since declaration of case-insensitive constants is no longer supported");
 	}
-	if( VmDefineNameTaken(pCtx->pVm,zName,(sxu32)nLen) ){
+	if( PH7_VmConstantNameTaken(pCtx->pVm,zName,(sxu32)nLen) ){
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
