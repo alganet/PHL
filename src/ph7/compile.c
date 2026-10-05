@@ -5148,6 +5148,7 @@ static sxi32 PH7_CompilePHP(
 	/* The raw tokenizer marked whether this chunk was closed by a `?>`; only one
 	 * that met the end of the FILE can leave a statement unterminated. */
 	pGen->bChunkAtEof = (sxi8)(SX_PTR_TO_INT(pScript->pUserData) == 0);
+	pGen->bChunkLast = pGen->bChunkAtEof;
 	/* Point to the head and tail of the token stream. */
 	pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);
 	pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];

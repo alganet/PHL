@@ -1242,6 +1242,9 @@ struct ph7_gen_state
 	                          * FILE rather than being closed by a `?>`. php reads the closing
 	                          * tag as a statement terminator, so only this chunk can leave one
 	                          * unfinished -- and that is a parse error there. */
+	sxi8 bChunkLast;         /* The same fact with nothing standing it down: bChunkAtEof is
+	                          * cleared while a `{` is open, and a bracket the input never
+	                          * closes still has to know the input ended. */
 	sxu32 nChunkEofLine;     /* Line the chunk's end-of-input sits on -- its last line, which is
 	                          * NOT the last TOKEN's line when trailing blank lines follow. php
 	                          * reports `unexpected end of file` at the former. */

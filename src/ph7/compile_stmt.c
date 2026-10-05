@@ -801,6 +801,7 @@ Consume:
 		 * unterminated, and that is as true of a later block as of the first:
 		 * `<?php if (1): ?>A<?php endif` wants its `;` in php. */
 		pGen->bChunkAtEof = (sxi8)(SX_PTR_TO_INT(pGen->pRawIn->pUserData) == 0);
+		pGen->bChunkLast = pGen->bChunkAtEof;
 		/* Advance the stream cursor */
 		pGen->pRawIn++;
 		{
@@ -857,6 +858,203 @@ static sxi32 GenStateUnclosedBrace(ph7_gen_state *pGen,sxu32 nOpenLine)
 		return PH7_GenCompileError(&(*pGen),E_PARSE,pGen->nChunkEofLine,"Unclosed '{' on line %u",nOpenLine);
 	}
 	return PH7_GenCompileError(&(*pGen),E_PARSE,nOpenLine,"Unclosed '{'");
+}
+/*
+ * A statement head -- `if (`, `while (`, `switch (`, `for (`, `foreach (` --
+ * whose `(` nothing closes. php has no sentence of its own for that: its scanner
+ * and its parser go down the same tokens and the first to refuse speaks. The
+ * PARSER refuses a `;` or a `{` that cannot continue what the head holds, and
+ * names the token; the SCANNER refuses a closer that does not match the innermost
+ * open bracket, and the end of the input while one is still open, and names the
+ * BRACKET.
+ *
+ * So walk the tokens the way the scanner does, with its nesting stack, and stop
+ * where either would. A `{` continues an expression only where a closure, a
+ * match or an anonymous class owes its body, or behind `$`, `->` and `::`.
+ *
+ * What the parser was still waiting for is part of its sentence and depends on
+ * the head: a `for` wants the `;` of its first two clauses and then its `)`, a
+ * `foreach` target could still be dereferenced, an argument list or a subscript
+ * wants its own closer, and a plain condition could be continued by too many
+ * tokens for php to list any.
+ */
+#define PHL_HEAD_COND    0 /* one expression */
+#define PHL_HEAD_FOR     1 /* three clauses, `;` between them */
+#define PHL_HEAD_FOREACH 2 /* an expression, `as`, the targets */
+#define PHL_HEAD_NEST    32
+static int GenStateTokIsText(const SyToken *pTok,const char *zText,sxu32 nLen)
+{
+	return pTok->sData.nByte == nLen
+	    && SyMemcmp((const void *)pTok->sData.zString,(const void *)zText,nLen) == 0;
+}
+static sxi32 GenStateUnclosedHead(ph7_gen_state *pGen,SyToken *pOpen,sxi32 iKind)
+{
+	struct { char c; sxu32 nLine; } aNest[PHL_HEAD_NEST];
+	SyToken *pLimit = pGen->pEnd; /* Where the scanner's walk ends */
+	SyToken *pStop;
+	const char *zExpect = 0;
+	sxi32 nNest = 1;   /* The head's own `(` */
+	sxi32 nOwed = 0;   /* Bodies a closure, a match or a class has announced */
+	sxi32 nSemi = 0;   /* `for` clauses closed so far */
+	int bAs = 0;       /* A `foreach` has reached its targets */
+	sxi32 rc;
+	if( pGen->pTokenSet ){
+		/* A function body is compiled in a slice that stops at its `}`, and that
+		 * `}` is the closer php's scanner refuses. */
+		SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+		SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];
+		if( pGen->pEnd >= pBase && pGen->pEnd <= pStreamEnd ){
+			pLimit = pStreamEnd;
+		}
+	}
+	aNest[0].c = '(';
+	aNest[0].nLine = pOpen->nLine;
+	for( pStop = &pOpen[1] ; pStop < pLimit ; pStop++ ){
+		sxu32 nType = pStop->nType;
+		char cOpen = 0,cClose = 0;
+		if( nType & PH7_TK_KEYWORD ){
+			sxi32 nKey = SX_PTR_TO_INT(pStop->pUserData);
+			if( nKey == PH7_TKWRD_FUNCTION || nKey == PH7_TKWRD_MATCH
+			 || (nKey == PH7_TKWRD_CLASS && !GenStateTokIsText(&pStop[-1],"::",2)) ){
+				nOwed++;
+			}else if( nKey == PH7_TKWRD_AS ){
+				sxi32 n;
+				for( n = 1 ; n < nNest && n < PHL_HEAD_NEST && aNest[n].c != '{' ; n++ );
+				if( nNest > 1 && n >= nNest ){
+					/* Inside a bracket that is not a closure's body no `as` is
+					 * the foreach's own: `foreach (([] as $v)`. */
+					break;
+				}
+				bAs = (nNest == 1);
+			}
+			continue;
+		}
+		if( nType & PH7_TK_LPAREN ){
+			cOpen = '(';
+		}else if( nType & PH7_TK_OSB ){
+			cOpen = '[';
+		}else if( nType & PH7_TK_OCB ){
+			if( nOwed > 0 ){
+				nOwed--;
+			}else if( !(pStop[-1].nType & PH7_TK_DOLLAR)
+			 && !GenStateTokIsText(&pStop[-1],"->",2)
+			 && !GenStateTokIsText(&pStop[-1],"?->",3)
+			 && !GenStateTokIsText(&pStop[-1],"::",2) ){
+				break;
+			}
+			cOpen = '{';
+		}else if( nType & PH7_TK_RPAREN ){
+			cClose = ')';
+		}else if( nType & PH7_TK_CSB ){
+			cClose = ']';
+		}else if( nType & PH7_TK_CCB ){
+			cClose = '}';
+		}else if( nType & PH7_TK_SEMI ){
+			if( nNest <= PHL_HEAD_NEST && aNest[nNest-1].c == '{' ){
+				/* A statement of a closure's body */
+				continue;
+			}
+			if( nNest == 1 && iKind == PHL_HEAD_FOR && nSemi < 2 ){
+				nSemi++;
+				continue;
+			}
+			break;
+		}
+		if( cOpen ){
+			if( nNest < PHL_HEAD_NEST ){
+				aNest[nNest].c = cOpen;
+				aNest[nNest].nLine = pStop->nLine;
+			}
+			nNest++;
+		}else if( cClose ){
+			char cTop = nNest <= PHL_HEAD_NEST ? aNest[nNest-1].c : 0;
+			if( cTop == 0 || (cTop == '(' && cClose == ')') || (cTop == '[' && cClose == ']')
+			 || (cTop == '{' && cClose == '}') ){
+				/* The head's own `(` is never popped: nothing closes it, which is
+				 * what brought us here. */
+				nNest--;
+				continue;
+			}
+			/* php's scanner: the innermost bracket, the line it was opened on when
+			 * that is another line, and the closer it met instead. */
+			if( aNest[nNest-1].nLine != pStop->nLine ){
+				return PH7_GenCompileError(&(*pGen),E_PARSE,pStop->nLine,
+					"Unclosed '%c' on line %u does not match '%c'",cTop,aNest[nNest-1].nLine,cClose);
+			}
+			return PH7_GenCompileError(&(*pGen),E_PARSE,pStop->nLine,
+				"Unclosed '%c' does not match '%c'",cTop,cClose);
+		}
+	}
+	if( pStop >= pLimit && pGen->bChunkLast ){
+		/* The input ended with the bracket open. */
+		char cTop = nNest <= PHL_HEAD_NEST ? aNest[nNest-1].c : '(';
+		sxu32 nOpenLine = nNest <= PHL_HEAD_NEST ? aNest[nNest-1].nLine : pOpen->nLine;
+		if( pGen->nChunkEofLine > nOpenLine ){
+			return PH7_GenCompileError(&(*pGen),E_PARSE,pGen->nChunkEofLine,
+				"Unclosed '%c' on line %u",cTop,nOpenLine);
+		}
+		return PH7_GenCompileError(&(*pGen),E_PARSE,nOpenLine,"Unclosed '%c'",cTop);
+	}
+	/* The parser's refusal. What it was waiting for: */
+	if( nNest > 1 ){
+		if( nNest <= PHL_HEAD_NEST && pStop[-1].nType
+		     & (PH7_TK_INTEGER|PH7_TK_REAL|PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_ID|PH7_TK_RPAREN|PH7_TK_CSB) ){
+			/* An operand is complete inside an argument list or a subscript. */
+			SyToken *pInner = pStop;
+			sxi32 nBack = 0;
+			while( pInner > pOpen ){
+				pInner--;
+				if( pInner->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+					nBack++;
+				}else if( pInner->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+					if( nBack == 0 ){
+						break;
+					}
+					nBack--;
+				}
+			}
+			if( pInner > pOpen && (pInner->nType & PH7_TK_OSB)
+			 && (pInner[-1].nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_RPAREN|PH7_TK_CSB)) ){
+				zExpect = "\"]\"";
+			}else if( pInner > pOpen && (pInner->nType & PH7_TK_LPAREN)
+			 && (pInner[-1].nType & (PH7_TK_ID|PH7_TK_RPAREN|PH7_TK_CSB))
+			 && !(pInner[-1].nType & PH7_TK_KEYWORD) ){
+				zExpect = "\")\"";
+			}
+		}
+	}else if( iKind == PHL_HEAD_FOR ){
+		zExpect = nSemi < 2 ? "\";\"" : "\")\"";
+	}else if( iKind == PHL_HEAD_FOREACH ){
+		if( bAs && !(pStop[-1].nType & PH7_TK_ARRAY_OP)
+		 && !((pStop[-1].nType & PH7_TK_KEYWORD) && SX_PTR_TO_INT(pStop[-1].pUserData) == PH7_TKWRD_AS) ){
+			zExpect = "\"->\" or \"?->\" or \"[\"";
+		}
+	}else if( pStop <= pGen->pEnd ){
+		/* A condition is one expression, and whatever is wrong INSIDE it the parser
+		 * met first: `if (1 2 {` names the 2. */
+		SyToken *pTmp = pGen->pEnd;
+		pGen->pIn = &pOpen[1];
+		pGen->pEnd = pStop;
+		rc = PH7_CompileExpr(&(*pGen),0,0);
+		if( rc != SXERR_ABORT && pGen->pIn < pStop ){
+			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
+		}
+		pGen->pEnd = pTmp;
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	if( pStop >= pLimit ){
+		/* The block was closed by a `?>`, which is php's `;` -- one a `for` still
+		 * owed takes it, and what php then refuses is the text behind the tag. */
+		if( zExpect && !(iKind == PHL_HEAD_FOR && nNest == 1 && nSemi < 2) ){
+			return PH7_GenCompileError(&(*pGen),E_PARSE,pStop[-1].nLine,
+				"syntax error, unexpected token \";\", expecting %s",zExpect);
+		}
+		return PH7_GenCompileError(&(*pGen),E_PARSE,pStop[-1].nLine,
+			"syntax error, unexpected token \";\"");
+	}
+	return PH7_GenSyntaxError(&(*pGen),pStop,zExpect);
 }
 /*
  * php's grammar closes an alternative-syntax body with the `end*` keyword AND a
@@ -1035,14 +1233,12 @@ PH7_PRIVATE sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 	GenBlock *pWhileBlock = 0;
 	SyToken *pTmp,*pEnd = 0;
 	sxu32 nFalseJump;
-	sxu32 nLine;
 	sxi32 rc;
-	nLine = pGen->pIn->nLine;
 	/* Jump the 'while' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'while' keyword");
+		/* php's parse error names the token it found instead */
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1051,14 +1247,21 @@ PH7_PRIVATE sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 	}
 	/* Jump the left parenthesis '(' */
 	pGen->pIn++;
+	/* Delimit the condition */
+	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
+	if( pEnd >= pGen->pEnd ){
+		rc = GenStateUnclosedHead(&(*pGen),&pGen->pIn[-1],PHL_HEAD_COND);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	/* Create the loop block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_LOOP,PH7_VmInstrLength(pGen->pVm),0,&pWhileBlock);
 	if( rc != SXRET_OK ){
 		return SXERR_ABORT;
 	}
-	/* Delimit the condition */
-	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
-	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
+	if( pGen->pIn == pEnd ){
 		/* Empty condition. php reports the token that actually stopped it -- for
 		 * `while ()` that is the ')' -- not a hand-written "expected expression". */
 		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,0);
@@ -1135,9 +1338,7 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 {
 	SyToken *pTmp,*pEnd = 0;
 	GenBlock *pDoBlock = 0;
-	sxu32 nLine;
 	sxi32 rc;
-	nLine = pGen->pIn->nLine;
 	/* Jump the 'do' keyword */
 	pGen->pIn++;
 	/* Create the loop block */
@@ -1150,9 +1351,6 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	rc = PH7_CompileBlock(&(*pGen),0);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
-	}
-	if( pGen->pIn < pGen->pEnd ){
-		nLine = pGen->pIn->nLine;
 	}
 	if( pGen->pIn >= pGen->pEnd || pGen->pIn->nType != PH7_TK_KEYWORD ||
 		SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_WHILE ){
@@ -1184,8 +1382,8 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	/* Jump the 'while' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'while' keyword");
+		/* php's parse error names the token it found instead */
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1196,7 +1394,14 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	pGen->pIn++;
 	/* Delimit the condition */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
-	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
+	if( pEnd >= pGen->pEnd ){
+		rc = GenStateUnclosedHead(&(*pGen),&pGen->pIn[-1],PHL_HEAD_COND);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
+	if( pGen->pIn == pEnd ){
 		/* Empty condition. php reports the token that actually stopped it -- for
 		 * `while ()` that is the ')' -- not a hand-written "expected expression". */
 		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,0);
@@ -1283,14 +1488,12 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	SyToken *pTmp,*pPostStart,*pEnd = 0;
 	GenBlock *pForBlock = 0;
 	sxu32 nFalseJump;
-	sxu32 nLine;
 	sxi32 rc;
-	nLine = pGen->pIn->nLine;
 	/* Jump the 'for' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'for' keyword");
+		/* php's parse error names the token it found instead */
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1302,8 +1505,11 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	/* Delimit the init-expr;condition;post-expr */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
-		/* Empty expression */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"for: Invalid expression");
+		/* `for ()` wants the `;` of its first clause; a head nothing closes is
+		 * the scanner's or the parser's to refuse. */
+		rc = pEnd >= pGen->pEnd
+			? GenStateUnclosedHead(&(*pGen),&pGen->pIn[-1],PHL_HEAD_FOR)
+			: PH7_GenSyntaxError(&(*pGen),pEnd,"\";\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1683,8 +1889,8 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	/* Jump the 'foreach' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"foreach: Expected '('");
+		/* php's parse error names the token it found instead */
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1701,8 +1907,11 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	/* Delimit the expression */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
-		/* Empty expression */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"foreach: Missing expression");
+		/* `foreach ()` names the `)`; a head nothing closes is the scanner's or
+		 * the parser's to refuse. */
+		rc = pEnd >= pGen->pEnd
+			? GenStateUnclosedHead(&(*pGen),&pGen->pIn[-1],PHL_HEAD_FOREACH)
+			: PH7_GenSyntaxError(&(*pGen),pEnd,0);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -2086,11 +2295,8 @@ PH7_PRIVATE sxi32 PH7_CompileIf(ph7_gen_state *pGen)
 	/* Process as many [if/else if/elseif/else] blocks as we can */
 	for(;;){
 		if( pToken >= pGen->pEnd || (pToken->nType & PH7_TK_LPAREN) == 0 ){
-			/* Syntax error */
-			if( pToken >= pGen->pEnd ){
-				pToken--;
-			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"if/else/elseif: Missing '('");
+			/* php's parse error names the token it found instead */
+			rc = PH7_GenSyntaxError(&(*pGen),pToken < pGen->pEnd ? pToken : 0,"\"(\"");
 			if( rc == SXERR_ABORT ){
 				/* Error count limit reached,abort immediately */
 				return SXERR_ABORT;
@@ -2101,12 +2307,14 @@ PH7_PRIVATE sxi32 PH7_CompileIf(ph7_gen_state *pGen)
 		pToken++;
 		/* Delimit the condition */
 		PH7_DelimitNestedTokens(pToken,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
-		if( pToken >= pEnd || (pEnd->nType & PH7_TK_RPAREN) == 0 ){
-			/* Syntax error */
-			if( pToken >= pGen->pEnd ){
-				pToken--;
-			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"if/else/elseif: Missing ')'");
+		if( pToken >= pEnd || pEnd >= pGen->pEnd ){
+			/* `if ()` names the `)`; a head nothing closes is the scanner's or the
+			 * parser's to refuse. Ask where the delimiter stopped, never what is
+			 * there: past the end sits whatever a longer chunk left in the buffer,
+			 * and a stale `)` read as this head's closer. */
+			rc = pEnd >= pGen->pEnd
+				? GenStateUnclosedHead(&(*pGen),&pToken[-1],PHL_HEAD_COND)
+				: PH7_GenSyntaxError(&(*pGen),pEnd,0);
 			if( rc == SXERR_ABORT ){
 				/* Error count limit reached,abort immediately */
 				return SXERR_ABORT;
@@ -4742,12 +4950,10 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	SyToken *pTmp,*pEnd;
 	ph7_switch *pSwitch;
 	sxu32 nToken;
-	sxu32 nLine;
 	sxu32 nOpenLine;
 	int bHead;  /* No case seen yet: php's case list may open with ONE `;` */
 	int bSemi;  /* ...and this one has */
 	sxi32 rc;
-	nLine = pGen->pIn->nLine;
 	/* Jump the 'switch' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
@@ -4777,12 +4983,12 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 			return SXERR_ABORT;
 		}
 	}else if( pEnd >= pGen->pEnd ){
-		/* Empty expression */
-		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected expression after 'switch' keyword");
+		rc = GenStateUnclosedHead(&(*pGen),&pGen->pIn[-1],PHL_HEAD_COND);
 		if( rc == SXERR_ABORT ){
-			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
 		}
+		GenStateLeaveBlock(&(*pGen),0);
+		goto Synchronize;
 	}
 	/* Swap token streams */
 	pTmp = pGen->pEnd;
