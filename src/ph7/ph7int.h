@@ -1999,7 +1999,12 @@ struct ph7_vm_func_closure_env
                                     * the class-body rule it mirrors: php refuses
                                     * `final private $p` in a class body and ACCEPTS the same
                                     * pair here (modifiers 36), so the screen cannot be shared. */
-/* next free bit: 0x1000000 */
+#define VM_FUNC_USES_THIS 0x1000000 /* php's ZEND_ACC_USES_THIS: the body names `$this` literally
+                                    * (a nested closure's or arrow fn's body counts for that one,
+                                    * not this; `$$n` and eval() never count). Set by
+                                    * PH7_CompileVariable. What it decides: a closure that uses its
+                                    * `$this` refuses to be unbound, one that does not drops it. */
+/* next free bit: 0x2000000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.

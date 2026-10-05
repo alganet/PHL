@@ -1239,6 +1239,18 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			zName = (char *)pEntry->pUserData;
 		}
 		p3 = (void *)zName;
+		if( iVv == 0 && pName->nByte == sizeof("this")-1
+			&& SyMemcmp((const void *)pName->zString,"this",sizeof("this")-1) == 0 ){
+			/* php marks the INNERMOST function that names `$this` (ZEND_ACC_USES_THIS);
+			 * a closure wrapping that one is not marked by it. */
+			GenBlock *pBlock = pGen->pCurrent;
+			while( pBlock && ((pBlock->iFlags & GEN_BLOCK_FUNC) == 0 || pBlock->pUserData == 0) ){
+				pBlock = pBlock->pParent;
+			}
+			if( pBlock ){
+				((ph7_vm_func *)pBlock->pUserData)->iFlags |= VM_FUNC_USES_THIS;
+			}
+		}
 	}
 	iP1 = 0;
 	if( iCompileFlag & EXPR_FLAG_RDONLY_LOAD ){

@@ -2347,6 +2347,47 @@ PH7_PRIVATE int PH7_VmClosureIsStatic(ph7_vm *pVm, ph7_class_instance *pClosure)
 	}
 }
 /*
+ * Does this plain closure HAVE a `$this` and a body that names it? php refuses to unbind
+ * exactly that pair; a closure that holds a `$this` it never reads drops it silently. The
+ * receiver is in one of two places: `$__this` once a rebind handed it one, else the capture
+ * OP_LOAD_CLOSURE took from the method that created it.
+ */
+static int VmClosureUsesBoundThis(ph7_vm *pVm, ph7_class_instance *pClosure)
+{
+	SyString sAttr;
+	ph7_value *pVal;
+	SyHashEntry *pEntry;
+	ph7_vm_func *pFunc;
+	ph7_vm_func_closure_env *aEnv;
+	sxu32 n;
+	SyStringInitFromBuf(&sAttr, "__fn", 4);
+	pVal = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pVal->sBlob) == 0 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pVal->sBlob), SyBlobLength(&pVal->sBlob));
+	if( pEntry == 0 ){
+		return 0;
+	}
+	pFunc = (ph7_vm_func *)pEntry->pUserData;
+	if( (pFunc->iFlags & VM_FUNC_USES_THIS) == 0 ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, "__this", 6);
+	pVal = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+	if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){
+		return 1;
+	}
+	aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+	for( n = 0 ; n < SySetUsed(&pFunc->aClosureEnv) ; n++ ){
+		if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
+			&& SyMemcmp(SyStringData(&aEnv[n].sName),"this",sizeof("this")-1) == 0 ){
+			return (aEnv[n].sValue.iFlags & MEMOBJ_OBJ) ? 1 : 0;
+		}
+	}
+	return 0;
+}
+/*
  * php's four refusals for a rebind (zend_valid_closure_binding), in php's order. A closure
  * created from a METHOD is a "fake closure": it wraps a resolved function, so its `$this` may
  * only move WITHIN the class that declared it and its scope may not move at all. PHL applied
@@ -2383,6 +2424,10 @@ static int VmClosureBindAllowed(ph7_vm *pVm, ph7_class_instance *pClosure,
 	}else if( pOwn && !PH7_VmClosureIsStatic(pVm, pClosure) ){
 		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
 			"Cannot unbind $this of method, this will be an error in PHP 9");
+		return 0;
+	}else if( !bMethod && VmClosureUsesBoundThis(pVm, pClosure) ){
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+			"Cannot unbind $this of closure using $this, this will be an error in PHP 9");
 		return 0;
 	}
 	if( pScope && bMethod ){
