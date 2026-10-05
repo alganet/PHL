@@ -101,9 +101,10 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
 		const char *zCls = (const char *)SyBlobData(&pTos->sBlob);
 		sxu32 nCls = SyBlobLength(&pTos->sBlob);
-		if( (nCls == sizeof("self")-1 && SyMemcmp(zCls,"self",sizeof("self")-1) == 0)
+		if( pInstr->bDiscard /* the keyword was WRITTEN: `new $c` never resolves one */
+		 && ((nCls == sizeof("self")-1 && SyMemcmp(zCls,"self",sizeof("self")-1) == 0)
 		 || (nCls == sizeof("static")-1 && SyMemcmp(zCls,"static",sizeof("static")-1) == 0)
-		 || (nCls == sizeof("parent")-1 && SyMemcmp(zCls,"parent",sizeof("parent")-1) == 0) ){
+		 || (nCls == sizeof("parent")-1 && SyMemcmp(zCls,"parent",sizeof("parent")-1) == 0)) ){
 			/* new self() / new static() / new parent(): resolve against the live
 			 * class context (LSB for static), sharing the FCC resolver. */
 			pClass = VmFccResolveScope(&(*pVm),pTos);
@@ -2740,8 +2741,12 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				if( SyBlobLength(&pNos->sBlob) > 0 ){
 					const char *zCls = (const char *)SyBlobData(&pNos->sBlob);
 					sxu32 nCls = (sxu32)SyBlobLength(&pNos->sBlob);
-					/* Handle self/static/parent keywords */
-					if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
+					/* Handle self/static/parent keywords -- WRITTEN ones only
+					 * (VmInstr::bDiscard): `$c::m()` over `$c = 'self'` looks the
+					 * name up as a class, and php finds none. */
+					if( !pInstr->bDiscard ){
+						pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
+					}else if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
 						/* In a trait method, self:: resolves to the USING class */
 						pClass = PH7_VmPeekSelfClass(&(*pVm));
 						bForwardingCall = 1;

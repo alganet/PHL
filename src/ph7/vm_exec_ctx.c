@@ -2387,7 +2387,7 @@ static int VmClosureBindAllowed(ph7_vm *pVm, ph7_class_instance *pClosure,
 	}
 	if( pScope && bMethod ){
 		ph7_class *pWant = pScope->nByte
-			? PH7_VmResolveScopeName(pVm, pScope->zString, pScope->nByte) : 0;
+			? PH7_VmExtractClass(pVm, pScope->zString, pScope->nByte, FALSE, 0) : 0;
 		if( pWant != pOwn ){
 			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
 				"Cannot rebind scope of closure created from method, this will be an error in PHP 9");
@@ -2578,9 +2578,13 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
 	 * answers to is its own warning — ahead of all four rebind refusals, for a plain closure
 	 * as much as for a method one. PHL bound the unresolvable scope in silence and then had
 	 * no scope at all, so `bindTo($o, 'Typo')` produced a closure that could not reach the
-	 * private members it was being bound for. */
+	 * private members it was being bound for.
+	 *
+	 * The lookup is a plain class-name one: `'self'` and `'parent'` are names no class
+	 * can have, so php warns for them too (only the exact `'static'` is special, and
+	 * VmClosureResolveScope has already kept the scope for it). */
 	if( pScopePtr && pScopePtr->nByte
-	 && PH7_VmResolveScopeName(pVm, pScopePtr->zString, pScopePtr->nByte) == 0 ){
+	 && PH7_VmExtractClass(pVm, pScopePtr->zString, pScopePtr->nByte, FALSE, 0) == 0 ){
 		VmErrorFormat(pVm,PH7_CTX_WARNING,"Class \"%z\" not found",pScopePtr);
 		ph7_result_null(pCtx);
 		return PH7_OK;

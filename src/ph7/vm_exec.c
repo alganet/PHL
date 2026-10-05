@@ -3041,8 +3041,13 @@ case PH7_OP_IS_A:{
 			 * `if ($type instanceof self)`, and with that never taken the trait fell
 			 * through to `$type->isSubTypeOf($this)` — a mutual recursion with
 			 * IntegerRangeType::isSubTypeOf() that php terminates on the first line. */
-			pClass = PH7_VmResolveScopeName(&(*pVm),
-				(const char *)SyBlobData(&pTos->sBlob),(sxu32)SyBlobLength(&pTos->sBlob));
+			/* Only a WRITTEN keyword (iP1) is one: `$x instanceof $c` over
+			 * `$c = 'self'` names a class nothing can be called, and answers false. */
+			pClass = pInstr->iP1
+				? PH7_VmResolveScopeName(&(*pVm),
+					(const char *)SyBlobData(&pTos->sBlob),(sxu32)SyBlobLength(&pTos->sBlob))
+				: PH7_VmExtractClass(&(*pVm),
+					(const char *)SyBlobData(&pTos->sBlob),(sxu32)SyBlobLength(&pTos->sBlob),FALSE,0);
 		}
 		if( pClass ){
 			/* Perform the query */
@@ -3488,9 +3493,11 @@ case PH7_OP_LOAD_FCC:{
 				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 		}else if( pTarget->iFlags & MEMOBJ_STRING ){
-			/* Static `T::m(...)`: resolve T (incl. self/static/parent) to the real class
-			 * now, so the closure binds the concrete scope (matching PHP). */
-			pFccCls = VmFccResolveScope(pVm, pTarget);
+			/* Static `T::m(...)`: resolve T (incl. a WRITTEN self/static/parent) to the
+			 * real class now, so the closure binds the concrete scope (matching PHP). */
+			pFccCls = pInstr->bDiscard ? VmFccResolveScope(pVm, pTarget)
+				: PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pTarget->sBlob),
+					(sxu32)SyBlobLength(&pTarget->sBlob),FALSE,0);
 		}
 		if( pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING) ){
 			/* php resolves the member HERE, through the same lookup the call would use:

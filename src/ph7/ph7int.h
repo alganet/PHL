@@ -3261,7 +3261,13 @@ struct VmInstr
 	                * `f() + 1;`), which is the one thing a #[\NoDiscard] callee warns
 	                * about. Set by the codegen at the statement-discard site and cleared
 	                * by a `(void)` cast in front of it, which is php's way of saying the
-	                * drop is deliberate. Padding after bStrict, like bStrict itself. */
+	                * drop is deliberate. Padding after bStrict, like bStrict itself.
+	                * On a static PH7_OP_MEMBER, PH7_OP_NEW and PH7_OP_LOAD_FCC it means
+	                * something else, since none of them is a call's result: the class
+	                * operand is the WRITTEN keyword self/static/parent. php resolves
+	                * the three only there -- the same string held in a variable is a
+	                * class name nothing can be called (`Class "self" not found`).
+	                * OP_IS_A says the same in its iP1. */
 	sxu8  bRefSrc; /* PH7_OP_MEMBER only: this property fetch is a reference SOURCE --
 	                * php's `zend_compile_var(source, BP_VAR_W)`, the fetch a `=&` bind, a
 	                * `[&$o->p]` element and a by-reference `foreach` make. It stays a

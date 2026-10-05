@@ -1423,6 +1423,30 @@ struct GenCallArgs {
 static sxi32 GenStateEmitCallArgs(ph7_gen_state *pGen,ph7_expr_node *pNode,sxi32 iFlags,
 	GenCallArgs *pArgs);
 /*
+ * TRUE when literal nLit is the keyword `self`, `static` or `parent` -- the
+ * class operand of `self::`, `new static`, `$x instanceof parent`. php resolves the
+ * three only where they are WRITTEN: the same string reaching a `::`, `new` or
+ * `instanceof` through a variable is an ordinary class name, and no class can be
+ * called that, so `$c = 'self'; $c::m()` is `Class "self" not found`. The run-time
+ * doors see a string either way, so the codegen marks the consuming instruction
+ * (VmInstr::bDiscard's second meaning) and they resolve the keyword under that
+ * mark only.
+ */
+static int GenStateLitIsScopeKeyword(ph7_gen_state *pGen,sxu32 nLit)
+{
+	ph7_value *pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nLit);
+	const char *z;
+	sxu32 n;
+	if( pLit == 0 || (pLit->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	z = (const char *)SyBlobData(&pLit->sBlob);
+	n = (sxu32)SyBlobLength(&pLit->sBlob);
+	return (n == 4 && SyMemcmp(z,"self",4) == 0)
+		|| (n == 6 && SyMemcmp(z,"static",6) == 0)
+		|| (n == 6 && SyMemcmp(z,"parent",6) == 0);
+}
+/*
  * TRUE when the `instanceof` SUBJECT that just compiled into the instruction
  * stream starting at nFirst is what zend calls IS_CONST -- the shape whose
  * whole expression its compiler folds to FALSE, without ever compiling the
@@ -1666,6 +1690,8 @@ static sxi32 GenStateEmitExprCode(
 	sxi32 rc;
 	int bIsChainOp = 0; /* Set below once we know pNode->pOp */
 	int bFcc = 0;       /* First-class callable `f(...)`: emit OP_LOAD_FCC, not OP_CALL */
+	int bScopeKw = 0;   /* The class operand is a literal self/static/parent (see
+	                     * GenStateLitIsScopeKeyword): stamped on the emitted op */
 	sxu32 nRhsNsBase = 0;
 	sxi32 iRhsFlags = 0; /* control flags the RIGHT operand is compiled under */
 	sxu32 nLhsFirst = 0; /* instruction index the LEFT operand starts at */
@@ -2329,9 +2355,11 @@ static sxi32 GenStateEmitExprCode(
 					}
 					if( pInstr->iOp == PH7_OP_MEMBER && pInstr->iP1 == 1 && pInstr->p3 ){
 						void *pDynName = pInstr->p3;
+						sxu8 bKwClass = pInstr->bDiscard;
 						(void)PH7_VmPopInstr(pGen->pVm);
 						PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,pDynName,0);
 						PH7_VmEmitInstr(pGen->pVm,PH7_OP_MEMBER,1,PH7_MEMBER_METHOD,0,0);
+						PH7_VmPeekInstr(pGen->pVm)->bDiscard = bKwClass;
 					}
 				}
 			}
@@ -2522,17 +2550,8 @@ static sxi32 GenStateEmitExprCode(
 	if( iVmOp == PH7_OP_MEMBER && pNode->pOp->iOp == EXPR_OP_DC ){
 		pInstr = PH7_VmPeekInstr(pGen->pVm);
 		if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
-			ph7_value *pLitCheck = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,(sxu32)pInstr->iP2);
-			int isSpecial = 0;
-			if( pLitCheck && (pLitCheck->iFlags & MEMOBJ_STRING) ){
-				const char *z = (const char *)SyBlobData(&pLitCheck->sBlob);
-				sxu32 n = (sxu32)SyBlobLength(&pLitCheck->sBlob);
-				if( (n == 4 && SyMemcmp(z,"self",4) == 0) ||
-					(n == 6 && SyMemcmp(z,"static",6) == 0) ||
-					(n == 6 && SyMemcmp(z,"parent",6) == 0) ){
-					isSpecial = 1;
-				}
-			}
+			int isSpecial = GenStateLitIsScopeKeyword(&(*pGen),(sxu32)pInstr->iP2);
+			bScopeKw = isSpecial;
 			pInstr->iP1 = 0;
 			/* A leading `\` (NSSEP) makes the class name ABSOLUTE: it names the
 			 * global class, so it must NOT be re-qualified with the current namespace.
@@ -2836,15 +2855,13 @@ static sxi32 GenStateEmitExprCode(
 						 * current class — never namespace-qualify them (else
 						 * `new self` in namespace N becomes "N\self"). Mirrors the
 						 * instanceof (IS_A) guard below. */
-						ph7_value *pLitChk = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nLitForClass);
-						int isSpecialNew = 0;
-						if( pLitChk && (pLitChk->iFlags & MEMOBJ_STRING) ){
-							const char *z = (const char *)SyBlobData(&pLitChk->sBlob);
-							sxu32 n = (sxu32)SyBlobLength(&pLitChk->sBlob);
-							if( (n == 4 && SyMemcmp(z,"self",4) == 0) ||
-								(n == 6 && SyMemcmp(z,"static",6) == 0) ||
-								(n == 6 && SyMemcmp(z,"parent",6) == 0) ){
-								isSpecialNew = 1;
+						int isSpecialNew = GenStateLitIsScopeKeyword(&(*pGen),nLitForClass);
+						bScopeKw = isSpecialNew;
+						if( isSpecialNew && pCallNsMap && pCallNsMap->nNewClassInstr > 0 ){
+							/* The screen pass (iP1 -1) resolves the class too. */
+							VmInstr *pScreen = PH7_VmGetInstr(pGen->pVm,pCallNsMap->nNewClassInstr);
+							if( pScreen && pScreen->iOp == PH7_OP_NEW && pScreen->iP1 == -1 ){
+								pScreen->bDiscard = 1;
 							}
 						}
 						if( isSpecialNew ){
@@ -2891,18 +2908,11 @@ static sxi32 GenStateEmitExprCode(
 			 * Namespace-qualify it, but skip self/static/parent and absolute refs. */
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
 			if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
-				ph7_value *pLitChk = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,(sxu32)pInstr->iP2);
 				int bAbsolute = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;
-				int isSpecialIs = 0;
-				if( pLitChk && (pLitChk->iFlags & MEMOBJ_STRING) ){
-					const char *z = (const char *)SyBlobData(&pLitChk->sBlob);
-					sxu32 n = (sxu32)SyBlobLength(&pLitChk->sBlob);
-					if( (n == 4 && SyMemcmp(z,"self",4) == 0) ||
-						(n == 6 && SyMemcmp(z,"static",6) == 0) ||
-						(n == 6 && SyMemcmp(z,"parent",6) == 0) ){
-						isSpecialIs = 1;
-					}
-				}
+				int isSpecialIs = GenStateLitIsScopeKeyword(&(*pGen),(sxu32)pInstr->iP2);
+				/* OP_IS_A's iP1: the class operand is the written keyword, which is
+				 * the only shape its handler resolves as one. */
+				iP1 = isSpecialIs;
 				pInstr->iP1 = 0;
 				if( !isSpecialIs && !bAbsolute ){
 					pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2,&pGen->hUseImports,0);
@@ -2979,6 +2989,7 @@ static sxi32 GenStateEmitExprCode(
 				 * was popped at the static-`::` codegen above). Re-load it so OP_LOAD_FCC
 				 * sees the [target, method-name] pair the iP1=2 handler expects. */
 				void *pMemberName = pInstr->p3;
+				bScopeKw = pInstr->bDiscard; /* `self::m(...)`: the member's mark moves here */
 				if( pInstr->iP1 == 1 && pMemberName == 0 && pInstr->bRefSrc ){
 					/* A literal `X::__construct(...)`, marked above: the class's constructor
 					 * (iP2==2), not a method lookup. The namespace bit is a plain callee's. */
@@ -3007,6 +3018,9 @@ static sxi32 GenStateEmitExprCode(
 		}
 		/* Finally,emit the VM instruction associated with this operator */
 		PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
+		if( bScopeKw && iVmOp != PH7_OP_IS_A ){
+			PH7_VmPeekInstr(pGen->pVm)->bDiscard = 1;
+		}
 		if( iVmOp == PH7_OP_MEMBER && iP2 == PH7_MEMBER_READ
 		 && (iFlags & EXPR_FLAG_MEMBER_REFSRC) ){
 			/* The reference SOURCE keeps its READ mode -- php hands back a copy for a
