@@ -3865,17 +3865,119 @@ static sxi32 VmEvalDeferredStaticDefaults(ph7_vm *pVm,ph7_class *pClass,int *pbL
 	return rc;
 }
 /*
- * Materialize [pClass]'s static table, php's way: evaluate whatever the mount
- * pass deferred, then raise any typed-default failure. Called by the sites php
- * materializes at — the first static-PROPERTY access (read, write, isset; a
- * class CONSTANT or a static METHOD CALL does not materialize, php-exact) and
- * instantiation. Returns SXRET_OK when the table is (or already was) whole,
- * else the PH7_EXCEPTION/PH7_ABORT of the throw for the caller to route.
+ * TRUE for an INSTANCE property whose default the class's resolution holds to its
+ * declared type: typed, with an initializer of its own (a native literal states its
+ * type itself).
+ */
+static int VmIsTypedInstanceDefault(ph7_class_attr *pAttr)
+{
+	return (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED))
+			== PH7_CLASS_ATTR_TYPED
+		&& (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) == 0
+		&& pAttr->pNativeValue == 0
+		&& SySetUsed(&pAttr->aByteCode) > 0;
+}
+/*
+ * The instance half of php's class resolution (zend_update_class_constants): every
+ * typed INSTANCE default is evaluated and held to its type -- strictly, so an int
+ * into a float widens and nothing else converts -- the base class first, and before
+ * the static table. A default the compiler folded was checked there already; one it
+ * could not (`float $f = K`, `string $s = K`) is answered here, the first time
+ * anything resolves the class: `new`, a static-property access, get_class_vars(),
+ * getDefaultProperties(). The pending set is collected before any initializer runs,
+ * for the reason VmEvalDeferredStaticDefaults gives.
+ */
+static sxi32 VmCheckInstanceDefaults(ph7_vm *pVm,ph7_class *pClass)
+{
+	SySet aTyped; /* ph7_class_attr * , declaration order */
+	ph7_class_attr **apTyped;
+	SyHashEntry *pEntry;
+	sxu32 n,nUsed;
+	sxi32 rc = SXRET_OK;
+	if( pClass->pBase && VmClassStaticDeferPending(pClass->pBase) ){
+		rc = VmCheckInstanceDefaults(&(*pVm),pClass->pBase);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	SySetInit(&aTyped,&pVm->sAllocator,sizeof(ph7_class_attr *));
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( VmIsTypedInstanceDefault(pAttr) ){
+			rc = SySetPut(&aTyped,(const void *)&pAttr);
+			if( rc != SXRET_OK ){
+				break;
+			}
+		}
+	}
+	apTyped = (ph7_class_attr **)SySetBasePtr(&aTyped);
+	nUsed = SySetUsed(&aTyped);
+	for( n = 0 ; rc == SXRET_OK && n < nUsed ; ++n ){
+		ph7_class_attr *pAttr = apTyped[n];
+		ph7_class *pSaveCtx = pVm->pConstEvalClass;
+		void *pSaveFrame = pVm->pConstEvalFrame;
+		sxu32 nSaveLazyLine = pVm->nLazyInitLine;
+		sxi32 nSaveLazyDepth = pVm->nLazyInitDepth;
+		ph7_value sValue;
+		sxi32 rcExec;
+		PH7_MemObjInit(&(*pVm),&sValue);
+		/* The evaluation context `new` gives an instance default, at THIS line. */
+		pVm->pConstEvalClass = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
+		pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
+		pVm->nLazyInitLine = VmLazyInitLineHere(&(*pVm));
+		pVm->nLazyInitDepth = pVm->nVmExecDepth + 1;
+		rcExec = VmLocalExec(&(*pVm),&pAttr->aByteCode,&sValue,FALSE);
+		pVm->nLazyInitLine = nSaveLazyLine;
+		pVm->nLazyInitDepth = nSaveLazyDepth;
+		pVm->pConstEvalClass = pSaveCtx;
+		pVm->pConstEvalFrame = pSaveFrame;
+		if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+			rc = rcExec;
+		}else{
+			rc = VmEnforceTypedDefault(&(*pVm),pClass,pAttr,&sValue);
+		}
+		PH7_MemObjRelease(&sValue);
+	}
+	SySetRelease(&aTyped);
+	return rc;
+}
+/*
+ * A typed INSTANCE property's default as its class's resolution leaves it: once the
+ * declaring class has resolved, php's default table holds the converted value, so
+ * getDefaultValue(), getDefaultProperties(), get_class_vars() and the export read
+ * `float $f = K` as float(1); before that they read the constant's own int. A
+ * static's default is never rewritten -- php resolves it into the live table -- and
+ * a default the compiler folded carries its conversion in its own byte-code.
+ */
+PH7_PRIVATE void PH7_VmResolvedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+{
+	ph7_class *pOwner;
+	if( !VmIsTypedInstanceDefault(pAttr) ){
+		return;
+	}
+	pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pClass);
+	if( pOwner == 0 || VmClassStaticDeferPending(pOwner) ){
+		return;
+	}
+	VmCheckTypedDefault(&(*pVm),pOwner,pAttr,pValue);
+}
+/*
+ * Materialize [pClass]'s static table, php's way: hold the typed instance defaults
+ * to their types, evaluate whatever the mount pass deferred, then raise any
+ * typed-default failure. Called by the sites php resolves a class at — the first
+ * static-PROPERTY access (read, write, isset; a class CONSTANT or a static METHOD
+ * CALL does not materialize, php-exact), instantiation, get_class_vars() and
+ * getDefaultProperties(). Returns SXRET_OK when the class is (or already was)
+ * resolved, else the PH7_EXCEPTION/PH7_ABORT of the throw for the caller to route.
  */
 PH7_PRIVATE sxi32 PH7_VmMaterializeClassStatics(ph7_vm *pVm,ph7_class *pClass)
 {
 	int bLeft = 0;
-	sxi32 rc = VmEvalDeferredStaticDefaults(&(*pVm),pClass,&bLeft);
+	sxi32 rc = VmCheckInstanceDefaults(&(*pVm),pClass);
+	if( rc == SXRET_OK ){
+		rc = VmEvalDeferredStaticDefaults(&(*pVm),pClass,&bLeft);
+	}
 	if( rc == SXRET_OK ){
 		rc = VmThrowDeferredStaticType(&(*pVm),pClass);
 	}

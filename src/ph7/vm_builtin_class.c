@@ -1708,6 +1708,7 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 					PH7_MemObjRelease(&sValue);
 					/* Compute default value (any complex expression) associated with this attribute */
 					VmLocalExec(pCtx->pVm,&pAttr->aByteCode,&sValue,FALSE);
+					PH7_VmResolvedDefault(pCtx->pVm,pClass,pAttr,&sValue);
 					pValue = &sValue;
 				}
 				/* Fill in the array */

@@ -2300,6 +2300,15 @@ static sxi32 VmMountUserClassAttrs(
 			 * %s as value for class constant" fatal without any access). */
 			continue;
 		}
+		if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED))
+				== PH7_CLASS_ATTR_TYPED
+		 && pAttr->pNativeValue == 0 && SySetUsed(&pAttr->aByteCode) > 0 ){
+			/* A typed INSTANCE default: php holds it to its type when the class
+			 * first resolves, so the class owes PH7_VmMaterializeClassStatics a
+			 * pass even with a whole static table. */
+			pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
+			continue;
+		}
 		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
 			ph7_value *pMemObj;
 			if( pAttr->nIdx != SXU32_HIGH ){

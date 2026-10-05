@@ -5463,6 +5463,13 @@ static int vm_builtin_ReflectionClass_getDefaultProperties(ph7_context *pCtx, in
 		ph7_result_value(pCtx, pOut);
 		return PH7_OK;
 	}
+	{
+		/* Listing the defaults resolves the class, as get_class_vars() does. */
+		sxi32 rcMat = ReflectMaterializeStatics(pCtx, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
+	}
 	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
 	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
 	/* php reports the STATIC properties first, then the instance ones. */
@@ -5489,6 +5496,7 @@ static int vm_builtin_ReflectionClass_getDefaultProperties(ph7_context *pCtx, in
 			if( SySetUsed(&pM->pAttr->aByteCode) > 0 ){
 				/* Same evaluation path the VM uses for omitted call arguments */
 				VmLocalExec(pCtx->pVm, &pM->pAttr->aByteCode, &sValue, FALSE);
+				PH7_VmResolvedDefault(pCtx->pVm, pClass, pM->pAttr, &sValue);
 			}
 			ReflectMapAddDyn(pCtx, pOut, &pM->sKey, &sValue);
 			PH7_MemObjRelease(&sValue);
@@ -9312,6 +9320,7 @@ static int vm_builtin_ReflectionProperty_getDefaultValue(ph7_context *pCtx, int 
 	/* Same evaluation path the VM uses for an omitted call argument */
 	PH7_MemObjInit(pCtx->pVm, &sValue);
 	VmLocalExec(pCtx->pVm, &sRef.pAttr->aByteCode, &sValue, FALSE);
+	PH7_VmResolvedDefault(pCtx->pVm, sRef.pClass, sRef.pAttr, &sValue);
 	ph7_result_value(pCtx, &sValue);
 	PH7_MemObjRelease(&sValue);
 	return PH7_OK;
@@ -10632,6 +10641,7 @@ static void ReflectExportPropLine(ph7_context *pCtx, SyBlob *pOut, ph7_class_att
 		PH7_MemObjInit(pCtx->pVm, &sValue);
 		if( SySetUsed(&pAttr->aByteCode) > 0 ){
 			VmLocalExec(pCtx->pVm, &pAttr->aByteCode, &sValue, FALSE);
+			PH7_VmResolvedDefault(pCtx->pVm, pAttr->pDeclClass, pAttr, &sValue);
 		}else if( pAttr->pNativeValue ){
 			PH7_NativeLiteralValue(pCtx->pVm, pAttr->pNativeValue, &sValue);
 		}

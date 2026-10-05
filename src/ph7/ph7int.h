@@ -2665,7 +2665,9 @@ struct ph7_class
 #define PH7_CLASS_STATIC_DEFER 0x200 /* This class's static table is not fully materialized: at least
                                       * one static property's default THREW when it was evaluated at
                                       * mount (PH7_CLASS_ATTR_STATIC_DEFER on the attribute) or failed
-                                      * its type check (VM_CLASS_ATTR_TYPE_DEFER on the slot). A hint
+                                      * its type check (VM_CLASS_ATTR_TYPE_DEFER on the slot), or a
+                                      * typed INSTANCE default has yet to be held to its type (php's
+                                      * class resolution, which every reader shares). A hint
                                       * only: the access/instantiation sites call
                                       * PH7_VmMaterializeClassStatics, which re-scans the whole base
                                       * chain. Set on the class whose mount saw the failure; the gate
@@ -8038,6 +8040,7 @@ PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_vm_func_ar
 	sxu32 nArgPos,ph7_value *pVal,int bStrict,ph7_class *pSelfHint);
 PH7_PRIVATE int VmClassStaticDeferPending(ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_VmMaterializeClassStatics(ph7_vm *pVm,ph7_class *pClass);
+PH7_PRIVATE void PH7_VmResolvedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pCase);
 PH7_PRIVATE int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu32 *pPc);
