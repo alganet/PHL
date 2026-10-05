@@ -1953,6 +1953,29 @@ PH7_PRIVATE sxi32 PH7_VmCallClassMethodMap(ph7_vm *pVm,ph7_class_instance *pThis
 	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,pMap);
 }
 /*
+ * Call one of an Iterator's zero-argument protocol methods on behalf of the ENGINE's
+ * own iteration (the foreach opcode, PH7_VmIteratorWalk). For a Generator php makes
+ * no call at all there -- it drives the generator's iterator handlers -- so the
+ * method leaves no frame in its trace: a throw from the body names the body's
+ * resumer as `foreach`'s line or as the internal function walking it
+ * (`iterator_to_array()`), never `Generator->next()`. The record is linked elided
+ * (bElideNativeCall). A userland Iterator's method is a real call in php too.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallIteratorMethod(
+	ph7_vm *pVm,
+	ph7_class_instance *pThis,
+	ph7_class_method *pMethod,
+	ph7_value *pResult
+	)
+{
+	sxi32 rc;
+	int bSave = pVm->bElideNativeCall;
+	pVm->bElideNativeCall = pVm->pGeneratorClass != 0 && pThis->pClass == pVm->pGeneratorClass;
+	rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMethod,pResult,0,0,0);
+	pVm->bElideNativeCall = bSave; /* the native dispatch consumes it; restore if it never ran */
+	return rc;
+}
+/*
  * Helper for PH7_VmIteratorWalk: call a zero-arg Iterator method by name,
  * returning its result. Returns the exec status so a method that throws
  * (PH7_EXCEPTION) or aborts (PH7_ABORT) is propagated — unlike the foreach
@@ -1964,7 +1987,7 @@ PH7_PRIVATE sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const c
 	if( pMethod == 0 ){
 		return SXRET_OK; /* missing method: treat as no-op (mirrors foreach leniency) */
 	}
-	return PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,pResult,0,0);
+	return PH7_VmCallIteratorMethod(&(*pVm),pThis,pMethod,pResult);
 }
 /*
  * Walk a Traversable (Iterator / IteratorAggregate / Generator), invoking xStep

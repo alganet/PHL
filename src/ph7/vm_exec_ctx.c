@@ -859,6 +859,34 @@ static void VmFiberStampEntry(ph7_exec_ctx *pCtx, SyString *pMethod, ph7_class_i
 	pCtx->pFrame->pNativeCaller = pMethod;
 	pCtx->pFrame->pNativeCallerThis = pFiber;
 }
+/*
+ * Record whether a GENERATOR's body is being entered by an internal function. php
+ * links the body under whatever frame resumes it, so `$g->current()`, `$g->send()`
+ * or `iterator_to_array($g)` put an internal frame there: a trace taken inside the
+ * body shows it with no file or line (`[internal function]: gen()`) and that method
+ * or function as a frame of its own at the resumer's site, while a `foreach` or a
+ * `yield from` resumes it from bytecode and keeps the ordinary site. The resumer is
+ * exactly the newest running internal call made from the current frame (the chain
+ * VmBuildBacktrace walks names it), so the mark is re-derived on every entry. Its
+ * other meaning -- how the arguments were bound -- is spent by then: a generator
+ * binds them at its creating call, never at a start or resume.
+ */
+static void VmGeneratorStampEntry(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	VmNativeCall *pNat = pVm->pNativeCall;
+	while( pNat && pNat->bElided ){
+		pNat = pNat->pPrev;
+	}
+	if( pNat && pNat->pFrame == (void *)pVm->pFrame ){
+		pCtx->pFrame->iFlags |= VM_FRAME_NATIVE_CALLER;
+		pCtx->pFrame->pNativeCaller = pNat->pName;
+		pCtx->pFrame->pNativeCallerThis = 0;
+	}else{
+		pCtx->pFrame->iFlags &= ~VM_FRAME_NATIVE_CALLER;
+		pCtx->pFrame->pNativeCaller = 0;
+		pCtx->pFrame->pNativeCallerThis = 0;
+	}
+}
 static SyString sFiberStartName = { "start", sizeof("start")-1 };
 static SyString sFiberResumeName = { "resume", sizeof("resume")-1 };
 static SyString sFiberThrowName = { "throw", sizeof("throw")-1 };
@@ -1048,6 +1076,9 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 #endif
 	/* Attach the fiber's frame to the VM frame chain */
 	VmStampCoroutineCallSite(pVm, pCtx);
+	if( pCtx->pPrivate ){
+		VmGeneratorStampEntry(pVm, pCtx);
+	}
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
 	/* Save and set the active context */
@@ -1209,6 +1240,9 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 		 * becomes current so the adopt at VmByteCodeExec entry resumes inside the
 		 * callee; body-level resumes make the body frame current. */
 		VmStampCoroutineCallSite(pVm, pCtx);
+		if( pCtx->pPrivate ){
+			VmGeneratorStampEntry(pVm, pCtx);
+		}
 		pCtx->pFrame->pParent = pVm->pFrame;
 		pVm->pFrame = pSeg ? pSeg->pTopFrame : pCtx->pFrame;
 	}
@@ -4855,6 +4889,13 @@ PH7_PRIVATE int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_v
 		/* A generator abandoned before it completes still runs its pending `finally`
 		 * blocks (PHP runs them at generator close/GC). Drive them before teardown. */
 		if( pGen->pCtx ){
+			/* php closes it from a destructor HANDLER, not a method call, so the body's
+			 * finally runs with the releasing code as its resumer and no
+			 * `Generator->__destruct()` frame between them. */
+			VmNativeCall *pRec = pCtx->pVm->pNativeCall;
+			if( pRec && pRec->pClass == pCtx->pVm->pGeneratorClass ){
+				pRec->bElided = 1;
+			}
 			rcClose = VmCloseCtx(pCtx->pVm, pGen->pCtx);
 		}
 		VmReleaseGenerator(pCtx->pVm, pGen);

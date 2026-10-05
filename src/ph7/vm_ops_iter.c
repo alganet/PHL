@@ -120,7 +120,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		}else{
 			pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);
 			if( pMethod ){
-				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,0,0,0);
+				rc = PH7_VmCallIteratorMethod(&(*pVm),pThis,pMethod,0);
 				if( VmIterCallThrew(rc) ){
 					/* next() threw (generator body / userland Iterator): tear the
 					 * step down like exhaustion does, then route the exception —
@@ -134,7 +134,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		PH7_MemObjInit(pVm,&sResult);
 		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);
 		if( pMethod ){
-			rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);
+			rc = PH7_VmCallIteratorMethod(&(*pVm),pThis,pMethod,&sResult);
 			if( VmIterCallThrew(rc) ){
 				/* valid() threw: same teardown-and-route as next() above. */
 				PH7_MemObjRelease(&sResult);
@@ -155,7 +155,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			PH7_MemObjInit(pVm,&sResult);
 			pMethod = PH7_ClassExtractMethod(pThis->pClass,"current",sizeof("current")-1);
 			if( pMethod ){
-				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);
+				rc = PH7_VmCallIteratorMethod(&(*pVm),pThis,pMethod,&sResult);
 				if( VmIterCallThrew(rc) ){
 					/* current() threw: same teardown-and-route as next() above. */
 					PH7_MemObjRelease(&sResult);
@@ -174,7 +174,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				PH7_MemObjInit(pVm,&sKey);
 				pMethod = PH7_ClassExtractMethod(pThis->pClass,"key",sizeof("key")-1);
 				if( pMethod ){
-					rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sKey,0,0);
+					rc = PH7_VmCallIteratorMethod(&(*pVm),pThis,pMethod,&sKey);
 					if( VmIterCallThrew(rc) ){
 						/* key() threw: same teardown-and-route as next() above. */
 						PH7_MemObjRelease(&sKey);
@@ -505,7 +505,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 					pThis->iRef++;
 					pRewind = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);
 					if( pRewind ){
-						rc = PH7_VmCallClassMethod(&(*pVm),pThis,pRewind,0,0,0);
+						rc = PH7_VmCallIteratorMethod(&(*pVm),pThis,pRewind,0);
 						if( VmIterCallThrew(rc) ){
 							/* rewind() threw (a generator body or userland Iterator):
 							 * undo this step's retain, drop the step, and route the
@@ -589,7 +589,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 							pThis->iRef++;
 							pRewind = PH7_ClassExtractMethod(pIterObj->pClass,"rewind",sizeof("rewind")-1);
 							if( pRewind ){
-								rc = PH7_VmCallClassMethod(&(*pVm),pIterObj,pRewind,0,0,0);
+								rc = PH7_VmCallIteratorMethod(&(*pVm),pIterObj,pRewind,0);
 								if( VmIterCallThrew(rc) ){
 									/* The aggregate's iterator rewind() threw: undo
 									 * both retains, drop the step, route the exception. */

@@ -4171,6 +4171,12 @@ struct ph7_vm
 	VmNativeCall *pNativeCall;  /* The INTERNAL functions and methods running right now,
 	                             * newest first -- the frames php's trace carries for a
 	                             * throw raised inside a C body. See VmNativeCall. */
+	int bElideNativeCall;       /* Consume-once: the next internal call links its VmNativeCall
+	                             * already elided. Armed only by PH7_VmCallIteratorMethod for
+	                             * a Generator, whose methods the engine's own iteration drives
+	                             * where php calls the generator's iterator handlers -- no call,
+	                             * so no frame in php's trace. Saved and restored around that
+	                             * one dispatch. */
 	SyString *pNativeFrameName; /* Consume-once: the next OP_CALL's frame was entered by this
 	                             * INTERNAL function and so has no userland call site, even
 	                             * though its argument BINDING still follows the caller. Armed
@@ -6108,6 +6114,8 @@ PH7_PRIVATE sxi32 PH7_VmCallClassMethod(ph7_vm *pVm,ph7_class_instance *pThis,ph
 	ph7_value *pResult,int nArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_VmCallClassMethodMap(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_method *pMethod,
 	ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pMap);
+PH7_PRIVATE sxi32 PH7_VmCallIteratorMethod(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_method *pMethod,
+	ph7_value *pResult);
 PH7_PRIVATE sxi32 PH7_VmCallMethodSwallow(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_method *pMethod,
 	ph7_value *pResult,int nArg,ph7_value **apArg,int *pbThrew);
 PH7_PRIVATE sxi32 PH7_VmCallMethodUnchecked(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_method *pMethod,

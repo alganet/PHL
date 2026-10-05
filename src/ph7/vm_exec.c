@@ -9291,7 +9291,8 @@ NativeCall:
 		sNativeCall.bStatic = 0;
 		sNativeCall.nLine = pVm->nCurLine;
 		sNativeCall.pFrame = (void *)pVm->pFrame;
-		sNativeCall.bElided = 0;
+		sNativeCall.bElided = pVm->bElideNativeCall;
+		pVm->bElideNativeCall = 0;
 		sNativeCall.pPrev = pVm->pNativeCall;
 		/* Bind `name:` arguments to the callee's declared POSITIONS before anything
 		 * reads the vector — the arity screen, the ZPP screen and the C body all take
