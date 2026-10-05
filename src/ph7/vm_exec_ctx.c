@@ -1633,6 +1633,12 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 				 * the catch-all against whatever `$this` the CALLER holds. */
 				pVm->bClosureStaticTramp = 1;
 			}
+			if( (pThis->iFlags & (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED|VM_INSTANCE_FCC_SYNTAX))
+					== VM_INSTANCE_FCC_METHOD ){
+				/* A trampoline Closure::fromCallable() minted (the reflection's rule): no
+				 * parameters, so no name can bind. */
+				pVm->bClosureNoNamed = 1;
+			}
 			if( bBoundObj && bScope && (pThis->iFlags & VM_INSTANCE_FCC_METHOD) ){
 				/* A method closure whose `$__scope` is not its receiver's class names the class
 				 * its callee was RESOLVED in: `parent::m(...)` and `A::m(...)` with a `$this`,
@@ -3078,6 +3084,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				pVm->pClosureScope = 0;
 				pVm->bClosureScreened = 0;
 				pVm->bClosureStaticTramp = 0;
+				pVm->bClosureNoNamed = 0;
 				pVm->pClosureMethodCls = 0;
 				return pUnwrapped;
 			}
@@ -3090,6 +3097,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 			pVm->pClosureScope = 0;
 			pVm->bClosureScreened = 0;
 			pVm->bClosureStaticTramp = 0;
+			pVm->bClosureNoNamed = 0;
 			pVm->pClosureMethodCls = 0;
 			PH7_VmThrowException(pCtx, "FiberError", zWhyClo
 				? "Fiber %s" : "Fiber callable closure could not be resolved", zWhyClo);

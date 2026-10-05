@@ -6563,6 +6563,7 @@ case PH7_OP_CALL: {
 	pVm->bMagicDispatch = 0;
 	pVm->bClosureScreened = 0;
 	pVm->bClosureStaticTramp = 0;
+	pVm->bClosureNoNamed = 0;
 	pVm->pClosureMethodCls = 0;
 	pVm->bCallbackWeak = 0;
 	pTos->iFlags &= ~MEMOBJ_AUX_MEMBERCALL;
@@ -6693,6 +6694,7 @@ case PH7_OP_CALL: {
 			int bCbScreened;
 			ph7_class *pCbFromCls; /* ...and the class its method was resolved in, same lifetime */
 			int bCbTramp;          /* ...and whether it is the __callStatic trampoline, same lifetime */
+			int bCbNoNamed;        /* ...and whether it is a fromCallable() trampoline, same lifetime */
 			{
 				/* php validates the SHAPE of an array callable first: it must hold exactly
 				 * two elements. PH7 handed any array to the dispatcher, which failed
@@ -6712,6 +6714,8 @@ case PH7_OP_CALL: {
 				pVm->pClosureMethodCls = 0;
 				bCbTramp = pVm->bClosureStaticTramp;
 				pVm->bClosureStaticTramp = 0;
+				bCbNoNamed = pVm->bClosureNoNamed;
+				pVm->bClosureNoNamed = 0;
 				/* The trampoline's pair is the unwrap's too, and the direct spelling's refusal
 				 * below would re-ask the caller's `$this` and call the name non-static. */
 				if( !bCbScreened && !bCbTramp && pCbMap && pCbMap->nEntry == 2 ){
@@ -6796,6 +6800,7 @@ case PH7_OP_CALL: {
 			pVm->bClosureScreened = bCbScreened; /* see the capture above */
 			pVm->pClosureMethodCls = pCbFromCls;
 			pVm->bClosureStaticTramp = bCbTramp;
+			pVm->bClosureNoNamed = bCbNoNamed;
 			/* This call SITE is what decides the answer is dropped, and the
 			 * dispatch below builds a synthetic OP_CALL that has no site of its
 			 * own — hand the bit over on the latch, so a #[\NoDiscard] callee
@@ -6808,6 +6813,7 @@ case PH7_OP_CALL: {
 			 * clear them here for the paths that never reach one. */
 			pVm->bClosureScreened = 0;
 			pVm->bClosureStaticTramp = 0;
+			pVm->bClosureNoNamed = 0;
 			pVm->pClosureMethodCls = 0;
 			pVm->bDiscardCallback = 0;
 			SySetReset(&aArg);

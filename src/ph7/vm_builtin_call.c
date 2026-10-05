@@ -2814,6 +2814,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			 * standing and stand the visibility screen down for the NEXT call. */
 			pVm->bClosureScreened = 0;
 			pVm->bClosureStaticTramp = 0;
+			pVm->bClosureNoNamed = 0;
 			pVm->pClosureMethodCls = 0;
 			PH7_MemObjRelease(&sCallable);
 			return rcClo;
@@ -2851,8 +2852,25 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		/* The pair is an unbound trampoline Closure's (VmClosureUnwrap): taken off the VM
 		 * before anything below can run user code. */
 		int bTramp = pVm->bClosureStaticTramp;
+		int bNoNamed = pVm->bClosureNoNamed;
 		sxi32 rc;
 		pVm->bClosureStaticTramp = 0;
+		pVm->bClosureNoNamed = 0;
+		if( bNoNamed && pArgMap && pArgMap->bHasNamed ){
+			/* A fromCallable() trampoline takes no names (VmClosureUnwrap): php refuses the
+			 * first one where it is passed, before the catch-all or anything else runs. */
+			for( i = 0 ; i < nArg && i < (int)pArgMap->nTotal ; ++i ){
+				if( pArgMap->aNames[i].nByte > 0 ){
+					char zErr[160];
+					SyBufferFormat(zErr,sizeof(zErr),"Unknown named parameter $%.*s",
+						(int)pArgMap->aNames[i].nByte,pArgMap->aNames[i].zString);
+					if( pResult ){
+						PH7_MemObjRelease(pResult);
+					}
+					return VmThrowNamedArgError(&(*pVm),zErr,(sxu32)SyStrlen(zErr));
+				}
+			}
+		}
 		/* php reads the INTEGER indices 0 and 1, not the first two entries in insertion
 		 * order — the same decode the predicate uses, so `[1=>'m',0=>'C']` dispatches
 		 * (target at index 0) and `['a'=>'C','b'=>'m']` does not resolve at all. The

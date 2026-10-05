@@ -4175,6 +4175,12 @@ struct ph7_vm
 	                             * refuse a direct `$c()` as non-static) inside an instance of the
 	                             * class. Armed by VmClosureUnwrap, read by the pair dispatch
 	                             * (PH7_VmCallUserFunctionWithMap), cleared with bClosureScreened. */
+	int bClosureNoNamed;        /* Consume-once, same lifetime: the pair comes out of a
+	                             * Closure::fromCallable() TRAMPOLINE over __call/__callStatic. php
+	                             * builds that one as an internal function with no parameters and
+	                             * no variadic, so a named argument is "Unknown named parameter"
+	                             * before the catch-all runs; the `(...)` syntax's trampoline has a
+	                             * `...$arguments` and packs it into $args instead. */
 	char zDefTz[68];           /* date_default_timezone_set() identifier, stored verbatim like php
 	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
 	sxu32 nDefTz;               /* zDefTz length in bytes */
