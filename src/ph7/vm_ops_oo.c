@@ -2717,6 +2717,33 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 			/* Attribute name already computed */
 			SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
 		}
+		if( (pNos->iFlags & MEMOBJ_OBJ) == 0 && !pInstr->bDiscard
+		 && pInstr->p3 == 0 && pInstr->iP1 != 2
+		 && sName.nByte == sizeof("class")-1
+		 && SyStrnicmp(sName.zString,"class",sizeof("class")-1) == 0 ){
+			/* `$expr::class` takes an OBJECT and nothing else: php compiles it to
+			 * ZEND_FETCH_CLASS_NAME, which refuses every other operand -- a class NAME
+			 * held in a string included -- with `Cannot use "::class" on <value>`. A
+			 * written keyword (self::class) or a literal name (A::class, ('A')::class)
+			 * is folded before it gets here. PHL looked the string up as a class, so
+			 * `$c::class` answered the name back, or `Class "x" not found`. */
+			SyBlob sErrCn;
+			sxi32 rcCn;
+			SyBlobInit(&sErrCn,&pVm->sAllocator);
+			SyBlobFormat(&sErrCn,"Cannot use \"::class\" on %s",VmArithValueName(pNos));
+			if( !pInstr->p3 ){
+				VmPopOperand(&pTos,1);
+			}
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcCn = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sErrCn),
+				SyBlobLength(&sErrCn));
+			SyBlobRelease(&sErrCn);
+			if( rcCn == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			rc = rcCn;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
 		if( pNos->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ) ){
 			ph7_class *pClass = 0;
 			/* A FORWARDING static call — self::/parent::/static:: — preserves the
