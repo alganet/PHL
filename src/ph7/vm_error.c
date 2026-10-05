@@ -6159,8 +6159,9 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 				 * sets; php's separator and `object` follow that receiver. */
 				ph7_class *pScope;
 				pRecv = PH7_VmFrameThis(&(*pVm),pFrame);
-				pScope = PH7_VmClosureFuncScope(&(*pVm),pFunc,pFrame->pBoundScope,pRecv != 0,
-					pFrame->pSelfClass);
+				pScope = (pFrame->iFlags & VM_FRAME_UNSCOPED) ? 0
+					: PH7_VmClosureFuncScope(&(*pVm),pFunc,pFrame->pBoundScope,pRecv != 0,
+						pFrame->pSelfClass);
 				if( pScope ){
 					pClsName = &pScope->sName;
 					bStatic = pRecv == 0;

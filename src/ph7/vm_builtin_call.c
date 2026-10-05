@@ -1612,6 +1612,9 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
 			 * class scope (php), so self::/parent:: resolve against it. */
 			return pFrame->pBoundScope;
 		}
+		if( pFrame->iFlags & VM_FRAME_UNSCOPED ){
+			return 0;
+		}
 		pVmFunc = (ph7_vm_func *)pFrame->pUserData;
 		if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
 			/* Return the declaring class */

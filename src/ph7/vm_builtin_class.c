@@ -1235,6 +1235,9 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm)
 	if( pFrame->pBoundScope ){
 		return pFrame->pBoundScope; /* an explicit rebind names a CLASS; never a trait */
 	}
+	if( pFrame->iFlags & VM_FRAME_UNSCOPED ){
+		return 0;
+	}
 	if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
 		pScope = (ph7_class *)pVmFunc->pUserData;
 	}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLOSURE) && pVmFunc->pUserData ){

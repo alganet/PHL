@@ -7821,9 +7821,12 @@ CalleeByName:
 			 * the class captured at the closure's creation site. self::/parent::
 			 * still use the declaring-class scope (PH7_VmPeekDeclaringClass); done
 			 * after pSelfHint so a `self`-typed param is unaffected. */
-			if( pClosureScope ){
+			if( bClosureThis && pThis ){
+				/* A bound receiver IS php's called scope, whatever scope rides with it. */
+				pSelf = pThis->pClass;
+			}else if( pClosureScope ){
 				pSelf = pClosureScope;
-			}else if( pVmFunc->pLsbClass ){
+			}else if( pVmFunc->pLsbClass && bClosureUnbound != PH7_CLOSURE_UNSCOPED ){
 				pSelf = (ph7_class *)pVmFunc->pLsbClass;
 			}
 		}
@@ -8178,6 +8181,8 @@ CalleeByName:
 			 * call($o)) or scope-only (bindTo(null, Scope::class)): private/protected
 			 * access inside the body resolves against it. */
 			pFrame->pBoundScope = pClosureScope;
+		}else if( bClosureUnbound == PH7_CLOSURE_UNSCOPED ){
+			pFrame->iFlags |= VM_FRAME_UNSCOPED;
 		}
 		/* Stamp the ACTUAL call arity for func_num_args()/func_get_args() (band
 		 * A #4): sArg over-counts (defaulted params installed, variadic packed

@@ -6474,7 +6474,10 @@ static int vm_builtin_ReflectionFunc_getClosureScopeClass(ph7_context *pCtx, int
 	}
 	pAttr = ReflectClosureAttr(&sRef, "__this");
 	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
-		return ReflectResultClassOf(pCtx, ((ph7_class_instance *)pAttr->x.pOther)->pClass);
+		/* A rebind wrote down any scope it kept, so a receiver with none was handed php's
+		 * dummy scope -- `Closure` -- not the receiver's class. */
+		return ReflectResultClassOf(pCtx, (sRef.pClosure->iFlags & VM_INSTANCE_FCC_METHOD)
+			? ((ph7_class_instance *)pAttr->x.pOther)->pClass : pCtx->pVm->pClosureClass);
 	}
 	if( ReflectClosureExpr(&sRef) && sRef.pFunc->pUserData ){
 		/* The class whose method made it -- the USING class when that method is a trait's,

@@ -1654,10 +1654,14 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 						pBoundObj->iRef++;
 						pVm->pClosureThis = pBoundObj;
 						/* Carry the bound scope (if set) so private/protected member access inside
-						 * the closure body resolves against it — bindTo($o, Scope::class) / call($o). */
+						 * the closure body resolves against it — bindTo($o, Scope::class) / call($o).
+						 * A receiver with NO scope runs in php's dummy one, `Closure` itself: that is
+						 * what `self::` and a trace's class answer after `bindTo($o, null)`. */
 						if( bScope ){
 							pVm->pClosureScope = PH7_VmExtractClass(pVm,
 								(const char *)SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob), FALSE, 0);
+						}else{
+							pVm->pClosureScope = pVm->pClosureClass;
 						}
 					}
 					PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
@@ -1769,8 +1773,9 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 		/* A rebind that left a plain closure with no `$this` (`bindTo(null)`): php has dropped
 		 * the receiver, so the one its function captured where it was created must not come
 		 * back at the call. Only a USER function reaches the frame setup that consumes this,
-		 * the same rule as the bound branch above. */
-		pVm->bClosureUnbound = 1;
+		 * the same rule as the bound branch above. A rebind that kept a scope wrote it down
+		 * (VmClosureRebind), so a non-method one with none here was given php's null scope. */
+		pVm->bClosureUnbound = (pThis->iFlags & VM_INSTANCE_FCC_METHOD) ? 1 : PH7_CLOSURE_UNSCOPED;
 	}
 	PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
 	return SXRET_OK;
@@ -2205,13 +2210,33 @@ static int VmClosureResult(ph7_context *pCtx, ph7_class_instance *pClosure)
  * clone inherited it (PHP's "static" = keep-scope). Refreshes VM_INSTANCE_FCC_BOUND from the result.
  * The clone inherited a ref on the original $__this (PH7_CloneClassInstance copies via MemObjStore);
  * this drops that and takes one on pNewThis.
+ *
+ * A closure EXPRESSION keeps the class it was written in on its function, not in $__scope, so the
+ * first rebind that keeps the scope writes that class down: from then on an empty $__scope means
+ * php's null scope (`bindTo($o, null)` runs as `Closure`, `bindTo(null, null)` as no class at all),
+ * which a keep-scope rebind left indistinguishable from the scope it kept.
  */
-static void VmClosureRebind(ph7_class_instance *pClone,
+static void VmClosureRebind(ph7_vm *pVm, ph7_class_instance *pClone,
 	ph7_class_instance *pNewThis, const SyString *pScope)
 {
-	SyString sAttr;
+	SyString sAttr, sKeep;
 	ph7_value *pThisAttr, *pScopeAttr;
 	int bBound = 0;
+	if( pScope == 0 && (pClone->iFlags & (VM_INSTANCE_FCC_REBOUND|VM_INSTANCE_FCC_METHOD)) == 0 ){
+		ph7_value *pFn;
+		SyStringInitFromBuf(&sAttr, "__fn", 4);
+		pFn = PH7_ClassInstanceFetchAttr(pClone, &sAttr);
+		if( pFn && (pFn->iFlags & MEMOBJ_STRING) && SyBlobLength(&pFn->sBlob) > 0 ){
+			SyHashEntry *pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob),
+				SyBlobLength(&pFn->sBlob));
+			ph7_class *pWritten = pEntry
+				? PH7_VmClosureFuncScope(pVm, (ph7_vm_func *)pEntry->pUserData, 0, 0, 0) : 0;
+			if( pWritten ){
+				sKeep = pWritten->sName;
+				pScope = &sKeep;
+			}
+		}
+	}
 	pClone->iFlags |= VM_INSTANCE_FCC_REBOUND;
 	SyStringInitFromBuf(&sAttr, "__this", 6);
 	pThisAttr = PH7_ClassInstanceFetchAttr(pClone, &sAttr);
@@ -2442,7 +2467,8 @@ PH7_PRIVATE int vm_builtin_Closure_construct(ph7_context *pCtx, int nArg, ph7_va
  * left them behind: the clone of a method callable forgot that its `$__fn` names a screened
  * METHOD, and `$fcc->bindTo($other)` came back as a closure whose every dispatch re-resolved
  * the name and re-decided its visibility (or, with no method of that name in reach, looked
- * for a global FUNCTION).
+ * for a global FUNCTION). A rebind's clone stays one: its empty $__scope is php's null scope,
+ * and only the FIRST rebind writes down the scope it kept (VmClosureRebind).
  */
 static ph7_class_instance * VmCloneClosureInstance(ph7_class_instance *pClosure)
 {
@@ -2450,7 +2476,7 @@ static ph7_class_instance * VmCloneClosureInstance(ph7_class_instance *pClosure)
 	if( pClone ){
 		pClone->iFlags |= pClosure->iFlags
 			& (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED|VM_INSTANCE_FCC_INVOKE_OBJ
-			   |VM_INSTANCE_FCC_SYNTAX);
+			   |VM_INSTANCE_FCC_SYNTAX|VM_INSTANCE_FCC_REBOUND);
 	}
 	return pClone;
 }
@@ -2666,7 +2692,7 @@ PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value *
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	VmClosureRebind(pClone, pNewThis, &sScope);
+	VmClosureRebind(pVm, pClone, pNewThis, &sScope);
 	/* The bound closure is handed to the dispatcher through a STACK carrier that
 	 * takes its own reference (rule 16): a context value would be released with the
 	 * call context and unref the instance a second time. */
@@ -2829,7 +2855,7 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	VmClosureRebind(pClone, pNewThis, pScopePtr);
+	VmClosureRebind(pVm, pClone, pNewThis, pScopePtr);
 	return VmClosureResult(pCtx, pClone);
 }
 /*

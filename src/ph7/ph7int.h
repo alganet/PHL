@@ -415,6 +415,7 @@ struct VmDeferredPath {
  * expression that no rebind has touched carries neither attribute: its scope and receiver
  * are still where OP_LOAD_CLOSURE put them, on its per-instantiation function. */
 #define VM_INSTANCE_FCC_REBOUND 0x400
+#define PH7_CLOSURE_UNSCOPED 2 /* bClosureUnbound: no `$this` AND no class scope */
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -1488,6 +1489,10 @@ struct VmNativeCall
                                   * `, called in FILE on line N` tail and the too-few wording
                                   * all stay the caller's, which is why it is a bit of its
                                   * own. pNativeCaller names the builtin. */
+#define VM_FRAME_UNSCOPED   0x40 /* A rebind gave this closure activation NO class scope
+                                  * (`bindTo(null, null)` with no `$this`): `self::`,
+                                  * `static::` and the private members of the class it was
+                                  * written in are out of reach, as at the top level. */
 /*
  * One entry of a userland handler STACK (set_error_handler /
  * set_exception_handler). php's stack has no depth limit and every entry is a
@@ -4881,7 +4886,8 @@ struct ph7_vm
 	                           * invoked is a rebind's clone with no `$this`, so the receiver its
 	                           * function captured where it was CREATED is not installed. php drops it
 	                           * with the unbind (`bindTo(null)`); the capture lives on the shared
-	                           * per-instantiation function, which the original closure still runs on. */
+	                           * per-instantiation function, which the original closure still runs on.
+	                           * PH7_CLOSURE_UNSCOPED says the rebind dropped its class scope as well. */
 	ph7_class *pClosureMethodCls; /* Consume-once: the class a METHOD closure's callee is looked up in
 	                               * when that is not its receiver's own -- `parent::m(...)`,
 	                               * `A::m(...)`, ReflectionMethod::getClosure(). php keeps the resolved
