@@ -1845,7 +1845,7 @@ static int VmTraitLiteralSame(ph7_vm *pVm,sxu32 nLeft,sxu32 nRight)
 	}
 	return 1;
 }
-static int VmTraitDefaultsMatch(ph7_vm *pVm,SySet *pLeft,SySet *pRight)
+static int VmTraitByteCodeSame(ph7_vm *pVm,SySet *pLeft,SySet *pRight)
 {
 	VmInstr *aLeft,*aRight;
 	sxu32 n,nUsed;
@@ -1873,6 +1873,34 @@ static int VmTraitDefaultsMatch(ph7_vm *pVm,SySet *pLeft,SySet *pRight)
 		}
 	}
 	return 1;
+}
+/*
+ * Two defaults that are spelled differently can still be the same VALUE, and the value
+ * is what php compares: it holds each default as its compiler FOLDED it and asks `===`.
+ * `= 1+1` against `= 2` composes, and so does a trait's `float $t = 1` against the
+ * class's `float $t = 1.0` -- the int was converted to the declared float when the
+ * default was checked, so both hold float(1). Where the program text matches, nothing
+ * needs running; where it does not, fold both and compare what they fold to. A default
+ * php keeps unfolded (a constant NAME) stays on the text comparison.
+ */
+static int VmTraitDefaultsMatch(ph7_vm *pVm,SySet *pLeft,SySet *pRight)
+{
+	ph7_value sLeft,sRight;
+	int bSame = 0;
+	if( VmTraitByteCodeSame(pVm,pLeft,pRight) ){
+		return 1;
+	}
+	if( SySetUsed(pLeft) < 1 || SySetUsed(pRight) < 1 ){
+		return 0;
+	}
+	PH7_MemObjInit(pVm,&sLeft);
+	PH7_MemObjInit(pVm,&sRight);
+	if( PH7_ClassFoldDefault(pVm,pLeft,&sLeft) && PH7_ClassFoldDefault(pVm,pRight,&sRight) ){
+		bSame = PH7_MemObjCmp(&sLeft,&sRight,TRUE,0) == 0;
+	}
+	PH7_MemObjRelease(&sLeft);
+	PH7_MemObjRelease(&sRight);
+	return bSame;
 }
 /*
  * Two constant declarations php considers the SAME declaration. Composing a trait over a
