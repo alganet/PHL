@@ -2100,7 +2100,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallStreamFilter(ph7_vm *pVm)
 	};
 	static const PH7_NativePropDef aFilterProp[] = {
 		{ "filtername", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" },
-		{ "params", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "params", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "mixed" },
 		{ "stream", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativePropDef aBucketProp[] = {

@@ -976,6 +976,13 @@ static void OvAddName(ph7_vm *pVm,ph7_class *pScope,OvType *pT,const SyString *p
 	 * undecidable rather than wrong. */
 	pE = SyHashGet(&pVm->hClass,(const void *)z,n);
 	if( pE == 0 ){
+		/* ...except the class being declared, which is not filed yet while its
+		 * own inheritance runs. */
+		if( pScope != 0 && SyStringLength(&pScope->sName) == n
+		 && SyStrnicmp(SyStringData(&pScope->sName),z,n) == 0 ){
+			OvAddAtom(pT,OVB_CLS,pScope,nGroup);
+			return;
+		}
 		pT->bUnknown = 1;
 		return;
 	}
@@ -1483,6 +1490,89 @@ static void OoInheritPropertyHooks(ph7_class *pBase,ph7_class_attr *pParent,ph7_
 		pChild->iFlags |= aKind[i];
 	}
 }
+/*
+ * php's do_inherit_property screen for a property the subclass REDECLARES over a
+ * non-private one of its base, in php's order: static-ness, readonly-ness, the
+ * access level, then the declared type. Every one is reported on the subclass's
+ * line and names the class that DECLARED the parent property.
+ *
+ * The type is INVARIANT -- `int` over `?int` is refused as surely as `string`
+ * over `int` -- except under a virtual hooked parent with one hook: a get-only
+ * one may only be narrowed (covariant), a set-only one only widened. Both
+ * directions go through the override lattice, so `string|int` over `int|string`
+ * is the same type and a shape it cannot model is accepted. An untyped side is
+ * an ABSENCE, never `mixed`: an untyped child under a typed parent is refused
+ * (`mixed` included), and a typed one under an untyped parent has its own
+ * sentence.
+ */
+static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase,
+	ph7_class_attr *pParent,ph7_class_attr *pChild)
+{
+	static const char *azProt[] = { "", "public", "protected", "private" };
+	ph7_class *pOwner = PH7_VmMemberOwnerClass(pParent->pDeclClass,pBase);
+	const SyString *pName = &pParent->sName;
+	sxi32 iPS = pParent->iFlags & PH7_CLASS_ATTR_STATIC;
+	sxi32 iCS = pChild->iFlags & PH7_CLASS_ATTR_STATIC;
+	if( iPS != iCS ){
+		return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+			"Cannot redeclare %s%z::$%z as %s%z::$%z",
+			iPS ? "static " : "non static ",&pOwner->sDisp,pName,
+			iCS ? "static " : "non static ",&pSub->sDisp,pName);
+	}
+	if( (pParent->iFlags & PH7_CLASS_ATTR_READONLY) != (pChild->iFlags & PH7_CLASS_ATTR_READONLY)
+	 && (pParent->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
+		return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+			"Cannot redeclare %s property %z::$%z as %s %z::$%z",
+			(pParent->iFlags & PH7_CLASS_ATTR_READONLY) ? "readonly" : "non-readonly",&pOwner->sDisp,pName,
+			(pChild->iFlags & PH7_CLASS_ATTR_READONLY) ? "readonly" : "non-readonly",&pSub->sDisp,pName);
+	}
+	if( pChild->iProtection > pParent->iProtection && pParent->iProtection >= PH7_CLASS_PROT_PUBLIC
+	 && pParent->iProtection <= PH7_CLASS_PROT_PRIVATE ){
+		return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+			"Access level to %z::$%z must be %s (as in class %z)%s",
+			&pSub->sDisp,pName,azProt[pParent->iProtection],&pOwner->sDisp,
+			pParent->iProtection == PH7_CLASS_PROT_PUBLIC ? "" : " or weaker");
+	}
+	if( pParent->iFlags & PH7_CLASS_ATTR_TYPED ){
+		ph7_vm *pVm = pGen->pVm;
+		ph7_class *pPScope = VmHintScopeDeclared(pParent->pDeclClass);
+		/* 1: get-only virtual parent (covariant), 2: set-only (contravariant) */
+		int iVariance = 0;
+		OvType sP, sC;
+		if( (pParent->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL)
+		 && (pParent->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) ){
+			if( (pParent->iFlags & PH7_CLASS_ATTR_HOOK_SET) == 0 ){
+				iVariance = 1;
+			}else if( (pParent->iFlags & PH7_CLASS_ATTR_HOOK_GET) == 0 ){
+				iVariance = 2;
+			}
+		}
+		OvFromDecl(pVm,pPScope,&sP,pParent->nType,&pParent->sClass,&pParent->aUnionAlts,
+			(pParent->iFlags & PH7_CLASS_ATTR_NULLABLE) != 0);
+		if( pChild->iFlags & PH7_CLASS_ATTR_TYPED ){
+			OvFromDecl(pVm,pSub,&sC,pChild->nType,&pChild->sClass,&pChild->aUnionAlts,
+				(pChild->iFlags & PH7_CLASS_ATTR_NULLABLE) != 0);
+		}else{
+			OvInit(&sC);
+			sC.bAbsent = 1;
+		}
+		if( (iVariance != 2 && OvCheck(&sP,&sC,1,pPScope,pSub) == OV_BAD)
+		 || (iVariance != 1 && (sC.bAbsent || OvCheck(&sP,&sC,0,pPScope,pSub) == OV_BAD)) ){
+			char zType[192];
+			const char *zTypeText = VmHintTextResolved(pVm,&pParent->sTypeName,pPScope,
+				zType,sizeof(zType));
+			return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+				"Type of %z::$%z must be %s%s (as in class %z)",&pSub->sDisp,pName,
+				iVariance == 1 ? "subtype of " : iVariance == 2 ? "supertype of " : "",
+				zTypeText,&pOwner->sDisp);
+		}
+	}else if( pChild->iFlags & PH7_CLASS_ATTR_TYPED ){
+		return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+			"Type of %z::$%z must be omitted to match the parent definition in class %z",
+			&pSub->sDisp,pName,&pOwner->sDisp);
+	}
+	return SXRET_OK;
+}
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase)
 {
 	ph7_class_method *pMeth;
@@ -1584,6 +1674,16 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				ph7_class *pOwner = PH7_VmMemberOwnerClass(pAttr->pDeclClass,pBase);
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 					"Cannot override final property %z::$%z",&pOwner->sDisp,pName);
+				if( rc == SXERR_ABORT ){
+					SySetRelease(&aInherited);
+					return SXERR_ABORT;
+				}
+			}else if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN)) == 0
+			 && pAttr->iProtection != PH7_CLASS_PROT_PRIVATE
+			 && (((ph7_class_attr *)pEntry->pUserData)->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+				/* A redeclaration of a base property php can see. A native class's
+				 * HIDDEN engine slot is not one: php declares no such property. */
+				rc = OoCheckPropRedeclare(&(*pGen),pSub,pBase,pAttr,(ph7_class_attr *)pEntry->pUserData);
 				if( rc == SXERR_ABORT ){
 					SySetRelease(&aInherited);
 					return SXERR_ABORT;
