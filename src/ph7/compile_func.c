@@ -434,6 +434,43 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 				if( rc != SXRET_OK ){
 					return rc;
 				}
+				/* php folds a typed parameter's default at compile time and refuses
+				 * one its type does not hold (zend_compile_params). A plain
+				 * parameter's null is the implicit-nullable form below; a PROMOTED
+				 * one's is refused here like any other value. */
+				if( (sArg.nType > 0 || (sArg.iFlags & VM_FUNC_ARG_UNION)) ){
+					ph7_value sVal;
+					PH7_MemObjInit(pGen->pVm,&sVal);
+					if( PH7_ClassFoldDefault(pGen->pVm,&sArg.aByteCode,&sVal)
+						&& ((sVal.iFlags & MEMOBJ_NULL) == 0 || (sArg.iFlags & VM_FUNC_ARG_PROMOTED)) ){
+						SyBlob sMsg;
+						if( (sVal.iFlags & MEMOBJ_REAL) && PH7_GenStateIsRealLiteral(pIn,pDefend) ){
+							sVal.iFlags &= ~MEMOBJ_INT; /* `= 1.0` is a float to php */
+						}
+						/* php names a METHOD's self/parent by class; a closure's scope can
+						 * be rebound, so it keeps the keyword. The base is linked only
+						 * after the body compiles: lend it for the sentence. */
+						ph7_class *pScope = pGen->iSigScope == PH7_SIGSCOPE_MEMBER ? pGen->pCurClass : 0;
+						int bRefused;
+						SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
+						if( pScope && pScope->pBase == 0 && pGen->pCurBase ){
+							pScope->pBase = pGen->pCurBase;
+							bRefused = VmArgDefaultRefusal(pGen->pVm,pScope,&sArg,&sVal,&sMsg);
+							pScope->pBase = 0;
+						}else{
+							bRefused = VmArgDefaultRefusal(pGen->pVm,pScope,&sArg,&sVal,&sMsg);
+						}
+						if( bRefused ){
+							SyBlobNullAppend(&sMsg);
+							PH7_MemObjRelease(&sVal);
+							PH7_GenCompileError(&(*pGen),E_ERROR,sArg.nLine,"%s",(const char *)SyBlobData(&sMsg));
+							SyBlobRelease(&sMsg);
+							return SXERR_ABORT;
+						}
+						SyBlobRelease(&sMsg);
+					}
+					PH7_MemObjRelease(&sVal);
+				}
 				/* PHP rule: a typed parameter whose default is the literal `null`
 				 * (`C $c = null`, `int $x = null`, `A|B $x = null`) is implicitly
 				 * nullable — an explicit null is accepted even though the type isn't

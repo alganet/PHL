@@ -3526,6 +3526,72 @@ PH7_PRIVATE int VmTypedDefaultRefusal(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 	}
 	return 1;
 }
+/*
+ * One declared type atom against a FOLDED default, php's ZEND_TYPE_CONTAINS_CODE:
+ * the value's own type is in the atom, and nothing coerces. No predicate runs --
+ * `callable` holds no folded value (php: `callable $f = "strlen"` is refused), and a
+ * class holds only an object, which a folded default never is.
+ */
+static int VmArgDefaultAtomHolds(sxu32 nType,const SyString *pClass,ph7_value *pValue)
+{
+	if( nType == SXU32_HIGH ){
+		const char *z = pClass->zString;
+		sxu32 n = pClass->nByte;
+		if( n == 5 && SyStrnicmp(z,"mixed",5) == 0 ){
+			return 1;
+		}
+		if( (n == 4 && SyStrnicmp(z,"true",4) == 0) || (n == 5 && SyStrnicmp(z,"false",5) == 0) ){
+			return (pValue->iFlags & MEMOBJ_BOOL) && (pValue->x.iVal != 0) == (n == 4);
+		}
+		if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
+			return (pValue->iFlags & MEMOBJ_HASHMAP) != 0;
+		}
+		return 0;
+	}
+	if( nType == MEMOBJ_OBJ || nType == MEMOBJ_NULL ){
+		return (pValue->iFlags & nType) != 0;
+	}
+	if( (pValue->iFlags & MEMOBJ_BOOL) && (nType & MEMOBJ_BOOL) == 0 ){
+		return 0;
+	}
+	return (pValue->iFlags & nType) != 0
+		|| ((nType & MEMOBJ_REAL) && (pValue->iFlags & MEMOBJ_INT));
+}
+/*
+ * php's COMPILE-time refusal of a parameter default (zend_compile_params): a
+ * default its compiler FOLDED is held to the declared type there and then, so
+ * `function f(int $x = "a")` stops the file before a line of it runs, whether or
+ * not f is ever called. The rule is the property's, the type's own codes plus int
+ * for a float; the sentence names a bool `bool`, and a self/parent by the class it
+ * resolves to (a trait's keeps the keyword). A null default reaches here only from a
+ * PROMOTED parameter: a plain one php makes implicitly nullable instead.
+ * Returns TRUE with the sentence appended to pMsg, or FALSE when the value fits.
+ */
+PH7_PRIVATE int VmArgDefaultRefusal(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func_arg *pArg,ph7_value *pValue,SyBlob *pMsg)
+{
+	char zType[192];
+	const char *zTypeText;
+	int bFits = 0;
+	if( (pValue->iFlags & MEMOBJ_NULL) && (pArg->iFlags & VM_FUNC_ARG_NULLABLE) ){
+		bFits = 1;
+	}else if( pArg->iFlags & VM_FUNC_ARG_UNION ){
+		ph7_type_alt *aAlt = (ph7_type_alt *)SySetBasePtr(&pArg->aUnionAlts);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pArg->aUnionAlts) && !bFits ; ++n ){
+			bFits = VmArgDefaultAtomHolds(aAlt[n].nType,&aAlt[n].sClass,pValue);
+		}
+	}else{
+		bFits = VmArgDefaultAtomHolds(pArg->nType,&pArg->sClass,pValue);
+	}
+	if( bFits ){
+		return 0;
+	}
+	zTypeText = VmHintTextResolved(pVm,&pArg->sTypeName,VmHintScopeDeclared(pScope),
+		zType,sizeof(zType));
+	SyBlobFormat(pMsg,"Cannot use %s as default value for parameter $%z of type %s",
+		ph7_type_name(pValue),&pArg->sName,zTypeText);
+	return 1;
+}
 PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
 {
 	if( VmCheckTypedDefault(&(*pVm),pClass,pAttr,pValue) == SXRET_OK ){

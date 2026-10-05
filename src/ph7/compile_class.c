@@ -255,21 +255,24 @@ static int GenStateClassConstHasType(ph7_gen_state *pGen)
  * whole-valued real MEMOBJ_REAL|MEMOBJ_INT, so the runtime flag test would wrongly
  * accept it as an int. The literal shape is the only reliable signal that separates
  * the invalid `1.0` from the valid `4/2` (a computed whole-real PHP accepts as int).
- * Peek only; never consumes tokens.
+ * Peek only; never consumes tokens. A parameter default asks it of its own span.
  */
-static int GenStateConstInitIsRealLiteral(ph7_gen_state *pGen)
+PH7_PRIVATE int PH7_GenStateIsRealLiteral(const SyToken *p,const SyToken *pEnd)
 {
-	SyToken *p = pGen->pIn;
-	while( p < pGen->pEnd && (p->nType & PH7_TK_OP) && p->sData.nByte == 1
+	while( p < pEnd && (p->nType & PH7_TK_OP) && p->sData.nByte == 1
 		&& (p->sData.zString[0] == '-' || p->sData.zString[0] == '+') ){
 		p++; /* skip leading unary sign(s) */
 	}
-	if( p >= pGen->pEnd || (p->nType & PH7_TK_REAL) == 0 ){
+	if( p >= pEnd || (p->nType & PH7_TK_REAL) == 0 ){
 		return 0; /* not a real literal (int literal, cast, call, ...) */
 	}
 	p++;
 	/* Must be the WHOLE initializer: the next token ends this constant. */
-	return ( p >= pGen->pEnd || (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ) ? 1 : 0;
+	return ( p >= pEnd || (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ) ? 1 : 0;
+}
+static int GenStateConstInitIsRealLiteral(ph7_gen_state *pGen)
+{
+	return PH7_GenStateIsRealLiteral(pGen->pIn,pGen->pEnd);
 }
 /*
  * TRUE if the operator token *p is one of `::` / `->` / `?->` (member access).
