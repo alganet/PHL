@@ -3080,6 +3080,40 @@ PH7_PRIVATE int PH7_VmSigParamName(const char *zSig,int nPos,SyString *pOut)
 	return 1;
 }
 /*
+ * Where a NAME binds in a host function's signature, for the screen that refuses it at
+ * its send (PH7_OP_NAMED_SEND): the 0-based position of the declared, non-variadic
+ * parameter it names, or -1 when it names none. *pbVariadic says whether a `...` tail
+ * would collect an unknown one instead. -2 when the signature cannot be read the way
+ * PH7_VmBindNamedArgsToSig reads it, which leaves the name to the call.
+ */
+PH7_PRIVATE int PH7_VmSigNamedParam(const char *zSig,const SyString *pName,int *pbVariadic)
+{
+	VmSigParam aParam[VM_SIG_MAX_PARAM];
+	int nParam,nDecl,p;
+	*pbVariadic = 0;
+	if( zSig == 0 ){
+		return -2;
+	}
+	if( zSig[0] == 0 ){
+		/* `time()`: a function declaring no parameter refuses every name at its send,
+		 * where the binder stands down and leaves the call its arity screen. */
+		return -1;
+	}
+	nParam = VmSigParams(zSig,aParam,VM_SIG_MAX_PARAM);
+	if( nParam < 1 || nParam > VM_SIG_MAX_PARAM ){
+		return -2;
+	}
+	nDecl = aParam[nParam-1].bVariadic ? nParam - 1 : nParam;
+	*pbVariadic = nDecl < nParam;
+	for( p = 0 ; p < nDecl ; ++p ){
+		if( (int)pName->nByte == aParam[p].nName
+		 && SyMemcmp(pName->zString,aParam[p].zName,pName->nByte) == 0 ){
+			return p;
+		}
+	}
+	return -1;
+}
+/*
  * A `&` in a builtin's signature is not always php's ZEND_SEND_ARG_BY_REF.
  *
  * php has a second mode, ZEND_SEND_PREFER_REF: bind by reference when the argument IS a
