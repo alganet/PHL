@@ -1875,15 +1875,6 @@ static int VmTraitByteCodeSame(ph7_vm *pVm,SySet *pLeft,SySet *pRight)
 	return 1;
 }
 /*
- * Two defaults that are spelled differently can still be the same VALUE, and the value
- * is what php compares: it holds each default as its compiler FOLDED it and asks `===`.
- * `= 1+1` against `= 2` composes, and so does a trait's `float $t = 1` against the
- * class's `float $t = 1.0` -- the int was converted to the declared float when the
- * default was checked, so both hold float(1). Where the program text matches, nothing
- * needs running; where it does not, fold both and compare what they fold to. A default
- * php keeps unfolded (a constant NAME) stays on the text comparison.
- */
-/*
  * php converts a typed CONSTANT's int to float when the declaration is checked, as it
  * does a property's, so `const float K = 1` holds float(1) from the start. Here that
  * conversion waits for the first read, and the folded default is still the int: widen
@@ -1912,21 +1903,42 @@ static void VmTraitConstWiden(const ph7_class_attr *pTyped,ph7_value *pVal)
 		PH7_MemObjToReal(pVal);
 	}
 }
-static int VmTraitDefaultsMatch(ph7_vm *pVm,SySet *pLeft,SySet *pRight,const ph7_class_attr *pTyped)
+/*
+ * The value one declaration's default folds to. A declaration with NO default holds null
+ * when it is an untyped property -- php stores null in its slot, the same null `= null`
+ * stores, so `public $p;` against `public $p = null;` composes -- and holds nothing at all
+ * when it is typed: `?int $p;` is uninitialized, which no default equals.
+ */
+static int VmTraitFoldDefault(ph7_vm *pVm,const ph7_class_attr *pAttr,ph7_value *pOut)
+{
+	if( SySetUsed(&pAttr->aByteCode) < 1 ){
+		return (pAttr->iFlags & (PH7_CLASS_ATTR_TYPED|PH7_CLASS_ATTR_CONSTANT)) == 0;
+	}
+	return PH7_ClassFoldDefault(pVm,(SySet *)&pAttr->aByteCode,pOut);
+}
+/*
+ * Two defaults that are spelled differently can still be the same VALUE, and the value
+ * is what php compares: it holds each default as its compiler FOLDED it and asks `===`.
+ * `= 1+1` against `= 2` composes, and so does a trait's `float $t = 1` against the
+ * class's `float $t = 1.0` -- the int was converted to the declared float when the
+ * default was checked, so both hold float(1). Where the program text matches, nothing
+ * needs running; where it does not, fold both and compare what they fold to. A default
+ * php keeps unfolded (a constant NAME) stays on the text comparison.
+ */
+static int VmTraitDefaultsMatch(ph7_vm *pVm,ph7_class_attr *pLeft,ph7_class_attr *pRight,int bConst)
 {
 	ph7_value sLeft,sRight;
 	int bSame = 0;
-	if( VmTraitByteCodeSame(pVm,pLeft,pRight) ){
+	if( VmTraitByteCodeSame(pVm,&pLeft->aByteCode,&pRight->aByteCode) ){
 		return 1;
-	}
-	if( SySetUsed(pLeft) < 1 || SySetUsed(pRight) < 1 ){
-		return 0;
 	}
 	PH7_MemObjInit(pVm,&sLeft);
 	PH7_MemObjInit(pVm,&sRight);
-	if( PH7_ClassFoldDefault(pVm,pLeft,&sLeft) && PH7_ClassFoldDefault(pVm,pRight,&sRight) ){
-		VmTraitConstWiden(pTyped,&sLeft);
-		VmTraitConstWiden(pTyped,&sRight);
+	if( VmTraitFoldDefault(pVm,pLeft,&sLeft) && VmTraitFoldDefault(pVm,pRight,&sRight) ){
+		if( bConst ){
+			VmTraitConstWiden(pLeft,&sLeft);
+			VmTraitConstWiden(pLeft,&sRight);
+		}
 		bSame = PH7_MemObjCmp(&sLeft,&sRight,TRUE,0) == 0;
 	}
 	PH7_MemObjRelease(&sLeft);
@@ -1952,7 +1964,28 @@ static int VmTraitConstDefsMatch(ph7_vm *pVm,ph7_class_attr *pLeft,ph7_class_att
 	if( SyStringCmp(&pLeft->sTypeName,&pRight->sTypeName,SyMemcmp) != 0 ){
 		return 0;
 	}
-	return VmTraitDefaultsMatch(pVm,&pLeft->aByteCode,&pRight->aByteCode,pLeft);
+	return VmTraitDefaultsMatch(pVm,pLeft,pRight,1);
+}
+/*
+ * The same test for a PROPERTY. php compares the default only once the declaration
+ * agrees -- visibility, `static`, `readonly` and an invariant type -- so `public $p;`
+ * against `protected $p = null;`, `public static $p = null;` or `public ?int $p = null;`
+ * conflicts although both hold null. The declared type is held in its canonical text,
+ * which folds `int|null` and `?int` to one spelling; a class name compares without case.
+ */
+static int VmTraitPropDefsMatch(ph7_vm *pVm,ph7_class_attr *pLeft,ph7_class_attr *pRight)
+{
+	sxi32 iMask = PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_READONLY|PH7_CLASS_ATTR_TYPED;
+	if( pLeft->iProtection != pRight->iProtection ){
+		return 0;
+	}
+	if( (pLeft->iFlags & iMask) != (pRight->iFlags & iMask) ){
+		return 0;
+	}
+	if( SyStringCmp(&pLeft->sTypeName,&pRight->sTypeName,SyStrnicmp) != 0 ){
+		return 0;
+	}
+	return VmTraitDefaultsMatch(pVm,pLeft,pRight,0);
 }
 /*
  * A private copy of a trait member's record for one composing class. php composes a trait
@@ -2019,7 +2052,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 			 * `class M { use TA, TB; public $p = 3; }` said nothing when TA arrived
 			 * (no trait held the name yet) and then blamed the wrong pair when TB did. */
 			ph7_class_attr *pClassAttr = (ph7_class_attr *)pExisting->pUserData;
-			if( !VmTraitDefaultsMatch(pGen->pVm,&pAttr->aByteCode,&pClassAttr->aByteCode,0) ){
+			if( !VmTraitPropDefsMatch(pGen->pVm,pAttr,pClassAttr) ){
 				/* php names the FIRST definition rather than the standing one: when the
 				 * holder is the composing class itself, it walks the traits applied so
 				 * far and names the first that declares the property, so the same class
