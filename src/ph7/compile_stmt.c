@@ -1619,10 +1619,8 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 			}
 		}
 	}
-	/* compile the post-expressions if available */
-	while( pPostStart < pEnd && (pPostStart->nType & PH7_TK_SEMI) ){
-		pPostStart++;
-	}
+	/* compile the post-expressions if available. A `;` here is not skipped: the
+	 * post clause closes on ')', so `for (;;;)` is php's parse error. */
 	if( pPostStart < pEnd ){
 		SyToken *pTmpIn,*pTmpEnd;
 		SWAP_DELIMITER(pGen,pPostStart,pEnd);
