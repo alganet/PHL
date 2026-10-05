@@ -60,6 +60,18 @@ static int GenStateConstNameKeywordOk(SyString *pName)
 	}
 	return 0;
 }
+/*
+ * php's grammar takes `const`, `use` and `namespace` as TOP statements only: at
+ * file scope or directly inside a namespace's braces. In a function, a class
+ * method, a closure or any block -- a plain `{}` included -- each is a parse
+ * error on the keyword itself, with whatever tail the enclosing block names.
+ * Answers TRUE when the statement at the cursor stands where php takes one.
+ */
+static int GenStateAtTopStatement(ph7_gen_state *pGen)
+{
+	return pGen->pCurrent == &pGen->sGlobal
+		|| (pGen->bInNsBlock && pGen->pCurrent->pParent == &pGen->sGlobal);
+}
 PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 {
 	sxu32 nLineLocal;
@@ -72,13 +84,9 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	 * line, not the offending list element's own line (`const A=1,\nB=strlen()` blames
 	 * line 1). Capture it once here, before jumping the keyword. */
 	nLineLocal = pGen->pIn->nLine;
-	/* php's grammar takes `const` as a TOP statement only: at file scope or
-	 * directly inside a namespace's braces. In a function, a class method, a
-	 * closure or any block -- a plain `{}` included -- it is a parse error on the
-	 * keyword itself, where this compiled it and declared the constant when the
-	 * statement ran. */
-	if( pGen->pCurrent != &pGen->sGlobal
-	 && !(pGen->bInNsBlock && pGen->pCurrent->pParent == &pGen->sGlobal) ){
+	/* A top statement only: elsewhere this compiled it and declared the
+	 * constant when the statement ran. */
+	if( !GenStateAtTopStatement(&(*pGen)) ){
 		rc = PH7_GenSyntaxError(pGen,pGen->pIn,pGen->pCurrent->zInnerTail);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
@@ -2935,6 +2943,33 @@ PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 	int bBracket;
 	int bFirst;
 	nLine = pGen->pIn->nLine;
+	/* A top statement only: elsewhere this reached the first-statement rule
+	 * and compile-fataled where php fails to parse. */
+	if( !GenStateAtTopStatement(&(*pGen)) ){
+		int iBrace = 0;
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,pGen->pCurrent->zInnerTail);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		/* Recover past the whole declaration, a braced body included, and never
+		 * past the brace that closes the enclosing block. */
+		for( pGen->pIn++ ; pGen->pIn < pGen->pEnd ; pGen->pIn++ ){
+			if( pGen->pIn->nType & PH7_TK_OCB ){
+				iBrace++;
+			}else if( pGen->pIn->nType & PH7_TK_CCB ){
+				if( iBrace == 0 ){
+					break;
+				}
+				if( --iBrace == 0 ){
+					pGen->pIn++;
+					break;
+				}
+			}else if( iBrace == 0 && (pGen->pIn->nType & PH7_TK_SEMI) ){
+				break;
+			}
+		}
+		return SXRET_OK;
+	}
 	pGen->pIn++; /* Jump the 'namespace' keyword */
 	/* php's grammar has three shapes -- `namespace NAME;`, `namespace NAME { }`
 	 * and `namespace { }` -- and a bare `namespace;` is none of them. */
@@ -3554,6 +3589,17 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 	int iUseType; /* 0=class, 1=function, 2=const */
 	int bGroup;
 	nLine = pGen->pIn->nLine;
+	/* A top statement only: elsewhere this imported the name for the rest of
+	 * the file where php fails to parse. */
+	if( !GenStateAtTopStatement(&(*pGen)) ){
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,pGen->pCurrent->zInnerTail);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		pGen->pIn++;
+		GenStateSkipToStatementEnd(&(*pGen));
+		return SXRET_OK;
+	}
 	pGen->pIn++; /* Jump the 'use' keyword */
 	/* Detect 'function' or 'const' keyword after 'use' (PHP 5.6+) */
 	iUseType = 0;
