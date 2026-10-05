@@ -152,8 +152,35 @@ PH7_PRIVATE int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **
 					"trigger_error(): Passing E_USER_ERROR is no longer supported, throw an exception or call exit() with a string message instead");
 			}
 		}
-		/* Report error (consults an installed error handler, then displays) */
-		PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);
+		if( PH7_VmPreludeBuiltinFrame(pCtx->pVm,0,0) ){
+			/* Raised by the body of a builtin written as embedded PHP (hex2bin,
+			 * glob, array_count_values, tempnam). php's is a C function raising
+			 * its own diagnostic: the ENGINE level, not the user one a handler
+			 * and error_reporting() see -- E_WARNING where this said
+			 * E_USER_WARNING -- and no trigger_error frame in the trace. The
+			 * frame test answers only when the innermost activation is such a
+			 * body, so a user callback reached from one keeps the user level. */
+			ph7_vm *pVm = pCtx->pVm;
+			VmNativeCall *pNat = pVm->pNativeCall;
+			SyString *pSavedCallee = pVm->pCalleeName;
+			switch( nErr ){
+			case 512:   nErr = 2;    break; /* E_WARNING */
+			case 1024:  nErr = 8;    break; /* E_NOTICE */
+			case 16384: nErr = 8192; break; /* E_DEPRECATED */
+			}
+			if( pNat && pNat->pName == &pCtx->pFunc->sName ){
+				pNat->bElided = 1;
+			}
+			/* A user error handler is still entered by an internal function, so its
+			 * frame carries no call site -- but the internal frame above it is the
+			 * builtin's own activation, which the walk lists anyway. */
+			pVm->pCalleeName = 0;
+			PH7_VmThrowError(pVm, NULL, nErr, zErr);
+			pVm->pCalleeName = pSavedCallee;
+		}else{
+			/* Report error (consults an installed error handler, then displays) */
+			PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);
+		}
 		if( nErr == 256 /* E_USER_ERROR */
 		 && ph7_value_is_null(&pCtx->pVm->sErrCB) ){
 			/* php: an unhandled user fatal halts with exit 255 (pre-fix the
