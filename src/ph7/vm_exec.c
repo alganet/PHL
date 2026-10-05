@@ -2057,6 +2057,39 @@ PH7_PRIVATE int PH7_VmCallableStringParts(const char *zName,sxu32 nName,
 	return FALSE;
 }
 /*
+ * php 8.4's compiler rewrites `sprintf()` into string concatenation when it can read the
+ * format: a string LITERAL under 256 bytes whose every `%` is `%s`, `%d` or `%%`, with
+ * exactly one argument per placeholder. That call is no call at all -- a __toString it
+ * reaches, or a conversion warning it raises, has the caller's frame under it and no
+ * `sprintf` one. The format's literal-ness is the compiler's to say (nConstStrMask).
+ */
+static int VmSprintfFolds(const VmInstr *pInstr,const ph7_value *pArg,int nCallArgs)
+{
+	const VmCallArgMap *pMap = (const VmCallArgMap *)pInstr->p3;
+	const char *zIn,*zEnd;
+	int nHole = 0;
+	if( pMap == 0 || !pMap->bArgShapes || (pMap->nConstStrMask & 1) == 0
+	 || (pArg[0].iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pArg[0].sBlob) >= 256 ){
+		return 0;
+	}
+	zIn = (const char *)SyBlobData(&pArg[0].sBlob);
+	zEnd = &zIn[SyBlobLength(&pArg[0].sBlob)];
+	for( ; zIn < zEnd ; zIn++ ){
+		if( zIn[0] != '%' ){
+			continue;
+		}
+		if( ++zIn >= zEnd ){
+			return 0;
+		}
+		if( zIn[0] == 's' || zIn[0] == 'd' ){
+			nHole++;
+		}else if( zIn[0] != '%' ){
+			return 0;
+		}
+	}
+	return nHole == nCallArgs - 1;
+}
+/*
  * A parameter DEFAULT is a mini-program run in the callee's frame before the body
  * starts, and `self::K` inside one means the class that DECLARED the method -- for
  * a method composed from a trait, the class that composed it. That answer is not
@@ -9225,6 +9258,10 @@ SkipFuncBody:
 					bFoldedCallee = 1;
 					break;
 				}
+			}
+			if( !bFoldedCallee && nCallArgs >= 1 && pFunc->sName.nByte == sizeof("sprintf")-1
+			 && SyStrnicmp(pFunc->sName.zString,"sprintf",sizeof("sprintf")-1) == 0 ){
+				bFoldedCallee = VmSprintfFolds(pInstr,pArg,nCallArgs);
 			}
 		}
 NativeCall:

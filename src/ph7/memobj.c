@@ -458,7 +458,12 @@ static sxi32 MemObjCallClassCastMethod(
 	 * that threw must not be reported as a successful call, or the caller
 	 * expands its fallback and the abandoned coercion produces a value (echo
 	 * printed "Object" after a caught __toString() throw). */
-	return PH7_VmCallClassMethod(&(*pVm),&(*pThis),pMethod,&(*pResult),0,0);
+	{
+		SyString *pSavedNative = PH7_VmImplicitCallerArm(&(*pVm));
+		sxi32 rc = PH7_VmCallClassMethod(&(*pVm),&(*pThis),pMethod,&(*pResult),0,0);
+		pVm->pNativeFrameName = pSavedNative;
+		return rc;
+	}
 }
 /*
  * The number an object's own STRING is -- php's cast_object with IS_LONG /

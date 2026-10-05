@@ -1896,11 +1896,41 @@ PH7_PRIVATE sxi32 PH7_VmCallMagicMethodLsb(
 	ph7_value **apArg
 	)
 {
+	SyString *pSavedNative = PH7_VmImplicitCallerArm(&(*pVm));
 	sxi32 rc;
 	pVm->bMagicDispatch = 1;
 	rc = VmCallClassMethodLsb(&(*pVm),pCalled,pThis,pMethod,pResult,nArg,apArg,0);
 	pVm->bMagicDispatch = 0; /* OP_CALL consumes it; clear if it never ran */
+	pVm->pNativeFrameName = pSavedNative;
 	return rc;
+}
+/*
+ * A method the ENGINE runs on its own -- a magic method, an object's string cast -- while
+ * an INTERNAL function called from the current frame is running was reached for by that
+ * function: `asort($a, SORT_STRING)` casting an element, serialize() asking for
+ * __serialize, array_column() for __get. php's trace gives such a method no file or line
+ * and the function a frame of its own at the call site, exactly as for a callback it was
+ * handed, so this arms the same latch the callback dispatch arms (pNativeFrameName, read
+ * by the frame the method's OP_CALL enters). Construct records (eval, include) are never
+ * linked, a folded call links none and a folded call_user_func's is elided, so none of
+ * those is found here; nor is the engine's
+ * own `$o->missing()` trampoline (PH7_VmMagicCallFunc), which php makes no call for, so
+ * the __call it runs keeps the caller's line. Answers the latch's
+ * previous value for the caller to put back once the call returns: it is consume-once,
+ * and a method that never reached its OP_CALL must not leave it armed.
+ */
+PH7_PRIVATE SyString * PH7_VmImplicitCallerArm(ph7_vm *pVm)
+{
+	SyString *pSaved = pVm->pNativeFrameName;
+	VmNativeCall *pNat = pVm->pNativeCall;
+	while( pNat && pNat->bElided ){
+		pNat = pNat->pPrev;
+	}
+	if( pNat && pNat->pFrame == (void *)pVm->pFrame
+	 && (pVm->pMagicCallFunc == 0 || pNat->pName != &pVm->pMagicCallFunc->sName) ){
+		pVm->pNativeFrameName = pNat->pName;
+	}
+	return pSaved;
 }
 /*
  * Call a method the way php's ENGINE calls one it looked up itself: visibility is

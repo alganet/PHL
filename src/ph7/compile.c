@@ -911,6 +911,27 @@ static int GenStateArgShape(ph7_expr_node *pNode)
 	}
 }
 /*
+ * Is this argument a string php's compiler can read -- a quoted literal with nothing
+ * interpolated? A double-quoted or heredoc body is one only when it names no `$` at
+ * all (an escaped `\$` is refused too, which errs towards "not a constant").
+ */
+static int GenStateArgIsConstString(ph7_expr_node *pNode)
+{
+	if( pNode == 0 || pNode->pOp != 0 || pNode->pStart == 0
+	 || (pNode->iFlags & EXPR_NODE_SPREAD) != 0 ){
+		return 0;
+	}
+	if( pNode->xCode == PH7_CompileSimpleString || pNode->xCode == PH7_CompileNowDoc ){
+		return 1;
+	}
+	if( pNode->xCode == PH7_CompileString || pNode->xCode == PH7_CompileHereDoc ){
+		const SyString *pData = &pNode->pStart->sData;
+		sxu32 nPos;
+		return SyByteFind(pData->zString,pData->nByte,'$',&nPos) != SXRET_OK;
+	}
+	return 0;
+}
+/*
  * Can evaluating this argument expression RUN anything?
  *
  * php materializes every by-value argument where it is written, so an argument already
@@ -3430,8 +3451,12 @@ static sxi32 GenStateEmitCallArgs(
 	if( !bAnySpread && nArgs > 0 && nArgs <= 31 && !bFcc ){
 		sxu32 nNonLval = 0;
 		sxu32 nTempCall = 0;
+		sxu32 nConstStr = 0;
 		for( n = 0 ; n < nArgs ; ++n ){
 			int iShape = GenStateArgShape(apNode[n]);
+			if( GenStateArgIsConstString(apNode[n]) ){
+				nConstStr |= (1u << n);
+			}
 			if( iShape == GEN_ARG_NONE ){
 				nNonLval |= (1u << n);
 			}else if( iShape == GEN_ARG_TEMPCALL ){
@@ -3450,6 +3475,7 @@ static sxi32 GenStateEmitCallArgs(
 			((VmCallArgMap *)p3)->bArgShapes = 1;
 			((VmCallArgMap *)p3)->nNonLvalMask = nNonLval;
 			((VmCallArgMap *)p3)->nTempCallMask = nTempCall;
+			((VmCallArgMap *)p3)->nConstStrMask = nConstStr;
 		}
 	}
 	pArgs->iP1 = iP1;

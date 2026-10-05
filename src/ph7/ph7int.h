@@ -3416,6 +3416,9 @@ struct VmCallArgMap
 	sxu32 nTempCallMask; /* bit N: argument N is the RESULT of a call or a `new` — php's
 						  * SEND_VAR_NO_REF: an E_NOTICE ("Only variables should be passed
 						  * by reference") and then it operates on the temporary. */
+	sxu32 nConstStrMask; /* bit N: argument N is a string LITERAL with nothing interpolated
+						  * -- php's ZEND_AST_ZVAL string, which its compiler can read. Its
+						  * sprintf() fold keys on the format being one (see bFoldedCallee). */
 	sxu32 nTotal;        /* Total number of compile-time arguments */
 	SyString *aNames;    /* Array of nTotal names. nByte==0 means positional. */
 	const sxu32 *aRun;   /* Effective (unpack) maps only, one per slot like aNames: which
@@ -8697,6 +8700,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMe
 PH7_PRIVATE int PH7_MagicMethodMustBePublic(const SyString *pName);
 PH7_PRIVATE sxi32 PH7_VmCallMagicMethod(ph7_vm *pVm,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
+PH7_PRIVATE SyString * PH7_VmImplicitCallerArm(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmCallMagicMethodLsb(ph7_vm *pVm,ph7_class *pCalled,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase);
