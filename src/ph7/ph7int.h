@@ -5836,8 +5836,14 @@ PH7_PRIVATE sxi32 PH7_MemObjReleaseSlow(ph7_value *pObj);
  * E_USER_WARNING => 'y']` built `[256 => 'x', 257 => 'y']` -- a wrong array, silently.
  * Cleared at the release every pop routes through, which is why they belong in the fast
  * path's mask: a marked slot must not take its "owns nothing" return.
+ *
+ * A deferred plain-variable argument's marker is the third: it BORROWS the name, and dies
+ * with the call it was loaded for. A call whose argument list threw after it -- `f($u, t())`,
+ * or a named argument refused at its send -- never reached the resolver that clears it, so
+ * the slot kept it, and the next array pushed there (`new ArrayObject([])`) was read back
+ * as a variable NAME: a garbage `Undefined variable` and a NULL hashmap.
  */
-#define MEMOBJ_AUX_STACKMARK (MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_SPREAD)
+#define MEMOBJ_AUX_STACKMARK (MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_DEFERRED)
 PHL_VC_DOOR sxi32 PH7_MemObjRelease(ph7_value *pObj)
 {
 	PHL_VC_NOTE(PHL_VC_RELEASE,
