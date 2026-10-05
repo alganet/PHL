@@ -7482,6 +7482,7 @@ PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved);
 PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...);
 PH7_PRIVATE sxi32 PH7_GenSyntaxError(ph7_gen_state *pGen,SyToken *pTok,const char *zExpecting);
 PH7_PRIVATE sxi32 PH7_GenUnmatchedCloser(ph7_gen_state *pGen,SyToken *pTok);
+PH7_PRIVATE const char *PH7_GenStrayStatementTail(ph7_gen_state *pGen);
 PH7_PRIVATE void PH7_GenCarryBraces(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 /* constant.c function prototypes */

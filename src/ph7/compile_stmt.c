@@ -2981,7 +2981,7 @@ PH7_PRIVATE sxi32 PH7_CompileVar(ph7_gen_state *pGen)
 	 * handler means `var` appeared outside a class — which php rejects as a
 	 * parse error. PHL used to compile it as an ordinary expression statement,
 	 * so top-level `var $x = 1;` silently ran (a Symisc extension). */
-	PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
+	PH7_GenSyntaxError(&(*pGen),pGen->pIn,PH7_GenStrayStatementTail(&(*pGen)));
 	return SXERR_ABORT;
 }
 /*

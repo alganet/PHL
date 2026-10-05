@@ -4178,6 +4178,21 @@ static int GenStateisLangConstruct(sxu32 nKeyword)
 	return rc;
 }
 /*
+ * TRUE when the statement head is a keyword that opens no statement and starts
+ * no expression -- `else`, `endwhile`, `case`, `public` -- which php's parser
+ * refuses before anything else is asked of the statement.
+ */
+static int GenStateIsStrayKeyword(ph7_gen_state *pGen)
+{
+	sxu32 nKeyword;
+	if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
+		return FALSE;
+	}
+	nKeyword = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
+	return GenStateGetStatementHandler(nKeyword,(&pGen->pIn[1] < pGen->pEnd) ? &pGen->pIn[1] : 0) == 0
+		&& GenStateisLangConstruct(nKeyword) == FALSE;
+}
+/*
  * Compile a PHP chunk.
  * If something goes wrong while compiling the PHP chunk,this function
  * takes care of generating the appropriate error message.
@@ -4955,10 +4970,12 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 			pGen->bStrictTypesLocked = 1;
 		}
 		if( pGen->pCurrent == &pGen->sGlobal && pGen->bNsBracketed && !pGen->bInNsBlock
-		 && !bStmtIsNamespace && !bStmtIsNop && !GenStateIsHaltCompiler(pGen->pIn,pGen->pEnd) ){
+		 && !bStmtIsNamespace && !bStmtIsNop && !GenStateIsHaltCompiler(pGen->pIn,pGen->pEnd)
+		 && !GenStateIsStrayKeyword(&(*pGen)) ){
 			/* php's zend_verify_namespace: once a file has used the bracketed form,
 			 * every statement outside a block but another `namespace` (or the halt)
-			 * is a compile fatal. */
+			 * is a compile fatal. A word that opens no statement is not one: php's
+			 * parser refuses it first. */
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 				"No code may exist outside of namespace {}");
 			if( rc == SXERR_ABORT ){
@@ -5005,9 +5022,9 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 				/* Try to extract a language construct handler */
 				xCons = GenStateGetStatementHandler(nKeyword,(&pGen->pIn[1] < pGen->pEnd) ? &pGen->pIn[1] : 0);
 				if( xCons == 0 && GenStateisLangConstruct(nKeyword) == FALSE ){
-					rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
-						"Syntax error: Unexpected keyword '%z'",
-						&pGen->pIn->sData);
+					/* A word that opens no statement (`else`, `endwhile`, `case`,
+					 * `public`...): php's parser names it as a token. */
+					rc = PH7_GenSyntaxError(pGen,pGen->pIn,PH7_GenStrayStatementTail(pGen));
 					if( rc == SXERR_ABORT ){
 						break;
 					}
@@ -5905,6 +5922,23 @@ PH7_PRIVATE sxi32 PH7_GenUnmatchedCloser(ph7_gen_state *pGen,SyToken *pTok)
 	/* The scanner had nothing to say: the compiler's own sentence. */
 	return PH7_GenCompileError(&(*pGen),E_PARSE,pTok->nLine,"Unmatched '%c'",
 		(pTok->nType & PH7_TK_RPAREN) ? ')' : ((pTok->nType & PH7_TK_CSB) ? ']' : '}'));
+}
+/*
+ * The ", expecting" tail php's parser prints for a token that cannot open a
+ * statement where one was wanted. A block whose grammar names what it still
+ * takes (an alternative-syntax if/elseif body, a switch's case list) says so;
+ * the file's own statement list -- outside every block, a braced namespace's
+ * included -- is waiting for its end; every other block names nothing.
+ */
+PH7_PRIVATE const char *PH7_GenStrayStatementTail(ph7_gen_state *pGen)
+{
+	if( pGen->pCurrent->zInnerTail ){
+		return pGen->pCurrent->zInnerTail;
+	}
+	if( pGen->pCurrent == &pGen->sGlobal && !pGen->bInNsBlock ){
+		return "end of file";
+	}
+	return 0;
 }
 PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 	ph7_gen_state *pGen,   /* Code generator state */
