@@ -797,6 +797,10 @@ Consume:
 		/* Point to the fresh token stream */
 		pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);
 		pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];
+		/* Only the chunk that met the end of the FILE can leave a statement
+		 * unterminated, and that is as true of a later block as of the first:
+		 * `<?php if (1): ?>A<?php endif` wants its `;` in php. */
+		pGen->bChunkAtEof = (sxi8)(SX_PTR_TO_INT(pGen->pRawIn->pUserData) == 0);
 		/* Advance the stream cursor */
 		pGen->pRawIn++;
 		{
@@ -808,6 +812,11 @@ Consume:
 					pGen->nBraceNet--;
 				}
 			}
+		}
+		if( pGen->nBraceNet > 0 ){
+			/* A `{` still open at the end of the file is what php reports there, as
+			 * in the first chunk: stand the end-of-input questions down. */
+			pGen->bChunkAtEof = 0;
 		}
 		if( pGen->pIn >= pGen->pEnd ){
 			/* The chunk held no TOKENS. `<?php // note ?>` is a whole PHP block that
