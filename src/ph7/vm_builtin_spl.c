@@ -1127,21 +1127,77 @@ static int vm_builtin_SplStore_setFlags(ph7_context *pCtx,int nArg,ph7_value **a
  * php's own flag pair rather than by name: the shared body reads ph7_function_name() to tell
  * the two apart, and a native method's name is `ArrayIterator::natcasesort`.
  */
+/*
+ * php runs each sort as a real call to the array function of the same name
+ * (spl_array_method), so that function has a frame of its own between the method and
+ * anything the sort reaches for -- a comparator, a __toString, an error handler:
+ * `[internal function]: uasort()` over `f.php(N): ArrayObject->uasort()`. Its record
+ * lists php's arguments, not the ones the method was given: the array and the flags
+ * (0 when none were passed) for asort/ksort, the array and the callback for
+ * uasort/uksort, the array alone for natsort/natcasesort. pRecArg is 0 for the last.
+ */
+static int SplArraySortCall(ph7_context *pCtx,const char *zName,ProchHostFunction xFunc,
+	ph7_value *pExtra,ph7_value *pRecArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pSlot = SplStoreSlot(pVm,PH7_ContextThis(pCtx));
+	ph7_value *apCall[2];
+	ph7_value *apRec[2];
+	VmNativeCall sRec;
+	SyString sName;
+	int rc;
+	if( pSlot == 0 ){
+		return PH7_OK;
+	}
+	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
+	sRec.pName = &sName;
+	sRec.pClass = 0;
+	sRec.bStatic = 0;
+	sRec.nLine = pVm->nCurLine;
+	sRec.pFrame = (void *)pVm->pFrame;
+	sRec.bElided = 0;
+	sRec.pPrev = pVm->pNativeCall;
+	apRec[0] = pSlot;
+	apRec[1] = pRecArg;
+	sRec.apArg = apRec;
+	sRec.nArg = pRecArg ? 2 : 1;
+	apCall[0] = pSlot;
+	apCall[1] = pExtra;
+	pVm->pNativeCall = &sRec;
+	rc = xFunc(pCtx,pExtra ? 2 : 1,apCall);
+	pVm->pNativeCall = sRec.pPrev;
+	return rc;
+}
+static int SplFlagSort(ph7_context *pCtx,const char *zName,ProchHostFunction xFunc,
+	int nArg,ph7_value **apArg)
+{
+	ph7_value sZero;
+	int rc;
+	if( nArg > 0 ){
+		return SplArraySortCall(pCtx,zName,xFunc,apArg[0],apArg[0]);
+	}
+	PH7_MemObjInitFromInt(pCtx->pVm,&sZero,0);
+	rc = SplArraySortCall(pCtx,zName,xFunc,0,&sZero);
+	PH7_MemObjRelease(&sZero);
+	return rc;
+}
 static int vm_builtin_SplStore_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return SplArrayCall(pCtx,ph7_hashmap_asort,nArg > 0 ? apArg[0] : 0);
+	return SplFlagSort(pCtx,"asort",ph7_hashmap_asort,nArg,apArg);
 }
 static int vm_builtin_SplStore_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return SplArrayCall(pCtx,ph7_hashmap_ksort,nArg > 0 ? apArg[0] : 0);
+	return SplFlagSort(pCtx,"ksort",ph7_hashmap_ksort,nArg,apArg);
 }
 static int vm_builtin_SplStore_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return SplArrayCall(pCtx,ph7_hashmap_uasort,nArg > 0 ? apArg[0] : 0);
+	ph7_value *pCb = nArg > 0 ? apArg[0] : 0;
+	return SplArraySortCall(pCtx,"uasort",ph7_hashmap_uasort,pCb,pCb);
 }
 static int vm_builtin_SplStore_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	return SplArrayCall(pCtx,ph7_hashmap_uksort,nArg > 0 ? apArg[0] : 0);
+	ph7_value *pCb = nArg > 0 ? apArg[0] : 0;
+	return SplArraySortCall(pCtx,"uksort",ph7_hashmap_uksort,pCb,pCb);
 }
 static int SplNatSort(ph7_context *pCtx,int bFold)
 {
@@ -1150,7 +1206,7 @@ static int SplNatSort(ph7_context *pCtx,int bFold)
 	/* SORT_NATURAL (6), plus SORT_FLAG_CASE (8) for the folding twin — the same pair
 	 * ph7_hashmap_natsort forwards to asort(). */
 	PH7_MemObjInitFromInt(pCtx->pVm,&sFlags,bFold ? (6|8) : 6);
-	rc = SplArrayCall(pCtx,ph7_hashmap_asort,&sFlags);
+	rc = SplArraySortCall(pCtx,bFold ? "natcasesort" : "natsort",ph7_hashmap_asort,&sFlags,0);
 	PH7_MemObjRelease(&sFlags);
 	return rc;
 }
