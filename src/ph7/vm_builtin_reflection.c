@@ -580,6 +580,34 @@ static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOu
 	return SXRET_OK;
 }
 /*
+ * The names a forwarding reflection door (invoke(), invokeArgs(), newInstance(),
+ * newInstanceArgs()) hands its target, built into pMap. With aNames, they are the
+ * string keys ReflectCollectArgs found in an argument array; without, they are the
+ * door's own call-site names from argument nSkip on -- the signature binder has
+ * already collected every `name:` the door's declared parameters do not take as a
+ * named extra. Answers 0 when there is none: the call is positional. php reaches the
+ * target from an internal function either way, so the map binds WEAKLY; the caller
+ * sets bCallbackWeak around the dispatch.
+ */
+static VmCallArgMap *ReflectDoorArgMap(ph7_context *pCtx, SyString *aNames, sxu32 nSlot,
+	sxu32 nSkip, VmCallArgMap *pMap)
+{
+	VmCallArgMap *pOuter = pCtx->pArgMap;
+	SyZero(pMap, sizeof(*pMap));
+	if( aNames == 0 ){
+		if( pOuter == 0 || !pOuter->bHasNamed || pOuter->nTotal <= nSkip ){
+			return 0;
+		}
+		nSlot = pOuter->nTotal - nSkip;
+		aNames = &pOuter->aNames[nSkip];
+		pMap->bFromUnpack = pOuter->bFromUnpack;
+	}
+	pMap->bHasNamed = 1;
+	pMap->nTotal = nSlot;
+	pMap->aNames = aNames;
+	return pMap;
+}
+/*
  * Instantiate pClassName and run its constructor over pArgs (a PHP array;
  * string keys become NAMED arguments, which is how `#[Attr(x: 1)]` arrives).
  * The object lands in the call's result slot.
@@ -4456,12 +4484,11 @@ PH7_PRIVATE sxi32 PH7_VmCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
 }
 /*
  * newInstance()/newInstanceArgs(): the checks php runs, then the constructor.
- * apCtor/nCtor are already-collected positional arguments; pNames is the
- * name map when the caller handed an array with string keys (php 8.1 accepts
- * those as NAMED constructor arguments).
+ * apCtor/nCtor are already-collected arguments; pMap names them when the
+ * caller wrote `name:` or handed an array with string keys (ReflectDoorArgMap).
  */
 static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
-	SyString *pNames)
+	VmCallArgMap *pMap)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pClass = ReflectClassOf(pCtx);
@@ -4504,16 +4531,7 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 		/* Weak binding, like ReflectMethodInvoke: the frame that makes this call is
 		 * ReflectionClass::newInstance(), an internal function. */
 		pVm->bCallbackWeak = 1;
-		if( pNames ){
-			VmCallArgMap sMap;
-			SyZero(&sMap, sizeof(sMap));
-			sMap.bHasNamed = 1;
-			sMap.nTotal = (sxu32)nCtor;
-			sMap.aNames = pNames;
-			rc = PH7_VmCallClassMethodMap(pVm, pObj, pCons, 0, nCtor, apCtor, &sMap);
-		}else{
-			rc = PH7_VmCallClassMethod(pVm, pObj, pCons, 0, nCtor, apCtor);
-		}
+		rc = PH7_VmCallClassMethodMap(pVm, pObj, pCons, 0, nCtor, apCtor, pMap);
 		pVm->bCallbackWeak = 0;
 		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
 			PH7_ClassInstanceCtorFailed(pObj);
@@ -4525,19 +4543,21 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 }
 static int vm_builtin_ReflectionClass_newInstance(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	return ReflectNewInstance(pCtx, nArg, apArg, 0);
+	VmCallArgMap sMap;
+	return ReflectNewInstance(pCtx, nArg, apArg, ReflectDoorArgMap(pCtx, 0, 0, 0, &sMap));
 }
 static int vm_builtin_ReflectionClass_newInstanceArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SySet aArg;
 	SyString *aNames = 0;
+	VmCallArgMap sMap;
 	int rc;
 	SySetInit(&aArg, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
 	if( nArg > 0 ){
 		ReflectCollectArgs(pCtx, apArg[0], &aArg, &aNames);
 	}
-	rc = ReflectNewInstance(pCtx, (int)SySetUsed(&aArg),
-		(ph7_value **)SySetBasePtr(&aArg), aNames);
+	rc = ReflectNewInstance(pCtx, (int)SySetUsed(&aArg), (ph7_value **)SySetBasePtr(&aArg),
+		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aArg), 0, &sMap) : 0);
 	if( aNames ){
 		SyMemBackendFree(&pCtx->pVm->sAllocator, aNames);
 	}
@@ -7173,14 +7193,18 @@ static void ReflectFunctionCallable(ph7_context *pCtx, ph7_value *pOut)
 	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
 	ph7_value_string(pOut, zName, nName);
 }
-static int ReflectFunctionInvoke(ph7_context *pCtx, int nCall, ph7_value **apCall)
+static int ReflectFunctionInvoke(ph7_context *pCtx, int nCall, ph7_value **apCall,
+	VmCallArgMap *pMap)
 {
+	ph7_vm *pVm = pCtx->pVm;
 	ph7_value sTarget, sResult;
 	sxi32 rc;
 	ReflectFunctionCallable(pCtx, &sTarget);
-	PH7_MemObjInit(pCtx->pVm, &sResult);
+	PH7_MemObjInit(pVm, &sResult);
 	sResult.nIdx = SXU32_HIGH;
-	rc = PH7_VmCallUserFunction(pCtx->pVm, &sTarget, nCall, apCall, &sResult);
+	pVm->bCallbackWeak = 1;
+	rc = PH7_VmCallUserFunctionWithMap(pVm, &sTarget, nCall, apCall, &sResult, pMap);
+	pVm->bCallbackWeak = 0; /* clear if the dispatch never reached an OP_CALL */
 	if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){
 		PH7_MemObjRelease(&sTarget);
 	}
@@ -7194,17 +7218,24 @@ static int ReflectFunctionInvoke(ph7_context *pCtx, int nCall, ph7_value **apCal
 }
 static int vm_builtin_ReflectionFunction_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	return ReflectFunctionInvoke(pCtx, nArg, apArg);
+	VmCallArgMap sMap;
+	return ReflectFunctionInvoke(pCtx, nArg, apArg, ReflectDoorArgMap(pCtx, 0, 0, 0, &sMap));
 }
 static int vm_builtin_ReflectionFunction_invokeArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SySet aCall;
+	SyString *aNames = 0;
+	VmCallArgMap sMap;
 	int rc;
 	SySetInit(&aCall, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
 	if( nArg > 0 ){
-		ReflectCollectArgs(pCtx, apArg[0], &aCall, 0);
+		ReflectCollectArgs(pCtx, apArg[0], &aCall, &aNames);
 	}
-	rc = ReflectFunctionInvoke(pCtx, (int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall));
+	rc = ReflectFunctionInvoke(pCtx, (int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall),
+		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aCall), 0, &sMap) : 0);
+	if( aNames ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator, aNames);
+	}
 	SySetRelease(&aCall);
 	return rc;
 }
@@ -7494,7 +7525,8 @@ static sxi32 ReflectMethodReceiver(ph7_context *pCtx, ReflectFuncRef *pRef,
 	}
 	return PH7_OK;
 }
-static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall, ph7_value **apCall)
+static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall, ph7_value **apCall,
+	VmCallArgMap *pMap)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ReflectFuncRef sRef;
@@ -7535,7 +7567,7 @@ static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall,
 	 * constructor this way (Generator::instantiate -> getConstructor()->invokeArgs),
 	 * from a file that declares strict_types=1. */
 	pVm->bCallbackWeak = 1;
-	rc = PH7_VmCallClassMethod(pVm, pRecv, sRef.pMeth, &sResult, nCall, apCall);
+	rc = PH7_VmCallClassMethodMap(pVm, pRecv, sRef.pMeth, &sResult, nCall, apCall, pMap);
 	pVm->bCallbackWeak = 0; /* clear if the dispatch never reached an OP_CALL */
 	pVm->bReflectBypass = 0;
 	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
@@ -7548,19 +7580,27 @@ static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall,
 }
 static int vm_builtin_ReflectionMethod_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	VmCallArgMap sMap;
 	return ReflectMethodInvoke(pCtx, nArg > 0 ? apArg[0] : 0,
-		nArg > 1 ? nArg - 1 : 0, nArg > 1 ? &apArg[1] : 0);
+		nArg > 1 ? nArg - 1 : 0, nArg > 1 ? &apArg[1] : 0,
+		ReflectDoorArgMap(pCtx, 0, 0, 1, &sMap));
 }
 static int vm_builtin_ReflectionMethod_invokeArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SySet aCall;
+	SyString *aNames = 0;
+	VmCallArgMap sMap;
 	int rc;
 	SySetInit(&aCall, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
 	if( nArg > 1 ){
-		ReflectCollectArgs(pCtx, apArg[1], &aCall, 0);
+		ReflectCollectArgs(pCtx, apArg[1], &aCall, &aNames);
 	}
 	rc = ReflectMethodInvoke(pCtx, nArg > 0 ? apArg[0] : 0,
-		(int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall));
+		(int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall),
+		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aCall), 0, &sMap) : 0);
+	if( aNames ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator, aNames);
+	}
 	SySetRelease(&aCall);
 	return rc;
 }
