@@ -1308,7 +1308,8 @@ PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **a
  *   then the default implementation of spl_autoload() will be registered.
  *  throw
  *   This parameter specifies whether spl_autoload_register() should throw
- *   exceptions on error. (Ignored in this implementation — always succeeds.)
+ *   exceptions on error. Ignored, as in php 8: an uncallable callback is
+ *   always a TypeError, and false only raises a notice saying so.
  *  prepend
  *   If true, spl_autoload_register() will prepend the autoloader on the
  *   autoload stack instead of appending it.
@@ -1319,48 +1320,32 @@ PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_
 {
 	VmAutoloadCB sEntry;
 	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sDefault,*pCb;
 	int iPrepend = 0;
 	sxu32 n;
-	if( nArg < 1 ){
-		/* No callback provided — register default spl_autoload.
-		 * Store the string "spl_autoload" as the callback. */
-		/* Check for duplicates first */
-		for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
-			VmAutoloadCB *pExisting = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
-			if( pExisting && (pExisting->sCallback.iFlags & MEMOBJ_STRING)
-				&& SyBlobLength(&pExisting->sCallback.sBlob) == sizeof("spl_autoload")-1
-				&& SyMemcmp(SyBlobData(&pExisting->sCallback.sBlob),"spl_autoload",sizeof("spl_autoload")-1) == 0 ){
-				ph7_result_bool(pCtx,1);
-				return SXRET_OK;
-			}
+	PH7_MemObjInit(pVm,&sDefault);
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		/* No callback (or null): the default spl_autoload() implementation */
+		PH7_MemObjStringAppend(&sDefault,"spl_autoload",sizeof("spl_autoload")-1);
+		pCb = &sDefault;
+	}else{
+		/* php refuses an uncallable callback with a TypeError, whatever $throw says */
+		sxi32 rc = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);
+		if( rc != PH7_OK ){
+			return rc;
 		}
-		SyZero(&sEntry,sizeof(VmAutoloadCB));
-		PH7_MemObjInit(pVm,&sEntry.sCallback);
-		PH7_MemObjInit(pVm,&sEntry.sInvoke);
-		PH7_MemObjStringAppend(&sEntry.sCallback,"spl_autoload",sizeof("spl_autoload")-1);
-		SySetPut(&pVm->aAutoload,(const void *)&sEntry);
-		ph7_result_bool(pCtx,1);
-		return SXRET_OK;
+		pCb = apArg[0];
 	}
-	/* Validate that the callback is callable */
-	PH7_VmCallableDeprecation(pVm,apArg[0]);
-	if( !PH7_VmIsCallable(pVm,apArg[0],TRUE) ){
-		int iThrow = 1; /* Default: throw on error */
-		if( nArg >= 2 ){
-			iThrow = ph7_value_to_bool(apArg[1]);
-		}
-		if( iThrow ){
-			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-				"Argument is not callable");
-		}
-		ph7_result_bool(pCtx,0);
-		return SXRET_OK;
+	if( nArg >= 2 && !ph7_value_to_bool(apArg[1]) ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"Argument #2 ($do_throw) has been ignored, spl_autoload_register() will always throw");
 	}
 	/* Check for duplicates */
 	for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
 		VmAutoloadCB *pExisting = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
-		if( pExisting && PH7_MemObjCmp(&pExisting->sCallback,apArg[0],TRUE,0) == 0 ){
+		if( pExisting && PH7_MemObjCmp(&pExisting->sCallback,pCb,TRUE,0) == 0 ){
 			/* Already registered */
+			PH7_MemObjRelease(&sDefault);
 			ph7_result_bool(pCtx,1);
 			return SXRET_OK;
 		}
@@ -1373,8 +1358,8 @@ PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_
 	SyZero(&sEntry,sizeof(VmAutoloadCB));
 	PH7_MemObjInit(pVm,&sEntry.sCallback);
 	PH7_MemObjInit(pVm,&sEntry.sInvoke);
-	PH7_MemObjStore(apArg[0],&sEntry.sCallback);
-	PH7_VmBindCallbackScope(pVm,apArg[0],&sEntry.sInvoke);
+	PH7_MemObjStore(pCb,&sEntry.sCallback);
+	PH7_VmBindCallbackScope(pVm,pCb,&sEntry.sInvoke);
 	if( iPrepend && SySetUsed(&pVm->aAutoload) > 0 ){
 		/* Prepend: shift existing entries and insert at position 0.
 		 * We do this by appending first, then rotating the array. */
@@ -1395,6 +1380,7 @@ PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_
 	}else{
 		SySetPut(&pVm->aAutoload,(const void *)&sEntry);
 	}
+	PH7_MemObjRelease(&sDefault);
 	ph7_result_bool(pCtx,1);
 	return SXRET_OK;
 }
@@ -1411,11 +1397,16 @@ PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph
 {
 	ph7_vm *pVm = pCtx->pVm;
 	sxu32 n,nEntry;
+	sxi32 rc;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
-	PH7_VmCallableDeprecation(pVm,apArg[0]); /* php resolves its callable argument first */
+	/* php refuses an uncallable argument before it looks the stack up */
+	rc = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",0);
+	if( rc != PH7_OK ){
+		return rc;
+	}
 	nEntry = SySetUsed(&pVm->aAutoload);
 	for( n = 0 ; n < nEntry ; ++n ){
 		VmAutoloadCB *pEntry = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
