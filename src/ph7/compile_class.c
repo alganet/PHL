@@ -6030,6 +6030,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 {
 	struct VmClassObligeSet *pSaved = pGen->pOblige;
 	VmClassObligeSet sOblige;
+	sxu32 nDeclLine = pGen->pIn ? pGen->pIn->nLine : 0;
 	sxi32 rc;
 	SySetInit(&sOblige.aOblige,&pGen->pVm->sAllocator,sizeof(VmClassOblige));
 	SySetInit(&sOblige.aName,&pGen->pVm->sAllocator,sizeof(SyString));
@@ -6041,6 +6042,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	if( rc == SXRET_OK && SySetUsed(&sOblige.aOblige) > 0 ){
 		VmClassObligeSet *pSet = (VmClassObligeSet *)SyMemBackendAlloc(&pGen->pVm->sAllocator,
 			sizeof(VmClassObligeSet));
+		sxu32 nIdx;
 		if( pSet == 0 ){
 			SySetRelease(&sOblige.aOblige);
 			SySetRelease(&sOblige.aName);
@@ -6049,7 +6051,16 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			return SXERR_ABORT;
 		}
 		*pSet = sOblige;
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLASS_OBLIGE,0,0,(void *)pSet,0);
+		if( PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLASS_OBLIGE,0,0,(void *)pSet,&nIdx) == SXRET_OK
+		 && nDeclLine > 0 ){
+			/* It runs AS the declaration: an autoload it triggers is called from,
+			 * and a refusal reported at, the statement's line, not the token after
+			 * the body. */
+			VmInstr *pInstr = PH7_VmGetInstr(pGen->pVm,nIdx);
+			if( pInstr ){
+				pInstr->nLine = nDeclLine;
+			}
+		}
 		return SXRET_OK;
 	}
 	SySetRelease(&sOblige.aOblige);

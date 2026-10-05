@@ -306,6 +306,7 @@ Cleanup:
 PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDeferredReq **ppMissing)
 {
 	VmDeferredReq *aReq;
+	sxu8 bHaltIn;
 	sxu32 n;
 	*ppMissing = 0;
 	if( pDefer->bDone ){
@@ -322,10 +323,17 @@ PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDefe
 		pVm->sDeferAnonName = pDefer->sAnonName;
 	}
 	pVm->bDeclQuietNext = pDefer->bChecked;
+	bHaltIn = pVm->bHaltRequested;
 	VmEvalChunk(&(*pVm),0,&pDefer->sText,PH7_PHP_ONLY,TRUE);
 	pVm->bDeclQuietNext = 0;
 	pVm->sDeferAnonName.zString = 0;
 	pVm->sDeferAnonName.nByte = 0;
+	if( pVm->bHaltRequested && !bHaltIn ){
+		/* The re-compiled declaration RAN and halted -- a variance pair refused
+		 * where it settles, a loader's throw made fatal there, an exit() in a
+		 * loader. The statement after the declaration must not run. */
+		return SXERR_ABORT;
+	}
 	if( pVm->nLastEvalErr > 0
 	 || PH7_VmExtractClass(&(*pVm),pDefer->sSelfName.zString,pDefer->sSelfName.nByte,FALSE,0) == 0 ){
 		/* The re-compile failed — a deferred-along syntax error or a

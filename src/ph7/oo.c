@@ -1741,6 +1741,40 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 	return SXRET_OK;
 }
 /*
+ * php's load_delayed_classes: a loader that throws while a declaration autoloads
+ * the names its variance pairs left open is not an exception anybody may catch --
+ * the class is half-linked by then -- but zend_exception_uncaught_error's E_ERROR,
+ * `During inheritance of C, while autoloading X: Uncaught <the exception as a
+ * string>` (its __toString(), so a `$previous` chain and a user override both
+ * show), reported at the declaration, and the script ends. Takes the reference
+ * pExc carries.
+ */
+static void OoObligeLoaderFatal(ph7_vm *pVm,VmClassObligeSet *pSet,const SyString *pName,
+	ph7_class_instance *pExc)
+{
+	VmClassOblige *pRec = (VmClassOblige *)SySetBasePtr(&pSet->aOblige);
+	ph7_value sStr;
+	sxu32 nDisp = 0;
+	PH7_MemObjInit(&(*pVm),&sStr);
+	sStr.x.pOther = pExc; /* the value takes the fence's reference */
+	MemObjSetType(&sStr,MEMOBJ_OBJ);
+	if( PH7_MemObjToString(&sStr) != SXRET_OK || (sStr.iFlags & MEMOBJ_STRING) == 0 ){
+		PH7_MemObjRelease(&sStr);
+		PH7_MemObjInit(&(*pVm),&sStr);
+		MemObjSetType(&sStr,MEMOBJ_STRING);
+	}
+	/* php prints the name with %s: an anonymous class's stops at its NUL. */
+	while( nDisp < pRec->pSub->sDisp.nByte && pRec->pSub->sDisp.zString[nDisp] != 0 ){
+		nDisp++;
+	}
+	PH7_VmFatalError(&(*pVm),"During inheritance of %.*s, while autoloading %z: Uncaught %.*s",
+		(int)nDisp,pRec->pSub->sDisp.zString,pName,
+		(int)SyBlobLength(&sStr.sBlob),(const char *)SyBlobData(&sStr.sBlob));
+	PH7_MemObjRelease(&sStr);
+	pVm->iExitStatus = 255;
+	pVm->bHaltRequested = 1;
+}
+/*
  * PH7_OP_CLASS_OBLIGE: where a class with unresolved variance pairs is DECLARED,
  * php autoloads every name its checks could not find, in the order they were
  * asked for, and checks each pair again -- now with nothing left to hope for, so
@@ -1767,10 +1801,30 @@ PH7_PRIVATE sxi32 PH7_ClassSettleObligations(ph7_vm *pVm,VmClassObligeSet *pSet)
 	for( n = 0 ; n < SySetUsed(&pSet->aName) ; ++n ){
 		sxi32 nBrc = pVm->nBoundaryRc;
 		const void *pResume = (const void *)pVm->pResumeFrame;
+		sxu32 nFenceIn = pVm->nThrowFence;
+		ph7_class_instance *pExcIn = pVm->pFencedExc;
+		ph7_class_instance *pExc;
+		/* Behind a throw fence: php never lets a try around the declaration
+		 * catch what a loader throws here, and runs none of its finally blocks
+		 * either -- the throw becomes an uncaught-error fatal (below). Tries
+		 * INSIDE the loader still catch normally. */
+		pVm->pFencedExc = 0;
+		pVm->nThrowFence = SySetUsed(&pVm->aException) + 1;
 		PH7_VmExtractClass(&(*pVm),aName[n].zString,aName[n].nByte,FALSE,0);
+		pVm->nThrowFence = nFenceIn;
+		pExc = pVm->pFencedExc;
+		pVm->pFencedExc = pExcIn;
+		if( pExc && pVm->nBoundaryRc == PH7_ABORT && nBrc != PH7_ABORT ){
+			PH7_ClassInstanceUnref(pExc);
+			pExc = 0;
+		}
+		if( pExc ){
+			pVm->nBoundaryRc = nBrc; /* nothing was caught in place: nothing to route */
+			OoObligeLoaderFatal(&(*pVm),pSet,&aName[n],pExc);
+			return SXERR_ABORT;
+		}
 		if( PH7_VmClassLookupRaised(&(*pVm),nBrc,pResume) ){
-			/* The loader threw: no later name is asked for, and the throw is the
-			 * engine's to land (php makes it an uncaught-error fatal instead). */
+			/* The loader exited: no later name is asked for. */
 			return SXRET_OK;
 		}
 	}
