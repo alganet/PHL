@@ -6174,14 +6174,116 @@ PH7_PRIVATE int ph7_hashmap_key_last(ph7_context *pCtx,int nArg,ph7_value **apAr
 	return HashmapKeyFirstLast(pCtx,nArg,apArg,1);
 }
 /*
- * Fetch the element identified by 'pKey' from 'pRow' which may be either an
- * array (hashmap lookup) or an object (public attribute lookup). Used by
- * array_column() for both the column value and the index key.
- * Returns a borrowed pointer to the value, or NULL when the row is not a
- * container or the key is absent.
+ * array_column()'s read of an OBJECT row, which php makes with the object's two property
+ * questions and not a table lookup: has_property in "exists" mode first -- a property
+ * visible from the calling scope and initialized, null included, with no magic consulted
+ * -- then in "isset" mode, which is where __isset is asked (for a name that is absent
+ * or inaccessible here), and only on a yes read_property, which is the slot,
+ * or __get, or the plain read's own warning or Error. PHL looked the name up in the slot
+ * table alone, so a public-by-magic column was dropped, a private or protected one was
+ * handed out from outside its class, and an uninitialized typed one read as null.
+ *
+ * Answers 1 with the value copied into pOut, 0 when the row has no such column, or the
+ * PH7_EXCEPTION/PH7_ABORT of a magic method, a get hook or a read that threw.
  */
-static ph7_value * HashmapColumnFetch(ph7_vm *pVm,ph7_value *pRow,ph7_value *pKey)
+static sxi32 HashmapColumnFetchProp(ph7_context *pCtx,ph7_class_instance *pThis,const SyString *pName,ph7_value *pOut)
 {
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = pThis->pClass;
+	SyHashEntry *pEntry;
+	VmClassAttr *pVmAttr = 0;
+	int bAccess = 0;
+	sxi32 rc;
+	if( PH7_ClassNativePropOwns(pThis,pName) ){
+		/* A native class's own property handler answers both questions for the
+		 * names it carries; the magic dispatch routes a read straight to it. */
+		rc = PH7_ClassInstanceCallMagicMethod(pVm,pClass,pThis,"__get",sizeof("__get")-1,pName,pOut);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			return rc;
+		}
+		return 1;
+	}
+	pEntry = PH7_ClassInstanceScopedAttrEntry(pVm,pThis,pName->zString,pName->nByte,
+		pName->nByte > 0 ? SyHashKey(&pThis->hAttr,(const void *)pName->zString,pName->nByte) : 0);
+	if( pEntry ){
+		pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		if( PH7_ATTR_UNPRESENTED(pVmAttr) ){
+			pVmAttr = 0; /* a static is the class's: not found through an instance */
+		}else{
+			bAccess = PH7_VmClassAttrAccess(pVm,pClass,pVmAttr->pAttr,FALSE);
+		}
+	}
+	if( pVmAttr && bAccess && PH7_ClassAttrUninitializedForRead(pVmAttr) ){
+		/* A typed property never written: php's has_property answers no in both
+		 * modes and skips __isset for it. */
+		return 0;
+	}
+	if( pVmAttr == 0 || !bAccess ){
+		/* "exists" said no: "isset" asks __isset, unless this very name's own
+		 * __isset is what is running. */
+		ph7_value sIsset;
+		int bSet;
+		if( PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1) == 0
+		 || VmMagicGuardHeld(pVm,(void *)pThis,pName,'i') ){
+			return 0;
+		}
+		PH7_MemObjInit(pVm,&sIsset);
+		VmMagicGuardPush(pVm,(void *)pThis,pName,'i');
+		rc = PH7_ClassInstanceCallMagicMethod(pVm,pClass,pThis,"__isset",sizeof("__isset")-1,pName,&sIsset);
+		VmMagicGuardPop(pVm);
+		bSet = ph7_value_to_bool(&sIsset);
+		PH7_MemObjRelease(&sIsset);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			return rc;
+		}
+		if( !bSet ){
+			return 0;
+		}
+		/* read_property, for a name the slot table cannot answer from here. */
+		if( PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
+		 && !VmMagicGuardHeld(pVm,(void *)pThis,pName,'g') ){
+			VmMagicGuardPush(pVm,(void *)pThis,pName,'g');
+			rc = PH7_ClassInstanceCallMagicMethod(pVm,pClass,pThis,"__get",sizeof("__get")-1,pName,pOut);
+			VmMagicGuardPop(pVm);
+			if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+				return rc;
+			}
+			return 1;
+		}
+		if( pVmAttr ){
+			ph7_class *pOwner = PH7_VmMemberOwnerClass(pVmAttr->pAttr->pDeclClass,PH7_VmAttrOwner(pVmAttr));
+			return PH7_VmThrowException(pCtx,"Error","Cannot access %s property %z::$%z",
+				pVmAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected",
+				&pOwner->sDisp,&pVmAttr->pAttr->sName);
+		}
+		VmErrorFormat(pVm,PH7_CTX_WARNING,"Undefined property: %z::$%z",&pClass->sDisp,pName);
+		PH7_MemObjRelease(pOut);
+		return 1;
+	}
+	rc = PH7_VmHookGetAttrValue(pThis,pVmAttr,pOut);
+	if( rc == SXERR_NOTFOUND ){
+		ph7_value *pValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+		if( pValue ){
+			PH7_MemObjStore(pValue,pOut);
+		}
+		return 1;
+	}
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return 1;
+}
+/*
+ * Fetch the element identified by 'pKey' from 'pRow', which may be either an
+ * array (hashmap lookup) or an object (the property read above). Used by
+ * array_column() for both the column value and the index key.
+ * Answers the value -- borrowed from an array row, or pTmp (an initialized value
+ * the caller owns) for an object row -- or NULL when the row is not a container
+ * or has no such element. *pRc takes a throw from an object row's read.
+ */
+static ph7_value * HashmapColumnFetch(ph7_context *pCtx,ph7_value *pRow,ph7_value *pKey,ph7_value *pTmp,sxi32 *pRc)
+{
+	*pRc = PH7_OK;
 	if( ph7_value_is_array(pRow) ){
 		ph7_hashmap_node *pNode;
 		if( PH7_HashmapLookup((ph7_hashmap *)pRow->x.pOther,pKey,&pNode) == SXRET_OK ){
@@ -6189,16 +6291,22 @@ static ph7_value * HashmapColumnFetch(ph7_vm *pVm,ph7_value *pRow,ph7_value *pKe
 		}
 	}else if( ph7_value_is_object(pRow) ){
 		ph7_value sName;
-		const char *zName;
-		ph7_value *pAttr;
-		/* Stringify a *copy* of the key (objects address attributes by name);
+		SyString sStr;
+		sxi32 rc;
+		/* Stringify a *copy* of the key (objects address properties by name);
 		 * never mutate pKey itself or the array-lookup path would break. */
-		PH7_MemObjInit(pVm,&sName);
+		PH7_MemObjInit(pCtx->pVm,&sName);
 		PH7_MemObjStore(pKey,&sName);
-		zName = ph7_value_to_string(&sName,0); /* NUL-terminated */
-		pAttr = ph7_object_fetch_attr(pRow,zName);
+		PH7_MemObjToString(&sName);
+		SyStringInitFromBuf(&sStr,SyBlobData(&sName.sBlob),SyBlobLength(&sName.sBlob));
+		rc = HashmapColumnFetchProp(pCtx,(ph7_class_instance *)pRow->x.pOther,&sStr,pTmp);
 		PH7_MemObjRelease(&sName);
-		return pAttr;
+		if( rc == 1 ){
+			return pTmp;
+		}
+		if( rc != 0 ){
+			*pRc = rc;
+		}
 	}
 	return 0;
 }
@@ -6219,6 +6327,8 @@ PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pRow;
 	ph7_value *pCol;
 	ph7_value *pIdx;
+	ph7_value sColTmp,sIdxTmp;
+	sxi32 rc = PH7_OK;
 	int bWantCol;
 	int bWantIdx;
 	sxu32 n;
@@ -6245,6 +6355,8 @@ PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* A NULL column_key means "collect the entire row". */
 	bWantCol = !ph7_value_is_null(apArg[1]);
 	bWantIdx = (nArg > 2 && !ph7_value_is_null(apArg[2]));
+	PH7_MemObjInit(pCtx->pVm,&sColTmp);
+	PH7_MemObjInit(pCtx->pVm,&sIdxTmp);
 	pNode = pMap->pFirst;
 	for( n = 0 ; n < pMap->nEntry ; ++n ){
 		pRow = HashmapExtractNodeValue(pNode);
@@ -6252,8 +6364,13 @@ PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( pRow == 0 ){
 			continue;
 		}
+		PH7_MemObjRelease(&sColTmp);
+		PH7_MemObjRelease(&sIdxTmp);
 		if( bWantCol ){
-			pCol = HashmapColumnFetch(pMap->pVm,pRow,apArg[1]);
+			pCol = HashmapColumnFetch(pCtx,pRow,apArg[1],&sColTmp,&rc);
+			if( rc != PH7_OK ){
+				break;
+			}
 			if( pCol == 0 ){
 				/* Row lacks the requested column: skip it (PHP semantics). */
 				continue;
@@ -6261,7 +6378,16 @@ PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}else{
 			pCol = pRow;
 		}
-		pIdx = bWantIdx ? HashmapColumnFetch(pMap->pVm,pRow,apArg[2]) : 0;
+		if( bWantIdx && ph7_value_is_object(pRow) && pCol != &sColTmp ){
+			/* The index read of an object row can run user code (__isset, __get):
+			 * hold the column by value across it, not by a borrowed pointer. */
+			PH7_MemObjStore(pCol,&sColTmp);
+			pCol = &sColTmp;
+		}
+		pIdx = bWantIdx ? HashmapColumnFetch(pCtx,pRow,apArg[2],&sIdxTmp,&rc) : 0;
+		if( rc != PH7_OK ){
+			break;
+		}
 		if( pIdx == 0 ){
 			ph7_array_add_elem(pArray,0,pCol); /* Auto-index */
 		}else if( pIdx->iFlags & (MEMOBJ_INT|MEMOBJ_STRING) ){
@@ -6292,12 +6418,18 @@ PH7_PRIVATE int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( rcKey != SXRET_OK ){
 				PH7_MemObjRelease(&sKey);
 				PH7_MemObjRelease(&sVal);
-				return rcKey;
+				rc = rcKey;
+				break;
 			}
 			ph7_array_add_elem(pArray,&sKey,&sVal);
 			PH7_MemObjRelease(&sKey);
 			PH7_MemObjRelease(&sVal);
 		}
+	}
+	PH7_MemObjRelease(&sColTmp);
+	PH7_MemObjRelease(&sIdxTmp);
+	if( rc != PH7_OK ){
+		return rc;
 	}
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
