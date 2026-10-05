@@ -2781,6 +2781,140 @@ static void GenStateHookSetSignature(ph7_gen_state *pGen,ph7_vm_func *pFunc,
 		SyStringInitFromBuf(&pFunc->sReturnTypeName,zVoid,sizeof("void")-1);
 	}
 }
+/*
+ * A member modifier at pTok, as php's parser reads one before a hook's name
+ * (its property_hook_modifiers is the class body's whole modifier run), with
+ * the word php's refusal names it by. 0 when pTok is no modifier.
+ */
+static const char * GenStateHookModifier(SyToken *pTok,SyToken *pEnd,int *pnTok)
+{
+	sxi32 nSetVis;
+	*pnTok = 1;
+	if( pTok >= pEnd ){
+		return 0;
+	}
+	if( GenStateIsReadonly(pTok) ){
+		return "readonly";
+	}
+	if( (pTok->nType & PH7_TK_KEYWORD) == 0 ){
+		return 0;
+	}
+	if( (nSetVis = GenStatePeekSetVisibility(pTok,pEnd,pnTok)) != 0 ){
+		return GenStateSetVisWord(nSetVis);
+	}
+	*pnTok = 1;
+	switch( SX_PTR_TO_INT(pTok->pUserData) ){
+	case PH7_TKWRD_PUBLIC:    return "public";
+	case PH7_TKWRD_PROTECTED: return "protected";
+	case PH7_TKWRD_PRIVATE:   return "private";
+	case PH7_TKWRD_STATIC:    return "static";
+	case PH7_TKWRD_ABSTRACT:  return "abstract";
+	case PH7_TKWRD_FINAL:     return "final";
+	default: break;
+	}
+	return 0;
+}
+/*
+ * php's grammar for the hook list, judged before any hook compiles: every hook
+ * is `[modifiers] [&] name [(params)]` and then `;`, a `{...}` body or
+ * `=> expr;`, and nothing else stands between two hooks -- a stray `;` is
+ * php's parse error, not a separator. The modifier run is judged in the
+ * parser too, word by word: `final` is the only one a hook takes, and php
+ * names the first word it refuses at the token that ends the run. Being the
+ * parser's, all of these outrank the per-hook rules the compile pass applies,
+ * wherever in the list they sit.
+ */
+static sxi32 GenStateScanHookList(ph7_gen_state *pGen,SyToken *pIn,SyToken *pEnd)
+{
+	SyToken *pErr = 0;          /* the token php names; 0 = the end of the input */
+	const char *zExpect = 0;
+	sxi32 rc;
+	while( pIn < pEnd && (pIn->nType & PH7_TK_CCB) == 0 ){
+		const char *zMod;
+		const char *zRefused = 0;
+		int bFinal = 0, bTwice = 0, nTok;
+		while( (zMod = GenStateHookModifier(pIn,pEnd,&nTok)) != 0 ){
+			if( zRefused == 0 && !bTwice ){
+				if( zMod[0] != 'f' ){
+					zRefused = zMod;
+				}else if( bFinal ){
+					bTwice = 1;
+				}
+			}
+			bFinal = 1;
+			pIn += nTok;
+		}
+		if( zRefused || bTwice ){
+			sxu32 nAt = (pIn < pEnd) ? pIn->nLine : pIn[-1].nLine;
+			rc = zRefused
+				? PH7_GenCompileError(pGen,E_ERROR,nAt,
+					"Cannot use the %s modifier on a property hook",zRefused)
+				: PH7_GenCompileError(pGen,E_ERROR,nAt,
+					"Multiple final modifiers are not allowed");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_CORRUPT;
+		}
+		if( pIn < pEnd && (pIn->nType & PH7_TK_AMPER) ){
+			pIn++;
+		}
+		if( pIn >= pEnd || (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+			pErr = pIn;
+			zExpect = "identifier";
+			goto Syntax;
+		}
+		pIn++; /* the hook's name */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+			SyToken *pRp = 0;
+			PH7_DelimitNestedTokens(&pIn[1],pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pRp);
+			if( pRp >= pEnd ){
+				pIn = pEnd;
+				goto Syntax;
+			}
+			pIn = &pRp[1];
+		}
+		if( pIn < pEnd && (pIn->nType & PH7_TK_SEMI) ){
+			pIn++;
+		}else if( pIn < pEnd && (pIn->nType & PH7_TK_OCB) ){
+			SyToken *pCloser = 0;
+			PH7_DelimitNestedTokens(&pIn[1],pEnd,PH7_TK_OCB,PH7_TK_CCB,&pCloser);
+			if( pCloser >= pEnd ){
+				pIn = pEnd;
+				goto Syntax;
+			}
+			pIn = &pCloser[1];
+		}else if( pIn < pEnd && (pIn->nType & PH7_TK_ARRAY_OP) ){
+			/* `=> expr` runs to its own `;`: a closer first is php's bare
+			 * "unexpected" with nothing expected */
+			sxi32 iNest = 0;
+			for( pIn++ ; pIn < pEnd ; pIn++ ){
+				if( pIn->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+					iNest++;
+				}else if( pIn->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+					if( iNest <= 0 ){
+						break;
+					}
+					iNest--;
+				}else if( iNest <= 0 && (pIn->nType & PH7_TK_SEMI) ){
+					break;
+				}
+			}
+			if( pIn >= pEnd || (pIn->nType & PH7_TK_SEMI) == 0 ){
+				pErr = pIn;
+				goto Syntax;
+			}
+			pIn++;
+		}else{
+			pErr = pIn;
+			zExpect = "\"=>\" or \";\" or \"{\"";
+			goto Syntax;
+		}
+	}
+	return SXRET_OK;
+Syntax:
+	rc = PH7_GenSyntaxError(pGen,pErr < pEnd ? pErr : 0,zExpect);
+	return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_CORRUPT;
+}
+/* A refusal of php's zend_compile_property_hooks: a compile fatal that ends the list. */
+#define GEN_HOOK_REFUSE(RC) return ((RC) == SXERR_ABORT) ? SXERR_ABORT : SXERR_CORRUPT
 PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -2788,16 +2922,29 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 	sxi32 rc;
 	int bRefsSelf = 0;
 	pGen->pIn++; /* Jump '{' */
+	rc = GenStateScanHookList(&(*pGen),pGen->pIn,pGen->pEnd);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_CCB) ){
+		GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,pAttr->nLine,
+			"Property hook list must not be empty"));
+	}
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_CCB) == 0 ){
 		char zHook[384];
 		SyString sHookName;
+		SyString *pWritten;      /* the hook's name as written: php's messages quote it */
 		ph7_class_method *pMeth;
-		int bGet;
-		sxu32 nHLine = pGen->pIn->nLine;
-		if( pGen->pIn->nType & PH7_TK_SEMI ){
-			pGen->pIn++; /* stray ';' between hooks */
-			continue;
+		SyToken *pParams = 0;    /* an explicit parameter list's '(' */
+		SyToken *pBody;          /* the token after the name and its parameters */
+		int bGet, bFinal = 0, bBodyless, nTok;
+		sxu32 nHLine;
+		/* The scan above refused every modifier but a single `final`. */
+		while( GenStateHookModifier(pGen->pIn,pGen->pEnd,&nTok) != 0 ){
+			bFinal = 1;
+			pGen->pIn += nTok;
 		}
+		nHLine = pGen->pIn->nLine;
 		if( pGen->pIn->nType & PH7_TK_AMPER ){
 			/* by-reference get hook: not modeled (loud, recorded) */
 			rc = PH7_GenCompileError(pGen,E_ERROR,nHLine,
@@ -2808,37 +2955,70 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 			}
 			return SXERR_CORRUPT;
 		}
-		if( (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-			goto HookSyntax;
-		}
-		if( pGen->pIn->sData.nByte == 3
-		 && SyStrnicmp(pGen->pIn->sData.zString,"get",3) == 0 ){
+		pWritten = &pGen->pIn->sData;
+		if( pWritten->nByte == 3 && SyStrnicmp(pWritten->zString,"get",3) == 0 ){
 			bGet = 1;
-		}else if( pGen->pIn->sData.nByte == 3
-		 && SyStrnicmp(pGen->pIn->sData.zString,"set",3) == 0 ){
+		}else if( pWritten->nByte == 3 && SyStrnicmp(pWritten->zString,"set",3) == 0 ){
 			bGet = 0;
 		}else{
-			goto HookSyntax;
+			bGet = -1;
 		}
-		pGen->pIn++; /* Jump 'get'/'set' */
+		pGen->pIn++; /* Jump the name */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_LPAREN) ){
+			pParams = pGen->pIn;
+		}
+		pBody = pGen->pIn;
+		if( pParams ){
+			SyToken *pRp = 0;
+			PH7_DelimitNestedTokens(&pParams[1],pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pRp);
+			pBody = &pRp[1];
+		}
+		bBodyless = (pBody->nType & PH7_TK_SEMI) != 0;
+		/* php's zend_compile_property_hooks, in the order it asks: each rule is
+		 * a compile fatal at the hook's name. An abstract property's hook WITH a
+		 * body is an ordinary concrete hook; only an interface refuses one. */
+		if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){
+			GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+				"Cannot declare hooks for static property"));
+		}
+		if( bFinal && pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
+			GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+				"Property hook cannot be both final and private"));
+		}
+		if( (pClass->iFlags & PH7_CLASS_INTERFACE)
+		 || ((pAttr->iFlags & PH7_CLASS_ATTR_ABSTRACT) && bBodyless) ){
+			if( !bBodyless ){
+				GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+					"Abstract property hook cannot have body"));
+			}
+			if( bFinal ){
+				GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+					"Property hook cannot be both abstract and final"));
+			}
+		}else if( bBodyless ){
+			GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+				"Non-abstract property hook must have a body"));
+		}
+		if( bGet < 0 ){
+			GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+				"Unknown hook \"%z\" for property %z::$%z, expected \"get\" or \"set\"",
+				pWritten,&pClass->sDisp,&pAttr->sName));
+		}
+		if( bGet && pParams ){
+			GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+				"get hook of property %z::$%z must not have a parameter list",
+				&pClass->sDisp,&pAttr->sName));
+		}
 		sHookName.zString = zHook;
 		sHookName.nByte = SyBufferFormat(zHook,sizeof(zHook),"__phl_hook_%s_%z",
 			bGet ? "get" : "set",&pAttr->sName);
-		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI|PH7_TK_CCB)) ){
+		if( bBodyless ){
 			/* Bare `get;` / `set;` — an ABSTRACT hook declaration (php 8.4):
 			 * legal only on an `abstract` property or inside an interface. The
 			 * synthesized method carries PH7_CLASS_ATTR_ABSTRACT and rides the
 			 * existing must-implement machinery; a concrete hook override (or a
 			 * plain property, see GenStateCheckAbstractMethods) satisfies it. */
-			if( (pAttr->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0
-			 && (pClass->iFlags & PH7_CLASS_INTERFACE) == 0 ){
-				rc = PH7_GenCompileError(pGen,E_ERROR,nHLine,
-					"Non-abstract property hook must have a body");
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				return SXERR_CORRUPT;
-			}
+			pGen->pIn = pBody;
 			pMeth = PH7_NewClassMethod(pGen->pVm,pClass,&sHookName,nHLine,
 				PH7_CLASS_PROT_PUBLIC,PH7_CLASS_ATTR_ABSTRACT,0);
 			if( pMeth == 0 ){
@@ -2870,6 +3050,10 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 				GenStateHookSetSignature(&(*pGen),&pMeth->sFunc,pAttr,&sVArg);
 				SySetPut(&pMeth->sFunc.aArgs,(const void *)&sVArg);
 			}
+			if( pAttr->iFlags & (bGet ? PH7_CLASS_ATTR_HOOK_GET : PH7_CLASS_ATTR_HOOK_SET) ){
+				GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+					"Cannot redeclare property hook \"%z\"",pWritten));
+			}
 			rc = PH7_ClassInstallMethod(pClass,pMeth);
 			if( rc != SXRET_OK ){
 				PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
@@ -2877,20 +3061,13 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 			}
 			pAttr->iFlags |= bGet ? PH7_CLASS_ATTR_HOOK_GET : PH7_CLASS_ATTR_HOOK_SET;
 			nHookEnd = pGen->pIn->nLine;   /* the ';' */
-			continue; /* the loop consumes the ';' as a stray separator */
+			pGen->pIn++; /* Jump ';' */
+			continue;
 		}
-		if( (pAttr->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0
-		 || (pClass->iFlags & PH7_CLASS_INTERFACE) != 0 ){
-			/* php: an abstract/interface property hook cannot carry a body */
-			rc = PH7_GenCompileError(pGen,E_ERROR,nHLine,
-				"Abstract property hook cannot have body");
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}
-			return SXERR_CORRUPT;
-		}
+		/* `final` is the one modifier a hook keeps: a subclass may not override
+		 * it (see the final-method rule in the class link) */
 		pMeth = PH7_NewClassMethod(pGen->pVm,pClass,&sHookName,nHLine,
-			PH7_CLASS_PROT_PUBLIC,0,0);
+			PH7_CLASS_PROT_PUBLIC,bFinal ? PH7_CLASS_ATTR_FINAL : 0,0);
 		if( pMeth == 0 ){
 			PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
 			return SXERR_ABORT;
@@ -2905,9 +3082,6 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 				SyToken *pRp = 0;
 				pGen->pIn++;
 				PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pRp);
-				if( pRp >= pGen->pEnd ){
-					goto HookSyntax;
-				}
 				if( pGen->pIn < pRp ){
 					rc = GenStateCollectFuncArgs(&pMeth->sFunc,&(*pGen),pRp,0,0);
 					if( rc == SXERR_ABORT ){
@@ -2915,6 +3089,33 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 					}
 				}
 				pGen->pIn = &pRp[1];
+				/* php's rules for an explicit list: one plain parameter, typed
+				 * exactly when the property is */
+				if( SySetUsed(&pMeth->sFunc.aArgs) != 1 ){
+					GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+						"%z hook of property %z::$%z must accept exactly one parameters",
+						pWritten,&pClass->sDisp,&pAttr->sName));
+				}else{
+					ph7_vm_func_arg *pV = (ph7_vm_func_arg *)SySetBasePtr(&pMeth->sFunc.aArgs);
+					const char *zWhy = 0;
+					if( pV->iFlags & VM_FUNC_ARG_BY_REF ){
+						zWhy = "must not be pass-by-reference";
+					}else if( pV->iFlags & VM_FUNC_ARG_VARIADIC ){
+						zWhy = "must not be variadic";
+					}else if( (pV->iFlags & VM_FUNC_ARG_HAS_DEF) || SySetUsed(&pV->aByteCode) > 0 ){
+						zWhy = "must not have a default value";
+					}
+					if( zWhy ){
+						GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+							"Parameter $%z of %z hook %z::$%z %s",
+							&pV->sName,pWritten,&pClass->sDisp,&pAttr->sName,zWhy));
+					}
+					if( ((pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0) != (pV->sTypeName.nByte > 0) ){
+						GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,nHLine,
+							"Type of parameter $%z of hook %z::$%z::set must be compatible with property type",
+							&pV->sName,&pClass->sDisp,&pAttr->sName));
+					}
+				}
 			}
 			if( SySetUsed(&pMeth->sFunc.aArgs) < 1 ){
 				/* Implicit $value formal */
@@ -3078,6 +3279,11 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 			}
 		}else{
 			goto HookSyntax;
+		}
+		if( pAttr->iFlags & (bGet ? PH7_CLASS_ATTR_HOOK_GET : PH7_CLASS_ATTR_HOOK_SET) ){
+			/* php asks once the hook has compiled: its last line */
+			GEN_HOOK_REFUSE(PH7_GenCompileError(pGen,E_ERROR,pMeth->sFunc.nEndLine,
+				"Cannot redeclare property hook \"%z\"",pWritten));
 		}
 		rc = PH7_ClassInstallMethod(pClass,pMeth);
 		if( rc != SXRET_OK ){

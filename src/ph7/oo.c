@@ -1697,6 +1697,22 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				 * `final private` in the base fataled every child that reused the
 				 * name — php only WARNS at the final-private DECLARATION and lets
 				 * the child have the name. */
+			}else if( (pMeth->iFlags & PH7_CLASS_ATTR_FINAL)
+			 && pName->nByte > sizeof("__phl_hook_get_")-1
+			 && SyMemcmp(pName->zString,"__phl_hook_",sizeof("__phl_hook_")-1) == 0 ){
+				/* A `final` property HOOK (__phl_hook_get_x): php names it as
+				 * `A::$x::get()`, and judges it where the subclass links -- its
+				 * class line, not the overriding hook's. */
+				SyString sProp, sKind;
+				SyStringInitFromBuf(&sKind,&pName->zString[sizeof("__phl_hook_")-1],3);
+				SyStringInitFromBuf(&sProp,&pName->zString[sizeof("__phl_hook_get_")-1],
+					pName->nByte - (sizeof("__phl_hook_get_")-1));
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+					"Cannot override final property hook %z::$%z::%z()",
+					&pBase->sDisp,&sProp,&sKind);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
 			}else if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){
 				/* php: "Cannot override final method A::test()" */
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pOwn->pUserData)->nLine,
