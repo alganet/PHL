@@ -7457,6 +7457,23 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 			}
 			if( !found ){
 				if( iVariadicIdx >= 0 ){
+					/* An extra the variadic collects is keyed by its name, so a second
+					 * one under the same name would overwrite the first in the collected
+					 * array: php refuses it with the same Error a named formal gets.
+					 * Only a NAMED earlier extra can collide -- a positional overflow
+					 * is keyed by index. */
+					sxu32 j;
+					for( j = 0; j < i; j++ ){
+						if( aSlot[j] == -1 && j < pMap->nTotal
+							&& pMap->aNames[j].nByte == pMap->aNames[i].nByte
+							&& SyMemcmp(pMap->aNames[j].zString,pMap->aNames[i].zString,
+								pMap->aNames[i].nByte) == 0 ){
+							SyBufferFormat(zErrMsg,sizeof(zErrMsg),
+								"Named parameter $%.*s overwrites previous argument",
+								(int)pMap->aNames[i].nByte,pMap->aNames[i].zString);
+							return VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
+						}
+					}
 					aSlot[i] = -1; /* goes to variadic with string key */
 				}else{
 					SyBufferFormat(zErrMsg,sizeof(zErrMsg),

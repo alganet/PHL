@@ -7839,9 +7839,17 @@ CalleeByName:
 				goto Abort;
 			}
 			aUsed = (sxu8 *)&aSlot[nActual];
-			/* Resolve named arguments to formal parameters */
+			/* Resolve named arguments to formal parameters. php raises every error
+			 * this can throw at the CALL SITE, before the callee is entered, so its
+			 * trace has no frame for the function being called; the frame is already
+			 * entered here, so the resolve runs from the caller's. */
+			{
+			VmFrame *pEntered = pVm->pFrame;
+			pVm->pFrame = pEntered->pParent;
 			rc = VmResolveNamedArgs(&(*pVm),pCallMap3,aFormalArg,
 				nNonVariadic,iVariadicIdx,nActual,aSlot,aUsed);
+			pVm->pFrame = pEntered;
+			}
 			if( rc == PH7_ABORT ){
 				SyMemBackendFree(&pVm->sAllocator, aSlot);
 				goto Abort;

@@ -1,6 +1,6 @@
 --- php
 +++ phl
-@@ -3,63 +3,740 @@
+@@ -3,63 +3,721 @@
  Runtime: @RUNTIME@
  Configuration: @ROOT@/phpunit.xml
  
@@ -19,7 +19,7 @@
 -........S.S......S...............................               805 / 805 (100%)
 +..F..FFF..FFS.S...........S....................................  63 / 805 (  7%)
 +..........................FF................................... 126 / 805 ( 15%)
-+.................F.FF............................F.FF.......... 189 / 805 ( 23%)
++.................F.FF..............................FF.......... 189 / 805 ( 23%)
 +..F.....FS...S....................................S............ 252 / 805 ( 31%)
 +..F.................S..S........F......................FS...... 315 / 805 ( 39%)
 +.........................................S..........F....S...F. 378 / 805 ( 46%)
@@ -34,7 +34,7 @@
  Time: @TIME@
  
 -There were 2 failures:
-+There were 63 failures:
++There were 62 failures:
  
 -1) @ROOT@/tests/end-to-end/event/risky-code-coverage.phpt
 +1) @ROOT@/tests/end-to-end/baseline/generate-baseline-suppressed-with-ignored-suppression.phpt
@@ -492,26 +492,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+12) @ROOT@/tests/end-to-end/data-provider/dependency-result.phpt
-+Failed asserting that string matches format description.
-+--- Expected
-++++ Actual
-+@@ @@
-+ 1) PHPUnit\TestFixture\DataProviderDependencyResultTest::testAdd#2 with data (2, 0)
-+ Error: Cannot use positional argument after named argument during unpacking
-+
-++@ROOT@/tests/_files/DataProviderDependencyResultTest.php:1318
-++
-+ ERRORS!
-+ Tests: 4, Assertions: 5, Errors: 1.
-+
-+@ROOT@/tests/end-to-end/data-provider/dependency-result.phpt:23
-+@ROOT@/src/Framework/TestSuite.php:374
-+@ROOT@/src/Framework/TestSuite.php:374
-+@ROOT@/src/TextUI/TestRunner.php:64
-+@ROOT@/src/TextUI/Application.php:229
-+
-+13) @ROOT@/tests/end-to-end/data-provider/log-junit-isolation.phpt
++12) @ROOT@/tests/end-to-end/data-provider/log-junit-isolation.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -544,7 +525,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+14) @ROOT@/tests/end-to-end/data-provider/log-junit.phpt
++13) @ROOT@/tests/end-to-end/data-provider/log-junit.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -603,7 +584,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+15) @ROOT@/tests/end-to-end/error-handler/php-deprecation.phpt
++14) @ROOT@/tests/end-to-end/error-handler/php-deprecation.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -643,14 +624,16 @@
 -+Test Runner Triggered Warning (XDEBUG_MODE=coverage (environment variable) or xdebug.mode=coverage (PHP configuration setting) has to be set)
 -+PHPUnit Finished (Shell Exit Code: 1)
 ++PHPUnit Finished (Shell Exit Code: 2)
-+
+ 
+-@ROOT@/tests/end-to-end/event/risky-code-coverage.phpt:27
 +@ROOT@/tests/end-to-end/error-handler/php-deprecation.phpt:27
-+@ROOT@/src/Framework/TestSuite.php:374
-+@ROOT@/src/Framework/TestSuite.php:374
-+@ROOT@/src/TextUI/TestRunner.php:64
-+@ROOT@/src/TextUI/Application.php:229
-+
-+16) @ROOT@/tests/end-to-end/error-handler/user-error-php-84.phpt
+ @ROOT@/src/Framework/TestSuite.php:374
+ @ROOT@/src/Framework/TestSuite.php:374
+ @ROOT@/src/TextUI/TestRunner.php:64
+ @ROOT@/src/TextUI/Application.php:229
+ 
+-2) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
++15) @ROOT@/tests/end-to-end/error-handler/user-error-php-84.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -670,16 +653,14 @@
 + Test Runner Execution Finished
 + Test Runner Finished
 + PHPUnit Finished (Shell Exit Code: 2)
- 
--@ROOT@/tests/end-to-end/event/risky-code-coverage.phpt:27
++
 +@ROOT@/tests/end-to-end/error-handler/user-error-php-84.phpt:29
- @ROOT@/src/Framework/TestSuite.php:374
- @ROOT@/src/Framework/TestSuite.php:374
- @ROOT@/src/TextUI/TestRunner.php:64
- @ROOT@/src/TextUI/Application.php:229
- 
--2) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
-+17) @ROOT@/tests/end-to-end/event/php-deprecated.phpt
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/Framework/TestSuite.php:374
++@ROOT@/src/TextUI/TestRunner.php:64
++@ROOT@/src/TextUI/Application.php:229
++
++16) @ROOT@/tests/end-to-end/event/php-deprecated.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -707,7 +688,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+18) @ROOT@/tests/end-to-end/event/success-verbose.phpt
++17) @ROOT@/tests/end-to-end/event/success-verbose.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -738,7 +719,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+19) @ROOT@/tests/end-to-end/event/user-error-php-84.phpt
++18) @ROOT@/tests/end-to-end/event/user-error-php-84.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -775,15 +756,15 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+20) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
++19) @ROOT@/tests/end-to-end/generic/defaulttestsuite-using-testsuite-without-name.phpt
  Failed asserting that string matches format description.
  --- Expected
  +++ Actual
-@@ -78,6 +755,2200 @@
+@@ -78,6 +736,2200 @@
  @ROOT@/src/TextUI/TestRunner.php:64
  @ROOT@/src/TextUI/Application.php:229
  
-+21) @ROOT@/tests/end-to-end/generic/expect-error-log-fail-with-open_basedir.phpt
++20) @ROOT@/tests/end-to-end/generic/expect-error-log-fail-with-open_basedir.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -809,7 +790,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+22) @ROOT@/tests/end-to-end/generic/expect-error-log-with-open_basedir.phpt
++21) @ROOT@/tests/end-to-end/generic/expect-error-log-with-open_basedir.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -834,7 +815,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+23) @ROOT@/tests/end-to-end/generic/ini-isolation-not-changeable-at-runtime.phpt
++22) @ROOT@/tests/end-to-end/generic/ini-isolation-not-changeable-at-runtime.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -870,7 +851,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+24) @ROOT@/tests/end-to-end/generic/ini-isolation.phpt
++23) @ROOT@/tests/end-to-end/generic/ini-isolation.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -906,7 +887,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+25) @ROOT@/tests/end-to-end/generic/one-class-per-file-valid.phpt
++24) @ROOT@/tests/end-to-end/generic/one-class-per-file-valid.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -937,7 +918,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+26) @ROOT@/tests/end-to-end/generic/php-cli-d-forwarded-to-child-process.phpt
++25) @ROOT@/tests/end-to-end/generic/php-cli-d-forwarded-to-child-process.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -967,7 +948,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+27) @ROOT@/tests/end-to-end/logging/junit/to-file.phpt
++26) @ROOT@/tests/end-to-end/logging/junit/to-file.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1033,7 +1014,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+28) @ROOT@/tests/end-to-end/logging/junit/with-progress-with-errors.phpt
++27) @ROOT@/tests/end-to-end/logging/junit/with-progress-with-errors.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1081,7 +1062,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+29) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-class-method.phpt
++28) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-class-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1140,7 +1121,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+30) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-test-method.phpt
++29) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-after-test-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1197,7 +1178,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+31) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-class-method.phpt
++30) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-class-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1245,7 +1226,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+32) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-test-method.phpt
++31) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-before-test-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1302,7 +1283,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+33) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-postcondition-method.phpt
++32) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-postcondition-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1359,7 +1340,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+34) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-precondition-method.phpt
++33) @ROOT@/tests/end-to-end/logging/open-test-reporting/assertion-failure-in-precondition-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1416,7 +1397,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+35) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument-with-git-information.phpt
++34) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument-with-git-information.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1645,7 +1626,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+36) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument.phpt
++35) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-case-class-source-file-as-cli-argument.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -1870,7 +1851,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+37) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-suite-from-xml-configuration-file.phpt
++36) @ROOT@/tests/end-to-end/logging/open-test-reporting/basic-test-suite-from-xml-configuration-file.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2099,7 +2080,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+38) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-class-method.phpt
++37) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-class-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2158,7 +2139,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+39) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-test-method.phpt
++38) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-after-test-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2215,7 +2196,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+40) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-class-method.phpt
++39) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-class-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2263,7 +2244,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+41) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-test-method.phpt
++40) @ROOT@/tests/end-to-end/logging/open-test-reporting/exception-in-before-test-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2320,7 +2301,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+42) @ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-class-method.phpt
++41) @ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-class-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2365,7 +2346,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+43) @ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-test-method.phpt
++42) @ROOT@/tests/end-to-end/logging/open-test-reporting/skipped-in-before-test-method.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2419,7 +2400,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+44) @ROOT@/tests/end-to-end/logging/testdox/testdox-case-with-dollar-sign.phpt
++43) @ROOT@/tests/end-to-end/logging/testdox/testdox-case-with-dollar-sign.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2444,7 +2425,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+45) @ROOT@/tests/end-to-end/logging/testdox/testdox-html-class-name-collision.phpt
++44) @ROOT@/tests/end-to-end/logging/testdox/testdox-html-class-name-collision.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2471,7 +2452,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+46) @ROOT@/tests/end-to-end/logging/testdox/testdox-html-escaping.phpt
++45) @ROOT@/tests/end-to-end/logging/testdox/testdox-html-escaping.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2495,7 +2476,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+47) @ROOT@/tests/end-to-end/logging/testdox/testdox-html.phpt
++46) @ROOT@/tests/end-to-end/logging/testdox/testdox-html.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2572,7 +2553,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+48) @ROOT@/tests/end-to-end/logging/testdox/testdox-text-class-name-collision.phpt
++47) @ROOT@/tests/end-to-end/logging/testdox/testdox-text-class-name-collision.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2594,7 +2575,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+49) @ROOT@/tests/end-to-end/logging/testdox/testdox-text.phpt
++48) @ROOT@/tests/end-to-end/logging/testdox/testdox-text.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2614,7 +2595,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+50) @ROOT@/tests/end-to-end/metadata/with-environment-variable.phpt
++49) @ROOT@/tests/end-to-end/metadata/with-environment-variable.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2644,7 +2625,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+51) @ROOT@/tests/end-to-end/mock-objects/generator/extendable_class_with_property_with_final_get_hook.phpt
++50) @ROOT@/tests/end-to-end/mock-objects/generator/extendable_class_with_property_with_final_get_hook.phpt
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -2667,7 +2648,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+52) @ROOT@/tests/end-to-end/mock-objects/mock-method/with_argument_default_new_expression.phpt
++51) @ROOT@/tests/end-to-end/mock-objects/mock-method/with_argument_default_new_expression.phpt
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -2683,7 +2664,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+53) @ROOT@/tests/end-to-end/phpt/phpt-clean-parse-error.phpt
++52) @ROOT@/tests/end-to-end/phpt/phpt-clean-parse-error.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2704,7 +2685,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+54) @ROOT@/tests/end-to-end/phpt/phpt-env.phpt
++53) @ROOT@/tests/end-to-end/phpt/phpt-env.phpt
 +Failed asserting that two strings are equal.
 +--- Expected
 ++++ Actual
@@ -2718,7 +2699,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+55) @ROOT@/tests/end-to-end/regression/1335.phpt
++54) @ROOT@/tests/end-to-end/regression/1335.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2754,7 +2735,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+56) @ROOT@/tests/end-to-end/regression/2158.phpt
++55) @ROOT@/tests/end-to-end/regression/2158.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2790,7 +2771,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+57) @ROOT@/tests/end-to-end/regression/5258.phpt
++56) @ROOT@/tests/end-to-end/regression/5258.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2828,7 +2809,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+58) @ROOT@/tests/end-to-end/regression/5991.phpt
++57) @ROOT@/tests/end-to-end/regression/5991.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2849,7 +2830,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+59) @ROOT@/tests/end-to-end/regression/6294-display-errors-off.phpt
++58) @ROOT@/tests/end-to-end/regression/6294-display-errors-off.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2870,7 +2851,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+60) @ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt
++59) @ROOT@/tests/end-to-end/regression/6294-display-errors-on.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2891,7 +2872,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+61) @ROOT@/tests/end-to-end/regression/6311.phpt
++60) @ROOT@/tests/end-to-end/regression/6311.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2918,7 +2899,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+62) @ROOT@/tests/end-to-end/regression/6465.phpt
++61) @ROOT@/tests/end-to-end/regression/6465.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2941,7 +2922,7 @@
 +@ROOT@/src/TextUI/TestRunner.php:64
 +@ROOT@/src/TextUI/Application.php:229
 +
-+63) @ROOT@/tests/end-to-end/regression/797.phpt
++62) @ROOT@/tests/end-to-end/regression/797.phpt
 +Failed asserting that string matches format description.
 +--- Expected
 ++++ Actual
@@ -2979,5 +2960,5 @@
 +
  FAILURES!
 -Tests: 805, Assertions: 780, Failures: 2, Skipped: 25.
-+Tests: 805, Assertions: 789, Failures: 63, Skipped: 16.
++Tests: 805, Assertions: 789, Failures: 62, Skipped: 16.
  @exit@ 1
