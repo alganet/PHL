@@ -9530,6 +9530,7 @@ static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,s
 	SyHashEntry *pHashEntry;
 	ph7_class *pClass;
 	sxu32 n,nEntry;
+	sxi32 rc;
 	nEntry = SySetUsed(&pVm->aAutoload);
 	if( nEntry < 1 ){
 		return 0;
@@ -9560,9 +9561,15 @@ static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,s
 		 * autoloader declaring anything but `string` therefore RAISES under a strict
 		 * caller, where PHL coerced the class name (`bool $c` got true) and ran the
 		 * loader on a value that no longer named anything. */
-		if( PH7_VmCallUserFunctionWithMap(pVm,
+		rc = PH7_VmCallUserFunctionWithMap(pVm,
 				(pEntry->sInvoke.iFlags & MEMOBJ_OBJ) ? &pEntry->sInvoke : &pEntry->sCallback,
-				1,apArg,&sResult,0) != SXRET_OK ){
+				1,apArg,&sResult,0);
+		if( PH7_CALLBACK_UNWOUND(rc) ){
+			/* The loader threw or exited: php stops the chain there, so no later
+			 * loader is asked for a class the unwinding frame will never use. */
+			break;
+		}
+		if( rc != SXRET_OK ){
 			/* Callback could not be invoked — skip to next autoloader */
 			continue;
 		}
