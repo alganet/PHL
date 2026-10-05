@@ -3207,8 +3207,12 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						}
 						VM_EXIT_BREAK;
 					}
-					/* Check for special ::class pseudo-constant */
-					if( sName.nByte == sizeof("class")-1 &&
+					/* Check for special ::class pseudo-constant -- the BAREWORD form
+					 * only (p3==0, iP1!=2, as bConstForm below). `C::$class` is an
+					 * ordinary static property that happens to be named "class";
+					 * matching it here answered the class name for every read. */
+					if( pInstr->p3 == 0 && pInstr->iP1 != 2 &&
+					    sName.nByte == sizeof("class")-1 &&
 					    SyStrnicmp(sName.zString,"class",sizeof("class")-1) == 0 ){
 						/* ::class returns the fully qualified class name */
 						/* Pop the attribute name from the stack */
