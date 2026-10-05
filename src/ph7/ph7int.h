@@ -1359,6 +1359,11 @@ struct VmFrame
 	                   * (`Fiber->start()`) and, under PROVIDE_OBJECT, the object. Borrowed:
 	                   * the running method's own $this keeps it alive for as long as this
 	                   * frame is on the chain. Only a fiber's body frame sets it today. */
+	struct VmNativeCall *pNativeCallerRec;/* ...and a fiber body's: the running record of the
+	                   * Fiber method that entered it last, whose arguments the trace frame
+	                   * lists. Borrowed from that method's C stack, so valid only while it
+	                   * runs -- re-stamped on every entry, cleared before the one entry no
+	                   * Fiber method makes (the unwind of an abandoned fiber). */
 	ph7_foreach_step *pForeachSteps; /* Foreach steps this activation still owns, newest first.
 	                   * Every step OP_FOREACH_INIT pushes is linked here and unlinked by the one
 	                   * teardown door (VmForeachStepUnlink); whatever is left when the frame dies
@@ -1421,6 +1426,11 @@ struct VmNativeCall
 	                         * no frame in php's trace, so the walks step over it (set by
 	                         * the forward itself once it knows; see VmNativeCallPrev) */
 	VmNativeCall *pPrev;    /* the internal call this one was made from, or 0 */
+	ph7_value **apArg;      /* the arguments as bound, for a trace's `args` -- borrowed from
+	                         * the dispatch's own vector, so read live, the way php reads its
+	                         * frame's (a by-reference array shows what the body did to it
+	                         * so far); 0 until the screens above the C body are passed */
+	int nArg;
 };
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */

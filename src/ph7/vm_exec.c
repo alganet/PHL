@@ -9294,6 +9294,8 @@ NativeCall:
 		sNativeCall.bElided = pVm->bElideNativeCall;
 		pVm->bElideNativeCall = 0;
 		sNativeCall.pPrev = pVm->pNativeCall;
+		sNativeCall.apArg = 0;
+		sNativeCall.nArg = 0;
 		/* Bind `name:` arguments to the callee's declared POSITIONS before anything
 		 * reads the vector — the arity screen, the ZPP screen and the C body all take
 		 * it positionally. A host function has no compiled parameter records for
@@ -9414,6 +9416,11 @@ NativeCall:
 				 * runtime unpack does not give it. */
 				pVm->pNativeFrameName = &pFunc->sName;
 			}
+			/* Only the C body can reach for a callback, so only it can be asked for
+			 * a trace that shows its arguments. An unknown-name extra is no positional
+			 * argument (php's ZPP never counts it). */
+			sNativeCall.apArg = (ph7_value **)SySetBasePtr(&aArg);
+			sNativeCall.nArg = nGiven - nExtraNamed;
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
 			pVm->bHostDiscard = bSavedHostDiscard;

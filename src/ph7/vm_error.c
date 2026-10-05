@@ -5711,12 +5711,38 @@ PH7_PRIVATE sxi32 PH7_CmpRefusalRaiseCtx(ph7_context *pCtx)
  * Returns SXRET_OK to proceed, or the status of the thrown TypeError.
  */
 /*
+ * A running internal call's `args`, unless they were asked away
+ * (DEBUG_BACKTRACE_IGNORE_ARGS): php lists an internal frame's arguments exactly as it
+ * lists a user frame's, and always with the key, so `array_map('f', [1])` shows
+ * ['f', [1]] above f's frame and a call that passed nothing shows [].
+ */
+static void VmTraceNativeArgs(ph7_vm *pVm,sxi32 iOptions,VmNativeCall *pNat,ph7_value *pEntry)
+{
+	ph7_value *pArg;
+	int i;
+	if( (iOptions & 2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/) != 0 ){
+		return;
+	}
+	pArg = ph7_new_array(&(*pVm));
+	if( pArg == 0 ){
+		return;
+	}
+	for( i = 0 ; pNat && i < pNat->nArg ; i++ ){
+		if( pNat->apArg[i] ){
+			ph7_array_add_elem(pArg,0,pNat->apArg[i]);
+		}
+	}
+	ph7_array_add_strkey_elem(pEntry,"args",pArg);
+	ph7_release_value(&(*pVm),pArg);
+}
+/*
  * The frame of the INTERNAL function or method that reached for pFrame's body as a
  * callback (VM_FRAME_NATIVE_CALLER's pNativeCaller, or the Fiber method that last
  * entered a fiber's body, VM_FRAME_FIBER). It carries the userland call site the
  * callback's own frame declines, and php gives it `file`, `line` and `function`, plus
  * `class`, `object` (PROVIDE_OBJECT only) and `type` for a method -- in that order,
- * which is not a user frame's. No `args` even when they were asked for.
+ * which is not a user frame's -- and then `args`, which only a fiber's entry has the
+ * record to list; a dispatch no record describes shows none.
  */
 static void VmTraceNativeCallerEntry(ph7_vm *pVm,sxi32 iOptions,VmFrame *pFrame,
 	SyString *pFile,ph7_value *pValue,ph7_value *pList)
@@ -5755,6 +5781,9 @@ static void VmTraceNativeCallerEntry(ph7_vm *pVm,sxi32 iOptions,VmFrame *pFrame,
 		ph7_array_add_strkey_elem(pNat,"type",pValue);
 		ph7_value_reset_string_cursor(pValue);
 	}
+	if( pFrame->iFlags & VM_FRAME_FIBER ){
+		VmTraceNativeArgs(&(*pVm),iOptions,pFrame->pNativeCallerRec,pNat);
+	}
 	ph7_array_add_elem(pList,0,pNat);
 	ph7_release_value(&(*pVm),pNat);
 }
@@ -5781,7 +5810,7 @@ static VmNativeCall * VmNativeCallPrev(VmNativeCall *pNat)
  * which is also the only rendering for a dispatch no record describes (a shutdown
  * function, an autoloader an opcode triggered).
  */
-static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iLimit,sxi32 nDone,
+static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sxi32 nDone,
 	VmFrame *pFrame,SyString *pFile,ph7_value *pValue,ph7_value *pList)
 {
 	VmNativeCall *pNat = pVm->pNativeCall;
@@ -5822,6 +5851,7 @@ static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iLimit,sxi32 nDone,
 			ph7_array_add_strkey_elem(pEntry,"type",pValue);
 			ph7_value_reset_string_cursor(pValue);
 		}
+		VmTraceNativeArgs(&(*pVm),iOptions,pNat,pEntry);
 		ph7_array_add_elem(pList,0,pEntry);
 		ph7_release_value(&(*pVm),pEntry);
 	}
@@ -5929,8 +5959,8 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 				ph7_array_add_strkey_elem(pNatEntry,"type",pValue);
 				ph7_value_reset_string_cursor(pValue);
 			}
-			/* No 'args' even when they were asked for: php has no zval vector to show
-			 * for an internal frame's arguments here, and no 'object' either. */
+			/* No 'object' here: php has none for an internal frame a throw left. */
+			VmTraceNativeArgs(&(*pVm),iOptions,pNat,pNatEntry);
 			ph7_array_add_elem(pList,0,pNatEntry);
 			ph7_release_value(&(*pVm),pNatEntry);
 			pNat = VmNativeCallPrev(pNat);
@@ -6147,7 +6177,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 				break;
 			}
 			nChain = (pFrame->iFlags & VM_FRAME_FIBER) == 0
-				? VmTraceNativeCallerChain(&(*pVm),iLimit,nDone,pFrame,pFile,pValue,pList)
+				? VmTraceNativeCallerChain(&(*pVm),iOptions,iLimit,nDone,pFrame,pFile,pValue,pList)
 				: 0;
 			if( nChain > 0 ){
 				nDone += nChain;

@@ -858,6 +858,7 @@ static void VmFiberStampEntry(ph7_exec_ctx *pCtx, SyString *pMethod, ph7_class_i
 	pCtx->pFrame->iFlags |= VM_FRAME_FIBER;
 	pCtx->pFrame->pNativeCaller = pMethod;
 	pCtx->pFrame->pNativeCallerThis = pFiber;
+	pCtx->pFrame->pNativeCallerRec = pCtx->pVm->pNativeCall;
 }
 /*
  * Record whether a GENERATOR's body is being entered by an internal function. php
@@ -1430,6 +1431,9 @@ PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 		 * unwind also runs the body's `finally` blocks and this one does not is
 		 * recorded separately -- an abort is not a return.) */
 		pCtx->bCoroKill = 1;
+		if( pCtx->pFrame ){
+			pCtx->pFrame->pNativeCallerRec = 0;
+		}
 		(void)VmResumeCtx(pVm, pCtx, 0, 0);
 	}
 	if( pCtx->pCoro ){
