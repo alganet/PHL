@@ -7826,7 +7826,10 @@ CalleeByName:
 					"Out of memory while creating generator for '%z'", &pVmFunc->sName);
 				break;
 			}
-			/* Set up the frame with arguments, closure env, $this */
+			/* Set up the frame with arguments, closure env, $this. A refusal raised
+			 * while they bind shows this frame in its trace, called from THIS line;
+			 * the detached frame had none, and printed line 1. */
+			VmStampCoroutineCallSite(pVm, pExecCtx);
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
 			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs, aGenArgName,

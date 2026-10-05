@@ -831,8 +831,10 @@ static void VmFreeSuspendedExceptionFrames(ph7_vm *pVm, ph7_exec_ctx *pCtx)
  * for the first step, the `yield from` line for a delegate), which is exactly
  * what this reads, so it is stamped on every start and resume rather than once.
  * Must run BEFORE the frame is spliced onto the chain: the site is the resumer's.
+ * A generator's creating call stamps it too (vm_exec.c): its arguments are bound
+ * on this frame there, and a refusal's trace names that call's line.
  */
-static void VmStampCoroutineCallSite(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+PH7_PRIVATE void VmStampCoroutineCallSite(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 {
 	SyString *pFile;
 	if( pCtx->pFrame == 0 ){

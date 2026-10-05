@@ -7927,6 +7927,7 @@ PH7_PRIVATE void PH7_VmDeprecatedCallNotice(ph7_vm *pVm,const ph7_deprecated_nam
 PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm);
+PH7_PRIVATE void VmStampCoroutineCallSite(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
