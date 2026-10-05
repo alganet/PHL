@@ -4168,7 +4168,14 @@ struct ph7_vm
 	                             * name, so without this latch an escaped closure over a private method
 	                             * died at the invocation php runs. Armed by VmClosureUnwrap, read by
 	                             * the array-callable dispatch sites, cleared at the head of OP_CALL. */
-	char zDefTz[68];            /* date_default_timezone_set() identifier, stored verbatim like php
+	int bClosureStaticTramp;    /* Consume-once: the pair now being dispatched comes out of an UNBOUND
+	                             * method Closure over a name no method answered -- php's __callStatic
+	                             * TRAMPOLINE, decided where the closure was built. The pair's own
+	                             * catch-all rule would re-ask the CALLER's `$this` and pick __call (or
+	                             * refuse a direct `$c()` as non-static) inside an instance of the
+	                             * class. Armed by VmClosureUnwrap, read by the pair dispatch
+	                             * (PH7_VmCallUserFunctionWithMap), cleared with bClosureScreened. */
+	char zDefTz[68];           /* date_default_timezone_set() identifier, stored verbatim like php
 	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
 	sxu32 nDefTz;               /* zDefTz length in bytes */
 	sxu8 bDefTzExplicit;        /* a script called date_default_timezone_set(). php latches on

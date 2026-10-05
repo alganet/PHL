@@ -2813,6 +2813,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			 * dispatch that never reached one (unresolvable class, OOM) would leave it
 			 * standing and stand the visibility screen down for the NEXT call. */
 			pVm->bClosureScreened = 0;
+			pVm->bClosureStaticTramp = 0;
 			pVm->pClosureMethodCls = 0;
 			PH7_MemObjRelease(&sCallable);
 			return rcClo;
@@ -2847,7 +2848,11 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		const char *zMeth = 0; /* the method name, a qualified one's method half */
 		sxu32 nMeth = 0;
 		int bViaOther = FALSE; /* an object target's method named through another class */
+		/* The pair is an unbound trampoline Closure's (VmClosureUnwrap): taken off the VM
+		 * before anything below can run user code. */
+		int bTramp = pVm->bClosureStaticTramp;
 		sxi32 rc;
+		pVm->bClosureStaticTramp = 0;
 		/* php reads the INTEGER indices 0 and 1, not the first two entries in insertion
 		 * order — the same decode the predicate uses, so `[1=>'m',0=>'C']` dispatches
 		 * (target at index 0) and `['a'=>'C','b'=>'m']` does not resolve at all. The
@@ -2875,7 +2880,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			/* Point to the class instance */
 			pThis = (ph7_class_instance *)pValue->x.pOther;
 		}
-		pCalled = pThis ? pClass : VmCallbackCalledClass(&(*pVm),
+		pCalled = (pThis || bTramp) ? pClass : VmCallbackCalledClass(&(*pVm),
 			(const char *)SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob),pClass,bDirect);
 		if( pVm->pClosureMethodCls ){
 			/* The pair came out of a method closure resolved in a class of its own
@@ -2887,6 +2892,18 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 				pClass = pVm->pClosureMethodCls;
 			}
 			pVm->pClosureMethodCls = 0;
+		}
+		if( bTramp && (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
+			/* php resolved this Closure to the class's __callStatic where it was BUILT and
+			 * keeps that function: whatever `$this` the caller holds, and whether or not the
+			 * name is a method the caller could reach now, it is the static catch-all that
+			 * runs, with `static::` the class the pair names. */
+			rc = PH7_VmDispatchMagicCall(&(*pVm),pClass,pCalled,0,
+				(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
+				pResult,nArg,apArg,pArgMap);
+			if( rc != SXERR_NOTFOUND ){
+				return rc;
+			}
 		}
 		/* Try to extract the method (index 1) */
 		if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){

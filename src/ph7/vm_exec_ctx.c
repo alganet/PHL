@@ -1627,6 +1627,11 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 				 * a failed build cannot leave it standing; the consumers clear it like
 				 * pClosureThis/pClosureScope. */
 				pVm->bClosureScreened = 1;
+			}else if( !bBoundObj && (pThis->iFlags & VM_INSTANCE_FCC_METHOD) ){
+				/* No method answered and no receiver is bound: the __callStatic trampoline
+				 * (PH7_VmClosureIsStatic's rule). php keeps it, so the pair must not re-pick
+				 * the catch-all against whatever `$this` the CALLER holds. */
+				pVm->bClosureStaticTramp = 1;
 			}
 			if( bBoundObj && bScope && (pThis->iFlags & VM_INSTANCE_FCC_METHOD) ){
 				/* A method closure whose `$__scope` is not its receiver's class names the class
@@ -3072,6 +3077,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				}
 				pVm->pClosureScope = 0;
 				pVm->bClosureScreened = 0;
+				pVm->bClosureStaticTramp = 0;
 				pVm->pClosureMethodCls = 0;
 				return pUnwrapped;
 			}
@@ -3083,6 +3089,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 			}
 			pVm->pClosureScope = 0;
 			pVm->bClosureScreened = 0;
+			pVm->bClosureStaticTramp = 0;
 			pVm->pClosureMethodCls = 0;
 			PH7_VmThrowException(pCtx, "FiberError", zWhyClo
 				? "Fiber %s" : "Fiber callable closure could not be resolved", zWhyClo);
