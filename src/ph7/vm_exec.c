@@ -3098,6 +3098,18 @@ case PH7_OP_CLASS_DEFER: {
 	break;
 				}
 /*
+ * CLASS_OBLIGE: * * P3
+ *
+ * Settle the variance pairs a class's compile-time link left unresolved (P3, a
+ * VmClassObligeSet): autoload what they name, check them again, and halt on a
+ * refusal -- php's compile fatal, raised where the declaration runs.
+ */
+case PH7_OP_CLASS_OBLIGE:
+	if( pInstr->p3 && PH7_ClassSettleObligations(&(*pVm),(VmClassObligeSet *)pInstr->p3) == SXERR_ABORT ){
+		goto Abort;
+	}
+	break;
+/*
  * CVT_INT: * * *
  *
  * Force the top of the stack to be an integer.

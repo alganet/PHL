@@ -5420,7 +5420,7 @@ static sxi32 GenStateCheckVirtualDefaults(ph7_gen_state *pGen,ph7_class *pClass)
 	}
 	return SXRET_OK;
 }
-static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
+static sxi32 GenStateCompileClassBody(ph7_gen_state *pGen,sxi32 iFlags,
 	SyString *pAnonName,SyToken **ppArgStart,SyToken **ppArgEnd)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -6016,6 +6016,45 @@ done:
 	pGen->pIn = &pEnd[1];
 	pGen->pEnd = pTmp;
 	return PH7_OK;
+}
+/*
+ * A class whose link leaves a variance pair only a class nothing has loaded can
+ * decide (an interface's get-only property typed with a class declared further
+ * down, a parameter naming one an autoloader supplies) is not refused or passed
+ * here: php declares such a class where its statement RUNS and settles the pair
+ * there. The pairs are collected while the body links, and PH7_OP_CLASS_OBLIGE
+ * at the declaration's own position settles them in statement order.
+ */
+static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
+	SyString *pAnonName,SyToken **ppArgStart,SyToken **ppArgEnd)
+{
+	struct VmClassObligeSet *pSaved = pGen->pOblige;
+	VmClassObligeSet sOblige;
+	sxi32 rc;
+	SySetInit(&sOblige.aOblige,&pGen->pVm->sAllocator,sizeof(VmClassOblige));
+	SySetInit(&sOblige.aName,&pGen->pVm->sAllocator,sizeof(SyString));
+	sOblige.bDone = 0;
+	/* A check compile links nothing, and `phl -l` runs nothing to settle at. */
+	pGen->pOblige = (pGen->bDeclCheck || pGen->pVm->bSyntaxCheck) ? 0 : &sOblige;
+	rc = GenStateCompileClassBody(pGen,iFlags,pAnonName,ppArgStart,ppArgEnd);
+	pGen->pOblige = pSaved;
+	if( rc == SXRET_OK && SySetUsed(&sOblige.aOblige) > 0 ){
+		VmClassObligeSet *pSet = (VmClassObligeSet *)SyMemBackendAlloc(&pGen->pVm->sAllocator,
+			sizeof(VmClassObligeSet));
+		if( pSet == 0 ){
+			SySetRelease(&sOblige.aOblige);
+			SySetRelease(&sOblige.aName);
+			PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn ? pGen->pIn->nLine : 0,
+				"Fatal, PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
+		*pSet = sOblige;
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLASS_OBLIGE,0,0,(void *)pSet,0);
+		return SXRET_OK;
+	}
+	SySetRelease(&sOblige.aOblige);
+	SySetRelease(&sOblige.aName);
+	return rc;
 }
 /* Compile a named class declaration (the common case). */
 static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)

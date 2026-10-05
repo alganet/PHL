@@ -1231,6 +1231,11 @@ struct ph7_gen_state
 	int bParseThrows;    /* This unit's parse errors are the CALLER's to raise (include/require:
 	                      * php throws a ParseError there and prints nothing until it goes
 	                      * uncaught). A refusal of E_ERROR severity still prints at once. */
+	struct VmClassObligeSet *pOblige; /* Where the class being linked records a variance
+	                      * pair only a class nothing has loaded can decide (0: nowhere, and
+	                      * the pair is accepted). php declares such a class when its
+	                      * statement RUNS and settles the pair there (PH7_OP_CLASS_OBLIGE). */
+	int bObligeRun;      /* ...and that settling, at run time: an unresolved pair is final. */
 	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
 	SyHash hUseImports;      /* use imports: short alias -> FQN (classes) */
 	SyHash hUseFuncImports;  /* use function imports: short alias -> FQN */
@@ -3554,6 +3559,30 @@ struct VmDeferredClass
 						 * refusals (bDeclCheck), so the re-compile prints no warning again */
 };
 /*
+ * PH7_OP_CLASS_OBLIGE's p3: the variance pairs a class's compile-time link could
+ * not decide because a class they name was not loaded -- an interface's get-only
+ * property, a method parameter or return. php leaves such a class undeclared until
+ * its statement runs, autoloads every name the checks left unresolved, and checks
+ * again; a pair still open then is refused (OoSettleObligations, oo.c).
+ */
+typedef struct VmClassOblige VmClassOblige;
+struct VmClassOblige
+{
+	ph7_class *pBase;   /* the class whose member is the PARENT side, as the check got it */
+	ph7_class *pSub;    /* ...and the class being linked */
+	void *pParent;      /* ph7_class_method or ph7_class_attr */
+	void *pChild;
+	sxu8 bProp;         /* 1: a property pair (OoCheckPropRedeclare), 0: a method's */
+	sxu8 bCtorExempt;   /* the method check's own flag */
+};
+typedef struct VmClassObligeSet VmClassObligeSet;
+struct VmClassObligeSet
+{
+	SySet aOblige;      /* VmClassOblige, in link order */
+	SySet aName;        /* SyString: the unresolved class names, in php's lookup order */
+	sxu8 bDone;         /* settled once; the statement can run again (a loop, an include) */
+};
+/*
  * PH7_OP_CONST_DECL's p3: what a global `const` statement declares once its
  * initializer -- compiled inline just before it -- has left the value on the stack.
  */
@@ -5360,6 +5389,9 @@ enum ph7_vm_op {
                          * whole declaration re-compiles here, at its execution point, where
                          * spl_autoload_register has taken effect. php's own model: classes with
                          * unresolved parents are declared in execution order, not hoisted. */
+  PH7_OP_CLASS_OBLIGE,  /* Settle a class's unresolved variance pairs where its declaration
+                         * RUNS: p3 = VmClassObligeSet. Autoloads what they name, then checks
+                         * them again; one still open is php's compile fatal. */
   PH7_OP_SNAPSHOT       /* Give the top P1 stack slots their own copy of the string bytes they
                          * were loaded from (P1 = 0 means the top slot alone). A value copy only
                          * BORROWS the source's bytes (PH7_MemObjLoad), which is right while the
@@ -8855,6 +8887,7 @@ PH7_PRIVATE sxi32 PH7_VmCallMagicMethodLsb(ph7_vm *pVm,ph7_class *pCalled,ph7_cl
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase);
 PH7_PRIVATE sxi32 PH7_ClassCheckInterfaceProps(ph7_gen_state *pGen,ph7_class *pSub);
+PH7_PRIVATE sxi32 PH7_ClassSettleObligations(ph7_vm *pVm,VmClassObligeSet *pSet);
 PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_class *pTrait);
 PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase);
 PH7_PRIVATE sxi32 PH7_ClassInterfaceCheckRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pParent);

@@ -5623,6 +5623,8 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	pGen->nFirstErrLine = 0;
 	pGen->bParseThrows = 0;
 	pGen->bDeclCheck = 0;
+	pGen->pOblige = 0;     /* an outer class's unresolved pairs are not this unit's */
+	pGen->bObligeRun = 0;
 	pGen->bDeclQuiet = pVm->bDeclQuietNext;
 	pVm->bDeclQuietNext = 0;
 	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
@@ -5686,6 +5688,8 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->nFirstErrLine = 0;
 	pGen->bParseThrows = 0;
 	pGen->bDeclCheck = 0;
+	pGen->pOblige = 0;     /* an outer class's unresolved pairs are not this unit's */
+	pGen->bObligeRun = 0;
 	pGen->bDeclQuiet = pVm->bDeclQuietNext;
 	pVm->bDeclQuietNext = 0;
 	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;

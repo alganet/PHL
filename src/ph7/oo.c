@@ -1261,6 +1261,74 @@ static int OvCheck(const OvType *pP,const OvType *pC,int bCovariant,
 	return OV_BAD;
 }
 /*
+ * A pair left UNRESOLVED is php's variance obligation: the class is declared
+ * where its statement runs, and every name the check could not look up is
+ * autoloaded there before the pair is asked again. These keep the names, in the
+ * order php's checker asks for them -- the SUBTYPE side of a pair first, then
+ * the side it must be under -- and say which one a still-open pair names.
+ */
+static const SyString * OvFirstUnres(const OvType *pSub,const OvType *pSup)
+{
+	const OvType *aSide[2];
+	int i, k;
+	aSide[0] = pSub;
+	aSide[1] = pSup;
+	for( k = 0 ; k < 2 ; ++k ){
+		for( i = 0 ; i < aSide[k]->nAtom ; ++i ){
+			if( aSide[k]->a[i].nBit == OVB_CLS && aSide[k]->a[i].pCls == 0 ){
+				return aSide[k]->a[i].pName;
+			}
+		}
+	}
+	return 0;
+}
+static void OvNoteUnres(ph7_gen_state *pGen,const OvType *pSub,const OvType *pSup)
+{
+	const OvType *aSide[2];
+	SySet *pNames;
+	int i, k;
+	if( pGen->pOblige == 0 ){
+		return;
+	}
+	pNames = &pGen->pOblige->aName;
+	aSide[0] = pSub;
+	aSide[1] = pSup;
+	for( k = 0 ; k < 2 ; ++k ){
+		for( i = 0 ; i < aSide[k]->nAtom ; ++i ){
+			const SyString *pName = aSide[k]->a[i].pName;
+			SyString *aHave = (SyString *)SySetBasePtr(pNames);
+			sxu32 n;
+			if( aSide[k]->a[i].nBit != OVB_CLS || aSide[k]->a[i].pCls != 0 || pName == 0 ){
+				continue;
+			}
+			for( n = 0 ; n < SySetUsed(pNames) ; ++n ){
+				if( aHave[n].nByte == pName->nByte
+				 && SyStrnicmp(aHave[n].zString,pName->zString,pName->nByte) == 0 ){
+					break;
+				}
+			}
+			if( n >= SySetUsed(pNames) ){
+				SySetPut(pNames,(const void *)pName);
+			}
+		}
+	}
+}
+static void OvRecordOblige(ph7_gen_state *pGen,ph7_class *pBase,ph7_class *pSub,
+	void *pParent,void *pChild,int bProp,int bCtorExempt)
+{
+	VmClassOblige sRec;
+	if( pGen->pOblige == 0 ){
+		return;
+	}
+	sRec.pBase = pBase;
+	sRec.pSub = pSub;
+	sRec.pParent = pParent;
+	sRec.pChild = pChild;
+	sRec.bProp = (sxu8)(bProp != 0);
+	sRec.bCtorExempt = (sxu8)(bCtorExempt != 0);
+	SySetPut(&pGen->pOblige->aOblige,(const void *)&sRec);
+}
+/*
  * ---------------------------------------------------------------------------
  * The ARITY half, which is not the type lattice's: php asks whether every call
  * the parent's declaration accepts can reach the child.
@@ -1327,6 +1395,8 @@ PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *p
 	sxu32 nPArg, nCArg, nPos, k;
 	int bPVar, bCVar;
 	int bBad = 0;
+	int iRes;
+	const SyString *pUnres = 0; /* the first class an unresolved pair names */
 	OvType sP, sC;
 	if( pChildOwner == 0 ){
 		pChildOwner = pSub;
@@ -1350,10 +1420,6 @@ PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *p
 	if( ((pPF->iFlags | pCF->iFlags) & VM_FUNC_NATIVE) != 0 ){
 		return SXRET_OK;
 	}
-	/* Return type -- covariant. */
-	OvFromReturn(pVm,pParentOwner,pPF,&sP);
-	OvFromReturn(pVm,pChildOwner,pCF,&sC);
-	bBad = OvCheck(&sP,&sC,/* bCovariant */ 1,pParentOwner,pChildOwner) == OV_BAD;
 	/*
 	 * Arity, php's three rules -- every call the parent's declaration accepts must
 	 * reach the child. A VARIADIC signature is not the exception this used to make
@@ -1390,7 +1456,54 @@ PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *p
 		}
 		OvFromArg(pVm,pParentOwner,pPa,&sP);
 		OvFromArg(pVm,pChildOwner,pCa,&sC);
-		bBad = OvCheck(&sP,&sC,/* bCovariant */ 0,pParentOwner,pChildOwner) == OV_BAD;
+		iRes = OvCheck(&sP,&sC,/* bCovariant */ 0,pParentOwner,pChildOwner);
+		bBad = iRes == OV_BAD;
+		if( iRes == OV_UNRES ){
+			/* the parent's type is the side that must be under the child's */
+			if( pUnres == 0 ){
+				pUnres = OvFirstUnres(&sP,&sC);
+			}
+			OvNoteUnres(&(*pGen),&sP,&sC);
+		}
+	}
+	/* Return type -- covariant, and asked after the parameters, as php asks it. */
+	if( !bBad ){
+		OvFromReturn(pVm,pParentOwner,pPF,&sP);
+		OvFromReturn(pVm,pChildOwner,pCF,&sC);
+		iRes = OvCheck(&sP,&sC,/* bCovariant */ 1,pParentOwner,pChildOwner);
+		bBad = iRes == OV_BAD;
+		if( iRes == OV_UNRES ){
+			if( pUnres == 0 ){
+				pUnres = OvFirstUnres(&sC,&sP);
+			}
+			OvNoteUnres(&(*pGen),&sC,&sP);
+		}
+	}
+	if( !bBad && pUnres ){
+		/* A pair only a class nothing has loaded can decide. While the file
+		 * compiles that is php's obligation, settled where the declaration runs;
+		 * once it runs, a class still missing is php's refusal to guess. */
+		if( !pGen->bObligeRun ){
+			OvRecordOblige(&(*pGen),pBase,pSub,(void *)pParent,(void *)pChild,0,bCtorExempt);
+			return SXRET_OK;
+		}
+		{
+			SyBlob sChild, sParent;
+			sxi32 rc;
+			SyBlobInit(&sChild,&pVm->sAllocator);
+			SyBlobInit(&sParent,&pVm->sAllocator);
+			PH7_ClassRenderDecl(pVm,pChildOwner,pCF,&sChild);
+			PH7_ClassRenderDecl(pVm,pParentOwner,pPF,&sParent);
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pChild->nLine,
+				"Could not check compatibility between %z::%z%.*s and %z::%z%.*s, because class %z is not available",
+				&pChildOwner->sDisp,pMName,
+				OoDeclCLen(&sChild),(const char *)SyBlobData(&sChild),
+				&pParentOwner->sName,&pParent->sFunc.sName,
+				OoDeclCLen(&sParent),(const char *)SyBlobData(&sParent),pUnres);
+			SyBlobRelease(&sChild);
+			SyBlobRelease(&sParent);
+			return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+		}
 	}
 	if( bBad ){
 		SyBlob sChild, sParent;
@@ -1598,8 +1711,20 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 		}
 		iCo = iVariance == 2 ? OV_OK : OvCheck(&sP,&sC,1,pPScope,pChildOwner);
 		iContra = iVariance == 1 ? OV_OK : sC.bAbsent ? OV_BAD : OvCheck(&sP,&sC,0,pPScope,pChildOwner);
-		if( iCo == OV_BAD || iContra == OV_BAD
-		 || (iVariance == 0 && (iCo == OV_UNRES || iContra == OV_UNRES)) ){
+		if( iVariance != 0 && iCo != OV_BAD && iContra != OV_BAD
+		 && (iCo == OV_UNRES || iContra == OV_UNRES) && !pGen->bObligeRun ){
+			/* A variant pair a later class may still answer: php's obligation,
+			 * settled where the declaration runs (and refused there, in this same
+			 * sentence, if the class is still missing). */
+			if( iVariance == 1 ){
+				OvNoteUnres(&(*pGen),&sC,&sP);
+			}else{
+				OvNoteUnres(&(*pGen),&sP,&sC);
+			}
+			OvRecordOblige(&(*pGen),pBase,pSub,(void *)pParent,(void *)pChild,1,0);
+			return SXRET_OK;
+		}
+		if( iCo == OV_BAD || iContra == OV_BAD || iCo == OV_UNRES || iContra == OV_UNRES ){
 			char zType[192];
 			const char *zTypeText = VmHintTextResolved(pVm,&pParent->sTypeName,pPScope,
 				zType,sizeof(zType));
@@ -1612,6 +1737,83 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 		return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 			"Type of %z::$%z must be omitted to match the parent definition in class %z",
 			&pSub->sDisp,pName,&pOwner->sDisp);
+	}
+	return SXRET_OK;
+}
+/*
+ * PH7_OP_CLASS_OBLIGE: where a class with unresolved variance pairs is DECLARED,
+ * php autoloads every name its checks could not find, in the order they were
+ * asked for, and checks each pair again -- now with nothing left to hope for, so
+ * a class still missing refuses the pair in the same compile fatal (methods say
+ * which class they could not check against). The generator is the VM's own; a
+ * refusal halts the script as the compile fatal it is.
+ */
+PH7_PRIVATE sxi32 PH7_ClassSettleObligations(ph7_vm *pVm,VmClassObligeSet *pSet)
+{
+	ph7_gen_state *pGen = &pVm->sCodeGen;
+	VmClassOblige *aRec;
+	SyString *aName;
+	sxu32 n, nErr;
+	struct VmClassObligeSet *pSavedOblige;
+	ProcConsumer xSavedErr;
+	void *pSavedErrData;
+	int bSavedRun;
+	sxi32 rc = SXRET_OK;
+	if( pSet->bDone ){
+		return SXRET_OK;
+	}
+	pSet->bDone = 1;
+	aName = (SyString *)SySetBasePtr(&pSet->aName);
+	for( n = 0 ; n < SySetUsed(&pSet->aName) ; ++n ){
+		sxi32 nBrc = pVm->nBoundaryRc;
+		const void *pResume = (const void *)pVm->pResumeFrame;
+		PH7_VmExtractClass(&(*pVm),aName[n].zString,aName[n].nByte,FALSE,0);
+		if( PH7_VmClassLookupRaised(&(*pVm),nBrc,pResume) ){
+			/* The loader threw: no later name is asked for, and the throw is the
+			 * engine's to land (php makes it an uncaught-error fatal instead). */
+			return SXRET_OK;
+		}
+	}
+	pSavedOblige = pGen->pOblige;
+	bSavedRun = pGen->bObligeRun;
+	nErr = pGen->nErr;
+	xSavedErr = pGen->xErr;
+	pSavedErrData = pGen->pErrData;
+	pGen->pOblige = 0;
+	pGen->bObligeRun = 1;
+	pGen->nErr = 0; /* a refusal is this statement's own, never a stale unit's next */
+	/* An eval() leaves the generator with no consumer; this refusal still prints,
+	 * and from the declaration's activation, which is on php's trace. */
+	pGen->xErr = pVm->pEngine->xConf.xErr;
+	pGen->pErrData = pVm->pEngine->xConf.pErrData;
+	pGen->iFatalTrace = PH7_FATAL_TRACE_RUNTIME;
+	aRec = (VmClassOblige *)SySetBasePtr(&pSet->aOblige);
+	for( n = 0 ; n < SySetUsed(&pSet->aOblige) && pGen->nErr == 0 ; ++n ){
+		if( aRec[n].bProp ){
+			rc = OoCheckPropRedeclare(&(*pGen),aRec[n].pSub,aRec[n].pBase,
+				(ph7_class_attr *)aRec[n].pParent,(ph7_class_attr *)aRec[n].pChild);
+		}else{
+			rc = PH7_ClassCheckOverrideCompat(&(*pGen),aRec[n].pBase,aRec[n].pSub,
+				(ph7_class_method *)aRec[n].pParent,(ph7_class_method *)aRec[n].pChild,
+				aRec[n].bCtorExempt);
+		}
+		if( rc == SXERR_ABORT ){
+			break;
+		}
+	}
+	if( pGen->nErr > 0 ){
+		rc = SXERR_ABORT;
+	}
+	pGen->nErr = nErr;
+	pGen->pOblige = pSavedOblige;
+	pGen->bObligeRun = bSavedRun;
+	pGen->xErr = xSavedErr;
+	pGen->pErrData = pSavedErrData;
+	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
+	if( rc == SXERR_ABORT ){
+		pVm->iExitStatus = 255;
+		pVm->bHaltRequested = 1;
+		return SXERR_ABORT;
 	}
 	return SXRET_OK;
 }
