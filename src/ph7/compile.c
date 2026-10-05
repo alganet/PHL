@@ -1419,8 +1419,8 @@ struct GenCallArgs {
 	                 * namespace qualification — the callee is emitted first now */
 	int bFcc;       /* First-class callable `f(...)`: no arguments, OP_LOAD_FCC follows */
 	int bAnySpread; /* Any `...` argument (iP2 says the same; kept for the shape masks) */
-	int bNewCallee; /* IN: the list is a `new`'s — the slot below it is a CLASS name, which a
-	                 * named argument's send-time screen must not read as a function */
+	int bNewCallee; /* IN: the list is a `new`'s — the slot below it is a CLASS operand, whose
+	                 * constructor a named argument's send-time screen asks (PH7_ROT_NEW) */
 };
 static sxi32 GenStateEmitCallArgs(ph7_gen_state *pGen,ph7_expr_node *pNode,sxi32 iFlags,
 	GenCallArgs *pArgs);
@@ -3283,16 +3283,18 @@ static sxi32 GenStateEmitCallArgs(
 			 * which is reference-counted rather than aliased, and is skipped. */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_SNAPSHOT,0,0,0,0);
 		}
-		if( (apNode[n]->iFlags & EXPR_NODE_NAMED_ARG) && !pArgs->bNewCallee && !bConstruct
+		if( (apNode[n]->iFlags & EXPR_NODE_NAMED_ARG) && !bConstruct
 		 && nNamedSend < sizeof(aNamedSend)/sizeof(aNamedSend[0]) ){
 			/* php resolves a NAME at the send of its argument: `f(zz: $u, b: g())` is
 			 * `Unknown named parameter $zz` without reading `$u` or running `g()`. The
 			 * screen runs after this argument's own expression (a subscript or a call in
 			 * it has already run in php too) and is handed the call's map once the list
 			 * is complete. A plain `$var` operand is a deferred load here, so its
-			 * `Undefined variable` is still unspoken when the screen throws. */
+			 * `Undefined variable` is still unspoken when the screen throws. A `new`'s
+			 * list asks the constructor of the class its screen pass left below. */
 			aNamedSend[nNamedSend++] = PH7_VmInstrLength(pGen->pVm);
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NAMED_SEND,n,bAnySpread ? PH7_ROT_SPREAD : 0,0,0);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NAMED_SEND,n,(bAnySpread ? PH7_ROT_SPREAD : 0)
+				| (pArgs->bNewCallee ? PH7_ROT_NEW : 0),0,0);
 		}
 		if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
 			/* Emit spread opcode to unpack this array argument. iP1 marks a

@@ -5167,7 +5167,8 @@ enum ph7_vm_op {
                          * before a plain `$var` operand is read. Emitted after the argument's
                          * own expression; the callee is still BELOW the argument region.
                          * iP1 = the argument's compile-time position, iP2 = PH7_ROT_SPREAD when
-                         * an unpack precedes it, p3 = the call's VmCallArgMap. */
+                         * an unpack precedes it (| PH7_ROT_NEW for a `new`'s list), p3 = the
+                         * call's VmCallArgMap. */
   PH7_OP_FUNC_DECL,     /* Bind a CONDITIONAL function declaration: p3 = ph7_vm_func. php binds
                          * a function written at a unit's top level when the unit compiles and
                          * one written anywhere else (inside an `if`, a loop, another function's
@@ -5229,6 +5230,9 @@ enum ph7_vm_op {
                              * class from the receiver, the name from the top). A __call routing
                              * collapses that pair to ONE marked carrier slot at run time, which
                              * the handler detects rather than guessing. */
+#define PH7_ROT_NEW     0x4 /* NAMED_SEND.iP2 only: the slot below the arguments is a `new`'s
+                             * CLASS operand (left by its screen pass), so the name is asked
+                             * of that class's constructor, not looked up as a function. */
 /* CALL.iP2 — a bit SET, not the plain hasSpread boolean it started as. */
 #define PH7_CALL_SPREAD    0x1 /* This call unpacks (the ROT_SPREAD of the call itself). */
 #define PH7_CALL_CONSTRUCT 0x2 /* This call was emitted by a language CONSTRUCT's codegen --

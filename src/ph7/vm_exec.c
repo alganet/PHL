@@ -6429,12 +6429,13 @@ case PH7_OP_CALL_INIT: {
  *  Only a callee the OP_CALL lookup answers by NAME is screened: a function name (with the
  *  namespace's global fallback) or an OP_MEMBER method key, from the compiled-function
  *  table or -- by its signature -- the host-function table or a native method's C body,
- *  and a plain Closure through the function its `$__fn` names. Anything else -- a bound
- *  or method Closure, an array pair, an __invoke object, a __call routing, a `new` --
- *  leaves the name to OP_CALL's own resolution.
+ *  a plain Closure through the function its `$__fn` names, and a `new`'s class operand
+ *  through its constructor (none declared takes no name at all). Anything else -- a bound
+ *  or method Closure, an array pair, an __invoke object, a __call routing -- leaves the
+ *  name to OP_CALL's own resolution.
  *
  *  P1 = the argument's compile-time position, P2 = PH7_ROT_SPREAD when an unpack precedes
- *  it, P3 = the call's VmCallArgMap.
+ *  it, | PH7_ROT_NEW when the list is a `new`'s, P3 = the call's VmCallArgMap.
  */
 case PH7_OP_NAMED_SEND: {
 	VmCallArgMap *pSendMap = (VmCallArgMap *)pInstr->p3;
@@ -6447,7 +6448,8 @@ case PH7_OP_NAMED_SEND: {
 	ph7_vm_func_arg *aSendFormal = 0;
 	sxu32 nSendFormal = 0, nSendNonVar, k;
 	sxi32 iSendVar = -1;
-	int bSendEngine, bSendFallback, iSendPass;
+	int bSendEngine = 0, bSendFallback = 0, iSendPass;
+	int bSendNew = (pInstr->iP2 & PH7_ROT_NEW) != 0, bSendNoCtor = 0;
 	char zSendErr[160];
 	if( pSendMap == 0 || (sxu32)pInstr->iP1 >= pSendMap->nTotal ){
 		break;
@@ -6460,7 +6462,30 @@ case PH7_OP_NAMED_SEND: {
 	 || (pSendCallee->iFlags & MEMOBJ_AUX_MAGICCALL) ){
 		break;
 	}
-	if( pSendCallee->iFlags & MEMOBJ_STRING ){
+	SyStringInitFromBuf(&sSendFn,"",0);
+	if( bSendNew ){
+		/* A `new`'s list: its screen pass (OP_NEW, iP1 -1) resolved the class, refused
+		 * every `new` php refuses before the arguments run, and left the operand -- a
+		 * name, `self`/`static`/`parent` among them, or an object -- standing here. A
+		 * class that declares no constructor takes no name at all. */
+		ph7_class *pSendClass = 0;
+		ph7_class_method *pSendCons;
+		if( (pSendCallee->iFlags & MEMOBJ_STRING) && SyBlobLength(&pSendCallee->sBlob) > 0 ){
+			pSendClass = PH7_VmResolveScopeName(&(*pVm),(const char *)SyBlobData(&pSendCallee->sBlob),
+				SyBlobLength(&pSendCallee->sBlob));
+		}else if( pSendCallee->iFlags & MEMOBJ_OBJ ){
+			pSendClass = ((ph7_class_instance *)pSendCallee->x.pOther)->pClass;
+		}
+		if( pSendClass == 0 ){
+			break;
+		}
+		pSendCons = PH7_ClassExtractMethod(pSendClass,"__construct",sizeof("__construct")-1);
+		if( pSendCons ){
+			pSendFunc = &pSendCons->sFunc;
+		}else{
+			bSendNoCtor = 1;
+		}
+	}else if( pSendCallee->iFlags & MEMOBJ_STRING ){
 		bSendEngine = (pSendCallee->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)) != 0;
 		bSendFallback = pSendMap->bIsNamespaced;
 		SyStringInitFromBuf(&sSendFn,SyBlobData(&pSendCallee->sBlob),SyBlobLength(&pSendCallee->sBlob));
@@ -6486,7 +6511,7 @@ case PH7_OP_NAMED_SEND: {
 	}else{
 		break;
 	}
-	for( iSendPass = 0 ; iSendPass < 2 && pSendEntry == 0 ; ++iSendPass ){
+	for( iSendPass = 0 ; iSendPass < 2 && pSendEntry == 0 && !bSendNew ; ++iSendPass ){
 		SyString sSendTry = sSendFn;
 		if( iSendPass == 1 ){
 			/* OP_CALL's global fallback for an unqualified name written in a namespace. */
@@ -6546,6 +6571,9 @@ case PH7_OP_NAMED_SEND: {
 		iSendVar = bSendVariadic ? 0 : -1;
 		nSendNonVar = (sxu32)(iSendPos + 1);
 		k = iSendPos >= 0 ? (sxu32)iSendPos : nSendNonVar;
+	}else if( bSendNoCtor ){
+		nSendNonVar = 0;
+		k = 0;
 	}else{
 		break;
 	}
