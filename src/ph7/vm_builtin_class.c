@@ -2289,6 +2289,34 @@ static sxi32 VmForwardScreen(ph7_context *pCtx,ph7_value *pCb)
 	}
 	return PH7_CheckCallbackReason(pCtx,pCb,1,"callback",0);
 }
+/*
+ * Does the code that called this internal function run in a class scope? php asks it of
+ * the frame IMMEDIATELY above (prev_execute_data), never walking past it: a userland
+ * frame answers its own scope (a method's class, a closure's creation-site or bound
+ * scope), and an internal caller answers ITS class -- so array_map() has none while
+ * ReflectionFunction::invoke() has one wherever it is called from. A call_user_func php's
+ * compiler folded is no frame, so the walk steps over it.
+ */
+static int VmCallerHasClassScope(ph7_context *pCtx)
+{
+	VmNativeCall *pRec = pCtx->pVm->pNativeCall;
+	VmNativeCall *pPrev;
+	if( pRec && pRec->pName == &pCtx->pFunc->sName ){
+		for( pPrev = pRec->pPrev ; pPrev && pPrev->bElided ; pPrev = pPrev->pPrev ){
+		}
+		if( pPrev && pPrev->pFrame == pRec->pFrame ){
+			/* Entered with no userland activation in between: an internal caller. */
+			return pPrev->pClass != 0;
+		}
+	}
+	if( (pCtx->pVm->pFrame->iFlags & (VM_FRAME_FIBER|VM_FRAME_EXCEPTION))
+			== (VM_FRAME_FIBER|VM_FRAME_EXCEPTION) ){
+		/* Run AS a fiber's body, on the trampoline's transparent frame: php's caller
+		 * is the fiber's own entry frame, which has no scope wherever it was started. */
+		return 0;
+	}
+	return PH7_VmPeekDeclaringClass(pCtx->pVm) != 0;
+}
 PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value sResult; /* Store callback return value here */
@@ -2305,6 +2333,14 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		if( rcCb != PH7_OK ){
 			return rcCb;
 		}
+	}
+	if( pCtx->pFunc->sName.nByte == sizeof("forward_static_call") - 1
+	    && SyStrnicmp(pCtx->pFunc->sName.zString,"forward_static_call",pCtx->pFunc->sName.nByte) == 0
+	    && !VmCallerHasClassScope(pCtx) ){
+		/* Refused after the callback screen, as php's body does after its ZPP. Only this
+		 * one of the two forwards asks; forward_static_call_array() runs anywhere. */
+		return PH7_VmThrowException(pCtx,"Error",
+			"Cannot call forward_static_call() when no class scope is active");
 	}
 	PH7_MemObjInit(pCtx->pVm,&sResult);
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
