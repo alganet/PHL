@@ -9,16 +9,18 @@ PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apAr
 	ph7_class *pClass;
 	SyString *pName;
 	if( nArg < 1 ){
-		/* Check if we are inside a class */
-		pClass = PH7_VmPeekTopClass(pCtx->pVm);
-		if( pClass ){
-			/* Point to the class name */
-			pName = &pClass->sName;
-			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);
-		}else{
-			/* Not inside class,return FALSE */
-			ph7_result_bool(pCtx,0);
+		/* php reads the EXECUTED scope, the class the running code was written in --
+		 * not the late-static-bound one: a parent's method answers the parent from a
+		 * child instance. With no scope at all it is an Error, never FALSE. */
+		pClass = PH7_VmCallerScope(pCtx->pVm);
+		if( pClass == 0 ){
+			return PH7_VmThrowException(pCtx,"Error",
+				"get_class() without arguments must be called from within a class");
 		}
+		/* php 8.3 deprecated the spelling, and warns only once a scope is found */
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,"Calling get_class() without arguments is deprecated");
+		pName = &pClass->sName;
+		ph7_result_string(pCtx,pName->zString,(int)pName->nByte);
 	}else{
 		/* Extract the target class */
 		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
@@ -50,8 +52,10 @@ PH7_PRIVATE int vm_builtin_get_parent_class(ph7_context *pCtx,int nArg,ph7_value
 	ph7_class *pClass;
 	SyString *pName;
 	if( nArg < 1 ){
-		/* Check if we are inside a class [i.e: a method call]*/
-		pClass = PH7_VmPeekTopClass(pCtx->pVm);
+		/* The executed scope's parent, as get_class() reads it; FALSE outside a class.
+		 * php 8.3 deprecated the spelling, and warns before it looks, scope or not. */
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,"Calling get_parent_class() without arguments is deprecated");
+		pClass = PH7_VmCallerScope(pCtx->pVm);
 		if( pClass && pClass->pBase ){
 			/* Point to the class name */
 			pName = &pClass->pBase->sName;
@@ -85,7 +89,7 @@ PH7_PRIVATE int vm_builtin_get_parent_class(ph7_context *pCtx,int nArg,ph7_value
  * Parameters
  *  None.
  * Return
- *  Returns the class name. Returns FALSE if called from outside a class.
+ *  Returns the class name. Throws Error if called from outside a class.
  */
 PH7_PRIVATE int vm_builtin_get_called_class(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -100,8 +104,8 @@ PH7_PRIVATE int vm_builtin_get_called_class(ph7_context *pCtx,int nArg,ph7_value
 	}else{
 		SXUNUSED(nArg); /* cc warning */
 		SXUNUSED(apArg);
-		/* Not inside class,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* php refuses rather than answering FALSE */
+		return PH7_VmThrowException(pCtx,"Error","get_called_class() must be called from within a class");
 	}
 	return PH7_OK;
 }

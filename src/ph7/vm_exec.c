@@ -9249,6 +9249,7 @@ SkipFuncBody:
 				{ "array_key_exists", sizeof("array_key_exists")-1, 2 },
 				{ "get_class",        sizeof("get_class")-1,        1 },
 				{ "get_class",        sizeof("get_class")-1,        0 },
+				{ "get_called_class", sizeof("get_called_class")-1, 0 },
 				/* the casts: `strval($a)` warns and runs __toString with no strval frame */
 				{ "strval",           sizeof("strval")-1,           1 },
 				{ "intval",           sizeof("intval")-1,           1 },

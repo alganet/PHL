@@ -17,7 +17,7 @@ echo get_parent_class('P') === false ? "ok\n" : "fail\n";
 function check_in_context(){
     class InnerP{}
     class InnerC extends InnerP{
-        public static function who(){ echo get_parent_class() === 'InnerP' ? "ok\n":"fail\n"; }
+        public static function who(){ echo @get_parent_class() === 'InnerP' ? "ok\n":"fail\n"; }
     }
     InnerC::who();
 }
