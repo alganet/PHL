@@ -3071,6 +3071,11 @@ static ph7_vm_func sFiberTrampFunc;
  * whose fiber switches a real stack; here they are a loud refusal (the scope policy divergence,
  * twin-paired). *pzWhy names the reason for the caller to report.
  */
+/* An internal class's method has a C body and no bytecode, so it is the trampoline's
+ * like an internal function: run as the body, its empty instruction stream was
+ * executed as whatever lay past it, and the fiber crashed on its first opcode. */
+static const char VmFiberNativeMethodWhy[] =
+	"callable is an internal method, which cannot be a fiber body here";
 static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
 	ph7_class_instance **ppThis, const char **pzWhy)
 {
@@ -3101,6 +3106,10 @@ static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
 			*pzWhy = "callable routes through __call(), which cannot be a fiber body here";
 			return 0;
 		}
+		if( pMethod->sFunc.iFlags & VM_FUNC_NATIVE ){
+			*pzWhy = VmFiberNativeMethodWhy;
+			return 0;
+		}
 		if( (pTarget->iFlags & MEMOBJ_OBJ) && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
 			*ppThis = (ph7_class_instance *)pTarget->x.pOther;
 		}
@@ -3118,6 +3127,10 @@ static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
 			pMethod = pClass ? PH7_ClassExtractMethod(pClass, zMeth, nMeth) : 0;
 			if( pMethod == 0 || !PH7_VmCallableMethodAccessible(pVm, pClass, pMethod) ){
 				*pzWhy = "callable routes through __callStatic(), which cannot be a fiber body here";
+				return 0;
+			}
+			if( pMethod->sFunc.iFlags & VM_FUNC_NATIVE ){
+				*pzWhy = VmFiberNativeMethodWhy;
 				return 0;
 			}
 			return &pMethod->sFunc;
