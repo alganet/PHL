@@ -14,8 +14,8 @@ and nothing else. `[$obj, 'method']`, `['Class', 'stat']` and `"Class::stat"` â€
 the everyday way to run an object's method as a coroutine â€” could not be spelled
 at all. The two resolvers (the PHP-level `start()` and the C API's) were two
 copies of one decision and only one of them ever grew a shape; they are one now.
-Three callables php runs and PHL refuses loudly are the `_zend`-twinned scope-policy
-divergence in fiber_callable_no_body{,_zend}.phpt.
+The callables with no compiled coroutine body (a generator function, an internal
+function, a `__call`-routed name) are in fiber_callable_no_body.phpt.
 --FILE--
 <?php
 class FcaHost {

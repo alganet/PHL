@@ -1667,6 +1667,16 @@ struct ph7_exec_ctx
 	                                  * suspend the fiber is parked on returns PH7_ABORT instead
 	                                  * of a value, so its C frames unwind and free what they own
 	                                  * rather than being freed underneath. */
+	ph7_value sTramp;                /* The callable a body with no bytecode of its own is (a
+	                                  * generator function, an internal function, a name routed
+	                                  * through __call/__callStatic), run through the ordinary
+	                                  * callback dispatch on this stack instead; NULL otherwise. */
+	ph7_value *aTrampArg;            /* Its arguments, owned: the start() slots they came from
+	                                  * are gone by the time a suspended callee reads them again */
+	sxu32 nTrampArg;
+	VmCallArgMap *pTrampMap;         /* start()'s named-argument map; read only by the first
+	                                  * switch in, which start() itself is still waiting on */
+	sxu8 bTramp;
 	ph7_class_instance *pEscaped;    /* A throw the body did not catch. A fiber on its own stack
 	                                  * has its own handler stack, so an unmatched throw is not
 	                                  * "uncaught" -- it LEAVES the fiber, and php re-raises it

@@ -549,6 +549,42 @@ static void VmCoroBody(ph7_exec_ctx *pCtx)
 	ph7_vm *pVm = pCtx->pVm;
 	sxi32 rc;
 	VmCoroAsanArrive(pCtx->pCoro, 0);
+	if( pCtx->bTramp ){
+		/* A body with no bytecode of its own is called the way any internal function
+		 * calls a callback, from this stack: a generator function hands back its
+		 * Generator, a C function runs its loop here (so a callback it reaches can
+		 * suspend), and a name php routes through __call/__callStatic reaches the
+		 * handler. The dispatch pushes the callee's own frame above the transparent
+		 * body frame, so a trace shows php's `[internal function]: f()` under
+		 * `Fiber->start()`. The map is start()'s own and still live: this is the
+		 * first switch in, and start() is waiting on it. */
+		ph7_value **apTramp = 0;
+		sxu32 k;
+		if( pCtx->nTrampArg > 0 ){
+			apTramp = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
+				pCtx->nTrampArg * sizeof(ph7_value *));
+		}
+		if( pCtx->nTrampArg > 0 && apTramp == 0 ){
+			rc = PH7_ABORT;
+		}else{
+			for( k = 0 ; k < pCtx->nTrampArg ; ++k ){
+				apTramp[k] = &pCtx->aTrampArg[k];
+			}
+			pVm->bCallbackWeak = 1;
+			rc = PH7_VmCallUserFunctionWithMap(pVm, &pCtx->sTramp, (int)pCtx->nTrampArg,
+				apTramp, &pCtx->sRetValue, pCtx->pTrampMap);
+			pVm->bCallbackWeak = 0;
+			pCtx->pTrampMap = 0;
+			if( apTramp ){
+				SyMemBackendFree(&pVm->sAllocator, apTramp);
+			}
+			if( rc != PH7_ABORT && pCtx->pEscaped ){
+				rc = PH7_EXCEPTION;
+			}else if( rc != PH7_ABORT && rc != PH7_EXCEPTION ){
+				rc = SXRET_OK;
+			}
+		}
+	}else
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
 		VmCtxEnforceRetFunc(pCtx), FALSE, 0, &pCtx->pStack, &pCtx->nStackCap,
@@ -1357,6 +1393,19 @@ PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 		pCtx->pEscaped = 0;
 	}
 	VmCoroStateRelease(pVm, &pCtx->sSaved);
+	if( pCtx->bTramp ){
+		sxu32 k;
+		PH7_MemObjRelease(&pCtx->sTramp);
+		for( k = 0 ; k < pCtx->nTrampArg ; ++k ){
+			PH7_MemObjRelease(&pCtx->aTrampArg[k]);
+		}
+		if( pCtx->aTrampArg ){
+			SyMemBackendFree(&pVm->sAllocator, pCtx->aTrampArg);
+			pCtx->aTrampArg = 0;
+		}
+		pCtx->nTrampArg = 0;
+		pCtx->bTramp = 0;
+	}
 #endif
 	pCtx->iState = PH7_CTX_STATE_CLOSED;
 	/* ...and give back the hold VmNewExecCtx took on the function this coroutine runs. */
@@ -2972,6 +3021,18 @@ PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_valu
 	}
 	return PH7_OK;
 }
+#ifdef PH7_CORO_STACK
+/*
+ * The stand-in body of a fiber whose callable has no bytecode for this engine to
+ * run as a coroutine: a GENERATOR function (running its body would meet `yield`
+ * outside the Generator that owns it -- php's fiber calls it and gets the
+ * Generator back as its return value), an internal function, and a name php
+ * routes through __call/__callStatic. Every one is simply CALLED, from the fiber's
+ * own stack (VmCoroBody), which is all php's fiber does with any callable. An
+ * empty function the ctx frame can name; that frame is transparent to every walk.
+ */
+static ph7_vm_func sFiberTrampFunc;
+#endif
 /*
  * Resolve a fiber's stored callable to the BODY it runs and the receiver that body
  * needs -- for every shape php's `callable` covers, not just the two PHL used to take.
@@ -3077,6 +3138,12 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 	if( pCallable->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP) ){
 		const char *zWhy = 0;
 		ph7_vm_func *pFunc = VmFiberCallableBody(pVm, pCallable, ppThis, &zWhy);
+#ifdef PH7_CORO_STACK
+		if( pFunc == 0 || (pFunc->iFlags & VM_FUNC_GENERATOR) ){
+			*ppThis = 0;
+			return &sFiberTrampFunc;
+		}
+#endif
 		if( pFunc == 0 ){
 			PH7_VmThrowException(pCtx, "FiberError", "Fiber %s", zWhy);
 		}
@@ -3104,6 +3171,13 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				pUnwrapped = VmFiberCallableBody(pVm, &sName, ppThis, &zWhyClo);
 			}
 			PH7_MemObjRelease(&sName);
+#ifdef PH7_CORO_STACK
+			if( pUnwrapped && (pUnwrapped->iFlags & VM_FUNC_GENERATOR) ){
+				pUnwrapped = 0; /* the trampoline below calls the Closure itself */
+				*ppThis = 0;
+				zWhyClo = 0;
+			}
+#endif
 			if( pUnwrapped ){
 				/* A BOUND closure parked its $this in the pClosureThis transient
 				 * (VmClosureUnwrap): consume it as the fiber's $this — it wins over
@@ -3136,6 +3210,9 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 			pVm->bClosureStaticTramp = 0;
 			pVm->bClosureNoNamed = 0;
 			pVm->pClosureMethodCls = 0;
+#ifdef PH7_CORO_STACK
+			return &sFiberTrampFunc;
+#endif
 			PH7_VmThrowException(pCtx, "FiberError", zWhyClo
 				? "Fiber %s" : "Fiber callable closure could not be resolved", zWhyClo);
 			return 0;
@@ -3148,6 +3225,11 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				"Fiber callable object has no __invoke method");
 			return 0;
 		}
+#ifdef PH7_CORO_STACK
+		if( pMethod->sFunc.iFlags & VM_FUNC_GENERATOR ){
+			return &sFiberTrampFunc;
+		}
+#endif
 		*ppThis = pClosure;
 		return &pMethod->sFunc;
 	}
@@ -3642,6 +3724,80 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	}
 	return SXRET_OK;
 }
+#ifdef PH7_CORO_STACK
+/*
+ * Fiber::start() over a body that is CALLED rather than run as a coroutine
+ * (sFiberTrampFunc). Nothing is bound into the ctx frame: the callee binds its own
+ * arguments -- names, by-reference warnings, type checks and all -- exactly as a
+ * callback dispatched by an internal function does, which is what php's fiber is.
+ * The ctx frame is marked transparent so no walk ever reports it.
+ */
+static int VmFiberStartTramp(ph7_context *pCtx, ph7_class_instance *pThis,
+	int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_exec_ctx *pExecCtx;
+	ph7_value *pCallable, *pCtxAttr;
+	ph7_value sResult;
+	SyString sAttrName;
+	sxi32 rc;
+	int k;
+	SyStringInitFromBuf(&sAttrName, "__callable", 10);
+	pCallable = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+	pExecCtx = pCallable ? VmNewExecCtx(pVm, &sFiberTrampFunc) : 0;
+	if( pExecCtx == 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError", "Fiber::start(): out of memory");
+	}
+	pExecCtx->pFrame->iFlags |= VM_FRAME_EXCEPTION;
+	pExecCtx->bTramp = 1;
+	PH7_MemObjInit(pVm, &pExecCtx->sTramp);
+	PH7_MemObjStore(pCallable, &pExecCtx->sTramp);
+	if( nArg > 0 ){
+		pExecCtx->aTrampArg = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,
+			(sxu32)nArg * sizeof(ph7_value));
+		if( pExecCtx->aTrampArg == 0 ){
+			VmReleaseExecCtx(pVm, pExecCtx);
+			return PH7_VmThrowException(pCtx, "FiberError", "Fiber::start(): out of memory");
+		}
+		for( k = 0 ; k < nArg ; ++k ){
+			PH7_MemObjInit(pVm, &pExecCtx->aTrampArg[k]);
+			PH7_MemObjStore(apArg[k], &pExecCtx->aTrampArg[k]);
+		}
+		pExecCtx->nTrampArg = (sxu32)nArg;
+	}
+	if( pCtx->pArgMap && pCtx->pArgMap->bHasNamed && pCtx->pArgMap->nTotal >= (sxu32)nArg ){
+		pExecCtx->pTrampMap = pCtx->pArgMap;
+	}
+	SyStringInitFromBuf(&sAttrName, "__ctx", 5);
+	pCtxAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+	if( pCtxAttr ){
+		pCtxAttr->x.pOther = pExecCtx;
+		MemObjSetType(pCtxAttr, MEMOBJ_RES);
+	}
+	PH7_MemObjInit(pVm, &sResult);
+	{
+		ph7_class_instance *pOldFiber = pVm->pCurFiber;
+		pVm->pCurFiber = pThis;
+		rc = VmStartCtx(pVm, pExecCtx, &sResult);
+		pVm->pCurFiber = pOldFiber;
+	}
+	pExecCtx->pTrampMap = 0;
+	if( rc == PH7_ABORT ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_ABORT;
+	}
+	if( rc == PH7_EXCEPTION ){
+		PH7_MemObjRelease(&sResult);
+		if( pExecCtx->pEscaped ){
+			return VmFiberRaiseEscaped(pCtx, pExecCtx);
+		}
+		return PH7_EXCEPTION;
+	}
+	ph7_result_value(pCtx, &sResult);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+#endif
 /*
  * Fiber->start(...$args) — resolve callable, create exec context, install
  * arguments/closure-env/$this (matching OP_CALL semantics), and start.
@@ -3679,6 +3835,11 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	if( pFunc == 0 ){
 		return PH7_EXCEPTION;
 	}
+#ifdef PH7_CORO_STACK
+	if( pFunc == &sFiberTrampFunc ){
+		return VmFiberStartTramp(pCtx, pThis, nArg, apArg);
+	}
+#endif
 	/* Fiber::start()'s own `...$args` are by VALUE whatever the body declares, so php
 		 * warns for every by-reference parameter and the body operates on a copy — the
 		 * value PHL already produced, without the one diagnostic that says so. Named off
