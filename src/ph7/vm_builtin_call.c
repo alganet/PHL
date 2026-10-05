@@ -2282,9 +2282,19 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 				pMeth = PH7_ClassExtractMethod(pClass,zName,nName);
 			}
 			if( pMeth == 0 ){
-				/* A plain closure: `$__fn` is its own entry in the function table. */
+				/* A plain closure: `$__fn` is its own entry in the function table, and
+				 * php qualifies it with its SCOPE -- `C::{closure:…}` for one made in a
+				 * method or bound to C, whatever $this it carries. */
 				pEntry = SyHashGet(&pVm->hFunction,(const void *)zName,nName);
-				return pEntry ? (ph7_vm_func *)pEntry->pUserData : 0;
+				if( pEntry == 0 ){
+					return 0;
+				}
+				if( pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){
+					*ppOwner = PH7_VmExtractClassFromValue(&(*pVm),pScope);
+				}else{
+					*ppOwner = pClass;
+				}
+				return (ph7_vm_func *)pEntry->pUserData;
 			}
 			if( !pVm->bClosureScreened && !PH7_VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
 				return 0; /* routes to __call: not this method's signature */
@@ -2366,36 +2376,49 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
  * for one of those (`['x' => $v]` on `r($a, &$x)` is its `Argument #2 ($x)`), so the lookup
  * has to run here too rather than trusting the array order.
  */
-PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,int nArg,
-	ph7_hashmap_node **apNode,SyString *aNames)
+/*
+ * The screen's one body, which PH7_VmByRefArgsGivenValue below reaches with the callee
+ * already known (a reflected method has no callable value to resolve) and with apArg:
+ * the doors whose OWN arguments are by value -- ReflectionFunction::invoke(),
+ * ReflectionMethod::invoke(), Closure::call() -- hand the callee the caller's variables
+ * with their slot index intact, so without the copy the callee aliased them and
+ * `invoke($v)` into `&$x` rewrote $v. Each warned position is re-marked the way
+ * call_user_func() marks its own (PH7_VmCufDropByRefArgs): no slot, and a copy made on
+ * purpose. Answers the unwound code when an error handler threw or exited on a warning
+ * -- php stops at that one and never enters the callee -- and SXRET_OK otherwise.
+ */
+static sxi32 VmByRefArgsGivenValue(ph7_vm *pVm,ph7_class *pOwner,ph7_vm_func *pFunc,
+	ph7_value *pCallable,int nArg,ph7_value **apArg,ph7_hashmap_node **apNode,SyString *aNames)
 {
-	ph7_class *pOwner = 0;
-	ph7_vm_func *pFunc;
 	ph7_vm_func_arg *aFormal;
+	sxi32 nBrcIn = pVm->nBoundaryRc;
+	sxi32 rcNow;
 	int i,nFormal;
-	if( pCallable == 0 || nArg < 1 ){
-		return;
+	if( nArg < 1 ){
+		return SXRET_OK;
 	}
-	pFunc = VmCallableCalleeFunc(&(*pVm),pCallable,&pOwner);
+	if( pFunc == 0 && pCallable ){
+		pFunc = VmCallableCalleeFunc(&(*pVm),pCallable,&pOwner);
+	}
 	if( pFunc == 0 ){
 		/* A host builtin (`call_user_func_array('sort', [$a])`): its by-ref positions
 		 * and parameter names come from the declared signature, the same source the
 		 * call_user_func half already reads. */
 		SyHashEntry *pEntry;
 		ph7_user_func *pHost;
-		if( (pCallable->iFlags & MEMOBJ_STRING) == 0 ){
-			return;
+		if( pCallable == 0 || (pCallable->iFlags & MEMOBJ_STRING) == 0 ){
+			return SXRET_OK;
 		}
 		pEntry = SyHashGet(&pVm->hHostFunction,SyBlobData(&pCallable->sBlob),
 			SyBlobLength(&pCallable->sBlob));
 		if( pEntry == 0 ){
-			return;
+			return SXRET_OK;
 		}
 		pHost = (ph7_user_func *)pEntry->pUserData;
 		if( VmBuiltinPrefersRef(&pHost->sName) ){
 			/* php's ZEND_SEND_PREFER_REF (extract, array_multisort) binds a value
 			 * WITHOUT a word — the notice belongs to the strict `&` rows only. */
-			return;
+			return SXRET_OK;
 		}
 		for( i = 0 ; i < nArg && i < 31 ; ++i ){
 			SyString sName;
@@ -2434,8 +2457,16 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 					"%z(): Argument #%d must be passed by reference, value given",
 					&pHost->sName,idx + 1);
 			}
+			rcNow = pVm->nBoundaryRc;
+			if( rcNow != nBrcIn && PH7_CALLBACK_UNWOUND(rcNow) ){
+				return rcNow;
+			}
+			if( apArg && apArg[i] ){
+				apArg[i]->nIdx = SXU32_HIGH; /* not an l-value any more: force a copy */
+				apArg[i]->iFlags |= MEMOBJ_AUX_CUFVAL; /* ...and this copy is INTENTIONAL */
+			}
 		}
-		return;
+		return SXRET_OK;
 	}
 	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
 	nFormal = (int)SySetUsed(&pFunc->aArgs);
@@ -2476,7 +2507,33 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 			 * elements each get one) and a NAMED one by the formal it picked. */
 		PH7_VmWarnByRefValueGiven(&(*pVm),pOwner,pFunc,(sxu32)((bNamed ? idx : i) + 1),
 			(aFormal[idx].iFlags & VM_FUNC_ARG_VARIADIC) ? 0 : &aFormal[idx].sName);
+		rcNow = pVm->nBoundaryRc;
+		if( rcNow != nBrcIn && PH7_CALLBACK_UNWOUND(rcNow) ){
+			return rcNow;
+		}
+		if( apArg && apArg[i] ){
+			apArg[i]->nIdx = SXU32_HIGH; /* not an l-value any more: force a copy */
+			apArg[i]->iFlags |= MEMOBJ_AUX_CUFVAL; /* ...and this copy is INTENTIONAL */
+		}
 	}
+	return SXRET_OK;
+}
+PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,int nArg,
+	ph7_hashmap_node **apNode,SyString *aNames)
+{
+	if( pCallable ){
+		VmByRefArgsGivenValue(&(*pVm),0,0,pCallable,nArg,0,apNode,aNames);
+	}
+}
+/*
+ * The forwarding doors' face of the screen: pFunc/pOwner name a callee already resolved
+ * (0 to resolve pCallable), apArg -- when given -- is re-marked so the callee copies, and
+ * apNode/aNames are the argument array's nodes and string keys, as above.
+ */
+PH7_PRIVATE sxi32 PH7_VmByRefArgsGivenValue(ph7_vm *pVm,ph7_class *pOwner,ph7_vm_func *pFunc,
+	ph7_value *pCallable,int nArg,ph7_value **apArg,ph7_hashmap_node **apNode,SyString *aNames)
+{
+	return VmByRefArgsGivenValue(&(*pVm),pOwner,pFunc,pCallable,nArg,apArg,apNode,aNames);
 }
 /*
  * php hands an internal function's CALLBACK its arguments BY VALUE. array_filter,

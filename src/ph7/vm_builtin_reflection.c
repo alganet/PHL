@@ -536,9 +536,12 @@ static void ReflectCtorCloneVis(ph7_vm *pVm, ph7_class *pClass, sxi32 *piCtor, s
  * Collect a PHP array's values into a ph7_value* set (call arguments).
  * When ppNames is non-NULL, string keys become named arguments: a name
  * map is lazily allocated (like call_user_func_array's) with one entry
- * per collected slot, empty entries meaning positional.
+ * per collected slot, empty entries meaning positional. When ppNodes is
+ * non-NULL it receives each slot's array node, which is what says whether
+ * an element is a REFERENCE (freed by the caller, like the names).
  */
-static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOut, SyString **ppNames)
+static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOut, SyString **ppNames,
+	ph7_hashmap_node ***ppNodes)
 {
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pEntry;
@@ -548,14 +551,27 @@ static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOu
 	if( ppNames ){
 		*ppNames = 0;
 	}
+	if( ppNodes ){
+		*ppNodes = 0;
+	}
 	if( !ph7_value_is_array(pArray) ){
 		return SXRET_OK;
 	}
 	pMap = (ph7_hashmap *)pArray->x.pOther;
 	pEntry = pMap->pFirst;
+	if( ppNodes && pMap->nEntry > 0 ){
+		*ppNodes = (ph7_hashmap_node **)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+			pMap->nEntry * sizeof(ph7_hashmap_node *));
+		if( *ppNodes ){
+			SyZero(*ppNodes, pMap->nEntry * sizeof(ph7_hashmap_node *));
+		}
+	}
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
 		ph7_value *pValue = (ph7_value *)PH7_MemObjAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
 		if( pValue ){
+			if( ppNodes && *ppNodes ){
+				(*ppNodes)[nSlot] = pEntry;
+			}
 			if( ppNames && pEntry->iType == HASHMAP_BLOB_NODE ){
 				if( aNames == 0 ){
 					aNames = (SyString *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
@@ -648,7 +664,7 @@ static sxi32 ReflectAttrInstantiate(ph7_context *pCtx, ph7_value *pClassName, ph
 		SyString *aNames = 0;
 		SySetInit(&aArg, &pVm->sAllocator, sizeof(ph7_value *));
 		if( pArgs ){
-			ReflectCollectArgs(pCtx, pArgs, &aArg, &aNames);
+			ReflectCollectArgs(pCtx, pArgs, &aArg, &aNames, 0);
 		}
 		if( aNames ){
 			VmCallArgMap sMap;
@@ -4554,7 +4570,7 @@ static int vm_builtin_ReflectionClass_newInstanceArgs(ph7_context *pCtx, int nAr
 	int rc;
 	SySetInit(&aArg, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
 	if( nArg > 0 ){
-		ReflectCollectArgs(pCtx, apArg[0], &aArg, &aNames);
+		ReflectCollectArgs(pCtx, apArg[0], &aArg, &aNames, 0);
 	}
 	rc = ReflectNewInstance(pCtx, (int)SySetUsed(&aArg), (ph7_value **)SySetBasePtr(&aArg),
 		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aArg), 0, &sMap) : 0);
@@ -7193,13 +7209,28 @@ static void ReflectFunctionCallable(ph7_context *pCtx, ph7_value *pOut)
 	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
 	ph7_value_string(pOut, zName, nName);
 }
+/*
+ * php reaches the target through zend_call_function, which binds a by-REFERENCE
+ * parameter only to a reference: invoke()'s own `...$args` are by value, so every
+ * by-ref formal warns and gets a copy (bCopy re-marks apCall so it does), and an
+ * invokeArgs() element warns unless it is itself a reference (apNode), the rule
+ * call_user_func_array() already follows.
+ */
 static int ReflectFunctionInvoke(ph7_context *pCtx, int nCall, ph7_value **apCall,
-	VmCallArgMap *pMap)
+	VmCallArgMap *pMap, ph7_hashmap_node **apNode, int bCopy)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value sTarget, sResult;
 	sxi32 rc;
 	ReflectFunctionCallable(pCtx, &sTarget);
+	rc = PH7_VmByRefArgsGivenValue(pVm, 0, 0, &sTarget, nCall, bCopy ? apCall : 0, apNode,
+		pMap ? pMap->aNames : 0);
+	if( rc != SXRET_OK ){
+		if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){
+			PH7_MemObjRelease(&sTarget);
+		}
+		return rc;
+	}
 	PH7_MemObjInit(pVm, &sResult);
 	sResult.nIdx = SXU32_HIGH;
 	pVm->bCallbackWeak = 1;
@@ -7219,22 +7250,26 @@ static int ReflectFunctionInvoke(ph7_context *pCtx, int nCall, ph7_value **apCal
 static int vm_builtin_ReflectionFunction_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	VmCallArgMap sMap;
-	return ReflectFunctionInvoke(pCtx, nArg, apArg, ReflectDoorArgMap(pCtx, 0, 0, 0, &sMap));
+	return ReflectFunctionInvoke(pCtx, nArg, apArg, ReflectDoorArgMap(pCtx, 0, 0, 0, &sMap), 0, 1);
 }
 static int vm_builtin_ReflectionFunction_invokeArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SySet aCall;
 	SyString *aNames = 0;
+	ph7_hashmap_node **apNode = 0;
 	VmCallArgMap sMap;
 	int rc;
 	SySetInit(&aCall, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
 	if( nArg > 0 ){
-		ReflectCollectArgs(pCtx, apArg[0], &aCall, &aNames);
+		ReflectCollectArgs(pCtx, apArg[0], &aCall, &aNames, &apNode);
 	}
 	rc = ReflectFunctionInvoke(pCtx, (int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall),
-		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aCall), 0, &sMap) : 0);
+		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aCall), 0, &sMap) : 0, apNode, 0);
 	if( aNames ){
 		SyMemBackendFree(&pCtx->pVm->sAllocator, aNames);
+	}
+	if( apNode ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator, apNode);
 	}
 	SySetRelease(&aCall);
 	return rc;
@@ -7525,8 +7560,10 @@ static sxi32 ReflectMethodReceiver(ph7_context *pCtx, ReflectFuncRef *pRef,
 	}
 	return PH7_OK;
 }
+/* The by-reference rule is ReflectFunctionInvoke's (apNode, bCopy), named with the
+ * method's DECLARING class, as php names it. */
 static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall, ph7_value **apCall,
-	VmCallArgMap *pMap)
+	VmCallArgMap *pMap, ph7_hashmap_node **apNode, int bCopy)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ReflectFuncRef sRef;
@@ -7553,6 +7590,11 @@ static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall,
 	}
 	rc = ReflectMethodReceiver(pCtx, &sRef, pObject, &pRecv, 0);
 	if( rc != PH7_OK ){
+		return rc;
+	}
+	rc = PH7_VmByRefArgsGivenValue(pVm, ReflectFuncDeclClass(&sRef), &sRef.pMeth->sFunc, 0,
+		nCall, bCopy ? apCall : 0, apNode, pMap ? pMap->aNames : 0);
+	if( rc != SXRET_OK ){
 		return rc;
 	}
 	PH7_MemObjInit(pVm, &sResult);
@@ -7583,23 +7625,27 @@ static int vm_builtin_ReflectionMethod_invoke(ph7_context *pCtx, int nArg, ph7_v
 	VmCallArgMap sMap;
 	return ReflectMethodInvoke(pCtx, nArg > 0 ? apArg[0] : 0,
 		nArg > 1 ? nArg - 1 : 0, nArg > 1 ? &apArg[1] : 0,
-		ReflectDoorArgMap(pCtx, 0, 0, 1, &sMap));
+		ReflectDoorArgMap(pCtx, 0, 0, 1, &sMap), 0, 1);
 }
 static int vm_builtin_ReflectionMethod_invokeArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SySet aCall;
 	SyString *aNames = 0;
+	ph7_hashmap_node **apNode = 0;
 	VmCallArgMap sMap;
 	int rc;
 	SySetInit(&aCall, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
 	if( nArg > 1 ){
-		ReflectCollectArgs(pCtx, apArg[1], &aCall, &aNames);
+		ReflectCollectArgs(pCtx, apArg[1], &aCall, &aNames, &apNode);
 	}
 	rc = ReflectMethodInvoke(pCtx, nArg > 0 ? apArg[0] : 0,
 		(int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall),
-		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aCall), 0, &sMap) : 0);
+		aNames ? ReflectDoorArgMap(pCtx, aNames, SySetUsed(&aCall), 0, &sMap) : 0, apNode, 0);
 	if( aNames ){
 		SyMemBackendFree(&pCtx->pVm->sAllocator, aNames);
+	}
+	if( apNode ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator, apNode);
 	}
 	SySetRelease(&aCall);
 	return rc;

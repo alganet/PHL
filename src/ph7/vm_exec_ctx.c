@@ -2557,6 +2557,15 @@ PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value *
 	PH7_MemObjInit(pVm, &sBound);
 	sBound.x.pOther = pClone;
 	MemObjSetType(&sBound, MEMOBJ_OBJ);
+	/* call()'s own `...$args` are by value, so php warns for every by-reference formal
+	 * and binds a copy; named off the BOUND closure, whose class is the new $this's. */
+	rc = PH7_VmByRefArgsGivenValue(pVm, 0, 0, &sBound, nArg - 1, apArg + 1, 0,
+		(pCtx->pArgMap && pCtx->pArgMap->bHasNamed && pCtx->pArgMap->nTotal > 1)
+			? &pCtx->pArgMap->aNames[1] : 0);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sBound);
+		return rc;
+	}
 	/* The clone's own reference is this carrier's, and releasing the carrier below
 	 * is what ends the temporary (see OP_LOAD_CLOSURE). */
 	rc = VmClosureDoorCall(pCtx, &sBound, nArg - 1, apArg + 1, 1);
