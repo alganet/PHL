@@ -6973,6 +6973,9 @@ case PH7_OP_CALL: {
 	 * literal callee, so a dynamic name, a spread or a `name:` argument all take the
 	 * ordinary path and DO carry the frame. */
 	int bFoldedCallee = 0;
+	/* ...and whether php's compiler turns it into a FRAMELESS call instead (see
+	 * VmNativeCall.bFrameless): it keeps its trace frame, but pushes no frame of its own. */
+	int bFramelessCallee = 0;
 	/* The engine's own __call/__callStatic routing: the OP_MEMBER immediately below this
 	 * call found a missing (or inaccessible) method on a class declaring the magic handler
 	 * and MARKED this callee slot, latching {receiver, class, original name} on the VM.
@@ -9281,6 +9284,44 @@ SkipFuncBody:
 				bFoldedCallee = VmSprintfFolds(pInstr,pArg,nCallArgs);
 			}
 		}
+		/* php 8.4's FRAMELESS calls: the same disqualifiers, except that an unqualified
+		 * name inside a namespace still qualifies -- php compiles both branches and picks
+		 * the frameless one at run time when no namespace function answers, which is the
+		 * only way this dispatch reaches a builtin. Each function is frameless at the
+		 * arities its stub lists (a bit per argument count), and at no other. */
+		if( pInstr->nLine != 0 && !bViaClosure && bLiteralCallee && (pInstr->iP2 & PH7_CALL_SPREAD) == 0
+		 && (pEffCallMap == 0 || !pEffCallMap->bHasNamed) && nCallArgs >= 1 && nCallArgs <= 3 ){
+			static const struct { const char *zName; int nLen; int mArity; } aFrameless[] = {
+				{ "implode",         sizeof("implode")-1,         0x6 },
+				{ "in_array",        sizeof("in_array")-1,        0xC },
+				{ "str_replace",     sizeof("str_replace")-1,     0x8 },
+				{ "strtr",           sizeof("strtr")-1,           0xC },
+				{ "trim",            sizeof("trim")-1,            0x6 },
+				{ "substr",          sizeof("substr")-1,          0xC },
+				{ "strpos",          sizeof("strpos")-1,          0xC },
+				{ "strstr",          sizeof("strstr")-1,          0xC },
+				{ "str_contains",    sizeof("str_contains")-1,    0x4 },
+				{ "str_starts_with", sizeof("str_starts_with")-1, 0x4 },
+				{ "dirname",         sizeof("dirname")-1,         0x6 },
+				{ "preg_match",      sizeof("preg_match")-1,      0x4 },
+				{ "preg_replace",    sizeof("preg_replace")-1,    0x8 },
+				{ "min",             sizeof("min")-1,             0x4 },
+				{ "max",             sizeof("max")-1,             0x4 },
+				{ "dechex",          sizeof("dechex")-1,          0x2 },
+				{ "is_numeric",      sizeof("is_numeric")-1,      0x2 },
+				{ "class_exists",    sizeof("class_exists")-1,    0x6 },
+				{ "property_exists", sizeof("property_exists")-1, 0x4 },
+			};
+			sxu32 iF;
+			for( iF = 0 ; iF < SX_ARRAYSIZE(aFrameless) ; ++iF ){
+				if( (int)pFunc->sName.nByte == aFrameless[iF].nLen
+				 && (aFrameless[iF].mArity & (1 << nCallArgs)) != 0
+				 && SyStrnicmp(pFunc->sName.zString,aFrameless[iF].zName,(sxu32)aFrameless[iF].nLen) == 0 ){
+					bFramelessCallee = 1;
+					break;
+				}
+			}
+		}
 NativeCall:
 		/* A VM_FUNC_NATIVE method joins here, having done the two steps above for
 		 * itself: its by-ref mask comes from the same signature machinery, and its
@@ -9347,6 +9388,7 @@ NativeCall:
 		sNativeCall.pFrame = (void *)pVm->pFrame;
 		sNativeCall.nIncDepth = SySetUsed(&pVm->aIncFrame);
 		sNativeCall.bElided = pVm->bElideNativeCall;
+		sNativeCall.bFrameless = bFramelessCallee;
 		pVm->bElideNativeCall = 0;
 		sNativeCall.pPrev = pVm->pNativeCall;
 		sNativeCall.apArg = 0;
@@ -9461,8 +9503,10 @@ NativeCall:
 			 * internal function does: the callback's frame gets no file or line, and
 			 * this builtin gets a frame of its own. Only the FRAME shape is affected --
 			 * the argument BINDING mode still travels the forward's own map, which is
-			 * php's rule and a separate latch (bCallbackWeak). */
-			if( bNsCallee || !bLiteralCallee || (pInstr->iP2 & PH7_CALL_SPREAD) ){
+			 * php's rule and a separate latch (bCallbackWeak). A FRAMELESS call
+			 * in a namespace is no such shape: php picks its frameless branch at
+			 * run time, and what it calls back is called from the user frame. */
+			if( !bFramelessCallee && (bNsCallee || !bLiteralCallee || (pInstr->iP2 & PH7_CALL_SPREAD)) ){
 				/* ...and two more shapes php cannot fold, for the same compile-time
 				 * reason. A name that is not a literal at all
 				 * (`$n = 'call_user_func'; $n($c)`), and an argument list carrying a

@@ -3264,6 +3264,24 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	 * consumed at the head of the ONE OP_CALL it describes. php's two FORWARDS —
 	 * call_user_func and call_user_func_array — pass the caller's own mode on a map
 	 * and go through PH7_VmCallUserFunctionWithMap instead. */
+	/* ...except a FRAMELESS one (a literal `implode($s, $a)`, `class_exists($c)`): php
+	 * pushes no frame for it, so the frame calling back is the USER one. The builtin
+	 * still has a trace frame of its own, but the callee binds in the caller's mode and
+	 * names that call site -- the autoloader's shape (VM_FRAME_NATIVE_TRACE). */
+	{
+		VmNativeCall *pNat = pVm->pNativeCall;
+		while( pNat && pNat->bElided ){
+			pNat = pNat->pPrev;
+		}
+		if( pNat && pNat->bFrameless && pNat->pFrame == (void *)pVm->pFrame
+		 && pNat->nIncDepth == SySetUsed(&pVm->aIncFrame) ){
+			SyString *pSavedTrace = pVm->pNativeTraceName;
+			pVm->pNativeTraceName = pNat->pName;
+			rc = PH7_VmCallUserFunctionWithMap(&(*pVm),pFunc,nArg,apArg,pResult,0);
+			pVm->pNativeTraceName = pSavedTrace;
+			return rc;
+		}
+	}
 	pVm->bCallbackWeak = 1;
 	rc = PH7_VmCallUserFunctionWithMap(&(*pVm),pFunc,nArg,apArg,pResult,0);
 	pVm->bCallbackWeak = 0; /* clear if the dispatch never reached an OP_CALL */

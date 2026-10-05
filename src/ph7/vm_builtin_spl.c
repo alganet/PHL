@@ -1157,6 +1157,7 @@ static int SplArraySortCall(ph7_context *pCtx,const char *zName,ProchHostFunctio
 	sRec.pFrame = (void *)pVm->pFrame;
 	sRec.nIncDepth = SySetUsed(&pVm->aIncFrame);
 	sRec.bElided = 0;
+	sRec.bFrameless = 0;
 	sRec.pPrev = pVm->pNativeCall;
 	apRec[0] = pSlot;
 	apRec[1] = pRecArg;

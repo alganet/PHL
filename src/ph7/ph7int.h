@@ -1429,6 +1429,11 @@ struct VmNativeCall
 	int bElided;            /* a call_user_func/_array php's compiler folded away: it has
 	                         * no frame in php's trace, so the walks step over it (set by
 	                         * the forward itself once it knows; see VmNativeCallPrev) */
+	int bFrameless;         /* a call php's compiler turns into a FRAMELESS one (a literal
+	                         * `implode($s, $a)`): php pushes no frame for it, so what it
+	                         * calls back is called from the USER frame -- its trace still
+	                         * names the builtin, but the callee binds in the caller's mode
+	                         * and its diagnostics name the call site (PH7_VmCallUserFunction) */
 	VmNativeCall *pPrev;    /* the internal call this one was made from, or 0 */
 	sxu32 nIncDepth;        /* how many include/require/eval activations were running at
 	                         * entry. Code an INTERNAL function loads (spl_autoload()) runs in
