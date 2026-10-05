@@ -1982,14 +1982,36 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, 
 			}
 			if( rcQual > 0 ){
 				ph7_class_instance *pFccObj;
+				ph7_class_instance *pRecv = (pTarget->iFlags & MEMOBJ_OBJ)
+					? (ph7_class_instance *)pTarget->x.pOther : 0;
+				ph7_class *pCalled = 0;
+				int bDirect = PH7_VmFccMethodIsDirect(pVm, pQual, zQMeth, nQMeth);
+				/* A name the qualified class does not answer directly goes, in php, through
+				 * THAT class's static-method fallback, asked from fromCallable's own frame --
+				 * which has no `$this` -- so the catch-all is __callStatic even when __call
+				 * exists: an unbound static closure whose static:: is the object's class.
+				 * (A class with only __call was already refused by the gate above.) */
+				if( bBindCaller && !bDirect && pRecv
+						&& PH7_ClassExtractMethod(pQual, "__callStatic", sizeof("__callStatic")-1) ){
+					pCalled = pRecv->pClass;
+					pRecv = 0;
+				}
 				SyStringInitFromBuf(&sName, zQMeth, nQMeth);
-				pFccObj = VmCreateClosure(pVm, &sName,
-					(pTarget->iFlags & MEMOBJ_OBJ) ? (ph7_class_instance *)pTarget->x.pOther : 0,
-					&pQual->sName);
+				pFccObj = VmCreateClosure(pVm, &sName, pRecv, &pQual->sName);
 				if( pFccObj ){
 					pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
-					if( PH7_VmFccMethodIsDirect(pVm, pQual, zQMeth, nQMeth) ){
+					if( bDirect ){
 						pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
+					}
+					if( pCalled && pCalled != pQual ){
+						SyString sAttr;
+						ph7_value *pAttr;
+						SyStringInitFromBuf(&sAttr, "__called", 8);
+						pAttr = PH7_ClassInstanceFetchAttr(pFccObj, &sAttr);
+						if( pAttr ){
+							PH7_MemObjStringAppend(pAttr, SyStringData(&pCalled->sName),
+								SyStringLength(&pCalled->sName));
+						}
 					}
 				}
 				return pFccObj;
