@@ -890,6 +890,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "is_object"  , PH7_builtin_is_object   },
 	{ "is_resource", PH7_builtin_is_resource },
 	{ "floatval"   , PH7_builtin_floatval    },
+	{ "doubleval"  , PH7_builtin_floatval    },
 	{ "intval"     , PH7_builtin_intval      },
 	{ "strval"     , PH7_builtin_strval      },
 	{ "boolval"    , PH7_builtin_boolval     },

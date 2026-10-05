@@ -9264,6 +9264,7 @@ SkipFuncBody:
 				{ "strval",           sizeof("strval")-1,           1 },
 				{ "intval",           sizeof("intval")-1,           1 },
 				{ "floatval",         sizeof("floatval")-1,         1 },
+				{ "doubleval",        sizeof("doubleval")-1,        1 },
 				{ "boolval",          sizeof("boolval")-1,          1 },
 			};
 			sxu32 iF;

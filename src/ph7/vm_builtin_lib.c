@@ -302,7 +302,6 @@
    "}"\
    "function is_iterable(mixed $value): bool { return is_array($value) || ($value instanceof Traversable); }"\
    "function is_countable(mixed $value): bool { return is_array($value) || ($value instanceof Countable); }"\
-   "function doubleval(mixed $value): float { return (float)$value; }"\
    "function array_count_values(array $array): array {"\
    "  $out = array();"\
    "  foreach( $array as $v ){"\

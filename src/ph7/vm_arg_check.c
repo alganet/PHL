@@ -166,6 +166,7 @@ static const struct VmBuiltinArity {
 	{ "tan",                       1, 0 },
 	{ "tanh",                      1, 0 },
 	/* Type/var family */
+	{ "doubleval",                 1, 0 },
 	{ "floatval",                  1, 0 },
 	{ "get_resource_id",           1, 0 },
 	{ "get_resource_type",         1, 0 },
@@ -530,6 +531,7 @@ static const struct VmBuiltinSig {
 	{ "simplexml_import_dom",
 	  "object $node, ?string $class_name = SimpleXMLElement::class", "?SimpleXMLElement" },
 	{ "dom_import_simplexml", "object $node", "DOMAttr|DOMElement" },
+	{ "doubleval", "mixed $value", "float" },
 	{ "Dom\\import_simplexml", "object $node", "Dom\\Attr|Dom\\Element" },
 	/* ext/pdo's one function: the procedural spelling of
 	 * PDO::getAvailableDrivers(). */
