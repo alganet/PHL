@@ -1425,13 +1425,16 @@ PH7_PRIVATE int vm_builtin_get_defined_func(ph7_context *pCtx,int nArg,ph7_value
 PH7_PRIVATE int vm_builtin_register_shutdown_function(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	VmShutdownCB sEntry;
+	sxi32 rc;
 	int i,j;
-	if( nArg < 1 || (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 ){
-		/* Missing/Invalid arguments,return immediately. MEMOBJ_OBJ covers a Closure (and
-		 * any __invoke object) callback; it is resolved/validated at shutdown. */
+	if( nArg < 1 ){
 		return PH7_OK;
 	}
-	PH7_VmCallableDeprecation(pCtx->pVm,apArg[0]);
+	/* php refuses an uncallable callback at registration, not at shutdown */
+	rc = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",0);
+	if( rc != PH7_OK ){
+		return rc;
+	}
 	/* Zero the Entry */
 	SyZero(&sEntry,sizeof(VmShutdownCB));
 	/* Initialize fields */
