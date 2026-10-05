@@ -5835,6 +5835,8 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	{
 	SySet aArgName;              /* one SyString per argument; {0,0} == positional */
 	int hasNamed = 0, hasSpread = 0;
+	sxu32 aNamedSend[16];        /* the PH7_OP_NAMED_SEND screens emitted, patched with the map */
+	sxu32 nNamedSend = 0, n;
 	void *p3;
 	SySetInit(&aArgName,&pGen->pVm->sAllocator,sizeof(SyString));
 	if( pArgStart < pArgEnd ){
@@ -5897,7 +5899,16 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 			}
 			if( pArgIn < pArgNext ){
-				rc = GenStateCompileArrayEntry(pGen,pArgIn,pArgNext,EXPR_FLAG_RDONLY_LOAD,0);
+				sxi32 iArgFlags = EXPR_FLAG_RDONLY_LOAD;
+				if( !bSpread && &pArgIn[2] == pArgNext && (pArgIn->nType & PH7_TK_DOLLAR)
+				 && (pArgIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+					/* A plain `$var` is read by its SEND in php, against the formal it
+					 * binds to: the ordinary list's deferred load. A by-reference
+					 * constructor parameter creates it, a by-value one warns once, and a
+					 * named argument refused at its send never reads it at all. */
+					iArgFlags |= EXPR_FLAG_DEFER_ARG;
+				}
+				rc = GenStateCompileArrayEntry(pGen,pArgIn,pArgNext,iArgFlags,0);
 				if( rc == SXERR_ABORT ){
 					pGen->pIn = pSavedIn;
 					pGen->pEnd = pSavedEnd;
@@ -5912,6 +5923,15 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 						 && (pArgIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD))) ? 1 : 0,
 						0,0,0);
 					hasSpread = 1;
+				}else if( sArgName.nByte > 0 && nNamedSend < sizeof(aNamedSend)/sizeof(aNamedSend[0]) ){
+					/* php resolves a NAME at the send of its argument, against the
+					 * constructor of the class DECLARE_ANON_CLASS already declared: `new
+					 * class(zz: $u, a: s()) {…}` is `Unknown named parameter $zz` without
+					 * reading `$u` or running `s()`. The ordinary list's screen, told the
+					 * class through the map rather than the stack. */
+					aNamedSend[nNamedSend++] = PH7_VmInstrLength(pGen->pVm);
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_NAMED_SEND,nArg,
+						(hasSpread ? PH7_ROT_SPREAD : 0) | PH7_ROT_NEW | PH7_ROT_ANON,0,0);
 				}
 				SySetPut(&aArgName,(const void *)&sArgName);
 				nArg++;
@@ -5936,7 +5956,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	p3 = 0;
 	if( hasNamed ){
 		SyString *aName = (SyString *)SySetBasePtr(&aArgName);
-		sxu32 n, nStrBytes = 0;
+		sxu32 nStrBytes = sName.nByte;
 		for( n = 0 ; n < (sxu32)nArg ; ++n ){
 			nStrBytes += aName[n].nByte;
 		}
@@ -5957,7 +5977,15 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 					zBuf += aName[n].nByte;
 				}
 			}
+			SyMemcpy(sName.zString,zBuf,sName.nByte);
+			SyStringInitFromBuf(&pMap->sNewAnon,zBuf,sName.nByte);
 			p3 = (void *)pMap;
+			for( n = 0 ; n < nNamedSend ; ++n ){
+				VmInstr *pSend = PH7_VmGetInstr(pGen->pVm,aNamedSend[n]);
+				if( pSend ){
+					pSend->p3 = (void *)pMap;
+				}
+			}
 		}
 		}
 	}

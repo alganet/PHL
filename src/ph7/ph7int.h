@@ -3388,6 +3388,12 @@ struct VmCallArgMap
 						  * after it is refused only inside the SAME unpack; a later unpack
 						  * binds it after the highest parameter bound so far. 0 = the list
 						  * is one run (call_user_func_array's array, a compile map). */
+	SyString sNewAnon;   /* An anonymous class's `new class(...)` only: the synthesized
+						  * name of the class it instantiates. Its list is compiled from
+						  * raw tokens with that name pushed AFTER the arguments, so a
+						  * named argument's send-time screen (PH7_ROT_ANON) finds the
+						  * class here instead of below the argument region. {0,0}
+						  * everywhere else; bytes live in the map's own tail. */
 	SyString sAssertSrc; /* Direct assert() calls only: the first argument's rendered
 						  * source text (php's zend_ast_export shape, e.g. `1 == 2`),
 						  * captured at compile time so a failing assertion reports
@@ -5233,6 +5239,9 @@ enum ph7_vm_op {
 #define PH7_ROT_NEW     0x4 /* NAMED_SEND.iP2 only: the slot below the arguments is a `new`'s
                              * CLASS operand (left by its screen pass), so the name is asked
                              * of that class's constructor, not looked up as a function. */
+#define PH7_ROT_ANON    0x8 /* NAMED_SEND.iP2 only, with PH7_ROT_NEW: an anonymous class's list.
+                             * Nothing stands below its arguments; the class is the one the
+                             * map's sNewAnon names. */
 /* CALL.iP2 — a bit SET, not the plain hasSpread boolean it started as. */
 #define PH7_CALL_SPREAD    0x1 /* This call unpacks (the ROT_SPREAD of the call itself). */
 #define PH7_CALL_CONSTRUCT 0x2 /* This call was emitted by a language CONSTRUCT's codegen --

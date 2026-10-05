@@ -6536,11 +6536,12 @@ case PH7_OP_CALL_INIT: {
  *  a plain Closure through the function its `$__fn` names, a `new`'s class operand
  *  through its constructor (none declared takes no name at all), and an array pair, a
  *  `"C::m"` string, an __invoke object or a method Closure through the method
- *  VmNamedSendMethod finds. A __call routing, an unreachable method and an anonymous
- *  class's `new` leave the name to OP_CALL's own resolution.
+ *  VmNamedSendMethod finds. A __call routing and an unreachable method leave the name to
+ *  OP_CALL's own resolution.
  *
  *  P1 = the argument's compile-time position, P2 = PH7_ROT_SPREAD when an unpack precedes
- *  it, | PH7_ROT_NEW when the list is a `new`'s, P3 = the call's VmCallArgMap.
+ *  it, | PH7_ROT_NEW when the list is a `new`'s (| PH7_ROT_ANON for an anonymous class,
+ *  whose class the map names), P3 = the call's VmCallArgMap.
  */
 case PH7_OP_NAMED_SEND: {
 	VmCallArgMap *pSendMap = (VmCallArgMap *)pInstr->p3;
@@ -6563,8 +6564,9 @@ case PH7_OP_NAMED_SEND: {
 	nSendPushed = pInstr->iP1 + 1
 		+ ((pInstr->iP2 & PH7_ROT_SPREAD) ? VmSpreadOwnExtra(&(*pVm),pInstr->iP1 + 1,&pTos[1]) : 0);
 	pSendCallee = &pTos[-nSendPushed];
-	if( pSendName->nByte == 0 || nSendPushed < 1 || pSendCallee < pStack
-	 || (pSendCallee->iFlags & MEMOBJ_AUX_MAGICCALL) ){
+	if( pSendName->nByte == 0 || nSendPushed < 1
+	 || ( (pInstr->iP2 & PH7_ROT_ANON) == 0
+	   && (pSendCallee < pStack || (pSendCallee->iFlags & MEMOBJ_AUX_MAGICCALL)) ) ){
 		break;
 	}
 	SyStringInitFromBuf(&sSendFn,"",0);
@@ -6572,10 +6574,17 @@ case PH7_OP_NAMED_SEND: {
 		/* A `new`'s list: its screen pass (OP_NEW, iP1 -1) resolved the class, refused
 		 * every `new` php refuses before the arguments run, and left the operand -- a
 		 * name, `self`/`static`/`parent` among them, or an object -- standing here. A
-		 * class that declares no constructor takes no name at all. */
+		 * class that declares no constructor takes no name at all. An anonymous class
+		 * leaves nothing there: its screen (OP_NEW, iP1 -2) declared it, and the map
+		 * names it. */
 		ph7_class *pSendClass = 0;
 		ph7_class_method *pSendCons;
-		if( (pSendCallee->iFlags & MEMOBJ_STRING) && SyBlobLength(&pSendCallee->sBlob) > 0 ){
+		if( pInstr->iP2 & PH7_ROT_ANON ){
+			if( pSendMap->sNewAnon.nByte > 0 ){
+				pSendClass = PH7_VmExtractClass(&(*pVm),pSendMap->sNewAnon.zString,
+					pSendMap->sNewAnon.nByte,FALSE,0);
+			}
+		}else if( (pSendCallee->iFlags & MEMOBJ_STRING) && SyBlobLength(&pSendCallee->sBlob) > 0 ){
 			pSendClass = PH7_VmResolveScopeName(&(*pVm),(const char *)SyBlobData(&pSendCallee->sBlob),
 				SyBlobLength(&pSendCallee->sBlob));
 		}else if( pSendCallee->iFlags & MEMOBJ_OBJ ){
