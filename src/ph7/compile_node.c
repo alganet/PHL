@@ -127,6 +127,12 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		/* Static closure: no $this auto-capture, bind refused */
 		iFlags |= VM_FUNC_STATIC_CL;
 		pGen->pIn++; /* Jump the 'static' keyword */
+		/* php's line for the declaration is the `function` keyword's, never the
+		 * modifier's: getStartLine(), the closure's name and a refused attribute
+		 * all read it. */
+		if( pGen->pIn < pGen->pEnd ){
+			nKwLine = pGen->pIn->nLine;
+		}
 	}
 	pGen->pIn++; /* Jump the 'function' keyword */
 	/* `function &(…) {…}` — a closure returns by reference exactly as a named
@@ -151,7 +157,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	 * __FUNCTION__ inside it resolves to the same text php reports. */
 	GenStateClosureName(&(*pGen),nKwLine);
 	/* Compile the lambda body */
-	rc = GenStateCompileFunc(&(*pGen),&sName,iFlags,TRUE,&pAnnonFunc);
+	rc = GenStateCompileFunc(&(*pGen),&sName,iFlags,TRUE,nKwLine,&pAnnonFunc);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -162,7 +168,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnnonFunc->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
-		if( GenStateCheckAttrPlacement(&(*pGen),&pAnnonFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
+		if( GenStateCheckAttrPlacement(&(*pGen),&pAnnonFunc->aAttrs,nKwLine,2,2,0,0) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 		/* A closure's own attributes arrive AFTER its body compiled, so the
@@ -534,6 +540,10 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		bStatic = 1;
 		iFlags |= VM_FUNC_STATIC_CL;
 		pGen->pIn++;
+		/* ...and the declaration's line is the `fn` keyword's, not `static`'s. */
+		if( pGen->pIn < pGen->pEnd ){
+			nLine = pGen->pIn->nLine;
+		}
 	}
 	/* 'fn' keyword (guaranteed by ExprExtractNode's dispatch) */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
@@ -587,7 +597,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		return SXERR_ABORT;
 	}
 	PH7_VmInitFuncState(pGen->pVm,pFunc,zDup,nLen,iFlags,0);
-	/* Reflection getStartLine(): line of the ['static'] 'fn' keyword */
+	/* Reflection getStartLine(): line of the 'fn' keyword */
 	pFunc->nLine = nLine;
 	/* php's visible name — an arrow function is named exactly like a closure. This
 	 * compiler builds its own function state, so it consumes the pending name itself. */
@@ -599,7 +609,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pFunc->aAttrs) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
+	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,nLine,2,2,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	/* An arrow function is a closure: its signature is exempt from the

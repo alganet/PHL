@@ -530,7 +530,7 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 		 * a PROMOTED parameter is a property as well, so `#[\Override] public $p`
 		 * in a constructor signature is accepted here and judged as the property
 		 * claim it is -- while php still NAMES the target "parameter". */
-		if( GenStateCheckAttrPlacement(&(*pGen),&sArg.aAttrs,32,
+		if( GenStateCheckAttrPlacement(&(*pGen),&sArg.aAttrs,sArg.nLine,32,
 				(sArg.iFlags & VM_FUNC_ARG_PROMOTED) ? (32|8) : 32,0,0) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -2038,6 +2038,7 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 	SyString *pName,     /* Function name. NULL otherwise */
 	sxi32 iFlags,        /* Control flags */
 	int bHandleClosure,  /* TRUE if we are dealing with a closure */
+	sxu32 nKwLine,       /* Line of the 'function' keyword: php's line for the declaration */
 	ph7_vm_func **ppFunc /* OUT: function state */
 	)
 {
@@ -2117,7 +2118,7 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 	if( GenStateConsumeAttrs(&(*pGen),&pFunc->aAttrs) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
+	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,nKwLine,2,2,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	/* Whose signature this is, for php's scope-keyword screen (see iSigScope): a
@@ -2383,7 +2384,7 @@ PH7_PRIVATE sxi32 PH7_CompileFunction(ph7_gen_state *pGen)
 	/* Compile function body */
 	{
 		ph7_vm_func *pFuncState = 0;
-		rc = GenStateCompileFunc(&(*pGen),pName,iFlags,FALSE,&pFuncState);
+		rc = GenStateCompileFunc(&(*pGen),pName,iFlags,FALSE,nKwLine,&pFuncState);
 		if( pFuncState ){
 			/* Reflection getStartLine(): line of the 'function' keyword */
 			pFuncState->nLine = nKwLine;

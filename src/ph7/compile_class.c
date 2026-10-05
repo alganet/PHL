@@ -738,6 +738,7 @@ static void GenStateCopyTypeToAttr(ph7_class_attr *pAttr,sxu32 nType,
 static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nNameLine;      /* php's line for the group: its first name's */
 	SySet *pInstrContainer;
 	ph7_class_attr *pCons;
 	SyString *pName;
@@ -801,6 +802,7 @@ loop:
 	}
 	/* Peek constant name */
 	pName = &pGen->pIn->sData;
+	nNameLine = pGen->pIn->nLine;
 	if( (pGen->pIn->nType & PH7_TK_KEYWORD)
 		&& (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CLASS ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
@@ -898,7 +900,7 @@ loop:
 		if( GenStateConsumeAttrs(&(*pGen),&pCons->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
-		if( GenStateCheckAttrPlacement(&(*pGen),&pCons->aAttrs,16,16,0,0) == SXERR_ABORT ){
+		if( GenStateCheckAttrPlacement(&(*pGen),&pCons->aAttrs,nNameLine,16,16,0,0) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 	}
@@ -1408,7 +1410,7 @@ loop:
 		if( GenStateConsumeAttrs(&(*pGen),&pAttr->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
-		if( GenStateCheckAttrPlacement(&(*pGen),&pAttr->aAttrs,8,8,0,0) == SXERR_ABORT ){
+		if( GenStateCheckAttrPlacement(&(*pGen),&pAttr->aAttrs,nLine,8,8,0,0) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 	}
@@ -1875,7 +1877,7 @@ static sxi32 GenStateCompileClassMethod(
 	if( GenStateConsumeAttrs(&(*pGen),&pMeth->sFunc.aAttrs) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	if( GenStateCheckAttrPlacement(&(*pGen),&pMeth->sFunc.aAttrs,4,4,0,0) == SXERR_ABORT ){
+	if( GenStateCheckAttrPlacement(&(*pGen),&pMeth->sFunc.aAttrs,nKwLine,4,4,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	/* Jump the left parenthesis '(' */
@@ -3177,7 +3179,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	}
 	/* Mark as an interface (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= PH7_CLASS_INTERFACE;
-	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,1,1,
+	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,pClass->nLine,1,1,
 			&pClass->sName,pClass->iFlags) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -4118,6 +4120,7 @@ static int GenStateClassIsExceptionOrError(ph7_class *pBase)
 static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nNameLine;      /* php's line for the case: its name's */
 	SySet *pInstrContainer;
 	ph7_class_attr *pCase;
 	SyString *pName;
@@ -4132,6 +4135,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 		goto Synchronize;
 	}
 	pName = &pGen->pIn->sData;
+	nNameLine = pGen->pIn->nLine;
 	/* Cases share the class-constant namespace (php: "Cannot redefine class constant") */
 	if( SyHashGet(&pClass->hConst,(const void *)pName->zString,pName->nByte) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -4151,7 +4155,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 	if( GenStateConsumeAttrs(&(*pGen),&pCase->aAttrs) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	if( GenStateCheckAttrPlacement(&(*pGen),&pCase->aAttrs,16,16,0,0) == SXERR_ABORT ){
+	if( GenStateCheckAttrPlacement(&(*pGen),&pCase->aAttrs,nNameLine,16,16,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	pGen->pIn++; /* Jump the case name */
@@ -5417,7 +5421,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	}
 	/* ...which is what php's own attribute validators judge: `#[\Attribute]` on an
 	 * abstract class, `#[\AllowDynamicProperties]` on a readonly one or an enum. */
-	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,1,1,
+	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,pClass->nLine,1,1,
 			&pClass->sName,pClass->iFlags) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -5875,6 +5879,12 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 				 && GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnonClass->aAttrs) == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
+				/* ...judged by the same placement rules as a named class's, which
+				 * this door never asked: `new #[\Override] class {}` compiled. */
+				if( pAnonClass && GenStateCheckAttrPlacement(&(*pGen),&pAnonClass->aAttrs,
+						pAnonClass->nLine,1,1,&pAnonClass->sDisp,pAnonClass->iFlags) == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
 				if( pAnonClass ){
 					/* php's DECLARE_ANON_CLASS runs BEFORE the constructor arguments, and
 					 * it is where an unimplemented abstract method is refused -- so
@@ -6278,7 +6288,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	pGen->pEnd = pEnd;
 	/* Mark as trait (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= PH7_CLASS_TRAIT;
-	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,1,1,
+	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,pClass->nLine,1,1,
 			&pClass->sName,pClass->iFlags) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}

@@ -80,9 +80,13 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	/* php forbids attributes on a comma-separated const list. Snapshot whether the
 	 * statement carries any now, before the first constant consumes them. */
 	int bHadAttrs = SySetUsed(&pGen->aPendingAttrs) > 0;
-	/* php attributes every const-statement compile error to the `const` keyword's
-	 * line, not the offending list element's own line (`const A=1,\nB=strlen()` blames
-	 * line 1). Capture it once here, before jumping the keyword. */
+	SySet *pAttrs = 0;   /* the set the first constant took them into */
+	int nDecl = 0;       /* constants this statement declares */
+	/* php attributes every const-statement diagnostic to the statement's line, not
+	 * the offending list element's own (`const A=1,\nB=strlen()` blames line 1),
+	 * and the statement's line is its FIRST NAME's -- `const` on a line of its own
+	 * moves nothing. Taken from the keyword here for the refusals before the name,
+	 * then from the name itself. */
 	nLineLocal = pGen->pIn->nLine;
 	/* A top statement only: elsewhere this compiled it and declared the
 	 * constant when the statement ran. */
@@ -110,6 +114,9 @@ Loop:
 	}
 	/* Peek constant name */
 	pName = &pGen->pIn->sData;
+	if( nDecl++ == 0 ){
+		nLineLocal = pGen->pIn->nLine;
+	}
 	/* php's global `const` takes an IDENTIFIER: a reserved word is a parse error
 	 * there, and only a CLASS constant may carry one (`class C { const list = 5; }`
 	 * is php-legal, `const list = 5;` at file scope is not). PHL accepted both, so
@@ -231,26 +238,26 @@ Loop:
 			if( GenStateConsumeAttrs(&(*pGen),&pDecl->aAttrs) == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
-			if( GenStateCheckAttrPlacement(&(*pGen),&pDecl->aAttrs,64,64,0,0) == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}
+			pAttrs = &pDecl->aAttrs;
 		}
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CONST_DECL,0,0,(void *)pDecl,0);
 	}
 Next:
 	/* Another declaration in the same statement: `const A = 1, B = 2;`. */
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA /* ',' */) ){
-		if( bHadAttrs ){
-			/* php compile-fatals `#[Attr] const A = 1, B = 2;` outright. */
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
-				"Cannot apply attributes to multiple constants at once");
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}
-			goto Synchronize;
-		}
 		pGen->pIn++; /* Jump the comma */
 		goto Loop;
+	}
+	/* php judges the statement's attributes once every constant has compiled:
+	 * a list carrying any is refused outright, and only a single constant's set
+	 * reaches the placement rules. */
+	if( bHadAttrs && nDecl > 1 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+			"Cannot apply attributes to multiple constants at once");
+		return ( rc == SXERR_ABORT ) ? SXERR_ABORT : SXRET_OK;
+	}
+	if( pAttrs && GenStateCheckAttrPlacement(&(*pGen),pAttrs,nLineLocal,64,64,0,0) == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	return SXRET_OK;
 Synchronize:

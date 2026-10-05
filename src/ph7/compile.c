@@ -4532,8 +4532,14 @@ static const char * GenStateAttrClassRefusal(const char *zAttr,sxi32 iFlags)
  * constructor parameter is a parameter and a property both, so it takes either
  * bit while still reporting "parameter". pClassName/iClassFlags describe the
  * subject when the target is a class (0 and 0 otherwise).
+ *
+ * nLine is the line php blames, which is the DECLARATION's, never the attribute's:
+ * php validates the set while compiling the declaration's AST node, whose line is
+ * the `function`/`fn`/`class`/`interface`/`trait`/`enum` keyword for those, the
+ * type (else the name) for a property or a parameter, and the first name for a
+ * constant or an enum case -- modifiers in front of any of them move nothing.
  */
-PH7_PRIVATE sxi32 GenStateCheckAttrPlacement(ph7_gen_state *pGen,SySet *pAttrs,
+PH7_PRIVATE sxi32 GenStateCheckAttrPlacement(ph7_gen_state *pGen,SySet *pAttrs,sxu32 nLine,
 	int iTarget,int iAccept,const SyString *pClassName,sxi32 iClassFlags)
 {
 	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(pAttrs);
@@ -4571,7 +4577,7 @@ PH7_PRIVATE sxi32 GenStateCheckAttrPlacement(ph7_gen_state *pGen,SySet *pAttrs,
 					break;
 				}
 			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,aAttr[n].nLine,
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 				"Attribute \"%z\" cannot target %s (allowed targets: %s)",pName,
 				iBit < (int)SX_ARRAYSIZE(azGenAttrTarget) ? azGenAttrTarget[iBit] : "",
 				SyBlobData(&sAllowed));
@@ -4583,7 +4589,7 @@ PH7_PRIVATE sxi32 GenStateCheckAttrPlacement(ph7_gen_state *pGen,SySet *pAttrs,
 		for( k = 0 ; k < n ; ++k ){
 			if( aAttr[k].sName.nByte == pName->nByte
 			 && SyStrnicmp(aAttr[k].sName.zString,pName->zString,pName->nByte) == 0 ){
-				return PH7_GenCompileError(pGen,E_ERROR,aAttr[n].nLine,
+				return PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"Attribute \"%z\" must not be repeated",pName);
 			}
 		}
@@ -4591,7 +4597,7 @@ PH7_PRIVATE sxi32 GenStateCheckAttrPlacement(ph7_gen_state *pGen,SySet *pAttrs,
 			const char *zRefused = GenStateAttrClassRefusal(aGenInternalAttr[iRow].zName,
 				iClassFlags);
 			if( zRefused ){
-				return PH7_GenCompileError(pGen,E_ERROR,aAttr[n].nLine,
+				return PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"Cannot apply #[\\%s] to %s %z",aGenInternalAttr[iRow].zName,
 					zRefused,pClassName);
 			}
