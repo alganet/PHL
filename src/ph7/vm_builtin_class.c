@@ -2266,7 +2266,14 @@ static int VmForwardArm(ph7_context *pCtx,const ph7_value *pCallable)
 static sxi32 VmForwardScreen(ph7_context *pCtx,ph7_value *pCb)
 {
 	ph7_class_instance *pExc;
+	VmNativeCall *pRec = pCtx->pVm->pNativeCall;
 	sxi32 rc;
+	if( pRec && pRec->pName == &pCtx->pFunc->sName && VmForwardFolded(pCtx) ){
+		/* A folded forward is no call in php, so it has no frame of its own for a
+		 * trace to show: not under this screen's refusal, and not above whatever
+		 * its callback runs (VmNativeCall.bElided). */
+		pRec->bElided = 1;
+	}
 	if( (pCtx->iFlags & PH7_CTX_CALL_CT_BOUND) == 0 ){
 		return PH7_CheckCallbackArg(pCtx,pCb,1,"callback",0);
 	}

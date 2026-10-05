@@ -1417,6 +1417,9 @@ struct VmNativeCall
 	int bStatic;            /* a method declared static: php's separator is `::` */
 	sxu32 nLine;            /* the line the call was WRITTEN on (pVm->nCurLine at entry) */
 	void *pFrame;           /* VmFrame current at entry -- borrowed, never dereferenced */
+	int bElided;            /* a call_user_func/_array php's compiler folded away: it has
+	                         * no frame in php's trace, so the walks step over it (set by
+	                         * the forward itself once it knows; see VmNativeCallPrev) */
 	VmNativeCall *pPrev;    /* the internal call this one was made from, or 0 */
 };
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */

@@ -5759,6 +5759,75 @@ static void VmTraceNativeCallerEntry(ph7_vm *pVm,sxi32 iOptions,VmFrame *pFrame,
 	ph7_release_value(&(*pVm),pNat);
 }
 /*
+ * The running internal call made before pNat, stepping over any a folded forward left
+ * (VmNativeCall.bElided): php's compiler turned that call_user_func into a direct call,
+ * so what it ran was reached from wherever the forward itself was.
+ */
+static VmNativeCall * VmNativeCallPrev(VmNativeCall *pNat)
+{
+	for( pNat = pNat->pPrev ; pNat && pNat->bElided ; pNat = pNat->pPrev ){
+	}
+	return pNat;
+}
+/*
+ * The INTERNAL calls that reached for pFrame's body as a callback. There can be more
+ * than one: `array_map('call_user_func', ['f'])` runs f from inside call_user_func,
+ * itself run from inside array_map, and php gives each a frame -- the inner ones with
+ * no file or line, the outermost with the userland call site. They are exactly the
+ * running records entered from the activation above pFrame (VmNativeCall), since that
+ * activation is suspended in the outermost of them; a native method is named the way
+ * php names it, by its declaring class and its own separator. Answers how many entries
+ * it added; 0 leaves the frame's single pNativeCaller to VmTraceNativeCallerEntry,
+ * which is also the only rendering for a dispatch no record describes (a shutdown
+ * function, an autoloader an opcode triggered).
+ */
+static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iLimit,sxi32 nDone,
+	VmFrame *pFrame,SyString *pFile,ph7_value *pValue,ph7_value *pList)
+{
+	VmNativeCall *pNat = pVm->pNativeCall;
+	sxi32 nAdded = 0;
+	while( pNat && (pNat->bElided || pNat->pFrame != (void *)pFrame->pParent) ){
+		pNat = pNat->pPrev;
+	}
+	for( ; pNat && pNat->pFrame == (void *)pFrame->pParent ; pNat = VmNativeCallPrev(pNat) ){
+		VmNativeCall *pPrev = VmNativeCallPrev(pNat);
+		ph7_value *pEntry;
+		if( iLimit != 0 && nDone + nAdded >= iLimit ){
+			break;
+		}
+		pEntry = ph7_new_array(&(*pVm));
+		if( pEntry == 0 ){
+			break;
+		}
+		nAdded++;
+		if( pPrev == 0 || pPrev->pFrame != pNat->pFrame ){
+			/* The outermost: the one userland code called. */
+			SyString *pNatFile = SyStringLength(&pFrame->sCallFile) > 0 ? &pFrame->sCallFile : pFile;
+			if( pNatFile ){
+				ph7_value_string(pValue,pNatFile->zString,(int)pNatFile->nByte);
+				ph7_array_add_strkey_elem(pEntry,"file",pValue);
+				ph7_value_reset_string_cursor(pValue);
+			}
+			ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
+			ph7_array_add_strkey_elem(pEntry,"line",pValue);
+		}
+		ph7_value_string(pValue,pNat->pName->zString,(int)pNat->pName->nByte);
+		ph7_array_add_strkey_elem(pEntry,"function",pValue);
+		ph7_value_reset_string_cursor(pValue);
+		if( pNat->pClass ){
+			ph7_value_string(pValue,pNat->pClass->sName.zString,(int)pNat->pClass->sName.nByte);
+			ph7_array_add_strkey_elem(pEntry,"class",pValue);
+			ph7_value_reset_string_cursor(pValue);
+			ph7_value_string(pValue,pNat->bStatic ? "::" : "->",2);
+			ph7_array_add_strkey_elem(pEntry,"type",pValue);
+			ph7_value_reset_string_cursor(pValue);
+		}
+		ph7_array_add_elem(pList,0,pEntry);
+		ph7_release_value(&(*pVm),pEntry);
+	}
+	return nAdded;
+}
+/*
  * VmSkipExceptionFrames for a trace. A fiber's TRAMPOLINE body frame is transparent --
  * the callee it dispatched pushed the frame the trace shows -- but the Fiber method
  * that entered it is still a frame of php's, so it is emitted on the way past.
@@ -5813,6 +5882,9 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 	 * leaves its own frame out of. */
 	if( (iOptions & 8) != 0 ){
 		VmNativeCall *pNat = pVm->pNativeCall;
+		if( pNat && pNat->bElided ){
+			pNat = VmNativeCallPrev(pNat);
+		}
 		while( pNat && pNat->pFrame == (void *)pVm->pFrame ){
 			ph7_value *pNatEntry;
 			if( iLimit != 0 && nDone >= iLimit ){
@@ -5830,7 +5902,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * so is a C function a fiber runs AS its body: its record sits on the fiber
 			 * trampoline's transparent frame, called by Fiber->start() rather than by
 			 * any bytecode. */
-			if( (pNat->pPrev == 0 || pNat->pPrev->pFrame != pNat->pFrame)
+			if( (VmNativeCallPrev(pNat) == 0 || VmNativeCallPrev(pNat)->pFrame != pNat->pFrame)
 			 && (pVm->pFrame->iFlags & (VM_FRAME_FIBER|VM_FRAME_EXCEPTION))
 					!= (VM_FRAME_FIBER|VM_FRAME_EXCEPTION) ){
 				SyString *pNatFile = PH7_VmExecutingUnitFile(&(*pVm));
@@ -5861,7 +5933,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * for an internal frame's arguments here, and no 'object' either. */
 			ph7_array_add_elem(pList,0,pNatEntry);
 			ph7_release_value(&(*pVm),pNatEntry);
-			pNat = pNat->pPrev;
+			pNat = VmNativeCallPrev(pNat);
 		}
 	}
 	pFrame = pVm->pFrame
@@ -6070,11 +6142,19 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * through PH7_VmCallUserFunctionWithMap and set no latch. A `$n('cuf')($c)`
 			 * through a variable is NOT elided, does set the latch, and does get this
 			 * frame, exactly as php's does. */
+			sxi32 nChain;
 			if( iLimit != 0 && nDone >= iLimit ){
 				break;
 			}
-			nDone++;
-			VmTraceNativeCallerEntry(&(*pVm),iOptions,pFrame,pFile,pValue,pList);
+			nChain = (pFrame->iFlags & VM_FRAME_FIBER) == 0
+				? VmTraceNativeCallerChain(&(*pVm),iLimit,nDone,pFrame,pFile,pValue,pList)
+				: 0;
+			if( nChain > 0 ){
+				nDone += nChain;
+			}else{
+				nDone++;
+				VmTraceNativeCallerEntry(&(*pVm),iOptions,pFrame,pFile,pValue,pList);
+			}
 		}
 		pFrame = pFrame->pParent
 			? VmTraceSkipFrames(&(*pVm),iOptions,iLimit,&nDone,pFrame->pParent,pFile,pValue,pList)
