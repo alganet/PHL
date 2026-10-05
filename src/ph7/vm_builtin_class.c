@@ -2217,6 +2217,46 @@ static int VmForwardIsDynamic(const ph7_value *pCallable)
 	return pCallable->nIdx != SXU32_HIGH || (pCallable->iFlags & MEMOBJ_STRING) == 0;
 }
 /*
+ * Did php's compiler fold THIS forward away? Only a compile-time bound call
+ * (PH7_CTX_CALL_CT_BOUND: no spread, no `name:` argument, not unqualified inside a
+ * namespace) of the two names zend_compile_func_cuf knows. forward_static_call and
+ * _array share these C bodies but are never folded. Anything else is a real internal
+ * call: the forward keeps a frame of its own, its callback's frame has no call site,
+ * the callback runs DYNAMIC, and a dropped answer is the forward's, not the callback's.
+ */
+static int VmForwardFolded(ph7_context *pCtx)
+{
+	const SyString *pName = &pCtx->pFunc->sName;
+	if( (pCtx->iFlags & PH7_CTX_CALL_CT_BOUND) == 0 ){
+		return 0;
+	}
+	return (pName->nByte == sizeof("call_user_func") - 1
+	        && SyStrnicmp(pName->zString,"call_user_func",pName->nByte) == 0)
+	    || (pName->nByte == sizeof("call_user_func_array") - 1
+	        && SyStrnicmp(pName->zString,"call_user_func_array",pName->nByte) == 0);
+}
+/*
+ * Arm the latches the callback's OP_CALL consumes, and answer whether the forward was
+ * folded: only a folded one binds its callback under the caller's strict_types, since a
+ * real internal call leaves php no calling file to take the mode from.
+ */
+static int VmForwardArm(ph7_context *pCtx,const ph7_value *pCallable)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	if( VmForwardFolded(pCtx) ){
+		/* php's compiler rewrites the forward into a direct call of the callback, so
+		 * a DROPPED answer here is a dropped answer for the callback: hand the bit
+		 * on, one call deep. */
+		pVm->bDiscardCallback = pVm->bHostDiscard;
+		pVm->bDynamicForward = VmForwardIsDynamic(pCallable);
+		return 1;
+	}
+	pVm->bDiscardCallback = 0;
+	pVm->bDynamicForward = 1;
+	pVm->pNativeFrameName = &pCtx->pFunc->sName;
+	return 0;
+}
+/*
  * Screen a forward's callback. A call php's compiler bound (PH7_CTX_CALL_CT_BOUND) is
  * compiled into ZEND_INIT_USER_CALL, and it is that opcode which resolves the callable: an
  * error handler throwing on the scope deprecation leaves no reason behind, so php raises
@@ -2284,23 +2324,19 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		sInner.bStrict = 0;
 		sInner.nTotal = pOuter->nTotal > 1 ? pOuter->nTotal - 1 : 0;
 		sInner.aNames = sInner.nTotal > 0 ? &pOuter->aNames[1] : 0;
-		/* php's compiler rewrites `call_user_func(f, ...)` into a direct call to
-		 * f, so a DROPPED answer here is a dropped answer for the callback: hand
-		 * the bit on, one call deep. */
-		pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;
-		pCtx->pVm->bDynamicForward = VmForwardIsDynamic(apArg[0]);
+		/* A `name:` argument is one php's compiler does not fold, so this is
+		 * always a real internal call (VmForwardFolded). */
+		VmForwardArm(pCtx,apArg[0]);
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sInner);
 	}else{
-		/* call_user_func is one of php's two FORWARDS: the callback binds under the
-		 * mode of the file that wrote the call_user_func, not weakly like every other
-		 * internal callback. Carry that one bit on a map of its own — the positional
+		/* call_user_func is one of php's two FORWARDS: once folded, the callback binds
+		 * under the mode of the file that wrote the call_user_func, not weakly like every
+		 * other internal callback. Carry that one bit on a map of its own — the positional
 		 * wrapper would latch the call weak (which is right for array_map and every
 		 * other internal invocation, and wrong here). */
 		VmCallArgMap sFwd;
 		SyZero(&sFwd,sizeof(sFwd));
-		sFwd.bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
-		pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;   /* see above */
-		pCtx->pVm->bDynamicForward = VmForwardIsDynamic(apArg[0]);
+		sFwd.bStrict = (VmForwardArm(pCtx,apArg[0]) && pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sFwd);
 	}
 	/* The latches are consumed by the OP_CALL the dispatch builds; clear them for
@@ -2343,6 +2379,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	SyString *aNames = 0;     /* Name map, lazily allocated when a string key appears */
 	ph7_hashmap_node **apNode = 0; /* Per-position node: is this element a REFERENCE? */
 	sxu32 nSlot = 0;          /* Number of collected arguments */
+	int bFolded;              /* php's compiler folded this forward (VmForwardFolded) */
 	sxi32 rc;
 	sxu32 n;
 	if( nArg < 2 || !ph7_value_is_array(apArg[1]) ){
@@ -2413,10 +2450,9 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
 		apNode = 0;
 	}
-	/* Try to invoke the callback. Like call_user_func, this is a php FORWARD: a
-	 * dropped answer here is a dropped answer for the callback. */
-	pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;
-	pCtx->pVm->bDynamicForward = VmForwardIsDynamic(apArg[0]);
+	/* Try to invoke the callback. Like call_user_func, this is a php FORWARD, and
+	 * folded or not it arms the same latches. */
+	bFolded = VmForwardArm(pCtx,apArg[0]);
 	if( aNames ){
 		VmCallArgMap sMap;
 		SyZero(&sMap,sizeof(sMap)); /* new map fields must read unset, not stack garbage */
@@ -2424,7 +2460,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		sMap.bIsNamespaced = 0;
 		/* Coercion strictness follows the caller's file; the OP_CALL dispatcher
 		 * forwards the call site's map on pArgMap (0 only at non-OP_CALL sites). */
-		sMap.bStrict = (pCtx->pArgMap ? pCtx->pArgMap->bStrict : 0);
+		sMap.bStrict = (bFolded && pCtx->pArgMap) ? pCtx->pArgMap->bStrict : 0;
 		sMap.nTotal = nSlot;
 		sMap.aNames = aNames;
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],(int)nSlot,
@@ -2435,7 +2471,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		 * mode reaches the callback, where every other internal invocation is weak. */
 		VmCallArgMap sFwd;
 		SyZero(&sFwd,sizeof(sFwd));
-		sFwd.bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
+		sFwd.bStrict = (bFolded && pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],(int)nSlot,
 			(ph7_value **)SySetBasePtr(&aArg),&sResult,&sFwd);
 	}

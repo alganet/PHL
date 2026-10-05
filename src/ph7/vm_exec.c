@@ -8322,7 +8322,7 @@ CalleeByName:
 								? VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
 									nMaxFilled,nReqNamed,SySetUsed(&pVmFunc->aArgs))
 								: VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
-									nMaxFilled,nReqNamed,nNVNamed,!bCallbackWeak);
+									nMaxFilled,nReqNamed,nNVNamed,(pFrame->iFlags & VM_FRAME_NATIVE_CALLER) == 0);
 						}else{
 							rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,n+1,&aFormalArg[n].sName);
 						}
@@ -8775,10 +8775,10 @@ CalleeByName:
 				}else{
 					/* php names the call SITE only when the caller is user code: an
 					 * INTERNAL function reaching for a callback (array_map, usort,
-					 * an autoloader) has no calling line to name, which is exactly
-					 * what bCallbackWeak already marks. */
+					 * a forward php did not fold) has no calling line to name, which
+					 * is exactly what the frame's native-caller mark records. */
 					rc = VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
-						nPassed,nReq,nNonVar,!bCallbackWeak);
+						nPassed,nReq,nNonVar,(pFrame->iFlags & VM_FRAME_NATIVE_CALLER) == 0);
 				}
 				if( rc == PH7_ABORT ){
 					goto Abort;
