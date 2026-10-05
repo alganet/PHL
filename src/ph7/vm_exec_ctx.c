@@ -2098,6 +2098,7 @@ static void VmClosureRebind(ph7_class_instance *pClone,
 	SyString sAttr;
 	ph7_value *pThisAttr, *pScopeAttr;
 	int bBound = 0;
+	pClone->iFlags |= VM_INSTANCE_FCC_REBOUND;
 	SyStringInitFromBuf(&sAttr, "__this", 6);
 	pThisAttr = PH7_ClassInstanceFetchAttr(pClone, &sAttr);
 	if( pThisAttr ){

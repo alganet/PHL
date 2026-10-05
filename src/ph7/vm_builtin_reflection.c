@@ -6323,6 +6323,42 @@ static ph7_value * ReflectClosureAttr(ReflectFuncRef *pRef, const char *zName)
 	SyStringInitFromBuf(&sAttr, zName, SyStrlen(zName));
 	return PH7_ClassInstanceFetchAttr(pRef->pClosure, &sAttr);
 }
+/*
+ * A closure EXPRESSION keeps what it is bound to where OP_LOAD_CLOSURE put it, on its
+ * per-instantiation function: the declaring class in pUserData, the called class in
+ * pLsbClass, the receiver as the auto-captured `$this`. It carries no $__this/$__scope until
+ * a bind/bindTo clone writes them, and from then on those are the whole answer (an empty pair
+ * is an unbind). Returns that function for an untouched closure expression, else 0.
+ */
+static ph7_vm_func * ReflectClosureExpr(const ReflectFuncRef *pRef)
+{
+	if( pRef->pClosure == 0 || pRef->pFunc == 0 || pRef->pMeth || pRef->bFabricated
+	 || (pRef->pClosure->iFlags & (VM_INSTANCE_FCC_BOUND|VM_INSTANCE_FCC_REBOUND
+			|VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_INVOKE_OBJ))
+	 || (pRef->pFunc->iFlags & VM_FUNC_CLOSURE) == 0 ){
+		return 0;
+	}
+	return pRef->pFunc;
+}
+/* The receiver a closure expression captured from the method that made it, or 0. */
+static ph7_class_instance * ReflectClosureExprThis(const ReflectFuncRef *pRef)
+{
+	ph7_vm_func *pFunc = ReflectClosureExpr(pRef);
+	ph7_vm_func_closure_env *aEnv;
+	sxu32 n;
+	if( pFunc == 0 ){
+		return 0;
+	}
+	aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+	for( n = 0 ; n < SySetUsed(&pFunc->aClosureEnv) ; n++ ){
+		if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
+			&& SyMemcmp(SyStringData(&aEnv[n].sName),"this",sizeof("this")-1) == 0 ){
+			return (aEnv[n].sValue.iFlags & MEMOBJ_OBJ)
+				? (ph7_class_instance *)aEnv[n].sValue.x.pOther : 0;
+		}
+	}
+	return 0;
+}
 static int vm_builtin_ReflectionFunc_getClosureThis(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
@@ -6334,7 +6370,17 @@ static int vm_builtin_ReflectionFunc_getClosureThis(ph7_context *pCtx, int nArg,
 	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
 		ph7_result_value(pCtx, pAttr);
 	}else{
-		ph7_result_null(pCtx);
+		ph7_class_instance *pRecv = ReflectClosureExprThis(&sRef);
+		if( pRecv ){
+			ph7_value sRecv;
+			PH7_MemObjInit(pCtx->pVm, &sRecv);
+			sRecv.x.pOther = pRecv;
+			sRecv.iFlags = MEMOBJ_OBJ;
+			/* ph7_result_value takes its own reference; sRecv only borrows. */
+			ph7_result_value(pCtx, &sRecv);
+		}else{
+			ph7_result_null(pCtx);
+		}
 	}
 	return PH7_OK;
 }
@@ -6357,6 +6403,15 @@ static int vm_builtin_ReflectionFunc_getClosureScopeClass(ph7_context *pCtx, int
 	pAttr = ReflectClosureAttr(&sRef, "__this");
 	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
 		return ReflectResultClassOf(pCtx, ((ph7_class_instance *)pAttr->x.pOther)->pClass);
+	}
+	if( ReflectClosureExpr(&sRef) && sRef.pFunc->pUserData ){
+		/* The class whose method made it -- the USING class when that method is a trait's,
+		 * which php composes into the class, exactly as `self::` resolves in the body. */
+		ph7_class *pDecl = (ph7_class *)sRef.pFunc->pUserData;
+		if( (pDecl->iFlags & PH7_CLASS_TRAIT) && sRef.pFunc->pLsbClass ){
+			pDecl = PH7_VmTraitUsingClass(pCtx->pVm, pDecl, (ph7_class *)sRef.pFunc->pLsbClass);
+		}
+		return ReflectResultClassOf(pCtx, pDecl);
 	}
 	ph7_result_null(pCtx);
 	return PH7_OK;
@@ -6387,6 +6442,17 @@ static int vm_builtin_ReflectionFunc_getClosureCalledClass(ph7_context *pCtx, in
 	if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
 		return ReflectResultClassOf(pCtx, PH7_VmExtractClass(pCtx->pVm,
 			(const char *)SyBlobData(&pAttr->sBlob), SyBlobLength(&pAttr->sBlob), FALSE, 0));
+	}
+	if( ReflectClosureExpr(&sRef) ){
+		/* What `static::` answers in the body: the receiver's class, else the class the
+		 * making call went through. */
+		ph7_class_instance *pRecv = ReflectClosureExprThis(&sRef);
+		if( pRecv ){
+			return ReflectResultClassOf(pCtx, pRecv->pClass);
+		}
+		if( sRef.pFunc->pLsbClass ){
+			return ReflectResultClassOf(pCtx, (ph7_class *)sRef.pFunc->pLsbClass);
+		}
 	}
 	ph7_result_null(pCtx);
 	return PH7_OK;

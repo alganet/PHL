@@ -410,6 +410,11 @@ struct VmDeferredPath {
  * `...$arguments` and fromCallable's with none, and the debug dump and Reflection both show it.
  * A rebind's clone keeps it. 0x200: 0x001..0x100 are claimed on this word. */
 #define VM_INSTANCE_FCC_SYNTAX 0x200
+/* ph7_class_instance.iFlags bit: this Closure is a bind/bindTo clone, so its $__this/$__scope
+ * are the whole answer to "what is it bound to" -- an EMPTY pair means unbound. A closure
+ * expression that no rebind has touched carries neither attribute: its scope and receiver
+ * are still where OP_LOAD_CLOSURE put them, on its per-instantiation function. */
+#define VM_INSTANCE_FCC_REBOUND 0x400
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
