@@ -1205,6 +1205,13 @@ struct ph7_gen_state
 	                      * not a variable slot there), so the entry copies the object and
 	                      * a write through the entry leaves the receiver alone -- where
 	                      * an OP_LOAD_REF would alias the receiver and re-point it. */
+	int bDeclCheck;      /* Compiling a DEFERRED declaration (conditional, or waiting on an
+	                      * autoloader) once at file-compile time ONLY for php's compile-time
+	                      * refusals: nothing it names is looked up or bound, nothing is
+	                      * installed, and the real compile still happens where it runs. */
+	int bDeclQuiet;      /* This unit is such a declaration's REAL compile: its non-fatal
+	                      * diagnostics were already printed by the check, so they are not
+	                      * printed twice. */
 	int bParseThrows;    /* This unit's parse errors are the CALLER's to raise (include/require:
 	                      * php throws a ParseError there and prints nothing until it goes
 	                      * uncaught). A refusal of E_ERROR severity still prints at once. */
@@ -3513,6 +3520,8 @@ struct VmDeferredClass
 	SySet aRequired;    /* VmDeferredReq — names unresolved at compile time */
 	sxu32 nLine;        /* Declaration line (diagnostics) */
 	sxu8 bDone;         /* 1 once the declaration executed successfully (idempotent site) */
+	sxu8 bChecked;      /* 1 when the file's compile already ran the body's compile-time
+						 * refusals (bDeclCheck), so the re-compile prints no warning again */
 };
 /* Each active class instance attribute is represented by an instance
  * of the following structure.
@@ -4848,6 +4857,8 @@ struct ph7_vm
 								* name as `$%x`. php's CG(rtd_key_counter): one counter for the
 								* whole request, bumped in COMPILE order, which is what makes
 								* two anonymous classes written on the same line distinguishable. */
+	int bDeclQuietNext;        /* One-shot: the next nested compile unit is a checked deferred
+								* declaration's re-compile (see ph7_gen_state.bDeclQuiet). */
 	SyString sDeferAnonName;   /* One-shot synthesized-name override for the next anonymous-class
 								* compile: set by VmExecDeferredClass before re-compiling a
 								* deferred `new class ... {}` chunk so the runtime-installed

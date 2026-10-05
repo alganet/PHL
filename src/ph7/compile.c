@@ -5592,6 +5592,9 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	pGen->nFatal = 0;
 	pGen->nFirstErrLine = 0;
 	pGen->bParseThrows = 0;
+	pGen->bDeclCheck = 0;
+	pGen->bDeclQuiet = pVm->bDeclQuietNext;
+	pVm->bDeclQuietNext = 0;
 	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
 	/* Clear the class-body context (a prior compile aborted mid-class-body would
 	 * otherwise leave these live for the next eval/include on this VM). */
@@ -5652,6 +5655,9 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->nFatal = 0;
 	pGen->nFirstErrLine = 0;
 	pGen->bParseThrows = 0;
+	pGen->bDeclCheck = 0;
+	pGen->bDeclQuiet = pVm->bDeclQuietNext;
+	pVm->bDeclQuietNext = 0;
 	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
 	pGen->nLoopId = pGen->nCurLoopId = 0;
 	pGen->nCommaExprOk = 0;
@@ -5950,6 +5956,11 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	va_list ap;
 	sxu32 nBare = 0;
 	sxi32 rc;
+	if( pGen->bDeclQuiet && nErrType != E_ERROR && nErrType != E_PARSE ){
+		/* A deferred declaration's re-compile: the file's own compile already said
+		 * this, where php says it. */
+		return SXRET_OK;
+	}
 	if( pGen->xErr == 0 && nErrType != E_ERROR && nErrType != E_PARSE ){
 		/* Nobody is logging -- an eval()'d chunk -- and this is NOT a refusal. The
 		 * generator's buffer is that chunk's one-message store, holding the text a

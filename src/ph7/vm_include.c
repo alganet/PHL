@@ -313,7 +313,9 @@ PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDefe
 	if( pDefer->sAnonName.nByte > 0 ){
 		pVm->sDeferAnonName = pDefer->sAnonName;
 	}
+	pVm->bDeclQuietNext = pDefer->bChecked;
 	VmEvalChunk(&(*pVm),0,&pDefer->sText,PH7_PHP_ONLY,TRUE);
+	pVm->bDeclQuietNext = 0;
 	pVm->sDeferAnonName.zString = 0;
 	pVm->sDeferAnonName.nByte = 0;
 	if( pVm->nLastEvalErr > 0

@@ -71,7 +71,7 @@ static int GenStateDeclHoldsName(ph7_gen_state *pGen,ph7_class *pPrev,ph7_class 
  */
 static int GenStateLintSkipsBase(ph7_gen_state *pGen,ph7_class *pClass)
 {
-	if( pGen->pVm->bSyntaxCheck == 0 ){
+	if( pGen->pVm->bSyntaxCheck == 0 && pGen->bDeclCheck == 0 ){
 		return 0;
 	}
 	if( pClass ){
@@ -79,12 +79,29 @@ static int GenStateLintSkipsBase(ph7_gen_state *pGen,ph7_class *pClass)
 	}
 	return 1;
 }
+/*
+ * Look up the parent, interface or trait a declaration names, to LINK it. A
+ * deferred declaration's check compile links nothing and asks no autoloader:
+ * php binds a conditional class only when its statement runs, so an
+ * `if (PHP_VERSION_ID < 80000)` polyfill whose signatures no longer match its
+ * interface is not refused while it is never reached -- and nikic/php-parser's
+ * `require` of a parent followed by `if (false) { class Alias extends Parent {} }`
+ * must not have the parent's file loaded by the lookup before its own require.
+ */
+static ph7_class * GenStateLinkClass(ph7_gen_state *pGen,SyBlob *pName)
+{
+	if( pGen->bDeclCheck ){
+		return 0;
+	}
+	return PH7_VmExtractClass(pGen->pVm,
+		(const char *)SyBlobData(pName),(sxu32)SyBlobLength(pName),FALSE,0);
+}
 static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pClass,
 	int bEarlyBindable)
 {
 	SyHashEntry *pEntry;
 	int bTopLevel = GenStateUnconditionalTopLevel(pGen);
-	if( pGen->pVm->bSyntaxCheck ){
+	if( pGen->pVm->bSyntaxCheck || pGen->bDeclCheck ){
 		/* `php -l` reports a redeclared FUNCTION and not a redeclared CLASS: a
 		 * class name is taken at the DECLARE_CLASS opcode, which lint never runs.
 		 * So `class DateTime {}` and symfony/polyfill-php80's stub `final class
@@ -3193,8 +3210,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 					}
 					return SXRET_OK;
 				}
-				pParent = PH7_VmExtractClass(pGen->pVm,
-					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+				pParent = GenStateLinkClass(pGen,&sResolved);
 				SyStringInitFromBuf(&sBaseName,
 					(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 				/* Only interfaces is allowed */
@@ -3630,7 +3646,7 @@ static sxi32 GenStateCheckOverrides(ph7_gen_state *pGen,ph7_class *pClass,
 	ph7_class_method **apMeth = (ph7_class_method **)SySetBasePtr(pMeths);
 	ph7_class_attr **apProp = (ph7_class_attr **)SySetBasePtr(pProps);
 	sxu32 n;
-	if( pClass->iFlags & PH7_CLASS_LINT_UNBOUND ){
+	if( (pClass->iFlags & PH7_CLASS_LINT_UNBOUND) || pGen->bDeclCheck ){
 		/* A base this lint could not see may well DECLARE the member; php reports
 		 * an #[\Override] mismatch only where it early-binds, and it early-binds
 		 * nothing it cannot link. */
@@ -4327,9 +4343,9 @@ static sxi32 GenStateEnumFinalize(ph7_gen_state *pGen,ph7_class *pClass,sxu32 nL
  * compile-time "Nonexistent base class" fatal: they now follow php — succeed
  * when the autoloader is registered first, or throw php's catchable
  * `Class/Interface/Trait "X" not found` Error at the declaration point.
- * A deferred declaration's OTHER compile errors (a body syntax error) shift
- * from file-compile time to the declaration's execution — still loud, timing
- * differs from php (recorded).
+ * A deferred declaration's OTHER compile errors (a body syntax error) are
+ * still raised with the file: GenStateCheckDeferredDecl compiles the body once
+ * for them alone.
  */
 static void GenStateDeferEmitUses(SyBlob *pOut,SyHash *pTable,const char *zKind)
 {
@@ -4750,6 +4766,44 @@ static sxi32 GenStateEmitDeferredClass(ph7_gen_state *pGen,sxi32 iFlags,int bAno
  * declaration compiles at execution time). FALSE means compile normally.
  * *pRc carries SXERR_ABORT out of the capture path.
  */
+static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
+	SyString *pAnonName,SyToken **ppArgStart,SyToken **ppArgEnd);
+/*
+ * php compiles a class body where the FILE compiles, conditional or not, and only
+ * declares it when the statement runs. So everything its compiler refuses -- a
+ * syntax error in a method, `parent::` in a baseless class, a method declared
+ * twice, an abstract method in a concrete class -- stops the whole file before
+ * a line of it runs, even inside `if (false)`. A deferred declaration is not
+ * compiled until its statement runs here, so compile it once now for those
+ * refusals alone (bDeclCheck): nothing it names is linked, nothing is installed,
+ * and what it emitted is discarded. pKw is the declaration keyword.
+ */
+static sxi32 GenStateCheckDeferredDecl(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKind,
+	SyToken *pKw,VmDeferredClass *pDefer)
+{
+	SyToken *pSavedIn = pGen->pIn;
+	SyToken *pSavedEnd = pGen->pEnd;
+	sxu32 nInstr = PH7_VmInstrLength(pGen->pVm);
+	sxu32 nAnonSeq = pGen->pVm->nAnonSeq;
+	sxi32 rc;
+	pGen->bDeclCheck = 1;
+	pGen->pIn = pKw;
+	if( iSelfKind == PH7_DEFER_KIND_INTERFACE ){
+		rc = PH7_CompileClassInterface(pGen);
+	}else if( iSelfKind == PH7_DEFER_KIND_TRAIT ){
+		rc = PH7_CompileTrait(pGen);
+	}else{
+		rc = GenStateCompileClassEx(pGen,iFlags,0,0,0);
+	}
+	pGen->bDeclCheck = 0;
+	SySetTruncate(pGen->pVm->pByteContainer,nInstr);
+	/* The real compile names its anonymous classes; this one minted none. */
+	pGen->pVm->nAnonSeq = nAnonSeq;
+	pGen->pIn = pSavedIn;
+	pGen->pEnd = pSavedEnd;
+	pDefer->bChecked = 1;
+	return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+}
 static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKind,sxi32 *pRc)
 {
 	SySet aMissing;
@@ -4763,6 +4817,9 @@ static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKin
 	 * resolved here. */
 	int bCond = GenStateDeclIsConditional(&(*pGen));
 	*pRc = SXRET_OK;
+	if( pGen->bDeclCheck ){
+		return 0; /* the check compile of a declaration already deferred */
+	}
 	if( pGen->pVm->bSyntaxCheck ){
 		/* `phl -l`: the declaration is never EXECUTED, so there is nothing to
 		 * defer it to -- and deferring captures the body as raw text that no one
@@ -4783,7 +4840,13 @@ static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKin
 		 * execution reaches it, so `if (!class_exists('DateTime')) { class
 		 * DateTime {} }` -- how symfony/polyfill-php8x ships its back-ports -- must
 		 * not REPLACE the engine's own class in a tree that has one. */
+		SyToken *pKw = pGen->pIn;
 		*pRc = GenStateEmitDeferredClass(pGen,iFlags,0,&aMissing,pBodyEnd,&sSelfFqn,0);
+		if( *pRc == SXRET_OK ){
+			VmInstr *pDeferInstr = PH7_VmPeekInstr(pGen->pVm);
+			*pRc = GenStateCheckDeferredDecl(pGen,iFlags,iSelfKind,pKw,
+				(VmDeferredClass *)pDeferInstr->p3);
+		}
 		bDefer = 1;
 	}
 	SySetRelease(&aMissing);
@@ -5203,8 +5266,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				}
 				return SXRET_OK;
 			}
-			pBase = PH7_VmExtractClass(pGen->pVm,
-				(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+			pBase = GenStateLinkClass(pGen,&sResolved);
 			SyStringInitFromBuf(&sBaseName,
 				(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 			/* Interfaces are not allowed */
@@ -5264,8 +5326,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					}
 					break;
 				}
-				pInterface = PH7_VmExtractClass(pGen->pVm,
-					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+				pInterface = GenStateLinkClass(pGen,&sResolved);
 				SyStringInitFromBuf(&sIntName,
 					(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 				/* Only interfaces are allowed */
@@ -5428,8 +5489,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 						}
 						break;
 					}
-					pTrait = PH7_VmExtractClass(pGen->pVm,
-						(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+					pTrait = GenStateLinkClass(pGen,&sResolved);
 					SyStringInitFromBuf(&sTraitName,
 						(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 					/* Only traits are allowed */
@@ -5780,8 +5840,9 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		/* An anonymous class is an EXPRESSION: it is always compiled where it runs,
 		 * so resolving its parent here is resolving it at its execution point --
 		 * the autoload belongs. */
-		if( GenStateScanDeferDeps(pGen,1,PH7_DEFER_KIND_CLASS,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,0) == SXRET_OK
-		 && SySetUsed(&aMissing) > 0 && !pGen->pVm->bSyntaxCheck ){
+		if( GenStateScanDeferDeps(pGen,1,PH7_DEFER_KIND_CLASS,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,
+				pGen->bDeclCheck) == SXRET_OK
+		 && SySetUsed(&aMissing) > 0 && !pGen->pVm->bSyntaxCheck && !pGen->bDeclCheck ){
 			if( &pTokKw[1] < pGen->pEnd && (pTokKw[1].nType & PH7_TK_LPAREN) ){
 				SyToken *pClose = 0;
 				PH7_DelimitNestedTokens(&pTokKw[2],pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pClose);
@@ -5807,7 +5868,9 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			}
 			{
 				/* Expression-position attributes (`new #[A] class {…}`) */
-				ph7_class *pAnonClass = PH7_VmExtractClass(pGen->pVm,sName.zString,nLen,FALSE,0);
+				/* (A check compile installed none, and must not autoload its name.) */
+				ph7_class *pAnonClass = pGen->bDeclCheck ? 0
+					: PH7_VmExtractClass(pGen->pVm,sName.zString,nLen,FALSE,0);
 				if( pAnonClass
 				 && GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnonClass->aAttrs) == SXERR_ABORT ){
 					return SXERR_ABORT;
@@ -6273,8 +6336,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 						}
 						break;
 					}
-					pUsedTrait = PH7_VmExtractClass(pGen->pVm,
-						(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+					pUsedTrait = GenStateLinkClass(pGen,&sResolved);
 					SyStringInitFromBuf(&sUsedName,
 						(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 					while( pUsedTrait && (pUsedTrait->iFlags & PH7_CLASS_TRAIT) == 0 ){

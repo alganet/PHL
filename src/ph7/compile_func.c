@@ -450,8 +450,12 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 					 * rejects it outright — the explicit `?int` must be written.
 					 * `mixed $x = null` is fine: mixed already includes null (explicit
 					 * ?T / T|null are already excluded via VM_FUNC_ARG_NULLABLE above). */
-					if( sArg.sClass.nByte == sizeof("mixed")-1
-						&& SyStrnicmp(SyStringData(&sArg.sClass),"mixed",sizeof("mixed")-1) == 0 ){
+					if( (sArg.sClass.nByte == sizeof("mixed")-1
+						&& SyStrnicmp(SyStringData(&sArg.sClass),"mixed",sizeof("mixed")-1) == 0)
+						|| pGen->bDeclCheck ){
+						/* A deferred declaration's check compile leaves this refusal to
+						 * the real compile: php only deprecates the form, so it must not
+						 * stop a file whose polyfill branch never runs. */
 						sArg.iFlags |= VM_FUNC_ARG_NULLABLE;
 					}else{
 						const char *zSep = "";

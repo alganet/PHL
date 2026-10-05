@@ -927,6 +927,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallClass(
 	SyString *pName = &pClass->sName;
 	SyHashEntry *pEntry;
 	sxi32 rc;
+	if( pVm->sCodeGen.bDeclCheck ){
+		/* A deferred declaration compiled only for its refusals: it, and any
+		 * anonymous class in its methods, is declared when the real compile runs. */
+		return SXRET_OK;
+	}
 	/* Check for duplicates */
 	pEntry = SyHashGet(&pVm->hClass,(const void *)pName->zString,pName->nByte);
 	if( pEntry ){
