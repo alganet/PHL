@@ -8617,17 +8617,20 @@ CalleeByName:
 							sArg.nIdx = pObj->nIdx;
 							sArg.pUserData = 0;
 							SySetPut(&pFrame->sArg,(const void *)&sArg);
-							/* A null default on an implicitly-nullable param must stay null
-							 * (see the positional-path note above). */
-							if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != MEMOBJ_OBJ
-								&& (pObj->iFlags & aFormalArg[n].nType) == 0
-								&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pObj->iFlags & MEMOBJ_NULL)) ){
-								ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
-								if( xCast ) xCast(pObj);
-							}else{
-								/* Mask matched — a const-indirected whole-real default
-								 * (`int $x = FOO` with FOO = 2.0) materializes as int. */
-								VmMaterializeIntTyped(pObj,aFormalArg[n].nType);
+							/* The default is held to the type like a passed argument (see
+							 * the positional-path note below). */
+							rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pObj,bCallIsStrict,pSelfHint);
+							if( rc != SXRET_OK ){
+								if( rc == PH7_ABORT ) goto Abort;
+								SyMemBackendFree(&pVm->sAllocator, aSlot);
+								for( i = 0; i < nActual; i++ ){
+									PH7_MemObjRelease(&pArg[i]);
+								}
+								PH7_MemObjRelease(pTos);
+								pTos = &pTos[-nCallArgs];
+								pFrameStack = 0;
+								rc = PH7_EXCEPTION;
+								goto SkipFuncBody;
 							}
 						}
 					}
@@ -9114,20 +9117,23 @@ CalleeByName:
 					sArg.nIdx = pObj->nIdx;
 					sArg.pUserData = 0;
 					SySetPut(&pFrame->sArg,(const void *)&sArg);
-					/* Make sure the default argument is of the correct type.
-					 * A null default on an implicitly-nullable param (`int $x = null`)
-					 * must stay null — casting it to 0/""/false would diverge from PHP
-					 * and contradict the explicit-null path, which now keeps it null. */
-					if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != MEMOBJ_OBJ
-						&& ((pObj->iFlags & aFormalArg[n].nType) == 0)
-						&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pObj->iFlags & MEMOBJ_NULL)) ){
-						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
-						/* Cast to the desired type */
-						xCast(pObj);
-					}else{
-						/* Mask matched — a const-indirected whole-real default
-						 * (`int $x = FOO` with FOO = 2.0) materializes as int. */
-						VmMaterializeIntTyped(pObj,aFormalArg[n].nType);
+					/* php's RECV_INIT holds the default to the parameter's type
+					 * exactly as it holds a passed argument, in the CALLER's mode:
+					 * one the compiler could not fold (`int $x = C`, `= new X`) and
+					 * the type refuses is the ordinary TypeError, `called in` the
+					 * call's line. A blind cast here turned "a" into 0 silently and
+					 * an object into a conversion warning. An implicitly-nullable
+					 * `int $x = null` carries VM_FUNC_ARG_NULLABLE, so null stays. */
+					rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pObj,bCallIsStrict,pSelfHint);
+					if( rc != SXRET_OK ){
+						if( rc == PH7_ABORT ){
+							goto Abort;
+						}
+						PH7_MemObjRelease(pTos);
+						pTos = &pTos[-nCallArgs];
+						pFrameStack = 0;
+						rc = PH7_EXCEPTION;
+						goto SkipFuncBody;
 					}
 				}
 			}

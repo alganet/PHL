@@ -3799,25 +3799,15 @@ static sxi32 VmFiberBindFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				if( rc == SXERR_ABORT ){
 					return rc;
 				}
-				/* A null default on an implicitly-nullable `Type $x = null`
-				 * param must stay null (php); only non-null defaults keep the
-				 * legacy shaping cast. */
-				if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH
-				 && !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pObj->iFlags & MEMOBJ_NULL)) ){
-					if( (pObj->iFlags & aFormalArg[n].nType) == 0 ){
-						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
-						if( xCast ){
-							xCast(pObj);
-						}
-					}else{
-						/* Mask matched — a const-indirected whole-real default
-						 * (`int $x = FOO` with FOO = 2.0) materializes as int. */
-						VmMaterializeIntTyped(pObj,aFormalArg[n].nType);
-					}
-				}
 				sSlot.nIdx = pObj->nIdx;
 				sSlot.pUserData = 0;
 				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);
+				/* Held to the type like a passed argument (php's RECV_INIT; see
+				 * the OP_CALL defaults loop). */
+				rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
 			}
 		}
 	}
