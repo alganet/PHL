@@ -7382,6 +7382,7 @@ typedef struct VmAutoloadCB VmAutoloadCB;
 struct VmAutoloadCB
 {
 	ph7_value sCallback; /* Autoload callback (string or [obj,method] array) */
+	ph7_value sInvoke;   /* Its registration-scope closure, or NULL (PH7_VmBindCallbackScope) */
 };
 /* Shutdown-callback record (register_shutdown_function in vm_builtin_call.c;
  * invoked by VmInvokeShutdownCallbacks in vm.c) */
@@ -7389,6 +7390,7 @@ typedef struct VmShutdownCB VmShutdownCB;
 struct VmShutdownCB
 {
 	ph7_value sCallback; /* Shutdown callback */
+	ph7_value sInvoke;   /* Its registration-scope closure, or NULL (PH7_VmBindCallbackScope) */
 	ph7_value aArg[10];   /* Callback arguments (10 maximum arguments) */
 	int nArg;             /* Total number of given arguments */
 };
@@ -7838,6 +7840,7 @@ PH7_PRIVATE ph7_class * PH7_VmResolveScopeName(ph7_vm *pVm, const char *zCls, sx
 PH7_PRIVATE int PH7_VmIsScopeKeyword(const char *zName,sxu32 nName);
 PH7_PRIVATE ph7_class * PH7_VmResolveCallableScope(ph7_vm *pVm,const char *zCls,sxu32 nCls);
 PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, int bBindCaller);
+PH7_PRIVATE void PH7_VmBindCallbackScope(ph7_vm *pVm, ph7_value *pCallback, ph7_value *pOut);
 PH7_PRIVATE void PH7_VmByRefArgWriteBack(ph7_vm *pVm,ph7_value *pArg,sxi32 iPreFlags);
 PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx, ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg, int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef);
 PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);

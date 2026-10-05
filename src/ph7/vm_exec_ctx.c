@@ -2702,6 +2702,91 @@ PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7
 	return VmClosureResult(pCtx, pClosure);
 }
 /*
+ * Does a stored callback need the scope it was registered from? TRUE when it names a
+ * method the global scope could not call -- a private or protected one -- or spells its
+ * class half as `self`/`parent`/`static`, which only the registering frame can resolve.
+ */
+static int VmCallbackNeedsScope(ph7_vm *pVm, ph7_value *pCallback)
+{
+	ph7_class_method *pMethod;
+	ph7_class *pCls = 0;
+	const char *zCls = 0, *zMeth = 0;
+	sxu32 nCls = 0, nMeth = 0;
+	if( pCallback->iFlags & MEMOBJ_STRING ){
+		const char *zName = (const char *)SyBlobData(&pCallback->sBlob);
+		sxu32 nName = SyBlobLength(&pCallback->sBlob), nSep;
+		for( nSep = 0 ; nSep + 1 < nName ; ++nSep ){
+			if( zName[nSep] == ':' && zName[nSep+1] == ':' ){
+				break;
+			}
+		}
+		if( nSep + 1 >= nName ){
+			return 0; /* A plain function name */
+		}
+		zCls = zName;
+		nCls = nSep;
+		zMeth = zName + nSep + 2;
+		nMeth = nName - (nSep + 2);
+	}else if( pCallback->iFlags & MEMOBJ_HASHMAP ){
+		ph7_value *pTarget, *pMeth;
+		if( !PH7_VmArrayCallableParts(pVm, (ph7_hashmap *)pCallback->x.pOther, &pTarget, &pMeth)
+		 || (pMeth->iFlags & MEMOBJ_STRING) == 0 ){
+			return 0;
+		}
+		zMeth = (const char *)SyBlobData(&pMeth->sBlob);
+		nMeth = SyBlobLength(&pMeth->sBlob);
+		if( pTarget->iFlags & MEMOBJ_OBJ ){
+			pCls = ((ph7_class_instance *)pTarget->x.pOther)->pClass;
+		}else if( pTarget->iFlags & MEMOBJ_STRING ){
+			zCls = (const char *)SyBlobData(&pTarget->sBlob);
+			nCls = SyBlobLength(&pTarget->sBlob);
+		}else{
+			return 0;
+		}
+	}else{
+		return 0;
+	}
+	if( pCls == 0 ){
+		if( (nCls == 4 && SyStrnicmp(zCls, "self", 4) == 0)
+		 || (nCls == 6 && SyStrnicmp(zCls, "parent", 6) == 0)
+		 || (nCls == 6 && SyStrnicmp(zCls, "static", 6) == 0) ){
+			return 1;
+		}
+		pCls = PH7_VmExtractClass(pVm, zCls, nCls, FALSE, 0);
+		if( pCls == 0 ){
+			return 0;
+		}
+	}
+	pMethod = PH7_ClassExtractMethod(pCls, zMeth, nMeth);
+	return pMethod != 0 && pMethod->iProtection != PH7_CLASS_PROT_PUBLIC;
+}
+/*
+ * A callback STORED to run later -- register_shutdown_function(), spl_autoload_register() --
+ * keeps the scope it was registered from. php resolves such a callback once, at registration,
+ * and keeps the resolved function, so a `[$this,'priv']` registered inside its class runs at
+ * shutdown or from the autoloader; PHL kept only the value and re-resolved it from wherever the
+ * call happened, which is the global scope, and died `Call to private method`. When the
+ * callback needs that scope, pOut receives the closure Closure::fromCallable() would mint here
+ * and the caller invokes it instead, keeping the original value for introspection and removal.
+ * pOut is left untouched (NULL) otherwise.
+ */
+PH7_PRIVATE void PH7_VmBindCallbackScope(ph7_vm *pVm, ph7_value *pCallback, ph7_value *pOut)
+{
+	ph7_class_instance *pClosure;
+	if( PH7_VmCallerScope(pVm) == 0 || VmValueIsClosure(pVm, pCallback)
+	 || !VmCallbackNeedsScope(pVm, pCallback) ){
+		return;
+	}
+	pClosure = VmFccWrapValue(pVm, pCallback, TRUE);
+	if( pClosure == 0 ){
+		return;
+	}
+	PH7_MemObjRelease(pOut);
+	/* The fresh instance's own reference is the one this value takes. */
+	pOut->x.pOther = pClosure;
+	MemObjSetType(pOut, MEMOBJ_OBJ);
+}
+/*
  * Fiber::suspend($value = null) — static method.
  * Suspends the currently running fiber and passes $value to the caller.
  */

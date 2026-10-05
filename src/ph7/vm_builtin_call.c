@@ -1439,8 +1439,10 @@ PH7_PRIVATE int vm_builtin_register_shutdown_function(ph7_context *pCtx,int nArg
 	SyZero(&sEntry,sizeof(VmShutdownCB));
 	/* Initialize fields */
 	PH7_MemObjInit(pCtx->pVm,&sEntry.sCallback);
+	PH7_MemObjInit(pCtx->pVm,&sEntry.sInvoke);
 	/* Save the callback name for later invocation name */
 	PH7_MemObjStore(apArg[0],&sEntry.sCallback);
+	PH7_VmBindCallbackScope(pCtx->pVm,apArg[0],&sEntry.sInvoke);
 	for( i = 0 ; i < (int)SX_ARRAYSIZE(sEntry.aArg) ; ++i ){
 		PH7_MemObjInit(pCtx->pVm,&sEntry.aArg[i]);
 	}

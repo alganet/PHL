@@ -4585,6 +4585,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 		if( pCB ){
 			int iArg;
 			PH7_MemObjRelease(&pCB->sCallback);
+			PH7_MemObjRelease(&pCB->sInvoke);
 			for( iArg = 0 ; iArg < pCB->nArg ; ++iArg ){
 				PH7_MemObjRelease(&pCB->aArg[iArg]);
 			}
@@ -4643,6 +4644,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 		VmAutoloadCB *pCB = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
 		if( pCB ){
 			PH7_MemObjRelease(&pCB->sCallback);
+			PH7_MemObjRelease(&pCB->sInvoke);
 		}
 	}
 	SySetReset(&pVm->aAutoload);
@@ -8702,7 +8704,9 @@ static void VmInvokeShutdownCallbacks(ph7_vm *pVm)
 				apArg[i] = &pEntry->aArg[i];
 			}
 			/* Invoke the callback */
-			rc = PH7_VmCallUserFunction(&(*pVm),&pEntry->sCallback,pEntry->nArg,apArg,0);
+			rc = PH7_VmCallUserFunction(&(*pVm),
+				(pEntry->sInvoke.iFlags & MEMOBJ_OBJ) ? &pEntry->sInvoke : &pEntry->sCallback,
+				pEntry->nArg,apArg,0);
 			/*
 			 * TICKET 1433-56: Try re-access the same entry since the invoked
 			 * callback may call [register_shutdown_function()] in it's body.
@@ -8710,6 +8714,7 @@ static void VmInvokeShutdownCallbacks(ph7_vm *pVm)
 			pEntry = (VmShutdownCB *)SySetAt(&pVm->aShutdown,n);
 			if( pEntry ){
 				PH7_MemObjRelease(&pEntry->sCallback);
+				PH7_MemObjRelease(&pEntry->sInvoke);
 				for( i = 0 ; i < pEntry->nArg ; ++i ){
 					PH7_MemObjRelease(apArg[i]);
 				}
@@ -9555,7 +9560,9 @@ static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,s
 		 * autoloader declaring anything but `string` therefore RAISES under a strict
 		 * caller, where PHL coerced the class name (`bool $c` got true) and ran the
 		 * loader on a value that no longer named anything. */
-		if( PH7_VmCallUserFunctionWithMap(pVm,&pEntry->sCallback,1,apArg,&sResult,0) != SXRET_OK ){
+		if( PH7_VmCallUserFunctionWithMap(pVm,
+				(pEntry->sInvoke.iFlags & MEMOBJ_OBJ) ? &pEntry->sInvoke : &pEntry->sCallback,
+				1,apArg,&sResult,0) != SXRET_OK ){
 			/* Callback could not be invoked — skip to next autoloader */
 			continue;
 		}

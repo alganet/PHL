@@ -1336,6 +1336,7 @@ PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_
 		}
 		SyZero(&sEntry,sizeof(VmAutoloadCB));
 		PH7_MemObjInit(pVm,&sEntry.sCallback);
+		PH7_MemObjInit(pVm,&sEntry.sInvoke);
 		PH7_MemObjStringAppend(&sEntry.sCallback,"spl_autoload",sizeof("spl_autoload")-1);
 		SySetPut(&pVm->aAutoload,(const void *)&sEntry);
 		ph7_result_bool(pCtx,1);
@@ -1371,7 +1372,9 @@ PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_
 	/* Store the callback */
 	SyZero(&sEntry,sizeof(VmAutoloadCB));
 	PH7_MemObjInit(pVm,&sEntry.sCallback);
+	PH7_MemObjInit(pVm,&sEntry.sInvoke);
 	PH7_MemObjStore(apArg[0],&sEntry.sCallback);
+	PH7_VmBindCallbackScope(pVm,apArg[0],&sEntry.sInvoke);
 	if( iPrepend && SySetUsed(&pVm->aAutoload) > 0 ){
 		/* Prepend: shift existing entries and insert at position 0.
 		 * We do this by appending first, then rotating the array. */
@@ -1421,6 +1424,7 @@ PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph
 			VmAutoloadCB *aBase = (VmAutoloadCB *)SySetBasePtr(&pVm->aAutoload);
 			sxu32 i;
 			PH7_MemObjRelease(&pEntry->sCallback);
+			PH7_MemObjRelease(&pEntry->sInvoke);
 			for( i = n ; i + 1 < nEntry ; i++ ){
 				SyMemcpy(&aBase[i+1],&aBase[i],sizeof(VmAutoloadCB));
 			}
