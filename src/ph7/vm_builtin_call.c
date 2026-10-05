@@ -2904,6 +2904,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			/* The scope transient can stand alone (scope-only rebind); it holds no
 			 * owned reference — just clear it if the dispatch didn't consume it. */
 			pVm->pClosureScope = 0;
+			pVm->bClosureUnbound = 0;
 			/* Same hygiene for the screened-callee latch: OP_CALL consumes it, but a
 			 * dispatch that never reached one (unresolvable class, OOM) would leave it
 			 * standing and stand the visibility screen down for the NEXT call. */

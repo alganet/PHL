@@ -7604,6 +7604,7 @@ CalleeByName:
 		sxu32 n;
 		sxi32 iArgPreFlags = 0; /* the actual's type before its declared-type check */
 		int bClosureThis = 0;
+		int bClosureUnbound;
 		ph7_class *pClosureScope = 0;
 		/* initialize fields */
 		pVmFunc = (ph7_vm_func *)pEntry->pUserData;
@@ -7624,6 +7625,9 @@ CalleeByName:
 			pClosureScope = pVm->pClosureScope;
 			pVm->pClosureScope = 0;
 		}
+		/* ...and a rebind that left it with NO `$this` rides alongside both (VmClosureUnwrap). */
+		bClosureUnbound = pVm->bClosureUnbound;
+		pVm->bClosureUnbound = 0;
 		if( pVmFunc->iFlags & VM_FUNC_CLASS_METHOD ){
 			ph7_class_method *pMeth;
 			/* Class method call */
@@ -8035,6 +8039,7 @@ CalleeByName:
 			 * while they bind shows this frame in its trace, called from THIS line;
 			 * the detached frame had none, and printed line 1. */
 			VmStampCoroutineCallSite(pVm, pExecCtx);
+			pExecCtx->bUnboundThis = (sxu8)bClosureUnbound;
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
 			if( iGenHole >= 0 ){
@@ -8187,11 +8192,13 @@ CalleeByName:
 				pObj->x.pOther = pThis;
 				MemObjSetType(pObj,MEMOBJ_OBJ);
 			}
-		}else if( (pVmFunc->iFlags & VM_FUNC_CLOSURE) && !bClosureThis ){
+		}else if( (pVmFunc->iFlags & VM_FUNC_CLOSURE) && !bClosureThis && !bClosureUnbound ){
 			/* A closure made in a method runs on the receiver it captured, and php has it
 			 * from the start of the call: an argument refusal's trace names the frame
 			 * `C->{closure:…}()`. The rest of the captured environment is installed after
-			 * the arguments bind, below; `$this` alone comes first, where a method's does. */
+			 * the arguments bind, below; `$this` alone comes first, where a method's does.
+			 * Not once a rebind has dropped it: that clone shares this function, capture and
+			 * all, with the closure it was made from. */
 			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pVmFunc->aClosureEnv);
 			for( n = 0 ; n < SySetUsed(&pVmFunc->aClosureEnv) ; ++n ){
 				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1

@@ -1681,6 +1681,7 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 					 && SyHashGet(&pVm->hFunction, (const void *)SyBlobData(&pFn->sBlob),
 							SyBlobLength(&pFn->sBlob)) != 0 ){
 						pVm->pClosureScope = pScopeClass;
+						pVm->bClosureUnbound = 1;
 					}
 					PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
 					return SXRET_OK;
@@ -1762,6 +1763,14 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 			MemObjSetType(pOut, MEMOBJ_HASHMAP);
 			return SXRET_OK;
 		}
+	}
+	if( (pThis->iFlags & VM_INSTANCE_FCC_REBOUND)
+	 && SyHashGet(&pVm->hFunction, (const void *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob)) ){
+		/* A rebind that left a plain closure with no `$this` (`bindTo(null)`): php has dropped
+		 * the receiver, so the one its function captured where it was created must not come
+		 * back at the call. Only a USER function reaches the frame setup that consumes this,
+		 * the same rule as the bound branch above. */
+		pVm->bClosureUnbound = 1;
 	}
 	PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
 	return SXRET_OK;
@@ -3193,12 +3202,13 @@ static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
  * so that start() can bind it as $this for the closure environment.
  */
 static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instance *pFiberObj,
-	ph7_class_instance **ppThis)
+	ph7_class_instance **ppThis, int *pbUnbound)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pCallable;
 	SyString sAttrName;
 	*ppThis = 0;
+	*pbUnbound = 0;
 	SyStringInitFromBuf(&sAttrName, "__callable", 10);
 	pCallable = PH7_ClassInstanceFetchAttr(pFiberObj, &sAttrName);
 	if( pCallable == 0 || (pCallable->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ|MEMOBJ_HASHMAP)) == 0 ){
@@ -3263,6 +3273,8 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 					pVm->pClosureThis = 0;
 				}
 				pVm->pClosureScope = 0;
+				*pbUnbound = pVm->bClosureUnbound;
+				pVm->bClosureUnbound = 0;
 				pVm->bClosureScreened = 0;
 				pVm->bClosureStaticTramp = 0;
 				pVm->bClosureNoNamed = 0;
@@ -3276,6 +3288,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				pVm->pClosureThis = 0;
 			}
 			pVm->pClosureScope = 0;
+			pVm->bClosureUnbound = 0;
 			pVm->bClosureScreened = 0;
 			pVm->bClosureStaticTramp = 0;
 			pVm->bClosureNoNamed = 0;
@@ -3793,10 +3806,11 @@ static sxi32 VmFiberBindFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			if( (pEnv->iFlags & VM_FUNC_ARG_IGNORE) && (pEnv->sValue.iFlags & MEMOBJ_NULL) ){
 				continue;
 			}
-			if( pClosureThis && SyStringLength(&pEnv->sName) == sizeof("this")-1
+			if( (pClosureThis || pExecCtx->bUnboundThis) && SyStringLength(&pEnv->sName) == sizeof("this")-1
 			 && SyMemcmp(SyStringData(&pEnv->sName),"this",sizeof("this")-1) == 0 ){
 				/* An explicit bound $this (bindTo/bind/call) wins over the
-				 * creation-time captured $this, php-exact (mirrors OP_CALL). */
+				 * creation-time captured $this, php-exact (mirrors OP_CALL) --
+				 * and so does an explicit unbind. */
 				continue;
 			}
 			if( (pEnv->iFlags & VM_FUNC_ARG_BY_REF) && pEnv->nIdx != SXU32_HIGH ){
@@ -3967,6 +3981,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis;
 	ph7_class_instance *pClosureThis;
+	int bUnbound;
 	ph7_exec_ctx *pExecCtx;
 	ph7_vm_func *pFunc;
 	ph7_value sResult;
@@ -3988,7 +4003,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 			"Cannot start a fiber that has already been started");
 	}
 	/* Resolve callable */
-	pFunc = VmFiberResolveCallable(pCtx, pThis, &pClosureThis);
+	pFunc = VmFiberResolveCallable(pCtx, pThis, &pClosureThis, &bUnbound);
 	if( pFunc == 0 ){
 		return PH7_EXCEPTION;
 	}
@@ -4021,6 +4036,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Fiber::start(): out of memory");
 	}
+	pExecCtx->bUnboundThis = (sxu8)bUnbound;
 	SyStringInitFromBuf(&sAttrName, "__ctx", 5);
 	pCtxAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
 	if( pCtxAttr ){

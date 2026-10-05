@@ -1644,6 +1644,8 @@ struct ph7_exec_ctx
 	sxu8 bThrew;              /* The body ENDED by letting an exception escape. php keeps the two
 	                           * apart: such a fiber is terminated like any other, but getReturn()
 	                           * says it threw rather than that it has not returned. */
+	sxu8 bUnboundThis;        /* The body is a Closure a rebind left with no `$this`: the receiver
+	                           * its function captured where it was created is not installed. */
 	ph7_value sSuspendValue;  /* Value passed out via Fiber::suspend() / yield */
 	ph7_value sRetValue;      /* Final return value */
 	sxu32 nExceptionBase;     /* Exception-stack depth below this body's own handlers
@@ -4875,6 +4877,11 @@ struct ph7_vm
 	                                   * the OP_CALL user-function frame setup. Owns one reference. */
 	ph7_class *pClosureScope; /* Transient: bound $__scope class for the same bound PLAIN closure
 	                           * (private/protected visibility override); consumed alongside pClosureThis. */
+	int bClosureUnbound;      /* Transient, same lifetime as pClosureScope: the PLAIN closure about to be
+	                           * invoked is a rebind's clone with no `$this`, so the receiver its
+	                           * function captured where it was CREATED is not installed. php drops it
+	                           * with the unbind (`bindTo(null)`); the capture lives on the shared
+	                           * per-instantiation function, which the original closure still runs on. */
 	ph7_class *pClosureMethodCls; /* Consume-once: the class a METHOD closure's callee is looked up in
 	                               * when that is not its receiver's own -- `parent::m(...)`,
 	                               * `A::m(...)`, ReflectionMethod::getClosure(). php keeps the resolved
