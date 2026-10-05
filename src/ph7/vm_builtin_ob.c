@@ -82,7 +82,8 @@ static sxu32 VmObVisible(ph7_vm *pVm)
 	}
 	return nUsed;
 }
-static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw);
+static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw,ph7_class_instance **ppExc);
+static sxi32 VmObRethrow(ph7_vm *pVm,ph7_class_instance *pExc,sxi32 rc);
 /*
  * Perform one output-buffer operation on the buffer at index nIdx.
  *
@@ -92,18 +93,26 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw);
  *   pRaw  when non-NULL, receives a copy of the buffer as it was BEFORE the
  *         handler ran — ob_get_clean()/ob_get_flush() answer that, not the
  *         handler's output.
+ *   ppExc when non-NULL, receives the exception the handler threw (one
+ *         reference) instead of having it raised here: a door that removes the
+ *         buffer raises it after the removal (VmObRethrow), as php's pending
+ *         exception surfaces only once the whole operation is over.
  *
  * The buffer is left empty; removing it is the caller's job. A CLEAN still runs
  * the handler (php gives it the chance to reset its own state) and then throws
  * the answer away.
  */
-static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
+static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw,ph7_class_instance **ppExc)
 {
 	VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
+	ph7_class_instance *pExc = 0;
 	SyBlob sData;
 	sxi32 rc = PH7_OK;
 	sxu32 nRawLen;
 	int bDrop = 0;
+	if( ppExc ){
+		*ppExc = 0;
+	}
 	if( pEntry == 0 ){
 		return PH7_OK;
 	}
@@ -148,22 +157,46 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 		apArg[0] = &sArg;
 		apArg[1] = &sPhase;
 		PH7_MemObjInit(pVm,&sResult);
-		/* Everything the handler prints is DISCARDED (php has no buffer to put it
-		 * in — this one is mid-operation), and it may not open one either.
+		/* What the handler prints lands back in this buffer, after the bytes it was
+		 * handed (VmObConsumer): an answer discards it, a failure sends it on. It
+		 * may not open a buffer of its own.
 		 * Through the callback dispatcher, not PH7_VmCallUserFunction: php builds
 		 * both arguments itself and passes them BY VALUE, so a handler declaring
 		 * `&$buffer` gets php's warning and a copy rather than the fatal a direct
-		 * call raises — and a throw from inside reaches the enclosing catch. */
+		 * call raises. Behind a throw fence: php's exception stays PENDING until
+		 * the operation is over, so the caller's catch must not run in place
+		 * ahead of the bytes this failure still delivers. */
 		{
 			VmFrame *pSaveFrame = pVm->pObFrame;
 			sxu32 nSaveActive = pVm->nObActive;
 			int bSaveRefused = pVm->bObRefused;
+			sxi32 nBrcIn = pVm->nBoundaryRc;
+			sxu32 nFenceIn = pVm->nThrowFence;
+			ph7_class_instance *pExcIn = pVm->pFencedExc;
 			pVm->pObFrame = pVm->pFrame;
 			pVm->nObActive = nIdx + 1;
 			pVm->bObRefused = 0;
+			pVm->pFencedExc = 0;
+			pVm->nThrowFence = SySetUsed(&pVm->aException) + 1;
 			pVm->nObDepth++;
 			rcCall = PH7_VmCallCallbackByValue(pVm,&sCallback,2,apArg,&sResult,0);
 			pVm->nObDepth--;
+			pVm->nThrowFence = nFenceIn;
+			pExc = pVm->pFencedExc;
+			pVm->pFencedExc = pExcIn;
+			if( pExc ){
+				if( pVm->nBoundaryRc == PH7_ABORT && nBrcIn != PH7_ABORT ){
+					PH7_ClassInstanceUnref(pExc);
+					pExc = 0;
+				}else{
+					pVm->nBoundaryRc = nBrcIn; /* nothing was caught in place yet */
+				}
+			}
+			if( pExc && pVm->pCalleeName == &sObShutdown ){
+				/* With no frame left to throw into, php's throw is fatal right
+				 * there and the request bails out: nothing more is delivered. */
+				bDrop = 1;
+			}
 			bRefused = pVm->bObRefused;
 			pVm->bObRefused = bSaveRefused;
 			pVm->nObActive = nSaveActive;
@@ -176,8 +209,8 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 			 * invocation, only to the ones that follow it. */
 			pEntry->iFlags |= PH7_OB_STARTED;
 		}
-		if( pEntry && (pEntry->iFlags & PH7_OB_PRODUCED) && !PH7_CALLBACK_UNWOUND(rcCall) ){
-			/* php 8.4: the handler printed (what it printed is gone). Raised while
+		if( pEntry && (pEntry->iFlags & PH7_OB_PRODUCED) && !PH7_CALLBACK_UNWOUND(rcCall) && pExc == 0 ){
+			/* php 8.4: the handler printed, and answered. Raised while
 			 * the buffer is still disabled, so the diagnostic's own display lands
 			 * in the level below -- and, the handler still counting as running,
 			 * marks THAT buffer in turn. A handler that threw or exited is not
@@ -186,14 +219,18 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 			VmObDeprecateOutput(pVm,pEntry);
 			pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
 		}
-		if( PH7_CALLBACK_UNWOUND(rcCall)
+		if( PH7_CALLBACK_UNWOUND(rcCall) || pExc
 			|| (ph7_value_is_bool(&sResult) && !ph7_value_to_bool(&sResult)) ){
 			/* php's two FAILURE shapes — the handler answered FALSE, or it threw
 			 * (or exited) and never answered at all. Both send the ORIGINAL bytes,
-			 * so `sData` is left exactly as it was, and both leave the handler
+			 * so `sData` keeps them, and both leave the handler
 			 * DISABLED: it is not called again (which is what keeps a throwing
 			 * handler from throwing a second time out of the shutdown flush) and the
-			 * buffer stops buffering. */
+			 * buffer stops buffering. What the handler printed goes on with them. */
+			if( pEntry && SyBlobLength(&pEntry->sOB) > nRawLen ){
+				SyBlobAppend(&sData,(const char *)SyBlobData(&pEntry->sOB) + nRawLen,
+					SyBlobLength(&pEntry->sOB) - nRawLen);
+			}
 		}else if( ph7_value_is_bool(&sResult) ){
 			/* TRUE: "no data" — the operation produces nothing at all, and php
 			 * counts that as the handler having processed the buffer. */
@@ -235,24 +272,12 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 			bDrop = 1;
 		}
 	}
-	/* The bytes this operation took are gone from the buffer now — but only those:
-	 * an in-place catch for a throw inside the handler runs before the dispatch
-	 * returns and may have written MORE into this still-open buffer, and that tail
-	 * is the caller's output, not this operation's. Re-resolved because php code
-	 * may have moved the set. */
+	/* The buffer is empty now: what the operation took, and what the handler
+	 * printed after it, went with the answer or with the failure. Re-resolved
+	 * because php code may have moved the set. */
 	pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
 	if( pEntry ){
-		sxu32 nHave = SyBlobLength(&pEntry->sOB);
-		if( nHave > nRawLen ){
-			SyBlob sTail;
-			SyBlobInit(&sTail,&pVm->sAllocator);
-			SyBlobAppend(&sTail,(const char *)SyBlobData(&pEntry->sOB) + nRawLen,nHave - nRawLen);
-			SyBlobReset(&pEntry->sOB);
-			SyBlobAppend(&pEntry->sOB,SyBlobData(&sTail),SyBlobLength(&sTail));
-			SyBlobRelease(&sTail);
-		}else{
-			SyBlobReset(&pEntry->sOB);
-		}
+		SyBlobReset(&pEntry->sOB);
 	}
 	if( (iOp & PH7_OB_CLEAN) == 0 && SyBlobLength(&sData) > 0 && !bDrop ){
 		sxi32 rcOut = VmObDeliver(pVm,nIdx,SyBlobData(&sData),SyBlobLength(&sData));
@@ -261,6 +286,33 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 		}
 	}
 	SyBlobRelease(&sData);
+	if( ppExc ){
+		*ppExc = pExc;
+		return rc;
+	}
+	return VmObRethrow(pVm,pExc,rc);
+}
+/*
+ * Raise the exception a handler threw (VmObPerform held it back), consuming the
+ * reference; rc passes through when there is none.
+ */
+static sxi32 VmObRethrow(ph7_vm *pVm,ph7_class_instance *pExc,sxi32 rc)
+{
+	VmFrame *pFrame;
+	if( pExc == 0 ){
+		return rc;
+	}
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(&(*pVm),pExc);
+	PH7_ClassInstanceUnref(pExc);
+	rc = rc == SXERR_ABORT ? PH7_ABORT : PH7_EXCEPTION;
+	/* The callers with no status channel (an echo that filled a chunked buffer)
+	 * have it routed at the next fetch, as the dispatcher would have. */
+	VmBoundaryPark(&(*pVm),rc);
 	return rc;
 }
 /*
@@ -288,7 +340,7 @@ static sxi32 VmObSink(ph7_vm *pVm,sxi32 iIdx,const void *pData,sxu32 nLen)
 			SyBlobAppend(&pEntry->sOB,pData,nLen);
 			/* A buffer with a chunk size writes out as soon as it holds one. */
 			if( pEntry->nChunk > 0 && SyBlobLength(&pEntry->sOB) >= pEntry->nChunk ){
-				return VmObPerform(pVm,(sxu32)iIdx,PH7_OB_WRITE,0);
+				return VmObPerform(pVm,(sxu32)iIdx,PH7_OB_WRITE,0,0);
 			}
 			return PH7_OK;
 		}
@@ -324,16 +376,19 @@ PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUser
 		return PH7_OK;
 	}
 	if( VmObInHandler(pVm) ){
-		/* Inside a handler: php has nowhere to put this and drops it -- but it
-		 * remembers that something tried, on the topmost buffer still taking
+		/* Inside a handler: php stores it in the topmost buffer still taking
 		 * bytes (the running one counts: it is disabled here only for the
-		 * duration of its call), and deprecates the handler for it afterwards. */
+		 * duration of its call), with no write-out, remembers that something
+		 * was written there, and deprecates the handler for it afterwards. In
+		 * the running buffer it sits after the bytes the handler was handed. */
 		if( nDataLen > 0 ){
 			sxi32 i;
 			for( i = (sxi32)nUsed - 1 ; i >= 0 ; i-- ){
 				VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,(sxu32)i);
 				if( (pEntry->iFlags & PH7_OB_DISABLED) == 0 || (sxu32)i + 1 == pVm->nObActive ){
 					pEntry->iFlags |= PH7_OB_PRODUCED;
+					VmObGrow(pEntry,nDataLen);
+					SyBlobAppend(&pEntry->sOB,pData,nDataLen);
 					break;
 				}
 			}
@@ -381,8 +436,17 @@ PH7_PRIVATE void PH7_VmObFlushAll(ph7_vm *pVm)
 	SyString *pSaveCallee = pVm->pCalleeName;
 	pVm->pCalleeName = &sObShutdown;
 	while( SySetUsed(&pVm->aOB) > 0 ){
-		VmObPerform(pVm,SySetUsed(&pVm->aOB) - 1,PH7_OB_FINAL,0);
+		ph7_class_instance *pExc;
+		VmObPerform(pVm,SySetUsed(&pVm->aOB) - 1,PH7_OB_FINAL,0,&pExc);
 		VmObPop(pVm);
+		if( pExc ){
+			/* A handler threw: php reports it fatal and bails out of the flush,
+			 * discarding every buffer still open without running its handler. */
+			VmObRethrow(pVm,pExc,PH7_OK);
+			while( SySetUsed(&pVm->aOB) > 0 ){
+				VmObPop(pVm);
+			}
+		}
 	}
 	pVm->pCalleeName = pSaveCallee;
 	pVm->nObDepth = 0;
@@ -553,7 +617,7 @@ PH7_PRIVATE int vm_builtin_ob_clean(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_CLEAN,0);
+	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_CLEAN,0,0);
 	ph7_result_bool(pCtx,1);
 	return rc;
 }
@@ -574,6 +638,7 @@ PH7_PRIVATE int vm_builtin_ob_clean(ph7_context *pCtx,int nArg,ph7_value **apArg
 PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pExc;
 	sxu32 nUsed = SySetUsed(&pVm->aOB);
 	sxi32 rc;
 	SXUNUSED(nArg); /* cc warning */
@@ -592,10 +657,10 @@ PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_CLEAN|PH7_OB_FINAL,0);
+	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_CLEAN|PH7_OB_FINAL,0,&pExc);
 	VmObPop(pVm);
 	ph7_result_bool(pCtx,1);
-	return rc;
+	return VmObRethrow(pVm,pExc,rc);
 }
 /*
  * string ob_get_contents(void)
@@ -634,6 +699,7 @@ PH7_PRIVATE int vm_builtin_ob_get_contents(ph7_context *pCtx,int nArg,ph7_value 
 PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pExc;
 	sxu32 nUsed = SySetUsed(&pVm->aOB);
 	SyBlob sRaw;
 	sxi32 rc;
@@ -663,11 +729,11 @@ PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_OK;
 	}
 	SyBlobReset(&sRaw);
-	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_CLEAN|PH7_OB_FINAL,&sRaw);
+	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_CLEAN|PH7_OB_FINAL,&sRaw,&pExc);
 	VmObPop(pVm);
 	ph7_result_string(pCtx,(const char *)SyBlobData(&sRaw),(int)SyBlobLength(&sRaw)); /* Will make it's own copy */
 	SyBlobRelease(&sRaw);
-	return rc;
+	return VmObRethrow(pVm,pExc,rc);
 }
 /*
  * string ob_get_flush(void)
@@ -683,6 +749,7 @@ PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **a
 PH7_PRIVATE int vm_builtin_ob_get_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pExc;
 	sxu32 nUsed = SySetUsed(&pVm->aOB);
 	SyBlob sRaw;
 	sxi32 rc;
@@ -711,12 +778,12 @@ PH7_PRIVATE int vm_builtin_ob_get_flush(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_OK;
 	}
 	SyBlobReset(&sRaw);
-	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FINAL,&sRaw);
+	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FINAL,&sRaw,&pExc);
 	VmObPop(pVm);
 	/* The answer is the RAW buffer, not what the handler made of it */
 	ph7_result_string(pCtx,(const char *)SyBlobData(&sRaw),(int)SyBlobLength(&sRaw));
 	SyBlobRelease(&sRaw);
-	return rc;
+	return VmObRethrow(pVm,pExc,rc);
 }
 /*
  * int ob_get_length(void)
@@ -878,7 +945,7 @@ PH7_PRIVATE int vm_builtin_ob_flush(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FLUSH,0);
+	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FLUSH,0,0);
 	ph7_result_bool(pCtx,1);
 	return rc;
 }
@@ -917,6 +984,7 @@ PH7_PRIVATE int vm_builtin_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int vm_builtin_ob_end_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pExc;
 	sxu32 nUsed = SySetUsed(&pVm->aOB);
 	sxi32 rc;
 	SXUNUSED(nArg); /* cc warning */
@@ -935,11 +1003,11 @@ PH7_PRIVATE int vm_builtin_ob_end_flush(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FINAL,0);
+	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FINAL,0,&pExc);
 	VmObPop(pVm);
 	/* Return true */
 	ph7_result_bool(pCtx,1);
-	return rc;
+	return VmObRethrow(pVm,pExc,rc);
 }
 /*
  * void ob_implicit_flush([int $flag = true ])
