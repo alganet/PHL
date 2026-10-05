@@ -664,17 +664,20 @@ static int vm_builtin_Exception_wakeup(ph7_context *pCtx,int nArg,ph7_value **ap
 	return PH7_OK;
 }
 /*
- * One argument of a trace frame, php's smart_str_append_scalar: a string is
- * single-quoted, ESCAPED (`\n`, `\xNN` for anything non-printable) and truncated
- * to 15 bytes with `...` inside the quotes; a float takes php's precision; an
- * enum case prints `Enum::Case`; and anything else is a bare word.
+ * php's smart_str_append_zval: a scalar or an enum case, the way a trace argument
+ * and an unhandled match case print one. A string is single-quoted, ESCAPED (`\n`,
+ * `\\`, `\xNN` for anything outside printable ASCII) and cut after nMax bytes with
+ * `...` inside the quotes -- nMax is zend.exception_string_param_max_len, so at 0
+ * every non-empty string is `'...'` and the empty one `''`. A float takes php's
+ * precision and always shows its fraction; an enum case prints `Enum::Case`.
+ * Answers 0, appending nothing, for what php renders another way: an array, any
+ * other object, a resource.
  */
-#define EXC_ARG_MAX 15
-static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)
+PH7_PRIVATE int PH7_VmAppendTraceScalar(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg,sxi64 nMax)
 {
 	if( pArg == 0 || (pArg->iFlags & MEMOBJ_NULL) ){
 		SyBlobAppend(pOut,"NULL",sizeof("NULL")-1);
-		return;
+		return 1;
 	}
 	if( pArg->iFlags & MEMOBJ_BOOL ){
 		if( pArg->x.iVal ){
@@ -682,46 +685,67 @@ static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)
 		}else{
 			SyBlobAppend(pOut,"false",sizeof("false")-1);
 		}
-		return;
+		return 1;
 	}
-	if( pArg->iFlags & MEMOBJ_HASHMAP ){
-		SyBlobAppend(pOut,"Array",sizeof("Array")-1);
-		return;
+	if( pArg->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_RES) ){
+		return 0;
 	}
 	if( pArg->iFlags & MEMOBJ_OBJ ){
 		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;
-		if( pObj && pObj->pClass && (pObj->pClass->iFlags & PH7_CLASS_ENUM) ){
-			ph7_value *pName = PH7_NativeAttr(pObj,"name");
-			SyBlobFormat(pOut,"%z::",&pObj->pClass->sDisp);
-			if( pName ){
-				SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
-			}
-			return;
+		ph7_value *pName;
+		if( pObj == 0 || pObj->pClass == 0 || (pObj->pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+			return 0;
 		}
-		SyBlobAppend(pOut,"Object(",sizeof("Object(")-1);
-		if( pObj && pObj->pClass ){
-			SyBlobFormat(pOut,"%z",&pObj->pClass->sDisp);
+		pName = PH7_NativeAttr(pObj,"name");
+		SyBlobFormat(pOut,"%z::",&pObj->pClass->sDisp);
+		if( pName ){
+			SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
 		}
-		SyBlobAppend(pOut,")",sizeof(")")-1);
-		return;
+		return 1;
 	}
 	if( pArg->iFlags & MEMOBJ_STRING ){
-		/* php 8.5 does not put string CONTENT in a trace at all: every non-empty
-		 * one renders as '...' (the empty one still shows as ''), so a password
-		 * or a token passed to the function that threw cannot reach a log through
-		 * the trace. The truncate-at-15-and-escape shape here was php 8.4's. */
-		if( SyBlobLength(&pArg->sBlob) < 1 ){
-			SyBlobAppend(pOut,"''",sizeof("''")-1);
-		}else{
-			SyBlobAppend(pOut,"'...'",sizeof("'...'")-1);
+		static const char zHex[] = "0123456789ABCDEF";
+		const unsigned char *z = (const unsigned char *)SyBlobData(&pArg->sBlob);
+		sxu32 n = SyBlobLength(&pArg->sBlob);
+		sxu32 nKeep = (nMax < 0 || (sxu64)nMax >= n) ? n : (sxu32)nMax;
+		sxu32 i;
+		SyBlobAppend(pOut,"'",1);
+		for( i = 0 ; i < nKeep ; i++ ){
+			unsigned char c = z[i];
+			char zEsc[4];
+			if( c >= 32 && c <= 126 && c != '\\' ){
+				SyBlobAppend(pOut,&z[i],1);
+				continue;
+			}
+			zEsc[0] = '\\';
+			switch( c ){
+			case '\n':  zEsc[1] = 'n';  break;
+			case '\r':  zEsc[1] = 'r';  break;
+			case '\t':  zEsc[1] = 't';  break;
+			case '\f':  zEsc[1] = 'f';  break;
+			case '\v':  zEsc[1] = 'v';  break;
+			case '\\': zEsc[1] = '\\'; break;
+			case 27:    zEsc[1] = 'e';  break;
+			default:
+				zEsc[1] = 'x';
+				zEsc[2] = zHex[c >> 4];
+				zEsc[3] = zHex[c & 0xf];
+				SyBlobAppend(pOut,zEsc,4);
+				continue;
+			}
+			SyBlobAppend(pOut,zEsc,2);
 		}
-		return;
+		if( nKeep < n ){
+			SyBlobAppend(pOut,"...",sizeof("...")-1);
+		}
+		SyBlobAppend(pOut,"'",1);
+		return 1;
 	}
 	{
-		/* int / float / anything else: php prints the scalar itself -- but a
-		 * trace FLOAT always shows its fraction (1.0, not the "1" the ordinary
-		 * string cast produces), which is what tells a float argument apart from
-		 * an int one. INF/NAN and the exponent forms already carry a marker. */
+		/* int / float: php prints the scalar itself -- but a trace FLOAT always
+		 * shows its fraction (1.0, not the "1" the ordinary string cast produces),
+		 * which is what tells a float argument apart from an int one. INF/NAN and
+		 * the exponent forms already carry a marker. */
 		ph7_value sTmp;
 		const char *z;
 		sxu32 n,i;
@@ -745,6 +769,34 @@ static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)
 				SyBlobAppend(pOut,".0",sizeof(".0")-1);
 			}
 		}
+		PH7_MemObjRelease(&sTmp);
+	}
+	return 1;
+}
+/*
+ * One argument of a trace frame, php's _build_trace_args: the scalar shapes above,
+ * then `Array`, `Object(Class)` and `Resource id #N` for the rest.
+ */
+static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg,sxi64 nMax)
+{
+	if( PH7_VmAppendTraceScalar(&(*pVm),pOut,pArg,nMax) ){
+		return;
+	}
+	if( pArg->iFlags & MEMOBJ_HASHMAP ){
+		SyBlobAppend(pOut,"Array",sizeof("Array")-1);
+	}else if( pArg->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;
+		SyBlobAppend(pOut,"Object(",sizeof("Object(")-1);
+		if( pObj && pObj->pClass ){
+			SyBlobFormat(pOut,"%z",&pObj->pClass->sDisp);
+		}
+		SyBlobAppend(pOut,")",sizeof(")")-1);
+	}else{
+		ph7_value sTmp;
+		PH7_MemObjInit(&(*pVm),&sTmp);
+		PH7_MemObjStore(pArg,&sTmp);
+		PH7_MemObjToString(&sTmp);
+		SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));
 		PH7_MemObjRelease(&sTmp);
 	}
 }
@@ -828,6 +880,7 @@ PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMark
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pEntry;
 	sxu32 nFrame = 0;
+	sxi64 nMax = PH7_VmIniGetInt(&(*pVm),"zend.exception_string_param_max_len",0);
 	if( pTrace && (pTrace->iFlags & MEMOBJ_HASHMAP) && pTrace->x.pOther ){
 		pMap = (ph7_hashmap *)pTrace->x.pOther;
 		/* Insertion order is pFirst then the pPrev chain (rule 12). */
@@ -865,7 +918,7 @@ PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMark
 						}
 						bFirst = 0;
 						VmExcTraceArg(&(*pVm),pOut,
-							(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArg->nValIdx));
+							(ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pArg->nValIdx),nMax);
 					}
 				}
 			}

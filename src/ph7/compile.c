@@ -5930,10 +5930,13 @@ PH7_PRIVATE void PH7_GenAppendFatalTrace(ph7_vm *pVm,SyBlob *pOut,int iTraceKind
 		SyBlobAppend(pOut,"#0 {main}",sizeof("#0 {main}")-1);
 		return;
 	}
-	/* php's fatal trace carries no argument list. Nor, unless this is one of the
-	 * refusals php makes at RUN time, the include/require/eval that loaded the unit
-	 * being compiled: php raises a compile error before it pushes that activation. */
-	VmBuildBacktrace(&(*pVm),0x2 | (iTraceKind == PH7_FATAL_TRACE_RUNTIME ? 0 : 0x4),0,pTrace);
+	/* php's fatal trace carries an argument list only while zend.exception_ignore_args
+	 * is Off. Nor, unless this is one of the refusals php makes at RUN time, does it
+	 * carry the include/require/eval that loaded the unit being compiled: php raises
+	 * a compile error before it pushes that activation. */
+	VmBuildBacktrace(&(*pVm),
+		(PH7_VmIniGetBool(&(*pVm),"zend.exception_ignore_args",1) ? 0x2 : 0)
+		| (iTraceKind == PH7_FATAL_TRACE_RUNTIME ? 0 : 0x4),0,pTrace);
 	PH7_VmTraceToString(&(*pVm),pTrace,TRUE,pOut);
 	ph7_release_value(&(*pVm),pTrace);
 }

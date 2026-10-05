@@ -176,6 +176,12 @@ static const struct {
 	 * empty `from` writes `From: `. */
 	{ "user_agent",               0,            VM_INI_ALL },
 	{ "zend.assertions",          "-1",         VM_INI_ALL },
+	/* What a trace keeps of a call's arguments. php's built-in defaults are 0 and
+	 * 15; these are the values php.ini-production ships, which is the shape every
+	 * trace here has always had: no `args`, and a string argument (where a frame
+	 * has one) printed as `'...'`. Both are PHP_INI_ALL. */
+	{ "zend.exception_ignore_args","1",         VM_INI_ALL },
+	{ "zend.exception_string_param_max_len","0",VM_INI_ALL },
 #ifdef PH7_ENABLE_ZLIB
 	/* ext/zlib's three, php's own defaults and its access mask (all three are
 	 * PHP_INI_ALL). They are READ by ob_gzhandler() and zlib_get_coding_type()
@@ -228,6 +234,12 @@ static int IniStartupValueAccepted(const SyString *pName,const char *zVal,sxu32 
 		    || (nVal == 7 && SyMemcmp(zVal,"no-ctrl",7) == 0)
 		    || (nVal == 5 && SyMemcmp(zVal,"ascii",5) == 0)
 		    || (nVal == 3 && SyMemcmp(zVal,"raw",3) == 0);
+	}
+	if( pName->nByte == sizeof("zend.exception_string_param_max_len")-1
+	 && SyMemcmp(pName->zString,"zend.exception_string_param_max_len",pName->nByte) == 0 ){
+		sxi64 iVal = 0;
+		SyStrToInt64(zVal,nVal,(void *)&iVal,0);
+		return iVal >= 0 && iVal <= 1000000;
 	}
 	return 1;
 }
@@ -657,6 +669,15 @@ static int IniValueAccepted(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 
 		sxi64 iVal = 0;
 		SyStrToInt64(zVal,nVal,(void *)&iVal,0);
 		if( iVal < 0 || iVal > 2147483647 ){
+			return 0;
+		}
+	}
+	if( IniNameIs(pSlot,"zend.exception_string_param_max_len") ){
+		/* php bounds it to 0..1000000 and refuses anything outside in silence; a
+		 * NON-numeric value is taken, as bcmath.scale's is, and reads as 0. */
+		sxi64 iVal = 0;
+		SyStrToInt64(zVal,nVal,(void *)&iVal,0);
+		if( iVal < 0 || iVal > 1000000 ){
 			return 0;
 		}
 	}

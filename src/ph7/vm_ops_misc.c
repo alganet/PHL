@@ -152,23 +152,39 @@ PH7_PRIVATE VmOpRc VmExecOpMatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 		PH7_THROW_ROUTE_MIDEXPR(rcArm)
 	}
 	if( !matched ){
-		const char *zType = "unknown";
-		char zMsg[128];
-		sxu32 nMsg;
-		switch(sSubject.iFlags & MEMOBJ_ALL){
-		case MEMOBJ_NULL:   zType = "null";   break;
-		case MEMOBJ_BOOL:   zType = "bool";   break;
-		case MEMOBJ_INT:    zType = "int";    break;
-		case MEMOBJ_REAL:   zType = "float";  break;
-		case MEMOBJ_STRING: zType = "string"; break;
-		case MEMOBJ_HASHMAP:zType = "array";  break;
-		case MEMOBJ_OBJ:    zType = "object"; break;
-		case MEMOBJ_RES:    zType = "resource"; break;
-		default: break;
-		}
 		SyBlob sErrMsg;
-		nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
-			"Unhandled match case of type %s",zType);
+		sxi64 nMax = PH7_VmIniGetInt(&(*pVm),"zend.exception_string_param_max_len",0);
+		SyBlobInit(&sErrMsg,&pVm->sAllocator);
+		SyBlobAppend(&sErrMsg,"Unhandled match case ",sizeof("Unhandled match case ")-1);
+		/* php names the VALUE the way a trace argument prints it -- unless traces
+		 * keep no arguments (zend.exception_ignore_args), or it is a string they
+		 * would print as '...' -- and falls back to the TYPE, which for an object is
+		 * its class. */
+		if( PH7_VmIniGetBool(&(*pVm),"zend.exception_ignore_args",1)
+		 || ((sSubject.iFlags & MEMOBJ_STRING) && nMax == 0)
+		 || !PH7_VmAppendTraceScalar(&(*pVm),&sErrMsg,&sSubject,nMax) ){
+			const char *zType = "unknown";
+			switch(sSubject.iFlags & MEMOBJ_ALL){
+			case MEMOBJ_NULL:   zType = "null";   break;
+			case MEMOBJ_BOOL:   zType = "bool";   break;
+			case MEMOBJ_INT:    zType = "int";    break;
+			case MEMOBJ_REAL:   zType = "float";  break;
+			case MEMOBJ_STRING: zType = "string"; break;
+			case MEMOBJ_HASHMAP:zType = "array";  break;
+			case MEMOBJ_OBJ:    zType = 0;        break;
+			case MEMOBJ_RES:    zType = "resource"; break;
+			default: break;
+			}
+			SyBlobAppend(&sErrMsg,"of type ",sizeof("of type ")-1);
+			if( zType ){
+				SyBlobAppend(&sErrMsg,zType,(sxu32)SyStrlen(zType));
+			}else{
+				ph7_class_instance *pObj = (ph7_class_instance *)sSubject.x.pOther;
+				if( pObj && pObj->pClass ){
+					SyBlobFormat(&sErrMsg,"%z",&pObj->pClass->sDisp);
+				}
+			}
+		}
 		PH7_MemObjRelease(&sSubject);
 		PH7_MemObjRelease(&sResult);
 		/* php raises a CATCHABLE \UnhandledMatchError here, so build a real
@@ -177,8 +193,6 @@ PH7_PRIVATE VmOpRc VmExecOpMatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 		 * propagates and renders as uncaught, as before). Reporting it straight
 		 * to the uncaught renderer — what this site used to do — made the error
 		 * unconditionally fatal even inside try/catch. */
-		SyBlobInit(&sErrMsg,&pVm->sAllocator);
-		SyBlobAppend(&sErrMsg,zMsg,nMsg);
 		rc = VmThrowBuiltinError(&(*pVm),"UnhandledMatchError",
 			sizeof("UnhandledMatchError")-1,&sErrMsg);
 		PH7_THROW_ROUTE_MIDEXPR(rc)

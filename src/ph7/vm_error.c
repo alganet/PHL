@@ -5939,9 +5939,9 @@ static VmFrame * VmTraceSkipFrames(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sxi32
  *   lead with the INTERNAL functions and methods currently running, which is
  *   php's exception trace and is NOT debug_backtrace() (php leaves its own
  *   internal frame off the array it hands back).
- * php's exception trace passes IGNORE_ARGS and no PROVIDE_OBJECT -- its default
- * frame shape is file/line/function[/class/type], matching the default
- * zend.exception_ignore_args=On.
+ * php's exception trace passes no PROVIDE_OBJECT, and IGNORE_ARGS while
+ * zend.exception_ignore_args is On -- then its frame shape is
+ * file/line/function[/class/type].
  */
 PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_value *pList)
 {
@@ -6368,13 +6368,15 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 		}else{
 			/* trace: php captures the FULL backtrace at the CREATION site (innermost
 			 * = the function that ran `new`, reported at its call site). Reuse the
-			 * shared walk with IGNORE_ARGS + no PROVIDE_OBJECT to match php's default
-			 * exception-trace shape (file/line/function[/class/type]). */
+			 * shared walk with no PROVIDE_OBJECT, and with IGNORE_ARGS exactly when
+			 * zend.exception_ignore_args says so -- php reads the directive here, at
+			 * construction, so an ini_set() made after the throw changes nothing. */
 			ph7_value *pList = ph7_new_array(&(*pVm));
 			if( pList == 0 ){
 				continue;
 			}
-			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/|8,0,pList);
+			VmBuildBacktrace(&(*pVm),
+				(PH7_VmIniGetBool(&(*pVm),"zend.exception_ignore_args",1) ? 2 : 0)|8,0,pList);
 			/* Building the trace reserves new memobjs, which used to realloc
 			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO the pool,
 			 * from PH7_ClassInstanceExtractAttrValue above). Redundant since P1
