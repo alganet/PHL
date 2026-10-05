@@ -1510,6 +1510,9 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 {
 	static const char *azProt[] = { "", "public", "protected", "private" };
 	ph7_class *pOwner = PH7_VmMemberOwnerClass(pParent->pDeclClass,pBase);
+	/* The class that declared the CHILD property: the subclass for a
+	 * redeclaration, but an inherited one answering an interface keeps its own. */
+	ph7_class *pChildOwner = PH7_VmMemberOwnerClass(pChild->pDeclClass,pSub);
 	const SyString *pName = &pParent->sName;
 	sxi32 iPS = pParent->iFlags & PH7_CLASS_ATTR_STATIC;
 	sxi32 iCS = pChild->iFlags & PH7_CLASS_ATTR_STATIC;
@@ -1550,19 +1553,19 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 		OvFromDecl(pVm,pPScope,&sP,pParent->nType,&pParent->sClass,&pParent->aUnionAlts,
 			(pParent->iFlags & PH7_CLASS_ATTR_NULLABLE) != 0);
 		if( pChild->iFlags & PH7_CLASS_ATTR_TYPED ){
-			OvFromDecl(pVm,pSub,&sC,pChild->nType,&pChild->sClass,&pChild->aUnionAlts,
+			OvFromDecl(pVm,pChildOwner,&sC,pChild->nType,&pChild->sClass,&pChild->aUnionAlts,
 				(pChild->iFlags & PH7_CLASS_ATTR_NULLABLE) != 0);
 		}else{
 			OvInit(&sC);
 			sC.bAbsent = 1;
 		}
-		if( (iVariance != 2 && OvCheck(&sP,&sC,1,pPScope,pSub) == OV_BAD)
-		 || (iVariance != 1 && (sC.bAbsent || OvCheck(&sP,&sC,0,pPScope,pSub) == OV_BAD)) ){
+		if( (iVariance != 2 && OvCheck(&sP,&sC,1,pPScope,pChildOwner) == OV_BAD)
+		 || (iVariance != 1 && (sC.bAbsent || OvCheck(&sP,&sC,0,pPScope,pChildOwner) == OV_BAD)) ){
 			char zType[192];
 			const char *zTypeText = VmHintTextResolved(pVm,&pParent->sTypeName,pPScope,
 				zType,sizeof(zType));
 			return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
-				"Type of %z::$%z must be %s%s (as in class %z)",&pSub->sDisp,pName,
+				"Type of %z::$%z must be %s%s (as in class %z)",&pChildOwner->sDisp,pName,
 				iVariance == 1 ? "subtype of " : iVariance == 2 ? "supertype of " : "",
 				zTypeText,&pOwner->sDisp);
 		}
@@ -1570,6 +1573,80 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 		return PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 			"Type of %z::$%z must be omitted to match the parent definition in class %z",
 			&pSub->sDisp,pName,&pOwner->sDisp);
+	}
+	return SXRET_OK;
+}
+/*
+ * php's do_interface_implementation runs the same screen for every property an
+ * interface declares, against whatever the class holds under that name by then:
+ * its own, one composed from a trait, or one inherited from its parent (which is
+ * then named as the declaring class). An interface's properties are never copied
+ * into the class, so the screen walks the interface and the interfaces it extends.
+ *
+ * A property the parent already holds, under an interface the parent already
+ * implements, was answered when the parent was linked, and a redeclaration of it
+ * was answered against the parent's by PH7_ClassInherit.
+ */
+#define OO_IFACE_WALK_MAX_DEPTH 64 /* as the instanceof walk's bound */
+static sxi32 OoCheckIfacePropsOf(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pIface,int iDepth)
+{
+	while( pIface && iDepth <= OO_IFACE_WALK_MAX_DEPTH ){
+		ph7_class **apParent = (ph7_class **)SySetBasePtr(&pIface->aInterface);
+		SyHashEntry *pEntry;
+		sxu32 n;
+		SyHashResetLoopCursor(&pIface->hAttr);
+		while((pEntry = SyHashGetNextEntry(&pIface->hAttr)) != 0 ){
+			ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+			ph7_class_attr *pChild;
+			SyHashEntry *pOwn;
+			if( pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+				continue;
+			}
+			pOwn = SyHashGet(&pSub->hAttr,(const void *)SyStringData(&pAttr->sName),
+				SyStringLength(&pAttr->sName));
+			if( pOwn == 0 ){
+				continue;
+			}
+			pChild = (ph7_class_attr *)pOwn->pUserData;
+			if( pChild == pAttr || (pChild->iFlags & PH7_CLASS_ATTR_CONSTANT) ){
+				continue;
+			}
+			if( pSub->pBase && (pSub->iFlags & PH7_CLASS_INTERFACE) == 0
+			 && PH7_VmInstanceOf(pSub->pBase,pIface) ){
+				SyHashEntry *pUp = SyHashGet(&pSub->pBase->hAttr,
+					(const void *)SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName));
+				if( pUp && (((ph7_class_attr *)pUp->pUserData)->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0
+				 && ((ph7_class_attr *)pUp->pUserData)->iProtection != PH7_CLASS_PROT_PRIVATE ){
+					continue;
+				}
+			}
+			if( OoCheckPropRedeclare(&(*pGen),pSub,pIface,pAttr,pChild) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+		for( n = 0 ; n < SySetUsed(&pIface->aInterface) ; n++ ){
+			if( OoCheckIfacePropsOf(&(*pGen),pSub,apParent[n],iDepth+1) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+		pIface = pIface->pBase;
+		iDepth++;
+	}
+	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 PH7_ClassCheckInterfaceProps(ph7_gen_state *pGen,ph7_class *pSub)
+{
+	ph7_class *pClass;
+	/* The class's own interfaces, then every one its ancestors implement: a
+	 * property the parent lacks still answers an interface the parent took. */
+	for( pClass = pSub ; pClass ; pClass = pClass->pBase ){
+		ph7_class **apIface = (ph7_class **)SySetBasePtr(&pClass->aInterface);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pClass->aInterface) ; n++ ){
+			if( OoCheckIfacePropsOf(&(*pGen),pSub,apIface[n],0) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
 	}
 	return SXRET_OK;
 }

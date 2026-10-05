@@ -5966,6 +5966,14 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				return SXERR_ABORT;
 			}
 		}
+		/* ...and every interface property against what the class holds by now */
+		if( rc == SXRET_OK && PH7_ClassCheckInterfaceProps(&(*pGen),pClass) == SXERR_ABORT ){
+			SySetRelease(&aUseEntries);
+			SySetRelease(&aInterfaces);
+			SySetRelease(&aOvMeth);
+			SySetRelease(&aOvProp);
+			return SXERR_ABORT;
+		}
 		/* Check for unimplemented abstract methods in concrete classes */
 		if( rc == SXRET_OK ){
 			sxi32 rcCheck = GenStateCheckAbstractMethods(&(*pGen),pClass);
