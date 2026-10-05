@@ -155,6 +155,18 @@ struct VmCallSite
 	sxu8 bEngine;        /* the bEngineCallee the answer was resolved under */
 	sxu8 bDead;          /* 1 = this site has seen more than one name; never cache it */
 };
+/* One declaration a compile in flight has installed (ph7_vm::aUnitDecl). php compiles a
+ * unit whole before it binds anything, so an eval() or include that fails to PARSE
+ * declares none of the functions, classes, interfaces or traits written in it -- where
+ * PHL hoists each one as its declaration compiles, and the ones above the error stayed
+ * callable (and made the next correct declaration of the name a redeclaration fatal). */
+typedef struct VmUnitDecl VmUnitDecl;
+struct VmUnitDecl
+{
+	void *pDecl;   /* the ph7_vm_func or ph7_class installed */
+	SyString sName;/* the name it was installed under */
+	sxu8 bClass;   /* 1 = pDecl is a ph7_class in hClass, 0 = a ph7_vm_func in hFunction */
+};
 /* The pending offset of a `$s[k] ??= v`, owned by its MEMOBJ_AUX_COALSTROFF peek result.
  * Carries its own allocator so PH7_MemObjRelease can free it without a VM pointer, exactly
  * like VmDeferredPath. */
@@ -4740,6 +4752,11 @@ struct ph7_vm
 	                            * the function-table entry its callee name resolved to. Indexed
 	                            * by VmInstr.nSite - 1, and claimed only by a site that actually
 	                            * executes. */
+	SySet aUnitDecl;           /* VmUnitDecl -- what the eval()/include compiles in flight have
+	                            * installed, so a unit that fails to compile can take its own
+	                            * declarations back out (VmEvalChunk). Logged only while
+	                            * bUnitDecl is set: never the main script, never at run time. */
+	int bUnitDecl;             /* 1 while VmEvalChunk is compiling a unit */
 	SyHash hCallName;          /* The callee names aCallSite records point at, interned. 43,375
 	                            * call sites execute on the ecosystem gate's phpcs step and they
 	                            * spell only a few thousand distinct names between them, so a
@@ -6084,6 +6101,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(ph7_vm *pVm,const SyString *pName
 PH7_PRIVATE sxi32 PH7_NewForeignFunction(ph7_vm *pVm,const SyString *pName,ProchHostFunction xFunc,
 	void *pUserData,ph7_user_func **ppOut);
 PH7_PRIVATE sxi32 PH7_VmInstallClass(ph7_vm *pVm,ph7_class *pClass);
+PH7_PRIVATE void PH7_VmUnitDeclEnd(ph7_vm *pVm,sxu32 nMark,int bFailed);
 PH7_PRIVATE sxi32 PH7_VmBlobConsumer(const void *pSrc,unsigned int nLen,void *pUserData);
 PH7_PRIVATE ph7_value * PH7_ReserveMemObj(ph7_vm *pVm);
 PH7_PRIVATE ph7_value * PH7_ReserveConstObj(ph7_vm *pVm,sxu32 *pIndex);

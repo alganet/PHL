@@ -113,6 +113,8 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	void *pErrData = 0;
 	ph7_gen_state sSavedGen;
 	int bNested;
+	int bSavedUnitDecl = pVm->bUnitDecl;
+	sxu32 nUnitDeclMark = SySetUsed(&pVm->aUnitDecl);
 	sxi32 rcThrow = SXRET_OK; /* a ParseError raised for a failed compile, or a throw the
 	                           * evaluated chunk raised — either way the caller must unwind */
 	/* Initialize bytecode container */
@@ -142,8 +144,13 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	/* Swap bytecode container */
 	pByteCode = pVm->pByteContainer;
 	pVm->pByteContainer = &aByteCode;
-	/* Compile the chunk */
+	/* Compile the chunk, logging what it declares. The log is OFF while the chunk
+	 * runs: what its statements declare at run time is theirs to keep, even when an
+	 * outer unit this one was autoloaded from goes on to fail. */
+	pVm->bUnitDecl = 1;
 	PH7_CompileScript(pVm,pChunk,iFlags);
+	pVm->bUnitDecl = 0;
+	PH7_VmUnitDeclEnd(pVm,nUnitDeclMark,pVm->sCodeGen.nErr > 0);
 	/* Record THIS unit's error count where the nested state restore below cannot
 	 * wipe it — VmExecDeferredClass reads it to detect a failed re-compile. */
 	pVm->nLastEvalErr = pVm->sCodeGen.nErr;
@@ -273,6 +280,7 @@ Cleanup:
 	if( bNested ){
 		PH7_CompilerRestoreState(pVm,&sSavedGen);
 	}
+	pVm->bUnitDecl = bSavedUnitDecl;
 	/* A ParseError raised above must reach the caller so the VM unwinds the rest
 	 * of the statement; returning OK left `eval('bad'); echo 'x';` running the
 	 * echo even though php had already thrown. */

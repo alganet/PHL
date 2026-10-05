@@ -881,6 +881,82 @@ PH7_PRIVATE void PH7_VmCallSiteReleaseChunk(ph7_vm *pVm,SySet *pByteCode)
  * For functions (unlike classes), PHP falls back to global if not found in current NS.
  */
 /*
+ * Record one declaration the unit being compiled installed (see VmUnitDecl).
+ */
+static void VmUnitDeclLog(ph7_vm *pVm,void *pDecl,const SyString *pName,int bClass)
+{
+	VmUnitDecl sDecl;
+	sDecl.pDecl = pDecl;
+	sDecl.sName = *pName;
+	sDecl.bClass = (sxu8)bClass;
+	SySetPut(&pVm->aUnitDecl,(const void *)&sDecl);
+}
+/*
+ * Take one declaration back out of its table: the name answers whatever it answered
+ * before the install, or nothing.
+ */
+static void VmUnitDeclUnlink(ph7_vm *pVm,const VmUnitDecl *pDecl)
+{
+	SyHash *pTable = pDecl->bClass ? &pVm->hClass : &pVm->hFunction;
+	SyHashEntry *pEntry = SyHashGet(pTable,(const void *)pDecl->sName.zString,pDecl->sName.nByte);
+	if( pEntry == 0 ){
+		return;
+	}
+	if( pDecl->bClass ){
+		ph7_class *pClass = (ph7_class *)pDecl->pDecl;
+		ph7_class **ppLink = (ph7_class **)&pEntry->pUserData;
+		while( *ppLink && *ppLink != pClass ){
+			ppLink = &(*ppLink)->pNextName;
+		}
+		if( *ppLink == 0 ){
+			return;
+		}
+		*ppLink = pClass->pNextName;
+		pClass->pNextName = 0;
+		if( pClass->pBase ){
+			/* ...and out of its parent's subclass table, which is keyed by NAME: a
+			 * later, unrelated class spelled the same would answer is_subclass_of(). */
+			SyHashEntry *pSub = SyHashGet(&pClass->pBase->hDerived,
+				(const void *)SyStringData(&pClass->sName),SyStringLength(&pClass->sName));
+			if( pSub && pSub->pUserData == (void *)pClass ){
+				SyHashDeleteEntry2(pSub);
+			}
+		}
+	}else{
+		ph7_vm_func *pFunc = (ph7_vm_func *)pDecl->pDecl;
+		ph7_vm_func **ppLink = (ph7_vm_func **)&pEntry->pUserData;
+		while( *ppLink && *ppLink != pFunc ){
+			ppLink = &(*ppLink)->pNextName;
+		}
+		if( *ppLink == 0 ){
+			return;
+		}
+		*ppLink = pFunc->pNextName;
+		pFunc->pNextName = 0;
+	}
+	if( pEntry->pUserData == 0 ){
+		SyHashDeleteEntry2(pEntry);
+	}
+}
+/*
+ * The unit VmEvalChunk compiled from aUnitDecl[nMark] on is finished: a failed one
+ * takes everything it installed back out, newest first; either way the log drops it.
+ */
+PH7_PRIVATE void PH7_VmUnitDeclEnd(ph7_vm *pVm,sxu32 nMark,int bFailed)
+{
+	VmUnitDecl *aDecl = (VmUnitDecl *)SySetBasePtr(&pVm->aUnitDecl);
+	sxu32 n = SySetUsed(&pVm->aUnitDecl);
+	if( bFailed && n > nMark ){
+		while( n > nMark ){
+			n--;
+			VmUnitDeclUnlink(pVm,&aDecl[n]);
+		}
+		/* A call site may hold the entry just deleted. */
+		pVm->nCallableGen++;
+	}
+	SySetTruncate(&pVm->aUnitDecl,nMark);
+}
+/*
  * Install a user defined function in the corresponding VM container.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(
@@ -903,8 +979,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(
 			/* Link */
 			pFunc->pNextName = pLink;
 			pEntry->pUserData = pFunc;
+			if( pVm->bUnitDecl ){
+				VmUnitDeclLog(pVm,(void *)pFunc,pName,0);
+			}
 		}
 		return SXRET_OK;
+	}
+	if( pVm->bUnitDecl ){
+		VmUnitDeclLog(pVm,(void *)pFunc,pName,0);
 	}
 	/* First time seen */
 	pFunc->pNextName = 0;
@@ -933,6 +1015,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallClass(
 		/* A deferred declaration compiled only for its refusals: it, and any
 		 * anonymous class in its methods, is declared when the real compile runs. */
 		return SXRET_OK;
+	}
+	if( pVm->bUnitDecl ){
+		VmUnitDeclLog(pVm,(void *)pClass,pName,1);
 	}
 	/* Check for duplicates */
 	pEntry = SyHashGet(&pVm->hClass,(const void *)pName->zString,pName->nByte);
@@ -3140,6 +3225,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hPDO,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aCallSite,&pVm->sAllocator,sizeof(VmCallSite));
 	SyHashInit(&pVm->hCallName,&pVm->sAllocator,0,0);
+	SySetInit(&pVm->aUnitDecl,&pVm->sAllocator,sizeof(VmUnitDecl));
+	pVm->bUnitDecl = 0;
 	pVm->nFreeCallSite = 0;
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));
