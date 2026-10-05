@@ -4551,10 +4551,10 @@ static sxi32 GenStateScanDeferDeps(ph7_gen_state *pGen,int bAnon,int iSelfKind,
 			p++;
 		}
 	}
-	/* Filter: keep only the names that do NOT resolve. For a declaration that
-	 * will be compiled where it stands, the lookup fires the autoloader exactly
-	 * where the replaced compile would. For a CONDITIONAL one it must not: the
-	 * declaration is deferred whatever this answers, and php never resolves a
+	/* Filter: keep only the names that do NOT resolve. Only an anonymous class,
+	 * compiled where it runs, may fire the autoloader here; a named declaration
+	 * asks only what is declared already. For a CONDITIONAL one that matters most:
+	 * the declaration is deferred whatever this answers, and php never resolves a
 	 * parent it has not reached. `if (false) { class C extends B {} }` is the
 	 * shape that shows it -- nikic/php-parser's own class aliases are written
 	 * that way, with a `require` of the parent's file BEFORE the dead block, so
@@ -4835,7 +4835,13 @@ static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKin
 	}
 	SySetInit(&aMissing,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
 	SyBlobInit(&sSelfFqn,&pGen->pVm->sAllocator);
-	if( GenStateScanDeferDeps(pGen,0,iSelfKind,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,bCond) == SXRET_OK
+	/* A named declaration never asks the autoloader while it COMPILES, conditional
+	 * or not: php's early binding takes a parent only if it is already declared,
+	 * and leaves anything else to be bound when the statement runs. Asking here
+	 * ran the autoloader ahead of the statements written above the declaration,
+	 * for a dependency declared further down the same file, and for a unit
+	 * that then failed to parse and so never ran at all. */
+	if( GenStateScanDeferDeps(pGen,0,iSelfKind,&aMissing,&pBody,&pBodyEnd,&sSelfFqn,1) == SXRET_OK
 	 && (SySetUsed(&aMissing) > 0 || bCond) ){
 		/* Two reasons to compile this declaration where it RUNS rather than here.
 		 * The first is a missing dependency (the autoloader that resolves it has
