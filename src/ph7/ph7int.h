@@ -6293,6 +6293,7 @@ PH7_PRIVATE ph7_class * PH7_VmTraitUsingClass(ph7_vm *pVm,ph7_class *pTrait,ph7_
 PH7_PRIVATE ph7_class * PH7_VmMemberOwnerClass(ph7_class *pDeclClass,ph7_class *pFrom);
 PH7_PRIVATE int PH7_VmEvalConstExpr(ph7_vm *pVm,SySet *pByteCode,ph7_value *pOut);
 PH7_PRIVATE void PH7_ClassRenderDecl(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func *pFunc,SyBlob *pOut);
+PH7_PRIVATE int PH7_ClassFoldDefault(ph7_vm *pVm,SySet *pByteCode,ph7_value *pOut);
 PH7_PRIVATE sxi32 PH7_ClassCheckOverrideCompat(ph7_gen_state *pGen,ph7_class *pBase,ph7_class *pSub,
 	ph7_class_method *pParent,ph7_class_method *pChild,int bCtorExempt);
 PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm);
@@ -8030,6 +8031,7 @@ PH7_PRIVATE ph7_class * VmCurrentSelf(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue,int bLazy);
 PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
 PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
+PH7_PRIVATE int VmTypedDefaultRefusal(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue,SyBlob *pMsg);
 PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_vm_func_arg *pFormal,
 	sxu32 nArgPos,ph7_value *pVal,int bStrict,ph7_class *pSelfHint);
 PH7_PRIVATE int VmClassStaticDeferPending(ph7_class *pClass);

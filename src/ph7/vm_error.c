@@ -3484,6 +3484,48 @@ PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 	}
 	return SXERR_INVALID;
 }
+/*
+ * php's COMPILE-time refusal of a typed property default (zend_compile_prop_decl):
+ * a default its compiler FOLDED to a value is held to the same rule as above then
+ * and there, so `public int $x = "a";` stops the file before a line of it runs,
+ * whether or not the class is ever instantiated. What did not fold (a constant
+ * name, a class constant) is left to the instantiation-time TypeError.
+ *
+ * Two sentences, and php's own value naming: a bool is `true`/`false` here, where
+ * the TypeError says `bool`. A null default php explains with the nullable spelling
+ * of the type (`?int`, `string|int|null`) -- except on a pure intersection, which
+ * has no such spelling and takes the ordinary sentence.
+ * Returns TRUE with the sentence appended to pMsg, or FALSE when the value fits.
+ */
+PH7_PRIVATE int VmTypedDefaultRefusal(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue,SyBlob *pMsg)
+{
+	char zType[192];
+	const char *zTypeText, *z;
+	int bUnion = 0, bInter = 0;
+	if( VmCheckTypedDefault(&(*pVm),pClass,pAttr,pValue) == SXRET_OK ){
+		return 0;
+	}
+	zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
+		VmHintScopeDeclared(pAttr->pDeclClass),zType,sizeof(zType));
+	for( z = zTypeText ; *z ; ++z ){
+		if( *z == '|' ){
+			bUnion = 1;
+		}else if( *z == '&' ){
+			bInter = 1;
+		}
+	}
+	if( (pValue->iFlags & MEMOBJ_NULL) && (bUnion || !bInter) ){
+		SyBlobFormat(pMsg,"Default value for property of type %s may not be null. "
+			"Use the nullable type %s%s%s to allow null default value",
+			zTypeText,bUnion ? "" : "?",zTypeText,bUnion ? "|null" : "");
+	}else{
+		const char *zGiven = (pValue->iFlags & MEMOBJ_BOOL)
+			? (pValue->x.iVal ? "true" : "false") : ph7_type_name(pValue);
+		SyBlobFormat(pMsg,"Cannot use %s as default value for property %z::$%z of type %s",
+			zGiven,&pClass->sDisp,&pAttr->sName,zTypeText);
+	}
+	return 1;
+}
 PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
 {
 	if( VmCheckTypedDefault(&(*pVm),pClass,pAttr,pValue) == SXRET_OK ){

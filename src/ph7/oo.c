@@ -637,6 +637,16 @@ static int OoDeclDefFoldable(SySet *pByteCode,sxu32 nLen)
 	}
 	return nLen > 0;
 }
+/*
+ * The value a compiled default FOLDS to, or FALSE where php's compiler would have
+ * kept it an expression (a constant name, a class constant, anything that throws
+ * or warns). *pOut is the caller's, initialized, and released by it.
+ */
+PH7_PRIVATE int PH7_ClassFoldDefault(ph7_vm *pVm,SySet *pByteCode,ph7_value *pOut)
+{
+	return OoDeclDefFoldable(pByteCode,OoDeclDefLength(pByteCode))
+		&& PH7_VmEvalConstExpr(pVm,pByteCode,pOut);
+}
 /* The literal a LOADC pushes, or 0 when the operand is not a string one. */
 static const SyString * OoDeclLiteral(ph7_vm *pVm,VmInstr *pIn,SyString *pOut)
 {

@@ -1264,6 +1264,7 @@ static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi3
 	SyString sTypeText;
 	SySet aUnionAlts;
 	sxi32 iTypeFlags = 0;
+	int bRealLit = 0;
 	SyStringInitFromBuf(&sTypeClass,0,0);
 	SyStringInitFromBuf(&sTypeText,0,0);
 	SySetInit(&aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
@@ -1466,6 +1467,7 @@ loop:
 			}
 			pGen->pEnd = pScan;
 		}
+		bRealLit = GenStateConstInitIsRealLiteral(pGen);
 		/* Swap bytecode container */
 		pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 		PH7_VmSetByteCodeContainer(pGen->pVm,&pAttr->aByteCode);
@@ -1491,6 +1493,34 @@ loop:
 	if( rc != SXRET_OK ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
+	}
+	if( (iTypeFlags & PH7_CLASS_ATTR_TYPED) && SySetUsed(&pAttr->aByteCode) > 0 ){
+		/* php holds a default its compiler FOLDED to the declared type at compile
+		 * time, before the class is ever instantiated. A whole-valued real literal
+		 * (`= 1.0`) folds dual-flagged here; it is a float to php, so it is judged
+		 * as one -- the literal shape is the only signal that separates it from a
+		 * computed `4/2`, which php folds to an int. */
+		ph7_value sVal;
+		PH7_MemObjInit(pGen->pVm,&sVal);
+		if( PH7_ClassFoldDefault(pGen->pVm,&pAttr->aByteCode,&sVal) ){
+			SyBlob sMsg;
+			if( bRealLit && (sVal.iFlags & MEMOBJ_REAL) ){
+				sVal.iFlags &= ~MEMOBJ_INT;
+			}
+			SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
+			if( VmTypedDefaultRefusal(pGen->pVm,pClass,pAttr,&sVal,&sMsg) ){
+				SyBlobNullAppend(&sMsg);
+				PH7_MemObjRelease(&sVal);
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"%s",(const char *)SyBlobData(&sMsg));
+				SyBlobRelease(&sMsg);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto Synchronize;
+			}
+			SyBlobRelease(&sMsg);
+		}
+		PH7_MemObjRelease(&sVal);
 	}
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB /*'{'*/) ){
 		/* PHP 8.4 property hooks: `public [T] $x [= default] { get ...; set ...; }`.
