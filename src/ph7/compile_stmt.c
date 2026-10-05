@@ -838,6 +838,18 @@ Consume:
 	return SXRET_OK;
 }
 /*
+ * A `{` the input never closed. php's scanner says so where the input ENDS --
+ * past a trailing newline -- and names the line the brace was opened on only
+ * when that is another line.
+ */
+static sxi32 GenStateUnclosedBrace(ph7_gen_state *pGen,sxu32 nOpenLine)
+{
+	if( pGen->nChunkEofLine > nOpenLine ){
+		return PH7_GenCompileError(&(*pGen),E_PARSE,pGen->nChunkEofLine,"Unclosed '{' on line %u",nOpenLine);
+	}
+	return PH7_GenCompileError(&(*pGen),E_PARSE,nOpenLine,"Unclosed '{'");
+}
+/*
  * Compile a PHP block.
  * A block is simply one or more PHP statements and expressions to compile
  * optionally delimited by braces {}.
@@ -867,9 +879,8 @@ PH7_PRIVATE sxi32 PH7_CompileBlock(
 			 	   return SXERR_ABORT;
 				}
 				if( rc == SXERR_EOF ){
-					/* No more token to process: the block was never closed. php reports
-					 * the line the '{' was opened on, not where the input ran out. */
-					PH7_GenCompileError(&(*pGen),E_PARSE,nLine,"Unclosed '{' on line %u",nLine);
+					/* No more token to process: the block was never closed. */
+					GenStateUnclosedBrace(&(*pGen),nLine);
 					break;
 				}
 			}
@@ -4520,7 +4531,7 @@ PH7_PRIVATE sxi32 PH7_CompileTry(ph7_gen_state *pGen)
  * Compile a switch block.
  *  (See block-comment below for more information)
  */
-static sxi32 GenStateCompileSwitchBlock(ph7_gen_state *pGen,sxu32 iTokenDelim,sxu32 *pBlockStart)
+static sxi32 GenStateCompileSwitchBlock(ph7_gen_state *pGen,sxu32 *pBlockStart)
 {
 	sxi32 rc = SXRET_OK;
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_COLON/*':'*/)) == 0 ){
@@ -4538,42 +4549,30 @@ static sxi32 GenStateCompileSwitchBlock(ph7_gen_state *pGen,sxu32 iTokenDelim,sx
 	 * or the '}' token */
 	for(;;){
 		if( pGen->pIn >= pGen->pEnd ){
-			/* No more input to process */
-			break;
+			/* A `?>` ended the chunk -- php reads it as a `;` -- and the case body
+			 * goes on in the next one, the text between them included. At the end
+			 * of the input the caller reports the switch left open. */
+			rc = GenStateNextChunk(&(*pGen));
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			if( rc == SXERR_EOF ){
+				break;
+			}
+			continue;
 		}
 		rc = SXRET_OK;
 		if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
 			if( pGen->pIn->nType & PH7_TK_CCB /*'}' */ ){
-				if( iTokenDelim != PH7_TK_CCB ){
-					/* Unexpected token */
-					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,"Unexpected token '%z'",
-						&pGen->pIn->sData);
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					/* FALL THROUGH */
-				}
-				rc = SXERR_EOF;
+				/* The end of the case list either way: the caller judges whether it
+				 * is the right one. */
 				break;
 			}
 		}else{
 			sxi32 nKwrd;
 			/* Extract the keyword */
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-			if( nKwrd == PH7_TKWRD_CASE || nKwrd == PH7_TKWRD_DEFAULT ){
-				break;
-			}
-			if( nKwrd == PH7_TKWRD_ENDSWITCH /* endswitch; */){
-				if( iTokenDelim != PH7_TK_KEYWORD ){
-					/* Unexpected token */
-					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,"Unexpected token '%z'",
-						&pGen->pIn->sData);
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					/* FALL THROUGH */
-				}
-				/* Block compiled */
+			if( nKwrd == PH7_TKWRD_CASE || nKwrd == PH7_TKWRD_DEFAULT || nKwrd == PH7_TKWRD_ENDSWITCH ){
 				break;
 			}
 		}
@@ -4583,7 +4582,7 @@ static sxi32 GenStateCompileSwitchBlock(ph7_gen_state *pGen,sxu32 iTokenDelim,sx
 			return SXERR_ABORT;
 		}
 	}
-	return rc;
+	return SXRET_OK;
 }
 /*
  * Compile a case eXpression.
@@ -4683,13 +4682,16 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	ph7_switch *pSwitch;
 	sxu32 nToken;
 	sxu32 nLine;
+	sxu32 nOpenLine;
+	int bHead;  /* No case seen yet: php's case list may open with ONE `;` */
+	int bSemi;  /* ...and this one has */
 	sxi32 rc;
 	nLine = pGen->pIn->nLine;
 	/* Jump the 'switch' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected '(' after 'switch' keyword");
+		/* php's parse error names the token it found instead */
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -4707,7 +4709,13 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	}
 	/* Delimit the condition */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
-	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
+	if( pGen->pIn == pEnd && pEnd < pGen->pEnd ){
+		/* `switch ()`: php names the ')' */
+		rc = PH7_GenSyntaxError(&(*pGen),pEnd,0);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}else if( pEnd >= pGen->pEnd ){
 		/* Empty expression */
 		rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"Expected expression after 'switch' keyword");
 		if( rc == SXERR_ABORT ){
@@ -4725,29 +4733,23 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}
 	/* Update token stream */
-	while(pGen->pIn < pEnd ){
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
-			"Switch: Unexpected token '%z'",&pGen->pIn->sData);
+	if( pGen->pIn < pEnd ){
+		/* A token the condition left over: php's parse error names it */
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
-		pGen->pIn++;
 	}
 	pGen->pIn  = &pEnd[1];
 	pGen->pEnd = pTmp;
-	if( pGen->pIn >= pGen->pEnd || &pGen->pIn[1] >= pGen->pEnd ||
-		(pGen->pIn->nType & (PH7_TK_OCB/*'{'*/|PH7_TK_COLON/*:*/)) == 0 ){
-			pTmp = pGen->pIn;
-			if( pTmp >= pGen->pEnd ){
-				pTmp--;
-			}
-			/* Unexpected token */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pTmp->nLine,"Switch: Unexpected token '%z'",&pTmp->sData);
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}
-			goto Synchronize;
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_OCB/*'{'*/|PH7_TK_COLON/*:*/)) == 0 ){
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\":\" or \"{\"");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
 	}
+	nOpenLine = pGen->pIn->nLine;
 	/* Set the delimiter token */
 	if( pGen->pIn->nType & PH7_TK_COLON ){
 		nToken = PH7_TK_KEYWORD;
@@ -4772,40 +4774,107 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	/* Emit the switch instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_SWITCH,0,0,pSwitch,0);
 	/* Compile case blocks */
+	bHead = 1;
+	bSemi = 0;
 	for(;;){
 		sxu32 nKwrd;
 		if( pGen->pIn >= pGen->pEnd ){
-			/* No more input to process */
-			break;
-		}
-		if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
-			if( nToken != PH7_TK_CCB || (pGen->pIn->nType & PH7_TK_CCB /*}*/) == 0 ){
-				/* Unexpected token */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Switch: Unexpected token '%z'",
-					&pGen->pIn->sData);
+			if( bHead ){
+				/* A `?>` before the first case is php's `;` there -- the one its
+				 * grammar takes -- and any text after it is a token it has no
+				 * place for. */
+				if( bSemi ){
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pEnd[-1].nLine,
+						"syntax error, unexpected token \";\", expecting %s",pGen->pCurrent->zInnerTail);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					break;
+				}
+				if( pGen->pRawIn < pGen->pRawEnd && pGen->pRawIn->nType != PH7_TOKEN_PHP
+				 && pGen->pRawIn->sData.nByte > 0 ){
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pRawIn->nLine,
+						"syntax error, unexpected T_INLINE_HTML \"%z\", expecting %s",
+						&pGen->pRawIn->sData,pGen->pCurrent->zInnerTail);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					break;
+				}
+				bSemi = 1;
+			}
+			/* The case list goes on in the next PHP chunk */
+			rc = GenStateNextChunk(&(*pGen));
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			if( rc == SXERR_EOF ){
+				/* The input ended inside the switch */
+				if( nToken == PH7_TK_CCB ){
+					rc = GenStateUnclosedBrace(&(*pGen),nOpenLine);
+				}else{
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,
+						pGen->nChunkEofLine > nOpenLine ? pGen->nChunkEofLine : nOpenLine,
+						"syntax error, unexpected end of file, expecting %s",pGen->pCurrent->zInnerTail);
+				}
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
-				/* FALL THROUGH */
+				break;
 			}
-			/* Block compiled */
+			continue;
+		}
+		if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
+			if( bHead && !bSemi && (pGen->pIn->nType & PH7_TK_SEMI) ){
+				bSemi = 1;
+				pGen->pIn++;
+				continue;
+			}
+			if( (pGen->pIn->nType & PH7_TK_CCB /*}*/) && nToken == PH7_TK_CCB ){
+				/* Block compiled */
+				break;
+			}
+			if( pGen->pIn->nType & PH7_TK_CCB ){
+				/* A `}` in an endswitch list. php's scanner refuses it as unmatched
+				 * when no `{` is open around the switch; otherwise its parser
+				 * wanted the list to go on. */
+				SyToken *pTok = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+				sxi32 nOpen = 0;
+				for( ; pTok < pGen->pIn ; pTok++ ){
+					if( pTok->nType & PH7_TK_OCB ){
+						nOpen++;
+					}else if( pTok->nType & PH7_TK_CCB ){
+						nOpen--;
+					}
+				}
+				if( nOpen <= 0 ){
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,"Unmatched '}'");
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					break;
+				}
+			}
+			/* php's parse error, naming what the case list wanted */
+			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,pGen->pCurrent->zInnerTail);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
 			break;
 		}
 		/* Extract the keyword */
 		nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 		if( nKwrd == PH7_TKWRD_ENDSWITCH /* endswitch; */){
 			if( nToken != PH7_TK_KEYWORD ){
-				/* Unexpected token */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Switch: Unexpected token '%z'",
-					&pGen->pIn->sData);
+				rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,pGen->pCurrent->zInnerTail);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
-				/* FALL THROUGH */
 			}
 			/* Block compiled */
 			break;
 		}
+		bHead = 0;
 		if( nKwrd == PH7_TKWRD_DEFAULT ){
 			/*
 			 * Accroding to the PHP language reference manual
@@ -4813,19 +4882,18 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 			 *  that wasn't matched by the other cases.
 			 */
 			if( pSwitch->nDefault > 0 ){
-				/* Default case already compiled */
-				rc = PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,"Switch: 'default' case already compiled");
+				/* php refuses a second default when it compiles the switch */
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+					"Switch statements may only contain one default clause");
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
 			}
 			pGen->pIn++; /* Jump the 'default' keyword */
 			/* Compile the default block */
-			rc = GenStateCompileSwitchBlock(pGen,nToken,&pSwitch->nDefault);
+			rc = GenStateCompileSwitchBlock(pGen,&pSwitch->nDefault);
 			if( rc == SXERR_ABORT){
 				return SXERR_ABORT;
-			}else if( rc == SXERR_EOF ){
-				break;
 			}
 		}else if( nKwrd == PH7_TKWRD_CASE ){
 			ph7_case_expr sCase;
@@ -4839,18 +4907,15 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 				return SXERR_ABORT;
 			}
 			/* Compile the case block */
-			rc = GenStateCompileSwitchBlock(pGen,nToken,&sCase.nStart);
+			rc = GenStateCompileSwitchBlock(pGen,&sCase.nStart);
 			/* Insert in the switch container */
 			SySetPut(&pSwitch->aCaseExpr,(const void *)&sCase);
 			if( rc == SXERR_ABORT){
 				return SXERR_ABORT;
-			}else if( rc == SXERR_EOF ){
-				break;
 			}
 		}else{
-			/* Unexpected token */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Switch: Unexpected token '%z'",
-				&pGen->pIn->sData);
+			/* php's parse error, naming what the case list wanted */
+			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,pGen->pCurrent->zInnerTail);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
