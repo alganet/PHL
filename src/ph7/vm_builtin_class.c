@@ -1235,6 +1235,39 @@ normalize_trait:
 	return pScope;
 }
 /*
+ * php's scope of a PLAIN closure (its func->common.scope), which is what php qualifies it
+ * with wherever it names it -- the `class` of a backtrace frame, and the `C::` in front of
+ * `{closure:…}` in an argument diagnostic. In php's order: an explicit rebind's scope
+ * (pBound); else the class the closure was WRITTEN in, the using class for a trait's
+ * (pFrom names the class the call went through); else, for a closure carrying a `$this`,
+ * `Closure` itself -- php gives a scopeless closure that dummy scope the moment an object
+ * is bound to it. 0 for a closure with neither.
+ *
+ * `bindTo($o, null)` on a closure written in a class is php's `Closure` too, and PHL cannot
+ * tell it from a keep-scope rebind (both leave $__scope empty), so that one answers the
+ * written class.
+ */
+PH7_PRIVATE ph7_class * PH7_VmClosureFuncScope(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pBound,
+	int bThis,ph7_class *pFrom)
+{
+	ph7_class *pScope = pBound;
+	if( pScope == 0 && pFunc && (pFunc->iFlags & VM_FUNC_CLOSURE) && pFunc->pUserData ){
+		pScope = (ph7_class *)pFunc->pUserData;
+		if( (pScope->iFlags & PH7_CLASS_TRAIT) != 0 ){
+			if( pFrom == 0 ){
+				pFrom = (ph7_class *)pFunc->pLsbClass;
+			}
+			if( pFrom ){
+				pScope = PH7_VmTraitUsingClass(&(*pVm),pScope,pFrom);
+			}
+		}
+	}
+	if( pScope == 0 && bThis ){
+		pScope = pVm->pClosureClass;
+	}
+	return pScope;
+}
+/*
  * The DECLARING-side twin of PH7_VmCallerScope: the class php NAMES as a method's
  * owner. php composes a trait INTO the class that uses it — the composed method's scope
  * IS that class — so `trait T { private function p(){} } class C { use T; }` refuses with

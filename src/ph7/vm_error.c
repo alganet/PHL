@@ -5849,7 +5849,23 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			SyString *pClsName = 0;
 			const char *zType = "->";
 			int bStatic = 0;
-			if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+			ph7_class_instance *pRecv = pFrame->pThis;
+			if( (pFunc->iFlags & VM_FUNC_CLOSURE) && (pFunc->iFlags & VM_FUNC_CLASS_METHOD) == 0 ){
+				/* A closure frame is its SCOPE's: `C->{closure:C::m():5}()` for one made in
+				 * an instance method, `C::` for a static one, and nothing for one written at
+				 * the top level and never bound. The receiver a closure made in a method
+				 * carries is a frame VARIABLE here, not pFrame->pThis, which only a rebind
+				 * sets; php's separator and `object` follow that receiver. */
+				ph7_class *pScope;
+				pRecv = PH7_VmFrameThis(&(*pVm),pFrame);
+				pScope = PH7_VmClosureFuncScope(&(*pVm),pFunc,pFrame->pBoundScope,pRecv != 0,
+					pFrame->pSelfClass);
+				if( pScope ){
+					pClsName = &pScope->sName;
+					bStatic = pRecv == 0;
+					zType = bStatic ? "::" : "->";
+				}
+			}else if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
 				/* php's separator says what the CALLEE is, not how the caller
 				 * happened to reach it: a static method is `::` even when the
 				 * calling frame has a $this bound (`self::s()` from inside an
@@ -5879,12 +5895,12 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 				ph7_value_string(pValue,zType,(int)SyStrlen(zType));
 				ph7_array_add_strkey_elem(pEntry,"type",pValue);
 				ph7_value_reset_string_cursor(pValue);
-				if( (iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/) && pFrame->pThis
+				if( (iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/) && pRecv
 				 && !bStatic ){
 					ph7_value *pObjVal = ph7_new_scalar(&(*pVm));
 					if( pObjVal ){
-						pFrame->pThis->iRef++;
-						pObjVal->x.pOther = pFrame->pThis;
+						pRecv->iRef++;
+						pObjVal->x.pOther = pRecv;
 						MemObjSetType(pObjVal,MEMOBJ_OBJ);
 						ph7_array_add_strkey_elem(pEntry,"object",pObjVal);
 						ph7_release_value(&(*pVm),pObjVal);

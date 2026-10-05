@@ -7772,6 +7772,26 @@ CalleeByName:
 				pObj->x.pOther = pThis;
 				MemObjSetType(pObj,MEMOBJ_OBJ);
 			}
+		}else if( (pVmFunc->iFlags & VM_FUNC_CLOSURE) && !bClosureThis ){
+			/* A closure made in a method runs on the receiver it captured, and php has it
+			 * from the start of the call: an argument refusal's trace names the frame
+			 * `C->{closure:…}()`. The rest of the captured environment is installed after
+			 * the arguments bind, below; `$this` alone comes first, where a method's does. */
+			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pVmFunc->aClosureEnv);
+			for( n = 0 ; n < SySetUsed(&pVmFunc->aClosureEnv) ; ++n ){
+				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
+				 && SyMemcmp(SyStringData(&aEnv[n].sName),"this",sizeof("this")-1) == 0 ){
+					if( (aEnv[n].iFlags & VM_FUNC_ARG_IGNORE) == 0
+					 || (aEnv[n].sValue.iFlags & MEMOBJ_NULL) == 0 ){
+						pObj = VmExtractMemObj(&(*pVm),&aEnv[n].sName,FALSE,TRUE);
+						if( pObj ){
+							PH7_MemObjRelease(pObj);
+							PH7_MemObjStore(&aEnv[n].sValue,pObj);
+						}
+					}
+					break;
+				}
+			}
 		}
 		if( SySetUsed(&pVmFunc->aStatic) > 0 ){
 			ph7_vm_func_static_var *pStatic,*aStatic;
@@ -8499,11 +8519,11 @@ CalleeByName:
 					/* Do not install null value */
 					continue;
 				}
-				if( bClosureThis && SyStringLength(&pEnv->sName) == sizeof("this")-1
+				if( SyStringLength(&pEnv->sName) == sizeof("this")-1
 				 && SyMemcmp(SyStringData(&pEnv->sName),"this",sizeof("this")-1) == 0 ){
-					/* The Closure instance carries an explicit bound $this
-					 * (bindTo/bind/call): it wins over the creation-time
-					 * captured $this, php-exact. */
+					/* Installed with the frame, above -- or, when the Closure instance
+					 * carries an explicit bound $this (bindTo/bind/call), that one wins
+					 * over the creation-time captured $this, php-exact. */
 					continue;
 				}
 				if( (pEnv->iFlags & VM_FUNC_ARG_BY_REF) && pEnv->nIdx != SXU32_HIGH ){

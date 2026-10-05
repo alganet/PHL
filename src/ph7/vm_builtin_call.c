@@ -798,11 +798,16 @@ PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pCla
 PH7_PRIVATE ph7_class_instance * PH7_VmCallerThis(ph7_vm *pVm)
 {
 	VmFrame *pFrame = pVm->pFrame;
-	ph7_class_instance *pThis = 0;
 	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
 		/* Skip the exception bookkeeping frames, like PH7_VmClassMemberAccess does */
 		pFrame = pFrame->pParent;
 	}
+	return PH7_VmFrameThis(&(*pVm),pFrame);
+}
+/* The `$this` one activation runs on, borrowed, or 0. */
+PH7_PRIVATE ph7_class_instance * PH7_VmFrameThis(ph7_vm *pVm,VmFrame *pFrame)
+{
+	ph7_class_instance *pThis;
 	if( pFrame == 0 ){
 		return 0;
 	}
@@ -2318,12 +2323,16 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 				if( pEntry == 0 ){
 					return 0;
 				}
-				if( pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){
-					*ppOwner = PH7_VmExtractClassFromValue(&(*pVm),pScope);
-				}else{
-					*ppOwner = pClass;
+				{
+					ph7_vm_func *pFunc = (ph7_vm_func *)pEntry->pUserData;
+					ph7_class *pRebound = 0;
+					int bThis = pBound && (pBound->iFlags & MEMOBJ_OBJ) && pBound->x.pOther;
+					if( pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){
+						pRebound = PH7_VmExtractClassFromValue(&(*pVm),pScope);
+					}
+					*ppOwner = PH7_VmClosureFuncScope(&(*pVm),pFunc,pRebound,bThis,0);
+					return pFunc;
 				}
-				return (ph7_vm_func *)pEntry->pUserData;
 			}
 			if( !pVm->bClosureScreened && !PH7_VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
 				return 0; /* routes to __call: not this method's signature */

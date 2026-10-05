@@ -6064,6 +6064,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(ph7_vm *pVm,ph7_value *pFunc,int nArg,p
 PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(ph7_vm *pVm,ph7_value *pFunc,int nArg,ph7_value **apArg,ph7_value *pResult,VmCallArgMap *pArgMap);
 PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE ph7_class_instance * PH7_VmCallerThis(ph7_vm *pVm);
+PH7_PRIVATE ph7_class_instance * PH7_VmFrameThis(ph7_vm *pVm,VmFrame *pFrame);
+PH7_PRIVATE ph7_class * PH7_VmClosureFuncScope(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pBound,
+	int bThis,ph7_class *pFrom);
 PH7_PRIVATE ph7_class_instance * PH7_VmStaticFallbackThis(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_class *pLsb,
 	ph7_class_instance *pThis,
