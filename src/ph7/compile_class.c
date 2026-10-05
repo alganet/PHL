@@ -1507,9 +1507,11 @@ loop:
 		PH7_MemObjInit(pGen->pVm,&sVal);
 		if( PH7_ClassFoldDefault(pGen->pVm,&pAttr->aByteCode,&sVal) ){
 			SyBlob sMsg;
+			int bWasInt;
 			if( bRealLit && (sVal.iFlags & MEMOBJ_REAL) ){
 				sVal.iFlags &= ~MEMOBJ_INT;
 			}
+			bWasInt = (sVal.iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) == MEMOBJ_INT;
 			SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
 			if( VmTypedDefaultRefusal(pGen->pVm,pClass,pAttr,&sVal,&sMsg) ){
 				SyBlobNullAppend(&sMsg);
@@ -1522,6 +1524,23 @@ loop:
 				goto Synchronize;
 			}
 			SyBlobRelease(&sMsg);
+			if( bWasInt && (sVal.iFlags & MEMOBJ_REAL) ){
+				/* The check let an int into a float (`float $x = 1`) and php
+				 * STORES that conversion, so every reader of the default --
+				 * reflection, get_class_vars(), the export -- sees float(1):
+				 * cast it ahead of the trailing DONE. */
+				VmInstr *pDone = (VmInstr *)SySetPeek(&pAttr->aByteCode);
+				if( pDone && pDone->iOp == PH7_OP_DONE ){
+					VmInstr sDone = *pDone;
+					pDone->iOp = PH7_OP_CVT_REAL;
+					pDone->iP1 = 0;
+					pDone->iP2 = 0;
+					pDone->p3 = 0;
+					pDone->nAux = 0;
+					pDone->nSite = 0;
+					SySetPut(&pAttr->aByteCode,(const void *)&sDone);
+				}
+			}
 		}
 		PH7_MemObjRelease(&sVal);
 	}
