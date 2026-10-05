@@ -278,6 +278,12 @@ function http_test_proxy_main($port, $dir, $pem)
         if (strncasecmp($head, 'CONNECT deny.', 13) === 0) {
             fwrite($c, "HTTP/1.0 407 Proxy Authentication Required\r\n"
                 . "Proxy-Authenticate: Basic realm=\"p\"\r\n\r\n");
+            /* The client starts its handshake whatever this said, and a socket
+             * closed with that ClientHello still unread is RESET rather than
+             * ended -- which php reports as one more warning, `SSL: Connection
+             * reset by peer`, only when the record lands before the close. So
+             * the close waits for the record, and is always a plain end. */
+            http_test_proxy_read_record($c);
             fclose($c);
             continue;
         }
@@ -297,6 +303,26 @@ function http_test_proxy_main($port, $dir, $pem)
         fclose($c);
     }
     fclose($srv);
+}
+
+/** Read one TLS record off $c: a 5-byte header whose last two bytes are the
+ *  length of the body behind it. Stops early on end of stream or timeout. */
+function http_test_proxy_read_record($c)
+{
+    $hdr = '';
+    while (strlen($hdr) < 5) {
+        $b = fread($c, 5 - strlen($hdr));
+        if ($b === false || $b === '') {
+            return;
+        }
+        $hdr .= $b;
+    }
+    for ($left = (ord($hdr[3]) << 8) | ord($hdr[4]); $left > 0; $left -= strlen($b)) {
+        $b = fread($c, $left);
+        if ($b === false || $b === '') {
+            return;
+        }
+    }
 }
 
 /** Log one request and answer it exactly as the plain listener would. */
