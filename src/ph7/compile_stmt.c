@@ -788,6 +788,7 @@ Consume:
 	}
 	if( pGen->pRawIn < pGen->pRawEnd ){
 		SySet *pTokenSet = pGen->pTokenSet;
+		PH7_GenCarryBraces(pGen);
 		/* Reset the token set (and its trivia sidecar) */
 		SySetReset(pTokenSet);
 		SySetReset(&pGen->aTrivia);

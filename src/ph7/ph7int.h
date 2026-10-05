@@ -1105,6 +1105,7 @@ struct GenBlock
  * This structure is used only during compile-time and have no meaning
  * during bytecode execution.
  */
+#define PHL_BRACE_CARRY 64
 struct ph7_gen_state
 {
 	ph7_vm *pVm;         /* VM that own this instance */
@@ -1263,6 +1264,11 @@ struct ph7_gen_state
 	sxi32 nBraceNet;         /* `{` minus `}` over every chunk of the unit tokenized so far.
 	                          * php's scanner refuses a `{` still open at the end of the file
 	                          * ahead of whatever statement its parser was inside. */
+	sxu32 aBraceCarry[PHL_BRACE_CARRY]; /* Lines of the `{` the unit's EARLIER chunks left open,
+	                          * innermost last -- the bottom of php's scanner stack under the
+	                          * chunk being compiled. Only a `{` outlives a `?>` in a program
+	                          * php accepts. Entries past the cap are counted, not kept. */
+	sxi32 nBraceCarry;
 	sxi8 bHalted;            /* 1 once `__halt_compiler();` has been compiled in this file:
 	                          * everything after it -- the rest of the chunk, every later chunk
 	                          * and every byte of inline text between them -- is DATA, and the
@@ -7475,6 +7481,8 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved);
 PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...);
 PH7_PRIVATE sxi32 PH7_GenSyntaxError(ph7_gen_state *pGen,SyToken *pTok,const char *zExpecting);
+PH7_PRIVATE sxi32 PH7_GenUnmatchedCloser(ph7_gen_state *pGen,SyToken *pTok);
+PH7_PRIVATE void PH7_GenCarryBraces(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 /* constant.c function prototypes */
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);

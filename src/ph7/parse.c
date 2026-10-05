@@ -467,7 +467,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			iParen++;
 		}else if( apNode[i]->pStart->nType & PH7_TK_RPAREN/*')*/){
 			if( iParen <= 0 ){
-				rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[i]->pStart->nLine,"Unmatched ')'");
+				rc = PH7_GenUnmatchedCloser(&(*pGen),apNode[i]->pStart);
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -478,7 +478,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			iSquare++;
 		}else if (apNode[i]->pStart->nType & PH7_TK_CSB /*']'*/){
 			if( iSquare <= 0 ){
-				rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[i]->pStart->nLine,"Unmatched ']'");
+				rc = PH7_GenUnmatchedCloser(&(*pGen),apNode[i]->pStart);
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -499,7 +499,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			}
 		}else if (apNode[i]->pStart->nType & PH7_TK_CCB /*'}'*/){
 			if( iBraces <= 0 ){
-				rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[i]->pStart->nLine,"Unmatched '}'");
+				rc = PH7_GenUnmatchedCloser(&(*pGen),apNode[i]->pStart);
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -1237,8 +1237,41 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		if( pCur < pGen->pEnd ){
 			pCur++; /* Skip past the closing ']' */
 		}else{
-			rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
-				"Short array: Missing closing bracket ']'");
+			/* php's scanner meets the closer that is not this `]` first:
+			 * `[1)` is `Unclosed '[' does not match ')'`. Look past the slice --
+			 * a statement head hands over only what its own `)` encloses -- but
+			 * not past a `;` or a brace, where its parser would have spoken. */
+			SyToken *pStreamEnd = pGen->pEnd;
+			SyToken *pBad = 0;
+			char aNest[32];
+			sxi32 nNest = 1;
+			if( pGen->pTokenSet ){
+				SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+				if( pGen->pEnd >= pBase && pGen->pEnd <= &pBase[SySetUsed(pGen->pTokenSet)] ){
+					pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];
+				}
+			}
+			aNest[0] = '[';
+			for( pCur = &pNode->pStart[1] ; pCur < pStreamEnd && nNest > 0 && nNest < (sxi32)sizeof(aNest) ; pCur++ ){
+				if( pCur->nType & (PH7_TK_SEMI|PH7_TK_OCB|PH7_TK_CCB) ){
+					break;
+				}
+				if( pCur->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
+					aNest[nNest++] = (pCur->nType & PH7_TK_LPAREN) ? '(' : '[';
+				}else if( pCur->nType & (PH7_TK_RPAREN|PH7_TK_CSB) ){
+					if( aNest[nNest-1] != ((pCur->nType & PH7_TK_RPAREN) ? '(' : '[') ){
+						pBad = pCur;
+						break;
+					}
+					nNest--;
+				}
+			}
+			if( pBad ){
+				rc = PH7_GenUnmatchedCloser(pGen,pBad);
+			}else{
+				rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+					"Short array: Missing closing bracket ']'");
+			}
 			if( rc != SXERR_ABORT ){
 				rc = SXERR_SYNTAX;
 			}

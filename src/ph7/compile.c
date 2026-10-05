@@ -5136,6 +5136,11 @@ static sxi32 PH7_CompilePHP(
 {
 	SyToken *pScript = pGen->pRawIn; /* Script to compile */
 	sxi32 rc;
+	if( pGen->pTokenSet == pTokenSet ){
+		/* An earlier chunk of this unit; a nested unit's first chunk finds its
+		 * includer's set here instead. */
+		PH7_GenCarryBraces(pGen);
+	}
 	/* Reset the token set (and its trivia sidecar) */
 	SySetReset(&(*pTokenSet));
 	SySetReset(&pGen->aTrivia);
@@ -5328,6 +5333,8 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	sxi8 bSavedStrictLocked;
 	sxi8 bSavedNsNamed,bSavedNsBracketed,bSavedInNsBlock;
 	sxi8 bSavedHalted,bSavedHaltSeen;
+	sxu32 aSavedBraceCarry[PHL_BRACE_CARRY];
+	sxi32 nSavedBraceCarry;
 	sxu32 nSavedHaltOffset;
 	const char *zSavedScriptBase;
 	const char *zFileBase;
@@ -5387,6 +5394,9 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	pCodeGen->bHaltSeen = 0;
 	pCodeGen->nHaltOffset = 0;
 	pCodeGen->zScriptBase = zFileBase;
+	/* So is the scanner's bracket stack. */
+	SyMemcpy((const void *)pCodeGen->aBraceCarry,(void *)aSavedBraceCarry,sizeof(aSavedBraceCarry));
+	nSavedBraceCarry = pCodeGen->nBraceCarry;
 	/* Initialize the tokens containers */
 	SySetInit(&aRawToken,&pVm->sAllocator,sizeof(SyToken));
 	SySetInit(&aPhpToken,&pVm->sAllocator,sizeof(SyToken));
@@ -5419,6 +5429,7 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 		sxu32 i;
 		pCodeGen->nChunkEofLine = nBaseLine;
 		pCodeGen->nBraceNet = 0;
+		pCodeGen->nBraceCarry = 0;
 		for( i = 0 ; i < pScript->nByte ; ++i ){
 			if( pScript->zString[i] == '\n' ){
 				pCodeGen->nChunkEofLine++;
@@ -5501,6 +5512,8 @@ cleanup:
 	pCodeGen->bHaltSeen = bSavedHaltSeen;
 	pCodeGen->nHaltOffset = nSavedHaltOffset;
 	pCodeGen->zScriptBase = zSavedScriptBase;
+	SyMemcpy((const void *)aSavedBraceCarry,(void *)pCodeGen->aBraceCarry,sizeof(aSavedBraceCarry));
+	pCodeGen->nBraceCarry = nSavedBraceCarry;
 	return rc;
 }
 /*
@@ -5791,6 +5804,107 @@ static int GenStateHeredocMarker(SyString *pBody,SyString *pOut)
 	 * quote of a nowdoc is inside it, the closing one is not. */
 	SyStringInitFromBuf(pOut,&z[-2],(sxu32)(zLabelEnd - &z[-2]));
 	return 1;
+}
+/*
+ * The chunk the compiler is about to leave: whatever `{` it still holds open
+ * stays on php's scanner stack under the next one.
+ */
+PH7_PRIVATE void PH7_GenCarryBraces(ph7_gen_state *pGen)
+{
+	SyToken *pTok,*pChunkEnd;
+	if( pGen->pTokenSet == 0 ){
+		return;
+	}
+	pTok = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+	pChunkEnd = &pTok[SySetUsed(pGen->pTokenSet)];
+	for( ; pTok < pChunkEnd ; pTok++ ){
+		if( pTok->nType & PH7_TK_OCB ){
+			if( pGen->nBraceCarry < PHL_BRACE_CARRY ){
+				pGen->aBraceCarry[pGen->nBraceCarry] = pTok->nLine;
+			}
+			pGen->nBraceCarry++;
+		}else if( (pTok->nType & PH7_TK_CCB) && pGen->nBraceCarry > 0 ){
+			pGen->nBraceCarry--;
+		}
+	}
+}
+/*
+ * A `)`, `]` or `}` the expression compiler found nothing to match. php's
+ * SCANNER refuses it before any parser sees it, against ONE stack of the
+ * brackets open in the file -- the `{` of an enclosing block or function body
+ * included, and one an earlier `<?php` block left open -- and names the
+ * innermost: `Unclosed '{' does not match ')'`, plus the line it was opened on
+ * when that is another line. Only a closer with nothing open at all is
+ * `Unmatched`. Replay that stack up to the closer.
+ */
+PH7_PRIVATE sxi32 PH7_GenUnmatchedCloser(ph7_gen_state *pGen,SyToken *pTok)
+{
+	struct { char c; sxu32 nLine; } aNest[PHL_BRACE_CARRY];
+	SyToken *pBase,*pCur;
+	sxi32 nNest = 0;
+	sxi32 n;
+	if( pGen->pTokenSet ){
+		pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+		if( pTok >= pBase && pTok < &pBase[SySetUsed(pGen->pTokenSet)] ){
+			nNest = pGen->nBraceCarry;
+			for( n = 0 ; n < nNest && n < PHL_BRACE_CARRY ; n++ ){
+				aNest[n].c = '{';
+				aNest[n].nLine = pGen->aBraceCarry[n];
+			}
+			/* The first closer the stack refuses is the one php names -- an earlier
+			 * one than this when the compiler let a crossed pair through
+			 * (`[(2 ]]` delimits its array at the first `]`). */
+			for( pCur = pBase ; pCur <= pTok ; pCur++ ){
+				char cOpen = 0,cClose = 0,cTop;
+				if( pCur->nType & PH7_TK_LPAREN ){
+					cOpen = '(';
+				}else if( pCur->nType & PH7_TK_OSB ){
+					cOpen = '[';
+				}else if( pCur->nType & PH7_TK_OCB ){
+					cOpen = '{';
+				}else if( pCur->nType & PH7_TK_RPAREN ){
+					cClose = ')';
+				}else if( pCur->nType & PH7_TK_CSB ){
+					cClose = ']';
+				}else if( pCur->nType & PH7_TK_CCB ){
+					cClose = '}';
+				}
+				if( cOpen ){
+					if( nNest < PHL_BRACE_CARRY ){
+						aNest[nNest].c = cOpen;
+						aNest[nNest].nLine = pCur->nLine;
+					}
+					nNest++;
+					continue;
+				}
+				if( cClose == 0 ){
+					continue;
+				}
+				if( nNest == 0 ){
+					return PH7_GenCompileError(&(*pGen),E_PARSE,pCur->nLine,"Unmatched '%c'",cClose);
+				}
+				if( nNest > PHL_BRACE_CARRY ){
+					/* Deeper than the stack keeps: trust the pair. */
+					nNest--;
+					continue;
+				}
+				cTop = aNest[nNest-1].c;
+				if( (cTop == '(' && cClose == ')') || (cTop == '[' && cClose == ']') || (cTop == '{' && cClose == '}') ){
+					nNest--;
+					continue;
+				}
+				if( aNest[nNest-1].nLine != pCur->nLine ){
+					return PH7_GenCompileError(&(*pGen),E_PARSE,pCur->nLine,
+						"Unclosed '%c' on line %u does not match '%c'",cTop,aNest[nNest-1].nLine,cClose);
+				}
+				return PH7_GenCompileError(&(*pGen),E_PARSE,pCur->nLine,
+					"Unclosed '%c' does not match '%c'",cTop,cClose);
+			}
+		}
+	}
+	/* The scanner had nothing to say: the compiler's own sentence. */
+	return PH7_GenCompileError(&(*pGen),E_PARSE,pTok->nLine,"Unmatched '%c'",
+		(pTok->nType & PH7_TK_RPAREN) ? ')' : ((pTok->nType & PH7_TK_CSB) ? ']' : '}'));
 }
 PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 	ph7_gen_state *pGen,   /* Code generator state */
