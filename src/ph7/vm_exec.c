@@ -1853,6 +1853,110 @@ static sxi32 VmResolveIndirectArgs(ph7_vm *pVm,ph7_value *pCallable,ph7_value *p
 		(ph7_vm_func_arg *)SySetBasePtr(&pFn->aArgs),SySetUsed(&pFn->aArgs),0,0,0,pCallMap);
 }
 /*
+ * The METHOD a callable value will run, for OP_NAMED_SEND to screen a name against: an
+ * array pair, a `"Class::method"` string, an __invoke object, and a Closure bound to a
+ * method -- the shapes whose callee OP_CALL finds through a class rather than by a name
+ * the function tables answer. Nothing here changes a thing: OP_CALL_INIT has already
+ * refused (and autoloaded for) every one of them php refuses before its arguments.
+ *
+ * Answers 0 whenever the call will not land on that method as found -- a name only
+ * __call/__callStatic answers (php packs those into an array), one the calling scope
+ * cannot reach (OP_CALL's own refusal, or the catch-all again), an abstract one, a
+ * `parent::m` spelled inside a pair -- and for a Closure whose `$__fn` is a FUNCTION,
+ * which the plain-closure screen reads instead.
+ */
+static ph7_vm_func * VmNamedSendMethod(ph7_vm *pVm,ph7_value *pCallee)
+{
+	ph7_class *pClass = 0;
+	ph7_class_method *pMeth;
+	const char *zMeth = 0;
+	sxu32 nMeth = 0;
+	int bScreened = 0;
+	if( pCallee->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pCallee->x.pOther;
+		ph7_value *pTarget = 0,*pName = 0;
+		if( pMap == 0 || pMap->nEntry != 2
+		 || !PH7_VmArrayCallableParts(&(*pVm),pMap,&pTarget,&pName)
+		 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
+			return 0;
+		}
+		pClass = PH7_VmExtractClassFromValue(&(*pVm),pTarget);
+		zMeth = (const char *)SyBlobData(&pName->sBlob);
+		nMeth = SyBlobLength(&pName->sBlob);
+	}else if( pCallee->iFlags & MEMOBJ_STRING ){
+		const char *zCls = 0;
+		sxu32 nCls = 0;
+		SyString sName;
+		if( pCallee->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN) ){
+			return 0; /* the engine's own key, which the function tables answer */
+		}
+		SyStringInitFromBuf(&sName,SyBlobData(&pCallee->sBlob),SyBlobLength(&pCallee->sBlob));
+		if( sName.nByte > 0 && sName.zString[0] == '\\' ){
+			sName.zString++;
+			sName.nByte--;
+		}
+		if( !PH7_VmCallableStringParts(sName.zString,sName.nByte,&zCls,&nCls,&zMeth,&nMeth) ){
+			return 0;
+		}
+		pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
+	}else if( VmValueIsClosure(pVm,pCallee) ){
+		/* VmClosureUnwrap's own split, read without the latches it arms for a dispatch: a
+		 * bound or static Closure calls a METHOD when it was built from one or its class
+		 * answers `$__fn`, and a method Closure's `$__scope` names the class its callee was
+		 * resolved in (`parent::m(...)`). Its visibility was decided where it was built. */
+		ph7_class_instance *pClo = (ph7_class_instance *)pCallee->x.pOther;
+		ph7_value *pFn,*pBound,*pScope;
+		ph7_class *pScopeCls = 0;
+		SyString sAttr;
+		if( (pClo->iFlags & VM_INSTANCE_FCC_BOUND) == 0 ){
+			return 0;
+		}
+		SyStringInitFromBuf(&sAttr,"__fn",4);
+		pFn = PH7_ClassInstanceFetchAttr(pClo,&sAttr);
+		SyStringInitFromBuf(&sAttr,"__this",6);
+		pBound = PH7_ClassInstanceFetchAttr(pClo,&sAttr);
+		SyStringInitFromBuf(&sAttr,"__scope",7);
+		pScope = PH7_ClassInstanceFetchAttr(pClo,&sAttr);
+		if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pFn->sBlob) == 0 ){
+			return 0;
+		}
+		zMeth = (const char *)SyBlobData(&pFn->sBlob);
+		nMeth = SyBlobLength(&pFn->sBlob);
+		if( pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){
+			pScopeCls = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pScope->sBlob),
+				SyBlobLength(&pScope->sBlob),FALSE,0);
+		}
+		if( pBound && (pBound->iFlags & MEMOBJ_OBJ) ){
+			pClass = ((ph7_class_instance *)pBound->x.pOther)->pClass;
+			if( (pClo->iFlags & VM_INSTANCE_FCC_METHOD) && pScopeCls && pScopeCls != pClass
+			 && PH7_VmInstanceOf(pClass,pScopeCls) && PH7_ClassExtractMethod(pScopeCls,zMeth,nMeth) ){
+				pClass = pScopeCls;
+			}
+		}else{
+			pClass = pScopeCls;
+		}
+		if( pClass && (pClo->iFlags & VM_INSTANCE_FCC_METHOD) == 0
+		 && PH7_ClassExtractMethod(pClass,zMeth,nMeth) == 0 ){
+			return 0; /* a bound plain closure: `$__fn` is a function */
+		}
+		bScreened = 1;
+	}else if( pCallee->iFlags & MEMOBJ_OBJ ){
+		/* `$o(...)` dispatches __invoke from any scope, whatever its visibility. */
+		ph7_class_instance *pObj = (ph7_class_instance *)pCallee->x.pOther;
+		pMeth = pObj ? PH7_ClassExtractMethod(pObj->pClass,"__invoke",sizeof("__invoke")-1) : 0;
+		return pMeth ? &pMeth->sFunc : 0;
+	}
+	if( pClass == 0 || nMeth < 1 ){
+		return 0;
+	}
+	pMeth = PH7_ClassExtractMethod(pClass,zMeth,nMeth);
+	if( pMeth == 0 || (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT)
+	 || (!bScreened && !PH7_VmFccMethodIsDirect(&(*pVm),pClass,zMeth,nMeth)) ){
+		return 0;
+	}
+	return &pMeth->sFunc;
+}
+/*
  * Why a VALUE cannot be made into a first-class callable. php answers `($v)(...)` with
  * exactly what it answers `($v)()` — the taxonomy is the DIRECT dispatch's, word for word —
  * so this walks the same three shapes the OP_CALL sites do and reuses their builders. PHL
@@ -6426,13 +6530,14 @@ case PH7_OP_CALL_INIT: {
  *  arguments sent before it have been sent in php, so their deferred reads are settled
  *  first, each against the formal it binds to.
  *
- *  Only a callee the OP_CALL lookup answers by NAME is screened: a function name (with the
+ *  Only a callee whose target is known here is screened: a function name (with the
  *  namespace's global fallback) or an OP_MEMBER method key, from the compiled-function
  *  table or -- by its signature -- the host-function table or a native method's C body,
- *  a plain Closure through the function its `$__fn` names, and a `new`'s class operand
- *  through its constructor (none declared takes no name at all). Anything else -- a bound
- *  or method Closure, an array pair, an __invoke object, a __call routing -- leaves the
- *  name to OP_CALL's own resolution.
+ *  a plain Closure through the function its `$__fn` names, a `new`'s class operand
+ *  through its constructor (none declared takes no name at all), and an array pair, a
+ *  `"C::m"` string, an __invoke object or a method Closure through the method
+ *  VmNamedSendMethod finds. A __call routing, an unreachable method and an anonymous
+ *  class's `new` leave the name to OP_CALL's own resolution.
  *
  *  P1 = the argument's compile-time position, P2 = PH7_ROT_SPREAD when an unpack precedes
  *  it, | PH7_ROT_NEW when the list is a `new`'s, P3 = the call's VmCallArgMap.
@@ -6485,6 +6590,9 @@ case PH7_OP_NAMED_SEND: {
 		}else{
 			bSendNoCtor = 1;
 		}
+	}else if( (pSendFunc = VmNamedSendMethod(&(*pVm),pSendCallee)) != 0 ){
+		/* A pair, a `"C::m"` string, an __invoke object or a method Closure: the
+		 * method OP_CALL will land on, found through its class. */
 	}else if( pSendCallee->iFlags & MEMOBJ_STRING ){
 		bSendEngine = (pSendCallee->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)) != 0;
 		bSendFallback = pSendMap->bIsNamespaced;
@@ -6494,10 +6602,12 @@ case PH7_OP_NAMED_SEND: {
 			sSendFn.nByte--;
 		}
 	}else if( VmValueIsClosure(pVm,pSendCallee)
-	 && (((ph7_class_instance *)pSendCallee->x.pOther)->iFlags & VM_INSTANCE_FCC_BOUND) == 0 ){
-		/* A plain Closure -- an anonymous function, `f(...)`, `strlen(...)` -- calls the
-		 * function its `$__fn` names, an already-resolved key the engine wrote. A bound or
-		 * method one names a METHOD there, which a function lookup would mistake. */
+	 && (((ph7_class_instance *)pSendCallee->x.pOther)->iFlags & VM_INSTANCE_FCC_METHOD) == 0 ){
+		/* A plain Closure -- an anonymous function, `f(...)`, `strlen(...)`, or one bound
+		 * to an object or a scope -- calls the function its `$__fn` names, an
+		 * already-resolved key the engine wrote. One built from a method names a METHOD
+		 * there, which a function lookup would mistake; the branch above answered it, or
+		 * it is a trampoline OP_CALL routes. */
 		ph7_value *pSendFn;
 		SyString sSendAttr;
 		SyStringInitFromBuf(&sSendAttr,"__fn",4);
@@ -6511,7 +6621,7 @@ case PH7_OP_NAMED_SEND: {
 	}else{
 		break;
 	}
-	for( iSendPass = 0 ; iSendPass < 2 && pSendEntry == 0 && !bSendNew ; ++iSendPass ){
+	for( iSendPass = 0 ; iSendPass < 2 && pSendFunc == 0 && pSendHost == 0 && !bSendNew ; ++iSendPass ){
 		SyString sSendTry = sSendFn;
 		if( iSendPass == 1 ){
 			/* OP_CALL's global fallback for an unqualified name written in a namespace. */
