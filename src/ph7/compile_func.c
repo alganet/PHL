@@ -301,6 +301,9 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 			&& (pIn->nType & PH7_TK_ELLIPSIS) == 0 ){
 			sxu32 nLineLocal = pIn->nLine;
 			sxi32 iTFlags = 0;
+			/* php's `?T` is T's own node with a flag set, so the line is T's */
+			sArg.nLine = ( (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1
+				&& pIn->sData.zString[0] == '?' && pIn + 1 < pEnd ) ? pIn[1].nLine : nLineLocal;
 			pGen->pIn = pIn;
 			rc = GenStateParseUnionTypeDecl(
 				pGen, &sArg.nType, &sArg.sClass, &sArg.aUnionAlts,
@@ -345,6 +348,9 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 			/* Invalid argument */
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Invalid argument name");
 			return rc;
+		}
+		if( sArg.nLine == 0 ){
+			sArg.nLine = pIn->nLine; /* untyped: php's parameter sits on its `$name` */
 		}
 		pIn++; /* Jump the dollar sign */
 		/* Copy argument name */

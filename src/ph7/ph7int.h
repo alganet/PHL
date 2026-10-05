@@ -1916,6 +1916,10 @@ struct ph7_vm_func_arg
 	SyString sTypeName;  /* Original type text for error messages, normalized in canonical PHP order */
 	sxi32 iPromoteVis;   /* PH7_CLASS_PROT_* when VM_FUNC_ARG_PROMOTED is set */
 	SySet aAttrs;        /* Declared #[...] attributes (ph7_attribute records) */
+	sxu32 nLine;         /* The line php's RECV for this parameter carries -- its TYPE's
+	                      * first token, else its `$name` (modifiers and attributes do not
+	                      * count). An argument refused against it is reported THERE, not
+	                      * at the call. 0 = not compiled from source (native, synthesized). */
 };
 /*
  * One alternative within a union type declaration. Used by parameters,
@@ -4567,6 +4571,13 @@ struct ph7_vm
 	                            * evaluates the expression. 0 = not in one, or the access site
 	                            * was internal (prelude) code whose line means nothing in the
 	                            * file the stamp names. See PH7_VmStampThrowableSite. */
+	sxu32 nArgSiteLine;        /* ONE-SHOT site for the next Throwable stamped: an argument
+	                            * refusal is raised inside the callee, on the refused
+	                            * parameter's declaration line and in the callee's file, even
+	                            * where the binder runs before the callee's frame exists (a
+	                            * fiber body, a generator). Set by VmArgSiteArm, cleared by
+	                            * the stamp that consumes it and by the thrower after. */
+	const SyString *pArgSiteFile; /* ...and that file; 0 or empty = the stamp's own answer */
 	sxi32 nLazyInitDepth;      /* nVmExecDepth of that initializer's own activation. The
 	                            * override applies at THIS depth only: anything the
 	                            * initializer manages to call — an autoloader, a nested

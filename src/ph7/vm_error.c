@@ -4040,6 +4040,58 @@ static void VmArgFuncLabel(ph7_vm *pVm,SyBlob *pOut,ph7_class *pOwnerClass,
 	}
 }
 /*
+ * Where php reports an argument refusal: INSIDE the callee, on the refused
+ * parameter's own declaration line -- the RECV opcode that refuses it carries that
+ * line and runs in the callee's op array, whatever door the call came through.
+ * PHL stamped the call's line instead, so every such getLine() named the caller
+ * (and a fiber body's or a generator's, bound before its frame exists, the
+ * caller's file too). An INTERNAL callee (a prelude builtin) is left alone: php
+ * has no frame for one and reports its refusals at the call.
+ *
+ * pName selects the formal by name; NULL is a variadic-collected element, which
+ * belongs to the last formal. iFormal (0-based) is used when pName is NULL and
+ * bByIndex is set.
+ */
+static void VmArgSiteArm(ph7_vm *pVm,ph7_vm_func *pCallee,SyString *pName,sxu32 iFormal,int bByIndex)
+{
+	ph7_vm_func_arg *aFormal;
+	ph7_vm_func_arg *pFormal = 0;
+	sxu32 nFormal;
+	sxu32 n;
+	if( pCallee == 0 || (pCallee->iFlags & VM_FUNC_INTERNAL) ){
+		return;
+	}
+	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pCallee->aArgs);
+	nFormal = SySetUsed(&pCallee->aArgs);
+	if( nFormal < 1 ){
+		return;
+	}
+	if( pName ){
+		for( n = 0 ; n < nFormal ; n++ ){
+			if( SyStringCmp(&aFormal[n].sName,pName,SyMemcmp) == 0 ){
+				pFormal = &aFormal[n];
+				break;
+			}
+		}
+	}else if( bByIndex ){
+		if( iFormal < nFormal ){
+			pFormal = &aFormal[iFormal];
+		}
+	}else if( aFormal[nFormal - 1].iFlags & VM_FUNC_ARG_VARIADIC ){
+		pFormal = &aFormal[nFormal - 1];
+	}
+	if( pFormal == 0 || pFormal->nLine == 0 ){
+		return;
+	}
+	pVm->nArgSiteLine = pFormal->nLine;
+	pVm->pArgSiteFile = &pCallee->sFile;
+}
+static void VmArgSiteDisarm(ph7_vm *pVm)
+{
+	pVm->nArgSiteLine = 0;
+	pVm->pArgSiteFile = 0;
+}
+/*
  * The CALL SITE php names in an argument diagnostic: the `called in FILE on line
  * N` tail of a TypeError, and the `in FILE on line N` of an ArgumentCountError.
  * It is the CALLER's position -- which the callee's frame recorded for itself when
@@ -4108,7 +4160,9 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 	if( pClass == 0 ){
 		return PH7_ABORT;
 	}
+	VmArgSiteArm(&(*pVm),pCallee,pArgName,0,0);
 	pThis = PH7_NewClassInstance(&(*pVm),pClass);
+	VmArgSiteDisarm(&(*pVm));
 	if( pThis == 0 ){
 		return PH7_ABORT;
 	}
@@ -4333,6 +4387,7 @@ PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
 {
 	static const SyString sUnknown = { "unknown", sizeof("unknown") - 1 };
 	SyBlob sMsg;
+	sxi32 rc;
 	/* A CLOSURE has no name of its own: php calls it `{closure:file:line}` (or
 	 * `{closure:enclosing():line}` for one written inside a function), and this
 	 * message was the last of the four argument diagnostics still printing the
@@ -4358,8 +4413,12 @@ PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
 	}
 	SyBlobFormat(&sMsg," and %s %u expected",
 		nRequired >= nNonVariadic ? "exactly" : "at least",nRequired);
+	/* php raises it from the RECV of the first parameter nobody passed. */
+	VmArgSiteArm(pVm,pCallee,0,nPassed,1);
 	/* VmThrowBuiltinError consumes (releases) sMsg */
-	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+	rc = VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+	VmArgSiteDisarm(pVm);
+	return rc;
 }
 /*
  * Throw php's catchable Error for a by-reference parameter handed something that
@@ -4507,6 +4566,7 @@ PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyStrin
 	ph7_vm_func *pCallee,sxu32 nArg,SyString *pArgName)
 {
 	SyBlob sMsg;
+	sxi32 rc;
 	const char *zShow = 0;
 	int nShow = PH7_VmFuncDisplayName(pVm,pCallee,&zShow);
 	if( nShow < 1 ){
@@ -4516,8 +4576,11 @@ PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyStrin
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	VmArgOwnerPrefix(pVm,&sMsg,pOwnerClass,pCallee);
 	SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) not passed",nShow,zShow,nArg,pArgName);
+	VmArgSiteArm(pVm,pCallee,0,nArg - 1,1);
 	/* VmThrowBuiltinError consumes (releases) sMsg */
-	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+	rc = VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+	VmArgSiteDisarm(pVm);
+	return rc;
 }
 /*
  * Throw a PHP-compatible TypeError describing a return-value type mismatch.
@@ -6073,6 +6136,17 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 				nPreLine = 1;
 			}
 		}
+	}
+	/* ...and an argument refusal belongs to the refused parameter (VmArgSiteArm),
+	 * which wins over both: a prelude builtin that calls back into user code is
+	 * still not where the callee's parameter is written. One-shot. */
+	if( pVm->nArgSiteLine ){
+		if( pVm->pArgSiteFile && SyStringLength(pVm->pArgSiteFile) > 0 ){
+			pSiteFile = (SyString *)pVm->pArgSiteFile;
+		}
+		nPreLine = pVm->nArgSiteLine;
+		pVm->nArgSiteLine = 0;
+		pVm->pArgSiteFile = 0;
 	}
 	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){
 		SyHashEntry *pEntry;
