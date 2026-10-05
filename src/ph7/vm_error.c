@@ -6084,13 +6084,13 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * unit for a throw written in a test file.) */
 			SyString *pFrameFile = SyStringLength(&pFrame->sCallFile) > 0
 				? &pFrame->sCallFile : pFile;
-			if( pFrameFile && (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_FIBER)) == 0 ){
+			if( pFrameFile && (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_NATIVE_TRACE|VM_FRAME_FIBER)) == 0 ){
 				ph7_value_string(pValue,pFrameFile->zString,(int)pFrameFile->nByte);
 				ph7_array_add_strkey_elem(pEntry,"file",pValue);
 				ph7_value_reset_string_cursor(pValue);
 			}
 		}
-		if( (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_FIBER)) == 0 ){
+		if( (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_NATIVE_TRACE|VM_FRAME_FIBER)) == 0 ){
 			ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
 			ph7_array_add_strkey_elem(pEntry,"line",pValue);
 		}
@@ -6184,7 +6184,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 		}
 		ph7_array_add_elem(pList,0/* Automatic index assign*/,pEntry);
 		ph7_release_value(&(*pVm),pEntry);
-		if( (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_FIBER)) != 0
+		if( (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_NATIVE_TRACE|VM_FRAME_FIBER)) != 0
 		 && pFrame->pNativeCaller ){
 			/* php gives the INTERNAL function that reached for the callback a frame of
 			 * its own, and that one carries the userland call site the callback's frame

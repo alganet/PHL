@@ -9566,6 +9566,7 @@ static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,s
 {
 	VmAutoloadCB *pEntry;
 	ph7_value sArg,sResult;
+	SyString *pSavedTrace;
 	SyHashEntry *pHashEntry;
 	ph7_class *pClass;
 	sxu32 n,nEntry;
@@ -9600,9 +9601,15 @@ static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,s
 		 * autoloader declaring anything but `string` therefore RAISES under a strict
 		 * caller, where PHL coerced the class name (`bool $c` got true) and ran the
 		 * loader on a value that no longer named anything. */
+		/* ...but a builtin that asked for the class (class_exists(), is_a(), `new
+		 * ReflectionClass`) is still a frame of php's trace, between the loader's and
+		 * the caller's. Consume-once, so put back whatever a loader never reached. */
+		pSavedTrace = pVm->pNativeTraceName;
+		pVm->pNativeTraceName = PH7_VmReachingNativeName(pVm);
 		rc = PH7_VmCallUserFunctionWithMap(pVm,
 				(pEntry->sInvoke.iFlags & MEMOBJ_OBJ) ? &pEntry->sInvoke : &pEntry->sCallback,
 				1,apArg,&sResult,0);
+		pVm->pNativeTraceName = pSavedTrace;
 		if( PH7_CALLBACK_UNWOUND(rc) ){
 			/* The loader threw or exited: php stops the chain there, so no later
 			 * loader is asked for a class the unwinding frame will never use. */

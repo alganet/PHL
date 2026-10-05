@@ -1461,6 +1461,16 @@ struct VmNativeCall
                                   * pNativeCallerThis name it, re-stamped on every entry;
                                   * unlike VM_FRAME_NATIVE_CALLER this says nothing about how
                                   * the body's ARGUMENTS were bound. */
+#define VM_FRAME_NATIVE_TRACE 0x20 /* An INTERNAL function running in the frame above asked
+                                  * for this activation, but php makes the call on behalf of
+                                  * the code that called that function: an AUTOLOADER a
+                                  * builtin triggered (class_exists(), is_a(), `new
+                                  * ReflectionClass`). php's trace gives the builtin a frame
+                                  * of its own and this one no file or line, exactly as for
+                                  * VM_FRAME_NATIVE_CALLER -- but the argument binding, the
+                                  * `, called in FILE on line N` tail and the too-few wording
+                                  * all stay the caller's, which is why it is a bit of its
+                                  * own. pNativeCaller names the builtin. */
 /*
  * One entry of a userland handler STACK (set_error_handler /
  * set_exception_handler). php's stack has no depth limit and every entry is a
@@ -4190,6 +4200,9 @@ struct ph7_vm
 	                             * where php calls the generator's iterator handlers -- no call,
 	                             * so no frame in php's trace. Saved and restored around that
 	                             * one dispatch. */
+	SyString *pNativeTraceName; /* Consume-once: the next OP_CALL's frame is VM_FRAME_NATIVE_TRACE,
+	                             * reached for by this running INTERNAL function. Armed only by
+	                             * the autoload loop, around each loader it calls. */
 	SyString *pNativeFrameName; /* Consume-once: the next OP_CALL's frame was entered by this
 	                             * INTERNAL function and so has no userland call site, even
 	                             * though its argument BINDING still follows the caller. Armed
@@ -8708,6 +8721,7 @@ PH7_PRIVATE int PH7_MagicMethodMustBePublic(const SyString *pName);
 PH7_PRIVATE sxi32 PH7_VmCallMagicMethod(ph7_vm *pVm,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
 PH7_PRIVATE SyString * PH7_VmImplicitCallerArm(ph7_vm *pVm);
+PH7_PRIVATE SyString * PH7_VmReachingNativeName(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmCallMagicMethodLsb(ph7_vm *pVm,ph7_class *pCalled,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase);

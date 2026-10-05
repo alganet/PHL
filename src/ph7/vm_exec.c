@@ -6875,6 +6875,10 @@ case PH7_OP_CALL: {
 	 * (an internal function invoking a userland callback binds its arguments weakly),
 	 * and a call the callback body makes must not inherit it. */
 	int bCallbackWeak = pVm->bCallbackWeak;
+	/* ...and the autoloader's trace-only one (VM_FRAME_NATIVE_TRACE): an autoloader
+	 * that is itself a builtin has no frame to mark, and whatever the file it
+	 * includes calls first must not be marked in its place. */
+	SyString *pNativeTrace = pVm->pNativeTraceName;
 	/* ...and whether this call's ANSWER is thrown away, which is what a
 	 * #[\NoDiscard] callee warns about. The compiled call site says so directly
 	 * (bDiscard, stamped where the statement pops the value: php's
@@ -6920,6 +6924,7 @@ case PH7_OP_CALL: {
 	pVm->bClosureNoNamed = 0;
 	pVm->pClosureMethodCls = 0;
 	pVm->bCallbackWeak = 0;
+	pVm->pNativeTraceName = 0;
 	pTos->iFlags &= ~MEMOBJ_AUX_MEMBERCALL;
 	pArg = &pTos[-nCallArgs];
 	/* PHP 8.1: an unpack whose elements carry string keys binds them as NAMED
@@ -7958,6 +7963,11 @@ CalleeByName:
 			/* Consume: the latch describes ONE call, and a call the callback body
 			 * makes must not inherit it. */
 			pVm->pNativeFrameName = 0;
+		}else if( rc == SXRET_OK && pFrame && pNativeTrace ){
+			/* An autoloader a builtin triggered: that builtin's trace frame, and
+			 * nothing else of the callback shape (VM_FRAME_NATIVE_TRACE). */
+			pFrame->iFlags |= VM_FRAME_NATIVE_TRACE;
+			pFrame->pNativeCaller = pNativeTrace;
 		}
 		if( rc == SXRET_OK ){
 			/* This activation now needs the function it is about to run. For a

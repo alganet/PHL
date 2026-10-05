@@ -1922,15 +1922,28 @@ PH7_PRIVATE sxi32 PH7_VmCallMagicMethodLsb(
 PH7_PRIVATE SyString * PH7_VmImplicitCallerArm(ph7_vm *pVm)
 {
 	SyString *pSaved = pVm->pNativeFrameName;
+	SyString *pName = PH7_VmReachingNativeName(&(*pVm));
+	if( pName ){
+		pVm->pNativeFrameName = pName;
+	}
+	return pSaved;
+}
+/*
+ * The INTERNAL function called from the current frame that is running right now, and so
+ * is what reaches for anything the engine calls before it returns -- or 0 when the frame
+ * itself is what is running (an opcode's own `new Foo`).
+ */
+PH7_PRIVATE SyString * PH7_VmReachingNativeName(ph7_vm *pVm)
+{
 	VmNativeCall *pNat = pVm->pNativeCall;
 	while( pNat && pNat->bElided ){
 		pNat = pNat->pPrev;
 	}
 	if( pNat && pNat->pFrame == (void *)pVm->pFrame
 	 && (pVm->pMagicCallFunc == 0 || pNat->pName != &pVm->pMagicCallFunc->sName) ){
-		pVm->pNativeFrameName = pNat->pName;
+		return pNat->pName;
 	}
-	return pSaved;
+	return 0;
 }
 /*
  * Call a method the way php's ENGINE calls one it looked up itself: visibility is
