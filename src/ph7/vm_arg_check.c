@@ -3193,7 +3193,10 @@ PH7_PRIVATE sxi32 PH7_CheckCallbackArg(
 {
 	char zReason[256];
 	const char *zWhy;
-	PH7_VmCallableDeprecation(pCtx->pVm,pCb);
+	sxi32 rcDep = PH7_VmCallableDeprecation(pCtx->pVm,pCb);
+	if( rcDep != PH7_OK ){
+		return rcDep; /* the handler threw on the deprecation: that is the refusal */
+	}
 	zWhy = PH7_VmCallableReason(pCtx->pVm,pCb,zReason,sizeof(zReason));
 	if( zWhy == 0 ){
 		return PH7_OK;

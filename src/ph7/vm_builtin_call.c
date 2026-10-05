@@ -612,7 +612,7 @@ static void VmCallableKeywordDeprecation(ph7_vm *pVm,const char *zCls,sxu32 nCls
  * not the method then turns out to exist; only is_callable()'s syntax-only mode and
  * the direct `$cb()` dispatch never resolve the scope, so never raise it.
  */
-PH7_PRIVATE void PH7_VmCallableDeprecation(ph7_vm *pVm,ph7_value *pValue)
+static void VmCallableDeprecationRaise(ph7_vm *pVm,ph7_value *pValue)
 {
 	if( pValue->iFlags & MEMOBJ_STRING ){
 		const char *zCls,*zMeth;
@@ -664,6 +664,22 @@ PH7_PRIVATE void PH7_VmCallableDeprecation(ph7_vm *pVm,ph7_value *pValue)
 			SyBlobRelease(&sMsg);
 		}
 	}
+}
+/*
+ * Raise that deprecation, and answer PH7_OK, or the unwind status when a set_error_handler()
+ * threw (or exited) on it. php's zend_is_callable_ex then answers "not callable" with the
+ * exception pending, so the door that asked runs nothing more: no callback is called, stored
+ * or wrapped, and no TypeError of its own is raised over it. The catch has already run in
+ * place here, so a door that carried on called the callback after it.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallableDeprecation(ph7_vm *pVm,ph7_value *pValue)
+{
+	sxi32 nBrcIn = pVm->nBoundaryRc;
+	VmCallableDeprecationRaise(&(*pVm),pValue);
+	if( pVm->nBoundaryRc != nBrcIn && PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc) ){
+		return pVm->nBoundaryRc;
+	}
+	return PH7_OK;
 }
 /*
  * The class, method name and callability form (VmMethodIsCallable's bStaticForm) that an

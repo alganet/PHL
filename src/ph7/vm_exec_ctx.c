@@ -2672,6 +2672,7 @@ PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pClosure;
+	sxi32 rc;
 	if( nArg < 1 ){
 		return PH7_VmThrowException(pCtx, "TypeError",
 			"Closure::fromCallable() expects exactly 1 argument, 0 given");
@@ -2680,7 +2681,10 @@ PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7
 		ph7_result_value(pCtx, apArg[0]); /* already a Closure: idempotent */
 		return PH7_OK;
 	}
-	PH7_VmCallableDeprecation(pVm, apArg[0]);
+	rc = PH7_VmCallableDeprecation(pVm, apArg[0]);
+	if( rc != PH7_OK ){
+		return rc;
+	}
 	pClosure = VmFccWrapValue(pVm, apArg[0], TRUE);
 	if( pClosure == 0 ){
 		/* php says WHY, with the same reason taxonomy every callback argument uses —
