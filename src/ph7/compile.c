@@ -4716,7 +4716,7 @@ static const char * GenStateEofExpecting(SyToken *pStmt,SyToken *pLast)
 	if( pLast && (pLast->nType & PH7_TK_KEYWORD) ){
 		nKw = (sxu32)SX_PTR_TO_INT(pLast->pUserData);
 		if( nKw == PH7_TKWRD_ENDIF || nKw == PH7_TKWRD_ENDWHILE || nKw == PH7_TKWRD_ENDFOR
-		 || nKw == PH7_TKWRD_END4EACH || nKw == PH7_TKWRD_ENDSWITCH ){
+		 || nKw == PH7_TKWRD_END4EACH || nKw == PH7_TKWRD_ENDSWITCH || nKw == PH7_TKWRD_ENDDEC ){
 			return "\";\"";
 		}
 	}

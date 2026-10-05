@@ -3837,7 +3837,7 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 	/* Update the cursor past the closing ')'. pBodyStart..pBodyEnd (exclusive)
 	 * now delimits the comma-separated directive list. */
 	pGen->pIn = &pBodyEnd[1];
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_OCB/*'{'*/)) == 0 ){
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_OCB/*'{'*/|PH7_TK_COLON/*':'*/)) == 0 ){
 		if( pGen->pIn >= pGen->pEnd && GenStateAtChunkEofStmt(pGen) ){
 			/* Ran out of input: php's parser has an unfinished statement and names
 			 * that, not a sentence about `declare` (the shared end-of-input check
@@ -3850,7 +3850,9 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 			return SXERR_ABORT;
 		}
 	}
-	bBlockForm = ( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ) ? 1 : 0;
+	/* `declare(...): ... enddeclare;` is php's alternative syntax for the braced
+	 * body, and counts as block mode the same way. */
+	bBlockForm = ( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_OCB|PH7_TK_COLON)) ) ? 1 : 0;
 	bPlacementOk = ( pGen->pCurrent == &pGen->sGlobal && !pGen->bStrictTypesLocked );
 	bHasStrictTypes = 0;
 	/* First pass: scan directive names to detect any strict_types occurrence.
@@ -3962,6 +3964,11 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 	/* Declares never lock the first-statement rule: PHP allows another
 	 * declare(strict_types) to follow immediately, or a declare(ticks)
 	 * to precede strict_types. Only non-declare statements lock. */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COLON) ){
+		/* The alternative-syntax body is compiled here, so the whole construct is
+		 * one statement (a braced body is left to the caller as a plain block). */
+		return PH7_CompileBlock(&(*pGen),PH7_TKWRD_ENDDEC);
+	}
 	return SXRET_OK;
 Synchro:
 	/* Sycnhronize with the first semi-colon ';' or curly braces '{' */
