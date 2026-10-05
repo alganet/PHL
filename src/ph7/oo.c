@@ -882,7 +882,8 @@ PH7_PRIVATE void PH7_ClassRenderDecl(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func *
 typedef struct OvAtom OvAtom;
 struct OvAtom {
 	sxu32 nBit;      /* OVB_* */
-	ph7_class *pCls; /* the class, when nBit == OVB_CLS */
+	ph7_class *pCls; /* the class, when nBit == OVB_CLS; 0 for one nothing has loaded */
+	const SyString *pName; /* ...whose resolved NAME is then all there is */
 	sxu32 nGroup;    /* intersection group: atoms sharing one are ANDed */
 };
 typedef struct OvType OvType;
@@ -891,6 +892,7 @@ struct OvType {
 	int bMixed;   /* `mixed`: the top type */
 	int bNever;   /* `never`: the bottom type, a subtype of everything */
 	int bUnknown; /* a shape this lattice does not model -- accept whatever it meets */
+	int bUnres;   /* some class atom names a class nothing has loaded (pCls == 0) */
 	int nAtom;
 	sxu32 nNextGroup;
 	OvAtom a[OV_MAX_ATOM];
@@ -907,6 +909,7 @@ static void OvAddAtom(OvType *pT,sxu32 nBit,ph7_class *pCls,sxu32 nGroup)
 	}
 	pT->a[pT->nAtom].nBit = nBit;
 	pT->a[pT->nAtom].pCls = pCls;
+	pT->a[pT->nAtom].pName = 0;
 	pT->a[pT->nAtom].nGroup = nGroup;
 	pT->nAtom++;
 	if( nGroup >= pT->nNextGroup ){
@@ -972,8 +975,9 @@ static void OvAddName(ph7_vm *pVm,ph7_class *pScope,OvType *pT,const SyString *p
 		return;
 	}
 	/* A real class name, resolved WITHOUT autoloading: a miss is a forward
-	 * reference or a class no lookup can produce, and the whole type becomes
-	 * undecidable rather than wrong. */
+	 * reference or a class no lookup can produce. It stays an atom of its own,
+	 * known only by name -- php's unresolved class, which still decides every
+	 * question its name or its being SOME class answers (OvCheck). */
 	pE = SyHashGet(&pVm->hClass,(const void *)z,n);
 	if( pE == 0 ){
 		/* ...except the class being declared, which is not filed yet while its
@@ -983,7 +987,12 @@ static void OvAddName(ph7_vm *pVm,ph7_class *pScope,OvType *pT,const SyString *p
 			OvAddAtom(pT,OVB_CLS,pScope,nGroup);
 			return;
 		}
-		pT->bUnknown = 1;
+		i = (sxu32)pT->nAtom;
+		OvAddAtom(pT,OVB_CLS,0,nGroup);
+		if( (sxu32)pT->nAtom > i ){
+			pT->a[i].pName = pName;
+			pT->bUnres = 1;
+		}
 		return;
 	}
 	OvAddAtom(pT,OVB_CLS,(ph7_class *)pE->pUserData,nGroup);
@@ -1088,8 +1097,17 @@ static void OvFromReturn(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func *pF,OvType *p
  * nothing except another `static` is under IT, since the called class may be a
  * subclass nobody has written yet.
  */
-static int OvAtomLE(const OvAtom *pC,const OvAtom *pP,ph7_class *pSubScope)
+static int OvAtomLE(const OvAtom *pC,const OvAtom *pP,ph7_class *pSubScope,int bHope)
 {
+	if( pP->nBit == OVB_CLS && pC->nBit == OVB_CLS && (pP->pCls == 0 || pC->pCls == 0) ){
+		/* An unloaded class is under itself by NAME (php's case-insensitive
+		 * shortcut, taken before any lookup) and is otherwise whatever bHope says. */
+		if( pP->pCls == 0 && pC->pCls == 0 && SyStringLength(pP->pName) == SyStringLength(pC->pName)
+		 && SyStrnicmp(SyStringData(pP->pName),SyStringData(pC->pName),SyStringLength(pP->pName)) == 0 ){
+			return 1;
+		}
+		return bHope;
+	}
 	if( pP->nBit == OVB_OBJECT ){
 		return pC->nBit == OVB_OBJECT || pC->nBit == OVB_CLS || pC->nBit == OVB_STATIC;
 	}
@@ -1116,6 +1134,9 @@ static int OvAtomLE(const OvAtom *pC,const OvAtom *pP,ph7_class *pSubScope)
 			return PH7_VmInstanceOf(pC->pCls,pP->pCls) ? 1 : 0;
 		}
 		if( pC->nBit == OVB_STATIC ){
+			if( pP->pCls == 0 ){
+				return bHope;
+			}
 			return (pSubScope && PH7_VmInstanceOf(pSubScope,pP->pCls)) ? 1 : 0;
 		}
 		return 0;
@@ -1124,7 +1145,7 @@ static int OvAtomLE(const OvAtom *pC,const OvAtom *pP,ph7_class *pSubScope)
 }
 /* Gc ⊆ Gp: every atom of the parent group has some atom of the child group under
  * it (an intersection is under X as soon as ONE of its members is). */
-static int OvGroupLE(const OvType *pC,sxu32 gC,const OvType *pP,sxu32 gP,ph7_class *pSubScope)
+static int OvGroupLE(const OvType *pC,sxu32 gC,const OvType *pP,sxu32 gP,ph7_class *pSubScope,int bHope)
 {
 	int i, j;
 	for( j = 0 ; j < pP->nAtom ; ++j ){
@@ -1133,7 +1154,7 @@ static int OvGroupLE(const OvType *pC,sxu32 gC,const OvType *pP,sxu32 gP,ph7_cla
 			continue;
 		}
 		for( i = 0 ; i < pC->nAtom && !bCovered ; ++i ){
-			if( pC->a[i].nGroup == gC && OvAtomLE(&pC->a[i],&pP->a[j],pSubScope) ){
+			if( pC->a[i].nGroup == gC && OvAtomLE(&pC->a[i],&pP->a[j],pSubScope,bHope) ){
 				bCovered = 1;
 			}
 		}
@@ -1146,7 +1167,7 @@ static int OvGroupLE(const OvType *pC,sxu32 gC,const OvType *pP,sxu32 gP,ph7_cla
 /* child ⊆ parent (pSubScope is the SUBTYPE side's declaring class, which is what
  * a `static` atom there stands for). Both are normalized and neither is
  * absent/mixed/never/unknown -- OvCheck settled those. */
-static int OvSubtype(const OvType *pC,const OvType *pP,ph7_class *pSubScope)
+static int OvSubtype(const OvType *pC,const OvType *pP,ph7_class *pSubScope,int bHope)
 {
 	sxu32 gC, gP;
 	int bAnyC = 0;
@@ -1164,7 +1185,7 @@ static int OvSubtype(const OvType *pC,const OvType *pP,ph7_class *pSubScope)
 			for( j = 0 ; j < pP->nAtom ; ++j ){
 				if( pP->a[j].nGroup == gP ){ bHasP = 1; break; }
 			}
-			if( bHasP && OvGroupLE(pC,gC,pP,gP,pSubScope) ){
+			if( bHasP && OvGroupLE(pC,gC,pP,gP,pSubScope,bHope) ){
 				bCovered = 1;
 			}
 		}
@@ -1174,8 +1195,9 @@ static int OvSubtype(const OvType *pC,const OvType *pP,ph7_class *pSubScope)
 	}
 	return bAnyC;
 }
-#define OV_OK   0 /* the pair is compatible */
-#define OV_BAD  1 /* php refuses it */
+#define OV_OK    0 /* the pair is compatible */
+#define OV_BAD   1 /* php refuses it */
+#define OV_UNRES 2 /* only a class nothing has loaded yet can decide it */
 /*
  * One declared-type pair, in one variance direction. bCovariant = 1 for a return
  * type (the child must be UNDER the parent), 0 for a parameter (over it).
@@ -1226,7 +1248,17 @@ static int OvCheck(const OvType *pP,const OvType *pC,int bCovariant,
 	if( pSub->bMixed || pSub->bAbsent || pSup->bNever ){
 		return OV_BAD;
 	}
-	return OvSubtype(pSub,pSup,pSubScope) ? OV_OK : OV_BAD;
+	/* An unloaded class is decided both ways: as a class that is under nothing
+	 * it is not named, then as one that could be under any. Holding the first
+	 * way is php's success, failing the second its error -- a `null` or an
+	 * `int` no class can stand for -- and between them is php's UNRESOLVED. */
+	if( OvSubtype(pSub,pSup,pSubScope,0) ){
+		return OV_OK;
+	}
+	if( (pSub->bUnres || pSup->bUnres) && OvSubtype(pSub,pSup,pSubScope,1) ){
+		return OV_UNRES;
+	}
+	return OV_BAD;
 }
 /*
  * ---------------------------------------------------------------------------
@@ -1500,7 +1532,11 @@ static void OoInheritPropertyHooks(ph7_class *pBase,ph7_class_attr *pParent,ph7_
  * over `int` -- except under a virtual hooked parent with one hook: a get-only
  * one may only be narrowed (covariant), a set-only one only widened. Both
  * directions go through the override lattice, so `string|int` over `int|string`
- * is the same type and a shape it cannot model is accepted. An untyped side is
+ * is the same type and a shape it cannot model is accepted. A class nothing has
+ * loaded leaves an invariant pair UNRESOLVED unless its name alone answers it,
+ * and php's obligation then refuses it: no class loaded later is both under and
+ * over a differently named one. A variant pair it leaves open is accepted, since
+ * a class declared further down the file may still answer it. An untyped side is
  * an ABSENCE, never `mixed`: an untyped child under a typed parent is refused
  * (`mixed` included), and a typed one under an untyped parent has its own
  * sentence.
@@ -1541,6 +1577,7 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 		ph7_class *pPScope = VmHintScopeDeclared(pParent->pDeclClass);
 		/* 1: get-only virtual parent (covariant), 2: set-only (contravariant) */
 		int iVariance = 0;
+		int iCo, iContra;
 		OvType sP, sC;
 		if( (pParent->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL)
 		 && (pParent->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) ){
@@ -1559,8 +1596,10 @@ static sxi32 OoCheckPropRedeclare(ph7_gen_state *pGen,ph7_class *pSub,ph7_class 
 			OvInit(&sC);
 			sC.bAbsent = 1;
 		}
-		if( (iVariance != 2 && OvCheck(&sP,&sC,1,pPScope,pChildOwner) == OV_BAD)
-		 || (iVariance != 1 && (sC.bAbsent || OvCheck(&sP,&sC,0,pPScope,pChildOwner) == OV_BAD)) ){
+		iCo = iVariance == 2 ? OV_OK : OvCheck(&sP,&sC,1,pPScope,pChildOwner);
+		iContra = iVariance == 1 ? OV_OK : sC.bAbsent ? OV_BAD : OvCheck(&sP,&sC,0,pPScope,pChildOwner);
+		if( iCo == OV_BAD || iContra == OV_BAD
+		 || (iVariance == 0 && (iCo == OV_UNRES || iContra == OV_UNRES)) ){
 			char zType[192];
 			const char *zTypeText = VmHintTextResolved(pVm,&pParent->sTypeName,pPScope,
 				zType,sizeof(zType));
