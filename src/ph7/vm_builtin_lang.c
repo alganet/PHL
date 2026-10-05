@@ -226,6 +226,39 @@ PH7_PRIVATE void VmExpandUserConstant(ph7_value *pVal,void *pUserData)
 	PH7_MemObjStore(pConstantValue,pVal);
 }
 /*
+ * Whether define() must refuse zName, raising php's warning when it must. php
+ * refuses the three keyword constants and __COMPILER_HALT_OFFSET__ by spelling,
+ * then any name the table already holds; the message names the folded key,
+ * namespace part lowercased. A define() a reused VM's EARLIER run made is not a
+ * redefinition: each run is a fresh php request.
+ */
+static int VmDefineNameTaken(ph7_vm *pVm,const char *zName,sxu32 nLen)
+{
+	SyHashEntry *pEntry;
+	ph7_constant *pCons = 0;
+	const char *zShow = zName;
+	if( (nLen == 4 && (SyStrnicmp(zName,"null",4) == 0 || SyStrnicmp(zName,"true",4) == 0))
+	 || (nLen == 5 && SyStrnicmp(zName,"false",5) == 0)
+	 || (nLen == 24 && SyMemcmp(zName,"__COMPILER_HALT_OFFSET__",24) == 0) ){
+		goto Taken;
+	}
+	pEntry = PH7_VmConstantFetch(pVm,zName,nLen,0);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	pCons = (ph7_constant *)pEntry->pUserData;
+	if( pCons->xExpand == VmExpandUserConstant && pCons->nRunGen != pVm->nRunGen ){
+		return 0;
+	}
+	if( pCons->zKey ){
+		zShow = pCons->zKey;
+	}
+Taken:
+	PH7_VmThrowWarningFmt(pVm,"Constant %.*s already defined, this will be an error in PHP 9",
+		(int)nLen,zShow);
+	return 1;
+}
+/*
  * bool define(string $constant_name,expression value)
  *  Defines a named constant at runtime.
  * Parameter:
@@ -260,6 +293,26 @@ PH7_PRIVATE int vm_builtin_define(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
+	/* php's refusals, in its order: a class-constant name throws, the retired third
+	 * argument only warns, and a name already taken answers FALSE under a warning
+	 * and KEEPS the first value -- engine constants (M_PI, E_ALL) included. */
+	{
+		int i;
+		for( i = 0 ; i + 1 < nLen ; ++i ){
+			if( zName[i] == ':' && zName[i+1] == ':' ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"define(): Argument #1 ($constant_name) cannot be a class constant");
+			}
+		}
+	}
+	if( nArg > 2 && ph7_value_to_bool(apArg[2]) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Argument #3 ($case_insensitive) is ignored "
+			"since declaration of case-insensitive constants is no longer supported");
+	}
+	if( VmDefineNameTaken(pCtx->pVm,zName,(sxu32)nLen) ){
+		ph7_result_bool(pCtx,0);
+		return SXRET_OK;
+	}
 	/* Duplicate constant value */
 	pValue = (ph7_value *)SyMemBackendPoolAlloc(&pCtx->pVm->sAllocator,sizeof(ph7_value));
 	if( pValue == 0 ){
@@ -284,36 +337,6 @@ PH7_PRIVATE int vm_builtin_define(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Duplicate constant value */
 	PH7_MemObjStore(apArg[1],pValue);
-	if( nArg == 3 && ph7_value_is_bool(apArg[2]) && ph7_value_to_bool(apArg[2]) ){
-		/* Lower case the constant name */
-		char *zCur = (char *)zName;
-		while( zCur < &zName[nLen] ){
-			if( (unsigned char)zCur[0] >= 0xc0 ){
-				/* UTF-8 stream */
-				zCur++;
-				while( zCur < &zName[nLen] && (((unsigned char)zCur[0] & 0xc0) == 0x80) ){
-					zCur++;
-				}
-				continue;
-			}
-			if( SyisUpper(zCur[0]) ){
-				int c = SyToLower(zCur[0]);
-				zCur[0] = (char)c;
-			}
-			zCur++;
-		}
-		/* Register the lowercase alias with its OWN value copy (not the same
-		 * pValue) so the two entries don't share one object — otherwise freeing
-		 * one on a later overwrite would dangle the other. */
-		{
-			ph7_value *pAlias = (ph7_value *)SyMemBackendPoolAlloc(&pCtx->pVm->sAllocator,sizeof(ph7_value));
-			if( pAlias ){
-				PH7_MemObjInit(pCtx->pVm,pAlias);
-				PH7_MemObjStore(apArg[1],pAlias);
-				ph7_create_constant(pCtx->pVm,zName,VmExpandUserConstant,pAlias);
-			}
-		}
-	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);
 	return SXRET_OK;

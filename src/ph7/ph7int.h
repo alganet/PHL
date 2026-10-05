@@ -571,7 +571,9 @@ struct ph7_constant
 	                        * Static storage. Naming the constant raises php's
 	                        * E_DEPRECATED; LISTING the table does not. */
 	SySet aAttrs;          /* Declared #[...] attributes (ph7_attribute records) —
-	                        * php 8.5 attributes on `const` statements */
+	                        * php 8.5 attributes on `const` statements */	sxu32 nRunGen;         /* pVm->nRunGen when it was last installed: a reused VM
+	                        * (PH7_VmReset) lets a define() made by an EARLIER run be
+	                        * made again, where php's fresh process would never see it */
 };
 typedef struct ph7_aux_data ph7_aux_data;
 /*
@@ -4738,6 +4740,8 @@ struct ph7_vm
 	                            * generation it screened at, so a site whose callee is a
 	                            * compile-time constant asks the question once per generation
 	                            * instead of once per call. Starts at 1: 0 is 'never screened'. */
+	sxu32 nRunGen;             /* Bumped by every PH7_VmReset: which run of a reused VM
+	                            * installed a constant (ph7_constant.nRunGen) */
 	sxu32 nConstGen;           /* The same idea for the CONSTANT table: bumped whenever a name
 	                            * is installed in or removed from hConstant. A PH7_OP_LOADC
 	                            * site's answer can only change then -- both the constant it

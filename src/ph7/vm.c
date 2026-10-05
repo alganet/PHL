@@ -294,6 +294,7 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 			SyStringInitFromBuf(&pCons->sFile,0,0);
 		}
 		pCons->nLine = nLine;
+		pCons->nRunGen = pVm->nRunGen;
 		pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
 		pCons->zDeprecated = 0;     /* ...and its deprecation, which was the old symbol's */
 		SySetReset(&pCons->aAttrs); /* redefinition drops the old attributes */
@@ -325,6 +326,7 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 		SyStringDupPtr(&pCons->sFile,pFile);
 	}
 	pCons->nLine = nLine;
+	pCons->nRunGen = pVm->nRunGen;
 	pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
 	pCons->zDeprecated = 0;
 	/* Install the constant */
@@ -4499,7 +4501,8 @@ static void VmResetResourceIds(ph7_vm *pVm)
  *
  * Definitions are preserved (treated like compile-time state): the bytecode,
  * the operand stack, the function/class/interface tables, user-defined constants
- * (a re-run define() overwrites the value in place), included-file markers
+ * (a re-run define() overwrites the value in place: nRunGen tells it from a
+ * redefinition inside one run, which php refuses), included-file markers
  * (so include_once/require_once stay satisfied — definitions and their
  * define()s survive without re-compiling), the literal pool, the cached
  * interface pointers, the output-consumer configuration and the IO streams.
@@ -4550,7 +4553,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* (2) Free run-time closures and reset every function/method static sentinel
 	 * in a single pass over hFunction. User-defined constants are treated like
 	 * function/class registrations and intentionally persist across reuse (a
-	 * re-run define() overwrites the value in place). */
+	 * re-run define() overwrites the value in place -- see nRunGen). */
 	VmResetFunctionState(&(*pVm));
 	/* (3) Release every object/variable reserved during the run. Re-reading the
 	 * used count each iteration tolerates a destructor reserving a fresh slot. */
@@ -4584,6 +4587,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * with the bytecode of the last one still holding its screened-at stamps. */
 	pVm->nCallableGen++;
 	pVm->nConstGen++;
+	pVm->nRunGen++;
 	/* (8) Drain remaining per-exec containers. */
 	SySetReset(&pVm->aSelf);
 	/* Shutdown callbacks are normally drained+released by VmInvokeShutdownCallbacks
