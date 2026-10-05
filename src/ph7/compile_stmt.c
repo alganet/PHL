@@ -799,6 +799,16 @@ Consume:
 		pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];
 		/* Advance the stream cursor */
 		pGen->pRawIn++;
+		{
+			SyToken *pTok;
+			for( pTok = pGen->pIn ; pTok < pGen->pEnd ; pTok++ ){
+				if( pTok->nType & PH7_TK_OCB ){
+					pGen->nBraceNet++;
+				}else if( pTok->nType & PH7_TK_CCB ){
+					pGen->nBraceNet--;
+				}
+			}
+		}
 		if( pGen->pIn >= pGen->pEnd ){
 			/* The chunk held no TOKENS. `<?php // note ?>` is a whole PHP block that
 			 * produces none, and so is a block holding only a comment of any kind --
@@ -848,6 +858,40 @@ static sxi32 GenStateUnclosedBrace(ph7_gen_state *pGen,sxu32 nOpenLine)
 		return PH7_GenCompileError(&(*pGen),E_PARSE,pGen->nChunkEofLine,"Unclosed '{' on line %u",nOpenLine);
 	}
 	return PH7_GenCompileError(&(*pGen),E_PARSE,nOpenLine,"Unclosed '{'");
+}
+/*
+ * php's grammar closes an alternative-syntax body with the `end*` keyword AND a
+ * `;` -- `endwhile echo 2;` is `unexpected token "echo", expecting ";"` there.
+ * A closing tag counts as the `;`, and a chunk that stops right after the keyword
+ * stopped at one or at the end of the file, which the statement loop reports.
+ */
+static sxi32 GenStateEndKeywordSemi(ph7_gen_state *pGen)
+{
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_SEMI) ){
+		return SXRET_OK;
+	}
+	if( pGen->pIn->nType & (PH7_TK_RPAREN|PH7_TK_CSB) ){
+		/* Never matched here -- the body sits in a `{` or at the top -- so php's
+		 * scanner refuses it first, and the expression compiler says so. */
+		return SXRET_OK;
+	}
+	if( pGen->pIn->nType & PH7_TK_CCB ){
+		/* Likewise a `}` with no `{` open around it. */
+		SyToken *pTok = pGen->pIn;
+		SyToken *pStreamEnd = &((SyToken *)SySetBasePtr(pGen->pTokenSet))[SySetUsed(pGen->pTokenSet)];
+		sxi32 nOpen = pGen->nBraceNet;
+		for( ; pTok < pStreamEnd ; pTok++ ){
+			if( pTok->nType & PH7_TK_OCB ){
+				nOpen--;
+			}else if( pTok->nType & PH7_TK_CCB ){
+				nOpen++;
+			}
+		}
+		if( nOpen <= 0 ){
+			return SXRET_OK;
+		}
+	}
+	return PH7_GenSyntaxError(&(*pGen),pGen->pIn,"\";\"");
 }
 /*
  * Compile a PHP block.
@@ -920,9 +964,14 @@ PH7_PRIVATE sxi32 PH7_CompileBlock(
 				}
 				if( rc == SXERR_EOF || pGen->pIn >= pGen->pEnd ){
 					/* No more token to process */
-					if( rc == SXERR_EOF ){
-						PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pEnd[-1].nLine,
-							"Missing 'endfor;','endwhile;','endswitch;' or 'endforeach;' keyword");
+					if( rc == SXERR_EOF && pGen->nBraceNet <= 0 ){
+						/* The input ended inside the body: php's parse error, naming
+						 * what an if/elseif body wanted. A `{` still open around it is
+						 * its scanner's refusal instead, which that block reports. */
+						rc = PH7_GenSyntaxError(&(*pGen),0,pGen->pCurrent->zInnerTail);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
 					}
 					break;
 				}
@@ -936,6 +985,9 @@ PH7_PRIVATE sxi32 PH7_CompileBlock(
 						/* Delimiter keyword found,break */
 						if( nKwrd != PH7_TKWRD_ELSE && nKwrd != PH7_TKWRD_ELIF ){
 							pGen->pIn++; /*  endif;endswitch... */
+							if( GenStateEndKeywordSemi(&(*pGen)) == SXERR_ABORT ){
+								return SXERR_ABORT;
+							}
 						}
 						break;
 				}
@@ -4929,7 +4981,12 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	GenStateLeaveBlock(pGen,0);
 	if( pGen->pIn < pGen->pEnd ){
 		/* Jump the trailing curly braces or the endswitch keyword*/
+		int bEndKw = (pGen->pIn->nType & PH7_TK_KEYWORD)
+			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_ENDSWITCH;
 		pGen->pIn++;
+		if( bEndKw && GenStateEndKeywordSemi(&(*pGen)) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	/* Statement successfully compiled */
 	return SXRET_OK;

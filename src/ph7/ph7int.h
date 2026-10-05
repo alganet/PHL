@@ -1249,6 +1249,9 @@ struct ph7_gen_state
 	sxu32 nChunkEofLine;     /* Line the chunk's end-of-input sits on -- its last line, which is
 	                          * NOT the last TOKEN's line when trailing blank lines follow. php
 	                          * reports `unexpected end of file` at the former. */
+	sxi32 nBraceNet;         /* `{` minus `}` over every chunk of the unit tokenized so far.
+	                          * php's scanner refuses a `{` still open at the end of the file
+	                          * ahead of whatever statement its parser was inside. */
 	sxi8 bHalted;            /* 1 once `__halt_compiler();` has been compiled in this file:
 	                          * everything after it -- the rest of the chunk, every later chunk
 	                          * and every byte of inline text between them -- is DATA, and the

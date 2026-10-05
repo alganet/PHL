@@ -5165,6 +5165,7 @@ static sxi32 PH7_CompilePHP(
 				nBraceOpen--;
 			}
 		}
+		pGen->nBraceNet += nBraceOpen;
 		if( nBraceOpen > 0 ){
 			/* A `{` this chunk never closes: php's parser reports THAT at the end of
 			 * the file, ahead of any statement it left open and ahead of a string or
@@ -5425,6 +5426,7 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	{
 		sxu32 i;
 		pCodeGen->nChunkEofLine = nBaseLine;
+		pCodeGen->nBraceNet = 0;
 		for( i = 0 ; i < pScript->nByte ; ++i ){
 			if( pScript->zString[i] == '\n' ){
 				pCodeGen->nChunkEofLine++;
