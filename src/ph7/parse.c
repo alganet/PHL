@@ -2162,6 +2162,27 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 			 continue;
 		 }
 		 pNode = apNode[iCur];
+		 if( pNode->xCode == PH7_CompileAnnonClass ){
+			 /* PHP 8.4: an anonymous class is as dereferencable as `new C()` --
+			  * `new class {…}->m()`, `new class(1) {…}->p`, `new class {…}()`.
+			  * Its constructor arguments sit INSIDE the one term ExprAssembleAnnonClass
+			  * delimited, so the call fold below never sees them; fold the `new` in
+			  * front of it here instead, before a trailing postfix operator binds.
+			  * Left for the prefix pass, `->` reached the bare class term and
+			  * refused it as "Expecting a variable as left operand". */
+			 sxi32 iNew = iCur - 1;
+			 while( iNew >= 0 && apNode[iNew] == 0 ){
+				 iNew--;
+			 }
+			 if( iNew >= 0 && apNode[iNew]->pOp
+				 && apNode[iNew]->pOp->iOp == EXPR_OP_NEW
+				 && apNode[iNew]->pLeft == 0 ){
+				 apNode[iNew]->pLeft = pNode;
+				 apNode[iCur] = apNode[iNew];
+				 apNode[iNew] = 0;
+				 pNode = apNode[iCur];
+			 }
+		 }
 		 if( pNode->pOp && pNode->pOp->iPrec == 2 && pNode->pLeft == 0  ){
 			 if( pNode->pOp->iOp == EXPR_OP_FUNC_CALL ){
 				 /* Collect function arguments */
