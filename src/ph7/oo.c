@@ -1433,6 +1433,46 @@ PH7_PRIVATE sxi32 PH7_ClassInterfaceCheckRedeclare(ph7_gen_state *pGen,ph7_class
  * Any other return value indicates failure and the upper layer must generate an appropriate
  * error message.
  */
+/*
+ * A redeclared property keeps every hook of its parent's that it does not
+ * write itself -- php's inherit_property_hook. A hook is a method
+ * (__phl_hook_get_NAME), so the method copy that follows brings the body
+ * down already; what the redeclaration lost is the FLAG that makes an access
+ * dispatch it, and without it `class C extends P { public $x { set => ...; } }`
+ * read the backing store where php runs P's get. An abstract parent hook is
+ * the one exception: a property that already performs the operation -- a
+ * backed one always reads, and writes unless readonly -- satisfies it, and
+ * nothing is inherited.
+ *
+ * A child over a BACKED parent is backed too, whatever its own hook bodies
+ * reference: php keeps the parent's slot for it. Over a virtual parent the
+ * child's own answer stands.
+ */
+static void OoInheritPropertyHooks(ph7_class *pBase,ph7_class_attr *pParent,ph7_class_attr *pChild)
+{
+	static const sxi32 aKind[2] = { PH7_CLASS_ATTR_HOOK_GET, PH7_CLASS_ATTR_HOOK_SET };
+	int i;
+	if( (pParent->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) == 0 ){
+		pChild->iFlags &= ~PH7_CLASS_ATTR_HOOK_VIRTUAL;
+	}
+	for( i = 0 ; i < 2 ; i++ ){
+		ph7_class_method *pHook;
+		char zHName[128];
+		sxu32 nHName;
+		if( (pParent->iFlags & aKind[i]) == 0 || (pChild->iFlags & aKind[i]) != 0 ){
+			continue;
+		}
+		nHName = SyBufferFormat(zHName,sizeof(zHName),i ? "__phl_hook_set_%z" : "__phl_hook_get_%z",
+			&pParent->sName);
+		pHook = PH7_ClassExtractMethod(pBase,zHName,nHName);
+		if( pHook && (pHook->iFlags & PH7_CLASS_ATTR_ABSTRACT)
+		 && (pChild->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) == 0
+		 && (i == 0 || (pChild->iFlags & PH7_CLASS_ATTR_READONLY) == 0) ){
+			continue;
+		}
+		pChild->iFlags |= aKind[i];
+	}
+}
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase)
 {
 	ph7_class_method *pMeth;
@@ -1552,6 +1592,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			 * instance iteration, so they keep their existing slot. */
 			if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 				ph7_class_attr *pOwn = (ph7_class_attr *)pEntry->pUserData;
+				OoInheritPropertyHooks(pBase,pAttr,pOwn);
 				SyHashDeleteEntry(&pSub->hAttr,(const void *)pName->zString,pName->nByte,0);
 				rc = SySetPut(&aInherited,(const void *)&pOwn);
 				if( rc != SXRET_OK ){

@@ -2639,16 +2639,6 @@ static int GenStateHookBodyRefsProp(SyToken *pStart,SyToken *pEnd,const SyString
 		 && SyMemcmp((const void *)p[3].sData.zString,(const void *)pName->zString,pName->nByte) == 0 ){
 			return 1;
 		}
-		/* `parent::$NAME` (the parent::$x::get() hook-call form): the parent
-		 * hook operates on the shared per-instance backing store, so the
-		 * property is backed (php compiles a default alongside it). */
-		if( p > pStart
-		 && GenStateTokenIsMemberOp(&p[-1])
-		 && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
-		 && p[1].sData.nByte == pName->nByte
-		 && SyMemcmp((const void *)p[1].sData.zString,(const void *)pName->zString,pName->nByte) == 0 ){
-			return 1;
-		}
 	}
 	return 0;
 }
@@ -3311,12 +3301,15 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 	if( !bRefsSelf ){
 		/* php 8.4 virtual-vs-backed: no hook body referenced `$this->NAME`, so
 		 * this property is VIRTUAL — php gives it no backing store and forbids
-		 * a default value (compile fatal, php's exact wording). */
+		 * a default value (compile fatal, php's exact wording). A `parent::$x::get()`
+		 * call is not a reference: what makes such a child backed is a backed
+		 * PARENT, which only the class link knows. */
 		pAttr->iFlags |= PH7_CLASS_ATTR_HOOK_VIRTUAL;
-		if( SySetUsed(&pAttr->aByteCode) > 0 ){
-			/* ...at the end of the last hook, or at the class link -- which
-			 * blames the class's own line -- when it has a parent. */
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pCurBase ? pClass->nLine : nHookEnd,
+		if( SySetUsed(&pAttr->aByteCode) > 0 && pGen->pCurBase == 0 ){
+			/* ...at the end of the last hook; in a class with a parent the
+			 * class link asks instead (GenStateCheckVirtualDefaults), because
+			 * a backed parent property makes this one backed too. */
+			rc = PH7_GenCompileError(pGen,E_ERROR,nHookEnd,
 				"Cannot specify default value for virtual hooked property %z::$%z",
 				&pClass->sDisp,&pAttr->sName);
 			if( rc == SXERR_ABORT ){
@@ -3705,11 +3698,13 @@ static sxi32 GenStateCheckInterfaceSignatures(ph7_gen_state *pGen,ph7_class *pCl
 }
 /*
  * An abstract property-hook stub (__phl_hook_{get,set}_NAME) is satisfied by
- * the class declaring a PLAIN (non-abstract, non-hooked) property NAME: php
- * lets a plain property implement `{ get; set; }` requirements — its raw
- * read/write IS the default get/set. A concrete hook override replaced the
- * stub in hMethod already, so a surviving stub next to a HOOKED property
- * means that specific hook is still missing.
+ * the class declaring a BACKED (non-abstract) property NAME: php lets a
+ * backed property implement `{ get; set; }` requirements -- its raw read IS
+ * the default get, and its raw write the default set unless it is readonly.
+ * That holds for a backed property with hooks of its own, too: `public $x
+ * { set => ...; }` still reads its store, so it answers an abstract get. A
+ * concrete hook override replaced the stub in hMethod already, so a stub
+ * surviving next to a VIRTUAL property means that hook is still missing.
  */
 static int GenStateAbstractHookSatisfied(ph7_class *pClass,const SyString *pMName)
 {
@@ -3723,7 +3718,9 @@ static int GenStateAbstractHookSatisfied(ph7_class *pClass,const SyString *pMNam
 	pProp = PH7_ClassExtractAttribute(pClass,&pMName->zString[nPfx],pMName->nByte - nPfx);
 	return pProp != 0
 		&& (pProp->iFlags & (PH7_CLASS_ATTR_ABSTRACT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
-			|PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) == 0;
+			|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0
+		&& (pMName->zString[sizeof("__phl_hook_")-1] == 'g'
+		 || (pProp->iFlags & PH7_CLASS_ATTR_READONLY) == 0);
 }
 /*
  * Append an abstract member's display name to the message blob, translating a
@@ -5347,6 +5344,30 @@ static sxi32 GenStateApplyTraitUses(ph7_gen_state *pGen,ph7_class *pClass,SySet 
  * compile, and no name token is expected. Everything after the header (extends/
  * implements, body, install) is shared by both paths.
  */
+/*
+ * php's virtual-default refusal for a class with a parent, asked once the
+ * class has linked: a hooked property whose own bodies never touch
+ * `$this->NAME` is virtual only if the property it redeclares is virtual too
+ * (PH7_ClassInherit cleared the flag over a backed one), so a default is a
+ * refusal only now -- blamed on the class's own line, as php's link blames it.
+ */
+static sxi32 GenStateCheckVirtualDefaults(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	SyHashEntry *pEntry;
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( pAttr->pDeclClass == pClass
+		 && (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL)
+		 && SySetUsed(&pAttr->aByteCode) > 0 ){
+			sxi32 rc = PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+				"Cannot specify default value for virtual hooked property %z::$%z",
+				&pClass->sDisp,&pAttr->sName);
+			return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_CORRUPT;
+		}
+	}
+	return SXRET_OK;
+}
 static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	SyString *pAnonName,SyToken **ppArgStart,SyToken **ppArgEnd)
 {
@@ -5825,6 +5846,11 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		if( pBase ){
 			/* Inherit from base class and mark as a subclass */
 			rc = PH7_ClassInherit(&(*pGen),pClass,pBase);
+			if( rc == SXRET_OK && GenStateCheckVirtualDefaults(&(*pGen),pClass) == SXERR_ABORT ){
+				SySetRelease(&aOvMeth);
+				SySetRelease(&aOvProp);
+				return SXERR_ABORT;
+			}
 		}
 		apInterface = (ph7_class **)SySetBasePtr(&aInterfaces);
 		for( n = 0 ; n < SySetUsed(&aInterfaces) ; n++ ){
