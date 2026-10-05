@@ -468,6 +468,22 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 							return SXERR_ABORT;
 						}
 						SyBlobRelease(&sMsg);
+						if( VmArgDefaultWidens(&sArg,&sVal) ){
+							/* php stores the int it let into a float AS a float, so the
+							 * default itself (reflection, the export) reads float(1):
+							 * cast it ahead of the trailing DONE. */
+							VmInstr *pDone = (VmInstr *)SySetPeek(&sArg.aByteCode);
+							if( pDone && pDone->iOp == PH7_OP_DONE ){
+								VmInstr sDone = *pDone;
+								pDone->iOp = PH7_OP_CVT_REAL;
+								pDone->iP1 = 0;
+								pDone->iP2 = 0;
+								pDone->p3 = 0;
+								pDone->nAux = 0;
+								pDone->nSite = 0;
+								SySetPut(&sArg.aByteCode,(const void *)&sDone);
+							}
+						}
 					}
 					PH7_MemObjRelease(&sVal);
 				}

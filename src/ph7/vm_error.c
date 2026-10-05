@@ -3592,6 +3592,52 @@ PH7_PRIVATE int VmArgDefaultRefusal(ph7_vm *pVm,ph7_class *pScope,ph7_vm_func_ar
 		ph7_type_name(pValue),&pArg->sName,zTypeText);
 	return 1;
 }
+/*
+ * TRUE when php CONVERTS a folded parameter default it accepted: the one widening
+ * zend_is_valid_default_value makes, an int let into a type that lists float but not
+ * int (`float $x = 1`, `float|string $x = 1`, `bool|float $x = 4`). php stores the
+ * converted value, so getDefaultValue() reads float(1) and the export prints `1.0`;
+ * `int|float $x = 1` keeps the int, since the type holds it as written.
+ */
+PH7_PRIVATE int VmArgDefaultWidens(ph7_vm_func_arg *pArg,ph7_value *pValue)
+{
+	const ph7_type_alt *aAlt;
+	ph7_type_alt sOne;
+	sxu32 nAlt,n;
+	int bReal = 0;
+	if( (pValue->iFlags & MEMOBJ_INT) == 0 || (pValue->iFlags & (MEMOBJ_BOOL|MEMOBJ_NULL)) ){
+		return 0;
+	}
+	if( pArg->iFlags & VM_FUNC_ARG_UNION ){
+		aAlt = (const ph7_type_alt *)SySetBasePtr(&pArg->aUnionAlts);
+		nAlt = SySetUsed(&pArg->aUnionAlts);
+	}else{
+		sOne.nType = pArg->nType;
+		sOne.sClass = pArg->sClass;
+		sOne.nGroup = 0;
+		aAlt = &sOne;
+		nAlt = 1;
+	}
+	for( n = 0 ; n < nAlt ; ++n ){
+		sxu32 nType = aAlt[n].nType;
+		if( nType == SXU32_HIGH ){
+			if( aAlt[n].sClass.nByte == 5 && SyStrnicmp(aAlt[n].sClass.zString,"mixed",5) == 0 ){
+				return 0;
+			}
+			continue;
+		}
+		if( nType == MEMOBJ_OBJ || nType == MEMOBJ_NULL ){
+			continue;
+		}
+		if( nType & MEMOBJ_INT ){
+			return 0;
+		}
+		if( nType & MEMOBJ_REAL ){
+			bReal = 1;
+		}
+	}
+	return bReal;
+}
 PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
 {
 	if( VmCheckTypedDefault(&(*pVm),pClass,pAttr,pValue) == SXRET_OK ){
