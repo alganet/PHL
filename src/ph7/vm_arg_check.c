@@ -2826,17 +2826,27 @@ static int VmSigDefaultValue(ph7_context *pCtx,const VmSigParam *pParam,ph7_valu
  * ~650-builtin surface plus every native method was affected.
  *
  * The declared signature is the source of names, defaults and positions — the same string
- * Reflection prints. Rewrites *pnArg / apArg in place (the caller's argument vector is
- * scratch it owns) and answers SXRET_OK, or throws php's Error and returns its status.
- * Callees with a VARIADIC tail are left alone: php collects extra named arguments into it
- * by NAME, which the positional vector here cannot express.
+ * Reflection prints. Rewrites pArgSet (the caller's argument vector is scratch it owns;
+ * it is REBUILT rather than written in place, because a skipped default can make the
+ * bound vector longer than the one written) and *pnArg, and answers SXRET_OK, or throws
+ * php's Error and returns its status.
+ *
+ * A VARIADIC tail cannot be named: php leaves it out of the parameters a name is looked up
+ * in, so a name matching no declared parameter -- the tail's own included -- is an EXTRA,
+ * collected by name after the positional actuals. Those land at the end of the vector,
+ * *pnExtra counts them, and pTail becomes a copy of pMap naming each slot of the bound
+ * vector (its aNames is the caller's to free), so a forwarding builtin can hand them on
+ * keyed. Whether the callee TAKES extras at all is its own ZPP's question in php, asked
+ * at a moment of its own, so it is the caller's (PH7_VmBuiltinExtraNamedRule).
  */
 PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 	ph7_context *pCtx,      /* Call context (for the throws) */
 	ph7_user_func *pFunc,   /* Callee: its zSig names the parameters */
 	VmCallArgMap *pMap,     /* Call-site map; its aNames[] are per ACTUAL slot */
+	SySet *pArgSet,         /* IN/OUT: argument vector (ph7_value *) */
 	int *pnArg,             /* IN/OUT: argument count */
-	ph7_value **apArg       /* IN/OUT: argument vector */
+	int *pnExtra,           /* OUT: trailing actuals that are unknown-name extras */
+	VmCallArgMap *pTail     /* OUT: the bound vector's names, when *pnExtra > 0 */
 	)
 {
 	/* php's own stubs top out well under this; a signature with more parameters simply
@@ -2844,7 +2854,11 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 #define VM_SIG_MAX_PARAM 32
 	VmSigParam aParam[VM_SIG_MAX_PARAM];
 	ph7_value *apBound[VM_SIG_MAX_PARAM];
-	int nParam,nArg,i,nLast;
+	ph7_value *apTail[VM_SIG_MAX_PARAM];
+	SyString aTailName[VM_SIG_MAX_PARAM];
+	ph7_value **apArg;
+	int nParam,nDecl,nArg,i,nLast,nTail,nExtra,bNamedSeen;
+	*pnExtra = 0;
 	if( pFunc == 0 || pFunc->zSig == 0 || pMap == 0 || pMap->bHasNamed == 0 ){
 		return SXRET_OK;
 	}
@@ -2853,33 +2867,54 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 		return SXRET_OK;
 	}
 	nParam = VmSigParams(pFunc->zSig,aParam,VM_SIG_MAX_PARAM);
-	if( nParam < 1 || aParam[nParam-1].bVariadic ){
+	if( nParam < 1 ){
 		return SXRET_OK;
 	}
-	for( i = 0 ; i < nParam ; ++i ){
+	nDecl = aParam[nParam-1].bVariadic ? nParam - 1 : nParam;
+	apArg = (ph7_value **)SySetBasePtr(pArgSet);
+	for( i = 0 ; i < nDecl ; ++i ){
 		apBound[i] = 0;
 	}
 	nLast = -1;
+	nTail = 0;
+	nExtra = 0;
+	bNamedSeen = 0;
 	for( i = 0 ; i < nArg ; ++i ){
 		int p = i;
 		if( i < (int)pMap->nTotal && pMap->aNames[i].nByte > 0 ){
 			SyString *pName = &pMap->aNames[i];
-			for( p = 0 ; p < nParam ; ++p ){
+			bNamedSeen = 1;
+			for( p = 0 ; p < nDecl ; ++p ){
 				if( (int)pName->nByte == aParam[p].nName
 				 && SyMemcmp(pName->zString,aParam[p].zName,pName->nByte) == 0 ){
 					break;
 				}
 			}
-			if( p >= nParam ){
-				return PH7_VmThrowException(pCtx,"Error",
-					"Unknown named parameter $%z",pName);
+			if( p >= nDecl ){
+				if( nDecl == nParam ){
+					return PH7_VmThrowException(pCtx,"Error",
+						"Unknown named parameter $%z",pName);
+				}
+				apTail[nTail] = apArg[i];
+				aTailName[nTail] = *pName;
+				nTail++;
+				nExtra++;
+				continue;
 			}
 			if( apBound[p] ){
 				return PH7_VmThrowException(pCtx,"Error",
 					"Named parameter $%z overwrites previous argument",pName);
 			}
-		}else if( p >= nParam ){
-			return SXRET_OK; /* more positional arguments than the signature knows */
+		}else if( bNamedSeen && nDecl != nParam ){
+			return SXRET_OK; /* positional after named: only an unpack spells it */
+		}else if( p >= nDecl ){
+			if( nDecl == nParam ){
+				return SXRET_OK; /* more positional arguments than the signature knows */
+			}
+			apTail[nTail] = apArg[i];
+			SyZero(&aTailName[nTail],sizeof(SyString));
+			nTail++;
+			continue;
 		}
 		apBound[p] = apArg[i];
 		if( p > nLast ){
@@ -2898,11 +2933,99 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 			apBound[i] = pDef;
 		}
 	}
-	for( i = 0 ; i <= nLast ; ++i ){
-		apArg[i] = apBound[i];
+	if( nExtra > 0 ){
+		SyString *aName = (SyString *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+			(sxu32)((nLast + 1 + nTail) * sizeof(SyString)));
+		if( aName == 0 ){
+			return SXRET_OK;
+		}
+		SyZero(aName,(sxu32)((nLast + 1) * sizeof(SyString)));
+		for( i = 0 ; i < nTail ; ++i ){
+			aName[nLast + 1 + i] = aTailName[i];
+		}
+		*pTail = *pMap;
+		pTail->bArgShapes = 0;
+		pTail->nNonLvalMask = 0;
+		pTail->nTempCallMask = 0;
+		pTail->nTotal = (sxu32)(nLast + 1 + nTail);
+		pTail->aNames = aName;
+		*pnExtra = nExtra;
 	}
-	*pnArg = nLast + 1;
+	SySetReset(pArgSet);
+	for( i = 0 ; i <= nLast ; ++i ){
+		SySetPut(pArgSet,(const void *)&apBound[i]);
+	}
+	for( i = 0 ; i < nTail ; ++i ){
+		SySetPut(pArgSet,(const void *)&apTail[i]);
+	}
+	*pnArg = (int)SySetUsed(pArgSet);
 	return SXRET_OK;
+}
+/*
+ * What a builtin does with the unknown-name EXTRAS the binder above collected past its
+ * variadic signature, and WHEN -- php answers from the callee's own parameter parsing, so
+ * the moment depends on how its C code parses, not on its stub. Derived from php 8.5 by
+ * calling every variadic builtin with one extra, with and without a wrong-typed first
+ * argument:
+ *
+ *   VM_XNAMED_TAKE          the forwards (Z_PARAM_VARIADIC_WITH_NAMED), which hand the
+ *                           extras on keyed. forward_static_call() is NOT one. Closure's
+ *                           __invoke is, but carries no signature to collect against.
+ *   VM_XNAMED_BEFORE_ARITY  the old-style `zend_parse_parameters("+f")` parsers, which
+ *                           refuse while reading their spec: `array_intersect(zz: 1)` is
+ *                           the refusal where `sprintf(zz: 1)` is "expects at least 1".
+ *   VM_XNAMED_BEFORE_TYPES  parsers that read the whole list as the variadic, so the
+ *                           stub's declared `array $array` is not screened before it.
+ *   VM_XNAMED_REFUSE        everything else: the declared parameters' screens first.
+ */
+PH7_PRIVATE int PH7_VmBuiltinExtraNamedRule(const SyString *pName)
+{
+	static const struct { const char *zName; int iRule; } aRule[] = {
+		{ "call_user_func",              VM_XNAMED_TAKE },
+		{ "Closure::call",               VM_XNAMED_TAKE },
+		{ "Fiber::start",                VM_XNAMED_TAKE },
+		{ "ReflectionFunction::invoke",  VM_XNAMED_TAKE },
+		{ "ReflectionMethod::invoke",    VM_XNAMED_TAKE },
+		{ "ReflectionClass::newInstance",VM_XNAMED_TAKE },
+		{ "array_diff_assoc",            VM_XNAMED_BEFORE_ARITY },
+		{ "array_diff_key",              VM_XNAMED_BEFORE_ARITY },
+		{ "array_diff_uassoc",           VM_XNAMED_BEFORE_ARITY },
+		{ "array_diff_ukey",             VM_XNAMED_BEFORE_ARITY },
+		{ "array_intersect",             VM_XNAMED_BEFORE_ARITY },
+		{ "array_intersect_assoc",       VM_XNAMED_BEFORE_ARITY },
+		{ "array_intersect_key",         VM_XNAMED_BEFORE_ARITY },
+		{ "array_intersect_uassoc",      VM_XNAMED_BEFORE_ARITY },
+		{ "array_intersect_ukey",        VM_XNAMED_BEFORE_ARITY },
+		{ "array_udiff",                 VM_XNAMED_BEFORE_ARITY },
+		{ "array_udiff_assoc",           VM_XNAMED_BEFORE_ARITY },
+		{ "array_udiff_uassoc",          VM_XNAMED_BEFORE_ARITY },
+		{ "array_uintersect",            VM_XNAMED_BEFORE_ARITY },
+		{ "array_uintersect_assoc",      VM_XNAMED_BEFORE_ARITY },
+		{ "array_uintersect_uassoc",     VM_XNAMED_BEFORE_ARITY },
+		{ "register_shutdown_function",  VM_XNAMED_BEFORE_ARITY },
+		{ "register_tick_function",      VM_XNAMED_BEFORE_ARITY },
+		{ "array_diff",                  VM_XNAMED_BEFORE_TYPES },
+		{ "array_replace",               VM_XNAMED_BEFORE_TYPES },
+		{ "array_replace_recursive",     VM_XNAMED_BEFORE_TYPES },
+	};
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(aRule) ; ++i ){
+		sxu32 nByte = SyStrlen(aRule[i].zName);
+		if( pName->nByte == nByte
+		 && SyStrnicmp(pName->zString,aRule[i].zName,nByte) == 0 ){
+			return aRule[i].iRule;
+		}
+	}
+	return VM_XNAMED_REFUSE;
+}
+/*
+ * php's refusal of the extras, raised from inside the callee: the internal frame is on
+ * the trace, and a native method is named with its class.
+ */
+PH7_PRIVATE sxi32 PH7_VmRefuseExtraNamed(ph7_context *pCtx,ph7_user_func *pFunc)
+{
+	return PH7_VmThrowException(pCtx,"ArgumentCountError",
+		"%z() does not accept unknown named parameters",&pFunc->sName);
 }
 /*
  * Name the Nth (0-based) parameter of a declared signature, without the '$'.

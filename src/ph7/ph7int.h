@@ -7822,7 +7822,14 @@ PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm);
 PH7_PRIVATE void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax);
 PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig);
 PH7_PRIVATE int VmBuiltinPrefersRef(SyString *pName);
-PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(ph7_context *pCtx,ph7_user_func *pFunc,VmCallArgMap *pMap,int *pnArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(ph7_context *pCtx,ph7_user_func *pFunc,VmCallArgMap *pMap,SySet *pArgSet,int *pnArg,int *pnExtra,VmCallArgMap *pTail);
+/* PH7_VmBuiltinExtraNamedRule: what a variadic builtin does with unknown named extras */
+#define VM_XNAMED_TAKE          0
+#define VM_XNAMED_REFUSE        1
+#define VM_XNAMED_BEFORE_TYPES  2
+#define VM_XNAMED_BEFORE_ARITY  3
+PH7_PRIVATE int PH7_VmBuiltinExtraNamedRule(const SyString *pName);
+PH7_PRIVATE sxi32 PH7_VmRefuseExtraNamed(ph7_context *pCtx,ph7_user_func *pFunc);
 PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(ph7_context *pCtx,ph7_user_func *pFunc,int nGiven,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(ph7_context *pCtx,ph7_user_func *pFunc,VmCallArgMap *pMap,int nGiven,ph7_value **apArg);
 PH7_PRIVATE int PH7_VmSigParamName(const char *zSig,int nPos,SyString *pOut);

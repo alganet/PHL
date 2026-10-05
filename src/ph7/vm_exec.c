@@ -8926,6 +8926,14 @@ NativeCall:
 		sCtx.pCalledClass = pNativeClass;
 		{
 		int nGiven = (int)SySetUsed(&aArg);
+		/* Trailing actuals the binder collected as unknown-name EXTRAS past a variadic
+		 * signature's declared parameters, and the map naming them (aNames is owned
+		 * here, released at NativeCallDone). php keeps them out of the argument count
+		 * its ZPP screens, so they are subtracted from every screen below and only the
+		 * C body sees them. */
+		int nExtraNamed = 0;
+		int iExtraRule = VM_XNAMED_TAKE;
+		VmCallArgMap sTailMap;
 		/* The trace frame php gives this internal call. Linked in below, AFTER the
 		 * two screens php answers from the caller's own frame (a named argument it
 		 * cannot bind, and a non-variable in a by-reference position -- neither
@@ -8945,11 +8953,15 @@ NativeCall:
 		 * VmResolveNamedArgs to walk, so its signature string is the source of names
 		 * and defaults (PH7_VmBindNamedArgsToSig). Without this every named argument
 		 * simply stayed where it was WRITTEN. */
+		sTailMap.aNames = 0;
 		if( pEffCallMap && pEffCallMap->bHasNamed && nGiven > 0 ){
-			rc = PH7_VmBindNamedArgsToSig(&sCtx,pFunc,pEffCallMap,&nGiven,
-				(ph7_value **)SySetBasePtr(&aArg));
+			rc = PH7_VmBindNamedArgsToSig(&sCtx,pFunc,pEffCallMap,&aArg,&nGiven,
+				&nExtraNamed,&sTailMap);
 			if( rc != SXRET_OK ){
 				goto NativeCallDone;
+			}
+			if( nExtraNamed > 0 && sTailMap.aNames ){
+				sCtx.pArgMap = &sTailMap;
 			}
 		}
 		/* php binds a by-reference argument at the CALL, before the callee runs, so a
@@ -8992,14 +9004,20 @@ NativeCall:
 		 * before the C routine runs when called with too few arguments — instead
 		 * of the legacy PH7-ism of silently degrading to a bogus false/-1/""
 		 * return. The message wording matches php's ZPP output byte-for-byte. */
-		if( pFunc->nMinArg > 0 && nGiven < pFunc->nMinArg ){
+		/* An unknown-name extra is refused from the callee's own parameter parsing,
+		 * at a moment that depends on how php's C code parses (see
+		 * PH7_VmBuiltinExtraNamedRule); the forwards take it instead. */
+		iExtraRule = nExtraNamed > 0 ? PH7_VmBuiltinExtraNamedRule(&pFunc->sName) : VM_XNAMED_TAKE;
+		if( iExtraRule == VM_XNAMED_BEFORE_ARITY ){
+			rc = PH7_VmRefuseExtraNamed(&sCtx,pFunc);
+		}else if( pFunc->nMinArg > 0 && nGiven - nExtraNamed < pFunc->nMinArg ){
 			rc = PH7_VmThrowException(&sCtx,"ArgumentCountError",
 				"%z() expects %s %d argument%s, %d given",
 				&pFunc->sName,
 				pFunc->bAtLeast ? "at least" : "exactly",
 				(int)pFunc->nMinArg,
 				pFunc->nMinArg == 1 ? "" : "s",
-				nGiven);
+				nGiven - nExtraNamed);
 		}else if( pFunc->bHasMaxArg && nGiven > (int)pFunc->nMaxArg ){
 			/* php enforces the MAXIMUM as well, and PHL only did so where a
 			 * builtin happened to hand-roll the check (51 of ~650), so
@@ -9014,9 +9032,13 @@ NativeCall:
 				(int)pFunc->nMaxArg,
 				pFunc->nMaxArg == 1 ? "" : "s",
 				nGiven);
-		}else if( SXRET_OK != (rc = VmEnforceBuiltinArgTypes(&sCtx,pFunc,nGiven,
+		}else if( iExtraRule == VM_XNAMED_BEFORE_TYPES ){
+			rc = PH7_VmRefuseExtraNamed(&sCtx,pFunc);
+		}else if( SXRET_OK != (rc = VmEnforceBuiltinArgTypes(&sCtx,pFunc,nGiven - nExtraNamed,
 			(ph7_value **)SySetBasePtr(&aArg))) ){
 			/* TypeError thrown: rc carries the caught/uncaught status */
+		}else if( iExtraRule == VM_XNAMED_REFUSE ){
+			rc = PH7_VmRefuseExtraNamed(&sCtx,pFunc);
 		}else{
 			/* The name of the builtin that is RUNNING, for the few diagnostics
 			 * raised so deep inside the engine that no ph7_context reaches them
@@ -9080,6 +9102,9 @@ NativeCall:
 NativeCallDone:
 		(void)nGiven; /* the named-arg binder's early exit lands here */
 		pVm->pNativeCall = sNativeCall.pPrev;
+		if( sTailMap.aNames ){
+			SyMemBackendFree(&pVm->sAllocator,sTailMap.aNames);
+		}
 		}
 		/* Release the call context */
 		VmReleaseCallContext(&sCtx);
