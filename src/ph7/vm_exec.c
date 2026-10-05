@@ -6417,6 +6417,130 @@ case PH7_OP_CALL_INIT: {
 	break;
 }
 /*
+ * OP_NAMED_SEND P1 P2 P3
+ *  Screen the NAMED argument just pushed against the callee still waiting below the
+ *  argument region, the way php's SEND resolves a name: `Unknown named parameter`, or
+ *  `Named parameter $x overwrites previous argument` for a formal a positional argument
+ *  already filled, is thrown HERE -- before a later argument runs, and before a plain
+ *  `$var` operand (a deferred load, still unread) says `Undefined variable`. The
+ *  arguments sent before it have been sent in php, so their deferred reads are settled
+ *  first, each against the formal it binds to.
+ *
+ *  Only a callee the OP_CALL lookup answers from the compiled-function table is screened:
+ *  a function name (with the namespace's global fallback) or an OP_MEMBER method key.
+ *  Anything else -- a Closure, an array pair, an __invoke object, a host function, a
+ *  __call routing, a native method -- leaves the name to OP_CALL's own resolution.
+ *
+ *  P1 = the argument's compile-time position, P2 = PH7_ROT_SPREAD when an unpack precedes
+ *  it, P3 = the call's VmCallArgMap.
+ */
+case PH7_OP_NAMED_SEND: {
+	VmCallArgMap *pSendMap = (VmCallArgMap *)pInstr->p3;
+	sxi32 nSendPushed;
+	ph7_value *pSendCallee;
+	SyString sSendFn, *pSendName;
+	SyHashEntry *pSendEntry;
+	ph7_vm_func *pSendFunc;
+	ph7_vm_func_arg *aSendFormal;
+	sxu32 nSendFormal, nSendNonVar, k;
+	sxi32 iSendVar = -1;
+	int bSendEngine;
+	char zSendErr[160];
+	if( pSendMap == 0 || (sxu32)pInstr->iP1 >= pSendMap->nTotal ){
+		break;
+	}
+	pSendName = &pSendMap->aNames[pInstr->iP1];
+	nSendPushed = pInstr->iP1 + 1
+		+ ((pInstr->iP2 & PH7_ROT_SPREAD) ? VmSpreadOwnExtra(&(*pVm),pInstr->iP1 + 1,&pTos[1]) : 0);
+	pSendCallee = &pTos[-nSendPushed];
+	if( pSendName->nByte == 0 || nSendPushed < 1 || pSendCallee < pStack
+	 || (pSendCallee->iFlags & MEMOBJ_STRING) == 0
+	 || (pSendCallee->iFlags & MEMOBJ_AUX_MAGICCALL) ){
+		break;
+	}
+	bSendEngine = (pSendCallee->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)) != 0;
+	SyStringInitFromBuf(&sSendFn,SyBlobData(&pSendCallee->sBlob),SyBlobLength(&pSendCallee->sBlob));
+	if( sSendFn.nByte > 0 && sSendFn.zString[0] == '\\' ){
+		sSendFn.zString++;
+		sSendFn.nByte--;
+	}
+	pSendEntry = PH7_VmGetUserFunction(pVm,(const void *)sSendFn.zString,sSendFn.nByte,bSendEngine);
+	if( pSendEntry == 0 && pSendMap->bIsNamespaced ){
+		/* OP_CALL's global fallback for an unqualified name written in a namespace. */
+		const char *zSendEnd = sSendFn.zString + sSendFn.nByte;
+		const char *zSendShort = zSendEnd;
+		while( zSendShort > sSendFn.zString && zSendShort[-1] != '\\' ){
+			zSendShort--;
+		}
+		if( zSendShort > sSendFn.zString && zSendShort < zSendEnd ){
+			pSendEntry = PH7_VmGetUserFunction(pVm,(const void *)zSendShort,
+				(sxu32)(zSendEnd - zSendShort),bSendEngine);
+		}
+	}
+	if( pSendEntry == 0 ){
+		break;
+	}
+	pSendFunc = (ph7_vm_func *)pSendEntry->pUserData;
+	if( pSendFunc == 0 || (pSendFunc->iFlags & VM_FUNC_NATIVE) ){
+		break;
+	}
+	aSendFormal = (ph7_vm_func_arg *)SySetBasePtr(&pSendFunc->aArgs);
+	nSendFormal = SySetUsed(&pSendFunc->aArgs);
+	for( k = 0 ; k < nSendFormal ; ++k ){
+		if( aSendFormal[k].iFlags & VM_FUNC_ARG_VARIADIC ){
+			iSendVar = (sxi32)k;
+			break;
+		}
+	}
+	nSendNonVar = iSendVar >= 0 ? (sxu32)iSendVar : nSendFormal;
+	zSendErr[0] = 0;
+	for( k = 0 ; k < nSendNonVar ; ++k ){
+		if( SyStringLength(&aSendFormal[k].sName) == pSendName->nByte
+		 && SyMemcmp(SyStringData(&aSendFormal[k].sName),pSendName->zString,pSendName->nByte) == 0 ){
+			break;
+		}
+	}
+	if( k < nSendNonVar ){
+		/* A formal an earlier POSITIONAL argument filled. Only asked when no unpack
+		 * precedes: an unpack's own string keys are names OP_CALL has to weigh. */
+		sxu32 nSendPos = 0;
+		if( (pInstr->iP2 & PH7_ROT_SPREAD) == 0 ){
+			while( nSendPos < (sxu32)pInstr->iP1 && pSendMap->aNames[nSendPos].nByte == 0 ){
+				nSendPos++;
+			}
+			if( k < nSendPos ){
+				SyBufferFormat(zSendErr,sizeof(zSendErr),
+					"Named parameter $%.*s overwrites previous argument",
+					(int)pSendName->nByte,pSendName->zString);
+			}
+		}
+	}else if( iSendVar < 0 ){
+		SyBufferFormat(zSendErr,sizeof(zSendErr),"Unknown named parameter $%.*s",
+			(int)pSendName->nByte,pSendName->zString);
+	}
+	if( zSendErr[0] ){
+		sxi32 rcSend;
+		if( (pInstr->iP2 & PH7_ROT_SPREAD) == 0 && pInstr->iP1 > 0 ){
+			/* The arguments before this one were SENT in php: a deferred `$var` read
+			 * warns (or is created, for a by-reference formal) now. */
+			rcSend = PH7_VmResolveDeferredArgs(&(*pVm),&pTos[-pInstr->iP1],pTos,
+				aSendFormal,nSendFormal,0,0,0,pSendMap);
+			PH7_DISPATCH_ENFORCE_RC(rcSend)
+		}
+		if( pTos->iFlags & MEMOBJ_AUX_DEFPATH ){
+			/* A subscript or property operand has been fetched in php by now -- only a
+			 * plain variable is read by the SEND itself. */
+			rcSend = PH7_VmResolveDeferredArgs(&(*pVm),pTos,&pTos[1],0,0,0,0,1,0);
+			PH7_DISPATCH_ENFORCE_RC(rcSend)
+		}
+		rcSend = VmThrowNamedArgError(&(*pVm),zSendErr,(sxu32)SyStrlen(zSendErr));
+		if( rcSend == PH7_ABORT ){ goto Abort; }
+		rc = rcSend;
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
+	break;
+}
+/*
  * OP_ROT_CALLEE P1 P2 *
  *  Turn a call's operand region over: [callee][arg0..argN] becomes [arg0..argN][callee],
  *  which is the layout OP_CALL's entire dispatch is written against.

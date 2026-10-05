@@ -3741,6 +3741,7 @@ static int VmInstrStackEffect(VmInstr *pI, sxu32 pc, int *pPush, int *pN, sxu32 
 	/* Callee rotation: turns the call's operand region over in place — no slot is
 	 * pushed and none is popped, on any path. */
 	case PH7_OP_ROT_CALLEE:
+	case PH7_OP_NAMED_SEND:
 		aSucc[0] = pc + 1; aDelta[0] = 0; n = 1; break;
 	/* Call: net -iP1 (args + callable consumed, result reuses the callable slot).
 	 * Spread is excluded: OP_SPREAD is unmodeled, so a call with `...$x` — whose
@@ -9127,6 +9128,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_CALL:       zOp = "CALL       "; break;
 	case PH7_OP_ROT_CALLEE: zOp = "ROT_CALLEE "; break;
 	case PH7_OP_CALL_INIT:  zOp = "CALL_INIT  "; break;
+	case PH7_OP_NAMED_SEND: zOp = "NAMED_SEND "; break;
 	case PH7_OP_UMINUS:     zOp = "UMINUS     "; break;
 	case PH7_OP_UPLUS:      zOp = "UPLUS      "; break;
 	case PH7_OP_BITNOT:     zOp = "BITNOT     "; break;

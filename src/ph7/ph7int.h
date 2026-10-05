@@ -5161,6 +5161,13 @@ enum ph7_vm_op {
                          * count, iP2 = PH7_ROT_* flags (SPREAD: re-derive the runtime count
                          * from this call's unpack runs; TWOSLOT: the callee is an OP_MEMBER
                          * method pair [receiver][name], not a single value). */
+  PH7_OP_NAMED_SEND,    /* Screen a NAMED argument where it is sent: php resolves the name at
+                         * the SEND of that argument, so an unknown name (or one a positional
+                         * argument already filled) throws before a later argument runs and
+                         * before a plain `$var` operand is read. Emitted after the argument's
+                         * own expression; the callee is still BELOW the argument region.
+                         * iP1 = the argument's compile-time position, iP2 = PH7_ROT_SPREAD when
+                         * an unpack precedes it, p3 = the call's VmCallArgMap. */
   PH7_OP_FUNC_DECL,     /* Bind a CONDITIONAL function declaration: p3 = ph7_vm_func. php binds
                          * a function written at a unit's top level when the unit compiles and
                          * one written anywhere else (inside an `if`, a loop, another function's
