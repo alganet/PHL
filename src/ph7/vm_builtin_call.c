@@ -2274,54 +2274,6 @@ PH7_PRIVATE sxi32 VmRaiseNotCallable(ph7_vm *pVm, ph7_class_instance *pThis)
 	return rc;
 }
 /*
- * The host-function half of PH7_VmCufDropByRefArgs below.
- *
- * A builtin has no compiled parameter records, so its by-ref positions come from the
- * declared signature (the mask VmDeriveByRefMaskFromSig already put on the callee) and
- * its parameter NAMES from the same string. php's rule is the one the user-function half
- * implements: warn, then hand the callee a copy.
- */
-static void VmCufDropByRefBuiltinArgs(ph7_context *pCtx,ph7_value *pCallable,int nArg,ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	SyHashEntry *pEntry;
-	ph7_user_func *pHost;
-	int i;
-	pEntry = SyHashGet(&pVm->hHostFunction,SyBlobData(&pCallable->sBlob),
-		SyBlobLength(&pCallable->sBlob));
-	if( pEntry == 0 ){
-		return;
-	}
-	pHost = (ph7_user_func *)pEntry->pUserData;
-	if( pHost->nByRefMask == 0 ){
-		return;
-	}
-	if( VmBuiltinPrefersRef(&pHost->sName) ){
-		/* php's ZEND_SEND_PREFER_REF (extract, array_multisort) takes a value
-		 * WITHOUT a word here — the warning belongs to the strict `&` rows only. */
-		return;
-	}
-	for( i = 0 ; i < nArg && i < 31 ; ++i ){
-		SyString sName;
-		if( (pHost->nByRefMask & (1u << i)) == 0 ){
-			continue;
-		}
-		if( PH7_VmSigParamName(pHost->zSig,i,&sName) ){
-			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-				"%z(): Argument #%d ($%z) must be passed by reference, value given",
-				&pHost->sName,i + 1,&sName);
-		}else{
-			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-				"%z(): Argument #%d must be passed by reference, value given",
-				&pHost->sName,i + 1);
-		}
-		if( apArg[i] ){
-			apArg[i]->nIdx = SXU32_HIGH; /* not an l-value any more: force a copy */
-			apArg[i]->iFlags |= MEMOBJ_AUX_CUFVAL; /* ...and this copy is INTENTIONAL */
-		}
-	}
-}
-/*
  * Resolve a callable VALUE to the callee a by-reference diagnostic must NAME: its
  * ph7_vm_func (formals plus display name) and the class to qualify it with. Read-only
  * on purpose — a Closure is decoded through its own `$__fn`/`$__this`/`$__scope`
@@ -2510,11 +2462,20 @@ static sxi32 VmByRefArgsGivenValue(ph7_vm *pVm,ph7_class *pOwner,ph7_vm_func *pF
 		 * call_user_func half already reads. */
 		SyHashEntry *pEntry;
 		ph7_user_func *pHost;
-		if( pCallable == 0 || (pCallable->iFlags & MEMOBJ_STRING) == 0 ){
+		ph7_value *pName = pCallable;
+		if( pCallable && (pCallable->iFlags & MEMOBJ_OBJ) && pCallable->x.pOther
+		 && VmValueIsClosure(&(*pVm),pCallable) ){
+			/* A first-class callable over a builtin (`sort(...)`) names it in its
+			 * `$__fn` attribute, the one VmCallableCalleeFunc reads for a user callee. */
+			SyString sAttr;
+			SyStringInitFromBuf(&sAttr,"__fn",4);
+			pName = PH7_ClassInstanceFetchAttr((ph7_class_instance *)pCallable->x.pOther,&sAttr);
+		}
+		if( pName == 0 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
 			return SXRET_OK;
 		}
-		pEntry = SyHashGet(&pVm->hHostFunction,SyBlobData(&pCallable->sBlob),
-			SyBlobLength(&pCallable->sBlob));
+		pEntry = SyHashGet(&pVm->hHostFunction,SyBlobData(&pName->sBlob),
+			SyBlobLength(&pName->sBlob));
 		if( pEntry == 0 ){
 			return SXRET_OK;
 		}
@@ -2799,50 +2760,23 @@ PH7_PRIVATE sxi32 PH7_VmCallCallbackByValue(ph7_vm *pVm,ph7_value *pFunc,int nAr
  * stack values with their slot index intact, so the callee silently aliased the caller's
  * variable — call_user_func('ref_incr', $v) actually incremented $v.
  *
- * Warn like php and clear the slot index so the binding can only copy. Only a plain
- * function NAME can be resolved here (an array/closure callable falls through unchanged);
- * call_user_func_ARRAY is untouched — php honours by-ref there.
+ * Warn like php and clear the slot index so the binding can only copy -- the screen
+ * call_user_func_array() and the other by-value forwarding doors already share, so every
+ * callable spelling resolves its callee the same way. This door used to resolve only a
+ * plain function NAME: a closure, an `[$obj, 'm']`/`['C', 'm']` pair or a `'C::m'` string
+ * fell through with the slot intact, so the binder either threw `could not be passed by
+ * reference` on a literal argument, or ALIASED the caller's variable. aNames, when the
+ * call_user_func() site used `name:` arguments, are the callback's own (shifted by one).
+ * Answers the unwound code when an error handler threw or exited on the warning -- php
+ * stops there and never enters the callee -- and SXRET_OK otherwise.
  */
-PH7_PRIVATE void PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,int nArg,ph7_value **apArg)
+PH7_PRIVATE sxi32 PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,int nArg,ph7_value **apArg,
+	SyString *aNames)
 {
-	ph7_vm *pVm = pCtx->pVm;
-	SyHashEntry *pEntry;
-	ph7_vm_func *pFunc;
-	ph7_vm_func_arg *aFormal;
-	int i, nFormal;
-	if( pCallable == 0 || (pCallable->iFlags & MEMOBJ_STRING) == 0 ){
-		return;
+	if( pCallable == 0 ){
+		return SXRET_OK;
 	}
-	if( SyBlobLength(&pCallable->sBlob) < 1 ){
-		return;
-	}
-	pEntry = SyHashGet(&pVm->hFunction,SyBlobData(&pCallable->sBlob),
-		SyBlobLength(&pCallable->sBlob));
-	if( pEntry == 0 ){
-		/* A HOST function (sort, array_pop, preg_match, …) has no compiled parameter
-		 * records — its by-ref positions come from the declared signature instead.
-		 * Left out until now, so the whole builtin half of the rule was missing:
-		 * `call_user_func('sort', $a)` SORTED the caller's array, `array_pop` removed
-		 * an element from it and `preg_match` filled its `$matches` variable, where php
-		 * warns and operates on a copy in every one of those cases. */
-		VmCufDropByRefBuiltinArgs(pCtx,pCallable,nArg,apArg);
-		return;
-	}
-	pFunc = (ph7_vm_func *)pEntry->pUserData;
-	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
-	nFormal = (int)SySetUsed(&pFunc->aArgs);
-	for( i = 0 ; i < nFormal && i < nArg ; ++i ){
-		if( (aFormal[i].iFlags & VM_FUNC_ARG_BY_REF) == 0 ){
-			continue;
-		}
-		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-			"%z(): Argument #%d ($%z) must be passed by reference, value given",
-			&pFunc->sName,i + 1,&aFormal[i].sName);
-		if( apArg[i] ){
-			apArg[i]->nIdx = SXU32_HIGH; /* not an l-value any more: force a copy */
-			apArg[i]->iFlags |= MEMOBJ_AUX_CUFVAL; /* ...and this copy is INTENTIONAL */
-		}
-	}
+	return VmByRefArgsGivenValue(pCtx->pVm,0,0,pCallable,nArg,apArg,0,aNames);
 }
 /*
  * Can a callable reach this method DIRECTLY from the calling scope? A non-public method is

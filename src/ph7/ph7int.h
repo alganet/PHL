@@ -6192,7 +6192,8 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionAp(ph7_vm *pVm,ph7_value *pFunc,ph7_valu
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce);
 PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,int nArg,ph7_hashmap_node **apNode,SyString *aNames);
 PH7_PRIVATE sxi32 PH7_VmByRefArgsGivenValue(ph7_vm *pVm,ph7_class *pOwner,ph7_vm_func *pFunc,ph7_value *pCallable,int nArg,ph7_value **apArg,ph7_hashmap_node **apNode,SyString *aNames);
-PH7_PRIVATE void PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,int nArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,int nArg,ph7_value **apArg,
+	SyString *aNames);
 PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen);
 PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmPeekSelfClass(ph7_vm *pVm);
