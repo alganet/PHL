@@ -8040,15 +8040,36 @@ CalleeByName:
 								nPositional++;
 							}
 						}
+						/* php's variadic holds every positional element before any named
+						 * one -- a later unpack's positional follows an earlier unpack's
+						 * name -- so the names are a second pass. A positional element is
+						 * numbered where it BOUND: after the highest formal a name filled. */
+						sxu32 iPass, nArgPos = 0, nNamedHigh = 0, nElem;
+						for( iPass = 0; iPass < 2; iPass++ )
 						for( i = 0; i < nActual; i++ ){
+							int bNamed = (i < pCallMap3->nTotal && pCallMap3->aNames[i].nByte > 0);
+							if( iPass == 0 ){
+								if( bNamed ){
+									if( aSlot[i] >= 0 && (sxu32)aSlot[i] + 1 > nNamedHigh ){
+										nNamedHigh = (sxu32)aSlot[i] + 1;
+									}
+									continue;
+								}
+								if( nArgPos < nNamedHigh ){
+									nArgPos = nNamedHigh;
+								}
+								nArgPos++;
+							}else if( !bNamed ){
+								continue;
+							}
+							nElem = bNamed ? SXMAX(nPositional,nNonVariadic) + 1 : nArgPos;
 							if( aSlot[i] == -1 ){
-								int bNamed = (i < pCallMap3->nTotal && pCallMap3->aNames[i].nByte > 0);
 								int bRefElem = 0; /* alias this entry to the caller's slot? */
 								/* Same per-element type check + weak coercion as the
 								 * positional-only path (shared helper; no `($name)`). */
 								rc = VmVariadicElementTypeCheck(&(*pVm),pSelfHint,pVmFunc,
 									&aFormalArg[iVariadicIdx],&pArg[i],
-									bNamed ? SXMAX(nPositional,nNonVariadic) + 1 : i + 1,bCallIsStrict);
+									nElem,bCallIsStrict);
 								if( rc != SXRET_OK ){
 									if( rc == PH7_ABORT ){
 										goto Abort;
@@ -8071,7 +8092,7 @@ CalleeByName:
 										sxi32 rcV;
 										SyBlobInit(&sMsgV,&pVm->sAllocator);
 										SyBlobFormat(&sMsgV,"%z(): Argument #%u could not be passed by reference",
-											&pVmFunc->sName,(unsigned)(i + 1));
+											&pVmFunc->sName,(unsigned)nElem);
 										rcV = VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sMsgV);
 										if( rcV == PH7_ABORT ){
 											goto Abort;

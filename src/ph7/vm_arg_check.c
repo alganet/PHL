@@ -2855,9 +2855,11 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 	VmSigParam aParam[VM_SIG_MAX_PARAM];
 	ph7_value *apBound[VM_SIG_MAX_PARAM];
 	ph7_value *apTail[VM_SIG_MAX_PARAM];
+	ph7_value *apExtra[VM_SIG_MAX_PARAM];
 	SyString aTailName[VM_SIG_MAX_PARAM];
 	ph7_value **apArg;
-	int nParam,nDecl,nArg,i,nLast,nTail,nExtra,bNamedSeen;
+	int nParam,nDecl,nArg,i,nLast,nTail,nExtra,bNamedSeen,nPos,nNamedHigh;
+	sxu32 nNamedRun;
 	*pnExtra = 0;
 	if( pFunc == 0 || pFunc->zSig == 0 || pMap == 0 || pMap->bHasNamed == 0 ){
 		return SXRET_OK;
@@ -2879,11 +2881,15 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 	nTail = 0;
 	nExtra = 0;
 	bNamedSeen = 0;
+	nPos = 0;
+	nNamedHigh = 0;
+	nNamedRun = 0;
 	for( i = 0 ; i < nArg ; ++i ){
-		int p = i;
+		int p;
 		if( i < (int)pMap->nTotal && pMap->aNames[i].nByte > 0 ){
 			SyString *pName = &pMap->aNames[i];
 			bNamedSeen = 1;
+			nNamedRun = pMap->aRun ? pMap->aRun[i] : 0;
 			for( p = 0 ; p < nDecl ; ++p ){
 				if( (int)pName->nByte == aParam[p].nName
 				 && SyMemcmp(pName->zString,aParam[p].zName,pName->nByte) == 0 ){
@@ -2895,9 +2901,10 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 					return PH7_VmThrowException(pCtx,"Error",
 						"Unknown named parameter $%z",pName);
 				}
-				apTail[nTail] = apArg[i];
-				aTailName[nTail] = *pName;
-				nTail++;
+				/* php's variadic collects the extras by name AFTER every positional
+				 * one, whichever unpack wrote them first. */
+				apExtra[nExtra] = apArg[i];
+				aTailName[nExtra] = *pName;
 				nExtra++;
 				continue;
 			}
@@ -2905,14 +2912,26 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 				return PH7_VmThrowException(pCtx,"Error",
 					"Named parameter $%z overwrites previous argument",pName);
 			}
-		}else if( bNamedSeen && nDecl != nParam ){
-			return SXRET_OK; /* positional after named: only an unpack spells it */
-		}else if( p >= nDecl ){
-			if( nDecl == nParam ){
-				return SXRET_OK; /* more positional arguments than the signature knows */
+			if( p >= nNamedHigh ){
+				nNamedHigh = p + 1;
 			}
+		}else if( bNamedSeen && (pMap->aRun == 0 || pMap->aRun[i] == nNamedRun) ){
+			/* A positional argument after a named one inside ONE unpack (or one
+			 * rebuilt array): php's Error, worded by where the list came from. */
+			return PH7_VmThrowException(pCtx,"Error",pMap->bFromUnpack
+				? "Cannot use positional argument after named argument during unpacking"
+				: "Cannot use positional argument after named argument");
+		}else{
+			/* A later unpack's positional argument binds after the highest parameter
+			 * a name filled (zend's num_args), not at the place it was written. */
+			p = nPos > nNamedHigh ? nPos : nNamedHigh;
+			nPos = p + 1;
+		}
+		if( p >= nDecl ){
+			/* More positional arguments than the signature knows (or a variadic's
+			 * tail): kept after the bound ones, so a hole a name jumped over is
+			 * still php's `not passed` before the arity screen counts them. */
 			apTail[nTail] = apArg[i];
-			SyZero(&aTailName[nTail],sizeof(SyString));
 			nTail++;
 			continue;
 		}
@@ -2934,21 +2953,23 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 		}
 	}
 	if( nExtra > 0 ){
+		sxu32 nName = (sxu32)(nLast + 1 + nTail + nExtra);
 		SyString *aName = (SyString *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
-			(sxu32)((nLast + 1 + nTail) * sizeof(SyString)));
+			nName * sizeof(SyString));
 		if( aName == 0 ){
 			return SXRET_OK;
 		}
-		SyZero(aName,(sxu32)((nLast + 1) * sizeof(SyString)));
-		for( i = 0 ; i < nTail ; ++i ){
-			aName[nLast + 1 + i] = aTailName[i];
+		SyZero(aName,(sxu32)((nLast + 1 + nTail) * sizeof(SyString)));
+		for( i = 0 ; i < nExtra ; ++i ){
+			aName[nLast + 1 + nTail + i] = aTailName[i];
 		}
 		*pTail = *pMap;
 		pTail->bArgShapes = 0;
 		pTail->nNonLvalMask = 0;
 		pTail->nTempCallMask = 0;
-		pTail->nTotal = (sxu32)(nLast + 1 + nTail);
+		pTail->nTotal = nName;
 		pTail->aNames = aName;
+		pTail->aRun = 0; /* the bound vector is one run: every extra is after the positionals */
 		*pnExtra = nExtra;
 	}
 	SySetReset(pArgSet);
@@ -2957,6 +2978,9 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 	}
 	for( i = 0 ; i < nTail ; ++i ){
 		SySetPut(pArgSet,(const void *)&apTail[i]);
+	}
+	for( i = 0 ; i < nExtra ; ++i ){
+		SySetPut(pArgSet,(const void *)&apExtra[i]);
 	}
 	*pnArg = (int)SySetUsed(pArgSet);
 	return SXRET_OK;

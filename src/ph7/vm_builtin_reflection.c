@@ -617,6 +617,7 @@ static VmCallArgMap *ReflectDoorArgMap(ph7_context *pCtx, SyString *aNames, sxu3
 		nSlot = pOuter->nTotal - nSkip;
 		aNames = &pOuter->aNames[nSkip];
 		pMap->bFromUnpack = pOuter->bFromUnpack;
+		pMap->aRun = pOuter->aRun ? &pOuter->aRun[nSkip] : 0;
 	}
 	pMap->bHasNamed = 1;
 	pMap->nTotal = nSlot;

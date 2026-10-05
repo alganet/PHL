@@ -3103,6 +3103,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aSpreadKey,&pVm->sAllocator,sizeof(VmSpreadKey));
 	SyBlobInit(&pVm->sSpreadKeyBlob,&pVm->sAllocator);
 	SySetInit(&pVm->aEffArgName,&pVm->sAllocator,sizeof(SyString));
+	SySetInit(&pVm->aEffArgRun,&pVm->sAllocator,sizeof(sxu32));
 	/* Virtual machine internal containers */
 	SyBlobInit(&pVm->sConsumer,&pVm->sAllocator);
 	SyBlobInit(&pVm->sWorker,&pVm->sAllocator);
@@ -7425,8 +7426,10 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 )
 {
 	sxi32 posIdx = 0;
+	sxi32 nNamedHigh = 0; /* php's num_args as the names left it: highest formal + 1 */
 	sxu32 i;
 	int bSeenNamed = 0;
+	sxu32 nNamedRun = 0;  /* the written argument the last named slot came from */
 	char zErrMsg[256];
 	SyZero(aUsed, nNonVariadic * sizeof(sxu8));
 	for( i = 0; i < nActual; i++ ){
@@ -7437,6 +7440,7 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 			/* Named argument — find formal by name */
 			int found = 0;
 			bSeenNamed = 1;
+			nNamedRun = pMap->aRun ? pMap->aRun[i] : 0;
 			sxu32 k;
 			for( k = 0; k < nNonVariadic; k++ ){
 				if( aFormalArg[k].sName.nByte == pMap->aNames[i].nByte
@@ -7451,6 +7455,9 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 					}
 					aSlot[i] = (sxi32)k;
 					aUsed[k] = 1;
+					if( (sxi32)k >= nNamedHigh ){
+						nNamedHigh = (sxi32)k + 1;
+					}
 					found = 1;
 					break;
 				}
@@ -7486,8 +7493,11 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 			/* Positional argument. Source-syntax calls can't reach here after a
 			 * named arg (the parser rejects it at compile time), but a call
 			 * reconstructed from an array — call_user_func_array(['b'=>9, 'x']) —
-			 * can, so enforce PHP's rule at this shared choke point. */
-			if( bSeenNamed ){
+			 * can, so enforce PHP's rule at this shared choke point. php holds the
+			 * rule per UNPACK: `f(...['a'=>1], ...[2])` is legal, and its 2 binds
+			 * after the highest parameter a name filled (zend's num_args), so a
+			 * hole a name jumped over stays a hole. */
+			if( bSeenNamed && (pMap->aRun == 0 || pMap->aRun[i] == nNamedRun) ){
 				/* php has two sentences for the one rule: the argument list an
 				 * UNPACK produced ends with ` during unpacking`, and the one
 				 * call_user_func_array() rebuilt from an array does not. */
@@ -7499,6 +7509,9 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 				return VmThrowNamedArgError(&(*pVm),
 					"Cannot use positional argument after named argument",
 					sizeof("Cannot use positional argument after named argument") - 1);
+			}
+			if( posIdx < nNamedHigh ){
+				posIdx = nNamedHigh;
 			}
 			if( (sxu32)posIdx < nNonVariadic ){
 				if( aUsed[posIdx] ){
@@ -7877,10 +7890,12 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 		return 0;
 	}
 	SySetReset(&pVm->aEffArgName);
+	SySetReset(&pVm->aEffArgRun);
 	ci = 0;
 	ai = 0;
 	while( ai < nActual ){
 		SyString sName;
+		sxu32 nRunId;
 		SyZero(&sName, sizeof(sName)); /* positional by default (nByte == 0) */
 		/* Empty runs (spread of []) anchored here consumed a compile arg but no
 		 * slot — skip past their compile-name entry to keep alignment. */
@@ -7892,6 +7907,7 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 			 * are indexed by the run's own nKeyStart, so a non-matching (leaked)
 			 * run never desyncs the key stream. */
 			sxu32 j, K = aRun[ri].nCount, ks = aRun[ri].nKeyStart;
+			nRunId = ci + 1;
 			for( j = 0; j < K; j++ ){
 				SyZero(&sName, sizeof(sName));
 				if( aKey[ks + j].nLen > 0 ){
@@ -7899,6 +7915,7 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 					bAnyNamed = 1;
 				}
 				SySetPut(&pVm->aEffArgName, (const void *)&sName);
+				SySetPut(&pVm->aEffArgRun, (const void *)&nRunId);
 			}
 			ai += K;
 			ci++; ri++;
@@ -7908,7 +7925,9 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 				sName = pCompile->aNames[ci];
 				bAnyNamed = 1;
 			}
+			nRunId = ci + 1;
 			SySetPut(&pVm->aEffArgName, (const void *)&sName);
+			SySetPut(&pVm->aEffArgRun, (const void *)&nRunId);
 			ai++;
 			ci++;
 		}
@@ -7942,6 +7961,7 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 	}
 	pEff->nTotal = nActual;
 	pEff->aNames = (SyString *)SySetBasePtr(&pVm->aEffArgName);
+	pEff->aRun = (const sxu32 *)SySetBasePtr(&pVm->aEffArgRun);
 	return 1;
 }
 /*

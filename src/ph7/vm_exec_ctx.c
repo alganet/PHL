@@ -2545,6 +2545,7 @@ static sxi32 VmClosureDoorCall(ph7_context *pCtx, ph7_value *pFunc, int nArg, ph
 		sMap.bFromUnpack = pOuter->bFromUnpack;
 		sMap.nTotal = pOuter->nTotal - nSkip;
 		sMap.aNames = &pOuter->aNames[nSkip];
+		sMap.aRun = pOuter->aRun ? &pOuter->aRun[nSkip] : 0;
 		pMap = &sMap;
 	}
 	pVm->bCallbackWeak = 1;
@@ -3439,15 +3440,19 @@ PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class 
 		}
 	}
 	nOut = nFilled;
-	/* The overflow: positional first, then the named extras -- the order the call
-	 * wrote them in, since a positional actual after a named one was refused above. */
-	for( i = 0 ; i < nActual ; i++ ){
-		if( aSlot[i] < 0 ){
-			SyZero(&aOutName[nOut],sizeof(SyString));
-			if( i < pMap->nTotal && pMap->aNames[i].nByte > 0 ){
-				aOutName[nOut] = pMap->aNames[i];
+	/* The overflow: positional first, then the named extras. Not the order the call
+	 * wrote them in -- a later unpack's positional actual may follow an earlier
+	 * one's name -- so the names are a second pass. */
+	for( j = 0 ; j < 2 ; j++ ){
+		for( i = 0 ; i < nActual ; i++ ){
+			int bNamed = (i < pMap->nTotal && pMap->aNames[i].nByte > 0);
+			if( aSlot[i] < 0 && bNamed == (int)j ){
+				SyZero(&aOutName[nOut],sizeof(SyString));
+				if( bNamed ){
+					aOutName[nOut] = pMap->aNames[i];
+				}
+				apOut[nOut++] = apIn[i];
 			}
-			apOut[nOut++] = apIn[i];
 		}
 	}
 	SyMemBackendFree(&pVm->sAllocator,aSlot);

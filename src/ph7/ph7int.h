@@ -3382,6 +3382,12 @@ struct VmCallArgMap
 						  * by reference") and then it operates on the temporary. */
 	sxu32 nTotal;        /* Total number of compile-time arguments */
 	SyString *aNames;    /* Array of nTotal names. nByte==0 means positional. */
+	const sxu32 *aRun;   /* Effective (unpack) maps only, one per slot like aNames: which
+						  * argument of the call as WRITTEN the slot came from. php forgets
+						  * a named argument at the end of each unpack, so a positional one
+						  * after it is refused only inside the SAME unpack; a later unpack
+						  * binds it after the highest parameter bound so far. 0 = the list
+						  * is one run (call_user_func_array's array, a compile map). */
 	SyString sAssertSrc; /* Direct assert() calls only: the first argument's rendered
 						  * source text (php's zend_ast_export shape, e.g. `1 == 2`),
 						  * captured at compile time so a failing assertion reports
@@ -4659,6 +4665,7 @@ struct ph7_vm
 	SySet aSpreadKey;          /* VmSpreadKey: one (off,len) per expanded element, in order */
 	SyBlob sSpreadKeyBlob;     /* Backing bytes for the string keys referenced by aSpreadKey */
 	SySet aEffArgName;         /* SyString: effective per-actual-slot arg names built at CALL */
+	SySet aEffArgRun;          /* sxu32: the written argument each effective slot came from */
 	const char *zCmpRefusalClass; /* A native compare handler (ph7_class::xCmp) REFUSED the pair,
 	                            * and this is the exception class it named -- php throws
 	                            * DateException out of the DateTimeZone handler. Recorded rather
