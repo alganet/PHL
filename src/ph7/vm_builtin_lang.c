@@ -34,7 +34,7 @@
 #define VM_CCONST_TRAIT     7 /* a TRAIT constant, which php refuses to hand out through the trait */
 /*
  * Split "C::K" and resolve both halves. The class half goes through
- * PH7_VmResolveScopeName, so `self`/`parent`/`static` answer against the live class
+ * PH7_VmResolveCallableScope, so `self`/`parent`/`static` (in any case) answer against the live class
  * context and a plain name AUTOLOADS on a miss (php does both here). The constant half
  * is looked up without evaluating anything: an unmaterialized enum case or an on-demand
  * constant initializer must not run just because someone ASKED whether the name exists.
@@ -63,13 +63,13 @@ static int VmClassConstLookup(
 		return VM_CCONST_PLAIN;
 	}
 	*pSep = iSep;
-	pClass = iSep > 0 ? PH7_VmResolveScopeName(&(*pVm),zName,(sxu32)iSep) : 0;
+	pClass = iSep > 0 ? PH7_VmResolveCallableScope(&(*pVm),zName,(sxu32)iSep) : 0;
 	if( pClass == 0 ){
 		if( iSep > 0 && PH7_VmIsScopeKeyword(zName,(sxu32)iSep) ){
 			/* php separates the two ways a keyword can fail to resolve, so tell them
 			 * apart here: `parent` inside a class that simply has no parent is a
 			 * different sentence from a keyword named with no class scope at all. */
-			if( iSep == 6 && SyMemcmp(zName,"parent",6) == 0
+			if( iSep == 6 && SyStrnicmp(zName,"parent",6) == 0
 			 && (PH7_VmPeekTopClass(&(*pVm)) || PH7_VmPeekDeclaringClass(&(*pVm))) ){
 				return VM_CCONST_NOPARENT;
 			}
@@ -134,9 +134,16 @@ static int VmClassConstError(
 	switch( rc ){
 		case VM_CCONST_NOCLASS:
 			return PH7_VmThrowException(pCtx,"Error","Class \"%.*s\" not found",iSep,zName);
-		case VM_CCONST_NOSCOPE:
+		case VM_CCONST_NOSCOPE: {
+			/* php names the keyword as it folded it, whatever case it was written in. */
+			char zKw[8];
+			int i;
+			for( i = 0 ; i < iSep && i < (int)sizeof(zKw) ; ++i ){
+				zKw[i] = (zName[i] >= 'A' && zName[i] <= 'Z') ? (char)(zName[i] + 32) : zName[i];
+			}
 			return PH7_VmThrowException(pCtx,"Error",
-				"Cannot access \"%.*s\" when no class scope is active",iSep,zName);
+				"Cannot access \"%.*s\" when no class scope is active",i,zKw);
+		}
 		case VM_CCONST_NOPARENT:
 			return PH7_VmThrowException(pCtx,"Error",
 				"Cannot access \"parent\" when current class scope has no parent");

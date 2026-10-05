@@ -1888,8 +1888,8 @@ static ph7_class_instance * VmFccClassClosure(ph7_vm *pVm, ph7_class *pCls, SySt
 /* Is a callable's class half one of the two keywords that forward the called class? */
 static int VmFccNameForwards(const char *zCls, sxu32 nCls)
 {
-	return (nCls == 4 && SyMemcmp(zCls, "self", 4) == 0)
-		|| (nCls == 6 && SyMemcmp(zCls, "parent", 6) == 0);
+	return (nCls == 4 && SyStrnicmp(zCls, "self", 4) == 0)
+		|| (nCls == 6 && SyStrnicmp(zCls, "parent", 6) == 0);
 }
 /*
  * The class a callable's target half names. A NAME is resolved the way the callback
@@ -1908,7 +1908,7 @@ static ph7_class * VmFccTargetClass(ph7_vm *pVm, ph7_value *pTarget, int bBindCa
 	if( !bBindCaller || (pTarget->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pTarget->sBlob) == 0 ){
 		return PH7_VmExtractClassFromValue(pVm, pTarget);
 	}
-	return PH7_VmResolveScopeName(pVm, (const char *)SyBlobData(&pTarget->sBlob),
+	return PH7_VmResolveCallableScope(pVm, (const char *)SyBlobData(&pTarget->sBlob),
 		SyBlobLength(&pTarget->sBlob));
 }
 PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, int bBindCaller)
@@ -1942,7 +1942,7 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, 
 			SyString sCls;
 			SyStringInitFromBuf(&sCls, zName, nSep);
 			pScopeCls = bBindCaller
-				? PH7_VmResolveScopeName(pVm, SyStringData(&sCls), SyStringLength(&sCls))
+				? PH7_VmResolveCallableScope(pVm, SyStringData(&sCls), SyStringLength(&sCls))
 				: PH7_VmExtractClass(pVm, SyStringData(&sCls), SyStringLength(&sCls), FALSE, 0);
 			if( pScopeCls ){
 				SyStringInitFromBuf(&sName, zName + nSep + 2, nName - (nSep + 2));
@@ -2817,7 +2817,7 @@ static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
 		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
 		/* php's `"Class::method"` static-callable string is the same callee as the pair. */
 		if( PH7_VmCallableStringParts(sName.zString, sName.nByte, &zCls, &nCls, &zMeth, &nMeth) ){
-			pClass = PH7_VmResolveScopeName(pVm, zCls, nCls);
+			pClass = PH7_VmResolveCallableScope(pVm, zCls, nCls);
 			pMethod = pClass ? PH7_ClassExtractMethod(pClass, zMeth, nMeth) : 0;
 			if( pMethod == 0 || !PH7_VmCallableMethodAccessible(pVm, pClass, pMethod) ){
 				*pzWhy = "callable routes through __callStatic(), which cannot be a fiber body here";

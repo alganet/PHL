@@ -427,11 +427,49 @@ PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value
  * `Class "self" not found` there — so the keyword resolution lives here, not in the
  * OP_CALL check.
  */
+/*
+ * The canonical spelling of a scope keyword written in any case, or 0. php folds the
+ * class half of a callable before it compares it (zend_is_callable_check_class), and a
+ * "C::K" name handed to constant()/defined() the same way.
+ */
+static const char * VmCallableKeyword(const char *zCls,sxu32 nCls)
+{
+	if( nCls == 4 && SyStrnicmp(zCls,"self",4) == 0 ) return "self";
+	if( nCls == 6 && SyStrnicmp(zCls,"parent",6) == 0 ) return "parent";
+	if( nCls == 6 && SyStrnicmp(zCls,"static",6) == 0 ) return "static";
+	return 0;
+}
 PH7_PRIVATE int PH7_VmIsScopeKeyword(const char *zName,sxu32 nName)
 {
-	return (nName == 4 && SyMemcmp(zName,"self",4) == 0)
-		|| (nName == 6 && SyMemcmp(zName,"parent",6) == 0)
-		|| (nName == 6 && SyMemcmp(zName,"static",6) == 0);
+	return VmCallableKeyword(zName,nName) != 0;
+}
+/*
+ * PH7_VmResolveScopeName for the doors that FOLD the keyword: `'SELF::m'`, `['Static','m']`,
+ * `constant('Parent::K')` answer as their lower-case spelling does. The shared rail itself
+ * stays byte-exact, because the doors that take a class NAME (`$c::m()`, `instanceof $c`,
+ * a bindTo() scope) never resolve a keyword in php at all, in any case.
+ */
+PH7_PRIVATE ph7_class * PH7_VmResolveCallableScope(ph7_vm *pVm,const char *zCls,sxu32 nCls)
+{
+	const char *zKw = VmCallableKeyword(zCls,nCls);
+	return PH7_VmResolveScopeName(&(*pVm),zKw ? zKw : zCls,nCls);
+}
+/*
+ * Why a scope keyword named as a callable's class half resolved to nothing, as php's
+ * sentence (always the lower-case keyword), or 0 when the name is no keyword. `parent`
+ * inside a class that has none is its own sentence.
+ */
+static const char * VmScopeKeywordWhy(ph7_vm *pVm,const char *zCls,sxu32 nCls,char *zBuf,int nBuf)
+{
+	const char *zKw = VmCallableKeyword(zCls,nCls);
+	if( zKw == 0 ){
+		return 0;
+	}
+	if( zKw[0] == 'p' && (PH7_VmPeekTopClass(&(*pVm)) || PH7_VmPeekDeclaringClass(&(*pVm))) ){
+		return "cannot access \"parent\" when current class scope has no parent";
+	}
+	SyBufferFormat(zBuf,nBuf,"cannot access \"%s\" when no class scope is active",zKw);
+	return zBuf;
 }
 static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
 {
@@ -441,7 +479,7 @@ static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
 	if( (pTarget->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pTarget->sBlob) < 1 ){
 		return 0;
 	}
-	return PH7_VmResolveScopeName(&(*pVm),(const char *)SyBlobData(&pTarget->sBlob),
+	return PH7_VmResolveCallableScope(&(*pVm),(const char *)SyBlobData(&pTarget->sBlob),
 		SyBlobLength(&pTarget->sBlob));
 }
 /*
@@ -551,17 +589,6 @@ PH7_PRIVATE int PH7_VmQualifiedCallableMethod(ph7_vm *pVm,ph7_class *pOrg,const 
 	*pzCls = zCls;
 	*pnCls = nCls;
 	return 1;
-}
-/*
- * The canonical spelling of a scope keyword written in any case, or 0. php folds the
- * class half of a callable before it compares it (zend_is_callable_check_class).
- */
-static const char * VmCallableKeyword(const char *zCls,sxu32 nCls)
-{
-	if( nCls == 4 && SyStrnicmp(zCls,"self",4) == 0 ) return "self";
-	if( nCls == 6 && SyStrnicmp(zCls,"parent",6) == 0 ) return "parent";
-	if( nCls == 6 && SyStrnicmp(zCls,"static",6) == 0 ) return "static";
-	return 0;
 }
 /* php's "Use of "self" in callables is deprecated", when the keyword resolves here. */
 static void VmCallableKeywordDeprecation(ph7_vm *pVm,const char *zCls,sxu32 nCls)
@@ -905,10 +932,9 @@ PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char
 		if( pClass == 0 ){
 			const char *zCls = (const char *)SyBlobData(&pTarget->sBlob);
 			sxu32 nCls = SyBlobLength(&pTarget->sBlob);
-			if( PH7_VmIsScopeKeyword(zCls,nCls) ){
-				SyBufferFormat(zBuf,nBuf,
-					"cannot access \"%.*s\" when no class scope is active",(int)nCls,zCls);
-				return zBuf;
+			const char *zWhy = VmScopeKeywordWhy(&(*pVm),zCls,nCls,zBuf,nBuf);
+			if( zWhy ){
+				return zWhy;
 			}
 			SyBufferFormat(zBuf,nBuf,"class \"%.*s\" not found",(int)nCls,zCls);
 			return zBuf;
@@ -930,12 +956,11 @@ PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char
 		const char *zName = (const char *)SyBlobData(&pValue->sBlob);
 		sxu32 nName = SyBlobLength(&pValue->sBlob);
 		if( PH7_VmCallableStringParts(zName,nName,&zCls,&nCls,&zMeth,&nMeth) ){
-			ph7_class *pClass = PH7_VmResolveScopeName(&(*pVm),zCls,nCls);
+			ph7_class *pClass = PH7_VmResolveCallableScope(&(*pVm),zCls,nCls);
 			if( pClass == 0 ){
-				if( PH7_VmIsScopeKeyword(zCls,nCls) ){
-					SyBufferFormat(zBuf,nBuf,
-						"cannot access \"%.*s\" when no class scope is active",(int)nCls,zCls);
-					return zBuf;
+				const char *zWhy = VmScopeKeywordWhy(&(*pVm),zCls,nCls,zBuf,nBuf);
+				if( zWhy ){
+					return zWhy;
 				}
 				SyBufferFormat(zBuf,nBuf,"class \"%.*s\" not found",(int)nCls,zCls);
 				return zBuf;
@@ -1017,7 +1042,7 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 			int i;
 			for( i = 1 ; i + 2 < nLen ; ++i ){
 				if( zName[i] == ':' && zName[i+1] == ':' ){
-					ph7_class *pClass = PH7_VmResolveScopeName(pVm,zName,(sxu32)i);
+					ph7_class *pClass = PH7_VmResolveCallableScope(pVm,zName,(sxu32)i);
 					if( pClass ){
 						res = VmMethodIsCallable(pVm,pClass,&zName[i+2],(sxu32)(nLen-(i+2)),TRUE);
 					}
@@ -2883,7 +2908,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		sxu32 nCmCls,nCmMeth;
 		if( PH7_VmCallableStringParts((const char *)SyBlobData(&pFunc->sBlob),
 				SyBlobLength(&pFunc->sBlob),&zCmCls,&nCmCls,&zCmMeth,&nCmMeth) ){
-			ph7_class *pCmClass = PH7_VmResolveScopeName(&(*pVm),zCmCls,nCmCls);
+			ph7_class *pCmClass = PH7_VmResolveCallableScope(&(*pVm),zCmCls,nCmCls);
 			ph7_class_method *pCmMethod = pCmClass
 				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
 			ph7_class *pCmCalled = pCmClass
