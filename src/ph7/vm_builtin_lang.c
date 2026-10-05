@@ -782,9 +782,11 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 		}
 	}
 	/* Snapshot the table, then expand: expanding runs user code, which may
-	 * define() and grow the table under the walk (see VmHashConstStep). */
+	 * define() and grow the table under the walk (see VmHashConstStep). The
+	 * walk runs tail to head: hConstant head-pushes, so a forward walk listed
+	 * the newest constant first where php lists them in definition order. */
 	SySetInit(&aSnap,&pCtx->pVm->sAllocator,sizeof(SyHashEntry *));
-	SyHashForEach(&pCtx->pVm->hConstant,VmHashConstStep,&aSnap);
+	SyHashForEachReverse(&pCtx->pVm->hConstant,VmHashConstStep,&aSnap);
 	apEntry = (SyHashEntry **)SySetBasePtr(&aSnap);
 	nSnap = SySetUsed(&aSnap);
 	/* Describing the table is not READING its entries: php's deprecated constants
