@@ -7382,10 +7382,12 @@ CalleeByName:
 			ph7_value *pCtxAttr;
 			SyString sAttrName;
 			ph7_value **apCallArgs;
+			SyString *aGenArgName; /* the named extras' names, inside apCallArgs's block */
 			int nGenArgs, iArg;
 			/* Collect arguments from the operand stack */
 			nGenArgs = (int)(pTos - pArg);
 			apCallArgs = 0;
+			aGenArgName = 0;
 			if( nGenArgs > 0 ){
 				/* php refuses a non-variable in a by-ref position at the CALL, and for
 				 * a generator this IS the call. Routed like the branch's other
@@ -7414,152 +7416,60 @@ CalleeByName:
 				 * formals BETWEEN two named ones on their defaults, so the reordered
 				 * list carries one entry per formal and can be LONGER than the number
 				 * of actuals. */
+				sxu32 nSpan = (sxu32)nGenArgs + SySetUsed(&pVmFunc->aArgs);
+				/* One block: the laid-out list, the actuals it is laid out from, and
+				 * the names of the extras the variadic keys (see VmCtxBindNamedArgs). */
 				apCallArgs = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
-					((sxu32)nGenArgs + SySetUsed(&pVmFunc->aArgs)) * sizeof(ph7_value *));
+					(nSpan + (sxu32)nGenArgs) * sizeof(ph7_value *) + nSpan * sizeof(SyString));
 				if( apCallArgs == 0 ){
 					/* OOM: fall back to zero args rather than NULL-deref */
 					nGenArgs = 0;
 				}else{
-					VmCallArgMap *pGenMap = pEffCallMap;
+					ph7_value **apActual = &apCallArgs[nSpan];
 					int didReorder = 0;
-					if( pGenMap && pGenMap->bHasNamed ){
-						/* Named-argument reordering for generator */
-						ph7_vm_func_arg *aFA = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
-						sxu32 nF = SySetUsed(&pVmFunc->aArgs);
-						sxu32 nNV = nF;
-						sxi32 iVIdx = -1;
-						sxi32 *aGSlot;
-						sxu8 *aGUsed;
-						sxu32 gi;
-						for( gi = 0; gi < nF; gi++ ){
-							if( aFA[gi].iFlags & VM_FUNC_ARG_VARIADIC ){ nNV = gi; iVIdx = (sxi32)gi; break; }
+					for( iArg = 0; iArg < nGenArgs; iArg++ ){
+						apActual[iArg] = &pArg[iArg];
+					}
+					if( pEffCallMap && pEffCallMap->bHasNamed ){
+						int nBound = 0;
+						aGenArgName = (SyString *)&apActual[nGenArgs];
+						rc = VmCtxBindNamedArgs(&(*pVm),pVmFunc,pSelfHint,pEffCallMap,
+							(sxu32)nGenArgs,apActual,apCallArgs,aGenArgName,&nBound);
+						if( rc == PH7_ABORT ){
+							SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+							goto Abort;
 						}
-						aGSlot = (sxi32 *)SyMemBackendAlloc(&pVm->sAllocator,
-							(sxu32)nGenArgs * sizeof(sxi32) + nNV * sizeof(sxu8));
-						if( aGSlot ){
-							aGUsed = (sxu8 *)&aGSlot[nGenArgs];
-							rc = VmResolveNamedArgs(&(*pVm),pGenMap,aFA,nNV,iVIdx,
-								(sxu32)nGenArgs,aGSlot,aGUsed);
-							if( rc == PH7_ABORT ){
-								SyMemBackendFree(&pVm->sAllocator, aGSlot);
-								SyMemBackendFree(&pVm->sAllocator, apCallArgs);
-								goto Abort;
-							}
-							if( rc == PH7_EXCEPTION ){
-								/* A named-argument error is php's catchable \Error.
-								 * No callee frame exists yet on this branch (the
-								 * generator body never runs and VmEnterFrame is
-								 * further down), so route it like the other
-								 * pre-frame OP_CALL throws: drop the args + the
-								 * function-name slot and land the enclosing try. */
-								SyMemBackendFree(&pVm->sAllocator, aGSlot);
-								SyMemBackendFree(&pVm->sAllocator, apCallArgs);
-								PH7_INLINE_RESUME_BREAK()
-								VmPopOperand(&pTos,nCallArgs + 1);
-								{
-									sxi32 iRpN;
-									if( VmRecordedResume(pVm,&iRpN,sState.pEntryFrame,aInstr) ){
-										pc = iRpN;
-										break;
-									}
-								}
-								goto Exception;
-							}
+						if( rc == PH7_EXCEPTION ){
+							/* A named-argument error is php's catchable \Error or
+							 * ArgumentCountError. No callee frame exists yet on this
+							 * branch (the generator body never runs and VmEnterFrame is
+							 * further down), so route it like the other pre-frame
+							 * OP_CALL throws: drop the args + the function-name slot and
+							 * land the enclosing try. */
+							SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+							PH7_INLINE_RESUME_BREAK()
+							VmPopOperand(&pTos,nCallArgs + 1);
 							{
-								/* php's named-hole ArgumentCountError, checked BEFORE
-								 * hole compaction: compacting first would report the
-								 * positional wording with a fictitious count (g(b:2)
-								 * must be `g(): Argument #1 ($a) not passed`, not
-								 * "1 passed"). Implicit-required watermark, like the
-								 * plain-call named path; a hole with NOTHING filled
-								 * above it keeps php's count wording — fall through
-								 * to VmFiberSetupFrame's check (the compacted count
-								 * equals php's num_args there). */
-								sxu32 nNVIgnored,nReqG,gHole,nMaxFilledG = 0;
-								sxi32 iHole = -1;
-								nReqG = VmFuncRequiredArgCount(pVmFunc,&nNVIgnored);
-								for( gHole = 0; gHole < (sxu32)nGenArgs; gHole++ ){
-									if( aGSlot[gHole] >= 0 && (sxu32)(aGSlot[gHole] + 1) > nMaxFilledG ){
-										nMaxFilledG = (sxu32)(aGSlot[gHole] + 1);
-									}
-								}
-								for( gHole = 0; gHole < nReqG && iHole < 0; gHole++ ){
-									sxu32 gj;
-									int bFound = 0;
-									for( gj = 0; gj < (sxu32)nGenArgs; gj++ ){
-										if( aGSlot[gj] == (sxi32)gHole ){ bFound = 1; break; }
-									}
-									if( !bFound && gHole + 1 <= nMaxFilledG ){
-										iHole = (sxi32)gHole;
-									}
-								}
-								if( iHole >= 0 ){
-									rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,pVmFunc,
-										(sxu32)iHole+1,&aFA[iHole].sName);
-									SyMemBackendFree(&pVm->sAllocator, aGSlot);
-									SyMemBackendFree(&pVm->sAllocator, apCallArgs);
-									if( rc == PH7_ABORT ){
-										goto Abort;
-									}
-									/* Route like the VmFiberSetupFrame throw below */
-									PH7_INLINE_RESUME_BREAK()
-									VmPopOperand(&pTos,nCallArgs + 1);
-									{
-										sxi32 iRpH;
-										if( VmRecordedResume(pVm,&iRpH,sState.pEntryFrame,aInstr) ){
-											pc = iRpH;
-											break;
-										}
-									}
-									goto Exception;
+								sxi32 iRpN;
+								if( VmRecordedResume(pVm,&iRpN,sState.pEntryFrame,aInstr) ){
+									pc = iRpN;
+									break;
 								}
 							}
-							/* Build apCallArgs in formal-parameter order, then
-							 * append overflow (variadic / positional beyond
-							 * formals) so downstream sees every argument.
-							 *
-							 * A formal that no argument named keeps its place as a
-							 * NULL entry, which VmFiberSetupFrame reads as "not
-							 * passed" and answers with the declared default. Dropping
-							 * the hole instead shifted every later actual down one
-							 * formal, silently: `function g($a,$b=2,$c=3)` called
-							 * `g(a: 1, c: 9)` bound `$b = 9` and left `$c` on its
-							 * default, where php binds `1/2/9`. Trailing holes are
-							 * simply not passed. */
-							{
-								int nOut = 0, nFilled = 0;
-								for( gi = 0; gi < nNV; gi++ ){
-									sxu32 gj;
-									ph7_value *pNamed = 0;
-									for( gj = 0; gj < (sxu32)nGenArgs; gj++ ){
-										if( aGSlot[gj] == (sxi32)gi ){
-											pNamed = &pArg[gj];
-											break;
-										}
-									}
-									apCallArgs[nOut++] = pNamed;
-									if( pNamed ){
-										nFilled = nOut;
-									}
-								}
-								nOut = nFilled;
-								for( gi = 0; gi < (sxu32)nGenArgs; gi++ ){
-									if( aGSlot[gi] == -1 || aGSlot[gi] == -2 ){
-										apCallArgs[nOut++] = &pArg[gi];
-									}
-								}
-								nGenArgs = nOut;
-							}
-							SyMemBackendFree(&pVm->sAllocator, aGSlot);
+							goto Exception;
+						}
+						if( rc == SXRET_OK ){
+							nGenArgs = nBound;
 							didReorder = 1;
+						}else{
+							/* Out of memory: keep the positional order rather than
+							 * pass an unfilled list. */
+							aGenArgName = 0;
 						}
-						/* If aGSlot allocation failed, fall through to
-						 * positional fill below — preserves arg order rather
-						 * than passing an uninitialized apCallArgs. */
 					}
 					if( !didReorder ){
 						for( iArg = 0; iArg < nGenArgs; iArg++ ){
-							apCallArgs[iArg] = &pArg[iArg];
+							apCallArgs[iArg] = apActual[iArg];
 						}
 					}
 				}
@@ -7598,7 +7508,7 @@ CalleeByName:
 			/* Set up the frame with arguments, closure env, $this */
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
-			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs,
+			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs, aGenArgName,
 				pEffCallMap ? (pEffCallMap->bStrict ? 1 : 0) : (pVm->bCurStrict ? 1 : 0),
 				pSelfHint,
 				TRUE/*generator: the g(...) call site is in the message*/,

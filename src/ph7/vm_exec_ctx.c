@@ -3275,16 +3275,129 @@ static void VmCtxAliasByRefArg(ph7_exec_ctx *pExecCtx,sxu32 nIdx)
 	}
 	SySetPut(&pExecCtx->aByRefArg,(const void *)&nIdx);
 }
+/*
+ * Bind a named call's actuals for a body that runs in an execution context of its own
+ * -- a generator built by its call, a fiber by Fiber::start() -- into the layout
+ * VmFiberSetupFrame reads: one entry per formal up to the last one bound (NULL for a
+ * hole the default answers), then the positional overflow, then the unknown-name
+ * extras a variadic collects, with aOutName naming those extras alone.
+ *
+ * apOut and aOutName hold nActual plus the formal count. Answers SXRET_OK, php's
+ * catchable Error/ArgumentCountError status (PH7_EXCEPTION or PH7_ABORT), or SXERR_MEM,
+ * on which the caller keeps the positional binding it had.
+ */
+PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class *pSelfHint,
+	VmCallArgMap *pMap, sxu32 nActual, ph7_value **apIn,
+	ph7_value **apOut, SyString *aOutName, int *pnOut)
+{
+	ph7_vm_func_arg *aFA = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	sxu32 nF = SySetUsed(&pFunc->aArgs);
+	sxu32 nNV = nF, nReq, nNVIgnored, nMaxFilled = 0, i, j;
+	sxi32 iVIdx = -1, iHole = -1;
+	sxi32 *aSlot;
+	sxu8 *aUsed;
+	int nOut = 0, nFilled = 0;
+	sxi32 rc;
+	for( i = 0 ; i < nF ; i++ ){
+		if( aFA[i].iFlags & VM_FUNC_ARG_VARIADIC ){
+			nNV = i;
+			iVIdx = (sxi32)i;
+			break;
+		}
+	}
+	aSlot = (sxi32 *)SyMemBackendAlloc(&pVm->sAllocator,
+		nActual * sizeof(sxi32) + nNV * sizeof(sxu8) + 1);
+	if( aSlot == 0 ){
+		return SXERR_MEM;
+	}
+	aUsed = (sxu8 *)&aSlot[nActual];
+	rc = VmResolveNamedArgs(&(*pVm),pMap,aFA,nNV,iVIdx,nActual,aSlot,aUsed);
+	if( rc != SXRET_OK ){
+		SyMemBackendFree(&pVm->sAllocator,aSlot);
+		return rc;
+	}
+	/* php's named-hole ArgumentCountError, checked BEFORE the holes are laid out:
+	 * counting them would report the positional wording with a fictitious count
+	 * (g(b:2) is `g(): Argument #1 ($a) not passed`, not "1 passed"). A hole with
+	 * NOTHING bound above it keeps php's count wording, which VmFiberSetupFrame
+	 * raises from the positional count. */
+	nReq = VmFuncRequiredArgCount(pFunc,&nNVIgnored);
+	for( i = 0 ; i < nActual ; i++ ){
+		if( aSlot[i] >= 0 && (sxu32)(aSlot[i] + 1) > nMaxFilled ){
+			nMaxFilled = (sxu32)(aSlot[i] + 1);
+		}
+	}
+	for( i = 0 ; i < nReq && i < nMaxFilled && iHole < 0 ; i++ ){
+		int bFound = 0;
+		for( j = 0 ; j < nActual ; j++ ){
+			if( aSlot[j] == (sxi32)i ){ bFound = 1; break; }
+		}
+		if( !bFound ){
+			iHole = (sxi32)i;
+		}
+	}
+	if( iHole >= 0 ){
+		SyMemBackendFree(&pVm->sAllocator,aSlot);
+		return VmThrowArgNotPassed(&(*pVm),pSelfHint,&pFunc->sName,pFunc,
+			(sxu32)iHole + 1,&aFA[iHole].sName);
+	}
+	for( i = 0 ; i < nNV ; i++ ){
+		ph7_value *pBound = 0;
+		for( j = 0 ; j < nActual ; j++ ){
+			if( aSlot[j] == (sxi32)i ){
+				pBound = apIn[j];
+				break;
+			}
+		}
+		SyZero(&aOutName[nOut],sizeof(SyString));
+		apOut[nOut++] = pBound;
+		if( pBound ){
+			nFilled = nOut;
+		}
+	}
+	nOut = nFilled;
+	/* The overflow: positional first, then the named extras -- the order the call
+	 * wrote them in, since a positional actual after a named one was refused above. */
+	for( i = 0 ; i < nActual ; i++ ){
+		if( aSlot[i] < 0 ){
+			SyZero(&aOutName[nOut],sizeof(SyString));
+			if( i < pMap->nTotal && pMap->aNames[i].nByte > 0 ){
+				aOutName[nOut] = pMap->aNames[i];
+			}
+			apOut[nOut++] = apIn[i];
+		}
+	}
+	SyMemBackendFree(&pVm->sAllocator,aSlot);
+	*pnOut = nOut;
+	return SXRET_OK;
+}
+/*
+ * aArgName, when given, runs parallel to apArg and names the trailing actuals a named
+ * call could not bind to any formal (VmCtxBindNamedArgs lays them out last): php keeps
+ * those out of the call's argument count and hands them to the variadic KEYED by the
+ * name they were passed under. Every other entry has an empty name.
+ */
 PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
+	const SyString *aArgName,
 	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef)
 {
 	ph7_vm_func *pFunc = pExecCtx->pFunc;
 	ph7_vm_func_arg *aFormalArg;
 	sxu32 nFormal, n;
 	sxu32 nReqGF = 0, nNonVarGF = 0; /* too-few-args watermark (0 = exempt) */
+	int nPos = nArg; /* the actuals before the first named extra */
 	VmSlot sSlot;
 	sxi32 rc;
+	if( aArgName ){
+		int k;
+		for( k = 0 ; k < nArg ; ++k ){
+			if( aArgName[k].nByte > 0 ){
+				nPos = k;
+				break;
+			}
+		}
+	}
 	/* Install $this for closure/method callables */
 	if( pClosureThis ){
 		static const SyString sThis = { "this", sizeof("this") - 1 };
@@ -3329,7 +3442,7 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
 	nFormal = SySetUsed(&pFunc->aArgs);
 	/* Actual call arity for func_num_args()/func_get_args() (band A #4) */
-	pExecCtx->pFrame->nActualArgs = nArg;
+	pExecCtx->pFrame->nActualArgs = nArg; /* named extras included, as OP_CALL stamps it */
 	{
 		/* Too-few-arguments watermark — checked per formal INSIDE the install
 		 * loop below, after the passed args' type checks, matching php's
@@ -3360,14 +3473,26 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				 * Redundant now the table is segmented; left for the harvest sweep. */
 				nVariadicIdx = pObj->nIdx;
 				pMap = (ph7_hashmap *)pObj->x.pOther;
-				for( k = n; k < (sxu32)nArg; k++ ){
+				/* The named extras sit past every positional actual, which can be
+				 * BEFORE this formal when a hole sits between (`g(1, zz: 2)` against
+				 * `g($a, $b = 5, ...$r)`), so the walk starts at whichever comes first. */
+				for( k = (n < (sxu32)nPos ? n : (sxu32)nPos); k < (sxu32)nArg; k++ ){
+					ph7_value sKey;
+					ph7_value *pKey = 0;
 					if( apArg[k] == 0 ){
 						continue; /* a named call's hole: the formal it names is not this one */
+					}
+					if( k >= (sxu32)nPos ){
+						PH7_MemObjInitFromString(pVm,&sKey,&aArgName[k]);
+						pKey = &sKey;
 					}
 					if( ((aFormalArg[n].iFlags & VM_FUNC_ARG_UNION)
 					   || (aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH)) ){
 						rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[k],bStrict,pSelfHint);
 						if( rc != SXRET_OK ){
+							if( pKey ){
+								PH7_MemObjRelease(pKey);
+							}
 							return rc;
 						}
 					}
@@ -3376,9 +3501,12 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 						/* A by-ref variadic tail aliases its actuals here too — the
 						 * ordinary call's rule, one container over. */
 						VmCtxAliasByRefArg(pExecCtx,apArg[k]->nIdx);
-						PH7_HashmapInsertByRef(pMap,0,apArg[k]->nIdx);
+						PH7_HashmapInsertByRef(pMap,pKey,apArg[k]->nIdx);
 					}else{
-						PH7_HashmapInsert(pMap,0,apArg[k]);
+						PH7_HashmapInsert(pMap,pKey,apArg[k]);
+					}
+					if( pKey ){
+						PH7_MemObjRelease(pKey);
 					}
 				}
 				sSlot.nIdx = nVariadicIdx;
@@ -3387,7 +3515,7 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			}
 			break; /* All remaining actuals consumed */
 		}
-		if( n < (sxu32)nArg && apArg[n] != 0 ){
+		if( n < (sxu32)nPos && apArg[n] != 0 ){
 			/* Argument provided — install with declared-type enforcement.
 			 * A NULL entry is a named call's HOLE: `g(a: 1, c: 9)` names the
 			 * first and third formals and says nothing about the second, so the
@@ -3444,9 +3572,9 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			return VmGenArgThrowStatus(pVm,
 				(pFunc->iFlags & VM_FUNC_INTERNAL)
 					? VmThrowBuiltinTooFewArgs(pVm,pSelfHint,&pFunc->sName,
-						(sxu32)nArg,nReqGF,SySetUsed(&pFunc->aArgs))
+						(sxu32)nPos,nReqGF,SySetUsed(&pFunc->aArgs))
 					: VmThrowTooFewArgs(pVm,pSelfHint,&pFunc->sName,pFunc,
-						(sxu32)nArg,nReqGF,nNonVarGF,bCallSiteInMsg));
+						(sxu32)nPos,nReqGF,nNonVarGF,bCallSiteInMsg));
 		}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
 			/* Default value */
 			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
@@ -3531,6 +3659,8 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	ph7_value sResult;
 	ph7_value *pCtxAttr;
 	SyString sAttrName;
+	ph7_value **apBound = 0;    /* a named call's layout (VmCtxBindNamedArgs) */
+	SyString *aBoundName = 0;   /* ...and its extras' names, in the same block */
 	sxi32 rc;
 	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
 	if( pRecv == 0 || (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
@@ -3558,12 +3688,43 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		SyStringInitFromBuf(&sCbName, "__callable", 10);
 		pCbVal = PH7_ClassInstanceFetchAttr(pThis, &sCbName);
 		if( pCbVal ){
-			PH7_VmWarnByRefArgsGivenValue(pVm, pCbVal, nArg, 0, 0);
+			PH7_VmWarnByRefArgsGivenValue(pVm, pCbVal, nArg, 0,
+				(pCtx->pArgMap && pCtx->pArgMap->bHasNamed && pCtx->pArgMap->nTotal >= (sxu32)nArg)
+					? pCtx->pArgMap->aNames : 0);
+		}
+	}
+	/* Fiber::start() is one of php's forwards: its `...$args` collects the call's
+	 * named arguments WITH their names and binds them to the body's parameters the
+	 * way a direct call would. Every name used to be dropped here, so `start(b: 1,
+	 * a: 2)` bound positionally and an extra reached the variadic unkeyed. Bound
+	 * before the body's context exists, so a refusal leaves nothing to undo. */
+	if( nArg > 0 && pCtx->pArgMap && pCtx->pArgMap->bHasNamed ){
+		sxu32 nSpan = (sxu32)nArg + SySetUsed(&pFunc->aArgs);
+		int nBound = 0;
+		apBound = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
+			nSpan * (sizeof(ph7_value *) + sizeof(SyString)));
+		if( apBound ){
+			aBoundName = (SyString *)&apBound[nSpan];
+			rc = VmCtxBindNamedArgs(pVm, pFunc, 0, pCtx->pArgMap, (sxu32)nArg, apArg,
+				apBound, aBoundName, &nBound);
+			if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+				SyMemBackendFree(&pVm->sAllocator, apBound);
+				return rc;
+			}
+			if( rc == SXRET_OK ){
+				apArg = apBound;
+				nArg = nBound;
+			}else{
+				aBoundName = 0; /* out of memory: the positional binding stands */
+			}
 		}
 	}
 	/* Create execution context now that we know the function */
 	pExecCtx = VmNewExecCtx(pVm, pFunc);
 	if( pExecCtx == 0 ){
+		if( apBound ){
+			SyMemBackendFree(&pVm->sAllocator, apBound);
+		}
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Fiber::start(): out of memory");
 	}
@@ -3591,12 +3752,15 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		 * slots do not move either since P1, which retires the hazard entirely.) */
 		ph7_value **apValues = (nArg > 0) ? apArg : 0;
 		int nActual = nArg;
-		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues,
+		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues, aBoundName,
 			0 /* weak-mode arg binding, like call_user_func */, 0,
 			FALSE/*Fiber::start(): php omits the call-site segment*/,
 			FALSE/*php's Fiber::start() passes by VALUE and warns (recorded)*/);
-		/* Nothing to free: apValues aliases the operand stack now, it is not a
-		 * buffer this function allocated. */
+		/* apValues aliases the operand stack, or the named layout above, whose
+		 * entries alias it too: only the layout's own block is freed. */
+		if( apBound ){
+			SyMemBackendFree(&pVm->sAllocator, apBound);
+		}
 	}
 	/* Detach the frame — VmStartCtx will re-attach it */
 	pVm->pFrame = pExecCtx->pFrame->pParent;
@@ -3938,7 +4102,7 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 	/* Set up frame with args */
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
-	rc = VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg,
+	rc = VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg, 0,
 		0 /* weak-mode arg binding (embedder entry) */, 0,
 		FALSE/*embedder entry: no userland call site*/,
 		FALSE/*no source-level actuals to alias*/);
