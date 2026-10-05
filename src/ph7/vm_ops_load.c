@@ -373,9 +373,11 @@ PH7_PRIVATE int PH7_VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey)
  * `"Resource id #N"`) and, for an object, a key php refuses outright.
  *
  * iWording picks which of php's sentences the caller reports (PH7_ARRAYKEY_*).
- * php words the illegal-type rejection differently in the key_exists alias than in
- * array_key_exists() itself — `key_exists(): Argument #1 ($key) must be a valid
- * array offset type` vs the engine's offset Error — verified against 8.5.8; the
+ * php words the illegal-type rejection by DOOR: the compiled array_key_exists() call
+ * its compiler folds into ZEND_ARRAY_KEY_EXISTS answers the engine's offset Error,
+ * and every real call -- the key_exists alias, a name in a variable, array_map, a
+ * first-class callable -- the ZPP `…(): Argument #1 ($key) must be a valid array
+ * offset type` (see PH7_CTX_CALL_FOLDED); the
  * null-key DEPRECATION names array_key_exists() for BOTH of those spellings and is
  * the engine's own `Using null as an array offset is deprecated` everywhere else.
  *

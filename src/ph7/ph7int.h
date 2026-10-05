@@ -740,6 +740,11 @@ struct ph7_context
                                    * shape php compiles call_user_func()/_array() into
                                    * ZEND_INIT_USER_CALL for, which screens the callable
                                    * itself (see VmForwardScreen). */
+#define PH7_CTX_CALL_FOLDED 0x04 /* php's compiler rewrote THIS call into an opcode of its
+                                  * own (strlen, count, array_key_exists, ...), so it has no
+                                  * frame and speaks the opcode's words: array_key_exists()'s
+                                  * illegal key is the engine's offset Error there and its
+                                  * ZPP TypeError through any real call. */
 /*
  * Each hashmap entry [i.e: array(4,5,6)] is recorded in an instance
  * of the following structure.
@@ -6496,8 +6501,8 @@ PH7_PRIVATE int PH7_VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey);
 /* Wording modes for PH7_VmArrayKeyArg(): the RULES are the engine's subscript
  * rules in all three, only the two sentences differ. */
 #define PH7_ARRAYKEY_OFFSET 0 /* the engine's own offset wording, `$a[$k]`'s */
-#define PH7_ARRAYKEY_AKE    1 /* array_key_exists(): engine type wording, its own null clause */
-#define PH7_ARRAYKEY_ZPP    2 /* key_exists(): php's ZPP type wording, the same null clause */
+#define PH7_ARRAYKEY_AKE    1 /* folded array_key_exists(): engine type wording, its own null clause */
+#define PH7_ARRAYKEY_ZPP    2 /* any real call: php's ZPP type wording, the same null clause */
 PH7_PRIVATE sxi32 PH7_VmArrayKeyArg(ph7_context *pCtx,ph7_value *pKey,int iWording);
 PH7_PRIVATE sxi32 PH7_VmExecAttrArg(ph7_vm *pVm,SySet *pByteCode,ph7_class *pDeclCls,ph7_value *pResult);
 PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...);

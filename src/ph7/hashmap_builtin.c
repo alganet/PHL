@@ -124,14 +124,17 @@ PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
-			"count(): Argument #1 ($value) must be of type Countable|array, %s given",
-			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
+			"%s(): Argument #1 ($value) must be of type Countable|array, %s given",
+			ph7_function_name(pCtx),VmValueGivenName(apArg[0],zGiven,sizeof(zGiven))
 			);
 	}
 	/* Count */
 	iCount = HashmapCount((ph7_hashmap *)apArg[0]->x.pOther,bRecursive,&bCycleDetected);
 	if( bCycleDetected ){
-		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"count(): Recursion detected");
+		/* Named as written, like the refusal above: `sizeof(): Recursion detected`. */
+		char zMsg[64];
+		SyBufferFormat(zMsg,sizeof(zMsg),"%s(): Recursion detected",ph7_function_name(pCtx));
+		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);
 	}
 	ph7_result_int64(pCtx,iCount);
 	return PH7_OK;
@@ -182,7 +185,8 @@ PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 	 * and the caller's own variable must not change. */
 	PH7_MemObjInit(pCtx->pVm,&sKey);
 	PH7_MemObjStore(apArg[0],&sKey);
-	rc = PH7_VmArrayKeyArg(pCtx,&sKey,bAlias ? PH7_ARRAYKEY_ZPP : PH7_ARRAYKEY_AKE);
+	rc = PH7_VmArrayKeyArg(pCtx,&sKey,
+		(bAlias || (pCtx->iFlags & PH7_CTX_CALL_FOLDED) == 0) ? PH7_ARRAYKEY_ZPP : PH7_ARRAYKEY_AKE);
 	if( rc != SXRET_OK ){
 		PH7_MemObjRelease(&sKey);
 		return rc;

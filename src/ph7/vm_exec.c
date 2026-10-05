@@ -9203,8 +9203,11 @@ SkipFuncBody:
 		 * literal, unambiguous global name at the exact arity the rewrite covers --
 		 * the same three disqualifiers the call_user_func fold has (an unqualified
 		 * name inside a namespace, a name read from a variable, a spread), plus a
-		 * `name:` argument, which the rewrite cannot reorder. See bFoldedCallee. */
-		if( bLiteralCallee && !bNsCallee && (pInstr->iP2 & PH7_CALL_SPREAD) == 0
+		 * `name:` argument, which the rewrite cannot reorder. A call that never came
+		 * from the compiler is not one: the C dispatcher's synthetic call (array_map,
+		 * usort, Reflection's invoke) and a Closure's unwrap (`strlen(...)`) are real
+		 * calls, with a frame. See bFoldedCallee. */
+		if( pInstr->nLine != 0 && !bViaClosure && bLiteralCallee && !bNsCallee && (pInstr->iP2 & PH7_CALL_SPREAD) == 0
 		 && (pEffCallMap == 0 || !pEffCallMap->bHasNamed) ){
 			static const struct { const char *zName; int nLen; int nArg; } aFolded[] = {
 				{ "strlen",           sizeof("strlen")-1,           1 },
@@ -9250,7 +9253,8 @@ NativeCall:
 		VmInitCallContext(&sCtx,&(*pVm),pFunc,&sRet,(bDynamicCall ? PH7_CTX_CALL_DYNAMIC : 0)
 			| ((pInstr->nLine != 0 && bLiteralCallee && !bNsCallee && pNativeMethod == 0
 			    && (pInstr->iP2 & PH7_CALL_SPREAD) == 0
-			    && (pEffCallMap == 0 || !pEffCallMap->bHasNamed)) ? PH7_CTX_CALL_CT_BOUND : 0));
+			    && (pEffCallMap == 0 || !pEffCallMap->bHasNamed)) ? PH7_CTX_CALL_CT_BOUND : 0)
+			| (bFoldedCallee ? PH7_CTX_CALL_FOLDED : 0));
 		/* Hand the call-site named-argument map to the builtin so name-forwarding
 		 * helpers (call_user_func & friends) can relay name: arguments — and the
 		 * caller's strict_types mode — to the inner callback. Forwarded whole (not
