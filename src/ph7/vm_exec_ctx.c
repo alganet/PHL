@@ -3387,10 +3387,16 @@ static void VmCtxAliasByRefArg(ph7_exec_ctx *pExecCtx,sxu32 nIdx)
  * apOut and aOutName hold nActual plus the formal count. Answers SXRET_OK, php's
  * catchable Error/ArgumentCountError status (PH7_EXCEPTION or PH7_ABORT), or SXERR_MEM,
  * on which the caller keeps the positional binding it had.
+ *
+ * A required formal left unbound below a bound one is php's `Argument #N ($x) not
+ * passed`, which php raises from inside the body: its trace has the body's frame. So it
+ * is not thrown here, where that frame does not exist yet; *piHole names the formal (or
+ * is -1), no layout is made, and the caller throws it through VmCtxThrowNamedHole once
+ * the body's frame is on the chain.
  */
-PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class *pSelfHint,
+PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc,
 	VmCallArgMap *pMap, sxu32 nActual, ph7_value **apIn,
-	ph7_value **apOut, SyString *aOutName, int *pnOut)
+	ph7_value **apOut, SyString *aOutName, int *pnOut, sxi32 *piHole)
 {
 	ph7_vm_func_arg *aFA = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
 	sxu32 nF = SySetUsed(&pFunc->aArgs);
@@ -3438,10 +3444,11 @@ PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class 
 			iHole = (sxi32)i;
 		}
 	}
+	*piHole = iHole;
 	if( iHole >= 0 ){
 		SyMemBackendFree(&pVm->sAllocator,aSlot);
-		return VmThrowArgNotPassed(&(*pVm),pSelfHint,&pFunc->sName,pFunc,
-			(sxu32)iHole + 1,&aFA[iHole].sName);
+		*pnOut = 0;
+		return SXRET_OK;
 	}
 	for( i = 0 ; i < nNV ; i++ ){
 		ph7_value *pBound = 0;
@@ -3476,6 +3483,16 @@ PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class 
 	SyMemBackendFree(&pVm->sAllocator,aSlot);
 	*pnOut = nOut;
 	return SXRET_OK;
+}
+/*
+ * Throw the named hole VmCtxBindNamedArgs reported, with the body's frame on the chain.
+ */
+PH7_PRIVATE sxi32 VmCtxThrowNamedHole(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class *pSelfHint,
+	sxi32 iHole)
+{
+	ph7_vm_func_arg *aFA = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	return VmThrowArgNotPassed(&(*pVm),pSelfHint,&pFunc->sName,pFunc,
+		(sxu32)iHole + 1,&aFA[iHole].sName);
 }
 /*
  * aArgName, when given, runs parallel to apArg and names the trailing actuals a named
@@ -3892,6 +3909,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	SyString sAttrName;
 	ph7_value **apBound = 0;    /* a named call's layout (VmCtxBindNamedArgs) */
 	SyString *aBoundName = 0;   /* ...and its extras' names, in the same block */
+	sxi32 iHole = -1;           /* ...or the required formal it left unbound */
 	sxi32 rc;
 	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
 	if( pRecv == 0 || (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
@@ -3933,7 +3951,8 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	 * named arguments WITH their names and binds them to the body's parameters the
 	 * way a direct call would. Every name used to be dropped here, so `start(b: 1,
 	 * a: 2)` bound positionally and an extra reached the variadic unkeyed. Bound
-	 * before the body's context exists, so a refusal leaves nothing to undo. */
+	 * before the body's context exists, so a refusal leaves nothing to undo -- all but
+	 * a named hole, which php raises on the body's frame and is thrown further down. */
 	if( nArg > 0 && pCtx->pArgMap && pCtx->pArgMap->bHasNamed ){
 		sxu32 nSpan = (sxu32)nArg + SySetUsed(&pFunc->aArgs);
 		int nBound = 0;
@@ -3941,8 +3960,8 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 			nSpan * (sizeof(ph7_value *) + sizeof(SyString)));
 		if( apBound ){
 			aBoundName = (SyString *)&apBound[nSpan];
-			rc = VmCtxBindNamedArgs(pVm, pFunc, 0, pCtx->pArgMap, (sxu32)nArg, apArg,
-				apBound, aBoundName, &nBound);
+			rc = VmCtxBindNamedArgs(pVm, pFunc, pCtx->pArgMap, (sxu32)nArg, apArg,
+				apBound, aBoundName, &nBound, &iHole);
 			if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
 				SyMemBackendFree(&pVm->sAllocator, apBound);
 				return rc;
@@ -3992,11 +4011,16 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		 * slots do not move either since P1, which retires the hazard entirely.) */
 		ph7_value **apValues = (nArg > 0) ? apArg : 0;
 		int nActual = nArg;
-		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues, aBoundName,
-			0 /* weak-mode arg binding, like call_user_func */,
-			VmFiberSelfHint(pFunc, pClosureThis),
-			FALSE/*Fiber::start(): php omits the call-site segment*/,
-			FALSE/*php's Fiber::start() passes by VALUE and warns (recorded)*/);
+		if( iHole >= 0 ){
+			/* A named hole is the body's refusal as well: raised on its frame. */
+			rc = VmCtxThrowNamedHole(pVm, pFunc, VmFiberSelfHint(pFunc, pClosureThis), iHole);
+		}else{
+			rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues, aBoundName,
+				0 /* weak-mode arg binding, like call_user_func */,
+				VmFiberSelfHint(pFunc, pClosureThis),
+				FALSE/*Fiber::start(): php omits the call-site segment*/,
+				FALSE/*php's Fiber::start() passes by VALUE and warns (recorded)*/);
+		}
 		/* apValues aliases the operand stack, or the named layout above, whose
 		 * entries alias it too: only the layout's own block is freed. */
 		if( apBound ){

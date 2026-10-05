@@ -7963,7 +7963,8 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue, 
 PH7_PRIVATE void PH7_VmBindCallbackScope(ph7_vm *pVm, ph7_value *pCallback, ph7_value *pOut);
 PH7_PRIVATE void PH7_VmByRefArgWriteBack(ph7_vm *pVm,ph7_value *pArg,sxi32 iPreFlags);
 PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx, ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg, const SyString *aArgName, int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef);
-PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class *pSelfHint, VmCallArgMap *pMap, sxu32 nActual, ph7_value **apIn, ph7_value **apOut, SyString *aOutName, int *pnOut);
+PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, VmCallArgMap *pMap, sxu32 nActual, ph7_value **apIn, ph7_value **apOut, SyString *aOutName, int *pnOut, sxi32 *piHole);
+PH7_PRIVATE sxi32 VmCtxThrowNamedHole(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class *pSelfHint, sxi32 iHole);
 PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
 PH7_PRIVATE int PH7_VmGeneratorIsClosed(ph7_vm *pVm, ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_VmGeneratorPrime(ph7_vm *pVm, ph7_class_instance *pThis);

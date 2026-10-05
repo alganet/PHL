@@ -7705,6 +7705,7 @@ CalleeByName:
 			ph7_value **apCallArgs;
 			SyString *aGenArgName; /* the named extras' names, inside apCallArgs's block */
 			int nGenArgs, iArg;
+			sxi32 iGenHole = -1; /* a named call's unbound required formal */
 			/* Collect arguments from the operand stack */
 			nGenArgs = (int)(pTos - pArg);
 			apCallArgs = 0;
@@ -7754,15 +7755,16 @@ CalleeByName:
 					if( pEffCallMap && pEffCallMap->bHasNamed ){
 						int nBound = 0;
 						aGenArgName = (SyString *)&apActual[nGenArgs];
-						rc = VmCtxBindNamedArgs(&(*pVm),pVmFunc,pSelfHint,pEffCallMap,
-							(sxu32)nGenArgs,apActual,apCallArgs,aGenArgName,&nBound);
+						rc = VmCtxBindNamedArgs(&(*pVm),pVmFunc,pEffCallMap,
+							(sxu32)nGenArgs,apActual,apCallArgs,aGenArgName,&nBound,&iGenHole);
 						if( rc == PH7_ABORT ){
 							SyMemBackendFree(&pVm->sAllocator, apCallArgs);
 							goto Abort;
 						}
 						if( rc == PH7_EXCEPTION ){
-							/* A named-argument error is php's catchable \Error or
-							 * ArgumentCountError. No callee frame exists yet on this
+							/* A named-argument error is php's catchable \Error (a hole's
+							 * ArgumentCountError is the body's, thrown on its frame
+							 * below). No callee frame exists yet on this
 							 * branch (the generator body never runs and VmEnterFrame is
 							 * further down), so route it like the other pre-frame
 							 * OP_CALL throws: drop the args + the function-name slot and
@@ -7832,11 +7834,16 @@ CalleeByName:
 			VmStampCoroutineCallSite(pVm, pExecCtx);
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
-			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs, aGenArgName,
-				pEffCallMap ? (pEffCallMap->bStrict ? 1 : 0) : (pVm->bCurStrict ? 1 : 0),
-				pSelfHint,
-				TRUE/*generator: the g(...) call site is in the message*/,
-				TRUE/*a source-level call binds a by-ref parameter to the caller's slot*/);
+			if( iGenHole >= 0 ){
+				/* A named hole is refused from inside the body too, so on this frame. */
+				rc = VmCtxThrowNamedHole(pVm, pVmFunc, pSelfHint, iGenHole);
+			}else{
+				rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs, aGenArgName,
+					pEffCallMap ? (pEffCallMap->bStrict ? 1 : 0) : (pVm->bCurStrict ? 1 : 0),
+					pSelfHint,
+					TRUE/*generator: the g(...) call site is in the message*/,
+					TRUE/*a source-level call binds a by-ref parameter to the caller's slot*/);
+			}
 			pVm->pFrame = pExecCtx->pFrame->pParent;
 			pExecCtx->pFrame->pParent = 0;
 			if( apCallArgs ){
