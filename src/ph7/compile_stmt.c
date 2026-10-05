@@ -833,21 +833,11 @@ Consume:
 		/* TICKET 1433-011 */
 		if( pGen->pIn < pGen->pEnd && ( pGen->pIn->nType & PH7_TK_EQUAL ) ){
 			static const sxu32 nKeyID = PH7_TKWRD_ECHO;
-			sxi32 rc;
-			/* Refer to TICKET 1433-009  */
+			/* The block opens with an `echo` statement and goes on after it,
+			 * exactly as in the first chunk: hand it to the statement loop. */
 			pGen->pIn->nType = PH7_TK_KEYWORD;
 			pGen->pIn->pUserData = SX_INT_TO_PTR(nKeyID);
 			SyStringInitFromBuf(&pGen->pIn->sData,"echo",sizeof("echo")-1);
-			/* Synthesized short-tag echo: legitimately an expression here. */
-			pGen->nExprEchoOk++;
-			rc = PH7_CompileExpr(pGen,0,0);
-			pGen->nExprEchoOk--;
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}else if( rc != SXERR_EMPTY ){
-				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
-			}
-			goto Consume;
 		}
 	}else{
 		/* No more chunks to process */
@@ -2598,9 +2588,12 @@ PH7_PRIVATE sxi32 PH7_CompileEcho(ph7_gen_state *pGen)
 	/* Restore token stream */
 	pGen->pEnd = pTmp;
 	if( nExpr == 0 || bExpectMore ){
-		/* `echo ;` or `echo expr, ;` — php rejects both */
-		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
-			"syntax error, unexpected token \";\"");
+		/* `echo ;` or `echo expr, ;` — php rejects both, and names the end of the
+		 * file when the list ran into it rather than into a `;` or a `?>`. */
+		rc = (pGen->pIn >= pGen->pEnd && pGen->bChunkAtEof)
+			? PH7_GenSyntaxError(&(*pGen),0,0)
+			: PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+				"syntax error, unexpected token \";\"");
 		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
 	}
 	return SXRET_OK;

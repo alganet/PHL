@@ -1054,44 +1054,13 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 	nKeyID = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
 	pGen->pIn++; /* Jump the language construct keyword */
 	if( nKeyID == PH7_TKWRD_ECHO ){
-		SyToken *pTmp,*pNext = 0;
 		/* A STATEMENT `echo` never reaches here — it dispatches through the statement
-		 * table. Arriving in expression position means source like
-		 * `fopen('f','r') or echo "IO error";`, which was a Symisc extension and is a
-		 * php parse error (the scope policy: a PH7-ism that changes the meaning of valid source is a
-		 * bug). The one legitimate expression-echo is the token a `<?= ... ?>` short tag
-		 * synthesizes, which raises nExprEchoOk around its own compile. */
-		if( pGen->nExprEchoOk < 1 ){
-			PH7_GenSyntaxError(&(*pGen),pGen->pIn - 1,0);
-			return SXERR_ABORT;
-		}
-		/* Compile arguments one after one */
-		pTmp = pGen->pEnd;
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,1 /* Boolean true index */,0,0);
-		while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pTmp,&pNext) ){
-			if( pGen->pIn < pNext ){
-				pGen->pEnd = pNext;
-				rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD/* Do not create variable if inexistant */,0);
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				if( rc != SXERR_EMPTY ){
-					/* Ticket 1433-008: Optimization #1: Consume input directly
-					 * without the overhead of a function call.
-					 * This is a very powerful optimization that improve
-					 * performance greatly.
-					 */
-					PH7_VmEmitInstr(pGen->pVm,PH7_OP_CONSUME,1,0,0,0);
-				}
-			}
-			/* Jump trailing commas */
-			while( pNext < pTmp && (pNext->nType & PH7_TK_COMMA) ){
-				pNext++;
-			}
-			pGen->pIn = pNext;
-		}
-		/* Restore token stream */
-		pGen->pEnd = pTmp;
+		 * table, and so does the one a `<?=` short tag opens. Arriving in expression
+		 * position means source like `fopen('f','r') or echo "IO error";`, which was a
+		 * Symisc extension and is a php parse error (the scope policy: a PH7-ism that
+		 * changes the meaning of valid source is a bug). */
+		PH7_GenSyntaxError(&(*pGen),pGen->pIn - 1,0);
+		return SXERR_ABORT;
 	}else{
 		sxi32 nArg = 0;
 		sxu32 nIdx = 0;

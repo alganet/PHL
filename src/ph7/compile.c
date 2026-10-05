@@ -5283,22 +5283,13 @@ static sxi32 PH7_CompilePHP(
 		 *   tags unlike the default PHP engine that handle
 		 *   only short tag.
 		 */
-		/* Ticket 1433-009: Emulate the 'echo' call */
+		/* `<?=` opens the block with an `echo` STATEMENT, and the block goes on
+		 * after it: `<?= 2; echo 3 ?>` prints both, and `<?= 2` at the end of the
+		 * input wants its `;` as `<?php echo 2` does. Rename the token and let
+		 * the statement loop compile the whole block. */
 		pGen->pIn->nType = PH7_TK_KEYWORD;
 		pGen->pIn->pUserData = SX_INT_TO_PTR(nKeyID);
 		SyStringInitFromBuf(&pGen->pIn->sData,"echo",sizeof("echo")-1);
-		/* This synthesized echo is compiled as an EXPRESSION, which is otherwise a
-		 * parse error; allow it for the duration of this one compile. */
-		pGen->nExprEchoOk++;
-		rc = PH7_CompileExpr(pGen,0,0);
-		pGen->nExprEchoOk--;
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		if( rc != SXERR_EMPTY ){
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
-		}
-		return SXRET_OK;
 	}
 	/* Compile the PHP chunk */
 	rc = GenStateCompileChunk(pGen,0);

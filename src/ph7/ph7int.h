@@ -1162,10 +1162,6 @@ struct ph7_gen_state
 	                      * literal, and so on. Each construct saves/sets/restores it around
 	                      * its expression compile. NULL means "no expecting clause" — php
 	                      * prints none for a plain expression statement. */
-	int nExprEchoOk;     /* > 0 only while compiling the synthesized `echo` of a `<?= ... ?>`
-	                      * short tag, which is the one place an echo legitimately compiles
-	                      * as an EXPRESSION. Everywhere else `echo` in expression position
-	                      * is a php parse error (it was a Symisc extension — the scope policy) */
 	sxu32 nLoopId;       /* Monotonic id handed to each loop/switch block as it is entered */
 	sxu32 nCurLoopId;    /* Innermost loop/switch currently open (0 = none) */
 	SySet aLoopParent;   /* aLoopParent[id-1] = enclosing loop id, so the ancestry of any loop
