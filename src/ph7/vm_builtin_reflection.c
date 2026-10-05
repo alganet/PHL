@@ -24,21 +24,71 @@
 static sxi32 ReflectEnforceStore(ph7_context *pCtx, sxu32 nIdx, ph7_value *pValue);
 
 /*
- * Resolve a class-name string or object into a ph7_class pointer,
- * triggering autoload for unknown string names. Returns NULL when the
- * class does not exist (the PHP layer turns that into ReflectionException).
+ * Resolve a class-name string or object into a ph7_class pointer. An unknown
+ * string name is autoloaded ONCE, by the lookup itself: a second
+ * PH7_VmTriggerAutoload here asked every loader again for a class the first
+ * round had already failed to find. Returns NULL when the class does not exist
+ * (the PHP layer turns that into ReflectionException).
  */
 static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)
 {
+	return PH7_VmExtractClassFromValue(pVm, pArg);
+}
+/*
+ * The same, for a door where php raises NOTHING of its own when an autoloader
+ * threw (ReflectionClass, ReflectionMethod, ReflectionEnum: `if
+ * (!EG(exception))`). Answers 1 when the lookup raised, with *pRc the status
+ * the door stops on -- PH7_OK after an in-place catch, whose resume frame the
+ * router already holds. Throwing "does not exist" there piled a second
+ * exception on the loader's, and it came back uncaught: the catch had already
+ * run in place for the first.
+ */
+static int ReflectResolveClassRaised(ph7_vm *pVm, ph7_value *pArg, ph7_class **ppClass, sxi32 *pRc)
+{
+	sxi32 nBrc = pVm->nBoundaryRc;
+	const void *pRes = (const void *)pVm->pResumeFrame;
+	*ppClass = ReflectResolveClass(pVm, pArg);
+	*pRc = PH7_OK;
+	if( *ppClass || !PH7_VmClassLookupRaised(pVm, nBrc, pRes) ){
+		return 0;
+	}
+	if( pVm->nBoundaryRc != nBrc && PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc) ){
+		*pRc = pVm->nBoundaryRc;
+	}
+	return 1;
+}
+/*
+ * The other door shape: php throws its "does not exist" ReflectionException
+ * whatever the autoloader did, and zend chains a pending loader exception as
+ * its $previous (ReflectionProperty, ReflectionClassConstant and the enum
+ * cases, ReflectionParameter, isSubclassOf(), implementsInterface()). The
+ * lookup runs behind a throw fence, so the caller's catch does not run in place
+ * for the loader's exception first; *ppPrev carries it out (one reference, for
+ * the door to wrap and release). *pRc is PH7_ABORT when a loader exited.
+ */
+static ph7_class * ReflectResolveClassFenced(ph7_context *pCtx, ph7_value *pArg,
+	ph7_class * (*xResolve)(ph7_context *, ph7_value *), ph7_class_instance **ppPrev, sxi32 *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxi32 nBrc = pVm->nBoundaryRc;
+	sxu32 nFenceIn = pVm->nThrowFence;
+	ph7_class_instance *pExcIn = pVm->pFencedExc;
 	ph7_class *pClass;
-	pClass = PH7_VmExtractClassFromValue(pVm, pArg);
-	if( pClass == 0 && ph7_value_is_string(pArg) ){
-		const char *zName;
-		int nLen;
-		zName = ph7_value_to_string(pArg, &nLen);
-		if( nLen > 0 ){
-			pClass = PH7_VmTriggerAutoload(pVm, zName, (sxu32)nLen, FALSE);
+	pVm->pFencedExc = 0;
+	pVm->nThrowFence = SySetUsed(&pVm->aException) + 1;
+	pClass = xResolve ? xResolve(pCtx, pArg) : ReflectResolveClass(pVm, pArg);
+	pVm->nThrowFence = nFenceIn;
+	*ppPrev = pVm->pFencedExc;
+	pVm->pFencedExc = pExcIn;
+	*pRc = PH7_OK;
+	if( pVm->nBoundaryRc == PH7_ABORT && nBrc != PH7_ABORT ){
+		*pRc = PH7_ABORT;
+		if( *ppPrev ){
+			PH7_ClassInstanceUnref(*ppPrev);
+			*ppPrev = 0;
 		}
+	}else if( *ppPrev ){
+		pVm->nBoundaryRc = nBrc; /* nothing was caught in place: nothing to route */
 	}
 	return pClass;
 }
@@ -4028,10 +4078,13 @@ static int vm_builtin_ReflectionClass_construct(ph7_context *pCtx, int nArg, ph7
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pClass;
+	sxi32 rc;
 	if( pThis == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
-	pClass = ReflectResolveClass(pCtx->pVm, apArg[0]);
+	if( ReflectResolveClassRaised(pCtx->pVm, apArg[0], &pClass, &rc) ){
+		return rc;
+	}
 	if( pClass == 0 ){
 		/* php reports the NAME it was handed, after the declared object|string
 		 * has coerced a scalar — `new ReflectionClass(1.5)` says Class "1.5". */
@@ -4275,6 +4328,8 @@ static int vm_builtin_ReflectionClass_isIterable(ph7_context *pCtx, int nArg, ph
 }
 static int vm_builtin_ReflectionClass_implementsInterface(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	ph7_class_instance *pPrev;
+	sxi32 rcLook;
 	ph7_class *pClass = ReflectClassOf(pCtx);
 	ph7_class *pTarget;
 	SySet aSet;
@@ -4285,13 +4340,20 @@ static int vm_builtin_ReflectionClass_implementsInterface(ph7_context *pCtx, int
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
-	pTarget = ReflectClassArg(pCtx, apArg[0]);
+	pTarget = ReflectResolveClassFenced(pCtx, apArg[0], ReflectClassArg, &pPrev, &rcLook);
 	if( pTarget == 0 ){
 		const char *zName;
 		int nName;
+		if( rcLook != PH7_OK ){
+			return rcLook;
+		}
 		zName = ph7_value_to_string(apArg[0], &nName);
-		return PH7_VmThrowException(pCtx, "ReflectionException",
+		rcLook = PH7_VmThrowExceptionPrev(pCtx, pPrev, "ReflectionException",
 			"Interface \"%.*s\" does not exist", nName, zName);
+		if( pPrev ){
+			PH7_ClassInstanceUnref(pPrev);
+		}
+		return rcLook;
 	}
 	if( (pTarget->iFlags & PH7_CLASS_INTERFACE) == 0 ){
 		return PH7_VmThrowException(pCtx, "ReflectionException",
@@ -4320,6 +4382,8 @@ static int vm_builtin_ReflectionClass_implementsInterface(ph7_context *pCtx, int
 }
 static int vm_builtin_ReflectionClass_isSubclassOf(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	ph7_class_instance *pPrev;
+	sxi32 rcLook;
 	ph7_class *pClass = ReflectClassOf(pCtx);
 	ph7_class *pTarget, *pWalk;
 	SySet aSet;
@@ -4330,13 +4394,20 @@ static int vm_builtin_ReflectionClass_isSubclassOf(ph7_context *pCtx, int nArg, 
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
-	pTarget = ReflectClassArg(pCtx, apArg[0]);
+	pTarget = ReflectResolveClassFenced(pCtx, apArg[0], ReflectClassArg, &pPrev, &rcLook);
 	if( pTarget == 0 ){
 		const char *zName;
 		int nName;
+		if( rcLook != PH7_OK ){
+			return rcLook;
+		}
 		zName = ph7_value_to_string(apArg[0], &nName);
-		return PH7_VmThrowException(pCtx, "ReflectionException",
+		rcLook = PH7_VmThrowExceptionPrev(pCtx, pPrev, "ReflectionException",
 			"Class \"%.*s\" does not exist", nName, zName);
+		if( pPrev ){
+			PH7_ClassInstanceUnref(pPrev);
+		}
+		return rcLook;
 	}
 	/* php: a class is never a subclass of ITSELF */
 	if( pClass == 0 || pClass == pTarget ){
@@ -7425,7 +7496,9 @@ static int vm_builtin_ReflectionMethod_construct(ph7_context *pCtx, int nArg, ph
 		PH7_MemObjStore(apArg[0], &sClass);
 		PH7_MemObjStore(apArg[1], &sMethod);
 	}
-	pClass = ReflectResolveClass(pVm, &sClass);
+	if( ReflectResolveClassRaised(pVm, &sClass, &pClass, &rc) ){
+		goto Done;
+	}
 	if( pClass == 0 ){
 		const char *zName;
 		int nName;
@@ -8033,6 +8106,27 @@ static int vm_builtin_ReflectionParameter_construct(ph7_context *pCtx, int nArg,
 		 * ReflectionMethod's own one-argument form. The prelude split it and
 		 * silently reflected the method. */
 		PH7_MemObjStore(apArg[0], &sTarget);
+	}
+	if( (sMethod.iFlags & MEMOBJ_STRING) && (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){
+		/* A pair's class is looked up first, and on its own refusal: php says
+		 * `Class "X" does not exist` (a throwing autoloader's exception its
+		 * $previous), never that the METHOD is missing. */
+		ph7_class_instance *pPrev;
+		sxi32 rcLook;
+		if( ReflectResolveClassFenced(pCtx, &sTarget, 0, &pPrev, &rcLook) == 0 ){
+			const char *zName;
+			int nName;
+			rc = rcLook;
+			if( rc == PH7_OK ){
+				zName = ph7_value_to_string(&sTarget, &nName);
+				rc = PH7_VmThrowExceptionPrev(pCtx, pPrev, "ReflectionException",
+					"Class \"%.*s\" does not exist", nName, zName);
+			}
+			if( pPrev ){
+				PH7_ClassInstanceUnref(pPrev);
+			}
+			goto Done;
+		}
 	}
 	if( !ReflectFuncFill(pCtx->pVm, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, &sRef) ){
 		const char *zName;
@@ -8891,6 +8985,8 @@ static VmClassAttr * ReflectRefInstanceAttr(ph7_vm *pVm, ph7_class_instance *pOb
 /* ReflectionProperty::__construct(object|string $class, string $property) */
 static int vm_builtin_ReflectionProperty_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	ph7_class_instance *pPrev;
+	sxi32 rcLook;
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class_instance *pObj = 0;
@@ -8906,13 +9002,20 @@ static int vm_builtin_ReflectionProperty_construct(ph7_context *pCtx, int nArg, 
 	if( apArg[0]->iFlags & MEMOBJ_OBJ ){
 		pObj = (ph7_class_instance *)apArg[0]->x.pOther;
 	}
-	pClass = ReflectResolveClass(pVm, apArg[0]);
+	pClass = ReflectResolveClassFenced(pCtx, apArg[0], 0, &pPrev, &rcLook);
 	if( pClass == 0 ){
 		const char *zName;
 		int nName;
+		if( rcLook != PH7_OK ){
+			return rcLook;
+		}
 		zName = ph7_value_to_string(apArg[0], &nName);
-		return PH7_VmThrowException(pCtx, "ReflectionException",
+		rcLook = PH7_VmThrowExceptionPrev(pCtx, pPrev, "ReflectionException",
 			"Class \"%.*s\" does not exist", nName, zName);
+		if( pPrev ){
+			PH7_ClassInstanceUnref(pPrev);
+		}
+		return rcLook;
 	}
 	zProp = ph7_value_to_string(apArg[1], &nProp);
 	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
@@ -9633,6 +9736,8 @@ static int vm_builtin_ReflectionProperty_toString(ph7_context *pCtx, int nArg, p
 /* ReflectionClassConstant::__construct(object|string $class, string $constant) */
 static int vm_builtin_ReflectionClassConstant_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	ph7_class_instance *pPrev;
+	sxi32 rcLook;
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pClass, *pDecl = 0;
@@ -9644,13 +9749,20 @@ static int vm_builtin_ReflectionClassConstant_construct(ph7_context *pCtx, int n
 	if( pThis == 0 || nArg < 2 ){
 		return PH7_OK;
 	}
-	pClass = ReflectResolveClass(pVm, apArg[0]);
+	pClass = ReflectResolveClassFenced(pCtx, apArg[0], 0, &pPrev, &rcLook);
 	if( pClass == 0 ){
 		const char *zName;
 		int nName;
+		if( rcLook != PH7_OK ){
+			return rcLook;
+		}
 		zName = ph7_value_to_string(apArg[0], &nName);
-		return PH7_VmThrowException(pCtx, "ReflectionException",
+		rcLook = PH7_VmThrowExceptionPrev(pCtx, pPrev, "ReflectionException",
 			"Class \"%.*s\" does not exist", nName, zName);
+		if( pPrev ){
+			PH7_ClassInstanceUnref(pPrev);
+		}
+		return rcLook;
 	}
 	zConst = ph7_value_to_string(apArg[1], &nConst);
 	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
