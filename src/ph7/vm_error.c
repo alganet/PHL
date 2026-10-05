@@ -282,7 +282,9 @@ static sxi32 VmEmitFatalReport(ph7_vm *pVm,const char *zLabel,const char *zBody,
  * the activation now running, or a builtin whose body is embedded PHP? php calls the
  * error handler from EG(current_execute_data), which is that function's frame when it
  * has one; a folded call links no record (bFoldedCallee), and an opcode's own
- * diagnostic has no function running at all.
+ * diagnostic has no function running at all. A builtin that loaded the unit now
+ * running (spl_autoload()) shares this activation but not its include depth: that
+ * unit's own code raised the diagnostic, not the builtin.
  */
 static int VmErrRaisedByInternal(ph7_vm *pVm)
 {
@@ -290,7 +292,8 @@ static int VmErrRaisedByInternal(ph7_vm *pVm)
 	while( pNat && pNat->bElided ){
 		pNat = pNat->pPrev;
 	}
-	if( pNat && pNat->pFrame == (void *)pVm->pFrame ){
+	if( pNat && pNat->pFrame == (void *)pVm->pFrame
+	 && pNat->nIncDepth == SySetUsed(&pVm->aIncFrame) ){
 		return 1;
 	}
 	return PH7_VmPreludeBuiltinFrame(pVm,0,0) != 0;
