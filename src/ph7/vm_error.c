@@ -2064,7 +2064,25 @@ PH7_PRIVATE int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString
 		 * the compiler rejects `callable` on a property or class constant, as
 		 * php does.) A user declaration checks it the way is_callable() does, so it
 		 * raises the scope deprecation too. */
-		PH7_VmCallableDeprecation(pVm,pValue);
+		if( pVm->bReturnTypeFence ){
+			/* A RETURN value: php makes the exception an error handler throws on the
+			 * deprecation the previous of its return TypeError, so the handler runs
+			 * behind the fence and the value counts as not callable. (Its own calls
+			 * are not a return check: the flag is down while it runs.) */
+			ph7_class_instance *pExc;
+			pVm->bReturnTypeFence = 0;
+			PH7_VmCallableDeprecationFenced(pVm,pValue,&pExc);
+			pVm->bReturnTypeFence = 1;
+			if( pExc ){
+				if( pVm->pReturnTypeExc ){
+					PH7_ClassInstanceUnref(pVm->pReturnTypeExc);
+				}
+				pVm->pReturnTypeExc = pExc;
+				return 0;
+			}
+		}else{
+			PH7_VmCallableDeprecation(pVm,pValue);
+		}
 		return PH7_VmIsCallable(pVm,pValue,TRUE) ? 1 : 0;
 	}
 	if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
@@ -4490,6 +4508,7 @@ PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyStrin
 /* Build a catchable TypeError from a pre-formatted message blob and throw it.
  * The message is copied into the instance by __construct, so the caller owns
  * (and releases) pMsg. Sets VM_FRAME_THROW so the terminal OP_DONE unwinds. */
+static void VmExceptionLinkPrevious(ph7_class_instance *pThis,ph7_class_instance *pPrev);
 static sxi32 VmThrowTypeErrorMsg(ph7_vm *pVm,SyBlob *pMsg)
 {
 	ph7_class *pClass;
@@ -4515,6 +4534,12 @@ static sxi32 VmThrowTypeErrorMsg(ph7_vm *pVm,SyBlob *pMsg)
 		apArg[0] = &sArg;
 		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
 		PH7_MemObjRelease(&sArg);
+	}
+	if( pVm->pReturnTypeExc ){
+		/* The return check's `callable` arm refused because an error handler threw. */
+		VmExceptionLinkPrevious(pThis,pVm->pReturnTypeExc);
+		PH7_ClassInstanceUnref(pVm->pReturnTypeExc);
+		pVm->pReturnTypeExc = 0;
 	}
 	pFrame = pVm->pFrame;
 	if( pFrame ){
@@ -4737,7 +4762,23 @@ PH7_PRIVATE int VmFuncHasReturnType(ph7_vm_func *pFunc)
 {
 	return pFunc->nReturnType > 0 || SySetUsed(&pFunc->aReturnUnion) > 0;
 }
+static sxi32 VmEnforceReturnTypeCheck(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue)
+{
+	int bFenceIn = pVm->bReturnTypeFence;
+	ph7_class_instance *pExcIn = pVm->pReturnTypeExc;
+	sxi32 rc;
+	pVm->bReturnTypeFence = 1;
+	pVm->pReturnTypeExc = 0;
+	rc = VmEnforceReturnTypeCheck(&(*pVm),pFunc,pValue);
+	if( pVm->pReturnTypeExc ){
+		PH7_ClassInstanceUnref(pVm->pReturnTypeExc); /* another arm took the value */
+	}
+	pVm->bReturnTypeFence = bFenceIn;
+	pVm->pReturnTypeExc = pExcIn;
+	return rc;
+}
+static sxi32 VmEnforceReturnTypeCheck(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue)
 {
 	int bStrict = pFunc->bStrictTypes ? 1 : 0;
 	int bNullable = (pFunc->iFlags & VM_FUNC_RETURN_NULLABLE) ? 1 : 0;
@@ -6270,7 +6311,7 @@ PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pR
  * iCode becomes the exception's $code (php's second constructor argument);
  * pass 0 for the engine errors that leave it at its default.
  */
-static sxi32 VmThrowInternalAp(ph7_context *pCtx,const char *zClass,sxi32 iCode,const char *zFormat,va_list ap)
+static sxi32 VmThrowInternalAp(ph7_context *pCtx,const char *zClass,sxi32 iCode,ph7_class_instance *pPrev,const char *zFormat,va_list ap)
 {
 	ph7_vm *pVm;
 	ph7_class *pClass;
@@ -6332,6 +6373,7 @@ static sxi32 VmThrowInternalAp(ph7_context *pCtx,const char *zClass,sxi32 iCode,
 		PH7_MemObjRelease(&sArg);
 	}
 	SyBlobRelease(&sMsg);
+	VmExceptionLinkPrevious(pThis,pPrev);
 
 	pFrame = pVm->pFrame;
 	if( pFrame ){
@@ -6361,7 +6403,17 @@ PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,cons
 	va_list ap;
 	sxi32 rc;
 	va_start(ap,zFormat);
-	rc = VmThrowInternalAp(pCtx,zClass,0,zFormat,ap);
+	rc = VmThrowInternalAp(pCtx,zClass,0,0,zFormat,ap);
+	va_end(ap);
+	return rc;
+}
+/* Same, with pPrev (may be 0) as the new exception's $previous. */
+PH7_PRIVATE sxi32 PH7_VmThrowExceptionPrev(ph7_context *pCtx,ph7_class_instance *pPrev,const char *zClass,const char *zFormat,...)
+{
+	va_list ap;
+	sxi32 rc;
+	va_start(ap,zFormat);
+	rc = VmThrowInternalAp(pCtx,zClass,0,pPrev,zFormat,ap);
 	va_end(ap);
 	return rc;
 }
@@ -6371,7 +6423,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowExceptionCode(ph7_context *pCtx,const char *zClass,
 	va_list ap;
 	sxi32 rc;
 	va_start(ap,zFormat);
-	rc = VmThrowInternalAp(pCtx,zClass,iCode,zFormat,ap);
+	rc = VmThrowInternalAp(pCtx,zClass,iCode,0,zFormat,ap);
 	va_end(ap);
 	return rc;
 }
@@ -6727,6 +6779,11 @@ static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 	VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */
 	return VM_THROW_KEEP_UNWINDING;
 }
+/* The exception-stack depth a throw may unwind to: the fence, when one is up. */
+static sxu32 VmThrowFloor(ph7_vm *pVm)
+{
+	return pVm->nThrowFence > 0 ? pVm->nThrowFence - 1 : 0;
+}
 PH7_PRIVATE sxi32 VmThrowException(
 	ph7_vm *pVm,              /* Target VM */
 	ph7_class_instance *pThis /* Exception class instance [i.e: Exception $e] */
@@ -6772,7 +6829,7 @@ Rethrow:
 	apException = (ph7_exception **)SySetBasePtr(&pVm->aException);
 	pException = 0;
 	pCatch = 0;
-	if( SySetUsed(&pVm->aException) > 0 ){
+	if( SySetUsed(&pVm->aException) > VmThrowFloor(pVm) ){
 		ph7_exception_block *aCatch;
 		ph7_class *pClass;
 		SyString *aNames;
@@ -6909,7 +6966,7 @@ Rethrow:
 			}
 		}
 		/* Check if there is an outer exception handler on the stack */
-		if( SySetUsed(&pVm->aException) > 0 ){
+		if( SySetUsed(&pVm->aException) > VmThrowFloor(pVm) ){
 			/* Re-throw to the outer handler — flat loop (see Rethrow), one
 			 * iteration per unwound level instead of one native frame. */
 			VmExcRelease(&(*pVm),pException);
@@ -6925,6 +6982,19 @@ Rethrow:
 			 * the mount path rolls the whole attempt back. */
 			VmExcRelease(&(*pVm),pException);
 			return SXERR_ABORT;
+		}
+		if( pVm->nThrowFence > 0 && pThis ){
+			/* Stopped at the fence: the handlers below it belong to the code that
+			 * called the fenced callback, and php leaves this exception pending for
+			 * THAT door to wrap rather than letting any of them catch it now. Carry
+			 * the instance out (one reference) and unwind the callback's frames. */
+			pThis->iRef++;
+			if( pVm->pFencedExc ){
+				PH7_ClassInstanceUnref(pVm->pFencedExc);
+			}
+			pVm->pFencedExc = pThis;
+			VmExcRelease(&(*pVm),pException);
+			return PH7_EXCEPTION;
 		}
 		/* No outer handler. If the handlers were temporarily hidden
 		 * (catch body re-throw with finally pending), defer the

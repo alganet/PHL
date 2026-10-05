@@ -729,6 +729,12 @@ struct ph7_context
                                    * their CALLER's frame (compact, extract, get_defined_vars,
                                    * func_get_args, func_num_args, func_get_arg) refuse such a
                                    * call the way php does -- see PH7_VmForbidDynamicCall. */
+#define PH7_CTX_CALL_CT_BOUND 0x02 /* A compiled call naming this host function by a literal
+                                   * name php's compiler binds (not unqualified inside a
+                                   * namespace), with no spread and no `name:` argument: the
+                                   * shape php compiles call_user_func()/_array() into
+                                   * ZEND_INIT_USER_CALL for, which screens the callable
+                                   * itself (see VmForwardScreen). */
 /*
  * Each hashmap entry [i.e: array(4,5,6)] is recorded in an instance
  * of the following structure.
@@ -4360,6 +4366,17 @@ struct ph7_vm
 	                             * same in-flight throw is landed via VmRecordedResume or the inline
 	                             * redirect), so a swallowed throw outlives at most the C remainder
 	                             * of one opcode instead of silently resuming execution. */
+	sxu32 nThrowFence;          /* 0, or 1 + the exception-stack depth whose handlers a throw may
+	                             * not reach: set around a user callback whose exception php
+	                             * leaves PENDING for the C door that called it (which wraps it as
+	                             * a TypeError's previous). A throw finding no handler above the
+	                             * fence stops there instead of running an outer catch in place,
+	                             * parking its instance in pFencedExc (VmThrowException). */
+	ph7_class_instance *pFencedExc; /* The instance that stopped at nThrowFence (one reference) */
+	int bReturnTypeFence;       /* A return value is being checked against its declared type: a
+	                             * `callable` arm raises its scope deprecation behind the fence */
+	ph7_class_instance *pReturnTypeExc; /* ...and the exception the handler threw there, the
+	                             * $previous of the return TypeError (one reference) */
 	SySet aIOstream;            /* Installed IO stream container */
 	/* Devices a script has taken OUT of service with stream_wrapper_unregister().
 	 * Held as DEVICE pointers rather than names, so a userland wrapper registered
@@ -5858,6 +5875,7 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx);
 PH7_PRIVATE sxu32 PH7_VmResourceId(ph7_vm *pVm,void *pRes);
 PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...);
 PH7_PRIVATE sxi32 PH7_VmThrowExceptionCode(ph7_context *pCtx,const char *zClass,sxi32 iCode,const char *zFormat,...);
+PH7_PRIVATE sxi32 PH7_VmThrowExceptionPrev(ph7_context *pCtx,ph7_class_instance *pPrev,const char *zClass,const char *zFormat,...);
 PH7_PRIVATE sxi32 VmHostFuncThrowRc(ph7_context *pCtx,sxi32 rc);
 PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmThrowGlobalsAppendError(ph7_vm *pVm);
@@ -5942,6 +5960,7 @@ PH7_PRIVATE void PH7_ValueToStringUVOnce(ph7_context *pCtx,ph7_value *pValue,con
 PH7_PRIVATE ph7_class *PH7_ValueToStringUVDefer(ph7_context *pCtx,ph7_value *pValue,const char **pzData,int *pnLen);
 PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...);
 PH7_PRIVATE sxi32 PH7_CheckCallbackArg(ph7_context *pCtx,ph7_value *pCb,int iArg,const char *zParam,int bNullable);
+PH7_PRIVATE sxi32 PH7_CheckCallbackReason(ph7_context *pCtx,ph7_value *pCb,int iArg,const char *zParam,int bNullable);
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm); /* vm_builtin_reflection.c */
@@ -6036,6 +6055,7 @@ PH7_PRIVATE int PH7_VmQualifiedCallableMethod(ph7_vm *pVm,ph7_class *pOrg,const 
 PH7_PRIVATE int PH7_VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeBefore);
 PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char *zBuf,int nBuf);
 PH7_PRIVATE sxi32 PH7_VmCallableDeprecation(ph7_vm *pVm,ph7_value *pValue);
+PH7_PRIVATE sxi32 PH7_VmCallableDeprecationFenced(ph7_vm *pVm,ph7_value *pValue,ph7_class_instance **ppExc);
 PH7_PRIVATE void PH7_VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut);
 PH7_PRIVATE ph7_value * PH7_VmExtractSuper(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 PH7_VmHashmapInsert(ph7_hashmap *pMap,const char *zKey,int nKeylen,const char *zData,int nLen);

@@ -2183,6 +2183,32 @@ static int VmForwardIsDynamic(const ph7_value *pCallable)
 {
 	return pCallable->nIdx != SXU32_HIGH || (pCallable->iFlags & MEMOBJ_STRING) == 0;
 }
+/*
+ * Screen a forward's callback. A call php's compiler bound (PH7_CTX_CALL_CT_BOUND) is
+ * compiled into ZEND_INIT_USER_CALL, and it is that opcode which resolves the callable: an
+ * error handler throwing on the scope deprecation leaves no reason behind, so php raises
+ * `must be a valid callback, (null)` with the handler's exception as its previous. Any other
+ * shape runs the function's own parameter screen, where the handler's exception is bare.
+ */
+static sxi32 VmForwardScreen(ph7_context *pCtx,ph7_value *pCb)
+{
+	ph7_class_instance *pExc;
+	sxi32 rc;
+	if( (pCtx->iFlags & PH7_CTX_CALL_CT_BOUND) == 0 ){
+		return PH7_CheckCallbackArg(pCtx,pCb,1,"callback",0);
+	}
+	rc = PH7_VmCallableDeprecationFenced(pCtx->pVm,pCb,&pExc);
+	if( pExc ){
+		rc = PH7_VmThrowExceptionPrev(pCtx,pExc,"TypeError",
+			"%s(): Argument #1 ($callback) must be a valid callback, (null)",ph7_function_name(pCtx));
+		PH7_ClassInstanceUnref(pExc);
+		return rc;
+	}
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	return PH7_CheckCallbackReason(pCtx,pCb,1,"callback",0);
+}
 PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value sResult; /* Store callback return value here */
@@ -2195,7 +2221,7 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 	{
 		/* php validates the callback BEFORE calling anything; the dispatcher below would
 		 * otherwise answer NULL in silence for an unresolvable one. */
-		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",0);
+		sxi32 rcCb = VmForwardScreen(pCtx,apArg[0]);
 		if( rcCb != PH7_OK ){
 			return rcCb;
 		}
@@ -2292,7 +2318,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		return PH7_OK;
 	}
 	{
-		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",0);
+		sxi32 rcCb = VmForwardScreen(pCtx,apArg[0]);
 		if( rcCb != PH7_OK ){
 			return rcCb;
 		}

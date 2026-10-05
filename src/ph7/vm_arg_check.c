@@ -3191,12 +3191,20 @@ PH7_PRIVATE sxi32 PH7_CheckCallbackArg(
 	int bNullable        /* TRUE when php's text says "or null" */
 	)
 {
-	char zReason[256];
-	const char *zWhy;
 	sxi32 rcDep = PH7_VmCallableDeprecation(pCtx->pVm,pCb);
 	if( rcDep != PH7_OK ){
 		return rcDep; /* the handler threw on the deprecation: that is the refusal */
 	}
+	return PH7_CheckCallbackReason(pCtx,pCb,iArg,zParam,bNullable);
+}
+/*
+ * The same screen, with the scope deprecation already raised by the caller.
+ */
+PH7_PRIVATE sxi32 PH7_CheckCallbackReason(ph7_context *pCtx,ph7_value *pCb,int iArg,
+	const char *zParam,int bNullable)
+{
+	char zReason[256];
+	const char *zWhy;
 	zWhy = PH7_VmCallableReason(pCtx->pVm,pCb,zReason,sizeof(zReason));
 	if( zWhy == 0 ){
 		return PH7_OK;

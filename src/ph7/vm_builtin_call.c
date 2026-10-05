@@ -682,6 +682,41 @@ PH7_PRIVATE sxi32 PH7_VmCallableDeprecation(ph7_vm *pVm,ph7_value *pValue)
 	return PH7_OK;
 }
 /*
+ * The same, for a door where php makes the handler's exception the $previous of a TypeError
+ * of its own (Closure::fromCallable(), a `callable` return type, the compiler-bound
+ * call_user_func()): the handler runs behind a throw fence, so its exception is NOT caught in
+ * place by the caller's try -- it comes back here, in *ppExc (one reference, for the door to
+ * wrap and release), with PH7_EXCEPTION. An exit from the handler answers PH7_ABORT.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallableDeprecationFenced(ph7_vm *pVm,ph7_value *pValue,ph7_class_instance **ppExc)
+{
+	sxi32 nBrcIn = pVm->nBoundaryRc;
+	sxu32 nFenceIn = pVm->nThrowFence;
+	ph7_class_instance *pExcIn = pVm->pFencedExc;
+	*ppExc = 0;
+	pVm->pFencedExc = 0;
+	pVm->nThrowFence = SySetUsed(&pVm->aException) + 1;
+	VmCallableDeprecationRaise(&(*pVm),pValue);
+	pVm->nThrowFence = nFenceIn;
+	*ppExc = pVm->pFencedExc;
+	pVm->pFencedExc = pExcIn;
+	if( pVm->nBoundaryRc == PH7_ABORT && nBrcIn != PH7_ABORT ){
+		if( *ppExc ){
+			PH7_ClassInstanceUnref(*ppExc);
+			*ppExc = 0;
+		}
+		return PH7_ABORT;
+	}
+	if( *ppExc ){
+		pVm->nBoundaryRc = nBrcIn; /* nothing was caught in place: nothing to route */
+		return PH7_EXCEPTION;
+	}
+	if( pVm->nBoundaryRc != nBrcIn && PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc) ){
+		return pVm->nBoundaryRc;
+	}
+	return PH7_OK;
+}
+/*
  * The class, method name and callability form (VmMethodIsCallable's bStaticForm) that an
  * array callable's STRING method half names, given its target and the target's class: the
  * pair as written, or what a qualified name resolves to. Answers

@@ -8892,7 +8892,10 @@ NativeCall:
 		/* Assume a null return value */
 		PH7_MemObjInit(&(*pVm),&sRet);
 		/* Init the call context */
-		VmInitCallContext(&sCtx,&(*pVm),pFunc,&sRet,bDynamicCall ? PH7_CTX_CALL_DYNAMIC : 0);
+		VmInitCallContext(&sCtx,&(*pVm),pFunc,&sRet,(bDynamicCall ? PH7_CTX_CALL_DYNAMIC : 0)
+			| ((pInstr->nLine != 0 && bLiteralCallee && !bNsCallee && pNativeMethod == 0
+			    && (pInstr->iP2 & PH7_CALL_SPREAD) == 0
+			    && (pEffCallMap == 0 || !pEffCallMap->bHasNamed)) ? PH7_CTX_CALL_CT_BOUND : 0));
 		/* Hand the call-site named-argument map to the builtin so name-forwarding
 		 * helpers (call_user_func & friends) can relay name: arguments — and the
 		 * caller's strict_types mode — to the inner callback. Forwarded whole (not

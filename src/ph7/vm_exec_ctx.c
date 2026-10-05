@@ -2681,9 +2681,18 @@ PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7
 		ph7_result_value(pCtx, apArg[0]); /* already a Closure: idempotent */
 		return PH7_OK;
 	}
-	rc = PH7_VmCallableDeprecation(pVm, apArg[0]);
-	if( rc != PH7_OK ){
-		return rc;
+	{
+		ph7_class_instance *pExc;
+		rc = PH7_VmCallableDeprecationFenced(pVm, apArg[0], &pExc);
+		if( pExc ){
+			/* The error handler threw on the deprecation: php's refusal, with no reason. */
+			rc = PH7_VmThrowExceptionPrev(pCtx, pExc, "TypeError", "Failed to create closure from callable");
+			PH7_ClassInstanceUnref(pExc);
+			return rc;
+		}
+		if( rc != PH7_OK ){
+			return rc;
+		}
 	}
 	pClosure = VmFccWrapValue(pVm, apArg[0], TRUE);
 	if( pClosure == 0 ){
