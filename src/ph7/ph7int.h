@@ -1104,6 +1104,10 @@ struct ph7_gen_state
 	                       * AFTER the body. Saved/restored with pCurClass. 0 for an
 	                       * interface (php gives one no `parent` however many it extends)
 	                       * and for a trait (which defers the question to composition). */
+	GenBlock *pCurClassBlock; /* The block pCurClass's body was entered from. A function block
+	                       * at or above it is OUTSIDE that body (a class declared inside a
+	                       * function), so its const-expressions are not that function's code.
+	                       * Saved/restored with pCurClass. */
 	/* Whose SIGNATURE is being parsed, for php's scope-keyword screen -- see iSigScope. */
 #define PH7_SIGSCOPE_MEMBER  0
 #define PH7_SIGSCOPE_CLOSURE 1

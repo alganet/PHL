@@ -1470,6 +1470,68 @@ static int GenStateLitIsScopeKeyword(ph7_gen_state *pGen,sxu32 nLit)
 		|| (n == 6 && SyMemcmp(z,"parent",6) == 0);
 }
 /*
+ * php's COMPILE-time refusal of a written `self`/`parent`/`static` class operand
+ * (zend_ensure_valid_class_fetch_type), for literal nLit about to feed a `::`, a `new`
+ * or an `instanceof`. php asks only where the scope is KNOWN while the body compiles
+ * (zend_is_scope_known): a named function has none, even written inside a method, and
+ * a method has its class -- unless that class is a trait, whose `self` is the user.
+ * Everywhere else the question waits for run time: top-level code (an include can run
+ * inside a method), a closure or arrow function (it can be rebound), and a
+ * const-expression -- a parameter, property or constant default, which php compiles
+ * lazily. Those keep the run-time Error the member door already raises.
+ */
+static sxi32 GenStateScreenScopeKeyword(ph7_gen_state *pGen,sxu32 nLit,sxu32 nLine)
+{
+	ph7_value *pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nLit);
+	GenBlock *pBlock = pGen->pCurrent;
+	ph7_vm_func *pFunc = 0;
+	ph7_class *pScope = 0;
+	const char *zKw;
+	if( pGen->iInMemberDefault > 0 || pLit == 0 ){
+		return SXRET_OK;
+	}
+	zKw = (const char *)SyBlobData(&pLit->sBlob); /* not NUL-terminated */
+	while( pBlock ){
+		if( (pBlock->iFlags & GEN_BLOCK_FUNC) && pBlock->pUserData ){
+			pFunc = (ph7_vm_func *)pBlock->pUserData;
+			break;
+		}
+		pBlock = pBlock->pParent;
+	}
+	/* VM_FUNC_CLOSURE is only set on a closure that captures: a capture-less static
+	 * one carries VM_FUNC_STATIC_CL alone. */
+	if( pFunc == 0 || (pFunc->iFlags & (VM_FUNC_CLOSURE|VM_FUNC_ARROW|VM_FUNC_STATIC_CL)) ){
+		return SXRET_OK;
+	}
+	if( pGen->pCurClass ){
+		/* A function block at or above the class body's is OUTSIDE it: this is a
+		 * class-body const-expression of a class declared inside that function. */
+		GenBlock *pUp = pGen->pCurClassBlock;
+		while( pUp ){
+			if( pUp == pBlock ){
+				return SXRET_OK;
+			}
+			pUp = pUp->pParent;
+		}
+	}
+	if( pFunc->iFlags & VM_FUNC_CLASS_METHOD ){
+		pScope = pGen->pCurClass;
+		if( pScope && (pScope->iFlags & PH7_CLASS_TRAIT) ){
+			return SXRET_OK;
+		}
+	}
+	if( pScope == 0 ){
+		return PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Cannot use \"%.*s\" when no class scope is active",
+			(int)SyBlobLength(&pLit->sBlob),zKw);
+	}
+	if( zKw[0] == 'p' && pGen->pCurBase == 0 && (pScope->iFlags & PH7_CLASS_LINT_UNBOUND) == 0 ){
+		return PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Cannot use \"parent\" when current class scope has no parent");
+	}
+	return SXRET_OK;
+}
+/*
  * TRUE when the `instanceof` SUBJECT that just compiled into the instruction
  * stream starting at nFirst is what zend calls IS_CONST -- the shape whose
  * whole expression its compiler folds to FALSE, without ever compiling the
@@ -2612,6 +2674,11 @@ static sxi32 GenStateEmitExprCode(
 		if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
 			int isSpecial = GenStateLitIsScopeKeyword(&(*pGen),(sxu32)pInstr->iP2);
 			bScopeKw = isSpecial;
+			if( isSpecial && GenStateScreenScopeKeyword(&(*pGen),(sxu32)pInstr->iP2,
+					pNode->pLeft && pNode->pLeft->pStart ? pNode->pLeft->pStart->nLine
+					: pNode->pStart->nLine) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
 			pInstr->iP1 = 0;
 			/* A leading `\` (NSSEP) makes the class name ABSOLUTE: it names the
 			 * global class, so it must NOT be re-qualified with the current namespace.
@@ -2917,6 +2984,10 @@ static sxi32 GenStateEmitExprCode(
 						 * instanceof (IS_A) guard below. */
 						int isSpecialNew = GenStateLitIsScopeKeyword(&(*pGen),nLitForClass);
 						bScopeKw = isSpecialNew;
+						if( isSpecialNew && GenStateScreenScopeKeyword(&(*pGen),nLitForClass,
+								pNode->pStart->nLine) == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
 						if( isSpecialNew && pCallNsMap && pCallNsMap->nNewClassInstr > 0 ){
 							/* The screen pass (iP1 -1) resolves the class too. */
 							VmInstr *pScreen = PH7_VmGetInstr(pGen->pVm,pCallNsMap->nNewClassInstr);
@@ -2970,6 +3041,11 @@ static sxi32 GenStateEmitExprCode(
 			if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
 				int bAbsolute = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;
 				int isSpecialIs = GenStateLitIsScopeKeyword(&(*pGen),(sxu32)pInstr->iP2);
+				if( isSpecialIs && GenStateScreenScopeKeyword(&(*pGen),(sxu32)pInstr->iP2,
+						pNode->pRight && pNode->pRight->pStart ? pNode->pRight->pStart->nLine
+						: pNode->pStart->nLine) == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
 				/* OP_IS_A's iP1: the class operand is the written keyword, which is
 				 * the only shape its handler resolves as one. */
 				iP1 = isSpecialIs;
@@ -5520,6 +5596,7 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	/* Clear the class-body context (a prior compile aborted mid-class-body would
 	 * otherwise leave these live for the next eval/include on this VM). */
 	pGen->pCurClass = 0;
+	pGen->pCurClassBlock = 0;
 	pGen->iInMemberDefault = 0;
 	return SXRET_OK;
 }
@@ -5591,6 +5668,7 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	 * must not inherit the outer's trait. (Restore below carries the outer's values
 	 * back, so only the nested unit sees these zeros.) */
 	pGen->pCurClass = 0;
+	pGen->pCurClassBlock = 0;
 	pGen->iInMemberDefault = 0;
 	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
 	pGen->xErr = xErr;
