@@ -72,9 +72,11 @@ foreach ($obp_answers as $obp_what => $obp_cb) {
 // nowhere to put it, so the output is dropped (it used to recurse into the
 // handler 15 deep and prepend the result).
 ob_start();
+// (php 8.4 also deprecates the handler for it, which ob_handler_output_deprecated
+// measures; silenced here because this box's oracle masks E_DEPRECATED.)
 ob_start(function ($obp_b, $obp_p) { echo "INSIDE"; return "[$obp_b]"; });
 echo "x";
-ob_end_flush();
+@ob_end_flush();
 obp_say('handler output', ob_get_clean());
 
 // Nested buffers finish innermost-first, so each handler is handed what the one

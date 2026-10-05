@@ -24,6 +24,9 @@ static sxi32 VmObDeliver(ph7_vm *pVm,sxu32 nIdx,const void *pData,sxu32 nLen);
 static sxi32 VmObSink(ph7_vm *pVm,sxi32 iIdx,const void *pData,sxu32 nLen);
 static ph7_int64 VmObInitSize(VmObEntry *pEntry);
 static void VmObGrow(VmObEntry *pEntry,sxu32 nIncoming);
+static void VmObDeprecateOutput(ph7_vm *pVm,VmObEntry *pEntry);
+/* The shutdown flush's caller: php names it, with no function behind it. */
+static SyString sObShutdown = { "PHP Request Shutdown", sizeof("PHP Request Shutdown")-1 };
 /*
  * TRUE while an output handler's own body is running.
  *
@@ -173,6 +176,16 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 			 * invocation, only to the ones that follow it. */
 			pEntry->iFlags |= PH7_OB_STARTED;
 		}
+		if( pEntry && (pEntry->iFlags & PH7_OB_PRODUCED) && !PH7_CALLBACK_UNWOUND(rcCall) ){
+			/* php 8.4: the handler printed (what it printed is gone). Raised while
+			 * the buffer is still disabled, so the diagnostic's own display lands
+			 * in the level below -- and, the handler still counting as running,
+			 * marks THAT buffer in turn. A handler that threw or exited is not
+			 * deprecated. */
+			pEntry->iFlags &= ~PH7_OB_PRODUCED;
+			VmObDeprecateOutput(pVm,pEntry);
+			pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
+		}
 		if( PH7_CALLBACK_UNWOUND(rcCall)
 			|| (ph7_value_is_bool(&sResult) && !ph7_value_to_bool(&sResult)) ){
 			/* php's two FAILURE shapes — the handler answered FALSE, or it threw
@@ -268,6 +281,9 @@ static sxi32 VmObSink(ph7_vm *pVm,sxi32 iIdx,const void *pData,sxu32 nLen)
 			break; /* the buffer went away underneath: fall through to the output */
 		}
 		if( (pEntry->iFlags & PH7_OB_DISABLED) == 0 ){
+			if( pVm->bObRaising && nLen > 0 ){
+				pEntry->iFlags |= PH7_OB_PRODUCED;
+			}
 			VmObGrow(pEntry,nLen);
 			SyBlobAppend(&pEntry->sOB,pData,nLen);
 			/* A buffer with a chunk size writes out as soon as it holds one. */
@@ -308,7 +324,20 @@ PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUser
 		return PH7_OK;
 	}
 	if( VmObInHandler(pVm) ){
-		/* Inside a handler: php has nowhere to put this and drops it. */
+		/* Inside a handler: php has nowhere to put this and drops it -- but it
+		 * remembers that something tried, on the topmost buffer still taking
+		 * bytes (the running one counts: it is disabled here only for the
+		 * duration of its call), and deprecates the handler for it afterwards. */
+		if( nDataLen > 0 ){
+			sxi32 i;
+			for( i = (sxi32)nUsed - 1 ; i >= 0 ; i-- ){
+				VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,(sxu32)i);
+				if( (pEntry->iFlags & PH7_OB_DISABLED) == 0 || (sxu32)i + 1 == pVm->nObActive ){
+					pEntry->iFlags |= PH7_OB_PRODUCED;
+					break;
+				}
+			}
+		}
 		return PH7_OK;
 	}
 	return VmObSink(pVm,(sxi32)nUsed - 1,pData,nDataLen);
@@ -349,10 +378,13 @@ static void VmObRestore(ph7_vm *pVm,VmObEntry *pEntry)
  */
 PH7_PRIVATE void PH7_VmObFlushAll(ph7_vm *pVm)
 {
+	SyString *pSaveCallee = pVm->pCalleeName;
+	pVm->pCalleeName = &sObShutdown;
 	while( SySetUsed(&pVm->aOB) > 0 ){
 		VmObPerform(pVm,SySetUsed(&pVm->aOB) - 1,PH7_OB_FINAL,0);
 		VmObPop(pVm);
 	}
+	pVm->pCalleeName = pSaveCallee;
 	pVm->nObDepth = 0;
 }
 /*
@@ -396,6 +428,59 @@ static void VmObHandlerName(ph7_vm *pVm,VmObEntry *pEntry,SyBlob *pOut)
 		}
 	}
 	SyBlobAppend(pOut,"default output handler",sizeof("default output handler")-1);
+}
+/*
+ * TRUE when the running builtin is not the innermost function: it called back
+ * into php code (`array_map('g', ...)`), and php names `g` for what g's echo does.
+ * pCalleeName is restored only when the builtin RETURNS, so the frame entered on
+ * its behalf is what tells the two apart.
+ */
+static int VmObCalleeIsBelow(ph7_vm *pVm)
+{
+	VmFrame *pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+	return pFrame && pFrame->pParent && (pFrame->iFlags & VM_FRAME_NATIVE_CALLER)
+		&& pFrame->pNativeCaller == pVm->pCalleeName;
+}
+/*
+ * php's "Producing output from user output handler %s is deprecated", qualified
+ * the way php_error_docref() qualifies it: by the function running when the
+ * handler was invoked -- the ob_* member, the function whose echo filled a
+ * chunked buffer ("main" at the top level), or "PHP Request Shutdown" for the
+ * shutdown flush, which names itself through pCalleeName.
+ */
+static void VmObDeprecateOutput(ph7_vm *pVm,VmObEntry *pEntry)
+{
+	SyBlob sName,sWho,sMsg;
+	SyString sFunc;
+	int bSave = pVm->bObRaising;
+	int bShutdown = pVm->pCalleeName == &sObShutdown;
+	sxu8 bSaveNoLoc = pVm->bNoFrameLoc;
+	SyBlobInit(&sName,&pVm->sAllocator);
+	SyBlobInit(&sWho,&pVm->sAllocator);
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	VmObHandlerName(pVm,pEntry,&sName);
+	if( bShutdown ){
+		/* No function and no frame: php words the caller itself, with no "()",
+		 * and reports it "in Unknown on line 0". */
+		SyBlobAppend(&sMsg,"PHP Request Shutdown: ",sizeof("PHP Request Shutdown: ")-1);
+		SyStringInitFromBuf(&sFunc,"",0);
+		pVm->bNoFrameLoc = 1;
+	}else if( pVm->pCalleeName && pVm->pCalleeName->nByte > 0 && !VmObCalleeIsBelow(pVm) ){
+		SyStringInitFromBuf(&sFunc,pVm->pCalleeName->zString,pVm->pCalleeName->nByte);
+	}else{
+		PH7_VmActiveFuncName(pVm,&sWho);
+		SyStringInitFromBuf(&sFunc,SyBlobData(&sWho),SyStrlen((const char *)SyBlobData(&sWho)));
+	}
+	SyBlobFormat(&sMsg,"Producing output from user output handler %.*s is deprecated",
+		(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName));
+	SyBlobNullAppend(&sMsg);
+	pVm->bObRaising = 1;
+	PH7_VmThrowError(pVm,&sFunc,E_DEPRECATED,(const char *)SyBlobData(&sMsg));
+	pVm->bObRaising = bSave;
+	pVm->bNoFrameLoc = bSaveNoLoc;
+	SyBlobRelease(&sMsg);
+	SyBlobRelease(&sWho);
+	SyBlobRelease(&sName);
 }
 /*
  * Copy one buffer's bytes out. Anything that can run php code — a notice reaching

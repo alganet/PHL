@@ -1816,6 +1816,7 @@ struct VmObEntry
 #define PH7_OB_STARTED   0x1000 /* Handler has been invoked at least once */
 #define PH7_OB_DISABLED  0x2000 /* Handler answered FALSE: never called again */
 #define PH7_OB_PROCESSED 0x4000 /* Handler has produced output */
+#define PH7_OB_PRODUCED  0x8000 /* Something wrote into this buffer while a handler ran */
 /* What ob_start() keeps of the $flags it is given: everything except the phase
  * nibble and the state nibble, which are the engine's own to set. */
 #define PH7_OB_FLAGMASK  (~(ph7_int64)0xF00F)
@@ -4634,6 +4635,10 @@ struct ph7_vm
 	                            * not a read. */
 	int bObRefused;            /* An ob call refused from inside a handler ended the
 	                            * request: that operation delivers nothing more. */
+	int bObRaising;            /* The "producing output" deprecation is being raised: its
+	                            * handler is still running in php's eyes, so whatever the
+	                            * display or a user error handler prints marks the buffer
+	                            * it lands in (VmObSink). */
 	VmFrame *pObFrame;         /* Frame that CALLED the running output handler. The
 	                            * handler's own body runs in a deeper frame, so
 	                            * `nObDepth > 0 && pFrame != pObFrame` is "we are
