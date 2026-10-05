@@ -2990,6 +2990,19 @@ static int vm_builtin_ReflectionFiber_getCallable(ph7_context *pCtx, int nArg, p
 	}
 	return PH7_OK;
 }
+/* Does this target carry a #[\Deprecated] attribute? */
+static int ReflectHasDeprecated(SySet *pAttrs)
+{
+	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){
+		if( SyStringLength(&aA[n].sName) == sizeof("deprecated")-1
+		 && SyStrnicmp(SyStringData(&aA[n].sName), "deprecated", sizeof("deprecated")-1) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
 /* ---- ReflectionConstant ---- */
 /* The engine's record for a global constant, or NULL when undefined. */
 static ph7_constant * ReflectConstEntry(ph7_vm *pVm, const char *zName, int nName)
@@ -3101,7 +3114,8 @@ static int vm_builtin_ReflectionConstant_isDeprecated(ph7_context *pCtx, int nAr
 	/* The same fact the E_DEPRECATED at a NAMING reads, and the same one the
 	 * export tags -- reading it here does not raise the notice, which is why
 	 * this asks the record rather than expanding the constant. */
-	ph7_result_bool(pCtx, pCons != 0 && pCons->zDeprecated != 0);
+	ph7_result_bool(pCtx, pCons != 0
+		&& (pCons->zDeprecated != 0 || ReflectHasDeprecated(&pCons->aAttrs)));
 	return PH7_OK;
 }
 static int vm_builtin_ReflectionConstant_getFileName(ph7_context *pCtx, int nArg, ph7_value **apArg)
@@ -3224,6 +3238,8 @@ static void ReflectExportGlobalConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_co
 		}else{
 			SyBlobAppend(pOut, "<persistent> ", sizeof("<persistent> ")-1);
 		}
+	}else if( ReflectHasDeprecated(&pCons->aAttrs) ){
+		SyBlobAppend(pOut, "<deprecated> ", sizeof("<deprecated> ")-1);
 	}
 	if( zType ){
 		SyBlobFormat(pOut, "%s ", zType);
@@ -6166,19 +6182,6 @@ static int ReflectFuncIsInternal(const ReflectFuncRef *pRef)
 		return 1;
 	}
 	return pRef->pFunc != 0 && (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
-}
-/* Does this target carry a #[\Deprecated] attribute? */
-static int ReflectHasDeprecated(SySet *pAttrs)
-{
-	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);
-	sxu32 n;
-	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){
-		if( SyStringLength(&aA[n].sName) == sizeof("deprecated")-1
-		 && SyStrnicmp(SyStringData(&aA[n].sName), "deprecated", sizeof("deprecated")-1) == 0 ){
-			return 1;
-		}
-	}
-	return 0;
 }
 /* Resolve `$this`, or answer a default when the target has gone missing. */
 #define REFLECT_FUNC_OR(REF,STMT) \
