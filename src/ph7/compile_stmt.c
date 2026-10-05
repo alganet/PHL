@@ -72,6 +72,19 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	 * line, not the offending list element's own line (`const A=1,\nB=strlen()` blames
 	 * line 1). Capture it once here, before jumping the keyword. */
 	nLineLocal = pGen->pIn->nLine;
+	/* php's grammar takes `const` as a TOP statement only: at file scope or
+	 * directly inside a namespace's braces. In a function, a class method, a
+	 * closure or any block -- a plain `{}` included -- it is a parse error on the
+	 * keyword itself, where this compiled it and declared the constant when the
+	 * statement ran. */
+	if( pGen->pCurrent != &pGen->sGlobal
+	 && !(pGen->bInNsBlock && pGen->pCurrent->pParent == &pGen->sGlobal) ){
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn,pGen->pCurrent->zInnerTail);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	pGen->pIn++; /* Jump the 'const' keyword */
 	/* php allows a single `const` statement to declare several constants at once
 	 * (`const A = 1, B = 2;`). Loop over the comma-separated name = value pairs;
@@ -858,10 +871,19 @@ PH7_PRIVATE sxi32 PH7_CompileBlock(
 		}
 		GenStateLeaveBlock(&(*pGen),0);
 	}else if( (pGen->pIn->nType & PH7_TK_COLON /* ':' */) && nKeywordEnd > 0 ){
+		/* An if/elseif body may still be followed by either branch, an else
+		 * body only by its `endif` -- php's parser names the three words for the
+		 * first and nothing for the second. The token before the ':' says which. */
+		int bIfBody = nKeywordEnd == PH7_TKWRD_ENDIF
+			&& !((pGen->pIn[-1].nType & PH7_TK_KEYWORD)
+				&& SX_PTR_TO_INT(pGen->pIn[-1].pUserData) == PH7_TKWRD_ELSE);
 		pGen->pIn++;
 		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);
 		if( rc != SXRET_OK ){
 			return SXERR_ABORT;
+		}
+		if( bIfBody ){
+			pGen->pCurrent->zInnerTail = "\"elseif\" or \"else\" or \"endif\"";
 		}
 		/* Compile until we hit the EOF-keyword [i.e: endif;endfor;...] */
 		for(;;){
@@ -4677,8 +4699,10 @@ PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	if( pGen->pIn->nType & PH7_TK_COLON ){
 		nToken = PH7_TK_KEYWORD;
 		/* Stop compilation when the 'endswitch;' keyword is seen */
+		pGen->pCurrent->zInnerTail = "\"endswitch\" or \"case\" or \"default\"";
 	}else{
 		nToken = PH7_TK_CCB; /* '}' */
+		pGen->pCurrent->zInnerTail = "\"case\" or \"default\" or \"}\"";
 	}
 	pGen->pIn++; /* Jump the leading curly braces/colons */
 	/* Create the switch blocks container */

@@ -1073,6 +1073,11 @@ struct GenBlock
 	sxu32 nScopeId;       /* Try/catch scope in effect INSIDE this block (0 = none). An
 	                       * exception block mints its own; every other block inherits. */
 	sxu32 nOuterScopeId;  /* Scope that was innermost when this block was entered */
+	const char *zInnerTail; /* php's ", expecting" tail when a statement its grammar
+	                         * takes only at the top level (`const`) opens a statement
+	                         * directly in this block: an alternative-syntax if/elseif
+	                         * body or a switch's case list name what they wanted; every
+	                         * other block, NULL, names nothing */
 	/* The following two fields are used only when compiling
 	 * the 'do..while()' language construct.
 	 */
