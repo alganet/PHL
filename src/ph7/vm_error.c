@@ -284,7 +284,7 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 	 * it misses, does NOT walk down to an outer handler -- the diagnostic falls
 	 * straight through to the engine's own reporting, which is what returning
 	 * TRUE below means. */
-	if( ph7_value_is_callable(&pVm->sErrCB)
+	if( !ph7_value_is_null(&pVm->sErrCB)
 	 && (pVm->iErrCBLevels & (sxi64)PH7_VmErrPhpBit(iErr)) != 0 ){
 		ph7_value apArg[4];
 		ph7_value *apArgPtr[4];
@@ -331,8 +331,32 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 		MemObjSetType(&pVm->sErrCB,MEMOBJ_NULL);
 		/* Call the handler */
 		{
-			sxi32 rcCb = PH7_VmCallUserFunction(pVm,&sRunning,4,apArgPtr,&sResult);
-			if( !ph7_value_is_callable(&pVm->sErrCB) ){
+			char zReason[256];
+			const char *zWhy;
+			sxi32 rcCb;
+			/* php stores the handler as a bare value and resolves it again at every
+			 * call, against the scope the diagnostic was raised in -- not the one
+			 * set_error_handler() ran in. A private or protected method registered
+			 * from inside its class is therefore uncallable from outside it, and
+			 * zend_call_function() throws `Invalid callback C::m, <reason>` in
+			 * place of the diagnostic. The dispatcher skipped it in silence and the
+			 * engine reported the diagnostic itself. */
+			zWhy = PH7_VmCallableReason(pVm,&sRunning,zReason,sizeof(zReason));
+			if( zWhy ){
+				SyBlob sMsg;
+				SyBlobInit(&sMsg,&pVm->sAllocator);
+				SyBlobAppend(&sMsg,"Invalid callback ",sizeof("Invalid callback ")-1);
+				PH7_VmCallableName(pVm,&sRunning,&sMsg);
+				SyBlobFormat(&sMsg,", %s",zWhy);
+				rcCb = VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+				/* No caller of this dispatcher routes a status: park it for the
+				 * fetch-point router, as the user-call dispatcher does for a
+				 * handler that throws by itself. */
+				VmBoundaryPark(pVm,rcCb);
+			}else{
+				rcCb = PH7_VmCallUserFunction(pVm,&sRunning,4,apArgPtr,&sResult);
+			}
+			if( ph7_value_is_null(&pVm->sErrCB) ){
 				PH7_MemObjStore(&sRunning,&pVm->sErrCB);
 			}
 			PH7_MemObjRelease(&sRunning);

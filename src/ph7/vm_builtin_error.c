@@ -155,7 +155,7 @@ PH7_PRIVATE int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **
 		/* Report error (consults an installed error handler, then displays) */
 		PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);
 		if( nErr == 256 /* E_USER_ERROR */
-		 && !ph7_value_is_callable(&pCtx->pVm->sErrCB) ){
+		 && ph7_value_is_null(&pCtx->pVm->sErrCB) ){
 			/* php: an unhandled user fatal halts with exit 255 (pre-fix the
 			 * PH7_ABORT here was overwritten by the throw's status, so
 			 * E_USER_ERROR silently CONTINUED). With a handler installed the
@@ -515,7 +515,7 @@ PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_valu
 	 * saved under it. Returning the saved entry answered the handler from one
 	 * level further down (and NULL for the very first replacement of a handler
 	 * that was really there). */
-	if( ph7_value_is_callable(&pVm->sErrCB) ){
+	if( !ph7_value_is_null(&pVm->sErrCB) ){
 		ph7_result_value(pCtx,&pVm->sErrCB); /* Will make it's own copy */
 	}else{
 		ph7_result_null(pCtx);
@@ -559,7 +559,7 @@ PH7_PRIVATE int vm_builtin_get_error_handler(ph7_context *pCtx,int nArg,ph7_valu
 	ph7_vm *pVm = pCtx->pVm;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( ph7_value_is_callable(&pVm->sErrCB) ){
+	if( !ph7_value_is_null(&pVm->sErrCB) ){
 		ph7_result_value(pCtx,&pVm->sErrCB);
 	}else{
 		ph7_result_null(pCtx);
