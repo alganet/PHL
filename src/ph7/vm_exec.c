@@ -7797,6 +7797,15 @@ CalleeByName:
 					nMaxFilled = (sxu32)(aSlot[i] + 1);
 				}
 			}
+			/* php's call arity runs up to the highest formal a name binds, and
+			 * a hole below it -- filled by its default -- is an argument there:
+			 * `f(b: 3)` on f($a = 1, $b = 2) is func_num_args() 2 and
+			 * func_get_args() [1, 3]. The stamp counted operands only. */
+			for( n = 0; n < nMaxFilled; n++ ){
+				if( !aUsed[n] ){
+					pFrame->nActualArgs++;
+				}
+			}
 			if( pVmFunc->iFlags & VM_FUNC_INTERNAL ){
 				/* An INTERNAL callee's variadic does not collect a name it has no
 				 * parameter for -- not even its own variadic's name -- unless it is

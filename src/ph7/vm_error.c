@@ -5898,7 +5898,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 				/* The arguments the caller actually PASSED, which is not the same
 				 * list as the frame's installed slots -- see PH7_VmFrameActualArgs
 				 * (shared with func_get_args()). */
-				PH7_VmFrameActualArgs(&(*pVm),pFrame,pArg);
+				PH7_VmFrameActualArgs(&(*pVm),pFrame,pArg,1);
 				ph7_array_add_strkey_elem(pEntry,"args",pArg);
 				ph7_release_value(&(*pVm),pArg);
 			}

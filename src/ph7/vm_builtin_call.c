@@ -131,7 +131,8 @@ PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **
 PH7_PRIVATE int vm_builtin_func_get_arg(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value *pObj = 0;
-	VmSlot *pSlot = 0;
+	ph7_value *pList;
+	ph7_hashmap_node *pNode;
 	VmFrame *pFrame;
 	ph7_vm *pVm;
 	/* Point to the target VM */
@@ -156,27 +157,26 @@ PH7_PRIVATE int vm_builtin_func_get_arg(ph7_context *pCtx,int nArg,ph7_value **a
 			return rc;
 		}
 	}
-	/* Extract the desired index */
+	/* Extract the desired index, from the list func_get_args() answers: the
+	 * formal slots over-count (a DEFAULTED parameter is one, `f(1)` on
+	 * f($a = 1, $b = 2) has no argument 1) and a variadic callee keeps its
+	 * extras in ONE packed slot. */
 	nArg = ph7_value_to_int(apArg[0]);
-	if( nArg >= (int)SySetUsed(&pFrame->sArg) ){
+	pList = ph7_context_new_array(pCtx);
+	if( pList == 0 ){
+		ph7_result_bool(pCtx,0);
+		return SXRET_OK;
+	}
+	PH7_VmFrameActualArgs(pVm,pFrame,pList,0);
+	pNode = 0;
+	if( HashmapLookupIntKey((ph7_hashmap *)pList->x.pOther,nArg,&pNode) != SXRET_OK
+	 || (pObj = HashmapExtractNodeValue(pNode)) == 0 ){
 		/* Out of range: php's ArgumentCountError-shaped Error, not a silent FALSE
 		 * (FALSE is indistinguishable from an argument that really is false). */
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"func_get_arg(): Argument #1 ($position) must be less than the number of the arguments passed to the currently executed function");
 	}
-	/* Extract the desired argument */
-	if( (pSlot = (VmSlot *)SySetAt(&pFrame->sArg,(sxu32)nArg)) != 0 ){
-		if( (pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pSlot->nIdx)) != 0 ){
-			/* Return the desired argument */
-			ph7_result_value(pCtx,(ph7_value *)pObj);
-		}else{
-			/* No such argument,return false */
-			ph7_result_bool(pCtx,0);
-		}
-	}else{
-		/* CAN'T HAPPEN */
-		ph7_result_bool(pCtx,0);
-	}
+	ph7_result_value(pCtx,pObj);
 	return SXRET_OK;
 }
 /*
@@ -230,12 +230,14 @@ PH7_PRIVATE int vm_builtin_func_get_args_byref(ph7_context *pCtx,int nArg,ph7_va
  * the elements of the variadic packed array (sArg's last entry) -- never a
  * DEFAULTED parameter, and never the packed array itself.
  *
- * Both func_get_args() and debug_backtrace()'s per-frame 'args' need exactly
- * this list, and the backtrace used the raw sArg slots instead: it reported
- * `g(NULL, 2)` for a `g($x = null, $y = 2)` called as `g()`, and a variadic
- * callee's packed array once per slot (`v(Array, Array)` for `v(1, 2)`).
+ * func_get_args(), func_get_arg() and debug_backtrace()'s per-frame 'args' need
+ * exactly this list, and the backtrace used the raw sArg slots instead: it
+ * reported `g(NULL, 2)` for a `g($x = null, $y = 2)` called as `g()`, and a
+ * variadic callee's packed array once per slot (`v(Array, Array)` for `v(1, 2)`).
+ * bNamedExtras appends the named arguments the variadic collected, under their
+ * names -- the backtrace shows them, func_get_args() does not.
  */
-PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pArray)
+PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pArray,int bNamedExtras)
 {
 	VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
 	ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;
@@ -249,6 +251,10 @@ PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pA
 		if( nFormal > 0 && (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) ){
 			nHead = nFormal - 1;
 		}
+		/* The stamp counts a named extra the variadic collected, and those are no
+		 * positional argument: `v(a: 1, z: 4)` on v($a = 1, $b = 2, ...$r) is [1],
+		 * not the defaulted $b behind it. */
+		nActual -= (int)VmCountNamedVariadicArgs(pVm,pFrame);
 		for( n = 0; n < (sxu32)nActual && n < nHead && n < SySetUsed(&pFrame->sArg); n++ ){
 			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,aSlot[n].nIdx);
 			if( pObj ){
@@ -289,6 +295,29 @@ PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pA
 					if( pObj ){
 						ph7_array_add_elem(pArray,0,pObj);
 					}
+				}
+			}
+		}
+		if( bNamedExtras && nHead < nFormal && nHead < SySetUsed(&pFrame->sArg) ){
+			/* A backtrace's args DO carry the named extras, after the positional
+			 * list and under their names (php's extra_named_params). */
+			pObj = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,aSlot[nHead].nIdx);
+			if( pObj && (pObj->iFlags & MEMOBJ_HASHMAP) ){
+				ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
+				ph7_hashmap_node *pNode = pMap->pFirst;
+				sxu32 i;
+				for( i = 0; i < pMap->nEntry && pNode; ++i ){
+					if( pNode->iType == HASHMAP_BLOB_NODE ){
+						ph7_value *pElem = (ph7_value *)PH7_MemObjAt(&pVm->aMemObj,pNode->nValIdx);
+						if( pElem ){
+							ph7_value sKey;
+							PH7_MemObjInit(&(*pVm),&sKey);
+							PH7_HashmapExtractNodeKey(pNode,&sKey);
+							ph7_array_add_elem(pArray,&sKey,pElem);
+							PH7_MemObjRelease(&sKey);
+						}
+					}
+					pNode = pNode->pPrev;
 				}
 			}
 		}
@@ -335,7 +364,7 @@ PH7_PRIVATE int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
-	PH7_VmFrameActualArgs(pCtx->pVm,pFrame,pArray);
+	PH7_VmFrameActualArgs(pCtx->pVm,pFrame,pArray,0);
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
 	return SXRET_OK;
