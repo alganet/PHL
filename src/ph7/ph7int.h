@@ -1292,6 +1292,10 @@ struct VmIncFrame
 	SyString sPath;    /* the unit being loaded: php's single argument for the frame, rendered
 	                    * as `'...'`. Empty for eval(), which php shows argument-less. */
 	const char *zName; /* "include" / "include_once" / "require" / "require_once" / "eval" */
+	struct VmNativeCall *pNat; /* the running INTERNAL function that loaded the unit itself
+	                    * (spl_autoload()), or 0 for a construct. php has no include frame
+	                    * then -- the builtin, and whatever internal call reached for it,
+	                    * are the frames, so the walk renders those records here instead. */
 };
 typedef struct VmFrame VmFrame;
 typedef struct VmInstr VmInstr;   /* defined below; a frame names the body it is numbered for */
@@ -1426,6 +1430,10 @@ struct VmNativeCall
 	                         * no frame in php's trace, so the walks step over it (set by
 	                         * the forward itself once it knows; see VmNativeCallPrev) */
 	VmNativeCall *pPrev;    /* the internal call this one was made from, or 0 */
+	sxu32 nIncDepth;        /* how many include/require/eval activations were running at
+	                         * entry. Code an INTERNAL function loads (spl_autoload()) runs in
+	                         * its caller's activation, so two records sharing pFrame are one
+	                         * nest of internal calls only when this matches too. */
 	ph7_value **apArg;      /* the arguments as bound, for a trace's `args` -- borrowed from
 	                         * the dispatch's own vector, so read live, the way php reads its
 	                         * frame's (a by-reference array shows what the body did to it

@@ -5825,27 +5825,28 @@ static VmNativeCall * VmNativeCallPrev(VmNativeCall *pNat)
 	return pNat;
 }
 /*
- * The INTERNAL calls that reached for pFrame's body as a callback. There can be more
- * than one: `array_map('call_user_func', ['f'])` runs f from inside call_user_func,
- * itself run from inside array_map, and php gives each a frame -- the inner ones with
- * no file or line, the outermost with the userland call site. They are exactly the
- * running records entered from the activation above pFrame (VmNativeCall), since that
- * activation is suspended in the outermost of them; a native method is named the way
- * php names it, by its declaring class and its own separator. Answers how many entries
- * it added; 0 leaves the frame's single pNativeCaller to VmTraceNativeCallerEntry,
- * which is also the only rendering for a dispatch no record describes (a shutdown
- * function, an autoloader an opcode triggered).
+ * Are two running internal calls one NEST -- the second reached from inside the first,
+ * with no userland code between? They share an activation, and they share the include
+ * depth too: a builtin that loads a unit (spl_autoload()) runs it in its caller's
+ * activation, so a call that unit makes is on the same frame but is not inside the
+ * builtin as far as php's trace goes. It has a call site of its own.
  */
-static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sxi32 nDone,
-	VmFrame *pFrame,SyString *pFile,ph7_value *pValue,ph7_value *pList)
+static int VmNativeCallSameNest(const VmNativeCall *pA,const VmNativeCall *pB)
 {
-	VmNativeCall *pNat = pVm->pNativeCall;
+	return pA && pB && pA->pFrame == pB->pFrame && pA->nIncDepth == pB->nIncDepth;
+}
+/*
+ * Render pNat and every internal call of its nest it was reached from, innermost first:
+ * each inner one with no file or line -- php's `[internal function]` -- and the
+ * outermost, the one userland code called, at pOuterFile and nOuterLine (the record's
+ * own line when that is 0). Answers how many entries it added.
+ */
+static sxi32 VmTraceNativeNest(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sxi32 nDone,
+	VmNativeCall *pNat,SyString *pOuterFile,sxu32 nOuterLine,ph7_value *pValue,ph7_value *pList)
+{
+	VmNativeCall *pFirst = pNat;
 	sxi32 nAdded = 0;
-	while( pNat && (pNat->bElided || pNat->pFrame != (void *)pFrame->pParent) ){
-		pNat = pNat->pPrev;
-	}
-	for( ; pNat && pNat->pFrame == (void *)pFrame->pParent ; pNat = VmNativeCallPrev(pNat) ){
-		VmNativeCall *pPrev = VmNativeCallPrev(pNat);
+	for( ; VmNativeCallSameNest(pNat,pFirst) ; pNat = VmNativeCallPrev(pNat) ){
 		ph7_value *pEntry;
 		if( iLimit != 0 && nDone + nAdded >= iLimit ){
 			break;
@@ -5855,15 +5856,14 @@ static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sx
 			break;
 		}
 		nAdded++;
-		if( pPrev == 0 || pPrev->pFrame != pNat->pFrame ){
+		if( !VmNativeCallSameNest(VmNativeCallPrev(pNat),pNat) ){
 			/* The outermost: the one userland code called. */
-			SyString *pNatFile = SyStringLength(&pFrame->sCallFile) > 0 ? &pFrame->sCallFile : pFile;
-			if( pNatFile ){
-				ph7_value_string(pValue,pNatFile->zString,(int)pNatFile->nByte);
+			if( pOuterFile ){
+				ph7_value_string(pValue,pOuterFile->zString,(int)pOuterFile->nByte);
 				ph7_array_add_strkey_elem(pEntry,"file",pValue);
 				ph7_value_reset_string_cursor(pValue);
 			}
-			ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
+			ph7_value_int(pValue,(int)(nOuterLine ? nOuterLine : (pNat->nLine ? pNat->nLine : 1)));
 			ph7_array_add_strkey_elem(pEntry,"line",pValue);
 		}
 		ph7_value_string(pValue,pNat->pName->zString,(int)pNat->pName->nByte);
@@ -5882,6 +5882,29 @@ static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sx
 		ph7_release_value(&(*pVm),pEntry);
 	}
 	return nAdded;
+}
+/*
+ * The INTERNAL calls that reached for pFrame's body as a callback. There can be more
+ * than one: `array_map('call_user_func', ['f'])` runs f from inside call_user_func,
+ * itself run from inside array_map, and php gives each a frame -- the inner ones with
+ * no file or line, the outermost with the userland call site. They are exactly the
+ * innermost nest of running records entered from the activation above pFrame
+ * (VmNativeCall), since that activation is suspended in the outermost of them; a native
+ * method is named the way php names it, by its declaring class and its own separator.
+ * Answers how many entries it added; 0 leaves the frame's single pNativeCaller to
+ * VmTraceNativeCallerEntry, which is also the only rendering for a dispatch no record
+ * describes (a shutdown function, an autoloader an opcode triggered).
+ */
+static sxi32 VmTraceNativeCallerChain(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sxi32 nDone,
+	VmFrame *pFrame,SyString *pFile,ph7_value *pValue,ph7_value *pList)
+{
+	VmNativeCall *pNat = pVm->pNativeCall;
+	while( pNat && (pNat->bElided || pNat->pFrame != (void *)pFrame->pParent) ){
+		pNat = pNat->pPrev;
+	}
+	return VmTraceNativeNest(&(*pVm),iOptions,iLimit,nDone,pNat,
+		SyStringLength(&pFrame->sCallFile) > 0 ? &pFrame->sCallFile : pFile,
+		pFrame->nCallLine ? pFrame->nCallLine : 1,pValue,pList);
 }
 /*
  * VmSkipExceptionFrames for a trace. A fiber's TRAMPOLINE body frame is transparent --
@@ -5941,7 +5964,11 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 		if( pNat && pNat->bElided ){
 			pNat = VmNativeCallPrev(pNat);
 		}
-		while( pNat && pNat->pFrame == (void *)pVm->pFrame ){
+		/* ...and only the nest the running code called: a builtin that loaded the
+		 * unit now running (spl_autoload()) is on this activation too, but is reached
+		 * by the include walk below, where php's trace puts it. */
+		while( pNat && pNat->pFrame == (void *)pVm->pFrame
+		    && pNat->nIncDepth == SySetUsed(&pVm->aIncFrame) ){
 			ph7_value *pNatEntry;
 			if( iLimit != 0 && nDone >= iLimit ){
 				break;
@@ -5958,7 +5985,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * so is a C function a fiber runs AS its body: its record sits on the fiber
 			 * trampoline's transparent frame, called by Fiber->start() rather than by
 			 * any bytecode. */
-			if( (VmNativeCallPrev(pNat) == 0 || VmNativeCallPrev(pNat)->pFrame != pNat->pFrame)
+			if( !VmNativeCallSameNest(VmNativeCallPrev(pNat),pNat)
 			 && (pVm->pFrame->iFlags & (VM_FRAME_FIBER|VM_FRAME_EXCEPTION))
 					!= (VM_FRAME_FIBER|VM_FRAME_EXCEPTION) ){
 				SyString *pNatFile = PH7_VmExecutingUnitFile(&(*pVm));
@@ -6009,7 +6036,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * one innermost activation is not on php's trace. (A class REDECLARATION
 			 * is php's run-time refusal and does carry it; the caller says which.) */
 			VmIncFrame *pTop = (VmIncFrame *)SySetAt(&pVm->aIncFrame,nInc - 1);
-			if( pTop && pTop->pFrame == (void *)pFrame ){
+			if( pTop && pTop->pFrame == (void *)pFrame && pTop->pNat == 0 ){
 				nInc--;
 			}
 		}
@@ -6021,6 +6048,14 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			}
 			if( iLimit != 0 && nDone >= iLimit ){
 				break;
+			}
+			if( pInc->pNat ){
+				/* A builtin loaded this unit (spl_autoload()): php has no include
+				 * frame, only the builtin's and those of the internal calls that
+				 * reached for it, the outermost at the line userland wrote. */
+				nDone += VmTraceNativeNest(&(*pVm),iOptions,iLimit,nDone,pInc->pNat,
+					SyStringLength(&pInc->sFile) > 0 ? &pInc->sFile : 0,0,pValue,pList);
+				continue;
 			}
 			pIncEntry = ph7_new_array(&(*pVm));
 			if( pIncEntry == 0 ){

@@ -743,6 +743,12 @@ static sxi32 VmExecIncludedFile(
 			 * the RESOLVED one, which is what aFiles was just given. */
 			PH7_VmIncFramePush(pVm,ph7_function_name(pCtx),
 				(SyString *)SySetPeek(&pVm->aFiles));
+			if( pCtx->pFunc && !pCtx->pFunc->bConstruct && pVm->pNativeCall
+			 && pVm->pNativeCall->pName == &pCtx->pFunc->sName ){
+				/* A builtin loading the unit itself (spl_autoload()) is a call, and
+				 * its running record is the frame php shows -- not an include. */
+				((VmIncFrame *)SySetPeek(&pVm->aIncFrame))->pNat = pVm->pNativeCall;
+			}
 			rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sScript,0,TRUE);
 			PH7_VmIncFramePop(pVm);
 			if( rc != PH7_EXCEPTION ){

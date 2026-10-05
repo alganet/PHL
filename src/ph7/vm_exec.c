@@ -9344,6 +9344,7 @@ NativeCall:
 		sNativeCall.bStatic = 0;
 		sNativeCall.nLine = pVm->nCurLine;
 		sNativeCall.pFrame = (void *)pVm->pFrame;
+		sNativeCall.nIncDepth = SySetUsed(&pVm->aIncFrame);
 		sNativeCall.bElided = pVm->bElideNativeCall;
 		pVm->bElideNativeCall = 0;
 		sNativeCall.pPrev = pVm->pNativeCall;
