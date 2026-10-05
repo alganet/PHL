@@ -389,6 +389,36 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				VM_EXIT_EXCEPTION;
 			}
 		}
+		if( pCons == 0 && nCtorArgs > 0 && pEffNewMap && pEffNewMap->bHasNamed ){
+			/* A class with no constructor still takes a call: php sends the arguments to
+			 * a pass-through function that declares no parameter, so the first NAME --
+			 * written, or a string key an unpack produced -- is `Unknown named
+			 * parameter` at the call site, and the object php allocated for the `new` is
+			 * dropped unconstructed (no __destruct). PHL built the object and ignored the
+			 * name. Refuse before the instance exists; the stack is tidied exactly as the
+			 * argument-read throw above tidies it. */
+			sxu32 iNamed;
+			for( iNamed = 0; iNamed < (sxu32)nCtorArgs && iNamed < pEffNewMap->nTotal; iNamed++ ){
+				if( pEffNewMap->aNames[iNamed].nByte > 0 ){
+					char zNamedErr[160];
+					sxi32 rcNamed,iResumeNamed;
+					SyBufferFormat(zNamedErr,sizeof(zNamedErr),"Unknown named parameter $%.*s",
+						(int)pEffNewMap->aNames[iNamed].nByte,pEffNewMap->aNames[iNamed].zString);
+					rcNamed = VmThrowNamedArgError(&(*pVm),zNamedErr,(sxu32)SyStrlen(zNamedErr));
+					if( rcNamed == PH7_ABORT ){
+						VM_EXIT_ABORT;
+					}
+					if( VmRecordedResume(pVm,&iResumeNamed,pState->pEntryFrame,aInstr) ){
+						VmPopOperand(&pTos,nCtorArgs);
+						PH7_MemObjRelease(pTos);
+						PH7_RESUME_DRAIN()
+						pc = iResumeNamed;
+						VM_EXIT_BREAK;
+					}
+					VM_EXIT_EXCEPTION;
+				}
+			}
+		}
 		/* Create a new class instance */
 		pNew = PH7_NewClassInstance(&(*pVm),pClass);
 		if( pNew == 0 ){
