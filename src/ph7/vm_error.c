@@ -5648,6 +5648,72 @@ PH7_PRIVATE sxi32 PH7_CmpRefusalRaiseCtx(ph7_context *pCtx)
  * Returns SXRET_OK to proceed, or the status of the thrown TypeError.
  */
 /*
+ * The frame of the INTERNAL function or method that reached for pFrame's body as a
+ * callback (VM_FRAME_NATIVE_CALLER's pNativeCaller, or the Fiber method that last
+ * entered a fiber's body, VM_FRAME_FIBER). It carries the userland call site the
+ * callback's own frame declines, and php gives it `file`, `line` and `function`, plus
+ * `class`, `object` (PROVIDE_OBJECT only) and `type` for a method -- in that order,
+ * which is not a user frame's. No `args` even when they were asked for.
+ */
+static void VmTraceNativeCallerEntry(ph7_vm *pVm,sxi32 iOptions,VmFrame *pFrame,
+	SyString *pFile,ph7_value *pValue,ph7_value *pList)
+{
+	SyString *pNatFile = SyStringLength(&pFrame->sCallFile) > 0 ? &pFrame->sCallFile : pFile;
+	ph7_class_instance *pRecv = pFrame->pNativeCallerThis;
+	ph7_value *pNat = ph7_new_array(&(*pVm));
+	if( pNat == 0 ){
+		return;
+	}
+	if( pNatFile ){
+		ph7_value_string(pValue,pNatFile->zString,(int)pNatFile->nByte);
+		ph7_array_add_strkey_elem(pNat,"file",pValue);
+		ph7_value_reset_string_cursor(pValue);
+	}
+	ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
+	ph7_array_add_strkey_elem(pNat,"line",pValue);
+	ph7_value_string(pValue,pFrame->pNativeCaller->zString,(int)pFrame->pNativeCaller->nByte);
+	ph7_array_add_strkey_elem(pNat,"function",pValue);
+	ph7_value_reset_string_cursor(pValue);
+	if( pRecv && pRecv->pClass ){
+		ph7_value_string(pValue,pRecv->pClass->sName.zString,(int)pRecv->pClass->sName.nByte);
+		ph7_array_add_strkey_elem(pNat,"class",pValue);
+		ph7_value_reset_string_cursor(pValue);
+		if( iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/ ){
+			ph7_value *pObjVal = ph7_new_scalar(&(*pVm));
+			if( pObjVal ){
+				pRecv->iRef++;
+				pObjVal->x.pOther = pRecv;
+				MemObjSetType(pObjVal,MEMOBJ_OBJ);
+				ph7_array_add_strkey_elem(pNat,"object",pObjVal);
+				ph7_release_value(&(*pVm),pObjVal);
+			}
+		}
+		ph7_value_string(pValue,"->",2);
+		ph7_array_add_strkey_elem(pNat,"type",pValue);
+		ph7_value_reset_string_cursor(pValue);
+	}
+	ph7_array_add_elem(pList,0,pNat);
+	ph7_release_value(&(*pVm),pNat);
+}
+/*
+ * VmSkipExceptionFrames for a trace. A fiber's TRAMPOLINE body frame is transparent --
+ * the callee it dispatched pushed the frame the trace shows -- but the Fiber method
+ * that entered it is still a frame of php's, so it is emitted on the way past.
+ */
+static VmFrame * VmTraceSkipFrames(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,sxi32 *pnDone,
+	VmFrame *pFrame,SyString *pFile,ph7_value *pValue,ph7_value *pList)
+{
+	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+		if( (pFrame->iFlags & VM_FRAME_FIBER) && pFrame->pNativeCaller
+		 && (iLimit == 0 || *pnDone < iLimit) ){
+			(*pnDone)++;
+			VmTraceNativeCallerEntry(&(*pVm),iOptions,pFrame,pFile,pValue,pList);
+		}
+		pFrame = pFrame->pParent;
+	}
+	return pFrame;
+}
+/*
  * Build php's backtrace (innermost active call first) into pList: one map per
  * ACTIVE call frame, describing the callee (function/class) and the CALL SITE
  * position -- so a frame can see who called it. Shared by debug_backtrace() and
@@ -5697,8 +5763,13 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			/* A call made from inside ANOTHER internal function has no source position
 			 * at all, and php omits both keys rather than inventing one -- that is the
 			 * `#0 [internal function]: str_repeat()` under `array_map('str_repeat',…)`.
-			 * The predecessor sharing this record's activation is exactly that case. */
-			if( pNat->pPrev == 0 || pNat->pPrev->pFrame != pNat->pFrame ){
+			 * The predecessor sharing this record's activation is exactly that case, and
+			 * so is a C function a fiber runs AS its body: its record sits on the fiber
+			 * trampoline's transparent frame, called by Fiber->start() rather than by
+			 * any bytecode. */
+			if( (pNat->pPrev == 0 || pNat->pPrev->pFrame != pNat->pFrame)
+			 && (pVm->pFrame->iFlags & (VM_FRAME_FIBER|VM_FRAME_EXCEPTION))
+					!= (VM_FRAME_FIBER|VM_FRAME_EXCEPTION) ){
 				SyString *pNatFile = PH7_VmExecutingUnitFile(&(*pVm));
 				if( pNatFile == 0 ){
 					pNatFile = pFile;
@@ -5730,7 +5801,8 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			pNat = pNat->pPrev;
 		}
 	}
-	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+	pFrame = pVm->pFrame
+		? VmTraceSkipFrames(&(*pVm),iOptions,iLimit,&nDone,pVm->pFrame,pFile,pValue,pList) : 0;
 	while( pFrame ){
 		/* The include/require/eval activations started from THIS frame come first:
 		 * they are still running, so they are inner to whatever called the frame.
@@ -5821,13 +5893,13 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * unit for a throw written in a test file.) */
 			SyString *pFrameFile = SyStringLength(&pFrame->sCallFile) > 0
 				? &pFrame->sCallFile : pFile;
-			if( pFrameFile && (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) == 0 ){
+			if( pFrameFile && (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_FIBER)) == 0 ){
 				ph7_value_string(pValue,pFrameFile->zString,(int)pFrameFile->nByte);
 				ph7_array_add_strkey_elem(pEntry,"file",pValue);
 				ph7_value_reset_string_cursor(pValue);
 			}
 		}
-		if( (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) == 0 ){
+		if( (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_FIBER)) == 0 ){
 			ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
 			ph7_array_add_strkey_elem(pEntry,"line",pValue);
 		}
@@ -5921,12 +5993,12 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 		}
 		ph7_array_add_elem(pList,0/* Automatic index assign*/,pEntry);
 		ph7_release_value(&(*pVm),pEntry);
-		if( (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) != 0 && pFrame->pNativeCaller ){
+		if( (pFrame->iFlags & (VM_FRAME_NATIVE_CALLER|VM_FRAME_FIBER)) != 0
+		 && pFrame->pNativeCaller ){
 			/* php gives the INTERNAL function that reached for the callback a frame of
 			 * its own, and that one carries the userland call site the callback's frame
-			 * just declined. It has `file`, `line` and `function` and nothing else --
-			 * no class, no type, no object, and no args even when args were asked for
-			 * (php has no zval array to show for an internal frame's arguments here).
+			 * just declined (VmTraceNativeCallerEntry). A fiber's body is one of these:
+			 * php runs it as a callback of the Fiber method that entered it last.
 			 *
 			 * Not every such dispatch gets one: php's two FORWARDS, call_user_func()
 			 * and call_user_func_array(), are ELIDED BY THE COMPILER when written
@@ -5935,34 +6007,15 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_va
 			 * through PH7_VmCallUserFunctionWithMap and set no latch. A `$n('cuf')($c)`
 			 * through a variable is NOT elided, does set the latch, and does get this
 			 * frame, exactly as php's does. */
-			ph7_value *pNat;
 			if( iLimit != 0 && nDone >= iLimit ){
 				break;
 			}
-			pNat = ph7_new_array(&(*pVm));
-			if( pNat == 0 ){
-				break;
-			}
 			nDone++;
-			{
-				SyString *pNatFile = SyStringLength(&pFrame->sCallFile) > 0
-					? &pFrame->sCallFile : pFile;
-				if( pNatFile ){
-					ph7_value_string(pValue,pNatFile->zString,(int)pNatFile->nByte);
-					ph7_array_add_strkey_elem(pNat,"file",pValue);
-					ph7_value_reset_string_cursor(pValue);
-				}
-			}
-			ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
-			ph7_array_add_strkey_elem(pNat,"line",pValue);
-			ph7_value_string(pValue,pFrame->pNativeCaller->zString,
-				(int)pFrame->pNativeCaller->nByte);
-			ph7_array_add_strkey_elem(pNat,"function",pValue);
-			ph7_value_reset_string_cursor(pValue);
-			ph7_array_add_elem(pList,0,pNat);
-			ph7_release_value(&(*pVm),pNat);
+			VmTraceNativeCallerEntry(&(*pVm),iOptions,pFrame,pFile,pValue,pList);
 		}
-		pFrame = pFrame->pParent ? VmSkipExceptionFrames(pFrame->pParent) : 0;
+		pFrame = pFrame->pParent
+			? VmTraceSkipFrames(&(*pVm),iOptions,iLimit,&nDone,pFrame->pParent,pFile,pValue,pList)
+			: 0;
 	}
 	ph7_release_value(&(*pVm),pValue);
 }

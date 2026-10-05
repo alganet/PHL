@@ -1349,6 +1349,11 @@ struct VmFrame
 	                   * as long as the VM). php shows that builtin as a FRAME OF ITS OWN in
 	                   * a backtrace, carrying the userland call site, while the callback's
 	                   * own frame carries no file or line at all -- see VmBuildBacktrace. */
+	ph7_class_instance *pNativeCallerThis;/* ...and, when that internal function is a METHOD,
+	                   * its receiver: the trace frame then names the receiver's class
+	                   * (`Fiber->start()`) and, under PROVIDE_OBJECT, the object. Borrowed:
+	                   * the running method's own $this keeps it alive for as long as this
+	                   * frame is on the chain. Only a fiber's body frame sets it today. */
 	ph7_foreach_step *pForeachSteps; /* Foreach steps this activation still owns, newest first.
 	                   * Every step OP_FOREACH_INIT pushes is linked here and unlinked by the one
 	                   * teardown door (VmForeachStepUnlink); whatever is left when the frame dies
@@ -1429,6 +1434,15 @@ struct VmNativeCall
                                   * php's compiler elides, and the AUTOLOAD call, which php
                                   * makes on behalf of the code that named the class and
                                   * whose diagnostic names that code's file and line. */
+#define VM_FRAME_FIBER      0x10 /* The body frame of a Fiber (VmNewExecCtx's, bytecode body
+                                  * or the trampoline's transparent one). php runs a fiber's
+                                  * body as a callback of whichever Fiber method entered it
+                                  * LAST -- start(), resume() or throw() -- so a trace shows
+                                  * the body with no file or line and that method as a frame
+                                  * of its own at the resumer's site. pNativeCaller and
+                                  * pNativeCallerThis name it, re-stamped on every entry;
+                                  * unlike VM_FRAME_NATIVE_CALLER this says nothing about how
+                                  * the body's ARGUMENTS were bound. */
 /*
  * One entry of a userland handler STACK (set_error_handler /
  * set_exception_handler). php's stack has no depth limit and every entry is a

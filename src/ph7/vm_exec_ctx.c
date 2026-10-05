@@ -845,6 +845,22 @@ static void VmStampCoroutineCallSite(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	}
 }
 /*
+ * Record which Fiber method is entering a fiber's body (VM_FRAME_FIBER). php runs the
+ * body as that method's callback, so a trace taken inside it shows the body with no
+ * file or line and `Fiber->start()`, `Fiber->resume()` or `Fiber->throw()` as a frame
+ * of its own at the resumer's site -- the method that entered it LAST, so this is
+ * re-stamped on every entry. The site itself is VmStampCoroutineCallSite's.
+ */
+static void VmFiberStampEntry(ph7_exec_ctx *pCtx, SyString *pMethod, ph7_class_instance *pFiber)
+{
+	pCtx->pFrame->iFlags |= VM_FRAME_FIBER;
+	pCtx->pFrame->pNativeCaller = pMethod;
+	pCtx->pFrame->pNativeCallerThis = pFiber;
+}
+static SyString sFiberStartName = { "start", sizeof("start")-1 };
+static SyString sFiberResumeName = { "resume", sizeof("resume")-1 };
+static SyString sFiberThrowName = { "throw", sizeof("throw")-1 };
+/*
  * Common suspend epilogue for VmStartCtx / VmResumeCtx: detach the suspended
  * coroutine from the live VM chain and park its exception handlers. Two forms:
  *   - Body-level (pParkedSegment == 0): a generator yield or a fiber suspending
@@ -3804,6 +3820,7 @@ static int VmFiberStartTramp(ph7_context *pCtx, ph7_class_instance *pThis,
 		return PH7_VmThrowException(pCtx, "FiberError", "Fiber::start(): out of memory");
 	}
 	pExecCtx->pFrame->iFlags |= VM_FRAME_EXCEPTION;
+	VmFiberStampEntry(pExecCtx, &sFiberStartName, pThis);
 	pExecCtx->bTramp = 1;
 	PH7_MemObjInit(pVm, &pExecCtx->sTramp);
 	PH7_MemObjStore(pCallable, &pExecCtx->sTramp);
@@ -3955,6 +3972,10 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	/* Temporarily attach the fiber's frame to the VM chain so that
 	 * VmExtractMemObj (used by VmFiberSetupFrame) installs variables
 	 * into the fiber's frame, not the caller's. */
+	/* A TypeError raised while its arguments are bound is already the body's, so its
+	 * trace shows the Fiber->start() frame at this site too. */
+	VmFiberStampEntry(pExecCtx, &sFiberStartName, pThis);
+	VmStampCoroutineCallSite(pVm, pExecCtx);
 	pExecCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pExecCtx->pFrame;
 	/* Unpack the args array and install into the frame */
@@ -4048,6 +4069,7 @@ PH7_PRIVATE int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value *
 		/* See Fiber::start(): the current fiber is this one for the length of the run. */
 		ph7_class_instance *pOldFiber = pVm->pCurFiber;
 		pVm->pCurFiber = (ph7_class_instance *)pRecv->x.pOther;
+		VmFiberStampEntry(pExecCtx, &sFiberResumeName, pVm->pCurFiber);
 		rc = VmResumeCtx(pVm, pExecCtx, pResumeVal, &sResult);
 		pVm->pCurFiber = pOldFiber;
 	}
@@ -4107,6 +4129,7 @@ PH7_PRIVATE int vm_builtin_Fiber_throw(ph7_context *pCtx, int nArg, ph7_value **
 		/* See Fiber::start(): the current fiber is this one for the length of the run. */
 		ph7_class_instance *pOldFiber = pVm->pCurFiber;
 		pVm->pCurFiber = (ph7_class_instance *)pRecv->x.pOther;
+		VmFiberStampEntry(pExecCtx, &sFiberThrowName, pVm->pCurFiber);
 		rc = VmResumeCtx(pVm, pExecCtx, 0, &sResult);
 		pVm->pCurFiber = pOldFiber;
 	}
