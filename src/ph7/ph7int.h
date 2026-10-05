@@ -1136,6 +1136,10 @@ struct ph7_gen_state
 	ph7_expr_node **apStoreKey; /* the parked name expressions, in push order -- the emitting
 	                             * frame's own array, borrowed for the length of that emission */
 	int nStoreKey;       /* how many are parked (0 = no assignment target is being emitted) */
+	int bInFramelessNsArgs; /* 1 while compiling the ARGUMENTS of an unqualified namespaced
+	                      * call php makes frameless: a namespaced call inside is marked
+	                      * never-frameless (VmCallArgMap.bNotFrameless), php's
+	                      * in_jmp_frameless_branch. Per function body, like php's. */
 	int nCommaExprOk;    /* > 0 while compiling a for() clause, the ONLY place php's grammar
 	                      * allows a comma-separated expression list (PH7's comma OPERATOR
 	                      * is otherwise a PH7-ism php rejects, and we remove) */
@@ -3415,6 +3419,10 @@ struct VmCallArgMap
 	                      * ` during unpacking` only there; the same rule broken by
 	                      * call_user_func_array's array gets the bare sentence. */
 	sxu8 bIsNamespaced;  /* 1 if compiler namespace-qualified the call */
+	sxu8 bNotFrameless;  /* 1 for a namespaced call written in the ARGUMENTS of another
+	                      * namespaced call php makes frameless (`trim(implode(...))`):
+	                      * php's compiler never makes the inner one frameless, to keep
+	                      * the two-branch code from nesting (in_jmp_frameless_branch) */
 	sxu8 bStrict;        /* 1 if the call site's file declared strict_types=1 */
 	sxu32 nOrigNameLit;  /* Original (unqualified) name-literal index + 1, stored
 						  * when the CALL handler namespace-qualified the name so
@@ -6124,6 +6132,7 @@ PH7_PRIVATE int PH7_VmSlotRefCount(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 PH7_VmInit(ph7_vm *pVm,ph7 *pEngine);
 PH7_PRIVATE sxi32 PH7_VmConfigure(ph7_vm *pVm,sxi32 nOp,va_list ap);
 PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm);
+PH7_PRIVATE int PH7_VmFramelessArity(const SyString *pName,int nArgs);
 /* Fiber API helpers (used by api.c) */
 PH7_PRIVATE int PH7_VmIsFiber(ph7_vm *pVm, ph7_value *pVal);
 PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7_value **apArg, ph7_value *pResult);

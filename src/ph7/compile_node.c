@@ -711,7 +711,13 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	 * never captured (see VmExecOpLoadClosure) — raises php's "Undefined variable"
 	 * warning at the read instead of being loaded quietly as a plain expression
 	 * statement (`$z;`, silent in both engines) would be. */
-	rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD,0);
+	{
+		/* A body of its own: the frameless-arguments mark does not reach into it. */
+		int bSavedFl = pGen->bInFramelessNsArgs;
+		pGen->bInFramelessNsArgs = 0;
+		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD,0);
+		pGen->bInFramelessNsArgs = bSavedFl;
+	}
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}

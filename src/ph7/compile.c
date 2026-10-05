@@ -2462,7 +2462,43 @@ static sxi32 GenStateEmitExprCode(
 					}
 				}
 				sArgs.bNewCallee = bNewCallee;
-				rc = GenStateEmitCallArgs(&(*pGen),pNode,iFlags,&sArgs);
+				/* php 8.4 compiles an unqualified call inside a namespace that could be a
+				 * FRAMELESS builtin (PH7_VmFramelessArity) as two branches, and to keep
+				 * them from nesting, a namespaced call in its arguments is never made
+				 * frameless -- in either branch, however deep. The mark rides the inner
+				 * call's map; the outer one is decided at run time, as php decides it. */
+				{
+					VmCallArgMap *pNsMap = (VmCallArgMap *)p3;
+					int bOuterFrameless = 0;
+					if( pNsMap && pNsMap->bIsNamespaced ){
+						if( pGen->bInFramelessNsArgs ){
+							pNsMap->bNotFrameless = 1;
+						}else if( !bNewCallee && !bTwoSlot && pNsMap->nOrigNameLit > 0 ){
+							ph7_expr_node **apA = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
+							sxi32 nA = (sxi32)SySetUsed(&pNode->aNodeArgs);
+							ph7_value *pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,pNsMap->nOrigNameLit - 1);
+							sxi32 k;
+							bOuterFrameless = pLit && (pLit->iFlags & MEMOBJ_STRING);
+							for( k = 0 ; k < nA && bOuterFrameless ; ++k ){
+								if( apA[k] == 0 || (apA[k]->iFlags & (EXPR_NODE_SPREAD|EXPR_NODE_NAMED_ARG|EXPR_NODE_FCC)) ){
+									bOuterFrameless = 0;
+								}
+							}
+							if( bOuterFrameless ){
+								SyString sLitName;
+								SyStringInitFromBuf(&sLitName,SyBlobData(&pLit->sBlob),SyBlobLength(&pLit->sBlob));
+								bOuterFrameless = PH7_VmFramelessArity(&sLitName,(int)nA);
+							}
+						}
+					}
+					if( bOuterFrameless ){
+						pGen->bInFramelessNsArgs = 1;
+					}
+					rc = GenStateEmitCallArgs(&(*pGen),pNode,iFlags,&sArgs);
+					if( bOuterFrameless ){
+						pGen->bInFramelessNsArgs = 0;
+					}
+				}
 				if( rc != SXRET_OK ){
 					return rc;
 				}
@@ -3362,6 +3398,7 @@ static sxi32 GenStateEmitCallArgs(
 				VmCallArgMap *pPrior = (VmCallArgMap *)p3;
 				pMap->nOrigNameLit = pPrior->nOrigNameLit;
 				pMap->bIsNamespaced = pPrior->bIsNamespaced;
+				pMap->bNotFrameless = pPrior->bNotFrameless;
 				pMap->nNewClassInstr = pPrior->nNewClassInstr;
 				pMap->bStrict = pPrior->bStrict;
 				/* Nothing else holds it: it is attached to no instruction yet. */
@@ -5486,6 +5523,7 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->iFatalTrace = PH7_FATAL_TRACE_COMPILE;
 	pGen->nLoopId = pGen->nCurLoopId = 0;
 	pGen->nCommaExprOk = 0;
+	pGen->bInFramelessNsArgs = 0;
 	pGen->zClauseCloser = 0;
 	pGen->bInGenerator = 0;
 	pGen->bStrictTypes = 0;

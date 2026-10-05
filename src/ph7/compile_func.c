@@ -860,10 +860,15 @@ PH7_PRIVATE sxi32 GenStateCompileFuncBody(
 	 * generator — and vice versa — is classified independently. */
 	{
 		sxi8 bSavedGen = pGen->bInGenerator;
+		/* ...and so is the frameless-arguments mark: a closure written in the
+		 * arguments of a frameless call is a body of its own. */
+		int bSavedFl = pGen->bInFramelessNsArgs;
 		pGen->bInGenerator = (sxi8)GenStateFuncBodyHasYield(&(*pGen));
+		pGen->bInFramelessNsArgs = 0;
 		/* Compile the body */
 		PH7_CompileBlock(&(*pGen),0);
 		pGen->bInGenerator = bSavedGen;
+		pGen->bInFramelessNsArgs = bSavedFl;
 	}
 	/* Fix exception jumps now the destination is resolved */
 	GenStateFixJumps(pGen->pCurrent,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));

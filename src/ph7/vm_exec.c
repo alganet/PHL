@@ -2057,6 +2057,48 @@ PH7_PRIVATE int PH7_VmCallableStringParts(const char *zName,sxu32 nName,
 	return FALSE;
 }
 /*
+ * php 8.4's FRAMELESS functions, and the arities their stubs list (a bit per argument
+ * count, read back from the oracle's own opcode dump): a direct call of one of these at a
+ * listed arity pushes no frame of its own. Asked by the call dispatch and by the compiler,
+ * which needs the same answer for the argument list of an unqualified namespaced call.
+ */
+PH7_PRIVATE int PH7_VmFramelessArity(const SyString *pName,int nArgs)
+{
+	static const struct { const char *zName; int nLen; int mArity; } aFrameless[] = {
+		{ "implode",         sizeof("implode")-1,         0x6 },
+		{ "in_array",        sizeof("in_array")-1,        0xC },
+		{ "str_replace",     sizeof("str_replace")-1,     0x8 },
+		{ "strtr",           sizeof("strtr")-1,           0xC },
+		{ "trim",            sizeof("trim")-1,            0x6 },
+		{ "substr",          sizeof("substr")-1,          0xC },
+		{ "strpos",          sizeof("strpos")-1,          0xC },
+		{ "strstr",          sizeof("strstr")-1,          0xC },
+		{ "str_contains",    sizeof("str_contains")-1,    0x4 },
+		{ "str_starts_with", sizeof("str_starts_with")-1, 0x4 },
+		{ "dirname",         sizeof("dirname")-1,         0x6 },
+		{ "preg_match",      sizeof("preg_match")-1,      0x4 },
+		{ "preg_replace",    sizeof("preg_replace")-1,    0x8 },
+		{ "min",             sizeof("min")-1,             0x4 },
+		{ "max",             sizeof("max")-1,             0x4 },
+		{ "dechex",          sizeof("dechex")-1,          0x2 },
+		{ "is_numeric",      sizeof("is_numeric")-1,      0x2 },
+		{ "class_exists",    sizeof("class_exists")-1,    0x6 },
+		{ "property_exists", sizeof("property_exists")-1, 0x4 },
+	};
+	sxu32 iF;
+	if( nArgs < 1 || nArgs > 3 ){
+		return 0;
+	}
+	for( iF = 0 ; iF < SX_ARRAYSIZE(aFrameless) ; ++iF ){
+		if( (int)pName->nByte == aFrameless[iF].nLen
+		 && (aFrameless[iF].mArity & (1 << nArgs)) != 0
+		 && SyStrnicmp(pName->zString,aFrameless[iF].zName,(sxu32)aFrameless[iF].nLen) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
  * php 8.4's compiler rewrites `sprintf()` into string concatenation when it can read the
  * format: a string LITERAL under 256 bytes whose every `%` is `%s`, `%d` or `%%`, with
  * exactly one argument per placeholder. That call is no call at all -- a __toString it
@@ -9291,36 +9333,10 @@ SkipFuncBody:
 		 * arities its stub lists (a bit per argument count), and at no other. */
 		if( pInstr->nLine != 0 && !bViaClosure && bLiteralCallee && (pInstr->iP2 & PH7_CALL_SPREAD) == 0
 		 && (pEffCallMap == 0 || !pEffCallMap->bHasNamed) && nCallArgs >= 1 && nCallArgs <= 3 ){
-			static const struct { const char *zName; int nLen; int mArity; } aFrameless[] = {
-				{ "implode",         sizeof("implode")-1,         0x6 },
-				{ "in_array",        sizeof("in_array")-1,        0xC },
-				{ "str_replace",     sizeof("str_replace")-1,     0x8 },
-				{ "strtr",           sizeof("strtr")-1,           0xC },
-				{ "trim",            sizeof("trim")-1,            0x6 },
-				{ "substr",          sizeof("substr")-1,          0xC },
-				{ "strpos",          sizeof("strpos")-1,          0xC },
-				{ "strstr",          sizeof("strstr")-1,          0xC },
-				{ "str_contains",    sizeof("str_contains")-1,    0x4 },
-				{ "str_starts_with", sizeof("str_starts_with")-1, 0x4 },
-				{ "dirname",         sizeof("dirname")-1,         0x6 },
-				{ "preg_match",      sizeof("preg_match")-1,      0x4 },
-				{ "preg_replace",    sizeof("preg_replace")-1,    0x8 },
-				{ "min",             sizeof("min")-1,             0x4 },
-				{ "max",             sizeof("max")-1,             0x4 },
-				{ "dechex",          sizeof("dechex")-1,          0x2 },
-				{ "is_numeric",      sizeof("is_numeric")-1,      0x2 },
-				{ "class_exists",    sizeof("class_exists")-1,    0x6 },
-				{ "property_exists", sizeof("property_exists")-1, 0x4 },
-			};
-			sxu32 iF;
-			for( iF = 0 ; iF < SX_ARRAYSIZE(aFrameless) ; ++iF ){
-				if( (int)pFunc->sName.nByte == aFrameless[iF].nLen
-				 && (aFrameless[iF].mArity & (1 << nCallArgs)) != 0
-				 && SyStrnicmp(pFunc->sName.zString,aFrameless[iF].zName,(sxu32)aFrameless[iF].nLen) == 0 ){
-					bFramelessCallee = 1;
-					break;
-				}
-			}
+			bFramelessCallee = PH7_VmFramelessArity(&pFunc->sName,nCallArgs)
+				/* ...unless its compiler never made it one: nested in the arguments of
+				 * another namespaced frameless call (VmCallArgMap.bNotFrameless). */
+				&& !(bNsCallee && ((VmCallArgMap *)pInstr->p3)->bNotFrameless);
 		}
 NativeCall:
 		/* A VM_FUNC_NATIVE method joins here, having done the two steps above for
