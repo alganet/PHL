@@ -3158,6 +3158,9 @@ static sxi32 GenStateEmitCallArgs(
 	int bConstruct = 0; /* the callee is a language construct's keyword -- PH7_CALL_CONSTRUCT */
 	sxu32 aNamedSend[16]; /* the PH7_OP_NAMED_SEND screens emitted, patched with the map below */
 	sxu32 nNamedSend = 0;
+	sxu32 aReadSend[16];  /* the positional reads emitted, patched with whichever map the call ends with */
+	sxu32 nReadSend = 0;
+	int bFramelessSite = 0; /* php would compile this call as a frameless instruction */
 	/* Recurse and generate bytecodes for function arguments */
 	apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 	nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);
@@ -3269,6 +3272,22 @@ static sxi32 GenStateEmitCallArgs(
 			break;
 		}
 	}
+	/* php compiles a direct call to one of its FRAMELESS builtins, at a listed arity, as
+	 * one instruction that reads a plain `$var` operand itself -- at the call, after every
+	 * other argument has run: `max($u, s())` runs s() first. So does a call it SPECIALIZES
+	 * into an opcode (`array_key_exists`, a `sprintf` it rewrites), though only where the
+	 * name cannot be a namespace's own. The positional read below leaves such an operand
+	 * to the call, and is told so in case the name turns out to be a function of the
+	 * namespace's own, which php calls the ordinary way. */
+	if( !hasNamed && !bAnySpread && !pArgs->bNewCallee ){
+		SyString sFrameless;
+		GenStateCallBuiltinName(pNode->pLeft,&sFrameless);
+		bFramelessSite = sFrameless.nByte > 0 && PH7_VmFramelessArity(&sFrameless,(int)nArgs);
+		if( !bFramelessSite && !bConstruct && (p3 == 0 || !((VmCallArgMap *)p3)->bIsNamespaced)
+		 && GenStateCallIsSpecialized(&(*pGen),pNode,&sFrameless) ){
+			bFramelessSite = 1;
+		}
+	}
 	for( n = 0 ; n < nArgs ; ++n ){
 		sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
 		sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE
@@ -3334,6 +3353,21 @@ static sxi32 GenStateEmitCallArgs(
 		}
 		/* Each argument is an independent nullsafe scope. */
 		GenStatePatchNullsafeJumps(pGen, nArgNsBase);
+		if( n < nLastRunner && (iArgFlags & EXPR_FLAG_DEFER_ARG) && !bConstruct
+		 && (apNode[n]->iFlags & EXPR_NODE_NAMED_ARG) == 0
+		 && nReadSend < sizeof(aReadSend)/sizeof(aReadSend[0]) ){
+			/* php reads a deferred operand at its own SEND, against the formal it binds
+			 * to, so `f($u, s())` warns `Undefined variable $u` before s() runs -- and a
+			 * by-reference formal creates the variable before s() can see it. A NAMED
+			 * one is read by its own screen below, once its name has passed. The map is
+			 * attached once the list is complete: a named argument REPLACES the one the
+			 * callee's qualification built, and frees it. Past the patch table's room the
+			 * operand is simply left to the call, as it was. */
+			aReadSend[nReadSend++] = PH7_VmInstrLength(pGen->pVm);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NAMED_SEND,n,PH7_ROT_READ|PH7_ROT_POSITIONAL
+				| (pArgs->bNewCallee ? PH7_ROT_NEW : 0)
+				| ((bFramelessSite && apNode[n]->pOp == 0) ? PH7_ROT_FRAMELESS : 0),0,0);
+		}
 		if( n < nLastRunner && (apNode[n]->iFlags & EXPR_NODE_SPREAD) == 0 ){
 			/* Something later in this list can write to whatever this argument was
 			 * loaded from, so take the bytes now. A spread argument is an array,
@@ -3351,7 +3385,8 @@ static sxi32 GenStateEmitCallArgs(
 			 * list asks the constructor of the class its screen pass left below. */
 			aNamedSend[nNamedSend++] = PH7_VmInstrLength(pGen->pVm);
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NAMED_SEND,n,(bAnySpread ? PH7_ROT_SPREAD : 0)
-				| (pArgs->bNewCallee ? PH7_ROT_NEW : 0),0,0);
+				| (pArgs->bNewCallee ? PH7_ROT_NEW : 0)
+				| ((n < nLastRunner && (iArgFlags & EXPR_FLAG_DEFER_ARG)) ? PH7_ROT_READ : 0),0,0);
 		}
 		if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
 			/* Emit spread opcode to unpack this array argument. iP1 marks a
@@ -3513,6 +3548,14 @@ static sxi32 GenStateEmitCallArgs(
 			((VmCallArgMap *)p3)->nNonLvalMask = nNonLval;
 			((VmCallArgMap *)p3)->nTempCallMask = nTempCall;
 			((VmCallArgMap *)p3)->nConstStrMask = nConstStr;
+		}
+	}
+	for( n = 0 ; n < (sxi32)nReadSend ; ++n ){
+		/* The map the call ended with: the global fallback of a name written in a
+		 * namespace is read off it. */
+		VmInstr *pRead = PH7_VmGetInstr(pGen->pVm,aReadSend[n]);
+		if( pRead ){
+			pRead->p3 = p3;
 		}
 	}
 	pArgs->iP1 = iP1;

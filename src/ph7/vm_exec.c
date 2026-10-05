@@ -1009,10 +1009,18 @@ static sxi32 VmWalkStepsOverValue(ph7_vm *pVm,VmDeferredPath *pPath,sxu32 iFrom,
 	ph7_value *pCur,int bWrite,ph7_value *pSlot)
 {
 	sxi32 rc = SXRET_OK;
+	sxi32 nBrc = pVm->nBoundaryRc;
+	const void *pResume = (const void *)pVm->pResumeFrame;
 	sxu32 i;
 	for( i = iFrom ; i < pPath->nStep ; ++i ){
 		VmDeferStep *pStep = &pPath->aStep[i];
 		ph7_value out;
+		if( PH7_VmClassLookupRaised(&(*pVm),nBrc,pResume) ){
+			/* The previous step's diagnostic reached an error handler that threw: php's
+			 * fetch ends there, and no later step runs (or warns). The resolver hands
+			 * the throw on. */
+			return SXRET_OK;
+		}
 		PH7_MemObjInit(&(*pVm),&out);
 		if( pStep->isProp && bWrite && (pCur->iFlags & MEMOBJ_OBJ) ){
 			/* php's "indirect" only ever describes a VALUE: an object is a HANDLE, so a
@@ -1152,7 +1160,14 @@ static sxi32 VmResolvePathByValue(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *p
 	}else if( pPath->eRoot == 1 ){
 		ph7_value *pRoot = VmExtractMemObj(&(*pVm),&pPath->sRootName,FALSE,FALSE);
 		if( pRoot == 0 ){
+			sxi32 nBrc = pVm->nBoundaryRc;
+			const void *pResume = (const void *)pVm->pResumeFrame;
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&pPath->sRootName);
+			if( PH7_VmClassLookupRaised(&(*pVm),nBrc,pResume) ){
+				/* The error handler threw: php's fetch ends there, and the steps
+				 * after the root never run (or warn) at all. */
+				return SXRET_OK;
+			}
 		}else{
 			PH7_MemObjLoad(pRoot,&cur);
 			cur.nIdx = pRoot->nIdx;
@@ -1285,6 +1300,21 @@ static sxi32 VmScreenGenByRefArgs(ph7_vm *pVm,ph7_vm_func *pFunc,VmCallArgMap *p
 	return SXRET_OK;
 }
 /*
+ * The status a resolver answers once a diagnostic it raised reached an error handler that
+ * threw: the parked C-boundary status, taken over (the caller routes it now, so the fetch
+ * point must not fire it again), or PH7_EXCEPTION when a try caught it in place and only
+ * the resume record says so.
+ */
+static sxi32 VmResolveRaisedRc(ph7_vm *pVm,sxi32 nBrcBefore)
+{
+	sxi32 rc = pVm->nBoundaryRc;
+	if( rc != nBrcBefore && rc != 0 ){
+		pVm->nBoundaryRc = nBrcBefore;
+		return rc;
+	}
+	return PH7_EXCEPTION;
+}
+/*
  * D1: resolve deferred call arguments in [pArg, pTos) before the callee consumes them.
  *
  * A plain `$var` call argument whose callee signature is unknown at compile time is
@@ -1322,6 +1352,8 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 {
 	ph7_value *p;
 	sxu32 n = 0;
+	sxi32 nBrc = pVm->nBoundaryRc;
+	const void *pResume = (const void *)pVm->pResumeFrame;
 	for( p = pArg ; p < pTos ; ++p, ++n ){
 		int bByRef = 0;
 		int bDeferred = (p->iFlags & (MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH)) != 0;
@@ -1412,6 +1444,12 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 			if( rc != SXRET_OK ){
 				return rc;
 			}
+			if( PH7_VmClassLookupRaised(&(*pVm),nBrc,pResume) ){
+				/* A diagnostic of the walk reached an error handler that threw. php
+				 * stops at that SEND: no later operand is read, and the call is not
+				 * made. The throw is the caller's to route, as if this had raised it. */
+				return VmResolveRaisedRc(&(*pVm),nBrc);
+			}
 			continue;
 		}
 		/* Recover the deferred variable name and drop the marker + carrier. */
@@ -1430,6 +1468,9 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 			/* php warns and passes NULL without creating the variable; the slot is
 			 * already a clean NULL with nIdx == SXU32_HIGH from the deferred load. */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
+			if( PH7_VmClassLookupRaised(&(*pVm),nBrc,pResume) ){
+				return VmResolveRaisedRc(&(*pVm),nBrc); /* likewise */
+			}
 		}
 	}
 	return SXRET_OK;
@@ -6614,9 +6655,17 @@ case PH7_OP_CALL_INIT: {
  *  VmNamedSendMethod finds. A __call routing and an unreachable method leave the name to
  *  OP_CALL's own resolution.
  *
+ *  The same instruction is the SEND of a deferred operand that a later argument could
+ *  run code past (PH7_ROT_READ): php reads `$u` in `f($u, s())` at its own position, so
+ *  its `Undefined variable` (or `Undefined array key`, or the by-reference parameter's
+ *  vivification) comes before `s()` runs, not at the call. A POSITIONAL argument has no
+ *  name to screen and is only read; a named one is read once its name has passed. A
+ *  callee not known here leaves the read to OP_CALL, as it always did.
+ *
  *  P1 = the argument's compile-time position, P2 = PH7_ROT_SPREAD when an unpack precedes
  *  it, | PH7_ROT_NEW when the list is a `new`'s (| PH7_ROT_ANON for an anonymous class,
- *  whose class the map names), P3 = the call's VmCallArgMap.
+ *  whose class the map names), | PH7_ROT_READ / PH7_ROT_POSITIONAL as above, P3 = the
+ *  call's VmCallArgMap (none for a positional read in a list without names).
  */
 case PH7_OP_NAMED_SEND: {
 	VmCallArgMap *pSendMap = (VmCallArgMap *)pInstr->p3;
@@ -6631,15 +6680,31 @@ case PH7_OP_NAMED_SEND: {
 	sxi32 iSendVar = -1;
 	int bSendEngine = 0, bSendFallback = 0, iSendPass;
 	int bSendNew = (pInstr->iP2 & PH7_ROT_NEW) != 0, bSendNoCtor = 0;
+	int bSendPositional = (pInstr->iP2 & PH7_ROT_POSITIONAL) != 0;
 	char zSendErr[160];
-	if( pSendMap == 0 || (sxu32)pInstr->iP1 >= pSendMap->nTotal ){
-		break;
+	if( bSendPositional ){
+		if( (pTos->iFlags & (MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH)) == 0 ){
+			break; /* a defined variable: read at its push, nothing left to send */
+		}
+		pSendName = 0;
+	}else{
+		if( pSendMap == 0 || (sxu32)pInstr->iP1 >= pSendMap->nTotal ){
+			break;
+		}
+		pSendName = &pSendMap->aNames[pInstr->iP1];
 	}
-	pSendName = &pSendMap->aNames[pInstr->iP1];
 	nSendPushed = pInstr->iP1 + 1
 		+ ((pInstr->iP2 & PH7_ROT_SPREAD) ? VmSpreadOwnExtra(&(*pVm),pInstr->iP1 + 1,&pTos[1]) : 0);
 	pSendCallee = &pTos[-nSendPushed];
-	if( pSendName->nByte == 0 || nSendPushed < 1
+	if( bSendPositional && nSendPushed >= 1 && pSendCallee >= pStack
+	 && (pInstr->iP2 & PH7_ROT_NEW) == 0 && (pSendCallee->iFlags & MEMOBJ_AUX_MAGICCALL) ){
+		/* A __call / __callStatic routing: php packs the list into an array, so every
+		 * operand is sent by value. */
+		sxi32 rcMagic = PH7_VmResolveDeferredArgs(&(*pVm),pTos,&pTos[1],0,0,0,0,1,0);
+		PH7_DISPATCH_ENFORCE_RC(rcMagic)
+		break;
+	}
+	if( (pSendName && pSendName->nByte == 0) || nSendPushed < 1
 	 || ( (pInstr->iP2 & PH7_ROT_ANON) == 0
 	   && (pSendCallee < pStack || (pSendCallee->iFlags & MEMOBJ_AUX_MAGICCALL)) ) ){
 		break;
@@ -6679,7 +6744,7 @@ case PH7_OP_NAMED_SEND: {
 		 * method OP_CALL will land on, found through its class. */
 	}else if( pSendCallee->iFlags & MEMOBJ_STRING ){
 		bSendEngine = (pSendCallee->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)) != 0;
-		bSendFallback = pSendMap->bIsNamespaced;
+		bSendFallback = pSendMap && pSendMap->bIsNamespaced;
 		SyStringInitFromBuf(&sSendFn,SyBlobData(&pSendCallee->sBlob),SyBlobLength(&pSendCallee->sBlob));
 		if( sSendFn.nByte > 0 && sSendFn.zString[0] == '\\' ){
 			sSendFn.zString++;
@@ -6737,6 +6802,36 @@ case PH7_OP_NAMED_SEND: {
 		 * signature its foreign body carries, exactly as it does a builtin's. */
 		pSendHost = pSendFunc->pNative;
 		pSendFunc = 0;
+	}
+	if( bSendPositional ){
+		/* This one slot alone, against the formal at its position: an earlier operand a
+		 * frameless call reads itself is still unread below it, and stays so. */
+		sxu32 iSendAt = (sxu32)pInstr->iP1;
+		sxi32 rcRead;
+		if( pSendFunc ){
+			ph7_vm_func_arg *aAt = (ph7_vm_func_arg *)SySetBasePtr(&pSendFunc->aArgs);
+			sxu32 nAt = SySetUsed(&pSendFunc->aArgs);
+			if( iSendAt < nAt ){
+				aAt += iSendAt;
+				nAt -= iSendAt;
+			}else if( nAt > 0 && (aAt[nAt-1].iFlags & VM_FUNC_ARG_VARIADIC) ){
+				aAt += nAt - 1; /* the variadic absorbs the tail */
+				nAt = 1;
+			}else{
+				nAt = 0; /* an extra argument binds by value */
+			}
+			rcRead = PH7_VmResolveDeferredArgs(&(*pVm),pTos,&pTos[1],aAt,nAt,0,0,0,0);
+		}else if( pSendHost && (pInstr->iP2 & PH7_ROT_FRAMELESS) == 0 ){
+			rcRead = PH7_VmResolveDeferredArgs(&(*pVm),pTos,&pTos[1],0,0,
+				iSendAt < 31 ? (pSendHost->nByRefMask >> iSendAt) & 1u : 0,0,0,0);
+		}else if( bSendNoCtor ){
+			/* No constructor: php still sends the list, by value, to nothing. */
+			rcRead = PH7_VmResolveDeferredArgs(&(*pVm),pTos,&pTos[1],0,0,0,0,1,0);
+		}else{
+			break;
+		}
+		PH7_DISPATCH_ENFORCE_RC(rcRead)
+		break;
 	}
 	if( pSendFunc ){
 		aSendFormal = (ph7_vm_func_arg *)SySetBasePtr(&pSendFunc->aArgs);
@@ -6809,6 +6904,12 @@ case PH7_OP_NAMED_SEND: {
 		if( rcSend == PH7_ABORT ){ goto Abort; }
 		rc = rcSend;
 		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
+	if( (pInstr->iP2 & (PH7_ROT_READ|PH7_ROT_SPREAD)) == PH7_ROT_READ && !bSendNoCtor ){
+		/* The name passed, and a later argument can run code: read the operand now. */
+		sxi32 rcRead = PH7_VmResolveDeferredArgs(&(*pVm),&pTos[-pInstr->iP1],&pTos[1],
+			aSendFormal,nSendFormal,pSendHost ? pSendHost->nByRefMask : 0,0,0,pSendMap);
+		PH7_DISPATCH_ENFORCE_RC(rcRead)
 	}
 	break;
 }

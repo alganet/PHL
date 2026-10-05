@@ -5333,6 +5333,14 @@ enum ph7_vm_op {
 #define PH7_ROT_ANON    0x8 /* NAMED_SEND.iP2 only, with PH7_ROT_NEW: an anonymous class's list.
                              * Nothing stands below its arguments; the class is the one the
                              * map's sNewAnon names. */
+#define PH7_ROT_READ    0x10 /* NAMED_SEND.iP2 only: a later argument can run code, so the deferred
+                             * operand just pushed is read (warned for, or created for a
+                             * by-reference formal) here, at its own SEND, as php reads it. */
+#define PH7_ROT_POSITIONAL 0x20 /* NAMED_SEND.iP2 only, with PH7_ROT_READ: the argument has no
+                             * name -- the instruction is that read alone. */
+#define PH7_ROT_FRAMELESS 0x40 /* NAMED_SEND.iP2 only, with PH7_ROT_POSITIONAL: a plain `$var` in a
+                             * call php compiles frameless, which a builtin callee reads at the
+                             * call; only a function of the namespace's own reads it here. */
 /* CALL.iP2 — a bit SET, not the plain hasSpread boolean it started as. */
 #define PH7_CALL_SPREAD    0x1 /* This call unpacks (the ROT_SPREAD of the call itself). */
 #define PH7_CALL_CONSTRUCT 0x2 /* This call was emitted by a language CONSTRUCT's codegen --
