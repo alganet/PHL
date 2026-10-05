@@ -3890,6 +3890,20 @@ static int VmFiberStartTramp(ph7_context *pCtx, ph7_class_instance *pThis,
 }
 #endif
 /*
+ * A fiber whose arguments were refused never ran a line, but php refused them from
+ * inside it: started, terminated, and getReturn() says it threw. Left CREATED, the
+ * fiber answered isStarted() false and a second start() ran the body -- or refused it
+ * as already started, which contradicted the first answer.
+ */
+static int VmFiberRefusedStart(ph7_exec_ctx *pExecCtx, int rc)
+{
+	pExecCtx->iState = PH7_CTX_STATE_CLOSED;
+	if( rc == PH7_EXCEPTION ){
+		pExecCtx->bThrew = 1;
+	}
+	return rc;
+}
+/*
  * Fiber->start(...$args) — resolve callable, create exec context, install
  * arguments/closure-env/$this (matching OP_CALL semantics), and start.
  *
@@ -3947,12 +3961,26 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 					? pCtx->pArgMap->aNames : 0);
 		}
 	}
+	/* Create execution context now that we know the function, and store it in
+	 * $this->__ctx before a single argument is bound: php binds them INSIDE the
+	 * fiber, so every argument refusal below is the body throwing on its first
+	 * switch -- the fiber is started and dead from then on (VmFiberRefusedStart). */
+	pExecCtx = VmNewExecCtx(pVm, pFunc);
+	if( pExecCtx == 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Fiber::start(): out of memory");
+	}
+	SyStringInitFromBuf(&sAttrName, "__ctx", 5);
+	pCtxAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+	if( pCtxAttr ){
+		pCtxAttr->x.pOther = pExecCtx;
+		MemObjSetType(pCtxAttr, MEMOBJ_RES);
+	}
 	/* Fiber::start() is one of php's forwards: its `...$args` collects the call's
 	 * named arguments WITH their names and binds them to the body's parameters the
 	 * way a direct call would. Every name used to be dropped here, so `start(b: 1,
-	 * a: 2)` bound positionally and an extra reached the variadic unkeyed. Bound
-	 * before the body's context exists, so a refusal leaves nothing to undo -- all but
-	 * a named hole, which php raises on the body's frame and is thrown further down. */
+	 * a: 2)` bound positionally and an extra reached the variadic unkeyed. A named
+	 * hole is raised on the body's frame, so it is thrown further down. */
 	if( nArg > 0 && pCtx->pArgMap && pCtx->pArgMap->bHasNamed ){
 		sxu32 nSpan = (sxu32)nArg + SySetUsed(&pFunc->aArgs);
 		int nBound = 0;
@@ -3964,7 +3992,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 				apBound, aBoundName, &nBound, &iHole);
 			if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
 				SyMemBackendFree(&pVm->sAllocator, apBound);
-				return rc;
+				return VmFiberRefusedStart(pExecCtx, rc);
 			}
 			if( rc == SXRET_OK ){
 				apArg = apBound;
@@ -3973,22 +4001,6 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 				aBoundName = 0; /* out of memory: the positional binding stands */
 			}
 		}
-	}
-	/* Create execution context now that we know the function */
-	pExecCtx = VmNewExecCtx(pVm, pFunc);
-	if( pExecCtx == 0 ){
-		if( apBound ){
-			SyMemBackendFree(&pVm->sAllocator, apBound);
-		}
-		return PH7_VmThrowException(pCtx, "FiberError",
-			"Fiber::start(): out of memory");
-	}
-	/* Store context in $this->__ctx */
-	SyStringInitFromBuf(&sAttrName, "__ctx", 5);
-	pCtxAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
-	if( pCtxAttr ){
-		pCtxAttr->x.pOther = pExecCtx;
-		MemObjSetType(pCtxAttr, MEMOBJ_RES);
 	}
 	/* Temporarily attach the fiber's frame to the VM chain so that
 	 * VmExtractMemObj (used by VmFiberSetupFrame) installs variables
@@ -4033,7 +4045,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	if( rc != SXRET_OK ){
 		/* Propagate the real status: a declared-type TypeError from the arg
 		 * install (band A #2) must stay catchable, not become an abort. */
-		return (rc == PH7_EXCEPTION) ? PH7_EXCEPTION : PH7_ABORT;
+		return VmFiberRefusedStart(pExecCtx, (rc == PH7_EXCEPTION) ? PH7_EXCEPTION : PH7_ABORT);
 	}
 	PH7_MemObjInit(pVm, &sResult);
 	{
