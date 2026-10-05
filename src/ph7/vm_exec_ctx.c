@@ -3465,7 +3465,7 @@ PH7_PRIVATE sxi32 VmCtxBindNamedArgs(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_class 
  * those out of the call's argument count and hands them to the variadic KEYED by the
  * name they were passed under. Every other entry has an empty name.
  */
-PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
+static sxi32 VmFiberBindFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
 	const SyString *aArgName,
 	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef)
@@ -3574,15 +3574,18 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 						PH7_MemObjInitFromString(pVm,&sKey,&aArgName[k]);
 						pKey = &sKey;
 					}
-					if( ((aFormalArg[n].iFlags & VM_FUNC_ARG_UNION)
-					   || (aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH)) ){
-						rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[k],bStrict,pSelfHint);
-						if( rc != SXRET_OK ){
-							if( pKey ){
-								PH7_MemObjRelease(pKey);
-							}
-							return rc;
+					/* php numbers a collected element by its place in the CALL, not by
+					 * the formal's (a named extra reports one past the positionals),
+					 * names no parameter, and checks a class-typed element too: the
+					 * ordinary call's per-element check, which this path had its own
+					 * narrower copy of. */
+					rc = VmVariadicElementTypeCheck(pVm,pSelfHint,pFunc,&aFormalArg[n],apArg[k],
+						k < (sxu32)nPos ? k+1 : (sxu32)nPos+1,bStrict);
+					if( rc != SXRET_OK ){
+						if( pKey ){
+							PH7_MemObjRelease(pKey);
 						}
+						return rc;
 					}
 					if( bAliasByRef && (aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF)
 					 && apArg[k]->nIdx != SXU32_HIGH ){
@@ -3728,6 +3731,53 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 		}
 	}
 	return SXRET_OK;
+}
+/*
+ * The class a fiber body's parameter types resolve `self` against, and its diagnostics
+ * are qualified by: OP_CALL's rule -- a method's DECLARING class, or for a trait's
+ * method (one struct shared by every user) the receiver's. Fiber::start() passed none,
+ * so a method body's `self` parameter admitted anything and its TypeError read `m()`
+ * where php's reads `K::m()`.
+ */
+static ph7_class *VmFiberSelfHint(ph7_vm_func *pFunc, ph7_class_instance *pThis)
+{
+	if( pFunc->iFlags & VM_FUNC_CLASS_METHOD ){
+		ph7_class *pDecl = (ph7_class *)pFunc->pUserData;
+		if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
+			return pDecl;
+		}
+		if( pThis ){
+			return pThis->pClass;
+		}
+	}
+	return 0;
+}
+/*
+ * A fiber's body is entered by Fiber::start(), an INTERNAL function, and an embedder's
+ * by no PHP code at all: php's prev_execute_data is not user code in either case, so an
+ * argument TypeError raised while binding names no `, called in FILE on line N`. The
+ * ordinary call records that on the frame (VM_FRAME_NATIVE_CALLER) and the type error
+ * reads it there; this frame says so only while its arguments are bound, because the
+ * body it then runs is resumed from many call sites and a trace taken inside it is its
+ * own question.
+ */
+PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
+	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
+	const SyString *aArgName,
+	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef)
+{
+	VmFrame *pFrame = pExecCtx->pFrame;
+	int bMark = !bCallSiteInMsg && (pFrame->iFlags & VM_FRAME_NATIVE_CALLER) == 0;
+	sxi32 rc;
+	if( bMark ){
+		pFrame->iFlags |= VM_FRAME_NATIVE_CALLER;
+	}
+	rc = VmFiberBindFrame(pVm,pExecCtx,pClosureThis,nArg,apArg,aArgName,
+		bStrict,pSelfHint,bCallSiteInMsg,bAliasByRef);
+	if( bMark ){
+		pFrame->iFlags &= ~VM_FRAME_NATIVE_CALLER;
+	}
+	return rc;
 }
 #ifdef PH7_CORO_STACK
 /*
@@ -3920,7 +3970,8 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		ph7_value **apValues = (nArg > 0) ? apArg : 0;
 		int nActual = nArg;
 		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues, aBoundName,
-			0 /* weak-mode arg binding, like call_user_func */, 0,
+			0 /* weak-mode arg binding, like call_user_func */,
+			VmFiberSelfHint(pFunc, pClosureThis),
 			FALSE/*Fiber::start(): php omits the call-site segment*/,
 			FALSE/*php's Fiber::start() passes by VALUE and warns (recorded)*/);
 		/* apValues aliases the operand stack, or the named layout above, whose
@@ -4270,7 +4321,7 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
 	rc = VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg, 0,
-		0 /* weak-mode arg binding (embedder entry) */, 0,
+		0 /* weak-mode arg binding (embedder entry) */, VmFiberSelfHint(pFunc, pClosureThis),
 		FALSE/*embedder entry: no userland call site*/,
 		FALSE/*no source-level actuals to alias*/);
 	pVm->pFrame = pCtx->pFrame->pParent;
