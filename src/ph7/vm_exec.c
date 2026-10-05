@@ -1465,6 +1465,15 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 				p->nIdx = pObj->nIdx;
 			}
 		}else{
+			/* A variable a frameless call's operand names may exist by now -- it was
+			 * left unread on purpose (OP_LOAD iP2 = 5), or a later argument created
+			 * it -- and is read here. */
+			ph7_value *pObj = VmExtractMemObj(&(*pVm),&sName,FALSE,FALSE);
+			if( pObj ){
+				PH7_MemObjLoad(pObj,p);
+				p->nIdx = pObj->nIdx;
+				continue;
+			}
 			/* php warns and passes NULL without creating the variable; the slot is
 			 * already a clean NULL with nIdx == SXU32_HIGH from the deferred load. */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
@@ -3415,6 +3424,16 @@ case PH7_OP_LOAD:{
 		SyStringInitFromBuf(&sName,pInstr->p3,pInstr->nAux);
 		/* Reserve a room for the target object */
 		pTos++;
+		if( pInstr->iP2 == 5 ){
+			/* An operand php's frameless instruction reads itself, at the call, after
+			 * the arguments that follow it ran: leave it unread whether or not the
+			 * variable exists yet, for PH7_VmResolveDeferredArgs to read then. */
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			pTos->iFlags |= MEMOBJ_AUX_DEFERRED;
+			pTos->x.pOther = pInstr->p3;
+			break;
+		}
 	}
 	{
 	/* A name the compiler put in the instruction has a NUMBER in this body, so the

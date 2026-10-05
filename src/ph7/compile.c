@@ -3353,6 +3353,18 @@ static sxi32 GenStateEmitCallArgs(
 		}
 		/* Each argument is an independent nullsafe scope. */
 		GenStatePatchNullsafeJumps(pGen, nArgNsBase);
+		if( bFramelessSite && n < nLastRunner && (iArgFlags & EXPR_FLAG_DEFER_ARG)
+		 && apNode[n]->pOp == 0 ){
+			/* The frameless instruction reads a DEFINED `$var` at the call too: in
+			 * `max($x, h())` a write h() makes to $x is what max() sees. So the load
+			 * leaves the slot unread whether or not the variable exists (OP_LOAD
+			 * iP2 = 5), and the call reads it. */
+			VmInstr *pLoad = PH7_VmPeekInstr(pGen->pVm);
+			if( pLoad && pLoad->iOp == PH7_OP_LOAD && pLoad->iP2 == 3 && pLoad->p3
+			 && SyStrncmp((const char *)pLoad->p3,"this",sizeof("this")) != 0 ){
+				pLoad->iP2 = 5;
+			}
+		}
 		if( n < nLastRunner && (iArgFlags & EXPR_FLAG_DEFER_ARG) && !bConstruct
 		 && (apNode[n]->iFlags & EXPR_NODE_NAMED_ARG) == 0
 		 && nReadSend < sizeof(aReadSend)/sizeof(aReadSend[0]) ){
