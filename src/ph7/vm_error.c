@@ -4480,6 +4480,24 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooManyArgs(ph7_vm *pVm,ph7_class *pOwnerClass,S
 	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
 }
 /*
+ * php's refusal of an unknown-name EXTRA by an INTERNAL (builtin-chunk) variadic,
+ * raised from inside the callee like PH7_VmRefuseExtraNamed is for a host function:
+ *   array_replace_recursive() does not accept unknown named parameters
+ */
+PH7_PRIVATE sxi32 VmThrowBuiltinExtraNamed(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pOwnerClass ){
+		SyBlobFormat(&sMsg,"%z::%z() does not accept unknown named parameters",
+			&pOwnerClass->sDisp,pFuncName);
+	}else{
+		SyBlobFormat(&sMsg,"%z() does not accept unknown named parameters",pFuncName);
+	}
+	/* VmThrowBuiltinError consumes (releases) sMsg */
+	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+}
+/*
  * Throw php's named-call ArgumentCountError for a required parameter no
  * named or positional argument resolved to:
  *   C::f(): Argument #N ($x) not passed

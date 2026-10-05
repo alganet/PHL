@@ -7879,6 +7879,48 @@ CalleeByName:
 					nMaxFilled = (sxu32)(aSlot[i] + 1);
 				}
 			}
+			if( pVmFunc->iFlags & VM_FUNC_INTERNAL ){
+				/* An INTERNAL callee's variadic does not collect a name it has no
+				 * parameter for -- not even its own variadic's name -- unless it is
+				 * one of php's forwards: its parameter parsing refuses the extra, at
+				 * the moment PH7_VmBuiltinExtraNamedRule records (the host-function
+				 * door's rule). Every builtin-chunk variadic is refused after its
+				 * arity screen and before its type screens, so a REFUSE row would
+				 * need the refusal moved past the loop below. */
+				int bExtraNamed = 0;
+				int iRule;
+				for( i = 0; i < nActual && i < pCallMap3->nTotal; i++ ){
+					if( aSlot[i] == -1 && pCallMap3->aNames[i].nByte > 0 ){
+						bExtraNamed = 1;
+						break;
+					}
+				}
+				iRule = bExtraNamed ? PH7_VmBuiltinExtraNamedRule(&pVmFunc->sName) : VM_XNAMED_TAKE;
+				if( iRule != VM_XNAMED_TAKE ){
+					int bArityMet = 1;
+					for( n = 0; n < nReqNamed && n < nNonVariadic; n++ ){
+						if( !aUsed[n] ){
+							bArityMet = 0;
+							break;
+						}
+					}
+					if( bArityMet || iRule == VM_XNAMED_BEFORE_ARITY ){
+						rc = VmThrowBuiltinExtraNamed(&(*pVm),pSelfHint,&pVmFunc->sName);
+						SyMemBackendFree(&pVm->sAllocator, aSlot);
+						for( i = 0; i < nActual; i++ ){
+							PH7_MemObjRelease(&pArg[i]);
+						}
+						if( rc == PH7_ABORT ){
+							goto Abort;
+						}
+						PH7_MemObjRelease(pTos);
+						pTos = &pTos[-nCallArgs];
+						pFrameStack = 0;
+						rc = PH7_EXCEPTION;
+						goto SkipFuncBody;
+					}
+				}
+			}
 			for( n = 0; n < nNonVariadic; n++ ){
 				/* Find the stack arg mapped to formal n */
 				sxi32 iSrc = -1;
