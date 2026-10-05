@@ -2475,6 +2475,34 @@ static int VmClosureBindAllowed(ph7_vm *pVm, ph7_class_instance *pClosure,
 	return 1;
 }
 /*
+ * Run the closure pFunc for one of a Closure's own call doors (`__invoke`, `call`),
+ * handing on the door's call-site names from argument nSkip on. php reaches the body
+ * from an internal function (zend_call_function), so a strict_types caller's mode does
+ * not follow the arguments in -- the binding is WEAK, as for every internal callback --
+ * but each `name:` does: `$c->__invoke(1, x: 2)` keys a variadic `x` and binds a named
+ * formal exactly as `$c(1, x: 2)` would.
+ */
+static sxi32 VmClosureDoorCall(ph7_context *pCtx, ph7_value *pFunc, int nArg, ph7_value **apArg,
+	sxu32 nSkip)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmCallArgMap *pOuter = pCtx->pArgMap;
+	VmCallArgMap sMap, *pMap = 0;
+	sxi32 rc;
+	if( pOuter && pOuter->bHasNamed && pOuter->nTotal > nSkip ){
+		SyZero(&sMap,sizeof(sMap));
+		sMap.bHasNamed = 1;
+		sMap.bFromUnpack = pOuter->bFromUnpack;
+		sMap.nTotal = pOuter->nTotal - nSkip;
+		sMap.aNames = &pOuter->aNames[nSkip];
+		pMap = &sMap;
+	}
+	pVm->bCallbackWeak = 1;
+	rc = PH7_VmCallUserFunctionWithMap(pVm, pFunc, nArg, apArg, pCtx->pRet, pMap);
+	pVm->bCallbackWeak = 0; /* clear if the dispatch never reached an OP_CALL */
+	return rc;
+}
+/*
  * Closure::call(object $newThis, mixed ...$args) — bind and invoke in one step.
  *
  * This was the last PHP left in the class: `$bound = $this->bindTo($newThis,
@@ -2531,7 +2559,7 @@ PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value *
 	MemObjSetType(&sBound, MEMOBJ_OBJ);
 	/* The clone's own reference is this carrier's, and releasing the carrier below
 	 * is what ends the temporary (see OP_LOAD_CLOSURE). */
-	rc = PH7_VmCallUserFunction(pVm, &sBound, nArg - 1, apArg + 1, pCtx->pRet);
+	rc = VmClosureDoorCall(pCtx, &sBound, nArg - 1, apArg + 1, 1);
 	PH7_MemObjRelease(&sBound);
 	return rc;
 }
@@ -2690,12 +2718,11 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
  */
 PH7_PRIVATE int vm_builtin_Closure_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
 	if( pRecv == 0 || (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
 		return PH7_OK;
 	}
-	return PH7_VmCallUserFunction(pVm, pRecv, nArg, apArg, pCtx->pRet);
+	return VmClosureDoorCall(pCtx, pRecv, nArg, apArg, 0);
 }
 /*
  * Closure::fromCallable($callable) — normalize any callable value to a Closure (reuses the
