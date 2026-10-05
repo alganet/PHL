@@ -1090,7 +1090,7 @@ static const struct VmBuiltinSig {
 	{ "get_loaded_extensions", "bool $zend_extensions = false", "array" },
 	{ "get_mangled_object_vars", "object $object", "array" },
 	{ "get_object_vars", "object $object", "array" },
-	{ "get_parent_class", "object|string $object_or_class = ?", "string|false" },
+	{ "get_parent_class", "~object|string $object_or_class = ?", "string|false" },
 	{ "get_resource_id", "$resource", "int" },
 	{ "get_resource_type", "$resource", "string" },
 	{ "getcwd", "", "string|false" },

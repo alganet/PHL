@@ -67,17 +67,22 @@ PH7_PRIVATE int vm_builtin_get_parent_class(ph7_context *pCtx,int nArg,ph7_value
 	}else{
 		/* Extract the target class */
 		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
-		if( pClass ){
-			if( pClass->pBase ){
-				pName = &pClass->pBase->sName;
-				/* Return the parent class name */
-				ph7_result_string(pCtx,pName->zString,(int)pName->nByte);
-			}else{
-				/* Object does not have a parent class */
-				ph7_result_bool(pCtx,0);
-			}
+		if( pClass == 0 ){
+			/* php's Z_PARAM_OBJ_OR_CLASS_NAME: anything that is not an object or the
+			 * name of a class -- an int, null, '' or a typo -- is one TypeError in
+			 * either file mode, never FALSE. Its row in vm_arg_check.c is marked `~`
+			 * so the declared `object|string` screen stands aside for this one. */
+			char zGiven[64];
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"get_parent_class(): Argument #1 ($object_or_class) must be an object "
+				"or a valid class name, %s given",VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+		}
+		if( pClass->pBase ){
+			pName = &pClass->pBase->sName;
+			/* Return the parent class name */
+			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);
 		}else{
-			/* Not a class instance,return FALSE */
+			/* Object does not have a parent class */
 			ph7_result_bool(pCtx,0);
 		}
 	}
@@ -141,6 +146,27 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)
 	return pClass;
 }
 /*
+ * php's screen for a `$object_or_class` its ZPP takes as a bare zval: anything that
+ * is neither an object nor a string is one TypeError naming the type given, in
+ * either file mode. method_exists() and property_exists() spell it in their C
+ * bodies, the three relation functions through Z_PARAM_OBJ_OR_STR; none of them
+ * DECLARES the type, which is why their aBuiltinSig[] rows leave it bare and the
+ * screen lives here. Answers the throw's status when it refused, PH7_OK otherwise.
+ */
+static sxi32 VmObjectOrClassScreen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	char zGiven[64];
+	if( nArg > 0
+	 && (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) != 0
+	 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx,"TypeError",
+		"%s(): Argument #1 ($object_or_class) must be of type object|string, %s given",
+		ph7_function_name(pCtx),
+		nArg > 0 ? VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)) : "no value");
+}
+/*
  * bool property_exists(mixed $class,string $property)
  *   Checks if the object or class has a property.
  * Parameters
@@ -156,6 +182,10 @@ PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value 
 	int res = 0; /* Assume attribute does not exists */
 	if( nArg > 1 ){
 		ph7_class *pClass;
+		sxi32 rc = VmObjectOrClassScreen(pCtx,nArg,apArg);
+		if( rc != PH7_OK ){
+			return rc;
+		}
 		if( (apArg[0]->iFlags & MEMOBJ_OBJ)
 		 && PH7_VmIsIncompleteClass(pCtx->pVm,((ph7_class_instance *)apArg[0]->x.pOther)->pClass) ){
 			/* An incomplete OBJECT: php's has_property probe is the access warning
@@ -275,6 +305,10 @@ PH7_PRIVATE int vm_builtin_method_exists(ph7_context *pCtx,int nArg,ph7_value **
 	int res = 0; /* Assume method does not exists */
 	if( nArg > 1 ){
 		ph7_class *pClass;
+		sxi32 rc = VmObjectOrClassScreen(pCtx,nArg,apArg);
+		if( rc != PH7_OK ){
+			return rc;
+		}
 		if( (apArg[0]->iFlags & MEMOBJ_OBJ)
 		 && PH7_VmIsIncompleteClass(pCtx->pVm,((ph7_class_instance *)apArg[0]->x.pOther)->pClass) ){
 			/* An incomplete OBJECT consults its method resolution, which the
@@ -785,9 +819,7 @@ static void VmEmitMethodName(ph7_value *pArray,ph7_value *pName,SyHashEntry *pEn
  * lookup is written once here.
  *
  * php's ZPP for `$object_or_class` is Z_PARAM_OBJ_OR_STR, which screens without
- * DECLARING: ReflectionParameter reports no type for that parameter at all, and
- * the refusal is still php's standard "must be of type object|string" sentence.
- * That is why the aBuiltinSig[] row leaves it bare and the screen is spelled here.
+ * DECLARING -- VmObjectOrClassScreen() above.
  */
 static ph7_class * VmClassRelationTarget(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -795,14 +827,7 @@ static ph7_class * VmClassRelationTarget(ph7_context *pCtx,int nArg,ph7_value **
 	int nLen,nShow,bAutoload;
 	sxu32 nLook;
 	SyHashEntry *pEntry;
-	if( nArg < 1
-	 || (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0
-	 || (apArg[0]->iFlags & MEMOBJ_NULL) != 0 ){
-		char zGiven[64];
-		PH7_VmThrowException(pCtx,"TypeError",
-			"%s(): Argument #1 ($object_or_class) must be of type object|string, %s given",
-			ph7_function_name(pCtx),
-			nArg > 0 ? VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)) : "no value");
+	if( VmObjectOrClassScreen(pCtx,nArg,apArg) != PH7_OK ){
 		return 0;
 	}
 	if( apArg[0]->iFlags & MEMOBJ_OBJ ){
