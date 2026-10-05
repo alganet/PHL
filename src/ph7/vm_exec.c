@@ -6428,10 +6428,10 @@ case PH7_OP_CALL_INIT: {
  *
  *  Only a callee the OP_CALL lookup answers by NAME is screened: a function name (with the
  *  namespace's global fallback) or an OP_MEMBER method key, from the compiled-function
- *  table or -- by its signature -- the host-function table, and a plain Closure through
- *  the function its `$__fn` names. Anything else -- a bound or method Closure, an array
- *  pair, an __invoke object, a __call routing, a native method, a `new` -- leaves the
- *  name to OP_CALL's own resolution.
+ *  table or -- by its signature -- the host-function table or a native method's C body,
+ *  and a plain Closure through the function its `$__fn` names. Anything else -- a bound
+ *  or method Closure, an array pair, an __invoke object, a __call routing, a `new` --
+ *  leaves the name to OP_CALL's own resolution.
  *
  *  P1 = the argument's compile-time position, P2 = PH7_ROT_SPREAD when an unpack precedes
  *  it, P3 = the call's VmCallArgMap.
@@ -6513,10 +6513,13 @@ case PH7_OP_NAMED_SEND: {
 			}
 		}
 	}
+	if( pSendFunc && (pSendFunc->iFlags & VM_FUNC_NATIVE) ){
+		/* A C-bodied method: no compiled formals, and OP_CALL binds its names by the
+		 * signature its foreign body carries, exactly as it does a builtin's. */
+		pSendHost = pSendFunc->pNative;
+		pSendFunc = 0;
+	}
 	if( pSendFunc ){
-		if( pSendFunc->iFlags & VM_FUNC_NATIVE ){
-			break;
-		}
 		aSendFormal = (ph7_vm_func_arg *)SySetBasePtr(&pSendFunc->aArgs);
 		nSendFormal = SySetUsed(&pSendFunc->aArgs);
 		for( k = 0 ; k < nSendFormal ; ++k ){
