@@ -1721,6 +1721,39 @@ PH7_PRIVATE ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm)
 	ph7_class *pSelf = PH7_VmPeekSelfClass(pVm);
 	return (pSelf && pSelf->pBase) ? pSelf->pBase : 0;
 }
+/*
+ * php's refusal for a WRITTEN `self`/`parent`/`static` that resolved to no class, or 0 when
+ * the name is none of the three. Two families of sentence: a class FETCH (`self::m()`,
+ * `new static`, `parent::$p`) is zend_fetch_class's "Cannot access", while `X::class`
+ * (bClassName) is ZEND_FETCH_CLASS_NAME's own "Cannot use ... in the global scope". Both
+ * say `parent` apart when a class scope is active but has no base. These used to be
+ * reported as `Class "self" not found`, naming a class the program never declared.
+ */
+PH7_PRIVATE const char * PH7_VmScopeKeywordRefusal(ph7_vm *pVm,const char *zCls,sxu32 nCls,
+	int bClassName,char *zBuf,int nBuf)
+{
+	const char *zKw;
+	if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
+		zKw = "self";
+	}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
+		zKw = "static";
+	}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
+		zKw = "parent";
+		if( PH7_VmPeekSelfClass(&(*pVm)) ){
+			SyBufferFormat(zBuf,nBuf,"Cannot %s \"parent\" when current class scope has no parent",
+				bClassName ? "use" : "access");
+			return zBuf;
+		}
+	}else{
+		return 0;
+	}
+	if( bClassName ){
+		SyBufferFormat(zBuf,nBuf,"Cannot use \"%s\" in the global scope",zKw);
+	}else{
+		SyBufferFormat(zBuf,nBuf,"Cannot access \"%s\" when no class scope is active",zKw);
+	}
+	return zBuf;
+}
 
 /* Class/OOP builtin functions moved to vm_builtin_class.c */
 /*

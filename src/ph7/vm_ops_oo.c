@@ -203,8 +203,17 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			SyBlobAppend(&sErrM,"Class name must be a valid object or a string",
 				sizeof("Class name must be a valid object or a string")-1);
 		}else{
-			SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
-				SyBlobLength(&pTos->sBlob),(const char *)SyBlobData(&pTos->sBlob));
+			/* `new self` / `new static` / `new parent` with no class behind the keyword. */
+			char zKwBuf[96];
+			const char *zKwWhy = pInstr->bDiscard ? PH7_VmScopeKeywordRefusal(&(*pVm),
+				(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob),
+				FALSE,zKwBuf,(int)sizeof(zKwBuf)) : 0;
+			if( zKwWhy ){
+				SyBlobAppend(&sErrM,zKwWhy,(sxu32)SyStrlen(zKwWhy));
+			}else{
+				SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
+					SyBlobLength(&pTos->sBlob),(const char *)SyBlobData(&pTos->sBlob));
+			}
 		}
 		/* Settle the stack BEFORE throwing: the class-name slot becomes the (NULL)
 		 * expression result and the ctor arguments go. */
@@ -2843,8 +2852,29 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 				SyBlobInit(&sErrM,&pVm->sAllocator);
-				SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
-					SyBlobLength(&pNos->sBlob),(const char *)SyBlobData(&pNos->sBlob));
+				{
+					/* A WRITTEN keyword with no class behind it is php's scope refusal,
+					 * and `self::class` (the bareword `class`) is its own sentence. */
+					const char *zKwWhy = 0;
+					char zKwBuf[96];
+					if( pInstr->bDiscard ){
+						int bClassName = pInstr->p3 == 0 && pInstr->iP1 != 2
+							&& pInstr->iP2 != PH7_MEMBER_METHOD
+							&& (pTos->iFlags & MEMOBJ_STRING)
+							&& SyBlobLength(&pTos->sBlob) == sizeof("class")-1
+							&& SyStrnicmp((const char *)SyBlobData(&pTos->sBlob),"class",
+								sizeof("class")-1) == 0;
+						zKwWhy = PH7_VmScopeKeywordRefusal(&(*pVm),
+							(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob),
+							bClassName,zKwBuf,(int)sizeof(zKwBuf));
+					}
+					if( zKwWhy ){
+						SyBlobAppend(&sErrM,zKwWhy,(sxu32)SyStrlen(zKwWhy));
+					}else{
+						SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
+							SyBlobLength(&pNos->sBlob),(const char *)SyBlobData(&pNos->sBlob));
+					}
+				}
 				if( !pInstr->p3 ){
 					VmPopOperand(&pTos,1);
 				}

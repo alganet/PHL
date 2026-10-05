@@ -8091,6 +8091,8 @@ PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_
 PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm_builtin_call.c — callable machinery shared with vm.c's interpreter */
 PH7_PRIVATE ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm);
+PH7_PRIVATE const char * PH7_VmScopeKeywordRefusal(ph7_vm *pVm,const char *zCls,sxu32 nCls,
+	int bClassName,char *zBuf,int nBuf);
 PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
 /*
  * The status a C->PHP dispatch answers when the callee did NOT return: the
